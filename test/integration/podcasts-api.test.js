@@ -359,6 +359,52 @@ test('v1.71 T4: episode likes - toggle round-trip, phantom 404, liked filter lis
   assert.strictEqual((await get('/api/podcasts/episodes')).status, 400);
 });
 
+test('v1.71 T5: recent-listening selection - position>0 downloaded episodes, updatedAt desc; single-episode GET resolves the deep link', async () => {
+  const root = path.join(DATA_DIR, 'podcasts');
+  const showDir = path.join(root, 'RoundTrip Show');
+  fs.mkdirSync(showDir, { recursive: true });
+  const mk = (guid) => {
+    const f = path.join(showDir, `${guid} [rss=${guid}].mp3`);
+    fs.writeFileSync(f, 'B');
+    return f;
+  };
+  const idA = podcastStore.episodeIdFor(subId, 'cl-a');
+  const idB = podcastStore.episodeIdFor(subId, 'cl-b');
+  const idC = podcastStore.episodeIdFor(subId, 'cl-c');
+  await updateDatabase((db) => {
+    const ns = podcastStore.ensurePodcasts(db);
+    podcastStore.reduceUpsertEpisodes(ns, subId, [
+      { guid: 'cl-a', title: 'A', pubDateMs: 3400, durationSec: 100 },
+      { guid: 'cl-b', title: 'B', pubDateMs: 3401, durationSec: 100 },
+      { guid: 'cl-c', title: 'C', pubDateMs: 3402, durationSec: 100 },
+    ], 'pending', 5400);
+    podcastStore.reduceEpisodeDownloaded(ns, idA, { fileName: 'a', filePath: mk('cl-a'), bytes: 1, nowMs: 6400 });
+    podcastStore.reduceEpisodeDownloaded(ns, idB, { fileName: 'b', filePath: mk('cl-b'), bytes: 1, nowMs: 6401 });
+    podcastStore.reduceEpisodeDownloaded(ns, idC, { fileName: 'c', filePath: mk('cl-c'), bytes: 1, nowMs: 6402 });
+    return true;
+  });
+  // A: older listen; B: newer listen; C: zero position (never counts).
+  await postJson('/api/podcasts/progress', { episodeId: idA, position: 10, duration: 100 });
+  await postJson('/api/podcasts/progress', { episodeId: idB, position: 20, duration: 100 });
+  await postJson('/api/podcasts/progress', { episodeId: idC, position: 0, duration: 100 });
+
+  const data = await (await get('/api/podcasts/episodes?filter=recent-listening&limit=10')).json();
+  const ids = data.episodes.map((e) => e.id).filter((id) => [idA, idB, idC].includes(id));
+  assert.ok(!ids.includes(idC), 'position 0 never rides the row');
+  assert.ok(ids.indexOf(idB) < ids.indexOf(idA), 'most recent listen first (updatedAt desc)');
+  const rowA = data.episodes.find((e) => e.id === idA);
+  assert.strictEqual(rowA.progress.position, 10, 'the card carries the resume position');
+  assert.strictEqual(typeof rowA.showName, 'string');
+
+  // The deep-link resolver.
+  const one = await (await get(`/api/podcasts/episodes/${idB}`)).json();
+  assert.strictEqual(one.subId, subId, 'names the owning show id');
+  assert.strictEqual(typeof one.showName, 'string');
+  assert.strictEqual(one.progress.position, 20);
+  assert.ok(!('trashPath' in one) && !('filePath' in one), 'server paths never leak');
+  assert.strictEqual((await get('/api/podcasts/episodes/ffffffffffffffffffffffffffffffff')).status, 404);
+});
+
 test('v1.70 (QA S4): DELETE of an episode whose file already vanished records deleted-on-disk, no trash trip', async () => {
   const root = path.join(DATA_DIR, 'podcasts');
   const missing = path.join(root, 'RoundTrip Show', 'Gone [rss=gone1].mp3'); // never written

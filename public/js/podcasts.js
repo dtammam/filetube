@@ -733,6 +733,36 @@
 
     loadShows();
 
+    // v1.71 T5: /podcasts?play=<episodeId> - a home Continue-listening card
+    // (or a queue advance, T6) lands here and must open the owning show and
+    // start THAT episode in the dock; the resumeMode:'podcast' ladder
+    // applies the saved position server-side. A bad or gone id degrades to
+    // the plain grid (the music playTrackFromContinue posture).
+    function consumeDeepLink(epId) {
+      fetchJson('/api/podcasts/episodes/' + encodeURIComponent(epId))
+        .then(function (ep) {
+          if (signal.aborted || !ep || !ep.subId) return;
+          var show = null;
+          for (var k = 0; k < shows.length; k++) { if (shows[k].id === ep.subId) { show = shows[k]; break; } }
+          if (!show) show = { id: ep.subId, name: ep.showName || 'Podcast' };
+          currentShow = show;
+          return fetchJson('/api/podcasts/shows/' + encodeURIComponent(show.id) + '/episodes')
+            .then(function (data) {
+              if (signal.aborted) return;
+              currentShow = data.show || show;
+              episodes = data.episodes || [];
+              renderEpisodes();
+              for (var i = 0; i < playable.length; i++) {
+                if (playable[i].id === epId) { playAt(i); return; }
+              }
+            });
+        })
+        .catch(function () { /* the grid stands */ });
+    }
+    var playParam = null;
+    try { playParam = new URLSearchParams(window.location.search).get('play'); } catch (_) { playParam = null; }
+    if (playParam) consumeDeepLink(playParam);
+
     // Teardown extras the AbortController cannot cover.
     controller.__podcastsCleanup = function () {
       if (statusPollTimer) { clearInterval(statusPollTimer); statusPollTimer = null; }

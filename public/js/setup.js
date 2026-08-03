@@ -1489,6 +1489,7 @@ function wireStaticControls(signal) {
   // main.js's homeRowEnabled (`!== '0'` = on): checked -> clear (default on),
   // unchecked -> '0'.
   wireHomeRowToggle('home-continue-listening-check', 'ft-home-continue-listening', signal);
+  wireHomeRowToggle('home-continue-podcasts-check', 'ft-home-continue-podcasts', signal);
   wireHomeRowToggle('home-continue-reading-check', 'ft-home-continue-reading', signal);
 
   // Size-cap input: 'change' (fires on blur/Enter, not per keystroke) is a
@@ -2100,6 +2101,7 @@ function init(root) {
   loadResumeThresholdControl();
   loadDebugLifecycleControl();
   loadHomeRowControl('home-continue-listening-check', 'ft-home-continue-listening');
+  loadHomeRowControl('home-continue-podcasts-check', 'ft-home-continue-podcasts');
   loadHomeRowControl('home-continue-reading-check', 'ft-home-continue-reading');
   renderBottomBarEditor(controller.signal); // v1.44 T12 bottom-bar editor
   renderCardCornerEditor(controller.signal); // v1.67 card-corner pickers (Appearance box)
