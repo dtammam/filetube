@@ -14197,6 +14197,7 @@ podcasts.registerRoutes(app, {
   userStore,
   runExclusive: heavyGate.runExclusive,
   sendRangeable,
+  contentDispositionAttachment,
   listExternalShows: listYtdlpPodcastShows,
   listExternalEpisodes: listYtdlpPodcastEpisodes,
 });

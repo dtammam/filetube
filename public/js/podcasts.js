@@ -376,6 +376,21 @@
       }
       row.appendChild(main);
 
+      // v1.71: save-to-device (RSS episodes only - a ytdlp episode is a
+      // media item and keeps its watch-page download affordance). An <a
+      // download> pointed at the confined stream route's ?download=1 arm.
+      if (!ep.watchHref && ep.status === 'downloaded') {
+        var saveLink = document.createElement('a');
+        saveLink.className = 'btn btn-sm';
+        saveLink.href = '/episode/' + encodeURIComponent(ep.id) + '?download=1';
+        saveLink.setAttribute('download', '');
+        saveLink.textContent = 'Save';
+        saveLink.title = 'Save to device';
+        saveLink.setAttribute('aria-label', 'Save to device');
+        saveLink.addEventListener('click', function (e) { e.stopPropagation(); }, { signal: signal });
+        row.appendChild(saveLink);
+      }
+
       // v1.70: the recoverable delete (RSS episodes only). Downloaded rows
       // get a two-tap delete; trashed rows get Restore. Both refresh the
       // list from server state on success.

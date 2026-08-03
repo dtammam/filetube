@@ -288,6 +288,34 @@ test('v1.70: delete -> trash -> restore round-trip; collisions and wrong states 
   assert.strictEqual((await fetch(`${base}/api/podcasts/episodes/ffffffffffffffffffffffffffffffff`, { method: 'DELETE' })).status, 404);
 });
 
+test('v1.71 T3: /episode/:id?download=1 sends an attachment disposition with the episode title; plain streaming stays undisposed', async () => {
+  const root = path.join(DATA_DIR, 'podcasts');
+  const showDir = path.join(root, 'RoundTrip Show');
+  fs.mkdirSync(showDir, { recursive: true });
+  const epFile = path.join(showDir, 'Save Me [rss=dl1].mp3');
+  fs.writeFileSync(epFile, 'DOWNLOADBYTES');
+  const epId = podcastStore.episodeIdFor(subId, 'dl1');
+  await updateDatabase((db) => {
+    const ns = podcastStore.ensurePodcasts(db);
+    podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'dl1', title: 'Sävê "Me"', pubDateMs: 3200, durationSec: 10 }], 'pending', 5200);
+    podcastStore.reduceEpisodeDownloaded(ns, epId, { fileName: path.basename(epFile), filePath: epFile, bytes: 13, nowMs: 6200 });
+    return true;
+  });
+
+  const dl = await get(`/episode/${epId}?download=1`);
+  assert.strictEqual(dl.status, 200);
+  const dispo = dl.headers.get('content-disposition');
+  assert.ok(dispo && dispo.startsWith('attachment;'), `attachment disposition present: ${dispo}`);
+  assert.ok(dispo.includes("filename*=UTF-8''"), 'RFC 5987 arm present (the shared helper, not an ad-hoc header)');
+  assert.ok(dispo.includes('.mp3'), 'extension rides the filename');
+  assert.ok(!dispo.includes('"Sävê'), 'non-ASCII title never lands raw in the quoted ASCII arm');
+  assert.strictEqual(await dl.text(), 'DOWNLOADBYTES', 'the same confined bytes stream');
+
+  const plain = await get(`/episode/${epId}`);
+  assert.strictEqual(plain.status, 200);
+  assert.strictEqual(plain.headers.get('content-disposition'), null, 'no disposition without the flag - inline playback untouched');
+});
+
 test('v1.70 (QA S4): DELETE of an episode whose file already vanished records deleted-on-disk, no trash trip', async () => {
   const root = path.join(DATA_DIR, 'podcasts');
   const missing = path.join(root, 'RoundTrip Show', 'Gone [rss=gone1].mp3'); // never written
