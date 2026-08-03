@@ -80,6 +80,53 @@
 
 ## Shipped
 
+### v1.70.0 - Recoverable episode delete + the 15.5MB cover fix (2026-08-03)
+
+Closes tech-debt #81: podcast episodes get their own trash lane. A
+two-tap Delete moves the file to `<podcastsRoot>/.filetube-trash`
+(atomic rename; EXDEV falls back to copy+fsync+verify+unlink), the
+record flips to 'trashed' with an In-trash chip + Restore in the row,
+restore refuses to clobber (409) and tombstones honestly when the
+trash file has vanished (410 + per-user purge). Retention rides the
+EXISTING db.settings.trashRetentionDays at boot + each poll cycle;
+per-user progress/played rows survive the trash trip and retire only
+on purge. Second headline: Dean's missing show art, root-caused by
+live measurement - Patreon serves a 15,494,765-byte PNG and the 8MB
+COVER_MAX_BYTES abort was silent and permanent (retry coupled to
+pending episodes). Now 32MB, retried every poll until art lands,
+failures named in the cycle status, 2-minute ceiling. Third: Dean's
+translucent-sheet bug was `var(--bg-primary)` - a token that never
+existed - plus four sibling undefined-token sites (two pre-existing
+since v1.43/reloc); all five fixed and a new lock refuses any
+fallback-less `var()` naming an undefined token.
+
+The gate, honestly: the adversarial seat ran FOUR rounds (Dean halted
+the cadence as too long - rounds 3-4 were defence-in-depth; the
+pacing rule "ship on CRITICAL/WARNING closure, tech-debt the rest" is
+now standing). It found 3 CRITICALs, all closed: the trash/restore
+record path fields were unconfined (arbitrary file read/destroy
+reachable from an admin backup bundle), the confinement ROOT itself
+was bundle-controllable via settings.downloadDir, and GET /episode/:id
+served a db-authored path with no confinement. Plus the v1.69
+mount-loss guard re-introduced in the new sweep. Adversarial APPROVE
+binds d36d731; the commits after it (its own two delta prescriptions,
+then the QA fix round) were verified by the QA seat, which reviewed
+the whole range fresh: W1 misattributed comments (the sweep said
+v1.71), W2 a comment claiming a root-creation invariant the module
+does not have, W3 the cover-cap lock tested the DECISION not the USE
+(an 8MB call-site mutant survived 4244 tests), W5 restore could
+report a false success when losing the serialized-write race to the
+retention sweep - fixed symmetrically with DELETE, and the new
+deterministic race test caught an aliasing defect in the first
+version of that very fix. QA APPROVE binds b308264.
+
+Ships DISCLOSED: #86 (EXDEV-kill partial in trash; the lost-race
+move-back orphan joins this class), #87 (the delete confirm does not
+state the retention window - the plan's D5 copy was dropped), #88
+(the token lock counts era-only definitions as defined). Dual-Node:
+v22.23.1 = 5791/5791; v24.14.0 = 5791/5791. Device pass PENDING -
+exec plan stays in active/ until Dean's probes close it.
+
 ### v1.69.1 - The Podcasts zero-state door (2026-08-02)
 
 Dean's first device probe found what four adversarial rounds + QA
