@@ -221,3 +221,20 @@ test('v1.72 QA W3 bind: the cross-kind consult re-checks staleness AFTER the set
   assert.ok(recheckIdx >= 0, 'the staleness re-check exists inside the consult');
   assert.ok(actIdx > recheckIdx, 'and it runs BEFORE any action (pointer moves are server state)');
 });
+
+test('v1.73 (Dean device bug): the watch Prev/Next QUEUE arm dispatches by kind - non-media entries ride queueEntryHref, never navigateToWatch', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const watchSrc = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
+  const seamStart = watchSrc.indexOf('const goQueueEntry = (entry) => {');
+  assert.ok(seamStart >= 0, 'the queue-entry navigation seam exists');
+  const seam = watchSrc.slice(seamStart, watchSrc.indexOf('let effNext', seamStart));
+  assert.ok(seam.includes("(entry.kind || 'media') !== 'media'"), 'the kind gate exists (absent kind = legacy media)');
+  const gateIdx = seam.indexOf("(entry.kind || 'media') !== 'media'");
+  const hrefIdx = seam.indexOf('window.FileTube.queueEntryHref(entry)');
+  const stashIdx = seam.indexOf('stashWatchSeed(entry.item)');
+  const navIdx = seam.indexOf('navigateToWatch(entry.mediaId)');
+  assert.ok(hrefIdx > gateIdx, 'non-media destination derives from the ONE kind-aware helper');
+  assert.ok(seam.slice(gateIdx, stashIdx).includes('return;'), 'the non-media arm RETURNS before the watch seed and the watch nav');
+  assert.ok(navIdx > stashIdx, 'the media arm keeps its seed-then-navigate order');
+});

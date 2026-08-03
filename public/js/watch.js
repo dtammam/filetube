@@ -1574,6 +1574,23 @@ if (typeof module !== 'undefined' && module.exports) {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ uid: entry.uid }), keepalive: true,
           }).catch(() => {});
+          // v1.73 (Dean's device find - "Failed to Load Media"): the queue
+          // is MIXED-KIND, and this was the LAST legacy arm hand-building
+          // /watch.html?v= from a queue entry - a podcast/track up next
+          // loaded its id into the VIDEO player and died. The destination
+          // derives from the ONE kind-aware helper (the cap-3 contract);
+          // the watch seed stays media-only (the media-positive guard
+          // class, third strike).
+          if ((entry.kind || 'media') !== 'media') {
+            const kindHref = (window.FileTube && typeof window.FileTube.queueEntryHref === 'function')
+              ? window.FileTube.queueEntryHref(entry)
+              : null;
+            if (kindHref) {
+              if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(kindHref);
+              else window.location.href = kindHref;
+            }
+            return;
+          }
           if (entry.item && window.FileTube && typeof window.FileTube.stashWatchSeed === 'function') {
             window.FileTube.stashWatchSeed(entry.item);
           }
