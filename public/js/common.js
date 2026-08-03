@@ -3030,12 +3030,16 @@ function injectQueueChrome() {
           link.addEventListener('click', () => {
             // Tapping a row makes it now-playing (server pointer) and rides
             // the normal watch nav with a paint seed (the bell-row posture).
-            stashWatchSeed({
-              id: m.mediaId, title: m.title,
-              channelName: m.channelLabel === 'Library' ? '' : m.channelLabel,
-              channelAvatarUrl: m.channelAvatarUrl,
-              hasThumbnail: Boolean(m.thumbnailUrl),
-            });
+            // v1.71 (gate S2): media rows only - a podcast row navigates to
+            // /podcasts and must never prime a watch page it will not visit.
+            if (m.kind !== 'podcast') {
+              stashWatchSeed({
+                id: m.mediaId, title: m.title,
+                channelName: m.channelLabel === 'Library' ? '' : m.channelLabel,
+                channelAvatarUrl: m.channelAvatarUrl,
+                hasThumbnail: Boolean(m.thumbnailUrl),
+              });
+            }
             fetch('/api/queue/pointer', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ uid: m.uid }), keepalive: true,

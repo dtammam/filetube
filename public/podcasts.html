@@ -114,8 +114,10 @@
         <!-- v1.71 T7: the expanded now-playing view. Tapping the docked
              player while a podcast plays lands on /podcasts?nowplaying=1
              and the controller expands the live player FULL into this slot
-             (the read.html #player-slot pattern - inside #view-root so the
-             route swap docks it on leave). Empty until then. -->
+             (the read.html #player-slot pattern). Inside #view-root:
+             leaving for a DIFFERENT view docks it; a podcasts->podcasts
+             swap does NOT dock, so init re-adopts a FULL player into the
+             fresh slot every time (gate W2). Empty until then. -->
         <div id="player-slot"></div>
 
         <!-- Drill-in breadcrumb (show -> episode list); hidden on the grid. -->

@@ -160,30 +160,42 @@ test('v1.71 queue kind: round-trips through setQueue/getQueue; kind-less entries
     ['u1', 'vid1', 'media'], ['u2', 'ep1', 'podcast'], ['u3', 'vid2', 'media'], ['u4', 'x', 'media'],
   ]);
   assert.equal(q.pointerUid, 'u2');
+  // Gate S3: the WRITE side normalizes - the column itself never carries a
+  // third value (a verbatim-persist mutant is masked by the read-side
+  // normalization, so bind the raw rows).
+  const raw = adapter.sql.prepare('SELECT entry_kind FROM user_queue WHERE user_id = ? ORDER BY entry_order').all(a.id);
+  assert.deepEqual(raw.map((r) => r.entry_kind), ['media', 'podcast', 'media', 'media'], 'raw column values, not the accessor\'s view');
 });
 
 test('v1.71 kind-scoped lifecycle: a media delete/re-key never touches a SAME-ID podcast row, and vice versa', () => {
   const { a } = twoUsers();
-  // The collision shape: one md5-looking id living in BOTH kinds.
+  // The collision shape: one md5-looking id living in BOTH kinds. Every
+  // carrier below runs while BOTH rows are live at the colliding id -
+  // the adversarial seat proved a re-key-first ordering makes the
+  // episode-carrier assertion vacuous (the scope mutant survived).
   store.setQueue(a.id, [
     { uid: 'u1', mediaId: 'deadbeef', kind: 'media' },
     { uid: 'u2', mediaId: 'deadbeef', kind: 'podcast' },
   ], null, 1);
-  store.removeMediaState(['deadbeef']);
+  store.removePodcastEpisodeState(['deadbeef']);
   let q = store.getQueue(a.id);
-  assert.deepEqual(q.entries.map((e) => [e.uid, e.kind]), [['u2', 'podcast']], 'media delete took ONLY the media-kind row');
+  assert.deepEqual(q.entries.map((e) => [e.uid, e.kind]), [['u1', 'media']], 'the episode carrier took ONLY the podcast-kind row - the media row SURVIVES the collision');
 
   store.setQueue(a.id, [
     { uid: 'u1', mediaId: 'deadbeef', kind: 'media' },
     { uid: 'u2', mediaId: 'deadbeef', kind: 'podcast' },
   ], null, 2);
+  store.removeMediaState(['deadbeef']);
+  q = store.getQueue(a.id);
+  assert.deepEqual(q.entries.map((e) => [e.uid, e.kind]), [['u2', 'podcast']], 'media delete took ONLY the media-kind row');
+
+  store.setQueue(a.id, [
+    { uid: 'u1', mediaId: 'deadbeef', kind: 'media' },
+    { uid: 'u2', mediaId: 'deadbeef', kind: 'podcast' },
+  ], null, 3);
   store.rekeyMediaState('deadbeef', 'cafebabe');
   q = store.getQueue(a.id);
   assert.deepEqual(q.entries.map((e) => [e.mediaId, e.kind]).sort(), [['cafebabe', 'media'], ['deadbeef', 'podcast']], 're-key moved ONLY the media-kind row');
-
-  store.removePodcastEpisodeState(['deadbeef']);
-  q = store.getQueue(a.id);
-  assert.deepEqual(q.entries.map((e) => [e.mediaId, e.kind]), [['cafebabe', 'media']], 'the episode carrier took ONLY the podcast-kind row');
 });
 
 test('v1.71 carrier: removePodcastEpisodeState purges likes AND podcast queue rows with progress/played, one transaction', () => {

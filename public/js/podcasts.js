@@ -783,16 +783,25 @@
 
     // v1.71 T7: arriving via the docked player's tap (?nowplaying=1)
     // expands the LIVE player into this page's #player-slot - the big
-    // audio-art now-playing view. Guarded to a docked player with media:
-    // a stale/bookmarked URL with nothing playing degrades to the grid.
+    // audio-art now-playing view. Guarded: a stale/bookmarked URL with
+    // nothing playing degrades to the grid.
+    //
+    // Gate W2: a podcasts->podcasts navigation (sidebar/bottom-bar Podcasts
+    // tap, ?play=, ?nowplaying=) swaps #view-root WITHOUT docking
+    // (shouldDockOnTransition same-view rule), which discards the old
+    // view's #player-slot with an EXPANDED player inside it - stranding
+    // live audio in a detached subtree. So a FULL player is re-adopted
+    // into THIS view's slot on every init (the read.js re-mount
+    // precedent), ?nowplaying or not.
     var wantNowPlaying = false;
     try { wantNowPlaying = new URLSearchParams(window.location.search).get('nowplaying') === '1'; } catch (_) { wantNowPlaying = false; }
-    if (wantNowPlaying && window.FileTube && window.FileTube.player
-        && typeof window.FileTube.player.getState === 'function'
-        && window.FileTube.player.getState() === 'docked'
-        && typeof window.FileTube.player.expand === 'function') {
+    var player = window.FileTube && window.FileTube.player;
+    if (player && typeof player.getState === 'function' && typeof player.expand === 'function') {
+      var pState = player.getState();
       var npSlot = root.querySelector('#player-slot');
-      if (npSlot) window.FileTube.player.expand(npSlot);
+      if (npSlot && (pState === 'full' || (wantNowPlaying && pState === 'docked'))) {
+        player.expand(npSlot);
+      }
     }
 
     // Teardown extras the AbortController cannot cover.

@@ -96,6 +96,35 @@ test('formatQueuePosition: ordinals incl. the 11th/12th/13th trap (gate S1)', ()
 
 // ---- v1.71 T6: kind-aware entries -------------------------------------------
 
+test('SOURCE-LOCK (gate W5): both ended flows advance through the ONE queue seam, whose href is kind-derived and whose watch seed is media-only', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const playerSrc = fs.readFileSync(path.join(__dirname, '../../public/js/player.js'), 'utf8');
+  assert.ok(playerSrc.includes('function advanceIntoQueueEntry(queueNext)'), 'the shared advance seam exists');
+  const calls = playerSrc.match(/advanceIntoQueueEntry\(queueNext\);/g) || [];
+  assert.ok(calls.length >= 2, `BOTH ended flows (trackNav + video autoplay) call the seam, found ${calls.length}`);
+  const seamStart = playerSrc.indexOf('function advanceIntoQueueEntry');
+  const seam = playerSrc.slice(seamStart, playerSrc.indexOf('function handleAutoplayNext', seamStart));
+  assert.ok(seam.includes('window.FileTube.queueEntryHref(queueNext)'), 'the destination derives from the shared kind-aware helper');
+  assert.ok(seam.includes("queueNext.kind !== 'podcast'"), 'the watch seed is suppressed for podcast entries');
+  assert.ok(seam.includes('window.FileTube.navigate(advanceHref)'), 'and the derived href is what actually navigates');
+  const watchSrc = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
+  assert.ok(watchSrc.includes('window.FileTube.queueEntryHref(next)'), 'the up-next box derives via the shared helper too');
+});
+
+test('SOURCE-LOCK (gate W1): the trackNav ended path consults the queue before falling back to the show list', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const playerSrc = fs.readFileSync(path.join(__dirname, '../../public/js/player.js'), 'utf8');
+  const branchStart = playerSrc.indexOf('currentData.autoAdvanceViaTrackNav) {');
+  assert.ok(branchStart >= 0, 'the trackNav branch exists');
+  const branch = playerSrc.slice(branchStart, playerSrc.indexOf("fetch('/api/settings')", branchStart));
+  assert.ok(branch.includes("fetch('/api/queue')"), 'the branch consults the queue');
+  assert.ok(branch.includes('pointerEntry.mediaId === endedId'), 'queue precedence keys on THIS item being the now-playing entry');
+  assert.ok(branch.includes('fallbackToTrackNav'), 'and the show-list flow survives as the fallback');
+  assert.ok(branch.indexOf("fetch('/api/queue')") < branch.indexOf('fallbackToTrackNav();'), 'consult-first ordering, not mere presence');
+});
+
 test('v1.71 queueEntryHref: podcast -> /podcasts?play=, media/absent-kind -> /watch.html?v=, encoded; null on garbage', () => {
   assert.equal(queueEntryHref({ mediaId: 'ep"1', kind: 'podcast' }), '/podcasts?play=ep%221');
   assert.equal(queueEntryHref({ mediaId: 'vid1', kind: 'media' }), '/watch.html?v=vid1');

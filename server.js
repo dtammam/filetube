@@ -8348,7 +8348,10 @@ app.post('/api/queue/items', (req, res) => {
     const podcastNs = podcastStore.readPodcasts(db);
     const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, mediaId) ? podcastNs.episodes[mediaId] : null;
     if (!ep || ep.status !== 'downloaded') return res.status(404).json({ error: 'Episode not found' });
-  } else if (!db.metadata[mediaId]) {
+  } else if (!Object.prototype.hasOwnProperty.call(db.metadata, mediaId)) {
+    // hasOwnProperty (gate S5): a prototype-chain key ('__proto__',
+    // 'constructor', 'toString') must 404 like any phantom, never queue an
+    // item-less entry the shaped view then serves as garbage.
     return res.status(404).json({ error: 'Media file not found' });
   }
   const position = body.position === 'next' ? 'next' : 'end';

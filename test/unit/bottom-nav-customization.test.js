@@ -65,7 +65,7 @@ test('v1.71: a present default-hidden item is INVISIBLE with an empty config and
   for (const cfg of [{}, null, { hidden: [], order: [] }, { hidden: ['theme'], order: ['history'] }]) {
     const out = resolveBottomNavLayout(WITH_PODCASTS, cfg);
     assert.ok(out.visible.indexOf('podcasts') === -1, `podcasts stays off for config ${JSON.stringify(cfg)}`);
-    assert.ok(out.hiddenPresent.indexOf('podcasts') >= 0, 'but reports as present-and-hidden (the editor can offer it)');
+    assert.ok(out.hiddenPresent.indexOf('podcasts') >= 0, 'but reports as present-and-hidden (hiddenPresent has no production consumer today - this binds the resolver\'s contract, gate S6)');
   }
 });
 

@@ -359,6 +359,42 @@ test('v1.71 T4: episode likes - toggle round-trip, phantom 404, liked filter lis
   assert.strictEqual((await get('/api/podcasts/episodes')).status, 400);
 });
 
+test('v1.71 (gate W4): the like routes act as the AUTHENTICATED user - a wrong-user mutant fails HERE, at the route layer', async () => {
+  const { __mintTestSession } = require('../../server');
+  const b = __mintTestSession({ username: 'likeactor', role: 'member' });
+  const asB = (p, opts) => fetch(`${base}${p}`, { ...(opts || {}), headers: { ...((opts || {}).headers || {}), Cookie: b.cookie } });
+
+  const root = path.join(DATA_DIR, 'podcasts');
+  const showDir = path.join(root, 'RoundTrip Show');
+  fs.mkdirSync(showDir, { recursive: true });
+  const epFile = path.join(showDir, 'Actor [rss=act1].mp3');
+  fs.writeFileSync(epFile, 'ACTORBYTES');
+  const epId = podcastStore.episodeIdFor(subId, 'act1');
+  await updateDatabase((db) => {
+    const ns = podcastStore.ensurePodcasts(db);
+    podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'act1', title: 'Actor Ep', pubDateMs: 3500, durationSec: 10 }], 'pending', 5500);
+    podcastStore.reduceEpisodeDownloaded(ns, epId, { fileName: path.basename(epFile), filePath: epFile, bytes: 10, nowMs: 6500 });
+    return true;
+  });
+
+  // A likes; B must not see it - by ids, by lane, or on the row payload.
+  await postJson(`/api/podcasts/episodes/${epId}/liked`, {});
+  assert.ok(!(await (await asB('/api/podcasts/liked')).json()).episodeIds.includes(epId), 'B never sees A\'s like ids');
+  const bLane = await (await asB('/api/podcasts/episodes?filter=liked')).json();
+  assert.ok(!bLane.episodes.some((e) => e.id === epId), 'B\'s Liked lane is B\'s alone');
+  const bShow = await (await asB(`/api/podcasts/shows/${subId}/episodes`)).json();
+  assert.strictEqual(bShow.episodes.find((e) => e.id === epId).liked, false, 'B\'s row payload carries B\'s heart state');
+
+  // B likes then unlikes; A's like survives untouched.
+  await asB(`/api/podcasts/episodes/${epId}/liked`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  assert.ok((await (await asB('/api/podcasts/liked')).json()).episodeIds.includes(epId), 'B\'s own like registered as B');
+  await asB(`/api/podcasts/episodes/${epId}/liked`, { method: 'DELETE' });
+  assert.ok((await (await get('/api/podcasts/liked')).json()).episodeIds.includes(epId), 'B\'s unlike NEVER touches A\'s like');
+
+  // Cleanup: unlike as A so later liked-count assertions stay honest.
+  await fetch(`${base}/api/podcasts/episodes/${epId}/liked`, { method: 'DELETE' });
+});
+
 test('v1.71 T5: recent-listening selection - position>0 downloaded episodes, updatedAt desc; single-episode GET resolves the deep link', async () => {
   const root = path.join(DATA_DIR, 'podcasts');
   const showDir = path.join(root, 'RoundTrip Show');

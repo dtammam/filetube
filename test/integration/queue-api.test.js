@@ -246,3 +246,14 @@ test('v1.71: media queue semantics are untouched by the widening (pointer, reord
   assert.equal(removed.body.queue.pointerUid, null, 'removing the now-playing FRONT entry restarts (pointer-back to null)');
   assert.deepEqual(removed.body.queue.entries.map((e) => e.kind), ['media', 'media']);
 });
+
+test('v1.71 (gate S5): prototype-chain keys 404 as media adds - never an item-less queue entry', async () => {
+  for (const evil of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+    const r = await fetch(`${base}/api/queue/items`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mediaId: evil }),
+    });
+    assert.equal(r.status, 404, `'${evil}' must 404, got ${r.status}`);
+  }
+  assert.deepEqual((await GET()).entries, [], 'nothing queued');
+});
