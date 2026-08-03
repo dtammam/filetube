@@ -59,7 +59,7 @@ const WITH_PODCASTS = ['home', 'playlists', 'history', 'podcasts', 'theme', 'set
 
 test('v1.71/v1.72: the roster names podcasts + music + books default-hidden', () => {
   // v1.72 (cap 2): music + books joined with the same opt-in posture.
-  assert.deepEqual(BOTTOM_NAV_DEFAULT_HIDDEN, ['podcasts', 'music', 'books']);
+  assert.deepEqual(BOTTOM_NAV_DEFAULT_HIDDEN, ['podcasts', 'music', 'books', 'downloads']);
 });
 
 test('v1.71: a present default-hidden item is INVISIBLE with an empty config and with every pre-v1.71 config shape', () => {
