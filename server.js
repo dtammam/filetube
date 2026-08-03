@@ -8807,8 +8807,40 @@ app.get('/api/videos/:id', (req, res) => {
     // convenience so the watch page's initial paint doesn't need a second
     // `GET /api/liked` round-trip just to know this one item's state.
     // v1.43: the signed-in user's user_liked rows, not the frozen db.liked.
-    liked: userStore.getLiked(req.user.id).includes(item.id)
+    liked: userStore.getLiked(req.user.id).includes(item.id),
+    // v1.72 (cap 6): the manual watched toggle's read side - same
+    // derived-at-request-time posture as `liked`, and the SAME derivation
+    // authority every list surface uses (latch OR >=90% live position).
+    watchState: videoQuery.deriveWatchState(
+      (progress.duration || item.duration || 0) > 0 ? (progress.timestamp / (progress.duration || item.duration)) * 100 : 0,
+      userStore.getWatchedIds(req.user.id).includes(item.id)
+    )
   });
+});
+
+// ---- v1.72 (cap 6): the manual watched latch --------------------------------
+// Videos' latch was write-only-by-threshold (POST /api/progress crossing
+// WATCHED_PCT); podcasts have had the manual toggle since v1.69. The parity
+// port: POST marks watched NOW (idempotent - markWatched no-ops on an
+// existing row, preserving the original completed_at). DELETE is the
+// un-watch verb with IDENTICAL semantics to the v1.64 history-row delete
+// (staged ping + progress + latch): clearing only the latch would leave a
+// >=90% live position still DERIVING 'watched' and the toggle would appear
+// stuck for exactly the fully-watched items it exists for.
+app.post('/api/watched/:id', (req, res) => {
+  const db = getCachedDatabase(); // hot GET reader (existence check only)
+  // OWN-property check (v1.42 __proto__ lesson): this id persists into
+  // user_watched -- see POST /api/liked/:id's identical guard.
+  const item = Object.prototype.hasOwnProperty.call(db.metadata, req.params.id) ? db.metadata[req.params.id] : undefined;
+  if (!item) return res.status(404).json({ error: 'Media file not found' });
+  userStore.markWatched(req.user.id, item.id, new Date().toISOString());
+  res.json({ success: true, watched: true });
+});
+
+app.delete('/api/watched/:id', (req, res) => {
+  pendingProgress.delete(pendingProgressKey(req.user.id, req.params.id));
+  userStore.removeHistory(req.user.id, req.params.id);
+  res.json({ success: true, watched: false });
 });
 
 // API: Get watch progress -- v1.30 A4: overlay any not-yet-flushed
