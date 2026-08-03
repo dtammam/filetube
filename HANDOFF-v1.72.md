@@ -64,6 +64,13 @@ for podcasts. I want ALL of it for podcasts. I want that global like."
    with your recommendation inline (agree/override per number) -
    including any not-applicable calls (e.g. whether books queue at
    all). Only what Dean rules IN joins the wave.
+4. **Two rulings the definition itself flags for this intake** (the
+   docs gate surfaced them): (a) VIDEOS have no home Continue row and
+   no mark-as-watched affordance - reference gaps or non-goals, Dean's
+   call (CONTRIBUTING caps 5/6 carry the honest parentheticals);
+   (b) the PLAYLISTS surface (pinned folder-playlists + the sheet) has
+   no capability cell - whether a podcast SHOW is pinnable there the
+   way a channel folder is needs Dean's ruling, never an inference.
 
 ## BUILD NOTES (hard-won, from the v1.69-v1.71 waves)
 
@@ -90,9 +97,12 @@ for podcasts. I want ALL of it for podcasts. I want that global like."
   clobbered an uncommitted fix this very day). Capture suite failures
   with `grep "^not ok"` (Node 22) / the `ℹ` lines (Node 24) - never
   tail. Never put an unverified count in a brief or commit.
-- Census TOTAL 0, ledger CLEAN, styling-source rule, undefined-token
-  lock, no em dashes in docs/prose - all enforced; the locks WILL
-  refuse your commit otherwise.
+- Enforcement is SPLIT - know which checks are yours to run: the
+  census (TOTAL 0) and the undefined-token lock refuse your commit via
+  the hooks; but `ledger:check`, the styling-source rule (every new
+  className has a real CSS rule) and the no-em-dashes norm are MANUAL
+  disciplines - no instrument catches them, run them yourself before
+  every commit.
 - Fresh-install walk for any new surface: zero-content must render a
   sane, non-500, discoverable state.
 

@@ -130,7 +130,8 @@ A first-class media kind delivers ALL of:
    (`entry_kind` carried, never inferred), advance IN and OUT of the
    kind correctly, and appear in the queue panel/up-next with
    kind-correct art and destination (`queueEntryHref` is the only
-   place a destination is derived).
+   INTENDED derivation - guarded legacy fallback arms still exist at
+   the player/watch seams, bound by source lock).
 4. **The global Liked playlist.** Content can be liked, and a liked
    entry surfaces in THE Liked playlist (the `/?liked=1` surface and
    its count-gated sidebar entry) - a kind-scoped Liked lane inside
@@ -139,9 +140,16 @@ A first-class media kind delivers ALL of:
    lane half - tech-debt #94.)
 5. **Resume.** Per-user position persisted server-side; leaving
    mid-entry and returning resumes; in-progress entries surface in a
-   home Continue row that deep-links back to the exact entry.
+   home Continue row that deep-links back to the exact entry. (As of
+   codification the Continue-row half is the music/books/podcasts
+   pattern - VIDEOS themselves have card progress bars and the
+   `watching` filter but NO home Continue row; whether that is a video
+   gap or a non-goal is Dean's ruling to take at the v1.72 audit.)
 6. **Played/consumed state.** A per-user watched/played latch, both
-   automatic (threshold) and manually toggleable.
+   automatic (threshold) and manually toggleable. (As of codification
+   the full manual toggle is delivered by PODCASTS; videos have the
+   automatic latch plus un-watch via history-row delete but no
+   mark-as-watched affordance - an audit cell, not an assumption.)
 7. **Save to device.** A per-entry download affordance serving the
    original bytes with an attachment disposition through the shared
    `contentDispositionAttachment` helper.
