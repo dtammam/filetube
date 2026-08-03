@@ -7889,6 +7889,12 @@ body.ft-css-fullscreen .bottom-nav {
   text-overflow: ellipsis;
 }
 
+/* v1.72 "Continue watching" home row -- the same chassis with a 16:9 media
+   thumb: the card widens and the cover trades the book box's fixed height
+   for a thumbnail aspect. Progress reuses the book-row bar classes. */
+.video-row-card { width: 164px; }
+.video-row-cover { width: 164px; height: auto; aspect-ratio: 16 / 9; }
+
 /* v1.44 T12: a bottom-nav item hidden by the user's bar customization. The
    generic [hidden] can lose to .bottom-nav-item's own display, so enforce it. */
 .bottom-nav-item[hidden] { display: none !important; }

@@ -8613,6 +8613,29 @@ app.get('/api/videos', (req, res) => {
     list = videoQuery.filterByWatchState(list, watch, progressMap, watchedSet);
   }
 
+  // v1.72 (cap 5): the "Continue watching" selection - the music/podcasts
+  // recent-listening contract ported to media: items with a saved position,
+  // most recently updated first (read-your-writes: the pendingProgress
+  // overlay rides on top of the committed rows, its value carrying its own
+  // updatedAt), MINUS finished items - videos have a watched latch (music
+  // does not), and a completed video is not "in progress". The selection
+  // carries its own order, so the sort pipeline below is bypassed exactly
+  // like /api/music's recent-listening arm bypasses sortTracks.
+  const recentWatching = req.query.filter === 'recent-watching';
+  if (recentWatching) {
+    const progressMap = userStore.getProgress(req.user.id);
+    for (const entry of pendingProgress.values()) {
+      if (entry.userId === req.user.id) progressMap[entry.mediaId] = entry.value;
+    }
+    list = list.filter((item) => {
+      const p = Object.prototype.hasOwnProperty.call(progressMap, item.id) ? progressMap[item.id] : null;
+      if (!p || !(Number(p.timestamp) > 0)) return false;
+      const pct = Number(p.duration) > 0 ? (Number(p.timestamp) / Number(p.duration)) * 100 : 0;
+      return videoQuery.deriveWatchState(pct, watchedSet.has(item.id)) !== 'watched';
+    });
+    list.sort((a, b) => String((progressMap[b.id] || {}).updatedAt || '').localeCompare(String((progressMap[a.id] || {}).updatedAt || '')));
+  }
+
   // `total` is the full filtered length, BEFORE slicing to a page — this is
   // what makes AC3.2's "page(sort,filter) == sort(filter(full)).slice(...)"
   // property hold, and what lets the client know when it has reached the end.
@@ -8624,7 +8647,7 @@ app.get('/api/videos', (req, res) => {
   // page fetches sharing a seed observe one stable shuffle; an absent/
   // invalid seed falls back to one-shot (non-reproducible) randomness.
   const rng = sort === 'random' && seed !== undefined ? videoQuery.createSeededRng(seed) : undefined;
-  const sorted = videoQuery.sortItems(list, sort, rng);
+  const sorted = recentWatching ? list : videoQuery.sortItems(list, sort, rng);
   const page = sorted.slice(offset, offset + limit);
 
   // Overlay progress only on the sliced page — v1.30 A4: `effectiveProgress`

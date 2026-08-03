@@ -189,6 +189,39 @@ function buildPodcastHomeSectionHtml(items, heading, seeAllHref) {
   `;
 }
 
+// v1.72 (cap 5): the videos "Continue watching" row - the music/podcasts
+// row chassis with media fields. 16:9 thumbs (`.video-row-cover` widens the
+// shared cover box; the img cover-fit comes from the chassis rule) and the
+// books row's progress-bar classes (videos have real percent to show).
+// Deep-links /watch.html?v=<id>; the watch page's own resume ladder picks
+// up the saved position - the row never re-derives it.
+function buildVideoRowCardHtml(item) {
+  const percent = item && typeof item.progressPercent === 'number'
+    ? Math.min(100, Math.max(0, item.progressPercent))
+    : 0;
+  const bar = percent > 0.5
+    ? `<div class="book-row-progress"><div class="book-row-progress-fill" style="width: ${percent}%"></div></div>`
+    : '';
+  return `
+    <a class="book-row-card music-row-card video-row-card" href="/watch.html?v=${encodeURIComponent(item.id)}" title="${escapeBookRowHtml(item.title)}">
+      <span class="book-row-cover video-row-cover"><img src="/thumbnail/${encodeURIComponent(item.id)}" alt="" loading="lazy" />${bar}</span>
+      <span class="book-row-title">${escapeBookRowHtml(item.title)}</span>
+      <span class="music-row-artist">${escapeBookRowHtml(item.folderName || '')}</span>
+    </a>
+  `;
+}
+
+function buildVideoHomeSectionHtml(items, heading, seeAllHref) {
+  if (!Array.isArray(items) || items.length === 0) return '';
+  const seeAll = seeAllHref ? `<a class="books-row-seeall" href="${escapeBookRowHtml(seeAllHref)}">See all</a>` : '';
+  return `
+    <section class="books-home-row music-home-row">
+      <div class="books-home-row-header"><h3>${escapeBookRowHtml(heading)}</h3>${seeAll}</div>
+      <div class="books-home-row-scroller">${items.map(buildVideoRowCardHtml).join('')}</div>
+    </section>
+  `;
+}
+
 // ---- v1.67: the card-corner renderer (plan D3) ------------------------------
 //
 // ONE module-scope, exported, pure renderer for the three assignable card
@@ -376,6 +409,8 @@ if (typeof module !== 'undefined' && module.exports) {
     buildMusicHomeSectionHtml,
     buildPodcastRowCardHtml,
     buildPodcastHomeSectionHtml,
+    buildVideoRowCardHtml,
+    buildVideoHomeSectionHtml,
     homeRowEnabled,
     resolveCardCornerPrefs,
     buildCardCornerButtonsHtml,
@@ -1858,6 +1893,24 @@ if (typeof module !== 'undefined' && module.exports) {
       videoGrid.insertAdjacentElement('beforebegin', booksRowHost);
       const bareHome = !searchQuery && !folderFilter && !rootFilter && !likedFilter;
       if (bareHome) {
+        // v1.72 (cap 5): the videos "Continue watching" row sits FIRST -
+        // videos are the reference kind, and their in-progress items now get
+        // the same home resume surface every other kind already had. Same
+        // rules as the rows below: toggleable, empty selection renders
+        // NOTHING.
+        const videosRowHost = document.createElement('div');
+        booksRowHost.insertAdjacentElement('beforebegin', videosRowHost);
+        if (homeRowEnabled('ft-home-continue-watching')) {
+          fetch('/api/videos?filter=recent-watching&limit=10')
+            .then((r) => (r.ok ? r.json() : { items: [] }))
+            .then((data) => {
+              // No See-all href: the watched-state filter is a stored
+              // toolbar pref, not a URL scope - a ?watch= link would
+              // silently no-op (the v1.68.1 bystander-artifact lesson).
+              videosRowHost.innerHTML = buildVideoHomeSectionHtml(data.items, 'Continue watching', '');
+            })
+            .catch(() => { videosRowHost.innerHTML = ''; });
+        }
         // v1.44: a music "Continue listening" host sits ABOVE the books one.
         // Both rows are individually toggleable (device-local pref, default
         // ON); a music-less/books-less install (or a hidden row) renders
