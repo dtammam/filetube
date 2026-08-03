@@ -218,8 +218,17 @@ async function settle(times) {
   for (let i = 0; i < (times || 6); i++) await flush();
 }
 
+// v1.72: the bare-home "Continue watching" row issues ONE
+// /api/videos?filter=recent-watching&limit=10 selection fetch alongside the
+// grid's page fetches. AC3.4's contract is about GRID PAGE fetches (no
+// eager full-library render), so the row's bounded selection is excluded
+// here - and by gridVideosCalls below for the param-assertion pops.
+function gridVideosCalls(calls) {
+  return calls.filter((c) => c.url.indexOf('/api/videos?') === 0 && c.url.indexOf('filter=recent-watching') === -1);
+}
+
 function videosCallCount(calls) {
-  return calls.filter((c) => c.url.indexOf('/api/videos?') === 0).length;
+  return gridVideosCalls(calls).length;
 }
 
 // ---------------------------------------------------------------------------
@@ -340,7 +349,7 @@ test('home grid: a sort change refetches a fresh page 0 with the new sort param 
     // REPLACED, not appended: still exactly one page's worth of cards.
     assert.strictEqual(document.querySelectorAll('#video-grid .video-card').length, 60, 'expected the grid to be REPLACED with a fresh page 0, not appended to');
 
-    const lastVideosCall = calls.filter((c) => c.url.indexOf('/api/videos?') === 0).pop();
+    const lastVideosCall = gridVideosCalls(calls).pop();
     const params = parseQueryParams(lastVideosCall.url);
     assert.strictEqual(params.get('sort'), 'title-asc');
     assert.strictEqual(params.get('offset'), '0', 'expected the reset to start at offset 0');
@@ -366,7 +375,7 @@ test('home grid: the format toggle refetches page 0 with the new format param', 
     await settle();
 
     assert.strictEqual(videosCallCount(calls), 2, 'expected the format-toggle change to trigger exactly one more /api/videos fetch');
-    const lastVideosCall = calls.filter((c) => c.url.indexOf('/api/videos?') === 0).pop();
+    const lastVideosCall = gridVideosCalls(calls).pop();
     const params = parseQueryParams(lastVideosCall.url);
     assert.strictEqual(params.get('format'), 'video');
     assert.strictEqual(params.get('offset'), '0');
@@ -391,7 +400,7 @@ test('home grid: "shuffle again" re-fetches page 0 with a FRESH seed each time (
     sortItem.dispatchEvent(new window.Event('click', { bubbles: true }));
     await settle();
 
-    const firstSeedCall = calls.filter((c) => c.url.indexOf('/api/videos?') === 0).pop();
+    const firstSeedCall = gridVideosCalls(calls).pop();
     const firstSeed = parseQueryParams(firstSeedCall.url).get('seed');
     assert.ok(firstSeed, 'expected a seed param on the random-sort fetch');
 
@@ -402,7 +411,7 @@ test('home grid: "shuffle again" re-fetches page 0 with a FRESH seed each time (
     shuffleBtn.click();
     await settle();
 
-    const secondSeedCall = calls.filter((c) => c.url.indexOf('/api/videos?') === 0).pop();
+    const secondSeedCall = gridVideosCalls(calls).pop();
     const secondSeed = parseQueryParams(secondSeedCall.url).get('seed');
     assert.notStrictEqual(secondSeed, firstSeed, 'expected "shuffle again" to mint a NEW seed, not reuse the previous one');
   } finally {

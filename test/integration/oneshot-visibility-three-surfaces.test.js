@@ -176,6 +176,13 @@ function makeFetchStub({ videosScript, homeHtml }) {
       return Promise.resolve({ ok: true, json: async () => ({}) });
     }
     if (pathname === '/api/videos' && method === 'GET') {
+      // v1.72: the bare-home "Continue watching" row issues its own bounded
+      // /api/videos?filter=recent-watching selection fetch. This suite's
+      // counter (and its scripted response sequence) is about GRID page
+      // fetches - the row's selection answers empty and is never counted.
+      if (full.indexOf('filter=recent-watching') !== -1) {
+        return Promise.resolve({ ok: true, json: async () => ({ items: [], total: 0, offset: 0, limit: 10 }) });
+      }
       const idx = Math.min(calls.videos, videosScript.length - 1);
       calls.videos += 1;
       return Promise.resolve({ ok: true, json: async () => videosScript[idx] });
