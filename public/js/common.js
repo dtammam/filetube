@@ -3251,17 +3251,26 @@ function injectHistoryNavLinkIfEnabled() {
 const BOTTOM_NAV_FIXED_FIRST = 'home';
 const BOTTOM_NAV_FIXED_LAST = 'settings';
 // The optional items a user may reorder/hide (must carry a data-nav id).
-const BOTTOM_NAV_OPTIONAL = ['playlists', 'history', 'subscriptions', 'oneoff-download', 'theme'];
+const BOTTOM_NAV_OPTIONAL = ['playlists', 'history', 'subscriptions', 'oneoff-download', 'theme', 'podcasts'];
+// v1.71: items that are OFF unless the user explicitly turns them on (the
+// config's `shown` list). A default-hidden item ships in every shell's DOM
+// but never appears until Settings enables it - Dean's ruling for podcasts.
+const BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts'];
 
 // Pure: given the bottom-nav item ids ACTUALLY present in the DOM and the
 // user's config, return the final visible order (home first, settings last,
 // hidden optionals dropped) plus the list of present-but-hidden ids. Unit-
-// tested without a DOM.
+// tested without a DOM. Visibility (v1.71): an id is hidden when the config
+// hides it, OR when it is default-hidden and the config's `shown` list has
+// not opted it in - so pre-v1.71 configs (no `shown` key) keep every
+// existing item exactly as before and hide the new default-hidden ones.
 function resolveBottomNavLayout(presentIds, config) {
   const present = Array.isArray(presentIds) ? presentIds.slice() : [];
   const cfg = (config && typeof config === 'object') ? config : {};
   const hidden = new Set(Array.isArray(cfg.hidden) ? cfg.hidden : []);
+  const shown = new Set(Array.isArray(cfg.shown) ? cfg.shown : []);
   const order = Array.isArray(cfg.order) ? cfg.order : [];
+  const isHidden = (id) => hidden.has(id) || (BOTTOM_NAV_DEFAULT_HIDDEN.indexOf(id) >= 0 && !shown.has(id));
   const middle = present.filter((id) => id !== BOTTOM_NAV_FIXED_FIRST && id !== BOTTOM_NAV_FIXED_LAST);
   const seen = new Set();
   const ordered = [];
@@ -3269,22 +3278,23 @@ function resolveBottomNavLayout(presentIds, config) {
   middle.forEach((id) => { if (!seen.has(id)) { ordered.push(id); seen.add(id); } });
   const visible = [];
   if (present.indexOf(BOTTOM_NAV_FIXED_FIRST) >= 0) visible.push(BOTTOM_NAV_FIXED_FIRST);
-  ordered.forEach((id) => { if (!hidden.has(id)) visible.push(id); });
+  ordered.forEach((id) => { if (!isHidden(id)) visible.push(id); });
   if (present.indexOf(BOTTOM_NAV_FIXED_LAST) >= 0) visible.push(BOTTOM_NAV_FIXED_LAST);
-  return { visible, hiddenPresent: ordered.filter((id) => hidden.has(id)) };
+  return { visible, hiddenPresent: ordered.filter(isHidden) };
 }
 
 function readBottomNavConfig() {
   try {
     const raw = localStorage.getItem('ft-bottomnav');
-    if (!raw) return { hidden: [], order: [] };
+    if (!raw) return { hidden: [], order: [], shown: [] };
     const parsed = JSON.parse(raw);
     return {
       hidden: Array.isArray(parsed && parsed.hidden) ? parsed.hidden : [],
       order: Array.isArray(parsed && parsed.order) ? parsed.order : [],
+      shown: Array.isArray(parsed && parsed.shown) ? parsed.shown : [],
     };
   } catch (_) {
-    return { hidden: [], order: [] };
+    return { hidden: [], order: [], shown: [] };
   }
 }
 
@@ -5912,6 +5922,7 @@ if (typeof window !== 'undefined') {
   window.FileTube.readBottomNavConfig = readBottomNavConfig;
   window.FileTube.writeBottomNavConfig = writeBottomNavConfig;
   window.FileTube.BOTTOM_NAV_OPTIONAL = BOTTOM_NAV_OPTIONAL;
+  window.FileTube.BOTTOM_NAV_DEFAULT_HIDDEN = BOTTOM_NAV_DEFAULT_HIDDEN;
   // v1.66 web push: setup.js's enable flow routes through the ONE locked
   // register call site + shares the key decoder.
   window.FileTube.registerPushWorker = registerPushWorker;
@@ -9440,6 +9451,7 @@ if (typeof module !== 'undefined' && module.exports) {
     pushB64urlToUint8,
     describePushEnableOutcome,
     resolveBottomNavLayout,
+    BOTTOM_NAV_DEFAULT_HIDDEN,
     pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
     deriveOrderedIds, computeNeighbors, parentFolder,

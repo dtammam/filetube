@@ -600,7 +600,7 @@ function wireHomeRowToggle(id, key, signal) {
 // (labels below), each with a Show toggle + up/down reorder, driving the
 // device-local config through common.js's exposed helpers. applyBottomNav-
 // Customization re-renders the live bar immediately.
-const BOTTOMBAR_LABELS = { playlists: 'Playlists', history: 'History', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark' };
+const BOTTOMBAR_LABELS = { playlists: 'Playlists', history: 'History', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark', podcasts: 'Podcasts' };
 // ---- v1.67: the card-corner editor (plan D9) --------------------------------
 //
 // Three pickers (Top left / Top right / Bottom left) in the Appearance box.
@@ -718,6 +718,9 @@ function renderBottomBarEditor(signal) {
   const optional = FT.BOTTOM_NAV_OPTIONAL || [];
   const cfg = FT.readBottomNavConfig();
   const hidden = new Set(Array.isArray(cfg.hidden) ? cfg.hidden : []);
+  const shown = new Set(Array.isArray(cfg.shown) ? cfg.shown : []);
+  // v1.71 default-hidden items (podcasts): unchecked until `shown` opts in.
+  const defaultHidden = new Set(FT.BOTTOM_NAV_DEFAULT_HIDDEN || []);
   const order = Array.isArray(cfg.order) ? cfg.order : [];
   // Config order first, then any unlisted optionals in their default order.
   const seen = new Set();
@@ -741,15 +744,20 @@ function renderBottomBarEditor(signal) {
     const toggle = document.createElement('label');
     toggle.style.cssText = 'display:flex; align-items:center; gap:var(--space-3); font-weight:normal;';
     const cb = document.createElement('input');
-    cb.type = 'checkbox'; cb.checked = !hidden.has(id);
+    cb.type = 'checkbox';
+    cb.checked = !hidden.has(id) && (!defaultHidden.has(id) || shown.has(id));
     toggle.appendChild(cb);
     toggle.appendChild(document.createTextNode('Show'));
 
     cb.addEventListener('change', () => {
       const c = FT.readBottomNavConfig();
       const h = new Set(Array.isArray(c.hidden) ? c.hidden : []);
-      if (cb.checked) h.delete(id); else h.add(id);
+      const sh = new Set(Array.isArray(c.shown) ? c.shown : []);
+      // One uniform rule: checked = out of `hidden` AND into `shown` (the
+      // shown entry only matters for default-hidden ids; harmless else).
+      if (cb.checked) { h.delete(id); sh.add(id); } else { h.add(id); sh.delete(id); }
       c.hidden = Array.from(h);
+      c.shown = Array.from(sh);
       FT.writeBottomNavConfig(c);
       if (FT.applyBottomNavCustomization) FT.applyBottomNavCustomization();
     }, { signal });
