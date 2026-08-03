@@ -123,7 +123,7 @@ test('schema v8 -> v9 migration: an existing db gains the tables without touchin
   // against the live db - the version lands at the CURRENT head.
   adapter = new SqliteAdapter(dbPath, { log: () => {} });
   store = createUserStore(adapter);
-  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 10);
+  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 12);
   const admin2 = store.getByUsername('a');
   assert.deepEqual(store.getProgress(admin2.id).vid1, { timestamp: 5, duration: 10, updatedAt: ISO }, 'pre-existing rows untouched');
   store.setPodcastProgress(admin2.id, 'ep1', { position: 1, duration: 2, updatedAt: ISO });
@@ -228,7 +228,7 @@ test('v1.71 schema v9 -> v10 migration: live queue rows survive and read back as
 
   adapter = new SqliteAdapter(dbPath, { log: () => {} });
   store = createUserStore(adapter);
-  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 10);
+  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 12);
   const admin2 = store.getByUsername('a');
   const q = store.getQueue(admin2.id);
   assert.deepEqual(q.entries, [{ uid: 'u1', mediaId: 'vid1', kind: 'media' }], 'the pre-v10 row survives AND reads as media');
@@ -309,4 +309,29 @@ test('backup export/restore round-trip carries podcast state; a pre-v1.69 bundle
     a2.close();
     fs.rmSync(dir2, { recursive: true, force: true });
   }
+});
+
+// ---- v1.72: show pins (v12) + the append-only migration lesson --------------
+
+test('v1.72 schema v11 -> v12: a db stamped 11 WITHOUT user_podcast_pins (the interim-branch victim) heals on reopen', () => {
+  // The regression this binds: user_podcast_pins was FIRST added by editing
+  // the already-executed v11 block; a db stamped 11 by an interim build
+  // skipped the edited block and statementsFor threw on the missing table
+  // (the readonly-mode.test.js full-suite hang). v12 must create it.
+  adapter.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-pinsv11-'));
+  const dbPath = path.join(dir, SQLITE_FILENAME);
+
+  const first = new SqliteAdapter(dbPath, { log: () => {} });
+  createUserStore(first);
+  first.sql.exec('DROP TABLE user_podcast_pins; PRAGMA user_version = 11');
+  first.close();
+
+  adapter = new SqliteAdapter(dbPath, { log: () => {} });
+  store = createUserStore(adapter); // statementsFor must not throw
+  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 12);
+  const admin = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, {}, ISO);
+  store.setPodcastPins(admin.id, [{ id: 's1', label: 'Show', pinnedAt: ISO, order: 0 }]);
+  assert.equal(store.getPodcastPins(admin.id).length, 1, 'the healed table works');
 });

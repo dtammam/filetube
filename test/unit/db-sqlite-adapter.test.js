@@ -107,7 +107,7 @@ test('fresh open creates the full v1 schema with empty user tables', () => {
       const { c } = a.sql.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get();
       assert.strictEqual(c, 0, `${table} exists and is empty (born-complete schema, exec plan)`);
     }
-    assert.strictEqual(a.sql.prepare('PRAGMA user_version').get().user_version, 10);
+    assert.strictEqual(a.sql.prepare('PRAGMA user_version').get().user_version, 12);
     // v1.43 schema v2: users.id is AUTOINCREMENT (never reuses a reaped id —
     // design-delta SUGGESTION-6). sqlite_autoindex/sqlite_sequence presence
     // is the fingerprint.
@@ -129,7 +129,7 @@ test('v3 -> v4 upgrade: an existing populated schema gains the empty user_watche
 
   const b = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 10, 'forward-only migration ran (to the CURRENT version)');
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 12, 'forward-only migration ran (to the CURRENT version)');
     assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_watched').get().c, 0, 'latch table born empty');
     // v1.51 schema v5 rides the same forward run.
     assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM notifications').get().c, 0, 'notification feed born empty');

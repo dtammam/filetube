@@ -74,6 +74,20 @@ function buildSongRowHtml(item, index) {
     '<span class="music-song-sub">' + escapeMusicHtml(item.artist || '') + (item.album ? ' · ' + escapeMusicHtml(item.album) : '') + '</span>' +
     '</span>' +
     '<span class="music-song-duration">' + escapeMusicHtml(dur) + '</span>' +
+    // v1.72 (cap 3): per-track add-to-queue - the one global queue's verb
+    // (common.js addToQueue with the 'track' entry kind), the podcasts
+    // episode-row pattern on the like-button chassis.
+    '<button type="button" class="music-like-btn music-queue-btn" data-queue-id="' + escapeMusicHtml(item.id) + '" title="Add to queue" aria-label="Add to queue">' +
+    '<i class="icon-queue"></i>' +
+    '</button>' +
+    // v1.72 (cap 7): per-track save-to-device - the like button's chassis,
+    // an anchor at the stream route's ?download=1 arm (original bytes; the
+    // server names the file via Content-Disposition). stopPropagation is
+    // not needed: an <a> click navigates the browser's download machinery,
+    // and the row-play delegation ignores clicks on .music-download-btn.
+    '<a class="music-like-btn music-download-btn" href="/track/' + encodeURIComponent(item.id) + '?download=1" download title="Save to device" aria-label="Save to device">' +
+    '<i class="icon-download"></i>' +
+    '</a>' +
     '<button type="button" class="music-like-btn' + (liked ? ' liked' : '') + '" data-like-id="' + escapeMusicHtml(item.id) + '" title="' + (liked ? 'Unlike' : 'Like') + '" aria-label="' + (liked ? 'Unlike' : 'Like') + '">' +
     '<i class="icon-heart"></i>' +
     '</button>' +
@@ -538,6 +552,20 @@ if (typeof module !== 'undefined' && module.exports) {
         var name = artistCard.getAttribute('data-artist');
         drill = { type: 'artist', key: name, label: name || 'Artist' };
         render().catch(function () {});
+        return;
+      }
+      // v1.72: the save anchor rides the like button's chassis class - let
+      // the browser's native download navigation run (no preventDefault),
+      // and never fall through to the like toggle or the row-play path.
+      var dlBtn = e.target.closest('.music-download-btn');
+      if (dlBtn) return;
+      // v1.72 (cap 3): queue the track under its own entry kind. Same
+      // chassis class, so it must be dispatched BEFORE the like toggle.
+      var queueBtn = e.target.closest('.music-queue-btn');
+      if (queueBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof window.addToQueue === 'function') window.addToQueue(queueBtn.getAttribute('data-queue-id'), 'end', 'track');
         return;
       }
       var likeBtn = e.target.closest('.music-like-btn');

@@ -91,7 +91,18 @@ test('main.js: the card renders a .card-like-btn reflecting item.liked, and togg
   // v1.67: the like markup moved into the corner renderer (one appended
   // corner class after the liked flag); the seeding expression is unchanged.
   assert.ok(mainSrc.includes('class="card-like-btn${item.liked ? \' liked\' : \'\'} ${cornerClass}"'), 'the card seeds the liked class from item.liked');
-  assert.ok(mainSrc.includes("'/api/liked/' + encodeURIComponent(id)"), 'toggle hits the liked API by id');
+  // v1.72 (#94): the toggle dispatches per KIND (data-kind on the button) -
+  // bind the USE (the fetch consumes the dispatcher) and every arm of the
+  // dispatcher, not just the helper's existence.
+  assert.ok(mainSrc.includes('fetch(cardLikeEndpoint(btn.dataset.kind, id)'), 'the fetch consumes the kind dispatcher');
+  assert.ok(mainSrc.includes("return '/api/liked/' + encId;"), 'media (default) arm hits the liked API by id');
+  assert.ok(mainSrc.includes("if (kind === 'podcast') return '/api/podcasts/episodes/' + encId + '/liked';"), 'podcast arm');
+  assert.ok(mainSrc.includes("if (kind === 'track') return '/api/music/liked/' + encId;"), 'track arm');
+  // Adversarial gate v1.72 W1: the book arm survived the whole suite as a
+  // deletable mutant - a book unlike falling to the media default would
+  // DELETE /api/liked/<bookId>, a cross-kind kill when a media item shares
+  // the md5 id. Every arm is bound or the claim "every arm" is a lie.
+  assert.ok(mainSrc.includes("if (kind === 'book') return '/api/books/liked/' + encId;"), 'book arm');
   assert.ok(mainSrc.includes("method: currentlyLiked ? 'DELETE' : 'POST'"), 'DELETE when liked, POST when not');
   // Non-optimistic: the heart flips inside the resolved .then, guarded by res.ok.
   assert.ok(mainSrc.includes("if (!res.ok) throw new Error('like request failed"), 'a failed request never fakes success');

@@ -600,7 +600,7 @@ function wireHomeRowToggle(id, key, signal) {
 // (labels below), each with a Show toggle + up/down reorder, driving the
 // device-local config through common.js's exposed helpers. applyBottomNav-
 // Customization re-renders the live bar immediately.
-const BOTTOMBAR_LABELS = { playlists: 'Playlists', history: 'History', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark', podcasts: 'Podcasts' };
+const BOTTOMBAR_LABELS = { playlists: 'Playlists', history: 'History', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark', podcasts: 'Podcasts', music: 'Music', books: 'Books' };
 // ---- v1.67: the card-corner editor (plan D9) --------------------------------
 //
 // Three pickers (Top left / Top right / Bottom left) in the Appearance box.
@@ -1488,6 +1488,7 @@ function wireStaticControls(signal) {
   // v1.44: home-page resume-row toggles (device-local, default ON). Keys match
   // main.js's homeRowEnabled (`!== '0'` = on): checked -> clear (default on),
   // unchecked -> '0'.
+  wireHomeRowToggle('home-continue-watching-check', 'ft-home-continue-watching', signal);
   wireHomeRowToggle('home-continue-listening-check', 'ft-home-continue-listening', signal);
   wireHomeRowToggle('home-continue-podcasts-check', 'ft-home-continue-podcasts', signal);
   wireHomeRowToggle('home-continue-reading-check', 'ft-home-continue-reading', signal);
@@ -2100,6 +2101,7 @@ function init(root) {
   wireHideStarsControl(controller.signal); // v1.63.1: the fake-stars toggle
   loadResumeThresholdControl();
   loadDebugLifecycleControl();
+  loadHomeRowControl('home-continue-watching-check', 'ft-home-continue-watching');
   loadHomeRowControl('home-continue-listening-check', 'ft-home-continue-listening');
   loadHomeRowControl('home-continue-podcasts-check', 'ft-home-continue-podcasts');
   loadHomeRowControl('home-continue-reading-check', 'ft-home-continue-reading');

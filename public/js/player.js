@@ -3489,7 +3489,10 @@ if (typeof module !== 'undefined' && module.exports) {
       ? window.FileTube.queueEntryHref(queueNext)
       : '/watch.html?v=' + encodeURIComponent(queueNext.mediaId);
     if (window.FileTube && typeof window.FileTube.navigate === 'function') {
-      if (typeof window.FileTube.stashWatchSeed === 'function' && queueNext.item && queueNext.kind !== 'podcast') {
+      // Seed stash is MEDIA-only: a podcast/track projection must never
+      // prime a watch page it will not visit (v1.72: 'track' joins the
+      // non-media kinds, so the guard names media positively).
+      if (typeof window.FileTube.stashWatchSeed === 'function' && queueNext.item && (queueNext.kind || 'media') === 'media') {
         window.FileTube.stashWatchSeed(queueNext.item);
       }
       recordLifecycleEvent('autoplay:queue-advance', { detail: 'to=' + queueNext.mediaId });
@@ -3541,7 +3544,33 @@ if (typeof module !== 'undefined' && module.exports) {
           }
           var queueNext = computeQueueNext(queue);
           if (pointerEntry && pointerEntry.mediaId === endedId && queueNext && currentId === endedId) {
-            advanceIntoQueueEntry(queueNext);
+            // v1.72 (#91): SAME-kind advances stay unconditional (music/
+            // podcasts autoplay through their own queue by default), but a
+            // CROSS-KIND advance (podcast/track -> a VIDEO on the watch
+            // page) consults the same autoplayNext setting the video path
+            // has always honored - with it OFF, playback falls back to the
+            // in-context trackNav flow instead of surprise-navigating into
+            // another kind. An unreachable settings fetch counts as OFF
+            // (the video path's exact posture).
+            var sameKind = (queueNext.kind || 'media') === (pointerEntry.kind || 'media');
+            if (sameKind) {
+              advanceIntoQueueEntry(queueNext);
+              return;
+            }
+            fetch('/api/settings')
+              .then(function (res) { return res.ok ? res.json() : null; })
+              .catch(function () { return null; })
+              .then(function (settings) {
+                // QA gate W3 (the C6 lesson, again): this extra hop opened
+                // a window where the user starts DIFFERENT media before the
+                // settings resolve - acting then would advance (moving the
+                // server pointer) or trackNav-skip against the NEW context.
+                // Re-check staleness after EVERY async hop, like the video
+                // path below does.
+                if (currentId !== endedId) return;
+                if (settings && settings.autoplayNext) { advanceIntoQueueEntry(queueNext); return; }
+                fallbackToTrackNav();
+              });
             return;
           }
           fallbackToTrackNav();
@@ -3604,7 +3633,12 @@ if (typeof module !== 'undefined' && module.exports) {
           .then(function (res) { return res.json(); })
           .then(function (data) {
             if (currentId !== endedId) return; // controller has moved on -- stale, no-op
-            var videos = Array.isArray(data && data.items) ? data.items : [];
+            // v1.72 (QA gate W1): the ctx list can be the MIXED /api/liked
+            // now - autoplay must never advance /watch.html into a
+            // track/episode/book id. Media-only, same filter as watch.js's
+            // Prev/Next walk (kind undefined = a pre-kind media payload).
+            var videos = (Array.isArray(data && data.items) ? data.items : [])
+              .filter(function (it) { return it && (it.kind === undefined || it.kind === 'media'); });
             var orderedIds;
             if (advanceBrowseCtx) {
               orderedIds = videos.map(function (it) { return it && it.id; }); // server order verbatim

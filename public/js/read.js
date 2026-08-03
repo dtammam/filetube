@@ -859,6 +859,63 @@ if (typeof module !== 'undefined' && module.exports) {
       listenBtn.addEventListener('click', () => startListenFromHere(root), { signal });
     }
 
+    // v1.72 books first-class: the topbar like / mark-finished / save
+    // controls. Hidden until the detail resolves (their state seeds from
+    // the server-derived liked/finished fields - never a client
+    // re-derivation); toggles are non-optimistic (the watch-page shape:
+    // disable during the request, flip the mirror only on ok).
+    const bookLikeBtn = root.querySelector('#reader-like-btn');
+    const bookFinishedBtn = root.querySelector('#reader-finished-btn');
+    const bookDownloadBtn = root.querySelector('#reader-download-btn');
+    let bookLiked = false;
+    let bookFinished = false;
+    function paintBookToggles() {
+      if (bookLikeBtn) {
+        bookLikeBtn.setAttribute('aria-pressed', bookLiked ? 'true' : 'false');
+        bookLikeBtn.classList.toggle('btn-primary', bookLiked);
+        bookLikeBtn.title = bookLiked ? 'Unlike' : 'Like';
+      }
+      if (bookFinishedBtn) {
+        bookFinishedBtn.setAttribute('aria-pressed', bookFinished ? 'true' : 'false');
+        bookFinishedBtn.classList.toggle('btn-primary', bookFinished);
+        bookFinishedBtn.title = bookFinished ? 'Mark as unfinished' : 'Mark as finished';
+      }
+    }
+    if (bookLikeBtn) {
+      bookLikeBtn.addEventListener('click', () => {
+        bookLikeBtn.disabled = true;
+        fetch(`/api/books/liked/${encodeURIComponent(bookId)}`, { method: bookLiked ? 'DELETE' : 'POST' })
+          .then((res) => {
+            if (!res || !res.ok) { console.error('Book like toggle failed:', res && res.status); return; }
+            bookLiked = !bookLiked;
+            // The sidebar Liked entry is count-gated across ALL kinds now -
+            // refresh it the moment a book like changes the total (the
+            // watch-page like's exact follow-up).
+            if (typeof applyLikedSidebarEntry === 'function') {
+              applyLikedSidebarEntry(document.getElementById('sidebar-folders-list'), { force: true });
+            }
+          })
+          .catch((err) => console.error('Book like toggle failed (network error):', err))
+          .finally(() => { bookLikeBtn.disabled = false; paintBookToggles(); });
+      }, { signal });
+    }
+    if (bookFinishedBtn) {
+      bookFinishedBtn.addEventListener('click', () => {
+        bookFinishedBtn.disabled = true;
+        fetch(`/api/books/${encodeURIComponent(bookId)}/finished`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ finished: !bookFinished }),
+        })
+          .then((res) => {
+            if (!res || !res.ok) { console.error('Book finished toggle failed:', res && res.status); return; }
+            bookFinished = !bookFinished;
+          })
+          .catch((err) => console.error('Book finished toggle failed (network error):', err))
+          .finally(() => { bookFinishedBtn.disabled = false; paintBookToggles(); });
+      }, { signal });
+    }
+
     // v1.39.0: the now-playing bar's prev/next CHAPTER buttons.
     const npPrev = root.querySelector('#reader-np-prev');
     const npNext = root.querySelector('#reader-np-next');
@@ -918,6 +975,17 @@ if (typeof module !== 'undefined' && module.exports) {
         }
         // v1.38.0 TTS: only EPUB books can "Listen from here".
         if (detail.format === 'epub') { listenBookIsEpub = true; maybeShowListen(); }
+        // v1.72 books first-class: seed the toggles from the server's
+        // derived fields and unhide the three controls.
+        bookLiked = detail.liked === true;
+        bookFinished = detail.finished === true;
+        paintBookToggles();
+        if (bookLikeBtn) bookLikeBtn.hidden = false;
+        if (bookFinishedBtn) bookFinishedBtn.hidden = false;
+        if (bookDownloadBtn) {
+          bookDownloadBtn.href = `/book/${encodeURIComponent(detail.id)}/file?download=1`;
+          bookDownloadBtn.hidden = false;
+        }
         // v1.39.0: chapter count for prev/next-chapter bounds.
         spineCount = Array.isArray(detail.spine) ? detail.spine.length : null;
         const open = detail.format === 'pdf' ? openPdf : openEpub;

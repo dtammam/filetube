@@ -2758,9 +2758,11 @@ function formatQueueBadge(count) {
 // resumes the episode in the dock.
 function queueEntryHref(entry) {
   if (!entry || typeof entry.mediaId !== 'string' || entry.mediaId === '') return null;
-  return entry.kind === 'podcast'
-    ? `/podcasts?play=${encodeURIComponent(entry.mediaId)}`
-    : `/watch.html?v=${encodeURIComponent(entry.mediaId)}`;
+  // v1.72: 'track' joins (music in the one queue) - the music place's
+  // ?play= deep link resumes the specific track, the podcasts pattern.
+  if (entry.kind === 'podcast') return `/podcasts?play=${encodeURIComponent(entry.mediaId)}`;
+  if (entry.kind === 'track') return `/music?play=${encodeURIComponent(entry.mediaId)}`;
+  return `/watch.html?v=${encodeURIComponent(entry.mediaId)}`;
 }
 
 function buildQueueRowModel(entry, pointerUid) {
@@ -2771,14 +2773,14 @@ function buildQueueRowModel(entry, pointerUid) {
   return {
     uid: entry.uid,
     mediaId: entry.mediaId,
-    kind: entry.kind === 'podcast' ? 'podcast' : 'media',
+    kind: (entry.kind === 'podcast' || entry.kind === 'track') ? entry.kind : 'media',
     href: queueEntryHref(entry),
     title: typeof item.title === 'string' ? item.title : (typeof item.name === 'string' ? item.name : ''),
     channelLabel: channelName || folderName || 'Library',
     channelAvatarUrl: typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '',
-    // A podcast entry's art is the show cover the server names (artUrl);
-    // media entries keep the thumbnail contract.
-    thumbnailUrl: entry.kind === 'podcast'
+    // A podcast/track entry's art is the server-named artUrl (show cover /
+    // album art); media entries keep the thumbnail contract.
+    thumbnailUrl: (entry.kind === 'podcast' || entry.kind === 'track')
       ? (typeof item.artUrl === 'string' ? item.artUrl : null)
       : (item.hasThumbnail === true ? `/thumbnail/${entry.mediaId}` : null),
     playing: Boolean(pointerUid) && entry.uid === pointerUid,
@@ -2829,7 +2831,7 @@ function addToQueue(mediaId, position, kind) {
   return fetch('/api/queue/items', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mediaId, position: position === 'next' ? 'next' : 'end', kind: kind === 'podcast' ? 'podcast' : 'media' }),
+    body: JSON.stringify({ mediaId, position: position === 'next' ? 'next' : 'end', kind: (kind === 'podcast' || kind === 'track') ? kind : 'media' }),
   })
     .then((res) => (res.ok ? res.json() : res.json().catch(() => ({})).then((b) => Promise.reject(new Error(b.error || 'Could not add to queue')))))
     .then((body) => {
@@ -3032,7 +3034,9 @@ function injectQueueChrome() {
             // the normal watch nav with a paint seed (the bell-row posture).
             // v1.71 (gate S2): media rows only - a podcast row navigates to
             // /podcasts and must never prime a watch page it will not visit.
-            if (m.kind !== 'podcast') {
+            // v1.72: 'track' joined the kinds, so the guard names media
+            // POSITIVELY (the advance seam's exact fix, same class).
+            if ((m.kind || 'media') === 'media') {
               stashWatchSeed({
                 id: m.mediaId, title: m.title,
                 channelName: m.channelLabel === 'Library' ? '' : m.channelLabel,
@@ -3272,11 +3276,15 @@ function injectHistoryNavLinkIfEnabled() {
 const BOTTOM_NAV_FIXED_FIRST = 'home';
 const BOTTOM_NAV_FIXED_LAST = 'settings';
 // The optional items a user may reorder/hide (must carry a data-nav id).
-const BOTTOM_NAV_OPTIONAL = ['playlists', 'history', 'subscriptions', 'oneoff-download', 'theme', 'podcasts'];
+// v1.72 (cap 2): music + books join - every first-class kind has a
+// bottom-bar item.
+const BOTTOM_NAV_OPTIONAL = ['playlists', 'history', 'subscriptions', 'oneoff-download', 'theme', 'podcasts', 'music', 'books'];
 // v1.71: items that are OFF unless the user explicitly turns them on (the
 // config's `shown` list). A default-hidden item ships in every shell's DOM
-// but never appears until Settings enables it - Dean's ruling for podcasts.
-const BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts'];
+// but never appears until Settings enables it - Dean's ruling for podcasts,
+// and v1.72 gives music/books the same opt-in posture (nobody's bar changes
+// under them on upgrade).
+const BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts', 'music', 'books'];
 
 // Pure: given the bottom-nav item ids ACTUALLY present in the DOM and the
 // user's config, return the final visible order (home first, settings last,
@@ -5947,6 +5955,9 @@ if (typeof window !== 'undefined') {
   window.FileTube.writeBottomNavConfig = writeBottomNavConfig;
   window.FileTube.BOTTOM_NAV_OPTIONAL = BOTTOM_NAV_OPTIONAL;
   window.FileTube.BOTTOM_NAV_DEFAULT_HIDDEN = BOTTOM_NAV_DEFAULT_HIDDEN;
+  // v1.72: the podcasts place's pin toggle refreshes the merged pin
+  // surfaces (sidebar + sheet) after a pin/unpin round trip.
+  window.FileTube.refreshAllPinSurfaces = refreshAllPinSurfaces;
   // v1.66 web push: setup.js's enable flow routes through the ONE locked
   // register call site + shares the key decoder.
   window.FileTube.registerPushWorker = registerPushWorker;
@@ -6045,11 +6056,13 @@ function fetchAllPins() {
   // endpoint owns it -- the raw source field never enters
   // derivePinnedPlaylistEntries' locked shape; the renderers read it off
   // the parallel validPins view exactly like `id`.
-  return Promise.all([safeJson('/api/subscriptions/pins'), safeJson('/api/books/pins')])
-    .then(([channelPins, bookPins]) => {
+  // v1.72: podcast show pins join as the third source (intake ruling 5).
+  return Promise.all([safeJson('/api/subscriptions/pins'), safeJson('/api/books/pins'), safeJson('/api/podcasts/pins')])
+    .then(([channelPins, bookPins, podcastPins]) => {
       const pins = [
         ...(Array.isArray(channelPins) ? channelPins : []).map((p) => ({ ...p, pinSource: 'channel' })),
         ...(Array.isArray(bookPins) ? bookPins : []).map((p) => ({ ...p, pinSource: 'books' })),
+        ...(Array.isArray(podcastPins) ? podcastPins : []).map((p) => ({ ...p, pinSource: 'podcasts' })),
       ];
       // v1.53: the capability cache's pins half -- the next refresh paints
       // the pinned sidebar optimistically from this (primePinnedSidebarFromCache).
@@ -6066,9 +6079,9 @@ function fetchAllPins() {
 // arm/confirm (the card-delete pattern -- no native confirm()); the DELETE
 // endpoint is chosen by the pin's tagged source. `onDone` re-renders.
 function pinDeleteEndpoint(pin) {
-  return pin && pin.pinSource === 'books'
-    ? `/api/books/pins/${encodeURIComponent(pin.id)}`
-    : `/api/subscriptions/pins/${encodeURIComponent(pin.id)}`;
+  if (pin && pin.pinSource === 'books') return `/api/books/pins/${encodeURIComponent(pin.id)}`;
+  if (pin && pin.pinSource === 'podcasts') return `/api/podcasts/pins/${encodeURIComponent(pin.id)}`;
+  return `/api/subscriptions/pins/${encodeURIComponent(pin.id)}`;
 }
 
 function buildUnpinButton(pin, onDone) {
@@ -6426,7 +6439,9 @@ function renderPinnedSidebar(pins) {
 // drag scoping and the reorder endpoint are decided by this, exactly like
 // pinDeleteEndpoint above. Untagged legacy pins default to 'channel'.
 function pinSourceOf(pin) {
-  return pin && pin.pinSource === 'books' ? 'books' : 'channel';
+  if (pin && pin.pinSource === 'books') return 'books';
+  if (pin && pin.pinSource === 'podcasts') return 'podcasts';
+  return 'channel';
 }
 
 function wirePinnedSidebarDragAndDrop(section, validPins) {
@@ -6506,7 +6521,9 @@ function persistPinReorder(orderedIds, source) {
   // refreshAllPinSurfaces -- never a single endpoint's response, which only
   // carries that module's pins and made the other module's pins vanish
   // from the sidebar until the next full load.
-  const endpoint = source === 'books' ? '/api/books/pins/reorder' : '/api/subscriptions/pins/reorder';
+  const endpoint = source === 'books' ? '/api/books/pins/reorder'
+    : source === 'podcasts' ? '/api/podcasts/pins/reorder'
+      : '/api/subscriptions/pins/reorder';
   fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -7450,7 +7467,8 @@ function applyCustomLogoIfSet(force) {
 // One shared helper so every surface that lists playlist/folder links (home
 // sidebar, watch sidebar, setup sidebar, stats/subscriptions shells, the
 // mobile Playlists sheet) shows the SAME built-in Liked entry under the SAME
-// rule: visible iff at least one liked video exists, hidden otherwise.
+// rule: visible iff at least one liked ITEM exists - v1.72: the total spans
+// every kind (videos, episodes, tracks, books) - hidden otherwise.
 // Count fetched once per page load (cached promise); `force: true` refreshes
 // it (the watch page calls that after a like/unlike so the entry appears the
 // moment the first like lands).

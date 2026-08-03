@@ -106,7 +106,9 @@ test('SOURCE-LOCK (gate W5): both ended flows advance through the ONE queue seam
   const seamStart = playerSrc.indexOf('function advanceIntoQueueEntry');
   const seam = playerSrc.slice(seamStart, playerSrc.indexOf('function handleAutoplayNext', seamStart));
   assert.ok(seam.includes('window.FileTube.queueEntryHref(queueNext)'), 'the destination derives from the shared kind-aware helper');
-  assert.ok(seam.includes("queueNext.kind !== 'podcast'"), 'the watch seed is suppressed for podcast entries');
+  // v1.72: the guard names media POSITIVELY - podcast AND track entries
+  // must both suppress the watch seed (they never visit the watch page).
+  assert.ok(seam.includes("(queueNext.kind || 'media') === 'media'"), 'the watch seed fires for media entries only');
   assert.ok(seam.includes('window.FileTube.navigate(advanceHref)'), 'and the derived href is what actually navigates');
   const watchSrc = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
   assert.ok(watchSrc.includes('window.FileTube.queueEntryHref(next)'), 'the up-next box derives via the shared helper too');
@@ -114,7 +116,8 @@ test('SOURCE-LOCK (gate W5): both ended flows advance through the ONE queue seam
   // call is the gate's FIRST statement, so moving it below the closed gate
   // cannot pass).
   const commonSrc = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
-  assert.ok(commonSrc.includes("if (m.kind !== 'podcast') {\n              stashWatchSeed({"), 'the panel row tap\'s watch seed sits INSIDE the kind gate');
+  // v1.72: the gate is media-POSITIVE now (tracks joined the kinds).
+  assert.ok(commonSrc.includes("if ((m.kind || 'media') === 'media') {\n              stashWatchSeed({"), 'the panel row tap\'s watch seed sits INSIDE the media-positive kind gate');
 });
 
 test('SOURCE-LOCK (gate W1): the trackNav ended path consults the queue before falling back to the show list', () => {
@@ -123,11 +126,23 @@ test('SOURCE-LOCK (gate W1): the trackNav ended path consults the queue before f
   const playerSrc = fs.readFileSync(path.join(__dirname, '../../public/js/player.js'), 'utf8');
   const branchStart = playerSrc.indexOf('currentData.autoAdvanceViaTrackNav) {');
   assert.ok(branchStart >= 0, 'the trackNav branch exists');
-  const branch = playerSrc.slice(branchStart, playerSrc.indexOf("fetch('/api/settings')", branchStart));
+  // v1.72 (#91): the branch now carries its OWN settings fetch (the
+  // cross-kind consult), so the slice ends at the VIDEO path's marker
+  // comment instead of the first settings fetch.
+  const branch = playerSrc.slice(branchStart, playerSrc.indexOf("OFF (default)", branchStart));
   assert.ok(branch.includes("fetch('/api/queue')"), 'the branch consults the queue');
   assert.ok(branch.includes('pointerEntry.mediaId === endedId'), 'queue precedence keys on THIS item being the now-playing entry');
   assert.ok(branch.includes('fallbackToTrackNav'), 'and the show-list flow survives as the fallback');
   assert.ok(branch.indexOf("fetch('/api/queue')") < branch.indexOf('fallbackToTrackNav();'), 'consult-first ordering, not mere presence');
+  // v1.72 (#91): same-kind advances stay unconditional; a cross-kind
+  // advance consults autoplayNext and falls back IN-CONTEXT when OFF.
+  assert.ok(branch.includes("var sameKind = (queueNext.kind || 'media') === (pointerEntry.kind || 'media');"), 'kind comparison is entry-kind vs entry-kind, never inferred');
+  const sameKindIdx = branch.indexOf('if (sameKind)');
+  const crossConsultIdx = branch.indexOf("fetch('/api/settings')");
+  assert.ok(sameKindIdx >= 0 && crossConsultIdx > sameKindIdx, 'the unconditional same-kind advance precedes the cross-kind consult');
+  assert.ok(branch.includes('if (settings && settings.autoplayNext) { advanceIntoQueueEntry(queueNext); return; }'), 'ON advances cross-kind');
+  const crossTail = branch.slice(crossConsultIdx);
+  assert.ok(crossTail.includes('fallbackToTrackNav();'), 'OFF (or unreachable settings) falls back to the in-context flow');
 });
 
 test('v1.71 queueEntryHref: podcast -> /podcasts?play=, media/absent-kind -> /watch.html?v=, encoded; null on garbage', () => {
@@ -136,6 +151,18 @@ test('v1.71 queueEntryHref: podcast -> /podcasts?play=, media/absent-kind -> /wa
   assert.equal(queueEntryHref({ mediaId: 'vid1' }), '/watch.html?v=vid1', 'a legacy kind-less entry stays a media link');
   assert.equal(queueEntryHref({ kind: 'podcast' }), null);
   assert.equal(queueEntryHref(null), null);
+});
+
+test('v1.72 queueEntryHref + row model: a track entry links /music?play= and shows the ALBUM art, never /thumbnail', () => {
+  assert.equal(queueEntryHref({ mediaId: 'trk"7', kind: 'track' }), '/music?play=trk%227');
+  const m = buildQueueRowModel({
+    uid: 'ü2', mediaId: 'trk-7', kind: 'track',
+    item: { title: 'Söng', channelName: 'Thë Artist', artUrl: '/albumart/trk-7', hasThumbnail: false },
+  }, null);
+  assert.equal(m.kind, 'track', 'kind survives the model (never collapsed to media)');
+  assert.equal(m.href, '/music?play=' + encodeURIComponent('trk-7'));
+  assert.equal(m.thumbnailUrl, '/albumart/trk-7', 'album art rides the artUrl arm');
+  assert.equal(m.channelLabel, 'Thë Artist');
 });
 
 test('v1.71 buildQueueRowModel: a podcast entry links the podcasts place and shows the SHOW cover, never /thumbnail', () => {
@@ -165,4 +192,32 @@ test('buildQueueRowModels: a FULLY-dangling pointer dims nothing (gate S4 - not-
   const entry = (uid) => ({ uid, mediaId: 'm-' + uid, item: { title: uid } });
   const models = buildQueueRowModels({ entries: [entry('g1'), entry('g2')], pointerUid: 'vanished' });
   assert.ok(models.every((m) => !m.played && !m.playing), 'dangling -> nothing played, nothing playing');
+});
+
+test('v1.72 QA W1 bind: every context-list consumer filters to MEDIA before building orderedIds (the mixed /api/liked never 404s a watch hop)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const filter = "(it.kind === undefined || it.kind === 'media')";
+  const watchSrc = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
+  const watchHits = watchSrc.split(filter).length - 1;
+  assert.strictEqual(watchHits, 2, 'watch.js: BOTH the ctx path and the legacy liked path filter (two consumers, two filters)');
+  const playerSrc = fs.readFileSync(path.join(__dirname, '../../public/js/player.js'), 'utf8');
+  assert.ok(playerSrc.includes("return it && (it.kind === undefined || it.kind === 'media');"), 'player.js: the autoplay context advance filters too');
+  // Ordering, not mere presence: the filter runs BEFORE orderedIds derive.
+  const ctxIdx = watchSrc.indexOf(filter);
+  assert.ok(ctxIdx >= 0 && ctxIdx < watchSrc.indexOf('orderedIds = allFiles.map'), 'filter precedes the id-order build');
+});
+
+test('v1.72 QA W3 bind: the cross-kind consult re-checks staleness AFTER the settings hop (the C6 lesson)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const playerSrc = fs.readFileSync(path.join(__dirname, '../../public/js/player.js'), 'utf8');
+  const branchStart = playerSrc.indexOf('currentData.autoAdvanceViaTrackNav) {');
+  const branch = playerSrc.slice(branchStart, playerSrc.indexOf('OFF (default)', branchStart));
+  const consultIdx = branch.indexOf("fetch('/api/settings')");
+  const tail = branch.slice(consultIdx);
+  const recheckIdx = tail.indexOf('if (currentId !== endedId) return;');
+  const actIdx = tail.indexOf('advanceIntoQueueEntry(queueNext)');
+  assert.ok(recheckIdx >= 0, 'the staleness re-check exists inside the consult');
+  assert.ok(actIdx > recheckIdx, 'and it runs BEFORE any action (pointer moves are server state)');
 });

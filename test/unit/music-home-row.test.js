@@ -74,3 +74,32 @@ test('T11: homeRowEnabled defaults ON; only an explicit "0" disables', () => {
     delete global.localStorage;
   }
 });
+
+// ---- v1.72 (cap 5): the videos Continue-watching row ----
+
+test('v1.72: buildVideoHomeSectionHtml renders the shared chassis with media thumbs; empty -> empty string; NO see-all (watch filter is a pref, not a URL scope)', () => {
+  assert.equal(main.buildVideoHomeSectionHtml([], 'Continue watching', ''), '', 'nothing in progress = byte-identical home');
+  const html = main.buildVideoHomeSectionHtml(
+    [{ id: 'v1', title: 'Movie <Night>', folderName: 'Films & Stuff', progressPercent: 42 }],
+    'Continue watching',
+    '',
+  );
+  assert.match(html, /Continue watching/);
+  assert.match(html, /music-home-row/, 'the shared chassis');
+  assert.match(html, /\/thumbnail\/v1/, 'the media thumb route');
+  assert.match(html, /Movie &lt;Night&gt;/, 'title escaped');
+  assert.match(html, /Films &amp; Stuff/, 'folder byline escaped');
+  assert.ok(!html.includes('books-row-seeall'), 'no see-all link');
+});
+
+test('v1.72 (the USE bind): the video card deep-links /watch.html?v=<id> and shows the real progress bar', () => {
+  const html = main.buildVideoRowCardHtml({ id: 'v"9', title: 'T', folderName: 'F', progressPercent: 61.5 });
+  assert.match(html, /href="\/watch\.html\?v=v%229"/, 'watch deep link, encoded');
+  assert.match(html, /video-row-cover/, 'the 16:9 cover class');
+  assert.match(html, /book-row-progress-fill" style="width: 61.5%"/, 'the books-row bar classes carry the real percent');
+});
+
+test('v1.72: a sub-half-percent position renders NO progress bar (the buildCardHtml threshold)', () => {
+  const html = main.buildVideoRowCardHtml({ id: 'v2', title: 'T', folderName: 'F', progressPercent: 0.2 });
+  assert.ok(!html.includes('book-row-progress'), 'noise-level progress stays invisible');
+});

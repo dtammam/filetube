@@ -111,6 +111,12 @@
             <!-- v1.38.0 TTS: shown by read.js only when GET /api/books/tts/config
                  reports an engine is configured (opt-in like yt-dlp). -->
             <button class="btn btn-sm" id="reader-listen-btn" type="button" aria-label="Listen from here" hidden>Listen</button>
+            <!-- v1.72 books first-class: like + mark-finished + save-to-device.
+                 Hidden until the detail resolves (read.js seeds their state
+                 from the server-derived liked/finished fields). -->
+            <button class="btn btn-sm" id="reader-like-btn" type="button" aria-label="Like this book" aria-pressed="false" hidden><i class="icon-heart"></i></button>
+            <button class="btn btn-sm" id="reader-finished-btn" type="button" aria-label="Mark as finished" aria-pressed="false" hidden>&#10003;</button>
+            <a class="btn btn-sm" id="reader-download-btn" aria-label="Save to device" download hidden><i class="icon-download"></i></a>
           </div>
           <div class="reader-content theme-paper" id="reader-content">
             <div id="reader-pane"></div>
@@ -187,6 +193,14 @@
     <a href="/podcasts" class="bottom-nav-item" data-nav="podcasts" hidden>
       <i class="icon-podcast"></i>
       <span class="bottom-nav-label">Podcasts</span>
+    </a>
+    <a href="/music" class="bottom-nav-item" data-nav="music" hidden>
+      <i class="icon-play"></i>
+      <span class="bottom-nav-label">Music</span>
+    </a>
+    <a href="/books" class="bottom-nav-item" data-nav="books" hidden>
+      <i class="icon-folder"></i>
+      <span class="bottom-nav-label">Books</span>
     </a>
     <button type="button" class="bottom-nav-item" data-nav="theme" id="nav-theme-toggle">
       <i class="icon-moon"></i>

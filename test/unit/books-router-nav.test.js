@@ -172,7 +172,10 @@ test('GATE FIX C1: pin drag-reorder is SOURCE-SCOPED -- cross-source drops block
   assert.ok(src.includes('pinSourceOf(validPins[dragSrcIndex]) !== pinSourceOf(validPins[index])) return;'), 'cross-source rows are not drop targets');
   assert.ok(src.includes("if (source !== pinSourceOf(validPins[index])) return;"), 'drop re-asserts same-source (defense-in-depth)');
   assert.ok(src.includes(".filter((p) => pinSourceOf(p) === source)"), 'only the source own ids persist');
-  assert.ok(src.includes("source === 'books' ? '/api/books/pins/reorder' : '/api/subscriptions/pins/reorder'"), 'the endpoint follows the source -- the books reorder route is no longer client-dead');
+  // v1.72: the dispatch grew a podcasts arm - the lock binds all three.
+  assert.ok(src.includes("source === 'books' ? '/api/books/pins/reorder'"), 'the endpoint follows the source -- the books reorder route is no longer client-dead');
+  assert.ok(src.includes("source === 'podcasts' ? '/api/podcasts/pins/reorder'"), 'the podcasts reorder route rides the same dispatch');
+  assert.ok(src.includes(": '/api/subscriptions/pins/reorder'"), 'channel pins keep the default arm');
   assert.ok(src.includes('.finally(() => refreshAllPinSurfaces());'), 'the re-render is ALWAYS the merged fetch, never a single endpoint response');
 });
 

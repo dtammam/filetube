@@ -832,6 +832,13 @@ if (typeof module !== 'undefined' && module.exports) {
     // is updated.
     let likeBtn = null;
     let currentLikeState = { liked: false };
+    // v1.72 (cap 6): the manual mark-as-watched toggle - the podcast
+    // played-toggle pattern on the watch action bar. Watched state IS the
+    // server's derivation (latch OR >=90% position, GET /api/videos/:id's
+    // watchState field); this local mirror updates ONLY after
+    // POST/DELETE /api/watched/:id resolves, exactly like the Like button.
+    let watchedBtn = null;
+    let currentWatchedState = { watched: false };
     // v1.33 T2: watch-page "Share" button -- the runtime-created control
     // itself (fresh per view instance, like `moveBtn`/`likeBtn` above).
     // Mounted ONLY when the server derived an original YouTube link for this
@@ -1064,6 +1071,11 @@ if (typeof module !== 'undefined' && module.exports) {
         // "Like" toggle now that `mediaData` (carrying the server-derived
         // `liked` field) is resolved.
         setupLikeButton();
+
+        // 3c-bis. v1.72 (cap 6): mount/refresh the manual "Watched" toggle
+        // now that `mediaData` (carrying the server-derived `watchState`)
+        // is resolved.
+        setupWatchedButton();
 
         // 3d. v1.33 T2: mount the "Share" button when the server derived an
         // original YouTube link for this item (`mediaData.watchUrl`).
@@ -1503,7 +1515,14 @@ if (typeof module !== 'undefined' && module.exports) {
         if (browseCtx) {
           const res = await fetch(buildContextListUrl(browseCtx, FULL_LIST_QUERY_LIMIT));
           const data = await res.json();
-          const allFiles = Array.isArray(data.items) ? data.items : [];
+          // v1.72 (QA gate W1): /api/liked is MIXED-KIND now - a liked
+          // track/episode/book in the context order would make Prev/Next
+          // navigate /watch.html?v=<non-media id> and 404 the view. The
+          // watch page's walk is MEDIA-ONLY by definition; kind is CARRIED
+          // on every /api/liked item exactly so consumers can dispatch
+          // (/api/videos items carry kind:'media' or predate the field).
+          const allFiles = (Array.isArray(data.items) ? data.items : [])
+            .filter((it) => it && (it.kind === undefined || it.kind === 'media'));
           // v1.52: prev/next hops seed from these items (navigateToWatch).
           for (const it of allFiles) { if (it && it.id) watchSeedLookup.set(it.id, it); }
           orderedIds = allFiles.map((it) => it && it.id);
@@ -1514,7 +1533,10 @@ if (typeof module !== 'undefined' && module.exports) {
           const separator = baseUrl.includes('?') ? '&' : '?';
           const res = await fetch(`${baseUrl}${separator}limit=${FULL_LIST_QUERY_LIMIT}`);
           const data = await res.json();
-          const allFiles = Array.isArray(data.items) ? data.items : [];
+          // v1.72 (QA gate W1): same media-only filter as the ctx path
+          // above - this legacy arm can hit the mixed /api/liked too.
+          const allFiles = (Array.isArray(data.items) ? data.items : [])
+            .filter((it) => it && (it.kind === undefined || it.kind === 'media'));
           // v1.52: prev/next hops seed from these items (navigateToWatch).
           for (const it of allFiles) { if (it && it.id) watchSeedLookup.set(it.id, it); }
           // v1.34: same precedence as the home grid (main.js) -- explicit
@@ -2536,6 +2558,68 @@ if (typeof module !== 'undefined' && module.exports) {
         likeBtn.addEventListener('click', handleToggleLike, { signal });
       }
       applyLikeButtonLabel(currentLikeState.liked);
+    }
+
+    // v1.72 (cap 6): the manual watched toggle's label/state painter -
+    // applyLikeButtonLabel's exact shape (icon + hideable .btn-label,
+    // aria-pressed carries state at phone widths where the label hides).
+    function applyWatchedButtonLabel(watched) {
+      if (!watchedBtn) return;
+      watchedBtn.replaceChildren();
+      const icon = document.createElement('i');
+      icon.className = 'icon-history';
+      const label = document.createElement('span');
+      label.className = 'btn-label';
+      label.textContent = watched ? 'Watched' : 'Mark watched';
+      watchedBtn.appendChild(icon);
+      watchedBtn.appendChild(document.createTextNode(' '));
+      watchedBtn.appendChild(label);
+      watchedBtn.setAttribute('aria-pressed', watched ? 'true' : 'false');
+      watchedBtn.title = watched ? 'Mark as unwatched' : 'Mark as watched';
+    }
+
+    // POST marks the latch now; DELETE is the un-watch verb (the server
+    // clears latch + position - the history-row-delete semantics, so a
+    // fully-watched item's toggle actually releases). Non-optimistic,
+    // disable-during-request - handleToggleLike's exact shape.
+    function handleToggleWatched() {
+      if (!mediaData || !watchedBtn) return;
+      const wasWatched = currentWatchedState.watched;
+      watchedBtn.disabled = true;
+      fetch(`/api/watched/${encodeURIComponent(mediaData.id)}`, { method: wasWatched ? 'DELETE' : 'POST' })
+        .then((res) => {
+          if (!res || !res.ok) {
+            console.error('Watched toggle failed:', res && res.status);
+            return;
+          }
+          currentWatchedState = { watched: !wasWatched };
+        })
+        .catch((err) => console.error('Watched toggle failed (network error):', err))
+        .finally(() => {
+          watchedBtn.disabled = false;
+          applyWatchedButtonLabel(currentWatchedState.watched);
+        });
+    }
+
+    // Mounts the Watched toggle as a sibling of Like inside
+    // `.watch-action-btns` (setupLikeButton's exact mount), reading the
+    // INITIAL state off `mediaData.watchState` - the server's one
+    // derivation authority, never a client-side re-derivation.
+    function setupWatchedButton() {
+      const watchActions = root.querySelector('.watch-actions');
+      if (!watchActions || !mediaData) return;
+      currentWatchedState = { watched: mediaData.watchState === 'watched' };
+      if (!watchedBtn) {
+        watchedBtn = document.createElement('button');
+        watchedBtn.type = 'button';
+        watchedBtn.id = 'watched-media-btn';
+        watchedBtn.className = 'btn';
+        watchedBtn.setAttribute('aria-label', 'Mark as watched');
+        const btnGroup = watchActions.querySelector('.watch-action-btns');
+        (btnGroup || watchActions).appendChild(watchedBtn);
+        watchedBtn.addEventListener('click', handleToggleWatched, { signal });
+      }
+      applyWatchedButtonLabel(currentWatchedState.watched);
     }
 
     // v1.33 T2: share the item's ORIGINAL YouTube link (`mediaData.watchUrl`,

@@ -131,25 +131,31 @@ A first-class media kind delivers ALL of:
    kind correctly, and appear in the queue panel/up-next with
    kind-correct art and destination (`queueEntryHref` is the only
    INTENDED derivation - guarded legacy fallback arms still exist at
-   the player/watch seams, bound by source lock).
+   the player/watch seams, bound by source lock). (v1.72: the kinds
+   are 'media' | 'podcast' | 'track'; books do not queue - Dean's
+   ruling, a non-goal not a gap. Cross-kind advances consult
+   autoplayNext; same-kind advances are unconditional.)
 4. **The global Liked playlist.** Content can be liked, and a liked
    entry surfaces in THE Liked playlist (the `/?liked=1` surface and
    its count-gated sidebar entry) - a kind-scoped Liked lane inside
-   the place is a complement, never the fulfillment. (As of
-   codification this is delivered ONLY by videos; podcasts have the
-   lane half - tech-debt #94.)
+   the place is a complement, never the fulfillment. (v1.72: the
+   playlist is MIXED-KIND - videos, podcast episodes, music tracks
+   and books all surface, kind CARRIED on every item; the per-kind
+   like carriers stay the write authorities.)
 5. **Resume.** Per-user position persisted server-side; leaving
    mid-entry and returning resumes; in-progress entries surface in a
-   home Continue row that deep-links back to the exact entry. (As of
-   codification the Continue-row half is the music/books/podcasts
-   pattern - VIDEOS themselves have card progress bars and the
-   `watching` filter but NO home Continue row; whether that is a video
-   gap or a non-goal is Dean's ruling to take at the v1.72 audit.)
+   home Continue row that deep-links back to the exact entry. (v1.72:
+   videos joined the Continue-row pattern - Dean ruled the reference
+   kind's missing row a GAP, not a non-goal; delivered by all four
+   kinds.)
 6. **Played/consumed state.** A per-user watched/played latch, both
-   automatic (threshold) and manually toggleable. (As of codification
-   the full manual toggle is delivered by PODCASTS; videos have the
-   automatic latch plus un-watch via history-row delete but no
-   mark-as-watched affordance - an audit cell, not an assumption.)
+   automatic (threshold) and manually toggleable. (v1.72: videos
+   gained the manual toggle - POST/DELETE /api/watched/:id, the watch
+   page action bar; books gained a MANUAL-ONLY finished latch (no
+   auto threshold - a text position's "end" is format-dependent,
+   tracked); MUSIC has no played latch at all - an open ruling, not
+   an oversight: tracks have no consumption page to host the toggle
+   and the port target is not obvious. See the tech-debt tracker.)
 7. **Save to device.** A per-entry download affordance serving the
    original bytes with an attachment disposition through the shared
    `contentDispositionAttachment` helper.
@@ -175,7 +181,34 @@ Standing rules that ride this list:
   reset, carrier tests) - see `lib/auth/store.js`'s carrier history.
 - **Not-applicable is a ruling, not an inference.** Books do not
   obviously queue; whether that is a gap or a non-goal is Dean's call,
-  recorded, never assumed.
+  recorded, never assumed. (v1.72 rulings on record: books queue /
+  background play / full player = NON-GOALS; everything else is real
+  for books.)
+- **The Playlists surface is kind-extensible.** Pins know channel
+  folders, book shelves and podcast shows (v1.72, Dean's ruling 5) -
+  each source owns its routes and reducers, merged and TAGGED at
+  fetchAllPins, dispatched per source at unpin/reorder. A new kind's
+  natural container should expect the same treatment (a ruling to
+  take at its intake, not an inference).
+- **Onboarding a NEW media kind (the future-agent contract).** A new
+  kind is not shipped "with a place and we'll see": its exec plan
+  walks ALL TEN capabilities up front, machine-derived, and every
+  cell lands as DELIVERED, GAPPED (a tech-debt row the day it ships),
+  or NOT-APPLICABLE (Dean's recorded ruling). The templates to port,
+  by capability: sidebar injection + fresh-install door (1), the
+  BOTTOM_NAV_OPTIONAL/default-hidden pair in every shell (2), an
+  entry_kind arm through reduceAdd/getQueue/setQueue/restore/
+  shapedQueue/queueEntryHref plus a kind-scoped queue-delete carrier
+  (3), a liked carrier + a shapedLiked<Kind>Items arm with the kind's
+  own silent-drop rule (4), a progress carrier + home Continue row on
+  the shared chassis (5), a latch with the podcast toggle contract
+  (6), ?download=1 through contentDispositionAttachment (7), the
+  trash lifecycle (8), the dock lists in shouldDockOnTransition -
+  BOTH copies (9), and a type:'audio'/watch full mount (10). Per-user
+  tables obey the id-keyed-carrier law in their birth commit; same-id
+  cross-kind collision tests keep BOTH rows live at the destructive
+  moment; every new per-user route family gets second-session
+  wrong-user assertions the day it is born.
 
 ## File naming
 

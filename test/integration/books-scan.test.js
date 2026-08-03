@@ -148,10 +148,23 @@ test('T4: mount-loss guard -- a vanished root prunes NOTHING under it even with 
     return true;
   });
 
+  // v1.72: the liked + finished carriers ride removeBookState with progress
+  // - seed BOTH books' per-user rows so the delete-prunes/mount-preserves
+  // split is asserted on the new tables too.
+  const { __mintTestSession, userStore } = require('../../server');
+  const carrierUser = __mintTestSession({ username: 'bookCarrierProbe' });
+  const broken = Object.values(items).find((i) => i.title === 'Broken Book');
+  for (const b of [epub, broken]) {
+    userStore.addBookLiked(carrierUser.user.id, b.id, '2026-08-03T00:00:00Z');
+    userStore.setBookFinished(carrierUser.user.id, b.id, '2026-08-03T00:00:00Z');
+  }
+
   // Genuine delete: remove the broken epub file -> pruned.
   fs.unlinkSync(path.join(booksDir, 'Broken_Book.epub'));
   await scanBooksSettled();
   assert.ok(!Object.values(loadDatabase().books.items).some((i) => i.title === 'Broken Book'), 'genuinely deleted file pruned');
+  assert.ok(!userStore.getBookLiked(carrierUser.user.id).some((l) => l.bookId === broken.id), 'the pruned book shed its like (removeBookState carrier)');
+  assert.ok(!Object.prototype.hasOwnProperty.call(userStore.getBookFinished(carrierUser.user.id), broken.id), 'and its finished latch');
 
   // Mount loss: rename the whole root away -> everything PRESERVED.
   const hiddenDir = `${booksDir}.hidden`;
@@ -160,6 +173,8 @@ test('T4: mount-loss guard -- a vanished root prunes NOTHING under it even with 
   const preserved = loadDatabase().books.items;
   assert.ok(Object.values(preserved).some((i) => i.title === 'Dune'), 'unmounted root items preserved');
   assert.ok(loadDatabase().books.progress[epub.id], 'progress preserved too');
+  assert.ok(userStore.getBookLiked(carrierUser.user.id).some((l) => l.bookId === epub.id), 'mount loss preserves the like (the v1.69 inherit-prior-guards lesson)');
+  assert.ok(Object.prototype.hasOwnProperty.call(userStore.getBookFinished(carrierUser.user.id), epub.id), 'and the finished latch');
   fs.renameSync(hiddenDir, booksDir);
   await updateDatabase((db) => {
     db.settings.pruneMissing = false;

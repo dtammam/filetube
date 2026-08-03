@@ -257,3 +257,79 @@ test('v1.71 (gate S5): prototype-chain keys 404 as media adds - never an item-le
   }
   assert.deepEqual((await GET()).entries, [], 'nothing queued');
 });
+
+// ---- v1.72 (cap 3): music tracks ride the ONE queue -------------------------
+
+const musicStoreT9 = require('../../lib/music/store');
+
+function seedTrackT9(db, id, overrides) {
+  const ns = musicStoreT9.ensureMusic(db);
+  ns.tracks[id] = {
+    id, filePath: `/musicroot/${id}.flac`, rootFolder: '/musicroot', ext: '.flac',
+    title: `Track ${id}`, artist: 'The Artist', album: 'The Album', albumArtKey: null,
+    codec: 'flac', durationSec: 200, addedAt: '2026-01-02T00:00:00Z', ...overrides,
+  };
+}
+
+const addKind = (mediaId, kind) => fetch(`${base}/api/queue/items`, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mediaId, kind }),
+}).then(j);
+
+test('v1.72: a track queues under entry kind track with the album-art projection; a phantom track id 404s', async () => {
+  await updateDatabase((db) => { seedTrackT9(db, 'trkQ1'); return true; });
+  assert.equal((await addKind('nope', 'track')).status, 404, 'phantom track id refused at its OWN id space');
+  const a = await addKind('trkQ1', 'track');
+  assert.equal(a.status, 200);
+  assert.equal(a.body.added.kind, 'track', 'kind carried on the minted entry');
+  const q = await GET();
+  assert.equal(q.entries.length, 1);
+  const e = q.entries[0];
+  assert.equal(e.kind, 'track');
+  assert.equal(e.item.title, 'Track trkQ1');
+  assert.equal(e.item.channelName, 'The Artist');
+  assert.equal(e.item.artUrl, '/albumart/trkQ1', 'album art rides as artUrl (the podcast projection contract)');
+  assert.ok(!('filePath' in e.item), 'no server paths in the projection');
+});
+
+test('v1.72 collision, both rows LIVE at the destructive moment: one md5 id queued as media AND track; the music prune retires ONLY the track row', async () => {
+  const sharedId = 'c0ffee00c0ffee00c0ffee00c0ffee00';
+  await updateDatabase((db) => {
+    db.metadata[sharedId] = {
+      id: sharedId, name: 'Shared.mp4', title: 'Shared', type: 'video', ext: '.mp4',
+      filePath: '/lib/Shared.mp4', size: 10, addedAt: Date.UTC(2026, 5, 21),
+      folderName: 'Chan', channelName: 'Chan',
+    };
+    seedTrackT9(db, sharedId, { title: 'Shared Song' });
+    return true;
+  });
+  assert.equal((await addKind(sharedId, 'media')).status, 200);
+  assert.equal((await addKind(sharedId, 'track')).status, 200);
+  let q = await GET();
+  assert.deepEqual(q.entries.map((e) => e.kind).sort(), ['media', 'track'], 'the one id rides twice, once per kind');
+
+  // Both rows are live RIGHT NOW - the destructive moment: the music
+  // lifecycle carrier fires for this id.
+  userStore.removeMusicState([sharedId]);
+  const raw = userStore.getQueue(auth.user.id);
+  assert.deepEqual(raw.entries.map((e) => e.kind), ['media'], 'delQueueByTrack is kind-scoped: the media row SURVIVED');
+  q = await GET();
+  assert.equal(q.entries.length, 1);
+  assert.equal(q.entries[0].kind, 'media');
+
+  // And the mirror image: removeMediaState must not touch a track row.
+  await updateDatabase((db) => { seedTrackT9(db, sharedId, { title: 'Shared Song' }); return true; });
+  assert.equal((await addKind(sharedId, 'track')).status, 200);
+  userStore.removeMediaState(sharedId);
+  const raw2 = userStore.getQueue(auth.user.id);
+  assert.deepEqual(raw2.entries.map((e) => e.kind), ['track'], 'delQueueByMedia is kind-scoped: the track row SURVIVED');
+});
+
+test('v1.72: a pruned track silent-drops from the shaped view (belt) even before the carrier fires (suspenders)', async () => {
+  await updateDatabase((db) => { seedTrackT9(db, 'trkGone'); return true; });
+  await addKind('trkGone', 'track');
+  // Remove the ns row WITHOUT running the carrier - the read must drop it.
+  await updateDatabase((db) => { delete musicStoreT9.ensureMusic(db).tracks.trkGone; return true; });
+  const q = await GET();
+  assert.deepEqual(q.entries, [], 'shaped view silent-drops the dead track id');
+  assert.equal(userStore.getQueue(auth.user.id).entries.length, 1, 'the raw row still exists (the carrier remains the durable cleaner)');
+});

@@ -39,7 +39,10 @@ test('SOURCE-LOCK: the sidebar Podcasts entry rides the Library section, ordered
   // Gate S7: the earlier "'podcasts']" spelling matched DEFAULT_HIDDEN too,
   // so removing podcasts from the OPTIONAL roster (killing the ONLY opt-in
   // path) survived the suite. Bind the roster membership itself.
-  assert.ok(src.includes("'oneoff-download', 'theme', 'podcasts']"), 'podcasts rides BOTTOM_NAV_OPTIONAL (the Settings toggle is the only opt-in path)');
+  // v1.72: music + books joined the roster (cap 2) - the lock binds the
+  // FULL list so a silent roster change can never pass as noise.
+  assert.ok(src.includes("'oneoff-download', 'theme', 'podcasts', 'music', 'books']"), 'podcasts/music/books ride BOTTOM_NAV_OPTIONAL (the Settings toggle is the only opt-in path)');
+  assert.ok(src.includes("BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts', 'music', 'books']"), 'all three kind items are default-hidden - nobody\'s bar changes on upgrade');
   assert.ok(src.includes("injectLibraryNavEntry('podcasts', '/podcasts', 'Podcasts'"), 'Library-section entry via the shared helper');
   // Books anchors above Podcasts; Podcasts anchors above History.
   assert.ok(src.includes("(key === 'books')\n      ? (document.querySelector('[data-nav-sidebar=\"podcasts\"]') || document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList)"), 'Books sits above Podcasts');
@@ -138,4 +141,36 @@ test('showCountLine: partial vs complete vs empty', () => {
   assert.equal(pod.showCountLine({ episodeCount: 1, downloadedCount: 1 }), '1 episode');
   assert.equal(pod.showCountLine({ episodeCount: 0, downloadedCount: 0 }), 'No episodes yet');
   assert.equal(pod.showCountLine(null), '');
+});
+
+// ---- v1.72 (cap 2): music + books bottom-bar items in EVERY shell ----------
+
+test('v1.72: every bottom-nav shell carries the music + books items, hidden until Settings opts in (the every-writer rule)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const pub = path.join(__dirname, '../../public');
+  const shells = fs.readdirSync(pub).filter((f) => f.endsWith('.html'))
+    .filter((f) => fs.readFileSync(path.join(pub, f), 'utf8').includes('class="bottom-nav'));
+  assert.ok(shells.length >= 9, `expected the full shell roster, found ${shells.length}`);
+  for (const f of shells) {
+    const html = fs.readFileSync(path.join(pub, f), 'utf8');
+    for (const [nav, href] of [['music', '/music'], ['books', '/books']]) {
+      const re = new RegExp(`<a href="${href}" class="bottom-nav-item" data-nav="${nav}" hidden>`);
+      assert.match(html, re, `${f}: missing (or un-hidden) ${nav} bottom-nav item`);
+    }
+  }
+});
+
+// ---- v1.72 (intake ruling 5): show pins ride every pin surface --------------
+
+test('v1.72 SOURCE-LOCK: the pin dispatch carries the podcasts source through fetch/delete/reorder/source-of', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
+  assert.ok(src.includes("safeJson('/api/podcasts/pins')"), 'fetchAllPins reads the third source');
+  assert.ok(src.includes("pinSource: 'podcasts'"), 'podcast pins are TAGGED at the merge');
+  assert.ok(src.includes("pin.pinSource === 'podcasts') return `/api/podcasts/pins/${encodeURIComponent(pin.id)}`"), 'the unpin control owns its DELETE endpoint');
+  assert.ok(src.includes("source === 'podcasts' ? '/api/podcasts/pins/reorder'"), 'drag-reorder persists to its OWN route');
+  assert.ok(src.includes("pin.pinSource === 'podcasts') return 'podcasts'"), 'pinSourceOf scopes cross-source drags');
+  const pod = fs.readFileSync(path.join(__dirname, '../../public/js/podcasts.js'), 'utf8');
+  assert.ok(pod.includes("get('show')"), 'the ?show= deep link exists for a pinned show');
+  assert.ok(pod.includes("fetchJson('/api/podcasts/pins')"), 'the drill reads pin membership as the toggle state');
 });

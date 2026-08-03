@@ -6306,8 +6306,15 @@ function sortBookList(list, sortKey) {
 // The public item shape: everything the cards/reader need, progress overlaid
 // (effective = pending-first, per-user), spine included only on the detail
 // route (the list stays light for hundreds of books).
-function publicBookListItem(item, userId) {
+function publicBookListItem(item, userId, likedSet, finishedMap) {
   const progress = effectiveBookProgress(userId, item.id);
+  // v1.72: per-user liked + finished flags ride the shape (the
+  // publicTrackListItem posture: the caller passes the pre-fetched sets so
+  // a list render costs two queries, not two per item).
+  const liked = likedSet ? likedSet.has(item.id) : userStore.getBookLiked(userId).some((l) => l.bookId === item.id);
+  const finished = finishedMap
+    ? Object.prototype.hasOwnProperty.call(finishedMap, item.id)
+    : Object.prototype.hasOwnProperty.call(userStore.getBookFinished(userId), item.id);
   return {
     id: item.id,
     title: item.title,
@@ -6320,6 +6327,8 @@ function publicBookListItem(item, userId) {
     hasCover: item.hasCover === true,
     pageCount: item.pageCount,
     progress: progress ? { percent: progress.percent, updatedAt: progress.updatedAt } : null,
+    liked,
+    finished,
   };
 }
 
@@ -6339,7 +6348,9 @@ app.get('/api/books', (req, res) => {
   }
   // Explicit lambda (NOT `list.map(publicBookListItem)`): map would pass the
   // array INDEX as the second argument, which is now the userId parameter.
-  let shaped = list.map((item) => publicBookListItem(item, req.user.id));
+  const likedSet = new Set(userStore.getBookLiked(req.user.id).map((l) => l.bookId));
+  const finishedMap = userStore.getBookFinished(req.user.id);
+  let shaped = list.map((item) => publicBookListItem(item, req.user.id, likedSet, finishedMap));
   if (req.query.filter === 'reading') {
     shaped = shaped.filter((i) => i.progress && i.progress.percent > 0 && i.progress.percent < 98);
     shaped.sort((a, b) => String((b.progress && b.progress.updatedAt) || '').localeCompare(String((a.progress && a.progress.updatedAt) || '')));
@@ -6388,6 +6399,38 @@ app.get('/api/books/pins', (req, res) => {
   res.json(pins.map((p) => ({ id: p.id, channelDir: p.dir, label: p.label, href: `/books?root=${encodeURIComponent(p.dir)}` })));
 });
 
+// ---- v1.72 books first-class: likes + the manual finished latch -------------
+// Per-user book likes (static segment -- declared BEFORE /api/books/:id,
+// the /api/music/liked route-order discipline). The POST is existence-gated
+// (the id persists into user_book_liked); the DELETE is idempotent like
+// every other unlike.
+app.post('/api/books/liked/:id', (req, res) => {
+  const ns = booksStore.readBooks(getCachedDatabase());
+  if (!Object.prototype.hasOwnProperty.call(ns.items, req.params.id)) {
+    return res.status(404).json({ error: 'Book not found' });
+  }
+  userStore.addBookLiked(req.user.id, req.params.id, new Date().toISOString());
+  res.json({ liked: true });
+});
+app.delete('/api/books/liked/:id', (req, res) => {
+  userStore.removeBookLiked(req.user.id, req.params.id);
+  res.json({ liked: false });
+});
+
+// The manual mark-finished latch (the podcast played-toggle contract:
+// {finished:false} clears, anything else sets). No auto threshold - a text
+// position's "end" is format-dependent (exec plan, morning question M1).
+app.post('/api/books/:id/finished', (req, res) => {
+  const ns = booksStore.readBooks(getCachedDatabase());
+  if (!Object.prototype.hasOwnProperty.call(ns.items, req.params.id)) {
+    return res.status(404).json({ error: 'Book not found' });
+  }
+  const wantFinished = !(req.body && req.body.finished === false);
+  if (wantFinished) userStore.setBookFinished(req.user.id, req.params.id, new Date().toISOString());
+  else userStore.clearBookFinished(req.user.id, req.params.id);
+  res.json({ ok: true, finished: wantFinished });
+});
+
 app.get('/api/books/:id', (req, res) => {
   const ns = booksStore.readBooks(getCachedDatabase());
   const item = ns.items[req.params.id];
@@ -6415,7 +6458,11 @@ app.get('/book/:id/file', (req, res) => {
   if (!fs.existsSync(item.filePath)) return res.status(404).json({ error: 'Book file missing on disk' });
   res.setHeader('Content-Type', BOOK_CONTENT_TYPES[item.format] || 'application/octet-stream');
   if (req.query.download === '1') {
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(`${item.title || 'book'}.${item.format}`)}"`);
+    // v1.72 (cap 7): the shared injection-safe helper replaces the old
+    // hand-rolled header - encodeURIComponent in a bare filename= produced
+    // percent-encoded garbage names for any non-ASCII title, and the
+    // helper's filename* form is exactly the fix it exists to provide.
+    res.setHeader('Content-Disposition', contentDispositionAttachment(item.title || 'book', `.${item.format}`));
   }
   // sendFile provides Accept-Ranges/206 natively -- what pdf.js range
   // loading wants; harmless for the whole-file EPUB fetch.
@@ -7360,6 +7407,17 @@ app.get('/track/:id', (req, res) => {
   const track = ownTrack(ns.tracks, req.params.id);
   if (!track || typeof track.filePath !== 'string') return res.status(404).json({ error: 'no such track' });
   if (!fs.existsSync(track.filePath)) return res.status(404).json({ error: 'file missing' });
+  // v1.72 (cap 7): ?download=1 = the app-wide save-to-device affordance
+  // (the /video/:id?download=1 / /episode/:id?download=1 pattern). Serves
+  // the ORIGINAL bytes with an attachment disposition through the shared
+  // injection-safe helper - deliberately BEFORE the transcode branch, so a
+  // save always gets the source file (an ALAC master downloads as-is; the
+  // browser-compat rendition is a streaming concern, not an archive).
+  if (req.query.download === '1') {
+    res.setHeader('Content-Disposition', contentDispositionAttachment(track.title || 'track', track.ext));
+    const contentType = MUSIC_CONTENT_TYPES[track.ext] || 'application/octet-stream';
+    return sendRangeable(req, res, track.filePath, contentType);
+  }
   if (musicCodecNeedsTranscode(track.codec)) {
     const rendition = audioPath(track.id);
     if (fs.existsSync(rendition)) {
@@ -7652,7 +7710,11 @@ function validateBackupBundle(bundle) {
         // v1.69 podcast per-user state (absent in pre-v1.69 bundles -- legal).
         ['podcastProgress', 'object'], ['podcastPlayed', 'object'],
         // v1.71 episode likes (absent in pre-v1.71 bundles -- legal).
-        ['podcastLiked', 'array']]) {
+        ['podcastLiked', 'array'],
+        // v1.72 books first-class (absent in pre-v1.72 bundles -- legal).
+        ['bookLiked', 'array'], ['bookFinished', 'object'],
+        // v1.72 podcast show pins (absent in pre-v1.72 bundles -- legal).
+        ['podcastPins', 'array']]) {
         if (u[field] === undefined) continue;
         const ok = kind === 'array' ? Array.isArray(u[field]) : (typeof u[field] === 'object' && u[field] !== null && !Array.isArray(u[field]));
         if (!ok) return `${where}: ${field} must be an ${kind}`;
@@ -8293,6 +8355,7 @@ function shapedQueue(db, userId) {
   const raw = userStore.getQueue(userId);
   const live = queueStore.normalize(raw);
   const podcastNs = podcastStore.readPodcasts(db);
+  const musicNs = musicStore.readMusic(db);
   const entries = [];
   for (const e of live.entries) {
     if (e.kind === 'podcast') {
@@ -8323,6 +8386,31 @@ function shapedQueue(db, userId) {
       }
       continue;
     }
+    if (e.kind === 'track') {
+      // v1.72: track entries resolve against ns.tracks, never db.metadata.
+      // The silent-drop is preserved for this id space too - a pruned/
+      // phantom track disappears from the panel, belt to the
+      // delQueueByTrack carrier's suspenders. (adversarial S3: the ns is
+      // hoisted like the podcast one, not re-read per entry.)
+      const track = ownTrack(musicNs.tracks, e.mediaId);
+      if (track) {
+        entries.push({
+          uid: e.uid,
+          mediaId: e.mediaId,
+          kind: 'track',
+          item: {
+            title: track.title,
+            name: track.title,
+            channelName: track.artist || null,
+            folderName: track.album || null,
+            artUrl: `/albumart/${encodeURIComponent(track.id)}`,
+            durationSec: Number.isFinite(track.durationSec) ? track.durationSec : null,
+            hasThumbnail: false,
+          },
+        });
+      }
+      continue;
+    }
     // hasOwnProperty (gate S9): a restored bundle can carry prototype-chain
     // keys as mediaIds; they must silent-drop like any dead id, never serve
     // a garbage item from the prototype.
@@ -8346,11 +8434,15 @@ app.post('/api/queue/items', (req, res) => {
   // v1.71: the entry's kind is CARRIED, never inferred (episode ids are
   // md5 hex exactly like media ids). Each kind existence-checks its own
   // id space; a podcast add requires a playable (downloaded) episode.
-  const kind = body.kind === 'podcast' ? 'podcast' : 'media';
+  // v1.72: 'track' joins (music in the one queue) - the row must still
+  // exist in ns.tracks (the own-property ownTrack rule).
+  const kind = (body.kind === 'podcast' || body.kind === 'track') ? body.kind : 'media';
   if (kind === 'podcast') {
     const podcastNs = podcastStore.readPodcasts(db);
     const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, mediaId) ? podcastNs.episodes[mediaId] : null;
     if (!ep || ep.status !== 'downloaded') return res.status(404).json({ error: 'Episode not found' });
+  } else if (kind === 'track') {
+    if (!ownTrack(musicStore.readMusic(db).tracks, mediaId)) return res.status(404).json({ error: 'no such track' });
   } else if (!Object.prototype.hasOwnProperty.call(db.metadata, mediaId)) {
     // hasOwnProperty (gate S5): a prototype-chain key ('__proto__',
     // 'constructor', 'toString') must 404 like any phantom, never queue an
@@ -8598,6 +8690,29 @@ app.get('/api/videos', (req, res) => {
     list = videoQuery.filterByWatchState(list, watch, progressMap, watchedSet);
   }
 
+  // v1.72 (cap 5): the "Continue watching" selection - the music/podcasts
+  // recent-listening contract ported to media: items with a saved position,
+  // most recently updated first (read-your-writes: the pendingProgress
+  // overlay rides on top of the committed rows, its value carrying its own
+  // updatedAt), MINUS finished items - videos have a watched latch (music
+  // does not), and a completed video is not "in progress". The selection
+  // carries its own order, so the sort pipeline below is bypassed exactly
+  // like /api/music's recent-listening arm bypasses sortTracks.
+  const recentWatching = req.query.filter === 'recent-watching';
+  if (recentWatching) {
+    const progressMap = userStore.getProgress(req.user.id);
+    for (const entry of pendingProgress.values()) {
+      if (entry.userId === req.user.id) progressMap[entry.mediaId] = entry.value;
+    }
+    list = list.filter((item) => {
+      const p = Object.prototype.hasOwnProperty.call(progressMap, item.id) ? progressMap[item.id] : null;
+      if (!p || !(Number(p.timestamp) > 0)) return false;
+      const pct = Number(p.duration) > 0 ? (Number(p.timestamp) / Number(p.duration)) * 100 : 0;
+      return videoQuery.deriveWatchState(pct, watchedSet.has(item.id)) !== 'watched';
+    });
+    list.sort((a, b) => String((progressMap[b.id] || {}).updatedAt || '').localeCompare(String((progressMap[a.id] || {}).updatedAt || '')));
+  }
+
   // `total` is the full filtered length, BEFORE slicing to a page — this is
   // what makes AC3.2's "page(sort,filter) == sort(filter(full)).slice(...)"
   // property hold, and what lets the client know when it has reached the end.
@@ -8609,7 +8724,7 @@ app.get('/api/videos', (req, res) => {
   // page fetches sharing a seed observe one stable shuffle; an absent/
   // invalid seed falls back to one-shot (non-reproducible) randomness.
   const rng = sort === 'random' && seed !== undefined ? videoQuery.createSeededRng(seed) : undefined;
-  const sorted = videoQuery.sortItems(list, sort, rng);
+  const sorted = recentWatching ? list : videoQuery.sortItems(list, sort, rng);
   const page = sorted.slice(offset, offset + limit);
 
   // Overlay progress only on the sliced page — v1.30 A4: `effectiveProgress`
@@ -8769,8 +8884,40 @@ app.get('/api/videos/:id', (req, res) => {
     // convenience so the watch page's initial paint doesn't need a second
     // `GET /api/liked` round-trip just to know this one item's state.
     // v1.43: the signed-in user's user_liked rows, not the frozen db.liked.
-    liked: userStore.getLiked(req.user.id).includes(item.id)
+    liked: userStore.getLiked(req.user.id).includes(item.id),
+    // v1.72 (cap 6): the manual watched toggle's read side - same
+    // derived-at-request-time posture as `liked`, and the SAME derivation
+    // authority every list surface uses (latch OR >=90% live position).
+    watchState: videoQuery.deriveWatchState(
+      (progress.duration || item.duration || 0) > 0 ? (progress.timestamp / (progress.duration || item.duration)) * 100 : 0,
+      userStore.getWatchedIds(req.user.id).includes(item.id)
+    )
   });
+});
+
+// ---- v1.72 (cap 6): the manual watched latch --------------------------------
+// Videos' latch was write-only-by-threshold (POST /api/progress crossing
+// WATCHED_PCT); podcasts have had the manual toggle since v1.69. The parity
+// port: POST marks watched NOW (idempotent - markWatched no-ops on an
+// existing row, preserving the original completed_at). DELETE is the
+// un-watch verb with IDENTICAL semantics to the v1.64 history-row delete
+// (staged ping + progress + latch): clearing only the latch would leave a
+// >=90% live position still DERIVING 'watched' and the toggle would appear
+// stuck for exactly the fully-watched items it exists for.
+app.post('/api/watched/:id', (req, res) => {
+  const db = getCachedDatabase(); // hot GET reader (existence check only)
+  // OWN-property check (v1.42 __proto__ lesson): this id persists into
+  // user_watched -- see POST /api/liked/:id's identical guard.
+  const item = Object.prototype.hasOwnProperty.call(db.metadata, req.params.id) ? db.metadata[req.params.id] : undefined;
+  if (!item) return res.status(404).json({ error: 'Media file not found' });
+  userStore.markWatched(req.user.id, item.id, new Date().toISOString());
+  res.json({ success: true, watched: true });
+});
+
+app.delete('/api/watched/:id', (req, res) => {
+  pendingProgress.delete(pendingProgressKey(req.user.id, req.params.id));
+  userStore.removeHistory(req.user.id, req.params.id);
+  res.json({ success: true, watched: false });
 });
 
 // API: Get watch progress -- v1.30 A4: overlay any not-yet-flushed
@@ -9461,10 +9608,147 @@ app.delete('/api/liked/:id', (req, res) => {
   res.json({ success: true, liked: false });
 });
 
+// ---- v1.72 (#94): the Liked playlist is MIXED-KIND -------------------------
+//
+// Hearting content in ANY kind surfaces it in THE Liked playlist (/?liked=1
+// and the count-gated sidebar entry) - the kind-scoped lanes (podcasts place,
+// music filter) stay as complements. Each arm below is a read-time projection
+// of that kind's OWN liked carrier into the card item shape the Liked grid
+// renders; `kind` is CARRIED on every item (podcast/track/book ids are md5
+// hex exactly like media ids - kind is never inferred from id shape), and
+// each id space keeps its own lane's exact silent-drop rule. Like/unlike
+// writes stay on the per-kind routes; these arms never mutate membership.
+
+// The podcast arm - the /api/podcasts/episodes?filter=liked drop rule
+// EXACTLY: the episode row must exist and be status 'downloaded' (a trashed/
+// tombstoned/pending episode keeps its user_podcast_liked row - v1.65's law:
+// trash keeps per-user state - but never renders in the playlist).
+function shapedLikedPodcastItems(db, userId) {
+  const ns = podcastStore.readPodcasts(db);
+  const likedRows = userStore.getPodcastLiked(userId);
+  if (!likedRows.length) return [];
+  const progress = userStore.getPodcastProgress(userId);
+  const played = userStore.getPodcastPlayed(userId);
+  const subNameById = new Map(ns.subscriptions.filter(Boolean).map((s) => [s.id, s.name]));
+  const items = [];
+  for (const row of likedRows) {
+    const id = row.episodeId;
+    const ep = Object.prototype.hasOwnProperty.call(ns.episodes, id) ? ns.episodes[id] : null;
+    if (!ep || ep.status !== 'downloaded') continue;
+    const prog = Object.prototype.hasOwnProperty.call(progress, id) ? progress[id] : null;
+    const pct = prog && Number(prog.duration) > 0 ? (Number(prog.position) / Number(prog.duration)) * 100 : 0;
+    items.push({
+      kind: 'podcast',
+      id: ep.id,
+      title: ep.title,
+      type: 'audio',
+      // The library-entry moment, like a video's addedAt (file birthtime):
+      // when the enclosure finished downloading; pubDateMs is the fallback
+      // for legacy rows that predate the downloadedAt stamp.
+      addedAt: Number.isFinite(ep.downloadedAt) ? ep.downloadedAt : (Number.isFinite(ep.pubDateMs) ? ep.pubDateMs : 0),
+      duration: Number.isFinite(ep.durationSec) ? ep.durationSec : 0,
+      size: Number.isFinite(ep.bytes) ? ep.bytes : 0,
+      subId: ep.subId,
+      showName: subNameById.has(ep.subId) ? subNameById.get(ep.subId) : null,
+      liked: true,
+      progress: prog ? Number(prog.position) : 0,
+      progressPercent: pct,
+      // The played latch IS this kind's watched latch - one derivation
+      // authority (videoQuery) for every kind.
+      watchState: videoQuery.deriveWatchState(pct, Object.prototype.hasOwnProperty.call(played, id))
+    });
+  }
+  return items;
+}
+
+// The music arm - the /api/music?filter=liked drop rule EXACTLY: the track
+// row must still exist (own-property; a pruned track sheds its liked row via
+// removeMusicState, but a race between prune and read must never render a
+// ghost).
+function shapedLikedTrackItems(db, userId) {
+  const likedIds = userStore.getMusicLiked(userId);
+  if (!likedIds.length) return [];
+  const ns = musicStore.readMusic(db);
+  const items = [];
+  for (const id of likedIds) {
+    const track = ownTrack(ns.tracks, id);
+    if (!track) continue;
+    // QA gate S3: read-your-writes like the media arm - the coalescer
+    // overlay beats the committed row (liked sets are small; per-id reads
+    // are fine here).
+    const prog = effectiveMusicProgress(userId, id);
+    const pct = prog && Number(prog.duration) > 0 ? (Number(prog.position) / Number(prog.duration)) * 100 : 0;
+    items.push({
+      kind: 'track',
+      id: track.id,
+      title: track.title,
+      type: 'audio',
+      // music scan stamps addedAt as an ISO string; the card/sort contract
+      // (sortItems, formatRelativeTime) is numeric ms like media addedAt.
+      addedAt: Date.parse(track.addedAt) || 0,
+      duration: Number.isFinite(track.durationSec) ? track.durationSec : 0,
+      size: 0,
+      artist: track.artist,
+      album: track.album,
+      hasArt: !!(track.albumArtKey && albumArtExists(track.albumArtKey)),
+      liked: true,
+      progress: prog ? Number(prog.position) : 0,
+      progressPercent: pct,
+      // Music has no played latch (morning question M2) - the live position
+      // is the only signal, same derivation authority.
+      watchState: videoQuery.deriveWatchState(pct, false)
+    });
+  }
+  return items;
+}
+
+// The books arm - drop rule mirrors music's: the item row must still exist
+// (the scan prune retires membership via removeBookState; a race between
+// prune and read must never render a ghost). Books carry NO `type`: the
+// format filter's documented ambiguous-inclusion rule applies (a book is
+// neither video nor audio and fails safe toward visible).
+function shapedLikedBookItems(db, userId) {
+  const likedRows = userStore.getBookLiked(userId);
+  if (!likedRows.length) return [];
+  const ns = booksStore.readBooks(db);
+  const finishedMap = userStore.getBookFinished(userId);
+  const items = [];
+  for (const row of likedRows) {
+    const id = row.bookId;
+    const item = Object.prototype.hasOwnProperty.call(ns.items, id) ? ns.items[id] : null;
+    if (!item) continue;
+    // QA gate S3: read-your-writes like the media arm (coalescer overlay
+    // first) - the track arm's exact posture.
+    const prog = effectiveBookProgress(userId, id);
+    const pct = prog && typeof prog.percent === 'number' ? Math.min(100, Math.max(0, prog.percent)) : 0;
+    items.push({
+      kind: 'book',
+      id: item.id,
+      title: item.title,
+      author: item.author,
+      // The scanner stamps addedAt as an ISO string; the sort contract is
+      // numeric ms (the track-arm conversion).
+      addedAt: typeof item.addedAt === 'number' ? item.addedAt : (Date.parse(item.addedAt) || 0),
+      duration: 0,
+      size: Number.isFinite(item.size) ? item.size : 0,
+      liked: true,
+      progress: 0,
+      progressPercent: pct,
+      // Reading percent + the manual finished latch through the ONE
+      // derivation authority (the latch strictly widens 'watched').
+      watchState: videoQuery.deriveWatchState(pct, Object.prototype.hasOwnProperty.call(finishedMap, id))
+    });
+  }
+  return items;
+}
+
 // API: List liked items -- reuses the SAME `{items,total,offset,limit}`
 // shaping / sort+pagination pipeline `GET /api/videos` (T6, A5) established,
 // scoped down to the signed-in user's liked membership. Read-only; never
-// mutates membership.
+// mutates membership. v1.72 (#94): the response is MIXED-KIND - liked
+// podcast episodes, music tracks and books ride the same list, sort,
+// filters and pagination as liked videos; media items carry kind:'media'
+// explicitly.
 app.get('/api/liked', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
   // v1.43: membership is the signed-in user's user_liked rows (a warm
@@ -9487,6 +9771,20 @@ app.get('/api/liked', (req, res) => {
   // above -- the home toolbar (which now carries the watch group) fronts
   // BOTH endpoints, and a visible control that silently no-ops in one of
   // the two views is the worse behavior. Same derivation as /api/videos.
+  // v1.72 (#94): the non-media arms. Shaped up-front (liked sets are small);
+  // the format/watch filters below apply to them through the SAME predicates
+  // (filterByFormat reads item.type; a shaped item's watchState was derived
+  // by the same videoQuery authority the media path uses at page-shaping
+  // time, so filtering on it is the identical decision).
+  let others = [
+    ...shapedLikedPodcastItems(db, req.user.id),
+    ...shapedLikedTrackItems(db, req.user.id),
+    ...shapedLikedBookItems(db, req.user.id)
+  ];
+  if (typeof req.query.format === 'string') {
+    others = videoQuery.filterByFormat(others, req.query.format);
+  }
+
   const watch = videoQuery.normalizeWatchFilter(req.query.watch);
   const watchedSet = new Set(userStore.getWatchedIds(req.user.id));
   if (watch !== 'all') {
@@ -9495,21 +9793,27 @@ app.get('/api/liked', (req, res) => {
       if (entry.userId === req.user.id) progressMap[entry.mediaId] = entry.value;
     }
     list = videoQuery.filterByWatchState(list, watch, progressMap, watchedSet);
+    others = others.filter((o) => o.watchState === watch);
   }
 
   // `total` is the full liked-set length (after format/watch filtering),
   // BEFORE slicing to a page -- same contract as GET /api/videos's `total`.
-  const total = list.length;
+  const total = list.length + others.length;
 
   const rng = sort === 'random' && seed !== undefined ? videoQuery.createSeededRng(seed) : undefined;
-  const sorted = videoQuery.sortItems(list, sort, rng);
+  // One merged sort: shaped items carry the same addedAt/title/size fields
+  // the media records do, so every toolbar sort (and the seeded shuffle's
+  // stable paging) treats the kinds uniformly.
+  const sorted = videoQuery.sortItems([...list, ...others], sort, rng);
   const page = sorted.slice(offset, offset + limit);
 
   const items = page.map(item => {
+    if (item.kind) return item; // a shaped non-media item - already complete
     const progress = effectiveProgress(req.user.id, item.id) || { timestamp: 0, duration: 0 };
     const progressPercent = progress.duration > 0 ? (progress.timestamp / progress.duration) * 100 : 0;
     return {
       ...item,
+      kind: 'media', // v1.72: kind is CARRIED on every item, never inferred
       liked: true, // every item in this listing is, by construction, a liked member
       progress: progress.timestamp,
       progressPercent,

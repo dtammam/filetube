@@ -291,6 +291,41 @@
       // show is managed on its own /subscriptions page, and the Liked lane
       // is not a subscription at all.
       if (currentShow.source !== 'ytdlp' && !currentShow.__likedLane) {
+        // v1.72 (intake ruling 5): pin this show into the Playlists
+        // surface - the channel-folder/book-shelf parity affordance.
+        // Non-optimistic: label flips only after the round trip; current
+        // state is read from the pins route (membership IS the state).
+        var pinBtn = document.createElement('button');
+        pinBtn.type = 'button';
+        pinBtn.className = 'btn btn-sm podcast-pin-btn';
+        pinBtn.textContent = 'Pin to Playlists';
+        pinBtn.disabled = true;
+        var showPinned = false;
+        function paintPinBtn() {
+          pinBtn.textContent = showPinned ? 'Pinned ★' : 'Pin to Playlists';
+          pinBtn.setAttribute('aria-pressed', showPinned ? 'true' : 'false');
+          pinBtn.disabled = false;
+        }
+        fetchJson('/api/podcasts/pins')
+          .then(function (pins) {
+            if (signal.aborted) return;
+            showPinned = Array.isArray(pins) && pins.some(function (p) { return p && p.id === currentShow.id; });
+            paintPinBtn();
+          })
+          .catch(function () { /* leave disabled - state unknown */ });
+        pinBtn.addEventListener('click', function () {
+          pinBtn.disabled = true;
+          var req = showPinned
+            ? fetchJson('/api/podcasts/pins/' + encodeURIComponent(currentShow.id), { method: 'DELETE' })
+            : fetchJson('/api/podcasts/pins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subId: currentShow.id }) });
+          req.then(function () {
+            showPinned = !showPinned;
+            paintPinBtn();
+            // The pinned sidebar + Playlists sheet re-read the merged pins.
+            if (window.FileTube && typeof window.FileTube.refreshAllPinSurfaces === 'function') window.FileTube.refreshAllPinSurfaces();
+          }).catch(function () { paintPinBtn(); });
+        }, { signal: signal });
+        meta.appendChild(pinBtn);
         meta.appendChild(buildManageRow());
       }
       head.appendChild(meta);
@@ -805,6 +840,20 @@
     var playParam = null;
     try { playParam = new URLSearchParams(window.location.search).get('play'); } catch (_) { playParam = null; }
     if (playParam) consumeDeepLink(playParam);
+
+    // v1.72 (intake ruling 5): /podcasts?show=<subId> - a pinned show in
+    // the Playlists surface deep-links its drill. A bad/gone id lands in
+    // openShow's catch, which paints "Could not load episodes." over the
+    // grid (deliberately LOUDER than ?play='s silent degrade: a dead pin
+    // deserves a visible signal - adversarial gate v1.72 S1 measured the
+    // difference; this comment records it honestly). The show list may not
+    // have loaded yet, so the drill opens from the id alone - openShow
+    // fetches the authoritative record with the episodes.
+    var showParam = null;
+    try { showParam = new URLSearchParams(window.location.search).get('show'); } catch (_) { showParam = null; }
+    if (showParam && !playParam) {
+      openShow({ id: showParam, name: 'Podcast' });
+    }
 
     // v1.71 T7: arriving via the docked player's tap (?nowplaying=1)
     // expands the LIVE player into this page's #player-slot - the big

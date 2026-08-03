@@ -307,3 +307,72 @@ test('v1.43 carrier: the books scan prune removes EVERY user\'s reading position
   assert.equal(userStore.getOneBookProgress(uid, doomedId), null, 'the admin\'s position pruned with the book');
   assert.equal(userStore.getOneBookProgress(second.user.id, doomedId), null, 'every OTHER user\'s position too (no stale resurrection onto a same-path re-add)');
 });
+
+// ---- v1.72 (cap 7): the download header moves to the shared helper ----------
+
+test('v1.72: GET /book/:id/file?download=1 uses the shared injection-safe attachment helper (filename* form)', async () => {
+  const r = await fetch(`${base}/book/${pdfId}/file?download=1`);
+  assert.equal(r.status, 200);
+  const dispo = r.headers.get('content-disposition');
+  assert.match(dispo, /^attachment; filename="/);
+  assert.match(dispo, /filename\*=UTF-8''/, 'RFC 5987 form - the old hand-rolled encodeURIComponent header is gone');
+  assert.match(dispo, /\.pdf/, 'the format rides as the extension');
+  // No download param -> inline (no disposition header), unchanged.
+  const inline = await fetch(`${base}/book/${pdfId}/file`);
+  assert.equal(inline.headers.get('content-disposition'), null);
+});
+
+// ---- v1.72 books first-class: likes + the manual finished latch -------------
+
+test('v1.72: book like round-trip - existence-gated POST, idempotent DELETE, flags on list + detail, wrong-user isolation', async () => {
+  const { __mintTestSession, userStore } = require('../../server');
+  // POST is existence-gated; a phantom/junk id never mints a row.
+  assert.equal((await postJson('/api/books/liked/nope', {})).status, 404);
+  assert.equal((await postJson('/api/books/liked/__proto__', {})).status, 404);
+
+  const r = await postJson(`/api/books/liked/${epubId}`, {});
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { liked: true });
+  assert.deepEqual(userStore.getBookLiked(uid).map((l) => l.bookId), [epubId]);
+
+  const list = await (await fetch(`${base}/api/books`)).json();
+  assert.equal(list.items.find((i) => i.id === epubId).liked, true, 'the list shape carries the flag');
+  assert.equal(list.items.find((i) => i.id === pdfId).liked, false);
+  const detail = await (await fetch(`${base}/api/books/${epubId}`)).json();
+  assert.equal(detail.liked, true, 'the detail shape carries the flag');
+
+  // The mixed-kind Liked playlist surfaces it with kind carried.
+  const liked = await (await fetch(`${base}/api/liked`)).json();
+  const bookItem = liked.items.find((i) => i.kind === 'book');
+  assert.ok(bookItem, 'the book rides THE Liked playlist');
+  assert.equal(bookItem.id, epubId);
+  assert.ok(!('filePath' in bookItem), 'no server paths on the shaped item');
+
+  // Wrong-user: a second session sees no flag and cannot clear ours.
+  const second = __mintTestSession({ username: 'bookLikeOther' });
+  const otherList = await (await fetch(`${base}/api/books`, { headers: { Cookie: second.cookie } })).json();
+  assert.equal(otherList.items.find((i) => i.id === epubId).liked, false, 'flags are per-user');
+  await fetch(`${base}/api/books/liked/${epubId}`, { method: 'DELETE', headers: { Cookie: second.cookie } });
+  assert.deepEqual(userStore.getBookLiked(uid).map((l) => l.bookId), [epubId], 'their DELETE never touches our row');
+
+  // Our idempotent unlike.
+  assert.equal((await fetch(`${base}/api/books/liked/${epubId}`, { method: 'DELETE' })).status, 200);
+  assert.deepEqual(userStore.getBookLiked(uid), []);
+  assert.equal((await fetch(`${base}/api/books/liked/${epubId}`, { method: 'DELETE' })).status, 200, 'unliking the unliked is a no-op success');
+});
+
+test('v1.72: the manual finished latch - set/clear round-trip, existence gate, flags on the shapes', async () => {
+  const { userStore } = require('../../server');
+  assert.equal((await postJson('/api/books/nope/finished', { finished: true })).status, 404);
+
+  const set = await postJson(`/api/books/${pdfId}/finished`, {});
+  assert.equal(set.status, 200);
+  assert.deepEqual(await set.json(), { ok: true, finished: true });
+  assert.ok(Object.prototype.hasOwnProperty.call(userStore.getBookFinished(uid), pdfId));
+  assert.equal((await (await fetch(`${base}/api/books/${pdfId}`)).json()).finished, true);
+
+  const clear = await postJson(`/api/books/${pdfId}/finished`, { finished: false });
+  assert.deepEqual(await clear.json(), { ok: true, finished: false });
+  assert.ok(!Object.prototype.hasOwnProperty.call(userStore.getBookFinished(uid), pdfId));
+  assert.equal((await (await fetch(`${base}/api/books/${pdfId}`)).json()).finished, false);
+});
