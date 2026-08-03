@@ -231,6 +231,11 @@ test('v1.73.2 SOURCE-LOCK: Books wears icon-books everywhere - injector, sheet m
   assert.ok(css.includes('.icon-books { -webkit-mask-image: url(/assets/icons/books.svg)'), 'a real mask rule');
   assert.ok(css.includes('[data-icons="emoji"] .icon-books::before { content: "\\1F4DA"; }'), 'the emoji-set entry (no silent drop - the v1.73 W2 lesson)');
   assert.ok(fs.existsSync(path.join(pub, 'assets/icons/books.svg')), 'the asset exists');
+  assert.ok(fs.readFileSync(path.join(pub, 'assets/icons/books.svg'), 'utf8').includes('<svg'), 'and is a real svg, not a corrupted husk (slim-gate S2)');
+  // Slim-gate W1: the two memberships the first lock left unbound - both
+  // survived the FULL suite as deletion mutants.
+  assert.match(css, /\.icon-podcast,\n\.icon-downloads,\n\.icon-books \{/, 'base sizing-group membership (dropped = zero-area icon in every mask set)');
+  assert.ok(css.includes('[data-icons="emoji"] .icon-books,'), 'emoji mask-STRIP membership (dropped = the documented colored-box-behind-the-emoji class)');
   const shells = fs.readdirSync(pub).filter((f) => f.endsWith('.html'))
     .filter((f) => fs.readFileSync(path.join(pub, f), 'utf8').includes('data-nav="books"'));
   assert.ok(shells.length >= 9, `full shell roster (${shells.length})`);

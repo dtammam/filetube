@@ -90,7 +90,7 @@ test('deterministic Library order Music > Books > Podcasts > History for EVERY i
     assert.equal(orders.length, 24);
     const spec = {
       music: ['/music', 'Music', 'icon-play'],
-      books: ['/books', 'Books', 'icon-folder'],
+      books: ['/books', 'Books', 'icon-books'],
       podcasts: ['/podcasts', 'Podcasts', 'icon-podcast'],
       history: ['/history', 'History', 'icon-history'],
     };

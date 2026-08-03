@@ -39,6 +39,7 @@ Apache-2.0 permits redistribution; these files are included unmodified.
 | `keyboard_arrow_up.svg` | `keyboard_arrow_up` | `.icon-arrow-up` |
 | `keyboard_arrow_down.svg` | `keyboard_arrow_down` | `.icon-arrow-down` |
 | `download.svg` | `download` | `.icon-download` |
+| `books.svg` | `menu_book` | Books library entry + bottom-nav item (v1.73.2; emoji set uses U+1F4DA) |
 | `shuffle.svg` | `shuffle` | `.icon-shuffle` |
 
 ## FileTube original — `flame.svg`
