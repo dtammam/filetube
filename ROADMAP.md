@@ -80,6 +80,34 @@
 
 ## Shipped
 
+### v1.73.1 - The Downloads dupe dies everywhere (2026-08-03)
+
+Dean's device find minutes after v1.73.0: the new hard "Downloads"
+Library entry shipped NEXT TO the old synthetic ytdlp folder row (a
+visible dupe), and the default-view picker leaked the raw directory
+basename - Downloads WAS selectable as the home landing, just wearing
+the wrong name. The shared sidebar filter now drops synthetic folders
+(the hard entry owns the surface; DnD reorder math treats them like
+hiddenFromSidebar - absolute position preserved), and the picker
+labels the un-renamed synthetic folder "Downloads" while honoring a
+custom rename and keeping the saved defaultView VALUE unchanged.
+Nothing for users to remove - the folder stays alive in Setup and
+/?root= browsing.
+
+Slim gate (adversarial alone), 2 rounds + a one-assert closeout: it
+proved the v1.41.4 class re-bit at its own documented site - the fix
+missed the WATCH page's sidebar renderer (one video tap repainted the
+dupe into the shared shell) and the mobile Playlists sheet, which
+also needed a Downloads MIRROR in the same commit or mobile lost
+access entirely; and three of the four threaded call sites were
+unbound (dropped-arg mutants survived the full suite). All fixed;
+nine of nine links in the threading chain now mutation-verified
+bound, incl. the snapshot builder the seat's final pass caught.
+Coherent design split on record: the Library entry + sheet mirror are
+fixed-label "Downloads"; the picker + Setup box honor a rename.
+Dual-Node: v22.23.1 = 5889/5889, 0 fail; v24.14.0 = 5889/5889, 0
+fail. Device pass PENDING.
+
 ### v1.73.0 - The audio chrome converges + Downloads graduates (2026-08-03)
 
 Dean's same-morning follow-up to v1.72.0, nine rulings. His device
