@@ -9244,6 +9244,46 @@ a.queue-upnext-next:hover {
   color: #fff; /* token-exempt: legibility floor on the fixed --yt-red fill */
 }
 
+/* v1.71.1: episode-row actions as glyph buttons (Dean's device find: three
+   text buttons truncated the title). The played/like-toggle 28px circle
+   chassis; the card corner controls' icon vocabulary. The delete keeps its
+   two-tap honesty - arming widens the circle into a pill and reveals the
+   copy (the .card-delete-btn.armed REVEAL styling; the js side has no
+   auto-disarm timer, see buildEpisodeRow). */
+.podcast-ep-action {
+  appearance: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  flex-shrink: 0;
+  margin-right: var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+.podcast-ep-action i {
+  width: 14px;
+  height: 14px;
+}
+.podcast-ep-action .podcast-ep-confirm {
+  display: none;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+}
+.podcast-ep-delete.confirming {
+  padding: 0 var(--space-3);
+  gap: var(--space-2);
+}
+.podcast-ep-delete.confirming .podcast-ep-confirm {
+  display: inline;
+}
+
 /* v1.71: the episode like heart - the played-toggle chassis, heart glyph.
    Liked state fills red like the music heart. */
 .podcast-like-toggle {
