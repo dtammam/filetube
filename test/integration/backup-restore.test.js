@@ -366,6 +366,9 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
   userStore.addLiked(extra.user.id, 'vid1', '2026-07-17T00:00:00.000Z');
   userStore.setBookProgress(extra.user.id, 'bk1', { locator: { kind: 'epub', cfi: 'y' }, percent: 60, updatedAt: '2026-07-17T00:00:00.000Z' });
   userStore.setChannelPin(extra.user.id, { id: 'cp1', channelDir: '/d/chan', label: 'Chan', pinnedAt: 't', order: 0 });
+  // v1.72 books first-class (the TWELFTH-strike carrier rides the bundle).
+  userStore.addBookLiked(extra.user.id, 'bk1', '2026-07-17T00:00:00.000Z');
+  userStore.setBookFinished(extra.user.id, 'bk1', '2026-07-17T01:00:00.000Z');
   // v1.44 music per-user state (the SEVENTH-strike carrier rides the bundle).
   userStore.addMusicLiked(extra.user.id, 'trk1', '2026-07-17T00:00:00.000Z');
   userStore.setMusicProgress(extra.user.id, 'trk1', { position: 88, duration: 200, updatedAt: '2026-07-17T00:00:00.000Z' });
@@ -407,6 +410,9 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
   assert.equal(userStore.getOneProgress(restored.id, 'vid1').timestamp, 33, 'their watch position came back');
   assert.deepEqual(userStore.getLiked(restored.id), ['vid1'], 'their like came back');
   assert.equal(userStore.getOneBookProgress(restored.id, 'bk1').percent, 60, 'their reading position came back');
+  // v1.72: their book like + finished latch came back too.
+  assert.deepEqual(userStore.getBookLiked(restored.id).map((l) => l.bookId), ['bk1'], 'their book like came back');
+  assert.equal(userStore.getBookFinished(restored.id).bk1, '2026-07-17T01:00:00.000Z', 'their finished latch came back with its stamp');
   assert.equal(userStore.getChannelPins(restored.id)[0].id, 'cp1', 'their channel pin came back');
   // v1.44: their music state came back too.
   assert.deepEqual(userStore.getMusicLiked(restored.id), ['trk1'], 'their music like came back');

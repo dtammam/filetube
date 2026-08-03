@@ -123,7 +123,7 @@ test('schema v8 -> v9 migration: an existing db gains the tables without touchin
   // against the live db - the version lands at the CURRENT head.
   adapter = new SqliteAdapter(dbPath, { log: () => {} });
   store = createUserStore(adapter);
-  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 10);
+  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 11);
   const admin2 = store.getByUsername('a');
   assert.deepEqual(store.getProgress(admin2.id).vid1, { timestamp: 5, duration: 10, updatedAt: ISO }, 'pre-existing rows untouched');
   store.setPodcastProgress(admin2.id, 'ep1', { position: 1, duration: 2, updatedAt: ISO });
@@ -228,7 +228,7 @@ test('v1.71 schema v9 -> v10 migration: live queue rows survive and read back as
 
   adapter = new SqliteAdapter(dbPath, { log: () => {} });
   store = createUserStore(adapter);
-  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 10);
+  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 11);
   const admin2 = store.getByUsername('a');
   const q = store.getQueue(admin2.id);
   assert.deepEqual(q.entries, [{ uid: 'u1', mediaId: 'vid1', kind: 'media' }], 'the pre-v10 row survives AND reads as media');

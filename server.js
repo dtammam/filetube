@@ -6306,8 +6306,15 @@ function sortBookList(list, sortKey) {
 // The public item shape: everything the cards/reader need, progress overlaid
 // (effective = pending-first, per-user), spine included only on the detail
 // route (the list stays light for hundreds of books).
-function publicBookListItem(item, userId) {
+function publicBookListItem(item, userId, likedSet, finishedMap) {
   const progress = effectiveBookProgress(userId, item.id);
+  // v1.72: per-user liked + finished flags ride the shape (the
+  // publicTrackListItem posture: the caller passes the pre-fetched sets so
+  // a list render costs two queries, not two per item).
+  const liked = likedSet ? likedSet.has(item.id) : userStore.getBookLiked(userId).some((l) => l.bookId === item.id);
+  const finished = finishedMap
+    ? Object.prototype.hasOwnProperty.call(finishedMap, item.id)
+    : Object.prototype.hasOwnProperty.call(userStore.getBookFinished(userId), item.id);
   return {
     id: item.id,
     title: item.title,
@@ -6320,6 +6327,8 @@ function publicBookListItem(item, userId) {
     hasCover: item.hasCover === true,
     pageCount: item.pageCount,
     progress: progress ? { percent: progress.percent, updatedAt: progress.updatedAt } : null,
+    liked,
+    finished,
   };
 }
 
@@ -6339,7 +6348,9 @@ app.get('/api/books', (req, res) => {
   }
   // Explicit lambda (NOT `list.map(publicBookListItem)`): map would pass the
   // array INDEX as the second argument, which is now the userId parameter.
-  let shaped = list.map((item) => publicBookListItem(item, req.user.id));
+  const likedSet = new Set(userStore.getBookLiked(req.user.id).map((l) => l.bookId));
+  const finishedMap = userStore.getBookFinished(req.user.id);
+  let shaped = list.map((item) => publicBookListItem(item, req.user.id, likedSet, finishedMap));
   if (req.query.filter === 'reading') {
     shaped = shaped.filter((i) => i.progress && i.progress.percent > 0 && i.progress.percent < 98);
     shaped.sort((a, b) => String((b.progress && b.progress.updatedAt) || '').localeCompare(String((a.progress && a.progress.updatedAt) || '')));
@@ -6386,6 +6397,38 @@ app.get('/api/books/pins', (req, res) => {
   // pin_order-sorted, matching listShelfPins' order contract).
   const pins = userStore.getBookPins(req.user.id);
   res.json(pins.map((p) => ({ id: p.id, channelDir: p.dir, label: p.label, href: `/books?root=${encodeURIComponent(p.dir)}` })));
+});
+
+// ---- v1.72 books first-class: likes + the manual finished latch -------------
+// Per-user book likes (static segment -- declared BEFORE /api/books/:id,
+// the /api/music/liked route-order discipline). The POST is existence-gated
+// (the id persists into user_book_liked); the DELETE is idempotent like
+// every other unlike.
+app.post('/api/books/liked/:id', (req, res) => {
+  const ns = booksStore.readBooks(getCachedDatabase());
+  if (!Object.prototype.hasOwnProperty.call(ns.items, req.params.id)) {
+    return res.status(404).json({ error: 'Book not found' });
+  }
+  userStore.addBookLiked(req.user.id, req.params.id, new Date().toISOString());
+  res.json({ liked: true });
+});
+app.delete('/api/books/liked/:id', (req, res) => {
+  userStore.removeBookLiked(req.user.id, req.params.id);
+  res.json({ liked: false });
+});
+
+// The manual mark-finished latch (the podcast played-toggle contract:
+// {finished:false} clears, anything else sets). No auto threshold - a text
+// position's "end" is format-dependent (exec plan, morning question M1).
+app.post('/api/books/:id/finished', (req, res) => {
+  const ns = booksStore.readBooks(getCachedDatabase());
+  if (!Object.prototype.hasOwnProperty.call(ns.items, req.params.id)) {
+    return res.status(404).json({ error: 'Book not found' });
+  }
+  const wantFinished = !(req.body && req.body.finished === false);
+  if (wantFinished) userStore.setBookFinished(req.user.id, req.params.id, new Date().toISOString());
+  else userStore.clearBookFinished(req.user.id, req.params.id);
+  res.json({ ok: true, finished: wantFinished });
 });
 
 app.get('/api/books/:id', (req, res) => {
@@ -7667,7 +7710,9 @@ function validateBackupBundle(bundle) {
         // v1.69 podcast per-user state (absent in pre-v1.69 bundles -- legal).
         ['podcastProgress', 'object'], ['podcastPlayed', 'object'],
         // v1.71 episode likes (absent in pre-v1.71 bundles -- legal).
-        ['podcastLiked', 'array']]) {
+        ['podcastLiked', 'array'],
+        // v1.72 books first-class (absent in pre-v1.72 bundles -- legal).
+        ['bookLiked', 'array'], ['bookFinished', 'object']]) {
         if (u[field] === undefined) continue;
         const ok = kind === 'array' ? Array.isArray(u[field]) : (typeof u[field] === 'object' && u[field] !== null && !Array.isArray(u[field]));
         if (!ok) return `${where}: ${field} must be an ${kind}`;
@@ -9623,12 +9668,52 @@ function shapedLikedTrackItems(db, userId) {
   return items;
 }
 
+// The books arm - drop rule mirrors music's: the item row must still exist
+// (the scan prune retires membership via removeBookState; a race between
+// prune and read must never render a ghost). Books carry NO `type`: the
+// format filter's documented ambiguous-inclusion rule applies (a book is
+// neither video nor audio and fails safe toward visible).
+function shapedLikedBookItems(db, userId) {
+  const likedRows = userStore.getBookLiked(userId);
+  if (!likedRows.length) return [];
+  const ns = booksStore.readBooks(db);
+  const progressMap = userStore.getBookProgress(userId);
+  const finishedMap = userStore.getBookFinished(userId);
+  const items = [];
+  for (const row of likedRows) {
+    const id = row.bookId;
+    const item = Object.prototype.hasOwnProperty.call(ns.items, id) ? ns.items[id] : null;
+    if (!item) continue;
+    const prog = Object.prototype.hasOwnProperty.call(progressMap, id) ? progressMap[id] : null;
+    const pct = prog && typeof prog.percent === 'number' ? Math.min(100, Math.max(0, prog.percent)) : 0;
+    items.push({
+      kind: 'book',
+      id: item.id,
+      title: item.title,
+      author: item.author,
+      // The scanner stamps addedAt as an ISO string; the sort contract is
+      // numeric ms (the track-arm conversion).
+      addedAt: typeof item.addedAt === 'number' ? item.addedAt : (Date.parse(item.addedAt) || 0),
+      duration: 0,
+      size: Number.isFinite(item.size) ? item.size : 0,
+      liked: true,
+      progress: 0,
+      progressPercent: pct,
+      // Reading percent + the manual finished latch through the ONE
+      // derivation authority (the latch strictly widens 'watched').
+      watchState: videoQuery.deriveWatchState(pct, Object.prototype.hasOwnProperty.call(finishedMap, id))
+    });
+  }
+  return items;
+}
+
 // API: List liked items -- reuses the SAME `{items,total,offset,limit}`
 // shaping / sort+pagination pipeline `GET /api/videos` (T6, A5) established,
 // scoped down to the signed-in user's liked membership. Read-only; never
 // mutates membership. v1.72 (#94): the response is MIXED-KIND - liked
-// podcast episodes and music tracks ride the same list, sort, filters and
-// pagination as liked videos; media items carry kind:'media' explicitly.
+// podcast episodes, music tracks and books ride the same list, sort,
+// filters and pagination as liked videos; media items carry kind:'media'
+// explicitly.
 app.get('/api/liked', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
   // v1.43: membership is the signed-in user's user_liked rows (a warm
@@ -9658,7 +9743,8 @@ app.get('/api/liked', (req, res) => {
   // time, so filtering on it is the identical decision).
   let others = [
     ...shapedLikedPodcastItems(db, req.user.id),
-    ...shapedLikedTrackItems(db, req.user.id)
+    ...shapedLikedTrackItems(db, req.user.id),
+    ...shapedLikedBookItems(db, req.user.id)
   ];
   if (typeof req.query.format === 'string') {
     others = videoQuery.filterByFormat(others, req.query.format);
