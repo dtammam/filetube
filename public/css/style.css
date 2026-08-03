@@ -7820,6 +7820,10 @@ body.ft-css-fullscreen .bottom-nav {
    an <a> needs its default underline stripped to sit as a peer control. */
 .music-download-btn { text-decoration: none; }
 
+/* v1.72: the show drill's Pin-to-Playlists toggle sits between the meta
+   text and the manage row, left-aligned as its own line. */
+.podcast-pin-btn { align-self: flex-start; margin: var(--space-2) 0; }
+
 /* v1.44.2 (Spotify feel): the currently-playing row. Accent + a CSS equalizer
    glyph (3 animated bars) overlaid on the thumb — NEVER an emoji codepoint
    (iOS forces blue emoji). Driven by applyPlayingHighlight() toggling

@@ -160,3 +160,17 @@ test('v1.72: every bottom-nav shell carries the music + books items, hidden unti
     }
   }
 });
+
+// ---- v1.72 (intake ruling 5): show pins ride every pin surface --------------
+
+test('v1.72 SOURCE-LOCK: the pin dispatch carries the podcasts source through fetch/delete/reorder/source-of', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
+  assert.ok(src.includes("safeJson('/api/podcasts/pins')"), 'fetchAllPins reads the third source');
+  assert.ok(src.includes("pinSource: 'podcasts'"), 'podcast pins are TAGGED at the merge');
+  assert.ok(src.includes("pin.pinSource === 'podcasts') return `/api/podcasts/pins/${encodeURIComponent(pin.id)}`"), 'the unpin control owns its DELETE endpoint');
+  assert.ok(src.includes("source === 'podcasts' ? '/api/podcasts/pins/reorder'"), 'drag-reorder persists to its OWN route');
+  assert.ok(src.includes("pin.pinSource === 'podcasts') return 'podcasts'"), 'pinSourceOf scopes cross-source drags');
+  const pod = fs.readFileSync(path.join(__dirname, '../../public/js/podcasts.js'), 'utf8');
+  assert.ok(pod.includes("get('show')"), 'the ?show= deep link exists for a pinned show');
+  assert.ok(pod.includes("fetchJson('/api/podcasts/pins')"), 'the drill reads pin membership as the toggle state');
+});

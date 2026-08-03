@@ -585,3 +585,59 @@ test('DELETE subscription: records + per-user rows + secret gone; the FILE stays
 
   assert.strictEqual((await del(`/api/podcasts/subscriptions/${subId}`)).status, 404, 'second delete 404s');
 });
+
+// ---- v1.72 (intake ruling 5): show pins in the Playlists surface ------------
+
+test('v1.72 show pins: existence-gated POST, idempotent re-pin, pre-shaped GET payload, DELETE, reorder, wrong-user isolation, unsubscribe carrier', async () => {
+  const { userStore, __mintTestSession } = require('../../server');
+  // Fresh subscriptions of our own - the suite's earlier tests DELETE the
+  // shared subId, so this test never leans on it. Two rows: reorder needs
+  // a pair and the unsubscribe carrier needs a survivor to prove scoping.
+  const rA = await postJson('/api/podcasts/subscriptions', { feedUrl: 'https://feeds.invalid/rss/pinshow?a=1' });
+  assert.strictEqual(rA.status, 201);
+  const subId = (await rA.json()).id;
+  const r2 = await postJson('/api/podcasts/subscriptions', { feedUrl: 'https://feeds.invalid/rss/second?y=2' });
+  assert.strictEqual(r2.status, 201);
+  const subB = (await r2.json()).id;
+
+  assert.strictEqual((await postJson('/api/podcasts/pins', { subId: 'nope' })).status, 404, 'phantom subscription refused');
+  const p1 = await postJson('/api/podcasts/pins', { subId });
+  assert.strictEqual(p1.status, 200);
+  const rec1 = await p1.json();
+  assert.strictEqual(rec1.id, subId);
+  assert.strictEqual(rec1.order, 0);
+  const again = await postJson('/api/podcasts/pins', { subId });
+  assert.strictEqual((await again.json()).order, 0, 'idempotent re-pin returns the EXISTING record');
+  await postJson('/api/podcasts/pins', { subId: subB });
+
+  // GET pre-shapes for the shared renderer: href wins, art is the show cover.
+  const list = await (await get('/api/podcasts/pins')).json();
+  assert.strictEqual(list.length, 2);
+  assert.strictEqual(list[0].href, `/podcasts?show=${subId}`);
+  assert.strictEqual(list[0].channelAvatarUrl, `/podcastart/${subId}`);
+  assert.ok(list[0].channelDir.length > 0, 'a non-empty channelDir keeps the shared renderer contract');
+
+  // Reorder: B first.
+  const ro = await postJson('/api/podcasts/pins/reorder', { orderedIds: [subB, subId] });
+  assert.strictEqual(ro.status, 200);
+  assert.deepStrictEqual((await (await get('/api/podcasts/pins')).json()).map((p) => p.id), [subB, subId]);
+  assert.strictEqual((await postJson('/api/podcasts/pins/reorder', { orderedIds: [42] })).status, 400);
+
+  // Wrong-user: a second session sees no pins and its unpin never crosses.
+  const second = __mintTestSession({ username: 'showPinOther' });
+  const otherList = await (await fetch(`${base}/api/podcasts/pins`, { headers: { Cookie: second.cookie } })).json();
+  assert.deepStrictEqual(otherList, [], 'pins are per-user');
+  const otherDel = await fetch(`${base}/api/podcasts/pins/${subId}`, { method: 'DELETE', headers: { Cookie: second.cookie } });
+  assert.strictEqual(otherDel.status, 404, 'unpinning a pin you do not hold is a 404, never a cross-user delete');
+  assert.strictEqual(userStore.getPodcastPins((await (async () => second.user)()).id).length, 0);
+  assert.strictEqual((await (await get('/api/podcasts/pins')).json()).length, 2, 'our pins survived');
+
+  // DELETE our own.
+  assert.strictEqual((await fetch(`${base}/api/podcasts/pins/${subB}`, { method: 'DELETE' })).status, 200);
+  assert.deepStrictEqual((await (await get('/api/podcasts/pins')).json()).map((p) => p.id), [subId]);
+
+  // The unsubscribe carrier: deleting the pinned show retires its pin rows
+  // (both rows LIVE at the destructive moment - the pin exists right now).
+  assert.strictEqual((await del(`/api/podcasts/subscriptions/${subId}`)).status, 200);
+  assert.deepStrictEqual((await (await get('/api/podcasts/pins')).json()), [], 'the pin retired with the subscription');
+});

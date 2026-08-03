@@ -5953,6 +5953,9 @@ if (typeof window !== 'undefined') {
   window.FileTube.writeBottomNavConfig = writeBottomNavConfig;
   window.FileTube.BOTTOM_NAV_OPTIONAL = BOTTOM_NAV_OPTIONAL;
   window.FileTube.BOTTOM_NAV_DEFAULT_HIDDEN = BOTTOM_NAV_DEFAULT_HIDDEN;
+  // v1.72: the podcasts place's pin toggle refreshes the merged pin
+  // surfaces (sidebar + sheet) after a pin/unpin round trip.
+  window.FileTube.refreshAllPinSurfaces = refreshAllPinSurfaces;
   // v1.66 web push: setup.js's enable flow routes through the ONE locked
   // register call site + shares the key decoder.
   window.FileTube.registerPushWorker = registerPushWorker;
@@ -6051,11 +6054,13 @@ function fetchAllPins() {
   // endpoint owns it -- the raw source field never enters
   // derivePinnedPlaylistEntries' locked shape; the renderers read it off
   // the parallel validPins view exactly like `id`.
-  return Promise.all([safeJson('/api/subscriptions/pins'), safeJson('/api/books/pins')])
-    .then(([channelPins, bookPins]) => {
+  // v1.72: podcast show pins join as the third source (intake ruling 5).
+  return Promise.all([safeJson('/api/subscriptions/pins'), safeJson('/api/books/pins'), safeJson('/api/podcasts/pins')])
+    .then(([channelPins, bookPins, podcastPins]) => {
       const pins = [
         ...(Array.isArray(channelPins) ? channelPins : []).map((p) => ({ ...p, pinSource: 'channel' })),
         ...(Array.isArray(bookPins) ? bookPins : []).map((p) => ({ ...p, pinSource: 'books' })),
+        ...(Array.isArray(podcastPins) ? podcastPins : []).map((p) => ({ ...p, pinSource: 'podcasts' })),
       ];
       // v1.53: the capability cache's pins half -- the next refresh paints
       // the pinned sidebar optimistically from this (primePinnedSidebarFromCache).
@@ -6072,9 +6077,9 @@ function fetchAllPins() {
 // arm/confirm (the card-delete pattern -- no native confirm()); the DELETE
 // endpoint is chosen by the pin's tagged source. `onDone` re-renders.
 function pinDeleteEndpoint(pin) {
-  return pin && pin.pinSource === 'books'
-    ? `/api/books/pins/${encodeURIComponent(pin.id)}`
-    : `/api/subscriptions/pins/${encodeURIComponent(pin.id)}`;
+  if (pin && pin.pinSource === 'books') return `/api/books/pins/${encodeURIComponent(pin.id)}`;
+  if (pin && pin.pinSource === 'podcasts') return `/api/podcasts/pins/${encodeURIComponent(pin.id)}`;
+  return `/api/subscriptions/pins/${encodeURIComponent(pin.id)}`;
 }
 
 function buildUnpinButton(pin, onDone) {
@@ -6432,7 +6437,9 @@ function renderPinnedSidebar(pins) {
 // drag scoping and the reorder endpoint are decided by this, exactly like
 // pinDeleteEndpoint above. Untagged legacy pins default to 'channel'.
 function pinSourceOf(pin) {
-  return pin && pin.pinSource === 'books' ? 'books' : 'channel';
+  if (pin && pin.pinSource === 'books') return 'books';
+  if (pin && pin.pinSource === 'podcasts') return 'podcasts';
+  return 'channel';
 }
 
 function wirePinnedSidebarDragAndDrop(section, validPins) {
@@ -6512,7 +6519,9 @@ function persistPinReorder(orderedIds, source) {
   // refreshAllPinSurfaces -- never a single endpoint's response, which only
   // carries that module's pins and made the other module's pins vanish
   // from the sidebar until the next full load.
-  const endpoint = source === 'books' ? '/api/books/pins/reorder' : '/api/subscriptions/pins/reorder';
+  const endpoint = source === 'books' ? '/api/books/pins/reorder'
+    : source === 'podcasts' ? '/api/podcasts/pins/reorder'
+      : '/api/subscriptions/pins/reorder';
   fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

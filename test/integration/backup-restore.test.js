@@ -369,6 +369,8 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
   // v1.72 books first-class (the TWELFTH-strike carrier rides the bundle).
   userStore.addBookLiked(extra.user.id, 'bk1', '2026-07-17T00:00:00.000Z');
   userStore.setBookFinished(extra.user.id, 'bk1', '2026-07-17T01:00:00.000Z');
+  // v1.72 podcast show pins ride like bookPins.
+  userStore.setPodcastPins(extra.user.id, [{ id: 'sub-pin-1', label: 'My Show', pinnedAt: 't', order: 0 }]);
   // v1.44 music per-user state (the SEVENTH-strike carrier rides the bundle).
   userStore.addMusicLiked(extra.user.id, 'trk1', '2026-07-17T00:00:00.000Z');
   userStore.setMusicProgress(extra.user.id, 'trk1', { position: 88, duration: 200, updatedAt: '2026-07-17T00:00:00.000Z' });
@@ -415,6 +417,7 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
   // v1.72: their book like + finished latch came back too.
   assert.deepEqual(userStore.getBookLiked(restored.id).map((l) => l.bookId), ['bk1'], 'their book like came back');
   assert.equal(userStore.getBookFinished(restored.id).bk1, '2026-07-17T01:00:00.000Z', 'their finished latch came back with its stamp');
+  assert.equal(userStore.getPodcastPins(restored.id)[0].id, 'sub-pin-1', 'their show pin came back');
   assert.equal(userStore.getChannelPins(restored.id)[0].id, 'cp1', 'their channel pin came back');
   // v1.44: their music state came back too.
   assert.deepEqual(userStore.getMusicLiked(restored.id), ['trk1'], 'their music like came back');

@@ -7712,7 +7712,9 @@ function validateBackupBundle(bundle) {
         // v1.71 episode likes (absent in pre-v1.71 bundles -- legal).
         ['podcastLiked', 'array'],
         // v1.72 books first-class (absent in pre-v1.72 bundles -- legal).
-        ['bookLiked', 'array'], ['bookFinished', 'object']]) {
+        ['bookLiked', 'array'], ['bookFinished', 'object'],
+        // v1.72 podcast show pins (absent in pre-v1.72 bundles -- legal).
+        ['podcastPins', 'array']]) {
         if (u[field] === undefined) continue;
         const ok = kind === 'array' ? Array.isArray(u[field]) : (typeof u[field] === 'object' && u[field] !== null && !Array.isArray(u[field]));
         if (!ok) return `${where}: ${field} must be an ${kind}`;
