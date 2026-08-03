@@ -4206,19 +4206,23 @@ a.sub-row-channel-link:focus-visible {
     color: var(--yt-red);
   }
 
-  /* v1.39.2 (Dean): a more intuitive mobile bottom-nav order --
-     Home | Playlists | Download | Subs | Books | Light/Dark | Settings.
-     The base 4 items (home/playlists/theme/settings) ship in the page HTML;
-     Subs/Books/Download are JS-injected relative to Settings (common.js), so
-     DOM order varies. `order` on the flex children pins the visual sequence
-     regardless of injection timing. */
-  #bottom-nav [data-nav="home"]             { order: 1; }
-  #bottom-nav [data-nav="playlists"]        { order: 2; }
-  #bottom-nav [data-nav="oneoff-download"]  { order: 3; }
-  #bottom-nav [data-nav="subscriptions"]    { order: 4; }
-  #bottom-nav [data-nav="books"]            { order: 5; }
-  #bottom-nav [data-nav="theme"]            { order: 6; }
-  #bottom-nav [data-nav="settings"]         { order: 7; }
+  /* v1.75 (Dean's report: "In bottom bar, Home is not always left-most"):
+     the v1.39.2 `order:` ladder that used to live here is DELETED, and no
+     rule may reintroduce one - `resolveBottomNavLayout` + the appendChild
+     pass in `applyBottomNavCustomization` are the SOLE authority on this
+     bar's sequence (bound by test/unit/bottom-nav-order-authority.test.js).
+
+     Why it had to go: the ladder pinned seven ids (home 1 ... settings 7)
+     and left the rest at the flex default of `order: 0`, which sorts them
+     BEFORE everything. Every item added after v1.39.2 - history (v1.64),
+     podcasts (v1.71), music/books/downloads (v1.72/v1.73) - therefore
+     rendered to the LEFT of Home, which is exactly the symptom Dean
+     reported; and because CSS `order` beats DOM order outright, the v1.44
+     T12 reorder feature could not move any of those seven items at all.
+     The ladder's original rationale (injection timing makes DOM order
+     vary) has been obsolete since v1.44: both async injectors re-call
+     applyBottomNavCustomization after inserting their item, so the
+     resolved DOM order is deterministic no matter when they land. */
 
   /* ---- Mobile app shell: header restructure ----------------------------
      Top-left logo + full-width search below it; header-right (Settings +

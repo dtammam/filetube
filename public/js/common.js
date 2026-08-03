@@ -9641,6 +9641,11 @@ if (typeof module !== 'undefined' && module.exports) {
     BOTTOM_NAV_OPTIONAL,
     BOTTOM_NAV_COMPAT_HEAD, BOTTOM_NAV_COMPAT_TAIL,
     likedScopeQuery,
+    // v1.75: the bar's ORDER is now decided in JS alone (the v1.39.2 CSS
+    // `order:` ladder is gone), so the DOM pass that applies it is bound at
+    // the DOM by test/unit/bottom-nav-order-authority.test.js - a resolver
+    // test alone would only prove the decision, never its use.
+    applyBottomNavCustomization, readBottomNavConfig, writeBottomNavConfig,
     pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
     deriveOrderedIds, computeNeighbors, parentFolder,

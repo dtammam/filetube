@@ -530,7 +530,7 @@
           <label>Bottom bar (mobile)</label>
           <div id="bottombar-editor"><!-- rows rendered by setup.js --></div>
           <small style="color: var(--text-secondary); margin-top:6px; display:block;">
-            Show/hide and reorder the optional items in the mobile bottom bar. Home stays first and Settings stays last. Some items (Subscriptions, Download) only appear when their feature is enabled. Device-local.
+            Show/hide and reorder every item in the mobile bottom bar - Home, Liked and Settings included. Keep at least one item showing. Some items (Subscriptions, Download) only appear when their feature is enabled. Device-local.
           </small>
         </div>
 
@@ -795,6 +795,10 @@
     <a href="/" class="bottom-nav-item" data-nav="home">
       <i class="icon-home"></i>
       <span class="bottom-nav-label">Home</span>
+    </a>
+    <a href="/?liked=1" class="bottom-nav-item" data-nav="liked" hidden>
+      <i class="icon-star"></i>
+      <span class="bottom-nav-label">Liked</span>
     </a>
     <button type="button" class="bottom-nav-item" data-nav="playlists" id="nav-playlists-btn">
       <i class="icon-folder"></i>

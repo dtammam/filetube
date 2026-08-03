@@ -611,7 +611,11 @@ function wireHomeRowToggle(id, key, signal) {
 // (labels below), each with a Show toggle + up/down reorder, driving the
 // device-local config through common.js's exposed helpers. applyBottomNav-
 // Customization re-renders the live bar immediately.
-const BOTTOMBAR_LABELS = { playlists: 'Playlists', history: 'History', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark', podcasts: 'Podcasts', music: 'Music', books: 'Books', downloads: 'Downloads' };
+// v1.75: home + liked + settings joined the roster when the fixed anchors
+// retired, so all twelve ids need a label here. The unit suite binds this map
+// against common.js's live roster - an id without a label would otherwise
+// render as its raw slug in Dean's Settings panel.
+const BOTTOMBAR_LABELS = { home: 'Home', liked: 'Liked', playlists: 'Playlists', history: 'History', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark', podcasts: 'Podcasts', music: 'Music', books: 'Books', downloads: 'Downloads', settings: 'Settings' };
 // ---- v1.67: the card-corner editor (plan D9) --------------------------------
 //
 // Three pickers (Top left / Top right / Bottom left) in the Appearance box.
@@ -728,16 +732,26 @@ function renderBottomBarEditor(signal) {
   if (!host || !FT || !FT.readBottomNavConfig) return;
   const optional = FT.BOTTOM_NAV_OPTIONAL || [];
   const cfg = FT.readBottomNavConfig();
-  const hidden = new Set(Array.isArray(cfg.hidden) ? cfg.hidden : []);
-  const shown = new Set(Array.isArray(cfg.shown) ? cfg.shown : []);
-  // v1.71 default-hidden items (podcasts): unchecked until `shown` opts in.
-  const defaultHidden = new Set(FT.BOTTOM_NAV_DEFAULT_HIDDEN || []);
-  const order = Array.isArray(cfg.order) ? cfg.order : [];
-  // Config order first, then any unlisted optionals in their default order.
-  const seen = new Set();
-  const items = [];
-  order.forEach((id) => { if (optional.indexOf(id) >= 0 && !seen.has(id)) { items.push(id); seen.add(id); } });
-  optional.forEach((id) => { if (!seen.has(id)) { items.push(id); seen.add(id); } });
+  // v1.75: the row order is the RESOLVER's resolved sequence, never a second
+  // ordering walk of our own. The editor used to re-derive it (config order,
+  // then unlisted roster order), which was fine while home/settings sat
+  // outside the roster - but the moment they joined, that walk listed both at
+  // the BOTTOM for any existing config (whose `order` cannot name them), and
+  // one tap of a reorder button would then have written that as the real
+  // order and thrown Home to the end of the user's bar. Asking the resolver
+  // makes the panel's list and the bar's sequence the same answer by
+  // construction, compat fallbacks included.
+  const layout = FT.resolveBottomNavLayout
+    ? FT.resolveBottomNavLayout(optional, cfg)
+    : { sequence: optional.slice(), visible: optional.slice() };
+  const items = layout.sequence;
+  // Checked-ness comes from the SAME resolution, not from a second copy of the
+  // hidden/shown/default-hidden formula (the one-decision-function rule). It
+  // also keeps the panel honest in the one case the two could disagree: a
+  // hand-edited config that hides everything renders the DEFAULT bar, and the
+  // panel now shows the default bar's ticks rather than twelve empty boxes
+  // over a visibly populated bar.
+  const visibleSet = new Set(layout.visible);
 
   host.innerHTML = '';
   items.forEach((id, index) => {
@@ -756,7 +770,7 @@ function renderBottomBarEditor(signal) {
     toggle.style.cssText = 'display:flex; align-items:center; gap:var(--space-3); font-weight:normal;';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
-    cb.checked = !hidden.has(id) && (!defaultHidden.has(id) || shown.has(id));
+    cb.checked = visibleSet.has(id);
     toggle.appendChild(cb);
     toggle.appendChild(document.createTextNode('Show'));
 
@@ -769,6 +783,16 @@ function renderBottomBarEditor(signal) {
       if (cb.checked) { h.delete(id); sh.add(id); } else { h.add(id); sh.delete(id); }
       c.hidden = Array.from(h);
       c.shown = Array.from(sh);
+      // v1.75 FLOOR (ruling R2): with Home and Settings hidable, the last
+      // un-check would leave a fixed, empty, un-navigable strip. Refuse it
+      // here rather than writing a config the resolver then has to override -
+      // `flooredToDefault` is precisely "this config empties the bar", asked
+      // of the same function that would have to clean up after it.
+      if (FT.resolveBottomNavLayout && FT.resolveBottomNavLayout(optional, c).flooredToDefault === true) {
+        cb.checked = true; // put the tick back; nothing is persisted
+        showToast('Keep at least one item in the bottom bar.');
+        return;
+      }
       FT.writeBottomNavConfig(c);
       if (FT.applyBottomNavCustomization) FT.applyBottomNavCustomization();
     }, { signal });
@@ -2168,5 +2192,9 @@ if (typeof module !== 'undefined' && module.exports) {
     transcodeNamesSuffix, escapeTrashHtml, trashDaysLeftLabel, formatTrashSize, buildTrashRowHtml,
     // v1.67: the card-corner editor (drawn pieces are jsdom-tested).
     buildCornerEditorOptions, CARD_CORNER_LABELS, CORNER_EDITOR_SLOTS, renderCardCornerEditor,
+    // v1.75: the bottom-bar editor is jsdom-tested the same way - its ROW
+    // ORDER, its label coverage and its >=1-visible floor are all behaviour
+    // no constant can stand in for.
+    renderBottomBarEditor, BOTTOMBAR_LABELS,
   };
 }
