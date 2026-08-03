@@ -514,7 +514,10 @@
         delIcon.className = 'icon-delete';
         delBtn.appendChild(delIcon);
         // The two-tap honesty survives the glyph swap: arming widens the
-        // circle into a pill and reveals the copy (the card-delete pattern).
+        // circle into a pill and reveals the copy (the card-delete REVEAL
+        // styling only - unlike armCardDelete there is NO auto-disarm
+        // timer and no single-armed invariant; an armed pill stays armed
+        // until the row rebuilds, same as the v1.71.0 text version).
         var delConfirm = document.createElement('span');
         delConfirm.className = 'podcast-ep-confirm';
         delConfirm.textContent = 'Move to trash?';

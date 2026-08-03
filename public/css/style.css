@@ -9248,7 +9248,8 @@ a.queue-upnext-next:hover {
    text buttons truncated the title). The played/like-toggle 28px circle
    chassis; the card corner controls' icon vocabulary. The delete keeps its
    two-tap honesty - arming widens the circle into a pill and reveals the
-   copy (the .card-delete-btn.armed pattern). */
+   copy (the .card-delete-btn.armed REVEAL styling; the js side has no
+   auto-disarm timer, see buildEpisodeRow). */
 .podcast-ep-action {
   appearance: none;
   border: 1px solid var(--border-color);
