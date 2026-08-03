@@ -80,6 +80,42 @@
 
 ## Shipped
 
+### v1.74.0 - Era-appropriate scrollbars (2026-08-03)
+
+Dean's ask: every scrollbar in the app was browser-default. Now the
+viewport and every inner scroller (queue, sheets, modals, reader)
+theme with the active era skin, consuming ONLY existing era-palette
+tokens (zero new token names, census ceiling held at 0): 2005 gets
+the chunky 16px hard-edged bordered thumb of its OS era, 2009 the
+same button-face at 14px in the warm grays, 2014 a flat borderless
+bar, 2021 the modern floating pill (one border-radius: var(--radius-lg)
+declaration renders the right shape in all four eras). Dark mode
+follows automatically. Firefox rides the standard
+scrollbar-color/scrollbar-width pair inside an @supports guard that
+is load-bearing: Chromium 121+ discards ALL ::-webkit-scrollbar art
+when either standard property applies, so the guard partitions the
+engines. iOS ignores webkit scrollbar styling entirely (native
+overlay bars) - this wave is DESKTOP-visible; macOS now renders
+always-visible styled bars (accepted as era-appropriate).
+
+Slim gate, 2 rounds, APPROVE: round 1 measured three real findings -
+my pairing lock did not bind (two surviving mutants: a deleted
+viewport-bar selector shipped green), the token census is
+SELECTOR-blind to [data-theme]-scoped consumer rules (a raw hex there
+passes --enforce at TOTAL 0; now ratcheted by a section-wide
+tokens-only lock in era-scrollbar-css.test.js, linter gap = tech-debt
+#103), and Firefox inner scrollers missed the thin width because
+scrollbar-width does not inherit. All findings applied; delta round
+re-measured every mutant dead. Known gaps, disclosed: #103 (the
+linter blindness, guarded in-test for this section only; named-color
+literals like `silver` evade both nets - exact parity with the
+linter's own governed-color regex), and Firefox-side styling is
+palette-only (no thumb borders/radius exist in the standard system).
+
+Dual-Node: 5904/5904 pass, 0 fail on BOTH v22.23.1 and v24.14.0
+(sequential, reviewer idle). Dean's device pass PENDING - a desktop
+browser is the probe surface for this wave, not the iPhone.
+
 ### v1.73.2 - Books gets its glyph + Dean's docs housekeeping (2026-08-03)
 
 Dean's polish find: Books was the last Library citizen wearing the
