@@ -123,5 +123,10 @@ test('v1.73.1 SOURCE-LOCK (slim-gate W2/C1): all six synthetic-threading sites a
   const commonSrc = read('common.js');
   assert.ok(commonSrc.includes('visibleSidebarFolders(folders, settings, syntheticFolders); // v1.73.1: sheet/sidebar parity'), 'the Playlists sheet threads (slim-gate W1)');
   assert.ok(commonSrc.includes('renderPlaylistsSheet(snapshot.folders, snapshot.folderSettings, snapshot.syntheticFolders)'), 'and its caller passes the snapshot half');
+  // Slim-gate round-2 residual, closed as the one-liner it was: the
+  // snapshot BUILDER is the ninth link - without this, deleting its
+  // syntheticFolders field silently restored the mobile dupe (full suite
+  // green, the seat measured it).
+  assert.ok(commonSrc.includes('syntheticFolders: Array.isArray(config.syntheticFolders) ? config.syntheticFolders : []'), 'the sheet snapshot BUILDER carries the field (the ninth link)');
   assert.ok(commonSrc.includes('[data-nav-sidebar="downloads"]'), 'the sheet MIRRORS the Downloads entry (removal without the mirror = no mobile access)');
 });
