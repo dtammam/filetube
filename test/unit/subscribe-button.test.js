@@ -3,7 +3,7 @@
 // [UNIT] v1.20.0 FR-1/FR-3 (T3) -- the watch-page Subscribe toggle's pure
 // decision helpers + the compact subscribe-confirm modal builder, all added
 // to public/js/common.js. See
-// docs/exec-plans/active/2026-07-08-v1.20-subscribe.md ("FR-1 -- subscribe
+// docs/exec-plans/completed/2026-07-08-v1.20-subscribe.md ("FR-1 -- subscribe
 // toggle + compact options modal" / "FR-3 -- hide when no channel / module
 // disabled") for the full design/rationale.
 //

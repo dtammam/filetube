@@ -1913,7 +1913,7 @@ function activeNavItem(pathname, search) {
 // ---- Optional yt-dlp subscriptions nav-link injection (D4, T5) ------------
 //
 // The /subscriptions page + its nav link only exist when the OPTIONAL yt-dlp
-// module is enabled (docs/exec-plans/active/2026-07-05-yt-dlp-integration-
+// module is enabled (docs/exec-plans/completed/2026-07-05-yt-dlp-integration-
 // module.md, locked decision D4). Rather than a CSS-hidden link that always
 // exists in the DOM, the link is injected ONLY on a genuine 2xx from the
 // capability probe below -- when the module is disabled the probe's route

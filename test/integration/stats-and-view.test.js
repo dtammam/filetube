@@ -1,7 +1,7 @@
 'use strict';
 
 // [INTEGRATION] C4 (v1.24 UX Round, Wave 3) -- `GET /api/stats` and
-// `POST /api/videos/:id/view`. See docs/exec-plans/active/
+// `POST /api/videos/:id/view`. See docs/exec-plans/completed/
 // 2026-07-09-v1.24-ux-round.md's Design -> C4 section and lib/stats.js's
 // header comment for the live-compute / additive-viewCount rationale.
 //

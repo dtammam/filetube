@@ -84,7 +84,7 @@ test('matchRootFolder: does not falsely match a sibling with a shared name prefi
 });
 
 // ---- FR-F (v1.12.0, yt-dlp module parity): cleanDisplayTitle ----------------
-// [UNIT] AC33/34/35/36/37 (see docs/exec-plans/active/2026-07-06-ytdlp-metube-parity.md).
+// [UNIT] AC33/34/35/36/37 (see docs/exec-plans/completed/2026-07-06-ytdlp-metube-parity.md).
 
 test('cleanDisplayTitle: strips a trailing bracketed 11-char yt-dlp id and turns underscores into spaces (AC33)', () => {
   assert.equal(cleanDisplayTitle('Title_With_Underscores [dQw4w9WgXcQ]'), 'Title With Underscores');

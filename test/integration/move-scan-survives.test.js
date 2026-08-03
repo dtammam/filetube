@@ -4,7 +4,7 @@
 // `getMediaId` invariant: watch progress for a MOVED item must SURVIVE the
 // next scan unchanged, under its NEW (path-derived) id -- never look like a
 // delete (old id pruned, progress lost) + a brand-new add (new id, no
-// history). See docs/exec-plans/active/2026-07-09-v1.24-ux-round.md's Design
+// history). See docs/exec-plans/completed/2026-07-09-v1.24-ux-round.md's Design
 // -> "Load-bearing grounding fact" section.
 //
 // Isolated DATA_DIR before requiring the app, own process per file

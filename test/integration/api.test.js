@@ -76,7 +76,7 @@ test('GET /api/scan-status reports scan/library counts', async () => {
 });
 
 // v1.30 A5 (T6): `/api/videos` returns `{ items, total, offset, limit }`,
-// not a bare array (API CHANGE -- see docs/exec-plans/active/
+// not a bare array (API CHANGE -- see docs/exec-plans/completed/
 // 2026-07-11-v1.30-scale-perf-and-polish.md "### A5").
 test('GET /api/videos returns a paginated { items, total, offset, limit } shape', async () => {
   const res = await fetch(`${base}/api/videos`);
@@ -268,7 +268,7 @@ test('DELETE /api/videos/:id returns 500 JSON (not a hang) when the db-metadata 
 });
 
 // ---- Item 5 (v1.13 polish): graceful DELETE on read-only/permission-denied ----
-// ---- mounts -- see docs/exec-plans/active/2026-07-06-v1.13-polish.md item 5 --
+// ---- mounts -- see docs/exec-plans/completed/2026-07-06-v1.13-polish.md item 5 --
 
 function seedDeleteTarget(id, filePath) {
   fs.writeFileSync(filePath, 'video-bytes');

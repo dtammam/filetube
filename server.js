@@ -8682,7 +8682,7 @@ app.post('/api/cache/clear', (req, res) => {
 //
 // v1.30 A5 (T6, API CHANGE): paginated + server-authoritative sort/filter.
 // Response shape changed from a bare array to `{ items, total, offset,
-// limit }` -- see docs/exec-plans/active/2026-07-11-v1.30-scale-perf-and-
+// limit }` -- see docs/exec-plans/completed/2026-07-11-v1.30-scale-perf-and-
 // polish.md ("### A5 -- pagination contract") and ARCHITECTURE.md. Pipeline:
 // getCachedDatabase() -> hidden-folder filter (home only, unchanged) ->
 // search -> root/folder filter -> format filter -> sort the FULL filtered

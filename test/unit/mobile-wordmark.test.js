@@ -3,7 +3,7 @@
 // v1.14.0 item 2 -- the mobile top-left brand mark must match desktop: the
 // same "FileTube" text wordmark (.logo), not a separate favicon-icon
 // (.mobile-logo). Static markup/CSS checks (the visual result is Dean's
-// on-device arbiter, per docs/exec-plans/active/2026-07-06-v1.14-quickwins.md).
+// on-device arbiter, per docs/exec-plans/completed/2026-07-06-v1.14-quickwins.md).
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
