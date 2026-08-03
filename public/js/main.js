@@ -233,23 +233,82 @@ function resolveCardCornerPrefs(settings) {
 // Attribute shapes are byte-compatible with the pre-v1.67 inline template
 // (plus the appended corner class) so every delegated handler and CSS state
 // rule keeps matching.
+// v1.72 (#94): the kind dispatch for a mixed-kind Liked card. A shaped
+// non-media item (kind 'podcast' | 'track', 'book' rides the books commit)
+// renders through the SAME video-card markup and classes - only the
+// destination, art route, byline and applicable corner controls differ.
+// Returns null for kind 'media'/absent kind: the media path stays
+// byte-identical (kind is CARRIED by the server, never inferred here).
+function cardKindPresentation(item) {
+  const kind = item && typeof item.kind === 'string' ? item.kind : 'media';
+  if (kind === 'media') return null;
+  const encId = encodeURIComponent(item && item.id != null ? String(item.id) : '');
+  if (kind === 'podcast') {
+    return {
+      kind,
+      href: '/podcasts?play=' + encId,
+      thumbSrc: '/podcastart/' + encodeURIComponent(item.subId != null ? String(item.subId) : ''),
+      uploaderLabel: item.showName || 'Podcast',
+      uploaderHref: '/podcasts',
+      downloadHref: '/episode/' + encId + '?download=1',
+      // Queue rides the v1.71 'podcast' entry kind; delete/share/reheat are
+      // media affordances (episode delete lives in the podcasts place).
+      canQueue: true
+    };
+  }
+  if (kind === 'track') {
+    return {
+      kind,
+      href: '/music?play=' + encId,
+      thumbSrc: '/albumart/' + encId,
+      uploaderLabel: item.artist || 'Music',
+      uploaderHref: '/music',
+      downloadHref: '/track/' + encId + '?download=1',
+      canQueue: false // tracks are not a queue entry kind (audit cap 3, music)
+    };
+  }
+  if (kind === 'book') {
+    return {
+      kind,
+      href: '/read.html?b=' + encId,
+      thumbSrc: '/bookcover/' + encId,
+      uploaderLabel: item.author || 'Books',
+      uploaderHref: '/books',
+      downloadHref: '/book/' + encId + '/file?download=1',
+      canQueue: false // books do not queue (Dean's ruling 7)
+    };
+  }
+  return null;
+}
+
 function buildCardCornerControlHtml(control, cornerClass, item, caps) {
   const id = escapeBookRowHtml(item.id);
+  const kp = cardKindPresentation(item);
+  const kindAttr = kp ? ` data-kind="${escapeBookRowHtml(kp.kind)}"` : '';
   switch (control) {
     case 'download':
+      // A non-media save rides its kind's ?download=1 route; the server's
+      // Content-Disposition names the file, so the download attr is bare.
+      if (kp) {
+        return `<a class="card-download-btn ${cornerClass}" href="${escapeBookRowHtml(kp.downloadHref)}" download aria-label="Save to device" title="Save to device">
+              <i class="icon-download"></i>
+            </a>`;
+      }
       return `<a class="card-download-btn ${cornerClass}" href="${buildCardDownloadHref(item.id)}" download="${escapeBookRowHtml(buildCardDownloadFilename(item.title, item.ext))}" aria-label="Save to device" title="Save to device">
               <i class="icon-download"></i>
             </a>`;
     case 'delete':
+      if (kp) return ''; // the card delete verb is DELETE /api/videos/:id - media only
       return `<button type="button" class="card-delete-btn ${cornerClass}" data-id="${id}" aria-label="Delete this video">
               <i class="icon-delete"></i><span class="card-delete-confirm">Sure?</span>
             </button>`;
     case 'like':
-      return `<button type="button" class="card-like-btn${item.liked ? ' liked' : ''} ${cornerClass}" data-id="${id}" aria-label="${item.liked ? 'Unlike' : 'Like'}" aria-pressed="${item.liked ? 'true' : 'false'}" title="Like">
+      return `<button type="button" class="card-like-btn${item.liked ? ' liked' : ''} ${cornerClass}" data-id="${id}"${kindAttr} aria-label="${item.liked ? 'Unlike' : 'Like'}" aria-pressed="${item.liked ? 'true' : 'false'}" title="Like">
               <i class="icon-heart"></i>
             </button>`;
     case 'queue':
-      return `<button type="button" class="card-queue-btn ${cornerClass}" data-id="${id}" aria-label="Add to queue" title="Add to queue">
+      if (kp && !kp.canQueue) return '';
+      return `<button type="button" class="card-queue-btn ${cornerClass}" data-id="${id}"${kindAttr} aria-label="Add to queue" title="Add to queue">
               <i class="icon-queue"></i>
             </button>`;
     case 'share':
@@ -263,6 +322,8 @@ function buildCardCornerControlHtml(control, cornerClass, item, caps) {
     case 'reheat':
       // Applies only when the yt-dlp module capability is affirmatively
       // enabled (=== true, matching the watch page's module-health gate).
+      // Never on a non-media card - the repull endpoint is a media verb.
+      if (kp) return '';
       if (!caps || caps.reheatEnabled !== true) return '';
       return `<button type="button" class="card-reheat-btn ${cornerClass}" data-id="${id}" aria-label="Reheat this video's metadata" title="Reheat">
               <i class="icon-flame"></i>
@@ -318,6 +379,7 @@ if (typeof module !== 'undefined' && module.exports) {
     homeRowEnabled,
     resolveCardCornerPrefs,
     buildCardCornerButtonsHtml,
+    cardKindPresentation,
     CARD_CORNER_CONTROLS,
   };
 }
@@ -978,6 +1040,10 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     function buildCardHtml(item) {
+      // v1.72 (#94): a mixed-kind Liked item renders through this SAME
+      // template - identical classes, so tile and list view CSS apply
+      // unchanged - with only destination/art/byline swapped per kind.
+      const kp = cardKindPresentation(item);
       const views = resolveViewCountLabel(item);
       const relativeTime = formatRelativeTime(item.addedAt);
       // v1.40.0 (Dean, superseding the v1.36.2 `list=liked`-only carry): carry
@@ -989,7 +1055,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // setupPrevNext). Empty ctx (nothing meaningful to carry) -> bare URL ->
       // the folder-scoped fallback, byte-identical to pre-v1.40.0.
       const ctxParam = currentBrowseContextParam();
-      const watchHref = `/watch.html?v=${item.id}${ctxParam ? '&ctx=' + encodeURIComponent(ctxParam) : ''}`;
+      // A non-media card's destination is its kind's own surface (the ctx
+      // contract is a watch-page/media concept and never rides along).
+      const watchHref = kp ? kp.href : `/watch.html?v=${item.id}${ctxParam ? '&ctx=' + encodeURIComponent(ctxParam) : ''}`;
       // Author/channel resolved the same way as the watch page (see common.js).
       const channelName = resolveChannelName(item, folderSettings);
       // Deterministic 3–5 star rating — the same value shows on this item's watch page.
@@ -1014,7 +1082,7 @@ if (typeof module !== 'undefined' && module.exports) {
         <div class="video-card">
           <div class="card-media">
             <a href="${watchHref}" class="thumbnail-container">
-              <img class="thumbnail-img" src="/thumbnail/${item.id}" alt="${escapeHtml(item.title)}" loading="lazy" />
+              <img class="thumbnail-img" src="${kp ? kp.thumbSrc : `/thumbnail/${item.id}`}" alt="${escapeHtml(item.title)}" loading="lazy" />
               ${durationBadge}
               ${progressBar}
             </a>
@@ -1025,7 +1093,9 @@ if (typeof module !== 'undefined' && module.exports) {
               ${escapeHtml(item.title)}
             </a>
             <div class="video-uploader">
-              <a href="/?folder=${encodeURIComponent(item.folderName)}">${escapeHtml(channelName)}</a>
+              ${kp
+                ? `<a href="${kp.uploaderHref}">${escapeHtml(kp.uploaderLabel)}</a>`
+                : `<a href="/?folder=${encodeURIComponent(item.folderName)}">${escapeHtml(channelName)}</a>`}
             </div>
             <div class="video-meta">
               <span>${views}</span> &bull; <span>${relativeTime}</span>
@@ -1636,13 +1706,24 @@ if (typeof module !== 'undefined' && module.exports) {
       btn.setAttribute('aria-label', liked ? 'Unlike' : 'Like');
       btn.setAttribute('title', liked ? 'Unlike' : 'Like');
     }
+    // v1.72 (#94): the per-kind membership endpoints. Each kind's liked
+    // carrier keeps its own route family (the existing lanes stay the write
+    // authorities); a card button carries data-kind so the toggle dispatches
+    // without inferring anything from the id.
+    function cardLikeEndpoint(kind, id) {
+      const encId = encodeURIComponent(id);
+      if (kind === 'podcast') return '/api/podcasts/episodes/' + encId + '/liked';
+      if (kind === 'track') return '/api/music/liked/' + encId;
+      if (kind === 'book') return '/api/books/liked/' + encId;
+      return '/api/liked/' + encId;
+    }
     async function toggleCardLike(btn) {
       const id = btn.dataset.id;
       if (!id || btn.disabled) return;
       const currentlyLiked = btn.classList.contains('liked');
       btn.disabled = true;
       try {
-        const res = await fetch('/api/liked/' + encodeURIComponent(id), { method: currentlyLiked ? 'DELETE' : 'POST' });
+        const res = await fetch(cardLikeEndpoint(btn.dataset.kind, id), { method: currentlyLiked ? 'DELETE' : 'POST' });
         if (!res.ok) throw new Error('like request failed: ' + res.status);
         const data = await res.json().catch(() => ({}));
         const nowLiked = typeof data.liked === 'boolean' ? data.liked : !currentlyLiked;
@@ -1689,7 +1770,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.63: add-to-queue rides the same delegation (common.js addToQueue
       // is THE one verb - toast + header-chrome refresh included).
       const cardQueueBtn = e.target.closest('.card-queue-btn');
-      if (cardQueueBtn) { e.preventDefault(); addToQueue(cardQueueBtn.getAttribute('data-id')); return; }
+      // v1.72: the kind rides the button (a mixed-kind Liked card queues a
+      // podcast episode under its own entry kind - addToQueue's third arg).
+      if (cardQueueBtn) { e.preventDefault(); addToQueue(cardQueueBtn.getAttribute('data-id'), undefined, cardQueueBtn.getAttribute('data-kind') || undefined); return; }
       // v1.67: the two NEW corner controls ride the same delegation. Share
       // runs common.js's ONE share decision (plan D6) with the item's title
       // for the sheet; the URL is the renderer-emitted data-share-url (the

@@ -156,3 +156,58 @@ test('item fields are attribute-escaped (id, title-derived filename, watchUrl)',
   assert.match(html, /data-id="a&quot;b&lt;c&gt;"/);
   assert.ok(!html.includes('"onmouseover="'), 'watchUrl quotes are escaped');
 });
+
+// ---- v1.72 (#94): the mixed-kind Liked card dispatch -------------------------
+
+const { cardKindPresentation } = require('../../public/js/main.js');
+
+test('v1.72: cardKindPresentation - media/absent kind is NULL (the media card path stays byte-identical)', () => {
+  assert.strictEqual(cardKindPresentation(ITEM), null, 'no kind field');
+  assert.strictEqual(cardKindPresentation({ ...ITEM, kind: 'media' }), null, 'explicit media kind');
+  assert.strictEqual(cardKindPresentation(null), null);
+});
+
+test('v1.72: cardKindPresentation - the podcast arm (place deep link, show art, episode download, queueable)', () => {
+  const kp = cardKindPresentation({ id: 'ep99', kind: 'podcast', subId: 'sub42', showName: 'My Show' });
+  assert.strictEqual(kp.href, '/podcasts?play=ep99');
+  assert.strictEqual(kp.thumbSrc, '/podcastart/sub42');
+  assert.strictEqual(kp.uploaderLabel, 'My Show');
+  assert.strictEqual(kp.uploaderHref, '/podcasts');
+  assert.strictEqual(kp.downloadHref, '/episode/ep99?download=1');
+  assert.strictEqual(kp.canQueue, true, 'episodes ride the v1.71 podcast entry kind');
+});
+
+test('v1.72: cardKindPresentation - the track arm (music deep link, album art, source download, NOT queueable)', () => {
+  const kp = cardKindPresentation({ id: 'trk7', kind: 'track', artist: 'Pink Floyd' });
+  assert.strictEqual(kp.href, '/music?play=trk7');
+  assert.strictEqual(kp.thumbSrc, '/albumart/trk7');
+  assert.strictEqual(kp.uploaderLabel, 'Pink Floyd');
+  assert.strictEqual(kp.downloadHref, '/track/trk7?download=1');
+  assert.strictEqual(kp.canQueue, false, 'tracks are not a queue entry kind (audit cap 3)');
+});
+
+test('v1.72: corner buttons on a PODCAST item - kind-routed download, NO delete, data-kind on like+queue', () => {
+  const ep = { id: 'ep99', kind: 'podcast', subId: 'sub42', title: 'Ep', liked: true };
+  const html = buildCardCornerButtonsHtml(ep, { cornerTL: 'download', cornerTR: 'delete', cornerBL: 'like' }, {});
+  assert.match(html, /href="\/episode\/ep99\?download=1"/, 'the download anchor rides the episode route');
+  assert.ok(!html.includes('card-delete-btn'), 'the card delete verb (DELETE /api/videos/:id) never renders on a non-media card');
+  assert.match(html, /card-like-btn liked[^>]*data-kind="podcast"/, 'the like toggle carries its kind');
+
+  const withQueue = buildCardCornerButtonsHtml(ep, { cornerTL: 'queue', cornerTR: 'none', cornerBL: 'none' }, {});
+  assert.match(withQueue, /card-queue-btn[^>]*data-kind="podcast"/, 'queue carries its entry kind');
+});
+
+test('v1.72: corner buttons on a TRACK item - queue assigned renders NOTHING; reheat never renders even with caps on', () => {
+  const trk = { id: 'trk7', kind: 'track', artist: 'A', title: 'T', liked: false };
+  const html = buildCardCornerButtonsHtml(trk, { cornerTL: 'queue', cornerTR: 'reheat', cornerBL: 'download' }, { reheatEnabled: true });
+  assert.ok(!html.includes('card-queue-btn'), 'tracks cannot join the queue (no track entry kind)');
+  assert.ok(!html.includes('card-reheat-btn'), 'reheat is a media (yt-dlp) verb');
+  assert.match(html, /href="\/track\/trk7\?download=1"/);
+});
+
+test('v1.72: a MEDIA item (no kind) renders the corner markup byte-identically to the pre-wave shape', () => {
+  const html = buildCardCornerButtonsHtml(ITEM, defaults(), {});
+  assert.ok(!html.includes('data-kind'), 'no kind attribute ever leaks onto a media card');
+  assert.match(html, /href="\/video\/vid1\?download=1"/);
+  assert.match(html, /class="card-delete-btn card-corner-tr"/);
+});
