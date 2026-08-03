@@ -9535,19 +9535,10 @@ a.queue-upnext-next:hover {
   border-color: var(--yt-red);
 }
 
-/* v1.71: the Liked lane's grid card - the show-card chassis; its title
-   carries the heart red so the lane reads as a lane, not another show. */
-.podcast-liked-card .podcast-card-title {
-  color: var(--yt-red);
-}
-.podcast-liked-card-art {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-secondary);
-  color: var(--yt-red);
-  font-size: var(--fs-4xl);
-}
+/* v1.75: the v1.71 Liked-lane card rules (.podcast-liked-card /
+   .podcast-liked-card-art) are DELETED with the lane itself - the central
+   /?liked=1 playlist is the one Liked surface. A rule left behind for a
+   className nothing mints is dead weight the next reader has to disprove. */
 
 /* The management row on a show's drill-in (v1.69 QA gate #3). */
 .podcast-manage-row { display: flex; gap: var(--space-4); flex-wrap: wrap; align-items: center; margin-top: var(--space-3); }

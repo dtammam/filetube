@@ -170,6 +170,33 @@ test('v1.72: every bottom-nav shell carries the music + books items, hidden unti
   }
 });
 
+// ---- v1.75: the per-kind Liked lane is GONE (Dean: "It all gets centralized
+// ---- under the one central Liked") -----------------------------------------
+
+test('v1.75 REMOVAL: the podcasts place has no Liked lane left - not the pseudo-show, not the card, not the opener', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../../public/js/podcasts.js'), 'utf8');
+  for (const symbol of ['__liked__', '__likedLane', 'LIKED_LANE', 'buildLikedCard', 'openLiked', 'likedCount', 'podcast-liked-card']) {
+    assert.ok(!src.includes(symbol), `'${symbol}' survives the lane removal`);
+  }
+  // The count-gate fetch that existed ONLY to decide whether to draw the card
+  // goes with it - the grid must not still pay for a card it never draws.
+  assert.ok(!src.includes("'/api/podcasts/liked'"), 'the lane-gating count fetch is gone from the place');
+  // And the CSS the card used is gone too (a className with no rule is a
+  // defect; a rule with no className is dead weight - CONTRIBUTING, rule 3).
+  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+  assert.ok(!/\.podcast-liked-card[^-\w]/.test(css.replace(/\/\*[\s\S]*?\*\//g, '')), 'the lane card CSS rules are gone');
+});
+
+test('v1.75 REMOVAL OVERREACH GUARD: the episode-row HEART still writes, so the central Liked still gains/loses episodes', () => {
+  // The lane was the READ surface; the heart is the WRITE surface and Dean's
+  // ruling R1 keeps it. Removing one must not touch the other.
+  const src = fs.readFileSync(path.join(__dirname, '../../public/js/podcasts.js'), 'utf8');
+  assert.ok(src.includes("'/api/podcasts/episodes/' + encodeURIComponent(ep.id) + '/liked'"), 'the per-episode like endpoint is still called');
+  assert.ok(src.includes("{ method: next ? 'POST' : 'DELETE' }"), 'both directions still ride it');
+  assert.ok(src.includes("likeBtn.className = 'podcast-like-toggle'"), 'the heart control is still built on every episode row');
+  assert.ok(src.includes("likeBtn.setAttribute('aria-pressed', next ? 'true' : 'false')"), 'and still reports its state');
+});
+
 // ---- v1.72 (intake ruling 5): show pins ride every pin surface --------------
 
 test('v1.72 SOURCE-LOCK: the pin dispatch carries the podcasts source through fetch/delete/reorder/source-of', () => {
