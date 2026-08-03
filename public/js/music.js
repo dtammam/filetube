@@ -74,6 +74,14 @@ function buildSongRowHtml(item, index) {
     '<span class="music-song-sub">' + escapeMusicHtml(item.artist || '') + (item.album ? ' · ' + escapeMusicHtml(item.album) : '') + '</span>' +
     '</span>' +
     '<span class="music-song-duration">' + escapeMusicHtml(dur) + '</span>' +
+    // v1.72 (cap 7): per-track save-to-device - the like button's chassis,
+    // an anchor at the stream route's ?download=1 arm (original bytes; the
+    // server names the file via Content-Disposition). stopPropagation is
+    // not needed: an <a> click navigates the browser's download machinery,
+    // and the row-play delegation ignores clicks on .music-download-btn.
+    '<a class="music-like-btn music-download-btn" href="/track/' + encodeURIComponent(item.id) + '?download=1" download title="Save to device" aria-label="Save to device">' +
+    '<i class="icon-download"></i>' +
+    '</a>' +
     '<button type="button" class="music-like-btn' + (liked ? ' liked' : '') + '" data-like-id="' + escapeMusicHtml(item.id) + '" title="' + (liked ? 'Unlike' : 'Like') + '" aria-label="' + (liked ? 'Unlike' : 'Like') + '">' +
     '<i class="icon-heart"></i>' +
     '</button>' +
@@ -540,6 +548,11 @@ if (typeof module !== 'undefined' && module.exports) {
         render().catch(function () {});
         return;
       }
+      // v1.72: the save anchor rides the like button's chassis class - let
+      // the browser's native download navigation run (no preventDefault),
+      // and never fall through to the like toggle or the row-play path.
+      var dlBtn = e.target.closest('.music-download-btn');
+      if (dlBtn) return;
       var likeBtn = e.target.closest('.music-like-btn');
       if (likeBtn) {
         e.preventDefault();

@@ -3272,11 +3272,15 @@ function injectHistoryNavLinkIfEnabled() {
 const BOTTOM_NAV_FIXED_FIRST = 'home';
 const BOTTOM_NAV_FIXED_LAST = 'settings';
 // The optional items a user may reorder/hide (must carry a data-nav id).
-const BOTTOM_NAV_OPTIONAL = ['playlists', 'history', 'subscriptions', 'oneoff-download', 'theme', 'podcasts'];
+// v1.72 (cap 2): music + books join - every first-class kind has a
+// bottom-bar item.
+const BOTTOM_NAV_OPTIONAL = ['playlists', 'history', 'subscriptions', 'oneoff-download', 'theme', 'podcasts', 'music', 'books'];
 // v1.71: items that are OFF unless the user explicitly turns them on (the
 // config's `shown` list). A default-hidden item ships in every shell's DOM
-// but never appears until Settings enables it - Dean's ruling for podcasts.
-const BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts'];
+// but never appears until Settings enables it - Dean's ruling for podcasts,
+// and v1.72 gives music/books the same opt-in posture (nobody's bar changes
+// under them on upgrade).
+const BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts', 'music', 'books'];
 
 // Pure: given the bottom-nav item ids ACTUALLY present in the DOM and the
 // user's config, return the final visible order (home first, settings last,

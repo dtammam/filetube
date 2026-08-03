@@ -7816,6 +7816,9 @@ body.ft-css-fullscreen .bottom-nav {
   flex-shrink: 0;
 }
 .music-like-btn.liked { color: var(--yt-red); }
+/* v1.72: the song-row save-to-device anchor rides the like-button chassis;
+   an <a> needs its default underline stripped to sit as a peer control. */
+.music-download-btn { text-decoration: none; }
 
 /* v1.44.2 (Spotify feel): the currently-playing row. Accent + a CSS equalizer
    glyph (3 animated bars) overlaid on the thumb — NEVER an emoji codepoint

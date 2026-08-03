@@ -57,8 +57,9 @@ test('T12: junk config is tolerated (treated as empty)', () => {
 
 const WITH_PODCASTS = ['home', 'playlists', 'history', 'podcasts', 'theme', 'settings'];
 
-test('v1.71: the roster names podcasts default-hidden', () => {
-  assert.deepEqual(BOTTOM_NAV_DEFAULT_HIDDEN, ['podcasts']);
+test('v1.71/v1.72: the roster names podcasts + music + books default-hidden', () => {
+  // v1.72 (cap 2): music + books joined with the same opt-in posture.
+  assert.deepEqual(BOTTOM_NAV_DEFAULT_HIDDEN, ['podcasts', 'music', 'books']);
 });
 
 test('v1.71: a present default-hidden item is INVISIBLE with an empty config and with every pre-v1.71 config shape', () => {

@@ -600,7 +600,7 @@ function wireHomeRowToggle(id, key, signal) {
 // (labels below), each with a Show toggle + up/down reorder, driving the
 // device-local config through common.js's exposed helpers. applyBottomNav-
 // Customization re-renders the live bar immediately.
-const BOTTOMBAR_LABELS = { playlists: 'Playlists', history: 'History', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark', podcasts: 'Podcasts' };
+const BOTTOMBAR_LABELS = { playlists: 'Playlists', history: 'History', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark', podcasts: 'Podcasts', music: 'Music', books: 'Books' };
 // ---- v1.67: the card-corner editor (plan D9) --------------------------------
 //
 // Three pickers (Top left / Top right / Bottom left) in the Appearance box.
