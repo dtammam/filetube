@@ -2,7 +2,7 @@
 
 // resolveAudioArtUrl lives in the browser common.js, which exposes it to Node
 // via a `typeof module` guard purely for this test. See
-// docs/exec-plans/active/2026-07-05-audio-art-and-related.md ("Feature 1")
+// docs/exec-plans/completed/2026-07-05-audio-art-and-related.md ("Feature 1")
 // for the full design/contract.
 const { test } = require('node:test');
 const assert = require('node:assert');

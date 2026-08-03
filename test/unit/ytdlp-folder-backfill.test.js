@@ -7,7 +7,7 @@
 // boot needed) alongside the end-to-end scan proof in
 // test/integration/ytdlp-folder-backfill.test.js.
 //
-// See docs/exec-plans/active/2026-07-08-v1.22-player-parity.md's
+// See docs/exec-plans/completed/2026-07-08-v1.22-player-parity.md's
 // "### FR-2 -- retroactive Subscribe-button backfill / creator re-association"
 // design section.
 

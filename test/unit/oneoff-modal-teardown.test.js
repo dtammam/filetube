@@ -2,7 +2,7 @@
 
 // [UNIT] v1.17.0 FR-6, T5 -- stuck one-off download modal teardown.
 //
-// Root cause (confirmed in docs/exec-plans/active/2026-07-06-v1.17-polish.md's
+// Root cause (confirmed in docs/exec-plans/completed/2026-07-06-v1.17-polish.md's
 // Design -> FR-6): `.oneoff-modal-backdrop` sets `display: flex` with NO
 // `[hidden]` override, so an author `display` rule beat the UA
 // `[hidden] { display: none }` rule -- `backdrop.hidden = true` (the entire

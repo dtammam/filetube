@@ -2,7 +2,7 @@
 
 // [INTEGRATION] C1 (v1.24 UX Round, Wave 3) -- `POST /api/videos/:id/move` +
 // `moveItemToFolder`. FOCUSED two-reviewer gate (path confinement + scan
-// interaction) -- see docs/exec-plans/active/2026-07-09-v1.24-ux-round.md's
+// interaction) -- see docs/exec-plans/completed/2026-07-09-v1.24-ux-round.md's
 // Design -> C1 section.
 //
 // Isolated DATA_DIR before requiring the app so this suite never reads or

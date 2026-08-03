@@ -636,7 +636,7 @@ function shouldArtSingleTapAct(state, onSingleTap) {
 }
 
 // ---- FR-1 (T1, v1.22.0 -- retired v1.22.1): mobile-form-factor pure helper -
-// See the exec plan's "## Design (FR-1)" (docs/exec-plans/active/
+// See the exec plan's "## Design (FR-1)" (docs/exec-plans/completed/
 // 2026-07-07-v1.22.1-mobile-player-fixes.md). Hoisted here, same "pure
 // helpers first" split as every other decision above, so it's directly
 // `node:test`-able with no DOM/browser harness.

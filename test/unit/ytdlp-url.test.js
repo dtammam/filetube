@@ -379,10 +379,11 @@ test('classifySingleVideo: never throws across a representative attack/edge-case
 });
 
 // ---- FR-5 (v1.16.0): share-URL validator robustness -- mandated security- --
-// ---- regression + acceptance tests (docs/exec-plans/active/2026-07-06-    --
-// ---- v1.16-watch-experience.md, "## Acceptance criteria" > FR-5). The     --
-// ---- real-world trigger is a YouTube share-sheet paste, which arrives as  --
-// ---- prose with an embedded URL and/or stray surrounding whitespace, e.g. --
+// ---- regression + acceptance tests (docs/exec-plans/completed/             --
+// ---- 2026-07-06-v1.16-watch-experience.md, "## Acceptance criteria" >     --
+// ---- FR-5). The real-world trigger is a YouTube share-sheet paste, which  --
+// ---- arrives as prose with an embedded URL and/or stray surrounding       --
+// ---- whitespace, e.g.                                                     --
 // ---- "Title\nhttps://youtu.be/<id>?si=<token>". validateChannelUrl now    --
 // ---- trims + (when whitespace remains) extracts the first `https?://\S+` --
 // ---- run as the candidate BEFORE the UNCHANGED strict validation runs on  --

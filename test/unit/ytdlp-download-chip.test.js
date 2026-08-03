@@ -936,7 +936,7 @@ test('T6 R1.3 confirmation: clicking Retry on a one-shot error row invokes onRet
 // exact pure gates `injectDownloadStatusChip`'s `render()` (common.js) reads
 // from, and the row-level DOM `updateDownloadChipItemRow`/
 // `updateDownloadChipPanel` actually produce, against each AC in the design
-// (docs/exec-plans/active/2026-07-11-v1.30-scale-perf-and-polish.md, "### B2
+// (docs/exec-plans/completed/2026-07-11-v1.30-scale-perf-and-polish.md, "### B2
 // -- active-downloads chip reframe"). `render()` itself is a closure-private
 // function (not exported -- same posture as `pollOnce`/`scheduleNextPoll`),
 // so these tests exercise it via its own documented, byte-identical gate:

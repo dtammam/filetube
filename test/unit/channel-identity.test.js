@@ -4,7 +4,7 @@
 // (public/js/common.js): `canonicalizeChannelUrl`, `channelIdentityMatches`,
 // `resolveFileChannelIdentity`, and the `resolveChannelName` captured-name
 // precedence extension. See
-// docs/exec-plans/active/2026-07-08-v1.20-subscribe.md ("Matcher" + "Creator
+// docs/exec-plans/completed/2026-07-08-v1.20-subscribe.md ("Matcher" + "Creator
 // display precedence") for the full design/rationale. All pure/deterministic;
 // none throw on malformed/missing input.
 const { test } = require('node:test');

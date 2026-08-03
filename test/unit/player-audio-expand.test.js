@@ -5,7 +5,7 @@
 // existing `#fs-btn` (never the browser Fullscreen API, which iPhone Safari
 // refuses on non-video elements -- exactly why v1.22.1 FR-2 hid the
 // mobile-audio `#fs-btn` in the first place). See the exec plan's
-// "## Design (FR-1)" (docs/exec-plans/active/2026-07-07-v1.22.2-audio-
+// "## Design (FR-1)" (docs/exec-plans/completed/2026-07-07-v1.22.2-audio-
 // fullscreen.md).
 //
 // `resolveFsButtonAction` is the pure decision seam: `.audio-mode` ->

@@ -2,7 +2,7 @@
 
 // [INTEGRATION] v1.30.0 T8 (v1.30 Scale Performance + Polish Wave, B1/B7) --
 // "never silently drop a one-shot download's done-edge", proven end-to-end
-// across the 3 surfaces the design (docs/exec-plans/active/2026-07-11-v1.30-
+// across the 3 surfaces the design (docs/exec-plans/completed/2026-07-11-v1.30-
 // scale-perf-and-polish.md, "### B1 -- done-edge / dirty-flag") calls out,
 // against the REAL running app (real public/js/common.js + main.js +
 // watch.js, real SPA router, real chip poll loop -- nothing here re-derives
