@@ -509,6 +509,153 @@ summary,
   background-image: linear-gradient(to bottom, #34302a, #211d19);
 }
 
+/* ==== Era-appropriate scrollbars (v1.74.0) ==================================
+   Every scrollbar in the app (viewport + inner panels: queue, sheets, modals,
+   the reader) themes with the active era skin. All colors are era-palette
+   token consumers - no new tokens, no literals - so dark mode and every era
+   follow automatically.
+
+   Two engines, deliberately partitioned:
+   - WebKit/Blink (Chrome/Edge/Safari): the ::-webkit-scrollbar pseudo family
+     below - full track/thumb/border/radius art.
+   - Firefox: the standard scrollbar-color/scrollbar-width pair, inside the
+     @supports NOT block at the end of this section. THE GUARD IS LOAD-BEARING:
+     Chromium 121+ implements the standard properties too, and specifying
+     EITHER of them makes Chromium DISCARD all ::-webkit-scrollbar-* styling
+     for that subtree. `@supports not selector(::-webkit-scrollbar)` is true
+     only in Firefox, so each engine sees exactly one system. Locked by
+     test/unit/era-scrollbar-css.test.js.
+
+   data-theme lives on <html> (applyTheme -> documentElement), and the
+   VIEWPORT scrollbar belongs to <html> itself - so every era override pairs
+   the no-space form ([data-theme="X"]::-webkit-scrollbar, the root's own bar)
+   with the descendant form (inner panels). Base rules are bare pseudos and
+   hit both already.
+
+   Base == 2021 Modern (the :root safe-default contract, same as the token
+   layer): near-flush bar, floating pill thumb (--radius-lg = 12px clamps to
+   a pill at this width), gutterless track in the page background - the
+   modern-YouTube look. The thumb's transparent border + padding-box clip is
+   what floats it off the track edges; retro eras override the clip back to
+   border-box for a flush, hard-edged bar.
+
+   iOS uses native overlay scrollbars and ignores all of this (harmless);
+   on macOS, webkit-styled scrollbars render always-visible instead of
+   overlay - accepted: persistent scrollbars ARE the era-appropriate look,
+   and modern YouTube custom-paints its scrollbars the same way. */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-color);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-dark);
+  border-radius: var(--radius-lg); /* era shape for free: 2021 pill, 2005 square, 2009/2014 2px */
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+::-webkit-scrollbar-corner {
+  background: var(--bg-color);
+}
+
+/* 2005 Original: the chunky hard-edged OS scrollbar of the era - full-width
+   flush thumb drawn as a bordered button face on a visible recessed track. */
+[data-theme="2005"]::-webkit-scrollbar,
+[data-theme="2005"] ::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+[data-theme="2005"]::-webkit-scrollbar-track,
+[data-theme="2005"] ::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+[data-theme="2005"]::-webkit-scrollbar-thumb,
+[data-theme="2005"] ::-webkit-scrollbar-thumb {
+  background: var(--btn-bg);
+  border: 1px solid var(--border-dark);
+  background-clip: border-box;
+}
+[data-theme="2005"]::-webkit-scrollbar-thumb:hover,
+[data-theme="2005"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--btn-hover);
+}
+[data-theme="2005"]::-webkit-scrollbar-corner,
+[data-theme="2005"] ::-webkit-scrollbar-corner {
+  background: var(--bg-secondary);
+}
+
+/* 2009 Classic: same button-face construction, slightly slimmer, warm grays
+   and the era's 2px corner via the inherited --radius-lg. */
+[data-theme="2009"]::-webkit-scrollbar,
+[data-theme="2009"] ::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+[data-theme="2009"]::-webkit-scrollbar-track,
+[data-theme="2009"] ::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+[data-theme="2009"]::-webkit-scrollbar-thumb,
+[data-theme="2009"] ::-webkit-scrollbar-thumb {
+  background: var(--btn-bg);
+  border: 1px solid var(--border-dark);
+  background-clip: border-box;
+}
+[data-theme="2009"]::-webkit-scrollbar-thumb:hover,
+[data-theme="2009"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--btn-hover);
+}
+[data-theme="2009"]::-webkit-scrollbar-corner,
+[data-theme="2009"] ::-webkit-scrollbar-corner {
+  background: var(--bg-secondary);
+}
+
+/* 2014 Flat: borderless flat bar on a light track - the flat-design era.
+   Keeps the base 12px width; only the construction changes. */
+[data-theme="2014"]::-webkit-scrollbar-track,
+[data-theme="2014"] ::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+[data-theme="2014"]::-webkit-scrollbar-thumb,
+[data-theme="2014"] ::-webkit-scrollbar-thumb {
+  background: var(--border-dark);
+  border: 0;
+  background-clip: border-box;
+}
+[data-theme="2014"]::-webkit-scrollbar-thumb:hover,
+[data-theme="2014"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+[data-theme="2014"]::-webkit-scrollbar-corner,
+[data-theme="2014"] ::-webkit-scrollbar-corner {
+  background: var(--bg-secondary);
+}
+
+/* Firefox (no ::-webkit-scrollbar): the standard two-property system.
+   scrollbar-color inherits, so <html> covers every inner scroller; the era
+   selectors ARE <html> (attribute beats type, so they win the cascade).
+   MUST stay inside this guard - see the section header. */
+@supports not selector(::-webkit-scrollbar) {
+  html {
+    /* 2021 Modern base: thin thumb floating on the page background. */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-dark) var(--bg-color);
+  }
+  [data-theme="2005"],
+  [data-theme="2009"],
+  [data-theme="2014"] {
+    /* Retro eras: full-width bar (auto), visible track. Firefox exposes no
+       thumb borders/radius, so the era palette is the whole statement here. */
+    scrollbar-width: auto;
+    scrollbar-color: var(--border-dark) var(--bg-secondary);
+  }
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
