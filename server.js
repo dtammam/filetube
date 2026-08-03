@@ -61,7 +61,7 @@ const { buildWatchUrl, classifySingleVideo, isSafeVideoId, validateChannelUrl, e
 const { isYtdlpIntermediate } = require('./lib/ytdlpIntermediates');
 const { TRASH_DIR_NAME, computeTrashTarget } = require('./lib/trashPaths');
 // v1.37.0 books: the db.books namespace owner + the pure scanner core --
-// see docs/exec-plans/active/v1.37.0-books.md. Both are leaf modules over
+// see docs/exec-plans/completed/v1.37.0-books.md. Both are leaf modules over
 // deps this file already provides (loadDatabase/updateDatabase/getMediaId);
 // requiring them has no side effects (the ytdlp direct-require posture).
 const booksStore = require('./lib/books/store');
@@ -2632,7 +2632,7 @@ async function seedNotificationHistoryOnce(nowMs = Date.now()) {
 // and Synopsis line for every downloaded item. Dropping it here is a blanket
 // change (not conditioned on the file's source); a non-yt-dlp file carrying a
 // genuinely distinct synopsis tag will also no longer surface it -- an
-// accepted, narrow limitation (see docs/exec-plans/active/2026-07-06-v1.13-polish.md item 7).
+// accepted, narrow limitation (see docs/exec-plans/completed/2026-07-06-v1.13-polish.md item 7).
 const EMBEDDED_TAG_WHITELIST = [
   'title', 'artist', 'album', 'date', 'genre', 'composer',
   'description', 'comment', 'show', 'copyright',
@@ -5008,7 +5008,7 @@ async function scanDirRecursive(rootFolder, dirPath, results, unreadable, yieldS
       // v1.65: the trash directory is INVISIBLE to the walk -- a trashed
       // file must never re-index (the resurrection class), and this skip is
       // the only thing standing between the two (there is no other
-      // exclusion primitive; see docs/exec-plans/active/v1.65-trash.md).
+      // exclusion primitive; see docs/exec-plans/completed/2026-08-02-v1.65-trash.md).
       if (file.name === TRASH_DIR_NAME) continue;
       await scanDirRecursive(rootFolder, fullPath, results, unreadable, yieldState);
     } else if (file.isFile()) {
@@ -5977,7 +5977,7 @@ app.post('/api/scan', (req, res) => {
 // overlap/coalescing discipline, and cover storage under BOOKCOVER_DIR.
 // Everything degrades to a no-op on a books-less install (zero folders =
 // zero scans = zero db writes = the disabled-module posture ytdlp set).
-// Full design: docs/exec-plans/active/v1.37.0-books.md.
+// Full design: docs/exec-plans/completed/v1.37.0-books.md.
 
 let bookScanState = { scanning: false, lastScan: null, rescanRequested: false };
 // v1.37.0 gate fix (adversarial W4): the single deferred follow-up timer --
@@ -6837,7 +6837,7 @@ function settingsResponse(settings) {
 // mount-loss discipline, album art under ALBUMART_DIR, and per-user liked/
 // progress/resume through userStore. Everything degrades to a no-op on a
 // music-less install (zero folders = zero scans = zero db writes). Full
-// design: docs/exec-plans/active/v1.44-music-library.md.
+// design: docs/exec-plans/completed/v1.44-music-library.md.
 
 let musicScanState = { scanning: false, lastScan: null, rescanRequested: false };
 let deferredMusicRescanTimer = null;
@@ -9273,7 +9273,7 @@ app.delete('/api/videos/:id', async (req, res) => {
   const filePath = item.filePath;
   // Opt-in "remove from library anyway" -- only meaningful once the client has
   // already seen the read-only/permission-denied error below and asked us to
-  // proceed. See docs/exec-plans/active/2026-07-06-v1.13-polish.md item 5.
+  // proceed. See docs/exec-plans/completed/2026-07-06-v1.13-polish.md item 5.
   const removeAnyway = req.query.removeAnyway === 'true' || req.query.removeAnyway === '1';
   let fileRemainsOnDisk = false;
   // v1.65 note on the v1.41.3 verified/unverified distinction: the happy
@@ -10029,7 +10029,7 @@ app.delete('/api/trash/:id', async (req, res) => {
 
 // ---- C1 (v1.24 UX Round, Wave 3): move files between folders + id re-key --
 //
-// LOAD-BEARING GROUNDING FACT (docs/exec-plans/active/2026-07-09-v1.24-ux-round.md
+// LOAD-BEARING GROUNDING FACT (docs/exec-plans/completed/2026-07-09-v1.24-ux-round.md
 // Design section): `getMediaId(filePath)` is `md5(filePath)` -- the media id
 // is a hash of the PATH, not of content. Watch progress (`db.progress[id]`),
 // thumbnails (`THUMBNAIL_DIR/<id>.jpg`) and transcode sidecars
@@ -15055,7 +15055,7 @@ module.exports = {
   isYtdlpIntermediate,
   // Optional yt-dlp subscription module (v1.11.0) -- re-exported so tests can
   // observe the dormant-wiring no-op guarantee without a second require of
-  // lib/ytdlp (see AC1-9 in docs/exec-plans/active/2026-07-05-yt-dlp-integration-module.md).
+  // lib/ytdlp (see AC1-9 in docs/exec-plans/completed/2026-07-05-yt-dlp-integration-module.md).
   currentYtdlpPollTimer: ytdlp.currentYtdlpPollTimer,
   parseYtdlpConfig: ytdlp.parseYtdlpConfig,
   isEnabled: ytdlp.isEnabled,

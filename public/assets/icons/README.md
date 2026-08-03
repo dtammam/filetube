@@ -3,7 +3,7 @@
 FileTube's chrome iconography ships as three self-hosted, offline vector
 icon sets — plus a colorful emoji set defined directly in `style.css` (no
 SVG files) — selectable via the `data-icons` axis (see
-`docs/exec-plans/active/icon-sets.md`). Each vector set covers the same
+`docs/exec-plans/completed/icon-sets.md`). Each vector set covers the same
 14 `.icon-*` classes, is used as a CSS `mask-image`, and is painted with
 `currentColor`, so a single unmodified asset renders correctly in every
 FileTube theme (era × light/dark).
@@ -39,6 +39,7 @@ Apache-2.0 permits redistribution; these files are included unmodified.
 | `keyboard_arrow_up.svg` | `keyboard_arrow_up` | `.icon-arrow-up` |
 | `keyboard_arrow_down.svg` | `keyboard_arrow_down` | `.icon-arrow-down` |
 | `download.svg` | `download` | `.icon-download` |
+| `books.svg` | `menu_book` | Books library entry + bottom-nav item (v1.73.2; emoji set uses U+1F4DA) |
 | `shuffle.svg` | `shuffle` | `.icon-shuffle` |
 
 ## FileTube original — `flame.svg`

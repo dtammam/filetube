@@ -130,7 +130,7 @@ not failing.
 
 | What | Where |
 | ---- | ----- |
-| Narrative companion: communicating with Dean, repo-specific lessons | `docs/CLAUDE-WORKING-STYLE.md` |
+| Narrative companion: communicating with Dean, repo-specific lessons | `docs/references/CLAUDE-WORKING-STYLE.md` |
 | Current project state + hard-won lessons | Persistent memory (auto-loaded each session) |
 | Portable, repo-agnostic spec of this methodology | `docs/references/lean-mode-methodology.md` |
 | Active exec plans / tech debt | `docs/exec-plans/active/`, `docs/exec-plans/tech-debt-tracker.md` |

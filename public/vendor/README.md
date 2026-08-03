@@ -3,7 +3,7 @@
 Static CLIENT assets only — lazily loaded by the reader/books views, never
 executed server-side (the repo's no-new-server-runtime-deps posture is
 about the server; vendored client JS is the established precedent from
-docs/mobile-custom-player-findings.md). Each dir carries the upstream
+docs/references/mobile-custom-player-findings.md). Each dir carries the upstream
 LICENSE verbatim. Update by re-downloading the pinned dist from jsdelivr
 and bumping this table + the books-vendor-licenses source-lock test.
 

@@ -58,7 +58,7 @@
 //                                  rather than duplicating the storage key.
 //
 // ---- The docked-player state machine -------------------------------------
-// See docs/exec-plans/active/2026-07-06-v1.16-watch-experience.md, "The
+// See docs/exec-plans/completed/2026-07-06-v1.16-watch-experience.md, "The
 // docked-player state machine (FR-1)". The router's `applyPlayerTransition`
 // hook in common.js calls `dock()` whenever the user navigates AWAY from the
 // watch view (home/setup/subscriptions/etc.); entering/returning to the watch

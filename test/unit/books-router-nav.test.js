@@ -218,3 +218,29 @@ test('v1.37.3: epub.js is NEVER handed percentage dimensions -- explicit measure
   assert.ok(readSrc.includes('minSpreadWidth: 800'), 'phones stay strictly single-page; wide panes get two');
   assert.ok(readSrc.includes('rendition.resize(w, h)'), 'refit passes explicit measured pixels');
 });
+
+// ---- v1.73.2 (Dean): Books' own glyph ----------------------------------------
+
+test('v1.73.2 SOURCE-LOCK: Books wears icon-books everywhere - injector, sheet mirror, all nine shells, real mask asset + emoji entry', () => {
+  const pub = path.join(__dirname, '../../public');
+  const commonSrc = fs.readFileSync(path.join(pub, 'js/common.js'), 'utf8');
+  assert.ok(commonSrc.includes("injectLibraryNavEntry('books', '/books', 'Books', 'icon-books')"), 'the Library injector');
+  assert.ok(commonSrc.includes('<i class="icon-books"></i> Books'), 'the Playlists sheet mirror');
+  assert.ok(!commonSrc.includes('\'icon-folder\'); // v1.73.2'), 'no stale folder-icon books call survives');
+  const css = fs.readFileSync(path.join(pub, 'css/style.css'), 'utf8');
+  assert.ok(css.includes('.icon-books { -webkit-mask-image: url(/assets/icons/books.svg)'), 'a real mask rule');
+  assert.ok(css.includes('[data-icons="emoji"] .icon-books::before { content: "\\1F4DA"; }'), 'the emoji-set entry (no silent drop - the v1.73 W2 lesson)');
+  assert.ok(fs.existsSync(path.join(pub, 'assets/icons/books.svg')), 'the asset exists');
+  assert.ok(fs.readFileSync(path.join(pub, 'assets/icons/books.svg'), 'utf8').includes('<svg'), 'and is a real svg, not a corrupted husk (slim-gate S2)');
+  // Slim-gate W1: the two memberships the first lock left unbound - both
+  // survived the FULL suite as deletion mutants.
+  assert.match(css, /\.icon-podcast,\n\.icon-downloads,\n\.icon-books \{/, 'base sizing-group membership (dropped = zero-area icon in every mask set)');
+  assert.ok(css.includes('[data-icons="emoji"] .icon-books,'), 'emoji mask-STRIP membership (dropped = the documented colored-box-behind-the-emoji class)');
+  const shells = fs.readdirSync(pub).filter((f) => f.endsWith('.html'))
+    .filter((f) => fs.readFileSync(path.join(pub, f), 'utf8').includes('data-nav="books"'));
+  assert.ok(shells.length >= 9, `full shell roster (${shells.length})`);
+  for (const f of shells) {
+    const html = fs.readFileSync(path.join(pub, f), 'utf8');
+    assert.match(html, /data-nav="books" hidden>\s*<i class="icon-books"><\/i>/, `${f}: the bottom item wears the glyph`);
+  }
+});

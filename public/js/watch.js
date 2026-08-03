@@ -1390,7 +1390,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
         // Fuzzy-similar ranking (title/filename token overlap, shared folder,
         // shared channel/artist), falling back to most-recent when thin. See
-        // docs/exec-plans/active/2026-07-05-audio-art-and-related.md ("Feature 2").
+        // docs/exec-plans/completed/2026-07-05-audio-art-and-related.md ("Feature 2").
         const related = rankRelated({ ...mediaData, id: mediaId }, allFiles);
 
         // v1.52: the header appears together with its content (never over an

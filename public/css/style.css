@@ -3666,7 +3666,8 @@ a.sub-row-channel-link:focus-visible {
 .icon-history,
 .icon-queue,
 .icon-podcast,
-.icon-downloads {
+.icon-downloads,
+.icon-books {
   display: inline-block;
   width: 1em;
   height: 1em;
@@ -3749,6 +3750,9 @@ a.sub-row-channel-link:focus-visible {
    smart_display). Single asset for every mask set - the icon-podcast
    v1.69 posture. */
 .icon-downloads { -webkit-mask-image: url(/assets/icons/downloads.svg); mask-image: url(/assets/icons/downloads.svg); }
+/* v1.73.2 (Dean): Books gets its OWN glyph (Material menu_book) instead of
+   the generic folder - same single-asset posture. */
+.icon-books { -webkit-mask-image: url(/assets/icons/books.svg); mask-image: url(/assets/icons/books.svg); }
 
 /* Paint the icon fill only where CSS masks are supported, so a browser without
    mask support (or a failed/404 mask) renders nothing instead of a solid
@@ -3757,7 +3761,7 @@ a.sub-row-channel-link:focus-visible {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
   .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-download, .icon-shuffle,
-  .icon-flame, .icon-history, .icon-queue, .icon-podcast, .icon-downloads {
+  .icon-flame, .icon-history, .icon-queue, .icon-podcast, .icon-downloads, .icon-books {
     background-color: currentColor;
   }
 }
@@ -3770,7 +3774,7 @@ a.sub-row-channel-link:focus-visible {
    unscoped outlined mask block, @supports fill guard, and .icon-star above are
    UNTOUCHED — outlined (default/unset data-icons) needs no scoped rules here,
    it already renders via the unscoped block. See resolveIconSet() in
-   /js/common.js and docs/exec-plans/active/icon-sets.md. A scoped selector
+   /js/common.js and docs/exec-plans/completed/icon-sets.md. A scoped selector
    like [data-icons="rounded"] .icon-home is (0,2,0) specificity, beating both
    the unscoped (0,1,0) mask rule and the @supports (0,1,0) fill rule above —
    no !important needed. */
@@ -3828,6 +3832,7 @@ a.sub-row-channel-link:focus-visible {
 [data-icons="emoji"] .icon-arrow-down,
 [data-icons="emoji"] .icon-download,
 [data-icons="emoji"] .icon-downloads,
+[data-icons="emoji"] .icon-books,
 [data-icons="emoji"] .icon-shuffle {
   -webkit-mask-image: none;
   mask-image: none;
@@ -3846,6 +3851,7 @@ a.sub-row-channel-link:focus-visible {
    the "TV/play emoji" the ruling names; the mask sets keep the
    smart-display asset. */
 [data-icons="emoji"] .icon-downloads::before { content: "\1F4FA"; }
+[data-icons="emoji"] .icon-books::before { content: "\1F4DA"; } /* books stack - the Books library */
 
 [data-icons="emoji"] .icon-home::before      { content: "\1F3E0"; } /* 🏠 */
 [data-icons="emoji"] .icon-folder::before    { content: "\1F4C1"; } /* 📁 */
@@ -4670,7 +4676,7 @@ a.sub-row-channel-link:focus-visible {
 /* === v1.21 FR-2: player controls / audio-mode ===============================
    Custom app-owned control bar that replaces the native <audio>/<video
    controls> bar (unstyleable -- the pure-white-in-dark-mode + rounded/derpy
-   look, per docs/ui-research-2026-07.md #4). Drives BOTH audio and video
+   look, per docs/references/ui-research-2026-07.md #4). Drives BOTH audio and video
    (one shared #media-player). Every color below comes from the existing era
    CSS custom properties (:root / [data-theme] blocks at the top of this
    file) so light/dark + all four eras "just work" with zero new tokens (AC7).
@@ -4737,7 +4743,7 @@ a.sub-row-channel-link:focus-visible {
   cursor: pointer;
   /* Outset bevel: light top-left, dark bottom-right -- inverts to an inset
      "pressed" look on :active below (Winamp/beveled-hardware-button feel,
-     per docs/ui-research-2026-07.md's "beveled inset/outset bar" note). */
+     per docs/references/ui-research-2026-07.md's "beveled inset/outset bar" note). */
   box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.5), inset -1px -1px 0 rgba(0, 0, 0, 0.3); /* token-exempt: era skin art */
 }
 
@@ -4883,7 +4889,7 @@ a.sub-row-channel-link:focus-visible {
    Firefox: the native ::-moz-range-progress, which fills to `.value`
    automatically with no JS-driven var needed). A faint repeating stripe
    texture gives the "segmented/LCD-style" Winamp-nostalgia read called out
-   in docs/ui-research-2026-07.md #4, without needing a real multi-segment
+   in docs/references/ui-research-2026-07.md #4, without needing a real multi-segment
    DOM. */
 .pc-range::-webkit-slider-runnable-track {
   height: 6px;
@@ -6404,7 +6410,7 @@ body.ft-css-fullscreen .bottom-nav {
    expanded panel render ABOVE the collapsed summary pill in the layout
    (while staying AFTER it in DOM/source order, so the summary button is
    still first in tab order) -- "dock as a slim bottom strip that expands
-   upward" per docs/ui-research-2026-07.md §5. Retro: outset/inset 1px-border
+   upward" per docs/references/ui-research-2026-07.md §5. Retro: outset/inset 1px-border
    bevels (mirrors `.sub-row-pin`'s beveled treatment above), a
    repeating-gradient segmented/striped progress fill (never a plain smooth
    `background-color` bar), era tokens only -- no hardcoded surface colors,
@@ -6569,7 +6575,7 @@ body.ft-css-fullscreen .bottom-nav {
   overflow: hidden;
 }
 
-/* Segmented/striped fill (docs/ui-research-2026-07.md §5's "segmented/
+/* Segmented/striped fill (docs/references/ui-research-2026-07.md §5's "segmented/
    striped progress bar") -- a repeating diagonal-stripe gradient over the
    solid era-red fill, never a flat smooth bar alone.
 
