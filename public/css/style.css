@@ -3666,7 +3666,8 @@ a.sub-row-channel-link:focus-visible {
 .icon-history,
 .icon-queue,
 .icon-podcast,
-.icon-downloads {
+.icon-downloads,
+.icon-books {
   display: inline-block;
   width: 1em;
   height: 1em;
@@ -3749,6 +3750,9 @@ a.sub-row-channel-link:focus-visible {
    smart_display). Single asset for every mask set - the icon-podcast
    v1.69 posture. */
 .icon-downloads { -webkit-mask-image: url(/assets/icons/downloads.svg); mask-image: url(/assets/icons/downloads.svg); }
+/* v1.73.2 (Dean): Books gets its OWN glyph (Material menu_book) instead of
+   the generic folder - same single-asset posture. */
+.icon-books { -webkit-mask-image: url(/assets/icons/books.svg); mask-image: url(/assets/icons/books.svg); }
 
 /* Paint the icon fill only where CSS masks are supported, so a browser without
    mask support (or a failed/404 mask) renders nothing instead of a solid
@@ -3757,7 +3761,7 @@ a.sub-row-channel-link:focus-visible {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
   .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-download, .icon-shuffle,
-  .icon-flame, .icon-history, .icon-queue, .icon-podcast, .icon-downloads {
+  .icon-flame, .icon-history, .icon-queue, .icon-podcast, .icon-downloads, .icon-books {
     background-color: currentColor;
   }
 }
@@ -3828,6 +3832,7 @@ a.sub-row-channel-link:focus-visible {
 [data-icons="emoji"] .icon-arrow-down,
 [data-icons="emoji"] .icon-download,
 [data-icons="emoji"] .icon-downloads,
+[data-icons="emoji"] .icon-books,
 [data-icons="emoji"] .icon-shuffle {
   -webkit-mask-image: none;
   mask-image: none;
@@ -3846,6 +3851,7 @@ a.sub-row-channel-link:focus-visible {
    the "TV/play emoji" the ruling names; the mask sets keep the
    smart-display asset. */
 [data-icons="emoji"] .icon-downloads::before { content: "\1F4FA"; }
+[data-icons="emoji"] .icon-books::before { content: "\1F4DA"; } /* books stack - the Books library */
 
 [data-icons="emoji"] .icon-home::before      { content: "\1F3E0"; } /* 🏠 */
 [data-icons="emoji"] .icon-folder::before    { content: "\1F4C1"; } /* 📁 */

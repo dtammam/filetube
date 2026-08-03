@@ -3245,7 +3245,7 @@ function injectBooksNavLinkIfEnabled() {
       // v1.47.4 item 4: `injectLibraryNavEntry` re-checks its own marker before
       // writing, which closes this injector's async double-inject window at the
       // DOM-write site (see that function).
-      injectLibraryNavEntry('books', '/books', 'Books', 'icon-folder');
+      injectLibraryNavEntry('books', '/books', 'Books', 'icon-books'); // v1.73.2: Books' own glyph
     })
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
 }
@@ -6058,7 +6058,7 @@ function libraryEntriesHtml() {
       html += '<a href="/music" class="sidebar-item"><i class="icon-play"></i> Music</a>';
     }
     if (document.querySelector('[data-nav-sidebar="books"]')) {
-      html += '<a href="/books" class="sidebar-item"><i class="icon-folder"></i> Books</a>';
+      html += '<a href="/books" class="sidebar-item"><i class="icon-books"></i> Books</a>';
     }
     // v1.69: Podcasts mirrors its capability marker the same way.
     if (document.querySelector('[data-nav-sidebar="podcasts"]')) {
