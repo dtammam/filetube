@@ -299,3 +299,41 @@ test('delta S2: the sweep\'s tombstone carries a FROM-state guard (a record that
   assert.strictEqual(store.reduceEpisodeStatus(ns2, 'ep1', 'tombstone', { from: 'trashed' }), true, 'allows the genuine case');
   assert.strictEqual(store.reduceEpisodeStatus(nsWith('downloaded'), 'ep1', 'deleted-on-disk'), true, 'unguarded callers are unaffected');
 });
+
+test('delta S1: rows and record purge in LOCKSTEP - a record the {from} guard saves keeps its per-user rows', async () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const root = path.join(dataDir, 'podcasts');
+  fs.mkdirSync(path.join(root, '.filetube-trash'), { recursive: true });
+  const mk = (id) => {
+    const p = path.join(root, '.filetube-trash', `${id}.mp3`);
+    fs.writeFileSync(p, 'BYTES');
+    return { id, subId: 's1', guid: id, status: 'trashed', filePath: path.join(root, 'S', `${id}.mp3`), trashPath: p, trashedAt: 1000 };
+  };
+  const purged = [];
+  db = { settings: { trashRetentionDays: 7 }, podcasts: { subscriptions: [], episodes: { keep: mk('keep'), go: mk('go') }, settings: {} } };
+  deps.now = () => 1000 + 30 * DAY;
+  deps.userStore = { removePodcastEpisodeState: (ids) => purged.push(...ids) };
+  // Simulate the interleaving the {from} guard exists for: 'keep' is
+  // restored between the sweep's selection and its mutation.
+  const realUpdate = deps.updateDatabase;
+  deps.updateDatabase = async (m) => { db.podcasts.episodes.keep.status = 'downloaded'; await realUpdate(m); };
+
+  await podcasts.sweepExpiredTrash(deps);
+  assert.strictEqual(db.podcasts.episodes.keep.status, 'downloaded', 'the guard saved the restored record');
+  assert.strictEqual(db.podcasts.episodes.go.status, 'tombstone', 'the genuine expiry still retires');
+  assert.deepStrictEqual(purged, ['go'], 'ONLY the actually-tombstoned episode loses its per-user rows');
+});
+
+test('delta S2: a missing root during the cover retry names the real incident in the status', async () => {
+  const id = await addSub('all');
+  await podcasts.runPodcastPoll(deps, id);
+  fs.rmSync(path.join(dataDir, 'podcasts'), { recursive: true, force: true });
+  deps.fetchFeedImpl = async () => ({
+    ok: true,
+    body: '<rss><channel><title>Show</title><itunes:image href="https://cdn.example/art/big.png"></itunes:image></channel></rss>',
+  });
+  await podcasts.runPodcastPoll(deps, id);
+  const sub = store.readPodcasts(db).subscriptions[0];
+  assert.match(sub.lastStatus, /podcasts folder is missing - is the volume mounted\?/,
+    `the operator-facing line names the incident, not "unexpected": ${sub.lastStatus}`);
+});
