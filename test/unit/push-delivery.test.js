@@ -116,7 +116,7 @@ function harness({ subs, feed, responses, meta = META, enabled = () => true, gua
     vapidKeys: VAPID_KEYS,
     guardHop: guard || (async () => ({ ok: true })),
     enabled,
-    resolveMeta: (id) => meta[id] || null,
+    resolveMeta: (row) => meta[row.mediaId] || null, // v1.73: the whole row rides in
     transport,
     now: () => NOW,
     log: () => {},
@@ -224,7 +224,7 @@ function spinHarness(statusCode) {
     vapidKeys: VAPID_KEYS,
     guardHop: async () => ({ ok: true }),
     enabled: () => true,
-    resolveMeta: (id) => meta[id] || null,
+    resolveMeta: (row) => meta[row.mediaId] || null, // v1.73: the whole row rides in
     // Yields to the TIMER phase like a real socket does. Without this a
     // spinning do/while starves timers entirely and the watcher below can
     // never run - the failure would present as a hung test run instead of
@@ -318,7 +318,7 @@ test('trigger(): a full-limit read whose last row has a NON-INTEGER id terminate
     vapidKeys: VAPID_KEYS,
     guardHop: async () => ({ ok: true }),
     enabled: () => true,
-    resolveMeta: (id) => meta[id] || null,
+    resolveMeta: (row) => meta[row.mediaId] || null, // v1.73: the whole row rides in
     transport: async () => { counts.posts++; await new Promise((r) => setTimeout(r, 0)); return { statusCode: 201, headers: {} }; },
     now: () => NOW,
     log: () => {},
@@ -575,4 +575,19 @@ test('pushWatchUrl uses the SAME query param the watch page reads (?v=), encoded
     strippedWatch.includes('const mediaId = resolveWatchMediaId(window.location.search);'),
     'init reads its id through resolveWatchMediaId - never an inline .get() fork'
   );
+});
+
+// ---- v1.73 (Dean ruling 7): podcast rows deep-link the podcasts place ------
+
+test('v1.73: a podcast-kind row builds the /podcasts?play= deep link; media rows keep /watch.html?v= (both URL builders bound)', () => {
+  const { pushWatchUrl, pushPodcastUrl } = require('../../lib/push/deliver.js');
+  assert.equal(pushPodcastUrl('ep"9'), '/podcasts?play=ep%229', 'encoded, the ?play= contract every surface uses');
+  assert.equal(pushWatchUrl('vid1'), '/watch.html?v=vid1');
+  // The USE: payloadForRow picks by meta.kind. Source-bound (the URL rides
+  // the encrypted body - the v1.67.4 lesson).
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '../../lib/push/deliver.js'), 'utf8');
+  assert.ok(src.includes("url: meta.kind === 'podcast' ? pushPodcastUrl(row.mediaId) : pushWatchUrl(row.mediaId)"), 'the payload url dispatches on the resolved kind');
+  assert.ok(src.includes('deps.resolveMeta(row)'), 'resolveMeta receives the ROW (kind carried), not a bare id');
 });

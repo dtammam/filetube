@@ -2348,14 +2348,20 @@ function buildNotificationRowModel(row) {
   if (!row || typeof row.mediaId !== 'string' || row.mediaId === '') return null;
   const channelName = typeof row.channelName === 'string' ? row.channelName.trim() : '';
   const folderName = typeof row.folderName === 'string' ? row.folderName.trim() : '';
+  // v1.73: podcast rows deep-link the podcasts place (?play= resumes the
+  // episode) and wear the SHOW cover; media rows are byte-identical.
+  const isPodcast = row.kind === 'podcast';
   return {
     id: row.id,
     mediaId: row.mediaId,
-    href: `/watch.html?v=${row.mediaId}`,
+    kind: isPodcast ? 'podcast' : 'media',
+    href: isPodcast ? `/podcasts?play=${encodeURIComponent(row.mediaId)}` : `/watch.html?v=${row.mediaId}`,
     title: typeof row.title === 'string' ? row.title : '',
     channelLabel: channelName || folderName || 'Library',
     channelAvatarUrl: typeof row.channelAvatarUrl === 'string' ? row.channelAvatarUrl : '',
-    thumbnailUrl: row.hasThumbnail === true ? `/thumbnail/${row.mediaId}` : null,
+    thumbnailUrl: isPodcast
+      ? (typeof row.artUrl === 'string' ? row.artUrl : null)
+      : (row.hasThumbnail === true ? `/thumbnail/${row.mediaId}` : null),
     timeLabel: formatRelativeTime(row.createdAt),
     unread: row.unread === true,
   };
