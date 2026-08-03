@@ -125,11 +125,23 @@ test('SOURCE-LOCK (gate W1): the trackNav ended path consults the queue before f
   const playerSrc = fs.readFileSync(path.join(__dirname, '../../public/js/player.js'), 'utf8');
   const branchStart = playerSrc.indexOf('currentData.autoAdvanceViaTrackNav) {');
   assert.ok(branchStart >= 0, 'the trackNav branch exists');
-  const branch = playerSrc.slice(branchStart, playerSrc.indexOf("fetch('/api/settings')", branchStart));
+  // v1.72 (#91): the branch now carries its OWN settings fetch (the
+  // cross-kind consult), so the slice ends at the VIDEO path's marker
+  // comment instead of the first settings fetch.
+  const branch = playerSrc.slice(branchStart, playerSrc.indexOf("OFF (default)", branchStart));
   assert.ok(branch.includes("fetch('/api/queue')"), 'the branch consults the queue');
   assert.ok(branch.includes('pointerEntry.mediaId === endedId'), 'queue precedence keys on THIS item being the now-playing entry');
   assert.ok(branch.includes('fallbackToTrackNav'), 'and the show-list flow survives as the fallback');
   assert.ok(branch.indexOf("fetch('/api/queue')") < branch.indexOf('fallbackToTrackNav();'), 'consult-first ordering, not mere presence');
+  // v1.72 (#91): same-kind advances stay unconditional; a cross-kind
+  // advance consults autoplayNext and falls back IN-CONTEXT when OFF.
+  assert.ok(branch.includes("var sameKind = (queueNext.kind || 'media') === (pointerEntry.kind || 'media');"), 'kind comparison is entry-kind vs entry-kind, never inferred');
+  const sameKindIdx = branch.indexOf('if (sameKind)');
+  const crossConsultIdx = branch.indexOf("fetch('/api/settings')");
+  assert.ok(sameKindIdx >= 0 && crossConsultIdx > sameKindIdx, 'the unconditional same-kind advance precedes the cross-kind consult');
+  assert.ok(branch.includes('if (settings && settings.autoplayNext) { advanceIntoQueueEntry(queueNext); return; }'), 'ON advances cross-kind');
+  const crossTail = branch.slice(crossConsultIdx);
+  assert.ok(crossTail.includes('fallbackToTrackNav();'), 'OFF (or unreachable settings) falls back to the in-context flow');
 });
 
 test('v1.71 queueEntryHref: podcast -> /podcasts?play=, media/absent-kind -> /watch.html?v=, encoded; null on garbage', () => {

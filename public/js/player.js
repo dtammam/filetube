@@ -3544,7 +3544,26 @@ if (typeof module !== 'undefined' && module.exports) {
           }
           var queueNext = computeQueueNext(queue);
           if (pointerEntry && pointerEntry.mediaId === endedId && queueNext && currentId === endedId) {
-            advanceIntoQueueEntry(queueNext);
+            // v1.72 (#91): SAME-kind advances stay unconditional (music/
+            // podcasts autoplay through their own queue by default), but a
+            // CROSS-KIND advance (podcast/track -> a VIDEO on the watch
+            // page) consults the same autoplayNext setting the video path
+            // has always honored - with it OFF, playback falls back to the
+            // in-context trackNav flow instead of surprise-navigating into
+            // another kind. An unreachable settings fetch counts as OFF
+            // (the video path's exact posture).
+            var sameKind = (queueNext.kind || 'media') === (pointerEntry.kind || 'media');
+            if (sameKind) {
+              advanceIntoQueueEntry(queueNext);
+              return;
+            }
+            fetch('/api/settings')
+              .then(function (res) { return res.ok ? res.json() : null; })
+              .catch(function () { return null; })
+              .then(function (settings) {
+                if (settings && settings.autoplayNext) { advanceIntoQueueEntry(queueNext); return; }
+                fallbackToTrackNav();
+              });
             return;
           }
           fallbackToTrackNav();
