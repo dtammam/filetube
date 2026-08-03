@@ -297,7 +297,7 @@ function cardKindPresentation(item) {
       uploaderLabel: item.artist || 'Music',
       uploaderHref: '/music',
       downloadHref: '/track/' + encId + '?download=1',
-      canQueue: false // tracks are not a queue entry kind (audit cap 3, music)
+      canQueue: true // v1.72: tracks ride the one queue (entry kind 'track')
     };
   }
   if (kind === 'book') {

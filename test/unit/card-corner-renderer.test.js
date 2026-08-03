@@ -177,13 +177,13 @@ test('v1.72: cardKindPresentation - the podcast arm (place deep link, show art, 
   assert.strictEqual(kp.canQueue, true, 'episodes ride the v1.71 podcast entry kind');
 });
 
-test('v1.72: cardKindPresentation - the track arm (music deep link, album art, source download, NOT queueable)', () => {
+test('v1.72: cardKindPresentation - the track arm (music deep link, album art, source download, queueable as entry kind track)', () => {
   const kp = cardKindPresentation({ id: 'trk7', kind: 'track', artist: 'Pink Floyd' });
   assert.strictEqual(kp.href, '/music?play=trk7');
   assert.strictEqual(kp.thumbSrc, '/albumart/trk7');
   assert.strictEqual(kp.uploaderLabel, 'Pink Floyd');
   assert.strictEqual(kp.downloadHref, '/track/trk7?download=1');
-  assert.strictEqual(kp.canQueue, false, 'tracks are not a queue entry kind (audit cap 3)');
+  assert.strictEqual(kp.canQueue, true, 'tracks ride the one queue (v1.72 cap 3)');
 });
 
 test('v1.72: corner buttons on a PODCAST item - kind-routed download, NO delete, data-kind on like+queue', () => {
@@ -197,10 +197,10 @@ test('v1.72: corner buttons on a PODCAST item - kind-routed download, NO delete,
   assert.match(withQueue, /card-queue-btn[^>]*data-kind="podcast"/, 'queue carries its entry kind');
 });
 
-test('v1.72: corner buttons on a TRACK item - queue assigned renders NOTHING; reheat never renders even with caps on', () => {
+test('v1.72: corner buttons on a TRACK item - queue renders with its entry kind; reheat never renders even with caps on', () => {
   const trk = { id: 'trk7', kind: 'track', artist: 'A', title: 'T', liked: false };
   const html = buildCardCornerButtonsHtml(trk, { cornerTL: 'queue', cornerTR: 'reheat', cornerBL: 'download' }, { reheatEnabled: true });
-  assert.ok(!html.includes('card-queue-btn'), 'tracks cannot join the queue (no track entry kind)');
+  assert.match(html, /card-queue-btn[^>]*data-kind="track"/, 'the queue button carries entry kind track');
   assert.ok(!html.includes('card-reheat-btn'), 'reheat is a media (yt-dlp) verb');
   assert.match(html, /href="\/track\/trk7\?download=1"/);
 });

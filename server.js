@@ -8383,6 +8383,30 @@ function shapedQueue(db, userId) {
       }
       continue;
     }
+    if (e.kind === 'track') {
+      // v1.72: track entries resolve against ns.tracks, never db.metadata.
+      // The silent-drop is preserved for this id space too - a pruned/
+      // phantom track disappears from the panel, belt to the
+      // delQueueByTrack carrier's suspenders.
+      const track = ownTrack(musicStore.readMusic(db).tracks, e.mediaId);
+      if (track) {
+        entries.push({
+          uid: e.uid,
+          mediaId: e.mediaId,
+          kind: 'track',
+          item: {
+            title: track.title,
+            name: track.title,
+            channelName: track.artist || null,
+            folderName: track.album || null,
+            artUrl: `/albumart/${encodeURIComponent(track.id)}`,
+            durationSec: Number.isFinite(track.durationSec) ? track.durationSec : null,
+            hasThumbnail: false,
+          },
+        });
+      }
+      continue;
+    }
     // hasOwnProperty (gate S9): a restored bundle can carry prototype-chain
     // keys as mediaIds; they must silent-drop like any dead id, never serve
     // a garbage item from the prototype.
@@ -8406,11 +8430,15 @@ app.post('/api/queue/items', (req, res) => {
   // v1.71: the entry's kind is CARRIED, never inferred (episode ids are
   // md5 hex exactly like media ids). Each kind existence-checks its own
   // id space; a podcast add requires a playable (downloaded) episode.
-  const kind = body.kind === 'podcast' ? 'podcast' : 'media';
+  // v1.72: 'track' joins (music in the one queue) - the row must still
+  // exist in ns.tracks (the own-property ownTrack rule).
+  const kind = (body.kind === 'podcast' || body.kind === 'track') ? body.kind : 'media';
   if (kind === 'podcast') {
     const podcastNs = podcastStore.readPodcasts(db);
     const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, mediaId) ? podcastNs.episodes[mediaId] : null;
     if (!ep || ep.status !== 'downloaded') return res.status(404).json({ error: 'Episode not found' });
+  } else if (kind === 'track') {
+    if (!ownTrack(musicStore.readMusic(db).tracks, mediaId)) return res.status(404).json({ error: 'no such track' });
   } else if (!Object.prototype.hasOwnProperty.call(db.metadata, mediaId)) {
     // hasOwnProperty (gate S5): a prototype-chain key ('__proto__',
     // 'constructor', 'toString') must 404 like any phantom, never queue an

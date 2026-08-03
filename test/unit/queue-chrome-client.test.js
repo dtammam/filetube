@@ -106,7 +106,9 @@ test('SOURCE-LOCK (gate W5): both ended flows advance through the ONE queue seam
   const seamStart = playerSrc.indexOf('function advanceIntoQueueEntry');
   const seam = playerSrc.slice(seamStart, playerSrc.indexOf('function handleAutoplayNext', seamStart));
   assert.ok(seam.includes('window.FileTube.queueEntryHref(queueNext)'), 'the destination derives from the shared kind-aware helper');
-  assert.ok(seam.includes("queueNext.kind !== 'podcast'"), 'the watch seed is suppressed for podcast entries');
+  // v1.72: the guard names media POSITIVELY - podcast AND track entries
+  // must both suppress the watch seed (they never visit the watch page).
+  assert.ok(seam.includes("(queueNext.kind || 'media') === 'media'"), 'the watch seed fires for media entries only');
   assert.ok(seam.includes('window.FileTube.navigate(advanceHref)'), 'and the derived href is what actually navigates');
   const watchSrc = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
   assert.ok(watchSrc.includes('window.FileTube.queueEntryHref(next)'), 'the up-next box derives via the shared helper too');
@@ -136,6 +138,18 @@ test('v1.71 queueEntryHref: podcast -> /podcasts?play=, media/absent-kind -> /wa
   assert.equal(queueEntryHref({ mediaId: 'vid1' }), '/watch.html?v=vid1', 'a legacy kind-less entry stays a media link');
   assert.equal(queueEntryHref({ kind: 'podcast' }), null);
   assert.equal(queueEntryHref(null), null);
+});
+
+test('v1.72 queueEntryHref + row model: a track entry links /music?play= and shows the ALBUM art, never /thumbnail', () => {
+  assert.equal(queueEntryHref({ mediaId: 'trk"7', kind: 'track' }), '/music?play=trk%227');
+  const m = buildQueueRowModel({
+    uid: 'ü2', mediaId: 'trk-7', kind: 'track',
+    item: { title: 'Söng', channelName: 'Thë Artist', artUrl: '/albumart/trk-7', hasThumbnail: false },
+  }, null);
+  assert.equal(m.kind, 'track', 'kind survives the model (never collapsed to media)');
+  assert.equal(m.href, '/music?play=' + encodeURIComponent('trk-7'));
+  assert.equal(m.thumbnailUrl, '/albumart/trk-7', 'album art rides the artUrl arm');
+  assert.equal(m.channelLabel, 'Thë Artist');
 });
 
 test('v1.71 buildQueueRowModel: a podcast entry links the podcasts place and shows the SHOW cover, never /thumbnail', () => {

@@ -3489,7 +3489,10 @@ if (typeof module !== 'undefined' && module.exports) {
       ? window.FileTube.queueEntryHref(queueNext)
       : '/watch.html?v=' + encodeURIComponent(queueNext.mediaId);
     if (window.FileTube && typeof window.FileTube.navigate === 'function') {
-      if (typeof window.FileTube.stashWatchSeed === 'function' && queueNext.item && queueNext.kind !== 'podcast') {
+      // Seed stash is MEDIA-only: a podcast/track projection must never
+      // prime a watch page it will not visit (v1.72: 'track' joins the
+      // non-media kinds, so the guard names media positively).
+      if (typeof window.FileTube.stashWatchSeed === 'function' && queueNext.item && (queueNext.kind || 'media') === 'media') {
         window.FileTube.stashWatchSeed(queueNext.item);
       }
       recordLifecycleEvent('autoplay:queue-advance', { detail: 'to=' + queueNext.mediaId });

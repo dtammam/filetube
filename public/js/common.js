@@ -2758,9 +2758,11 @@ function formatQueueBadge(count) {
 // resumes the episode in the dock.
 function queueEntryHref(entry) {
   if (!entry || typeof entry.mediaId !== 'string' || entry.mediaId === '') return null;
-  return entry.kind === 'podcast'
-    ? `/podcasts?play=${encodeURIComponent(entry.mediaId)}`
-    : `/watch.html?v=${encodeURIComponent(entry.mediaId)}`;
+  // v1.72: 'track' joins (music in the one queue) - the music place's
+  // ?play= deep link resumes the specific track, the podcasts pattern.
+  if (entry.kind === 'podcast') return `/podcasts?play=${encodeURIComponent(entry.mediaId)}`;
+  if (entry.kind === 'track') return `/music?play=${encodeURIComponent(entry.mediaId)}`;
+  return `/watch.html?v=${encodeURIComponent(entry.mediaId)}`;
 }
 
 function buildQueueRowModel(entry, pointerUid) {
@@ -2771,14 +2773,14 @@ function buildQueueRowModel(entry, pointerUid) {
   return {
     uid: entry.uid,
     mediaId: entry.mediaId,
-    kind: entry.kind === 'podcast' ? 'podcast' : 'media',
+    kind: (entry.kind === 'podcast' || entry.kind === 'track') ? entry.kind : 'media',
     href: queueEntryHref(entry),
     title: typeof item.title === 'string' ? item.title : (typeof item.name === 'string' ? item.name : ''),
     channelLabel: channelName || folderName || 'Library',
     channelAvatarUrl: typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '',
-    // A podcast entry's art is the show cover the server names (artUrl);
-    // media entries keep the thumbnail contract.
-    thumbnailUrl: entry.kind === 'podcast'
+    // A podcast/track entry's art is the server-named artUrl (show cover /
+    // album art); media entries keep the thumbnail contract.
+    thumbnailUrl: (entry.kind === 'podcast' || entry.kind === 'track')
       ? (typeof item.artUrl === 'string' ? item.artUrl : null)
       : (item.hasThumbnail === true ? `/thumbnail/${entry.mediaId}` : null),
     playing: Boolean(pointerUid) && entry.uid === pointerUid,
@@ -2829,7 +2831,7 @@ function addToQueue(mediaId, position, kind) {
   return fetch('/api/queue/items', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mediaId, position: position === 'next' ? 'next' : 'end', kind: kind === 'podcast' ? 'podcast' : 'media' }),
+    body: JSON.stringify({ mediaId, position: position === 'next' ? 'next' : 'end', kind: (kind === 'podcast' || kind === 'track') ? kind : 'media' }),
   })
     .then((res) => (res.ok ? res.json() : res.json().catch(() => ({})).then((b) => Promise.reject(new Error(b.error || 'Could not add to queue')))))
     .then((body) => {
