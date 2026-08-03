@@ -108,6 +108,75 @@ open. The rules, for ANY new control or surface:
    every new className in a diff, run that same check - it is one grep,
    and it is exactly the check every automated instrument cannot do.
 
+## The first-class media experience (MANDATORY vocabulary for any media-kind work)
+
+FileTube serves several media KINDS - videos/ytdlp, music, books,
+podcasts. The ytdlp/video experience is the REFERENCE: it defines what
+"first-class" means, and every other kind is measured against it.
+Codified 2026-08-03 (Dean's ruling); the capability list is the
+contract, the per-kind standing is audited per wave, never assumed.
+
+A first-class media kind delivers ALL of:
+
+1. **A place.** A browsable surface (grid or list drill-in), reachable
+   from the sidebar Library section (content-gated injection) AND
+   walkable from a fresh install - a human's first path in must exist
+   (the v1.69.1 lesson: no instrument checks "how does someone first
+   get here").
+2. **Bottom-bar presence.** An item in the customizable mobile bottom
+   bar - in `BOTTOM_NAV_OPTIONAL`, reorderable/hidable (and, where
+   ruled, default-hidden) via the Settings editor.
+3. **The one queue.** Entries ride the SINGLE global playback queue
+   (`entry_kind` carried, never inferred), advance IN and OUT of the
+   kind correctly, and appear in the queue panel/up-next with
+   kind-correct art and destination (`queueEntryHref` is the only
+   INTENDED derivation - guarded legacy fallback arms still exist at
+   the player/watch seams, bound by source lock).
+4. **The global Liked playlist.** Content can be liked, and a liked
+   entry surfaces in THE Liked playlist (the `/?liked=1` surface and
+   its count-gated sidebar entry) - a kind-scoped Liked lane inside
+   the place is a complement, never the fulfillment. (As of
+   codification this is delivered ONLY by videos; podcasts have the
+   lane half - tech-debt #94.)
+5. **Resume.** Per-user position persisted server-side; leaving
+   mid-entry and returning resumes; in-progress entries surface in a
+   home Continue row that deep-links back to the exact entry. (As of
+   codification the Continue-row half is the music/books/podcasts
+   pattern - VIDEOS themselves have card progress bars and the
+   `watching` filter but NO home Continue row; whether that is a video
+   gap or a non-goal is Dean's ruling to take at the v1.72 audit.)
+6. **Played/consumed state.** A per-user watched/played latch, both
+   automatic (threshold) and manually toggleable. (As of codification
+   the full manual toggle is delivered by PODCASTS; videos have the
+   automatic latch plus un-watch via history-row delete but no
+   mark-as-watched affordance - an audit cell, not an assumption.)
+7. **Save to device.** A per-entry download affordance serving the
+   original bytes with an attachment disposition through the shared
+   `contentDispositionAttachment` helper.
+8. **Recoverable delete.** Every destructive verb is a trash move with
+   restore + retention - never a bare unlink (the
+   every-delete-is-recoverable law). Per-user state survives trash and
+   retires only on purge.
+9. **Background play.** Playback survives navigation (the docked
+   mini-player) and locked-device/background listening works.
+10. **The full player.** An expanded now-playing view (the type:'audio'
+    cover-art mount or the watch page), reachable in one gesture from
+    the dock.
+
+Standing rules that ride this list:
+
+- **New capability, every kind.** When a wave adds a capability to one
+  kind, the exec plan must state where every OTHER first-class kind
+  stands on it - delivered, gapped (tech-debt row), or ruled
+  not-applicable by Dean. Silence is not a standing.
+- **Per-user state = the id-keyed-carrier law.** Every per-entry table
+  wires ALL its arms in the birth commit (migration, statements,
+  accessors, delete carrier, backup export/restore/validation, test
+  reset, carrier tests) - see `lib/auth/store.js`'s carrier history.
+- **Not-applicable is a ruling, not an inference.** Books do not
+  obviously queue; whether that is a gap or a non-goal is Dean's call,
+  recorded, never assumed.
+
 ## File naming
 
 - Lowercase, single-word or hyphenated filenames (`server.js`, `watch.js`, `docker-compose.yml`)
