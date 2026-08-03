@@ -3827,6 +3827,7 @@ a.sub-row-channel-link:focus-visible {
 [data-icons="emoji"] .icon-arrow-up,
 [data-icons="emoji"] .icon-arrow-down,
 [data-icons="emoji"] .icon-download,
+[data-icons="emoji"] .icon-downloads,
 [data-icons="emoji"] .icon-shuffle {
   -webkit-mask-image: none;
   mask-image: none;
@@ -3841,6 +3842,10 @@ a.sub-row-channel-link:focus-visible {
    emoji-set restoration, so it needs its OWN ::before entry here, same as
    every other .icon-* the emoji set covers). */
 [data-icons="emoji"] .icon-download::before { content: "\1F4E5"; }
+/* v1.73 (QA gate W2): ruling 4's emoji-set glyph - U+1F4FA TELEVISION,
+   the "TV/play emoji" the ruling names; the mask sets keep the
+   smart-display asset. */
+[data-icons="emoji"] .icon-downloads::before { content: "\1F4FA"; }
 
 [data-icons="emoji"] .icon-home::before      { content: "\1F3E0"; } /* 🏠 */
 [data-icons="emoji"] .icon-folder::before    { content: "\1F4C1"; } /* 📁 */

@@ -407,6 +407,27 @@ function homeRowEnabled(key) {
   }
 }
 
+// v1.73 gate C1 (BOTH seats): ruling 1's either-was-on clause is an
+// UPGRADE MIGRATION, not a permanent read. The first cut gated the merged
+// row on a permanent OR of both keys - homeRowEnabled treats an ABSENT key
+// as ON, so on any device that never explicitly disabled the old podcasts
+// row (i.e. effectively every device) the new toggle's OFF write could
+// never win: a lying Settings control on the headline ruling, proven by a
+// surviving ||->&& mutant. This folds the retired key into the surviving
+// one EXACTLY ONCE, then deletes it - after which the ONE toggle genuinely
+// governs. No retired key present = nothing to fold (fresh devices, and
+// every visit after the fold).
+function migrateListeningRowPref() {
+  try {
+    const pod = localStorage.getItem('ft-home-continue-podcasts');
+    if (pod === null) return;
+    const lv = localStorage.getItem('ft-home-continue-listening');
+    const mergedOn = (lv === null ? true : lv !== '0') || (pod !== '0');
+    localStorage.setItem('ft-home-continue-listening', mergedOn ? '1' : '0');
+    localStorage.removeItem('ft-home-continue-podcasts');
+  } catch (_) { /* storage disabled - the default-ON read stands */ }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     buildCardDownloadHref,
@@ -421,6 +442,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildVideoRowCardHtml,
     buildVideoHomeSectionHtml,
     homeRowEnabled,
+    migrateListeningRowPref,
     resolveCardCornerPrefs,
     buildCardCornerButtonsHtml,
     cardKindPresentation,
@@ -1928,7 +1950,9 @@ if (typeof module !== 'undefined' && module.exports) {
         // longer offered in Settings).
         const listeningRowHost = document.createElement('div');
         booksRowHost.insertAdjacentElement('beforebegin', listeningRowHost);
-        if (homeRowEnabled('ft-home-continue-listening') || homeRowEnabled('ft-home-continue-podcasts')) {
+        // Gate C1: fold the retired key ONCE, then the ONE key governs.
+        migrateListeningRowPref();
+        if (homeRowEnabled('ft-home-continue-listening')) {
           Promise.all([
             fetch(`/api/music?filter=recent-listening&limit=${HOME_ROW_CAP}`).then((r) => (r.ok ? r.json() : { items: [] })).catch(() => ({ items: [] })),
             fetch(`/api/podcasts/episodes?filter=recent-listening&limit=${HOME_ROW_CAP}`).then((r) => (r.ok ? r.json() : { episodes: [] })).catch(() => ({ episodes: [] })),

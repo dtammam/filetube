@@ -225,28 +225,33 @@ let pushTransportOverride = null;
 let pushGuardLookupOverride = null;
 function __setPushTransportForTests(fn) { pushTransportOverride = typeof fn === 'function' ? fn : null; }
 function __setPushGuardLookupForTests(fn) { pushGuardLookupOverride = typeof fn === 'function' ? fn : null; }
+// v1.73: the push payload's meta, kind-dispatched - the row rides in WHOLE
+// (kind CARRIED). Podcast rows resolve against the episodes map and skip
+// when the episode is pruned OR trashed (a push must never deep-link a
+// non-playable episode); media rows keep the pre-v1.73 shape. Named +
+// exported so the trashed-skip and both arms are BINDABLE (adversarial
+// gate W1: the inline version survived its mutants).
+function resolvePushMeta(db, row) {
+  const mediaId = row && typeof row === 'object' ? row.mediaId : row; // tolerate the pre-v1.73 call shape
+  const kind = row && typeof row === 'object' && row.kind === 'podcast' ? 'podcast' : 'media';
+  if (kind === 'podcast') {
+    const ns = podcastStore.readPodcasts(db);
+    const ep = Object.prototype.hasOwnProperty.call(ns.episodes, mediaId) ? ns.episodes[mediaId] : null;
+    if (!ep || ep.status !== 'downloaded') return null; // pruned/trashed between insert and delivery - skip
+    const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
+    return { title: ep.title, channel: sub ? sub.name : 'Podcast', kind: 'podcast' };
+  }
+  const item = db.metadata && db.metadata[mediaId];
+  if (!item) return null;
+  return { title: item.title || item.name, channel: item.folderName, kind: 'media' };
+}
+
 const pushDelivery = pushDeliverLib.createPushDelivery({
   store: userStore,
   vapidKeys: PUSH_VAPID,
   guardHop: (url) => pushShortlink.guardHop(url, { lookup: pushGuardLookupOverride || undefined }),
   enabled: () => notificationsFeatureEnabled(getCachedDatabase()),
-  // v1.73: the row rides in whole (kind CARRIED) - podcast rows resolve
-  // against the episodes map and deep-link the podcasts place.
-  resolveMeta: (row) => {
-    const db = getCachedDatabase();
-    const mediaId = row && typeof row === 'object' ? row.mediaId : row; // tolerate the pre-v1.73 call shape
-    const kind = row && typeof row === 'object' && row.kind === 'podcast' ? 'podcast' : 'media';
-    if (kind === 'podcast') {
-      const ns = podcastStore.readPodcasts(db);
-      const ep = Object.prototype.hasOwnProperty.call(ns.episodes, mediaId) ? ns.episodes[mediaId] : null;
-      if (!ep || ep.status !== 'downloaded') return null; // pruned/trashed between insert and delivery - skip
-      const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
-      return { title: ep.title, channel: sub ? sub.name : 'Podcast', kind: 'podcast' };
-    }
-    const item = db.metadata && db.metadata[mediaId];
-    if (!item) return null;
-    return { title: item.title || item.name, channel: item.folderName, kind: 'media' };
-  },
+  resolveMeta: (row) => resolvePushMeta(getCachedDatabase(), row),
   transport: (opts) => (pushTransportOverride || pushDeliverLib.defaultTransport)(opts),
 });
 
@@ -14602,8 +14607,9 @@ podcasts.registerRoutes(app, {
   dataDir: DATA_DIR,
   userStore,
   // v1.73: the poll's notification bridge (route-triggered checks run the
-  // same engine as the timer - both deps bundles carry the pair).
-  notificationsEnabled: () => notificationsFeatureEnabled(getCachedDatabase()),
+  // same engine as the timer - both deps bundles carry pushDelivery; the
+  // feature flag gates DELIVERY inside deliver.js, never the record - QA
+  // gate W3).
   pushDelivery,
   runExclusive: heavyGate.runExclusive,
   sendRangeable,
@@ -14756,7 +14762,6 @@ if (require.main === module) {
       userStore,
       // v1.73: the timer-run poll notifies + pushes exactly like the
       // route-triggered one (its own deps bundle - the ytdlp lesson above).
-      notificationsEnabled: () => notificationsFeatureEnabled(getCachedDatabase()),
       pushDelivery,
       runExclusive: heavyGate.runExclusive,
       now: () => Date.now(),
@@ -14891,6 +14896,7 @@ module.exports = {
   cleanDisplayTitle,
   extractYtdlpVideoId,
   contentDispositionAttachment,
+  resolvePushMeta, // v1.73: bindable push-meta arms (adversarial W1)
   normalizeScanRoot,
   loadDatabase,
   saveDatabase,

@@ -2350,6 +2350,8 @@ function buildNotificationRowModel(row) {
   const folderName = typeof row.folderName === 'string' ? row.folderName.trim() : '';
   // v1.73: podcast rows deep-link the podcasts place (?play= resumes the
   // episode) and wear the SHOW cover; media rows are byte-identical.
+  // (The bell row TAP's watch-seed stash is guarded media-positive at the
+  // click site - adversarial W5, the fourth strike of the seed class.)
   const isPodcast = row.kind === 'podcast';
   return {
     id: row.id,
@@ -2576,13 +2578,18 @@ function injectNotificationBellIfEnabled() {
             // v1.52: partial seed -- the row model has title/channel/avatar/
             // thumbnail in hand; the watch painter fills these in frame one
             // and skeletons the rest until hydration.
-            stashWatchSeed({
-              id: m.mediaId,
-              title: m.title,
-              channelName: m.channelLabel === 'Library' ? '' : m.channelLabel,
-              channelAvatarUrl: m.channelAvatarUrl,
-              hasThumbnail: Boolean(m.thumbnailUrl),
-            });
+            // v1.73 (adversarial W5, the FOURTH strike of the seed class):
+            // media-positive - a podcast row navigates to /podcasts and
+            // must never prime a watch page it will not visit.
+            if ((m.kind || 'media') === 'media') {
+              stashWatchSeed({
+                id: m.mediaId,
+                title: m.title,
+                channelName: m.channelLabel === 'Library' ? '' : m.channelLabel,
+                channelAvatarUrl: m.channelAvatarUrl,
+                hasThumbnail: Boolean(m.thumbnailUrl),
+              });
+            }
             // Fire-and-forget mark-read; keepalive survives a full-load nav
             // (stats et al). The SPA router handles the actual navigation.
             fetch('/api/notifications/read', {
@@ -2757,10 +2764,11 @@ function formatQueueBadge(count) {
 // the bell rows; `playing` drives the now-playing highlight; `played` dims
 // entries STRICTLY BEFORE the pointer - the pointer row itself is playing,
 // never played (ruling 6: played items stay, jump-back allowed).
-// v1.71: ONE place derives a queue entry's destination from its kind. The
-// three consumers (row model here, player.js's autoplay advance, watch.js's
-// up-next box) must never hand-build this per site - the hardcoded
-// /watch.html lesson. A podcast entry deep-links the podcasts place, which
+// v1.71: ONE place derives a queue entry's destination from its kind. Its
+// consumers (the row model here, player.js's autoplay advance +
+// manualTrackStep, watch.js's up-next box AND its manual Prev/Next
+// goQueueEntry - v1.73) must never hand-build this per site - the
+// hardcoded /watch.html lesson. A podcast entry deep-links the podcasts place, which
 // resumes the episode in the dock.
 function queueEntryHref(entry) {
   if (!entry || typeof entry.mediaId !== 'string' || entry.mediaId === '') return null;
@@ -3269,7 +3277,14 @@ function injectDownloadsNavLinkIfEnabled() {
       if (navItem) navItem.setAttribute('href', href);
       injectLibraryNavEntry('downloads', href, 'Downloads', 'icon-downloads');
     })
-    .catch(() => { /* network/parse failure -- fail closed, inject nothing (the item stays default-hidden) */ });
+    .catch(() => {
+      // Fail CLOSED all the way (adversarial S2): an opted-in bottom item
+      // left standing would carry its placeholder href="/" - a silent
+      // misdirect. Remove it like the no-root arm; the next successful
+      // boot probe re-upgrades a fresh shell's copy.
+      const navItem = document.querySelector('.bottom-nav-item[data-nav="downloads"]');
+      if (navItem && navItem.parentNode) navItem.parentNode.removeChild(navItem);
+    });
 }
 
 // v1.69 podcasts: same probe-gated Library-section injection.

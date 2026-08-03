@@ -251,9 +251,21 @@ test('v1.73 (ruling 6): the audio Prev/Next pair - queue-aware steps, audio-mode
   assert.ok(step.includes('pointerEntry.mediaId === steppedId && neighbor'), 'queue precedence keys on the CURRENT item being now-playing');
   assert.ok(step.includes('advanceIntoQueueEntry(neighbor)'), 'a queue step rides the ONE kind-aware advance seam');
   assert.ok(step.indexOf('advanceIntoQueueEntry') < step.indexOf('trackNavHandlers && (dir'), 'queue consult precedes the context fallback');
-  // Visibility: audio mode + registered context; both toggle sites call it.
-  assert.ok(playerSrc.includes("var audioMode = !!(host && host.classList.contains('audio-mode'));"), 'visibility keys on audio mode - the video chrome keeps its own page-level pair');
+  // Visibility (v1.73 round 1, adversarial W2 + QA W1): the WHOLE show
+  // expression is bound - audio mode AND a registered context AND the
+  // kind-surface marker (the watch page plays plain audio and registers
+  // trackNav; only music/podcasts set autoAdvanceViaTrackNav, so the
+  // watch chrome never grows the pair). An ||-for-&& mutant dies here.
+  assert.ok(playerSrc.includes("var show = audioMode && !!trackNavHandlers\n      && !!(currentData && currentData.autoAdvanceViaTrackNav === true);"),
+    'the exact show expression - all three conjuncts, AND-composed');
   assert.ok((playerSrc.match(/updateTrackNavButtons\(\);/g) || []).length >= 3, 'setTrackNav + BOTH audio-mode toggle sites update visibility');
+  // Adversarial W3: dead-button class - the CLICK wiring is bound.
+  assert.ok(playerSrc.includes("if (trackPrevBtn) trackPrevBtn.addEventListener('click', function () { manualTrackStep('prev'); });"), 'prev wired');
+  assert.ok(playerSrc.includes("if (trackNextBtn) trackNextBtn.addEventListener('click', function () { manualTrackStep('next'); });"), 'next wired');
+  // Adversarial W4: shown buttons stay ENABLED - a context-edge tap must
+  // reach the queue consult (the queue owns up-next).
+  assert.ok(playerSrc.includes('trackPrevBtn.disabled = false;') && playerSrc.includes('trackNextBtn.disabled = false;'),
+    'no handler-presence disable - the queue stays reachable at list edges');
   // Every shell carries the pair (the every-writer rule).
   const pub = path.join(__dirname, '../../public');
   const shells = fs.readdirSync(pub).filter((f) => f.endsWith('.html'))

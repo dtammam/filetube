@@ -136,3 +136,11 @@ test('v1.73: a podcast row deep-links /podcasts?play= and wears the SHOW cover; 
   assert.equal(med.href, '/watch.html?v=vid1');
   assert.equal(med.thumbnailUrl, '/thumbnail/vid1');
 });
+
+test('v1.73 (adversarial W5): the bell row TAP stashes a watch seed for MEDIA rows only (the fourth strike of the seed class)', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/js/common.js'), 'utf8');
+  const clickIdx = src.indexOf('// v1.52: partial seed');
+  const tail = src.slice(clickIdx, clickIdx + 900);
+  assert.ok(tail.includes("if ((m.kind || 'media') === 'media') {"), 'the media-positive guard exists at the bell click site');
+  assert.ok(tail.indexOf("(m.kind || 'media') === 'media'") < tail.indexOf('stashWatchSeed({'), 'and the stash sits INSIDE it');
+});

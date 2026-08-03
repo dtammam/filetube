@@ -618,12 +618,12 @@ if (typeof module !== 'undefined' && module.exports) {
         resumeMode: 'music',
         autoAdvanceViaTrackNav: true,
         browseCtx: queueCtxEncoded,
-        // v1.44.2: tapping the docked mini-player returns to /music (the generic
-        // dock-return href — without it a track id hits the video /watch route
-        // and 404s). On /music the same-URL nav guard makes it a benign no-op.
-        // v1.73 (Dean ruling 2): dock tap opens the expanded now-playing
-        // view in ONE gesture - the podcasts ?nowplaying=1 contract, same
-        // player audio-mount, second mount point.
+        // v1.44.2: the dock-return href - without it a track id hits the
+        // video /watch route and 404s. v1.73 (Dean ruling 2): the return
+        // now opens the expanded now-playing view in ONE gesture - the
+        // podcasts ?nowplaying=1 contract, same player audio-mount, second
+        // mount point (on /music the tap NAVIGATES and expands - the old
+        // same-URL-no-op sentence died with the plain /music href).
         readerHref: '/music?nowplaying=1',
       };
       // v1.44.2 (Spotify feel): play in the DOCKED mini-player, not FULL at the

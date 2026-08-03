@@ -2071,12 +2071,28 @@ if (typeof module !== 'undefined' && module.exports) {
   function updateTrackNavButtons() {
     if (!trackPrevBtn || !trackNextBtn) return;
     var audioMode = !!(host && host.classList.contains('audio-mode'));
-    var show = audioMode && !!trackNavHandlers;
+    // Gate fixes (v1.73 round 1, both seats):
+    // - QA W1: the WATCH page plays plain audio library files too (its
+    //   background-audio mode sets audio-mode and it registers trackNav
+    //   for folder neighbors) - and it has its OWN page-level Prev/Next.
+    //   autoAdvanceViaTrackNav is the marker ONLY the kind surfaces
+    //   (music/podcasts) set, so it is the gate: the watch chrome Dean
+    //   rates perfect stays byte-identical for audio items.
+    // - Adversarial W4: the buttons stay ENABLED whenever shown - a
+    //   context-edge tap (last track of an album) must still reach
+    //   manualTrackStep's queue consult (the queue owns up-next; a
+    //   disabled button made the queue unreachable, the same
+    //   manual-vs-queue asymmetry as Dean's device bug one surface over).
+    //   An edge tap with no queue neighbor AND no handler is a silent
+    //   no-op. Residual: a single-item context registers NO handlers, so
+    //   the pair hides with a queue banked - tech-debt #101.
+    var show = audioMode && !!trackNavHandlers
+      && !!(currentData && currentData.autoAdvanceViaTrackNav === true);
     trackPrevBtn.hidden = !show;
     trackNextBtn.hidden = !show;
     if (show) {
-      trackPrevBtn.disabled = typeof trackNavHandlers.onPrev !== 'function';
-      trackNextBtn.disabled = typeof trackNavHandlers.onNext !== 'function';
+      trackPrevBtn.disabled = false;
+      trackNextBtn.disabled = false;
     }
   }
 

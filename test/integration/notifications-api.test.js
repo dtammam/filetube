@@ -302,3 +302,57 @@ test('v1.73: a TRASHED episode row is HIDDEN, not pruned (restore brings it back
   assert.equal(rows.length, 1, 'ONE row per id - the feed replaces across kinds');
   assert.equal(rows[0].kind, 'media', 'the newest writer won');
 });
+
+test('v1.73 gate (adversarial W1/S4): resolvePushMeta arms bound - podcast/media/trashed/phantom/legacy-id', async () => {
+  const { resolvePushMeta } = require('../../server');
+  await armFeature();
+  const { subId, epId } = await seedPodcastEpisodeV173('g-meta');
+  const { loadDatabase } = require('../../server');
+  const db = loadDatabase();
+  // Podcast arm: title + show channel + kind echoed.
+  assert.deepEqual(resolvePushMeta(db, { mediaId: epId, kind: 'podcast' }),
+    { title: 'Ep g-meta', channel: 'Notif Show', kind: 'podcast' });
+  // Media arm + the legacy bare-id call shape.
+  assert.deepEqual(resolvePushMeta(db, { mediaId: 'mediä-1', kind: 'media' }),
+    { title: 'Clïp One', channel: 'Söme Channel', kind: 'media' });
+  assert.equal(resolvePushMeta(db, 'mediä-1').kind, 'media', 'bare-id legacy shape tolerated');
+  // TRASHED episode -> null (the S4 mutant's named killer: a push must
+  // never deep-link a non-playable episode).
+  await updateDatabase((mdb) => {
+    podcastStoreV173.reduceEpisodeTrashed(podcastStoreV173.ensurePodcasts(mdb), epId, { trashPath: '/x/.filetube-trash/z', nowMs: T0 });
+    return true;
+  });
+  assert.equal(resolvePushMeta(loadDatabase(), { mediaId: epId, kind: 'podcast' }), null, 'trashed episode skips delivery');
+  // Phantom -> null.
+  assert.equal(resolvePushMeta(loadDatabase(), { mediaId: 'no-such-ep', kind: 'podcast' }), null);
+  assert.ok(subId, 'fixture sanity');
+});
+
+test('v1.73 gate (QA W4b): the phantom prune + episode purge actually DELETE feed rows - store-level absence, kind-scoped', async () => {
+  await armFeature();
+  const { epId } = await seedPodcastEpisodeV173('g-purge');
+  userStore.recordNotifications([{ mediaId: epId, createdAt: T0 + 60, kind: 'podcast' }]);
+  // Phantom: the episode record vanishes; the panel GET must retire the
+  // feed row AT THE STORE (not merely hide it - unpruned hidden orphans
+  // squat the 200-row cap forever).
+  await updateDatabase((db) => {
+    delete podcastStoreV173.ensurePodcasts(db).episodes[epId];
+    return true;
+  });
+  await (await fetch(`${base}/api/notifications`)).json();
+  assert.ok(!userStore.exportNotificationsForBackup().some((r) => r.mediaId === epId),
+    'the phantom podcast feed row is GONE from the store after the panel read');
+
+  // Direct purge path: a podcast row dies with removePodcastEpisodeState;
+  // a MEDIA row keeps its feed row under the same call (kind scoping).
+  const { epId: ep2 } = await seedPodcastEpisodeV173('g-purge2');
+  userStore.recordNotifications([
+    { mediaId: ep2, createdAt: T0 + 70, kind: 'podcast' },
+    { mediaId: 'mediä-2', createdAt: T0 + 71 },
+  ]);
+  userStore.removePodcastEpisodeState([ep2, 'mediä-2']);
+  const after = userStore.exportNotificationsForBackup();
+  assert.ok(!after.some((r) => r.mediaId === ep2), 'the podcast feed row retired with the episode purge');
+  assert.ok(after.some((r) => r.mediaId === 'mediä-2' && r.kind === 'media'),
+    'a MEDIA feed row survives the episode carrier even when its id rides the purge list (kind-scoped delete)');
+});
