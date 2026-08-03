@@ -46,8 +46,8 @@ const SHELLS = fs.readdirSync(PUBLIC_DIR)
 // only knew the `#bottom-nav [data-nav="x"]` selector shape, so
 // `.bottom-nav-item[data-nav="x"]` was invisible too. Both seats landed a live
 // mutant on it. Parse instead of grep.
-function cssRules() {
-  const code = CSS.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ');
+function cssRulesFrom(text) {
+  const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ');
   const rules = [];
   const re = /([^{}]+)\{([^{}]*)\}/g;
   let m;
@@ -60,47 +60,42 @@ function cssRules() {
 // `order:` but not `border:`/`-order:` - the round-1 regex flagged any
 // `border:` declaration on a bottom-nav rule as the v1.39.2 defect.
 const ORDER_DECL = /(^|[^-\w])order\s*:/;
+// The flex CONTAINER (`#bottom-nav` / `.bottom-nav`), not its children. The
+// distinction is load-bearing: `.bottom-nav-item` is itself a column (icon over
+// label) and legitimately sets flex-direction; only the container's own
+// direction decides the SEQUENCE of the items.
+const CONTAINER_SELECTOR = /(#bottom-nav|\.bottom-nav)(?![-\w])/;
+const FLOW_DECL = /(^|[^-\w])(flex-direction|direction)\s*:/;
+
+const fmtRule = (r) => `${r.selector} { ${r.body} }`;
+// The TWO predicates, defined once. The self-proof below runs its mutant
+// fixtures through these same functions - gate round 2 measured that a
+// hand-inlined copy let the real lock be neutered while the test that
+// certifies it stayed green.
+const orderOffenders = (rules) => rules.filter((r) => /bottom-nav/.test(r.selector) && ORDER_DECL.test(r.body)).map(fmtRule);
+const flowOffenders = (rules) => rules.filter((r) => CONTAINER_SELECTOR.test(r.selector) && FLOW_DECL.test(r.body)).map(fmtRule);
 
 test('v1.75: NO css rule assigns flex `order` to a bottom-nav item - the resolver is the sole authority', () => {
-  const offenders = cssRules()
-    .filter((r) => /bottom-nav/.test(r.selector) && ORDER_DECL.test(r.body))
-    .map((r) => `${r.selector} { ${r.body} }`);
+  const offenders = orderOffenders(cssRulesFrom(CSS));
   assert.deepEqual(offenders, [], `flex order on the bottom bar is the v1.39.2 defect: ${JSON.stringify(offenders)}`);
 });
-
-// The flex CONTAINER (`#bottom-nav` / `.bottom-nav`), not its children. The
-// distinction is load-bearing for the next test: `.bottom-nav-item` is itself a
-// column (icon over label) and legitimately sets flex-direction; only the
-// container's own direction decides the SEQUENCE of the items.
-const CONTAINER_SELECTOR = /(#bottom-nav|\.bottom-nav)(?![-\w])/;
 
 test('v1.75: and no rule inverts or re-flows the bar around the resolver either', () => {
   // `order` is not the only way to divorce the rendered sequence from the DOM:
   // flex-direction: row-reverse on the container does it wholesale, and
   // `direction: rtl` does it too. Same defect class, same lock.
-  const offenders = cssRules()
-    .filter((r) => CONTAINER_SELECTOR.test(r.selector))
-    .filter((r) => /(^|[^-\w])(flex-direction|direction)\s*:/.test(r.body))
-    .map((r) => `${r.selector} { ${r.body} }`);
+  const offenders = flowOffenders(cssRulesFrom(CSS));
   assert.deepEqual(offenders, [], `the bar's sequence must come from the resolver alone: ${JSON.stringify(offenders)}`);
 });
 
 test('v1.75: the lock catches every shape the ladder could come back in (verified against real mutants)', () => {
   // The three shapes that survived the round-1 lock, plus the two that did not.
-  // Run through the SAME predicate the two tests above use, so the lock and its
-  // own proof cannot drift apart.
+  // Routed through the REAL parser and the REAL predicates the two tests above
+  // call, so gutting either one fails this test too - the lock and its own
+  // proof cannot drift apart.
   const caught = (css) => {
-    const flat = css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ');
-    const re = /([^{}]+)\{([^{}]*)\}/g;
-    let m;
-    while ((m = re.exec(flat)) !== null) {
-      const sel = m[1].trim();
-      const body = m[2].trim();
-      const badOrder = /bottom-nav/.test(sel) && ORDER_DECL.test(body);
-      const badFlow = CONTAINER_SELECTOR.test(sel) && /(^|[^-\w])(flex-direction|direction)\s*:/.test(body);
-      if (badOrder || badFlow) return true;
-    }
-    return false;
+    const rules = cssRulesFrom(css);
+    return orderOffenders(rules).length > 0 || flowOffenders(rules).length > 0;
   };
   assert.ok(caught('#bottom-nav [data-nav="home"] { order: 1; }'), 'single-line ladder rule');
   assert.ok(caught('#bottom-nav [data-nav="liked"] {\n  order: -1;\n}'), 'MULTI-LINE rule (survived round 1)');
@@ -407,12 +402,15 @@ test('v1.75 EDITOR FLOOR: the floor counts what the BAR mounts, not the roster',
   const cfg = { hidden: present.slice(), order: [], shown: ['subscriptions', 'oneoff-download'] };
   withEditor(cfg, (dom, signal) => {
     global.showToast = () => {};
-    // Mount the live bar the panel's own page carries, module-off shaped.
+    setup.renderBottomBarEditor(signal);
+    // Mount the live bar AFTER the panel renders - the two capability probes
+    // resolve asynchronously, so a floor that snapshotted the bar at render
+    // time would decide against a list that is still filling in (QA gate round
+    // 2). Reading it at CHANGE time is the whole point.
     const nav = dom.window.document.createElement('nav');
     nav.id = 'bottom-nav';
     nav.innerHTML = present.map((id) => `<a class="bottom-nav-item" data-nav="${id}"></a>`).join('');
     dom.window.document.body.appendChild(nav);
-    setup.renderBottomBarEditor(signal);
     const before = dom.window.localStorage.getItem('ft-bottomnav');
     // Ticking Subscriptions off is legal by the roster (Download still shows)
     // but empties the REAL bar, so it must be refused.

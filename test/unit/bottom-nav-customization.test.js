@@ -171,11 +171,18 @@ const PRE_V175_CONFIGS = [
   ['a config naming ids whose modules are off', { hidden: ['subscriptions', 'oneoff-download'], order: ['subscriptions', 'theme'], shown: [] }],
 ];
 
-test('v1.75 COMPAT: an untouched device renders the IDENTICAL bar after upgrade, for every pre-v1.75 config shape', () => {
+test('v1.75 COMPAT: an untouched device keeps identical bar MEMBERSHIP and opt-in state, for every pre-v1.75 config shape', () => {
+  // Deliberately not titled "the IDENTICAL bar": D2-bis records that ORDER
+  // does change where the deleted CSS ladder had been overriding the resolver.
+  // What this binds is the part that did NOT change - which ids are on the bar
+  // and which are opted in. (It happens to bind order too, for these fixtures:
+  // the shells' DOM order and the roster coincide, so resolveV174's DOM-order
+  // ranking and the new roster ranking agree. That is why scrambling the
+  // roster fails this test as well as the W3 one.)
   for (const [label, cfg] of PRE_V175_CONFIGS) {
     const after = resolveBottomNavLayout(SHELL_V175, cfg).visible;
     const before = resolveV174(SHELL_V174, cfg);
-    assert.deepEqual(after, before, `${label}: the bar changed under the user`);
+    assert.deepEqual(after, before, `${label}: the bar's membership changed under the user`);
     assert.ok(after.indexOf('liked') === -1, `${label}: the new Liked entry must stay off until opted in`);
   }
 });
@@ -316,8 +323,9 @@ test('W3: BOTTOM_NAV_OPTIONAL IS the default bar - derived from the shells, neve
   assert.deepEqual(
     resolveBottomNavLayout(present, {}).sequence,
     BOTTOM_NAV_OPTIONAL,
-    'the roster must equal the default resolved bar - otherwise the Settings panel lists one order, '
-    + 'the bar renders another, and the first move-button tap persists the panel\'s wrong one',
+    'the roster must equal the default resolved bar. Since the gate-round-1 fix both surfaces RANK by '
+    + 'this roster, so they cannot disagree with each other - what a failure here means is that the '
+    + 'roster has drifted from the shells, i.e. the bar no longer opens in the order its markup reads',
   );
 });
 

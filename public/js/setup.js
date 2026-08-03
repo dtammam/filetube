@@ -757,10 +757,18 @@ function renderBottomBarEditor(signal) {
   // real bar has nothing at all and falls back to the default - the panel would
   // then show ten empty boxes over a fully populated bar (adversarial gate S4).
   // setup.html carries the bar itself, so the live list is right here.
-  const barItems = document.querySelectorAll('#bottom-nav .bottom-nav-item');
-  const presentIds = barItems.length
-    ? Array.prototype.map.call(barItems, (el) => el.getAttribute('data-nav')).filter(Boolean)
-    : optional;
+  //
+  // Read at CHANGE time, not at render time (QA gate round 2). The two
+  // capability probes resolve asynchronously, so a snapshot taken while the
+  // panel renders usually holds only the ten static ids on a hard load, and the
+  // same un-check would be refused after a reload but accepted after in-app
+  // navigation - the identical async-injection-leaks-into-behaviour class this
+  // wave just fixed in the resolver.
+  const livePresentIds = () => {
+    const els = document.querySelectorAll('#bottom-nav .bottom-nav-item');
+    const ids = Array.prototype.map.call(els, (el) => el.getAttribute('data-nav')).filter(Boolean);
+    return ids.length ? ids : optional;
+  };
 
   host.innerHTML = '';
   items.forEach((id, index) => {
@@ -797,7 +805,7 @@ function renderBottomBarEditor(signal) {
       // here rather than writing a config the resolver then has to override -
       // `flooredToDefault` is precisely "this config empties the bar", asked
       // of the same function that would have to clean up after it.
-      if (FT.resolveBottomNavLayout(presentIds, c).flooredToDefault === true) {
+      if (FT.resolveBottomNavLayout(livePresentIds(), c).flooredToDefault === true) {
         cb.checked = true; // put the tick back; nothing is persisted
         showToast('Keep at least one item in the bottom bar.');
         return;
