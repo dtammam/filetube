@@ -218,9 +218,8 @@ test('settings: pollMinutes round-trips with validation; downloadDir is reported
 });
 
 test('v1.70: delete -> trash -> restore round-trip; collisions and wrong states refuse; per-user state survives trash', async () => {
-  // The seeded downloaded episode lives OUTSIDE the podcasts root (a temp
-  // show dir) - move it inside first so computeTrashTarget confines
-  // correctly under the real root.
+  // Seed a downloaded episode INSIDE the podcasts root so computeTrashTarget
+  // confines correctly under the real root.
   const root = path.join(DATA_DIR, 'podcasts');
   const showDir = path.join(root, 'RoundTrip Show');
   fs.mkdirSync(showDir, { recursive: true });
@@ -287,6 +286,24 @@ test('v1.70: delete -> trash -> restore round-trip; collisions and wrong states 
 
   // Phantom + non-downloaded refusals.
   assert.strictEqual((await fetch(`${base}/api/podcasts/episodes/ffffffffffffffffffffffffffffffff`, { method: 'DELETE' })).status, 404);
+});
+
+test('v1.70 (QA S4): DELETE of an episode whose file already vanished records deleted-on-disk, no trash trip', async () => {
+  const root = path.join(DATA_DIR, 'podcasts');
+  const missing = path.join(root, 'RoundTrip Show', 'Gone [rss=gone1].mp3'); // never written
+  const epId = podcastStore.episodeIdFor(subId, 'gone1');
+  await updateDatabase((db) => {
+    const ns = podcastStore.ensurePodcasts(db);
+    podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'gone1', title: 'Gone', pubDateMs: 3100, durationSec: 10 }], 'pending', 5100);
+    podcastStore.reduceEpisodeDownloaded(ns, epId, { fileName: path.basename(missing), filePath: missing, bytes: 9, nowMs: 6100 });
+    return true;
+  });
+  const r = await fetch(`${base}/api/podcasts/episodes/${epId}`, { method: 'DELETE' });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual((await r.json()).status, 'deleted-on-disk', 'records the truth instead of failing the intent');
+  const data = await (await get(`/api/podcasts/shows/${subId}/episodes`)).json();
+  assert.strictEqual(data.episodes.find((e) => e.id === epId).status, 'deleted-on-disk');
+  assert.strictEqual((await postJson(`/api/podcasts/episodes/${epId}/restore`, {})).status, 400, 'a deleted-on-disk episode is not restorable');
 });
 
 test('v1.70 gate CRITICAL#1: a hostile record cannot read, write or destroy outside the podcasts root', async () => {

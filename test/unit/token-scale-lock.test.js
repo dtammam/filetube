@@ -59,7 +59,7 @@ test('every new-layer token is defined EXACTLY ONCE with its contract value (mod
   }
 });
 
-// v1.71 (Dean's on-device report: "the Podcasts settings window background
+// v1.70 (Dean's on-device report: "the Podcasts settings window background
 // is translucent"): the root cause was `background: var(--bg-primary)` - a
 // token that has NEVER existed. An undefined var() makes the whole
 // declaration invalid at computed-value time, so the element renders with
@@ -72,7 +72,7 @@ test('every new-layer token is defined EXACTLY ONCE with its contract value (mod
 // defines. Comments are STRIPPED first (the v1.50 source-lock lesson - this
 // file's own prose names the dead tokens, and an unstripped scan would
 // flag itself).
-test('v1.71: every fallback-less var() names a token the stylesheet defines (the undefined-token blind spot)', () => {
+test('v1.70: every fallback-less var() names a token the stylesheet defines (the undefined-token blind spot)', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const raw = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');

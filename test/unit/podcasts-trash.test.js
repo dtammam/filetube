@@ -232,6 +232,10 @@ test('WARNING#3: the cover fetch gets a 2-minute ceiling, never the episode hour
   assert.strictEqual(seenOpts.totalTimeoutMs, podcasts.COVER_TOTAL_TIMEOUT_MS);
   assert.strictEqual(podcasts.COVER_TOTAL_TIMEOUT_MS, 120000, 'two minutes');
   assert.ok(seenOpts.totalTimeoutMs < 60 * 60 * 1000, 'strictly under the enclosure hour');
+  // QA W3: the constant lock alone is the DECISION; this binds the USE.
+  // An 8MB literal at the call site would pass every other test while
+  // silently re-killing Dean's measured 15.5MB cover.
+  assert.strictEqual(seenOpts.maxBytes, podcasts.COVER_MAX_BYTES, 'the cover call site passes the locked cap');
 });
 
 test('WARNING#4 (MV6): the cover cap constant is LOCKED above the measured real-world 15.5MB cover', () => {
@@ -291,7 +295,7 @@ test('delta WARNING#2: an expired trashed episode outside the current root is le
   fs.rmSync(oldRoot, { recursive: true, force: true });
 });
 
-test('delta S2: the sweep\'s tombstone carries a FROM-state guard (a record that changed state is never retired)', () => {
+test('delta S2 (sweep tombstone): the sweep\'s tombstone carries a FROM-state guard (a record that changed state is never retired)', () => {
   const ns = nsWith('downloaded'); // e.g. restored between selection and mutation
   assert.strictEqual(store.reduceEpisodeStatus(ns, 'ep1', 'tombstone', { from: 'trashed' }), false, 'refuses: not trashed any more');
   assert.strictEqual(ns.episodes.ep1.status, 'downloaded', 'and leaves it alone');
@@ -324,7 +328,7 @@ test('delta S1: rows and record purge in LOCKSTEP - a record the {from} guard sa
   assert.deepStrictEqual(purged, ['go'], 'ONLY the actually-tombstoned episode loses its per-user rows');
 });
 
-test('delta S2: a missing root during the cover retry names the real incident in the status', async () => {
+test('delta S2 (cover retry): a missing root during the cover retry names the real incident in the status', async () => {
   const id = await addSub('all');
   await podcasts.runPodcastPoll(deps, id);
   fs.rmSync(path.join(dataDir, 'podcasts'), { recursive: true, force: true });
