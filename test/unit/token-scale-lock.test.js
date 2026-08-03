@@ -58,3 +58,39 @@ test('every new-layer token is defined EXACTLY ONCE with its contract value (mod
     assert.equal(defs[0], value, `${name} value drifted from the contract`);
   }
 });
+
+// v1.70 (Dean's on-device report: "the Podcasts settings window background
+// is translucent"): the root cause was `background: var(--bg-primary)` - a
+// token that has NEVER existed. An undefined var() makes the whole
+// declaration invalid at computed-value time, so the element renders with
+// NO background, in EVERY era. Neither instrument could see it: the census
+// only scans literals PRESENT in declarations, and the styling-source lock
+// proves a className is BOUND, not that its variables resolve.
+//
+// This lock closes that blind spot for the whole stylesheet: every var()
+// reference without a fallback must name a token the stylesheet actually
+// defines. Comments are STRIPPED first (the v1.50 source-lock lesson - this
+// file's own prose names the dead tokens, and an unstripped scan would
+// flag itself).
+test('v1.70: every fallback-less var() names a token the stylesheet defines (the undefined-token blind spot)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const raw = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+  const css = raw.replace(/\/\*[\s\S]*?\*\//g, ''); // strip comments FIRST
+  // Definitions: ';{'-anchored (an inline `:root { --a: 1; --b: 2 }` defines
+  // BOTH) and case-SENSITIVE (custom properties are).
+  const defined = new Set([...css.matchAll(/(?:^|[;{])\s*(--[A-Za-z0-9_-]+)\s*:/gm)].map((m) => m[1]));
+  // Custom properties set from JS at runtime (never declared in CSS).
+  const jsSet = new Set(['--history-pct', '--media-aspect', '--music-sticky-top', '--ptr-pull', '--seek-fill', '--vol-fill']);
+  const missing = new Set();
+  // Usages: allow the whitespace shapes ordinary wrapped formatting produces
+  // (`var(\n  --token\n)`, tabs, spaces) and the full custom-property
+  // charset - the delta-round attack showed the first version missed five
+  // shapes including plain line-wrapping, i.e. it would not have caught the
+  // very bug it was written for had that line been formatted differently.
+  for (const m of css.matchAll(/var\(\s*(--[A-Za-z0-9_-]+)\s*\)/g)) { // no-fallback form only
+    if (!defined.has(m[1]) && !jsSet.has(m[1])) missing.add(m[1]);
+  }
+  assert.deepStrictEqual([...missing].sort(), [],
+    'these var() references name tokens that do not exist - the declaration silently does nothing (transparent backgrounds, missing shadows, unstyled text)');
+});

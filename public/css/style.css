@@ -7315,7 +7315,10 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .reloc-preview-panel {
   background: var(--card-bg);
-  color: var(--text-color);
+  /* v1.70 undefined-token sweep: was var(--text-color) - never defined, so
+     this panel has always inherited its color instead. --text-primary is
+     the real token. */
+  color: var(--text-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   width: 100%;
@@ -7604,7 +7607,10 @@ body.ft-css-fullscreen .bottom-nav {
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
   padding: var(--space-5) var(--space-6);
-  background: var(--bg-primary);
+  /* Pre-existing since v1.43 (found by the v1.70 undefined-token sweep):
+     --bg-primary has never existed, so this row has been background-less
+     all along - visible only as a missing panel fill behind the border. */
+  background: var(--card-bg);
 }
 .users-row-who {
   display: flex;
@@ -9100,7 +9106,7 @@ a.queue-upnext-next:hover {
   border-radius: var(--radius-lg);
   object-fit: cover;
   background: var(--thumbnail-bg);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow); /* v1.70: was var(--shadow-sm), which never existed */
   display: block;
 }
 .podcast-card-title {
@@ -9232,12 +9238,18 @@ a.queue-upnext-next:hover {
 .podcast-episode-row.played .podcast-played-toggle {
   background: var(--yt-red);
   border-color: var(--yt-red);
-  color: var(--text-inverse);
+  /* Same undefined-token class as the sheet above: --text-inverse does not
+     exist. On the red fill the checkmark needs a light foreground; #fff is
+     a legibility floor against a fixed brand color, not a themed value. */
+  color: #fff; /* token-exempt: legibility floor on the fixed --yt-red fill */
 }
 
 /* The management row on a show's drill-in (v1.69 QA gate #3). */
 .podcast-manage-row { display: flex; gap: var(--space-4); flex-wrap: wrap; align-items: center; margin-top: var(--space-3); }
-.podcast-unsub-btn.confirming { color: var(--yt-red); border-color: var(--yt-red); }
+/* Shared confirming state - unsubscribe AND the v1.70 episode delete render
+   the same two-tap affordance from ONE rule (the styling-source law). */
+.podcast-unsub-btn.confirming,
+.podcast-ep-delete.confirming { color: var(--yt-red); border-color: var(--yt-red); }
 .podcast-reenter-row { display: flex; gap: var(--space-4); flex-wrap: wrap; align-items: center; width: 100%; margin-top: var(--space-3); }
 .podcast-reenter-row .search-input { flex: 1; min-width: 220px; }
 
@@ -9257,7 +9269,14 @@ a.queue-upnext-next:hover {
   left: 50%;
   transform: translate(-50%, -50%);
   width: min(480px, calc(100vw - var(--space-8) * 2));
-  background: var(--bg-primary);
+  /* v1.70 BUG FIX (Dean, on-device: "the background is translucent, you can
+     see through it"): this read var(--bg-primary), a token that DOES NOT
+     EXIST - an undefined var() makes the declaration invalid at computed-
+     value time, so the sheet had NO background in every era. --card-bg is
+     the real panel token (defined in all four era blocks). The census
+     cannot see this class of defect (it only scans literals PRESENT); the
+     styling lock only proves a class is BOUND, not that its vars resolve. */
+  background: var(--card-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);

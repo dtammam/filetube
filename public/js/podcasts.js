@@ -49,6 +49,7 @@
       case 'failed': return 'Download failed';
       case 'skipped': return 'Not downloaded';
       case 'deleted-on-disk': return 'File removed';
+      case 'trashed': return 'In trash';
       case 'tombstone': return 'Deleted';
       default: return '';
     }
@@ -374,6 +375,43 @@
         }, { signal: signal });
       }
       row.appendChild(main);
+
+      // v1.70: the recoverable delete (RSS episodes only). Downloaded rows
+      // get a two-tap delete; trashed rows get Restore. Both refresh the
+      // list from server state on success.
+      if (!ep.watchHref && ep.status === 'downloaded') {
+        var delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'btn btn-sm podcast-ep-delete';
+        delBtn.textContent = 'Delete';
+        var delConfirming = false;
+        delBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          if (!delConfirming) {
+            delConfirming = true;
+            delBtn.classList.add('confirming');
+            delBtn.textContent = 'Move to trash?';
+            return;
+          }
+          fetchJson('/api/podcasts/episodes/' + encodeURIComponent(ep.id), { method: 'DELETE' })
+            .then(function () { if (currentShow) openShow(currentShow); })
+            .catch(function () { setStatus('Could not delete the episode.'); });
+        }, { signal: signal });
+        row.appendChild(delBtn);
+      }
+      if (!ep.watchHref && ep.status === 'trashed') {
+        var restoreBtn = document.createElement('button');
+        restoreBtn.type = 'button';
+        restoreBtn.className = 'btn btn-sm';
+        restoreBtn.textContent = 'Restore';
+        restoreBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          fetchJson('/api/podcasts/episodes/' + encodeURIComponent(ep.id) + '/restore', { method: 'POST' })
+            .then(function () { if (currentShow) openShow(currentShow); })
+            .catch(function (err) { setStatus(err.message || 'Could not restore the episode.'); });
+        }, { signal: signal });
+        row.appendChild(restoreBtn);
+      }
 
       // The played toggle writes the podcast latch - external (media-item)
       // episodes get their played state from watch history instead, shown
