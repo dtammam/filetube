@@ -114,8 +114,14 @@
 
         <!-- v1.44.2: tapping a song plays in the DOCKED mini-player (#player-dock,
              in the shell below), NOT a FULL in-view player — the album header +
-             tracklist stay on screen (browse-while-playing). No #player-slot here.
-             The playing row highlights instead (public/js/music.js). -->
+             tracklist stay on screen (browse-while-playing). The playing row
+             highlights instead (public/js/music.js).
+             v1.73 (Dean ruling 2): the podcasts now-playing contract arrives -
+             #player-slot hosts the EXPANDED big-art view, reached by tapping
+             the dock (?nowplaying=1) or re-adopted when a FULL player rides a
+             music->music swap; browse-while-playing is otherwise unchanged
+             (the slot sits empty during normal docked playback). -->
+        <div id="player-slot"></div>
         <!-- Transient status (e.g. "Preparing track…" while an ALAC rendition
              transcodes on demand). -->
         <div id="music-status" class="music-status" role="status" hidden></div>
@@ -168,6 +174,10 @@
     <a href="/books" class="bottom-nav-item" data-nav="books" hidden>
       <i class="icon-folder"></i>
       <span class="bottom-nav-label">Books</span>
+    </a>
+    <a href="/" class="bottom-nav-item" data-nav="downloads" hidden>
+      <i class="icon-downloads"></i>
+      <span class="bottom-nav-label">Downloads</span>
     </a>
     <button type="button" class="bottom-nav-item" data-nav="theme" id="nav-theme-toggle">
       <i class="icon-moon"></i>
@@ -235,9 +245,15 @@
         <div class="audio-subtitle" id="audio-visual-folder">Playlist folder</div>
       </div>
       <div id="player-controls" class="player-controls">
+        <button type="button" id="track-prev-btn" class="pc-btn track-nav-btn" aria-label="Previous track" hidden>
+          <span class="track-nav-ico" aria-hidden="true"></span>
+        </button>
         <button type="button" id="pp-btn" class="pc-btn pp-btn" aria-label="Play" aria-pressed="false">
           <span class="pp-icon-play" aria-hidden="true"></span>
           <span class="pp-icon-pause" aria-hidden="true"></span>
+        </button>
+        <button type="button" id="track-next-btn" class="pc-btn track-nav-btn" aria-label="Next track" hidden>
+          <span class="track-nav-ico" aria-hidden="true"></span>
         </button>
         <span id="time-cur" class="pc-time">0:00</span>
         <input type="range" id="seek-bar" class="pc-range pc-seek" min="0" max="1" step="0.001" value="0" aria-label="Seek">

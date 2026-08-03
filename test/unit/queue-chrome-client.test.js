@@ -221,3 +221,62 @@ test('v1.72 QA W3 bind: the cross-kind consult re-checks staleness AFTER the set
   assert.ok(recheckIdx >= 0, 'the staleness re-check exists inside the consult');
   assert.ok(actIdx > recheckIdx, 'and it runs BEFORE any action (pointer moves are server state)');
 });
+
+test('v1.73 (Dean device bug): the watch Prev/Next QUEUE arm dispatches by kind - non-media entries ride queueEntryHref, never navigateToWatch', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const watchSrc = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
+  const seamStart = watchSrc.indexOf('const goQueueEntry = (entry) => {');
+  assert.ok(seamStart >= 0, 'the queue-entry navigation seam exists');
+  const seam = watchSrc.slice(seamStart, watchSrc.indexOf('let effNext', seamStart));
+  assert.ok(seam.includes("(entry.kind || 'media') !== 'media'"), 'the kind gate exists (absent kind = legacy media)');
+  const gateIdx = seam.indexOf("(entry.kind || 'media') !== 'media'");
+  const hrefIdx = seam.indexOf('window.FileTube.queueEntryHref(entry)');
+  const stashIdx = seam.indexOf('stashWatchSeed(entry.item)');
+  const navIdx = seam.indexOf('navigateToWatch(entry.mediaId)');
+  assert.ok(hrefIdx > gateIdx, 'non-media destination derives from the ONE kind-aware helper');
+  assert.ok(seam.slice(gateIdx, stashIdx).includes('return;'), 'the non-media arm RETURNS before the watch seed and the watch nav');
+  assert.ok(navIdx > stashIdx, 'the media arm keeps its seed-then-navigate order');
+});
+
+test('v1.73 (ruling 6): the audio Prev/Next pair - queue-aware steps, audio-mode-only visibility, every shell carries the buttons', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const playerSrc = fs.readFileSync(path.join(__dirname, '../../public/js/player.js'), 'utf8');
+  // The manual step: queue-first with the staleness re-check, context fallback.
+  const stepStart = playerSrc.indexOf('function manualTrackStep(dir)');
+  assert.ok(stepStart >= 0, 'manualTrackStep exists');
+  const step = playerSrc.slice(stepStart, playerSrc.indexOf('function setTrackNav', stepStart));
+  assert.ok(step.includes('if (currentId !== steppedId) return;'), 'staleness re-checked after the queue fetch (the C6 law)');
+  assert.ok(step.includes('pointerEntry.mediaId === steppedId && neighbor'), 'queue precedence keys on the CURRENT item being now-playing');
+  assert.ok(step.includes('advanceIntoQueueEntry(neighbor)'), 'a queue step rides the ONE kind-aware advance seam');
+  assert.ok(step.indexOf('advanceIntoQueueEntry') < step.indexOf('trackNavHandlers && (dir'), 'queue consult precedes the context fallback');
+  // Visibility (v1.73 round 1, adversarial W2 + QA W1): the WHOLE show
+  // expression is bound - audio mode AND a registered context AND the
+  // kind-surface marker (the watch page plays plain audio and registers
+  // trackNav; only music/podcasts set autoAdvanceViaTrackNav, so the
+  // watch chrome never grows the pair). An ||-for-&& mutant dies here.
+  assert.ok(playerSrc.includes("var show = audioMode && !!trackNavHandlers\n      && !!(currentData && currentData.autoAdvanceViaTrackNav === true);"),
+    'the exact show expression - all three conjuncts, AND-composed');
+  assert.ok((playerSrc.match(/updateTrackNavButtons\(\);/g) || []).length >= 3, 'setTrackNav + BOTH audio-mode toggle sites update visibility');
+  // Adversarial W3: dead-button class - the CLICK wiring is bound.
+  assert.ok(playerSrc.includes("if (trackPrevBtn) trackPrevBtn.addEventListener('click', function () { manualTrackStep('prev'); });"), 'prev wired');
+  assert.ok(playerSrc.includes("if (trackNextBtn) trackNextBtn.addEventListener('click', function () { manualTrackStep('next'); });"), 'next wired');
+  // Adversarial W4: shown buttons stay ENABLED - a context-edge tap must
+  // reach the queue consult (the queue owns up-next).
+  assert.ok(playerSrc.includes('trackPrevBtn.disabled = false;') && playerSrc.includes('trackNextBtn.disabled = false;'),
+    'no handler-presence disable - the queue stays reachable at list edges');
+  // Every shell carries the pair (the every-writer rule).
+  const pub = path.join(__dirname, '../../public');
+  const shells = fs.readdirSync(pub).filter((f) => f.endsWith('.html'))
+    .filter((f) => fs.readFileSync(path.join(pub, f), 'utf8').includes('player-host-template'));
+  assert.ok(shells.length >= 8, `expected the full template roster, found ${shells.length}`);
+  for (const f of shells) {
+    const html = fs.readFileSync(path.join(pub, f), 'utf8');
+    assert.ok(html.includes('id="track-prev-btn"') && html.includes('id="track-next-btn"'), `${f}: missing the track-nav pair`);
+  }
+  // The [hidden]-vs-display enforcement (the v1.44 class).
+  const css = fs.readFileSync(path.join(pub, 'css/style.css'), 'utf8');
+  assert.ok(css.includes('.track-nav-btn[hidden] { display: none !important; }'), 'pc-btn inline-flex would beat [hidden] without the enforcement rule');
+  assert.ok(css.includes('#player-dock #track-prev-btn'), 'the dock never shows the pair (full view only - the ruling)');
+});

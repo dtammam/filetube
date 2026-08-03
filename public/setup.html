@@ -509,13 +509,12 @@
             <input type="checkbox" id="home-continue-watching-check" checked />
             Show "Continue watching" on the home page
           </label>
+          <!-- v1.73 (Dean ruling 1): ONE merged listening row - the separate
+               Podcasts toggle retired; the old key is still read so a device
+               where either was on keeps the row. -->
           <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:8px;">
             <input type="checkbox" id="home-continue-listening-check" checked />
-            Show "Continue listening" on the home page
-          </label>
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:8px;">
-            <input type="checkbox" id="home-continue-podcasts-check" checked />
-            Show "Continue listening &middot; Podcasts" on the home page
+            Show "Continue listening" (music + podcasts) on the home page
           </label>
           <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:8px;">
             <input type="checkbox" id="home-continue-reading-check" checked />
@@ -759,9 +758,15 @@
         <div class="audio-subtitle" id="audio-visual-folder">Playlist folder</div>
       </div>
       <div id="player-controls" class="player-controls">
+        <button type="button" id="track-prev-btn" class="pc-btn track-nav-btn" aria-label="Previous track" hidden>
+          <span class="track-nav-ico" aria-hidden="true"></span>
+        </button>
         <button type="button" id="pp-btn" class="pc-btn pp-btn" aria-label="Play" aria-pressed="false">
           <span class="pp-icon-play" aria-hidden="true"></span>
           <span class="pp-icon-pause" aria-hidden="true"></span>
+        </button>
+        <button type="button" id="track-next-btn" class="pc-btn track-nav-btn" aria-label="Next track" hidden>
+          <span class="track-nav-ico" aria-hidden="true"></span>
         </button>
         <span id="time-cur" class="pc-time">0:00</span>
         <input type="range" id="seek-bar" class="pc-range pc-seek" min="0" max="1" step="0.001" value="0" aria-label="Seek">
@@ -810,6 +815,10 @@
     <a href="/books" class="bottom-nav-item" data-nav="books" hidden>
       <i class="icon-folder"></i>
       <span class="bottom-nav-label">Books</span>
+    </a>
+    <a href="/" class="bottom-nav-item" data-nav="downloads" hidden>
+      <i class="icon-downloads"></i>
+      <span class="bottom-nav-label">Downloads</span>
     </a>
     <button type="button" class="bottom-nav-item" data-nav="theme" id="nav-theme-toggle">
       <i class="icon-moon"></i>

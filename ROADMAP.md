@@ -80,6 +80,46 @@
 
 ## Shipped
 
+### v1.73.0 - The audio chrome converges + Downloads graduates (2026-08-03)
+
+Dean's same-morning follow-up to v1.72.0, nine rulings. His device
+bug died first: the watch page's manual Next with a podcast/track
+queued hand-built /watch.html?v= and showed "Failed to Load Media" -
+the LAST legacy queue arm now rides the kind-aware queueEntryHref.
+The architectural ruling: one player engine already existed, the
+AUDIO CHROME had forked - music now mounts the same now-playing view
+podcasts got in v1.71 (dock tap -> /music?nowplaying=1, one
+gesture), square covers render clean (contain + backdrop - the
+side-echo is gone), and the control bar grows a queue-aware
+Prev/Next pair on the kind surfaces only. Home: ONE merged Continue
+listening row (music + podcasts by recency), every row capped at 8.
+Downloads graduates to the FIRST hard Library entry with a
+video-platform glyph (all sets incl. the U+1F4FA emoji) + an
+optional default-hidden bottom-bar item. Podcast push: an episode
+finishing its download notifies + pushes, deep-linking
+/podcasts?play= (schema v13 - notifications.kind, its own
+append-only block; the UNIQUE(media_id) cross-kind REPLACE semantics
+are documented and bound).
+
+What the gate caught (full gate, 2 rounds each seat): a genuine
+CRITICAL - the merged row's toggle was implemented as a permanent OR
+read and could never turn OFF (a lying Settings control, proven by a
+surviving mutant); now a one-time upgrade fold with a bound matrix.
+DISCLOSED interpretation of ruling 1's parenthetical: an explicit
+pre-v1.73 music-row OFF stays off; the either-was-on fold applies
+where the retired podcasts key exists (QA evaluated and endorsed).
+Also caught: the track-button pair leaking onto the watch page's
+audio items (now marker-gated), the ruled emoji glyph silently
+dropped (shipped), the podcast bridge gating RECORDING where the
+scan bridge gates only delivery (parity restored), and five
+unbound seams incl. the headline bridge - all now killed by named
+tests. Known gaps: tech-debt #101 (single-item context hides the
+audio Prev/Next with a queue banked) and the inherited #95-class
+unbound autoAdvanceViaTrackNav setter (adversarial M7 - noted on
+row 95, five-minute lock at next touch). Dual-Node: v22.23.1 =
+5885/5885, 0 fail; v24.14.0 = 5885/5885, 0 fail. Device pass
+PENDING.
+
 ### v1.72.0 - First-class parity: the full scoop (2026-08-03)
 
 Dean's overnight ruling: everything the ten-capability definition

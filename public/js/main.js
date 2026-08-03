@@ -153,13 +153,29 @@ function buildMusicRowCardHtml(item) {
   `;
 }
 
-function buildMusicHomeSectionHtml(items, heading, seeAllHref) {
-  if (!Array.isArray(items) || items.length === 0) return '';
-  const seeAll = seeAllHref ? `<a class="books-row-seeall" href="${escapeBookRowHtml(seeAllHref)}">See all</a>` : '';
+// v1.73 (Dean ruling 3): the uniform cap on every home row.
+const HOME_ROW_CAP = 8;
+
+// v1.73 (Dean ruling 1): ONE merged "Continue listening" section - music
+// tracks and podcast episodes interleaved by listening recency (progress
+// updatedAt desc; ISO strings compare lexicographically), capped at
+// HOME_ROW_CAP. No See-all link: the mixed row has no single destination
+// (each card deep-links its own place). Replaces the two per-kind section
+// builders v1.44/v1.71 shipped.
+function buildListeningHomeSectionHtml(tracks, episodes, heading) {
+  const tagged = [
+    ...(Array.isArray(tracks) ? tracks : []).map((t) => ({ kind: 'track', item: t, at: t && t.progress && typeof t.progress.updatedAt === 'string' ? t.progress.updatedAt : '' })),
+    ...(Array.isArray(episodes) ? episodes : []).map((e) => ({ kind: 'podcast', item: e, at: e && e.progress && typeof e.progress.updatedAt === 'string' ? e.progress.updatedAt : '' })),
+  ];
+  if (tagged.length === 0) return '';
+  tagged.sort((a, b) => b.at.localeCompare(a.at));
+  const cards = tagged.slice(0, HOME_ROW_CAP)
+    .map((x) => (x.kind === 'podcast' ? buildPodcastRowCardHtml(x.item) : buildMusicRowCardHtml(x.item)))
+    .join('');
   return `
     <section class="books-home-row music-home-row">
-      <div class="books-home-row-header"><h3>${escapeBookRowHtml(heading)}</h3>${seeAll}</div>
-      <div class="books-home-row-scroller">${items.map(buildMusicRowCardHtml).join('')}</div>
+      <div class="books-home-row-header"><h3>${escapeBookRowHtml(heading)}</h3></div>
+      <div class="books-home-row-scroller">${cards}</div>
     </section>
   `;
 }
@@ -178,16 +194,9 @@ function buildPodcastRowCardHtml(ep) {
   `;
 }
 
-function buildPodcastHomeSectionHtml(items, heading, seeAllHref) {
-  if (!Array.isArray(items) || items.length === 0) return '';
-  const seeAll = seeAllHref ? `<a class="books-row-seeall" href="${escapeBookRowHtml(seeAllHref)}">See all</a>` : '';
-  return `
-    <section class="books-home-row music-home-row">
-      <div class="books-home-row-header"><h3>${escapeBookRowHtml(heading)}</h3>${seeAll}</div>
-      <div class="books-home-row-scroller">${items.map(buildPodcastRowCardHtml).join('')}</div>
-    </section>
-  `;
-}
+// (v1.73: the per-kind podcast section builder retired with the music one -
+// buildListeningHomeSectionHtml above renders the merged row; the CARD
+// builders survive as its per-kind arms.)
 
 // v1.72 (cap 5): the videos "Continue watching" row - the music/podcasts
 // row chassis with media fields. 16:9 thumbs (`.video-row-cover` widens the
@@ -398,6 +407,27 @@ function homeRowEnabled(key) {
   }
 }
 
+// v1.73 gate C1 (BOTH seats): ruling 1's either-was-on clause is an
+// UPGRADE MIGRATION, not a permanent read. The first cut gated the merged
+// row on a permanent OR of both keys - homeRowEnabled treats an ABSENT key
+// as ON, so on any device that never explicitly disabled the old podcasts
+// row (i.e. effectively every device) the new toggle's OFF write could
+// never win: a lying Settings control on the headline ruling, proven by a
+// surviving ||->&& mutant. This folds the retired key into the surviving
+// one EXACTLY ONCE, then deletes it - after which the ONE toggle genuinely
+// governs. No retired key present = nothing to fold (fresh devices, and
+// every visit after the fold).
+function migrateListeningRowPref() {
+  try {
+    const pod = localStorage.getItem('ft-home-continue-podcasts');
+    if (pod === null) return;
+    const lv = localStorage.getItem('ft-home-continue-listening');
+    const mergedOn = (lv === null ? true : lv !== '0') || (pod !== '0');
+    localStorage.setItem('ft-home-continue-listening', mergedOn ? '1' : '0');
+    localStorage.removeItem('ft-home-continue-podcasts');
+  } catch (_) { /* storage disabled - the default-ON read stands */ }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     buildCardDownloadHref,
@@ -406,12 +436,13 @@ if (typeof module !== 'undefined' && module.exports) {
     buildBookRowCardHtml,
     buildBooksHomeSectionHtml,
     buildMusicRowCardHtml,
-    buildMusicHomeSectionHtml,
+    buildListeningHomeSectionHtml,
+    HOME_ROW_CAP,
     buildPodcastRowCardHtml,
-    buildPodcastHomeSectionHtml,
     buildVideoRowCardHtml,
     buildVideoHomeSectionHtml,
     homeRowEnabled,
+    migrateListeningRowPref,
     resolveCardCornerPrefs,
     buildCardCornerButtonsHtml,
     cardKindPresentation,
@@ -1901,7 +1932,7 @@ if (typeof module !== 'undefined' && module.exports) {
         const videosRowHost = document.createElement('div');
         booksRowHost.insertAdjacentElement('beforebegin', videosRowHost);
         if (homeRowEnabled('ft-home-continue-watching')) {
-          fetch('/api/videos?filter=recent-watching&limit=10')
+          fetch(`/api/videos?filter=recent-watching&limit=${HOME_ROW_CAP}`)
             .then((r) => (r.ok ? r.json() : { items: [] }))
             .then((data) => {
               // No See-all href: the watched-state filter is a stored
@@ -1911,36 +1942,28 @@ if (typeof module !== 'undefined' && module.exports) {
             })
             .catch(() => { videosRowHost.innerHTML = ''; });
         }
-        // v1.44: a music "Continue listening" host sits ABOVE the books one.
-        // Both rows are individually toggleable (device-local pref, default
-        // ON); a music-less/books-less install (or a hidden row) renders
-        // NOTHING, keeping the home page byte-identical.
-        const musicRowHost = document.createElement('div');
-        booksRowHost.insertAdjacentElement('beforebegin', musicRowHost);
+        // v1.73 (Dean ruling 1): ONE merged "Continue listening" host sits
+        // ABOVE the books one - music tracks + podcast episodes interleaved
+        // by recency. One toggle governs it; a device where EITHER
+        // pre-v1.73 toggle was on shows the row (both-off stays off - the
+        // retired podcasts key is still READ for that migration, just no
+        // longer offered in Settings).
+        const listeningRowHost = document.createElement('div');
+        booksRowHost.insertAdjacentElement('beforebegin', listeningRowHost);
+        // Gate C1: fold the retired key ONCE, then the ONE key governs.
+        migrateListeningRowPref();
         if (homeRowEnabled('ft-home-continue-listening')) {
-          fetch('/api/music?filter=recent-listening&limit=10')
-            .then((r) => (r.ok ? r.json() : { items: [] }))
-            .then((data) => {
-              musicRowHost.innerHTML = buildMusicHomeSectionHtml(data.items, 'Continue listening', '/music');
+          Promise.all([
+            fetch(`/api/music?filter=recent-listening&limit=${HOME_ROW_CAP}`).then((r) => (r.ok ? r.json() : { items: [] })).catch(() => ({ items: [] })),
+            fetch(`/api/podcasts/episodes?filter=recent-listening&limit=${HOME_ROW_CAP}`).then((r) => (r.ok ? r.json() : { episodes: [] })).catch(() => ({ episodes: [] })),
+          ])
+            .then(([music, pods]) => {
+              listeningRowHost.innerHTML = buildListeningHomeSectionHtml(music.items, pods.episodes, 'Continue listening');
             })
-            .catch(() => { musicRowHost.innerHTML = ''; });
-        }
-        // v1.71: a podcasts continue-listening host sits BETWEEN music and
-        // books (inserted beforebegin the books host AFTER the music host,
-        // so the order is music, podcasts, books). Same rules: toggleable,
-        // podcast-less installs render NOTHING.
-        const podcastsRowHost = document.createElement('div');
-        booksRowHost.insertAdjacentElement('beforebegin', podcastsRowHost);
-        if (homeRowEnabled('ft-home-continue-podcasts')) {
-          fetch('/api/podcasts/episodes?filter=recent-listening&limit=10')
-            .then((r) => (r.ok ? r.json() : { episodes: [] }))
-            .then((data) => {
-              podcastsRowHost.innerHTML = buildPodcastHomeSectionHtml(data.episodes, 'Continue listening · Podcasts', '/podcasts');
-            })
-            .catch(() => { podcastsRowHost.innerHTML = ''; });
+            .catch(() => { listeningRowHost.innerHTML = ''; });
         }
         if (homeRowEnabled('ft-home-continue-reading')) {
-          fetch('/api/books?filter=reading&limit=10')
+          fetch(`/api/books?filter=reading&limit=${HOME_ROW_CAP}`)
             .then((r) => (r.ok ? r.json() : { items: [] }))
             .then((data) => {
               booksRowHost.innerHTML = buildBooksHomeSectionHtml(data.items, 'Continue reading', '/books');

@@ -618,10 +618,13 @@ if (typeof module !== 'undefined' && module.exports) {
         resumeMode: 'music',
         autoAdvanceViaTrackNav: true,
         browseCtx: queueCtxEncoded,
-        // v1.44.2: tapping the docked mini-player returns to /music (the generic
-        // dock-return href — without it a track id hits the video /watch route
-        // and 404s). On /music the same-URL nav guard makes it a benign no-op.
-        readerHref: '/music',
+        // v1.44.2: the dock-return href - without it a track id hits the
+        // video /watch route and 404s. v1.73 (Dean ruling 2): the return
+        // now opens the expanded now-playing view in ONE gesture - the
+        // podcasts ?nowplaying=1 contract, same player audio-mount, second
+        // mount point (on /music the tap NAVIGATES and expands - the old
+        // same-URL-no-op sentence died with the plain /music href).
+        readerHref: '/music?nowplaying=1',
       };
       // v1.44.2 (Spotify feel): play in the DOCKED mini-player, not FULL at the
       // top — the album header + tracklist stay on screen (browse-while-playing)
@@ -733,6 +736,23 @@ if (typeof module !== 'undefined' && module.exports) {
         console.error('Music: initial render failed', err);
         if (emptyNote) emptyNote.hidden = false;
       });
+    }
+
+    // v1.73 (Dean ruling 2): the podcasts ?nowplaying=1 contract, second
+    // mount. Arriving via the docked player's tap expands the LIVE player
+    // into this page's #player-slot (the big audio-art now-playing view);
+    // a stale/bookmarked URL with nothing playing degrades to the list.
+    // Gate W2 (v1.71, inherited): a music->music swap discards the old
+    // view's slot with a FULL player inside it - re-adopt on EVERY init,
+    // ?nowplaying or not. MUST match podcasts.js's copy.
+    var wantNowPlaying = urlParams.get('nowplaying') === '1';
+    var player = window.FileTube && window.FileTube.player;
+    if (player && typeof player.getState === 'function' && typeof player.expand === 'function') {
+      var pState = player.getState();
+      var npSlot = root.querySelector('#player-slot');
+      if (npSlot && (pState === 'full' || (wantNowPlaying && pState === 'docked'))) {
+        player.expand(npSlot);
+      }
     }
   }
 

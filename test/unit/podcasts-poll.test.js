@@ -257,3 +257,47 @@ test('the show cover downloads once as cover.jpg/png alongside the first episode
   const cover = downloads.find((d) => d.finalName === 'cover.png');
   assert.ok(cover, 'cover requested with the png name (URL is .png)');
 });
+
+// ---- v1.73 (ruling 7 + gate round 1): the notification/push bridge is BOUND -
+
+test('v1.73 bridge: downloaded episodes record kind-carried notifications + trigger push ONCE per poll; delivery gating is deliver.js\'s job, never the record\'s (QA W3)', async () => {
+  const recorded = [];
+  const triggers = [];
+  deps.userStore = {
+    removePodcastEpisodeState: () => {},
+    recordNotifications: (entries) => { recorded.push(...entries); return entries.length; },
+  };
+  deps.pushDelivery = { trigger: (why) => triggers.push(why) };
+  // Deliberately NO notificationsEnabled dep: recording is UNCONDITIONAL
+  // (the scan bridge parity - rows recorded while the feature is off
+  // surface when it turns on; deliver.js gates the actual push itself).
+  const id = await addSub('all');
+  await podcasts.runPodcastPoll(deps, id);
+  assert.equal(recorded.length, 3, 'one entry per downloaded episode');
+  for (const e of recorded) {
+    assert.equal(e.kind, 'podcast', 'kind CARRIED at the source');
+    assert.equal(typeof e.mediaId, 'string');
+    assert.equal(e.createdAt, 1754150000000, 'stamped with the poll clock');
+  }
+  assert.deepEqual(triggers, ['podcasts'], 'push triggered exactly once, post-batch');
+});
+
+test('v1.73 bridge: zero downloads = zero records, zero triggers; a THROWING store never breaks the poll', async () => {
+  const triggers = [];
+  deps.userStore = {
+    removePodcastEpisodeState: () => {},
+    recordNotifications: () => { throw new Error('store down'); },
+  };
+  deps.pushDelivery = { trigger: (why) => triggers.push(why) };
+  deps.fetchFeedImpl = async () => ({ ok: true, body: feedXml([]), finalUrl: 'https://x' });
+  const id = await addSub('all');
+  await podcasts.runPodcastPoll(deps, id); // empty feed - nothing to record
+  assert.deepEqual(triggers, []);
+
+  // Now a real download with the throwing store: the poll must complete.
+  deps.fetchFeedImpl = async () => ({ ok: true, body: feedXml(), finalUrl: 'https://x' });
+  await podcasts.runPodcastPoll(deps, id);
+  assert.deepEqual(triggers, [], 'a failed record never fires a push');
+  const eps = store.episodesForSub(store.readPodcasts(db).episodes, id);
+  assert.ok(eps.some((e) => e.status === 'downloaded'), 'the episodes still downloaded (best-effort bridge)');
+});

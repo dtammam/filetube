@@ -1802,9 +1802,15 @@ html.reader-immersive .app-container { padding-top: 0; }
   position: absolute;
   inset: 0;
   z-index: 0; /* token-exempt: local stacking */
-  background-size: cover;
+  /* v1.73 (Dean ruling 9): CONTAIN, never cover - cover blew a SQUARE
+     album/show cover up to fill the wide wrapper, so a cropped echo of the
+     same image flanked the centered art ("a rectangle version of the same
+     image to both sides"). Contain renders the art clean; the letterbox
+     bands are the plain audio-canvas backdrop below. */
+  background-size: contain;
   background-position: center;
   background-repeat: no-repeat;
+  background-color: #0f171e; /* token-exempt: bespoke audio-canvas art (F.5 ruling 5 - matches the visualizer gradient's edge) */
   display: none;
   pointer-events: none;
 }
@@ -3659,7 +3665,8 @@ a.sub-row-channel-link:focus-visible {
 .icon-flame,
 .icon-history,
 .icon-queue,
-.icon-podcast {
+.icon-podcast,
+.icon-downloads {
   display: inline-block;
   width: 1em;
   height: 1em;
@@ -3737,6 +3744,11 @@ a.sub-row-channel-link:focus-visible {
    variant falls back to this one in every set (deliberate, not a gap).
    FileTube's own drawing, not a Material asset. */
 .icon-podcast { -webkit-mask-image: url(/assets/icons/podcast.svg); mask-image: url(/assets/icons/podcast.svg); }
+/* v1.73 (Dean ruling 4): the Downloads library glyph - rounded-rect +
+   play triangle (the universal video-platform mark; Material
+   smart_display). Single asset for every mask set - the icon-podcast
+   v1.69 posture. */
+.icon-downloads { -webkit-mask-image: url(/assets/icons/downloads.svg); mask-image: url(/assets/icons/downloads.svg); }
 
 /* Paint the icon fill only where CSS masks are supported, so a browser without
    mask support (or a failed/404 mask) renders nothing instead of a solid
@@ -3745,7 +3757,7 @@ a.sub-row-channel-link:focus-visible {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
   .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-download, .icon-shuffle,
-  .icon-flame, .icon-history, .icon-queue, .icon-podcast {
+  .icon-flame, .icon-history, .icon-queue, .icon-podcast, .icon-downloads {
     background-color: currentColor;
   }
 }
@@ -3815,6 +3827,7 @@ a.sub-row-channel-link:focus-visible {
 [data-icons="emoji"] .icon-arrow-up,
 [data-icons="emoji"] .icon-arrow-down,
 [data-icons="emoji"] .icon-download,
+[data-icons="emoji"] .icon-downloads,
 [data-icons="emoji"] .icon-shuffle {
   -webkit-mask-image: none;
   mask-image: none;
@@ -3829,6 +3842,10 @@ a.sub-row-channel-link:focus-visible {
    emoji-set restoration, so it needs its OWN ::before entry here, same as
    every other .icon-* the emoji set covers). */
 [data-icons="emoji"] .icon-download::before { content: "\1F4E5"; }
+/* v1.73 (QA gate W2): ruling 4's emoji-set glyph - U+1F4FA TELEVISION,
+   the "TV/play emoji" the ruling names; the mask sets keep the
+   smart-display asset. */
+[data-icons="emoji"] .icon-downloads::before { content: "\1F4FA"; }
 
 [data-icons="emoji"] .icon-home::before      { content: "\1F3E0"; } /* 🏠 */
 [data-icons="emoji"] .icon-folder::before    { content: "\1F4C1"; } /* 📁 */
@@ -7198,6 +7215,40 @@ body.ft-css-fullscreen .bottom-nav {
   content: ''; position: absolute; top: 0; right: 12px; width: 3px; height: 14px; /* token-exempt: positional geometry (Stop A Batch A) */
   background: currentColor;
 }
+/* v1.73 (Dean ruling 6): Prev/Next TRACK buttons in the player's control
+   bar - the reader-np glyph technique (CSS triangle + bar, never emoji
+   codepoints) on neutral track-nav classes. [hidden] by default; player.js
+   unhides them in the expanded AUDIO view only (the dock and the reader
+   bar keep them off below - full view only, Dean's ruling). */
+.track-nav-btn { flex-shrink: 0; }
+.track-nav-btn:disabled { opacity: 0.35; cursor: default; }
+.track-nav-ico { position: relative; display: block; width: 15px; height: 14px; }
+#track-next-btn .track-nav-ico::before {
+  content: ''; position: absolute; top: 0; left: 0;
+  border-style: solid; border-width: 7px 0 7px 11px;
+  border-color: transparent transparent transparent currentColor;
+}
+#track-next-btn .track-nav-ico::after {
+  content: ''; position: absolute; top: 0; left: 12px; width: 3px; height: 14px; /* token-exempt: positional geometry (the reader-np glyph, v1.73 copy) */
+  background: currentColor;
+}
+#track-prev-btn .track-nav-ico::before {
+  content: ''; position: absolute; top: 0; right: 0;
+  border-style: solid; border-width: 7px 11px 7px 0;
+  border-color: transparent currentColor transparent transparent;
+}
+#track-prev-btn .track-nav-ico::after {
+  content: ''; position: absolute; top: 0; right: 12px; width: 3px; height: 14px; /* token-exempt: positional geometry (the reader-np glyph, v1.73 copy) */
+  background: currentColor;
+}
+/* Full view only: the dock's mini bar and the reader's narration bar never
+   show them (the reader has its own chapter prev/next). */
+#player-dock #track-prev-btn, #player-dock #track-next-btn,
+.reader-nowplaying #track-prev-btn, .reader-nowplaying #track-next-btn { display: none; }
+/* The .pc-btn base display (inline-flex) would beat [hidden] - the v1.44
+   bottom-nav-item lesson, enforced the same way. */
+.track-nav-btn[hidden] { display: none !important; }
+
 .reader-player-slot { flex: 1; min-width: 0; }
 /* Compact the FULL audio host into the bar: hide the cover art / video element /
    glyphs / video-only buttons; keep play/pause + scrub + time (+ speed). */

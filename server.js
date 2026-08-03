@@ -225,16 +225,33 @@ let pushTransportOverride = null;
 let pushGuardLookupOverride = null;
 function __setPushTransportForTests(fn) { pushTransportOverride = typeof fn === 'function' ? fn : null; }
 function __setPushGuardLookupForTests(fn) { pushGuardLookupOverride = typeof fn === 'function' ? fn : null; }
+// v1.73: the push payload's meta, kind-dispatched - the row rides in WHOLE
+// (kind CARRIED). Podcast rows resolve against the episodes map and skip
+// when the episode is pruned OR trashed (a push must never deep-link a
+// non-playable episode); media rows keep the pre-v1.73 shape. Named +
+// exported so the trashed-skip and both arms are BINDABLE (adversarial
+// gate W1: the inline version survived its mutants).
+function resolvePushMeta(db, row) {
+  const mediaId = row && typeof row === 'object' ? row.mediaId : row; // tolerate the pre-v1.73 call shape
+  const kind = row && typeof row === 'object' && row.kind === 'podcast' ? 'podcast' : 'media';
+  if (kind === 'podcast') {
+    const ns = podcastStore.readPodcasts(db);
+    const ep = Object.prototype.hasOwnProperty.call(ns.episodes, mediaId) ? ns.episodes[mediaId] : null;
+    if (!ep || ep.status !== 'downloaded') return null; // pruned/trashed between insert and delivery - skip
+    const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
+    return { title: ep.title, channel: sub ? sub.name : 'Podcast', kind: 'podcast' };
+  }
+  const item = db.metadata && db.metadata[mediaId];
+  if (!item) return null;
+  return { title: item.title || item.name, channel: item.folderName, kind: 'media' };
+}
+
 const pushDelivery = pushDeliverLib.createPushDelivery({
   store: userStore,
   vapidKeys: PUSH_VAPID,
   guardHop: (url) => pushShortlink.guardHop(url, { lookup: pushGuardLookupOverride || undefined }),
   enabled: () => notificationsFeatureEnabled(getCachedDatabase()),
-  resolveMeta: (mediaId) => {
-    const item = getCachedDatabase().metadata && getCachedDatabase().metadata[mediaId];
-    if (!item) return null;
-    return { title: item.title || item.name, channel: item.folderName };
-  },
+  resolveMeta: (row) => resolvePushMeta(getCachedDatabase(), row),
   transport: (opts) => (pushTransportOverride || pushDeliverLib.defaultTransport)(opts),
 });
 
@@ -7749,6 +7766,7 @@ function validateBackupBundle(bundle) {
       if (!n || typeof n !== 'object' || Array.isArray(n)) return `${where}: must be an object`;
       if (typeof n.mediaId !== 'string' || n.mediaId === '') return `${where}: missing mediaId`;
       if (typeof n.createdAt !== 'number' || !Number.isFinite(n.createdAt) || n.createdAt <= 0) return `${where}: createdAt must be a positive number`;
+      if (n.kind !== undefined && n.kind !== 'media' && n.kind !== 'podcast') return `${where}: kind must be 'media' or 'podcast' when present`;
       if (seenMediaIds.has(n.mediaId)) return `${where}: duplicate mediaId '${n.mediaId}'`;
       seenMediaIds.add(n.mediaId);
     }
@@ -8153,7 +8171,42 @@ app.get('/api/notifications', (req, res) => {
   let dbForAvatarLookup = null;
   const rows = [];
   const phantomMediaIds = [];
+  const phantomEpisodeIds = [];
+  // v1.73: podcast rows resolve against the episodes map, never db.metadata
+  // (the shapedQueue posture) - one ns read for the whole request.
+  const podcastNsForFeed = podcastStore.readPodcasts(db);
+  const podcastSubNames = new Map(podcastNsForFeed.subscriptions.filter(Boolean).map((sub) => [sub.id, sub.name]));
   for (const row of items) {
+    if (row.kind === 'podcast') {
+      const ep = Object.prototype.hasOwnProperty.call(podcastNsForFeed.episodes, row.mediaId) ? podcastNsForFeed.episodes[row.mediaId] : null;
+      if (!ep) {
+        // The episode record is GONE (purged/unsubscribed with a failed
+        // carrier, or a restored feed referencing since-deleted episodes):
+        // prune via the episode carrier - the ONE deleter for this id
+        // space, idempotent over already-purged per-user rows. NEVER
+        // removeMediaState (a media item sharing the md5 id would lose
+        // every user's state - the kind-confusion class).
+        phantomEpisodeIds.push(row.mediaId);
+        continue;
+      }
+      if (ep.status !== 'downloaded') continue; // trashed/pending - HIDDEN, not phantom (restore brings it back)
+      const showName = podcastSubNames.has(ep.subId) ? podcastSubNames.get(ep.subId) : '';
+      rows.push({
+        id: row.id,
+        mediaId: row.mediaId,
+        createdAt: row.createdAt,
+        unread: row.unread,
+        kind: 'podcast',
+        title: ep.title || '',
+        channelName: showName || 'Podcast',
+        folderName: showName || '',
+        channelAvatarUrl: '',
+        hasThumbnail: false,
+        artUrl: `/podcastart/${encodeURIComponent(ep.subId)}`,
+        type: 'audio',
+      });
+      continue;
+    }
     // Own-property lookup (gate round 2, adversarial): a feed row whose
     // mediaId is a prototype key ('constructor', ...) -- reachable only via
     // a crafted admin bundle -- must read as ABSENT, not as a truthy
@@ -8194,6 +8247,7 @@ app.get('/api/notifications', (req, res) => {
       mediaId: row.mediaId,
       createdAt: row.createdAt,
       unread: row.unread,
+      kind: 'media', // v1.73: carried on every row
       title: item.title || item.name || '',
       channelName: typeof item.channelName === 'string' ? item.channelName : '',
       folderName: typeof item.folderName === 'string' ? item.folderName : '',
@@ -8207,6 +8261,13 @@ app.get('/api/notifications', (req, res) => {
       userStore.removeMediaState(phantomMediaIds);
     } catch (err) {
       console.error('Notifications: failed to prune phantom feed rows (continuing):', err && err.message);
+    }
+  }
+  if (phantomEpisodeIds.length > 0) {
+    try {
+      userStore.removePodcastEpisodeState(phantomEpisodeIds);
+    } catch (err) {
+      console.error('Notifications: failed to prune phantom podcast feed rows (continuing):', err && err.message);
     }
   }
   res.json({ items: rows, unseenCount: userStore.countUnseenNotifications(req.user.id) });
@@ -14545,6 +14606,11 @@ podcasts.registerRoutes(app, {
   getCachedDatabase,
   dataDir: DATA_DIR,
   userStore,
+  // v1.73: the poll's notification bridge (route-triggered checks run the
+  // same engine as the timer - both deps bundles carry pushDelivery; the
+  // feature flag gates DELIVERY inside deliver.js, never the record - QA
+  // gate W3).
+  pushDelivery,
   runExclusive: heavyGate.runExclusive,
   sendRangeable,
   contentDispositionAttachment,
@@ -14694,6 +14760,9 @@ if (require.main === module) {
       getCachedDatabase,
       dataDir: DATA_DIR,
       userStore,
+      // v1.73: the timer-run poll notifies + pushes exactly like the
+      // route-triggered one (its own deps bundle - the ytdlp lesson above).
+      pushDelivery,
       runExclusive: heavyGate.runExclusive,
       now: () => Date.now(),
     });
@@ -14827,6 +14896,7 @@ module.exports = {
   cleanDisplayTitle,
   extractYtdlpVideoId,
   contentDispositionAttachment,
+  resolvePushMeta, // v1.73: bindable push-meta arms (adversarial W1)
   normalizeScanRoot,
   loadDatabase,
   saveDatabase,

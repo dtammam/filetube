@@ -2348,14 +2348,22 @@ function buildNotificationRowModel(row) {
   if (!row || typeof row.mediaId !== 'string' || row.mediaId === '') return null;
   const channelName = typeof row.channelName === 'string' ? row.channelName.trim() : '';
   const folderName = typeof row.folderName === 'string' ? row.folderName.trim() : '';
+  // v1.73: podcast rows deep-link the podcasts place (?play= resumes the
+  // episode) and wear the SHOW cover; media rows are byte-identical.
+  // (The bell row TAP's watch-seed stash is guarded media-positive at the
+  // click site - adversarial W5, the fourth strike of the seed class.)
+  const isPodcast = row.kind === 'podcast';
   return {
     id: row.id,
     mediaId: row.mediaId,
-    href: `/watch.html?v=${row.mediaId}`,
+    kind: isPodcast ? 'podcast' : 'media',
+    href: isPodcast ? `/podcasts?play=${encodeURIComponent(row.mediaId)}` : `/watch.html?v=${row.mediaId}`,
     title: typeof row.title === 'string' ? row.title : '',
     channelLabel: channelName || folderName || 'Library',
     channelAvatarUrl: typeof row.channelAvatarUrl === 'string' ? row.channelAvatarUrl : '',
-    thumbnailUrl: row.hasThumbnail === true ? `/thumbnail/${row.mediaId}` : null,
+    thumbnailUrl: isPodcast
+      ? (typeof row.artUrl === 'string' ? row.artUrl : null)
+      : (row.hasThumbnail === true ? `/thumbnail/${row.mediaId}` : null),
     timeLabel: formatRelativeTime(row.createdAt),
     unread: row.unread === true,
   };
@@ -2570,13 +2578,18 @@ function injectNotificationBellIfEnabled() {
             // v1.52: partial seed -- the row model has title/channel/avatar/
             // thumbnail in hand; the watch painter fills these in frame one
             // and skeletons the rest until hydration.
-            stashWatchSeed({
-              id: m.mediaId,
-              title: m.title,
-              channelName: m.channelLabel === 'Library' ? '' : m.channelLabel,
-              channelAvatarUrl: m.channelAvatarUrl,
-              hasThumbnail: Boolean(m.thumbnailUrl),
-            });
+            // v1.73 (adversarial W5, the FOURTH strike of the seed class):
+            // media-positive - a podcast row navigates to /podcasts and
+            // must never prime a watch page it will not visit.
+            if ((m.kind || 'media') === 'media') {
+              stashWatchSeed({
+                id: m.mediaId,
+                title: m.title,
+                channelName: m.channelLabel === 'Library' ? '' : m.channelLabel,
+                channelAvatarUrl: m.channelAvatarUrl,
+                hasThumbnail: Boolean(m.thumbnailUrl),
+              });
+            }
             // Fire-and-forget mark-read; keepalive survives a full-load nav
             // (stats et al). The SPA router handles the actual navigation.
             fetch('/api/notifications/read', {
@@ -2751,10 +2764,11 @@ function formatQueueBadge(count) {
 // the bell rows; `playing` drives the now-playing highlight; `played` dims
 // entries STRICTLY BEFORE the pointer - the pointer row itself is playing,
 // never played (ruling 6: played items stay, jump-back allowed).
-// v1.71: ONE place derives a queue entry's destination from its kind. The
-// three consumers (row model here, player.js's autoplay advance, watch.js's
-// up-next box) must never hand-build this per site - the hardcoded
-// /watch.html lesson. A podcast entry deep-links the podcasts place, which
+// v1.71: ONE place derives a queue entry's destination from its kind. Its
+// consumers (the row model here, player.js's autoplay advance +
+// manualTrackStep, watch.js's up-next box AND its manual Prev/Next
+// goQueueEntry - v1.73) must never hand-build this per site - the
+// hardcoded /watch.html lesson. A podcast entry deep-links the podcasts place, which
 // resumes the episode in the dock.
 function queueEntryHref(entry) {
   if (!entry || typeof entry.mediaId !== 'string' || entry.mediaId === '') return null;
@@ -3189,13 +3203,17 @@ function injectLibraryNavEntry(key, href, label, iconClass) {
   // which async probe resolves first (QA gate S2, v1.64): each key anchors
   // before every entry that must sit BELOW it, falling back to the folders
   // list. v1.69: Podcasts slots between Books and History.
-  const anchor = (key === 'music')
-    ? (document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
-    : (key === 'books')
-      ? (document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
-      : (key === 'podcasts')
-        ? (document.querySelector('[data-nav-sidebar="history"]') || foldersList)
-        : foldersList;
+  // v1.73 (Dean ruling 5): Downloads sits FIRST - it anchors before every
+  // other Library entry; the existing keys keep their relative ladder.
+  const anchor = (key === 'downloads')
+    ? (document.querySelector('[data-nav-sidebar="music"]') || document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+    : (key === 'music')
+      ? (document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+      : (key === 'books')
+        ? (document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+        : (key === 'podcasts')
+          ? (document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+          : foldersList;
   anchor.insertAdjacentElement('beforebegin', link);
   if (activeNavItem(window.location.pathname, window.location.search) === key) {
     link.classList.add('active');
@@ -3231,6 +3249,42 @@ function injectMusicNavLinkIfEnabled() {
       injectLibraryNavEntry('music', '/music', 'Music', 'icon-play');
     })
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
+}
+
+// v1.73 (Dean ruling 5): the ytdlp library is a HARD Library entry -
+// "Downloads", FIRST in the section. Gated on the module actually
+// contributing a synthetic root (GET /api/config's read-only
+// syntheticFolders - the same source Setup's renderFolders matches), it
+// deep-links the existing folder-scoped grid: zero new surface. The SAME
+// probe powers the bottom-bar item: the static shell element carries a
+// placeholder href until this resolves, and is REMOVED outright when the
+// module contributes nothing (the module gate always wins over the user's
+// bar opt-in - the v1.44 rule).
+function injectDownloadsNavLinkIfEnabled() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
+  fetch('/api/config')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((payload) => {
+      const roots = payload && Array.isArray(payload.syntheticFolders)
+        ? payload.syntheticFolders.filter((p) => typeof p === 'string' && p !== '')
+        : [];
+      const navItem = document.querySelector('.bottom-nav-item[data-nav="downloads"]');
+      if (roots.length === 0) {
+        if (navItem && navItem.parentNode) navItem.parentNode.removeChild(navItem);
+        return; // module off / no download root -- inject nothing
+      }
+      const href = '/?root=' + encodeURIComponent(roots[0]);
+      if (navItem) navItem.setAttribute('href', href);
+      injectLibraryNavEntry('downloads', href, 'Downloads', 'icon-downloads');
+    })
+    .catch(() => {
+      // Fail CLOSED all the way (adversarial S2): an opted-in bottom item
+      // left standing would carry its placeholder href="/" - a silent
+      // misdirect. Remove it like the no-root arm; the next successful
+      // boot probe re-upgrades a fresh shell's copy.
+      const navItem = document.querySelector('.bottom-nav-item[data-nav="downloads"]');
+      if (navItem && navItem.parentNode) navItem.parentNode.removeChild(navItem);
+    });
 }
 
 // v1.69 podcasts: same probe-gated Library-section injection.
@@ -3278,13 +3332,13 @@ const BOTTOM_NAV_FIXED_LAST = 'settings';
 // The optional items a user may reorder/hide (must carry a data-nav id).
 // v1.72 (cap 2): music + books join - every first-class kind has a
 // bottom-bar item.
-const BOTTOM_NAV_OPTIONAL = ['playlists', 'history', 'subscriptions', 'oneoff-download', 'theme', 'podcasts', 'music', 'books'];
+const BOTTOM_NAV_OPTIONAL = ['playlists', 'history', 'subscriptions', 'oneoff-download', 'theme', 'podcasts', 'music', 'books', 'downloads'];
 // v1.71: items that are OFF unless the user explicitly turns them on (the
 // config's `shown` list). A default-hidden item ships in every shell's DOM
 // but never appears until Settings enables it - Dean's ruling for podcasts,
 // and v1.72 gives music/books the same opt-in posture (nobody's bar changes
 // under them on upgrade).
-const BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts', 'music', 'books'];
+const BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts', 'music', 'books', 'downloads'];
 
 // Pure: given the bottom-nav item ids ACTUALLY present in the DOM and the
 // user's config, return the final visible order (home first, settings last,
@@ -9375,6 +9429,7 @@ document.addEventListener('DOMContentLoaded', () => {
   injectMusicNavLinkIfEnabled();
   // v1.69 podcasts: same injection, gated on >=1 subscription.
   injectPodcastsNavLinkIfEnabled();
+  injectDownloadsNavLinkIfEnabled(); // v1.73: the Downloads hard entry + bottom-item gate
   // v1.64 history: same injection, gated on >=1 history item (the Liked rule).
   injectHistoryNavLinkIfEnabled();
   // v1.44 T12: apply the user's bottom-bar layout to the STATIC items now; the

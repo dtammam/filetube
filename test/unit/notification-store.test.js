@@ -46,7 +46,7 @@ test('schema v5: notification tables exist on a fresh adapter, and a v4 db forwa
     .all().map((r) => r.name);
   // v1.68: user_notification_dismissals joins the family (schema v8).
   assert.deepEqual(names(), ['notifications', 'user_notification_dismissals', 'user_notification_reads', 'user_notification_state']);
-  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 12);
+  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 13);
 
   // Simulate a v1.50 file: drop the v5 tables, stamp user_version 4, reopen.
   adapter.sql.exec('DROP TABLE user_notification_reads; DROP TABLE user_notification_state; DROP TABLE notifications;');
@@ -55,7 +55,7 @@ test('schema v5: notification tables exist on a fresh adapter, and a v4 db forwa
   adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} });
   store = createUserStore(adapter);
   assert.deepEqual(names(), ['notifications', 'user_notification_dismissals', 'user_notification_reads', 'user_notification_state'], 'v4 -> v8 recreated the tables');
-  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 12);
+  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 13);
 });
 
 test('recordNotifications: valid rows land, garbage is skipped (never coerced), return value counts inserts', () => {
@@ -343,4 +343,44 @@ test('backup round-trip: feed + per-user state/reads survive; the three bundle s
   store.replaceAllUsersRaw([ua2], restoreNow);
   adapter.commit();
   assert.equal(adapter.sql.prepare('SELECT COUNT(*) AS c FROM user_notification_state WHERE user_id = ?').get(ua2.id).c, 0, 'explicit-null bundle leaves the created_at default in charge');
+});
+
+// ---- v1.73: schema v12 -> v13 (the kind column) ------------------------------
+
+test('v1.73 schema v12 -> v13: a db stamped 12 without notifications.kind heals on reopen; pre-v13 rows read back as media', () => {
+  const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-notifv12-'));
+  const dbPath = path.join(dir2, SQLITE_FILENAME);
+  const first = new SqliteAdapter(dbPath, { log: () => {} });
+  const s1 = createUserStore(first);
+  s1.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, {}, '2026-08-03T00:00:00.000Z');
+  // Simulate a pre-v1.73 db: rebuild the table WITHOUT kind, stamp 12.
+  first.sql.exec(`
+    DROP TABLE notifications;
+    CREATE TABLE notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, media_id TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL);
+    INSERT INTO notifications (media_id, created_at) VALUES ('legacyRow', 1000);
+    PRAGMA user_version = 12`);
+  first.close();
+
+  const a2 = new SqliteAdapter(dbPath, { log: () => {} });
+  const s2 = createUserStore(a2); // statementsFor must not throw (the v12 lesson's canary)
+  try {
+    assert.equal(a2.sql.prepare('PRAGMA user_version').get().user_version, 13);
+    const rows = s2.exportNotificationsForBackup();
+    assert.deepEqual(rows, [{ mediaId: 'legacyRow', createdAt: 1000, kind: 'media' }], 'the pre-v13 row reads back as media (the column DEFAULT)');
+    s2.recordNotifications([{ mediaId: 'ep1', createdAt: 2000, kind: 'podcast' }]);
+    assert.equal(s2.exportNotificationsForBackup().find((r) => r.mediaId === 'ep1').kind, 'podcast', 'the healed column carries podcast rows');
+  } finally {
+    a2.close();
+    fs.rmSync(dir2, { recursive: true, force: true });
+  }
+});
+
+test('v1.73: isValidNotificationEntry drops a GARBAGE kind, never coerces; bundle restore round-trips kind', () => {
+  const s = store;
+  assert.equal(s.recordNotifications([{ mediaId: 'x1', createdAt: 1000, kind: 'trackX' }]), 0, 'unrecognized kind = dropped row');
+  s.recordNotifications([{ mediaId: 'x2', createdAt: 1000, kind: 'podcast' }, { mediaId: 'x3', createdAt: 1001 }]);
+  s.replaceAllNotificationsRaw(s.exportNotificationsForBackup());
+  const rows = s.exportNotificationsForBackup();
+  assert.equal(rows.find((r) => r.mediaId === 'x2').kind, 'podcast', 'kind survives the bundle round-trip');
+  assert.equal(rows.find((r) => r.mediaId === 'x3').kind, 'media', 'absent kind restores as media');
 });

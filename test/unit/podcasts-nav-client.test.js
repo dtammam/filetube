@@ -41,12 +41,15 @@ test('SOURCE-LOCK: the sidebar Podcasts entry rides the Library section, ordered
   // path) survived the suite. Bind the roster membership itself.
   // v1.72: music + books joined the roster (cap 2) - the lock binds the
   // FULL list so a silent roster change can never pass as noise.
-  assert.ok(src.includes("'oneoff-download', 'theme', 'podcasts', 'music', 'books']"), 'podcasts/music/books ride BOTTOM_NAV_OPTIONAL (the Settings toggle is the only opt-in path)');
-  assert.ok(src.includes("BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts', 'music', 'books']"), 'all three kind items are default-hidden - nobody\'s bar changes on upgrade');
+  assert.ok(src.includes("'oneoff-download', 'theme', 'podcasts', 'music', 'books', 'downloads']"), 'podcasts/music/books/downloads ride BOTTOM_NAV_OPTIONAL (the Settings toggle is the only opt-in path)');
+  assert.ok(src.includes("BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts', 'music', 'books', 'downloads']"), 'all four items are default-hidden - nobody\'s bar changes on upgrade');
   assert.ok(src.includes("injectLibraryNavEntry('podcasts', '/podcasts', 'Podcasts'"), 'Library-section entry via the shared helper');
   // Books anchors above Podcasts; Podcasts anchors above History.
-  assert.ok(src.includes("(key === 'books')\n      ? (document.querySelector('[data-nav-sidebar=\"podcasts\"]') || document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList)"), 'Books sits above Podcasts');
-  assert.ok(src.includes("(key === 'podcasts')\n        ? (document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList)"), 'Podcasts sits above History');
+  // v1.73: the ladder gained Downloads at the TOP (ruling 5) - each branch
+  // re-indented one level; the relative order below Downloads is unchanged.
+  assert.ok(src.includes("(key === 'downloads')\n    ? (document.querySelector('[data-nav-sidebar=\"music\"]')"), 'Downloads sits FIRST - above Music and everything below it');
+  assert.ok(src.includes("(key === 'books')\n        ? (document.querySelector('[data-nav-sidebar=\"podcasts\"]') || document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList)"), 'Books sits above Podcasts');
+  assert.ok(src.includes("(key === 'podcasts')\n          ? (document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList)"), 'Podcasts sits above History');
   assert.ok(src.includes("podcasts: '/podcasts'"), 'hrefByNavKey lights the sidebar link after SPA nav');
   assert.ok(src.includes("podcasts: '/js/podcasts.js'"), 'the podcasts view script is lazy-loadable');
   assert.ok(src.includes('href="/podcasts" class="sidebar-item"'), 'the Playlists sheet lists Podcasts when enabled');
@@ -154,7 +157,7 @@ test('v1.72: every bottom-nav shell carries the music + books items, hidden unti
   assert.ok(shells.length >= 9, `expected the full shell roster, found ${shells.length}`);
   for (const f of shells) {
     const html = fs.readFileSync(path.join(pub, f), 'utf8');
-    for (const [nav, href] of [['music', '/music'], ['books', '/books']]) {
+    for (const [nav, href] of [['music', '/music'], ['books', '/books'], ['downloads', '/']]) {
       const re = new RegExp(`<a href="${href}" class="bottom-nav-item" data-nav="${nav}" hidden>`);
       assert.match(html, re, `${f}: missing (or un-hidden) ${nav} bottom-nav item`);
     }
@@ -173,4 +176,19 @@ test('v1.72 SOURCE-LOCK: the pin dispatch carries the podcasts source through fe
   const pod = fs.readFileSync(path.join(__dirname, '../../public/js/podcasts.js'), 'utf8');
   assert.ok(pod.includes("get('show')"), 'the ?show= deep link exists for a pinned show');
   assert.ok(pod.includes("fetchJson('/api/podcasts/pins')"), 'the drill reads pin membership as the toggle state');
+});
+
+// ---- v1.73 (rulings 4+5): the Downloads hard entry ---------------------------
+
+test('v1.73 SOURCE-LOCK: Downloads injects from the syntheticFolders probe, upgrades the bottom item href, and REMOVES it when the module contributes nothing', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
+  assert.ok(src.includes("fetch('/api/config')"), 'the probe is the config read (syntheticFolders is its read-only field)');
+  assert.ok(src.includes('payload.syntheticFolders'), 'gated on the module actually contributing a root');
+  assert.ok(src.includes("injectLibraryNavEntry('downloads', href, 'Downloads', 'icon-downloads')"), 'the sidebar entry rides the shared helper with the new glyph');
+  assert.ok(src.includes("'/?root=' + encodeURIComponent(roots[0])"), 'destination = the existing folder-scoped grid, zero new surface');
+  assert.ok(src.includes('navItem.parentNode.removeChild(navItem)'), 'no root = the bottom item is REMOVED (the module gate beats user opt-in - the v1.44 rule)');
+  assert.ok(src.includes("navItem.setAttribute('href', href)"), 'with a root, the static placeholder href upgrades');
+  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+  assert.ok(css.includes('.icon-downloads { -webkit-mask-image: url(/assets/icons/downloads.svg)'), 'the glyph is a real mask asset (the icon-podcast single-asset posture)');
+  assert.ok(fs.existsSync(path.join(__dirname, '../../public/assets/icons/downloads.svg')), 'the svg asset exists');
 });

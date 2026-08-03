@@ -122,3 +122,25 @@ test('v1.67.1: setup.js push setError reveals the element (routes through setFie
   assert.match(src, /function setFieldError\(el, message\)[\s\S]*?el\.style\.display = 'block'/,
     'setFieldError must set display:block when showing a message');
 });
+
+// ---- v1.73: podcast rows in the bell panel ----------------------------------
+
+test('v1.73: a podcast row deep-links /podcasts?play= and wears the SHOW cover; media rows are byte-identical', () => {
+  const { buildNotificationRowModel } = require('../../public/js/common.js');
+  const ep = buildNotificationRowModel({ id: 9, mediaId: 'ëp-1', kind: 'podcast', title: 'Ep', channelName: 'Show', artUrl: '/podcastart/süb', createdAt: 1000, unread: true });
+  assert.equal(ep.kind, 'podcast');
+  assert.equal(ep.href, '/podcasts?play=' + encodeURIComponent('ëp-1'), 'the ?play= contract, encoded');
+  assert.equal(ep.thumbnailUrl, '/podcastart/süb', 'show cover, never /thumbnail');
+  const med = buildNotificationRowModel({ id: 10, mediaId: 'vid1', title: 'V', channelName: 'C', hasThumbnail: true, createdAt: 1000, unread: false });
+  assert.equal(med.kind, 'media');
+  assert.equal(med.href, '/watch.html?v=vid1');
+  assert.equal(med.thumbnailUrl, '/thumbnail/vid1');
+});
+
+test('v1.73 (adversarial W5): the bell row TAP stashes a watch seed for MEDIA rows only (the fourth strike of the seed class)', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/js/common.js'), 'utf8');
+  const clickIdx = src.indexOf('// v1.52: partial seed');
+  const tail = src.slice(clickIdx, clickIdx + 900);
+  assert.ok(tail.includes("if ((m.kind || 'media') === 'media') {"), 'the media-positive guard exists at the bell click site');
+  assert.ok(tail.indexOf("(m.kind || 'media') === 'media'") < tail.indexOf('stashWatchSeed({'), 'and the stash sits INSIDE it');
+});

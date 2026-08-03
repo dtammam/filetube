@@ -1169,6 +1169,8 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // FR-2 (T2, v1.21.0): the custom control bar + cover-art play/pause glyph.
   var playerControls, ppBtn, timeCur, seekBar, timeDur, muteBtn, volBar, fsBtn, artPlayGlyph;
+  // v1.73 (Dean ruling 6): Prev/Next TRACK buttons - audio full view only.
+  var trackPrevBtn, trackNextBtn;
 
   // FR-8(b) (TG, v1.22.0): native Picture-in-Picture button, queried/wired
   // once alongside the rest of the custom bar above.
@@ -1717,6 +1719,8 @@ if (typeof module !== 'undefined' && module.exports) {
     resumeNoBtn = host.querySelector('#resume-no-btn');
     playerControls = host.querySelector('#player-controls');
     ppBtn = host.querySelector('#pp-btn');
+    trackPrevBtn = host.querySelector('#track-prev-btn');
+    trackNextBtn = host.querySelector('#track-next-btn');
     timeCur = host.querySelector('#time-cur');
     seekBar = host.querySelector('#seek-bar');
     timeDur = host.querySelector('#time-dur');
@@ -2058,10 +2062,76 @@ if (typeof module !== 'undefined' && module.exports) {
   // exact same navigation the hardware media keys / lock screen get -- one
   // registration, three surfaces, no second neighbor model.
   var trackNavHandlers = null;
+  // v1.73 (Dean ruling 6): the on-screen Prev/Next TRACK buttons mirror the
+  // lock-screen pair - visible only in AUDIO mode (the watch page's video
+  // chrome has its own page-level Prev/Next; duplicating them would be the
+  // two-writers class) and only while a trackNav context is registered.
+  // Per-direction disabled tracks handler presence; the QUEUE can still
+  // upgrade a click (manualTrackStep) exactly like the ended flow.
+  function updateTrackNavButtons() {
+    if (!trackPrevBtn || !trackNextBtn) return;
+    var audioMode = !!(host && host.classList.contains('audio-mode'));
+    // Gate fixes (v1.73 round 1, both seats):
+    // - QA W1: the WATCH page plays plain audio library files too (its
+    //   background-audio mode sets audio-mode and it registers trackNav
+    //   for folder neighbors) - and it has its OWN page-level Prev/Next.
+    //   autoAdvanceViaTrackNav is the marker ONLY the kind surfaces
+    //   (music/podcasts) set, so it is the gate: the watch chrome Dean
+    //   rates perfect stays byte-identical for audio items.
+    // - Adversarial W4: the buttons stay ENABLED whenever shown - a
+    //   context-edge tap (last track of an album) must still reach
+    //   manualTrackStep's queue consult (the queue owns up-next; a
+    //   disabled button made the queue unreachable, the same
+    //   manual-vs-queue asymmetry as Dean's device bug one surface over).
+    //   An edge tap with no queue neighbor AND no handler is a silent
+    //   no-op. Residual: a single-item context registers NO handlers, so
+    //   the pair hides with a queue banked - tech-debt #101.
+    var show = audioMode && !!trackNavHandlers
+      && !!(currentData && currentData.autoAdvanceViaTrackNav === true);
+    trackPrevBtn.hidden = !show;
+    trackNextBtn.hidden = !show;
+    if (show) {
+      trackPrevBtn.disabled = false;
+      trackNextBtn.disabled = false;
+    }
+  }
+
+  // One manual step, queue-aware FIRST (the queue owns up-next - ruling 2,
+  // v1.63): when the ended... rather, CURRENT item IS the queue's
+  // now-playing entry and a neighbor exists in the tapped direction, the
+  // step advances through the queue (pointer moves server-side, kind-aware
+  // destination); otherwise the registered context handler runs (show
+  // order / album order). Staleness re-checked after the fetch (the C6
+  // law - a user can start different media mid-flight).
+  function manualTrackStep(dir) {
+    var steppedId = currentId;
+    if (!steppedId) return;
+    fetch('/api/queue')
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .catch(function () { return null; })
+      .then(function (queue) {
+        if (currentId !== steppedId) return;
+        var entries = (queue && Array.isArray(queue.entries)) ? queue.entries : [];
+        var pointerUid = (queue && typeof queue.pointerUid === 'string') ? queue.pointerUid : null;
+        var pointerEntry = null;
+        for (var i = 0; i < entries.length; i++) {
+          if (entries[i] && entries[i].uid === pointerUid) { pointerEntry = entries[i]; break; }
+        }
+        var neighbor = dir === 'prev' ? computeQueuePrev(queue) : computeQueueNext(queue);
+        if (pointerEntry && pointerEntry.mediaId === steppedId && neighbor) {
+          advanceIntoQueueEntry(neighbor);
+          return;
+        }
+        var h = trackNavHandlers && (dir === 'prev' ? trackNavHandlers.onPrev : trackNavHandlers.onNext);
+        if (typeof h === 'function') h();
+      });
+  }
+
   function setTrackNav(handlers) {
     var hasPrev = !!(handlers && typeof handlers.onPrev === 'function');
     var hasNext = !!(handlers && typeof handlers.onNext === 'function');
     trackNavHandlers = (hasPrev || hasNext) ? handlers : null;
+    updateTrackNavButtons();
     setMediaSessionAction('previoustrack', hasPrev ? function () { handlers.onPrev(); } : null);
     setMediaSessionAction('nexttrack', hasNext ? function () { handlers.onNext(); } : null);
   }
@@ -4437,6 +4507,11 @@ if (typeof module !== 'undefined' && module.exports) {
       });
     }
 
+    // v1.73 (Dean ruling 6): the audio Prev/Next pair - queue-aware manual
+    // steps (manualTrackStep). Wired once with the rest of the bar.
+    if (trackPrevBtn) trackPrevBtn.addEventListener('click', function () { manualTrackStep('prev'); });
+    if (trackNextBtn) trackNextBtn.addEventListener('click', function () { manualTrackStep('next'); });
+
     if (seekBar) {
       // Visual scrub only (AC15): updates the fill/current-time display but
       // NEVER touches `currentTime` -- only 'change' below commits.
@@ -5504,6 +5579,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // (16:9) via `computeMediaAspectRatio`'s degrade-safe `null` return.
     applyMediaAspect(null, null);
     if (host) host.classList.remove('audio-mode');
+    updateTrackNavButtons(); // v1.73: leaving audio mode hides the Prev/Next pair
     exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): every genuine new load force-clears any expanded state left over from the previous media
     // FR-1 (T1, v1.22.0): belt-and-suspenders -- `mountInSlot()` (called a
     // few lines below, in `load()`) re-derives the real controls-mode for
@@ -5861,6 +5937,7 @@ if (typeof module !== 'undefined' && module.exports) {
           audioBgArt.style.backgroundImage = 'url("' + artUrl + '")';
           audioBgArt.style.display = 'block';
           host.classList.add('audio-mode');
+          updateTrackNavButtons(); // v1.73: entering audio mode shows the pair (when a trackNav context exists)
         }
       } else {
         audioVisualizer.style.display = 'flex';

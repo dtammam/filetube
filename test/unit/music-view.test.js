@@ -83,11 +83,15 @@ test('v1.44.2: buildSongRowHtml carries the CSS equalizer glyph (3 bars, NEVER a
   assert.doesNotMatch(html, /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u, 'no emoji codepoint in a song row');
 });
 
-test('v1.44.2 SOURCE-LOCK: loadTrack plays in the DOCK (not a FULL slot) and sets a /music dock-return', () => {
+test('v1.44.2/v1.73 SOURCE-LOCK: loadTrack plays in the DOCK; the dock-return now opens the expanded now-playing view', () => {
   assert.match(MUSIC_JS, /window\.FileTube\.player\.load\(item\.id, data, \{ dock: true \}\)/,
-    'a tap must load into the docked mini-player, not a FULL #player-slot');
-  assert.match(MUSIC_JS, /readerHref: '\/music'/, 'a music track carries a /music dock-return href (else the dock tap 404s on the video route)');
-  assert.doesNotMatch(MUSIC_JS, /player-slot/, 'no FULL in-view player-slot mount remains for /music');
+    'a tap must load into the docked mini-player - browse-while-playing survives ruling 2');
+  // v1.73 (Dean ruling 2): the old "no slot on /music" policy is REVERSED -
+  // the dock-return is the podcasts ?nowplaying=1 contract, and the slot
+  // exists for the expanded mount (bound by the v1.73 lock below). The
+  // pre-v1.73 half of this lock asserted the absence; the reversal is
+  // Dean's recorded ruling, not drift.
+  assert.match(MUSIC_JS, /readerHref: '\/music\?nowplaying=1'/, 'the dock tap opens the now-playing view in one gesture');
 });
 
 // ---- v1.44.2 collapsing drill header ---------------------------------------
@@ -197,4 +201,32 @@ test('v1.44.2 SOURCE-LOCK (gate S1/W1): closing the player clears the stale row 
   assert.match(MUSIC_JS, /function ensureEmptiedListener/, 'the bind is a guard-once helper (not a one-shot at init)');
   const loadTrackBody = MUSIC_JS.slice(MUSIC_JS.indexOf('function loadTrack'), MUSIC_JS.indexOf('function prewarmThenLoad'));
   assert.match(loadTrackBody, /ensureEmptiedListener\(\)/, 'loadTrack re-attempts the bind after the host is cloned (cold-first-play path)');
+});
+
+// ---- v1.73 (Dean ruling 2): the shared now-playing contract, second mount ---
+
+test('v1.73 SOURCE-LOCK: music adopts the podcasts now-playing contract (dock tap -> ?nowplaying=1, slot re-adopt on every init)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const js = fs.readFileSync(path.join(__dirname, '../../public/js/music.js'), 'utf8');
+  assert.ok(js.includes("readerHref: '/music?nowplaying=1'"), 'dock tap opens the expanded view in ONE gesture');
+  assert.ok(js.includes("pState === 'full' || (wantNowPlaying && pState === 'docked')"), 'the re-adopt condition matches podcasts.js VERBATIM (the v1.71 W2 stranded-audio class)');
+  assert.ok(js.includes('player.expand(npSlot)'), 'and it mounts into THIS view\'s slot');
+  const idxCond = js.indexOf("pState === 'full'");
+  const idxExpand = js.indexOf('player.expand(npSlot)');
+  assert.ok(idxCond >= 0 && idxExpand > idxCond, 'condition precedes the mount (ordering, not presence)');
+  const html = fs.readFileSync(path.join(__dirname, '../../public/music.html'), 'utf8');
+  assert.ok(html.includes('id="player-slot"'), 'music.html carries the slot');
+  assert.ok(!html.includes('No #player-slot here'), 'the v1.44.2 no-slot comment did not survive as a lie');
+});
+
+test('v1.73 SOURCE-LOCK (Dean ruling 9): the audio art surface CONTAINS - a square cover never echoes as side rectangles', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+  const rule = /\.audio-bg-art\s*\{([^}]*)\}/.exec(css);
+  assert.ok(rule, 'the .audio-bg-art rule exists');
+  assert.match(rule[1], /background-size:\s*contain;/, 'contain, never cover');
+  assert.ok(!/background-size:\s*cover/.test(rule[1]), 'the cover echo is gone');
+  assert.match(rule[1], /background-color:/, 'a plain backdrop fills the letterbox bands');
 });
