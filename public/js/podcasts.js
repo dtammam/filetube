@@ -465,12 +465,18 @@
 
       // v1.71 T6: add-to-queue through the ONE shared verb (toast + Undo),
       // kind 'podcast' so the entry resolves against the episodes map.
+      // v1.71.1 (Dean's device find): glyph, not text - three text buttons
+      // truncated the episode title. Same icon vocabulary as the card
+      // corner controls (icon-queue/download/delete).
       if (!ep.watchHref && ep.status === 'downloaded') {
         var queueBtn = document.createElement('button');
         queueBtn.type = 'button';
-        queueBtn.className = 'btn btn-sm';
-        queueBtn.textContent = 'Queue';
+        queueBtn.className = 'podcast-ep-action';
         queueBtn.title = 'Add to queue';
+        queueBtn.setAttribute('aria-label', 'Add to queue');
+        var queueIcon = document.createElement('i');
+        queueIcon.className = 'icon-queue';
+        queueBtn.appendChild(queueIcon);
         queueBtn.addEventListener('click', function (e) {
           e.stopPropagation();
           if (typeof window.addToQueue === 'function') window.addToQueue(ep.id, 'end', 'podcast');
@@ -483,12 +489,14 @@
       // download> pointed at the confined stream route's ?download=1 arm.
       if (!ep.watchHref && ep.status === 'downloaded') {
         var saveLink = document.createElement('a');
-        saveLink.className = 'btn btn-sm';
+        saveLink.className = 'podcast-ep-action';
         saveLink.href = '/episode/' + encodeURIComponent(ep.id) + '?download=1';
         saveLink.setAttribute('download', '');
-        saveLink.textContent = 'Save';
         saveLink.title = 'Save to device';
         saveLink.setAttribute('aria-label', 'Save to device');
+        var saveIcon = document.createElement('i');
+        saveIcon.className = 'icon-download';
+        saveLink.appendChild(saveIcon);
         saveLink.addEventListener('click', function (e) { e.stopPropagation(); }, { signal: signal });
         row.appendChild(saveLink);
       }
@@ -499,15 +507,24 @@
       if (!ep.watchHref && ep.status === 'downloaded') {
         var delBtn = document.createElement('button');
         delBtn.type = 'button';
-        delBtn.className = 'btn btn-sm podcast-ep-delete';
-        delBtn.textContent = 'Delete';
+        delBtn.className = 'podcast-ep-action podcast-ep-delete';
+        delBtn.title = 'Move to trash';
+        delBtn.setAttribute('aria-label', 'Move to trash');
+        var delIcon = document.createElement('i');
+        delIcon.className = 'icon-delete';
+        delBtn.appendChild(delIcon);
+        // The two-tap honesty survives the glyph swap: arming widens the
+        // circle into a pill and reveals the copy (the card-delete pattern).
+        var delConfirm = document.createElement('span');
+        delConfirm.className = 'podcast-ep-confirm';
+        delConfirm.textContent = 'Move to trash?';
+        delBtn.appendChild(delConfirm);
         var delConfirming = false;
         delBtn.addEventListener('click', function (e) {
           e.stopPropagation();
           if (!delConfirming) {
             delConfirming = true;
             delBtn.classList.add('confirming');
-            delBtn.textContent = 'Move to trash?';
             return;
           }
           fetchJson('/api/podcasts/episodes/' + encodeURIComponent(ep.id), { method: 'DELETE' })
