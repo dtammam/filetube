@@ -80,6 +80,35 @@
 
 ## Shipped
 
+### v1.73.2 - Books gets its glyph + Dean's docs housekeeping (2026-08-03)
+
+Dean's polish find: Books was the last Library citizen wearing the
+generic folder icon. A Material menu_book asset joins the pipeline
+(single-asset posture, emoji set U+1F4DA included up front - the
+v1.73 W2 lesson applied preemptively), switching the Library
+injector, the Playlists sheet mirror, and all nine bottom-nav shells
+together. Rides along: Dean's own housekeeping (four shipped exec
+plans to completed/ - closing their Stops on his authority - and
+four reference docs into docs/references/) with the pointer sweep it
+demanded, which then pulled the thread on 13 pre-existing dead
+exec-plan citations in code comments, all repointed with their
+targets verified real.
+
+Slim gate, 3 rounds (Dean invoked the round-3 rule and chose
+ship-then-clean): round 1 caught the new lock binding two of its
+four claimed CSS memberships (both deletion mutants survived the
+full suite - now bound), a divergent fixture, and a husk-proof
+asset assert; rounds 2-3 caught the sweep-completeness claim FALSE
+TWICE - my grep missed LINE-SPLIT path citations. DISCLOSED PARTIAL
+per the seat's approval condition: four split-line dead citations
+remain in code comments (server.js:8685, videoQuery.js:7,
+player.js:639, common.js:1916), two in ARCHITECTURE.md (272, 351),
+and ~16 across test headers - zero runtime effect, all targets
+findable; tech-debt #102 carries the split-line-aware grep as the
+repro and the cleanup lands as the immediate next branch. Dual-Node:
+v22.23.1 = 5890/5890, 0 fail; v24.14.0 = 5890/5890, 0 fail. Device
+pass PENDING.
+
 ### v1.73.1 - The Downloads dupe dies everywhere (2026-08-03)
 
 Dean's device find minutes after v1.73.0: the new hard "Downloads"
