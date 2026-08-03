@@ -608,6 +608,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // surface and reflects it on its next load.
         btn.classList.toggle('liked', !liked);
         btn.title = !liked ? 'Unlike' : 'Like';
+        // QA gate S7: buildSongRowHtml mints an aria-label alongside the title,
+        // and only the title was being flipped - a screen reader kept reading
+        // "Like" on a liked row. (Pre-existing; podcasts.js already did this.)
+        btn.setAttribute('aria-label', !liked ? 'Unlike' : 'Like');
       }).catch(function () {});
     }
 

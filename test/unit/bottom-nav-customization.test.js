@@ -22,9 +22,16 @@ const {
   BOTTOM_NAV_COMPAT_TAIL,
 } = require('../../public/js/common.js');
 
-const ALL = ['home', 'playlists', 'history', 'subscriptions', 'oneoff-download', 'theme', 'settings'];
+// A v1.44-era shell's present ids. NOTE the spelling: `oneoff-download` before
+// `subscriptions`. The original fixture had them the other way round, an order
+// no real shell has ever produced - both are injected with
+// insertAdjacentElement('afterend') on the Settings item, so their DOM order is
+// a race (adversarial gate W1). Since ids the config does not name now rank by
+// the ROSTER rather than by DOM position, the fixture is spelled the way the
+// roster reads; the tests below assert that resolved order, not an input order.
+const ALL = ['home', 'playlists', 'history', 'theme', 'oneoff-download', 'subscriptions', 'settings'];
 
-test('T12: default config keeps DOM order, home first + settings last', () => {
+test('T12: default config resolves to roster order, home first + settings last', () => {
   const out = resolveBottomNavLayout(ALL, {});
   assert.deepEqual(out.visible, ALL);
   assert.deepEqual(out.hiddenPresent, []);
@@ -35,7 +42,7 @@ test('v1.75: hidden optionals are dropped from visible - and home/settings now h
   // request"); retiring the anchors is the wave's point, so the assertion is
   // rewritten rather than deleted - the hide path still has to be bound.
   const out = resolveBottomNavLayout(ALL, { hidden: ['subscriptions', 'home', 'settings'] });
-  assert.deepEqual(out.visible, ['playlists', 'history', 'oneoff-download', 'theme'], 'home + settings hide like any other entry');
+  assert.deepEqual(out.visible, ['playlists', 'history', 'theme', 'oneoff-download'], 'home + settings hide like any other entry');
   assert.deepEqual(out.hiddenPresent.slice().sort(), ['home', 'settings', 'subscriptions'], 'all three report as present-and-hidden');
 });
 
@@ -240,6 +247,78 @@ test('v1.75 SEQUENCE: visible + hiddenPresent interleave into one row order the 
   assert.deepEqual(out.sequence.filter((id) => out.visible.indexOf(id) >= 0), out.visible);
   assert.deepEqual(out.sequence.filter((id) => out.hiddenPresent.indexOf(id) >= 0), out.hiddenPresent);
   assert.equal(out.sequence.length, out.visible.length + out.hiddenPresent.length);
+});
+
+// ---- v1.75 adversarial gate W1: the resolved order is a pure function of the
+// ---- CONFIG, not of the DOM order it is handed ------------------------------
+
+test('W1: the two async injectors race, and the resolved bar must not', () => {
+  // Both nav injectors do insertAdjacentElement('afterend') on the Settings
+  // item, so whichever capability probe resolves LAST lands FIRST. Deleting the
+  // v1.39.2 CSS ladder removed the pin that used to hide this, so Download and
+  // Subs swapped between page loads until ids were ranked by the roster.
+  const base = ['home', 'liked', 'playlists', 'history', 'podcasts', 'music', 'books', 'downloads', 'theme', 'settings'];
+  const subsFirst = base.concat(['subscriptions', 'oneoff-download']);
+  const downloadFirst = base.concat(['oneoff-download', 'subscriptions']);
+  for (const cfg of [{}, { shown: ['music', 'liked'] }, { order: ['theme', 'history'] }, { hidden: ['playlists'] }]) {
+    assert.deepEqual(
+      resolveBottomNavLayout(subsFirst, cfg).visible,
+      resolveBottomNavLayout(downloadFirst, cfg).visible,
+      `injection order leaked into the bar for config ${JSON.stringify(cfg)}`,
+    );
+  }
+  // And the outcome is the roster's order, not either race winner's.
+  const out = resolveBottomNavLayout(subsFirst, {}).visible;
+  assert.ok(out.indexOf('oneoff-download') < out.indexOf('subscriptions'), 'Download precedes Subs, deterministically');
+});
+
+test('W1: applying twice is idempotent - a resolution fed its own output re-resolves identically', () => {
+  // applyBottomNavCustomization re-appends the visible items, so the NEXT call
+  // reads a DOM whose order is the previous call's output with the hidden items
+  // stranded in front. Every apply must still land on the same bar, or ticking
+  // an item in Settings puts it somewhere a reload will not reproduce.
+  const present = ['home', 'liked', 'playlists', 'history', 'podcasts', 'music', 'books', 'downloads', 'theme', 'settings', 'oneoff-download', 'subscriptions'];
+  for (const cfg of [{}, { shown: ['music'] }, { shown: ['liked', 'books'], order: ['theme'] }, { hidden: ['home'] }]) {
+    const first = resolveBottomNavLayout(present, cfg);
+    const mutatedDom = present.filter((id) => first.visible.indexOf(id) < 0).concat(first.visible);
+    const second = resolveBottomNavLayout(mutatedDom, cfg);
+    assert.deepEqual(second.visible, first.visible, `re-apply drifted for config ${JSON.stringify(cfg)}`);
+    assert.deepEqual(second.sequence, first.sequence, 'and the panel would have drifted with it');
+  }
+});
+
+test('W1: an id absent from the roster still resolves, after every known id, in DOM order', () => {
+  const present = ['home', 'zzz-unknown', 'playlists', 'aaa-unknown', 'settings'];
+  const out = resolveBottomNavLayout(present, {}).visible;
+  assert.deepEqual(out, ['home', 'playlists', 'zzz-unknown', 'aaa-unknown', 'settings'],
+    'unknown ids never sort to the front by scoring -1, and keep their relative DOM order');
+});
+
+// ---- v1.75 (QA W3 / adversarial S1): the roster's ORDER is what the Settings
+// ---- panel renders and what the first move-button tap persists --------------
+
+test('W3: BOTTOM_NAV_OPTIONAL IS the default bar - derived from the shells, never typed here', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const pub = path.join(__dirname, '../../public');
+  const shells = fs.readdirSync(pub).filter((f) => f.endsWith('.html'))
+    .filter((f) => fs.readFileSync(path.join(pub, f), 'utf8').includes('class="bottom-nav'));
+  assert.ok(shells.length >= 9, `expected the full shell roster, found ${shells.length}`);
+  // Every shell must mount the SAME ids in the SAME order, or "the roster is
+  // the default bar" is not even a well-formed claim.
+  const perShell = shells.map((f) => (fs.readFileSync(path.join(pub, f), 'utf8')
+    .match(/data-nav="[a-z-]+"/g) || []).map((m) => m.slice(10, -1)));
+  for (let i = 1; i < perShell.length; i += 1) {
+    assert.deepEqual(perShell[i], perShell[0], `${shells[i]} mounts a different bar than ${shells[0]}`);
+  }
+  // The two injected ids are not in any shell's HTML; both land after Settings.
+  const present = perShell[0].concat(['oneoff-download', 'subscriptions']);
+  assert.deepEqual(
+    resolveBottomNavLayout(present, {}).sequence,
+    BOTTOM_NAV_OPTIONAL,
+    'the roster must equal the default resolved bar - otherwise the Settings panel lists one order, '
+    + 'the bar renders another, and the first move-button tap persists the panel\'s wrong one',
+  );
 });
 
 test('v1.75 FLOOR: a hand-edited config that hides EVERY entry renders the default bar instead of an empty strip', () => {

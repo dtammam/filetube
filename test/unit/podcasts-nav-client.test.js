@@ -43,8 +43,13 @@ test('SOURCE-LOCK: the sidebar Podcasts entry rides the Library section, ordered
   // FULL list so a silent roster change can never pass as noise.
   // v1.75: these two were SOURCE-TEXT matches on the roster literals, which
   // the v1.75 roster rewrite broke without any behaviour changing. Bind the
-  // exported VALUES instead - same guarantee (a silent roster change cannot
-  // pass as noise), immune to how the array happens to be spelled.
+  // exported VALUES instead, immune to how the array happens to be spelled.
+  // Precision (QA gate S1): this binds MEMBERSHIP, which is all it ever
+  // guaranteed. The roster's exact contents are pinned in aggregate by
+  // bottom-nav-customization.test.js (length 12 + no duplicates + a superset of
+  // every id the shells mount), and its ORDER - which the old literal match did
+  // incidentally cover - is now bound properly, against the shells, by that
+  // file's 'BOTTOM_NAV_OPTIONAL IS the default bar' test.
   for (const id of ['podcasts', 'music', 'books', 'downloads']) {
     assert.ok(common.BOTTOM_NAV_OPTIONAL.includes(id), `${id} rides BOTTOM_NAV_OPTIONAL (the Settings toggle is the only opt-in path)`);
     assert.ok(common.BOTTOM_NAV_DEFAULT_HIDDEN.includes(id), `${id} is default-hidden - nobody's bar changes on upgrade`);

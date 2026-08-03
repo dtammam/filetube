@@ -1918,6 +1918,37 @@ function activeNavItem(pathname, search) {
   return null;
 }
 
+// Which SIDEBAR entry a resolved nav key lights, keyed by the entry's href.
+// v1.75: `liked` joins - its entry is the count-gated one applyLikedSidebarEntry
+// builds, whose href is this exact string, so the liked view lights IT rather
+// than Home (which is what the shared `/` path used to light). Every key
+// activeNavItem can return needs a row here or its sidebar entry silently
+// stops lighting; the unit suite binds that coverage against activeNavItem.
+const SIDEBAR_HREF_BY_NAV_KEY = {
+  home: '/',
+  liked: '/?liked=1',
+  settings: '/setup.html',
+  subscriptions: '/subscriptions',
+  books: '/books',
+  music: '/music',
+  podcasts: '/podcasts',
+  history: '/history',
+};
+
+// Which BOTTOM-BAR item a resolved nav key lights. Pure, because the DOM shell
+// around it is one querySelector and this is the whole decision.
+// v1.75 (QA gate S3): the bottom-bar Liked entry is OPT-IN (default-hidden), so
+// on a default device /?liked=1 has no item to light and the bar would go
+// completely unlit - a visible regression from v1.74, which lit Home there.
+// Fall back to Home when the Liked item is absent or hidden: the liked view IS
+// the home grid scoped by a query, so Home is the honest answer when Liked's
+// own entry is not on the bar. The SIDEBAR key is deliberately NOT folded in -
+// its Liked entry is count-gated, not opt-in, and lights on its own terms.
+function bottomNavKeyForHighlight(key, likedItemVisible) {
+  if (key === 'liked' && !likedItemVisible) return 'home';
+  return key;
+}
+
 // Does this location query select the central Liked playlist scope? Split out
 // so activeNavItem stays one expression per route and this parse is testable
 // on its own. A malformed query degrades to "not the liked scope".
@@ -3400,7 +3431,26 @@ function resolveBottomNavLayoutCore(present, cfg) {
   const seen = new Set();
   const ordered = [];
   order.forEach((id) => { if (sortable.indexOf(id) >= 0 && !seen.has(id)) { ordered.push(id); seen.add(id); } });
-  sortable.forEach((id) => { if (!seen.has(id)) { ordered.push(id); seen.add(id); } });
+  // v1.75 adversarial gate W1: ids the config does NOT name are ordered by
+  // their ROSTER index, never by their position in `present`. `presentIds`
+  // comes out of the live #bottom-nav, and that order is neither stable nor
+  // clean: both async nav injectors insert with
+  // insertAdjacentElement('afterend') on the Settings item, so whichever
+  // capability probe resolves LAST lands FIRST (Download and Subs swapped
+  // between page loads); and applyBottomNavCustomization re-appends the
+  // visible items, so a second apply reads back its own output and a
+  // just-opted-in item lands somewhere a reload will not reproduce. Ranking by
+  // the roster makes the resolved sequence a pure function of the CONFIG -
+  // identical across injector races, across repeat applies, and identical to
+  // the list the Settings panel renders. An id absent from the roster keeps
+  // its relative DOM position, after every known id.
+  const rosterRank = (id) => {
+    const i = BOTTOM_NAV_OPTIONAL.indexOf(id);
+    return i >= 0 ? i : BOTTOM_NAV_OPTIONAL.length + present.indexOf(id);
+  };
+  sortable.slice()
+    .sort((a, b) => rosterRank(a) - rosterRank(b))
+    .forEach((id) => { if (!seen.has(id)) { ordered.push(id); seen.add(id); } });
   const sequence = (pinHead ? [BOTTOM_NAV_COMPAT_HEAD] : []).concat(ordered, pinTail ? [BOTTOM_NAV_COMPAT_TAIL] : []);
   return { visible: sequence.filter((id) => !isHidden(id)), hiddenPresent: sequence.filter(isHidden), sequence };
 }
@@ -5514,17 +5564,15 @@ if (typeof window !== 'undefined') {
     const bottomNav = document.getElementById('bottom-nav');
     if (bottomNav) {
       bottomNav.querySelectorAll('.bottom-nav-item.active').forEach((el) => el.classList.remove('active'));
-      const item = key && bottomNav.querySelector('[data-nav="' + key + '"]');
+      const likedItem = bottomNav.querySelector('[data-nav="liked"]');
+      const barKey = bottomNavKeyForHighlight(key, !!likedItem && !likedItem.hidden);
+      const item = barKey && bottomNav.querySelector('[data-nav="' + barKey + '"]');
       if (item) item.classList.add('active');
     }
     const sidebar = document.getElementById('sidebar');
     if (sidebar) {
       sidebar.querySelectorAll('.sidebar-item.active').forEach((el) => el.classList.remove('active'));
-      // v1.75: `liked`'s sidebar entry is the count-gated one applyLikedSidebarEntry
-      // builds, whose href is this exact string - so the liked view lights IT
-      // rather than Home (which is what the shared `/` path used to light).
-      const hrefByNavKey = { home: '/', liked: '/?liked=1', settings: '/setup.html', subscriptions: '/subscriptions', books: '/books', music: '/music', podcasts: '/podcasts', history: '/history' };
-      const href = key ? hrefByNavKey[key] : null;
+      const href = key ? SIDEBAR_HREF_BY_NAV_KEY[key] : null;
       const match = href && sidebar.querySelector('a.sidebar-item[href="' + href + '"]');
       if (match) match.classList.add('active');
     }
@@ -9640,7 +9688,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // bind the REAL values rather than a hand-copied duplicate.
     BOTTOM_NAV_OPTIONAL,
     BOTTOM_NAV_COMPAT_HEAD, BOTTOM_NAV_COMPAT_TAIL,
-    likedScopeQuery,
+    likedScopeQuery, bottomNavKeyForHighlight, SIDEBAR_HREF_BY_NAV_KEY,
     // v1.75: the bar's ORDER is now decided in JS alone (the v1.39.2 CSS
     // `order:` ladder is gone), so the DOM pass that applies it is bound at
     // the DOM by test/unit/bottom-nav-order-authority.test.js - a resolver

@@ -5,12 +5,16 @@
 // Three things this wave changed can only be proved at the DOM/asset layer,
 // never by a resolver test:
 //
-//  1. The v1.39.2 CSS `order:` ladder is GONE. It pinned seven data-nav ids to
-//     fixed flex positions and left every id added since (history, podcasts,
-//     music, books, downloads) at the default `order: 0`, i.e. LEFT of Home -
-//     Dean's reported symptom - while also making the v1.44 reorder feature
-//     unable to move any of those seven. CSS `order` beats DOM order outright,
-//     so a green resolver test proved nothing about the rendered bar.
+//  1. The v1.39.2 CSS `order:` ladder is GONE. It pinned seven data-nav ids
+//     (home, playlists, oneoff-download, subscriptions, books, theme, settings)
+//     to fixed flex positions and left the four it never grew a rule for
+//     (history, podcasts, music, downloads) at the default `order: 0`, i.e.
+//     LEFT of Home - Dean's reported symptom - while also making the v1.44
+//     reorder feature unable to move any of the seven. CSS `order` beats DOM
+//     order outright, so a green resolver test proved nothing about the
+//     rendered bar. (Gate correction: `books` was PINNED at 5. An earlier
+//     version of this header, and of the style.css comment, listed it among
+//     the unpinned.)
 //  2. Every shell that carries the bar carries the new Liked item (the
 //     enumerate-by-grep rule: the roster is derived from the files here, never
 //     from a list typed into this test).
@@ -36,21 +40,75 @@ const SHELLS = fs.readdirSync(PUBLIC_DIR)
 
 // ---- 1. the CSS ladder must never come back --------------------------------
 
-test('v1.75: NO css rule assigns flex `order` to a bottom-nav item - the resolver is the sole authority', () => {
-  // Comments are stripped first: this file documents the deleted ladder in
-  // prose, and a source lock that matches its own explanation is theatre (the
-  // v1.50 source-lock lesson).
-  const code = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
-  const offenders = code
-    .split('\n')
-    .map((line, i) => [i + 1, line])
-    .filter(([, line]) => /order\s*:/.test(line) && /bottom-nav/.test(line));
-  assert.deepEqual(offenders, [], `flex order on the bottom bar is the v1.39.2 defect: ${JSON.stringify(offenders)}`);
-  // And specifically the seven ids the old ladder named, in any selector shape.
-  for (const id of ['home', 'playlists', 'oneoff-download', 'subscriptions', 'books', 'theme', 'settings']) {
-    const re = new RegExp(`#bottom-nav\\s*\\[data-nav="${id}"\\][^}]*order\\s*:`);
-    assert.ok(!re.test(code), `the ladder rule for '${id}' is back`);
+// Every CSS rule as {selector, body}, comments stripped and newlines flattened.
+// The gate's round-1 version scanned LINES, so a rule written across several
+// lines - the prevailing style in this file - slipped straight past it; and it
+// only knew the `#bottom-nav [data-nav="x"]` selector shape, so
+// `.bottom-nav-item[data-nav="x"]` was invisible too. Both seats landed a live
+// mutant on it. Parse instead of grep.
+function cssRules() {
+  const code = CSS.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ');
+  const rules = [];
+  const re = /([^{}]+)\{([^{}]*)\}/g;
+  let m;
+  while ((m = re.exec(code)) !== null) {
+    rules.push({ selector: m[1].trim(), body: m[2].trim() });
   }
+  return rules;
+}
+
+// `order:` but not `border:`/`-order:` - the round-1 regex flagged any
+// `border:` declaration on a bottom-nav rule as the v1.39.2 defect.
+const ORDER_DECL = /(^|[^-\w])order\s*:/;
+
+test('v1.75: NO css rule assigns flex `order` to a bottom-nav item - the resolver is the sole authority', () => {
+  const offenders = cssRules()
+    .filter((r) => /bottom-nav/.test(r.selector) && ORDER_DECL.test(r.body))
+    .map((r) => `${r.selector} { ${r.body} }`);
+  assert.deepEqual(offenders, [], `flex order on the bottom bar is the v1.39.2 defect: ${JSON.stringify(offenders)}`);
+});
+
+// The flex CONTAINER (`#bottom-nav` / `.bottom-nav`), not its children. The
+// distinction is load-bearing for the next test: `.bottom-nav-item` is itself a
+// column (icon over label) and legitimately sets flex-direction; only the
+// container's own direction decides the SEQUENCE of the items.
+const CONTAINER_SELECTOR = /(#bottom-nav|\.bottom-nav)(?![-\w])/;
+
+test('v1.75: and no rule inverts or re-flows the bar around the resolver either', () => {
+  // `order` is not the only way to divorce the rendered sequence from the DOM:
+  // flex-direction: row-reverse on the container does it wholesale, and
+  // `direction: rtl` does it too. Same defect class, same lock.
+  const offenders = cssRules()
+    .filter((r) => CONTAINER_SELECTOR.test(r.selector))
+    .filter((r) => /(^|[^-\w])(flex-direction|direction)\s*:/.test(r.body))
+    .map((r) => `${r.selector} { ${r.body} }`);
+  assert.deepEqual(offenders, [], `the bar's sequence must come from the resolver alone: ${JSON.stringify(offenders)}`);
+});
+
+test('v1.75: the lock catches every shape the ladder could come back in (verified against real mutants)', () => {
+  // The three shapes that survived the round-1 lock, plus the two that did not.
+  // Run through the SAME predicate the two tests above use, so the lock and its
+  // own proof cannot drift apart.
+  const caught = (css) => {
+    const flat = css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ');
+    const re = /([^{}]+)\{([^{}]*)\}/g;
+    let m;
+    while ((m = re.exec(flat)) !== null) {
+      const sel = m[1].trim();
+      const body = m[2].trim();
+      const badOrder = /bottom-nav/.test(sel) && ORDER_DECL.test(body);
+      const badFlow = CONTAINER_SELECTOR.test(sel) && /(^|[^-\w])(flex-direction|direction)\s*:/.test(body);
+      if (badOrder || badFlow) return true;
+    }
+    return false;
+  };
+  assert.ok(caught('#bottom-nav [data-nav="home"] { order: 1; }'), 'single-line ladder rule');
+  assert.ok(caught('#bottom-nav [data-nav="liked"] {\n  order: -1;\n}'), 'MULTI-LINE rule (survived round 1)');
+  assert.ok(caught('.bottom-nav-item[data-nav="home"] {\n  order: 9;\n}'), 'alternate selector shape (survived round 1)');
+  assert.ok(caught('#bottom-nav { flex-direction: row-reverse; }'), 'container reversal (survived round 1)');
+  assert.ok(!caught('#bottom-nav .bottom-nav-item { border: 1px solid red; }'), 'border: is NOT order: (round 1 false-positived)');
+  assert.ok(!caught('.video-card [data-nav="home"] { order: 1; }'), 'a rule on some other surface is not our business');
+  assert.ok(!caught('.bottom-nav-item { flex-direction: column; }'), 'an ITEM is legitimately a column - only the container sequences');
 });
 
 // ---- 2. the nine-shell enumeration -----------------------------------------
@@ -91,6 +149,17 @@ test('v1.75: the Liked item uses the SAME glyph as the sidebar Liked entry, and 
     // typed into markup.
     assert.ok(!/[☀-➿\u{1F300}-\u{1F9FF}]/u.test(item.slice(0, 200)), `${f}: raw emoji codepoint in markup`);
   }
+});
+
+test('v1.75: the Settings copy states the new freedom and the floor, and no longer promises the retired anchors', () => {
+  // Adversarial S2: reverting this sentence survived the whole suite, and it is
+  // the ONLY user-facing statement of either fact.
+  const html = fs.readFileSync(path.join(PUBLIC_DIR, 'setup.html'), 'utf8');
+  const panel = html.slice(html.indexOf('id="bottombar-editor"'));
+  const copy = panel.slice(0, panel.indexOf('</small>'));
+  assert.ok(!/Home stays first/.test(html), 'the retired promise must not survive anywhere in the shell');
+  assert.match(copy, /Home, Liked and Settings included/, 'the copy names what newly became reorderable');
+  assert.match(copy, /at least one item/, 'and states the >=1 floor the panel enforces');
 });
 
 // ---- 3. the rendered bar (the decision's USE) ------------------------------
@@ -287,6 +356,71 @@ test('v1.75 EDITOR FLOOR: un-checking a NON-last item still works normally', () 
     assert.equal(row.cb.checked, false, 'a legal hide sticks');
     const written = JSON.parse(dom.window.localStorage.getItem('ft-bottomnav'));
     assert.ok(written.hidden.indexOf('playlists') >= 0, 'and is persisted');
+    delete global.showToast;
+  });
+});
+
+test('v1.75 EDITOR: a move button persists the FULL roster, which is what releases the compat pins', () => {
+  // The whole "Home is not always left-most bound" mechanism: until an `order`
+  // NAMES home/settings the compat fallbacks pin them, and the only thing that
+  // ever writes those two ids is this button. Adversarial S5 measured it had
+  // no direct test.
+  withEditor({}, (dom, signal) => {
+    global.showToast = () => {};
+    setup.renderBottomBarEditor(signal);
+    // The panel re-renders after every move, so re-query each time. Two moves
+    // down takes Home past Liked (hidden) AND Playlists (visible) - one move
+    // only swaps it with the hidden Liked row, which correctly leaves the
+    // VISIBLE bar unchanged and would prove nothing about the rendered order.
+    const moveHomeDown = () => {
+      const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('.bottombar-editor-row'));
+      const row = rows.find((r) => r.querySelector('.bottombar-editor-label').textContent === 'Home');
+      row.querySelectorAll('.bottombar-editor-btn')[1].dispatchEvent(new dom.window.Event('click'));
+    };
+    assert.equal(
+      dom.window.document.querySelector('.bottombar-editor-row .bottombar-editor-label').textContent,
+      'Home', 'Home heads the panel before any move',
+    );
+    moveHomeDown();
+    const afterOne = JSON.parse(dom.window.localStorage.getItem('ft-bottomnav'));
+    assert.equal(afterOne.order.length, BOTTOM_NAV_OPTIONAL.length, 'the full roster is persisted, not just the moved id');
+    for (const id of ['home', 'settings']) {
+      assert.ok(afterOne.order.indexOf(id) >= 0, `${id} must be NAMED for its compat pin to release`);
+    }
+    assert.equal(afterOne.order[0], BOTTOM_NAV_OPTIONAL[1], 'Home swapped with the row below it');
+    assert.equal(afterOne.order[1], 'home');
+    moveHomeDown();
+    const written = JSON.parse(dom.window.localStorage.getItem('ft-bottomnav'));
+    // And the bar honours it: Home is no longer first, and the pins are gone.
+    assert.equal(resolveBottomNavLayout(BOTTOM_NAV_OPTIONAL, written).visible[0], 'playlists');
+    assert.equal(resolveBottomNavLayout(BOTTOM_NAV_OPTIONAL, written).visible[1], 'home');
+    delete global.showToast;
+  });
+});
+
+test('v1.75 EDITOR FLOOR: the floor counts what the BAR mounts, not the roster', () => {
+  // Adversarial S4: on a device with the yt-dlp module off, leaving only
+  // Subscriptions + Download ticked passes a roster-shaped floor (two visible)
+  // while the real bar has nothing - it would then floor to the default and the
+  // panel would show ten empty boxes over a fully populated bar.
+  const present = SHELL_ITEMS.map(([id]) => id); // no subscriptions / oneoff-download
+  const cfg = { hidden: present.slice(), order: [], shown: ['subscriptions', 'oneoff-download'] };
+  withEditor(cfg, (dom, signal) => {
+    global.showToast = () => {};
+    // Mount the live bar the panel's own page carries, module-off shaped.
+    const nav = dom.window.document.createElement('nav');
+    nav.id = 'bottom-nav';
+    nav.innerHTML = present.map((id) => `<a class="bottom-nav-item" data-nav="${id}"></a>`).join('');
+    dom.window.document.body.appendChild(nav);
+    setup.renderBottomBarEditor(signal);
+    const before = dom.window.localStorage.getItem('ft-bottomnav');
+    // Ticking Subscriptions off is legal by the roster (Download still shows)
+    // but empties the REAL bar, so it must be refused.
+    const row = editorRows().find((r) => r.label === 'Subscriptions');
+    row.cb.checked = false;
+    row.cb.dispatchEvent(new dom.window.Event('change'));
+    assert.equal(row.cb.checked, true, 'refused against the live bar');
+    assert.equal(dom.window.localStorage.getItem('ft-bottomnav'), before, 'nothing written');
     delete global.showToast;
   });
 });

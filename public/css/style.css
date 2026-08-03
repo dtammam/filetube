@@ -4212,17 +4212,30 @@ a.sub-row-channel-link:focus-visible {
      pass in `applyBottomNavCustomization` are the SOLE authority on this
      bar's sequence (bound by test/unit/bottom-nav-order-authority.test.js).
 
-     Why it had to go: the ladder pinned seven ids (home 1 ... settings 7)
-     and left the rest at the flex default of `order: 0`, which sorts them
-     BEFORE everything. Every item added after v1.39.2 - history (v1.64),
-     podcasts (v1.71), music/books/downloads (v1.72/v1.73) - therefore
-     rendered to the LEFT of Home, which is exactly the symptom Dean
-     reported; and because CSS `order` beats DOM order outright, the v1.44
-     T12 reorder feature could not move any of those seven items at all.
-     The ladder's original rationale (injection timing makes DOM order
-     vary) has been obsolete since v1.44: both async injectors re-call
-     applyBottomNavCustomization after inserting their item, so the
-     resolved DOM order is deterministic no matter when they land. */
+     Why it had to go: the ladder pinned seven ids (home 1, playlists 2,
+     oneoff-download 3, subscriptions 4, books 5, theme 6, settings 7) and
+     left the rest at the flex default of `order: 0`, which sorts them
+     BEFORE everything. The four ids added after v1.39.2 that it never
+     grew a rule for - history (v1.64), podcasts (v1.71), music and
+     downloads (v1.72/v1.73) - therefore rendered to the LEFT of Home,
+     which is exactly the symptom Dean reported; and because CSS `order`
+     beats DOM order outright, the v1.44 T12 reorder feature could not
+     move any of the seven pinned items at all.
+
+     (Gate correction: an earlier version of this comment listed `books`
+     among the unpinned. It was pinned, at 5. Four ids were unpinned, not
+     five - and a user who had opted Books in sees it move left of
+     Light/Dark as well as of Download/Subs.)
+
+     The ladder DID have a real second job that the v1.44 customizer does
+     not inherit: both async injectors insert with
+     insertAdjacentElement('afterend') on the Settings item, so whichever
+     capability probe resolves last lands first, and Download/Subs would
+     swap between page loads with nothing to pin them. Re-calling
+     applyBottomNavCustomization does not fix that - its own input is the
+     racy DOM order. That job moved into resolveBottomNavLayoutCore
+     instead, which ranks config-unnamed ids by BOTTOM_NAV_OPTIONAL index
+     rather than by DOM position (adversarial gate W1). */
 
   /* ---- Mobile app shell: header restructure ----------------------------
      Top-left logo + full-width search below it; header-right (Settings +

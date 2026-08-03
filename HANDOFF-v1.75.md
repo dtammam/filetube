@@ -107,7 +107,11 @@ list.
 ## Definition of done
 
 Dean's on-device pass is the arbiter, with these probes in the ship
-report: (1) an untouched device renders the identical bar after upgrade;
+report: (1) an untouched device's bar has identical MEMBERSHIP and opt-in
+state after upgrade - its ORDER changes exactly as the exec plan's D2-bis
+consequence list records, because a CSS ladder found mid-wave had been
+overriding the resolver (see D2-bis; probe (1) as originally written here
+promised "the identical bar" and this wave deliberately does not);
 (2) Home reordered away from first sticks across shells and reloads;
 (3) the opted-in Liked entry navigates to the central Liked (/?liked=1)
 and highlights correctly vs Home; (4) podcasts place shows no Liked card;

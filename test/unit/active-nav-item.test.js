@@ -4,7 +4,9 @@
 // `typeof module` guard purely for this test.
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { activeNavItem, likedScopeQuery } = require('../../public/js/common.js');
+const {
+  activeNavItem, likedScopeQuery, bottomNavKeyForHighlight, SIDEBAR_HREF_BY_NAV_KEY,
+} = require('../../public/js/common.js');
 
 test('activeNavItem: home path with no query is home', () => {
   assert.strictEqual(activeNavItem('/', ''), 'home');
@@ -81,6 +83,44 @@ test('v1.75: the liked scope never leaks onto another path', () => {
   assert.strictEqual(activeNavItem('/music', '?liked=1'), 'music');
   assert.strictEqual(activeNavItem('/podcasts', '?liked=1'), 'podcasts');
   assert.strictEqual(activeNavItem('/watch.html', '?v=abc&liked=1'), null);
+});
+
+// ---- v1.75 gate S3: which item each resolved key actually lights -----------
+
+test('S3: with the opt-in Liked item OFF, the liked view lights Home instead of leaving the bar unlit', () => {
+  // The default posture: `liked` is default-hidden, so most devices have no
+  // Liked item to light. v1.74 lit Home on /?liked=1; going fully unlit would
+  // be a visible regression for the majority.
+  assert.equal(bottomNavKeyForHighlight('liked', false), 'home');
+  assert.equal(bottomNavKeyForHighlight('liked', true), 'liked', 'once opted in, Liked lights itself');
+  // Every other key passes through untouched in BOTH visibility states - the
+  // fallback is scoped to liked, not a blanket "light Home when unsure".
+  for (const key of ['home', 'settings', 'music', 'books', 'podcasts', 'history', 'subscriptions', null]) {
+    assert.equal(bottomNavKeyForHighlight(key, false), key, `${key} is untouched`);
+    assert.equal(bottomNavKeyForHighlight(key, true), key, `${key} is untouched`);
+  }
+});
+
+test('S3: every key activeNavItem can return has a sidebar href - including liked', () => {
+  // Derived from activeNavItem itself rather than typed: a new route that
+  // returns a key with no mapping here silently stops lighting its sidebar
+  // entry, which is how the liked mapping could have been deleted unnoticed.
+  const keys = new Set();
+  for (const [p, q] of [
+    ['/', ''], ['/', '?liked=1'], ['/index.html', ''], ['/setup.html', ''],
+    ['/subscriptions', ''], ['/books', ''], ['/books.html', ''], ['/read.html', ''],
+    ['/music', ''], ['/music.html', ''], ['/podcasts', ''], ['/podcasts.html', ''],
+    ['/history', ''], ['/history.html', ''],
+  ]) {
+    const k = activeNavItem(p, q);
+    if (k) keys.add(k);
+  }
+  assert.ok(keys.has('liked'), 'the liked key is reachable');
+  for (const k of keys) {
+    assert.equal(typeof SIDEBAR_HREF_BY_NAV_KEY[k], 'string', `no sidebar href mapped for '${k}'`);
+  }
+  assert.equal(SIDEBAR_HREF_BY_NAV_KEY.liked, '/?liked=1', 'and it points at the entry applyLikedSidebarEntry mints');
+  assert.equal(SIDEBAR_HREF_BY_NAV_KEY.home, '/', 'home still points at the plain home entry');
 });
 
 test('v1.75: likedScopeQuery is the one parse behind that decision', () => {

@@ -741,17 +741,26 @@ function renderBottomBarEditor(signal) {
   // order and thrown Home to the end of the user's bar. Asking the resolver
   // makes the panel's list and the bar's sequence the same answer by
   // construction, compat fallbacks included.
-  const layout = FT.resolveBottomNavLayout
-    ? FT.resolveBottomNavLayout(optional, cfg)
-    : { sequence: optional.slice(), visible: optional.slice() };
+  // (Adversarial gate S4: the previous `: { sequence: optional.slice(), ... }`
+  // fallback arm was unreachable - resolveBottomNavLayout is exported from the
+  // same block as readBottomNavConfig, which the guard above already requires -
+  // and if it HAD fired it would have ticked all twelve boxes including the
+  // default-hidden ones. A dead arm that lies is worse than no arm.)
+  const layout = FT.resolveBottomNavLayout(optional, cfg);
   const items = layout.sequence;
   // Checked-ness comes from the SAME resolution, not from a second copy of the
-  // hidden/shown/default-hidden formula (the one-decision-function rule). It
-  // also keeps the panel honest in the one case the two could disagree: a
-  // hand-edited config that hides everything renders the DEFAULT bar, and the
-  // panel now shows the default bar's ticks rather than twelve empty boxes
-  // over a visibly populated bar.
+  // hidden/shown/default-hidden formula (the one-decision-function rule).
   const visibleSet = new Set(layout.visible);
+  // The FLOOR is checked against the ids the bar ACTUALLY mounts, not the
+  // roster: on a device with the yt-dlp module off, leaving only Subscriptions
+  // and Download ticked satisfies a roster-shaped floor (two visible) while the
+  // real bar has nothing at all and falls back to the default - the panel would
+  // then show ten empty boxes over a fully populated bar (adversarial gate S4).
+  // setup.html carries the bar itself, so the live list is right here.
+  const barItems = document.querySelectorAll('#bottom-nav .bottom-nav-item');
+  const presentIds = barItems.length
+    ? Array.prototype.map.call(barItems, (el) => el.getAttribute('data-nav')).filter(Boolean)
+    : optional;
 
   host.innerHTML = '';
   items.forEach((id, index) => {
@@ -788,7 +797,7 @@ function renderBottomBarEditor(signal) {
       // here rather than writing a config the resolver then has to override -
       // `flooredToDefault` is precisely "this config empties the bar", asked
       // of the same function that would have to clean up after it.
-      if (FT.resolveBottomNavLayout && FT.resolveBottomNavLayout(optional, c).flooredToDefault === true) {
+      if (FT.resolveBottomNavLayout(presentIds, c).flooredToDefault === true) {
         cb.checked = true; // put the tick back; nothing is persisted
         showToast('Keep at least one item in the bottom bar.');
         return;

@@ -419,8 +419,9 @@
       row.appendChild(main);
 
       // v1.71 T4: the like heart (RSS episodes; the podcast arm of the
-      // music-liked pattern). Toggles server state; unliking inside the
-      // Liked lane drops the row on the refresh.
+      // music-liked pattern). v1.75: this is the WRITE surface and the only
+      // one - the Liked lane it used to also feed is gone; see the handler
+      // below.
       if (!ep.watchHref && ep.status === 'downloaded') {
         var likeBtn = document.createElement('button');
         likeBtn.type = 'button';
@@ -582,8 +583,12 @@
       var ep = playable[i];
       if (!ep || !currentShow) return;
       // v1.71: derive show identity per-EPISODE where the payload carries it
-      // (the Liked lane is cross-show; ep.subId/showName are authoritative
-      // there). A plain show view falls back to currentShow as before.
+      // (ep.subId/showName are authoritative wherever the payload sets them).
+      // A plain show view falls back to currentShow. v1.75: the cross-show
+      // Liked lane that MADE this necessary is gone, so currentShow is now
+      // always right - the per-episode read is kept because it is strictly
+      // more specific and costs nothing, not because a cross-show surface
+      // still exists.
       var showName = ep.showName || currentShow.name;
       var artSubId = ep.subId || currentShow.id;
       var data = {
