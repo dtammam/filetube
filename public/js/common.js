@@ -2,7 +2,7 @@
 
 // ---- Era theme system ----------------------------------------------------
 // Two orthogonal axes applied to <html>: data-theme (era) and data-mode
-// (light|dark). See docs/exec-plans/active/era-themes.md for the full design.
+// (light|dark). See docs/exec-plans/completed/era-themes.md for the full design.
 
 const THEME_MODES = ['light', 'dark'];
 const DEFAULT_ERA = '2021';
@@ -292,7 +292,7 @@ function resolveAvatarSource(name, channelAvatarUrl) {
 // ---- Icon-set system ------------------------------------------------------
 // A third, orthogonal appearance axis (theme x mode x icon-set) layered on
 // top of the era/mode system above, with no change to resolveTheme/
-// applyTheme/toggleTheme. See docs/exec-plans/active/icon-sets.md for the
+// applyTheme/toggleTheme. See docs/exec-plans/completed/icon-sets.md for the
 // full design. Two axes: a persisted `ft-icons` preference (one of the 4
 // concrete sets, or the meta-value 'auto') and a `data-icons` attribute on
 // <html> that always holds one of the 4 CONCRETE values — 'auto' is never
@@ -437,7 +437,7 @@ function bytesToGb(bytes) {
 // Resolve the "channel"/author name for a media item, the same way everywhere:
 // FR-2 (v1.20.0)'s captured `item.channelName` (a yt-dlp download's real
 // channel/uploader name) ranks FIRST when present -- see
-// docs/exec-plans/active/2026-07-08-v1.20-subscribe.md ("Creator display
+// docs/exec-plans/completed/2026-07-08-v1.20-subscribe.md ("Creator display
 // precedence"). It ranks first ONLY when present, so a non-yt-dlp file (or a
 // pre-feature download with no captured identity) falls through to the
 // UNCHANGED existing chain: the mapped folder's friendly display name (if
@@ -453,7 +453,7 @@ function resolveChannelName(item, folderSettings) {
 }
 
 // ---- FR-2 channel-identity matcher (T2, v1.20.0) ---------------------------
-// See docs/exec-plans/active/2026-07-08-v1.20-subscribe.md ("Matcher") for the
+// See docs/exec-plans/completed/2026-07-08-v1.20-subscribe.md ("Matcher") for the
 // full design/rationale. Pure, client-side, node:test-covered -- the server
 // never needs to match a file to a subscription, so this lives entirely in
 // common.js. Conservative by construction: two URL shapes that cannot be
@@ -558,7 +558,7 @@ function resolveFileChannelIdentity(item) {
 }
 
 // ---- FR-1/FR-3 subscribe toggle + compact modal (T3, v1.20.0) -------------
-// See docs/exec-plans/active/2026-07-08-v1.20-subscribe.md ("FR-1 -- subscribe
+// See docs/exec-plans/completed/2026-07-08-v1.20-subscribe.md ("FR-1 -- subscribe
 // toggle + compact options modal" / "FR-3 -- hide when no channel / module
 // disabled") for the full design/rationale. Pure decision helpers first
 // (node:test-covered directly); `buildSubscribeModal` is a DOM builder in the
@@ -862,7 +862,7 @@ function buildSubscribeModal(doc, opts, handlers) {
 }
 
 // ---- Audio thumbnail-as-background art (resolveAudioArtUrl) ---------------
-// See docs/exec-plans/active/2026-07-05-audio-art-and-related.md ("Feature 1")
+// See docs/exec-plans/completed/2026-07-05-audio-art-and-related.md ("Feature 1")
 // for the full feasibility finding/design. Resolve the background-art image
 // URL for an audio item, or null when the item would only resolve to the SVG
 // placeholder (no real extracted thumbnail). GET /thumbnail/:id (server.js)
@@ -876,7 +876,7 @@ function resolveAudioArtUrl(item) {
 }
 
 // ---- Related-items similarity ranking (rankRelated) -----------------------
-// See docs/exec-plans/active/2026-07-05-audio-art-and-related.md ("Feature 2")
+// See docs/exec-plans/completed/2026-07-05-audio-art-and-related.md ("Feature 2")
 // for the full design/rationale. Pure and deterministic; replaces the
 // most-recent/same-folder sort previously inline in watch.js's
 // loadRelatedFiles(). Named constants below are the score weights + the
@@ -3426,7 +3426,7 @@ function applyBottomNavCustomization() {
 // (probe `/api/subscriptions/health`, inject only on a genuine 2xx, fail
 // closed on 404/network error) -- when the optional module is disabled,
 // nothing is ever created (no button, no modal markup), keeping the header
-// byte-identical (docs/exec-plans/active/2026-07-06-v1.15-bigswing.md, item
+// byte-identical (docs/exec-plans/completed/2026-07-06-v1.15-bigswing.md, item
 // 3). Reuses the existing `POST /api/ytdlp/download` one-off endpoint and
 // `GET /api/subscriptions/status` live-poll endpoint the /subscriptions
 // page's own one-off form already calls -- no server change.
@@ -7006,7 +7006,7 @@ function showConfirmModal(title, bodyText, onConfirm, labels) {
 }
 
 // ---- FR-7 (v1.21.0, T6): extra-deliberate delete for local files ----------
-// See docs/exec-plans/active/2026-07-08-v1.21-polish-release.md ("FR-7 --
+// See docs/exec-plans/completed/2026-07-08-v1.21-polish-release.md ("FR-7 --
 // extra-deliberate delete for local (non-yt-dlp) files") for the full
 // design/rationale. A yt-dlp-downloaded file is re-downloadable, so it keeps
 // today's lighter flow completely unchanged (the watch page's
@@ -7775,7 +7775,7 @@ function nextArmState(current, action) {
 }
 
 // === v1.21.0 FR-8 (T7): app-wide active-download status chip ===============
-// See docs/exec-plans/active/2026-07-08-v1.21-polish-release.md ("FR-8 --
+// See docs/exec-plans/completed/2026-07-08-v1.21-polish-release.md ("FR-8 --
 // download retry + status chip") and docs/references/ui-research-2026-07.md §5.
 //
 // A fixed, bottom-LEFT corner chip -- gated behind the SAME

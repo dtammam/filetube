@@ -3,7 +3,7 @@
 FileTube's chrome iconography ships as three self-hosted, offline vector
 icon sets — plus a colorful emoji set defined directly in `style.css` (no
 SVG files) — selectable via the `data-icons` axis (see
-`docs/exec-plans/active/icon-sets.md`). Each vector set covers the same
+`docs/exec-plans/completed/icon-sets.md`). Each vector set covers the same
 14 `.icon-*` classes, is used as a CSS `mask-image`, and is painted with
 `currentColor`, so a single unmodified asset renders correctly in every
 FileTube theme (era × light/dark).

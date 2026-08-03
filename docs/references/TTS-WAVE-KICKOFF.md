@@ -1,14 +1,14 @@
 # Kickoff prompt: the TTS wave ("Listen from Here" + book-folders Settings UI)
 
 Dean: paste everything below the line to Opus 4.8 to start the wave, or just
-say "read docs/TTS-WAVE-KICKOFF.md and begin." Written by Fable 5 at handoff,
+say "read docs/references/TTS-WAVE-KICKOFF.md and begin." Written by Fable 5 at handoff,
 2026-07-13.
 
 ---
 
 You are picking up FileTube from your predecessor. Before anything else:
 
-1. Read **docs/CLAUDE-WORKING-STYLE.md** — it is the process contract for
+1. Read **docs/references/CLAUDE-WORKING-STYLE.md** — it is the process contract for
    working with Dean (lean mode, the two-reviewer adversarial gate, honesty
    norms, his communication style, the repo's expensive lessons). Your
    persistent memory directory is already loaded and carries project state.
