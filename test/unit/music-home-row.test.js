@@ -11,18 +11,34 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const main = require('../../public/js/main.js');
 
-test('T11: buildMusicHomeSectionHtml renders a titled row of album-art cards; empty -> empty string', () => {
-  assert.equal(main.buildMusicHomeSectionHtml([], 'Continue listening', '/music'), '', 'music-less home stays byte-identical');
-  const html = main.buildMusicHomeSectionHtml(
-    [{ id: 't1', title: 'Mother', artist: 'Pink <Floyd>' }],
+// v1.73 (Dean ruling 1): the two per-kind section builders retired; the
+// MERGED builder interleaves tracks + episodes by recency, capped at
+// HOME_ROW_CAP, no See-all (mixed destinations - each card deep-links).
+test('v1.73: buildListeningHomeSectionHtml merges tracks + episodes by recency, caps at HOME_ROW_CAP, empty -> empty string', () => {
+  assert.equal(main.buildListeningHomeSectionHtml([], [], 'Continue listening'), '', 'nothing in progress = byte-identical home');
+  const at = (h) => `2026-08-03T0${h}:00:00Z`;
+  const html = main.buildListeningHomeSectionHtml(
+    [{ id: 't1', title: 'Mother', artist: 'Pink <Floyd>', progress: { updatedAt: at(1) } }],
+    [{ id: 'ep1', subId: 'sub1', title: 'Episode One', showName: 'The Show', progress: { updatedAt: at(2) } }],
     'Continue listening',
-    '/music',
   );
   assert.match(html, /Continue listening/);
-  assert.match(html, /music-home-row/);
-  assert.match(html, /\/albumart\/t1/);
-  assert.match(html, /href="\/music"/, 'See all + cards link to /music');
+  assert.match(html, /music-home-row/, 'the shared chassis');
+  const epIdx = html.indexOf('/podcastart/sub1');
+  const trkIdx = html.indexOf('/albumart/t1');
+  assert.ok(epIdx >= 0 && trkIdx >= 0, 'both kinds render');
+  assert.ok(epIdx < trkIdx, 'the fresher episode sorts FIRST (recency interleave, not kind grouping)');
   assert.match(html, /Pink &lt;Floyd&gt;/, 'artist escaped');
+  assert.ok(!html.includes('books-row-seeall'), 'no See-all on the mixed row');
+
+  // The cap: 6 tracks + 6 episodes in = exactly HOME_ROW_CAP cards out.
+  const many = main.buildListeningHomeSectionHtml(
+    Array.from({ length: 6 }, (_, i) => ({ id: `t${i}`, title: `T${i}`, artist: 'A', progress: { updatedAt: at(3) } })),
+    Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, subId: 's', title: `E${i}`, showName: 'S', progress: { updatedAt: at(4) } })),
+    'Continue listening',
+  );
+  assert.equal(main.HOME_ROW_CAP, 8, 'the ruled cap');
+  assert.equal((many.match(/book-row-card/g) || []).length, 8, 'capped at 8 cards');
 });
 
 test('T11: buildMusicRowCardHtml escapes title + carries the album art', () => {
@@ -38,18 +54,15 @@ test('T11 (gate note): the Continue-listening CARD deep-links /music?play=<id> s
 
 // ---- v1.71 T5: the podcasts Continue-listening row ----
 
-test('v1.71: buildPodcastHomeSectionHtml renders the music-row chassis with podcast art + show name; empty -> empty string', () => {
-  assert.equal(main.buildPodcastHomeSectionHtml([], 'Continue listening · Podcasts', '/podcasts'), '', 'podcast-less home stays byte-identical');
-  const html = main.buildPodcastHomeSectionHtml(
-    [{ id: 'ep1', subId: 'sub1', title: 'Episode <One>', showName: 'The "Show"' }],
-    'Continue listening · Podcasts',
-    '/podcasts',
+test('v1.71/v1.73: the podcast CARD builder survives as the merged row\'s arm (escaping + show art intact)', () => {
+  const html = main.buildListeningHomeSectionHtml(
+    [],
+    [{ id: 'ep1', subId: 'sub1', title: 'Episode <One>', showName: 'The "Show"', progress: { updatedAt: '2026-08-03T01:00:00Z' } }],
+    'Continue listening',
   );
-  assert.match(html, /music-home-row/, 'the music chassis - zero new CSS classes');
   assert.match(html, /\/podcastart\/sub1/, 'show cover art');
   assert.match(html, /Episode &lt;One&gt;/, 'title escaped');
   assert.match(html, /The &quot;Show&quot;/, 'show name escaped');
-  assert.match(html, /href="\/podcasts"/, 'See all links the place');
 });
 
 test('v1.71 (the USE bind): the podcast card deep-links /podcasts?play=<episodeId> - the resume path, not the bare place', () => {
