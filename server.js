@@ -7649,7 +7649,9 @@ function validateBackupBundle(bundle) {
         // v1.68 notification dismissals (absent in pre-v1.68 bundles -- legal).
         ['notificationDismissals', 'array'],
         // v1.69 podcast per-user state (absent in pre-v1.69 bundles -- legal).
-        ['podcastProgress', 'object'], ['podcastPlayed', 'object']]) {
+        ['podcastProgress', 'object'], ['podcastPlayed', 'object'],
+        // v1.71 episode likes (absent in pre-v1.71 bundles -- legal).
+        ['podcastLiked', 'array']]) {
         if (u[field] === undefined) continue;
         const ok = kind === 'array' ? Array.isArray(u[field]) : (typeof u[field] === 'object' && u[field] !== null && !Array.isArray(u[field]));
         if (!ok) return `${where}: ${field} must be an ${kind}`;

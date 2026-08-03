@@ -415,7 +415,7 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
   // v1.63: their queue came back - entries in order, pointer intact (the
   // duplicate mediaId proves uid identity survives the trip).
   const restoredQueue = userStore.getQueue(restored.id);
-  assert.deepEqual(restoredQueue.entries, [{ uid: 'qü-1', mediaId: 'vid1' }, { uid: 'qü-2', mediaId: 'vid1' }], 'queue entries + order came back');
+  assert.deepEqual(restoredQueue.entries, [{ uid: 'qü-1', mediaId: 'vid1', kind: 'media' }, { uid: 'qü-2', mediaId: 'vid1', kind: 'media' }], 'queue entries + order came back (v10: media kind explicit)');
   assert.equal(restoredQueue.pointerUid, 'qü-2', 'the now-playing pointer came back');
   assert.equal(restoredQueue.updatedAt, 1753900000000, 'updatedAt rides verbatim');
   assert.equal(loadDatabase().metadata.vid1.title, 'Clip', 'the doc tables restored in the same transaction');
