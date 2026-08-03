@@ -36,7 +36,10 @@ test('SOURCE-LOCK: the sidebar Podcasts entry rides the Library section, ordered
   // default-hidden bottom-bar item). The injector still never mints one
   // (the item is static HTML in every shell + BOTTOM_NAV_OPTIONAL).
   assert.ok(!src.includes("setAttribute('data-nav', 'podcasts')"), 'no INJECTED bottom-nav Podcasts item - the shell HTML owns it');
-  assert.ok(src.includes("'podcasts']"), 'podcasts rides BOTTOM_NAV_OPTIONAL');
+  // Gate S7: the earlier "'podcasts']" spelling matched DEFAULT_HIDDEN too,
+  // so removing podcasts from the OPTIONAL roster (killing the ONLY opt-in
+  // path) survived the suite. Bind the roster membership itself.
+  assert.ok(src.includes("'oneoff-download', 'theme', 'podcasts']"), 'podcasts rides BOTTOM_NAV_OPTIONAL (the Settings toggle is the only opt-in path)');
   assert.ok(src.includes("injectLibraryNavEntry('podcasts', '/podcasts', 'Podcasts'"), 'Library-section entry via the shared helper');
   // Books anchors above Podcasts; Podcasts anchors above History.
   assert.ok(src.includes("(key === 'books')\n      ? (document.querySelector('[data-nav-sidebar=\"podcasts\"]') || document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList)"), 'Books sits above Podcasts');

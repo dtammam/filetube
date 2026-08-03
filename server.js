@@ -8323,7 +8323,10 @@ function shapedQueue(db, userId) {
       }
       continue;
     }
-    const item = db.metadata[e.mediaId];
+    // hasOwnProperty (gate S9): a restored bundle can carry prototype-chain
+    // keys as mediaIds; they must silent-drop like any dead id, never serve
+    // a garbage item from the prototype.
+    const item = Object.prototype.hasOwnProperty.call(db.metadata, e.mediaId) ? db.metadata[e.mediaId] : null;
     if (item) entries.push({ uid: e.uid, mediaId: e.mediaId, kind: 'media', item });
   }
   // Dead-id filtering can orphan the pointer; normalize AGAIN on the
