@@ -90,11 +90,13 @@ function drag(dom, rows, from, clientY) {
 
 const THREE = ['/media/a', '/media/b', '/media/c'];
 
-test('v1.76: sidebar rows no longer carry the native HTML5 draggable attribute', () => {
+test('v1.76: sidebar rows turn native HTML5 drag OFF explicitly', () => {
+  // QA gate C1: these rows ARE <a> elements, which are draggable by UA
+  // default - so the attribute must say `false`, not simply be absent.
   withSidebar((dom) => {
     const rows = draggableRows(dom);
     assert.equal(rows.length, 3);
-    for (const row of rows) assert.equal(row.getAttribute('draggable'), null);
+    for (const row of rows) assert.equal(row.getAttribute('draggable'), 'false');
   }, { folders: THREE });
 });
 

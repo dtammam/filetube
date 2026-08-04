@@ -3075,6 +3075,33 @@ select {
   -webkit-touch-callout: none;
 }
 
+/* QA gate C1, the WebKit half: several engines honour `-webkit-user-drag`
+   rather than the `draggable` attribute when deciding whether a link or an
+   image can start a native drag. Without this a WebKit browser can still
+   take the pointer mid-gesture (pointercancel) and leave the reorder dead,
+   which is what the attribute fix alone would have missed. */
+.reorder-row,
+.reorder-row a,
+.reorder-row img {
+  -webkit-user-drag: none;
+}
+
+/* The wave's headline surface had NO drag feedback at all (QA gate W3): on a
+   phone the row simply jumped after the finger lifted, which reads as "it
+   still doesn't work" - the very report that started this wave. Mirrors
+   `.folder-item-row`'s indicators below, existing tokens only. */
+.bottombar-editor-row.dragging {
+  opacity: 0.5;
+}
+
+.bottombar-editor-row.drag-over-before {
+  box-shadow: inset 0 2px 0 0 var(--yt-red);
+}
+
+.bottombar-editor-row.drag-over-after {
+  box-shadow: inset 0 -2px 0 0 var(--yt-red);
+}
+
 .reorder-dragging,
 .reorder-dragging .reorder-row {
   cursor: grabbing;
@@ -3228,10 +3255,13 @@ select {
    public/css/style.css that styles it). Mirrors the working folder-list
    DnD styling above (.folder-item-row.dragging/.drag-over-before/
    .drag-over-after, v1.15.0) -- same dim-while-dragging + inset box-shadow
-   drop-indicator-line technique, era tokens only. Only rows the JS actually
-   marks `draggable="true"` (real subscriptions, not one-shot job rows) get
-   the grab affordance. */
-.sub-row[draggable='true'] {
+   drop-indicator-line technique, era tokens only. v1.76: the grab affordance
+   follows `.reorder-row` (stamped by common.js's wireReorderable on every row
+   it wires) instead of the `draggable="true"` attribute, which no longer
+   exists anywhere -- keyed on the attribute, this rule had gone inert and
+   subscription rows silently lost their grab cursor. Still only real
+   subscription rows: one-shot job rows are never wired. */
+.sub-row.reorder-row {
   cursor: grab;
 }
 
@@ -7039,8 +7069,11 @@ body.ft-css-fullscreen .bottom-nav {
    This block only adds the grab-cursor affordance, scoped to THIS section so
    it never leaks onto the folder sidebar's own rows above it (those are
    wired independently by main.js/watch.js/setup.js and keep their existing,
-   unstyled cursor). */
-#sidebar-pinned-section .sidebar-item[draggable='true'] {
+   unstyled cursor). v1.76: keyed on `.reorder-row` (stamped by
+   wireReorderable) rather than the retired `draggable="true"` attribute --
+   keyed on the attribute this rule had gone inert and pinned rows silently
+   lost their grab cursor. */
+#sidebar-pinned-section .sidebar-item.reorder-row {
   cursor: grab;
 }
 

@@ -203,6 +203,39 @@ test('wireReorderable: a completed drag SUPPRESSES the row click that follows it
   assert.equal(next.defaultPrevented, false, 'suppression is one-shot, never sticky');
 });
 
+test('wireReorderable (QA gate W1): a drag released OFF its own row never eats a later click', () => {
+  // A `click` is dispatched on the common ancestor of press and release, so a
+  // drag that ends elsewhere sends no click to the source row - and the
+  // suppression flag, only ever cleared BY such a click, used to sit there
+  // armed on a live node. The nastiest shape needs no re-render at all: drag a
+  // row a few pixels onto its own edge (a no-op drop, so the list is not
+  // rebuilt), then click that row's checkbox - and watch it not toggle.
+  const f = buildList('<input type="checkbox" class="cb" />');
+  const moves = wire(f);
+  pointer(f.window, f.rows[1], 'pointerdown', { clientY: 34 });
+  pointer(f.window, f.doc, 'pointermove', { clientY: 40 });
+  pointer(f.window, f.doc, 'pointermove', { clientY: 28 }); // the gap above: resolves back to itself
+  pointer(f.window, f.doc, 'pointerup', { clientY: 28 });
+  assert.deepEqual(moves, [], 'the drop was a no-op, so nothing re-rendered');
+
+  // The user's NEXT interaction with that row must work. Two shapes, because
+  // they clear the stale flag by different routes:
+  const cb = f.rows[1].querySelector('.cb');
+  // (a) a real tap/click, which is always preceded by its own pointerdown;
+  pointer(f.window, cb, 'pointerdown', { clientY: 34 });
+  pointer(f.window, f.doc, 'pointerup', { clientY: 34 });
+  const click = new f.window.MouseEvent('click', { bubbles: true, cancelable: true });
+  cb.dispatchEvent(click);
+  assert.equal(click.defaultPrevented, false, 'the checkbox click is not swallowed');
+
+  // (b) a KEYBOARD activation - Space on a focused checkbox fires `click` with
+  // no pointer event at all, so nothing cleared the flag for it.
+  f.rows[2].__reorderSuppressClick = true; // as a stranded gesture would leave it
+  const keyClick = new f.window.MouseEvent('click', { bubbles: true, cancelable: true });
+  f.rows[2].querySelector('.cb').dispatchEvent(keyClick);
+  assert.equal(keyClick.defaultPrevented, false, 'a keyboard toggle is never swallowed either');
+});
+
 test('wireReorderable: a click with no drag before it is never suppressed', () => {
   const f = buildList();
   wire(f);
@@ -276,6 +309,48 @@ test('wireReorderable: dragging to the edge of a scrolling box actually scrolls 
   pointer(f.window, f.doc, 'pointerup', { clientY: 2 });
   await new Promise((r) => setTimeout(r, 80));
   assert.equal(box.scrollTop, atDrop, 'the auto-scroll timer does not outlive the gesture');
+});
+
+test('wireReorderable (QA gate W2): a STATIONARY edge drag re-resolves the target as the list moves', async () => {
+  // The whole point of auto-scroll is to hold the pointer at the edge and let
+  // the list come to you - on touch the finger is parked there by definition.
+  // The first implementation scrolled but never recomputed the drop target, so
+  // the indicator froze and the drop committed against the row that had been
+  // under the pointer ten rows ago.
+  const dom = new JSDOM('<!doctype html><html><body><div id="list"></div></body></html>', { pretendToBeVisual: true });
+  const doc = dom.window.document;
+  const container = doc.getElementById('list');
+  container.innerHTML = Array.from({ length: 10 }, (_, i) => `<div class="row" data-i="${i}"></div>`).join('');
+  const rows = Array.prototype.slice.call(container.querySelectorAll('.row'));
+  // A 100px-tall viewport onto 200px of rows; each row is 20px, offset by the
+  // box's scroll position exactly as a real scrolling container behaves.
+  const box = { scrollTop: 0, getBoundingClientRect: () => ({ top: 0, bottom: 100 }) };
+  const measure = (el) => {
+    const i = rows.indexOf(el);
+    return { top: i * 20 - box.scrollTop, bottom: i * 20 + 20 - box.scrollTop };
+  };
+  const moves = [];
+  wireReorderable(container, {
+    rowSelector: '.row', measure, scrollContainer: box,
+    onReorder: (from, to) => moves.push({ from, to }),
+  });
+
+  const at = (el, type, y) => el.dispatchEvent(new dom.window.PointerEvent(type, {
+    bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', button: 0, clientX: 0, clientY: y,
+  }));
+  at(rows[0], 'pointerdown', 5);
+  at(doc, 'pointermove', 15);
+  at(doc, 'pointermove', 98); // parked hard against the bottom edge
+
+  // What the target WOULD be with no scrolling: y=98 sits in row 4 [80,100].
+  const targetBeforeScrolling = 4;
+  await new Promise((r) => setTimeout(r, 120)); // ...and now hold still.
+  assert.ok(box.scrollTop > 0, `the box scrolled (scrollTop ${box.scrollTop})`);
+  at(doc, 'pointerup', 98);
+
+  assert.equal(moves.length, 1);
+  assert.ok(moves[0].to > targetBeforeScrolling,
+    `the drop followed the scrolled list, not the frozen target (landed at ${moves[0].to}, stale answer was ${targetBeforeScrolling})`);
 });
 
 test('wireReorderable: a drag in the MIDDLE of a scrolling box never scrolls it', async () => {
@@ -393,13 +468,46 @@ test('wireReorderable: a WITHIN-group drop still works with a group guard instal
   assert.deepEqual(moves, [{ from: 2, to: 3, source: 'pointer' }]);
 });
 
-test('wireReorderable: native HTML5 draggable is stripped from every row it wires', () => {
+test('wireReorderable: native HTML5 drag is turned OFF on every row it wires', () => {
   // Leaving it on lets the browser start a native drag out from under the
   // pointer gesture and cancel it -- the two mechanisms cannot coexist.
   const f = buildList();
   f.rows.forEach((r) => r.setAttribute('draggable', 'true'));
   wire(f);
-  assert.deepEqual(f.rows.map((r) => r.getAttribute('draggable')), [null, null, null, null]);
+  assert.deepEqual(f.rows.map((r) => r.getAttribute('draggable')), ['false', 'false', 'false', 'false']);
+});
+
+test('wireReorderable (QA gate C1): "false", never merely absent - <a> and <img> are draggable by DEFAULT', () => {
+  // An absent `draggable` attribute means "UA default", and that default is
+  // TRUE for <a href> and <img>. The original implementation removed the
+  // attribute, which left three shipped sidebar surfaces (whose rows ARE <a>
+  // elements, some containing <img> avatars) starting a native link/image
+  // drag on desktop - taking the pointer, firing pointercancel, and killing
+  // the reorder. jsdom implements no native DnD, so only this attribute-level
+  // assertion can catch it here; the reflection it rests on is real, though:
+  const dom = new JSDOM('<!doctype html><html><body><div id="list"></div></body></html>');
+  const doc = dom.window.document;
+  const probe = doc.createElement('a');
+  probe.href = '/x';
+  assert.equal(probe.getAttribute('draggable'), null);
+  assert.equal(probe.draggable, true, 'an <a href> with NO draggable attribute is draggable anyway');
+
+  const container = doc.getElementById('list');
+  container.innerHTML = RECTS.map((_, i) =>
+    `<a href="/?root=${i}" class="row"><img src="/avatar${i}.png" alt=""><span>label</span></a>`
+  ).join('');
+  const rows = Array.prototype.slice.call(container.querySelectorAll('.row'));
+  wireReorderable(container, {
+    rowSelector: '.row',
+    measure: (el) => RECTS[rows.indexOf(el)],
+    onReorder: () => {},
+  });
+  for (const row of rows) {
+    assert.equal(row.getAttribute('draggable'), 'false', 'the <a> row is explicitly not draggable');
+    assert.equal(row.draggable, false, 'and the PROPERTY - what the UA actually reads - agrees');
+    const img = row.querySelector('img');
+    assert.equal(img.draggable, false, 'the <img> avatar inside it too, or it drags on its own');
+  }
 });
 
 test('wireReorderable: an aborted caller signal tears the listeners down', () => {

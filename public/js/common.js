@@ -1860,6 +1860,9 @@ function wireReorderable(container, opts) {
   let longPressTimer = null;
   let autoScrollTimer = null;
   let autoScrollDelta = 0;
+  // The pointer's last known position, so the auto-scroll tick can re-resolve
+  // the drop target after it moves the list (QA gate W2).
+  let lastClientY = 0;
   let lastTarget = null;     // { index, before } | null
   let pressController = null;
   let capturedEl = null;
@@ -1887,6 +1890,13 @@ function wireReorderable(container, opts) {
       autoScrollTimer = setInterval(() => {
         if (!armed || autoScrollDelta === 0) { stopAutoScroll(); return; }
         sc.scrollTop += autoScrollDelta;
+        // QA gate W2: re-resolve the drop target against the rows' NEW
+        // positions. The pointer is typically stationary while a list
+        // auto-scrolls (on touch the finger is parked at the edge by
+        // definition), so without this the indicator freezes and the drop
+        // commits against whatever row happened to be under the pointer at
+        // the last move - ten rows ago by the time the user releases.
+        trackPointer(lastClientY);
       }, REORDER_AUTOSCROLL_TICK_MS);
     }
   }
@@ -1941,11 +1951,25 @@ function wireReorderable(container, opts) {
 
   rows.forEach((row, index) => {
     row.classList.add(REORDER_ROW_CLASS);
-    // The shipped surfaces set draggable="true" for native DnD; leaving it on
-    // would let the browser start a native drag out from under the pointer
-    // gesture and cancel it. Callers stop emitting it, and this is the
-    // belt-and-braces half for any row built elsewhere.
-    if (row.getAttribute && row.getAttribute('draggable') !== null) row.removeAttribute('draggable');
+    // Native HTML5 drag must be turned OFF, not merely un-asked-for. A UA
+    // starting its own drag takes the pointer and fires `pointercancel`,
+    // which ends our gesture with nothing reordered.
+    //
+    // QA gate C1: an earlier version of this line did `removeAttribute`, which
+    // is NOT enough - per the HTML spec an absent `draggable` means "UA
+    // default", and the UA default is TRUE for <a href> and <img> (verified:
+    // `a.draggable === true` with no attribute set). Three of the six wired
+    // surfaces render their rows AS <a> elements (both folder sidebars and
+    // the pinned sidebar) and two of them contain <img> avatars, so removing
+    // the attribute left exactly those surfaces starting a native link/image
+    // drag on desktop - trading a shipped desktop capability for the new
+    // touch one, invisibly to a jsdom suite (jsdom implements no native DnD).
+    // Hence an explicit "false" here, on the row AND on the descendants that
+    // default to draggable on their own.
+    if (typeof row.setAttribute === 'function') row.setAttribute('draggable', 'false');
+    if (typeof row.querySelectorAll === 'function') {
+      Array.prototype.forEach.call(row.querySelectorAll('a, img'), (el) => el.setAttribute('draggable', 'false'));
+    }
 
     const handle = o.handleSelector ? row.querySelector(o.handleSelector) : null;
     if (handle) {
@@ -1953,6 +1977,13 @@ function wireReorderable(container, opts) {
       handle.setAttribute('role', 'button');
       const label = typeof o.labelOf === 'function' ? o.labelOf(index) : '';
       handle.setAttribute('aria-label', label ? `Reorder ${label}` : 'Reorder item');
+      // QA gate S4: `role="button"` promises an activation, and there is none
+      // to give - this control reorders by ARROW KEY, not by Enter/Space (a
+      // grab/drop mode would be a second, undiscoverable state machine). Say
+      // so, rather than leaving a screen-reader user to press Enter into
+      // silence. Announced by the row's own text too, via setup.html's help
+      // copy on both lists that carry a handle.
+      handle.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown Home End');
       handle.addEventListener('keydown', (e) => {
         let to = null;
         if (e.key === 'ArrowUp') to = index - 1;
@@ -1969,6 +2000,19 @@ function wireReorderable(container, opts) {
     }
 
     row.addEventListener('pointerdown', (e) => {
+      // QA gate W1: clear any click-suppression flag left over from an earlier
+      // gesture. The flag is consumed by a `click` on the SOURCE row, but a
+      // click is dispatched on the common ancestor of press and release - so a
+      // drag released off its own row (including a no-op drop, which does not
+      // even re-render) left the flag set on a live node, and the user's NEXT
+      // click on that row - a checkbox, a remove button, a link - was eaten.
+      // A real click always follows its own pointerdown, so clearing here
+      // cannot cancel a suppression that is still owed.
+      //
+      // FIRST, before any guard can return early: a press on an interactive
+      // child takes the early return below, and clearing after it would leave
+      // exactly that child's click still armed to be eaten.
+      rows.forEach((r) => { r.__reorderSuppressClick = false; });
       if (pressIndex !== null) return;                 // a second pointer never joins an active gesture
       if (e.button !== undefined && e.button !== 0) return;
       const blocked = e.target && typeof e.target.closest === 'function' ? e.target.closest(ignoreSelector) : null;
@@ -1978,6 +2022,7 @@ function wireReorderable(container, opts) {
       pressIndex = index;
       pressX = e.clientX;
       pressY = e.clientY;
+      lastClientY = e.clientY;
       activePointerId = e.pointerId;
       pressController = new AbortCtl();
       const pressSignal = pressController.signal;
@@ -2018,11 +2063,17 @@ function wireReorderable(container, opts) {
     // A completed drag must not ALSO fire the row's click -- these rows are
     // links, and a drop would navigate away from the page you just reordered.
     row.addEventListener('click', (e) => {
-      if (row.__reorderSuppressClick) {
-        row.__reorderSuppressClick = false;
-        e.preventDefault();
-        e.stopPropagation();
-      }
+      if (!row.__reorderSuppressClick) return;
+      row.__reorderSuppressClick = false;
+      // QA gate W1, second half: never suppress a click on an interactive
+      // CHILD. Those clicks are not the drag's own echo, and one of them can
+      // arrive with no pointerdown at all to have cleared the flag - pressing
+      // Space on a focused checkbox fires `click` and nothing else. Suppressing
+      // that would silently swallow a keyboard user's toggle.
+      const onChild = e.target && typeof e.target.closest === 'function' ? e.target.closest(ignoreSelector) : null;
+      if (onChild && onChild !== row && row.contains(onChild)) return;
+      e.preventDefault();
+      e.stopPropagation();
     }, { signal: o.signal, capture: true });
   });
 
@@ -2041,6 +2092,7 @@ function wireReorderable(container, opts) {
       if (Math.max(dx, dy) < REORDER_MOUSE_THRESHOLD_PX) return;
       beginDrag();
     }
+    lastClientY = e.clientY;
     trackPointer(e.clientY);
     applyAutoScroll(e.clientY);
   }

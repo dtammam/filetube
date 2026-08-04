@@ -107,23 +107,37 @@ class FakeNode {
     };
   }
 
-  // Minimal compound-selector support (a class + an optional `[data-*]`
-  // attribute-presence check) -- sufficient for
-  // wirePinnedSidebarDragAndDrop's own `.sidebar-item[data-pin-id]` lookup.
+  // Minimal compound-selector support: a selector LIST, each part an optional
+  // TAG name plus an optional class plus an optional `[data-*]`
+  // attribute-presence check. Covers wirePinnedSidebarDragAndDrop's
+  // `.sidebar-item[data-pin-id]` lookup and v1.76's `a, img` sweep.
   // Mirrors test/unit/library-toolbar.test.js's own single-class
   // querySelectorAll fake, extended with the attribute-presence half.
+  //
+  // v1.76: the tag + comma halves are NEW, and their absence was a trap rather
+  // than a missing convenience. The gesture layer turns native drag off on
+  // every descendant that defaults to draggable, found via
+  // `querySelectorAll('a, img')`; against the previous matcher that selector
+  // yielded cls === null AND attr === null, so EVERY descendant matched -
+  // including createTextNode leaves, which have no setAttribute. The double
+  // was returning matches a real DOM never would.
   querySelectorAll(selector) {
-    const classMatch = String(selector).match(/\.([a-zA-Z0-9_-]+)/);
-    const attrMatch = String(selector).match(/\[([a-zA-Z0-9_-]+)\]/);
-    const cls = classMatch ? classMatch[1] : null;
-    const attr = attrMatch ? attrMatch[1] : null;
+    const parts = String(selector).split(',').map((s) => s.trim()).filter(Boolean).map((part) => ({
+      tag: (part.match(/^[a-zA-Z][a-zA-Z0-9]*/) || [null])[0],
+      cls: (part.match(/\.([a-zA-Z0-9_-]+)/) || [null, null])[1],
+      attr: (part.match(/\[([a-zA-Z0-9_-]+)\]/) || [null, null])[1],
+    }));
+    const matchesPart = (child, p) => {
+      if (p.tag && String(child.tagName || '').toLowerCase() !== p.tag.toLowerCase()) return false;
+      if (p.cls && !(child.className && child.className.split(' ').filter(Boolean).includes(p.cls))) return false;
+      if (p.attr && !(child._attrs && Object.prototype.hasOwnProperty.call(child._attrs, p.attr))) return false;
+      return true;
+    };
     const results = [];
     const walk = (node) => {
       if (!Array.isArray(node.children)) return; // a createTextNode leaf has no .children
       node.children.forEach((child) => {
-        const classOk = !cls || (child.className && child.className.split(' ').filter(Boolean).includes(cls));
-        const attrOk = !attr || (child._attrs && Object.prototype.hasOwnProperty.call(child._attrs, attr));
-        if (classOk && attrOk) results.push(child);
+        if (parts.some((p) => matchesPart(child, p))) results.push(child);
         walk(child);
       });
     };

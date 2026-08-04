@@ -86,7 +86,11 @@ test('the fixture renders one wired row per pin (a broken fixture would pass eve
     assert.deepEqual(rows.map((r) => r.getAttribute('data-pin-id')), ['c1', 'c2', 'b1', 'b2']);
     for (const row of rows) {
       assert.ok(row.classList.contains('reorder-row'), 'stamped by the shared gesture layer');
-      assert.equal(row.getAttribute('draggable'), null, 'and NOT also native-HTML5 draggable');
+      // QA gate C1: explicitly "false", not absent. These rows ARE <a>
+      // elements, and an <a href> with no draggable attribute is draggable by
+      // UA default - so "absent" would leave the browser free to start a
+      // native link drag and cancel the pointer gesture.
+      assert.equal(row.getAttribute('draggable'), 'false', 'native drag is turned OFF, not merely unset');
     }
   });
 });

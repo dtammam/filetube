@@ -106,11 +106,13 @@ test('v1.76: the up/down reorder buttons are gone from the directory rows', () =
   });
 });
 
-test('v1.76: no row carries the native HTML5 draggable attribute any more', () => {
+test('v1.76: every row turns native HTML5 drag OFF explicitly', () => {
   // The two mechanisms cannot coexist: a native drag started by the browser
-  // cancels the pointer gesture out from under it.
+  // cancels the pointer gesture out from under it. QA gate C1: "off" must be
+  // an explicit `false` rather than an absent attribute, since an absent one
+  // means "UA default" and that default is TRUE for some elements.
   withFolderList((dom) => {
-    for (const row of rowsIn(dom)) assert.equal(row.getAttribute('draggable'), null);
+    for (const row of rowsIn(dom)) assert.equal(row.getAttribute('draggable'), 'false');
   });
 });
 

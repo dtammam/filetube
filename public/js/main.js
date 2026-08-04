@@ -1222,16 +1222,23 @@ if (typeof module !== 'undefined' && module.exports) {
     // this list -- it stays fully browsable via a direct /?root=<path> link,
     // this only controls whether a LINK to it is rendered here.
     //
-    // Item 1 (v1.15.0): also wires native HTML5 drag-and-drop reordering. The
-    // home sidebar has no Save button, so a drop persists IMMEDIATELY via the
-    // SAME POST /api/config path the Setup page's up/down buttons use: (1) the
-    // reordered VISIBLE subset via moveArrayItem, (2) rebuilt into the FULL
-    // folders order via rebuildFullFolderOrder (a hidden-from-sidebar folder
-    // keeps its absolute position -- it never appears here to be dragged),
-    // (3) POSTed, then the config is re-fetched (GET) so the synthetic
-    // Downloads folder's position-splice (server.js) is reflected. The
-    // up/down buttons on the Setup page remain the keyboard/tap-accessible
-    // fallback for reordering (this sidebar has no such fallback of its own).
+    // Item 1 (v1.15.0), rewired in v1.76: also wires drag-to-reorder, now
+    // through common.js's shared POINTER gesture layer rather than this
+    // surface's own copy of the native HTML5 DnD wiring (which never fired on
+    // touch at all). The home sidebar has no Save button, so a drop persists
+    // IMMEDIATELY via the SAME POST /api/config path the Setup page's Save
+    // button uses: (1) the reordered VISIBLE subset via moveArrayItem, (2)
+    // rebuilt into the FULL folders order via rebuildFullFolderOrder (a
+    // hidden-from-sidebar folder keeps its absolute position -- it never
+    // appears here to be dragged), (3) POSTed, then the config is re-fetched
+    // (GET) so the synthetic Downloads folder's position-splice (server.js)
+    // is reflected.
+    //
+    // The Setup page's up/down buttons are GONE as of v1.76 (they were the
+    // thing Dean asked to be rid of); keyboard reorder lives on the drag
+    // HANDLE of the two Settings lists that have one. This sidebar has no
+    // handle and therefore still no keyboard reorder of its own -- see the
+    // wireReorderable call below for why that is deliberate.
     function renderSidebarFolders(folders, settings = {}) {
       allFolders = Array.isArray(folders) ? folders : [];
       const visibleFolders = visibleSidebarFolders(folders, settings, syntheticFolderPaths);

@@ -117,8 +117,11 @@
        .drag-over-before/.drag-over-after (v1.15.0 folder DnD) exactly, same
        era tokens. Scoped to this page only: the reorder affordance applies
        to THIS management list, never the pinned sidebar (a distinct
-       concept -- see B4's design note). */
-    .sub-row[draggable="true"] {
+       concept -- see B4's design note). v1.76: keyed on `.reorder-row`
+       (stamped by common.js's wireReorderable) rather than the retired
+       `draggable="true"` attribute, which no longer exists anywhere -- keyed
+       on the attribute this rule had gone inert. */
+    .sub-row.reorder-row {
       cursor: grab;
     }
     .sub-row-dragging {
