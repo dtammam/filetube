@@ -9,13 +9,13 @@ renders correctly in every FileTube theme (era × light/dark).
 
 Two groups of classes live here, and they have different coverage rules:
 
-1. **Chrome icons** — the 14 `.icon-*` classes each vector set covers in full
+1. **Chrome icons** - the 14 `.icon-*` classes each vector set covers in full
    (the tables below), plus ten later additions (`heart`, `share`, `flame`,
    `history`, `queue`, `podcast`, `downloads`, `books`, `grid`, `list`) that
    ship ONE base asset every set falls back to. That fallback is deliberate,
-   not a gap — but it is now the minority behaviour, and it is tracked as
+   not a gap - but it is now the minority behaviour, and it is tracked as
    tech-debt row 113.
-2. **The assignable glyph pool** (v1.77) — 20 user-selectable folder/Library
+2. **The assignable glyph pool** (v1.77) - 20 user-selectable folder/Library
    glyphs plus `.icon-liked`, every one of which carries a real variant in
    **all four** sets. See "The assignable glyph pool" at the end of this file;
    do not hand-maintain it.
@@ -116,8 +116,8 @@ substitutes/renames below).
 original June 2014 Material Icons launch set, and this section used to
 describe the whole `filled` set as "authentic to Material Design's original
 June 2014 release". That is no longer true of the set as a whole. v1.77 added
-nineteen glyph-pool assets in this same style, four of which — `child_care`,
-`sports_esports`, `theater_comedy`, `fitness_center` — **postdate the 2014
+nineteen glyph-pool assets in this same style, four of which - `child_care`,
+`sports_esports`, `theater_comedy`, `fitness_center` - **postdate the 2014
 launch**. They are genuine Material Icons Filled-style assets (so the set is
 visually consistent, which is what a user sees), but they are not 2014-era
 glyphs, and the wording was widened rather than left quietly false. See the
@@ -201,27 +201,27 @@ intentionally colorful rather than `currentColor`-themed.
 | `.icon-download` | 📥 |
 | `.icon-shuffle` | 🔀 |
 
-## The assignable glyph pool — `v1.77`
+## The assignable glyph pool - `v1.77`
 
 Twenty glyphs a user can assign to a media folder (Settings → Media folders →
 each row's **Icon** dropdown) or to a Library sidebar entry (Settings →
 Appearance → **Library icons**), plus `.icon-liked` for the Liked lane.
 
-Unlike the ten single-asset glyphs listed under "Icons with no per-set
-variant" behaviour above (`heart`, `share`, `flame`, `history`, `queue`,
-`podcast`, `downloads`, `books`, `grid`, `list`), **every entry here ships a
-real variant in all four sets** — outlined, rounded, filled and an emoji
+Unlike the ten single-asset glyphs named in item 1 at the top of this file
+(`heart`, `share`, `flame`, `history`, `queue`, `podcast`, `downloads`,
+`books`, `grid`, `list`), **every entry here ships a
+real variant in all four sets** - outlined, rounded, filled and an emoji
 codepoint. That was the explicit requirement: "each glyph we choose should be
 out of a set of four for the different eras."
 
 - Outlined / Rounded: **Material Symbols**, © Google, Apache-2.0
-- Filled: **Material Icons** (Filled style), © Google, Apache-2.0 — see the
+- Filled: **Material Icons** (Filled style), © Google, Apache-2.0 - see the
   provenance note in the `filled` section above; four of these postdate 2014
 - Emoji: CSS `content` codepoints, no asset
 
 **Do not hand-maintain this.** `public/js/glyph-pool.js` is the single source
-of truth — `server.js` requires it to validate saves and the browser loads it
-as a script to render — and `test/unit/glyph-pool.test.js` re-derives, for
+of truth - `server.js` requires it to validate saves and the browser loads it
+as a script to render - and `test/unit/glyph-pool.test.js` re-derives, for
 every member, all **seven** required `style.css` enumerations (base mask,
 sizing list, `@supports` fill list, rounded override, filled override, emoji
 neutralize group, emoji `::before`) plus its three SVGs. A member missing any

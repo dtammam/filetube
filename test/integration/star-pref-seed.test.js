@@ -68,6 +68,15 @@ test('CRITICAL binding: a theme-customized device (trio set) STILL seeds the sta
   assert.ok(w.document.documentElement.classList.contains('ft-hide-stars'), 'the server pref applied');
   assert.equal(w.localStorage.getItem('ft-star-ratings'), 'hidden', 'seed persisted locally');
   assert.ok(!fetchLog.some((f) => f.url.includes('/api/me/settings')), 'the seed NEVER writes back to the mirror (write-loop guard)');
+  // v1.77 (QA gate S1): THIS is the genuine two-consumer scenario - the pull
+  // proceeds past the early return AND initLibraryGlyphs runs, so both of
+  // common.js's boot consumers want the user record. Exactly one request is
+  // what fetchCurrentUser's memoization buys; two would be a real regression.
+  // Asserted here rather than in the fully-chosen test below, where the pull
+  // short-circuits and never calls fetchCurrentUser at all - there the count
+  // measures the harness's boot, not the memo.
+  assert.equal(fetchLog.filter((f) => f.url.includes('/api/auth/me')).length, 1,
+    'both boot consumers must share ONE /api/auth/me, not take one each');
 });
 
 test('a locally-chosen stars pref is never overridden by the server (locally-unchosen-only rule)', async () => {
@@ -108,6 +117,10 @@ test('with ALL prefs locally chosen the seed pull short-circuits (local prefs wi
   assert.equal(w.localStorage.getItem('ft-star-ratings'), 'hidden');
   assert.ok(!fetchLog.some((f) => f.url.includes('/api/me/settings')),
     'and the seed never writes back to the mirror (the write-loop guard)');
-  assert.equal(fetchLog.filter((f) => f.url.includes('/api/auth/me')).length, 1,
-    'boot must make exactly one /api/auth/me - the memoized share, not one per consumer');
+  // NOTE (QA gate S1): no /api/auth/me COUNT is asserted here. In this scenario
+  // the pull short-circuits and never calls fetchCurrentUser, so only
+  // initLibraryGlyphs fetches - and the harness's jsdom fires its own
+  // DOMContentLoaded on top of the manual dispatch, so any count here measures
+  // the double boot rather than the memo. The memoization claim is bound in the
+  // first test above, which is the real two-consumer case.
 });

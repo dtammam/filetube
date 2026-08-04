@@ -4260,8 +4260,14 @@ a.sub-row-channel-link:focus-visible {
 [data-icons="emoji"] .icon-favorites::before { content: "\2B50"; }
 [data-icons="emoji"] .icon-liked::before { content: "\2B50"; }
 
-/* .icon-star is deliberately absent from every block above: the gold ★
-   rating renders identically regardless of icon-set selection (AC8). */
+/* .icon-star is deliberately absent from every block above - but NOT for the
+   reason this comment gave until v1.77 ("the gold ★ rating renders identically
+   regardless of icon-set selection (AC8)"). That binding never existed: rating
+   stars are literal ★/☆ textContent in `.card-rating` (main.js) and
+   `#star-rating-control` (watch.js) and have never gone through this class.
+   The real reason is simply that .icon-star is a plain ::before character, not
+   a mask - its only remaining users are the two Stats sidebar links. The Liked
+   nav moved to .icon-liked in v1.77, which DOES carry all four sets. */
 
 /* New mobile-shell elements never render outside the phone breakpoint.
    Additive: new selectors only — no existing desktop rule is touched. */

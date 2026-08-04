@@ -791,9 +791,14 @@ function drawLibraryGlyphEditor(host, settings, signal) {
       })
         .then((res) => { if (!res.ok) throw new Error(`save failed: ${res.status}`); })
         .catch(() => {
-          // Never leave the UI claiming a change stuck when it did not:
-          // re-seed the whole editor from the server truth.
+          // Never leave the UI claiming a change stuck when it did not.
+          // BOTH optimistic paints have to be undone, not just the picker:
+          // the repaint above already changed the live sidebar/bottom-bar
+          // entry, so re-seeding only the editor left the dropdown snapped
+          // back to Default while the entry beside it still wore the glyph
+          // the server had just rejected (QA gate v1.77 S6).
           showToast('Could not save the library icons.');
+          if (typeof applyLibraryGlyphs === 'function') applyLibraryGlyphs(settings);
           renderLibraryGlyphEditor(signal);
         });
     }, { signal });

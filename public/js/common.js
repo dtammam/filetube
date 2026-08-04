@@ -129,14 +129,19 @@ function mirrorUserSetting(patch) {
 // Boot-time pull: ONLY keys this device has never chosen locally are seeded
 // from the user record (a fresh phone inherits the desktop's era/theme/icons
 // on first sign-in; a device with local prefs is never overridden).
-// v1.77: ONE `/api/auth/me` per page load, shared by every boot consumer.
+// v1.77: ONE `/api/auth/me` shared between this file's TWO boot consumers -
+// pullMirroredDisplayPrefs and initLibraryGlyphs. Deliberately NOT a
+// page-wide single fetch: main.js's fetchCardCornerState and four call sites
+// in setup.js (including v1.77's own renderLibraryGlyphEditor) each issue
+// their own, so a real page load makes two on index.html and up to five on
+// setup.html. Consolidating those is a separate job, not claimed here.
 //
-// Before this, pullMirroredDisplayPrefs was the only boot fetch and it
-// short-circuited entirely on a fully-chosen device. v1.77 adds per-user
-// Library glyphs, which are SERVER-TRUTH by ruling and therefore have no
-// device cache to short-circuit against - so something has to ask the server
-// on every load. Memoizing here means that is still exactly one request even
-// when both consumers want it, rather than two.
+// Before this, pullMirroredDisplayPrefs was the only boot fetch in this file
+// and it short-circuited entirely on a fully-chosen device. v1.77 adds
+// per-user Library glyphs, which are SERVER-TRUTH by ruling and therefore have
+// no device cache to short-circuit against - so something has to ask the
+// server on every load. Memoizing here means that is still one request when
+// both of this file's consumers want it, rather than two.
 //
 // Deliberately NOT cached across page loads: it is the authority for
 // server-truth prefs, and a stale answer would paint a glyph the user already

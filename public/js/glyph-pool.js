@@ -25,11 +25,13 @@
 // established convention in this repo (`.icon-cog` ships as `settings.svg`).
 // The same filename is used in all three vector directories.
 //
-// `emoji` is space-separated CODEPOINTS, not a literal emoji character:
-// test/unit/icon-assets.test.js asserts that no literal emoji char appears in
-// any HTML/JS file (only CSS may carry them, as \XXXX escapes), and this file
-// is JS. The codepoints are also what the CSS `content: "\XXXX"` escape is
-// derived from, so the test can rebuild the expected declaration exactly.
+// `emoji` is space-separated CODEPOINTS, not a literal emoji character. The
+// repo's rule is that chrome emoji live in CSS as \XXXX escapes, never as
+// literal characters in HTML/JS - test/unit/icon-assets.test.js enforces that
+// for a fixed 12-glyph list across five specific files (this file is NOT among
+// them), and test/unit/glyph-pool.test.js enforces it for THIS file. The
+// codepoints are also what the CSS `content: "\XXXX"` escape is derived from,
+// so that test can rebuild the expected declaration exactly.
 
 const GLYPH_POOL = [
   // The default. Already bundled in all three vector sets since v1.6.0 - it is
@@ -78,18 +80,20 @@ const DEFAULT_FOLDER_GLYPH = 'folder';
 //
 // It is deliberately NOT `.icon-star`: that class is still used by the two
 // Stats sidebar links, and Liked and Stats are different intents. Note that
-// contrary to the comment this wave deletes from style.css, `.icon-star` was
-// never what rendered the gold rating stars - those are literal textContent
-// characters in `.card-rating` and `#star-rating-control`.
+// `.icon-star` was never what rendered the gold rating stars - those are
+// literal textContent characters in `.card-rating` and `#star-rating-control`.
+// style.css claimed otherwise in three places until v1.77 corrected them.
 const LIKED_GLYPH = { id: 'liked', name: 'Liked', asset: 'star', emoji: '2B50' };
 
-// Every class this module governs, pool + liked. The CSS-parity test iterates
-// THIS, so a future member cannot be added to the pool and forgotten in the
-// stylesheet.
+// The one place a class name is derived from an id. Everything that renders a
+// glyph goes through this, so the `icon-` prefix exists in exactly one place.
 function glyphClassName(id) {
   return 'icon-' + id;
 }
 
+// Every entry this module governs, pool + liked. The CSS-parity test iterates
+// THIS, so a member cannot be added to the pool and forgotten in the
+// stylesheet.
 function allGlyphEntries() {
   return GLYPH_POOL.concat([LIKED_GLYPH]);
 }

@@ -14,10 +14,12 @@
 // deliberate non-repoint - because a sweep that over-reaches into Stats is just
 // as wrong as one that misses a Liked surface.
 //
-// (For the record: the style.css comment that claimed `.icon-star` was kept out
-// of the icon-set blocks to protect "the gold rating" was false. Rating stars
-// are literal ★/☆ textContent in `.card-rating` and `#star-rating-control` and
-// never used this class. Corrected in the same wave.)
+// (For the record: style.css claimed in THREE places that `.icon-star` was kept
+// out of the icon-set blocks to protect "the gold rating". All three were
+// false - rating stars are literal ★/☆ textContent in `.card-rating` and
+// `#star-rating-control` and never used this class. All three were corrected in
+// v1.77, the third only after the QA gate found that the wave had rewritten two
+// of them while writing new prose asserting the job was finished.)
 
 const { test } = require('node:test');
 const assert = require('node:assert');

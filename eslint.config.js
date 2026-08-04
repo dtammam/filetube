@@ -24,6 +24,15 @@ module.exports = [
       // public/vendor/README.md.
       'public/vendor/**',
       'docs/**',
+      // v1.77 (QA gate): Claude Code creates isolated git worktrees for
+      // subagents under .claude/worktrees/<agent-id>/. They are full checkouts
+      // of this repo, so eslint walked them and lint-of-the-repo became
+      // lint-of-the-repo-times-N - 10,680 duplicate "errors" while a reviewer
+      // was running, which the pre-commit hook then refuses. They are
+      // registered git worktrees, so `git status` does not show them and the
+      // breakage looks like it came from nowhere. Transient scratch space,
+      // never source: ignored here and in .gitignore.
+      '.claude/worktrees/**',
     ],
   },
 

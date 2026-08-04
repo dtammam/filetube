@@ -83,3 +83,6 @@ tmp/
 
 # Legacy handoff-harness pipeline state (retired v1.41.19)
 .state/
+
+# Claude Code subagent worktrees (transient full checkouts; see eslint.config.js)
+.claude/worktrees/

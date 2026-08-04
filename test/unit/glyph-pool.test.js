@@ -64,12 +64,25 @@ function selectorList(start) {
 const SIZING_LIST = selectorList('\n.icon-home,\n');
 const EMOJI_GROUP = selectorList('\n[data-icons="emoji"] .icon-home,\n');
 
+// The @supports fill rule's SELECTOR LIST only - sliced to the `{` that opens
+// the rule carrying `background-color: currentColor`, not to the declaration
+// itself. (QA gate v1.77 S7: slicing to the first `background-color:
+// currentColor` meant a second rule inserted above the fill rule would let a
+// glyph satisfy site 3 from an unrelated selector list. This matches how
+// SIZING_LIST and EMOJI_GROUP are already bounded.)
 const FILL_BLOCK = (() => {
   const i = css.indexOf('@supports (mask-image: url("#"))');
   assert.notEqual(i, -1, 'expected the @supports fill block');
   const decl = css.indexOf('background-color: currentColor', i);
   assert.notEqual(decl, -1, 'expected the currentColor fill declaration');
-  return css.slice(i, decl);
+  // Walk back to the `{` that opens the rule containing that declaration, then
+  // back again to the `{` of the @supports block - what lies between is this
+  // rule's own selector list and nothing else.
+  const ruleBrace = css.lastIndexOf('{', decl);
+  const supportsBrace = css.indexOf('{', i);
+  assert.ok(ruleBrace > supportsBrace,
+    'expected the fill declaration inside a rule nested in the @supports block');
+  return css.slice(supportsBrace + 1, ruleBrace).replace(/\/\*[\s\S]*?\*\//g, '');
 })();
 
 // A class token must match WHOLE - `.icon-work` must not be satisfied by
@@ -126,9 +139,12 @@ test('ASSET LOCK: every glyph ships a valid SVG in all three vector sets', () =>
 });
 
 test('the registry carries codepoints, never literal emoji (icon-assets rule)', () => {
-  // icon-assets.test.js forbids literal emoji chars in HTML/JS - only CSS may
-  // carry them, as \XXXX escapes. glyph-pool.js is JS, so its emoji column has
-  // to be codepoints. This binds that rather than trusting it.
+  // The repo's rule is that chrome emoji live in CSS as \XXXX escapes, never as
+  // literal characters in HTML/JS. icon-assets.test.js enforces that for a
+  // fixed 12-glyph list across five named files - glyph-pool.js is NOT one of
+  // them, so this file is what holds the rule here rather than inheriting it
+  // (QA gate v1.77 S2: the comment used to cite icon-assets.test.js as if its
+  // coverage were repo-wide).
   const src = fs.readFileSync(path.join(REPO, 'public', 'js', 'glyph-pool.js'), 'utf8');
   const literalEmoji = src.match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu);
   assert.equal(literalEmoji, null,
