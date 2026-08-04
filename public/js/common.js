@@ -1932,9 +1932,23 @@ function wireReorderable(container, opts) {
     if (pressController) { pressController.abort(); pressController = null; }
     if (!wasArmed || !commit || from === null || !target) return;
     // Adversarial gate round 2: refuse a drop whose own rows were REBUILT
-    // mid-gesture. Native HTML5 drag got this free - removing the source
-    // element ended the drag - and the pointer layer does not, so a gesture
-    // can outlive the list it started in and commit against a detached DOM.
+    // mid-gesture.
+    //
+    // Native HTML5 drag got this free, and for a reason worth naming
+    // precisely: in all five wirings this replaced, the `drop` listener was
+    // bound to the ROW itself (see `git show 7645d9d` - main.js:1289,
+    // common.js:6706, setup.js:171/:285, subscriptions.js:3766), so a row
+    // detached by a mid-drag re-render could never receive a drop and no
+    // reorder could commit. The pointer layer listens on the DOCUMENT for the
+    // life of the gesture, so it has no such structural protection - a
+    // gesture can outlive the list it started in and commit against a
+    // detached DOM. (Round 3 of the gate corrected an earlier version of this
+    // comment which claimed instead that the UA "ends the drag" when the
+    // source node is removed. That may well be true, but it is a spec claim
+    // neither seat could check without a browser, and this wave's first
+    // CRITICAL was a wrong root-cause narrative - so the justification rests
+    // on something a reader can `git show`.)
+    //
     // Reachable wherever a render can land during a drag: on the
     // subscriptions list, two rapid drags (the first drop's response arriving
     // during the second); elsewhere, any poll or fetch that re-renders.
