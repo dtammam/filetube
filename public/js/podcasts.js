@@ -106,10 +106,6 @@
     var playable = []; // downloaded episodes of the current show, list order
     var playingId = null;
     var statusPollTimer = null;
-    var likedCount = 0; // gates the Liked lane card (the count-gated rule)
-    // The Liked lane's pseudo-show: cross-show liked episodes. __likedLane
-    // routes refreshes to openLiked and strips the show-only chrome.
-    var LIKED_LANE = { id: '__liked__', name: 'Liked', source: 'liked', __likedLane: true };
 
     function setStatus(msg) {
       if (!statusEl) return;
@@ -135,55 +131,17 @@
       if (shows.length === 0) return;
       var grid = document.createElement('div');
       grid.className = 'podcast-grid';
-      // v1.71: the Liked lane rides first, count-gated like the sidebar
-      // Liked entry - zero likes, no card.
-      if (likedCount > 0) grid.appendChild(buildLikedCard());
       shows.forEach(function (show) {
         grid.appendChild(buildShowCard(show));
       });
       content.appendChild(grid);
     }
 
-    function buildLikedCard() {
-      var card = document.createElement('button');
-      card.type = 'button';
-      card.className = 'podcast-card podcast-liked-card';
-      var art = document.createElement('div');
-      art.className = 'podcast-card-art podcast-liked-card-art';
-      var heart = document.createElement('i');
-      heart.className = 'icon-heart';
-      art.appendChild(heart);
-      card.appendChild(art);
-      var title = document.createElement('div');
-      title.className = 'podcast-card-title';
-      title.textContent = 'Liked';
-      card.appendChild(title);
-      var line = document.createElement('div');
-      line.className = 'podcast-card-sub';
-      line.textContent = likedCount === 1 ? '1 episode' : (likedCount + ' episodes');
-      card.appendChild(line);
-      card.addEventListener('click', openLiked, { signal: signal });
-      return card;
-    }
-
-    function openLiked() {
-      currentShow = LIKED_LANE;
-      fetchJson('/api/podcasts/episodes?filter=liked&limit=100')
-        .then(function (data) {
-          if (signal.aborted) return;
-          episodes = data.episodes || [];
-          renderEpisodes();
-        })
-        .catch(function () { setStatus('Could not load liked episodes.'); });
-    }
-
     // Refresh whatever list is on screen from server state (delete/restore/
-    // like handlers) - the Liked lane is not a real show, so openShow can
-    // never be the blanket answer.
+    // like handlers).
     function refreshCurrentView() {
       if (!currentShow) { loadShows(); return; }
-      if (currentShow.__likedLane) openLiked();
-      else openShow(currentShow);
+      openShow(currentShow);
     }
 
     function buildShowCard(show) {
@@ -256,13 +214,11 @@
 
       var head = document.createElement('div');
       head.className = 'podcast-show-head';
-      if (!currentShow.__likedLane) {
-        var art = document.createElement('img');
-        art.className = 'podcast-show-art';
-        art.alt = '';
-        art.src = currentShow.artUrl || ('/podcastart/' + encodeURIComponent(currentShow.id));
-        head.appendChild(art);
-      }
+      var art = document.createElement('img');
+      art.className = 'podcast-show-art';
+      art.alt = '';
+      art.src = currentShow.artUrl || ('/podcastart/' + encodeURIComponent(currentShow.id));
+      head.appendChild(art);
       var meta = document.createElement('div');
       meta.className = 'podcast-show-meta';
       var h = document.createElement('h3');
@@ -280,17 +236,14 @@
         desc.textContent = currentShow.description;
         meta.appendChild(desc);
       }
-      if (!currentShow.__likedLane) {
-        var counts = document.createElement('div');
-        counts.className = 'podcast-card-sub';
-        counts.textContent = showCountLine(currentShow) + (currentShow.lastStatus ? ' · ' + currentShow.lastStatus : '');
-        meta.appendChild(counts);
-      }
+      var counts = document.createElement('div');
+      counts.className = 'podcast-card-sub';
+      counts.textContent = showCountLine(currentShow) + (currentShow.lastStatus ? ' · ' + currentShow.lastStatus : '');
+      meta.appendChild(counts);
       // The management row (v1.69 QA gate #3): pause/resume + unsubscribe +
       // the secretMissing re-entry lane. RSS shows only - a ytdlp-sourced
-      // show is managed on its own /subscriptions page, and the Liked lane
-      // is not a subscription at all.
-      if (currentShow.source !== 'ytdlp' && !currentShow.__likedLane) {
+      // show is managed on its own /subscriptions page.
+      if (currentShow.source !== 'ytdlp') {
         // v1.72 (intake ruling 5): pin this show into the Playlists
         // surface - the channel-folder/book-shelf parity affordance.
         // Non-optimistic: label flips only after the round trip; current
@@ -432,10 +385,7 @@
       main.appendChild(title);
       var meta = document.createElement('div');
       meta.className = 'podcast-episode-meta';
-      // The Liked lane is cross-show: name the show in the meta line.
-      meta.textContent = (currentShow && currentShow.__likedLane && ep.showName)
-        ? (ep.showName + ' · ' + formatEpisodeMeta(ep))
-        : formatEpisodeMeta(ep);
+      meta.textContent = formatEpisodeMeta(ep);
       main.appendChild(meta);
       var chipLabel = episodeChipLabel(ep);
       if (chipLabel) {
@@ -469,8 +419,9 @@
       row.appendChild(main);
 
       // v1.71 T4: the like heart (RSS episodes; the podcast arm of the
-      // music-liked pattern). Toggles server state; unliking inside the
-      // Liked lane drops the row on the refresh.
+      // music-liked pattern). v1.75: this is the WRITE surface and the only
+      // one - the Liked lane it used to also feed is gone; see the handler
+      // below.
       if (!ep.watchHref && ep.status === 'downloaded') {
         var likeBtn = document.createElement('button');
         likeBtn.type = 'button';
@@ -485,13 +436,13 @@
           var next = !ep.liked;
           fetchJson('/api/podcasts/episodes/' + encodeURIComponent(ep.id) + '/liked', { method: next ? 'POST' : 'DELETE' })
             .then(function () {
+              // v1.75: the heart is the WRITE surface and stays; the central
+              // Liked playlist (/?liked=1) is the only place that READS it, so
+              // there is no local lane left to re-render or re-count.
               ep.liked = next;
-              likedCount += next ? 1 : -1;
-              if (likedCount < 0) likedCount = 0;
               likeBtn.classList.toggle('liked', next);
               likeBtn.title = next ? 'Unlike' : 'Like';
               likeBtn.setAttribute('aria-pressed', next ? 'true' : 'false');
-              if (currentShow && currentShow.__likedLane && !next) refreshCurrentView();
             })
             .catch(function () { setStatus('Could not update the like.'); });
         }, { signal: signal });
@@ -632,8 +583,12 @@
       var ep = playable[i];
       if (!ep || !currentShow) return;
       // v1.71: derive show identity per-EPISODE where the payload carries it
-      // (the Liked lane is cross-show; ep.subId/showName are authoritative
-      // there). A plain show view falls back to currentShow as before.
+      // (ep.subId/showName are authoritative wherever the payload sets them).
+      // A plain show view falls back to currentShow. v1.75: the cross-show
+      // Liked lane that MADE this necessary is gone, so currentShow is now
+      // always right - the per-episode read is kept because it is strictly
+      // more specific and costs nothing, not because a cross-show surface
+      // still exists.
       var showName = ep.showName || currentShow.name;
       var artSubId = ep.subId || currentShow.id;
       var data = {
@@ -720,15 +675,12 @@
     }
 
     function loadShows() {
-      // The liked count gates the lane card; fetched alongside the shows and
-      // NEVER allowed to fail the grid (a likes hiccup costs the card only).
-      var likesFetch = fetchJson('/api/podcasts/liked')
-        .then(function (d) { return Array.isArray(d.episodeIds) ? d.episodeIds.length : 0; })
-        .catch(function () { return 0; });
-      Promise.all([fetchJson('/api/podcasts/shows'), likesFetch]).then(function (results) {
+      // v1.75: the GET /api/podcasts/liked count-fetch that used to ride along
+      // here went with the lane card it gated - the podcasts place shows real
+      // shows only now. The route itself stays (other consumers).
+      fetchJson('/api/podcasts/shows').then(function (data) {
         if (signal.aborted) return;
-        shows = results[0].shows || [];
-        likedCount = results[1];
+        shows = data.shows || [];
         if (!currentShow) renderShows();
       }).catch(function () {
         setStatus('Could not load podcasts.');

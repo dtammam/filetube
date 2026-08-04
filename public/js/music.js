@@ -187,10 +187,24 @@ function deriveNowPlayingLabel(np, currentId) {
   return album ? 'Playing from ' + album : '';
 }
 
+// v1.75: the music place's top tabs, and the ONE place that decides whether a
+// remembered tab is still real. The active tab persists in localStorage
+// ('filetube_music_tab'), so retiring the Liked tab strands every device that
+// had it selected: `render()` dispatches on the tab name and has no else-arm,
+// so a stale 'liked' would render a blank page that survives every reload.
+// A remembered tab that is no longer in the roster falls back to the default.
+var MUSIC_TABS = ['albums', 'artists', 'songs'];
+var MUSIC_DEFAULT_TAB = 'albums';
+
+function normalizeMusicTab(value) {
+  return MUSIC_TABS.indexOf(value) >= 0 ? value : MUSIC_DEFAULT_TAB;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildSongRowHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
+    MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
   };
 }
 
@@ -306,7 +320,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // View state: the active top tab, an optional drill (album/artist), the
     // current search, and the live play QUEUE (the exact list on screen).
-    var tab = readPref(TAB_KEY, 'albums');
+    var tab = normalizeMusicTab(readPref(TAB_KEY, MUSIC_DEFAULT_TAB));
     var drill = null; // { type:'album'|'artist', key, label }
     var search = '';
     var queue = [];
@@ -336,7 +350,7 @@ if (typeof module !== 'undefined' && module.exports) {
       tabsHost.addEventListener('click', function (e) {
         var btn = e.target.closest('.music-tab');
         if (!btn) return;
-        tab = btn.getAttribute('data-tab');
+        tab = normalizeMusicTab(btn.getAttribute('data-tab'));
         drill = null;
         writePref(TAB_KEY, tab);
         setActiveTab();
@@ -411,7 +425,6 @@ if (typeof module !== 'undefined' && module.exports) {
       if (search) ctx.search = search;
       if (scope && scope.type === 'album') ctx.album = scope.key;
       if (scope && scope.type === 'artist') ctx.artist = scope.key;
-      if (tab === 'liked' && !scope) ctx.filter = 'liked';
       queueCtx = ctx;
       queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(ctx) : '');
       var params = { sort: ctx.sort, seed: ctx.seed, search: ctx.search, album: ctx.album, artist: ctx.artist, filter: ctx.filter, limit: 1000 };
@@ -489,7 +502,7 @@ if (typeof module !== 'undefined' && module.exports) {
         if (drill) {
           await loadSongs({});
           renderDrillView();
-        } else if (tab === 'songs' || tab === 'liked') {
+        } else if (tab === 'songs') {
           await loadSongs({});
           renderSongList();
         } else if (tab === 'albums') {
@@ -589,10 +602,16 @@ if (typeof module !== 'undefined' && module.exports) {
         ? fetch('/api/music/liked/' + encodeURIComponent(id), { method: 'DELETE' })
         : fetch('/api/music/liked/' + encodeURIComponent(id), { method: 'POST' });
       req.then(function () {
+        // v1.75: the heart is the WRITE surface and stays; with the Liked tab
+        // retired there is no local list an unlike can fall out of, so the row
+        // just flips state in place. The central Liked (/?liked=1) is the read
+        // surface and reflects it on its next load.
         btn.classList.toggle('liked', !liked);
         btn.title = !liked ? 'Unlike' : 'Like';
-        // If we're on the Liked tab, an unlike removes the row.
-        if (tab === 'liked' && !drill && liked) render().catch(function () {});
+        // QA gate S7: buildSongRowHtml mints an aria-label alongside the title,
+        // and only the title was being flipped - a screen reader kept reading
+        // "Like" on a liked row. (Pre-existing; podcasts.js already did this.)
+        btn.setAttribute('aria-label', !liked ? 'Unlike' : 'Like');
       }).catch(function () {});
     }
 

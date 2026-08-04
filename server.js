@@ -9671,9 +9671,13 @@ app.delete('/api/liked/:id', (req, res) => {
 
 // ---- v1.72 (#94): the Liked playlist is MIXED-KIND -------------------------
 //
-// Hearting content in ANY kind surfaces it in THE Liked playlist (/?liked=1
-// and the count-gated sidebar entry) - the kind-scoped lanes (podcasts place,
-// music filter) stay as complements. Each arm below is a read-time projection
+// Hearting content in ANY kind surfaces it in THE Liked playlist (/?liked=1,
+// the count-gated sidebar entry, and v1.75's opt-in bottom-bar entry). v1.75
+// (Dean's ruling): this is the ONE read surface - the kind-scoped lanes that
+// used to complement it (the podcasts place's Liked card, the music place's
+// Liked tab) are REMOVED, and docs/CONTRIBUTING.md's capability 4 now records
+// a new kind-scoped Liked lane as a defect to add, not a complement. The
+// per-kind HEARTS remain the write surfaces. Each arm below is a read-time projection
 // of that kind's OWN liked carrier into the card item shape the Liked grid
 // renders; `kind` is CARRIED on every item (podcast/track/book ids are md5
 // hex exactly like media ids - kind is never inferred from id shape), and

@@ -1906,8 +1906,96 @@ function activeNavItem(pathname, search) {
   if (pathname === '/podcasts' || pathname === '/podcasts.html') return 'podcasts';
   // v1.64 history (count-gated entry, the Liked rule).
   if (pathname === '/history' || pathname === '/history.html') return 'history';
-  if (pathname === '/' || pathname === '/index.html') return 'home';
+  // v1.75: `home` and `liked` SHARE the `/` path - the central Liked playlist
+  // is the home grid scoped by `?liked=1` (main.js: `urlParams.get('liked') ===
+  // '1'`) - so the highlight discriminates on the QUERY, mirroring that exact
+  // read. Every other home-page scope param (?search=, ?root=, ?folder=) stays
+  // Home. `liked` only ever lights an item that exists: the bottom-bar entry
+  // is opt-in (default-hidden), and a shell without it simply lights nothing.
+  if (pathname === '/' || pathname === '/index.html') {
+    return likedScopeQuery(search) ? 'liked' : 'home';
+  }
   return null;
+}
+
+// Which SIDEBAR entry a resolved nav key lights, keyed by the entry's href.
+// v1.75: `liked` joins - its entry is the count-gated one applyLikedSidebarEntry
+// builds, whose href is this exact string, so the liked view lights IT rather
+// than Home (which is what the shared `/` path used to light). Every key
+// activeNavItem can return needs a row here or its sidebar entry silently
+// stops lighting; the unit suite binds that coverage against activeNavItem.
+const SIDEBAR_HREF_BY_NAV_KEY = {
+  home: '/',
+  liked: '/?liked=1',
+  settings: '/setup.html',
+  subscriptions: '/subscriptions',
+  books: '/books',
+  music: '/music',
+  podcasts: '/podcasts',
+  history: '/history',
+};
+
+// Paints the shell's nav highlight (bottom bar + sidebar) for a location.
+//
+// v1.75 (adversarial gate round 2, W2): hoisted OUT of the router closure. The
+// two decisions below (bottomNavKeyForHighlight, SIDEBAR_HREF_BY_NAV_KEY) were
+// well covered as values while their only USE was unreachable from Node - and
+// three mutants on that use survived all 5955 tests: deleting the
+// bottomNavKeyForHighlight call (which re-opens the unlit-bar regression the
+// fallback exists to fix), passing it a hardcoded `true` (which lights the
+// HIDDEN Liked item), and nulling the sidebar href (which stops every sidebar
+// entry highlighting, app-wide). Testing a DECISION is not testing its USE -
+// the strike this repo keeps taking. Top-level and exported, exactly as
+// applyBottomNavCustomization already is, so the DOM pass is bound in jsdom.
+//
+// Must run AFTER applyBottomNavCustomization for a given paint: it reads
+// `hidden` off the Liked item, which that function is what sets.
+function applyNavHighlight(pathname, search) {
+  if (typeof document === 'undefined') return;
+  const key = activeNavItem(pathname, search);
+  const bottomNav = document.getElementById('bottom-nav');
+  if (bottomNav) {
+    bottomNav.querySelectorAll('.bottom-nav-item.active').forEach((el) => el.classList.remove('active'));
+    const likedItem = bottomNav.querySelector('[data-nav="liked"]');
+    const barKey = bottomNavKeyForHighlight(key, !!likedItem && !likedItem.hidden);
+    const item = barKey && bottomNav.querySelector('[data-nav="' + barKey + '"]');
+    // Never light an item the layout has hidden (adversarial gate round 2, S4):
+    // a floored/opt-in change between paints could otherwise strand `.active`
+    // on a display:none node, which reads to the user as an unlit bar.
+    if (item && !item.hidden) item.classList.add('active');
+  }
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar) {
+    sidebar.querySelectorAll('.sidebar-item.active').forEach((el) => el.classList.remove('active'));
+    const href = key ? SIDEBAR_HREF_BY_NAV_KEY[key] : null;
+    const match = href && sidebar.querySelector('a.sidebar-item[href="' + href + '"]');
+    if (match) match.classList.add('active');
+  }
+}
+
+// Which BOTTOM-BAR item a resolved nav key lights. Pure, because the DOM shell
+// around it is one querySelector and this is the whole decision.
+// v1.75 (QA gate S3): the bottom-bar Liked entry is OPT-IN (default-hidden), so
+// on a default device /?liked=1 has no item to light and the bar would go
+// completely unlit - a visible regression from v1.74, which lit Home there.
+// Fall back to Home when the Liked item is absent or hidden: the liked view IS
+// the home grid scoped by a query, so Home is the honest answer when Liked's
+// own entry is not on the bar. The SIDEBAR key is deliberately NOT folded in -
+// its Liked entry is count-gated, not opt-in, and lights on its own terms.
+function bottomNavKeyForHighlight(key, likedItemVisible) {
+  if (key === 'liked' && !likedItemVisible) return 'home';
+  return key;
+}
+
+// Does this location query select the central Liked playlist scope? Split out
+// so activeNavItem stays one expression per route and this parse is testable
+// on its own. A malformed query degrades to "not the liked scope".
+function likedScopeQuery(search) {
+  try {
+    return new URLSearchParams(search || '').get('liked') === '1';
+  } catch (_) {
+    return false;
+  }
 }
 
 // ---- Optional yt-dlp subscriptions nav-link injection (D4, T5) ------------
@@ -3281,7 +3369,19 @@ function injectDownloadsNavLinkIfEnabled() {
         : [];
       const navItem = document.querySelector('.bottom-nav-item[data-nav="downloads"]');
       if (roots.length === 0) {
-        if (navItem && navItem.parentNode) navItem.parentNode.removeChild(navItem);
+        if (navItem && navItem.parentNode) {
+          navItem.parentNode.removeChild(navItem);
+          // v1.75 (adversarial gate round 2, W1): this is the only injector
+          // that REMOVES a bar item, and until now it did so without
+          // re-resolving. That was harmless while home/settings were
+          // un-hideable anchors; since v1.75 every entry is hidable, so a user
+          // whose bar is legally Downloads-only (the >=1 floor accepted it
+          // while the item was mounted) was left with a fixed, EMPTY,
+          // un-navigable bar the moment this probe said the module was gone -
+          // and it reproduced on every reload, because nothing re-ran the
+          // floor. Re-apply here so ruling R2's floor gets its say.
+          applyBottomNavCustomization();
+        }
         return; // module off / no download root -- inject nothing
       }
       const href = '/?root=' + encodeURIComponent(roots[0]);
@@ -3294,7 +3394,13 @@ function injectDownloadsNavLinkIfEnabled() {
       // misdirect. Remove it like the no-root arm; the next successful
       // boot probe re-upgrades a fresh shell's copy.
       const navItem = document.querySelector('.bottom-nav-item[data-nav="downloads"]');
-      if (navItem && navItem.parentNode) navItem.parentNode.removeChild(navItem);
+      if (navItem && navItem.parentNode) {
+        navItem.parentNode.removeChild(navItem);
+        // Same re-apply as the no-root arm above, and this one matters more:
+        // a TRANSIENT /api/config failure on a Downloads-only bar would
+        // otherwise empty it (adversarial gate round 2, W1).
+        applyBottomNavCustomization();
+      }
     });
 }
 
@@ -3331,50 +3437,108 @@ function injectHistoryNavLinkIfEnabled() {
 
 // ---- v1.44 T12: customizable bottom-bar -------------------------------------
 //
-// The user reorders/hides the OPTIONAL bottom-nav items (home stays first,
-// settings stays last -- both un-hideable anchors). Config is device-local
-// (localStorage 'ft-bottomnav' = {hidden:[ids], order:[ids]}), consistent with
-// intake #6 (localStorage is the immediate source of truth); a cross-device
-// server mirror is a disclosed fast-follow. A hidden item is only hidden if it
-// EXISTS (an item toggled on but whose module is disabled simply never
-// appears -- the module gate always wins).
-const BOTTOM_NAV_FIXED_FIRST = 'home';
-const BOTTOM_NAV_FIXED_LAST = 'settings';
-// The optional items a user may reorder/hide (must carry a data-nav id).
-// v1.72 (cap 2): music + books join - every first-class kind has a
-// bottom-bar item.
-const BOTTOM_NAV_OPTIONAL = ['playlists', 'history', 'subscriptions', 'oneoff-download', 'theme', 'podcasts', 'music', 'books', 'downloads'];
+// The user reorders/hides the bottom-nav items. Config is device-local
+// (localStorage 'ft-bottomnav' = {hidden:[ids], order:[ids], shown:[ids]}),
+// consistent with intake #6 (localStorage is the immediate source of truth); a
+// cross-device server mirror is a disclosed fast-follow (tech-debt #42). A
+// hidden item is only hidden if it EXISTS (an item toggled on but whose module
+// is disabled simply never appears -- the module gate always wins).
+//
+// v1.75 (Dean's rulings R2/R3/R4): the two hard-bound anchors RETIRE. `home`
+// and `settings` used to sit OUTSIDE this roster -- pinned first/last and
+// un-hideable -- and are now ordinary entries, joined by the new `liked` entry
+// (the central /?liked=1 playlist). Roster order mirrors the order the shells
+// mount these items in the DOM (`oneoff-download`/`subscriptions` are injected
+// AFTER Settings, hence last here), so the Settings editor's row order and the
+// bar's own default order are one list read one way.
+const BOTTOM_NAV_OPTIONAL = ['home', 'liked', 'playlists', 'history', 'podcasts', 'music', 'books', 'downloads', 'theme', 'oneoff-download', 'subscriptions', 'settings'];
 // v1.71: items that are OFF unless the user explicitly turns them on (the
 // config's `shown` list). A default-hidden item ships in every shell's DOM
 // but never appears until Settings enables it - Dean's ruling for podcasts,
-// and v1.72 gives music/books the same opt-in posture (nobody's bar changes
-// under them on upgrade).
-const BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts', 'music', 'books', 'downloads'];
+// v1.72 gave music/books/downloads the same opt-in posture, and v1.75 gives it
+// to `liked` (ruling R3): nobody's bar changes under them on upgrade.
+const BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts', 'music', 'books', 'downloads', 'liked'];
 
-// Pure: given the bottom-nav item ids ACTUALLY present in the DOM and the
-// user's config, return the final visible order (home first, settings last,
-// hidden optionals dropped) plus the list of present-but-hidden ids. Unit-
-// tested without a DOM. Visibility (v1.71): an id is hidden when the config
-// hides it, OR when it is default-hidden and the config's `shown` list has
-// not opted it in - so pre-v1.71 configs (no `shown` key) keep every
-// existing item exactly as before and hide the new default-hidden ones.
-function resolveBottomNavLayout(presentIds, config) {
-  const present = Array.isArray(presentIds) ? presentIds.slice() : [];
-  const cfg = (config && typeof config === 'object') ? config : {};
+// v1.75 COMPAT (the load-bearing subtlety of this wave). Every config written
+// before this release predates `home`/`settings` being sortable, so no such
+// `order` array can ever name either id. An order that does NOT name them
+// keeps them exactly where they have always been -- home at the head, settings
+// at the tail -- which is what makes an untouched device render the IDENTICAL
+// bar after the upgrade. The instant the user reorders anything, the Settings
+// editor writes the FULL roster (both ids included) and these fallbacks
+// release, which is what lets Home stop being left-most bound.
+const BOTTOM_NAV_COMPAT_HEAD = 'home';
+const BOTTOM_NAV_COMPAT_TAIL = 'settings';
+
+// The order+hide decision, pre-floor. `present` is already normalized.
+// Visibility (v1.71): an id is hidden when the config hides it, OR when it is
+// default-hidden and the config's `shown` list has not opted it in - so
+// pre-v1.71 configs (no `shown` key) keep every existing item exactly as
+// before and hide the newer default-hidden ones.
+function resolveBottomNavLayoutCore(present, cfg) {
   const hidden = new Set(Array.isArray(cfg.hidden) ? cfg.hidden : []);
   const shown = new Set(Array.isArray(cfg.shown) ? cfg.shown : []);
   const order = Array.isArray(cfg.order) ? cfg.order : [];
+  const named = new Set(order);
   const isHidden = (id) => hidden.has(id) || (BOTTOM_NAV_DEFAULT_HIDDEN.indexOf(id) >= 0 && !shown.has(id));
-  const middle = present.filter((id) => id !== BOTTOM_NAV_FIXED_FIRST && id !== BOTTOM_NAV_FIXED_LAST);
+  const pinHead = present.indexOf(BOTTOM_NAV_COMPAT_HEAD) >= 0 && !named.has(BOTTOM_NAV_COMPAT_HEAD);
+  const pinTail = present.indexOf(BOTTOM_NAV_COMPAT_TAIL) >= 0 && !named.has(BOTTOM_NAV_COMPAT_TAIL);
+  const sortable = present.filter((id) => !(pinHead && id === BOTTOM_NAV_COMPAT_HEAD) && !(pinTail && id === BOTTOM_NAV_COMPAT_TAIL));
   const seen = new Set();
   const ordered = [];
-  order.forEach((id) => { if (middle.indexOf(id) >= 0 && !seen.has(id)) { ordered.push(id); seen.add(id); } });
-  middle.forEach((id) => { if (!seen.has(id)) { ordered.push(id); seen.add(id); } });
-  const visible = [];
-  if (present.indexOf(BOTTOM_NAV_FIXED_FIRST) >= 0) visible.push(BOTTOM_NAV_FIXED_FIRST);
-  ordered.forEach((id) => { if (!isHidden(id)) visible.push(id); });
-  if (present.indexOf(BOTTOM_NAV_FIXED_LAST) >= 0) visible.push(BOTTOM_NAV_FIXED_LAST);
-  return { visible, hiddenPresent: ordered.filter(isHidden) };
+  order.forEach((id) => { if (sortable.indexOf(id) >= 0 && !seen.has(id)) { ordered.push(id); seen.add(id); } });
+  // v1.75 adversarial gate W1: ids the config does NOT name are ordered by
+  // their ROSTER index, never by their position in `present`. `presentIds`
+  // comes out of the live #bottom-nav, and that order is neither stable nor
+  // clean: both async nav injectors insert with
+  // insertAdjacentElement('afterend') on the Settings item, so whichever
+  // capability probe resolves LAST lands FIRST (Download and Subs swapped
+  // between page loads); and applyBottomNavCustomization re-appends the
+  // visible items, so a second apply reads back its own output and a
+  // just-opted-in item lands somewhere a reload will not reproduce. Ranking by
+  // the roster makes the resolved sequence a pure function of the CONFIG -
+  // identical across injector races, across repeat applies, and identical to
+  // the list the Settings panel renders. An id absent from the roster keeps
+  // its relative DOM position, after every known id.
+  const rosterRank = (id) => {
+    const i = BOTTOM_NAV_OPTIONAL.indexOf(id);
+    return i >= 0 ? i : BOTTOM_NAV_OPTIONAL.length + present.indexOf(id);
+  };
+  sortable.slice()
+    .sort((a, b) => rosterRank(a) - rosterRank(b))
+    .forEach((id) => { if (!seen.has(id)) { ordered.push(id); seen.add(id); } });
+  const sequence = (pinHead ? [BOTTOM_NAV_COMPAT_HEAD] : []).concat(ordered, pinTail ? [BOTTOM_NAV_COMPAT_TAIL] : []);
+  return { visible: sequence.filter((id) => !isHidden(id)), hiddenPresent: sequence.filter(isHidden), sequence };
+}
+
+// Pure: given the bottom-nav item ids ACTUALLY present in the DOM and the
+// user's config, return the final visible order, the present-but-hidden ids,
+// and the full resolved `sequence` (visible + hidden interleaved, i.e. the row
+// order the Settings editor must render so that what it lists and what the bar
+// shows can never disagree). Unit-tested without a DOM.
+//
+// v1.75 FLOOR (ruling R2): now that EVERY entry is hidable, a hand-edited
+// localStorage config can hide the whole bar, leaving a fixed, empty,
+// un-navigable strip on mobile. When a config resolves to nothing visible
+// while items ARE present, the config is ignored wholesale and the DEFAULT
+// layout renders instead (`flooredToDefault` records that this fired - the
+// Settings editor reads it to REFUSE the last un-check up front, so the UI
+// can never author such a config in the first place). A default layout that
+// is itself empty (every present id default-hidden and nothing opted in) is
+// returned honestly rather than fabricated into something.
+function resolveBottomNavLayout(presentIds, config) {
+  const present = Array.isArray(presentIds) ? presentIds.slice() : [];
+  const cfg = (config && typeof config === 'object') ? config : {};
+  const out = resolveBottomNavLayoutCore(present, cfg);
+  if (out.visible.length === 0 && present.length > 0) {
+    const fallback = resolveBottomNavLayoutCore(present, {});
+    if (fallback.visible.length > 0) {
+      fallback.flooredToDefault = true;
+      return fallback;
+    }
+  }
+  out.flooredToDefault = false;
+  return out;
 }
 
 function readBottomNavConfig() {
@@ -5452,21 +5616,7 @@ if (typeof window !== 'undefined') {
     // already runs after every view change and is location-driven, so the
     // resume pointer cannot drift out of sync with the router.
     recordLastSession();
-    const key = activeNavItem(window.location.pathname, window.location.search);
-    const bottomNav = document.getElementById('bottom-nav');
-    if (bottomNav) {
-      bottomNav.querySelectorAll('.bottom-nav-item.active').forEach((el) => el.classList.remove('active'));
-      const item = key && bottomNav.querySelector('[data-nav="' + key + '"]');
-      if (item) item.classList.add('active');
-    }
-    const sidebar = document.getElementById('sidebar');
-    if (sidebar) {
-      sidebar.querySelectorAll('.sidebar-item.active').forEach((el) => el.classList.remove('active'));
-      const hrefByNavKey = { home: '/', settings: '/setup.html', subscriptions: '/subscriptions', books: '/books', music: '/music', podcasts: '/podcasts', history: '/history' };
-      const href = key ? hrefByNavKey[key] : null;
-      const match = href && sidebar.querySelector('a.sidebar-item[href="' + href + '"]');
-      if (match) match.classList.add('active');
-    }
+    applyNavHighlight(window.location.pathname, window.location.search);
   }
 
   // Lazily fetches `/js/subscriptions.js` exactly once per session (T1 scope
@@ -6020,6 +6170,10 @@ if (typeof window !== 'undefined') {
   window.FileTube.writeBottomNavConfig = writeBottomNavConfig;
   window.FileTube.BOTTOM_NAV_OPTIONAL = BOTTOM_NAV_OPTIONAL;
   window.FileTube.BOTTOM_NAV_DEFAULT_HIDDEN = BOTTOM_NAV_DEFAULT_HIDDEN;
+  // v1.75: the editor renders the RESOLVED sequence (never the raw roster), so
+  // its row order and the bar's order cannot drift; and it reads
+  // `flooredToDefault` to refuse the un-check that would empty the bar.
+  window.FileTube.resolveBottomNavLayout = resolveBottomNavLayout;
   // v1.72: the podcasts place's pin toggle refreshes the merged pin
   // surfaces (sidebar + sheet) after a pin/unpin round trip.
   window.FileTube.refreshAllPinSurfaces = refreshAllPinSurfaces;
@@ -9571,6 +9725,18 @@ if (typeof module !== 'undefined' && module.exports) {
     describePushEnableOutcome,
     resolveBottomNavLayout,
     BOTTOM_NAV_DEFAULT_HIDDEN,
+    // v1.75: the roster + the retired-anchor compat ids, exported so the tests
+    // bind the REAL values rather than a hand-copied duplicate.
+    BOTTOM_NAV_OPTIONAL,
+    BOTTOM_NAV_COMPAT_HEAD, BOTTOM_NAV_COMPAT_TAIL,
+    likedScopeQuery, bottomNavKeyForHighlight, SIDEBAR_HREF_BY_NAV_KEY,
+    applyNavHighlight,
+    injectDownloadsNavLinkIfEnabled,
+    // v1.75: the bar's ORDER is now decided in JS alone (the v1.39.2 CSS
+    // `order:` ladder is gone), so the DOM pass that applies it is bound at
+    // the DOM by test/unit/bottom-nav-order-authority.test.js - a resolver
+    // test alone would only prove the decision, never its use.
+    applyBottomNavCustomization, readBottomNavConfig, writeBottomNavConfig,
     pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
     deriveOrderedIds, computeNeighbors, parentFolder,

@@ -4206,19 +4206,36 @@ a.sub-row-channel-link:focus-visible {
     color: var(--yt-red);
   }
 
-  /* v1.39.2 (Dean): a more intuitive mobile bottom-nav order --
-     Home | Playlists | Download | Subs | Books | Light/Dark | Settings.
-     The base 4 items (home/playlists/theme/settings) ship in the page HTML;
-     Subs/Books/Download are JS-injected relative to Settings (common.js), so
-     DOM order varies. `order` on the flex children pins the visual sequence
-     regardless of injection timing. */
-  #bottom-nav [data-nav="home"]             { order: 1; }
-  #bottom-nav [data-nav="playlists"]        { order: 2; }
-  #bottom-nav [data-nav="oneoff-download"]  { order: 3; }
-  #bottom-nav [data-nav="subscriptions"]    { order: 4; }
-  #bottom-nav [data-nav="books"]            { order: 5; }
-  #bottom-nav [data-nav="theme"]            { order: 6; }
-  #bottom-nav [data-nav="settings"]         { order: 7; }
+  /* v1.75 (Dean's report: "In bottom bar, Home is not always left-most"):
+     the v1.39.2 `order:` ladder that used to live here is DELETED, and no
+     rule may reintroduce one - `resolveBottomNavLayout` + the appendChild
+     pass in `applyBottomNavCustomization` are the SOLE authority on this
+     bar's sequence (bound by test/unit/bottom-nav-order-authority.test.js).
+
+     Why it had to go: the ladder pinned seven ids (home 1, playlists 2,
+     oneoff-download 3, subscriptions 4, books 5, theme 6, settings 7) and
+     left the rest at the flex default of `order: 0`, which sorts them
+     BEFORE everything. The four ids added after v1.39.2 that it never
+     grew a rule for - history (v1.64), podcasts (v1.71), music and
+     downloads (v1.72/v1.73) - therefore rendered to the LEFT of Home,
+     which is exactly the symptom Dean reported; and because CSS `order`
+     beats DOM order outright, the v1.44 T12 reorder feature could not
+     move any of the seven pinned items at all.
+
+     (Gate correction: an earlier version of this comment listed `books`
+     among the unpinned. It was pinned, at 5. Four ids were unpinned, not
+     five - and a user who had opted Books in sees it move left of
+     Light/Dark as well as of Download/Subs.)
+
+     The ladder DID have a real second job that the v1.44 customizer does
+     not inherit: both async injectors insert with
+     insertAdjacentElement('afterend') on the Settings item, so whichever
+     capability probe resolves last lands first, and Download/Subs would
+     swap between page loads with nothing to pin them. Re-calling
+     applyBottomNavCustomization does not fix that - its own input is the
+     racy DOM order. That job moved into resolveBottomNavLayoutCore
+     instead, which ranks config-unnamed ids by BOTTOM_NAV_OPTIONAL index
+     rather than by DOM position (adversarial gate W1). */
 
   /* ---- Mobile app shell: header restructure ----------------------------
      Top-left logo + full-width search below it; header-right (Settings +
@@ -9531,19 +9548,10 @@ a.queue-upnext-next:hover {
   border-color: var(--yt-red);
 }
 
-/* v1.71: the Liked lane's grid card - the show-card chassis; its title
-   carries the heart red so the lane reads as a lane, not another show. */
-.podcast-liked-card .podcast-card-title {
-  color: var(--yt-red);
-}
-.podcast-liked-card-art {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-secondary);
-  color: var(--yt-red);
-  font-size: var(--fs-4xl);
-}
+/* v1.75: the v1.71 Liked-lane card rules (.podcast-liked-card /
+   .podcast-liked-card-art) are DELETED with the lane itself - the central
+   /?liked=1 playlist is the one Liked surface. A rule left behind for a
+   className nothing mints is dead weight the next reader has to disprove. */
 
 /* The management row on a show's drill-in (v1.69 QA gate #3). */
 .podcast-manage-row { display: flex; gap: var(--space-4); flex-wrap: wrap; align-items: center; margin-top: var(--space-3); }

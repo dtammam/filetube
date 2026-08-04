@@ -130,7 +130,6 @@
           <button type="button" class="music-tab active" data-tab="albums" role="tab">Albums</button>
           <button type="button" class="music-tab" data-tab="artists" role="tab">Artists</button>
           <button type="button" class="music-tab" data-tab="songs" role="tab">Songs</button>
-          <button type="button" class="music-tab" data-tab="liked" role="tab">Liked</button>
         </div>
 
         <!-- Drill-in breadcrumb (album/artist view); hidden on the top tabs. -->
@@ -154,6 +153,10 @@
     <a href="/" class="bottom-nav-item" data-nav="home">
       <i class="icon-home"></i>
       <span class="bottom-nav-label">Home</span>
+    </a>
+    <a href="/?liked=1" class="bottom-nav-item" data-nav="liked" hidden>
+      <i class="icon-star"></i>
+      <span class="bottom-nav-label">Liked</span>
     </a>
     <button type="button" class="bottom-nav-item" data-nav="playlists" id="nav-playlists-btn">
       <i class="icon-folder"></i>
