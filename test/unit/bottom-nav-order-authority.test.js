@@ -138,16 +138,28 @@ test('v1.75: EVERY shell that carries the bar carries the Liked item, hidden unt
 });
 
 test('v1.75: the Liked item uses the SAME glyph as the sidebar Liked entry, and no raw emoji codepoint', () => {
-  // common.js's applyLikedSidebarEntry mints `icon-star`; the two entries are
-  // the same destination, so they are the same mark. icon-star is also the one
-  // glyph deliberately identical across every data-icons set (style.css AC8),
-  // which is why no new icon-set CSS is needed for any of the four sets.
+  // The two entries are the same destination, so they must be the same mark.
+  //
+  // v1.77: this asserted the mark was literally `icon-star` in both places,
+  // which bound the GLYPH CHOICE rather than the parity the test is named for -
+  // so moving Liked onto its own `.icon-liked` (intake ruling 3) failed a lock
+  // about sameness on a change that kept everything the same. Now the sidebar
+  // injector's class is DERIVED and the shells are checked against it: the bar
+  // and the sidebar can never drift apart, and a future glyph change needs no
+  // edit here. (Deleted with it: a comment claiming icon-star is "deliberately
+  // identical across every data-icons set (style.css AC8), which is why no new
+  // icon-set CSS is needed". Ratings never used that class, and as of v1.77
+  // Liked has a full four-set treatment.)
   const commonSrc = fs.readFileSync(path.join(PUBLIC_DIR, 'js/common.js'), 'utf8');
-  assert.ok(commonSrc.includes("icon.className = 'icon-star'"), 'the sidebar Liked entry still mints icon-star');
+  const minted = /icon\.className = '([a-z-]+)'/.exec(
+    commonSrc.slice(commonSrc.indexOf('function applyLikedSidebarEntry')));
+  assert.ok(minted, 'applyLikedSidebarEntry must mint a glyph class for the sidebar Liked entry');
+  const likedGlyph = minted[1];
   for (const f of SHELLS) {
     const html = fs.readFileSync(path.join(PUBLIC_DIR, f), 'utf8');
     const item = html.slice(html.indexOf('data-nav="liked"'));
-    assert.match(item.slice(0, 200), /<i class="icon-star"><\/i>/, `${f}: liked must render the icon-star glyph`);
+    assert.match(item.slice(0, 200), new RegExp(`<i class="${likedGlyph}"></i>`),
+      `${f}: liked must render the same glyph the sidebar entry mints (${likedGlyph})`);
     // The v1.38 lesson: glyphs come from CSS/icon assets, never a codepoint
     // typed into markup.
     assert.ok(!/[☀-➿\u{1F300}-\u{1F9FF}]/u.test(item.slice(0, 200)), `${f}: raw emoji codepoint in markup`);

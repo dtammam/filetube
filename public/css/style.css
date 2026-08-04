@@ -3876,7 +3876,18 @@ a.sub-row-channel-link:focus-visible {
 
 /* Chrome icons: Material Symbols Outlined SVG used as an alpha mask, painted
    in currentColor so they theme across all era x mode combos automatically.
-   NOTE: icon-star is intentionally NOT in this group (gold rating, stays ★). */
+   NOTE: icon-star is intentionally NOT in this group - it is a plain ::before
+   character used by the two Stats sidebar links. (Before v1.77 this comment
+   said it was excluded to keep "the gold rating" stable; that was never true.
+   Rating stars are literal ★/☆ textContent in `.card-rating` and
+   `#star-rating-control` and have never used this class.)
+   The tail of this list, from .icon-school down, is v1.77's assignable glyph
+   pool - GENERATED from public/js/glyph-pool.js and re-derived by
+   test/unit/glyph-pool.test.js, which fails CI if a pool member is missing
+   from any of its seven required enumerations. A member present here but
+   absent from the @supports fill block below renders as an INVISIBLE BOX -
+   that is the v1.47.6 bug Dean found on-device, and it is why that test
+   exists. Do not hand-maintain these lists. */
 .icon-home,
 .icon-folder,
 .icon-cog,
@@ -3900,7 +3911,27 @@ a.sub-row-channel-link:focus-visible {
 .icon-queue,
 .icon-podcast,
 .icon-downloads,
-.icon-books {
+.icon-books,
+.icon-school,
+.icon-movies,
+.icon-shows,
+.icon-documents,
+.icon-music-note,
+.icon-kids,
+.icon-games,
+.icon-camcorder,
+.icon-photos,
+.icon-travel,
+.icon-work,
+.icon-cooking,
+.icon-fitness,
+.icon-comedy,
+.icon-pets,
+.icon-cars,
+.icon-archive,
+.icon-radio,
+.icon-favorites,
+.icon-liked {
   display: inline-block;
   width: 1em;
   height: 1em;
@@ -3987,6 +4018,39 @@ a.sub-row-channel-link:focus-visible {
    the generic folder - same single-asset posture. */
 .icon-books { -webkit-mask-image: url(/assets/icons/books.svg); mask-image: url(/assets/icons/books.svg); }
 
+/* ---- v1.77: the assignable glyph pool (base/outlined masks) ---------------
+   Unlike the ten single-asset glyphs above (heart/share/flame/history/queue/
+   podcast/downloads/books/grid/list), every member here ships in ALL FOUR sets
+   - that was Dean's ask ("each glyph we choose should be out of a set of
+   four"). Filenames track the upstream Material glyph name, not the class
+   name, matching the established convention (.icon-cog ships as settings.svg).
+   `.icon-favorites` and `.icon-liked` deliberately share star.svg: different
+   intents, same picture, so the Liked lane can change later without silently
+   changing every folder that chose Favorites. */
+.icon-school { -webkit-mask-image: url(/assets/icons/school.svg); mask-image: url(/assets/icons/school.svg); }
+.icon-movies { -webkit-mask-image: url(/assets/icons/movie.svg); mask-image: url(/assets/icons/movie.svg); }
+.icon-shows { -webkit-mask-image: url(/assets/icons/tv.svg); mask-image: url(/assets/icons/tv.svg); }
+.icon-documents { -webkit-mask-image: url(/assets/icons/description.svg); mask-image: url(/assets/icons/description.svg); }
+.icon-music-note { -webkit-mask-image: url(/assets/icons/music_note.svg); mask-image: url(/assets/icons/music_note.svg); }
+.icon-kids { -webkit-mask-image: url(/assets/icons/child_care.svg); mask-image: url(/assets/icons/child_care.svg); }
+.icon-games { -webkit-mask-image: url(/assets/icons/sports_esports.svg); mask-image: url(/assets/icons/sports_esports.svg); }
+.icon-camcorder { -webkit-mask-image: url(/assets/icons/videocam.svg); mask-image: url(/assets/icons/videocam.svg); }
+.icon-photos { -webkit-mask-image: url(/assets/icons/photo_camera.svg); mask-image: url(/assets/icons/photo_camera.svg); }
+.icon-travel { -webkit-mask-image: url(/assets/icons/flight.svg); mask-image: url(/assets/icons/flight.svg); }
+.icon-work { -webkit-mask-image: url(/assets/icons/work.svg); mask-image: url(/assets/icons/work.svg); }
+.icon-cooking { -webkit-mask-image: url(/assets/icons/restaurant.svg); mask-image: url(/assets/icons/restaurant.svg); }
+.icon-fitness { -webkit-mask-image: url(/assets/icons/fitness_center.svg); mask-image: url(/assets/icons/fitness_center.svg); }
+.icon-comedy { -webkit-mask-image: url(/assets/icons/theater_comedy.svg); mask-image: url(/assets/icons/theater_comedy.svg); }
+.icon-pets { -webkit-mask-image: url(/assets/icons/pets.svg); mask-image: url(/assets/icons/pets.svg); }
+.icon-cars { -webkit-mask-image: url(/assets/icons/directions_car.svg); mask-image: url(/assets/icons/directions_car.svg); }
+.icon-archive { -webkit-mask-image: url(/assets/icons/archive.svg); mask-image: url(/assets/icons/archive.svg); }
+.icon-radio { -webkit-mask-image: url(/assets/icons/radio.svg); mask-image: url(/assets/icons/radio.svg); }
+.icon-favorites { -webkit-mask-image: url(/assets/icons/star.svg); mask-image: url(/assets/icons/star.svg); }
+/* v1.77 (intake ruling 3): the Liked lane's own glyph, split off .icon-star so
+   it can carry a full four-set treatment. See the deleted-comment note at the
+   .icon-star rule below. */
+.icon-liked { -webkit-mask-image: url(/assets/icons/star.svg); mask-image: url(/assets/icons/star.svg); }
+
 /* Paint the icon fill only where CSS masks are supported, so a browser without
    mask support (or a failed/404 mask) renders nothing instead of a solid
    currentColor square. */
@@ -3994,12 +4058,21 @@ a.sub-row-channel-link:focus-visible {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
   .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-download, .icon-shuffle,
-  .icon-flame, .icon-history, .icon-queue, .icon-podcast, .icon-downloads, .icon-books {
+  .icon-flame, .icon-history, .icon-queue, .icon-podcast, .icon-downloads, .icon-books,
+  .icon-school, .icon-movies, .icon-shows, .icon-documents, .icon-music-note, .icon-kids, .icon-games, .icon-camcorder, .icon-photos, .icon-travel, .icon-work, .icon-cooking, .icon-fitness, .icon-comedy, .icon-pets, .icon-cars, .icon-archive, .icon-radio, .icon-favorites, .icon-liked {
     background-color: currentColor;
   }
 }
 
-/* Out of scope: gold rating star — NOT a mask/currentColor icon. Leave as-is. */
+/* The Stats sidebar link's glyph (index.html, stats.html - two sites). A plain
+   ::before character, not a mask, so it is not in any block above.
+   v1.77: the comment that stood here claimed this class was kept out of the
+   icon-set blocks so "the gold ★ rating renders identically regardless of
+   icon-set selection (AC8)". That was NEVER true: ratings are literal ★/☆
+   textContent in `.card-rating` (main.js) and `#star-rating-control`
+   (watch.js), and have never gone through .icon-star at all. The class's only
+   users were the Liked nav and these two Stats links - and Liked moved to its
+   own `.icon-liked` in v1.77, leaving Stats alone here. */
 .icon-star::before { content: "★"; }
 
 /* ---- Icon-set axis (data-icons) -------------------------------------------
@@ -4027,6 +4100,27 @@ a.sub-row-channel-link:focus-visible {
 [data-icons="rounded"] .icon-arrow-down { -webkit-mask-image: url(/assets/icons/rounded/keyboard_arrow_down.svg); mask-image: url(/assets/icons/rounded/keyboard_arrow_down.svg); }
 [data-icons="rounded"] .icon-download { -webkit-mask-image: url(/assets/icons/rounded/download.svg); mask-image: url(/assets/icons/rounded/download.svg); }
 [data-icons="rounded"] .icon-shuffle { -webkit-mask-image: url(/assets/icons/rounded/shuffle.svg); mask-image: url(/assets/icons/rounded/shuffle.svg); }
+/* v1.77 pool: rounded variants (generated from public/js/glyph-pool.js). */
+[data-icons="rounded"] .icon-school { -webkit-mask-image: url(/assets/icons/rounded/school.svg); mask-image: url(/assets/icons/rounded/school.svg); }
+[data-icons="rounded"] .icon-movies { -webkit-mask-image: url(/assets/icons/rounded/movie.svg); mask-image: url(/assets/icons/rounded/movie.svg); }
+[data-icons="rounded"] .icon-shows { -webkit-mask-image: url(/assets/icons/rounded/tv.svg); mask-image: url(/assets/icons/rounded/tv.svg); }
+[data-icons="rounded"] .icon-documents { -webkit-mask-image: url(/assets/icons/rounded/description.svg); mask-image: url(/assets/icons/rounded/description.svg); }
+[data-icons="rounded"] .icon-music-note { -webkit-mask-image: url(/assets/icons/rounded/music_note.svg); mask-image: url(/assets/icons/rounded/music_note.svg); }
+[data-icons="rounded"] .icon-kids { -webkit-mask-image: url(/assets/icons/rounded/child_care.svg); mask-image: url(/assets/icons/rounded/child_care.svg); }
+[data-icons="rounded"] .icon-games { -webkit-mask-image: url(/assets/icons/rounded/sports_esports.svg); mask-image: url(/assets/icons/rounded/sports_esports.svg); }
+[data-icons="rounded"] .icon-camcorder { -webkit-mask-image: url(/assets/icons/rounded/videocam.svg); mask-image: url(/assets/icons/rounded/videocam.svg); }
+[data-icons="rounded"] .icon-photos { -webkit-mask-image: url(/assets/icons/rounded/photo_camera.svg); mask-image: url(/assets/icons/rounded/photo_camera.svg); }
+[data-icons="rounded"] .icon-travel { -webkit-mask-image: url(/assets/icons/rounded/flight.svg); mask-image: url(/assets/icons/rounded/flight.svg); }
+[data-icons="rounded"] .icon-work { -webkit-mask-image: url(/assets/icons/rounded/work.svg); mask-image: url(/assets/icons/rounded/work.svg); }
+[data-icons="rounded"] .icon-cooking { -webkit-mask-image: url(/assets/icons/rounded/restaurant.svg); mask-image: url(/assets/icons/rounded/restaurant.svg); }
+[data-icons="rounded"] .icon-fitness { -webkit-mask-image: url(/assets/icons/rounded/fitness_center.svg); mask-image: url(/assets/icons/rounded/fitness_center.svg); }
+[data-icons="rounded"] .icon-comedy { -webkit-mask-image: url(/assets/icons/rounded/theater_comedy.svg); mask-image: url(/assets/icons/rounded/theater_comedy.svg); }
+[data-icons="rounded"] .icon-pets { -webkit-mask-image: url(/assets/icons/rounded/pets.svg); mask-image: url(/assets/icons/rounded/pets.svg); }
+[data-icons="rounded"] .icon-cars { -webkit-mask-image: url(/assets/icons/rounded/directions_car.svg); mask-image: url(/assets/icons/rounded/directions_car.svg); }
+[data-icons="rounded"] .icon-archive { -webkit-mask-image: url(/assets/icons/rounded/archive.svg); mask-image: url(/assets/icons/rounded/archive.svg); }
+[data-icons="rounded"] .icon-radio { -webkit-mask-image: url(/assets/icons/rounded/radio.svg); mask-image: url(/assets/icons/rounded/radio.svg); }
+[data-icons="rounded"] .icon-favorites { -webkit-mask-image: url(/assets/icons/rounded/star.svg); mask-image: url(/assets/icons/rounded/star.svg); }
+[data-icons="rounded"] .icon-liked { -webkit-mask-image: url(/assets/icons/rounded/star.svg); mask-image: url(/assets/icons/rounded/star.svg); }
 
 /* Filled set: Material Icons Classic (2014). Note the two substitute
    filenames (wb_sunny/brightness_2) — see public/assets/icons/README.md. */
@@ -4044,6 +4138,29 @@ a.sub-row-channel-link:focus-visible {
 [data-icons="filled"] .icon-moon { -webkit-mask-image: url(/assets/icons/filled/brightness_2.svg); mask-image: url(/assets/icons/filled/brightness_2.svg); }
 [data-icons="filled"] .icon-download { -webkit-mask-image: url(/assets/icons/filled/download.svg); mask-image: url(/assets/icons/filled/download.svg); }
 [data-icons="filled"] .icon-shuffle { -webkit-mask-image: url(/assets/icons/filled/shuffle.svg); mask-image: url(/assets/icons/filled/shuffle.svg); }
+/* v1.77 pool: filled variants (generated from public/js/glyph-pool.js).
+   Material Icons Filled style - see public/assets/icons/README.md for which
+   members predate the 2014 launch set and which do not. */
+[data-icons="filled"] .icon-school { -webkit-mask-image: url(/assets/icons/filled/school.svg); mask-image: url(/assets/icons/filled/school.svg); }
+[data-icons="filled"] .icon-movies { -webkit-mask-image: url(/assets/icons/filled/movie.svg); mask-image: url(/assets/icons/filled/movie.svg); }
+[data-icons="filled"] .icon-shows { -webkit-mask-image: url(/assets/icons/filled/tv.svg); mask-image: url(/assets/icons/filled/tv.svg); }
+[data-icons="filled"] .icon-documents { -webkit-mask-image: url(/assets/icons/filled/description.svg); mask-image: url(/assets/icons/filled/description.svg); }
+[data-icons="filled"] .icon-music-note { -webkit-mask-image: url(/assets/icons/filled/music_note.svg); mask-image: url(/assets/icons/filled/music_note.svg); }
+[data-icons="filled"] .icon-kids { -webkit-mask-image: url(/assets/icons/filled/child_care.svg); mask-image: url(/assets/icons/filled/child_care.svg); }
+[data-icons="filled"] .icon-games { -webkit-mask-image: url(/assets/icons/filled/sports_esports.svg); mask-image: url(/assets/icons/filled/sports_esports.svg); }
+[data-icons="filled"] .icon-camcorder { -webkit-mask-image: url(/assets/icons/filled/videocam.svg); mask-image: url(/assets/icons/filled/videocam.svg); }
+[data-icons="filled"] .icon-photos { -webkit-mask-image: url(/assets/icons/filled/photo_camera.svg); mask-image: url(/assets/icons/filled/photo_camera.svg); }
+[data-icons="filled"] .icon-travel { -webkit-mask-image: url(/assets/icons/filled/flight.svg); mask-image: url(/assets/icons/filled/flight.svg); }
+[data-icons="filled"] .icon-work { -webkit-mask-image: url(/assets/icons/filled/work.svg); mask-image: url(/assets/icons/filled/work.svg); }
+[data-icons="filled"] .icon-cooking { -webkit-mask-image: url(/assets/icons/filled/restaurant.svg); mask-image: url(/assets/icons/filled/restaurant.svg); }
+[data-icons="filled"] .icon-fitness { -webkit-mask-image: url(/assets/icons/filled/fitness_center.svg); mask-image: url(/assets/icons/filled/fitness_center.svg); }
+[data-icons="filled"] .icon-comedy { -webkit-mask-image: url(/assets/icons/filled/theater_comedy.svg); mask-image: url(/assets/icons/filled/theater_comedy.svg); }
+[data-icons="filled"] .icon-pets { -webkit-mask-image: url(/assets/icons/filled/pets.svg); mask-image: url(/assets/icons/filled/pets.svg); }
+[data-icons="filled"] .icon-cars { -webkit-mask-image: url(/assets/icons/filled/directions_car.svg); mask-image: url(/assets/icons/filled/directions_car.svg); }
+[data-icons="filled"] .icon-archive { -webkit-mask-image: url(/assets/icons/filled/archive.svg); mask-image: url(/assets/icons/filled/archive.svg); }
+[data-icons="filled"] .icon-radio { -webkit-mask-image: url(/assets/icons/filled/radio.svg); mask-image: url(/assets/icons/filled/radio.svg); }
+[data-icons="filled"] .icon-favorites { -webkit-mask-image: url(/assets/icons/filled/star.svg); mask-image: url(/assets/icons/filled/star.svg); }
+[data-icons="filled"] .icon-liked { -webkit-mask-image: url(/assets/icons/filled/star.svg); mask-image: url(/assets/icons/filled/star.svg); }
 
 /* Emoji set: restores the pre-v1.6.0 ::before emoji per icon. No-square fix
    (AC7): this grouped rule neutralizes BOTH the mask (mask-image: none) AND
@@ -4066,6 +4183,26 @@ a.sub-row-channel-link:focus-visible {
 [data-icons="emoji"] .icon-download,
 [data-icons="emoji"] .icon-downloads,
 [data-icons="emoji"] .icon-books,
+[data-icons="emoji"] .icon-school,
+[data-icons="emoji"] .icon-movies,
+[data-icons="emoji"] .icon-shows,
+[data-icons="emoji"] .icon-documents,
+[data-icons="emoji"] .icon-music-note,
+[data-icons="emoji"] .icon-kids,
+[data-icons="emoji"] .icon-games,
+[data-icons="emoji"] .icon-camcorder,
+[data-icons="emoji"] .icon-photos,
+[data-icons="emoji"] .icon-travel,
+[data-icons="emoji"] .icon-work,
+[data-icons="emoji"] .icon-cooking,
+[data-icons="emoji"] .icon-fitness,
+[data-icons="emoji"] .icon-comedy,
+[data-icons="emoji"] .icon-pets,
+[data-icons="emoji"] .icon-cars,
+[data-icons="emoji"] .icon-archive,
+[data-icons="emoji"] .icon-radio,
+[data-icons="emoji"] .icon-favorites,
+[data-icons="emoji"] .icon-liked,
 [data-icons="emoji"] .icon-shuffle {
   -webkit-mask-image: none;
   mask-image: none;
@@ -4080,10 +4217,16 @@ a.sub-row-channel-link:focus-visible {
    emoji-set restoration, so it needs its OWN ::before entry here, same as
    every other .icon-* the emoji set covers). */
 [data-icons="emoji"] .icon-download::before { content: "\1F4E5"; }
-/* v1.73 (QA gate W2): ruling 4's emoji-set glyph - U+1F4FA TELEVISION,
-   the "TV/play emoji" the ruling names; the mask sets keep the
-   smart-display asset. */
-[data-icons="emoji"] .icon-downloads::before { content: "\1F4FA"; }
+/* Downloads' emoji-set glyph. U+1F4FC VIDEOCASSETTE since v1.77 (Dean: "i want
+   downloads and shows to not share"); it was U+1F4FA TELEVISION from v1.73
+   ruling 4 until v1.77's glyph pool gave `.icon-shows` that same codepoint.
+   A television is the literal read of a Shows folder, so Downloads moved and
+   Shows kept the TV - and a tape suits a library of things you recorded, in a
+   skin built to look like old YouTube. Both are user-changeable now, in
+   different ways: Downloads is a Library entry with its own picker, Shows is a
+   pool glyph any folder or entry can wear. So this is only the default. The MASK sets are untouched:
+   Downloads still uses the smart-display asset in outlined/rounded/filled. */
+[data-icons="emoji"] .icon-downloads::before { content: "\1F4FC"; }
 [data-icons="emoji"] .icon-books::before { content: "\1F4DA"; } /* books stack - the Books library */
 
 [data-icons="emoji"] .icon-home::before      { content: "\1F3E0"; } /* 🏠 */
@@ -4100,8 +4243,37 @@ a.sub-row-channel-link:focus-visible {
 [data-icons="emoji"] .icon-arrow-down::before{ content: "\25BC";  } /* ▼ */
 [data-icons="emoji"] .icon-shuffle::before   { content: "\1F500"; } /* 🔀 */
 
-/* .icon-star is deliberately absent from every block above: the gold ★
-   rating renders identically regardless of icon-set selection (AC8). */
+/* v1.77 pool: emoji-set glyphs (generated from public/js/glyph-pool.js).
+   Codepoints live in the registry so the test can rebuild these exactly. */
+[data-icons="emoji"] .icon-school::before { content: "\1F393"; }
+[data-icons="emoji"] .icon-movies::before { content: "\1F3AC"; }
+[data-icons="emoji"] .icon-shows::before { content: "\1F4FA"; }
+[data-icons="emoji"] .icon-documents::before { content: "\1F4C4"; }
+[data-icons="emoji"] .icon-music-note::before { content: "\1F3B5"; }
+[data-icons="emoji"] .icon-kids::before { content: "\1F9F8"; }
+[data-icons="emoji"] .icon-games::before { content: "\1F3AE"; }
+[data-icons="emoji"] .icon-camcorder::before { content: "\1F4F9"; }
+[data-icons="emoji"] .icon-photos::before { content: "\1F4F7"; }
+[data-icons="emoji"] .icon-travel::before { content: "\2708\FE0F"; }
+[data-icons="emoji"] .icon-work::before { content: "\1F4BC"; }
+[data-icons="emoji"] .icon-cooking::before { content: "\1F37D\FE0F"; }
+[data-icons="emoji"] .icon-fitness::before { content: "\1F3CB\FE0F"; }
+[data-icons="emoji"] .icon-comedy::before { content: "\1F3AD"; }
+[data-icons="emoji"] .icon-pets::before { content: "\1F43E"; }
+[data-icons="emoji"] .icon-cars::before { content: "\1F697"; }
+[data-icons="emoji"] .icon-archive::before { content: "\1F4E6"; }
+[data-icons="emoji"] .icon-radio::before { content: "\1F4FB"; }
+[data-icons="emoji"] .icon-favorites::before { content: "\2B50"; }
+[data-icons="emoji"] .icon-liked::before { content: "\2B50"; }
+
+/* .icon-star is deliberately absent from every block above - but NOT for the
+   reason this comment gave until v1.77 ("the gold ★ rating renders identically
+   regardless of icon-set selection (AC8)"). That binding never existed: rating
+   stars are literal ★/☆ textContent in `.card-rating` (main.js) and
+   `#star-rating-control` (watch.js) and have never gone through this class.
+   The real reason is simply that .icon-star is a plain ::before character, not
+   a mask - its only remaining users are the two Stats sidebar links. The Liked
+   nav moved to .icon-liked in v1.77, which DOES carry all four sets. */
 
 /* New mobile-shell elements never render outside the phone breakpoint.
    Additive: new selectors only — no existing desktop rule is touched. */

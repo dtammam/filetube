@@ -3,10 +3,24 @@
 FileTube's chrome iconography ships as three self-hosted, offline vector
 icon sets — plus a colorful emoji set defined directly in `style.css` (no
 SVG files) — selectable via the `data-icons` axis (see
-`docs/exec-plans/completed/icon-sets.md`). Each vector set covers the same
-14 `.icon-*` classes, is used as a CSS `mask-image`, and is painted with
-`currentColor`, so a single unmodified asset renders correctly in every
-FileTube theme (era × light/dark).
+`docs/exec-plans/completed/icon-sets.md`). Every asset is used as a CSS
+`mask-image` and painted with `currentColor`, so a single unmodified file
+renders correctly in every FileTube theme (era × light/dark).
+
+Two groups of classes live here, and they have different coverage rules:
+
+1. **Chrome icons** - the 14 `.icon-*` classes each vector set covers in full
+   (the tables below), plus ten later additions that ship ONE base asset other
+   sets fall back to. Not uniformly, though: **eight** of them (`heart`,
+   `share`, `flame`, `history`, `queue`, `podcast`, `grid`, `list`) fall back in
+   `rounded`, `filled` AND `emoji`, while `downloads` and `books` have their own
+   emoji codepoints (U+1F4FC and U+1F4DA) and fall back only in `rounded` and
+   `filled`. That fallback is deliberate, not a gap - but it is now the minority
+   behaviour, and it is tracked as tech-debt row 113.
+2. **The assignable glyph pool** (v1.77) - 20 user-selectable folder/Library
+   glyphs plus `.icon-liked`, every one of which carries a real variant in
+   **all four** sets. See "The assignable glyph pool" at the end of this file;
+   do not hand-maintain it.
 
 ## Material Symbols (Outlined) — `outlined` (default)
 
@@ -92,14 +106,24 @@ Apache-2.0 permits redistribution; these files are included unmodified.
 | `rounded/download.svg` | `download` | `.icon-download` |
 | `rounded/shuffle.svg` | `shuffle` | `.icon-shuffle` |
 
-## Material Icons Classic (2014) — `filled`
+## Material Icons Classic — `filled`
 
-Fourteen SVG icons from the original 2014 Material Icons launch set (the
-"Classic"/filled style), bundled under `public/assets/icons/filled/` —
-authentic to Material Design's original June 2014 release. Filenames match
-the actual source glyph name (self-documenting), which is why three of them
-differ from the `.icon-*` class name they back (see substitutes/renames
-below).
+SVG icons in the **Material Icons Filled style** (the original
+"Classic"/filled look), bundled under `public/assets/icons/filled/`.
+Filenames match the actual source glyph name (self-documenting), which is why
+three of them differ from the `.icon-*` class name they back (see
+substitutes/renames below).
+
+**Provenance, honestly:** the fourteen chrome icons below are all from the
+original June 2014 Material Icons launch set, and this section used to
+describe the whole `filled` set as "authentic to Material Design's original
+June 2014 release". That is no longer true of the set as a whole. v1.77 added
+nineteen glyph-pool assets in this same style, four of which - `child_care`,
+`sports_esports`, `theater_comedy`, `fitness_center` - **postdate the 2014
+launch**. They are genuine Material Icons Filled-style assets (so the set is
+visually consistent, which is what a user sees), but they are not 2014-era
+glyphs, and the wording was widened rather than left quietly false. See the
+glyph-pool section below.
 
 - Icon set: **Material Icons** (Classic), © Google
 - License: **Apache License 2.0** — https://www.apache.org/licenses/LICENSE-2.0
@@ -178,3 +202,68 @@ intentionally colorful rather than `currentColor`-themed.
 | `.icon-arrow-down` | ▼ |
 | `.icon-download` | 📥 |
 | `.icon-shuffle` | 🔀 |
+
+## The assignable glyph pool - `v1.77`
+
+Twenty glyphs a user can assign to a media folder (Settings → Media folders →
+each row's **Icon** dropdown) or to a Library sidebar entry (Settings →
+Appearance → **Library icons**), plus `.icon-liked` for the Liked lane.
+
+Unlike the ten single-asset glyphs named in item 1 at the top of this file
+(`heart`, `share`, `flame`, `history`, `queue`, `podcast`, `downloads`,
+`books`, `grid`, `list`), **every entry here ships a
+real variant in all four sets** - outlined, rounded, filled and an emoji
+codepoint. That was the explicit requirement: "each glyph we choose should be
+out of a set of four for the different eras."
+
+- Outlined / Rounded: **Material Symbols**, © Google, Apache-2.0
+- Filled: **Material Icons** (Filled style), © Google, Apache-2.0 - see the
+  provenance note in the `filled` section above; four of these postdate 2014
+- Emoji: CSS `content` codepoints, no asset
+
+**Do not hand-maintain this.** `public/js/glyph-pool.js` is the single source
+of truth - `server.js` requires it to validate saves and the browser loads it
+as a script to render - and `test/unit/glyph-pool.test.js` re-derives, for
+every member, all **seven** required `style.css` enumerations (base mask,
+sizing list, `@supports` fill list, rounded override, filled override, emoji
+neutralize group, emoji `::before`) plus its three SVGs. A member missing any
+one of them fails CI. The fill list is the one that matters most: a mask with
+no fill renders as an invisible box, which is exactly the v1.47.6 bug Dean
+found on-device.
+
+| `.icon-*` class | Asset | Label in the picker | Emoji |
+|---|---|---|---|
+| `.icon-folder` | `folder.svg` | Folder | U+1F4C1 |
+| `.icon-school` | `school.svg` | School | U+1F393 |
+| `.icon-movies` | `movie.svg` | Movies | U+1F3AC |
+| `.icon-shows` | `tv.svg` | Shows | U+1F4FA |
+| `.icon-documents` | `description.svg` | Documents | U+1F4C4 |
+| `.icon-music-note` | `music_note.svg` | Music | U+1F3B5 |
+| `.icon-kids` | `child_care.svg` | Kids | U+1F9F8 |
+| `.icon-games` | `sports_esports.svg` | Games | U+1F3AE |
+| `.icon-camcorder` | `videocam.svg` | Home video | U+1F4F9 |
+| `.icon-photos` | `photo_camera.svg` | Photos | U+1F4F7 |
+| `.icon-travel` | `flight.svg` | Travel | U+2708 U+FE0F |
+| `.icon-work` | `work.svg` | Work | U+1F4BC |
+| `.icon-cooking` | `restaurant.svg` | Cooking | U+1F37D U+FE0F |
+| `.icon-fitness` | `fitness_center.svg` | Fitness | U+1F3CB U+FE0F |
+| `.icon-comedy` | `theater_comedy.svg` | Comedy | U+1F3AD |
+| `.icon-pets` | `pets.svg` | Pets | U+1F43E |
+| `.icon-cars` | `directions_car.svg` | Cars | U+1F697 |
+| `.icon-archive` | `archive.svg` | Archive | U+1F4E6 |
+| `.icon-radio` | `radio.svg` | Radio | U+1F4FB |
+| `.icon-favorites` | `star.svg` | Favorites | U+2B50 |
+| `.icon-liked` | `star.svg` | Liked (not a pool member) | U+2B50 |
+
+`.icon-favorites` and `.icon-liked` deliberately share `star.svg`: different
+intents, same picture, kept separate so the Liked lane's glyph can change later
+without silently changing every folder that chose Favorites.
+
+**A collision that was resolved, not disclosed:** `.icon-shows` and the
+pre-existing `.icon-downloads` both rendered U+1F4FA (📺) in the emoji set.
+Dean ruled they must not share, so `.icon-downloads` moved to U+1F4FC (📼
+videocassette) and Shows kept the television - a TV being the literal read of a
+Shows folder. Downloads' mask assets are unchanged in all three vector sets;
+only its emoji glyph moved. Both are user-changeable now, though not in the same
+way: Downloads is a Library ENTRY with its own picker, while Shows is a POOL
+GLYPH that any folder or Library entry can be given.

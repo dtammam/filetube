@@ -3258,10 +3258,11 @@ if (typeof module !== 'undefined' && module.exports) {
       sidebarFoldersList.innerHTML = visibleFolders.map(f => {
         const folderName = f.split(/[\\/]/).pop() || f;
         const label = (settings[f] && settings[f].name) || folderName;
+        const glyphClass = resolveFolderGlyphClass(settings[f] && settings[f].glyph); // v1.77
         // ?root= shows everything under the mapped folder, including subfolders.
         return `
           <a href="/?root=${encodeURIComponent(f)}" class="sidebar-item" title="${escapeHtml(f)}">
-            <i class="icon-folder"></i> ${escapeHtml(label)}
+            <i class="${glyphClass}"></i> ${escapeHtml(label)}
           </a>
         `;
       }).join('');

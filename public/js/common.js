@@ -129,6 +129,36 @@ function mirrorUserSetting(patch) {
 // Boot-time pull: ONLY keys this device has never chosen locally are seeded
 // from the user record (a fresh phone inherits the desktop's era/theme/icons
 // on first sign-in; a device with local prefs is never overridden).
+// v1.77: ONE `/api/auth/me` shared between this file's TWO boot consumers -
+// pullMirroredDisplayPrefs and initLibraryGlyphs. Deliberately NOT a
+// page-wide single fetch: main.js's fetchCardCornerState and four call sites
+// in setup.js (including v1.77's own renderLibraryGlyphEditor) each issue
+// their own, so a real page load makes two on index.html and up to five on
+// setup.html. Consolidating those is a separate job, not claimed here.
+//
+// Before this, pullMirroredDisplayPrefs was the only boot fetch in this file
+// and it short-circuited entirely on a fully-chosen device. v1.77 adds
+// per-user Library glyphs, which are SERVER-TRUTH by ruling and therefore have
+// no device cache to short-circuit against - so something has to ask the
+// server on every load. Memoizing here means that is still one request when
+// both of this file's consumers want it, rather than two.
+//
+// Deliberately NOT cached across page loads: it is the authority for
+// server-truth prefs, and a stale answer would paint a glyph the user already
+// changed on another device.
+let currentUserPromise = null;
+function fetchCurrentUser() {
+  if (currentUserPromise) return currentUserPromise;
+  currentUserPromise = (async () => {
+    try {
+      const r = await fetch('/api/auth/me');
+      if (!r.ok) return null; // signed-out shell (login/welcome) or auth failure
+      return await r.json();
+    } catch (_) { return null; }
+  })();
+  return currentUserPromise;
+}
+
 async function pullMirroredDisplayPrefs() {
   let hasEra = null, hasMode = null, hasIcons = null, hasStars = null;
   try {
@@ -142,13 +172,9 @@ async function pullMirroredDisplayPrefs() {
   // theme-customized device - i.e. Dean's actual devices - never seeded
   // the stars pref at all; proven by the gate's jsdom repro).
   if (hasEra && hasMode && hasIcons && hasStars) return;
-  let me = null;
-  try {
-    const r = await fetch('/api/auth/me');
-    if (!r.ok) return; // signed-out shell (login/welcome) or auth failure
-    me = await r.json();
-  } catch (_) { return; }
-  const s = (me && me.settings) || {};
+  const me = await fetchCurrentUser(); // v1.77: shared, memoized (see above)
+  if (!me) return;
+  const s = me.settings || {};
   const era = !hasEra && THEME_ERAS.includes(s.era) ? s.era : null;
   const mode = !hasMode && THEME_MODES.includes(s.theme) ? s.theme : null;
   if (era || mode) {
@@ -164,6 +190,60 @@ async function pullMirroredDisplayPrefs() {
   if (!hasStars && STAR_RATINGS_VALUES.includes(s.starRatings)) {
     applyStarRatingsPref(s.starRatings); // no mirror - this IS the seed read-back
   }
+}
+
+// ---- v1.77: per-user Library glyphs ---------------------------------------
+//
+// Intake ruling 5+7: every Library entry's glyph is assignable, and the choice
+// is PER-USER and SERVER-TRUTH - the v1.67 card-corner posture, not the
+// theme/era/icons device-seed posture. It deliberately touches no localStorage.
+//
+// That distinction is why this does NOT ride pullMirroredDisplayPrefs above.
+// That function returns EARLY when all four device prefs are already chosen
+// locally - i.e. on every customized device, including Dean's - and the comment
+// recording that return exists because v1.63.1's stars seed was placed below it
+// and consequently never ran on exactly those devices. A slim gate caught it as
+// a CRITICAL. Hanging library glyphs off the same function would re-open that
+// bug for a second pref, so this fetches on its own.
+//
+// ONE writer repaints every surface: the sidebar entry AND the bottom-bar item
+// for each slot. Both are found through the slot's `nav` value, so there is no
+// second mapping to fall out of sync (the v1.41.4 every-writer scar).
+
+// Last-known per-user glyph settings. Read by injectLibraryNavEntry so an entry
+// injected AFTER the fetch resolves still gets the chosen glyph - the injectors
+// are async capability probes and routinely land later than this does.
+let libraryGlyphPrefs = null;
+
+function applyLibraryGlyphs(settings) {
+  if (typeof document === 'undefined') return;
+  libraryGlyphPrefs = settings && typeof settings === 'object' ? settings : null;
+  for (const slot of LIBRARY_GLYPH_SLOTS) {
+    const cls = resolveLibraryGlyphClass(libraryGlyphPrefs, slot.key);
+    // Both surfaces for this entry. querySelectorAll (not querySelector): a
+    // shell can carry the sidebar entry and the bottom item at once, and a
+    // missed one is a visibly inconsistent glyph for the same destination.
+    const nodes = document.querySelectorAll(
+      '[data-nav-sidebar="' + slot.nav + '"] i, [data-nav="' + slot.nav + '"] i');
+    nodes.forEach((i) => { i.className = cls; });
+  }
+}
+
+// The glyph an injector should stamp on a freshly-built Library entry.
+function libraryGlyphClassFor(navKey, fallback) {
+  const slot = LIBRARY_GLYPH_SLOTS.find((s) => s.nav === navKey);
+  if (!slot) return fallback;
+  return resolveLibraryGlyphClass(libraryGlyphPrefs, slot.key);
+}
+
+// Boot: one fetch, graceful about everything. A signed-out shell, an offline
+// device or a failed request all leave every entry on its shipped glyph, which
+// is exactly today's look - never a blank.
+async function initLibraryGlyphs() {
+  if (typeof document === 'undefined' || typeof fetch !== 'function') return;
+  const me = await fetchCurrentUser(); // shared with the display-pref pull
+  if (!me) return;                      // signed-out/offline: shipped glyphs stand
+  applyLibraryGlyphs(me.settings);
 }
 
 // ---- v1.63.1: the hide-the-fake-stars display pref (Dean) -------------------
@@ -3779,7 +3859,12 @@ function injectLibraryNavEntry(key, href, label, iconClass) {
   link.className = 'sidebar-item sidebar-library-entry';
   link.setAttribute('data-nav-sidebar', key);
   const icon = document.createElement('i');
-  icon.className = iconClass;
+  // v1.77: the user's chosen glyph for this Library entry, falling back to the
+  // caller's shipped default. Resolved HERE rather than only by the boot
+  // repainter because these injectors are async capability probes - an entry
+  // that lands after the settings fetch would otherwise keep the default
+  // glyph until the next navigation.
+  icon.className = libraryGlyphClassFor(key, iconClass);
   link.appendChild(icon);
   link.appendChild(document.createTextNode(' ' + label));
   // Deterministic visual order Music, Books, Podcasts, History regardless of
@@ -6693,25 +6778,43 @@ function libraryEntriesHtml() {
     // Without this mirror, filtering the sheet's folder rows would have
     // removed mobile access to Downloads entirely (the bottom item is
     // opt-in) - both halves land together.
+    // v1.77: the GLYPH is mirrored off the injected sidebar entry too, exactly
+    // as Downloads' href already is - reading it from the DOM rather than
+    // re-resolving it means the sheet cannot disagree with the sidebar ONCE
+    // BOTH HAVE PAINTED, which is the same reason the href is mirrored.
+    //
+    // Not "never, even for a moment" - that overclaim was measured false at the
+    // adversarial gate (S3). A sheet opened BEFORE /api/auth/me resolves shows
+    // the shipped glyph while the sidebar later becomes the chosen one: sheet
+    // rows carry no data-nav* attribute, so applyLibraryGlyphs' selector does
+    // not reach them. Cosmetic and self-healing on the next open, since the
+    // sheet re-renders from the (by then repainted) sidebar.
+    const mirroredGlyph = (navKey, fallback) => {
+      const entry = document.querySelector('[data-nav-sidebar="' + navKey + '"]');
+      const icon = entry && entry.querySelector('i');
+      const cls = icon && icon.className;
+      // Only a resolver-shaped class is trusted back into markup.
+      return /^icon-[a-z0-9-]+$/.test(cls || '') ? cls : fallback;
+    };
     const downloadsEntry = document.querySelector('[data-nav-sidebar="downloads"]');
     if (downloadsEntry) {
-      html += '<a href="' + escapeAttr(downloadsEntry.getAttribute('href') || '/') + '" class="sidebar-item"><i class="icon-downloads"></i> Downloads</a>';
+      html += '<a href="' + escapeAttr(downloadsEntry.getAttribute('href') || '/') + '" class="sidebar-item"><i class="' + mirroredGlyph('downloads', 'icon-downloads') + '"></i> Downloads</a>';
     }
     if (document.querySelector('[data-nav-sidebar="music"]')) {
-      html += '<a href="/music" class="sidebar-item"><i class="icon-play"></i> Music</a>';
+      html += '<a href="/music" class="sidebar-item"><i class="' + mirroredGlyph('music', 'icon-play') + '"></i> Music</a>';
     }
     if (document.querySelector('[data-nav-sidebar="books"]')) {
-      html += '<a href="/books" class="sidebar-item"><i class="icon-books"></i> Books</a>';
+      html += '<a href="/books" class="sidebar-item"><i class="' + mirroredGlyph('books', 'icon-books') + '"></i> Books</a>';
     }
     // v1.69: Podcasts mirrors its capability marker the same way.
     if (document.querySelector('[data-nav-sidebar="podcasts"]')) {
-      html += '<a href="/podcasts" class="sidebar-item"><i class="icon-podcast"></i> Podcasts</a>';
+      html += '<a href="/podcasts" class="sidebar-item"><i class="' + mirroredGlyph('podcasts', 'icon-podcast') + '"></i> Podcasts</a>';
     }
     // v1.64: mirrors the count-gated sidebar marker, same as books/music
     // mirror their capability markers -- the sheet and the sidebars can
     // never disagree about whether History exists.
     if (document.querySelector('[data-nav-sidebar="history"]')) {
-      html += '<a href="/history" class="sidebar-item"><i class="icon-history"></i> History</a>';
+      html += '<a href="/history" class="sidebar-item"><i class="' + mirroredGlyph('history', 'icon-history') + '"></i> History</a>';
     }
   }
   return html;
@@ -6736,8 +6839,9 @@ function renderPlaylistsSheet(folders, folderSettings, syntheticFolders) {
   list.innerHTML = libEntries + visible.map((f) => {
     const base = f.split(/[\\/]/).pop() || f;
     const label = (settings[f] && settings[f].name) || base;
+    const glyphClass = resolveFolderGlyphClass(settings[f] && settings[f].glyph); // v1.77
     return '<a href="/?root=' + encodeURIComponent(f) +
-      '" class="sidebar-item"><i class="icon-folder"></i> ' +
+      '" class="sidebar-item"><i class="' + glyphClass + '"></i> ' +
       escapeAttr(label) + '</a>';
   }).join('');
   applyLikedSidebarEntry(list); // v1.33.1: count-gated Liked entry, prepended
@@ -8198,7 +8302,13 @@ function applyLikedSidebarEntry(listEl, opts) {
       entry.className = 'sidebar-item sidebar-item-liked' + (options.active === true ? ' active' : '');
       entry.title = 'Liked';
       const icon = document.createElement('i');
-      icon.className = 'icon-star';
+      // v1.77: `.icon-liked`, not `.icon-star`. This is the ONLY Liked surface
+      // built at runtime rather than sitting in static markup, so a repoint
+      // that swept the nine shells and missed this one would have left every
+      // SIDEBAR Liked entry on the old glyph while the bottom bars changed -
+      // visible only after liking a video, which is why the test that follows
+      // this change counts across shells AND asserts this assignment.
+      icon.className = 'icon-liked';
       entry.appendChild(icon);
       entry.appendChild(document.createTextNode(' Liked'));
       listEl.insertBefore(entry, listEl.firstChild);
@@ -9953,6 +10063,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // with local prefs is never overridden; a signed-out shell no-ops).
   pullMirroredDisplayPrefs();
   bootStarRatingsPref(); // v1.63.1: apply the stars pref before first paint settles
+  // v1.77: per-user Library glyphs. A SEPARATE call on purpose - it must not
+  // ride pullMirroredDisplayPrefs, which returns early once the four device
+  // prefs are locally chosen (see applyLibraryGlyphs' comment; that early
+  // return is what made v1.63.1's stars seed dead on customized devices).
+  initLibraryGlyphs();
 
   // v1.27.2 (SW removal): actively unregister any service worker a previous
   // FileTube version installed -- see unregisterStaleServiceWorkers' own
@@ -10158,6 +10273,17 @@ if (typeof module !== 'undefined' && module.exports) {
     getStarRating, getCommentCount, resolveChannelName, clampPositionState,
     resolveTheme, THEME_REGISTRY, activeNavItem,
     resolveIconSet, ICON_SET_REGISTRY, ICON_SETS,
+    // v1.77: exported so the Playlists sheet's folder rows can be asserted as
+    // RENDERED DOM rather than as a source pattern. The per-folder glyph has
+    // four render sites and this is one of only two with a test seam - the
+    // "testing a decision is not testing its use" strike this repo keeps
+    // taking is exactly what an unexported renderer produces.
+    renderPlaylistsSheet,
+    // v1.77 Library glyphs: the repainter and the injector's class picker.
+    // Exported so the DOM pass is bound in jsdom rather than by a source
+    // pattern - both are USES, and this repo's recurring strike is testing the
+    // decision instead.
+    applyLibraryGlyphs, libraryGlyphClassFor, libraryEntriesHtml,
     gbToBytes, bytesToGb,
     tokenize, rankRelated, RESULT_COUNT, SIMILAR_FLOOR,
     // v1.48 item 2: real day-of view counts (falls back to the mock).

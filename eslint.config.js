@@ -24,6 +24,15 @@ module.exports = [
       // public/vendor/README.md.
       'public/vendor/**',
       'docs/**',
+      // v1.77 (QA gate): Claude Code creates isolated git worktrees for
+      // subagents under .claude/worktrees/<agent-id>/. They are full checkouts
+      // of this repo, so eslint walked them and lint-of-the-repo became
+      // lint-of-the-repo-times-N - 10,680 duplicate "errors" while a reviewer
+      // was running, which the pre-commit hook then refuses. They are
+      // registered git worktrees, so `git status` does not show them and the
+      // breakage looks like it came from nowhere. Transient scratch space,
+      // never source: ignored here and in .gitignore.
+      '.claude/worktrees/**',
     ],
   },
 
@@ -247,6 +256,9 @@ module.exports = [
         // v1.33.1: common.js's count-gated Liked sidebar entry, applied by
         // every surface that (re-)renders #sidebar-folders-list.
         applyLikedSidebarEntry: 'readonly',
+        // v1.77: common.js's Library-glyph repainter, called by setup.js's
+        // Library-icon picker so a change is visible on this page immediately.
+        applyLibraryGlyphs: 'readonly',
         // C2/C3 (T3-WIRE, v1.24.0): item-count badge + format-toggle
         // (video/audio/both) library controls, consumed by main.js's
         // home/folder/playlist/channel grid render.
@@ -277,6 +289,30 @@ module.exports = [
         // consumed by main.js's home/library grid render + load-error path.
         buildEmptyStateHtml: 'readonly',
         buildErrorStateHtml: 'readonly',
+      },
+    },
+  },
+
+  // v1.77: the glyph pool. public/js/glyph-pool.js is loaded FIRST on every
+  // shell (before common.js) and is also `require`d by server.js as a
+  // CommonJS module, so the browser and the server validate/render against one
+  // registry. Its exports are declared only for the CONSUMER scripts, per the
+  // "declare only where consumed, not where defined" rule - which is why
+  // common.js appears here (it consumes the pool) even though it is the
+  // definer of the big roster above.
+  {
+    files: [
+      'public/js/common.js', 'public/js/main.js',
+      'public/js/setup.js', 'public/js/watch.js',
+    ],
+    languageOptions: {
+      globals: {
+        GLYPH_POOL: 'readonly',
+        DEFAULT_FOLDER_GLYPH: 'readonly',
+        LIBRARY_GLYPH_SLOTS: 'readonly',
+        glyphClassName: 'readonly',
+        resolveFolderGlyphClass: 'readonly',
+        resolveLibraryGlyphClass: 'readonly',
       },
     },
   },

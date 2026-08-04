@@ -234,7 +234,16 @@ test('v1.73.2 SOURCE-LOCK: Books wears icon-books everywhere - injector, sheet m
   const pub = path.join(__dirname, '../../public');
   const commonSrc = fs.readFileSync(path.join(pub, 'js/common.js'), 'utf8');
   assert.ok(commonSrc.includes("injectLibraryNavEntry('books', '/books', 'Books', 'icon-books')"), 'the Library injector');
-  assert.ok(commonSrc.includes('<i class="icon-books"></i> Books'), 'the Playlists sheet mirror');
+  // v1.77: the sheet mirror no longer hardcodes the glyph - Library entries
+  // are user-assignable now, so it MIRRORS the injected sidebar entry's glyph
+  // (exactly as Downloads' href has always been mirrored) with icon-books as
+  // the shipped fallback. Both halves are bound: that Books is the fallback,
+  // and that the mirror is what renders. A revert to a hardcoded glyph fails
+  // the second assertion, and losing the Books default fails the first.
+  assert.ok(commonSrc.includes("mirroredGlyph('books', 'icon-books')"),
+    'the Playlists sheet mirror resolves Books through the shared mirror, defaulting to icon-books');
+  assert.ok(/<i class="' \+ mirroredGlyph\('books', 'icon-books'\) \+ '"><\/i> Books/.test(commonSrc),
+    'and that mirrored class is what the sheet row actually renders');
   assert.ok(!commonSrc.includes('\'icon-folder\'); // v1.73.2'), 'no stale folder-icon books call survives');
   const css = fs.readFileSync(path.join(pub, 'css/style.css'), 'utf8');
   assert.ok(css.includes('.icon-books { -webkit-mask-image: url(/assets/icons/books.svg)'), 'a real mask rule');
@@ -243,7 +252,17 @@ test('v1.73.2 SOURCE-LOCK: Books wears icon-books everywhere - injector, sheet m
   assert.ok(fs.readFileSync(path.join(pub, 'assets/icons/books.svg'), 'utf8').includes('<svg'), 'and is a real svg, not a corrupted husk (slim-gate S2)');
   // Slim-gate W1: the two memberships the first lock left unbound - both
   // survived the FULL suite as deletion mutants.
-  assert.match(css, /\.icon-podcast,\n\.icon-downloads,\n\.icon-books \{/, 'base sizing-group membership (dropped = zero-area icon in every mask set)');
+  // v1.77: this asserted `.icon-books` was the LAST entry in the sizing group
+  // (`\.icon-books \{`), which bound its POSITION, not the membership the
+  // comment says it protects. v1.77 appended 20 pool glyphs after it and the
+  // lock failed on a change that broke nothing. Rewritten to bind membership:
+  // still fails if `.icon-books` is dropped from the group (the mutant this
+  // lock exists to kill - re-verified in the v1.77 fix round), but survives
+  // the list legitimately growing. Comments are stripped first so a future
+  // comment naming a class cannot satisfy it (the v1.50 source-lock lesson).
+  const sizingGroup = css.slice(css.indexOf('\n.icon-home,\n'), css.indexOf('{', css.indexOf('\n.icon-home,\n')))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(sizingGroup, /\.icon-books(?![a-z0-9-])/, 'base sizing-group membership (dropped = zero-area icon in every mask set)');
   assert.ok(css.includes('[data-icons="emoji"] .icon-books,'), 'emoji mask-STRIP membership (dropped = the documented colored-box-behind-the-emoji class)');
   const shells = fs.readdirSync(pub).filter((f) => f.endsWith('.html'))
     .filter((f) => fs.readFileSync(path.join(pub, f), 'utf8').includes('data-nav="books"'));
