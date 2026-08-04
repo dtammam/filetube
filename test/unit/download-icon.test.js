@@ -68,7 +68,15 @@ test('style.css: [data-icons="emoji"] neutralizes the .icon-download mask (no so
   const selectors = css.slice(groupStart, groupBrace).replace(/\/\*[\s\S]*?\*\//g, '');
   const declarations = css.slice(groupBrace, css.indexOf('}', groupBrace));
   assert.match(selectors, /\.icon-download(?![a-z0-9-])/, 'expected .icon-download to be listed in the emoji neutralize group');
-  assert.match(declarations, /mask-image:\s*none/);
+  // v1.77: these were one `/mask-image:\s*none/` assertion, which the PREFIXED
+  // `-webkit-mask-image: none` already satisfies - so deleting the STANDARD
+  // property survived the lock (found by mutation-testing the rewrite above
+  // against its own commit; it was porous before that rewrite too, and the
+  // rewrite carried it forward unchanged). Dropping the standard property
+  // leaves the mask applied in every non-WebKit browser, i.e. Firefox shows a
+  // masked box behind the emoji. Both properties are now bound separately.
+  assert.match(declarations, /-webkit-mask-image:\s*none/, 'the webkit-prefixed mask kill');
+  assert.match(declarations, /(^|[^-\w])mask-image:\s*none/m, 'the STANDARD mask kill (non-WebKit browsers)');
   assert.match(declarations, /background-color:\s*transparent/);
   assert.match(css, /\[data-icons="emoji"\]\s*\.icon-download::before\s*\{\s*content:\s*"\\1F4E5";?\s*\}/,
     'expected an emoji ::before for .icon-download (U+1F4E5 inbox tray)');
