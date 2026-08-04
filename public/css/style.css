@@ -3046,12 +3046,36 @@ select {
   margin-bottom: 0;
 }
 
-/* Item 1 (v1.15.0): Setup folder-list drag-and-drop reordering -- a
-   progressive enhancement over the up/down .reorder-btn fallback (which
-   stays visible/functional for keyboard/tap users). The dragged row dims;
-   the row currently under the pointer shows a drop-indicator line matching
-   the half (top/bottom) that will actually be used on drop (see
-   computeDropIndex in public/js/common.js). Era-theme tokens only. */
+/* v1.76: the shared gesture layer's own two classes, applied by common.js's
+   `wireReorderable` to every row it wires (`.reorder-row`) and to <body> for
+   the duration of a drag (`.reorder-dragging`). Everything visual BEYOND this
+   -- which row dims, where the drop line is drawn -- stays in each surface's
+   own class family, so no shipped rule changes meaning.
+
+   `-webkit-touch-callout` is the iOS half of the long-press story: the same
+   press that arms a touch drag is also the gesture iOS uses for the
+   selection callout / link preview, which would otherwise fire on top of it.
+   No scroll-affecting property is set here on purpose -- a row must stay
+   scrollable by finger until a drag actually arms (common.js's D2). */
+.reorder-row {
+  -webkit-touch-callout: none;
+}
+
+.reorder-dragging,
+.reorder-dragging .reorder-row {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Item 1 (v1.15.0): Setup folder-list drag-and-drop reordering. v1.76: no
+   longer native HTML5 DnD and no longer a progressive enhancement over
+   up/down buttons -- the buttons are gone and the handle IS the control
+   (pointer drag on any device, plus arrow-key reorder when focused). The
+   dragged row dims; the row currently under the pointer shows a
+   drop-indicator line matching the half (top/bottom) that will actually be
+   used on drop (see computeDropIndex in public/js/common.js). Era-theme
+   tokens only. */
 .drag-handle {
   flex-shrink: 0;
   width: 16px;
@@ -3061,6 +3085,17 @@ select {
   letter-spacing: -2px; /* token-exempt: era display styling */
   cursor: grab;
   user-select: none;
+  /* The handle is the no-long-press door onto a touch drag: taking the
+     touch-action here (and ONLY here) is what lets a press on the handle arm
+     immediately without stealing the list's scroll everywhere else. */
+  touch-action: none;
+}
+
+/* A keyboard user's only reorder affordance now that the arrows are gone --
+   it must show focus. */
+.drag-handle:focus-visible {
+  outline: 2px solid var(--yt-red);
+  outline-offset: 2px;
 }
 
 .drag-handle::before {
