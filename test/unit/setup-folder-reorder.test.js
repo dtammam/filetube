@@ -21,6 +21,9 @@ const { JSDOM } = require('jsdom');
 
 const common = require('../../public/js/common.js');
 const setup = require('../../public/js/setup.js');
+// v1.77: the wizard rows now carry a glyph <select> built from the shared
+// registry, which every shell loads as a script before setup.js.
+const { GLYPH_POOL, DEFAULT_FOLDER_GLYPH } = require('../../public/js/glyph-pool.js');
 
 const FOLDERS = ['/media/a', '/media/b', '/media/c'];
 const SETTINGS = { '/media/a': { name: 'Alpha' }, '/media/b': {}, '/media/c': { hidden: true } };
@@ -37,6 +40,8 @@ function withFolderList(fn, opts) {
   global.computeDropIndex = common.computeDropIndex;
   global.isSyntheticFolder = common.isSyntheticFolder;
   global.wireReorderable = common.wireReorderable;
+  global.GLYPH_POOL = GLYPH_POOL;
+  global.DEFAULT_FOLDER_GLYPH = DEFAULT_FOLDER_GLYPH;
   const fetchCalls = [];
   global.fetch = (...args) => { fetchCalls.push(args); return Promise.resolve({ ok: true, json: async () => ({}) }); };
   const controller = new dom.window.AbortController();
@@ -53,6 +58,8 @@ function withFolderList(fn, opts) {
     delete global.computeDropIndex;
     delete global.isSyntheticFolder;
     delete global.wireReorderable;
+    delete global.GLYPH_POOL;
+    delete global.DEFAULT_FOLDER_GLYPH;
     delete global.fetch;
     dom.window.close();
   };
@@ -213,6 +220,27 @@ test('v1.76: a press on the "Hide from home" checkbox never starts a drag', () =
     pointerAt(dom, dom.window.document, 'pointermove', 2 * 60 + 45);
     pointerAt(dom, dom.window.document, 'pointerup', 2 * 60 + 45);
     assert.deepEqual(setup.__getConfiguredFoldersForTests(), FOLDERS);
+  });
+});
+
+test('v1.77: a press on the glyph picker never starts a drag', () => {
+  // The row is a drag surface and v1.77 added a new interactive child to it.
+  // wireReorderable's default ignore list already covers `select`, so this
+  // holds by construction rather than by a new special case - but "by
+  // construction" is worth exactly as much as the test that proves it, and
+  // Dean's v1.76 report was precisely that parts of this row would not drag
+  // (and, inversely, that its controls were unusable). A dropdown you cannot
+  // open because the row steals the gesture is the same bug wearing a hat.
+  withFolderList((dom) => {
+    const rows = rowsIn(dom);
+    layOut(rows);
+    const sel = rows[0].querySelector('.folder-glyph-select');
+    assert.ok(sel, 'the row must carry a glyph picker');
+    pointerAt(dom, sel, 'pointerdown', 10);
+    pointerAt(dom, dom.window.document, 'pointermove', 2 * 60 + 45);
+    pointerAt(dom, dom.window.document, 'pointerup', 2 * 60 + 45);
+    assert.deepEqual(setup.__getConfiguredFoldersForTests(), FOLDERS,
+      'pressing the picker must not reorder anything');
   });
 });
 

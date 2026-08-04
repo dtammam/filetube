@@ -61,6 +61,40 @@ async function loadConfig() {
   }
 }
 
+// ---- v1.77: the glyph pickers ---------------------------------------------
+//
+// Dean: "we have to add a little drop down in the settings menu for the
+// folders. and for books and podcasts." Two pickers, two persistence postures,
+// ONE option list - built here from the shared registry so a glyph added to the
+// pool appears in both without a second edit (and cannot appear in one only).
+//
+// `includeDefault` is what separates them. A FOLDER always has a glyph and
+// `folder` is a real, selectable pool member. A LIBRARY entry instead has a
+// glyph it has always shipped with (Books' book, Music's play triangle), which
+// is not a pool member - so its picker leads with a "Default" option that maps
+// back to that shipped glyph, and choosing it is how a user undoes a change.
+//
+// Pure and exported: the option list is a decision, and it gets tested as one -
+// but the DRAWN pickers are tested as rendered DOM, because a correct list that
+// nothing renders is precisely the decision-vs-use trap.
+function buildGlyphOptionsHtml(selected, includeDefault) {
+  const opts = [];
+  if (includeDefault) {
+    // Absence, 'default' and garbage all mean the shipped glyph, so anything
+    // that is not a real pool id selects this row.
+    const isDefault = !GLYPH_POOL.some((g) => g.id === selected);
+    opts.push(`<option value="default"${isDefault ? ' selected' : ''}>Default</option>`);
+  }
+  for (const g of GLYPH_POOL) {
+    // A folder with no stored glyph shows Folder selected - that IS its glyph.
+    const sel = includeDefault
+      ? selected === g.id
+      : (selected === g.id || (!GLYPH_POOL.some((x) => x.id === selected) && g.id === DEFAULT_FOLDER_GLYPH));
+    opts.push(`<option value="${g.id}"${sel ? ' selected' : ''}>${escapeHtml(g.name)}</option>`);
+  }
+  return opts.join('');
+}
+
 // Render configured folder rows in wizard
 function renderFolders() {
   const container = document.getElementById('folders-builder-list');
@@ -89,6 +123,12 @@ function renderFolders() {
         <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
           <input type="text" class="folder-name-input" data-index="${index}" placeholder="Display name (optional)"
                  value="${escapeHtml(s.name || '')}" style="flex:1; min-width:120px; padding:8px 10px;" />
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); white-space:nowrap;">
+            Icon
+            <select class="folder-glyph-select" data-index="${index}" aria-label="Icon for ${escapeHtml(folder)}">
+              ${buildGlyphOptionsHtml(s.glyph, false)}
+            </select>
+          </label>
           <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); white-space:nowrap;">
             <input type="checkbox" class="folder-hidden-check" data-index="${index}" ${s.hidden ? 'checked' : ''} /> Hide from home
           </label>
@@ -163,6 +203,21 @@ function renderFolders() {
     inp.addEventListener('input', (e) => {
       const folder = configuredFolders[parseInt(e.target.dataset.index)];
       folderSettings[folder] = { ...(folderSettings[folder] || {}), name: e.target.value };
+    }, { signal: controller.signal });
+  });
+  // v1.77 (Dean: "a little drop down in the settings menu for the folders").
+  // Same posture as the name/hidden edits beside it: mutate folderSettings
+  // keyed by PATH (so row order does not matter) and let the existing Save
+  // button persist it through POST /api/config. No new persistence path.
+  container.querySelectorAll('.folder-glyph-select').forEach(sel => {
+    sel.addEventListener('change', (e) => {
+      const folder = configuredFolders[parseInt(e.target.dataset.index)];
+      folderSettings[folder] = { ...(folderSettings[folder] || {}), glyph: e.target.value };
+      // Repaint the Setup page's own sidebar preview so the choice is visible
+      // immediately - that preview is the only place on this page the glyph
+      // actually renders, and a picker whose effect you cannot see until you
+      // save and reload is the kind of thing Dean rightly calls out.
+      renderSidebarFolders(configuredFolders, folderSettings);
     }, { signal: controller.signal });
   });
   container.querySelectorAll('.folder-hidden-check').forEach(chk => {
@@ -680,6 +735,72 @@ function drawCardCornerEditor(host, effective, signal) {
     row.appendChild(select);
     host.appendChild(row);
   }
+}
+
+// ---- v1.77: the Library-icon editor ---------------------------------------
+//
+// Deliberately the card-corner editor's twin (per-user SERVER-persisted, one
+// POST /api/me/settings key per change, no localStorage) rather than a third
+// bespoke shape - including the QA S2 focus fix it earned: redrawing destroys
+// the focused <select>, which strands a keyboard user, since Firefox fires
+// `change` on every arrow press. The same slot's fresh select is re-focused.
+//
+// Unlike the corners there is no cross-slot filtering: two Library entries
+// wearing the same icon is a legitimate choice, not a bug, so every slot
+// offers the whole pool.
+async function renderLibraryGlyphEditor(signal) {
+  const host = document.getElementById('library-glyph-editor');
+  if (!host) return;
+  let settings = null;
+  try {
+    const r = await fetch('/api/auth/me');
+    if (r.ok) {
+      const me = await r.json();
+      settings = me && me.settings;
+    }
+  } catch (_) { /* signed-out/offline: draw all-Default, which is today's look */ }
+  drawLibraryGlyphEditor(host, settings || {}, signal);
+}
+
+function drawLibraryGlyphEditor(host, settings, signal) {
+  host.innerHTML = '';
+  LIBRARY_GLYPH_SLOTS.forEach((slot, slotIndex) => {
+    const row = document.createElement('div');
+    row.className = 'card-corner-editor-row';
+    const label = document.createElement('span');
+    label.className = 'card-corner-editor-label';
+    label.textContent = slot.name;
+    const select = document.createElement('select');
+    select.className = 'card-corner-editor-select';
+    select.setAttribute('aria-label', `${slot.name} icon`);
+    // The stored value, or the Default row when nothing valid is stored.
+    select.innerHTML = buildGlyphOptionsHtml(settings[slot.key], true);
+    select.addEventListener('change', () => {
+      const value = select.value;
+      const next = { ...settings, [slot.key]: value };
+      // Repaint the live sidebar/bottom-bar entries immediately - this page
+      // renders them, so the choice is visible without a reload.
+      if (typeof applyLibraryGlyphs === 'function') applyLibraryGlyphs(next);
+      drawLibraryGlyphEditor(host, next, signal);
+      const fresh = host.querySelectorAll('select')[slotIndex];
+      if (fresh) fresh.focus();
+      fetch('/api/me/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [slot.key]: value }),
+      })
+        .then((res) => { if (!res.ok) throw new Error(`save failed: ${res.status}`); })
+        .catch(() => {
+          // Never leave the UI claiming a change stuck when it did not:
+          // re-seed the whole editor from the server truth.
+          showToast('Could not save the library icons.');
+          renderLibraryGlyphEditor(signal);
+        });
+    }, { signal });
+    row.appendChild(label);
+    row.appendChild(select);
+    host.appendChild(row);
+  });
 }
 
 function renderBottomBarEditor(signal) {
@@ -2148,6 +2269,7 @@ function init(root) {
   loadHomeRowControl('home-continue-reading-check', 'ft-home-continue-reading');
   renderBottomBarEditor(controller.signal); // v1.44 T12 bottom-bar editor
   renderCardCornerEditor(controller.signal); // v1.67 card-corner pickers (Appearance box)
+  renderLibraryGlyphEditor(controller.signal); // v1.77 Library-icon pickers (Appearance box)
   renderTrashSection(controller.signal); // v1.65 trash list + actions
 
   loadAutomationSettings();
@@ -2200,6 +2322,10 @@ if (typeof module !== 'undefined' && module.exports) {
     transcodeNamesSuffix, escapeTrashHtml, trashDaysLeftLabel, formatTrashSize, buildTrashRowHtml,
     // v1.67: the card-corner editor (drawn pieces are jsdom-tested).
     buildCornerEditorOptions, CARD_CORNER_LABELS, CORNER_EDITOR_SLOTS, renderCardCornerEditor,
+    // v1.77: the glyph pickers. The option list is a pure decision; the DRAWN
+    // editors are jsdom-tested, because a correct list nothing renders is the
+    // decision-vs-use trap this repo keeps falling into.
+    buildGlyphOptionsHtml, renderLibraryGlyphEditor, drawLibraryGlyphEditor,
     // v1.75: the bottom-bar editor is jsdom-tested the same way - its ROW
     // ORDER, its label coverage and its >=1-visible floor are all behaviour
     // no constant can stand in for.

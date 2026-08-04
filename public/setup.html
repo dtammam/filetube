@@ -169,6 +169,17 @@
            corner. Bottom-right always shows the duration. Saved to your
            account, so it follows you across devices.</p>
         <div id="card-corner-editor" class="card-corner-editor"><!-- rendered by JS --></div>
+        <!-- v1.77 (Dean): the Library entries' glyphs. Same posture as the
+             corner pickers directly above - rendered by setup.js
+             renderLibraryGlyphEditor, per-user SERVER-persisted, one
+             POST /api/me/settings key per change, no localStorage. Each
+             folder's own glyph is picked on its row in the Media folders
+             section instead, since that setting belongs to the folder. -->
+        <h3 class="setup-subhead">Library icons</h3>
+        <p>Pick the icon for each Library entry in the sidebar &mdash; Downloads,
+           Music, Books, Podcasts and History. Default keeps the icon it has
+           always used. Saved to your account, so it follows you across devices.</p>
+        <div id="library-glyph-editor" class="card-corner-editor"><!-- rendered by JS --></div>
         <!-- v1.32 (Dean, "white-label"): replaceable header logo.
              v1.33.1: split into per-mode variants -- a light-mode and a
              dark-mode logo; if only one is uploaded it is used for BOTH

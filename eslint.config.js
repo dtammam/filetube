@@ -247,6 +247,9 @@ module.exports = [
         // v1.33.1: common.js's count-gated Liked sidebar entry, applied by
         // every surface that (re-)renders #sidebar-folders-list.
         applyLikedSidebarEntry: 'readonly',
+        // v1.77: common.js's Library-glyph repainter, called by setup.js's
+        // Library-icon picker so a change is visible on this page immediately.
+        applyLibraryGlyphs: 'readonly',
         // C2/C3 (T3-WIRE, v1.24.0): item-count badge + format-toggle
         // (video/audio/both) library controls, consumed by main.js's
         // home/folder/playlist/channel grid render.
@@ -296,6 +299,7 @@ module.exports = [
     languageOptions: {
       globals: {
         GLYPH_POOL: 'readonly',
+        DEFAULT_FOLDER_GLYPH: 'readonly',
         LIBRARY_GLYPH_SLOTS: 'readonly',
         glyphClassName: 'readonly',
         resolveFolderGlyphClass: 'readonly',
