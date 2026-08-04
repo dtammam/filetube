@@ -6980,7 +6980,6 @@ function renderPinnedSidebar(pins) {
     // wirePinnedSidebarDragAndDrop below. `data-pin-id` is how a drop
     // recovers WHICH pin a rendered row represents (the reorder route is
     // keyed by pin id, not channelDir).
-    link.setAttribute('draggable', 'true');
     const sourcePin = validPins[index];
     if (sourcePin && typeof sourcePin.id === 'string') link.dataset.pinId = sourcePin.id;
     // F1: real channel icon when captured (C6), else a deterministic
@@ -7013,35 +7012,28 @@ function renderPinnedSidebar(pins) {
   wirePinnedSidebarDragAndDrop(section, validPins);
 }
 
-// v1.24.3: drag-and-drop reorder for the PINNED SIDEBAR section -- mirrors
-// main.js's `renderSidebarFolders` folder DnD (v1.15.0 item 1) and
-// lib/ytdlp/client/subscriptions.js's `wireSubRowDragAndDrop` (v1.24.0 B4/T6)
-// as closely as this shared file's own row anatomy allows: native HTML5
-// `dragstart`/`dragover`(preventDefault)/`dragleave`/`drop`/`dragend`, a
-// drop-before/after half-height indicator (`computeDropIndex`'s own
-// contract), and an immediate persist on drop (no separate Save step, same
-// as the folder sidebar's own "no Save button" posture). Reuses
-// `moveArrayItem`/`computeDropIndex` VERBATIM -- both already defined in
-// THIS file for the folder DnD above, referenced the same bare-identifier
-// way that folder DnD code itself does (no `window.` qualification needed
-// here, unlike subscriptions.js, which is a SEPARATE file).
+// v1.24.3, rewired in v1.76: drag-to-reorder for the PINNED SIDEBAR section.
+// It used to carry its own copy of the native HTML5 DnD wiring (five
+// listeners, mirroring main.js's and subscriptions.js's copies); it now calls
+// the shared pointer gesture layer, `wireReorderable`, like every other
+// reorder surface in the app. The user-visible change is that these pins can
+// finally be reordered on a touch screen - native HTML5 drag never fired
+// there, so the whole feature was desktop-only.
 //
-// Reuses the EXISTING `.sidebar-item.dragging`/`.drag-over-before`/
-// `.drag-over-after` CSS classes (style.css, ~L554-583) rather than a
-// second, forked class family -- every pinned row already carries the SAME
-// `.sidebar-item` class the folder sidebar's own draggable rows do (see
-// `renderPinnedSidebar` above), so no new CSS class family is needed for the
-// drag visual feedback.
+// Unchanged: the `.sidebar-item.dragging`/`.drag-over-before`/
+// `.drag-over-after` class family (every pinned row already wears
+// `.sidebar-item`, so no forked CSS is needed), the immediate persist on drop
+// (a sidebar has no Save button), and the per-source partition below.
 //
-// DOM drag events are untestable-by-necessity (mirrors the subscription
-// reorder's own documented posture, lib/ytdlp/client/subscriptions.js) -- the
-// underlying `moveArrayItem`/`computeDropIndex` are already unit-tested
-// (test/unit/folder-dnd-reorder.test.js), and the server-side persistence
-// this drop ultimately POSTs to is proven end-to-end by
+// The old comment here claimed drag events were "untestable-by-necessity".
+// That was true of HTML5 DataTransfer, which jsdom does not implement; it is
+// NOT true of pointer events, and the gesture layer is now bound end-to-end
+// in test/unit/reorder-gesture.test.js (including this surface's cross-group
+// refusal). The server side stays proven by
 // test/integration/ytdlp-pin-reorder.test.js.
 // @param {HTMLElement} section the freshly-built `#sidebar-pinned-section`
 // @param {Array<object>} validPins the SAME filtered/ordered pin records
-//   `renderPinnedSidebar` rendered rows FROM (index-aligned with the rows)
+//   `renderPinnedSidebar` rendered rows FROM
 // v1.37.0 gate fix (BOTH reviewers' CRITICAL): the pin's owning module --
 // drag scoping and the reorder endpoint are decided by this, exactly like
 // pinDeleteEndpoint above. Untagged legacy pins default to 'channel'.
@@ -7052,62 +7044,35 @@ function pinSourceOf(pin) {
 }
 
 function wirePinnedSidebarDragAndDrop(section, validPins) {
-  const rows = Array.prototype.slice.call(section.querySelectorAll('.sidebar-item[data-pin-id]'));
-  let dragSrcIndex = null;
-  rows.forEach((rowEl, index) => {
-    rowEl.addEventListener('dragstart', (e) => {
-      dragSrcIndex = index;
-      rowEl.classList.add('dragging');
-      if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = 'move';
-        // Firefox requires data to be set for the drag to initiate at all
-        // (mirrors main.js's/subscriptions.js's identical DnD workaround).
-        e.dataTransfer.setData('text/plain', String(index));
-      }
-    });
-    rowEl.addEventListener('dragover', (e) => {
-      // v1.37.0 gate fix: a row from ANOTHER pin source is NOT a drop
-      // target (no preventDefault = the browser shows no-drop) -- channel
-      // pins reorder among channel pins, book shelves among book shelves,
-      // per the exec plan's own "within their own section only" contract.
-      if (dragSrcIndex !== null && pinSourceOf(validPins[dragSrcIndex]) !== pinSourceOf(validPins[index])) return;
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      const rect = rowEl.getBoundingClientRect();
-      const before = (e.clientY - rect.top) < rect.height / 2;
-      rowEl.classList.toggle('drag-over-before', before);
-      rowEl.classList.toggle('drag-over-after', !before);
-    });
-    rowEl.addEventListener('dragleave', () => {
-      rowEl.classList.remove('drag-over-before', 'drag-over-after');
-    });
-    rowEl.addEventListener('drop', (e) => {
-      e.preventDefault();
-      const before = rowEl.classList.contains('drag-over-before');
-      rowEl.classList.remove('drag-over-before', 'drag-over-after');
-      const fromIndex = dragSrcIndex;
-      dragSrcIndex = null;
-      if (fromIndex === null || Number.isNaN(index)) return;
-      const source = pinSourceOf(validPins[fromIndex]);
-      // Cross-source drops are already blocked at dragover; re-assert here
-      // (defense-in-depth against a synthetic drop event).
-      if (source !== pinSourceOf(validPins[index])) return;
-      const toIndex = computeDropIndex(fromIndex, index, before);
-      const reordered = moveArrayItem(validPins, fromIndex, toIndex);
-      // v1.37.0 gate fix: persist ONLY this source's ids, in their new
-      // relative order, to this source's OWN endpoint -- a mixed id list
-      // hitting the ytdlp endpoint tail-dropped every book id and the
-      // response re-render made book pins vanish from the sidebar.
+  // The rows that actually rendered a `data-pin-id`, in render order. The
+  // previous wiring indexed `validPins` by ROW index, which silently
+  // misaligned every row after an id-less pin (the render only sets the
+  // attribute when `typeof pin.id === 'string'`, while every pin gets a row).
+  // Deriving the row-aligned list with the SAME predicate the renderer uses
+  // removes that class of drift outright; an id-less pin could never be
+  // persisted anyway, since `orderedIds` drops it.
+  const rowPins = (Array.isArray(validPins) ? validPins : []).filter((p) => p && typeof p.id === 'string');
+  wireReorderable(section, {
+    rowSelector: '.sidebar-item[data-pin-id]',
+    scrollContainer: typeof document !== 'undefined' ? document.getElementById('sidebar') : null,
+    // v1.37.0's cross-source contract, now a first-class option rather than
+    // a hand-rolled check in two places: channel pins reorder among channel
+    // pins, book shelves among book shelves, podcast shows among shows. The
+    // helper refuses the drop AND never draws the drop line on a foreign row.
+    groupOf: (index) => pinSourceOf(rowPins[index]),
+    onReorder: (fromIndex, toIndex) => {
+      const source = pinSourceOf(rowPins[fromIndex]);
+      const reordered = moveArrayItem(rowPins, fromIndex, toIndex);
+      // v1.37.0 gate fix, unchanged: persist ONLY this source's ids, in their
+      // new relative order, to this source's OWN endpoint -- a mixed id list
+      // hitting the ytdlp endpoint tail-dropped every book id and the response
+      // re-render made book pins vanish from the sidebar.
       const orderedIds = reordered
         .filter((p) => pinSourceOf(p) === source)
         .map((p) => p && p.id)
         .filter((id) => typeof id === 'string' && id !== '');
       persistPinReorder(orderedIds, source);
-    });
-    rowEl.addEventListener('dragend', () => {
-      dragSrcIndex = null;
-      rows.forEach((r) => r.classList.remove('dragging', 'drag-over-before', 'drag-over-after'));
-    });
+    },
   });
 }
 

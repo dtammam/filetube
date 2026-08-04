@@ -1241,17 +1241,20 @@ test('createSubscriptionRow: clicking the pin toggle calls onTogglePin(sub, pinn
 // its own doc comment) reads `data-sub-id` back off each row; this only
 // proves the pure builder sets the two attributes it must.
 
-test('createSubscriptionRow: sets draggable="true" and data-sub-id for reordering, even without a resolved channelDir', () => {
+test('createSubscriptionRow: stamps data-sub-id for reordering, even without a resolved channelDir', () => {
   const sub = { id: 'drag1', name: 'Draggable', channelUrl: 'https://www.youtube.com/@drag1' };
   const row = createSubscriptionRow(sub, fakeDoc, {});
-  assert.strictEqual(row.attributes.draggable, 'true');
   assert.strictEqual(row.attributes['data-sub-id'], 'drag1');
+  // v1.76: reordering is a POINTER gesture now, so the row must NOT also
+  // advertise native HTML5 drag -- the browser would start one out from under
+  // the pointer gesture and cancel it.
+  assert.strictEqual(row.attributes.draggable, undefined);
 });
 
-test('createSubscriptionRow: omits draggable/data-sub-id when the subscription has no usable id (fail-safe, never a bogus attribute)', () => {
+test('createSubscriptionRow: omits data-sub-id when the subscription has no usable id (fail-safe, never a bogus attribute)', () => {
   const row = createSubscriptionRow({ name: 'NoId' }, fakeDoc, {});
-  assert.strictEqual(row.attributes.draggable, undefined);
   assert.strictEqual(row.attributes['data-sub-id'], undefined);
+  assert.strictEqual(row.attributes.draggable, undefined);
 });
 
 test('createSubscriptionsListElement: derives each row\'s pinned flag from the pinnedChannelDirs Set, matched by channelDir', () => {
