@@ -6,8 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test test/*/*.test.js",
-    "test:unit": "node --test test/unit/*.test.js",
+    "test": "node --require ./test/helpers/tmp-cleanup.js --test test/*/*.test.js",
+    "test:unit": "node --require ./test/helpers/tmp-cleanup.js --test test/unit/*.test.js",
     "lint": "eslint .",
     "lint:css": "node scripts/css-token-lint.js",
     "ledger:check": "node scripts/ledger-check.js"

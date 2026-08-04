@@ -17,7 +17,7 @@
 // common.js evaluated via vm in the window context, fetch stubbed at the
 // platform seam.
 
-const { test } = require('node:test');
+const { test, after } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -30,6 +30,23 @@ const COMMON_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'j
 // committed sources, so it evaluates both, in that order - anything less would
 // be testing a script-loading arrangement no browser ever sees.
 const GLYPH_POOL_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'glyph-pool.js'), 'utf8');
+
+// Every jsdom window this harness news up is tracked and closed after the
+// file's tests run. WHY this is load-bearing (v1.78): booting the real
+// common.js fires its DOMContentLoaded handler, which now starts the device-
+// handoff card's 30s poll setInterval. jsdom's setInterval returns a plain
+// number with no unref(), and only window.close() clears it - so a harness
+// that never closes leaves that timer live, the test process's event loop
+// never drains, and under the parallel runner the worker never goes idle and
+// the WHOLE suite hangs (this file was the deterministic culprit). shell-smoke
+// already closes each window for the same reason; this harness had not, back
+// when boot started no persistent timers.
+const openWindows = [];
+after(() => {
+  for (const w of openWindows) {
+    try { w.close(); } catch (_) { /* best-effort teardown */ }
+  }
+});
 
 function bootHarness({ localPrefs, serverSettings, body }) {
   // `body` (default empty, so no existing test moves) lets a test assert the
@@ -54,6 +71,7 @@ function bootHarness({ localPrefs, serverSettings, body }) {
   vm.createContext(w);
   vm.runInContext(GLYPH_POOL_SRC, w, { filename: 'glyph-pool.js' });
   vm.runInContext(COMMON_SRC, w, { filename: 'common.js' });
+  openWindows.push(w); // closed in the after() hook - see its comment
   return { w, fetchLog };
 }
 
