@@ -34,20 +34,33 @@ const ROOT = path.join(__dirname, '..', '..');
 // Every shell FileTube serves, and where each lives. subscriptions.html is
 // deliberately OUTSIDE public/ (res.sendFile route) -- the exact reason its
 // script set historically drifts from the other four.
+// v1.77 (adversarial gate): DERIVED, not hand-listed. The v1.64 gate already
+// caught four shells missing from this list and the fix was to add them by
+// hand plus a comment asserting "All shells are now enumerated" - which was
+// false again within three releases: podcasts.html, login.html and welcome.html
+// were all absent while the comment claimed completeness. A hand-enumerated
+// guard list rots (the v1.64 lesson, re-learned by the list that recorded it),
+// and the comment claiming otherwise is worse than the gap.
+//
+// Now: every .html in public/ plus every .html in the yt-dlp module's views/.
+// subscriptions.html lives OUTSIDE public/ (a res.sendFile route), which is the
+// exact reason its script set historically drifts from the rest - so the
+// second directory is deliberate, not incidental.
 const SHELLS = [
-  'public/index.html',
-  'public/watch.html',
-  'public/stats.html',
-  'public/setup.html',
-  // v1.64 gate (adversarial W3): these four were silently missing from this
-  // hand-list, so their script sets escaped the very guard built for the
-  // v1.26.0-.2 silent-empty-page class. All shells are now enumerated.
-  'public/books.html',
-  'public/read.html',
-  'public/music.html',
-  'public/history.html',
-  'lib/ytdlp/views/subscriptions.html',
+  ...fs.readdirSync(path.join(ROOT, 'public'))
+    .filter((f) => f.endsWith('.html'))
+    .sort()
+    .map((f) => `public/${f}`),
+  ...fs.readdirSync(path.join(ROOT, 'lib', 'ytdlp', 'views'))
+    .filter((f) => f.endsWith('.html'))
+    .sort()
+    .map((f) => `lib/ytdlp/views/${f}`),
 ];
+
+// Vacuity guard: a changed layout must not silently empty the roster.
+if (SHELLS.length < 12) {
+  throw new Error(`expected >=12 served shells, derived ${SHELLS.length}: ${SHELLS.join(', ')}`);
+}
 
 // Route -> served file, for scripts whose URL is not a literal public/ path.
 // `/js/subscriptions.js` is served from lib/ytdlp/client/ (see
@@ -74,7 +87,22 @@ for (const shell of SHELLS) {
   test(`shell scripts share one global scope without lexical collisions: ${shell}`, () => {
     const html = fs.readFileSync(path.join(ROOT, shell), 'utf8');
     const srcs = scriptSrcsInOrder(html);
-    assert.ok(srcs.length >= 5, `${shell} should load the shared script set (got ${srcs.length})`);
+    // Two shell shapes, both worth checking for collisions - the point of this
+    // file is that all scripts on a page share ONE global scope, and that is as
+    // true of the auth pages as of the app shells.
+    //
+    // v1.77: the floor used to be a blanket `>= 5`, which is why login.html and
+    // welcome.html could never have been added to the (then hand-written)
+    // roster without failing. They are signed-out AUTH pages: glyph-pool +
+    // common + login.js, and legitimately load none of the view scripts. So the
+    // floor is now per-shape - a vacuity guard that the scripts were found at
+    // all, plus the full-set requirement where the full set is actually
+    // expected (any shell loading main.js).
+    const isAppShell = srcs.some((s) => s.endsWith('/main.js'));
+    assert.ok(srcs.length >= 3, `${shell}: no script set found (got ${srcs.length})`);
+    if (isAppShell) {
+      assert.ok(srcs.length >= 5, `${shell} should load the shared app script set (got ${srcs.length})`);
+    }
 
     const pieces = srcs.map((src) => {
       const file = resolveServedFile(src);

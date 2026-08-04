@@ -205,7 +205,15 @@ test('LIBRARY PICKER: a change POSTs ONE key and repaints the live entry immedia
       'one key per change - never the whole settings blob');
     assert.equal(dom.window.document.querySelector('[data-nav-sidebar="podcasts"] i').className,
       'icon-radio', 'the live sidebar entry repaints without a reload');
-  }, { serverSettings: {} });
+    // The FIXTURE is what makes the assertion above able to fail (adversarial
+    // gate W4, the divergent-fixture class this repo keeps re-learning). With
+    // `serverSettings: {}` the one-key body and the whole-blob body are the
+    // SAME object, so posting the entire settings blob passed - and that mutant
+    // is a real outage: /api/me/settings is a hard allowlist that 400s on any
+    // key outside MIRRORED_SETTING_KEYS, so every library-glyph save would fail
+    // the moment a user record carried one non-mirrored key. The fixture below
+    // carries exactly such keys, so the two spellings diverge.
+  }, { serverSettings: { theme: 'dark', era: '2009', glyphBooks: 'school' } });
 });
 
 test('LIBRARY PICKER: keyboard users are not stranded by the redraw', async () => {

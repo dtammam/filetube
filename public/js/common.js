@@ -6779,10 +6779,16 @@ function libraryEntriesHtml() {
     // removed mobile access to Downloads entirely (the bottom item is
     // opt-in) - both halves land together.
     // v1.77: the GLYPH is mirrored off the injected sidebar entry too, exactly
-    // as Downloads' href already is. Reading it from the DOM rather than
-    // re-resolving it means the sheet and the sidebar cannot disagree about a
-    // user's chosen glyph even for a moment - which is the same reason the
-    // href is mirrored rather than re-derived.
+    // as Downloads' href already is - reading it from the DOM rather than
+    // re-resolving it means the sheet cannot disagree with the sidebar ONCE
+    // BOTH HAVE PAINTED, which is the same reason the href is mirrored.
+    //
+    // Not "never, even for a moment" - that overclaim was measured false at the
+    // adversarial gate (S3). A sheet opened BEFORE /api/auth/me resolves shows
+    // the shipped glyph while the sidebar later becomes the chosen one: sheet
+    // rows carry no data-nav* attribute, so applyLibraryGlyphs' selector does
+    // not reach them. Cosmetic and self-healing on the next open, since the
+    // sheet re-renders from the (by then repainted) sidebar.
     const mirroredGlyph = (navKey, fallback) => {
       const entry = document.querySelector('[data-nav-sidebar="' + navKey + '"]');
       const icon = entry && entry.querySelector('i');

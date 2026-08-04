@@ -25,7 +25,25 @@ const path = require('node:path');
 
 const REPO = path.join(__dirname, '..', '..');
 const ICON_DIR = path.join(REPO, 'public', 'assets', 'icons');
-const css = fs.readFileSync(path.join(REPO, 'public', 'css', 'style.css'), 'utf8');
+// Comments are stripped ONCE, at read, so every check below sees only live
+// CSS. Doing it per-extraction was not enough and shipped porous:
+// `selectorList` stripped (sites 2 and 6) and the fill-list extraction stripped
+// (site 3), but the four checks that match against the raw stylesheet - the
+// base mask, the rounded and filled overrides, and the emoji ::before - did
+// not. The adversarial seat reproduced both of Dean's on-device failure modes
+// through that hole with the whole suite green:
+//
+//   - Comment out a base mask rule and the literal survives INSIDE the comment,
+//     so site 1 passes. The glyph keeps its sizing rule and its currentColor
+//     fill with no mask to cut: a SOLID COLOURED SQUARE (the AC7 class).
+//   - Comment out a rounded/filled override or an emoji ::before and that set
+//     silently falls back or renders nothing.
+//
+// "Temporarily disabled, see TODO" is exactly how a real commented-out rule
+// enters a stylesheet, so this is not a contrived mutant. Strip at the source
+// and the whole file inherits it.
+const css = fs.readFileSync(path.join(REPO, 'public', 'css', 'style.css'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '');
 
 const pool = require(path.join(REPO, 'public', 'js', 'glyph-pool.js'));
 const ENTRIES = pool.allGlyphEntries();
@@ -115,7 +133,16 @@ test('SEVEN-SITE LOCK: every glyph is enumerated in all 7 style.css sites', () =
         `[data-icons="filled"] .${cls} { -webkit-mask-image: url(/assets/icons/filled/${g.asset}.svg); mask-image: url(/assets/icons/filled/${g.asset}.svg); }`)],
       // Without this the emoji set paints a solid currentColor box BEHIND the
       // emoji (the AC7 no-square fix).
-      ['6 emoji neutralize group', listHasClass(EMOJI_GROUP, cls)],
+      //
+      // The SCOPE PREFIX is part of the assertion, not decoration. Membership
+      // alone was satisfied by a line that had lost its `[data-icons="emoji"]`
+      // prefix - and an unscoped entry in this group is WORSE than absence: it
+      // applies `mask-image: none; background-color: transparent` in EVERY set,
+      // so the glyph renders nothing at all in the default outlined theme. The
+      // adversarial seat reproduced that on `.icon-liked` (all ten Liked
+      // surfaces blank) with the suite green.
+      ['6 emoji neutralize group', new RegExp(
+        `\\[data-icons="emoji"\\]\\s+\\.${cls}(?![a-z0-9-])`).test(EMOJI_GROUP)],
       ['7 emoji ::before content', new RegExp(
         `\\[data-icons="emoji"\\] \\.${cls}::before\\s*\\{\\s*content: "${emojiEsc.replace(/\\/g, '\\\\')}";`).test(css)],
     ];
@@ -151,7 +178,18 @@ test('the registry carries codepoints, never literal emoji (icon-assets rule)', 
   // (QA gate v1.77 S2: the comment used to cite icon-assets.test.js as if its
   // coverage were repo-wide).
   const src = fs.readFileSync(path.join(REPO, 'public', 'js', 'glyph-pool.js'), 'utf8');
-  const literalEmoji = src.match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu);
+  // The range must cover every codepoint the registry actually uses. The first
+  // cut was [1F300-1FAFF, 2600-27BF], which misses U+2B50 ⭐ - the emoji for
+  // `.icon-favorites` AND `.icon-liked`, i.e. two of this wave's own entries.
+  // A literal ⭐ here passed the full suite (adversarial gate, SUGGESTION 2).
+  // Widened to the Miscellaneous Symbols and Arrows block, which is where 2B50
+  // lives. U+FE0F (the variation selector) is deliberately NOT in the class:
+  // eslint's no-misleading-character-class rejects it there - it COMBINES with
+  // the preceding character rather than standing alone - and it is not an emoji
+  // by itself, so every glyph that uses one is already caught by its base
+  // codepoint. (The pre-commit hook refused this commit until that was right,
+  // which is the hook doing its job.)
+  const literalEmoji = src.match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]/gu);
   assert.equal(literalEmoji, null,
     `glyph-pool.js must carry codepoints, not literal emoji (found: ${literalEmoji && literalEmoji.join(' ')})`);
 });

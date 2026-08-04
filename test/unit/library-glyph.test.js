@@ -159,3 +159,47 @@ test('the sheet mirror refuses a non-resolver-shaped class from the DOM', () => 
     assert.ok(!html.includes('<img'), 'no markup escaped through the mirror');
   });
 });
+
+// ---- the injector's USE, not its decision ---------------------------------
+//
+// The test above binds `libraryGlyphClassFor` - the DECISION. The adversarial
+// gate showed that was not enough, and did it inside the wave whose Stop D
+// commit claimed to have closed exactly this strike: replacing the injector's
+//
+//     icon.className = libraryGlyphClassFor(key, iconClass);
+// with
+//     icon.className = iconClass;
+//
+// passed the ENTIRE suite (6123 tests). That mutant is the whole late-injector
+// bug restored - a Library entry whose async capability probe lands after the
+// settings fetch keeps its shipped glyph while its bottom-bar twin shows the
+// chosen one, which is failure mode 1 in this file's own header.
+//
+// It matters more than it looks: NO shell carries a static
+// `data-nav-sidebar` element (verified: `grep -rn 'data-nav-sidebar='
+// public/*.html` is empty), so injectLibraryNavEntry is the ONLY writer of
+// every Library sidebar entry in the app. The repaint test above works on a
+// hand-built fixture; this one drives the real writer.
+
+test('LATE INJECTION (the USE): injectLibraryNavEntry stamps the CHOSEN glyph', () => {
+  withDom('<body><aside id="sidebar"><div class="sidebar-section">' +
+    '<div id="sidebar-folders-list"></div></div></aside></body>', (dom) => {
+    common.applyLibraryGlyphs({ glyphPodcasts: 'radio' });
+    // The async capability probe lands now, passing its shipped default.
+    common.injectLibraryNavEntry('podcasts', '/podcasts', 'Podcasts', 'icon-podcast');
+    const icon = dom.window.document.querySelector('[data-nav-sidebar="podcasts"] i');
+    assert.ok(icon, 'the injector must have built the entry');
+    assert.equal(icon.className, 'icon-radio',
+      'a late-injected entry must wear the stored choice, NOT the caller default');
+  });
+});
+
+test('LATE INJECTION (the USE): an unset slot still takes the caller default', () => {
+  withDom('<body><aside id="sidebar"><div class="sidebar-section">' +
+    '<div id="sidebar-folders-list"></div></div></aside></body>', (dom) => {
+    common.applyLibraryGlyphs({ glyphPodcasts: 'radio' });
+    common.injectLibraryNavEntry('books', '/books', 'Books', 'icon-books');
+    assert.equal(dom.window.document.querySelector('[data-nav-sidebar="books"] i').className,
+      'icon-books', 'an untouched entry keeps the glyph it shipped with');
+  });
+});

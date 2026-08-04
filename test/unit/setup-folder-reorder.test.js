@@ -225,9 +225,13 @@ test('v1.76: a press on the "Hide from home" checkbox never starts a drag', () =
 
 test('v1.77: a press on the glyph picker never starts a drag', () => {
   // The row is a drag surface and v1.77 added a new interactive child to it.
-  // wireReorderable's default ignore list already covers `select`, so this
-  // holds by construction rather than by a new special case - but "by
-  // construction" is worth exactly as much as the test that proves it, and
+  // Three things independently make it a dead zone: this list is
+  // handleSelector-gated to `.drag-handle`, the picker sits inside a <label>,
+  // and `select` is in wireReorderable's REORDER_DEFAULT_IGNORE (common.js).
+  // The adversarial gate measured that removing only the `select` token leaves
+  // this green - so this test binds the OUTCOME (pressing the picker reorders
+  // nothing), not any one of those three mechanisms. Stripping the ignore list
+  // entirely does turn it red, so it is not vacuous. Worth having because
   // Dean's v1.76 report was precisely that parts of this row would not drag
   // (and, inversely, that its controls were unusable). A dropdown you cannot
   // open because the row steals the gesture is the same bug wearing a hat.
