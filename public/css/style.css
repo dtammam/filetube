@@ -3017,6 +3017,18 @@ select {
   overflow-y: auto;
 }
 
+/* v1.76 (Dean): "make the configured directories bounding window a little
+   larger so you could see all of them", and drag-and-drop needs room to aim.
+   Scoped to the three FOLDER builders only - `#oneshot-list-container` wears
+   the same class and keeps the original 240px cap, since it is a job log
+   rather than something you reorder. `min()` so a short phone viewport is not
+   handed a box taller than its screen. */
+#folders-builder-list,
+#book-folders-builder-list,
+#music-folders-builder-list {
+  max-height: min(60vh, 520px);
+}
+
 /* v1.21.0 FR-3, T3: `#sub-list-container` no longer uses `.folder-list-builder`
    at all (superseding the v1.19.0 FR-2a scoped 420px override that used to
    live here) -- the subscriptions list is now the page's PRIMARY content, so
@@ -3038,7 +3050,9 @@ select {
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
-  margin-bottom: var(--space-5);
+  /* v1.76 (Dean): "enough space between the cards" to drop between them - the
+     gap is also the drop-indicator's landing strip. */
+  margin-bottom: var(--space-6);
   cursor: grab;
 }
 

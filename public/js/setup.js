@@ -75,14 +75,15 @@ function renderFolders() {
     const s = folderSettings[folder] || {};
     const row = document.createElement('div');
     row.className = 'folder-item-row';
-    // Item 1 (v1.15.0): native HTML5 drag-and-drop, a progressive
-    // enhancement OVER the up/down buttons below (which stay as the
-    // keyboard/tap-accessible fallback -- see the reorder-btn handlers
-    // and their comment further down).
-    row.draggable = true;
+    // v1.76: no `draggable` attribute and no up/down buttons. The row is
+    // wired to the shared POINTER-event gesture layer below, which is what
+    // makes it draggable on a touch screen at all - native HTML5 drag (here
+    // since v1.15.0) never fired on iOS, so this handle really was decoration
+    // on Dean's phone. The handle is no longer aria-hidden either: it is now
+    // the keyboard reorder control that replaces the deleted buttons.
     row.dataset.index = String(index);
     row.innerHTML = `
-      <span class="drag-handle" draggable="false" title="Drag to reorder" aria-hidden="true"></span>
+      <span class="drag-handle" title="Drag to reorder"></span>
       <div style="flex:1; min-width:0;">
         <div class="folder-path-text" title="${escapeHtml(folder)}">${escapeHtml(folder)}</div>
         <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
@@ -95,12 +96,6 @@ function renderFolders() {
             <input type="checkbox" class="folder-hidden-sidebar-check" data-index="${index}" ${s.hiddenFromSidebar ? 'checked' : ''} /> Hide from sidebar
           </label>
         </div>
-      </div>
-      <div style="display:flex; flex-direction:column; gap:6px; flex-shrink:0;">
-        <button type="button" class="reorder-btn" data-index="${index}" data-dir="up" title="Move up" ${index === 0 ? 'disabled' : ''}
-                style="background:none;border:1px solid var(--border-dark);border-radius:var(--radius);cursor:pointer;color:var(--text-primary);font-size:16px;line-height:1;padding:6px 10px;"><i class="icon-arrow-up"></i></button>
-        <button type="button" class="reorder-btn" data-index="${index}" data-dir="down" title="Move down" ${index === configuredFolders.length - 1 ? 'disabled' : ''}
-                style="background:none;border:1px solid var(--border-dark);border-radius:var(--radius);cursor:pointer;color:var(--text-primary);font-size:16px;line-height:1;padding:6px 10px;"><i class="icon-arrow-down"></i></button>
       </div>
       <button class="remove-folder-btn" data-index="${index}" title="Remove folder">&times;</button>
     `;
@@ -127,64 +122,40 @@ function renderFolders() {
     }
   });
 
-  // Reorder handlers — swap positions in the folders array (that order is the sidebar order).
-  // This is the keyboard/tap-accessible FALLBACK (item 1, v1.15.0) — it
-  // stays fully functional alongside the drag-and-drop handlers below,
-  // for mobile/keyboard users where native DnD is awkward.
-  container.querySelectorAll('.reorder-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const i = parseInt(e.currentTarget.dataset.index);
-      const j = e.currentTarget.dataset.dir === 'up' ? i - 1 : i + 1;
-      if (j < 0 || j >= configuredFolders.length) return;
-      [configuredFolders[i], configuredFolders[j]] = [configuredFolders[j], configuredFolders[i]];
+  // v1.76: ONE drag-to-reorder gesture (pointer events - mouse, touch and
+  // pen), replacing BOTH the up/down `.reorder-btn` buttons and the v1.15.0
+  // native HTML5 DnD that never worked on a touch screen. Dean's report was
+  // that the row only dragged "from a small portion of the card": native drag
+  // never starts inside a text input, so the display-name field, both
+  // checkboxes and the buttons were all dead zones. The whole row is the drag
+  // surface now, minus its genuinely interactive children (the helper's
+  // default ignore list), and a touch drag arms on a long press so the list
+  // can still be scrolled with a finger.
+  //
+  // The persist posture is UNCHANGED and deliberately different from the
+  // sidebar's: this list has a Save button, so a reorder only mutates
+  // `configuredFolders` and Save persists it through POST /api/config. A drag
+  // followed by no Save must persist nothing.
+  const wireRows = (typeof wireReorderable === 'function')
+    ? wireReorderable
+    : (window.FileTube && window.FileTube.wireReorderable);
+  wireRows(container, {
+    rowSelector: '.folder-item-row',
+    handleSelector: '.drag-handle',
+    focusKey: 'setup-folders',
+    // The box scrolls (and got taller this wave), so a drag near its edge
+    // needs the list to come to the pointer.
+    scrollContainer: container,
+    labelOf: (i) => {
+      const folder = configuredFolders[i];
+      const s2 = folderSettings[folder] || {};
+      return s2.name || (folder || '').split(/[\\/]/).pop() || folder;
+    },
+    onReorder: (from, to) => {
+      configuredFolders = moveArrayItem(configuredFolders, from, to);
       renderFolders();
-    }, { signal: controller.signal });
-  });
-
-  // Drag-and-drop reorder (item 1, v1.15.0) — a progressive enhancement
-  // over the up/down buttons above; both mutate the SAME
-  // `configuredFolders` array, and the Save button (below) persists it
-  // through the existing POST /api/config path either way. No immediate
-  // save here (mirrors the up/down buttons -- Save is still required).
-  let dragSrcIndex = null;
-  container.querySelectorAll('.folder-item-row').forEach((row) => {
-    row.addEventListener('dragstart', (e) => {
-      dragSrcIndex = parseInt(row.dataset.index, 10);
-      row.classList.add('dragging');
-      if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = 'move';
-        // Firefox requires data to be set for the drag to initiate at all.
-        e.dataTransfer.setData('text/plain', String(dragSrcIndex));
-      }
-    }, { signal: controller.signal });
-    row.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      const rect = row.getBoundingClientRect();
-      const before = (e.clientY - rect.top) < rect.height / 2;
-      row.classList.toggle('drag-over-before', before);
-      row.classList.toggle('drag-over-after', !before);
-    }, { signal: controller.signal });
-    row.addEventListener('dragleave', () => {
-      row.classList.remove('drag-over-before', 'drag-over-after');
-    }, { signal: controller.signal });
-    row.addEventListener('drop', (e) => {
-      e.preventDefault();
-      const targetIndex = parseInt(row.dataset.index, 10);
-      const before = row.classList.contains('drag-over-before');
-      row.classList.remove('drag-over-before', 'drag-over-after');
-      if (dragSrcIndex === null || Number.isNaN(targetIndex)) return;
-      const toIndex = computeDropIndex(dragSrcIndex, targetIndex, before);
-      configuredFolders = moveArrayItem(configuredFolders, dragSrcIndex, toIndex);
-      dragSrcIndex = null;
-      renderFolders();
-    }, { signal: controller.signal });
-    row.addEventListener('dragend', () => {
-      dragSrcIndex = null;
-      container.querySelectorAll('.folder-item-row').forEach((r) => {
-        r.classList.remove('dragging', 'drag-over-before', 'drag-over-after');
-      });
-    }, { signal: controller.signal });
+    },
+    signal: controller.signal,
   });
 
   // Persist per-folder edits as they happen (keyed by path so row order doesn't matter)
@@ -2248,5 +2219,18 @@ if (typeof module !== 'undefined' && module.exports) {
     // ORDER, its label coverage and its >=1-visible floor are all behaviour
     // no constant can stand in for.
     renderBottomBarEditor, BOTTOMBAR_LABELS,
+    // v1.76: the wizard's directory list is jsdom-tested through its REAL
+    // render + REAL gesture wiring (the arrows it used to be driven by are
+    // gone). `init()` normally owns this module state, so a test needs a seat
+    // to stand it up -- and a reader, since the whole point of this list's
+    // posture is that a reorder lands in the ARRAY and waits for Save.
+    renderFolders,
+    __setFolderStateForTests(state) {
+      configuredFolders = Array.isArray(state.folders) ? state.folders.slice() : [];
+      folderSettings = state.settings || {};
+      syntheticFolders = state.synthetic || [];
+      controller = state.controller;
+    },
+    __getConfiguredFoldersForTests() { return configuredFolders.slice(); },
   };
 }

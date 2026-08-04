@@ -1645,17 +1645,19 @@ function visibleSidebarFolders(folders, settings, syntheticFolders) {
 
 // ---- Folder drag-and-drop reordering (v1.15.0 item 1) ----------------------
 //
-// These three pure helpers are the SHARED reorder model behind both the
-// native HTML5 drag-and-drop (Setup folder list + left sidebar) and the
-// existing up/down `.reorder-btn` fallback -- they mutate/derive the SAME
-// `configuredFolders`/`folders` array the up/down buttons already swap
-// entries in, so a DnD reorder and an equivalent up/down sequence always
-// converge on the identical persisted order. No server change: the existing
-// `POST /api/config` handler already derives the synthetic Downloads
-// folder's `order` from its POSITION in the submitted `folders` array
-// (never writing it into `db.folders` -- see server.js), so these helpers
-// only need to produce the same reordered `folders` array the up/down path
-// already sends.
+// These three pure helpers are the SHARED reorder MODEL: every reorder in
+// this app, on every surface and by every input device, produces its new
+// array through them. v1.76 replaced the gesture layer above them (native
+// HTML5 DnD and the up/down `.reorder-btn` buttons -> one pointer-event
+// helper, `wireReorderable` below) without touching these -- so a pointer
+// drag and a keyboard arrow-key move still converge on the identical
+// persisted order, exactly as DnD and the buttons used to.
+//
+// No server change, then or now: the existing `POST /api/config` handler
+// already derives the synthetic Downloads folder's `order` from its POSITION
+// in the submitted `folders` array (never writing it into `db.folders` --
+// see server.js), so these helpers only need to produce a correctly
+// reordered `folders` array.
 
 // Pure: returns a NEW array with the item at `fromIndex` moved to land at
 // `toIndex` (splice-out + splice-in), leaving every other item's relative
