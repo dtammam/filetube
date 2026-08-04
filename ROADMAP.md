@@ -80,6 +80,87 @@
 
 ## Shipped
 
+### v1.78.0 - Pick up on the PC what's playing on the phone (2026-08-04)
+
+Dean: "awareness of something playing for a user on another device,
+allowing handoff or continuation - not control of the other device.
+State-aware play so I can pick up on the PC what was playing on the
+iPhone. YouTube has something similar - I want that."
+
+Most of "pick up where I left off" already existed - position is near-live
+server-side (a progress ping every ~4s, coalesced), the queue is already
+one per-user queue, music has its own resume pointer. So this wave built
+only the three things genuinely missing: **device identity**, a **presence**
+concept ("playing RIGHT NOW on the iPhone" vs history's "was played"), and
+the **discovery card**.
+
+**The presence layer.** A device-tagged liveness record piggybacked on the
+existing ~4s progress pings of the three player-carried kinds - video,
+podcast episode, music track. Ephemeral and in-memory: no schema change, no
+migration. A per-device UUID is minted client-side with an auto label
+derived from the User-Agent (iPhone, iPad, Mac, PC, Android...). One new
+read endpoint, `GET /api/handoff`, resolves the most-recent OTHER-device
+presence and returns everything the card renders - title, thumbnail,
+destination - all resolved SERVER-side from our own records, so a client
+never supplies a title or a link.
+
+**The card.** A YouTube-style "Playing on iPhone" toast, mounted in the
+persistent shell (never inside the SPA view-root), bottom-left on desktop
+and above the bottom bar on mobile. A live accent dot while playing; "Paused
+on iPhone - 18 min ago" through the 30-minute linger window - the
+sit-down-at-the-PC case. Click "Continue here" navigates to the kind-correct
+surface, which resumes at the near-live position via the EXISTING resume
+paths (no new position plumbing). Dismiss suppresses that item+device+state
+until it changes. Shows only on the top-level list surfaces, all four era
+skins, tokens only.
+
+**Liveness, all with an injectable clock so the TTLs are tested without
+sleeping:** a playing entry decays to "paused" 15s after pings stop (the
+app-killed case - no beacon ever arrives, and we must not claim the phone
+is still playing); an explicit pause beacon flips it immediately; a stopped
+entry lingers 30 minutes then expires. Hard caps: 8 devices per user,
+least-recently-seen evicted - 1000 incognito UUIDs leave the map at 8.
+
+**What the gate caught.** Both seats APPROVED on the first pass with heavy
+mutation work behind it - every TTL, cap, ordering and finished-item
+boundary proven to fail its own mutant, cross-user isolation and
+prototype-safety proven against two real sessions, the three progress
+handlers proven byte-identical for a device-less (old-client / Roku) ping.
+The most useful catch happened during implementation, not review:
+mutation-testing my OWN commit found two tests that proved nothing - one
+asserted "a refused ping records no presence" but would have passed even if
+it DID record, because the read endpoint filtered the junk id on the way
+out; the other never exercised a body-supplied user id at all. Both are now
+bound on the presence map itself, both mutants stay killed. The fix round
+applied the QA seat's two suggestions: the card had used an exclude-list and
+so showed over the Settings form - now a default-deny include-list scoped to
+the list surfaces; and a comment wrongly called the device ids "md5 hex".
+
+**Known gaps, shipping disclosed** (tracker rows 117-120):
+- Two devices playing the SAME item fight over progress, last-writer-wins
+  every ~4s (true before this wave; handoff makes it easier to trigger).
+- Presence is lost on server restart, by design - it degrades to plain
+  history resume, and the durable progress is untouched.
+- The card surfaces only the MOST RECENT other device (intake ruling 7); if
+  that newest entry just finished, the card shows nothing even when an older
+  device is still resumable.
+- `/api/music/progress` records presence for any well-formed track id with
+  no existence gate - pre-v1.78 behavior, bounded by the cap and hidden by
+  the card's server-side resolve.
+- Roku is out of scope for v1; device rename is deferred.
+
+**Verification, disclosed honestly.** Unit suite 4598/4598 on BOTH
+v22.23.1 and v24.14.0; the wave's handoff integration suite green on both;
+every other integration file passes individually. The single-invocation
+full PARALLEL integration run could not complete on this box - the test
+harness's own leaked-tempdir residual (#110) had grown /tmp to ~1M
+directories and thrashes the overlay filesystem's journal under 16-way
+parallelism - so that one run is DEFERRED to the leak-fix branch that
+follows immediately (Dean's call: the code is good, ship it and fix the
+harness next). Device pass PENDING - probe list in the report, including one
+to eyeball: a video->background-audio handoff must not FLASH "Paused" on the
+other device (it should self-correct within one ping).
+
 ### v1.77.0 - Pick your folder's icon, in every skin (2026-08-04)
 
 Dean: "for the folders, we have glyphs available... I'd love to be able
