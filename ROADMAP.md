@@ -80,6 +80,112 @@
 
 ## Shipped
 
+### v1.75.0 - Liked consolidation + bottom-bar freedom (2026-08-04)
+
+Dean's three asks. (1) The per-kind Liked surfaces are gone - the
+podcasts place's Liked card/lane and the music place's Liked tab both
+removed - because the central mixed-kind /?liked=1 playlist already
+shows everything they showed, in full, without their quirks. That
+CLOSES tech-debt #93 by removal. The hearts stay everywhere (ruling
+R1): they are the WRITE surfaces, the central playlist is the one READ
+surface, and docs/CONTRIBUTING.md's capability 4 now records a new
+kind-scoped Liked lane as a defect to add rather than a complement.
+(2) The bottom bar's two hard-bound anchors retire: home and settings
+were pinned first/last and un-hideable, and are now ordinary roster
+entries - sortable and hidable like the rest. (3) A new Liked entry
+joins them, default-HIDDEN and opt-in via Settings (ruling R3, the
+v1.71/v1.72 posture), in all nine shells, wearing the same icon-star
+the sidebar Liked entry wears.
+
+THE FINDING THAT REFRAMED ASK #2, and the wave's one deliberate
+behaviour change: "In bottom bar, Home is not always left-most bound"
+turned out to be a BUG REPORT, not only a feature request. A
+flex-`order:` ladder from v1.39.2 was pinning seven data-nav ids and
+leaving the four added since (history, podcasts, music, downloads) at
+the CSS default of `order: 0`, which sorts them BEFORE everything - so
+History rendered to the LEFT of Home on every phone. Worse, CSS
+`order` beats DOM order outright, so v1.44's reorder feature had never
+been able to move any of the seven pinned items: the Settings panel
+has been lying about the bar's sequence for eleven releases. No test
+bound the ladder. It is deleted, and the resolver plus
+applyBottomNavCustomization are now the sole authority on sequence.
+
+CONSEQUENCE, disclosed rather than buried: an untouched device keeps
+identical bar MEMBERSHIP and opt-in state, but its ORDER changes
+exactly where the CSS had been overriding the resolver - History moves
+from far-left to third; with yt-dlp on, Light/Dark moves left of
+Download/Subs; an opted-in Books moves left of Light/Dark; and opted-in
+Podcasts/Music/Downloads move RIGHT, from left-of-Home into the middle.
+This partially overrides ruling R4's "the default look is unchanged".
+Shipping "make it sortable" on top of a CSS layer that pinned 7 of 12
+positions was the alternative. Dean's call to revert.
+
+FULL gate, both seats, 3 rounds each (round 3 on Dean's explicit
+authorisation, the pacing norm caps at 2). It found real things, most
+of them in my own work:
+- I INTRODUCED A REGRESSION deleting the ladder: it had also been
+  pinning the two async-injected items, so Download and Subs began
+  swapping between page loads, and applyBottomNavCustomization became
+  non-idempotent (it re-appends visible items, then reads back its own
+  output). Fixed by ranking config-unnamed ids by roster index, making
+  the resolved sequence a pure function of the config.
+- MY JUSTIFICATION WAS FACTUALLY WRONG: `books` was pinned at 5, not
+  unpinned. Four ids were unpinned, not five. That error shipped in
+  four places and left the consequence list above incomplete.
+- An EMPTY-BAR HOLE in this wave's own floor: the Downloads injector
+  removes a bar item without re-resolving, so a legal Downloads-only
+  bar could be emptied by a config change or a transient /api/config
+  failure, reproducing on every reload. Unauthorable before v1.75,
+  because home/settings could not be hidden.
+- THE DECISION-VS-USE STRIKE, in the fix round that named it: the new
+  highlight helpers were tested as values with their only call site
+  unreachable from Node; three mutants survived all 5955 tests, one
+  nulling the sidebar highlight app-wide. The DOM pass is now hoisted,
+  exported and jsdom-bound.
+- Six invariants that the seats measured SURVIVING mutation and are now
+  dead: the CSS lock missed multi-line rules, alternate selector shapes
+  and `flex-direction: row-reverse`; the roster's order was unbound;
+  the Settings copy could revert to its retired promise; the sidebar
+  liked mapping could be deleted; and the lock's own "verified against
+  real mutants" test was a COPY of the lock, so gutting the parser left
+  both locks vacuous with the suite green.
+- Four stale comments describing the deleted lane, one of which
+  (server.js, at the /api/liked call site) flatly contradicted the
+  CONTRIBUTING edit this wave exists to make; and a probe list that
+  still promised "the identical bar", which would have had Dean
+  correctly failing the wave against its own definition of done.
+One gate suggestion was CONSIDERED AND DECLINED with the reasoning
+recorded in code (resolving the Settings panel's ticks against the live
+bar would make Subscriptions/Download un-tickable on a module-off
+device); the adversarial seat re-derived it and withdrew the
+suggestion.
+
+Also caught, by re-deriving rather than trusting the plan: retiring the
+music Liked tab would have left every device that had it SELECTED on a
+permanently blank /music. The tab persists in localStorage and render()
+has no else-arm. There is no ?tab= deep link - the plan's assumption -
+so the stale pref was the whole exposure.
+
+Known gaps, disclosed: #104 (no max-visible cap on the bar - Dean's
+explicit call at intake; the roster grew 9 -> 12), #105 (three routes
+are now client-dead and deliberately kept: GET /api/podcasts/liked,
+/api/podcasts/episodes?filter=liked, /api/music?filter=liked), #106
+(the DOMContentLoaded/router closure is unreachable from the
+require-based test harness, so nothing binds that the router CALLS the
+highlight pass - pre-existing, and this wave shrank the boundary; two
+minor test-hygiene items ride along), #107 (release-qualifying suites
+need an idle box). #42 (server-side bottom-nav prefs) stays open and
+was explicitly out of scope.
+
+Dual-Node: 5957/5957 pass, 0 fail, 0 skipped on BOTH v22.23.1 and
+v24.14.0, sequential, reviewers idle. Reported in full: two EARLIER
+Node 24 runs went red (1 fail, then 11 fail) while the box was still
+draining the reviewers' mutation work - a different failing set each
+time, every one an integration test whose real HTTP call hit
+ECONNRESET or timed out, none in a surface this wave touches. Both
+versions were then re-run on an idle box for the matched pair above.
+Dean's device pass PENDING.
+
 ### v1.74.0 - Era-appropriate scrollbars (2026-08-03)
 
 Dean's ask: every scrollbar in the app was browser-default. Now the
