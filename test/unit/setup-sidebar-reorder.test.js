@@ -22,6 +22,10 @@ const { JSDOM } = require('jsdom');
 
 const common = require('../../public/js/common.js');
 const setup = require('../../public/js/setup.js');
+// v1.77: the glyph registry is a real script tag on every shell, loaded before
+// common.js. This harness stands in for the browser's script loading, so it has
+// to provide it too - the folder-row renderer calls resolveFolderGlyphClass.
+const glyphPool = require('../../public/js/glyph-pool.js');
 
 const SHELL = '<body><div id="sidebar"><div id="sidebar-folders-list"></div></div></body>';
 
@@ -36,6 +40,7 @@ function withSidebar(fn, opts) {
   global.visibleSidebarFolders = common.visibleSidebarFolders;
   global.isSyntheticFolder = common.isSyntheticFolder;
   global.wireReorderable = common.wireReorderable;
+  global.resolveFolderGlyphClass = glyphPool.resolveFolderGlyphClass;
   // The count-gated Liked entry prepends a `.sidebar-item` WITHOUT a
   // data-index. Stood in for here (its own behaviour is tested elsewhere)
   // precisely so this file can prove it is never a drag target.
@@ -55,7 +60,8 @@ function withSidebar(fn, opts) {
   setup.__setFolderStateForTests({ folders: o.folders || [], settings: o.settings || {}, synthetic: o.synthetic || [], controller });
   const cleanup = () => {
     for (const k of ['document', 'window', 'moveArrayItem', 'computeDropIndex', 'rebuildFullFolderOrder',
-      'visibleSidebarFolders', 'isSyntheticFolder', 'wireReorderable', 'applyLikedSidebarEntry', 'fetch']) delete global[k];
+      'visibleSidebarFolders', 'isSyntheticFolder', 'wireReorderable', 'applyLikedSidebarEntry', 'fetch',
+      'resolveFolderGlyphClass']) delete global[k];
     dom.window.close();
   };
   let result;

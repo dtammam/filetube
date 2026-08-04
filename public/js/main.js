@@ -1260,9 +1260,15 @@ if (typeof module !== 'undefined' && module.exports) {
         const label = (settings[f] && settings[f].name) || folderName;
         const isActive = rootFilter === f ? 'active' : '';
         // ?root= shows everything under the mapped folder, including subfolders.
+        // v1.77: the folder's chosen glyph (Dean's "change them out of a
+        // pool"). resolveFolderGlyphClass only ever returns `icon-` + a known
+        // registry id, so this interpolation cannot inject markup even if the
+        // database were hand-edited; the server validates the same value
+        // against the same registry on write.
+        const glyphClass = resolveFolderGlyphClass(settings[f] && settings[f].glyph);
         return `
           <a href="/?root=${encodeURIComponent(f)}" class="sidebar-item ${isActive}" data-index="${index}" title="${escapeHtml(f)}">
-            <i class="icon-folder"></i> ${escapeHtml(label)}
+            <i class="${glyphClass}"></i> ${escapeHtml(label)}
           </a>
         `;
       }).join('');

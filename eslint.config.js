@@ -281,6 +281,29 @@ module.exports = [
     },
   },
 
+  // v1.77: the glyph pool. public/js/glyph-pool.js is loaded FIRST on every
+  // shell (before common.js) and is also `require`d by server.js as a
+  // CommonJS module, so the browser and the server validate/render against one
+  // registry. Its exports are declared only for the CONSUMER scripts, per the
+  // "declare only where consumed, not where defined" rule - which is why
+  // common.js appears here (it consumes the pool) even though it is the
+  // definer of the big roster above.
+  {
+    files: [
+      'public/js/common.js', 'public/js/main.js',
+      'public/js/setup.js', 'public/js/watch.js',
+    ],
+    languageOptions: {
+      globals: {
+        GLYPH_POOL: 'readonly',
+        LIBRARY_GLYPH_SLOTS: 'readonly',
+        glyphClassName: 'readonly',
+        resolveFolderGlyphClass: 'readonly',
+        resolveLibraryGlyphClass: 'readonly',
+      },
+    },
+  },
+
   // v1.67 (plan D9): the corner VOCABULARY (resolver + control roster) is
   // DEFINED at main.js module scope (main.js loads before setup.js on every
   // shell) and consumed by setup.js's corner editor. Declared ONLY for the

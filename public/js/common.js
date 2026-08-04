@@ -6736,8 +6736,9 @@ function renderPlaylistsSheet(folders, folderSettings, syntheticFolders) {
   list.innerHTML = libEntries + visible.map((f) => {
     const base = f.split(/[\\/]/).pop() || f;
     const label = (settings[f] && settings[f].name) || base;
+    const glyphClass = resolveFolderGlyphClass(settings[f] && settings[f].glyph); // v1.77
     return '<a href="/?root=' + encodeURIComponent(f) +
-      '" class="sidebar-item"><i class="icon-folder"></i> ' +
+      '" class="sidebar-item"><i class="' + glyphClass + '"></i> ' +
       escapeAttr(label) + '</a>';
   }).join('');
   applyLikedSidebarEntry(list); // v1.33.1: count-gated Liked entry, prepended
@@ -10164,6 +10165,12 @@ if (typeof module !== 'undefined' && module.exports) {
     getStarRating, getCommentCount, resolveChannelName, clampPositionState,
     resolveTheme, THEME_REGISTRY, activeNavItem,
     resolveIconSet, ICON_SET_REGISTRY, ICON_SETS,
+    // v1.77: exported so the Playlists sheet's folder rows can be asserted as
+    // RENDERED DOM rather than as a source pattern. The per-folder glyph has
+    // four render sites and this is one of only two with a test seam - the
+    // "testing a decision is not testing its use" strike this repo keeps
+    // taking is exactly what an unexported renderer produces.
+    renderPlaylistsSheet,
     gbToBytes, bytesToGb,
     tokenize, rankRelated, RESULT_COUNT, SIMILAR_FLOOR,
     // v1.48 item 2: real day-of view counts (falls back to the mock).

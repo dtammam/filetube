@@ -60,6 +60,16 @@ const { buildWatchUrl, classifySingleVideo, isSafeVideoId, validateChannelUrl, e
 // `require()` it directly without any circular dependency.
 const { isYtdlpIntermediate } = require('./lib/ytdlpIntermediates');
 const { TRASH_DIR_NAME, computeTrashTarget } = require('./lib/trashPaths');
+// v1.77 glyph pool: the SAME registry the browser loads as a plain script
+// (public/js/glyph-pool.js is dual-mode). Requiring it here rather than
+// re-declaring the valid ids server-side is the whole point - a folder glyph
+// the server accepts but the client cannot paint, or vice versa, is exactly
+// the drift this shared module exists to make impossible. It is a pure leaf
+// module (no side effects, no deps), like lib/trashPaths above.
+const glyphPool = require('./public/js/glyph-pool');
+// Set form for the O(1) membership checks the config/settings writers do.
+// Derived from the registry, never a second hand-typed list.
+const GLYPH_IDS = new Set(glyphPool.GLYPH_POOL.map((g) => g.id));
 // v1.37.0 books: the db.books namespace owner + the pure scanner core --
 // see docs/exec-plans/completed/v1.37.0-books.md. Both are leaf modules over
 // deps this file already provides (loadDatabase/updateDatabase/getMediaId);
@@ -5910,6 +5920,21 @@ app.post('/api/config', async (req, res) => {
         // entry that never set it: `undefined` -> `false` (not hidden).
         hiddenFromSidebar: !!s.hiddenFromSidebar
       };
+      // v1.77: the folder's chosen glyph. This whitelist is EXHAUSTIVE - a
+      // field not named here is silently dropped on every save, which is why
+      // it is widened in the same commit that starts writing the field rather
+      // than a later one (the v1.14.0 scar directly above: the pre-fix
+      // whitelist dropped hiddenFromSidebar the same way).
+      //
+      // Validated against the shared registry, never trusted: the value is
+      // interpolated into a `class` attribute at four render sites, so an
+      // arbitrary string here would be an HTML-injection primitive. Only an
+      // exact known id is stored; anything else is dropped entirely, leaving
+      // the folder on the default glyph. Absence is the default, so no
+      // migration or backfill is needed for existing databases.
+      if (typeof s.glyph === 'string' && GLYPH_IDS.has(s.glyph)) {
+        cleanSettings[storageKey].glyph = s.glyph;
+      }
       // Item 3 (v1.13.0, order persistence): `order` is ONLY ever written
       // for a synthetic root -- real (`db.folders`) folders keep their
       // order purely positional in `db.folders`, exactly as before this

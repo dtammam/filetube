@@ -227,7 +227,8 @@ function renderSidebarFolders(folders, settings = {}) {
   sidebarContainer.innerHTML = visible.map((f, index) => {
     const base = f.split(/[\\/]/).pop() || f;
     const label = (settings[f] && settings[f].name) || base;
-    return `<a href="/?root=${encodeURIComponent(f)}" class="sidebar-item" data-index="${index}" title="${escapeHtml(f)}"><i class="icon-folder"></i> ${escapeHtml(label)}</a>`;
+    const glyphClass = resolveFolderGlyphClass(settings[f] && settings[f].glyph); // v1.77
+    return `<a href="/?root=${encodeURIComponent(f)}" class="sidebar-item" data-index="${index}" title="${escapeHtml(f)}"><i class="${glyphClass}"></i> ${escapeHtml(label)}</a>`;
   }).join('');
   applyLikedSidebarEntry(sidebarContainer); // v1.33.1: see above
 
