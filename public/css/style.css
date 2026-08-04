@@ -3595,6 +3595,195 @@ a.sub-row-channel-link:focus-visible {
   gap: var(--space-5);
 }
 
+/* ---- v1.78 device handoff card -------------------------------------------
+   The "Playing on iPhone" offer, built at runtime by common.js's handoff
+   controller and appended to <body> -- NEVER inside #view-root, or in-app
+   navigation would tear it down while a full refresh kept it (the v1.38 SPA
+   bug class).
+
+   Structurally this is #player-dock's twin: a fixed, persistent-shell card
+   that must clear the mobile .bottom-nav. It deliberately sits bottom-LEFT
+   where the dock sits bottom-RIGHT, so a docked player and a handoff offer
+   can be on screen together without overlapping.
+
+   Every value is a token so all four eras skin it for free, and the card
+   carries NO [data-theme]-scoped rules of its own -- which also sidesteps
+   residual #103 (the census is selector-blind to those). The two text fields
+   it renders (device label, media title) are written with textContent: the
+   device label is client-supplied and capped/sanitized server-side, but it is
+   never trusted as markup. */
+#handoff-card {
+  position: fixed;
+  left: 16px; /* token-exempt: positional geometry (mirrors #player-dock's right:16px) */
+  bottom: 16px; /* token-exempt: positional geometry (mirrors #player-dock) */
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  z-index: var(--z-dock); /* same rung as #player-dock: above the mobile .bottom-nav (--z-nav), below sheets/modals */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  background-color: var(--bg-sidebar);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
+}
+
+#handoff-card[hidden] {
+  display: none;
+}
+
+/* Mirrors .toast's fade-in: the class is added one frame after mount so the
+   transition actually runs instead of being skipped on first paint. */
+#handoff-card.handoff-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.handoff-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.handoff-headline {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The state glyph, drawn in CSS -- never an emoji codepoint in markup (the
+   v1.38 rule). Live = a filled accent dot; paused = two bars from the same
+   box via a border trick, so no second element is needed. */
+.handoff-state {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background-color: var(--yt-red);
+}
+
+.handoff-state.is-paused {
+  border-radius: 0;
+  background-color: transparent;
+  border-left: 3px solid var(--text-secondary); /* token-exempt: glyph geometry (the pause bars) */
+  border-right: 3px solid var(--text-secondary); /* token-exempt: glyph geometry (the pause bars) */
+  width: 9px;
+}
+
+.handoff-dismiss {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--fs-md);
+  line-height: 1; /* token-exempt: glyph centering */
+  padding: 0 var(--space-2);
+}
+
+.handoff-dismiss:hover {
+  color: var(--text-primary);
+}
+
+.handoff-body {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* 16:9 thumb with the YouTube-signature progress bar welded to its bottom
+   edge -- the same relationship .video-row-cover has with
+   .book-row-progress. */
+.handoff-thumb {
+  flex: none;
+  position: relative;
+  width: 96px;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background-color: var(--thumbnail-bg);
+}
+
+.handoff-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.handoff-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px; /* token-exempt: hairline progress bar (matches .book-row-progress) */
+  background-color: var(--scrim);
+}
+
+.handoff-progress-fill {
+  height: 100%;
+  background-color: var(--yt-red);
+}
+
+.handoff-meta {
+  min-width: 0; /* lets the title actually ellipsize inside the flex row */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.handoff-title {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.handoff-time {
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+/* The action reuses .btn/.btn-primary rather than hand-rolling a parallel
+   button (CONTRIBUTING's styling-SOURCE rule) -- this class only tightens it
+   for the card's narrower box. */
+.handoff-continue {
+  align-self: flex-start;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--fs-xs);
+}
+
+/* CSS play triangle, for the same no-emoji-in-markup reason as .handoff-state. */
+.handoff-play-ico {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent; /* token-exempt: glyph geometry (the play triangle) */
+  border-bottom: 4px solid transparent; /* token-exempt: glyph geometry (the play triangle) */
+  border-left: 6px solid currentColor; /* token-exempt: glyph geometry (the play triangle) */
+}
+
+@media (max-width: 768px) {
+  #handoff-card {
+    left: 8px; /* token-exempt: positional geometry (mirrors #player-dock) */
+    right: 8px; /* token-exempt: positional geometry (mirrors #player-dock) */
+    width: auto;
+    max-width: none;
+    /* Clear the fixed .bottom-nav exactly as #player-dock and .toast do,
+       sharing --mobile-bottom-nav-h so all three stay in lockstep through the
+       iOS address-bar/home-indicator collapse. */
+    bottom: calc(var(--mobile-bottom-nav-h) + 8px); /* token-exempt: positional geometry (Stop A Batch A) */
+  }
+}
+
 /* v1.17.0 FR-3(a), T2: brief, non-blocking, auto-dismissing notification --
    see common.js's showToast(). Replaces the blocking post-delete
    alert('File deleted successfully.') on the watch page; also used by the
