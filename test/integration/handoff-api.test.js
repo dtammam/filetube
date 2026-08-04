@@ -178,8 +178,34 @@ test('AC10: the 400/404 gates are unchanged AND a rejected ping mints no presenc
   assert.strictEqual((await postJson('/api/progress', devicePing({ id: undefined }))).status, 400);
   assert.strictEqual((await postJson('/api/progress', devicePing({ timestamp: 'x' }))).status, 400);
   assert.strictEqual((await postJson('/api/progress', devicePing({ id: 'ghost' }))).status, 404);
-  assert.strictEqual((await (await getHandoff(DEV_B)).json()).presence, null,
-    'a refused ping must never mint presence');
+  // Bind on the MAP, not on the read endpoint. Asserting `presence === null`
+  // here would pass even if a refused ping DID record, because
+  // resolveHandoffTarget skips the unknown id on the way out - the resolver
+  // would mask the bug. (This exact mutant survived the first version of this
+  // test.) The map is the only place that can tell the two apart.
+  assert.strictEqual(__presenceForTests.deviceCount(uid), 0,
+    'a refused ping must never REACH the presence map, not merely be invisible in the read');
+  assert.strictEqual((await (await getHandoff(DEV_B)).json()).presence, null);
+});
+
+test('#3: a body-supplied userId is ignored - presence keys ONLY off the auth gate', async () => {
+  seedDb();
+  const victim = __mintTestSession({ username: 'handoff-victim' });
+  assert.notStrictEqual(victim.user.id, uid);
+
+  // User A pings while naming the VICTIM's user id in the body, every way a
+  // handler might plausibly read it.
+  await postJson('/api/progress', devicePing({
+    userId: victim.user.id, user_id: victim.user.id, uid: victim.user.id,
+  }));
+
+  // It landed in the ATTACKER's own bucket, not the victim's.
+  assert.strictEqual(__presenceForTests.deviceCount(uid), 1, 'written under the authenticated user');
+  assert.strictEqual(__presenceForTests.deviceCount(victim.user.id), 0,
+    'the victim\'s bucket is untouched - a client cannot write into another user\'s presence');
+
+  const asVictim = await getHandoff(DEV_B, { headers: { Cookie: victim.cookie } });
+  assert.strictEqual((await asVictim.json()).presence, null, 'and the victim sees nothing');
 });
 
 test('AC10: __proto__ as an id is still a 404 and mints no presence (#4)', async () => {
