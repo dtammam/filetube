@@ -8198,7 +8198,13 @@ function applyLikedSidebarEntry(listEl, opts) {
       entry.className = 'sidebar-item sidebar-item-liked' + (options.active === true ? ' active' : '');
       entry.title = 'Liked';
       const icon = document.createElement('i');
-      icon.className = 'icon-star';
+      // v1.77: `.icon-liked`, not `.icon-star`. This is the ONLY Liked surface
+      // built at runtime rather than sitting in static markup, so a repoint
+      // that swept the nine shells and missed this one would have left every
+      // SIDEBAR Liked entry on the old glyph while the bottom bars changed -
+      // visible only after liking a video, which is why the test that follows
+      // this change counts across shells AND asserts this assignment.
+      icon.className = 'icon-liked';
       entry.appendChild(icon);
       entry.appendChild(document.createTextNode(' Liked'));
       listEl.insertBefore(entry, listEl.firstChild);
