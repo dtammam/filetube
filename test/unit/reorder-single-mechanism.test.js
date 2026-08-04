@@ -45,17 +45,28 @@ test('the census scans a plausible number of files (a broken discovery walk prov
 });
 
 // Comments are stripped: these files describe the retired mechanism at length,
-// and prose must never fail a code lock (nor hide one).
+// and prose must never fail a code lock (nor hide one). HTML comments too
+// (QA delta S3) - the census scans the HTML shells now, so an
+// `<!-- the old rows used draggable="true" -->` would otherwise be a false
+// positive that fails the build for a sentence.
 function stripComments(source) {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  return source
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
-test('stripComments really removes both comment forms (the lock must not be self-defeating)', () => {
+test('stripComments removes all three comment forms (the lock must not be self-defeating)', () => {
   const sample = "/* draggable = true */\nconst a = 1; // draggable = true\nconst b = 'draggable';";
   const out = stripComments(sample);
   assert.ok(!out.includes('/*'));
   assert.ok(!/\/\/ draggable/.test(out));
   assert.ok(out.includes("'draggable'"), 'real code survives');
+  // QA delta S3: an HTML comment must not read as a relapse.
+  const html = '<!-- the old rows used draggable="true" -->\n<div class="row"></div>';
+  const strippedHtml = stripComments(html);
+  assert.ok(!/draggable/.test(strippedHtml), 'HTML prose is stripped');
+  assert.ok(strippedHtml.includes('class="row"'), 'real markup survives');
 });
 
 // The native HTML5 drag mechanism, in every spelling this tree ever used.
@@ -156,47 +167,137 @@ test('v1.76: every wired surface names a real onReorder, never a bare selector',
 
 // The stylesheets a client rule can live in: the shared one, plus the
 // subscriptions page's own <style> block (its rows are styled page-locally).
+//
+// COMMENTS STRIPPED (QA delta N1). Shipped without this, the lock below was
+// satisfied by PROSE: style.css:3229 and :7037 each mention
+// `.folder-item-row.dragging` / `.sidebar-item.dragging` inside a comment, so
+// deleting the actual rules left the lock green. Measured at the delta: of the
+// six wired surfaces it claims to cover, only two were really bound. A lock
+// that lies is worse than no lock - this repo has paid for that one repeatedly.
+const stripCssComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '');
 const STYLESHEETS = [
   fs.readFileSync(path.join(REPO, 'public/css/style.css'), 'utf8'),
   fs.readFileSync(path.join(REPO, 'lib/ytdlp/views/subscriptions.html'), 'utf8'),
-].join('\n');
+].map(stripCssComments).join('\n');
 
-// The dragging class a given surface uses: the default, unless the call site
-// passes its own `classes` family (the source text right after the selector).
-function draggingClassFor(source, selector) {
+// The class family a given surface uses: the defaults, unless the call site
+// passes its own `classes` block (the source text right after the selector).
+function classFamilyFor(source, selector) {
   const at = source.indexOf(`rowSelector: '${selector}'`);
   const window_ = source.slice(at, at + 600);
-  const custom = window_.match(/dragging:\s*'([^']+)'/);
-  return custom ? custom[1] : 'dragging';
+  const pick = (key, fallback) => {
+    const m = window_.match(new RegExp(`${key}:\\s*'([^']+)'`));
+    return m ? m[1] : fallback;
+  };
+  return {
+    dragging: pick('dragging', 'dragging'),
+    before: pick('before', 'drag-over-before'),
+    after: pick('after', 'drag-over-after'),
+  };
 }
 
 // `.sub-row[data-sub-id]` -> `.sub-row`; `.folder-item-row` -> itself.
 const baseClassOf = (selector) => selector.replace(/\[[^\]]*\]/g, '');
 
-test('v1.76 (QA gate W3): every wired surface has a dragging style, so a drag is never invisible', () => {
+// Does `sheets` carry an UNSCOPED rule for `base` + `cls`?
+//
+// Parsed into (selector, body) pairs rather than regex-scanned, and each
+// selector-list part must be EXACTLY the base class compounded with the state
+// class. Both halves are load-bearing (QA delta N1, and the mutation run that
+// followed the first fix):
+//   - a loose scan let a match stretch from one rule into a later `{`;
+//   - a merely-contains test let `#sidebar-pinned-section .sidebar-item.dragging`
+//     satisfy the plain `.sidebar-item` surfaces. Those are DIFFERENT surfaces
+//     that happen to share a base class, and the scoped rule sets only a
+//     cursor - so deleting the unscoped `.sidebar-item.dragging` would strip
+//     the home sidebar's dim while the lock stayed green (mutant M4, measured
+//     surviving).
+function cssRules(sheets) {
+  const out = [];
+  const re = /([^{}]+)\{([^{}]*)\}/g;
+  let m;
+  while ((m = re.exec(sheets)) !== null) out.push({ selector: m[1].trim(), body: m[2].trim() });
+  return out;
+}
+
+function hasRuleFor(sheets, base, cls) {
+  const wanted = [`${base}.${cls}`, `.${cls}${base}`];
+  return cssRules(sheets).some((rule) =>
+    rule.selector.split(',').map((s) => s.trim().replace(/\s+/g, ' ')).some((part) => wanted.includes(part))
+  );
+}
+
+test('v1.76 (QA gate W3): every wired surface styles its dragging row AND both drop indicators', () => {
   // The bottom-bar editor - the wave's HEADLINE surface, the one whose arrows
   // Dean asked to be rid of - shipped with no drag CSS at all: on a phone the
   // row simply jumped after the finger lifted, with no dim and no drop line.
   // That reads as "it still doesn't work", which is the report that started
   // this wave. This is the general form of that check.
+  //
+  // QA delta N1: BOTH indicator classes are checked now, not just `dragging`.
+  // W3 was about two things - no dim AND no drop line - and the first version
+  // of this lock only ever looked at the dim, so deleting both indicator rules
+  // left it green.
   const missing = [];
   for (const { file, selector } of ROW_SELECTORS) {
     const source = FILES.find((f) => f.rel === file).source;
     const base = baseClassOf(selector);
-    const dragging = draggingClassFor(stripComments(source), selector);
-    // A rule naming BOTH the row's base class and its dragging class.
-    const re = new RegExp(`\\${base}[^{},]*\\.${dragging}[^{]*\\{|\\.${dragging}[^{},]*\\${base}[^{]*\\{`);
-    if (!re.test(STYLESHEETS)) missing.push(`${file} ${selector} (.${dragging})`);
+    const family = classFamilyFor(stripComments(source), selector);
+    for (const key of ['dragging', 'before', 'after']) {
+      if (!hasRuleFor(STYLESHEETS, base, family[key])) missing.push(`${file} ${selector} -> .${family[key]}`);
+    }
   }
-  assert.deepEqual(missing, [], `wired but with no dragging style: ${missing.join('; ')}`);
+  assert.deepEqual(missing, [], `wired but unstyled: ${missing.join('; ')}`);
 });
 
 test('v1.76: the dragging-style lock can actually fail (mutation self-proof)', () => {
-  // Feed it a surface whose class family is styled nowhere.
-  const re = new RegExp('\\.totally-invented-row[^{},]*\\.dragging[^{]*\\{');
-  assert.equal(re.test(STYLESHEETS), false, 'an unstyled surface must not pass');
-  // ...and the real one it is modelled on does pass, so the regex shape works.
-  assert.ok(new RegExp('\\.folder-item-row[^{},]*\\.dragging[^{]*\\{').test(STYLESHEETS));
+  // QA delta N1: the previous positive control used `.folder-item-row`, whose
+  // rule is ALSO named in a nearby comment - so the control passed even with
+  // the real rule deleted, and proved nothing it claimed to. Comments are
+  // stripped from STYLESHEETS now, and the control below is the deletion
+  // itself rather than a same-name lookup.
+  const base = '.folder-item-row';
+  assert.ok(hasRuleFor(STYLESHEETS, base, 'dragging'), 'positive control: the real rule is found');
+  assert.ok(hasRuleFor(STYLESHEETS, base, 'drag-over-before'), 'positive control: and its before-indicator');
+
+  // Delete that rule from a COPY and the lock must fail - the mutant this
+  // whole test exists to kill.
+  const mutated = STYLESHEETS.replace(/\.folder-item-row\.dragging\s*\{[^}]*\}/, '');
+  assert.notEqual(mutated, STYLESHEETS, 'the mutation applied (else the proof is vacuous)');
+  assert.equal(hasRuleFor(mutated, base, 'dragging'), false, 'a deleted rule must NOT pass');
+
+  // And a surface styled nowhere never passes.
+  assert.equal(hasRuleFor(STYLESHEETS, '.totally-invented-row', 'dragging'), false);
+});
+
+test('v1.76 (QA delta N1): prose never satisfies the lock, and never hides a real rule either', () => {
+  // The shipped defect: style.css:3229 and :7037 name `.folder-item-row.dragging`
+  // and `.sidebar-item.dragging` in prose, and the lock's loose "contains"
+  // scan let those sentences stand in for the rules themselves.
+  //
+  // Two separate mechanisms close it, and it is worth being precise about
+  // which does what - I first wrote this test asserting the wrong one, and it
+  // failed, which is the only reason the note below is right:
+  //
+  //   1. EXACT-SELECTOR matching kills the false POSITIVE. A mention inside a
+  //      comment can never parse as a rule whose selector is exactly
+  //      `.row.state`, because the captured selector still carries the `/*`.
+  //   2. COMMENT STRIPPING kills the false NEGATIVE. Every rule in this
+  //      stylesheet is introduced by a comment, and without stripping the text
+  //      between the previous `}` and the rule's `{` includes that comment -
+  //      so a genuinely present rule would be missed and the lock would fail
+  //      the build for no reason. It is what makes the baseline pass at all.
+  const quoted = '/* mirrors .made-up-row.dragging { opacity: 0.5 } exactly */\n.other { color: red }\n';
+  assert.equal(hasRuleFor(quoted, '.made-up-row', 'dragging'), false, '(1) a comment is never a rule');
+  assert.equal(hasRuleFor(stripCssComments(quoted), '.made-up-row', 'dragging'), false, '(1) and still not once stripped');
+
+  const commented = '.a { color: red }\n/* the drag state */\n.made-up-row.dragging { opacity: 0.5 }\n';
+  assert.equal(hasRuleFor(commented, '.made-up-row', 'dragging'), false,
+    '(2) UNSTRIPPED, the leading comment hides a real rule - the false negative');
+  assert.equal(hasRuleFor(stripCssComments(commented), '.made-up-row', 'dragging'), true,
+    '(2) stripped, the real rule is seen');
+
+  assert.ok(!STYLESHEETS.includes('/*'), 'and the real sheets are stripped before matching');
 });
 
 test('v1.76: only the two Settings lists opt into keyboard reorder', () => {

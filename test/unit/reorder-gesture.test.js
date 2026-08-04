@@ -193,12 +193,15 @@ test('wireReorderable: a completed drag SUPPRESSES the row click that follows it
   const f = buildList();
   wire(f);
   mouseDrag(f, 0, 105);
-  const click = new f.window.MouseEvent('click', { bubbles: true, cancelable: true });
+  // `detail: 1` is load-bearing: a MouseEvent defaults to 0, which the S1 rule
+  // reads as a keyboard activation and deliberately never suppresses. A
+  // pointer click always carries >= 1.
+  const click = new f.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 });
   f.rows[0].dispatchEvent(click);
   assert.equal(click.defaultPrevented, true, 'the post-drag click is swallowed');
 
   // ...and only THAT click: the next one must work normally.
-  const next = new f.window.MouseEvent('click', { bubbles: true, cancelable: true });
+  const next = new f.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 });
   f.rows[0].dispatchEvent(next);
   assert.equal(next.defaultPrevented, false, 'suppression is one-shot, never sticky');
 });
@@ -218,22 +221,45 @@ test('wireReorderable (QA gate W1): a drag released OFF its own row never eats a
   pointer(f.window, f.doc, 'pointerup', { clientY: 28 });
   assert.deepEqual(moves, [], 'the drop was a no-op, so nothing re-rendered');
 
-  // The user's NEXT interaction with that row must work. Two shapes, because
-  // they clear the stale flag by different routes:
+  // The user's NEXT interaction with that row must work. Three shapes, because
+  // they clear (or bypass) the stale flag by different routes. NOTE the
+  // explicit `detail` on every one: a MouseEvent defaults to `detail: 0`,
+  // which the S1 rule treats as keyboard - so a negative control without it
+  // would pass no matter what the code did (QA delta S1 caught exactly that).
   const cb = f.rows[1].querySelector('.cb');
-  // (a) a real tap/click, which is always preceded by its own pointerdown;
+  // (a) a real tap/click, always preceded by its own pointerdown;
   pointer(f.window, cb, 'pointerdown', { clientY: 34 });
   pointer(f.window, f.doc, 'pointerup', { clientY: 34 });
-  const click = new f.window.MouseEvent('click', { bubbles: true, cancelable: true });
+  const click = new f.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 });
   cb.dispatchEvent(click);
   assert.equal(click.defaultPrevented, false, 'the checkbox click is not swallowed');
 
-  // (b) a KEYBOARD activation - Space on a focused checkbox fires `click` with
-  // no pointer event at all, so nothing cleared the flag for it.
+  // (b) a real MOUSE click on an interactive child while the flag is stranded -
+  // detail 1, so only the child-exemption can save it.
   f.rows[2].__reorderSuppressClick = true; // as a stranded gesture would leave it
-  const keyClick = new f.window.MouseEvent('click', { bubbles: true, cancelable: true });
-  f.rows[2].querySelector('.cb').dispatchEvent(keyClick);
-  assert.equal(keyClick.defaultPrevented, false, 'a keyboard toggle is never swallowed either');
+  const childClick = new f.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 });
+  f.rows[2].querySelector('.cb').dispatchEvent(childClick);
+  assert.equal(childClick.defaultPrevented, false, 'a click on a child is never the drag\'s echo');
+
+  // (c) a KEYBOARD activation of the ROW ITSELF - Enter on a focused link
+  // fires `click` with detail 0 and no pointer event, so nothing cleared the
+  // flag and the child-exemption structurally cannot help (the row IS the
+  // interactive element on the three sidebar surfaces).
+  f.rows[3].__reorderSuppressClick = true;
+  const keyClick = new f.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 0 });
+  f.rows[3].dispatchEvent(keyClick);
+  assert.equal(keyClick.defaultPrevented, false, 'a keyboard activation is never swallowed');
+});
+
+test('wireReorderable: a real post-drag mouse click IS still suppressed (the rule must not swallow itself)', () => {
+  // The S1 detail-based exemption must not disarm the suppression it guards:
+  // a genuine pointer click after a drag carries detail >= 1.
+  const f = buildList();
+  wire(f);
+  mouseDrag(f, 0, 105);
+  const click = new f.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 });
+  f.rows[0].dispatchEvent(click);
+  assert.equal(click.defaultPrevented, true, 'the drag\'s own echo is still eaten');
 });
 
 test('wireReorderable: a click with no drag before it is never suppressed', () => {
@@ -507,6 +533,30 @@ test('wireReorderable (QA gate C1): "false", never merely absent - <a> and <img>
     assert.equal(row.draggable, false, 'and the PROPERTY - what the UA actually reads - agrees');
     const img = row.querySelector('img');
     assert.equal(img.draggable, false, 'the <img> avatar inside it too, or it drags on its own');
+  }
+});
+
+test('wireReorderable (QA delta S4): a NESTED anchor inside a non-anchor row is disarmed too', () => {
+  // The subscriptions list's real shape: the row is a <div>, but it contains
+  // a channel link and an avatar <img>, each draggable by UA default on its
+  // own. The previous fixture made the row itself the <a>, so the descendant
+  // sweep was only held by a source-lock string - this binds it by execution.
+  const dom = new JSDOM('<!doctype html><html><body><div id="list"></div></body></html>');
+  const doc = dom.window.document;
+  const container = doc.getElementById('list');
+  container.innerHTML = RECTS.map((_, i) =>
+    `<div class="row"><img src="/a${i}.png" alt=""><a href="https://example.com/c${i}">channel</a><span>x</span></div>`
+  ).join('');
+  const rows = Array.prototype.slice.call(container.querySelectorAll('.row'));
+  wireReorderable(container, {
+    rowSelector: '.row',
+    measure: (el) => RECTS[rows.indexOf(el)],
+    onReorder: () => {},
+  });
+  for (const row of rows) {
+    assert.equal(row.draggable, false, 'the <div> row');
+    assert.equal(row.querySelector('a').draggable, false, 'its nested channel link');
+    assert.equal(row.querySelector('img').draggable, false, 'its nested avatar image');
   }
 });
 

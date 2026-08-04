@@ -1958,14 +1958,22 @@ function wireReorderable(container, opts) {
     // QA gate C1: an earlier version of this line did `removeAttribute`, which
     // is NOT enough - per the HTML spec an absent `draggable` means "UA
     // default", and the UA default is TRUE for <a href> and <img> (verified:
-    // `a.draggable === true` with no attribute set). Three of the six wired
-    // surfaces render their rows AS <a> elements (both folder sidebars and
-    // the pinned sidebar) and two of them contain <img> avatars, so removing
-    // the attribute left exactly those surfaces starting a native link/image
-    // drag on desktop - trading a shipped desktop capability for the new
-    // touch one, invisibly to a jsdom suite (jsdom implements no native DnD).
-    // Hence an explicit "false" here, on the row AND on the descendants that
-    // default to draggable on their own.
+    // `a.draggable === true` with no attribute set; an <a> WITHOUT href is
+    // false). Removing the attribute therefore left rows starting a native
+    // link/image drag on desktop - trading a shipped desktop capability for
+    // the new touch one, invisibly to a jsdom suite (jsdom implements no
+    // native DnD). Hence an explicit "false" here, on the row AND on the
+    // descendants that default to draggable on their own.
+    //
+    // Exactly which surfaces (QA delta S2 corrected an earlier, wrong count
+    // here - a bad number inside a comment justifying a gate fix is a defect
+    // in its own right): THREE of the six wired surfaces render their rows AS
+    // <a> elements - both folder sidebars and the pinned sidebar. Of those
+    // three, ONE (the pinned sidebar) can contain an <img> avatar; the two
+    // folder sidebars render an <i class="icon-folder"> glyph and never an
+    // <img>. The subscriptions list is the fourth surface with <img>/<a>
+    // DESCENDANTS while its own row is a <div>. `a, img` is the complete
+    // UA-default-draggable set (the delta enumerated it).
     if (typeof row.setAttribute === 'function') row.setAttribute('draggable', 'false');
     if (typeof row.querySelectorAll === 'function') {
       Array.prototype.forEach.call(row.querySelectorAll('a, img'), (el) => el.setAttribute('draggable', 'false'));
@@ -2065,11 +2073,17 @@ function wireReorderable(container, opts) {
     row.addEventListener('click', (e) => {
       if (!row.__reorderSuppressClick) return;
       row.__reorderSuppressClick = false;
+      // QA delta S1: a KEYBOARD (or programmatic) click reports `detail === 0`;
+      // a real pointer click never does. Such a click cannot be a drag's own
+      // echo, so it is never suppressed. This covers the case the child-
+      // exemption below structurally cannot: the three sidebar surfaces' rows
+      // ARE the interactive element, so Enter on a focused pinned link was
+      // being eaten once after a stranded gesture.
+      if (e.detail === 0) return;
       // QA gate W1, second half: never suppress a click on an interactive
-      // CHILD. Those clicks are not the drag's own echo, and one of them can
-      // arrive with no pointerdown at all to have cleared the flag - pressing
-      // Space on a focused checkbox fires `click` and nothing else. Suppressing
-      // that would silently swallow a keyboard user's toggle.
+      // CHILD either. Those clicks are not the drag's echo, and a real mouse
+      // click on a checkbox inside the row does carry `detail === 1`, so the
+      // rule above does not subsume this one.
       const onChild = e.target && typeof e.target.closest === 'function' ? e.target.closest(ignoreSelector) : null;
       if (onChild && onChild !== row && row.contains(onChild)) return;
       e.preventDefault();
