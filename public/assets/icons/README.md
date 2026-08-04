@@ -257,6 +257,9 @@ found on-device.
 intents, same picture, kept separate so the Liked lane's glyph can change later
 without silently changing every folder that chose Favorites.
 
-**Known collision (disclosed):** `.icon-shows` and the pre-existing
-`.icon-downloads` both render U+1F4FA (📺) in the emoji set. Downloads' value
-predates this pool; v1.77 makes it user-changeable, which is the mitigation.
+**A collision that was resolved, not disclosed:** `.icon-shows` and the
+pre-existing `.icon-downloads` both rendered U+1F4FA (📺) in the emoji set.
+Dean ruled they must not share, so `.icon-downloads` moved to U+1F4FC (📼
+videocassette) and Shows kept the television - a TV being the literal read of a
+Shows folder. Downloads' mask assets are unchanged in all three vector sets;
+only its emoji glyph moved, and both are user-changeable in Settings now.

@@ -65,10 +65,24 @@ test('every shell that loads common.js also loads glyph-pool.js', () => {
 });
 
 test('glyph-pool.js is loaded BEFORE common.js in every shell', () => {
-  // Present-but-later is just as broken as absent: common.js reads the
-  // registry's globals at call time, but initLibraryGlyphs runs on
-  // DOMContentLoaded, which a later tag would still beat - and
-  // renderPlaylistsSheet could be reached from a cached view swap at any point.
+  // HONEST SCOPE (QA gate, measured): present-but-later is NOT broken today.
+  // The seat evaluated both orders against the real sources in a shared
+  // context and got byte-identical results - common.js touches no registry
+  // global at top level, and both are plain non-deferred tags at end-of-body,
+  // so the registry has executed long before DOMContentLoaded or any sheet
+  // render. My first comment here claimed the opposite and its own reasoning
+  // ("a later tag would still beat DOMContentLoaded") was in fact the argument
+  // that it does NOT break. A lying comment, in the wave whose headline was
+  // deleting lying comments.
+  //
+  // The assertion stays because it guards two futures that ARE fragile, and
+  // both are one edit away:
+  //   1. common.js gaining any TOP-LEVEL reference to the registry - a
+  //      cross-script `const` is a TDZ ReferenceError if the tag runs later,
+  //      not a soft failure.
+  //   2. either tag acquiring `defer`/`async`, or moving into <head>, at which
+  //      point execution order stops following document order.
+  // Defence in depth for those, not a claim about today.
   const wrong = [];
   for (const p of CONSUMERS) {
     const src = fs.readFileSync(p, 'utf8');

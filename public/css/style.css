@@ -4217,10 +4217,15 @@ a.sub-row-channel-link:focus-visible {
    emoji-set restoration, so it needs its OWN ::before entry here, same as
    every other .icon-* the emoji set covers). */
 [data-icons="emoji"] .icon-download::before { content: "\1F4E5"; }
-/* v1.73 (QA gate W2): ruling 4's emoji-set glyph - U+1F4FA TELEVISION,
-   the "TV/play emoji" the ruling names; the mask sets keep the
-   smart-display asset. */
-[data-icons="emoji"] .icon-downloads::before { content: "\1F4FA"; }
+/* Downloads' emoji-set glyph. U+1F4FC VIDEOCASSETTE since v1.77 (Dean: "i want
+   downloads and shows to not share"); it was U+1F4FA TELEVISION from v1.73
+   ruling 4 until v1.77's glyph pool gave `.icon-shows` that same codepoint.
+   A television is the literal read of a Shows folder, so Downloads moved and
+   Shows kept the TV - and a tape suits a library of things you recorded, in a
+   skin built to look like old YouTube. Either entry's glyph is user-changeable
+   in Settings now, so this is only the default. The MASK sets are untouched:
+   Downloads still uses the smart-display asset in outlined/rounded/filled. */
+[data-icons="emoji"] .icon-downloads::before { content: "\1F4FC"; }
 [data-icons="emoji"] .icon-books::before { content: "\1F4DA"; } /* books stack - the Books library */
 
 [data-icons="emoji"] .icon-home::before      { content: "\1F3E0"; } /* 🏠 */

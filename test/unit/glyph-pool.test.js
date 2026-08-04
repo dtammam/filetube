@@ -155,3 +155,55 @@ test('the registry carries codepoints, never literal emoji (icon-assets rule)', 
   assert.equal(literalEmoji, null,
     `glyph-pool.js must carry codepoints, not literal emoji (found: ${literalEmoji && literalEmoji.join(' ')})`);
 });
+
+// ---- v1.77 (Dean): no two chrome glyphs may share an emoji codepoint -------
+//
+// Dean, on reading the shipped-gaps disclosure: "i want downloads and shows to
+// not share". `.icon-shows` (the new Shows folder glyph) and `.icon-downloads`
+// (v1.73 ruling 4) had both landed on U+1F4FA TELEVISION, so in the emoji set
+// two different destinations wore the same picture. Downloads moved to U+1F4FC
+// VIDEOCASSETTE; Shows kept the TV.
+//
+// This binds the RULE rather than that one pair, because nothing bound the
+// downloads codepoint at all before now - a typo there, or the next glyph that
+// reaches for an obvious emoji, would have been invisible to the whole suite.
+// It reads the stylesheet rather than the registry on purpose: `.icon-downloads`
+// is NOT a pool member, and it was half of the collision.
+const EMOJI_TWINS_ALLOWED = [
+  // Deliberate: same picture, different intents, kept as separate classes so
+  // the Liked lane's glyph can change later without dragging every folder that
+  // chose "Favorites" along with it. Documented in glyph-pool.js.
+  ['icon-favorites', 'icon-liked'],
+];
+
+test('no two emoji-set glyphs share a codepoint (except documented twins)', () => {
+  const byCodepoint = new Map();
+  const re = /\[data-icons="emoji"\]\s*\.(icon-[a-z0-9-]+)::before\s*\{\s*content:\s*"([^"]+)"/g;
+  let m;
+  while ((m = re.exec(css)) !== null) {
+    if (!byCodepoint.has(m[2])) byCodepoint.set(m[2], []);
+    byCodepoint.get(m[2]).push(m[1]);
+  }
+  // Vacuity guard: a changed rule shape must not silently empty this.
+  assert.ok(byCodepoint.size >= 30,
+    `expected to find the emoji-set glyphs, found ${byCodepoint.size} codepoints`);
+
+  const allowed = new Set(EMOJI_TWINS_ALLOWED.map((pair) => pair.slice().sort().join('+')));
+  const collisions = [];
+  for (const [cp, classes] of byCodepoint) {
+    if (classes.length < 2) continue;
+    if (allowed.has(classes.slice().sort().join('+'))) continue;
+    collisions.push(`${cp} is worn by ${classes.join(' and ')}`);
+  }
+  assert.deepEqual(collisions, [],
+    `two chrome glyphs would render the same emoji - pick a distinct one, or add the pair to EMOJI_TWINS_ALLOWED with a reason:\n${collisions.join('\n')}`);
+});
+
+test("Dean's ruling, concretely: Shows keeps the TV and Downloads wears a tape", () => {
+  // The general rule above would also be satisfied by moving SHOWS, which is
+  // not what was ruled. This pins which one moved.
+  assert.match(css, /\[data-icons="emoji"\] \.icon-shows::before \{ content: "\\1F4FA"; \}/,
+    'Shows keeps U+1F4FA TELEVISION - a TV is the literal read of a Shows folder');
+  assert.match(css, /\[data-icons="emoji"\] \.icon-downloads::before \{ content: "\\1F4FC"; \}/,
+    'Downloads wears U+1F4FC VIDEOCASSETTE (moved from the TV it shared with Shows)');
+});

@@ -42,10 +42,12 @@ const GLYPH_POOL = [
   // Dean's four (intake 2026-08-04).
   { id: 'school', name: 'School', asset: 'school', emoji: '1F393' },
   { id: 'movies', name: 'Movies', asset: 'movie', emoji: '1F3AC' },
-  // DISCLOSED collision: `.icon-downloads` also renders 1F4FA in the emoji
-  // set (Dean's v1.73 ruling 4). That ruling is not re-litigated here; this
-  // wave makes the Downloads glyph user-changeable for the first time, which
-  // is the honest mitigation. See the exec plan's "Known gaps".
+  // Shows keeps the television. This COLLIDED with `.icon-downloads` (also
+  // 1F4FA, from v1.73 ruling 4) and shipped disclosed for exactly one gate
+  // round before Dean ruled it out: "i want downloads and shows to not share".
+  // Downloads moved to 1F4FC VIDEOCASSETTE rather than Shows moving, because a
+  // television is the literal read of a Shows folder. See style.css's
+  // `.icon-downloads::before` rule.
   { id: 'shows', name: 'Shows', asset: 'tv', emoji: '1F4FA' },
   { id: 'documents', name: 'Documents', asset: 'description', emoji: '1F4C4' },
 
