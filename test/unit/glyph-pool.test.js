@@ -76,13 +76,18 @@ const FILL_BLOCK = (() => {
   const decl = css.indexOf('background-color: currentColor', i);
   assert.notEqual(decl, -1, 'expected the currentColor fill declaration');
   // Walk back to the `{` that opens the rule containing that declaration, then
-  // back again to the `{` of the @supports block - what lies between is this
-  // rule's own selector list and nothing else.
+  // forward from whichever comes LATER: the @supports block's own `{`, or the
+  // `}` of the last rule preceding this one inside it. Both bounds are needed -
+  // the first cut of this fix used only the @supports brace, and a decoy rule
+  // inserted above the fill rule still satisfied the check (caught by
+  // mutation-testing the fix itself, not by review).
   const ruleBrace = css.lastIndexOf('{', decl);
   const supportsBrace = css.indexOf('{', i);
   assert.ok(ruleBrace > supportsBrace,
     'expected the fill declaration inside a rule nested in the @supports block');
-  return css.slice(supportsBrace + 1, ruleBrace).replace(/\/\*[\s\S]*?\*\//g, '');
+  const prevRuleEnd = css.lastIndexOf('}', ruleBrace);
+  const start = Math.max(supportsBrace, prevRuleEnd) + 1;
+  return css.slice(start, ruleBrace).replace(/\/\*[\s\S]*?\*\//g, '');
 })();
 
 // A class token must match WHOLE - `.icon-work` must not be satisfied by
