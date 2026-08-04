@@ -225,6 +225,11 @@
             <!-- Dynamically populated rows -->
             <div class="empty-folders-msg">No folders configured yet. Add one above.</div>
           </div>
+          <!-- v1.76 (QA gate S2): this list lost its up/down buttons, and
+               long-press-to-drag is not discoverable on its own. -->
+          <small style="color: var(--text-secondary); margin-top:6px; display:block;">
+            This order is the order folders appear in the sidebar. Drag a row to reorder it (press and hold on a touch screen), or focus its handle and use the arrow keys. Changes are saved when you press Save.
+          </small>
         </div>
 
         <!-- v1.55 Track B/C: shared footer row + the ONE status treatment
@@ -530,7 +535,7 @@
           <label>Bottom bar (mobile)</label>
           <div id="bottombar-editor"><!-- rows rendered by setup.js --></div>
           <small style="color: var(--text-secondary); margin-top:6px; display:block;">
-            Show/hide and reorder every item in the mobile bottom bar - Home, Liked and Settings included. Keep at least one item showing. Some items (Subscriptions, Download) only appear when their feature is enabled. Device-local.
+            Show/hide and reorder every item in the mobile bottom bar - Home, Liked and Settings included. Drag a row to reorder it (press and hold on a touch screen), or focus its handle and use the arrow keys. Keep at least one item showing. Some items (Subscriptions, Download) only appear when their feature is enabled. Device-local.
           </small>
         </div>
 

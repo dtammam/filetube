@@ -167,10 +167,19 @@ test('unpin: the control is arm/confirm (card-delete pattern) and never navigate
 // ---- GATE FIXES (both reviewers' CRITICAL + warnings): source locks ----------
 
 test('GATE FIX C1: pin drag-reorder is SOURCE-SCOPED -- cross-source drops blocked, per-source ids to the owning endpoint, merged re-render', () => {
+  // v1.76: the first two assertions used to pin the EXACT text of the
+  // hand-rolled cross-source checks inside the native-HTML5 `dragover`/`drop`
+  // handlers. Those handlers are gone - the partition is now a `groupOf`
+  // option on the shared gesture layer, which refuses the drop AND withholds
+  // the drop indicator. The PROPERTY is unchanged, and it is now proven by
+  // EXECUTION rather than by string presence, in
+  // test/unit/pinned-sidebar-reorder.test.js (a real jsdom render, real
+  // pointer events, asserting on what reaches fetch). What remains here is
+  // the endpoint dispatch, which is still worth a source lock because its
+  // three arms are otherwise only exercised two at a time.
   const src = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
   assert.ok(src.includes('function pinSourceOf(pin)'), 'the source decision helper exists');
-  assert.ok(src.includes('pinSourceOf(validPins[dragSrcIndex]) !== pinSourceOf(validPins[index])) return;'), 'cross-source rows are not drop targets');
-  assert.ok(src.includes("if (source !== pinSourceOf(validPins[index])) return;"), 'drop re-asserts same-source (defense-in-depth)');
+  assert.ok(src.includes('groupOf: (index) => pinSourceOf(rowPins[index]),'), 'the drag partition is keyed on the pin source');
   assert.ok(src.includes(".filter((p) => pinSourceOf(p) === source)"), 'only the source own ids persist');
   // v1.72: the dispatch grew a podcasts arm - the lock binds all three.
   assert.ok(src.includes("source === 'books' ? '/api/books/pins/reorder'"), 'the endpoint follows the source -- the books reorder route is no longer client-dead');

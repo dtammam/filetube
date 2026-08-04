@@ -75,14 +75,15 @@ function renderFolders() {
     const s = folderSettings[folder] || {};
     const row = document.createElement('div');
     row.className = 'folder-item-row';
-    // Item 1 (v1.15.0): native HTML5 drag-and-drop, a progressive
-    // enhancement OVER the up/down buttons below (which stay as the
-    // keyboard/tap-accessible fallback -- see the reorder-btn handlers
-    // and their comment further down).
-    row.draggable = true;
+    // v1.76: no `draggable` attribute and no up/down buttons. The row is
+    // wired to the shared POINTER-event gesture layer below, which is what
+    // makes it draggable on a touch screen at all - native HTML5 drag (here
+    // since v1.15.0) never fired on iOS, so this handle really was decoration
+    // on Dean's phone. The handle is no longer aria-hidden either: it is now
+    // the keyboard reorder control that replaces the deleted buttons.
     row.dataset.index = String(index);
     row.innerHTML = `
-      <span class="drag-handle" draggable="false" title="Drag to reorder" aria-hidden="true"></span>
+      <span class="drag-handle" title="Drag to reorder"></span>
       <div style="flex:1; min-width:0;">
         <div class="folder-path-text" title="${escapeHtml(folder)}">${escapeHtml(folder)}</div>
         <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
@@ -95,12 +96,6 @@ function renderFolders() {
             <input type="checkbox" class="folder-hidden-sidebar-check" data-index="${index}" ${s.hiddenFromSidebar ? 'checked' : ''} /> Hide from sidebar
           </label>
         </div>
-      </div>
-      <div style="display:flex; flex-direction:column; gap:6px; flex-shrink:0;">
-        <button type="button" class="reorder-btn" data-index="${index}" data-dir="up" title="Move up" ${index === 0 ? 'disabled' : ''}
-                style="background:none;border:1px solid var(--border-dark);border-radius:var(--radius);cursor:pointer;color:var(--text-primary);font-size:16px;line-height:1;padding:6px 10px;"><i class="icon-arrow-up"></i></button>
-        <button type="button" class="reorder-btn" data-index="${index}" data-dir="down" title="Move down" ${index === configuredFolders.length - 1 ? 'disabled' : ''}
-                style="background:none;border:1px solid var(--border-dark);border-radius:var(--radius);cursor:pointer;color:var(--text-primary);font-size:16px;line-height:1;padding:6px 10px;"><i class="icon-arrow-down"></i></button>
       </div>
       <button class="remove-folder-btn" data-index="${index}" title="Remove folder">&times;</button>
     `;
@@ -127,64 +122,40 @@ function renderFolders() {
     }
   });
 
-  // Reorder handlers — swap positions in the folders array (that order is the sidebar order).
-  // This is the keyboard/tap-accessible FALLBACK (item 1, v1.15.0) — it
-  // stays fully functional alongside the drag-and-drop handlers below,
-  // for mobile/keyboard users where native DnD is awkward.
-  container.querySelectorAll('.reorder-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const i = parseInt(e.currentTarget.dataset.index);
-      const j = e.currentTarget.dataset.dir === 'up' ? i - 1 : i + 1;
-      if (j < 0 || j >= configuredFolders.length) return;
-      [configuredFolders[i], configuredFolders[j]] = [configuredFolders[j], configuredFolders[i]];
+  // v1.76: ONE drag-to-reorder gesture (pointer events - mouse, touch and
+  // pen), replacing BOTH the up/down `.reorder-btn` buttons and the v1.15.0
+  // native HTML5 DnD that never worked on a touch screen. Dean's report was
+  // that the row only dragged "from a small portion of the card": native drag
+  // never starts inside a text input, so the display-name field, both
+  // checkboxes and the buttons were all dead zones. The whole row is the drag
+  // surface now, minus its genuinely interactive children (the helper's
+  // default ignore list), and a touch drag arms on a long press so the list
+  // can still be scrolled with a finger.
+  //
+  // The persist posture is UNCHANGED and deliberately different from the
+  // sidebar's: this list has a Save button, so a reorder only mutates
+  // `configuredFolders` and Save persists it through POST /api/config. A drag
+  // followed by no Save must persist nothing.
+  const wireRows = (typeof wireReorderable === 'function')
+    ? wireReorderable
+    : (window.FileTube && window.FileTube.wireReorderable);
+  wireRows(container, {
+    rowSelector: '.folder-item-row',
+    handleSelector: '.drag-handle',
+    focusKey: 'setup-folders',
+    // The box scrolls (and got taller this wave), so a drag near its edge
+    // needs the list to come to the pointer.
+    scrollContainer: container,
+    labelOf: (i) => {
+      const folder = configuredFolders[i];
+      const s2 = folderSettings[folder] || {};
+      return s2.name || (folder || '').split(/[\\/]/).pop() || folder;
+    },
+    onReorder: (from, to) => {
+      configuredFolders = moveArrayItem(configuredFolders, from, to);
       renderFolders();
-    }, { signal: controller.signal });
-  });
-
-  // Drag-and-drop reorder (item 1, v1.15.0) — a progressive enhancement
-  // over the up/down buttons above; both mutate the SAME
-  // `configuredFolders` array, and the Save button (below) persists it
-  // through the existing POST /api/config path either way. No immediate
-  // save here (mirrors the up/down buttons -- Save is still required).
-  let dragSrcIndex = null;
-  container.querySelectorAll('.folder-item-row').forEach((row) => {
-    row.addEventListener('dragstart', (e) => {
-      dragSrcIndex = parseInt(row.dataset.index, 10);
-      row.classList.add('dragging');
-      if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = 'move';
-        // Firefox requires data to be set for the drag to initiate at all.
-        e.dataTransfer.setData('text/plain', String(dragSrcIndex));
-      }
-    }, { signal: controller.signal });
-    row.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      const rect = row.getBoundingClientRect();
-      const before = (e.clientY - rect.top) < rect.height / 2;
-      row.classList.toggle('drag-over-before', before);
-      row.classList.toggle('drag-over-after', !before);
-    }, { signal: controller.signal });
-    row.addEventListener('dragleave', () => {
-      row.classList.remove('drag-over-before', 'drag-over-after');
-    }, { signal: controller.signal });
-    row.addEventListener('drop', (e) => {
-      e.preventDefault();
-      const targetIndex = parseInt(row.dataset.index, 10);
-      const before = row.classList.contains('drag-over-before');
-      row.classList.remove('drag-over-before', 'drag-over-after');
-      if (dragSrcIndex === null || Number.isNaN(targetIndex)) return;
-      const toIndex = computeDropIndex(dragSrcIndex, targetIndex, before);
-      configuredFolders = moveArrayItem(configuredFolders, dragSrcIndex, toIndex);
-      dragSrcIndex = null;
-      renderFolders();
-    }, { signal: controller.signal });
-    row.addEventListener('dragend', () => {
-      dragSrcIndex = null;
-      container.querySelectorAll('.folder-item-row').forEach((r) => {
-        r.classList.remove('dragging', 'drag-over-before', 'drag-over-after');
-      });
-    }, { signal: controller.signal });
+    },
+    signal: controller.signal,
   });
 
   // Persist per-folder edits as they happen (keyed by path so row order doesn't matter)
@@ -242,7 +213,6 @@ function renderFolders() {
 // keep their absolute positions), (3) POSTed, then the full config is
 // reloaded so the synthetic Downloads folder's GET-time position splice
 // (server.js) is reflected everywhere (wizard list + sidebar).
-let sidebarDragSrcIndex = null;
 function renderSidebarFolders(folders, settings = {}) {
   const sidebarContainer = document.getElementById('sidebar-folders-list');
   if (!sidebarContainer) return;
@@ -257,40 +227,28 @@ function renderSidebarFolders(folders, settings = {}) {
   sidebarContainer.innerHTML = visible.map((f, index) => {
     const base = f.split(/[\\/]/).pop() || f;
     const label = (settings[f] && settings[f].name) || base;
-    return `<a href="/?root=${encodeURIComponent(f)}" class="sidebar-item" data-index="${index}" draggable="true" title="${escapeHtml(f)}"><i class="icon-folder"></i> ${escapeHtml(label)}</a>`;
+    return `<a href="/?root=${encodeURIComponent(f)}" class="sidebar-item" data-index="${index}" title="${escapeHtml(f)}"><i class="icon-folder"></i> ${escapeHtml(label)}</a>`;
   }).join('');
   applyLikedSidebarEntry(sidebarContainer); // v1.33.1: see above
 
-  const items = sidebarContainer.querySelectorAll('.sidebar-item[data-index]');
-  items.forEach((el) => {
-    el.addEventListener('dragstart', (e) => {
-      sidebarDragSrcIndex = parseInt(el.dataset.index, 10);
-      el.classList.add('dragging');
-      if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', String(sidebarDragSrcIndex));
-      }
-    }, { signal: controller.signal });
-    el.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      const rect = el.getBoundingClientRect();
-      const before = (e.clientY - rect.top) < rect.height / 2;
-      el.classList.toggle('drag-over-before', before);
-      el.classList.toggle('drag-over-after', !before);
-    }, { signal: controller.signal });
-    el.addEventListener('dragleave', () => {
-      el.classList.remove('drag-over-before', 'drag-over-after');
-    }, { signal: controller.signal });
-    el.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      const targetIndex = parseInt(el.dataset.index, 10);
-      const before = el.classList.contains('drag-over-before');
-      el.classList.remove('drag-over-before', 'drag-over-after');
-      const fromIndex = sidebarDragSrcIndex;
-      sidebarDragSrcIndex = null;
-      if (fromIndex === null || Number.isNaN(targetIndex)) return;
-      const toIndex = computeDropIndex(fromIndex, targetIndex, before);
+  // v1.76: the shared POINTER gesture layer, replacing this file's second
+  // copy of the native HTML5 DnD wiring. Same row selector, so the injected
+  // Liked entry is still not a drag target; no `handleSelector`, so these
+  // link rows drag whole and keep their normal arrow-key focus behaviour
+  // (see main.js's identical sidebar for the full rationale).
+  //
+  // The persist posture is UNCHANGED: the sidebar has no Save button of its
+  // own (unlike the wizard list above), so a drop persists immediately via
+  // moveArrayItem -> rebuildFullFolderOrder -> POST /api/config, then
+  // reloads the whole config so the synthetic Downloads folder's GET-time
+  // position splice is reflected in BOTH lists.
+  const wireRows = (typeof wireReorderable === 'function')
+    ? wireReorderable
+    : (window.FileTube && window.FileTube.wireReorderable);
+  wireRows(sidebarContainer, {
+    rowSelector: '.sidebar-item[data-index]',
+    scrollContainer: document.getElementById('sidebar'),
+    onReorder: async (fromIndex, toIndex) => {
       const newVisibleOrder = moveArrayItem(visible, fromIndex, toIndex);
       const rebuiltFull = rebuildFullFolderOrder(folders, settings, newVisibleOrder, syntheticFolders);
       try {
@@ -304,11 +262,8 @@ function renderSidebarFolders(folders, settings = {}) {
       } catch (err) {
         console.error('Failed to persist sidebar folder reorder:', err);
       }
-    }, { signal: controller.signal });
-    el.addEventListener('dragend', () => {
-      sidebarDragSrcIndex = null;
-      items.forEach((r) => r.classList.remove('dragging', 'drag-over-before', 'drag-over-after'));
-    }, { signal: controller.signal });
+    },
+    signal: controller.signal,
   });
 }
 
@@ -788,12 +743,13 @@ function renderBottomBarEditor(signal) {
   items.forEach((id, index) => {
     const row = document.createElement('div');
     row.className = 'bottombar-editor-row';
-    const up = document.createElement('button');
-    up.type = 'button'; up.className = 'bottombar-editor-btn'; up.innerHTML = '&uarr;';
-    up.title = 'Move up'; up.disabled = index === 0;
-    const down = document.createElement('button');
-    down.type = 'button'; down.className = 'bottombar-editor-btn'; down.innerHTML = '&darr;';
-    down.title = 'Move down'; down.disabled = index === items.length - 1;
+    // v1.76 (Dean: the up/down arrows "just suck"): the handle replaces both
+    // buttons. It is the drag grip AND the keyboard control - wireReorderable
+    // gives it tabindex/role/aria-label and arrow-key reorder below, so
+    // deleting the buttons costs no accessibility.
+    const handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.title = 'Drag to reorder';
     const label = document.createElement('span');
     label.className = 'bottombar-editor-label';
     label.textContent = BOTTOMBAR_LABELS[id] || id;
@@ -827,11 +783,31 @@ function renderBottomBarEditor(signal) {
       FT.writeBottomNavConfig(c);
       if (FT.applyBottomNavCustomization) FT.applyBottomNavCustomization();
     }, { signal });
-    up.addEventListener('click', () => moveBottomBarItem(items, index, index - 1, signal), { signal });
-    down.addEventListener('click', () => moveBottomBarItem(items, index, index + 1, signal), { signal });
-
-    row.appendChild(up); row.appendChild(down); row.appendChild(label); row.appendChild(toggle);
+    row.appendChild(handle); row.appendChild(label); row.appendChild(toggle);
     host.appendChild(row);
+  });
+
+  // v1.76: drag-to-reorder (pointer events - mouse, touch and pen alike),
+  // replacing the up/down buttons. `moveBottomBarItem` is UNCHANGED: it still
+  // takes (items, from, to) and still persists the FULL resolved roster, which
+  // is what releases the v1.75 compat pins on home/settings. The gesture layer
+  // decides nothing about ordering or persistence.
+  //
+  // Resolved through window.FileTube when the bare global is absent: setup.js
+  // is required as a plain Node module by its jsdom tests, where common.js was
+  // never evaluated into the page.
+  // Deliberately NOT guarded by a `typeof === 'function'` check: common.js
+  // always loads before setup.js in the browser, so such a guard could never
+  // be false in production, and a silent no-op would leave the panel looking
+  // reorderable while doing nothing. A missing helper should be loud.
+  const wireRows = (typeof wireReorderable === 'function') ? wireReorderable : FT.wireReorderable;
+  wireRows(host, {
+    rowSelector: '.bottombar-editor-row',
+    handleSelector: '.drag-handle',
+    focusKey: 'bottombar-editor',
+    labelOf: (i) => BOTTOMBAR_LABELS[items[i]] || items[i],
+    onReorder: (from, to) => moveBottomBarItem(items, from, to, signal),
+    signal,
   });
 }
 function moveBottomBarItem(items, from, to, signal) {
@@ -2227,5 +2203,22 @@ if (typeof module !== 'undefined' && module.exports) {
     // ORDER, its label coverage and its >=1-visible floor are all behaviour
     // no constant can stand in for.
     renderBottomBarEditor, BOTTOMBAR_LABELS,
+    // v1.76: the wizard's directory list is jsdom-tested through its REAL
+    // render + REAL gesture wiring (the arrows it used to be driven by are
+    // gone). `init()` normally owns this module state, so a test needs a seat
+    // to stand it up -- and a reader, since the whole point of this list's
+    // posture is that a reorder lands in the ARRAY and waits for Save.
+    renderFolders,
+    // v1.76: the sidebar PREVIEW on this page - the other half of the same
+    // migration, and the one with the interesting persist chain (immediate
+    // POST, hidden/synthetic folders holding their absolute positions).
+    renderSidebarFolders,
+    __setFolderStateForTests(state) {
+      configuredFolders = Array.isArray(state.folders) ? state.folders.slice() : [];
+      folderSettings = state.settings || {};
+      syntheticFolders = state.synthetic || [];
+      controller = state.controller;
+    },
+    __getConfiguredFoldersForTests() { return configuredFolders.slice(); },
   };
 }

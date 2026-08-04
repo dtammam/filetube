@@ -378,6 +378,9 @@ function withEditor(config, fn) {
     readBottomNavConfig: common.readBottomNavConfig,
     writeBottomNavConfig: common.writeBottomNavConfig,
     applyBottomNavCustomization: () => {},
+    // v1.76: the editor wires its rows through the shared gesture layer. The
+    // REAL one, not a stub - these tests drive reorders through it.
+    wireReorderable: common.wireReorderable,
   };
   if (config !== null) dom.window.localStorage.setItem('ft-bottomnav', JSON.stringify(config));
   try {
@@ -472,11 +475,18 @@ test('v1.75 EDITOR FLOOR: un-checking a NON-last item still works normally', () 
   });
 });
 
-test('v1.75 EDITOR: a move button persists the FULL roster, which is what releases the compat pins', () => {
+test('v1.75 EDITOR: a move persists the FULL roster, which is what releases the compat pins', () => {
   // The whole "Home is not always left-most bound" mechanism: until an `order`
   // NAMES home/settings the compat fallbacks pin them, and the only thing that
-  // ever writes those two ids is this button. Adversarial S5 measured it had
-  // no direct test.
+  // ever writes those two ids is a reorder from this panel. Adversarial S5
+  // measured it had no direct test.
+  //
+  // v1.76: the up/down BUTTONS are gone (Dean: they "just suck"); the row's
+  // drag handle is now both the pointer grip and the keyboard control, so the
+  // move is driven here by the handle's ArrowDown. The property under test -
+  // the full roster reaching localStorage - is unchanged, and driving it by
+  // keyboard also proves the arrows' accessibility was replaced rather than
+  // simply deleted.
   withEditor({}, (dom, signal) => {
     global.showToast = () => {};
     setup.renderBottomBarEditor(signal);
@@ -487,7 +497,9 @@ test('v1.75 EDITOR: a move button persists the FULL roster, which is what releas
     const moveHomeDown = () => {
       const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('.bottombar-editor-row'));
       const row = rows.find((r) => r.querySelector('.bottombar-editor-label').textContent === 'Home');
-      row.querySelectorAll('.bottombar-editor-btn')[1].dispatchEvent(new dom.window.Event('click'));
+      row.querySelector('.drag-handle').dispatchEvent(
+        new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })
+      );
     };
     assert.equal(
       dom.window.document.querySelector('.bottombar-editor-row .bottombar-editor-label').textContent,
@@ -507,6 +519,80 @@ test('v1.75 EDITOR: a move button persists the FULL roster, which is what releas
     assert.equal(resolveBottomNavLayout(BOTTOM_NAV_OPTIONAL, written).visible[0], 'playlists');
     assert.equal(resolveBottomNavLayout(BOTTOM_NAV_OPTIONAL, written).visible[1], 'home');
     delete global.showToast;
+  });
+});
+
+// ---- v1.76: the arrows are gone; the handle drags ---------------------------
+
+test('v1.76 EDITOR: every row has a drag handle and NO up/down buttons survive', () => {
+  withEditor({}, (dom, signal) => {
+    setup.renderBottomBarEditor(signal);
+    const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('.bottombar-editor-row'));
+    assert.ok(rows.length > 0, 'the panel rendered');
+    assert.equal(
+      dom.window.document.querySelectorAll('.bottombar-editor-btn').length, 0,
+      'the up/down buttons Dean asked to be rid of are gone',
+    );
+    for (const row of rows) {
+      const handle = row.querySelector('.drag-handle');
+      assert.ok(handle, 'every row has a grip');
+      // The grip carries the accessibility the deleted buttons used to.
+      assert.equal(handle.getAttribute('tabindex'), '0');
+      assert.equal(handle.getAttribute('role'), 'button');
+      assert.ok(/^Reorder .+/.test(handle.getAttribute('aria-label') || ''), 'named for a screen reader');
+      assert.notEqual(handle.getAttribute('aria-label'), 'Reorder item', 'named by its ITEM, not generically');
+    }
+  });
+});
+
+test('v1.76 EDITOR: a POINTER drag reorders the bar and persists the full roster', () => {
+  // The headline of Dean's ask, bound end-to-end: a real drag on the real
+  // panel writes a real config the real resolver then renders.
+  withEditor({}, (dom, signal) => {
+    setup.renderBottomBarEditor(signal);
+    const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('.bottombar-editor-row'));
+    // jsdom does no layout, so give the rows the geometry a browser would.
+    rows.forEach((row, i) => { row.getBoundingClientRect = () => ({ top: i * 20, bottom: i * 20 + 20, height: 20 }); });
+    const labelAt = (i) => rows[i].querySelector('.bottombar-editor-label').textContent;
+    const first = labelAt(0);
+    const second = labelAt(1);
+    assert.equal(first, 'Home', 'Home heads the panel before the drag');
+
+    const pointerAt = (el, type, clientY) => el.dispatchEvent(new dom.window.PointerEvent(type, {
+      bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', button: 0, clientX: 0, clientY,
+    }));
+    const lastBottomHalf = (rows.length - 1) * 20 + 15;
+    pointerAt(rows[0], 'pointerdown', 5);
+    pointerAt(dom.window.document, 'pointermove', 20);          // past the arm threshold
+    pointerAt(dom.window.document, 'pointermove', lastBottomHalf);
+    pointerAt(dom.window.document, 'pointerup', lastBottomHalf);
+
+    const written = JSON.parse(dom.window.localStorage.getItem('ft-bottomnav'));
+    assert.ok(written && Array.isArray(written.order), 'the drag persisted an order');
+    assert.equal(written.order.length, BOTTOM_NAV_OPTIONAL.length, 'the FULL roster, so the compat pins release');
+    assert.equal(written.order[written.order.length - 1], 'home', 'the dragged item landed at the end');
+    assert.equal(BOTTOMBAR_LABELS_OF(written.order[0]), second, 'the row below it took the lead');
+    assert.notEqual(BOTTOMBAR_LABELS_OF(written.order[0]), first);
+    // ...and the BAR agrees, which is the thing Dean actually looks at.
+    assert.equal(resolveBottomNavLayout(BOTTOM_NAV_OPTIONAL, written).visible.slice(-1)[0], 'home');
+  });
+});
+
+const BOTTOMBAR_LABELS_OF = (id) => setup.BOTTOMBAR_LABELS[id] || id;
+
+test('v1.76 EDITOR: a drag that ends where it started persists nothing', () => {
+  withEditor({}, (dom, signal) => {
+    setup.renderBottomBarEditor(signal);
+    const before = dom.window.localStorage.getItem('ft-bottomnav');
+    const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('.bottombar-editor-row'));
+    rows.forEach((row, i) => { row.getBoundingClientRect = () => ({ top: i * 20, bottom: i * 20 + 20, height: 20 }); });
+    const pointerAt = (el, type, clientY) => el.dispatchEvent(new dom.window.PointerEvent(type, {
+      bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', button: 0, clientX: 0, clientY,
+    }));
+    pointerAt(rows[0], 'pointerdown', 5);
+    pointerAt(dom.window.document, 'pointermove', 9);   // top half of its own row
+    pointerAt(dom.window.document, 'pointerup', 9);
+    assert.equal(dom.window.localStorage.getItem('ft-bottomnav'), before, 'no write at all');
   });
 });
 

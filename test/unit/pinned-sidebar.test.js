@@ -107,23 +107,37 @@ class FakeNode {
     };
   }
 
-  // Minimal compound-selector support (a class + an optional `[data-*]`
-  // attribute-presence check) -- sufficient for
-  // wirePinnedSidebarDragAndDrop's own `.sidebar-item[data-pin-id]` lookup.
+  // Minimal compound-selector support: a selector LIST, each part an optional
+  // TAG name plus an optional class plus an optional `[data-*]`
+  // attribute-presence check. Covers wirePinnedSidebarDragAndDrop's
+  // `.sidebar-item[data-pin-id]` lookup and v1.76's `a, img` sweep.
   // Mirrors test/unit/library-toolbar.test.js's own single-class
   // querySelectorAll fake, extended with the attribute-presence half.
+  //
+  // v1.76: the tag + comma halves are NEW, and their absence was a trap rather
+  // than a missing convenience. The gesture layer turns native drag off on
+  // every descendant that defaults to draggable, found via
+  // `querySelectorAll('a, img')`; against the previous matcher that selector
+  // yielded cls === null AND attr === null, so EVERY descendant matched -
+  // including createTextNode leaves, which have no setAttribute. The double
+  // was returning matches a real DOM never would.
   querySelectorAll(selector) {
-    const classMatch = String(selector).match(/\.([a-zA-Z0-9_-]+)/);
-    const attrMatch = String(selector).match(/\[([a-zA-Z0-9_-]+)\]/);
-    const cls = classMatch ? classMatch[1] : null;
-    const attr = attrMatch ? attrMatch[1] : null;
+    const parts = String(selector).split(',').map((s) => s.trim()).filter(Boolean).map((part) => ({
+      tag: (part.match(/^[a-zA-Z][a-zA-Z0-9]*/) || [null])[0],
+      cls: (part.match(/\.([a-zA-Z0-9_-]+)/) || [null, null])[1],
+      attr: (part.match(/\[([a-zA-Z0-9_-]+)\]/) || [null, null])[1],
+    }));
+    const matchesPart = (child, p) => {
+      if (p.tag && String(child.tagName || '').toLowerCase() !== p.tag.toLowerCase()) return false;
+      if (p.cls && !(child.className && child.className.split(' ').filter(Boolean).includes(p.cls))) return false;
+      if (p.attr && !(child._attrs && Object.prototype.hasOwnProperty.call(child._attrs, p.attr))) return false;
+      return true;
+    };
     const results = [];
     const walk = (node) => {
       if (!Array.isArray(node.children)) return; // a createTextNode leaf has no .children
       node.children.forEach((child) => {
-        const classOk = !cls || (child.className && child.className.split(' ').filter(Boolean).includes(cls));
-        const attrOk = !attr || (child._attrs && Object.prototype.hasOwnProperty.call(child._attrs, attr));
-        if (classOk && attrOk) results.push(child);
+        if (parts.some((p) => matchesPart(child, p))) results.push(child);
         walk(child);
       });
     };
@@ -214,7 +228,10 @@ test('renderPinnedSidebar: renders a pin entry with a generated avatar glyph and
   // First child is the "Pinned" heading; second is the pin link.
   const link = section.children[1];
   assert.strictEqual(link.tagName, 'A');
-  assert.strictEqual(link.className, 'sidebar-item');
+  // v1.76: `reorder-row` is stamped by the shared gesture layer on every row
+  // it wires, so its presence here is also the proof that this pin row IS
+  // wired for drag-to-reorder.
+  assert.deepEqual(link.className.split(' ').sort(), ['reorder-row', 'sidebar-item']);
   assert.strictEqual(link.href, '/?root=' + encodeURIComponent(PIN.channelDir));
   const avatar = link.children.find((c) => c.tagName === 'SPAN');
   assert.ok(avatar, 'expected a generated avatar <span> child (no channelAvatarUrl on this pin)');

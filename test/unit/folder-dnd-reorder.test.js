@@ -4,13 +4,16 @@
 // reorder helpers exposed from the browser common.js via the same
 // `typeof module` guard as the other client-side pure helpers (mirrors
 // test/unit/quickwins-sidebar-view.test.js). These three helpers are the
-// SHARED model behind both the new native HTML5 drag-and-drop (Setup folder
-// list + left sidebar) and the existing up/down `.reorder-btn` fallback --
-// they mutate/derive the SAME `configuredFolders`/`folders` array the
-// up/down buttons already swap entries in, so a DnD reorder and an
-// equivalent up/down sequence converge on the identical resulting array
-// (proven end-to-end, against the real POST/GET /api/config persistence
-// path, in test/integration/folder-dnd-order.test.js).
+// SHARED model behind every reorder in the app, on every surface and by
+// every input device -- so a drag and an equivalent keyboard sequence
+// converge on the identical resulting array (proven end-to-end, against the
+// real POST/GET /api/config persistence path, in
+// test/integration/folder-dnd-order.test.js).
+//
+// v1.76 replaced the GESTURE layer above them (native HTML5 drag-and-drop
+// plus the up/down `.reorder-btn` buttons, both gone) with one pointer-event
+// helper; these three are unchanged, and its own tests live in
+// test/unit/reorder-gesture.test.js.
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { moveArrayItem, computeDropIndex, rebuildFullFolderOrder } = require('../../public/js/common.js');

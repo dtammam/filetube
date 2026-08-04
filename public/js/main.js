@@ -608,9 +608,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // - the sidebar folder list drops these (the hard Downloads entry owns
     // that surface); the reorder math treats them like hiddenFromSidebar.
     let syntheticFolderPaths = [];
-    // Tracks the source index of an in-progress sidebar drag; per-init (like
-    // every other piece of this view's state) so it always starts clean.
-    let sidebarDragSrcIndex = null;
 
     // Parse URL query params — read fresh on every init(), since this same
     // function now runs for every navigation (SPA swap or full load), each
@@ -1225,16 +1222,23 @@ if (typeof module !== 'undefined' && module.exports) {
     // this list -- it stays fully browsable via a direct /?root=<path> link,
     // this only controls whether a LINK to it is rendered here.
     //
-    // Item 1 (v1.15.0): also wires native HTML5 drag-and-drop reordering. The
-    // home sidebar has no Save button, so a drop persists IMMEDIATELY via the
-    // SAME POST /api/config path the Setup page's up/down buttons use: (1) the
-    // reordered VISIBLE subset via moveArrayItem, (2) rebuilt into the FULL
-    // folders order via rebuildFullFolderOrder (a hidden-from-sidebar folder
-    // keeps its absolute position -- it never appears here to be dragged),
-    // (3) POSTed, then the config is re-fetched (GET) so the synthetic
-    // Downloads folder's position-splice (server.js) is reflected. The
-    // up/down buttons on the Setup page remain the keyboard/tap-accessible
-    // fallback for reordering (this sidebar has no such fallback of its own).
+    // Item 1 (v1.15.0), rewired in v1.76: also wires drag-to-reorder, now
+    // through common.js's shared POINTER gesture layer rather than this
+    // surface's own copy of the native HTML5 DnD wiring (which never fired on
+    // touch at all). The home sidebar has no Save button, so a drop persists
+    // IMMEDIATELY via the SAME POST /api/config path the Setup page's Save
+    // button uses: (1) the reordered VISIBLE subset via moveArrayItem, (2)
+    // rebuilt into the FULL folders order via rebuildFullFolderOrder (a
+    // hidden-from-sidebar folder keeps its absolute position -- it never
+    // appears here to be dragged), (3) POSTed, then the config is re-fetched
+    // (GET) so the synthetic Downloads folder's position-splice (server.js)
+    // is reflected.
+    //
+    // The Setup page's up/down buttons are GONE as of v1.76 (they were the
+    // thing Dean asked to be rid of); keyboard reorder lives on the drag
+    // HANDLE of the two Settings lists that have one. This sidebar has no
+    // handle and therefore still no keyboard reorder of its own -- see the
+    // wireReorderable call below for why that is deliberate.
     function renderSidebarFolders(folders, settings = {}) {
       allFolders = Array.isArray(folders) ? folders : [];
       const visibleFolders = visibleSidebarFolders(folders, settings, syntheticFolderPaths);
@@ -1257,52 +1261,39 @@ if (typeof module !== 'undefined' && module.exports) {
         const isActive = rootFilter === f ? 'active' : '';
         // ?root= shows everything under the mapped folder, including subfolders.
         return `
-          <a href="/?root=${encodeURIComponent(f)}" class="sidebar-item ${isActive}" data-index="${index}" draggable="true" title="${escapeHtml(f)}">
+          <a href="/?root=${encodeURIComponent(f)}" class="sidebar-item ${isActive}" data-index="${index}" title="${escapeHtml(f)}">
             <i class="icon-folder"></i> ${escapeHtml(label)}
           </a>
         `;
       }).join('');
       applyLikedSidebarEntry(sidebarFoldersList, { active: likedFilter });
 
-      const items = sidebarFoldersList.querySelectorAll('.sidebar-item[data-index]');
-      items.forEach((el) => {
-        el.addEventListener('dragstart', (e) => {
-          sidebarDragSrcIndex = parseInt(el.dataset.index, 10);
-          el.classList.add('dragging');
-          if (e.dataTransfer) {
-            e.dataTransfer.effectAllowed = 'move';
-            // Firefox requires data to be set for the drag to initiate at all.
-            e.dataTransfer.setData('text/plain', String(sidebarDragSrcIndex));
-          }
-        }, { signal });
-        el.addEventListener('dragover', (e) => {
-          e.preventDefault();
-          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-          const rect = el.getBoundingClientRect();
-          const before = (e.clientY - rect.top) < rect.height / 2;
-          el.classList.toggle('drag-over-before', before);
-          el.classList.toggle('drag-over-after', !before);
-        }, { signal });
-        el.addEventListener('dragleave', () => {
-          el.classList.remove('drag-over-before', 'drag-over-after');
-        }, { signal });
-        el.addEventListener('drop', async (e) => {
-          e.preventDefault();
-          const targetIndex = parseInt(el.dataset.index, 10);
-          const before = el.classList.contains('drag-over-before');
-          el.classList.remove('drag-over-before', 'drag-over-after');
-          const fromIndex = sidebarDragSrcIndex;
-          sidebarDragSrcIndex = null;
-          if (fromIndex === null || Number.isNaN(targetIndex)) return;
-          const toIndex = computeDropIndex(fromIndex, targetIndex, before);
+      // v1.76: the shared POINTER gesture layer replaces this surface's own
+      // copy of the native HTML5 DnD wiring -- which is why the sidebar can
+      // now be reordered on a phone at all. The row selector is unchanged, so
+      // the built-in Liked entry (prepended by applyLikedSidebarEntry, and
+      // never a db.folders row) is still not a drag target.
+      //
+      // No `handleSelector`: these rows are <a> links with no grip, so the
+      // whole row drags and no keyboard reorder is wired -- claiming
+      // ArrowUp/ArrowDown here would break normal focus scrolling, and this
+      // surface never had a keyboard reorder to preserve (the Setup page's
+      // list is where that lives).
+      //
+      // The persist posture is UNCHANGED: this sidebar has no Save button, so
+      // a drop persists immediately, through the SAME
+      // moveArrayItem -> rebuildFullFolderOrder -> POST /api/config path as
+      // before (a hidden-from-sidebar or synthetic folder keeps its absolute
+      // position; it never appears here to be dragged).
+      wireReorderable(sidebarFoldersList, {
+        rowSelector: '.sidebar-item[data-index]',
+        scrollContainer: document.getElementById('sidebar'),
+        onReorder: async (fromIndex, toIndex) => {
           const newVisibleOrder = moveArrayItem(visibleFolders, fromIndex, toIndex);
           const rebuiltFull = rebuildFullFolderOrder(allFolders, settings, newVisibleOrder, syntheticFolderPaths);
           await persistSidebarFolderOrder(rebuiltFull, settings);
-        }, { signal });
-        el.addEventListener('dragend', () => {
-          sidebarDragSrcIndex = null;
-          items.forEach((r) => r.classList.remove('dragging', 'drag-over-before', 'drag-over-after'));
-        }, { signal });
+        },
+        signal,
       });
     }
 

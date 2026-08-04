@@ -1645,17 +1645,19 @@ function visibleSidebarFolders(folders, settings, syntheticFolders) {
 
 // ---- Folder drag-and-drop reordering (v1.15.0 item 1) ----------------------
 //
-// These three pure helpers are the SHARED reorder model behind both the
-// native HTML5 drag-and-drop (Setup folder list + left sidebar) and the
-// existing up/down `.reorder-btn` fallback -- they mutate/derive the SAME
-// `configuredFolders`/`folders` array the up/down buttons already swap
-// entries in, so a DnD reorder and an equivalent up/down sequence always
-// converge on the identical persisted order. No server change: the existing
-// `POST /api/config` handler already derives the synthetic Downloads
-// folder's `order` from its POSITION in the submitted `folders` array
-// (never writing it into `db.folders` -- see server.js), so these helpers
-// only need to produce the same reordered `folders` array the up/down path
-// already sends.
+// These three pure helpers are the SHARED reorder MODEL: every reorder in
+// this app, on every surface and by every input device, produces its new
+// array through them. v1.76 replaced the gesture layer above them (native
+// HTML5 DnD and the up/down `.reorder-btn` buttons -> one pointer-event
+// helper, `wireReorderable` below) without touching these -- so a pointer
+// drag and a keyboard arrow-key move still converge on the identical
+// persisted order, exactly as DnD and the buttons used to.
+//
+// No server change, then or now: the existing `POST /api/config` handler
+// already derives the synthetic Downloads folder's `order` from its POSITION
+// in the submitted `folders` array (never writing it into `db.folders` --
+// see server.js), so these helpers only need to produce a correctly
+// reordered `folders` array.
 
 // Pure: returns a NEW array with the item at `fromIndex` moved to land at
 // `toIndex` (splice-out + splice-in), leaving every other item's relative
@@ -1709,6 +1711,488 @@ function rebuildFullFolderOrder(fullFolders, settings, newVisibleOrder, syntheti
   const queue = Array.isArray(newVisibleOrder) ? newVisibleOrder.slice() : [];
   let i = 0;
   return full.map((f) => (visibleSet.has(f) ? queue[i++] : f));
+}
+
+// ---- v1.76: the ONE drag-to-reorder gesture layer --------------------------
+//
+// Replaces five hand-copied native-HTML5-DnD wirings (main.js's sidebar
+// folders, setup.js's wizard rows AND sidebar preview, this file's pinned
+// section, subscriptions.js's rows) with a single POINTER-EVENT helper.
+//
+// Why pointer events and not `draggable="true"`: native HTML5 drag does not
+// fire on iOS touch AT ALL, so all five of those surfaces were desktop-only
+// and their drag handles were, on Dean's phone, decoration. `pointerdown`/
+// `pointermove`/`pointerup` is one code path for mouse, touch and pen.
+//
+// The two doors onto a touch drag (plan D2): a 300ms LONG-PRESS anywhere on
+// the row, or an immediate press on a `handleSelector` handle (which wears
+// `touch-action: none`). The long press is what lets the WHOLE row be a drag
+// surface without stealing vertical scroll from a list that scrolls -- move
+// more than REORDER_TOUCH_SLOP_PX before the timer fires and the press is
+// abandoned to the browser as a normal scroll. Once armed, a non-passive
+// `touchmove` handler calls preventDefault() for the rest of the gesture,
+// which is what actually pins the page while a finger drags.
+//
+// Reuses `moveArrayItem`/`computeDropIndex` above VERBATIM -- this wave
+// swapped the gesture layer, never the ordering semantics.
+
+const REORDER_DEFAULT_CLASSES = { dragging: 'dragging', before: 'drag-over-before', after: 'drag-over-after' };
+const REORDER_ROW_CLASS = 'reorder-row';
+const REORDER_BODY_CLASS = 'reorder-dragging';
+// Mouse/pen: a few px of travel separates a drag from a click, so a click on
+// a sidebar link still navigates. Touch: a long press arms instead, and more
+// than the slop before it fires means the user meant to scroll.
+const REORDER_MOUSE_THRESHOLD_PX = 4;
+const REORDER_TOUCH_SLOP_PX = 10;
+const REORDER_LONG_PRESS_MS = 300;
+// Auto-scroll while dragging inside a scrolling box (plan D7 made those
+// boxes taller, which is precisely when this starts to matter).
+const REORDER_AUTOSCROLL_EDGE_PX = 36;
+const REORDER_AUTOSCROLL_STEP_PX = 12;
+const REORDER_AUTOSCROLL_TICK_MS = 16;
+
+// Keyboard reorder re-renders the list, which DESTROYS the handle that had
+// focus -- so the move records where focus should land and the next
+// `wireReorderable` call (every caller re-wires after every render) restores
+// it. Keyed by an opaque caller string rather than by element because some
+// callers rebuild the container element itself (the pinned sidebar does).
+// Without this, one arrow press strands focus on <body> and the second press
+// does nothing -- the v1.67 card-corner-editor lesson, verbatim.
+let pendingReorderFocus = null;
+
+// Pure: given the measured rects of every row (index-aligned with the list)
+// and the pointer's clientY, resolve WHICH row the pointer is over and which
+// half of it -- `{ index, before }`, the exact pair `computeDropIndex`
+// consumes. Above the first row resolves to the first row's before-half,
+// below the last to the last row's after-half, and a pointer in the GAP
+// between two rows resolves to the nearer of the two edges. Returns null for
+// an empty list. Only `top`/`bottom` are read, so a test can inject plain
+// object rects (jsdom does no layout -- every real rect there is all-zero).
+// Exported for node:test.
+function resolveReorderTarget(rects, clientY) {
+  const list = Array.isArray(rects) ? rects : [];
+  if (list.length === 0) return null;
+  if (clientY < list[0].top) return { index: 0, before: true };
+  for (let i = 0; i < list.length; i++) {
+    const r = list[i];
+    if (clientY > r.bottom) continue;
+    if (clientY >= r.top) return { index: i, before: clientY < (r.top + r.bottom) / 2 };
+    // In the gap above row i. i > 0 here: the `clientY < list[0].top` guard
+    // above already claimed everything above the first row.
+    const prev = list[i - 1];
+    return (clientY - prev.bottom) <= (r.top - clientY)
+      ? { index: i - 1, before: false }
+      : { index: i, before: true };
+  }
+  return { index: list.length - 1, before: false };
+}
+
+// Pure: how far (px, negative = up) a scrolling container should scroll this
+// tick, given its rect and the pointer's clientY. Zero outside the edge
+// bands; ramps to the full step at the edge and STAYS at the full step past
+// it (a pointer dragged clean outside the box keeps scrolling rather than
+// stalling). Exported for node:test.
+function computeAutoScrollDelta(rect, clientY, edge, maxStep) {
+  if (!rect) return 0;
+  // Adversarial gate W3: a container with no measurable height cannot scroll,
+  // but without this it read as "hard against BOTH edges" and returned a
+  // non-zero delta for every pointer position - so the auto-scroll interval
+  // started on every armed drag and, because its own `!armed` tick-guard can
+  // never fire while a gesture is stuck armed, never stopped. In jsdom every
+  // rect is all-zero, which made an assertion that threw mid-drag HANG the
+  // test process instead of failing it: the pre-commit hook refuses red, and
+  // it cannot refuse a hang.
+  if (!(rect.bottom > rect.top)) return 0;
+  const band = edge > 0 ? edge : 0;
+  const step = maxStep > 0 ? maxStep : 0;
+  if (band === 0 || step === 0) return 0;
+  const fromTop = clientY - rect.top;
+  const fromBottom = rect.bottom - clientY;
+  if (fromTop < band) return -Math.ceil(step * Math.min(1, (band - fromTop) / band));
+  if (fromBottom < band) return Math.ceil(step * Math.min(1, (band - fromBottom) / band));
+  return 0;
+}
+
+// Wires drag-to-reorder onto `container`'s rows. Call it after EVERY render
+// (fresh rows need fresh listeners), exactly like the DnD wirings it
+// replaces. Options:
+//   rowSelector     (required) selects the reorderable rows, in list order
+//   onReorder       (required) (fromIndex, toIndex, info) -- the caller does
+//                   the array move + persist; the helper decides nothing
+//                   about ordering semantics or persistence
+//   handleSelector  a dedicated handle inside each row. When given, the
+//                   handle also becomes the KEYBOARD affordance (tabindex/
+//                   role/aria-label + arrow keys). When absent the whole row
+//                   drags and no keyboard reorder is wired -- deliberately:
+//                   the sidebar surfaces are <a> links, where hijacking
+//                   ArrowUp/ArrowDown would break normal focus scrolling,
+//                   and they never had a keyboard reorder to preserve
+//   ignoreSelector  interactive descendants that must never start a drag
+//                   (defaults below); a match ON the row itself never counts
+//                   -- the sidebar rows ARE anchors
+//   groupOf         (index) -> group key; a drop across groups is refused
+//                   (the pinned sidebar's channel/books/podcasts partition)
+//   classes         { dragging, before, after } -- each surface keeps its OWN
+//                   shipped class family, so no existing CSS changes meaning
+//   labelOf         (index) -> accessible name for that row's handle
+//   focusKey        opaque string enabling keyboard focus restore (above)
+//   scrollContainer element to auto-scroll near the edges of
+//   measure         (rowEl) -> rect; injectable so a jsdom test can drive the
+//                   REAL handler chain with real geometry
+//   signal          AbortSignal tearing every listener down
+const REORDER_DEFAULT_IGNORE = 'input, textarea, select, button, label, [contenteditable="true"]';
+
+function wireReorderable(container, opts) {
+  const o = opts || {};
+  if (!container || typeof container.querySelectorAll !== 'function') return;
+  if (typeof o.onReorder !== 'function' || !o.rowSelector) return;
+  const rows = Array.prototype.slice.call(container.querySelectorAll(o.rowSelector));
+  const classes = Object.assign({}, REORDER_DEFAULT_CLASSES, o.classes || {});
+  const ignoreSelector = typeof o.ignoreSelector === 'string' ? o.ignoreSelector : REORDER_DEFAULT_IGNORE;
+  const measure = typeof o.measure === 'function' ? o.measure : (el) => el.getBoundingClientRect();
+  const groupOf = typeof o.groupOf === 'function' ? o.groupOf : null;
+  const doc = container.ownerDocument || (typeof document !== 'undefined' ? document : null);
+  if (rows.length === 0 || !doc) return;
+  // The DOCUMENT's own AbortController, not the ambient global. An
+  // `addEventListener` signal is brand-checked against the realm's own
+  // AbortSignal class: in a jsdom test the ambient global is Node's, and
+  // passing it throws "member 'signal' is not of type 'AbortSignal'"
+  // (measured). In a browser the two are the same object anyway.
+  const AbortCtl = (doc.defaultView && doc.defaultView.AbortController) || AbortController;
+
+  // --- per-gesture state ----------------------------------------------------
+  let pressIndex = null;     // row under the pointer since pointerdown
+  let armed = false;         // the drag proper has begun
+  let pressX = 0;
+  let pressY = 0;
+  let activePointerId = null;
+  let longPressTimer = null;
+  let autoScrollTimer = null;
+  let autoScrollDelta = 0;
+  // The pointer's last known position, so the auto-scroll tick can re-resolve
+  // the drop target after it moves the list (QA gate W2).
+  let lastClientY = 0;
+  let lastTarget = null;     // { index, before } | null
+  let pressController = null;
+  let capturedEl = null;
+
+  function clearIndicators() {
+    rows.forEach((r) => r.classList.remove(classes.before, classes.after));
+  }
+
+  function stopAutoScroll() {
+    if (autoScrollTimer !== null) { clearInterval(autoScrollTimer); autoScrollTimer = null; }
+    autoScrollDelta = 0;
+  }
+
+  function applyAutoScroll(clientY) {
+    const sc = o.scrollContainer;
+    if (!sc || typeof sc.getBoundingClientRect !== 'function') return;
+    const delta = computeAutoScrollDelta(
+      sc.getBoundingClientRect(), clientY, REORDER_AUTOSCROLL_EDGE_PX, REORDER_AUTOSCROLL_STEP_PX
+    );
+    autoScrollDelta = delta;
+    if (delta === 0) { stopAutoScroll(); return; }
+    // A timer (not a per-move nudge): the pointer can sit still at the edge
+    // and must keep scrolling, which a move-driven scroll cannot do.
+    if (autoScrollTimer === null) {
+      autoScrollTimer = setInterval(() => {
+        if (!armed || autoScrollDelta === 0) { stopAutoScroll(); return; }
+        sc.scrollTop += autoScrollDelta;
+        // QA gate W2: re-resolve the drop target against the rows' NEW
+        // positions. The pointer is typically stationary while a list
+        // auto-scrolls (on touch the finger is parked at the edge by
+        // definition), so without this the indicator freezes and the drop
+        // commits against whatever row happened to be under the pointer at
+        // the last move - ten rows ago by the time the user releases.
+        trackPointer(lastClientY);
+      }, REORDER_AUTOSCROLL_TICK_MS);
+    }
+  }
+
+  // Ends the gesture. `commit` decides whether the resolved target is
+  // actually applied -- pointercancel/abort end a drag WITHOUT reordering.
+  function endGesture(commit) {
+    if (longPressTimer !== null) { clearTimeout(longPressTimer); longPressTimer = null; }
+    stopAutoScroll();
+    const from = pressIndex;
+    const target = lastTarget;
+    const wasArmed = armed;
+    pressIndex = null;
+    armed = false;
+    lastTarget = null;
+    activePointerId = null;
+    if (capturedEl && typeof capturedEl.releasePointerCapture === 'function') {
+      try { capturedEl.releasePointerCapture(capturedEl.__reorderPointerId); } catch (_) { /* already released */ }
+    }
+    capturedEl = null;
+    clearIndicators();
+    rows.forEach((r) => r.classList.remove(classes.dragging));
+    if (doc.body) doc.body.classList.remove(REORDER_BODY_CLASS);
+    if (pressController) { pressController.abort(); pressController = null; }
+    if (!wasArmed || !commit || from === null || !target) return;
+    // Adversarial gate round 2: refuse a drop whose own rows were REBUILT
+    // mid-gesture.
+    //
+    // Native HTML5 drag got this free, and for a reason worth naming
+    // precisely: in all five wirings this replaced, the `drop` listener was
+    // bound to the ROW itself (see `git show 7645d9d` - main.js:1289,
+    // common.js:6706, setup.js:171/:285, subscriptions.js:3766), so a row
+    // detached by a mid-drag re-render could never receive a drop and no
+    // reorder could commit. The pointer layer listens on the DOCUMENT for the
+    // life of the gesture, so it has no such structural protection - a
+    // gesture can outlive the list it started in and commit against a
+    // detached DOM. (Round 3 of the gate corrected an earlier version of this
+    // comment which claimed instead that the UA "ends the drag" when the
+    // source node is removed. That may well be true, but it is a spec claim
+    // neither seat could check without a browser, and this wave's first
+    // CRITICAL was a wrong root-cause narrative - so the justification rests
+    // on something a reader can `git show`.)
+    //
+    // Reachable wherever a render can land during a drag: on the
+    // subscriptions list, two rapid drags (the first drop's response arriving
+    // during the second); elsewhere, any poll or fetch that re-renders.
+    //
+    // Both answers to "which array should the handler read" are wrong once
+    // that happens - a live read moves whatever now sits at the dragged INDEX
+    // (measured: the user grabs row "a" and "c" moves), a snapshot moves a
+    // record that may no longer exist. Refusing here makes the question moot,
+    // at one site, for all six surfaces.
+    //
+    // `=== false` on purpose: a fake DOM without `isConnected` yields
+    // undefined and must not be read as detached.
+    if (rows[from] && rows[from].isConnected === false) return;
+    // NOTE (adversarial gate S1): there is deliberately NO second group check
+    // here. `lastTarget` is assigned in exactly one place - `trackPointer` -
+    // and only AFTER the identical check, so a re-assert at this point would
+    // be a guard whose precondition is always true when it runs. This repo has
+    // been bitten twice by exactly that shape, so the cross-group contract is
+    // enforced at ONE site and the tests bind it there.
+    const toIndex = computeDropIndex(from, target.index, target.before);
+    if (toIndex === from) return;
+    o.onReorder(from, toIndex, { source: 'pointer' });
+  }
+
+  function beginDrag() {
+    if (armed || pressIndex === null) return;
+    armed = true;
+    if (longPressTimer !== null) { clearTimeout(longPressTimer); longPressTimer = null; }
+    rows[pressIndex].classList.add(classes.dragging);
+    if (doc.body) doc.body.classList.add(REORDER_BODY_CLASS);
+  }
+
+  function trackPointer(clientY) {
+    if (!armed || pressIndex === null) return;
+    // Re-measured EVERY move, never snapshotted at drag start: the container
+    // may be auto-scrolling under the pointer, which moves every row.
+    const target = resolveReorderTarget(rows.map(measure), clientY);
+    clearIndicators();
+    lastTarget = null;
+    if (!target) return;
+    if (groupOf && groupOf(pressIndex) !== groupOf(target.index)) return;
+    lastTarget = target;
+    rows[target.index].classList.add(target.before ? classes.before : classes.after);
+  }
+
+  rows.forEach((row, index) => {
+    row.classList.add(REORDER_ROW_CLASS);
+    // Native HTML5 drag must be turned OFF, not merely un-asked-for. A UA
+    // starting its own drag takes the pointer and fires `pointercancel`,
+    // which ends our gesture with nothing reordered.
+    //
+    // QA gate C1: an earlier version of this line did `removeAttribute`, which
+    // is NOT enough - per the HTML spec an absent `draggable` means "UA
+    // default", and the UA default is TRUE for <a href> and <img> (verified:
+    // `a.draggable === true` with no attribute set; an <a> WITHOUT href is
+    // false). Removing the attribute therefore left rows starting a native
+    // link/image drag on desktop - trading a shipped desktop capability for
+    // the new touch one, invisibly to a jsdom suite (jsdom implements no
+    // native DnD). Hence an explicit "false" here, on the row AND on the
+    // descendants that default to draggable on their own.
+    //
+    // Exactly which surfaces (QA delta S2 corrected an earlier, wrong count
+    // here - a bad number inside a comment justifying a gate fix is a defect
+    // in its own right): THREE of the six wired surfaces render their rows AS
+    // <a> elements - both folder sidebars and the pinned sidebar. Of those
+    // three, ONE (the pinned sidebar) can contain an <img> avatar; the two
+    // folder sidebars render an <i class="icon-folder"> glyph and never an
+    // <img>. The subscriptions list is the fourth surface with <img>/<a>
+    // DESCENDANTS while its own row is a <div>. `a, img` is the complete
+    // UA-default-draggable set (the delta enumerated it).
+    if (typeof row.setAttribute === 'function') row.setAttribute('draggable', 'false');
+    if (typeof row.querySelectorAll === 'function') {
+      Array.prototype.forEach.call(row.querySelectorAll('a, img'), (el) => el.setAttribute('draggable', 'false'));
+    }
+
+    const handle = o.handleSelector ? row.querySelector(o.handleSelector) : null;
+    if (handle) {
+      handle.setAttribute('tabindex', '0');
+      handle.setAttribute('role', 'button');
+      const label = typeof o.labelOf === 'function' ? o.labelOf(index) : '';
+      handle.setAttribute('aria-label', label ? `Reorder ${label}` : 'Reorder item');
+      // QA gate S4: `role="button"` promises an activation, and there is none
+      // to give - this control reorders by ARROW KEY, not by Enter/Space (a
+      // grab/drop mode would be a second, undiscoverable state machine). Say
+      // so, rather than leaving a screen-reader user to press Enter into
+      // silence. Announced by the row's own text too, via setup.html's help
+      // copy on both lists that carry a handle.
+      handle.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown Home End');
+      handle.addEventListener('keydown', (e) => {
+        let to = null;
+        if (e.key === 'ArrowUp') to = index - 1;
+        else if (e.key === 'ArrowDown') to = index + 1;
+        else if (e.key === 'Home') to = 0;
+        else if (e.key === 'End') to = rows.length - 1;
+        if (to === null) return;
+        e.preventDefault();
+        if (to < 0 || to >= rows.length || to === index) return;
+        if (groupOf && groupOf(index) !== groupOf(to)) return;
+        if (o.focusKey) pendingReorderFocus = { key: o.focusKey, index: to };
+        o.onReorder(index, to, { source: 'keyboard' });
+      }, { signal: o.signal });
+    }
+
+    row.addEventListener('pointerdown', (e) => {
+      // QA gate W1: clear any click-suppression flag left over from an earlier
+      // gesture. The flag is consumed by a `click` on the SOURCE row, but a
+      // click is dispatched on the common ancestor of press and release - so a
+      // drag released off its own row (including a no-op drop, which does not
+      // even re-render) left the flag set on a live node, and the user's NEXT
+      // click on that row - a checkbox, a remove button, a link - was eaten.
+      // A real click always follows its own pointerdown, so clearing here
+      // cannot cancel a suppression that is still owed.
+      //
+      // FIRST, before any guard can return early: a press on an interactive
+      // child takes the early return below, and clearing after it would leave
+      // exactly that child's click still armed to be eaten.
+      rows.forEach((r) => { r.__reorderSuppressClick = false; });
+      if (pressIndex !== null) return;                 // a second pointer never joins an active gesture
+      if (e.button !== undefined && e.button !== 0) return;
+      const blocked = e.target && typeof e.target.closest === 'function' ? e.target.closest(ignoreSelector) : null;
+      // A match on the ROW itself never blocks: the sidebar rows ARE <a>
+      // elements, and `closest` would otherwise veto every drag on them.
+      if (blocked && blocked !== row && row.contains(blocked)) return;
+      pressIndex = index;
+      pressX = e.clientX;
+      pressY = e.clientY;
+      lastClientY = e.clientY;
+      activePointerId = e.pointerId;
+      pressController = new AbortCtl();
+      const pressSignal = pressController.signal;
+      if (o.signal) {
+        // Tear the gesture down if the CALLER's signal aborts mid-drag; the
+        // listener itself is removed with the gesture (nested signal), so it
+        // cannot accumulate one entry per press.
+        o.signal.addEventListener('abort', () => endGesture(false), { once: true, signal: pressSignal });
+      }
+      // Document-level for the rest of the gesture, so a pointer that leaves
+      // the row (or the container) still tracks and still ends cleanly. Bound
+      // to THIS press, never to the wire call, so re-renders cannot pile them
+      // up. jsdom has no setPointerCapture (measured), and neither do some
+      // engines -- feature-detected, never assumed.
+      doc.addEventListener('pointermove', onDocPointerMove, { signal: pressSignal });
+      doc.addEventListener('pointerup', onDocPointerUp, { signal: pressSignal });
+      doc.addEventListener('pointercancel', onDocPointerCancel, { signal: pressSignal });
+      doc.addEventListener('keydown', onDocKeyDown, { signal: pressSignal });
+      // Non-passive: this is the half that actually stops the page scrolling
+      // once a touch drag is armed.
+      doc.addEventListener('touchmove', onDocTouchMove, { signal: pressSignal, passive: false });
+      doc.addEventListener('contextmenu', onDocContextMenu, { signal: pressSignal });
+      if (typeof row.setPointerCapture === 'function' && e.pointerId !== undefined) {
+        try { row.setPointerCapture(e.pointerId); capturedEl = row; capturedEl.__reorderPointerId = e.pointerId; } catch (_) { capturedEl = null; }
+      }
+      const isTouch = e.pointerType === 'touch';
+      const onHandle = !!(handle && e.target && typeof e.target.closest === 'function' && e.target.closest(o.handleSelector));
+      if (isTouch && !onHandle) {
+        longPressTimer = setTimeout(() => { longPressTimer = null; beginDrag(); trackPointer(pressY); }, REORDER_LONG_PRESS_MS);
+      } else if (!isTouch) {
+        // Mouse/pen arm on travel (below), so a plain click still clicks.
+      } else {
+        beginDrag();
+        trackPointer(pressY);
+      }
+    }, { signal: o.signal });
+
+    // A completed drag must not ALSO fire the row's click -- these rows are
+    // links, and a drop would navigate away from the page you just reordered.
+    row.addEventListener('click', (e) => {
+      if (!row.__reorderSuppressClick) return;
+      row.__reorderSuppressClick = false;
+      // QA delta S1: a KEYBOARD (or programmatic) click reports `detail === 0`;
+      // a real pointer click never does. Such a click cannot be a drag's own
+      // echo, so it is never suppressed. This covers the case the child-
+      // exemption below structurally cannot: the three sidebar surfaces' rows
+      // ARE the interactive element, so Enter on a focused pinned link was
+      // being eaten once after a stranded gesture.
+      if (e.detail === 0) return;
+      // QA gate W1, second half: never suppress a click on an interactive
+      // CHILD either. Those clicks are not the drag's echo, and a real mouse
+      // click on a checkbox inside the row does carry `detail === 1`, so the
+      // rule above does not subsume this one.
+      const onChild = e.target && typeof e.target.closest === 'function' ? e.target.closest(ignoreSelector) : null;
+      if (onChild && onChild !== row && row.contains(onChild)) return;
+      e.preventDefault();
+      e.stopPropagation();
+    }, { signal: o.signal, capture: true });
+  });
+
+  function onDocPointerMove(e) {
+    if (pressIndex === null) return;
+    if (activePointerId !== undefined && e.pointerId !== undefined && e.pointerId !== activePointerId) return;
+    if (!armed) {
+      const dx = Math.abs(e.clientX - pressX);
+      const dy = Math.abs(e.clientY - pressY);
+      if (e.pointerType === 'touch') {
+        // Pre-arm travel on touch means "I am scrolling" -- hand the gesture
+        // back to the browser rather than fighting it.
+        if (Math.max(dx, dy) > REORDER_TOUCH_SLOP_PX) { endGesture(false); return; }
+        return;
+      }
+      if (Math.max(dx, dy) < REORDER_MOUSE_THRESHOLD_PX) return;
+      beginDrag();
+    }
+    lastClientY = e.clientY;
+    trackPointer(e.clientY);
+    applyAutoScroll(e.clientY);
+  }
+
+  function onDocPointerUp(e) {
+    if (pressIndex === null) return;
+    if (activePointerId !== undefined && e.pointerId !== undefined && e.pointerId !== activePointerId) return;
+    if (armed) rows[pressIndex].__reorderSuppressClick = true;
+    endGesture(true);
+  }
+
+  function onDocPointerCancel() { endGesture(false); }
+
+  function onDocKeyDown(e) {
+    // Escape abandons a drag in progress without reordering.
+    if (e.key === 'Escape' && pressIndex !== null) endGesture(false);
+  }
+
+  function onDocTouchMove(e) {
+    if (armed && e.cancelable) e.preventDefault();
+  }
+
+  function onDocContextMenu(e) {
+    // The long press that arms a touch drag is also the gesture iOS/Android
+    // use for the context menu / selection callout.
+    if (armed) e.preventDefault();
+  }
+
+  // --- keyboard focus restore (see pendingReorderFocus above) ---------------
+  // AFTER the wiring loop, never before it: the loop is what puts `tabindex`
+  // on the freshly rendered handle, and `focus()` silently no-ops on an
+  // element that is not yet focusable (proven by this file's own test -- the
+  // restore landed on <body> when this block ran first).
+  if (o.focusKey && pendingReorderFocus && pendingReorderFocus.key === o.focusKey) {
+    const target = rows[pendingReorderFocus.index];
+    pendingReorderFocus = null;
+    if (target) {
+      const handle = o.handleSelector ? target.querySelector(o.handleSelector) : target;
+      if (handle && typeof handle.focus === 'function') handle.focus();
+    }
+  }
 }
 
 // FR-4 (v1.19.0): pure decision helper -- is `dir` the yt-dlp module's
@@ -6182,6 +6666,11 @@ if (typeof window !== 'undefined') {
   window.FileTube.registerPushWorker = registerPushWorker;
   window.FileTube.pushB64urlToUint8 = pushB64urlToUint8;
   window.FileTube.describePushEnableOutcome = describePushEnableOutcome;
+  // v1.76: the shared drag-to-reorder gesture layer. It is also a plain
+  // browser global (script order: common -> main -> setup), but setup.js
+  // resolves it through this namespace when the bare global is absent, which
+  // is exactly the case in a jsdom test that requires setup.js as a module.
+  window.FileTube.wireReorderable = wireReorderable;
 }
 
 // Renders the Playlists sheet's folder list — functionally equivalent to the
@@ -6602,7 +7091,6 @@ function renderPinnedSidebar(pins) {
     // wirePinnedSidebarDragAndDrop below. `data-pin-id` is how a drop
     // recovers WHICH pin a rendered row represents (the reorder route is
     // keyed by pin id, not channelDir).
-    link.setAttribute('draggable', 'true');
     const sourcePin = validPins[index];
     if (sourcePin && typeof sourcePin.id === 'string') link.dataset.pinId = sourcePin.id;
     // F1: real channel icon when captured (C6), else a deterministic
@@ -6635,35 +7123,28 @@ function renderPinnedSidebar(pins) {
   wirePinnedSidebarDragAndDrop(section, validPins);
 }
 
-// v1.24.3: drag-and-drop reorder for the PINNED SIDEBAR section -- mirrors
-// main.js's `renderSidebarFolders` folder DnD (v1.15.0 item 1) and
-// lib/ytdlp/client/subscriptions.js's `wireSubRowDragAndDrop` (v1.24.0 B4/T6)
-// as closely as this shared file's own row anatomy allows: native HTML5
-// `dragstart`/`dragover`(preventDefault)/`dragleave`/`drop`/`dragend`, a
-// drop-before/after half-height indicator (`computeDropIndex`'s own
-// contract), and an immediate persist on drop (no separate Save step, same
-// as the folder sidebar's own "no Save button" posture). Reuses
-// `moveArrayItem`/`computeDropIndex` VERBATIM -- both already defined in
-// THIS file for the folder DnD above, referenced the same bare-identifier
-// way that folder DnD code itself does (no `window.` qualification needed
-// here, unlike subscriptions.js, which is a SEPARATE file).
+// v1.24.3, rewired in v1.76: drag-to-reorder for the PINNED SIDEBAR section.
+// It used to carry its own copy of the native HTML5 DnD wiring (five
+// listeners, mirroring main.js's and subscriptions.js's copies); it now calls
+// the shared pointer gesture layer, `wireReorderable`, like every other
+// reorder surface in the app. The user-visible change is that these pins can
+// finally be reordered on a touch screen - native HTML5 drag never fired
+// there, so the whole feature was desktop-only.
 //
-// Reuses the EXISTING `.sidebar-item.dragging`/`.drag-over-before`/
-// `.drag-over-after` CSS classes (style.css, ~L554-583) rather than a
-// second, forked class family -- every pinned row already carries the SAME
-// `.sidebar-item` class the folder sidebar's own draggable rows do (see
-// `renderPinnedSidebar` above), so no new CSS class family is needed for the
-// drag visual feedback.
+// Unchanged: the `.sidebar-item.dragging`/`.drag-over-before`/
+// `.drag-over-after` class family (every pinned row already wears
+// `.sidebar-item`, so no forked CSS is needed), the immediate persist on drop
+// (a sidebar has no Save button), and the per-source partition below.
 //
-// DOM drag events are untestable-by-necessity (mirrors the subscription
-// reorder's own documented posture, lib/ytdlp/client/subscriptions.js) -- the
-// underlying `moveArrayItem`/`computeDropIndex` are already unit-tested
-// (test/unit/folder-dnd-reorder.test.js), and the server-side persistence
-// this drop ultimately POSTs to is proven end-to-end by
+// The old comment here claimed drag events were "untestable-by-necessity".
+// That was true of HTML5 DataTransfer, which jsdom does not implement; it is
+// NOT true of pointer events, and the gesture layer is now bound end-to-end
+// in test/unit/reorder-gesture.test.js (including this surface's cross-group
+// refusal). The server side stays proven by
 // test/integration/ytdlp-pin-reorder.test.js.
 // @param {HTMLElement} section the freshly-built `#sidebar-pinned-section`
 // @param {Array<object>} validPins the SAME filtered/ordered pin records
-//   `renderPinnedSidebar` rendered rows FROM (index-aligned with the rows)
+//   `renderPinnedSidebar` rendered rows FROM
 // v1.37.0 gate fix (BOTH reviewers' CRITICAL): the pin's owning module --
 // drag scoping and the reorder endpoint are decided by this, exactly like
 // pinDeleteEndpoint above. Untagged legacy pins default to 'channel'.
@@ -6674,62 +7155,35 @@ function pinSourceOf(pin) {
 }
 
 function wirePinnedSidebarDragAndDrop(section, validPins) {
-  const rows = Array.prototype.slice.call(section.querySelectorAll('.sidebar-item[data-pin-id]'));
-  let dragSrcIndex = null;
-  rows.forEach((rowEl, index) => {
-    rowEl.addEventListener('dragstart', (e) => {
-      dragSrcIndex = index;
-      rowEl.classList.add('dragging');
-      if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = 'move';
-        // Firefox requires data to be set for the drag to initiate at all
-        // (mirrors main.js's/subscriptions.js's identical DnD workaround).
-        e.dataTransfer.setData('text/plain', String(index));
-      }
-    });
-    rowEl.addEventListener('dragover', (e) => {
-      // v1.37.0 gate fix: a row from ANOTHER pin source is NOT a drop
-      // target (no preventDefault = the browser shows no-drop) -- channel
-      // pins reorder among channel pins, book shelves among book shelves,
-      // per the exec plan's own "within their own section only" contract.
-      if (dragSrcIndex !== null && pinSourceOf(validPins[dragSrcIndex]) !== pinSourceOf(validPins[index])) return;
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      const rect = rowEl.getBoundingClientRect();
-      const before = (e.clientY - rect.top) < rect.height / 2;
-      rowEl.classList.toggle('drag-over-before', before);
-      rowEl.classList.toggle('drag-over-after', !before);
-    });
-    rowEl.addEventListener('dragleave', () => {
-      rowEl.classList.remove('drag-over-before', 'drag-over-after');
-    });
-    rowEl.addEventListener('drop', (e) => {
-      e.preventDefault();
-      const before = rowEl.classList.contains('drag-over-before');
-      rowEl.classList.remove('drag-over-before', 'drag-over-after');
-      const fromIndex = dragSrcIndex;
-      dragSrcIndex = null;
-      if (fromIndex === null || Number.isNaN(index)) return;
-      const source = pinSourceOf(validPins[fromIndex]);
-      // Cross-source drops are already blocked at dragover; re-assert here
-      // (defense-in-depth against a synthetic drop event).
-      if (source !== pinSourceOf(validPins[index])) return;
-      const toIndex = computeDropIndex(fromIndex, index, before);
-      const reordered = moveArrayItem(validPins, fromIndex, toIndex);
-      // v1.37.0 gate fix: persist ONLY this source's ids, in their new
-      // relative order, to this source's OWN endpoint -- a mixed id list
-      // hitting the ytdlp endpoint tail-dropped every book id and the
-      // response re-render made book pins vanish from the sidebar.
+  // The rows that actually rendered a `data-pin-id`, in render order. The
+  // previous wiring indexed `validPins` by ROW index, which silently
+  // misaligned every row after an id-less pin (the render only sets the
+  // attribute when `typeof pin.id === 'string'`, while every pin gets a row).
+  // Deriving the row-aligned list with the SAME predicate the renderer uses
+  // removes that class of drift outright; an id-less pin could never be
+  // persisted anyway, since `orderedIds` drops it.
+  const rowPins = (Array.isArray(validPins) ? validPins : []).filter((p) => p && typeof p.id === 'string');
+  wireReorderable(section, {
+    rowSelector: '.sidebar-item[data-pin-id]',
+    scrollContainer: typeof document !== 'undefined' ? document.getElementById('sidebar') : null,
+    // v1.37.0's cross-source contract, now a first-class option rather than
+    // a hand-rolled check in two places: channel pins reorder among channel
+    // pins, book shelves among book shelves, podcast shows among shows. The
+    // helper refuses the drop AND never draws the drop line on a foreign row.
+    groupOf: (index) => pinSourceOf(rowPins[index]),
+    onReorder: (fromIndex, toIndex) => {
+      const source = pinSourceOf(rowPins[fromIndex]);
+      const reordered = moveArrayItem(rowPins, fromIndex, toIndex);
+      // v1.37.0 gate fix, unchanged: persist ONLY this source's ids, in their
+      // new relative order, to this source's OWN endpoint -- a mixed id list
+      // hitting the ytdlp endpoint tail-dropped every book id and the response
+      // re-render made book pins vanish from the sidebar.
       const orderedIds = reordered
         .filter((p) => pinSourceOf(p) === source)
         .map((p) => p && p.id)
         .filter((id) => typeof id === 'string' && id !== '');
       persistPinReorder(orderedIds, source);
-    });
-    rowEl.addEventListener('dragend', () => {
-      dragSrcIndex = null;
-      rows.forEach((r) => r.classList.remove('dragging', 'drag-over-before', 'drag-over-after'));
-    });
+    },
   });
 }
 
@@ -9743,6 +10197,12 @@ if (typeof module !== 'undefined' && module.exports) {
     encodeListContext, decodeListContext, buildContextListUrl,
     visibleSidebarFolders, resolveDefaultView,
     moveArrayItem, computeDropIndex, rebuildFullFolderOrder,
+    // v1.76: the one drag-to-reorder gesture layer -- the two pure decisions
+    // plus the wiring itself, which jsdom tests drive end-to-end through
+    // injected rects (jsdom does no layout).
+    resolveReorderTarget, computeAutoScrollDelta, wireReorderable,
+    REORDER_LONG_PRESS_MS, REORDER_MOUSE_THRESHOLD_PX, REORDER_TOUCH_SLOP_PX,
+    REORDER_AUTOSCROLL_EDGE_PX, REORDER_AUTOSCROLL_STEP_PX,
     isSyntheticFolder,
     shouldInjectOneOffButton, reduceOneOffFiletypeOptions, buildOneOffDownloadBody,
     formatOneOffStatusText, buildOneOffModal,

@@ -191,6 +191,12 @@ module.exports = [
         moveArrayItem: 'readonly',
         computeDropIndex: 'readonly',
         rebuildFullFolderOrder: 'readonly',
+        // v1.76: the shared drag-to-reorder gesture layer (common.js), consumed
+        // by main.js + setup.js as bare globals the same way the two ordering
+        // primitives above are.
+        wireReorderable: 'readonly',
+        resolveReorderTarget: 'readonly',
+        computeAutoScrollDelta: 'readonly',
         // FR-4 (v1.19.0): setup.js's synthetic-download-folder remove-button
         // disable check.
         isSyntheticFolder: 'readonly',

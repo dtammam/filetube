@@ -80,6 +80,74 @@
 
 ## Shipped
 
+### v1.76.0 - One drag-to-reorder gesture, everywhere (2026-08-04)
+
+Dean asked for the Settings up/down arrows to become drag-and-drop "like
+the sidebar", plus a taller directories box with room between rows.
+Investigating first inverted the request. All five existing reorder
+surfaces used native HTML5 drag, which does not fire on iOS touch AT
+ALL - so reordering had been desktop-only since v1.15.0, and the drag
+handle he called "decorative" genuinely was, on his phone. Copying that
+wiring onto the bottom bar would have shipped a MOBILE reorder that
+cannot be dragged on mobile. His ruling: one shared pointer-event
+helper, delete the arrows, and migrate all five shipped surfaces too -
+"let's triple the blast radius. Let's do it right."
+
+`wireReorderable` (public/js/common.js) is now the ONE gesture layer:
+pointer events for mouse, touch and pen in a single code path. A touch
+drag arms on a 300ms long-press anywhere on the row - which is what
+lets the whole row be a drag surface without stealing the list's scroll
+- or immediately from the handle. Six surfaces wired: the bottom-bar
+editor and the Setup directory list (both lost their up/down buttons),
+both folder sidebars, the pinned sidebar and the subscriptions list.
+25 native drag listeners and 5 `draggable="true"` sites deleted. The
+ordering primitives (`moveArrayItem`, `computeDropIndex`,
+`rebuildFullFolderOrder`), every route and every payload shape are
+unchanged - this was a gesture-layer swap, not a semantics change.
+
+Keyboard access replaces the arrows rather than dropping with them: the
+drag handle is focusable, arrow keys reorder, Home/End jump to the
+ends, and focus follows the item across the re-render so a second press
+works. The Setup directories box grows to min(60vh, 520px) with more
+gap between rows, and drags auto-scroll it at the edges.
+
+WHAT THE GATE CAUGHT (six rounds across two seats, and most of it was
+mine): a CRITICAL desktop regression invisible to the entire suite - I
+disabled native drag by REMOVING the `draggable` attribute, but an
+absent attribute means "UA default" and that default is TRUE for <a>
+and <img>, which three of the six surfaces render their rows as; a lock
+I wrote to fix an earlier finding that was itself satisfied by PROSE,
+binding two of the six surfaces while claiming all six; three arming
+constants no test could fail because every test imported the constant
+it exercised; a failing assertion mid-drag that HUNG the process
+instead of failing, which would have defeated the pre-commit hook; the
+subscriptions surface migrated with zero execution binding, where
+swapping two index arguments survived all 4472 unit tests; and a
+comment whose stated root cause was simply false. Every one is now
+bound by mutation testing rather than by reading.
+
+KNOWN GAPS, shipped disclosed: the playback queue panel is a SEVENTH
+reorderable list and still has up/down buttons - Dean's ruling did not
+name it, so it was not migrated on my own authority (#111, and
+docs/CONTRIBUTING.md's new MANDATORY rule names the exception rather
+than asserting a universal that is false). Two surfaces have no
+page-level auto-scroll, so a row can only be dragged within the visible
+viewport - for the subscriptions list on DESKTOP that is a mild
+capability reduction against v1.75.0, since native drag gave viewport
+auto-scroll free (#112). The drag handle is a role=button that Enter
+does not activate (#109). And native browser drag behaviour is the one
+thing neither seat could measure - Dean's desktop pass is the arbiter.
+
+Separately found and recorded while the wave was blocked by it: the
+test suite leaks mkdtemp scratch directories - 179 files call
+mkdtempSync, 38 with no cleanup - and /tmp had accumulated 1,199,739 of
+them, exhausting the box's inodes and halting all work until reclaimed
+by hand (#110). Bytes were never the problem; `df -h` showed 42 GB free
+throughout.
+
+Suites: 6071/6071 on BOTH node 22.23.1 and 24.14.0 (was 5957 at
+v1.75.0). Device pass PENDING.
+
 ### v1.75.0 - Liked consolidation + bottom-bar freedom (2026-08-04)
 
 Dean's three asks. (1) The per-kind Liked surfaces are gone - the
