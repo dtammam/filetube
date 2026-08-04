@@ -216,6 +216,42 @@ Standing rules that ride this list:
   moment; every new per-user route family gets second-session
   wrong-user assertions the day it is born.
 
+## Reordering: ONE gesture layer (MANDATORY, Dean's ruling 2026-08-04)
+
+> "I think that should be our standard for these sortable things. We should
+> leverage the same logic, etc. that we have for the sidebar drag and drop.
+> I don't want to reinvent the wheel."
+
+Any list a user can reorder is wired with `wireReorderable`
+(`public/js/common.js`). Not a copy of it, not a variant of it.
+
+- **Never native HTML5 drag** (`draggable="true"`, `dragstart`/`dragover`/
+  `drop`, `DataTransfer`). It does not fire on iOS touch AT ALL. Five
+  surfaces shipped that way between v1.15.0 and v1.75.0 and were, on a
+  phone, decoration. `test/unit/reorder-single-mechanism.test.js` is a
+  census over the whole client tree and will fail the commit that brings it
+  back.
+- **Never up/down buttons as the reorder UI.** Dean, on the two lists that
+  had them: "those just suck." Keyboard access is not a reason to keep them
+  - pass a `handleSelector` and the helper makes that handle focusable with
+  arrow-key reorder.
+- **The helper decides nothing about ordering or persistence.** It hands you
+  `(fromIndex, toIndex)`; you call `moveArrayItem` (plus
+  `rebuildFullFolderOrder` where a hidden subset is in play) and persist
+  however that surface already persists. Surfaces legitimately differ: the
+  Setup wizard list waits for its Save button, every sidebar persists on
+  drop. Preserve the surface's posture; do not flatten it into the helper.
+- **Partitioned lists pass `groupOf`.** A drop across groups must be refused
+  outright, not filtered afterwards - see the pinned sidebar, where a mixed
+  id list once tail-dropped every book pin.
+- **Each surface keeps its own drag CSS class family** (pass `classes`), so
+  adopting the helper never changes what an existing rule means.
+- **Bind it by execution, not by presence.** jsdom has a working
+  `PointerEvent` constructor; what it lacks is layout, which is why the
+  helper takes an injectable `measure`. "DOM drag events are untestable" was
+  true of `DataTransfer` and is not true here - a new surface gets a jsdom
+  test that drives real pointer events and asserts on what is persisted.
+
 ## File naming
 
 - Lowercase, single-word or hyphenated filenames (`server.js`, `watch.js`, `docker-compose.yml`)
