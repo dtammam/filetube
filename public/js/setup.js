@@ -213,7 +213,6 @@ function renderFolders() {
 // keep their absolute positions), (3) POSTed, then the full config is
 // reloaded so the synthetic Downloads folder's GET-time position splice
 // (server.js) is reflected everywhere (wizard list + sidebar).
-let sidebarDragSrcIndex = null;
 function renderSidebarFolders(folders, settings = {}) {
   const sidebarContainer = document.getElementById('sidebar-folders-list');
   if (!sidebarContainer) return;
@@ -228,40 +227,28 @@ function renderSidebarFolders(folders, settings = {}) {
   sidebarContainer.innerHTML = visible.map((f, index) => {
     const base = f.split(/[\\/]/).pop() || f;
     const label = (settings[f] && settings[f].name) || base;
-    return `<a href="/?root=${encodeURIComponent(f)}" class="sidebar-item" data-index="${index}" draggable="true" title="${escapeHtml(f)}"><i class="icon-folder"></i> ${escapeHtml(label)}</a>`;
+    return `<a href="/?root=${encodeURIComponent(f)}" class="sidebar-item" data-index="${index}" title="${escapeHtml(f)}"><i class="icon-folder"></i> ${escapeHtml(label)}</a>`;
   }).join('');
   applyLikedSidebarEntry(sidebarContainer); // v1.33.1: see above
 
-  const items = sidebarContainer.querySelectorAll('.sidebar-item[data-index]');
-  items.forEach((el) => {
-    el.addEventListener('dragstart', (e) => {
-      sidebarDragSrcIndex = parseInt(el.dataset.index, 10);
-      el.classList.add('dragging');
-      if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', String(sidebarDragSrcIndex));
-      }
-    }, { signal: controller.signal });
-    el.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      const rect = el.getBoundingClientRect();
-      const before = (e.clientY - rect.top) < rect.height / 2;
-      el.classList.toggle('drag-over-before', before);
-      el.classList.toggle('drag-over-after', !before);
-    }, { signal: controller.signal });
-    el.addEventListener('dragleave', () => {
-      el.classList.remove('drag-over-before', 'drag-over-after');
-    }, { signal: controller.signal });
-    el.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      const targetIndex = parseInt(el.dataset.index, 10);
-      const before = el.classList.contains('drag-over-before');
-      el.classList.remove('drag-over-before', 'drag-over-after');
-      const fromIndex = sidebarDragSrcIndex;
-      sidebarDragSrcIndex = null;
-      if (fromIndex === null || Number.isNaN(targetIndex)) return;
-      const toIndex = computeDropIndex(fromIndex, targetIndex, before);
+  // v1.76: the shared POINTER gesture layer, replacing this file's second
+  // copy of the native HTML5 DnD wiring. Same row selector, so the injected
+  // Liked entry is still not a drag target; no `handleSelector`, so these
+  // link rows drag whole and keep their normal arrow-key focus behaviour
+  // (see main.js's identical sidebar for the full rationale).
+  //
+  // The persist posture is UNCHANGED: the sidebar has no Save button of its
+  // own (unlike the wizard list above), so a drop persists immediately via
+  // moveArrayItem -> rebuildFullFolderOrder -> POST /api/config, then
+  // reloads the whole config so the synthetic Downloads folder's GET-time
+  // position splice is reflected in BOTH lists.
+  const wireRows = (typeof wireReorderable === 'function')
+    ? wireReorderable
+    : (window.FileTube && window.FileTube.wireReorderable);
+  wireRows(sidebarContainer, {
+    rowSelector: '.sidebar-item[data-index]',
+    scrollContainer: document.getElementById('sidebar'),
+    onReorder: async (fromIndex, toIndex) => {
       const newVisibleOrder = moveArrayItem(visible, fromIndex, toIndex);
       const rebuiltFull = rebuildFullFolderOrder(folders, settings, newVisibleOrder, syntheticFolders);
       try {
@@ -275,11 +262,8 @@ function renderSidebarFolders(folders, settings = {}) {
       } catch (err) {
         console.error('Failed to persist sidebar folder reorder:', err);
       }
-    }, { signal: controller.signal });
-    el.addEventListener('dragend', () => {
-      sidebarDragSrcIndex = null;
-      items.forEach((r) => r.classList.remove('dragging', 'drag-over-before', 'drag-over-after'));
-    }, { signal: controller.signal });
+    },
+    signal: controller.signal,
   });
 }
 
@@ -2225,6 +2209,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // to stand it up -- and a reader, since the whole point of this list's
     // posture is that a reorder lands in the ARRAY and waits for Save.
     renderFolders,
+    // v1.76: the sidebar PREVIEW on this page - the other half of the same
+    // migration, and the one with the interesting persist chain (immediate
+    // POST, hidden/synthetic folders holding their absolute positions).
+    renderSidebarFolders,
     __setFolderStateForTests(state) {
       configuredFolders = Array.isArray(state.folders) ? state.folders.slice() : [];
       folderSettings = state.settings || {};
