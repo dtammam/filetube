@@ -243,7 +243,17 @@ test('v1.73.2 SOURCE-LOCK: Books wears icon-books everywhere - injector, sheet m
   assert.ok(fs.readFileSync(path.join(pub, 'assets/icons/books.svg'), 'utf8').includes('<svg'), 'and is a real svg, not a corrupted husk (slim-gate S2)');
   // Slim-gate W1: the two memberships the first lock left unbound - both
   // survived the FULL suite as deletion mutants.
-  assert.match(css, /\.icon-podcast,\n\.icon-downloads,\n\.icon-books \{/, 'base sizing-group membership (dropped = zero-area icon in every mask set)');
+  // v1.77: this asserted `.icon-books` was the LAST entry in the sizing group
+  // (`\.icon-books \{`), which bound its POSITION, not the membership the
+  // comment says it protects. v1.77 appended 20 pool glyphs after it and the
+  // lock failed on a change that broke nothing. Rewritten to bind membership:
+  // still fails if `.icon-books` is dropped from the group (the mutant this
+  // lock exists to kill - re-verified in the v1.77 fix round), but survives
+  // the list legitimately growing. Comments are stripped first so a future
+  // comment naming a class cannot satisfy it (the v1.50 source-lock lesson).
+  const sizingGroup = css.slice(css.indexOf('\n.icon-home,\n'), css.indexOf('{', css.indexOf('\n.icon-home,\n')))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(sizingGroup, /\.icon-books(?![a-z0-9-])/, 'base sizing-group membership (dropped = zero-area icon in every mask set)');
   assert.ok(css.includes('[data-icons="emoji"] .icon-books,'), 'emoji mask-STRIP membership (dropped = the documented colored-box-behind-the-emoji class)');
   const shells = fs.readdirSync(pub).filter((f) => f.endsWith('.html'))
     .filter((f) => fs.readFileSync(path.join(pub, f), 'utf8').includes('data-nav="books"'));

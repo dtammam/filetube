@@ -49,14 +49,27 @@ test('style.css: [data-icons="filled"] wires .icon-download to filled/download.s
 });
 
 test('style.css: [data-icons="emoji"] neutralizes the .icon-download mask (no solid box) and supplies an emoji ::before', () => {
-  // NOTE: v1.25.4 appended `.icon-shuffle` to this same selector group
-  // (see shuffle-rescan-icon.test.js) -- `.icon-download,` may now be
-  // followed by one more selector line before the opening `{`, so the
-  // pattern allows (but does not require) that.
-  const neutralizeMatch = /\[data-icons="emoji"\] \.icon-home,[\s\S]*?\.icon-download,?[\s\S]{0,80}?\{([\s\S]*?)\}/.exec(css);
-  assert.ok(neutralizeMatch, 'expected .icon-download to be listed in the emoji neutralize group');
-  assert.match(neutralizeMatch[1], /mask-image:\s*none/);
-  assert.match(neutralizeMatch[1], /background-color:\s*transparent/);
+  // NOTE: v1.25.4 appended `.icon-shuffle` to this same selector group (see
+  // shuffle-rescan-icon.test.js), and the pattern was widened to a {0,80}
+  // window after `.icon-download,` to tolerate it. v1.77 appended 20 pool
+  // glyphs to the same group, blew past that window, and the lazy match then
+  // found the WRONG block entirely (the `::before` rule below), failing on a
+  // change that broke nothing.
+  //
+  // Rewritten to extract the group by its real bounds and assert MEMBERSHIP
+  // plus the group's declarations - which is what this lock is actually for.
+  // Both mutants it exists to kill still fail it (re-verified in the v1.77 fix
+  // round): dropping `.icon-download` from the group, and dropping either
+  // declaration. Comments are stripped so one naming a class cannot satisfy
+  // the membership check (the v1.50 source-lock lesson).
+  const groupStart = css.indexOf('[data-icons="emoji"] .icon-home,');
+  assert.notEqual(groupStart, -1, 'expected the emoji neutralize group');
+  const groupBrace = css.indexOf('{', groupStart);
+  const selectors = css.slice(groupStart, groupBrace).replace(/\/\*[\s\S]*?\*\//g, '');
+  const declarations = css.slice(groupBrace, css.indexOf('}', groupBrace));
+  assert.match(selectors, /\.icon-download(?![a-z0-9-])/, 'expected .icon-download to be listed in the emoji neutralize group');
+  assert.match(declarations, /mask-image:\s*none/);
+  assert.match(declarations, /background-color:\s*transparent/);
   assert.match(css, /\[data-icons="emoji"\]\s*\.icon-download::before\s*\{\s*content:\s*"\\1F4E5";?\s*\}/,
     'expected an emoji ::before for .icon-download (U+1F4E5 inbox tray)');
 });
