@@ -80,6 +80,66 @@
 
 ## Shipped
 
+### v1.77.0 - Pick your folder's icon, in every skin (2026-08-04)
+
+Dean: "for the folders, we have glyphs available... I'd love to be able
+to change them out of a pool. For example if I have a Shows folder i'd
+like a TV glyph. Additionally each glyph we choose should be out of a
+set of four for the different eras." Plus a dropdown in Settings for
+folders and for Books/Podcasts, and a note that Liked was "a full star
+and needs more in its set".
+
+**20 assignable glyphs**, every one carrying a real variant in all four
+icon sets - outlined, rounded, filled and an emoji codepoint. Dean's
+four (School, Movies, Shows, Documents) plus sixteen picked for real
+home-media folders: Music, Kids, Games, Home video, Photos, Travel,
+Work, Cooking, Fitness, Comedy, Pets, Cars, Archive, Radio, Favorites,
+and Folder itself as a first-class choice rather than a magic default.
+57 new SVGs, sourced from upstream Material.
+
+**A picker on every folder row** in Settings > Media folders, saved
+through the existing Save button. **Library icons** for all six entries
+(Downloads, Music, Books, Podcasts, History) in Settings > Appearance -
+per-user and server-side, so the choice follows you across devices.
+Dean named Books and Podcasts; leaving three of six unconfigurable is
+the half-parity this repo has been bitten by before.
+
+**Liked got its own glyph.** It rendered `.icon-star`, a plain character
+deliberately absent from every icon-set block, so alone among the chrome
+it looked identical in all four skins. It now wears `.icon-liked` with a
+full set of four. NOTE, since it is the one visible change to an
+untouched install: everyone's Liked glyph changes, by design.
+
+An emoji collision shipped disclosed for one gate round - Shows and
+Downloads both landed on the TV - and Dean closed it before release:
+"i want downloads and shows to not share". Downloads wears a
+videocassette now; Shows kept the television.
+
+**What the gate caught.** Both seats, three rounds, and it was worth
+every one. Three separate times a comment or commit message claimed a
+job was finished when it was not - including the wave's own headline
+deliverable: a false claim about `.icon-star` survived in the exact line
+the plan named, while new prose asserted it was gone. Three of the fixes
+introduced fresh defects of their own: a fix that did not fix, a boot
+binding traded away by adopting a prescription without checking what it
+removed, and a lock loosened in precisely the way an earlier commit in
+this same wave had tightened. The seats reproduced, with a fully green
+suite, an invisible glyph, a solid coloured square, and one destination
+wearing two different glyphs - the exact failures the wave was built to
+make impossible. All closed and mutation-verified.
+
+**Known gaps, shipping disclosed.** Ten older glyphs (heart, share,
+flame, history, queue, podcast, downloads, books, grid, list) still fall
+back across sets - ruled out of scope, tracker row 113. The glyph locks
+bind document order, not the CSS cascade, so `!important` and
+higher-specificity overrides stay invisible to them (row 116); no such
+override exists today, verified directly against the stylesheet. The
+token census still cannot see inline styles built into innerHTML
+strings (row 115). `subscriptions.html` has no Liked entry at all -
+pre-existing and unrelated (row 114).
+
+Dual-Node 6138/6138 on both v22.23.1 and v24.14.0. Device pass PENDING.
+
 ### v1.76.0 - One drag-to-reorder gesture, everywhere (2026-08-04)
 
 Dean asked for the Settings up/down arrows to become drag-and-drop "like
