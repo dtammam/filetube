@@ -15,7 +15,7 @@ const assert = require('node:assert');
 const {
   shouldShowHandoffCard, handoffSuppressionToken, formatHandoffHeadline,
   formatHandoffTime, formatHandoffAge, handoffProgressPercent,
-  HANDOFF_EXCLUDED_PATHS,
+  HANDOFF_LIST_SURFACES,
 } = require('../../public/js/common.js');
 
 const presence = (over = {}) => ({
@@ -40,14 +40,24 @@ test('never shows without a presence', () => {
   assert.equal(shouldShowHandoffCard(presence({ mediaId: '' }), ctx()), false);
 });
 
-test('never shows on a dedicated playback/reading surface (ruling 2)', () => {
-  for (const pathname of HANDOFF_EXCLUDED_PATHS) {
-    assert.equal(shouldShowHandoffCard(presence(), ctx({ pathname })), false, `${pathname} must be excluded`);
-  }
-  // The list surfaces it IS for.
-  for (const pathname of ['/', '/index.html', '/music', '/podcasts', '/history.html', '/books.html']) {
+test('shows ONLY on top-level list surfaces - default-deny (ruling 2, gate QA SUGGESTION 2)', () => {
+  // The list surfaces it IS for - every member of the include set shows.
+  for (const pathname of HANDOFF_LIST_SURFACES) {
     assert.equal(shouldShowHandoffCard(presence(), ctx({ pathname })), true, `${pathname} must show`);
   }
+  // The deviation the gate caught: an EXCLUDE list left the card showing on
+  // Settings, search results, channel pages, stats. Default-deny hides all of
+  // them, plus the dedicated playback/reading surfaces.
+  for (const pathname of ['/setup.html', '/stats.html', '/watch.html', '/watch', '/read.html', '/read', '/login.html', '/channel', '/anything-new']) {
+    assert.equal(shouldShowHandoffCard(presence(), ctx({ pathname })), false, `${pathname} must NOT show`);
+  }
+});
+
+test('a query string does not change the surface identity (Home stays Home under ?liked=/?search=)', () => {
+  // shouldShowHandoffCard keys on pathname only; the ctx builder carries no
+  // search, matching the controller which passes window.location.pathname.
+  assert.equal(shouldShowHandoffCard(presence(), ctx({ pathname: '/' })), true);
+  assert.equal(shouldShowHandoffCard(presence(), ctx({ pathname: '/index.html' })), true);
 });
 
 test('never offers what THIS page is already playing (the mid-playback rule)', () => {

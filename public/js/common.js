@@ -6136,11 +6136,28 @@ function getDeviceLabel() {
 const HANDOFF_POLL_MS = 30000;
 const HANDOFF_DISMISS_KEY = 'ft-handoff-dismissed';
 
-// Surfaces the card must never appear on. The watch page and the reader are
-// dedicated playback/reading surfaces - Dean's ruling 2 puts the card on Home
-// and the other top-level LIST surfaces, and an offer to go elsewhere while
-// you are deliberately watching something is an interruption, not a service.
-const HANDOFF_EXCLUDED_PATHS = ['/watch.html', '/watch', '/read.html', '/read'];
+// Where the card is ALLOWED to appear. Dean's ruling 2 scopes it to "Home and
+// other top-level LIST surfaces" - so this is an INCLUDE list (default-deny),
+// not an exclude list. The gate QA seat caught the earlier exclude-list
+// version showing the card on Settings, search, and channel pages too - a
+// playback toast over the Settings form is exactly the interruption ruling 2
+// scopes out. Default-deny also means a NEW page added later cannot
+// accidentally start showing the card; whoever adds a new list surface adds
+// it here on purpose.
+//
+// These are the pathnames of the app's top-level browsing lists. NB the
+// reader (/read.html) is deliberately ABSENT even though activeNavItem maps
+// it to 'books' - it is a reading surface, not a list (same reason /watch.html
+// is out). Query strings (?root=, ?search=, ?liked=) do not change the
+// surface's identity, so only pathname is matched.
+const HANDOFF_LIST_SURFACES = new Set([
+  '/', '/index.html',      // Home (and the ?liked=1 Liked scope of it)
+  '/music', '/music.html',
+  '/podcasts', '/podcasts.html',
+  '/history', '/history.html',
+  '/books', '/books.html',
+  '/subscriptions',
+]);
 
 // "18 min ago" / "just now". Coarse on purpose: this is a lingering-state
 // hint, and a ticking seconds counter on a paused card reads as busywork.
@@ -6193,7 +6210,7 @@ function handoffSuppressionToken(presence) {
 function shouldShowHandoffCard(presence, ctx) {
   if (!presence || !presence.mediaId) return false;
   const c = ctx || {};
-  if (HANDOFF_EXCLUDED_PATHS.includes(c.pathname)) return false;
+  if (!HANDOFF_LIST_SURFACES.has(c.pathname)) return false; // default-deny (ruling 2)
   // Never offer what this very page is already playing (the UI spec's
   // "nothing shown on a surface that is itself mid-playback of that item").
   if (c.localPlayingId && c.localPlayingId === presence.mediaId) return false;
@@ -10621,7 +10638,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // where node:test can hold it without a browser.
     shouldShowHandoffCard, handoffSuppressionToken, formatHandoffHeadline,
     formatHandoffTime, formatHandoffAge, handoffProgressPercent,
-    HANDOFF_EXCLUDED_PATHS, HANDOFF_POLL_MS,
+    HANDOFF_LIST_SURFACES, HANDOFF_POLL_MS,
     resolveIconSet, ICON_SET_REGISTRY, ICON_SETS,
     // v1.77: exported so the Playlists sheet's folder rows can be asserted as
     // RENDERED DOM rather than as a source pattern. The per-folder glyph has
