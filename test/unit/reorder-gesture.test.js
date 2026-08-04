@@ -304,6 +304,44 @@ test('wireReorderable: a click with no drag before it is never suppressed', () =
   assert.equal(click.defaultPrevented, false);
 });
 
+test('wireReorderable (adversarial round 2, P3): a list REBUILT mid-drag refuses the drop', () => {
+  // Native HTML5 drag ended when the source element was removed; the pointer
+  // layer has no such thing, so a gesture can outlive the rows it started in
+  // and commit against a detached DOM. The seat measured the consequence on
+  // the subscriptions list: the user grabs row "a", a prior action's response
+  // re-renders mid-drag, and the drop moves "c" instead.
+  const f = buildList();
+  const moves = wire(f);
+  pointer(f.window, f.rows[0], 'pointerdown', { clientY: 5 });
+  pointer(f.window, f.doc, 'pointermove', { clientY: 20 });
+  pointer(f.window, f.doc, 'pointermove', { clientY: 105 });
+  // A render lands: fresh rows replace the ones this gesture is holding.
+  f.container.innerHTML = RECTS.map((_, i) => `<div class="row" data-i="${i}"></div>`).join('');
+  assert.equal(f.rows[0].isConnected, false, 'the dragged row really is detached now');
+  pointer(f.window, f.doc, 'pointerup', { clientY: 105 });
+  assert.deepEqual(moves, [], 'the stale gesture commits nothing');
+});
+
+test('wireReorderable: a drop still commits when the rows are NOT rebuilt (P3 must not refuse everything)', () => {
+  // The guard has to discriminate, not just refuse - a P3 that always returned
+  // would pass the test above and break every reorder in the app.
+  const f = buildList();
+  const moves = wire(f);
+  mouseDrag(f, 0, 105);
+  assert.deepEqual(moves, [{ from: 0, to: 3, source: 'pointer' }]);
+});
+
+test('wireReorderable: a fake DOM with no isConnected is not treated as detached', () => {
+  // `=== false` rather than falsy: several of this repo's test doubles have no
+  // isConnected at all, and reading undefined as "detached" would silently
+  // disable every reorder they exercise.
+  const f = buildList();
+  const moves = wire(f);
+  f.rows.forEach((r) => { Object.defineProperty(r, 'isConnected', { get: () => undefined, configurable: true }); });
+  mouseDrag(f, 0, 105);
+  assert.deepEqual(moves, [{ from: 0, to: 3, source: 'pointer' }]);
+});
+
 test('wireReorderable: pointercancel mid-drag abandons the reorder', () => {
   const f = buildList();
   const moves = wire(f);

@@ -108,9 +108,25 @@ test('W1: id-less subscriptions never reach the persisted payload', () => {
 });
 
 test('W1: the handler reads the subscriptions LIVE, never a stale snapshot', () => {
-  // `getSubs` is a thunk on purpose: the list is replaced wholesale by every
-  // poll and every persist response, and a handler closed over an old array
-  // would persist an order derived from subscriptions that no longer exist.
+  // `getSubs` is a thunk so the handler reads whatever the view currently
+  // holds rather than whatever it held when the rows were wired.
+  //
+  // CORRECTED (adversarial gate round 2): an earlier version of this comment
+  // claimed "the list is replaced wholesale by every poll and every persist
+  // response". That is false, and measurably so - `currentSubs` has exactly
+  // three assignments (the initializer plus two `.then` handlers), and BOTH
+  // writers call `renderSubscriptions()` on the very next line, which re-wires
+  // with a fresh handler. The ~2.5s status poll never assigns it at all; it
+  // goes through `applyStatusUpdatesInPlace`, whose own contract is that it
+  // "never removes/reorders/replaces any row".
+  //
+  // So thunk and snapshot agree everywhere EXCEPT inside a gesture still in
+  // flight when a rebuild lands - and there neither is right: a live read
+  // moves whatever now sits at the dragged index, a snapshot moves a record
+  // that may no longer exist. That case is refused upstream now, by the
+  // detached-row check in `wireReorderable`'s endGesture, which is why the
+  // thunk can go on being simply "the live read" without needing to justify
+  // itself as a race fix. It is not one.
   let subs = [{ id: 'a' }, { id: 'b' }];
   const persisted = [];
   const onReorder = buildSubscriptionReorderHandler({

@@ -1931,6 +1931,23 @@ function wireReorderable(container, opts) {
     if (doc.body) doc.body.classList.remove(REORDER_BODY_CLASS);
     if (pressController) { pressController.abort(); pressController = null; }
     if (!wasArmed || !commit || from === null || !target) return;
+    // Adversarial gate round 2: refuse a drop whose own rows were REBUILT
+    // mid-gesture. Native HTML5 drag got this free - removing the source
+    // element ended the drag - and the pointer layer does not, so a gesture
+    // can outlive the list it started in and commit against a detached DOM.
+    // Reachable wherever a render can land during a drag: on the
+    // subscriptions list, two rapid drags (the first drop's response arriving
+    // during the second); elsewhere, any poll or fetch that re-renders.
+    //
+    // Both answers to "which array should the handler read" are wrong once
+    // that happens - a live read moves whatever now sits at the dragged INDEX
+    // (measured: the user grabs row "a" and "c" moves), a snapshot moves a
+    // record that may no longer exist. Refusing here makes the question moot,
+    // at one site, for all six surfaces.
+    //
+    // `=== false` on purpose: a fake DOM without `isConnected` yields
+    // undefined and must not be read as detached.
+    if (rows[from] && rows[from].isConnected === false) return;
     // NOTE (adversarial gate S1): there is deliberately NO second group check
     // here. `lastTarget` is assigned in exactly one place - `trackPointer` -
     // and only AFTER the identical check, so a re-assert at this point would
