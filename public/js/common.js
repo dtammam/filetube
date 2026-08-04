@@ -6553,6 +6553,11 @@ if (typeof window !== 'undefined') {
   window.FileTube.registerPushWorker = registerPushWorker;
   window.FileTube.pushB64urlToUint8 = pushB64urlToUint8;
   window.FileTube.describePushEnableOutcome = describePushEnableOutcome;
+  // v1.76: the shared drag-to-reorder gesture layer. It is also a plain
+  // browser global (script order: common -> main -> setup), but setup.js
+  // resolves it through this namespace when the bare global is absent, which
+  // is exactly the case in a jsdom test that requires setup.js as a module.
+  window.FileTube.wireReorderable = wireReorderable;
 }
 
 // Renders the Playlists sheet's folder list — functionally equivalent to the

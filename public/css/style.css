@@ -8193,18 +8193,9 @@ body.ft-css-fullscreen .bottom-nav {
   border-bottom: 1px solid var(--border-color);
 }
 .bottombar-editor-row .bottombar-editor-label { flex: 1; color: var(--text-primary); }
-.bottombar-editor-row .bottombar-editor-btn {
-  appearance: none;
-  border: 1px solid var(--border-color);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border-radius: var(--radius);
-  cursor: pointer;
-  width: var(--size-control-sm);
-  height: var(--size-control-sm);
-  line-height: 1; /* token-exempt: glyph centering */
-}
-.bottombar-editor-row .bottombar-editor-btn:disabled { opacity: 0.4; cursor: default; }
+/* v1.76: `.bottombar-editor-btn` (the up/down arrows) is GONE, and so are its
+   rules - the row's grip is the shared `.drag-handle` above, which is both the
+   drag surface and the keyboard control. */
 
 /* ---- v1.47.8: keyboard-shortcuts reference (Dean) --------------------------
    Deliberately thin: the dialog reuses `.oneoff-modal-backdrop`/`.oneoff-modal`

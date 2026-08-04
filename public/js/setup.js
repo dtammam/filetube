@@ -788,12 +788,13 @@ function renderBottomBarEditor(signal) {
   items.forEach((id, index) => {
     const row = document.createElement('div');
     row.className = 'bottombar-editor-row';
-    const up = document.createElement('button');
-    up.type = 'button'; up.className = 'bottombar-editor-btn'; up.innerHTML = '&uarr;';
-    up.title = 'Move up'; up.disabled = index === 0;
-    const down = document.createElement('button');
-    down.type = 'button'; down.className = 'bottombar-editor-btn'; down.innerHTML = '&darr;';
-    down.title = 'Move down'; down.disabled = index === items.length - 1;
+    // v1.76 (Dean: the up/down arrows "just suck"): the handle replaces both
+    // buttons. It is the drag grip AND the keyboard control - wireReorderable
+    // gives it tabindex/role/aria-label and arrow-key reorder below, so
+    // deleting the buttons costs no accessibility.
+    const handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.title = 'Drag to reorder';
     const label = document.createElement('span');
     label.className = 'bottombar-editor-label';
     label.textContent = BOTTOMBAR_LABELS[id] || id;
@@ -827,11 +828,31 @@ function renderBottomBarEditor(signal) {
       FT.writeBottomNavConfig(c);
       if (FT.applyBottomNavCustomization) FT.applyBottomNavCustomization();
     }, { signal });
-    up.addEventListener('click', () => moveBottomBarItem(items, index, index - 1, signal), { signal });
-    down.addEventListener('click', () => moveBottomBarItem(items, index, index + 1, signal), { signal });
-
-    row.appendChild(up); row.appendChild(down); row.appendChild(label); row.appendChild(toggle);
+    row.appendChild(handle); row.appendChild(label); row.appendChild(toggle);
     host.appendChild(row);
+  });
+
+  // v1.76: drag-to-reorder (pointer events - mouse, touch and pen alike),
+  // replacing the up/down buttons. `moveBottomBarItem` is UNCHANGED: it still
+  // takes (items, from, to) and still persists the FULL resolved roster, which
+  // is what releases the v1.75 compat pins on home/settings. The gesture layer
+  // decides nothing about ordering or persistence.
+  //
+  // Resolved through window.FileTube when the bare global is absent: setup.js
+  // is required as a plain Node module by its jsdom tests, where common.js was
+  // never evaluated into the page.
+  // Deliberately NOT guarded by a `typeof === 'function'` check: common.js
+  // always loads before setup.js in the browser, so such a guard could never
+  // be false in production, and a silent no-op would leave the panel looking
+  // reorderable while doing nothing. A missing helper should be loud.
+  const wireRows = (typeof wireReorderable === 'function') ? wireReorderable : FT.wireReorderable;
+  wireRows(host, {
+    rowSelector: '.bottombar-editor-row',
+    handleSelector: '.drag-handle',
+    focusKey: 'bottombar-editor',
+    labelOf: (i) => BOTTOMBAR_LABELS[items[i]] || items[i],
+    onReorder: (from, to) => moveBottomBarItem(items, from, to, signal),
+    signal,
   });
 }
 function moveBottomBarItem(items, from, to, signal) {
