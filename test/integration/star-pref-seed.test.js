@@ -25,6 +25,11 @@ const vm = require('node:vm');
 const { JSDOM } = require('jsdom');
 
 const COMMON_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'common.js'), 'utf8');
+// v1.77: every shell loads glyph-pool.js immediately BEFORE common.js, and
+// common.js consumes its exports as globals. This harness evaluates the real
+// committed sources, so it evaluates both, in that order - anything less would
+// be testing a script-loading arrangement no browser ever sees.
+const GLYPH_POOL_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'glyph-pool.js'), 'utf8');
 
 function bootHarness({ localPrefs, serverSettings }) {
   const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
@@ -45,6 +50,7 @@ function bootHarness({ localPrefs, serverSettings }) {
     return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
   };
   vm.createContext(w);
+  vm.runInContext(GLYPH_POOL_SRC, w, { filename: 'glyph-pool.js' });
   vm.runInContext(COMMON_SRC, w, { filename: 'common.js' });
   return { w, fetchLog };
 }
@@ -79,13 +85,29 @@ test('a locally-chosen stars pref is never overridden by the server (locally-unc
   assert.equal(w.localStorage.getItem('ft-star-ratings'), 'shown');
 });
 
-test('with ALL prefs locally chosen the pull short-circuits (no fetch at all - the early return, now stars-inclusive)', async () => {
+test('with ALL prefs locally chosen the seed pull short-circuits (local prefs win, nothing is re-applied)', async () => {
+  // v1.77: this used to assert boot made NO /api/auth/me request at all. That
+  // invariant is genuinely retired, not broken: v1.77 adds per-user Library
+  // glyphs, which are SERVER-TRUTH by ruling and so have no device cache to
+  // short-circuit against - something must ask the server on every load.
+  //
+  // What the early return actually protects is unchanged and still bound here:
+  // a fully-chosen device must not have its local prefs overwritten by the
+  // server's, and must never write back to the mirror. The request itself is
+  // now memoized (fetchCurrentUser), so boot makes exactly ONE regardless of
+  // how many consumers want it - asserted below, because two would be a real
+  // regression.
   const { w, fetchLog } = bootHarness({
     localPrefs: { 'ft-era': '2014', 'ft-mode': 'dark', 'ft-icons': 'filled', 'ft-star-ratings': 'hidden' },
     serverSettings: { starRatings: 'shown' },
   });
   w.document.dispatchEvent(new w.Event('DOMContentLoaded', { bubbles: true }));
   await flush();
-  assert.ok(!fetchLog.some((f) => f.url.includes('/api/auth/me')), 'fully-chosen device skips the pull entirely');
-  assert.ok(w.document.documentElement.classList.contains('ft-hide-stars'), 'boot applied the local pref');
+  assert.ok(w.document.documentElement.classList.contains('ft-hide-stars'),
+    'the LOCAL pref stands - the server\'s "shown" must not override it');
+  assert.equal(w.localStorage.getItem('ft-star-ratings'), 'hidden');
+  assert.ok(!fetchLog.some((f) => f.url.includes('/api/me/settings')),
+    'and the seed never writes back to the mirror (the write-loop guard)');
+  assert.equal(fetchLog.filter((f) => f.url.includes('/api/auth/me')).length, 1,
+    'boot must make exactly one /api/auth/me - the memoized share, not one per consumer');
 });

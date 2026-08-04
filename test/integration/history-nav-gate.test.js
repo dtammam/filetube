@@ -15,6 +15,11 @@ const { JSDOM } = require('jsdom');
 // every other common.js unit consumer takes; the injectors check for a
 // document at CALL time, so the globals below are what they see.
 const { injectHistoryNavLinkIfEnabled, injectLibraryNavEntry } = require('../../public/js/common.js');
+// v1.77: glyph-pool.js is a real <script> before common.js on every shell, so
+// its exports are globals in the browser. injectLibraryNavEntry now resolves the
+// user's chosen Library glyph through them, so this harness must provide them
+// exactly as it provides `document`/`window`.
+const { LIBRARY_GLYPH_SLOTS, resolveLibraryGlyphClass } = require('../../public/js/glyph-pool.js');
 
 const SIDEBAR_HTML = '<body><aside id="sidebar"><nav class="sidebar-section"></nav>' +
   '<div class="sidebar-section"><div id="sidebar-folders-list"></div></div></aside></body>';
@@ -23,6 +28,8 @@ function withDom(fetchImpl, fn) {
   const dom = new JSDOM(SIDEBAR_HTML, { url: 'http://localhost/' });
   global.document = dom.window.document;
   global.window = dom.window;
+  global.LIBRARY_GLYPH_SLOTS = LIBRARY_GLYPH_SLOTS;
+  global.resolveLibraryGlyphClass = resolveLibraryGlyphClass;
   const realFetch = global.fetch;
   global.fetch = fetchImpl;
   return Promise.resolve()
@@ -31,6 +38,8 @@ function withDom(fetchImpl, fn) {
       global.fetch = realFetch;
       delete global.document;
       delete global.window;
+      delete global.LIBRARY_GLYPH_SLOTS;
+      delete global.resolveLibraryGlyphClass;
       dom.window.close();
     });
 }

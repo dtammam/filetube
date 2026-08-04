@@ -5397,7 +5397,18 @@ function parseUserSettings(user) {
 // duration badge. Values are enum-ish control names; the lane stays
 // SHAPE-only like its siblings and the card renderer defends against
 // unknown values (plan D1).
-const MIRRORED_SETTING_KEYS = new Set(['theme', 'era', 'icons', 'starRatings', 'pushEnabled', 'cornerTL', 'cornerTR', 'cornerBL']);
+// v1.77: the Library-entry glyph keys (glyphDownloads/Music/Books/Podcasts/
+// History) join on the same per-user SERVER-persisted footing as the corners.
+// SPREAD FROM THE REGISTRY, never re-typed - a slot added to
+// LIBRARY_GLYPH_SLOTS becomes writable here automatically, so the picker can
+// never offer an entry whose saves the server silently 400s. The lane stays
+// SHAPE-only like its siblings (the existing value regex below already bounds
+// these to registry-id shape) and the client resolver defends against unknown
+// values, exactly as the card renderer does.
+const MIRRORED_SETTING_KEYS = new Set([
+  'theme', 'era', 'icons', 'starRatings', 'pushEnabled', 'cornerTL', 'cornerTR', 'cornerBL',
+  ...glyphPool.LIBRARY_GLYPH_SLOTS.map((s) => s.key),
+]);
 app.post('/api/me/settings', (req, res) => {
   const body = req.body || {};
   const merged = parseUserSettings(req.user);

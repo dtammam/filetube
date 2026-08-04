@@ -106,16 +106,21 @@ function resolveFolderGlyphClass(value) {
   return glyphClassName(DEFAULT_FOLDER_GLYPH);
 }
 
-// The Library entries whose glyph is user-assignable (intake ruling 5: all six
-// surfaces, not just the two Dean named). `key` is the settings key on the
-// per-user record; `fallback` is the class that entry has rendered since it
-// shipped, so an untouched install looks EXACTLY as it does today.
+// The Library entries whose glyph is user-assignable (intake ruling 5: all of
+// them, not just the two Dean named).
+//   `key`      - the settings key on the per-user record
+//   `nav`      - the value used by BOTH `[data-nav-sidebar="..."]` (sidebar)
+//                and `[data-nav="..."]` (bottom bar), so the repainter can
+//                find every surface for a slot without a second mapping to
+//                keep in sync
+//   `fallback` - the class that entry has rendered since it shipped, so an
+//                untouched install looks EXACTLY as it does today
 const LIBRARY_GLYPH_SLOTS = [
-  { key: 'glyphDownloads', name: 'Downloads', fallback: 'icon-downloads' },
-  { key: 'glyphMusic', name: 'Music', fallback: 'icon-play' },
-  { key: 'glyphBooks', name: 'Books', fallback: 'icon-books' },
-  { key: 'glyphPodcasts', name: 'Podcasts', fallback: 'icon-podcast' },
-  { key: 'glyphHistory', name: 'History', fallback: 'icon-history' },
+  { key: 'glyphDownloads', nav: 'downloads', name: 'Downloads', fallback: 'icon-downloads' },
+  { key: 'glyphMusic', nav: 'music', name: 'Music', fallback: 'icon-play' },
+  { key: 'glyphBooks', nav: 'books', name: 'Books', fallback: 'icon-books' },
+  { key: 'glyphPodcasts', nav: 'podcasts', name: 'Podcasts', fallback: 'icon-podcast' },
+  { key: 'glyphHistory', nav: 'history', name: 'History', fallback: 'icon-history' },
 ];
 
 // Pure. A per-user settings object -> the class for one Library slot. The

@@ -234,7 +234,16 @@ test('v1.73.2 SOURCE-LOCK: Books wears icon-books everywhere - injector, sheet m
   const pub = path.join(__dirname, '../../public');
   const commonSrc = fs.readFileSync(path.join(pub, 'js/common.js'), 'utf8');
   assert.ok(commonSrc.includes("injectLibraryNavEntry('books', '/books', 'Books', 'icon-books')"), 'the Library injector');
-  assert.ok(commonSrc.includes('<i class="icon-books"></i> Books'), 'the Playlists sheet mirror');
+  // v1.77: the sheet mirror no longer hardcodes the glyph - Library entries
+  // are user-assignable now, so it MIRRORS the injected sidebar entry's glyph
+  // (exactly as Downloads' href has always been mirrored) with icon-books as
+  // the shipped fallback. Both halves are bound: that Books is the fallback,
+  // and that the mirror is what renders. A revert to a hardcoded glyph fails
+  // the second assertion, and losing the Books default fails the first.
+  assert.ok(commonSrc.includes("mirroredGlyph('books', 'icon-books')"),
+    'the Playlists sheet mirror resolves Books through the shared mirror, defaulting to icon-books');
+  assert.ok(/<i class="' \+ mirroredGlyph\('books', 'icon-books'\) \+ '"><\/i> Books/.test(commonSrc),
+    'and that mirrored class is what the sheet row actually renders');
   assert.ok(!commonSrc.includes('\'icon-folder\'); // v1.73.2'), 'no stale folder-icon books call survives');
   const css = fs.readFileSync(path.join(pub, 'css/style.css'), 'utf8');
   assert.ok(css.includes('.icon-books { -webkit-mask-image: url(/assets/icons/books.svg)'), 'a real mask rule');
