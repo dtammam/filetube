@@ -225,16 +225,36 @@ Standing rules that ride this list:
 Any list a user can reorder is wired with `wireReorderable`
 (`public/js/common.js`). Not a copy of it, not a variant of it.
 
+**One surface does not yet obey this rule, and the rule is written knowing
+that**: the playback queue panel (`public/js/common.js`'s `queue-row-move`
+buttons -> `POST /api/queue/reorder`). v1.76 migrated the six surfaces Dean's
+ruling named; the queue was never in scope and keeps its up/down buttons.
+Tracked as tech-debt #111 with a revisit trigger. Stated here because the
+adversarial gate found this section asserting a universal that was false in
+the same file as the helper - a standard nobody can trust is worse than no
+standard.
+
 - **Never native HTML5 drag** (`draggable="true"`, `dragstart`/`dragover`/
   `drop`, `DataTransfer`). It does not fire on iOS touch AT ALL. Five
   surfaces shipped that way between v1.15.0 and v1.75.0 and were, on a
   phone, decoration. `test/unit/reorder-single-mechanism.test.js` is a
-  census over the whole client tree and will fail the commit that brings it
-  back.
-- **Never up/down buttons as the reorder UI.** Dean, on the two lists that
-  had them: "those just suck." Keyboard access is not a reason to keep them
-  - pass a `handleSelector` and the helper makes that handle focusable with
-  arrow-key reorder.
+  census over `public/`, `public/js/`, `lib/ytdlp/client/` and
+  `lib/ytdlp/views/` (non-recursively - `public/vendor/` is deliberately
+  out) and will fail the commit that brings it back. Note what the census
+  CANNOT do: it enumerates `rowSelector:` sites, so it only ever sees
+  surfaces already on the helper. It can prove nobody went back to HTML5
+  drag; it cannot prove a new list did not appear with up/down buttons.
+- **Never up/down buttons as the reorder UI.** Dean, on them: "those just
+  suck." THREE lists had them at v1.75.0 - the Setup directory list, the
+  bottom-bar editor and the queue panel; v1.76 removed the first two.
+  Keyboard access is not a reason to keep them - pass a `handleSelector` and
+  the helper makes that handle focusable with arrow-key reorder.
+- **The drag styling must be UNSCOPED.** The lock requires a rule whose
+  selector is exactly `.your-row.dragging` (and the two `drag-over-*`
+  indicators), not a container-scoped one - a scoped rule for one surface
+  would otherwise stand in for another that shares its base class. If a
+  surface legitimately needs container-scoped drag styling, the lock fails
+  the build, deliberately: change the lock in the same commit and say why.
 - **The helper decides nothing about ordering or persistence.** It hands you
   `(fromIndex, toIndex)`; you call `moveArrayItem` (plus
   `rebuildFullFolderOrder` where a hidden subset is in play) and persist

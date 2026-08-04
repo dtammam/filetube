@@ -1794,6 +1794,15 @@ function resolveReorderTarget(rects, clientY) {
 // stalling). Exported for node:test.
 function computeAutoScrollDelta(rect, clientY, edge, maxStep) {
   if (!rect) return 0;
+  // Adversarial gate W3: a container with no measurable height cannot scroll,
+  // but without this it read as "hard against BOTH edges" and returned a
+  // non-zero delta for every pointer position - so the auto-scroll interval
+  // started on every armed drag and, because its own `!armed` tick-guard can
+  // never fire while a gesture is stuck armed, never stopped. In jsdom every
+  // rect is all-zero, which made an assertion that threw mid-drag HANG the
+  // test process instead of failing it: the pre-commit hook refuses red, and
+  // it cannot refuse a hang.
+  if (!(rect.bottom > rect.top)) return 0;
   const band = edge > 0 ? edge : 0;
   const step = maxStep > 0 ? maxStep : 0;
   if (band === 0 || step === 0) return 0;
@@ -1922,7 +1931,12 @@ function wireReorderable(container, opts) {
     if (doc.body) doc.body.classList.remove(REORDER_BODY_CLASS);
     if (pressController) { pressController.abort(); pressController = null; }
     if (!wasArmed || !commit || from === null || !target) return;
-    if (groupOf && groupOf(from) !== groupOf(target.index)) return;
+    // NOTE (adversarial gate S1): there is deliberately NO second group check
+    // here. `lastTarget` is assigned in exactly one place - `trackPointer` -
+    // and only AFTER the identical check, so a re-assert at this point would
+    // be a guard whose precondition is always true when it runs. This repo has
+    // been bitten twice by exactly that shape, so the cross-group contract is
+    // enforced at ONE site and the tests bind it there.
     const toIndex = computeDropIndex(from, target.index, target.before);
     if (toIndex === from) return;
     o.onReorder(from, toIndex, { source: 'pointer' });

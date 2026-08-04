@@ -262,6 +262,38 @@ test('wireReorderable: a real post-drag mouse click IS still suppressed (the rul
   assert.equal(click.defaultPrevented, true, 'the drag\'s own echo is still eaten');
 });
 
+test('wireReorderable (adversarial W5): a NEW press clears a stranded flag on an <a> row', () => {
+  // The primary half of the W1 fix - `rows.forEach(clear)` at the top of
+  // pointerdown - was unbound: deleting it survived 125 tests across 7 files.
+  // The existing W1 test only ever reached its case through the CHILD
+  // exemption, which structurally cannot help the three sidebar surfaces
+  // whose rows ARE the interactive element. This drives that shape directly.
+  const dom = new JSDOM('<!doctype html><html><body><div id="list"></div></body></html>');
+  const doc = dom.window.document;
+  const container = doc.getElementById('list');
+  container.innerHTML = RECTS.map((_, i) => `<a href="/?root=${i}" class="row"></a>`).join('');
+  const rows = Array.prototype.slice.call(container.querySelectorAll('.row'));
+  wireReorderable(container, {
+    rowSelector: '.row',
+    measure: (el) => RECTS[rows.indexOf(el)],
+    onReorder: () => {},
+  });
+
+  // A gesture ended without delivering a click to this row (a drop released
+  // elsewhere), leaving the flag armed on a live node.
+  rows[0].__reorderSuppressClick = true;
+
+  // The user now presses that row again and clicks it normally.
+  const at = (el, type, y, extra) => el.dispatchEvent(new dom.window.PointerEvent(type, Object.assign({
+    bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', button: 0, clientX: 0, clientY: y,
+  }, extra || {})));
+  at(rows[0], 'pointerdown', 5);
+  at(doc, 'pointerup', 5);
+  const click = new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 });
+  rows[0].dispatchEvent(click);
+  assert.equal(click.defaultPrevented, false, 'the stranded flag was cleared by the new press - the link navigates');
+});
+
 test('wireReorderable: a click with no drag before it is never suppressed', () => {
   const f = buildList();
   wire(f);
@@ -411,14 +443,94 @@ test('wireReorderable: a touch long-press arms the drag and the drop reorders', 
 test('wireReorderable: a touch that MOVES before the long press matures is a scroll, not a drag', async () => {
   // The whole reason the long press exists: the row is the drag surface, so
   // without this rule the list could never be scrolled with a finger.
+  //
+  // Adversarial gate W4: this test used to dispatch its pointermove
+  // SYNCHRONOUSLY after pointerdown, which no real device does - and that is
+  // why it never reached the timer race it exists to exercise. The move now
+  // lands partway through the press window, like a finger actually would.
   const f = buildList();
   const moves = wire(f);
   touchDown(f, 0, 5);
+  await new Promise((r) => setTimeout(r, 50));
   pointer(f.window, f.doc, 'pointermove', { pointerType: 'touch', clientY: 5 + REORDER_TOUCH_SLOP_PX + 5 });
   await new Promise((r) => setTimeout(r, REORDER_LONG_PRESS_MS + 40));
   pointer(f.window, f.doc, 'pointermove', { pointerType: 'touch', clientY: 105 });
   pointer(f.window, f.doc, 'pointerup', { pointerType: 'touch', clientY: 105 });
   assert.deepEqual(moves, [], 'the gesture was handed back to the browser as a scroll');
+});
+
+// ---- the arming CONSTANTS, bound as values ---------------------------------
+//
+// Adversarial gate W4: every test above imports the same constants it
+// exercises (`5 + REORDER_TOUCH_SLOP_PX + 5`), so no constant can fail its own
+// test. The seat measured what that costs - three surviving mutants, each with
+// a real user-visible consequence. These four tests use LITERAL numbers on
+// purpose; if a constant is retuned, they are supposed to be re-derived by
+// hand rather than to follow along silently.
+
+test('W4: the mouse threshold is big enough that a 1px jitter click is not a drag', () => {
+  // Mutant: REORDER_MOUSE_THRESHOLD_PX -> 0. Consequence measured by the seat:
+  // a 1-pixel jitter while clicking a sidebar <a> row is swallowed as a drag,
+  // and the sidebar stops navigating.
+  assert.ok(REORDER_MOUSE_THRESHOLD_PX >= 3, `threshold ${REORDER_MOUSE_THRESHOLD_PX}px is too small to absorb jitter`);
+  const f = buildList();
+  const moves = wire(f);
+  pointer(f.window, f.rows[0], 'pointerdown', { clientY: 5 });
+  pointer(f.window, f.doc, 'pointermove', { clientY: 6 }); // 1px of hand tremor
+  pointer(f.window, f.doc, 'pointerup', { clientY: 6 });
+  assert.deepEqual(moves, [], 'a 1px jitter is a click');
+  const click = new f.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 });
+  f.rows[0].dispatchEvent(click);
+  assert.equal(click.defaultPrevented, false, 'and the click is NOT swallowed - the row still navigates');
+});
+
+test('W4: the long press is long enough that a quick flick is a scroll, not a reorder', async () => {
+  // Mutant: REORDER_LONG_PRESS_MS -> 0. Consequence: a flick 50ms after
+  // touchdown becomes a reorder AND touchmove is preventDefaulted, so the list
+  // can never be scrolled by finger again.
+  assert.ok(REORDER_LONG_PRESS_MS >= 200, `${REORDER_LONG_PRESS_MS}ms is not a long press`);
+  const f = buildList();
+  const moves = wire(f);
+  touchDown(f, 0, 5);
+  await new Promise((r) => setTimeout(r, 50));
+  pointer(f.window, f.doc, 'pointermove', { pointerType: 'touch', clientY: 105 });
+  pointer(f.window, f.doc, 'pointerup', { pointerType: 'touch', clientY: 105 });
+  assert.deepEqual(moves, [], 'a 50ms flick never reorders');
+});
+
+test('W4: the touch slop is small enough that real travel abandons the press', async () => {
+  // Mutant: REORDER_TOUCH_SLOP_PX -> 1000, i.e. nothing ever abandons.
+  assert.ok(REORDER_TOUCH_SLOP_PX <= 20, `slop ${REORDER_TOUCH_SLOP_PX}px would swallow a scroll`);
+  const f = buildList();
+  const moves = wire(f);
+  touchDown(f, 0, 5);
+  await new Promise((r) => setTimeout(r, 50));
+  pointer(f.window, f.doc, 'pointermove', { pointerType: 'touch', clientY: 45 }); // 40px: a scroll
+  await new Promise((r) => setTimeout(r, REORDER_LONG_PRESS_MS + 40));
+  pointer(f.window, f.doc, 'pointerup', { pointerType: 'touch', clientY: 45 });
+  assert.deepEqual(moves, [], '40px of travel is a scroll at any slop we would ship');
+});
+
+test('W4: the auto-scroll step is a nudge, not a jump', () => {
+  // The comment above the auto-scroll tests used to claim they "bind the
+  // values"; they bind the wiring's USE of them. A step of 1200 would pass
+  // every one of those tests and make one tick scroll past the whole list.
+  assert.ok(REORDER_AUTOSCROLL_STEP_PX > 0 && REORDER_AUTOSCROLL_STEP_PX <= 40,
+    `${REORDER_AUTOSCROLL_STEP_PX}px per ~16ms tick is not a nudge`);
+  assert.ok(REORDER_AUTOSCROLL_EDGE_PX >= 16 && REORDER_AUTOSCROLL_EDGE_PX <= 120,
+    `${REORDER_AUTOSCROLL_EDGE_PX}px edge band is out of usable range`);
+});
+
+test('W3: a zero-height scroll container never starts the auto-scroll tick', () => {
+  // The seat found that an unmeasured container read as "hard against both
+  // edges", so every armed drag started an interval that its own !armed guard
+  // could never stop - which turned a red test into a HANG. A box that cannot
+  // scroll must contribute nothing.
+  for (const y of [-50, 0, 10, 112, 9999]) {
+    assert.equal(computeAutoScrollDelta({ top: 0, bottom: 0 }, y, REORDER_AUTOSCROLL_EDGE_PX, REORDER_AUTOSCROLL_STEP_PX), 0,
+      `a zero-height box must not scroll at clientY=${y}`);
+  }
+  assert.equal(computeAutoScrollDelta({ top: 100, bottom: 40 }, 50, 36, 12), 0, 'an inverted rect is inert too');
 });
 
 test('wireReorderable: a touch on the HANDLE arms immediately, with no long press', () => {
@@ -481,10 +593,15 @@ test('wireReorderable: a cross-GROUP drop is refused (the pinned sidebar partiti
   const f = buildList();
   // Rows 0,1 are channels; rows 2,3 are book shelves.
   const moves = wire(f, { groupOf: (i) => (i < 2 ? 'channel' : 'books') });
-  mouseDrag(f, 0, 105); // channel dropped among the shelves
+  // Adversarial gate S2: the indicator assertion used to sit AFTER the drag
+  // completed, where `endGesture` has already cleared every class
+  // unconditionally - so it could not fail. Checked MID-drag now.
+  pointer(f.window, f.rows[0], 'pointerdown', { clientY: 5 });
+  pointer(f.window, f.doc, 'pointermove', { clientY: 20 });
+  pointer(f.window, f.doc, 'pointermove', { clientY: 105 }); // over a foreign row
+  assert.equal(f.rows[3].className.includes('drag-over'), false, 'no drop line on a foreign row, WHILE dragging');
+  pointer(f.window, f.doc, 'pointerup', { clientY: 105 });
   assert.deepEqual(moves, [], 'no cross-source order is ever persisted');
-  // ...and the indicator never lit up on the foreign row either.
-  assert.equal(f.rows[3].className.includes('drag-over'), false);
 });
 
 test('wireReorderable: a WITHIN-group drop still works with a group guard installed', () => {
@@ -603,11 +720,24 @@ test('wireReorderable: a right-click never starts a drag', () => {
 });
 
 test('wireReorderable: an empty container, a missing onReorder and a missing rowSelector are all inert', () => {
+  // Adversarial gate S3: all three cases used to exit through `rows.length === 0`,
+  // so deleting the `!onReorder || !rowSelector` guard survived. The rows-PRESENT
+  // variants below are what actually reach it.
   const dom = new JSDOM('<!doctype html><html><body><div id="list"></div></body></html>');
   const container = dom.window.document.getElementById('list');
   assert.doesNotThrow(() => wireReorderable(container, { rowSelector: '.row', onReorder: () => {} }));
-  assert.doesNotThrow(() => wireReorderable(container, { rowSelector: '.row' }));
   assert.doesNotThrow(() => wireReorderable(null, { rowSelector: '.row', onReorder: () => {} }));
+
+  // Rows present, no onReorder: must wire NOTHING rather than throw on drag.
+  const f = buildList();
+  assert.doesNotThrow(() => wireReorderable(f.container, { rowSelector: '.row', measure: f.measure }));
+  assert.equal(f.rows[0].classList.contains('reorder-row'), false, 'a surface with no handler is not wired at all');
+  assert.doesNotThrow(() => mouseDrag(f, 0, 105), 'and dragging it is inert');
+
+  // Rows present, no rowSelector.
+  const g = buildList();
+  assert.doesNotThrow(() => wireReorderable(g.container, { onReorder: () => {}, measure: g.measure }));
+  assert.equal(g.rows[0].classList.contains('reorder-row'), false);
 });
 
 // ---- keyboard parity (the up/down buttons this wave deletes) ---------------

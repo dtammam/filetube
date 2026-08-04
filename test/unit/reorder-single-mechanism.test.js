@@ -13,6 +13,19 @@
 // themselves - it never hard-codes what "the surfaces" are - and it strips
 // comments first, because every one of these files legitimately DISCUSSES the
 // mechanism it no longer uses.
+//
+// SCOPE, stated precisely (adversarial gate S6 caught the earlier "the whole
+// client tree", which overstated it): the four directories below, scanned
+// NON-recursively, `.js` and `.html`. The only client files that leaves out
+// are `public/vendor/*` - third-party, eslint-ignored, and not ours to hold
+// to this rule.
+//
+// And the limit that matters more than the scope: this census enumerates
+// `rowSelector:` sites, so it only ever sees surfaces ALREADY on the shared
+// helper. It can prove nobody went back to native HTML5 drag. It cannot prove
+// a new reorderable list did not appear with up/down buttons - the playback
+// queue panel is exactly that, and is tracked as tech-debt #111 rather than
+// pretended away.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
