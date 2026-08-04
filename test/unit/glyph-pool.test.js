@@ -245,3 +245,55 @@ test("Dean's ruling, concretely: Shows keeps the TV and Downloads wears a tape",
   assert.match(css, /\[data-icons="emoji"\] \.icon-downloads::before \{ content: "\\1F4FC"; \}/,
     'Downloads wears U+1F4FC VIDEOCASSETTE (moved from the TV it shared with Shows)');
 });
+
+// ---- v1.77 (adversarial gate round 2, W2): the sizing rule must still SIZE --
+//
+// The seven-site lock binds every glyph's MEMBERSHIP in the shared sizing rule
+// and slices that list off at its `{` - it never looked at what the rule
+// declares. One character too early.
+//
+// Deleting `width: 1em; height: 1em` from that one rule turns every masked
+// chrome glyph into a 0x0 inline-block: EVERY icon in the application
+// disappears, all four sets, all 44 classes, with the whole suite green. That
+// is a larger blast radius than the invisible-box bug this file was built for.
+//
+// The asymmetry is what makes it a finding rather than scenery: download-icon
+// .test.js already binds the EMOJI group's declarations (strengthened in
+// 431a22d), and this file already extracts this rule's selector list.
+test('the shared sizing rule still SIZES: membership in it is worthless if its body is gone', () => {
+  const brace = css.indexOf('{', css.indexOf('\n.icon-home,\n'));
+  assert.notEqual(brace, -1, 'expected the shared icon sizing rule');
+  const decls = css.slice(brace, css.indexOf('}', brace));
+  for (const d of [
+    'display: inline-block',           // without it, width/height do not apply
+    'width: 1em', 'height: 1em',       // without these, every glyph is 0x0
+    '-webkit-mask-size: contain', 'mask-size: contain',
+    '-webkit-mask-repeat: no-repeat', 'mask-repeat: no-repeat',
+  ]) {
+    assert.ok(decls.includes(d),
+      `the shared icon sizing rule lost \`${d}\` - EVERY masked glyph in the app is affected`);
+  }
+});
+
+// A later duplicate rule silently overrides an earlier one, and later-override
+// is the established idiom in this stylesheet (the whole emoji set works that
+// way) - so a contradictory `.icon-shows { mask-image: none }` appended after
+// the pool block would pass all seven sites. Adversarial round 2, SUGGESTION.
+test('no later rule overrides a pool glyph mask: the base declaration is the LAST word', () => {
+  const offenders = [];
+  for (const g of ENTRIES) {
+    const cls = pool.glyphClassName(g.id);
+    // Every unscoped `mask-image` declaration for this exact class token, in
+    // document order. Set-scoped rules ([data-icons=...]) are the deliberate
+    // overrides and are excluded.
+    const re = new RegExp(`(^|\\})\\s*\\.${cls}(?![a-z0-9-])[^{}]*\\{[^}]*?(?:^|[^-])mask-image:\\s*([^;]+);`, 'gms');
+    const values = [...css.matchAll(re)].map((m) => m[2].trim());
+    if (values.length === 0) continue; // site 1 already covers absence
+    const last = values[values.length - 1];
+    if (last !== `url(/assets/icons/${g.asset}.svg)`) {
+      offenders.push(`${cls}: last unscoped mask-image is \`${last}\`, not its base asset`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    `a later rule overrides a pool glyph's mask:\n${offenders.join('\n')}`);
+});

@@ -31,8 +31,10 @@ const COMMON_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'j
 // be testing a script-loading arrangement no browser ever sees.
 const GLYPH_POOL_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'glyph-pool.js'), 'utf8');
 
-function bootHarness({ localPrefs, serverSettings }) {
-  const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+function bootHarness({ localPrefs, serverSettings, body }) {
+  // `body` (default empty, so no existing test moves) lets a test assert the
+  // boot sequence's EFFECT on real DOM rather than its network shape.
+  const dom = new JSDOM(`<!doctype html><html><head></head><body>${body || ''}</body></html>`, {
     url: 'http://localhost/',
     runScripts: 'outside-only',
     pretendToBeVisual: true,
@@ -123,4 +125,49 @@ test('with ALL prefs locally chosen the seed pull short-circuits (local prefs wi
   // DOMContentLoaded on top of the manual dispatch, so any count here measures
   // the double boot rather than the memo. The memoization claim is bound in the
   // first test above, which is the real two-consumer case.
+});
+
+// ---- v1.77 (adversarial gate round 2, W1): bind the boot EFFECT -------------
+//
+// A regression this wave INTRODUCED, and a lesson about adopting prescriptions.
+//
+// Round 1 of the QA gate correctly pointed out that the `/api/auth/me` count in
+// the fully-chosen test was measuring the harness's double boot rather than the
+// memo, and prescribed moving it to the trio-set test. I did - and traded away
+// the only thing binding `initLibraryGlyphs()` at boot. In the fully-chosen
+// scenario the pull short-circuits, so the count only ever reached 1 if
+// initLibraryGlyphs ran; in the trio-set scenario the pull fetches too, so the
+// count is 1 whether or not it is ever called. The prescription was right about
+// what the assertion CLAIMED and silent about what it happened to CATCH.
+//
+// The surviving mutant is the wave's headline feature dead: comment out the
+// boot call and per-user Library glyphs never paint on any page, on any load,
+// with the full suite green. It would even look correct where you would check
+// it by hand - the Settings editor repaints itself on change.
+//
+// So this binds the effect: real committed sources, real DOM, real boot.
+test('BOOT EFFECT: initLibraryGlyphs paints the per-user Library glyphs at boot', async () => {
+  const { w } = bootHarness({
+    localPrefs: {},
+    serverSettings: { glyphBooks: 'school' },
+    body: '<a data-nav-sidebar="books" href="/books"><i class="icon-books"></i> Books</a>' +
+          '<a data-nav="books" href="/books"><i class="icon-books"></i></a>',
+  });
+  w.document.dispatchEvent(new w.Event('DOMContentLoaded', { bubbles: true }));
+  await flush();
+  assert.equal(w.document.querySelector('[data-nav-sidebar="books"] i').className, 'icon-school',
+    'the sidebar Library entry must be repainted by the boot sequence');
+  assert.equal(w.document.querySelector('[data-nav="books"] i').className, 'icon-school',
+    'and so must its bottom-bar twin');
+});
+
+test('BOOT EFFECT: an untouched user record leaves every Library glyph alone', async () => {
+  const { w } = bootHarness({
+    localPrefs: {},
+    serverSettings: {},
+    body: '<a data-nav-sidebar="books" href="/books"><i class="icon-books"></i> Books</a>',
+  });
+  w.document.dispatchEvent(new w.Event('DOMContentLoaded', { bubbles: true }));
+  await flush();
+  assert.equal(w.document.querySelector('[data-nav-sidebar="books"] i').className, 'icon-books');
 });
