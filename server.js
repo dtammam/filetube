@@ -77,6 +77,9 @@ const GLYPH_IDS = new Set(glyphPool.GLYPH_POOL.map((g) => g.id));
 const booksStore = require('./lib/books/store');
 const queueStore = require('./lib/queue/store');
 const booksScan = require('./lib/books/scan');
+// v1.78 device handoff: the ephemeral presence store. Same pure-leaf posture
+// as the queue reducers - it owns liveness semantics and nothing else.
+const presenceStore = require('./lib/presence/store');
 // v1.44 music library: same direct-require namespace-owner posture as books.
 const musicStore = require('./lib/music/store');
 const musicScan = require('./lib/music/scan');
@@ -882,6 +885,49 @@ function effectiveProgress(userId, id) {
   const pending = pendingProgress.get(pendingProgressKey(userId, id));
   if (pending) return pending.value;
   return userStore.getOneProgress(userId, id) || undefined;
+}
+
+// v1.78 device handoff -------------------------------------------------------
+//
+// The process-wide presence map. It sits beside effectiveProgress on purpose:
+// that function is what makes this feature CHEAP. Position is already near-live
+// server-side (a ping every ~4s, coalesced), so presence never needs to carry
+// or persist a position for playback - it carries only "who is playing what,
+// where, and how recently". The destination surface resumes off effectiveProgress
+// exactly as it does today, which is why AC5 adds no new position plumbing.
+//
+// Deliberately NOT persisted (Dean's ruling 5): a restart clears it and the
+// feature degrades to plain history resume. No schema migration in this wave.
+const presence = presenceStore.createPresenceStore();
+
+// The ONE presence writer. Every progress handler funnels through it so the
+// device fields are parsed, validated and capped in exactly one place - the
+// v1.41.4 "seat that forgot to call the shared helper" scar, applied forward.
+//
+// CONTRACT (named attack surface #5): this is a pure SIDE EFFECT of a progress
+// ping. It reads only from `body`, never writes to `res`, never throws for bad
+// input (the store refuses silently), and its return value is ignored by every
+// caller. A ping without device fields therefore behaves BYTE-IDENTICALLY to
+// pre-v1.78 - which is what keeps old cached clients and Roku working.
+//
+// The user id comes from `req.user.id` - the auth gate's value - and NEVER from
+// the body, so there is no path by which a client can write into another user's
+// presence bucket (attack surface #3).
+function recordPresenceFromPing(req, kind, mediaId, position, duration) {
+  const body = req && req.body ? req.body : {};
+  if (!body.deviceId) return; // no device identity -> no presence, silently
+  presence.record(req.user.id, {
+    deviceId: body.deviceId,
+    deviceLabel: body.deviceLabel,
+    mediaId,
+    kind,
+    position,
+    duration,
+    // 'paused' is the explicit stop beacon; anything else (including absent)
+    // is a live play ping.
+    state: body.presenceState === 'paused' ? 'paused' : 'playing',
+    at: body.presenceAt,
+  });
 }
 
 // Media extensions
@@ -7432,6 +7478,7 @@ app.post('/api/music/progress', (req, res) => {
     value: { position, duration, updatedAt: new Date().toISOString() },
   });
   armMusicProgressFlushTimerIfNeeded();
+  recordPresenceFromPing(req, 'track', id, position, duration); // v1.78 presence
   res.json({ ok: true });
 });
 
@@ -9089,7 +9136,108 @@ app.post('/api/progress', (req, res) => {
   if (effDuration > 0 && (timestamp / effDuration) * 100 >= videoQuery.WATCHED_PCT) {
     userStore.markWatched(req.user.id, id, new Date().toISOString());
   }
+  // v1.78: presence, LAST - after every existing effect, and after the 400/404
+  // gates above, so a rejected ping mints no presence for an id this user was
+  // never allowed to write. Cannot change this response (see the helper).
+  recordPresenceFromPing(req, 'media', id, timestamp, effDuration);
   res.json({ success: true });
+});
+
+// v1.78 device handoff: resolve a presence entry into what the card RENDERS.
+//
+// Every display field is resolved SERVER-side from our own records - the
+// client supplies an id and a device label, never a title, thumbnail or
+// destination. That is the whole reason this function exists: a client-
+// supplied title would be an XSS vector and a lie vector at once.
+//
+// Returns null when the item is no longer playable (deleted, pruned, trashed,
+// rescanned away). The card is an OFFER; offering a dead link is worse than
+// offering nothing, so a null here reads to the client exactly like "no
+// presence" - the same silent, graceful nothing as a cold server (#9/#10).
+//
+// Named + exported (not inlined into the route) so both arms and the
+// not-playable skips are BINDABLE by test - the v1.73 adversarial W1 lesson,
+// where an inlined resolver survived all its mutants.
+function resolveHandoffTarget(db, seen) {
+  if (!seen || typeof seen.mediaId !== 'string') return null;
+  const id = seen.mediaId;
+  const enc = encodeURIComponent(id);
+
+  if (seen.kind === 'podcast') {
+    const ns = podcastStore.readPodcasts(db);
+    const ep = Object.prototype.hasOwnProperty.call(ns.episodes, id) ? ns.episodes[id] : null;
+    // Same rule as the push resolver: a non-downloaded episode is not
+    // playable, so it is not offerable.
+    if (!ep || ep.status !== 'downloaded') return null;
+    const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
+    return {
+      title: ep.title || 'Episode',
+      subtitle: sub ? sub.name : 'Podcast',
+      thumbnailUrl: `/podcastart/${encodeURIComponent(ep.subId)}`,
+      href: `/podcasts?play=${enc}`,
+      // `durationSec` is the stored field on both podcast episodes and music
+      // tracks (media items use `duration`). The ping's own duration wins when
+      // it has one - it came from the real decoded media element.
+      duration: seen.duration || ep.durationSec || 0,
+    };
+  }
+
+  if (seen.kind === 'track') {
+    const ns = musicStore.readMusic(db);
+    const track = ownTrack(ns.tracks, id);
+    if (!track) return null;
+    return {
+      title: track.title || 'Track',
+      subtitle: track.artist || '',
+      thumbnailUrl: `/albumart/${enc}`,
+      href: `/music?play=${enc}`,
+      duration: seen.duration || track.durationSec || 0,
+    };
+  }
+
+  // OWN-property check, not a bare index (the v1.42 row-key lesson): a bare
+  // `db.metadata[id]` hands back Object.prototype for id='__proto__' and would
+  // resolve a phantom item with an undefined title.
+  const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, id)
+    ? db.metadata[id]
+    : null;
+  if (!item) return null;
+  return {
+    title: item.title || item.name || 'Video',
+    subtitle: item.folderName || '',
+    thumbnailUrl: `/thumbnail/${enc}`,
+    href: `/watch.html?v=${enc}`,
+    duration: seen.duration || item.duration || 0,
+  };
+}
+
+// v1.78 device handoff: the ONE read endpoint the card polls.
+//
+// `deviceId` identifies the CALLER so it is never offered its own playback
+// (AC7). It is a query param rather than a body field because this is a GET,
+// and it is used ONLY to exclude - it is never a key, so a forged or omitted
+// value can widen what you see to your own devices and NEVER to another
+// user's (the bucket is keyed by req.user.id from the auth gate - #3).
+app.get('/api/handoff', (req, res) => {
+  const deviceId = typeof req.query.deviceId === 'string' ? req.query.deviceId : '';
+  const seen = presence.readOther(req.user.id, deviceId);
+  if (!seen) return res.json({ presence: null });
+
+  const target = resolveHandoffTarget(getCachedDatabase(), seen);
+  if (!target) return res.json({ presence: null });
+
+  res.json({
+    presence: {
+      deviceId: seen.deviceId,
+      deviceLabel: seen.deviceLabel,
+      kind: seen.kind,
+      mediaId: seen.mediaId,
+      state: seen.state,
+      position: seen.position,
+      ageSeconds: seen.ageSeconds,
+      ...target,
+    },
+  });
 });
 
 // v1.36.2 (Dean: "sticky post-deletion" -- the "doesn't delete" half): the
@@ -14656,6 +14804,7 @@ podcasts.registerRoutes(app, {
   contentDispositionAttachment,
   listExternalShows: listYtdlpPodcastShows,
   listExternalEpisodes: listYtdlpPodcastEpisodes,
+  recordPresenceFromPing, // v1.78: the ONE presence writer, shared by all three kinds
 });
 
 // Start the server — but only when run directly (`node server.js`), not when
@@ -14863,6 +15012,14 @@ module.exports = {
   pruneDeleteTombstones,
   DELETE_TOMBSTONE_CAP,
   DELETE_TOMBSTONE_MAX_AGE_MS,
+  // v1.78 device handoff: the card's display resolver (both arms + the
+  // not-playable skips are bindable this way), and the presence singleton
+  // itself. The singleton is exported ONLY as a test seam: it is process-wide
+  // module state, so a suite that leaves entries behind would leak presence
+  // into the next test file's expectations. Every handoff test clears it in
+  // beforeEach.
+  resolveHandoffTarget,
+  __presenceForTests: presence,
   // v1.37.0 books: scanner + state accessor + cover dir, exported for the
   // books integration tests (same posture as scanDirectories/THUMBNAIL_DIR).
   scanBooks,
