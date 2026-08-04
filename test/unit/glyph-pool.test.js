@@ -280,18 +280,37 @@ test('the shared sizing rule still SIZES: membership in it is worthless if its b
 // way) - so a contradictory `.icon-shows { mask-image: none }` appended after
 // the pool block would pass all seven sites. Adversarial round 2, SUGGESTION.
 test('no later rule overrides a pool glyph mask: the base declaration is the LAST word', () => {
+  // RULE-WISE, not line-wise (adversarial round 3, ask 3). The first cut
+  // anchored on `(^|\})\s*\.icon-x`, which required the class to sit at the
+  // head of a rule or a line - so a single-line grouped selector
+  // (`.icon-decoy, .icon-shows { mask-image: none }`) slipped past, as did the
+  // `mask:` shorthand and a `-webkit-mask-image`-only kill. That last one
+  // breaks WebKit ONLY, i.e. Dean's phone, which is precisely the asymmetry
+  // 431a22d closed for the emoji group earlier in this same wave.
+  //
+  // Splitting the stylesheet into selector/body pairs and testing the class
+  // token against the whole selector catches all three.
+  //
+  // STILL OPEN, and deliberately: `!important` on an earlier rule, and a
+  // higher-specificity selector (`.sidebar-item i.icon-shows`). Both need a
+  // real cascade model, which is more than a stylesheet grep should promise -
+  // so this test binds DOCUMENT ORDER, not the cascade, and says so rather
+  // than letting a reader assume more.
   const offenders = [];
   for (const g of ENTRIES) {
     const cls = pool.glyphClassName(g.id);
-    // Every unscoped `mask-image` declaration for this exact class token, in
-    // document order. Set-scoped rules ([data-icons=...]) are the deliberate
-    // overrides and are excluded.
-    const re = new RegExp(`(^|\\})\\s*\\.${cls}(?![a-z0-9-])[^{}]*\\{[^}]*?(?:^|[^-])mask-image:\\s*([^;]+);`, 'gms');
-    const values = [...css.matchAll(re)].map((m) => m[2].trim());
+    const tok = new RegExp(`\\.${cls}(?![a-z0-9-])`);
+    const values = [];
+    for (const rule of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (!tok.test(rule[1])) continue;
+      if (/\[data-icons=/.test(rule[1])) continue; // the deliberate per-set overrides
+      const decls = [...rule[2].matchAll(/(?:^|[^-\w])(?:-webkit-)?mask(?:-image)?\s*:\s*([^;]+)/g)];
+      if (decls.length) values.push(decls[decls.length - 1][1].trim());
+    }
     if (values.length === 0) continue; // site 1 already covers absence
     const last = values[values.length - 1];
     if (last !== `url(/assets/icons/${g.asset}.svg)`) {
-      offenders.push(`${cls}: last unscoped mask-image is \`${last}\`, not its base asset`);
+      offenders.push(`${cls}: last unscoped mask declaration is \`${last}\`, not its base asset`);
     }
   }
   assert.deepEqual(offenders, [],
@@ -320,13 +339,41 @@ test('no later rule overrides a pool glyph mask: the base declaration is the LAS
 test('the five Library fallback glyphs are masked and sized, like the pool members', () => {
   const fallbacks = pool.LIBRARY_GLYPH_SLOTS.map((s) => s.fallback);
   assert.ok(fallbacks.length >= 5, `expected >=5 Library slots, got ${fallbacks.length}`);
+  // Tightened at the adversarial gate (round 3, ask 4) - my first cut used
+  // `[^}]*mask-image:`, which matches INSIDE `-webkit-mask-image:`. So a
+  // webkit-only mask passed while FIREFOX rendered a solid square: the same
+  // prefixed/standard asymmetry 431a22d closed for the emoji group earlier in
+  // this wave, re-opened on a new lock. Both spellings are required now, the
+  // url() must be non-empty, the asset must exist ON DISK (the ASSET LOCK above
+  // iterates pool ENTRIES only, so a fallback's file was never checked), and a
+  // later rule must not kill the mask (same reason).
+  //
+  // Left open deliberately: swapping in another VALID asset. That is the
+  // "asset name is not hardcoded" design, so an asset swap stays a one-liner.
   const failures = [];
   for (const cls of fallbacks) {
-    // Site 1: SOME base mask rule for this exact class token.
-    const hasMask = new RegExp(
-      `(^|\\})\\s*\\.${cls}(?![a-z0-9-])\\s*\\{[^}]*mask-image:\\s*url\\(`, 'ms').test(css);
-    if (!hasMask) failures.push(`${cls}: no base mask rule - it will render as a solid currentColor square`);
-    // Site 2: sizing-group membership (dropped = a zero-area glyph).
+    const tok = new RegExp(`\\.${cls}(?![a-z0-9-])`);
+    let last = null;
+    for (const rule of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (!tok.test(rule[1]) || /\[data-icons=/.test(rule[1])) continue;
+      const body = rule[2];
+      const webkit = /-webkit-mask-image\s*:\s*([^;]+)/.exec(body);
+      const std = /(?:^|[^-\w])mask-image\s*:\s*([^;]+)/.exec(body);
+      if (webkit && !std) failures.push(`${cls}: -webkit-mask-image with no standard mask-image - a solid square in Firefox`);
+      if (std && !webkit) failures.push(`${cls}: mask-image with no -webkit- prefix - a solid square in older WebKit`);
+      if (std) last = std[1].trim();
+    }
+    if (!last) {
+      failures.push(`${cls}: no base mask rule - it will render as a solid currentColor square`);
+    } else {
+      const url = /^url\(([^)]+)\)$/.exec(last);
+      if (!url || !url[1].trim()) {
+        failures.push(`${cls}: its last mask declaration is \`${last}\`, not a real asset url`);
+      } else {
+        const asset = path.join(REPO, 'public', url[1].trim().replace(/^\//, ''));
+        if (!fs.existsSync(asset)) failures.push(`${cls}: mask points at a missing file (${url[1].trim()})`);
+      }
+    }
     if (!listHasClass(SIZING_LIST, cls)) failures.push(`${cls}: missing from the shared sizing group`);
   }
   assert.deepEqual(failures, [],
