@@ -4222,8 +4222,9 @@ a.sub-row-channel-link:focus-visible {
    ruling 4 until v1.77's glyph pool gave `.icon-shows` that same codepoint.
    A television is the literal read of a Shows folder, so Downloads moved and
    Shows kept the TV - and a tape suits a library of things you recorded, in a
-   skin built to look like old YouTube. Either entry's glyph is user-changeable
-   in Settings now, so this is only the default. The MASK sets are untouched:
+   skin built to look like old YouTube. Both are user-changeable now, in
+   different ways: Downloads is a Library entry with its own picker, Shows is a
+   pool glyph any folder or entry can wear. So this is only the default. The MASK sets are untouched:
    Downloads still uses the smart-display asset in outlined/rounded/filled. */
 [data-icons="emoji"] .icon-downloads::before { content: "\1F4FC"; }
 [data-icons="emoji"] .icon-books::before { content: "\1F4DA"; } /* books stack - the Books library */

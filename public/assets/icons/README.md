@@ -10,11 +10,13 @@ renders correctly in every FileTube theme (era × light/dark).
 Two groups of classes live here, and they have different coverage rules:
 
 1. **Chrome icons** - the 14 `.icon-*` classes each vector set covers in full
-   (the tables below), plus ten later additions (`heart`, `share`, `flame`,
-   `history`, `queue`, `podcast`, `downloads`, `books`, `grid`, `list`) that
-   ship ONE base asset every set falls back to. That fallback is deliberate,
-   not a gap - but it is now the minority behaviour, and it is tracked as
-   tech-debt row 113.
+   (the tables below), plus ten later additions that ship ONE base asset other
+   sets fall back to. Not uniformly, though: **eight** of them (`heart`,
+   `share`, `flame`, `history`, `queue`, `podcast`, `grid`, `list`) fall back in
+   `rounded`, `filled` AND `emoji`, while `downloads` and `books` have their own
+   emoji codepoints (U+1F4FC and U+1F4DA) and fall back only in `rounded` and
+   `filled`. That fallback is deliberate, not a gap - but it is now the minority
+   behaviour, and it is tracked as tech-debt row 113.
 2. **The assignable glyph pool** (v1.77) - 20 user-selectable folder/Library
    glyphs plus `.icon-liked`, every one of which carries a real variant in
    **all four** sets. See "The assignable glyph pool" at the end of this file;
@@ -262,4 +264,6 @@ pre-existing `.icon-downloads` both rendered U+1F4FA (📺) in the emoji set.
 Dean ruled they must not share, so `.icon-downloads` moved to U+1F4FC (📼
 videocassette) and Shows kept the television - a TV being the literal read of a
 Shows folder. Downloads' mask assets are unchanged in all three vector sets;
-only its emoji glyph moved, and both are user-changeable in Settings now.
+only its emoji glyph moved. Both are user-changeable now, though not in the same
+way: Downloads is a Library ENTRY with its own picker, while Shows is a POOL
+GLYPH that any folder or Library entry can be given.

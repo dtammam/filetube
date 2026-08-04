@@ -297,3 +297,38 @@ test('no later rule overrides a pool glyph mask: the base declaration is the LAS
   assert.deepEqual(offenders, [],
     `a later rule overrides a pool glyph's mask:\n${offenders.join('\n')}`);
 });
+
+// ---- the Library FALLBACK glyphs (QA gate round 2, SUGGESTION) -------------
+//
+// v1.77 elevated five chrome classes into this registry's contract as
+// `LIBRARY_GLYPH_SLOTS[].fallback`. They are not pool members - but they are
+// what EVERY user who never opens the picker actually sees on the Downloads,
+// Music, Books, Podcasts and History entries, so the wave made them part of
+// what it promises while giving them none of the coverage it built.
+//
+// Measured before this test existed: deleting `.icon-play`'s base mask rule
+// outright passed the full suite (6137 tests, 0 fail). The class stays in the
+// sizing group and in the @supports fill list, so it renders a solid 1em
+// currentColor square - Dean's AC7/blank-box class - on the Music entry in
+// every sidebar and bottom bar.
+//
+// The fill-list half is already covered for these classes by v1.47.6's PARITY
+// test (verified: dropping `.icon-play` from the fill list is killed there).
+// The uncovered halves were the base mask rule and sizing-group membership,
+// which is what this closes. The asset name is NOT hardcoded - only that a base
+// mask exists - so swapping an asset stays a one-line change.
+test('the five Library fallback glyphs are masked and sized, like the pool members', () => {
+  const fallbacks = pool.LIBRARY_GLYPH_SLOTS.map((s) => s.fallback);
+  assert.ok(fallbacks.length >= 5, `expected >=5 Library slots, got ${fallbacks.length}`);
+  const failures = [];
+  for (const cls of fallbacks) {
+    // Site 1: SOME base mask rule for this exact class token.
+    const hasMask = new RegExp(
+      `(^|\\})\\s*\\.${cls}(?![a-z0-9-])\\s*\\{[^}]*mask-image:\\s*url\\(`, 'ms').test(css);
+    if (!hasMask) failures.push(`${cls}: no base mask rule - it will render as a solid currentColor square`);
+    // Site 2: sizing-group membership (dropped = a zero-area glyph).
+    if (!listHasClass(SIZING_LIST, cls)) failures.push(`${cls}: missing from the shared sizing group`);
+  }
+  assert.deepEqual(failures, [],
+    `Library fallback glyphs are what an untouched install shows:\n${failures.join('\n')}`);
+});

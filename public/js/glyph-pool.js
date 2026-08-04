@@ -43,8 +43,8 @@ const GLYPH_POOL = [
   { id: 'school', name: 'School', asset: 'school', emoji: '1F393' },
   { id: 'movies', name: 'Movies', asset: 'movie', emoji: '1F3AC' },
   // Shows keeps the television. This COLLIDED with `.icon-downloads` (also
-  // 1F4FA, from v1.73 ruling 4) and shipped disclosed for exactly one gate
-  // round before Dean ruled it out: "i want downloads and shows to not share".
+  // 1F4FA, from v1.73 ruling 4) and was DISCLOSED for one gate round - nothing
+  // shipped with it - before Dean ruled: "i want downloads and shows to not share".
   // Downloads moved to 1F4FC VIDEOCASSETTE rather than Shows moving, because a
   // television is the literal read of a Shows folder. See style.css's
   // `.icon-downloads::before` rule.
