@@ -6041,6 +6041,183 @@ function isHomeRootTarget(pathname, search) {
   return isRootPath && (!search || search === '');
 }
 
+// ---- v1.78 device handoff: THIS device's identity -------------------------
+//
+// Two values ride every progress ping so the server can answer "what is
+// playing on your OTHER device": a stable per-device id and a human label.
+// Both are minted entirely client-side - the server never assigns identity,
+// which is why this needs no schema, no registration step and no migration.
+
+const DEVICE_ID_KEY = 'ft-device-id';
+
+// The label roster (Dean's ruling 3: auto labels, rename deferred). ORDER IS
+// LOAD-BEARING and every entry below is here because a naive check gets it
+// wrong:
+//   - iPod must precede iPhone: an iPod touch reports "iPod touch; CPU iPhone
+//     OS 15_7", so an /iPhone/ test matches it first and every iPod reads as
+//     an iPhone. (Caught by the unit test, not by inspection.)
+//   - iPad must precede Macintosh: iPadOS 13+ reports a DESKTOP Safari UA
+//     containing "Macintosh", so an iPad reads as a Mac unless we use the
+//     touch-points tell (a real Mac reports maxTouchPoints 0).
+//   - Android must precede Linux: every Android UA also says "Linux".
+//   - CrOS must precede Linux for the same reason.
+// Pure and exported - the UA table is exactly the kind of thing that rots
+// silently, so node:test pins each arm.
+function resolveDeviceLabel(userAgent, opts) {
+  const ua = typeof userAgent === 'string' ? userAgent : '';
+  const touchPoints = opts && typeof opts.maxTouchPoints === 'number' ? opts.maxTouchPoints : 0;
+
+  if (/iPod/i.test(ua)) return 'iPod';
+  if (/iPhone/i.test(ua)) return 'iPhone';
+  if (/iPad/i.test(ua)) return 'iPad';
+  // The iPadOS-masquerading-as-desktop case.
+  if (/Macintosh/i.test(ua) && touchPoints > 1) return 'iPad';
+  if (/Android/i.test(ua)) return /Mobile/i.test(ua) ? 'Android phone' : 'Android tablet';
+  if (/CrOS/i.test(ua)) return 'Chromebook';
+  if (/Windows/i.test(ua)) return 'PC';
+  if (/Macintosh|Mac OS X/i.test(ua)) return 'Mac';
+  if (/Linux/i.test(ua)) return 'Linux PC';
+  return 'Another device';
+}
+
+// A UUID in the charset the server accepts ([A-Za-z0-9_-]). crypto.randomUUID
+// needs a secure context, which a self-hosted FileTube on a plain-HTTP LAN
+// address is NOT - so the fallback is not theoretical here, it is the common
+// case for Dean's own server.
+function mintDeviceId() {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      const bytes = crypto.getRandomValues(new Uint8Array(16));
+      let out = '';
+      for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, '0');
+      return out;
+    }
+  } catch (_) { /* fall through to the last-resort id below */ }
+  return `d-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// In-memory fallback for the session, used when localStorage is unavailable
+// (private mode, disabled storage). Presence still works - the device just
+// forgets who it was on reload, which costs a duplicate map entry and nothing
+// else. That is why the device cap exists.
+let volatileDeviceId = null;
+
+function getDeviceId() {
+  try {
+    const stored = localStorage.getItem(DEVICE_ID_KEY);
+    if (stored) return stored;
+    const minted = mintDeviceId();
+    localStorage.setItem(DEVICE_ID_KEY, minted);
+    return minted;
+  } catch (_) {
+    if (!volatileDeviceId) volatileDeviceId = mintDeviceId();
+    return volatileDeviceId;
+  }
+}
+
+function getDeviceLabel() {
+  try {
+    return resolveDeviceLabel(navigator.userAgent, { maxTouchPoints: navigator.maxTouchPoints });
+  } catch (_) {
+    return 'Another device';
+  }
+}
+
+// ---- v1.78 device handoff: the card's PURE decisions ----------------------
+//
+// Everything that decides WHAT the card says, and WHETHER it says it, lives
+// here as pure functions - the runtime below only fetches, renders and wires.
+// That split is deliberate: the display rules are where the bugs live, and a
+// pure function is the only part node:test can hold without a browser.
+
+const HANDOFF_POLL_MS = 30000;
+const HANDOFF_DISMISS_KEY = 'ft-handoff-dismissed';
+
+// Where the card is ALLOWED to appear. Dean's ruling 2 scopes it to "Home and
+// other top-level LIST surfaces" - so this is an INCLUDE list (default-deny),
+// not an exclude list. The gate QA seat caught the earlier exclude-list
+// version showing the card on Settings, search, and channel pages too - a
+// playback toast over the Settings form is exactly the interruption ruling 2
+// scopes out. Default-deny also means a NEW page added later cannot
+// accidentally start showing the card; whoever adds a new list surface adds
+// it here on purpose.
+//
+// These are the pathnames of the app's top-level browsing lists. NB the
+// reader (/read.html) is deliberately ABSENT even though activeNavItem maps
+// it to 'books' - it is a reading surface, not a list (same reason /watch.html
+// is out). Query strings (?root=, ?search=, ?liked=) do not change the
+// surface's identity, so only pathname is matched.
+const HANDOFF_LIST_SURFACES = new Set([
+  '/', '/index.html',      // Home (and the ?liked=1 Liked scope of it)
+  '/music', '/music.html',
+  '/podcasts', '/podcasts.html',
+  '/history', '/history.html',
+  '/books', '/books.html',
+  '/subscriptions',
+]);
+
+// "18 min ago" / "just now". Coarse on purpose: this is a lingering-state
+// hint, and a ticking seconds counter on a paused card reads as busywork.
+function formatHandoffAge(ageSeconds) {
+  const secs = Number.isFinite(ageSeconds) && ageSeconds > 0 ? Math.floor(ageSeconds) : 0;
+  if (secs < 60) return 'just now';
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  return hrs === 1 ? '1 hour ago' : `${hrs} hours ago`;
+}
+
+// The headline names the DEVICE, because the device is the news (the UI spec).
+function formatHandoffHeadline(presence) {
+  const label = (presence && presence.deviceLabel) || 'another device';
+  if (presence && presence.state === 'paused') {
+    return `Paused on ${label} - ${formatHandoffAge(presence.ageSeconds)}`;
+  }
+  return `Playing on ${label}`;
+}
+
+// "12:34 / 45:06", or just the position when the duration is unknown (a live
+// stream, or a ping that never carried one) - never "12:34 / 0:00".
+function formatHandoffTime(position, duration) {
+  const pos = formatDuration(position);
+  if (!Number.isFinite(duration) || duration <= 0) return pos;
+  return `${pos} / ${formatDuration(duration)}`;
+}
+
+function handoffProgressPercent(position, duration) {
+  if (!Number.isFinite(position) || !Number.isFinite(duration) || duration <= 0) return 0;
+  return Math.min(100, Math.max(0, (position / duration) * 100));
+}
+
+// The dismissal identity. It carries the STATE as well as the item and device
+// so that dismissing "Playing on iPhone" does not also swallow the later
+// "Paused on iPhone" - a state flip is new news (Dean's ruling 2: dismiss
+// hides it "until the state changes").
+function handoffSuppressionToken(presence) {
+  if (!presence) return '';
+  return `${presence.mediaId}|${presence.deviceId}|${presence.state}`;
+}
+
+/**
+ * The one show/hide decision. `ctx` carries what only the browser knows:
+ *   pathname       - the current page
+ *   localPlayingId - the id THIS page's player currently has loaded (or null)
+ *   dismissedToken - the token the user last dismissed (or '')
+ */
+function shouldShowHandoffCard(presence, ctx) {
+  if (!presence || !presence.mediaId) return false;
+  const c = ctx || {};
+  if (!HANDOFF_LIST_SURFACES.has(c.pathname)) return false; // default-deny (ruling 2)
+  // Never offer what this very page is already playing (the UI spec's
+  // "nothing shown on a surface that is itself mid-playback of that item").
+  if (c.localPlayingId && c.localPlayingId === presence.mediaId) return false;
+  if (c.dismissedToken && c.dismissedToken === handoffSuppressionToken(presence)) return false;
+  return true;
+}
+
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document`. Everything in this block is the actual router RUNTIME
 // (registry storage, fetch/swap, click/popstate wiring) -- the pure helpers
@@ -6734,6 +6911,11 @@ if (typeof window !== 'undefined') {
   window.FileTube.stashWatchSeed = stashWatchSeed;
   window.FileTube.consumeWatchSeed = consumeWatchSeed;
   // v1.44 T12: the Settings bottom-bar editor drives these.
+  // v1.78 device handoff: player.js reads these on every progress ping, and
+  // the card reads the id to exclude itself. common.js loads before player.js
+  // on every page that mounts a player, so the binding is always in place.
+  window.FileTube.getDeviceId = getDeviceId;
+  window.FileTube.getDeviceLabel = getDeviceLabel;
   window.FileTube.applyBottomNavCustomization = applyBottomNavCustomization;
   window.FileTube.readBottomNavConfig = readBottomNavConfig;
   window.FileTube.writeBottomNavConfig = writeBottomNavConfig;
@@ -10055,6 +10237,178 @@ function reconcilePushSubscription() {
 // Sidebar toggle responsive menu helper. Guarded so requiring this file in Node
 // (for unit tests) never touches `document`.
 if (typeof document !== 'undefined') {
+// ---- v1.78 device handoff: the card RUNTIME -------------------------------
+//
+// ONE controller, owned by the persistent shell. Its element is appended to
+// <body>, never into #view-root, so in-app navigation cannot tear it down
+// (the v1.38 "works on refresh, dies on in-app nav" class), and it owns
+// exactly ONE interval for the life of the page - no per-view timer that a
+// cached view could leak (the v1.45 listener-leak class).
+const handoffCard = (() => {
+  let el = null;
+  let timer = null;
+  let booted = false;
+  let current = null; // the presence currently rendered, for the click handler
+
+  function readDismissed() {
+    try { return sessionStorage.getItem(HANDOFF_DISMISS_KEY) || ''; } catch (_) { return ''; }
+  }
+  function writeDismissed(token) {
+    // sessionStorage (not localStorage) on purpose: a dismissal is a
+    // this-sitting decision. Tomorrow's handoff is new news.
+    try { sessionStorage.setItem(HANDOFF_DISMISS_KEY, token); } catch (_) { /* storage off: dismissal lasts the page */ }
+  }
+
+  // Built once, reused for every render. Structure is created with real DOM
+  // calls rather than markup-from-strings, because two of these fields are
+  // client-supplied - see the title/headline writes in render(), which are
+  // always textContent.
+  function build() {
+    const card = document.createElement('div');
+    card.id = 'handoff-card';
+    card.hidden = true;
+
+    const head = document.createElement('div');
+    head.className = 'handoff-head';
+    const state = document.createElement('span');
+    state.className = 'handoff-state';
+    state.setAttribute('aria-hidden', 'true');
+    const headline = document.createElement('span');
+    headline.className = 'handoff-headline';
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.className = 'handoff-dismiss';
+    dismiss.setAttribute('aria-label', 'Dismiss');
+    dismiss.textContent = '×'; // multiplication sign as an escape, never a literal glyph in source
+    head.append(state, headline, dismiss);
+
+    const body = document.createElement('div');
+    body.className = 'handoff-body';
+    const thumbLink = document.createElement('a');
+    thumbLink.className = 'handoff-thumb';
+    const img = document.createElement('img');
+    img.alt = '';
+    img.loading = 'lazy';
+    const bar = document.createElement('div');
+    bar.className = 'handoff-progress';
+    const fill = document.createElement('div');
+    fill.className = 'handoff-progress-fill';
+    bar.appendChild(fill);
+    thumbLink.append(img, bar);
+
+    const meta = document.createElement('div');
+    meta.className = 'handoff-meta';
+    const title = document.createElement('div');
+    title.className = 'handoff-title';
+    const time = document.createElement('div');
+    time.className = 'handoff-time';
+    const go = document.createElement('a');
+    go.className = 'btn btn-primary handoff-continue';
+    const ico = document.createElement('span');
+    ico.className = 'handoff-play-ico';
+    ico.setAttribute('aria-hidden', 'true');
+    const goText = document.createElement('span');
+    goText.textContent = 'Continue here';
+    go.append(ico, goText);
+    meta.append(title, time, go);
+
+    body.append(thumbLink, meta);
+    card.append(head, body);
+    document.body.appendChild(card);
+
+    dismiss.addEventListener('click', () => {
+      if (current) writeDismissed(handoffSuppressionToken(current));
+      hide();
+    });
+
+    el = { card, state, headline, img, fill, title, time, go, thumbLink };
+    return el;
+  }
+
+  function hide() {
+    if (!el) return;
+    el.card.hidden = true;
+    el.card.classList.remove('handoff-visible');
+    current = null;
+  }
+
+  function render(presence) {
+    if (!el) build();
+    current = presence;
+
+    el.headline.textContent = formatHandoffHeadline(presence);
+    el.title.textContent = presence.title || '';
+    el.time.textContent = formatHandoffTime(presence.position, presence.duration);
+    el.state.classList.toggle('is-paused', presence.state === 'paused');
+    el.fill.style.width = `${handoffProgressPercent(presence.position, presence.duration)}%`;
+    el.img.src = presence.thumbnailUrl || '';
+    el.go.href = presence.href || '#';
+    el.thumbLink.href = presence.href || '#';
+
+    el.card.hidden = false;
+    // Next frame, so the fade transition runs instead of being skipped on the
+    // same paint that unhides the card (the .toast precedent).
+    requestAnimationFrame(() => { if (el) el.card.classList.add('handoff-visible'); });
+  }
+
+  function localPlayingId() {
+    try {
+      const p = window.FileTube && window.FileTube.player;
+      return (p && p.currentId) || null;
+    } catch (_) { return null; }
+  }
+
+  async function poll() {
+    try {
+      const deviceId = getDeviceId();
+      const r = await fetch(`/api/handoff?deviceId=${encodeURIComponent(deviceId)}`);
+      if (!r.ok) return; // a cold/erroring server is silent, never a visible failure
+      const data = await r.json();
+      const presence = data && data.presence;
+      const show = shouldShowHandoffCard(presence, {
+        pathname: window.location.pathname,
+        localPlayingId: localPlayingId(),
+        dismissedToken: readDismissed(),
+      });
+      if (show) render(presence); else hide();
+    } catch (_) {
+      // Offline, or the endpoint is unavailable. The card is an enhancement;
+      // it fails silently by design (#10: restart amnesia is not an error).
+    }
+  }
+
+  function startTimer() {
+    if (timer !== null) return; // ONE interval, ever - never a second one
+    timer = setInterval(poll, HANDOFF_POLL_MS);
+  }
+  function stopTimer() {
+    if (timer === null) return;
+    clearInterval(timer);
+    timer = null;
+  }
+
+  function init() {
+    if (booted) return; // idempotent: a second boot must not double the timer
+    booted = true;
+    // Polling is visible-tab only (ruling 4). A backgrounded tab asking every
+    // 30s forever is exactly the drain this feature must not become.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        stopTimer();
+      } else {
+        poll();
+        startTimer();
+      }
+    });
+    if (!document.hidden) {
+      poll();
+      startTimer();
+    }
+  }
+
+  return { init, __poll: poll, __hide: hide };
+})();
+
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   initIconSet();   // reads ft-icons + the just-applied data-theme
@@ -10068,6 +10422,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // prefs are locally chosen (see applyLibraryGlyphs' comment; that early
   // return is what made v1.63.1's stars seed dead on customized devices).
   initLibraryGlyphs();
+  // v1.78 device handoff: the offer card. Mounted on <body> by the controller
+  // (never #view-root) and owning exactly ONE poll interval for the life of
+  // the page - booted here, once, alongside the other shell-level injectors.
+  handoffCard.init();
 
   // v1.27.2 (SW removal): actively unregister any service worker a previous
   // FileTube version installed -- see unregisterStaleServiceWorkers' own
@@ -10272,6 +10630,15 @@ if (typeof module !== 'undefined' && module.exports) {
     formatBreakerChipText,
     getStarRating, getCommentCount, resolveChannelName, clampPositionState,
     resolveTheme, THEME_REGISTRY, activeNavItem,
+    // v1.78 device handoff: the UA label table. Pure, and exactly the kind of
+    // roster that rots silently - every arm is pinned by node:test.
+    resolveDeviceLabel,
+    // v1.78: the card's pure decisions. The runtime around them is a thin
+    // fetch/render shell on purpose - everything that can be WRONG is here,
+    // where node:test can hold it without a browser.
+    shouldShowHandoffCard, handoffSuppressionToken, formatHandoffHeadline,
+    formatHandoffTime, formatHandoffAge, handoffProgressPercent,
+    HANDOFF_LIST_SURFACES, HANDOFF_POLL_MS,
     resolveIconSet, ICON_SET_REGISTRY, ICON_SETS,
     // v1.77: exported so the Playlists sheet's folder rows can be asserted as
     // RENDERED DOM rather than as a source pattern. The per-folder glyph has
