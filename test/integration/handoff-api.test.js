@@ -21,6 +21,7 @@ const assert = require('node:assert');
 const {
   app, saveDatabase, updateDatabase, userStore, effectiveProgress,
   __mintTestSession, __presenceForTests, resolveHandoffTarget, getCachedDatabase,
+  isFinishedPresence, HANDOFF_FINISHED_PCT,
 } = require('../../server');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
@@ -364,6 +365,32 @@ test('a deleted item reads as NO presence, not a broken card', async () => {
   await updateDatabase((db) => { delete db.metadata.vid1; return true; });
   assert.strictEqual((await (await getHandoff(DEV_B)).json()).presence, null,
     'offering a dead link is worse than offering nothing');
+});
+
+test('a FINISHED item is not offered - the card never asks you to continue the credits', async () => {
+  seedDb();
+  // What actually happens on 'ended': the pause path fires one last beacon
+  // carrying the end position, and without the finished rule that entry would
+  // linger for 30 minutes offering to "continue" a video the user completed.
+  await postJson('/api/progress', devicePing({ timestamp: 2706, duration: 2706, presenceState: 'paused' }));
+  assert.strictEqual((await (await getHandoff(DEV_B)).json()).presence, null, 'ran out -> not offerable');
+  assert.strictEqual(__presenceForTests.deviceCount(uid), 1,
+    'the entry still EXISTS - this is a display rule at the read boundary, not an eviction');
+
+  // Nearly-done is still continuable: 96% of a long film is five real minutes.
+  __presenceForTests.clear();
+  await postJson('/api/progress', devicePing({ timestamp: 2600, duration: 2706, presenceState: 'paused' }));
+  assert.ok((await (await getHandoff(DEV_B)).json()).presence, '96% is still worth continuing');
+});
+
+test('isFinishedPresence: the boundary is exact and an unknown duration never suppresses', () => {
+  assert.strictEqual(isFinishedPresence({ position: 99, duration: 100 }), true, 'exactly at the threshold');
+  assert.strictEqual(isFinishedPresence({ position: 98.9, duration: 100 }), false);
+  assert.strictEqual(isFinishedPresence({ position: 100, duration: 100 }), true);
+  assert.strictEqual(isFinishedPresence({ position: 500, duration: 0 }), false, 'unknown duration -> never suppress');
+  assert.strictEqual(isFinishedPresence({ position: 0, duration: 0 }), false);
+  assert.strictEqual(isFinishedPresence(null), false);
+  assert.strictEqual(HANDOFF_FINISHED_PCT, 99, 'deliberately NOT the 95% watched threshold');
 });
 
 test('resolveHandoffTarget: a non-downloaded episode is not offerable (bindable, both arms)', async () => {

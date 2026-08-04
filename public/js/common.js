@@ -6041,6 +6041,91 @@ function isHomeRootTarget(pathname, search) {
   return isRootPath && (!search || search === '');
 }
 
+// ---- v1.78 device handoff: THIS device's identity -------------------------
+//
+// Two values ride every progress ping so the server can answer "what is
+// playing on your OTHER device": a stable per-device id and a human label.
+// Both are minted entirely client-side - the server never assigns identity,
+// which is why this needs no schema, no registration step and no migration.
+
+const DEVICE_ID_KEY = 'ft-device-id';
+
+// The label roster (Dean's ruling 3: auto labels, rename deferred). ORDER IS
+// LOAD-BEARING and every entry below is here because a naive check gets it
+// wrong:
+//   - iPod must precede iPhone: an iPod touch reports "iPod touch; CPU iPhone
+//     OS 15_7", so an /iPhone/ test matches it first and every iPod reads as
+//     an iPhone. (Caught by the unit test, not by inspection.)
+//   - iPad must precede Macintosh: iPadOS 13+ reports a DESKTOP Safari UA
+//     containing "Macintosh", so an iPad reads as a Mac unless we use the
+//     touch-points tell (a real Mac reports maxTouchPoints 0).
+//   - Android must precede Linux: every Android UA also says "Linux".
+//   - CrOS must precede Linux for the same reason.
+// Pure and exported - the UA table is exactly the kind of thing that rots
+// silently, so node:test pins each arm.
+function resolveDeviceLabel(userAgent, opts) {
+  const ua = typeof userAgent === 'string' ? userAgent : '';
+  const touchPoints = opts && typeof opts.maxTouchPoints === 'number' ? opts.maxTouchPoints : 0;
+
+  if (/iPod/i.test(ua)) return 'iPod';
+  if (/iPhone/i.test(ua)) return 'iPhone';
+  if (/iPad/i.test(ua)) return 'iPad';
+  // The iPadOS-masquerading-as-desktop case.
+  if (/Macintosh/i.test(ua) && touchPoints > 1) return 'iPad';
+  if (/Android/i.test(ua)) return /Mobile/i.test(ua) ? 'Android phone' : 'Android tablet';
+  if (/CrOS/i.test(ua)) return 'Chromebook';
+  if (/Windows/i.test(ua)) return 'PC';
+  if (/Macintosh|Mac OS X/i.test(ua)) return 'Mac';
+  if (/Linux/i.test(ua)) return 'Linux PC';
+  return 'Another device';
+}
+
+// A UUID in the charset the server accepts ([A-Za-z0-9_-]). crypto.randomUUID
+// needs a secure context, which a self-hosted FileTube on a plain-HTTP LAN
+// address is NOT - so the fallback is not theoretical here, it is the common
+// case for Dean's own server.
+function mintDeviceId() {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      const bytes = crypto.getRandomValues(new Uint8Array(16));
+      let out = '';
+      for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, '0');
+      return out;
+    }
+  } catch (_) { /* fall through to the last-resort id below */ }
+  return `d-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// In-memory fallback for the session, used when localStorage is unavailable
+// (private mode, disabled storage). Presence still works - the device just
+// forgets who it was on reload, which costs a duplicate map entry and nothing
+// else. That is why the device cap exists.
+let volatileDeviceId = null;
+
+function getDeviceId() {
+  try {
+    const stored = localStorage.getItem(DEVICE_ID_KEY);
+    if (stored) return stored;
+    const minted = mintDeviceId();
+    localStorage.setItem(DEVICE_ID_KEY, minted);
+    return minted;
+  } catch (_) {
+    if (!volatileDeviceId) volatileDeviceId = mintDeviceId();
+    return volatileDeviceId;
+  }
+}
+
+function getDeviceLabel() {
+  try {
+    return resolveDeviceLabel(navigator.userAgent, { maxTouchPoints: navigator.maxTouchPoints });
+  } catch (_) {
+    return 'Another device';
+  }
+}
+
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document`. Everything in this block is the actual router RUNTIME
 // (registry storage, fetch/swap, click/popstate wiring) -- the pure helpers
@@ -6734,6 +6819,11 @@ if (typeof window !== 'undefined') {
   window.FileTube.stashWatchSeed = stashWatchSeed;
   window.FileTube.consumeWatchSeed = consumeWatchSeed;
   // v1.44 T12: the Settings bottom-bar editor drives these.
+  // v1.78 device handoff: player.js reads these on every progress ping, and
+  // the card reads the id to exclude itself. common.js loads before player.js
+  // on every page that mounts a player, so the binding is always in place.
+  window.FileTube.getDeviceId = getDeviceId;
+  window.FileTube.getDeviceLabel = getDeviceLabel;
   window.FileTube.applyBottomNavCustomization = applyBottomNavCustomization;
   window.FileTube.readBottomNavConfig = readBottomNavConfig;
   window.FileTube.writeBottomNavConfig = writeBottomNavConfig;
@@ -10272,6 +10362,9 @@ if (typeof module !== 'undefined' && module.exports) {
     formatBreakerChipText,
     getStarRating, getCommentCount, resolveChannelName, clampPositionState,
     resolveTheme, THEME_REGISTRY, activeNavItem,
+    // v1.78 device handoff: the UA label table. Pure, and exactly the kind of
+    // roster that rots silently - every arm is pinned by node:test.
+    resolveDeviceLabel,
     resolveIconSet, ICON_SET_REGISTRY, ICON_SETS,
     // v1.77: exported so the Playlists sheet's folder rows can be asserted as
     // RENDERED DOM rather than as a source pattern. The per-folder glyph has

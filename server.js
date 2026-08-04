@@ -9218,10 +9218,29 @@ function resolveHandoffTarget(db, seen) {
 // and it is used ONLY to exclude - it is never a key, so a forged or omitted
 // value can widen what you see to your own devices and NEVER to another
 // user's (the bucket is keyed by req.user.id from the auth gate - #3).
+// v1.78: an item that RAN OUT is not continuable, so it is not offerable.
+//
+// Without this the card offers to "continue" something the user just finished:
+// on 'ended' the player's pause path fires one last beacon carrying the end
+// position, so presence sits at ~100% and lingers there for the full 30
+// minutes. This repo already rules that finished is not in-progress - the
+// Continue-watching row excludes latched/finished items on the same principle.
+//
+// Deliberately 99%, NOT the 95% watched threshold: at 96% of a two-hour film
+// there are still five minutes left and continuing is a real thing to want.
+// This suppresses "the credits rolled", nothing more. Pure + exported so the
+// boundary is bindable rather than a magic number inside a route.
+const HANDOFF_FINISHED_PCT = 99;
+function isFinishedPresence(seen) {
+  if (!seen || !(seen.duration > 0)) return false; // unknown duration -> never suppress
+  return (seen.position / seen.duration) * 100 >= HANDOFF_FINISHED_PCT;
+}
+
 app.get('/api/handoff', (req, res) => {
   const deviceId = typeof req.query.deviceId === 'string' ? req.query.deviceId : '';
   const seen = presence.readOther(req.user.id, deviceId);
   if (!seen) return res.json({ presence: null });
+  if (isFinishedPresence(seen)) return res.json({ presence: null });
 
   const target = resolveHandoffTarget(getCachedDatabase(), seen);
   if (!target) return res.json({ presence: null });
@@ -15019,6 +15038,8 @@ module.exports = {
   // into the next test file's expectations. Every handoff test clears it in
   // beforeEach.
   resolveHandoffTarget,
+  isFinishedPresence,
+  HANDOFF_FINISHED_PCT,
   __presenceForTests: presence,
   // v1.37.0 books: scanner + state accessor + cover dir, exported for the
   // books integration tests (same posture as scanDirectories/THUMBNAIL_DIR).

@@ -3426,7 +3426,18 @@ if (typeof module !== 'undefined' && module.exports) {
   function stopProgressSaver() {
     clearProgressInterval();
     if (mediaPlayer && currentAbsTime() > 0) {
-      saveProgressToServer(currentAbsTime());
+      // v1.78: this final save doubles as the explicit pause BEACON. It is
+      // the one place the user genuinely paused, so it is the only place that
+      // flips presence to 'paused' - which is why the card can say "Paused on
+      // iPhone" instantly instead of waiting out the 15s active TTL.
+      //
+      // Deliberately NOT marked on the background-lifecycle checkpoints: when
+      // a video hands off to background AUDIO the media keeps playing, and
+      // those paths save progress while playback continues. Marking them
+      // paused would lie about a phone that is still playing in someone's
+      // pocket. If the app is killed outright no beacon arrives at all, and
+      // the server's active-TTL decay covers it (AC3).
+      saveProgressToServer(currentAbsTime(), { presenceState: 'paused' });
     }
   }
 
@@ -3442,14 +3453,39 @@ if (typeof module !== 'undefined' && module.exports) {
     // synthetic and its progress is the reader's own (/api/books/:id/progress).
     // Never write /api/progress rows for it.
     if (currentData && currentData.suppressProgress) return;
+    var body = {
+      id: currentId,
+      timestamp: time,
+      duration: (mediaPlayer && isFinite(mediaPlayer.duration) ? mediaPlayer.duration : 0) || (currentData && currentData.duration) || 0,
+    };
+    // v1.78 device handoff: the presence piggyback. THIS is the one write site
+    // for all three player-carried kinds (video, podcast episode, music track
+    // -- they differ only by `progressEndpoint` below), so attaching here
+    // covers every kind exactly once. Any future writer that bypasses this
+    // function would silently have no presence, which is the v1.41.4 scar
+    // read in reverse -- keep this the only progress POSTer.
+    //
+    // All three fields are OPTIONAL server-side: a client that cannot mint an
+    // id (no crypto, no storage) simply keeps sending the pre-v1.78 body and
+    // keeps working, minus the handoff card.
+    var deviceId = (window.FileTube && typeof window.FileTube.getDeviceId === 'function')
+      ? window.FileTube.getDeviceId()
+      : '';
+    if (deviceId) {
+      body.deviceId = deviceId;
+      body.deviceLabel = window.FileTube.getDeviceLabel();
+      // The ordering token (server-side: `at`). It is THIS device's clock, and
+      // it only ever orders THIS device's own events, so clock skew between
+      // devices is irrelevant -- see lib/presence/store.js's record().
+      body.presenceAt = Date.now();
+      // Set only by the pause path (`stopProgressSaver`). Absent = a live
+      // play ping.
+      if (opts && opts.presenceState) body.presenceState = opts.presenceState;
+    }
     var fetchOpts = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: currentId,
-        timestamp: time,
-        duration: (mediaPlayer && isFinite(mediaPlayer.duration) ? mediaPlayer.duration : 0) || (currentData && currentData.duration) || 0,
-      }),
+      body: JSON.stringify(body),
     };
     if (opts && opts.keepalive) fetchOpts.keepalive = true;
     // v1.44 music: a music track's progress belongs to the music coalescer
