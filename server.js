@@ -5563,6 +5563,10 @@ function publicUser(u) {
   return {
     id: u.id, username: u.username, displayName: u.displayName,
     role: u.role, canManageSubscriptions: u.canManageSubscriptions,
+    // v1.81 write-RBAC: the client reads this off /api/auth/me to hide the
+    // delete/move/edit affordances for a member who lacks it (server is the
+    // real gate; hiding is UX only).
+    canModifyLibrary: u.canModifyLibrary,
   };
 }
 
@@ -5620,6 +5624,9 @@ app.post('/api/users', async (req, res) => {
   const password = typeof body.password === 'string' ? body.password : '';
   const role = body.role === 'admin' ? 'admin' : 'member';
   const canManageSubscriptions = body.canManageSubscriptions === true;
+  // v1.81 write-RBAC: strict boolean coercion (AC8) - a truthy string/1/[] can
+  // never grant the capability. Default OFF when absent.
+  const canModifyLibrary = body.canModifyLibrary === true;
   if (!userStore.validateUsername(username)) return res.status(400).json({ error: USERNAME_RULE_MESSAGE });
   if (password.length < authCrypto.MIN_PASSWORD_LENGTH) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
   if (userStore.getByUsername(username)) return res.status(409).json({ error: 'That username is already taken.' });
@@ -5627,7 +5634,7 @@ app.post('/api/users', async (req, res) => {
     const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
     // The UNIQUE(username COLLATE NOCASE) constraint is the race backstop
     // behind the friendly pre-check above.
-    const user = userStore.createUser({ username, displayName, passwordHash, role, canManageSubscriptions }, new Date().toISOString());
+    const user = userStore.createUser({ username, displayName, passwordHash, role, canManageSubscriptions, canModifyLibrary }, new Date().toISOString());
     userStore.setSettingsJson(user.id, NEW_USER_DEFAULT_SETTINGS); // v1.79: net-new account -> feed on
     return res.status(201).json({ success: true, user: publicUser(user) });
   } catch (err) {
@@ -5708,6 +5715,17 @@ app.post('/api/users/:id/subscriptions-flag', (req, res) => {
   const target = resolveTargetUser(req, res);
   if (!target) return;
   userStore.setCanManageSubscriptions(target.id, req.body && req.body.canManageSubscriptions === true);
+  return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
+});
+
+// v1.81 write-RBAC: admin grants/revokes a user's library-WRITE capability.
+// Mirrors subscriptions-flag exactly (admin-only, strict boolean, self-safe -
+// nothing here can lock the instance out since admins bypass the flag anyway).
+app.post('/api/users/:id/modify-library-flag', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = resolveTargetUser(req, res);
+  if (!target) return;
+  userStore.setCanModifyLibrary(target.id, req.body && req.body.canModifyLibrary === true);
   return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
 });
 
