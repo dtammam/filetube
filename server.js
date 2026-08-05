@@ -915,6 +915,13 @@ function trackVisibleTo(req, track) {
     kind: 'track', filePath: track.filePath, folderName: track.folderName, rootFolder: track.rootFolder,
   });
 }
+// v1.80 RBAC: podcast episode/show visibility. Accepts an episode {subId,
+// filePath} OR a bare {subId} (the show-art route). Passed into the podcasts
+// module via deps (episodeVisibleTo) so that module routes THROUGH this one
+// decision. `ep` falsy -> not visible (the caller 404s an unknown id anyway).
+function podcastEpisodeVisibleTo(req, ep) {
+  return !!ep && !visibility.isBlocked(userRestrictionIndex(req), { kind: 'podcast', subId: ep.subId, filePath: ep.filePath });
+}
 
 // v1.78 device handoff -------------------------------------------------------
 //
@@ -9167,6 +9174,7 @@ app.get('/api/home', (req, res) => {
   for (const id of Object.keys(podNs.episodes || {})) {
     const ep = podNs.episodes[id];
     if (!ep || ep.status !== 'downloaded') continue;
+    if (!podcastEpisodeVisibleTo(req, ep)) continue; // v1.80 RBAC: no restricted show in the feed
     const liked = podLiked.has(id);
     const pp = Object.prototype.hasOwnProperty.call(podProgress, id) ? podProgress[id] : null;
     const pos = pp ? Number(pp.position) : 0;
@@ -9546,6 +9554,10 @@ app.get('/api/handoff', (req, res) => {
   }
   if (seen.kind === 'track' && !trackVisibleTo(req, ownTrack(musicStore.readMusic(handoffDb).tracks, seen.mediaId))) {
     return res.json({ presence: null });
+  }
+  if (seen.kind === 'podcast') {
+    const pns = podcastStore.readPodcasts(handoffDb);
+    if (!podcastEpisodeVisibleTo(req, pns.episodes && pns.episodes[seen.mediaId])) return res.json({ presence: null });
   }
 
   res.json({
@@ -10354,9 +10366,14 @@ app.get('/api/liked', (req, res) => {
   ];
   // v1.80 RBAC: a restricted track must not ride the Liked view. (Podcast/book
   // liked filtering lands with their libraries, T6/T7.)
-  const likedMusicNs = musicStore.readMusic(db);
   // shaped liked items carry `id`, not `mediaId` (see shapedLiked*Items).
-  others = others.filter((o) => o.kind !== 'track' || trackVisibleTo(req, ownTrack(likedMusicNs.tracks, o.id)));
+  const likedMusicNs = musicStore.readMusic(db);
+  const likedPodNs = podcastStore.readPodcasts(db);
+  others = others.filter((o) => {
+    if (o.kind === 'track') return trackVisibleTo(req, ownTrack(likedMusicNs.tracks, o.id));
+    if (o.kind === 'podcast') return podcastEpisodeVisibleTo(req, likedPodNs.episodes && likedPodNs.episodes[o.id]);
+    return true; // book liked filtering lands with T7
+  });
   if (typeof req.query.format === 'string') {
     others = videoQuery.filterByFormat(others, req.query.format);
   }
@@ -15157,6 +15174,7 @@ podcasts.registerRoutes(app, {
   listExternalShows: listYtdlpPodcastShows,
   listExternalEpisodes: listYtdlpPodcastEpisodes,
   recordPresenceFromPing, // v1.78: the ONE presence writer, shared by all three kinds
+  episodeVisibleTo: podcastEpisodeVisibleTo, // v1.80 RBAC: per-user episode/show visibility
 });
 
 // Start the server — but only when run directly (`node server.js`), not when
