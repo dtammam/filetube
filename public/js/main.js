@@ -231,6 +231,62 @@ function buildVideoHomeSectionHtml(items, heading, seeAllHref) {
   `;
 }
 
+// v1.79 home feed: ONE uniform card for the server-resolved GET /api/home item
+// shape ({id, kind, title, subtitle, thumbnailUrl, href, progressPercent}).
+// Reuses the existing row-card CSS chassis (.book-row-card / .video-row-cover /
+// .book-row-progress) - no new card CSS. Every field is ALREADY server-resolved
+// (href/thumbnailUrl carry their own encoding), so nothing is re-derived; the
+// escapes here are the same attribute/text discipline the sibling builders use.
+function buildFeedCardHtml(item) {
+  const pct = item && typeof item.progressPercent === 'number' ? Math.min(100, Math.max(0, item.progressPercent)) : 0;
+  const bar = pct > 0.5
+    ? `<div class="book-row-progress"><div class="book-row-progress-fill" style="width: ${pct}%"></div></div>`
+    : '';
+  return `
+    <a class="book-row-card music-row-card video-row-card" href="${escapeBookRowHtml(item.href)}" title="${escapeBookRowHtml(item.title)}">
+      <span class="book-row-cover video-row-cover"><img src="${escapeBookRowHtml(item.thumbnailUrl)}" alt="" loading="lazy" />${bar}</span>
+      <span class="book-row-title">${escapeBookRowHtml(item.title)}</span>
+      <span class="music-row-artist">${escapeBookRowHtml(item.subtitle || '')}</span>
+    </a>
+  `;
+}
+
+// v1.79 home feed: one server-assembled row -> a section. Empty items = '' (the
+// server already omits empty rows, but a belt-and-braces guard keeps a stray
+// empty row from rendering an empty scroller).
+function buildFeedRowHtml(row) {
+  if (!row || !Array.isArray(row.items) || row.items.length === 0) return '';
+  const seeAll = row.seeAllHref ? `<a class="books-row-seeall" href="${escapeBookRowHtml(row.seeAllHref)}">See all</a>` : '';
+  return `
+    <section class="books-home-row music-home-row">
+      <div class="books-home-row-header"><h3>${escapeBookRowHtml(row.title)}</h3>${seeAll}</div>
+      <div class="books-home-row-scroller">${row.items.map(buildFeedCardHtml).join('')}</div>
+    </section>
+  `;
+}
+
+// v1.79 home feed: fetch the per-user rows and render them into `host`. Every
+// field is server-resolved, so this is pure rendering. Aborts cleanly with the
+// view's signal; an empty feed (brand-new user) renders a gentle empty state,
+// never a blank surface; a failure leaves the host empty (classic is one toggle
+// away).
+async function renderHomeFeed(host, signal) {
+  if (!host) return;
+  try {
+    const res = await fetch('/api/home', { signal });
+    const data = res.ok ? await res.json() : { rows: [] };
+    const rows = Array.isArray(data.rows) ? data.rows : [];
+    if (rows.length === 0) {
+      host.innerHTML = '<div class="home-feed-empty">Nothing here yet - start watching and your feed fills in.</div>';
+      return;
+    }
+    host.innerHTML = rows.map(buildFeedRowHtml).join('');
+  } catch (err) {
+    if (err && err.name === 'AbortError') return;
+    host.innerHTML = '';
+  }
+}
+
 // ---- v1.67: the card-corner renderer (plan D3) ------------------------------
 //
 // ONE module-scope, exported, pure renderer for the three assignable card
@@ -627,6 +683,24 @@ if (typeof module !== 'undefined' && module.exports) {
     // construction (a liked view ignores folder/root/search server-side).
     const likedFilter = urlParams.get('liked') === '1';
 
+    // v1.79 home feed: the feed replaces the BARE home landing only. Drilling
+    // into a folder / channel / search / liked view is always the classic list
+    // (which is exactly where each row's "See all ->" lands). Read the toggle
+    // synchronously (localStorage device-truth, seeded from the user record at
+    // boot - see common.js homeFeedEnabled/bootHomeFeedPref). When on, hide the
+    // classic grid + controls via a root class (CSS) and mount a feed host;
+    // loadLibrary() renders the feed into it instead of the grid, and the
+    // continue-rows block below is skipped (the feed carries its own).
+    const isBareHome = !searchQuery && !folderFilter && !rootFilter && !likedFilter;
+    const feedMode = isBareHome && typeof homeFeedEnabled === 'function' && homeFeedEnabled();
+    let homeFeedHost = null;
+    if (feedMode && libraryContent) {
+      root.classList.add('home-feed-mode');
+      homeFeedHost = document.createElement('div');
+      homeFeedHost.id = 'home-feed-host';
+      libraryContent.insertBefore(homeFeedHost, libraryContent.firstChild);
+    }
+
     // v1.45.6 (Dean): PER-PAGE SORT. When the client toggle is on, this page
     // (folder / Liked / home) remembers its OWN sort — resolve it here, overriding
     // the global pick read above; it falls back to that global pick/default when
@@ -789,11 +863,17 @@ if (typeof module !== 'undefined' && module.exports) {
           videosHeader.textContent = label;
         }
 
-        // 3. Fetch + render page 0 of the media list (server-authoritative
-        // sort/format/pagination -- see fetchLibraryPage0() below) and arm
-        // the infinite-scroll sentinel for any further pages.
-        await fetchLibraryPage0();
-        ensureGridSentinel();
+        // 3. Fetch + render the media surface. In feed mode (bare home, toggle
+        // on) render the server-assembled rows into the feed host instead of
+        // the grid; the classic grid + controls are hidden by the
+        // `home-feed-mode` root class. Otherwise render page 0 of the grid and
+        // arm the infinite-scroll sentinel for further pages.
+        if (feedMode) {
+          await renderHomeFeed(homeFeedHost, signal);
+        } else {
+          await fetchLibraryPage0();
+          ensureGridSentinel();
+        }
 
       } catch (err) {
         console.error('Failed to load library data:', err);
@@ -1923,7 +2003,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // (or a books-less install's empty list) renders NOTHING and the home
     // page stays byte-identical.
     const booksRowHost = document.createElement('div');
-    if (videoGrid && videoGrid.parentElement) {
+    // v1.79: in feed mode the server-assembled feed carries its own continue-*
+    // rows, so the client-side continue-rows injection is skipped entirely.
+    if (videoGrid && videoGrid.parentElement && !feedMode) {
       videoGrid.insertAdjacentElement('beforebegin', booksRowHost);
       const bareHome = !searchQuery && !folderFilter && !rootFilter && !likedFilter;
       if (bareHome) {
