@@ -5408,6 +5408,46 @@ function wireSearchAffordances() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSearch(); });
 }
 
+// ---- v1.85 #2: the mobile "You" bottom-nav tab -----------------------------
+//
+// A bottom-nav item carrying the user's avatar + "You" label that opens the
+// SAME v1.82 account menu (by dispatching a click on its header trigger - which
+// works even when that trigger is display:none on mobile). Injected with
+// data-nav="you" but DELIBERATELY NOT added to BOTTOM_NAV_OPTIONAL: the layout
+// resolver ranks a roster-absent id after every known item (always right-most,
+// the YouTube-app slot) and never hides it, and the Settings customizer only
+// lists the roster - so "You" can't be reordered or hidden, so a user can never
+// strand their own account access. Mobile-only (the bottom nav itself is);
+// desktop keeps the header avatar (which this hides only on mobile, via CSS).
+function injectYouNavItem() {
+  if (typeof document === 'undefined' || typeof fetch !== 'function') return;
+  const nav = document.getElementById('bottom-nav');
+  if (!nav || nav.querySelector('[data-nav="you"]')) return;
+  fetchCurrentUser().then((me) => {
+    if (!me || !me.user) return; // signed-out shell: no You tab
+    if (nav.querySelector('[data-nav="you"]')) return; // race guard
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'bottom-nav-item';
+    btn.setAttribute('data-nav', 'you');
+    btn.setAttribute('aria-label', 'You (account menu)');
+    const avatar = buildAccountAvatarEl(me.user);
+    avatar.classList.add('bottom-nav-you-avatar');
+    const label = document.createElement('span');
+    label.className = 'bottom-nav-label';
+    label.textContent = 'You';
+    btn.appendChild(avatar);
+    btn.appendChild(label);
+    btn.addEventListener('click', () => {
+      // Look the trigger up at CLICK time (injectAccountMenu is async).
+      const trigger = document.querySelector('.account-menu-trigger');
+      if (trigger) trigger.click();
+    });
+    nav.appendChild(btn);
+    applyBottomNavCustomization(); // ranks the roster-absent 'you' right-most
+  }).catch(() => { /* signed-out / offline: no You tab, nothing broken */ });
+}
+
 function injectAccountMenu() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
   const headerRight = document.querySelector('.header-right');
@@ -11127,6 +11167,7 @@ document.addEventListener('DOMContentLoaded', () => {
   bootHomeFeedPref(); // v1.79: seed the home-feed toggle from the user record (own path, like glyphs)
   bootModernModePref(); // v1.84: reflect + seed the Modern-mode toggle (own path, sets data-modern)
   wireSearchAffordances(); // v1.85 #1: the mobile magnifier + recent-search history panel
+  injectYouNavItem(); // v1.85 #2: the mobile "You" bottom-nav tab (opens the account menu)
   // v1.78 device handoff: the offer card. Mounted on <body> by the controller
   // (never #view-root) and owning exactly ONE poll interval for the life of
   // the page - booted here, once, alongside the other shell-level injectors.
@@ -11344,6 +11385,8 @@ if (typeof module !== 'undefined' && module.exports) {
     modernCardAvatar,
     // v1.85 #1: the search-history record + panel render (jsdom-bound).
     recordSearchTerm, renderSearchHistoryPanel,
+    // v1.85 #2: the "You" bottom-nav tab injector (jsdom-bound).
+    injectYouNavItem,
     // v1.31 P5 (FR5): repull-ack formatter.
     formatRepullAckText,
     // v1.32 (gate fix): the chip's one-line breaker summary.

@@ -4726,6 +4726,18 @@ a.sub-row-channel-link:focus-visible {
   .search-open .header-search { display: block; }
   /* v1.85 #1: the magnifier lives in the top-right slot beside the bell/avatar */
   .search-toggle-btn { display: inline-flex; }
+  /* v1.85 #2: the "You" bottom-nav tab owns account access on mobile - hide the
+     header avatar (keep the bell + magnifier in .header-right), and drop the
+     account menu as a bottom SHEET above the nav when opened from the You tab. */
+  .account-menu-trigger { display: none; }
+  .account-menu-dropdown {
+    position: fixed;
+    top: auto;
+    left: var(--space-4);
+    right: var(--space-4);
+    bottom: calc(64px + env(safe-area-inset-bottom)); /* token-exempt: clears the fixed bottom nav */
+    min-width: 0;
+  }
 
   .header-right {
     display: none;   /* Settings + moon toggle now live in bottom nav */
@@ -7669,6 +7681,14 @@ html[data-modern="on"] .video-uploader {
   color: var(--text-link);
   font-size: var(--fs-sm);
   cursor: pointer;
+}
+
+/* v1.85 #2: the "You" bottom-nav tab avatar - sized like a nav glyph (the
+   `.bottom-nav-item` context out-specifies the base 32px .account-avatar). */
+.bottom-nav-item .bottom-nav-you-avatar {
+  width: 24px; /* token-exempt: nav-glyph geometry */
+  height: 24px; /* token-exempt: nav-glyph geometry */
+  font-size: var(--fs-2xs);
 }
 
 .books-home-row { margin-bottom: var(--space-8); }
