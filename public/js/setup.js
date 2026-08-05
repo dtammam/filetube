@@ -1877,6 +1877,7 @@ function renderUserRow(user, me, signal) {
   meta.className = 'users-row-meta';
   const badges = [user.username, user.role];
   if (user.canManageSubscriptions) badges.push('subscriptions');
+  if (user.canModifyLibrary) badges.push('can edit'); // v1.81 write-RBAC
   if (user.disabled) badges.push('disabled');
   if (isSelf) badges.push('you');
   meta.textContent = badges.join(' - ');
@@ -1927,6 +1928,9 @@ function renderUserRow(user, me, signal) {
   // v1.80 RBAC: per-user library access. Only members are restrictable (an admin
   // always sees everything), so the editor is offered for members only.
   if (user.role !== 'admin') {
+    // v1.81 write-RBAC: grant/revoke library-MODIFY (delete/move/edit/scan).
+    // Admins always can, so the toggle is member-only like the Access editor.
+    addBtn(user.canModifyLibrary ? 'Revoke edit' : 'Allow edit', () => act(`/api/users/${user.id}/modify-library-flag`, { canModifyLibrary: !user.canModifyLibrary }));
     addBtn('Access', () => openAccessEditor(user, row, signal));
   }
   if (!isSelf) {
