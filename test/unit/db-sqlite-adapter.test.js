@@ -107,7 +107,7 @@ test('fresh open creates the full v1 schema with empty user tables', () => {
       const { c } = a.sql.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get();
       assert.strictEqual(c, 0, `${table} exists and is empty (born-complete schema, exec plan)`);
     }
-    assert.strictEqual(a.sql.prepare('PRAGMA user_version').get().user_version, 14);
+    assert.strictEqual(a.sql.prepare('PRAGMA user_version').get().user_version, 15);
     // v1.43 schema v2: users.id is AUTOINCREMENT (never reuses a reaped id —
     // design-delta SUGGESTION-6). sqlite_autoindex/sqlite_sequence presence
     // is the fingerprint.
@@ -129,13 +129,41 @@ test('v3 -> v4 upgrade: an existing populated schema gains the empty user_watche
 
   const b = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 14, 'forward-only migration ran (to the CURRENT version)');
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 15, 'forward-only migration ran (to the CURRENT version)');
     assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_watched').get().c, 0, 'latch table born empty');
     // v1.51 schema v5 rides the same forward run.
     assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM notifications').get().c, 0, 'notification feed born empty');
     // v1.63 schema v6 rides it too.
     assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_queue').get().c, 0, 'queue born empty');
     assert.deepStrictEqual(b.load(), fullFixtureForUpgrade(), 'every pre-existing namespace survives the migration untouched');
+  } finally {
+    b.close();
+  }
+});
+
+test('v14 -> v15 upgrade: an existing populated users table gains can_modify_library DEFAULT 0, losing no rows', () => {
+  // Simulate a v1.80 instance (schema v14): a users table WITHOUT the v15
+  // column, populated, then rewind the version stamp as if v15 never ran.
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  a.sql.exec("INSERT INTO users (username, display_name, password_hash, role, can_manage_subscriptions, settings_json, token_version, disabled, created_at) VALUES ('dean', 'Dean', 'h', 'admin', 1, '{}', 0, 0, '2026-08-01T00:00:00.000Z')");
+  a.sql.exec("INSERT INTO users (username, display_name, password_hash, role, can_manage_subscriptions, settings_json, token_version, disabled, created_at) VALUES ('kid', 'Kid', 'h', 'member', 0, '{}', 0, 0, '2026-08-01T00:00:00.000Z')");
+  a.sql.exec('ALTER TABLE users DROP COLUMN can_modify_library'); // as if the column never existed (v14 shape)
+  a.sql.exec('PRAGMA user_version = 14');
+  a.close();
+
+  const b = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 15, 'forward-only migration ran');
+    const hasCol = b.sql.prepare("SELECT COUNT(*) AS n FROM pragma_table_info('users') WHERE name = 'can_modify_library'").get().n;
+    assert.strictEqual(hasCol, 1, 'the ALTER added the column');
+    // Every pre-existing row defaults to 0 (OFF) — existing members lose
+    // destructive actions until an admin grants it (Dean-approved).
+    const rows = b.sql.prepare('SELECT username, can_modify_library FROM users ORDER BY username').all()
+      .map((r) => ({ username: r.username, can_modify_library: r.can_modify_library }));
+    assert.deepStrictEqual(rows, [
+      { username: 'dean', can_modify_library: 0 },
+      { username: 'kid', can_modify_library: 0 },
+    ], 'both rows survive; the new column defaults to 0');
   } finally {
     b.close();
   }

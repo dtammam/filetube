@@ -12,8 +12,8 @@
 //     once -- not once per poll tick.
 //   - `alreadyInProgress: true` still lands in the SAME poll-then-refresh
 //     path (no distinct error/redirect branch).
-//   - A network failure / non-2xx on the initial POST still alerts and
-//     resets the button, and never reloads either.
+//   - A network failure / non-2xx on the initial POST still surfaces a toast
+//     (v1.81: was a blocking alert) and resets the button, never reloading.
 //   - `window.location.reload` (and any other full navigation) is asserted
 //     to be called ZERO times across every scenario above (see
 //     `loadIndexWithFetchStub`'s own comment for how this is observed
@@ -268,15 +268,16 @@ test('rescan: a non-2xx POST /api/scan alerts and resets the button, and never r
     let refreshCalls = 0;
     window.__filetubeRefreshLibrary = () => { refreshCalls += 1; };
 
+    // v1.81: the rescan error path now uses the non-blocking toast (was alert()).
     const alerts = [];
-    window.alert = (msg) => alerts.push(msg);
+    window.showToast = (msg) => alerts.push(msg);
 
     const rescanBtn = document.getElementById('rescan-library-btn');
     rescanBtn.click();
     await flush();
     await flush();
 
-    assert.strictEqual(alerts.length, 1, 'expected exactly one alert on a non-2xx POST');
+    assert.strictEqual(alerts.length, 1, 'expected exactly one toast on a non-2xx POST');
     assert.match(alerts[0], /scan failed to start/);
     assert.strictEqual(rescanBtn.disabled, false, 'expected the button to be re-enabled after the error');
     assert.match(rescanBtn.innerHTML, /Rescan<\/span>/, 'expected the button label reset to "Rescan"');
@@ -301,8 +302,9 @@ test('rescan: a network-level failure on POST /api/scan alerts and resets the bu
     let refreshCalls = 0;
     window.__filetubeRefreshLibrary = () => { refreshCalls += 1; };
 
+    // v1.81: the rescan error path now uses the non-blocking toast (was alert()).
     const alerts = [];
-    window.alert = (msg) => alerts.push(msg);
+    window.showToast = (msg) => alerts.push(msg);
     // main.js's catch block also does `console.error(err)` -- keep the test
     // output clean without hiding a genuinely unexpected second error.
     const originalConsoleError = window.console.error;

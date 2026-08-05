@@ -147,6 +147,9 @@ module.exports = [
         isFullWatchSeedItem: 'readonly',
         // v1.53: the shared attribution picker (common.js).
         showAttributionPicker: 'readonly',
+        // v1.81 write-RBAC: the memoized /api/auth/me fetcher (common.js),
+        // read by watch.js/player.js to gate the delete/move/edit affordances.
+        fetchCurrentUser: 'readonly',
         // v1.53: the capability cache (common.js).
         readCapabilityCache: 'readonly',
         writeCapabilityCache: 'readonly',

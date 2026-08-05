@@ -68,7 +68,11 @@ function makeFetchStub(opts) {
     if (url === '/api/auth/me' && method === 'GET') {
       if (opts.meSettings === 'network') return Promise.reject(new Error('offline'));
       if (opts.meSettings === 'fail') return Promise.resolve({ ok: false, status: 500, json: async () => ({}) });
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({ id: 1, username: 'u', settings: opts.meSettings || {} }) });
+      // v1.81 write-RBAC: the REAL /api/auth/me shape is { user, settings }; the
+      // delete corner now needs user.canModifyLibrary. Default a capable member
+      // so the placement tests still exercise delete; opts.meCanModify:false
+      // drives the affordance-hidden case.
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ user: { id: 1, username: 'u', role: 'member', canModifyLibrary: opts.meCanModify !== false }, settings: opts.meSettings || {} }) });
     }
     if (url === '/api/subscriptions/health' && method === 'GET') {
       return Promise.resolve({ ok: opts.healthOk === true, status: opts.healthOk === true ? 200 : 404, json: async () => ({}) });
@@ -252,7 +256,7 @@ test('REHEAT corner: module health 404 -> the corner renders NOTHING (C4)', asyn
   } finally { dom.window.close(); }
 });
 
-test('auth/me failure (500) and network failure both fall back to the C5 defaults - the grid never blocks on the pref', async () => {
+test('auth/me failure (500) and network failure both fall back to the C5 default LAYOUT - the grid never blocks on the pref', async () => {
   for (const mode of ['fail', 'network']) {
     const { fetchImpl } = makeFetchStub({ meSettings: mode });
     const dom = await loadIndex(fetchImpl);
@@ -262,10 +266,28 @@ test('auth/me failure (500) and network failure both fall back to the C5 default
       const card = document.querySelector('#video-grid .video-card');
       assert.ok(card, `cards render under auth/me ${mode}`);
       assert.ok(card.querySelector('.card-download-btn.card-corner-tl'), `defaults under ${mode}`);
-      assert.ok(card.querySelector('.card-delete-btn.card-corner-tr'), `defaults under ${mode}`);
       assert.ok(card.querySelector('.card-like-btn.card-corner-bl'), `defaults under ${mode}`);
+      // v1.81 write-RBAC: when the capability cannot be confirmed (auth/me
+      // failed), the DELETE affordance is withheld fail-safe - the TR corner is
+      // empty rather than showing a button that would 403. Layout otherwise
+      // still defaults; the grid never blocks.
+      assert.strictEqual(card.querySelector('.card-delete-btn'), null, `delete withheld fail-safe under ${mode}`);
     } finally { dom.window.close(); }
   }
+});
+
+test('v1.81 write-RBAC: a member WITHOUT canModifyLibrary sees no delete corner in the real grid; layout otherwise intact', async () => {
+  const { fetchImpl } = makeFetchStub({ meSettings: {}, meCanModify: false });
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    const card = document.querySelector('#video-grid .video-card');
+    assert.ok(card, 'cards still render for a capability-less member');
+    assert.strictEqual(card.querySelector('.card-delete-btn'), null, 'no delete affordance without the capability');
+    assert.ok(card.querySelector('.card-download-btn.card-corner-tl'), 'download unaffected');
+    assert.ok(card.querySelector('.card-like-btn.card-corner-bl'), 'like unaffected');
+  } finally { dom.window.close(); }
 });
 
 test('the delete ARM state machine survives relocation: two-tap + "Sure?" confirm in a CUSTOM corner (bottom-left)', async () => {

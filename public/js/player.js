@@ -985,6 +985,19 @@ function buildCaptionOverlayText(rawCueTexts) {
 var CHAPTERS_MENU_ANCHOR_GAP = 6;
 var CHAPTERS_MENU_CLIP_INSET = 8;
 var CHAPTERS_MENU_MIN_HEIGHT = 96;
+
+// v1.81 write-RBAC: the EFFECTIVE library-modify capability (admin OR flag),
+// resolved once from the memoized /api/auth/me. Gates the chapters EDITOR entry
+// in the player's chapters menu - a content edit a capability-less member cannot
+// perform (the server 403s regardless; hiding just removes a dead affordance).
+var playerCanModifyLibrary = false;
+try {
+  if (typeof fetchCurrentUser === 'function') {
+    fetchCurrentUser().then(function (me) {
+      playerCanModifyLibrary = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
+    });
+  }
+} catch (_) { /* signed-out shell -> stays false, editor hidden */ }
 function resolveChaptersMenuMaxHeight(geom) {
   if (!geom) return null;
   var barTop = geom.barTop;
@@ -5050,12 +5063,16 @@ if (typeof module !== 'undefined' && module.exports) {
         row.appendChild(loopBtn);
         chaptersMenu.appendChild(row);
       });
-      var edit = document.createElement('button');
-      edit.type = 'button';
-      edit.className = 'chapters-menu-item chapters-menu-edit';
-      edit.textContent = currentChapters.length > 0 ? 'Edit chapters…' : 'Add chapters…';
-      edit.addEventListener('click', openChaptersEditorFromMenu);
-      chaptersMenu.appendChild(edit);
+      if (playerCanModifyLibrary) {
+        // v1.81 write-RBAC: only a member who may modify the library gets the
+        // chapters editor entry (admin's effective cap is true).
+        var edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'chapters-menu-item chapters-menu-edit';
+        edit.textContent = currentChapters.length > 0 ? 'Edit chapters…' : 'Add chapters…';
+        edit.addEventListener('click', openChaptersEditorFromMenu);
+        chaptersMenu.appendChild(edit);
+      }
       // v1.43.1 B2: a rebuild while OPEN (Loop arm/disarm re-renders rows)
       // re-measures; hidden rebuilds no-op inside the clamp's own guard.
       clampChaptersMenuHeight();

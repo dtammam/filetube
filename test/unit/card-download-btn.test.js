@@ -113,7 +113,7 @@ test('card template: the corner-renderer injection point sits AFTER the thumbnai
 test('rendered corners: .card-download-btn is its own standalone <a>, not nested in the delete <button> (nor vice versa)', () => {
   const html = buildCardCornerButtonsHtml(
     { id: 'vid1', title: 'A Video', ext: '.mp4', liked: false },
-    resolveCardCornerPrefs(null), {}
+    resolveCardCornerPrefs(null), { canModifyLibrary: true } // v1.81: delete corner needs the capability
   );
 
   const deleteBtnMatch = /<button[^>]*class="card-delete-btn[^"]*"[\s\S]*?<\/button>/.exec(html);

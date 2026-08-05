@@ -60,7 +60,9 @@ test('resolve: a garbage value falls back to THAT corner\'s default only (starRa
 // ---- buildCardCornerButtonsHtml: the C5 default layout ----------------------
 
 test('defaults: download TL + delete TR (with the arm confirm) + like BL; NO queue/share/reheat', () => {
-  const html = buildCardCornerButtonsHtml(ITEM, defaults(), {});
+  // v1.81 write-RBAC: the delete corner now requires the modify-library
+  // capability; pass it so this placement/shape test still exercises delete.
+  const html = buildCardCornerButtonsHtml(ITEM, defaults(), { canModifyLibrary: true });
   assert.match(html, /class="card-download-btn card-corner-tl"/);
   assert.match(html, /href="\/video\/vid1\?download=1"/, 'the existing download href builder feeds the anchor');
   assert.match(html, /class="card-delete-btn card-corner-tr"/);
@@ -90,7 +92,9 @@ test('every control renders in every corner with that corner\'s position class',
   for (const [key, cornerClass] of cases) {
     for (const control of ['download', 'delete', 'like', 'queue']) {
       const prefs = { cornerTL: 'none', cornerTR: 'none', cornerBL: 'none', [key]: control };
-      const html = buildCardCornerButtonsHtml(ITEM, prefs, {});
+      // v1.81: canModifyLibrary so the 'delete' control renders in this
+      // placement sweep (the RBAC hide is proven in its own test below).
+      const html = buildCardCornerButtonsHtml(ITEM, prefs, { canModifyLibrary: true });
       assert.match(html, new RegExp(`card-${control}-btn ${cornerClass}`), `${control} in ${key}`);
     }
   }
@@ -206,10 +210,24 @@ test('v1.72: corner buttons on a TRACK item - queue renders with its entry kind;
 });
 
 test('v1.72: a MEDIA item (no kind) renders the corner markup byte-identically to the pre-wave shape', () => {
-  const html = buildCardCornerButtonsHtml(ITEM, defaults(), {});
+  const html = buildCardCornerButtonsHtml(ITEM, defaults(), { canModifyLibrary: true });
   assert.ok(!html.includes('data-kind'), 'no kind attribute ever leaks onto a media card');
   assert.match(html, /href="\/video\/vid1\?download=1"/);
   assert.match(html, /class="card-delete-btn card-corner-tr"/);
+});
+
+test('v1.81 write-RBAC: the delete corner is HIDDEN without the modify-library capability, present with it', () => {
+  // Default layout puts delete in TR. A member without the capability (empty
+  // caps, or the flag false) must NOT get a delete affordance; admin/granted
+  // (canModifyLibrary true) does. The other corners are unaffected either way.
+  for (const caps of [{}, null, undefined, { canModifyLibrary: false }, { canModifyLibrary: 'yes' }]) {
+    const html = buildCardCornerButtonsHtml(ITEM, defaults(), caps);
+    assert.ok(!html.includes('card-delete-btn'), `delete hidden for caps=${JSON.stringify(caps)}`);
+    assert.match(html, /card-download-btn/, 'download still renders');
+    assert.match(html, /card-like-btn/, 'like still renders');
+  }
+  const withCap = buildCardCornerButtonsHtml(ITEM, defaults(), { canModifyLibrary: true });
+  assert.match(withCap, /class="card-delete-btn card-corner-tr"/, 'delete renders with the capability');
 });
 
 test('v1.72 (adversarial W1): cardKindPresentation - the BOOK arm is bound (reader deep link, cover art, file download, never queue/delete/reheat)', () => {

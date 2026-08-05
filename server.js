@@ -5563,6 +5563,10 @@ function publicUser(u) {
   return {
     id: u.id, username: u.username, displayName: u.displayName,
     role: u.role, canManageSubscriptions: u.canManageSubscriptions,
+    // v1.81 write-RBAC: the client reads this off /api/auth/me to hide the
+    // delete/move/edit affordances for a member who lacks it (server is the
+    // real gate; hiding is UX only).
+    canModifyLibrary: u.canModifyLibrary,
   };
 }
 
@@ -5587,6 +5591,21 @@ function requireAdmin(req, res) {
 function requireManageSubscriptions(req, res) {
   if (req.user && (req.user.role === 'admin' || req.user.canManageSubscriptions)) return true;
   res.status(403).json({ error: 'You do not have permission to manage subscriptions.' });
+  return false;
+}
+
+// v1.81 write-RBAC: admin OR the per-user `canModifyLibrary` capability may
+// MUTATE library CONTENT - delete/move/edit media, run scans, clear the
+// transcode cache, purge/restore trash. Default OFF for members (existing
+// members lose these until an admin grants it - Dean-approved). THE single
+// decision point (the v1.41.4 one-writer scar): every content-mutating route
+// routes through this one predicate; passed into the podcasts module via deps
+// exactly like requireManageSubscriptions. This is deliberately the FIRST guard
+// in each handler - a capability-less member gets a uniform 403 and never
+// reaches the existence-revealing 404 of restrictedVideoMutation (no id oracle).
+function requireModifyLibrary(req, res) {
+  if (req.user && (req.user.role === 'admin' || req.user.canModifyLibrary)) return true;
+  res.status(403).json({ error: 'You do not have permission to modify the library.' });
   return false;
 }
 
@@ -5620,6 +5639,9 @@ app.post('/api/users', async (req, res) => {
   const password = typeof body.password === 'string' ? body.password : '';
   const role = body.role === 'admin' ? 'admin' : 'member';
   const canManageSubscriptions = body.canManageSubscriptions === true;
+  // v1.81 write-RBAC: strict boolean coercion (AC8) - a truthy string/1/[] can
+  // never grant the capability. Default OFF when absent.
+  const canModifyLibrary = body.canModifyLibrary === true;
   if (!userStore.validateUsername(username)) return res.status(400).json({ error: USERNAME_RULE_MESSAGE });
   if (password.length < authCrypto.MIN_PASSWORD_LENGTH) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
   if (userStore.getByUsername(username)) return res.status(409).json({ error: 'That username is already taken.' });
@@ -5627,7 +5649,7 @@ app.post('/api/users', async (req, res) => {
     const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
     // The UNIQUE(username COLLATE NOCASE) constraint is the race backstop
     // behind the friendly pre-check above.
-    const user = userStore.createUser({ username, displayName, passwordHash, role, canManageSubscriptions }, new Date().toISOString());
+    const user = userStore.createUser({ username, displayName, passwordHash, role, canManageSubscriptions, canModifyLibrary }, new Date().toISOString());
     userStore.setSettingsJson(user.id, NEW_USER_DEFAULT_SETTINGS); // v1.79: net-new account -> feed on
     return res.status(201).json({ success: true, user: publicUser(user) });
   } catch (err) {
@@ -5708,6 +5730,17 @@ app.post('/api/users/:id/subscriptions-flag', (req, res) => {
   const target = resolveTargetUser(req, res);
   if (!target) return;
   userStore.setCanManageSubscriptions(target.id, req.body && req.body.canManageSubscriptions === true);
+  return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
+});
+
+// v1.81 write-RBAC: admin grants/revokes a user's library-WRITE capability.
+// Mirrors subscriptions-flag exactly (admin-only, strict boolean, self-safe -
+// nothing here can lock the instance out since admins bypass the flag anyway).
+app.post('/api/users/:id/modify-library-flag', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = resolveTargetUser(req, res);
+  if (!target) return;
+  userStore.setCanModifyLibrary(target.id, req.body && req.body.canModifyLibrary === true);
   return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
 });
 
@@ -5948,6 +5981,13 @@ app.get('/api/config', (req, res) => {
 
 // API: Save folder configuration
 app.post('/api/config', async (req, res) => {
+  // v1.81 write-RBAC (gate CRITICAL): library-folder configuration is an
+  // admin/setup concern (like user-management + backup/restore). It was
+  // member-reachable and, with pruneMissing, a member POSTing an empty/edited
+  // folder list could WIPE the library index - strictly more destructive than
+  // the scan route this wave already gated. GET stays open (the sidebar needs
+  // it); only the mutating POST is admin-gated.
+  if (!requireAdmin(req, res)) return;
   const { folders, folderSettings } = req.body;
   if (!Array.isArray(folders)) {
     return res.status(400).json({ error: 'folders must be an array of paths' });
@@ -6171,6 +6211,7 @@ app.post('/api/config', async (req, res) => {
 // (above) already logs and settles `scanState` on any error, and `.catch`
 // below guards the fire-and-forget call against an unhandled rejection.
 app.post('/api/scan', (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   const alreadyInProgress = scanState.scanning;
   if (alreadyInProgress) {
     scanState.rescanRequested = true;
@@ -6367,6 +6408,7 @@ app.get('/api/books/config', (req, res) => {
 });
 
 app.post('/api/books/config', async (req, res) => {
+  if (!requireAdmin(req, res)) return; // v1.81 write-RBAC (gate CRITICAL): library config is admin-only
   const { folders } = req.body || {};
   if (!Array.isArray(folders) || !folders.every((f) => typeof f === 'string' && f.trim() !== '')) {
     return res.status(400).json({ error: 'folders must be an array of non-empty strings' });
@@ -6427,6 +6469,7 @@ app.post('/api/books/config', async (req, res) => {
 });
 
 app.post('/api/books/scan', (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   const alreadyInProgress = bookScanState.scanning;
   if (alreadyInProgress) {
     bookScanState.rescanRequested = true;
@@ -7339,6 +7382,7 @@ app.get('/api/music/config', (req, res) => {
 });
 
 app.post('/api/music/config', async (req, res) => {
+  if (!requireAdmin(req, res)) return; // v1.81 write-RBAC (gate CRITICAL): library config is admin-only
   const { folders } = req.body || {};
   if (!Array.isArray(folders) || !folders.every((f) => typeof f === 'string' && f.trim() !== '')) {
     return res.status(400).json({ error: 'folders must be an array of non-empty strings' });
@@ -7392,6 +7436,7 @@ app.post('/api/music/config', async (req, res) => {
 });
 
 app.post('/api/music/scan', (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   const alreadyInProgress = musicScanState.scanning;
   if (alreadyInProgress) {
     musicScanState.rescanRequested = true;
@@ -7780,6 +7825,9 @@ app.post(
   '/api/settings/logo',
   express.raw({ type: Object.keys(CUSTOM_LOGO_TYPES), limit: CUSTOM_LOGO_MAX_BYTES }),
   async (req, res) => {
+    // v1.81 write-RBAC (forcing-net find): the instance logo is global/admin
+    // config - the upload sibling of the now-admin-gated DELETE.
+    if (!requireAdmin(req, res)) return;
     const mime = (req.headers['content-type'] || '').split(';')[0].trim();
     if (!Object.prototype.hasOwnProperty.call(CUSTOM_LOGO_TYPES, mime)) {
       return res.status(400).json({ error: 'Logo must be image/png, image/jpeg, or image/webp' });
@@ -7829,6 +7877,7 @@ app.post(
 
 // Reset to the default text logo.
 app.delete('/api/settings/logo', async (req, res) => {
+  if (!requireAdmin(req, res)) return; // v1.81 write-RBAC (gate CRITICAL): the instance logo is global/admin config
   // v1.33.1: variant-scoped -- DELETE ?variant=dark removes only the dark
   // variant; the plain DELETE keeps its v1.32 meaning (the light/default one).
   const variant = resolveLogoVariant(req.query.variant);
@@ -8253,6 +8302,7 @@ app.get('/api/settings', (req, res) => {
 // keys are accepted; an unrecognized key is rejected too, keeping db.settings
 // free of arbitrary/typo'd keys.
 app.post('/api/settings', async (req, res) => {
+  if (!requireAdmin(req, res)) return; // v1.81 write-RBAC (gate CRITICAL): global instance settings are admin-only (per-user prefs go via /api/me/settings)
   const body = req.body || {};
   // v1.41.6 DELIBERATE key-set change (this list is locked by
   // test/unit/database.test.js's DEFAULT_SETTINGS deep-equal and
@@ -8827,6 +8877,7 @@ app.get('/api/cache/size', (req, res) => {
 // capable of invalidating a `'ready'` background-audio sidecar as automatic
 // eviction/aging is.
 app.post('/api/cache/clear', (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   let entries;
   try { entries = fs.readdirSync(TRANSCODE_DIR); } catch (_) { entries = []; }
   const now = Date.now();
@@ -9816,6 +9867,7 @@ function resolveOnDiskPath(filePath) {
 
 // API: Delete video/audio file
 app.delete('/api/videos/:id', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   if (refuseIfReadOnlyMedia(res)) return; // v1.42 safe-mode lever (AC8)
   // v1.30 A3: a PURE read to look up `item` -- never mutated here, and the
@@ -10596,6 +10648,7 @@ app.get('/api/trash', (req, res) => {
 });
 
 app.post('/api/trash/:id/restore', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (refuseIfReadOnlyMedia(res)) return;
   const result = await restoreTrashItem({ loadDatabase, updateDatabase, getMediaId }, req.params.id);
   if (!result.ok) {
@@ -10605,6 +10658,7 @@ app.post('/api/trash/:id/restore', async (req, res) => {
 });
 
 app.delete('/api/trash/:id', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (refuseIfReadOnlyMedia(res)) return;
   const result = await purgeTrashItem({ loadDatabase, updateDatabase }, req.params.id);
   if (!result.ok) {
@@ -12287,6 +12341,7 @@ async function sweepTrash(now = Date.now()) {
 // it. T19 (Wave 7, B2 Phase 2) calls `moveItemToFolder` directly for its own
 // physical-reconcile move, without going through this route.
 app.post('/api/videos/:id/move', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   if (refuseIfReadOnlyMedia(res)) return; // v1.42 safe-mode lever (AC8)
   const targetFolder = req.body && req.body.targetFolder;
@@ -13837,22 +13892,64 @@ app.get('/api/stats', (req, res) => {
   for (const id of Object.keys(books.items || {})) {
     if (bookVisibleTo(req, books.items[id])) visibleBookItems[id] = books.items[id];
   }
+  // v1.81 (#127a): the inventory's watch-aggregate + folder sub-counts shipped
+  // RAW - v1.80 scoped the content TITLES/counts but left progress/viewCounts/
+  // liked/folders/tombstones/users global, so a restricted member could infer
+  // hidden content by VOLUME and see other users' watch totals. For a non-admin,
+  // every count is scoped to their VISIBLE library and their OWN watch data;
+  // the account roster (system-only) goes null and the stats client omits its
+  // row. Admin path stays BYTE-IDENTICAL (empty index visibleMetadata == all).
+  const isAdmin = !!(req.user && req.user.role === 'admin');
+  const has = (map, id) => Object.prototype.hasOwnProperty.call(map, id);
+  const pickVisible = (obj, visMap) => {
+    const out = {};
+    for (const id of Object.keys(obj || {})) if (has(visMap, id)) out[id] = obj[id];
+    return out;
+  };
+  const distinctRoots = (visMap) => {
+    const roots = new Set();
+    for (const id of Object.keys(visMap)) { const rf = visMap[id].rootFolder; if (rf) roots.add(rf); }
+    return Array.from(roots);
+  };
+  let inventoryInput;
+  if (isAdmin) {
+    inventoryInput = {
+      metadata: visibleMetadata, progress: db.progress, viewCounts: db.viewCounts,
+      liked: db.liked, deleteTombstones: db.deleteTombstones, folders: db.folders,
+      books: { items: visibleBookItems, progress: books.progress, audio: books.audio },
+      music: { tracks: visibleTracks, folders: music.folders },
+      users: userStore.countUsers(),
+    };
+  } else {
+    const uid = req.user.id;
+    // Tombstones only for items the member could have seen (v1.65 trash shape
+    // carries `.item`; a legacy tombstone is flat).
+    const scopedTombstones = {};
+    for (const id of Object.keys(db.deleteTombstones || {})) {
+      const t = db.deleteTombstones[id];
+      const probe = t && t.item ? t.item : t;
+      if (probe && mediaVisibleTo(req, probe)) scopedTombstones[id] = t;
+    }
+    inventoryInput = {
+      metadata: visibleMetadata,
+      progress: pickVisible(userStore.getProgress(uid), visibleMetadata), // THEIR own positions, visible only
+      viewCounts: pickVisible(db.viewCounts, visibleMetadata),            // global counters, visible items only
+      liked: userStore.getLiked(uid).filter((id) => has(visibleMetadata, id)),
+      deleteTombstones: scopedTombstones,
+      folders: distinctRoots(visibleMetadata),                           // never the raw configured-root list
+      books: { items: visibleBookItems, progress: pickVisible(userStore.getBookProgress(uid), visibleBookItems), audio: pickVisible(books.audio, visibleBookItems) },
+      music: { tracks: visibleTracks, folders: distinctRoots(visibleTracks) },
+      users: null, // system-only: omitted from a non-admin's inventory
+    };
+  }
+  const inventory = stats.computeInventory(inventoryInput);
+  if (!isAdmin) inventory.users = null; // computeInventory coerces null->0; restore the "omit" signal for the client
   res.json({
     ...stats.computeLibraryStats(visibleMetadata),
     books: stats.computeBookStats(visibleBookItems, books.audio),
     // v1.44.3 (Dean): the "what's in my database" inventory — a plain count of
     // each persisted namespace (mirrors what the backup bundle carries).
-    inventory: stats.computeInventory({
-      metadata: visibleMetadata,
-      progress: db.progress,
-      viewCounts: db.viewCounts,
-      liked: db.liked,
-      deleteTombstones: db.deleteTombstones,
-      folders: db.folders,
-      books: { items: visibleBookItems, progress: books.progress, audio: books.audio },
-      music: { tracks: visibleTracks, folders: music.folders },
-      users: userStore.countUsers(),
-    }),
+    inventory,
     system: {
       version: APP_VERSION,
       repoUrl: REPO_URL,
@@ -14053,6 +14150,7 @@ app.post('/api/videos/:id/dimensions', async (req, res) => {
 // final-merge guard mirrors it from the fresh db unconditionally, so an
 // edit landing mid-scan can never be reverted.
 app.post('/api/videos/:id/chapters', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   const body = req.body || {};
   if (typeof body.text !== 'string') {
@@ -14218,6 +14316,7 @@ function proposeAttributionMove(db, item, identity) {
 }
 
 app.post('/api/videos/:id/attribute-channel', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   const body = req.body || {};
   const clearing = body.clear === true;
@@ -14275,6 +14374,13 @@ function confineBulkRoot(db, rawRoot) {
 }
 
 app.post('/api/videos/attribute-channel-bulk', async (req, res) => {
+  // v1.81 write-RBAC (gate CRITICAL): the BULK sibling of the single-item
+  // attribute-channel is a content mutation too - it rewrites channel identity
+  // across a whole root and, with relocate:true, MOVES files on disk. It was
+  // missed by the initial enumeration (the every-writer scar: gating one route
+  // is not enough). First guard, incl. the preview dry-run (no reason to preview
+  // a bulk op you cannot perform).
+  if (!requireModifyLibrary(req, res)) return;
   const body = req.body || {};
   const preview = body.preview === true;
   const relocate = body.relocate === true;
@@ -14401,6 +14507,9 @@ app.post('/api/videos/attribute-channel-bulk', async (req, res) => {
 // items; already-moved files stay moved (honest: a cancel is "stop", never
 // "undo"), and the resume selector makes a later re-run finish the rest.
 app.post('/api/videos/attribute-channel-bulk/cancel', (req, res) => {
+  // v1.81 write-RBAC (gate WARNING): a capability-less member must not be able
+  // to abort an admin's in-flight bulk-attribution job (cross-user interference).
+  if (!requireModifyLibrary(req, res)) return;
   if (!attributeBulkInProgress) return res.json({ cancelled: false, running: false });
   attributeBulkCancelled = true;
   res.json({ cancelled: true, running: true });
@@ -15253,6 +15362,7 @@ podcasts.registerRoutes(app, {
   recordPresenceFromPing, // v1.78: the ONE presence writer, shared by all three kinds
   episodeVisibleTo: podcastEpisodeVisibleTo, // v1.80 RBAC: per-user episode/show visibility
   requireManageSubscriptions, // v1.80 RBAC gate: the podcast registry parallels the ytdlp one
+  requireModifyLibrary, // v1.81 write-RBAC gate: episode delete is a CONTENT delete, not registry mgmt
 });
 
 // Start the server — but only when run directly (`node server.js`), not when

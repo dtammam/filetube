@@ -80,6 +80,57 @@
 
 ## Shipped
 
+### v1.81.0 - Write-RBAC + honest-denial UI + per-user stats + empty-states (2026-08-05)
+
+The follow-up to v1.80's visibility RBAC: v1.80 controlled what a member can
+SEE; v1.81 controls what a member can DO. A new per-user capability
+**`canModifyLibrary`** (default OFF for members, admin always bypasses via role)
+gates every content-mutating route a member can reach: video delete / move /
+chapters-edit / attribute-channel (single AND bulk), trash restore & purge, the
+three library scans, cache-clear, and podcast episode delete. Downloads and the
+channel registry stay under `canManageSubscriptions`; the playback auto-writes
+(`/view`, `/dimensions`) stay ungated by design (Dean's call - they fire during
+normal watching, not as a "modify library" intent). Existing members lose
+delete/move/edit until an admin grants the flag (Dean-approved) via a new
+Settings->Users "Allow edit" toggle.
+
+**The client tells the truth now.** A member without the capability no longer
+sees the delete/move/edit affordances (card corners, watch-page buttons, the
+player's chapters editor - all gated on the EFFECTIVE admin-OR-flag capability
+read from `/api/auth/me`, resolved non-blocking so a slow auth call never stalls
+playback), and a denied action shows a plain "you don't have permission" message
+with no phantom removal. **Stats are per-user** - a restricted member's
+`/api/stats` inventory now shows only their visible library and their own watch
+data (v1.80 had scoped the titles but left the volume counts raw - closes
+#127a). And every empty video view gets the same helpful intro treatment
+books/podcasts already have - no blank surfaces.
+
+**The gate earned its keep (full two-reviewer data-safety gate).** Both seats
+independently caught the same CRITICAL: the initial route enumeration MISSED
+`POST /api/videos/attribute-channel-bulk` - the bulk sibling of a route that WAS
+gated (the recurring "gate one route, miss its plural" scar), through which a
+capability-less member could rewrite channel attribution across a whole root and
+move files on disk. The adversarial seat also caught the member-mutable library
+**config** routes (a member could wipe the folder list). The fix round closed
+both, and added a durable **forcing net** (`route-write-classification.test.js`)
+that enumerates all ~107 live mutating routes, fails on any unclassified one, and
+asserts every capability-gated route refuses a member holding no capabilities -
+which then caught **two more** pre-existing holes (the logo upload and the yt-dlp
+download-cancel), both closed. Both seats APPROVE, every fix mutation-proven.
+
+**Known gaps (disclosed):**
+- **T8 (user avatar + account menu) SPLIT to a v1.82 fast-follow** - Dean
+  pre-authorized the split; it is a net-new cross-shell UI component and keeping
+  it out kept this gate focused on the write-RBAC core. Its server side is done.
+- Books/music have no file-delete route, so there was nothing to gate there.
+- Residual #129: a few setup.js maintenance actions (cache-clear, scans) still
+  surface nothing on a 403 (non-blocking UX, both seats agreed). Residual #130:
+  `POST /api/books/:id/cover` is a shared backfill labeled `personal` and lacks a
+  v1.80 visibility check (out of write-RBAC scope).
+
+Dual-Node full suite green on v22.23.1 and v24.14.0. **Dean's on-device pass is
+PENDING.**
+
 ### v1.80.0 - RBAC: per-user library access control (kid-safe accounts) (2026-08-05)
 
 The v1.44 tranche's final piece, finally built: Dean's private-YouTube goal - a

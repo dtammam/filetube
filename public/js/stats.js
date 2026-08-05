@@ -417,6 +417,10 @@ function renderInventory(root, inventory) {
     ['User accounts', inv.users],
   ];
   for (const [label, value] of rows) {
+    // v1.81 (#127a): a null count means "not applicable to this user" (e.g. the
+    // account roster for a non-admin) - omit the row rather than show a
+    // misleading 0. A genuine zero is a number and still renders.
+    if (value === null || value === undefined) continue;
     root.appendChild(buildAboutRow(label, document.createTextNode(formatCount(Number(value) || 0))));
   }
 }

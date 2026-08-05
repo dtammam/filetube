@@ -92,6 +92,43 @@ test('createUser: admin adds a member; duplicate username (case-insensitive) thr
   assert.throws(() => store.createUser({ username: 'WIFE', displayName: 'x', passwordHash: 'y' }, ISO), /UNIQUE|constraint/i, 'username is case-insensitively unique');
 });
 
+// ---- v1.81 write-RBAC: the can_modify_library capability -------------------
+
+test('v1.81: canModifyLibrary defaults OFF for a new member; admin/setter/list all carry it', () => {
+  const admin = store.createFirstAdmin({ username: 'admin', displayName: 'Admin', passwordHash: 'h' }, null, ISO);
+  // Default OFF (Dean-approved: existing members lose destructive actions).
+  const kid = store.createUser({ username: 'kid', displayName: 'Kid', passwordHash: 'h', role: 'member' }, ISO);
+  assert.equal(kid.canModifyLibrary, false, 'a new member cannot modify the library by default');
+  // Create-with-flag (an admin ticks the box at creation).
+  const trusted = store.createUser({ username: 'trusted', displayName: 'Trusted', passwordHash: 'h', role: 'member', canModifyLibrary: true }, ISO);
+  assert.equal(trusted.canModifyLibrary, true, 'create-with-flag grants it');
+  // The setter toggles it (the admin grant path).
+  store.setCanModifyLibrary(kid.id, true);
+  assert.equal(store.getById(kid.id).canModifyLibrary, true, 'setter grants');
+  store.setCanModifyLibrary(kid.id, false);
+  assert.equal(store.getById(kid.id).canModifyLibrary, false, 'setter revokes');
+  // listUsers (the admin UI source) exposes the flag.
+  const listed = store.listUsers().find((u) => u.id === trusted.id);
+  assert.equal(listed.canModifyLibrary, true, 'listUsers carries the capability');
+  // It is a strict boolean on rowToUser, never a raw integer.
+  assert.strictEqual(store.getById(admin.id).canModifyLibrary, false, 'coerced to boolean, not 1/0');
+});
+
+test('v1.81: canModifyLibrary survives a backup/restore round-trip (per-user fidelity)', () => {
+  const admin = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO);
+  const yes = store.createUser({ username: 'yes', displayName: 'Yes', passwordHash: 'h', role: 'member', canModifyLibrary: true }, ISO);
+  const no = store.createUser({ username: 'no', displayName: 'No', passwordHash: 'h', role: 'member' }, ISO);
+  const bundle = store.exportUsersForBackup();
+  const yb = bundle.find((u) => u.id === yes.id);
+  assert.equal(yb.canModifyLibrary, true, 'export carries the flag');
+  assert.equal(bundle.find((u) => u.id === no.id).canModifyLibrary, false);
+  // Restore the exported bundle verbatim and confirm the flag is preserved.
+  store.replaceAllUsersRaw(bundle);
+  assert.equal(store.getById(yes.id).canModifyLibrary, true, 'restore preserves granted flag');
+  assert.equal(store.getById(no.id).canModifyLibrary, false, 'restore preserves absent flag');
+  assert.equal(store.getById(admin.id).role, 'admin', 'admin round-trips');
+});
+
 test('SUGGESTION-6: hard-delete cascades per-user rows AND the id is never reused', () => {
   const admin = store.createFirstAdmin({ username: 'admin', displayName: 'A', passwordHash: 'h' }, null, ISO);
   const m = store.createUser({ username: 'm', displayName: 'M', passwordHash: 'h', role: 'member' }, ISO);

@@ -48,6 +48,11 @@ before(async () => {
   });
 
   member = __mintTestSession({ username: 'kiddo', role: 'member' });
+  // v1.81: this file proves the VISIBILITY gate (a restricted item 404s on
+  // delete/move - no existence oracle). Grant this member the write capability
+  // so those probes reach the visibility check instead of stopping at the new
+  // write-RBAC 403 (which is proven separately in rbac-write-enforcement).
+  userStore.setCanModifyLibrary(member.user.id, true);
   userStore.addLiked(member.user.id, 'blocked', '2026-08-05T00:00:00Z');
   userStore.addLiked(member.user.id, 'allowed', '2026-08-05T00:00:00Z');
   userStore.setProgress(member.user.id, 'blocked', { timestamp: 3, duration: 10, updatedAt: '2026-08-05T00:00:00Z' });
