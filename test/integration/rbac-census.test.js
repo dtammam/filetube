@@ -1,14 +1,20 @@
 'use strict';
 
-// [INTEGRATION] v1.80 RBAC T3 - the COMPLETENESS net. Two forcing-functions so
-// a restricted account can never reach content and a FUTURE route cannot
-// silently leak:
-//   1. Serve-route SWEEP: a member blocked from ALL FOUR libraries must get 404
-//      on EVERY content-serving route (proving each one consults the visibility
-//      gate), while the admin gets non-404 (proving it is not blanket-denial).
-//   2. Route-count LOCK: the live route count is pinned. Adding a route changes
-//      it and fails this test - forcing the author to confirm a new
-//      content-serving route enforces per-user visibility before bumping it.
+// [INTEGRATION] v1.80 RBAC T3 - the COMPLETENESS net. Three checks that a
+// restricted account cannot reach content THROUGH THE SURFACES EXERCISED HERE,
+// plus a tripwire that forces a human to review any NEW route:
+//   1. Serve-route SWEEP: a member blocked from ALL FOUR libraries gets 404 on
+//      every content-serving route (each consults the gate); admin gets non-404.
+//   2. LIST SWEEP: the same member sees NO seeded content in any browse /
+//      aggregation surface (videos/music/books/channels/podcast lists + shows,
+//      stats counts+mostWatched, the feed, notifications) - the security-gate
+//      round added this after finding stats/trash/notifications leaked titles.
+//   3. Route-count LOCK: the live count is pinned. A new route changes it and
+//      fails here, forcing the author to confirm a new content route enforces
+//      visibility. NOTE: this is a TRIPWIRE (forces a human to look), NOT a
+//      classification proof - a new LIST route not added to the sweep above
+//      could still leak until someone extends this file. (Spec AC4's full
+//      classification map is the stronger form; tracked as follow-up.)
 // Enables ytdlp + podcasts so the full route set (and their serve routes)
 // register. Isolated DATA_DIR.
 
@@ -63,8 +69,13 @@ before(async () => {
     podcastStore.reduceUpsertEpisodes(p, subId, [{ guid: 'g1', title: 'Ep', pubDateMs: 1, durationSec: 1 }], 'pending', 5000);
     podcastStore.reduceEpisodeDownloaded(p, epId, { fileName: 'ep.mp3', filePath: path.join(DATA_DIR, 'podcasts', 'Show', 'ep.mp3'), bytes: 1, nowMs: 6000 });
     booksStore.ensureBooks(db).items = { bk: { id: 'bk', title: 'B', author: 'A', filePath: bookFile, folderName: 'F', format: 'epub', addedAt: 1 } };
+    // A ytdlp subscription enables the notifications feature (subs>=1).
+    if (!db.ytdlp || typeof db.ytdlp !== 'object') db.ytdlp = { allowMembersOnly: false, subscriptions: [] };
+    db.ytdlp.subscriptions = [{ name: 'Chan', order: 0 }];
     return true;
   });
+  // Seed a notification for the restricted media item (the bell CRITICAL).
+  userStore.seedNotifications([{ mediaId: 'vid', createdAt: 1000 }], 2000);
   member = __mintTestSession({ username: 'lockeddown', role: 'member' });
   // Block ALL FOUR libraries - this member may reach NO content anywhere.
   userStore.setRestrictions(member.user.id, [
@@ -96,6 +107,42 @@ test('SWEEP: a member blocked from all libraries gets 404 on EVERY serve route; 
   for (const r of ['/video/vid', '/track/trk', `/episode/${epId}`, '/book/bk/file', '/api/videos/vid', '/api/books/bk']) {
     assert.notStrictEqual((await asAdmin(r)).status, 404, `admin must reach ${r}`);
   }
+});
+
+test('LIST SWEEP: a member blocked from all libraries sees NO seeded content in any list', async () => {
+  // The gap the security gate found: serve routes 404'd but LIST routes leaked
+  // titles/counts. This asserts every browse/aggregation surface omits the
+  // blocked content (the member is restricted from all four libraries).
+  const json = (p) => asMember(p).then((r) => r.json());
+  const ids = (arr) => (arr || []).map((x) => x.id);
+
+  assert.ok(!ids((await json('/api/videos?limit=50')).items).includes('vid'), '/api/videos');
+  assert.ok(!ids((await json('/api/music?limit=50')).items).includes('trk'), '/api/music');
+  assert.ok(!ids((await json('/api/books?limit=50')).items).includes('bk'), '/api/books');
+  assert.ok(!((await json('/api/channels')).channels || []).some((c) => c.folder === 'F'), '/api/channels');
+  assert.ok(!((await json('/api/podcasts/subscriptions')).subscriptions || []).some((s) => s.id === subId), '/api/podcasts/subscriptions');
+  assert.ok(!((await json('/api/podcasts/shows')).shows || []).some((s) => s.id === subId), '/api/podcasts/shows');
+
+  // /api/stats: the content counts + mostWatched reflect only what the member sees (nothing).
+  const stats = await json('/api/stats');
+  assert.strictEqual(stats.inventory.videos, 0, '/api/stats inventory.videos');
+  assert.ok(!(stats.mostWatched || []).some((m) => m.id === 'vid'), '/api/stats mostWatched');
+
+  // /api/home: no feed row surfaces any blocked item.
+  const rows = (await json('/api/home')).rows || [];
+  for (const row of rows) {
+    assert.ok(!row.items.some((i) => ['vid', 'trk', epId].includes(i.id)), `/api/home row ${row.id}`);
+  }
+
+  // /api/notifications: the bell must not carry a restricted item's title.
+  const notifs = (await json('/api/notifications')).items || [];
+  assert.ok(!notifs.some((n) => n.mediaId === 'vid'), '/api/notifications omits the restricted item');
+  const adminNotifs = ((await (await asAdmin('/api/notifications')).json()).items) || [];
+  assert.ok(adminNotifs.some((n) => n.mediaId === 'vid'), 'admin bell shows the item');
+
+  // admin still sees the content in lists (proves it discriminates).
+  const adminVids = ((await (await asAdmin('/api/videos?limit=50')).json()).items || []).map((x) => x.id);
+  assert.ok(adminVids.includes('vid'), 'admin /api/videos includes the item');
 });
 
 test('LOCK: the live route count is pinned (a new route forces an RBAC review)', () => {

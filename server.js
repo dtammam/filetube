@@ -925,6 +925,15 @@ function podcastEpisodeVisibleTo(req, ep) {
 function bookVisibleTo(req, book) {
   return !!book && !visibility.isBlocked(userRestrictionIndex(req), { kind: 'book', filePath: book.filePath, folderName: book.folderName });
 }
+// v1.80 RBAC (security-gate W1): a restricted member must not delete / move /
+// mutate an item they cannot even SEE. Returns true (and 404s) when the id's
+// media item is restricted for req.user. Admin's empty index never restricts.
+function restrictedVideoMutation(req, res, id) {
+  const db = getCachedDatabase();
+  const it = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : null;
+  if (it && !mediaVisibleTo(req, it)) { res.status(404).json({ error: 'Media file not found' }); return true; }
+  return false;
+}
 
 // v1.78 device handoff -------------------------------------------------------
 //
@@ -8407,6 +8416,7 @@ app.get('/api/notifications', (req, res) => {
         continue;
       }
       if (ep.status !== 'downloaded') continue; // trashed/pending - HIDDEN, not phantom (restore brings it back)
+      if (!podcastEpisodeVisibleTo(req, ep)) continue; // v1.80 RBAC: no restricted show title in the bell
       const showName = podcastSubNames.has(ep.subId) ? podcastSubNames.get(ep.subId) : '';
       rows.push({
         id: row.id,
@@ -8452,6 +8462,11 @@ app.get('/api/notifications', (req, res) => {
       phantomMediaIds.push(row.mediaId);
       continue;
     }
+    // v1.80 RBAC (security-gate CRITICAL): the bell is a global feed - a
+    // restricted member must not read a restricted item's TITLE here. Hide the
+    // row (it stays for other users); do NOT prune (it is visible content for
+    // someone). Admin's empty index hides nothing.
+    if (!mediaVisibleTo(req, item)) continue;
     let channelAvatarUrl = typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '';
     if (channelAvatarUrl === '') {
       if (!dbForAvatarLookup) {
@@ -9374,6 +9389,7 @@ app.get('/api/videos/:id', (req, res) => {
 // >=90% live position still DERIVING 'watched' and the toggle would appear
 // stuck for exactly the fully-watched items it exists for.
 app.post('/api/watched/:id', (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC (S-b): no restricted-id oracle/persist
   const db = getCachedDatabase(); // hot GET reader (existence check only)
   // OWN-property check (v1.42 __proto__ lesson): this id persists into
   // user_watched -- see POST /api/liked/:id's identical guard.
@@ -9800,6 +9816,7 @@ function resolveOnDiskPath(filePath) {
 
 // API: Delete video/audio file
 app.delete('/api/videos/:id', async (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   if (refuseIfReadOnlyMedia(res)) return; // v1.42 safe-mode lever (AC8)
   // v1.30 A3: a PURE read to look up `item` -- never mutated here, and the
   // actual persisted mutation below goes through its own `updateDatabase`
@@ -10190,6 +10207,7 @@ app.delete('/api/videos/:id', async (req, res) => {
 // routes above if the id isn't a real library item -- mirrors
 // `DELETE /api/videos/:id`'s own existence-check-then-mutate shape.
 app.post('/api/liked/:id', (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC (S-b): no restricted-id oracle/persist
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader (existence check only)
   // OWN-property check (v1.42 __proto__ lesson): this id persists into
   // user_liked -- see POST /api/progress's identical guard.
@@ -10545,6 +10563,16 @@ app.get('/api/trash', (req, res) => {
   const db = getCachedDatabase();
   const retentionDays = Number(db.settings && db.settings.trashRetentionDays);
   const items = Object.entries(db.trash || {})
+    // v1.80 RBAC (security-gate finding): a restricted member must not see the
+    // TITLE/existence of a restricted item in the trash either. Build the media
+    // descriptor from the snapshot (or the record's own path fields for an
+    // orphan with no snapshot). Admin's empty index keeps everything.
+    .filter(([, rec]) => !visibility.isBlocked(userRestrictionIndex(req), {
+      kind: 'media',
+      filePath: (rec.item && rec.item.filePath) || rec.originalPath,
+      folderName: rec.item && rec.item.folderName,
+      rootFolder: rec.rootFolder || (rec.item && rec.item.rootFolder),
+    }))
     .map(([tid, rec]) => ({
       trashId: tid,
       originalId: rec.originalId,
@@ -12259,6 +12287,7 @@ async function sweepTrash(now = Date.now()) {
 // it. T19 (Wave 7, B2 Phase 2) calls `moveItemToFolder` directly for its own
 // physical-reconcile move, without going through this route.
 app.post('/api/videos/:id/move', async (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   if (refuseIfReadOnlyMedia(res)) return; // v1.42 safe-mode lever (AC8)
   const targetFolder = req.body && req.body.targetFolder;
   let result;
@@ -13788,22 +13817,40 @@ app.get('/api/stats', (req, res) => {
   // isn't installed (ytdlp not enabled -> null; TTS not available).
   const ytdlpEnabled = ytdlp.isEnabled(ytdlp.parseYtdlpConfig());
   const music = musicStore.readMusic(db);
+  // v1.80 RBAC (security-gate finding): stats leaked restricted-item TITLES
+  // (mostWatched) and COUNTS to a restricted member. Filter the CONTENT
+  // namespaces to what req.user may see before computing; admin's empty index
+  // filters nothing (byte-unchanged). Other namespaces (progress/liked/folders/
+  // users) are user-state/config counts, not content titles.
+  // withEffectiveViewCounts returns the metadata MAP itself (id -> item), and
+  // computeLibraryStats/computeInventory take that map directly.
+  const withVc = withEffectiveViewCounts(db);
+  const visibleMetadata = {};
+  for (const id of Object.keys(withVc)) {
+    if (mediaVisibleTo(req, withVc[id])) visibleMetadata[id] = withVc[id];
+  }
+  const visibleTracks = {};
+  for (const id of Object.keys(music.tracks || {})) {
+    if (trackVisibleTo(req, music.tracks[id])) visibleTracks[id] = music.tracks[id];
+  }
+  const visibleBookItems = {};
+  for (const id of Object.keys(books.items || {})) {
+    if (bookVisibleTo(req, books.items[id])) visibleBookItems[id] = books.items[id];
+  }
   res.json({
-    // v1.42: overlay the extracted `viewCounts` namespace onto the items so
-    // mostWatched keeps working — see effectiveViewCount's comment.
-    ...stats.computeLibraryStats(withEffectiveViewCounts(db)),
-    books: stats.computeBookStats(books.items, books.audio),
+    ...stats.computeLibraryStats(visibleMetadata),
+    books: stats.computeBookStats(visibleBookItems, books.audio),
     // v1.44.3 (Dean): the "what's in my database" inventory — a plain count of
     // each persisted namespace (mirrors what the backup bundle carries).
     inventory: stats.computeInventory({
-      metadata: db.metadata,
+      metadata: visibleMetadata,
       progress: db.progress,
       viewCounts: db.viewCounts,
       liked: db.liked,
       deleteTombstones: db.deleteTombstones,
       folders: db.folders,
-      books: { items: books.items, progress: books.progress, audio: books.audio },
-      music: { tracks: music.tracks, folders: music.folders },
+      books: { items: visibleBookItems, progress: books.progress, audio: books.audio },
+      music: { tracks: visibleTracks, folders: music.folders },
       users: userStore.countUsers(),
     }),
     system: {
@@ -13887,6 +13934,7 @@ function withEffectiveViewCounts(db) {
 }
 
 app.post('/api/videos/:id/view', async (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   let notFound = false;
   let viewCount = 0;
   try {
@@ -13947,6 +13995,7 @@ app.post('/api/videos/:id/view', async (req, res) => {
 // `loadedmetadata` firing for the same load) is therefore always safe to
 // retry: it either fills the gap once or silently no-ops.
 app.post('/api/videos/:id/dimensions', async (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   const body = req.body || {};
   // F3: reject a non-primitive-numeric body BEFORE Number() ever runs -- see
   // isPrimitiveNumericInput's own comment for exactly which shapes this
@@ -14004,6 +14053,7 @@ app.post('/api/videos/:id/dimensions', async (req, res) => {
 // final-merge guard mirrors it from the fresh db unconditionally, so an
 // edit landing mid-scan can never be reverted.
 app.post('/api/videos/:id/chapters', async (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   const body = req.body || {};
   if (typeof body.text !== 'string') {
     return res.status(400).json({ error: 'text must be a string (one "0:00 Title" line per chapter; empty to clear)' });
@@ -14168,6 +14218,7 @@ function proposeAttributionMove(db, item, identity) {
 }
 
 app.post('/api/videos/:id/attribute-channel', async (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   const body = req.body || {};
   const clearing = body.clear === true;
   let identity = null;
@@ -15201,6 +15252,7 @@ podcasts.registerRoutes(app, {
   listExternalEpisodes: listYtdlpPodcastEpisodes,
   recordPresenceFromPing, // v1.78: the ONE presence writer, shared by all three kinds
   episodeVisibleTo: podcastEpisodeVisibleTo, // v1.80 RBAC: per-user episode/show visibility
+  requireManageSubscriptions, // v1.80 RBAC gate: the podcast registry parallels the ytdlp one
 });
 
 // Start the server — but only when run directly (`node server.js`), not when

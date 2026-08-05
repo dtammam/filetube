@@ -38,6 +38,12 @@ before(async () => {
       blocked: { id: 'blocked', title: 'Adult Video', filePath: blockedFile, folderName: 'Adult', channelName: 'Adult', rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 12, addedAt: 20 },
       allowed: { id: 'allowed', title: 'Kids Video', filePath: allowedFile, folderName: 'Kids', channelName: 'Kids', rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 12, addedAt: 10 },
     },
+    // viewCounts so the restricted item is the MOST-watched (stats mostWatched),
+    // and a trashed restricted item (trash list) - the two surfaces the security
+    // gate found leaking restricted titles/counts.
+    viewCounts: { blocked: 100, allowed: 5 },
+    trash: { t1: { originalId: 'blocked', originalPath: blockedFile, rootFolder: DATA_DIR, trashedAt: 5,
+      item: { id: 'blocked', title: 'Adult Video', name: 'Adult Video', filePath: blockedFile, folderName: 'Adult', rootFolder: DATA_DIR, type: 'video', ext: '.mp4' } } },
     liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
 
@@ -110,4 +116,23 @@ test('LIST: restricted item omitted from every list for the member; present for 
   // admin sees both
   const adminVids = ((await (await asAdmin('/api/videos?limit=50')).json()).items || []).map((i) => i.id);
   assert.ok(adminVids.includes('blocked') && adminVids.includes('allowed'), 'admin sees the whole library');
+});
+
+test('STATS + TRASH: restricted titles/counts do not leak to the member (security-gate finding)', async () => {
+  // /api/stats mostWatched must not carry the restricted title, and its media
+  // count must reflect only the visible item.
+  const stats = await (await asMember('/api/stats')).json();
+  const mostWatchedTitles = (stats.mostWatched || []).map((m) => m.title);
+  assert.ok(!mostWatchedTitles.includes('Adult Video'), 'restricted title must not appear in mostWatched');
+  assert.ok(!(stats.mostWatched || []).some((m) => m.id === 'blocked'), 'restricted id must not appear in mostWatched');
+
+  // /api/trash must omit the restricted trashed item.
+  const trash = (await (await asMember('/api/trash')).json()).items || [];
+  assert.ok(!trash.some((t) => t.originalId === 'blocked'), 'restricted item must not appear in trash for the member');
+
+  // admin still sees both surfaces fully.
+  const adminStats = await (await asAdmin('/api/stats')).json();
+  assert.ok((adminStats.mostWatched || []).some((m) => m.id === 'blocked'), 'admin mostWatched includes the item');
+  const adminTrash = (await (await asAdmin('/api/trash')).json()).items || [];
+  assert.ok(adminTrash.some((t) => t.originalId === 'blocked'), 'admin sees the trashed item');
 });

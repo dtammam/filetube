@@ -55,6 +55,11 @@ test('T9: a plain member is 403 on every subscription-mutation route', async () 
   assert.strictEqual((await req('POST', '/api/subscriptions/settings', plain.cookie, { allowMembersOnly: true })).status, 403, 'settings');
   assert.strictEqual((await req('POST', '/api/subscriptions/repull', plain.cookie)).status, 403, 'check-all');
   assert.strictEqual((await req('DELETE', '/api/subscriptions/failures/all', plain.cookie)).status, 403, 'wipe failure log (#54)');
+  // v1.80 security gate (QA finding 6): the PARALLEL podcast registry is gated too.
+  assert.strictEqual((await req('POST', '/api/podcasts/subscriptions', plain.cookie, { feedUrl: 'https://e.com/f.xml' })).status, 403, 'podcast add');
+  assert.strictEqual((await req('DELETE', '/api/podcasts/subscriptions/abc', plain.cookie)).status, 403, 'podcast remove');
+  assert.strictEqual((await req('POST', '/api/podcasts/check', plain.cookie)).status, 403, 'podcast check-all');
+  assert.strictEqual((await req('DELETE', '/api/podcasts/episodes/abc', plain.cookie)).status, 403, 'podcast episode delete');
 });
 
 test('T9: admin and a flagged member are NOT blocked by the capability gate', async () => {
