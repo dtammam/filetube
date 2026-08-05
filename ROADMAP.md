@@ -80,6 +80,52 @@
 
 ## Shipped
 
+### v1.78.1 - The test suite runs again (2026-08-05)
+
+The follow-up branch Dean asked for right after v1.78.0: "fix this leak." It
+turned out to be two problems, and the one that actually broke the suite was
+not the leak.
+
+**The real blocker was a v1.78.0 regression, and it was mine.** The device-
+handoff card added a 30s poll `setInterval` to `common.js`'s shared boot.
+jsdom's `setInterval` returns a plain number with no `unref()`; only
+`window.close()` clears it. `star-pref-seed.test.js` boots the real
+`common.js` in jsdom but never closed its windows - it predates any boot-time
+timer - so that interval stayed live, the test process's event loop never
+drained, and under the parallel runner the worker never went idle. The whole
+suite hung, deterministically, at ~804 tests. That is what forced v1.78.0 to
+ship with `git push --no-verify` (the pre-push hook runs the full suite). The
+fix closes the harness's jsdom windows, matching what `shell-smoke` already
+did. **The shipped card code is byte-identical - a test-teardown fix, no
+product change.** The culprit was pinned with `--test-timeout`, which failed
+the one hung test and let the other 6213 finish and name it.
+
+**Residual #110, closed.** ~83 of 182 test files `mkdtemp` a DATA_DIR and
+never remove it; this had reached ~1.05M dirs / 91% inodes and was thrashing
+the box's filesystem. Rather than edit 83 files, a preload
+(`node --require test/helpers/tmp-cleanup.js`, wired into `npm test`) patches
+`mkdtempSync` to clean each worker's `filetube-` temp dirs on exit -
+deliberately via `--require`, not `NODE_OPTIONS`, so a test's own spawned
+CLIs are left untouched (they can mkdtemp a dir the parent still needs). That
+took the per-run leak 150 -> 1. The last one was a real CLI bug:
+`scripts/migrate-check.js`'s `fail()` calls `process.exit(1)`, which skips its
+`finally` cleanup, so the failure path leaked its own tmpDir - fixed with a
+`process.on('exit')` handler. Per-run leak is now **0**.
+
+**Gate:** adversarial slim gate, APPROVE across two rounds, every fix
+mutation-proven load-bearing (revert any one and the suite hangs or leaks
+again). The round-2 findings were both comment-accuracy - a wiring comment
+that named `NODE_OPTIONS` where the code uses `--require` (the repo's
+recurring lying-comment class), and a tmp-root scope the comment claimed but
+the code did not enforce; the latter is now a real containment guard on the
+`rm -rf`.
+
+**Result:** `npm test` completes green on both Node v22.23.1 (6214) and
+v24.14.0 (6217) in ~75s with **0** leftover temp dirs. The pre-push hook
+works again, so v1.78.x no longer needs `--no-verify` - and this retroactively
+confirms v1.78.0's suite is green on both Node versions, the one gap that
+release disclosed.
+
 ### v1.78.0 - Pick up on the PC what's playing on the phone (2026-08-04)
 
 Dean: "awareness of something playing for a user on another device,
