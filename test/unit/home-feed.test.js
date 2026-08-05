@@ -27,7 +27,7 @@ function rec(over) {
   return Object.assign({
     id: 'x', kind: 'media',
     inProgress: false, finished: false, watched: false, liked: false,
-    progressAt: '', likedAt: '', addedAt: 0, folderKey: null, isSub: false,
+    progressAt: '', addedAt: 0, folderKey: null, isSub: false,
   }, over);
 }
 
@@ -149,18 +149,18 @@ test('selectChannelRow: only that folder, newest first', () => {
 // selectFromLiked
 // ---------------------------------------------------------------------------
 
-test('from-liked: liked items only, most-recently-liked first', () => {
+test('from-liked: liked items only, newest item first', () => {
   const ids = selectFromLiked([
-    rec({ id: 'a', liked: true, likedAt: '2026-08-01T00:00:00Z' }),
-    rec({ id: 'b', liked: true, likedAt: '2026-08-05T00:00:00Z' }),
-    rec({ id: 'c', liked: true, likedAt: '2026-08-03T00:00:00Z' }),
-    rec({ id: 'z', liked: false, likedAt: '2026-08-09T00:00:00Z' }), // not liked -> excluded
+    rec({ id: 'a', liked: true, addedAt: 10 }),
+    rec({ id: 'b', liked: true, addedAt: 50 }),
+    rec({ id: 'c', liked: true, addedAt: 30 }),
+    rec({ id: 'z', liked: false, addedAt: 99 }), // not liked -> excluded
   ], 8);
   assert.deepEqual(ids, ['b', 'c', 'a']);
 });
 
 test('from-liked: a single favorite is enough (no floor)', () => {
-  assert.deepEqual(selectFromLiked([rec({ id: 'only', liked: true, likedAt: '2026-08-01T00:00:00Z' })], 8), ['only']);
+  assert.deepEqual(selectFromLiked([rec({ id: 'only', liked: true, addedAt: 1 })], 8), ['only']);
   assert.deepEqual(selectFromLiked([rec({ id: 'none', liked: false })], 8), []);
 });
 
@@ -195,7 +195,7 @@ test('assemble: full feed keeps the fixed row order', () => {
     rec({ id: 'cw', inProgress: true, progressAt: '2026-08-05T00:00:00Z', addedAt: 50, folderKey: 'F1', watched: true }),
     rec({ id: 'sub', isSub: true, watched: false, addedAt: 40, folderKey: 'F1' }),
     rec({ id: 'ra', addedAt: 30, folderKey: 'F1', watched: true }),
-    rec({ id: 'lik', liked: true, likedAt: '2026-08-03T00:00:00Z', addedAt: 25, folderKey: 'F1', watched: true }),
+    rec({ id: 'lik', liked: true, addedAt: 25, folderKey: 'F1', watched: true }),
     rec({ id: 'fin', finished: true, progressAt: '2026-08-02T00:00:00Z', addedAt: 20, folderKey: 'F1', watched: true }),
   ];
   const { rows } = assembleHomeRows({ records });
