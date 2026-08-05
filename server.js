@@ -5570,6 +5570,17 @@ function requireAdmin(req, res) {
   return true;
 }
 
+// v1.80 RBAC: admin OR the per-user `canManageSubscriptions` capability may
+// MUTATE the shared channel registry. A plain member (incl. a kid account) may
+// browse subscriptions but never add/remove/edit them. Passed into the ytdlp
+// module via deps so its routes route through this one predicate. Closes the
+// census finding that the flag was settable-but-unenforced.
+function requireManageSubscriptions(req, res) {
+  if (req.user && (req.user.role === 'admin' || req.user.canManageSubscriptions)) return true;
+  res.status(403).json({ error: 'You do not have permission to manage subscriptions.' });
+  return false;
+}
+
 // The self-lockout guard for user management: refuse any change that would
 // leave the instance with ZERO enabled admins (disable/demote/delete of the
 // last one). Instant revocation (token_version bumps) makes such a mistake
@@ -15023,6 +15034,7 @@ app.post('/api/videos/:id/prepare-audio', (req, res) => {
 // lib/ytdlp/index.js would hit a circular-require trap; this deps object is
 // what avoids it, exactly like every other primitive below).
 ytdlp.registerRoutes(app, {
+  requireManageSubscriptions, // v1.80 RBAC: gate for channel-registry mutations
   updateDatabase,
   loadDatabase,
   scanDirectories,
