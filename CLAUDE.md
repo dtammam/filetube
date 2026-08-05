@@ -125,6 +125,21 @@ not failing.
 - Verify every commit landed (`git log`) - the pre-commit hook runs the
   full unit suite and REFUSES red; a refused commit swallowed by a piped
   command is the known "phantom commit" failure mode.
+- **Git hygiene.** NEVER blind-stage: no `git add -A`, `git add .`, or
+  `git commit -a` (a `git add -A` once swept scratch files into a release
+  commit). Stage EXPLICIT paths, run `git status --porcelain` first, and
+  confirm the branch (`git branch --show-current`) before every commit -
+  a reviewer's worktree churn has twice detached HEAD out from under a
+  release (v1.80, v1.82). Never `git checkout --` a dirty tree blind
+  (it once reverted uncommitted v1.78 work). A PreToolUse hook hard-blocks
+  `git add -A`, but the discipline is yours.
+- **Diagnosis discipline (device/platform bugs).** Do NOT ship a fix on a
+  first-pass theory. State the hypothesis, name the observation that would
+  FALSIFY it, and gather that evidence (a live repro, a log, an inspected
+  param) BEFORE editing. If a shipped fix fails on Dean's device, the
+  original diagnosis was WRONG - re-root-cause, never patch around it (the
+  v1.68.1 rotation fix blamed fullscreen and failed on-device; the real
+  causes were an `?id=` vs `?v=` param and, once, SMB not the app at all).
 
 ### Where the rest lives
 
@@ -141,8 +156,8 @@ not failing.
 ## Working with Dean (the narrative companion)
 
 The sections above are the CONTRACT (the mechanics of a wave). This section is
-how the working relationship actually operates - inlined here (was
-`docs/references/CLAUDE-WORKING-STYLE.md`) so this file is self-contained.
+how the working relationship actually operates - inlined here (formerly a
+separate working-style doc, now folded in) so this file is self-contained.
 
 **The one-paragraph version.** Dean gives you a goal and answers your questions;
 you run the entire software lifecycle autonomously - design, implement, test,

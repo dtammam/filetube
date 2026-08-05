@@ -8,7 +8,7 @@ say "read docs/references/TTS-WAVE-KICKOFF.md and begin." Written by Fable 5 at 
 
 You are picking up FileTube from your predecessor. Before anything else:
 
-1. Read **docs/references/CLAUDE-WORKING-STYLE.md** — it is the process contract for
+1. Read **CLAUDE.md** — it is the process contract for
    working with Dean (lean mode, the two-reviewer adversarial gate, honesty
    norms, his communication style, the repo's expensive lessons). Your
    persistent memory directory is already loaded and carries project state.
