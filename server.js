@@ -9289,6 +9289,40 @@ function resolveHomeItem(db, id, kind, progressPercent) {
   return { id, kind: 'media', title: item.title || item.name || 'Video', subtitle: item.folderName || '', thumbnailUrl: `/thumbnail/${enc}`, href: `/watch.html?v=${enc}`, progressPercent };
 }
 
+// v1.84 Modern Mode: resolve a grid candidate into the RICH card shape the
+// client's buildCardHtml expects (a superset of resolveHomeItem's row-card
+// fields). Media cards carry the channel identity + view count + channel avatar
+// (via the SAME resolver that feeds subscription avatars - Dean's call) + type +
+// duration; podcast cards carry subId/showName so cardKindPresentation renders
+// them. Returns null when the id is no longer resolvable (the dead-link drop).
+// The `rec` already carries the per-user progress/watch booleans the gather
+// computed under RBAC, so this never re-derives them.
+function resolveModernGridItem(db, rec) {
+  if (rec.kind === 'podcast') {
+    const ns = podcastStore.readPodcasts(db);
+    const ep = Object.prototype.hasOwnProperty.call(ns.episodes, rec.id) ? ns.episodes[rec.id] : null;
+    if (!ep || ep.status !== 'downloaded') return null;
+    const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
+    return {
+      id: rec.id, kind: 'podcast', title: ep.title || 'Episode',
+      subId: ep.subId, showName: sub ? sub.name : 'Podcast',
+      addedAt: rec.addedAt, progressPercent: rec.progressPercent, liked: rec.liked,
+      duration: typeof ep.durationSec === 'number' ? ep.durationSec : 0, type: 'audio',
+    };
+  }
+  const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, rec.id) ? db.metadata[rec.id] : null;
+  if (!item) return null;
+  return {
+    id: rec.id, kind: 'media', title: item.title || item.name || 'Video',
+    folderName: item.folderName || '', channelName: item.channelName || '',
+    channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(db, item) || '',
+    sourceViewCount: typeof item.sourceViewCount === 'number' ? item.sourceViewCount : undefined,
+    sourceViewCountCapturedAt: item.sourceViewCountCapturedAt,
+    addedAt: rec.addedAt, progressPercent: rec.progressPercent, liked: rec.liked,
+    duration: typeof item.duration === 'number' ? item.duration : 0, type: rec.type,
+  };
+}
+
 app.get('/api/home', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
   const userId = req.user.id;
@@ -9314,6 +9348,63 @@ app.get('/api/home', (req, res) => {
   // not the full enriched records the poll path builds.
   const subsList = db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [];
   const subNames = new Set(subsList.map((s) => s && s.name).filter(Boolean));
+
+  // ---- v1.84 Modern Mode: the FLAT grid view (short-circuits the rows) ------
+  // A dedicated gather over the media library (video+audio) + downloaded
+  // podcasts, filtered by the chip, recency-sorted, capped. It reuses the EXACT
+  // per-user reads + RBAC visibility (mediaVisibleTo/podcastEpisodeVisibleTo) +
+  // hidden-folder guards above, so it can never surface a restricted or hidden
+  // item the row path would hide. Music keeps its own place (not a chip).
+  if (req.query.view === 'grid') {
+    const filter = homeFeed.resolveGridFilter(req.query.filter);
+    const cand = [];
+    // media (video + audio) - always gathered; the predicate decides membership
+    for (const id of Object.keys(db.metadata || {})) {
+      const item = db.metadata[id];
+      if (!item || typeof item !== 'object') continue;
+      if (!mediaVisibleTo(req, item)) continue; // v1.80 RBAC
+      if (hiddenFolders.length && hiddenFolders.some((hf) => underFolder(item.filePath, hf))) continue;
+      const p = Object.prototype.hasOwnProperty.call(progressMap, id) ? progressMap[id] : null;
+      const ts = p ? Number(p.timestamp) : 0;
+      const dur = p ? Number(p.duration) : 0;
+      const pct = dur > 0 ? (ts / dur) * 100 : 0;
+      const watched = watchedSet.has(id);
+      const finished = videoQuery.deriveWatchState(pct, watched) === 'watched';
+      const rec = {
+        id, kind: 'media', type: item.type === 'audio' ? 'audio' : 'video',
+        inProgress: ts > 0 && !finished, watched,
+        addedAt: typeof item.addedAt === 'number' ? item.addedAt : 0,
+        progressPercent: pct, liked: likedSet.has(id),
+      };
+      if (homeFeed.matchesGridFilter(rec, filter)) cand.push(rec);
+    }
+    // podcasts (downloaded) - only for the chips that can contain them
+    if (filter === 'all' || filter === 'podcasts' || filter === 'continue') {
+      const podNs = podcastStore.readPodcasts(db);
+      const podProgress = userStore.getPodcastProgress(userId);
+      const podLiked = new Set(userStore.getPodcastLiked(userId).map((l) => l.episodeId));
+      for (const id of Object.keys(podNs.episodes || {})) {
+        const ep = podNs.episodes[id];
+        if (!ep || ep.status !== 'downloaded') continue;
+        if (!podcastEpisodeVisibleTo(req, ep)) continue; // v1.80 RBAC
+        const pp = Object.prototype.hasOwnProperty.call(podProgress, id) ? podProgress[id] : null;
+        const pos = pp ? Number(pp.position) : 0;
+        const dur = pp ? Number(pp.duration) : 0;
+        const rec = {
+          id, kind: 'podcast', type: 'audio',
+          inProgress: pos > 0, watched: false,
+          addedAt: typeof ep.addedAt === 'number' ? ep.addedAt : 0,
+          progressPercent: dur > 0 ? (pos / dur) * 100 : 0, liked: podLiked.has(id),
+        };
+        if (homeFeed.matchesGridFilter(rec, filter)) cand.push(rec);
+      }
+    }
+    cand.sort((a, b) => b.addedAt - a.addedAt); // recency, newest first
+    const MODERN_GRID_CAP = 60; // DISCLOSED cap - the modern grid is a recency snapshot, not the whole library
+    const truncated = cand.length > MODERN_GRID_CAP;
+    const items = cand.slice(0, MODERN_GRID_CAP).map((rec) => resolveModernGridItem(db, rec)).filter(Boolean);
+    return res.json({ items, filter, truncated });
+  }
 
   const records = [];
   const kindById = new Map();
