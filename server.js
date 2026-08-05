@@ -910,6 +910,11 @@ function mediaVisibleTo(req, item) {
     kind: 'media', filePath: item.filePath, folderName: item.folderName, rootFolder: item.rootFolder,
   });
 }
+function trackVisibleTo(req, track) {
+  return !!track && !visibility.isBlocked(userRestrictionIndex(req), {
+    kind: 'track', filePath: track.filePath, folderName: track.folderName, rootFolder: track.rootFolder,
+  });
+}
 
 // v1.78 device handoff -------------------------------------------------------
 //
@@ -7461,7 +7466,7 @@ function publicTrackListItem(track, userId, likedSet, progressMap) {
 
 app.get('/api/music', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
-  let list = Object.values(ns.tracks);
+  let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   const album = typeof req.query.album === 'string' ? req.query.album : '';
   const artist = typeof req.query.artist === 'string' ? req.query.artist : '';
@@ -7497,7 +7502,7 @@ app.get('/api/music', (req, res) => {
 
 app.get('/api/music/albums', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
-  let list = Object.values(ns.tracks);
+  let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
   // Gate QA-WARNING/ADV-SUGGESTION: paginate (the design-for-scale target) and
@@ -7513,7 +7518,7 @@ app.get('/api/music/albums', (req, res) => {
 
 app.get('/api/music/artists', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
-  let list = Object.values(ns.tracks);
+  let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
   const artists = musicQuery.groupArtists(list);
@@ -7525,7 +7530,10 @@ app.get('/api/music/artists', (req, res) => {
 
 // Per-user liked songs (static segment -- declared BEFORE /api/music/:id).
 app.get('/api/music/liked', (req, res) => {
-  res.json({ trackIds: userStore.getMusicLiked(req.user.id) });
+  // v1.80 RBAC: a restricted track's id must not leak into the liked set.
+  const ns = musicStore.readMusic(getCachedDatabase());
+  const trackIds = userStore.getMusicLiked(req.user.id).filter((id) => trackVisibleTo(req, ownTrack(ns.tracks, id)));
+  res.json({ trackIds });
 });
 
 app.post('/api/music/liked/:id', (req, res) => {
@@ -7586,6 +7594,7 @@ app.get('/api/music/:id', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   const track = ownTrack(ns.tracks, req.params.id);
   if (!track) return res.status(404).json({ error: 'no such track' });
+  if (!trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC
   const likedSet = new Set(userStore.getMusicLiked(req.user.id));
   const progressMap = userStore.getMusicProgress(req.user.id);
   res.json(publicTrackListItem(track, req.user.id, likedSet, progressMap));
@@ -7599,6 +7608,7 @@ app.get('/track/:id', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   const track = ownTrack(ns.tracks, req.params.id);
   if (!track || typeof track.filePath !== 'string') return res.status(404).json({ error: 'no such track' });
+  if (!trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC: restricted -> 404
   if (!fs.existsSync(track.filePath)) return res.status(404).json({ error: 'file missing' });
   // v1.72 (cap 7): ?download=1 = the app-wide save-to-device affordance
   // (the /video/:id?download=1 / /episode/:id?download=1 pattern). Serves
@@ -7629,6 +7639,7 @@ app.get('/track/:id', (req, res) => {
 app.get('/albumart/:id', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   const track = ownTrack(ns.tracks, req.params.id);
+  if (track && !trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC
   const key = track && typeof track.albumArtKey === 'string' ? track.albumArtKey : null;
   if (key) {
     for (const ext of ['.jpg', '.png']) {
@@ -9142,6 +9153,7 @@ app.get('/api/home', (req, res) => {
     if (!liked && !inProgress) continue;
     const track = ownTrack(musicNs.tracks, id);
     if (!track) continue;
+    if (!trackVisibleTo(req, track)) continue; // v1.80 RBAC: no restricted track in the feed
     const dur = mp ? Number(mp.duration) : 0;
     kindById.set(id, 'track');
     pctById.set(id, dur > 0 ? (pos / dur) * 100 : 0);
@@ -9528,9 +9540,11 @@ app.get('/api/handoff', (req, res) => {
   const target = resolveHandoffTarget(handoffDb, seen);
   if (!target) return res.json({ presence: null });
   // v1.80 RBAC: never offer a restricted item across devices (e.g. a restriction
-  // added after playback began elsewhere). Media checked here; track/podcast
-  // land with their libraries.
+  // added after playback began elsewhere). Podcast lands with its library.
   if (seen.kind === 'media' && !mediaVisibleTo(req, handoffDb.metadata && handoffDb.metadata[seen.mediaId])) {
+    return res.json({ presence: null });
+  }
+  if (seen.kind === 'track' && !trackVisibleTo(req, ownTrack(musicStore.readMusic(handoffDb).tracks, seen.mediaId))) {
     return res.json({ presence: null });
   }
 
@@ -10338,6 +10352,11 @@ app.get('/api/liked', (req, res) => {
     ...shapedLikedTrackItems(db, req.user.id),
     ...shapedLikedBookItems(db, req.user.id)
   ];
+  // v1.80 RBAC: a restricted track must not ride the Liked view. (Podcast/book
+  // liked filtering lands with their libraries, T6/T7.)
+  const likedMusicNs = musicStore.readMusic(db);
+  // shaped liked items carry `id`, not `mediaId` (see shapedLiked*Items).
+  others = others.filter((o) => o.kind !== 'track' || trackVisibleTo(req, ownTrack(likedMusicNs.tracks, o.id)));
   if (typeof req.query.format === 'string') {
     others = videoQuery.filterByFormat(others, req.query.format);
   }
