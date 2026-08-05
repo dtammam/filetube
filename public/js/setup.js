@@ -1767,16 +1767,10 @@ async function initAccountSection(signal) {
   const chip = document.getElementById('account-chip');
   const logoutBtn = document.getElementById('logout-btn');
   if (!chip || !logoutBtn) return;
-  logoutBtn.addEventListener('click', async () => {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-    } catch (_) { /* the redirect below lands on /login either way */ }
-    // v1.53 gate W4: pins in the capability cache are PER-USER -- a logout
-    // must not let the next login in this tab paint the previous user's
-    // pinned channels for a frame.
-    try { sessionStorage.removeItem('ft-cap-cache-v1'); } catch (_) { /* storage disabled */ }
-    window.location.href = '/login';
-  }, { signal });
+  // v1.82: ONE sign-out implementation, shared with the account menu
+  // (accountSignOut, common.js) - POST /api/auth/logout, clear the per-user
+  // capability cache (v1.53 W4), then land on /login.
+  logoutBtn.addEventListener('click', () => accountSignOut(), { signal });
 
   let me = null;
   try {

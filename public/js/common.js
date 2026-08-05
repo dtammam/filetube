@@ -5626,7 +5626,7 @@ const SHELL_SINGLETON_SELECTORS = [
   'header',
   '#bottom-nav',
   '#menu-toggle',
-  '#theme-toggle-btn',
+  '#account-menu-root', // v1.82: the account menu is shell chrome (injected once)
   '#search-input',
   '#ytdlp-oneoff-btn',
   '#playlists-sheet',
