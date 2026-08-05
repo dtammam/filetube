@@ -4724,6 +4724,10 @@ a.sub-row-channel-link:focus-visible {
     display: none;
   }
   .search-open .header-search { display: block; }
+  /* v1.85.1 (#D): the one-off Download button IS wanted in the mobile top-right
+     (Dean) - exempt it from the v1.82 `.header-right .btn { display:none }` hide.
+     The id selector (1,1,0) beats that rule (0,2,0) regardless of order. */
+  .header-right #ytdlp-oneoff-btn { display: inline-flex; }
   /* v1.85 #1: the magnifier lives in the top-right slot beside the bell/avatar.
      v1.85.1: these three overrides MUST out-specify their base rules, which live
      LATER in the file (.search-toggle-btn ~7623, .account-menu-trigger ~9387,
@@ -7518,9 +7522,10 @@ body.ft-css-fullscreen .bottom-nav {
 /* the one-line filter-chip row */
 .modern-chip-row {
   display: flex;
+  align-items: center; /* v1.85.1 (#C, DEFENSIVE - unconfirmed pending Dean's screenshot): no cross-axis stretch, so a stretched pill's border can't clip at the overflow-x edge. NOTE overflow-x:auto forces overflow-y to compute to auto (spec), so extra bottom padding is the real breathing room. */
   gap: var(--space-4);
   overflow-x: auto;
-  padding: var(--space-6) 0;
+  padding: var(--space-4) 0 var(--space-6);
   margin-bottom: var(--space-4);
 }
 .modern-chip-row::-webkit-scrollbar { display: none; }

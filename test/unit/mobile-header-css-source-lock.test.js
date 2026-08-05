@@ -33,3 +33,10 @@ test('the mobile account dropdown bottom-sheet is scoped under .header-right', (
   assert.match(css, /\.header-right \.account-menu-dropdown \{[^}]*position:\s*fixed/,
     'the mobile bottom-sheet reposition must be .header-right-scoped');
 });
+
+test('(#D) the one-off Download button is un-hidden on mobile via id specificity', () => {
+  // The v1.82 `.header-right .btn { display:none }` (0,2,0) hides it on phones;
+  // the id selector (1,1,0) beats it so the button shows in the top-right.
+  assert.match(css, /\.header-right #ytdlp-oneoff-btn \{\s*display:\s*inline-flex/,
+    'the mobile Download exemption must use the id selector to out-specify the .btn hide');
+});
