@@ -5653,6 +5653,41 @@ app.post('/api/users/:id/subscriptions-flag', (req, res) => {
   return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
 });
 
+// v1.80 RBAC: admin management of a user's library restrictions (blocklist).
+const VALID_RESTRICTION_KINDS = new Set(['path', 'folder', 'show', 'library']);
+const VALID_LIBRARY_VALUES = new Set(['video', 'music', 'podcasts', 'books']);
+const RESTRICTION_VALUE_MAX = 4096;
+
+app.get('/api/users/:id/restrictions', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = resolveTargetUser(req, res);
+  if (!target) return;
+  return res.json({ restrictions: userStore.getRestrictions(target.id) });
+});
+
+// Replace a user's ENTIRE restriction set (the admin UI PUTs the desired set).
+app.put('/api/users/:id/restrictions', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = resolveTargetUser(req, res);
+  if (!target) return;
+  const rows = req.body && Array.isArray(req.body.restrictions) ? req.body.restrictions : null;
+  if (!rows) return res.status(400).json({ error: 'restrictions must be an array' });
+  const clean = [];
+  for (const r of rows) {
+    if (!r || typeof r !== 'object') return res.status(400).json({ error: 'each restriction must be an object' });
+    if (!VALID_RESTRICTION_KINDS.has(r.kind)) return res.status(400).json({ error: `invalid restriction kind '${r.kind}'` });
+    if (typeof r.value !== 'string' || r.value === '' || r.value.length > RESTRICTION_VALUE_MAX) {
+      return res.status(400).json({ error: 'invalid restriction value' });
+    }
+    if (r.kind === 'library' && !VALID_LIBRARY_VALUES.has(r.value)) {
+      return res.status(400).json({ error: `invalid library '${r.value}'` });
+    }
+    clean.push({ kind: r.kind, value: r.value });
+  }
+  userStore.setRestrictions(target.id, clean);
+  return res.json({ success: true, restrictions: userStore.getRestrictions(target.id) });
+});
+
 app.delete('/api/users/:id', (req, res) => {
   if (!requireAdmin(req, res)) return;
   const target = resolveTargetUser(req, res);

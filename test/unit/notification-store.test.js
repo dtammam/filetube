@@ -46,7 +46,7 @@ test('schema v5: notification tables exist on a fresh adapter, and a v4 db forwa
     .all().map((r) => r.name);
   // v1.68: user_notification_dismissals joins the family (schema v8).
   assert.deepEqual(names(), ['notifications', 'user_notification_dismissals', 'user_notification_reads', 'user_notification_state']);
-  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 13);
+  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 14);
 
   // Simulate a v1.50 file: drop the v5 tables, stamp user_version 4, reopen.
   adapter.sql.exec('DROP TABLE user_notification_reads; DROP TABLE user_notification_state; DROP TABLE notifications;');
@@ -55,7 +55,7 @@ test('schema v5: notification tables exist on a fresh adapter, and a v4 db forwa
   adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} });
   store = createUserStore(adapter);
   assert.deepEqual(names(), ['notifications', 'user_notification_dismissals', 'user_notification_reads', 'user_notification_state'], 'v4 -> v8 recreated the tables');
-  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 13);
+  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 14);
 });
 
 test('recordNotifications: valid rows land, garbage is skipped (never coerced), return value counts inserts', () => {
@@ -364,7 +364,7 @@ test('v1.73 schema v12 -> v13: a db stamped 12 without notifications.kind heals 
   const a2 = new SqliteAdapter(dbPath, { log: () => {} });
   const s2 = createUserStore(a2); // statementsFor must not throw (the v12 lesson's canary)
   try {
-    assert.equal(a2.sql.prepare('PRAGMA user_version').get().user_version, 13);
+    assert.equal(a2.sql.prepare('PRAGMA user_version').get().user_version, 14);
     const rows = s2.exportNotificationsForBackup();
     assert.deepEqual(rows, [{ mediaId: 'legacyRow', createdAt: 1000, kind: 'media' }], 'the pre-v13 row reads back as media (the column DEFAULT)');
     s2.recordNotifications([{ mediaId: 'ep1', createdAt: 2000, kind: 'podcast' }]);

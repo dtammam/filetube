@@ -108,7 +108,7 @@ test('schema v10 -> v11 migration: an existing db gains the two tables without t
 
   adapter = new SqliteAdapter(dbPath, { log: () => {} });
   store = createUserStore(adapter);
-  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 13);
+  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 14);
   const admin2 = store.getByUsername('a');
   assert.equal(store.getOneBookProgress(admin2.id, 'bk1').percent, 40, 'pre-existing rows untouched');
   store.addBookLiked(admin2.id, 'bk2', ISO);
