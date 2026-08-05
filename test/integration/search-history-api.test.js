@@ -104,7 +104,6 @@ test('cross-user isolation: one user\'s history never leaks to another', async (
 test('the GET is capped (recent 20), newest kept', async () => {
   for (let i = 0; i < 25; i++) {
     // distinct searched_at ordering: sequential awaits give monotonic ISO stamps
-    // eslint-disable-next-line no-await-in-loop
     await post(`term-${String(i).padStart(2, '0')}`);
   }
   const terms = await list();
