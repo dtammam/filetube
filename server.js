@@ -82,6 +82,7 @@ const booksScan = require('./lib/books/scan');
 const presenceStore = require('./lib/presence/store');
 // v1.44 music library: same direct-require namespace-owner posture as books.
 const musicStore = require('./lib/music/store');
+const homeFeed = require('./lib/home/feed'); // v1.79: pure home-feed row assembler
 const musicScan = require('./lib/music/scan');
 const musicQuery = require('./lib/music/query');
 // v1.38.0 TTS "Listen from Here": pure leaf helpers (env-config parse, engine
@@ -8905,6 +8906,171 @@ app.get('/api/videos', (req, res) => {
   res.json({ items, total, offset, limit });
 });
 
+// v1.79 home feed --------------------------------------------------------------
+//
+// GET /api/home assembles the per-user, YouTube-style row feed. It mirrors
+// v1.78's GET /api/handoff posture exactly: the pure lib/home/feed.js selects
+// ids from LIGHT per-user candidate records; THIS route resolves the selected
+// ids to render fields. The client supplies nothing - every title, thumbnail
+// and href is server-resolved from our own records (an XSS/lie vector
+// otherwise). See docs/exec-plans/active/v1.79-home-feed.md.
+//
+// Scope (intake ruling 6): the two personal-engagement rows (continue-watching,
+// from-liked) MIX all three player-carried kinds - media (video + yt-dlp audio),
+// music tracks, podcast episodes - matching the existing merged Continue-
+// listening row and the mixed Liked playlist. The library-browsing rows
+// (recently-added, new-from-subs, per-channel, watch-again) are the MEDIA
+// library (db.metadata), which already includes yt-dlp MP3s (type:'audio') -
+// the literal ask - while music/podcasts keep their own dedicated surfaces.
+
+// Resolve ONE selected feed id + kind into what a card renders, or null when it
+// is no longer playable (deleted/pruned/trashed/not-downloaded) - a dead-link
+// card is worse than a missing one, so null drops the item (the handoff rule).
+// Named + exported so both the resolution and every not-playable skip are
+// test-bindable (the v1.73 W1 lesson). Own-property checks throughout (the
+// v1.42 __proto__ row-key lesson).
+function resolveHomeItem(db, id, kind, progressPercent) {
+  const enc = encodeURIComponent(id);
+  if (kind === 'track') {
+    const ns = musicStore.readMusic(db);
+    const track = ownTrack(ns.tracks, id);
+    if (!track) return null;
+    return { id, kind, title: track.title || 'Track', subtitle: track.artist || '', thumbnailUrl: `/albumart/${enc}`, href: `/music?play=${enc}`, progressPercent };
+  }
+  if (kind === 'podcast') {
+    const ns = podcastStore.readPodcasts(db);
+    const ep = Object.prototype.hasOwnProperty.call(ns.episodes, id) ? ns.episodes[id] : null;
+    if (!ep || ep.status !== 'downloaded') return null;
+    const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
+    return { id, kind, title: ep.title || 'Episode', subtitle: sub ? sub.name : 'Podcast', thumbnailUrl: `/podcastart/${encodeURIComponent(ep.subId)}`, href: `/podcasts?play=${enc}`, progressPercent };
+  }
+  const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : null;
+  if (!item) return null;
+  return { id, kind: 'media', title: item.title || item.name || 'Video', subtitle: item.folderName || '', thumbnailUrl: `/thumbnail/${enc}`, href: `/watch.html?v=${enc}`, progressPercent };
+}
+
+app.get('/api/home', (req, res) => {
+  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
+  const userId = req.user.id;
+
+  // ---- per-user reads (ONE query each, shared across the candidate build) ----
+  const watchedSet = new Set(userStore.getWatchedIds(userId));
+  const watchedTimes = userStore.getWatchedTimes(userId); // media_id -> completed_at
+  const likedSet = new Set(userStore.getLiked(userId));
+  const progressMap = userStore.getProgress(userId);
+  for (const entry of pendingProgress.values()) {
+    if (entry.userId === userId) progressMap[entry.mediaId] = entry.value; // read-your-writes
+  }
+
+  // Home view hides files under folders the user marked hidden (mirrors
+  // /api/videos' home arm). Opening a folder still shows everything.
+  const folderSettings = db.folderSettings || {};
+  const hiddenFolders = Object.keys(folderSettings).filter((f) => folderSettings[f] && folderSettings[f].hidden);
+  const underFolder = (filePath, folder) => filePath === folder || (typeof filePath === 'string' && (filePath.startsWith(folder + '/') || filePath.startsWith(folder + '\\')));
+
+  // Subscription folder-name set (name-based join; subscriptions are GLOBAL/
+  // shared until the v1.44 RBAC tranche - disclosed in the exec plan). Read the
+  // names straight off the namespace - the feed needs the channel NAMES only,
+  // not the full enriched records the poll path builds.
+  const subsList = db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [];
+  const subNames = new Set(subsList.map((s) => s && s.name).filter(Boolean));
+
+  const records = [];
+  const kindById = new Map();
+  const pctById = new Map();
+  const folderTitles = new Map();
+  const folderHrefs = new Map();
+
+  // ---- MEDIA candidates (db.metadata) ----
+  for (const id of Object.keys(db.metadata || {})) {
+    const item = db.metadata[id];
+    if (!item || typeof item !== 'object') continue;
+    if (hiddenFolders.length && hiddenFolders.some((hf) => underFolder(item.filePath, hf))) continue;
+    const p = Object.prototype.hasOwnProperty.call(progressMap, id) ? progressMap[id] : null;
+    const ts = p ? Number(p.timestamp) : 0;
+    const dur = p ? Number(p.duration) : 0;
+    const pct = dur > 0 ? (ts / dur) * 100 : 0;
+    const watched = watchedSet.has(id);
+    const finished = videoQuery.deriveWatchState(pct, watched) === 'watched';
+    // inProgress matches /api/videos' recent-watching selection exactly: a
+    // saved position and not finished (no divergent floor - consistency with
+    // the already-shipped Continue-watching row).
+    const inProgress = ts > 0 && !finished;
+    const folderKey = item.folderName || null;
+    if (folderKey && !folderTitles.has(folderKey)) {
+      folderTitles.set(folderKey, (typeof item.channelName === 'string' && item.channelName) ? item.channelName : folderKey);
+      folderHrefs.set(folderKey, `/?folder=${encodeURIComponent(folderKey)}`);
+    }
+    kindById.set(id, 'media');
+    pctById.set(id, pct);
+    records.push({
+      id,
+      kind: 'media',
+      inProgress,
+      finished,
+      watched,
+      liked: likedSet.has(id),
+      progressAt: finished ? (watchedTimes[id] || (p && p.updatedAt) || '') : ((p && p.updatedAt) || ''),
+      addedAt: typeof item.addedAt === 'number' ? item.addedAt : 0,
+      folderKey,
+      isSub: !!folderKey && (subNames.has(folderKey) || subNames.has(item.channelName)),
+    });
+  }
+
+  // ---- TRACK candidates (only the ones the mixed rows can use: in-progress
+  // OR liked). Tracks have no watched latch and no channel/sub identity. ----
+  const musicNs = musicStore.readMusic(db);
+  const musicProgress = userStore.getMusicProgress(userId);
+  const musicLiked = new Set(userStore.getMusicLiked(userId));
+  for (const id of Object.keys(musicNs.tracks || {})) {
+    const liked = musicLiked.has(id);
+    const mp = Object.prototype.hasOwnProperty.call(musicProgress, id) ? musicProgress[id] : null;
+    const pos = mp ? Number(mp.position) : 0;
+    const inProgress = pos > 0;
+    if (!liked && !inProgress) continue;
+    const track = ownTrack(musicNs.tracks, id);
+    if (!track) continue;
+    const dur = mp ? Number(mp.duration) : 0;
+    kindById.set(id, 'track');
+    pctById.set(id, dur > 0 ? (pos / dur) * 100 : 0);
+    records.push({ id, kind: 'track', inProgress, finished: false, watched: false, liked, progressAt: (mp && mp.updatedAt) || '', addedAt: typeof track.addedAt === 'number' ? track.addedAt : 0, folderKey: null, isSub: false });
+  }
+
+  // ---- PODCAST candidates (downloaded, in-progress OR liked) ----
+  const podNs = podcastStore.readPodcasts(db);
+  const podProgress = userStore.getPodcastProgress(userId);
+  const podLiked = new Set(userStore.getPodcastLiked(userId).map((l) => l.episodeId));
+  for (const id of Object.keys(podNs.episodes || {})) {
+    const ep = podNs.episodes[id];
+    if (!ep || ep.status !== 'downloaded') continue;
+    const liked = podLiked.has(id);
+    const pp = Object.prototype.hasOwnProperty.call(podProgress, id) ? podProgress[id] : null;
+    const pos = pp ? Number(pp.position) : 0;
+    const inProgress = pos > 0;
+    if (!liked && !inProgress) continue;
+    const dur = pp ? Number(pp.duration) : 0;
+    kindById.set(id, 'podcast');
+    pctById.set(id, dur > 0 ? (pos / dur) * 100 : 0);
+    records.push({ id, kind: 'podcast', inProgress, finished: false, watched: false, liked, progressAt: (pp && pp.updatedAt) || '', addedAt: typeof ep.addedAt === 'number' ? ep.addedAt : 0, folderKey: null, isSub: false });
+  }
+
+  const { rows } = homeFeed.assembleHomeRows({ records, folderTitles, folderHrefs });
+
+  // Resolve each selected id to render fields; drop dead links; drop a row that
+  // resolves empty (all its items vanished).
+  const outRows = [];
+  for (const row of rows) {
+    const items = [];
+    for (const id of row.itemIds) {
+      const resolved = resolveHomeItem(db, id, kindById.get(id) || 'media', pctById.get(id) || 0);
+      if (resolved) items.push(resolved);
+    }
+    if (items.length > 0) outRows.push({ id: row.id, title: row.title, seeAllHref: row.seeAllHref, items });
+  }
+
+  res.json({ rows: outRows });
+});
+
 // v1.47 (Roku playback wave): the channel list the TV's Channels view needs.
 // A "channel" is an item's immediate parent folder (`folderName` -- the same
 // identity `GET /api/videos?folder=` filters by); display name and avatar
@@ -15038,6 +15204,7 @@ module.exports = {
   // into the next test file's expectations. Every handoff test clears it in
   // beforeEach.
   resolveHandoffTarget,
+  resolveHomeItem,
   isFinishedPresence,
   HANDOFF_FINISHED_PCT,
   __presenceForTests: presence,
