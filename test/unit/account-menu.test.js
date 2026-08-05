@@ -106,6 +106,20 @@ test('injectAccountMenu: click toggles the dropdown; outside-click + Escape clos
   assert.strictEqual(menu.hidden, true, 'Escape closes');
 });
 
+test('injectAccountMenu: the Theme item glyph reflects the current mode and updates on toggle', async () => {
+  const common = fresh({ user: { id: 1, displayName: 'Dean', role: 'admin', avatar: { present: false } } });
+  global.document.documentElement.setAttribute('data-mode', 'light');
+  common.injectAccountMenu();
+  await tick();
+  const icon = global.document.getElementById('account-menu-theme-icon');
+  assert.ok(icon, 'the theme item icon carries the sync id');
+  assert.strictEqual(icon.className, 'icon-moon', 'light mode shows the moon (switch-to-dark)');
+  // Flip to dark and re-sync (applyTheme calls updateAccountMenuThemeItem).
+  global.document.documentElement.setAttribute('data-mode', 'dark');
+  common.updateAccountMenuThemeItem();
+  assert.strictEqual(icon.className, 'icon-sun', 'dark mode shows the sun');
+});
+
 test('injectAccountMenu: a signed-out shell (401 me) injects nothing', async () => {
   const { injectAccountMenu } = fresh(null);
   injectAccountMenu();

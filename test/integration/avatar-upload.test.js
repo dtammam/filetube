@@ -92,6 +92,13 @@ test('T1 (S1): magic-byte + type validation - forged PNG, an SVG, and an empty b
   assert.strictEqual((await fetch(`${base}/api/users/${admin.user.id}/avatar`)).headers.get('content-type'), 'image/jpeg');
 });
 
+test('T1 (gate S2): an UPPERCASE Content-Type is accepted (MIME is case-insensitive)', async () => {
+  const admin = await me();
+  const res = await fetch(`${base}/api/me/avatar`, { method: 'POST', headers: { 'Content-Type': 'IMAGE/PNG' }, body: TINY_PNG });
+  assert.strictEqual(res.status, 200, 'IMAGE/PNG is the same allowlisted type as image/png');
+  assert.strictEqual((await fetch(`${base}/api/users/${admin.user.id}/avatar`)).headers.get('content-type'), 'image/png');
+});
+
 test('T1 (S1): an oversized body is rejected 413', async () => {
   const big = Buffer.concat([TINY_PNG, Buffer.alloc(1024 * 1024 + 10)]); // > 1 MB cap
   const res = await fetch(`${base}/api/me/avatar`, { method: 'POST', headers: { 'Content-Type': 'image/png' }, body: big });

@@ -7971,7 +7971,9 @@ app.post(
   '/api/me/avatar',
   express.raw({ type: Object.keys(AVATAR_TYPES), limit: AVATAR_MAX_BYTES }),
   (req, res) => {
-    const mime = (req.headers['content-type'] || '').split(';')[0].trim();
+    // MIME types are case-insensitive (RFC 2045); express.raw's type-is already
+    // matched case-insensitively, so lowercase before the allowlist check.
+    const mime = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
     if (!Object.prototype.hasOwnProperty.call(AVATAR_TYPES, mime)) {
       return res.status(400).json({ error: 'Photo must be a PNG, JPEG, or WebP image' });
     }

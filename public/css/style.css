@@ -4597,10 +4597,8 @@ a.sub-row-channel-link:focus-visible {
   .header-right {
     gap: var(--space-3);
   }
-  /* Settings is reachable from the sidebar menu — reclaim header space on phones */
-  .header-right .btn {
-    display: none;
-  }
+  /* v1.82: the header Settings .btn was removed (Settings lives in the account
+     menu now), so this phone-space reclaim rule has nothing left to hide. */
 
   /* ---- Mobile app shell: bottom nav ------------------------------------ */
   .bottom-nav {
@@ -9253,21 +9251,17 @@ body.ft-css-fullscreen .bottom-nav {
 }
 
 @media (max-width: 768px) {
-  /* Re-show .header-right as a bell-only top-right slot (the mobile header
-     restructure hides the whole container; Settings' .btn is already
-     hidden by the 3584 rule). Absolute against the fixed header, aligned
-     with the logo row. DEVICE PROBE: logo-row collision + safe-area. */
+  /* Re-show .header-right as the top-right slot for the notification bell + the
+     v1.82 account-menu avatar (the mobile header restructure hides the whole
+     container otherwise). Absolute against the fixed header, aligned with the
+     logo row. DEVICE PROBE: logo-row collision + safe-area. */
   header .header-right {
     display: flex;
     position: absolute;
     top: calc(10px + env(safe-area-inset-top)); /* token-exempt: positional geometry (Stop A Batch A) */
     right: 10px; /* token-exempt: positional geometry (Stop A Batch A) */
-    gap: var(--space-3); /* v1.82: room between the bell and the avatar */
+    gap: var(--space-3); /* room between the bell and the avatar */
     align-items: center;
-  }
-
-  header .header-right .theme-toggle {
-    display: none;
   }
 
   .notif-panel-backdrop:not([hidden]) {

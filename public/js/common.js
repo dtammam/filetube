@@ -58,12 +58,9 @@ function applyTheme(era, mode) {
     localStorage.setItem('ft-era', era);
     localStorage.setItem('ft-mode', mode);
   } catch (_) { /* storage disabled (private mode/sandbox) — attributes still applied */ }
-  const btn = document.getElementById('theme-toggle-btn');
-  if (btn) {
-    btn.innerHTML = mode === 'dark'
-      ? '<i class="icon-sun"></i>'
-      : '<i class="icon-moon"></i>';
-  }
+  // v1.82: light/dark now lives in the account menu (the header #theme-toggle-btn
+  // was removed) and the bottom-nav theme item - keep both glyphs in sync.
+  if (typeof updateAccountMenuThemeItem === 'function') updateAccountMenuThemeItem();
   if (typeof updateNavThemeItem === 'function') updateNavThemeItem();
 }
 
@@ -4066,7 +4063,15 @@ const BOTTOM_NAV_OPTIONAL = ['home', 'liked', 'playlists', 'history', 'podcasts'
 // but never appears until Settings enables it - Dean's ruling for podcasts,
 // v1.72 gave music/books/downloads the same opt-in posture, and v1.75 gives it
 // to `liked` (ruling R3): nobody's bar changes under them on upgrade.
-const BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts', 'music', 'books', 'downloads', 'liked'];
+// v1.82: `settings` + `theme` join the default-hidden set - they now live in the
+// account menu (avatar, top-right, on every shell incl. mobile), so the DEFAULT
+// bar no longer carries them. They STAY in BOTTOM_NAV_OPTIONAL, so a user can
+// still opt them back in from the Settings customizer (Dean: "opt in in the
+// sense that one can optionally add it to the bottom bar"). An existing untouched
+// default bar loses them here (Dean-approved); a user who explicitly opted one in
+// (`shown`) keeps it. The COMPAT_TAIL pin below still tails `settings` IF
+// re-shown, so its position is unchanged when opted in.
+const BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts', 'music', 'books', 'downloads', 'liked', 'settings', 'theme'];
 
 // v1.75 COMPAT (the load-bearing subtlety of this wave). Every config written
 // before this release predates `home`/`settings` being sortable, so no such
@@ -5047,10 +5052,15 @@ function injectAccountMenu() {
     menu.appendChild(history);
     menu.appendChild(settings);
 
-    // Theme: the same light/dark toggle the header button used to drive.
+    // Theme: the same light/dark toggle the header button used to drive. The
+    // glyph reflects the current mode and updates on toggle (updateAccountMenu-
+    // ThemeItem, called from applyTheme) - tag the icon so it can be found.
     const theme = buildAccountMenuRow('button', 'Theme', 'icon-moon');
+    const themeIcon = theme.querySelector('i');
+    if (themeIcon) themeIcon.id = 'account-menu-theme-icon';
     theme.addEventListener('click', () => { toggleTheme(); });
     menu.appendChild(theme);
+    updateAccountMenuThemeItem(); // initial glyph from the current data-mode
 
     menu.appendChild(accountMenuDivider());
 
@@ -8014,6 +8024,15 @@ function updateNavThemeItem() {
   if (label) label.textContent = dark ? 'Light' : 'Dark';
 }
 
+// v1.82: the account menu's Theme row glyph reflects the current mode (sun in
+// dark, moon in light), updated on every toggle exactly like the bottom-nav item.
+function updateAccountMenuThemeItem() {
+  const icon = document.getElementById('account-menu-theme-icon');
+  if (!icon) return;
+  const dark = document.documentElement.getAttribute('data-mode') === 'dark';
+  icon.className = dark ? 'icon-sun' : 'icon-moon';
+}
+
 // Global modal dialog helpers
 //
 // v1.26.2 code-review fix (F2, MAJOR): pre-wave, `teardown()` removed the
@@ -10688,11 +10707,10 @@ document.addEventListener('DOMContentLoaded', () => {
       mainContent.classList.toggle('expanded');
     });
   }
-  
-  const themeToggleBtn = document.getElementById('theme-toggle-btn');
-  if (themeToggleBtn) {
-    themeToggleBtn.addEventListener('click', toggleTheme);
-  }
+
+  // v1.82: the header #theme-toggle-btn was removed - light/dark now lives in the
+  // account menu (injectAccountMenu) and the bottom-nav theme item, which own
+  // their own click wiring. Nothing to wire here anymore.
 
   // Shell-owned header search box (C1 remediation, v1.16.0): #search-input/
   // #search-btn live in the PERSISTENT shell (outside #view-root) on every
@@ -10863,8 +10881,9 @@ if (typeof module !== 'undefined' && module.exports) {
     formatBreakerChipText,
     getStarRating, getCommentCount, resolveChannelName, clampPositionState,
     resolveTheme, THEME_REGISTRY, activeNavItem,
-    // v1.82: the account menu injector + avatar builder + shared sign-out.
-    injectAccountMenu, buildAccountAvatarEl, accountSignOut,
+    // v1.82: the account menu injector + avatar builder + shared sign-out +
+    // theme-glyph sync.
+    injectAccountMenu, buildAccountAvatarEl, accountSignOut, updateAccountMenuThemeItem,
     // v1.78 device handoff: the UA label table. Pure, and exactly the kind of
     // roster that rots silently - every arm is pinned by node:test.
     resolveDeviceLabel,
