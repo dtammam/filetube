@@ -1661,6 +1661,19 @@ function wireStaticControls(signal) {
   wireHomeRowToggle('home-continue-listening-check', 'ft-home-continue-listening', signal);
   wireHomeRowToggle('home-continue-reading-check', 'ft-home-continue-reading', signal);
 
+  // v1.79: the home-feed vs classic-grid toggle. Unlike the device-local row
+  // toggles above, this is a PER-USER server-synced pref (the stars mirror
+  // pattern): applyHomeFeedPref writes localStorage AND mirrors to the account.
+  // Prefill from the current device value; the async boot seed re-reflects the
+  // checkbox itself if the server value lands after this wires (fresh device).
+  const homeFeedCheck = document.getElementById('home-feed-check');
+  if (homeFeedCheck) {
+    homeFeedCheck.checked = homeFeedEnabled();
+    homeFeedCheck.addEventListener('change', () => {
+      applyHomeFeedPref(homeFeedCheck.checked ? 'on' : 'off', { mirror: true });
+    }, { signal });
+  }
+
   // Size-cap input: 'change' (fires on blur/Enter, not per keystroke) is a
   // natural debounce for a free-typed number field. Blank -> null ("use the
   // default"); a non-empty value that isn't a valid positive number is

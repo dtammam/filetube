@@ -80,6 +80,77 @@
 
 ## Shipped
 
+### v1.79.0 - Home feed: a library with a YouTube feel (2026-08-05)
+
+Dean's ask: a YouTube-style home feed - horizontal rows of "Continue watching,"
+"New from your subscriptions," "Recently added," "More from X" - as an OPT-IN
+mode, leaving the classic sortable file grid available and unchanged. The
+thesis, verbatim: "What's new in the LIBRARY, not what's new to watch. It's a
+library thing with a YouTube feel," not a YouTube clone.
+
+**What it is.** A per-user, opt-in feed mode. Six deterministic, labeled rows
+(no recommender, no collaborative filtering): Continue watching -> New from your
+subscriptions -> Recently added -> More from <your top channels> -> From your
+Liked -> Watch again. The two personal-engagement rows (continue, liked) MIX all
+three player-carried kinds (video, music tracks, podcast episodes); the
+library-browsing rows are the media library (which already includes yt-dlp
+MP3s - the literal "mixed media" ask). Feed replaces the BARE home only -
+drilling into a folder / search / liked view stays the classic grid, which is
+exactly where each row's "See all ->" lands.
+
+**Architecture (mirrors v1.78 handoff).** A pure leaf assembler
+(`lib/home/feed.js`) selects ids from light per-user candidate records - no DB,
+no request, no rendering, no threshold hardcoded. A new per-user `GET /api/home`
+gathers the per-user reads, calls the assembler, and resolves the <=48 selected
+ids to render fields SERVER-side (`resolveHomeItem`) - the client supplies
+nothing, so a client-injected title/href is impossible. The classic render path
+is byte-unchanged; feed mode is a purely additive branch in the home view gated
+by a per-user `homeFeed` setting ('on'/'off'). The setting is OFF (=> classic)
+for existing installs and SEEDED 'on' at user creation, so net-new setups get
+the feed out of the box while nobody's existing home changes silently.
+
+**What the gate caught (full two-reviewer gate; both APPROVE across two rounds,
+every fix mutation-proven).** The adversarial seat found a real BLOCKING
+CRITICAL: the full `npm test` suite was RED - the net-new-user seed broke a
+pre-existing "fresh user starts empty" integration assertion, and it slipped
+because the pre-commit hook runs the UNIT suite only, so every commit was
+locally green while an integration test stayed red. Fixed, and recorded as the
+lesson: run the FULL suite after any user-creation/settings change. It also
+caught that the T4 client-render path shipped coverage-free (now unit-bound,
+escaping mutation-proven) and that the AC7 `__proto__` security test was VACUOUS
+(object-literal `__proto__` sets the prototype and doesn't survive JSON, so the
+hostile item never became a candidate - rebuilt with a genuine own key). QA
+caught a "New from subscriptions" row that could show only-watched items (now
+hidden when nothing is unseen) and a blank-home-on-fetch-error case. Every named
+attack surface - cross-user bleed, prototype pollution, client-supplied trust,
+dead-link offers, classic regression, setting injection, empty/degenerate, and
+the jsdom boot-leak that bit v1.78.1 - was measured and held.
+
+**An honest mid-build correction.** The store has NO per-item view count
+(`user_watched` is a boolean latch), so the intake's "Popular in your library"
+row had no data to stand on. Rather than fabricate a number, it became "From
+your Liked" (a real per-user signal), and per-channel rows rank by COUNT of
+completed items - the truest "most-watched" the store actually carries.
+
+**Known gaps / disclosed:**
+- **"New from your subscriptions" is GLOBAL until RBAC.** Subscriptions are
+  shared (not per-user) until the v1.44 tranche builds per-user lists, so this
+  row is really "new from THE subscriptions" today; it becomes genuinely
+  per-user for free when RBAC lands. Continue-watching, per-channel, From-Liked
+  and Watch-again are already truly per-user (progress is per-user since v1.43).
+- **No live browser visual smoke** - the client render path is bound by unit
+  tests (builders + escaping) and integration tests (the data contract), and
+  the reviewers verified classic-mode is byte-unchanged, but the actual
+  four-skin + mobile render is DEAN'S DEVICE PASS to confirm (residual #124).
+- **First load on a brand-new device** shows classic once before the async
+  cross-device seed lands, then self-corrects (the same one-time race the stars
+  pref accepts). Feed mode also hides the home Rescan/Shuffle toolbar (toggle to
+  classic or use Settings). Residual #123.
+
+**Suites:** full `npm test` green on BOTH Node v22.23.1 (6259/6259) and v24.14.0
+(6259/6259), 0 fail. **Dean's device pass PENDING** (the on-device probe list is
+in the wave report).
+
 ### v1.78.1 - The test suite runs again (2026-08-05)
 
 The follow-up branch Dean asked for right after v1.78.0: "fix this leak." It

@@ -287,6 +287,46 @@ function bootStarRatingsPref() {
   }
 }
 
+// ---- v1.79: the home feed vs classic-grid toggle ---------------------------
+//
+// Same mirror posture as the stars pref: localStorage is the DEVICE truth, the
+// user record is the CROSS-DEVICE seed. Default OFF (absent -> classic) so
+// existing installs are byte-unchanged; net-new accounts are seeded 'on'
+// server-side (NEW_USER_DEFAULT_SETTINGS in server.js) so new setups get the
+// feed out of the box. homeFeedEnabled() is read SYNCHRONOUSLY by main.js at
+// home-view init - on a brand-new device the async seed below may not have
+// landed yet, so the very first bare-home paint is classic and self-corrects on
+// the next navigation (the identical one-time race the stars seed accepts).
+const HOME_FEED_VALUES = ['on', 'off'];
+
+function homeFeedEnabled() {
+  try { return localStorage.getItem('ft-home-feed') === 'on'; } catch (_) { return false; }
+}
+
+function applyHomeFeedPref(value, opts) {
+  const v = value === 'on' ? 'on' : 'off';
+  try { localStorage.setItem('ft-home-feed', v); } catch (_) { /* storage off - session only */ }
+  if (typeof document !== 'undefined') {
+    const check = document.getElementById('home-feed-check');
+    if (check) check.checked = v === 'on'; // re-reflect when the async seed lands after wiring
+  }
+  if (opts && opts.mirror) mirrorUserSetting({ homeFeed: v });
+}
+
+// Boot seed - its OWN fetch-sharing path, deliberately NOT folded under
+// pullMirroredDisplayPrefs' all-four-chosen early return (the v1.63.1 scar
+// where a seed placed below that return never ran on customized devices).
+async function bootHomeFeedPref() {
+  let stored = null;
+  try { stored = localStorage.getItem('ft-home-feed'); } catch (_) { return; /* no storage */ }
+  if (stored !== null) return; // the device has already chosen -> homeFeedEnabled reads it
+  if (typeof fetch !== 'function') return;
+  const me = await fetchCurrentUser(); // shared, memoized
+  if (!me) return;                      // signed-out/offline: classic stands
+  const s = me.settings || {};
+  if (HOME_FEED_VALUES.includes(s.homeFeed)) applyHomeFeedPref(s.homeFeed); // seed, no mirror
+}
+
 // ---- F1: deterministic avatar fallback (v1.24.0, T3; identicon glyph C3/T12) -
 //
 // Replaces the old "first letter on a fixed color" uploader/channel avatar
@@ -10422,6 +10462,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // prefs are locally chosen (see applyLibraryGlyphs' comment; that early
   // return is what made v1.63.1's stars seed dead on customized devices).
   initLibraryGlyphs();
+  bootHomeFeedPref(); // v1.79: seed the home-feed toggle from the user record (own path, like glyphs)
   // v1.78 device handoff: the offer card. Mounted on <body> by the controller
   // (never #view-root) and owning exactly ONE poll interval for the life of
   // the page - booted here, once, alongside the other shell-level injectors.

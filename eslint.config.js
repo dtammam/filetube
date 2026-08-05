@@ -184,6 +184,10 @@ module.exports = [
         // toggle reflects + fires it).
         shouldShowStarRatings: 'readonly',
         applyStarRatingsPref: 'readonly',
+        // v1.79: the home-feed toggle (common.js owns it; main.js reads it at
+        // home init, setup.js's toggle reflects + mirrors it).
+        homeFeedEnabled: 'readonly',
+        applyHomeFeedPref: 'readonly',
         // v1.41.10 (QA gate): shared delete-outcome -> toast-message mapper
         // (common.js), used by both delete flows (main.js cards + watch.js).
         deleteResultToast: 'readonly',

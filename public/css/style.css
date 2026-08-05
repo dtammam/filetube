@@ -7447,6 +7447,19 @@ body.ft-css-fullscreen .bottom-nav {
    buildBooksHomeSectionHtml). Horizontal scroller of compact portrait
    covers; era tokens only. Renders nothing at all on books-less installs
    (the builder returns '' for an empty list). */
+/* v1.79 home feed: feed mode (bare home + toggle on) hides the classic grid and
+   its toolbar and shows the server-assembled rows. The rows reuse
+   .books-home-row below, so no new row CSS is needed - only the mode switch and
+   the empty state. All four era skins inherit via tokens (no per-era rule). */
+.home-feed-mode .section-title,
+.home-feed-mode #video-grid { display: none; }
+#home-feed-host { display: block; }
+.home-feed-empty {
+  padding: var(--space-10);
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
 .books-home-row { margin-bottom: var(--space-8); }
 .books-home-row-header {
   display: flex;
