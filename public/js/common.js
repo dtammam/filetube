@@ -324,6 +324,53 @@ async function bootHomeFeedPref() {
   if (HOME_FEED_VALUES.includes(s.homeFeed)) applyHomeFeedPref(s.homeFeed); // seed, no mirror
 }
 
+// ---- v1.84: Modern YouTube Mode toggle -------------------------------------
+//
+// A THIRD home-layout option (a flat big-tile grid with a filter-chip row and,
+// on mobile, a recent-uploader avatar bar), orthogonal to the era themes. Same
+// mirror posture as homeFeed: localStorage is the DEVICE truth, the user record
+// the CROSS-DEVICE seed. Default OFF (absent -> not modern) so existing installs
+// are byte-unchanged and NEW_USER_DEFAULT_SETTINGS is NOT touched. Unlike
+// homeFeed, this also reflects a `data-modern` attribute on <html> so the CSS
+// can restyle the grid without a paint of the classic look first.
+// modernModeEnabled() is read SYNCHRONOUSLY by main.js at home-view init;
+// precedence is modern > feed > classic.
+const MODERN_MODE_VALUES = ['on', 'off'];
+
+function modernModeEnabled() {
+  try { return localStorage.getItem('ft-modern-mode') === 'on'; } catch (_) { return false; }
+}
+
+function applyModernModePref(value, opts) {
+  const v = value === 'on' ? 'on' : 'off';
+  try { localStorage.setItem('ft-modern-mode', v); } catch (_) { /* storage off - session only */ }
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-modern', v);
+    const check = document.getElementById('modern-mode-check');
+    if (check) check.checked = v === 'on'; // re-reflect when the async seed lands after wiring
+  }
+  if (opts && opts.mirror) mirrorUserSetting({ modernMode: v });
+}
+
+// Boot: reflect the device's known value onto <html> IMMEDIATELY (no fetch, no
+// flash), then - only if the device has never chosen - seed from the user
+// record on its OWN fetch-sharing path (the same v1.63.1 scar the home-feed
+// seed sidesteps: a seed under pullMirroredDisplayPrefs' early return never ran
+// on customized devices).
+async function bootModernModePref() {
+  let stored = null;
+  try { stored = localStorage.getItem('ft-modern-mode'); } catch (_) { stored = null; }
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-modern', stored === 'on' ? 'on' : 'off');
+  }
+  if (stored !== null) return; // the device has chosen -> modernModeEnabled reads it
+  if (typeof fetch !== 'function') return;
+  const me = await fetchCurrentUser(); // shared, memoized
+  if (!me) return;                      // signed-out/offline: not-modern stands
+  const s = me.settings || {};
+  if (MODERN_MODE_VALUES.includes(s.modernMode)) applyModernModePref(s.modernMode); // seed, no mirror
+}
+
 // ---- F1: deterministic avatar fallback (v1.24.0, T3; identicon glyph C3/T12) -
 //
 // Replaces the old "first letter on a fixed color" uploader/channel avatar
@@ -10900,6 +10947,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // return is what made v1.63.1's stars seed dead on customized devices).
   initLibraryGlyphs();
   bootHomeFeedPref(); // v1.79: seed the home-feed toggle from the user record (own path, like glyphs)
+  bootModernModePref(); // v1.84: reflect + seed the Modern-mode toggle (own path, sets data-modern)
   // v1.78 device handoff: the offer card. Mounted on <body> by the controller
   // (never #view-root) and owning exactly ONE poll interval for the life of
   // the page - booted here, once, alongside the other shell-level injectors.
@@ -11102,6 +11150,11 @@ if (typeof module !== 'undefined' && module.exports) {
     formatQueuePosition,
     // v1.63.1: the stars pref's pure decision.
     shouldShowStarRatings,
+    // v1.84: Modern-mode pref - exported so the apply/boot USE (the data-modern
+    // attribute, localStorage, checkbox reflect, cross-device seed) is jsdom-
+    // bound, not asserted as a source pattern (the "a decision is not its use"
+    // strike this repo keeps taking).
+    modernModeEnabled, applyModernModePref, bootModernModePref, MODERN_MODE_VALUES,
     // v1.31 P5 (FR5): repull-ack formatter.
     formatRepullAckText,
     // v1.32 (gate fix): the chip's one-line breaker summary.

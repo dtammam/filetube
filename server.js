@@ -5511,6 +5511,9 @@ const MIRRORED_SETTING_KEYS = new Set([
   // v1.79: the home-feed vs classic-grid toggle. Stored as the bounded string
   // 'on'/'off' like pushEnabled/starRatings (the value regex below bounds it).
   'homeFeed',
+  // v1.84: Modern YouTube Mode - a third home layout (flat big-tile grid +
+  // chips + mobile avatar bar). Same bounded 'on'/'off' string; absent => off.
+  'modernMode',
   ...glyphPool.LIBRARY_GLYPH_SLOTS.map((s) => s.key),
 ]);
 

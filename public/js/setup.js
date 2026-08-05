@@ -1674,6 +1674,18 @@ function wireStaticControls(signal) {
     }, { signal });
   }
 
+  // v1.84: Modern YouTube Mode - same per-user server-synced posture as the
+  // home-feed toggle above (applyModernModePref writes localStorage, sets
+  // data-modern on <html>, AND mirrors to the account). Prefill from the device
+  // value; the async boot seed re-reflects if the server value lands later.
+  const modernModeCheck = document.getElementById('modern-mode-check');
+  if (modernModeCheck) {
+    modernModeCheck.checked = modernModeEnabled();
+    modernModeCheck.addEventListener('change', () => {
+      applyModernModePref(modernModeCheck.checked ? 'on' : 'off', { mirror: true });
+    }, { signal });
+  }
+
   // Size-cap input: 'change' (fires on blur/Enter, not per keystroke) is a
   // natural debounce for a free-typed number field. Blank -> null ("use the
   // default"); a non-empty value that isn't a valid positive number is
