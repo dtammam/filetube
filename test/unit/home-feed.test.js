@@ -16,19 +16,18 @@ const {
   selectRecentlyAdded,
   rankChannelFolders,
   selectChannelRow,
-  selectPopular,
+  selectFromLiked,
   selectWatchAgain,
   HOME_ROW_CAP,
   MAX_CHANNEL_ROWS,
-  POPULAR_MIN_ITEMS,
 } = require('../../lib/home/feed');
 
 // A record with sane defaults; override per test.
 function rec(over) {
   return Object.assign({
     id: 'x', kind: 'media',
-    inProgress: false, finished: false, watched: false,
-    progressAt: '', addedAt: 0, watchCount: 0, folderKey: null, isSub: false,
+    inProgress: false, finished: false, watched: false, liked: false,
+    progressAt: '', likedAt: '', addedAt: 0, folderKey: null, isSub: false,
   }, over);
 }
 
@@ -116,20 +115,24 @@ test('recently-added: excludes ids already shown above (top-cluster dedup)', () 
 // rankChannelFolders + selectChannelRow
 // ---------------------------------------------------------------------------
 
-test('rankChannelFolders: by total watch count desc, zero-signal folders dropped', () => {
+test('rankChannelFolders: by count of watched items desc, zero-signal folders dropped', () => {
   const ranked = rankChannelFolders([
-    rec({ id: 'a', folderKey: 'F1', watchCount: 2 }),
-    rec({ id: 'b', folderKey: 'F1', watchCount: 3 }), // F1 total = 5
-    rec({ id: 'c', folderKey: 'F2', watchCount: 4 }), // F2 total = 4
-    rec({ id: 'd', folderKey: 'F3', watchCount: 0 }), // F3 = 0 -> dropped
-    rec({ id: 'e', folderKey: null, watchCount: 9 }), // no folder -> ignored
+    rec({ id: 'a', folderKey: 'F1', watched: true }),
+    rec({ id: 'b', folderKey: 'F1', watched: true }),  // F1 count = 2
+    rec({ id: 'g', folderKey: 'F1', watched: false }), // unwatched -> no signal
+    rec({ id: 'c', folderKey: 'F2', watched: true }),  // F2 count = 1
+    rec({ id: 'd', folderKey: 'F3', watched: false }), // F3 = 0 -> dropped
+    rec({ id: 'e', folderKey: null, watched: true }),  // no folder -> ignored
   ], 3);
   assert.deepEqual(ranked, ['F1', 'F2']);
 });
 
 test('rankChannelFolders: capped at maxRows', () => {
   const records = [];
-  for (let i = 0; i < 6; i++) records.push(rec({ id: `id${i}`, folderKey: `F${i}`, watchCount: 6 - i }));
+  // 6 folders, each with a distinct watched-count so the ranking is total.
+  for (let i = 0; i < 6; i++) {
+    for (let j = 0; j <= 6 - i; j++) records.push(rec({ id: `id${i}-${j}`, folderKey: `F${i}`, watched: true }));
+  }
   assert.equal(rankChannelFolders(records, MAX_CHANNEL_ROWS).length, MAX_CHANNEL_ROWS);
 });
 
@@ -143,25 +146,22 @@ test('selectChannelRow: only that folder, newest first', () => {
 });
 
 // ---------------------------------------------------------------------------
-// selectPopular
+// selectFromLiked
 // ---------------------------------------------------------------------------
 
-test('popular: most-watched desc, watchCount>0 only', () => {
-  const ids = selectPopular([
-    rec({ id: 'a', watchCount: 1 }),
-    rec({ id: 'b', watchCount: 5 }),
-    rec({ id: 'c', watchCount: 3 }),
-    rec({ id: 'z', watchCount: 0 }), // excluded
+test('from-liked: liked items only, most-recently-liked first', () => {
+  const ids = selectFromLiked([
+    rec({ id: 'a', liked: true, likedAt: '2026-08-01T00:00:00Z' }),
+    rec({ id: 'b', liked: true, likedAt: '2026-08-05T00:00:00Z' }),
+    rec({ id: 'c', liked: true, likedAt: '2026-08-03T00:00:00Z' }),
+    rec({ id: 'z', liked: false, likedAt: '2026-08-09T00:00:00Z' }), // not liked -> excluded
   ], 8);
   assert.deepEqual(ids, ['b', 'c', 'a']);
 });
 
-test('popular: hidden below the item floor', () => {
-  const few = [];
-  for (let i = 0; i < POPULAR_MIN_ITEMS - 1; i++) few.push(rec({ id: `id${i}`, watchCount: 1 }));
-  assert.deepEqual(selectPopular(few, 8), []);
-  few.push(rec({ id: 'extra', watchCount: 1 }));
-  assert.equal(selectPopular(few, 8).length, POPULAR_MIN_ITEMS);
+test('from-liked: a single favorite is enough (no floor)', () => {
+  assert.deepEqual(selectFromLiked([rec({ id: 'only', liked: true, likedAt: '2026-08-01T00:00:00Z' })], 8), ['only']);
+  assert.deepEqual(selectFromLiked([rec({ id: 'none', liked: false })], 8), []);
 });
 
 // ---------------------------------------------------------------------------
@@ -192,18 +192,19 @@ test('assemble: omits empty rows entirely', () => {
 
 test('assemble: full feed keeps the fixed row order', () => {
   const records = [
-    rec({ id: 'cw', inProgress: true, progressAt: '2026-08-05T00:00:00Z', addedAt: 50, folderKey: 'F1', watchCount: 4 }),
-    rec({ id: 'sub', isSub: true, watched: false, addedAt: 40, folderKey: 'F1', watchCount: 1 }),
-    rec({ id: 'ra', addedAt: 30, folderKey: 'F1', watchCount: 2 }),
-    rec({ id: 'fin', finished: true, progressAt: '2026-08-02T00:00:00Z', addedAt: 20, folderKey: 'F1', watchCount: 5 }),
+    rec({ id: 'cw', inProgress: true, progressAt: '2026-08-05T00:00:00Z', addedAt: 50, folderKey: 'F1', watched: true }),
+    rec({ id: 'sub', isSub: true, watched: false, addedAt: 40, folderKey: 'F1' }),
+    rec({ id: 'ra', addedAt: 30, folderKey: 'F1', watched: true }),
+    rec({ id: 'lik', liked: true, likedAt: '2026-08-03T00:00:00Z', addedAt: 25, folderKey: 'F1', watched: true }),
+    rec({ id: 'fin', finished: true, progressAt: '2026-08-02T00:00:00Z', addedAt: 20, folderKey: 'F1', watched: true }),
   ];
   const { rows } = assembleHomeRows({ records });
   const order = rows.map((r) => r.id);
-  // continue -> subs -> recently -> channel(s) -> popular -> watch-again
+  // continue -> subs -> recently -> channel(s) -> from-liked -> watch-again
   assert.ok(order.indexOf('continue-watching') < order.indexOf('new-from-subs'));
   assert.ok(order.indexOf('new-from-subs') < order.indexOf('recently-added'));
-  assert.ok(order.indexOf('recently-added') < order.indexOf('popular'));
-  assert.ok(order.indexOf('popular') < order.indexOf('watch-again'));
+  assert.ok(order.indexOf('recently-added') < order.indexOf('from-liked'));
+  assert.ok(order.indexOf('from-liked') < order.indexOf('watch-again'));
   assert.ok(order.some((id) => id.startsWith('channel:')));
 });
 
@@ -220,7 +221,7 @@ test('assemble: recently-added dedups against continue + subs', () => {
 
 test('assemble: channel row uses the provided title + href', () => {
   const records = [];
-  for (let i = 0; i < 3; i++) records.push(rec({ id: `id${i}`, folderKey: 'UC123', addedAt: 10 + i, watchCount: 2 }));
+  for (let i = 0; i < 3; i++) records.push(rec({ id: `id${i}`, folderKey: 'UC123', addedAt: 10 + i, watched: true }));
   const { rows } = assembleHomeRows({
     records,
     folderTitles: new Map([['UC123', 'Cool Channel']]),
