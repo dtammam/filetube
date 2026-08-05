@@ -206,6 +206,20 @@ test('T4: /api/channels flags subscribed channels (isSub) for the avatar bar', a
   assert.strictEqual(sub.latestAddedAt, 900, 'latestAddedAt carries the recency the bar sorts by');
 });
 
+test('#3a: /api/channels resolves the avatar from the channelId registry, not just the baked field', async () => {
+  // The channel's videos bake NO channelAvatarUrl, but the registry (what the
+  // Subscriptions menu + per-card avatar use) has the photo. The bar must show it.
+  const CHID = 'UC-lHJZR3Gqxm24_Vd_AJ5Yw'; // valid UC + 22-char shape
+  seed(
+    { r1: item('r1', { folderName: 'Reg', channelName: 'Reg', channelId: CHID, channelAvatarUrl: '' }) },
+    { ytdlp: { allowMembersOnly: false, subscriptions: [{ name: 'Reg', order: 0 }], channelAvatars: { [CHID]: { avatarUrl: 'https://cdn/reg.jpg', channelUrl: '', fetchedAt: 1 } } } },
+  );
+  const { channels } = await (await fetch(`${base}/api/channels`)).json();
+  const reg = channels.find((c) => c.folder === 'Reg');
+  assert.strictEqual(reg.avatarUrl, 'https://cdn/reg.jpg', 'the registry photo shows even though items baked no URL (Dean: Subs shows it, the bar did not)');
+  assert.strictEqual(reg.isSub, true);
+});
+
 test('the 60-item cap is DISCLOSED via truncated:true, never silent', async () => {
   const meta = {};
   for (let i = 0; i < 65; i++) meta[`m${i}`] = item(`m${i}`, { addedAt: 1000 + i });

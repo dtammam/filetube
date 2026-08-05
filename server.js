@@ -9558,7 +9558,18 @@ app.get('/api/channels', (req, res) => {
     // carries the same scan-captured values, so "first" is not a lottery.
     if (g.name === g.folder && typeof item.channelName === 'string' && item.channelName !== '') g.name = item.channelName;
     if (!g.isSub && (subNames.has(item.folderName) || subNames.has(item.channelName))) g.isSub = true;
-    if (!g.avatarUrl && typeof item.channelAvatarUrl === 'string' && item.channelAvatarUrl !== '') g.avatarUrl = item.channelAvatarUrl;
+    // v1.85 (#3a): resolve through the channelId-keyed registry (the SAME chain
+    // the Subscriptions menu + per-card avatar use), not just the baked
+    // item.channelAvatarUrl. A subscribed channel whose videos never baked the
+    // URL still gets its real photo in the avatar bar (Dean: "Subs shows the
+    // avatar but the bar doesn't").
+    if (!g.avatarUrl) {
+      // resolveItemChannelAvatarUrl checks the baked item.channelAvatarUrl FIRST
+      // (step 1), then the channelId/URL registry - so this one call subsumes
+      // the old baked-field-only assignment.
+      const resolvedAvatar = ytdlp.resolveItemChannelAvatarUrl(db, item);
+      if (resolvedAvatar) g.avatarUrl = resolvedAvatar;
+    }
     if (typeof item.addedAt === 'number' && item.addedAt > g.latestAddedAt) g.latestAddedAt = item.addedAt;
   }
   // localeCompare: a consistent comparator (gate S4 -- the previous one
