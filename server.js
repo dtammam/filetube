@@ -5464,7 +5464,13 @@ app.post('/api/auth/logout', (req, res) => {
 // FRESH device pulls from before localStorage has anything (locked intake
 // #6: localStorage stays the immediate, device-local source of truth).
 app.get('/api/auth/me', (req, res) => {
-  return res.json({ user: publicUser(req.user), settings: parseUserSettings(req.user) });
+  // v1.82: the account menu reads `user.avatar` to render the photo (or fall
+  // back to an initials monogram). Kept off publicUser (which stays a pure
+  // projection) and merged here where the fs lookup belongs.
+  return res.json({
+    user: { ...publicUser(req.user), avatar: avatarInfo(req.user.id) },
+    settings: parseUserSettings(req.user),
+  });
 });
 
 function parseUserSettings(user) {
@@ -5820,6 +5826,7 @@ app.delete('/api/users/:id', (req, res) => {
   // guarantees the id is never reused, so any still-valid cookie for it can
   // never inherit a future account (design-delta SUGGESTION-6).
   userStore.deleteUser(target.id);
+  unlinkAvatar(target.id); // v1.82: no orphaned profile image for a reaped id
   return res.json({ success: true });
 });
 
@@ -7899,6 +7906,110 @@ app.delete('/api/settings/logo', async (req, res) => {
   return res.json({ ok: true });
 });
 
+// ---- v1.82: per-user profile avatar -----------------------------------------
+// Disk-only, mirroring the custom-logo upload/serve pattern above, but PER USER
+// and with NO persisted metadata (so no schema/settings change): the file's
+// presence IS the state, its mtime is the cache-bust version, and the serve
+// route sniffs the real mime from magic bytes. An unset avatar -> the client
+// renders an initials monogram.
+const AVATAR_MAX_BYTES = 1024 * 1024;
+const AVATARS_DIR = path.join(DATA_DIR, 'avatars');
+// Own allowlist + magic-byte sniffers (an intentional copy of the logo's, per
+// the same "let the two features diverge" note at CUSTOM_LOGO_TYPES): a profile
+// photo and the instance logo are unrelated.
+const AVATAR_TYPES = {
+  'image/png': (buf) => buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47,
+  'image/jpeg': (buf) => buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff,
+  'image/webp': (buf) => buf.length > 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP',
+};
+function avatarPath(userId) {
+  // userId is always a validated positive integer at every call site, so the
+  // join can never traverse out of AVATARS_DIR.
+  return path.join(AVATARS_DIR, `${userId}.bin`);
+}
+// Presence + an mtime the client cache-busts the <img> with (?v=<version>).
+function avatarInfo(userId) {
+  try {
+    const st = fs.statSync(avatarPath(userId));
+    return { present: true, version: Math.floor(st.mtimeMs) };
+  } catch {
+    return { present: false, version: 0 };
+  }
+}
+function sniffAvatarMime(buf) {
+  for (const mime of Object.keys(AVATAR_TYPES)) {
+    if (AVATAR_TYPES[mime](buf)) return mime;
+  }
+  return null;
+}
+// Remove a user's avatar file - called on the user-delete cascade so a reaped
+// (and never-reused) id leaves no orphaned image. Best-effort.
+function unlinkAvatar(userId) {
+  try { fs.unlinkSync(avatarPath(userId)); } catch { /* absent -- fine */ }
+}
+
+// Serve any user's avatar by id (a profile photo is low-sensitivity: the header
+// fetches the CURRENT user's; the admin Users list may show others'). Numeric id
+// only -> no path traversal. 404 when unset OR corrupt (never serve junk bytes).
+app.get('/api/users/:id/avatar', (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(404).json({ error: 'No avatar' });
+  let bytes;
+  try { bytes = fs.readFileSync(avatarPath(id)); }
+  catch { return res.status(404).json({ error: 'No avatar' }); }
+  const mime = sniffAvatarMime(bytes);
+  if (!mime) return res.status(404).json({ error: 'No avatar' });
+  res.setHeader('Content-Type', mime);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'no-cache'); // the client cache-busts via ?v=<mtime>
+  return res.send(bytes);
+});
+
+// Upload the CURRENT user's avatar. Self-service by design: there is NO by-id
+// write route, so a member can only ever set their own photo.
+app.post(
+  '/api/me/avatar',
+  express.raw({ type: Object.keys(AVATAR_TYPES), limit: AVATAR_MAX_BYTES }),
+  (req, res) => {
+    const mime = (req.headers['content-type'] || '').split(';')[0].trim();
+    if (!Object.prototype.hasOwnProperty.call(AVATAR_TYPES, mime)) {
+      return res.status(400).json({ error: 'Photo must be a PNG, JPEG, or WebP image' });
+    }
+    const bytes = req.body;
+    if (!Buffer.isBuffer(bytes) || bytes.length === 0) {
+      return res.status(400).json({ error: 'Empty upload' });
+    }
+    if (!AVATAR_TYPES[mime](bytes)) {
+      return res.status(400).json({ error: 'File content does not match its image type' });
+    }
+    const target = avatarPath(req.user.id);
+    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+    try {
+      fs.mkdirSync(AVATARS_DIR, { recursive: true });
+      fs.writeFileSync(tmp, bytes);
+      fs.renameSync(tmp, target); // atomic replace
+    } catch (err) {
+      try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* best-effort */ }
+      console.error('Error saving avatar:', err);
+      return res.status(500).json({ error: `Could not save photo: ${err.message}` });
+    }
+    return res.json({ ok: true, avatar: avatarInfo(req.user.id) });
+  },
+  // Oversized body -> clean JSON 413 (mirrors the logo route's mapping).
+  (err, req, res, next) => {
+    if (err && (err.type === 'entity.too.large' || err.status === 413)) {
+      return res.status(413).json({ error: 'Photo too large (max 1 MB)' });
+    }
+    return next(err);
+  }
+);
+
+// Remove the current user's avatar -> back to the initials monogram.
+app.delete('/api/me/avatar', (req, res) => {
+  unlinkAvatar(req.user.id);
+  return res.json({ ok: true, avatar: { present: false, version: 0 } });
+});
+
 // ---- v1.42: instance backup / restore ---------------------------------------
 // The migrator and this machinery are one system (exec plan): the bundle is a
 // schema-versioned JSON snapshot of EVERY persisted namespace plus the custom
@@ -8270,6 +8381,12 @@ app.post('/api/admin/restore', (req, res, next) => {
   if (restoresUsers) {
     const restoredSelf = userStore.getByUsername(req.user.username);
     if (restoredSelf) issueSessionCookie(res, req, restoredSelf);
+    // v1.82 (S4): avatars are disk-only and NOT carried in the bundle, and a
+    // users-replacing restore reassigns ids to possibly-different identities -
+    // so wipe every stored avatar to avoid a stale photo bleeding onto the
+    // reassigned id. Restored users revert to the initials monogram (honest:
+    // their photos were never in the backup). Best-effort.
+    try { fs.rmSync(AVATARS_DIR, { recursive: true, force: true }); } catch { /* absent -- fine */ }
   }
   res.json({ success: true, restoredNamespaces: Object.keys(dbPart), usersRestored: restoresUsers ? bundle.users.length : 0 });
 }, (err, req, res, next) => {

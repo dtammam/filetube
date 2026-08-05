@@ -55,6 +55,8 @@ const CLASSIFICATION = {
   'POST /api/queue/pointer': 'personal',
   'POST /api/queue/reorder': 'personal',
   'POST /api/me/settings': 'personal',
+  'POST /api/me/avatar': 'personal', // v1.82: self-service profile photo (own state)
+  'DELETE /api/me/avatar': 'personal',
   'POST /api/notifications/clear': 'personal',
   'POST /api/notifications/dismiss': 'personal',
   'POST /api/notifications/read': 'personal',
