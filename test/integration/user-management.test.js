@@ -237,7 +237,10 @@ test('/api/me/settings: allowlisted keys round-trip via /api/auth/me, per-user i
   assert.equal((await json('POST', '/api/users', { username: 'mirroruser', password: 'password123' })).status, 201);
   const otherCookie = await login('mirroruser', 'password123');
   const other = await (await json('GET', '/api/auth/me', undefined, otherCookie)).json();
-  assert.deepEqual(other.settings, {}, 'a fresh user starts with no mirrored prefs');
+  // v1.79: a net-new account (POST /api/users) is seeded the home-feed default
+  // so new setups get the YouTube-style feed out of the box. That is the only
+  // seeded key; every other mirrored pref still starts absent.
+  assert.deepEqual(other.settings, { homeFeed: 'on' }, 'a fresh user is seeded only the v1.79 home-feed default');
   assert.equal((await json('POST', '/api/me/settings', { theme: 'light' }, otherCookie)).status, 200);
   const mineAfter = await (await json('GET', '/api/auth/me')).json();
   assert.equal(mineAfter.settings.theme, 'dark', 'another user\'s write never touches mine');

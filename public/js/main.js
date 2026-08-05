@@ -283,7 +283,10 @@ async function renderHomeFeed(host, signal) {
     host.innerHTML = rows.map(buildFeedRowHtml).join('');
   } catch (err) {
     if (err && err.name === 'AbortError') return;
-    host.innerHTML = '';
+    // QA gate SUGGESTION: feed mode hides the classic grid, so a thrown fetch
+    // error must not leave a fully blank home - render a message with the way
+    // back to the classic grid, never an empty surface.
+    host.innerHTML = '<div class="home-feed-empty">Could not load your home feed. Try again, or switch to the classic grid in Settings.</div>';
   }
 }
 
@@ -497,6 +500,8 @@ if (typeof module !== 'undefined' && module.exports) {
     buildPodcastRowCardHtml,
     buildVideoRowCardHtml,
     buildVideoHomeSectionHtml,
+    buildFeedCardHtml,
+    buildFeedRowHtml,
     homeRowEnabled,
     migrateListeningRowPref,
     resolveCardCornerPrefs,

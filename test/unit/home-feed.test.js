@@ -58,6 +58,16 @@ test('continue-watching: spans all three kinds', () => {
   assert.deepEqual(ids, ['p', 't', 'v']);
 });
 
+test('sort tiebreak: equal keys resolve in ASCENDING id order (bound direction)', () => {
+  // Adversarial gate SUGGESTION-2: the tiebreak DIRECTION was unbound - flipping
+  // it survived every test. Same progressAt for both -> id ascending decides.
+  const ids = selectContinueWatching([
+    rec({ id: 'zzz', inProgress: true, progressAt: '2026-08-01T00:00:00Z' }),
+    rec({ id: 'aaa', inProgress: true, progressAt: '2026-08-01T00:00:00Z' }),
+  ], 8);
+  assert.deepEqual(ids, ['aaa', 'zzz']);
+});
+
 test('continue-watching: honors the cap', () => {
   const many = [];
   for (let i = 0; i < 20; i++) many.push(rec({ id: `id${i}`, inProgress: true, progressAt: `2026-08-01T00:00:${String(i).padStart(2, '0')}Z` }));
@@ -86,6 +96,20 @@ test('new-from-subs: within a watched-class, newest first', () => {
     rec({ id: 'c', isSub: true, watched: false, addedAt: 20 }),
   ], 8);
   assert.deepEqual(ids, ['b', 'c', 'a']);
+});
+
+test('new-from-subs: hidden when every subscription item is already watched', () => {
+  // QA gate WARNING: a "New from subscriptions" row of only-watched items is a
+  // mislabel. No unseen item -> no row.
+  assert.deepEqual(selectNewFromSubs([
+    rec({ id: 'a', isSub: true, watched: true, addedAt: 30 }),
+    rec({ id: 'b', isSub: true, watched: true, addedAt: 20 }),
+  ], 8), []);
+  // ...but one unseen item resurfaces the row (with the watched ones trailing).
+  assert.deepEqual(selectNewFromSubs([
+    rec({ id: 'a', isSub: true, watched: true, addedAt: 30 }),
+    rec({ id: 'fresh', isSub: true, watched: false, addedAt: 5 }),
+  ], 8), ['fresh', 'a']);
 });
 
 // ---------------------------------------------------------------------------

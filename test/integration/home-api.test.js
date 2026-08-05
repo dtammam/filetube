@@ -205,13 +205,27 @@ test('AC6: two users share a library but get different personal rows', async () 
 // AC7 - prototype safety
 // ---------------------------------------------------------------------------
 
-test('AC7: a __proto__ media id flows through as data, never pollutes', async () => {
-  seed({ __proto__: item('__proto__', { addedAt: 9 }), real: item('real', { addedAt: 5 }) });
+test('AC7: a GENUINE own __proto__ media id never pollutes and never phantoms', async () => {
+  // Adversarial gate SUGGESTION-1: an object-LITERAL `__proto__` key sets the
+  // prototype (not an own key) and does not survive JSON, so the old fixture
+  // never became a candidate - it proved nothing. Build the real hostile case:
+  // an OWN "__proto__" key (JSON.parse makes it own, and it survives
+  // saveDatabase's JSON round-trip) carrying a booby-trapped title.
+  const md = JSON.parse('{"real":' + JSON.stringify(item('real', { addedAt: 5 }))
+    + ',"__proto__":' + JSON.stringify(item('__proto__', { addedAt: 9, title: 'PWNED' })) + '}');
+  seed(md);
   const { status, body } = await getHome();
-  assert.strictEqual(status, 200);
+  assert.strictEqual(status, 200, 'the hostile own key must not crash the route');
+  // The booby-trapped title must NOT have leaked onto Object.prototype.
+  assert.strictEqual(({}).title, undefined, 'Object.prototype was not polluted');
+  assert.strictEqual(({}).PWNED, undefined);
+  // The legitimate item still resolves; a prototype-chain-only id ('constructor',
+  // never seeded) must never appear as a phantom card in any row.
   const ra = rowOf(body, 'recently-added');
   assert.ok(ra.items.some((i) => i.id === 'real'));
-  assert.strictEqual({}.polluted, undefined);
+  for (const row of body.rows) {
+    assert.ok(!row.items.some((i) => i.id === 'constructor'), 'no phantom from the prototype chain');
+  }
 });
 
 // ---------------------------------------------------------------------------
