@@ -256,6 +256,20 @@ test('assemble: channel row uses the provided title + href', () => {
   assert.equal(row.seeAllHref, '/?folder=UC123');
 });
 
+test('assemble: See-all hrefs land on WORKING classic destinations (v1.79.1)', () => {
+  const records = [
+    rec({ id: 'sub', isSub: true, watched: false, addedAt: 40 }),
+    rec({ id: 'ra', addedAt: 30 }),
+    rec({ id: 'lik', liked: true, addedAt: 20 }),
+  ];
+  const { rows } = assembleHomeRows({ records });
+  // NOT /subscriptions (management page), NOT bare '/' (re-shows the feed), NOT
+  // /playlists (404) - each escapes the feed into a real classic browse.
+  assert.strictEqual(rowById(rows, 'new-from-subs').seeAllHref, '/?subs=1');
+  assert.strictEqual(rowById(rows, 'recently-added').seeAllHref, '/?browse=1');
+  assert.strictEqual(rowById(rows, 'from-liked').seeAllHref, '/?liked=1');
+});
+
 test('assemble: default cap is HOME_ROW_CAP; a custom cap is honored', () => {
   const records = [];
   for (let i = 0; i < 20; i++) records.push(rec({ id: `id${i}`, addedAt: i }));
