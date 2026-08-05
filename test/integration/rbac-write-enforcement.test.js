@@ -73,6 +73,9 @@ const WRITE_ROUTES = [
   ['POST', '/api/videos/vid/move', { targetFolder: 'Other' }],
   ['POST', '/api/videos/vid/chapters', { text: '0:00 Intro' }],
   ['POST', '/api/videos/vid/attribute-channel', { channelUrl: 'https://youtube.com/@x' }],
+  // gate fix round: the BULK attribute sibling + its cancel (both were ungated).
+  ['POST', '/api/videos/attribute-channel-bulk', { preview: false }],
+  ['POST', '/api/videos/attribute-channel-bulk/cancel', undefined],
   ['POST', '/api/trash/t1/restore', undefined],
   ['DELETE', '/api/trash/t1', undefined],
   ['POST', '/api/scan', undefined],

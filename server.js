@@ -5981,6 +5981,13 @@ app.get('/api/config', (req, res) => {
 
 // API: Save folder configuration
 app.post('/api/config', async (req, res) => {
+  // v1.81 write-RBAC (gate CRITICAL): library-folder configuration is an
+  // admin/setup concern (like user-management + backup/restore). It was
+  // member-reachable and, with pruneMissing, a member POSTing an empty/edited
+  // folder list could WIPE the library index - strictly more destructive than
+  // the scan route this wave already gated. GET stays open (the sidebar needs
+  // it); only the mutating POST is admin-gated.
+  if (!requireAdmin(req, res)) return;
   const { folders, folderSettings } = req.body;
   if (!Array.isArray(folders)) {
     return res.status(400).json({ error: 'folders must be an array of paths' });
@@ -6401,6 +6408,7 @@ app.get('/api/books/config', (req, res) => {
 });
 
 app.post('/api/books/config', async (req, res) => {
+  if (!requireAdmin(req, res)) return; // v1.81 write-RBAC (gate CRITICAL): library config is admin-only
   const { folders } = req.body || {};
   if (!Array.isArray(folders) || !folders.every((f) => typeof f === 'string' && f.trim() !== '')) {
     return res.status(400).json({ error: 'folders must be an array of non-empty strings' });
@@ -7374,6 +7382,7 @@ app.get('/api/music/config', (req, res) => {
 });
 
 app.post('/api/music/config', async (req, res) => {
+  if (!requireAdmin(req, res)) return; // v1.81 write-RBAC (gate CRITICAL): library config is admin-only
   const { folders } = req.body || {};
   if (!Array.isArray(folders) || !folders.every((f) => typeof f === 'string' && f.trim() !== '')) {
     return res.status(400).json({ error: 'folders must be an array of non-empty strings' });
@@ -7816,6 +7825,9 @@ app.post(
   '/api/settings/logo',
   express.raw({ type: Object.keys(CUSTOM_LOGO_TYPES), limit: CUSTOM_LOGO_MAX_BYTES }),
   async (req, res) => {
+    // v1.81 write-RBAC (forcing-net find): the instance logo is global/admin
+    // config - the upload sibling of the now-admin-gated DELETE.
+    if (!requireAdmin(req, res)) return;
     const mime = (req.headers['content-type'] || '').split(';')[0].trim();
     if (!Object.prototype.hasOwnProperty.call(CUSTOM_LOGO_TYPES, mime)) {
       return res.status(400).json({ error: 'Logo must be image/png, image/jpeg, or image/webp' });
@@ -7865,6 +7877,7 @@ app.post(
 
 // Reset to the default text logo.
 app.delete('/api/settings/logo', async (req, res) => {
+  if (!requireAdmin(req, res)) return; // v1.81 write-RBAC (gate CRITICAL): the instance logo is global/admin config
   // v1.33.1: variant-scoped -- DELETE ?variant=dark removes only the dark
   // variant; the plain DELETE keeps its v1.32 meaning (the light/default one).
   const variant = resolveLogoVariant(req.query.variant);
@@ -8289,6 +8302,7 @@ app.get('/api/settings', (req, res) => {
 // keys are accepted; an unrecognized key is rejected too, keeping db.settings
 // free of arbitrary/typo'd keys.
 app.post('/api/settings', async (req, res) => {
+  if (!requireAdmin(req, res)) return; // v1.81 write-RBAC (gate CRITICAL): global instance settings are admin-only (per-user prefs go via /api/me/settings)
   const body = req.body || {};
   // v1.41.6 DELIBERATE key-set change (this list is locked by
   // test/unit/database.test.js's DEFAULT_SETTINGS deep-equal and
@@ -14360,6 +14374,13 @@ function confineBulkRoot(db, rawRoot) {
 }
 
 app.post('/api/videos/attribute-channel-bulk', async (req, res) => {
+  // v1.81 write-RBAC (gate CRITICAL): the BULK sibling of the single-item
+  // attribute-channel is a content mutation too - it rewrites channel identity
+  // across a whole root and, with relocate:true, MOVES files on disk. It was
+  // missed by the initial enumeration (the every-writer scar: gating one route
+  // is not enough). First guard, incl. the preview dry-run (no reason to preview
+  // a bulk op you cannot perform).
+  if (!requireModifyLibrary(req, res)) return;
   const body = req.body || {};
   const preview = body.preview === true;
   const relocate = body.relocate === true;
@@ -14486,6 +14507,9 @@ app.post('/api/videos/attribute-channel-bulk', async (req, res) => {
 // items; already-moved files stay moved (honest: a cancel is "stop", never
 // "undo"), and the resume selector makes a later re-run finish the rest.
 app.post('/api/videos/attribute-channel-bulk/cancel', (req, res) => {
+  // v1.81 write-RBAC (gate WARNING): a capability-less member must not be able
+  // to abort an admin's in-flight bulk-attribution job (cross-user interference).
+  if (!requireModifyLibrary(req, res)) return;
   if (!attributeBulkInProgress) return res.json({ cancelled: false, running: false });
   attributeBulkCancelled = true;
   res.json({ cancelled: true, running: true });
