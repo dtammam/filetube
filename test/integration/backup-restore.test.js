@@ -142,6 +142,26 @@ test('AC6: backup -> wipe -> restore -> deep-equal (every namespace round-trips;
   assert.deepEqual(loadDatabase(), beforeState, 'restored state deep-equals the pre-wipe load');
 });
 
+test('v1.82 (gate S4 binding): a users-restoring restore WIPES stored avatars (no reassigned-id photo bleed)', async () => {
+  saveDatabase(fullState());
+  // Upload the acting admin's avatar through the real route.
+  const up = await fetch(`${base}/api/me/avatar`, { method: 'POST', headers: { 'Content-Type': 'image/png' }, body: PNG_BYTES });
+  assert.equal(up.status, 200);
+  const avatarsDir = path.join(DATA_DIR, 'avatars');
+  assert.ok(fs.existsSync(avatarsDir) && fs.readdirSync(avatarsDir).length >= 1, 'precondition: an avatar file exists on disk');
+
+  // Avatars are NOT carried in the bundle, and a users-restoring restore
+  // reassigns ids to possibly-different identities - so the restore must WIPE
+  // the avatars dir, or a reassigned id would inherit the previous occupant's
+  // face (cross-identity photo bleed). Binds the restore half of S4 (the
+  // delete-cascade half is bound in avatar-upload.test.js).
+  const bundle = await getBackup();
+  assert.ok(Array.isArray(bundle.users) && bundle.users.length >= 1, 'the bundle carries users');
+  const res = await postRestore(bundle);
+  assert.equal(res.status, 200);
+  assert.ok(!fs.existsSync(avatarsDir) || fs.readdirSync(avatarsDir).length === 0, 'the avatars dir was wiped by the users-restoring restore');
+});
+
 test('logo bytes round-trip: upload -> backup -> delete -> restore brings back bytes AND mime; absent variant unlinks stale bin (F6)', async () => {
   saveDatabase(fullState());
   // Upload a light logo through the real route (magic-byte sniffer included).

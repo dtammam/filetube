@@ -1767,16 +1767,10 @@ async function initAccountSection(signal) {
   const chip = document.getElementById('account-chip');
   const logoutBtn = document.getElementById('logout-btn');
   if (!chip || !logoutBtn) return;
-  logoutBtn.addEventListener('click', async () => {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-    } catch (_) { /* the redirect below lands on /login either way */ }
-    // v1.53 gate W4: pins in the capability cache are PER-USER -- a logout
-    // must not let the next login in this tab paint the previous user's
-    // pinned channels for a frame.
-    try { sessionStorage.removeItem('ft-cap-cache-v1'); } catch (_) { /* storage disabled */ }
-    window.location.href = '/login';
-  }, { signal });
+  // v1.82: ONE sign-out implementation, shared with the account menu
+  // (accountSignOut, common.js) - POST /api/auth/logout, clear the per-user
+  // capability cache (v1.53 W4), then land on /login.
+  logoutBtn.addEventListener('click', () => accountSignOut(), { signal });
 
   let me = null;
   try {
@@ -1789,6 +1783,38 @@ async function initAccountSection(signal) {
   }
   const roleLabel = me.user.role === 'admin' ? 'admin' : 'member';
   chip.textContent = `Signed in as ${me.user.displayName || me.user.username} (${roleLabel})`;
+
+  // v1.82: profile photo (Settings->Account entry point; the account menu's
+  // "Change photo" hits the SAME POST /api/me/avatar). Remove shows only when a
+  // photo is set. The header avatar refreshes on the next page load.
+  const photoInput = document.getElementById('account-photo-input');
+  const photoUpload = document.getElementById('account-photo-upload');
+  const photoRemove = document.getElementById('account-photo-remove');
+  if (photoInput && photoUpload && photoRemove) {
+    const setHasPhoto = (present) => { photoRemove.hidden = !present; };
+    setHasPhoto(!!(me.user.avatar && me.user.avatar.present));
+    photoUpload.addEventListener('click', () => photoInput.click(), { signal });
+    photoInput.addEventListener('change', async () => {
+      const file = photoInput.files && photoInput.files[0];
+      photoInput.value = ''; // allow re-picking the same file
+      if (!file) return;
+      try {
+        const res = await fetch('/api/me/avatar', { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(body.error || 'Could not update your photo.'); return; }
+        setHasPhoto(true);
+        showToast('Photo updated.');
+      } catch (_) { showToast('Could not update your photo (network error).'); }
+    }, { signal });
+    photoRemove.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/me/avatar', { method: 'DELETE' });
+        if (!res.ok) { showToast('Could not remove your photo.'); return; }
+        setHasPhoto(false);
+        showToast('Photo removed.');
+      } catch (_) { showToast('Could not remove your photo (network error).'); }
+    }, { signal });
+  }
 
   if (me.user.role === 'admin') {
     const usersBox = document.getElementById('users-box');

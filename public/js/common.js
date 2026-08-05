@@ -58,12 +58,9 @@ function applyTheme(era, mode) {
     localStorage.setItem('ft-era', era);
     localStorage.setItem('ft-mode', mode);
   } catch (_) { /* storage disabled (private mode/sandbox) — attributes still applied */ }
-  const btn = document.getElementById('theme-toggle-btn');
-  if (btn) {
-    btn.innerHTML = mode === 'dark'
-      ? '<i class="icon-sun"></i>'
-      : '<i class="icon-moon"></i>';
-  }
+  // v1.82: light/dark now lives in the account menu (the header #theme-toggle-btn
+  // was removed) and the bottom-nav theme item - keep both glyphs in sync.
+  if (typeof updateAccountMenuThemeItem === 'function') updateAccountMenuThemeItem();
   if (typeof updateNavThemeItem === 'function') updateNavThemeItem();
 }
 
@@ -4066,7 +4063,15 @@ const BOTTOM_NAV_OPTIONAL = ['home', 'liked', 'playlists', 'history', 'podcasts'
 // but never appears until Settings enables it - Dean's ruling for podcasts,
 // v1.72 gave music/books/downloads the same opt-in posture, and v1.75 gives it
 // to `liked` (ruling R3): nobody's bar changes under them on upgrade.
-const BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts', 'music', 'books', 'downloads', 'liked'];
+// v1.82: `settings` + `theme` join the default-hidden set - they now live in the
+// account menu (avatar, top-right, on every shell incl. mobile), so the DEFAULT
+// bar no longer carries them. They STAY in BOTTOM_NAV_OPTIONAL, so a user can
+// still opt them back in from the Settings customizer (Dean: "opt in in the
+// sense that one can optionally add it to the bottom bar"). An existing untouched
+// default bar loses them here (Dean-approved); a user who explicitly opted one in
+// (`shown`) keeps it. The COMPAT_TAIL pin below still tails `settings` IF
+// re-shown, so its position is unchanged when opted in.
+const BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts', 'music', 'books', 'downloads', 'liked', 'settings', 'theme'];
 
 // v1.75 COMPAT (the load-bearing subtlety of this wave). Every config written
 // before this release predates `home`/`settings` being sortable, so no such
@@ -4890,6 +4895,202 @@ function triggerLibraryRescanAndRefresh(fetchImpl, reloadFn) {
 // `/api/subscriptions/health`; a 404 (module disabled) or a network failure
 // means this function creates nothing at all -- the header/bottom-nav stay
 // byte-identical to a disabled install (AC3.3/ACX.1).
+// ---- v1.82: the account menu ------------------------------------------------
+//
+// An avatar (the user's uploaded photo, else a deterministic initials monogram
+// via deriveAvatar) in `.header-right` on every shared-header shell, opening a
+// dropdown: account (name + role), Change photo, Liked, History, Settings, a
+// light/dark Theme toggle, and Sign out. It consolidates the old header Settings
+// link + theme toggle (removed in T3). Injected once per shell (a re-run no-ops
+// on the id guard); reads the memoized /api/auth/me, and a signed-out shell
+// (login/welcome, where /api/auth/me is 401) injects nothing.
+
+// Shared sign-out (also used by the Settings page's button): drop the per-user
+// capability cache so the next login in this tab can't paint the previous user's
+// pinned channels for a frame (the v1.53 W4 scar), then land on /login.
+function accountSignOut() {
+  const done = () => {
+    try { sessionStorage.removeItem('ft-cap-cache-v1'); } catch (_) { /* storage disabled */ }
+    window.location.href = '/login';
+  };
+  fetch('/api/auth/logout', { method: 'POST' }).then(done, done);
+}
+
+// The avatar visual: the uploaded photo (cache-busted by its mtime version) when
+// present, else the initials monogram + deterministic palette colour. `big` is
+// the larger variant shown in the dropdown header.
+function buildAccountAvatarEl(user, big) {
+  const el = document.createElement('span');
+  el.className = 'account-avatar' + (big ? ' account-avatar-lg' : '');
+  const avatar = user && user.avatar;
+  if (avatar && avatar.present) {
+    const img = document.createElement('img');
+    img.src = `/api/users/${user.id}/avatar?v=${avatar.version || 0}`;
+    img.alt = '';
+    el.appendChild(img);
+  } else {
+    const d = deriveAvatar((user && (user.displayName || user.username)) || '');
+    el.textContent = d.glyph;
+    el.style.backgroundColor = d.color; // runtime palette value (not a literal -- census-safe)
+  }
+  return el;
+}
+
+function buildAccountMenuRow(tag, label, iconClass) {
+  const row = document.createElement(tag);
+  row.className = 'account-menu-item';
+  row.setAttribute('role', 'menuitem');
+  if (tag === 'button') row.type = 'button';
+  if (iconClass) {
+    const i = document.createElement('i');
+    i.className = iconClass;
+    i.setAttribute('aria-hidden', 'true');
+    row.appendChild(i);
+  }
+  const span = document.createElement('span');
+  span.textContent = label;
+  row.appendChild(span);
+  return row;
+}
+
+function accountMenuDivider() {
+  const hr = document.createElement('div');
+  hr.className = 'account-menu-divider';
+  hr.setAttribute('role', 'separator');
+  return hr;
+}
+
+function injectAccountMenu() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
+  const headerRight = document.querySelector('.header-right');
+  if (!headerRight || document.getElementById('account-menu-root')) return;
+
+  fetchCurrentUser().then((me) => {
+    if (!me || !me.user) return; // signed-out shell -- inject nothing
+    if (document.getElementById('account-menu-root')) return; // re-check after the await (overlap guard)
+    const user = me.user;
+
+    const root = document.createElement('div');
+    root.className = 'account-menu';
+    root.id = 'account-menu-root';
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'account-menu-trigger';
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.setAttribute('aria-label', 'Account menu');
+    trigger.title = user.displayName || user.username || 'Account';
+    let triggerAvatar = buildAccountAvatarEl(user);
+    trigger.appendChild(triggerAvatar);
+    root.appendChild(trigger);
+
+    const menu = document.createElement('div');
+    menu.className = 'account-menu-dropdown';
+    menu.setAttribute('role', 'menu');
+    menu.hidden = true;
+
+    // Header: large avatar + name + role.
+    const head = document.createElement('div');
+    head.className = 'account-menu-head';
+    let headAvatar = buildAccountAvatarEl(user, true);
+    head.appendChild(headAvatar);
+    const who = document.createElement('div');
+    who.className = 'account-menu-who';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'account-menu-name';
+    nameEl.textContent = user.displayName || user.username || 'Account';
+    const roleEl = document.createElement('div');
+    roleEl.className = 'account-menu-role';
+    roleEl.textContent = user.role === 'admin' ? 'Admin' : 'Member';
+    who.appendChild(nameEl);
+    who.appendChild(roleEl);
+    head.appendChild(who);
+    menu.appendChild(head);
+
+    // Change photo: a hidden file input driven by a menu item. On pick, upload to
+    // /api/me/avatar and re-render BOTH avatars (cache-busted) on success.
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/png,image/jpeg,image/webp';
+    fileInput.hidden = true;
+    const refreshAvatars = (avatarInfo) => {
+      user.avatar = avatarInfo;
+      const t2 = buildAccountAvatarEl(user);
+      trigger.replaceChild(t2, triggerAvatar);
+      triggerAvatar = t2;
+      const h2 = buildAccountAvatarEl(user, true);
+      head.replaceChild(h2, headAvatar);
+      headAvatar = h2;
+    };
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files && fileInput.files[0];
+      fileInput.value = ''; // allow re-picking the same file later
+      if (!file) return;
+      try {
+        const res = await fetch('/api/me/avatar', { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(body.error || 'Could not update your photo.'); return; }
+        refreshAvatars(body.avatar);
+        showToast('Photo updated.');
+      } catch (_) {
+        showToast('Could not update your photo (network error).');
+      }
+    });
+    const changePhoto = buildAccountMenuRow('button', 'Change photo', 'icon-photo');
+    changePhoto.addEventListener('click', () => fileInput.click());
+    menu.appendChild(changePhoto);
+    menu.appendChild(fileInput);
+
+    menu.appendChild(accountMenuDivider());
+
+    // Quick links (plain hrefs -- a full navigation, like the bottom-nav items).
+    const liked = buildAccountMenuRow('a', 'Liked', 'icon-heart'); liked.href = '/?liked=1';
+    const history = buildAccountMenuRow('a', 'History', 'icon-history'); history.href = '/history';
+    const settings = buildAccountMenuRow('a', 'Settings', 'icon-cog'); settings.href = '/setup.html';
+    menu.appendChild(liked);
+    menu.appendChild(history);
+    menu.appendChild(settings);
+
+    // Theme: the same light/dark toggle the header button used to drive. The
+    // glyph reflects the current mode and updates on toggle (updateAccountMenu-
+    // ThemeItem, called from applyTheme) - tag the icon so it can be found.
+    const theme = buildAccountMenuRow('button', 'Theme', 'icon-moon');
+    const themeIcon = theme.querySelector('i');
+    if (themeIcon) themeIcon.id = 'account-menu-theme-icon';
+    theme.addEventListener('click', () => { toggleTheme(); });
+    menu.appendChild(theme);
+    updateAccountMenuThemeItem(); // initial glyph from the current data-mode
+
+    menu.appendChild(accountMenuDivider());
+
+    const signOut = buildAccountMenuRow('button', 'Sign out', null);
+    signOut.classList.add('account-menu-signout');
+    signOut.addEventListener('click', () => accountSignOut());
+    menu.appendChild(signOut);
+
+    root.appendChild(menu);
+    headerRight.appendChild(root);
+
+    // Interaction: click toggles; outside-click + Escape close; aria in sync.
+    const setOpen = (open) => {
+      menu.hidden = !open;
+      trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setOpen(menu.hidden);
+    });
+    // Keep clicks INSIDE the menu from bubbling to the document-close handler
+    // (except the links/items, which navigate/act and then the page changes).
+    menu.addEventListener('click', (e) => { e.stopPropagation(); });
+    document.addEventListener('click', () => { if (!menu.hidden) setOpen(false); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !menu.hidden) { setOpen(false); trigger.focus(); }
+    });
+  }).catch(() => { /* signed-out / network -- no menu */ });
+}
+
 function injectOneOffDownloadButtonIfEnabled() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
   if (document.getElementById('ytdlp-oneoff-btn') || document.querySelector('[data-nav="oneoff-download"]')) return; // already injected
@@ -5435,7 +5636,7 @@ const SHELL_SINGLETON_SELECTORS = [
   'header',
   '#bottom-nav',
   '#menu-toggle',
-  '#theme-toggle-btn',
+  '#account-menu-root', // v1.82: the account menu is shell chrome (injected once)
   '#search-input',
   '#ytdlp-oneoff-btn',
   '#playlists-sheet',
@@ -7821,6 +8022,15 @@ function updateNavThemeItem() {
   const label = item.querySelector('.bottom-nav-label');
   if (icon) icon.className = dark ? 'icon-sun' : 'icon-moon';
   if (label) label.textContent = dark ? 'Light' : 'Dark';
+}
+
+// v1.82: the account menu's Theme row glyph reflects the current mode (sun in
+// dark, moon in light), updated on every toggle exactly like the bottom-nav item.
+function updateAccountMenuThemeItem() {
+  const icon = document.getElementById('account-menu-theme-icon');
+  if (!icon) return;
+  const dark = document.documentElement.getAttribute('data-mode') === 'dark';
+  icon.className = dark ? 'icon-sun' : 'icon-moon';
 }
 
 // Global modal dialog helpers
@@ -10497,11 +10707,10 @@ document.addEventListener('DOMContentLoaded', () => {
       mainContent.classList.toggle('expanded');
     });
   }
-  
-  const themeToggleBtn = document.getElementById('theme-toggle-btn');
-  if (themeToggleBtn) {
-    themeToggleBtn.addEventListener('click', toggleTheme);
-  }
+
+  // v1.82: the header #theme-toggle-btn was removed - light/dark now lives in the
+  // account menu (injectAccountMenu) and the bottom-nav theme item, which own
+  // their own click wiring. Nothing to wire here anymore.
 
   // Shell-owned header search box (C1 remediation, v1.16.0): #search-input/
   // #search-btn live in the PERSISTENT shell (outside #view-root) on every
@@ -10595,6 +10804,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // gated by its own capability probe exactly like the injections above.
   injectNotificationBellIfEnabled();
   injectQueueChrome(); // v1.63: after the bell so insertBefore lands LEFT of it
+  injectAccountMenu(); // v1.82: the avatar + account dropdown, rightmost in .header-right
 
   // v1.32 (Dean, "white-label"): swap the text logo for the user-uploaded
   // image when one is configured -- runs on every page (shared header).
@@ -10671,6 +10881,9 @@ if (typeof module !== 'undefined' && module.exports) {
     formatBreakerChipText,
     getStarRating, getCommentCount, resolveChannelName, clampPositionState,
     resolveTheme, THEME_REGISTRY, activeNavItem,
+    // v1.82: the account menu injector + avatar builder + shared sign-out +
+    // theme-glyph sync.
+    injectAccountMenu, buildAccountAvatarEl, accountSignOut, updateAccountMenuThemeItem,
     // v1.78 device handoff: the UA label table. Pure, and exactly the kind of
     // roster that rots silently - every arm is pinned by node:test.
     resolveDeviceLabel,

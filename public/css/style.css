@@ -4597,7 +4597,11 @@ a.sub-row-channel-link:focus-visible {
   .header-right {
     gap: var(--space-3);
   }
-  /* Settings is reachable from the sidebar menu — reclaim header space on phones */
+  /* Hide header `.btn` controls on phones (reclaim the top row). The v1.82
+     Settings link that used to live here is gone, but this rule is NOT dead: the
+     yt-dlp one-off "Download" button (`#ytdlp-oneoff-btn`, class `btn`, injected
+     into .header-right by common.js) still relies on it - mobile reaches that
+     flow through the bottom-nav one-off entry instead. */
   .header-right .btn {
     display: none;
   }
@@ -8919,9 +8923,9 @@ body.ft-css-fullscreen .bottom-nav {
 /* ---- v1.51: the notification bell ---------------------------------------
    Bell button lives inside .header-right (desktop) and an absolutely-
    positioned top-right slot on mobile (the mobile header hides
-   .header-right wholesale at 3682 -- the override below re-shows it as a
-   bell-only block; the Settings .btn is already display:none there and the
-   theme toggle joins it). Panel = right-anchored dropdown on desktop, a
+   .header-right wholesale -- the override below re-shows it as the top-right
+   slot for the bell + the v1.82 account-menu avatar; the yt-dlp one-off `.btn`
+   stays display:none there via the .header-right .btn rule). Panel = right-anchored dropdown on desktop, a
    full-width bottom sheet on phones (own classes, never the playlists
    sheet's -- a popup that borrows a sibling's class does not inherit its
    JS, the v1.50.3 lesson). Tokens only -- no new custom properties, so
@@ -9148,21 +9152,122 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-sm);
 }
 
+/* ---- v1.82: the account menu (avatar + dropdown) ---- */
+.account-menu {
+  position: relative;
+  display: inline-flex;
+}
+.account-menu-trigger {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+}
+.account-avatar {
+  width: 32px; /* token-exempt: control geometry (Stop A Batch A) */
+  height: 32px; /* token-exempt: control geometry (Stop A Batch A) */
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--btn-primary-text, #fff); /* token-exempt: monogram glyph on a coloured disc */
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  user-select: none;
+}
+.account-avatar-lg {
+  width: 44px; /* token-exempt: control geometry (Stop A Batch A) */
+  height: 44px; /* token-exempt: control geometry (Stop A Batch A) */
+  font-size: var(--fs-md);
+}
+.account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.account-menu-dropdown {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  min-width: 220px; /* token-exempt: panel geometry (Stop A Batch A) */
+  background: var(--bg-sidebar);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-modal);
+  z-index: var(--z-panel);
+  padding: var(--space-2) 0;
+  overflow: hidden;
+}
+.account-menu-dropdown[hidden] {
+  display: none;
+}
+.account-menu-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6) var(--space-5);
+  border-bottom: 1px solid var(--bg-secondary);
+}
+.account-menu-name {
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+.account-menu-role {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.account-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: var(--fs-base);
+  padding: var(--space-4) var(--space-6);
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.account-menu-item:hover {
+  background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
+}
+.account-menu-item i {
+  width: 18px; /* token-exempt: icon box (Stop A Batch A) */
+  text-align: center;
+  color: var(--text-secondary);
+}
+.account-menu-divider {
+  height: 1px;
+  background: var(--bg-secondary);
+  margin: var(--space-2) 0;
+}
+.account-menu-signout {
+  color: var(--yt-red);
+}
+/* v1.82: the Settings->Account profile-photo controls. */
+.account-photo-actions {
+  display: inline-flex;
+  gap: var(--space-3);
+}
+
 @media (max-width: 768px) {
-  /* Re-show .header-right as a bell-only top-right slot (the mobile header
-     restructure hides the whole container; Settings' .btn is already
-     hidden by the 3584 rule). Absolute against the fixed header, aligned
-     with the logo row. DEVICE PROBE: logo-row collision + safe-area. */
+  /* Re-show .header-right as the top-right slot for the notification bell + the
+     v1.82 account-menu avatar (the mobile header restructure hides the whole
+     container otherwise). Absolute against the fixed header, aligned with the
+     logo row. DEVICE PROBE: logo-row collision + safe-area. */
   header .header-right {
     display: flex;
     position: absolute;
     top: calc(10px + env(safe-area-inset-top)); /* token-exempt: positional geometry (Stop A Batch A) */
     right: 10px; /* token-exempt: positional geometry (Stop A Batch A) */
-    gap: 0;
-  }
-
-  header .header-right .theme-toggle {
-    display: none;
+    gap: var(--space-3); /* room between the bell and the avatar */
+    align-items: center;
   }
 
   .notif-panel-backdrop:not([hidden]) {

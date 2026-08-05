@@ -30,47 +30,54 @@ const {
 // the ROSTER rather than by DOM position, the fixture is spelled the way the
 // roster reads; the tests below assert that resolved order, not an input order.
 const ALL = ['home', 'playlists', 'history', 'theme', 'oneoff-download', 'subscriptions', 'settings'];
+// v1.82: `settings` + `theme` are now DEFAULT-HIDDEN (they moved into the account
+// menu), so an empty config no longer shows them. This is the default-visible set
+// ALL resolves to now - opt them back in with `shown` to observe them below.
+const ALL_DEFAULT_VISIBLE = ['home', 'playlists', 'history', 'oneoff-download', 'subscriptions'];
 
-test('T12: default config resolves to roster order, home first + settings last', () => {
+test('T12/v1.82: default config resolves to roster order; settings + theme are now default-hidden (in the account menu)', () => {
   const out = resolveBottomNavLayout(ALL, {});
-  assert.deepEqual(out.visible, ALL);
-  assert.deepEqual(out.hiddenPresent, []);
+  assert.deepEqual(out.visible, ALL_DEFAULT_VISIBLE);
+  assert.deepEqual(out.hiddenPresent, ['theme', 'settings']);
 });
 
 test('v1.75: hidden optionals are dropped from visible - and home/settings now honour a hide like any other entry (ruling R2)', () => {
   // Pre-v1.75 this asserted the opposite ("home/settings ignore a hide
   // request"); retiring the anchors is the wave's point, so the assertion is
   // rewritten rather than deleted - the hide path still has to be bound.
+  // v1.82: theme is default-hidden now too, so it also leaves visible.
   const out = resolveBottomNavLayout(ALL, { hidden: ['subscriptions', 'home', 'settings'] });
-  assert.deepEqual(out.visible, ['playlists', 'history', 'theme', 'oneoff-download'], 'home + settings hide like any other entry');
-  assert.deepEqual(out.hiddenPresent.slice().sort(), ['home', 'settings', 'subscriptions'], 'all three report as present-and-hidden');
+  assert.deepEqual(out.visible, ['playlists', 'history', 'oneoff-download'], 'home + settings hide like any other entry (theme is default-hidden)');
+  assert.deepEqual(out.hiddenPresent.slice().sort(), ['home', 'settings', 'subscriptions', 'theme'], 'all four report as present-and-hidden');
 });
 
 test('T12: order reorders the optional middle; unlisted optionals keep their default order after', () => {
+  // v1.82: naming theme in `order` sets its POSITION but does not opt it in
+  // (that needs `shown`), so it stays hidden - the visible middle is unchanged.
   const out = resolveBottomNavLayout(ALL, { order: ['theme', 'oneoff-download'] });
-  assert.deepEqual(out.visible, ['home', 'theme', 'oneoff-download', 'playlists', 'history', 'subscriptions', 'settings']);
+  assert.deepEqual(out.visible, ['home', 'oneoff-download', 'playlists', 'history', 'subscriptions']);
 });
 
 test('T12: order + hide compose', () => {
   const out = resolveBottomNavLayout(ALL, { order: ['oneoff-download', 'subscriptions', 'playlists', 'theme'], hidden: ['theme'] });
-  assert.deepEqual(out.visible, ['home', 'oneoff-download', 'subscriptions', 'playlists', 'history', 'settings']);
+  assert.deepEqual(out.visible, ['home', 'oneoff-download', 'subscriptions', 'playlists', 'history']);
 });
 
 test('T12: a config entry for a NOT-present item is inert (module gate wins)', () => {
   // subscriptions + download not present (modules disabled); config references them.
   const present = ['home', 'playlists', 'theme', 'settings'];
   const out = resolveBottomNavLayout(present, { order: ['subscriptions', 'theme', 'oneoff-download', 'playlists'], hidden: ['subscriptions'] });
-  assert.deepEqual(out.visible, ['home', 'theme', 'playlists', 'settings'], 'absent items neither appear nor break ordering');
+  assert.deepEqual(out.visible, ['home', 'playlists'], 'absent items neither appear nor break ordering (theme+settings default-hidden)');
 });
 
 test('T12: missing home or settings anchors are simply omitted (never fabricated)', () => {
   const out = resolveBottomNavLayout(['playlists', 'theme'], {});
-  assert.deepEqual(out.visible, ['playlists', 'theme']);
+  assert.deepEqual(out.visible, ['playlists'], 'theme is default-hidden now');
 });
 
 test('T12: junk config is tolerated (treated as empty)', () => {
-  assert.deepEqual(resolveBottomNavLayout(ALL, null).visible, ALL);
-  assert.deepEqual(resolveBottomNavLayout(ALL, { hidden: 'x', order: 5 }).visible, ALL);
+  assert.deepEqual(resolveBottomNavLayout(ALL, null).visible, ALL_DEFAULT_VISIBLE);
+  assert.deepEqual(resolveBottomNavLayout(ALL, { hidden: 'x', order: 5 }).visible, ALL_DEFAULT_VISIBLE);
   assert.deepEqual(resolveBottomNavLayout(null, {}).visible, []);
 });
 
@@ -78,10 +85,12 @@ test('T12: junk config is tolerated (treated as empty)', () => {
 
 const WITH_PODCASTS = ['home', 'playlists', 'history', 'podcasts', 'theme', 'settings'];
 
-test('v1.71/v1.72/v1.75: the roster names podcasts + music + books + downloads + liked default-hidden', () => {
+test('v1.71/v1.72/v1.75/v1.82: the roster names podcasts + music + books + downloads + liked + settings + theme default-hidden', () => {
   // v1.72 (cap 2): music + books + downloads joined with the same opt-in
-  // posture; v1.75 (ruling R3) adds liked.
-  assert.deepEqual(BOTTOM_NAV_DEFAULT_HIDDEN, ['podcasts', 'music', 'books', 'downloads', 'liked']);
+  // posture; v1.75 (ruling R3) adds liked; v1.82 adds settings + theme (they
+  // moved into the account menu, so the default bar no longer carries them -
+  // still addable from the customizer).
+  assert.deepEqual(BOTTOM_NAV_DEFAULT_HIDDEN, ['podcasts', 'music', 'books', 'downloads', 'liked', 'settings', 'theme']);
 });
 
 test('v1.71: a present default-hidden item is INVISIBLE with an empty config and with every pre-v1.71 config shape', () => {
@@ -94,7 +103,9 @@ test('v1.71: a present default-hidden item is INVISIBLE with an empty config and
 
 test('v1.71: shown opts a default-hidden item in; hidden still beats shown; other items ignore shown', () => {
   const out = resolveBottomNavLayout(WITH_PODCASTS, { shown: ['podcasts'] });
-  assert.deepEqual(out.visible, WITH_PODCASTS, 'opted in at its DOM position');
+  // v1.82: theme + settings are default-hidden now, so opting podcasts in does
+  // not bring them along.
+  assert.deepEqual(out.visible, ['home', 'playlists', 'history', 'podcasts'], 'podcasts opted in at its DOM position; theme+settings stay off');
   const both = resolveBottomNavLayout(WITH_PODCASTS, { shown: ['podcasts'], hidden: ['podcasts'] });
   assert.ok(both.visible.indexOf('podcasts') === -1, 'an explicit hide wins over shown');
   const noise = resolveBottomNavLayout(WITH_PODCASTS, { shown: ['theme', 'nonsense'] });
@@ -103,8 +114,9 @@ test('v1.71: shown opts a default-hidden item in; hidden still beats shown; othe
 });
 
 test('v1.71: an opted-in podcasts item reorders like any optional', () => {
+  // v1.82: `order` names theme but it is not `shown`, so it stays hidden.
   const out = resolveBottomNavLayout(WITH_PODCASTS, { shown: ['podcasts'], order: ['podcasts', 'theme'] });
-  assert.deepEqual(out.visible, ['home', 'podcasts', 'theme', 'playlists', 'history', 'settings']);
+  assert.deepEqual(out.visible, ['home', 'podcasts', 'playlists', 'history']);
 });
 
 // ---- v1.75: the roster, the compat matrix, the floor ------------------------
@@ -181,9 +193,13 @@ test('v1.75 COMPAT: an untouched device keeps identical bar MEMBERSHIP and opt-i
   // roster fails this test as well as the W3 one.)
   for (const [label, cfg] of PRE_V175_CONFIGS) {
     const after = resolveBottomNavLayout(SHELL_V175, cfg).visible;
-    const before = resolveV174(SHELL_V174, cfg);
-    assert.deepEqual(after, before, `${label}: the bar's membership changed under the user`);
+    // v1.82: settings + theme intentionally moved into the account menu - the ONE
+    // deliberate membership change on upgrade. Filter them from the v1.74 oracle
+    // so the REST of the bar is still proven byte-identical (nothing else moved).
+    const before = resolveV174(SHELL_V174, cfg).filter((id) => id !== 'settings' && id !== 'theme');
+    assert.deepEqual(after, before, `${label}: the bar's membership changed under the user (beyond the settings+theme move)`);
     assert.ok(after.indexOf('liked') === -1, `${label}: the new Liked entry must stay off until opted in`);
+    assert.ok(after.indexOf('settings') === -1 && after.indexOf('theme') === -1, `${label}: settings + theme are now default-off (in the account menu)`);
   }
 });
 
@@ -195,7 +211,9 @@ test('v1.75 COMPAT: the head/tail fallbacks are what hold that identity (each on
   // the config's own sequence would otherwise put `theme` first. Drop the head
   // fallback and home slides behind theme; drop the tail fallback and settings
   // slides ahead of the unlisted items. Both are asserted positionally.
-  const out = resolveBottomNavLayout(SHELL_V175, { order: ['theme', 'history'], shown: [] }).visible;
+  // v1.82: settings + theme are default-hidden now, so opt them in (shown) to
+  // OBSERVE the head/tail pins - the pin logic itself is unchanged.
+  const out = resolveBottomNavLayout(SHELL_V175, { order: ['theme', 'history'], shown: ['settings', 'theme'] }).visible;
   assert.equal(out[0], 'home', 'head fallback: an order that never names home keeps it first');
   assert.equal(out[out.length - 1], 'settings', 'tail fallback: an order that never names settings keeps it last');
   assert.equal(out[1], 'theme', 'and the config order still drives everything between them');
@@ -206,7 +224,9 @@ test('v1.75: once the order NAMES home/settings, the fallbacks release - Home is
   // Settings editor writes the full roster on any reorder, and from then on the
   // config is the whole truth.
   const order = ['theme', 'settings', 'history', 'playlists', 'home'];
-  const out = resolveBottomNavLayout(SHELL_V175, { order, shown: [] }).visible;
+  // v1.82: opt settings + theme in (shown) so a reorder that positions them is
+  // observable; the ordering behaviour is unchanged.
+  const out = resolveBottomNavLayout(SHELL_V175, { order, shown: ['settings', 'theme'] }).visible;
   assert.deepEqual(out, ['theme', 'settings', 'history', 'playlists', 'home', 'oneoff-download', 'subscriptions'],
     'the named ids sort exactly as configured; unlisted present ids trail in DOM order');
   assert.equal(out[0], 'theme', 'home is NOT first');
@@ -214,19 +234,23 @@ test('v1.75: once the order NAMES home/settings, the fallbacks release - Home is
 });
 
 test('v1.75: naming only ONE of the two releases only that one (a half-migrated config keeps the other pin)', () => {
-  const outHead = resolveBottomNavLayout(SHELL_V175, { order: ['history', 'home', 'theme'] }).visible;
+  // v1.82: opt settings + theme in (shown) to observe the pins.
+  const outHead = resolveBottomNavLayout(SHELL_V175, { order: ['history', 'home', 'theme'], shown: ['settings', 'theme'] }).visible;
   assert.equal(outHead[0], 'history', 'home named -> home moves');
   assert.equal(outHead[outHead.length - 1], 'settings', 'settings unnamed -> still pinned last');
-  const outTail = resolveBottomNavLayout(SHELL_V175, { order: ['settings', 'theme'] }).visible;
+  const outTail = resolveBottomNavLayout(SHELL_V175, { order: ['settings', 'theme'], shown: ['settings', 'theme'] }).visible;
   assert.equal(outTail[0], 'home', 'home unnamed -> still pinned first');
   assert.equal(outTail[1], 'settings', 'settings named -> moves right behind the pinned home');
 });
 
 test('v1.75: the opted-in Liked entry appears at its DOM position and reorders like any other', () => {
+  // v1.82: theme + settings are default-hidden now, so opting only `liked` in
+  // leaves them off - liked still rides second.
   const shownOnly = resolveBottomNavLayout(SHELL_V175, { shown: ['liked'] }).visible;
-  assert.deepEqual(shownOnly, ['home', 'liked', 'playlists', 'history', 'theme', 'oneoff-download', 'subscriptions', 'settings'],
+  assert.deepEqual(shownOnly, ['home', 'liked', 'playlists', 'history', 'oneoff-download', 'subscriptions'],
     'liked rides second, right after home, with the rest of the bar untouched');
-  const moved = resolveBottomNavLayout(SHELL_V175, { shown: ['liked'], order: ['home', 'theme', 'liked', 'playlists', 'history', 'settings'] }).visible;
+  // The reorder case opts theme + settings in too (shown) so their positions are observable.
+  const moved = resolveBottomNavLayout(SHELL_V175, { shown: ['liked', 'theme', 'settings'], order: ['home', 'theme', 'liked', 'playlists', 'history', 'settings'] }).visible;
   assert.deepEqual(moved, ['home', 'theme', 'liked', 'playlists', 'history', 'settings', 'oneoff-download', 'subscriptions']);
   const hiddenAgain = resolveBottomNavLayout(SHELL_V175, { shown: ['liked'], hidden: ['liked'] }).visible;
   assert.ok(hiddenAgain.indexOf('liked') === -1, 'an explicit hide still beats shown');
@@ -236,7 +260,7 @@ test('v1.75: a post-v1.75 config exercising all three new ids at once', () => {
   const cfg = {
     order: ['liked', 'settings', 'history', 'home', 'theme', 'playlists', 'music'],
     hidden: ['playlists'],
-    shown: ['liked', 'music'],
+    shown: ['liked', 'music', 'settings', 'theme'], // v1.82: settings+theme now need opting in
   };
   const out = resolveBottomNavLayout(SHELL_V175, cfg);
   assert.deepEqual(out.visible, ['liked', 'settings', 'history', 'home', 'theme', 'music', 'oneoff-download', 'subscriptions'],
@@ -296,7 +320,8 @@ test('W1: applying twice is idempotent - a resolution fed its own output re-reso
 
 test('W1: an id absent from the roster still resolves, after every known id, in DOM order', () => {
   const present = ['home', 'zzz-unknown', 'playlists', 'aaa-unknown', 'settings'];
-  const out = resolveBottomNavLayout(present, {}).visible;
+  // v1.82: opt settings in (shown) so the tail pin is still observable here.
+  const out = resolveBottomNavLayout(present, { shown: ['settings'] }).visible;
   assert.deepEqual(out, ['home', 'playlists', 'zzz-unknown', 'aaa-unknown', 'settings'],
     'unknown ids never sort to the front by scoring -1, and keep their relative DOM order');
 });
@@ -349,7 +374,8 @@ test('v1.75 FLOOR: a hand-edited config that hides EVERY entry renders the defau
 });
 
 test('v1.75 FLOOR: hiding all but one does NOT trip it (the floor is >=1 visible, not >=2)', () => {
-  const cfg = { hidden: SHELL_V175.filter((id) => id !== 'theme'), order: [], shown: [] };
+  // v1.82: theme is default-hidden now, so opt it in (shown) to be the survivor.
+  const cfg = { hidden: SHELL_V175.filter((id) => id !== 'theme'), order: [], shown: ['theme'] };
   const out = resolveBottomNavLayout(SHELL_V175, cfg);
   assert.deepEqual(out.visible, ['theme'], 'one survivor is a legal bar');
   assert.equal(out.flooredToDefault, false);

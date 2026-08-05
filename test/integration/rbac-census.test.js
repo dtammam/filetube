@@ -43,7 +43,10 @@ const { authenticateFetch } = require('../helpers/auth');
 // management route (requireAdmin), not content-serving, so no visibility check;
 // the write-capability enforcement it controls is bound by
 // rbac-write-enforcement.test.js.
-const EXPECTED_ROUTE_COUNT = 185;
+// v1.82: 185 -> 188 for the per-user avatar routes (POST + DELETE /api/me/avatar,
+// GET /api/users/:id/avatar) - self-service profile photo, not content-serving;
+// bound by avatar-upload.test.js + route-write-classification.test.js.
+const EXPECTED_ROUTE_COUNT = 188;
 
 let server, base, auth, member;
 const vidFile = path.join(DATA_DIR, 'v.mp4');

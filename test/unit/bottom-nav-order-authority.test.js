@@ -228,13 +228,14 @@ const renderedOrder = () => Array.prototype.slice
 test('v1.75 USE: the rendered bar is the RESOLVED order - Home is first by default and Liked is absent', () => {
   withBar({}, () => {
     applyBottomNavCustomization();
-    assert.deepEqual(renderedOrder(), ['home', 'playlists', 'history', 'theme', 'settings']);
+    assert.deepEqual(renderedOrder(), ['home', 'playlists', 'history']);
   });
 });
 
 test('v1.75 USE: reordering Home away from first actually MOVES it in the DOM (what the CSS ladder used to prevent)', () => {
   const order = ['playlists', 'history', 'home', 'theme', 'settings'];
-  withBar({ order, hidden: [], shown: [] }, () => {
+  // v1.82: theme + settings are default-hidden, so opt them in to observe the reorder.
+  withBar({ order, hidden: [], shown: ['theme', 'settings'] }, () => {
     applyBottomNavCustomization();
     const rendered = renderedOrder();
     assert.deepEqual(rendered, order);
@@ -245,7 +246,7 @@ test('v1.75 USE: reordering Home away from first actually MOVES it in the DOM (w
 test('v1.75 USE: an opted-in Liked item renders, points at the central Liked, and hides again on request', () => {
   withBar({ shown: ['liked'] }, () => {
     applyBottomNavCustomization();
-    assert.deepEqual(renderedOrder(), ['home', 'liked', 'playlists', 'history', 'theme', 'settings']);
+    assert.deepEqual(renderedOrder(), ['home', 'liked', 'playlists', 'history']);
     const el = global.document.querySelector('#bottom-nav [data-nav="liked"]');
     assert.equal(el.getAttribute('href'), '/?liked=1', 'the bottom entry lands on the central mixed-kind Liked');
   });
@@ -258,23 +259,23 @@ test('v1.75 USE: an opted-in Liked item renders, points at the central Liked, an
 test('v1.75 USE: hiding Home hides it for real; hiding EVERYTHING falls back to the default bar', () => {
   withBar({ hidden: ['home'] }, () => {
     applyBottomNavCustomization();
-    assert.deepEqual(renderedOrder(), ['playlists', 'history', 'theme', 'settings']);
+    assert.deepEqual(renderedOrder(), ['playlists', 'history']);
   });
   withBar({ hidden: SHELL_ITEMS.map(([id]) => id) }, () => {
     applyBottomNavCustomization();
-    assert.deepEqual(renderedOrder(), ['home', 'playlists', 'history', 'theme', 'settings'], 'never an empty strip');
+    assert.deepEqual(renderedOrder(), ['home', 'playlists', 'history'], 'never an empty strip');
   });
 });
 
 test('v1.75 USE: a corrupt/absent config renders the default bar rather than throwing', () => {
   withBar(null, () => {
     applyBottomNavCustomization();
-    assert.deepEqual(renderedOrder(), ['home', 'playlists', 'history', 'theme', 'settings']);
+    assert.deepEqual(renderedOrder(), ['home', 'playlists', 'history']);
   });
   withBar({}, (dom) => {
     dom.window.localStorage.setItem('ft-bottomnav', '{not json');
     applyBottomNavCustomization();
-    assert.deepEqual(renderedOrder(), ['home', 'playlists', 'history', 'theme', 'settings']);
+    assert.deepEqual(renderedOrder(), ['home', 'playlists', 'history']);
   });
 });
 
@@ -302,7 +303,7 @@ test('W1: removing the Downloads item re-resolves, so a Downloads-only bar canno
       await new Promise((r) => setImmediate(r));
       assert.equal(global.document.querySelector('#bottom-nav [data-nav="downloads"]'), null, `${label}: the item is removed (module gate wins)`);
       assert.ok(renderedOrder().length > 0, `${label}: the bar must not be left EMPTY`);
-      assert.deepEqual(renderedOrder(), ['home', 'playlists', 'history', 'theme', 'settings'], `${label}: the floor's default bar renders`);
+      assert.deepEqual(renderedOrder(), ['home', 'playlists', 'history'], `${label}: the floor's default bar renders`);
     });
     global.fetch = realFetch;
   }
@@ -458,7 +459,8 @@ test('v1.75 EDITOR: an EXISTING pre-v1.75 config still lists Home first and Sett
 
 test('v1.75 EDITOR FLOOR: the last un-check is REFUSED - the tick goes back and nothing is persisted', () => {
   const all = BOTTOM_NAV_OPTIONAL.slice();
-  const cfg = { hidden: all.filter((id) => id !== 'theme'), order: [], shown: [] };
+  // v1.82: theme is default-hidden now, so opt it in (shown) to make it the sole survivor.
+  const cfg = { hidden: all.filter((id) => id !== 'theme'), order: [], shown: ['theme'] };
   withEditor(cfg, (dom, signal) => {
     global.showToast = () => {};
     setup.renderBottomBarEditor(signal);

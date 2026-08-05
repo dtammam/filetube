@@ -80,6 +80,40 @@
 
 ## Shipped
 
+### v1.82.0 - User avatar + account menu (2026-08-05)
+
+The v1.81 T8 fast-follow, expanded at intake into a full account surface. A
+YouTube-style **avatar** sits top-right on every shell (your uploaded photo, or
+an initials monogram) and opens an **account menu**: your name + role, Change
+photo, Liked, History, Settings, a light/dark Theme toggle, and Sign out - one
+place for everything. Sign out used to be buried on the Settings page; now it is
+one tap from anywhere.
+
+**Per-user profile photo.** Upload a PNG/JPEG/WebP from the menu OR from
+Settings->Account; both hit the same self-service endpoint. Stored on disk
+per-user (no schema change), served by id, magic-byte + size validated, and
+cleaned up when an account is deleted or the instance is restored. A member can
+only ever set their OWN photo.
+
+**Consolidation.** The header Settings link and the header light/dark toggle are
+gone from all 9 shells - the account menu carries them now. On the mobile bottom
+bar, Settings + Theme move to **default-hidden but still addable** from the
+customizer (they live in the account menu, which shows on mobile too).
+
+**The gate earned its keep (full two-reviewer gate, new upload surface).** The
+upload surface was clean from pass one (self-only writes, magic-byte + cap +
+case-normalized allowlist, numeric-id serve with no traversal, delete + restore
+cascades). The gate's blockers were: an unbound restore-wipe protection (the
+guard existed but no test held it - now mutation-bound), a stale Settings
+instruction pointing at the deleted header toggle, and - caught in re-round - a
+mobile regression where cleaning a "dead" CSS rule actually un-hid the yt-dlp
+Download button (restored). Both seats APPROVE; every fix mutation-proven.
+
+**Deferred / disclosed:** the account menu's Theme is the light/dark toggle only
+(the era/skin picker stays in Settings); other users' avatars are not surfaced
+beyond your own header. Dual-Node full suite green on v22.23.1 and v24.14.0.
+**Dean's on-device pass is PENDING.**
+
 ### v1.81.0 - Write-RBAC + honest-denial UI + per-user stats + empty-states (2026-08-05)
 
 The follow-up to v1.80's visibility RBAC: v1.80 controlled what a member can

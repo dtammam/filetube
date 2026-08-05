@@ -94,8 +94,11 @@ test('LOCK (wiring): the probes WRITE the cache and the render sites READ it opt
   assert.equal((common.match(/writeCapabilityCache\(\{ moduleEnabled/g) || []).length >= 2, true, 'a common.js health probe (repull/nav) stopped writing the cache');
   assert.equal((watch.match(/writeCapabilityCache\(\{ moduleEnabled/g) || []).length >= 2, true, 'a watch.js health probe (reheat/subscribe) stopped writing the cache');
   // Gate W4: per-user pins must not leak across a same-tab user change.
-  const setup = stripped('public/js/setup.js');
-  assert.match(setup, /sessionStorage\.removeItem\('ft-cap-cache-v1'\)/, 'the logout cache clear was deleted');
+  // v1.82: the sign-out cache-clear moved from setup.js's inline handler into
+  // the SHARED accountSignOut (common.js), used by BOTH the Settings button and
+  // the account menu's Sign out - so the W4 protection now lives in one place.
+  assert.match(common, /function accountSignOut\(\)[\s\S]*?sessionStorage\.removeItem\('ft-cap-cache-v1'\)/, 'the shared sign-out cache clear was deleted');
+  assert.match(stripped('public/js/setup.js'), /accountSignOut\(\)/, 'the Settings sign-out button must call the shared accountSignOut');
   const login = stripped('public/js/login.js');
   assert.match(login, /sessionStorage\.removeItem\('ft-cap-cache-v1'\)/, 'the login cache clear was deleted (covers crash-logouts)');
 });

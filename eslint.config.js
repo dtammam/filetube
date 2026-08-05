@@ -150,6 +150,8 @@ module.exports = [
         // v1.81 write-RBAC: the memoized /api/auth/me fetcher (common.js),
         // read by watch.js/player.js to gate the delete/move/edit affordances.
         fetchCurrentUser: 'readonly',
+        // v1.82: the shared sign-out (common.js), used by setup.js's button.
+        accountSignOut: 'readonly',
         // v1.53: the capability cache (common.js).
         readCapabilityCache: 'readonly',
         writeCapabilityCache: 'readonly',

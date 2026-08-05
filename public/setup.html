@@ -105,7 +105,7 @@
     </div>
 
     <div class="header-right">
-      <button class="theme-toggle" id="theme-toggle-btn" aria-label="Toggle light or dark mode"><i class="icon-moon"></i></button>
+      <!-- v1.82: theme toggle moved into the account menu (injected here by common.js) -->
     </div>
   </header>
 
@@ -138,8 +138,8 @@
            from public/js/setup.js, never by document order. -->
       <details class="setup-box sub-collapsible" data-collapse-key="appearance" open>
         <summary>Appearance</summary>
-        <p>Pick the YouTube era FileTube dresses up as. Light / dark is the
-           theme-toggle button in the header.</p>
+        <p>Pick the YouTube era FileTube dresses up as. Light / dark lives in
+           the account menu (your avatar, top-right).</p>
         <div class="theme-picker" id="theme-picker"><!-- rendered by JS --></div>
         <h3 style="margin-top:20px;">Icons</h3>
         <p>Pick the icon style for FileTube's chrome. <strong>Auto</strong>
@@ -662,6 +662,16 @@
         <div class="account-row">
           <span id="account-chip" aria-live="polite">Loading your account...</span>
           <button class="btn" id="logout-btn">Sign out</button>
+        </div>
+        <!-- v1.82: profile photo (the second entry point; the account menu's
+             "Change photo" hits the same /api/me/avatar endpoint). -->
+        <div class="account-row">
+          <span>Profile photo</span>
+          <span class="account-photo-actions">
+            <button class="btn btn-sm" id="account-photo-upload">Upload</button>
+            <button class="btn btn-sm" id="account-photo-remove" hidden>Remove</button>
+          </span>
+          <input type="file" id="account-photo-input" accept="image/png,image/jpeg,image/webp" hidden>
         </div>
       </details>
 
