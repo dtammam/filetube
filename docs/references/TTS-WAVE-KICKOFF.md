@@ -8,7 +8,7 @@ say "read docs/references/TTS-WAVE-KICKOFF.md and begin." Written by Fable 5 at 
 
 You are picking up FileTube from your predecessor. Before anything else:
 
-1. Read **docs/references/CLAUDE-WORKING-STYLE.md** — it is the process contract for
+1. Read **CLAUDE.md** — it is the process contract for
    working with Dean (lean mode, the two-reviewer adversarial gate, honesty
    norms, his communication style, the repo's expensive lessons). Your
    persistent memory directory is already loaded and carries project state.
@@ -32,7 +32,7 @@ this closes a disclosed gap.
 
 **Part B — TTS "Listen from Here"** — the fully-designed wave-2 of the books
 platform. The authoritative design is
-**docs/exec-plans/completed/v1.37.0-books.md §6 ("Wave-2 seams")**. The seams
+**docs/exec-plans/completed/2026-07-12-v1.37.0-books.md §6 ("Wave-2 seams")**. The seams
 are already IN the shipped code; honor them exactly:
 
 - State: `db.books.settings` (`ttsEnabled, engine, voice, rate`) +

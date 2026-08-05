@@ -37,7 +37,7 @@ whether to continue or ship with the residual disclosed.
 
 ## WHAT v1.70.0 IS (both features BUILT and tested)
 
-Exec plan: `docs/exec-plans/active/v1.70-podcast-episode-delete.md`.
+Exec plan: `docs/exec-plans/completed/2026-08-02-v1.70-podcast-episode-delete.md`.
 
 1. **Cover-art fix** (Dean's device find: no artwork on the show card).
    Root-caused by live measurement: Patreon serves the show image as a
@@ -88,7 +88,7 @@ seat has NOT reviewed v1.70 at all.**
    idle), report counts verbatim.
 7. Ceremony: `npm version 1.70.0 --no-git-tag-version`, honest ROADMAP
    entry (include what the gate caught AND the four-round overrun), move
-   BOTH exec plans (`v1.69-podcasts-place.md`, `v1.70-podcast-episode-delete.md`)
+   BOTH exec plans (`2026-08-02-v1.69-podcasts-place.md`, `2026-08-02-v1.70-podcast-episode-delete.md`)
    to `completed/` only when Dean's device pass closes them - otherwise
    leave in `active/`, `git merge --no-ff` into main, tag `v1.70.0`, push
    all refs. Docker auto-publishes; **the pull onto Dean's server is Dean's.**

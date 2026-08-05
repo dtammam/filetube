@@ -4,7 +4,7 @@
 > registry + `resolveTheme` migration helper, the FOUC bootstrap, and the
 > setup.html Appearance picker all shipped. Two-reviewer QA passed
 > (APPROVE-WITH-NITS; zero 2021 regression verified; 78 tests green). The
-> matching `docs/exec-plans/active/era-themes.md` copy is a stale tombstone to be
+> matching `docs/exec-plans/completed/2026-07-04-era-themes.md` copy is a stale tombstone to be
 > `git rm`'d by the main loop.
 
 # Era Theme System

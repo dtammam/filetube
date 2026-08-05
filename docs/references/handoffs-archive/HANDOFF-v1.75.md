@@ -11,7 +11,7 @@ which also shipped v1.74.0 (era scrollbars) the same day.
    neither is ever traded for speed.
 2. `docs/references/CLAUDE-WORKING-STYLE.md` - how to communicate with
    Dean, and the repo's expensive lessons in narrative form.
-3. `docs/exec-plans/active/v1.75-liked-consolidation-bottom-bar.md` - THE
+3. `docs/exec-plans/completed/2026-08-03-v1.75-liked-consolidation-bottom-bar.md` - THE
    SPEC for this wave. Scope, design, task commits T1-T5, machine-derived
    current-state pointers (re-derive them; do not trust across commits),
    gate plan with named attack surfaces, and Dean's open rulings R1-R5.

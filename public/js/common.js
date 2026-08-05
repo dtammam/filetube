@@ -2,7 +2,7 @@
 
 // ---- Era theme system ----------------------------------------------------
 // Two orthogonal axes applied to <html>: data-theme (era) and data-mode
-// (light|dark). See docs/exec-plans/completed/era-themes.md for the full design.
+// (light|dark). See docs/exec-plans/completed/2026-07-04-era-themes.md for the full design.
 
 const THEME_MODES = ['light', 'dark'];
 const DEFAULT_ERA = '2021';
@@ -409,7 +409,7 @@ function resolveAvatarSource(name, channelAvatarUrl) {
 // ---- Icon-set system ------------------------------------------------------
 // A third, orthogonal appearance axis (theme x mode x icon-set) layered on
 // top of the era/mode system above, with no change to resolveTheme/
-// applyTheme/toggleTheme. See docs/exec-plans/completed/icon-sets.md for the
+// applyTheme/toggleTheme. See docs/exec-plans/completed/2026-07-05-icon-sets.md for the
 // full design. Two axes: a persisted `ft-icons` preference (one of the 4
 // concrete sets, or the meta-value 'auto') and a `data-icons` attribute on
 // <html> that always holds one of the 4 CONCRETE values — 'auto' is never

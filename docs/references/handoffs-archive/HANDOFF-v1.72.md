@@ -44,7 +44,7 @@ for podcasts. I want ALL of it for podcasts. I want that global like."
    in CONTRIBUTING's first-class definition and record DELIVERED /
    GAPPED / NEEDS-DEAN'S-RULING with file:line evidence for every
    cell. Commit the audit as the exec plan's foundation
-   (`docs/exec-plans/active/v1.72-first-class-parity.md`). Numbers and
+   (`docs/exec-plans/completed/2026-08-03-v1.72-first-class-parity.md`). Numbers and
    standings must come from grep/tests, not recollection - hand
    enumerations rot.
 2. **The ruled scope: PODCASTS reach full first-class.** The known gap

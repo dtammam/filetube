@@ -13,7 +13,7 @@
 > workflow caught 2 show-stoppers QA missed — the Playlists sheet showing on
 > every mobile load and a missing `safe-area-inset-top` under
 > `viewport-fit=cover` — all fixed; 86 tests green). The matching
-> `docs/exec-plans/active/mobile-app-shell.md` copy is a stale tombstone to be
+> `docs/exec-plans/completed/2026-07-04-mobile-app-shell.md` copy is a stale tombstone to be
 > `git rm`'d by the main loop.
 
 # Mobile App Shell (v1.5.0)

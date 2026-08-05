@@ -71,7 +71,7 @@ const glyphPool = require('./public/js/glyph-pool');
 // Derived from the registry, never a second hand-typed list.
 const GLYPH_IDS = new Set(glyphPool.GLYPH_POOL.map((g) => g.id));
 // v1.37.0 books: the db.books namespace owner + the pure scanner core --
-// see docs/exec-plans/completed/v1.37.0-books.md. Both are leaf modules over
+// see docs/exec-plans/completed/2026-07-12-v1.37.0-books.md. Both are leaf modules over
 // deps this file already provides (loadDatabase/updateDatabase/getMediaId);
 // requiring them has no side effects (the ytdlp direct-require posture).
 const booksStore = require('./lib/books/store');
@@ -6235,7 +6235,7 @@ app.post('/api/scan', (req, res) => {
 // overlap/coalescing discipline, and cover storage under BOOKCOVER_DIR.
 // Everything degrades to a no-op on a books-less install (zero folders =
 // zero scans = zero db writes = the disabled-module posture ytdlp set).
-// Full design: docs/exec-plans/completed/v1.37.0-books.md.
+// Full design: docs/exec-plans/completed/2026-07-12-v1.37.0-books.md.
 
 let bookScanState = { scanning: false, lastScan: null, rescanRequested: false };
 // v1.37.0 gate fix (adversarial W4): the single deferred follow-up timer --
@@ -7106,7 +7106,7 @@ function settingsResponse(settings) {
 // mount-loss discipline, album art under ALBUMART_DIR, and per-user liked/
 // progress/resume through userStore. Everything degrades to a no-op on a
 // music-less install (zero folders = zero scans = zero db writes). Full
-// design: docs/exec-plans/completed/v1.44-music-library.md.
+// design: docs/exec-plans/completed/2026-07-17-v1.44-music-library.md.
 
 let musicScanState = { scanning: false, lastScan: null, rescanRequested: false };
 let deferredMusicRescanTimer = null;
@@ -9250,7 +9250,7 @@ app.get('/api/videos', (req, res) => {
 // ids from LIGHT per-user candidate records; THIS route resolves the selected
 // ids to render fields. The client supplies nothing - every title, thumbnail
 // and href is server-resolved from our own records (an XSS/lie vector
-// otherwise). See docs/exec-plans/active/v1.79-home-feed.md.
+// otherwise). See docs/exec-plans/completed/2026-08-05-v1.79-home-feed.md.
 //
 // Scope (intake ruling 6): the two personal-engagement rows (continue-watching,
 // from-liked) MIX all three player-carried kinds - media (video + yt-dlp audio),
