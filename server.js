@@ -13878,22 +13878,64 @@ app.get('/api/stats', (req, res) => {
   for (const id of Object.keys(books.items || {})) {
     if (bookVisibleTo(req, books.items[id])) visibleBookItems[id] = books.items[id];
   }
+  // v1.81 (#127a): the inventory's watch-aggregate + folder sub-counts shipped
+  // RAW - v1.80 scoped the content TITLES/counts but left progress/viewCounts/
+  // liked/folders/tombstones/users global, so a restricted member could infer
+  // hidden content by VOLUME and see other users' watch totals. For a non-admin,
+  // every count is scoped to their VISIBLE library and their OWN watch data;
+  // the account roster (system-only) goes null and the stats client omits its
+  // row. Admin path stays BYTE-IDENTICAL (empty index visibleMetadata == all).
+  const isAdmin = !!(req.user && req.user.role === 'admin');
+  const has = (map, id) => Object.prototype.hasOwnProperty.call(map, id);
+  const pickVisible = (obj, visMap) => {
+    const out = {};
+    for (const id of Object.keys(obj || {})) if (has(visMap, id)) out[id] = obj[id];
+    return out;
+  };
+  const distinctRoots = (visMap) => {
+    const roots = new Set();
+    for (const id of Object.keys(visMap)) { const rf = visMap[id].rootFolder; if (rf) roots.add(rf); }
+    return Array.from(roots);
+  };
+  let inventoryInput;
+  if (isAdmin) {
+    inventoryInput = {
+      metadata: visibleMetadata, progress: db.progress, viewCounts: db.viewCounts,
+      liked: db.liked, deleteTombstones: db.deleteTombstones, folders: db.folders,
+      books: { items: visibleBookItems, progress: books.progress, audio: books.audio },
+      music: { tracks: visibleTracks, folders: music.folders },
+      users: userStore.countUsers(),
+    };
+  } else {
+    const uid = req.user.id;
+    // Tombstones only for items the member could have seen (v1.65 trash shape
+    // carries `.item`; a legacy tombstone is flat).
+    const scopedTombstones = {};
+    for (const id of Object.keys(db.deleteTombstones || {})) {
+      const t = db.deleteTombstones[id];
+      const probe = t && t.item ? t.item : t;
+      if (probe && mediaVisibleTo(req, probe)) scopedTombstones[id] = t;
+    }
+    inventoryInput = {
+      metadata: visibleMetadata,
+      progress: pickVisible(userStore.getProgress(uid), visibleMetadata), // THEIR own positions, visible only
+      viewCounts: pickVisible(db.viewCounts, visibleMetadata),            // global counters, visible items only
+      liked: userStore.getLiked(uid).filter((id) => has(visibleMetadata, id)),
+      deleteTombstones: scopedTombstones,
+      folders: distinctRoots(visibleMetadata),                           // never the raw configured-root list
+      books: { items: visibleBookItems, progress: pickVisible(userStore.getBookProgress(uid), visibleBookItems), audio: pickVisible(books.audio, visibleBookItems) },
+      music: { tracks: visibleTracks, folders: distinctRoots(visibleTracks) },
+      users: null, // system-only: omitted from a non-admin's inventory
+    };
+  }
+  const inventory = stats.computeInventory(inventoryInput);
+  if (!isAdmin) inventory.users = null; // computeInventory coerces null->0; restore the "omit" signal for the client
   res.json({
     ...stats.computeLibraryStats(visibleMetadata),
     books: stats.computeBookStats(visibleBookItems, books.audio),
     // v1.44.3 (Dean): the "what's in my database" inventory — a plain count of
     // each persisted namespace (mirrors what the backup bundle carries).
-    inventory: stats.computeInventory({
-      metadata: visibleMetadata,
-      progress: db.progress,
-      viewCounts: db.viewCounts,
-      liked: db.liked,
-      deleteTombstones: db.deleteTombstones,
-      folders: db.folders,
-      books: { items: visibleBookItems, progress: books.progress, audio: books.audio },
-      music: { tracks: visibleTracks, folders: music.folders },
-      users: userStore.countUsers(),
-    }),
+    inventory,
     system: {
       version: APP_VERSION,
       repoUrl: REPO_URL,

@@ -62,8 +62,13 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   auth = authenticateFetch(server, base);
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    // v1.81 (#127a): seed GLOBAL watch + inventory namespaces so the stats
+    // scoping is provable - without scoping a blocked member's inventory would
+    // count these (viewCounts/scanFolders/tombstones/users all > 0).
+    folders: [DATA_DIR], folderSettings: {}, progress: {},
     metadata: { vid: { id: 'vid', title: 'V', filePath: vidFile, folderName: 'F', rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 1, size: 1, addedAt: 1 } },
+    viewCounts: { vid: 42 },
+    deleteTombstones: { gone: { originalId: 'gone', item: { id: 'gone', title: 'Gone', filePath: path.join(DATA_DIR, 'gone.mp4'), folderName: 'F', rootFolder: DATA_DIR, type: 'video', ext: '.mp4' } } },
     liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
   await updateDatabase((db) => {
@@ -86,6 +91,10 @@ before(async () => {
     { kind: 'library', value: 'video' }, { kind: 'library', value: 'music' },
     { kind: 'library', value: 'podcasts' }, { kind: 'library', value: 'books' },
   ]);
+  // v1.81 (#127a): even the member's OWN watch data on a now-restricted item
+  // must drop out of their inventory counts (visible-scoped).
+  userStore.addLiked(member.user.id, 'vid', '2026-08-05T00:00:00Z');
+  userStore.setProgress(member.user.id, 'vid', { timestamp: 1, duration: 2, updatedAt: '2026-08-05T00:00:00Z' });
 });
 after(async () => {
   auth.restore();
@@ -131,6 +140,26 @@ test('LIST SWEEP: a member blocked from all libraries sees NO seeded content in 
   const stats = await json('/api/stats');
   assert.strictEqual(stats.inventory.videos, 0, '/api/stats inventory.videos');
   assert.ok(!(stats.mostWatched || []).some((m) => m.id === 'vid'), '/api/stats mostWatched');
+
+  // v1.81 (#127a): the inventory watch-aggregate + folder sub-counts are ALSO
+  // scoped - a blocked member sees zero of everything and NO account roster,
+  // even though the global namespaces are non-empty (proven against admin below).
+  assert.strictEqual(stats.inventory.viewCounts, 0, 'inventory.viewCounts scoped');
+  assert.strictEqual(stats.inventory.scanFolders, 0, 'inventory.scanFolders scoped (raw list had 1 root)');
+  assert.strictEqual(stats.inventory.deleteTombstones, 0, 'inventory.deleteTombstones scoped (raw had 1)');
+  assert.strictEqual(stats.inventory.watchProgress, 0, 'inventory.watchProgress scoped (own progress on a restricted item excluded)');
+  assert.strictEqual(stats.inventory.liked, 0, 'inventory.liked scoped (own like on a restricted item excluded)');
+  assert.strictEqual(stats.inventory.music.folders, 0, 'inventory.music.folders scoped');
+  assert.strictEqual(stats.inventory.users, null, 'inventory.users omitted for a non-admin (system-only)');
+
+  // The ADMIN still sees the real global numbers - proving the scoping
+  // DISCRIMINATES, not blanket-zeros.
+  const astats = await (await asAdmin('/api/stats')).json();
+  assert.strictEqual(astats.inventory.videos, 1, 'admin inventory.videos');
+  assert.strictEqual(astats.inventory.viewCounts, 1, 'admin sees the global view counter');
+  assert.strictEqual(astats.inventory.scanFolders, 1, 'admin sees the configured root');
+  assert.strictEqual(astats.inventory.deleteTombstones, 1, 'admin sees the tombstone');
+  assert.ok(astats.inventory.users >= 2, 'admin sees the account roster');
 
   // /api/home: no feed row surfaces any blocked item.
   const rows = (await json('/api/home')).rows || [];
