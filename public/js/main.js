@@ -1542,13 +1542,22 @@ if (typeof module !== 'undefined' && module.exports) {
         // hatch as before (only shown for a search/folder view, never on an
         // already-unfiltered empty library, where there is nothing broader
         // to return to), now rendered as a real `.btn` via `actionHtml`.
+        // v1.81 (Task 4): give every empty video view the same helpful intro
+        // treatment books/podcasts already have - no blank surfaces. The copy
+        // is context-aware: a search miss, an empty folder, or a genuinely
+        // empty library each get their own message + hint.
         const actionHtml = (searchQuery || folderFilter)
           ? '<a href="/" class="btn empty-state-action">View All Media</a>'
           : '';
-        videoGrid.innerHTML = buildEmptyStateHtml({
-          message: 'No video or audio files found.',
-          actionHtml,
-        });
+        let emptyOpts;
+        if (searchQuery) {
+          emptyOpts = { icon: 'icon-search', message: 'No results found.', hint: 'Try a different search, or browse all your media.', actionHtml };
+        } else if (folderFilter) {
+          emptyOpts = { icon: 'icon-folder', message: 'This folder is empty.', hint: 'Nothing here yet — new files in this folder will show up after a scan.', actionHtml };
+        } else {
+          emptyOpts = { icon: 'icon-play', message: 'No videos or audio yet.', hint: 'Files in your media folders show up here — with thumbnails, durations, and playback that picks up where you left off.' };
+        }
+        videoGrid.innerHTML = buildEmptyStateHtml(emptyOpts);
         return;
       }
 

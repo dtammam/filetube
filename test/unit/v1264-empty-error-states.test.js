@@ -84,6 +84,17 @@ test('main.js no longer inline-styles the empty/error states -- uses the shared 
   assert.match(mainJs, /data-error-retry/, 'main.js must wire up the Retry button');
 });
 
+// v1.81 Task 4: every empty video view gets a helpful, context-aware intro
+// (search miss / empty folder / empty library) - no blank surface, matching the
+// treatment books/podcasts already have.
+test('v1.81: the video grid empty-state is context-aware (search / folder / library each get a hint)', () => {
+  assert.match(mainJs, /No results found\./, 'search-miss message');
+  assert.match(mainJs, /This folder is empty\./, 'empty-folder message');
+  assert.match(mainJs, /No videos or audio yet\./, 'empty-library message');
+  // Each branch carries a hint (the "helpful intro treatment").
+  assert.match(mainJs, /hint: 'Files in your media folders show up here/, 'empty-library hint present');
+});
+
 test('subscriptions.js client no longer inline-styles its load-error text -- uses its own createElement-only error-state builder instead', () => {
   assert.doesNotMatch(subsClientJs, /Failed to load subscriptions\.';/, 'old plain-textContent error string assignment should be gone');
   // NOT common.js's string-based buildErrorStateHtml -- this file carries a
