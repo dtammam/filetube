@@ -5280,6 +5280,134 @@ function cropAvatarFile(file) {
   });
 }
 
+// ---- v1.85 #1: mobile search + deletable, per-user recent-search history ----
+//
+// The magnifier (mobile top-right, injected into .header-right beside the bell +
+// avatar) opens search: it reveals the field (hidden by default on mobile - the
+// YouTube-app pattern) and shows the user's recent searches, each individually
+// deletable, plus a clear-all. Terms are recorded on every search and synced
+// per-user (GET/POST/DELETE /api/search-history), so history follows the
+// account. Desktop keeps its always-on search bar; the magnifier + panel are
+// mobile-only via CSS.
+
+// Best-effort record - never blocks the search navigation.
+function recordSearchTerm(term) {
+  if (typeof fetch !== 'function') return;
+  const t = typeof term === 'string' ? term.trim() : '';
+  if (!t) return;
+  try {
+    fetch('/api/search-history', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ term: t }),
+    }).catch(() => { /* best-effort - the local search already happened */ });
+  } catch (_) { /* fetch unavailable (old browser/tests) */ }
+}
+
+// Render the recent-search rows into `panel` as DOM (textContent, so a user's
+// own '<script>'-shaped search term can never self-XSS on replay). Each row: the
+// term (click -> onSearch), an x (delete one), and a clear-all footer. Exported
+// so the DOM + the delete/clear wiring are jsdom-bound, not source-asserted.
+function renderSearchHistoryPanel(panel, terms, onSearch) {
+  if (!panel) return;
+  panel.textContent = '';
+  const list = Array.isArray(terms) ? terms : [];
+  if (list.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'search-history-empty';
+    empty.textContent = 'No recent searches';
+    panel.appendChild(empty);
+    return;
+  }
+  const rows = document.createElement('div');
+  rows.className = 'search-history-list';
+  for (const term of list) {
+    const row = document.createElement('div');
+    row.className = 'search-history-row';
+    const pick = document.createElement('button');
+    pick.type = 'button';
+    pick.className = 'search-history-term';
+    const icon = document.createElement('i'); icon.className = 'icon-search'; icon.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span'); label.textContent = term;
+    pick.appendChild(icon); pick.appendChild(label);
+    pick.addEventListener('click', () => { if (typeof onSearch === 'function') onSearch(term); });
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'search-history-del';
+    del.setAttribute('aria-label', `Remove ${term} from recent searches`);
+    del.textContent = '×';
+    del.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (typeof fetch === 'function') fetch(`/api/search-history/${encodeURIComponent(term)}`, { method: 'DELETE' }).catch(() => {});
+      row.remove();
+      if (!rows.querySelector('.search-history-row')) renderSearchHistoryPanel(panel, [], onSearch);
+    });
+    row.appendChild(pick); row.appendChild(del);
+    rows.appendChild(row);
+  }
+  panel.appendChild(rows);
+  const clear = document.createElement('button');
+  clear.type = 'button';
+  clear.className = 'search-history-clear';
+  clear.textContent = 'Clear all';
+  clear.addEventListener('click', () => {
+    if (typeof fetch === 'function') fetch('/api/search-history', { method: 'DELETE' }).catch(() => {});
+    renderSearchHistoryPanel(panel, [], onSearch);
+  });
+  panel.appendChild(clear);
+}
+
+// Inject the magnifier + wire the open/close + the history panel. Idempotent;
+// no-op on a signed-out shell (no .header-right) or a shell without search.
+function wireSearchAffordances() {
+  if (typeof document === 'undefined') return;
+  const headerRight = document.querySelector('.header-right');
+  const searchInput = document.getElementById('search-input');
+  if (!headerRight || !searchInput || document.getElementById('search-toggle-btn')) return;
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.id = 'search-toggle-btn';
+  btn.className = 'search-toggle-btn';
+  btn.setAttribute('aria-label', 'Search');
+  const gi = document.createElement('i'); gi.className = 'icon-search'; gi.setAttribute('aria-hidden', 'true');
+  btn.appendChild(gi);
+  headerRight.appendChild(btn);
+
+  let panel = document.getElementById('search-history-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'search-history-panel';
+    panel.className = 'search-history-panel';
+    const host = document.querySelector('.header-search') || searchInput.parentElement;
+    if (host) host.appendChild(panel);
+  }
+
+  function closeSearch() { document.documentElement.classList.remove('search-open'); }
+  function loadHistory() {
+    if (typeof fetch !== 'function') return;
+    fetch('/api/search-history')
+      .then((r) => (r.ok ? r.json() : { terms: [] }))
+      .then((d) => renderSearchHistoryPanel(panel, d && d.terms, onSearch))
+      .catch(() => { /* offline: no panel, the field still works */ });
+  }
+  function onSearch(term) {
+    searchInput.value = term;
+    closeSearch();
+    const url = `/?search=${encodeURIComponent(term)}`;
+    if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(url);
+    else window.location.href = url;
+    recordSearchTerm(term);
+  }
+
+  btn.addEventListener('click', () => {
+    if (document.documentElement.classList.contains('search-open')) { closeSearch(); return; }
+    document.documentElement.classList.add('search-open');
+    searchInput.focus();
+    loadHistory();
+  });
+  searchInput.addEventListener('focus', loadHistory);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSearch(); });
+}
+
 function injectAccountMenu() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
   const headerRight = document.querySelector('.header-right');
@@ -10998,6 +11126,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initLibraryGlyphs();
   bootHomeFeedPref(); // v1.79: seed the home-feed toggle from the user record (own path, like glyphs)
   bootModernModePref(); // v1.84: reflect + seed the Modern-mode toggle (own path, sets data-modern)
+  wireSearchAffordances(); // v1.85 #1: the mobile magnifier + recent-search history panel
   // v1.78 device handoff: the offer card. Mounted on <body> by the controller
   // (never #view-root) and owning exactly ONE poll interval for the life of
   // the page - booted here, once, alongside the other shell-level injectors.
@@ -11056,6 +11185,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!searchInput) return;
     const query = searchInput.value.trim();
     const url = query ? `/?search=${encodeURIComponent(query)}` : '/';
+    if (query) recordSearchTerm(query); // v1.85 #1: remember it (per-user, synced)
     if (window.FileTube && typeof window.FileTube.navigate === 'function') {
       window.FileTube.navigate(url);
     } else {
@@ -11212,6 +11342,8 @@ if (typeof module !== 'undefined' && module.exports) {
     selectRecentUploaderChannels,
     // v1.84 T5: the per-card channel-avatar decision.
     modernCardAvatar,
+    // v1.85 #1: the search-history record + panel render (jsdom-bound).
+    recordSearchTerm, renderSearchHistoryPanel,
     // v1.31 P5 (FR5): repull-ack formatter.
     formatRepullAckText,
     // v1.32 (gate fix): the chip's one-line breaker summary.
