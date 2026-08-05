@@ -203,6 +203,7 @@ const { adapter: dbAdapter } = sqliteDb.openAdapter(DATA_DIR, {
 const authCrypto = require('./lib/auth/crypto');
 const createUserStore = require('./lib/auth/store');
 const authGateLib = require('./lib/auth/gate');
+const visibility = require('./lib/auth/visibility'); // v1.80 RBAC: the ONE visibility decision
 const userStore = createUserStore(dbAdapter);
 // Fail-closed at boot: a short/placeholder secret throws here (before listen).
 const SESSION_SECRET = authGateLib.resolveSessionSecret(DATA_DIR, process.env, (line) => console.log(line));
@@ -886,6 +887,28 @@ function effectiveProgress(userId, id) {
   const pending = pendingProgress.get(pendingProgressKey(userId, id));
   if (pending) return pending.value;
   return userStore.getOneProgress(userId, id) || undefined;
+}
+
+// v1.80 RBAC: the per-request visibility index for req.user. Built ONCE per
+// request and cached on req (many routes filter the same list). An ADMIN gets
+// an EMPTY index -> isBlocked always false -> sees everything, with no role
+// branch scattered across routes.
+function userRestrictionIndex(req) {
+  if (!req || !req.user) return visibility.buildRestrictionIndex([]);
+  if (req._ftRestrictionIndex) return req._ftRestrictionIndex;
+  const rows = req.user.role === 'admin' ? [] : userStore.getRestrictions(req.user.id);
+  const idx = visibility.buildRestrictionIndex(rows);
+  req._ftRestrictionIndex = idx;
+  return idx;
+}
+
+// v1.80 RBAC: per-kind visibility for req.user. ONE decision, reused by the list
+// filters AND the serve routes so they can never diverge. A missing item is not
+// visible (the caller 404s anyway). Descriptors mirror lib/auth/visibility.js.
+function mediaVisibleTo(req, item) {
+  return !!item && !visibility.isBlocked(userRestrictionIndex(req), {
+    kind: 'media', filePath: item.filePath, folderName: item.folderName, rootFolder: item.rootFolder,
+  });
 }
 
 // v1.78 device handoff -------------------------------------------------------
@@ -8835,6 +8858,11 @@ app.get('/api/videos', (req, res) => {
 
   let list = Object.values(db.metadata);
 
+  // v1.80 RBAC: drop restricted items FIRST, so total/sort/pagination and every
+  // downstream filter operate on only what this user may see. Admin's index is
+  // empty (keeps everything).
+  list = list.filter((item) => mediaVisibleTo(req, item));
+
   // Is a file located under a given folder path? (that folder or any descendant)
   const underFolder = (filePath, folder) =>
     filePath === folder || filePath.startsWith(folder + '/') || filePath.startsWith(folder + '\\');
@@ -9047,6 +9075,7 @@ app.get('/api/home', (req, res) => {
   for (const id of Object.keys(db.metadata || {})) {
     const item = db.metadata[id];
     if (!item || typeof item !== 'object') continue;
+    if (!mediaVisibleTo(req, item)) continue; // v1.80 RBAC: the feed never surfaces a restricted item
     if (hiddenFolders.length && hiddenFolders.some((hf) => underFolder(item.filePath, hf))) continue;
     const p = Object.prototype.hasOwnProperty.call(progressMap, id) ? progressMap[id] : null;
     const ts = p ? Number(p.timestamp) : 0;
@@ -9156,6 +9185,7 @@ app.get('/api/channels', (req, res) => {
   for (const id of Object.keys(db.metadata || {})) {
     const item = db.metadata[id];
     if (!item || !item.folderName) continue;
+    if (!mediaVisibleTo(req, item)) continue; // v1.80 RBAC: no restricted channels in the list
     if (rootFilter) {
       if (!underRoot(item.filePath)) continue;
     } else if (item.rootFolder && hiddenRoots.has(item.rootFolder)) {
@@ -9184,6 +9214,9 @@ app.get('/api/videos/:id', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
   const item = db.metadata[req.params.id];
   if (!item) {
+    return res.status(404).json({ error: 'Media file not found' });
+  }
+  if (!mediaVisibleTo(req, item)) { // v1.80 RBAC: restricted -> 404 like missing
     return res.status(404).json({ error: 'Media file not found' });
   }
 
@@ -9470,8 +9503,15 @@ app.get('/api/handoff', (req, res) => {
   if (!seen) return res.json({ presence: null });
   if (isFinishedPresence(seen)) return res.json({ presence: null });
 
-  const target = resolveHandoffTarget(getCachedDatabase(), seen);
+  const handoffDb = getCachedDatabase();
+  const target = resolveHandoffTarget(handoffDb, seen);
   if (!target) return res.json({ presence: null });
+  // v1.80 RBAC: never offer a restricted item across devices (e.g. a restriction
+  // added after playback began elsewhere). Media checked here; track/podcast
+  // land with their libraries.
+  if (seen.kind === 'media' && !mediaVisibleTo(req, handoffDb.metadata && handoffDb.metadata[seen.mediaId])) {
+    return res.json({ presence: null });
+  }
 
   res.json({
     presence: {
@@ -10255,7 +10295,7 @@ app.get('/api/liked', (req, res) => {
   const offset = videoQuery.normalizeOffset(req.query.offset);
   const seed = videoQuery.normalizeSeed(req.query.seed);
 
-  let list = Object.values(db.metadata).filter(item => likedIds.has(item.id));
+  let list = Object.values(db.metadata).filter(item => likedIds.has(item.id) && mediaVisibleTo(req, item)); // v1.80 RBAC
   // v1.32: the Liked view is now a real library scope (main.js's ?liked=1)
   // -- honor the same format toggle the home grid forwards, so
   // videos/audio/both filtering behaves identically in both views.
@@ -10355,6 +10395,7 @@ app.get('/api/history', (req, res) => {
 
   const merged = Object.keys(lastById)
     .filter((id) => Object.prototype.hasOwnProperty.call(db.metadata, id))
+    .filter((id) => mediaVisibleTo(req, db.metadata[id])) // v1.80 RBAC: no restricted items in history
     .sort((a, b) => {
       if (lastById[a] !== lastById[b]) return lastById[a] > lastById[b] ? -1 : 1;
       return a < b ? -1 : 1; // deterministic tiebreak
@@ -14261,6 +14302,10 @@ app.get('/api/subtitles/:id', (req, res) => {
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
   }
+  // v1.80 RBAC: a restricted item is indistinguishable from a missing one.
+  if (!mediaVisibleTo(req, item)) {
+    return res.status(404).json({ error: 'Media file not found' });
+  }
   const sidecar = subtitles.findSubtitleSidecar(item.filePath);
   if (!sidecar) {
     return res.status(404).json({ error: 'No subtitle track available for this item' });
@@ -14309,6 +14354,12 @@ app.get('/thumbnail/:id', (req, res) => {
     && db.trash && Object.prototype.hasOwnProperty.call(db.trash, req.params.id))
     ? db.trash[req.params.id] : null;
   const item = db.metadata[req.params.id] || (trashRec && trashRec.item) || undefined;
+  // v1.80 RBAC: never serve a restricted item's thumbnail (it reveals the
+  // content visually). Resolves via metadata OR the trash snapshot, so the
+  // check must run on either source.
+  if (item && !mediaVisibleTo(req, item)) {
+    return res.status(404).json({ error: 'Media file not found' });
+  }
   const thumbPath = path.join(THUMBNAIL_DIR, `${req.params.id}.jpg`);
 
   if (item && item.hasThumbnail && fs.existsSync(thumbPath)) {
@@ -14604,6 +14655,11 @@ app.get('/video/:id', async (req, res) => {
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
   }
+  // v1.80 RBAC: the security-critical guard - a restricted user must not stream
+  // (or download) restricted bytes by direct URL. 404, never 403 (existence).
+  if (!mediaVisibleTo(req, item)) {
+    return res.status(404).json({ error: 'Media file not found' });
+  }
 
   // FR-3 (v1.19.0): a download-intent request (`?download=1`) ALWAYS
   // bypasses the needsTranscode/live-transcode branch below and serves the
@@ -14796,6 +14852,11 @@ app.get('/audio/:id', (req, res) => {
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
   }
+  // v1.80 RBAC: the background-audio byte route (easy to miss - separate from
+  // /video/:id). Restricted item -> 404.
+  if (!mediaVisibleTo(req, item)) {
+    return res.status(404).json({ error: 'Media file not found' });
+  }
   if (item.type === 'audio') {
     return res.status(404).json({ error: 'Media file not found' });
   }
@@ -14850,6 +14911,10 @@ app.post('/api/videos/:id/prepare-audio', (req, res) => {
   const db = loadDatabase();
   const item = db.metadata[req.params.id];
   if (!item) {
+    return res.status(404).json({ error: 'Media file not found' });
+  }
+  // v1.80 RBAC: don't let a restricted item be an existence oracle / CPU sink.
+  if (!mediaVisibleTo(req, item)) {
     return res.status(404).json({ error: 'Media file not found' });
   }
   if (item.type === 'audio') {
