@@ -80,6 +80,33 @@
 
 ## Shipped
 
+### v1.79.1 - Home feed: the See-all links actually work now (2026-08-05)
+
+Dean's device pass on v1.79.0: the feed itself is "really, really good," but
+three of the four row "See all" links were broken/useless, which made it
+"pretty untenable." Fixed:
+
+- **New from your subscriptions** pointed at `/subscriptions` (the management
+  page). Now `-> /?subs=1`, a NEW subscription-scoped browse: a `GET
+  /api/videos?subs=1` filter keeps items under a subscription folder via the
+  same name-based join `/api/home` uses (folderName OR channelName in
+  `db.ytdlp.subscriptions[].name`; global-until-RBAC, tech-debt #122). Header
+  reads "From your subscriptions"; newest-released first.
+- **Recently added** pointed at bare `/`, which for a feed-enabled user just
+  re-showed the feed (so it "did nothing"). Now `-> /?browse=1`, which FORCES
+  the classic grid (all videos, the user's default sort).
+- **From your Liked** pointed at `/playlists` (no such route -> 404). Now `->
+  /?liked=1`, the real Liked grid (the Liked folder itself was always fine).
+- **More from <channel>** already worked (folder view) - untouched.
+
+Client-side, `?subs=1` is a scope (excludes bare-home) and `?browse=1`
+force-selects classic, so both escape feed mode cleanly; a configured
+defaultView can't clobber either. Slim adversarial gate APPROVE (no CRITICAL);
+it caught a divergent-fixture coverage gap - the subs test matched via both
+folderName and channelName, so the folderName arm was unbound - now fixed and
+mutation-verified. Full `npm test` green on BOTH Node v22.23.1 (6262/6262) and
+v24.14.0 (6262/6262), 0 fail. **Dean's device pass PENDING** on the fixed links.
+
 ### v1.79.0 - Home feed: a library with a YouTube feel (2026-08-05)
 
 Dean's ask: a YouTube-style home feed - horizontal rows of "Continue watching,"
