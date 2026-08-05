@@ -374,6 +374,19 @@ function resolveHomeLayout(opts) {
   return 'classic';
 }
 
+// v1.84 T4: the mobile channel-avatar bar's selection - the SUBSCRIBED channels
+// that most recently uploaded. Pure over /api/channels' rows
+// ({folder,name,avatarUrl,latestAddedAt,isSub}): keep subs with a real recency,
+// newest-first, capped. Never mutates the input; a non-array is empty.
+function selectRecentUploaderChannels(channels, cap) {
+  const n = typeof cap === 'number' && cap > 0 ? cap : 12;
+  return (Array.isArray(channels) ? channels : [])
+    .filter((c) => c && c.isSub === true && typeof c.latestAddedAt === 'number' && c.latestAddedAt > 0)
+    .slice()
+    .sort((a, b) => b.latestAddedAt - a.latestAddedAt)
+    .slice(0, n);
+}
+
 // Boot: reflect the device's known value onto <html> IMMEDIATELY (no fetch, no
 // flash), then - only if the device has never chosen - seed from the user
 // record on its OWN fetch-sharing path (the same v1.63.1 scar the home-feed
@@ -11180,6 +11193,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.84 T3: the chip filter allowlist + resolver (client half; source-locked
     // equal to the server's MODERN_GRID_FILTERS) + the bare-home layout decision.
     resolveModernChip, MODERN_CHIP_FILTERS, resolveHomeLayout,
+    // v1.84 T4: the mobile avatar bar's pure selection.
+    selectRecentUploaderChannels,
     // v1.31 P5 (FR5): repull-ack formatter.
     formatRepullAckText,
     // v1.32 (gate fix): the chip's one-line breaker summary.

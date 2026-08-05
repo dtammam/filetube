@@ -9524,7 +9524,12 @@ app.get('/api/channels', (req, res) => {
   const settingsByRoot = db.folderSettings || {};
   const hiddenRoots = new Set(Object.keys(settingsByRoot).filter(p => settingsByRoot[p] && settingsByRoot[p].hidden === true));
   const underRoot = (fp) => fp === rootFilter || (typeof fp === 'string' && fp.startsWith(rootFilter + path.sep));
-  const groups = new Map(); // folderName -> { folder, name, avatarUrl, count, latestAddedAt }
+  // v1.84: name-based subscription set (same join as /api/home) so consumers can
+  // pick the subscribed channels - the Modern-mode mobile avatar bar shows the
+  // recently-active SUBSCRIPTIONS.
+  const subsList = db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [];
+  const subNames = new Set(subsList.map((s) => s && s.name).filter(Boolean));
+  const groups = new Map(); // folderName -> { folder, name, avatarUrl, count, latestAddedAt, isSub }
   for (const id of Object.keys(db.metadata || {})) {
     const item = db.metadata[id];
     if (!item || !item.folderName) continue;
@@ -9536,13 +9541,14 @@ app.get('/api/channels', (req, res) => {
     }
     let g = groups.get(item.folderName);
     if (!g) {
-      g = { folder: item.folderName, name: item.folderName, avatarUrl: null, count: 0, latestAddedAt: 0 };
+      g = { folder: item.folderName, name: item.folderName, avatarUrl: null, count: 0, latestAddedAt: 0, isSub: false };
       groups.set(item.folderName, g);
     }
     g.count++;
     // First non-empty wins for name/avatar: every item of a channel folder
     // carries the same scan-captured values, so "first" is not a lottery.
     if (g.name === g.folder && typeof item.channelName === 'string' && item.channelName !== '') g.name = item.channelName;
+    if (!g.isSub && (subNames.has(item.folderName) || subNames.has(item.channelName))) g.isSub = true;
     if (!g.avatarUrl && typeof item.channelAvatarUrl === 'string' && item.channelAvatarUrl !== '') g.avatarUrl = item.channelAvatarUrl;
     if (typeof item.addedAt === 'number' && item.addedAt > g.latestAddedAt) g.latestAddedAt = item.addedAt;
   }

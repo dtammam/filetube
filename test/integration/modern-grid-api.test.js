@@ -171,6 +171,23 @@ test('recency: items are newest-first by addedAt', async () => {
   assert.deepStrictEqual(ids((await grid('videos')).body), ['new', 'mid', 'old']);
 });
 
+test('T4: /api/channels flags subscribed channels (isSub) for the avatar bar', async () => {
+  seed(
+    {
+      s1: item('s1', { folderName: 'SubChan', channelName: 'SubChan', filePath: '/media/SubChan/s1.mp4', addedAt: 900 }),
+      p1: item('p1', { folderName: 'PlainChan', channelName: 'PlainChan', filePath: '/media/PlainChan/p1.mp4', addedAt: 800 }),
+    },
+    { ytdlp: { allowMembersOnly: false, subscriptions: [{ name: 'SubChan', order: 0 }] } },
+  );
+  const res = await fetch(`${base}/api/channels`);
+  const { channels } = await res.json();
+  const sub = channels.find((c) => c.folder === 'SubChan');
+  const plain = channels.find((c) => c.folder === 'PlainChan');
+  assert.strictEqual(sub.isSub, true, 'a subscribed channel is flagged isSub');
+  assert.strictEqual(plain.isSub, false, 'a plain (non-subscription) channel is not');
+  assert.strictEqual(sub.latestAddedAt, 900, 'latestAddedAt carries the recency the bar sorts by');
+});
+
 test('the 60-item cap is DISCLOSED via truncated:true, never silent', async () => {
   const meta = {};
   for (let i = 0; i < 65; i++) meta[`m${i}`] = item(`m${i}`, { addedAt: 1000 + i });

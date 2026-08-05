@@ -286,6 +286,40 @@ function buildModernChipRowHtml(active) {
   }).join('');
   return `<div class="modern-chip-row" role="tablist" aria-label="Filter the home feed">${chips}</div>`;
 }
+// v1.84 T4: the mobile recent-uploader subscription bar. Built as DOM (not an
+// HTML string) so the generated monogram colour is applied via
+// `.style.backgroundColor` (a runtime palette value - census-safe, the same way
+// buildAccountAvatarEl does it). Empty -> the bar stays hidden (no empty strip).
+function populateModernAvatarBar(barEl, channels) {
+  if (!barEl) return;
+  barEl.textContent = '';
+  if (!Array.isArray(channels) || channels.length === 0) { barEl.hidden = true; return; }
+  for (const c of channels) {
+    const a = document.createElement('a');
+    a.className = 'modern-avatar-chip';
+    a.href = `/?folder=${encodeURIComponent(c.folder)}`;
+    a.title = c.name;
+    const circle = document.createElement('span');
+    circle.className = 'modern-avatar-circle';
+    const src = (typeof resolveAvatarSource === 'function') ? resolveAvatarSource(c.name, c.avatarUrl) : { type: 'generated', glyph: '?', color: '#888' };
+    if (src.type === 'url') {
+      const img = document.createElement('img');
+      img.src = src.url; img.alt = ''; img.loading = 'lazy';
+      circle.appendChild(img);
+    } else {
+      circle.textContent = src.glyph;
+      circle.style.backgroundColor = src.color; // runtime palette value (census-safe)
+    }
+    const name = document.createElement('span');
+    name.className = 'modern-avatar-name';
+    name.textContent = c.name;
+    a.appendChild(circle);
+    a.appendChild(name);
+    barEl.appendChild(a);
+  }
+  barEl.hidden = false;
+}
+
 function buildModernEmptyHtml(filter) {
   const msgs = {
     videos: 'No videos here yet.',
@@ -983,6 +1017,15 @@ if (typeof module !== 'undefined' && module.exports) {
                 });
                 fetchModernGrid(sig);
               }, { signal: sig });
+            }
+            // T4: the mobile recent-uploader subscription bar - best-effort; a
+            // failure or no subs leaves it hidden, never a broken strip.
+            const bar = chromeHost.querySelector('#modern-avatar-bar');
+            if (bar) {
+              fetch('/api/channels', { signal: sig })
+                .then((r) => (r.ok ? r.json() : { channels: [] }))
+                .then((data) => populateModernAvatarBar(bar, selectRecentUploaderChannels(data && data.channels, 12)))
+                .catch(() => { /* best-effort; the bar stays hidden */ });
             }
           }
           await fetchModernGrid(sig);
