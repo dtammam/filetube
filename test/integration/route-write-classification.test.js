@@ -47,6 +47,10 @@ const CLASSIFICATION = {
   'DELETE /api/liked/:id': 'personal',
   'DELETE /api/history': 'personal',
   'DELETE /api/history/:id': 'personal',
+  // v1.85 #1: per-user search history - the member's OWN state, never gated.
+  'POST /api/search-history': 'personal',
+  'DELETE /api/search-history/:term': 'personal',
+  'DELETE /api/search-history': 'personal',
   'POST /api/watched/:id': 'personal',
   'DELETE /api/watched/:id': 'personal',
   'POST /api/queue/items': 'personal',

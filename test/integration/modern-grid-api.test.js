@@ -91,6 +91,21 @@ test('shape: a media grid item carries the RICH card fields (incl. channelAvatar
   assert.strictEqual(it.duration, 100);
 });
 
+test('#4: a media grid item is field-complete for the card corners (watchUrl + ext)', async () => {
+  seed({ y: item('y', { youtubeId: 'dQw4w9WgXcQ', ext: '.mkv' }) });
+  const it = (await grid('all')).body.items.find((i) => i.id === 'y');
+  assert.strictEqual(it.ext, '.mkv', 'ext carried -> the download corner gets a real filename');
+  assert.strictEqual(it.watchUrl, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    'watchUrl carried -> the Share corner renders (it was silently empty in modern before)');
+});
+
+test('#4: a non-YouTube media item omits watchUrl (Share correctly absent), keeps ext', async () => {
+  seed({ local: item('local', { ext: '.avi' }) }); // no youtubeId
+  const it = (await grid('all')).body.items.find((i) => i.id === 'local');
+  assert.strictEqual(it.ext, '.avi');
+  assert.ok(!('watchUrl' in it), 'no youtubeId -> no watchUrl -> Share renders nothing, exactly like /api/videos');
+});
+
 test('videos vs audio: the type split is exact', async () => {
   seed({
     v1: item('v1', { type: 'video' }),
@@ -189,6 +204,20 @@ test('T4: /api/channels flags subscribed channels (isSub) for the avatar bar', a
   assert.strictEqual(sub.isSub, true, 'a subscribed channel is flagged isSub');
   assert.strictEqual(plain.isSub, false, 'a plain (non-subscription) channel is not');
   assert.strictEqual(sub.latestAddedAt, 900, 'latestAddedAt carries the recency the bar sorts by');
+});
+
+test('#3a: /api/channels resolves the avatar from the channelId registry, not just the baked field', async () => {
+  // The channel's videos bake NO channelAvatarUrl, but the registry (what the
+  // Subscriptions menu + per-card avatar use) has the photo. The bar must show it.
+  const CHID = 'UC-lHJZR3Gqxm24_Vd_AJ5Yw'; // valid UC + 22-char shape
+  seed(
+    { r1: item('r1', { folderName: 'Reg', channelName: 'Reg', channelId: CHID, channelAvatarUrl: '' }) },
+    { ytdlp: { allowMembersOnly: false, subscriptions: [{ name: 'Reg', order: 0 }], channelAvatars: { [CHID]: { avatarUrl: 'https://cdn/reg.jpg', channelUrl: '', fetchedAt: 1 } } } },
+  );
+  const { channels } = await (await fetch(`${base}/api/channels`)).json();
+  const reg = channels.find((c) => c.folder === 'Reg');
+  assert.strictEqual(reg.avatarUrl, 'https://cdn/reg.jpg', 'the registry photo shows even though items baked no URL (Dean: Subs shows it, the bar did not)');
+  assert.strictEqual(reg.isSub, true);
 });
 
 test('the 60-item cap is DISCLOSED via truncated:true, never silent', async () => {

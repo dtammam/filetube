@@ -8562,11 +8562,6 @@ app.get('/api/notifications', (req, res) => {
   if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
   const { items } = userStore.listNotifications(req.user.id);
   const metadata = db.metadata || {};
-  // One deep-cloned ytdlp namespace for the whole request (NOT per row) --
-  // the same cache-coherency dance GET /api/videos/:id documents: the
-  // avatar fallback's ensureYtdlp backfills IN PLACE, and the shared cache
-  // object must never be mutated.
-  let dbForAvatarLookup = null;
   const rows = [];
   const phantomMediaIds = [];
   const phantomEpisodeIds = [];
@@ -8641,10 +8636,10 @@ app.get('/api/notifications', (req, res) => {
     if (!mediaVisibleTo(req, item)) continue;
     let channelAvatarUrl = typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '';
     if (channelAvatarUrl === '') {
-      if (!dbForAvatarLookup) {
-        dbForAvatarLookup = { ...db, ytdlp: db.ytdlp ? JSON.parse(JSON.stringify(db.ytdlp)) : undefined };
-      }
-      channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(dbForAvatarLookup, item) || '';
+      // v1.85 #3a: resolveItemChannelAvatarUrl is READ-ONLY now (it reads via
+      // readYtdlpNamespace, never ensureYtdlp), so the shared getCachedDatabase()
+      // object can be handed in directly - no defensive deep-clone.
+      channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item) || '';
     }
     rows.push({
       id: row.id,
@@ -9312,6 +9307,13 @@ function resolveModernGridItem(db, rec) {
   }
   const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, rec.id) ? db.metadata[rec.id] : null;
   if (!item) return null;
+  // v1.85 (#4): field-COMPLETE for every card corner. The classic /api/videos
+  // item carries `ext` (download filename) and `watchUrl` (the Share corner);
+  // the grid item omitted them, so a bottom-left corner set to Share (or any
+  // control needing watchUrl/ext) rendered EMPTY in modern mode while
+  // download/delete - which need only id - showed. Match the /api/videos
+  // projection: derive watchUrl the same way, include ext.
+  const watchUrl = typeof item.youtubeId === 'string' ? buildWatchUrl(item.youtubeId) : null;
   return {
     id: rec.id, kind: 'media', title: item.title || item.name || 'Video',
     folderName: item.folderName || '', channelName: item.channelName || '',
@@ -9320,6 +9322,8 @@ function resolveModernGridItem(db, rec) {
     sourceViewCountCapturedAt: item.sourceViewCountCapturedAt,
     addedAt: rec.addedAt, progressPercent: rec.progressPercent, liked: rec.liked,
     duration: typeof item.duration === 'number' ? item.duration : 0, type: rec.type,
+    ext: typeof item.ext === 'string' ? item.ext : '',
+    ...(watchUrl ? { watchUrl } : {}),
   };
 }
 
@@ -9549,7 +9553,18 @@ app.get('/api/channels', (req, res) => {
     // carries the same scan-captured values, so "first" is not a lottery.
     if (g.name === g.folder && typeof item.channelName === 'string' && item.channelName !== '') g.name = item.channelName;
     if (!g.isSub && (subNames.has(item.folderName) || subNames.has(item.channelName))) g.isSub = true;
-    if (!g.avatarUrl && typeof item.channelAvatarUrl === 'string' && item.channelAvatarUrl !== '') g.avatarUrl = item.channelAvatarUrl;
+    // v1.85 (#3a): resolve through the channelId-keyed registry (the SAME chain
+    // the Subscriptions menu + per-card avatar use), not just the baked
+    // item.channelAvatarUrl. A subscribed channel whose videos never baked the
+    // URL still gets its real photo in the avatar bar (Dean: "Subs shows the
+    // avatar but the bar doesn't").
+    if (!g.avatarUrl) {
+      // resolveItemChannelAvatarUrl checks the baked item.channelAvatarUrl FIRST
+      // (step 1), then the channelId/URL registry - so this one call subsumes
+      // the old baked-field-only assignment.
+      const resolvedAvatar = ytdlp.resolveItemChannelAvatarUrl(db, item);
+      if (resolvedAvatar) g.avatarUrl = resolvedAvatar;
+    }
     if (typeof item.addedAt === 'number' && item.addedAt > g.latestAddedAt) g.latestAddedAt = item.addedAt;
   }
   // localeCompare: a consistent comparator (gate S4 -- the previous one
@@ -9586,27 +9601,14 @@ app.get('/api/videos/:id', (req, res) => {
   // (public/js/common.js) already falls back to a first-letter avatar.
   let channelAvatarUrl = item.channelAvatarUrl;
   if ((typeof channelAvatarUrl !== 'string' || channelAvatarUrl === '') && ytdlp.isEnabled(ytdlp.parseYtdlpConfig())) {
-    // v1.30 A3 cache-coherency note: `resolveItemChannelAvatarUrl` calls
-    // `ensureYtdlp(db)` internally, which BACKFILLS `db.ytdlp` (and its
-    // nested subscription/pin entries) IN PLACE on a legacy/partial shape.
-    // Before this route read through the cache, `db` was always a fresh,
-    // per-request `loadDatabase()` throwaway, so that in-place backfill was
-    // harmless. Now that `db` is the SHARED `getCachedDatabase()` object,
-    // handing it straight into a function that mutates nested fields in
-    // place would violate the "cache replaced by reference, never mutated
-    // in place" invariant the whole read-cache's coherency argument depends
-    // on -- so this lookup gets its own deep-cloned `ytdlp` namespace
-    // (a JSON round-trip deep clone, only reached when the avatar is
-    // genuinely missing) instead of the live cache reference. Every other
-    // field of `db` is still shared/read-only here -- only `.ytdlp` is ever
-    // written by `ensureYtdlp`. v1.42: JSON round-trip, NOT structuredClone
-    // -- under the test runner the cache is served through the throwing
-    // mutation-guard Proxy (see getCachedDatabase), and V8's structured
-    // clone cannot serialize Proxies (DataCloneError); JSON.stringify reads
-    // through the guard's get traps transparently, and db.ytdlp is plain
-    // JSON data by construction (it round-trips through the store).
-    const dbForAvatarLookup = { ...db, ytdlp: db.ytdlp ? JSON.parse(JSON.stringify(db.ytdlp)) : undefined };
-    channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(dbForAvatarLookup, item);
+    // v1.85 #3a: resolveItemChannelAvatarUrl is now READ-ONLY - it reads the
+    // ytdlp namespace via readYtdlpNamespace and NEVER calls ensureYtdlp, so it
+    // no longer mutates anything. That means the shared getCachedDatabase()
+    // object is safe to hand in directly. (Before #3a it backfilled db.ytdlp in
+    // place, so this route deep-cloned the namespace to protect the read-cache
+    // coherency invariant; both the mutation and the clone are gone, and the
+    // v1.85 /api/channels + modern-grid callers pass the raw cached db too.)
+    channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item);
   }
   // v1.33 T2 (Share button): the ORIGINAL YouTube watch URL, derived at
   // serve time from the persisted `youtubeId` through the same buildWatchUrl
@@ -10821,6 +10823,38 @@ app.delete('/api/history', (req, res) => {
     if (entry.userId === req.user.id) pendingProgress.delete(key);
   }
   userStore.clearHistory(req.user.id);
+  res.json({ success: true });
+});
+
+// ---- v1.85 #1: per-user search history (the mobile magnifier) ---------------
+// term-keyed, exact-dedup, recency-ordered, capped. Individually deletable + a
+// clear-all guarded against the trailing-slash alias (the v1.64 lesson).
+const SEARCH_HISTORY_CAP = 20;
+const SEARCH_TERM_MAX = 200;
+// Pure + exported: collapse whitespace, trim, cap length. Empty -> '' (rejected).
+function normalizeSearchTerm(raw) {
+  if (typeof raw !== 'string') return '';
+  const t = raw.replace(/\s+/g, ' ').trim();
+  return t.length > SEARCH_TERM_MAX ? t.slice(0, SEARCH_TERM_MAX) : t;
+}
+app.get('/api/search-history', (req, res) => {
+  res.json({ terms: userStore.getSearchHistory(req.user.id, SEARCH_HISTORY_CAP) });
+});
+app.post('/api/search-history', (req, res) => {
+  const term = normalizeSearchTerm(req.body && req.body.term);
+  if (!term) return res.status(400).json({ error: 'term required' });
+  userStore.addSearchTerm(req.user.id, term, new Date().toISOString());
+  res.json({ success: true, term });
+});
+app.delete('/api/search-history/:term', (req, res) => {
+  userStore.removeSearchTerm(req.user.id, req.params.term);
+  res.json({ success: true });
+});
+app.delete('/api/search-history', (req, res) => {
+  // The same trailing-slash guard as DELETE /api/history: a missing :term must
+  // NOT be aliased onto this clear-all (Express non-strict routing).
+  if (req.path !== '/api/search-history') return res.status(400).json({ error: 'term required' });
+  userStore.clearSearchHistory(req.user.id);
   res.json({ success: true });
 });
 
@@ -15797,6 +15831,8 @@ module.exports = {
   // beforeEach.
   resolveHandoffTarget,
   resolveHomeItem,
+  normalizeSearchTerm, // v1.85 #1: exported for the unit test
+
   isFinishedPresence,
   HANDOFF_FINISHED_PCT,
   __presenceForTests: presence,

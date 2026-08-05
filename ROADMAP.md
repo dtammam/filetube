@@ -80,6 +80,38 @@
 
 ## Shipped
 
+### v1.85.0 - Modern-mode polish: mobile search, "You" tab, avatar + corner fixes (2026-08-05)
+
+Dean's four v1.84 device-pass follow-ups:
+- **#4 (bug):** in Modern mode a card's bottom-left corner (e.g. Share) rendered
+  empty. Root cause was DATA, not CSS (hence modern-only): the grid endpoint's
+  item omitted `watchUrl`/`ext`, so any corner needing them silently vanished
+  while download/delete (id-only) showed. The grid item now matches the
+  /api/videos projection.
+- **#3a (bug):** the mobile avatar bar showed no photo for a subscribed channel
+  whose avatar lives in the channelId registry (the Subs menu showed it). Now
+  /api/channels resolves via the registry. This ALSO fixed a latent v1.84 defect
+  the gate's fixtures had never reached: the avatar resolver called ensureYtdlp,
+  which MUTATES - on the shared read-cache that is silent corruption (the v1.42
+  aliasing hazard), a 500 under the test guard. A read must not mutate; it now
+  uses a read-only namespace view. (The "@handle vs display-name" folder MERGE is
+  deferred - a channelId-grouping change for a later wave.)
+- **#1 (feature):** a mobile search magnifier (top-right) that reveals the search
+  field (hidden until tapped, YouTube-app style) and shows your recent searches -
+  each individually deletable, plus a clear-all - stored PER-USER and synced
+  (schema v16, retention-capped, self-XSS-safe).
+- **#2 (feature):** a "You" tab at the bottom-right of the mobile nav (the
+  YouTube-app slot) opening your account menu; engineered non-hideable so you
+  can't strand your own account access.
+
+Full two-reviewer gate: both APPROVE (a WARNING - a dead cache-clone + false
+comment my #3a fix orphaned - plus 4 SUGGESTIONs, all closed in a fix round).
+Dual-Node full suite green on v22.23.1 and v24.14.0 (6411/6411). **Dean's
+on-device pass is PENDING.** Known follow-ups for v1.86 (Dean, on-device): the
+modern chip row is clipped at the bottom by a Downloads banner, and the one-off
+header Download button is missing on the main page + mobile (Subscriptions
+one-off still works).
+
 ### v1.84.0 - Modern YouTube Mode (flat big-tile grid + chips + mobile avatar bar) (2026-08-05)
 
 "Another loop on the YouTube feed" - a new opt-in **Modern mode** checkbox

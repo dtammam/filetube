@@ -103,11 +103,17 @@ test('fresh open creates the full v1 schema with empty user tables', () => {
       // and about to miss v8's.)
       'push_subscriptions', 'user_notification_dismissals',
       // v1.69 schema v9: per-user podcast resume + played latch.
-      'user_podcast_progress', 'user_podcast_played']) {
+      'user_podcast_progress', 'user_podcast_played',
+      // The list had ROTTED again (the v1.64/v1.66 hand-enumerated-list class,
+      // adversarial gate v1.85): these existing tables were never added here.
+      // v1.71 podcast likes/pins; v1.37 book likes/finished; v1.80 restrictions.
+      'user_podcast_liked', 'user_podcast_pins', 'user_book_liked', 'user_book_finished', 'user_restrictions',
+      // v1.85 schema v16: per-user search history, born empty.
+      'user_search_history']) {
       const { c } = a.sql.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get();
       assert.strictEqual(c, 0, `${table} exists and is empty (born-complete schema, exec plan)`);
     }
-    assert.strictEqual(a.sql.prepare('PRAGMA user_version').get().user_version, 15);
+    assert.strictEqual(a.sql.prepare('PRAGMA user_version').get().user_version, 16);
     // v1.43 schema v2: users.id is AUTOINCREMENT (never reuses a reaped id —
     // design-delta SUGGESTION-6). sqlite_autoindex/sqlite_sequence presence
     // is the fingerprint.
@@ -129,7 +135,7 @@ test('v3 -> v4 upgrade: an existing populated schema gains the empty user_watche
 
   const b = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 15, 'forward-only migration ran (to the CURRENT version)');
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 16, 'forward-only migration ran (to the CURRENT version)');
     assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_watched').get().c, 0, 'latch table born empty');
     // v1.51 schema v5 rides the same forward run.
     assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM notifications').get().c, 0, 'notification feed born empty');
@@ -153,7 +159,7 @@ test('v14 -> v15 upgrade: an existing populated users table gains can_modify_lib
 
   const b = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 15, 'forward-only migration ran');
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 16, 'forward-only migration ran');
     const hasCol = b.sql.prepare("SELECT COUNT(*) AS n FROM pragma_table_info('users') WHERE name = 'can_modify_library'").get().n;
     assert.strictEqual(hasCol, 1, 'the ALTER added the column');
     // Every pre-existing row defaults to 0 (OFF) — existing members lose
@@ -164,6 +170,28 @@ test('v14 -> v15 upgrade: an existing populated users table gains can_modify_lib
       { username: 'dean', can_modify_library: 0 },
       { username: 'kid', can_modify_library: 0 },
     ], 'both rows survive; the new column defaults to 0');
+  } finally {
+    b.close();
+  }
+});
+
+test('v15 -> v16 upgrade: an existing populated db gains the empty user_search_history table, losing no rows', () => {
+  // Simulate a v1.84 instance (schema v15): full schema, then rewind the stamp
+  // and drop the v16 table, as if v16 never ran.
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  a.save(fullFixtureForUpgrade());
+  a.sql.exec('DROP TABLE user_search_history');
+  a.sql.exec('PRAGMA user_version = 15');
+  a.close();
+
+  const b = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 16, 'forward-only migration ran');
+    assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_search_history').get().c, 0, 'search-history table born empty');
+    // its shape: (user_id, term, searched_at, PK(user_id, term))
+    const cols = b.sql.prepare("SELECT name FROM pragma_table_info('user_search_history') ORDER BY name").all().map((r) => r.name);
+    assert.deepStrictEqual(cols, ['searched_at', 'term', 'user_id']);
+    assert.deepStrictEqual(b.load(), fullFixtureForUpgrade(), 'every pre-existing namespace survives untouched');
   } finally {
     b.close();
   }
