@@ -10844,6 +10844,38 @@ app.delete('/api/history', (req, res) => {
   res.json({ success: true });
 });
 
+// ---- v1.85 #1: per-user search history (the mobile magnifier) ---------------
+// term-keyed, exact-dedup, recency-ordered, capped. Individually deletable + a
+// clear-all guarded against the trailing-slash alias (the v1.64 lesson).
+const SEARCH_HISTORY_CAP = 20;
+const SEARCH_TERM_MAX = 200;
+// Pure + exported: collapse whitespace, trim, cap length. Empty -> '' (rejected).
+function normalizeSearchTerm(raw) {
+  if (typeof raw !== 'string') return '';
+  const t = raw.replace(/\s+/g, ' ').trim();
+  return t.length > SEARCH_TERM_MAX ? t.slice(0, SEARCH_TERM_MAX) : t;
+}
+app.get('/api/search-history', (req, res) => {
+  res.json({ terms: userStore.getSearchHistory(req.user.id, SEARCH_HISTORY_CAP) });
+});
+app.post('/api/search-history', (req, res) => {
+  const term = normalizeSearchTerm(req.body && req.body.term);
+  if (!term) return res.status(400).json({ error: 'term required' });
+  userStore.addSearchTerm(req.user.id, term, new Date().toISOString());
+  res.json({ success: true, term });
+});
+app.delete('/api/search-history/:term', (req, res) => {
+  userStore.removeSearchTerm(req.user.id, req.params.term);
+  res.json({ success: true });
+});
+app.delete('/api/search-history', (req, res) => {
+  // The same trailing-slash guard as DELETE /api/history: a missing :term must
+  // NOT be aliased onto this clear-all (Express non-strict routing).
+  if (req.path !== '/api/search-history') return res.status(400).json({ error: 'term required' });
+  userStore.clearSearchHistory(req.user.id);
+  res.json({ success: true });
+});
+
 // ---- v1.65 trash routes -----------------------------------------------------
 // PER-ITEM ONLY, by construction (the v1.64 route-alias lesson): restore is
 // a POST under the id, purge is DELETE under the id, and NO collection-wide
@@ -15817,6 +15849,8 @@ module.exports = {
   // beforeEach.
   resolveHandoffTarget,
   resolveHomeItem,
+  normalizeSearchTerm, // v1.85 #1: exported for the unit test
+
   isFinishedPresence,
   HANDOFF_FINISHED_PCT,
   __presenceForTests: presence,

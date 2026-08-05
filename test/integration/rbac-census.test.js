@@ -46,7 +46,12 @@ const { authenticateFetch } = require('../helpers/auth');
 // v1.82: 185 -> 188 for the per-user avatar routes (POST + DELETE /api/me/avatar,
 // GET /api/users/:id/avatar) - self-service profile photo, not content-serving;
 // bound by avatar-upload.test.js + route-write-classification.test.js.
-const EXPECTED_ROUTE_COUNT = 188;
+// v1.85: 188 -> 192 for the per-user search-history routes (GET + POST +
+// DELETE/:term + DELETE /api/search-history) - the member's OWN state, never
+// capability-gated (classified 'personal' in route-write-classification.test.js)
+// and not content-serving (no per-user visibility check needed); bound by
+// search-history-api.test.js.
+const EXPECTED_ROUTE_COUNT = 192;
 
 let server, base, auth, member;
 const vidFile = path.join(DATA_DIR, 'v.mp4');
