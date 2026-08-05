@@ -39,7 +39,11 @@ const { authenticateFetch } = require('../helpers/auth');
 // with confirming any new content-serving route enforces per-user visibility
 // (rbac-*-enforcement.test.js) - that confirmation is the whole point of this
 // lock. See docs/exec-plans/active/v1.80-rbac.md.
-const EXPECTED_ROUTE_COUNT = 184;
+// v1.81: 184 -> 185 for POST /api/users/:id/modify-library-flag - an ADMIN
+// management route (requireAdmin), not content-serving, so no visibility check;
+// the write-capability enforcement it controls is bound by
+// rbac-write-enforcement.test.js.
+const EXPECTED_ROUTE_COUNT = 185;
 
 let server, base, auth, member;
 const vidFile = path.join(DATA_DIR, 'v.mp4');

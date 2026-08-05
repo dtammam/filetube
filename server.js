@@ -5594,6 +5594,21 @@ function requireManageSubscriptions(req, res) {
   return false;
 }
 
+// v1.81 write-RBAC: admin OR the per-user `canModifyLibrary` capability may
+// MUTATE library CONTENT - delete/move/edit media, run scans, clear the
+// transcode cache, purge/restore trash. Default OFF for members (existing
+// members lose these until an admin grants it - Dean-approved). THE single
+// decision point (the v1.41.4 one-writer scar): every content-mutating route
+// routes through this one predicate; passed into the podcasts module via deps
+// exactly like requireManageSubscriptions. This is deliberately the FIRST guard
+// in each handler - a capability-less member gets a uniform 403 and never
+// reaches the existence-revealing 404 of restrictedVideoMutation (no id oracle).
+function requireModifyLibrary(req, res) {
+  if (req.user && (req.user.role === 'admin' || req.user.canModifyLibrary)) return true;
+  res.status(403).json({ error: 'You do not have permission to modify the library.' });
+  return false;
+}
+
 // The self-lockout guard for user management: refuse any change that would
 // leave the instance with ZERO enabled admins (disable/demote/delete of the
 // last one). Instant revocation (token_version bumps) makes such a mistake
@@ -6189,6 +6204,7 @@ app.post('/api/config', async (req, res) => {
 // (above) already logs and settles `scanState` on any error, and `.catch`
 // below guards the fire-and-forget call against an unhandled rejection.
 app.post('/api/scan', (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   const alreadyInProgress = scanState.scanning;
   if (alreadyInProgress) {
     scanState.rescanRequested = true;
@@ -6445,6 +6461,7 @@ app.post('/api/books/config', async (req, res) => {
 });
 
 app.post('/api/books/scan', (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   const alreadyInProgress = bookScanState.scanning;
   if (alreadyInProgress) {
     bookScanState.rescanRequested = true;
@@ -7410,6 +7427,7 @@ app.post('/api/music/config', async (req, res) => {
 });
 
 app.post('/api/music/scan', (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   const alreadyInProgress = musicScanState.scanning;
   if (alreadyInProgress) {
     musicScanState.rescanRequested = true;
@@ -8845,6 +8863,7 @@ app.get('/api/cache/size', (req, res) => {
 // capable of invalidating a `'ready'` background-audio sidecar as automatic
 // eviction/aging is.
 app.post('/api/cache/clear', (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   let entries;
   try { entries = fs.readdirSync(TRANSCODE_DIR); } catch (_) { entries = []; }
   const now = Date.now();
@@ -9834,6 +9853,7 @@ function resolveOnDiskPath(filePath) {
 
 // API: Delete video/audio file
 app.delete('/api/videos/:id', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   if (refuseIfReadOnlyMedia(res)) return; // v1.42 safe-mode lever (AC8)
   // v1.30 A3: a PURE read to look up `item` -- never mutated here, and the
@@ -10614,6 +10634,7 @@ app.get('/api/trash', (req, res) => {
 });
 
 app.post('/api/trash/:id/restore', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (refuseIfReadOnlyMedia(res)) return;
   const result = await restoreTrashItem({ loadDatabase, updateDatabase, getMediaId }, req.params.id);
   if (!result.ok) {
@@ -10623,6 +10644,7 @@ app.post('/api/trash/:id/restore', async (req, res) => {
 });
 
 app.delete('/api/trash/:id', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (refuseIfReadOnlyMedia(res)) return;
   const result = await purgeTrashItem({ loadDatabase, updateDatabase }, req.params.id);
   if (!result.ok) {
@@ -12305,6 +12327,7 @@ async function sweepTrash(now = Date.now()) {
 // it. T19 (Wave 7, B2 Phase 2) calls `moveItemToFolder` directly for its own
 // physical-reconcile move, without going through this route.
 app.post('/api/videos/:id/move', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   if (refuseIfReadOnlyMedia(res)) return; // v1.42 safe-mode lever (AC8)
   const targetFolder = req.body && req.body.targetFolder;
@@ -14071,6 +14094,7 @@ app.post('/api/videos/:id/dimensions', async (req, res) => {
 // final-merge guard mirrors it from the fresh db unconditionally, so an
 // edit landing mid-scan can never be reverted.
 app.post('/api/videos/:id/chapters', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   const body = req.body || {};
   if (typeof body.text !== 'string') {
@@ -14236,6 +14260,7 @@ function proposeAttributionMove(db, item, identity) {
 }
 
 app.post('/api/videos/:id/attribute-channel', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   const body = req.body || {};
   const clearing = body.clear === true;
@@ -15271,6 +15296,7 @@ podcasts.registerRoutes(app, {
   recordPresenceFromPing, // v1.78: the ONE presence writer, shared by all three kinds
   episodeVisibleTo: podcastEpisodeVisibleTo, // v1.80 RBAC: per-user episode/show visibility
   requireManageSubscriptions, // v1.80 RBAC gate: the podcast registry parallels the ytdlp one
+  requireModifyLibrary, // v1.81 write-RBAC gate: episode delete is a CONTENT delete, not registry mgmt
 });
 
 // Start the server — but only when run directly (`node server.js`), not when

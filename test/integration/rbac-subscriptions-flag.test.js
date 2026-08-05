@@ -59,7 +59,9 @@ test('T9: a plain member is 403 on every subscription-mutation route', async () 
   assert.strictEqual((await req('POST', '/api/podcasts/subscriptions', plain.cookie, { feedUrl: 'https://e.com/f.xml' })).status, 403, 'podcast add');
   assert.strictEqual((await req('DELETE', '/api/podcasts/subscriptions/abc', plain.cookie)).status, 403, 'podcast remove');
   assert.strictEqual((await req('POST', '/api/podcasts/check', plain.cookie)).status, 403, 'podcast check-all');
-  assert.strictEqual((await req('DELETE', '/api/podcasts/episodes/abc', plain.cookie)).status, 403, 'podcast episode delete');
+  // NOTE: podcast EPISODE delete moved to the canModifyLibrary gate in v1.81
+  // (a content delete, not registry mgmt) - its enforcement (incl. the W4 case
+  // of a subs-manager who still cannot delete) lives in rbac-write-enforcement.
   // W2 (adversarial delta): the one-shot download gate must be test-bound too.
   assert.strictEqual((await req('POST', '/api/ytdlp/download', plain.cookie, { url: 'https://youtube.com/watch?v=x' })).status, 403, 'one-shot download (session member)');
 });
