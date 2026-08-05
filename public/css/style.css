@@ -8312,6 +8312,18 @@ body.ft-css-fullscreen .bottom-nav {
   flex-wrap: wrap;
 }
 
+/* v1.80 RBAC: the per-user access editor (setup.js openAccessEditor). Tokens
+   only; inherits era styling. */
+.access-editor {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+}
+.access-editor h4 { margin: var(--space-4) 0 var(--space-2); font-size: var(--fs-sm); }
+.access-item { display: block; font-weight: normal; }
+
 /* v1.44 Music page -- era/mode tokens only (type sizes via --fs-* tokens
    only, per the type-scale lock), glyphs via icon-* masks never emoji,
    [hidden] enforced. All markup lives inside #view-root, styles here (the

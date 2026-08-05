@@ -1924,12 +1924,97 @@ function renderUserRow(user, me, signal) {
   }
   addBtn(user.role === 'admin' ? 'Make member' : 'Make admin', () => act(`/api/users/${user.id}/role`, { role: user.role === 'admin' ? 'member' : 'admin' }));
   addBtn(user.canManageSubscriptions ? 'Revoke subscriptions' : 'Allow subscriptions', () => act(`/api/users/${user.id}/subscriptions-flag`, { canManageSubscriptions: !user.canManageSubscriptions }));
+  // v1.80 RBAC: per-user library access. Only members are restrictable (an admin
+  // always sees everything), so the editor is offered for members only.
+  if (user.role !== 'admin') {
+    addBtn('Access', () => openAccessEditor(user, row, signal));
+  }
   if (!isSelf) {
     addBtn('Delete', () => act(`/api/users/${user.id}`, undefined,
       `Delete ${user.username}? Their watch progress, likes, reading positions, and pins go with the account. This cannot be undone.`));
   }
   row.appendChild(actions);
   return row;
+}
+
+// v1.80 RBAC: the per-user access editor. Blocklist (see-all-except-checked) or
+// allowlist (see-ONLY-checked, the kid-account fail-closed mode). Units:
+// whole libraries, video channels, and podcast shows. PUTs the whole set.
+async function openAccessEditor(user, row, signal) {
+  const existing = row.querySelector('.access-editor');
+  if (existing) { existing.remove(); return; } // toggle
+  const panel = document.createElement('div');
+  panel.className = 'access-editor';
+  panel.textContent = 'Loading access...';
+  row.appendChild(panel);
+
+  const [cur, channelsRes, showsRes] = await Promise.all([
+    fetch(`/api/users/${user.id}/restrictions`).then((r) => r.json()).catch(() => ({ mode: 'blocklist', restrictions: [] })),
+    fetch('/api/channels').then((r) => r.json()).catch(() => ({ channels: [] })),
+    fetch('/api/podcasts/shows').then((r) => r.json()).catch(() => ({ shows: [] })),
+  ]);
+  const chosen = new Set((cur.restrictions || []).map((x) => `${x.kind}:${x.value}`));
+  let mode = cur.mode === 'allowlist' ? 'allowlist' : 'blocklist';
+  panel.textContent = '';
+
+  const boxes = []; // {kind, value, input}
+  const section = (title) => { const h = document.createElement('h4'); h.textContent = title; panel.appendChild(h); };
+  const checkbox = (kind, value, label) => {
+    const l = document.createElement('label');
+    l.className = 'access-item';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = chosen.has(`${kind}:${value}`);
+    l.appendChild(cb);
+    l.appendChild(document.createTextNode(' ' + label));
+    panel.appendChild(l);
+    boxes.push({ kind, value, input: cb });
+  };
+
+  // Mode
+  section('Mode');
+  const modeWrap = document.createElement('div');
+  modeWrap.className = 'access-mode';
+  for (const m of ['blocklist', 'allowlist']) {
+    const l = document.createElement('label');
+    l.className = 'access-item';
+    const r = document.createElement('input');
+    r.type = 'radio'; r.name = `mode-${user.id}`; r.value = m; r.checked = mode === m;
+    r.addEventListener('change', () => { if (r.checked) mode = m; }, { signal });
+    l.appendChild(r);
+    l.appendChild(document.createTextNode(m === 'blocklist' ? ' Block-list (see everything except what is checked)' : ' Allow-list (see ONLY what is checked - safest for a kid)'));
+    modeWrap.appendChild(l);
+  }
+  panel.appendChild(modeWrap);
+
+  section('Whole libraries');
+  for (const lib of ['video', 'music', 'podcasts', 'books']) checkbox('library', lib, lib.charAt(0).toUpperCase() + lib.slice(1));
+
+  if ((channelsRes.channels || []).length) {
+    section('Video channels');
+    for (const c of channelsRes.channels) checkbox('folder', c.folder, c.name || c.folder);
+  }
+  if ((showsRes.shows || []).length) {
+    section('Podcast shows');
+    for (const s of showsRes.shows) checkbox('show', s.id, s.name || s.title || s.id);
+  }
+
+  const save = document.createElement('button');
+  save.type = 'button'; save.className = 'btn'; save.textContent = 'Save access';
+  save.addEventListener('click', async () => {
+    const restrictions = boxes.filter((b) => b.input.checked).map((b) => ({ kind: b.kind, value: b.value }));
+    try {
+      const r = await fetch(`/api/users/${user.id}/restrictions`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode, restrictions }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { window.alert(data.error || 'Saving access failed.'); return; }
+      save.textContent = 'Saved';
+      window.setTimeout(() => { panel.remove(); }, 700);
+    } catch (_) { window.alert('Saving access failed (network error).'); }
+  }, { signal });
+  panel.appendChild(document.createElement('br'));
+  panel.appendChild(save);
 }
 
 function wireAddUserForm(signal, me) {
