@@ -3,7 +3,7 @@
 // [UNIT] v1.42 T1 — node:sqlite source lock.
 //
 // `node:sqlite` is EXPERIMENTAL on both project Node versions; the exec plan
-// (v1.42-multiuser-tranche.md, locked intake #1) accepts it ONLY with the
+// (2026-07-14-v1.42-multiuser-tranche.md, locked intake #1) accepts it ONLY with the
 // mitigation that every API touch lives in ONE adapter module, so an API
 // change across Node majors is a one-file fix. This lock enforces that
 // mitigation structurally: any `node:sqlite` reference outside

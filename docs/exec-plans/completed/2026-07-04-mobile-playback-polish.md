@@ -2,7 +2,7 @@
 
 > **Shipped v1.2.0** (2026-07-04). This exec plan is complete and archived here
 > under `docs/exec-plans/completed/`. The copy that remains at
-> `docs/exec-plans/active/mobile-playback-polish.md` is a tombstone and should be
+> `docs/exec-plans/completed/2026-07-04-mobile-playback-polish.md` is a tombstone and should be
 > removed with `git rm` by the main loop (this toolset cannot perform a true
 > `mv`, so the content was copied here and the active copy is left for cleanup).
 

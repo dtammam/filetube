@@ -96,7 +96,7 @@ classes the gates have caught, and the test suite (4,200+ tests, 157 unit
   candidate to fold into the v1.42 SQLite migration (which already forces a
   schema definition).
 - **Security & multi-user (D):** execute the prepped v1.42 tranche
-  (docs/exec-plans/active/v1.42-multiuser-tranche.md) — read the plan first;
+  (docs/exec-plans/completed/2026-07-14-v1.42-multiuser-tranche.md) — read the plan first;
   db.json is read-only at migration, WAL-sidecar rename trap documented.
 - **SPA shell & views (C+):** finish tech-debt #34 (relocate the remaining
   `.sub-*` page-local styles into style.css); adopt the "markup inside

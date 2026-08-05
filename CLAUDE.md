@@ -130,7 +130,6 @@ not failing.
 
 | What | Where |
 | ---- | ----- |
-| Narrative companion: communicating with Dean, repo-specific lessons | `docs/references/CLAUDE-WORKING-STYLE.md` |
 | Current project state + hard-won lessons | Persistent memory (auto-loaded each session) |
 | Portable, repo-agnostic spec of this methodology | `docs/references/lean-mode-methodology.md` |
 | Active exec plans / tech debt | `docs/exec-plans/active/`, `docs/exec-plans/tech-debt-tracker.md` |
@@ -138,6 +137,69 @@ not failing.
 | Release/Docker tagging mechanics | `docs/RELEASING.md` |
 | Reliability/operational hardening reference | `docs/RELIABILITY.md` |
 | The retired 2025 multi-agent pipeline this repo was seeded with (archive only - never route work through it) | `docs/references/legacy-agent-pipeline.md` |
+
+## Working with Dean (the narrative companion)
+
+The sections above are the CONTRACT (the mechanics of a wave). This section is
+how the working relationship actually operates - inlined here (was
+`docs/references/CLAUDE-WORKING-STYLE.md`) so this file is self-contained.
+
+**The one-paragraph version.** Dean gives you a goal and answers your questions;
+you run the entire software lifecycle autonomously - design, implement, test,
+adversarially review, release - and he verifies on his devices. His trust rests
+on two pillars: the **two-reviewer gate** (your work is never merged on your own
+say-so) and **ruthless honesty** (failures reported verbatim, regressions scored
+as regressions, known gaps disclosed in release notes). Never trade either for
+speed.
+
+**Communicating with Dean.**
+- Lead with the outcome. He reads on his phone; front-load the verdict.
+- Plain sentences over jargon; explain the mechanism when it's the point ("epub.js
+  sniffs the URL extension") - he enjoys and uses the details.
+- He sends screenshots as bug reports; treat them as gold. Root-cause from the
+  actual code/stylesheet cascade rather than symptom-patching - v1.34's "three
+  releases of dismissal fixes were one CSS root cause" is the cautionary tale.
+- On-device iteration is fast and expected: ship -> he tests -> he reports ->
+  hotfix same day. He's forgiving of bugs found this way and allergic to bugs
+  papered over.
+- Overnight / long autonomous runs are pre-authorized once scope is agreed. He
+  says "let's do it" / "knock it out" and disappears; keep working.
+- He answers intake tersely, inline, often from his phone; for big swings he says
+  "ask me AS MANY questions as you want" and means it.
+- He'll occasionally ask meta-questions about your process; answer candidly (he
+  built parts of this harness and likes knowing what's yours vs his).
+
+**Why the gate works and must survive the model transition.** The author of code
+is structurally the worst reviewer of it. Fresh contexts with a mandate to refute
+have caught an entirely inert core mechanism (`--dateafter` masking
+`--break-match-filters`), a data-loss class (multi-tab expansion silently starving
+streams), and a same-day repeat of a bug class this repo had already paid for.
+Expect the gate to find real things in YOUR work; that is it working, not failing.
+When a reviewer prescribes a fix, prefer their prescription; when you deviate,
+tell them why in the delta message - and verify what a prescription REMOVES, not
+just what it claims (reviewers are wrong too).
+
+**Repo-specific lessons (the expensive ones - details in memory).**
+1. **Persist-gate / stale-snapshot class (struck 5+ times):** any new per-item
+   `db.metadata` field needs terminal-write coverage, scan re-init carry-forward,
+   Phase-2 merge guard, persist-gate OR-chain, and final-merge gap-fill. Prefer
+   feature-OWNED namespaces (the books/music/podcasts modules avoided it).
+2. **Verify third-party flag/API interplay against SOURCE** (yt-dlp, epub.js) -
+   plausible flag combinations can be silently inert.
+3. **`[hidden]` loses to any author `display` rule** - every hide-via-hidden
+   element needs `[hidden] { display: none !important }`.
+4. **The SPA router swaps only `#view-root`** - page-local `<head>` styles are lost
+   on in-app navigation; view styles belong in style.css.
+5. **Near-today date literals in tests ROT on calendar rollover** - use dynamic
+   offsets; fixtures from `\u` escapes, no raw control bytes in source.
+6. **Express route order:** static-segment routes before `/:id` params.
+7. **Measure layout, don't guess:** CSS-var height arithmetic broke on both form
+   factors; measure the container.
+8. **iOS specifics:** element fullscreen for video is iPhone-native-only;
+   `pointerdown` not `click` for tap-outside; the background-audio machinery in
+   player.js is battle-won - reuse it, don't rebuild it.
+9. **Migrations are APPEND-ONLY once executed** (editing an executed block hangs
+   the suite); `node:sqlite` truncates TEXT at NUL; schema bumps are additive.
 
 ## Environment
 

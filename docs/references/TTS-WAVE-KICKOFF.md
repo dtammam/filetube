@@ -32,7 +32,7 @@ this closes a disclosed gap.
 
 **Part B — TTS "Listen from Here"** — the fully-designed wave-2 of the books
 platform. The authoritative design is
-**docs/exec-plans/completed/v1.37.0-books.md §6 ("Wave-2 seams")**. The seams
+**docs/exec-plans/completed/2026-07-12-v1.37.0-books.md §6 ("Wave-2 seams")**. The seams
 are already IN the shipped code; honor them exactly:
 
 - State: `db.books.settings` (`ttsEnabled, engine, voice, rate`) +

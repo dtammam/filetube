@@ -269,7 +269,7 @@ clients (iOS Safari) can play them.
 A fourth media class: podcast RSS subscriptions (free feeds and private
 tokened ones - Patreon's "listen in other podcast apps" export) downloaded
 as an offline audio cache and browsed in a first-class Podcasts place.
-Design record: `docs/exec-plans/completed/v1.69-podcasts-place.md` (its
+Design record: `docs/exec-plans/completed/2026-08-02-v1.69-podcasts-place.md` (its
 Stop closed 2026-08-03).
 
 - **Namespace**: `db.podcasts` (`subscriptions/episodes/settings`), owned by
@@ -348,7 +348,7 @@ Stop closed 2026-08-03).
 
 A third media class alongside video/audio: EPUB + PDF libraries scanned from
 operator-configured folders, read in-app, with per-book position/percent
-progress. Design record: `docs/exec-plans/completed/v1.37.0-books.md`.
+progress. Design record: `docs/exec-plans/completed/2026-07-12-v1.37.0-books.md`.
 
 - **Namespace**: everything lives under `db.books`
   (`folders/items/progress/pins/settings`), owned by `lib/books/store.js`

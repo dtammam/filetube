@@ -2,7 +2,7 @@
 
 > **Shipped v1.2.1** (2026-07-04). This exec plan is complete and archived here
 > under `docs/exec-plans/completed/`. The copy that remains at
-> `docs/exec-plans/active/media-session-hardening.md` is a stale tombstone and
+> `docs/exec-plans/completed/2026-07-04-media-session-hardening.md` is a stale tombstone and
 > should be removed with `git rm` by the main loop (this toolset cannot perform
 > a true `mv`, so the content was copied here and the active copy is left for
 > cleanup).
@@ -550,7 +550,7 @@ breakdown above.)
   skipped, the throttle stamp is set after validation, and the
   `clampPositionState` export test was added. 71 tests green. Plan archived to
   `docs/exec-plans/completed/`; the active-tree copy at
-  `docs/exec-plans/active/media-session-hardening.md` is now a stale tombstone
+  `docs/exec-plans/completed/2026-07-04-media-session-hardening.md` is now a stale tombstone
   to be `git rm`'d by the main loop.
 
 ## Decision log
