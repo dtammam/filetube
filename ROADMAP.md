@@ -80,6 +80,38 @@
 
 ## Shipped
 
+### v1.84.0 - Modern YouTube Mode (flat big-tile grid + chips + mobile avatar bar) (2026-08-05)
+
+"Another loop on the YouTube feed" - a new opt-in **Modern mode** checkbox
+(Settings -> Appearance), orthogonal to the era skins. When on, the bare home
+becomes one **flat big-tile grid** - 3 across on desktop (4 on very wide), one
+full-width card on mobile - of rich cards with the three corner action icons
+restored, filtered by a one-line **chip row** (All - Videos - Audio - Podcasts -
+Continue watching - Unwatched), and on mobile a **bar of your recently-active
+subscriptions** in circles pinned up top. Per-card polish: a channel avatar
+beside the byline (reusing the same channel-avatar registry the subscription
+avatars use, so subscribed channels show their real photo), the "views - age"
+line, and the red watched-progress bar. Precedence is modern > the v1.79 feed >
+classic; it's a per-user, server-synced pref that composes with any era.
+
+**The framing that shaped it:** there were already THREE home renderers (classic
+grid, the v1.79 horizontal shelves - the new-user default Dean was seeing, and
+now the modern grid). The chips are **server-driven** (Continue watching /
+Unwatched need whole-library scope, not a filter of the loaded page), and the
+new `GET /api/home?view=grid` reuses the row path's exact RBAC + hidden-folder
+guards. The full two-reviewer gate mutation-confirmed every one of those guards
+binds - deleting any of `mediaVisibleTo` / `podcastEpisodeVisibleTo` / the
+hidden-folder filter reddens a repro - and that the delete icon on modern tiles
+still 403s a `canModifyLibrary`-less member. The gate's one logic catch: the
+Unwatched chip now also excludes finished-by-threshold (a 95%-watched-but-
+unlatched item is no longer both "done" and "unwatched"). Both seats APPROVE.
+
+**Disclosed:** the modern grid spans media (video+audio) + podcasts; music keeps
+its own place (not a chip). The modern card skin (rounded thumbs + channel
+avatar) applies wherever modern is on, including folder/search grids - on Dean's
+probe list. Dual-Node full suite green on v22.23.1 and v24.14.0 (6384/6384).
+**Dean's on-device pass is PENDING.**
+
 ### v1.83.0 - Avatar crop (pick any photo, pan + zoom a circle) (2026-08-05)
 
 Dean's v1.82 device-pass wish: "wishing I could use a larger than 1MB image and
