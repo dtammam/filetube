@@ -4960,6 +4960,51 @@ function accountMenuDivider() {
   return hr;
 }
 
+// ---- v1.83: avatar crop geometry (pure, DOM-free, unit-tested) --------------
+//
+// The crop viewport is W x H display px with a centred circle of diameter D. The
+// source image (natural imgW x imgH) is drawn at scale `s` with its top-left at
+// display offset (ox, oy). These three pure functions are the whole contract the
+// gesture layer and the canvas export depend on; everything that can be WRONG
+// (a gap inside the circle, an out-of-bounds source read) lives here where
+// node:test can hold it without a browser.
+
+// The COVER minimum: the smallest scale at which the image still fills the
+// circle's DxD bounding box (no gap can ever show). Cover needs imgW*s >= D AND
+// imgH*s >= D, i.e. s >= D / min(imgW, imgH).
+function avatarMinScale(imgW, imgH, D) {
+  const m = Math.min(imgW, imgH);
+  return m > 0 ? D / m : 1;
+}
+
+// Clamp (ox, oy) so the scaled image always covers the circle's bounding box
+// [(W-D)/2 .. (W+D)/2] x [(H-D)/2 .. (H+D)/2]. Assumes s >= avatarMinScale so the
+// range is non-empty. Returns the clamped { ox, oy }.
+function clampAvatarOffset(ox, oy, s, imgW, imgH, W, H, D) {
+  const oxMax = (W - D) / 2;              // left edge no further right than circle-left
+  const oxMin = (W + D) / 2 - imgW * s;   // right edge no further left than circle-right
+  const oyMax = (H - D) / 2;
+  const oyMin = (H + D) / 2 - imgH * s;
+  return {
+    ox: Math.min(oxMax, Math.max(oxMin, ox)),
+    oy: Math.min(oyMax, Math.max(oyMin, oy)),
+  };
+}
+
+// The source-image rectangle currently under the circle's bounding box - exactly
+// what drawImage copies into the square output canvas. Square by construction
+// (the circle's bounding box is DxD). Never reads outside the image when the
+// offset is clamped (the caller's contract).
+function avatarSourceRect(s, ox, oy, W, H, D) {
+  const boxLeft = (W - D) / 2;
+  const boxTop = (H - D) / 2;
+  return {
+    sx: (boxLeft - ox) / s,
+    sy: (boxTop - oy) / s,
+    sSize: D / s,
+  };
+}
+
 function injectAccountMenu() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
   const headerRight = document.querySelector('.header-right');
@@ -10884,6 +10929,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.82: the account menu injector + avatar builder + shared sign-out +
     // theme-glyph sync.
     injectAccountMenu, buildAccountAvatarEl, accountSignOut, updateAccountMenuThemeItem,
+    // v1.83: the pure avatar-crop geometry.
+    avatarMinScale, clampAvatarOffset, avatarSourceRect,
     // v1.78 device handoff: the UA label table. Pure, and exactly the kind of
     // roster that rots silently - every arm is pinned by node:test.
     resolveDeviceLabel,
