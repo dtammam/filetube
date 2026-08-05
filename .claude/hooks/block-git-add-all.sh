@@ -31,16 +31,47 @@ except Exception:
 
 # 1) Drop heredoc BODIES. Keep the opener line (the real command); skip the body
 #    lines and the closing delimiter so a commit message documenting the rule is
-#    never scanned as if it were commands.
+#    never scanned as if it were commands. The opener scan is QUOTE-AWARE: a
+#    `<< word` token INSIDE a quoted string (e.g. `echo "a << b"`) is not a
+#    redirection and must not be read as one, else the following real command
+#    would be swallowed as "body" and escape scanning (a fail-open).
+def heredoc_opener(line):
+    q, i, n = None, 0, len(line)
+    while i < n:
+        c = line[i]
+        if q:                          # inside a quote: only its close matters
+            if c == q:
+                q = None
+            i += 1
+            continue
+        if c in "'\"":
+            q = c; i += 1; continue
+        if c == "<" and i + 1 < n and line[i + 1] == "<":
+            j = i + 2
+            if line[j:j + 1] == "<":   # `<<<` is a here-STRING, not a heredoc
+                i += 3
+                continue
+            dedent = line[j:j + 1] == "-"
+            if dedent:
+                j += 1
+            while line[j:j + 1] in (" ", "\t"):
+                j += 1
+            if line[j:j + 1] in ("'", '"'):
+                j += 1
+            m = re.match(r"\w+", line[j:])
+            if m:
+                return m.group(0), dedent
+            # a bare `<<` with no word (e.g. `<<<` here-string) is not a heredoc
+        i += 1
+    return None, False
+
 lines = cmd.split("\n")
 kept, i = [], 0
-opener = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_]\w*)\1")
 while i < len(lines):
     line = lines[i]
     kept.append(line)
-    m = opener.search(line)
-    if m:
-        delim, dedent = m.group(2), ("<<-" in line)
+    delim, dedent = heredoc_opener(line)
+    if delim is not None:
         i += 1
         while i < len(lines):
             probe = lines[i].lstrip("\t") if dedent else lines[i]
