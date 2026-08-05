@@ -4597,8 +4597,14 @@ a.sub-row-channel-link:focus-visible {
   .header-right {
     gap: var(--space-3);
   }
-  /* v1.82: the header Settings .btn was removed (Settings lives in the account
-     menu now), so this phone-space reclaim rule has nothing left to hide. */
+  /* Hide header `.btn` controls on phones (reclaim the top row). The v1.82
+     Settings link that used to live here is gone, but this rule is NOT dead: the
+     yt-dlp one-off "Download" button (`#ytdlp-oneoff-btn`, class `btn`, injected
+     into .header-right by common.js) still relies on it - mobile reaches that
+     flow through the bottom-nav one-off entry instead. */
+  .header-right .btn {
+    display: none;
+  }
 
   /* ---- Mobile app shell: bottom nav ------------------------------------ */
   .bottom-nav {
@@ -8917,9 +8923,9 @@ body.ft-css-fullscreen .bottom-nav {
 /* ---- v1.51: the notification bell ---------------------------------------
    Bell button lives inside .header-right (desktop) and an absolutely-
    positioned top-right slot on mobile (the mobile header hides
-   .header-right wholesale at 3682 -- the override below re-shows it as a
-   bell-only block; the Settings .btn is already display:none there and the
-   theme toggle joins it). Panel = right-anchored dropdown on desktop, a
+   .header-right wholesale -- the override below re-shows it as the top-right
+   slot for the bell + the v1.82 account-menu avatar; the yt-dlp one-off `.btn`
+   stays display:none there via the .header-right .btn rule). Panel = right-anchored dropdown on desktop, a
    full-width bottom sheet on phones (own classes, never the playlists
    sheet's -- a popup that borrows a sibling's class does not inherit its
    JS, the v1.50.3 lesson). Tokens only -- no new custom properties, so

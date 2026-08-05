@@ -120,6 +120,16 @@ test('injectAccountMenu: the Theme item glyph reflects the current mode and upda
   assert.strictEqual(icon.className, 'icon-sun', 'dark mode shows the sun');
 });
 
+test('applyTheme syncs the account-menu theme glyph on every toggle (source lock)', () => {
+  // Binds the toggle-PATH wiring, not just injection-time: a mutant that drops
+  // the updateAccountMenuThemeItem() call from applyTheme leaves the glyph stale.
+  const src = require('node:fs').readFileSync(COMMON, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const applyBody = /function applyTheme\([\s\S]*?\n\}/.exec(src);
+  assert.ok(applyBody, 'applyTheme found');
+  assert.match(applyBody[0], /updateAccountMenuThemeItem\(\)/, 'applyTheme must sync the account-menu theme glyph on toggle');
+});
+
 test('injectAccountMenu: a signed-out shell (401 me) injects nothing', async () => {
   const { injectAccountMenu } = fresh(null);
   injectAccountMenu();
