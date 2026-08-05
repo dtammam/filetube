@@ -38,14 +38,24 @@ test('card: a progress bar appears only above 0.5% and is clamped to 100', () =>
 });
 
 test('card: every rendered field is HTML-escaped (no injection)', () => {
+  // Free-text fields (server-resolved from item titles/channel names) AND the
+  // url fields (server-built + encodeURIComponent-safe, so this escape is
+  // defense-in-depth) - a hostile value in ANY of the four must be neutralized,
+  // so swapping escapeBookRowHtml for identity on any one kills a case here
+  // (adversarial delta residual: the href/thumbnailUrl escapes were unbound).
   const html = buildFeedCardHtml(feedItem({
     title: '<img src=x onerror=alert(1)>',
     subtitle: '"><script>bad()</script>',
+    href: '"><script>href-evil()</script>',
+    thumbnailUrl: '"><script>thumb-evil()</script>',
   }));
   assert.doesNotMatch(html, /<img src=x/);
   assert.doesNotMatch(html, /<script>bad/);
+  assert.doesNotMatch(html, /<script>href-evil/);
+  assert.doesNotMatch(html, /<script>thumb-evil/);
   assert.match(html, /&lt;img src=x/);
-  assert.match(html, /&quot;&gt;&lt;script&gt;/);
+  assert.match(html, /href-evil/); // present but escaped (the &lt;script&gt; form)
+  assert.match(html, /thumb-evil/);
 });
 
 // ---- buildFeedRowHtml -------------------------------------------------------
