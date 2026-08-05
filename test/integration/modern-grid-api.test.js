@@ -91,6 +91,21 @@ test('shape: a media grid item carries the RICH card fields (incl. channelAvatar
   assert.strictEqual(it.duration, 100);
 });
 
+test('#4: a media grid item is field-complete for the card corners (watchUrl + ext)', async () => {
+  seed({ y: item('y', { youtubeId: 'dQw4w9WgXcQ', ext: '.mkv' }) });
+  const it = (await grid('all')).body.items.find((i) => i.id === 'y');
+  assert.strictEqual(it.ext, '.mkv', 'ext carried -> the download corner gets a real filename');
+  assert.strictEqual(it.watchUrl, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    'watchUrl carried -> the Share corner renders (it was silently empty in modern before)');
+});
+
+test('#4: a non-YouTube media item omits watchUrl (Share correctly absent), keeps ext', async () => {
+  seed({ local: item('local', { ext: '.avi' }) }); // no youtubeId
+  const it = (await grid('all')).body.items.find((i) => i.id === 'local');
+  assert.strictEqual(it.ext, '.avi');
+  assert.ok(!('watchUrl' in it), 'no youtubeId -> no watchUrl -> Share renders nothing, exactly like /api/videos');
+});
+
 test('videos vs audio: the type split is exact', async () => {
   seed({
     v1: item('v1', { type: 'video' }),

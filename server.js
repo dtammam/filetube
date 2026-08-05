@@ -9312,6 +9312,13 @@ function resolveModernGridItem(db, rec) {
   }
   const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, rec.id) ? db.metadata[rec.id] : null;
   if (!item) return null;
+  // v1.85 (#4): field-COMPLETE for every card corner. The classic /api/videos
+  // item carries `ext` (download filename) and `watchUrl` (the Share corner);
+  // the grid item omitted them, so a bottom-left corner set to Share (or any
+  // control needing watchUrl/ext) rendered EMPTY in modern mode while
+  // download/delete - which need only id - showed. Match the /api/videos
+  // projection: derive watchUrl the same way, include ext.
+  const watchUrl = typeof item.youtubeId === 'string' ? buildWatchUrl(item.youtubeId) : null;
   return {
     id: rec.id, kind: 'media', title: item.title || item.name || 'Video',
     folderName: item.folderName || '', channelName: item.channelName || '',
@@ -9320,6 +9327,8 @@ function resolveModernGridItem(db, rec) {
     sourceViewCountCapturedAt: item.sourceViewCountCapturedAt,
     addedAt: rec.addedAt, progressPercent: rec.progressPercent, liked: rec.liked,
     duration: typeof item.duration === 'number' ? item.duration : 0, type: rec.type,
+    ext: typeof item.ext === 'string' ? item.ext : '',
+    ...(watchUrl ? { watchUrl } : {}),
   };
 }
 
