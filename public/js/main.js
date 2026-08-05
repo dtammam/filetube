@@ -268,8 +268,9 @@ function buildFeedRowHtml(row) {
 // ---- v1.84 Modern Mode: the filter-chip row ---------------------------------
 //
 // The `filter` params are the CLIENT half of the server's MODERN_GRID_FILTERS
-// (lib/home/feed.js); test/unit/modern-grid-filter-parity binds the two lists
-// equal so they cannot drift. Labels are static literals (no escape needed).
+// (lib/home/feed.js); test/unit/modern-home-layout.test.js's "source-lock" test
+// binds the two lists equal so they cannot drift. Labels are static literals (no
+// escape needed).
 const MODERN_CHIPS = [
   { filter: 'all', label: 'All' },
   { filter: 'videos', label: 'Videos' },

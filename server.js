@@ -9372,7 +9372,7 @@ app.get('/api/home', (req, res) => {
       const finished = videoQuery.deriveWatchState(pct, watched) === 'watched';
       const rec = {
         id, kind: 'media', type: item.type === 'audio' ? 'audio' : 'video',
-        inProgress: ts > 0 && !finished, watched,
+        inProgress: ts > 0 && !finished, watched, finished,
         addedAt: typeof item.addedAt === 'number' ? item.addedAt : 0,
         progressPercent: pct, liked: likedSet.has(id),
       };

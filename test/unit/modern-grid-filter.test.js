@@ -51,8 +51,10 @@ test('continue: anything in progress (media OR podcast); nothing not-in-progress
   assert.ok(!matchesGridFilter(pod({ inProgress: false }), 'continue'));
 });
 
-test('unwatched: media not-watched ONLY; watched media out; podcasts out (no latch)', () => {
+test('unwatched: media neither latched nor finished-by-threshold; watched/finished out; podcasts out', () => {
   assert.ok(matchesGridFilter(media({ watched: false }), 'unwatched'));
-  assert.ok(!matchesGridFilter(media({ watched: true }), 'unwatched'), 'a watched video is out');
+  assert.ok(!matchesGridFilter(media({ watched: true }), 'unwatched'), 'a latched video is out');
+  assert.ok(!matchesGridFilter(media({ watched: false, finished: true }), 'unwatched'),
+    'a finished-by-threshold (e.g. 95% unlatched) video is out too (QA suggestion) - not both unwatched AND done');
   assert.ok(!matchesGridFilter(pod({ watched: false }), 'unwatched'), 'podcasts have no watched latch -> never in Unwatched');
 });

@@ -129,14 +129,17 @@ test('continue: in-progress media AND in-progress podcast; excludes finished/unt
   assert.ok(!c.includes('fresh'), 'untouched media excluded');
 });
 
-test('unwatched: not-watched media only; watched media out; podcasts out (no latch)', async () => {
-  seed({ seen: item('seen'), unseen: item('unseen') });
+test('unwatched: not-watched media only; watched + finished-by-threshold out; podcasts out', async () => {
+  seed({ seen: item('seen'), unseen: item('unseen'), nearDone: item('nearDone') });
   const { dlId } = seedPodcast();
   userStore.markWatched(uid, 'seen', '2026-08-01T00:00:00Z');
+  // 95% watched but NEVER latched -> finished-by-threshold; must NOT be "unwatched".
+  userStore.setProgress(uid, 'nearDone', { timestamp: 95, duration: 100, updatedAt: '2026-08-01T03:00:00Z' });
 
   const u = ids((await grid('unwatched')).body);
   assert.ok(u.includes('unseen'), 'a not-watched video is in Unwatched');
-  assert.ok(!u.includes('seen'), 'a watched video is out');
+  assert.ok(!u.includes('seen'), 'a latched video is out');
+  assert.ok(!u.includes('nearDone'), 'a 95%-watched unlatched video is out (finished-by-threshold)');
   assert.ok(!u.includes(dlId), 'podcasts (no watched latch) are never in Unwatched');
 });
 
