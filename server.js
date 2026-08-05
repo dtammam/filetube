@@ -5362,6 +5362,7 @@ app.post('/api/auth/setup', async (req, res) => {
     };
     const admin = userStore.createFirstAdmin({ username, displayName, passwordHash }, adoption, new Date().toISOString());
     if (!admin) return res.status(409).json({ error: 'setup already complete' });
+    userStore.setSettingsJson(admin.id, NEW_USER_DEFAULT_SETTINGS); // v1.79: net-new setup -> feed on
     loginRateLimiter.refund(rateKey(req, username));
     issueSessionCookie(res, req, admin);
     return res.json({ success: true, user: publicUser(admin) });
@@ -5454,8 +5455,19 @@ function parseUserSettings(user) {
 // values, exactly as the card renderer does.
 const MIRRORED_SETTING_KEYS = new Set([
   'theme', 'era', 'icons', 'starRatings', 'pushEnabled', 'cornerTL', 'cornerTR', 'cornerBL',
+  // v1.79: the home-feed vs classic-grid toggle. Stored as the bounded string
+  // 'on'/'off' like pushEnabled/starRatings (the value regex below bounds it).
+  'homeFeed',
   ...glyphPool.LIBRARY_GLYPH_SLOTS.map((s) => s.key),
 ]);
+
+// v1.79: net-new setups/accounts get the YouTube-style home feed out of the
+// box (Dean's intake default), while existing installs are UNCHANGED - the
+// store's settings_json default stays '{}', which the client resolves to
+// classic (absent => off). Only the two PRODUCT creation flows seed this; the
+// test-session mint (__mintTestSession) deliberately does NOT, so existing
+// suites that assume an empty settings_json are unaffected.
+const NEW_USER_DEFAULT_SETTINGS = { homeFeed: 'on' };
 app.post('/api/me/settings', (req, res) => {
   const body = req.body || {};
   const merged = parseUserSettings(req.user);
@@ -5558,6 +5570,7 @@ app.post('/api/users', async (req, res) => {
     // The UNIQUE(username COLLATE NOCASE) constraint is the race backstop
     // behind the friendly pre-check above.
     const user = userStore.createUser({ username, displayName, passwordHash, role, canManageSubscriptions }, new Date().toISOString());
+    userStore.setSettingsJson(user.id, NEW_USER_DEFAULT_SETTINGS); // v1.79: net-new account -> feed on
     return res.status(201).json({ success: true, user: publicUser(user) });
   } catch (err) {
     if (String(err.message || '').includes('UNIQUE')) {
