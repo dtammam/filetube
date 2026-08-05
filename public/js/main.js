@@ -1381,6 +1381,19 @@ if (typeof module !== 'undefined' && module.exports) {
       const channelName = resolveChannelName(item, folderSettings);
       // Deterministic 3–5 star rating — the same value shows on this item's watch page.
       const rating = getStarRating(item.id);
+      // v1.84 T5: the channel avatar beside the byline (Modern mode, media cards
+      // only - a kp card's byline is its own kind's identity). Decision is pure
+      // (common.js modernCardAvatar); render + escape here. The monogram colour
+      // rides an inline custom property the CSS consumes with var() (census-safe).
+      const chAv = (!kp && typeof modernCardAvatar === 'function')
+        ? modernCardAvatar(channelName, item.channelAvatarUrl, typeof modernModeEnabled === 'function' && modernModeEnabled())
+        : { kind: 'none' };
+      let channelAvatarHtml = '';
+      if (chAv.kind === 'img') {
+        channelAvatarHtml = `<span class="card-channel-avatar"><img src="${escapeHtml(chAv.url)}" alt="" loading="lazy" /></span>`;
+      } else if (chAv.kind === 'mono') {
+        channelAvatarHtml = `<span class="card-channel-avatar card-channel-avatar-mono" style="--ch-av:${chAv.color}">${escapeHtml(chAv.glyph)}</span>`;
+      }
 
       // Calculate duration format
       const durationStr = item.duration > 0 ? formatDuration(item.duration) : (item.type === 'audio' ? 'Audio' : '');
@@ -1412,6 +1425,7 @@ if (typeof module !== 'undefined' && module.exports) {
               ${escapeHtml(item.title)}
             </a>
             <div class="video-uploader">
+              ${channelAvatarHtml}
               ${kp
                 ? `<a href="${kp.uploaderHref}">${escapeHtml(kp.uploaderLabel)}</a>`
                 : `<a href="/?folder=${encodeURIComponent(item.folderName)}">${escapeHtml(channelName)}</a>`}

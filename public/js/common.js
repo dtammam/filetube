@@ -374,6 +374,21 @@ function resolveHomeLayout(opts) {
   return 'classic';
 }
 
+// v1.84 T5: the per-card channel avatar DECISION (Modern mode, media cards).
+// Pure + exported (the render + escaping stays in main.js's buildCardHtml, where
+// escapeHtml lives). Returns a descriptor: {kind:'none'} in classic (so the
+// classic card is byte-unchanged); {kind:'img',url} when the channel has a photo
+// (the SAME channelAvatarUrl the subscription avatars use); else {kind:'mono',
+// glyph,color} - the deterministic monogram, its colour carried on the
+// descriptor so the caller can put it in an inline custom property (ungoverned
+// by the token census; the CSS consumes it via var()).
+function modernCardAvatar(channelName, channelAvatarUrl, modernOn) {
+  if (!modernOn) return { kind: 'none' };
+  const av = resolveAvatarSource(channelName || '', channelAvatarUrl);
+  if (av.type === 'url') return { kind: 'img', url: av.url };
+  return { kind: 'mono', glyph: av.glyph, color: av.color };
+}
+
 // v1.84 T4: the mobile channel-avatar bar's selection - the SUBSCRIBED channels
 // that most recently uploaded. Pure over /api/channels' rows
 // ({folder,name,avatarUrl,latestAddedAt,isSub}): keep subs with a real recency,
@@ -11195,6 +11210,8 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveModernChip, MODERN_CHIP_FILTERS, resolveHomeLayout,
     // v1.84 T4: the mobile avatar bar's pure selection.
     selectRecentUploaderChannels,
+    // v1.84 T5: the per-card channel-avatar decision.
+    modernCardAvatar,
     // v1.31 P5 (FR5): repull-ack formatter.
     formatRepullAckText,
     // v1.32 (gate fix): the chip's one-line breaker summary.

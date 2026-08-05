@@ -203,6 +203,7 @@ module.exports = [
         resolveModernChip: 'readonly',
         resolveHomeLayout: 'readonly',
         selectRecentUploaderChannels: 'readonly',
+        modernCardAvatar: 'readonly',
         // v1.41.10 (QA gate): shared delete-outcome -> toast-message mapper
         // (common.js), used by both delete flows (main.js cards + watch.js).
         deleteResultToast: 'readonly',
