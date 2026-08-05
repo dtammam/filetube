@@ -400,6 +400,10 @@ function buildCardCornerControlHtml(control, cornerClass, item, caps) {
             </a>`;
     case 'delete':
       if (kp) return ''; // the card delete verb is DELETE /api/videos/:id - media only
+      // v1.81 write-RBAC: a member without the modify-library capability cannot
+      // delete - hide the affordance (the server is the real gate; this only
+      // spares them a button that always 403s). Admin's effective cap is true.
+      if (!caps || caps.canModifyLibrary !== true) return '';
       return `<button type="button" class="card-delete-btn ${cornerClass}" data-id="${id}" aria-label="Delete this video">
               <i class="icon-delete"></i><span class="card-delete-confirm">Sure?</span>
             </button>`;
@@ -770,28 +774,34 @@ if (typeof module !== 'undefined' && module.exports) {
     // renders nothing in a reheat corner rather than guessing.
     async function fetchCardCornerState() {
       let prefs = resolveCardCornerPrefs(null);
+      // v1.81 write-RBAC: the EFFECTIVE library-modify capability drives whether
+      // the card delete affordance renders. Admin bypasses via role (their
+      // stored flag is irrelevant), so compute admin-OR-flag exactly like the
+      // server gate - never key the client purely off the raw column.
+      let canModifyLibrary = false;
       try {
         const r = await fetch('/api/auth/me');
         if (r.ok) {
           const me = await r.json();
           prefs = resolveCardCornerPrefs(me && me.settings);
+          canModifyLibrary = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
         }
       } catch (_) { /* signed-out shell / network failure -> defaults */ }
       const needsReheat = prefs.cornerTL === 'reheat' || prefs.cornerTR === 'reheat' || prefs.cornerBL === 'reheat';
-      if (!needsReheat) return { prefs, caps: {} };
+      if (!needsReheat) return { prefs, caps: { canModifyLibrary } };
       // The same latched module-health capability the watch page and the
       // subscriptions nav injector use (common.js capability cache; the
       // fresh answer refreshes it for them too).
       const cached = readCapabilityCache();
       if (cached && typeof cached.moduleEnabled === 'boolean') {
-        return { prefs, caps: { reheatEnabled: cached.moduleEnabled === true } };
+        return { prefs, caps: { canModifyLibrary, reheatEnabled: cached.moduleEnabled === true } };
       }
       try {
         const res = await fetch('/api/subscriptions/health');
         writeCapabilityCache({ moduleEnabled: res.ok === true });
-        return { prefs, caps: { reheatEnabled: res.ok === true } };
+        return { prefs, caps: { canModifyLibrary, reheatEnabled: res.ok === true } };
       } catch (_) {
-        return { prefs, caps: { reheatEnabled: false } };
+        return { prefs, caps: { canModifyLibrary, reheatEnabled: false } };
       }
     }
 
@@ -1480,6 +1490,11 @@ if (typeof module !== 'undefined' && module.exports) {
           showToast('File is on a read-only location -- not deleted.');
           return;
         }
+        if (res.status === 403) {
+          // v1.81 write-RBAC: no capability -> plain message, card stays put.
+          showToast("You don't have permission to delete library files.");
+          return;
+        }
         const data = await res.json().catch(() => ({}));
         if (data.success) {
           currentItems = currentItems.filter((item) => item.id !== id);
@@ -1709,7 +1724,11 @@ if (typeof module !== 'undefined' && module.exports) {
         if (!res.ok) {
           let data = {};
           try { data = await res.json(); } catch (_e) { /* no/invalid JSON body -- fall back to a generic message below */ }
-          alert('Failed to rescan: ' + (data.error || 'unknown error'));
+          // v1.81 write-RBAC: a member without the capability gets 403 - a plain,
+          // non-blocking message (the old blocking alert() was friction).
+          showToast(res.status === 403
+            ? "You don't have permission to rescan the library."
+            : 'Failed to rescan: ' + (data.error || 'unknown error'));
           // Visual-consistency polish: reset to the SAME short "Rescan"
           // label the static markup starts with (was "Rescan Files" here,
           // a casing/length mismatch against the button's own resting
@@ -1725,7 +1744,7 @@ if (typeof module !== 'undefined' && module.exports) {
         pollRescanStatus();
       } catch (err) {
         console.error(err);
-        alert('Network error trigger scanner.');
+        showToast('Network error trigger scanner.');
         rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Rescan</span>';
         rescanBtn.disabled = false;
         ptrEndRefreshing(); // same reasoning as the !res.ok path above

@@ -702,6 +702,30 @@ if (typeof module !== 'undefined' && module.exports) {
     // itself, so there is always somewhere to mount into regardless of
     // whether subscribeBtn survives this load.
     const subscribeBtnContainer = subscribeBtn ? subscribeBtn.parentNode : null;
+    // v1.81 write-RBAC: the EFFECTIVE library-modify capability (admin OR the
+    // per-user flag) gates the delete/move/attribute affordances on this page.
+    // Resolved from the memoized /api/auth/me WITHOUT blocking the player load
+    // (a slow /api/auth/me must never stall playback). Fail-safe: the affordances
+    // stay hidden until the capability confirms TRUE, so a capability-less member
+    // (or an auth hiccup) never sees a delete/move/edit control. The server is
+    // the real gate; this just removes dead buttons. setupMoveButton/
+    // setupAttributeButton are ALSO called in the media-load flow (guarded), so
+    // whichever of {capability, mediaData} resolves last mounts them.
+    let canModifyLibrary = false;
+    if (deleteBtn) deleteBtn.hidden = true; // hidden until the capability confirms
+    // typeof-guarded: a minimal harness (or a page that loads watch.js without
+    // common.js) leaves fetchCurrentUser undefined - the affordances then simply
+    // stay hidden rather than throwing during init (the shared-global scar).
+    if (typeof fetchCurrentUser === 'function') {
+      fetchCurrentUser().then(function (me) {
+        canModifyLibrary = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
+        if (!canModifyLibrary) return; // stays fail-safe hidden / unmounted
+        if (deleteBtn) deleteBtn.hidden = false;
+        // Mount now in case the media already loaded before this resolved.
+        setupMoveButton();
+        setupAttributeButton();
+      }).catch(function () { /* signed-out / offline -> affordances stay hidden */ });
+    }
 
     const addedDateText = root.querySelector('#added-date-text');
     const fileSizeText = root.querySelector('#file-size-text');
@@ -2369,6 +2393,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function setupAttributeButton() {
       const watchActions = root.querySelector('.watch-actions');
       if (!watchActions || !mediaData) return;
+      if (!canModifyLibrary) return; // v1.81 write-RBAC: attribution is a content edit
       const attributed = resolveFileChannelIdentity(mediaData) !== null;
       if (attributed) {
         if (attributeBtn) { attributeBtn.remove(); attributeBtn = null; }
@@ -2467,6 +2492,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function setupMoveButton() {
       const watchActions = root.querySelector('.watch-actions');
       if (!watchActions || !mediaData) return;
+      if (!canModifyLibrary) return; // v1.81 write-RBAC: move is a content mutation
       if (!moveBtn) {
         moveBtn = document.createElement('button');
         moveBtn.type = 'button';
@@ -3187,6 +3213,13 @@ if (typeof module !== 'undefined' && module.exports) {
         if (window.FileTube && window.FileTube.player) window.FileTube.player.close();
 
         const res = await fetch(`/api/videos/${mediaId}`, { method: 'DELETE' });
+        // v1.81 write-RBAC: a member without the capability gets a 403 - tell
+        // them plainly and leave the item exactly where it is (no phantom
+        // removal / navigate). The server already refused; honor that truth.
+        if (res.status === 403) {
+          showToast("You don't have permission to delete library files.");
+          return;
+        }
         const data = await res.json();
 
         if (data.success) {
@@ -3208,11 +3241,11 @@ if (typeof module !== 'undefined' && module.exports) {
           if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate('/');
           else window.location.href = '/';
         } else {
-          alert('Error deleting file: ' + data.error);
+          showToast('Error deleting file: ' + (data.error || 'unknown error'));
         }
       } catch (err) {
         console.error(err);
-        alert('Network error occurred while trying to delete file.');
+        showToast('Network error occurred while trying to delete file.');
       }
     }
 
