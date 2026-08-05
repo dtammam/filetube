@@ -352,6 +352,28 @@ function applyModernModePref(value, opts) {
   if (opts && opts.mirror) mirrorUserSetting({ modernMode: v });
 }
 
+// v1.84 Modern Mode: the filter-chip param allowlist (the CLIENT half of the
+// server's MODERN_GRID_FILTERS in lib/home/feed.js - a source-lock test binds
+// the two equal so they cannot drift). resolveModernChip bounds a stored/clicked
+// chip exactly as the server bounds ?filter=.
+const MODERN_CHIP_FILTERS = ['all', 'videos', 'audio', 'podcasts', 'continue', 'unwatched'];
+
+function resolveModernChip(raw) {
+  return MODERN_CHIP_FILTERS.includes(raw) ? raw : 'all';
+}
+
+// v1.84: the BARE-HOME layout decision - precedence modern > feed > classic.
+// Pure + exported so the precedence is unit-bound (not merely asserted by
+// reading main.js's gate). Only a bare home (no search/folder/root/liked/subs)
+// that is not force-gridded (?browse=1) can be modern or feed.
+function resolveHomeLayout(opts) {
+  const o = opts || {};
+  if (!o.bareHome || o.forceGrid) return 'classic';
+  if (o.modern) return 'modern';
+  if (o.feed) return 'feed';
+  return 'classic';
+}
+
 // Boot: reflect the device's known value onto <html> IMMEDIATELY (no fetch, no
 // flash), then - only if the device has never chosen - seed from the user
 // record on its OWN fetch-sharing path (the same v1.63.1 scar the home-feed
@@ -11155,6 +11177,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // bound, not asserted as a source pattern (the "a decision is not its use"
     // strike this repo keeps taking).
     modernModeEnabled, applyModernModePref, bootModernModePref, MODERN_MODE_VALUES,
+    // v1.84 T3: the chip filter allowlist + resolver (client half; source-locked
+    // equal to the server's MODERN_GRID_FILTERS) + the bare-home layout decision.
+    resolveModernChip, MODERN_CHIP_FILTERS, resolveHomeLayout,
     // v1.31 P5 (FR5): repull-ack formatter.
     formatRepullAckText,
     // v1.32 (gate fix): the chip's one-line breaker summary.

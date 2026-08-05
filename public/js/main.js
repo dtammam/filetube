@@ -265,6 +265,39 @@ function buildFeedRowHtml(row) {
   `;
 }
 
+// ---- v1.84 Modern Mode: the filter-chip row ---------------------------------
+//
+// The `filter` params are the CLIENT half of the server's MODERN_GRID_FILTERS
+// (lib/home/feed.js); test/unit/modern-grid-filter-parity binds the two lists
+// equal so they cannot drift. Labels are static literals (no escape needed).
+const MODERN_CHIPS = [
+  { filter: 'all', label: 'All' },
+  { filter: 'videos', label: 'Videos' },
+  { filter: 'audio', label: 'Audio' },
+  { filter: 'podcasts', label: 'Podcasts' },
+  { filter: 'continue', label: 'Continue watching' },
+  { filter: 'unwatched', label: 'Unwatched' },
+];
+function buildModernChipRowHtml(active) {
+  const a = typeof resolveModernChip === 'function' ? resolveModernChip(active) : 'all';
+  const chips = MODERN_CHIPS.map((c) => {
+    const on = c.filter === a;
+    return `<button type="button" class="modern-chip${on ? ' active' : ''}" role="tab" aria-selected="${on}" data-chip="${c.filter}">${c.label}</button>`;
+  }).join('');
+  return `<div class="modern-chip-row" role="tablist" aria-label="Filter the home feed">${chips}</div>`;
+}
+function buildModernEmptyHtml(filter) {
+  const msgs = {
+    videos: 'No videos here yet.',
+    audio: 'No audio here yet.',
+    podcasts: 'No downloaded podcast episodes yet.',
+    continue: 'Nothing in progress - start watching and it shows up here.',
+    unwatched: "Nothing unwatched - you're all caught up.",
+    all: 'Nothing here yet - add media and it fills in.',
+  };
+  return `<div class="home-feed-empty">${msgs[filter] || msgs.all}</div>`;
+}
+
 // v1.79 home feed: fetch the per-user rows and render them into `host`. Every
 // field is server-resolved, so this is pure rendering. Aborts cleanly with the
 // view's signal; an empty feed (brand-new user) renders a gentle empty state,
@@ -708,13 +741,34 @@ if (typeof module !== 'undefined' && module.exports) {
     const subsFilter = urlParams.get('subs') === '1';
     const forceGrid = urlParams.get('browse') === '1';
     const isBareHome = !searchQuery && !folderFilter && !rootFilter && !likedFilter && !subsFilter;
-    const feedMode = isBareHome && !forceGrid && typeof homeFeedEnabled === 'function' && homeFeedEnabled();
+    // v1.84 Modern Mode wins the bare-home layout race: precedence modern > feed
+    // > classic (resolveHomeLayout is the pure, unit-bound decision). Modern
+    // renders a FLAT chip-filtered grid of rich cards into the SAME #video-grid
+    // (so every delegated card handler + card CSS applies unchanged), with a chip
+    // row (+ mobile avatar bar, T4) mounted above it.
+    const wantModern = typeof modernModeEnabled === 'function' && modernModeEnabled();
+    const wantFeed = typeof homeFeedEnabled === 'function' && homeFeedEnabled();
+    const homeLayout = typeof resolveHomeLayout === 'function'
+      ? resolveHomeLayout({ bareHome: isBareHome, forceGrid, modern: wantModern, feed: wantFeed })
+      : (isBareHome && !forceGrid && wantFeed ? 'feed' : 'classic');
+    const modernMode = homeLayout === 'modern';
+    const feedMode = homeLayout === 'feed';
     let homeFeedHost = null;
     if (feedMode && libraryContent) {
       root.classList.add('home-feed-mode');
       homeFeedHost = document.createElement('div');
       homeFeedHost.id = 'home-feed-host';
       libraryContent.insertBefore(homeFeedHost, libraryContent.firstChild);
+    }
+    // Modern chrome host (chip row + avatar bar) mounted above the grid, once.
+    let modernChromeHost = null;
+    let activeModernChip = (typeof resolveModernChip === 'function') ? resolveModernChip('all') : 'all';
+    let modernReqToken = 0;
+    if (modernMode && libraryContent) {
+      root.classList.add('modern-home-mode');
+      modernChromeHost = document.createElement('div');
+      modernChromeHost.id = 'modern-home-chrome';
+      libraryContent.insertBefore(modernChromeHost, libraryContent.firstChild);
     }
 
     // v1.45.6 (Dean): PER-PAGE SORT. When the client toggle is on, this page
@@ -889,12 +943,59 @@ if (typeof module !== 'undefined' && module.exports) {
           videosHeader.textContent = label;
         }
 
-        // 3. Fetch + render the media surface. In feed mode (bare home, toggle
-        // on) render the server-assembled rows into the feed host instead of
-        // the grid; the classic grid + controls are hidden by the
-        // `home-feed-mode` root class. Otherwise render page 0 of the grid and
-        // arm the infinite-scroll sentinel for further pages.
-        if (feedMode) {
+        // v1.84 Modern Mode renderers (nested so they reach buildCardHtml + the
+        // grid). fetchModernGrid fetches the active chip's items and renders the
+        // rich cards into #video-grid; a request token drops a stale response so
+        // rapid chip switching never paints an out-of-order result.
+        async function fetchModernGrid(sig) {
+          const token = ++modernReqToken;
+          const filter = resolveModernChip(activeModernChip);
+          let items = [];
+          try {
+            const res = await fetch(`/api/home?view=grid&filter=${encodeURIComponent(filter)}`, { signal: sig });
+            const data = res.ok ? await res.json() : { items: [] };
+            items = Array.isArray(data.items) ? data.items : [];
+          } catch (err) {
+            if (err && err.name === 'AbortError') return;
+            if (token === modernReqToken) videoGrid.innerHTML = '<div class="home-feed-empty">Could not load. Try again, or switch layout in Settings.</div>';
+            return;
+          }
+          if (token !== modernReqToken) return; // a newer chip click superseded this
+          videoGrid.innerHTML = items.length ? items.map(buildCardHtml).join('') : buildModernEmptyHtml(filter);
+        }
+        async function renderModernHome(chromeHost, sig) {
+          if (chromeHost) {
+            // #modern-avatar-bar is filled by T4 (mobile-only). The chip row is
+            // wired with ONE delegated listener covering every chip.
+            chromeHost.innerHTML = '<div id="modern-avatar-bar" class="modern-avatar-bar" hidden></div>' + buildModernChipRowHtml(activeModernChip);
+            const chipRow = chromeHost.querySelector('.modern-chip-row');
+            if (chipRow) {
+              chipRow.addEventListener('click', (e) => {
+                const btn = e.target.closest('.modern-chip');
+                if (!btn) return;
+                const next = resolveModernChip(btn.dataset.chip);
+                if (next === activeModernChip) return;
+                activeModernChip = next;
+                chipRow.querySelectorAll('.modern-chip').forEach((b) => {
+                  const on = b.dataset.chip === next;
+                  b.classList.toggle('active', on);
+                  b.setAttribute('aria-selected', on ? 'true' : 'false');
+                });
+                fetchModernGrid(sig);
+              }, { signal: sig });
+            }
+          }
+          await fetchModernGrid(sig);
+        }
+
+        // 3. Fetch + render the media surface. Modern mode (bare home, toggle
+        // on) renders a flat chip-filtered grid of rich cards into #video-grid
+        // with a chip row above it; feed mode renders the server-assembled rows
+        // into the feed host; otherwise page 0 of the classic grid + the
+        // infinite-scroll sentinel. Precedence: modern > feed > classic.
+        if (modernMode) {
+          await renderModernHome(modernChromeHost, signal);
+        } else if (feedMode) {
           await renderHomeFeed(homeFeedHost, signal);
         } else {
           await fetchLibraryPage0();
@@ -2050,7 +2151,9 @@ if (typeof module !== 'undefined' && module.exports) {
     const booksRowHost = document.createElement('div');
     // v1.79: in feed mode the server-assembled feed carries its own continue-*
     // rows, so the client-side continue-rows injection is skipped entirely.
-    if (videoGrid && videoGrid.parentElement && !feedMode) {
+    // v1.84: modern mode is one flat grid (its Continue-watching chip covers
+    // resume), so its home skips the injected continue rows too.
+    if (videoGrid && videoGrid.parentElement && !feedMode && !modernMode) {
       videoGrid.insertAdjacentElement('beforebegin', booksRowHost);
       const bareHome = !searchQuery && !folderFilter && !rootFilter && !likedFilter;
       if (bareHome) {

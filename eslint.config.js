@@ -196,9 +196,12 @@ module.exports = [
         homeFeedEnabled: 'readonly',
         applyHomeFeedPref: 'readonly',
         // v1.84: the Modern-mode toggle (common.js owns it; main.js reads it at
-        // home init, setup.js's toggle reflects + mirrors it).
+        // home init, setup.js's toggle reflects + mirrors it) + the pure chip
+        // resolver + bare-home layout decision main.js's gate consumes.
         modernModeEnabled: 'readonly',
         applyModernModePref: 'readonly',
+        resolveModernChip: 'readonly',
+        resolveHomeLayout: 'readonly',
         // v1.41.10 (QA gate): shared delete-outcome -> toast-message mapper
         // (common.js), used by both delete flows (main.js cards + watch.js).
         deleteResultToast: 'readonly',
