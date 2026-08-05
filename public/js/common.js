@@ -5442,7 +5442,12 @@ function injectYouNavItem() {
     label.textContent = 'You';
     btn.appendChild(avatar);
     btn.appendChild(label);
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      // v1.85.1: STOP this click bubbling to document. The account menu closes on
+      // any document click (outside-click-to-dismiss); without this, our own
+      // click reaches document right AFTER trigger.click() opens the menu and
+      // closes it again - the tab appeared dead (v1.85 device-pass failure).
+      e.stopPropagation();
       // Look the trigger up at CLICK time (injectAccountMenu is async).
       const trigger = document.querySelector('.account-menu-trigger');
       if (trigger) trigger.click();

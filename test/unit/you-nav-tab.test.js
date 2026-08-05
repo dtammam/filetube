@@ -45,15 +45,23 @@ test('signed-in: injects a right-most "You" tab with an avatar + label', async (
   assert.strictEqual(global.document.querySelector('#bottom-nav').lastElementChild, you, 'the You tab is right-most');
 });
 
-test('clicking "You" opens the account menu (dispatches the header trigger click)', async () => {
-  const c = fresh(SHELL);
-  global.fetch = () => Promise.resolve({ ok: true, json: async () => ({ user: { id: 1, username: 'dean', avatar: { present: false } } }) });
-  let opened = 0;
-  global.document.querySelector('.account-menu-trigger').addEventListener('click', () => { opened += 1; });
+test('clicking "You" opens the REAL account menu and it STAYS open (v1.85.1 bubble fix)', async () => {
+  // Shell with an EMPTY .header-right (injectAccountMenu builds the real menu +
+  // its document-close-on-outside-click handler) + the bottom nav.
+  const c = fresh('<nav id="bottom-nav"></nav><div class="header-right"></div>');
+  global.fetch = () => Promise.resolve({ ok: true, json: async () => ({ user: { id: 1, username: 'dean', displayName: 'Dean', role: 'member', avatar: { present: false } } }) });
+  c.injectAccountMenu();
   c.injectYouNavItem();
   await tick();
+  const dropdown = global.document.querySelector('.account-menu-dropdown');
+  assert.ok(dropdown, 'the real account menu was built');
+  assert.strictEqual(dropdown.hidden, true, 'starts closed');
+
+  // Tap "You". Without stopPropagation the click bubbles to document, whose
+  // close-handler fires right after trigger.click() opens it -> menu closes
+  // (the device-pass "tab does nothing" failure). With the fix it stays open.
   global.document.querySelector('[data-nav="you"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  assert.strictEqual(opened, 1, 'the You tab opened the account menu via its trigger');
+  assert.strictEqual(dropdown.hidden, false, 'the account menu opened AND stayed open (did not open-then-close)');
 });
 
 test('signed-out shell: no "You" tab (fetch not ok / no user)', async () => {

@@ -4724,13 +4724,19 @@ a.sub-row-channel-link:focus-visible {
     display: none;
   }
   .search-open .header-search { display: block; }
-  /* v1.85 #1: the magnifier lives in the top-right slot beside the bell/avatar */
-  .search-toggle-btn { display: inline-flex; }
+  /* v1.85 #1: the magnifier lives in the top-right slot beside the bell/avatar.
+     v1.85.1: these three overrides MUST out-specify their base rules, which live
+     LATER in the file (.search-toggle-btn ~7623, .account-menu-trigger ~9387,
+     .account-menu-dropdown ~9418) - a @media block adds NO specificity, so a
+     same-specificity later rule would win and silently defeat all of this (the
+     v1.85 device-pass failure). Scoping under `.header-right` makes them (0,2,0)
+     and they win regardless of source order. */
+  .header-right .search-toggle-btn { display: inline-flex; }
   /* v1.85 #2: the "You" bottom-nav tab owns account access on mobile - hide the
      header avatar (keep the bell + magnifier in .header-right), and drop the
      account menu as a bottom SHEET above the nav when opened from the You tab. */
-  .account-menu-trigger { display: none; }
-  .account-menu-dropdown {
+  .header-right .account-menu-trigger { display: none; }
+  .header-right .account-menu-dropdown {
     position: fixed;
     top: auto;
     left: var(--space-4);
