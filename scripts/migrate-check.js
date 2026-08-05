@@ -46,6 +46,15 @@ const sizeKb = (fs.statSync(jsonPath).size / 1024).toFixed(1);
 console.log(`Checking ${jsonPath} (${sizeKb} KB) against the v1.42 import (dry run, throwaway output)...`);
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-migrate-check-'));
+// Clean the throwaway import dir on EVERY exit path. The `finally` below covers
+// the happy path and a thrown error, but `fail()` calls process.exit(1), which
+// SKIPS finally - so on the failure path (a bad db.json) the dir leaked. A
+// process.on('exit') handler runs on process.exit() too, closing that leak
+// (residual #110 - a real CLI leak, not just a test artifact). rmSync of an
+// already-removed dir is a no-op, so this composes with the finally.
+process.on('exit', () => {
+  try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { /* best-effort */ }
+});
 let summary;
 try {
   try {
