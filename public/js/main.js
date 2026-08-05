@@ -696,8 +696,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // classic grid + controls via a root class (CSS) and mount a feed host;
     // loadLibrary() renders the feed into it instead of the grid, and the
     // continue-rows block below is skipped (the feed carries its own).
-    const isBareHome = !searchQuery && !folderFilter && !rootFilter && !likedFilter;
-    const feedMode = isBareHome && typeof homeFeedEnabled === 'function' && homeFeedEnabled();
+    // v1.79.1: two feed See-all escapes into the classic grid. `?subs=1` is a
+    // SCOPE (subscription-only browse - a real filter, so it excludes bare-home
+    // like folder/root/liked do). `?browse=1` FORCES classic without a scope
+    // (the Recently-added See-all - all videos), because a bare '/' would just
+    // re-show the feed for a feed-enabled user.
+    const subsFilter = urlParams.get('subs') === '1';
+    const forceGrid = urlParams.get('browse') === '1';
+    const isBareHome = !searchQuery && !folderFilter && !rootFilter && !likedFilter && !subsFilter;
+    const feedMode = isBareHome && !forceGrid && typeof homeFeedEnabled === 'function' && homeFeedEnabled();
     let homeFeedHost = null;
     if (feedMode && libraryContent) {
       root.classList.add('home-feed-mode');
@@ -751,6 +758,8 @@ if (typeof module !== 'undefined' && module.exports) {
       videosHeader.textContent = 'Playlist: Liked';
     } else if (folderFilter) {
       videosHeader.textContent = `Playlist: ${folderFilter}`;
+    } else if (subsFilter) {
+      videosHeader.textContent = 'From your subscriptions'; // v1.79.1 See-all target
     }
 
     // v1.67 (plan D2/D4): resolve the signed-in user's corner layout and -
@@ -836,7 +845,9 @@ if (typeof module !== 'undefined' && module.exports) {
         // (any load where this browser has no explicit dropdown pick). One
         // fetch covers both; a failure blocks neither (view falls back to
         // Most recent, sort keeps the provisional 'release-date').
-        const bareLoad = !searchQuery && !folderFilter && !rootFilter && !likedFilter;
+        // v1.79.1: the subs-scoped + force-grid See-all views are NOT bare
+        // loads - a configured defaultView must not clobber them.
+        const bareLoad = !searchQuery && !folderFilter && !rootFilter && !likedFilter && !subsFilter && !forceGrid;
         if (bareLoad || !storedSortPick) {
           try {
             const settingsRes = await fetch('/api/settings');
@@ -919,6 +930,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (searchQuery) queryParams.push(`search=${encodeURIComponent(searchQuery)}`);
       if (folderFilter) queryParams.push(`folder=${encodeURIComponent(folderFilter)}`);
       if (rootFilter) queryParams.push(`root=${encodeURIComponent(rootFilter)}`);
+      if (subsFilter) queryParams.push('subs=1'); // v1.79.1: subscription-scoped browse
       queryParams.push(`sort=${encodeURIComponent(currentSort)}`);
       queryParams.push(`format=${encodeURIComponent(getStoredFormatFilter())}`);
       // v1.50: watched-state filter -- server-authoritative like format

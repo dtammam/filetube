@@ -8829,6 +8829,20 @@ app.get('/api/videos', (req, res) => {
     list = list.filter(item => item.folderName === folderFilter);
   }
 
+  // v1.79.1: the subscription-SCOPED browse (?subs=1) - the "New from your
+  // subscriptions" feed row's See-all target. Filter to items under a
+  // subscription folder via essentially the same name-based join GET /api/home
+  // uses (folderName OR channelName in the subscription-name set; /api/home
+  // additionally gates on folderKey presence, inert for real media items).
+  // Subscriptions are
+  // global until the v1.44 RBAC tranche (tech-debt #122); this shares that
+  // limitation by construction. Read the names straight off the namespace.
+  if (req.query.subs === '1') {
+    const subsList = db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [];
+    const subNames = new Set(subsList.map((s) => s && s.name).filter(Boolean));
+    list = list.filter((item) => item && ((item.folderName && subNames.has(item.folderName)) || (item.channelName && subNames.has(item.channelName))));
+  }
+
   // Media-type (format) filter — new in v1.30 A5; server-authoritative
   // replacement for the client's local filterByMediaType.
   list = videoQuery.filterByFormat(list, format);
