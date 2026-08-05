@@ -661,6 +661,11 @@ summary,
     scrollbar-width: auto;
     scrollbar-color: var(--border-dark) var(--bg-secondary);
   }
+  /* v1.84: the modern chip row + avatar bar are horizontal scrollers that hide
+     their scrollbar on webkit (::-webkit-scrollbar display:none); Firefox hides
+     it here, inside the one guard, so the partition stays intact. */
+  .modern-chip-row,
+  .modern-avatar-bar { scrollbar-width: none; }
 }
 
 * {
@@ -7463,6 +7468,135 @@ body.ft-css-fullscreen .bottom-nav {
   color: var(--text-secondary);
   font-style: italic;
 }
+
+/* ============================================================
+   v1.84 Modern YouTube Mode - a third home layout.
+   `[data-modern="on"]` (on <html>) styles the card SKIN (rounded
+   thumbnails + the channel avatar) wherever modern is on;
+   `.modern-home-mode` (on the view root) styles the flat HOME grid +
+   chip row + mobile avatar bar (bare home only). Tokens only.
+   ============================================================ */
+
+/* the flat big-tile grid: 3-up, reflowing to 4 on wide desktops, 1 on phones */
+.modern-home-mode #video-grid {
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-10);
+}
+@media (min-width: 1500px) {
+  .modern-home-mode #video-grid { grid-template-columns: repeat(4, 1fr); }
+}
+@media (max-width: 480px) {
+  .modern-home-mode #video-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-8);
+  }
+}
+
+/* the one-line filter-chip row */
+.modern-chip-row {
+  display: flex;
+  gap: var(--space-4);
+  overflow-x: auto;
+  padding: var(--space-6) 0;
+  margin-bottom: var(--space-4);
+}
+.modern-chip-row::-webkit-scrollbar { display: none; }
+.modern-chip {
+  flex: 0 0 auto;
+  padding: var(--space-3) var(--space-8);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.modern-chip:hover { background-color: var(--bg-sidebar); }
+.modern-chip.active {
+  background-color: var(--text-primary);
+  color: var(--bg-color);
+  border-color: var(--text-primary);
+}
+
+/* the mobile recent-uploader subscription avatar bar (hidden on desktop) */
+.modern-avatar-bar {
+  display: flex;
+  gap: var(--space-6);
+  overflow-x: auto;
+  padding: var(--space-6) 0;
+}
+.modern-avatar-bar::-webkit-scrollbar { display: none; }
+/* Firefox's scrollbar-width:none for these two horizontal scrollers lives in the
+   ONE @supports not selector(::-webkit-scrollbar) guard (search "2021 Modern
+   base") - the engine-partition rule keeps every standard scrollbar prop there
+   so Chromium 121+ never discards the ::-webkit-scrollbar art. */
+.modern-avatar-chip {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  width: 64px; /* token-exempt: avatar-chip column geometry */
+  text-decoration: none;
+  color: var(--text-secondary);
+}
+.modern-avatar-circle {
+  width: 56px; /* token-exempt: avatar disc geometry */
+  height: 56px; /* token-exempt: avatar disc geometry */
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg-secondary);
+  color: var(--btn-primary-text, #fff); /* token-exempt: monogram glyph on a coloured disc */
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+}
+.modern-avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
+.modern-avatar-name {
+  max-width: 64px; /* token-exempt: avatar-chip label width */
+  font-size: var(--fs-2xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (min-width: 1024px) {
+  .modern-avatar-bar { display: none; }
+}
+
+/* rounded thumbnails wherever modern is on */
+html[data-modern="on"] .card-media,
+html[data-modern="on"] .thumbnail-container {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* the per-card channel avatar beside the byline */
+html[data-modern="on"] .video-uploader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.card-channel-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px; /* token-exempt: byline avatar geometry */
+  height: 24px; /* token-exempt: byline avatar geometry */
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  flex: 0 0 auto;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  color: var(--btn-primary-text, #fff); /* token-exempt: monogram glyph on a coloured disc */
+}
+.card-channel-avatar img { width: 100%; height: 100%; object-fit: cover; }
+/* --ch-av is the per-card monogram colour T5 injects inline; the fallback keeps
+   the disc coloured if it is ever absent (and satisfies the fallback-less-var
+   token check - --ch-av is intentionally not a stylesheet token). */
+.card-channel-avatar-mono { background-color: var(--ch-av, var(--overlay-surface)); }
 
 .books-home-row { margin-bottom: var(--space-8); }
 .books-home-row-header {

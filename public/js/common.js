@@ -324,6 +324,103 @@ async function bootHomeFeedPref() {
   if (HOME_FEED_VALUES.includes(s.homeFeed)) applyHomeFeedPref(s.homeFeed); // seed, no mirror
 }
 
+// ---- v1.84: Modern YouTube Mode toggle -------------------------------------
+//
+// A THIRD home-layout option (a flat big-tile grid with a filter-chip row and,
+// on mobile, a recent-uploader avatar bar), orthogonal to the era themes. Same
+// mirror posture as homeFeed: localStorage is the DEVICE truth, the user record
+// the CROSS-DEVICE seed. Default OFF (absent -> not modern) so existing installs
+// are byte-unchanged and NEW_USER_DEFAULT_SETTINGS is NOT touched. Unlike
+// homeFeed, this also reflects a `data-modern` attribute on <html> so the CSS
+// can restyle the grid without a paint of the classic look first.
+// modernModeEnabled() is read SYNCHRONOUSLY by main.js at home-view init;
+// precedence is modern > feed > classic.
+const MODERN_MODE_VALUES = ['on', 'off'];
+
+function modernModeEnabled() {
+  try { return localStorage.getItem('ft-modern-mode') === 'on'; } catch (_) { return false; }
+}
+
+function applyModernModePref(value, opts) {
+  const v = value === 'on' ? 'on' : 'off';
+  try { localStorage.setItem('ft-modern-mode', v); } catch (_) { /* storage off - session only */ }
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-modern', v);
+    const check = document.getElementById('modern-mode-check');
+    if (check) check.checked = v === 'on'; // re-reflect when the async seed lands after wiring
+  }
+  if (opts && opts.mirror) mirrorUserSetting({ modernMode: v });
+}
+
+// v1.84 Modern Mode: the filter-chip param allowlist (the CLIENT half of the
+// server's MODERN_GRID_FILTERS in lib/home/feed.js - a source-lock test binds
+// the two equal so they cannot drift). resolveModernChip bounds a stored/clicked
+// chip exactly as the server bounds ?filter=.
+const MODERN_CHIP_FILTERS = ['all', 'videos', 'audio', 'podcasts', 'continue', 'unwatched'];
+
+function resolveModernChip(raw) {
+  return MODERN_CHIP_FILTERS.includes(raw) ? raw : 'all';
+}
+
+// v1.84: the BARE-HOME layout decision - precedence modern > feed > classic.
+// Pure + exported so the precedence is unit-bound (not merely asserted by
+// reading main.js's gate). Only a bare home (no search/folder/root/liked/subs)
+// that is not force-gridded (?browse=1) can be modern or feed.
+function resolveHomeLayout(opts) {
+  const o = opts || {};
+  if (!o.bareHome || o.forceGrid) return 'classic';
+  if (o.modern) return 'modern';
+  if (o.feed) return 'feed';
+  return 'classic';
+}
+
+// v1.84 T5: the per-card channel avatar DECISION (Modern mode, media cards).
+// Pure + exported (the render + escaping stays in main.js's buildCardHtml, where
+// escapeHtml lives). Returns a descriptor: {kind:'none'} in classic (so the
+// classic card is byte-unchanged); {kind:'img',url} when the channel has a photo
+// (the SAME channelAvatarUrl the subscription avatars use); else {kind:'mono',
+// glyph,color} - the deterministic monogram, its colour carried on the
+// descriptor so the caller can put it in an inline custom property (ungoverned
+// by the token census; the CSS consumes it via var()).
+function modernCardAvatar(channelName, channelAvatarUrl, modernOn) {
+  if (!modernOn) return { kind: 'none' };
+  const av = resolveAvatarSource(channelName || '', channelAvatarUrl);
+  if (av.type === 'url') return { kind: 'img', url: av.url };
+  return { kind: 'mono', glyph: av.glyph, color: av.color };
+}
+
+// v1.84 T4: the mobile channel-avatar bar's selection - the SUBSCRIBED channels
+// that most recently uploaded. Pure over /api/channels' rows
+// ({folder,name,avatarUrl,latestAddedAt,isSub}): keep subs with a real recency,
+// newest-first, capped. Never mutates the input; a non-array is empty.
+function selectRecentUploaderChannels(channels, cap) {
+  const n = typeof cap === 'number' && cap > 0 ? cap : 12;
+  return (Array.isArray(channels) ? channels : [])
+    .filter((c) => c && c.isSub === true && typeof c.latestAddedAt === 'number' && c.latestAddedAt > 0)
+    .slice()
+    .sort((a, b) => b.latestAddedAt - a.latestAddedAt)
+    .slice(0, n);
+}
+
+// Boot: reflect the device's known value onto <html> IMMEDIATELY (no fetch, no
+// flash), then - only if the device has never chosen - seed from the user
+// record on its OWN fetch-sharing path (the same v1.63.1 scar the home-feed
+// seed sidesteps: a seed under pullMirroredDisplayPrefs' early return never ran
+// on customized devices).
+async function bootModernModePref() {
+  let stored = null;
+  try { stored = localStorage.getItem('ft-modern-mode'); } catch (_) { stored = null; }
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-modern', stored === 'on' ? 'on' : 'off');
+  }
+  if (stored !== null) return; // the device has chosen -> modernModeEnabled reads it
+  if (typeof fetch !== 'function') return;
+  const me = await fetchCurrentUser(); // shared, memoized
+  if (!me) return;                      // signed-out/offline: not-modern stands
+  const s = me.settings || {};
+  if (MODERN_MODE_VALUES.includes(s.modernMode)) applyModernModePref(s.modernMode); // seed, no mirror
+}
+
 // ---- F1: deterministic avatar fallback (v1.24.0, T3; identicon glyph C3/T12) -
 //
 // Replaces the old "first letter on a fixed color" uploader/channel avatar
@@ -10900,6 +10997,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // return is what made v1.63.1's stars seed dead on customized devices).
   initLibraryGlyphs();
   bootHomeFeedPref(); // v1.79: seed the home-feed toggle from the user record (own path, like glyphs)
+  bootModernModePref(); // v1.84: reflect + seed the Modern-mode toggle (own path, sets data-modern)
   // v1.78 device handoff: the offer card. Mounted on <body> by the controller
   // (never #view-root) and owning exactly ONE poll interval for the life of
   // the page - booted here, once, alongside the other shell-level injectors.
@@ -11102,6 +11200,18 @@ if (typeof module !== 'undefined' && module.exports) {
     formatQueuePosition,
     // v1.63.1: the stars pref's pure decision.
     shouldShowStarRatings,
+    // v1.84: Modern-mode pref - exported so the apply/boot USE (the data-modern
+    // attribute, localStorage, checkbox reflect, cross-device seed) is jsdom-
+    // bound, not asserted as a source pattern (the "a decision is not its use"
+    // strike this repo keeps taking).
+    modernModeEnabled, applyModernModePref, bootModernModePref, MODERN_MODE_VALUES,
+    // v1.84 T3: the chip filter allowlist + resolver (client half; source-locked
+    // equal to the server's MODERN_GRID_FILTERS) + the bare-home layout decision.
+    resolveModernChip, MODERN_CHIP_FILTERS, resolveHomeLayout,
+    // v1.84 T4: the mobile avatar bar's pure selection.
+    selectRecentUploaderChannels,
+    // v1.84 T5: the per-card channel-avatar decision.
+    modernCardAvatar,
     // v1.31 P5 (FR5): repull-ack formatter.
     formatRepullAckText,
     // v1.32 (gate fix): the chip's one-line breaker summary.
