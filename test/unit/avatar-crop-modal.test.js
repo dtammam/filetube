@@ -86,6 +86,10 @@ test('S3 (stubbed canvas): Cancel-then-Save settles ONCE as null (the double-set
     backdrop.querySelectorAll('.btn')[0].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // Cancel
     backdrop.querySelector('.btn-primary').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // late Save
     assert.strictEqual(await p, null, 'the first settle (Cancel) wins; the late Save is eaten');
+    // The `settled` guard's REAL job: cleanup runs EXACTLY once (Promise
+    // resolve-once alone makes `await p === null` true even without the guard, so
+    // that assertion does not bind it - this one does).
+    assert.strictEqual(tracker.revoked, 1, 'cleanup ran exactly once (the settled guard)');
   } finally { afterEachCanvas(); }
 });
 
