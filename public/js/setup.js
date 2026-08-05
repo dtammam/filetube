@@ -1784,6 +1784,38 @@ async function initAccountSection(signal) {
   const roleLabel = me.user.role === 'admin' ? 'admin' : 'member';
   chip.textContent = `Signed in as ${me.user.displayName || me.user.username} (${roleLabel})`;
 
+  // v1.82: profile photo (Settings->Account entry point; the account menu's
+  // "Change photo" hits the SAME POST /api/me/avatar). Remove shows only when a
+  // photo is set. The header avatar refreshes on the next page load.
+  const photoInput = document.getElementById('account-photo-input');
+  const photoUpload = document.getElementById('account-photo-upload');
+  const photoRemove = document.getElementById('account-photo-remove');
+  if (photoInput && photoUpload && photoRemove) {
+    const setHasPhoto = (present) => { photoRemove.hidden = !present; };
+    setHasPhoto(!!(me.user.avatar && me.user.avatar.present));
+    photoUpload.addEventListener('click', () => photoInput.click(), { signal });
+    photoInput.addEventListener('change', async () => {
+      const file = photoInput.files && photoInput.files[0];
+      photoInput.value = ''; // allow re-picking the same file
+      if (!file) return;
+      try {
+        const res = await fetch('/api/me/avatar', { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(body.error || 'Could not update your photo.'); return; }
+        setHasPhoto(true);
+        showToast('Photo updated.');
+      } catch (_) { showToast('Could not update your photo (network error).'); }
+    }, { signal });
+    photoRemove.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/me/avatar', { method: 'DELETE' });
+        if (!res.ok) { showToast('Could not remove your photo.'); return; }
+        setHasPhoto(false);
+        showToast('Photo removed.');
+      } catch (_) { showToast('Could not remove your photo (network error).'); }
+    }, { signal });
+  }
+
   if (me.user.role === 'admin') {
     const usersBox = document.getElementById('users-box');
     if (usersBox) usersBox.hidden = false;

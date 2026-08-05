@@ -9246,6 +9246,11 @@ body.ft-css-fullscreen .bottom-nav {
 .account-menu-signout {
   color: var(--yt-red);
 }
+/* v1.82: the Settings->Account profile-photo controls. */
+.account-photo-actions {
+  display: inline-flex;
+  gap: var(--space-3);
+}
 
 @media (max-width: 768px) {
   /* Re-show .header-right as a bell-only top-right slot (the mobile header

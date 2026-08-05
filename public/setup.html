@@ -663,6 +663,16 @@
           <span id="account-chip" aria-live="polite">Loading your account...</span>
           <button class="btn" id="logout-btn">Sign out</button>
         </div>
+        <!-- v1.82: profile photo (the second entry point; the account menu's
+             "Change photo" hits the same /api/me/avatar endpoint). -->
+        <div class="account-row">
+          <span>Profile photo</span>
+          <span class="account-photo-actions">
+            <button class="btn btn-sm" id="account-photo-upload">Upload</button>
+            <button class="btn btn-sm" id="account-photo-remove" hidden>Remove</button>
+          </span>
+          <input type="file" id="account-photo-input" accept="image/png,image/jpeg,image/webp" hidden>
+        </div>
       </details>
 
       <!-- v1.43: Users (admin only - revealed by setup.js after /api/auth/me
