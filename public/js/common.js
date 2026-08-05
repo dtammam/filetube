@@ -5414,11 +5414,15 @@ function wireSearchAffordances() {
 // SAME v1.82 account menu (by dispatching a click on its header trigger - which
 // works even when that trigger is display:none on mobile). Injected with
 // data-nav="you" but DELIBERATELY NOT added to BOTTOM_NAV_OPTIONAL: the layout
-// resolver ranks a roster-absent id after every known item (always right-most,
-// the YouTube-app slot) and never hides it, and the Settings customizer only
-// lists the roster - so "You" can't be reordered or hidden, so a user can never
-// strand their own account access. Mobile-only (the bottom nav itself is);
-// desktop keeps the header avatar (which this hides only on mobile, via CSS).
+// resolver ranks a roster-absent id after every ROSTER item (so it sits at the
+// right end - the YouTube-app slot; the one exception is if the user opts the
+// COMPAT_TAIL 'settings' into the bar, which pins after it, putting You just
+// before Settings). The real hide/reorder protection is the SETTINGS CUSTOMIZER,
+// which lists only the roster - so its UI can never hide or move You. (A
+// hand-edited localStorage ft-bottomnav COULD still hide it - the same tolerated
+// class as the v1.75 R2 hand-edited-config residual - recoverable on desktop or
+// by clearing storage.) Mobile-only (the bottom nav itself is); desktop keeps
+// the header avatar (which this hides only on mobile, via CSS).
 function injectYouNavItem() {
   if (typeof document === 'undefined' || typeof fetch !== 'function') return;
   const nav = document.getElementById('bottom-nav');

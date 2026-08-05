@@ -8562,11 +8562,6 @@ app.get('/api/notifications', (req, res) => {
   if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
   const { items } = userStore.listNotifications(req.user.id);
   const metadata = db.metadata || {};
-  // One deep-cloned ytdlp namespace for the whole request (NOT per row) --
-  // the same cache-coherency dance GET /api/videos/:id documents: the
-  // avatar fallback's ensureYtdlp backfills IN PLACE, and the shared cache
-  // object must never be mutated.
-  let dbForAvatarLookup = null;
   const rows = [];
   const phantomMediaIds = [];
   const phantomEpisodeIds = [];
@@ -8641,10 +8636,10 @@ app.get('/api/notifications', (req, res) => {
     if (!mediaVisibleTo(req, item)) continue;
     let channelAvatarUrl = typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '';
     if (channelAvatarUrl === '') {
-      if (!dbForAvatarLookup) {
-        dbForAvatarLookup = { ...db, ytdlp: db.ytdlp ? JSON.parse(JSON.stringify(db.ytdlp)) : undefined };
-      }
-      channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(dbForAvatarLookup, item) || '';
+      // v1.85 #3a: resolveItemChannelAvatarUrl is READ-ONLY now (it reads via
+      // readYtdlpNamespace, never ensureYtdlp), so the shared getCachedDatabase()
+      // object can be handed in directly - no defensive deep-clone.
+      channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item) || '';
     }
     rows.push({
       id: row.id,
@@ -9606,27 +9601,14 @@ app.get('/api/videos/:id', (req, res) => {
   // (public/js/common.js) already falls back to a first-letter avatar.
   let channelAvatarUrl = item.channelAvatarUrl;
   if ((typeof channelAvatarUrl !== 'string' || channelAvatarUrl === '') && ytdlp.isEnabled(ytdlp.parseYtdlpConfig())) {
-    // v1.30 A3 cache-coherency note: `resolveItemChannelAvatarUrl` calls
-    // `ensureYtdlp(db)` internally, which BACKFILLS `db.ytdlp` (and its
-    // nested subscription/pin entries) IN PLACE on a legacy/partial shape.
-    // Before this route read through the cache, `db` was always a fresh,
-    // per-request `loadDatabase()` throwaway, so that in-place backfill was
-    // harmless. Now that `db` is the SHARED `getCachedDatabase()` object,
-    // handing it straight into a function that mutates nested fields in
-    // place would violate the "cache replaced by reference, never mutated
-    // in place" invariant the whole read-cache's coherency argument depends
-    // on -- so this lookup gets its own deep-cloned `ytdlp` namespace
-    // (a JSON round-trip deep clone, only reached when the avatar is
-    // genuinely missing) instead of the live cache reference. Every other
-    // field of `db` is still shared/read-only here -- only `.ytdlp` is ever
-    // written by `ensureYtdlp`. v1.42: JSON round-trip, NOT structuredClone
-    // -- under the test runner the cache is served through the throwing
-    // mutation-guard Proxy (see getCachedDatabase), and V8's structured
-    // clone cannot serialize Proxies (DataCloneError); JSON.stringify reads
-    // through the guard's get traps transparently, and db.ytdlp is plain
-    // JSON data by construction (it round-trips through the store).
-    const dbForAvatarLookup = { ...db, ytdlp: db.ytdlp ? JSON.parse(JSON.stringify(db.ytdlp)) : undefined };
-    channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(dbForAvatarLookup, item);
+    // v1.85 #3a: resolveItemChannelAvatarUrl is now READ-ONLY - it reads the
+    // ytdlp namespace via readYtdlpNamespace and NEVER calls ensureYtdlp, so it
+    // no longer mutates anything. That means the shared getCachedDatabase()
+    // object is safe to hand in directly. (Before #3a it backfilled db.ytdlp in
+    // place, so this route deep-cloned the namespace to protect the read-cache
+    // coherency invariant; both the mutation and the clone are gone, and the
+    // v1.85 /api/channels + modern-grid callers pass the raw cached db too.)
+    channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item);
   }
   // v1.33 T2 (Share button): the ORIGINAL YouTube watch URL, derived at
   // serve time from the persisted `youtubeId` through the same buildWatchUrl
