@@ -922,6 +922,9 @@ function trackVisibleTo(req, track) {
 function podcastEpisodeVisibleTo(req, ep) {
   return !!ep && !visibility.isBlocked(userRestrictionIndex(req), { kind: 'podcast', subId: ep.subId, filePath: ep.filePath });
 }
+function bookVisibleTo(req, book) {
+  return !!book && !visibility.isBlocked(userRestrictionIndex(req), { kind: 'book', filePath: book.filePath, folderName: book.folderName });
+}
 
 // v1.78 device handoff -------------------------------------------------------
 //
@@ -6538,7 +6541,7 @@ function publicBookListItem(item, userId, likedSet, finishedMap) {
 
 app.get('/api/books', (req, res) => {
   const ns = booksStore.readBooks(getCachedDatabase());
-  let list = Object.values(ns.items);
+  let list = Object.values(ns.items).filter((i) => bookVisibleTo(req, i)); // v1.80 RBAC
   const search = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
   if (search !== '') {
     list = list.filter((i) => [i.title, i.author, i.folderName]
@@ -6639,6 +6642,7 @@ app.get('/api/books/:id', (req, res) => {
   const ns = booksStore.readBooks(getCachedDatabase());
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
+  if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' }); // v1.80 RBAC
   res.json({
     ...publicBookListItem(item, req.user.id),
     filePath: item.filePath,
@@ -6659,6 +6663,7 @@ app.get('/book/:id/file', (req, res) => {
   const ns = booksStore.readBooks(getCachedDatabase());
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
+  if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' }); // v1.80 RBAC: private library
   if (!fs.existsSync(item.filePath)) return res.status(404).json({ error: 'Book file missing on disk' });
   res.setHeader('Content-Type', BOOK_CONTENT_TYPES[item.format] || 'application/octet-stream');
   if (req.query.download === '1') {
@@ -6684,6 +6689,8 @@ app.get('/book/:id/file', (req, res) => {
 // Enqueue synthesis (idempotent). 503 if the engine/model/ffmpeg aren't
 // configured; 404 for an unknown/non-epub book or out-of-range chapter.
 app.post('/book/:id/tts/:spineIndex/ensure', (req, res) => {
+  const rbacBook = booksStore.readBooks(getCachedDatabase()).items[req.params.id]; // v1.80 RBAC
+  if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter for text-to-speech' });
   if (!ttsAvailable()) return res.status(503).json({ error: 'Text-to-speech is not configured on this server' });
   const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
   if (!chapter) return res.status(404).json({ error: 'No such book chapter for text-to-speech' });
@@ -6706,6 +6713,8 @@ app.get('/api/books/:id/tts/:spineIndex/status', (req, res) => {
 
 // Serve the synthesized chapter audio (sendFile => Accept-Ranges/206 native).
 app.get('/book/:id/tts/:spineIndex', (req, res) => {
+  const rbacBook = booksStore.readBooks(getCachedDatabase()).items[req.params.id]; // v1.80 RBAC
+  if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter' });
   const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
   if (!chapter) return res.status(404).json({ error: 'No such book chapter' });
   const key = ttsServeKey(req.params.id, chapter.spineIndex);
@@ -6720,6 +6729,8 @@ app.get('/book/:id/tts/:spineIndex', (req, res) => {
 
 // The blockIndex -> startSec map the reader uses to seek to the right paragraph.
 app.get('/book/:id/tts/:spineIndex/blocks', (req, res) => {
+  const rbacBook = booksStore.readBooks(getCachedDatabase()).items[req.params.id]; // v1.80 RBAC: private book TEXT
+  if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter' });
   const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
   if (!chapter) return res.status(404).json({ error: 'No such book chapter' });
   const key = ttsServeKey(req.params.id, chapter.spineIndex);
@@ -6733,6 +6744,7 @@ app.get('/bookcover/:id', (req, res) => {
   const ns = booksStore.readBooks(getCachedDatabase());
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
+  if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' }); // v1.80 RBAC
   if (item.hasCover === true && item.coverExt) {
     const coverPath = path.join(BOOKCOVER_DIR, `${item.id}${item.coverExt}`);
     if (fs.existsSync(coverPath)) {
@@ -10369,10 +10381,12 @@ app.get('/api/liked', (req, res) => {
   // shaped liked items carry `id`, not `mediaId` (see shapedLiked*Items).
   const likedMusicNs = musicStore.readMusic(db);
   const likedPodNs = podcastStore.readPodcasts(db);
+  const likedBooksNs = booksStore.readBooks(db);
   others = others.filter((o) => {
     if (o.kind === 'track') return trackVisibleTo(req, ownTrack(likedMusicNs.tracks, o.id));
     if (o.kind === 'podcast') return podcastEpisodeVisibleTo(req, likedPodNs.episodes && likedPodNs.episodes[o.id]);
-    return true; // book liked filtering lands with T7
+    if (o.kind === 'book') return bookVisibleTo(req, likedBooksNs.items && likedBooksNs.items[o.id]);
+    return true;
   });
   if (typeof req.query.format === 'string') {
     others = videoQuery.filterByFormat(others, req.query.format);
