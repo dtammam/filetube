@@ -203,6 +203,7 @@ const { adapter: dbAdapter } = sqliteDb.openAdapter(DATA_DIR, {
 const authCrypto = require('./lib/auth/crypto');
 const createUserStore = require('./lib/auth/store');
 const authGateLib = require('./lib/auth/gate');
+const visibility = require('./lib/auth/visibility'); // v1.80 RBAC: the ONE visibility decision
 const userStore = createUserStore(dbAdapter);
 // Fail-closed at boot: a short/placeholder secret throws here (before listen).
 const SESSION_SECRET = authGateLib.resolveSessionSecret(DATA_DIR, process.env, (line) => console.log(line));
@@ -886,6 +887,52 @@ function effectiveProgress(userId, id) {
   const pending = pendingProgress.get(pendingProgressKey(userId, id));
   if (pending) return pending.value;
   return userStore.getOneProgress(userId, id) || undefined;
+}
+
+// v1.80 RBAC: the per-request visibility index for req.user. Built ONCE per
+// request and cached on req (many routes filter the same list). An ADMIN gets
+// an EMPTY index -> isBlocked always false -> sees everything, with no role
+// branch scattered across routes.
+function userRestrictionIndex(req) {
+  if (!req || !req.user) return visibility.buildRestrictionIndex([]);
+  if (req._ftRestrictionIndex) return req._ftRestrictionIndex;
+  const rows = req.user.role === 'admin' ? [] : userStore.getRestrictions(req.user.id);
+  const idx = visibility.buildRestrictionIndex(rows);
+  req._ftRestrictionIndex = idx;
+  return idx;
+}
+
+// v1.80 RBAC: per-kind visibility for req.user. ONE decision, reused by the list
+// filters AND the serve routes so they can never diverge. A missing item is not
+// visible (the caller 404s anyway). Descriptors mirror lib/auth/visibility.js.
+function mediaVisibleTo(req, item) {
+  return !!item && !visibility.isBlocked(userRestrictionIndex(req), {
+    kind: 'media', filePath: item.filePath, folderName: item.folderName, rootFolder: item.rootFolder,
+  });
+}
+function trackVisibleTo(req, track) {
+  return !!track && !visibility.isBlocked(userRestrictionIndex(req), {
+    kind: 'track', filePath: track.filePath, folderName: track.folderName, rootFolder: track.rootFolder,
+  });
+}
+// v1.80 RBAC: podcast episode/show visibility. Accepts an episode {subId,
+// filePath} OR a bare {subId} (the show-art route). Passed into the podcasts
+// module via deps (episodeVisibleTo) so that module routes THROUGH this one
+// decision. `ep` falsy -> not visible (the caller 404s an unknown id anyway).
+function podcastEpisodeVisibleTo(req, ep) {
+  return !!ep && !visibility.isBlocked(userRestrictionIndex(req), { kind: 'podcast', subId: ep.subId, filePath: ep.filePath });
+}
+function bookVisibleTo(req, book) {
+  return !!book && !visibility.isBlocked(userRestrictionIndex(req), { kind: 'book', filePath: book.filePath, folderName: book.folderName });
+}
+// v1.80 RBAC (security-gate W1): a restricted member must not delete / move /
+// mutate an item they cannot even SEE. Returns true (and 404s) when the id's
+// media item is restricted for req.user. Admin's empty index never restricts.
+function restrictedVideoMutation(req, res, id) {
+  const db = getCachedDatabase();
+  const it = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : null;
+  if (it && !mediaVisibleTo(req, it)) { res.status(404).json({ error: 'Media file not found' }); return true; }
+  return false;
 }
 
 // v1.78 device handoff -------------------------------------------------------
@@ -5532,6 +5579,17 @@ function requireAdmin(req, res) {
   return true;
 }
 
+// v1.80 RBAC: admin OR the per-user `canManageSubscriptions` capability may
+// MUTATE the shared channel registry. A plain member (incl. a kid account) may
+// browse subscriptions but never add/remove/edit them. Passed into the ytdlp
+// module via deps so its routes route through this one predicate. Closes the
+// census finding that the flag was settable-but-unenforced.
+function requireManageSubscriptions(req, res) {
+  if (req.user && (req.user.role === 'admin' || req.user.canManageSubscriptions)) return true;
+  res.status(403).json({ error: 'You do not have permission to manage subscriptions.' });
+  return false;
+}
+
 // The self-lockout guard for user management: refuse any change that would
 // leave the instance with ZERO enabled admins (disable/demote/delete of the
 // last one). Instant revocation (token_version bumps) makes such a mistake
@@ -5651,6 +5709,62 @@ app.post('/api/users/:id/subscriptions-flag', (req, res) => {
   if (!target) return;
   userStore.setCanManageSubscriptions(target.id, req.body && req.body.canManageSubscriptions === true);
   return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
+});
+
+// v1.80 RBAC: admin management of a user's library restrictions (blocklist).
+const VALID_RESTRICTION_KINDS = new Set(['path', 'folder', 'show', 'library']);
+const VALID_LIBRARY_VALUES = new Set(['video', 'music', 'podcasts', 'books']);
+const RESTRICTION_VALUE_MAX = 4096;
+
+// The stored mode is carried as a distinguished row {kind:'mode'} (no extra
+// schema); these helpers separate it from the unit rows at the API boundary.
+function readAccessMode(rows) {
+  return rows.some((r) => r.kind === 'mode' && r.value === 'allowlist') ? 'allowlist' : 'blocklist';
+}
+function unitRows(rows) {
+  return rows.filter((r) => r.kind !== 'mode');
+}
+
+app.get('/api/users/:id/restrictions', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = resolveTargetUser(req, res);
+  if (!target) return;
+  const rows = userStore.getRestrictions(target.id);
+  return res.json({ mode: readAccessMode(rows), restrictions: unitRows(rows) });
+});
+
+// Replace a user's ENTIRE access config (the admin UI PUTs the desired set):
+//   { mode: 'blocklist'|'allowlist', restrictions: [{kind, value}, ...] }
+// mode 'blocklist' (default) => the listed units are BLOCKED; 'allowlist' => the
+// user sees ONLY the listed units (Dean's kid-account belt-and-suspenders).
+app.put('/api/users/:id/restrictions', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = resolveTargetUser(req, res);
+  if (!target) return;
+  const body = req.body || {};
+  const mode = body.mode === undefined ? 'blocklist' : body.mode;
+  if (mode !== 'blocklist' && mode !== 'allowlist') {
+    return res.status(400).json({ error: `invalid mode '${mode}'` });
+  }
+  const rows = Array.isArray(body.restrictions) ? body.restrictions : null;
+  if (!rows) return res.status(400).json({ error: 'restrictions must be an array' });
+  const clean = [];
+  for (const r of rows) {
+    if (!r || typeof r !== 'object') return res.status(400).json({ error: 'each restriction must be an object' });
+    if (!VALID_RESTRICTION_KINDS.has(r.kind)) return res.status(400).json({ error: `invalid restriction kind '${r.kind}'` });
+    if (typeof r.value !== 'string' || r.value === '' || r.value.length > RESTRICTION_VALUE_MAX) {
+      return res.status(400).json({ error: 'invalid restriction value' });
+    }
+    if (r.kind === 'library' && !VALID_LIBRARY_VALUES.has(r.value)) {
+      return res.status(400).json({ error: `invalid library '${r.value}'` });
+    }
+    clean.push({ kind: r.kind, value: r.value });
+  }
+  // Persist the mode as a row only when it overrides the default.
+  if (mode === 'allowlist') clean.push({ kind: 'mode', value: 'allowlist' });
+  userStore.setRestrictions(target.id, clean);
+  const stored = userStore.getRestrictions(target.id);
+  return res.json({ success: true, mode: readAccessMode(stored), restrictions: unitRows(stored) });
 });
 
 app.delete('/api/users/:id', (req, res) => {
@@ -6447,7 +6561,7 @@ function publicBookListItem(item, userId, likedSet, finishedMap) {
 
 app.get('/api/books', (req, res) => {
   const ns = booksStore.readBooks(getCachedDatabase());
-  let list = Object.values(ns.items);
+  let list = Object.values(ns.items).filter((i) => bookVisibleTo(req, i)); // v1.80 RBAC
   const search = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
   if (search !== '') {
     list = list.filter((i) => [i.title, i.author, i.folderName]
@@ -6548,6 +6662,7 @@ app.get('/api/books/:id', (req, res) => {
   const ns = booksStore.readBooks(getCachedDatabase());
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
+  if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' }); // v1.80 RBAC
   res.json({
     ...publicBookListItem(item, req.user.id),
     filePath: item.filePath,
@@ -6568,6 +6683,7 @@ app.get('/book/:id/file', (req, res) => {
   const ns = booksStore.readBooks(getCachedDatabase());
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
+  if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' }); // v1.80 RBAC: private library
   if (!fs.existsSync(item.filePath)) return res.status(404).json({ error: 'Book file missing on disk' });
   res.setHeader('Content-Type', BOOK_CONTENT_TYPES[item.format] || 'application/octet-stream');
   if (req.query.download === '1') {
@@ -6593,6 +6709,8 @@ app.get('/book/:id/file', (req, res) => {
 // Enqueue synthesis (idempotent). 503 if the engine/model/ffmpeg aren't
 // configured; 404 for an unknown/non-epub book or out-of-range chapter.
 app.post('/book/:id/tts/:spineIndex/ensure', (req, res) => {
+  const rbacBook = booksStore.readBooks(getCachedDatabase()).items[req.params.id]; // v1.80 RBAC
+  if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter for text-to-speech' });
   if (!ttsAvailable()) return res.status(503).json({ error: 'Text-to-speech is not configured on this server' });
   const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
   if (!chapter) return res.status(404).json({ error: 'No such book chapter for text-to-speech' });
@@ -6615,6 +6733,8 @@ app.get('/api/books/:id/tts/:spineIndex/status', (req, res) => {
 
 // Serve the synthesized chapter audio (sendFile => Accept-Ranges/206 native).
 app.get('/book/:id/tts/:spineIndex', (req, res) => {
+  const rbacBook = booksStore.readBooks(getCachedDatabase()).items[req.params.id]; // v1.80 RBAC
+  if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter' });
   const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
   if (!chapter) return res.status(404).json({ error: 'No such book chapter' });
   const key = ttsServeKey(req.params.id, chapter.spineIndex);
@@ -6629,6 +6749,8 @@ app.get('/book/:id/tts/:spineIndex', (req, res) => {
 
 // The blockIndex -> startSec map the reader uses to seek to the right paragraph.
 app.get('/book/:id/tts/:spineIndex/blocks', (req, res) => {
+  const rbacBook = booksStore.readBooks(getCachedDatabase()).items[req.params.id]; // v1.80 RBAC: private book TEXT
+  if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter' });
   const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
   if (!chapter) return res.status(404).json({ error: 'No such book chapter' });
   const key = ttsServeKey(req.params.id, chapter.spineIndex);
@@ -6642,6 +6764,7 @@ app.get('/bookcover/:id', (req, res) => {
   const ns = booksStore.readBooks(getCachedDatabase());
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
+  if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' }); // v1.80 RBAC
   if (item.hasCover === true && item.coverExt) {
     const coverPath = path.join(BOOKCOVER_DIR, `${item.id}${item.coverExt}`);
     if (fs.existsSync(coverPath)) {
@@ -7382,7 +7505,7 @@ function publicTrackListItem(track, userId, likedSet, progressMap) {
 
 app.get('/api/music', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
-  let list = Object.values(ns.tracks);
+  let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   const album = typeof req.query.album === 'string' ? req.query.album : '';
   const artist = typeof req.query.artist === 'string' ? req.query.artist : '';
@@ -7418,7 +7541,7 @@ app.get('/api/music', (req, res) => {
 
 app.get('/api/music/albums', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
-  let list = Object.values(ns.tracks);
+  let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
   // Gate QA-WARNING/ADV-SUGGESTION: paginate (the design-for-scale target) and
@@ -7434,7 +7557,7 @@ app.get('/api/music/albums', (req, res) => {
 
 app.get('/api/music/artists', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
-  let list = Object.values(ns.tracks);
+  let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
   const artists = musicQuery.groupArtists(list);
@@ -7446,7 +7569,10 @@ app.get('/api/music/artists', (req, res) => {
 
 // Per-user liked songs (static segment -- declared BEFORE /api/music/:id).
 app.get('/api/music/liked', (req, res) => {
-  res.json({ trackIds: userStore.getMusicLiked(req.user.id) });
+  // v1.80 RBAC: a restricted track's id must not leak into the liked set.
+  const ns = musicStore.readMusic(getCachedDatabase());
+  const trackIds = userStore.getMusicLiked(req.user.id).filter((id) => trackVisibleTo(req, ownTrack(ns.tracks, id)));
+  res.json({ trackIds });
 });
 
 app.post('/api/music/liked/:id', (req, res) => {
@@ -7507,6 +7633,7 @@ app.get('/api/music/:id', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   const track = ownTrack(ns.tracks, req.params.id);
   if (!track) return res.status(404).json({ error: 'no such track' });
+  if (!trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC
   const likedSet = new Set(userStore.getMusicLiked(req.user.id));
   const progressMap = userStore.getMusicProgress(req.user.id);
   res.json(publicTrackListItem(track, req.user.id, likedSet, progressMap));
@@ -7520,6 +7647,7 @@ app.get('/track/:id', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   const track = ownTrack(ns.tracks, req.params.id);
   if (!track || typeof track.filePath !== 'string') return res.status(404).json({ error: 'no such track' });
+  if (!trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC: restricted -> 404
   if (!fs.existsSync(track.filePath)) return res.status(404).json({ error: 'file missing' });
   // v1.72 (cap 7): ?download=1 = the app-wide save-to-device affordance
   // (the /video/:id?download=1 / /episode/:id?download=1 pattern). Serves
@@ -7550,6 +7678,7 @@ app.get('/track/:id', (req, res) => {
 app.get('/albumart/:id', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   const track = ownTrack(ns.tracks, req.params.id);
+  if (track && !trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC
   const key = track && typeof track.albumArtKey === 'string' ? track.albumArtKey : null;
   if (key) {
     for (const ext of ['.jpg', '.png']) {
@@ -8287,6 +8416,7 @@ app.get('/api/notifications', (req, res) => {
         continue;
       }
       if (ep.status !== 'downloaded') continue; // trashed/pending - HIDDEN, not phantom (restore brings it back)
+      if (!podcastEpisodeVisibleTo(req, ep)) continue; // v1.80 RBAC: no restricted show title in the bell
       const showName = podcastSubNames.has(ep.subId) ? podcastSubNames.get(ep.subId) : '';
       rows.push({
         id: row.id,
@@ -8332,6 +8462,11 @@ app.get('/api/notifications', (req, res) => {
       phantomMediaIds.push(row.mediaId);
       continue;
     }
+    // v1.80 RBAC (security-gate CRITICAL): the bell is a global feed - a
+    // restricted member must not read a restricted item's TITLE here. Hide the
+    // row (it stays for other users); do NOT prune (it is visible content for
+    // someone). Admin's empty index hides nothing.
+    if (!mediaVisibleTo(req, item)) continue;
     let channelAvatarUrl = typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '';
     if (channelAvatarUrl === '') {
       if (!dbForAvatarLookup) {
@@ -8800,6 +8935,11 @@ app.get('/api/videos', (req, res) => {
 
   let list = Object.values(db.metadata);
 
+  // v1.80 RBAC: drop restricted items FIRST, so total/sort/pagination and every
+  // downstream filter operate on only what this user may see. Admin's index is
+  // empty (keeps everything).
+  list = list.filter((item) => mediaVisibleTo(req, item));
+
   // Is a file located under a given folder path? (that folder or any descendant)
   const underFolder = (filePath, folder) =>
     filePath === folder || filePath.startsWith(folder + '/') || filePath.startsWith(folder + '\\');
@@ -9012,6 +9152,7 @@ app.get('/api/home', (req, res) => {
   for (const id of Object.keys(db.metadata || {})) {
     const item = db.metadata[id];
     if (!item || typeof item !== 'object') continue;
+    if (!mediaVisibleTo(req, item)) continue; // v1.80 RBAC: the feed never surfaces a restricted item
     if (hiddenFolders.length && hiddenFolders.some((hf) => underFolder(item.filePath, hf))) continue;
     const p = Object.prototype.hasOwnProperty.call(progressMap, id) ? progressMap[id] : null;
     const ts = p ? Number(p.timestamp) : 0;
@@ -9057,6 +9198,7 @@ app.get('/api/home', (req, res) => {
     if (!liked && !inProgress) continue;
     const track = ownTrack(musicNs.tracks, id);
     if (!track) continue;
+    if (!trackVisibleTo(req, track)) continue; // v1.80 RBAC: no restricted track in the feed
     const dur = mp ? Number(mp.duration) : 0;
     kindById.set(id, 'track');
     pctById.set(id, dur > 0 ? (pos / dur) * 100 : 0);
@@ -9070,6 +9212,7 @@ app.get('/api/home', (req, res) => {
   for (const id of Object.keys(podNs.episodes || {})) {
     const ep = podNs.episodes[id];
     if (!ep || ep.status !== 'downloaded') continue;
+    if (!podcastEpisodeVisibleTo(req, ep)) continue; // v1.80 RBAC: no restricted show in the feed
     const liked = podLiked.has(id);
     const pp = Object.prototype.hasOwnProperty.call(podProgress, id) ? podProgress[id] : null;
     const pos = pp ? Number(pp.position) : 0;
@@ -9121,6 +9264,7 @@ app.get('/api/channels', (req, res) => {
   for (const id of Object.keys(db.metadata || {})) {
     const item = db.metadata[id];
     if (!item || !item.folderName) continue;
+    if (!mediaVisibleTo(req, item)) continue; // v1.80 RBAC: no restricted channels in the list
     if (rootFilter) {
       if (!underRoot(item.filePath)) continue;
     } else if (item.rootFolder && hiddenRoots.has(item.rootFolder)) {
@@ -9149,6 +9293,9 @@ app.get('/api/videos/:id', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
   const item = db.metadata[req.params.id];
   if (!item) {
+    return res.status(404).json({ error: 'Media file not found' });
+  }
+  if (!mediaVisibleTo(req, item)) { // v1.80 RBAC: restricted -> 404 like missing
     return res.status(404).json({ error: 'Media file not found' });
   }
 
@@ -9242,6 +9389,7 @@ app.get('/api/videos/:id', (req, res) => {
 // >=90% live position still DERIVING 'watched' and the toggle would appear
 // stuck for exactly the fully-watched items it exists for.
 app.post('/api/watched/:id', (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC (S-b): no restricted-id oracle/persist
   const db = getCachedDatabase(); // hot GET reader (existence check only)
   // OWN-property check (v1.42 __proto__ lesson): this id persists into
   // user_watched -- see POST /api/liked/:id's identical guard.
@@ -9435,8 +9583,21 @@ app.get('/api/handoff', (req, res) => {
   if (!seen) return res.json({ presence: null });
   if (isFinishedPresence(seen)) return res.json({ presence: null });
 
-  const target = resolveHandoffTarget(getCachedDatabase(), seen);
+  const handoffDb = getCachedDatabase();
+  const target = resolveHandoffTarget(handoffDb, seen);
   if (!target) return res.json({ presence: null });
+  // v1.80 RBAC: never offer a restricted item across devices (e.g. a restriction
+  // added after playback began elsewhere). Podcast lands with its library.
+  if (seen.kind === 'media' && !mediaVisibleTo(req, handoffDb.metadata && handoffDb.metadata[seen.mediaId])) {
+    return res.json({ presence: null });
+  }
+  if (seen.kind === 'track' && !trackVisibleTo(req, ownTrack(musicStore.readMusic(handoffDb).tracks, seen.mediaId))) {
+    return res.json({ presence: null });
+  }
+  if (seen.kind === 'podcast') {
+    const pns = podcastStore.readPodcasts(handoffDb);
+    if (!podcastEpisodeVisibleTo(req, pns.episodes && pns.episodes[seen.mediaId])) return res.json({ presence: null });
+  }
 
   res.json({
     presence: {
@@ -9655,6 +9816,7 @@ function resolveOnDiskPath(filePath) {
 
 // API: Delete video/audio file
 app.delete('/api/videos/:id', async (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   if (refuseIfReadOnlyMedia(res)) return; // v1.42 safe-mode lever (AC8)
   // v1.30 A3: a PURE read to look up `item` -- never mutated here, and the
   // actual persisted mutation below goes through its own `updateDatabase`
@@ -10045,6 +10207,7 @@ app.delete('/api/videos/:id', async (req, res) => {
 // routes above if the id isn't a real library item -- mirrors
 // `DELETE /api/videos/:id`'s own existence-check-then-mutate shape.
 app.post('/api/liked/:id', (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC (S-b): no restricted-id oracle/persist
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader (existence check only)
   // OWN-property check (v1.42 __proto__ lesson): this id persists into
   // user_liked -- see POST /api/progress's identical guard.
@@ -10220,7 +10383,7 @@ app.get('/api/liked', (req, res) => {
   const offset = videoQuery.normalizeOffset(req.query.offset);
   const seed = videoQuery.normalizeSeed(req.query.seed);
 
-  let list = Object.values(db.metadata).filter(item => likedIds.has(item.id));
+  let list = Object.values(db.metadata).filter(item => likedIds.has(item.id) && mediaVisibleTo(req, item)); // v1.80 RBAC
   // v1.32: the Liked view is now a real library scope (main.js's ?liked=1)
   // -- honor the same format toggle the home grid forwards, so
   // videos/audio/both filtering behaves identically in both views.
@@ -10242,6 +10405,18 @@ app.get('/api/liked', (req, res) => {
     ...shapedLikedTrackItems(db, req.user.id),
     ...shapedLikedBookItems(db, req.user.id)
   ];
+  // v1.80 RBAC: a restricted track must not ride the Liked view. (Podcast/book
+  // liked filtering lands with their libraries, T6/T7.)
+  // shaped liked items carry `id`, not `mediaId` (see shapedLiked*Items).
+  const likedMusicNs = musicStore.readMusic(db);
+  const likedPodNs = podcastStore.readPodcasts(db);
+  const likedBooksNs = booksStore.readBooks(db);
+  others = others.filter((o) => {
+    if (o.kind === 'track') return trackVisibleTo(req, ownTrack(likedMusicNs.tracks, o.id));
+    if (o.kind === 'podcast') return podcastEpisodeVisibleTo(req, likedPodNs.episodes && likedPodNs.episodes[o.id]);
+    if (o.kind === 'book') return bookVisibleTo(req, likedBooksNs.items && likedBooksNs.items[o.id]);
+    return true;
+  });
   if (typeof req.query.format === 'string') {
     others = videoQuery.filterByFormat(others, req.query.format);
   }
@@ -10320,6 +10495,7 @@ app.get('/api/history', (req, res) => {
 
   const merged = Object.keys(lastById)
     .filter((id) => Object.prototype.hasOwnProperty.call(db.metadata, id))
+    .filter((id) => mediaVisibleTo(req, db.metadata[id])) // v1.80 RBAC: no restricted items in history
     .sort((a, b) => {
       if (lastById[a] !== lastById[b]) return lastById[a] > lastById[b] ? -1 : 1;
       return a < b ? -1 : 1; // deterministic tiebreak
@@ -10387,6 +10563,16 @@ app.get('/api/trash', (req, res) => {
   const db = getCachedDatabase();
   const retentionDays = Number(db.settings && db.settings.trashRetentionDays);
   const items = Object.entries(db.trash || {})
+    // v1.80 RBAC (security-gate finding): a restricted member must not see the
+    // TITLE/existence of a restricted item in the trash either. Build the media
+    // descriptor from the snapshot (or the record's own path fields for an
+    // orphan with no snapshot). Admin's empty index keeps everything.
+    .filter(([, rec]) => !visibility.isBlocked(userRestrictionIndex(req), {
+      kind: 'media',
+      filePath: (rec.item && rec.item.filePath) || rec.originalPath,
+      folderName: rec.item && rec.item.folderName,
+      rootFolder: rec.rootFolder || (rec.item && rec.item.rootFolder),
+    }))
     .map(([tid, rec]) => ({
       trashId: tid,
       originalId: rec.originalId,
@@ -12101,6 +12287,7 @@ async function sweepTrash(now = Date.now()) {
 // it. T19 (Wave 7, B2 Phase 2) calls `moveItemToFolder` directly for its own
 // physical-reconcile move, without going through this route.
 app.post('/api/videos/:id/move', async (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   if (refuseIfReadOnlyMedia(res)) return; // v1.42 safe-mode lever (AC8)
   const targetFolder = req.body && req.body.targetFolder;
   let result;
@@ -13630,22 +13817,40 @@ app.get('/api/stats', (req, res) => {
   // isn't installed (ytdlp not enabled -> null; TTS not available).
   const ytdlpEnabled = ytdlp.isEnabled(ytdlp.parseYtdlpConfig());
   const music = musicStore.readMusic(db);
+  // v1.80 RBAC (security-gate finding): stats leaked restricted-item TITLES
+  // (mostWatched) and COUNTS to a restricted member. Filter the CONTENT
+  // namespaces to what req.user may see before computing; admin's empty index
+  // filters nothing (byte-unchanged). Other namespaces (progress/liked/folders/
+  // users) are user-state/config counts, not content titles.
+  // withEffectiveViewCounts returns the metadata MAP itself (id -> item), and
+  // computeLibraryStats/computeInventory take that map directly.
+  const withVc = withEffectiveViewCounts(db);
+  const visibleMetadata = {};
+  for (const id of Object.keys(withVc)) {
+    if (mediaVisibleTo(req, withVc[id])) visibleMetadata[id] = withVc[id];
+  }
+  const visibleTracks = {};
+  for (const id of Object.keys(music.tracks || {})) {
+    if (trackVisibleTo(req, music.tracks[id])) visibleTracks[id] = music.tracks[id];
+  }
+  const visibleBookItems = {};
+  for (const id of Object.keys(books.items || {})) {
+    if (bookVisibleTo(req, books.items[id])) visibleBookItems[id] = books.items[id];
+  }
   res.json({
-    // v1.42: overlay the extracted `viewCounts` namespace onto the items so
-    // mostWatched keeps working — see effectiveViewCount's comment.
-    ...stats.computeLibraryStats(withEffectiveViewCounts(db)),
-    books: stats.computeBookStats(books.items, books.audio),
+    ...stats.computeLibraryStats(visibleMetadata),
+    books: stats.computeBookStats(visibleBookItems, books.audio),
     // v1.44.3 (Dean): the "what's in my database" inventory — a plain count of
     // each persisted namespace (mirrors what the backup bundle carries).
     inventory: stats.computeInventory({
-      metadata: db.metadata,
+      metadata: visibleMetadata,
       progress: db.progress,
       viewCounts: db.viewCounts,
       liked: db.liked,
       deleteTombstones: db.deleteTombstones,
       folders: db.folders,
-      books: { items: books.items, progress: books.progress, audio: books.audio },
-      music: { tracks: music.tracks, folders: music.folders },
+      books: { items: visibleBookItems, progress: books.progress, audio: books.audio },
+      music: { tracks: visibleTracks, folders: music.folders },
       users: userStore.countUsers(),
     }),
     system: {
@@ -13729,6 +13934,7 @@ function withEffectiveViewCounts(db) {
 }
 
 app.post('/api/videos/:id/view', async (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   let notFound = false;
   let viewCount = 0;
   try {
@@ -13789,6 +13995,7 @@ app.post('/api/videos/:id/view', async (req, res) => {
 // `loadedmetadata` firing for the same load) is therefore always safe to
 // retry: it either fills the gap once or silently no-ops.
 app.post('/api/videos/:id/dimensions', async (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   const body = req.body || {};
   // F3: reject a non-primitive-numeric body BEFORE Number() ever runs -- see
   // isPrimitiveNumericInput's own comment for exactly which shapes this
@@ -13846,6 +14053,7 @@ app.post('/api/videos/:id/dimensions', async (req, res) => {
 // final-merge guard mirrors it from the fresh db unconditionally, so an
 // edit landing mid-scan can never be reverted.
 app.post('/api/videos/:id/chapters', async (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   const body = req.body || {};
   if (typeof body.text !== 'string') {
     return res.status(400).json({ error: 'text must be a string (one "0:00 Title" line per chapter; empty to clear)' });
@@ -14010,6 +14218,7 @@ function proposeAttributionMove(db, item, identity) {
 }
 
 app.post('/api/videos/:id/attribute-channel', async (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   const body = req.body || {};
   const clearing = body.clear === true;
   let identity = null;
@@ -14226,6 +14435,10 @@ app.get('/api/subtitles/:id', (req, res) => {
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
   }
+  // v1.80 RBAC: a restricted item is indistinguishable from a missing one.
+  if (!mediaVisibleTo(req, item)) {
+    return res.status(404).json({ error: 'Media file not found' });
+  }
   const sidecar = subtitles.findSubtitleSidecar(item.filePath);
   if (!sidecar) {
     return res.status(404).json({ error: 'No subtitle track available for this item' });
@@ -14274,6 +14487,12 @@ app.get('/thumbnail/:id', (req, res) => {
     && db.trash && Object.prototype.hasOwnProperty.call(db.trash, req.params.id))
     ? db.trash[req.params.id] : null;
   const item = db.metadata[req.params.id] || (trashRec && trashRec.item) || undefined;
+  // v1.80 RBAC: never serve a restricted item's thumbnail (it reveals the
+  // content visually). Resolves via metadata OR the trash snapshot, so the
+  // check must run on either source.
+  if (item && !mediaVisibleTo(req, item)) {
+    return res.status(404).json({ error: 'Media file not found' });
+  }
   const thumbPath = path.join(THUMBNAIL_DIR, `${req.params.id}.jpg`);
 
   if (item && item.hasThumbnail && fs.existsSync(thumbPath)) {
@@ -14569,6 +14788,11 @@ app.get('/video/:id', async (req, res) => {
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
   }
+  // v1.80 RBAC: the security-critical guard - a restricted user must not stream
+  // (or download) restricted bytes by direct URL. 404, never 403 (existence).
+  if (!mediaVisibleTo(req, item)) {
+    return res.status(404).json({ error: 'Media file not found' });
+  }
 
   // FR-3 (v1.19.0): a download-intent request (`?download=1`) ALWAYS
   // bypasses the needsTranscode/live-transcode branch below and serves the
@@ -14761,6 +14985,11 @@ app.get('/audio/:id', (req, res) => {
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
   }
+  // v1.80 RBAC: the background-audio byte route (easy to miss - separate from
+  // /video/:id). Restricted item -> 404.
+  if (!mediaVisibleTo(req, item)) {
+    return res.status(404).json({ error: 'Media file not found' });
+  }
   if (item.type === 'audio') {
     return res.status(404).json({ error: 'Media file not found' });
   }
@@ -14817,6 +15046,10 @@ app.post('/api/videos/:id/prepare-audio', (req, res) => {
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
   }
+  // v1.80 RBAC: don't let a restricted item be an existence oracle / CPU sink.
+  if (!mediaVisibleTo(req, item)) {
+    return res.status(404).json({ error: 'Media file not found' });
+  }
   if (item.type === 'audio') {
     return res.status(400).json({ error: 'prepare-audio only applies to video items' });
   }
@@ -14852,6 +15085,7 @@ app.post('/api/videos/:id/prepare-audio', (req, res) => {
 // lib/ytdlp/index.js would hit a circular-require trap; this deps object is
 // what avoids it, exactly like every other primitive below).
 ytdlp.registerRoutes(app, {
+  requireManageSubscriptions, // v1.80 RBAC: gate for channel-registry mutations
   updateDatabase,
   loadDatabase,
   scanDirectories,
@@ -15017,6 +15251,8 @@ podcasts.registerRoutes(app, {
   listExternalShows: listYtdlpPodcastShows,
   listExternalEpisodes: listYtdlpPodcastEpisodes,
   recordPresenceFromPing, // v1.78: the ONE presence writer, shared by all three kinds
+  episodeVisibleTo: podcastEpisodeVisibleTo, // v1.80 RBAC: per-user episode/show visibility
+  requireManageSubscriptions, // v1.80 RBAC gate: the podcast registry parallels the ytdlp one
 });
 
 // Start the server — but only when run directly (`node server.js`), not when

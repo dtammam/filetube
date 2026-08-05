@@ -40,6 +40,41 @@ bootstrap a first admin if the users table is somehow empty, never promotes
 a non-admin, and requires an explicit `--enable` flag to also re-enable a
 disabled account.
 
+### Per-user library access (v1.80+)
+
+Members can be scoped to only some of the library. An **admin always sees
+everything**; a **member** starts seeing everything and is narrowed by the
+admin. Open **Settings → Users → Access** on a member to set it. Two modes:
+
+- **Block-list** (default): the member sees everything EXCEPT the units you
+  check. Convenient for lightly narrowing an adult household member.
+- **Allow-list**: the member sees ONLY the units you check, and everything else
+  (including any content added later) is denied. This is **fail-closed** - the
+  right mode for a kid account.
+
+You can restrict/grant whole libraries (Video, Music, Podcasts, Books),
+individual video channels, and individual podcast shows. Restrictions apply to
+BOTH what appears in lists/search/the home feed AND direct file access - a
+restricted item returns 404 on its stream/thumbnail/download URL, so it cannot
+be reached by a guessed or bookmarked link.
+
+**Kid-safe account recipe (Dean's daughter use-case):**
+
+1. **Settings → Users → Add a user**, role **member**. Leave "subscriptions" off
+   (a kid should not manage the shared channel list - enforced server-side).
+2. On that member's row, click **Access**.
+3. Choose **Allow-list** mode.
+4. Check ONLY the kid-friendly units - e.g. the kid-friendly video channels, and
+   leave Music/Podcasts/Books unchecked (so they are all denied). Or check
+   "Video" only if a whole kid-video library exists.
+5. **Save access.** The kid now sees only what you granted, and new downloads
+   never leak in unless you grant them.
+
+**Limitations (v1.80):** subscriptions are still a single shared list (per-user
+subscription lists are a planned follow-up), and non-admin API responses may
+still contain absolute server paths (a LAN-disclosure hardening follow-up) -
+neither affects what CONTENT a restricted member can reach.
+
 ## Automation & Storage
 
 The **Settings → Automation & Storage** box controls the two things the

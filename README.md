@@ -73,7 +73,7 @@ Your data never leaves your network.
 
 ### Run your library
 
-- **Multi-account** - an auth wall with per-user progress, likes, pins, and reading positions; admin user management; full backup/restore.
+- **Multi-account** - an auth wall with per-user progress, likes, pins, and reading positions; admin user management; **per-user library access control** (block-list or a fail-closed allow-list for a kid-safe account - scoped across video, music, podcasts, and books, on both listings and direct file access); full backup/restore.
 - **Auto-scan with safe pruning** - rescans on an interval; removes entries only for files that are truly gone (an unmounted share is never treated as a deletion).
 - **Auto thumbnails** - FFmpeg extracts video frames and audio cover art; caches are size-capped and age-swept.
 - **Optional YouTube subscriptions (yt-dlp)** - off by default. Subscribe to channels, auto-download new videos into your library, with per-channel quality/length/Shorts controls and one-shot URL downloads. [Full guide →](docs/CONFIGURATION.md#optional-youtube-subscriptions-yt-dlp)

@@ -80,6 +80,52 @@
 
 ## Shipped
 
+### v1.80.0 - RBAC: per-user library access control (kid-safe accounts) (2026-08-05)
+
+The v1.44 tranche's final piece, finally built: Dean's private-YouTube goal - a
+kid-safe account for his daughter and private book libraries. A per-user
+visibility model over ALL FOUR libraries (video, music, podcasts, books). An
+admin always sees everything; a member is narrowed by the admin. Two modes: a
+**block-list** (see-all-except-checked, the default) and an **allow-list**
+(see-ONLY-checked, fail-closed - the right mode for a kid, since new content is
+denied by default). Restrictions cover whole libraries, video channels, podcast
+shows, and path-prefix roots, and apply to BOTH listings/search/the feed AND
+direct file access (a restricted item 404s on its stream/thumbnail/download URL,
+so a guessed link fails). `canManageSubscriptions` is now enforced (it was
+settable-but-inert), so a kid cannot manage the shared channel registry.
+
+**Architecture:** ONE pure decision point (`lib/auth/visibility.js`) every list
+and serve route consults; admin is expressed as an empty restriction index, so
+there is no role branch to forget. A `user_restrictions` table (schema v14,
+append-only), an admin `PUT /api/users/:id/restrictions` API, and a
+Settings->Users->Access editor. No migration: existing installs (one admin, no
+restrictions) are byte-unchanged.
+
+**The gate earned its keep.** Full two-reviewer gate PLUS a dedicated
+`/security-review` pass - three independent security reviews, the adversarial
+seat briefed to break the kid account by any path. The byte-serving routes were
+airtight and mutation-proven from the first pass, but the gate found **three
+CRITICAL metadata leaks the per-library sweep missed**: `/api/notifications`,
+`/api/stats` (mostWatched titles + counts), and `/api/trash` leaked the TITLES
+and existence of restricted content to a restricted member - a kid could have
+enumerated the names of blocked videos even though the bytes 404'd. It also
+found two write-access holes (a restricted member could delete/move a restricted
+item; a plain member could pull arbitrary media into the shared library) and
+that the podcast subscription registry was ungated. ALL fixed and mutation-bound;
+all three seats then APPROVED. This is why the wave was HELD for the gate rather
+than auto-shipped.
+
+**Deferred to v1.81 (Dean-approved, disclosed):** per-user subscription lists
+(#125 - subs stay shared) and non-admin absolute-path scrubbing (#126 - server-
+layout disclosure, not content access). **Low residuals (#127/#128):** the
+notification badge COUNT still counts restricted items (titles are hidden); a
+sparse trashed-item thumbnail edge; the full AC4 route-classification map; and
+members may still modify content they CAN see (the write-RBAC roadmap item).
+
+**Suites:** full `npm test` green on BOTH Node v22.23.1 (6292/6292) and v24.14.0
+(6292/6292), 0 fail; census route-count lock at 184. **Dean's device pass
+PENDING** - the on-device probe list is in the wave report.
+
 ### v1.79.1 - Home feed: the See-all links actually work now (2026-08-05)
 
 Dean's device pass on v1.79.0: the feed itself is "really, really good," but
