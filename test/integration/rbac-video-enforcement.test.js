@@ -118,6 +118,22 @@ test('LIST: restricted item omitted from every list for the member; present for 
   assert.ok(adminVids.includes('blocked') && adminVids.includes('allowed'), 'admin sees the whole library');
 });
 
+test('MUTATION: restricted member 404s on destructive/mutating routes (binds W1 guard)', async () => {
+  // Adversarial delta: restrictedVideoMutation worked but was unbound. Bind it,
+  // so a future edit that reopens the destructive hole fails RED. (We do NOT
+  // delete as admin - that would trash the fixture mid-file.)
+  const post = (p) => fetch(`${base}${p}`, { method: 'POST', headers: { Cookie: member.cookie, 'Content-Type': 'application/json' }, body: '{}' });
+  const del = (p) => fetch(`${base}${p}`, { method: 'DELETE', headers: { Cookie: member.cookie } });
+  assert.strictEqual((await del('/api/videos/blocked')).status, 404, 'restricted DELETE');
+  assert.strictEqual((await post('/api/videos/blocked/move')).status, 404, 'restricted move');
+  assert.strictEqual((await post('/api/videos/blocked/view')).status, 404, 'restricted view');
+  assert.strictEqual((await post('/api/watched/blocked')).status, 404, 'restricted watched-write');
+  assert.strictEqual((await post('/api/liked/blocked')).status, 404, 'restricted liked-write');
+  // an UNrestricted item is NOT blocked by this guard (proves discrimination) -
+  // POST /api/watched/allowed reaches the handler (200), not a 404 from the guard.
+  assert.strictEqual((await post('/api/watched/allowed')).status, 200, 'unrestricted watched-write allowed');
+});
+
 test('STATS + TRASH: restricted titles/counts do not leak to the member (security-gate finding)', async () => {
   // /api/stats mostWatched must not carry the restricted title, and its media
   // count must reflect only the visible item.

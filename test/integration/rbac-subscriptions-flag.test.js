@@ -60,6 +60,8 @@ test('T9: a plain member is 403 on every subscription-mutation route', async () 
   assert.strictEqual((await req('DELETE', '/api/podcasts/subscriptions/abc', plain.cookie)).status, 403, 'podcast remove');
   assert.strictEqual((await req('POST', '/api/podcasts/check', plain.cookie)).status, 403, 'podcast check-all');
   assert.strictEqual((await req('DELETE', '/api/podcasts/episodes/abc', plain.cookie)).status, 403, 'podcast episode delete');
+  // W2 (adversarial delta): the one-shot download gate must be test-bound too.
+  assert.strictEqual((await req('POST', '/api/ytdlp/download', plain.cookie, { url: 'https://youtube.com/watch?v=x' })).status, 403, 'one-shot download (session member)');
 });
 
 test('T9: admin and a flagged member are NOT blocked by the capability gate', async () => {
