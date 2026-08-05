@@ -47,7 +47,10 @@ test('subs=1: only items under a subscription folder (folderName join)', async (
   saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: {
-      inSub: item('inSub', { folderName: 'ChanX', channelName: 'ChanX' }),
+      // inSub matches the subscription ONLY via folderName (its channelName
+      // diverges) - so this test isolates the folderName join arm (slim-gate
+      // WARNING 1: with both fields equal, dropping the folderName arm survived).
+      inSub: item('inSub', { folderName: 'ChanX', channelName: 'Some Other Name' }),
       loose: item('loose', { folderName: 'Loose', channelName: 'Loose' }),
     },
     liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },

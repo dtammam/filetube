@@ -8831,8 +8831,10 @@ app.get('/api/videos', (req, res) => {
 
   // v1.79.1: the subscription-SCOPED browse (?subs=1) - the "New from your
   // subscriptions" feed row's See-all target. Filter to items under a
-  // subscription folder via the SAME name-based join GET /api/home uses
-  // (folderName OR channelName in the subscription-name set). Subscriptions are
+  // subscription folder via essentially the same name-based join GET /api/home
+  // uses (folderName OR channelName in the subscription-name set; /api/home
+  // additionally gates on folderKey presence, inert for real media items).
+  // Subscriptions are
   // global until the v1.44 RBAC tranche (tech-debt #122); this shares that
   // limitation by construction. Read the names straight off the namespace.
   if (req.query.subs === '1') {
