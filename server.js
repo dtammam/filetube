@@ -5681,19 +5681,37 @@ const VALID_RESTRICTION_KINDS = new Set(['path', 'folder', 'show', 'library']);
 const VALID_LIBRARY_VALUES = new Set(['video', 'music', 'podcasts', 'books']);
 const RESTRICTION_VALUE_MAX = 4096;
 
+// The stored mode is carried as a distinguished row {kind:'mode'} (no extra
+// schema); these helpers separate it from the unit rows at the API boundary.
+function readAccessMode(rows) {
+  return rows.some((r) => r.kind === 'mode' && r.value === 'allowlist') ? 'allowlist' : 'blocklist';
+}
+function unitRows(rows) {
+  return rows.filter((r) => r.kind !== 'mode');
+}
+
 app.get('/api/users/:id/restrictions', (req, res) => {
   if (!requireAdmin(req, res)) return;
   const target = resolveTargetUser(req, res);
   if (!target) return;
-  return res.json({ restrictions: userStore.getRestrictions(target.id) });
+  const rows = userStore.getRestrictions(target.id);
+  return res.json({ mode: readAccessMode(rows), restrictions: unitRows(rows) });
 });
 
-// Replace a user's ENTIRE restriction set (the admin UI PUTs the desired set).
+// Replace a user's ENTIRE access config (the admin UI PUTs the desired set):
+//   { mode: 'blocklist'|'allowlist', restrictions: [{kind, value}, ...] }
+// mode 'blocklist' (default) => the listed units are BLOCKED; 'allowlist' => the
+// user sees ONLY the listed units (Dean's kid-account belt-and-suspenders).
 app.put('/api/users/:id/restrictions', (req, res) => {
   if (!requireAdmin(req, res)) return;
   const target = resolveTargetUser(req, res);
   if (!target) return;
-  const rows = req.body && Array.isArray(req.body.restrictions) ? req.body.restrictions : null;
+  const body = req.body || {};
+  const mode = body.mode === undefined ? 'blocklist' : body.mode;
+  if (mode !== 'blocklist' && mode !== 'allowlist') {
+    return res.status(400).json({ error: `invalid mode '${mode}'` });
+  }
+  const rows = Array.isArray(body.restrictions) ? body.restrictions : null;
   if (!rows) return res.status(400).json({ error: 'restrictions must be an array' });
   const clean = [];
   for (const r of rows) {
@@ -5707,8 +5725,11 @@ app.put('/api/users/:id/restrictions', (req, res) => {
     }
     clean.push({ kind: r.kind, value: r.value });
   }
+  // Persist the mode as a row only when it overrides the default.
+  if (mode === 'allowlist') clean.push({ kind: 'mode', value: 'allowlist' });
   userStore.setRestrictions(target.id, clean);
-  return res.json({ success: true, restrictions: userStore.getRestrictions(target.id) });
+  const stored = userStore.getRestrictions(target.id);
+  return res.json({ success: true, mode: readAccessMode(stored), restrictions: unitRows(stored) });
 });
 
 app.delete('/api/users/:id', (req, res) => {

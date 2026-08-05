@@ -76,6 +76,21 @@ test('SERVE: the ADMIN is never blocked', async () => {
   assert.strictEqual((await asAdmin('/api/videos/blocked')).status, 200);
 });
 
+test('ALLOWLIST mode: the member sees ONLY the granted channel (default-deny)', async () => {
+  // Flip the member to allowlist, granting ONLY the "Kids" channel: now
+  // "allowed" (Kids) is visible and EVERYTHING else - including any future
+  // content - is denied. This is the kid-account belt-and-suspenders.
+  userStore.setRestrictions(member.user.id, [{ kind: 'mode', value: 'allowlist' }, { kind: 'folder', value: 'Kids' }]);
+
+  assert.strictEqual((await asMember('/video/allowed')).status, 200, 'granted Kids item plays');
+  assert.strictEqual((await asMember('/video/blocked')).status, 404, 'un-granted Adult item denied');
+  const ids = ((await (await asMember('/api/videos?limit=50')).json()).items || []).map((i) => i.id);
+  assert.deepStrictEqual(ids, ['allowed'], 'allowlist shows only the granted channel');
+
+  // restore blocklist for the remaining tests
+  userStore.setRestrictions(member.user.id, [{ kind: 'folder', value: 'Adult' }]);
+});
+
 test('LIST: restricted item omitted from every list for the member; present for admin', async () => {
   const ids = async (p, key = 'items') => ((await (await asMember(p)).json())[key] || []).map((i) => i.id);
 

@@ -76,6 +76,27 @@ test('T2: validation - bad kind / value / library -> 400', async () => {
   assert.strictEqual(({}).polluted, undefined);
 });
 
+test('T2: mode round-trips (blocklist default / allowlist) and validates', async () => {
+  const created = await (await req('POST', '/api/users', { username: 'kid3', password: 'password123', role: 'member' })).json();
+  const id = created.user.id;
+
+  // default: no mode field -> blocklist
+  await req('PUT', `/api/users/${id}/restrictions`, { restrictions: [{ kind: 'path', value: '/x' }] });
+  let got = await (await req('GET', `/api/users/${id}/restrictions`)).json();
+  assert.strictEqual(got.mode, 'blocklist');
+  assert.deepStrictEqual(got.restrictions, [{ kind: 'path', value: '/x' }], 'the mode row is not surfaced as a unit');
+
+  // allowlist round-trips
+  const put = await (await req('PUT', `/api/users/${id}/restrictions`, { mode: 'allowlist', restrictions: [{ kind: 'path', value: '/kids' }] })).json();
+  assert.strictEqual(put.mode, 'allowlist');
+  got = await (await req('GET', `/api/users/${id}/restrictions`)).json();
+  assert.strictEqual(got.mode, 'allowlist');
+  assert.deepStrictEqual(got.restrictions, [{ kind: 'path', value: '/kids' }]);
+
+  // an invalid mode is rejected
+  assert.strictEqual((await req('PUT', `/api/users/${id}/restrictions`, { mode: 'wideopen', restrictions: [] })).status, 400);
+});
+
 test('T2: the routes are ADMIN-ONLY - a member is 403', async () => {
   const member = __mintTestSession({ username: 'plainmember', role: 'member' });
   assert.strictEqual((await req('GET', `/api/users/${adminId}/restrictions`, undefined, member.cookie)).status, 403);

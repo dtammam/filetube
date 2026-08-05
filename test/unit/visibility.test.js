@@ -76,6 +76,34 @@ test('an empty index (admin) blocks nothing', () => {
   ]) assert.ok(!isBlocked(idx, d));
 });
 
+// ---- ALLOWLIST mode (Dean's kid-account belt-and-suspenders) ----------------
+
+test('allowlist mode: visible ONLY for a listed (granted) unit; unknown -> blocked', () => {
+  const idx = idxOf([{ kind: 'mode', value: 'allowlist' }, { kind: 'path', value: '/media/Kids' }]);
+  assert.strictEqual(idx.mode, 'allowlist');
+  assert.ok(!isBlocked(idx, { kind: 'media', filePath: '/media/Kids/a.mp4' }), 'granted root is visible');
+  assert.ok(isBlocked(idx, { kind: 'media', filePath: '/media/Adult/a.mp4' }), 'un-granted is BLOCKED');
+  // a garbage/unresolvable descriptor is blocked in allowlist (safe default-deny)
+  assert.ok(isBlocked(idx, {}));
+  assert.ok(isBlocked(idx, { kind: 'media' }));
+});
+
+test('allowlist mode: a library grant opens that whole kind; others stay blocked', () => {
+  const idx = idxOf([{ kind: 'mode', value: 'allowlist' }, { kind: 'library', value: 'video' }]);
+  assert.ok(!isBlocked(idx, { kind: 'media', filePath: '/anywhere/x.mp4' }), 'all video granted');
+  assert.ok(isBlocked(idx, { kind: 'track', filePath: '/music/x.mp3' }), 'music NOT granted -> blocked');
+  assert.ok(isBlocked(idx, { kind: 'podcast', subId: 's' }), 'podcasts NOT granted -> blocked');
+});
+
+test('mode defaults to blocklist; a junk mode value is ignored (stays blocklist)', () => {
+  assert.strictEqual(idxOf([]).mode, 'blocklist');
+  assert.strictEqual(idxOf([{ kind: 'mode', value: 'wideopen' }]).mode, 'blocklist');
+  // blocklist + a unit still blocks the listed one and permits the rest
+  const idx = idxOf([{ kind: 'mode', value: 'wideopen' }, { kind: 'folder', value: 'Bad' }]);
+  assert.ok(isBlocked(idx, { kind: 'media', folderName: 'Bad', filePath: '/m/Bad/x' }));
+  assert.ok(!isBlocked(idx, { kind: 'media', folderName: 'Ok', filePath: '/m/Ok/x' }));
+});
+
 // ---- filterVisible ----------------------------------------------------------
 
 test('filterVisible keeps only visible items', () => {
