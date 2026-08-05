@@ -9148,6 +9148,105 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-sm);
 }
 
+/* ---- v1.82: the account menu (avatar + dropdown) ---- */
+.account-menu {
+  position: relative;
+  display: inline-flex;
+}
+.account-menu-trigger {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+}
+.account-avatar {
+  width: 32px; /* token-exempt: control geometry (Stop A Batch A) */
+  height: 32px; /* token-exempt: control geometry (Stop A Batch A) */
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--btn-primary-text, #fff); /* token-exempt: monogram glyph on a coloured disc */
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  user-select: none;
+}
+.account-avatar-lg {
+  width: 44px; /* token-exempt: control geometry (Stop A Batch A) */
+  height: 44px; /* token-exempt: control geometry (Stop A Batch A) */
+  font-size: var(--fs-md);
+}
+.account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.account-menu-dropdown {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  min-width: 220px; /* token-exempt: panel geometry (Stop A Batch A) */
+  background: var(--bg-sidebar);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-modal);
+  z-index: var(--z-panel);
+  padding: var(--space-2) 0;
+  overflow: hidden;
+}
+.account-menu-dropdown[hidden] {
+  display: none;
+}
+.account-menu-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6) var(--space-5);
+  border-bottom: 1px solid var(--bg-secondary);
+}
+.account-menu-name {
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+.account-menu-role {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.account-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: var(--fs-base);
+  padding: var(--space-4) var(--space-6);
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.account-menu-item:hover {
+  background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
+}
+.account-menu-item i {
+  width: 18px; /* token-exempt: icon box (Stop A Batch A) */
+  text-align: center;
+  color: var(--text-secondary);
+}
+.account-menu-divider {
+  height: 1px;
+  background: var(--bg-secondary);
+  margin: var(--space-2) 0;
+}
+.account-menu-signout {
+  color: var(--yt-red);
+}
+
 @media (max-width: 768px) {
   /* Re-show .header-right as a bell-only top-right slot (the mobile header
      restructure hides the whole container; Settings' .btn is already
@@ -9158,7 +9257,8 @@ body.ft-css-fullscreen .bottom-nav {
     position: absolute;
     top: calc(10px + env(safe-area-inset-top)); /* token-exempt: positional geometry (Stop A Batch A) */
     right: 10px; /* token-exempt: positional geometry (Stop A Batch A) */
-    gap: 0;
+    gap: var(--space-3); /* v1.82: room between the bell and the avatar */
+    align-items: center;
   }
 
   header .header-right .theme-toggle {
