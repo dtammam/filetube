@@ -25,9 +25,10 @@ function fresh() {
 }
 afterEach(() => {
   if (dom) { dom.window.close(); dom = null; }
-  delete global.window; delete global.document;
+  delete global.window; delete global.document; delete global.URL; delete global.Image;
   delete require.cache[COMMON];
 });
+const tick = () => new Promise((r) => setTimeout(r, 0));
 
 test('cropAvatarFile: no canvas 2d (jsdom) -> resolves the RAW file (graceful fallback, AC6)', async () => {
   const { cropAvatarFile } = fresh();
@@ -42,6 +43,66 @@ test('cropAvatarFile: a missing file resolves null (nothing to upload)', async (
   const { cropAvatarFile } = fresh();
   assert.strictEqual(await cropAvatarFile(null), null);
   assert.strictEqual(await cropAvatarFile(undefined), null);
+});
+
+// ---- canvas-stubbed harness: binds the modal lifecycle jsdom can't run --------
+function freshWithCanvas(tracker) {
+  const common = fresh(); // jsdom document set, boot skipped
+  const win = dom.window;
+  win.HTMLCanvasElement.prototype.getContext = function () { return { clearRect() {}, drawImage() {} }; };
+  win.HTMLCanvasElement.prototype.toBlob = function (cb, type) { cb({ type: type || 'image/jpeg', size: 1234 }); };
+  global.URL = { createObjectURL: () => { tracker.created += 1; return 'blob:stub'; }, revokeObjectURL: () => { tracker.revoked += 1; } };
+  global.Image = class {
+    set src(_v) { this.naturalWidth = 100; this.naturalHeight = 100; if (this.onload) setTimeout(() => this.onload(), 0); }
+  };
+  return common;
+}
+const afterEachCanvas = () => { delete global.URL; delete global.Image; };
+
+test('S3 (stubbed canvas): Save resolves a jpeg Blob and revokes the object URL exactly once (no leak)', async () => {
+  const tracker = { created: 0, revoked: 0 };
+  const common = freshWithCanvas(tracker);
+  try {
+    const p = common.cropAvatarFile({ type: 'image/png' });
+    await tick(); // Image.onload -> modal builds
+    const backdrop = global.document.querySelector('.avatar-crop-backdrop');
+    assert.ok(backdrop, 'the modal opened');
+    backdrop.querySelector('.btn-primary').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    const out = await p;
+    assert.ok(out && out.type === 'image/jpeg', 'Save produced a jpeg Blob');
+    assert.strictEqual(tracker.created, tracker.revoked, 'object URL created == revoked (no leak)');
+    assert.ok(tracker.revoked >= 1, 'the URL was actually revoked');
+    assert.strictEqual(global.document.querySelector('.avatar-crop-backdrop'), null, 'the modal was removed');
+  } finally { afterEachCanvas(); }
+});
+
+test('S3 (stubbed canvas): Cancel-then-Save settles ONCE as null (the double-settle guard)', async () => {
+  const tracker = { created: 0, revoked: 0 };
+  const common = freshWithCanvas(tracker);
+  try {
+    const p = common.cropAvatarFile({ type: 'image/png' });
+    await tick();
+    const backdrop = global.document.querySelector('.avatar-crop-backdrop');
+    backdrop.querySelectorAll('.btn')[0].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // Cancel
+    backdrop.querySelector('.btn-primary').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // late Save
+    assert.strictEqual(await p, null, 'the first settle (Cancel) wins; the late Save is eaten');
+  } finally { afterEachCanvas(); }
+});
+
+test('S3 (stubbed canvas): a second cropAvatarFile while one is open declines as null (single-instance)', async () => {
+  const tracker = { created: 0, revoked: 0 };
+  const common = freshWithCanvas(tracker);
+  try {
+    const first = common.cropAvatarFile({ type: 'image/png' });
+    await tick();
+    assert.strictEqual(global.document.querySelectorAll('.avatar-crop-backdrop').length, 1, 'one modal open');
+    assert.strictEqual(await common.cropAvatarFile({ type: 'image/png' }), null, 'the second call declines');
+    assert.strictEqual(global.document.querySelectorAll('.avatar-crop-backdrop').length, 1, 'still exactly one modal');
+    // close the first so the promise settles and nothing leaks.
+    global.document.querySelector('.avatar-crop-backdrop').querySelectorAll('.btn')[0]
+      .dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(await first, null);
+  } finally { afterEachCanvas(); }
 });
 
 test('AC3/S4: BOTH upload entry points crop before POSTing - never a raw file on the happy path', () => {

@@ -47,6 +47,12 @@ test('clampAvatarOffset: zoomed in, pan is bounded so no gap ever shows inside t
   assert.ok(Math.abs(pushed.ox - oxMax) < 1e-9, 'over-pan right pins the left edge to circle-left');
   const pushedNeg = clampAvatarOffset(-1e6, -1e6, s, imgW, imgH, W, H, D);
   assert.ok(Math.abs(pushedNeg.ox - oxMin) < 1e-9, 'over-pan left pins the right edge to circle-right');
+  // Bind the Y axis symmetrically (the oyMin lower-clamp) - a square source, so
+  // the y window mirrors x. Without this, an oyMin sign/loosening mutant survives.
+  const oyMin = (H + D) / 2 - imgH * s;
+  const oyMax = (H - D) / 2;
+  assert.ok(Math.abs(pushedNeg.oy - oyMin) < 1e-9, 'over-pan up pins the bottom edge to circle-bottom');
+  assert.ok(Math.abs(pushed.oy - oyMax) < 1e-9, 'over-pan down pins the top edge to circle-top');
   // Invariant at the boundary: image still covers the circle box on both sides.
   assert.ok(pushed.ox <= oxMax + 1e-9 && pushed.ox + imgW * s >= (W + D) / 2 - 1e-9, 'covered at the right-pinned boundary');
   assert.ok(pushedNeg.ox <= oxMax + 1e-9 && pushedNeg.ox + imgW * s >= (W + D) / 2 - 1e-9, 'covered at the left-pinned boundary');

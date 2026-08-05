@@ -5019,6 +5019,10 @@ function cropAvatarFile(file) {
     if (!probeCtx || typeof probe.toBlob !== 'function' || typeof URL === 'undefined' || !URL.createObjectURL || typeof Image === 'undefined') {
       resolve(file); return; // no real canvas 2d export -> upload raw, the server cap applies
     }
+    // Single-instance: never stack two croppers (a second Escape would settle
+    // both). If one is already open, decline this one as a cancel.
+    if (document.querySelector('.avatar-crop-backdrop')) { resolve(null); return; }
+    const prevFocus = document.activeElement; // restore focus to the opener on close
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onerror = () => { try { URL.revokeObjectURL(url); } catch (_) {} resolve(file); }; // not an image -> let the server reject
@@ -5131,6 +5135,9 @@ function cropAvatarFile(file) {
         try { URL.revokeObjectURL(url); } catch (_) {}
         document.removeEventListener('keydown', onKey);
         backdrop.remove();
+        // Restore focus to whatever opened the cropper (the "Change photo" /
+        // "Upload" control), not <body>.
+        try { if (prevFocus && typeof prevFocus.focus === 'function') prevFocus.focus(); } catch (_) {}
       };
       const finish = (value) => { if (settled) return; settled = true; cleanup(); resolve(value); };
       const doSave = () => {
@@ -5145,7 +5152,18 @@ function cropAvatarFile(file) {
           finish(file); // export failed -> fall back to the raw upload
         }
       };
-      const onKey = (e) => { if (e.key === 'Escape') finish(null); };
+      // Escape cancels; Tab is trapped within the modal's controls (slider ->
+      // Cancel -> Save -> slider) so focus never escapes to the page behind the
+      // scrim.
+      const onKey = (e) => {
+        if (e.key === 'Escape') { finish(null); return; }
+        if (e.key !== 'Tab') return;
+        const focusables = [slider, cancelBtn, saveBtn];
+        const idx = focusables.indexOf(document.activeElement);
+        if (idx === -1) { e.preventDefault(); slider.focus(); }
+        else if (e.shiftKey && idx === 0) { e.preventDefault(); saveBtn.focus(); }
+        else if (!e.shiftKey && idx === focusables.length - 1) { e.preventDefault(); slider.focus(); }
+      };
       cancelBtn.addEventListener('click', () => finish(null));
       saveBtn.addEventListener('click', doSave);
       backdrop.addEventListener('click', (e) => { if (e.target === backdrop) finish(null); });
