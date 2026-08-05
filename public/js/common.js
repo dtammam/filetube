@@ -4960,6 +4960,229 @@ function accountMenuDivider() {
   return hr;
 }
 
+// ---- v1.83: avatar crop geometry (pure, DOM-free, unit-tested) --------------
+//
+// The crop viewport is W x H display px with a centred circle of diameter D. The
+// source image (natural imgW x imgH) is drawn at scale `s` with its top-left at
+// display offset (ox, oy). These three pure functions are the whole contract the
+// gesture layer and the canvas export depend on; everything that can be WRONG
+// (a gap inside the circle, an out-of-bounds source read) lives here where
+// node:test can hold it without a browser.
+
+// The COVER minimum: the smallest scale at which the image still fills the
+// circle's DxD bounding box (no gap can ever show). Cover needs imgW*s >= D AND
+// imgH*s >= D, i.e. s >= D / min(imgW, imgH).
+function avatarMinScale(imgW, imgH, D) {
+  const m = Math.min(imgW, imgH);
+  return m > 0 ? D / m : 1;
+}
+
+// Clamp (ox, oy) so the scaled image always covers the circle's bounding box
+// [(W-D)/2 .. (W+D)/2] x [(H-D)/2 .. (H+D)/2]. Assumes s >= avatarMinScale so the
+// range is non-empty. Returns the clamped { ox, oy }.
+function clampAvatarOffset(ox, oy, s, imgW, imgH, W, H, D) {
+  const oxMax = (W - D) / 2;              // left edge no further right than circle-left
+  const oxMin = (W + D) / 2 - imgW * s;   // right edge no further left than circle-right
+  const oyMax = (H - D) / 2;
+  const oyMin = (H + D) / 2 - imgH * s;
+  return {
+    ox: Math.min(oxMax, Math.max(oxMin, ox)),
+    oy: Math.min(oyMax, Math.max(oyMin, oy)),
+  };
+}
+
+// The source-image rectangle currently under the circle's bounding box - exactly
+// what drawImage copies into the square output canvas. Square by construction
+// (the circle's bounding box is DxD). Never reads outside the image when the
+// offset is clamped (the caller's contract).
+function avatarSourceRect(s, ox, oy, W, H, D) {
+  const boxLeft = (W - D) / 2;
+  const boxTop = (H - D) / 2;
+  return {
+    sx: (boxLeft - ox) / s,
+    sy: (boxTop - oy) / s,
+    sSize: D / s,
+  };
+}
+
+// v1.83: the crop modal. Resolves a cropped 400x400 JPEG Blob on Save, the
+// ORIGINAL file as a graceful fallback when canvas export is unavailable (AC6),
+// or null on Cancel. Both avatar entry points (the menu + Settings) call this
+// before uploading, so a raw file is never uploaded on the happy path. The
+// canvas is a fixed 280x280 (1:1 with its CSS box) so pointer deltas map
+// straight to canvas px - the pan/zoom math stays the pure T1 geometry.
+function cropAvatarFile(file) {
+  return new Promise((resolve) => {
+    if (typeof document === 'undefined' || !file) { resolve(file || null); return; }
+    const probe = document.createElement('canvas');
+    const probeCtx = probe.getContext && probe.getContext('2d');
+    if (!probeCtx || typeof probe.toBlob !== 'function' || typeof URL === 'undefined' || !URL.createObjectURL || typeof Image === 'undefined') {
+      resolve(file); return; // no real canvas 2d export -> upload raw, the server cap applies
+    }
+    // Single-instance: never stack two croppers (a second Escape would settle
+    // both). If one is already open, decline this one as a cancel.
+    if (document.querySelector('.avatar-crop-backdrop')) { resolve(null); return; }
+    const prevFocus = document.activeElement; // restore focus to the opener on close
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onerror = () => { try { URL.revokeObjectURL(url); } catch (_) {} resolve(file); }; // not an image -> let the server reject
+    img.onload = () => {
+      const imgW = img.naturalWidth, imgH = img.naturalHeight;
+      if (!imgW || !imgH) { try { URL.revokeObjectURL(url); } catch (_) {} resolve(file); return; }
+
+      const W = 280, H = 280, D = 232, OUTPUT = 400; // viewport, circle, export size
+      const minScale = avatarMinScale(imgW, imgH, D);
+      const maxScale = minScale * 5;
+      let s = minScale;
+      let ox = (W - imgW * s) / 2, oy = (H - imgH * s) / 2;
+      const clamp = () => { const c = clampAvatarOffset(ox, oy, s, imgW, imgH, W, H, D); ox = c.ox; oy = c.oy; };
+      clamp();
+
+      const backdrop = document.createElement('div');
+      backdrop.className = 'avatar-crop-backdrop';
+      const modal = document.createElement('div');
+      modal.className = 'avatar-crop-modal';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-label', 'Crop photo');
+      const title = document.createElement('div');
+      title.className = 'avatar-crop-title';
+      title.textContent = 'Crop photo';
+      const hint = document.createElement('div');
+      hint.className = 'avatar-crop-hint';
+      hint.textContent = 'Drag to move, pinch or scroll to zoom.';
+      const stage = document.createElement('div');
+      stage.className = 'avatar-crop-stage';
+      const canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      canvas.className = 'avatar-crop-canvas';
+      const ring = document.createElement('div');
+      ring.className = 'avatar-crop-ring'; // circular frame; box-shadow dims outside
+      stage.appendChild(canvas);
+      stage.appendChild(ring);
+      const ctx = canvas.getContext('2d');
+      const redraw = () => { ctx.clearRect(0, 0, W, H); ctx.drawImage(img, ox, oy, imgW * s, imgH * s); };
+      redraw();
+
+      const slider = document.createElement('input');
+      slider.type = 'range'; slider.min = '0'; slider.max = '1000'; slider.value = '0';
+      slider.className = 'avatar-crop-zoom';
+      slider.setAttribute('aria-label', 'Zoom');
+      const syncSlider = () => {
+        slider.value = maxScale > minScale ? String(Math.round(((s - minScale) / (maxScale - minScale)) * 1000)) : '0';
+      };
+      // Zoom to a target scale, keeping display point (px,py) fixed under the cursor/pinch.
+      const zoomTo = (ns, px, py) => {
+        const clamped = Math.min(maxScale, Math.max(minScale, ns));
+        const srcX = (px - ox) / s, srcY = (py - oy) / s;
+        s = clamped;
+        ox = px - srcX * s; oy = py - srcY * s;
+        clamp(); redraw(); syncSlider();
+      };
+      slider.addEventListener('input', () => {
+        const frac = Number(slider.value) / 1000;
+        zoomTo(minScale + frac * (maxScale - minScale), W / 2, H / 2);
+      });
+
+      // Pointer pan (1 pointer) + pinch zoom (2 pointers). Fixed-size canvas, so
+      // client deltas are canvas px.
+      const pointers = new Map();
+      let pinchDist = 0;
+      const canvasPt = (e) => { const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+      canvas.addEventListener('pointerdown', (e) => {
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+        if (pointers.size === 2) {
+          const [a, b] = [...pointers.values()];
+          pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+        }
+      });
+      canvas.addEventListener('pointermove', (e) => {
+        if (!pointers.has(e.pointerId)) return;
+        const prev = pointers.get(e.pointerId);
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointers.size >= 2) {
+          const [a, b] = [...pointers.values()];
+          const dist = Math.hypot(a.x - b.x, a.y - b.y);
+          if (pinchDist > 0 && dist > 0) {
+            const r = canvas.getBoundingClientRect();
+            zoomTo(s * (dist / pinchDist), (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top);
+          }
+          pinchDist = dist;
+        } else {
+          ox += (e.clientX - prev.x); oy += (e.clientY - prev.y);
+          clamp(); redraw();
+        }
+      });
+      const endPointer = (e) => { pointers.delete(e.pointerId); if (pointers.size < 2) pinchDist = 0; };
+      canvas.addEventListener('pointerup', endPointer);
+      canvas.addEventListener('pointercancel', endPointer);
+      stage.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const p = canvasPt(e);
+        zoomTo(s * (e.deltaY < 0 ? 1.1 : 0.9), p.x, p.y);
+      }, { passive: false });
+
+      const actions = document.createElement('div');
+      actions.className = 'avatar-crop-actions';
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button'; cancelBtn.className = 'btn'; cancelBtn.textContent = 'Cancel';
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button'; saveBtn.className = 'btn btn-primary'; saveBtn.textContent = 'Save';
+      actions.appendChild(cancelBtn); actions.appendChild(saveBtn);
+
+      let settled = false;
+      const cleanup = () => {
+        try { URL.revokeObjectURL(url); } catch (_) {}
+        document.removeEventListener('keydown', onKey);
+        backdrop.remove();
+        // Restore focus to whatever opened the cropper (the "Change photo" /
+        // "Upload" control), not <body>.
+        try { if (prevFocus && typeof prevFocus.focus === 'function') prevFocus.focus(); } catch (_) {}
+      };
+      const finish = (value) => { if (settled) return; settled = true; cleanup(); resolve(value); };
+      const doSave = () => {
+        try {
+          const out = document.createElement('canvas');
+          out.width = OUTPUT; out.height = OUTPUT;
+          const octx = out.getContext('2d');
+          const rect = avatarSourceRect(s, ox, oy, W, H, D);
+          octx.drawImage(img, rect.sx, rect.sy, rect.sSize, rect.sSize, 0, 0, OUTPUT, OUTPUT);
+          out.toBlob((blob) => finish(blob || file), 'image/jpeg', 0.9);
+        } catch (_) {
+          finish(file); // export failed -> fall back to the raw upload
+        }
+      };
+      // Escape cancels; Tab is trapped within the modal's controls (slider ->
+      // Cancel -> Save -> slider) so focus never escapes to the page behind the
+      // scrim.
+      const onKey = (e) => {
+        if (e.key === 'Escape') { finish(null); return; }
+        if (e.key !== 'Tab') return;
+        const focusables = [slider, cancelBtn, saveBtn];
+        const idx = focusables.indexOf(document.activeElement);
+        if (idx === -1) { e.preventDefault(); slider.focus(); }
+        else if (e.shiftKey && idx === 0) { e.preventDefault(); saveBtn.focus(); }
+        else if (!e.shiftKey && idx === focusables.length - 1) { e.preventDefault(); slider.focus(); }
+      };
+      cancelBtn.addEventListener('click', () => finish(null));
+      saveBtn.addEventListener('click', doSave);
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) finish(null); });
+      document.addEventListener('keydown', onKey);
+
+      modal.appendChild(title);
+      modal.appendChild(stage);
+      modal.appendChild(slider);
+      modal.appendChild(hint);
+      modal.appendChild(actions);
+      backdrop.appendChild(modal);
+      document.body.appendChild(backdrop);
+      syncSlider();
+      saveBtn.focus();
+    };
+    img.src = url;
+  });
+}
+
 function injectAccountMenu() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
   const headerRight = document.querySelector('.header-right');
@@ -5027,8 +5250,12 @@ function injectAccountMenu() {
       const file = fileInput.files && fileInput.files[0];
       fileInput.value = ''; // allow re-picking the same file later
       if (!file) return;
+      // v1.83: crop + downscale first (so any source size works); a null result
+      // means the user cancelled.
+      const cropped = await cropAvatarFile(file);
+      if (!cropped) return;
       try {
-        const res = await fetch('/api/me/avatar', { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
+        const res = await fetch('/api/me/avatar', { method: 'POST', headers: { 'Content-Type': cropped.type || 'image/jpeg' }, body: cropped });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) { showToast(body.error || 'Could not update your photo.'); return; }
         refreshAvatars(body.avatar);
@@ -10884,6 +11111,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.82: the account menu injector + avatar builder + shared sign-out +
     // theme-glyph sync.
     injectAccountMenu, buildAccountAvatarEl, accountSignOut, updateAccountMenuThemeItem,
+    // v1.83: the pure avatar-crop geometry + the crop modal.
+    avatarMinScale, clampAvatarOffset, avatarSourceRect, cropAvatarFile,
     // v1.78 device handoff: the UA label table. Pure, and exactly the kind of
     // roster that rots silently - every arm is pinned by node:test.
     resolveDeviceLabel,

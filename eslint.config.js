@@ -152,6 +152,8 @@ module.exports = [
         fetchCurrentUser: 'readonly',
         // v1.82: the shared sign-out (common.js), used by setup.js's button.
         accountSignOut: 'readonly',
+        // v1.83: the shared avatar crop modal (common.js), used by setup.js's uploader.
+        cropAvatarFile: 'readonly',
         // v1.53: the capability cache (common.js).
         readCapabilityCache: 'readonly',
         writeCapabilityCache: 'readonly',

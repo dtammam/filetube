@@ -9256,6 +9256,76 @@ body.ft-css-fullscreen .bottom-nav {
   gap: var(--space-3);
 }
 
+/* ---- v1.83: the avatar crop modal ---- */
+.avatar-crop-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6); /* token-exempt: modal scrim (theme-neutral) */
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+.avatar-crop-modal {
+  background: var(--bg-sidebar);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-modal);
+  padding: var(--space-8);
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-5);
+}
+.avatar-crop-title {
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  font-size: var(--fs-md);
+}
+.avatar-crop-stage {
+  position: relative;
+  width: 280px; /* token-exempt: crop viewport geometry (Stop A Batch A) */
+  height: 280px; /* token-exempt: crop viewport geometry (Stop A Batch A) */
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  touch-action: none; /* pan/zoom is ours, not the browser's */
+}
+.avatar-crop-canvas {
+  display: block;
+  width: 280px; /* token-exempt: 1:1 with the internal canvas px (Stop A Batch A) */
+  height: 280px; /* token-exempt: 1:1 with the internal canvas px (Stop A Batch A) */
+  cursor: grab;
+}
+/* The circular frame: a centred 232px circle whose huge box-shadow dims the
+   rest of the stage, so the crop region reads clearly. Pointer-transparent so
+   the drag/zoom lands on the canvas beneath. */
+.avatar-crop-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 232px; /* token-exempt: crop circle geometry (Stop A Batch A) */
+  height: 232px; /* token-exempt: crop circle geometry (Stop A Batch A) */
+  transform: translate(-50%, -50%);
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); /* token-exempt: crop scrim (theme-neutral) */
+  pointer-events: none;
+}
+.avatar-crop-zoom {
+  width: 232px; /* token-exempt: matches the crop circle width (Stop A Batch A) */
+}
+.avatar-crop-hint {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.avatar-crop-actions {
+  display: flex;
+  gap: var(--space-4);
+  align-self: stretch;
+  justify-content: flex-end;
+}
+
 @media (max-width: 768px) {
   /* Re-show .header-right as the top-right slot for the notification bell + the
      v1.82 account-menu avatar (the mobile header restructure hides the whole

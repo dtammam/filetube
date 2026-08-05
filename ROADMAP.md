@@ -80,6 +80,30 @@
 
 ## Shipped
 
+### v1.83.0 - Avatar crop (pick any photo, pan + zoom a circle) (2026-08-05)
+
+Dean's v1.82 device-pass wish: "wishing I could use a larger than 1MB image and
+then crop / pick a section." Both wishes are one feature. Picking a photo at
+either entry point (the account menu's Change photo and Settings->Account) now
+opens a **circular crop modal** - drag to pan, pinch/scroll/slider to zoom - and
+only the cropped 400x400 region is uploaded. Because the crop **downscales before
+upload**, any source photo works (a 12 MP phone shot is fine) and the uploaded
+avatar is always tens of KB - so the server route and the 1 MB cap are untouched.
+Built in-house, no dependency.
+
+**The correctness lives in three pure functions** (cover min-scale, pan clamp,
+source rectangle) so a gap in the circle or an out-of-bounds read is caught by
+node:test, not the device. The gate's adversarial seat swept them over **5,184
+input combinations** (aspect ratios from 10000x10 to 10x10000, sources smaller
+than the circle, zoom from cover to 100x, pan pushed to +/-1e9) with zero gaps
+and zero out-of-bounds reads, and killed every geometry mutant. The full lifecycle
+(object-URL revoke, single-settle across all exits, Cancel/Escape/backdrop upload
+nothing) is bound by a canvas-stub harness. A browser without a real canvas falls
+back to a raw upload (the cap then applies). Both seats APPROVE.
+
+Dual-Node full suite green on v22.23.1 and v24.14.0. **Dean's on-device pass is
+PENDING** - this one is worth driving: pick a big photo, pan/zoom, Save.
+
 ### v1.82.0 - User avatar + account menu (2026-08-05)
 
 The v1.81 T8 fast-follow, expanded at intake into a full account surface. A

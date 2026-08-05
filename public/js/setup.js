@@ -1798,8 +1798,11 @@ async function initAccountSection(signal) {
       const file = photoInput.files && photoInput.files[0];
       photoInput.value = ''; // allow re-picking the same file
       if (!file) return;
+      // v1.83: crop + downscale first (shared with the account menu); null = cancelled.
+      const cropped = await cropAvatarFile(file);
+      if (!cropped) return;
       try {
-        const res = await fetch('/api/me/avatar', { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
+        const res = await fetch('/api/me/avatar', { method: 'POST', headers: { 'Content-Type': cropped.type || 'image/jpeg' }, body: cropped });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) { showToast(body.error || 'Could not update your photo.'); return; }
         setHasPhoto(true);
