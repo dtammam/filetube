@@ -5442,7 +5442,12 @@ function injectYouNavItem() {
     label.textContent = 'You';
     btn.appendChild(avatar);
     btn.appendChild(label);
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      // v1.85.1: STOP this click bubbling to document. The account menu closes on
+      // any document click (outside-click-to-dismiss); without this, our own
+      // click reaches document right AFTER trigger.click() opens the menu and
+      // closes it again - the tab appeared dead (v1.85 device-pass failure).
+      e.stopPropagation();
       // Look the trigger up at CLICK time (injectAccountMenu is async).
       const trigger = document.querySelector('.account-menu-trigger');
       if (trigger) trigger.click();
@@ -5600,14 +5605,15 @@ function injectOneOffDownloadButtonIfEnabled() {
       if (document.getElementById('ytdlp-oneoff-btn') || document.querySelector('[data-nav="oneoff-download"]')) return;
 
       const headerRight = document.querySelector('.header-right');
-      // v1.15.1 FIX 4: the desktop header button lives inside `.header-right`,
-      // which is CSS-hidden at the phone breakpoint (same rule that hides
-      // Settings/the moon toggle there -- see style.css's `.header-right {
-      // display: none }` inside `@media (max-width: 768px)`), so on mobile the
-      // button existed in the DOM but was never reachable. This bottom-nav
-      // entry (mirroring `injectSubscriptionsNavLinkIfEnabled`'s own
-      // bottom-nav injection) gives mobile an equally-discoverable entry
-      // point into the SAME modal.
+      // v1.15.1: the desktop header button lives inside `.header-right`. It was
+      // hidden on phones by the `.header-right .btn { display:none }` rule, so
+      // this bottom-nav entry (mirroring `injectSubscriptionsNavLinkIfEnabled`)
+      // gave mobile a discoverable entry into the SAME modal.
+      // v1.85.1 (#D, Dean): the header button is now SHOWN on mobile too - the
+      // id rule `.header-right #ytdlp-oneoff-btn { display: inline-flex }`
+      // out-specifies that `.btn` hide (see style.css). So mobile has two entry
+      // points (this bottom-nav one + the top-right button); disclosed, Dean's
+      // call whether to keep both.
       const settingsNavItem = document.querySelector('#bottom-nav [data-nav="settings"]');
       if (!headerRight && !settingsNavItem) return; // page has neither surface -- nothing to attach to
 

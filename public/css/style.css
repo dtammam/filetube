@@ -4516,9 +4516,20 @@ a.sub-row-channel-link:focus-visible {
      read by every consumer removes that divergence window -- the content top/
      bottom offset is now invariant with the fixed shell across the animation. */
   :root {
-    --mobile-header-h: calc(96px + env(safe-area-inset-top));
+    /* v1.85.1 (#E): the mobile header used to be 96px to hold the logo ROW +
+       the full-width search row. v1.85 hides that search bar by default (the
+       magnifier reveals it), so 96px over-reserved and left an empty band below
+       the logo (Dean's "free space under the top banner"). The logo row alone is
+       the desktop header height (the 56px desktop header var), so this is that + the
+       mobile safe-area. Everything (header min-height, .app-container offset,
+       --sticky-bar-top, the mobile max-height calcs) reads this ONE var, so they
+       shrink in lockstep - no gap. When the magnifier opens search, the header
+       (height:auto) grows to fit the revealed search bar + history and simply
+       OVERLAYS the top of the content, exactly like a mobile search overlay -
+       so the offset intentionally stays at the compact height. */
+    --mobile-header-h: calc(56px + env(safe-area-inset-top));
     --mobile-bottom-nav-h: calc(72px + env(safe-area-inset-bottom));
-    /* v1.45.0 T1: the sticky home filter bar clears the taller mobile header. */
+    /* v1.45.0 T1: the sticky home filter bar clears the mobile header. */
     --sticky-bar-top: var(--mobile-header-h);
   }
 
@@ -4724,13 +4735,23 @@ a.sub-row-channel-link:focus-visible {
     display: none;
   }
   .search-open .header-search { display: block; }
-  /* v1.85 #1: the magnifier lives in the top-right slot beside the bell/avatar */
-  .search-toggle-btn { display: inline-flex; }
+  /* v1.85.1 (#D): the one-off Download button IS wanted in the mobile top-right
+     (Dean) - exempt it from the v1.82 `.header-right .btn { display:none }` hide.
+     The id selector (1,1,0) beats that rule (0,2,0) regardless of order. */
+  .header-right #ytdlp-oneoff-btn { display: inline-flex; }
+  /* v1.85 #1: the magnifier lives in the top-right slot beside the bell/avatar.
+     v1.85.1: these three overrides MUST out-specify their base rules, which live
+     LATER in the file (.search-toggle-btn ~7623, .account-menu-trigger ~9387,
+     .account-menu-dropdown ~9418) - a @media block adds NO specificity, so a
+     same-specificity later rule would win and silently defeat all of this (the
+     v1.85 device-pass failure). Scoping under `.header-right` makes them (0,2,0)
+     and they win regardless of source order. */
+  .header-right .search-toggle-btn { display: inline-flex; }
   /* v1.85 #2: the "You" bottom-nav tab owns account access on mobile - hide the
      header avatar (keep the bell + magnifier in .header-right), and drop the
      account menu as a bottom SHEET above the nav when opened from the You tab. */
-  .account-menu-trigger { display: none; }
-  .account-menu-dropdown {
+  .header-right .account-menu-trigger { display: none; }
+  .header-right .account-menu-dropdown {
     position: fixed;
     top: auto;
     left: var(--space-4);
@@ -7512,9 +7533,10 @@ body.ft-css-fullscreen .bottom-nav {
 /* the one-line filter-chip row */
 .modern-chip-row {
   display: flex;
+  align-items: center; /* v1.85.1 (#C, DEFENSIVE - unconfirmed pending Dean's screenshot): no cross-axis stretch, so a stretched pill's border can't clip at the overflow-x edge. NOTE overflow-x:auto forces overflow-y to compute to auto (spec), so extra bottom padding is the real breathing room. */
   gap: var(--space-4);
   overflow-x: auto;
-  padding: var(--space-6) 0;
+  padding: var(--space-4) 0 var(--space-6);
   margin-bottom: var(--space-4);
 }
 .modern-chip-row::-webkit-scrollbar { display: none; }
