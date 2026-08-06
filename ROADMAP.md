@@ -80,6 +80,50 @@
 
 ## Shipped
 
+### v1.85.2 - One-off Download button root-cause + modern-home declutter (2026-08-06)
+
+Three of Dean's on-device follow-ups, all root-caused before editing (the
+diagnosis-discipline norm):
+
+- **#2 (the important one) - the one-off Download button never injected on ANY
+  page, both entry points (top-right header button AND the bottom-nav Download).**
+  Prior CSS "fixes" failed because it was never CSS. ROOT CAUSE, found by live
+  console diagnostics on Dean's device (not theory): the header-button placement
+  did `headerRight.insertBefore(btn, headerRight.querySelector('a[href="/setup.html"]'))`,
+  and `querySelector` matches ANY descendant. v1.82 folded the Settings link INTO
+  the account-menu dropdown - an `<a href="/setup.html">` nested inside
+  `#account-menu-root`, itself inside `.header-right`. So the selector matched a
+  GRANDCHILD, `insertBefore` requires a direct child, and it threw NotFoundError,
+  rejecting the whole injection `.then` into its silent `.catch` - building
+  neither entry point. A RACE: invisible in local repros (the one-off probe won
+  the race and ran before the account menu injected its link) but deterministic
+  on Dean's server (account menu injects first). FIX: scope the anchor to
+  `:scope > a[href="/setup.html"]` (direct child only). Mutation-bound regression
+  test reproduces Dean's exact DOM. Falsification trail logged: ruled out CSS
+  specificity, content blockers, HTTP caching, the health endpoint, element
+  removal, and a stale bundle (his injector fingerprint matched HEAD exactly)
+  before the live `NotFoundError` pinned the line.
+- **#3 + #4 - the modern home showed the default folder-name heading
+  ("Downloads") and the sort/shuffle/rescan/list-toggle controls bar** - clutter
+  on a clean YouTube-style grid. One CSS rule `.modern-home-mode .section-title
+  { display: none }` hides the wrapper that holds BOTH (they are children of the
+  same `.section-title`). The modern chip row is a separate sibling above the
+  grid, unaffected. Sort needed no code: `GET /api/home?view=grid` already orders
+  `addedAt` DESC and the client renders that order verbatim. Source-lock test
+  pins the winning selector AND asserts no `#library-content .section-title` rule
+  sets `display` (which would defeat the hide at 1,1,0 - the v1.85 device-pass
+  lesson applied).
+
+Slim gate (adversarial, no data risk): APPROVE, no CRITICAL/WARNING. One
+SUGGESTION: with no direct-child Settings link, the button now appends as the
+LAST child of `.header-right`, so it lands to the RIGHT of the avatar - cosmetic,
+disclosed to Dean rather than guessed. Both fixes mutation-verified (revert ->
+red). Dual-Node full suite green on v22.23.1 and v24.14.0 (**6420/6420**); census
+0, ledger CLEAN. **Dean's on-device pass is PENDING** - probe the Download button
+(now visible everywhere; eyeball its position vs the avatar) and the decluttered
+modern home. Still open: the DESKTOP chip-row clip (#C - awaiting Dean's
+screenshot).
+
 ### v1.85.1 - Mobile hotfix: search/account menu were dead, header + Download button (2026-08-06)
 
 Dean's v1.85 device pass FAILED on mobile - fixed and re-gated:

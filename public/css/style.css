@@ -7515,6 +7515,22 @@ body.ft-css-fullscreen .bottom-nav {
    chip row + mobile avatar bar (bare home only). Tokens only.
    ============================================================ */
 
+/* v1.85.2 (Dean, on-device #3+#4): the modern home is a clean YouTube-style
+   grid, so HIDE the classic section-title row entirely - both the default
+   folder-name heading (e.g. "Downloads", set in main.js) AND the whole controls
+   bar it wraps (.section-actions: sort dropdown / Shuffle / Rescan / list-card
+   toggle). In modern mode the chips filter and the grid is server-sorted
+   newest-first (GET /api/home?view=grid orders addedAt DESC, server.js ~9406,
+   and the client renders that order verbatim), so those controls are redundant.
+   The modern chip row (#modern-home-chrome) is a SEPARATE sibling mounted above
+   the grid (main.js ~806) and is unaffected. Mirrors the .home-feed-mode hide
+   below. SPECIFICITY (the v1.85 device-pass lesson - prove it WINS, not just
+   that it exists): (0,2,0) beats the base `.section-title { display:flex }`
+   (0,1,0), and no higher-specificity rule sets `display` on .section-title
+   (`#library-content .section-title` at 1,1,0 sets only position/margins), so
+   this wins on BOTH desktop and mobile regardless of source order. */
+.modern-home-mode .section-title { display: none; }
+
 /* the flat big-tile grid: 3-up, reflowing to 4 on wide desktops, 1 on phones */
 .modern-home-mode #video-grid {
   grid-template-columns: repeat(3, 1fr);
