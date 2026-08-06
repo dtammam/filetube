@@ -77,7 +77,10 @@ test('(v1.86.0 gate WARNING) the header sort ▾ is ROUTE-GATED: display:none by
     'only the home route shows the ▾ (re-shows on cache-restore, hides on every other view)');
 });
 
-test('(v1.86.2 Dean) the sort ▾ caret is sized to the header-glyph family, one step above the icons (--fs-4xl) since the caret char fills less of the box', () => {
+test('(v1.86.3 Dean) the sort chevron button is sized to the uniform 22px header-glyph box (--fs-4xl)', () => {
+  // The caret is now a keyboard_arrow_down MASK-ICON (main.js), a 1em glyph like
+  // download/search - so the button's --fs-4xl makes it a 22px box == the
+  // bell/queue inline-SVG box. All header glyphs are one size.
   assert.match(css, /\.modern-sort-btn \{[^}]*font-size:\s*var\(--fs-4xl\)/,
-    'the ▾ caret char reads smaller than a mask-icon at the same size, so it is --fs-4xl (22px) to match the ~20px download/search glyphs');
+    'the sort glyph is --fs-4xl (22px) - the uniform header-glyph box');
 });

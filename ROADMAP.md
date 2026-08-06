@@ -80,6 +80,26 @@
 
 ## Shipped
 
+### v1.86.3 - Uniform header glyph sizes (all 22px) (2026-08-06)
+
+Dean (from a screenshot): the header glyphs were mismatched - the bell and queue
+are 22x22 inline SVGs, download/search were 20px mask-icons, and the sort ▾ was a
+half-height text CARET. Now all one 22px box:
+- download + search mask-icons -> `--fs-4xl` (22px), so their 1em box == the
+  bell/queue inline-SVG box.
+- the sort control's ▾ text character -> a `keyboard_arrow_down` MASK-ICON
+  (`icon-arrow-down`), a full 1em glyph that sizes like the other icons instead of
+  a half-height caret.
+
+PROCESS NOTE: pure-render change (no logic/data). Shipped on a LIGHT path - the
+human reviewer was skipped per Dean's explicit ONE-TIME approval (a visual size
+match is a device-render concern the gate is blind to; his device eyeball is the
+arbiter). The automated safety net still ran: dual-Node full suite **6447/6447** on
+v22.23.1 and v24.14.0, census 0, source-locks updated + green, lint clean. The
+normal two-reviewer gate resumes on the next change (this was NOT a standing
+precedent). **Dean's device pass PENDING** - the visual size uniformity is his call;
+easy to nudge any single glyph if one still reads off.
+
 ### v1.86.2 - Modern feed lazy-load + Home-scroll-to-top + card-delete revert + glyph sizes (2026-08-06)
 
 Dean's on-device batch (all existing patterns, not new logic - Dean's framing):
