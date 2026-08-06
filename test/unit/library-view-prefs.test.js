@@ -115,7 +115,8 @@ test('SOURCE-LOCK (#2): the view toggle applies .list-view to #video-grid, persi
   // view, so their DEFAULT mask is INLINED as a data-URI (no async /assets fetch,
   // no cold-start pop-in). critical-icons-inlined.test.js binds the data-URI
   // byte-for-byte to the on-disk asset; here we just confirm the rules exist and
-  // are inlined (the rounded/filled variants still use url(/assets/...)).
+  // are inlined. (grid_view/view_list have no rounded/filled variants - unlike
+  // most chrome glyphs - so there is nothing else to repoint.)
   assert.match(CSS, /\.icon-grid \{[^}]*url\("data:image\/svg\+xml,/, 'grid glyph registered (inlined)');
   assert.match(CSS, /\.icon-list \{[^}]*url\("data:image\/svg\+xml,/, 'list glyph registered (inlined)');
 });
