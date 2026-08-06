@@ -4516,9 +4516,20 @@ a.sub-row-channel-link:focus-visible {
      read by every consumer removes that divergence window -- the content top/
      bottom offset is now invariant with the fixed shell across the animation. */
   :root {
-    --mobile-header-h: calc(96px + env(safe-area-inset-top));
+    /* v1.85.1 (#E): the mobile header used to be 96px to hold the logo ROW +
+       the full-width search row. v1.85 hides that search bar by default (the
+       magnifier reveals it), so 96px over-reserved and left an empty band below
+       the logo (Dean's "free space under the top banner"). The logo row alone is
+       the desktop header height (the 56px desktop header var), so this is that + the
+       mobile safe-area. Everything (header min-height, .app-container offset,
+       --sticky-bar-top, the mobile max-height calcs) reads this ONE var, so they
+       shrink in lockstep - no gap. When the magnifier opens search, the header
+       (height:auto) grows to fit the revealed search bar + history and simply
+       OVERLAYS the top of the content, exactly like a mobile search overlay -
+       so the offset intentionally stays at the compact height. */
+    --mobile-header-h: calc(56px + env(safe-area-inset-top));
     --mobile-bottom-nav-h: calc(72px + env(safe-area-inset-bottom));
-    /* v1.45.0 T1: the sticky home filter bar clears the taller mobile header. */
+    /* v1.45.0 T1: the sticky home filter bar clears the mobile header. */
     --sticky-bar-top: var(--mobile-header-h);
   }
 

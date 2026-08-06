@@ -34,6 +34,14 @@ test('the mobile account dropdown bottom-sheet is scoped under .header-right', (
     'the mobile bottom-sheet reposition must be .header-right-scoped');
 });
 
+test('(#E) the mobile header collapses to the logo-row height (no empty band under the banner)', () => {
+  // v1.85 hides the search bar by default, so the mobile header no longer needs
+  // the 96px two-row height; the single --mobile-header-h var (which the header
+  // min-height + content offset + sticky-bar all read) is the compact 56px.
+  assert.match(css, /--mobile-header-h:\s*calc\(56px \+ env\(safe-area-inset-top\)\)/,
+    'the mobile header default must be the compact logo-row height, not the old 96px');
+});
+
 test('(#D) the one-off Download button is un-hidden on mobile via id specificity', () => {
   // The v1.82 `.header-right .btn { display:none }` (0,2,0) hides it on phones;
   // the id selector (1,1,0) beats it so the button shows in the top-right.
