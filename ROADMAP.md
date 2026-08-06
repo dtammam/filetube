@@ -80,6 +80,45 @@
 
 ## Shipped
 
+### v1.87.1 - The REAL cold-start pop-in fix: inline-SVG chrome glyphs (2026-08-06)
+
+v1.87.0 did NOT fix the pop-in on Dean's device (the spacing half DID land, which
+is how we knew the CSS was live and the diagnosis was wrong). Re-root-caused: the
+bottom-nav + top-right glyphs use the `-webkit-mask-image` technique, and on iOS a
+mask shows NOTHING until its mask image is DECODED - so on a mobile PWA cold start
+the text labels paint first and the glyphs "pop in" a beat later. v1.87.0 inlined
+the mask as a data-URI to kill the async FETCH; on-device the pop-in was unchanged,
+proving the fetch was never the cause - the DECODE was. The notification bell +
+queue never lagged because they are inline `<svg>` (they ride the text layer, no
+decode gate).
+
+Fix (Dean's call): render the shared chrome glyphs as inline `<svg>`, exactly like
+the bell/queue. A `CHROME_ICON_SVG` map (path data machine-derived from the on-disk
+assets, byte-bound in tests) + `chromeIconMarkup()`/`chromeIconEl()` builders.
+Converted: the static bottom-nav across ALL 9 shell HTMLs (the nav is duplicated
+per shell - index/books/history/music/podcasts/read/setup/stats/watch), the
+JS-injected header search toggle + one-off Download button, the nav theme moon/sun
+swap, and the modern-home sort caret. Also reverted v1.87.0's 15KB of data-URI
+inlining (kept the spacing fix). Accepted trade-off (Dean's explicit call): the
+chrome glyphs no longer follow the icon-set picker - like the bell/queue they use
+ONE fixed style, ROUNDED (outlined fallback for the four glyphs with no rounded
+asset: history, podcast, books, downloads).
+
+Known gap (disclosed): the desktop SIDEBAR + the closed account-menu glyphs are
+still `.icon-*` masks - they are NOT first-paint on the reported mobile surface, so
+they do not pop in there; left as masks (they still follow the icon-set picker). If
+a desktop sidebar pop-in ever bothers Dean, the same conversion extends to them.
+
+Slim adversarial gate (rendering change, no data surface): APPROVE. Caught two real
+WARNINGs, both closed: (1) the cross-shell glyph source-lock covered only 1 of 10
+glyphs on the 8 non-index shells - a single-glyph regression to a decode-lagging
+mask would have shipped green; now every shell x all 10 glyphs are byte-bound
+(mutation-verified across the matrix). (2) a wrong suite count in a commit message
+(4764 vs the real 4773) - corrected. Dual-Node full suite **6476/6476** on v22.23.1
+AND v24.14.0; census 0, ledger clean, lint 0 errors. **Dean's device pass PENDING**
+- the cold-start smoothness is the arbiter (v1.87.0 taught us headless can't prove
+this one).
+
 ### v1.87.0 - Inline first-paint chrome icons (no cold-start pop-in) + even top-right spacing (2026-08-06)
 
 Dean, on-device: on a mobile PWA cold start the bottom-nav and top-right glyphs "pop
