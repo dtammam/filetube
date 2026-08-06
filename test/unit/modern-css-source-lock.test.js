@@ -45,3 +45,24 @@ test('the byline monogram consumes the inline --ch-av custom property (census-sa
   assert.match(css, /\.card-channel-avatar-mono \{\s*background-color:\s*var\(--ch-av\b/,
     'the per-card monogram colour comes from the inline custom property T5 sets');
 });
+
+test('(v1.85.2 #3+#4) modern home hides the whole section-title row (folder heading + controls bar)', () => {
+  // Dean, on-device: the modern grid should not show the default folder-name
+  // heading ("Downloads") NOR the sort/shuffle/rescan/view controls. One rule
+  // hides the wrapper that holds both. It MUST out-specify the base display.
+  assert.match(css, /\.modern-home-mode \.section-title \{\s*display:\s*none/,
+    'the modern section-title hide must exist and be class-scoped (0,2,0)');
+
+  // Prove it WINS (the v1.85 device-pass lesson): the only rule that sets
+  // `display` on .section-title is the base `.section-title { ...display:flex }`
+  // at (0,1,0); the id-scoped `#library-content .section-title` sets position/
+  // margins but NEVER display. So no higher-or-equal-specificity display rule
+  // can tie-and-follow ours. Assert that invariant so a future edit that adds
+  // `#library-content .section-title { display: ... }` (which WOULD beat us at
+  // 1,1,0) trips this test instead of silently re-showing the row on-device.
+  const idScoped = css.match(/#library-content \.section-title \{[^}]*\}/g) || [];
+  for (const block of idScoped) {
+    assert.doesNotMatch(block, /display\s*:/,
+      'no #library-content .section-title rule may set display, or it (1,1,0) would defeat the modern hide (0,2,0)');
+  }
+});
