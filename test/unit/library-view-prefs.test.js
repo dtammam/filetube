@@ -111,8 +111,13 @@ test('SOURCE-LOCK (#2): the view toggle applies .list-view to #video-grid, persi
   assert.match(MAIN, /setStoredViewMode\(next\)/, 'persists the mode on toggle');
   assert.match(HTML, /id="view-mode-btn"/, 'the toggle button is in the bar');
   assert.match(CSS, /\.video-grid\.list-view\b/, 'the list-view reflow CSS exists');
-  assert.match(CSS, /\.icon-grid \{[^}]*grid_view\.svg/, 'grid glyph registered');
-  assert.match(CSS, /\.icon-list \{[^}]*view_list\.svg/, 'list glyph registered');
+  // v1.87.0 (Dean): the toolbar view-toggle glyphs are first-paint on the Home
+  // view, so their DEFAULT mask is INLINED as a data-URI (no async /assets fetch,
+  // no cold-start pop-in). critical-icons-inlined.test.js binds the data-URI
+  // byte-for-byte to the on-disk asset; here we just confirm the rules exist and
+  // are inlined (the rounded/filled variants still use url(/assets/...)).
+  assert.match(CSS, /\.icon-grid \{[^}]*url\("data:image\/svg\+xml,/, 'grid glyph registered (inlined)');
+  assert.match(CSS, /\.icon-list \{[^}]*url\("data:image\/svg\+xml,/, 'list glyph registered (inlined)');
 });
 
 test('SOURCE-LOCK (#1): per-page sort reads/writes by pageSortKey only when enabled, and pins over defaultSort', () => {
