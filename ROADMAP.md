@@ -80,6 +80,50 @@
 
 ## Shipped
 
+### v1.88.0 - Prev/Next respects the active home pill (2026-08-06)
+
+On the Modern (YouTube-style) home, the top pills - All / Videos / Audio /
+Podcasts / Continue watching / Unwatched - filter a flat grid served by
+`GET /api/home?view=grid&filter=<pill>`. But the browse-context the grid cards
+emitted only described the CLASSIC `/api/videos` library (scope/sort/format);
+the pill was invisible to it. So after opening (say) an Audio-pill track,
+Prev/Next - and autoplay-at-end, and the lock-screen media keys, all three of
+which share the one context re-fetch helper - walked the whole library and could
+land on a video. Dean: "if I picked audio, next should go to the next audio."
+
+Fix (client-only, no server change): a new `src:'home-grid'` browse-context
+carries the pill + the Modern sort + this scroll session's shuffle seed.
+`encodeListContext`/`buildContextListUrl` (common.js) learn to rebuild
+`/api/home?view=grid&filter=...&sort=...&seed=...`, and `currentBrowseContextParam`
+(main.js) emits it whenever Modern mode is active (which is true only on the bare
+home - folder/search views render the classic grid and correctly keep the old
+scope context). The watch page + autoplay re-fetch that exact query and step the
+server's returned order verbatim, media-only (podcast tiles, being non-playable
+in the video player, drop out of the walk - the same mixed-kind handling Liked
+already uses). The `/api/home?view=grid` endpoint already paginates
+deterministically by filter+sort+seed and clamps the limit to `MAX_LIMIT` (10000),
+so the re-fetch reproduces the on-screen order with the same accepted bound the
+classic context path has always had.
+
+Dean's intake call: carry ALL pills, including the self-mutating Continue /
+Unwatched (those lists are re-fetched fresh, so an item you just finished may
+have shifted or dropped) - the most predictable behavior, always matching the
+pill you picked.
+
+Slim gate (adversarial seat): APPROVE, no CRITICAL/WARNING. All named attack
+surfaces cleared by measurement + mutation tests - order parity (full-set sort
+before slice), the scope-leak guard (Modern mode is bare-home-only, classic path
+byte-identical when off), the mixed-kind media-only walk in both consumers, seed
+currency, and the sibling music/liked/videos branches unaffected. New tests
+mutation-verified as real bindings. Dual-Node: 6479/6479 on v22.23.1 AND v24.14.0.
+
+Known gap (non-blocking, disclosed): on the All / Videos pills, when the
+on-screen next tile is a podcast, the media-only walk SKIPS it to the next
+playable item (a podcast can't play in the video player) - intended, same
+contract as mixed Liked. On the Podcasts pill the media walk is empty, so
+Prev/Next greys out cleanly (podcast cards open their own surface, never the
+video player). Dean's on-device pass is the arbiter.
+
 ### v1.87.1 - The REAL cold-start pop-in fix: inline-SVG chrome glyphs (2026-08-06)
 
 v1.87.0 did NOT fix the pop-in on Dean's device (the spacing half DID land, which
