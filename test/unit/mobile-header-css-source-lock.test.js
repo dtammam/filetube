@@ -62,9 +62,13 @@ test('(v1.86.1 Dean) the mobile Download button drops the .btn box (bell/search 
   assert.match(rule, /font-size:\s*var\(--fs-4xl\)/, 'sized to the 22px header-glyph box (== bell/queue SVG), not the small .btn --fs-sm');
 });
 
-test('(v1.86.0) the search magnifier owns the far-right corner (order) + a split gap + a touch larger', () => {
+test('(v1.87.0 Dean) the search magnifier owns the far-right corner (order) + is uniform - NO split margin (even spacing)', () => {
   const rule = (css.match(/\.header-right \.search-toggle-btn \{[^}]*order:\s*1[^}]*\}/) || [''])[0];
   assert.ok(rule, 'a .header-right .search-toggle-btn rule sets order:1 (rightmost corner)');
-  assert.match(rule, /margin-left:\s*var\(--space-6\)/, 'a split gap before the search glyph');
   assert.match(rule, /font-size:\s*var\(--fs-4xl\)/, 'the search glyph is sized to the uniform 22px header-glyph box');
+  // v1.87.0: the extra margin-left is GONE - it stacked a second gap on the
+  // container's own gap, so the magnifier sat ~28px from its neighbour while the
+  // rest were 14px apart (Dean: "not evenly spaced, especially the magnifier").
+  assert.doesNotMatch(rule, /margin-left/,
+    'no split margin-left: the row shares the single container gap (even spacing)');
 });
