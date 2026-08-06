@@ -5745,7 +5745,22 @@ function injectOneOffDownloadButtonIfEnabled() {
         btn.appendChild(icon);
         btn.appendChild(document.createTextNode(' Download'));
 
-        const settingsLink = headerRight.querySelector('a[href="/setup.html"]');
+        // v1.85.2 (Dean, on-device ROOT CAUSE): scope to a DIRECT CHILD. The
+        // original intent was "insert before the Settings link when THIS header
+        // has one, else append" - back when Settings was a direct child of
+        // .header-right. v1.82 folded Settings INTO the account-menu dropdown as
+        // an <a href="/setup.html"> nested inside #account-menu-root (itself
+        // inside .header-right), so the UNSCOPED querySelector now matches that
+        // GRANDCHILD. insertBefore requires a direct child, so it threw
+        // NotFoundError, rejecting the whole .then into the silent .catch below -
+        // building NEITHER the header button NOR the bottom-nav entry. It was
+        // invisible in local repros (the one-off probe won the race and ran
+        // BEFORE the account menu injected its link) but DETERMINISTIC on a
+        // server where the account menu injects first (Dean's). `:scope >` restores
+        // the original semantics exactly: anchor only to a Settings link that is a
+        // direct child of this header (none since v1.82 -> appendChild), never a
+        // descendant. Regression-bound in test/unit/oneoff-header-injection-placement.test.js.
+        const settingsLink = headerRight.querySelector(':scope > a[href="/setup.html"]');
         if (settingsLink) {
           headerRight.insertBefore(btn, settingsLink);
         } else {
