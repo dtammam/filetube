@@ -5760,7 +5760,15 @@ function injectOneOffDownloadButtonIfEnabled() {
         const icon = document.createElement('i');
         icon.className = 'icon-download';
         btn.appendChild(icon);
-        btn.appendChild(document.createTextNode(' Download'));
+        // v1.86.0 (Dean): the word "Download" lives in a .btn-label span (like the
+        // classic Shuffle/Rescan buttons) so CSS can hide it on mobile - the
+        // button goes glyph-only there, keeps its text on desktop. `.btn` is
+        // inline-flex with a gap, so hiding the label leaves a clean lone icon
+        // (no stray leading-space text node).
+        const label = document.createElement('span');
+        label.className = 'btn-label';
+        label.textContent = 'Download';
+        btn.appendChild(label);
 
         // v1.85.2 (Dean, on-device ROOT CAUSE): scope to a DIRECT CHILD. The
         // original intent was "insert before the Settings link when THIS header

@@ -4739,6 +4739,19 @@ a.sub-row-channel-link:focus-visible {
      (Dean) - exempt it from the v1.82 `.header-right .btn { display:none }` hide.
      The id selector (1,1,0) beats that rule (0,2,0) regardless of order. */
   .header-right #ytdlp-oneoff-btn { display: inline-flex; }
+  /* v1.86.0 (Dean): on mobile the Download button is GLYPH-ONLY - hide its label
+     (desktop keeps the word). .btn is inline-flex with a gap, so the lone icon
+     stays clean. */
+  .header-right #ytdlp-oneoff-btn .btn-label { display: none; }
+  /* v1.86.0 (Dean): the search magnifier owns the far-right CORNER, split from
+     the queue/bell/download cluster and a touch larger. order:1 makes it the
+     rightmost item regardless of injection order; margin-left adds a gap beyond
+     the container's own gap (the cluster shifts left, search hugs right:10px). */
+  .header-right .search-toggle-btn {
+    order: 1;
+    margin-left: var(--space-6);
+    font-size: var(--fs-xl); /* 16px - "ever so slightly larger" than the ~13px sibling glyphs */
+  }
   /* v1.85 #1: the magnifier lives in the top-right slot beside the bell/avatar.
      v1.85.1: these three overrides MUST out-specify their base rules, which live
      LATER in the file (.search-toggle-btn ~7623, .account-menu-trigger ~9387,

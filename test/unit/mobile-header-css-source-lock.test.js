@@ -48,3 +48,15 @@ test('(#D) the one-off Download button is un-hidden on mobile via id specificity
   assert.match(css, /\.header-right #ytdlp-oneoff-btn \{\s*display:\s*inline-flex/,
     'the mobile Download exemption must use the id selector to out-specify the .btn hide');
 });
+
+test('(v1.86.0) the mobile Download button is GLYPH-ONLY (its .btn-label is hidden; desktop keeps the word)', () => {
+  assert.match(css, /\.header-right #ytdlp-oneoff-btn \.btn-label \{\s*display:\s*none/,
+    'mobile Download hides its .btn-label -> glyph-only');
+});
+
+test('(v1.86.0) the search magnifier owns the far-right corner (order) + a split gap + a touch larger', () => {
+  const rule = (css.match(/\.header-right \.search-toggle-btn \{[^}]*order:\s*1[^}]*\}/) || [''])[0];
+  assert.ok(rule, 'a .header-right .search-toggle-btn rule sets order:1 (rightmost corner)');
+  assert.match(rule, /margin-left:\s*var\(--space-6\)/, 'a split gap before the search glyph');
+  assert.match(rule, /font-size:\s*var\(--fs-xl\)/, 'the search glyph is a touch larger (16px vs ~13px siblings)');
+});
