@@ -279,6 +279,11 @@ const MODERN_CHIPS = [
   { filter: 'continue', label: 'Continue watching' },
   { filter: 'unwatched', label: 'Unwatched' },
 ];
+// v1.86.0 (Dean): MODERN_SORT_OPTIONS / MODERN_SORT_DEFAULT / resolveModernSort
+// live in common.js (exported + source-locked against the server whitelist) and
+// are visible here via the shared classic-script global scope, exactly like
+// MODERN_CHIP_FILTERS / resolveModernChip.
+
 function buildModernChipRowHtml(active) {
   const a = typeof resolveModernChip === 'function' ? resolveModernChip(active) : 'all';
   const chips = MODERN_CHIPS.map((c) => {
@@ -798,6 +803,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // Modern chrome host (chip row + avatar bar) mounted above the grid, once.
     let modernChromeHost = null;
     let activeModernChip = (typeof resolveModernChip === 'function') ? resolveModernChip('all') : 'all';
+    // v1.86.0 (Dean): the modern grid's chosen sort, persisted per-device. Read
+    // through the whitelist (localStorage is untrusted); the server bounds it too.
+    let activeModernSort = MODERN_SORT_DEFAULT;
+    try { activeModernSort = resolveModernSort(localStorage.getItem('filetube_modern_sort')); } catch (_) { /* private mode -> default */ }
     let modernReqToken = 0;
     if (modernMode && libraryContent) {
       root.classList.add('modern-home-mode');
@@ -987,7 +996,7 @@ if (typeof module !== 'undefined' && module.exports) {
           const filter = resolveModernChip(activeModernChip);
           let items = [];
           try {
-            const res = await fetch(`/api/home?view=grid&filter=${encodeURIComponent(filter)}`, { signal: sig });
+            const res = await fetch(`/api/home?view=grid&filter=${encodeURIComponent(filter)}&sort=${encodeURIComponent(activeModernSort)}`, { signal: sig });
             const data = res.ok ? await res.json() : { items: [] };
             items = Array.isArray(data.items) ? data.items : [];
           } catch (err) {
@@ -998,7 +1007,110 @@ if (typeof module !== 'undefined' && module.exports) {
           if (token !== modernReqToken) return; // a newer chip click superseded this
           videoGrid.innerHTML = items.length ? items.map(buildCardHtml).join('') : buildModernEmptyHtml(filter);
         }
+        // v1.86.0 (Dean): a glyph-only sort ▾ injected as the LEFTMOST control in
+        // the header top-right, shown ONLY on the modern home (removed on
+        // nav-away via the view's abort signal, so it is never orphaned in the
+        // persistent shell). Selecting a sort re-fetches the grid. Self-contained
+        // (own menu + handlers) because the classic #sort-dropdown wiring drives
+        // the classic grid's resetAndReload, not this endpoint. Reuses .sort-menu.
+        function injectModernHeaderSort(sig) {
+          const headerRight = document.querySelector('.header-right');
+          if (!headerRight) return; // signed-out / no shell -> nothing to attach to
+          const prior = headerRight.querySelector('.modern-sort');
+          if (prior) prior.remove(); // idempotent across re-renders
+
+          const wrap = document.createElement('div');
+          wrap.className = 'modern-sort';
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'modern-sort-btn';
+          btn.setAttribute('aria-haspopup', 'listbox');
+          btn.setAttribute('aria-expanded', 'false');
+          btn.setAttribute('aria-label', 'Sort');
+          btn.title = 'Sort';
+          const caret = document.createElement('span');
+          caret.className = 'modern-sort-caret';
+          caret.setAttribute('aria-hidden', 'true');
+          caret.textContent = '▾';
+          btn.appendChild(caret);
+          const menu = document.createElement('ul');
+          menu.className = 'sort-menu modern-sort-menu';
+          menu.setAttribute('role', 'listbox');
+          menu.setAttribute('aria-label', 'Sort');
+          menu.hidden = true;
+          for (const [val, label] of MODERN_SORT_OPTIONS) {
+            const li = document.createElement('li');
+            li.setAttribute('role', 'option');
+            li.setAttribute('data-sort', val);
+            li.tabIndex = -1;
+            li.textContent = label;
+            menu.appendChild(li);
+          }
+          wrap.appendChild(btn);
+          wrap.appendChild(menu);
+          headerRight.insertBefore(wrap, headerRight.firstChild); // leftmost of the cluster
+
+          const opts = () => Array.prototype.slice.call(menu.querySelectorAll('[data-sort]'));
+          const applyActive = () => opts().forEach((li) => {
+            const on = li.getAttribute('data-sort') === activeModernSort;
+            li.classList.toggle('active', on);
+            li.setAttribute('aria-selected', on ? 'true' : 'false');
+          });
+          const open = () => {
+            menu.hidden = false;
+            btn.setAttribute('aria-expanded', 'true');
+            const cur = opts().find((li) => li.getAttribute('data-sort') === activeModernSort) || opts()[0];
+            if (cur) cur.focus();
+          };
+          const close = (returnFocus) => {
+            menu.hidden = true;
+            btn.setAttribute('aria-expanded', 'false');
+            if (returnFocus) btn.focus();
+          };
+          const choose = (val, returnFocus) => {
+            close(returnFocus);
+            const next = resolveModernSort(val);
+            if (next === activeModernSort) return;
+            activeModernSort = next;
+            try { localStorage.setItem('filetube_modern_sort', next); } catch (_) { /* private mode */ }
+            applyActive();
+            fetchModernGrid(sig);
+          };
+          applyActive();
+
+          btn.addEventListener('click', (e) => { e.stopPropagation(); if (menu.hidden) open(); else close(); }, { signal: sig });
+          btn.addEventListener('keydown', (e) => {
+            if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && menu.hidden) { e.preventDefault(); open(); }
+          }, { signal: sig });
+          menu.addEventListener('click', (e) => {
+            const li = e.target.closest('[data-sort]');
+            if (li) choose(li.getAttribute('data-sort'), false);
+          }, { signal: sig });
+          menu.addEventListener('keydown', (e) => {
+            const list = opts();
+            const idx = list.indexOf(document.activeElement);
+            if (e.key === 'ArrowDown') { e.preventDefault(); (list[idx + 1] || list[0]).focus(); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); (list[idx - 1] || list[list.length - 1]).focus(); }
+            else if (e.key === 'Home') { e.preventDefault(); list[0].focus(); }
+            else if (e.key === 'End') { e.preventDefault(); list[list.length - 1].focus(); }
+            else if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              const li = document.activeElement;
+              if (li && li.getAttribute('data-sort')) choose(li.getAttribute('data-sort'), true);
+            } else if (e.key === 'Escape') { e.preventDefault(); close(true); }
+          }, { signal: sig });
+          document.addEventListener('click', (e) => {
+            if (menu.hidden) return;
+            if (wrap.contains(e.target)) return;
+            close();
+          }, { signal: sig });
+
+          // Nav-away: the view's abort signal removes the header control so it is
+          // NEVER orphaned in the persistent shell on a non-modern page.
+          sig.addEventListener('abort', () => { wrap.remove(); });
+        }
         async function renderModernHome(chromeHost, sig) {
+          injectModernHeaderSort(sig); // glyph-only ▾, leftmost in the header top-right
           if (chromeHost) {
             // #modern-avatar-bar is filled by T4 (mobile-only). The chip row is
             // wired with ONE delegated listener covering every chip.

@@ -7531,6 +7531,35 @@ body.ft-css-fullscreen .bottom-nav {
    this wins on BOTH desktop and mobile regardless of source order. */
 .modern-home-mode .section-title { display: none; }
 
+/* v1.86.0 (Dean): the modern-home header sort control - a glyph-only ▾ caret,
+   injected as the LEFTMOST item in the header top-right (main.js, modern home
+   only; removed on nav-away). Modelled on .notif-bell-btn; it opens the reused
+   .sort-menu (positioned absolutely against this relative wrapper). */
+.modern-sort {
+  position: relative; /* anchor for the absolutely-positioned .sort-menu */
+  display: inline-flex;
+  align-items: center;
+}
+.modern-sort-btn {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: var(--space-3);
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-2xl); /* caret reads at header-glyph size */
+  line-height: 1; /* token-exempt: glyph centering */
+}
+.modern-sort-btn:hover {
+  background-color: var(--bg-secondary);
+}
+.modern-sort-caret {
+  line-height: 1; /* token-exempt: glyph centering */
+}
+
 /* the flat big-tile grid: 3-up, reflowing to 4 on wide desktops, 1 on phones */
 .modern-home-mode #video-grid {
   grid-template-columns: repeat(3, 1fr);

@@ -9,8 +9,8 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { resolveHomeLayout, resolveModernChip, MODERN_CHIP_FILTERS } = require('../../public/js/common.js');
-const { MODERN_GRID_FILTERS } = require('../../lib/home/feed.js');
+const { resolveHomeLayout, resolveModernChip, MODERN_CHIP_FILTERS, MODERN_SORT_OPTIONS, resolveModernSort } = require('../../public/js/common.js');
+const { MODERN_GRID_FILTERS, MODERN_GRID_SORTS } = require('../../lib/home/feed.js');
 
 test('resolveHomeLayout: precedence modern > feed > classic', () => {
   assert.strictEqual(resolveHomeLayout({ bareHome: true, forceGrid: false, modern: true, feed: true }), 'modern', 'both on -> modern wins');
@@ -40,4 +40,20 @@ test('resolveModernChip: known chips pass; unknown/absent -> all', () => {
 test('source-lock: the client chip list EQUALS the server MODERN_GRID_FILTERS', () => {
   assert.deepStrictEqual(MODERN_CHIP_FILTERS, MODERN_GRID_FILTERS,
     'client (common.js) and server (lib/home/feed.js) filter lists must stay identical - a drift silently mis-maps a chip');
+});
+
+// ---- v1.86.0: the sort control's client<->server binding --------------------
+
+test('source-lock: the client sort values EQUAL the server MODERN_GRID_SORTS', () => {
+  const clientValues = MODERN_SORT_OPTIONS.map(([v]) => v);
+  assert.deepStrictEqual([...clientValues].sort(), [...MODERN_GRID_SORTS].sort(),
+    'client (common.js) sort values and server (lib/home/feed.js) MODERN_GRID_SORTS must stay identical - a drift means a menu option the server bounces to newest, or a server key with no menu entry');
+});
+
+test('resolveModernSort: known values pass; unknown/absent -> newest (mirrors the server)', () => {
+  for (const [v] of MODERN_SORT_OPTIONS) assert.strictEqual(resolveModernSort(v), v);
+  assert.strictEqual(resolveModernSort('bogus'), 'newest');
+  assert.strictEqual(resolveModernSort(undefined), 'newest');
+  assert.strictEqual(resolveModernSort(null), 'newest');
+  assert.strictEqual(resolveModernSort('NEWEST'), 'newest', 'case-exact');
 });
