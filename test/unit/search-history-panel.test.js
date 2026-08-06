@@ -94,3 +94,23 @@ test('source-lock: performGlobalSearch records the term', () => {
   assert.match(src, /function performGlobalSearch\(\)[\s\S]{0,400}recordSearchTerm\(query\)/,
     'a search records the term (per-user, synced)');
 });
+
+// ---- v1.86.4 (Dean): submitting a search CLOSES the mobile search reveal ------
+
+const fs = require('node:fs');
+const SRC = fs.readFileSync(require('node:path').join(__dirname, '../../public/js/common.js'), 'utf8');
+
+test('performGlobalSearch closes the mobile search reveal (removes search-open) on Enter/search-btn', () => {
+  // The mobile magnifier reveals the field via the `search-open` class on <html>;
+  // a direct submit must dismiss it like a history pick does, else the bar lingers
+  // and the user has to tap the magnifier again (Dean: "incredibly clunky").
+  const fn = SRC.slice(SRC.indexOf('function performGlobalSearch'), SRC.indexOf('function performGlobalSearch') + 1200);
+  assert.match(fn, /document\.documentElement\.classList\.remove\('search-open'\)/,
+    'performGlobalSearch must remove the search-open reveal class on submit');
+  // ...and BEFORE the navigate, so the class is gone regardless of the SPA vs
+  // full-load branch.
+  const removeIdx = fn.indexOf("classList.remove('search-open')");
+  const navIdx = fn.indexOf('FileTube.navigate');
+  assert.ok(removeIdx > -1 && navIdx > -1 && removeIdx < navIdx,
+    'the reveal is closed before navigating (both nav branches then see it closed)');
+});
