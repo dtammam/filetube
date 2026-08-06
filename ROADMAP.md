@@ -80,6 +80,25 @@
 
 ## Shipped
 
+### v1.86.4 - Submitting a search closes the mobile search reveal (2026-08-06)
+
+Dean: on mobile (modern feed), after entering a search - type + Enter, the search
+button, OR a history pick - the revealed search bar stayed open; you had to tap the
+magnifier again to dismiss it ("incredibly clunky"). Root: the magnifier reveals the
+field via the `search-open` class on `<html>`; the history-pick path already closed
+it (`wireSearchAffordances`' `onSearch` -> `closeSearch()`), but the DIRECT submit
+(`performGlobalSearch`, the shell-owned Enter/search-button handler) navigated without
+removing the class. Fix: `performGlobalSearch` now removes `search-open` BEFORE
+navigating, so every submit path dismisses the bar. Unconditional + a proven no-op on
+desktop (the bar is always visible; the class is never set).
+
+Slim adversarial gate: APPROVE, no findings. Both submit paths (Enter + button) route
+through `performGlobalSearch`; the close fires before both nav branches (mutation-
+confirmed the ordering assert binds); the history-pick path is untouched. Dual-Node
+full suite **6448/6448** on v22.23.1 and v24.14.0; census 0, lint clean. **Dean's device
+pass PENDING** - the on-screen dismiss is his call. (Gate noted a PRE-EXISTING music.js
+search double-fire, out of scope + unaffected by this fix.)
+
 ### v1.86.3 - Uniform header glyph sizes (all 22px) (2026-08-06)
 
 Dean (from a screenshot): the header glyphs were mismatched - the bell and queue
