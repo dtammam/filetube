@@ -31,7 +31,11 @@ test('style.css: .icon-download is in the base currentColor mask group, alongsid
 });
 
 test('style.css: .icon-download has an outlined (default) mask-image assignment', () => {
-  assert.match(css, /\.icon-download\s*\{\s*-webkit-mask-image:\s*url\(\/assets\/icons\/download\.svg\);\s*mask-image:\s*url\(\/assets\/icons\/download\.svg\);\s*\}/);
+  // v1.87.0 (Dean): the DEFAULT-set download mask is now INLINED as a data-URI
+  // (first-paint icon - no async /assets fetch, so it no longer pops in on a
+  // mobile PWA cold start). The rounded/filled variants below stay url(/assets).
+  assert.match(css, /^\.icon-download \{ -webkit-mask-image: url\("data:image\/svg\+xml,[^"]+"\); mask-image: url\("data:image\/svg\+xml,[^"]+"\); \}/m,
+    'the default .icon-download mask is an inlined data-URI (v1.87.0 first-paint inlining)');
 });
 
 test('style.css: .icon-download participates in the @supports currentColor fill guard', () => {

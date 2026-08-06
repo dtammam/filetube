@@ -80,6 +80,48 @@
 
 ## Shipped
 
+### v1.87.0 - Inline first-paint chrome icons (no cold-start pop-in) + even top-right spacing (2026-08-06)
+
+Dean, on-device: on a mobile PWA cold start the bottom-nav and top-right glyphs "pop
+in" a beat after their text labels - the row paints as bare words, then the icons
+fill. The bell + queue never lagged because they are inline SVGs built in JS (their
+markup ships in the first paint); the other glyphs are CSS mask-icons that fetch their
+SVG from `/assets/icons/*.svg` asynchronously, so they arrive late. Second report: the
+top-right glyphs are unevenly spaced, the search magnifier sitting too far out.
+
+Fix (Dean's explicit choice - inline the critical icons): embed the DEFAULT-set masks
+for the first-paint roster into `style.css` as `url("data:image/svg+xml,<minified-svg>")`
+so they need no fetch and paint with the labels. Roster = the whole bottom-nav (home,
+liked, favorites, playlists, history, podcast, music, books, downloads, theme moon+sun,
+settings), the header (search, download, sort chevron), subscriptions' refresh, and the
+Home-toolbar view-mode toggle (grid/list) - 17 assets / 18 classes, ~15KB of CSS. The
+rounded/filled icon sets keep `url(/assets/...)` (they load only when that set is
+chosen); the emoji set is untouched. Spacing: dropped the magnifier's extra
+`margin-left` that stacked a second gap on the row's own `gap`, so it sat ~28px from its
+neighbour while everything else was 14px apart - now the row shares one uniform gap,
+magnifier still rightmost.
+
+Slim adversarial gate (CSS/behavior, no data surface): caught one real WARNING - the
+"presence not binding" class. My icon-identity tests bound byte-identity to the on-disk
+asset for only 3 of the 16 originally-inlined icons (the glyph-pool members); the other
+13 were guarded only by "decodes to a well-formed <svg>", which a garbled-but-valid
+embed (a corrupted `d=` path that renders a BLANK mask - the AC7 blank-box class this
+wave defends against) would pass in a future edit. The shipped embeds were verified
+byte-correct by the reviewer; I closed the future-regression window by rewriting
+`critical-icons-inlined.test.js` around a class->asset map that asserts each embed
+byte-for-byte against the on-disk SVG (mutation-verified: a one-coordinate path drift
+now goes red across a sample of the formerly-unbound icons). Also took the reviewer's
+SUGGESTION to inline the view-toggle glyphs (the last chrome icons still fetching from
+/assets). Re-confirm: APPROVE. Dual-Node full suite **6466/6466** on v22.23.1 and
+v24.14.0; census 0, ledger clean, lint 0 errors. **Dean's device pass PENDING** - the
+cold-start smoothness + even spacing are his call.
+
+Known gap (disclosed): `.icon-list`/`.icon-grid` are now inlined, but other non-first-
+paint icons (e.g. delete, menu, share, the folder-picker pool glyphs beyond favorites)
+deliberately still fetch from /assets - they are not on the first-paint path, so
+inlining them would only bloat the CSS. If any of those visibly pop in on a surface
+Dean cares about, they can join the roster.
+
 ### v1.86.4 - Submitting a search closes the mobile search reveal (2026-08-06)
 
 Dean: on mobile (modern feed), after entering a search - type + Enter, the search
