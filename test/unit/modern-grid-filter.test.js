@@ -7,7 +7,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { MODERN_GRID_FILTERS, resolveGridFilter, matchesGridFilter } = require('../../lib/home/feed.js');
+const { MODERN_GRID_FILTERS, resolveGridFilter, MODERN_GRID_SORTS, resolveGridSort, matchesGridFilter } = require('../../lib/home/feed.js');
 
 const media = (over) => Object.assign({ kind: 'media', type: 'video', inProgress: false, watched: false }, over);
 const pod = (over) => Object.assign({ kind: 'podcast', type: 'audio', inProgress: false, watched: false }, over);
@@ -57,4 +57,24 @@ test('unwatched: media neither latched nor finished-by-threshold; watched/finish
   assert.ok(!matchesGridFilter(media({ watched: false, finished: true }), 'unwatched'),
     'a finished-by-threshold (e.g. 95% unlatched) video is out too (QA suggestion) - not both unwatched AND done');
   assert.ok(!matchesGridFilter(pod({ watched: false }), 'unwatched'), 'podcasts have no watched latch -> never in Unwatched');
+});
+
+// ---- v1.86.0: resolveGridSort (PURE) ---------------------------------------
+
+test('resolveGridSort: known values pass; unknown/absent -> newest', () => {
+  for (const s of MODERN_GRID_SORTS) assert.strictEqual(resolveGridSort(s), s);
+  assert.strictEqual(resolveGridSort('bogus'), 'newest');
+  assert.strictEqual(resolveGridSort(undefined), 'newest');
+  assert.strictEqual(resolveGridSort(''), 'newest');
+  assert.strictEqual(resolveGridSort('NEWEST'), 'newest', 'case-exact');
+});
+
+test('resolveGridSort whitelist == exactly videoQuery.sortItems keys (the classic sort menu)', () => {
+  // Binding: the modern grid must offer EXACTLY the classic sort keys, no more.
+  // If videoQuery grows/loses a key, this list must move with it (or a hand-typed
+  // ?sort= reaches videoQuery with an unbounded key, or a menu option 500s).
+  assert.deepStrictEqual(
+    [...MODERN_GRID_SORTS].sort(),
+    ['newest', 'oldest', 'release-date', 'title-asc', 'title-desc', 'size-desc', 'size-asc', 'random'].sort(),
+  );
 });

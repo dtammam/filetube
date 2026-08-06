@@ -53,8 +53,10 @@ function seed(metadata, over = {}) {
   });
 }
 const grid = async (filter, opts = {}) => {
+  const { sort, ...init } = opts; // v1.86.0: opts.sort -> &sort=, rest -> fetch init (headers)
   const q = filter ? `&filter=${filter}` : '';
-  const res = await fetch(`${base}/api/home?view=grid${q}`, opts);
+  const s = sort ? `&sort=${sort}` : '';
+  const res = await fetch(`${base}/api/home?view=grid${q}${s}`, init);
   return { status: res.status, body: await res.json() };
 };
 const ids = (body) => (body.items || []).map((i) => i.id);
@@ -227,4 +229,54 @@ test('the 60-item cap is DISCLOSED via truncated:true, never silent', async () =
   const { body } = await grid('all');
   assert.strictEqual(body.items.length, 60, 'capped at 60');
   assert.strictEqual(body.truncated, true, 'the cap is disclosed');
+});
+
+// ---- v1.86.0 (Dean): the whole-library sort --------------------------------
+
+test('sort applies to the WHOLE library BEFORE the 60-cap (oldest surfaces a globally-old item, not oldest-of-newest-60)', async () => {
+  const meta = {};
+  // 65 items, addedAt ascending: g0 (globally oldest) .. g64 (globally newest).
+  for (let i = 0; i < 65; i++) meta[`g${i}`] = item(`g${i}`, { addedAt: 1000 + i });
+  seed(meta);
+
+  // Default (newest): g64 leads, and the globally-oldest g0 is BELOW the 60-cap.
+  const newest = ids((await grid('all')).body);
+  assert.strictEqual(newest[0], 'g64', 'newest-first default');
+  assert.ok(!newest.includes('g0'), 'the globally-oldest item is NOT in the newest-60 snapshot');
+
+  // Oldest: g0 (globally oldest) leads. This ONLY happens if the sort ran on the
+  // FULL candidate set before the cap - a cap-then-sort would never surface g0.
+  const oldest = (await grid('all', { sort: 'oldest' })).body;
+  assert.strictEqual(oldest.sort, 'oldest', 'the response echoes the resolved sort');
+  assert.strictEqual(ids(oldest)[0], 'g0', 'oldest-first surfaces the globally-oldest item -> sort BEFORE cap');
+  assert.strictEqual(oldest.items.length, 60, 'still capped at 60');
+  assert.strictEqual(oldest.truncated, true);
+});
+
+test('sort: unknown/absent -> newest; title and size sorts order correctly', async () => {
+  seed({
+    a: item('a', { title: 'Apple', size: 300, addedAt: 100 }),
+    b: item('b', { title: 'Banana', size: 100, addedAt: 200 }),
+    c: item('c', { title: 'Cherry', size: 200, addedAt: 300 }),
+  });
+  assert.deepStrictEqual(ids((await grid('all', { sort: 'bogus' })).body), ['c', 'b', 'a'], 'unknown sort -> newest');
+  assert.strictEqual((await grid('all', { sort: 'bogus' })).body.sort, 'newest', 'echoes the bounded value');
+  assert.deepStrictEqual(ids((await grid('all', { sort: 'title-asc' })).body), ['a', 'b', 'c'], 'title A-Z');
+  assert.deepStrictEqual(ids((await grid('all', { sort: 'title-desc' })).body), ['c', 'b', 'a'], 'title Z-A');
+  assert.deepStrictEqual(ids((await grid('all', { sort: 'size-desc' })).body), ['a', 'c', 'b'], 'largest first');
+  assert.deepStrictEqual(ids((await grid('all', { sort: 'size-asc' })).body), ['b', 'c', 'a'], 'smallest first');
+});
+
+test('sort does not bypass RBAC/hidden-folder exclusion (sort runs on the already-filtered set)', async () => {
+  seed(
+    { shown: item('shown', { addedAt: 100 }), buried: item('buried', { addedAt: 999, folderName: 'Secret', channelName: 'Secret', filePath: '/media/Secret/buried.mp4' }) },
+    { folderSettings: { '/media/Secret': { hidden: true } } },
+  );
+  // Even sorting by newest (where buried's addedAt=999 would lead), the hidden
+  // item must never surface - the sort operates on the post-RBAC candidate set.
+  for (const sort of ['newest', 'oldest', 'size-desc', 'random']) {
+    const got = ids((await grid('all', { sort })).body);
+    assert.ok(got.includes('shown'), `shown present under sort=${sort}`);
+    assert.ok(!got.includes('buried'), `hidden item excluded under sort=${sort} (no leak via sort)`);
+  }
 });
