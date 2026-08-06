@@ -76,3 +76,8 @@ test('(v1.86.0 gate WARNING) the header sort ▾ is ROUTE-GATED: display:none by
   assert.match(css, /body\[data-view="home"\] \.modern-sort \{\s*display:\s*inline-flex/,
     'only the home route shows the ▾ (re-shows on cache-restore, hides on every other view)');
 });
+
+test('(v1.86.1 Dean) the sort ▾ caret is sized a step up (--fs-3xl) so the small caret glyph reads larger', () => {
+  assert.match(css, /\.modern-sort-btn \{[^}]*font-size:\s*var\(--fs-3xl\)/,
+    'the ▾ caret glyph reads small at header size, so the button is bumped to --fs-3xl (20px)');
+});

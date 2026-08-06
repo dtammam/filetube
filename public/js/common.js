@@ -1518,6 +1518,20 @@ function pullRefreshState(pullPx, thresholdPx) {
   return px >= t ? 'ready' : 'pulling';
 }
 
+// v1.86.1 (Dean): a pull is ONLY a vertical gesture. When the drag is
+// HORIZONTAL-dominant - swiping a horizontal scroller pinned at the top, i.e. the
+// modern avatar bar or the chip row - it must NOT arm pull-to-refresh (Dean: the
+// rescan spinner fired constantly while swiping the subscriber circles). Returns
+// true for such a drag, but only once the horizontal travel is meaningful (past
+// `slopPx`, default 12) AND exceeds the vertical - so the first few noisy px of a
+// genuine vertical pull never axis-lock it out. Pure - exported for node:test.
+function pullIsHorizontalDrag(dx, dy, slopPx) {
+  const ax = Math.abs(typeof dx === 'number' ? dx : 0);
+  const ay = Math.abs(typeof dy === 'number' ? dy : 0);
+  const slop = (typeof slopPx === 'number' && slopPx > 0) ? slopPx : 12;
+  return ax > slop && ax > ay;
+}
+
 // v1.45.6 (Dean): PER-PAGE SORT. A CLIENT toggle (like ft-debug-lifecycle) that,
 // when on, remembers a separate sort per library page instead of one global
 // `filetube_sort`. Default OFF — the global path is byte-unchanged when off.
@@ -11594,7 +11608,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.45.6 (Dean): library view-mode + per-page-sort helpers.
     getStoredViewMode, setStoredViewMode,
     isPerPageSortEnabled, setPerPageSortEnabled, pageSortKey, getPerPageSort, setPerPageSort,
-    pullRefreshState,
+    pullRefreshState, pullIsHorizontalDrag,
     FORMAT_FILTER_MODES, buildFormatToggleControl, renderFormatToggle,
     // v1.50: the watched-state filter toggle (the format toggle's sibling).
     WATCH_TOGGLE_MODES, getStoredWatchFilter, setStoredWatchFilter,

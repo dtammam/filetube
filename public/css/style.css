@@ -4738,7 +4738,21 @@ a.sub-row-channel-link:focus-visible {
   /* v1.85.1 (#D): the one-off Download button IS wanted in the mobile top-right
      (Dean) - exempt it from the v1.82 `.header-right .btn { display:none }` hide.
      The id selector (1,1,0) beats that rule (0,2,0) regardless of order. */
-  .header-right #ytdlp-oneoff-btn { display: inline-flex; }
+  /* v1.86.1 (Dean): on mobile, style the Download button like the bell/search
+     glyph buttons - drop the .btn BOX (background/border/shadow), circular hit
+     area, and a touch larger than the .btn default (--fs-sm=12px) so it no longer
+     reads smaller than the ~13px sibling glyphs. The (1,1,0) id selector beats
+     the (0,1,0) .btn base for all of these. */
+  .header-right #ytdlp-oneoff-btn {
+    display: inline-flex;
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: var(--space-3);
+    border-radius: var(--radius-full);
+    font-size: var(--fs-lg);
+  }
+  .header-right #ytdlp-oneoff-btn:hover { background-color: var(--bg-secondary); }
   /* v1.86.0 (Dean): on mobile the Download button is GLYPH-ONLY - hide its label
      (desktop keeps the word). .btn is inline-flex with a gap, so the lone icon
      stays clean. */
@@ -7573,7 +7587,7 @@ body[data-view="home"] .modern-sort {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--fs-2xl); /* caret reads at header-glyph size */
+  font-size: var(--fs-3xl); /* v1.86.1 (Dean): the ▾ caret glyph reads small, so size it a step up (20px) to sit a touch larger than the sibling header glyphs */
   line-height: 1; /* token-exempt: glyph centering */
 }
 .modern-sort-btn:hover {

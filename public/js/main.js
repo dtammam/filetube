@@ -2073,9 +2073,11 @@ if (typeof module !== 'undefined' && module.exports) {
     ptrIndicator.innerHTML = '<i class="icon-refresh"></i>';
     root.appendChild(ptrIndicator);
     let ptrStartY = null;   // non-null only while a pull that began AT THE TOP is live
+    let ptrStartX = null;   // v1.86.1: X at start, to reject horizontal-dominant drags
     let ptrArmed = false;
     function ptrReset() {
       ptrStartY = null;
+      ptrStartX = null;
       ptrArmed = false;
       ptrIndicator.classList.remove('visible', 'ready');
       ptrIndicator.style.removeProperty('--ptr-pull');
@@ -2091,6 +2093,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // rescan. When Home is the live view it's reconnected and active again.
       if (window.scrollY > 0 || rescanBtn.disabled || !ptrIndicator.isConnected || !e.touches || e.touches.length !== 1) { ptrStartY = null; return; }
       ptrStartY = e.touches[0].clientY;
+      ptrStartX = e.touches[0].clientX;
       ptrArmed = false;
     }, { signal, passive: true });
     window.addEventListener('touchmove', (e) => {
@@ -2099,6 +2102,12 @@ if (typeof module !== 'undefined' && module.exports) {
       // scroll (scrollY > 0) cancels it so a normal scroll never shows the UI.
       if (window.scrollY > 0) { ptrReset(); return; }
       const pull = e.touches[0].clientY - ptrStartY;
+      // v1.86.1 (Dean): a HORIZONTAL-dominant drag is a horizontal-scroller swipe
+      // (the avatar bar / chip row, both pinned at the top), NOT a pull - swiping
+      // the subscriber circles was constantly flashing the rescan spinner. Lock
+      // the pull out for the REST of this gesture (ptrReset nulls ptrStartY, so
+      // every later touchmove bails at the guard above).
+      if (pullIsHorizontalDrag(e.touches[0].clientX - ptrStartX, pull)) { ptrReset(); return; }
       // Dragged back to/above the start → DISARM (gate WARNING: else a release
       // here still ran the rescan) and hide, but keep tracking in case the
       // finger pulls down again in the same gesture.

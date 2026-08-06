@@ -80,6 +80,33 @@
 
 ## Shipped
 
+### v1.86.1 - Download/▾ glyph polish + pull-to-refresh horizontal-swipe lockout (2026-08-06)
+
+Dean's on-device polish after v1.86.0:
+- **Mobile Download button** now styled like the bell/search glyph buttons - dropped
+  the `.btn` box (background/border/shadow), circular hit area, and bumped from
+  `--fs-sm` (12px) to `--fs-lg` (15px) so it no longer reads smaller than the ~13px
+  sibling glyphs. Desktop keeps the labeled `.btn`.
+- **Sort ▾ caret** bumped to `--fs-3xl` (20px) - the caret character reads small at
+  header size.
+- **Pull-to-refresh no longer fires while swiping the subscriber-avatar circles.**
+  Root cause: the PTR `touchmove` measured ONLY the vertical delta, so a horizontal
+  swipe on the avatar bar / chip row (horizontal scrollers pinned at the top) with
+  any downward drift armed the pull and flashed the rescan spinner constantly. Fix:
+  a pure `pullIsHorizontalDrag(dx, dy, slop=12)` helper - a horizontal-dominant drag
+  (past the slop AND exceeding the vertical) locks the pull out for the rest of the
+  gesture. The slop keeps the first noisy px of a genuine vertical pull from being
+  axis-locked.
+
+Slim adversarial gate: APPROVE. Round 1 caught a test-completeness WARNING (the
+helper's vertical-dominance clause was unbound - a "presence-not-binding" gap);
+closed with mutation-verified assertions (dropping the clause, `Math.abs`, or the
+slop boundary each now RED). Dual-Node full suite **6439/6439** on v22.23.1 and
+v24.14.0; census 0, ledger CLEAN. **Dean's on-device pass is PENDING** - probe the
+box-free/larger Download glyph, the larger ▾, and (the real fix) that swiping the
+avatar circles no longer triggers the rescan spinner. Glyph sizes + the 12px
+diagonal-lockout threshold are tunable device-feel calls.
+
 ### v1.86.0 - Modern-home whole-library sort ▾ + header polish (2026-08-06)
 
 Dean's on-device follow-ups to v1.85.2:

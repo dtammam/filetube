@@ -54,6 +54,14 @@ test('(v1.86.0) the mobile Download button is GLYPH-ONLY (its .btn-label is hidd
     'mobile Download hides its .btn-label -> glyph-only');
 });
 
+test('(v1.86.1 Dean) the mobile Download button drops the .btn box (bell/search styling) and is sized to match the siblings', () => {
+  const rule = (css.match(/\.header-right #ytdlp-oneoff-btn \{[^}]*\}/) || [''])[0];
+  assert.match(rule, /background:\s*none/, 'no .btn background box');
+  assert.match(rule, /border:\s*none/, 'no .btn border box');
+  assert.match(rule, /border-radius:\s*var\(--radius-full\)/, 'circular hit area like the bell');
+  assert.match(rule, /font-size:\s*var\(--fs-lg\)/, 'bumped from the .btn --fs-sm so it is not smaller than the ~13px sibling glyphs');
+});
+
 test('(v1.86.0) the search magnifier owns the far-right corner (order) + a split gap + a touch larger', () => {
   const rule = (css.match(/\.header-right \.search-toggle-btn \{[^}]*order:\s*1[^}]*\}/) || [''])[0];
   assert.ok(rule, 'a .header-right .search-toggle-btn rule sets order:1 (rightmost corner)');
