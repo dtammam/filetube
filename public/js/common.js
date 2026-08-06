@@ -11299,6 +11299,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const query = searchInput.value.trim();
     const url = query ? `/?search=${encodeURIComponent(query)}` : '/';
     if (query) recordSearchTerm(query); // v1.85 #1: remember it (per-user, synced)
+    // v1.86.4 (Dean): on mobile the search field is a REVEAL (the `search-open`
+    // class on <html>, toggled by the magnifier). Submitting it - Enter or the
+    // search button - must CLOSE the reveal, exactly like picking a history entry
+    // already does (wireSearchAffordances' onSearch). Otherwise the revealed bar
+    // lingers and the user has to tap the magnifier again to dismiss it (Dean:
+    // "incredibly clunky"). Unconditional + harmless on desktop, where the bar is
+    // always visible and the class is never set.
+    document.documentElement.classList.remove('search-open');
     if (window.FileTube && typeof window.FileTube.navigate === 'function') {
       window.FileTube.navigate(url);
     } else {
