@@ -227,10 +227,6 @@ test('v1.73 SOURCE-LOCK: Downloads injects from the syntheticFolders probe, upgr
   assert.ok(src.includes('navItem.parentNode.removeChild(navItem)'), 'no root = the bottom item is REMOVED (the module gate beats user opt-in - the v1.44 rule)');
   assert.ok(src.includes("navItem.setAttribute('href', href)"), 'with a root, the static placeholder href upgrades');
   const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
-  // v1.87.0 (Dean): the DEFAULT icon-downloads mask is now INLINED as a data-URI
-  // (Downloads is a first-paint Library fallback - no async /assets fetch, so no
-  // cold-start pop-in). The rounded/filled overrides + the on-disk asset (below)
-  // are unchanged.
-  assert.ok(/\.icon-downloads \{ -webkit-mask-image: url\("data:image\/svg\+xml,/.test(css), 'the glyph is a real mask asset (v1.87.0 inlined data-URI)');
+  assert.ok(css.includes('.icon-downloads { -webkit-mask-image: url(/assets/icons/downloads.svg)'), 'the glyph is a real mask asset (the icon-podcast single-asset posture)');
   assert.ok(fs.existsSync(path.join(__dirname, '../../public/assets/icons/downloads.svg')), 'the svg asset exists');
 });

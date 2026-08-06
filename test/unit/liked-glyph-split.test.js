@@ -41,16 +41,22 @@ test('roster sanity: the Liked bottom item exists in every app shell', () => {
     `expected >=9 shells carrying a Liked bottom item, found ${LIKED_SHELLS.length}: ${LIKED_SHELLS.join(', ')}`);
 });
 
-test('every static Liked nav item wears .icon-liked, and none still wears .icon-star', () => {
+test('every static Liked nav item wears the inline "liked" chrome-icon (not the Stats star)', () => {
+  // v1.87.1 (Dean): the bottom-nav glyphs are inline <svg> (chrome-icon) now,
+  // not `.icon-*` masks (a mask decode-lags -> pop-in on a mobile cold start).
+  // The invariant this test holds is unchanged: the Liked item wears the LIKED
+  // glyph (star.svg via chromeIconMarkup('liked')), distinct from the Stats link
+  // which still uses `.icon-star`. Now bound to the exact inline-svg markup.
+  const common = require('../../public/js/common.js');
+  const likedSvg = common.chromeIconMarkup('liked');
   const wrong = [];
   for (const f of LIKED_SHELLS) {
     const html = fs.readFileSync(path.join(PUB, f), 'utf8');
     // The glyph inside the Liked anchor specifically - not just "somewhere in
-    // the file", which `.icon-star` would still satisfy via the Stats link on
-    // index.html and stats.html.
-    const m = /data-nav="liked"[^>]*>\s*<i class="([a-z-]+)"/.exec(html);
+    // the file" (the Stats link's icon-star would otherwise satisfy it).
+    const m = /data-nav="liked"[^>]*>\s*(<svg class="chrome-icon"[^>]*>.*?<\/svg>|<i class="[a-z-]+")/.exec(html);
     if (!m) { wrong.push(`${f}: no glyph found inside the Liked anchor`); continue; }
-    if (m[1] !== 'icon-liked') wrong.push(`${f}: Liked wears ${m[1]}, expected icon-liked`);
+    if (m[1] !== likedSvg) wrong.push(`${f}: Liked glyph is not the inline "liked" chrome-icon`);
   }
   assert.deepEqual(wrong, [], `Liked nav glyph is wrong in:\n${wrong.join('\n')}`);
 });

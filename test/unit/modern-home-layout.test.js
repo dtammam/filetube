@@ -95,9 +95,14 @@ test('(v1.86.2 #2) the card delete second tap deletes STRAIGHT to trash - no che
   assert.doesNotMatch(handler, /showHardDeleteModal|isYtdlpManagedItem/, 'the card no longer escalates local files to the checkbox hard-delete modal');
 });
 
-test('(v1.86.3 Dean) the sort control is a keyboard_arrow_down mask-icon, not a half-height ▾ text caret', () => {
+test('(v1.87.1 Dean) the sort control is an inline keyboard_arrow_down chrome-icon svg, not a mask or a ▾ text caret', () => {
   const fn = MAIN.slice(MAIN.indexOf('function injectModernHeaderSort'), MAIN.indexOf('function injectModernHeaderSort') + 2600);
-  assert.match(fn, /caret\.className = 'icon-arrow-down modern-sort-caret'/,
-    'the caret is an icon-arrow-down (keyboard_arrow_down) mask - a 1em glyph that sizes like the download/search icons');
+  // v1.87.1: inline <svg> (chromeIconEl('caret')) rather than the v1.86.3
+  // `.icon-arrow-down` MASK - a mask decode-lags -> pop-in on a mobile cold
+  // start (the whole point of this wave). Still a 1em glyph sized like the
+  // download/search icons.
+  assert.match(fn, /chromeIconEl\('caret', 'modern-sort-caret'\)/,
+    'the caret is an inline chrome-icon svg (keyboard_arrow_down)');
+  assert.doesNotMatch(fn, /caret\.className = 'icon-arrow-down/, 'no leftover arrow-down mask caret');
   assert.doesNotMatch(fn, /textContent = '▾'/, 'no ▾ text-character caret (it read half-height vs the icon family)');
 });

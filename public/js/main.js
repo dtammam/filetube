@@ -1052,14 +1052,13 @@ if (typeof module !== 'undefined' && module.exports) {
           btn.setAttribute('aria-expanded', 'false');
           btn.setAttribute('aria-label', 'Sort');
           btn.title = 'Sort';
-          // v1.86.3 (Dean): a real chevron MASK-ICON (keyboard_arrow_down) instead
-          // of a tiny ▾ text character, so it sizes like the download/search glyphs
-          // (1em mask, not a half-height caret char) - Dean wants all header glyphs
-          // one size.
-          const caret = document.createElement('i');
-          caret.className = 'icon-arrow-down modern-sort-caret';
-          caret.setAttribute('aria-hidden', 'true');
-          btn.appendChild(caret);
+          // v1.86.3 (Dean): a real chevron (keyboard_arrow_down) instead of a tiny
+          // ▾ text character, so it sizes like the download/search glyphs.
+          // v1.87.1 (Dean): inline <svg> (chrome-icon), not an `.icon-arrow-down`
+          // mask - the mask decode-lags on a mobile cold start (chromeIconEl is a
+          // common.js top-level, available here like MODERN_SORT_OPTIONS).
+          const caret = chromeIconEl('caret', 'modern-sort-caret');
+          if (caret) btn.appendChild(caret);
           const menu = document.createElement('ul');
           menu.className = 'sort-menu modern-sort-menu';
           menu.setAttribute('role', 'listbox');

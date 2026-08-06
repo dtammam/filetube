@@ -8,6 +8,72 @@ const THEME_MODES = ['light', 'dark'];
 const DEFAULT_ERA = '2021';
 const DEFAULT_MODE = 'light';
 
+// ---- First-paint chrome icons: inline SVG (not CSS masks) -----------------
+// v1.87.1 (Dean): the bottom-nav + top-right header glyphs used the
+// `-webkit-mask-image` technique, which on iOS shows NOTHING until the mask
+// image is DECODED - so on a mobile PWA cold start the labels paint first and
+// the glyphs "pop in" a beat later. The notification bell + queue never lagged
+// because they are inline <svg> (they ride the text layer, no mask-decode gate).
+// v1.87.0 inlined the mask as a data-URI to kill the fetch; on-device the pop-in
+// was UNCHANGED, proving the fetch was never the cause - the mask DECODE was.
+// The fix Dean chose: render these glyphs as inline <svg>, exactly like the bell
+// /queue. Trade-off (accepted): the chrome glyphs no longer follow the icon-set
+// picker (outlined/rounded/filled/emoji) - like the bell/queue, they use ONE
+// fixed style. Dean picked ROUNDED (falling back to outlined for the four glyphs
+// with no rounded variant on disk: history, podcast, books, downloads).
+//
+// The path data is machine-derived from the on-disk assets (rounded/ where it
+// exists, else the default outlined) and byte-bound by chrome-icons.test.js, so
+// a drift or a swapped asset goes red. All share Material's `0 -960 960 960`
+// coordinate box except `podcast` (an older `0 0 24 24` asset).
+const CHROME_ICON_SVG = {
+  home: { vb: '0 -960 960 960', d: 'M240-200h120v-200q0-17 11.5-28.5T400-440h160q17 0 28.5 11.5T600-400v200h120v-360L480-740 240-560v360Zm-80 0v-360q0-19 8.5-36t23.5-28l240-180q21-16 48-16t48 16l240 180q15 11 23.5 28t8.5 36v360q0 33-23.5 56.5T720-120H560q-17 0-28.5-11.5T520-160v-200h-80v200q0 17-11.5 28.5T400-120H240q-33 0-56.5-23.5T160-200Zm320-270Z' },
+  liked: { vb: '0 -960 960 960', d: 'm354-287 126-76 126 77-33-144 111-96-146-13-58-136-58 135-146 13 111 97-33 143Zm126 18L314-169q-11 7-23 6t-21-8q-9-7-14-17.5t-2-23.5l44-189-147-127q-10-9-12.5-20.5T140-571q4-11 12-18t22-9l194-17 75-178q5-12 15.5-18t21.5-6q11 0 21.5 6t15.5 18l75 178 194 17q14 2 22 9t12 18q4 11 1.5 22.5T809-528L662-401l44 189q3 13-2 23.5T690-171q-9 7-21 8t-23-6L480-269Zm0-201Z' },
+  folder: { vb: '0 -960 960 960', d: 'M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h207q16 0 30.5 6t25.5 17l57 57h320q33 0 56.5 23.5T880-640v400q0 33-23.5 56.5T800-160H160Zm0-80h640v-400H447l-80-80H160v480Zm0 0v-480 480Z' },
+  history: { vb: '0 -960 960 960', d: 'M480-120q-138 0-240.5-91.5T122-440h82q14 104 92.5 172T480-200q117 0 198.5-81.5T760-480q0-117-81.5-198.5T480-760q-69 0-129 32t-101 88h110v80H120v-240h80v94q51-64 124.5-99T480-840q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-480q0 75-28.5 140.5t-77 114q-48.5 48.5-114 77T480-120Zm112-192L440-464v-216h80v184l128 128-56 56Z' },
+  podcast: { vb: '0 0 24 24', d: 'M12 14.2c.85 0 1.53.73 1.44 1.58l-.58 5.32c-.05.51-.42.9-.86.9s-.81-.39-.86-.9l-.58-5.32A1.45 1.45 0 0 1 12 14.2z' },
+  music: { vb: '0 -960 960 960', d: 'M320-273v-414q0-17 12-28.5t28-11.5q5 0 10.5 1.5T381-721l326 207q9 6 13.5 15t4.5 19q0 10-4.5 19T707-446L381-239q-5 3-10.5 4.5T360-233q-16 0-28-11.5T320-273Zm80-207Zm0 134 210-134-210-134v268Z' },
+  books: { vb: '0 -960 960 960', d: 'M560-564v-68q33-14 67.5-21t72.5-7q26 0 51 4t49 10v64q-24-9-48.5-13.5T700-600q-38 0-73 9.5T560-564Zm0 220v-68q33-14 67.5-21t72.5-7q26 0 51 4t49 10v64q-24-9-48.5-13.5T700-380q-38 0-73 9t-67 27Zm0-110v-68q33-14 67.5-21t72.5-7q26 0 51 4t49 10v64q-24-9-48.5-13.5T700-490q-38 0-73 9.5T560-454ZM260-320q47 0 91.5 10.5T440-278v-394q-41-24-87-36t-93-12q-36 0-71.5 7T120-692v396q35-12 69.5-18t70.5-6Zm260 42q44-21 88.5-31.5T700-320q36 0 70.5 6t69.5 18v-396q-33-14-68.5-21t-71.5-7q-47 0-93 12t-87 36v394Zm-40 118q-48-38-104-59t-116-21q-42 0-82.5 11T100-198q-21 11-40.5-1T40-234v-482q0-11 5.5-21T62-752q46-24 96-36t102-12q58 0 113.5 15T480-740q51-30 106.5-45T700-800q52 0 102 12t96 36q11 5 16.5 15t5.5 21v482q0 23-19.5 35t-40.5 1q-37-20-77.5-31T700-240q-60 0-116 21t-104 59ZM280-494Z' },
+  downloads: { vb: '0 -960 960 960', d: 'M380-300 660-480 380-660v360ZM140-160q-24.75 0-42.37-17.63Q80-195.25 80-220v-520q0-24.75 17.63-42.38Q115.25-800 140-800h680q24.75 0 42.38 17.62Q880-764.75 880-740v520q0 24.75-17.62 42.37Q844.75-160 820-160H140Zm0-60h680v-520H140v520Zm0 0v-520 520Z' },
+  moon: { vb: '0 -960 960 960', d: 'M480-120q-151 0-255.5-104.5T120-480q0-138 90-239.5T440-838q13-2 23 3.5t16 14.5q6 9 6.5 21t-7.5 23q-17 26-25.5 55t-8.5 61q0 90 63 153t153 63q31 0 61.5-9t54.5-25q11-7 22.5-6.5T819-479q10 5 15.5 15t3.5 24q-14 138-117.5 229T480-120Zm0-80q88 0 158-48.5T740-375q-20 5-40 8t-40 3q-123 0-209.5-86.5T364-660q0-20 3-40t8-40q-78 32-126.5 102T200-480q0 116 82 198t198 82Zm-10-270Z' },
+  sun: { vb: '0 -960 960 960', d: 'M480-360q50 0 85-35t35-85q0-50-35-85t-85-35q-50 0-85 35t-35 85q0 50 35 85t85 35Zm0 80q-83 0-141.5-58.5T280-480q0-83 58.5-141.5T480-680q83 0 141.5 58.5T680-480q0 83-58.5 141.5T480-280ZM80-440q-17 0-28.5-11.5T40-480q0-17 11.5-28.5T80-520h80q17 0 28.5 11.5T200-480q0 17-11.5 28.5T160-440H80Zm720 0q-17 0-28.5-11.5T760-480q0-17 11.5-28.5T800-520h80q17 0 28.5 11.5T920-480q0 17-11.5 28.5T880-440h-80ZM480-760q-17 0-28.5-11.5T440-800v-80q0-17 11.5-28.5T480-920q17 0 28.5 11.5T520-880v80q0 17-11.5 28.5T480-760Zm0 720q-17 0-28.5-11.5T440-80v-80q0-17 11.5-28.5T480-200q17 0 28.5 11.5T520-160v80q0 17-11.5 28.5T480-40ZM226-678l-43-42q-12-11-11.5-28t11.5-29q12-12 29-12t28 12l42 43q11 12 11 28t-11 28q-11 12-27.5 11.5T226-678Zm494 495-42-43q-11-12-11-28.5t11-27.5q11-12 27.5-11.5T734-282l43 42q12 11 11.5 28T777-183q-12 12-29 12t-28-12Zm-42-495q-12-11-11.5-27.5T678-734l42-43q11-12 28-11.5t29 11.5q12 12 12 29t-12 28l-43 42q-12 11-28 11t-28-11ZM183-183q-12-12-12-29t12-28l43-42q12-11 28.5-11t27.5 11q12 11 11.5 27.5T282-226l-42 43q-11 12-28 11.5T183-183Zm297-297Z' },
+  cog: { vb: '0 -960 960 960', d: 'M433-80q-27 0-46.5-18T363-142l-9-66q-13-5-24.5-12T307-235l-62 26q-25 11-50 2t-39-32l-47-82q-14-23-8-49t27-43l53-40q-1-7-1-13.5v-27q0-6.5 1-13.5l-53-40q-21-17-27-43t8-49l47-82q14-23 39-32t50 2l62 26q11-8 23-15t24-12l9-66q4-26 23.5-44t46.5-18h94q27 0 46.5 18t23.5 44l9 66q13 5 24.5 12t22.5 15l62-26q25-11 50-2t39 32l47 82q14 23 8 49t-27 43l-53 40q1 7 1 13.5v27q0 6.5-2 13.5l53 40q21 17 27 43t-8 49l-48 82q-14 23-39 32t-50-2l-60-26q-11 8-23 15t-24 12l-9 66q-4 26-23.5 44T527-80h-94Zm7-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z' },
+  search: { vb: '0 -960 960 960', d: 'M380-320q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l224 224q11 11 11 28t-11 28q-11 11-28 11t-28-11L532-372q-30 24-69 38t-83 14Zm0-80q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z' },
+  download: { vb: '0 -960 960 960', d: 'M480-337q-8 0-15-2.5t-13-8.5L308-492q-12-12-11.5-28t11.5-28q12-12 28.5-12.5T365-549l75 75v-286q0-17 11.5-28.5T480-800q17 0 28.5 11.5T520-760v286l75-75q12-12 28.5-11.5T652-548q11 12 11.5 28T652-492L508-348q-6 6-13 8.5t-15 2.5ZM240-160q-33 0-56.5-23.5T160-240v-80q0-17 11.5-28.5T200-360q17 0 28.5 11.5T240-320v80h480v-80q0-17 11.5-28.5T760-360q17 0 28.5 11.5T800-320v80q0 33-23.5 56.5T720-160H240Z' },
+  caret: { vb: '0 -960 960 960', d: 'M480-361q-8 0-15-2.5t-13-8.5L268-556q-11-11-11-28t11-28q11-11 28-11t28 11l156 156 156-156q11-11 28-11t28 11q11 11 11 28t-11 28L508-372q-6 6-13 8.5t-15 2.5Z' },
+};
+
+// The inline-SVG markup for a chrome glyph. Deterministic (chrome-icons.test.js
+// reconstructs it to source-lock the static bottom-nav markup in index.html).
+// Colour comes from CSS (`.chrome-icon { fill: currentColor }`), so the glyph
+// tints with its container exactly like the old mask + `background-color`.
+function chromeIconMarkup(name, extraClass) {
+  const g = CHROME_ICON_SVG[name];
+  if (!g) return '';
+  const cls = 'chrome-icon' + (extraClass ? ' ' + extraClass : '');
+  return '<svg class="' + cls + '" viewBox="' + g.vb + '" aria-hidden="true"><path d="' + g.d + '"/></svg>';
+}
+
+// A live SVG element for the same glyph, built in the SVG namespace so it is
+// robust under both browsers and jsdom (the bell/queue use the same approach).
+function chromeIconEl(name, extraClass) {
+  const g = CHROME_ICON_SVG[name];
+  // Real browsers always have createElementNS (mandatory: an SVG built via the
+  // plain createElement lands in the HTML namespace and never renders). Some
+  // lightweight unit-test document stubs model only createElement, so degrade to
+  // null there and let callers skip the (incidental) glyph.
+  if (!g || typeof document === 'undefined' || typeof document.createElementNS !== 'function') return null;
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'chrome-icon' + (extraClass ? ' ' + extraClass : ''));
+  svg.setAttribute('viewBox', g.vb);
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', g.d);
+  svg.appendChild(path);
+  return svg;
+}
+
 // Single source of truth for both the setup-page Appearance picker and the
 // switching logic. Adding a 5th era = one entry here + one CSS block pair.
 const THEME_REGISTRY = [
@@ -5399,8 +5465,11 @@ function wireSearchAffordances() {
   btn.id = 'search-toggle-btn';
   btn.className = 'search-toggle-btn';
   btn.setAttribute('aria-label', 'Search');
-  const gi = document.createElement('i'); gi.className = 'icon-search'; gi.setAttribute('aria-hidden', 'true');
-  btn.appendChild(gi);
+  // v1.87.1 (Dean): inline <svg>, not an `.icon-search` mask - a mask shows
+  // nothing until it decodes, so it "popped in" after the label on a mobile
+  // cold start (the bell/queue, inline SVG, never did). See CHROME_ICON_SVG.
+  const searchGlyph = chromeIconEl('search');
+  if (searchGlyph) btn.appendChild(searchGlyph);
   headerRight.appendChild(btn);
 
   let panel = document.getElementById('search-history-panel');
@@ -5771,9 +5840,10 @@ function injectOneOffDownloadButtonIfEnabled() {
         btn.className = 'btn';
         btn.setAttribute('aria-label', 'Download a video');
         btn.title = 'Download a video';
-        const icon = document.createElement('i');
-        icon.className = 'icon-download';
-        btn.appendChild(icon);
+        // v1.87.1 (Dean): inline <svg> (chrome-icon), not an `.icon-download`
+        // mask - the mask decode-lags on a mobile cold start. See CHROME_ICON_SVG.
+        const dlGlyph = chromeIconEl('download');
+        if (dlGlyph) btn.appendChild(dlGlyph);
         // v1.86.0 (Dean): the word "Download" lives in a .btn-label span (like the
         // classic Shuffle/Rescan buttons) so CSS can hide it on mobile - the
         // button goes glyph-only there, keeps its text on desktop. `.btn` is
@@ -8582,9 +8652,13 @@ function updateNavThemeItem() {
   const item = document.getElementById('nav-theme-toggle');
   if (!item) return;
   const dark = document.documentElement.getAttribute('data-mode') === 'dark';
-  const icon = item.querySelector('i');
+  // v1.87.1 (Dean): the nav theme glyph is an inline <svg> (chrome-icon) now, not
+  // an `.icon-moon/.icon-sun` mask - swap the whole element rather than a class.
+  // Tolerate a legacy `<i>` too (defensive; the static markup ships the svg).
+  const icon = item.querySelector('.chrome-icon, i');
   const label = item.querySelector('.bottom-nav-label');
-  if (icon) icon.className = dark ? 'icon-sun' : 'icon-moon';
+  const swapped = chromeIconEl(dark ? 'sun' : 'moon');
+  if (icon && swapped) icon.replaceWith(swapped);
   if (label) label.textContent = dark ? 'Light' : 'Dark';
 }
 
@@ -11446,6 +11520,10 @@ document.addEventListener('DOMContentLoaded', () => {
 // `module` is undefined there).
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    // v1.87.1: first-paint chrome inline-SVG glyphs (map + markup/element
+    // builders). chrome-icons.test.js byte-binds the map to the on-disk assets
+    // and source-locks the static bottom-nav markup against chromeIconMarkup.
+    CHROME_ICON_SVG, chromeIconMarkup, chromeIconEl,
     // v1.63 playback queue: the chrome's pure decisions.
     shouldShowQueueButton, formatQueueBadge, buildQueueRowModel, buildQueueRowModels, queueEntryHref,
     formatQueuePosition,

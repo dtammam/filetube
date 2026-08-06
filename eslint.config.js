@@ -207,6 +207,11 @@ module.exports = [
         MODERN_SORT_OPTIONS: 'readonly',
         MODERN_SORT_DEFAULT: 'readonly',
         resolveModernSort: 'readonly',
+        // v1.87.1: first-paint chrome inline-SVG glyph builders (common.js),
+        // used by main.js's injected modern-home sort caret.
+        chromeIconEl: 'readonly',
+        chromeIconMarkup: 'readonly',
+        CHROME_ICON_SVG: 'readonly',
         selectRecentUploaderChannels: 'readonly',
         modernCardAvatar: 'readonly',
         // v1.41.10 (QA gate): shared delete-outcome -> toast-message mapper

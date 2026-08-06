@@ -127,5 +127,7 @@ test('(v1.86.0) the injected button carries "Download" in a .btn-label span (so 
   const label = btn.querySelector('.btn-label');
   assert.ok(label, 'the "Download" text is in a .btn-label span (not a raw text node) so the mobile glyph-only CSS has a target');
   assert.strictEqual(label.textContent, 'Download');
-  assert.ok(btn.querySelector('i.icon-download'), 'the download glyph remains alongside the label');
+  // v1.87.1 (Dean): the glyph is an inline chrome-icon <svg> now (not an
+  // `.icon-download` mask - the mask decode-lagged on a mobile cold start).
+  assert.ok(btn.querySelector('svg.chrome-icon'), 'the download glyph (inline chrome-icon svg) remains alongside the label');
 });
