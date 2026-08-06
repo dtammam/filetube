@@ -991,21 +991,35 @@ if (typeof module !== 'undefined' && module.exports) {
         // grid). fetchModernGrid fetches the active chip's items and renders the
         // rich cards into #video-grid; a request token drops a stale response so
         // rapid chip switching never paints an out-of-order result.
+        // v1.86.2 (Dean): the modern grid LAZY-LOADS. fetchModernGrid fetches
+        // PAGE 0 (replace + fresh seed) via buildModernGridUrl (hoisted to the
+        // loadLibrary scope so the shared sentinel's maybeLoadNextPage can reach
+        // it); further pages append through that same sentinel machinery
+        // (currentSeed/Offset/Limit/Total + ensureGridSentinel), reused because
+        // both grids render into the SAME #video-grid.
         async function fetchModernGrid(sig) {
           const token = ++modernReqToken;
+          currentSeed = generateSeed(); // fresh shuffle per chip/sort change (a 'random' scroll session then stays stable across pages)
+          currentOffset = 0;
+          currentLimit = HOME_PAGE_LIMIT;
           const filter = resolveModernChip(activeModernChip);
-          let items = [];
+          let data;
           try {
-            const res = await fetch(`/api/home?view=grid&filter=${encodeURIComponent(filter)}&sort=${encodeURIComponent(activeModernSort)}`, { signal: sig });
-            const data = res.ok ? await res.json() : { items: [] };
-            items = Array.isArray(data.items) ? data.items : [];
+            const res = await fetch(buildModernGridUrl(0), { signal: sig });
+            data = res.ok ? await res.json() : { items: [] };
           } catch (err) {
             if (err && err.name === 'AbortError') return;
             if (token === modernReqToken) videoGrid.innerHTML = '<div class="home-feed-empty">Could not load. Try again, or switch layout in Settings.</div>';
             return;
           }
           if (token !== modernReqToken) return; // a newer chip click superseded this
+          const items = Array.isArray(data.items) ? data.items : [];
+          currentItems = items;
+          currentOffset = typeof data.offset === 'number' ? data.offset : 0;
+          currentLimit = typeof data.limit === 'number' && data.limit > 0 ? data.limit : HOME_PAGE_LIMIT;
+          currentTotal = typeof data.total === 'number' ? data.total : items.length;
           videoGrid.innerHTML = items.length ? items.map(buildCardHtml).join('') : buildModernEmptyHtml(filter);
+          ensureGridSentinel(); // append further pages as the user scrolls
         }
         // v1.86.0 (Dean): a glyph-only sort ▾ injected as the LEFTMOST control in
         // the header top-right. It lives in the PERSISTENT header (Dean's
@@ -1206,6 +1220,21 @@ if (typeof module !== 'undefined' && module.exports) {
     // every page.
     function generateSeed() {
       return Math.floor(Math.random() * 2147483647);
+    }
+
+    // v1.86.2 (Dean): the modern grid's paginated URL. Hoisted to this scope
+    // (not nested with fetchModernGrid) so the shared sentinel's maybeLoadNextPage
+    // can build the next-page URL too. Carries the active chip + sort + this
+    // scroll-session's stable `seed` (so a 'random' scroll doesn't re-shuffle) +
+    // the page window. Mirrors buildVideosApiUrl's shape for /api/home?view=grid.
+    function buildModernGridUrl(offset) {
+      const filter = (typeof resolveModernChip === 'function') ? resolveModernChip(activeModernChip) : activeModernChip;
+      return '/api/home?view=grid'
+        + `&filter=${encodeURIComponent(filter)}`
+        + `&sort=${encodeURIComponent(activeModernSort)}`
+        + `&seed=${encodeURIComponent(currentSeed)}`
+        + `&limit=${HOME_PAGE_LIMIT}`
+        + `&offset=${offset}`;
     }
 
     // Builds the `GET /api/videos` URL for a given page `offset`, carrying
@@ -1411,6 +1440,30 @@ if (typeof module !== 'undefined' && module.exports) {
       if (loadingNextPage) return;
       if (currentOffset + currentLimit >= currentTotal) return; // reached the end -- nothing more to fetch
       loadingNextPage = true;
+      // v1.86.2 (Dean): the modern grid appends its own paginated cards from
+      // /api/home?view=grid (same window/seed contract). A chip/sort change mid-
+      // fetch bumps modernReqToken, so a stale append is dropped rather than
+      // stacking cards for the wrong filter behind the freshly-replaced grid.
+      if (modernMode) {
+        const token = modernReqToken;
+        try {
+          const nextOffset = currentOffset + currentLimit;
+          const res = await fetch(buildModernGridUrl(nextOffset));
+          const data = await res.json();
+          if (token !== modernReqToken) return; // superseded by a chip/sort reset
+          const items = Array.isArray(data.items) ? data.items : [];
+          currentOffset = typeof data.offset === 'number' ? data.offset : nextOffset;
+          currentLimit = typeof data.limit === 'number' && data.limit > 0 ? data.limit : currentLimit;
+          currentTotal = typeof data.total === 'number' ? data.total : currentTotal;
+          currentItems = currentItems.concat(items);
+          videoGrid.insertAdjacentHTML('beforeend', items.map(buildCardHtml).join(''));
+        } catch (err) {
+          console.error('Failed to load the next modern grid page:', err);
+        } finally {
+          loadingNextPage = false;
+        }
+        return;
+      }
       try {
         const nextOffset = currentOffset + currentLimit;
         const res = await fetch(buildVideosApiUrl(nextOffset));
@@ -2303,12 +2356,14 @@ if (typeof module !== 'undefined' && module.exports) {
       if (result.deleted) {
         const id = btn.dataset.id;
         disarmCardDelete();
-        const item = currentItems.find((it) => it.id === id);
-        if (isYtdlpManagedItem(item)) {
-          deleteCardById(id);
-        } else {
-          showHardDeleteModal(item, () => deleteCardById(id));
-        }
+        // v1.86.2 (Dean): the card's confirming SECOND tap deletes straight to
+        // (recoverable) Trash - the original pre-YouTube-feed inline two-tap
+        // (arm -> "Sure?" -> tap again). The v1.21 checkbox-gated hard-delete
+        // escalation for LOCAL files is dropped HERE, on the card: it moves to
+        // Trash either way (recoverable within the retention window), so the
+        // extra modal+checkbox was friction Dean didn't want on the feed. (The
+        // watch-page delete keeps its own flow; this reverts the CARD only.)
+        deleteCardById(id);
       } else {
         armCardDelete(btn);
       }
