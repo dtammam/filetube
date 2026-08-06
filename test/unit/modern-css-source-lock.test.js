@@ -66,3 +66,13 @@ test('(v1.85.2 #3+#4) modern home hides the whole section-title row (folder head
       'no #library-content .section-title rule may set display, or it (1,1,0) would defeat the modern hide (0,2,0)');
   }
 });
+
+test('(v1.86.0 gate WARNING) the header sort ▾ is ROUTE-GATED: display:none by default, shown only on body[data-view="home"]', () => {
+  // The control lives in the PERSISTENT header; the SPA router caches the home
+  // view on nav-away WITHOUT aborting, so a JS abort-only removal orphans it.
+  // Route-CSS is the fix: hidden by default, shown only on the home route.
+  assert.match(css, /\.modern-sort \{[^}]*display:\s*none/,
+    'the sort ▾ wrapper must be display:none by default (route-gated), not unconditionally shown');
+  assert.match(css, /body\[data-view="home"\] \.modern-sort \{\s*display:\s*inline-flex/,
+    'only the home route shows the ▾ (re-shows on cache-restore, hides on every other view)');
+});

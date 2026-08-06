@@ -7546,12 +7546,22 @@ body.ft-css-fullscreen .bottom-nav {
 
 /* v1.86.0 (Dean): the modern-home header sort control - a glyph-only ▾ caret,
    injected as the LEFTMOST item in the header top-right (main.js, modern home
-   only; removed on nav-away). Modelled on .notif-bell-btn; it opens the reused
-   .sort-menu (positioned absolutely against this relative wrapper). */
+   only). Modelled on .notif-bell-btn; it opens the reused .sort-menu (positioned
+   absolutely against this relative wrapper).
+
+   VISIBILITY IS ROUTE-BOUND (v1.86.0 gate WARNING, both seats): the control lives
+   in the PERSISTENT header, but the SPA router caches the home view on nav-away
+   WITHOUT aborting it, so a JS abort-only removal orphans the ▾ on watch/music/
+   etc. So it is display:none by default and only shown under body[data-view="home"]
+   (the router stamps data-view on <body> after every swap, incl. cache-restore).
+   (0,2,1) beats the (0,1,0) base, so it wins on home and hides everywhere else. */
 .modern-sort {
   position: relative; /* anchor for the absolutely-positioned .sort-menu */
-  display: inline-flex;
+  display: none;      /* route-gated: only the home view shows it (below) */
   align-items: center;
+}
+body[data-view="home"] .modern-sort {
+  display: inline-flex;
 }
 .modern-sort-btn {
   background: none;

@@ -1008,11 +1008,21 @@ if (typeof module !== 'undefined' && module.exports) {
           videoGrid.innerHTML = items.length ? items.map(buildCardHtml).join('') : buildModernEmptyHtml(filter);
         }
         // v1.86.0 (Dean): a glyph-only sort ▾ injected as the LEFTMOST control in
-        // the header top-right, shown ONLY on the modern home (removed on
-        // nav-away via the view's abort signal, so it is never orphaned in the
-        // persistent shell). Selecting a sort re-fetches the grid. Self-contained
-        // (own menu + handlers) because the classic #sort-dropdown wiring drives
-        // the classic grid's resetAndReload, not this endpoint. Reuses .sort-menu.
+        // the header top-right. It lives in the PERSISTENT header (Dean's
+        // placement), so its visibility is bound to the home ROUTE via CSS
+        // (`body[data-view="home"] .modern-sort` shows it; it is display:none on
+        // every other view). That is load-bearing: the SPA router CACHES the home
+        // view when you navigate away (swapToView's home-cache branch, common.js)
+        // WITHOUT calling destroy()/controller.abort() - so an abort-only removal
+        // would leave the ▾ orphaned in the header on watch/music/etc. (the v1.86.0
+        // gate WARNING, both seats). Route-CSS handles the cache path in BOTH
+        // directions (hidden on leave, re-shown on cache-restore, which never
+        // re-runs init()); the abort listener below additionally REMOVES the node
+        // outright on a genuine view DESTROY (a fresh/folder home load), so a
+        // destroyed instance leaves nothing behind. Selecting a sort re-fetches
+        // the grid. Self-contained (own menu + handlers) because the classic
+        // #sort-dropdown wiring drives the classic grid's resetAndReload, not this
+        // endpoint. Reuses .sort-menu.
         function injectModernHeaderSort(sig) {
           const headerRight = document.querySelector('.header-right');
           if (!headerRight) return; // signed-out / no shell -> nothing to attach to
@@ -1070,7 +1080,11 @@ if (typeof module !== 'undefined' && module.exports) {
           const choose = (val, returnFocus) => {
             close(returnFocus);
             const next = resolveModernSort(val);
-            if (next === activeModernSort) return;
+            // v1.86.0 gate SUGGESTION: re-picking the SAME key is a no-op EXCEPT
+            // 'random' - "Feeling lucky" should re-roll each time (the server
+            // re-shuffles the whole set on every request), so let random fall
+            // through to a fresh fetch even when it is already active.
+            if (next === activeModernSort && next !== 'random') return;
             activeModernSort = next;
             try { localStorage.setItem('filetube_modern_sort', next); } catch (_) { /* private mode */ }
             applyActive();
@@ -1105,9 +1119,18 @@ if (typeof module !== 'undefined' && module.exports) {
             close();
           }, { signal: sig });
 
-          // Nav-away: the view's abort signal removes the header control so it is
-          // NEVER orphaned in the persistent shell on a non-modern page.
-          sig.addEventListener('abort', () => { wrap.remove(); });
+          // Genuine view DESTROY (fresh/folder home load): remove the node
+          // outright. This is the SECONDARY teardown - route-CSS already hides it
+          // on the common cache-away nav (where abort never fires); this handles
+          // the destroy path so a torn-down instance leaves nothing behind. The
+          // handler is idempotent (removes whatever .modern-sort exists, not a
+          // captured node) and `once` so repeated renderModernHome calls within an
+          // instance can't pile up live listeners on the same signal (gate
+          // SUGGESTION).
+          sig.addEventListener('abort', () => {
+            const el = document.querySelector('.modern-sort');
+            if (el) el.remove();
+          }, { once: true });
         }
         async function renderModernHome(chromeHost, sig) {
           injectModernHeaderSort(sig); // glyph-only ▾, leftmost in the header top-right
