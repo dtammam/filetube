@@ -77,7 +77,7 @@ test('(v1.86.0 gate WARNING) the header sort ▾ is ROUTE-GATED: display:none by
     'only the home route shows the ▾ (re-shows on cache-restore, hides on every other view)');
 });
 
-test('(v1.86.1 Dean) the sort ▾ caret is sized a step up (--fs-3xl) so the small caret glyph reads larger', () => {
-  assert.match(css, /\.modern-sort-btn \{[^}]*font-size:\s*var\(--fs-3xl\)/,
-    'the ▾ caret glyph reads small at header size, so the button is bumped to --fs-3xl (20px)');
+test('(v1.86.2 Dean) the sort ▾ caret is sized to the header-glyph family, one step above the icons (--fs-4xl) since the caret char fills less of the box', () => {
+  assert.match(css, /\.modern-sort-btn \{[^}]*font-size:\s*var\(--fs-4xl\)/,
+    'the ▾ caret char reads smaller than a mask-icon at the same size, so it is --fs-4xl (22px) to match the ~20px download/search glyphs');
 });
