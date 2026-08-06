@@ -4750,7 +4750,7 @@ a.sub-row-channel-link:focus-visible {
     box-shadow: none;
     padding: var(--space-3);
     border-radius: var(--radius-full);
-    font-size: var(--fs-3xl); /* v1.86.2 (Dean): match the header glyph family (bell/queue/search/▾ all uniform ~20px) - the mask-icon fills less of the em box than the bell, so it needs the bigger number to read the same size */
+    font-size: var(--fs-4xl); /* v1.86.3 (Dean): 22px 1em mask box == the bell/queue inline-SVG box (22px), so the whole header glyph family is one size */
   }
   .header-right #ytdlp-oneoff-btn:hover { background-color: var(--bg-secondary); }
   /* v1.86.0 (Dean): on mobile the Download button is GLYPH-ONLY - hide its label
@@ -4764,7 +4764,7 @@ a.sub-row-channel-link:focus-visible {
   .header-right .search-toggle-btn {
     order: 1;
     margin-left: var(--space-6);
-    font-size: var(--fs-3xl); /* v1.86.2 (Dean): uniform with the download glyph (~20px) to match the bell-family size */
+    font-size: var(--fs-4xl); /* v1.86.3 (Dean): 22px, uniform with the download/sort glyphs + the bell/queue SVG box */
   }
   /* v1.85 #1: the magnifier lives in the top-right slot beside the bell/avatar.
      v1.85.1: these three overrides MUST out-specify their base rules, which live

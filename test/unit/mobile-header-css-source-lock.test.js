@@ -59,12 +59,12 @@ test('(v1.86.1 Dean) the mobile Download button drops the .btn box (bell/search 
   assert.match(rule, /background:\s*none/, 'no .btn background box');
   assert.match(rule, /border:\s*none/, 'no .btn border box');
   assert.match(rule, /border-radius:\s*var\(--radius-full\)/, 'circular hit area like the bell');
-  assert.match(rule, /font-size:\s*var\(--fs-3xl\)/, 'sized to the uniform header-glyph family (~20px), not the small .btn --fs-sm');
+  assert.match(rule, /font-size:\s*var\(--fs-4xl\)/, 'sized to the 22px header-glyph box (== bell/queue SVG), not the small .btn --fs-sm');
 });
 
 test('(v1.86.0) the search magnifier owns the far-right corner (order) + a split gap + a touch larger', () => {
   const rule = (css.match(/\.header-right \.search-toggle-btn \{[^}]*order:\s*1[^}]*\}/) || [''])[0];
   assert.ok(rule, 'a .header-right .search-toggle-btn rule sets order:1 (rightmost corner)');
   assert.match(rule, /margin-left:\s*var\(--space-6\)/, 'a split gap before the search glyph');
-  assert.match(rule, /font-size:\s*var\(--fs-3xl\)/, 'the search glyph is sized to the uniform header-glyph family (~20px)');
+  assert.match(rule, /font-size:\s*var\(--fs-4xl\)/, 'the search glyph is sized to the uniform 22px header-glyph box');
 });
