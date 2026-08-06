@@ -25,26 +25,6 @@ const path = require('node:path');
 
 const REPO = path.join(__dirname, '..', '..');
 const ICON_DIR = path.join(REPO, 'public', 'assets', 'icons');
-
-// v1.87.0 (Dean): the DEFAULT-set masks for the first-paint chrome roster are
-// INLINED into style.css as data-URIs, so they render on first paint with no
-// async /assets fetch (the mobile PWA cold-start "pop-in" the labels beat the
-// glyphs to). The rounded/filled overrides and the emoji ::before are untouched.
-// A few pool members and every Library fallback are in that roster, so the base
-// rule for those carries an embedded SVG, not url(/assets/...). `baseMaskValue`
-// reconstructs the EXACT data-URI from the on-disk asset the same way the
-// generator did - so the asset identity is still bound byte-for-byte (a
-// truncated or swapped embed goes red), just in inlined form.
-const INLINED_ASSETS = new Set([
-  'home', 'star', 'folder', 'history', 'podcast', 'play_arrow', 'books',
-  'downloads', 'dark_mode', 'light_mode', 'settings', 'download', 'search',
-  'keyboard_arrow_down', 'refresh',
-]);
-function baseMaskValue(asset) {
-  if (!INLINED_ASSETS.has(asset)) return `url(/assets/icons/${asset}.svg)`;
-  const svg = fs.readFileSync(path.join(ICON_DIR, `${asset}.svg`), 'utf8').replace(/\s+/g, ' ').trim();
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-}
 // Comments are stripped ONCE, at read, so every check below sees only live
 // CSS. Doing it per-extraction was not enough and shipped porous:
 // `selectorList` stripped (sites 2 and 6) and the fill-list extraction stripped
@@ -142,8 +122,8 @@ test('SEVEN-SITE LOCK: every glyph is enumerated in all 7 style.css sites', () =
     const emojiEsc = g.emoji.split(' ').map((c) => '\\' + c).join('');
 
     const checks = [
-      ['1 base mask', (() => { const v = baseMaskValue(g.asset); return css.includes(
-        `.${cls} { -webkit-mask-image: ${v}; mask-image: ${v}; }`); })()],
+      ['1 base mask', css.includes(
+        `.${cls} { -webkit-mask-image: url(/assets/icons/${g.asset}.svg); mask-image: url(/assets/icons/${g.asset}.svg); }`)],
       ['2 sizing list', listHasClass(SIZING_LIST, cls)],
       // The one that made v1.47.6 an invisible box on Dean's device.
       ['3 @supports fill list', listHasClass(FILL_BLOCK, cls)],
@@ -329,7 +309,7 @@ test('no later rule overrides a pool glyph mask: the base declaration is the LAS
     }
     if (values.length === 0) continue; // site 1 already covers absence
     const last = values[values.length - 1];
-    if (last !== baseMaskValue(g.asset)) {
+    if (last !== `url(/assets/icons/${g.asset}.svg)`) {
       offenders.push(`${cls}: last unscoped mask declaration is \`${last}\`, not its base asset`);
     }
   }
@@ -385,16 +365,6 @@ test('the five Library fallback glyphs are masked and sized, like the pool membe
     }
     if (!last) {
       failures.push(`${cls}: no base mask rule - it will render as a solid currentColor square`);
-    } else if (/^url\("data:image\/svg\+xml,/.test(last)) {
-      // v1.87.0 (Dean): these five fallbacks are first-paint icons, INLINED as
-      // data-URIs (no async /assets fetch -> no cold-start pop-in). There is no
-      // file on disk to stat, so the equivalent "is it a real, non-blank mask"
-      // check is that the embed decodes to a well-formed SVG. A truncated or
-      // garbled data-URI (the inlined analogue of a missing file) goes red here.
-      const svg = decodeURIComponent(last.slice('url("data:image/svg+xml,'.length, -2));
-      if (!/^<svg[\s>]/.test(svg) || !/<\/svg>$/.test(svg)) {
-        failures.push(`${cls}: inlined data-URI mask is not a well-formed SVG (broken/blank mask)`);
-      }
     } else {
       const url = /^url\(([^)]+)\)$/.exec(last);
       if (!url || !url[1].trim()) {
