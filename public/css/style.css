@@ -4138,6 +4138,22 @@ a.sub-row-channel-link:focus-visible {
   mask-size: contain;
 }
 
+/* v1.87.1 (Dean): inline-SVG chrome glyphs (bottom-nav + top-right header).
+   Unlike the `.icon-*` masks above, an inline <svg> rides the text layer and
+   paints at first paint - no mask-decode gate, so no mobile cold-start pop-in
+   (the bell/queue always worked this way). Sized in `em` like the masks were,
+   so each usage inherits its container's font-size; `fill: currentColor` tints
+   it with the container exactly like the old mask + `background-color`. See
+   CHROME_ICON_SVG in common.js. */
+.chrome-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.15em;
+  fill: currentColor;
+  flex: none;
+}
+
 .icon-home { -webkit-mask-image: url(/assets/icons/home.svg); mask-image: url(/assets/icons/home.svg); }
 .icon-folder { -webkit-mask-image: url(/assets/icons/folder.svg); mask-image: url(/assets/icons/folder.svg); }
 .icon-cog { -webkit-mask-image: url(/assets/icons/settings.svg); mask-image: url(/assets/icons/settings.svg); }
@@ -4656,7 +4672,8 @@ a.sub-row-channel-link:focus-visible {
     font-size: var(--fs-xs);
   }
 
-  .bottom-nav-item i {
+  .bottom-nav-item i,
+  .bottom-nav-item .chrome-icon {
     font-size: var(--fs-3xl);
     line-height: 1; /* token-exempt: glyph centering */
     color: inherit;

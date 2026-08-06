@@ -267,8 +267,14 @@ test('v1.73.2 SOURCE-LOCK: Books wears icon-books everywhere - injector, sheet m
   const shells = fs.readdirSync(pub).filter((f) => f.endsWith('.html'))
     .filter((f) => fs.readFileSync(path.join(pub, f), 'utf8').includes('data-nav="books"'));
   assert.ok(shells.length >= 9, `full shell roster (${shells.length})`);
+  // v1.87.1 (Dean): the bottom-nav glyph is an inline chrome-icon <svg> now (a
+  // `.icon-*` mask decode-lags -> pop-in on a mobile cold start). The mask rule
+  // + emoji entry + injector/sheet-mirror above are UNCHANGED (icon-books still
+  // serves the sidebar/mirror). Only the static bottom item flipped to svg.
+  const booksSvg = require('../../public/js/common.js').chromeIconMarkup('books');
   for (const f of shells) {
     const html = fs.readFileSync(path.join(pub, f), 'utf8');
-    assert.match(html, /data-nav="books" hidden>\s*<i class="icon-books"><\/i>/, `${f}: the bottom item wears the glyph`);
+    const m = /data-nav="books"[^>]*>\s*(<svg class="chrome-icon"[^>]*>.*?<\/svg>)/.exec(html);
+    assert.ok(m && m[1] === booksSvg, `${f}: the bottom item wears the inline books chrome-icon`);
   }
 });

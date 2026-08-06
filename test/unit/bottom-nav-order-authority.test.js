@@ -137,32 +137,29 @@ test('v1.75: EVERY shell that carries the bar carries the Liked item, hidden unt
   }
 });
 
-test('v1.75: the Liked item uses the SAME glyph as the sidebar Liked entry, and no raw emoji codepoint', () => {
-  // The two entries are the same destination, so they must be the same mark.
+test('v1.87.1: every shell renders the SAME inline "liked" chrome-icon in its bottom-nav, and no raw emoji codepoint', () => {
+  // v1.87.1 (Dean): the bottom-nav glyphs are inline <svg> (chrome-icon) now,
+  // not `.icon-*` masks - a mask shows nothing until it DECODES, so on a mobile
+  // PWA cold start the labels painted first and the glyphs "popped in" a beat
+  // later. Inline SVG rides the text layer (like the bell/queue that never
+  // lagged). ACCEPTED trade-off (Dean's call): chrome glyphs no longer follow
+  // the icon-set picker - they use ONE fixed style (rounded, where available).
   //
-  // v1.77: this asserted the mark was literally `icon-star` in both places,
-  // which bound the GLYPH CHOICE rather than the parity the test is named for -
-  // so moving Liked onto its own `.icon-liked` (intake ruling 3) failed a lock
-  // about sameness on a change that kept everything the same. Now the sidebar
-  // injector's class is DERIVED and the shells are checked against it: the bar
-  // and the sidebar can never drift apart, and a future glyph change needs no
-  // edit here. (Deleted with it: a comment claiming icon-star is "deliberately
-  // identical across every data-icons set (style.css AC8), which is why no new
-  // icon-set CSS is needed". Ratings never used that class, and as of v1.77
-  // Liked has a full four-set treatment.)
-  const commonSrc = fs.readFileSync(path.join(PUBLIC_DIR, 'js/common.js'), 'utf8');
-  const minted = /icon\.className = '([a-z-]+)'/.exec(
-    commonSrc.slice(commonSrc.indexOf('function applyLikedSidebarEntry')));
-  assert.ok(minted, 'applyLikedSidebarEntry must mint a glyph class for the sidebar Liked entry');
-  const likedGlyph = minted[1];
+  // So the old "same as the sidebar entry's minted MASK class" parity no longer
+  // holds by construction: the bottom bar is an inline svg, the desktop sidebar
+  // Liked entry stays a mask that follows the picker. The surviving, meaningful
+  // invariant is CROSS-SHELL parity - every shell's bottom-nav Liked is the
+  // exact same inline glyph (chromeIconMarkup('liked'), itself byte-bound to
+  // star.svg in chrome-icons.test.js). A shell that drifts (or reverts to a
+  // decode-lagging mask) fails here.
+  const likedSvg = require('../../public/js/common.js').chromeIconMarkup('liked');
   for (const f of SHELLS) {
     const html = fs.readFileSync(path.join(PUBLIC_DIR, f), 'utf8');
-    const item = html.slice(html.indexOf('data-nav="liked"'));
-    assert.match(item.slice(0, 200), new RegExp(`<i class="${likedGlyph}"></i>`),
-      `${f}: liked must render the same glyph the sidebar entry mints (${likedGlyph})`);
-    // The v1.38 lesson: glyphs come from CSS/icon assets, never a codepoint
-    // typed into markup.
-    assert.ok(!/[☀-➿\u{1F300}-\u{1F9FF}]/u.test(item.slice(0, 200)), `${f}: raw emoji codepoint in markup`);
+    const item = html.slice(html.indexOf('data-nav="liked"'), html.indexOf('data-nav="liked"') + 800);
+    assert.ok(item.includes(likedSvg), `${f}: liked must render the shared inline "liked" chrome-icon svg`);
+    // The v1.38 lesson: glyphs come from CSS/icon assets or inline svg, never a
+    // codepoint typed into markup.
+    assert.ok(!/[☀-➿\u{1F300}-\u{1F9FF}]/u.test(item), `${f}: raw emoji codepoint in markup`);
   }
 });
 
