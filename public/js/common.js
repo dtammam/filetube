@@ -362,6 +362,23 @@ function resolveModernChip(raw) {
   return MODERN_CHIP_FILTERS.includes(raw) ? raw : 'all';
 }
 
+// v1.86.0 (Dean): the modern-home header sort options as [value, label]. The
+// values are the CLIENT half of the server's MODERN_GRID_SORTS (lib/home/feed.js)
+// - a source-lock test binds the two equal so they cannot drift. Labels mirror
+// the classic index.html #sort-menu. main.js's modern header ▾ builds its menu
+// from this list; resolveModernSort bounds a stored/clicked value exactly as the
+// server bounds ?sort=. (Top-level const in this classic script -> visible to
+// main.js via the shared global scope, like MODERN_CHIP_FILTERS.)
+const MODERN_SORT_OPTIONS = [
+  ['newest', 'Newest first'], ['oldest', 'Oldest first'], ['release-date', 'Release date'],
+  ['title-asc', 'Title (A–Z)'], ['title-desc', 'Title (Z–A)'],
+  ['size-desc', 'Largest first'], ['size-asc', 'Smallest first'], ['random', 'Feeling lucky'],
+];
+const MODERN_SORT_DEFAULT = 'newest';
+function resolveModernSort(raw) {
+  return MODERN_SORT_OPTIONS.some(([v]) => v === raw) ? raw : MODERN_SORT_DEFAULT;
+}
+
 // v1.84: the BARE-HOME layout decision - precedence modern > feed > classic.
 // Pure + exported so the precedence is unit-bound (not merely asserted by
 // reading main.js's gate). Only a bare home (no search/folder/root/liked/subs)
@@ -5743,7 +5760,15 @@ function injectOneOffDownloadButtonIfEnabled() {
         const icon = document.createElement('i');
         icon.className = 'icon-download';
         btn.appendChild(icon);
-        btn.appendChild(document.createTextNode(' Download'));
+        // v1.86.0 (Dean): the word "Download" lives in a .btn-label span (like the
+        // classic Shuffle/Rescan buttons) so CSS can hide it on mobile - the
+        // button goes glyph-only there, keeps its text on desktop. `.btn` is
+        // inline-flex with a gap, so hiding the label leaves a clean lone icon
+        // (no stray leading-space text node).
+        const label = document.createElement('span');
+        label.className = 'btn-label';
+        label.textContent = 'Download';
+        btn.appendChild(label);
 
         // v1.85.2 (Dean, on-device ROOT CAUSE): scope to a DIRECT CHILD. The
         // original intent was "insert before the Settings link when THIS header
@@ -11404,6 +11429,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.84 T3: the chip filter allowlist + resolver (client half; source-locked
     // equal to the server's MODERN_GRID_FILTERS) + the bare-home layout decision.
     resolveModernChip, MODERN_CHIP_FILTERS, resolveHomeLayout,
+    MODERN_SORT_OPTIONS, MODERN_SORT_DEFAULT, resolveModernSort,
     // v1.84 T4: the mobile avatar bar's pure selection.
     selectRecentUploaderChannels,
     // v1.84 T5: the per-card channel-avatar decision.

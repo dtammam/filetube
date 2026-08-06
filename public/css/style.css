@@ -4739,6 +4739,19 @@ a.sub-row-channel-link:focus-visible {
      (Dean) - exempt it from the v1.82 `.header-right .btn { display:none }` hide.
      The id selector (1,1,0) beats that rule (0,2,0) regardless of order. */
   .header-right #ytdlp-oneoff-btn { display: inline-flex; }
+  /* v1.86.0 (Dean): on mobile the Download button is GLYPH-ONLY - hide its label
+     (desktop keeps the word). .btn is inline-flex with a gap, so the lone icon
+     stays clean. */
+  .header-right #ytdlp-oneoff-btn .btn-label { display: none; }
+  /* v1.86.0 (Dean): the search magnifier owns the far-right CORNER, split from
+     the queue/bell/download cluster and a touch larger. order:1 makes it the
+     rightmost item regardless of injection order; margin-left adds a gap beyond
+     the container's own gap (the cluster shifts left, search hugs right:10px). */
+  .header-right .search-toggle-btn {
+    order: 1;
+    margin-left: var(--space-6);
+    font-size: var(--fs-xl); /* 16px - "ever so slightly larger" than the ~13px sibling glyphs */
+  }
   /* v1.85 #1: the magnifier lives in the top-right slot beside the bell/avatar.
      v1.85.1: these three overrides MUST out-specify their base rules, which live
      LATER in the file (.search-toggle-btn ~7623, .account-menu-trigger ~9387,
@@ -7530,6 +7543,45 @@ body.ft-css-fullscreen .bottom-nav {
    (`#library-content .section-title` at 1,1,0 sets only position/margins), so
    this wins on BOTH desktop and mobile regardless of source order. */
 .modern-home-mode .section-title { display: none; }
+
+/* v1.86.0 (Dean): the modern-home header sort control - a glyph-only ▾ caret,
+   injected as the LEFTMOST item in the header top-right (main.js, modern home
+   only). Modelled on .notif-bell-btn; it opens the reused .sort-menu (positioned
+   absolutely against this relative wrapper).
+
+   VISIBILITY IS ROUTE-BOUND (v1.86.0 gate WARNING, both seats): the control lives
+   in the PERSISTENT header, but the SPA router caches the home view on nav-away
+   WITHOUT aborting it, so a JS abort-only removal orphans the ▾ on watch/music/
+   etc. So it is display:none by default and only shown under body[data-view="home"]
+   (the router stamps data-view on <body> after every swap, incl. cache-restore).
+   (0,2,1) beats the (0,1,0) base, so it wins on home and hides everywhere else. */
+.modern-sort {
+  position: relative; /* anchor for the absolutely-positioned .sort-menu */
+  display: none;      /* route-gated: only the home view shows it (below) */
+  align-items: center;
+}
+body[data-view="home"] .modern-sort {
+  display: inline-flex;
+}
+.modern-sort-btn {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: var(--space-3);
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-2xl); /* caret reads at header-glyph size */
+  line-height: 1; /* token-exempt: glyph centering */
+}
+.modern-sort-btn:hover {
+  background-color: var(--bg-secondary);
+}
+.modern-sort-caret {
+  line-height: 1; /* token-exempt: glyph centering */
+}
 
 /* the flat big-tile grid: 3-up, reflowing to 4 on wide desktops, 1 on phones */
 .modern-home-mode #video-grid {

@@ -9379,6 +9379,12 @@ app.get('/api/home', (req, res) => {
         inProgress: ts > 0 && !finished, watched, finished,
         addedAt: typeof item.addedAt === 'number' ? item.addedAt : 0,
         progressPercent: pct, liked: likedSet.has(id),
+        // v1.86.0: sort keys for videoQuery.sortItems. title/size for
+        // title-*/size-* ; releaseDate only when present (resolveReleaseDateSortValue
+        // falls back to addedAt otherwise, so we do NOT default it to 0).
+        title: item.title || item.name || '',
+        size: typeof item.size === 'number' ? item.size : 0,
+        releaseDate: typeof item.releaseDate === 'number' ? item.releaseDate : undefined,
       };
       if (homeFeed.matchesGridFilter(rec, filter)) cand.push(rec);
     }
@@ -9399,15 +9405,27 @@ app.get('/api/home', (req, res) => {
           inProgress: pos > 0, watched: false,
           addedAt: typeof ep.addedAt === 'number' ? ep.addedAt : 0,
           progressPercent: dur > 0 ? (pos / dur) * 100 : 0, liked: podLiked.has(id),
+          // v1.86.0: same sort keys. Podcasts carry no reliable byte size ->
+          // 0 (they sort together under size-*); releaseDate omitted -> addedAt
+          // fallback, mirroring the media path.
+          title: ep.title || 'Episode',
+          size: typeof ep.size === 'number' ? ep.size : 0,
+          releaseDate: typeof ep.releaseDate === 'number' ? ep.releaseDate : undefined,
         };
         if (homeFeed.matchesGridFilter(rec, filter)) cand.push(rec);
       }
     }
-    cand.sort((a, b) => b.addedAt - a.addedAt); // recency, newest first
-    const MODERN_GRID_CAP = 60; // DISCLOSED cap - the modern grid is a recency snapshot, not the whole library
-    const truncated = cand.length > MODERN_GRID_CAP;
-    const items = cand.slice(0, MODERN_GRID_CAP).map((rec) => resolveModernGridItem(db, rec)).filter(Boolean);
-    return res.json({ items, filter, truncated });
+    // v1.86.0 (Dean): sort the FULL candidate set by the requested key BEFORE the
+    // cap, so "oldest"/"largest"/"feeling lucky" span the whole library rather
+    // than just reordering the newest snapshot. Reuses videoQuery.sortItems - the
+    // exact comparator set the classic /api/videos grid uses - so the two grids
+    // stay behaviourally identical. Default 'newest' preserves the prior order.
+    const sort = homeFeed.resolveGridSort(req.query.sort);
+    const sortedCand = videoQuery.sortItems(cand, sort);
+    const MODERN_GRID_CAP = 60; // DISCLOSED cap - the modern grid is a bounded snapshot, not the whole library
+    const truncated = sortedCand.length > MODERN_GRID_CAP;
+    const items = sortedCand.slice(0, MODERN_GRID_CAP).map((rec) => resolveModernGridItem(db, rec)).filter(Boolean);
+    return res.json({ items, filter, sort, truncated });
   }
 
   const records = [];

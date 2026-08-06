@@ -202,6 +202,11 @@ module.exports = [
         applyModernModePref: 'readonly',
         resolveModernChip: 'readonly',
         resolveHomeLayout: 'readonly',
+        // v1.86.0: the modern-home sort options + resolver (common.js), consumed
+        // by main.js's injected header ▾ control.
+        MODERN_SORT_OPTIONS: 'readonly',
+        MODERN_SORT_DEFAULT: 'readonly',
+        resolveModernSort: 'readonly',
         selectRecentUploaderChannels: 'readonly',
         modernCardAvatar: 'readonly',
         // v1.41.10 (QA gate): shared delete-outcome -> toast-message mapper

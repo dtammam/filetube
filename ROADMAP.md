@@ -80,6 +80,42 @@
 
 ## Shipped
 
+### v1.86.0 - Modern-home whole-library sort ▾ + header polish (2026-08-06)
+
+Dean's on-device follow-ups to v1.85.2:
+
+- **A real sort on the modern home.** The modern grid only ever showed the newest
+  items; Dean wanted to re-order / "mix it up". `GET /api/home?view=grid` gains a
+  `sort` param and now sorts the WHOLE candidate set (via the classic
+  `videoQuery.sortItems` comparator - so the two grids stay identical) BEFORE the
+  60-item cap, so oldest / largest / "Feeling lucky" span the whole library, not
+  just the newest snapshot. The control is a glyph-only ▾ caret, leftmost in the
+  header top-right, shown only on the modern home. Its sort menu includes "Feeling
+  lucky" (random, re-rolls each pick), so one caret covers ordering AND shuffle -
+  no separate shuffle/rescan/list buttons (those stay gone from v1.85.2).
+- **Header polish (mobile).** The one-off Download button is glyph-only on mobile
+  (keeps its "Download" text on desktop); the search magnifier is pushed to the
+  far-right corner, split from the queue/bell/download cluster, and a touch larger.
+
+WHAT THE GATE CAUGHT (full two-reviewer gate, both seats): a real WARNING both
+seats found independently - the header sort ▾ lives in the PERSISTENT header, and
+the SPA router caches the home view on nav-away WITHOUT firing the view's abort, so
+the ▾ was orphaned on Watch/Music/etc. after visiting the modern home. Fixed by
+binding its visibility to the home route via `body[data-view="home"]` (display:none
+elsewhere, re-shows on cache-restore); the abort listener stays as the destroy-path
+teardown. Plus 3 non-blocking suggestions, all closed (the videoQuery test made a
+functional bind, the abort listener made idempotent + once, "Feeling lucky" re-rolls
+on every pick). Both seats APPROVE on the delta.
+
+KNOWN GAP (disclosed, tech-debt #131): the new modern-sort functional test binds 7
+of 8 keys; the `random` case is coverage-blind (set-preserving assertion only, no
+seeded rng) - non-blocking, orthogonal to the fix.
+
+Dual-Node full suite green on v22.23.1 and v24.14.0 (**6432/6432**); census 0,
+ledger CLEAN. **Dean's on-device pass is PENDING** - probe the sort ▾ (leftmost
+top-right, real oldest/largest/feeling-lucky), the glyph-only mobile Download, and
+the corner search (eyeball its size - "ever so slightly larger" is a tunable 16px).
+
 ### v1.85.2 - One-off Download button root-cause + modern-home declutter (2026-08-06)
 
 Three of Dean's on-device follow-ups, all root-caused before editing (the
