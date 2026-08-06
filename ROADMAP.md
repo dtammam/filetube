@@ -80,6 +80,31 @@
 
 ## Shipped
 
+### v1.85.1 - Mobile hotfix: search/account menu were dead, header + Download button (2026-08-06)
+
+Dean's v1.85 device pass FAILED on mobile - fixed and re-gated:
+- **A/B (the core breakage):** the mobile search magnifier never showed, the
+  header avatar stayed visible, and neither the "You" tab nor the avatar opened
+  the account menu. Two root causes: a CSS **source-order cascade** bug (the v1.85
+  mobile `@media` overrides sat earlier in the stylesheet than their base rules,
+  and a media query adds no specificity, so the later base rules won and silently
+  defeated all three - fixed by scoping under `.header-right`); and the "You"
+  tab **opened-then-closed** (its click bubbled to the document outside-click
+  handler - fixed with stopPropagation, mutation-bound).
+- **D:** the one-off Download button is now shown in the mobile top-right (id
+  selector out-specifies the v1.82 `.btn` hide) - Dean's placement call.
+- **E:** the empty band under the mobile header - it reserved 96px for the logo
+  row PLUS the now-hidden search row; set to the compact 56px logo-row height,
+  coordinated through the one header var so the content offset follows.
+
+Slim gate (adversarial): APPROVE after one WARNING (a stale comment #D made false)
++ minor suggestions were closed. Dual-Node full suite green on v22.23.1 and
+v24.14.0 (6416/6416). **Dean's on-device pass is PENDING.** Still open for v1.86:
+the DESKTOP chip-row clip (#C - awaiting Dean's screenshot; the earlier mobile
+tweak was not the fix), and (from before) the chip row generally. LESSON: a CSS
+source-lock that checks a rule EXISTS does not prove it WINS - the CSS-blind-gate
+gap; device pass is the arbiter.
+
 ### v1.85.0 - Modern-mode polish: mobile search, "You" tab, avatar + corner fixes (2026-08-05)
 
 Dean's four v1.84 device-pass follow-ups:
