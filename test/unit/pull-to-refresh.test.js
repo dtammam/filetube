@@ -9,7 +9,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { pullRefreshState } = require('../../public/js/common.js');
+const { pullRefreshState, pullIsHorizontalDrag } = require('../../public/js/common.js');
 
 // ---- pullRefreshState (pure) ----------------------------------------------
 
@@ -30,6 +30,30 @@ test('pullRefreshState: bad inputs fail safe (non-number pull → idle; bad thre
   assert.strictEqual(pullRefreshState('80', 70), 'idle', 'a non-number pull is treated as 0');
   assert.strictEqual(pullRefreshState(80, 0), 'ready', 'a 0/garbage threshold falls back to 70 → 80 is ready');
   assert.strictEqual(pullRefreshState(50, -5), 'pulling', 'negative threshold → default 70 → 50 is pulling');
+});
+
+// ---- v1.86.1: pullIsHorizontalDrag (pure) — reject horizontal-scroller swipes -
+
+test('pullIsHorizontalDrag: a horizontal-dominant drag past the slop is rejected', () => {
+  assert.strictEqual(pullIsHorizontalDrag(40, 5), true, 'clearly horizontal (avatar-bar swipe)');
+  assert.strictEqual(pullIsHorizontalDrag(-40, 5), true, 'direction-agnostic (leftward swipe too)');
+  assert.strictEqual(pullIsHorizontalDrag(40, -5), true, 'a slight UPWARD drift during a horizontal swipe is still horizontal');
+});
+
+test('pullIsHorizontalDrag: a vertical pull (even with small horizontal jitter) is NOT rejected', () => {
+  assert.strictEqual(pullIsHorizontalDrag(5, 40), false, 'clearly vertical -> a real pull');
+  assert.strictEqual(pullIsHorizontalDrag(10, 60), false, 'jitter under the vertical travel -> still a pull');
+  assert.strictEqual(pullIsHorizontalDrag(0, 0), false, 'no movement yet -> not locked out');
+});
+
+test('pullIsHorizontalDrag: the slop stops the first noisy px from axis-locking a vertical pull', () => {
+  // A vertical pull that starts with a few px of horizontal drift (dx <= slop)
+  // must NOT be rejected even if dx momentarily exceeds dy.
+  assert.strictEqual(pullIsHorizontalDrag(8, 3, 12), false, 'dx below the slop -> not yet horizontal-locked');
+  assert.strictEqual(pullIsHorizontalDrag(13, 3, 12), true, 'dx past the slop AND > dy -> horizontal');
+  // Bad inputs fail safe (treated as 0 -> not horizontal).
+  assert.strictEqual(pullIsHorizontalDrag(undefined, undefined), false);
+  assert.strictEqual(pullIsHorizontalDrag('40', 5), false, 'a non-number dx is treated as 0');
 });
 
 // ---- source-locks: the touch wiring ----------------------------------------
@@ -128,6 +152,16 @@ test('PTR (gate CRITICAL fix): the pull path is INERT while Home is cached — g
 
 test('PTR (gate WARNING fix): dragging back to/above the start point DISARMS (no rescan on release)', () => {
   assert.match(PTR, /if \(pull <= 0\) \{ ptrArmed = false;/, 'the pull<=0 branch clears ptrArmed');
+});
+
+test('PTR (v1.86.1, Dean): a HORIZONTAL-dominant drag (avatar bar / chip row) is locked out via pullIsHorizontalDrag', () => {
+  // The touchmove must reject horizontal-scroller swipes so the rescan spinner
+  // no longer fires while swiping the subscriber circles.
+  assert.match(PTR, /pullIsHorizontalDrag\(e\.touches\[0\]\.clientX - ptrStartX, pull\)/,
+    'touchmove routes the horizontal-vs-vertical decision through the pure helper');
+  assert.match(PTR, /if \(pullIsHorizontalDrag\([^)]*\)\) \{ ptrReset\(\); return; \}/,
+    'a horizontal-dominant drag resets (nulls ptrStartY) -> locked out for the rest of the gesture');
+  assert.match(PTR, /ptrStartX = e\.touches\[0\]\.clientX/, 'touchstart records the start X the guard needs');
 });
 
 test('PTR: the indicator element + its CSS exist', () => {

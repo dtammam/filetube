@@ -305,6 +305,7 @@ module.exports = [
         getPerPageSort: 'readonly',
         setPerPageSort: 'readonly',
         pullRefreshState: 'readonly',
+        pullIsHorizontalDrag: 'readonly',
         // C1 (T9, v1.24.0): the "Move to..." picker modal + its
         // POST /api/videos/:id/move caller, consumed by main.js's per-card
         // trigger and watch.js's current-item trigger (T9 follow-up wiring).
