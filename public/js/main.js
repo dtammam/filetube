@@ -2237,13 +2237,14 @@ if (typeof module !== 'undefined' && module.exports) {
     // a DIFFERENT card's delete button re-arms the new one (only one card is
     // ever armed at a time) rather than deleting the previously-armed one.
     //
-    // FR-7 (v1.21.0, T6): the confirming second tap is where the escalation
-    // happens. A yt-dlp-managed item's second tap stays this EXACT,
-    // unchanged immediate-delete (AC47). A LOCAL item's second tap does NOT
-    // delete immediately -- it opens the checkbox-gated `showHardDeleteModal`
-    // (common.js) as a conscious 3rd action; only confirming THERE calls
-    // `deleteCardById` (AC46/AC49). Both paths converge on the exact same,
-    // unmodified `deleteCardById` -> `DELETE /api/videos/:id` (AC48).
+    // v1.86.2 (Dean): the confirming second tap deletes straight to (recoverable)
+    // Trash via `deleteCardById` -> `DELETE /api/videos/:id`, for EVERY item.
+    // (Superseded the v1.21 FR-7 escalation: a LOCAL card item used to route the
+    // second tap through the checkbox-gated `showHardDeleteModal` as a conscious
+    // 3rd step; that is dropped ON THE CARD - it moves to Trash either way, so the
+    // extra modal was friction Dean didn't want on the feed. showHardDeleteModal
+    // still guards the WATCH-page delete for local files - the card revert is
+    // scoped to the card, matching the pre-YouTube-feed inline two-tap.)
     // v1.40.0 (Dean): per-card Like toggle. Same `db.liked` id-array membership
     // the watch page's Like button uses (POST/DELETE /api/liked/:id), and the
     // same NON-optimistic posture -- the heart flips only after the request

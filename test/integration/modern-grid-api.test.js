@@ -310,3 +310,28 @@ test('sort does not bypass RBAC/hidden-folder exclusion (sort runs on the alread
     assert.ok(!got.includes('buried'), `hidden item excluded under sort=${sort} (no leak via sort)`);
   }
 });
+
+test('v1.86.2 (gate WARNING 2): the per-user RBAC guard (mediaVisibleTo) hides a restricted item on EVERY page, not just page 0', async () => {
+  // Binds server.js's grid `if (!mediaVisibleTo(req, item)) continue;` - previously
+  // UNBOUND (removing it kept the whole suite green). A restricted member must
+  // never see a restricted item, including at offset>0 (the RBAC filter runs during
+  // candidate gather, BEFORE the sort+slice, so it can't leak on a later page).
+  const meta = {};
+  for (let i = 0; i < 65; i++) meta[`ok${i}`] = item(`ok${i}`, { addedAt: 1000 + i });
+  // The restricted item is the NEWEST -> it would lead admin's page 0.
+  meta.secret = item('secret', { folderName: 'Adult', channelName: 'Adult', filePath: '/media/Adult/secret.mp4', addedAt: 999999 });
+  seed(meta);
+  const kid = __mintTestSession({ username: 'kiddoGrid', role: 'member' });
+  userStore.setRestrictions(kid.user.id, [{ kind: 'folder', value: 'Adult' }]);
+  const asKid = async (q) => (await fetch(`${base}/api/home?view=grid&filter=all${q}`, { headers: { Cookie: kid.cookie } })).json();
+
+  // Admin (unrestricted) sees the restricted item at the top of page 0.
+  assert.ok(ids((await grid('all', { limit: 60, offset: 0 })).body).includes('secret'), 'admin sees the restricted item');
+
+  // The member: absent on page 0 AND on the next page.
+  const p0 = await asKid('&limit=60&offset=0');
+  const p1 = await asKid('&limit=60&offset=60');
+  assert.ok(!ids(p0).includes('secret'), 'restricted item absent on the member grid page 0');
+  assert.ok(!ids(p1).includes('secret'), 'restricted item absent at offset>0 too - no leak on a later page');
+  assert.strictEqual(p0.total, 65, "the member's total is the visible-only count (restricted item excluded)");
+});

@@ -9355,10 +9355,11 @@ app.get('/api/home', (req, res) => {
 
   // ---- v1.84 Modern Mode: the FLAT grid view (short-circuits the rows) ------
   // A dedicated gather over the media library (video+audio) + downloaded
-  // podcasts, filtered by the chip, recency-sorted, capped. It reuses the EXACT
-  // per-user reads + RBAC visibility (mediaVisibleTo/podcastEpisodeVisibleTo) +
-  // hidden-folder guards above, so it can never surface a restricted or hidden
-  // item the row path would hide. Music keeps its own place (not a chip).
+  // podcasts, filtered by the chip, SORTED by the requested key (v1.86.0), and
+  // PAGINATED (v1.86.2 - {items,total,offset,limit}, the modern feed lazy-loads).
+  // It reuses the EXACT per-user reads + RBAC visibility (mediaVisibleTo/
+  // podcastEpisodeVisibleTo) + hidden-folder guards above, so it can never surface
+  // a restricted or hidden item the row path would hide. Music keeps its own place.
   if (req.query.view === 'grid') {
     const filter = homeFeed.resolveGridFilter(req.query.filter);
     const cand = [];
