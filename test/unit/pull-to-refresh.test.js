@@ -51,9 +51,21 @@ test('pullIsHorizontalDrag: the slop stops the first noisy px from axis-locking 
   // must NOT be rejected even if dx momentarily exceeds dy.
   assert.strictEqual(pullIsHorizontalDrag(8, 3, 12), false, 'dx below the slop -> not yet horizontal-locked');
   assert.strictEqual(pullIsHorizontalDrag(13, 3, 12), true, 'dx past the slop AND > dy -> horizontal');
+  // Exactly AT the slop is not PAST it (> , not >=) - binds the boundary.
+  assert.strictEqual(pullIsHorizontalDrag(12, 3, 12), false, 'dx == slop is not past it');
   // Bad inputs fail safe (treated as 0 -> not horizontal).
   assert.strictEqual(pullIsHorizontalDrag(undefined, undefined), false);
   assert.strictEqual(pullIsHorizontalDrag('40', 5), false, 'a non-number dx is treated as 0');
+});
+
+test('pullIsHorizontalDrag: past the slop but VERTICAL-dominant is still a pull (binds the ax>ay clause)', () => {
+  // Gate WARNING: without these, dropping `&& ax > ay` stays green because every
+  // other "not rejected" case has dx <= slop. Here dx is past the slop, so ONLY
+  // the vertical-dominance clause keeps it a pull.
+  assert.strictEqual(pullIsHorizontalDrag(20, 40, 12), false, 'horizontal past slop but dy dominates -> still a pull');
+  assert.strictEqual(pullIsHorizontalDrag(30, 31, 12), false, 'a near-vertical diagonal past the slop is still a pull');
+  // Strongly-upward diagonal: |dy| must dominate via abs (binds Math.abs on dy).
+  assert.strictEqual(pullIsHorizontalDrag(40, -100, 12), false, 'a strong UPWARD diagonal -> |dy| dominates -> not horizontal');
 });
 
 // ---- source-locks: the touch wiring ----------------------------------------
