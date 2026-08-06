@@ -52,6 +52,41 @@ test('v1.44 music: encodeListContext preserves src="music" + album/artist/filter
   assert.match(likedUrl, /filter=liked/);
 });
 
+test('v1.88 modern pill: encodeListContext preserves src="home-grid" + filter; buildContextListUrl hits /api/home?view=grid in pill+sort+seed order', () => {
+  const ctx = { src: 'home-grid', filter: 'audio', sort: 'newest', seed: 42 };
+  const back = decodeListContext(encodeListContext(ctx));
+  assert.strictEqual(back.src, 'home-grid');
+  assert.strictEqual(back.filter, 'audio');
+  assert.strictEqual(back.sort, 'newest');
+  assert.strictEqual(back.seed, '42'); // stringified on encode
+  const url = buildContextListUrl(back, 1000000);
+  assert.ok(url.startsWith('/api/home?view=grid'), 'home-grid ctx targets the modern grid endpoint: ' + url);
+  assert.match(url, /[?&]filter=audio(&|$)/);
+  assert.match(url, /[?&]sort=newest(&|$)/);
+  assert.match(url, /[?&]seed=42(&|$)/);
+  assert.match(url, /[?&]limit=1000000(&|$)/);
+  // It must NOT leak the classic library params (this is a different endpoint):
+  assert.ok(!/format=/.test(url), 'no classic format param on the grid URL: ' + url);
+});
+
+test('v1.88 modern pill: home-grid filter defaults to "all" when the pill is absent (defensive; server also clamps)', () => {
+  const url = buildContextListUrl({ src: 'home-grid', sort: 'random', seed: '7' }, 500);
+  assert.ok(url.startsWith('/api/home?view=grid'), url);
+  assert.match(url, /[?&]filter=all(&|$)/);
+  assert.match(url, /[?&]sort=random(&|$)/);
+  assert.match(url, /[?&]seed=7(&|$)/);
+  assert.match(url, /[?&]limit=500(&|$)/);
+});
+
+test('v1.88 modern pill: every MODERN_CHIP filter round-trips through the ctx and into the grid URL', () => {
+  for (const filter of ['all', 'videos', 'audio', 'podcasts', 'continue', 'unwatched']) {
+    const back = decodeListContext(encodeListContext({ src: 'home-grid', filter, sort: 'newest' }));
+    assert.strictEqual(back.filter, filter, 'pill preserved through encode/decode: ' + filter);
+    const url = buildContextListUrl(back, 100);
+    assert.match(url, new RegExp('[?&]filter=' + filter + '(&|$)'), 'grid URL carries the pill: ' + filter);
+  }
+});
+
 test('encodeListContext: only src="liked" survives; any other src is treated as the default library', () => {
   assert.match(decodeListContext(encodeListContext({ src: 'liked', sort: 'newest' })).src || '', /liked/);
   const notLiked = decodeListContext(encodeListContext({ src: 'videos', sort: 'newest' }));

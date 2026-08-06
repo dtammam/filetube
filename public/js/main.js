@@ -1538,6 +1538,26 @@ if (typeof module !== 'undefined' && module.exports) {
     // Recomputed per render so it always reflects the live sort/seed (a
     // sort-change or "shuffle again" re-renders the whole grid).
     function currentBrowseContextParam() {
+      // v1.88 (Dean): in Modern mode the home grid is a flat, PILL-filtered
+      // list served by /api/home?view=grid -- a different endpoint AND a
+      // different filter dimension (the pill: all/videos/audio/podcasts/
+      // continue/unwatched) than the classic /api/videos scope/format below.
+      // Carry the grid's OWN query so prev/next/autoplay walk the SAME pill the
+      // card was opened from, in its Modern sort + this scroll session's seed.
+      // `modernMode` is true ONLY on the bare home (resolveHomeLayout gates it
+      // on bareHome), so a folder/search view -- which renders the classic grid
+      // even under the Modern setting -- correctly falls through to the scope
+      // path. The watch page re-fetches via buildContextListUrl (common.js) and
+      // steps the response order verbatim, media-only (podcast tiles are
+      // non-media and drop out of the video-player walk, like mixed Liked).
+      if (modernMode) {
+        return encodeListContext({
+          src: 'home-grid',
+          filter: (typeof resolveModernChip === 'function') ? resolveModernChip(activeModernChip) : activeModernChip,
+          sort: activeModernSort,
+          seed: currentSeed,
+        });
+      }
       return encodeListContext({
         src: likedFilter ? 'liked' : 'videos',
         sort: currentSort,

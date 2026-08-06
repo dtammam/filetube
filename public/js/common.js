@@ -1880,6 +1880,17 @@ function encodeListContext(ctx) {
     if (ctx.artist) out.artist = String(ctx.artist);
     if (ctx.filter) out.filter = String(ctx.filter);
   }
+  // v1.88 (Dean): a Modern-mode home card carries src:'home-grid' plus the
+  // active pill (`filter`) so next/prev/autoplay re-fetch /api/home?view=grid
+  // in the SAME pill+sort+seed order the grid was showing -- the pill is the
+  // grid's only filter dimension and was previously invisible to the ctx
+  // (prev/next fell through to the whole /api/videos library, so an Audio-pill
+  // track's Next could land on a video). `sort`/`seed` ride the generic lines
+  // below (the grid's Modern sort key + this scroll session's shuffle seed).
+  if (ctx.src === 'home-grid') {
+    out.src = 'home-grid';
+    if (ctx.filter) out.filter = String(ctx.filter);
+  }
   if (ctx.sort) out.sort = String(ctx.sort);
   if (ctx.seed !== undefined && ctx.seed !== null && ctx.seed !== '') out.seed = String(ctx.seed);
   if (ctx.search) out.search = String(ctx.search);
@@ -1925,6 +1936,15 @@ function buildContextListUrl(ctx, fullLimit) {
     if (c.artist) params.push('artist=' + encodeURIComponent(c.artist));
     if (c.filter) params.push('filter=' + encodeURIComponent(c.filter));
     return '/api/music?' + params.join('&');
+  }
+  // v1.88 (Dean): a Modern-mode home context re-fetches the flat grid via
+  // /api/home?view=grid (server MODERN_GRID path) with the pill as `filter`,
+  // reusing the sort+seed+limit already accumulated above. The response order
+  // IS the grid order (server applies sort+seed) -- used verbatim, never
+  // re-sorted, exactly like the /api/videos and /api/music ctx paths. `filter`
+  // defaults to 'all' defensively (the server also clamps unknown filters).
+  if (c.src === 'home-grid') {
+    return '/api/home?view=grid&filter=' + encodeURIComponent(c.filter || 'all') + '&' + params.join('&');
   }
   var endpoint = c.src === 'liked' ? '/api/liked' : '/api/videos';
   return endpoint + '?' + params.join('&');
