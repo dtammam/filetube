@@ -7547,8 +7547,16 @@ if (typeof window !== 'undefined') {
       window.history.back();
     } else if (action === 'go-home') {
       navigate('/');
+    } else {
+      // v1.86.2 (Dean): 'noop' = already at the session-root home. Instead of
+      // doing nothing, RISE TO THE TOP - a Home tap while already on the feed
+      // should scroll up (the mobile modern grid is ~1 card/screen tall, so
+      // scrolling back manually is tedious). Matches the header logo's
+      // goHomeToTop() behaviour; the pure resolveHomeButtonAction still returns
+      // 'noop' (its contract/tests are unchanged - the scroll is a DOM-layer
+      // effect here).
+      window.scrollTo(0, 0);
     }
-    // 'noop': already at the session-root home — do nothing.
   }
 
   // v1.45.2 (#1a): the header LOGO is the "escape hatch" straight to the top of

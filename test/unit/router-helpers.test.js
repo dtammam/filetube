@@ -371,3 +371,21 @@ test('SOURCE-LOCK (T2 + C1): navigate() computes one desiredDepth that resets a 
   const builds = navBody.match(/buildHistoryState\([^)]*, desiredDepth\)/g) || [];
   assert.strictEqual(builds.length, 2, 'both state builds use the shared desiredDepth');
 });
+
+// ---- v1.86.2 (Dean): a Home tap while ALREADY at home scrolls to the top -----
+
+test('goHomeControl: the already-at-home branch scrolls to the top (not a silent no-op)', () => {
+  // resolveHomeButtonAction still returns 'noop' at the root home (its contract
+  // is unchanged, tested above); the DOM-layer goHomeControl turns that into a
+  // scroll-to-top so a Home tap on the feed rises to the top (the mobile modern
+  // grid is ~1 card/screen tall). Bind the wiring at the source (no live history).
+  const body = COMMON_JS.slice(COMMON_JS.indexOf('function goHomeControl()'), COMMON_JS.indexOf('function goHomeToTop()'));
+  // The final else (the 'noop'/already-home branch) must scroll to the top.
+  // Slice just that block (up to its own closing brace) so trailing comments
+  // that mention navigate() can't leak into the negative check.
+  const elseBlock = (body.slice(body.lastIndexOf('} else {')).match(/else \{[\s\S]*?\n\s*\}/) || [''])[0];
+  assert.match(elseBlock, /window\.scrollTo\(0, 0\)/,
+    "the already-home branch must scroll to the top, not do nothing");
+  assert.doesNotMatch(elseBlock, /navigate\(|history\.back/,
+    'the already-home branch only scrolls; it never navigates/pops (that would tear down / leave home)');
+});

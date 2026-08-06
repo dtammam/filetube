@@ -53,10 +53,16 @@ function seed(metadata, over = {}) {
   });
 }
 const grid = async (filter, opts = {}) => {
-  const { sort, ...init } = opts; // v1.86.0: opts.sort -> &sort=, rest -> fetch init (headers)
-  const q = filter ? `&filter=${filter}` : '';
-  const s = sort ? `&sort=${sort}` : '';
-  const res = await fetch(`${base}/api/home?view=grid${q}${s}`, init);
+  // v1.86.0: opts.sort -> &sort=; v1.86.2: opts.offset/limit/seed -> pagination;
+  // the rest -> fetch init (headers).
+  const { sort, offset, limit, seed, ...init } = opts;
+  let url = `${base}/api/home?view=grid`;
+  if (filter) url += `&filter=${filter}`;
+  if (sort) url += `&sort=${sort}`;
+  if (offset !== undefined) url += `&offset=${offset}`;
+  if (limit !== undefined) url += `&limit=${limit}`;
+  if (seed !== undefined) url += `&seed=${seed}`;
+  const res = await fetch(url, init);
   return { status: res.status, body: await res.json() };
 };
 const ids = (body) => (body.items || []).map((i) => i.id);
@@ -222,18 +228,42 @@ test('#3a: /api/channels resolves the avatar from the channelId registry, not ju
   assert.strictEqual(reg.isSub, true);
 });
 
-test('the 60-item cap is DISCLOSED via truncated:true, never silent', async () => {
+test('v1.86.2: the grid PAGINATES ({total,offset,limit}) - page 0 fills, a second page loads the rest with no overlap', async () => {
   const meta = {};
   for (let i = 0; i < 65; i++) meta[`m${i}`] = item(`m${i}`, { addedAt: 1000 + i });
   seed(meta);
-  const { body } = await grid('all');
-  assert.strictEqual(body.items.length, 60, 'capped at 60');
-  assert.strictEqual(body.truncated, true, 'the cap is disclosed');
+  // Page 0 (default limit 60): 60 items, total disclosed as 65.
+  const p0 = (await grid('all', { limit: 60, offset: 0 })).body;
+  assert.strictEqual(p0.items.length, 60, 'page 0 fills to the limit');
+  assert.strictEqual(p0.total, 65, 'total is the whole library, disclosed for the sentinel');
+  assert.strictEqual(p0.offset, 0);
+  assert.strictEqual(p0.limit, 60);
+  assert.ok(!('truncated' in p0), 'no bounded-snapshot truncated flag anymore - it lazy-loads');
+  // Page 1 (offset 60): the remaining 5, none overlapping page 0.
+  const p1 = (await grid('all', { limit: 60, offset: 60 })).body;
+  assert.strictEqual(p1.items.length, 5, 'the remainder loads on the next page');
+  const p0ids = new Set(ids(p0));
+  assert.ok(ids(p1).every((id) => !p0ids.has(id)), 'no item appears on both pages (stable order + disjoint slices)');
+  assert.strictEqual(new Set([...ids(p0), ...ids(p1)]).size, 65, 'the two pages together cover the whole library');
+});
+
+test('v1.86.2: random is SEED-STABLE across pages (same seed -> same order; two pages disjoint + complete)', async () => {
+  const meta = {};
+  for (let i = 0; i < 65; i++) meta[`r${i}`] = item(`r${i}`, { addedAt: 1000 + i });
+  seed(meta);
+  // Same seed, same page -> identical order (so an appended page never re-shuffles).
+  const a = ids((await grid('all', { sort: 'random', seed: 777, limit: 60, offset: 0 })).body);
+  const b = ids((await grid('all', { sort: 'random', seed: 777, limit: 60, offset: 0 })).body);
+  assert.deepStrictEqual(a, b, 'the same seed yields the same shuffle (stable scroll session)');
+  // Page 0 + page 1 under one seed cover the whole set with no duplicates.
+  const p1 = ids((await grid('all', { sort: 'random', seed: 777, limit: 60, offset: 60 })).body);
+  assert.strictEqual(new Set([...a, ...p1]).size, 65, 'the seeded pages tile the whole library');
+  assert.ok(p1.every((id) => !new Set(a).has(id)), 'no duplicate across the seeded pages');
 });
 
 // ---- v1.86.0 (Dean): the whole-library sort --------------------------------
 
-test('sort applies to the WHOLE library BEFORE the 60-cap (oldest surfaces a globally-old item, not oldest-of-newest-60)', async () => {
+test('sort applies to the WHOLE library BEFORE the page slice (oldest surfaces a globally-old item, not oldest-of-page-0)', async () => {
   const meta = {};
   // 65 items, addedAt ascending: g0 (globally oldest) .. g64 (globally newest).
   for (let i = 0; i < 65; i++) meta[`g${i}`] = item(`g${i}`, { addedAt: 1000 + i });
@@ -248,9 +278,9 @@ test('sort applies to the WHOLE library BEFORE the 60-cap (oldest surfaces a glo
   // FULL candidate set before the cap - a cap-then-sort would never surface g0.
   const oldest = (await grid('all', { sort: 'oldest' })).body;
   assert.strictEqual(oldest.sort, 'oldest', 'the response echoes the resolved sort');
-  assert.strictEqual(ids(oldest)[0], 'g0', 'oldest-first surfaces the globally-oldest item -> sort BEFORE cap');
-  assert.strictEqual(oldest.items.length, 60, 'still capped at 60');
-  assert.strictEqual(oldest.truncated, true);
+  assert.strictEqual(ids(oldest)[0], 'g0', 'oldest-first surfaces the globally-oldest item -> sort BEFORE the page slice');
+  assert.strictEqual(oldest.items.length, 60, 'page 0 fills to the default limit (60)');
+  assert.strictEqual(oldest.total, 65, 'the whole library is disclosed via total (paginated, not capped)');
 });
 
 test('sort: unknown/absent -> newest; title and size sorts order correctly', async () => {
@@ -279,4 +309,29 @@ test('sort does not bypass RBAC/hidden-folder exclusion (sort runs on the alread
     assert.ok(got.includes('shown'), `shown present under sort=${sort}`);
     assert.ok(!got.includes('buried'), `hidden item excluded under sort=${sort} (no leak via sort)`);
   }
+});
+
+test('v1.86.2 (gate WARNING 2): the per-user RBAC guard (mediaVisibleTo) hides a restricted item on EVERY page, not just page 0', async () => {
+  // Binds server.js's grid `if (!mediaVisibleTo(req, item)) continue;` - previously
+  // UNBOUND (removing it kept the whole suite green). A restricted member must
+  // never see a restricted item, including at offset>0 (the RBAC filter runs during
+  // candidate gather, BEFORE the sort+slice, so it can't leak on a later page).
+  const meta = {};
+  for (let i = 0; i < 65; i++) meta[`ok${i}`] = item(`ok${i}`, { addedAt: 1000 + i });
+  // The restricted item is the NEWEST -> it would lead admin's page 0.
+  meta.secret = item('secret', { folderName: 'Adult', channelName: 'Adult', filePath: '/media/Adult/secret.mp4', addedAt: 999999 });
+  seed(meta);
+  const kid = __mintTestSession({ username: 'kiddoGrid', role: 'member' });
+  userStore.setRestrictions(kid.user.id, [{ kind: 'folder', value: 'Adult' }]);
+  const asKid = async (q) => (await fetch(`${base}/api/home?view=grid&filter=all${q}`, { headers: { Cookie: kid.cookie } })).json();
+
+  // Admin (unrestricted) sees the restricted item at the top of page 0.
+  assert.ok(ids((await grid('all', { limit: 60, offset: 0 })).body).includes('secret'), 'admin sees the restricted item');
+
+  // The member: absent on page 0 AND on the next page.
+  const p0 = await asKid('&limit=60&offset=0');
+  const p1 = await asKid('&limit=60&offset=60');
+  assert.ok(!ids(p0).includes('secret'), 'restricted item absent on the member grid page 0');
+  assert.ok(!ids(p1).includes('secret'), 'restricted item absent at offset>0 too - no leak on a later page');
+  assert.strictEqual(p0.total, 65, "the member's total is the visible-only count (restricted item excluded)");
 });

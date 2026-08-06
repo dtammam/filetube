@@ -9355,10 +9355,11 @@ app.get('/api/home', (req, res) => {
 
   // ---- v1.84 Modern Mode: the FLAT grid view (short-circuits the rows) ------
   // A dedicated gather over the media library (video+audio) + downloaded
-  // podcasts, filtered by the chip, recency-sorted, capped. It reuses the EXACT
-  // per-user reads + RBAC visibility (mediaVisibleTo/podcastEpisodeVisibleTo) +
-  // hidden-folder guards above, so it can never surface a restricted or hidden
-  // item the row path would hide. Music keeps its own place (not a chip).
+  // podcasts, filtered by the chip, SORTED by the requested key (v1.86.0), and
+  // PAGINATED (v1.86.2 - {items,total,offset,limit}, the modern feed lazy-loads).
+  // It reuses the EXACT per-user reads + RBAC visibility (mediaVisibleTo/
+  // podcastEpisodeVisibleTo) + hidden-folder guards above, so it can never surface
+  // a restricted or hidden item the row path would hide. Music keeps its own place.
   if (req.query.view === 'grid') {
     const filter = homeFeed.resolveGridFilter(req.query.filter);
     const cand = [];
@@ -9416,16 +9417,23 @@ app.get('/api/home', (req, res) => {
       }
     }
     // v1.86.0 (Dean): sort the FULL candidate set by the requested key BEFORE the
-    // cap, so "oldest"/"largest"/"feeling lucky" span the whole library rather
-    // than just reordering the newest snapshot. Reuses videoQuery.sortItems - the
-    // exact comparator set the classic /api/videos grid uses - so the two grids
-    // stay behaviourally identical. Default 'newest' preserves the prior order.
+    // page slice, so "oldest"/"largest"/"feeling lucky" span the whole library.
+    // Reuses videoQuery.sortItems - the exact comparator set the classic
+    // /api/videos grid uses - so the two grids stay behaviourally identical.
+    // v1.86.2 (Dean): the modern grid now LAZY-LOADS - it PAGINATES exactly like
+    // /api/videos ({ items, total, offset, limit }) instead of a hard 60-cap.
+    // `random` is seeded (videoQuery.createSeededRng(seed)) so one scroll session
+    // observes ONE stable shuffle across pages rather than re-shuffling (and
+    // re-showing duplicates) on every appended page - the same seed contract the
+    // classic grid uses. Default 'newest' preserves the prior order.
     const sort = homeFeed.resolveGridSort(req.query.sort);
-    const sortedCand = videoQuery.sortItems(cand, sort);
-    const MODERN_GRID_CAP = 60; // DISCLOSED cap - the modern grid is a bounded snapshot, not the whole library
-    const truncated = sortedCand.length > MODERN_GRID_CAP;
-    const items = sortedCand.slice(0, MODERN_GRID_CAP).map((rec) => resolveModernGridItem(db, rec)).filter(Boolean);
-    return res.json({ items, filter, sort, truncated });
+    const rng = sort === 'random' ? videoQuery.createSeededRng(videoQuery.normalizeSeed(req.query.seed)) : undefined;
+    const sortedCand = videoQuery.sortItems(cand, sort, rng);
+    const total = sortedCand.length;
+    const offset = videoQuery.normalizeOffset(req.query.offset);
+    const limit = videoQuery.normalizeLimit(req.query.limit);
+    const items = sortedCand.slice(offset, offset + limit).map((rec) => resolveModernGridItem(db, rec)).filter(Boolean);
+    return res.json({ items, filter, sort, total, offset, limit });
   }
 
   const records = [];

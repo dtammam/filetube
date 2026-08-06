@@ -80,6 +80,43 @@
 
 ## Shipped
 
+### v1.86.2 - Modern feed lazy-load + Home-scroll-to-top + card-delete revert + glyph sizes (2026-08-06)
+
+Dean's on-device batch (all existing patterns, not new logic - Dean's framing):
+
+- **#5 The modern feed LAZY-LOADS.** `GET /api/home?view=grid` now PAGINATES
+  ({items,total,offset,limit}) instead of a hard 60-cap - it scrolls forever, like
+  the classic grid. The full candidate set is sorted (random SEEDED via
+  `createSeededRng` so one scroll session is a stable shuffle - no duplicates
+  across appended pages) BEFORE the page slice. The client reuses the classic
+  grid's exact sentinel/seed machinery (both render into #video-grid); a chip/sort
+  change mints a fresh seed + resets to page 0.
+- **#2 The card delete reverts to the pre-YouTube-feed inline two-tap** (Dean:
+  "we had this before"). The card's confirming second tap deletes straight to
+  (recoverable) Trash, dropping the v1.21 checkbox-gated hard-delete escalation for
+  local files ON THE CARD - it goes to Trash either way. The watch-page delete
+  keeps its own flow (scoped to the card).
+- **#1 Home tap scrolls to the top** when you're already on the feed (was a silent
+  no-op) - the mobile grid is ~1 card/screen tall.
+- **#3 Header glyphs uniform + larger** to match the bell family: download/search
+  -> ~20px, the sort ▾ caret -> ~22px (the caret char fills less of the box).
+
+Full two-reviewer gate (it touches the DELETE path). Both seats REQUEST CHANGES on
+round 1 (a shared WARNING: a stale/lying comment on the card-delete path), the
+adversarial seat adding a second: the modern grid's per-user RBAC guard
+(`mediaVisibleTo`) was UNBOUND by any test (pre-existing since v1.84, the
+"presence-not-binding" access-control class) - I BOUND it (a restricted member's
+item is now asserted absent on page 0 AND at offset>0; mutation-verified) rather
+than tech-debt an access-control gap. Both re-APPROVE on the delta. The delete
+stays recoverable (direct to Trash, no new permanent path) + two-tap-gated; the
+pagination has no dup/gap/offset-leak (all mutation-confirmed). Dual-Node full
+suite green on v22.23.1 and v24.14.0 (**6446/6446**); census 0, ledger CLEAN.
+(One Node 22 run flaked 1 integration test under concurrent load - tech-debt #107;
+confirmed a flake by an idle re-run at 6446/6446 + a clean Node 24 + integration-
+alone.) **Dean's device pass PENDING** - probe: the feed keeps loading on scroll;
+the card trash icon is the old "tap -> Sure -> tap"; Home rises to the top; the
+glyphs are uniform/larger.
+
 ### v1.86.1 - Download/▾ glyph polish + pull-to-refresh horizontal-swipe lockout (2026-08-06)
 
 Dean's on-device polish after v1.86.0:
