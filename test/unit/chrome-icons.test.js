@@ -79,20 +79,39 @@ for (const [name, asset] of Object.entries(NAME_ASSET)) {
   });
 }
 
-test('the static bottom-nav in index.html is inline <svg> (chromeIconMarkup), NO .icon-* mask', () => {
-  const html = fs.readFileSync(path.join(REPO, 'public', 'index.html'), 'utf8');
-  const start = html.indexOf('<nav class="bottom-nav"');
-  const block = html.slice(start, html.indexOf('</nav>', start));
-  assert.ok(start > -1 && block, 'the bottom-nav block exists');
-  // Every bottom-nav glyph is the exact chromeIconMarkup output (which is itself
-  // byte-bound to the asset above), so index.html cannot drift from the source.
-  for (const name of ['home', 'liked', 'folder', 'history', 'podcast', 'music', 'books', 'downloads', 'moon', 'cog']) {
-    assert.ok(block.includes(chromeIconMarkup(name)),
-      `the bottom-nav ${name} item embeds the inline chrome-icon <svg>`);
-  }
-  assert.doesNotMatch(block, /<i class="icon-/,
-    'no `.icon-*` mask <i> survives in the bottom-nav (they decode-lag / pop in)');
+// The bottom-nav glyph roster (class -> chrome name), in nav order.
+const BOTTOM_NAV_GLYPHS = ['home', 'liked', 'folder', 'history', 'podcast', 'music', 'books', 'downloads', 'moon', 'cog'];
+
+// The bottom-nav is DUPLICATED per shell, so bind EVERY shell, not just index -
+// the v1.87.1 slim gate caught that binding only index.html + only `liked`
+// cross-shell left a hole: a single-glyph revert to a decode-lagging mask on any
+// of the 8 non-index shells shipped green (the exact pop-in this wave prevents).
+// This iterates every shell that carries a bottom-nav and asserts all 10 glyphs
+// are the exact inline chromeIconMarkup output, with no `.icon-*` mask left.
+const SHELLS = fs.readdirSync(path.join(REPO, 'public'))
+  .filter((f) => f.endsWith('.html'))
+  .filter((f) => fs.readFileSync(path.join(REPO, 'public', f), 'utf8').includes('<nav class="bottom-nav"'));
+
+test('roster sanity: at least the 9 known shells carry a bottom-nav (guards the loop against going vacuous)', () => {
+  assert.ok(SHELLS.length >= 9, `expected >=9 shells with a bottom-nav, found ${SHELLS.length}: ${SHELLS.join(', ')}`);
 });
+
+for (const shell of SHELLS) {
+  test(`${shell}: every bottom-nav glyph is the inline chrome-icon <svg> (byte-exact), NO .icon-* mask`, () => {
+    const html = fs.readFileSync(path.join(REPO, 'public', shell), 'utf8');
+    const start = html.indexOf('<nav class="bottom-nav"');
+    const block = html.slice(start, html.indexOf('</nav>', start));
+    assert.ok(start > -1 && block, 'the bottom-nav block exists');
+    // Each glyph is the exact chromeIconMarkup output (itself byte-bound to the
+    // on-disk asset above), so no shell can drift from the shared source.
+    for (const name of BOTTOM_NAV_GLYPHS) {
+      assert.ok(block.includes(chromeIconMarkup(name)),
+        `the bottom-nav ${name} item embeds the inline chrome-icon <svg>`);
+    }
+    assert.doesNotMatch(block, /<i class="icon-/,
+      'no `.icon-*` mask <i> survives in the bottom-nav (a mask decode-lags -> pop-in)');
+  });
+}
 
 test('chromeIconEl builds a namespaced <svg class="chrome-icon"> with the right path', () => {
   const { c, dom } = loadCommon();
