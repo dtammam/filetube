@@ -333,3 +333,60 @@ test('apple-touch-icon.png exists, is 192px, and is deliberately OPAQUE (white c
   assert.equal(height, 192);
   assert.deepEqual(corner, [255, 255, 255, 255], 'apple-touch-icon corners must stay opaque white ON PURPOSE');
 });
+
+// ---- v1.91 (Dean): the DARK-mode home-screen icon --------------------------
+// iOS renders web-app icon transparency as black, so the light apple-touch-icon
+// is an opaque WHITE-backed logo (above). The dark variant is the same logo
+// composited onto the app's dark surface (#0f0f0f, the manifest background), so
+// a dark home screen gets a dark-backed icon instead of a white box. Wired via
+// `<link rel="apple-touch-icon" media="(prefers-color-scheme: dark)">`, which
+// iOS 16.4+ honours for the installed icon (older iOS keeps the light one).
+
+test('v1.91: apple-touch-icon-dark.png exists, is 192px, OPAQUE, with the DARK (#0f0f0f) field instead of white', () => {
+  const p = path.join(ICONS_DIR, 'apple-touch-icon-dark.png');
+  assert.ok(fs.existsSync(p), 'the dark apple-touch-icon must exist (node scripts/generate-dark-icons.js)');
+  const { width, height, corner, center } = cornerAndCenter(fs.readFileSync(p));
+  assert.equal(width, 192);
+  assert.equal(height, 192);
+  assert.deepEqual(corner, [15, 15, 15, 255], 'dark apple-touch corners must be the opaque dark surface #0f0f0f (NOT white, NOT transparent)');
+  assert.deepEqual(center, [255, 255, 255, 255], 'the logo glyph stays opaque white at center');
+});
+
+test('v1.91: the generator composites a transparent icon onto an opaque background (pure)', () => {
+  const { compositeOntoOpaque, DARK_BG } = require('../../scripts/generate-dark-icons');
+  // A tiny 1x1 RGBA-encoded PNG that is 50% transparent red, encoded via buildPng,
+  // then composited onto #0f0f0f -> the alpha blend must fully-opaque it.
+  const { buildPng } = require('../../scripts/generate-pwa-icons');
+  const halfRed = Buffer.from([0xff, 0x00, 0x00, 0x80]); // 50% alpha red, 1px
+  const out = compositeOntoOpaque(buildPng(1, 1, halfRed), DARK_BG);
+  const { corner } = cornerAndCenter(out);
+  assert.equal(corner[3], 255, 'result is fully opaque');
+  // 0xff*0.5 + 0x0f*0.5 ~= 135 red; green/blue ~= 0x0f*0.5 ~= 7-8. Blend, not either extreme.
+  assert.ok(corner[0] > corner[1] && corner[0] > corner[2], 'red channel dominates the blend');
+  assert.ok(corner[1] < 20 && corner[2] < 20, 'dark background bleeds through the transparency');
+  // Slim-gate WARNING: the <20 checks above pass for BOTH the real blend (g=b~=8)
+  // and a no-op passthrough (g=b=0). Pin the actual blend with a FULLY-TRANSPARENT
+  // input -> it must become EXACTLY the opaque dark surface, not black [0,0,0,255].
+  // Guards the real regression: a no-blend script would give icon-192's [0,0,0,0]
+  // corners black instead of #0f0f0f, and the committed-asset test wouldn't see it.
+  const outTransparent = compositeOntoOpaque(buildPng(1, 1, Buffer.from([0, 0, 0, 0])), DARK_BG);
+  assert.deepEqual(cornerAndCenter(outTransparent).corner, [15, 15, 15, 255],
+    'a transparent pixel fills to exactly the opaque dark surface #0f0f0f');
+});
+
+test('v1.91: every shell links the dark apple-touch variant with a prefers-color-scheme:dark media query, right after the light one', () => {
+  const pages = [
+    path.join(__dirname, '..', '..', 'public', 'index.html'),
+    path.join(__dirname, '..', '..', 'public', 'watch.html'),
+    path.join(__dirname, '..', '..', 'public', 'setup.html'),
+    path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html'),
+  ];
+  for (const p of pages) {
+    const html = fs.readFileSync(p, 'utf8');
+    assert.match(
+      html,
+      /<link rel="apple-touch-icon" href="\/icons\/apple-touch-icon\.png">\s*\n\s*<link rel="apple-touch-icon" media="\(prefers-color-scheme: dark\)" href="\/icons\/apple-touch-icon-dark\.png">/,
+      `${p} must link the dark apple-touch variant immediately after the light one`
+    );
+  }
+});
