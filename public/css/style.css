@@ -4800,10 +4800,16 @@ a.sub-row-channel-link:focus-visible {
   .header-right .account-menu-dropdown {
     position: fixed;
     top: auto;
-    left: var(--space-4);
+    /* v1.91.2 (Dean): a RIGHT-anchored narrow card, not a full-width sheet. The
+       old `left+right: --space-4` stretched it edge-to-edge, and with short
+       left-aligned rows the whole right half was dead space ("feels too wide").
+       Anchoring to the right edge (above the nav, near the You tab it opens from)
+       and capping the width makes it read as a menu tied to its trigger. */
+    left: auto;
     right: var(--space-4);
     bottom: calc(64px + env(safe-area-inset-bottom)); /* token-exempt: clears the fixed bottom nav */
-    min-width: 0;
+    min-width: 240px;
+    max-width: min(340px, calc(100vw - 2 * var(--space-4)));
   }
 
   .header-right {

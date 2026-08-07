@@ -34,6 +34,15 @@ test('the mobile account dropdown bottom-sheet is scoped under .header-right', (
     'the mobile bottom-sheet reposition must be .header-right-scoped');
 });
 
+test('(v1.91.2 Dean) the mobile account dropdown is a RIGHT-anchored narrow card, not a full-width sheet', () => {
+  const rule = /\.header-right \.account-menu-dropdown \{[^}]*\}/.exec(css);
+  assert.ok(rule, 'the mobile account-menu-dropdown rule exists');
+  assert.match(rule[0], /left:\s*auto/, 'left is released (was --space-4) so the card no longer stretches full-width');
+  assert.match(rule[0], /right:\s*var\(--space-4\)/, 'anchored to the right edge (near the You tab it opens from)');
+  assert.match(rule[0], /max-width:\s*min\(340px,/, 'width is capped so short rows do not leave a dead right half');
+  assert.doesNotMatch(rule[0], /left:\s*var\(--space-4\)/, 'the old full-width left inset is gone');
+});
+
 test('(#E) the mobile header collapses to the logo-row height (no empty band under the banner)', () => {
   // v1.85 hides the search bar by default, so the mobile header no longer needs
   // the 96px two-row height; the single --mobile-header-h var (which the header
