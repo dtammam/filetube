@@ -6180,6 +6180,34 @@ body.ft-css-fullscreen .bottom-nav {
   font-weight: var(--fw-semibold);
   color: var(--yt-red);
 }
+/* v1.90 (Dean): the mobile playback-speed BOTTOM SHEET. A body-level overlay
+   (player.js openSpeedSheet) that escapes the video box so ALL EIGHT rates show
+   at full tap size with no scroll. Above every player overlay (resume/transcode
+   are z-10; the controls bar z-8) -- uses the modal layer. */
+.speed-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background-color: var(--scrim);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end; /* slide up from the bottom */
+}
+.speed-sheet {
+  background: var(--header-bg);
+  border-top: 1px solid var(--border-dark);
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: var(--shadow-modal);
+  padding: var(--space-4) 0 calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  max-height: 90vh;
+  overflow-y: auto; /* safety only -- 8 rows fit any phone viewport, so no scroll in practice */
+  display: flex;
+  flex-direction: column;
+}
+.speed-sheet .speed-menu-item {
+  text-align: center;
+  justify-content: center;
+}
 .chapters-menu-time {
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;

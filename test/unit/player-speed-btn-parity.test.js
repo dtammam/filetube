@@ -100,4 +100,42 @@ test('gate W1 lock: dock() inlines the stale-open dismissal for BOTH bar popups 
   assert.match(dockBody, /chaptersMenu\.hidden = true/);
   assert.match(dockBody, /speedMenu\.hidden = true/, 'the speed picker must not survive a popstate dock invisibly open');
   assert.match(dockBody, /speedBtn\.setAttribute\('aria-expanded', 'false'\)/);
+  // v1.90: dock() (module scope, out of closeSpeedSheet's closure) must remove
+  // any open mobile speed SHEET by its body-level class too.
+  assert.match(dockBody, /\.speed-sheet-backdrop/, 'dock() removes the body-level mobile speed sheet');
+});
+
+// v1.90 (Dean: "show all 8, no scroll" on mobile): the inline popup is clamped
+// to the (often short) video box, so on mobile the picker is a BODY-LEVEL bottom
+// sheet that escapes the box and shows all eight rates. Desktop keeps the inline
+// popup. Structural locks (jsdom cannot see the layout that motivates this).
+test('v1.90 speed sheet: mobile opens a body-level sheet; desktop keeps the inline popup', () => {
+  const playerJs = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  const code = playerJs.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.match(code, /function openSpeedSheet\(\)/, 'the mobile sheet builder exists');
+  assert.match(code, /function closeSpeedSheet\(\)/, 'the mobile sheet teardown exists');
+  // The button branches on the SHARED mobile signal (never a second check).
+  assert.match(code, /isMobileFormFactor === 'function' && isMobileFormFactor\(\)\) \{\s*if \(speedSheet\) closeSpeedSheet\(\); else openSpeedSheet\(\);/,
+    'mobile routes to the sheet; the desktop inline popup path still follows');
+  // The sheet reuses the SAME pure model + the ONE apply path.
+  const sheetFn = /function openSpeedSheet\(\)[\s\S]*?\n {4}\}/.exec(code);
+  assert.ok(sheetFn, 'expected openSpeedSheet body');
+  assert.match(sheetFn[0], /buildSpeedMenuModel\(mediaPlayer \? mediaPlayer\.playbackRate : 1\)/, 'sheet rows come from the same live-rate model');
+  assert.match(sheetFn[0], /applyPlaybackRate\(row\.rate\); closeSpeedSheet\(\);/, 'a sheet pick routes through the ONE apply path, then closes');
+  assert.match(sheetFn[0], /document\.body\.appendChild\(backdrop\)/, 'the sheet is body-level so it escapes the clipped video box');
+  // The shared close path tears the sheet down too (teardown/navigation safety).
+  const closeSpeed = /function closeSpeedMenu\(\) \{[\s\S]*?\n {4}\}/.exec(code);
+  assert.ok(closeSpeed, 'expected closeSpeedMenu');
+  assert.match(closeSpeed[0], /closeSpeedSheet\(\)/, 'closeSpeedMenu also tears down the mobile sheet');
+});
+
+test('v1.90 speed sheet CSS: a body-level bottom sheet on the modal layer', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  const backdrop = /\.speed-sheet-backdrop \{[^}]*\}/.exec(css);
+  assert.ok(backdrop, 'the sheet backdrop rule exists');
+  assert.match(backdrop[0], /position:\s*fixed/, 'fixed overlay (escapes the video box)');
+  assert.match(backdrop[0], /z-index:\s*var\(--z-modal\)/, 'above every player overlay');
+  const sheet = /\.speed-sheet \{[^}]*\}/.exec(css);
+  assert.ok(sheet, 'the sheet panel rule exists');
+  assert.match(sheet[0], /safe-area-inset-bottom/, 'respects the iOS home-indicator inset');
 });
