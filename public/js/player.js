@@ -4713,6 +4713,54 @@ if (typeof module !== 'undefined' && module.exports) {
         speedMenu.appendChild(btn);
       });
     }
+    // v1.90 (Dean: "show all 8, no scroll" on mobile): the inline #speed-menu is
+    // bounded to the (often short, letterboxed) video box -- the v1.50.3 C1 clamp
+    // keeps it there so its own scroll works -- so on mobile it can only show ~4-5
+    // of the 8 rates and you must scroll for the faster ones. On mobile we instead
+    // present the picker as a BODY-LEVEL bottom sheet, which escapes the box and
+    // shows ALL EIGHT rates at full tap size with no scroll. Desktop keeps the
+    // inline popup unchanged. The sheet is transient (built on open, removed on
+    // close) and lives on document.body, so it never touches the host reparent.
+    // Only shown where the CUSTOM bar is (mobile audio + inline video); native
+    // iOS fullscreen video uses the native player's own speed control, and
+    // css-fullscreen is class-based (not the Fullscreen API), so a high z-index
+    // body child renders on top of both.
+    var speedSheet = null;
+    function closeSpeedSheet() {
+      if (speedSheet && speedSheet.parentNode) speedSheet.parentNode.removeChild(speedSheet);
+      speedSheet = null;
+      if (speedBtn) speedBtn.setAttribute('aria-expanded', 'false');
+    }
+    function openSpeedSheet() {
+      closeSpeedSheet();
+      var backdrop = document.createElement('div');
+      backdrop.className = 'speed-sheet-backdrop';
+      var sheet = document.createElement('div');
+      sheet.className = 'speed-sheet';
+      sheet.setAttribute('role', 'menu');
+      sheet.setAttribute('aria-label', 'Playback speed');
+      buildSpeedMenuModel(mediaPlayer ? mediaPlayer.playbackRate : 1).forEach(function (row) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'chapters-menu-item speed-menu-item' + (row.active ? ' active' : '');
+        btn.setAttribute('role', 'menuitemradio');
+        btn.setAttribute('aria-checked', row.active ? 'true' : 'false');
+        btn.textContent = row.label; // textContent only, never innerHTML
+        btn.addEventListener('click', function () { applyPlaybackRate(row.rate); closeSpeedSheet(); });
+        sheet.appendChild(btn);
+      });
+      backdrop.appendChild(sheet);
+      // Tap the backdrop (outside the sheet) to dismiss; pointerdown for iOS
+      // parity with the rest of the player's tap-outside handling.
+      backdrop.addEventListener('click', function (e) { if (e.target === backdrop) closeSpeedSheet(); });
+      // LOAD-BEARING (slim-gate CRITICAL-1): stash the handle BEFORE appending.
+      // Without it `speedSheet` stays null, so closeSpeedSheet() (rate-pick,
+      // backdrop tap, closeSpeedMenu teardown) is a no-op -- the scrim never
+      // dismisses and every tap stacks another. closeSpeedSheet() nulls it again.
+      speedSheet = backdrop;
+      document.body.appendChild(backdrop);
+      if (speedBtn) speedBtn.setAttribute('aria-expanded', 'true');
+    }
     if (speedBtn) {
       speedBtn.addEventListener('click', function (e) {
         e.stopPropagation();
@@ -4724,6 +4772,18 @@ if (typeof module !== 'undefined' && module.exports) {
           // corrected this comment: the earlier version claimed a wrap the
           // code never had).
           if (mediaPlayer) applyPlaybackRate(stepPlaybackRateClamped(mediaPlayer.playbackRate, 1));
+          return;
+        }
+        // v1.90: mobile -> the all-8 bottom sheet; desktop -> the inline popup.
+        if (typeof isMobileFormFactor === 'function' && isMobileFormFactor()) {
+          // Guard on DOM-attachment, not just a non-null ref (slim-gate delta
+          // WARNING): dock() removes the sheet node by a module-scope query but
+          // can't null this closure's `speedSheet`, so after a Back-button dock
+          // the handle is STALE (points at a detached node). A bare `if
+          // (speedSheet)` would take the close branch and eat the first tap; the
+          // parentNode check falls a stale handle through to openSpeedSheet
+          // (whose leading closeSpeedSheet nulls it) so the first tap opens.
+          if (speedSheet && speedSheet.parentNode) closeSpeedSheet(); else openSpeedSheet();
           return;
         }
         var opening = speedMenu.hidden;
@@ -4917,6 +4977,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     function closeSpeedMenu() {
       if (speedMenu) speedMenu.hidden = true;
+      closeSpeedSheet(); // v1.90: also tear down the mobile body-level sheet
       if (speedBtn) speedBtn.setAttribute('aria-expanded', 'false');
     }
     // v1.41.12: arm (or move) the chapter loop. Bounds come from the pure
@@ -6159,6 +6220,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // and resurrected it stale on re-expand.
     if (speedMenu) speedMenu.hidden = true;
     if (speedBtn) speedBtn.setAttribute('aria-expanded', 'false');
+    // v1.90: closeSpeedSheet lives in wireHostListeners' closure (out of reach
+    // here at module scope), so remove any open mobile speed sheet by its
+    // body-level class -- same "no stale popup survives a Back-button dock" aim.
+    var openSpeedSheetEl = document.querySelector('.speed-sheet-backdrop');
+    if (openSpeedSheetEl && openSpeedSheetEl.parentNode) openSpeedSheetEl.parentNode.removeChild(openSpeedSheetEl);
     if (host.parentNode !== dockEl) dockEl.appendChild(host);
     dockEl.hidden = false;
     state = STATE_DOCKED;

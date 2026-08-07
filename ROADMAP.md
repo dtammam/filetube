@@ -80,6 +80,32 @@
 
 ## Shipped
 
+### v1.90.0 - Version footer + all-8 mobile speed sheet (2026-08-07)
+
+Two small tweaks from Dean (the third, an adaptive dark PWA icon, is its own
+follow-up branch):
+
+1. **App version at a glance.** A subtle "vX.Y.Z" footer at the bottom of the
+   account menu - the ONE menu the desktop header dropdown AND the mobile "You"
+   bottom-nav tab both open, so it covers both surfaces. The server stamps
+   `<meta name="ft-version">` into every shell's `<head>` (zero extra fetch) and
+   the client reads it; absent meta -> no footer, never "vundefined".
+
+2. **Mobile playback-speed picker shows all 8 rates, no scroll.** The inline
+   speed popup is clamped to the (often short, letterboxed) video box, so on
+   mobile it only showed ~4-5 of the eight rates and you scrolled for the faster
+   ones. On mobile the speed button now opens a body-level BOTTOM SHEET that
+   escapes the box and shows all eight at full tap size, no scroll. Desktop keeps
+   the inline popup. The sheet reuses the same rate model + apply path and is
+   torn down on close/teardown/dock so it never outlives its view.
+
+Slim gate (adversarial seat): the gate EARNED ITS KEEP - it caught a real
+mobile-only CRITICAL (the sheet built its backdrop but never stored the handle,
+so it couldn't be dismissed - it would have trapped you behind a scrim), plus a
+presence-not-binding test that passed against that defect, plus a minor post-dock
+"dead first tap" WARNING. All fixed and mutation-verified before merge; final
+APPROVE. Dual-Node: 6486/6486 on BOTH v22.23.1 and v24.14.0.
+
 ### v1.89.0 - The FileTube banner is the built-in default logo (2026-08-07)
 
 Out of the box the header showed the plain "FileTube" text wordmark; the glossy

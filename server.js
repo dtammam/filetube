@@ -5892,6 +5892,17 @@ function injectCustomLogoClass(html) {
     return `<html${a} class="ft-custom-logo">`;
   });
 }
+// v1.90: stamp the running app version into the shell <head> as a meta tag, so
+// the client can render "vX.Y.Z" (account menu footer + Settings page) with ZERO
+// extra fetch. Idempotent; inserted right after <head>. APP_VERSION comes from
+// package.json (`\d+\.\d+\.\d+`), but escape the quote/angle chars defensively.
+function injectVersionMeta(html) {
+  if (/<meta\s+name="ft-version"/i.test(html)) return html;
+  const safe = String(APP_VERSION).replace(/[<>"&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '"': '&quot;', '&': '&amp;' }[c]));
+  const tag = `<meta name="ft-version" content="${safe}">`;
+  if (/<head\b[^>]*>/i.test(html)) return html.replace(/(<head\b[^>]*>)/i, `$1${tag}`);
+  return html; // no <head> (not a shell we template) -- leave untouched
+}
 // Read a header shell from disk and send it with the custom-logo class injected
 // when one is configured. Returns false (having sent nothing) if the file can't
 // be read, so callers can fall through. Shared by the static-shell middleware
@@ -5914,6 +5925,7 @@ function sendShellHtml(res, absFilePath) {
   // and the client's boot probe clears the class, restoring the text wordmark as
   // the safety fallback.
   html = injectCustomLogoClass(html);
+  html = injectVersionMeta(html); // v1.90: expose the running version to the client
   res.setHeader('Cache-Control', 'no-cache');
   res.type('html').send(html);
   return true;
