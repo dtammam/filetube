@@ -41,11 +41,20 @@ const TINY_PNG = Buffer.from(
   'hex',
 );
 
-test('v1.32: GET /logo is 404 before any upload, and GET /api/settings reports customLogo:false', async () => {
+test('v1.89: GET /logo serves the bundled default banner before any upload (was 404 pre-v1.89), and settings still reports customLogo:false', async () => {
   const logo = await fetch(`${base}/logo`);
-  assert.equal(logo.status, 404);
+  assert.equal(logo.status, 200, 'no upload -> the built-in default banner, not a 404');
+  assert.equal(logo.headers.get('content-type'), 'image/png');
+  const light = Buffer.from(await logo.arrayBuffer());
+  assert.ok(light.length > 100 && light[0] === 0x89 && light[1] === 0x50, 'a real PNG banner');
+  // The dark variant serves a DIFFERENT default banner (white-text vs black-text).
+  const dark = await fetch(`${base}/logo?variant=dark`);
+  assert.equal(dark.status, 200);
+  const darkBytes = Buffer.from(await dark.arrayBuffer());
+  assert.ok(!light.equals(darkBytes), 'the dark default banner differs from the light one');
+  // The default is NOT an "upload" -- the Settings->Logo controls still see no custom logo.
   const settings = await (await fetch(`${base}/api/settings`)).json();
-  assert.equal(settings.customLogo, false);
+  assert.equal(settings.customLogo, false, 'the bundled default is not reported as a user upload');
 });
 
 test('v1.32: a valid PNG upload round-trips -- POST accepts, /logo serves the exact bytes with the right type, settings reports customLogo:true', async () => {
@@ -95,10 +104,14 @@ test('v1.32: an oversized upload gets a clean JSON 413, and the previous logo su
   assert.equal(logo.status, 200, 'the previously-uploaded logo must survive a failed replacement');
 });
 
-test('v1.32: DELETE resets to the default -- /logo 404s again and customLogo flips false', async () => {
+test('v1.89: DELETE reverts to the bundled default banner (was a 404 pre-v1.89) and customLogo flips false', async () => {
+  const before = Buffer.from(await (await fetch(`${base}/logo`)).arrayBuffer()); // the uploaded TINY_PNG
   const del = await fetch(`${base}/api/settings/logo`, { method: 'DELETE' });
   assert.equal(del.status, 200);
-  assert.equal((await fetch(`${base}/logo`)).status, 404);
+  const after = await fetch(`${base}/logo`);
+  assert.equal(after.status, 200, 'delete now falls back to the default banner, not a 404');
+  const afterBytes = Buffer.from(await after.arrayBuffer());
+  assert.ok(!afterBytes.equals(before), 'the served logo is the default banner, no longer the deleted upload');
   const settings = await (await fetch(`${base}/api/settings`)).json();
   assert.equal(settings.customLogo, false);
 });
@@ -186,10 +199,18 @@ test('v1.33.1: the reverse fallback -- dark-only upload serves the plain (light)
   assert.equal(light.status, 200, 'light request must fall back to the dark upload');
   assert.equal(light.headers.get('content-type'), 'image/jpeg');
 
-  // Clear dark too -> nothing set -> 404 both ways.
+  // Clear dark too -> no upload -> v1.89 serves the bundled default banner both
+  // ways (was 404 pre-v1.89), each variant its own default (light black-text,
+  // dark white-text).
   await fetch(`${base}/api/settings/logo?variant=dark`, { method: 'DELETE' });
-  assert.equal((await fetch(`${base}/logo`)).status, 404);
-  assert.equal((await fetch(`${base}/logo?variant=dark`)).status, 404);
+  const defLight = await fetch(`${base}/logo`);
+  const defDark = await fetch(`${base}/logo?variant=dark`);
+  assert.equal(defLight.status, 200);
+  assert.equal(defDark.status, 200);
+  assert.equal(defLight.headers.get('content-type'), 'image/png');
+  assert.equal(defDark.headers.get('content-type'), 'image/png');
+  assert.ok(!Buffer.from(await defLight.arrayBuffer()).equals(Buffer.from(await defDark.arrayBuffer())),
+    'the two default banner variants are distinct files');
 });
 
 test('v1.33.1: a garbage variant value normalizes to light (never a crash, never a third file)', async () => {
@@ -215,43 +236,40 @@ test('v1.33.1: customLogoDarkMime is NOT settable via the generic POST /api/sett
   assert.equal(res.status, 400);
 });
 
-// ---- v1.41.18 (Dean): server-side FOUC kill --------------------------------
-// The header shells are static HTML, so the text wordmark painted before the
-// custom logo swapped in -- a flash on every refresh. The server now bakes
-// `ft-custom-logo` onto <html> at serve time when a logo is configured, so the
-// wordmark-hiding CSS is in force before any parsing. Self-contained: manages
-// its own logo state so it is order-independent of the tests above.
+// ---- v1.41.18 (Dean) / v1.89: server-side FOUC kill -------------------------
+// The header shells paint the text wordmark before JS runs, so the server bakes
+// `ft-custom-logo` onto <html> at serve time to keep the wordmark-hiding CSS in
+// force pre-paint. v1.89: the header now ALWAYS resolves to an image (the bundled
+// default banner when nothing is uploaded, or the upload), so the class is baked
+// in UNCONDITIONALLY -- it is no longer gated on an upload, and never withdrawn.
+// Self-contained: manages its own logo state so it is order-independent.
 const SHELL_PATHS = ['/', '/index.html', '/watch.html', '/stats.html', '/setup.html', '/read.html', '/books.html', '/books'];
 
-test('v1.41.18: NO ft-custom-logo class on any shell when no custom logo is configured', async () => {
+test('v1.89: EVERY shell carries ft-custom-logo baked onto <html> even with NO upload (the default banner is the logo, pre-paint zero flash)', async () => {
   await fetch(`${base}/api/settings/logo`, { method: 'DELETE' });
   await fetch(`${base}/api/settings/logo?variant=dark`, { method: 'DELETE' });
   for (const p of SHELL_PATHS) {
-    const html = await (await fetch(`${base}${p}`)).text();
-    const htmlTag = /<html\b[^>]*>/i.exec(html)[0];
-    assert.doesNotMatch(htmlTag, /ft-custom-logo/, `${p} must NOT carry the class with no logo configured (${htmlTag})`);
+    const res = await fetch(`${base}${p}`);
+    assert.equal(res.status, 200, `${p} serves`);
+    const htmlTag = /<html\b[^>]*>/i.exec(await res.text())[0];
+    assert.match(htmlTag, /\bft-custom-logo\b/, `${p} must carry ft-custom-logo even with no upload (default banner) (${htmlTag})`);
+    assert.match(htmlTag, /lang="en"/, `${p} must keep lang="en" alongside the injected class`);
   }
 });
 
-test('v1.41.18: EVERY shell is served with ft-custom-logo baked onto <html> once a logo is configured (pre-paint, zero flash)', async () => {
+test('v1.89: the class stays baked in after an UPLOAD too (upload overrides the default banner, same pre-paint hide)', async () => {
   const post = await fetch(`${base}/api/settings/logo`, {
     method: 'POST', headers: { 'Content-Type': 'image/png' }, body: TINY_PNG,
   });
   assert.equal(post.status, 200);
   for (const p of SHELL_PATHS) {
-    const res = await fetch(`${base}${p}`);
-    assert.equal(res.status, 200, `${p} serves`);
-    const html = await res.text();
-    const htmlTag = /<html\b[^>]*>/i.exec(html)[0];
-    assert.match(htmlTag, /\bft-custom-logo\b/, `${p} must carry ft-custom-logo on <html> (${htmlTag})`);
-    // The existing lang attr must survive the injection (no clobbering).
-    assert.match(htmlTag, /lang="en"/, `${p} must keep lang="en" alongside the injected class`);
+    const htmlTag = /<html\b[^>]*>/i.exec(await (await fetch(`${base}${p}`)).text())[0];
+    assert.match(htmlTag, /\bft-custom-logo\b/, `${p} must carry ft-custom-logo with an upload (${htmlTag})`);
   }
 });
 
-test('v1.41.18: the class is withdrawn again after the logo is DELETED (self-heals to the text wordmark)', async () => {
+test('v1.89: the class is NOT withdrawn after DELETE (reverts to the default banner, never back to the text wordmark)', async () => {
   await fetch(`${base}/api/settings/logo`, { method: 'DELETE' });
-  const html = await (await fetch(`${base}/`)).text();
-  const htmlTag = /<html\b[^>]*>/i.exec(html)[0];
-  assert.doesNotMatch(htmlTag, /ft-custom-logo/, 'a removed logo brings the text wordmark back on the next load');
+  const htmlTag = /<html\b[^>]*>/i.exec(await (await fetch(`${base}/`)).text())[0];
+  assert.match(htmlTag, /\bft-custom-logo\b/, 'a deleted upload reverts to the default banner, so the class stays baked in');
 });

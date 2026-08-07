@@ -180,7 +180,13 @@ test('logo bytes round-trip: upload -> backup -> delete -> restore brings back b
 
   // Delete the logo, then restore the bundle.
   await fetch(`${base}/api/settings/logo`, { method: 'DELETE' });
-  assert.equal((await fetch(`${base}/logo`)).status, 404, 'precondition: logo gone');
+  // v1.89: /logo now falls back to the bundled default banner instead of 404,
+  // so "the uploaded logo is gone" means the served bytes are no longer the
+  // uploaded PNG (not a 404).
+  const gone = await fetch(`${base}/logo`);
+  assert.equal(gone.status, 200, 'precondition: default banner serves after delete');
+  assert.notEqual(Buffer.from(await gone.arrayBuffer()).compare(PNG_BYTES), 0,
+    'precondition: the uploaded logo is gone (default banner now serving)');
 
   const res = await postRestore(bundle);
   assert.equal(res.status, 200);
