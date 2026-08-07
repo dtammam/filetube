@@ -5150,6 +5150,17 @@ function buildAccountAvatarEl(user, big) {
   return el;
 }
 
+// v1.90: the running app version, read from the server-stamped
+// <meta name="ft-version"> (injectVersionMeta, server.js). Returns '' when
+// absent (a non-templated shell / jsdom without the meta) so callers can skip
+// the footer rather than render "vundefined". Exported for node:test.
+function appVersionString() {
+  if (typeof document === 'undefined') return '';
+  const m = document.querySelector('meta[name="ft-version"]');
+  const v = m && m.getAttribute('content');
+  return (typeof v === 'string' && /^\d+\.\d+\.\d+/.test(v)) ? v : '';
+}
+
 function buildAccountMenuRow(tag, label, iconClass) {
   const row = document.createElement(tag);
   row.className = 'account-menu-item';
@@ -5689,6 +5700,20 @@ function injectAccountMenu() {
     signOut.classList.add('account-menu-signout');
     signOut.addEventListener('click', () => accountSignOut());
     menu.appendChild(signOut);
+
+    // v1.90 (Dean): a subtle version footer so you can tell at a glance which
+    // build you're on. Non-interactive; reads the server-stamped meta (zero
+    // fetch). This ONE menu is what the desktop header dropdown AND the mobile
+    // "You" bottom-nav tab both open, so it covers both surfaces at once. Absent
+    // meta (e.g. a shell not templated) -> no footer, never a broken "vundefined".
+    const version = appVersionString();
+    if (version) {
+      menu.appendChild(accountMenuDivider());
+      const ver = document.createElement('div');
+      ver.className = 'account-menu-version';
+      ver.textContent = 'v' + version;
+      menu.appendChild(ver);
+    }
 
     root.appendChild(menu);
     headerRight.appendChild(root);
@@ -11635,6 +11660,7 @@ if (typeof module !== 'undefined' && module.exports) {
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
     deriveOrderedIds, computeNeighbors, parentFolder,
     encodeListContext, decodeListContext, buildContextListUrl,
+    appVersionString,
     visibleSidebarFolders, resolveDefaultView,
     moveArrayItem, computeDropIndex, rebuildFullFolderOrder,
     // v1.76: the one drag-to-reorder gesture layer -- the two pure decisions

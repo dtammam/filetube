@@ -9600,6 +9600,15 @@ html[data-modern="on"] .video-uploader {
 .account-menu-signout {
   color: var(--yt-red);
 }
+/* v1.90: the subtle version footer at the bottom of the account menu. */
+.account-menu-version {
+  padding: var(--space-2) var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}
 /* v1.82: the Settings->Account profile-photo controls. */
 .account-photo-actions {
   display: inline-flex;
