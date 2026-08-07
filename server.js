@@ -5878,16 +5878,6 @@ function shellHtmlForRequestPath(p) {
   const bare = p.startsWith('/') ? p.slice(1) : p;
   return FOUC_SHELL_FILES.has(bare) ? bare : null;
 }
-function customLogoConfigured() {
-  try {
-    const db = getCachedDatabase();
-    const s = (db && db.settings) || {};
-    return (typeof s.customLogoMime === 'string' && s.customLogoMime !== '')
-      || (typeof s.customLogoDarkMime === 'string' && s.customLogoDarkMime !== '');
-  } catch (_) {
-    return false;
-  }
-}
 // Inject `ft-custom-logo` into the shell's <html> tag, preserving any existing
 // class/attrs. Idempotent: never doubles the class if it is somehow present.
 function injectCustomLogoClass(html) {
@@ -5914,7 +5904,16 @@ function sendShellHtml(res, absFilePath) {
   } catch (_) {
     return false;
   }
-  if (customLogoConfigured()) html = injectCustomLogoClass(html);
+  // v1.89: the header now ALWAYS resolves to an image -- the bundled default
+  // banner when no custom logo is uploaded (see GET /logo), or the upload when
+  // there is one. So stamp `ft-custom-logo` unconditionally, collapsing the
+  // text wordmark pre-paint on every shell so the banner never flashes "FileTube"
+  // text first. (Whether a custom logo was UPLOADED is reported separately to the
+  // Settings->Logo controls straight off settings.customLogoMime/customLogoDarkMime
+  // -- see GET /api/settings.) If the shipped asset is ever unreadable, /logo 404s
+  // and the client's boot probe clears the class, restoring the text wordmark as
+  // the safety fallback.
+  html = injectCustomLogoClass(html);
   res.setHeader('Cache-Control', 'no-cache');
   res.type('html').send(html);
   return true;
@@ -7780,6 +7779,45 @@ function customLogoPath(variant) {
   return path.join(DATA_DIR, variant === 'dark' ? CUSTOM_LOGO_DARK_FILENAME : CUSTOM_LOGO_FILENAME);
 }
 
+// v1.89: the BUNDLED default banner logo, shipped in the image (under public/,
+// which the Dockerfile copies) so every install shows the FileTube banner out
+// of the box instead of the plain text wordmark. dark mode -> the white-text
+// banner (legible on a dark header); light mode -> the black-text banner. A
+// user's Settings->Logo upload still fully overrides this (see GET /logo: the
+// default only fills the no-upload case); the text wordmark now survives only
+// as the missing-asset safety fallback. PNG, so the mime is fixed.
+const DEFAULT_LOGO_DIR = path.join(__dirname, 'public', 'assets', 'brand');
+function defaultLogoPath(variant) {
+  return path.join(DEFAULT_LOGO_DIR, variant === 'dark' ? 'filetube-banner-white.png' : 'filetube-banner-black.png');
+}
+// v1.89: stream the bundled default banner for `variant` (always PNG). Returns
+// false (having sent nothing) if the shipped asset can't be read, so callers
+// 404 and the client degrades to the text wordmark. Same defense-in-depth
+// nosniff/no-cache headers as the uploaded-logo path.
+// The bytes are memoized per variant (slim-gate S2): the default banners are
+// IMMUTABLE bundled assets, so a single read per variant replaces the
+// per-request readFileSync that /logo (HEAD+GET on every page load) would
+// otherwise incur on every default install. A read failure is not cached, so a
+// transiently-unreadable asset self-heals on a later hit.
+const defaultLogoBytesCache = new Map(); // 'light' | 'dark' -> Buffer
+function serveDefaultLogo(res, variant) {
+  try {
+    let bytes = defaultLogoBytesCache.get(variant);
+    if (!bytes) {
+      bytes = fs.readFileSync(defaultLogoPath(variant));
+      defaultLogoBytesCache.set(variant, bytes);
+    }
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(bytes);
+    return true;
+  } catch (err) {
+    console.error('Error serving default logo (falling through to text wordmark):', err && err.message);
+    return false;
+  }
+}
+
 // The settings key holding each variant's verified MIME type. The light key
 // keeps its v1.32 name (`customLogoMime`) for back-compat with an existing
 // upload's persisted settings.
@@ -7795,7 +7833,12 @@ app.get('/logo', (req, res) => {
   // v1.33.1: variant-aware with CROSS-FALLBACK -- ?variant=dark serves the
   // dark logo when set, else the light one; the plain /logo (light) likewise
   // falls back to a dark-only upload. "If only one is uploaded it is used
-  // for both" (Dean). 404 only when NEITHER variant is set.
+  // for both" (Dean).
+  // v1.89: when NEITHER variant is uploaded, serve the BUNDLED default banner
+  // for the requested variant (both default variants ship, so no cross-fallback
+  // needed there) -- the header shows the FileTube banner out of the box. A
+  // user upload still fully overrides. 404 only if even the shipped asset is
+  // unreadable, which makes the client degrade to the text wordmark.
   const requested = resolveLogoVariant(req.query.variant);
   const fallback = requested === 'dark' ? 'light' : 'dark';
   const mimeFor = (v) => {
@@ -7809,7 +7852,8 @@ app.get('/logo', (req, res) => {
     mime = mimeFor(fallback);
   }
   if (!mime) {
-    return res.status(404).json({ error: 'No custom logo configured' });
+    if (serveDefaultLogo(res, requested)) return;
+    return res.status(404).json({ error: 'No logo available' });
   }
   try {
     const bytes = fs.readFileSync(customLogoPath(variant));
@@ -7821,10 +7865,13 @@ app.get('/logo', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     return res.send(bytes);
   } catch (err) {
-    // Setting says yes but the file is gone (manual deletion, restored
-    // db.json without the data file) -- degrade to "no logo", never a crash.
-    console.error('Error serving custom logo (treating as unset):', err && err.message);
-    return res.status(404).json({ error: 'No custom logo configured' });
+    // The upload setting says yes but the bytes are gone (manual deletion,
+    // restored db.json without the data file) -- v1.89: fall back to the
+    // bundled default banner rather than a bare 404, so the header still
+    // shows a logo; only 404 (text wordmark) if the default is also gone.
+    console.error('Error serving custom logo (falling back to default banner):', err && err.message);
+    if (serveDefaultLogo(res, requested)) return;
+    return res.status(404).json({ error: 'No logo available' });
   }
 });
 

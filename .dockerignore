@@ -19,6 +19,10 @@ data/
 README.md
 ROADMAP.md
 LICENSE
-assets
+# Root-anchored: the top-level assets/ (source art) is dev-only. This must NOT
+# sweep public/assets/ -- the served brand banners (v1.89 default logo) live at
+# public/assets/brand/ and MUST ship in the image. `/assets` (leading slash)
+# matches ONLY the context-root assets/, never a nested public/assets.
+/assets
 test_media
 docker-compose.yml

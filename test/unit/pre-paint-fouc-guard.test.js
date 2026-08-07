@@ -97,12 +97,39 @@ test('the /subscriptions route renders via the shared sendShellHtml helper (serv
   assert.match(srv, /sendShellHtml,/, 'server.js must dep-inject sendShellHtml into the yt-dlp module');
 });
 
-test('server.js injects ft-custom-logo onto <html> only when a custom logo is configured (the pre-paint kill)', () => {
+test('v1.89: server.js injects ft-custom-logo onto <html> UNCONDITIONALLY (banner is the built-in default, no text flash)', () => {
   const srv = fs.readFileSync(path.join(__dirname, '..', '..', 'server.js'), 'utf8');
   assert.match(srv, /function injectCustomLogoClass/, 'the injector exists');
-  assert.match(srv, /function customLogoConfigured/, 'gated on whether a logo is actually configured');
-  assert.match(srv, /if \(customLogoConfigured\(\)\) html = injectCustomLogoClass\(html\)/,
-    'the class is injected ONLY when a logo is configured -- no-logo pages keep the text wordmark');
+  // v1.89: the header always resolves to an image (bundled default banner, or an
+  // upload), so sendShellHtml stamps the class every time -- no longer gated on a
+  // customLogoConfigured() check (that function was removed as dead).
+  assert.doesNotMatch(srv, /function customLogoConfigured/,
+    'the old upload-gate helper is gone -- the class is no longer conditional on an upload');
+  assert.match(srv, /\n\s*html = injectCustomLogoClass\(html\);/,
+    'sendShellHtml injects the class unconditionally so the text wordmark never paints first');
+});
+
+test('v1.89: GET /logo falls back to the bundled default banner when no logo is uploaded', () => {
+  const srv = fs.readFileSync(path.join(__dirname, '..', '..', 'server.js'), 'utf8');
+  // The default-banner helper + its use on the no-upload path.
+  assert.match(srv, /function serveDefaultLogo/, 'the default-banner server helper exists');
+  assert.match(srv, /function defaultLogoPath/, 'the default-banner path resolver exists');
+  // dark -> the white-text banner (legible on a dark header); light -> black-text.
+  assert.match(srv, /variant === 'dark' \? 'filetube-banner-white\.png' : 'filetube-banner-black\.png'/,
+    'dark mode maps to the white-text banner, light mode to the black-text banner');
+  // The no-upload branch serves the default instead of the old bare 404.
+  assert.match(srv, /if \(serveDefaultLogo\(res, requested\)\) return;/,
+    'the no-upload path serves the bundled default banner before any 404');
+});
+
+test('v1.89: both default banner assets are bundled under public/ (so the Docker image ships them)', () => {
+  for (const f of ['filetube-banner-black.png', 'filetube-banner-white.png']) {
+    const p = path.join(PUBLIC, 'assets', 'brand', f);
+    assert.ok(fs.existsSync(p), `${f} must exist under public/assets/brand (public/ is what the Dockerfile copies)`);
+    const head = fs.readFileSync(p).subarray(0, 8);
+    assert.ok(head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47,
+      `${f} must be a real PNG (magic bytes)`);
+  }
 });
 
 test('common.js is the sole writer of the ft-custom-logo flag and self-heals on 404 / load error', () => {
