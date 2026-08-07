@@ -80,6 +80,21 @@
 
 ## Shipped
 
+### v1.91.2 - Mobile account menu: right-anchored narrow card (2026-08-07)
+
+Follow-on to the v1.91.1 footer polish. Dean (screenshot): the mobile account
+menu still "felt off" - it was full-width (`left+right: --space-4`), but the rows
+are short and left-aligned, so the whole right half was dead space and it read as
+a stretched dropdown. Fixed: release `left` (auto), anchor to the RIGHT edge above
+the nav (near the "You" tab it opens from), and cap the width (min 240px, max
+min(340px, 100vw - 2*--space-4)) so it's a contained card tied to its trigger.
+Desktop dropdown untouched. Slim gate APPROVE (specificity-safe, overflow-safe on
+every realistic phone incl a 280px Fold, census clean, source-lock mutation-
+verified). Disclosed non-blocking residual: a very long (admin-set) display name
+could hard-clip without an ellipsis now that the card is capped - pre-existing
+`nowrap`+`overflow:hidden`, one-liner to fix if it ever bites. Dual-Node:
+6491/6491 on BOTH v22.23.1 and v24.14.0.
+
 ### v1.91.1 - Account-menu version footer alignment (2026-08-07)
 
 Polish on the v1.90 version footer. Dean: the footer was centered under a
