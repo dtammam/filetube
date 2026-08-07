@@ -364,6 +364,14 @@ test('v1.91: the generator composites a transparent icon onto an opaque backgrou
   // 0xff*0.5 + 0x0f*0.5 ~= 135 red; green/blue ~= 0x0f*0.5 ~= 7-8. Blend, not either extreme.
   assert.ok(corner[0] > corner[1] && corner[0] > corner[2], 'red channel dominates the blend');
   assert.ok(corner[1] < 20 && corner[2] < 20, 'dark background bleeds through the transparency');
+  // Slim-gate WARNING: the <20 checks above pass for BOTH the real blend (g=b~=8)
+  // and a no-op passthrough (g=b=0). Pin the actual blend with a FULLY-TRANSPARENT
+  // input -> it must become EXACTLY the opaque dark surface, not black [0,0,0,255].
+  // Guards the real regression: a no-blend script would give icon-192's [0,0,0,0]
+  // corners black instead of #0f0f0f, and the committed-asset test wouldn't see it.
+  const outTransparent = compositeOntoOpaque(buildPng(1, 1, Buffer.from([0, 0, 0, 0])), DARK_BG);
+  assert.deepEqual(cornerAndCenter(outTransparent).corner, [15, 15, 15, 255],
+    'a transparent pixel fills to exactly the opaque dark surface #0f0f0f');
 });
 
 test('v1.91: every shell links the dark apple-touch variant with a prefers-color-scheme:dark media query, right after the light one', () => {
