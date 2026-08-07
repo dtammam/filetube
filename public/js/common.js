@@ -5705,7 +5705,7 @@ function injectAccountMenu() {
     // build you're on. Non-interactive; reads the server-stamped meta (zero
     // fetch). This ONE menu is what the desktop header dropdown AND the mobile
     // "You" bottom-nav tab both open, so it covers both surfaces at once. Absent
-    // meta (e.g. a shell not templated) -> no footer, never a broken "vundefined".
+    // meta (e.g. a shell not templated) -> no footer, never a broken "Version undefined".
     const version = appVersionString();
     if (version) {
       menu.appendChild(accountMenuDivider());
