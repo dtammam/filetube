@@ -114,9 +114,13 @@ test('v1.90 speed sheet: mobile opens a body-level sheet; desktop keeps the inli
   const code = playerJs.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
   assert.match(code, /function openSpeedSheet\(\)/, 'the mobile sheet builder exists');
   assert.match(code, /function closeSpeedSheet\(\)/, 'the mobile sheet teardown exists');
-  // The button branches on the SHARED mobile signal (never a second check).
-  assert.match(code, /isMobileFormFactor === 'function' && isMobileFormFactor\(\)\) \{\s*if \(speedSheet\) closeSpeedSheet\(\); else openSpeedSheet\(\);/,
-    'mobile routes to the sheet; the desktop inline popup path still follows');
+  // The button branches on the SHARED mobile signal (never a second check), and
+  // the toggle guards on DOM-ATTACHMENT (speedSheet && speedSheet.parentNode) --
+  // a bare `if (speedSheet)` would eat the first tap after a Back-button dock,
+  // which query-removes the node but leaves this closure's handle stale (slim-
+  // gate delta WARNING).
+  assert.match(code, /isMobileFormFactor === 'function' && isMobileFormFactor\(\)\) \{\s*if \(speedSheet && speedSheet\.parentNode\) closeSpeedSheet\(\); else openSpeedSheet\(\);/,
+    'mobile routes to the sheet, toggling on DOM-attachment so a stale post-dock handle still opens');
   // The sheet reuses the SAME pure model + the ONE apply path.
   const sheetFn = /function openSpeedSheet\(\)[\s\S]*?\n {4}\}/.exec(code);
   assert.ok(sheetFn, 'expected openSpeedSheet body');

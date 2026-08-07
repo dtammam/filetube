@@ -4776,7 +4776,14 @@ if (typeof module !== 'undefined' && module.exports) {
         }
         // v1.90: mobile -> the all-8 bottom sheet; desktop -> the inline popup.
         if (typeof isMobileFormFactor === 'function' && isMobileFormFactor()) {
-          if (speedSheet) closeSpeedSheet(); else openSpeedSheet();
+          // Guard on DOM-attachment, not just a non-null ref (slim-gate delta
+          // WARNING): dock() removes the sheet node by a module-scope query but
+          // can't null this closure's `speedSheet`, so after a Back-button dock
+          // the handle is STALE (points at a detached node). A bare `if
+          // (speedSheet)` would take the close branch and eat the first tap; the
+          // parentNode check falls a stale handle through to openSpeedSheet
+          // (whose leading closeSpeedSheet nulls it) so the first tap opens.
+          if (speedSheet && speedSheet.parentNode) closeSpeedSheet(); else openSpeedSheet();
           return;
         }
         var opening = speedMenu.hidden;
