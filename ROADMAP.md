@@ -80,6 +80,18 @@
 
 ## Shipped
 
+### v1.91.1 - Account-menu version footer alignment (2026-08-07)
+
+Polish on the v1.90 version footer. Dean: the footer was centered under a
+left-aligned menu list, so it "felt off" - the eye tracks a clean left edge down
+the rows, then the version jumps to the middle. Fixed: it now reads "Version
+X.Y.Z", left-aligned at the same horizontal inset (--space-6) as the menu rows,
+so it's a quiet footer that belongs to the list instead of a floating centered
+stamp. Structural lock (jsdom can't see the visual). Slim gate APPROVE (inset
+matches the rows, no wrap/overflow on the narrow menu, census/lint clean, mutation-
+verified); one stale-comment SUGGESTION fixed. Dual-Node: 6490/6490 on BOTH
+v22.23.1 and v24.14.0.
+
 ### v1.91.0 - Dark-mode home-screen (PWA) icon (2026-08-07)
 
 The third of Dean's small tweaks (the version footer + speed sheet shipped in

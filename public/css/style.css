@@ -9628,12 +9628,15 @@ html[data-modern="on"] .video-uploader {
 .account-menu-signout {
   color: var(--yt-red);
 }
-/* v1.90: the subtle version footer at the bottom of the account menu. */
+/* v1.90 / v1.91.1 (Dean): the subtle version footer at the bottom of the account
+   menu. LEFT-aligned at the SAME horizontal inset as the rows (--space-6), so it
+   reads as a quiet footer that belongs to the left-aligned list rather than a
+   centered stamp that breaks the column's vertical rhythm. */
 .account-menu-version {
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-6);
   color: var(--text-secondary);
   font-size: var(--fs-sm);
-  text-align: center;
+  text-align: left;
   font-variant-numeric: tabular-nums;
   user-select: text;
 }

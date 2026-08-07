@@ -59,3 +59,17 @@ test('v1.90: the meta is injected exactly once (idempotent) even if re-served', 
 test('v1.90: the version string is a valid semver-ish X.Y.Z (what appVersionString accepts)', () => {
   assert.match(EXPECTED, /^\d+\.\d+\.\d+/, 'package version is X.Y.Z');
 });
+
+// v1.91.1 (Dean): the footer reads "Version X.Y.Z" and is LEFT-aligned at the
+// row inset so it belongs to the left-aligned menu list instead of floating
+// centered (which "felt off"). jsdom can't see the visual, so lock it structurally.
+test('v1.91.1: the account-menu version footer is labeled and left-aligned to the row inset', () => {
+  const common = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'common.js'), 'utf8');
+  assert.match(common, /ver\.textContent = 'Version ' \+ version;/, 'footer reads "Version X.Y.Z", not a bare "vX.Y.Z"');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const rule = /\.account-menu-version \{[^}]*\}/.exec(css);
+  assert.ok(rule, 'the .account-menu-version rule exists');
+  assert.match(rule[0], /text-align:\s*left/, 'left-aligned to match the menu list (NOT centered)');
+  assert.doesNotMatch(rule[0], /text-align:\s*center/, 'the old centered treatment is gone');
+  assert.match(rule[0], /padding:\s*var\(--space-2\) var\(--space-6\)/, 'same horizontal inset (--space-6) as the menu rows');
+});
