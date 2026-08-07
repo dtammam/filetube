@@ -80,6 +80,37 @@
 
 ## Shipped
 
+### v1.89.0 - The FileTube banner is the built-in default logo (2026-08-07)
+
+Out of the box the header showed the plain "FileTube" text wordmark; the glossy
+banner logo only appeared if you UPLOADED it in Settings -> Logo (the v1.32
+white-label feature). Now the bundled banner IS the default, theme-aware: the
+white-text banner in dark mode, the black-text banner in light mode. Uploading
+your own logo still fully overrides it.
+
+Under the hood this reuses the whole existing variant-aware `/logo` pipeline
+rather than adding a new path: `GET /logo` now serves a bundled default banner
+(shipped under `public/assets/brand/`, which the Docker image copies) whenever no
+custom logo is uploaded, and the pre-paint `ft-custom-logo` class is stamped on
+every shell unconditionally so the banner never flashes the text wordmark first.
+"Remove logo" in Settings now reverts to the default banner; the text wordmark
+survives only as the safety fallback if the shipped asset is ever unreadable.
+
+Slim gate (adversarial seat): APPROVE on both the base and the fix-round delta,
+no CRITICAL/WARNING. Named attack surfaces all cleared by measurement - the
+reviewer defiltered the two PNGs to confirm the dark->white / light->black
+mapping is legible (not inverted), proved the `.dockerignore` `/assets` rule
+cannot sweep `public/assets/`, and mutation-tested every changed spec. Two
+non-blocking suggestions applied: the default bytes are memoized per variant (no
+per-request read on default installs), and the light/dark mapping is now bound by
+a behavioral, mutation-verified test rather than a source-lock alone. Dual-Node:
+6481/6481 on BOTH v22.23.1 and v24.14.0.
+
+Note: this release ALSO carries v1.88.0 (Prev/Next respects the active home pill),
+whose Docker image never published - a GitHub Actions platform incident on
+2026-08-06 wedged the v1.88.0 publish runs in an uncancellable queued state. This
+tag's fresh publish run supersedes it: the v1.89.0 image contains both waves.
+
 ### v1.88.0 - Prev/Next respects the active home pill (2026-08-06)
 
 On the Modern (YouTube-style) home, the top pills - All / Videos / Audio /
