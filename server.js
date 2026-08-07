@@ -7794,9 +7794,19 @@ function defaultLogoPath(variant) {
 // false (having sent nothing) if the shipped asset can't be read, so callers
 // 404 and the client degrades to the text wordmark. Same defense-in-depth
 // nosniff/no-cache headers as the uploaded-logo path.
+// The bytes are memoized per variant (slim-gate S2): the default banners are
+// IMMUTABLE bundled assets, so a single read per variant replaces the
+// per-request readFileSync that /logo (HEAD+GET on every page load) would
+// otherwise incur on every default install. A read failure is not cached, so a
+// transiently-unreadable asset self-heals on a later hit.
+const defaultLogoBytesCache = new Map(); // 'light' | 'dark' -> Buffer
 function serveDefaultLogo(res, variant) {
   try {
-    const bytes = fs.readFileSync(defaultLogoPath(variant));
+    let bytes = defaultLogoBytesCache.get(variant);
+    if (!bytes) {
+      bytes = fs.readFileSync(defaultLogoPath(variant));
+      defaultLogoBytesCache.set(variant, bytes);
+    }
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'no-cache');

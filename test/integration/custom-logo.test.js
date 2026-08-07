@@ -52,6 +52,14 @@ test('v1.89: GET /logo serves the bundled default banner before any upload (was 
   assert.equal(dark.status, 200);
   const darkBytes = Buffer.from(await dark.arrayBuffer());
   assert.ok(!light.equals(darkBytes), 'the dark default banner differs from the light one');
+  // Slim-gate S1: bind the MAPPING behaviorally, not just via a source-lock --
+  // light -> the black-text banner file, dark -> the white-text banner file.
+  // A coordinated filename swap in defaultLogoPath flips these and goes red here.
+  const brandDir = path.join(__dirname, '..', '..', 'public', 'assets', 'brand');
+  const blackFile = fs.readFileSync(path.join(brandDir, 'filetube-banner-black.png'));
+  const whiteFile = fs.readFileSync(path.join(brandDir, 'filetube-banner-white.png'));
+  assert.ok(light.equals(blackFile), 'light mode serves the black-text banner (legible on a light header)');
+  assert.ok(darkBytes.equals(whiteFile), 'dark mode serves the white-text banner (legible on a dark header)');
   // The default is NOT an "upload" -- the Settings->Logo controls still see no custom logo.
   const settings = await (await fetch(`${base}/api/settings`)).json();
   assert.equal(settings.customLogo, false, 'the bundled default is not reported as a user upload');
