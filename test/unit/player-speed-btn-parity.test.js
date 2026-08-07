@@ -123,6 +123,18 @@ test('v1.90 speed sheet: mobile opens a body-level sheet; desktop keeps the inli
   assert.match(sheetFn[0], /buildSpeedMenuModel\(mediaPlayer \? mediaPlayer\.playbackRate : 1\)/, 'sheet rows come from the same live-rate model');
   assert.match(sheetFn[0], /applyPlaybackRate\(row\.rate\); closeSpeedSheet\(\);/, 'a sheet pick routes through the ONE apply path, then closes');
   assert.match(sheetFn[0], /document\.body\.appendChild\(backdrop\)/, 'the sheet is body-level so it escapes the clipped video box');
+  // LOAD-BEARING (slim-gate CRITICAL-1 regression lock): openSpeedSheet MUST
+  // stash the backdrop into `speedSheet`, or closeSpeedSheet() is a permanent
+  // no-op and the scrim can never be dismissed. This omission passed every
+  // presence assertion above (CRITICAL-2: presence != binding), so bind the
+  // ASSIGNMENT itself -- deleting it must go red.
+  assert.match(sheetFn[0], /speedSheet = backdrop;/, 'openSpeedSheet must assign the handle so closeSpeedSheet can dismiss it');
+  // closeSpeedSheet: actually removes the node AND clears the handle (so a
+  // re-open isn't blocked by a stale non-null ref).
+  const closeSheet = /function closeSpeedSheet\(\) \{[\s\S]*?\n {4}\}/.exec(code);
+  assert.ok(closeSheet, 'expected closeSpeedSheet');
+  assert.match(closeSheet[0], /parentNode\.removeChild\(speedSheet\)/, 'closeSpeedSheet removes the body-level node');
+  assert.match(closeSheet[0], /speedSheet = null;/, 'closeSpeedSheet clears the handle so the next open is clean');
   // The shared close path tears the sheet down too (teardown/navigation safety).
   const closeSpeed = /function closeSpeedMenu\(\) \{[\s\S]*?\n {4}\}/.exec(code);
   assert.ok(closeSpeed, 'expected closeSpeedMenu');

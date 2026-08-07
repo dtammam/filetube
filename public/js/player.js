@@ -4753,6 +4753,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // Tap the backdrop (outside the sheet) to dismiss; pointerdown for iOS
       // parity with the rest of the player's tap-outside handling.
       backdrop.addEventListener('click', function (e) { if (e.target === backdrop) closeSpeedSheet(); });
+      // LOAD-BEARING (slim-gate CRITICAL-1): stash the handle BEFORE appending.
+      // Without it `speedSheet` stays null, so closeSpeedSheet() (rate-pick,
+      // backdrop tap, closeSpeedMenu teardown) is a no-op -- the scrim never
+      // dismisses and every tap stacks another. closeSpeedSheet() nulls it again.
+      speedSheet = backdrop;
       document.body.appendChild(backdrop);
       if (speedBtn) speedBtn.setAttribute('aria-expanded', 'true');
     }
