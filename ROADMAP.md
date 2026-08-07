@@ -80,6 +80,36 @@
 
 ## Shipped
 
+### v1.91.0 - Dark-mode home-screen (PWA) icon (2026-08-07)
+
+The third of Dean's small tweaks (the version footer + speed sheet shipped in
+v1.90.0). Installing the PWA showed the logo with a WHITE box behind it, which
+looks wrong on a dark OS. That white is deliberate - iOS renders web-app icon
+transparency as BLACK, so `apple-touch-icon.png` is the logo composited onto
+opaque white (v1.28.1). This adds a DARK counterpart: `apple-touch-icon-dark.png`
+is the same logo composited onto the app's dark surface (#0f0f0f, the manifest
+background), generated with no new dependency by `scripts/generate-dark-icons.js`
+(reusing the repo's existing `decodePng` + `buildPng`). Every one of the 12 header
+shells now links it via `<link rel="apple-touch-icon"
+media="(prefers-color-scheme: dark)">`, which iOS 16.4+ honours for the installed
+icon; older iOS keeps the light one (graceful, disclosed).
+
+Scope, honest: this is the iOS install-icon half - the actual white box. The
+browser TAB favicon was already dark-adaptive (v1.28.1 made it transparent), and
+Android composites the transparent manifest icons onto its own surface, so both
+were already fine. Android maskable/adaptive-shape icons are a separate
+enhancement, deliberately not bundled (a maskable icon needs its own safe-zone
+redesign) - can follow if wanted.
+
+Slim gate (adversarial seat): APPROVE, no CRITICAL. The reviewer decoded the dark
+PNG pixel-by-pixel (192x192, fully opaque - no alpha<255 black-render trap - dark
+corners, white glyph), confirmed the generator reproduces the committed bytes
+byte-identically (real provenance), and all 12 shells carry the byte-identical
+insertion. One non-blocking WARNING (a compositor test that passed for both the
+real blend and a no-op passthrough) fixed with a transparent-input assertion that
+pins the exact #0f0f0f fill, mutation-verified. Dual-Node: 6489/6489 on BOTH
+v22.23.1 and v24.14.0.
+
 ### v1.90.0 - Version footer + all-8 mobile speed sheet (2026-08-07)
 
 Two small tweaks from Dean (the third, an adaptive dark PWA icon, is its own
