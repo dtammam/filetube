@@ -5711,7 +5711,7 @@ function injectAccountMenu() {
       menu.appendChild(accountMenuDivider());
       const ver = document.createElement('div');
       ver.className = 'account-menu-version';
-      ver.textContent = 'v' + version;
+      ver.textContent = 'Version ' + version;
       menu.appendChild(ver);
     }
 
