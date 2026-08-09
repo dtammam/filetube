@@ -89,18 +89,65 @@ test('shouldGenerateStoryboard: excludes audio, too-short, and junk', () => {
 
 // ---- buildStoryboardArgs: exact array + injection safety --------------------
 
-test('buildStoryboardArgs: exact FFmpeg arg array for a known plan', () => {
-  const plan = { v: 1, interval: 1.99, count: 40, cols: 10, rows: 4, tileW: 160 };
+test('buildStoryboardArgs: exact seek-based FFmpeg arg array for a known plan', () => {
+  // Small hand-checkable plan (count 3, 3x1 grid) so the whole array is legible.
+  const plan = { v: 1, interval: 1.5, count: 3, cols: 3, rows: 1, tileW: 160 };
   const args = buildStoryboardArgs('/in.mp4', '/out.sb.jpg', plan);
   assert.deepStrictEqual(args, [
     '-nostdin', '-loglevel', 'error',
-    '-i', '/in.mp4',
-    '-vf', 'fps=1/1.99,scale=160:-2,tile=10x4',
+    // one INPUT seek per frame, at 0, 1.5, 3.0s
+    '-ss', '0', '-i', '/in.mp4',
+    '-ss', '1.5', '-i', '/in.mp4',
+    '-ss', '3', '-i', '/in.mp4',
+    '-filter_complex',
+    '[0:v]trim=end_frame=1,setpts=PTS-STARTPTS,scale=160:-2,setsar=1[s0];' +
+    '[1:v]trim=end_frame=1,setpts=PTS-STARTPTS,scale=160:-2,setsar=1[s1];' +
+    '[2:v]trim=end_frame=1,setpts=PTS-STARTPTS,scale=160:-2,setsar=1[s2];' +
+    '[s0][s1][s2]concat=n=3:v=1:a=0[c];' +
+    '[c]tile=3x1[o]',
+    '-map', '[o]',
     '-frames:v', '1',
     '-an',
     '-q:v', '4',
     '-y', '/out.sb.jpg',
   ]);
+});
+
+test('buildStoryboardArgs: SEEK-based, never a full-file decode (the v1.93 fix)', () => {
+  // The whole point of v1.93: no `fps=1/interval` filter (which forces ffmpeg
+  // to decode the entire file). Reintroducing it must turn this red.
+  const plan = planStoryboard(4000); // 100 frames, the MAX regime
+  const args = buildStoryboardArgs('/in.mp4', '/o.sb.jpg', plan);
+  assert.ok(!args.some(a => /fps\s*=/.test(a)), 'no fps filter anywhere (that = full decode)');
+  // Exactly one `-ss` INPUT seek per sampled frame, each paired with its own -i.
+  const ssCount = args.filter(a => a === '-ss').length;
+  const iCount = args.filter(a => a === '-i').length;
+  assert.strictEqual(ssCount, plan.count, 'one input seek per frame');
+  assert.strictEqual(iCount, plan.count, 'one -i input per seek');
+});
+
+test('buildStoryboardArgs: seek timestamps land at exactly i*interval', () => {
+  const plan = planStoryboard(79.714104); // 40 frames
+  const args = buildStoryboardArgs('/in.mp4', '/o.sb.jpg', plan);
+  // Collect the value following each '-ss'.
+  const seeks = [];
+  for (let i = 0; i < args.length; i++) if (args[i] === '-ss') seeks.push(Number(args[i + 1]));
+  assert.strictEqual(seeks.length, plan.count);
+  seeks.forEach((t, i) => {
+    assert.ok(Math.abs(t - i * plan.interval) <= 0.0005, `seek ${i} = ${t} ~= ${i * plan.interval}`);
+  });
+  assert.strictEqual(seeks[0], 0, 'frame 0 seeks to the start');
+});
+
+test('buildStoryboardArgs: output geometry matches the descriptor grid', () => {
+  // The sprite the client renders MUST be the plan's cols x rows of count
+  // frames - otherwise already-generated sprites and new ones disagree.
+  const plan = planStoryboard(300); // some mid clip
+  const args = buildStoryboardArgs('/in.mp4', '/o.sb.jpg', plan);
+  const fc = args[args.indexOf('-filter_complex') + 1];
+  assert.match(fc, new RegExp(`concat=n=${plan.count}:v=1:a=0`), 'concat count == plan.count');
+  assert.match(fc, new RegExp(`tile=${plan.cols}x${plan.rows}`), 'tile grid == plan cols x rows');
+  assert.match(fc, new RegExp(`scale=${plan.tileW}:-2`), 'tiles scaled to plan.tileW');
 });
 
 test('buildStoryboardArgs: paths are opaque argv elements (no shell interpolation)', () => {
