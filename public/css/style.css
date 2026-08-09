@@ -1326,6 +1326,28 @@ html.reader-immersive .app-container { padding-top: 0; }
   object-fit: cover;
 }
 
+/* v1.92 storyboard card preview: a sprite-backed layer over the thumbnail that
+   fades in while the card is hovered (desktop) or centred in view (mobile).
+   background-image / -size / -position are set inline by main.js from the
+   shared tile geometry; this rule owns only layout + the fade. */
+.card-preview {
+  position: absolute;
+  inset: 0;
+  z-index: 1; /* token-exempt: local stacking, above .thumbnail-img, below badges */
+  background-repeat: no-repeat;
+  background-color: #000; /* token-exempt: letterbox black, matches .thumbnail-container */
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-ui);
+  pointer-events: none; /* never intercept the card's own tap/hover */
+}
+.card-preview.previewing {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* belt-and-suspenders: the JS already refuses to animate, but never fade in */
+  .card-preview.previewing { opacity: 0; }
+}
+
 .duration-badge {
   position: absolute;
   bottom: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
@@ -6397,6 +6419,44 @@ body.ft-css-fullscreen .bottom-nav {
 @media (max-width: 768px) {
   .cc-overlay {
     bottom: 44px;    /* matches the 44px mobile control strip */ /* token-exempt: positional geometry (Stop A Batch A) */
+  }
+}
+
+/* ---- v1.92 storyboard scrub preview (seek-bar hover / touch-drag) -------- */
+.seek-preview {
+  position: absolute;
+  bottom: 48px; /* token-exempt: positional geometry, above the 40px control strip */
+  z-index: 11; /* token-exempt: local stacking, above the control strip (z 8) */
+  transform: translateX(-50%);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  pointer-events: none; /* the preview never eats the drag gesture */
+}
+.seek-preview.visible {
+  display: flex;
+}
+.seek-preview-img {
+  width: 160px; /* token-exempt: fixed sprite tile width (matches server SB_TILE_W) */
+  background-repeat: no-repeat;
+  background-color: var(--bg-color);
+  border: 2px solid var(--border-dark);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+.seek-preview-time {
+  font-family: var(--mono-font);
+  font-size: var(--fs-xs);
+  color: var(--text-primary);
+  background-color: var(--header-bg);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  padding: 0 var(--space-2);
+}
+@media (max-width: 768px) {
+  .seek-preview {
+    bottom: 52px; /* token-exempt: positional geometry, above the 44px mobile strip */
   }
 }
 

@@ -597,6 +597,48 @@ function scrubRatioFromPointer(clientX, rectLeft, rectWidth) {
   return Math.max(0, Math.min(1, (clientX - rectLeft) / rectWidth));
 }
 
+// v1.92 storyboard geometry (PURE, shared by the seek-bar scrub preview here
+// and the grid card preview in main.js via window.FileTube.storyboard). The
+// sprite is a `cols` x `rows` grid of frames; `geom` is the per-item
+// descriptor { interval, count, cols, rows, tileW, tileH } from the server.
+
+// Scrub time (s) -> frame index, clamped to [0, count-1]. Frame i was sampled
+// at i*interval, so floor(t/interval) is the frame covering time t.
+function storyboardFrameForTime(t, geom, duration) {
+  if (!geom || !(geom.count > 0)) return 0;
+  const interval = geom.interval > 0 ? geom.interval : (Number(duration) / geom.count);
+  if (!(interval > 0)) return 0;
+  let idx = Math.floor(Number(t) / interval);
+  if (!Number.isFinite(idx) || idx < 0) idx = 0;
+  if (idx > geom.count - 1) idx = geom.count - 1;
+  return idx;
+}
+
+// Frame index -> CSS background placement as PERCENTAGES (resolution- and
+// display-size-independent, so the same descriptor drives a 160px scrub
+// thumbnail and a full-width card tile). With background-size cols*100% x
+// rows*100%, each tile fills the element; the column/row percentage is the
+// standard sprite formula col/(cols-1) (0 when a single column/row).
+function storyboardTile(index, geom) {
+  const cols = Math.max(1, geom.cols | 0);
+  const rows = Math.max(1, geom.rows | 0);
+  const count = geom.count > 0 ? geom.count : cols * rows;
+  let i = index | 0;
+  if (i < 0) i = 0;
+  if (i > count - 1) i = count - 1;
+  const col = i % cols;
+  const row = Math.floor(i / cols);
+  return {
+    index: i,
+    col,
+    row,
+    posXPct: cols > 1 ? (col / (cols - 1)) * 100 : 0,
+    posYPct: rows > 1 ? (row / (rows - 1)) * 100 : 0,
+    sizeXPct: cols * 100,
+    sizeYPct: rows * 100
+  };
+}
+
 // v1.21 post-gate hardening (FIX 1): pure single-vs-double-tap decision
 // table behind the touchend handling in `wireSkipHoldGestures` below (see
 // that function -- attached to BOTH the video surface, `#media-player`, and
@@ -1124,6 +1166,9 @@ if (typeof module !== 'undefined' && module.exports) {
     clampVolume,
     seekCommitTarget,
     scrubRatioFromPointer,
+    // v1.92 storyboard geometry (shared with the card preview).
+    storyboardFrameForTime,
+    storyboardTile,
     classifyTapGesture,
     shouldArtSingleTapAct,
     resolveMobileFormFactor,
@@ -1230,6 +1275,9 @@ if (typeof module !== 'undefined' && module.exports) {
   // flag -- reset on every teardown (see teardownMediaState) and whenever
   // the button itself is clicked off.
   var ccOverlayEl, ccOverlayTextEl;
+  // v1.92: the seek-bar storyboard scrub preview (built in JS, never touches
+  // the shared player-host-template so all shells stay byte-identical).
+  var seekPreviewEl, seekPreviewImgEl, seekPreviewTimeEl;
   var audioCaptionsOn = false;
 
   // v1.26.4 (frozen audio-CC overlay, on-device iOS bug): the last text this
@@ -1764,6 +1812,22 @@ if (typeof module !== 'undefined' && module.exports) {
     ccOverlayTextEl.className = 'cc-overlay-text';
     ccOverlayEl.appendChild(ccOverlayTextEl);
     host.appendChild(ccOverlayEl);
+    // v1.92: the storyboard scrub preview -- a sprite-backed thumbnail + a
+    // timestamp that floats above the seek bar on hover / touch-drag. Built in
+    // JS (shell-template stays byte-identical, same posture as ccOverlayEl) and
+    // appended INSIDE the positioned `.player-controls` so its absolute
+    // placement is relative to the control strip. Hidden until wired below.
+    if (playerControls) {
+      seekPreviewEl = document.createElement('div');
+      seekPreviewEl.className = 'seek-preview';
+      seekPreviewImgEl = document.createElement('div');
+      seekPreviewImgEl.className = 'seek-preview-img';
+      seekPreviewTimeEl = document.createElement('div');
+      seekPreviewTimeEl.className = 'seek-preview-time';
+      seekPreviewEl.appendChild(seekPreviewImgEl);
+      seekPreviewEl.appendChild(seekPreviewTimeEl);
+      playerControls.appendChild(seekPreviewEl);
+    }
     // v1.27.0 (background-audio-for-video, EXPERIMENTAL): the hidden <audio>
     // sidecar -- built in JS (never touches the shared player-host-template
     // markup, so all 5 shells stay byte-identical, same posture as
@@ -4022,6 +4086,40 @@ if (typeof module !== 'undefined' && module.exports) {
     return (mediaPlayer && mediaPlayer.duration) || 0;
   }
 
+  // v1.92: storyboard scrub preview -- show the sprite frame + timestamp for the
+  // seek position under `clientX`. No-op (and hides) when the current item has
+  // no storyboard descriptor, so audio/short/legacy items degrade cleanly.
+  function updateSeekPreview(clientX) {
+    if (!seekPreviewEl || !seekBar || !playerControls) return;
+    var geom = currentData && currentData.storyboard;
+    if (!geom || !currentData.id) { hideSeekPreview(); return; }
+    var rect = seekBar.getBoundingClientRect();
+    if (!(rect.width > 0)) { hideSeekPreview(); return; }
+    var ratio = scrubRatioFromPointer(clientX, rect.left, rect.width);
+    if (ratio === null) { hideSeekPreview(); return; }
+    var total = seekTotalDuration();
+    var t = ratio * total;
+    var tile = storyboardTile(storyboardFrameForTime(t, geom, total), geom);
+    // Sprite frame via CSS background percentages (the shared pure geometry).
+    if (seekPreviewImgEl.style.backgroundImage.indexOf(currentData.id) === -1) {
+      seekPreviewImgEl.style.backgroundImage = 'url("/storyboard/' + encodeURIComponent(currentData.id) + '")';
+    }
+    seekPreviewImgEl.style.backgroundSize = tile.sizeXPct + '% ' + tile.sizeYPct + '%';
+    seekPreviewImgEl.style.backgroundPosition = tile.posXPct + '% ' + tile.posYPct + '%';
+    var aspect = (geom.tileH > 0 && geom.tileW > 0) ? (geom.tileH / geom.tileW) : (9 / 16);
+    seekPreviewImgEl.style.height = Math.round(160 * aspect) + 'px';
+    seekPreviewTimeEl.textContent = formatDuration(t);
+    // Center horizontally on the pointer, clamped inside the control strip.
+    var cRect = playerControls.getBoundingClientRect();
+    var half = (seekPreviewEl.offsetWidth || 160) / 2;
+    var left = Math.max(half, Math.min(cRect.width - half, clientX - cRect.left));
+    seekPreviewEl.style.left = left + 'px';
+    seekPreviewEl.classList.add('visible');
+  }
+  function hideSeekPreview() {
+    if (seekPreviewEl) seekPreviewEl.classList.remove('visible');
+  }
+
   function updateSeekVisual() {
     if (!mediaPlayer) return;
     var total = seekTotalDuration();
@@ -4562,6 +4660,16 @@ if (typeof module !== 'undefined' && module.exports) {
     if (trackNextBtn) trackNextBtn.addEventListener('click', function () { manualTrackStep('next'); });
 
     if (seekBar) {
+      // v1.92: storyboard scrub preview. pointermove drives BOTH desktop hover
+      // (mouse moves over the bar) and touch-drag (moves arrive while the
+      // finger is down / the pointer is captured), so one handler covers both.
+      // Guarded internally by currentData.storyboard, so it is inert for
+      // audio/short/legacy items. Hide on leave/up/cancel.
+      seekBar.addEventListener('pointermove', function (e) { updateSeekPreview(e.clientX); });
+      seekBar.addEventListener('pointerdown', function (e) { updateSeekPreview(e.clientX); });
+      seekBar.addEventListener('pointerleave', hideSeekPreview);
+      seekBar.addEventListener('pointerup', hideSeekPreview);
+      seekBar.addEventListener('pointercancel', hideSeekPreview);
       // Visual scrub only (AC15): updates the fill/current-time display but
       // NEVER touches `currentTime` -- only 'change' below commits.
       seekBar.addEventListener('input', function () {
@@ -6386,4 +6494,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
   window.FileTube = window.FileTube || {};
   window.FileTube.player = api;
+  // v1.92: share the pure storyboard geometry with the grid card preview
+  // (main.js) - one source of truth, no duplicated sprite math.
+  window.FileTube.storyboard = { frameForTime: storyboardFrameForTime, tile: storyboardTile };
 })();

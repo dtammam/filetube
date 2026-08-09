@@ -51,7 +51,11 @@ const { authenticateFetch } = require('../helpers/auth');
 // capability-gated (classified 'personal' in route-write-classification.test.js)
 // and not content-serving (no per-user visibility check needed); bound by
 // search-history-api.test.js.
-const EXPECTED_ROUTE_COUNT = 192;
+// v1.92: 192 -> 193 for GET /storyboard/:id (the scrub/card storyboard sprite).
+// It is CONTENT-SERVING (reveals frames of the media) so it carries the same
+// mediaVisibleTo RBAC guard as /thumbnail and /video - a restricted member 404s
+// like a missing item; bound by storyboard-serve.test.js's RBAC assertion.
+const EXPECTED_ROUTE_COUNT = 193;
 
 let server, base, auth, member;
 const vidFile = path.join(DATA_DIR, 'v.mp4');

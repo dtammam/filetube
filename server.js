@@ -2476,6 +2476,20 @@ function buildAudioExtractArgs(srcPath, tmpPath) {
   ];
 }
 
+// --- v1.92 Storyboard sprites (scrub preview + card autoplay preview) -------
+// Pure planning/gating/arg-building lives in lib/storyboard.js (standalone, so
+// scripts and unit tests require it without booting the server). The same
+// sprite asset drives BOTH the seek-bar scrub preview and the card preview
+// (desktop hover / mobile in-view autoplay). Geometry is a self-describing
+// per-item `storyboard` descriptor persisted on db.metadata (see the
+// persist-gate site list in docs/exec-plans/active/2026-08-09-v1.92-*).
+const { planStoryboard, shouldGenerateStoryboard, buildStoryboardArgs } = require('./lib/storyboard');
+
+// On-disk sprite path (content-addressed by media id, like the .jpg thumbnail).
+function storyboardPath(id) {
+  return path.join(THUMBNAIL_DIR, `${id}.sb.jpg`);
+}
+
 function queueAudioExtract(id, srcPath) {
   if (!ffmpegAvailable) return;
   if (audioExtractQueue.some(job => job.id === id)) return; // already queued
@@ -3315,7 +3329,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
       // ~line 1241) sees the codec keys as present (probed once, no usable
       // codec) instead of re-extracting (ffprobe attempt + ffmpeg thumbnail
       // attempt) every video item on every single scan forever.
-      return resolve({ duration: 0, hasThumbnail: false, artist: '', tags: {}, videoCodec: null, audioCodec: null, embeddedReleaseDateMs: null, embeddedSourceUrl: null, width: null, height: null, chapters: [] });
+      return resolve({ duration: 0, hasThumbnail: false, artist: '', tags: {}, videoCodec: null, audioCodec: null, embeddedReleaseDateMs: null, embeddedSourceUrl: null, width: null, height: null, chapters: [], storyboard: null });
     }
 
     // Get duration + all format tags (artist -> channel name; the rest -> the
@@ -3403,15 +3417,23 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
         // metacharacters could otherwise be a command-injection vector
         // (matches the ffprobe `execFile` hardening above).
         execFile('ffmpeg', ['-i', filePath, '-an', '-vcodec', 'copy', '-y', thumbPath], (artErr) => {
-          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, chapters, width, height, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
+          // Audio-only: no storyboard (excluded by type), explicit null.
+          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, chapters, width, height, hasThumbnail: !artErr && fs.existsSync(thumbPath), storyboard: null });
         });
       } else {
         // Extract video frame (at 2 seconds or 10% of duration, whichever is
         // smaller). `execFile` (not `exec`) for the same arg-array/no-shell
         // reason as the audio-art branch above.
         const timestamp = duration > 5 ? 2 : Math.max(0, duration / 2);
-        execFile('ffmpeg', ['-ss', String(timestamp), '-i', filePath, '-vframes', '1', '-q:v', '2', '-y', thumbPath], (frameErr) => {
-          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, chapters, width, height, hasThumbnail: !frameErr && fs.existsSync(thumbPath) });
+        execFile('ffmpeg', ['-ss', String(timestamp), '-i', filePath, '-vframes', '1', '-q:v', '2', '-y', thumbPath], async (frameErr) => {
+          const hasThumbnail = !frameErr && fs.existsSync(thumbPath);
+          // v1.92: generate the scrub/card storyboard sprite from this SAME
+          // source (best-effort; null on failure/ineligible/no-ffmpeg). Runs
+          // after the thumbnail so a storyboard failure can never cost us the
+          // poster frame.
+          let storyboard = null;
+          try { storyboard = await extractStoryboard(filePath, mediaId, duration, width, height); } catch (_) { storyboard = null; }
+          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, chapters, width, height, hasThumbnail, storyboard });
         });
       }
     });
@@ -3447,6 +3469,79 @@ async function restoreMissingThumbnail(existing, id, filePath) {
     existing.hasThumbnail = !!thumbMeta.hasThumbnail;
   } catch (err) {
     console.error(`Error restoring thumbnail for ${path.basename(filePath)}:`, err);
+  }
+  return true;
+}
+
+// v1.92: generate the storyboard sprite for a VIDEO (best-effort). Resolves the
+// descriptor { v, interval, count, cols, rows, tileW, tileH } on success, or
+// null (ffmpeg missing, ineligible duration, or a generation failure). Never
+// throws and never blocks the thumbnail/metadata result. `tileH` is the tile's
+// true pixel aspect (from source dims when known, else a 16:9 default) so the
+// client can size the preview box without distortion; the render math itself is
+// percentage-based and never needs it.
+function extractStoryboard(filePath, id, duration, width, height) {
+  return new Promise((resolve) => {
+    if (!ffmpegAvailable) { resolve(null); return; }
+    const plan = planStoryboard(duration);
+    if (!plan) {
+      // Newly ineligible (e.g. an in-place replace with a sub-2s clip): drop any
+      // stale sprite so a leftover <id>.sb.jpg can't linger for the id's life.
+      try { if (fs.existsSync(storyboardPath(id))) fs.unlinkSync(storyboardPath(id)); } catch (_) { /* best-effort */ }
+      resolve(null);
+      return;
+    }
+    const outPath = storyboardPath(id);
+    const tileH = (Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0)
+      ? Math.max(2, Math.round(plan.tileW * height / width))
+      : Math.round(plan.tileW * 9 / 16);
+    // execFile (arg array, no shell) -- same injection-hardening as the
+    // thumbnail frame-grab above; buildStoryboardArgs is unit-tested.
+    execFile('ffmpeg', buildStoryboardArgs(filePath, outPath, plan), { maxBuffer: 16 * 1024 * 1024 }, (err) => {
+      let ok = false;
+      try { ok = !err && fs.existsSync(outPath) && fs.statSync(outPath).size > 0; } catch (_) { ok = false; }
+      if (!ok) {
+        // Don't leave a half-written/zero-byte sprite behind for the route to serve.
+        try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (_) {}
+        resolve(null);
+        return;
+      }
+      resolve({ ...plan, tileH });
+    });
+  });
+}
+
+// v1.92: heal/backfill the storyboard for a REUSED item (mirrors
+// restoreMissingThumbnail -- this is the backfill path for the whole existing
+// library, which never re-runs extractMetadataAndThumbnail). Regenerates ONLY
+// when genuinely missing: the item carries no descriptor, or the on-disk sprite
+// is absent/empty. An item that already has a valid sprite is left untouched
+// (no ffmpeg). An INELIGIBLE item (audio / too short) gets an explicit `null`
+// so the field is always present (persist-gate). Returns true iff it set/attempted
+// something, so the caller persists dbChanged.
+async function restoreMissingStoryboard(existing, id, filePath) {
+  if (!shouldGenerateStoryboard(existing)) {
+    // Ineligible: ensure the field exists and holds no stale descriptor.
+    if (existing.storyboard === undefined || existing.storyboard) {
+      existing.storyboard = null;
+      return true;
+    }
+    return false;
+  }
+  const outPath = storyboardPath(id);
+  let missing = !existing.storyboard;
+  if (!missing) {
+    try { missing = !fs.existsSync(outPath) || fs.statSync(outPath).size === 0; } catch (_) { missing = true; }
+  }
+  if (!missing) return false;
+
+  console.log(`Restoring missing storyboard for: ${path.basename(filePath)}`);
+  try {
+    const sb = await extractStoryboard(filePath, id, existing.duration, existing.width, existing.height);
+    existing.storyboard = sb || null;
+  } catch (err) {
+    console.error(`Error restoring storyboard for ${path.basename(filePath)}:`, err);
+    if (existing.storyboard === undefined) existing.storyboard = null;
   }
   return true;
 }
@@ -4081,6 +4176,12 @@ async function runScanDirectories() {
       if (!isAudio) {
         const healed = await restoreMissingThumbnail(existing, id, filePath);
         if (healed) dbChanged = true;
+        // v1.92: same heal contract for the storyboard sprite -- this is the
+        // BACKFILL path for the entire existing library (which never re-runs
+        // extractMetadataAndThumbnail). Regenerates only when genuinely
+        // missing; leaves a present sprite untouched.
+        const sbHealed = await restoreMissingStoryboard(existing, id, filePath);
+        if (sbHealed) dbChanged = true;
       }
       // C5-local (v1.24): SCHEMA-ONLY backfill of `releaseDate` for an item
       // that predates this field -- the thumbnail-backfill-regression
@@ -4135,6 +4236,8 @@ async function runScanDirectories() {
       // completely untouched -- no frame-grab, ever, for a file that already
       // has one.
       await restoreMissingThumbnail(existing, id, filePath);
+      // v1.92: storyboard backfill for a legacy video (same heal contract).
+      await restoreMissingStoryboard(existing, id, filePath);
 
       // C5-local (v1.24): same schema-only `releaseDate` backfill as the
       // plain reuse fast-path above -- mtime-only, no fresh probe (the
@@ -4202,6 +4305,9 @@ async function runScanDirectories() {
         addedAt: info.addedAt,
         duration: 0,
         hasThumbnail: false,
+        // v1.92: storyboard descriptor (persist-gate: field always present).
+        // Overwritten from `meta.storyboard` on a successful extract below.
+        storyboard: null,
         artist: '',
         needsTranscode: !isAudio && needsTranscode(info.ext),
         // A6 (v1.24 UX Round, Wave 5): additive, schema-only -- see
@@ -4217,6 +4323,11 @@ async function runScanDirectories() {
         const meta = await extractMetadataAndThumbnail(filePath, id, isAudio);
         newMetadata[id].duration = meta.duration;
         newMetadata[id].hasThumbnail = meta.hasThumbnail;
+        // v1.92: the storyboard descriptor from this SAME extract (null when
+        // ineligible/failed/no-ffmpeg). A CHANGED file regenerates it here from
+        // the new content, so -- unlike youtubeId/channel identity -- it needs
+        // NO carry-forward guard: a fresh sprite is the correct one.
+        newMetadata[id].storyboard = meta.storyboard || null;
         newMetadata[id].artist = meta.artist || '';
         newMetadata[id].tags = meta.tags || {};
         // FR-1b (v1.18.0, + two-reviewer follow-up): probed codecs,
@@ -4276,6 +4387,7 @@ async function runScanDirectories() {
         // from), `null` when that yields nothing.
         newMetadata[id].youtubeId = deriveScanYoutubeId(filePath, info, ytdlpDownloadRoots, null);
         newMetadata[id].chapters = []; // probe failed -- none known (probed-once)
+        newMetadata[id].storyboard = null; // extract failed -- none (self-heals on a later reuse scan)
       }
       // v1.33 T3: a CHANGED file (same path, new size -- this whole re-init
       // branch) must not lose a previously captured/reheated real title
@@ -4464,6 +4576,15 @@ async function runScanDirectories() {
           fs.unlinkSync(oldTranscode);
         } catch (e) {
           console.error('Failed to delete obsolete transcode:', e);
+        }
+      }
+      // v1.92: remove any storyboard sprite sidecar (same id-keyed lifecycle).
+      const oldStoryboard = storyboardPath(oldId);
+      if (fs.existsSync(oldStoryboard)) {
+        try {
+          fs.unlinkSync(oldStoryboard);
+        } catch (e) {
+          console.error('Failed to delete obsolete storyboard:', e);
         }
       }
     }
@@ -9340,6 +9461,10 @@ function resolveHomeItem(db, id, kind, progressPercent) {
   }
   const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : null;
   if (!item) return null;
+  // v1.92 note: the horizontal home-ROW card (buildFeedCardHtml/buildVideoRowCardHtml)
+  // does NOT render a .card-preview overlay, so no storyboard descriptor is sent
+  // here - the preview lives on the main + modern GRID cards (buildCardHtml),
+  // fed by /api/videos (spreads ...item) and resolveModernGridItem.
   return { id, kind: 'media', title: item.title || item.name || 'Video', subtitle: item.folderName || '', thumbnailUrl: `/thumbnail/${enc}`, href: `/watch.html?v=${enc}`, progressPercent };
 }
 
@@ -9383,6 +9508,9 @@ function resolveModernGridItem(db, rec) {
     duration: typeof item.duration === 'number' ? item.duration : 0, type: rec.type,
     ext: typeof item.ext === 'string' ? item.ext : '',
     ...(watchUrl ? { watchUrl } : {}),
+    // v1.92: storyboard descriptor for the modern-grid card's hover/in-view
+    // preview (omitted when absent -- client treats missing as no-preview).
+    ...(item.storyboard ? { storyboard: item.storyboard } : {}),
   };
 }
 
@@ -10317,6 +10445,7 @@ app.delete('/api/videos/:id', async (req, res) => {
     // re-key, so their id-keyed sidecars die here. Best-effort throughout.
     const thumbPath = path.join(THUMBNAIL_DIR, `${item.id}.jpg`);
     try { if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath); } catch (_) { /* best-effort */ }
+    try { if (fs.existsSync(storyboardPath(item.id))) fs.unlinkSync(storyboardPath(item.id)); } catch (_) { /* best-effort */ } // v1.92 sprite
     try { if (fs.existsSync(transcodedPath(item.id))) fs.unlinkSync(transcodedPath(item.id)); } catch (_) { /* best-effort */ }
     if (!fileRemainsOnDisk) {
       // The greedy .vtt sweep (v1.36.2), only when the media file itself is
@@ -11556,6 +11685,12 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
       } catch (thumbErr) {
         console.error(`Move: failed to re-key thumbnail for ${oldId} -> ${newId}:`, thumbErr.message);
       }
+      // v1.92: the storyboard sprite re-keys with the id too.
+      try {
+        if (fsImpl.existsSync(storyboardPath(oldId))) fsImpl.renameSync(storyboardPath(oldId), storyboardPath(newId));
+      } catch (sbErr) {
+        console.error(`Move: failed to re-key storyboard for ${oldId} -> ${newId}:`, sbErr.message);
+      }
 
       try {
         const oldTranscode = transcodedPath(oldId);
@@ -11985,6 +12120,12 @@ async function trashItem(deps, id, opts = {}) {
       } catch (thumbErr) {
         console.error(`Trash: failed to re-key thumbnail for ${id} -> ${trashId}:`, thumbErr.message);
       }
+      // v1.92: the storyboard sprite follows the id into trash too.
+      try {
+        if (fsImpl.existsSync(storyboardPath(id))) fsImpl.renameSync(storyboardPath(id), storyboardPath(trashId));
+      } catch (sbErr) {
+        console.error(`Trash: failed to re-key storyboard for ${id} -> ${trashId}:`, sbErr.message);
+      }
       try {
         if (fsImpl.existsSync(transcodedPath(id))) fsImpl.renameSync(transcodedPath(id), transcodedPath(trashId));
       } catch (transcodeErr) {
@@ -12402,6 +12543,12 @@ async function restoreTrashItem(deps, trashId) {
       } catch (thumbErr) {
         console.error(`Restore: failed to re-key thumbnail for ${trashId} -> ${originalId}:`, thumbErr.message);
       }
+      // v1.92: restore the storyboard sprite back to the original id too.
+      try {
+        if (fsImpl.existsSync(storyboardPath(trashId))) fsImpl.renameSync(storyboardPath(trashId), storyboardPath(originalId));
+      } catch (sbErr) {
+        console.error(`Restore: failed to re-key storyboard for ${trashId} -> ${originalId}:`, sbErr.message);
+      }
       try {
         if (fsImpl.existsSync(transcodedPath(trashId))) fsImpl.renameSync(transcodedPath(trashId), transcodedPath(originalId));
       } catch (transcodeErr) {
@@ -12540,6 +12687,7 @@ async function purgeTrashItem(deps, trashId) {
 
   // Id-keyed sidecars + the subtitle set, best-effort.
   try { const p = path.join(THUMBNAIL_DIR, `${trashId}.jpg`); if (fsImpl.existsSync(p)) fsImpl.unlinkSync(p); } catch (_) { /* best-effort */ }
+  try { if (fsImpl.existsSync(storyboardPath(trashId))) fsImpl.unlinkSync(storyboardPath(trashId)); } catch (_) { /* best-effort */ } // v1.92 sprite
   try { if (fsImpl.existsSync(transcodedPath(trashId))) fsImpl.unlinkSync(transcodedPath(trashId)); } catch (_) { /* best-effort */ }
   try { if (fsImpl.existsSync(audioPath(trashId))) fsImpl.unlinkSync(audioPath(trashId)); } catch (_) { /* best-effort */ }
   try {
@@ -14981,6 +15129,29 @@ app.get('/thumbnail/:id', (req, res) => {
   res.send(svg);
 });
 
+// v1.92: GET /storyboard/:id - serve the scrub/card storyboard sprite JPEG.
+// Mirrors /thumbnail/:id's RBAC exactly (resolve via metadata OR a trash
+// snapshot; a restricted item 404s like a missing one so the route reveals
+// nothing) but has NO placeholder fallback: a 404 means "no preview" and the
+// client silently degrades to the static poster. Content-addressed by media id
+// (only changes on rescan) -> the same day-long private cache as the thumbnail.
+app.get('/storyboard/:id', (req, res) => {
+  const db = getCachedDatabase(); // hot GET reader
+  const trashRec = (!Object.prototype.hasOwnProperty.call(db.metadata, req.params.id)
+    && db.trash && Object.prototype.hasOwnProperty.call(db.trash, req.params.id))
+    ? db.trash[req.params.id] : null;
+  const item = db.metadata[req.params.id] || (trashRec && trashRec.item) || undefined;
+  if (item && !mediaVisibleTo(req, item)) { // RBAC: restricted -> 404 like missing
+    return res.status(404).json({ error: 'Media file not found' });
+  }
+  const sbPath = storyboardPath(req.params.id);
+  if (item && item.storyboard && fs.existsSync(sbPath)) {
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    return res.sendFile(sbPath);
+  }
+  return res.status(404).json({ error: 'No storyboard' });
+});
+
 // HTML escaping helper
 function escapeHtml(text) {
   return text
@@ -16128,6 +16299,14 @@ module.exports = {
   // transcode-cache primitive's own testing contract above).
   audioPath,
   buildAudioExtractArgs,
+  // v1.92 storyboard sprites (pure): planner, arg-builder, gate, path.
+  planStoryboard,
+  buildStoryboardArgs,
+  shouldGenerateStoryboard,
+  storyboardPath,
+  // v1.92 storyboard generation + persist-gate heal (integration-tested).
+  extractStoryboard,
+  restoreMissingStoryboard,
   queueAudioExtract,
   setAudioStatus,
   // F1 (two-reviewer gate, v1.27.0): re-exported so tests can exercise the

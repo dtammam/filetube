@@ -140,6 +140,10 @@ test('(HARD GATE) an already-indexed, unchanged video with no width/height is NE
   const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
   fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
   fs.writeFileSync(thumbPath, 'ORIGINAL-THUMBNAIL-BYTES');
+  // v1.92: a present storyboard sidecar + descriptor keeps this item FULLY
+  // migrated, so the reuse fast-path does no storyboard backfill either -- the
+  // test's real invariant (an unchanged item is never re-probed/re-spawned).
+  fs.writeFileSync(path.join(THUMBNAIL_DIR, `${id}.sb.jpg`), 'ORIGINAL-STORYBOARD-BYTES');
 
   writeDb({
     folders: [root],
@@ -152,6 +156,7 @@ test('(HARD GATE) an already-indexed, unchanged video with no width/height is NE
         type: 'video', addedAt: 1700000000000, duration: 123, hasThumbnail: true,
         artist: '', tags: {}, needsTranscode: false, videoCodec: 'h264', audioCodec: 'aac',
         releaseDate: 1700000000000,
+        storyboard: { v: 1, interval: 3, count: 40, cols: 10, rows: 4, tileW: 160, tileH: 90 },
         // no `width`/`height` -- pre-v1.26.1 shape, the exact backfill case.
       },
     },
