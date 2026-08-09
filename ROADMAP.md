@@ -80,6 +80,65 @@
 
 ## Shipped
 
+### v1.92.0 - Storyboard previews: seek-bar scrub + card autoplay (2026-08-09)
+
+Dean's two ideas. **Idea 2 (built):** hover-preview thumbnails, YouTube-style.
+One **sprite sheet per video** is generated at scan time (a single FFmpeg pass
+tiles ~10-100 evenly-sampled frames into one small JPEG beside the thumbnail),
+described by a new per-item `storyboard` descriptor. That one asset drives BOTH
+affordances: a **seek-bar scrub preview** (hover or touch-drag the bar -> a
+thumbnail of that moment + timestamp) and a **grid-card preview** (desktop
+hover cycles the frames; mobile does IN-VIEW autoplay - an IntersectionObserver
+animates the up-to-2 most-visible cards as you scroll, the YouTube-app feel -
+honoring `prefers-reduced-motion`). Scope is **all video with a video stream**
+(not mp4-only: FFmpeg reads AVI/MKV natively for frame extraction, so the same
+path that already thumbnails the whole library makes sprites for it too - a
+mp4-only scope would have skipped ~75% of the library for no reason). New
+`GET /storyboard/:id` carries the same `mediaVisibleTo` RBAC guard as
+`/thumbnail`; the sprite is a first-class id-keyed sidecar that follows the
+media id through trash/restore/move/prune/purge.
+
+**Idea 1 (playback performance): measure-first, fix DEFERRED.** The dev box is a
+metadata-only mirror (no ffmpeg, non-existent filePaths), so time-to-first-frame
+can't be profiled here. Shipped instead: a read-only `scripts/probe-faststart.js`
+Dean runs on his server - it reports what % of his mp4s have a trailing `moov`
+atom (the prime "slow to start on click" suspect). The fix (a `+faststart`
+remux, or a preload/prefetch change) is its own follow-up once the data is in
+(tech-debt #132).
+
+**What the two-reviewer gate caught (full gate, both seats):** a real CRITICAL -
+the **desktop card-hover preview was completely inert**: the `.card-preview`
+overlay is `pointer-events:none` and a sibling of the thumbnail, so the delegated
+`closest('.card-preview')` (which walks the real target's ancestors) never
+matched and the animation never started. Fixed by delegating on the interactive
+`.thumbnail-container` and resolving the overlay child; verified firing in a
+jsdom repro. Also caught + fixed: the mobile IntersectionObserver never
+unobserved detached cards (a strong-ref leak, the v1.85 scar); the 6 sprite
+lifecycle sites were correct but untested (added a trash->restore->purge binding
+test, mutation-verified); a rare orphaned `.sb.jpg` when a file is replaced with
+a sub-2s clip; and a dead home-feed storyboard payload. Both seats APPROVE.
+
+**Persist-gate discipline:** the new `storyboard` field is threaded through every
+scan write site the `hasThumbnail` field is; a CHANGED file regenerates the
+sprite from new content (so no carry-forward guard), and the whole existing
+library backfills ONE sprite per item on first scan (bounded, not per-scan churn
+- proven by a second-scan zero-spawn test).
+
+**Known gaps (disclosed):** Idea-1 perf fix deferred (probe shipped); real ffmpeg
+sprite generation validated by the arg-array unit test + Dean's device pass (this
+box has no ffmpeg); the desktop-hover fix is verified by jsdom repro + inspection,
+not a committed automated test (the controller is a private IIFE); horizontal
+home-ROW cards don't animate yet (grid cards do); card in-view autoplay is a new
+mobile interaction whose FEEL is Dean's device pass to judge. No-ffmpeg/failed-gen
+scan churn is disclosed-parity with `restoreMissingThumbnail` (tech-debt).
+
+Dual-Node **6522/6522** on v22.23.1 AND v24.14.0. **AWAITING DEAN'S ON-DEVICE
+PASS** - probe list: (1) hover a grid card on desktop -> frames cycle; (2) scroll
+the grid on your phone -> the centered card autoplays; (3) hover/drag the seek
+bar -> a thumbnail of that moment pops up; (4) trash a video then restore it ->
+previews still work; (5) run `node scripts/probe-faststart.js` on the server and
+send me the trailing-moov %.
+
 ### v1.91.2 - Mobile account menu: right-anchored narrow card (2026-08-07)
 
 Follow-on to the v1.91.1 footer polish. Dean (screenshot): the mobile account
