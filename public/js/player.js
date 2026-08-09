@@ -1275,6 +1275,9 @@ if (typeof module !== 'undefined' && module.exports) {
   // flag -- reset on every teardown (see teardownMediaState) and whenever
   // the button itself is clicked off.
   var ccOverlayEl, ccOverlayTextEl;
+  // v1.92: the seek-bar storyboard scrub preview (built in JS, never touches
+  // the shared player-host-template so all shells stay byte-identical).
+  var seekPreviewEl, seekPreviewImgEl, seekPreviewTimeEl;
   var audioCaptionsOn = false;
 
   // v1.26.4 (frozen audio-CC overlay, on-device iOS bug): the last text this
@@ -1809,6 +1812,22 @@ if (typeof module !== 'undefined' && module.exports) {
     ccOverlayTextEl.className = 'cc-overlay-text';
     ccOverlayEl.appendChild(ccOverlayTextEl);
     host.appendChild(ccOverlayEl);
+    // v1.92: the storyboard scrub preview -- a sprite-backed thumbnail + a
+    // timestamp that floats above the seek bar on hover / touch-drag. Built in
+    // JS (shell-template stays byte-identical, same posture as ccOverlayEl) and
+    // appended INSIDE the positioned `.player-controls` so its absolute
+    // placement is relative to the control strip. Hidden until wired below.
+    if (playerControls) {
+      seekPreviewEl = document.createElement('div');
+      seekPreviewEl.className = 'seek-preview';
+      seekPreviewImgEl = document.createElement('div');
+      seekPreviewImgEl.className = 'seek-preview-img';
+      seekPreviewTimeEl = document.createElement('div');
+      seekPreviewTimeEl.className = 'seek-preview-time';
+      seekPreviewEl.appendChild(seekPreviewImgEl);
+      seekPreviewEl.appendChild(seekPreviewTimeEl);
+      playerControls.appendChild(seekPreviewEl);
+    }
     // v1.27.0 (background-audio-for-video, EXPERIMENTAL): the hidden <audio>
     // sidecar -- built in JS (never touches the shared player-host-template
     // markup, so all 5 shells stay byte-identical, same posture as
@@ -4067,6 +4086,40 @@ if (typeof module !== 'undefined' && module.exports) {
     return (mediaPlayer && mediaPlayer.duration) || 0;
   }
 
+  // v1.92: storyboard scrub preview -- show the sprite frame + timestamp for the
+  // seek position under `clientX`. No-op (and hides) when the current item has
+  // no storyboard descriptor, so audio/short/legacy items degrade cleanly.
+  function updateSeekPreview(clientX) {
+    if (!seekPreviewEl || !seekBar || !playerControls) return;
+    var geom = currentData && currentData.storyboard;
+    if (!geom || !currentData.id) { hideSeekPreview(); return; }
+    var rect = seekBar.getBoundingClientRect();
+    if (!(rect.width > 0)) { hideSeekPreview(); return; }
+    var ratio = scrubRatioFromPointer(clientX, rect.left, rect.width);
+    if (ratio === null) { hideSeekPreview(); return; }
+    var total = seekTotalDuration();
+    var t = ratio * total;
+    var tile = storyboardTile(storyboardFrameForTime(t, geom, total), geom);
+    // Sprite frame via CSS background percentages (the shared pure geometry).
+    if (seekPreviewImgEl.style.backgroundImage.indexOf(currentData.id) === -1) {
+      seekPreviewImgEl.style.backgroundImage = 'url("/storyboard/' + encodeURIComponent(currentData.id) + '")';
+    }
+    seekPreviewImgEl.style.backgroundSize = tile.sizeXPct + '% ' + tile.sizeYPct + '%';
+    seekPreviewImgEl.style.backgroundPosition = tile.posXPct + '% ' + tile.posYPct + '%';
+    var aspect = (geom.tileH > 0 && geom.tileW > 0) ? (geom.tileH / geom.tileW) : (9 / 16);
+    seekPreviewImgEl.style.height = Math.round(160 * aspect) + 'px';
+    seekPreviewTimeEl.textContent = formatDuration(t);
+    // Center horizontally on the pointer, clamped inside the control strip.
+    var cRect = playerControls.getBoundingClientRect();
+    var half = (seekPreviewEl.offsetWidth || 160) / 2;
+    var left = Math.max(half, Math.min(cRect.width - half, clientX - cRect.left));
+    seekPreviewEl.style.left = left + 'px';
+    seekPreviewEl.classList.add('visible');
+  }
+  function hideSeekPreview() {
+    if (seekPreviewEl) seekPreviewEl.classList.remove('visible');
+  }
+
   function updateSeekVisual() {
     if (!mediaPlayer) return;
     var total = seekTotalDuration();
@@ -4607,6 +4660,16 @@ if (typeof module !== 'undefined' && module.exports) {
     if (trackNextBtn) trackNextBtn.addEventListener('click', function () { manualTrackStep('next'); });
 
     if (seekBar) {
+      // v1.92: storyboard scrub preview. pointermove drives BOTH desktop hover
+      // (mouse moves over the bar) and touch-drag (moves arrive while the
+      // finger is down / the pointer is captured), so one handler covers both.
+      // Guarded internally by currentData.storyboard, so it is inert for
+      // audio/short/legacy items. Hide on leave/up/cancel.
+      seekBar.addEventListener('pointermove', function (e) { updateSeekPreview(e.clientX); });
+      seekBar.addEventListener('pointerdown', function (e) { updateSeekPreview(e.clientX); });
+      seekBar.addEventListener('pointerleave', hideSeekPreview);
+      seekBar.addEventListener('pointerup', hideSeekPreview);
+      seekBar.addEventListener('pointercancel', hideSeekPreview);
       // Visual scrub only (AC15): updates the fill/current-time display but
       // NEVER touches `currentTime` -- only 'change' below commits.
       seekBar.addEventListener('input', function () {
