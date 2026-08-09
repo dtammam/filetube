@@ -597,6 +597,48 @@ function scrubRatioFromPointer(clientX, rectLeft, rectWidth) {
   return Math.max(0, Math.min(1, (clientX - rectLeft) / rectWidth));
 }
 
+// v1.92 storyboard geometry (PURE, shared by the seek-bar scrub preview here
+// and the grid card preview in main.js via window.FileTube.storyboard). The
+// sprite is a `cols` x `rows` grid of frames; `geom` is the per-item
+// descriptor { interval, count, cols, rows, tileW, tileH } from the server.
+
+// Scrub time (s) -> frame index, clamped to [0, count-1]. Frame i was sampled
+// at i*interval, so floor(t/interval) is the frame covering time t.
+function storyboardFrameForTime(t, geom, duration) {
+  if (!geom || !(geom.count > 0)) return 0;
+  const interval = geom.interval > 0 ? geom.interval : (Number(duration) / geom.count);
+  if (!(interval > 0)) return 0;
+  let idx = Math.floor(Number(t) / interval);
+  if (!Number.isFinite(idx) || idx < 0) idx = 0;
+  if (idx > geom.count - 1) idx = geom.count - 1;
+  return idx;
+}
+
+// Frame index -> CSS background placement as PERCENTAGES (resolution- and
+// display-size-independent, so the same descriptor drives a 160px scrub
+// thumbnail and a full-width card tile). With background-size cols*100% x
+// rows*100%, each tile fills the element; the column/row percentage is the
+// standard sprite formula col/(cols-1) (0 when a single column/row).
+function storyboardTile(index, geom) {
+  const cols = Math.max(1, geom.cols | 0);
+  const rows = Math.max(1, geom.rows | 0);
+  const count = geom.count > 0 ? geom.count : cols * rows;
+  let i = index | 0;
+  if (i < 0) i = 0;
+  if (i > count - 1) i = count - 1;
+  const col = i % cols;
+  const row = Math.floor(i / cols);
+  return {
+    index: i,
+    col,
+    row,
+    posXPct: cols > 1 ? (col / (cols - 1)) * 100 : 0,
+    posYPct: rows > 1 ? (row / (rows - 1)) * 100 : 0,
+    sizeXPct: cols * 100,
+    sizeYPct: rows * 100
+  };
+}
+
 // v1.21 post-gate hardening (FIX 1): pure single-vs-double-tap decision
 // table behind the touchend handling in `wireSkipHoldGestures` below (see
 // that function -- attached to BOTH the video surface, `#media-player`, and
@@ -1124,6 +1166,9 @@ if (typeof module !== 'undefined' && module.exports) {
     clampVolume,
     seekCommitTarget,
     scrubRatioFromPointer,
+    // v1.92 storyboard geometry (shared with the card preview).
+    storyboardFrameForTime,
+    storyboardTile,
     classifyTapGesture,
     shouldArtSingleTapAct,
     resolveMobileFormFactor,
@@ -6386,4 +6431,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
   window.FileTube = window.FileTube || {};
   window.FileTube.player = api;
+  // v1.92: share the pure storyboard geometry with the grid card preview
+  // (main.js) - one source of truth, no duplicated sprite math.
+  window.FileTube.storyboard = { frameForTime: storyboardFrameForTime, tile: storyboardTile };
 })();

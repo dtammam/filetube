@@ -2476,6 +2476,20 @@ function buildAudioExtractArgs(srcPath, tmpPath) {
   ];
 }
 
+// --- v1.92 Storyboard sprites (scrub preview + card autoplay preview) -------
+// Pure planning/gating/arg-building lives in lib/storyboard.js (standalone, so
+// scripts and unit tests require it without booting the server). The same
+// sprite asset drives BOTH the seek-bar scrub preview and the card preview
+// (desktop hover / mobile in-view autoplay). Geometry is a self-describing
+// per-item `storyboard` descriptor persisted on db.metadata (see the
+// persist-gate site list in docs/exec-plans/active/2026-08-09-v1.92-*).
+const { planStoryboard, shouldGenerateStoryboard, buildStoryboardArgs } = require('./lib/storyboard');
+
+// On-disk sprite path (content-addressed by media id, like the .jpg thumbnail).
+function storyboardPath(id) {
+  return path.join(THUMBNAIL_DIR, `${id}.sb.jpg`);
+}
+
 function queueAudioExtract(id, srcPath) {
   if (!ffmpegAvailable) return;
   if (audioExtractQueue.some(job => job.id === id)) return; // already queued
@@ -16128,6 +16142,11 @@ module.exports = {
   // transcode-cache primitive's own testing contract above).
   audioPath,
   buildAudioExtractArgs,
+  // v1.92 storyboard sprites (pure): planner, arg-builder, gate, path.
+  planStoryboard,
+  buildStoryboardArgs,
+  shouldGenerateStoryboard,
+  storyboardPath,
   queueAudioExtract,
   setAudioStatus,
   // F1 (two-reviewer gate, v1.27.0): re-exported so tests can exercise the
