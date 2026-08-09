@@ -600,6 +600,7 @@ const StoryboardCards = (function () {
   const MAX_INVIEW = 2;            // battery guard: at most N cards animate at once on mobile
   const active = new Map();        // overlay el -> interval id
   const ratios = new Map();        // overlay el -> latest intersectionRatio (mobile)
+  const observed = new Set();      // overlay els currently observed (for teardown)
   let observer = null;             // the in-view IntersectionObserver (mobile only)
   let inited = false;
 
@@ -648,14 +649,26 @@ const StoryboardCards = (function () {
   }
 
   // Desktop: delegated so it covers cards from every render path (initial,
-  // append, modern grid, home rows) with no per-render registration.
+  // append, modern grid) with no per-render registration. The overlay itself is
+  // `pointer-events:none` (it must never eat the card's tap), so hover events
+  // target the INTERACTIVE `.thumbnail-container` (the card's <a>) beneath it -
+  // we match THAT and reach the overlay child, never the overlay directly (a
+  // pointer-events:none sibling is never `e.target` nor its ancestor).
+  function overlayForEvent(e) {
+    const host = e.target.closest && e.target.closest('.thumbnail-container');
+    return host ? host.querySelector('.card-preview[data-sb-id]') : null;
+  }
   function onOver(e) {
-    const el = e.target.closest && e.target.closest('.card-preview[data-sb-id]');
+    const el = overlayForEvent(e);
     if (el) start(el);
   }
   function onOut(e) {
-    const el = e.target.closest && e.target.closest('.card-preview[data-sb-id]');
-    if (el && !el.contains(e.relatedTarget)) stop(el);
+    const host = e.target.closest && e.target.closest('.thumbnail-container');
+    if (!host) return;
+    // still inside the same card (e.g. moving img -> duration badge) -> keep going
+    if (host.contains(e.relatedTarget)) return;
+    const el = host.querySelector('.card-preview[data-sb-id]');
+    if (el) stop(el);
   }
 
   // Mobile: pick the up-to-MAX_INVIEW most-visible cards and animate only those.
@@ -679,13 +692,21 @@ const StoryboardCards = (function () {
   // discovered, so a page/view with no storyboard cards never instantiates one
   // (keeps us out of the way of other IntersectionObserver consumers).
   function refresh() {
+    // Prune cards a grid re-render detached: IntersectionObserver holds a strong
+    // ref to every observed target, so unobserve them or they leak for the app's
+    // life (the v1.85 cached-home scar). refresh() runs on every DOM mutation.
+    if (observer && observed.size) {
+      observed.forEach(function (el) {
+        if (!el.isConnected) { observer.unobserve(el); observed.delete(el); ratios.delete(el); }
+      });
+    }
     const cards = document.querySelectorAll('.card-preview[data-sb-id]:not([data-sb-obs])');
     if (!cards.length) return;
     if (!observer) {
       if (typeof IntersectionObserver !== 'function') return;
       observer = new IntersectionObserver(onIntersect, { threshold: [0, 0.3, 0.6, 0.85, 1] });
     }
-    cards.forEach(function (el) { el.setAttribute('data-sb-obs', '1'); observer.observe(el); });
+    cards.forEach(function (el) { el.setAttribute('data-sb-obs', '1'); observer.observe(el); observed.add(el); });
   }
 
   return {

@@ -3484,7 +3484,13 @@ function extractStoryboard(filePath, id, duration, width, height) {
   return new Promise((resolve) => {
     if (!ffmpegAvailable) { resolve(null); return; }
     const plan = planStoryboard(duration);
-    if (!plan) { resolve(null); return; }
+    if (!plan) {
+      // Newly ineligible (e.g. an in-place replace with a sub-2s clip): drop any
+      // stale sprite so a leftover <id>.sb.jpg can't linger for the id's life.
+      try { if (fs.existsSync(storyboardPath(id))) fs.unlinkSync(storyboardPath(id)); } catch (_) { /* best-effort */ }
+      resolve(null);
+      return;
+    }
     const outPath = storyboardPath(id);
     const tileH = (Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0)
       ? Math.max(2, Math.round(plan.tileW * height / width))
@@ -9455,10 +9461,11 @@ function resolveHomeItem(db, id, kind, progressPercent) {
   }
   const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : null;
   if (!item) return null;
-  // v1.92: carry the storyboard descriptor (when present) so the home-row card
-  // can drive its hover / in-view preview; omitted when absent to keep the
-  // payload lean (the client treats a missing descriptor as no-preview).
-  return { id, kind: 'media', title: item.title || item.name || 'Video', subtitle: item.folderName || '', thumbnailUrl: `/thumbnail/${enc}`, href: `/watch.html?v=${enc}`, progressPercent, ...(item.storyboard ? { storyboard: item.storyboard } : {}) };
+  // v1.92 note: the horizontal home-ROW card (buildFeedCardHtml/buildVideoRowCardHtml)
+  // does NOT render a .card-preview overlay, so no storyboard descriptor is sent
+  // here - the preview lives on the main + modern GRID cards (buildCardHtml),
+  // fed by /api/videos (spreads ...item) and resolveModernGridItem.
+  return { id, kind: 'media', title: item.title || item.name || 'Video', subtitle: item.folderName || '', thumbnailUrl: `/thumbnail/${enc}`, href: `/watch.html?v=${enc}`, progressPercent };
 }
 
 // v1.84 Modern Mode: resolve a grid candidate into the RICH card shape the
