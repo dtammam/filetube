@@ -108,6 +108,9 @@ test('(HARD GATE) releaseDate backfill on an already-indexed, unchanged video: n
   const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
   fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
   fs.writeFileSync(thumbPath, 'ORIGINAL-THUMBNAIL-BYTES');
+  // v1.92: fully-migrated storyboard sidecar -> the reuse path does no
+  // storyboard backfill spawn either, preserving the zero-spawn invariant.
+  fs.writeFileSync(path.join(THUMBNAIL_DIR, `${id}.sb.jpg`), 'ORIGINAL-STORYBOARD-BYTES');
 
   const originalAddedAt = 1700000000000;
   writeDb({
@@ -121,6 +124,7 @@ test('(HARD GATE) releaseDate backfill on an already-indexed, unchanged video: n
         type: 'video', addedAt: originalAddedAt, duration: 123, hasThumbnail: true,
         artist: 'RELEASE-DATE-SENTINEL', tags: { description: 'sentinel-desc' },
         needsTranscode: false, videoCodec: 'h264', audioCodec: 'aac',
+        storyboard: { v: 1, interval: 3, count: 40, cols: 10, rows: 4, tileW: 160, tileH: 90 },
         // no `releaseDate` -- pre-T5 shape, the exact backfill case.
       },
     },

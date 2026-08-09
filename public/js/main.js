@@ -675,9 +675,16 @@ const StoryboardCards = (function () {
   }
 
   // Observe any not-yet-observed overlays anywhere in the document (mobile).
+  // The IntersectionObserver is created LAZILY on the first storyboard card
+  // discovered, so a page/view with no storyboard cards never instantiates one
+  // (keeps us out of the way of other IntersectionObserver consumers).
   function refresh() {
-    if (!observer) return;
     const cards = document.querySelectorAll('.card-preview[data-sb-id]:not([data-sb-obs])');
+    if (!cards.length) return;
+    if (!observer) {
+      if (typeof IntersectionObserver !== 'function') return;
+      observer = new IntersectionObserver(onIntersect, { threshold: [0, 0.3, 0.6, 0.85, 1] });
+    }
     cards.forEach(function (el) { el.setAttribute('data-sb-obs', '1'); observer.observe(el); });
   }
 
@@ -689,12 +696,10 @@ const StoryboardCards = (function () {
         // desktop hover
         document.addEventListener('pointerover', onOver);
         document.addEventListener('pointerout', onOut);
-      } else if (typeof IntersectionObserver === 'function') {
-        // mobile in-view autoplay
-        observer = new IntersectionObserver(onIntersect, { threshold: [0, 0.3, 0.6, 0.85, 1] });
-        // Discover cards from every render path via ONE debounced DOM watcher,
-        // so no render site needs to call us. (Cards a render removes simply
-        // stop intersecting; their intervals self-clean on the next tick.)
+      } else if (typeof IntersectionObserver === 'function' && typeof MutationObserver === 'function') {
+        // mobile in-view autoplay. Discover cards from every render path via ONE
+        // debounced DOM watcher (the IntersectionObserver itself is created
+        // lazily inside refresh() only once a storyboard card exists).
         let pending = null;
         const mo = new MutationObserver(function () {
           if (pending) return;
