@@ -104,10 +104,13 @@ cp.execFile = function mockExecFile(bin, args, opts, cb) {
       return;
     }
     if (args[0] === '-nostdin') {
-      // v1.92 storyboard sprite generation (buildStoryboardArgs):
-      // ['-nostdin','-loglevel','error','-i',src,'-vf','fps.../tile=CxR',
-      //  '-frames:v','1','-an','-q:v','4','-y',outPath]. Observed on execCalls
-      // like the frame-grab so tests can assert one-time backfill / non-churn.
+      // Storyboard sprite generation (buildStoryboardArgs). v1.93 seek-based
+      // shape: ['-nostdin','-loglevel','error', ('-ss',t,'-i',src) x count,
+      //  '-filter_complex','...concat...tile=CxR...','-map','[o]','-frames:v',
+      //  '1','-an','-q:v','4','-y',outPath]. This mock routes solely on
+      // args[0]==='-nostdin' and reads the trailing outPath, so it is agnostic
+      // to the middle of the arg vector - observed on execCalls like the
+      // frame-grab so tests can assert one-time backfill / non-churn.
       const outPath = args[args.length - 1];
       if (storyboardGenSucceeds && outPath) {
         fs.writeFileSync(outPath, 'mock-storyboard-bytes');
