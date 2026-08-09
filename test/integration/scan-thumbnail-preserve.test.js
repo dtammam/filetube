@@ -59,6 +59,9 @@ let execCalls = [];
 let execFileCalls = [];
 let nextFfprobeJson = { format: { duration: '42' }, streams: [] };
 let frameGrabSucceeds = true;
+// v1.92: the storyboard sprite generation (a new ffmpeg use). Default success
+// writes a mock sprite so restoreMissingStoryboard's one-time backfill settles.
+let storyboardGenSucceeds = true;
 
 cp.exec = function mockExec(cmd, cb) {
   execCalls.push(cmd);
@@ -98,6 +101,20 @@ cp.execFile = function mockExecFile(bin, args, opts, cb) {
     }
     if (args[0] === '-i') {
       cb(new Error('mock: no embedded art (not exercised by this suite)'));
+      return;
+    }
+    if (args[0] === '-nostdin') {
+      // v1.92 storyboard sprite generation (buildStoryboardArgs):
+      // ['-nostdin','-loglevel','error','-i',src,'-vf','fps.../tile=CxR',
+      //  '-frames:v','1','-an','-q:v','4','-y',outPath]. Observed on execCalls
+      // like the frame-grab so tests can assert one-time backfill / non-churn.
+      const outPath = args[args.length - 1];
+      if (storyboardGenSucceeds && outPath) {
+        fs.writeFileSync(outPath, 'mock-storyboard-bytes');
+        cb(null, '', '');
+      } else {
+        cb(new Error('mock: storyboard gen disabled for this test'));
+      }
       return;
     }
     cb(new Error(`unexpected ffmpeg execFile() args in test mock: ${JSON.stringify(args)}`));
@@ -377,10 +394,12 @@ test('(e) audio items bypass the codec-backfill branch entirely (no probe, no fr
   assert.equal(execCalls.length, 0, 'no ffmpeg spawn at all for an unchanged audio item');
 });
 
-// (f) An already-migrated video (codec fields already present) with a GOOD
-// existing thumbnail still takes the plain reuse fast-path -- no probe, no
-// frame-grab, completely untouched.
-test('(f) an already-migrated video (has codec fields) with a good thumbnail takes the plain reuse fast-path, no probe, no frame-grab', async () => {
+// (f) A FULLY-migrated video (codec fields + GOOD thumbnail + a storyboard
+// sprite already present) still takes the plain reuse fast-path -- no probe,
+// no frame-grab, no storyboard generation, completely untouched. (v1.92: "fully
+// migrated" now includes the storyboard sidecar; the one-time backfill for a
+// storyboard-LESS item is covered by (f2) below.)
+test('(f) a fully-migrated video (codecs + thumbnail + storyboard) takes the plain reuse fast-path, no ffmpeg at all', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-f-'));
   const filePath = path.join(root, 'migrated.mp4');
   const bytes = 'already-migrated-video';
@@ -388,6 +407,9 @@ test('(f) an already-migrated video (has codec fields) with a good thumbnail tak
   const id = getMediaId(filePath);
   const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
   fs.writeFileSync(thumbPath, 'MIGRATED-GOOD-THUMB');
+  // v1.92: a present storyboard sidecar + descriptor -> no backfill work.
+  const sbPath = path.join(THUMBNAIL_DIR, `${id}.sb.jpg`);
+  fs.writeFileSync(sbPath, 'MIGRATED-GOOD-SB');
 
   writeDb({
     folders: [root],
@@ -400,6 +422,7 @@ test('(f) an already-migrated video (has codec fields) with a good thumbnail tak
         type: 'video', addedAt: 1700000000005, duration: 42, hasThumbnail: true,
         artist: 'MIGRATED-SENTINEL', needsTranscode: false,
         videoCodec: 'h264', audioCodec: 'aac',
+        storyboard: { v: 1, interval: 4.2, count: 10, cols: 10, rows: 1, tileW: 160, tileH: 90 },
       },
     },
     settings: baseSettings(),
@@ -410,8 +433,59 @@ test('(f) an already-migrated video (has codec fields) with a good thumbnail tak
   const db = readDb();
   assert.equal(db.metadata[id].artist, 'MIGRATED-SENTINEL', 'already-migrated video reused untouched');
   assert.equal(execFileCalls.length, 0, 'no codec probe for an already-migrated video');
-  assert.equal(execCalls.length, 0, 'no ffmpeg spawn at all for an already-migrated video with a good thumbnail');
+  assert.equal(execCalls.length, 0, 'no ffmpeg spawn at all for a fully-migrated video (thumb + storyboard present)');
   assert.equal(fs.readFileSync(thumbPath, 'utf8'), 'MIGRATED-GOOD-THUMB', 'existing thumbnail bytes must be untouched');
+  assert.equal(fs.readFileSync(sbPath, 'utf8'), 'MIGRATED-GOOD-SB', 'existing storyboard bytes must be untouched');
+});
+
+// (f2) v1.92: a reused video that already carries codec fields + a good
+// thumbnail but PREDATES the storyboard feature (no descriptor) gets its ONE
+// storyboard sprite on the reuse fast-path -- the thumbnail is never re-grabbed
+// -- and a SECOND scan generates NOTHING (the backfill is one-time, not the
+// per-scan re-extraction the thumbnail-backfill-regression class warns about).
+test('(f2) a storyboard-less reused video gets EXACTLY ONE storyboard pass (no thumbnail re-grab), and none on the next scan', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-f2-'));
+  const filePath = path.join(root, 'needs-sb.mp4');
+  const bytes = 'needs-storyboard-video';
+  fs.writeFileSync(filePath, bytes);
+  const id = getMediaId(filePath);
+  const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
+  fs.writeFileSync(thumbPath, 'GOOD-THUMB-NO-SB');
+
+  writeDb({
+    folders: [root],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      [id]: {
+        id, name: 'needs-sb.mp4', title: 'needs-sb', filePath,
+        folderName: path.basename(root), size: Buffer.byteLength(bytes), ext: '.mp4',
+        type: 'video', addedAt: 1700000000006, duration: 42, hasThumbnail: true,
+        artist: 'NEEDS-SB-SENTINEL', needsTranscode: false,
+        videoCodec: 'h264', audioCodec: 'aac',
+        // no storyboard key -- predates v1.92
+      },
+    },
+    settings: baseSettings(),
+  });
+
+  await scanDirectories();
+
+  // Exactly one ffmpeg spawn, and it is the STORYBOARD, not a frame-grab.
+  assert.equal(execCalls.length, 1, 'exactly one ffmpeg spawn (the storyboard backfill)');
+  assert.ok(/tile=\d+x\d+/.test(execCalls[0]), 'the spawn is the storyboard sprite (tile filter), not a thumbnail frame-grab');
+  assert.ok(!execCalls.some(c => /^ffmpeg -ss /.test(c)), 'the good thumbnail is never re-grabbed');
+  assert.equal(fs.readFileSync(thumbPath, 'utf8'), 'GOOD-THUMB-NO-SB', 'existing thumbnail bytes untouched');
+  let db = readDb();
+  assert.ok(db.metadata[id].storyboard && db.metadata[id].storyboard.count === 22, 'the storyboard descriptor (planStoryboard(42)) is now persisted');
+
+  // Second scan: the storyboard is present -> NO further ffmpeg work (one-time).
+  execCalls = [];
+  execFileCalls = [];
+  await scanDirectories();
+  assert.equal(execCalls.length, 0, 'no storyboard (or any) ffmpeg spawn on the second scan -- backfill is one-time, no churn');
+  db = readDb();
+  assert.equal(db.metadata[id].artist, 'NEEDS-SB-SENTINEL', 'still reused untouched on the second scan');
 });
 
 // (g) v1.19.1 hotfix: a reused VIDEO (already carries codec fields -- takes

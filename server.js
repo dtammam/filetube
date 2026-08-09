@@ -4572,6 +4572,15 @@ async function runScanDirectories() {
           console.error('Failed to delete obsolete transcode:', e);
         }
       }
+      // v1.92: remove any storyboard sprite sidecar (same id-keyed lifecycle).
+      const oldStoryboard = storyboardPath(oldId);
+      if (fs.existsSync(oldStoryboard)) {
+        try {
+          fs.unlinkSync(oldStoryboard);
+        } catch (e) {
+          console.error('Failed to delete obsolete storyboard:', e);
+        }
+      }
     }
   }
 
@@ -10429,6 +10438,7 @@ app.delete('/api/videos/:id', async (req, res) => {
     // re-key, so their id-keyed sidecars die here. Best-effort throughout.
     const thumbPath = path.join(THUMBNAIL_DIR, `${item.id}.jpg`);
     try { if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath); } catch (_) { /* best-effort */ }
+    try { if (fs.existsSync(storyboardPath(item.id))) fs.unlinkSync(storyboardPath(item.id)); } catch (_) { /* best-effort */ } // v1.92 sprite
     try { if (fs.existsSync(transcodedPath(item.id))) fs.unlinkSync(transcodedPath(item.id)); } catch (_) { /* best-effort */ }
     if (!fileRemainsOnDisk) {
       // The greedy .vtt sweep (v1.36.2), only when the media file itself is
@@ -11668,6 +11678,12 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
       } catch (thumbErr) {
         console.error(`Move: failed to re-key thumbnail for ${oldId} -> ${newId}:`, thumbErr.message);
       }
+      // v1.92: the storyboard sprite re-keys with the id too.
+      try {
+        if (fsImpl.existsSync(storyboardPath(oldId))) fsImpl.renameSync(storyboardPath(oldId), storyboardPath(newId));
+      } catch (sbErr) {
+        console.error(`Move: failed to re-key storyboard for ${oldId} -> ${newId}:`, sbErr.message);
+      }
 
       try {
         const oldTranscode = transcodedPath(oldId);
@@ -12097,6 +12113,12 @@ async function trashItem(deps, id, opts = {}) {
       } catch (thumbErr) {
         console.error(`Trash: failed to re-key thumbnail for ${id} -> ${trashId}:`, thumbErr.message);
       }
+      // v1.92: the storyboard sprite follows the id into trash too.
+      try {
+        if (fsImpl.existsSync(storyboardPath(id))) fsImpl.renameSync(storyboardPath(id), storyboardPath(trashId));
+      } catch (sbErr) {
+        console.error(`Trash: failed to re-key storyboard for ${id} -> ${trashId}:`, sbErr.message);
+      }
       try {
         if (fsImpl.existsSync(transcodedPath(id))) fsImpl.renameSync(transcodedPath(id), transcodedPath(trashId));
       } catch (transcodeErr) {
@@ -12514,6 +12536,12 @@ async function restoreTrashItem(deps, trashId) {
       } catch (thumbErr) {
         console.error(`Restore: failed to re-key thumbnail for ${trashId} -> ${originalId}:`, thumbErr.message);
       }
+      // v1.92: restore the storyboard sprite back to the original id too.
+      try {
+        if (fsImpl.existsSync(storyboardPath(trashId))) fsImpl.renameSync(storyboardPath(trashId), storyboardPath(originalId));
+      } catch (sbErr) {
+        console.error(`Restore: failed to re-key storyboard for ${trashId} -> ${originalId}:`, sbErr.message);
+      }
       try {
         if (fsImpl.existsSync(transcodedPath(trashId))) fsImpl.renameSync(transcodedPath(trashId), transcodedPath(originalId));
       } catch (transcodeErr) {
@@ -12652,6 +12680,7 @@ async function purgeTrashItem(deps, trashId) {
 
   // Id-keyed sidecars + the subtitle set, best-effort.
   try { const p = path.join(THUMBNAIL_DIR, `${trashId}.jpg`); if (fsImpl.existsSync(p)) fsImpl.unlinkSync(p); } catch (_) { /* best-effort */ }
+  try { if (fsImpl.existsSync(storyboardPath(trashId))) fsImpl.unlinkSync(storyboardPath(trashId)); } catch (_) { /* best-effort */ } // v1.92 sprite
   try { if (fsImpl.existsSync(transcodedPath(trashId))) fsImpl.unlinkSync(transcodedPath(trashId)); } catch (_) { /* best-effort */ }
   try { if (fsImpl.existsSync(audioPath(trashId))) fsImpl.unlinkSync(audioPath(trashId)); } catch (_) { /* best-effort */ }
   try {
@@ -15091,6 +15120,29 @@ app.get('/thumbnail/:id', (req, res) => {
 
   res.setHeader('Content-Type', 'image/svg+xml');
   res.send(svg);
+});
+
+// v1.92: GET /storyboard/:id - serve the scrub/card storyboard sprite JPEG.
+// Mirrors /thumbnail/:id's RBAC exactly (resolve via metadata OR a trash
+// snapshot; a restricted item 404s like a missing one so the route reveals
+// nothing) but has NO placeholder fallback: a 404 means "no preview" and the
+// client silently degrades to the static poster. Content-addressed by media id
+// (only changes on rescan) -> the same day-long private cache as the thumbnail.
+app.get('/storyboard/:id', (req, res) => {
+  const db = getCachedDatabase(); // hot GET reader
+  const trashRec = (!Object.prototype.hasOwnProperty.call(db.metadata, req.params.id)
+    && db.trash && Object.prototype.hasOwnProperty.call(db.trash, req.params.id))
+    ? db.trash[req.params.id] : null;
+  const item = db.metadata[req.params.id] || (trashRec && trashRec.item) || undefined;
+  if (item && !mediaVisibleTo(req, item)) { // RBAC: restricted -> 404 like missing
+    return res.status(404).json({ error: 'Media file not found' });
+  }
+  const sbPath = storyboardPath(req.params.id);
+  if (item && item.storyboard && fs.existsSync(sbPath)) {
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    return res.sendFile(sbPath);
+  }
+  return res.status(404).json({ error: 'No storyboard' });
 });
 
 // HTML escaping helper
