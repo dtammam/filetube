@@ -588,6 +588,125 @@ if (typeof module !== 'undefined' && module.exports) {
   };
 }
 
+// v1.92 storyboard CARD preview controller. Cycles the sprite frames of a
+// card's `.card-preview` overlay: on DESKTOP when the pointer hovers the card,
+// on MOBILE (no hover) when the card scrolls into the centre of the viewport
+// (the YouTube-app "autoplay" feel Dean asked for). One app-wide singleton -
+// `init()` is idempotent - driving off the overlay's data-sb-* geometry and the
+// SAME pure tile math the scrub preview uses (window.FileTube.storyboard.tile).
+// Self-cleans: an interval whose card has left the DOM stops on its next tick.
+const StoryboardCards = (function () {
+  const FRAME_MS = 200;            // per-frame dwell (~8s loop for 40 frames)
+  const MAX_INVIEW = 2;            // battery guard: at most N cards animate at once on mobile
+  const active = new Map();        // overlay el -> interval id
+  const ratios = new Map();        // overlay el -> latest intersectionRatio (mobile)
+  let observer = null;             // the in-view IntersectionObserver (mobile only)
+  let inited = false;
+
+  function reducedMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+  function canHover() {
+    return !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+  }
+  function geomOf(el) {
+    const count = parseInt(el.getAttribute('data-sb-count'), 10);
+    const cols = parseInt(el.getAttribute('data-sb-cols'), 10);
+    const rows = parseInt(el.getAttribute('data-sb-rows'), 10);
+    if (!(count > 0) || !(cols > 0) || !(rows > 0)) return null;
+    return { count, cols, rows };
+  }
+  function paint(el, geom, idx) {
+    const sb = window.FileTube && window.FileTube.storyboard;
+    if (!sb) return;
+    const tile = sb.tile(idx, geom);
+    el.style.backgroundSize = tile.sizeXPct + '% ' + tile.sizeYPct + '%';
+    el.style.backgroundPosition = tile.posXPct + '% ' + tile.posYPct + '%';
+  }
+  function start(el) {
+    if (active.has(el) || reducedMotion()) return;
+    const geom = geomOf(el);
+    if (!geom) return;
+    const id = el.getAttribute('data-sb-id');
+    if (!el.style.backgroundImage) {
+      el.style.backgroundImage = 'url("/storyboard/' + encodeURIComponent(id) + '")';
+    }
+    let i = 0;
+    paint(el, geom, 0);
+    el.classList.add('previewing');
+    const timer = setInterval(function () {
+      if (!el.isConnected) { stop(el); return; } // grid re-rendered under us
+      i = (i + 1) % geom.count;
+      paint(el, geom, i);
+    }, FRAME_MS);
+    active.set(el, timer);
+  }
+  function stop(el) {
+    const timer = active.get(el);
+    if (timer) { clearInterval(timer); active.delete(el); }
+    if (el) el.classList.remove('previewing');
+  }
+
+  // Desktop: delegated so it covers cards from every render path (initial,
+  // append, modern grid, home rows) with no per-render registration.
+  function onOver(e) {
+    const el = e.target.closest && e.target.closest('.card-preview[data-sb-id]');
+    if (el) start(el);
+  }
+  function onOut(e) {
+    const el = e.target.closest && e.target.closest('.card-preview[data-sb-id]');
+    if (el && !el.contains(e.relatedTarget)) stop(el);
+  }
+
+  // Mobile: pick the up-to-MAX_INVIEW most-visible cards and animate only those.
+  function onIntersect(entries) {
+    entries.forEach(function (en) {
+      if (en.isIntersecting && en.intersectionRatio > 0) ratios.set(en.target, en.intersectionRatio);
+      else ratios.delete(en.target);
+    });
+    const winners = Array.from(ratios.entries())
+      .filter(function (pair) { return pair[0].isConnected && pair[1] >= 0.6; })
+      .sort(function (a, b) { return b[1] - a[1]; })
+      .slice(0, MAX_INVIEW)
+      .map(function (pair) { return pair[0]; });
+    const winSet = new Set(winners);
+    active.forEach(function (_timer, el) { if (!winSet.has(el)) stop(el); });
+    winners.forEach(start);
+  }
+
+  // Observe any not-yet-observed overlays anywhere in the document (mobile).
+  function refresh() {
+    if (!observer) return;
+    const cards = document.querySelectorAll('.card-preview[data-sb-id]:not([data-sb-obs])');
+    cards.forEach(function (el) { el.setAttribute('data-sb-obs', '1'); observer.observe(el); });
+  }
+
+  return {
+    init() {
+      if (inited || typeof document === 'undefined') return;
+      inited = true;
+      if (canHover()) {
+        // desktop hover
+        document.addEventListener('pointerover', onOver);
+        document.addEventListener('pointerout', onOut);
+      } else if (typeof IntersectionObserver === 'function') {
+        // mobile in-view autoplay
+        observer = new IntersectionObserver(onIntersect, { threshold: [0, 0.3, 0.6, 0.85, 1] });
+        // Discover cards from every render path via ONE debounced DOM watcher,
+        // so no render site needs to call us. (Cards a render removes simply
+        // stop intersecting; their intervals self-clean on the next tick.)
+        let pending = null;
+        const mo = new MutationObserver(function () {
+          if (pending) return;
+          pending = setTimeout(function () { pending = null; refresh(); }, 120);
+        });
+        try { mo.observe(document.body, { childList: true, subtree: true }); } catch (_) { /* body not ready */ }
+        refresh();
+      }
+    },
+  };
+})();
+
 // Wrapped in its own IIFE so its helpers (escapeHtml, renderMediaGridPage, etc.)
 // stay private to this file and never collide with the same-named helpers in
 // watch.js/setup.js, which all load on every page (FR-1, T1).
@@ -616,6 +735,9 @@ if (typeof module !== 'undefined' && module.exports) {
   function init(root) {
     controller = new AbortController();
     const { signal } = controller;
+    // v1.92: arm the storyboard card-preview controller (idempotent app-wide
+    // singleton -- desktop hover / mobile in-view autoplay).
+    try { StoryboardCards.init(); } catch (_) { /* preview is a progressive enhancement */ }
     // C3 remediation: reads the LIVE `allFolders`/`folderSettings` bindings
     // below (a closure over the `let`s, not a value snapshot) -- so calling
     // this later, after loadLibrary() has populated them (or after a sidebar
@@ -1626,6 +1748,9 @@ if (typeof module !== 'undefined' && module.exports) {
           <div class="card-media">
             <a href="${watchHref}" class="thumbnail-container">
               <img class="thumbnail-img" src="${kp ? kp.thumbSrc : `/thumbnail/${item.id}`}" alt="${escapeHtml(item.title)}" loading="lazy" />
+              ${(!kp && item.storyboard && item.storyboard.count > 0)
+                ? `<div class="card-preview" aria-hidden="true" data-sb-id="${item.id}" data-sb-count="${item.storyboard.count}" data-sb-cols="${item.storyboard.cols}" data-sb-rows="${item.storyboard.rows}"></div>`
+                : ''}
               ${durationBadge}
               ${progressBar}
             </a>

@@ -1326,6 +1326,28 @@ html.reader-immersive .app-container { padding-top: 0; }
   object-fit: cover;
 }
 
+/* v1.92 storyboard card preview: a sprite-backed layer over the thumbnail that
+   fades in while the card is hovered (desktop) or centred in view (mobile).
+   background-image / -size / -position are set inline by main.js from the
+   shared tile geometry; this rule owns only layout + the fade. */
+.card-preview {
+  position: absolute;
+  inset: 0;
+  z-index: 1; /* token-exempt: local stacking, above .thumbnail-img, below badges */
+  background-repeat: no-repeat;
+  background-color: #000; /* token-exempt: letterbox black, matches .thumbnail-container */
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-ui);
+  pointer-events: none; /* never intercept the card's own tap/hover */
+}
+.card-preview.previewing {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* belt-and-suspenders: the JS already refuses to animate, but never fade in */
+  .card-preview.previewing { opacity: 0; }
+}
+
 .duration-badge {
   position: absolute;
   bottom: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
