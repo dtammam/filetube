@@ -423,9 +423,11 @@ test('(f) a fully-migrated video (codecs + thumbnail + storyboard) takes the pla
   const id = getMediaId(filePath);
   const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
   fs.writeFileSync(thumbPath, 'MIGRATED-GOOD-THUMB');
-  // v1.92: a present storyboard sidecar + descriptor -> no backfill work.
+  // v1.92/v1.94: present sprite AND preview clip -> no backfill work of either.
   const sbPath = path.join(THUMBNAIL_DIR, `${id}.sb.jpg`);
   fs.writeFileSync(sbPath, 'MIGRATED-GOOD-SB');
+  const pvPath = path.join(THUMBNAIL_DIR, `${id}.pv.mp4`);
+  fs.writeFileSync(pvPath, 'MIGRATED-GOOD-PV');
 
   writeDb({
     folders: [root],
@@ -449,9 +451,10 @@ test('(f) a fully-migrated video (codecs + thumbnail + storyboard) takes the pla
   const db = readDb();
   assert.equal(db.metadata[id].artist, 'MIGRATED-SENTINEL', 'already-migrated video reused untouched');
   assert.equal(execFileCalls.length, 0, 'no codec probe for an already-migrated video');
-  assert.equal(execCalls.length, 0, 'no ffmpeg spawn at all for a fully-migrated video (thumb + storyboard present)');
+  assert.equal(execCalls.length, 0, 'no ffmpeg spawn at all for a fully-migrated video (thumb + sprite + preview clip present)');
   assert.equal(fs.readFileSync(thumbPath, 'utf8'), 'MIGRATED-GOOD-THUMB', 'existing thumbnail bytes must be untouched');
   assert.equal(fs.readFileSync(sbPath, 'utf8'), 'MIGRATED-GOOD-SB', 'existing storyboard bytes must be untouched');
+  assert.equal(fs.readFileSync(pvPath, 'utf8'), 'MIGRATED-GOOD-PV', 'existing preview-clip bytes must be untouched');
 });
 
 // (f2) v1.92: a reused video that already carries codec fields + a good
@@ -490,31 +493,40 @@ test('(f2) a storyboard-less reused video gets EXACTLY ONE storyboard pass (no t
   // v1.93.1 BOUNDED-MEMORY shape: the storyboard backfill is plan.count
   // SINGLE-input grabs + exactly ONE tile-assembly spawn - never the v1.93.0
   // single N-input command (whose N resident decoders spiked to 9.3 GB).
+  // v1.93.1 BOUNDED-MEMORY storyboard shape: plan.count SINGLE-input grabs + ONE
+  // tile-assembly. v1.94: the reuse path ALSO generates the hover PREVIEW CLIP
+  // (one libx264 montage), so we separate the three spawn kinds.
   const tileCalls = execCalls.filter(c => /tile=\d+x\d+/.test(c));
-  assert.equal(tileCalls.length, 1, 'exactly one tile-ASSEMBLY spawn');
+  assert.equal(tileCalls.length, 1, 'exactly one storyboard tile-ASSEMBLY spawn');
   assert.ok(/tile=10x3/.test(tileCalls[0]), 'assembled into the planStoryboard(42)=22-frame 10x3 grid');
-  const grabCalls = execCalls.filter(c => c !== tileCalls[0]);
-  assert.equal(grabCalls.length, 22, 'one GRAB per frame (planStoryboard(42).count = 22)');
+  const pvCalls = execCalls.filter(c => /libx264/.test(c));
+  assert.equal(pvCalls.length, 1, 'exactly one preview-clip montage spawn (v1.94)');
+  assert.ok(/\.pv\.mp4/.test(pvCalls[0]) && /concat=n=\d+:v=1:a=0/.test(pvCalls[0]) && / -an /.test(pvCalls[0]),
+    'the preview clip is a muted montage (concat, no audio, .pv.mp4)');
+  const grabCalls = execCalls.filter(c => !tileCalls.includes(c) && !pvCalls.includes(c));
+  assert.equal(grabCalls.length, 22, 'one GRAB per storyboard frame (planStoryboard(42).count = 22)');
   grabCalls.forEach(c => assert.equal((c.match(/ -i /g) || []).length, 1,
-    'each grab holds EXACTLY ONE source input (the bounded-memory guarantee)'));
+    'each storyboard grab holds EXACTLY ONE source input (the bounded-memory guarantee)'));
   assert.ok(!execCalls.some(c => /^ffmpeg -ss /.test(c)), 'the good thumbnail is never re-grabbed');
   assert.equal(fs.readFileSync(thumbPath, 'utf8'), 'GOOD-THUMB-NO-SB', 'existing thumbnail bytes untouched');
-  // v1.93.2: the sprite is its own state ON DISK; NO descriptor is persisted to
-  // the record (it is derived at read time). The generated sprite file exists.
+  // v1.93.2/v1.94: sprite AND preview clip are their own on-disk state; NO
+  // descriptor/flag is persisted (both derived at read time). Both files exist.
   const sbPath = path.join(THUMBNAIL_DIR, `${id}.sb.jpg`);
+  const pvPath = path.join(THUMBNAIL_DIR, `${id}.pv.mp4`);
   assert.ok(fs.existsSync(sbPath), 'the storyboard sprite FILE was generated on disk');
+  assert.ok(fs.existsSync(pvPath), 'the preview-clip FILE was generated on disk');
   let db = readDb();
-  assert.ok(!('storyboard' in db.metadata[id]), 'NO storyboard descriptor is written to the db (disk-keyed, derived)');
+  assert.ok(!('storyboard' in db.metadata[id]), 'NO storyboard descriptor is written to the db (disk-keyed)');
+  assert.ok(!('hasPreview' in db.metadata[id]), 'NO preview flag is written to the db (disk-keyed)');
   assert.deepEqual(sbTmpLeftovers(), [], 'the per-id temp dir is removed after generation (no #110-class leak)');
 
-  // Second scan: the sprite is present ON DISK -> NO further ffmpeg work. This
-  // is the CONVERGENCE binding (the prod churn was a scan that re-generated
-  // every video forever because it keyed off an unpersisted flag). Now it keys
-  // off the on-disk sprite, so it converges with no dependence on a saved flag.
+  // Second scan: sprite AND clip present ON DISK -> NO further ffmpeg work. The
+  // CONVERGENCE binding for both sidecars (keyed off the on-disk files, no
+  // dependence on a saved flag).
   execCalls = [];
   execFileCalls = [];
   await scanDirectories();
-  assert.equal(execCalls.length, 0, 'no ffmpeg spawn on the second scan -- the on-disk sprite makes it converge (no churn)');
+  assert.equal(execCalls.length, 0, 'no ffmpeg spawn on the second scan -- both on-disk sidecars make it converge (no churn)');
   db = readDb();
   assert.equal(db.metadata[id].artist, 'NEEDS-SB-SENTINEL', 'still reused untouched on the second scan');
 });
@@ -557,6 +569,8 @@ test('(f3) a storyboard generation failure leaves no sprite, no descriptor write
   assert.ok(!execCalls.some(c => /tile=\d+x\d+/.test(c)), 'assembly never runs once a grab fails');
   const sbPath = path.join(THUMBNAIL_DIR, `${id}.sb.jpg`);
   assert.equal(fs.existsSync(sbPath), false, 'no half-written sprite is left behind');
+  // v1.94: the preview-clip generation also fails (same mock gate) -> no clip.
+  assert.equal(fs.existsSync(path.join(THUMBNAIL_DIR, `${id}.pv.mp4`)), false, 'no half-written preview clip either');
   assert.deepEqual(sbTmpLeftovers(), [], 'the temp dir is cleaned up even on the failure path');
   const db = readDb();
   assert.ok(!('storyboard' in db.metadata[id]), 'no descriptor is written (disk-keyed; a failed gen just leaves no sprite)');

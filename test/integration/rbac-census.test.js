@@ -55,7 +55,11 @@ const { authenticateFetch } = require('../helpers/auth');
 // It is CONTENT-SERVING (reveals frames of the media) so it carries the same
 // mediaVisibleTo RBAC guard as /thumbnail and /video - a restricted member 404s
 // like a missing item; bound by storyboard-serve.test.js's RBAC assertion.
-const EXPECTED_ROUTE_COUNT = 193;
+// v1.94: 193 -> 194 for GET /preview/:id (the hover PREVIEW CLIP, a muted MP4).
+// Also CONTENT-SERVING (reveals moments of the media) -> same mediaVisibleTo
+// guard; a restricted member 404s like a missing item; bound by
+// preview-clip.test.js's RBAC assertion.
+const EXPECTED_ROUTE_COUNT = 194;
 
 let server, base, auth, member;
 const vidFile = path.join(DATA_DIR, 'v.mp4');
