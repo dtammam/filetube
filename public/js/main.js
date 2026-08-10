@@ -760,6 +760,11 @@ const StoryboardCards = (function () {
       .map(function (pair) { return pair[0]; });
     const winSet = new Set(winners);
     active.forEach(function (_timer, el) { if (!winSet.has(el)) stop(el); });
+    // v1.93.3 (slim gate): also cancel PENDING start-delay timers for cards that
+    // are no longer winners. Without this, scroll churn leaves stale timers that
+    // later fire begin()->animate() with no in-view re-check, breaching the
+    // MAX_INVIEW cap (>2 cards animating). stop() clears both maps.
+    pending.forEach(function (_t, el) { if (!winSet.has(el)) stop(el); });
     winners.forEach(start);
   }
 
@@ -797,10 +802,10 @@ const StoryboardCards = (function () {
         // mobile in-view autoplay. Discover cards from every render path via ONE
         // debounced DOM watcher (the IntersectionObserver itself is created
         // lazily inside refresh() only once a storyboard card exists).
-        let pending = null;
+        let refreshTimer = null; // (renamed from `pending`: distinct from the module-level start-delay map)
         const mo = new MutationObserver(function () {
-          if (pending) return;
-          pending = setTimeout(function () { pending = null; refresh(); }, 120);
+          if (refreshTimer) return;
+          refreshTimer = setTimeout(function () { refreshTimer = null; refresh(); }, 120);
         });
         try { mo.observe(document.body, { childList: true, subtree: true }); } catch (_) { /* body not ready */ }
         refresh();
