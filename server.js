@@ -3520,11 +3520,17 @@ async function extractStoryboard(filePath, id, duration, width, height) {
     // frame can't poison this sprite's numbered sequence.
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { /* best-effort */ }
     fs.mkdirSync(tmpDir, { recursive: true });
+    // Belt (adversarial gate): if the rmSync above fail-opened (e.g. a crash
+    // leftover the process now can't remove), mkdir is a no-op on the existing
+    // dir - so a stale higher-index frame from a LONGER prior run could survive
+    // and over-fill this run's partial last row in Stage 2. Guarantee the dir is
+    // empty. A throw here degrades to null via the outer catch (safe).
+    for (const stale of fs.readdirSync(tmpDir)) fs.rmSync(path.join(tmpDir, stale), { force: true });
     // Stage 1: grab each frame with its OWN ffmpeg, one at a time -> a single
-    // decoder is ever resident. `%03d`-padded to feed image2 in Stage 2 (count
-    // <= SB_MAX_FRAMES = 100, so 3 digits always suffice).
+    // decoder is ever resident. Lossless PNG intermediates (single JPEG encode
+    // in Stage 2). `%03d`-padded to feed image2 (count <= SB_MAX_FRAMES = 100).
     for (let i = 0; i < seeks.length; i++) {
-      const framePath = path.join(tmpDir, `f${String(i).padStart(3, '0')}.jpg`);
+      const framePath = path.join(tmpDir, `f${String(i).padStart(3, '0')}.png`);
       const gErr = await runFfmpegQuiet(buildStoryboardFrameArgs(filePath, framePath, seeks[i], plan.tileW));
       let frameOk = false;
       try { frameOk = !gErr && fs.existsSync(framePath) && fs.statSync(framePath).size > 0; } catch (_) { frameOk = false; }
@@ -3536,8 +3542,9 @@ async function extractStoryboard(filePath, id, duration, width, height) {
         return null;
       }
     }
-    // Stage 2: tile the grabbed frames into the sprite (small-JPEG memory only).
-    const pattern = path.join(tmpDir, 'f%03d.jpg');
+    // Stage 2: tile the grabbed PNG frames into the sprite JPEG (small-tile
+    // memory only; this is the single lossy encode).
+    const pattern = path.join(tmpDir, 'f%03d.png');
     const aErr = await runFfmpegQuiet(buildStoryboardAssembleArgs(pattern, outPath, plan.cols, plan.rows));
     let ok = false;
     try { ok = !aErr && fs.existsSync(outPath) && fs.statSync(outPath).size > 0; } catch (_) { ok = false; }

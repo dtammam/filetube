@@ -107,7 +107,8 @@ cp.execFile = function mockExecFile(bin, args, opts, cb) {
       // Storyboard sprite generation. v1.93.1 splits it into TWO ffmpeg shapes,
       // BOTH beginning '-nostdin' and BOTH ending with their output path:
       //   GRAB (x plan.count): ['-nostdin','-loglevel','error','-ss',t,'-i',
-      //     src,'-frames:v','1','-an','-vf','scale=W:-2','-q:v','4','-y',frame]
+      //     src,'-frames:v','1','-an','-vf','scale=W:-2','-y',frame.png]
+      //     (lossless PNG intermediate, no -q:v)
       //   ASSEMBLE (x1): ['-nostdin','-loglevel','error','-start_number','0',
       //     '-i',pattern,'-frames:v','1','-vf','tile=CxR','-q:v','4','-y',out]
       // This mock routes solely on args[0]==='-nostdin' and writes the trailing

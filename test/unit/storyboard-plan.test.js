@@ -107,8 +107,8 @@ test('storyboardSeekTimes: exactly plan.count times, frame i at i*interval', () 
 
 // ---- buildStoryboardFrameArgs: SINGLE-input grab (the bounded-memory fix) ----
 
-test('buildStoryboardFrameArgs: exact single-input grab arg array', () => {
-  const args = buildStoryboardFrameArgs('/in.mp4', '/tmp/.sbtmp-abc/f007.jpg', '18.375', 160);
+test('buildStoryboardFrameArgs: exact single-input grab arg array (lossless PNG, no -q:v)', () => {
+  const args = buildStoryboardFrameArgs('/in.mp4', '/tmp/.sbtmp-abc/f007.png', '18.375', 160);
   assert.deepStrictEqual(args, [
     '-nostdin', '-loglevel', 'error',
     '-ss', '18.375',
@@ -116,31 +116,33 @@ test('buildStoryboardFrameArgs: exact single-input grab arg array', () => {
     '-frames:v', '1',
     '-an',
     '-vf', 'scale=160:-2',
-    '-q:v', '4',
-    '-y', '/tmp/.sbtmp-abc/f007.jpg',
+    '-y', '/tmp/.sbtmp-abc/f007.png',
   ]);
+  // No -q:v: a PNG intermediate is lossless, so the only lossy re-encode is the
+  // single assembly pass (no double JPEG recompression vs v1.92).
+  assert.ok(!args.includes('-q:v'), 'grab carries no -q:v (lossless intermediate)');
 });
 
 test('buildStoryboardFrameArgs: EXACTLY ONE -i input (never the v1.93.0 N-input blowup)', () => {
   // The whole v1.93.1 fix: memory is bounded because each grab holds ONE source
   // context. A regression that fed multiple `-i src` here would re-open the
   // 9.3 GB door - this asserts a single input and no concat/tile in the grab.
-  const args = buildStoryboardFrameArgs('/in.mp4', '/t/f000.jpg', '0', 160);
+  const args = buildStoryboardFrameArgs('/in.mp4', '/t/f000.png', '0', 160);
   assert.strictEqual(args.filter(a => a === '-i').length, 1, 'exactly one input');
   assert.strictEqual(args.filter(a => a === '-ss').length, 1, 'exactly one seek');
   assert.ok(!args.some(a => /concat|tile=|filter_complex/.test(a)), 'no multi-input assembly in a grab');
   assert.ok(!args.some(a => /fps\s*=/.test(a)), 'no full-file-decode fps filter');
-  assert.strictEqual(args[args.length - 1], '/t/f000.jpg', 'frame output is the final arg');
+  assert.strictEqual(args[args.length - 1], '/t/f000.png', 'frame output is the final arg');
 });
 
 // ---- buildStoryboardAssembleArgs: image2 sequence -> tile grid ---------------
 
 test('buildStoryboardAssembleArgs: exact tile-assembly arg array', () => {
-  const args = buildStoryboardAssembleArgs('/tmp/.sbtmp-abc/f%03d.jpg', '/out.sb.jpg', 10, 4);
+  const args = buildStoryboardAssembleArgs('/tmp/.sbtmp-abc/f%03d.png', '/out.sb.jpg', 10, 4);
   assert.deepStrictEqual(args, [
     '-nostdin', '-loglevel', 'error',
     '-start_number', '0',
-    '-i', '/tmp/.sbtmp-abc/f%03d.jpg',
+    '-i', '/tmp/.sbtmp-abc/f%03d.png',
     '-frames:v', '1',
     '-vf', 'tile=10x4',
     '-q:v', '4',
@@ -150,12 +152,12 @@ test('buildStoryboardAssembleArgs: exact tile-assembly arg array', () => {
 
 test('buildStoryboardAssembleArgs: reads a sequence, tiles to the descriptor grid, decodes no source', () => {
   const plan = planStoryboard(300);
-  const args = buildStoryboardAssembleArgs('/t/f%03d.jpg', '/o.sb.jpg', plan.cols, plan.rows);
+  const args = buildStoryboardAssembleArgs('/t/f%03d.png', '/o.sb.jpg', plan.cols, plan.rows);
   // The tile grid MUST equal the descriptor so old and new sprites agree.
   assert.ok(args.includes(`tile=${plan.cols}x${plan.rows}`), 'tile grid == plan cols x rows');
   // Exactly one input, and it is the numbered SEQUENCE pattern, not the source.
   assert.strictEqual(args.filter(a => a === '-i').length, 1, 'one image2 sequence input');
-  assert.ok(args.includes('/t/f%03d.jpg'), 'input is the frame-sequence pattern');
+  assert.ok(args.includes('/t/f%03d.png'), 'input is the frame-sequence pattern');
   assert.ok(args.includes('-start_number') && args[args.indexOf('-start_number') + 1] === '0', 'sequence starts at 0');
 });
 
