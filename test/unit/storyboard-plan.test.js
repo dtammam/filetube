@@ -9,7 +9,10 @@ const assert = require('node:assert');
 const {
   planStoryboard,
   shouldGenerateStoryboard,
-  buildStoryboardArgs,
+  buildStoryboardFrameArgs,
+  buildStoryboardAssembleArgs,
+  storyboardSeekTime,
+  storyboardSeekTimes,
   SB_MIN_FRAMES,
   SB_MAX_FRAMES,
   SB_MIN_DURATION,
@@ -87,79 +90,83 @@ test('shouldGenerateStoryboard: excludes audio, too-short, and junk', () => {
   assert.strictEqual(shouldGenerateStoryboard(undefined), false);
 });
 
-// ---- buildStoryboardArgs: exact array + injection safety --------------------
+// ---- storyboardSeekTimes: one seek per frame, at i*interval -----------------
 
-test('buildStoryboardArgs: exact seek-based FFmpeg arg array for a known plan', () => {
-  // Small hand-checkable plan (count 3, 3x1 grid) so the whole array is legible.
-  const plan = { v: 1, interval: 1.5, count: 3, cols: 3, rows: 1, tileW: 160 };
-  const args = buildStoryboardArgs('/in.mp4', '/out.sb.jpg', plan);
+test('storyboardSeekTimes: exactly plan.count times, frame i at i*interval', () => {
+  const plan = planStoryboard(79.714104); // 40 frames
+  const times = storyboardSeekTimes(plan);
+  assert.strictEqual(times.length, plan.count, 'one seek time per frame');
+  assert.strictEqual(times[0], '0', 'frame 0 seeks to the start');
+  times.forEach((t, i) => {
+    assert.ok(Math.abs(Number(t) - i * plan.interval) <= 0.0005, `seek ${i} = ${t} ~= ${i * plan.interval}`);
+    assert.strictEqual(t, storyboardSeekTime(i, plan.interval), 'matches the single-frame helper');
+  });
+  // Last seek is strictly before EOF: (count-1)*interval = duration - interval.
+  assert.ok(Number(times[times.length - 1]) < 79.714104, 'last seek never over-runs EOF');
+});
+
+// ---- buildStoryboardFrameArgs: SINGLE-input grab (the bounded-memory fix) ----
+
+test('buildStoryboardFrameArgs: exact single-input grab arg array', () => {
+  const args = buildStoryboardFrameArgs('/in.mp4', '/tmp/.sbtmp-abc/f007.jpg', '18.375', 160);
   assert.deepStrictEqual(args, [
     '-nostdin', '-loglevel', 'error',
-    // one INPUT seek per frame, at 0, 1.5, 3.0s
-    '-ss', '0', '-i', '/in.mp4',
-    '-ss', '1.5', '-i', '/in.mp4',
-    '-ss', '3', '-i', '/in.mp4',
-    '-filter_complex',
-    '[0:v]trim=end_frame=1,setpts=PTS-STARTPTS,scale=160:-2,setsar=1[s0];' +
-    '[1:v]trim=end_frame=1,setpts=PTS-STARTPTS,scale=160:-2,setsar=1[s1];' +
-    '[2:v]trim=end_frame=1,setpts=PTS-STARTPTS,scale=160:-2,setsar=1[s2];' +
-    '[s0][s1][s2]concat=n=3:v=1:a=0[c];' +
-    '[c]tile=3x1[o]',
-    '-map', '[o]',
+    '-ss', '18.375',
+    '-i', '/in.mp4',
     '-frames:v', '1',
     '-an',
+    '-vf', 'scale=160:-2',
+    '-q:v', '4',
+    '-y', '/tmp/.sbtmp-abc/f007.jpg',
+  ]);
+});
+
+test('buildStoryboardFrameArgs: EXACTLY ONE -i input (never the v1.93.0 N-input blowup)', () => {
+  // The whole v1.93.1 fix: memory is bounded because each grab holds ONE source
+  // context. A regression that fed multiple `-i src` here would re-open the
+  // 9.3 GB door - this asserts a single input and no concat/tile in the grab.
+  const args = buildStoryboardFrameArgs('/in.mp4', '/t/f000.jpg', '0', 160);
+  assert.strictEqual(args.filter(a => a === '-i').length, 1, 'exactly one input');
+  assert.strictEqual(args.filter(a => a === '-ss').length, 1, 'exactly one seek');
+  assert.ok(!args.some(a => /concat|tile=|filter_complex/.test(a)), 'no multi-input assembly in a grab');
+  assert.ok(!args.some(a => /fps\s*=/.test(a)), 'no full-file-decode fps filter');
+  assert.strictEqual(args[args.length - 1], '/t/f000.jpg', 'frame output is the final arg');
+});
+
+// ---- buildStoryboardAssembleArgs: image2 sequence -> tile grid ---------------
+
+test('buildStoryboardAssembleArgs: exact tile-assembly arg array', () => {
+  const args = buildStoryboardAssembleArgs('/tmp/.sbtmp-abc/f%03d.jpg', '/out.sb.jpg', 10, 4);
+  assert.deepStrictEqual(args, [
+    '-nostdin', '-loglevel', 'error',
+    '-start_number', '0',
+    '-i', '/tmp/.sbtmp-abc/f%03d.jpg',
+    '-frames:v', '1',
+    '-vf', 'tile=10x4',
     '-q:v', '4',
     '-y', '/out.sb.jpg',
   ]);
 });
 
-test('buildStoryboardArgs: SEEK-based, never a full-file decode (the v1.93 fix)', () => {
-  // The whole point of v1.93: no `fps=1/interval` filter (which forces ffmpeg
-  // to decode the entire file). Reintroducing it must turn this red.
-  const plan = planStoryboard(4000); // 100 frames, the MAX regime
-  const args = buildStoryboardArgs('/in.mp4', '/o.sb.jpg', plan);
-  assert.ok(!args.some(a => /fps\s*=/.test(a)), 'no fps filter anywhere (that = full decode)');
-  // Exactly one `-ss` INPUT seek per sampled frame, each paired with its own -i.
-  const ssCount = args.filter(a => a === '-ss').length;
-  const iCount = args.filter(a => a === '-i').length;
-  assert.strictEqual(ssCount, plan.count, 'one input seek per frame');
-  assert.strictEqual(iCount, plan.count, 'one -i input per seek');
+test('buildStoryboardAssembleArgs: reads a sequence, tiles to the descriptor grid, decodes no source', () => {
+  const plan = planStoryboard(300);
+  const args = buildStoryboardAssembleArgs('/t/f%03d.jpg', '/o.sb.jpg', plan.cols, plan.rows);
+  // The tile grid MUST equal the descriptor so old and new sprites agree.
+  assert.ok(args.includes(`tile=${plan.cols}x${plan.rows}`), 'tile grid == plan cols x rows');
+  // Exactly one input, and it is the numbered SEQUENCE pattern, not the source.
+  assert.strictEqual(args.filter(a => a === '-i').length, 1, 'one image2 sequence input');
+  assert.ok(args.includes('/t/f%03d.jpg'), 'input is the frame-sequence pattern');
+  assert.ok(args.includes('-start_number') && args[args.indexOf('-start_number') + 1] === '0', 'sequence starts at 0');
 });
 
-test('buildStoryboardArgs: seek timestamps land at exactly i*interval', () => {
-  const plan = planStoryboard(79.714104); // 40 frames
-  const args = buildStoryboardArgs('/in.mp4', '/o.sb.jpg', plan);
-  // Collect the value following each '-ss'.
-  const seeks = [];
-  for (let i = 0; i < args.length; i++) if (args[i] === '-ss') seeks.push(Number(args[i + 1]));
-  assert.strictEqual(seeks.length, plan.count);
-  seeks.forEach((t, i) => {
-    assert.ok(Math.abs(t - i * plan.interval) <= 0.0005, `seek ${i} = ${t} ~= ${i * plan.interval}`);
-  });
-  assert.strictEqual(seeks[0], 0, 'frame 0 seeks to the start');
-});
-
-test('buildStoryboardArgs: output geometry matches the descriptor grid', () => {
-  // The sprite the client renders MUST be the plan's cols x rows of count
-  // frames - otherwise already-generated sprites and new ones disagree.
-  const plan = planStoryboard(300); // some mid clip
-  const args = buildStoryboardArgs('/in.mp4', '/o.sb.jpg', plan);
-  const fc = args[args.indexOf('-filter_complex') + 1];
-  assert.match(fc, new RegExp(`concat=n=${plan.count}:v=1:a=0`), 'concat count == plan.count');
-  assert.match(fc, new RegExp(`tile=${plan.cols}x${plan.rows}`), 'tile grid == plan cols x rows');
-  assert.match(fc, new RegExp(`scale=${plan.tileW}:-2`), 'tiles scaled to plan.tileW');
-});
-
-test('buildStoryboardArgs: paths are opaque argv elements (no shell interpolation)', () => {
-  // A path with shell metacharacters must survive as ONE array element - the
-  // caller uses execFile/spawn with this array, never a shell string.
+test('storyboard arg builders: paths are opaque argv elements (no shell interpolation)', () => {
+  // execFile/spawn with these arrays, never a shell string.
   const evil = '/media/a; rm -rf ~ && echo $(whoami).mp4';
-  const out = '/t/`id`.sb.jpg';
-  const plan = planStoryboard(100);
-  const args = buildStoryboardArgs(evil, out, plan);
-  assert.ok(args.includes(evil), 'source path passes through verbatim as a single element');
-  assert.ok(args.includes(out), 'output path passes through verbatim as a single element');
-  // no element concatenates the two (would signal a shell string was built)
-  assert.ok(!args.some(a => a.includes(evil) && a.includes(out)));
-  assert.strictEqual(args[args.length - 1], out, 'output is the final arg after -y');
+  const out = '/t/`id`.jpg';
+  const g = buildStoryboardFrameArgs(evil, out, '0', 160);
+  assert.ok(g.includes(evil), 'src passes through verbatim as one element');
+  assert.strictEqual(g[g.length - 1], out, 'output is the final arg after -y');
+  assert.ok(!g.some(a => a.includes(evil) && a.includes(out)), 'no element glues src+out (no shell string)');
+  const a = buildStoryboardAssembleArgs(evil, out, 10, 4);
+  assert.ok(a.includes(evil) && a[a.length - 1] === out, 'assemble args pass paths through verbatim');
 });

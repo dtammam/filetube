@@ -2483,7 +2483,7 @@ function buildAudioExtractArgs(srcPath, tmpPath) {
 // (desktop hover / mobile in-view autoplay). Geometry is a self-describing
 // per-item `storyboard` descriptor persisted on db.metadata (see the
 // persist-gate site list in docs/exec-plans/active/2026-08-09-v1.92-*).
-const { planStoryboard, shouldGenerateStoryboard, buildStoryboardArgs } = require('./lib/storyboard');
+const { planStoryboard, shouldGenerateStoryboard, buildStoryboardFrameArgs, buildStoryboardAssembleArgs, storyboardSeekTimes } = require('./lib/storyboard');
 
 // On-disk sprite path (content-addressed by media id, like the .jpg thumbnail).
 function storyboardPath(id) {
@@ -3473,6 +3473,15 @@ async function restoreMissingThumbnail(existing, id, filePath) {
   return true;
 }
 
+// One `ffmpeg` invocation as a promise resolving to the error (or null on
+// success). Never rejects. maxBuffer bounds the captured stderr (loglevel error
+// keeps it tiny even for the many grab calls).
+function runFfmpegQuiet(args) {
+  return new Promise((resolve) => {
+    execFile('ffmpeg', args, { maxBuffer: 16 * 1024 * 1024 }, (err) => resolve(err || null));
+  });
+}
+
 // v1.92: generate the storyboard sprite for a VIDEO (best-effort). Resolves the
 // descriptor { v, interval, count, cols, rows, tileW, tileH } on success, or
 // null (ffmpeg missing, ineligible duration, or a generation failure). Never
@@ -3480,35 +3489,70 @@ async function restoreMissingThumbnail(existing, id, filePath) {
 // true pixel aspect (from source dims when known, else a 16:9 default) so the
 // client can size the preview box without distortion; the render math itself is
 // percentage-based and never needs it.
-function extractStoryboard(filePath, id, duration, width, height) {
-  return new Promise((resolve) => {
-    if (!ffmpegAvailable) { resolve(null); return; }
-    const plan = planStoryboard(duration);
-    if (!plan) {
-      // Newly ineligible (e.g. an in-place replace with a sub-2s clip): drop any
-      // stale sprite so a leftover <id>.sb.jpg can't linger for the id's life.
-      try { if (fs.existsSync(storyboardPath(id))) fs.unlinkSync(storyboardPath(id)); } catch (_) { /* best-effort */ }
-      resolve(null);
-      return;
-    }
-    const outPath = storyboardPath(id);
-    const tileH = (Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0)
-      ? Math.max(2, Math.round(plan.tileW * height / width))
-      : Math.round(plan.tileW * 9 / 16);
-    // execFile (arg array, no shell) -- same injection-hardening as the
-    // thumbnail frame-grab above; buildStoryboardArgs is unit-tested.
-    execFile('ffmpeg', buildStoryboardArgs(filePath, outPath, plan), { maxBuffer: 16 * 1024 * 1024 }, (err) => {
-      let ok = false;
-      try { ok = !err && fs.existsSync(outPath) && fs.statSync(outPath).size > 0; } catch (_) { ok = false; }
-      if (!ok) {
-        // Don't leave a half-written/zero-byte sprite behind for the route to serve.
-        try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (_) {}
-        resolve(null);
-        return;
+//
+// v1.93.1 BOUNDED MEMORY: the sprite is built in two ffmpeg stages so the
+// source file is open at most ONCE at a time. Stage 1 grabs each sampled frame
+// with its own single-input `ffmpeg -ss <t> -i src` (one decoder resident ~=
+// v1.92 RSS) into a per-id temp dir, SEQUENTIALLY. Stage 2 tiles those small
+// frames into the sprite (decodes only the tiles, not the source). This
+// replaces v1.93.0's single N-input command, whose N simultaneous decoder
+// contexts spiked to ~9.3 GB on a large 4K source and would OOM a memory-tight
+// host. The temp dir is deterministic (per-id: no mkdtemp inode leak, and a
+// crashed prior run's leftovers are cleared on entry) and ALWAYS removed in the
+// finally.
+async function extractStoryboard(filePath, id, duration, width, height) {
+  if (!ffmpegAvailable) return null;
+  const outPath = storyboardPath(id);
+  const plan = planStoryboard(duration);
+  if (!plan) {
+    // Newly ineligible (e.g. an in-place replace with a sub-2s clip): drop any
+    // stale sprite so a leftover <id>.sb.jpg can't linger for the id's life.
+    try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (_) { /* best-effort */ }
+    return null;
+  }
+  const tileH = (Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0)
+    ? Math.max(2, Math.round(plan.tileW * height / width))
+    : Math.round(plan.tileW * 9 / 16);
+  const tmpDir = path.join(THUMBNAIL_DIR, `.sbtmp-${id}`);
+  const seeks = storyboardSeekTimes(plan);
+  try {
+    // Fresh temp dir - clear any leftover from a crashed prior run so a stale
+    // frame can't poison this sprite's numbered sequence.
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { /* best-effort */ }
+    fs.mkdirSync(tmpDir, { recursive: true });
+    // Stage 1: grab each frame with its OWN ffmpeg, one at a time -> a single
+    // decoder is ever resident. `%03d`-padded to feed image2 in Stage 2 (count
+    // <= SB_MAX_FRAMES = 100, so 3 digits always suffice).
+    for (let i = 0; i < seeks.length; i++) {
+      const framePath = path.join(tmpDir, `f${String(i).padStart(3, '0')}.jpg`);
+      const gErr = await runFfmpegQuiet(buildStoryboardFrameArgs(filePath, framePath, seeks[i], plan.tileW));
+      let frameOk = false;
+      try { frameOk = !gErr && fs.existsSync(framePath) && fs.statSync(framePath).size > 0; } catch (_) { frameOk = false; }
+      if (!frameOk) {
+        // A single missing frame breaks the image2 sequence -> abort cleanly.
+        // No sprite is the same graceful degrade as v1.92 on a generation
+        // failure; drop any stale sprite for this id.
+        try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (_) { /* best-effort */ }
+        return null;
       }
-      resolve({ ...plan, tileH });
-    });
-  });
+    }
+    // Stage 2: tile the grabbed frames into the sprite (small-JPEG memory only).
+    const pattern = path.join(tmpDir, 'f%03d.jpg');
+    const aErr = await runFfmpegQuiet(buildStoryboardAssembleArgs(pattern, outPath, plan.cols, plan.rows));
+    let ok = false;
+    try { ok = !aErr && fs.existsSync(outPath) && fs.statSync(outPath).size > 0; } catch (_) { ok = false; }
+    if (!ok) {
+      try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (_) { /* best-effort */ }
+      return null;
+    }
+    return { ...plan, tileH };
+  } catch (_) {
+    try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (_) { /* best-effort */ }
+    return null;
+  } finally {
+    // ALWAYS remove the temp dir (success, abort, or throw) - the #110 leak lesson.
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { /* best-effort */ }
+  }
 }
 
 // v1.92: heal/backfill the storyboard for a REUSED item (mirrors
@@ -16299,9 +16343,10 @@ module.exports = {
   // transcode-cache primitive's own testing contract above).
   audioPath,
   buildAudioExtractArgs,
-  // v1.92 storyboard sprites (pure): planner, arg-builder, gate, path.
+  // v1.92 storyboard sprites (pure): planner, arg-builders, gate, path.
   planStoryboard,
-  buildStoryboardArgs,
+  buildStoryboardFrameArgs,
+  buildStoryboardAssembleArgs,
   shouldGenerateStoryboard,
   storyboardPath,
   // v1.92 storyboard generation + persist-gate heal (integration-tested).

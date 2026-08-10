@@ -104,13 +104,16 @@ cp.execFile = function mockExecFile(bin, args, opts, cb) {
       return;
     }
     if (args[0] === '-nostdin') {
-      // Storyboard sprite generation (buildStoryboardArgs). v1.93 seek-based
-      // shape: ['-nostdin','-loglevel','error', ('-ss',t,'-i',src) x count,
-      //  '-filter_complex','...concat...tile=CxR...','-map','[o]','-frames:v',
-      //  '1','-an','-q:v','4','-y',outPath]. This mock routes solely on
-      // args[0]==='-nostdin' and reads the trailing outPath, so it is agnostic
-      // to the middle of the arg vector - observed on execCalls like the
-      // frame-grab so tests can assert one-time backfill / non-churn.
+      // Storyboard sprite generation. v1.93.1 splits it into TWO ffmpeg shapes,
+      // BOTH beginning '-nostdin' and BOTH ending with their output path:
+      //   GRAB (x plan.count): ['-nostdin','-loglevel','error','-ss',t,'-i',
+      //     src,'-frames:v','1','-an','-vf','scale=W:-2','-q:v','4','-y',frame]
+      //   ASSEMBLE (x1): ['-nostdin','-loglevel','error','-start_number','0',
+      //     '-i',pattern,'-frames:v','1','-vf','tile=CxR','-q:v','4','-y',out]
+      // This mock routes solely on args[0]==='-nostdin' and writes the trailing
+      // output path, so it stands in for both stages (a grab writes its frame
+      // file into the temp dir extractStoryboard just created; the assemble
+      // writes the sprite). Tests assert the two-stage shape via execCalls.
       const outPath = args[args.length - 1];
       if (storyboardGenSucceeds && outPath) {
         fs.writeFileSync(outPath, 'mock-storyboard-bytes');
@@ -161,7 +164,16 @@ beforeEach(async () => {
     { codec_type: 'audio', codec_name: 'aac' },
   ] };
   frameGrabSucceeds = true;
+  storyboardGenSucceeds = true;
 });
+
+// Helper: any leftover per-id storyboard temp dirs in THUMBNAIL_DIR (a #110-class
+// leak). Empty is the invariant - extractStoryboard removes them in a finally.
+function sbTmpLeftovers() {
+  try {
+    return fs.readdirSync(THUMBNAIL_DIR).filter(n => n.startsWith('.sbtmp-'));
+  } catch (_) { return []; }
+}
 
 // (a) Legacy video, unchanged, WITH an existing good thumbnail -- codec
 // backfill must run, but the frame-grab must NEVER fire and every other
@@ -474,13 +486,21 @@ test('(f2) a storyboard-less reused video gets EXACTLY ONE storyboard pass (no t
 
   await scanDirectories();
 
-  // Exactly one ffmpeg spawn, and it is the STORYBOARD, not a frame-grab.
-  assert.equal(execCalls.length, 1, 'exactly one ffmpeg spawn (the storyboard backfill)');
-  assert.ok(/tile=\d+x\d+/.test(execCalls[0]), 'the spawn is the storyboard sprite (tile filter), not a thumbnail frame-grab');
+  // v1.93.1 BOUNDED-MEMORY shape: the storyboard backfill is plan.count
+  // SINGLE-input grabs + exactly ONE tile-assembly spawn - never the v1.93.0
+  // single N-input command (whose N resident decoders spiked to 9.3 GB).
+  const tileCalls = execCalls.filter(c => /tile=\d+x\d+/.test(c));
+  assert.equal(tileCalls.length, 1, 'exactly one tile-ASSEMBLY spawn');
+  assert.ok(/tile=10x3/.test(tileCalls[0]), 'assembled into the planStoryboard(42)=22-frame 10x3 grid');
+  const grabCalls = execCalls.filter(c => c !== tileCalls[0]);
+  assert.equal(grabCalls.length, 22, 'one GRAB per frame (planStoryboard(42).count = 22)');
+  grabCalls.forEach(c => assert.equal((c.match(/ -i /g) || []).length, 1,
+    'each grab holds EXACTLY ONE source input (the bounded-memory guarantee)'));
   assert.ok(!execCalls.some(c => /^ffmpeg -ss /.test(c)), 'the good thumbnail is never re-grabbed');
   assert.equal(fs.readFileSync(thumbPath, 'utf8'), 'GOOD-THUMB-NO-SB', 'existing thumbnail bytes untouched');
   let db = readDb();
   assert.ok(db.metadata[id].storyboard && db.metadata[id].storyboard.count === 22, 'the storyboard descriptor (planStoryboard(42)) is now persisted');
+  assert.deepEqual(sbTmpLeftovers(), [], 'the per-id temp dir is removed after generation (no #110-class leak)');
 
   // Second scan: the storyboard is present -> NO further ffmpeg work (one-time).
   execCalls = [];
@@ -489,6 +509,50 @@ test('(f2) a storyboard-less reused video gets EXACTLY ONE storyboard pass (no t
   assert.equal(execCalls.length, 0, 'no storyboard (or any) ffmpeg spawn on the second scan -- backfill is one-time, no churn');
   db = readDb();
   assert.equal(db.metadata[id].artist, 'NEEDS-SB-SENTINEL', 'still reused untouched on the second scan');
+});
+
+// (f3) v1.93.1: a storyboard GRAB failure degrades gracefully - the whole
+// sprite is abandoned (a single missing frame would poison the image2
+// sequence), the descriptor is an explicit null, NO half-written sprite is left
+// on disk, and the per-id temp dir is cleaned up (the #110 leak lesson under a
+// failure path, not just the happy path).
+test('(f3) a storyboard generation failure leaves no sprite, a null descriptor, and no temp-dir leak', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-f3-'));
+  const filePath = path.join(root, 'sb-fails.mp4');
+  const bytes = 'storyboard-gen-will-fail';
+  fs.writeFileSync(filePath, bytes);
+  const id = getMediaId(filePath);
+  fs.writeFileSync(path.join(THUMBNAIL_DIR, `${id}.jpg`), 'GOOD-THUMB');
+
+  storyboardGenSucceeds = false; // every ffmpeg grab errors
+
+  writeDb({
+    folders: [root],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      [id]: {
+        id, name: 'sb-fails.mp4', title: 'sb-fails', filePath,
+        folderName: path.basename(root), size: Buffer.byteLength(bytes), ext: '.mp4',
+        type: 'video', addedAt: 1700000000007, duration: 42, hasThumbnail: true,
+        artist: 'SB-FAIL-SENTINEL', needsTranscode: false,
+        videoCodec: 'h264', audioCodec: 'aac',
+      },
+    },
+    settings: baseSettings(),
+  });
+
+  await scanDirectories();
+
+  // Grabs were ATTEMPTED (the backfill tried) but the first failed -> aborted.
+  assert.ok(execCalls.length >= 1, 'the storyboard backfill was attempted');
+  assert.ok(!execCalls.some(c => /tile=\d+x\d+/.test(c)), 'assembly never runs once a grab fails');
+  const sbPath = path.join(THUMBNAIL_DIR, `${id}.sb.jpg`);
+  assert.equal(fs.existsSync(sbPath), false, 'no half-written sprite is left behind');
+  assert.deepEqual(sbTmpLeftovers(), [], 'the temp dir is cleaned up even on the failure path');
+  const db = readDb();
+  assert.strictEqual(db.metadata[id].storyboard, null, 'the descriptor is an explicit null (persist-gate: field present)');
+  assert.equal(db.metadata[id].artist, 'SB-FAIL-SENTINEL', 'the item is otherwise reused untouched');
 });
 
 // (g) v1.19.1 hotfix: a reused VIDEO (already carries codec fields -- takes
