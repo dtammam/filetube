@@ -111,6 +111,7 @@ test('(HARD GATE) releaseDate backfill on an already-indexed, unchanged video: n
   // v1.93.2: a present storyboard sprite FILE -> the reuse path does no
   // storyboard backfill spawn (on-disk-keyed heal), preserving zero-spawn.
   fs.writeFileSync(path.join(THUMBNAIL_DIR, `${id}.sb.jpg`), 'ORIGINAL-STORYBOARD-BYTES');
+  fs.writeFileSync(path.join(THUMBNAIL_DIR, `${id}.pv.mp4`), 'ORIGINAL-PREVIEW-CLIP'); // v1.94: present preview clip -> reuse path stays zero-spawn
 
   const originalAddedAt = 1700000000000;
   writeDb({

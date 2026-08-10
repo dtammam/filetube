@@ -2488,6 +2488,17 @@ function buildAudioExtractArgs(srcPath, tmpPath) {
 // library, so nothing served - see the v1.93.2 header on storyboardDescriptor).
 const { planStoryboard, shouldGenerateStoryboard, buildStoryboardFrameArgs, buildStoryboardAssembleArgs, storyboardSeekTimes } = require('./lib/storyboard');
 
+// v1.94: animated hover PREVIEW CLIP (a muted MP4 montage). Same disk-keyed
+// model as the storyboard sprite (no persisted db flag; the on-disk clip is the
+// state; eligibility derived by previewClipEligible). The sprite stays for the
+// seek-bar SCRUB; this drives the card HOVER.
+const { planPreviewClip, previewClipEligible, buildPreviewClipArgs } = require('./lib/previewClip');
+
+// On-disk preview-clip path (content-addressed by media id, beside the .sb.jpg).
+function previewClipPath(id) {
+  return path.join(THUMBNAIL_DIR, `${id}.pv.mp4`);
+}
+
 // On-disk sprite path (content-addressed by media id, like the .jpg thumbnail).
 function storyboardPath(id) {
   return path.join(THUMBNAIL_DIR, `${id}.sb.jpg`);
@@ -3463,6 +3474,9 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
           // sprite is its own state on disk - no descriptor is threaded into the
           // metadata (it is derived at read time by storyboardDescriptor).
           try { await extractStoryboard(filePath, mediaId, duration); } catch (_) { /* best-effort */ }
+          // v1.94: also generate the animated hover PREVIEW CLIP from the same
+          // source (best-effort; its own on-disk state, no db field).
+          try { await extractPreviewClip(filePath, mediaId, duration); } catch (_) { /* best-effort */ }
           resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, chapters, width, height, hasThumbnail });
         });
       }
@@ -3613,6 +3627,57 @@ async function restoreMissingStoryboard(existing, id, filePath) {
     await extractStoryboard(filePath, id, existing.duration);
   } catch (err) {
     console.error(`Error restoring storyboard for ${path.basename(filePath)}:`, err);
+  }
+}
+
+// v1.94: generate the animated hover PREVIEW CLIP (a muted MP4 montage) for a
+// VIDEO (best-effort). Returns true iff a valid clip was written. One ffmpeg
+// pass (buildPreviewClipArgs: N fast input-seeks -> trim/scale/concat -> H.264),
+// NO temp files. Owns only the FILE - no db field (eligibility is derived at
+// read time by previewClipEligible). Never throws.
+async function extractPreviewClip(filePath, id, duration) {
+  if (!ffmpegAvailable) return false;
+  const outPath = previewClipPath(id);
+  const plan = planPreviewClip(duration);
+  if (!plan) {
+    // Ineligible (e.g. an in-place replace with a sub-5s clip): drop any stale clip.
+    try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (_) { /* best-effort */ }
+    return false;
+  }
+  try {
+    const err = await runFfmpegQuiet(buildPreviewClipArgs(filePath, outPath, plan));
+    let ok = false;
+    try { ok = !err && fs.existsSync(outPath) && fs.statSync(outPath).size > 0; } catch (_) { ok = false; }
+    if (!ok) {
+      try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (_) { /* best-effort */ }
+      return false;
+    }
+    return true;
+  } catch (_) {
+    try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (_) { /* best-effort */ }
+    return false;
+  }
+}
+
+// v1.94: ensure the preview-clip FILE exists for a REUSED item - the disk-keyed
+// heal, mirroring restoreMissingStoryboard: keyed on the on-disk clip (converges
+// with no dependence on a completed pass), writes NOTHING to the db, and an
+// ineligible item (audio/too short) has any stale clip removed. No return value.
+async function restoreMissingPreviewClip(existing, id, filePath) {
+  const outPath = previewClipPath(id);
+  if (!previewClipEligible(existing)) {
+    try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (_) { /* best-effort */ }
+    return;
+  }
+  let present = false;
+  try { present = fs.existsSync(outPath) && fs.statSync(outPath).size > 0; } catch (_) { present = false; }
+  if (present) return; // already on disk -> converged, no ffmpeg
+
+  console.log(`Restoring missing preview clip for: ${path.basename(filePath)}`);
+  try {
+    await extractPreviewClip(filePath, id, existing.duration);
+  } catch (err) {
+    console.error(`Error restoring preview clip for ${path.basename(filePath)}:`, err);
   }
 }
 
@@ -4251,6 +4316,8 @@ async function runScanDirectories() {
         // nothing to the db -- so no dbChanged, and it converges on file
         // existence with no dependence on this scan pass completing its save.
         await restoreMissingStoryboard(existing, id, filePath);
+        // v1.94: same disk-keyed heal for the hover preview clip.
+        await restoreMissingPreviewClip(existing, id, filePath);
       }
       // C5-local (v1.24): SCHEMA-ONLY backfill of `releaseDate` for an item
       // that predates this field -- the thumbnail-backfill-regression
@@ -4305,9 +4372,10 @@ async function runScanDirectories() {
       // completely untouched -- no frame-grab, ever, for a file that already
       // has one.
       await restoreMissingThumbnail(existing, id, filePath);
-      // v1.93.2: ensure the storyboard sprite FILE exists for a legacy video
-      // (on-disk-keyed, no db write - same as the reuse fast-path above).
+      // v1.93.2/v1.94: ensure the storyboard sprite AND the hover preview clip
+      // FILEs exist for a legacy video (on-disk-keyed, no db write).
       await restoreMissingStoryboard(existing, id, filePath);
+      await restoreMissingPreviewClip(existing, id, filePath);
 
       // C5-local (v1.24): same schema-only `releaseDate` backfill as the
       // plain reuse fast-path above -- mtime-only, no fresh probe (the
@@ -4650,6 +4718,11 @@ async function runScanDirectories() {
         } catch (e) {
           console.error('Failed to delete obsolete storyboard:', e);
         }
+      }
+      // v1.94: same for the hover preview clip sidecar.
+      const oldPreview = previewClipPath(oldId);
+      if (fs.existsSync(oldPreview)) {
+        try { fs.unlinkSync(oldPreview); } catch (e) { console.error('Failed to delete obsolete preview clip:', e); }
       }
     }
   }
@@ -9474,6 +9547,7 @@ app.get('/api/videos', (req, res) => {
       // list projection carries the same geometry as the grid/watch payloads
       // without a persisted flag.
       storyboard: storyboardDescriptor(item) || undefined,
+      hasPreview: previewClipEligible(item) || undefined, // v1.94: card hover clip eligibility
       progress: progress.timestamp,
       progressPercent,
       // v1.40.0: per-item liked flag so the grid can render each card's Like
@@ -9582,6 +9656,7 @@ function resolveModernGridItem(db, rec) {
     // (main.js StoryboardCards), so sending geometry before the sprite exists is
     // harmless (poster stays until the file is generated).
     storyboard: storyboardDescriptor(item) || undefined,
+    hasPreview: previewClipEligible(item) || undefined, // v1.94: card hover clip eligibility
   };
 }
 
@@ -9915,6 +9990,7 @@ app.get('/api/videos/:id', (req, res) => {
     // the on-disk sprite; the player preloads the sprite and shows the scrub
     // preview only once it loads (ungenerated -> no preview, never an empty box).
     storyboard: storyboardDescriptor(item) || undefined,
+    hasPreview: previewClipEligible(item) || undefined, // v1.94: hover clip eligibility
     chapters: resolvedChapters.chapters,
     chaptersSource: resolvedChapters.chaptersSource,
     progress: progress.timestamp,
@@ -10523,6 +10599,7 @@ app.delete('/api/videos/:id', async (req, res) => {
     const thumbPath = path.join(THUMBNAIL_DIR, `${item.id}.jpg`);
     try { if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath); } catch (_) { /* best-effort */ }
     try { if (fs.existsSync(storyboardPath(item.id))) fs.unlinkSync(storyboardPath(item.id)); } catch (_) { /* best-effort */ } // v1.92 sprite
+    try { if (fs.existsSync(previewClipPath(item.id))) fs.unlinkSync(previewClipPath(item.id)); } catch (_) { /* best-effort */ } // v1.94 preview clip
     try { if (fs.existsSync(transcodedPath(item.id))) fs.unlinkSync(transcodedPath(item.id)); } catch (_) { /* best-effort */ }
     if (!fileRemainsOnDisk) {
       // The greedy .vtt sweep (v1.36.2), only when the media file itself is
@@ -11020,6 +11097,7 @@ app.get('/api/liked', (req, res) => {
       // /api/videos and the modern grid; without this, Liked cards lost their
       // preview once the persisted field was removed.
       storyboard: storyboardDescriptor(item) || undefined,
+      hasPreview: previewClipEligible(item) || undefined, // v1.94: hover clip eligibility
       progress: progress.timestamp,
       progressPercent,
       // v1.50: same server-derived state as /api/videos (one authority).
@@ -11770,6 +11848,7 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
       // v1.92: the storyboard sprite re-keys with the id too.
       try {
         if (fsImpl.existsSync(storyboardPath(oldId))) fsImpl.renameSync(storyboardPath(oldId), storyboardPath(newId));
+        if (fsImpl.existsSync(previewClipPath(oldId))) fsImpl.renameSync(previewClipPath(oldId), previewClipPath(newId)); // v1.94 preview clip
       } catch (sbErr) {
         console.error(`Move: failed to re-key storyboard for ${oldId} -> ${newId}:`, sbErr.message);
       }
@@ -12205,6 +12284,7 @@ async function trashItem(deps, id, opts = {}) {
       // v1.92: the storyboard sprite follows the id into trash too.
       try {
         if (fsImpl.existsSync(storyboardPath(id))) fsImpl.renameSync(storyboardPath(id), storyboardPath(trashId));
+        if (fsImpl.existsSync(previewClipPath(id))) fsImpl.renameSync(previewClipPath(id), previewClipPath(trashId)); // v1.94 preview clip
       } catch (sbErr) {
         console.error(`Trash: failed to re-key storyboard for ${id} -> ${trashId}:`, sbErr.message);
       }
@@ -12628,6 +12708,7 @@ async function restoreTrashItem(deps, trashId) {
       // v1.92: restore the storyboard sprite back to the original id too.
       try {
         if (fsImpl.existsSync(storyboardPath(trashId))) fsImpl.renameSync(storyboardPath(trashId), storyboardPath(originalId));
+        if (fsImpl.existsSync(previewClipPath(trashId))) fsImpl.renameSync(previewClipPath(trashId), previewClipPath(originalId)); // v1.94 preview clip
       } catch (sbErr) {
         console.error(`Restore: failed to re-key storyboard for ${trashId} -> ${originalId}:`, sbErr.message);
       }
@@ -12770,6 +12851,7 @@ async function purgeTrashItem(deps, trashId) {
   // Id-keyed sidecars + the subtitle set, best-effort.
   try { const p = path.join(THUMBNAIL_DIR, `${trashId}.jpg`); if (fsImpl.existsSync(p)) fsImpl.unlinkSync(p); } catch (_) { /* best-effort */ }
   try { if (fsImpl.existsSync(storyboardPath(trashId))) fsImpl.unlinkSync(storyboardPath(trashId)); } catch (_) { /* best-effort */ } // v1.92 sprite
+  try { if (fsImpl.existsSync(previewClipPath(trashId))) fsImpl.unlinkSync(previewClipPath(trashId)); } catch (_) { /* best-effort */ } // v1.94 preview clip
   try { if (fsImpl.existsSync(transcodedPath(trashId))) fsImpl.unlinkSync(transcodedPath(trashId)); } catch (_) { /* best-effort */ }
   try { if (fsImpl.existsSync(audioPath(trashId))) fsImpl.unlinkSync(audioPath(trashId)); } catch (_) { /* best-effort */ }
   try {
@@ -15238,6 +15320,29 @@ app.get('/storyboard/:id', (req, res) => {
   return res.status(404).json({ error: 'No storyboard' });
 });
 
+// v1.94: GET /preview/:id - serve the animated hover PREVIEW CLIP (muted MP4).
+// Same RBAC + disk-keyed model as /storyboard: resolve via metadata OR a trash
+// snapshot; restricted -> 404 like missing; serve only when the item is
+// preview-ELIGIBLE (derived from duration) and the clip is on disk; otherwise
+// 404 and the client stays on the poster (no black box). res.sendFile sets
+// Content-Type: video/mp4 from the .mp4 extension.
+app.get('/preview/:id', (req, res) => {
+  const db = getCachedDatabase(); // hot GET reader
+  const trashRec = (!Object.prototype.hasOwnProperty.call(db.metadata, req.params.id)
+    && db.trash && Object.prototype.hasOwnProperty.call(db.trash, req.params.id))
+    ? db.trash[req.params.id] : null;
+  const item = db.metadata[req.params.id] || (trashRec && trashRec.item) || undefined;
+  if (item && !mediaVisibleTo(req, item)) { // RBAC: restricted -> 404 like missing
+    return res.status(404).json({ error: 'Media file not found' });
+  }
+  const pvPath = previewClipPath(req.params.id);
+  if (item && previewClipEligible(item) && fs.existsSync(pvPath)) {
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    return res.sendFile(pvPath);
+  }
+  return res.status(404).json({ error: 'No preview' });
+});
+
 // HTML escaping helper
 function escapeHtml(text) {
   return text
@@ -16397,6 +16502,11 @@ module.exports = {
   // v1.92 storyboard generation + on-disk-keyed heal (integration-tested).
   extractStoryboard,
   restoreMissingStoryboard,
+  // v1.94 preview clip (hover): path, derived eligibility, generation + heal.
+  previewClipPath,
+  previewClipEligible,
+  extractPreviewClip,
+  restoreMissingPreviewClip,
   queueAudioExtract,
   setAudioStatus,
   // F1 (two-reviewer gate, v1.27.0): re-exported so tests can exercise the

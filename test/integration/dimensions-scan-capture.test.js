@@ -144,6 +144,7 @@ test('(HARD GATE) an already-indexed, unchanged video with no width/height is NE
   // from any storyboard backfill (the heal is keyed on the on-disk sprite), so
   // the test's real invariant holds -- an unchanged item is never re-spawned.
   fs.writeFileSync(path.join(THUMBNAIL_DIR, `${id}.sb.jpg`), 'ORIGINAL-STORYBOARD-BYTES');
+  fs.writeFileSync(path.join(THUMBNAIL_DIR, `${id}.pv.mp4`), 'ORIGINAL-PREVIEW-CLIP'); // v1.94: present preview clip -> reuse path stays zero-spawn
 
   writeDb({
     folders: [root],

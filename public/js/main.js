@@ -588,23 +588,21 @@ if (typeof module !== 'undefined' && module.exports) {
   };
 }
 
-// v1.92 storyboard CARD preview controller. Cycles the sprite frames of a
-// card's `.card-preview` overlay: on DESKTOP when the pointer hovers the card,
-// on MOBILE (no hover) when the card scrolls into the centre of the viewport
-// (the YouTube-app "autoplay" feel Dean asked for). One app-wide singleton -
-// `init()` is idempotent - driving off the overlay's data-sb-* geometry and the
-// SAME pure tile math the scrub preview uses (window.FileTube.storyboard.tile).
-// Self-cleans: an interval whose card has left the DOM stops on its next tick.
-const StoryboardCards = (function () {
-  const FRAME_MS = 450;            // v1.93.3: per-frame dwell - calmer than a
-                                   // flashing slideshow (frames are seconds
-                                   // apart in the source; crossfaded below).
-  const START_DELAY_MS = 1500;     // v1.93.3: sustained hover/in-view before the
-                                   // preview kicks in (intent, YouTube-style).
-  const MAX_INVIEW = 2;            // battery guard: at most N cards animate at once on mobile
-  const active = new Map();        // overlay el -> interval id
-  const pending = new Map();       // v1.93.3: overlay el -> start-delay timeout id
-  const layerMap = new WeakMap();  // v1.93.3: overlay el -> {a,b,front} crossfade layers
+// v1.94 CARD preview controller. Plays a short muted MP4 hover clip
+// (/preview/:id) over the poster: on DESKTOP when the pointer hovers the card,
+// on MOBILE when the card scrolls into the centre of the viewport (capped to
+// MAX_INVIEW for battery). One app-wide singleton (init() idempotent). This
+// REPLACES the v1.92-v1.93 storyboard-still slideshow; the storyboard sprite now
+// drives only the seek-bar SCRUB preview (player.js). Load-guarded: the clip is
+// revealed only once it can play (`canplay`), so a 404 (clip not generated yet)
+// leaves the poster - never a blank box. Starts on sustained intent (delay).
+const PreviewCards = (function () {
+  const START_DELAY_MS = 1500;     // sustained hover/in-view before the clip plays
+  const MAX_INVIEW = 2;            // battery guard: at most N clips play at once on mobile
+  const active = new Set();        // overlay els currently playing
+  const pending = new Map();       // overlay el -> start-delay timeout id
+  const videoOf = new WeakMap();   // overlay el -> its lazy <video> (GC'd with the el)
+  const detachOf = new WeakMap();  // overlay el -> its current begin()'s listener-detach fn
   const ratios = new Map();        // overlay el -> latest intersectionRatio (mobile)
   const observed = new Set();      // overlay els currently observed (for teardown)
   let observer = null;             // the in-view IntersectionObserver (mobile only)
@@ -616,112 +614,82 @@ const StoryboardCards = (function () {
   function canHover() {
     return !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
   }
-  function geomOf(el) {
-    const count = parseInt(el.getAttribute('data-sb-count'), 10);
-    const cols = parseInt(el.getAttribute('data-sb-cols'), 10);
-    const rows = parseInt(el.getAttribute('data-sb-rows'), 10);
-    if (!(count > 0) || !(cols > 0) || !(rows > 0)) return null;
-    return { count, cols, rows };
+  const CLIP_SRC = function (el) { return '/preview/' + encodeURIComponent(el.getAttribute('data-preview-id')); };
+  // Lazily create the muted looping inline <video> for a card (only for cards we
+  // actually preview). muted + playsinline lets iOS autoplay via play(). Cached
+  // in a WeakMap; if a prior stop() released its src (mobile teardown), re-set it.
+  function ensureVideo(el) {
+    let v = videoOf.get(el);
+    if (v) { if (!v.getAttribute('src')) v.setAttribute('src', CLIP_SRC(el)); return v; }
+    v = document.createElement('video');
+    v.className = 'card-preview-video';
+    v.muted = true; v.loop = true; v.playsInline = true; v.preload = 'metadata';
+    v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
+    v.src = CLIP_SRC(el);
+    el.appendChild(v);
+    videoOf.set(el, v);
+    return v;
   }
-  // v1.93.3: two stacked layers per card so consecutive (seconds-apart) frames
-  // CROSSFADE rather than hard-cut. Created lazily (only for cards that animate),
-  // cached in a WeakMap so a grid re-render can't leak them.
-  function ensureLayers(el) {
-    let L = layerMap.get(el);
-    if (L) return L;
-    const url = 'url("/storyboard/' + encodeURIComponent(el.getAttribute('data-sb-id')) + '")';
-    const a = document.createElement('div');
-    const b = document.createElement('div');
-    a.className = 'sb-layer'; b.className = 'sb-layer';
-    a.style.backgroundImage = url; b.style.backgroundImage = url;
-    el.appendChild(a); el.appendChild(b);
-    L = { a: a, b: b, front: null };
-    layerMap.set(el, L);
-    return L;
-  }
-  function paintLayer(layer, geom, idx) {
-    const sb = window.FileTube && window.FileTube.storyboard;
-    if (!sb) return;
-    const tile = sb.tile(idx, geom);
-    layer.style.backgroundSize = tile.sizeXPct + '% ' + tile.sizeYPct + '%';
-    layer.style.backgroundPosition = tile.posXPct + '% ' + tile.posYPct + '%';
-  }
-  // Reveal + animate. Called ONLY once the sprite is confirmed loaded, so the
-  // opaque .card-preview overlay never paints a black box over the poster. Each
-  // tick paints the OFF layer to the next frame and swaps `.on` -> the CSS
-  // opacity transition dissolves between frames.
-  function animate(el, geom) {
-    if (active.has(el)) return;
-    const L = ensureLayers(el);
-    L.a.classList.remove('on'); L.b.classList.remove('on');
-    paintLayer(L.a, geom, 0);
-    L.front = L.a;
-    L.a.classList.add('on');
-    el.classList.add('previewing');
-    let i = 0;
-    const timer = setInterval(function () {
-      if (!el.isConnected) { stop(el); return; } // grid re-rendered under us
-      i = (i + 1) % geom.count;
-      const back = (L.front === L.a) ? L.b : L.a;
-      paintLayer(back, geom, i);
-      back.classList.add('on');        // fade the next frame in
-      L.front.classList.remove('on');  // fade the current out
-      L.front = back;
-    }, FRAME_MS);
-    active.set(el, timer);
-  }
-  // v1.93.3: hover/in-view start is DELAYED by START_DELAY_MS so a brush-past or
-  // fast scroll never fires the preview - it begins only on sustained intent.
+  // hover/in-view start is DELAYED so a brush-past / fast scroll never fires it.
   function start(el) {
     if (active.has(el) || pending.has(el) || reducedMotion()) return;
-    if (!geomOf(el)) return;
-    if (el.getAttribute('data-sb-nofile') === '1') return; // known-absent -> no delay, no probe
+    if (el.getAttribute('data-pv-nofile') === '1') return; // known-absent -> no delay, no probe
     const t = setTimeout(function () { pending.delete(el); begin(el); }, START_DELAY_MS);
     pending.set(el, t);
   }
+  // Kick playback and reveal ONLY on the `playing` event (guaranteed the clip is
+  // actually rolling - more robust than `canplay`, which can stall under
+  // preload='metadata'). A 404/undecodable clip fires `error` -> stay on the
+  // poster (never a blank box), never re-probe.
   function begin(el) {
     if (active.has(el) || reducedMotion()) return;
-    const geom = geomOf(el);
-    if (!geom) return;
-    // v1.93.2: the server sends the (derived) geometry for EVERY eligible video,
-    // but the sprite FILE 404s until the scan generates it. So we must NOT reveal
-    // the overlay until the sprite actually LOADS - otherwise its opaque #000
-    // background shows as a black box over the poster. Confirmed-present cards
-    // (data-sb-ready) animate immediately; unknown cards preload first and reveal
-    // only on load; known-404 cards (data-sb-nofile) stay on the poster forever.
-    if (el.getAttribute('data-sb-nofile') === '1') return;
-    if (el.getAttribute('data-sb-ready') === '1') { animate(el, geom); return; }
-    const id = el.getAttribute('data-sb-id');
-    el.setAttribute('data-sb-want', '1'); // still-wanted intent (cleared by stop)
-    if (el.getAttribute('data-sb-loading') === '1') return; // preload already in flight
-    el.setAttribute('data-sb-loading', '1');
-    const img = new Image();
-    img.onload = function () {
-      el.removeAttribute('data-sb-loading');
-      el.setAttribute('data-sb-ready', '1');
-      // Only animate if the card is still wanted (the pointer/scroll didn't
-      // leave while we were loading) and isn't already running.
-      if (el.getAttribute('data-sb-want') === '1' && el.isConnected) {
-        const g = geomOf(el);
-        if (g) animate(el, g);
+    if (el.getAttribute('data-pv-nofile') === '1') return;
+    const v = ensureVideo(el);
+    el.setAttribute('data-pv-want', '1'); // still-wanted intent (cleared by stop)
+    // Remove any PRIOR begin()'s still-attached listeners first (a re-hover whose
+    // last attempt never reached playing/error), so they can't accumulate.
+    const prior = detachOf.get(el);
+    if (prior) prior();
+    const onPlaying = function () {
+      detach();
+      if (el.getAttribute('data-pv-want') === '1' && el.isConnected) {
+        el.classList.add('previewing'); // reveal (opacity 1) now that it's rolling
+        active.add(el);
+      } else {
+        try { v.pause(); } catch (_) { /* left while starting */ }
       }
     };
-    img.onerror = function () {
-      el.removeAttribute('data-sb-loading');
-      el.setAttribute('data-sb-nofile', '1'); // sprite not generated yet -> poster, no re-probe
+    const onErr = function () {
+      detach();
+      el.setAttribute('data-pv-nofile', '1'); // 404 / undecodable -> poster, no re-probe
     };
-    img.src = '/storyboard/' + encodeURIComponent(id);
+    function detach() {
+      v.removeEventListener('playing', onPlaying);
+      v.removeEventListener('error', onErr);
+      if (detachOf.get(el) === detach) detachOf.delete(el);
+    }
+    detachOf.set(el, detach);
+    v.addEventListener('playing', onPlaying);
+    v.addEventListener('error', onErr);
+    try { v.currentTime = 0; } catch (_) { /* not seekable yet */ }
+    const pr = v.play(); // muted autoplay is allowed inline (incl. iOS); drives buffering
+    if (pr && pr.catch) pr.catch(function () { /* autoplay refused -> poster stays */ });
   }
   function stop(el) {
     if (!el) return;
     const p = pending.get(el);
     if (p) { clearTimeout(p); pending.delete(el); } // cancel a not-yet-started preview
-    el.removeAttribute('data-sb-want');
-    const timer = active.get(el);
-    if (timer) { clearInterval(timer); active.delete(el); }
+    el.removeAttribute('data-pv-want');
+    active.delete(el);
     el.classList.remove('previewing');
-    const L = layerMap.get(el);
-    if (L) { L.a.classList.remove('on'); L.b.classList.remove('on'); }
+    const v = videoOf.get(el);
+    if (v) {
+      try { v.pause(); } catch (_) { /* torn down */ }
+      // Mobile: release the decoder + buffer of a scrolled-away clip (they can
+      // pile up on a long grid). Desktop keeps the buffer for instant re-hover.
+      // ensureVideo re-sets src on the next begin().
+      if (!canHover()) { try { v.removeAttribute('src'); v.load(); } catch (_) { /* best-effort */ } }
+    }
   }
 
   // Desktop: delegated so it covers cards from every render path (initial,
@@ -732,7 +700,7 @@ const StoryboardCards = (function () {
   // pointer-events:none sibling is never `e.target` nor its ancestor).
   function overlayForEvent(e) {
     const host = e.target.closest && e.target.closest('.thumbnail-container');
-    return host ? host.querySelector('.card-preview[data-sb-id]') : null;
+    return host ? host.querySelector('.card-preview[data-preview-id]') : null;
   }
   function onOver(e) {
     const el = overlayForEvent(e);
@@ -743,11 +711,11 @@ const StoryboardCards = (function () {
     if (!host) return;
     // still inside the same card (e.g. moving img -> duration badge) -> keep going
     if (host.contains(e.relatedTarget)) return;
-    const el = host.querySelector('.card-preview[data-sb-id]');
+    const el = host.querySelector('.card-preview[data-preview-id]');
     if (el) stop(el);
   }
 
-  // Mobile: pick the up-to-MAX_INVIEW most-visible cards and animate only those.
+  // Mobile: play only the up-to-MAX_INVIEW most-visible cards.
   function onIntersect(entries) {
     entries.forEach(function (en) {
       if (en.isIntersecting && en.intersectionRatio > 0) ratios.set(en.target, en.intersectionRatio);
@@ -759,19 +727,17 @@ const StoryboardCards = (function () {
       .slice(0, MAX_INVIEW)
       .map(function (pair) { return pair[0]; });
     const winSet = new Set(winners);
-    active.forEach(function (_timer, el) { if (!winSet.has(el)) stop(el); });
+    active.forEach(function (el) { if (!winSet.has(el)) stop(el); }); // active is a Set: (value)
     // v1.93.3 (slim gate): also cancel PENDING start-delay timers for cards that
     // are no longer winners. Without this, scroll churn leaves stale timers that
-    // later fire begin()->animate() with no in-view re-check, breaching the
-    // MAX_INVIEW cap (>2 cards animating). stop() clears both maps.
+    // later fire begin() with no in-view re-check, breaching the MAX_INVIEW cap.
     pending.forEach(function (_t, el) { if (!winSet.has(el)) stop(el); });
     winners.forEach(start);
   }
 
-  // Observe any not-yet-observed overlays anywhere in the document (mobile).
-  // The IntersectionObserver is created LAZILY on the first storyboard card
-  // discovered, so a page/view with no storyboard cards never instantiates one
-  // (keeps us out of the way of other IntersectionObserver consumers).
+  // Observe any not-yet-observed preview overlays anywhere in the document
+  // (mobile). The IntersectionObserver is created LAZILY on the first preview
+  // card discovered, so a page/view with none never instantiates one.
   function refresh() {
     // Prune cards a grid re-render detached: IntersectionObserver holds a strong
     // ref to every observed target, so unobserve them or they leak for the app's
@@ -781,13 +747,13 @@ const StoryboardCards = (function () {
         if (!el.isConnected) { observer.unobserve(el); observed.delete(el); ratios.delete(el); }
       });
     }
-    const cards = document.querySelectorAll('.card-preview[data-sb-id]:not([data-sb-obs])');
+    const cards = document.querySelectorAll('.card-preview[data-preview-id]:not([data-pv-obs])');
     if (!cards.length) return;
     if (!observer) {
       if (typeof IntersectionObserver !== 'function') return;
       observer = new IntersectionObserver(onIntersect, { threshold: [0, 0.3, 0.6, 0.85, 1] });
     }
-    cards.forEach(function (el) { el.setAttribute('data-sb-obs', '1'); observer.observe(el); observed.add(el); });
+    cards.forEach(function (el) { el.setAttribute('data-pv-obs', '1'); observer.observe(el); observed.add(el); });
   }
 
   return {
@@ -801,7 +767,7 @@ const StoryboardCards = (function () {
       } else if (typeof IntersectionObserver === 'function' && typeof MutationObserver === 'function') {
         // mobile in-view autoplay. Discover cards from every render path via ONE
         // debounced DOM watcher (the IntersectionObserver itself is created
-        // lazily inside refresh() only once a storyboard card exists).
+        // lazily inside refresh() only once a preview card exists).
         let refreshTimer = null; // (renamed from `pending`: distinct from the module-level start-delay map)
         const mo = new MutationObserver(function () {
           if (refreshTimer) return;
@@ -842,9 +808,9 @@ const StoryboardCards = (function () {
   function init(root) {
     controller = new AbortController();
     const { signal } = controller;
-    // v1.92: arm the storyboard card-preview controller (idempotent app-wide
-    // singleton -- desktop hover / mobile in-view autoplay).
-    try { StoryboardCards.init(); } catch (_) { /* preview is a progressive enhancement */ }
+    // v1.94: arm the CARD preview-clip controller (idempotent app-wide singleton
+    // -- desktop hover / mobile in-view; plays the muted /preview/:id clip).
+    try { PreviewCards.init(); } catch (_) { /* preview is a progressive enhancement */ }
     // C3 remediation: reads the LIVE `allFolders`/`folderSettings` bindings
     // below (a closure over the `let`s, not a value snapshot) -- so calling
     // this later, after loadLibrary() has populated them (or after a sidebar
@@ -1855,8 +1821,8 @@ const StoryboardCards = (function () {
           <div class="card-media">
             <a href="${watchHref}" class="thumbnail-container">
               <img class="thumbnail-img" src="${kp ? kp.thumbSrc : `/thumbnail/${item.id}`}" alt="${escapeHtml(item.title)}" loading="lazy" />
-              ${(!kp && item.storyboard && item.storyboard.count > 0)
-                ? `<div class="card-preview" aria-hidden="true" data-sb-id="${item.id}" data-sb-count="${item.storyboard.count}" data-sb-cols="${item.storyboard.cols}" data-sb-rows="${item.storyboard.rows}"></div>`
+              ${(!kp && item.hasPreview)
+                ? `<div class="card-preview" aria-hidden="true" data-preview-id="${item.id}"></div>`
                 : ''}
               ${durationBadge}
               ${progressBar}
