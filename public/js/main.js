@@ -602,6 +602,7 @@ const PreviewCards = (function () {
   const active = new Set();        // overlay els currently playing
   const pending = new Map();       // overlay el -> start-delay timeout id
   const videoOf = new WeakMap();   // overlay el -> its lazy <video> (GC'd with the el)
+  const detachOf = new WeakMap();  // overlay el -> its current begin()'s listener-detach fn
   const ratios = new Map();        // overlay el -> latest intersectionRatio (mobile)
   const observed = new Set();      // overlay els currently observed (for teardown)
   let observer = null;             // the in-view IntersectionObserver (mobile only)
@@ -645,6 +646,10 @@ const PreviewCards = (function () {
     if (el.getAttribute('data-pv-nofile') === '1') return;
     const v = ensureVideo(el);
     el.setAttribute('data-pv-want', '1'); // still-wanted intent (cleared by stop)
+    // Remove any PRIOR begin()'s still-attached listeners first (a re-hover whose
+    // last attempt never reached playing/error), so they can't accumulate.
+    const prior = detachOf.get(el);
+    if (prior) prior();
     const onPlaying = function () {
       detach();
       if (el.getAttribute('data-pv-want') === '1' && el.isConnected) {
@@ -658,8 +663,12 @@ const PreviewCards = (function () {
       detach();
       el.setAttribute('data-pv-nofile', '1'); // 404 / undecodable -> poster, no re-probe
     };
-    function detach() { v.removeEventListener('playing', onPlaying); v.removeEventListener('error', onErr); }
-    detach(); // avoid stacking listeners across re-hovers
+    function detach() {
+      v.removeEventListener('playing', onPlaying);
+      v.removeEventListener('error', onErr);
+      if (detachOf.get(el) === detach) detachOf.delete(el);
+    }
+    detachOf.set(el, detach);
     v.addEventListener('playing', onPlaying);
     v.addEventListener('error', onErr);
     try { v.currentTime = 0; } catch (_) { /* not seekable yet */ }
