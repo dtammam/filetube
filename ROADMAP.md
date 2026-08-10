@@ -80,6 +80,61 @@
 
 ## Shipped
 
+### v1.93.1 - Storyboard sprites: bounded-memory generation (prod OOM fix) (2026-08-10)
+
+A hotfix for a v1.93.0 memory regression caught **in prod**. v1.93.0's
+seek-based generator put all of a video's frames (up to 100) into ONE ffmpeg as
+N `-ss <t> -i src` inputs - fast, but ffmpeg opens all N demuxer/decoder
+contexts at once, which spiked to **9.3 GB ffmpeg RSS on a large 4K source** (a
+44-min episode still hit ~1.8 GB) on Dean's 11 GB host that also runs
+vaultwarden - it survived only by swapping, and a 6 GB source or two overlaps
+would have OOM-killed a co-tenant. Dean reverted prod to v1.92.0 (peak 120 MB)
+and profiled it. This is exactly the v1.93.0 gate's disclosed WARNING 1 /
+tech-debt #133, now confirmed on hardware.
+
+**The fix - two ffmpeg stages so the source file is open at most ONCE at a
+time:** (1) each frame is grabbed by its own single-input `ffmpeg -ss <t> -i src
+-frames:v 1`, run **sequentially** - one decoder resident, ~v1.92's RSS
+regardless of file size; (2) the grabbed frames (lossless PNG intermediates) are
+tiled into the sprite by one small `image2`-sequence pass that only ever decodes
+the tiny tiles, never the source. The seek-based O(framecount) TIME win is kept;
+resident MEMORY is now bounded to a single decoder. Grid geometry is unchanged
+(same descriptor, same tiles - not the same JPEG bytes), so sprites already on
+disk stay valid and are skipped by the reuse scan. Frames live in a
+deterministic per-id temp dir, `rmSync`'d in a `finally` on every path (the #110
+leak lesson); a single failed grab aborts cleanly (null descriptor, no
+half-written sprite).
+
+**What the two-reviewer gate did (full gate, both seats APPROVE):** mutation-
+proved the memory bound (only one `-i` per grab, sequential - removing the loop's
+`await` or feeding a second `-i` goes red), the leak-free lifecycle (removing the
+`finally` rmSync turns the temp-cleanup + failure-path tests red), and geometry
+equivalence (`image2` reads `f000..` in seek order, `-start_number 0`); it
+refuted an anamorphic-SAR worry (the dropped `setsar` was only a concat
+requirement, never a correction). Fix round folded three cheap SUGGESTIONs:
+lossless PNG intermediates (no double JPEG recompression - quality parity with
+v1.92), a belt-clear of the temp dir after mkdir (closes a crash-leftover
+fail-open), and "byte-identical"->"grid-identical" wording. Both seats
+re-APPROVED the delta.
+
+**Known gaps (disclosed):** the ffmpeg commands are not runnable on the dev box
+(no ffmpeg) - the memory bound is by construction (one `-i` per grab) + gate +
+Dean's device RSS probe. Sequential grabs re-open the source once per frame (N
+opens; the same cost v1.93.0 already paid, now serialized) - far cheaper than
+v1.92's full decode, the accepted tradeoff. Test-robustness residual: the
+integration mock is blind to the grab<->assemble file-extension coupling, and the
+belt-clear is defense-in-depth not test-bound (tech-debt #134).
+
+Dual-Node: **Node 22.23.1 6527/6527, Node 24.14.0 6527/6527**, zero failures on
+both (idle box). **RE-RELEASE HYGIENE:** publish `1.93.1` (versioned); `latest`
+auto-follows to this FIXED build, but Dean's compose stays pinned so nothing
+auto-deploys. **AWAITING DEAN'S ON-DEVICE PASS** before re-pinning prod - probe
+list: (1) run the 4K source that hit 9.3 GB (and a 3-6.5 GB / trailing-moov file)
+through 1.93.1 and confirm peak ffmpeg `VmRSS` stays within a few hundred MB;
+(2) confirm a fresh sprite scrubs correctly; (3) one anamorphic (non-1 SAR) clip
+looks right; (4) let a full first pass complete, then a second scan is silent
+(the convergence question, now testable on a memory-safe build).
+
 ### v1.93.0 - Storyboard sprites: seek-based sampling (fast generation) (2026-08-10)
 
 A performance fix for the v1.92 storyboard backfill, driven by Dean's live
