@@ -5195,7 +5195,8 @@ a.sub-row-channel-link:focus-visible {
      the All/Videos/Audio pills go compact (min-width:0, overriding the desktop
      58px), and ALL word-labels are hidden — Shuffle/Rescan (.btn-label) AND the
      sort's current-value label — leaving the sort as a compact caret. The three
-     icon action buttons keep a 40px tap target and override the desktop 104px. */
+     icon action buttons keep a 40px min-WIDTH and override the desktop 104px;
+     they are `.btn`, so v1.95 floors their HEIGHT at 44px (--size-touch). */
   .section-actions .format-toggle-btn {
     min-width: 0;
   }
@@ -10708,4 +10709,62 @@ a.queue-upnext-next:hover {
   .podcast-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: var(--space-6); }
   .podcast-show-head { gap: var(--space-6); }
   .podcast-show-art { width: 96px; height: 96px; }
+}
+
+/* === v1.95: MOBILE TOUCH TARGETS ===========================================
+   Bigger HIT AREAS (not bigger visuals) on phones - matches the codebase's
+   `@media (max-width:768px)` convention and the `.pc-btn` exemplar (>=44px via
+   --size-touch). The glyph-only controls (queue arrows/x, notif x) have
+   `background:none`, so a >=44px min box grows only the INVISIBLE tap area - the
+   glyph stays the same size and position (Dean's "bigger hit area, same look").
+   Appended at EOF (not beside the .pc-btn block) so it doesn't sit between that
+   block and the FR-1 marker its source-lock test anchors on - the repo's
+   established pattern for new phone @media blocks. width/height/min-* are NOT
+   census-governed; padding stays a token/zero. */
+@media (max-width: 768px) {
+  /* buttons (incl. the resume / start-over overlay CTAs): the 44px touch floor */
+  .btn { min-height: var(--size-touch); }
+
+  /* notification dismiss x: 36px -> a centered 44px box, same glyph */
+  .notif-row-dismiss { min-width: var(--size-touch); min-height: var(--size-touch); }
+
+  /* queue remove x: pad-only -> a centered 44px box, same glyph */
+  .queue-row-remove {
+    min-width: var(--size-touch);
+    min-height: var(--size-touch);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* stacked queue reorder arrows: two in one column can't each be a full 44px
+     without breaking the compact row, so WIDEN the column and let each fill it +
+     split the row height - a much bigger tap zone, same glyphs, and NO bleed
+     into the neighbouring row (a vertical hit-extension would collide). */
+  .queue-row-order { min-width: var(--size-touch); }
+  .queue-row-order .queue-row-move {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(var(--size-touch) / 2);
+    padding: 0;
+  }
+
+  /* THE SEEK BAR (Dean's top miss): grow the seek input to FILL the scrub row it
+     already occupies, so a tap anywhere in that row-height band grabs/seeks the
+     scrubber - no more hunting the thin thumb. SCOPED to the in-slot player: its
+     scrub row is ALREADY 30px (the .pc-time line-height, style.css:5930) with the
+     seek sitting thin (16px) inside it, so 30px FILLS the row without GROWING it -
+     the engineered two-row 80px budget stays intact (30 + 2 row-gap + 44 buttons
+     = 76 <= 78px content box; the v1.34.1 clip class that budget guards against).
+     NOT a global `#seek-bar { height }`: the 26px docked mini-bar reuses the same
+     element, and a tall band there would overflow it AND steal its tap-to-expand
+     gesture (QA v1.95 CRITICAL - the reason the earlier global 44px rule was
+     wrong). The gesture is UNCHANGED: touch-action:none + the pointer-capture
+     drag + scrubRatioFromPointer (rect X/width only, height-INDEPENDENT) still own
+     it end-to-end; the taller box only enlarges the pointer-catch area. The thin
+     visual thumb is left as-is (true "same look"); a bigger visible thumb is the
+     escalation if Dean's device shows 30px still isn't enough. */
+  #player-slot .player-controls #seek-bar { height: 30px; }
 }

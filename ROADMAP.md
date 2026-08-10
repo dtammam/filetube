@@ -80,6 +80,62 @@
 
 ## Shipped
 
+### v1.95.0 - Mobile touch targets (bigger hit areas, same look) (2026-08-10)
+
+Dean, on-device: the mobile controls are too small - day-to-day friction, you
+need pixel-precise taps. His picks: **bigger HIT AREAS, same visual**, as ONE
+systematic `@media (max-width:768px)` pass (not per-control one-offs), keyed on
+the existing `--size-touch` (44px) token / the `.pc-btn` exemplar. Covered all
+five controls he named:
+- **Resume / start-over buttons** (all `.btn`): a 44px min-height floor.
+- **Notification dismiss x** and **queue remove x**: pad-only -> a centered 44px
+  box. These are glyph-only (`background:none`), so only the INVISIBLE tap area
+  grows - the glyph is unchanged ("same look").
+- **Queue up/down reorder arrows**: widen the column to 44px + each arrow fills
+  it and splits the row height. Two stacked in a compact row can't each be a full
+  44px without breaking the row or bleeding into the neighbour; this is a much
+  bigger tap zone with no bleed.
+- **THE SEEK BAR** (the one Dean stressed - he keeps missing it): the seek input
+  grows to FILL the scrub row it already occupies (`#player-slot .player-controls
+  #seek-bar { height: 30px }`), so a tap anywhere in that ~2x-taller band grabs
+  the scrubber - no more hunting the thin thumb. The drag JS is byte-identical
+  (`scrubRatioFromPointer` is rect X/width, height-independent); only the
+  pointer-catch area grew.
+
+Card-corner buttons DEFERRED (disclosed): they carry a visible scrim pill, so a
+min-size would enlarge the visible button, not just the hit area (not "same look");
+Dean didn't name them.
+
+**Full gate (both seats APPROVE) - and the gate earned its keep:** the seats
+SPLIT. The adversarial seat approved; the QA seat found a CRITICAL it missed and
+blocked merge. The seek band first shipped as a GLOBAL `#seek-bar { height: 44px }`,
+but that element is reparented between two FIXED-height bars: the in-slot
+`.player-controls` (80px, a `flex-wrap` two-row budget whose own comment cites the
+v1.34.1 screenshot where a third row clipped) - a 44px seek grew the scrub row
+30->44 so 44+2+44=90 in a 78px `overflow:hidden` box, re-clipping the button row -
+and the 26px docked mini-bar (spill + it stole the tap-to-expand gesture). Repo
+lesson #7 (measure the container). FIX: scope to the in-slot player and use 30px -
+the scrub row is ALREADY 30px (the `.pc-time` line-height), so the seek fills it
+WITHOUT growing it (budget untouched, 30+2+44=76<=78); the dock keeps its thin
+16px seek. Both seats then independently re-derived the 78px budget, confirmed the
+dock is untouched, and hunted the OTHER four controls for the same
+container-overflow class (none - their rows have no height cap or scroll rather
+than clip). Comment-accuracy WARNING (the "only enlarges the catch area" claim was
+false for the global rule) and two SUGGESTIONs also fixed. A new source-lock
+(mutation-proven) forbids a regression back to the unscoped global rule.
+
+**KNOWN GAP (disclosed):** the seek band is 30px, not the 44px ideal - the fixed
+two-row bar budget can't fit a 44px scrub row without growing the whole bar (which
+would change the look + move coupled offsets). 30px (~2x the old 16px, full-width)
+is the budget-safe max and truest to "same look." If it still misses on Dean's
+device, the escalation is a bigger visible thumb / growing the bar budget - his
+device pass is the arbiter of the FEEL.
+
+Dual-Node: **Node 22.23.1 6551/6551, Node 24.14.0 6551/6551**, zero failures.
+**AWAITING DEAN'S ON-DEVICE PASS** - deploy `1.95.0`, then on mobile: the resume/
+queue/notification controls are easier to tap, and (the headline) tapping near the
+seek line now grabs the scrubber instead of missing it.
+
 ### v1.94.1 - Scan generates newest-first (home view fills first) (2026-08-10)
 
 Dean's on-device finding during the v1.94.0 preview-clip backfill: the scan fills
