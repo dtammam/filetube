@@ -10709,3 +10709,53 @@ a.queue-upnext-next:hover {
   .podcast-show-head { gap: var(--space-6); }
   .podcast-show-art { width: 96px; height: 96px; }
 }
+
+/* === v1.95: MOBILE TOUCH TARGETS ===========================================
+   Bigger HIT AREAS (not bigger visuals) on phones - matches the codebase's
+   `@media (max-width:768px)` convention and the `.pc-btn` exemplar (>=44px via
+   --size-touch). The glyph-only controls (queue arrows/x, notif x) have
+   `background:none`, so a >=44px min box grows only the INVISIBLE tap area - the
+   glyph stays the same size and position (Dean's "bigger hit area, same look").
+   Appended at EOF (not beside the .pc-btn block) so it doesn't sit between that
+   block and the FR-1 marker its source-lock test anchors on - the repo's
+   established pattern for new phone @media blocks. width/height/min-* are NOT
+   census-governed; padding stays a token/zero. */
+@media (max-width: 768px) {
+  /* buttons (incl. the resume / start-over overlay CTAs): the 44px touch floor */
+  .btn { min-height: var(--size-touch); }
+
+  /* notification dismiss x: 36px -> a centered 44px box, same glyph */
+  .notif-row-dismiss { min-width: var(--size-touch); min-height: var(--size-touch); }
+
+  /* queue remove x: pad-only -> a centered 44px box, same glyph */
+  .queue-row-remove {
+    min-width: var(--size-touch);
+    min-height: var(--size-touch);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* stacked queue reorder arrows: two in one column can't each be a full 44px
+     without breaking the compact row, so WIDEN the column and let each fill it +
+     split the row height - a much bigger tap zone, same glyphs, and NO bleed
+     into the neighbouring row (a vertical hit-extension would collide). */
+  .queue-row-order { min-width: var(--size-touch); }
+  .queue-row-order .queue-row-move {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(var(--size-touch) / 2);
+    padding: 0;
+  }
+
+  /* THE SEEK BAR (Dean's top miss): a tall touch BAND so a tap ANYWHERE near the
+     line grabs/seeks the scrubber - you no longer have to hit the tiny thumb.
+     The input owns the gesture (touch-action:none + the pointer-capture drag +
+     the scrubRatioFromPointer rect math in player.js, all UNCHANGED - the taller
+     box only enlarges the pointer-catch area). The VISUAL track/thumb stay thin:
+     the browser centres the 6px runnable-track in the taller input. Only
+     #seek-bar gets the band; the volume slider (.pc-vol) stays compact. */
+  #seek-bar { height: var(--size-touch); }
+}
