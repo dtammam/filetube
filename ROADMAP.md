@@ -80,6 +80,64 @@
 
 ## Shipped
 
+### v1.94.0 - Animated hover preview clips (the YouTube hover feel) (2026-08-10)
+
+Dean's realization on-device: the storyboard-STILL card hover (a slideshow of
+sampled frames) never felt like YouTube because it isn't video. YouTube's hover
+preview is a short **muted video clip** that plays; the storyboard STILLS are a
+separate feature (for seek-bar scrubbing). So this wave gives the card hover its
+own asset and keeps the scrub sprite for the scrub.
+
+**The clip:** one per video, a **~6s muted MP4 montage** of ~4 short (~1.5s)
+snippets sampled across the interior of the video (skip intro/outro), 320px,
+H.264/yuv420p/`+faststart`. Generated at scan time in ONE memory-bounded ffmpeg
+pass (4 fast input-seeks -> trim/scale/concat -> encode; ~4 short decoders, NOT
+the 100-input trap; no temp files). Served by a new RBAC-gated `GET /preview/:id`.
+
+**Disk-keyed, like the v1.93.2 storyboards:** the clip is a sidecar keyed by file
+EXISTENCE (no persisted db flag; eligibility derived from duration). The scan
+heals/converges on the on-disk clip; the `.pv.mp4` joins ALL 6 sidecar lifecycle
+sites (trash/restore/move/prune/purge). It coexists with the sprite: **sprite ->
+scrub, clip -> hover**, two assets for two jobs, like YouTube.
+
+**Client:** the card hover now plays a `<video muted loop playsinline>` over the
+poster - revealed only once it's actually **playing** (never a blank box; a
+not-yet-generated clip 404s -> poster stays), with the ~1.5s intent delay and
+the mobile 2-at-a-time cap (+ a mobile decoder-teardown so clips don't pile up
+on a long scroll). The storyboard card slideshow is **retired**; the seek-bar
+scrub preview is untouched.
+
+**What the full two-reviewer gate did (both seats, two fix rounds):** every
+binding mutation-proven (the 6 lifecycle sites, serve RBAC + eligibility, the
+planner geometry, the 3-way scan-spawn split). Caught: a lying cross-module
+comment (the storyboard code still claimed the card used it); a client fragility
+(revealing on `canplay` can stall under `preload=metadata` -> switched to
+reveal-on-`playing`, the correct autoplay pattern); mobile decoded-video
+accumulation (now released on scroll-away); and a per-card listener-cleanup nit.
+Both seats APPROVE.
+
+**Known gaps (disclosed):** the montage ffmpeg + video playback are not runnable
+on the dev box - verified by construction + the gate + Dean's device (peak
+ffmpeg RSS on the 3-6.5 GB tail; iOS muted-inline autoplay; the montage's
+browser/iOS playability). This is another full **backfill** (a video encode per
+video, heavier than the sprite grabs, memory-bounded). Residuals in tech-debt
+#137 (dead card storyboard payload; 3 unbound lifecycle sites, inherited; blind
+backfill mocks, inherited).
+
+Dual-Node: **Node 22.23.1 6545/6545, Node 24.14.0 6545/6545**, zero failures.
+**AWAITING DEAN'S ON-DEVICE PASS** - deploy `1.94.0`, then let the scan generate
+the clips (they're their own sidecar; the sprites you already have are untouched
+- no wipe needed this time):
+```
+# pin the compose tag to 1.94.0, then:
+docker compose pull filetube && docker compose up -d filetube
+# the boot/next scan backfills a <id>.pv.mp4 per eligible video (memory-safe).
+```
+Probe: (1) hover/scroll a grid card -> after ~1.5s a real video clip PLAYS (the
+YouTube feel), no black box on un-generated ones; (2) the seek-bar scrub is
+unchanged; (3) watch peak ffmpeg RSS on your biggest files during the backfill;
+(4) on mobile, scroll a long grid and confirm it stays smooth (2 clips at a time).
+
 ### v1.93.3 - Storyboard card preview: polish (delay + crossfade + sharper tiles) (2026-08-10)
 
 Dean's on-device polish pass on the grid-card hover / in-view preview (the seek-
