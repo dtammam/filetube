@@ -108,8 +108,8 @@ test('(HARD GATE) releaseDate backfill on an already-indexed, unchanged video: n
   const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
   fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
   fs.writeFileSync(thumbPath, 'ORIGINAL-THUMBNAIL-BYTES');
-  // v1.92: fully-migrated storyboard sidecar -> the reuse path does no
-  // storyboard backfill spawn either, preserving the zero-spawn invariant.
+  // v1.93.2: a present storyboard sprite FILE -> the reuse path does no
+  // storyboard backfill spawn (on-disk-keyed heal), preserving zero-spawn.
   fs.writeFileSync(path.join(THUMBNAIL_DIR, `${id}.sb.jpg`), 'ORIGINAL-STORYBOARD-BYTES');
 
   const originalAddedAt = 1700000000000;

@@ -152,3 +152,19 @@ test('GET /api/videos/:id and /api/videos carry the DERIVED storyboard descripto
   assert.ok(row, 'item present in the list');
   assert.deepStrictEqual(row.storyboard, expected, 'list projection carries the derived descriptor');
 });
+
+test('GET /api/liked carries the DERIVED descriptor (the Liked view feeds buildCardHtml too)', async () => {
+  // Regression bind for the v1.93.2 gate: the Liked view renders card previews,
+  // so its projection must send the derived descriptor like /api/videos + grid.
+  const item = seedItem('liked-clip.mp4');
+  saveDatabase(baseDb({ [item.id]: item }));
+  const expected = storyboardDescriptor(item);
+  assert.ok(expected && expected.count > 0, 'fixture is eligible');
+
+  const likeRes = await fetch(`${base}/api/liked/${item.id}`, { method: 'POST' });
+  assert.equal(likeRes.status, 200, 'liked the item');
+  const body = await (await fetch(`${base}/api/liked`)).json();
+  const row = body.items.find((r) => r.id === item.id);
+  assert.ok(row, 'liked item present in the Liked listing');
+  assert.deepStrictEqual(row.storyboard, expected, 'Liked projection carries the derived descriptor');
+});

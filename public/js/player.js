@@ -1278,6 +1278,20 @@ if (typeof module !== 'undefined' && module.exports) {
   // v1.92: the seek-bar storyboard scrub preview (built in JS, never touches
   // the shared player-host-template so all shells stay byte-identical).
   var seekPreviewEl, seekPreviewImgEl, seekPreviewTimeEl;
+  // v1.93.2: the server sends the (derived) geometry for every eligible video,
+  // but the sprite FILE 404s until the scan generates it. Track a per-id preload
+  // so the scrub preview only shows once the sprite actually LOADS - otherwise
+  // its framed box would appear empty over an ungenerated sprite.
+  var seekSpriteId = null, seekSpriteReady = false;
+  function ensureSeekSprite(id) {
+    if (seekSpriteId === id) return;
+    seekSpriteId = id;
+    seekSpriteReady = false;
+    var img = new Image();
+    img.onload = function () { if (seekSpriteId === id) seekSpriteReady = true; };
+    // onerror: leave ready=false -> no empty box for a not-yet-generated sprite.
+    img.src = '/storyboard/' + encodeURIComponent(id);
+  }
   var audioCaptionsOn = false;
 
   // v1.26.4 (frozen audio-CC overlay, on-device iOS bug): the last text this
@@ -4088,11 +4102,16 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // v1.92: storyboard scrub preview -- show the sprite frame + timestamp for the
   // seek position under `clientX`. No-op (and hides) when the current item has
-  // no storyboard descriptor, so audio/short/legacy items degrade cleanly.
+  // no storyboard descriptor (audio/short) OR when the sprite has not loaded
+  // (v1.93.2: not yet generated), so those cases degrade cleanly to no preview.
   function updateSeekPreview(clientX) {
     if (!seekPreviewEl || !seekBar || !playerControls) return;
     var geom = currentData && currentData.storyboard;
     if (!geom || !currentData.id) { hideSeekPreview(); return; }
+    // v1.93.2: only show once the sprite is confirmed loaded (ungenerated -> the
+    // preload 404s, ready stays false, and we hide rather than show an empty box).
+    ensureSeekSprite(currentData.id);
+    if (!seekSpriteReady) { hideSeekPreview(); return; }
     var rect = seekBar.getBoundingClientRect();
     if (!(rect.width > 0)) { hideSeekPreview(); return; }
     var ratio = scrubRatioFromPointer(clientX, rect.left, rect.width);

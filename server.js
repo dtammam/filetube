@@ -2480,9 +2480,12 @@ function buildAudioExtractArgs(srcPath, tmpPath) {
 // Pure planning/gating/arg-building lives in lib/storyboard.js (standalone, so
 // scripts and unit tests require it without booting the server). The same
 // sprite asset drives BOTH the seek-bar scrub preview and the card preview
-// (desktop hover / mobile in-view autoplay). Geometry is a self-describing
-// per-item `storyboard` descriptor persisted on db.metadata (see the
-// persist-gate site list in docs/exec-plans/active/2026-08-09-v1.92-*).
+// (desktop hover / mobile in-view autoplay). v1.93.2: the geometry descriptor
+// is DERIVED at read time from the video's persisted duration/dims
+// (storyboardDescriptor, below) - it is NOT persisted on db.metadata. The
+// sprite FILE on disk is the only state; serving and the scan's heal check both
+// key off it (the old persisted descriptor never reached db.json on a large
+// library, so nothing served - see the v1.93.2 header on storyboardDescriptor).
 const { planStoryboard, shouldGenerateStoryboard, buildStoryboardFrameArgs, buildStoryboardAssembleArgs, storyboardSeekTimes } = require('./lib/storyboard');
 
 // On-disk sprite path (content-addressed by media id, like the .jpg thumbnail).
@@ -3441,7 +3444,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
         // metacharacters could otherwise be a command-injection vector
         // (matches the ffprobe `execFile` hardening above).
         execFile('ffmpeg', ['-i', filePath, '-an', '-vcodec', 'copy', '-y', thumbPath], (artErr) => {
-          // Audio-only: no storyboard (excluded by type), explicit null.
+          // Audio-only: no storyboard sprite (excluded by type).
           resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, chapters, width, height, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
         });
       } else {
@@ -3456,7 +3459,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
           // storyboard failure can never cost us the poster frame. v1.93.2: the
           // sprite is its own state on disk - no descriptor is threaded into the
           // metadata (it is derived at read time by storyboardDescriptor).
-          try { await extractStoryboard(filePath, mediaId, duration, width, height); } catch (_) { /* best-effort */ }
+          try { await extractStoryboard(filePath, mediaId, duration); } catch (_) { /* best-effort */ }
           resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, chapters, width, height, hasThumbnail });
         });
       }
@@ -3506,13 +3509,12 @@ function runFfmpegQuiet(args) {
   });
 }
 
-// v1.92: generate the storyboard sprite for a VIDEO (best-effort). Resolves the
-// descriptor { v, interval, count, cols, rows, tileW, tileH } on success, or
-// null (ffmpeg missing, ineligible duration, or a generation failure). Never
-// throws and never blocks the thumbnail/metadata result. `tileH` is the tile's
-// true pixel aspect (from source dims when known, else a 16:9 default) so the
-// client can size the preview box without distortion; the render math itself is
-// percentage-based and never needs it.
+// v1.92/v1.93.2: generate the storyboard sprite FILE for a VIDEO (best-effort).
+// Returns true iff a valid sprite was written, false otherwise (ffmpeg missing,
+// ineligible duration, or a generation failure). Never throws and never blocks
+// the thumbnail/metadata result. v1.93.2: no descriptor is returned - the sprite
+// is its own on-disk state and its geometry is derived at read time by
+// storyboardDescriptor (so this owns only the FILE, not any db field).
 //
 // v1.93.1 BOUNDED MEMORY: the sprite is built in two ffmpeg stages so the
 // source file is open at most ONCE at a time. Stage 1 grabs each sampled frame
@@ -3524,19 +3526,16 @@ function runFfmpegQuiet(args) {
 // host. The temp dir is deterministic (per-id: no mkdtemp inode leak, and a
 // crashed prior run's leftovers are cleared on entry) and ALWAYS removed in the
 // finally.
-async function extractStoryboard(filePath, id, duration, width, height) {
-  if (!ffmpegAvailable) return null;
+async function extractStoryboard(filePath, id, duration) {
+  if (!ffmpegAvailable) return false;
   const outPath = storyboardPath(id);
   const plan = planStoryboard(duration);
   if (!plan) {
     // Newly ineligible (e.g. an in-place replace with a sub-2s clip): drop any
     // stale sprite so a leftover <id>.sb.jpg can't linger for the id's life.
     try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (_) { /* best-effort */ }
-    return null;
+    return false;
   }
-  const tileH = (Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0)
-    ? Math.max(2, Math.round(plan.tileW * height / width))
-    : Math.round(plan.tileW * 9 / 16);
   const tmpDir = path.join(THUMBNAIL_DIR, `.sbtmp-${id}`);
   const seeks = storyboardSeekTimes(plan);
   try {
@@ -3563,7 +3562,7 @@ async function extractStoryboard(filePath, id, duration, width, height) {
         // No sprite is the same graceful degrade as v1.92 on a generation
         // failure; drop any stale sprite for this id.
         try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (_) { /* best-effort */ }
-        return null;
+        return false;
       }
     }
     // Stage 2: tile the grabbed PNG frames into the sprite JPEG (small-tile
@@ -3574,12 +3573,12 @@ async function extractStoryboard(filePath, id, duration, width, height) {
     try { ok = !aErr && fs.existsSync(outPath) && fs.statSync(outPath).size > 0; } catch (_) { ok = false; }
     if (!ok) {
       try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (_) { /* best-effort */ }
-      return null;
+      return false;
     }
-    return { ...plan, tileH };
+    return true;
   } catch (_) {
     try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (_) { /* best-effort */ }
-    return null;
+    return false;
   } finally {
     // ALWAYS remove the temp dir (success, abort, or throw) - the #110 leak lesson.
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { /* best-effort */ }
@@ -3608,7 +3607,7 @@ async function restoreMissingStoryboard(existing, id, filePath) {
 
   console.log(`Restoring missing storyboard for: ${path.basename(filePath)}`);
   try {
-    await extractStoryboard(filePath, id, existing.duration, existing.width, existing.height);
+    await extractStoryboard(filePath, id, existing.duration);
   } catch (err) {
     console.error(`Error restoring storyboard for ${path.basename(filePath)}:`, err);
   }
@@ -4303,7 +4302,8 @@ async function runScanDirectories() {
       // completely untouched -- no frame-grab, ever, for a file that already
       // has one.
       await restoreMissingThumbnail(existing, id, filePath);
-      // v1.92: storyboard backfill for a legacy video (same heal contract).
+      // v1.93.2: ensure the storyboard sprite FILE exists for a legacy video
+      // (on-disk-keyed, no db write - same as the reuse fast-path above).
       await restoreMissingStoryboard(existing, id, filePath);
 
       // C5-local (v1.24): same schema-only `releaseDate` backfill as the
@@ -9575,9 +9575,10 @@ function resolveModernGridItem(db, rec) {
     ...(watchUrl ? { watchUrl } : {}),
     // v1.93.2: DERIVED storyboard descriptor for the modern-grid card's
     // hover/in-view preview (eligible videos only; omitted otherwise). The card
-    // fetches /storyboard/:id lazily and degrades to the poster on a 404, so
-    // sending geometry for a not-yet-generated sprite is harmless.
-    ...(storyboardDescriptor(item) ? { storyboard: storyboardDescriptor(item) } : {}),
+    // preloads /storyboard/:id and reveals the overlay only on a successful load
+    // (main.js StoryboardCards), so sending geometry before the sprite exists is
+    // harmless (poster stays until the file is generated).
+    storyboard: storyboardDescriptor(item) || undefined,
   };
 }
 
@@ -9908,7 +9909,8 @@ app.get('/api/videos/:id', (req, res) => {
     // v1.93.2: DERIVED storyboard descriptor for the seek-bar scrub preview
     // (eligible videos only). Overrides any legacy persisted `storyboard` from
     // the `...item` spread so the client always gets the geometry that matches
-    // the on-disk sprite; the player degrades to no-preview on a /storyboard 404.
+    // the on-disk sprite; the player preloads the sprite and shows the scrub
+    // preview only once it loads (ungenerated -> no preview, never an empty box).
     storyboard: storyboardDescriptor(item) || undefined,
     chapters: resolvedChapters.chapters,
     chaptersSource: resolvedChapters.chaptersSource,
@@ -11010,6 +11012,11 @@ app.get('/api/liked', (req, res) => {
       ...item,
       kind: 'media', // v1.72: kind is CARRIED on every item, never inferred
       liked: true, // every item in this listing is, by construction, a liked member
+      // v1.93.2: DERIVED storyboard descriptor - the Liked view feeds
+      // buildCardHtml, which renders the hover/in-view preview. Parity with
+      // /api/videos and the modern grid; without this, Liked cards lost their
+      // preview once the persisted field was removed.
+      storyboard: storyboardDescriptor(item) || undefined,
       progress: progress.timestamp,
       progressPercent,
       // v1.50: same server-derived state as /api/videos (one authority).

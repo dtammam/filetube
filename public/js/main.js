@@ -624,14 +624,10 @@ const StoryboardCards = (function () {
     el.style.backgroundSize = tile.sizeXPct + '% ' + tile.sizeYPct + '%';
     el.style.backgroundPosition = tile.posXPct + '% ' + tile.posYPct + '%';
   }
-  function start(el) {
-    if (active.has(el) || reducedMotion()) return;
-    const geom = geomOf(el);
-    if (!geom) return;
-    const id = el.getAttribute('data-sb-id');
-    if (!el.style.backgroundImage) {
-      el.style.backgroundImage = 'url("/storyboard/' + encodeURIComponent(id) + '")';
-    }
+  // Reveal + animate. Called ONLY once the sprite is confirmed loaded, so the
+  // opaque .card-preview overlay never paints a black box over the poster.
+  function animate(el, geom) {
+    if (active.has(el)) return;
     let i = 0;
     paint(el, geom, 0);
     el.classList.add('previewing');
@@ -642,7 +638,43 @@ const StoryboardCards = (function () {
     }, FRAME_MS);
     active.set(el, timer);
   }
+  function start(el) {
+    if (active.has(el) || reducedMotion()) return;
+    const geom = geomOf(el);
+    if (!geom) return;
+    // v1.93.2: the server sends the (derived) geometry for EVERY eligible video,
+    // but the sprite FILE 404s until the scan generates it (216/2943 on prod at
+    // deploy). So we must NOT reveal the overlay until the sprite actually
+    // LOADS - otherwise its opaque #000 background shows as a black box over the
+    // poster. Confirmed-present cards (data-sb-ready) animate immediately;
+    // unknown cards preload first and reveal only on load; known-404 cards
+    // (data-sb-nofile) stay on the poster and are never re-probed.
+    if (el.getAttribute('data-sb-nofile') === '1') return;
+    if (el.getAttribute('data-sb-ready') === '1') { animate(el, geom); return; }
+    const id = el.getAttribute('data-sb-id');
+    el.setAttribute('data-sb-want', '1'); // hover/in-view intent (cleared by stop)
+    if (el.getAttribute('data-sb-loading') === '1') return; // preload already in flight
+    el.setAttribute('data-sb-loading', '1');
+    const img = new Image();
+    img.onload = function () {
+      el.removeAttribute('data-sb-loading');
+      el.setAttribute('data-sb-ready', '1');
+      el.style.backgroundImage = 'url("/storyboard/' + encodeURIComponent(id) + '")';
+      // Only animate if the card is still wanted (the pointer/scroll didn't
+      // leave while we were loading) and isn't already running.
+      if (el.getAttribute('data-sb-want') === '1' && el.isConnected) {
+        const g = geomOf(el);
+        if (g) animate(el, g);
+      }
+    };
+    img.onerror = function () {
+      el.removeAttribute('data-sb-loading');
+      el.setAttribute('data-sb-nofile', '1'); // sprite not generated yet -> poster, no re-probe
+    };
+    img.src = '/storyboard/' + encodeURIComponent(id);
+  }
   function stop(el) {
+    if (el) el.removeAttribute('data-sb-want');
     const timer = active.get(el);
     if (timer) { clearInterval(timer); active.delete(el); }
     if (el) el.classList.remove('previewing');
