@@ -80,6 +80,57 @@
 
 ## Shipped
 
+### v1.93.2 - Storyboard sprites: disk-keyed (derived descriptor) - previews finally serve (2026-08-10)
+
+A correctness fix for a defect the v1.92 storyboard feature carried from day one,
+found by Dean's server forensics: storyboards **displayed for NO video**, on any
+device, and the scan **regenerated every video forever** (never converged).
+Prod db.json: **0 of 2943** records carried a `storyboard` field, 216 sprites on
+disk served **0**. One root cause: the per-item descriptor was only committed at
+the **END of a full scan pass**, and on a large library that finish line was
+never crossed (v1.92 too slow, v1.93.0 OOM'd). Both the serve route and the
+scan's "already generated?" check read that never-persisted flag - so nothing
+served and the backfill churned endlessly. (The old tests passed because they
+completed a full scan in-harness; prod never does - a presence-not-binding trap.)
+
+**The fix - stop depending on the flag entirely.** A storyboard sprite is a
+disk-regenerable sidecar whose grid is fully derivable from the video's persisted
+duration, so it never needed a DB field. New pure `storyboardDescriptor(item)`
+derives the geometry from duration+dims. Now **serving**, the **scan heal
+check**, and the **client geometry** all key off the on-disk `<id>.sb.jpg` +
+that derivation - the persisted field is removed. Effect on deploy: the **216
+existing sprites serve immediately** (no scan needed), and the scan **converges**
+(a sprite on disk = skip) with no dependence on a completed pass. The whole
+persist-gate class is gone for storyboards.
+
+**What the two-reviewer gate caught (full gate, both seats, two fix rounds):** a
+real **CRITICAL** - sending the derived geometry for every eligible video made
+the client build the preview overlay for un-generated videos too, and its opaque
+(#000) background was revealed with no load guard -> a **black box over the
+poster** on hover/scroll for the ~2727 not-yet-generated videos. Fixed: the card
+(and the seek-bar scrub) preview now preloads the sprite and reveals only on a
+successful load; a 404 leaves the poster. Also caught: **`/api/liked` dropped the
+descriptor** (the one card surface not on the updated routes) -> Liked-view
+previews regressed -> fixed + a binding test (no test had covered it). Plus a
+lying "persisted on db.metadata" comment and dead code (the ignored `tileH`
+computation), all corrected. Both seats APPROVE after the fix rounds; every new
+test is mutation-bound (the old presence-not-binding trap is closed).
+
+**Known gaps (disclosed):** the client load-guard is verified by inspection +
+Dean's device (the StoryboardCards controller is a private IIFE with no jsdom
+harness); real ffmpeg generation is Dean's device pass. A card whose sprite 404s
+stays on the poster until the grid re-renders (self-heals on navigation). A
+pre-existing full-suite flake in the ytdlp reheat-batch tests
+(`ytdlp-repull-metadata-endpoint`) surfaces under load and is green in isolation
+(tech-debt #135) - orthogonal to this change.
+
+Dual-Node: **Node 22.23.1 6531/6531, Node 24.14.0 6531/6531**, zero failures on
+both. **AWAITING DEAN'S ON-DEVICE PASS** - probe list (deploy `1.93.2`, re-pin
+compose): (1) previews now SHOW - hover a grid card / scrub the seek bar on an
+already-generated video; (2) no black boxes on un-generated videos (poster
+stays); (3) Liked-view cards preview too; (4) let one scan complete, then a
+second scan is silent (true convergence - the churn is gone).
+
 ### v1.93.1 - Storyboard sprites: bounded-memory generation (prod OOM fix) (2026-08-10)
 
 A hotfix for a v1.93.0 memory regression caught **in prod**. v1.93.0's
