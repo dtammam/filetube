@@ -596,9 +596,15 @@ if (typeof module !== 'undefined' && module.exports) {
 // SAME pure tile math the scrub preview uses (window.FileTube.storyboard.tile).
 // Self-cleans: an interval whose card has left the DOM stops on its next tick.
 const StoryboardCards = (function () {
-  const FRAME_MS = 200;            // per-frame dwell (~8s loop for 40 frames)
+  const FRAME_MS = 450;            // v1.93.3: per-frame dwell - calmer than a
+                                   // flashing slideshow (frames are seconds
+                                   // apart in the source; crossfaded below).
+  const START_DELAY_MS = 1500;     // v1.93.3: sustained hover/in-view before the
+                                   // preview kicks in (intent, YouTube-style).
   const MAX_INVIEW = 2;            // battery guard: at most N cards animate at once on mobile
   const active = new Map();        // overlay el -> interval id
+  const pending = new Map();       // v1.93.3: overlay el -> start-delay timeout id
+  const layerMap = new WeakMap();  // v1.93.3: overlay el -> {a,b,front} crossfade layers
   const ratios = new Map();        // overlay el -> latest intersectionRatio (mobile)
   const observed = new Set();      // overlay els currently observed (for teardown)
   let observer = null;             // the in-view IntersectionObserver (mobile only)
@@ -617,49 +623,82 @@ const StoryboardCards = (function () {
     if (!(count > 0) || !(cols > 0) || !(rows > 0)) return null;
     return { count, cols, rows };
   }
-  function paint(el, geom, idx) {
+  // v1.93.3: two stacked layers per card so consecutive (seconds-apart) frames
+  // CROSSFADE rather than hard-cut. Created lazily (only for cards that animate),
+  // cached in a WeakMap so a grid re-render can't leak them.
+  function ensureLayers(el) {
+    let L = layerMap.get(el);
+    if (L) return L;
+    const url = 'url("/storyboard/' + encodeURIComponent(el.getAttribute('data-sb-id')) + '")';
+    const a = document.createElement('div');
+    const b = document.createElement('div');
+    a.className = 'sb-layer'; b.className = 'sb-layer';
+    a.style.backgroundImage = url; b.style.backgroundImage = url;
+    el.appendChild(a); el.appendChild(b);
+    L = { a: a, b: b, front: null };
+    layerMap.set(el, L);
+    return L;
+  }
+  function paintLayer(layer, geom, idx) {
     const sb = window.FileTube && window.FileTube.storyboard;
     if (!sb) return;
     const tile = sb.tile(idx, geom);
-    el.style.backgroundSize = tile.sizeXPct + '% ' + tile.sizeYPct + '%';
-    el.style.backgroundPosition = tile.posXPct + '% ' + tile.posYPct + '%';
+    layer.style.backgroundSize = tile.sizeXPct + '% ' + tile.sizeYPct + '%';
+    layer.style.backgroundPosition = tile.posXPct + '% ' + tile.posYPct + '%';
   }
   // Reveal + animate. Called ONLY once the sprite is confirmed loaded, so the
-  // opaque .card-preview overlay never paints a black box over the poster.
+  // opaque .card-preview overlay never paints a black box over the poster. Each
+  // tick paints the OFF layer to the next frame and swaps `.on` -> the CSS
+  // opacity transition dissolves between frames.
   function animate(el, geom) {
     if (active.has(el)) return;
-    let i = 0;
-    paint(el, geom, 0);
+    const L = ensureLayers(el);
+    L.a.classList.remove('on'); L.b.classList.remove('on');
+    paintLayer(L.a, geom, 0);
+    L.front = L.a;
+    L.a.classList.add('on');
     el.classList.add('previewing');
+    let i = 0;
     const timer = setInterval(function () {
       if (!el.isConnected) { stop(el); return; } // grid re-rendered under us
       i = (i + 1) % geom.count;
-      paint(el, geom, i);
+      const back = (L.front === L.a) ? L.b : L.a;
+      paintLayer(back, geom, i);
+      back.classList.add('on');        // fade the next frame in
+      L.front.classList.remove('on');  // fade the current out
+      L.front = back;
     }, FRAME_MS);
     active.set(el, timer);
   }
+  // v1.93.3: hover/in-view start is DELAYED by START_DELAY_MS so a brush-past or
+  // fast scroll never fires the preview - it begins only on sustained intent.
   function start(el) {
+    if (active.has(el) || pending.has(el) || reducedMotion()) return;
+    if (!geomOf(el)) return;
+    if (el.getAttribute('data-sb-nofile') === '1') return; // known-absent -> no delay, no probe
+    const t = setTimeout(function () { pending.delete(el); begin(el); }, START_DELAY_MS);
+    pending.set(el, t);
+  }
+  function begin(el) {
     if (active.has(el) || reducedMotion()) return;
     const geom = geomOf(el);
     if (!geom) return;
     // v1.93.2: the server sends the (derived) geometry for EVERY eligible video,
-    // but the sprite FILE 404s until the scan generates it (216/2943 on prod at
-    // deploy). So we must NOT reveal the overlay until the sprite actually
-    // LOADS - otherwise its opaque #000 background shows as a black box over the
-    // poster. Confirmed-present cards (data-sb-ready) animate immediately;
-    // unknown cards preload first and reveal only on load; known-404 cards
-    // (data-sb-nofile) stay on the poster and are never re-probed.
+    // but the sprite FILE 404s until the scan generates it. So we must NOT reveal
+    // the overlay until the sprite actually LOADS - otherwise its opaque #000
+    // background shows as a black box over the poster. Confirmed-present cards
+    // (data-sb-ready) animate immediately; unknown cards preload first and reveal
+    // only on load; known-404 cards (data-sb-nofile) stay on the poster forever.
     if (el.getAttribute('data-sb-nofile') === '1') return;
     if (el.getAttribute('data-sb-ready') === '1') { animate(el, geom); return; }
     const id = el.getAttribute('data-sb-id');
-    el.setAttribute('data-sb-want', '1'); // hover/in-view intent (cleared by stop)
+    el.setAttribute('data-sb-want', '1'); // still-wanted intent (cleared by stop)
     if (el.getAttribute('data-sb-loading') === '1') return; // preload already in flight
     el.setAttribute('data-sb-loading', '1');
     const img = new Image();
     img.onload = function () {
       el.removeAttribute('data-sb-loading');
       el.setAttribute('data-sb-ready', '1');
-      el.style.backgroundImage = 'url("/storyboard/' + encodeURIComponent(id) + '")';
       // Only animate if the card is still wanted (the pointer/scroll didn't
       // leave while we were loading) and isn't already running.
       if (el.getAttribute('data-sb-want') === '1' && el.isConnected) {
@@ -674,10 +713,15 @@ const StoryboardCards = (function () {
     img.src = '/storyboard/' + encodeURIComponent(id);
   }
   function stop(el) {
-    if (el) el.removeAttribute('data-sb-want');
+    if (!el) return;
+    const p = pending.get(el);
+    if (p) { clearTimeout(p); pending.delete(el); } // cancel a not-yet-started preview
+    el.removeAttribute('data-sb-want');
     const timer = active.get(el);
     if (timer) { clearInterval(timer); active.delete(el); }
-    if (el) el.classList.remove('previewing');
+    el.classList.remove('previewing');
+    const L = layerMap.get(el);
+    if (L) { L.a.classList.remove('on'); L.b.classList.remove('on'); }
   }
 
   // Desktop: delegated so it covers cards from every render path (initial,
@@ -716,6 +760,11 @@ const StoryboardCards = (function () {
       .map(function (pair) { return pair[0]; });
     const winSet = new Set(winners);
     active.forEach(function (_timer, el) { if (!winSet.has(el)) stop(el); });
+    // v1.93.3 (slim gate): also cancel PENDING start-delay timers for cards that
+    // are no longer winners. Without this, scroll churn leaves stale timers that
+    // later fire begin()->animate() with no in-view re-check, breaching the
+    // MAX_INVIEW cap (>2 cards animating). stop() clears both maps.
+    pending.forEach(function (_t, el) { if (!winSet.has(el)) stop(el); });
     winners.forEach(start);
   }
 
@@ -753,10 +802,10 @@ const StoryboardCards = (function () {
         // mobile in-view autoplay. Discover cards from every render path via ONE
         // debounced DOM watcher (the IntersectionObserver itself is created
         // lazily inside refresh() only once a storyboard card exists).
-        let pending = null;
+        let refreshTimer = null; // (renamed from `pending`: distinct from the module-level start-delay map)
         const mo = new MutationObserver(function () {
-          if (pending) return;
-          pending = setTimeout(function () { pending = null; refresh(); }, 120);
+          if (refreshTimer) return;
+          refreshTimer = setTimeout(function () { refreshTimer = null; refresh(); }, 120);
         });
         try { mo.observe(document.body, { childList: true, subtree: true }); } catch (_) { /* body not ready */ }
         refresh();

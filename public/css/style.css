@@ -1343,9 +1343,25 @@ html.reader-immersive .app-container { padding-top: 0; }
 .card-preview.previewing {
   opacity: 1;
 }
+/* v1.93.3: two stacked frame layers so consecutive storyboard frames CROSSFADE
+   into each other (the frames are seconds apart in the source; a hard cut reads
+   as a jarring slideshow). main.js paints the off-layer to the next frame then
+   toggles `.on`; the opacity transition does the dissolve. */
+.card-preview .sb-layer {
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+  opacity: 0;
+  transition: opacity var(--dur-slow) var(--ease-ui);
+}
+.card-preview .sb-layer.on {
+  opacity: 1;
+}
 @media (prefers-reduced-motion: reduce) {
   /* belt-and-suspenders: the JS already refuses to animate, but never fade in */
   .card-preview.previewing { opacity: 0; }
+  /* and no crossfade motion if one ever slipped through */
+  .card-preview .sb-layer { transition: none; }
 }
 
 .duration-badge {

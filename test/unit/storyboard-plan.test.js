@@ -108,14 +108,14 @@ test('storyboardSeekTimes: exactly plan.count times, frame i at i*interval', () 
 // ---- buildStoryboardFrameArgs: SINGLE-input grab (the bounded-memory fix) ----
 
 test('buildStoryboardFrameArgs: exact single-input grab arg array (lossless PNG, no -q:v)', () => {
-  const args = buildStoryboardFrameArgs('/in.mp4', '/tmp/.sbtmp-abc/f007.png', '18.375', 160);
+  const args = buildStoryboardFrameArgs('/in.mp4', '/tmp/.sbtmp-abc/f007.png', '18.375', 320);
   assert.deepStrictEqual(args, [
     '-nostdin', '-loglevel', 'error',
     '-ss', '18.375',
     '-i', '/in.mp4',
     '-frames:v', '1',
     '-an',
-    '-vf', 'scale=160:-2',
+    '-vf', 'scale=320:-2',
     '-y', '/tmp/.sbtmp-abc/f007.png',
   ]);
   // No -q:v: a PNG intermediate is lossless, so the only lossy re-encode is the

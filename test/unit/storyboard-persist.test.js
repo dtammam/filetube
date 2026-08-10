@@ -33,13 +33,13 @@ test('storyboardDescriptor: eligible video -> full geometry from duration + dims
   assert.strictEqual(d.count, 40);
   assert.strictEqual(d.cols, 10);
   assert.strictEqual(d.rows, 4);
-  assert.strictEqual(d.tileW, 160);
-  assert.strictEqual(d.tileH, Math.round(160 * 1080 / 1920)); // 90
+  assert.strictEqual(d.tileW, 320); // v1.93.3: SB_TILE_W 160 -> 320 (crisper tiles)
+  assert.strictEqual(d.tileH, Math.round(320 * 1080 / 1920)); // 180
 });
 
 test('storyboardDescriptor: tileH falls back to 16:9 when dims are unknown', () => {
   const d = storyboardDescriptor({ type: 'video', duration: 300 });
-  assert.strictEqual(d.tileH, Math.round(160 * 9 / 16)); // 90
+  assert.strictEqual(d.tileH, Math.round(320 * 9 / 16)); // 180
 });
 
 test('storyboardDescriptor: null for audio / too-short / non-video / missing', () => {
