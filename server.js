@@ -2490,6 +2490,30 @@ function storyboardPath(id) {
   return path.join(THUMBNAIL_DIR, `${id}.sb.jpg`);
 }
 
+// v1.93.2: the storyboard geometry descriptor is DERIVED, never persisted. A
+// sprite is a disk-regenerable sidecar whose grid is fully determined by the
+// video's (already-persisted) duration + dimensions, so serving, the scan's
+// "already generated?" check, and the client geometry ALL key off the on-disk
+// `<id>.sb.jpg` + this pure derivation - not a db flag. WHY: the old per-item
+// `storyboard` descriptor was only committed at the END of a full scan pass; on
+// a large library that finish line was never crossed (v1.92 too slow, v1.93.0
+// OOM'd), so 0 of 2943 prod records ever carried it and NOTHING served, while
+// the scan re-generated every video forever (its "missing" test read the same
+// unpersisted flag). Keying on the on-disk sprite makes generated sprites serve
+// immediately and the scan converge, with no dependence on a completed pass.
+// tileH matches extractStoryboard's own computation exactly, so a derived
+// descriptor always describes the real on-disk sprite's geometry.
+function storyboardDescriptor(item) {
+  if (!item || item.type !== 'video') return null;
+  const plan = planStoryboard(item.duration);
+  if (!plan) return null;
+  const w = item.width, h = item.height;
+  const tileH = (Number.isInteger(w) && Number.isInteger(h) && w > 0 && h > 0)
+    ? Math.max(2, Math.round(plan.tileW * h / w))
+    : Math.round(plan.tileW * 9 / 16);
+  return { ...plan, tileH };
+}
+
 function queueAudioExtract(id, srcPath) {
   if (!ffmpegAvailable) return;
   if (audioExtractQueue.some(job => job.id === id)) return; // already queued
@@ -3329,7 +3353,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
       // ~line 1241) sees the codec keys as present (probed once, no usable
       // codec) instead of re-extracting (ffprobe attempt + ffmpeg thumbnail
       // attempt) every video item on every single scan forever.
-      return resolve({ duration: 0, hasThumbnail: false, artist: '', tags: {}, videoCodec: null, audioCodec: null, embeddedReleaseDateMs: null, embeddedSourceUrl: null, width: null, height: null, chapters: [], storyboard: null });
+      return resolve({ duration: 0, hasThumbnail: false, artist: '', tags: {}, videoCodec: null, audioCodec: null, embeddedReleaseDateMs: null, embeddedSourceUrl: null, width: null, height: null, chapters: [] });
     }
 
     // Get duration + all format tags (artist -> channel name; the rest -> the
@@ -3418,7 +3442,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
         // (matches the ffprobe `execFile` hardening above).
         execFile('ffmpeg', ['-i', filePath, '-an', '-vcodec', 'copy', '-y', thumbPath], (artErr) => {
           // Audio-only: no storyboard (excluded by type), explicit null.
-          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, chapters, width, height, hasThumbnail: !artErr && fs.existsSync(thumbPath), storyboard: null });
+          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, chapters, width, height, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
         });
       } else {
         // Extract video frame (at 2 seconds or 10% of duration, whichever is
@@ -3427,13 +3451,13 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
         const timestamp = duration > 5 ? 2 : Math.max(0, duration / 2);
         execFile('ffmpeg', ['-ss', String(timestamp), '-i', filePath, '-vframes', '1', '-q:v', '2', '-y', thumbPath], async (frameErr) => {
           const hasThumbnail = !frameErr && fs.existsSync(thumbPath);
-          // v1.92: generate the scrub/card storyboard sprite from this SAME
-          // source (best-effort; null on failure/ineligible/no-ffmpeg). Runs
-          // after the thumbnail so a storyboard failure can never cost us the
-          // poster frame.
-          let storyboard = null;
-          try { storyboard = await extractStoryboard(filePath, mediaId, duration, width, height); } catch (_) { storyboard = null; }
-          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, chapters, width, height, hasThumbnail, storyboard });
+          // v1.92/v1.93.2: generate the scrub/card storyboard SPRITE FILE from
+          // this SAME source (best-effort). Runs after the thumbnail so a
+          // storyboard failure can never cost us the poster frame. v1.93.2: the
+          // sprite is its own state on disk - no descriptor is threaded into the
+          // metadata (it is derived at read time by storyboardDescriptor).
+          try { await extractStoryboard(filePath, mediaId, duration, width, height); } catch (_) { /* best-effort */ }
+          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, chapters, width, height, hasThumbnail });
         });
       }
     });
@@ -3562,39 +3586,32 @@ async function extractStoryboard(filePath, id, duration, width, height) {
   }
 }
 
-// v1.92: heal/backfill the storyboard for a REUSED item (mirrors
-// restoreMissingThumbnail -- this is the backfill path for the whole existing
-// library, which never re-runs extractMetadataAndThumbnail). Regenerates ONLY
-// when genuinely missing: the item carries no descriptor, or the on-disk sprite
-// is absent/empty. An item that already has a valid sprite is left untouched
-// (no ffmpeg). An INELIGIBLE item (audio / too short) gets an explicit `null`
-// so the field is always present (persist-gate). Returns true iff it set/attempted
-// something, so the caller persists dbChanged.
+// v1.92/v1.93.2: ensure the storyboard SPRITE FILE exists for a REUSED item
+// (the backfill path for the whole existing library, which never re-runs
+// extractMetadataAndThumbnail). v1.93.2: keyed purely on the ON-DISK sprite, NOT
+// on a persisted db flag - so it CONVERGES (a sprite already on disk is skipped)
+// with no dependence on a completed scan pass, and it writes NOTHING to the db
+// (the descriptor is derived at read time by storyboardDescriptor). An eligible
+// video whose sprite is absent/empty is (re)generated; an ineligible item
+// (audio/too short) has any stale sidecar removed. No return value - the caller
+// no longer sets dbChanged for the storyboard (the sprite is its own state).
 async function restoreMissingStoryboard(existing, id, filePath) {
-  if (!shouldGenerateStoryboard(existing)) {
-    // Ineligible: ensure the field exists and holds no stale descriptor.
-    if (existing.storyboard === undefined || existing.storyboard) {
-      existing.storyboard = null;
-      return true;
-    }
-    return false;
-  }
   const outPath = storyboardPath(id);
-  let missing = !existing.storyboard;
-  if (!missing) {
-    try { missing = !fs.existsSync(outPath) || fs.statSync(outPath).size === 0; } catch (_) { missing = true; }
+  if (!shouldGenerateStoryboard(existing)) {
+    // Ineligible: no valid sprite should exist for this id - drop a stale one.
+    try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (_) { /* best-effort */ }
+    return;
   }
-  if (!missing) return false;
+  let present = false;
+  try { present = fs.existsSync(outPath) && fs.statSync(outPath).size > 0; } catch (_) { present = false; }
+  if (present) return; // already on disk -> converged, no ffmpeg
 
   console.log(`Restoring missing storyboard for: ${path.basename(filePath)}`);
   try {
-    const sb = await extractStoryboard(filePath, id, existing.duration, existing.width, existing.height);
-    existing.storyboard = sb || null;
+    await extractStoryboard(filePath, id, existing.duration, existing.width, existing.height);
   } catch (err) {
     console.error(`Error restoring storyboard for ${path.basename(filePath)}:`, err);
-    if (existing.storyboard === undefined) existing.storyboard = null;
   }
-  return true;
 }
 
 // A6 (v1.24 UX Round, Wave 5): additive `hasSubtitles` detection, shared by
@@ -4227,12 +4244,11 @@ async function runScanDirectories() {
       if (!isAudio) {
         const healed = await restoreMissingThumbnail(existing, id, filePath);
         if (healed) dbChanged = true;
-        // v1.92: same heal contract for the storyboard sprite -- this is the
-        // BACKFILL path for the entire existing library (which never re-runs
-        // extractMetadataAndThumbnail). Regenerates only when genuinely
-        // missing; leaves a present sprite untouched.
-        const sbHealed = await restoreMissingStoryboard(existing, id, filePath);
-        if (sbHealed) dbChanged = true;
+        // v1.93.2: ensure the storyboard sprite FILE exists (backfill path for
+        // the whole existing library). Keyed on the on-disk sprite, writes
+        // nothing to the db -- so no dbChanged, and it converges on file
+        // existence with no dependence on this scan pass completing its save.
+        await restoreMissingStoryboard(existing, id, filePath);
       }
       // C5-local (v1.24): SCHEMA-ONLY backfill of `releaseDate` for an item
       // that predates this field -- the thumbnail-backfill-regression
@@ -4356,9 +4372,6 @@ async function runScanDirectories() {
         addedAt: info.addedAt,
         duration: 0,
         hasThumbnail: false,
-        // v1.92: storyboard descriptor (persist-gate: field always present).
-        // Overwritten from `meta.storyboard` on a successful extract below.
-        storyboard: null,
         artist: '',
         needsTranscode: !isAudio && needsTranscode(info.ext),
         // A6 (v1.24 UX Round, Wave 5): additive, schema-only -- see
@@ -4374,11 +4387,9 @@ async function runScanDirectories() {
         const meta = await extractMetadataAndThumbnail(filePath, id, isAudio);
         newMetadata[id].duration = meta.duration;
         newMetadata[id].hasThumbnail = meta.hasThumbnail;
-        // v1.92: the storyboard descriptor from this SAME extract (null when
-        // ineligible/failed/no-ffmpeg). A CHANGED file regenerates it here from
-        // the new content, so -- unlike youtubeId/channel identity -- it needs
-        // NO carry-forward guard: a fresh sprite is the correct one.
-        newMetadata[id].storyboard = meta.storyboard || null;
+        // v1.93.2: extractMetadataAndThumbnail generated the sprite FILE (its
+        // own on-disk state); no descriptor is persisted - it is derived at read
+        // time by storyboardDescriptor from the (now-known) duration/dims.
         newMetadata[id].artist = meta.artist || '';
         newMetadata[id].tags = meta.tags || {};
         // FR-1b (v1.18.0, + two-reviewer follow-up): probed codecs,
@@ -4438,7 +4449,6 @@ async function runScanDirectories() {
         // from), `null` when that yields nothing.
         newMetadata[id].youtubeId = deriveScanYoutubeId(filePath, info, ytdlpDownloadRoots, null);
         newMetadata[id].chapters = []; // probe failed -- none known (probed-once)
-        newMetadata[id].storyboard = null; // extract failed -- none (self-heals on a later reuse scan)
       }
       // v1.33 T3: a CHANGED file (same path, new size -- this whole re-init
       // branch) must not lose a previously captured/reheated real title
@@ -9457,6 +9467,10 @@ app.get('/api/videos', (req, res) => {
     return {
       ...item,
       ...(watchUrl ? { watchUrl } : {}),
+      // v1.93.2: DERIVED storyboard descriptor (eligible videos only), so the
+      // list projection carries the same geometry as the grid/watch payloads
+      // without a persisted flag.
+      storyboard: storyboardDescriptor(item) || undefined,
       progress: progress.timestamp,
       progressPercent,
       // v1.40.0: per-item liked flag so the grid can render each card's Like
@@ -9559,9 +9573,11 @@ function resolveModernGridItem(db, rec) {
     duration: typeof item.duration === 'number' ? item.duration : 0, type: rec.type,
     ext: typeof item.ext === 'string' ? item.ext : '',
     ...(watchUrl ? { watchUrl } : {}),
-    // v1.92: storyboard descriptor for the modern-grid card's hover/in-view
-    // preview (omitted when absent -- client treats missing as no-preview).
-    ...(item.storyboard ? { storyboard: item.storyboard } : {}),
+    // v1.93.2: DERIVED storyboard descriptor for the modern-grid card's
+    // hover/in-view preview (eligible videos only; omitted otherwise). The card
+    // fetches /storyboard/:id lazily and degrades to the poster on a 404, so
+    // sending geometry for a not-yet-generated sprite is harmless.
+    ...(storyboardDescriptor(item) ? { storyboard: storyboardDescriptor(item) } : {}),
   };
 }
 
@@ -9889,6 +9905,11 @@ app.get('/api/videos/:id', (req, res) => {
     ...item,
     ...(channelAvatarUrl ? { channelAvatarUrl } : {}),
     ...(watchUrl ? { watchUrl } : {}),
+    // v1.93.2: DERIVED storyboard descriptor for the seek-bar scrub preview
+    // (eligible videos only). Overrides any legacy persisted `storyboard` from
+    // the `...item` spread so the client always gets the geometry that matches
+    // the on-disk sprite; the player degrades to no-preview on a /storyboard 404.
+    storyboard: storyboardDescriptor(item) || undefined,
     chapters: resolvedChapters.chapters,
     chaptersSource: resolvedChapters.chaptersSource,
     progress: progress.timestamp,
@@ -15196,7 +15217,11 @@ app.get('/storyboard/:id', (req, res) => {
     return res.status(404).json({ error: 'Media file not found' });
   }
   const sbPath = storyboardPath(req.params.id);
-  if (item && item.storyboard && fs.existsSync(sbPath)) {
+  // v1.93.2: serve when the item is storyboard-ELIGIBLE (derived, not a
+  // persisted flag) and the sprite is on disk. Ineligible items (audio/too
+  // short) never have a valid sprite for this id, so the eligibility gate keeps
+  // a stale sidecar from serving.
+  if (item && storyboardDescriptor(item) && fs.existsSync(sbPath)) {
     res.setHeader('Cache-Control', 'private, max-age=86400');
     return res.sendFile(sbPath);
   }
@@ -16356,7 +16381,10 @@ module.exports = {
   buildStoryboardAssembleArgs,
   shouldGenerateStoryboard,
   storyboardPath,
-  // v1.92 storyboard generation + persist-gate heal (integration-tested).
+  // v1.93.2: derived (not persisted) storyboard descriptor - serve/scan/client
+  // all key off the on-disk sprite + this pure derivation.
+  storyboardDescriptor,
+  // v1.92 storyboard generation + on-disk-keyed heal (integration-tested).
   extractStoryboard,
   restoreMissingStoryboard,
   queueAudioExtract,

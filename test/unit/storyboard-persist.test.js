@@ -1,15 +1,16 @@
 'use strict';
 
-// [UNIT] v1.92 storyboard sprites - the persist-gate/heal contract for the new
-// per-item `storyboard` field (this repo's most-scarred bug class). Exercises
-// restoreMissingStoryboard (the library BACKFILL + heal path) directly, no
-// ffmpeg needed: on this harness ffmpegAvailable is false, so extractStoryboard
-// resolves null and we assert the SURROUNDING persist logic (field presence,
-// don't-regenerate-a-present-sprite guard, heal-on-delete, ineligible->null).
+// [UNIT] v1.93.2 storyboard sprites - the DERIVED-descriptor + on-disk-keyed
+// heal contract. This REPLACES v1.92's persisted-flag contract, which only
+// committed the `storyboard` descriptor at end-of-scan: on a large library that
+// finish line was never crossed, so 0/2943 prod records ever carried it and
+// NOTHING served. v1.93.2 derives the descriptor from the (persisted) duration
+// and keys serving/heal on the on-disk sprite FILE, writing NOTHING to the db.
 //
-// The "present sprite is left untouched" test is the delete-the-guard MUTATION
-// target: remove `if (!missing) return false` in restoreMissingStoryboard and
-// this test goes red (the descriptor would be clobbered to null).
+//  - storyboardDescriptor(item): PURE geometry from duration/dims (no fs).
+//  - restoreMissingStoryboard: ensures the on-disk sprite exists; on this
+//    no-ffmpeg harness extractStoryboard is a no-op, so we assert the
+//    file-existence logic + that the item metadata is NEVER mutated.
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -17,69 +18,89 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-sb-persis
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { restoreMissingStoryboard, storyboardPath } = require('../../server');
-
-const DESC = { v: 1, interval: 2, count: 40, cols: 10, rows: 4, tileW: 160, tileH: 90 };
+const { restoreMissingStoryboard, storyboardPath, storyboardDescriptor } = require('../../server');
 
 function writeSprite(id, bytes = 'JPEGDATA') {
   fs.mkdirSync(path.dirname(storyboardPath(id)), { recursive: true });
   fs.writeFileSync(storyboardPath(id), bytes);
 }
 
-// ---- ineligible items: field always ends up present as null -----------------
+// ---- storyboardDescriptor: derived geometry, never persisted ----------------
 
-test('restore: audio item gets an explicit null storyboard (persist-gate presence)', async () => {
-  const item = { id: 'sb-audio', type: 'audio', duration: 300 };
-  const changed = await restoreMissingStoryboard(item, item.id, '/x/a.mp3');
-  assert.strictEqual(item.storyboard, null);
-  assert.strictEqual(changed, true, 'setting the field from undefined is a change to persist');
+test('storyboardDescriptor: eligible video -> full geometry from duration + dims', () => {
+  const d = storyboardDescriptor({ type: 'video', duration: 79.714104, width: 1920, height: 1080 });
+  assert.ok(d, 'eligible');
+  assert.strictEqual(d.count, 40);
+  assert.strictEqual(d.cols, 10);
+  assert.strictEqual(d.rows, 4);
+  assert.strictEqual(d.tileW, 160);
+  assert.strictEqual(d.tileH, Math.round(160 * 1080 / 1920)); // 90
 });
 
-test('restore: too-short video -> null; already-null is a no-op (no scan churn)', async () => {
-  const item = { id: 'sb-short', type: 'video', duration: 1, storyboard: null };
-  const changed = await restoreMissingStoryboard(item, item.id, '/x/s.mp4');
-  assert.strictEqual(item.storyboard, null);
-  assert.strictEqual(changed, false, 'already null + ineligible -> no change');
+test('storyboardDescriptor: tileH falls back to 16:9 when dims are unknown', () => {
+  const d = storyboardDescriptor({ type: 'video', duration: 300 });
+  assert.strictEqual(d.tileH, Math.round(160 * 9 / 16)); // 90
 });
 
-// ---- the guard: a PRESENT sprite is never regenerated -----------------------
+test('storyboardDescriptor: null for audio / too-short / non-video / missing', () => {
+  assert.strictEqual(storyboardDescriptor({ type: 'audio', duration: 300 }), null, 'audio excluded');
+  assert.strictEqual(storyboardDescriptor({ type: 'video', duration: 1 }), null, 'too short');
+  assert.strictEqual(storyboardDescriptor({ type: 'video' }), null, 'no duration');
+  assert.strictEqual(storyboardDescriptor(null), null);
+  assert.strictEqual(storyboardDescriptor(undefined), null);
+});
 
-test('restore: eligible item with a present non-empty sprite is left UNTOUCHED (guard)', async () => {
+test('storyboardDescriptor: derived grid matches what generation would tile (MAX regime)', () => {
+  // The client renders from this derivation, so it MUST equal the grid
+  // extractStoryboard/planStoryboard used to build the on-disk sprite. Same
+  // duration -> same grid, so a derived descriptor always describes the real sprite.
+  const d = storyboardDescriptor({ type: 'video', duration: 4000, width: 3840, height: 2160 });
+  assert.strictEqual(d.count, 100);
+  assert.strictEqual(d.cols, 10);
+  assert.strictEqual(d.rows, 10);
+});
+
+// ---- restoreMissingStoryboard: on-disk-keyed, writes NOTHING to the db ------
+
+test('restore: writes NOTHING to the item metadata (the v1.93.2 decoupling)', async () => {
+  const id = 'sb-nowrite';
+  const item = { id, type: 'video', duration: 500, width: 1280, height: 720 };
+  const before = JSON.stringify(item);
+  const ret = await restoreMissingStoryboard(item, id, '/x/b.mp4');
+  assert.strictEqual(ret, undefined, 'no persist-signal return (sprite is its own state)');
+  assert.strictEqual(JSON.stringify(item), before, 'item is never mutated');
+  assert.ok(!('storyboard' in item), 'no storyboard field is ever written to the record');
+});
+
+test('restore: a PRESENT non-empty sprite is left on disk untouched (converged, no regen)', async () => {
   const id = 'sb-present';
   writeSprite(id);
-  const item = { id, type: 'video', duration: 120, width: 1920, height: 1080, storyboard: { ...DESC } };
-  const changed = await restoreMissingStoryboard(item, id, '/x/p.mp4');
-  assert.strictEqual(changed, false, 'nothing to heal');
-  // DELETE-THE-GUARD MUTATION: without `if (!missing) return false`, this would
-  // call extractStoryboard (null on this no-ffmpeg harness) and clobber it.
-  assert.deepStrictEqual(item.storyboard, DESC, 'descriptor preserved byte-for-byte');
+  const item = { id, type: 'video', duration: 120, width: 1920, height: 1080 };
+  await restoreMissingStoryboard(item, id, '/x/p.mp4');
+  assert.ok(fs.existsSync(storyboardPath(id)), 'existing sprite survives');
+  assert.strictEqual(fs.readFileSync(storyboardPath(id), 'utf8'), 'JPEGDATA', 'bytes untouched');
+  assert.ok(!('storyboard' in item), 'still no db write');
 });
 
-// ---- heal on delete + backfill ----------------------------------------------
-
-test('restore: eligible item whose sprite FILE is gone re-attempts (heal-on-delete)', async () => {
-  const id = 'sb-filegone';
-  // descriptor present but NO file on disk
-  const item = { id, type: 'video', duration: 120, width: 1920, height: 1080, storyboard: { ...DESC } };
-  assert.ok(!fs.existsSync(storyboardPath(id)));
-  const changed = await restoreMissingStoryboard(item, id, '/x/g.mp4');
-  assert.strictEqual(changed, true, 'a missing sprite triggers a regeneration attempt');
-  // no ffmpeg on this harness -> attempt yields null (self-heals on a real box).
-  assert.strictEqual(item.storyboard, null);
+test('restore: ineligible AUDIO item REMOVES a stale sprite for its id', async () => {
+  const id = 'sb-audio';
+  writeSprite(id); // a stale sidecar under this id
+  await restoreMissingStoryboard({ id, type: 'audio', duration: 300 }, id, '/x/a.mp3');
+  assert.ok(!fs.existsSync(storyboardPath(id)), 'stale sprite removed for an ineligible item');
 });
 
-test('restore: eligible item with NO descriptor (legacy backfill) attempts generation', async () => {
+test('restore: too-short video is ineligible -> stale sprite removed', async () => {
+  const id = 'sb-short';
+  writeSprite(id);
+  await restoreMissingStoryboard({ id, type: 'video', duration: 1 }, id, '/x/s.mp4');
+  assert.ok(!fs.existsSync(storyboardPath(id)), 'stale sprite removed');
+});
+
+test('restore: eligible item with NO sprite on disk attempts generation (no ffmpeg here)', async () => {
   const id = 'sb-backfill';
-  const item = { id, type: 'video', duration: 500, width: 1280, height: 720 }; // no storyboard key
-  const changed = await restoreMissingStoryboard(item, id, '/x/b.mp4');
-  assert.strictEqual(changed, true);
-  assert.strictEqual(item.storyboard, null, 'no ffmpeg here; field is now explicitly present');
-});
-
-test('restore: an EMPTY (zero-byte) sprite counts as missing and re-attempts', async () => {
-  const id = 'sb-empty';
-  writeSprite(id, ''); // zero bytes
-  const item = { id, type: 'video', duration: 120, width: 1920, height: 1080, storyboard: { ...DESC } };
-  const changed = await restoreMissingStoryboard(item, id, '/x/e.mp4');
-  assert.strictEqual(changed, true, 'zero-byte sprite is treated as absent');
+  const item = { id, type: 'video', duration: 500, width: 1280, height: 720 };
+  assert.ok(!fs.existsSync(storyboardPath(id)));
+  await restoreMissingStoryboard(item, id, '/x/b.mp4');
+  // no ffmpeg on this harness -> attempt is a no-op; still no file, still no db write.
+  assert.ok(!('storyboard' in item), 'no db write on a generation attempt');
 });
