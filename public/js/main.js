@@ -613,31 +613,21 @@ const PreviewCards = (function () {
   function canHover() {
     return !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
   }
+  const CLIP_SRC = function (el) { return '/preview/' + encodeURIComponent(el.getAttribute('data-preview-id')); };
   // Lazily create the muted looping inline <video> for a card (only for cards we
-  // actually preview). muted + playsinline lets iOS autoplay via play().
+  // actually preview). muted + playsinline lets iOS autoplay via play(). Cached
+  // in a WeakMap; if a prior stop() released its src (mobile teardown), re-set it.
   function ensureVideo(el) {
     let v = videoOf.get(el);
-    if (v) return v;
+    if (v) { if (!v.getAttribute('src')) v.setAttribute('src', CLIP_SRC(el)); return v; }
     v = document.createElement('video');
     v.className = 'card-preview-video';
     v.muted = true; v.loop = true; v.playsInline = true; v.preload = 'metadata';
     v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
-    v.src = '/preview/' + encodeURIComponent(el.getAttribute('data-preview-id'));
+    v.src = CLIP_SRC(el);
     el.appendChild(v);
     videoOf.set(el, v);
     return v;
-  }
-  // Reveal + play. Called ONLY once the clip can play, so the opaque overlay
-  // never shows a blank box over the poster.
-  function play(el) {
-    if (active.has(el)) return;
-    const v = videoOf.get(el);
-    if (!v) return;
-    el.classList.add('previewing');
-    try { v.currentTime = 0; } catch (_) { /* not seekable yet */ }
-    const pr = v.play();
-    if (pr && pr.catch) pr.catch(function () { /* autoplay refused -> poster stays */ });
-    active.add(el);
   }
   // hover/in-view start is DELAYED so a brush-past / fast scroll never fires it.
   function start(el) {
@@ -646,42 +636,51 @@ const PreviewCards = (function () {
     const t = setTimeout(function () { pending.delete(el); begin(el); }, START_DELAY_MS);
     pending.set(el, t);
   }
+  // Kick playback and reveal ONLY on the `playing` event (guaranteed the clip is
+  // actually rolling - more robust than `canplay`, which can stall under
+  // preload='metadata'). A 404/undecodable clip fires `error` -> stay on the
+  // poster (never a blank box), never re-probe.
   function begin(el) {
     if (active.has(el) || reducedMotion()) return;
     if (el.getAttribute('data-pv-nofile') === '1') return;
-    if (el.getAttribute('data-pv-ready') === '1') { play(el); return; }
     const v = ensureVideo(el);
     el.setAttribute('data-pv-want', '1'); // still-wanted intent (cleared by stop)
-    if (el.getAttribute('data-pv-loading') === '1') return; // load already in flight
-    el.setAttribute('data-pv-loading', '1');
-    const onReady = function () {
-      cleanup();
-      el.removeAttribute('data-pv-loading');
-      el.setAttribute('data-pv-ready', '1');
-      // Play only if still wanted (pointer/scroll didn't leave while loading).
-      if (el.getAttribute('data-pv-want') === '1' && el.isConnected) play(el);
+    const onPlaying = function () {
+      detach();
+      if (el.getAttribute('data-pv-want') === '1' && el.isConnected) {
+        el.classList.add('previewing'); // reveal (opacity 1) now that it's rolling
+        active.add(el);
+      } else {
+        try { v.pause(); } catch (_) { /* left while starting */ }
+      }
     };
     const onErr = function () {
-      cleanup();
-      el.removeAttribute('data-pv-loading');
+      detach();
       el.setAttribute('data-pv-nofile', '1'); // 404 / undecodable -> poster, no re-probe
     };
-    function cleanup() { v.removeEventListener('canplay', onReady); v.removeEventListener('error', onErr); }
-    v.addEventListener('canplay', onReady);
+    function detach() { v.removeEventListener('playing', onPlaying); v.removeEventListener('error', onErr); }
+    detach(); // avoid stacking listeners across re-hovers
+    v.addEventListener('playing', onPlaying);
     v.addEventListener('error', onErr);
-    try { v.load(); } catch (_) { /* best-effort kick */ }
+    try { v.currentTime = 0; } catch (_) { /* not seekable yet */ }
+    const pr = v.play(); // muted autoplay is allowed inline (incl. iOS); drives buffering
+    if (pr && pr.catch) pr.catch(function () { /* autoplay refused -> poster stays */ });
   }
   function stop(el) {
     if (!el) return;
     const p = pending.get(el);
     if (p) { clearTimeout(p); pending.delete(el); } // cancel a not-yet-started preview
     el.removeAttribute('data-pv-want');
-    if (active.has(el)) {
-      const v = videoOf.get(el);
-      if (v) { try { v.pause(); } catch (_) { /* torn down */ } }
-      active.delete(el);
-    }
+    active.delete(el);
     el.classList.remove('previewing');
+    const v = videoOf.get(el);
+    if (v) {
+      try { v.pause(); } catch (_) { /* torn down */ }
+      // Mobile: release the decoder + buffer of a scrolled-away clip (they can
+      // pile up on a long grid). Desktop keeps the buffer for instant re-hover.
+      // ensureVideo re-sets src on the next begin().
+      if (!canHover()) { try { v.removeAttribute('src'); v.load(); } catch (_) { /* best-effort */ } }
+    }
   }
 
   // Desktop: delegated so it covers cards from every render path (initial,
@@ -759,7 +758,7 @@ const PreviewCards = (function () {
       } else if (typeof IntersectionObserver === 'function' && typeof MutationObserver === 'function') {
         // mobile in-view autoplay. Discover cards from every render path via ONE
         // debounced DOM watcher (the IntersectionObserver itself is created
-        // lazily inside refresh() only once a storyboard card exists).
+        // lazily inside refresh() only once a preview card exists).
         let refreshTimer = null; // (renamed from `pending`: distinct from the module-level start-delay map)
         const mo = new MutationObserver(function () {
           if (refreshTimer) return;

@@ -51,12 +51,17 @@ test('planPreviewClip: typical clip -> 4 snippets across [8%..last] of the durat
   p.snippets.forEach(t => assert.ok(t + p.dur <= 100));
 });
 
-test('planPreviewClip: short-but-eligible clip clamps snippet length + never over-runs', () => {
-  const p = planPreviewClip(PV_MIN_DURATION); // 5s: start=0.4, end=4.5
+test('planPreviewClip: short-but-eligible clip (MIN duration) - snippets fit, never over-run EOF', () => {
+  // NOTE: for every ELIGIBLE duration (d>=5) end-start = 0.82*d >= 4.1 > PV_SNIP_DUR,
+  // so `dur` is always 1.5s here - the Math.min/Math.max in the planner are
+  // unreachable defensive floors (see tech-debt), not exercised by this case.
+  // What this binds: even at the shortest eligible clip, 4 snippets fit and the
+  // last never runs past EOF (they overlap on a 5s clip, which is fine).
+  const p = planPreviewClip(PV_MIN_DURATION); // 5s: start=0.4, end=4.5, dur=1.5
   assert.strictEqual(p.count, 4);
   assert.strictEqual(p.snippets[0], 0.4);
+  assert.strictEqual(p.dur, 1.5);
   p.snippets.forEach(t => assert.ok(t + p.dur <= 5.0001, `snippet at ${t} (+${p.dur}) fits in 5s`));
-  assert.ok(p.dur >= 0.5, 'snippet length has a floor');
 });
 
 // ---- previewClipEligible -----------------------------------------------------

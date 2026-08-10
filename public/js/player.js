@@ -597,10 +597,12 @@ function scrubRatioFromPointer(clientX, rectLeft, rectWidth) {
   return Math.max(0, Math.min(1, (clientX - rectLeft) / rectWidth));
 }
 
-// v1.92 storyboard geometry (PURE, shared by the seek-bar scrub preview here
-// and the grid card preview in main.js via window.FileTube.storyboard). The
-// sprite is a `cols` x `rows` grid of frames; `geom` is the per-item
-// descriptor { interval, count, cols, rows, tileW, tileH } from the server.
+// v1.92 storyboard geometry (PURE). Drives the seek-bar SCRUB preview here.
+// (v1.94: the grid CARD preview moved to a muted /preview/:id video clip in
+// main.js and no longer uses this, so `window.FileTube.storyboard` below is now
+// consumed only within player.js.) The sprite is a `cols` x `rows` grid of
+// frames; `geom` is the per-item descriptor { interval, count, cols, rows,
+// tileW, tileH } from the server.
 
 // Scrub time (s) -> frame index, clamped to [0, count-1]. Frame i was sampled
 // at i*interval, so floor(t/interval) is the frame covering time t.
