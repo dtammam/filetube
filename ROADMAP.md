@@ -80,6 +80,35 @@
 
 ## Shipped
 
+### v1.94.1 - Scan generates newest-first (home view fills first) (2026-08-10)
+
+Dean's on-device finding during the v1.94.0 preview-clip backfill: the scan fills
+folders in **walk order**, so his default home view's folder (`/media/ytdlp`) was
+processed LAST - an empty-feeling home for the first hour while the box generated
+clips for another share. Fix: a pure `orderScannedByRecency(scannedFiles,
+metadata)` sorts the scan's per-file loop **newest-first** by the item's `addedAt`
+(the home sort key; falls back to a new file's derived addedAt, then mtime). So
+the most-recently-added videos (what the home view shows) get their thumbnail +
+sprite + preview-clip sidecars generated first. Helps every future backfill and
+content-add. Ordering only changes WHICH files finish first - each file is
+processed independently, so the end state is unchanged.
+
+**Slim gate (adversarial seat, APPROVE):** the whole risk was whether the scan
+loop is order-dependent. The seat traced all 34 `newMetadata[...]` write sites
+(each targets only the current iteration's id) and confirmed every cross-file
+coupling is a COMMUTATIVE accumulator (boolean OR `dbChanged`, idempotent Sets
+`consumedTombstoneIds`/`freshlyScannedIds`, an order-invariant `processed`
+counter, dedup'd notification/pre-extract arrays); the mid-loop db re-check reads
+the stable pre-scan snapshot. So the reorder is safe - one arbitrary order swapped
+for a purposeful one. The sort is pure + unit-bound (4 mutation-killed tests:
+input order != output; persisted-addedAt-wins; mtime/0 fallback). Perf: 16 ms @
+1800 files, dwarfed by the per-file ffmpeg work.
+
+Dual-Node: **Node 22.23.1 6549/6549, Node 24.14.0 6549/6549**, zero failures.
+**AWAITING DEAN'S ON-DEVICE PASS** - deploy `1.94.1` (already on `:latest`); the
+NEXT scan/backfill fills the home view first. (Does not re-run the pass already
+in flight.)
+
 ### v1.94.0 - Animated hover preview clips (the YouTube hover feel) (2026-08-10)
 
 Dean's realization on-device: the storyboard-STILL card hover (a slideshow of
