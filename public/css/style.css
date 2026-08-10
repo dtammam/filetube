@@ -5195,7 +5195,8 @@ a.sub-row-channel-link:focus-visible {
      the All/Videos/Audio pills go compact (min-width:0, overriding the desktop
      58px), and ALL word-labels are hidden — Shuffle/Rescan (.btn-label) AND the
      sort's current-value label — leaving the sort as a compact caret. The three
-     icon action buttons keep a 40px tap target and override the desktop 104px. */
+     icon action buttons keep a 40px min-WIDTH and override the desktop 104px;
+     they are `.btn`, so v1.95 floors their HEIGHT at 44px (--size-touch). */
   .section-actions .format-toggle-btn {
     min-width: 0;
   }
@@ -10750,12 +10751,20 @@ a.queue-upnext-next:hover {
     padding: 0;
   }
 
-  /* THE SEEK BAR (Dean's top miss): a tall touch BAND so a tap ANYWHERE near the
-     line grabs/seeks the scrubber - you no longer have to hit the tiny thumb.
-     The input owns the gesture (touch-action:none + the pointer-capture drag +
-     the scrubRatioFromPointer rect math in player.js, all UNCHANGED - the taller
-     box only enlarges the pointer-catch area). The VISUAL track/thumb stay thin:
-     the browser centres the 6px runnable-track in the taller input. Only
-     #seek-bar gets the band; the volume slider (.pc-vol) stays compact. */
-  #seek-bar { height: var(--size-touch); }
+  /* THE SEEK BAR (Dean's top miss): grow the seek input to FILL the scrub row it
+     already occupies, so a tap anywhere in that row-height band grabs/seeks the
+     scrubber - no more hunting the thin thumb. SCOPED to the in-slot player: its
+     scrub row is ALREADY 30px (the .pc-time line-height, style.css:5930) with the
+     seek sitting thin (16px) inside it, so 30px FILLS the row without GROWING it -
+     the engineered two-row 80px budget stays intact (30 + 2 row-gap + 44 buttons
+     = 76 <= 78px content box; the v1.34.1 clip class that budget guards against).
+     NOT a global `#seek-bar { height }`: the 26px docked mini-bar reuses the same
+     element, and a tall band there would overflow it AND steal its tap-to-expand
+     gesture (QA v1.95 CRITICAL - the reason the earlier global 44px rule was
+     wrong). The gesture is UNCHANGED: touch-action:none + the pointer-capture
+     drag + scrubRatioFromPointer (rect X/width only, height-INDEPENDENT) still own
+     it end-to-end; the taller box only enlarges the pointer-catch area. The thin
+     visual thumb is left as-is (true "same look"); a bigger visible thumb is the
+     escalation if Dean's device shows 30px still isn't enough. */
+  #player-slot .player-controls #seek-bar { height: 30px; }
 }

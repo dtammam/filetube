@@ -35,7 +35,15 @@ test('each named mobile control carries a --size-touch hit treatment in the 768p
   assert.match(block, /\.notif-row-dismiss\s*\{[^}]*min-width:\s*var\(--size-touch\)[^}]*min-height:\s*var\(--size-touch\)/, 'notification x: 44px box');
   assert.match(block, /\.queue-row-remove\s*\{[^}]*min-width:\s*var\(--size-touch\)/, 'queue remove x: 44px box');
   assert.match(block, /\.queue-row-order\s+\.queue-row-move\s*\{[^}]*min-height:\s*calc\(var\(--size-touch\)/, 'queue arrows: fill + split-height');
-  assert.match(block, /#seek-bar\s*\{[^}]*height:\s*var\(--size-touch\)/, "seek bar: 44px touch band (Dean's top miss)");
+  // The seek band is IN-SLOT-SCOPED and fills the existing 30px scrub row (NOT a
+  // global `#seek-bar { height }`, which overflowed the fixed 80px in-slot budget
+  // and the 26px dock - QA v1.95 CRITICAL). Binding the scoped shape guards
+  // against a regression back to the buggy global rule.
+  assert.match(block, /#player-slot\s+\.player-controls\s+#seek-bar\s*\{[^}]*height:\s*30px/, 'seek bar: fills its 30px scrub row, in-slot scoped (budget-safe)');
+  // Matches an UNSCOPED rule (indent immediately -> #seek-bar), NOT the scoped
+  // `#player-slot .player-controls #seek-bar` (where the indent is followed by
+  // #player-slot, so #seek-bar is never right after the whitespace).
+  assert.doesNotMatch(block, /\n\s*#seek-bar\s*\{/, 'no UNSCOPED #seek-bar height rule (that overflowed the fixed-height bars)');
 });
 
 test('the seek band keeps the JS drag contract intact (touch-action:none unchanged)', () => {
