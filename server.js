@@ -2504,8 +2504,11 @@ function storyboardPath(id) {
 // the scan re-generated every video forever (its "missing" test read the same
 // unpersisted flag). Keying on the on-disk sprite makes generated sprites serve
 // immediately and the scan converge, with no dependence on a completed pass.
-// tileH matches extractStoryboard's own computation exactly, so a derived
-// descriptor always describes the real on-disk sprite's geometry.
+// count/cols/rows/interval come straight from planStoryboard(duration) - the
+// SAME plan the generator tiled - so they always match the on-disk sprite's
+// grid. tileH here approximates the tile aspect for the client preview box; the
+// sprite's real tile height is set by ffmpeg `scale=tileW:-2` on the true source
+// aspect (independent of this value), so an approximation is harmless.
 function storyboardDescriptor(item) {
   if (!item || item.type !== 'video') return null;
   const plan = planStoryboard(item.duration);
