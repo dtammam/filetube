@@ -140,9 +140,9 @@ test('(HARD GATE) an already-indexed, unchanged video with no width/height is NE
   const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
   fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
   fs.writeFileSync(thumbPath, 'ORIGINAL-THUMBNAIL-BYTES');
-  // v1.92: a present storyboard sidecar + descriptor keeps this item FULLY
-  // migrated, so the reuse fast-path does no storyboard backfill either -- the
-  // test's real invariant (an unchanged item is never re-probed/re-spawned).
+  // v1.93.2: a present storyboard sprite FILE keeps this item's reuse fast-path
+  // from any storyboard backfill (the heal is keyed on the on-disk sprite), so
+  // the test's real invariant holds -- an unchanged item is never re-spawned.
   fs.writeFileSync(path.join(THUMBNAIL_DIR, `${id}.sb.jpg`), 'ORIGINAL-STORYBOARD-BYTES');
 
   writeDb({

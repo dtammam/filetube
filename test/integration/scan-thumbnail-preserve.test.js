@@ -499,25 +499,32 @@ test('(f2) a storyboard-less reused video gets EXACTLY ONE storyboard pass (no t
     'each grab holds EXACTLY ONE source input (the bounded-memory guarantee)'));
   assert.ok(!execCalls.some(c => /^ffmpeg -ss /.test(c)), 'the good thumbnail is never re-grabbed');
   assert.equal(fs.readFileSync(thumbPath, 'utf8'), 'GOOD-THUMB-NO-SB', 'existing thumbnail bytes untouched');
+  // v1.93.2: the sprite is its own state ON DISK; NO descriptor is persisted to
+  // the record (it is derived at read time). The generated sprite file exists.
+  const sbPath = path.join(THUMBNAIL_DIR, `${id}.sb.jpg`);
+  assert.ok(fs.existsSync(sbPath), 'the storyboard sprite FILE was generated on disk');
   let db = readDb();
-  assert.ok(db.metadata[id].storyboard && db.metadata[id].storyboard.count === 22, 'the storyboard descriptor (planStoryboard(42)) is now persisted');
+  assert.ok(!('storyboard' in db.metadata[id]), 'NO storyboard descriptor is written to the db (disk-keyed, derived)');
   assert.deepEqual(sbTmpLeftovers(), [], 'the per-id temp dir is removed after generation (no #110-class leak)');
 
-  // Second scan: the storyboard is present -> NO further ffmpeg work (one-time).
+  // Second scan: the sprite is present ON DISK -> NO further ffmpeg work. This
+  // is the CONVERGENCE binding (the prod churn was a scan that re-generated
+  // every video forever because it keyed off an unpersisted flag). Now it keys
+  // off the on-disk sprite, so it converges with no dependence on a saved flag.
   execCalls = [];
   execFileCalls = [];
   await scanDirectories();
-  assert.equal(execCalls.length, 0, 'no storyboard (or any) ffmpeg spawn on the second scan -- backfill is one-time, no churn');
+  assert.equal(execCalls.length, 0, 'no ffmpeg spawn on the second scan -- the on-disk sprite makes it converge (no churn)');
   db = readDb();
   assert.equal(db.metadata[id].artist, 'NEEDS-SB-SENTINEL', 'still reused untouched on the second scan');
 });
 
-// (f3) v1.93.1: a storyboard GRAB failure degrades gracefully - the whole
+// (f3) v1.93.1/.2: a storyboard GRAB failure degrades gracefully - the whole
 // sprite is abandoned (a single missing frame would poison the image2
-// sequence), the descriptor is an explicit null, NO half-written sprite is left
-// on disk, and the per-id temp dir is cleaned up (the #110 leak lesson under a
-// failure path, not just the happy path).
-test('(f3) a storyboard generation failure leaves no sprite, a null descriptor, and no temp-dir leak', async () => {
+// sequence), NO half-written sprite is left on disk, no descriptor is written
+// (disk-keyed), and the per-id temp dir is cleaned up (the #110 leak lesson
+// under a failure path, not just the happy path).
+test('(f3) a storyboard generation failure leaves no sprite, no descriptor write, and no temp-dir leak', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-f3-'));
   const filePath = path.join(root, 'sb-fails.mp4');
   const bytes = 'storyboard-gen-will-fail';
@@ -552,7 +559,7 @@ test('(f3) a storyboard generation failure leaves no sprite, a null descriptor, 
   assert.equal(fs.existsSync(sbPath), false, 'no half-written sprite is left behind');
   assert.deepEqual(sbTmpLeftovers(), [], 'the temp dir is cleaned up even on the failure path');
   const db = readDb();
-  assert.strictEqual(db.metadata[id].storyboard, null, 'the descriptor is an explicit null (persist-gate: field present)');
+  assert.ok(!('storyboard' in db.metadata[id]), 'no descriptor is written (disk-keyed; a failed gen just leaves no sprite)');
   assert.equal(db.metadata[id].artist, 'SB-FAIL-SENTINEL', 'the item is otherwise reused untouched');
 });
 
