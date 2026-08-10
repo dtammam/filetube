@@ -80,6 +80,58 @@
 
 ## Shipped
 
+### v1.93.0 - Storyboard sprites: seek-based sampling (fast generation) (2026-08-10)
+
+A performance fix for the v1.92 storyboard backfill, driven by Dean's live
+profiling. v1.92 generated each sprite with FFmpeg's `fps=1/interval` filter,
+which **decodes the entire file** to keep one frame per interval - O(filesize).
+On Dean's server the first-run backfill measured a median of 5.3s but a brutal
+size-skewed tail (p99 193s, max ~10min, and the >600s monsters fell outside the
+measurement cap), leaving ~12-24h of grinding on a box pinned 6/6 - ~85-90% of
+it the 158 files over 500MB.
+
+**The fix:** replace the full-decode filter with **per-timestamp input seeks**.
+Each of the `plan.count` sample points now gets its own `-ss <i*interval> -i src`
+(FFmpeg seeks to the prior keyframe and decodes only forward to `t`), and those
+single frames are `concat`ed in order and `tile`d into the **identical** sprite
+grid. Cost drops to O(framecount) - a few dozen fast seeks, independent of file
+size. Only one pure function (`buildStoryboardArgs`) changed; `planStoryboard`,
+the descriptor, the `/storyboard/:id` route, and the client renderer are all
+untouched. The output geometry is byte-identical, so the sprites already on disk
+stay valid and are **skipped** by the reuse scan (it regenerates only on an
+absent descriptor / missing file, never by content) - only the un-generated
+files regenerate, on the fast path. New/changed videos get the fast path
+automatically at scan time.
+
+**What the two-reviewer gate caught (full gate, both seats APPROVE):** the
+adversarial seat mutation-tested the three new fix-binding tests (9 mutants, all
+killed) and confirmed by measurement that the existing sprites stay valid and
+that a seek never over-runs EOF. Both seats flagged a stale documentary comment
+in the scan test mock (fixed). Both also raised the one real risk below.
+
+**Known gaps / risks (disclosed):** (1) the FFmpeg command itself is **not
+runnable on the dev box** (no ffmpeg) - it's verified by the arg-array unit
+tests + the gate's construction analysis, and the real generation is Dean's
+device pass. (2) **The seek-based command opens the source file once per frame
+(up to 100x for a long video) in a single FFmpeg run.** For a large 4K/HEVC file
+that could spike memory and, worst case, get that one FFmpeg process OOM-killed -
+in which case that single video silently gets no sprite (graceful: backfill
+continues, app stays up, existing sprites safe). Unproven without ffmpeg;
+Dean's device pass front-loads a large-file memory probe **before** the mass
+backfill, and a bounded-concurrency batching fallback is designed if needed
+(tech-debt).
+
+Dual-Node: **Node 22.23.1 6524/6525**, **Node 24.14.0 6522/6525** - every failure
+was a pre-existing timing/load flake (`capture-determinism`, `backup-restore`,
+`modern-grid-api`), each green in isolation and none touching the changed code;
+disclosed, not papered over (suite-flakiness tech-debt). All storyboard/changed
+tests green on both. **AWAITING DEAN'S ON-DEVICE PASS** - probe list: (1) on the
+new image, before the mass backfill, run ONE of your biggest/4K/longest videos
+through it and watch the ffmpeg child's peak RSS (the memory risk above);
+(2) confirm a freshly-generated sprite scrubs correctly; (3) let the backfill
+finish and confirm the remaining files light up fast (target <1h vs 12-24h);
+(4) trigger one more scan and confirm NO new "Restoring" lines (non-churn).
+
 ### v1.92.0 - Storyboard previews: seek-bar scrub + card autoplay (2026-08-09)
 
 Dean's two ideas. **Idea 2 (built):** hover-preview thumbnails, YouTube-style.
