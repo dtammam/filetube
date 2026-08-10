@@ -80,6 +80,47 @@
 
 ## Shipped
 
+### v1.93.3 - Storyboard card preview: polish (delay + crossfade + sharper tiles) (2026-08-10)
+
+Dean's on-device polish pass on the grid-card hover / in-view preview (the seek-
+bar scrub preview he loves is untouched). Three tweaks:
+- **Starts too fast -> a ~1.5s intent delay.** The preview begins only on
+  sustained hover / in-view; a brush-past or fast scroll cancels it before it
+  fires (YouTube-style).
+- **"Jarring slideshow, not a preview playing" -> crossfade + calmer pace.** The
+  storyboard frames are *seconds apart* in the source and were hard-cutting at
+  5fps. Now two stacked layers **crossfade** (a 0.25s dissolve) at a calmer
+  ~2.2fps, so distant frames read as motion instead of flipping photos.
+- **Low-quality tiles -> 2x resolution.** `SB_TILE_W` 160 -> 320 for crisp
+  tiles. Because sprites are keyed by file existence (v1.93.2), the *existing*
+  160px sprites do not auto-upgrade - they render fine (just soft) until
+  regenerated, so this release includes a **one-time sprite wipe + rescan** on
+  deploy (below). The v1.93.2 load-guard is preserved (still no black box).
+
+**Slim gate (adversarial seat, both rounds APPROVE):** caught a real WARNING -
+the new start-delay timers could breach the mobile 2-card battery cap (stale
+`pending` timers weren't cancelled on scroll-out); fixed (prune pending
+non-winners in the IntersectionObserver, bound by construction to <=2). One
+disclosed **device-to-judge** item: the current *simultaneous* crossfade dips
+~25% toward the letterbox black at each midpoint - a possible subtle pulse. Left
+for Dean's on-device call; if it reads as a flicker, the fix is a fade-in-on-top
+dissolve (a fiddly, untestable-here rewrite, so done with eyes on it) - tech-debt
+#136.
+
+Dual-Node: **Node 22.23.1 6531/6531, Node 24.14.0 6531/6531**, zero failures. The
+client animation is verified by inspection (private IIFE, no jsdom harness) +
+Dean's device. **AWAITING DEAN'S ON-DEVICE PASS** - deploy `1.93.3`, then to
+apply the sharper tiles regenerate the sprites (they render soft until then):
+```
+# in compose pin the tag to 1.93.3, then:
+docker compose pull filetube && docker compose up -d filetube
+docker exec filetube sh -c 'rm -f /app/data/.thumbnails/*.sb.jpg'   # drop the 160px sprites
+# the boot/next scan regenerates them at 320px (fast on 1.93.x)
+```
+Probe: (1) hover/scroll a card -> preview starts after ~1.5s and crossfades
+smoothly (watch for the darkening pulse); (2) after the rescan, tiles are crisp;
+(3) no black boxes on un-generated videos.
+
 ### v1.93.2 - Storyboard sprites: disk-keyed (derived descriptor) - previews finally serve (2026-08-10)
 
 A correctness fix for a defect the v1.92 storyboard feature carried from day one,
