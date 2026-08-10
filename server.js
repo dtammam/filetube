@@ -1685,6 +1685,28 @@ function getMediaId(filePath) {
   return crypto.createHash('md5').update(filePath).digest('hex');
 }
 
+// v1.94.1: order a scan's collected files NEWEST-first, so the per-file loop
+// generates thumbnail/sprite/preview-clip sidecars for the most-recently-added
+// videos (what the default home view shows) before the rest - a big backfill
+// otherwise fills folders in walk order and leaves the home view empty at first.
+// Recency = the item's persisted `addedAt` (the home sort key) if the db knows
+// it, else a brand-new file's derived `addedAt`, else its mtime. Pure + stable
+// (the sort key is precomputed once per file); ordering never changes the end
+// state, only which files finish first. Returns [{ fp, fileInfo, recency }].
+function orderScannedByRecency(scannedFiles, metadata) {
+  const meta = metadata && typeof metadata === 'object' ? metadata : {};
+  const arr = Array.from(scannedFiles.entries()).map(([fp, fileInfo]) => {
+    const existing = meta[getMediaId(fp)];
+    const recency = (existing && typeof existing.addedAt === 'number') ? existing.addedAt
+      : (fileInfo && typeof fileInfo.addedAt === 'number') ? fileInfo.addedAt
+        : (fileInfo && typeof fileInfo.mtimeMs === 'number') ? fileInfo.mtimeMs
+          : 0;
+    return { fp, fileInfo, recency };
+  });
+  arr.sort((a, b) => b.recency - a.recency); // newest first
+  return arr;
+}
+
 // FR-F bug fix (v1.12.0, yt-dlp module parity): the optional yt-dlp module
 // downloads with `--restrict-filenames` (SF4, kept intact -- NOT removed by
 // this fix), which produces names shaped
@@ -4036,7 +4058,13 @@ async function runScanDirectories() {
     }
   }
 
-  for (const [filePath, info] of scannedFiles.entries()) {
+  // v1.94.1: process NEWEST-first so the default home view (recency-ordered) gets
+  // its thumbnail/sprite/preview-clip sidecars generated FIRST. The walk yields
+  // files in directory order, so a big backfill previously filled folders one by
+  // one and left the home view (often the LAST folder walked) empty for the first
+  // stretch. Ordering only changes WHICH files finish first - each is processed
+  // independently, so the end state and the Phase-2 merge are unchanged.
+  for (const { fp: filePath, fileInfo: info } of orderScannedByRecency(scannedFiles, db.metadata)) {
     const id = getMediaId(filePath);
     const isAudio = AUDIO_EXTENSIONS.includes(info.ext);
 
@@ -16479,6 +16507,7 @@ module.exports = {
   // selectPrunableIds above.
   detectVanishedRoots,
   mergeScannedMetadata,
+  orderScannedByRecency, // v1.94.1: newest-first scan ordering (pure, unit-tested)
   transcodeCacheSize,
   effectiveCacheCap,
   recordServed,
