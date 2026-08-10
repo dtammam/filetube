@@ -1328,13 +1328,12 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 /* v1.92 storyboard card preview: a sprite-backed layer over the thumbnail that
    fades in while the card is hovered (desktop) or centred in view (mobile).
-   background-image / -size / -position are set inline by main.js from the
-   shared tile geometry; this rule owns only layout + the fade. */
+   v1.94: the overlay holds a muted <video> (the /preview/:id hover clip) that
+   main.js creates + plays lazily; this rule owns only layout + the fade. */
 .card-preview {
   position: absolute;
   inset: 0;
   z-index: 1; /* token-exempt: local stacking, above .thumbnail-img, below badges */
-  background-repeat: no-repeat;
   background-color: #000; /* token-exempt: letterbox black, matches .thumbnail-container */
   opacity: 0;
   transition: opacity var(--dur-fast) var(--ease-ui);
@@ -1343,25 +1342,18 @@ html.reader-immersive .app-container { padding-top: 0; }
 .card-preview.previewing {
   opacity: 1;
 }
-/* v1.93.3: two stacked frame layers so consecutive storyboard frames CROSSFADE
-   into each other (the frames are seconds apart in the source; a hard cut reads
-   as a jarring slideshow). main.js paints the off-layer to the next frame then
-   toggles `.on`; the opacity transition does the dissolve. */
-.card-preview .sb-layer {
+/* v1.94: the hover-clip <video> fills the overlay (cover so it fills the card
+   like the poster; the #000 parent letterboxes any gap). */
+.card-preview-video {
   position: absolute;
   inset: 0;
-  background-repeat: no-repeat;
-  opacity: 0;
-  transition: opacity var(--dur-slow) var(--ease-ui);
-}
-.card-preview .sb-layer.on {
-  opacity: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 @media (prefers-reduced-motion: reduce) {
-  /* belt-and-suspenders: the JS already refuses to animate, but never fade in */
+  /* belt-and-suspenders: the JS already refuses to play, but never fade in */
   .card-preview.previewing { opacity: 0; }
-  /* and no crossfade motion if one ever slipped through */
-  .card-preview .sb-layer { transition: none; }
 }
 
 .duration-badge {
