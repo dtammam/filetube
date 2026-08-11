@@ -89,6 +89,37 @@ test('rekeyMediaState carries the feed-hide old->new for every user; a colliding
   assert.deepEqual(store.getFeedHidden(b.id), ['new'], 'b keeps exactly one row under the new id (no PK-collision throw)');
 });
 
+test('CRITICAL-1 (gate): feed-hidden state survives a backup export -> restore round-trip', () => {
+  // The backup is a curated JSON re-export, not a file copy: replaceAllUsersRaw
+  // DELETEs users (cascading user_feed_hidden away) and rebuilds each carrier
+  // from the bundle. A carrier absent from export/restore is SILENTLY ERASED on
+  // restore - the id-keyed-carrier class this repo has paid for 5+ times.
+  const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO(0));
+  const b = store.createUser({ username: 'b', displayName: 'B', passwordHash: 'h', role: 'member' }, ISO(0));
+  store.addFeedHidden(a.id, 'v1', ISO(1));
+  store.addFeedHidden(a.id, 'v2', ISO(2));
+  store.addFeedHidden(b.id, 'v9', ISO(1));
+
+  const bundle = store.exportUsersForBackup();
+  const ab = bundle.find((u) => u.id === a.id);
+  assert.ok(Array.isArray(ab.feedHidden), 'export carries a feedHidden array');
+  assert.deepEqual(ab.feedHidden.map((f) => f.mediaId).sort(), ['v1', 'v2'], 'export carries the ids');
+
+  store.replaceAllUsersRaw(bundle); // wipe + rebuild
+  assert.deepEqual(store.getFeedHidden(a.id).sort(), ['v1', 'v2'], "a's feed-hide survived the round-trip");
+  assert.deepEqual(store.getFeedHidden(b.id), ['v9'], "b's feed-hide survived, per-user");
+});
+
+test('a pre-v1.97 bundle (no feedHidden field) restores legally as empty, losing nothing else', () => {
+  const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO(0));
+  store.addLiked(a.id, 'liked-x', ISO(1));
+  const bundle = store.exportUsersForBackup();
+  for (const u of bundle) delete u.feedHidden; // simulate an old bundle
+  store.replaceAllUsersRaw(bundle);
+  assert.deepEqual(store.getFeedHidden(a.id), [], 'absent field -> empty, not a throw');
+  assert.deepEqual(store.getLiked(a.id), ['liked-x'], 'the rest of the bundle restored fine');
+});
+
 test('schema: user_feed_hidden exists at v17 and cascades on user delete (FK ON DELETE CASCADE)', () => {
   const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO(0));
   const b = store.createUser({ username: 'b', displayName: 'B', passwordHash: 'h', role: 'member' }, ISO(0));

@@ -145,6 +145,29 @@ test('GET /api/feed-hidden lists the hidden items (newest-first) for the You-tab
   assert.ok(body.items.every((i) => i.title && i.id), 'items are shaped for card rendering');
 });
 
+test('RBAC: GET /api/feed-hidden never leaks a SINCE-restricted item (the v1.80 list-leak class)', async () => {
+  // A member hides an item they can see, THEN an admin restricts its folder for
+  // them. The restore list must drop it - id AND title - not leak it.
+  seed({ secret: item('secret', { folderName: 'Vault', filePath: '/media/Vault/secret.mp4' }), plain: item('plain') });
+  const kid = __mintTestSession({ username: 'kidhide', role: 'member' });
+  await fetch(`${base}/api/feed-hidden/secret`, { method: 'POST', headers: { Cookie: kid.cookie } });
+  await fetch(`${base}/api/feed-hidden/plain`, { method: 'POST', headers: { Cookie: kid.cookie } });
+
+  // Before restriction: both are in the member's restore list.
+  let body = await (await fetch(`${base}/api/feed-hidden`, { headers: { Cookie: kid.cookie } })).json();
+  assert.deepEqual((body.items || []).map((i) => i.id).sort(), ['plain', 'secret']);
+
+  // Restrict the member from the 'Vault' folder.
+  userStore.setRestrictions(kid.user.id, [{ kind: 'folder', value: 'Vault' }]);
+
+  body = await (await fetch(`${base}/api/feed-hidden`, { headers: { Cookie: kid.cookie } })).json();
+  const ids = (body.items || []).map((i) => i.id);
+  assert.ok(!ids.includes('secret'), 'the since-restricted item is NOT leaked in the restore list');
+  assert.deepEqual(ids, ['plain'], 'only the still-visible item remains');
+  assert.strictEqual(body.total, 1, 'total reflects the RBAC filter, not the raw membership');
+  assert.ok(!JSON.stringify(body).includes('Title secret'), 'the restricted item\'s TITLE never appears in the payload');
+});
+
 test('ROUTE: POST 404s an unknown id (existence-gated) and never persists it', async () => {
   seed({ a: item('a') });
   const r = await hide('ghost');

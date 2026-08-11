@@ -80,7 +80,7 @@ test('fetchModernGrid mints a fresh seed on reset + wires the shared sentinel (e
 });
 
 test('maybeLoadNextPage has a modern branch that APPENDS the next page (never replaces) and drops a stale filter mid-fetch', () => {
-  const fn = MAIN.slice(MAIN.indexOf('async function maybeLoadNextPage'), MAIN.indexOf('async function maybeLoadNextPage') + 1400);
+  const fn = MAIN.slice(MAIN.indexOf('async function maybeLoadNextPage'), MAIN.indexOf('async function maybeLoadNextPage') + 2200);
   assert.match(fn, /if \(modernMode\) \{/, 'a modern-mode branch exists');
   const modernBranch = fn.slice(fn.indexOf('if (modernMode) {'));
   assert.match(modernBranch, /buildModernGridUrl\(nextOffset\)/, 'fetches the NEXT page URL');

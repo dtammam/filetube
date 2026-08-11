@@ -1652,8 +1652,16 @@ const PreviewCards = (function () {
           currentOffset = typeof data.offset === 'number' ? data.offset : nextOffset;
           currentLimit = typeof data.limit === 'number' && data.limit > 0 ? data.limit : currentLimit;
           currentTotal = typeof data.total === 'number' ? data.total : currentTotal;
-          currentItems = currentItems.concat(items);
-          videoGrid.insertAdjacentHTML('beforeend', items.map((it) => buildCardHtml(it, { feedHideable: true })).join(''));
+          // v1.97 gate W1/S1: DE-DUPE on append. After a mid-session feed-hide the
+          // candidate set shrank by one, so a seeded `random` shuffle re-permutes
+          // and the next page can re-deliver an already-rendered card. Drop any id
+          // already on screen so a hidden-then-scroll never DUPES a card. (A random
+          // SKIP is inherent to a seeded shuffle over a changed set and self-heals
+          // on refresh - disclosed; the stable sorts are unaffected either way.)
+          const seenIds = new Set(currentItems.map((it) => String(it.id)));
+          const fresh = items.filter((it) => !seenIds.has(String(it.id)));
+          currentItems = currentItems.concat(fresh);
+          videoGrid.insertAdjacentHTML('beforeend', fresh.map((it) => buildCardHtml(it, { feedHideable: true })).join(''));
         } catch (err) {
           console.error('Failed to load the next modern grid page:', err);
         } finally {
