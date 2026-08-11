@@ -135,6 +135,16 @@
         grid.appendChild(buildShowCard(show));
       });
       content.appendChild(grid);
+      revealPodcastArt();
+    }
+
+    // v1.102 (tranche 4 shimmer): the show/episode art images ship `art-shimmer`;
+    // the shared decode-reveal clears each the instant it decodes (and immediately
+    // for a cached one, so a warm image never shimmers forever).
+    function revealPodcastArt() {
+      if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.shimmerArt === 'function') {
+        window.FileTube.shimmerArt(content);
+      }
     }
 
     // Refresh whatever list is on screen from server state (delete/restore/
@@ -149,7 +159,7 @@
       card.type = 'button';
       card.className = 'podcast-card';
       var art = document.createElement('img');
-      art.className = 'podcast-card-art';
+      art.className = 'podcast-card-art art-shimmer';
       art.alt = '';
       art.loading = 'lazy';
       // A ytdlp-sourced show carries a server-built artUrl (a /thumbnail/
@@ -215,7 +225,7 @@
       var head = document.createElement('div');
       head.className = 'podcast-show-head';
       var art = document.createElement('img');
-      art.className = 'podcast-show-art';
+      art.className = 'podcast-show-art art-shimmer';
       art.alt = '';
       art.src = currentShow.artUrl || ('/podcastart/' + encodeURIComponent(currentShow.id));
       head.appendChild(art);
@@ -294,6 +304,7 @@
       });
       content.appendChild(list);
       applyPlayingHighlight();
+      revealPodcastArt();
     }
 
     function buildManageRow() {

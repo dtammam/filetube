@@ -85,7 +85,7 @@ function buildHistoryRowHtml(item, nowMs) {
   return '' +
     '<div class="history-row" data-id="' + id + '">' +
     '<a href="' + escapeHistoryHtml(watchHref) + '" class="history-thumb">' +
-    '<img class="history-thumb-img" src="/thumbnail/' + encodeURIComponent(item.id || '') + '" alt="" loading="lazy" />' +
+    '<img class="history-thumb-img art-shimmer" src="/thumbnail/' + encodeURIComponent(item.id || '') + '" alt="" loading="lazy" />' +
     (durationStr ? '<span class="duration-badge">' + escapeHistoryHtml(durationStr) + '</span>' : '') +
     (barPct !== null ? '<span class="history-bar"><span class="history-bar-fill" data-pct="' + barPct + '"></span></span>' : '') +
     '</a>' +
@@ -180,6 +180,11 @@ if (typeof module !== 'undefined' && module.exports) {
           if (replace) listEl.innerHTML = html;
           else listEl.insertAdjacentHTML('beforeend', html);
           wireHistoryRowBars(listEl);
+          // v1.102 (tranche 4 shimmer): the thumbnails ship `art-shimmer`; the
+          // shared decode-reveal clears each on decode (immediately for cached).
+          if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.shimmerArt === 'function') {
+            window.FileTube.shimmerArt(listEl);
+          }
           refreshChrome();
         })
         .catch(function (err) {

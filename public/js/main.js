@@ -405,7 +405,7 @@ function populateModernAvatarBar(barEl, channels) {
     const src = (typeof resolveAvatarSource === 'function') ? resolveAvatarSource(c.name, c.avatarUrl) : { type: 'generated', glyph: '?', color: '#888' };
     if (src.type === 'url') {
       const img = document.createElement('img');
-      img.src = src.url; img.alt = ''; img.loading = 'lazy';
+      img.src = src.url; img.alt = ''; img.loading = 'lazy'; img.className = 'art-shimmer';
       circle.appendChild(img);
     } else {
       circle.textContent = src.glyph;
@@ -419,6 +419,11 @@ function populateModernAvatarBar(barEl, channels) {
     barEl.appendChild(a);
   }
   barEl.hidden = false;
+  // v1.102 (tranche 4 shimmer): the URL-avatar images ship `art-shimmer`; the
+  // shared decode-reveal clears each on decode (immediately for a cached avatar).
+  if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.shimmerArt === 'function') {
+    window.FileTube.shimmerArt(barEl);
+  }
 }
 
 function buildModernEmptyHtml(filter) {

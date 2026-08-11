@@ -29,7 +29,7 @@ function buildBookCardHtml(item) {
   return `
     <div class="book-card">
       <a href="/read.html?b=${encodeURIComponent(item.id)}" class="book-cover-link">
-        <img class="book-cover-img" src="/bookcover/${encodeURIComponent(item.id)}" alt="${escapeBookHtml(item.title)}" loading="lazy" />
+        <img class="book-cover-img art-shimmer" src="/bookcover/${encodeURIComponent(item.id)}" alt="${escapeBookHtml(item.title)}" loading="lazy" />
         ${progressBar}
       </a>
       <a href="/read.html?b=${encodeURIComponent(item.id)}" class="book-title" title="${escapeBookHtml(item.title)}">${escapeBookHtml(item.title)}</a>
@@ -148,6 +148,7 @@ if (typeof module !== 'undefined' && module.exports) {
         const items = Array.isArray(data.items) ? data.items : [];
         grid.innerHTML = items.map(buildBookCardHtml).join('');
         if (emptyNote) emptyNote.hidden = items.length > 0;
+        revealBookArt(grid);
         return items.length;
       } catch (err) {
         grid.innerHTML = '';
@@ -166,8 +167,18 @@ if (typeof module !== 'undefined' && module.exports) {
         const items = Array.isArray(data.items) ? data.items : [];
         continueGrid.innerHTML = items.map(buildBookCardHtml).join('');
         continueSection.hidden = items.length === 0;
+        revealBookArt(continueGrid);
       } catch (_) {
         continueSection.hidden = true;
+      }
+    }
+
+    // v1.102 (tranche 4 shimmer): the cover images ship `art-shimmer`; the shared
+    // decode-reveal clears each the instant it decodes (immediately for a cached
+    // cover, so a warm image never shimmers forever under a visible picture).
+    function revealBookArt(scope) {
+      if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.shimmerArt === 'function') {
+        window.FileTube.shimmerArt(scope);
       }
     }
 

@@ -36,7 +36,7 @@ function buildAlbumCardHtml(album) {
   var count = album.trackCount ? album.trackCount + (album.trackCount === 1 ? ' track' : ' tracks') : '';
   return '' +
     '<button type="button" class="music-album-card" data-album-key="' + escapeMusicHtml(album.albumKey) + '">' +
-    '<img class="music-album-art" src="' + escapeMusicHtml(art) + '" alt="' + escapeMusicHtml(album.album) + '" loading="lazy" />' +
+    '<img class="music-album-art art-shimmer" src="' + escapeMusicHtml(art) + '" alt="' + escapeMusicHtml(album.album) + '" loading="lazy" />' +
     '<span class="music-album-title" title="' + escapeMusicHtml(album.album) + '">' + escapeMusicHtml(album.album || 'Unknown album') + '</span>' +
     '<span class="music-album-artist" title="' + escapeMusicHtml(album.artist) + '">' + escapeMusicHtml(album.artist) + '</span>' +
     '<span class="music-album-count">' + escapeMusicHtml(count) + '</span>' +
@@ -66,7 +66,7 @@ function buildSongRowHtml(item, index) {
   return '' +
     '<div class="music-song-row" data-index="' + index + '" data-id="' + escapeMusicHtml(item.id) + '">' +
     '<span class="music-song-thumb-wrap">' +
-    '<img class="music-song-thumb" src="/albumart/' + encodeURIComponent(item.id) + '" alt="" loading="lazy" />' +
+    '<img class="music-song-thumb art-shimmer" src="/albumart/' + encodeURIComponent(item.id) + '" alt="" loading="lazy" />' +
     '<span class="music-eq" aria-hidden="true"><i></i><i></i><i></i></span>' +
     '</span>' +
     '<span class="music-song-main">' +
@@ -146,7 +146,7 @@ function buildDrillHeaderHtml(drill, tracks) {
     '<div class="music-drill-header">' +
     '<button type="button" class="music-drill-back btn btn-sm" aria-label="Back">‹ Back</button>' +
     '<div class="music-drill-heading">' +
-    '<img class="music-drill-art" src="/albumart/' + encodeURIComponent(artId) + '" alt="' + escapeMusicHtml(title) + '" />' +
+    '<img class="music-drill-art art-shimmer" src="/albumart/' + encodeURIComponent(artId) + '" alt="' + escapeMusicHtml(title) + '" />' +
     '<div class="music-drill-info">' +
     '<h3 class="music-drill-title" title="' + escapeMusicHtml(title) + '">' + escapeMusicHtml(title) + '</h3>' +
     (artist ? '<div class="music-drill-artist">' + escapeMusicHtml(artist) + '</div>' : '') +
@@ -171,7 +171,7 @@ function buildStickyBarHtml(drill, tracks) {
   return '' +
     '<div class="music-drill-sticky">' +
     '<button type="button" class="music-drill-back music-sticky-back btn btn-sm" aria-label="Back">‹</button>' +
-    '<img class="music-sticky-thumb" src="/albumart/' + encodeURIComponent(artId) + '" alt="" />' +
+    '<img class="music-sticky-thumb art-shimmer" src="/albumart/' + encodeURIComponent(artId) + '" alt="" />' +
     '<span class="music-sticky-title" title="' + escapeMusicHtml(title) + '">' + escapeMusicHtml(title) + '</span>' +
     '<button type="button" class="music-drill-play music-sticky-play btn btn-primary btn-sm" aria-label="Play"><i class="icon-play"></i></button>' +
     '</div>';
@@ -490,10 +490,20 @@ if (typeof module !== 'undefined' && module.exports) {
       return queue;
     }
 
+    // v1.102 (tranche 4 shimmer): every art image in `content` (album/song/drill/
+    // sticky) ships `art-shimmer`; hand them to the shared decode-reveal so each
+    // clears the shimmer the instant it decodes (and immediately for a cached one).
+    function revealMusicArt() {
+      if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.shimmerArt === 'function') {
+        window.FileTube.shimmerArt(content);
+      }
+    }
+
     function renderSongList() {
       content.innerHTML = '<div class="music-song-list">' + queue.map(buildSongRowHtml).join('') + '</div>';
       if (emptyNote) emptyNote.hidden = queue.length > 0;
       applyPlayingHighlight();
+      revealMusicArt();
     }
 
     // Toggle `.playing` (accent + equalizer glyph) on the row whose track id
@@ -522,6 +532,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (emptyNote) emptyNote.hidden = queue.length > 0;
       applyPlayingHighlight();
       wireStickyObserver();
+      revealMusicArt();
     }
 
     function wireStickyObserver() {
@@ -596,6 +607,9 @@ if (typeof module !== 'undefined' && module.exports) {
         if (content) content.innerHTML = ''; // v1.98: never strand the seeded shimmer on error
         if (emptyNote) emptyNote.hidden = false;
       }
+      // v1.102: reveal the album/artist art (songs/drill self-cover via their own
+      // renderers above; a second pass here is an idempotent no-op).
+      revealMusicArt();
       // Re-evaluate the "Playing from" line on every render (a tab switch may
       // reveal that the player was closed, or that a non-music item is playing).
       updateNowPlaying();

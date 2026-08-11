@@ -74,6 +74,31 @@ function chromeIconEl(name, extraClass) {
   return svg;
 }
 
+// v1.102 (tranche 4 shimmer): the ART-DECODE reveal. Every card image (album/
+// podcast/book/history art, mobile avatar) ships with the `art-shimmer` class so
+// its reserved box shimmers (a token-only gradient swept on the img's OWN
+// background - a replaced <img> can't host a ::after sweep) instead of flashing a
+// flat tint then popping to the decoded picture. This wires each such image to
+// drop the class the instant it decodes (`load`) or fails (`error`), and clears
+// it immediately for an image that is ALREADY complete from cache - the named
+// cached-image edge, without which a warm image would shimmer FOREVER under a
+// fully-visible picture. `root` scopes the query to a just-rendered subtree
+// (default: document). Listener-`once` + idempotent, so re-running over a
+// partially-revealed set is safe. Exposed on window.FileTube for the view files.
+function shimmerArt(root) {
+  if (typeof document === 'undefined') return;
+  const scope = (root && typeof root.querySelectorAll === 'function') ? root : document;
+  scope.querySelectorAll('img.art-shimmer').forEach((img) => {
+    const clear = () => img.classList.remove('art-shimmer');
+    // `complete` is true for a decoded image AND a cached-broken one; either way
+    // no load event is coming, so stop shimmering now (a broken image then shows
+    // its own broken-image affordance, never a perpetual shimmer).
+    if (img.complete) { clear(); return; }
+    img.addEventListener('load', clear, { once: true });
+    img.addEventListener('error', clear, { once: true });
+  });
+}
+
 // Single source of truth for both the setup-page Appearance picker and the
 // switching logic. Adding a 5th era = one entry here + one CSS block pair.
 const THEME_REGISTRY = [
@@ -7922,6 +7947,9 @@ if (typeof window !== 'undefined') {
   // resolves it through this namespace when the bare global is absent, which
   // is exactly the case in a jsdom test that requires setup.js as a module.
   window.FileTube.wireReorderable = wireReorderable;
+  // v1.102 (tranche 4 shimmer): the art-decode reveal helper, called by every
+  // view file after it renders a batch of card images.
+  window.FileTube.shimmerArt = shimmerArt;
 }
 
 // Renders the Playlists sheet's folder list — functionally equivalent to the
@@ -11638,6 +11666,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // builders). chrome-icons.test.js byte-binds the map to the on-disk assets
     // and source-locks the static bottom-nav markup against chromeIconMarkup.
     CHROME_ICON_SVG, chromeIconMarkup, chromeIconEl,
+    // v1.102 (tranche 4 shimmer): the art-decode reveal helper (jsdom-tested).
+    shimmerArt,
     // v1.63 playback queue: the chrome's pure decisions.
     shouldShowQueueButton, formatQueueBadge, buildQueueRowModel, buildQueueRowModels, queueEntryHref,
     formatQueuePosition,
