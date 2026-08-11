@@ -425,6 +425,100 @@ function renderInventory(root, inventory) {
   }
 }
 
+// ---- v1.102 (tranche 4 shimmer): pre-fetch dashboard skeleton ---------------
+// Before EITHER /api/stats or /api/duplicates resolves, seed a shape-matched
+// shimmer placeholder into every container so the dashboard never paints empty
+// then reflows twice as the two independent fetches land. Reuses ONLY existing
+// shared classes (the real `.theme-card` tile box + the `.skeleton-line`/
+// `.skeleton-shimmer` toolkit) and the SAME inline row box model as
+// buildBreakdownRow/buildAboutRow -- this page still owns no CSS. Every render*
+// below does clearChildren(root) before it fills, so the swap to real content is
+// automatic; on the four FIXED-shape tile grids the seed count is the real count
+// (true zero-shift), and the variable-length lists seed a representative row
+// count (a brief settle as the real list lands - the same accepted trade-off as
+// the library-view skeletons in t1).
+
+// The four fixed-shape tile grids -> their exact real tile counts.
+const STATS_TILE_GRIDS = [
+  ['stats-glance-grid', 5],   // total / video / audio / watch-time / size
+  ['stats-by-type', 2],       // Video / Audio
+  ['stats-records-grid', 3],  // longest / shortest / newest
+  ['stats-books-grid', 5],    // books / size / EPUB / PDF / narration
+];
+// The seven list containers -> a representative pre-fetch row count.
+const STATS_LIST_CONTAINERS = [
+  ['stats-folder-list', 4],
+  ['stats-channel-list', 3],
+  ['stats-most-watched-list', 5],
+  ['stats-books-folder-list', 3],
+  ['stats-duplicates-list', 3],
+  ['stats-inventory-list', 6],
+  ['stats-about', 4],
+];
+// The stats-fed containers (everything EXCEPT the independently-fetched
+// duplicates list, which owns its own fetch + error path). renderStatsError
+// clears these so a failed /api/stats never leaves a container shimmering
+// forever under a page that will never fill it.
+const STATS_FETCH_CONTAINERS = [
+  'stats-glance-grid', 'stats-by-type', 'stats-folder-list', 'stats-channel-list',
+  'stats-records-grid', 'stats-most-watched-list', 'stats-books-grid',
+  'stats-books-folder-list', 'stats-inventory-list', 'stats-about',
+];
+// The shared row box model -- MUST track buildBreakdownRow/buildAboutRow so the
+// skeleton row reserves the height the real row fills.
+const STATS_SKELETON_ROW_CSS = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
+
+// A `.theme-card`-shaped shimmer tile: two block skeleton lines (value + caption)
+// standing in for buildStatTile's number + muted caption.
+function buildStatsSkeletonTile() {
+  const tile = document.createElement('div');
+  tile.className = 'theme-card';
+  tile.setAttribute('aria-hidden', 'true');
+  const value = document.createElement('div');
+  value.className = 'skeleton-line skeleton-line-title skeleton-shimmer';
+  const caption = document.createElement('div');
+  caption.className = 'skeleton-line skeleton-line-meta skeleton-shimmer';
+  tile.appendChild(value);
+  tile.appendChild(caption);
+  return tile;
+}
+
+// A breakdown/about-row-shaped shimmer row: label bar + value bar in the same
+// flex box the real rows use. Widths are inline (not a governed colour property,
+// census-safe); margin:0 neutralises `.skeleton-line`'s default margin-bottom so
+// the centred flex row height matches the real single-line row.
+function buildStatsSkeletonRow() {
+  const row = document.createElement('div');
+  row.style.cssText = STATS_SKELETON_ROW_CSS;
+  row.setAttribute('aria-hidden', 'true');
+  const label = document.createElement('span');
+  label.className = 'skeleton-line skeleton-shimmer';
+  label.style.cssText = 'width:40%; margin:0;';
+  const value = document.createElement('span');
+  value.className = 'skeleton-line skeleton-shimmer';
+  value.style.cssText = 'width:25%; margin:0; flex-shrink:0;';
+  row.appendChild(label);
+  row.appendChild(value);
+  return row;
+}
+
+// Seed every dashboard container with its shape-matched shimmer BEFORE the two
+// fetches fire. Idempotent (clearChildren first) so a re-seed can't stack.
+function seedStatsSkeleton() {
+  for (const [id, n] of STATS_TILE_GRIDS) {
+    const root = document.getElementById(id);
+    if (!root) continue;
+    clearChildren(root);
+    for (let i = 0; i < n; i++) root.appendChild(buildStatsSkeletonTile());
+  }
+  for (const [id, n] of STATS_LIST_CONTAINERS) {
+    const root = document.getElementById(id);
+    if (!root) continue;
+    clearChildren(root);
+    for (let i = 0; i < n; i++) root.appendChild(buildStatsSkeletonRow());
+  }
+}
+
 function renderStatsDashboard(statsData) {
   const glanceRoot = document.getElementById('stats-glance-grid');
   const byTypeRoot = document.getElementById('stats-by-type');
@@ -454,9 +548,15 @@ function renderStatsDashboard(statsData) {
 }
 
 function renderStatsError() {
+  // v1.102: clear EVERY stats-fed container's seeded skeleton so a failed
+  // /api/stats never strands a shimmer under a section that will never fill.
+  // The duplicates list is fed by its own fetch and cleans up on its own path.
+  for (const id of STATS_FETCH_CONTAINERS) {
+    const el = document.getElementById(id);
+    if (el) clearChildren(el);
+  }
   const glanceRoot = document.getElementById('stats-glance-grid');
   if (!glanceRoot) return;
-  clearChildren(glanceRoot);
   const error = document.createElement('div');
   error.className = 'theme-card-blurb';
   error.textContent = 'Could not load stats right now. Try refreshing the page.';
@@ -469,6 +569,11 @@ function init() {
   // this file without common.js).
   const wireCollapse = (typeof window !== 'undefined') ? window.wireCollapsibleSections : undefined;
   if (typeof wireCollapse === 'function') wireCollapse('stats');
+
+  // v1.102 (tranche 4 shimmer): seed every container's shimmer BEFORE the two
+  // fetches below, so the dashboard shimmers-then-reveals instead of painting
+  // empty and reflowing twice as /api/stats and /api/duplicates land.
+  seedStatsSkeleton();
 
   // v1.47.8: the keyboard-shortcuts entry point. `openShortcutsModal` is a
   // common.js global (classic scripts, common.js loads first), reached via
@@ -525,5 +630,5 @@ if (typeof document !== 'undefined') {
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors setup.js/player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel };
+  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS };
 }
