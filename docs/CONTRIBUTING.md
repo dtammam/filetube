@@ -129,9 +129,12 @@ image, or a whole view:
    discipline; lesson #7 - measure the box, never guess CSS-var heights). Match
    the EXACT shape the branch will reveal, per sub-state (a persisted tab/filter
    is a COLD landing, not just an in-app switch - v1.98 music-artists scar).
-3. **STRAND-SAFE.** Every exit clears the seed - success, EMPTY result, ERROR/
-   catch, and an aborted view. A failed first load shows the empty/error state,
-   never a forever-shimmer.
+3. **STRAND-SAFE.** Every DATA exit clears the seed - success, EMPTY result, and
+   ERROR/catch - so a failed first load shows the empty/error state, never a
+   forever-shimmer. An aborted/navigated-away view may instead rely on the SPA
+   teardown discarding the host node (only when that host is genuinely rebuilt on
+   re-entry, e.g. the modern-home chrome); if the host can OUTLIVE the abort,
+   clear on abort too.
 4. **No FLASH-BACKWARD.** Do not re-seed a shimmer over already-loaded content on
    a refresh/re-render (guard on "is the real content already present?" - v1.98
    podcasts scar). A genuine new load (new query) may re-seed.

@@ -36,6 +36,8 @@ test('buildRelatedSkeletonCards: n cards reusing the real .related-card/.related
   assert.ok(html.includes('skeleton-line-title') && html.includes('skeleton-line-meta'), 'title + meta lines');
   assert.doesNotMatch(html, /<span class="skeleton-line/, 'block div text lines, not inline spans');
   assert.strictEqual(buildRelatedSkeletonCards(0), '');
+  assert.strictEqual(buildRelatedSkeletonCards(-3), '', 'negative -> empty (guard bound, not just n=0)');
+  assert.strictEqual(buildRelatedSkeletonCards('x'), '', 'non-integer -> empty');
 });
 
 test('avatar bar: PERSIST last-known count + RESERVE the strip before the fetch (no pop-in above the chips)', () => {
@@ -65,8 +67,22 @@ test('CSS: the related thumb restores the shimmer fill (it is #000 letterbox) an
   const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
   assert.match(css, /\.related-thumb\.skeleton-shimmer \{[\s\S]*?background-color: var\(--bg-secondary\)/,
     'related-thumb skeleton restores --bg-secondary (else the sweep is swallowed by #000)');
-  assert.match(css, /\.modern-avatar-chip \.skeleton-line \{[\s\S]*?margin-bottom: 0;/,
-    'the avatar name skeleton line is margin-zeroed for a zero-shift chip height');
+  // Bind the ACTUAL height (not just margin-bottom presence): the real
+  // .modern-avatar-name is --fs-2xs (10px) x 1.4 = a 14px line box, so the
+  // skeleton line MUST be 14px for a true zero-shift chip (gate WARNING: a 10px
+  // line left a ~4px settle). A wrong height here fails, unlike a presence check.
+  const nameRule = /\.modern-avatar-chip \.skeleton-line \{([\s\S]*?)\}/.exec(css);
+  assert.ok(nameRule, 'the avatar name skeleton rule exists');
+  assert.match(nameRule[1], /height: 14px;/, 'the skeleton line is 14px (matches the real --fs-2xs 1.4 line box) - true zero-shift');
+  assert.match(nameRule[1], /margin-bottom: 0;/, 'margin-zeroed so the chip height is exactly disc+gap+line');
+});
+
+test('sign-out drops the per-device avatar-bar count (so the next user does not reserve this user\'s strip)', () => {
+  const common = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
+  const fn = /function accountSignOut\(\)[\s\S]*?\n\}/.exec(common);
+  assert.ok(fn, 'accountSignOut exists');
+  assert.match(fn[0], /localStorage\.removeItem\('ft-modern-avatarbar-count'\)/,
+    'the avatar-bar count is cleared on sign-out (the shared-browser reverse-collapse mitigation)');
 });
 
 test('CONTRIBUTING carries the standing reveal-once contract (every new fetch-then-render surface)', () => {

@@ -1785,13 +1785,15 @@ html.reader-immersive .app-container { padding-top: 0; }
   background-color: var(--bg-secondary);
 }
 
-/* v1.99: the avatar-bar skeleton name line - the reused `.skeleton-line`
-   (width-less, 11px + a bottom margin) is sized down + margin-zeroed inside the
-   64px `.modern-avatar-chip` column so the shimmer chip is the same height as a
-   real one (circle + gap + one label line) - zero-shift. */
+/* v1.99: the avatar-bar skeleton name line - the reused `.skeleton-line` is sized
+   + margin-zeroed inside the 64px `.modern-avatar-chip` column so the shimmer chip
+   is the SAME height as a real one -> zero-shift on reveal. The real
+   `.modern-avatar-name` is `--fs-2xs` (10px) at the body 1.4 line-height = a 14px
+   line box (gate WARNING: a 10px bar left a ~4px settle), so the placeholder line
+   is 14px too: chip = 56 disc + 4 gap + 14 line = 74px, matching the real chip. */
 .modern-avatar-chip .skeleton-line {
   width: 40px;
-  height: 10px;
+  height: 14px;
   margin-bottom: 0;
 }
 
