@@ -2231,6 +2231,68 @@ function renderTrashSection(signal) {
   renderTrashSection.__refresh = refresh;
 }
 
+// v1.97.1 "Hidden" section (moved from the account-menu modal). One row per
+// video the user pruned from their modern feed: thumbnail, title, channel meta,
+// and a single-tap Restore (un-hide - it destroys nothing, so no two-tap arm).
+// Mirrors the Trash section's build/render/delegate shape.
+function buildFeedHiddenRowHtml(item) {
+  var id = escapeTrashHtml(item.id);
+  var title = escapeTrashHtml(item.title || 'Untitled');
+  var meta = item.channelName ? escapeTrashHtml(item.channelName) : '';
+  return '' +
+    '<div class="feed-hidden-row" data-id="' + id + '">' +
+    '<img class="feed-hidden-thumb" src="/thumbnail/' + encodeURIComponent(item.id || '') + '" alt="" loading="lazy" />' +
+    '<div class="feed-hidden-info">' +
+    '<div class="feed-hidden-title" title="' + title + '">' + title + '</div>' +
+    (meta ? '<div class="feed-hidden-meta">' + meta + '</div>' : '') +
+    '</div>' +
+    '<button type="button" class="btn btn-sm feedhidden-restore-btn" data-id="' + id + '">Restore</button>' +
+    '</div>';
+}
+
+// Fetch + render the Hidden list; wires the single-tap Restore (DELETE
+// /api/feed-hidden/:id). Re-renders after each action. GET /api/feed-hidden is
+// RBAC-filtered server-side, so a since-restricted item never appears here.
+function renderFeedHiddenSection(signal) {
+  const listEl = document.getElementById('feedhidden-list');
+  const emptyEl = document.getElementById('feedhidden-empty');
+  if (!listEl) return;
+
+  function refresh() {
+    fetch('/api/feed-hidden')
+      .then((r) => { if (!r.ok) throw new Error('feed-hidden fetch failed: ' + r.status); return r.json(); })
+      .then((body) => {
+        if (signal.aborted) return;
+        const items = Array.isArray(body.items) ? body.items : [];
+        listEl.innerHTML = items.map(buildFeedHiddenRowHtml).join('');
+        if (emptyEl) emptyEl.hidden = items.length > 0;
+      })
+      .catch((err) => { if (!signal.aborted) console.error('Hidden: list failed', err); });
+  }
+
+  listEl.addEventListener('click', (e) => {
+    const restoreBtn = e.target.closest('.feedhidden-restore-btn');
+    if (!restoreBtn) return;
+    const id = restoreBtn.getAttribute('data-id');
+    if (!id) return;
+    restoreBtn.disabled = true;
+    fetch('/api/feed-hidden/' + encodeURIComponent(id), { method: 'DELETE' })
+      .then(async (r) => {
+        if (signal.aborted) return;
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          if (typeof showToast === 'function') showToast(body.error || 'Could not restore.');
+        } else if (typeof showToast === 'function') {
+          showToast('Restored to feed.');
+        }
+        refresh();
+      })
+      .catch(() => { if (!signal.aborted) refresh(); });
+  }, { signal });
+
+  refresh();
+}
+
 // ---- v1.66 web push controls ------------------------------------------------
 // Visibility: the whole group stays hidden unless GET /api/push/key answers
 // 200 (the bell's three-way feature gate, probe-not-assume like the bell
@@ -2419,6 +2481,7 @@ function init(root) {
   renderCardCornerEditor(controller.signal); // v1.67 card-corner pickers (Appearance box)
   renderLibraryGlyphEditor(controller.signal); // v1.77 Library-icon pickers (Appearance box)
   renderTrashSection(controller.signal); // v1.65 trash list + actions
+  renderFeedHiddenSection(controller.signal); // v1.97.1 Hidden (feed-hide restore) list
 
   loadAutomationSettings();
   loadCacheSize();
@@ -2468,6 +2531,8 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     transcodeNamesSuffix, escapeTrashHtml, trashDaysLeftLabel, formatTrashSize, buildTrashRowHtml,
+    // v1.97.1 "Hidden" section row builder (pure; the render/wiring is jsdom-adjacent).
+    buildFeedHiddenRowHtml,
     // v1.67: the card-corner editor (drawn pieces are jsdom-tested).
     buildCornerEditorOptions, CARD_CORNER_LABELS, CORNER_EDITOR_SLOTS, renderCardCornerEditor,
     // v1.77: the glyph pickers. The option list is a pure decision; the DRAWN
