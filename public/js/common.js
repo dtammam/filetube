@@ -3297,14 +3297,45 @@ function injectNotificationBellIfEnabled() {
   const headerRight = document.querySelector('.header-right');
   if (!headerRight) return; // shell without a header (login/welcome)
 
+  // v1.101 shimmer sweep: RESERVE the bell slot with a shimmer placeholder if the
+  // bell was enabled on the last load (persist-last-known, the v1.99 avatar-bar
+  // pattern) - the badge probe below reconciles it. So on a warm instance the
+  // bell reveals in place instead of popping into the header a beat late. The
+  // enabled flag is per-DEVICE, so it is dropped on sign-out (see accountSignOut).
+  // First-ever load: no flag -> the bell still pops in once (disclosed). If the
+  // feature was turned OFF since, the placeholder is removed on the probe (a
+  // one-time collapse, disclosed).
+  const NOTIF_BELL_ENABLED_KEY = 'ft-notif-bell-enabled';
+  const removeBellPlaceholder = () => {
+    const ph = document.getElementById('notif-bell-placeholder');
+    if (ph) ph.remove();
+  };
+  let bellWasEnabled = false;
+  try { bellWasEnabled = localStorage.getItem(NOTIF_BELL_ENABLED_KEY) === '1'; } catch (_) { /* private mode */ }
+  if (bellWasEnabled && !document.getElementById('notif-bell-placeholder')) {
+    const ph = document.createElement('span');
+    ph.id = 'notif-bell-placeholder';
+    ph.className = 'notif-bell-btn';
+    ph.setAttribute('aria-hidden', 'true');
+    const disc = document.createElement('span');
+    disc.className = 'notif-bell-skel skeleton-shimmer';
+    ph.appendChild(disc);
+    headerRight.insertBefore(ph, headerRight.firstChild);
+  }
+
   fetch('/api/notifications/badge')
     .then((res) => {
-      if (!shouldInjectNotificationBell(res)) return null;
+      if (!shouldInjectNotificationBell(res)) {
+        try { localStorage.setItem(NOTIF_BELL_ENABLED_KEY, '0'); } catch (_) { /* private mode */ }
+        return null;
+      }
       return res.json().then((body) => ({ count: body && Number.isInteger(body.count) ? body.count : 0 }));
     })
     .then((probe) => {
+      removeBellPlaceholder(); // reveal-once: drop the reserve (enabled -> real bell below; disabled -> just gone)
       if (!probe) return;
       if (notificationBellAlreadyInjected()) return; // async double-inject window
+      try { localStorage.setItem(NOTIF_BELL_ENABLED_KEY, '1'); } catch (_) { /* private mode */ }
 
       // ---- bell button + badge bubble (createElement/textContent only) ----
       const bellBtn = document.createElement('button');
@@ -3640,7 +3671,7 @@ function injectNotificationBellIfEnabled() {
         } catch (_) { /* older engines: the 60s poll still covers it */ }
       }
     })
-    .catch(() => { /* network failure -- fail closed, inject nothing */ });
+    .catch(() => { removeBellPlaceholder(); /* network failure -- fail closed, inject nothing (but clear the reserve) */ });
 }
 
 // ---- v1.63: the playback queue (header icon + panel) ------------------------
@@ -5131,6 +5162,9 @@ function accountSignOut() {
     // it collapse when their own /api/channels returns fewer/none (the reverse-
     // shift the gate flagged). Mirrors main.js's MODERN_AVATARBAR_COUNT_KEY.
     try { localStorage.removeItem('ft-modern-avatarbar-count'); } catch (_) { /* storage disabled */ }
+    // v1.101: the notification-bell reserve flag is per-device too - drop it so
+    // the next user doesn't reserve a bell slot this instance/user had enabled.
+    try { localStorage.removeItem('ft-notif-bell-enabled'); } catch (_) { /* storage disabled */ }
     window.location.href = '/login';
   };
   fetch('/api/auth/logout', { method: 'POST' }).then(done, done);
@@ -5599,7 +5633,27 @@ function injectAccountMenu() {
   const headerRight = document.querySelector('.header-right');
   if (!headerRight || document.getElementById('account-menu-root')) return;
 
+  // v1.101 shimmer sweep: RESERVE the avatar slot with a shimmer placeholder
+  // BEFORE the /api/auth/me fetch, so the account avatar reveals in place instead
+  // of popping into an empty header. Reuses the real .account-menu-trigger /
+  // .account-avatar (32px disc) box - so it's zero-shift AND inherits the same
+  // mobile `.account-menu-trigger { display:none }` hide the real trigger has
+  // (mobile reaches account via the You tab). Removed on resolve (signed-in ->
+  // real menu; signed-out / error -> just gone, never a stranded shimmer).
+  if (!document.getElementById('account-menu-placeholder')) {
+    const ph = document.createElement('span');
+    ph.id = 'account-menu-placeholder';
+    ph.className = 'account-menu-trigger';
+    ph.setAttribute('aria-hidden', 'true');
+    const avatarSkel = document.createElement('span');
+    avatarSkel.className = 'account-avatar skeleton-shimmer';
+    ph.appendChild(avatarSkel);
+    headerRight.appendChild(ph);
+  }
+
   fetchCurrentUser().then((me) => {
+    const ph = document.getElementById('account-menu-placeholder');
+    if (ph) ph.remove(); // reveal-once: drop the reserve whether signed-in or out
     if (!me || !me.user) return; // signed-out shell -- inject nothing
     if (document.getElementById('account-menu-root')) return; // re-check after the await (overlap guard)
     const user = me.user;
