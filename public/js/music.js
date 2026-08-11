@@ -220,7 +220,11 @@ function deriveNowPlayingLabel(np, currentId) {
 // so a stale 'liked' would render a blank page that survives every reload.
 // A remembered tab that is no longer in the roster falls back to the default.
 var MUSIC_TABS = ['albums', 'artists', 'songs'];
-var MUSIC_DEFAULT_TAB = 'albums';
+// v1.103: Artists is the default landing (Dean: browse-by-artist is the primary
+// path, and the artist mosaic is the richest surface). Also the sanitiser
+// fallback for a stale/absent stored tab. A device with a prior stored tab keeps
+// it until the user taps Artists once.
+var MUSIC_DEFAULT_TAB = 'artists';
 
 function normalizeMusicTab(value) {
   return MUSIC_TABS.indexOf(value) >= 0 ? value : MUSIC_DEFAULT_TAB;

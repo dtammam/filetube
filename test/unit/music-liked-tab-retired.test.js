@@ -30,15 +30,15 @@ const { MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab } = require('../../publ
 
 test('v1.75: the tab roster is the three surviving tabs - Liked is not one of them', () => {
   assert.deepEqual(MUSIC_TABS, ['albums', 'artists', 'songs']);
-  assert.equal(MUSIC_DEFAULT_TAB, 'albums');
+  assert.equal(MUSIC_DEFAULT_TAB, 'artists', 'v1.103: Artists is the default landing');
   assert.ok(MUSIC_TABS.indexOf('liked') === -1);
 });
 
 test('v1.75: a remembered tab that no longer exists falls back to the default; real ones pass through', () => {
-  assert.equal(normalizeMusicTab('liked'), 'albums', 'the retired tab is the case this exists for');
+  assert.equal(normalizeMusicTab('liked'), 'artists', 'the retired tab is the case this exists for');
   for (const t of MUSIC_TABS) assert.equal(normalizeMusicTab(t), t, `${t} passes through untouched`);
   for (const junk of [null, undefined, '', 'nonsense', 0, {}, 'Albums']) {
-    assert.equal(normalizeMusicTab(junk), 'albums', `${JSON.stringify(junk)} degrades to the default`);
+    assert.equal(normalizeMusicTab(junk), 'artists', `${JSON.stringify(junk)} degrades to the default`);
   }
 });
 
@@ -134,9 +134,9 @@ test('v1.75 USE: a device whose stored tab is the RETIRED one still renders - it
       !content.innerHTML.includes('SENTINEL-NOT-RENDERED'),
       'nothing rendered: the stale tab hit no branch and /music is a blank page (the bug this guards)',
     );
-    assert.match(content.innerHTML, /music-card-grid/, 'the default Albums grid rendered instead');
+    assert.match(content.innerHTML, /music-card-grid/, 'the default (v1.103: Artists) grid rendered instead');
     const active = dom.window.document.querySelector('.music-tab.active');
-    assert.equal(active.getAttribute('data-tab'), 'albums', 'and the strip highlights the tab that actually rendered');
+    assert.equal(active.getAttribute('data-tab'), 'artists', 'and the strip highlights the tab that actually rendered');
   });
 });
 
@@ -151,6 +151,6 @@ test('v1.75 USE: a stored tab that is still real is honoured (the fallback is no
 test('v1.75 USE: no stored tab at all renders the default', async () => {
   await bootMusicView(null, (dom) => {
     const active = dom.window.document.querySelector('.music-tab.active');
-    assert.equal(active.getAttribute('data-tab'), 'albums');
+    assert.equal(active.getAttribute('data-tab'), 'artists', 'v1.103: Artists is the default landing');
   });
 });
