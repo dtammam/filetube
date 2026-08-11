@@ -96,7 +96,9 @@ test('each view SEEDS its skeleton into the host before the fetch, and CLEARS it
 
 test('the shimmer base fill is restored on the reused art boxes (so the sweep is visible, not swallowed by --thumbnail-bg)', () => {
   const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
-  assert.match(css, /\.book-cover-link\.skeleton-shimmer,\s*\n\s*\.music-album-art\.skeleton-shimmer,\s*\n\s*\.podcast-card-art\.skeleton-shimmer \{\s*background-color: var\(--bg-secondary\);/,
+  // The three library art boxes share the specificity-winning shimmer-fill rule
+  // (later selectors like .related-thumb may join it - tolerate them).
+  assert.match(css, /\.book-cover-link\.skeleton-shimmer,\s*\n\s*\.music-album-art\.skeleton-shimmer,\s*\n\s*\.podcast-card-art\.skeleton-shimmer[\s\S]{0,240}background-color: var\(--bg-secondary\);/,
     'a specificity-winning rule restores --bg-secondary on the reused skeleton art boxes');
   // .history-thumb already uses --bg-secondary, so it is deliberately NOT in the rule.
   assert.doesNotMatch(css, /\.history-thumb\.skeleton-shimmer \{/, 'history-thumb (already --bg-secondary) is not redundantly re-listed');

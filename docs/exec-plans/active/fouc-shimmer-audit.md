@@ -76,12 +76,12 @@ reserved-space plumbing or a deeper reveal-once barrier).
 | 8 | Home - classic grid | YES | `buildSkeletonGrid` seeded pre-fetch | none | done | `main.js:1111`, `:1474` |
 | 9 | Home - modern grid | YES | inherits the `#video-grid` skeleton | low | done (verify shape match) | `fetchModernGrid` `main.js:1195-1217` |
 | 10 | Home - modern chip row | YES (immediate, no fetch) | painted synchronously | low | none | `buildModernChipRowHtml` `main.js:293`, `:1351` |
-| 11 | Home - modern avatar bar (mobile) | YES - after `/api/channels` | hidden-until-populated -> pops in | med (mobile) | quick win (reserve strip + shimmer) | `populateModernAvatarBar` `main.js:299`, fetch `main.js:1372` |
+| 11 | Home - modern avatar bar (mobile) | YES - after `/api/channels` | DONE v1.99: persist last-known count -> reserve+shimmer before fetch | was high (Dean's device report: the top chip "flow" flickers / more-or-less) | DONE (persist-last-known reserve, no reverse-shift) | `buildAvatarBarSkeleton`/`populateModernAvatarBar` `main.js:299`, seed `main.js:1372` |
 | 12 | Home - FEED mode rows | YES - into `#home-feed-host` | NONE; the skeleton lives in `#video-grid` which feed mode sets `display:none` | high (blank until fetch) | quick win (seed skeleton into the feed host) | `renderHomeFeed` `main.js:356`; hide rule `style.css:7737` |
 | 13 | Watch - title/views/uploader/meta/description | YES | skeleton-shimmer + seed-paint | none | done | `watch.html:201-336`, `paintMetadata` `watch.js:1306` |
 | 14 | Watch - action row | YES | `data-loading` reveal-once (v1.96) | none | done | `watch.html:214`, `revealActionBar` `watch.js:1256` |
-| 15 | Watch - RELATED files list | YES | none; empty-then-`innerHTML` | med-high (right rail) | quick win (skeleton rows) | `loadRelatedFiles` `watch.js:1463`, fill `watch.js:1492` |
-| 16 | Watch - COMMENTS list | YES | none; empty-then-fill | med | quick win (skeleton rows) | `loadComments` `watch.js:2289`, `renderComments` `watch.js:2370` |
+| 15 | Watch - RELATED files list | YES | DONE v1.99: seed skeleton rows + reveal header before fetch | was med-high (right rail) | DONE | `buildRelatedSkeletonCards`/`loadRelatedFiles` `watch.js:1463` |
+| 16 | Watch - COMMENTS list | NO (CORRECTION) | n/a - SYNCHRONOUS (localStorage + mock, rendered at init) | none | none (audit was wrong - no async load) | `loadComments` `watch.js:2289` (no fetch) |
 | 17 | Watch - queue up-next box | YES | hidden until engaged | low | none | `watch.html:273` |
 | 18 | Watch/player - transcode "Preparing video" | YES (long job) | spinner + progress overlay | med (spinner, not shimmer) | consider shimmer/progress-forward | `.transcode-spinner` `style.css:2220`; `player.js:1790`, `:3324` |
 | 19 | Music - content host (albums/artists/songs/drill) | YES | none; blank-then-`innerHTML` | high | quick win (seed skeleton grid/rows) | `render` `music.js:491-530`, fills `music.js:437/458/515/520` |

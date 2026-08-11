@@ -1780,8 +1780,19 @@ html.reader-immersive .app-container { padding-top: 0; }
    `.skeleton-shimmer` ::after sweep + reduced-motion carve-out apply unchanged. */
 .book-cover-link.skeleton-shimmer,
 .music-album-art.skeleton-shimmer,
-.podcast-card-art.skeleton-shimmer {
+.podcast-card-art.skeleton-shimmer,
+.related-thumb.skeleton-shimmer { /* v1.99: .related-thumb is #000 letterback - restore the fill so the sweep shows */
   background-color: var(--bg-secondary);
+}
+
+/* v1.99: the avatar-bar skeleton name line - the reused `.skeleton-line`
+   (width-less, 11px + a bottom margin) is sized down + margin-zeroed inside the
+   64px `.modern-avatar-chip` column so the shimmer chip is the same height as a
+   real one (circle + gap + one label line) - zero-shift. */
+.modern-avatar-chip .skeleton-line {
+  width: 40px;
+  height: 10px;
+  margin-bottom: 0;
 }
 
 .skeleton-line-title {
