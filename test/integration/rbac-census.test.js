@@ -59,7 +59,13 @@ const { authenticateFetch } = require('../helpers/auth');
 // Also CONTENT-SERVING (reveals moments of the media) -> same mediaVisibleTo
 // guard; a restricted member 404s like a missing item; bound by
 // preview-clip.test.js's RBAC assertion.
-const EXPECTED_ROUTE_COUNT = 194;
+// v1.97: 194 -> 197 for the "Hide from feed" routes (POST + DELETE + GET
+// /api/feed-hidden) - the member's OWN modern-feed prune, never capability-gated
+// (POST/DELETE classified 'personal' in route-write-classification.test.js). The
+// mutating pair carries the restricted-id guard (no oracle/persist); GET is
+// RBAC-filtered (mediaVisibleTo) so a since-restricted item never leaks. Bound by
+// feed-hidden-api.test.js.
+const EXPECTED_ROUTE_COUNT = 197;
 
 let server, base, auth, member;
 const vidFile = path.join(DATA_DIR, 'v.mp4');

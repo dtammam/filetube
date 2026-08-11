@@ -45,6 +45,9 @@ const CLASSIFICATION = {
   'POST /api/videos/:id/prepare-audio': 'personal',
   'POST /api/liked/:id': 'personal',
   'DELETE /api/liked/:id': 'personal',
+  // v1.97 "Hide from feed" - the member's OWN modern-feed prune (never gated).
+  'POST /api/feed-hidden/:id': 'personal',
+  'DELETE /api/feed-hidden/:id': 'personal',
   'DELETE /api/history': 'personal',
   'DELETE /api/history/:id': 'personal',
   // v1.85 #1: per-user search history - the member's OWN state, never gated.
