@@ -1009,7 +1009,25 @@ async function loadAutomationSettings() {
     updateLogoControls(!!s.customLogo, !!s.customLogoDark);
   } catch (err) {
     console.error('Failed to load automation settings:', err);
+  } finally {
+    // v1.102 (tranche 4 shimmer): the automation toggles ship `data-loading`
+    // (shimmered, hidden) so they never flash their static default then flip to
+    // the server value. Reveal them ALL here - on the single /api/settings
+    // settle, success OR error - so they appear together in final state. On a
+    // fetch failure they reveal showing their static HTML defaults, which is a
+    // usable fallback (the alternative, a permanent shimmer, is worse).
+    revealAutomationToggles();
   }
+}
+
+// Drop the reveal-once barrier from every /api/settings-fed automation toggle.
+// Idempotent; safe to call once loadAutomationSettings has set (or failed to
+// set) their values.
+function revealAutomationToggles() {
+  if (typeof document === 'undefined') return;
+  document.querySelectorAll('.reveal-toggle[data-loading]').forEach((el) => {
+    el.removeAttribute('data-loading');
+  });
 }
 
 // ---- v1.32 (Dean, "white-label"): custom header logo -----------------------
@@ -2553,6 +2571,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // migration, and the one with the interesting persist chain (immediate
     // POST, hidden/synthetic folders holding their absolute positions).
     renderSidebarFolders,
+    // v1.102 (tranche 4 shimmer): the automation-toggle reveal-once barrier -
+    // loadAutomationSettings reveals every /api/settings-fed toggle on the single
+    // fetch settle; jsdom-tested for the real reveal (success AND error).
+    loadAutomationSettings, revealAutomationToggles,
     __setFolderStateForTests(state) {
       configuredFolders = Array.isArray(state.folders) ? state.folders.slice() : [];
       folderSettings = state.settings || {};

@@ -36,7 +36,7 @@ function buildAlbumCardHtml(album) {
   var count = album.trackCount ? album.trackCount + (album.trackCount === 1 ? ' track' : ' tracks') : '';
   return '' +
     '<button type="button" class="music-album-card" data-album-key="' + escapeMusicHtml(album.albumKey) + '">' +
-    '<img class="music-album-art" src="' + escapeMusicHtml(art) + '" alt="' + escapeMusicHtml(album.album) + '" loading="lazy" />' +
+    '<img class="music-album-art art-shimmer" src="' + escapeMusicHtml(art) + '" alt="' + escapeMusicHtml(album.album) + '" loading="lazy" />' +
     '<span class="music-album-title" title="' + escapeMusicHtml(album.album) + '">' + escapeMusicHtml(album.album || 'Unknown album') + '</span>' +
     '<span class="music-album-artist" title="' + escapeMusicHtml(album.artist) + '">' + escapeMusicHtml(album.artist) + '</span>' +
     '<span class="music-album-count">' + escapeMusicHtml(count) + '</span>' +
@@ -54,6 +54,19 @@ function buildArtistCardHtml(artist) {
     '</button>';
 }
 
+// v1.102 (tranche 4): the song-row action glyphs (queue/download/like) are inline
+// chrome-icon SVGs, not `.icon-*` masks - a mask paints NOTHING until it decodes,
+// so on an iOS cold start it popped in a beat after the row (the v1.87 class). The
+// markup builder is common.js's chromeIconMarkup, a browser global reached via
+// `window.` (no bare require - the client-scripts convention). node:test that
+// wants the glyph attaches window.chromeIconMarkup first (see music-view.test.js);
+// otherwise the row still builds, just glyph-less.
+function rowGlyphMarkup(name) {
+  return (typeof window !== 'undefined' && typeof window.chromeIconMarkup === 'function')
+    ? window.chromeIconMarkup(name)
+    : '';
+}
+
 // A song row (index button, thumb, title/artist, duration, like toggle). The
 // row's data-index drives playAt(); the like button is a nested control.
 // v1.44.2: every row carries a CSS equalizer glyph (3 animated bars, NEVER an
@@ -66,7 +79,7 @@ function buildSongRowHtml(item, index) {
   return '' +
     '<div class="music-song-row" data-index="' + index + '" data-id="' + escapeMusicHtml(item.id) + '">' +
     '<span class="music-song-thumb-wrap">' +
-    '<img class="music-song-thumb" src="/albumart/' + encodeURIComponent(item.id) + '" alt="" loading="lazy" />' +
+    '<img class="music-song-thumb art-shimmer" src="/albumart/' + encodeURIComponent(item.id) + '" alt="" loading="lazy" />' +
     '<span class="music-eq" aria-hidden="true"><i></i><i></i><i></i></span>' +
     '</span>' +
     '<span class="music-song-main">' +
@@ -78,7 +91,7 @@ function buildSongRowHtml(item, index) {
     // (common.js addToQueue with the 'track' entry kind), the podcasts
     // episode-row pattern on the like-button chassis.
     '<button type="button" class="music-like-btn music-queue-btn" data-queue-id="' + escapeMusicHtml(item.id) + '" title="Add to queue" aria-label="Add to queue">' +
-    '<i class="icon-queue"></i>' +
+    rowGlyphMarkup('queue') +
     '</button>' +
     // v1.72 (cap 7): per-track save-to-device - the like button's chassis,
     // an anchor at the stream route's ?download=1 arm (original bytes; the
@@ -86,10 +99,10 @@ function buildSongRowHtml(item, index) {
     // not needed: an <a> click navigates the browser's download machinery,
     // and the row-play delegation ignores clicks on .music-download-btn.
     '<a class="music-like-btn music-download-btn" href="/track/' + encodeURIComponent(item.id) + '?download=1" download title="Save to device" aria-label="Save to device">' +
-    '<i class="icon-download"></i>' +
+    rowGlyphMarkup('download') +
     '</a>' +
     '<button type="button" class="music-like-btn' + (liked ? ' liked' : '') + '" data-like-id="' + escapeMusicHtml(item.id) + '" title="' + (liked ? 'Unlike' : 'Like') + '" aria-label="' + (liked ? 'Unlike' : 'Like') + '">' +
-    '<i class="icon-heart"></i>' +
+    rowGlyphMarkup('heart') +
     '</button>' +
     '</div>';
 }
@@ -146,7 +159,7 @@ function buildDrillHeaderHtml(drill, tracks) {
     '<div class="music-drill-header">' +
     '<button type="button" class="music-drill-back btn btn-sm" aria-label="Back">‹ Back</button>' +
     '<div class="music-drill-heading">' +
-    '<img class="music-drill-art" src="/albumart/' + encodeURIComponent(artId) + '" alt="' + escapeMusicHtml(title) + '" />' +
+    '<img class="music-drill-art art-shimmer" src="/albumart/' + encodeURIComponent(artId) + '" alt="' + escapeMusicHtml(title) + '" />' +
     '<div class="music-drill-info">' +
     '<h3 class="music-drill-title" title="' + escapeMusicHtml(title) + '">' + escapeMusicHtml(title) + '</h3>' +
     (artist ? '<div class="music-drill-artist">' + escapeMusicHtml(artist) + '</div>' : '') +
@@ -171,7 +184,7 @@ function buildStickyBarHtml(drill, tracks) {
   return '' +
     '<div class="music-drill-sticky">' +
     '<button type="button" class="music-drill-back music-sticky-back btn btn-sm" aria-label="Back">‹</button>' +
-    '<img class="music-sticky-thumb" src="/albumart/' + encodeURIComponent(artId) + '" alt="" />' +
+    '<img class="music-sticky-thumb art-shimmer" src="/albumart/' + encodeURIComponent(artId) + '" alt="" />' +
     '<span class="music-sticky-title" title="' + escapeMusicHtml(title) + '">' + escapeMusicHtml(title) + '</span>' +
     '<button type="button" class="music-drill-play music-sticky-play btn btn-primary btn-sm" aria-label="Play"><i class="icon-play"></i></button>' +
     '</div>';
@@ -490,10 +503,20 @@ if (typeof module !== 'undefined' && module.exports) {
       return queue;
     }
 
+    // v1.102 (tranche 4 shimmer): every art image in `content` (album/song/drill/
+    // sticky) ships `art-shimmer`; hand them to the shared decode-reveal so each
+    // clears the shimmer the instant it decodes (and immediately for a cached one).
+    function revealMusicArt() {
+      if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.shimmerArt === 'function') {
+        window.FileTube.shimmerArt(content);
+      }
+    }
+
     function renderSongList() {
       content.innerHTML = '<div class="music-song-list">' + queue.map(buildSongRowHtml).join('') + '</div>';
       if (emptyNote) emptyNote.hidden = queue.length > 0;
       applyPlayingHighlight();
+      revealMusicArt();
     }
 
     // Toggle `.playing` (accent + equalizer glyph) on the row whose track id
@@ -522,6 +545,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (emptyNote) emptyNote.hidden = queue.length > 0;
       applyPlayingHighlight();
       wireStickyObserver();
+      revealMusicArt();
     }
 
     function wireStickyObserver() {
@@ -596,6 +620,9 @@ if (typeof module !== 'undefined' && module.exports) {
         if (content) content.innerHTML = ''; // v1.98: never strand the seeded shimmer on error
         if (emptyNote) emptyNote.hidden = false;
       }
+      // v1.102: reveal the album/artist art (songs/drill self-cover via their own
+      // renderers above; a second pass here is an idempotent no-op).
+      revealMusicArt();
       // Re-evaluate the "Playing from" line on every render (a tab switch may
       // reveal that the player was closed, or that a non-music item is playing).
       updateNowPlaying();

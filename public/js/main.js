@@ -96,6 +96,44 @@ function buildSkeletonGrid(n) {
 // without over-committing to a specific viewport width.
 const SKELETON_CARD_COUNT = 8;
 
+// v1.102 (tranche 4 shimmer): the Library sidebar folder-list skeleton. Each row
+// REUSES the real `.sidebar-item` box (same padding/gap/font-size), so swapping
+// it for real folder links is zero-shift: an 18x18 shimmer glyph box (matching
+// `.sidebar-item i`) + a shimmer label bar of varied width. Pure string builder
+// (buildSkeletonGrid contract): n<=0 / non-integer -> '', every node aria-hidden.
+// Exported for node:test.
+function buildSidebarSkeletonRows(n) {
+  const count = Number.isInteger(n) && n > 0 ? n : 0;
+  let html = '';
+  for (let i = 0; i < count; i++) {
+    const w = 55 + (i % 3) * 12; // 55 / 67 / 79% -> a natural ragged edge
+    html += `
+      <div class="sidebar-item" aria-hidden="true">
+        <span class="skeleton-shimmer" style="width:18px; height:18px; border-radius:var(--radius); flex:none;"></span>
+        <span class="skeleton-line skeleton-shimmer" style="width:${w}%; margin:0;"></span>
+      </div>`;
+  }
+  return html;
+}
+// A plausible folder count to reserve while /api/config is in flight.
+const SIDEBAR_SKELETON_ROWS = 5;
+
+// The zero-folders sidebar affordance (also the cold-load error fallback below).
+const SIDEBAR_NONE_HTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
+
+// v1.102 (tranche 4, gate CRITICAL): a total /api/config failure must not leave
+// the cold-load sidebar skeleton (buildSidebarSkeletonRows) shimmering forever in
+// the persistent left rail. GUARDED to the skeleton's aria-hidden placeholder
+// rows only: a re-nav whose config fetch fails while REAL folders are already
+// rendered keeps them (never wiped to a misleading "None"). Exported for node:test
+// so the error-path reveal is BOUND behaviourally, not just source-locked (the
+// gap that let the original miss slip past a presence-only test).
+function clearSidebarSkeletonOnError(listEl) {
+  if (listEl && listEl.querySelector('.sidebar-item[aria-hidden="true"]')) {
+    listEl.innerHTML = SIDEBAR_NONE_HTML;
+  }
+}
+
 // v1.37.0 T10 (books): pure builders for the home surfaces -- the
 // continue-reading row (bare home view only) and the books-in-search
 // section. Cover cards are compact portrait tiles linking to /read.html;
@@ -265,6 +303,43 @@ function buildFeedRowHtml(row) {
   `;
 }
 
+// v1.102 shimmer sweep (tranche 4): FEED mode was the ONE home layout with no
+// skeleton - the pre-fetch seed lives in `#video-grid`, which feed mode hides
+// (style.css), so `#home-feed-host` stayed blank until /api/home resolved. This
+// seeds a shape-matched shimmer into the feed host BEFORE the fetch: `rows`
+// sections, each a real `.books-home-row` header bar (`.skel-title`) over a real
+// `.books-home-row-scroller` of `cards` `.video-row-card`-shaped shimmer cards
+// (the SAME 164px card + 16:9 cover box the real feed cards use, so the reveal is
+// vertically zero-shift). Pure string builder (buildSkeletonGrid contract):
+// non-positive counts -> '', every node aria-hidden + skeleton-shimmer. Exported
+// for node:test.
+function buildFeedSkeleton(rows, cards) {
+  const rowCount = Number.isInteger(rows) && rows > 0 ? rows : 0;
+  const cardCount = Number.isInteger(cards) && cards > 0 ? cards : 0;
+  if (rowCount === 0 || cardCount === 0) return '';
+  let cardHtml = '';
+  for (let i = 0; i < cardCount; i++) {
+    cardHtml += `
+      <span class="book-row-card music-row-card video-row-card" aria-hidden="true">
+        <span class="book-row-cover video-row-cover skeleton-shimmer"></span>
+        <span class="book-row-title skeleton-line skeleton-line-title skeleton-shimmer"></span>
+        <span class="music-row-artist skeleton-line skeleton-line-meta skeleton-shimmer"></span>
+      </span>`;
+  }
+  let html = '';
+  for (let r = 0; r < rowCount; r++) {
+    html += `
+      <section class="books-home-row music-home-row" aria-hidden="true">
+        <div class="books-home-row-header"><div class="skeleton-shimmer skel-title"></div></div>
+        <div class="books-home-row-scroller">${cardHtml}</div>
+      </section>`;
+  }
+  return html;
+}
+// Enough sections/cards to plausibly fill the feed viewport before the fetch.
+const FEED_SKELETON_ROWS = 3;
+const FEED_SKELETON_CARDS = 6;
+
 // ---- v1.84 Modern Mode: the filter-chip row ---------------------------------
 //
 // The `filter` params are the CLIENT half of the server's MODERN_GRID_FILTERS
@@ -346,7 +421,7 @@ function populateModernAvatarBar(barEl, channels) {
     const src = (typeof resolveAvatarSource === 'function') ? resolveAvatarSource(c.name, c.avatarUrl) : { type: 'generated', glyph: '?', color: '#888' };
     if (src.type === 'url') {
       const img = document.createElement('img');
-      img.src = src.url; img.alt = ''; img.loading = 'lazy';
+      img.src = src.url; img.alt = ''; img.loading = 'lazy'; img.className = 'art-shimmer';
       circle.appendChild(img);
     } else {
       circle.textContent = src.glyph;
@@ -360,6 +435,11 @@ function populateModernAvatarBar(barEl, channels) {
     barEl.appendChild(a);
   }
   barEl.hidden = false;
+  // v1.102 (tranche 4 shimmer): the URL-avatar images ship `art-shimmer`; the
+  // shared decode-reveal clears each on decode (immediately for a cached avatar).
+  if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.shimmerArt === 'function') {
+    window.FileTube.shimmerArt(barEl);
+  }
 }
 
 function buildModernEmptyHtml(filter) {
@@ -381,6 +461,10 @@ function buildModernEmptyHtml(filter) {
 // away).
 async function renderHomeFeed(host, signal) {
   if (!host) return;
+  // v1.102: shimmer the feed host BEFORE the fetch so it never sits blank while
+  // /api/home is in flight. Every branch below overwrites host.innerHTML, so the
+  // skeleton is always replaced (reveal-once) - real rows, empty state, or error.
+  host.innerHTML = buildFeedSkeleton(FEED_SKELETON_ROWS, FEED_SKELETON_CARDS);
   try {
     const res = await fetch('/api/home', { signal });
     const data = res.ok ? await res.json() : { rows: [] };
@@ -605,6 +689,8 @@ if (typeof module !== 'undefined' && module.exports) {
     buildCardDownloadHref,
     buildCardDownloadFilename,
     buildSkeletonGrid,
+    buildSidebarSkeletonRows,
+    clearSidebarSkeletonOnError,
     buildAvatarBarSkeleton,
     buildBookRowCardHtml,
     buildBooksHomeSectionHtml,
@@ -616,6 +702,8 @@ if (typeof module !== 'undefined' && module.exports) {
     buildVideoHomeSectionHtml,
     buildFeedCardHtml,
     buildFeedRowHtml,
+    buildFeedSkeleton,
+    renderHomeFeed,
     homeRowEnabled,
     migrateListeningRowPref,
     resolveCardCornerPrefs,
@@ -1159,6 +1247,15 @@ const PreviewCards = (function () {
         renderFormatToggle(sectionActions, getStoredFormatFilter(), () => resetAndReload());
         renderWatchToggle(sectionActions, getStoredWatchFilter(), () => resetAndReload());
       }
+      // v1.102 (tranche 4 shimmer): the Library folder list built after
+      // /api/config with no placeholder - a blank rail until the fetch landed.
+      // Seed a shape-matched skeleton (mirrors the real `.sidebar-item` box, so
+      // the reveal is zero-shift) ONLY on a COLD sidebar (no real folder row yet)
+      // - an in-app re-nav keeps the already-rendered folders, never a
+      // shimmer-over-real reverse flash (the podcasts-grid seed guard pattern).
+      if (sidebarFoldersList && !sidebarFoldersList.querySelector('.sidebar-item')) {
+        sidebarFoldersList.innerHTML = buildSidebarSkeletonRows(SIDEBAR_SKELETON_ROWS);
+      }
       try {
         // 1. Check configs (+ the v1.67 corner latch, raced in parallel so
         // the pref never delays the grid behind a second round-trip; both
@@ -1461,6 +1558,9 @@ const PreviewCards = (function () {
         videoGrid.innerHTML = buildErrorStateHtml({ message: 'Error loading library data from server.' });
         const retryBtn = videoGrid.querySelector('[data-error-retry]');
         if (retryBtn) retryBtn.addEventListener('click', () => loadLibrary(), { signal });
+        // v1.102 (gate CRITICAL): stop the cold-load sidebar skeleton shimmering
+        // forever when /api/config failed - Retry (above) repaints it on success.
+        clearSidebarSkeletonOnError(sidebarFoldersList);
       }
     }
 

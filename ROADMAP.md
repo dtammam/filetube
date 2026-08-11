@@ -80,6 +80,64 @@
 
 ## Shipped
 
+### v1.102.0 - Shimmer sweep tranche 4: the last blank surfaces (2026-08-11)
+
+The final tranche of the shimmer sweep - six surfaces that still painted blank
+then snapped in, now all reveal-once. Everything reuses the existing toolkit
+(`.skeleton-shimmer`, `buildSkeletonGrid`, the v1.96 `data-loading` barrier);
+each seed matches the real box for a zero-shift reveal.
+
+- **Stats dashboard (T4-A):** `seedStatsSkeleton()` seeds all 11 containers before
+  the `/api/stats` + `/api/duplicates` fetches (4 fixed-shape tile grids at their
+  exact real counts, 7 lists at a representative count), so the whole page no
+  longer grows twice as the two fetches land. Error path clears the stats-fed
+  containers (duplicates owns its own).
+- **Feed-mode home (T4-B):** the ONE home layout with no skeleton - `renderHomeFeed`
+  now seeds a `.video-row-card`-shaped shimmer into `#home-feed-host` before
+  `/api/home`; every branch (rows / empty / error) reveals once.
+- **Setup automation toggles (T4-C):** the 7 `/api/settings`-fed toggles flashed
+  their static default then flipped; a `data-loading` reveal-once barrier (grouped
+  onto the v1.96 `.watch-actions` sweep - no duplicated literal) shimmers them
+  until the single fetch settles, revealing on success AND error. Scoped strictly
+  to the `/api/settings`-fed controls (home-feed / modern / push / per-page-sort /
+  home-continue live in the same card but are foreign-fed and untouched).
+- **Sidebar folders (T4-D):** `#sidebar-folders-list` seeds a `.sidebar-item`-shaped
+  skeleton on a COLD sidebar before `/api/config`.
+- **Art-decode family (T4-E):** every card image (album / song / drill / sticky
+  art, podcast show/episode art, book covers, history thumbs, mobile avatar - 9
+  sites) now shimmers its reserved box until the picture decodes, via a shared
+  `FileTube.shimmerArt()` that clears on load/error and immediately for a cached
+  image - no more flat-tint-then-pop.
+- **Row action glyphs (T4-F):** the music song-row and podcast episode-row glyphs
+  (queue / like / save / delete) swap `.icon-*` CSS masks for inline chrome-icon
+  SVGs, killing the iOS mask-decode pop-in (the v1.87 fix, applied to these rows).
+
+Full gate (both seats APPROVE). Both seats INDEPENDENTLY caught the same real
+blocker: a total `/api/config` failure left the new cold sidebar skeleton
+shimmering FOREVER (the catch cleared only the grid) - the exact reveal-once
+defect this wave exists to prevent, handled on every sibling surface but this one.
+Fixed with a guarded `clearSidebarSkeletonOnError` (clears only the skeleton, so a
+re-nav error never wipes already-rendered real folders - a refinement over the
+reviewers' unguarded prescription) plus a behavioural jsdom binding (the original
+test was presence-only, which is why it slipped).
+
+**KNOWN GAPS (disclosed):** (1) the swapped row glyphs no longer follow the
+`data-icons` icon skin (a filled/emoji-skin user sees fixed inline SVGs in those
+two rows) - the deliberate v1.87 mask->SVG tradeoff to kill the decode lag.
+(2) The Library sidebar's PINNED-playlists section still has no cold-load shimmer
+(a naive one would reverse-flash for the common no-pins user; it needs the v1.99
+persist-last-known reserve, and its cache-prime is dead code) - deferred, tech-debt
+#141.
+
+Dual-Node: **Node 22.23.1 6655/6655, Node 24.14.0 6655/6655**, zero failures.
+Census 0, ledger clean. **AWAITING DEAN'S ON-DEVICE PASS** - probe list: open
+`/stats.html` (the whole dashboard shimmers, doesn't grow twice); a feed-mode home
+(rows shimmer, not blank); Settings -> Automation (the toggles shimmer once, never
+flip from a wrong default); a cold library load (the left folder rail shimmers);
+scroll Music/Podcasts/Books/History (art shimmers, no tint-then-pop); and the
+music song-row / podcast episode-row action glyphs should appear instantly on iOS,
+not a beat late.
+
 ### v1.101.0 - Shimmer sweep tranche 3: the header-right cluster (2026-08-11)
 
 The persistent `.header-right` shipped EMPTY and injected the account menu (after

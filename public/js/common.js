@@ -41,6 +41,12 @@ const CHROME_ICON_SVG = {
   search: { vb: '0 -960 960 960', d: 'M380-320q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l224 224q11 11 11 28t-11 28q-11 11-28 11t-28-11L532-372q-30 24-69 38t-83 14Zm0-80q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z' },
   download: { vb: '0 -960 960 960', d: 'M480-337q-8 0-15-2.5t-13-8.5L308-492q-12-12-11.5-28t11.5-28q12-12 28.5-12.5T365-549l75 75v-286q0-17 11.5-28.5T480-800q17 0 28.5 11.5T520-760v286l75-75q12-12 28.5-11.5T652-548q11 12 11.5 28T652-492L508-348q-6 6-13 8.5t-15 2.5ZM240-160q-33 0-56.5-23.5T160-240v-80q0-17 11.5-28.5T200-360q17 0 28.5 11.5T240-320v80h480v-80q0-17 11.5-28.5T760-360q17 0 28.5 11.5T800-320v80q0 33-23.5 56.5T720-160H240Z' },
   caret: { vb: '0 -960 960 960', d: 'M480-361q-8 0-15-2.5t-13-8.5L268-556q-11-11-11-28t11-28q11-11 28-11t28 11l156 156 156-156q11-11 28-11t28 11q11 11 11 28t-11 28L508-372q-6 6-13 8.5t-15 2.5Z' },
+  // v1.102 (tranche 4): the music song-row + podcast episode-row action glyphs,
+  // swapped from `.icon-*` masks (which decode-lag on iOS -> pop-in) to these
+  // inline chrome-icon SVGs. Byte-bound to the on-disk assets in chrome-icons.test.js.
+  queue: { vb: '0 0 24 24', d: 'M3 6h13v2H3V6zm0 4h13v2H3v-2zm0 4h9v2H3v-2zm14-1v6l5-3-5-3z' },
+  heart: { vb: '0 -960 960 960', d: 'm480-120-58-52q-101-91-167-157T150-447.5Q111-500 95.5-544T80-634q0-94 63-157t157-63q52 0 99 24.5t81 66.5q34-42 81-66.5t99-24.5q94 0 157 63t63 157q0 46-15.5 90T810-447.5Q744-381 678-315T538-172l-58 52Z' },
+  delete: { vb: '0 -960 960 960', d: 'M280-120q-33 0-56.5-23.5T200-200v-520q-17 0-28.5-11.5T160-760q0-17 11.5-28.5T200-800h160q0-17 11.5-28.5T400-840h160q17 0 28.5 11.5T600-800h160q17 0 28.5 11.5T800-760q0 17-11.5 28.5T760-720v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM400-280q17 0 28.5-11.5T440-320v-280q0-17-11.5-28.5T400-640q-17 0-28.5 11.5T360-600v280q0 17 11.5 28.5T400-280Zm160 0q17 0 28.5-11.5T600-320v-280q0-17-11.5-28.5T560-640q-17 0-28.5 11.5T520-600v280q0 17 11.5 28.5T560-280ZM280-720v520-520Z' },
 };
 
 // The inline-SVG markup for a chrome glyph. Deterministic (chrome-icons.test.js
@@ -72,6 +78,31 @@ function chromeIconEl(name, extraClass) {
   path.setAttribute('d', g.d);
   svg.appendChild(path);
   return svg;
+}
+
+// v1.102 (tranche 4 shimmer): the ART-DECODE reveal. Every card image (album/
+// podcast/book/history art, mobile avatar) ships with the `art-shimmer` class so
+// its reserved box shimmers (a token-only gradient swept on the img's OWN
+// background - a replaced <img> can't host a ::after sweep) instead of flashing a
+// flat tint then popping to the decoded picture. This wires each such image to
+// drop the class the instant it decodes (`load`) or fails (`error`), and clears
+// it immediately for an image that is ALREADY complete from cache - the named
+// cached-image edge, without which a warm image would shimmer FOREVER under a
+// fully-visible picture. `root` scopes the query to a just-rendered subtree
+// (default: document). Listener-`once` + idempotent, so re-running over a
+// partially-revealed set is safe. Exposed on window.FileTube for the view files.
+function shimmerArt(root) {
+  if (typeof document === 'undefined') return;
+  const scope = (root && typeof root.querySelectorAll === 'function') ? root : document;
+  scope.querySelectorAll('img.art-shimmer').forEach((img) => {
+    const clear = () => img.classList.remove('art-shimmer');
+    // `complete` is true for a decoded image AND a cached-broken one; either way
+    // no load event is coming, so stop shimmering now (a broken image then shows
+    // its own broken-image affordance, never a perpetual shimmer).
+    if (img.complete) { clear(); return; }
+    img.addEventListener('load', clear, { once: true });
+    img.addEventListener('error', clear, { once: true });
+  });
 }
 
 // Single source of truth for both the setup-page Appearance picker and the
@@ -7922,6 +7953,9 @@ if (typeof window !== 'undefined') {
   // resolves it through this namespace when the bare global is absent, which
   // is exactly the case in a jsdom test that requires setup.js as a module.
   window.FileTube.wireReorderable = wireReorderable;
+  // v1.102 (tranche 4 shimmer): the art-decode reveal helper, called by every
+  // view file after it renders a batch of card images.
+  window.FileTube.shimmerArt = shimmerArt;
 }
 
 // Renders the Playlists sheet's folder list — functionally equivalent to the
@@ -11638,6 +11672,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // builders). chrome-icons.test.js byte-binds the map to the on-disk assets
     // and source-locks the static bottom-nav markup against chromeIconMarkup.
     CHROME_ICON_SVG, chromeIconMarkup, chromeIconEl,
+    // v1.102 (tranche 4 shimmer): the art-decode reveal helper (jsdom-tested).
+    shimmerArt,
     // v1.63 playback queue: the chrome's pure decisions.
     shouldShowQueueButton, formatQueueBadge, buildQueueRowModel, buildQueueRowModels, queueEntryHref,
     formatQueuePosition,

@@ -87,13 +87,18 @@ test('A2: watch.html ships .watch-actions with the data-loading attribute (shimm
 });
 
 test('A2: CSS hides every child of a loading row and shimmers it', () => {
-  assert.match(css, /\.watch-actions\[data-loading\]\s*>\s*\*\s*\{\s*visibility:\s*hidden;\s*\}/,
+  // v1.102 (tranche 4): the setup Automation toggles (`.reveal-toggle`) now
+  // share this SAME reveal-once barrier via grouped selectors (one shared sweep
+  // declaration, no duplicated colour literal). These `[^{]*` allowances tolerate
+  // `.watch-actions[data-loading]` being one selector in a group while still
+  // binding that IT wears the fill, hides its children, and reuses the sweep.
+  assert.match(css, /\.watch-actions\[data-loading\]\s*>\s*\*[^{]*\{\s*visibility:\s*hidden;\s*\}/,
     'every child of a loading `.watch-actions` must be visibility:hidden (no partial button set shown)');
-  const loadingRule = /\.watch-actions\[data-loading\]\s*\{([^}]*)\}/.exec(css);
+  const loadingRule = /\.watch-actions\[data-loading\][^{]*\{([^}]*)\}/.exec(css);
   assert.ok(loadingRule, 'expected a `.watch-actions[data-loading]` base rule');
   assert.match(loadingRule[1], /background-color:\s*var\(--bg-secondary\)/,
     'the loading row wears the shared skeleton fill');
-  assert.match(css, /\.watch-actions\[data-loading\]::after\s*\{[\s\S]*?animation:\s*skeleton-sweep/,
+  assert.match(css, /\.watch-actions\[data-loading\]::after[^{]*\{[\s\S]*?animation:\s*skeleton-sweep/,
     'the loading row reuses the shared skeleton-sweep shimmer');
 });
 

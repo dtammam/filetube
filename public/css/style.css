@@ -1769,6 +1769,30 @@ html.reader-immersive .app-container { padding-top: 0; }
   margin-bottom: var(--space-3);
 }
 
+/* v1.102 (tranche 4 shimmer): the ART-DECODE shimmer. A real <img> can't host a
+   ::after sweep (replaced elements don't render pseudo-elements), so the shimmer
+   rides the img's OWN background: a token-only gradient (no raw literal) swept via
+   background-position. The decoded picture paints over it; FileTube.shimmerArt()
+   removes the class on load/error and handles the already-decoded cache case, so
+   a warm-cache image never shimmers forever. `img.art-shimmer` (0,1,1) beats
+   every single-class art-box background rule, so it wins regardless of source
+   order. Reduced-motion drops the sweep (the base fill still reads as a
+   placeholder), matching the .skeleton-shimmer carve-out. */
+img.art-shimmer {
+  background-color: var(--bg-secondary);
+  background-image: linear-gradient(100deg, var(--bg-secondary) 30%, var(--border-color) 50%, var(--bg-secondary) 70%);
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  animation: art-shimmer-sweep 1.6s ease-in-out infinite; /* token-exempt: choreography, matches the shared .skeleton-shimmer sweep timing */
+}
+@keyframes art-shimmer-sweep {
+  from { background-position: 150% 0; }
+  to { background-position: -70% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  img.art-shimmer { animation: none; }
+}
+
 /* v1.98 shimmer sweep (library views): the seeded skeletons REUSE each view's
    real reserved-space art box (`.book-cover-link` 2:3, `.music-album-art` 1:1,
    `.podcast-card-art` 1:1, `.history-thumb` 16:9) so the reveal is zero-shift.
@@ -1781,6 +1805,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .book-cover-link.skeleton-shimmer,
 .music-album-art.skeleton-shimmer,
 .podcast-card-art.skeleton-shimmer,
+.book-row-cover.skeleton-shimmer, /* v1.102: the feed-mode skeleton card cover (also has thumbnail-bg) */
 .related-thumb.skeleton-shimmer { /* v1.99: .related-thumb is #000 letterback - restore the fill so the sweep shows */
   background-color: var(--bg-secondary);
 }
@@ -10732,7 +10757,8 @@ a.queue-upnext-next:hover {
   justify-content: center;
   text-decoration: none;
 }
-.podcast-ep-action i {
+.podcast-ep-action i,
+.podcast-ep-action .chrome-icon { /* v1.102: the glyph is now an inline chrome-icon svg, not an .icon-* mask */
   width: 14px;
   height: 14px;
 }
@@ -10926,13 +10952,28 @@ a.queue-upnext-next:hover {
    viewports): the flash exists everywhere; fixing it at the source is
    viewport-independent. If another half-state row shows up, reuse this
    `data-loading` pattern rather than decorating the partial state. */
-.watch-actions[data-loading] {
+/* v1.102 (tranche 4): the SAME reveal-once barrier now also serves the setup
+   Automation toggles (`.reveal-toggle`), which ship a static default and would
+   visibly flip once /api/settings lands (guaranteed on the two default-ON
+   toggles - relocate-hydrated, notifications-enabled). Grouping the selectors
+   here reuses the shared sweep declaration verbatim - no duplicated colour
+   literal for the census to police. loadAutomationSettings drops data-loading
+   from ALL of them on the single /api/settings settle (success OR error), so
+   they reveal together, never a per-row pop. */
+.watch-actions[data-loading],
+.reveal-toggle[data-loading] {
   position: relative;
   overflow: hidden;
   background-color: var(--bg-secondary);
   border-radius: var(--radius);
 }
-.watch-actions[data-loading]::after {
+/* A toggle label wraps an <input> plus a raw TEXT node (not an element), so
+   `> * { visibility:hidden }` below can't hide the label text - `color:
+   transparent` does, and the label's own height (one line) is the reserved,
+   zero-shift box. */
+.reveal-toggle[data-loading] { color: transparent; }
+.watch-actions[data-loading]::after,
+.reveal-toggle[data-loading]::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -10946,12 +10987,14 @@ a.queue-upnext-next:hover {
   animation: skeleton-sweep 1.6s ease-in-out infinite; /* token-exempt: choreography, reuses the shared .skeleton-shimmer keyframes */
 }
 @media (prefers-reduced-motion: reduce) {
-  .watch-actions[data-loading]::after { animation: none; }
+  .watch-actions[data-loading]::after,
+  .reveal-toggle[data-loading]::after { animation: none; }
 }
-/* Every child (the read-only star-rating AND the button sub-group) stays
-   invisible-but-laid-out until reveal, so no partial button set is ever shown
-   and the reserved height is the real (measured) final height. */
-.watch-actions[data-loading] > * { visibility: hidden; }
+/* Every child (the read-only star-rating AND the button sub-group; the setup
+   toggle's checkbox) stays invisible-but-laid-out until reveal, so no partial
+   set is ever shown and the reserved height is the real (measured) final one. */
+.watch-actions[data-loading] > *,
+.reveal-toggle[data-loading] > * { visibility: hidden; }
 
 /* === v1.96 A1: watch action-row buttons sit 5px under the mobile 44px floor.
    Scoped to `.watch-actions .btn` so it BEATS the v1.95 EOF `.btn { min-height:
