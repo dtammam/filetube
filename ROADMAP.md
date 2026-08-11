@@ -80,6 +80,23 @@
 
 ## Shipped
 
+### v1.97.1 - "Hidden" moves to a settings section (2026-08-11)
+
+Dean, on-device (v1.97.0 feedback): the account-menu "Hidden from feed" row label
+was too long, and its restore modal did not scroll - past ~7 hidden items the rest
+were unreachable. FIX: move the whole restore surface OUT of the account menu and
+into a "Hidden" SECTION on the settings page, beside Trash, mirroring that pattern.
+The settings page scrolls, so any-length list is reachable, and the label is just
+"Hidden". Rows: thumbnail + title + channel, single-tap Restore (un-hide).
+
+The card "Hide from feed" affordance + Undo toast are unchanged; the routes, model
+and backup carrier are unchanged (a UI relocation). Slim gate (adversarial) APPROVE
+- escaping + empty-state guard mutation-verified, no dangling refs to the removed
+modal. Dual-Node: **Node 22.23.1 6584/6584, Node 24.14.0 6584/6584**. Census 0,
+ledger clean. **AWAITING DEAN'S ON-DEVICE PASS** - Settings now has a "Hidden"
+section (by Trash) listing what you pruned from the feed, each with Restore, and
+it scrolls.
+
 ### v1.97.0 - "Hide from feed" (per-user, manual, reversible) (2026-08-11)
 
 A manual, NON-algorithmic per-user prune of the MODERN home feed. Tapping "Hide
