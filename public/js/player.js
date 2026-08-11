@@ -6508,6 +6508,24 @@ if (typeof module !== 'undefined' && module.exports) {
       if (Array.isArray(data.chapters)) applyChaptersForMedia(data);
       return true;
     },
+    // v1.104: the /music expanded now-playing panel is re-init'd fresh on a
+    // dock-tap expand and has lost its own record of the playing track. Expose
+    // the LIVE player's display metadata (read-only) so it can re-seed the panel
+    // (title/artist/album) and rebuild its up-next from the stored browseCtx.
+    // `isMusic` gates the panel (a video/book on the shared host must not show
+    // it). Returns null when nothing is loaded.
+    getCurrentMeta: function () {
+      if (!currentId || !currentData) return null;
+      return {
+        id: currentId,
+        title: currentData.title || '',
+        artist: currentData.channelName || '',
+        album: currentData.album || '',
+        albumKey: currentData.albumKey || '',
+        browseCtx: (typeof currentData.browseCtx === 'string') ? currentData.browseCtx : '',
+        isMusic: currentData.resumeMode === 'music',
+      };
+    },
   };
   Object.defineProperty(api, 'currentId', {
     enumerable: true,

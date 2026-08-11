@@ -122,6 +122,36 @@ function buildSongRowHtml(item, index) {
     '</div>';
 }
 
+// v1.104: the expanded now-playing panel (under #player-slot). The shared player
+// host shows only the big art in iOS background-audio mode - no track text - so
+// this music-owned panel renders the metadata (title, artist . album) + an
+// "Up next" queue. `np` = the playing track {title,artist,album}; `upNext` = the
+// remaining queue items, each `{id,title,artist,index}` (`index` is the real
+// queue index, so a tap can `playAt(index)`). Queue thumbs ship `art-shimmer`
+// (reveal-once, cleared by the shared shimmerArt).
+function buildNowPlayingPanelHtml(np, upNext) {
+  np = np || {};
+  var sub = [np.artist, np.album].filter(function (x) { return typeof x === 'string' && x; }).join(' · ');
+  var meta = '<div class="mnp-meta">' +
+    '<div class="mnp-title" title="' + escapeMusicHtml(np.title) + '">' + escapeMusicHtml(np.title || 'Unknown track') + '</div>' +
+    (sub ? '<div class="mnp-sub">' + escapeMusicHtml(sub) + '</div>' : '') +
+    '</div>';
+  var queue = '';
+  if (Array.isArray(upNext) && upNext.length) {
+    queue = '<div class="mnp-queue"><div class="mnp-queue-head">Up next</div>' +
+      upNext.map(function (it) {
+        return '<button type="button" class="mnp-queue-row" data-index="' + it.index + '">' +
+          '<img class="mnp-queue-thumb art-shimmer" src="/albumart/' + encodeURIComponent(it.id) + '" alt="" loading="lazy" />' +
+          '<span class="mnp-queue-main">' +
+          '<span class="mnp-queue-title">' + escapeMusicHtml(it.title || 'Track') + '</span>' +
+          (it.artist ? '<span class="mnp-queue-sub">' + escapeMusicHtml(it.artist) + '</span>' : '') +
+          '</span></button>';
+      }).join('') +
+      '</div>';
+  }
+  return meta + queue;
+}
+
 // The display year for an album drill: the min non-null Integer year across
 // its tracks — MATCHES groupAlbums (lib/music/query.js) so the header year and
 // the card year agree.
@@ -333,6 +363,7 @@ function buildMusicSkeletonRows(n) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildSongRowHtml,
+    buildNowPlayingPanelHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
     MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
@@ -386,6 +417,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var shuffleBtn = root.querySelector('#music-shuffle-btn');
     var scanBtn = root.querySelector('#music-scan-btn');
     var nowPlayingEl = root.querySelector('#music-nowplaying');
+    var nowPlayingPanel = root.querySelector('#music-nowplaying-panel');
     if (!content) return;
 
     // v1.44.2: reflect the "Playing from <Album>" line for the currently-playing
@@ -403,6 +435,46 @@ if (typeof module !== 'undefined' && module.exports) {
         nowPlayingEl.hidden = true;
         nowPlayingEl.removeAttribute('data-album-key');
       }
+      updateNowPlayingPanel();
+    }
+
+    // v1.104: the expanded now-playing panel (metadata + up-next queue). Shown
+    // ONLY when the player is EXPANDED (state 'full') AND the music track we last
+    // loaded is what's actually playing (so a closed player, or a video/book on
+    // the shared host, hides it - never stale metadata). Up-next is the queue
+    // AFTER the playing track; each row's data-index is the real queue index.
+    // Re-derived on every call (track change, expand, close) - the reveal-once
+    // both-axes contract: reveal when expanded+playing, CLEAR otherwise.
+    function updateNowPlayingPanel() {
+      if (!nowPlayingPanel) return;
+      var p = window.FileTube && window.FileTube.player;
+      var expanded = !!(p && typeof p.getState === 'function' && p.getState() === 'full');
+      var curId = (p && p.currentId) || null;
+      if (!expanded || !nowPlaying || !curId || nowPlaying.id !== curId) {
+        nowPlayingPanel.hidden = true;
+        nowPlayingPanel.innerHTML = '';
+        return;
+      }
+      var ci = -1;
+      for (var k = 0; k < queue.length; k++) { if (queue[k].id === curId) { ci = k; break; } }
+      var upNext = [];
+      if (ci >= 0) {
+        for (var j = ci + 1; j < queue.length && upNext.length < 50; j++) {
+          upNext.push({ id: queue[j].id, title: queue[j].title, artist: queue[j].artist, index: j });
+        }
+      }
+      nowPlayingPanel.innerHTML = buildNowPlayingPanelHtml(nowPlaying, upNext);
+      nowPlayingPanel.hidden = false;
+      if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(nowPlayingPanel);
+    }
+    // Tapping an up-next row jumps to that queue index (stays expanded via T1).
+    if (nowPlayingPanel) {
+      nowPlayingPanel.addEventListener('click', function (e) {
+        var row = e.target.closest('.mnp-queue-row');
+        if (!row) return;
+        var idx = parseInt(row.getAttribute('data-index'), 10);
+        if (!isNaN(idx)) playAt(idx);
+      }, { signal });
     }
     // Tapping the line drills into the playing track's album.
     if (nowPlayingEl) {
@@ -831,6 +903,7 @@ if (typeof module !== 'undefined' && module.exports) {
         channelName: item.artist || '',
         folderName: item.artist || '',
         album: item.album || '',
+        albumKey: item.albumKey || '', // v1.104: so the player can re-seed the now-playing panel's album drill after a re-init
         duration: item.durationSec || 0,
         artUrl: '/albumart/' + item.id,
         streamSrc: '/track/' + item.id,
@@ -851,23 +924,88 @@ if (typeof module !== 'undefined' && module.exports) {
       // top — the album header + tracklist stay on screen (browse-while-playing)
       // and the tapped row highlights. dock:true mounts straight into #player-dock.
       playingId = item.id;
-      nowPlaying = { id: item.id, album: item.album || '', albumKey: item.albumKey || '' };
+      nowPlaying = { id: item.id, title: item.title || '', artist: item.artist || '', album: item.album || '', albumKey: item.albumKey || '' };
       applyPlayingHighlight();
-      updateNowPlaying();
-      window.FileTube.player.load(item.id, data, { dock: true });
+      // v1.104: keep the player WHERE IT IS across a track change. If the expanded
+      // now-playing view (#player-slot, state 'full') is open, load the next track
+      // INTO that slot so it STAYS expanded; a docked/closed player docks (the
+      // browse-while-playing default for a fresh list tap). Fixes next/prev
+      // collapsing the expanded view to the mini-bar (Dean, on-device v1.103).
+      var pl = window.FileTube.player;
+      var keepSlot = (pl && typeof pl.getState === 'function' && pl.getState() === 'full')
+        ? root.querySelector('#player-slot')
+        : null;
+      pl.load(item.id, data, keepSlot ? { slot: keepSlot } : { dock: true });
       ensureEmptiedListener(); // gate W1: the host (with #media-player) now exists — bind if we hadn't yet
-      if (typeof window.FileTube.player.setTrackNav === 'function') {
-        window.FileTube.player.setTrackNav({
-          onPrev: i > 0 ? function () { playAt(i - 1); } : undefined,
-          onNext: i < queue.length - 1 ? function () { playAt(i + 1); } : undefined,
-        });
-      }
+      registerTrackNav(i);
+      // AFTER load (the player's currentId is now the new track) - so both the
+      // "Playing from <album>" line and the now-playing panel, which gate on
+      // np.id === player.currentId, reflect THIS track, not the previous one.
+      updateNowPlaying();
       // Remember the resume pointer (Continue-listening / app relaunch).
       fetch('/api/music/resume', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lastTrackId: item.id, queueCtx: queueCtx, position: 0 }),
       }).catch(function () {});
+    }
+
+    // The lock-screen / expanded-view Prev/Next handlers for queue index `i`.
+    // Factored out so a re-init reseed (rebuildPlayingQueue) can re-register them
+    // around the recovered playing index, not just a fresh loadTrack.
+    function registerTrackNav(i) {
+      if (!window.FileTube.player || typeof window.FileTube.player.setTrackNav !== 'function') return;
+      // i<0 (no known index) registers NO neighbors - clears any stale closures
+      // rather than binding onNext to playAt(0) off a negative index.
+      window.FileTube.player.setTrackNav({
+        onPrev: i > 0 ? function () { playAt(i - 1); } : undefined,
+        onNext: (i >= 0 && i < queue.length - 1) ? function () { playAt(i + 1); } : undefined,
+      });
+    }
+
+    // v1.104: a dock-tap expand RE-INITS this view, wiping its in-memory
+    // `nowPlaying` + `queue`. If a MUSIC track is still playing, re-seed the
+    // now-playing panel from the LIVE player (metadata) and, when the current tab
+    // didn't already repopulate the queue (a grid tab, not Songs), rebuild the
+    // playing queue from the player's stored browseCtx so up-next + Prev/Next work.
+    function seedNowPlayingFromPlayer() {
+      var p = window.FileTube && window.FileTube.player;
+      var meta = (p && typeof p.getCurrentMeta === 'function') ? p.getCurrentMeta() : null;
+      if (!meta || !meta.isMusic || !meta.id) return;
+      playingId = meta.id;
+      nowPlaying = { id: meta.id, title: meta.title, artist: meta.artist, album: meta.album, albumKey: meta.albumKey || '' };
+      applyPlayingHighlight();
+      updateNowPlaying();
+    }
+    async function rebuildPlayingQueue() {
+      // Gate CRITICAL (both seats): only rebuild when the expanded panel is
+      // actually showing, and NEVER on the Songs tab / a drill - those run
+      // loadSongs via render() and OWN `queue`. `init` fires render() unawaited,
+      // so at this call `queue` is still [] regardless of tab; a `queue.length`
+      // guard was DEAD and let a SECOND concurrent /api/music load race render()'s,
+      // desyncing the rendered rows' data-index from the live queue -> playAt(i)
+      // played the WRONG track (the divergent-sort dock-return repro). render()'s
+      // own updateNowPlaying() fills the panel for those tabs; here we only handle
+      // the grid tabs (albums/artists) render() leaves `queue` untouched on.
+      var p = window.FileTube && window.FileTube.player;
+      var expanded = !!(p && typeof p.getState === 'function' && p.getState() === 'full');
+      if (!expanded || tab === 'songs' || drill) return;
+      var meta = (p && typeof p.getCurrentMeta === 'function') ? p.getCurrentMeta() : null;
+      if (!meta || !meta.isMusic || !meta.id) return;
+      var ctx = (window.FileTube && typeof window.FileTube.decodeListContext === 'function')
+        ? window.FileTube.decodeListContext(meta.browseCtx || '') : null;
+      if (!ctx || ctx.src !== 'music') return;
+      var scope = ctx.album ? { type: 'album', key: ctx.album } : (ctx.artist ? { type: 'artist', key: ctx.artist } : null);
+      try {
+        await loadSongs({ scope: scope, sort: ctx.sort, seed: ctx.seed });
+      } catch (_) { return; }
+      var ci = -1;
+      for (var k = 0; k < queue.length; k++) { if (queue[k].id === playingId) { ci = k; break; } }
+      // ci<0 (the playing id isn't in the rebuilt queue - a ctx/scope mismatch)
+      // CLEARS the nav rather than leaving the destroyed prior instance's stale
+      // Prev/Next closures registered (gate ADV note).
+      registerTrackNav(ci);
+      updateNowPlayingPanel();
     }
 
     // Gate QA-CRITICAL: an ALAC track streams from a rendition that transcodes
@@ -946,6 +1084,12 @@ if (typeof module !== 'undefined' && module.exports) {
       await render();
     }
 
+    // v1.104: before the first render, re-seed the now-playing metadata from the
+    // live player - a dock-tap expand re-inits this view with nowPlaying=null, so
+    // render()'s updateNowPlaying would otherwise show a blank panel for a track
+    // that is audibly playing.
+    seedNowPlayingFromPlayer();
+
     const playParam = urlParams.get('play');
     if (playParam) {
       playTrackFromContinue(playParam).catch((err) => {
@@ -989,6 +1133,11 @@ if (typeof module !== 'undefined' && module.exports) {
         player.expand(npSlot);
       }
     }
+    // v1.104: with the player (possibly just) expanded, show the now-playing
+    // panel - metadata immediately, up-next once the queue is (re)built from the
+    // player's stored browseCtx (a grid tab didn't repopulate it).
+    updateNowPlayingPanel();
+    rebuildPlayingQueue().catch(function () {});
   }
 
   function stripNowPlayingParam() {

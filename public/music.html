@@ -123,6 +123,12 @@
              music->music swap; browse-while-playing is otherwise unchanged
              (the slot sits empty during normal docked playback). -->
         <div id="player-slot"></div>
+        <!-- v1.104: the expanded now-playing panel - track metadata + "Up next"
+             queue, shown ONLY while the player is expanded (state 'full') with a
+             music track playing. The shared player host shows only big art in iOS
+             background-audio mode, so this music-owned panel supplies the text +
+             queue (public/js/music.js updateNowPlayingPanel). -->
+        <div id="music-nowplaying-panel" class="music-nowplaying-panel" hidden></div>
         <!-- Transient status (e.g. "Preparing track…" while an ALAC rendition
              transcodes on demand). -->
         <div id="music-status" class="music-status" role="status" hidden></div>

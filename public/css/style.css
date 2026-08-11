@@ -9190,6 +9190,68 @@ html[data-modern="on"] .video-uploader {
 .music-nowplaying:hover { color: var(--text-primary); }
 .music-nowplaying[hidden] { display: none !important; }
 
+/* v1.104: the expanded now-playing panel (track metadata + up-next queue), under
+   #player-slot, shown only while the player is expanded. display:flex would beat
+   the UA [hidden] rule, so enforce the hide explicitly (the repo's
+   [hidden]-loses-to-author-display class). */
+.music-nowplaying-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  margin: var(--space-6) 0 var(--space-8);
+}
+.music-nowplaying-panel[hidden] { display: none !important; }
+.mnp-meta { display: flex; flex-direction: column; gap: var(--space-2); }
+.mnp-title {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mnp-sub {
+  font-size: var(--fs-base);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mnp-queue { display: flex; flex-direction: column; gap: var(--space-1); }
+.mnp-queue-head {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  margin-bottom: var(--space-2);
+}
+.mnp-queue-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  width: 100%;
+  padding: var(--space-3);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-lg);
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.mnp-queue-row:hover { background: var(--bg-secondary); }
+.mnp-queue-thumb {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  object-fit: cover;
+  background: var(--thumbnail-bg);
+  display: block;
+}
+.mnp-queue-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.mnp-queue-title { font-size: var(--fs-base); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mnp-queue-sub { font-size: var(--fs-sm); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .music-empty { color: var(--text-secondary); padding: var(--space-12) 0; }
 .music-empty[hidden] { display: none !important; }
 

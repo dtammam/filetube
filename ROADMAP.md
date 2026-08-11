@@ -80,6 +80,48 @@
 
 ## Shipped
 
+### v1.104.0 - Music now-playing view: metadata + up-next queue (2026-08-11)
+
+Dean, on-device right after v1.103: "if I tap a song there's no detail about
+song name/album... if I press next track it goes straight to miniplayer." Two
+pre-existing gaps in the expanded now-playing view (`#player-slot`), surfaced by
+the overhaul. Design wave, exec plan in
+`docs/exec-plans/completed/v1.104-music-nowplaying-view.md`. Dean chose (of the
+options offered) the FULL now-playing view - metadata + up-next queue.
+
+- **Next/prev no longer collapses the view (T1):** every music track change
+  loaded with `{dock:true}`, so next/prev from the expanded view dropped to the
+  mini-bar. `loadTrack` now KEEPS the player's position - expanded stays expanded
+  (loads into `#player-slot`), docked/closed still docks (browse-while-playing
+  unchanged).
+- **Now-playing panel (T2):** the shared player host shows only big album art in
+  iOS background-audio mode (no track text), so a music-owned
+  `#music-nowplaying-panel` under `#player-slot` now renders the metadata (title,
+  artist . album) + a tappable "Up next" queue, shown ONLY while the player is
+  expanded with a music track playing (hidden/cleared for docked/closed/non-
+  music). Because a dock-tap RE-INITS the view (wiping in-memory state), the
+  player gained a read-only `getCurrentMeta()` so the panel re-seeds its metadata
+  and rebuilds up-next from the stored browse context. Also fixed a latent
+  ordering bug where the "Playing from <album>" line read the PREVIOUS track
+  (updateNowPlaying ran before the player's currentId updated).
+
+**What the gate caught (both seats, two rounds, no data-loss CRITICAL):** a
+race where, on the Songs tab, a dock-tap expand fired a SECOND concurrent track-
+list load that desynced the rendered rows from the live queue - so tapping a row
+could play the WRONG track (QA scored it CRITICAL, adversarial WARNING; a dead
+`if(queue.length)` guard, since `init` fires `render()` unawaited). Fixed by
+gating the rebuild on the player being expanded AND letting `render()` own the
+Songs/drill queue (only grid tabs rebuild). Also: the reveal-once ERROR/CLOSE
+clear on the new panel was only vacuously tested (the panel is born empty) - now
+bound behaviourally (populate the panel, then drive docked + player-close, assert
+it clears), the exact v1.102/v1.103 repeat class. Both seats APPROVED; dual-Node
+full suite 6692/6692 on v22.23.1 and v24.14.0.
+
+**Known residual (disclosed):** tech-debt #142 - `you-nav-tab.test.js` (an
+untouched file) flaked on ONE gate run under CPU contention (both my dual-Node
+release runs were clean); a contention-sensitive jsdom timing test, same class as
+#135/#107. **Dean's on-device pass PENDING** (the final arbiter).
+
 ### v1.103.0 - Music page overhaul: artist mosaic + per-tab sort + dock-return fix (2026-08-11)
 
 Dean: the Music page "feels bad on multiple fronts... not polished / not
