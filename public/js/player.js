@@ -6288,10 +6288,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.38.3: a book-TTS item carries an explicit reader href -- tapping the
       // mini bar returns to THAT reader, not /watch.html?v=<bookId> (which is
       // a video route and would 404 for a book id). v1.44.2: a music track
-      // likewise carries readerHref='/music' -- `readerHref` is the generic
-      // "where does tapping the dock return" href; without it a music track id
-      // would hit the video route and 404. On /music the same-URL nav guard
-      // (common.js navigate) makes this a benign no-op (you are already there).
+      // likewise carries readerHref='/music?nowplaying=1' -- `readerHref` is the
+      // generic "where does tapping the dock return" href; without it a music
+      // track id would hit the video route and 404. v1.103: on /music this is a
+      // REAL transition (not a same-URL no-op) because the music view strips
+      // ?nowplaying after each expand, so the bar never already shows the target.
       var url = (currentData && typeof currentData.readerHref === 'string' && currentData.readerHref)
         ? currentData.readerHref
         : '/watch.html?v=' + encodeURIComponent(currentId);

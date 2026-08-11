@@ -833,11 +833,12 @@ if (typeof module !== 'undefined' && module.exports) {
         autoAdvanceViaTrackNav: true,
         browseCtx: queueCtxEncoded,
         // v1.44.2: the dock-return href - without it a track id hits the
-        // video /watch route and 404s. v1.73 (Dean ruling 2): the return
-        // now opens the expanded now-playing view in ONE gesture - the
-        // podcasts ?nowplaying=1 contract, same player audio-mount, second
-        // mount point (on /music the tap NAVIGATES and expands - the old
-        // same-URL-no-op sentence died with the plain /music href).
+        // video /watch route and 404s. v1.73 (Dean ruling 2): the return opens
+        // the expanded now-playing view in ONE gesture - the podcasts
+        // ?nowplaying=1 contract, same player audio-mount, second mount point.
+        // v1.103: this navigate lands only because init STRIPS ?nowplaying after
+        // consuming it (stripNowPlayingParam), so the bar never already shows the
+        // target and the router's same-URL no-op never swallows the dock-tap.
         readerHref: '/music?nowplaying=1',
       };
       // v1.44.2 (Spotify feel): play in the DOCKED mini-player, not FULL at the
@@ -968,6 +969,32 @@ if (typeof module !== 'undefined' && module.exports) {
         player.expand(npSlot);
       }
     }
+    // v1.103 (dock-return determinism): `?nowplaying=1` is a TRANSIENT expand
+    // TRIGGER, not durable state. Now that init has read it (above), strip it so
+    // it never persists in the bar. If it lingered, a later dock re-tap navigates
+    // to the SAME `/music?nowplaying=1` already shown, and the router's same-URL
+    // no-op (common.js navigate, tech-debt #46) swallows it - stranding you in the
+    // docked mini-player with an empty #player-slot (Dean's "tapping the mini
+    // player doesn't always bring the player back" bug). Stripping keeps the URL
+    // truthful (docked, not expanded) so every dock-tap is a real transition that
+    // re-inits + re-expands. replaceState (no new history entry), carrying the
+    // router's state object forward with a corrected `url` so popstate stays
+    // consistent.
+    stripNowPlayingParam();
+  }
+
+  function stripNowPlayingParam() {
+    try {
+      var loc = window.location;
+      var params = new URLSearchParams(loc.search);
+      if (!params.has('nowplaying')) return;
+      params.delete('nowplaying');
+      var qs = params.toString();
+      var newUrl = loc.pathname + (qs ? '?' + qs : '');
+      var prev = window.history.state;
+      var nextState = prev ? Object.assign({}, prev, { url: newUrl }) : null;
+      window.history.replaceState(nextState, '', newUrl);
+    } catch (_) { /* history unavailable -> leave the URL as-is */ }
   }
 
   function destroy() {
