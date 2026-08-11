@@ -182,6 +182,31 @@ suite counts, never projected.
   path. No data-loss surface, but the player machinery is "battle-won" - treat
   regressions to background-audio continuity as CRITICAL.
 
+## SHIPPED vs DEFERRED (updated during implementation)
+
+Commits on `feature/music-overhaul` (after the exec-plan commit):
+- **T1+T2** `feat(music): server grouping` - `artIds` mosaic data + sortable
+  grids (`sortGroups`), `?sort=` on albums/artists endpoints.
+- **T3** `feat(music): unify card chassis + artist mosaic` - one art-forward
+  chassis, 2x2 album-art mosaic with data-tiles reflow, reveal-once per tile.
+- **T4** `feat(music): per-tab sort` - tab-aware menu, per-tab persistence,
+  drill hides the control, no-dead-option forcing test.
+- **T5** `fix(music): dock-return determinism` - strip transient `?nowplaying`
+  on init so a dock re-tap is always a real transition (the bug's ACTUAL
+  root-fix; simpler than the URL-rework originally proposed).
+- **T5b** `feat(music): Artists is the default landing tab` (D2).
+
+**DEFERRED (disclosed): D3's URL-backed tabs/drills + browser-Back.** Rationale
+recorded honestly: D3 was approved primarily as "the clean root-fix for the
+mini-player bug." Implementation found a simpler, lower-risk root-fix (the
+`?nowplaying` strip, T5) that does NOT require URL-backing - so the bug is fixed
+without it. What URL-backed browse would still ADD is Back-button stepping
+through tabs/drills + shareable deep links: a genuine enhancement, but it needs
+view-level `pushState` against the SPA router's history/depth invariants (a
+documented source of release-blocking bugs), which warrants its own focused
+gate. Ships as a candidate follow-up wave, Dean's call. The mosaic + sort +
+determinism + Artists-default deliver all three of Dean's stated symptoms.
+
 ## Known risks / residuals
 
 - The shared player host is reparented between video/watch and music; URL-state
