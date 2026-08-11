@@ -36,8 +36,11 @@ test('buildRelatedSkeletonCards: n cards reusing the real .related-card/.related
   assert.ok(html.includes('skeleton-line-title') && html.includes('skeleton-line-meta'), 'title + meta lines');
   assert.doesNotMatch(html, /<span class="skeleton-line/, 'block div text lines, not inline spans');
   assert.strictEqual(buildRelatedSkeletonCards(0), '');
-  assert.strictEqual(buildRelatedSkeletonCards(-3), '', 'negative -> empty (guard bound, not just n=0)');
-  assert.strictEqual(buildRelatedSkeletonCards('x'), '', 'non-integer -> empty');
+  // A DISCRIMINATING input for the Number.isInteger guard: a negative/NaN is
+  // already '' from the loop bound, so it can't tell a guarded fn from `count=n`.
+  // A non-integer POSITIVE (3.5) only returns '' when the guard runs (gate: the
+  // divergent-fixture trap - build the survivor at a spelling that diverges).
+  assert.strictEqual(buildRelatedSkeletonCards(3.5), '', 'non-integer positive -> empty (binds the isInteger guard, not just the loop bound)');
 });
 
 test('avatar bar: PERSIST last-known count + RESERVE the strip before the fetch (no pop-in above the chips)', () => {
