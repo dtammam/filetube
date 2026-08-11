@@ -80,6 +80,69 @@
 
 ## Shipped
 
+### v1.96.0 - Watch action bar: shorter buttons + kill the load flash (2026-08-11)
+
+Two on-device watch-page pains, both traced to how the `.watch-actions` action
+row is built.
+
+- **A1 - shorter, scoped.** v1.95's mobile `.btn { min-height: 44px }` floor made
+  the watch action-row buttons too tall. `.watch-actions .btn` now drops to a new
+  tunable token `--size-touch-watch-action: 39px` (5px under the floor, above the
+  ~36px pre-v1.95 height), in a fresh EOF `@media (max-width:768px)` block. It
+  BEATS the global floor on specificity (0,2,0 > 0,1,0), so ONLY this row shrinks -
+  the v1.95 queue/notification/resume 44px controls and the prev-next/playlist
+  buttons (outside `.watch-actions`) keep 44px. 39px is Dean's starting number; his
+  device pass is the arbiter and the token is a one-line knob.
+- **A2 - reveal-once.** The row ships 4 static buttons, then watch.js injects the
+  rest (Move/Attribute/Like/Watched/Share/Reheat) after the record loads - a
+  partial->full pop-in. Now `.watch-actions` ships a `data-loading` attribute
+  (shimmer, every child `visibility:hidden`), and the row reveals ONCE, in final
+  state. The reveal is BARRIERED on BOTH async inputs - the media record AND the
+  write capability - so Move/Attribute (which mount from whichever of those
+  resolves last) are present before the row ever appears.
+
+**Full gate (both seats APPROVE) - and it earned its keep again.** The first pass
+BLOCKED: both seats independently caught that Move/Attribute/Delete are gated on
+`canModifyLibrary`, which resolves from an INDEPENDENT `fetchCurrentUser()` promise
+- so on an admin cold load where `/api/auth/me` lost the race, the row revealed
+WITHOUT them and they popped in later: the exact flash the wave targets, for Dean's
+own user. The first version's "one late-mount" claim was wrong. FIX: a reveal
+barrier (`maybeRevealActionBar()` drops `data-loading` only when
+`actionMediaSettled && actionCapabilitySettled`; media releases in the success tail
++ catch, capability in the fetch `.then`/`.catch`/no-probe `else`). The gate also
+caught: the reveal-once TEST was presence-not-binding (an `indexOf` found the
+catch-path call, so deleting the success reveal stayed green - the repo's most
+expensive recurring class) - replaced with a BEHAVIOURAL jsdom integration test
+that drives the media-vs-capability resolution order and is mutation-verified to go
+RED on a reveal-on-media-alone regression; a "zero-shift" comment that overclaimed
+on mobile (corrected: the reveal is zero-shift, but the shimmer box settles ~1->2
+wrapped rows under the shimmer as buttons mount invisibly during load - a single
+placeholder resize, not a pop-in); and a new token that skipped the mandatory
+three-place ceremony (added to the token-scale-lock CONTRACT + the contract doc).
+
+**KNOWN GAPS (disclosed):**
+- On a COLD capability cache (first tab session only), the Reheat button still
+  mounts ~1 RTT after reveal, after its own yt-dlp health probe - the SOLE
+  late-mount not gated by the barrier. Unchanged from before and minimized by the
+  v1.53 capability cache (warm cache mounts it pre-reveal). Blocking the whole row
+  on that probe would keep the common buttons non-tappable longer.
+- The barrier now couples the row's reveal to `/api/auth/me` settling. A
+  pathologically slow/hung auth fetch (with the media record fine) would keep the
+  static buttons non-tappable under the shimmer. Bounded in practice:
+  `fetchCurrentUser` is memoized and shell-primed (usually already resolved at
+  init), returns null on error (never hangs on rejection), and a truly dead auth
+  fetch degrades the whole page anyway. Both gate seats flagged this as an
+  acceptable, non-blocking residual.
+
+Dual-Node: **Node 22.23.1 6562/6562, Node 24.14.0 6562/6562**, zero failures. (One
+unrelated jsdom-timer flake was observed once under concurrent mutation-test load,
+did not reproduce, and did not touch this diff - disclosed by the QA seat.)
+**AWAITING DEAN'S ON-DEVICE PASS** - deploy `1.96.0`, then on mobile: (1) the watch
+Queue/Next/Download/Delete/Move/Like/Share buttons are a touch shorter (39px); (2)
+opening a video no longer shows the action buttons pop in one-by-one - the row
+shimmers then appears complete; (3) as an admin, the Move/Delete buttons appear
+WITH the rest, never a beat later (the cold-load race the gate fixed).
+
 ### v1.95.0 - Mobile touch targets (bigger hit areas, same look) (2026-08-10)
 
 Dean, on-device: the mobile controls are too small - day-to-day friction, you
