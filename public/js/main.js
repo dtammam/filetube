@@ -118,6 +118,22 @@ function buildSidebarSkeletonRows(n) {
 // A plausible folder count to reserve while /api/config is in flight.
 const SIDEBAR_SKELETON_ROWS = 5;
 
+// The zero-folders sidebar affordance (also the cold-load error fallback below).
+const SIDEBAR_NONE_HTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
+
+// v1.102 (tranche 4, gate CRITICAL): a total /api/config failure must not leave
+// the cold-load sidebar skeleton (buildSidebarSkeletonRows) shimmering forever in
+// the persistent left rail. GUARDED to the skeleton's aria-hidden placeholder
+// rows only: a re-nav whose config fetch fails while REAL folders are already
+// rendered keeps them (never wiped to a misleading "None"). Exported for node:test
+// so the error-path reveal is BOUND behaviourally, not just source-locked (the
+// gap that let the original miss slip past a presence-only test).
+function clearSidebarSkeletonOnError(listEl) {
+  if (listEl && listEl.querySelector('.sidebar-item[aria-hidden="true"]')) {
+    listEl.innerHTML = SIDEBAR_NONE_HTML;
+  }
+}
+
 // v1.37.0 T10 (books): pure builders for the home surfaces -- the
 // continue-reading row (bare home view only) and the books-in-search
 // section. Cover cards are compact portrait tiles linking to /read.html;
@@ -674,6 +690,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildCardDownloadFilename,
     buildSkeletonGrid,
     buildSidebarSkeletonRows,
+    clearSidebarSkeletonOnError,
     buildAvatarBarSkeleton,
     buildBookRowCardHtml,
     buildBooksHomeSectionHtml,
@@ -1541,6 +1558,9 @@ const PreviewCards = (function () {
         videoGrid.innerHTML = buildErrorStateHtml({ message: 'Error loading library data from server.' });
         const retryBtn = videoGrid.querySelector('[data-error-retry]');
         if (retryBtn) retryBtn.addEventListener('click', () => loadLibrary(), { signal });
+        // v1.102 (gate CRITICAL): stop the cold-load sidebar skeleton shimmering
+        // forever when /api/config failed - Retry (above) repaints it on success.
+        clearSidebarSkeletonOnError(sidebarFoldersList);
       }
     }
 

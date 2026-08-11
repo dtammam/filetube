@@ -11,7 +11,8 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { buildSidebarSkeletonRows } = require('../../public/js/main.js');
+const { JSDOM } = require('jsdom');
+const { buildSidebarSkeletonRows, clearSidebarSkeletonOnError } = require('../../public/js/main.js');
 
 const countOf = (html, cls) => (html.match(new RegExp('class="[^"]*\\b' + cls + '(?![-\\w])', 'g')) || []).length;
 
@@ -31,6 +32,37 @@ test('buildSidebarSkeletonRows: n<=0 / non-integer -> \'\' (never throws)', () =
   assert.strictEqual(buildSidebarSkeletonRows(), '');
 });
 
+// v1.102 gate CRITICAL: a total /api/config failure must not leave the cold-load
+// skeleton shimmering forever. clearSidebarSkeletonOnError clears the seeded
+// skeleton on error - but ONLY the skeleton, never already-rendered real folders
+// (a re-nav whose config fetch fails keeps its valid folder list). Behavioural,
+// so it binds the reveal (the original miss slipped past a presence-only test).
+test('clearSidebarSkeletonOnError: clears the seeded cold skeleton (no forever-shimmer)', () => {
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="list"></div></body>', { url: 'http://localhost/' });
+  const list = dom.window.document.getElementById('list');
+  list.innerHTML = buildSidebarSkeletonRows(5);
+  assert.ok(list.querySelector('.skeleton-shimmer'), 'skeleton seeded');
+  clearSidebarSkeletonOnError(list);
+  assert.ok(!list.querySelector('.skeleton-shimmer'), 'the stranded skeleton is cleared on error');
+  assert.ok(!list.querySelector('.sidebar-item[aria-hidden="true"]'), 'no placeholder rows remain');
+  dom.window.close();
+});
+
+test('clearSidebarSkeletonOnError: NEVER wipes already-rendered real folders (re-nav error keeps them)', () => {
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="list"></div></body>', { url: 'http://localhost/' });
+  const list = dom.window.document.getElementById('list');
+  // A warm sidebar: real folder links (no aria-hidden), NOT a skeleton.
+  list.innerHTML = '<a class="sidebar-item" href="/?root=A"><i class="icon-folder"></i> A</a>' +
+                   '<a class="sidebar-item" href="/?root=B"><i class="icon-folder"></i> B</a>';
+  clearSidebarSkeletonOnError(list);
+  assert.strictEqual(list.querySelectorAll('a.sidebar-item').length, 2, 'real folders are untouched by a transient error');
+  dom.window.close();
+});
+
+test('clearSidebarSkeletonOnError: null-safe (no list element)', () => {
+  assert.doesNotThrow(() => clearSidebarSkeletonOnError(null));
+});
+
 test('main.js seeds the sidebar skeleton BEFORE /api/config, and ONLY when cold (source-lock, comments stripped)', () => {
   const src = fs.readFileSync(path.join(__dirname, '../../public/js/main.js'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
@@ -42,4 +74,7 @@ test('main.js seeds the sidebar skeleton BEFORE /api/config, and ONLY when cold 
   const seedAt = src.indexOf('sidebarFoldersList.innerHTML = buildSidebarSkeletonRows');
   const fetchAt = src.indexOf("fetch('/api/config')");
   assert.ok(seedAt > -1 && fetchAt > -1 && seedAt < fetchAt, 'seed precedes the /api/config fetch');
+  // ...and the load-failure catch clears the stranded skeleton (gate CRITICAL).
+  assert.match(src, /clearSidebarSkeletonOnError\(sidebarFoldersList\)/,
+    'the /api/config-failure catch clears the cold sidebar skeleton');
 });

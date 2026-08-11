@@ -115,7 +115,7 @@ rebuild it.
   already present). Path data (from `public/assets/icons/*.svg`):
   - queue: vb `0 0 24 24`, d `M3 6h13v2H3V6zm0 4h13v2H3v-2zm0 4h9v2H3v-2zm14-1v6l5-3-5-3z`
   - heart: vb `0 -960 960 960`, d `m480-120-58-52q-101-91-167-157T150-447.5Q111-500 95.5-544T80-634q0-94 63-157t157-63q52 0 99 24.5t81 66.5q34-42 81-66.5t99-24.5q94 0 157 63t63 157q0 46-15.5 90T810-447.5Q744-381 678-315T538-172l-58 52Z`
-  - delete: vb `0 -960 960 960`, d `M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z`
+  - delete: vb `0 -960 960 960`, d = the ROUNDED asset (`rounded/delete.svg`, which chrome-icons.test.js resolves rounded-first) - NOT the outlined variant. Byte-bound in the test.
 - CSS PARITY: the `.chrome-icon { fill: currentColor }` tint must match the old
   mask `background-color` tint on `.music-like-btn`/`.podcast-*-btn`; the SVG
   box size must match the old mask box (16-18px). Verify each button renders
