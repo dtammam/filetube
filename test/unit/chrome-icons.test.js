@@ -50,6 +50,8 @@ const NAME_ASSET = {
   podcast: 'podcast', music: 'play_arrow', books: 'books', downloads: 'downloads',
   moon: 'dark_mode', sun: 'light_mode', cog: 'settings', search: 'search',
   download: 'download', caret: 'keyboard_arrow_down',
+  // v1.102 (tranche 4): the music/podcast row action glyphs.
+  queue: 'queue', heart: 'heart', delete: 'delete',
 };
 
 function assetSvg(asset) {

@@ -10757,7 +10757,8 @@ a.queue-upnext-next:hover {
   justify-content: center;
   text-decoration: none;
 }
-.podcast-ep-action i {
+.podcast-ep-action i,
+.podcast-ep-action .chrome-icon { /* v1.102: the glyph is now an inline chrome-icon svg, not an .icon-* mask */
   width: 14px;
   height: 14px;
 }

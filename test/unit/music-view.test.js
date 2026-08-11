@@ -13,6 +13,15 @@ const {
   drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
 } = require('../../public/js/music.js');
 
+// v1.102 (tranche 4): the song-row action glyphs render via window.chromeIconMarkup
+// (common.js). common.js must be required with `window` still UNDEFINED (else its
+// window-gated boot runs and touches `document`), so grab the export FIRST, then
+// define the global - buildSongRowHtml reads window at call time, so the browser's
+// real inline chrome-icon svg is what these assertions see.
+const { chromeIconMarkup: chromeIconMarkupFn } = require('../../public/js/common.js');
+global.window = global.window || {};
+global.window.chromeIconMarkup = chromeIconMarkupFn;
+
 const MUSIC_JS = fs.readFileSync(path.join(__dirname, '../../public/js/music.js'), 'utf8');
 
 test('v1.44.1 SOURCE-LOCK (Bug B): albums/artists are fetched with an explicit high limit (the endpoints default-cap at 60)', () => {
@@ -64,7 +73,10 @@ test('T9: buildSongRowHtml carries the index + id, escaped title, duration, and 
   assert.match(html, /Song &quot;One&quot;/, 'title escaped');
   assert.match(html, /3:20/, 'duration formatted');
   assert.match(html, /music-like-btn liked/, 'liked state reflected');
-  assert.match(html, /icon-heart/, 'single heart mask (no -filled variant)');
+  // v1.102 (tranche 4): the like glyph is the inline chrome-icon heart svg, not a
+  // decode-lagging `.icon-heart` mask (single heart, still no -filled variant).
+  assert.match(html, /class="chrome-icon"[^>]*><path d="m480-120/, 'the like glyph is the inline chrome-icon heart svg');
+  assert.doesNotMatch(html, /icon-heart/, 'no .icon-heart mask <i> survives in the song row');
 });
 
 test('T9: buildSongRowHtml unliked has no liked class', () => {

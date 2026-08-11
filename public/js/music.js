@@ -54,6 +54,19 @@ function buildArtistCardHtml(artist) {
     '</button>';
 }
 
+// v1.102 (tranche 4): the song-row action glyphs (queue/download/like) are inline
+// chrome-icon SVGs, not `.icon-*` masks - a mask paints NOTHING until it decodes,
+// so on an iOS cold start it popped in a beat after the row (the v1.87 class). The
+// markup builder is common.js's chromeIconMarkup, a browser global reached via
+// `window.` (no bare require - the client-scripts convention). node:test that
+// wants the glyph attaches window.chromeIconMarkup first (see music-view.test.js);
+// otherwise the row still builds, just glyph-less.
+function rowGlyphMarkup(name) {
+  return (typeof window !== 'undefined' && typeof window.chromeIconMarkup === 'function')
+    ? window.chromeIconMarkup(name)
+    : '';
+}
+
 // A song row (index button, thumb, title/artist, duration, like toggle). The
 // row's data-index drives playAt(); the like button is a nested control.
 // v1.44.2: every row carries a CSS equalizer glyph (3 animated bars, NEVER an
@@ -78,7 +91,7 @@ function buildSongRowHtml(item, index) {
     // (common.js addToQueue with the 'track' entry kind), the podcasts
     // episode-row pattern on the like-button chassis.
     '<button type="button" class="music-like-btn music-queue-btn" data-queue-id="' + escapeMusicHtml(item.id) + '" title="Add to queue" aria-label="Add to queue">' +
-    '<i class="icon-queue"></i>' +
+    rowGlyphMarkup('queue') +
     '</button>' +
     // v1.72 (cap 7): per-track save-to-device - the like button's chassis,
     // an anchor at the stream route's ?download=1 arm (original bytes; the
@@ -86,10 +99,10 @@ function buildSongRowHtml(item, index) {
     // not needed: an <a> click navigates the browser's download machinery,
     // and the row-play delegation ignores clicks on .music-download-btn.
     '<a class="music-like-btn music-download-btn" href="/track/' + encodeURIComponent(item.id) + '?download=1" download title="Save to device" aria-label="Save to device">' +
-    '<i class="icon-download"></i>' +
+    rowGlyphMarkup('download') +
     '</a>' +
     '<button type="button" class="music-like-btn' + (liked ? ' liked' : '') + '" data-like-id="' + escapeMusicHtml(item.id) + '" title="' + (liked ? 'Unlike' : 'Like') + '" aria-label="' + (liked ? 'Unlike' : 'Like') + '">' +
-    '<i class="icon-heart"></i>' +
+    rowGlyphMarkup('heart') +
     '</button>' +
     '</div>';
 }

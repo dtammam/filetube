@@ -147,6 +147,16 @@
       }
     }
 
+    // v1.102 (tranche 4): the episode-row action glyphs (like/queue/save/delete)
+    // are inline chrome-icon SVGs, not `.icon-*` masks - a mask paints nothing
+    // until it decodes, so on an iOS cold start it popped in a beat late (the v1.87
+    // class). chromeIconEl is a common.js browser global reached via `window.`;
+    // returns null only if the map/document is unavailable (never in a real
+    // browser), so callers null-guard the append.
+    function rowGlyphEl(name) {
+      return (typeof window !== 'undefined' && typeof window.chromeIconEl === 'function') ? window.chromeIconEl(name) : null;
+    }
+
     // Refresh whatever list is on screen from server state (delete/restore/
     // like handlers).
     function refreshCurrentView() {
@@ -439,9 +449,8 @@
         likeBtn.className = 'podcast-like-toggle' + (ep.liked ? ' liked' : '');
         likeBtn.title = ep.liked ? 'Unlike' : 'Like';
         likeBtn.setAttribute('aria-pressed', ep.liked ? 'true' : 'false');
-        var likeIcon = document.createElement('i');
-        likeIcon.className = 'icon-heart';
-        likeBtn.appendChild(likeIcon);
+        var likeIcon = rowGlyphEl('heart');
+        if (likeIcon) likeBtn.appendChild(likeIcon);
         likeBtn.addEventListener('click', function (e) {
           e.stopPropagation();
           var next = !ep.liked;
@@ -471,9 +480,8 @@
         queueBtn.className = 'podcast-ep-action';
         queueBtn.title = 'Add to queue';
         queueBtn.setAttribute('aria-label', 'Add to queue');
-        var queueIcon = document.createElement('i');
-        queueIcon.className = 'icon-queue';
-        queueBtn.appendChild(queueIcon);
+        var queueIcon = rowGlyphEl('queue');
+        if (queueIcon) queueBtn.appendChild(queueIcon);
         queueBtn.addEventListener('click', function (e) {
           e.stopPropagation();
           if (typeof window.addToQueue === 'function') window.addToQueue(ep.id, 'end', 'podcast');
@@ -491,9 +499,8 @@
         saveLink.setAttribute('download', '');
         saveLink.title = 'Save to device';
         saveLink.setAttribute('aria-label', 'Save to device');
-        var saveIcon = document.createElement('i');
-        saveIcon.className = 'icon-download';
-        saveLink.appendChild(saveIcon);
+        var saveIcon = rowGlyphEl('download');
+        if (saveIcon) saveLink.appendChild(saveIcon);
         saveLink.addEventListener('click', function (e) { e.stopPropagation(); }, { signal: signal });
         row.appendChild(saveLink);
       }
@@ -507,9 +514,8 @@
         delBtn.className = 'podcast-ep-action podcast-ep-delete';
         delBtn.title = 'Move to trash';
         delBtn.setAttribute('aria-label', 'Move to trash');
-        var delIcon = document.createElement('i');
-        delIcon.className = 'icon-delete';
-        delBtn.appendChild(delIcon);
+        var delIcon = rowGlyphEl('delete');
+        if (delIcon) delBtn.appendChild(delIcon);
         // The two-tap honesty survives the glyph swap: arming widens the
         // circle into a pill and reveals the copy (the card-delete REVEAL
         // styling only - unlike armCardDelete there is NO auto-disarm
