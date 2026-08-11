@@ -96,6 +96,32 @@ test('v1.103: groupArtists artIds — one per album, art-carrying first, title t
   assert.deepEqual(m.artIds, ['a6', 'a5', 'a3', 'a4']);
 });
 
+test('v1.103 (gate ADV-W1): artIds are order-INVARIANT - a re-scan (shuffled tracks) yields identical ids, incl. the within-album representative', () => {
+  // Album "One" has TWO embedded-art tracks (t2, t5) at different disc/track
+  // positions; the representative must be stable (earliest disc/track -> t2),
+  // never "first seen". Album "Two" also has two art tracks (same track no ->
+  // id tiebreak).
+  const mk = (id, album, hasArt, trackNo) => trk({ id, artist: 'A', albumArtist: 'A', album, hasEmbeddedArt: !!hasArt, trackNo, discNo: 1 });
+  const tracks = [
+    mk('t2', 'One', true, 1), mk('t5', 'One', true, 3), mk('t9', 'One', false, 2),
+    mk('b7', 'Two', true, 1), mk('b3', 'Two', true, 1),
+  ];
+  const base = q.groupArtists(tracks).find((a) => a.artist === 'A').artIds;
+  // Both albums carry art, so mosaic order = album title: One (rep t2, track 1 <
+  // track 3) then Two (rep b3, track tie -> id 'b3' < 'b7').
+  assert.deepEqual(base, ['t2', 'b3'], 'stable representatives, earliest disc/track then lowest id');
+  // Every permutation must produce the identical artIds.
+  const perms = [
+    [...tracks].reverse(),
+    [tracks[4], tracks[0], tracks[3], tracks[2], tracks[1]],
+    [tracks[1], tracks[3], tracks[4], tracks[0], tracks[2]],
+  ];
+  for (const p of perms) {
+    const got = q.groupArtists(p).find((a) => a.artist === 'A').artIds;
+    assert.deepEqual(got, base, 'artIds are identical regardless of input/scan order');
+  }
+});
+
 test('v1.103: groupArtists artIds empty-safe + single-album artist', () => {
   const solo = q.groupArtists([trk({ id: 's1', artist: 'Solo', albumArtist: 'Solo', album: 'Only' })])
     .find((a) => a.artist === 'Solo');

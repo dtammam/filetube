@@ -84,13 +84,14 @@ test('shimmerArt: scoped to its root, tolerant of a non-element arg', () => {
   dom.window.close();
 });
 
-// ---- source locks: the 9 img sites ship the class; each surface reveals ------
+// ---- source locks: the 10 img sites ship the class; each surface reveals -----
 
 const ART_SITES = [
   ['public/js/music.js', 'class="music-album-art art-shimmer"'],
   ['public/js/music.js', 'class="music-song-thumb art-shimmer"'],
   ['public/js/music.js', 'class="music-drill-art art-shimmer"'],
   ['public/js/music.js', 'class="music-sticky-thumb art-shimmer"'],
+  ['public/js/music.js', 'class="art-shimmer" src="/albumart/'], // v1.103: the artist mosaic tile
   ['public/js/podcasts.js', "'podcast-card-art art-shimmer'"],
   ['public/js/podcasts.js', "'podcast-show-art art-shimmer'"],
   ['public/js/books.js', 'class="book-cover-img art-shimmer"'],
@@ -98,8 +99,8 @@ const ART_SITES = [
   ['public/js/main.js', "img.className = 'art-shimmer';"],
 ];
 
-test('all 9 art image sites ship the art-shimmer class (prediction: exactly 9)', () => {
-  assert.strictEqual(ART_SITES.length, 9, 'the audit predicted 9 art img sites');
+test('all 10 art image sites ship the art-shimmer class (prediction: exactly 10)', () => {
+  assert.strictEqual(ART_SITES.length, 10, 'the audit predicted 10 art img sites (v1.103: +artist mosaic tile)');
   for (const [file, needle] of ART_SITES) {
     assert.ok(read(file).includes(needle), `${file} ships ${needle}`);
   }

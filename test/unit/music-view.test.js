@@ -38,15 +38,26 @@ test('v1.44.1 SOURCE-LOCK (Bug A): a Continue-listening tap plays the TAPPED tra
   assert.doesNotMatch(MUSIC_JS, /st\.lastTrackId/, 'it must NOT fall back to the pointer last track (the wrong-song bug)');
 });
 
-test('v1.103 (no dead option): every client sort value has a server case handler in query.js', () => {
-  // The client menu must never offer a sort the server silently ignores. Bind
-  // each MUSIC_SORTS value to an actual `case '<key>':` in lib/music/query.js
-  // (sortTracks for songs, sortGroups for albums/artists).
+test('v1.103 (no dead option): each client sort binds to the RIGHT server fn - songs->sortTracks, grids->sortGroups', () => {
+  // The client menu must never offer a sort the server silently ignores. A grid
+  // tab (albums/artists) is served by sortGroups, songs by sortTracks - and the
+  // two handle DIFFERENT key sets, so binding grid keys to sortTracks (or vice
+  // versa) would let a key that falls to the OTHER fn's default slip through
+  // (gate ADV-SUGGESTION 3). Scrape each function's own `case` labels.
   const QUERY_JS = fs.readFileSync(path.join(__dirname, '../../lib/music/query.js'), 'utf8');
-  const serverKeys = new Set([...QUERY_JS.matchAll(/case '([a-z-]+)':/g)].map((m) => m[1]));
+  const fnBody = (name) => {
+    const start = QUERY_JS.indexOf('function ' + name);
+    assert.ok(start >= 0, `query.js defines ${name}`);
+    const after = QUERY_JS.indexOf('\nfunction ', start + 1);
+    return QUERY_JS.slice(start, after === -1 ? undefined : after);
+  };
+  const casesIn = (body) => new Set([...body.matchAll(/case '([a-z-]+)':/g)].map((m) => m[1]));
+  const trackKeys = casesIn(fnBody('sortTracks'));
+  const gridKeys = casesIn(fnBody('sortGroups'));
+  const handlerFor = { songs: trackKeys, albums: gridKeys, artists: gridKeys };
   for (const tab of Object.keys(MUSIC_SORTS)) {
     for (const opt of MUSIC_SORTS[tab]) {
-      assert.ok(serverKeys.has(opt.value), `client sort "${opt.value}" (${tab} tab) has no server handler`);
+      assert.ok(handlerFor[tab].has(opt.value), `client sort "${opt.value}" (${tab} tab) has no case in ${tab === 'songs' ? 'sortTracks' : 'sortGroups'}`);
       assert.ok(opt.label && opt.label.length, `sort "${opt.value}" needs a label`);
     }
     // Each tab's default must itself be one of that tab's offered values.
@@ -121,7 +132,7 @@ test('v1.103: an artist with NO art still renders one placeholder tile (never a 
   const none = buildArtistCardHtml({ artist: 'Bare', albumCount: 1, trackCount: 1, artIds: [] });
   assert.match(none, /data-tiles="1"/, 'one tile reserved');
   assert.equal(tileCount(none), 1);
-  assert.match(none, /src="\/albumart\/"/, 'empty id -> the /albumart SVG placeholder');
+  assert.match(none, /src="\/albumart\/"/, 'empty id -> /albumart/ (404s, but the img error still clears the shimmer - never a blank card)');
   // Missing artIds entirely (older cached payload) behaves the same.
   assert.match(buildArtistCardHtml({ artist: 'Bare' }), /data-tiles="1"/);
 });

@@ -47,11 +47,13 @@ function buildAlbumCardHtml(album) {
 // `artIds`, art-carrying albums first) over the name + album/track counts. The
 // mosaic mirrors the album card's chassis - an art-forward square, not the old
 // text-only box. `data-tiles` (1-4) drives the CSS reflow so 1/2/3 albums still
-// fill the square. Zero artIds -> one placeholder tile (empty id -> the
-// /albumart SVG fallback), so an artist with no embedded art still reads as a
-// card, never a blank. Each tile ships `art-shimmer`; revealMusicArt() (via the
-// shared shimmerArt) clears it on decode OR error - the reveal-once both-axes
-// contract, per tile.
+// fill the square. Real server data always sends >=1 artId (every artist has >=1
+// album), and /albumart/<id> serves that album's art or an SVG placeholder. The
+// zero-artIds branch (`['']`) only fires on a stale/malformed cached payload:
+// /albumart/ with an EMPTY segment 404s, but the tile's `error` still clears the
+// shimmer (a broken-image glyph, never a perpetual shimmer or a blank card).
+// Each tile ships `art-shimmer`; revealMusicArt() (via the shared shimmerArt)
+// clears it on decode OR error - the reveal-once both-axes contract, per tile.
 function buildArtistCardHtml(artist) {
   var meta = (artist.albumCount || 0) + (artist.albumCount === 1 ? ' album' : ' albums') +
     ' · ' + (artist.trackCount || 0) + (artist.trackCount === 1 ? ' track' : ' tracks');
@@ -965,6 +967,20 @@ if (typeof module !== 'undefined' && module.exports) {
     // view's slot with a FULL player inside it - re-adopt on EVERY init,
     // ?nowplaying or not. MUST match podcasts.js's copy.
     var wantNowPlaying = urlParams.get('nowplaying') === '1';
+    // v1.103 (dock-return determinism): `?nowplaying=1` is a TRANSIENT expand
+    // TRIGGER, not durable state. `wantNowPlaying` has captured it, so strip it
+    // from the bar NOW - BEFORE the expand call below, so a throwing expand() can
+    // never skip the strip and leave the marker durable (gate ADV-SUGGESTION 4).
+    // If it lingered, a later dock re-tap would navigate to the SAME
+    // `/music?nowplaying=1` already shown, and the router's same-URL no-op
+    // (common.js navigate, tech-debt #46) would swallow it - stranding you in the
+    // docked mini-player with an empty #player-slot (Dean's "tapping the mini
+    // player doesn't always bring the player back" bug). Stripping keeps the URL
+    // truthful (docked, not expanded) so every dock-tap is a real transition that
+    // re-inits + re-expands. replaceState (no new history entry), carrying the
+    // router's state object forward with a corrected `url` so popstate stays
+    // consistent. expand() reads player state, not the URL, so ordering is safe.
+    stripNowPlayingParam();
     var player = window.FileTube && window.FileTube.player;
     if (player && typeof player.getState === 'function' && typeof player.expand === 'function') {
       var pState = player.getState();
@@ -973,18 +989,6 @@ if (typeof module !== 'undefined' && module.exports) {
         player.expand(npSlot);
       }
     }
-    // v1.103 (dock-return determinism): `?nowplaying=1` is a TRANSIENT expand
-    // TRIGGER, not durable state. Now that init has read it (above), strip it so
-    // it never persists in the bar. If it lingered, a later dock re-tap navigates
-    // to the SAME `/music?nowplaying=1` already shown, and the router's same-URL
-    // no-op (common.js navigate, tech-debt #46) swallows it - stranding you in the
-    // docked mini-player with an empty #player-slot (Dean's "tapping the mini
-    // player doesn't always bring the player back" bug). Stripping keeps the URL
-    // truthful (docked, not expanded) so every dock-tap is a real transition that
-    // re-inits + re-expands. replaceState (no new history entry), carrying the
-    // router's state object forward with a corrected `url` so popstate stays
-    // consistent.
-    stripNowPlayingParam();
   }
 
   function stripNowPlayingParam() {

@@ -36,7 +36,10 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 // Boots the REAL music view; `storage` seeds localStorage; returns the jsdom + a
 // live log of every fetched URL so assertions can read what the grid requested.
-async function bootMusicView(storage, run) {
+// `opts.rejectArtists` makes the /api/music/artists fetch REJECT (the abort/error
+// path) so a test can prove the seeded skeleton is CLEARED, not stranded.
+async function bootMusicView(storage, run, opts) {
+  opts = opts || {};
   const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music' });
   const saved = {
     window: global.window, document: global.document,
@@ -48,10 +51,11 @@ async function bootMusicView(storage, run) {
   global.document = dom.window.document;
   global.localStorage = dom.window.localStorage;
   global.AbortController = dom.window.AbortController;
-  dom.window.FileTube = { registerView: (name, mod) => { registered = mod; } };
+  dom.window.FileTube = { registerView: (name, mod) => { registered = mod; }, shimmerArt: () => {} };
   global.fetch = (url) => {
     const u = String(url);
     fetches.push(u);
+    if (opts.rejectArtists && u.indexOf('/api/music/artists') >= 0) return Promise.reject(new Error('network fail'));
     let body = { items: [] };
     if (u.indexOf('/api/music/artists') >= 0) body = { items: [{ artist: 'Boards', albumCount: 2, trackCount: 8, artIds: ['x', 'y'] }] };
     else if (u.indexOf('/api/music/albums') >= 0) body = { items: [{ albumKey: 'k1', album: 'One', artist: 'Boards', artId: 'x', trackCount: 4 }] };
@@ -124,6 +128,20 @@ test('v1.103: a pre-v1.103 plain-string sort pref does not crash - it falls to t
   await bootMusicView({ filetube_music_tab: 'albums', filetube_music_sort: 'duration-desc' }, async (dom) => {
     assert.equal(sel(dom).value, 'title-asc', 'legacy string ignored -> album default');
   });
+});
+
+test('v1.103 (gate ADV-W2, reveal-once BOTH axes): a rejected artists fetch CLEARS the seeded skeleton - no stranded shimmer', async () => {
+  // The v1.102 gate blocked on exactly this class with a presence-only test. Drive
+  // the error path for real: the Artists (now DEFAULT) tab seeds a skeleton, its
+  // fetch rejects, and the catch must wipe #music-content (no skeleton-shimmer, no
+  // art-shimmer left sweeping under a dead grid) and reveal the empty state.
+  await bootMusicView({ filetube_music_tab: 'artists' }, async (dom) => {
+    const content = dom.window.document.getElementById('music-content');
+    assert.ok(!/skeleton-shimmer/.test(content.innerHTML), 'no stranded skeleton shimmer after the fetch failed');
+    assert.ok(!/art-shimmer/.test(content.innerHTML), 'no stranded art shimmer');
+    assert.equal(content.innerHTML, '', 'content cleared, not left mid-skeleton');
+    assert.equal(dom.window.document.getElementById('music-empty').hidden, false, 'empty state shown');
+  }, { rejectArtists: true });
 });
 
 test('v1.103: drilling into an album hides the top sort control (drills are album-order + own Play/Shuffle)', async () => {
