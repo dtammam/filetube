@@ -1119,6 +1119,14 @@ if (typeof module !== 'undefined' && module.exports) {
         // unattributed items (absent otherwise -- the AC15 posture).
         setupAttributeButton();
 
+        // 3g. v1.96 A2 (Dean): the COMPLETE synchronous button set is now
+        // mounted -- reveal the action row in one shot so the user never sees
+        // the partial->full pop-in (the static-4 -> injected-rest reflow). The
+        // one late-mount not covered here is the COLD-cache Reheat button
+        // (setupReheatButton's async probe), a disclosed 1-RTT residual the
+        // v1.53 capability cache already avoids on warm cache. See ROADMAP.
+        revealActionBar();
+
         // 4. Mount/play this media in the persistent player controller. This
         // is idempotent -- if the controller already has this exact id loaded
         // (the docked mini-player was tapped, or a related-card click landed
@@ -1193,7 +1201,22 @@ if (typeof module !== 'undefined' && module.exports) {
         root.querySelectorAll('.skeleton-shimmer').forEach((el) => el.classList.remove('skeleton-shimmer'));
         const descSkelErr = root.querySelector('#video-desc-skel');
         if (descSkelErr) descSkelErr.hidden = true;
+        // v1.96 A2: a failed record load must never strand the action row
+        // invisible-under-shimmer (the `data-loading` children are
+        // visibility:hidden). Reveal it so the static Download/Delete/Queue
+        // buttons stay usable even on the error state.
+        revealActionBar();
       }
+    }
+
+    // v1.96 A2: drop the `data-loading` attribute so `.watch-actions`'
+    // children (star-rating + the now-complete button set) become visible in
+    // one shot -- the reveal-once that eliminates the partial->full pop-in.
+    // Idempotent (removeAttribute on an absent attr is a no-op), so calling it
+    // from both the success path and the catch is safe.
+    function revealActionBar() {
+      const wa = root.querySelector('.watch-actions');
+      if (wa) wa.removeAttribute('data-loading');
     }
 
     // F1 (v1.24.0, T4): applies the avatar precedence -- a real captured

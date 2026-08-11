@@ -146,6 +146,11 @@ summary,
      touch-target floor and already consistent at x20. Layout geometry
      (panel widths, vh caps) stays literal by design. */
   --size-touch: 44px;
+  /* v1.96 A1 (Dean, on-device): the watch action-row buttons (.watch-actions
+     .btn) sit 5px UNDER the 44px touch floor on mobile -- the v1.95 floor made
+     that specific row too tall. Still above the ~36px pre-v1.95 height. One
+     tunable knob so Dean's device pass can nudge it without hunting a rule. */
+  --size-touch-watch-action: 39px;
   --size-control: 36px;
   --size-control-sm: 32px;
 
@@ -10767,4 +10772,57 @@ a.queue-upnext-next:hover {
      visual thumb is left as-is (true "same look"); a bigger visible thumb is the
      escalation if Dean's device shows 30px still isn't enough. */
   #player-slot .player-controls #seek-bar { height: 30px; }
+}
+
+/* === v1.96 A2: watch action-row REVEAL-ONCE (no pop-in) ====================
+   The `.watch-actions` row ships 4 static buttons in watch.html, then watch.js
+   INJECTS the rest (Move/Attribute/Like/Watched/Share/Reheat) after the record
+   loads -- a two-render reflow the user sees as a flash. Reveal the WHOLE row
+   ONCE in its final state: shimmer the row (the SAME treatment `#views-count`
+   right above it already uses), hide every child, and swap the real buttons in
+   only when watch.js has the complete synchronous set (revealActionBar() drops
+   the attribute). Space is reserved by the REAL children -- `visibility:hidden`
+   keeps their layout boxes, so the browser measures the reserved height (repo
+   lesson #7: never guess CSS-var height arithmetic) and the reveal is a
+   zero-shift show, not a resize. Keyed off a `data-loading` ATTRIBUTE, not a
+   second class, so the `class="watch-actions"` lock and the base-rule
+   `/\.watch-actions\s*\{/` extractors in watch-action-bar-nowrap.test.js are
+   undisturbed. Non-media (all viewports): the flash exists everywhere; fixing
+   it at the source is viewport-independent. If another half-state row shows up,
+   reuse this `data-loading` pattern rather than decorating the partial state. */
+.watch-actions[data-loading] {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--bg-secondary);
+  border-radius: var(--radius);
+}
+.watch-actions[data-loading]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.14), /* token-exempt: shimmer-sweep wash, shared with .skeleton-shimmer::after (the census #68 multi-line blind spot) */
+    transparent
+  );
+  animation: skeleton-sweep 1.6s ease-in-out infinite; /* token-exempt: choreography, reuses the shared .skeleton-shimmer keyframes */
+}
+@media (prefers-reduced-motion: reduce) {
+  .watch-actions[data-loading]::after { animation: none; }
+}
+/* Every child (the read-only star-rating AND the button sub-group) stays
+   invisible-but-laid-out until reveal, so no partial button set is ever shown
+   and the reserved height is the real (measured) final height. */
+.watch-actions[data-loading] > * { visibility: hidden; }
+
+/* === v1.96 A1: watch action-row buttons sit 5px under the mobile 44px floor.
+   Scoped to `.watch-actions .btn` so it BEATS the v1.95 EOF `.btn { min-height:
+   44px }` on specificity (0,2,0 > 0,1,0) -- cascade order is irrelevant, but a
+   fresh EOF @media block keeps the positional CSS tests happy (v1.95 lesson).
+   min-height is NOT census-governed. The queue/notif/resume 44px controls and
+   the prev-next/playlist buttons (outside `.watch-actions`) are untouched. */
+@media (max-width: 768px) {
+  .watch-actions .btn { min-height: var(--size-touch-watch-action); }
 }

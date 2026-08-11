@@ -1,0 +1,130 @@
+'use strict';
+
+// [UNIT] v1.96 Wave A -- the watch-page action row (`.watch-actions`):
+//   A1: on mobile its buttons drop 5px UNDER the v1.95 44px touch floor, to a
+//       single tunable token (Dean's device pass is the arbiter), SCOPED so no
+//       other `.btn` and none of the v1.95 44px controls regress.
+//   A2: the row reveals ONCE in its final state -- watch.html ships it
+//       `data-loading` (shimmered, all children hidden), and watch.js drops the
+//       attribute only after the COMPLETE synchronous injected-button set is
+//       mounted, so the user never sees the static-4 -> injected-rest pop-in.
+
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const CSS_PATH = path.join(__dirname, '..', '..', 'public', 'css', 'style.css');
+const HTML_PATH = path.join(__dirname, '..', '..', 'public', 'watch.html');
+const WATCH_JS_PATH = path.join(__dirname, '..', '..', 'public', 'js', 'watch.js');
+const css = fs.readFileSync(CSS_PATH, 'utf8');
+const html = fs.readFileSync(HTML_PATH, 'utf8');
+const watchJs = fs.readFileSync(WATCH_JS_PATH, 'utf8');
+
+// Depth-count a `@media (max-width: 768px)` block's body by a marker it contains.
+function mediaBlockContaining(marker) {
+  const mediaRe = /@media \(max-width: 768px\)\s*\{/g;
+  let m;
+  while ((m = mediaRe.exec(css))) {
+    let depth = 1;
+    let i = m.index + m[0].length;
+    const start = i;
+    while (depth > 0 && i < css.length) {
+      if (css[i] === '{') depth++;
+      else if (css[i] === '}') depth--;
+      i++;
+    }
+    const body = css.slice(start, i - 1);
+    if (body.includes(marker)) return body;
+  }
+  return null;
+}
+
+function rootTokenPx(name) {
+  // Sizing tokens live in style.css's SECOND :root block, so scan the whole
+  // file for the token's DEFINITION (`--name: <n>px`, not a `var()` usage).
+  const re = new RegExp(`${name.replace(/[-]/g, '\\-')}:\\s*(\\d+)px`);
+  const m = re.exec(css);
+  return m ? Number(m[1]) : undefined;
+}
+
+// ---- A1: shorter, scoped, tunable ----------------------------------------
+
+test('A1: --size-touch-watch-action is defined and sits 5px UNDER the 44px --size-touch floor', () => {
+  const watchAction = rootTokenPx('--size-touch-watch-action');
+  const touch = rootTokenPx('--size-touch');
+  assert.equal(touch, 44, 'sanity: --size-touch is the 44px iOS floor');
+  assert.ok(watchAction !== undefined, 'expected --size-touch-watch-action in :root (the tunable knob)');
+  assert.ok(watchAction < touch,
+    `the watch action buttons must be shorter than the 44px floor (got ${watchAction}px)`);
+  assert.equal(watchAction, 39, 'Dean\'s starting number is 39px (tunable; his device pass is the arbiter)');
+});
+
+test('A1: a mobile @media block scopes the shorter height to .watch-actions .btn via the token', () => {
+  // The rule must exist in SOME max-width:768px block, keyed to .watch-actions .btn.
+  const block = mediaBlockContaining('.watch-actions .btn { min-height: var(--size-touch-watch-action)');
+  assert.ok(block, 'expected an @media(max-width:768px) `.watch-actions .btn { min-height: var(--size-touch-watch-action) }` rule');
+});
+
+test('A1: the shorter height is SCOPED -- the global .btn keeps the v1.95 44px floor (no bare `.btn { min-height:39... }`)', () => {
+  // The v1.95 global floor must still be present.
+  assert.match(css, /\.btn\s*\{\s*min-height:\s*var\(--size-touch\);\s*\}/,
+    'the v1.95 global `.btn { min-height: var(--size-touch) }` floor must remain');
+  // And nothing may drop the BARE .btn to the shorter token (that would shrink
+  // every button app-wide, not just the watch row).
+  assert.doesNotMatch(css, /(?:^|\n)\s*\.btn\s*\{[^}]*min-height:\s*var\(--size-touch-watch-action\)/,
+    'the shorter height must be scoped to `.watch-actions .btn`, never the bare `.btn`');
+});
+
+// ---- A2: reveal-once (no pop-in) -----------------------------------------
+
+test('A2: watch.html ships .watch-actions with the data-loading attribute (shimmer-until-ready)', () => {
+  assert.match(html, /<div class="watch-actions" data-loading>/,
+    'the action row must ship `data-loading` so it shimmers until the full button set is mounted');
+  // The `class="watch-actions"` substring lock (watch-action-bar-nowrap.test.js) stays intact.
+  assert.ok(html.includes('class="watch-actions"'),
+    'the class="watch-actions" lock must be preserved (attribute, not a second class)');
+});
+
+test('A2: CSS hides every child of a loading row and shimmers it', () => {
+  assert.match(css, /\.watch-actions\[data-loading\]\s*>\s*\*\s*\{\s*visibility:\s*hidden;\s*\}/,
+    'every child of a loading `.watch-actions` must be visibility:hidden (no partial button set shown)');
+  const loadingRule = /\.watch-actions\[data-loading\]\s*\{([^}]*)\}/.exec(css);
+  assert.ok(loadingRule, 'expected a `.watch-actions[data-loading]` base rule');
+  assert.match(loadingRule[1], /background-color:\s*var\(--bg-secondary\)/,
+    'the loading row wears the shared skeleton fill');
+  assert.match(css, /\.watch-actions\[data-loading\]::after\s*\{[\s\S]*?animation:\s*skeleton-sweep/,
+    'the loading row reuses the shared skeleton-sweep shimmer');
+});
+
+test('A2: watch.js defines revealActionBar(), which removes data-loading', () => {
+  const fn = /function revealActionBar\(\)\s*\{([\s\S]*?)\n {4}\}/.exec(watchJs);
+  assert.ok(fn, 'expected a revealActionBar() helper');
+  assert.match(fn[1], /removeAttribute\('data-loading'\)/,
+    'revealActionBar must remove the data-loading attribute (the reveal-once effect)');
+});
+
+test('A2: the reveal fires only AFTER the complete synchronous button set is mounted', () => {
+  // setupAttributeButton() is the LAST synchronous button setup in the
+  // hydration sequence; the reveal must come strictly after it, so no partial
+  // set is ever revealed. (Deleting the reveal call leaves the row shimmering
+  // forever -- this ordering assertion kills that mutant.)
+  const attrIdx = watchJs.indexOf('setupAttributeButton();');
+  const revealIdx = watchJs.indexOf('revealActionBar();');
+  assert.ok(attrIdx !== -1, 'sanity: setupAttributeButton() is called');
+  assert.ok(revealIdx !== -1, 'the hydration success path must call revealActionBar()');
+  assert.ok(revealIdx > attrIdx,
+    'revealActionBar() must run AFTER setupAttributeButton() (the last injected button), so the reveal is of the COMPLETE set');
+});
+
+test('A2: a failed record load still reveals the row (the catch path), so the static buttons never stay invisible', () => {
+  // The hydration catch strips skeletons; it must ALSO reveal the action row
+  // (its data-loading children are visibility:hidden, unlike skeleton text).
+  // Anchor on `descSkelErr` (unique to the catch, right before the reveal) --
+  // `showFatalViewError` also appears in the mount-failure branch.
+  const catchIdx = watchJs.indexOf('descSkelErr.hidden = true;');
+  assert.ok(catchIdx !== -1, 'sanity: the hydration catch strips the description skeleton');
+  const afterCatch = watchJs.slice(catchIdx, catchIdx + 400);
+  assert.match(afterCatch, /revealActionBar\(\)/,
+    'the hydration catch must also call revealActionBar() so the error state leaves the static buttons usable');
+});
