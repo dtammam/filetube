@@ -1,0 +1,84 @@
+# Exec plan: Podcast now-playing view (mirror the music v1.104 treatment)
+
+**Status:** ACTIVE
+**Target:** v1.105.0
+**Branch:** `feature/podcast-nowplaying`
+**Schema:** no bump (client-only; episode `description` is ALREADY served)
+
+## Problem (Dean)
+
+"I like it a lot. Can we do the same treatment for the Podcast player?" - i.e.
+port the v1.104 music now-playing view to podcasts. Dean chose (AskUserQuestion):
+include the episode SHOW-NOTES (description) in the now-playing view; Up-next =
+the rest of THIS show's episodes.
+
+## What's already there (no work)
+
+- **Episode `description` is served end-to-end.** feed.js `stripHtml`s
+  `<description>` at parse; store.js `reduceUpsertEpisodes` writes it (archive law
+  - existing records never rewritten, so NO persist-gate risk); index.js
+  `publicEpisode` (line 134) already exposes it; the 4 episode routes carry it.
+  The client just needs to RENDER it (via `textContent` - the podcast module's
+  documented no-`innerHTML` law; the value is already plain text).
+- `#player-slot` exists in podcasts.html; the `?nowplaying=1` init expand block
+  exists (podcasts.js:851-860); `player.getCurrentMeta()` exists (added v1.104).
+
+## Gaps to close (all client-side)
+
+Podcasts is missing every piece music got in v1.103+v1.104:
+1. `playAt` (podcasts.js:599-636) always loads `{dock:true}` - next/prev collapses
+   the expanded view (the v1.104 T1 bug).
+2. No now-playing panel - the expanded `#player-slot` shows big art only (shared
+   `AUDIO_PLAYER_MODE='background'`, no text).
+3. **No `stripNowPlayingParam`** - podcasts has the SAME latent dock-return
+   determinism bug music had pre-v1.103 (the URL marker persists → router same-URL
+   no-op strands the dock-tap).
+4. No re-init reseed - a dock-tap re-inits, wiping `playable`/now-playing state.
+
+## Tasks
+
+1. **T1 keep-player-position.** podcasts `playAt`: if `getState()==='full'` load
+   into `#player-slot` (`{slot}`), else `{dock:true}`. Factor the inlined
+   `setTrackNav` into `registerTrackNav(i)` (so the reseed can re-register). jsdom.
+2. **T2 now-playing panel.** A DOM-built (createElement + textContent, per the
+   no-`innerHTML` law) `#podcast-nowplaying-panel` under `#player-slot`: episode
+   title, "Show · date" sub, the **description** (height-clamped + scroll - the
+   store cap is 64KB), and an "Up next" list of the show's remaining downloaded
+   episodes (tappable → `playAt`). Shown ONLY when expanded + a podcast episode
+   playing; hidden+cleared otherwise (reveal-once BOTH axes). Reuse the `mnp-*`
+   CSS (extend the shared selector) + a description block style.
+3. **T3 dock-return determinism.** Mirror music's `stripNowPlayingParam`
+   (podcasts.js, replaceState, carry the router state) called after the init
+   expand block. Repro test (the strand).
+4. **T4 re-init reseed.** Generalize `player.getCurrentMeta()` (add `resumeMode`
+   passthrough + `subId`); podcast `data` carries `subId`. `seedNowPlaying-
+   FromPlayer()` (metadata) + `rebuildPlayable()` (refetch
+   `/api/podcasts/shows/<subId>/episodes`, filter downloaded/non-external, find
+   the playing index, re-register nav, refresh panel) when a re-init lost
+   `playable`. jsdom.
+
+## Reuse vs podcast-specific
+
+- **Reuse:** the `getState()==='full'?slot:dock` decision, the reveal-once gate
+  shape, `stripNowPlayingParam` (near-verbatim), the `mnp-*` panel CSS.
+- **Podcast-specific:** DOM construction (no `innerHTML`) incl. the description
+  block; sub-line is `Show · date` (`formatEpisodeMeta`) not `artist·album`;
+  up-next thumbs use `/podcastart/<subId>` (per-show); rebuild refetches the show
+  by `subId` (no `browseCtx`/`decodeListContext` path - podcasts has neither).
+
+## Gate (full - shared player host + battle-won background-audio)
+
+Attack surfaces: keep-expanded orphan/close-mid-change; reveal-once CLEAR bound
+BEHAVIOURALLY (populate then dock/close - the v1.104 vacuous-assertion lesson);
+the rebuild not racing render()'s own episode load (the v1.104 CRITICAL - podcasts
+`renderEpisodes` builds `playable`; the reseed must not double-fetch/desync);
+description XSS (must be textContent, never innerHTML); getCurrentMeta still
+read-only + music path unbroken (isMusic retained); stripNowPlayingParam history-
+state consistency.
+
+## Out of scope
+
+Per-episode `itunes:summary`/`content:encoded` fallback (only `<description>` is
+parsed - fine); clickable links in show-notes (would break the no-`innerHTML`
+law - deliberately plain text); a context "Playing from <show>" line (music has
+one; optional, skip unless it reads bare).

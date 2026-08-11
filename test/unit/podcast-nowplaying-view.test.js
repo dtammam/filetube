@@ -1,0 +1,265 @@
+'use strict';
+
+// [UNIT] v1.105 - the podcast now-playing view (mirrors music v1.104). Boots the
+// REAL podcasts view against jsdom with a stateful mock player and asserts
+// BEHAVIOUR: keep-player-position on episode change, the metadata + show-notes +
+// up-next panel, its reveal-once CLEAR, the dock-return ?nowplaying strip, and the
+// dock-tap re-init reseed (rebuild playable from the show, without racing a
+// rendered show view).
+
+const { test } = require('node:test');
+const assert = require('node:assert');
+const { JSDOM } = require('jsdom');
+
+const podcastsPath = require.resolve('../../public/js/podcasts.js');
+
+const VIEW_HTML = `<body><div id="view-root" data-view="podcasts">
+  <video id="media-player"></video>
+  <div id="player-slot"></div>
+  <div id="podcast-nowplaying-panel" hidden></div>
+  <div class="music-crumb" id="podcasts-crumb" hidden></div>
+  <div id="podcasts-status" role="status" hidden></div>
+  <div id="podcasts-content"></div>
+  <div class="music-empty" id="podcasts-empty" hidden></div>
+</div></body>`;
+
+const EPISODES = [
+  { id: 'e1', subId: 's1', title: 'Ep One', showName: 'The Show', pubDateMs: 1690000000000, durationSec: 3600, description: 'Notes for episode one.', status: 'downloaded' },
+  { id: 'e2', subId: 's1', title: 'Ep Two', showName: 'The Show', pubDateMs: 1690100000000, durationSec: 3700, description: 'Notes for episode two.', status: 'downloaded' },
+  { id: 'e3', subId: 's1', title: 'Ep Three', showName: 'The Show', pubDateMs: 1690200000000, durationSec: 3800, description: 'Notes for episode three.', status: 'downloaded' },
+];
+
+const S2_EPISODES = [
+  { id: 'x1', subId: 's2', title: 'S2 One', showName: 'Show Two', pubDateMs: 10, durationSec: 100, description: 's2 notes one', status: 'downloaded' },
+  { id: 'x2', subId: 's2', title: 'S2 Two', showName: 'Show Two', pubDateMs: 20, durationSec: 200, description: 's2 notes two', status: 'downloaded' },
+];
+
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+function makePlayer(initialState, meta) {
+  const s = { value: initialState || 'closed', loadCalls: [], trackNav: null };
+  const player = {
+    currentId: meta ? meta.id : null,
+    getState: () => s.value,
+    getCurrentMeta: () => meta || null,
+    load: (id, data, opts) => {
+      s.loadCalls.push({ id, data, opts: opts || {} });
+      player.currentId = id;
+      if (opts && opts.slot) s.value = 'full';
+      else if (opts && opts.dock) s.value = 'docked';
+    },
+    expand: () => { s.value = 'full'; },
+    setTrackNav: (h) => { s.trackNav = h; },
+  };
+  return { player, s, setState: (v) => { s.value = v; } };
+}
+
+async function boot(url, initialState, run, opts) {
+  opts = opts || {};
+  const dom = new JSDOM(VIEW_HTML, { url });
+  const saved = {
+    window: global.window, document: global.document,
+    localStorage: global.localStorage, fetch: global.fetch,
+    AbortController: global.AbortController, requestAnimationFrame: global.requestAnimationFrame,
+  };
+  const mock = makePlayer(initialState, opts.meta);
+  const fetches = [];
+  mock.fetches = fetches;
+  let registered = null;
+  global.window = dom.window;
+  global.document = dom.window.document;
+  global.localStorage = dom.window.localStorage;
+  global.AbortController = dom.window.AbortController;
+  global.requestAnimationFrame = dom.window.requestAnimationFrame
+    ? dom.window.requestAnimationFrame.bind(dom.window)
+    : (cb) => setTimeout(cb, 0);
+  dom.window.FileTube = { registerView: (n, m) => { registered = m; }, shimmerArt: () => {}, player: mock.player };
+  const SHOW_EPS = { s1: opts.episodes || EPISODES, s2: S2_EPISODES };
+  global.fetch = (u) => {
+    const url2 = String(u);
+    fetches.push(url2);
+    const epMatch = url2.match(/\/api\/podcasts\/shows\/([^/]+)\/episodes/);
+    if (epMatch) {
+      const sid = decodeURIComponent(epMatch[1]);
+      const body = { show: { id: sid, name: sid === 's2' ? 'Show Two' : 'The Show' }, episodes: SHOW_EPS[sid] || [] };
+      // opts.deferSubId defers THAT show's episodes fetch (the rebuild's) so a test
+      // can open another show mid-await and prove the post-await guard bails.
+      if (opts.deferSubId && sid === opts.deferSubId) {
+        return new Promise((res) => { mock.deferred = { resolve: () => res({ ok: true, json: () => Promise.resolve(body) }) }; });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+    }
+    let body = {};
+    if (/\/api\/podcasts\/shows/.test(url2)) body = { shows: opts.gridShows || [] };
+    else if (/\/api\/podcasts\/status/.test(url2)) body = { running: false };
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  };
+  try {
+    delete require.cache[podcastsPath];
+    require(podcastsPath);
+    assert.ok(registered && typeof registered.init === 'function', 'podcasts view registered');
+    registered.init(dom.window.document.getElementById('view-root'));
+    await settle(); await settle(); await settle();
+    await run(dom, mock);
+    registered.destroy();
+  } finally {
+    delete require.cache[podcastsPath];
+    Object.assign(global, saved);
+  }
+}
+
+const panel = (dom) => dom.window.document.getElementById('podcast-nowplaying-panel');
+const lastLoad = (mock) => mock.s.loadCalls[mock.s.loadCalls.length - 1];
+const playEp = async (dom, idx) => {
+  const rows = dom.window.document.querySelectorAll('.podcast-episode-main');
+  rows[idx].click();
+  await settle(); await settle();
+};
+
+test('v1.105 (T1): an episode change while EXPANDED keeps the player in #player-slot', async () => {
+  await boot('http://localhost/podcasts?show=s1', 'full', async (dom, mock) => {
+    await playEp(dom, 1); // play Ep Two while expanded
+    const call = lastLoad(mock);
+    assert.equal(call.id, 'e2', 'loaded the tapped episode');
+    assert.ok(call.opts.slot && !call.opts.dock, 'stayed expanded (loaded into slot)');
+    assert.equal(mock.s.value, 'full');
+  });
+});
+
+test('v1.105 (T1): an episode tap while DOCKED/closed still DOCKS', async () => {
+  await boot('http://localhost/podcasts?show=s1', 'closed', async (dom, mock) => {
+    await playEp(dom, 0);
+    assert.ok(lastLoad(mock).opts.dock === true && !lastLoad(mock).opts.slot, 'a fresh tap docks');
+  });
+});
+
+test('v1.105 (T2 panel): playing expanded shows title + "show · date" + show-notes + up-next', async () => {
+  await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
+    await playEp(dom, 0); // play Ep One
+    const el = panel(dom);
+    assert.equal(el.hidden, false, 'panel visible');
+    assert.match(el.querySelector('.mnp-title').textContent, /Ep One/);
+    assert.match(el.querySelector('.mnp-sub').textContent, /The Show/, 'show name in the sub-line');
+    assert.match(el.querySelector('.mnp-desc').textContent, /Notes for episode one\./, 'show-notes rendered');
+    // Up next = Ep Two, Ep Three.
+    const upTitles = [...el.querySelectorAll('.mnp-queue-title')].map((n) => n.textContent);
+    assert.deepEqual(upTitles, ['Ep Two', 'Ep Three']);
+  });
+});
+
+test('v1.105 (T2): the show-notes are set via textContent, never innerHTML (no injection)', async () => {
+  // A description with markup must render as literal text (the no-innerHTML law).
+  const withMarkup = EPISODES.map((e) => (e.id === 'e1' ? { ...e, description: '<img src=x onerror=alert(1)>hi' } : e));
+  await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
+    await playEp(dom, 0);
+    const desc = panel(dom).querySelector('.mnp-desc');
+    assert.ok(desc, 'desc present');
+    assert.equal(desc.querySelector('img'), null, 'no <img> element created - rendered as text');
+    assert.match(desc.textContent, /onerror=alert\(1\)/, 'the markup is literal text');
+  }, { episodes: withMarkup });
+});
+
+test('v1.105 (T2 tap): tapping an up-next row jumps to that episode', async () => {
+  await boot('http://localhost/podcasts?show=s1', 'full', async (dom, mock) => {
+    await playEp(dom, 0);
+    panel(dom).querySelectorAll('.mnp-queue-row')[1].click(); // Ep Three
+    await settle(); await settle();
+    assert.equal(lastLoad(mock).id, 'e3');
+  });
+});
+
+test('v1.105 (reveal-once CLEAR): a shown panel clears when the player docks', async () => {
+  await boot('http://localhost/podcasts?show=s1', 'full', async (dom, mock) => {
+    await playEp(dom, 0);
+    assert.equal(panel(dom).hidden, false);
+    assert.ok(panel(dom).textContent.length > 0, 'populated first (non-vacuous)');
+    mock.setState('docked');
+    await playEp(dom, 1); // a docked play re-runs updateNowPlayingPanel -> hide+clear
+    assert.equal(panel(dom).hidden, true, 'docked -> panel HIDDEN');
+    assert.equal(panel(dom).textContent, '', 'and CLEARED');
+  });
+});
+
+test('v1.105 (reveal-once CLEAR): closing the player (emptied) clears a shown panel', async () => {
+  await boot('http://localhost/podcasts?show=s1', 'full', async (dom, mock) => {
+    await playEp(dom, 0);
+    assert.equal(panel(dom).hidden, false, 'shown');
+    mock.player.currentId = null;
+    dom.window.document.getElementById('media-player').dispatchEvent(new dom.window.Event('emptied'));
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(panel(dom).hidden, true, 'hidden after close');
+    assert.equal(panel(dom).textContent, '', 'cleared');
+  });
+});
+
+test('v1.105 (T3 strip): init strips the transient ?nowplaying marker', async () => {
+  const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
+  await boot('http://localhost/podcasts?nowplaying=1', 'docked', async (dom) => {
+    assert.equal(dom.window.location.search, '', 'nowplaying stripped');
+  }, { meta });
+});
+
+test('v1.105 (T4 reseed): a dock-tap expand on the GRID re-seeds metadata + rebuilds up-next from the show', async () => {
+  const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
+  await boot('http://localhost/podcasts?nowplaying=1', 'full', async (dom) => {
+    const el = panel(dom);
+    assert.equal(el.hidden, false, 'panel shows even though playAt never ran this instance');
+    assert.match(el.querySelector('.mnp-title').textContent, /Ep One/, 're-seeded title');
+    // rebuildPlayable refetched the show -> full record -> description + up-next.
+    assert.match(el.querySelector('.mnp-desc').textContent, /episode one/, 'description filled from the refetched episode');
+    assert.deepEqual([...el.querySelectorAll('.mnp-queue-title')].map((n) => n.textContent), ['Ep Two', 'Ep Three']);
+  }, { meta });
+});
+
+test('v1.105 (T4 no rebuild-race): a SHOW view does NOT refetch/clobber playable (one episodes fetch)', async () => {
+  // On a show drill (?show=s1), openShow owns `playable`; rebuildPlayable must
+  // bail so it can't desync the rendered episode rows (the v1.104 CRITICAL class).
+  const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
+  await boot('http://localhost/podcasts?show=s1&nowplaying=1', 'full', async (dom, mock) => {
+    const epFetches = mock.fetches.filter((u) => /\/api\/podcasts\/shows\/[^/]+\/episodes/.test(u));
+    assert.equal(epFetches.length, 1, 'only openShow fetched episodes; rebuild bailed (a show view owns playable)');
+  }, { meta });
+});
+
+test('v1.105 (gate CRITICAL): the dock-tap RESEED path binds the close listener - closing clears the panel (no strand)', async () => {
+  // The panel is revealed by the reseed (seedNowPlayingFromPlayer + expand),
+  // WITHOUT playAt running this instance. ensureEmptiedListener must still bind at
+  // init, or closing the player strands the panel. Non-vacuous: panel shown first.
+  const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
+  await boot('http://localhost/podcasts?nowplaying=1', 'full', async (dom, mock) => {
+    assert.equal(panel(dom).hidden, false, 'reseed revealed the panel (no playAt this instance)');
+    assert.ok(panel(dom).textContent.length > 0, 'populated');
+    mock.player.currentId = null;
+    dom.window.document.getElementById('media-player').dispatchEvent(new dom.window.Event('emptied'));
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(panel(dom).hidden, true, 'closing clears the RESEEDED panel');
+    assert.equal(panel(dom).textContent, '', 'cleared - not stranded');
+  }, { meta });
+});
+
+test('v1.105 (post-await TOCTOU): a show opened DURING the rebuild fetch is not clobbered', async () => {
+  // Grid landing with show s1 playing + expanded -> rebuildPlayable passes the
+  // pre-await gate and awaits s1's (DEFERRED) episodes. Meanwhile the user opens a
+  // DIFFERENT show s2 from the grid (currentShow -> s2, playable -> s2 rows). When
+  // the deferred s1 fetch resolves, the POST-await re-check must bail so it never
+  // clobbers playable with s1 - else the rendered s2 rows go inert (indexOf -1).
+  const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
+  await boot('http://localhost/podcasts?nowplaying=1', 'full', async (dom, mock) => {
+    dom.window.document.querySelector('.podcast-card').click(); // open s2
+    await settle(); await settle();
+    mock.deferred.resolve(); // now let the in-flight s1 rebuild fetch resolve
+    await settle(); await settle();
+    const rows = dom.window.document.querySelectorAll('.podcast-episode-main');
+    rows[0].click(); // tap the rendered s2 row
+    await settle(); await settle();
+    assert.ok(lastLoad(mock), 'the rendered row played SOMETHING (playable still holds s2, not clobbered by s1)');
+    assert.equal(lastLoad(mock).id, 'x1', 'it played the s2 episode the row represents');
+  }, { meta, gridShows: [{ id: 's2', name: 'Show Two' }], deferSubId: 's1' });
+});
+
+test('v1.105 (T4 reseed): a NON-podcast item on the shared host does not show the podcast panel', async () => {
+  const meta = { id: 'v9', title: 'A Song', artist: 'An Artist', resumeMode: 'music', subId: '' };
+  await boot('http://localhost/podcasts?nowplaying=1', 'full', async (dom) => {
+    assert.equal(panel(dom).hidden, true, 'a music/video item never shows the podcast panel');
+  }, { meta });
+});

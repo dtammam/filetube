@@ -123,7 +123,7 @@ test('seeded episodes: list newest-first with per-user state; stream honors Rang
   await updateDatabase((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     podcastStore.reduceUpsertEpisodes(ns, subId, [
-      { guid: 'g1', title: 'Ep One', pubDateMs: 1000, durationSec: 100 },
+      { guid: 'g1', title: 'Ep One', pubDateMs: 1000, durationSec: 100, description: 'Show notes for one.' },
       { guid: 'g2', title: 'Ep Two', pubDateMs: 2000, durationSec: 200 },
     ], 'pending', 5000);
     podcastStore.reduceEpisodeDownloaded(ns, epDownloaded, { fileName: path.basename(mediaFile), filePath: mediaFile, bytes: 19, nowMs: 6000 });
@@ -138,6 +138,9 @@ test('seeded episodes: list newest-first with per-user state; stream honors Rang
   assert.strictEqual(data.episodes[0].played, false);
   assert.strictEqual(data.episodes[0].progress, null);
   assert.ok(!('filePath' in data.episodes[0]), 'server paths never leak to the client');
+  // v1.105: per-episode show-notes are served (the now-playing panel renders them).
+  const epOneNotes = data.episodes.find((e) => e.title === 'Ep One');
+  assert.strictEqual(epOneNotes.description, 'Show notes for one.', 'episode description is exposed in the payload');
 
   const whole = await get(`/episode/${epDownloaded}`);
   assert.strictEqual(whole.status, 200);

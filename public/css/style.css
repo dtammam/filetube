@@ -9217,6 +9217,17 @@ html[data-modern="on"] .video-uploader {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* v1.105: the podcast now-playing show-notes block. Descriptions can be long
+   (64KB store cap), so cap the height and let it scroll rather than push the
+   up-next list off-screen. Plain text (stripped at parse + set via textContent). */
+.mnp-desc {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  line-height: 1.5; /* token-exempt: readable body copy leading for show-notes */
+  max-height: 8.4em; /* token-exempt: ~6 lines of show-notes before it scrolls */
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
 .mnp-queue { display: flex; flex-direction: column; gap: var(--space-1); }
 .mnp-queue-head {
   font-size: var(--fs-sm);

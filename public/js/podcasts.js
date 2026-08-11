@@ -105,7 +105,9 @@
     var episodes = [];
     var playable = []; // downloaded episodes of the current show, list order
     var playingId = null;
+    var nowPlaying = null; // v1.105: the playing episode's display metadata (now-playing panel)
     var statusPollTimer = null;
+    var nowPlayingPanel = root.querySelector('#podcast-nowplaying-panel');
 
     function setStatus(msg) {
       if (!statusEl) return;
@@ -596,6 +598,162 @@
       if (row) row.classList.add('playing');
     }
 
+    // v1.105 (mirror music): the dock × (close()) doesn't notify this view, so a
+    // stale `.playing` row + a stranded now-playing panel would linger after the
+    // user closes the player while ON /podcasts. Bind once to the shared
+    // #media-player's `emptied` (fires on unload/close); rAF-defer so a
+    // reparent-driven emptied (which immediately reloads) is ignored.
+    var emptiedBound = false;
+    function ensureEmptiedListener() {
+      if (emptiedBound) return;
+      var mediaEl = document.getElementById('media-player');
+      if (!mediaEl) return;
+      emptiedBound = true;
+      mediaEl.addEventListener('emptied', function () {
+        requestAnimationFrame(function () {
+          var cur = (window.FileTube && window.FileTube.player && window.FileTube.player.currentId) || null;
+          if (!cur) { playingId = null; nowPlaying = null; applyPlayingHighlight(); updateNowPlayingPanel(); }
+        });
+      }, { signal: signal });
+    }
+
+    // v1.105: the expanded now-playing panel (episode title, "Show · date",
+    // show-notes description, and an "Up next" list of the show's remaining
+    // downloaded episodes). Shown ONLY when the player is EXPANDED (state 'full')
+    // AND the podcast episode we last loaded is what's actually playing - hidden +
+    // cleared otherwise (reveal-once BOTH axes: a docked/closed player, or a
+    // music/video item on the shared host, never shows it). Built with
+    // createElement + textContent - the podcast module's no-`innerHTML` law (the
+    // description is feed prose; it's stripped to text at parse AND set as text
+    // here, double protection).
+    function updateNowPlayingPanel() {
+      if (!nowPlayingPanel) return;
+      var p = window.FileTube && window.FileTube.player;
+      var expanded = !!(p && typeof p.getState === 'function' && p.getState() === 'full');
+      var curId = (p && p.currentId) || null;
+      if (!expanded || !nowPlaying || !curId || nowPlaying.id !== curId) {
+        nowPlayingPanel.hidden = true;
+        nowPlayingPanel.textContent = '';
+        return;
+      }
+      var ci = -1;
+      for (var k = 0; k < playable.length; k++) { if (playable[k].id === curId) { ci = k; break; } }
+      var frag = document.createDocumentFragment();
+
+      var meta = document.createElement('div');
+      meta.className = 'mnp-meta';
+      var title = document.createElement('div');
+      title.className = 'mnp-title';
+      title.textContent = nowPlaying.title || 'Untitled episode';
+      meta.appendChild(title);
+      var subText = [nowPlaying.showName, formatEpisodeMeta(nowPlaying)].filter(function (x) { return typeof x === 'string' && x; }).join(' · ');
+      if (subText) {
+        var sub = document.createElement('div');
+        sub.className = 'mnp-sub';
+        sub.textContent = subText;
+        meta.appendChild(sub);
+      }
+      frag.appendChild(meta);
+
+      if (nowPlaying.description) {
+        var desc = document.createElement('div');
+        desc.className = 'mnp-desc';
+        desc.textContent = nowPlaying.description; // textContent - never innerHTML (feed prose)
+        frag.appendChild(desc);
+      }
+
+      if (ci >= 0 && ci < playable.length - 1) {
+        var queue = document.createElement('div');
+        queue.className = 'mnp-queue';
+        var head = document.createElement('div');
+        head.className = 'mnp-queue-head';
+        head.textContent = 'Up next';
+        queue.appendChild(head);
+        for (var j = ci + 1; j < playable.length && (j - ci) <= 50; j++) {
+          queue.appendChild(buildUpNextRow(playable[j]));
+        }
+        frag.appendChild(queue);
+      }
+
+      nowPlayingPanel.textContent = '';
+      nowPlayingPanel.appendChild(frag);
+      nowPlayingPanel.hidden = false;
+      if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(nowPlayingPanel);
+    }
+    function buildUpNextRow(ep) {
+      var rowBtn = document.createElement('button');
+      rowBtn.type = 'button';
+      rowBtn.className = 'mnp-queue-row';
+      var thumb = document.createElement('img');
+      thumb.className = 'mnp-queue-thumb art-shimmer';
+      thumb.src = '/podcastart/' + encodeURIComponent(ep.subId || (nowPlaying && nowPlaying.subId) || '');
+      thumb.alt = '';
+      thumb.loading = 'lazy';
+      rowBtn.appendChild(thumb);
+      var main = document.createElement('span');
+      main.className = 'mnp-queue-main';
+      var t = document.createElement('span');
+      t.className = 'mnp-queue-title';
+      t.textContent = ep.title || 'Untitled episode';
+      main.appendChild(t);
+      var s = document.createElement('span');
+      s.className = 'mnp-queue-sub';
+      s.textContent = formatEpisodeMeta(ep);
+      main.appendChild(s);
+      rowBtn.appendChild(main);
+      rowBtn.addEventListener('click', function () {
+        var idx = playable.indexOf(ep);
+        if (idx !== -1) playAt(idx);
+      }, { signal: signal });
+      return rowBtn;
+    }
+
+    // v1.105: a dock-tap expand RE-INITS this view (playAt's `nowPlaying`/
+    // `playable` are gone). If a podcast episode is still playing, re-seed the
+    // now-playing panel from the live player. `seedNowPlayingFromPlayer` supplies
+    // title + show immediately; `rebuildPlayable` refetches the show for the full
+    // episode record (description/date/duration) + up-next + Prev/Next.
+    function seedNowPlayingFromPlayer() {
+      var p = window.FileTube && window.FileTube.player;
+      var meta = (p && typeof p.getCurrentMeta === 'function') ? p.getCurrentMeta() : null;
+      if (!meta || meta.resumeMode !== 'podcast' || !meta.id) return;
+      playingId = meta.id;
+      nowPlaying = { id: meta.id, title: meta.title, showName: meta.artist, pubDateMs: null, durationSec: 0, description: '', subId: meta.subId || '' };
+      applyPlayingHighlight();
+      updateNowPlayingPanel();
+    }
+    async function rebuildPlayable() {
+      var p = window.FileTube && window.FileTube.player;
+      var expanded = !!(p && typeof p.getState === 'function' && p.getState() === 'full');
+      if (!expanded) return;
+      // A SHOW view OWNS `playable` (its episode rows play via
+      // playable.indexOf(ep)); clobbering it would desync those rows -> a dead
+      // (indexOf -1) tap (the v1.104 rebuild-race lesson). Only the GRID landing
+      // (currentShow null, no episode rows) rebuilds. The check is repeated AFTER
+      // the await below - `currentShow` can flip null->show DURING the fetch (the
+      // ?play= deep link sets it in a .then, async), a TOCTOU the pre-await check
+      // alone misses (gate WARNING).
+      if (currentShow) { updateNowPlayingPanel(); return; }
+      var meta = (p && typeof p.getCurrentMeta === 'function') ? p.getCurrentMeta() : null;
+      if (!meta || meta.resumeMode !== 'podcast' || !meta.id || !meta.subId) return;
+      var data;
+      try {
+        data = await fetchJson('/api/podcasts/shows/' + encodeURIComponent(meta.subId) + '/episodes');
+      } catch (_) { return; }
+      // Post-await re-check: a show opened DURING the fetch now owns `playable`.
+      if (signal.aborted || currentShow) return;
+      var eps = (data && Array.isArray(data.episodes)) ? data.episodes : [];
+      playable = eps.filter(function (e) { return e.status === 'downloaded' && !e.watchHref; });
+      var ci = -1;
+      for (var k = 0; k < playable.length; k++) { if (playable[k].id === meta.id) { ci = k; break; } }
+      if (ci >= 0) {
+        var ep = playable[ci];
+        nowPlaying = { id: ep.id, title: ep.title || '', showName: meta.artist || (data.show && data.show.name) || '', pubDateMs: ep.pubDateMs, durationSec: ep.durationSec || 0, description: ep.description || '', subId: meta.subId };
+      }
+      registerTrackNav(ci); // ci<0 clears stale nav
+      updateNowPlayingPanel();
+    }
+
     function playAt(i) {
       var ep = playable[i];
       if (!ep || !currentShow) return;
@@ -618,6 +776,7 @@
         streamSrc: '/episode/' + ep.id,
         progressEndpoint: '/api/podcasts/progress',
         resumeMode: 'podcast',
+        subId: artSubId, // v1.105: so player.getCurrentMeta can expose the show id for the re-init reseed
         autoAdvanceViaTrackNav: true,
         // v1.71 T7: tapping the docked player opens the expanded
         // now-playing view in ONE gesture (Dean's ruling) - the ?nowplaying
@@ -625,14 +784,34 @@
         readerHref: '/podcasts?nowplaying=1',
       };
       playingId = ep.id;
+      // v1.105: the metadata the now-playing panel renders (episode title, show,
+      // date, description) - kept here at play time; re-seeded from the live
+      // player after a dock-tap re-init (seedNowPlayingFromPlayer + rebuildPlayable).
+      nowPlaying = { id: ep.id, title: ep.title || '', showName: showName, pubDateMs: ep.pubDateMs, durationSec: ep.durationSec || 0, description: ep.description || '', subId: artSubId };
       applyPlayingHighlight();
-      window.FileTube.player.load(ep.id, data, { dock: true });
-      if (typeof window.FileTube.player.setTrackNav === 'function') {
-        window.FileTube.player.setTrackNav({
-          onPrev: i > 0 ? function () { playAt(i - 1); } : undefined,
-          onNext: i < playable.length - 1 ? function () { playAt(i + 1); } : undefined,
-        });
-      }
+      // v1.105 (mirror music v1.104 T1): keep the player WHERE IT IS across an
+      // episode change - if the expanded now-playing view (#player-slot, state
+      // 'full') is open, load the next episode INTO that slot so next/prev STAYS
+      // expanded; a docked/closed player docks (unchanged).
+      var pl = window.FileTube.player;
+      var keepSlot = (pl && typeof pl.getState === 'function' && pl.getState() === 'full')
+        ? root.querySelector('#player-slot')
+        : null;
+      pl.load(ep.id, data, keepSlot ? { slot: keepSlot } : { dock: true });
+      ensureEmptiedListener(); // the host (with #media-player) now exists
+      registerTrackNav(i);
+      updateNowPlayingPanel();
+    }
+
+    // The lock-screen / expanded-view Prev/Next handlers for playable index `i`.
+    // Factored out (was inline in playAt) so the re-init reseed (rebuildPlayable)
+    // can re-register them. i<0 registers NO neighbors (clears stale closures).
+    function registerTrackNav(i) {
+      if (!window.FileTube.player || typeof window.FileTube.player.setTrackNav !== 'function') return;
+      window.FileTube.player.setTrackNav({
+        onPrev: i > 0 ? function () { playAt(i - 1); } : undefined,
+        onNext: (i >= 0 && i < playable.length - 1) ? function () { playAt(i + 1); } : undefined,
+      });
     }
 
     // ---- the add sheet ----
@@ -850,6 +1029,17 @@
     // precedent), ?nowplaying or not.
     var wantNowPlaying = false;
     try { wantNowPlaying = new URLSearchParams(window.location.search).get('nowplaying') === '1'; } catch (_) { wantNowPlaying = false; }
+    // v1.105 (mirror music v1.104): re-seed the now-playing metadata from the
+    // live player before the first paint (a dock-tap expand re-inits with
+    // nowPlaying=null, so the panel would otherwise be blank for a playing episode).
+    seedNowPlayingFromPlayer();
+    // v1.105 (dock-return determinism, mirror music v1.103): `?nowplaying=1` is a
+    // TRANSIENT expand trigger. Strip it (BEFORE expand, so a throwing expand
+    // can't skip it) so it never persists - else a later dock re-tap navigates to
+    // the SAME /podcasts?nowplaying=1 the bar already shows and the router's
+    // same-URL no-op swallows it, stranding the docked player. Podcasts never had
+    // this strip (the latent bug music fixed in v1.103).
+    stripNowPlayingParam();
     var player = window.FileTube && window.FileTube.player;
     if (player && typeof player.getState === 'function' && typeof player.expand === 'function') {
       var pState = player.getState();
@@ -858,6 +1048,18 @@
         player.expand(npSlot);
       }
     }
+    // v1.105 (gate CRITICAL): bind the close/emptied listener at init too, not
+    // only in playAt. The dock-tap RESEED path reveals the panel via
+    // seedNowPlayingFromPlayer + expand WITHOUT playAt ever running this instance,
+    // so without this the panel would strand (stay shown with stale metadata) when
+    // the user closes the player. The shared #media-player is in the DOM whenever
+    // something is playing (docked or in the slot); ensureEmptiedListener no-ops
+    // when nothing is. Mirrors music.js's init-time bind.
+    ensureEmptiedListener();
+    // v1.105: with the player (possibly just) expanded, show the now-playing panel
+    // - metadata now, up-next once rebuildPlayable refetches the show.
+    updateNowPlayingPanel();
+    rebuildPlayable().catch(function () {});
 
     // Teardown extras the AbortController cannot cover.
     controller.__podcastsCleanup = function () {
@@ -871,6 +1073,24 @@
       controller.abort();
     }
     controller = null;
+  }
+
+  // v1.105 (mirror music v1.103): strip the transient `?nowplaying` marker via
+  // replaceState after init consumes it, carrying the router's state object
+  // forward with a corrected `url` so popstate stays consistent. Module-scoped
+  // (no init closure needed) - it only touches window.location/history.
+  function stripNowPlayingParam() {
+    try {
+      var loc = window.location;
+      var params = new URLSearchParams(loc.search);
+      if (!params.has('nowplaying')) return;
+      params.delete('nowplaying');
+      var qs = params.toString();
+      var newUrl = loc.pathname + (qs ? '?' + qs : '');
+      var prev = window.history.state;
+      var nextState = prev ? Object.assign({}, prev, { url: newUrl }) : null;
+      window.history.replaceState(nextState, '', newUrl);
+    } catch (_) { /* history unavailable -> leave the URL as-is */ }
   }
 
   if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.registerView === 'function') {
