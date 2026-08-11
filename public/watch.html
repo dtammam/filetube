@@ -205,7 +205,13 @@
               <span class="views-count skeleton-shimmer skel-w120" id="views-count"></span>
             </div>
             
-            <div class="watch-actions">
+            <!-- v1.96 A2: `data-loading` shimmers the WHOLE row and hides
+                 every child until watch.js has the COMPLETE injected button
+                 set, then revealActionBar() drops the attribute -- the row
+                 appears once, in final state (no partial->full pop-in). An
+                 attribute (not a second class) so `class="watch-actions"` and
+                 the base-rule extractors stay locked. See style.css. -->
+            <div class="watch-actions" data-loading>
               <!-- Star Rating (read-only; deterministic per item, set by watch.js) -->
               <div class="star-rating" id="star-rating-control" title="Rating">
                 <span class="star" data-value="1">★</span>

@@ -19,6 +19,8 @@ const CONTRACT = {
   '--space-5': '10px', '--space-6': '12px', '--space-8': '16px', '--space-10': '20px',
   '--space-12': '24px', '--space-16': '32px',
   '--size-touch': '44px', '--size-control': '36px', '--size-control-sm': '32px',
+  '--size-touch-watch-action': '39px', // v1.96: watch action-row buttons, 5px under the touch floor on mobile
+
   '--overlay-surface': '#222', '--overlay-border': '#444',
   '--on-overlay': '#fff', '--on-overlay-muted': '#ccc',
   '--scrim': 'rgba(0, 0, 0, 0.55)', '--scrim-heavy': 'rgba(0, 0, 0, 0.8)',
@@ -50,7 +52,7 @@ const CONTRACT = {
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 48, 'the 38-name contract + --thumbnail-bg (Tier 4) + six --reader-* + --header-h/--sidebar-w + --on-accent (tranche F.5; --radius-lg predates the layer and lives in the era blocks)');
+  assert.equal(Object.keys(CONTRACT).length, 49, 'the 38-name contract + --thumbnail-bg (Tier 4) + six --reader-* + --header-h/--sidebar-w + --on-accent (tranche F.5; --radius-lg predates the layer and lives in the era blocks) + --size-touch-watch-action (v1.96)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());

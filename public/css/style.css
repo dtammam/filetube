@@ -146,6 +146,11 @@ summary,
      touch-target floor and already consistent at x20. Layout geometry
      (panel widths, vh caps) stays literal by design. */
   --size-touch: 44px;
+  /* v1.96 A1 (Dean, on-device): the watch action-row buttons (.watch-actions
+     .btn) sit 5px UNDER the 44px touch floor on mobile -- the v1.95 floor made
+     that specific row too tall. Still above the ~36px pre-v1.95 height. One
+     tunable knob so Dean's device pass can nudge it without hunting a rule. */
+  --size-touch-watch-action: 39px;
   --size-control: 36px;
   --size-control-sm: 32px;
 
@@ -10767,4 +10772,73 @@ a.queue-upnext-next:hover {
      visual thumb is left as-is (true "same look"); a bigger visible thumb is the
      escalation if Dean's device shows 30px still isn't enough. */
   #player-slot .player-controls #seek-bar { height: 30px; }
+}
+
+/* === v1.96 A2: watch action-row REVEAL-ONCE (no pop-in) ====================
+   The `.watch-actions` row ships 4 static buttons in watch.html, then watch.js
+   INJECTS the rest (Move/Attribute/Like/Watched/Share/Reheat) after the record
+   loads -- a two-render reflow the user sees as buttons popping in one by one.
+   Reveal the WHOLE row ONCE, in final state: shimmer the row (the SAME treatment
+   `#views-count` right above it already uses), hide every child, and drop the
+   attribute (revealActionBar()) only when watch.js has BOTH async inputs -- the
+   media record AND the write capability -- settled (see the barrier in watch.js;
+   Move/Attribute mount from whichever resolves last).
+
+   What this DOES and does NOT guarantee (QA v1.96 WARNING 2 correction -- the
+   first version of this comment overclaimed an absolute zero-shift):
+   - The injected buttons are appended (still `visibility:hidden`) DURING the load,
+     under the shimmer, BEFORE the reveal. So at the moment of reveal every child
+     is already laid out and the reveal itself is zero-shift -- children just turn
+     visible in the boxes they already occupy.
+   - It is NOT an absolute no-resize: the shimmer box occupies the 4 static
+     buttons' height (~1 row on mobile) during the record fetch, then SETTLES to
+     its final height (up to ~2 wrapped rows of glyph-only buttons on a phone) as
+     the injected buttons mount invisibly. That settle happens under the uniform
+     shimmer -- a loading placeholder resizing once, NOT the button-by-button
+     pop-in this fix targets. Reserving a fixed final height is impossible (the
+     count is data-dependent: canModifyLibrary, share availability, reheat), so a
+     browser-measured settle (repo lesson #7: never guess CSS-var height
+     arithmetic) is the honest floor. Desktop is a single row throughout.
+
+   Keyed off a `data-loading` ATTRIBUTE, not a second class, so the
+   `class="watch-actions"` lock and the base-rule `/\.watch-actions\s*\{/`
+   extractors in watch-action-bar-nowrap.test.js are undisturbed. Non-media (all
+   viewports): the flash exists everywhere; fixing it at the source is
+   viewport-independent. If another half-state row shows up, reuse this
+   `data-loading` pattern rather than decorating the partial state. */
+.watch-actions[data-loading] {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--bg-secondary);
+  border-radius: var(--radius);
+}
+.watch-actions[data-loading]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.14), /* token-exempt: shimmer-sweep wash, shared with .skeleton-shimmer::after (the census #68 multi-line blind spot) */
+    transparent
+  );
+  animation: skeleton-sweep 1.6s ease-in-out infinite; /* token-exempt: choreography, reuses the shared .skeleton-shimmer keyframes */
+}
+@media (prefers-reduced-motion: reduce) {
+  .watch-actions[data-loading]::after { animation: none; }
+}
+/* Every child (the read-only star-rating AND the button sub-group) stays
+   invisible-but-laid-out until reveal, so no partial button set is ever shown
+   and the reserved height is the real (measured) final height. */
+.watch-actions[data-loading] > * { visibility: hidden; }
+
+/* === v1.96 A1: watch action-row buttons sit 5px under the mobile 44px floor.
+   Scoped to `.watch-actions .btn` so it BEATS the v1.95 EOF `.btn { min-height:
+   44px }` on specificity (0,2,0 > 0,1,0) -- cascade order is irrelevant, but a
+   fresh EOF @media block keeps the positional CSS tests happy (v1.95 lesson).
+   min-height is NOT census-governed. The queue/notif/resume 44px controls and
+   the prev-next/playlist buttons (outside `.watch-actions`) are untouched. */
+@media (max-width: 768px) {
+  .watch-actions .btn { min-height: var(--size-touch-watch-action); }
 }

@@ -684,6 +684,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // happen -- every shell carries both) -- fail safe with a view-area
       // error rather than throwing on the next fetch.
       showFatalViewError(root);
+      // v1.96 A2: initWatch never runs on this bail-out, so nothing would drop
+      // the action row's `data-loading` -- clear it directly so it doesn't sit
+      // shimmering (children invisible) under the error box.
+      revealActionBar();
       return;
     }
 
@@ -713,18 +717,48 @@ if (typeof module !== 'undefined' && module.exports) {
     // whichever of {capability, mediaData} resolves last mounts them.
     let canModifyLibrary = false;
     if (deleteBtn) deleteBtn.hidden = true; // hidden until the capability confirms
+    // v1.96 A2 reveal-once barrier: the action row's FINAL button set depends
+    // on BOTH async inputs -- the media record (Move/Like/.../Attribute) AND
+    // the write capability. Move/Attribute are gated on canModifyLibrary and
+    // mount from WHICHEVER of {mediaData, capability} resolves LAST (see the
+    // "guarded, whichever resolves last mounts them" note below). So revealing
+    // when only mediaData is in hand would show a partial row on a cold load
+    // whose /api/auth/me lands after /api/videos -- then Move/Attribute pop in.
+    // Reveal ONCE, only when BOTH have SETTLED. (Cold-cache Reheat's own async
+    // health probe is the sole disclosed late-mount NOT gated here -- blocking
+    // the row on a network probe would keep the common buttons non-tappable
+    // longer; the v1.53 capability cache mounts it pre-reveal on warm cache.)
+    let actionMediaSettled = false;
+    let actionCapabilitySettled = false;
+    function maybeRevealActionBar() {
+      if (actionMediaSettled && actionCapabilitySettled) revealActionBar();
+    }
     // typeof-guarded: a minimal harness (or a page that loads watch.js without
     // common.js) leaves fetchCurrentUser undefined - the affordances then simply
     // stay hidden rather than throwing during init (the shared-global scar).
     if (typeof fetchCurrentUser === 'function') {
       fetchCurrentUser().then(function (me) {
         canModifyLibrary = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
-        if (!canModifyLibrary) return; // stays fail-safe hidden / unmounted
-        if (deleteBtn) deleteBtn.hidden = false;
-        // Mount now in case the media already loaded before this resolved.
-        setupMoveButton();
-        setupAttributeButton();
-      }).catch(function () { /* signed-out / offline -> affordances stay hidden */ });
+        if (canModifyLibrary) {
+          if (deleteBtn) deleteBtn.hidden = false;
+          // Mount now in case the media already loaded before this resolved.
+          setupMoveButton();
+          setupAttributeButton();
+        }
+        // The capability answer is now known (true OR false), so the final set
+        // is determined -- release this half of the reveal barrier either way.
+        actionCapabilitySettled = true;
+        maybeRevealActionBar();
+      }).catch(function () {
+        // signed-out / offline -> affordances stay hidden, but the capability
+        // is still SETTLED (no Move/Attribute will ever mount) -> release.
+        actionCapabilitySettled = true;
+        maybeRevealActionBar();
+      });
+    } else {
+      // No capability probe at all -> Move/Attribute never mount -> settled now.
+      actionCapabilitySettled = true;
+      maybeRevealActionBar();
     }
 
     const addedDateText = root.querySelector('#added-date-text');
@@ -1119,6 +1153,17 @@ if (typeof module !== 'undefined' && module.exports) {
         // unattributed items (absent otherwise -- the AC15 posture).
         setupAttributeButton();
 
+        // 3g. v1.96 A2 (Dean): the media half of the button set is now mounted.
+        // Release the media side of the reveal barrier; the row reveals in one
+        // shot once the capability side has ALSO settled (so Move/Attribute --
+        // which mount from whichever of {media, capability} resolves last --
+        // are never shown popping in post-reveal). The one late-mount NOT gated
+        // by the barrier is the COLD-cache Reheat button (setupReheatButton's
+        // async probe), a disclosed 1-RTT residual the v1.53 capability cache
+        // avoids on warm cache. See the barrier note above and ROADMAP.
+        actionMediaSettled = true;
+        maybeRevealActionBar();
+
         // 4. Mount/play this media in the persistent player controller. This
         // is idempotent -- if the controller already has this exact id loaded
         // (the docked mini-player was tapped, or a related-card click landed
@@ -1193,7 +1238,24 @@ if (typeof module !== 'undefined' && module.exports) {
         root.querySelectorAll('.skeleton-shimmer').forEach((el) => el.classList.remove('skeleton-shimmer'));
         const descSkelErr = root.querySelector('#video-desc-skel');
         if (descSkelErr) descSkelErr.hidden = true;
+        // v1.96 A2: a failed record load must never strand the action row
+        // invisible-under-shimmer (the `data-loading` children are
+        // visibility:hidden). With no mediaData, Move/Attribute never mount
+        // (both setups require it), so the static set is final -- release the
+        // media side and let the barrier reveal once the capability settles too.
+        actionMediaSettled = true;
+        maybeRevealActionBar();
       }
+    }
+
+    // v1.96 A2: drop the `data-loading` attribute so `.watch-actions`'
+    // children (star-rating + the now-complete button set) become visible in
+    // one shot -- the reveal-once that eliminates the partial->full pop-in.
+    // Idempotent (removeAttribute on an absent attr is a no-op), so calling it
+    // from both the success path and the catch is safe.
+    function revealActionBar() {
+      const wa = root.querySelector('.watch-actions');
+      if (wa) wa.removeAttribute('data-loading');
     }
 
     // F1 (v1.24.0, T4): applies the avatar precedence -- a real captured
