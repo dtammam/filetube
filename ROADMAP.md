@@ -80,6 +80,38 @@
 
 ## Shipped
 
+### v1.100.0 - Classic toolbar complete from first paint (2026-08-11)
+
+Dean, on-device (clarifying the v1.98 "top flow flickers" report - it was NOT the
+modern avatar bar v1.99 fixed, but the CLASSIC library toolbar): the All/Videos/
+Audio + sort/Shuffle/Rescan/view row and the All/New/Watching/Watched + Attribute
+row "start with only a few buttons" then grow.
+
+ROOT CAUSE: the format toggle + watch-state toggle were injected in
+fetchLibraryPage0 AFTER the /api/videos fetch, so the static sort/rescan/view
+buttons painted first and these grew the row a beat later. But both read
+SYNCHRONOUS localStorage prefs - they never needed the fetch. FIX: render them at
+the TOP of loadLibrary, BEFORE the /api/config + /api/videos awaits (alongside the
+grid-skeleton seed), so the toolbar is COMPLETE from first paint - no shimmer
+needed (a shimmer would imply loading where there is nothing to load; the grid
+below still shimmers). Scoped to the classic toolbar (modern home uses its own
+chip chrome) and guarded so a re-sort / cached re-entry never removes+reinserts
+them. Attribute stays post-fetch (data-dependent: needs the items to know folder
+eligibility - disclosed).
+
+Slim gate (adversarial) APPROVE - mutation-verified the new test binds, and the
+modern/feed/cached-home interactions all traced clean. Two non-blocking residuals
+disclosed (tech-debt #138): a pre-existing `fetchLibraryPage0` concurrency race
+(a fast toggle click during the initial skeleton load can briefly show the old
+filter, self-heals) that v1.100 slightly widened; and the feed-mode early render
+mounting the toggles into an already-`display:none` toolbar (correctness-neutral).
+
+Dual-Node: **Node 22.23.1 6612/6612, Node 24.14.0 6612/6612**, zero failures.
+Census 0, ledger clean. **AWAITING DEAN'S ON-DEVICE PASS** - on the classic home /
+a folder view: the toolbar (All/Videos/Audio, sort, Shuffle, Rescan, view + the
+All/New/Watching/Watched + Attribute row) should be fully present from the first
+paint, not start with a few buttons and grow.
+
 ### v1.99.0 - Shimmer sweep tranche 2 + the reveal-once contract (2026-08-11)
 
 Dean, on-device (v1.98 feedback): the top chip-row "flow" flickers / gains-or-
