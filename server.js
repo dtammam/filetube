@@ -7900,7 +7900,8 @@ app.get('/api/music/albums', (req, res) => {
   // DROP the per-row albumArtExists fs.existsSync — the client always requests
   // /albumart/:artId, which serves the real file or an SVG placeholder, so
   // hasArt was an unused N-stat-per-request event-loop tax at scale.
-  const albums = musicQuery.groupAlbums(list);
+  const sortKey = typeof req.query.sort === 'string' ? req.query.sort : '';
+  const albums = musicQuery.groupAlbums(list, sortKey);
   const total = albums.length;
   const offset = videoQuery.normalizeOffset(req.query.offset);
   const limit = videoQuery.normalizeLimit(req.query.limit);
@@ -7912,7 +7913,8 @@ app.get('/api/music/artists', (req, res) => {
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
-  const artists = musicQuery.groupArtists(list);
+  const sortKey = typeof req.query.sort === 'string' ? req.query.sort : '';
+  const artists = musicQuery.groupArtists(list, sortKey);
   const total = artists.length;
   const offset = videoQuery.normalizeOffset(req.query.offset);
   const limit = videoQuery.normalizeLimit(req.query.limit);

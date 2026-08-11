@@ -78,3 +78,75 @@ test('T6: groupArtists counts distinct albums + tracks per artist (album-artist 
   const va = artists.find((a) => a.artist === 'VA');
   assert.equal(va.trackCount, 1, 'grouped under album artist, not track artist');
 });
+
+test('v1.103: groupArtists artIds — one per album, art-carrying first, title tiebreak, capped at 4', () => {
+  // Artist "M" with 5 albums: only "B" and "D" carry embedded art.
+  const mk = (id, album, hasArt) => trk({ id, artist: 'M', albumArtist: 'M', album, hasEmbeddedArt: !!hasArt });
+  const tracks = [
+    mk('a1', 'E', false), mk('a2', 'A', false), mk('a3', 'D', true),
+    mk('a4', 'C', false), mk('a5', 'B', true),
+    // a second track in album A with art must NOT create a second A tile.
+    mk('a6', 'A', true),
+  ];
+  const m = q.groupArtists(tracks).find((a) => a.artist === 'M');
+  assert.equal(m.albumCount, 5, '5 distinct albums');
+  assert.equal(m.artIds.length, 4, 'mosaic capped at 4 tiles');
+  // Art-carrying albums (B->a5, D->a3, and A upgraded to a6) lead, ordered by
+  // album title (A, B, D), then the first non-art album by title (C->a4).
+  assert.deepEqual(m.artIds, ['a6', 'a5', 'a3', 'a4']);
+});
+
+test('v1.103 (gate ADV-W1): artIds are order-INVARIANT - a re-scan (shuffled tracks) yields identical ids, incl. the within-album representative', () => {
+  // Album "One" has TWO embedded-art tracks (t2, t5) at different disc/track
+  // positions; the representative must be stable (earliest disc/track -> t2),
+  // never "first seen". Album "Two" also has two art tracks (same track no ->
+  // id tiebreak).
+  const mk = (id, album, hasArt, trackNo) => trk({ id, artist: 'A', albumArtist: 'A', album, hasEmbeddedArt: !!hasArt, trackNo, discNo: 1 });
+  const tracks = [
+    mk('t2', 'One', true, 1), mk('t5', 'One', true, 3), mk('t9', 'One', false, 2),
+    mk('b7', 'Two', true, 1), mk('b3', 'Two', true, 1),
+  ];
+  const base = q.groupArtists(tracks).find((a) => a.artist === 'A').artIds;
+  // Both albums carry art, so mosaic order = album title: One (rep t2, track 1 <
+  // track 3) then Two (rep b3, track tie -> id 'b3' < 'b7').
+  assert.deepEqual(base, ['t2', 'b3'], 'stable representatives, earliest disc/track then lowest id');
+  // Every permutation must produce the identical artIds.
+  const perms = [
+    [...tracks].reverse(),
+    [tracks[4], tracks[0], tracks[3], tracks[2], tracks[1]],
+    [tracks[1], tracks[3], tracks[4], tracks[0], tracks[2]],
+  ];
+  for (const p of perms) {
+    const got = q.groupArtists(p).find((a) => a.artist === 'A').artIds;
+    assert.deepEqual(got, base, 'artIds are identical regardless of input/scan order');
+  }
+});
+
+test('v1.103: groupArtists artIds empty-safe + single-album artist', () => {
+  const solo = q.groupArtists([trk({ id: 's1', artist: 'Solo', albumArtist: 'Solo', album: 'Only' })])
+    .find((a) => a.artist === 'Solo');
+  assert.deepEqual(solo.artIds, ['s1'], 'one album -> one tile');
+  assert.deepEqual(q.groupArtists([]), [], 'no tracks -> no artists');
+});
+
+test('v1.103: groupAlbums/groupArtists honor grid sort keys (name default preserved)', () => {
+  const mk = (id, artist, album, addedAt, hasArt) => trk({ id, artist, albumArtist: artist, album, addedAt, hasEmbeddedArt: !!hasArt, year: 2000 });
+  const tracks = [
+    mk('z1', 'Zed', 'Zeta', '2026-01-01T00:00:00Z'),
+    mk('a1', 'Ann', 'Alpha', '2026-03-01T00:00:00Z'),
+    mk('a2', 'Ann', 'Alpha', '2026-03-02T00:00:00Z'), // Alpha has 2 tracks
+    mk('m1', 'Moe', 'Mid', '2026-02-01T00:00:00Z'),
+  ];
+  // Default (no sort) = album/artist name order, unchanged from pre-v1.103.
+  assert.deepEqual(q.groupAlbums(tracks).map((a) => a.album), ['Alpha', 'Mid', 'Zeta']);
+  assert.deepEqual(q.groupArtists(tracks).map((a) => a.artist), ['Ann', 'Moe', 'Zed']);
+  // newest = most-recent addedAt first (Alpha 03-02, Mid 02-01, Zeta 01-01).
+  assert.deepEqual(q.groupAlbums(tracks, 'newest').map((a) => a.album), ['Alpha', 'Mid', 'Zeta']);
+  assert.deepEqual(q.groupArtists(tracks, 'newest').map((a) => a.artist), ['Ann', 'Moe', 'Zed']);
+  // title-desc = reverse name.
+  assert.deepEqual(q.groupAlbums(tracks, 'title-desc').map((a) => a.album), ['Zeta', 'Mid', 'Alpha']);
+  assert.deepEqual(q.groupArtists(tracks, 'title-desc').map((a) => a.artist), ['Zed', 'Moe', 'Ann']);
+  // tracks-desc = most tracks first (Alpha has 2, tiebreak by name).
+  assert.equal(q.groupAlbums(tracks, 'tracks-desc')[0].album, 'Alpha');
+  assert.equal(q.groupArtists(tracks, 'tracks-desc')[0].artist, 'Ann');
+});

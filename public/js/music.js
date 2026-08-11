@@ -43,12 +43,27 @@ function buildAlbumCardHtml(album) {
     '</button>';
 }
 
-// An artist card (name + album/track counts).
+// An artist card: a 2x2 mosaic of the artist's album art (server sends up to 4
+// `artIds`, art-carrying albums first) over the name + album/track counts. The
+// mosaic mirrors the album card's chassis - an art-forward square, not the old
+// text-only box. `data-tiles` (1-4) drives the CSS reflow so 1/2/3 albums still
+// fill the square. Real server data always sends >=1 artId (every artist has >=1
+// album), and /albumart/<id> serves that album's art or an SVG placeholder. The
+// zero-artIds branch (`['']`) only fires on a stale/malformed cached payload:
+// /albumart/ with an EMPTY segment 404s, but the tile's `error` still clears the
+// shimmer (a broken-image glyph, never a perpetual shimmer or a blank card).
+// Each tile ships `art-shimmer`; revealMusicArt() (via the shared shimmerArt)
+// clears it on decode OR error - the reveal-once both-axes contract, per tile.
 function buildArtistCardHtml(artist) {
   var meta = (artist.albumCount || 0) + (artist.albumCount === 1 ? ' album' : ' albums') +
     ' · ' + (artist.trackCount || 0) + (artist.trackCount === 1 ? ' track' : ' tracks');
+  var ids = (Array.isArray(artist.artIds) && artist.artIds.length) ? artist.artIds.slice(0, 4) : [''];
+  var tiles = ids.map(function (id) {
+    return '<img class="art-shimmer" src="/albumart/' + encodeURIComponent(id || '') + '" alt="" loading="lazy" />';
+  }).join('');
   return '' +
     '<button type="button" class="music-artist-card" data-artist="' + escapeMusicHtml(artist.artist) + '">' +
+    '<span class="music-artist-mosaic" data-tiles="' + ids.length + '">' + tiles + '</span>' +
     '<span class="music-artist-name" title="' + escapeMusicHtml(artist.artist) + '">' + escapeMusicHtml(artist.artist || 'Unknown artist') + '</span>' +
     '<span class="music-artist-meta">' + escapeMusicHtml(meta) + '</span>' +
     '</button>';
@@ -207,10 +222,54 @@ function deriveNowPlayingLabel(np, currentId) {
 // so a stale 'liked' would render a blank page that survives every reload.
 // A remembered tab that is no longer in the roster falls back to the default.
 var MUSIC_TABS = ['albums', 'artists', 'songs'];
-var MUSIC_DEFAULT_TAB = 'albums';
+// v1.103: Artists is the default landing (Dean: browse-by-artist is the primary
+// path, and the artist mosaic is the richest surface). Also the sanitiser
+// fallback for a stale/absent stored tab. A device with a prior stored tab keeps
+// it until the user taps Artists once.
+var MUSIC_DEFAULT_TAB = 'artists';
 
 function normalizeMusicTab(value) {
   return MUSIC_TABS.indexOf(value) >= 0 ? value : MUSIC_DEFAULT_TAB;
+}
+
+// v1.103: sort is now per-tab. Each browse tab exposes only the keys that make
+// sense for it (a grid of albums can't sort by track duration; artists carry no
+// release year), with labels that read right for the tab's unit ("Title A-Z" for
+// songs/albums, "Name A-Z" for artists). Every value here has a server handler -
+// songs via sortTracks (/api/music), albums/artists via sortGroups
+// (/api/music/albums|artists) - so the client menu never offers a dead option.
+var MUSIC_SORTS = {
+  songs: [
+    { value: 'newest', label: 'Recently added' },
+    { value: 'title-asc', label: 'Title A-Z' },
+    { value: 'title-desc', label: 'Title Z-A' },
+    { value: 'artist-asc', label: 'Artist' },
+    { value: 'album-asc', label: 'Album' },
+    { value: 'duration-desc', label: 'Longest' },
+    { value: 'duration-asc', label: 'Shortest' },
+  ],
+  albums: [
+    { value: 'title-asc', label: 'Title A-Z' },
+    { value: 'title-desc', label: 'Title Z-A' },
+    { value: 'newest', label: 'Recently added' },
+    { value: 'year-desc', label: 'Release year' },
+    { value: 'tracks-desc', label: 'Most tracks' },
+  ],
+  artists: [
+    { value: 'title-asc', label: 'Name A-Z' },
+    { value: 'title-desc', label: 'Name Z-A' },
+    { value: 'newest', label: 'Recently added' },
+    { value: 'tracks-desc', label: 'Most songs' },
+  ],
+};
+var MUSIC_SORT_DEFAULTS = { songs: 'newest', albums: 'title-asc', artists: 'title-asc' };
+
+// The persisted sort for `tab`, validated against that tab's option list (an
+// unknown/stale key falls back to the tab default, so a renamed key never
+// strands the menu on an invalid value).
+function normalizeMusicSort(tab, value) {
+  var opts = MUSIC_SORTS[tab] || MUSIC_SORTS.songs;
+  return opts.some(function (o) { return o.value === value; }) ? value : (MUSIC_SORT_DEFAULTS[tab] || 'newest');
 }
 
 // v1.98 shimmer sweep: seeded into #music-content before render()'s fetch, so a
@@ -234,10 +293,11 @@ function buildMusicSkeletonCards(n) {
   return '<div class="music-card-grid">' + cards + '</div>';
 }
 
-// Artists are TEXT-ONLY cards (no art box, shorter than an album card), so they
-// get their own shape - seeding an album-card skeleton here would collapse ~195px
-// -> ~72px on reveal (gate WARNING 1: the artists tab is a localStorage-persisted
-// COLD landing, so the mismatch is user-reachable straight off a page load).
+// v1.103: artist cards are now art-forward (a square mosaic over name + meta),
+// the SAME shape as an album card - so the skeleton reserves the square mosaic
+// box + two lines, matching the revealed card exactly (reveal-once: seed the
+// shape you reveal). The artists tab is a localStorage-persisted COLD landing,
+// so any seed/reveal mismatch is user-reachable straight off a page load.
 function buildMusicArtistSkeletonCards(n) {
   var count = Number.isInteger(n) && n > 0 ? n : 0;
   if (count === 0) return '';
@@ -245,11 +305,12 @@ function buildMusicArtistSkeletonCards(n) {
   for (var i = 0; i < count; i++) {
     cards += '' +
       '<div class="music-artist-card" aria-hidden="true">' +
+      '<span class="music-artist-mosaic skeleton-shimmer"></span>' +
       '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>' +
       '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>' +
       '</div>';
   }
-  return '<div class="music-card-grid music-artist-grid">' + cards + '</div>';
+  return '<div class="music-card-grid">' + cards + '</div>';
 }
 
 function buildMusicSkeletonRows(n) {
@@ -274,6 +335,7 @@ if (typeof module !== 'undefined' && module.exports) {
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildSongRowHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
+    MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
     buildMusicSkeletonCards, buildMusicSkeletonRows, buildMusicArtistSkeletonCards,
   };
 }
@@ -398,13 +460,44 @@ if (typeof module !== 'undefined' && module.exports) {
     var queueCtxEncoded = '';
     var urlParams = new URLSearchParams(window.location.search);
 
+    // v1.103: sort is persisted PER TAB (sorting Songs by duration must not
+    // reorder Artists when you switch back). SORT_KEY holds a JSON map
+    // {tab: value}; a pre-v1.103 plain-string value (single global sort) fails
+    // JSON.parse and falls through to the per-tab defaults - a one-time reset,
+    // not a crash.
+    function readSortMap() {
+      var raw = readPref(SORT_KEY, '');
+      if (!raw) return {};
+      try { var m = JSON.parse(raw); return (m && typeof m === 'object') ? m : {}; } catch (_) { return {}; }
+    }
+    function sortForTab(t) { return normalizeMusicSort(t, readSortMap()[t]); }
+    function writeSortForTab(t, value) {
+      var m = readSortMap();
+      m[t] = value;
+      writePref(SORT_KEY, JSON.stringify(m));
+    }
+    // Rebuild the select's options for the active tab and select that tab's
+    // persisted sort. A drill (album/artist detail) is inherently album-order
+    // and carries its own Play/Shuffle, so the top sort control is hidden there.
+    function rebuildSortMenu() {
+      if (!sortSelect) return;
+      var wrap = sortSelect;
+      if (drill) { wrap.hidden = true; return; }
+      wrap.hidden = false;
+      var opts = MUSIC_SORTS[tab] || MUSIC_SORTS.songs;
+      var current = sortForTab(tab);
+      sortSelect.innerHTML = opts.map(function (o) {
+        return '<option value="' + escapeMusicHtml(o.value) + '"' + (o.value === current ? ' selected' : '') + '>' + escapeMusicHtml(o.label) + '</option>';
+      }).join('');
+      sortSelect.value = current;
+    }
     if (sortSelect) {
-      sortSelect.value = readPref(SORT_KEY, 'newest');
       sortSelect.addEventListener('change', function () {
-        writePref(SORT_KEY, sortSelect.value);
+        writeSortForTab(tab, sortSelect.value);
         render().catch(function () {});
       }, { signal });
     }
+    rebuildSortMenu();
 
     // The header search box drives the music search (this view owns it here).
     var searchInput = document.getElementById('search-input');
@@ -490,7 +583,12 @@ if (typeof module !== 'undefined' && module.exports) {
     async function loadSongs(opts) {
       opts = opts || {};
       var scope = opts.scope || drill;
-      var ctx = { src: 'music', sort: opts.sort || (sortSelect ? sortSelect.value : 'newest') };
+      // v1.103: the flat Songs tab honours its OWN persisted sort; a drill
+      // (album/artist detail) defaults to album-order - disc/track sequence, the
+      // natural way to hear an album - unless a caller overrides (Shuffle passes
+      // 'random'). The top sort control is hidden inside a drill (rebuildSortMenu).
+      var defaultSort = scope ? 'album-order' : sortForTab('songs');
+      var ctx = { src: 'music', sort: opts.sort || defaultSort };
       if (opts.seed) ctx.seed = opts.seed;
       if (search) ctx.search = search;
       if (scope && scope.type === 'album') ctx.album = scope.key;
@@ -579,9 +677,13 @@ if (typeof module !== 'undefined' && module.exports) {
       // sentinel is about to be replaced) — the SPA-swap leak guard.
       disconnectStickyObserver();
       setActiveTab();
+      // Keep the sort control in sync with the active tab (options + persisted
+      // value) and hidden inside a drill - centralised here so every state
+      // change (tab switch, drill in/out) routes through one place.
+      rebuildSortMenu();
       // v1.98 shimmer sweep: seed the EXACT shape the branch below reveals, so
-      // the swap is zero-shift - a song list (songs), a text-only artist grid
-      // (artists), or an album grid (albums). A DRILL is deliberately NOT seeded
+      // the swap is zero-shift - a song list (songs), an artist mosaic grid
+      // (artists, v1.103), or an album grid (albums). A DRILL is deliberately NOT seeded
       // (gate WARNING 2): renderDrillView prepends a large .music-drill-header a
       // bare song-row skeleton can't reserve, so keep the prior content on screen
       // (the album grid you clicked) until the drill paints - no header jump.
@@ -605,14 +707,14 @@ if (typeof module !== 'undefined' && module.exports) {
           // 60, so without an explicit high limit only ~60 albums/artists
           // would render (the Songs tab already passes a high limit). Proper
           // infinite-scroll is tech-debt; for now request the full set.
-          var a = await fetchJson('/api/music/albums?limit=10000' + (search ? '&search=' + encodeURIComponent(search) : ''));
+          var a = await fetchJson('/api/music/albums?limit=10000&sort=' + encodeURIComponent(sortForTab('albums')) + (search ? '&search=' + encodeURIComponent(search) : ''));
           var albums = Array.isArray(a.items) ? a.items : [];
           content.innerHTML = '<div class="music-card-grid">' + albums.map(buildAlbumCardHtml).join('') + '</div>';
           if (emptyNote) emptyNote.hidden = albums.length > 0;
         } else if (tab === 'artists') {
-          var ar = await fetchJson('/api/music/artists?limit=10000' + (search ? '&search=' + encodeURIComponent(search) : ''));
+          var ar = await fetchJson('/api/music/artists?limit=10000&sort=' + encodeURIComponent(sortForTab('artists')) + (search ? '&search=' + encodeURIComponent(search) : ''));
           var artists = Array.isArray(ar.items) ? ar.items : [];
-          content.innerHTML = '<div class="music-card-grid music-artist-grid">' + artists.map(buildArtistCardHtml).join('') + '</div>';
+          content.innerHTML = '<div class="music-card-grid">' + artists.map(buildArtistCardHtml).join('') + '</div>';
           if (emptyNote) emptyNote.hidden = artists.length > 0;
         }
       } catch (err) {
@@ -737,11 +839,12 @@ if (typeof module !== 'undefined' && module.exports) {
         autoAdvanceViaTrackNav: true,
         browseCtx: queueCtxEncoded,
         // v1.44.2: the dock-return href - without it a track id hits the
-        // video /watch route and 404s. v1.73 (Dean ruling 2): the return
-        // now opens the expanded now-playing view in ONE gesture - the
-        // podcasts ?nowplaying=1 contract, same player audio-mount, second
-        // mount point (on /music the tap NAVIGATES and expands - the old
-        // same-URL-no-op sentence died with the plain /music href).
+        // video /watch route and 404s. v1.73 (Dean ruling 2): the return opens
+        // the expanded now-playing view in ONE gesture - the podcasts
+        // ?nowplaying=1 contract, same player audio-mount, second mount point.
+        // v1.103: this navigate lands only because init STRIPS ?nowplaying after
+        // consuming it (stripNowPlayingParam), so the bar never already shows the
+        // target and the router's same-URL no-op never swallows the dock-tap.
         readerHref: '/music?nowplaying=1',
       };
       // v1.44.2 (Spotify feel): play in the DOCKED mini-player, not FULL at the
@@ -864,6 +967,20 @@ if (typeof module !== 'undefined' && module.exports) {
     // view's slot with a FULL player inside it - re-adopt on EVERY init,
     // ?nowplaying or not. MUST match podcasts.js's copy.
     var wantNowPlaying = urlParams.get('nowplaying') === '1';
+    // v1.103 (dock-return determinism): `?nowplaying=1` is a TRANSIENT expand
+    // TRIGGER, not durable state. `wantNowPlaying` has captured it, so strip it
+    // from the bar NOW - BEFORE the expand call below, so a throwing expand() can
+    // never skip the strip and leave the marker durable (gate ADV-SUGGESTION 4).
+    // If it lingered, a later dock re-tap would navigate to the SAME
+    // `/music?nowplaying=1` already shown, and the router's same-URL no-op
+    // (common.js navigate, tech-debt #46) would swallow it - stranding you in the
+    // docked mini-player with an empty #player-slot (Dean's "tapping the mini
+    // player doesn't always bring the player back" bug). Stripping keeps the URL
+    // truthful (docked, not expanded) so every dock-tap is a real transition that
+    // re-inits + re-expands. replaceState (no new history entry), carrying the
+    // router's state object forward with a corrected `url` so popstate stays
+    // consistent. expand() reads player state, not the URL, so ordering is safe.
+    stripNowPlayingParam();
     var player = window.FileTube && window.FileTube.player;
     if (player && typeof player.getState === 'function' && typeof player.expand === 'function') {
       var pState = player.getState();
@@ -872,6 +989,20 @@ if (typeof module !== 'undefined' && module.exports) {
         player.expand(npSlot);
       }
     }
+  }
+
+  function stripNowPlayingParam() {
+    try {
+      var loc = window.location;
+      var params = new URLSearchParams(loc.search);
+      if (!params.has('nowplaying')) return;
+      params.delete('nowplaying');
+      var qs = params.toString();
+      var newUrl = loc.pathname + (qs ? '?' + qs : '');
+      var prev = window.history.state;
+      var nextState = prev ? Object.assign({}, prev, { url: newUrl }) : null;
+      window.history.replaceState(nextState, '', newUrl);
+    } catch (_) { /* history unavailable -> leave the URL as-is */ }
   }
 
   function destroy() {

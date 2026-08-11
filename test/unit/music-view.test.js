@@ -11,6 +11,7 @@ const path = require('node:path');
 const {
   escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildSongRowHtml,
   drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
+  MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
 } = require('../../public/js/music.js');
 
 // v1.102 (tranche 4): the song-row action glyphs render via window.chromeIconMarkup
@@ -35,6 +36,44 @@ test('v1.44.1 SOURCE-LOCK (Bug A): a Continue-listening tap plays the TAPPED tra
   assert.match(MUSIC_JS, /playTrackFromContinue/, 'the continue-listening handler exists');
   assert.match(MUSIC_JS, /filter=recent-listening&limit=200/, 'it builds the queue from the recent-listening list');
   assert.doesNotMatch(MUSIC_JS, /st\.lastTrackId/, 'it must NOT fall back to the pointer last track (the wrong-song bug)');
+});
+
+test('v1.103 (no dead option): each client sort binds to the RIGHT server fn - songs->sortTracks, grids->sortGroups', () => {
+  // The client menu must never offer a sort the server silently ignores. A grid
+  // tab (albums/artists) is served by sortGroups, songs by sortTracks - and the
+  // two handle DIFFERENT key sets, so binding grid keys to sortTracks (or vice
+  // versa) would let a key that falls to the OTHER fn's default slip through
+  // (gate ADV-SUGGESTION 3). Scrape each function's own `case` labels.
+  const QUERY_JS = fs.readFileSync(path.join(__dirname, '../../lib/music/query.js'), 'utf8');
+  const fnBody = (name) => {
+    const start = QUERY_JS.indexOf('function ' + name);
+    assert.ok(start >= 0, `query.js defines ${name}`);
+    const after = QUERY_JS.indexOf('\nfunction ', start + 1);
+    return QUERY_JS.slice(start, after === -1 ? undefined : after);
+  };
+  const casesIn = (body) => new Set([...body.matchAll(/case '([a-z-]+)':/g)].map((m) => m[1]));
+  const trackKeys = casesIn(fnBody('sortTracks'));
+  const gridKeys = casesIn(fnBody('sortGroups'));
+  const handlerFor = { songs: trackKeys, albums: gridKeys, artists: gridKeys };
+  for (const tab of Object.keys(MUSIC_SORTS)) {
+    for (const opt of MUSIC_SORTS[tab]) {
+      assert.ok(handlerFor[tab].has(opt.value), `client sort "${opt.value}" (${tab} tab) has no case in ${tab === 'songs' ? 'sortTracks' : 'sortGroups'}`);
+      assert.ok(opt.label && opt.label.length, `sort "${opt.value}" needs a label`);
+    }
+    // Each tab's default must itself be one of that tab's offered values.
+    assert.ok(MUSIC_SORTS[tab].some((o) => o.value === MUSIC_SORT_DEFAULTS[tab]), `${tab} default is an offered value`);
+  }
+});
+
+test('v1.103: normalizeMusicSort keeps a valid per-tab key, falls back to the tab default otherwise', () => {
+  assert.equal(normalizeMusicSort('albums', 'year-desc'), 'year-desc', 'valid album key kept');
+  assert.equal(normalizeMusicSort('artists', 'tracks-desc'), 'tracks-desc', 'valid artist key kept');
+  // duration-desc is a SONGS key - invalid on the albums tab -> album default.
+  assert.equal(normalizeMusicSort('albums', 'duration-desc'), MUSIC_SORT_DEFAULTS.albums);
+  // year-desc is an ALBUMS key - invalid on artists -> artist default.
+  assert.equal(normalizeMusicSort('artists', 'year-desc'), MUSIC_SORT_DEFAULTS.artists);
+  assert.equal(normalizeMusicSort('songs', undefined), MUSIC_SORT_DEFAULTS.songs, 'undefined -> default');
+  assert.equal(normalizeMusicSort('songs', 'garbage'), MUSIC_SORT_DEFAULTS.songs, 'unknown -> default');
 });
 
 test('T9: escapeMusicHtml neutralizes markup; null/undefined -> empty', () => {
@@ -64,6 +103,48 @@ test('T9: buildArtistCardHtml carries the artist + escaped counts', () => {
   assert.match(html, /data-artist="A &amp; B"/);
   assert.match(html, /1 album/);
   assert.match(html, /3 tracks/);
+});
+
+// v1.103: the artist card is a mosaic of album art (up to 4 tiles).
+function tileCount(html) { return (html.match(/<img /g) || []).length; }
+
+test('v1.103: buildArtistCardHtml renders a mosaic - one art-shimmer tile per artId, capped at 4, data-tiles matches', () => {
+  const four = buildArtistCardHtml({ artist: 'Q', albumCount: 4, trackCount: 40, artIds: ['a', 'b', 'c', 'd'] });
+  assert.match(four, /class="music-artist-mosaic" data-tiles="4"/);
+  assert.equal(tileCount(four), 4, 'four tiles');
+  assert.match(four, /src="\/albumart\/a"/);
+  assert.match(four, /src="\/albumart\/d"/);
+  assert.ok((four.match(/art-shimmer/g) || []).length === 4, 'every tile ships art-shimmer (reveal-once both axes)');
+
+  // A server can only ever send 4, but the client also hard-caps (defence in depth).
+  const capped = buildArtistCardHtml({ artist: 'Q', artIds: ['a', 'b', 'c', 'd', 'e', 'f'] });
+  assert.match(capped, /data-tiles="4"/);
+  assert.equal(tileCount(capped), 4);
+});
+
+test('v1.103: mosaic reflows for sparse artists - 1/2/3 tiles set data-tiles so CSS fills the square', () => {
+  assert.match(buildArtistCardHtml({ artist: 'One', artIds: ['x'] }), /data-tiles="1"/);
+  assert.match(buildArtistCardHtml({ artist: 'Two', artIds: ['x', 'y'] }), /data-tiles="2"/);
+  assert.match(buildArtistCardHtml({ artist: 'Three', artIds: ['x', 'y', 'z'] }), /data-tiles="3"/);
+});
+
+test('v1.103: an artist with NO art still renders one placeholder tile (never a blank card)', () => {
+  const none = buildArtistCardHtml({ artist: 'Bare', albumCount: 1, trackCount: 1, artIds: [] });
+  assert.match(none, /data-tiles="1"/, 'one tile reserved');
+  assert.equal(tileCount(none), 1);
+  assert.match(none, /src="\/albumart\/"/, 'empty id -> /albumart/ (404s, but the img error still clears the shimmer - never a blank card)');
+  // Missing artIds entirely (older cached payload) behaves the same.
+  assert.match(buildArtistCardHtml({ artist: 'Bare' }), /data-tiles="1"/);
+});
+
+test('v1.103: mosaic tile art ids are URL-encoded (a slash/space id cannot break the src attribute)', () => {
+  const html = buildArtistCardHtml({ artist: 'Z', artIds: ['a b/c'] });
+  assert.match(html, /src="\/albumart\/a%20b%2Fc"/);
+});
+
+test('v1.103 (reveal-once): the artist skeleton reserves the mosaic square, matching the revealed card shape', () => {
+  // Seed shape must equal reveal shape or the artists cold-landing shifts on load.
+  assert.match(MUSIC_JS, /class="music-artist-mosaic skeleton-shimmer"/, 'skeleton reserves the mosaic box');
 });
 
 test('T9: buildSongRowHtml carries the index + id, escaped title, duration, and a like toggle', () => {

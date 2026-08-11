@@ -107,6 +107,19 @@ test('T6: GET /api/music/albums groups; /api/music/artists groups', async () => 
   assert.equal(artists.items[0].artist, 'Pink Floyd');
   assert.equal(artists.items[0].albumCount, 2);
   assert.equal(artists.items[0].trackCount, 3);
+  // v1.103: the mosaic art ids — one per album (2 albums -> 2 tiles), each a
+  // real track id the client can request as /albumart/<id>.
+  const artIds = artists.items[0].artIds;
+  assert.ok(Array.isArray(artIds) && artIds.length === 2, 'one mosaic tile per album');
+  assert.ok(artIds.every((id) => typeof id === 'string' && id.length > 0));
+});
+
+test('v1.103: album/artist grids honor ?sort= (title-desc reverses name order)', async () => {
+  await seedLibrary();
+  const asc = (await (await get('/api/music/albums?sort=title-asc')).json()).items.map((a) => a.album);
+  const desc = (await (await get('/api/music/albums?sort=title-desc')).json()).items.map((a) => a.album);
+  assert.deepEqual(asc, ['Animals', 'The Wall'], 'title-asc = alphabetical');
+  assert.deepEqual(desc, ['The Wall', 'Animals'], 'title-desc = reversed');
 });
 
 test('T6: liked toggle is per-user; filter=liked reflects it; unknown track 404s', async () => {

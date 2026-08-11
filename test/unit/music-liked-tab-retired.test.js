@@ -30,15 +30,15 @@ const { MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab } = require('../../publ
 
 test('v1.75: the tab roster is the three surviving tabs - Liked is not one of them', () => {
   assert.deepEqual(MUSIC_TABS, ['albums', 'artists', 'songs']);
-  assert.equal(MUSIC_DEFAULT_TAB, 'albums');
+  assert.equal(MUSIC_DEFAULT_TAB, 'artists', 'v1.103: Artists is the default landing');
   assert.ok(MUSIC_TABS.indexOf('liked') === -1);
 });
 
 test('v1.75: a remembered tab that no longer exists falls back to the default; real ones pass through', () => {
-  assert.equal(normalizeMusicTab('liked'), 'albums', 'the retired tab is the case this exists for');
+  assert.equal(normalizeMusicTab('liked'), 'artists', 'the retired tab is the case this exists for');
   for (const t of MUSIC_TABS) assert.equal(normalizeMusicTab(t), t, `${t} passes through untouched`);
   for (const junk of [null, undefined, '', 'nonsense', 0, {}, 'Albums']) {
-    assert.equal(normalizeMusicTab(junk), 'albums', `${JSON.stringify(junk)} degrades to the default`);
+    assert.equal(normalizeMusicTab(junk), 'artists', `${JSON.stringify(junk)} degrades to the default`);
   }
 });
 
@@ -99,7 +99,12 @@ async function bootMusicView(storedTab, fn) {
   dom.window.FileTube = { registerView: (name, mod) => { registered = mod; } };
   global.fetch = (url) => Promise.resolve({
     ok: true,
-    json: () => Promise.resolve(String(url).indexOf('/artists') >= 0 ? { items: [] } : { items: [] }),
+    // The artists branch returns one artist so its card (the branch-specific
+    // .music-artist-card, v1.103) renders and can be asserted; all other
+    // browse fetches stay empty.
+    json: () => Promise.resolve(String(url).indexOf('/artists') >= 0
+      ? { items: [{ artist: 'X', albumCount: 1, trackCount: 2, artIds: [] }] }
+      : { items: [] }),
   });
   if (storedTab !== null) dom.window.localStorage.setItem('filetube_music_tab', storedTab);
   try {
@@ -129,9 +134,9 @@ test('v1.75 USE: a device whose stored tab is the RETIRED one still renders - it
       !content.innerHTML.includes('SENTINEL-NOT-RENDERED'),
       'nothing rendered: the stale tab hit no branch and /music is a blank page (the bug this guards)',
     );
-    assert.match(content.innerHTML, /music-card-grid/, 'the default Albums grid rendered instead');
+    assert.match(content.innerHTML, /music-card-grid/, 'the default (v1.103: Artists) grid rendered instead');
     const active = dom.window.document.querySelector('.music-tab.active');
-    assert.equal(active.getAttribute('data-tab'), 'albums', 'and the strip highlights the tab that actually rendered');
+    assert.equal(active.getAttribute('data-tab'), 'artists', 'and the strip highlights the tab that actually rendered');
   });
 });
 
@@ -139,13 +144,13 @@ test('v1.75 USE: a stored tab that is still real is honoured (the fallback is no
   await bootMusicView('artists', (dom) => {
     const active = dom.window.document.querySelector('.music-tab.active');
     assert.equal(active.getAttribute('data-tab'), 'artists');
-    assert.match(dom.window.document.getElementById('music-content').innerHTML, /music-artist-grid/);
+    assert.match(dom.window.document.getElementById('music-content').innerHTML, /music-artist-card/, 'the artists branch rendered its cards (v1.103: shares .music-card-grid with albums, so assert the artist card itself)');
   });
 });
 
 test('v1.75 USE: no stored tab at all renders the default', async () => {
   await bootMusicView(null, (dom) => {
     const active = dom.window.document.querySelector('.music-tab.active');
-    assert.equal(active.getAttribute('data-tab'), 'albums');
+    assert.equal(active.getAttribute('data-tab'), 'artists', 'v1.103: Artists is the default landing');
   });
 });
