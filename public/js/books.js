@@ -48,8 +48,26 @@ function deriveShelfChips(folders) {
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }
 
+// v1.98 shimmer sweep: n `.book-card`-shaped shimmer cards seeded into the grid
+// BEFORE the fetch. Reuses the REAL `.book-cover-link` (aspect 2/3) as the
+// shimmer box + two skeleton lines, so the swap to real cards is zero-shift.
+function buildBookSkeletonCards(n) {
+  const count = Number.isInteger(n) && n > 0 ? n : 0;
+  let html = '';
+  for (let i = 0; i < count; i++) {
+    html += `
+      <div class="book-card" aria-hidden="true">
+        <span class="book-cover-link skeleton-shimmer"></span>
+        <div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>
+        <div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>
+      </div>
+    `;
+  }
+  return html;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { buildBookCardHtml, deriveShelfChips, escapeBookHtml };
+  module.exports = { buildBookCardHtml, deriveShelfChips, escapeBookHtml, buildBookSkeletonCards };
 }
 
 (function () {
@@ -122,11 +140,21 @@ if (typeof module !== 'undefined' && module.exports) {
       query.set('limit', '500');
       if (rootFilter) query.set('root', rootFilter);
       if (searchFilter) query.set('search', searchFilter);
-      const data = await fetchJson(`/api/books?${query.toString()}`);
-      const items = Array.isArray(data.items) ? data.items : [];
-      grid.innerHTML = items.map(buildBookCardHtml).join('');
-      if (emptyNote) emptyNote.hidden = items.length > 0;
-      return items.length;
+      // v1.98 shimmer sweep: seed the shimmer before the fetch (the reveal is the
+      // real-card innerHTML= below); on error clear it so it never strands.
+      grid.innerHTML = buildBookSkeletonCards(8);
+      try {
+        const data = await fetchJson(`/api/books?${query.toString()}`);
+        const items = Array.isArray(data.items) ? data.items : [];
+        grid.innerHTML = items.map(buildBookCardHtml).join('');
+        if (emptyNote) emptyNote.hidden = items.length > 0;
+        return items.length;
+      } catch (err) {
+        grid.innerHTML = '';
+        if (emptyNote) emptyNote.hidden = false;
+        console.error('Books: load failed', err);
+        return 0;
+      }
     }
 
     async function loadContinueShelf() {

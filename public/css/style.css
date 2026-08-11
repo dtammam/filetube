@@ -1769,6 +1769,21 @@ html.reader-immersive .app-container { padding-top: 0; }
   margin-bottom: var(--space-3);
 }
 
+/* v1.98 shimmer sweep (library views): the seeded skeletons REUSE each view's
+   real reserved-space art box (`.book-cover-link` 2:3, `.music-album-art` 1:1,
+   `.podcast-card-art` 1:1, `.history-thumb` 16:9) so the reveal is zero-shift -
+   but those classes set `background: var(--thumbnail-bg)` (a dark fill) which
+   would swallow the shimmer sweep. Restore the shimmer base fill on the skeleton
+   variant (2-class specificity beats each art box's 1-class rule regardless of
+   order). The shared `.skeleton-shimmer` ::after sweep + reduced-motion carve-out
+   still apply unchanged. */
+.book-cover-link.skeleton-shimmer,
+.music-album-art.skeleton-shimmer,
+.podcast-card-art.skeleton-shimmer,
+.history-thumb.skeleton-shimmer {
+  background-color: var(--bg-secondary);
+}
+
 .skeleton-line-title {
   width: 85%;
   height: 13px;

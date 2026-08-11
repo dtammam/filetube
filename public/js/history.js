@@ -101,9 +101,32 @@ function buildHistoryRowHtml(item, nowMs) {
     '</div>';
 }
 
+// v1.98 shimmer sweep: n `.history-row`-shaped shimmer rows seeded into
+// #history-list BEFORE the first fetch, so the list shows the reveal-once
+// shimmer instead of a blank host then a snap-in. Reuses the REAL .history-row/
+// .history-thumb (aspect 16/9) / .history-info box model, so the swap to real
+// rows is zero-shift (the buildSkeletonGrid discipline). No remove button in the
+// skeleton (nothing to act on yet).
+function buildHistorySkeletonRows(n) {
+  var count = Number.isInteger(n) && n > 0 ? n : 0;
+  var html = '';
+  for (var i = 0; i < count; i++) {
+    html += '' +
+      '<div class="history-row" aria-hidden="true">' +
+      '<span class="history-thumb skeleton-shimmer"></span>' +
+      '<div class="history-info">' +
+      '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>' +
+      '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>' +
+      '</div>' +
+      '</div>';
+  }
+  return html;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     escapeHistoryHtml, formatHistoryDuration, formatHistoryWhen, historyBarPercent, buildHistoryRowHtml,
+    buildHistorySkeletonRows,
   };
 }
 
@@ -160,7 +183,12 @@ if (typeof module !== 'undefined' && module.exports) {
           refreshChrome();
         })
         .catch(function (err) {
-          if (!signal.aborted) console.error('History: fetch failed', err);
+          if (!signal.aborted) {
+            console.error('History: fetch failed', err);
+            // v1.98: never strand the seeded shimmer on a failed FIRST load -
+            // clear it so the empty state (not a forever-shimmer) shows.
+            if (replace) { listEl.innerHTML = ''; refreshChrome(); }
+          }
         })
         .then(function () { loading = false; });
     }
@@ -252,6 +280,10 @@ if (typeof module !== 'undefined' && module.exports) {
       moreBtn.addEventListener('click', function () { fetchPage(offset, false); }, { signal: signal });
     }
 
+    // v1.98 shimmer sweep: seed the shimmer BEFORE the first fetch so the list
+    // never shows a blank host then a snap-in (the reveal is fetchPage's own
+    // `listEl.innerHTML = html`).
+    listEl.innerHTML = buildHistorySkeletonRows(6);
     fetchPage(0, true);
   }
 

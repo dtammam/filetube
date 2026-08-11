@@ -200,11 +200,50 @@ function normalizeMusicTab(value) {
   return MUSIC_TABS.indexOf(value) >= 0 ? value : MUSIC_DEFAULT_TAB;
 }
 
+// v1.98 shimmer sweep: seeded into #music-content before render()'s fetch, so a
+// tab never shows a blank host then a snap-in. Two shapes, matching the two
+// render outcomes: a `.music-card-grid` of `.music-album-card` skeletons (albums
+// /artists) and a `.music-song-list` of `.music-song-row` skeletons (songs/
+// drill). Both reuse the REAL container + reserved art box (`.music-album-art`
+// aspect 1 / the 44px `.music-song-thumb-wrap`), so the reveal is zero-shift.
+function buildMusicSkeletonCards(n) {
+  var count = Number.isInteger(n) && n > 0 ? n : 0;
+  if (count === 0) return '';
+  var cards = '';
+  for (var i = 0; i < count; i++) {
+    cards += '' +
+      '<div class="music-album-card" aria-hidden="true">' +
+      '<span class="music-album-art skeleton-shimmer"></span>' +
+      '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>' +
+      '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>' +
+      '</div>';
+  }
+  return '<div class="music-card-grid">' + cards + '</div>';
+}
+
+function buildMusicSkeletonRows(n) {
+  var count = Number.isInteger(n) && n > 0 ? n : 0;
+  if (count === 0) return '';
+  var rows = '';
+  for (var i = 0; i < count; i++) {
+    rows += '' +
+      '<div class="music-song-row" aria-hidden="true">' +
+      '<span class="music-song-thumb-wrap skeleton-shimmer"></span>' +
+      '<span class="music-song-main">' +
+      '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>' +
+      '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>' +
+      '</span>' +
+      '</div>';
+  }
+  return '<div class="music-song-list">' + rows + '</div>';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildSongRowHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
+    buildMusicSkeletonCards, buildMusicSkeletonRows,
   };
 }
 
@@ -498,6 +537,14 @@ if (typeof module !== 'undefined' && module.exports) {
       // sentinel is about to be replaced) — the SPA-swap leak guard.
       disconnectStickyObserver();
       setActiveTab();
+      // v1.98 shimmer sweep: seed the shape-matched shimmer before the fetch (a
+      // song list for drill/songs, a card grid for albums/artists). Each branch
+      // below reveals by replacing content.innerHTML; the catch clears it.
+      if (content) {
+        content.innerHTML = (drill || tab === 'songs')
+          ? buildMusicSkeletonRows(8)
+          : buildMusicSkeletonCards(8);
+      }
       try {
         if (drill) {
           await loadSongs({});
@@ -522,6 +569,7 @@ if (typeof module !== 'undefined' && module.exports) {
         }
       } catch (err) {
         console.error('Music: failed to load', err);
+        if (content) content.innerHTML = ''; // v1.98: never strand the seeded shimmer on error
         if (emptyNote) emptyNote.hidden = false;
       }
       // Re-evaluate the "Playing from" line on every render (a tab switch may
