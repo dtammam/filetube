@@ -1146,6 +1146,19 @@ const PreviewCards = (function () {
       // catch block below) -- a retry gets its own fresh skeleton, not a
       // stale error card sitting there while the retried fetch is in flight.
       videoGrid.innerHTML = buildSkeletonGrid(SKELETON_CARD_COUNT);
+      // v1.100 (Dean): the classic toolbar's format (All/Videos/Audio) + watch-
+      // state (All/New/Watching/Watched) toggles are SYNCHRONOUS (localStorage
+      // prefs), so render them NOW - before the config/videos fetches - so the
+      // toolbar is COMPLETE from the first paint. Previously they injected in
+      // fetchLibraryPage0 AFTER the fetch, so the static sort/rescan/view buttons
+      // showed first and these grew the row a beat later ("starts with only a few
+      // buttons"). Classic/folder/search only (modern home uses its own chip
+      // chrome, section-actions hidden); guarded on not-present so a loadLibrary
+      // retry / cached re-entry never removes+reinserts them (a flash).
+      if (!modernMode && sectionActions && !sectionActions.querySelector('#library-format-toggle')) {
+        renderFormatToggle(sectionActions, getStoredFormatFilter(), () => resetAndReload());
+        renderWatchToggle(sectionActions, getStoredWatchFilter(), () => resetAndReload());
+      }
       try {
         // 1. Check configs (+ the v1.67 corner latch, raced in parallel so
         // the pref never delays the grid behind a second round-trip; both
@@ -1525,11 +1538,18 @@ const PreviewCards = (function () {
       currentTotal = typeof data.total === 'number' ? data.total : currentItems.length;
       renderMediaGridPage(currentItems, { append: false });
       updateItemCountBadge();
-      renderFormatToggle(sectionActions, getStoredFormatFilter(), () => resetAndReload());
-      // v1.50: the watched-state group mounts AFTER the format toggle (its
-      // renderer inserts directly behind #library-format-toggle).
-      renderWatchToggle(sectionActions, getStoredWatchFilter(), () => resetAndReload());
-      // v1.53 (Dean): the bulk-attribution control for folder views.
+      // v1.100: the format + watch-state toggles now render synchronously at the
+      // top of loadLibrary (before the fetch) so the toolbar is complete from
+      // first paint - no longer injected here post-fetch. A guarded re-render
+      // covers the rare path where loadLibrary's early render was skipped (e.g. a
+      // future modern->classic in-view transition) without a flash otherwise.
+      if (sectionActions && !sectionActions.querySelector('#library-format-toggle')) {
+        renderFormatToggle(sectionActions, getStoredFormatFilter(), () => resetAndReload());
+        renderWatchToggle(sectionActions, getStoredWatchFilter(), () => resetAndReload());
+      }
+      // v1.53 (Dean): the bulk-attribution control for folder views (data-
+      // dependent - it needs the fetched items to know eligibility, so it stays
+      // here, post-fetch; it appears only on an eligible folder view, disclosed).
       ensureAttributeFolderButton(sectionActions);
     }
 
