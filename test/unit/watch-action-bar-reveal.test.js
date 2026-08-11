@@ -104,27 +104,23 @@ test('A2: watch.js defines revealActionBar(), which removes data-loading', () =>
     'revealActionBar must remove the data-loading attribute (the reveal-once effect)');
 });
 
-test('A2: the reveal fires only AFTER the complete synchronous button set is mounted', () => {
-  // setupAttributeButton() is the LAST synchronous button setup in the
-  // hydration sequence; the reveal must come strictly after it, so no partial
-  // set is ever revealed. (Deleting the reveal call leaves the row shimmering
-  // forever -- this ordering assertion kills that mutant.)
-  const attrIdx = watchJs.indexOf('setupAttributeButton();');
-  const revealIdx = watchJs.indexOf('revealActionBar();');
-  assert.ok(attrIdx !== -1, 'sanity: setupAttributeButton() is called');
-  assert.ok(revealIdx !== -1, 'the hydration success path must call revealActionBar()');
-  assert.ok(revealIdx > attrIdx,
-    'revealActionBar() must run AFTER setupAttributeButton() (the last injected button), so the reveal is of the COMPLETE set');
-});
-
-test('A2: a failed record load still reveals the row (the catch path), so the static buttons never stay invisible', () => {
-  // The hydration catch strips skeletons; it must ALSO reveal the action row
-  // (its data-loading children are visibility:hidden, unlike skeleton text).
-  // Anchor on `descSkelErr` (unique to the catch, right before the reveal) --
-  // `showFatalViewError` also appears in the mount-failure branch.
-  const catchIdx = watchJs.indexOf('descSkelErr.hidden = true;');
-  assert.ok(catchIdx !== -1, 'sanity: the hydration catch strips the description skeleton');
-  const afterCatch = watchJs.slice(catchIdx, catchIdx + 400);
-  assert.match(afterCatch, /revealActionBar\(\)/,
-    'the hydration catch must also call revealActionBar() so the error state leaves the static buttons usable');
+test('A2: the reveal is BARRIERED on both async inputs (media AND capability), never one alone', () => {
+  // The row's final button set depends on BOTH the media record AND the write
+  // capability (Move/Attribute mount from whichever resolves last), so the
+  // reveal is gated on `actionMediaSettled && actionCapabilitySettled`. This is
+  // a source smoke check; the BEHAVIOURAL binding (which mutation-kills a
+  // reveal-on-media-alone regression and a stranded row) lives in
+  // test/integration/watch-action-reveal.test.js. A bare `revealActionBar()`
+  // that ignores the barrier is exactly the QA-CRITICAL-1 / adversarial-W2
+  // capability-race pop-in, so assert the guarded form is present.
+  assert.match(watchJs, /function maybeRevealActionBar\(\)\s*\{\s*if \(actionMediaSettled && actionCapabilitySettled\) revealActionBar\(\);/,
+    'reveal must be gated on BOTH media and capability having settled');
+  // Both async paths must release their side of the barrier: the media side
+  // twice (success + catch), the capability side thrice (then + catch + the
+  // no-fetchCurrentUser else). Deleting any release strands the reveal --
+  // caught behaviourally by the integration suite.
+  const mediaReleases = (watchJs.match(/actionMediaSettled = true;/g) || []).length;
+  const capReleases = (watchJs.match(/actionCapabilitySettled = true;/g) || []).length;
+  assert.equal(mediaReleases, 2, 'the media side releases in BOTH the success and catch paths');
+  assert.equal(capReleases, 3, 'the capability side releases in the then, catch, and no-probe else paths');
 });

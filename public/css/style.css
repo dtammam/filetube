@@ -10777,19 +10777,35 @@ a.queue-upnext-next:hover {
 /* === v1.96 A2: watch action-row REVEAL-ONCE (no pop-in) ====================
    The `.watch-actions` row ships 4 static buttons in watch.html, then watch.js
    INJECTS the rest (Move/Attribute/Like/Watched/Share/Reheat) after the record
-   loads -- a two-render reflow the user sees as a flash. Reveal the WHOLE row
-   ONCE in its final state: shimmer the row (the SAME treatment `#views-count`
-   right above it already uses), hide every child, and swap the real buttons in
-   only when watch.js has the complete synchronous set (revealActionBar() drops
-   the attribute). Space is reserved by the REAL children -- `visibility:hidden`
-   keeps their layout boxes, so the browser measures the reserved height (repo
-   lesson #7: never guess CSS-var height arithmetic) and the reveal is a
-   zero-shift show, not a resize. Keyed off a `data-loading` ATTRIBUTE, not a
-   second class, so the `class="watch-actions"` lock and the base-rule
-   `/\.watch-actions\s*\{/` extractors in watch-action-bar-nowrap.test.js are
-   undisturbed. Non-media (all viewports): the flash exists everywhere; fixing
-   it at the source is viewport-independent. If another half-state row shows up,
-   reuse this `data-loading` pattern rather than decorating the partial state. */
+   loads -- a two-render reflow the user sees as buttons popping in one by one.
+   Reveal the WHOLE row ONCE, in final state: shimmer the row (the SAME treatment
+   `#views-count` right above it already uses), hide every child, and drop the
+   attribute (revealActionBar()) only when watch.js has BOTH async inputs -- the
+   media record AND the write capability -- settled (see the barrier in watch.js;
+   Move/Attribute mount from whichever resolves last).
+
+   What this DOES and does NOT guarantee (QA v1.96 WARNING 2 correction -- the
+   first version of this comment overclaimed an absolute zero-shift):
+   - The injected buttons are appended (still `visibility:hidden`) DURING the load,
+     under the shimmer, BEFORE the reveal. So at the moment of reveal every child
+     is already laid out and the reveal itself is zero-shift -- children just turn
+     visible in the boxes they already occupy.
+   - It is NOT an absolute no-resize: the shimmer box occupies the 4 static
+     buttons' height (~1 row on mobile) during the record fetch, then SETTLES to
+     its final height (up to ~2 wrapped rows of glyph-only buttons on a phone) as
+     the injected buttons mount invisibly. That settle happens under the uniform
+     shimmer -- a loading placeholder resizing once, NOT the button-by-button
+     pop-in this fix targets. Reserving a fixed final height is impossible (the
+     count is data-dependent: canModifyLibrary, share availability, reheat), so a
+     browser-measured settle (repo lesson #7: never guess CSS-var height
+     arithmetic) is the honest floor. Desktop is a single row throughout.
+
+   Keyed off a `data-loading` ATTRIBUTE, not a second class, so the
+   `class="watch-actions"` lock and the base-rule `/\.watch-actions\s*\{/`
+   extractors in watch-action-bar-nowrap.test.js are undisturbed. Non-media (all
+   viewports): the flash exists everywhere; fixing it at the source is
+   viewport-independent. If another half-state row shows up, reuse this
+   `data-loading` pattern rather than decorating the partial state. */
 .watch-actions[data-loading] {
   position: relative;
   overflow: hidden;

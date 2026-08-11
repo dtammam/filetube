@@ -56,7 +56,9 @@ Spacing (10) - base-4 grid with 2px half-steps; names are multiples of the
 --space-6:12px --space-8:16px --space-10:20px --space-12:24px
 --space-16:32px`
 
-Sizing (3): `--size-touch:44px --size-control:36px --size-control-sm:32px`
+Sizing (4): `--size-touch:44px --size-control:36px --size-control-sm:32px
+--size-touch-watch-action:39px` (v1.96: the watch action-row buttons sit 5px
+under the 44px touch floor on mobile - see `.watch-actions .btn`)
 
 Color/overlay (6) - the mode-invariant dark chrome:
 `--overlay-surface:#222 --overlay-border:#444 --on-overlay:#fff
