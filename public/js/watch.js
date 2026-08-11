@@ -571,9 +571,31 @@ function resolveWatchMediaId(search) {
   return params.get('v') || params.get('id') || null;
 }
 
+// v1.99 shimmer sweep: n `.related-card`-shaped shimmer rows seeded into
+// #related-files-container BEFORE the /api/videos fetch, so the related rail
+// shimmers instead of sitting blank then snapping in. Reuses the REAL
+// `.related-card` / `.related-thumb` (aspect 16/9) / `.related-info` box, so the
+// swap to real cards is zero-shift (the buildSkeletonGrid contract).
+function buildRelatedSkeletonCards(n) {
+  const count = Number.isInteger(n) && n > 0 ? n : 0;
+  let html = '';
+  for (let i = 0; i < count; i++) {
+    html += '<div class="related-card" aria-hidden="true">'
+      + '<div class="related-thumb skeleton-shimmer"></div>'
+      + '<div class="related-info">'
+      + '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>'
+      + '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>'
+      + '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>'
+      + '</div>'
+      + '</div>';
+  }
+  return html;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     resolveDisplayDescription,
+    buildRelatedSkeletonCards,
     MAX_DISPLAY_DESCRIPTION,
     isCurrentCommentAuthor,
     reconcileStoredComments,
@@ -1461,6 +1483,13 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // Load related files
     async function loadRelatedFiles() {
+      // v1.99 shimmer sweep: reveal the header + seed shimmer rows BEFORE the
+      // fetch, so the rail shimmers instead of sitting blank. The existing
+      // innerHTML= (real cards / "No other files" / the catch's error box) is the
+      // ONE reveal - each clears the seed, so it never strands.
+      const relatedHeaderSeed = root.querySelector('#related-header');
+      if (relatedHeaderSeed) relatedHeaderSeed.hidden = false;
+      relatedContainer.innerHTML = buildRelatedSkeletonCards(6);
       try {
         // v1.30.0 T7: `GET /api/videos` now returns `{ items, total, offset,
         // limit }` (paginated, default page size 60) rather than a bare

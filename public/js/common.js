@@ -5125,6 +5125,12 @@ function triggerLibraryRescanAndRefresh(fetchImpl, reloadFn) {
 function accountSignOut() {
   const done = () => {
     try { sessionStorage.removeItem('ft-cap-cache-v1'); } catch (_) { /* storage disabled */ }
+    // v1.99: the modern avatar-bar last-known count is per-DEVICE (localStorage,
+    // shared across users on one browser). Drop it on sign-out so the NEXT user
+    // to log in on this browser doesn't reserve THIS user's avatar-strip and see
+    // it collapse when their own /api/channels returns fewer/none (the reverse-
+    // shift the gate flagged). Mirrors main.js's MODERN_AVATARBAR_COUNT_KEY.
+    try { localStorage.removeItem('ft-modern-avatarbar-count'); } catch (_) { /* storage disabled */ }
     window.location.href = '/login';
   };
   fetch('/api/auth/logout', { method: 'POST' }).then(done, done);

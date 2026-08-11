@@ -108,6 +108,47 @@ open. The rules, for ANY new control or surface:
    every new className in a diff, run that same check - it is one grep,
    and it is exactly the check every automated instrument cannot do.
 
+### Every fetch-then-render surface reveals ONCE - no blank-then-pop (MANDATORY)
+
+Ruled by Dean during the v1.98/v1.99 shimmer sweep: "any loading moment without
+shimmer is the defect ... shimmer is beautiful ... it should feel like a modern
+React app." This is now part of the design contract, not just a cleanup pass -
+the same standing as the design-token rules above.
+
+The rule, for ANY new surface (or any change to one) that renders from data
+fetched AFTER first paint - a list, grid, card, count/badge, injected control,
+image, or a whole view:
+
+1. **Seed a reserved-space skeleton-shimmer BEFORE the await; reveal ONCE.**
+   Paint the placeholder into the host before the fetch; the real
+   `host.innerHTML = <markup>` (or DOM build) on resolve IS the single reveal.
+   Never leave the host blank until data lands, never a bare spinner, never a
+   layout that reflows as pieces arrive.
+2. **Reuse the REAL box model so the reveal is ZERO-SHIFT.** The skeleton reuses
+   the real container + the reserved-aspect box class (the `buildSkeletonGrid`
+   discipline; lesson #7 - measure the box, never guess CSS-var heights). Match
+   the EXACT shape the branch will reveal, per sub-state (a persisted tab/filter
+   is a COLD landing, not just an in-app switch - v1.98 music-artists scar).
+3. **STRAND-SAFE.** Every DATA exit clears the seed - success, EMPTY result, and
+   ERROR/catch - so a failed first load shows the empty/error state, never a
+   forever-shimmer. An aborted/navigated-away view may instead rely on the SPA
+   teardown discarding the host node (only when that host is genuinely rebuilt on
+   re-entry, e.g. the modern-home chrome); if the host can OUTLIVE the abort,
+   clear on abort too.
+4. **No FLASH-BACKWARD.** Do not re-seed a shimmer over already-loaded content on
+   a refresh/re-render (guard on "is the real content already present?" - v1.98
+   podcasts scar). A genuine new load (new query) may re-seed.
+5. **Reuse the toolkit, don't rebuild it:** `.skeleton-shimmer` +
+   `@keyframes skeleton-sweep`, `buildSkeletonGrid`, the `data-loading` reveal-
+   once barrier (v1.96), synchronous seed-paint (v1.52 instant watch). Long-
+   running JOBS (transcode) may keep a determinate progress affordance - the one
+   disclosed exception to "no bare spinners."
+
+Reviewers: for every new fetch-then-render surface in a diff, verify the seed +
+zero-shift reveal + strand-clear exist - it is the exact check the census cannot
+do. The FOUC audit (`docs/exec-plans/active/fouc-shimmer-audit.md`) tracks the
+remaining retrofit; NEW work ships compliant from birth.
+
 ## The first-class media experience (MANDATORY vocabulary for any media-kind work)
 
 FileTube serves several media KINDS - videos/ytdlp, music, books,

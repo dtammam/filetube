@@ -1780,8 +1780,21 @@ html.reader-immersive .app-container { padding-top: 0; }
    `.skeleton-shimmer` ::after sweep + reduced-motion carve-out apply unchanged. */
 .book-cover-link.skeleton-shimmer,
 .music-album-art.skeleton-shimmer,
-.podcast-card-art.skeleton-shimmer {
+.podcast-card-art.skeleton-shimmer,
+.related-thumb.skeleton-shimmer { /* v1.99: .related-thumb is #000 letterback - restore the fill so the sweep shows */
   background-color: var(--bg-secondary);
+}
+
+/* v1.99: the avatar-bar skeleton name line - the reused `.skeleton-line` is sized
+   + margin-zeroed inside the 64px `.modern-avatar-chip` column so the shimmer chip
+   is the SAME height as a real one -> zero-shift on reveal. The real
+   `.modern-avatar-name` is `--fs-2xs` (10px) at the body 1.4 line-height = a 14px
+   line box (gate WARNING: a 10px bar left a ~4px settle), so the placeholder line
+   is 14px too: chip = 56 disc + 4 gap + 14 line = 74px, matching the real chip. */
+.modern-avatar-chip .skeleton-line {
+  width: 40px;
+  height: 14px;
+  margin-bottom: 0;
 }
 
 .skeleton-line-title {

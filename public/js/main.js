@@ -292,6 +292,37 @@ function buildModernChipRowHtml(active) {
   }).join('');
   return `<div class="modern-chip-row" role="tablist" aria-label="Filter the home feed">${chips}</div>`;
 }
+// v1.99 shimmer sweep (Dean's device report): the avatar bar sits ABOVE the chip
+// row and used to ship `hidden`, then POP IN after /api/channels resolved -
+// shoving the chips + grid down a beat late (the "top flow flickers / has more or
+// less"). To reveal-once WITHOUT a reverse-shift, persist the last-known chip
+// count and, on the next load, RESERVE the strip with that many shimmer chips
+// before the fetch (the v1.53 capability-cache pattern). buildAvatarBarSkeleton
+// is a pure builder (the buildSkeletonGrid contract) reusing the REAL
+// `.modern-avatar-chip` / `.modern-avatar-circle` (56px disc) box, so the swap to
+// real chips is zero-shift.
+const MODERN_AVATARBAR_COUNT_KEY = 'ft-modern-avatarbar-count';
+function readModernAvatarBarCount() {
+  try {
+    const v = parseInt(localStorage.getItem(MODERN_AVATARBAR_COUNT_KEY), 10);
+    return Number.isInteger(v) && v > 0 ? Math.min(v, 12) : 0;
+  } catch (_) { return 0; }
+}
+function writeModernAvatarBarCount(n) {
+  try { localStorage.setItem(MODERN_AVATARBAR_COUNT_KEY, String(Number.isInteger(n) && n > 0 ? n : 0)); } catch (_) { /* private mode */ }
+}
+function buildAvatarBarSkeleton(n) {
+  const count = Number.isInteger(n) && n > 0 ? Math.min(n, 12) : 0;
+  let html = '';
+  for (let i = 0; i < count; i++) {
+    html += '<span class="modern-avatar-chip" aria-hidden="true">'
+      + '<span class="modern-avatar-circle skeleton-shimmer"></span>'
+      + '<span class="skeleton-line skeleton-line-meta skeleton-shimmer"></span>'
+      + '</span>';
+  }
+  return html;
+}
+
 // v1.84 T4: the mobile recent-uploader subscription bar. Built as DOM (not an
 // HTML string) so the generated monogram colour is applied via
 // `.style.backgroundColor` (a runtime palette value - census-safe, the same way
@@ -299,7 +330,12 @@ function buildModernChipRowHtml(active) {
 function populateModernAvatarBar(barEl, channels) {
   if (!barEl) return;
   barEl.textContent = '';
-  if (!Array.isArray(channels) || channels.length === 0) { barEl.hidden = true; return; }
+  if (!Array.isArray(channels) || channels.length === 0) {
+    writeModernAvatarBarCount(0); // v1.99: remember "none" so next load reserves nothing (no reverse-shift)
+    barEl.hidden = true;
+    return;
+  }
+  writeModernAvatarBarCount(channels.length); // v1.99: reserve this many on the next load
   for (const c of channels) {
     const a = document.createElement('a');
     a.className = 'modern-avatar-chip';
@@ -569,6 +605,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildCardDownloadHref,
     buildCardDownloadFilename,
     buildSkeletonGrid,
+    buildAvatarBarSkeleton,
     buildBookRowCardHtml,
     buildBooksHomeSectionHtml,
     buildMusicRowCardHtml,
@@ -1369,10 +1406,17 @@ const PreviewCards = (function () {
             // failure or no subs leaves it hidden, never a broken strip.
             const bar = chromeHost.querySelector('#modern-avatar-bar');
             if (bar) {
+              // v1.99 shimmer sweep: RESERVE the strip with last-known-many shimmer
+              // chips before the fetch, so the real chips reveal in place instead
+              // of popping in above the chips. On a fetch failure the seed is
+              // cleared below (never a stranded shimmer); populateModernAvatarBar
+              // reveals the real chips or collapses to hidden if now truly none.
+              const seedN = readModernAvatarBarCount();
+              if (seedN > 0) { bar.innerHTML = buildAvatarBarSkeleton(seedN); bar.hidden = false; }
               fetch('/api/channels', { signal: sig })
                 .then((r) => (r.ok ? r.json() : { channels: [] }))
                 .then((data) => populateModernAvatarBar(bar, selectRecentUploaderChannels(data && data.channels, 12)))
-                .catch(() => { /* best-effort; the bar stays hidden */ });
+                .catch(() => { if (!sig.aborted) { bar.textContent = ''; bar.hidden = true; } });
             }
           }
           await fetchModernGrid(sig);
