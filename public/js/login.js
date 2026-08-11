@@ -113,6 +113,14 @@
         // cache in this tab (covers crash-logouts that never ran the setup
         // page's own clear -- every login flows through here).
         try { sessionStorage.removeItem('ft-cap-cache-v1'); } catch (_) { /* storage disabled */ }
+        // v1.101 gate SUGGESTION: also drop the per-DEVICE reveal-once reserve
+        // keys (v1.99 avatar-bar count + v1.101 bell-enabled). accountSignOut
+        // clears them on an EXPLICIT sign-out, but a session-expiry / crash-logout
+        // lands here WITHOUT one, so a fresh login is the catch-all that stops
+        // user B from inheriting user A's reserved avatar-strip / bell slot on a
+        // shared browser.
+        try { localStorage.removeItem('ft-modern-avatarbar-count'); } catch (_) { /* storage disabled */ }
+        try { localStorage.removeItem('ft-notif-bell-enabled'); } catch (_) { /* storage disabled */ }
         window.location.assign(safeNext());
         return;
       }
