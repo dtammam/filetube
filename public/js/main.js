@@ -96,6 +96,28 @@ function buildSkeletonGrid(n) {
 // without over-committing to a specific viewport width.
 const SKELETON_CARD_COUNT = 8;
 
+// v1.102 (tranche 4 shimmer): the Library sidebar folder-list skeleton. Each row
+// REUSES the real `.sidebar-item` box (same padding/gap/font-size), so swapping
+// it for real folder links is zero-shift: an 18x18 shimmer glyph box (matching
+// `.sidebar-item i`) + a shimmer label bar of varied width. Pure string builder
+// (buildSkeletonGrid contract): n<=0 / non-integer -> '', every node aria-hidden.
+// Exported for node:test.
+function buildSidebarSkeletonRows(n) {
+  const count = Number.isInteger(n) && n > 0 ? n : 0;
+  let html = '';
+  for (let i = 0; i < count; i++) {
+    const w = 55 + (i % 3) * 12; // 55 / 67 / 79% -> a natural ragged edge
+    html += `
+      <div class="sidebar-item" aria-hidden="true">
+        <span class="skeleton-shimmer" style="width:18px; height:18px; border-radius:var(--radius); flex:none;"></span>
+        <span class="skeleton-line skeleton-shimmer" style="width:${w}%; margin:0;"></span>
+      </div>`;
+  }
+  return html;
+}
+// A plausible folder count to reserve while /api/config is in flight.
+const SIDEBAR_SKELETON_ROWS = 5;
+
 // v1.37.0 T10 (books): pure builders for the home surfaces -- the
 // continue-reading row (bare home view only) and the books-in-search
 // section. Cover cards are compact portrait tiles linking to /read.html;
@@ -646,6 +668,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildCardDownloadHref,
     buildCardDownloadFilename,
     buildSkeletonGrid,
+    buildSidebarSkeletonRows,
     buildAvatarBarSkeleton,
     buildBookRowCardHtml,
     buildBooksHomeSectionHtml,
@@ -1201,6 +1224,15 @@ const PreviewCards = (function () {
       if (!modernMode && sectionActions && !sectionActions.querySelector('#library-format-toggle')) {
         renderFormatToggle(sectionActions, getStoredFormatFilter(), () => resetAndReload());
         renderWatchToggle(sectionActions, getStoredWatchFilter(), () => resetAndReload());
+      }
+      // v1.102 (tranche 4 shimmer): the Library folder list built after
+      // /api/config with no placeholder - a blank rail until the fetch landed.
+      // Seed a shape-matched skeleton (mirrors the real `.sidebar-item` box, so
+      // the reveal is zero-shift) ONLY on a COLD sidebar (no real folder row yet)
+      // - an in-app re-nav keeps the already-rendered folders, never a
+      // shimmer-over-real reverse flash (the podcasts-grid seed guard pattern).
+      if (sidebarFoldersList && !sidebarFoldersList.querySelector('.sidebar-item')) {
+        sidebarFoldersList.innerHTML = buildSidebarSkeletonRows(SIDEBAR_SKELETON_ROWS);
       }
       try {
         // 1. Check configs (+ the v1.67 corner latch, raced in parallel so
