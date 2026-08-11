@@ -80,6 +80,43 @@
 
 ## Shipped
 
+### v1.101.0 - Shimmer sweep tranche 3: the header-right cluster (2026-08-11)
+
+The persistent `.header-right` shipped EMPTY and injected the account menu (after
+/api/auth/me) + the notification bell (after a /api/notifications/badge probe)
+AFTER their fetches, so the top-right popped in on every full page load. On mobile
+the account trigger is `display:none` (account is the You tab), so the mobile
+pop-in is the BELL.
+
+- **Account avatar:** reserves a shimmering 32px `.account-avatar` placeholder
+  (inside a `.account-menu-trigger`, so it inherits the mobile hide) before the
+  fetch, revealed in place on resolve (signed-out / error -> removed, never
+  stranded). Zero-shift; no persist (app shells are signed-in).
+- **Notification bell:** persists the last-known-enabled flag and, if enabled last
+  time, reserves a 22px shimmer bell disc before the badge probe; the probe
+  reconciles it (enabled -> real bell; disabled -> removed). The per-device
+  reserve keys (bell + v1.99 avatar-bar) now clear on BOTH sign-out AND a fresh
+  login, so a shared-browser user switch (explicit OR session-expiry) starts
+  clean.
+
+Full gate (both seats APPROVE): the adversarial seat built its OWN behavioural
+bell harness (strand/orphan-free across 6 badge outcomes) and mutation-killed all
+5 committed tests; it caught the login-side clear gap (session-expiry, now fixed).
+QA verified zero-shift from the cascade on both controls. Two non-blocking
+residuals tech-debted: the bell reveal is source-locked not jsdom-bound (#139,
+behaviour verified by the adversarial harness), and a pre-existing bell/queue
+insert reshuffle the placeholder makes briefly visible (#140).
+
+**KNOWN GAPS (disclosed, symmetric to v1.99):** the bell still pops in ONCE on a
+first-ever device load (no flag yet), and can collapse once if the feature was
+disabled since. Deferred to tranche 4: stats dashboard, feed-mode home, setup
+toggles, sidebar folders, art-decode shimmer family.
+
+Dual-Node: **Node 22.23.1 6617/6617, Node 24.14.0 6617/6617**, zero failures.
+Census 0, ledger clean. **AWAITING DEAN'S ON-DEVICE PASS** - on any full page load
+(mobile: watch the top-right bell; desktop: the account avatar + bell): the header
+controls should shimmer in place, not pop into an empty top-right a beat late.
+
 ### v1.100.0 - Classic toolbar complete from first paint (2026-08-11)
 
 Dean, on-device (clarifying the v1.98 "top flow flickers" report - it was NOT the
