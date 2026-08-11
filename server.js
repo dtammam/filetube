@@ -8467,7 +8467,9 @@ function validateBackupBundle(bundle) {
         // v1.72 books first-class (absent in pre-v1.72 bundles -- legal).
         ['bookLiked', 'array'], ['bookFinished', 'object'],
         // v1.72 podcast show pins (absent in pre-v1.72 bundles -- legal).
-        ['podcastPins', 'array']]) {
+        ['podcastPins', 'array'],
+        // v1.97 "Hide from feed" (13th carrier; absent in pre-v1.97 bundles -- legal).
+        ['feedHidden', 'array']]) {
         if (u[field] === undefined) continue;
         const ok = kind === 'array' ? Array.isArray(u[field]) : (typeof u[field] === 'object' && u[field] !== null && !Array.isArray(u[field]));
         if (!ok) return `${where}: ${field} must be an ${kind}`;
@@ -9696,6 +9698,12 @@ app.get('/api/home', (req, res) => {
   const watchedSet = new Set(userStore.getWatchedIds(userId));
   const watchedTimes = userStore.getWatchedTimes(userId); // media_id -> completed_at
   const likedSet = new Set(userStore.getLiked(userId));
+  // v1.97 "Hide from feed": the user's MANUAL modern-feed prune. Read once here;
+  // it is applied ONLY inside the grid short-circuit below (the modern feed) -
+  // NOT the row feed, /api/videos, or any library/search/channel surface. It is
+  // NOT a visibility/RBAC control (that is mediaVisibleTo / hiddenFolders) - a
+  // feed-hidden item stays fully findable everywhere else.
+  const feedHiddenSet = new Set(userStore.getFeedHidden(userId));
   const progressMap = userStore.getProgress(userId);
   for (const entry of pendingProgress.values()) {
     if (entry.userId === userId) progressMap[entry.mediaId] = entry.value; // read-your-writes
@@ -9730,6 +9738,7 @@ app.get('/api/home', (req, res) => {
       if (!item || typeof item !== 'object') continue;
       if (!mediaVisibleTo(req, item)) continue; // v1.80 RBAC
       if (hiddenFolders.length && hiddenFolders.some((hf) => underFolder(item.filePath, hf))) continue;
+      if (feedHiddenSet.has(id)) continue; // v1.97: the user pruned this from THEIR modern feed (this surface ONLY)
       const p = Object.prototype.hasOwnProperty.call(progressMap, id) ? progressMap[id] : null;
       const ts = p ? Number(p.timestamp) : 0;
       const dur = p ? Number(p.duration) : 0;
@@ -10895,6 +10904,69 @@ app.post('/api/liked/:id', (req, res) => {
 app.delete('/api/liked/:id', (req, res) => {
   userStore.removeLiked(req.user.id, req.params.id);
   res.json({ success: true, liked: false });
+});
+
+// ---- v1.97 "Hide from feed" -----------------------------------------------
+//
+// A per-user, MANUAL prune of the MODERN home feed (GET /api/home?view=grid).
+// It is the member's OWN state (personal), NOT a visibility/RBAC control: a
+// feed-hidden item is NOT deleted and stays fully findable via search, channel,
+// playlist, folder, the classic/feed home views, and Liked - only the modern
+// feed omits it (server.js's grid arm). Media (video/audio) only, per-VIDEO
+// (channel-level hide is a separate future feature). Routes mirror /api/liked.
+
+// Hide a media item from THIS user's modern feed (idempotent add).
+app.post('/api/feed-hidden/:id', (req, res) => {
+  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC (S-b): no restricted-id oracle/persist
+  const db = getCachedDatabase(); // hot GET reader (existence check only)
+  // OWN-property check (v1.42 __proto__ lesson): this id persists into
+  // user_feed_hidden - the identical guard POST /api/liked/:id uses.
+  const item = Object.prototype.hasOwnProperty.call(db.metadata, req.params.id) ? db.metadata[req.params.id] : undefined;
+  if (!item) {
+    return res.status(404).json({ error: 'Media file not found' });
+  }
+  userStore.addFeedHidden(req.user.id, item.id, new Date().toISOString()); // ON CONFLICT DO NOTHING -> idempotent
+  res.json({ success: true, hidden: true });
+});
+
+// Un-hide (the Undo/Restore verb). Idempotent, no existence gate - restoring
+// membership for an id that's already absent (or since deleted from the
+// library) is itself the desired end state, exactly like DELETE /api/liked/:id.
+app.delete('/api/feed-hidden/:id', (req, res) => {
+  userStore.removeFeedHidden(req.user.id, req.params.id);
+  res.json({ success: true, hidden: false });
+});
+
+// The You-tab "Hidden from feed" restore list. Read-only; never mutates. RBAC:
+// filtered through mediaVisibleTo so a SINCE-restricted item's id/title can
+// never leak here (the inverse of the v1.80 list-surface-leak class). Shaped as
+// modern-grid items (resolveModernGridItem) so the client renders the SAME
+// cards, newest-hidden first (getFeedHidden's order).
+app.get('/api/feed-hidden', (req, res) => {
+  const db = getCachedDatabase();
+  const userId = req.user.id;
+  const likedSet = new Set(userStore.getLiked(userId));
+  const progressMap = userStore.getProgress(userId);
+  for (const entry of pendingProgress.values()) {
+    if (entry.userId === userId) progressMap[entry.mediaId] = entry.value; // read-your-writes
+  }
+  const items = [];
+  for (const id of userStore.getFeedHidden(userId)) { // newest-hidden first
+    const item = Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : null;
+    if (!item || typeof item !== 'object') continue;
+    if (!mediaVisibleTo(req, item)) continue; // v1.80 RBAC: never leak a since-restricted item
+    const p = Object.prototype.hasOwnProperty.call(progressMap, id) ? progressMap[id] : null;
+    const ts = p ? Number(p.timestamp) : 0;
+    const dur = p ? Number(p.duration) : 0;
+    const rec = {
+      id, kind: 'media', type: item.type === 'audio' ? 'audio' : 'video',
+      addedAt: typeof item.addedAt === 'number' ? item.addedAt : 0,
+      progressPercent: dur > 0 ? (ts / dur) * 100 : 0, liked: likedSet.has(id),
+    };
+    const shaped = resolveModernGridItem(db, rec);
+    if (shaped) items.push(shaped);
+  }
+  res.json({ items, total: items.length });
 });
 
 // ---- v1.72 (#94): the Liked playlist is MIXED-KIND -------------------------

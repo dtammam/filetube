@@ -1213,7 +1213,7 @@ const PreviewCards = (function () {
           currentOffset = typeof data.offset === 'number' ? data.offset : 0;
           currentLimit = typeof data.limit === 'number' && data.limit > 0 ? data.limit : HOME_PAGE_LIMIT;
           currentTotal = typeof data.total === 'number' ? data.total : items.length;
-          videoGrid.innerHTML = items.length ? items.map(buildCardHtml).join('') : buildModernEmptyHtml(filter);
+          videoGrid.innerHTML = items.length ? items.map((it) => buildCardHtml(it, { feedHideable: true })).join('') : buildModernEmptyHtml(filter);
           ensureGridSentinel(); // append further pages as the user scrolls
         }
         // v1.86.0 (Dean): a glyph-only sort ▾ injected as the LEFTMOST control in
@@ -1652,8 +1652,16 @@ const PreviewCards = (function () {
           currentOffset = typeof data.offset === 'number' ? data.offset : nextOffset;
           currentLimit = typeof data.limit === 'number' && data.limit > 0 ? data.limit : currentLimit;
           currentTotal = typeof data.total === 'number' ? data.total : currentTotal;
-          currentItems = currentItems.concat(items);
-          videoGrid.insertAdjacentHTML('beforeend', items.map(buildCardHtml).join(''));
+          // v1.97 gate W1/S1: DE-DUPE on append. After a mid-session feed-hide the
+          // candidate set shrank by one, so a seeded `random` shuffle re-permutes
+          // and the next page can re-deliver an already-rendered card. Drop any id
+          // already on screen so a hidden-then-scroll never DUPES a card. (A random
+          // SKIP is inherent to a seeded shuffle over a changed set and self-heals
+          // on refresh - disclosed; the stable sorts are unaffected either way.)
+          const seenIds = new Set(currentItems.map((it) => String(it.id)));
+          const fresh = items.filter((it) => !seenIds.has(String(it.id)));
+          currentItems = currentItems.concat(fresh);
+          videoGrid.insertAdjacentHTML('beforeend', fresh.map((it) => buildCardHtml(it, { feedHideable: true })).join(''));
         } catch (err) {
           console.error('Failed to load the next modern grid page:', err);
         } finally {
@@ -1764,11 +1772,16 @@ const PreviewCards = (function () {
       });
     }
 
-    function buildCardHtml(item) {
+    function buildCardHtml(item, opts) {
       // v1.72 (#94): a mixed-kind Liked item renders through this SAME
       // template - identical classes, so tile and list view CSS apply
       // unchanged - with only destination/art/byline swapped per kind.
       const kp = cardKindPresentation(item);
+      // v1.97 "Hide from feed": a feed-only affordance, passed EXPLICITLY by the
+      // modern-grid render paths (never inferred from the global modernMode flag,
+      // which persists across folder/search views where the feed prune must NOT
+      // appear). Media items only (kp === null) - per-VIDEO, the media-only set.
+      const feedHideable = !!(opts && opts.feedHideable) && !kp;
       const views = resolveViewCountLabel(item);
       const relativeTime = formatRelativeTime(item.addedAt);
       // v1.40.0 (Dean, superseding the v1.36.2 `list=liked`-only carry): carry
@@ -1830,6 +1843,9 @@ const PreviewCards = (function () {
             ${buildCardCornerButtonsHtml(item, cardCornerPrefs, cardCornerCaps)}
           </div>
           <div class="video-info">
+            ${feedHideable
+              ? `<button type="button" class="card-feedhide-btn" data-id="${escapeHtml(item.id)}" aria-label="Hide from feed" title="Hide from feed"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2c1.85 0 3.55.63 4.9 1.69L5.69 16.9A7.95 7.95 0 0 1 4 12a8 8 0 0 1 8-8zm0 16a7.96 7.96 0 0 1-4.9-1.69L18.31 7.1A7.95 7.95 0 0 1 20 12a8 8 0 0 1-8 8z" fill="currentColor"/></svg></button>`
+              : ''}
             <a href="${watchHref}" class="video-title" title="${escapeHtml(item.title)}">
               ${escapeHtml(item.title)}
             </a>
@@ -2535,7 +2551,53 @@ const PreviewCards = (function () {
       }
     }
 
+    // v1.97 "Hide from feed": optimistically pull the card, POST the prune, and
+    // offer Undo (DELETE) via the toast. Reversible with no one-way trap (the
+    // toast now, the You-tab "Hidden from feed" list later). Pagination stays
+    // consistent: the loaded window shrank by one, so drop currentOffset AND
+    // currentTotal by one (nextOffset = currentOffset + currentLimit would else
+    // skip the item that shifted down). The next server fetch overwrites both
+    // with the fresh filtered values, so this only has to be right for the
+    // immediately-next lazy page. On any failure the card is restored in place.
+    function hideCardFromFeed(btn) {
+      const id = btn.getAttribute('data-id');
+      if (!id) return;
+      const card = btn.closest('.video-card');
+      if (!card) return;
+      const parent = card.parentNode;
+      const anchor = card.nextSibling; // reinsertion point for a byte-identical undo
+      const itemObj = currentItems.find((it) => String(it.id) === String(id));
+      const restore = () => {
+        if (parent) {
+          if (anchor && anchor.parentNode === parent) parent.insertBefore(card, anchor);
+          else parent.appendChild(card);
+        }
+        if (itemObj && !currentItems.some((it) => String(it.id) === String(id))) currentItems.push(itemObj);
+        currentOffset += 1;
+        currentTotal += 1;
+      };
+      card.remove();
+      currentItems = currentItems.filter((it) => String(it.id) !== String(id));
+      currentOffset -= 1;
+      currentTotal -= 1;
+      fetch('/api/feed-hidden/' + encodeURIComponent(id), { method: 'POST' })
+        .then((res) => {
+          if (!res.ok) throw new Error('hide failed');
+          showToast('Hidden from feed', {
+            label: 'Undo',
+            onAction: () => {
+              fetch('/api/feed-hidden/' + encodeURIComponent(id), { method: 'DELETE' })
+                .then((r) => { if (!r.ok) throw new Error('undo failed'); restore(); })
+                .catch(() => showToast('Could not restore to feed.'));
+            },
+          });
+        })
+        .catch(() => { restore(); showToast('Could not hide from feed.'); });
+    }
+
     videoGrid.addEventListener('click', (e) => {
+      const feedhideBtn = e.target.closest('.card-feedhide-btn');
+      if (feedhideBtn) { e.preventDefault(); hideCardFromFeed(feedhideBtn); return; }
       const likeBtn = e.target.closest('.card-like-btn');
       if (likeBtn) { e.preventDefault(); toggleCardLike(likeBtn); return; }
       // v1.63: add-to-queue rides the same delegation (common.js addToQueue

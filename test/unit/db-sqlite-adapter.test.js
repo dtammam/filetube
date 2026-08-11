@@ -109,11 +109,13 @@ test('fresh open creates the full v1 schema with empty user tables', () => {
       // v1.71 podcast likes/pins; v1.37 book likes/finished; v1.80 restrictions.
       'user_podcast_liked', 'user_podcast_pins', 'user_book_liked', 'user_book_finished', 'user_restrictions',
       // v1.85 schema v16: per-user search history, born empty.
-      'user_search_history']) {
+      'user_search_history',
+      // v1.97 schema v17: per-user "Hide from feed" prune, born empty.
+      'user_feed_hidden']) {
       const { c } = a.sql.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get();
       assert.strictEqual(c, 0, `${table} exists and is empty (born-complete schema, exec plan)`);
     }
-    assert.strictEqual(a.sql.prepare('PRAGMA user_version').get().user_version, 16);
+    assert.strictEqual(a.sql.prepare('PRAGMA user_version').get().user_version, 17);
     // v1.43 schema v2: users.id is AUTOINCREMENT (never reuses a reaped id —
     // design-delta SUGGESTION-6). sqlite_autoindex/sqlite_sequence presence
     // is the fingerprint.
@@ -135,7 +137,7 @@ test('v3 -> v4 upgrade: an existing populated schema gains the empty user_watche
 
   const b = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 16, 'forward-only migration ran (to the CURRENT version)');
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 17, 'forward-only migration ran (to the CURRENT version)');
     assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_watched').get().c, 0, 'latch table born empty');
     // v1.51 schema v5 rides the same forward run.
     assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM notifications').get().c, 0, 'notification feed born empty');
@@ -159,7 +161,7 @@ test('v14 -> v15 upgrade: an existing populated users table gains can_modify_lib
 
   const b = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 16, 'forward-only migration ran');
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 17, 'forward-only migration ran');
     const hasCol = b.sql.prepare("SELECT COUNT(*) AS n FROM pragma_table_info('users') WHERE name = 'can_modify_library'").get().n;
     assert.strictEqual(hasCol, 1, 'the ALTER added the column');
     // Every pre-existing row defaults to 0 (OFF) — existing members lose
@@ -186,11 +188,33 @@ test('v15 -> v16 upgrade: an existing populated db gains the empty user_search_h
 
   const b = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 16, 'forward-only migration ran');
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 17, 'forward-only migration ran');
     assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_search_history').get().c, 0, 'search-history table born empty');
     // its shape: (user_id, term, searched_at, PK(user_id, term))
     const cols = b.sql.prepare("SELECT name FROM pragma_table_info('user_search_history') ORDER BY name").all().map((r) => r.name);
     assert.deepStrictEqual(cols, ['searched_at', 'term', 'user_id']);
+    assert.deepStrictEqual(b.load(), fullFixtureForUpgrade(), 'every pre-existing namespace survives untouched');
+  } finally {
+    b.close();
+  }
+});
+
+test('v16 -> v17 upgrade: an existing populated db gains the empty user_feed_hidden table, losing no rows', () => {
+  // Simulate a v1.85-v1.96 instance (schema v16): full schema, then rewind the
+  // stamp and drop the v17 table, as if v17 never ran.
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  a.save(fullFixtureForUpgrade());
+  a.sql.exec('DROP TABLE user_feed_hidden');
+  a.sql.exec('PRAGMA user_version = 16');
+  a.close();
+
+  const b = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 17, 'forward-only migration ran');
+    assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_feed_hidden').get().c, 0, 'feed-hidden table born empty');
+    // its shape: (user_id, media_id, hidden_at, PK(user_id, media_id)) -- mirrors user_liked
+    const cols = b.sql.prepare("SELECT name FROM pragma_table_info('user_feed_hidden') ORDER BY name").all().map((r) => r.name);
+    assert.deepStrictEqual(cols, ['hidden_at', 'media_id', 'user_id']);
     assert.deepStrictEqual(b.load(), fullFixtureForUpgrade(), 'every pre-existing namespace survives untouched');
   } finally {
     b.close();

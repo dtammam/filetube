@@ -80,6 +80,66 @@
 
 ## Shipped
 
+### v1.97.0 - "Hide from feed" (per-user, manual, reversible) (2026-08-11)
+
+A manual, NON-algorithmic per-user prune of the MODERN home feed. Tapping "Hide
+from feed" on a modern-feed card removes that video from YOUR modern feed only -
+it does NOT delete, and the item stays fully findable via search, channel,
+playlist, folder, the classic/feed home views, and Liked. Daily-consumption
+pruning, not filtering/sorting/recommendation.
+
+- **Model:** a new per-user `user_feed_hidden` table (schema v17), mirroring
+  `user_liked` exactly (id-keyed membership, cascade-on-purge, rekey-on-move).
+  DELIBERATELY SEPARATE from the admin/global `hidden` RBAC flag (v1.79-1.81):
+  different name, different table, never a permission or leak surface.
+- **Filter - modern grid ONLY:** applied at the QUERY level in
+  `GET /api/home?view=grid`, before the page slice, so pagination stays correct.
+  Every other surface (row home feed, /api/videos, search, folder, channel,
+  playlist, Liked, music) stays COMPLETE. Media-only, per-VIDEO (channel-level
+  hide is a separate future feature).
+- **UI:** a modern-feed-only card affordance (the YouTube card-menu spot, next to
+  the title - the thumbnail corners are the configurable download/delete/like
+  cluster). One tap -> the card leaves + an Undo toast. Reversible restore place
+  (no one-way trap): a "Hidden from feed" You-tab (account-menu) row opens a panel
+  listing pruned items, each with Restore.
+- **Routes:** POST/DELETE/GET /api/feed-hidden, classified `personal` (the user's
+  own state, never capability-gated); POST existence-gated + restricted-id guard;
+  GET RBAC-filtered so a since-restricted item never leaks into the restore list.
+
+**Full gate (both seats APPROVE) - and it earned its keep, again with a SEAT
+SPLIT.** Round 1: QA APPROVE (2 WARNINGs), adversarial REQUEST CHANGES with a
+CRITICAL the QA seat missed - the backup/restore path (a curated JSON re-export,
+NOT a file copy) had no `feedHidden` field, so `POST /api/admin/restore` would
+CASCADE AWAY every user's feed-hidden rows and silently never rebuild them. That
+is the id-keyed-carrier persist-gate class this repo has paid for 5+ times, and
+the exec plan had even flagged "verify it rides the export" - which hadn't been
+done. FIX: `feedHidden` now rides the bundle exactly like `liked` (export +
+restore loop + optional-field validation), mutation-verified (deleting the
+restore loop turns the round-trip test red; a full HTTP backup->restore of two
+users - including an id hidden by BOTH - preserves each per-user). The gate also
+bound the GET /api/feed-hidden RBAC filter (the commit claimed "never leaks" but
+no test proved it - now a member is restricted from a folder mid-flight and the
+item's id AND title must vanish from the restore list) and mitigated a random-sort
+paging dupe (de-dupe on append).
+
+**KNOWN GAPS (disclosed):**
+- The "Feeling lucky" (random) sort can SKIP a card if you hide-then-scroll in the
+  same session (a seeded shuffle re-permutes over the now-smaller set). Cosmetic,
+  non-data, self-heals on refresh; the dedupe kills the dupe half, and every
+  stable sort (newest/oldest/title/size) is unaffected.
+- A late Undo reinserts the card in the DOM at its spot but appends it to the
+  client's in-memory list at the end; a subsequent client re-sort could render it
+  out of place until the next server fetch (which self-heals). Client-only,
+  transient.
+
+Dual-Node: **Node 22.23.1 6580/6580, Node 24.14.0 6580/6580**, zero failures.
+**AWAITING DEAN'S ON-DEVICE PASS** - deploy `1.97.0`, then on the modern feed:
+(1) each card has a "Hide from feed" control (next to the title) - tap it, the
+card leaves and an Undo toast appears; (2) the hidden video is GONE from the
+modern feed but still shows up in search / its channel / a playlist / Liked; (3)
+the You tab (account menu) has a "Hidden from feed" list with Restore; (4) another
+user's feed is unaffected by what you hide.
+
 ### v1.96.0 - Watch action bar: shorter buttons + kill the load flash (2026-08-11)
 
 Two on-device watch-page pains, both traced to how the `.watch-actions` action
