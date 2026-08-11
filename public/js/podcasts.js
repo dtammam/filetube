@@ -678,11 +678,23 @@
       // v1.75: the GET /api/podcasts/liked count-fetch that used to ride along
       // here went with the lane card it gated - the podcasts place shows real
       // shows only now. The route itself stays (other consumers).
+      // v1.98 shimmer sweep: seed the grid shimmer before the fetch, but ONLY at
+      // the true blank moment - when the grid is on screen (not an open show's
+      // episodes) AND not already populated. Guarding on an existing .podcast-grid
+      // stops a status-poll refresh (refreshCurrentView after a subscribe/like/
+      // check-feeds) from flashing loaded content back to shimmer (gate
+      // SUGGESTION: a reveal-once violation). renderShows' content.textContent=''
+      // is the reveal; the catch clears it.
+      if (!currentShow && content && !content.querySelector('.podcast-grid')) {
+        content.innerHTML = buildPodcastSkeletonCards(8);
+      }
       fetchJson('/api/podcasts/shows').then(function (data) {
         if (signal.aborted) return;
         shows = data.shows || [];
         if (!currentShow) renderShows();
       }).catch(function () {
+        if (signal.aborted) return;
+        if (!currentShow && content) content.innerHTML = ''; // never strand the shimmer
         setStatus('Could not load podcasts.');
         if (emptyNote) emptyNote.hidden = false;
       });
@@ -848,6 +860,25 @@
     window.FileTube.registerView('podcasts', { init: init, destroy: destroy });
   }
 
+  // v1.98 shimmer sweep: a `.podcast-grid` of n `.podcast-card`-shaped shimmer
+  // cards, seeded into #podcasts-content before the shows fetch. Reuses the REAL
+  // `.podcast-card-art` (aspect 1) as the shimmer box, so the reveal is
+  // zero-shift. Pure -> node:test-covered.
+  function buildPodcastSkeletonCards(n) {
+    var count = Number.isInteger(n) && n > 0 ? n : 0;
+    if (count === 0) return '';
+    var cards = '';
+    for (var i = 0; i < count; i++) {
+      cards += '' +
+        '<div class="podcast-card" aria-hidden="true">' +
+        '<span class="podcast-card-art skeleton-shimmer"></span>' +
+        '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>' +
+        '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>' +
+        '</div>';
+    }
+    return '<div class="podcast-grid">' + cards + '</div>';
+  }
+
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
       formatEpisodeDuration: formatEpisodeDuration,
@@ -855,6 +886,7 @@
       episodeChipLabel: episodeChipLabel,
       resumeFraction: resumeFraction,
       showCountLine: showCountLine,
+      buildPodcastSkeletonCards: buildPodcastSkeletonCards,
     };
   }
 })();

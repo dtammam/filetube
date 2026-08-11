@@ -80,6 +80,44 @@
 
 ## Shipped
 
+### v1.98.0 - Shimmer sweep, tranche 1: the library views (2026-08-11)
+
+Dean: "any loading moment without shimmer is the defect ... shimmer is beautiful."
+The four library landing places - Music, Podcasts, Books, History - painted an
+EMPTY host then snapped the whole grid/list in when the fetch resolved
+(blank-then-pop, the most common "not a modern app" moment). Now each seeds a
+shape-matched skeleton-shimmer into its host BEFORE the fetch; the existing
+`host.innerHTML = <real markup>` on resolve is the ONE reveal.
+
+Each skeleton REUSES its view's real container + reserved-aspect box class
+(`.book-cover-link` 2/3, `.music-album-art` 1/1, `.podcast-card-art` 1/1,
+`.history-thumb` 16/9, the 44px `.music-song-thumb-wrap`), so the swap to real
+cards is ZERO-SHIFT. Every view also now CLEARS the shimmer on a fetch error
+(they had none before) - a failed first load shows the empty state, never a
+forever-shimmer. Music seeds the exact shape of the tab it will reveal (album
+grid / text-only artist grid / song list) and skips drills. First tranche of the
+FOUC sweep (audit: docs/exec-plans/active/fouc-shimmer-audit.md - remaining
+tranches queued: header-right cluster, stats, watch related+comments, feed-mode
+home, setup toggles, art-decode shimmer).
+
+**Full gate - and it earned its keep.** QA APPROVE; the adversarial seat blocked
+(REQUEST CHANGES) on two ZERO-SHIFT violations the first cut glossed: (1) the
+music ARTISTS tab seeded a tall album-card skeleton but artist cards are
+text-only and short -> the reveal collapsed, AND it is a localStorage-persisted
+COLD landing (a user who left on Artists hits it straight off a page load); (2)
+the music DRILL seeded a bare song list that reserved none of the drill's large
+header -> the list jumped down. Both FIXED (a dedicated text-only artist skeleton;
+drills keep prior content until they paint), plus a podcasts reveal-once
+flash-backward (a feed-op refresh re-shimmered already-loaded content) and a
+redundant/mislabeled CSS line. Both seats APPROVE round 2, all new bindings
+mutation-verified.
+
+Dual-Node: **Node 22.23.1 6602/6602, Node 24.14.0 6602/6602**, zero failures.
+Census 0, ledger clean. **AWAITING DEAN'S ON-DEVICE PASS** - open Music / Podcasts
+/ Books / History (ideally on a slow connection): each should SHIMMER a
+shape-matched placeholder then reveal the real grid/list in place, never blank
+then snap. (Artists tab + a cold load into it: still smooth.)
+
 ### v1.97.1 - "Hidden" moves to a settings section (2026-08-11)
 
 Dean, on-device (v1.97.0 feedback): the account-menu "Hidden from feed" row label
