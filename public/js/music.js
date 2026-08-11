@@ -955,9 +955,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // around the recovered playing index, not just a fresh loadTrack.
     function registerTrackNav(i) {
       if (!window.FileTube.player || typeof window.FileTube.player.setTrackNav !== 'function') return;
+      // i<0 (no known index) registers NO neighbors - clears any stale closures
+      // rather than binding onNext to playAt(0) off a negative index.
       window.FileTube.player.setTrackNav({
         onPrev: i > 0 ? function () { playAt(i - 1); } : undefined,
-        onNext: i < queue.length - 1 ? function () { playAt(i + 1); } : undefined,
+        onNext: (i >= 0 && i < queue.length - 1) ? function () { playAt(i + 1); } : undefined,
       });
     }
 
@@ -976,8 +978,18 @@ if (typeof module !== 'undefined' && module.exports) {
       updateNowPlaying();
     }
     async function rebuildPlayingQueue() {
-      if (queue.length) { updateNowPlayingPanel(); return; } // Songs tab / drill already rebuilt it
+      // Gate CRITICAL (both seats): only rebuild when the expanded panel is
+      // actually showing, and NEVER on the Songs tab / a drill - those run
+      // loadSongs via render() and OWN `queue`. `init` fires render() unawaited,
+      // so at this call `queue` is still [] regardless of tab; a `queue.length`
+      // guard was DEAD and let a SECOND concurrent /api/music load race render()'s,
+      // desyncing the rendered rows' data-index from the live queue -> playAt(i)
+      // played the WRONG track (the divergent-sort dock-return repro). render()'s
+      // own updateNowPlaying() fills the panel for those tabs; here we only handle
+      // the grid tabs (albums/artists) render() leaves `queue` untouched on.
       var p = window.FileTube && window.FileTube.player;
+      var expanded = !!(p && typeof p.getState === 'function' && p.getState() === 'full');
+      if (!expanded || tab === 'songs' || drill) return;
       var meta = (p && typeof p.getCurrentMeta === 'function') ? p.getCurrentMeta() : null;
       if (!meta || !meta.isMusic || !meta.id) return;
       var ctx = (window.FileTube && typeof window.FileTube.decodeListContext === 'function')
@@ -989,7 +1001,10 @@ if (typeof module !== 'undefined' && module.exports) {
       } catch (_) { return; }
       var ci = -1;
       for (var k = 0; k < queue.length; k++) { if (queue[k].id === playingId) { ci = k; break; } }
-      if (ci >= 0) registerTrackNav(ci);
+      // ci<0 (the playing id isn't in the rebuilt queue - a ctx/scope mismatch)
+      // CLEARS the nav rather than leaving the destroyed prior instance's stale
+      // Prev/Next closures registered (gate ADV note).
+      registerTrackNav(ci);
       updateNowPlayingPanel();
     }
 

@@ -15,6 +15,7 @@ const musicPath = require.resolve('../../public/js/music.js');
 
 // A music view with #player-slot, the now-playing panel, tabs, and content.
 const VIEW_HTML = `<body><div id="view-root" data-view="music">
+  <video id="media-player"></video>
   <div id="player-slot"></div>
   <div id="music-nowplaying-panel" hidden></div>
   <div class="music-tabs" id="music-tabs" role="tablist">
@@ -59,6 +60,7 @@ async function boot(storage, initialState, run, opts) {
   const saved = {
     window: global.window, document: global.document,
     localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController,
+    requestAnimationFrame: global.requestAnimationFrame,
   };
   const mock = makePlayer(initialState, opts.meta);
   let registered = null;
@@ -66,6 +68,10 @@ async function boot(storage, initialState, run, opts) {
   global.document = dom.window.document;
   global.localStorage = dom.window.localStorage;
   global.AbortController = dom.window.AbortController;
+  // The `emptied` listener defers via requestAnimationFrame; jsdom provides one.
+  global.requestAnimationFrame = dom.window.requestAnimationFrame
+    ? dom.window.requestAnimationFrame.bind(dom.window)
+    : (cb) => setTimeout(cb, 0);
   dom.window.FileTube = {
     registerView: (name, m) => { registered = m; },
     shimmerArt: () => {},
@@ -74,8 +80,11 @@ async function boot(storage, initialState, run, opts) {
     encodeListContext: () => 'CTX',
   };
   dom.window.encodeListContext = () => 'CTX';
+  const fetches = [];
+  mock.fetches = fetches;
   global.fetch = (url, init) => {
     const u = String(url);
+    fetches.push(u);
     if (/\/api\/music\?/.test(u) || /\/api\/music$/.test(u)) return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: SONGS, total: SONGS.length, offset: 0, limit: 1000 }) });
     return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: [] }) });
   };
@@ -96,6 +105,10 @@ async function boot(storage, initialState, run, opts) {
 
 const clickRow = async (dom, idx) => {
   dom.window.document.querySelector(`.music-song-row[data-index="${idx}"]`).click();
+  await settle(); await settle();
+};
+const clickTab = async (dom, name) => {
+  dom.window.document.querySelector(`.music-tab[data-tab="${name}"]`).click();
   await settle(); await settle();
 };
 const lastLoad = (mock) => mock.s.loadCalls[mock.s.loadCalls.length - 1];
@@ -189,4 +202,42 @@ test('v1.104 (re-init seed): a NON-music item on the shared host does NOT show t
   await boot({ filetube_music_tab: 'albums' }, 'full', async (dom) => {
     assert.equal(panel(dom).hidden, true, 'a video/book on the host never shows the music now-playing panel');
   }, { meta });
+});
+
+test('v1.104 (reveal-once CLEAR, gate WARNING): a panel that WAS shown clears when the player docks', async () => {
+  // Non-vacuous: populate the panel first, THEN drive the docked axis - so the
+  // clear branch is exercised (removing it strands the previous track's metadata).
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom, mock) => {
+    await clickRow(dom, 0);
+    assert.equal(panel(dom).hidden, false, 'panel populated first');
+    assert.ok(panel(dom).innerHTML.length > 0, 'has content to strand');
+    mock.setState('docked'); // the player docked out from under the expanded view
+    await clickTab(dom, 'songs'); // any re-render re-runs updateNowPlayingPanel
+    assert.equal(panel(dom).hidden, true, 'panel HIDDEN once docked');
+    assert.equal(panel(dom).innerHTML, '', 'and CLEARED - no stranded stale metadata');
+  });
+});
+
+test('v1.104 (gate CRITICAL): a Songs-tab dock-return does NOT double-fetch /api/music (render owns the queue; rebuild bails)', async () => {
+  // The dead `if(queue.length)` guard let rebuildPlayingQueue race render()'s
+  // loadSongs on the Songs tab, desyncing row data-index from queue -> wrong
+  // track. The fix bails rebuild on Songs/drill. Bind it: exactly ONE song fetch.
+  const meta = { id: 't2', title: 'Bravo', artist: 'Boards', album: 'One', albumKey: 'k1', browseCtx: 'CTX', isMusic: true };
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom, mock) => {
+    const songFetches = mock.fetches.filter((u) => /\/api\/music(\?|$)/.test(u));
+    assert.equal(songFetches.length, 1, 'render() issued the ONE song load; rebuild did not race a second');
+  }, { meta, decode: (s) => (s === 'CTX' ? { src: 'music', album: 'One', sort: 'album-order' } : null) });
+});
+
+test('v1.104 (reveal-once CLEAR): closing the player (emptied) clears a shown panel', async () => {
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom, mock) => {
+    await clickRow(dom, 0);
+    assert.equal(panel(dom).hidden, false, 'panel shown');
+    // Simulate a close: currentId gone, the shared #media-player fires `emptied`.
+    mock.player.currentId = null;
+    dom.window.document.getElementById('media-player').dispatchEvent(new dom.window.Event('emptied'));
+    await new Promise((r) => setTimeout(r, 30)); // let the rAF-deferred handler run
+    assert.equal(panel(dom).hidden, true, 'panel hidden after the player closed');
+    assert.equal(panel(dom).innerHTML, '', 'cleared, not stranded');
+  });
 });
