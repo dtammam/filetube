@@ -73,7 +73,7 @@ test('injectAccountMenu: builds the trigger + full dropdown, once, with account 
   assert.strictEqual(trigger.querySelector('.account-avatar').textContent, 'D', 'monogram in the trigger');
 
   const labels = [...root.querySelectorAll('.account-menu-item span')].map((s) => s.textContent);
-  assert.deepStrictEqual(labels, ['Change photo', 'Liked', 'History', 'Hidden from feed', 'Settings', 'Theme', 'Sign out'], 'all items present, in order');
+  assert.deepStrictEqual(labels, ['Change photo', 'Liked', 'History', 'Settings', 'Theme', 'Sign out'], 'all items present, in order');
   assert.strictEqual(root.querySelector('.account-menu-name').textContent, 'Dean');
   assert.strictEqual(root.querySelector('.account-menu-role').textContent, 'Admin');
   const links = [...root.querySelectorAll('a.account-menu-item')].map((a) => a.getAttribute('href'));

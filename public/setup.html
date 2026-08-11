@@ -667,6 +667,20 @@
         <div id="trash-empty" class="trash-empty" hidden>Trash is empty.</div>
       </details>
 
+      <!-- v1.97.1: Hidden -- videos you pruned from YOUR modern feed. Moved here
+           from the account menu (Dean) so a long list scrolls with the page.
+           Rows render from GET /api/feed-hidden (public/js/setup.js). -->
+      <details class="setup-box sub-collapsible" data-collapse-key="feedhidden" open>
+        <summary>Hidden</summary>
+        <p>
+          Videos you've hidden from your modern feed. Hiding never deletes them -
+          they stay findable in search, their channel, playlists and Liked.
+          Restore brings a video back to your feed.
+        </p>
+        <div id="feedhidden-list" class="feed-hidden-list"></div>
+        <div id="feedhidden-empty" class="feed-hidden-empty" hidden>Nothing hidden from your feed.</div>
+      </details>
+
       <!-- v1.43: Account (everyone) - who you are + sign out. Markup lives
            INSIDE #view-root and styles in style.css (the v1.41.8 SPA-swap
            lesson). -->

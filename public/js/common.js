@@ -5682,13 +5682,10 @@ function injectAccountMenu() {
     const settings = buildAccountMenuRow('a', 'Settings', 'icon-cog'); settings.href = '/setup.html';
     menu.appendChild(liked);
     menu.appendChild(history);
-    // v1.97 "Hide from feed": the restore place (Dean's "no one-way trap"). A
-    // self-contained panel (not a scope-view route) listing what you pruned from
-    // the modern feed, each with a Restore. A button (not an href) - the panel
-    // fetches GET /api/feed-hidden on open.
-    const hiddenFromFeed = buildAccountMenuRow('button', 'Hidden from feed', 'icon-archive');
-    hiddenFromFeed.addEventListener('click', () => { setOpen(false); openFeedHiddenPanel(); });
-    menu.appendChild(hiddenFromFeed);
+    // v1.97.1 (Dean): the feed-hidden RESTORE surface moved OUT of this menu and
+    // into a "Hidden" SECTION on the settings page beside Trash (setup.html /
+    // setup.js renderFeedHiddenSection) - the settings page scrolls, so a long
+    // hidden list is reachable (the account-menu modal couldn't). No menu row here.
     menu.appendChild(settings);
 
     // Theme: the same light/dark toggle the header button used to drive. The
@@ -8758,98 +8755,10 @@ function updateAccountMenuThemeItem() {
 // partial => the existing literals, so every pre-v1.49 call site renders exactly
 // as before. Labels are set via `textContent` below, never interpolated into the
 // `innerHTML` template above -- a caller-supplied string must not become markup.
-// v1.97 "Hide from feed" restore panel (the You-tab "no one-way trap" place).
-// A self-contained modal (reusing the shared .modal-backdrop chrome) listing
-// what THIS user pruned from the modern feed, each with a Restore. Fetches
-// GET /api/feed-hidden on open (RBAC-filtered server-side - a since-restricted
-// item never appears here). Lives on document.body like showConfirmModal, so it
-// survives SPA nav; Escape / Close / backdrop-click dismiss it.
-function buildFeedHiddenRow(item, onRemoved) {
-  const row = document.createElement('div');
-  row.className = 'feed-hidden-row';
-  const thumb = document.createElement('img');
-  thumb.className = 'feed-hidden-thumb';
-  thumb.src = '/thumbnail/' + encodeURIComponent(item.id);
-  thumb.alt = '';
-  thumb.loading = 'lazy';
-  const titleEl = document.createElement('span');
-  titleEl.className = 'feed-hidden-title';
-  titleEl.textContent = item.title || 'Untitled'; // textContent: attacker-influenced metadata, never innerHTML
-  const restoreBtn = document.createElement('button');
-  restoreBtn.className = 'btn';
-  restoreBtn.textContent = 'Restore';
-  restoreBtn.addEventListener('click', () => {
-    restoreBtn.disabled = true;
-    fetch('/api/feed-hidden/' + encodeURIComponent(item.id), { method: 'DELETE' })
-      .then((r) => { if (!r.ok) throw new Error('restore failed'); row.remove(); showToast('Restored to feed'); if (typeof onRemoved === 'function') onRemoved(); })
-      .catch(() => { restoreBtn.disabled = false; showToast('Could not restore to feed.'); });
-  });
-  row.appendChild(thumb);
-  row.appendChild(titleEl);
-  row.appendChild(restoreBtn);
-  return row;
-}
-
-function openFeedHiddenPanel() {
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop';
-  const content = document.createElement('div');
-  content.className = 'modal-content feed-hidden-panel';
-  const title = document.createElement('div');
-  title.className = 'modal-title';
-  title.textContent = 'Hidden from feed';
-  const body = document.createElement('div');
-  body.className = 'modal-body';
-  const list = document.createElement('div');
-  list.className = 'feed-hidden-list';
-  body.appendChild(list);
-  const actions = document.createElement('div');
-  actions.className = 'modal-actions';
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn';
-  closeBtn.textContent = 'Close';
-  actions.appendChild(closeBtn);
-  content.appendChild(title);
-  content.appendChild(body);
-  content.appendChild(actions);
-  backdrop.appendChild(content);
-  document.body.appendChild(backdrop);
-  openOverlay(backdrop, 'modal-open');
-
-  let closed = false;
-  function teardown() {
-    if (closed) return;
-    closed = true;
-    document.removeEventListener('keydown', onKey);
-    backdrop.classList.add('modal-closing');
-    closeOverlayThen(backdrop, 'modal-open', () => { if (backdrop.parentNode) document.body.removeChild(backdrop); });
-  }
-  function onKey(e) { if (e.key === 'Escape') teardown(); }
-  document.addEventListener('keydown', onKey);
-  closeBtn.addEventListener('click', teardown);
-  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) teardown(); });
-
-  const setMessage = (text) => {
-    list.textContent = '';
-    const p = document.createElement('p');
-    p.className = 'feed-hidden-empty';
-    p.textContent = text;
-    list.appendChild(p);
-  };
-
-  setMessage('Loading…');
-  fetch('/api/feed-hidden')
-    .then((r) => (r.ok ? r.json() : Promise.reject(new Error('load failed'))))
-    .then((data) => {
-      const items = Array.isArray(data.items) ? data.items : [];
-      if (!items.length) { setMessage('Nothing hidden from your feed.'); return; }
-      list.textContent = '';
-      items.forEach((item) => list.appendChild(buildFeedHiddenRow(item, () => {
-        if (!list.querySelector('.feed-hidden-row')) setMessage('Nothing hidden from your feed.');
-      })));
-    })
-    .catch(() => setMessage('Could not load your hidden items.'));
-}
+// v1.97.1 (Dean): the feed-hidden restore surface moved to a "Hidden" SECTION on
+// the settings page (setup.html / setup.js renderFeedHiddenSection), beside Trash.
+// The old account-menu modal is gone - the settings page scrolls, so a long list
+// is reachable, and the row label shrank to just "Hidden".
 
 function showConfirmModal(title, bodyText, onConfirm, labels) {
   const modalBackdrop = document.createElement('div');
