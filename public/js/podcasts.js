@@ -727,9 +727,12 @@
       var expanded = !!(p && typeof p.getState === 'function' && p.getState() === 'full');
       if (!expanded) return;
       // A SHOW view OWNS `playable` (its episode rows play via
-      // playable.indexOf(ep)); clobbering it would desync those rows -> wrong
-      // episode (the v1.104 rebuild-race lesson). Only the GRID landing
-      // (currentShow null, no episode rows) is safe to rebuild for the playing show.
+      // playable.indexOf(ep)); clobbering it would desync those rows -> a dead
+      // (indexOf -1) tap (the v1.104 rebuild-race lesson). Only the GRID landing
+      // (currentShow null, no episode rows) rebuilds. The check is repeated AFTER
+      // the await below - `currentShow` can flip null->show DURING the fetch (the
+      // ?play= deep link sets it in a .then, async), a TOCTOU the pre-await check
+      // alone misses (gate WARNING).
       if (currentShow) { updateNowPlayingPanel(); return; }
       var meta = (p && typeof p.getCurrentMeta === 'function') ? p.getCurrentMeta() : null;
       if (!meta || meta.resumeMode !== 'podcast' || !meta.id || !meta.subId) return;
@@ -737,7 +740,8 @@
       try {
         data = await fetchJson('/api/podcasts/shows/' + encodeURIComponent(meta.subId) + '/episodes');
       } catch (_) { return; }
-      if (signal.aborted) return;
+      // Post-await re-check: a show opened DURING the fetch now owns `playable`.
+      if (signal.aborted || currentShow) return;
       var eps = (data && Array.isArray(data.episodes)) ? data.episodes : [];
       playable = eps.filter(function (e) { return e.status === 'downloaded' && !e.watchHref; });
       var ci = -1;
@@ -1044,6 +1048,14 @@
         player.expand(npSlot);
       }
     }
+    // v1.105 (gate CRITICAL): bind the close/emptied listener at init too, not
+    // only in playAt. The dock-tap RESEED path reveals the panel via
+    // seedNowPlayingFromPlayer + expand WITHOUT playAt ever running this instance,
+    // so without this the panel would strand (stay shown with stale metadata) when
+    // the user closes the player. The shared #media-player is in the DOM whenever
+    // something is playing (docked or in the slot); ensureEmptiedListener no-ops
+    // when nothing is. Mirrors music.js's init-time bind.
+    ensureEmptiedListener();
     // v1.105: with the player (possibly just) expanded, show the now-playing panel
     // - metadata now, up-next once rebuildPlayable refetches the show.
     updateNowPlayingPanel();

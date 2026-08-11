@@ -29,6 +29,11 @@ const EPISODES = [
   { id: 'e3', subId: 's1', title: 'Ep Three', showName: 'The Show', pubDateMs: 1690200000000, durationSec: 3800, description: 'Notes for episode three.', status: 'downloaded' },
 ];
 
+const S2_EPISODES = [
+  { id: 'x1', subId: 's2', title: 'S2 One', showName: 'Show Two', pubDateMs: 10, durationSec: 100, description: 's2 notes one', status: 'downloaded' },
+  { id: 'x2', subId: 's2', title: 'S2 Two', showName: 'Show Two', pubDateMs: 20, durationSec: 200, description: 's2 notes two', status: 'downloaded' },
+];
+
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 function makePlayer(initialState, meta) {
@@ -69,12 +74,23 @@ async function boot(url, initialState, run, opts) {
     ? dom.window.requestAnimationFrame.bind(dom.window)
     : (cb) => setTimeout(cb, 0);
   dom.window.FileTube = { registerView: (n, m) => { registered = m; }, shimmerArt: () => {}, player: mock.player };
+  const SHOW_EPS = { s1: opts.episodes || EPISODES, s2: S2_EPISODES };
   global.fetch = (u) => {
     const url2 = String(u);
     fetches.push(url2);
+    const epMatch = url2.match(/\/api\/podcasts\/shows\/([^/]+)\/episodes/);
+    if (epMatch) {
+      const sid = decodeURIComponent(epMatch[1]);
+      const body = { show: { id: sid, name: sid === 's2' ? 'Show Two' : 'The Show' }, episodes: SHOW_EPS[sid] || [] };
+      // opts.deferSubId defers THAT show's episodes fetch (the rebuild's) so a test
+      // can open another show mid-await and prove the post-await guard bails.
+      if (opts.deferSubId && sid === opts.deferSubId) {
+        return new Promise((res) => { mock.deferred = { resolve: () => res({ ok: true, json: () => Promise.resolve(body) }) }; });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+    }
     let body = {};
-    if (/\/api\/podcasts\/shows\/[^/]+\/episodes/.test(url2)) body = { show: { id: 's1', name: 'The Show' }, episodes: opts.episodes || EPISODES };
-    else if (/\/api\/podcasts\/shows/.test(url2)) body = { shows: [] };
+    if (/\/api\/podcasts\/shows/.test(url2)) body = { shows: opts.gridShows || [] };
     else if (/\/api\/podcasts\/status/.test(url2)) body = { running: false };
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   };
@@ -203,6 +219,42 @@ test('v1.105 (T4 no rebuild-race): a SHOW view does NOT refetch/clobber playable
     const epFetches = mock.fetches.filter((u) => /\/api\/podcasts\/shows\/[^/]+\/episodes/.test(u));
     assert.equal(epFetches.length, 1, 'only openShow fetched episodes; rebuild bailed (a show view owns playable)');
   }, { meta });
+});
+
+test('v1.105 (gate CRITICAL): the dock-tap RESEED path binds the close listener - closing clears the panel (no strand)', async () => {
+  // The panel is revealed by the reseed (seedNowPlayingFromPlayer + expand),
+  // WITHOUT playAt running this instance. ensureEmptiedListener must still bind at
+  // init, or closing the player strands the panel. Non-vacuous: panel shown first.
+  const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
+  await boot('http://localhost/podcasts?nowplaying=1', 'full', async (dom, mock) => {
+    assert.equal(panel(dom).hidden, false, 'reseed revealed the panel (no playAt this instance)');
+    assert.ok(panel(dom).textContent.length > 0, 'populated');
+    mock.player.currentId = null;
+    dom.window.document.getElementById('media-player').dispatchEvent(new dom.window.Event('emptied'));
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(panel(dom).hidden, true, 'closing clears the RESEEDED panel');
+    assert.equal(panel(dom).textContent, '', 'cleared - not stranded');
+  }, { meta });
+});
+
+test('v1.105 (post-await TOCTOU): a show opened DURING the rebuild fetch is not clobbered', async () => {
+  // Grid landing with show s1 playing + expanded -> rebuildPlayable passes the
+  // pre-await gate and awaits s1's (DEFERRED) episodes. Meanwhile the user opens a
+  // DIFFERENT show s2 from the grid (currentShow -> s2, playable -> s2 rows). When
+  // the deferred s1 fetch resolves, the POST-await re-check must bail so it never
+  // clobbers playable with s1 - else the rendered s2 rows go inert (indexOf -1).
+  const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
+  await boot('http://localhost/podcasts?nowplaying=1', 'full', async (dom, mock) => {
+    dom.window.document.querySelector('.podcast-card').click(); // open s2
+    await settle(); await settle();
+    mock.deferred.resolve(); // now let the in-flight s1 rebuild fetch resolve
+    await settle(); await settle();
+    const rows = dom.window.document.querySelectorAll('.podcast-episode-main');
+    rows[0].click(); // tap the rendered s2 row
+    await settle(); await settle();
+    assert.ok(lastLoad(mock), 'the rendered row played SOMETHING (playable still holds s2, not clobbered by s1)');
+    assert.equal(lastLoad(mock).id, 'x1', 'it played the s2 episode the row represents');
+  }, { meta, gridShows: [{ id: 's2', name: 'Show Two' }], deferSubId: 's1' });
 });
 
 test('v1.105 (T4 reseed): a NON-podcast item on the shared host does not show the podcast panel', async () => {
