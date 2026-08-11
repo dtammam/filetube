@@ -80,6 +80,61 @@
 
 ## Shipped
 
+### v1.103.0 - Music page overhaul: artist mosaic + per-tab sort + dock-return fix (2026-08-11)
+
+Dean: the Music page "feels bad on multiple fronts... not polished / not
+deterministic / not nice. It's not fun to use." Intake separated the gestalt
+into three nameable causes, each fixed here, plus one IA change. Design wave
+(exec plan in `docs/exec-plans/completed/v1.103-music-page-overhaul.md`).
+
+- **Artist album-art mosaic (T1-T3):** artist cards were drab text-only boxes
+  ("N albums . M tracks", no artwork) clashing with the art-forward album cards.
+  Now ONE unified `.music-card` chassis, and artist cards are a **2x2 mosaic of
+  their album art** - the server (`groupArtists`) returns up to 4 representative
+  album-art track ids (art-carrying albums first, deterministic across re-scans),
+  and `data-tiles` (1-4) reflows the CSS so sparse artists still fill the square
+  (1 = full bleed, 2 = side-by-side, 3 = one large + two stacked, 4 = grid).
+  Subtle shadow + hover lift; each tile carries the reveal-once shimmer.
+- **Per-tab sort (T4):** the sort control only affected the Songs tab; Albums and
+  Artists silently ignored it (hard-sorted by name). Now every tab has a
+  tab-appropriate menu (albums: title / recently-added / release-year / most-
+  tracks; artists: name / recently-added / most-songs; songs: the full track set)
+  with labels that read per unit, sort **persisted per tab** (sorting Songs by
+  duration no longer reorders Artists), and a drill is album-order with the top
+  control hidden.
+- **Dock-return determinism fix (T5):** Dean's "tapping the mini-player doesn't
+  always bring the player back" - root-caused. `?nowplaying=1` (the expand
+  trigger) persisted in the URL, so a later dock re-tap navigated to the SAME url
+  the bar already showed and the router's same-URL no-op swallowed it, stranding
+  the docked player with an empty slot. Fix: strip the transient marker after each
+  init consumes it, so every dock-tap is a real transition. (Distinct from the
+  DISREGARDED video mini-player item under Planned - that path uses a per-video
+  `?v=` url and never collides.)
+- **Artists is the default landing (T5b):** browse-by-artist is Dean's primary
+  path and the mosaic is the richest surface. A device with a stored tab keeps it
+  until the user taps Artists once.
+
+**What the gate caught (both seats, two rounds, no CRITICAL):** an artId
+non-determinism (an album with >1 embedded-art track picked the first-seen
+representative, so a re-scan could flip a tile's `/albumart` URL and bust its
+cache) - fixed with a stable tiebreak + a shuffle-invariance test; and the
+reveal-once ERROR/ABORT clear on the new mosaic surface was only source-locked,
+not behaviourally bound (the exact v1.102 repeat class) - added a jsdom test that
+rejects the artists fetch and proves the skeleton is wiped. Plus the mosaic's
+skeleton shimmer-fill, the art-shimmer census (9->10 sites), a sharper
+no-dead-option forcing test, and strip-before-expand robustness. Both seats
+APPROVED; dual-Node full suite 6679/6679 on v22.23.1 and v24.14.0.
+
+**KNOWN GAP (disclosed):** the exec plan's D3 - making tabs/drills URL-backed for
+a working browser Back button + shareable deep links - was DEFERRED. It was
+approved primarily as "the clean root-fix for the mini-player bug," but the
+simpler `?nowplaying` strip fixed the bug without it, so its remaining value is
+just Back/deep-linking. That needs view-level `pushState` against the SPA
+router's history/depth invariants (a documented bug-magnet), so it warrants its
+own gate rather than riding this wave. Candidate follow-up, Dean's call.
+
+**Dean's on-device pass PENDING** (the final arbiter).
+
 ### v1.102.0 - Shimmer sweep tranche 4: the last blank surfaces (2026-08-11)
 
 The final tranche of the shimmer sweep - six surfaces that still painted blank
