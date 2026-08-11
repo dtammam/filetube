@@ -120,6 +120,11 @@
              swap does NOT dock, so init re-adopts a FULL player into the
              fresh slot every time (gate W2). Empty until then. -->
         <div id="player-slot"></div>
+        <!-- v1.105: the expanded now-playing panel - episode title, show + date,
+             show-notes, and an "Up next" list of the show's remaining episodes.
+             Shown only while the player is expanded (state 'full') with a podcast
+             episode playing (public/js/podcasts.js updateNowPlayingPanel). -->
+        <div id="podcast-nowplaying-panel" class="music-nowplaying-panel" hidden></div>
 
         <!-- Drill-in breadcrumb (show -> episode list); hidden on the grid. -->
         <div class="music-crumb" id="podcasts-crumb" hidden></div>

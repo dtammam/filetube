@@ -6523,6 +6523,11 @@ if (typeof module !== 'undefined' && module.exports) {
         album: currentData.album || '',
         albumKey: currentData.albumKey || '',
         browseCtx: (typeof currentData.browseCtx === 'string') ? currentData.browseCtx : '',
+        // v1.105: `resumeMode` + `subId` let the PODCASTS view re-seed its own
+        // now-playing panel after a dock-tap re-init (mirrors music's isMusic path;
+        // podcasts key off resumeMode==='podcast' + the show id in subId).
+        resumeMode: currentData.resumeMode || '',
+        subId: currentData.subId || '',
         isMusic: currentData.resumeMode === 'music',
       };
     },
