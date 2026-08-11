@@ -851,10 +851,19 @@ if (typeof module !== 'undefined' && module.exports) {
       // top — the album header + tracklist stay on screen (browse-while-playing)
       // and the tapped row highlights. dock:true mounts straight into #player-dock.
       playingId = item.id;
-      nowPlaying = { id: item.id, album: item.album || '', albumKey: item.albumKey || '' };
+      nowPlaying = { id: item.id, title: item.title || '', artist: item.artist || '', album: item.album || '', albumKey: item.albumKey || '' };
       applyPlayingHighlight();
       updateNowPlaying();
-      window.FileTube.player.load(item.id, data, { dock: true });
+      // v1.104: keep the player WHERE IT IS across a track change. If the expanded
+      // now-playing view (#player-slot, state 'full') is open, load the next track
+      // INTO that slot so it STAYS expanded; a docked/closed player docks (the
+      // browse-while-playing default for a fresh list tap). Fixes next/prev
+      // collapsing the expanded view to the mini-bar (Dean, on-device v1.103).
+      var pl = window.FileTube.player;
+      var keepSlot = (pl && typeof pl.getState === 'function' && pl.getState() === 'full')
+        ? root.querySelector('#player-slot')
+        : null;
+      pl.load(item.id, data, keepSlot ? { slot: keepSlot } : { dock: true });
       ensureEmptiedListener(); // gate W1: the host (with #media-player) now exists — bind if we hadn't yet
       if (typeof window.FileTube.player.setTrackNav === 'function') {
         window.FileTube.player.setTrackNav({

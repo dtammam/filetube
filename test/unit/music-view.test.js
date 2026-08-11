@@ -176,14 +176,16 @@ test('v1.44.2: buildSongRowHtml carries the CSS equalizer glyph (3 bars, NEVER a
   assert.doesNotMatch(html, /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u, 'no emoji codepoint in a song row');
 });
 
-test('v1.44.2/v1.73 SOURCE-LOCK: loadTrack plays in the DOCK; the dock-return now opens the expanded now-playing view', () => {
-  assert.match(MUSIC_JS, /window\.FileTube\.player\.load\(item\.id, data, \{ dock: true \}\)/,
-    'a tap must load into the docked mini-player - browse-while-playing survives ruling 2');
-  // v1.73 (Dean ruling 2): the old "no slot on /music" policy is REVERSED -
-  // the dock-return is the podcasts ?nowplaying=1 contract, and the slot
-  // exists for the expanded mount (bound by the v1.73 lock below). The
-  // pre-v1.73 half of this lock asserted the absence; the reversal is
-  // Dean's recorded ruling, not drift.
+test('v1.44.2/v1.73/v1.104 SOURCE-LOCK: a fresh tap DOCKS (browse-while-playing); a track change while EXPANDED keeps the slot', () => {
+  // v1.104: loadTrack now KEEPS the player's position across a track change - a
+  // docked/closed player still docks (browse-while-playing survives ruling 2),
+  // but an EXPANDED player (state 'full') loads the next track into #player-slot
+  // so next/prev no longer collapse it to the mini-bar. The BEHAVIOUR (which
+  // position each state loads into) is bound in music-nowplaying-view.test.js;
+  // this lock just guards the conditional's shape against silent reversion.
+  assert.match(MUSIC_JS, /keepSlot \? \{ slot: keepSlot \} : \{ dock: true \}/,
+    'expanded -> slot, else dock (browse-while-playing default)');
+  assert.match(MUSIC_JS, /getState\(\) === 'full'/, 'the keep-expanded branch gates on the full state');
   assert.match(MUSIC_JS, /readerHref: '\/music\?nowplaying=1'/, 'the dock tap opens the now-playing view in one gesture');
 });
 
