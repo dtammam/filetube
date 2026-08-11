@@ -11,6 +11,7 @@ const path = require('node:path');
 const {
   escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildSongRowHtml,
   drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
+  MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
 } = require('../../public/js/music.js');
 
 // v1.102 (tranche 4): the song-row action glyphs render via window.chromeIconMarkup
@@ -35,6 +36,33 @@ test('v1.44.1 SOURCE-LOCK (Bug A): a Continue-listening tap plays the TAPPED tra
   assert.match(MUSIC_JS, /playTrackFromContinue/, 'the continue-listening handler exists');
   assert.match(MUSIC_JS, /filter=recent-listening&limit=200/, 'it builds the queue from the recent-listening list');
   assert.doesNotMatch(MUSIC_JS, /st\.lastTrackId/, 'it must NOT fall back to the pointer last track (the wrong-song bug)');
+});
+
+test('v1.103 (no dead option): every client sort value has a server case handler in query.js', () => {
+  // The client menu must never offer a sort the server silently ignores. Bind
+  // each MUSIC_SORTS value to an actual `case '<key>':` in lib/music/query.js
+  // (sortTracks for songs, sortGroups for albums/artists).
+  const QUERY_JS = fs.readFileSync(path.join(__dirname, '../../lib/music/query.js'), 'utf8');
+  const serverKeys = new Set([...QUERY_JS.matchAll(/case '([a-z-]+)':/g)].map((m) => m[1]));
+  for (const tab of Object.keys(MUSIC_SORTS)) {
+    for (const opt of MUSIC_SORTS[tab]) {
+      assert.ok(serverKeys.has(opt.value), `client sort "${opt.value}" (${tab} tab) has no server handler`);
+      assert.ok(opt.label && opt.label.length, `sort "${opt.value}" needs a label`);
+    }
+    // Each tab's default must itself be one of that tab's offered values.
+    assert.ok(MUSIC_SORTS[tab].some((o) => o.value === MUSIC_SORT_DEFAULTS[tab]), `${tab} default is an offered value`);
+  }
+});
+
+test('v1.103: normalizeMusicSort keeps a valid per-tab key, falls back to the tab default otherwise', () => {
+  assert.equal(normalizeMusicSort('albums', 'year-desc'), 'year-desc', 'valid album key kept');
+  assert.equal(normalizeMusicSort('artists', 'tracks-desc'), 'tracks-desc', 'valid artist key kept');
+  // duration-desc is a SONGS key - invalid on the albums tab -> album default.
+  assert.equal(normalizeMusicSort('albums', 'duration-desc'), MUSIC_SORT_DEFAULTS.albums);
+  // year-desc is an ALBUMS key - invalid on artists -> artist default.
+  assert.equal(normalizeMusicSort('artists', 'year-desc'), MUSIC_SORT_DEFAULTS.artists);
+  assert.equal(normalizeMusicSort('songs', undefined), MUSIC_SORT_DEFAULTS.songs, 'undefined -> default');
+  assert.equal(normalizeMusicSort('songs', 'garbage'), MUSIC_SORT_DEFAULTS.songs, 'unknown -> default');
 });
 
 test('T9: escapeMusicHtml neutralizes markup; null/undefined -> empty', () => {

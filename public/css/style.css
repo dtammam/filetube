@@ -8934,6 +8934,11 @@ html[data-modern="on"] .video-uploader {
 }
 .music-toolbar h2 { margin: 0; }
 .music-toolbar-actions { display: flex; gap: var(--space-4); flex-wrap: wrap; }
+/* v1.103: the sort select is hidden inside a drill (rebuildSortMenu sets
+   [hidden]). It carries .btn, whose display:inline-flex would otherwise beat the
+   UA [hidden] rule (the repo's [hidden]-loses-to-author-display class), so
+   enforce the hide explicitly. */
+#music-sort-select[hidden] { display: none !important; }
 
 .music-tabs {
   display: flex;

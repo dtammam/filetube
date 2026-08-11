@@ -226,6 +226,46 @@ function normalizeMusicTab(value) {
   return MUSIC_TABS.indexOf(value) >= 0 ? value : MUSIC_DEFAULT_TAB;
 }
 
+// v1.103: sort is now per-tab. Each browse tab exposes only the keys that make
+// sense for it (a grid of albums can't sort by track duration; artists carry no
+// release year), with labels that read right for the tab's unit ("Title A-Z" for
+// songs/albums, "Name A-Z" for artists). Every value here has a server handler -
+// songs via sortTracks (/api/music), albums/artists via sortGroups
+// (/api/music/albums|artists) - so the client menu never offers a dead option.
+var MUSIC_SORTS = {
+  songs: [
+    { value: 'newest', label: 'Recently added' },
+    { value: 'title-asc', label: 'Title A-Z' },
+    { value: 'title-desc', label: 'Title Z-A' },
+    { value: 'artist-asc', label: 'Artist' },
+    { value: 'album-asc', label: 'Album' },
+    { value: 'duration-desc', label: 'Longest' },
+    { value: 'duration-asc', label: 'Shortest' },
+  ],
+  albums: [
+    { value: 'title-asc', label: 'Title A-Z' },
+    { value: 'title-desc', label: 'Title Z-A' },
+    { value: 'newest', label: 'Recently added' },
+    { value: 'year-desc', label: 'Release year' },
+    { value: 'tracks-desc', label: 'Most tracks' },
+  ],
+  artists: [
+    { value: 'title-asc', label: 'Name A-Z' },
+    { value: 'title-desc', label: 'Name Z-A' },
+    { value: 'newest', label: 'Recently added' },
+    { value: 'tracks-desc', label: 'Most songs' },
+  ],
+};
+var MUSIC_SORT_DEFAULTS = { songs: 'newest', albums: 'title-asc', artists: 'title-asc' };
+
+// The persisted sort for `tab`, validated against that tab's option list (an
+// unknown/stale key falls back to the tab default, so a renamed key never
+// strands the menu on an invalid value).
+function normalizeMusicSort(tab, value) {
+  var opts = MUSIC_SORTS[tab] || MUSIC_SORTS.songs;
+  return opts.some(function (o) { return o.value === value; }) ? value : (MUSIC_SORT_DEFAULTS[tab] || 'newest');
+}
+
 // v1.98 shimmer sweep: seeded into #music-content before render()'s fetch, so a
 // tab never shows a blank host then a snap-in. Two shapes, matching the two
 // render outcomes: a `.music-card-grid` of `.music-album-card` skeletons (albums
@@ -289,6 +329,7 @@ if (typeof module !== 'undefined' && module.exports) {
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildSongRowHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
+    MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
     buildMusicSkeletonCards, buildMusicSkeletonRows, buildMusicArtistSkeletonCards,
   };
 }
@@ -413,13 +454,44 @@ if (typeof module !== 'undefined' && module.exports) {
     var queueCtxEncoded = '';
     var urlParams = new URLSearchParams(window.location.search);
 
+    // v1.103: sort is persisted PER TAB (sorting Songs by duration must not
+    // reorder Artists when you switch back). SORT_KEY holds a JSON map
+    // {tab: value}; a pre-v1.103 plain-string value (single global sort) fails
+    // JSON.parse and falls through to the per-tab defaults - a one-time reset,
+    // not a crash.
+    function readSortMap() {
+      var raw = readPref(SORT_KEY, '');
+      if (!raw) return {};
+      try { var m = JSON.parse(raw); return (m && typeof m === 'object') ? m : {}; } catch (_) { return {}; }
+    }
+    function sortForTab(t) { return normalizeMusicSort(t, readSortMap()[t]); }
+    function writeSortForTab(t, value) {
+      var m = readSortMap();
+      m[t] = value;
+      writePref(SORT_KEY, JSON.stringify(m));
+    }
+    // Rebuild the select's options for the active tab and select that tab's
+    // persisted sort. A drill (album/artist detail) is inherently album-order
+    // and carries its own Play/Shuffle, so the top sort control is hidden there.
+    function rebuildSortMenu() {
+      if (!sortSelect) return;
+      var wrap = sortSelect;
+      if (drill) { wrap.hidden = true; return; }
+      wrap.hidden = false;
+      var opts = MUSIC_SORTS[tab] || MUSIC_SORTS.songs;
+      var current = sortForTab(tab);
+      sortSelect.innerHTML = opts.map(function (o) {
+        return '<option value="' + escapeMusicHtml(o.value) + '"' + (o.value === current ? ' selected' : '') + '>' + escapeMusicHtml(o.label) + '</option>';
+      }).join('');
+      sortSelect.value = current;
+    }
     if (sortSelect) {
-      sortSelect.value = readPref(SORT_KEY, 'newest');
       sortSelect.addEventListener('change', function () {
-        writePref(SORT_KEY, sortSelect.value);
+        writeSortForTab(tab, sortSelect.value);
         render().catch(function () {});
       }, { signal });
     }
+    rebuildSortMenu();
 
     // The header search box drives the music search (this view owns it here).
     var searchInput = document.getElementById('search-input');
@@ -505,7 +577,12 @@ if (typeof module !== 'undefined' && module.exports) {
     async function loadSongs(opts) {
       opts = opts || {};
       var scope = opts.scope || drill;
-      var ctx = { src: 'music', sort: opts.sort || (sortSelect ? sortSelect.value : 'newest') };
+      // v1.103: the flat Songs tab honours its OWN persisted sort; a drill
+      // (album/artist detail) defaults to album-order - disc/track sequence, the
+      // natural way to hear an album - unless a caller overrides (Shuffle passes
+      // 'random'). The top sort control is hidden inside a drill (rebuildSortMenu).
+      var defaultSort = scope ? 'album-order' : sortForTab('songs');
+      var ctx = { src: 'music', sort: opts.sort || defaultSort };
       if (opts.seed) ctx.seed = opts.seed;
       if (search) ctx.search = search;
       if (scope && scope.type === 'album') ctx.album = scope.key;
@@ -594,6 +671,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // sentinel is about to be replaced) — the SPA-swap leak guard.
       disconnectStickyObserver();
       setActiveTab();
+      // Keep the sort control in sync with the active tab (options + persisted
+      // value) and hidden inside a drill - centralised here so every state
+      // change (tab switch, drill in/out) routes through one place.
+      rebuildSortMenu();
       // v1.98 shimmer sweep: seed the EXACT shape the branch below reveals, so
       // the swap is zero-shift - a song list (songs), an artist mosaic grid
       // (artists, v1.103), or an album grid (albums). A DRILL is deliberately NOT seeded
@@ -620,12 +701,12 @@ if (typeof module !== 'undefined' && module.exports) {
           // 60, so without an explicit high limit only ~60 albums/artists
           // would render (the Songs tab already passes a high limit). Proper
           // infinite-scroll is tech-debt; for now request the full set.
-          var a = await fetchJson('/api/music/albums?limit=10000' + (search ? '&search=' + encodeURIComponent(search) : ''));
+          var a = await fetchJson('/api/music/albums?limit=10000&sort=' + encodeURIComponent(sortForTab('albums')) + (search ? '&search=' + encodeURIComponent(search) : ''));
           var albums = Array.isArray(a.items) ? a.items : [];
           content.innerHTML = '<div class="music-card-grid">' + albums.map(buildAlbumCardHtml).join('') + '</div>';
           if (emptyNote) emptyNote.hidden = albums.length > 0;
         } else if (tab === 'artists') {
-          var ar = await fetchJson('/api/music/artists?limit=10000' + (search ? '&search=' + encodeURIComponent(search) : ''));
+          var ar = await fetchJson('/api/music/artists?limit=10000&sort=' + encodeURIComponent(sortForTab('artists')) + (search ? '&search=' + encodeURIComponent(search) : ''));
           var artists = Array.isArray(ar.items) ? ar.items : [];
           content.innerHTML = '<div class="music-card-grid">' + artists.map(buildArtistCardHtml).join('') + '</div>';
           if (emptyNote) emptyNote.hidden = artists.length > 0;
