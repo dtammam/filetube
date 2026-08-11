@@ -43,12 +43,25 @@ function buildAlbumCardHtml(album) {
     '</button>';
 }
 
-// An artist card (name + album/track counts).
+// An artist card: a 2x2 mosaic of the artist's album art (server sends up to 4
+// `artIds`, art-carrying albums first) over the name + album/track counts. The
+// mosaic mirrors the album card's chassis - an art-forward square, not the old
+// text-only box. `data-tiles` (1-4) drives the CSS reflow so 1/2/3 albums still
+// fill the square. Zero artIds -> one placeholder tile (empty id -> the
+// /albumart SVG fallback), so an artist with no embedded art still reads as a
+// card, never a blank. Each tile ships `art-shimmer`; revealMusicArt() (via the
+// shared shimmerArt) clears it on decode OR error - the reveal-once both-axes
+// contract, per tile.
 function buildArtistCardHtml(artist) {
   var meta = (artist.albumCount || 0) + (artist.albumCount === 1 ? ' album' : ' albums') +
     ' · ' + (artist.trackCount || 0) + (artist.trackCount === 1 ? ' track' : ' tracks');
+  var ids = (Array.isArray(artist.artIds) && artist.artIds.length) ? artist.artIds.slice(0, 4) : [''];
+  var tiles = ids.map(function (id) {
+    return '<img class="art-shimmer" src="/albumart/' + encodeURIComponent(id || '') + '" alt="" loading="lazy" />';
+  }).join('');
   return '' +
     '<button type="button" class="music-artist-card" data-artist="' + escapeMusicHtml(artist.artist) + '">' +
+    '<span class="music-artist-mosaic" data-tiles="' + ids.length + '">' + tiles + '</span>' +
     '<span class="music-artist-name" title="' + escapeMusicHtml(artist.artist) + '">' + escapeMusicHtml(artist.artist || 'Unknown artist') + '</span>' +
     '<span class="music-artist-meta">' + escapeMusicHtml(meta) + '</span>' +
     '</button>';
@@ -234,10 +247,11 @@ function buildMusicSkeletonCards(n) {
   return '<div class="music-card-grid">' + cards + '</div>';
 }
 
-// Artists are TEXT-ONLY cards (no art box, shorter than an album card), so they
-// get their own shape - seeding an album-card skeleton here would collapse ~195px
-// -> ~72px on reveal (gate WARNING 1: the artists tab is a localStorage-persisted
-// COLD landing, so the mismatch is user-reachable straight off a page load).
+// v1.103: artist cards are now art-forward (a square mosaic over name + meta),
+// the SAME shape as an album card - so the skeleton reserves the square mosaic
+// box + two lines, matching the revealed card exactly (reveal-once: seed the
+// shape you reveal). The artists tab is a localStorage-persisted COLD landing,
+// so any seed/reveal mismatch is user-reachable straight off a page load.
 function buildMusicArtistSkeletonCards(n) {
   var count = Number.isInteger(n) && n > 0 ? n : 0;
   if (count === 0) return '';
@@ -245,11 +259,12 @@ function buildMusicArtistSkeletonCards(n) {
   for (var i = 0; i < count; i++) {
     cards += '' +
       '<div class="music-artist-card" aria-hidden="true">' +
+      '<span class="music-artist-mosaic skeleton-shimmer"></span>' +
       '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>' +
       '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>' +
       '</div>';
   }
-  return '<div class="music-card-grid music-artist-grid">' + cards + '</div>';
+  return '<div class="music-card-grid">' + cards + '</div>';
 }
 
 function buildMusicSkeletonRows(n) {
@@ -580,8 +595,8 @@ if (typeof module !== 'undefined' && module.exports) {
       disconnectStickyObserver();
       setActiveTab();
       // v1.98 shimmer sweep: seed the EXACT shape the branch below reveals, so
-      // the swap is zero-shift - a song list (songs), a text-only artist grid
-      // (artists), or an album grid (albums). A DRILL is deliberately NOT seeded
+      // the swap is zero-shift - a song list (songs), an artist mosaic grid
+      // (artists, v1.103), or an album grid (albums). A DRILL is deliberately NOT seeded
       // (gate WARNING 2): renderDrillView prepends a large .music-drill-header a
       // bare song-row skeleton can't reserve, so keep the prior content on screen
       // (the album grid you clicked) until the drill paints - no header jump.
@@ -612,7 +627,7 @@ if (typeof module !== 'undefined' && module.exports) {
         } else if (tab === 'artists') {
           var ar = await fetchJson('/api/music/artists?limit=10000' + (search ? '&search=' + encodeURIComponent(search) : ''));
           var artists = Array.isArray(ar.items) ? ar.items : [];
-          content.innerHTML = '<div class="music-card-grid music-artist-grid">' + artists.map(buildArtistCardHtml).join('') + '</div>';
+          content.innerHTML = '<div class="music-card-grid">' + artists.map(buildArtistCardHtml).join('') + '</div>';
           if (emptyNote) emptyNote.hidden = artists.length > 0;
         }
       } catch (err) {

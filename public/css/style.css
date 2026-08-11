@@ -9026,7 +9026,12 @@ html[data-modern="on"] .video-uploader {
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: var(--space-8);
 }
-.music-album-card {
+/* v1.103: album + artist cards share ONE art-forward chassis (was two divergent
+   looks - borderless album vs bordered text-only artist). Both are a square art
+   block over a title + secondary line; only the art block differs (single cover
+   vs 2x2 mosaic). */
+.music-album-card,
+.music-artist-card {
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -9038,15 +9043,38 @@ html[data-modern="on"] .video-uploader {
   cursor: pointer;
   color: inherit;
 }
-.music-album-art {
+.music-album-art,
+.music-artist-mosaic {
   width: 100%;
   aspect-ratio: 1 / 1;
-  object-fit: cover;
   border-radius: var(--radius-lg);
   background: var(--thumbnail-bg);
   display: block;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  transition: box-shadow var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
 }
-.music-album-title {
+.music-album-art { object-fit: cover; }
+.music-album-card:hover .music-album-art,
+.music-artist-card:hover .music-artist-mosaic {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+/* The mosaic: up to four album-art tiles in a 2x2 grid. Fewer tiles reflow so
+   the block always fills the square (1 = full bleed, 2 = side-by-side, 3 = one
+   large tile beside two stacked). data-tiles is set by buildArtistCardHtml. */
+.music-artist-mosaic {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: var(--space-1);
+}
+.music-artist-mosaic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.music-artist-mosaic[data-tiles="1"] { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+.music-artist-mosaic[data-tiles="2"] { grid-template-rows: 1fr; }
+.music-artist-mosaic[data-tiles="3"] > img:first-child { grid-row: 1 / span 2; }
+.music-album-title,
+.music-artist-name {
   font-size: var(--fs-base);
   font-weight: var(--fw-semibold);
   color: var(--text-primary);
@@ -9055,30 +9083,14 @@ html[data-modern="on"] .video-uploader {
   text-overflow: ellipsis;
 }
 .music-album-artist,
-.music-album-count {
+.music-album-count,
+.music-artist-meta {
   font-size: var(--fs-sm);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.music-artist-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
-.music-artist-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-8);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  background: var(--bg-secondary);
-  cursor: pointer;
-  text-align: left;
-  color: inherit;
-  min-width: 0;
-}
-.music-artist-name { font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.music-artist-meta { font-size: var(--fs-sm); color: var(--text-secondary); }
 
 .music-song-list { display: flex; flex-direction: column; }
 .music-song-row {

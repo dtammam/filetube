@@ -59,13 +59,16 @@ for (const c of CASES) {
   });
 }
 
-// Artists are TEXT-ONLY cards (no art box) - a separate shape so the reveal
-// doesn't collapse an album-card skeleton down to a short artist card (gate W1).
-test('music artist skeleton: text-only cards (NO art box), wrapped in .music-artist-grid, n<=0 -> \'\'', () => {
+// v1.103: artist cards are now art-forward (a square mosaic over name + meta),
+// the SAME shape as an album card - so the skeleton reserves the mosaic square
+// box, matching the revealed card exactly (reveal-once: seed the shape you
+// reveal). It shares .music-card-grid with albums (no more .music-artist-grid).
+test('music artist skeleton: mosaic-square cards, wrapped in .music-card-grid, n<=0 -> \'\'', () => {
   const html = buildMusicArtistSkeletonCards(4);
   assert.strictEqual(countOf(html, 'music-artist-card'), 4);
-  assert.ok(html.includes('class="music-card-grid music-artist-grid"'), 'the real artists wrapper');
-  assert.ok(!html.includes('music-album-art'), 'NO square art box (that is the album-card shape that would shift)');
+  assert.ok(html.includes('class="music-card-grid"'), 'the shared card grid wrapper');
+  assert.ok(!html.includes('music-artist-grid'), 'no defunct .music-artist-grid (dropped in v1.103)');
+  assert.strictEqual(countOf(html, 'music-artist-mosaic skeleton-shimmer'), 4, 'each card reserves the mosaic square (matches the revealed shape)');
   assert.ok(html.includes('skeleton-line-title') && html.includes('skeleton-line-meta'), 'name + meta lines');
   assert.doesNotMatch(html, /<span class="skeleton-line/, 'block div text lines');
   assert.strictEqual(buildMusicArtistSkeletonCards(0), '');

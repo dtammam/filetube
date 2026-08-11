@@ -99,7 +99,12 @@ async function bootMusicView(storedTab, fn) {
   dom.window.FileTube = { registerView: (name, mod) => { registered = mod; } };
   global.fetch = (url) => Promise.resolve({
     ok: true,
-    json: () => Promise.resolve(String(url).indexOf('/artists') >= 0 ? { items: [] } : { items: [] }),
+    // The artists branch returns one artist so its card (the branch-specific
+    // .music-artist-card, v1.103) renders and can be asserted; all other
+    // browse fetches stay empty.
+    json: () => Promise.resolve(String(url).indexOf('/artists') >= 0
+      ? { items: [{ artist: 'X', albumCount: 1, trackCount: 2, artIds: [] }] }
+      : { items: [] }),
   });
   if (storedTab !== null) dom.window.localStorage.setItem('filetube_music_tab', storedTab);
   try {
@@ -139,7 +144,7 @@ test('v1.75 USE: a stored tab that is still real is honoured (the fallback is no
   await bootMusicView('artists', (dom) => {
     const active = dom.window.document.querySelector('.music-tab.active');
     assert.equal(active.getAttribute('data-tab'), 'artists');
-    assert.match(dom.window.document.getElementById('music-content').innerHTML, /music-artist-grid/);
+    assert.match(dom.window.document.getElementById('music-content').innerHTML, /music-artist-card/, 'the artists branch rendered its cards (v1.103: shares .music-card-grid with albums, so assert the artist card itself)');
   });
 });
 
