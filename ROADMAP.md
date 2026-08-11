@@ -80,6 +80,40 @@
 
 ## Shipped
 
+### v1.105.0 - Podcast now-playing view: metadata + show-notes + up-next (2026-08-11)
+
+Dean: "I like it a lot. Can we do the same treatment for the Podcast player?" -
+port the v1.104 music now-playing view to podcasts. Dean chose (AskUserQuestion):
+include the episode SHOW-NOTES; up-next = the rest of this show's episodes.
+Entirely client-side - episode `description` was ALREADY served (publicEpisode),
+so no server work and no persist-gate risk. Exec plan in
+`docs/exec-plans/completed/v1.105-podcast-nowplaying-view.md`.
+
+- **Next/prev keeps the expanded view (T1):** podcast `playAt` always loaded
+  `{dock:true}`, collapsing the expanded view on episode change. Now it keeps the
+  player's position (expanded stays expanded; docked/closed still docks).
+- **Now-playing panel (T2):** a DOM-built (`textContent`, the podcast module's
+  no-raw-HTML law) `#podcast-nowplaying-panel` under `#player-slot`: episode title,
+  "Show . date", the show-notes description (height-clamped + scroll), and a
+  tappable "Up next" of the show's remaining downloaded episodes. Shown only when
+  expanded + a podcast episode playing.
+- **Dock-return determinism (T3):** podcasts had the SAME latent
+  tap-the-dock-doesn't-return bug music carried before v1.103 (no `?nowplaying`
+  strip) - now fixed here too.
+- **Re-init reseed (T4):** a dock-tap re-inits the view; `player.getCurrentMeta()`
+  was generalized (resumeMode + subId) so the panel re-seeds and rebuilds up-next
+  by refetching the show.
+
+**What the gate caught (both seats, two rounds):** a reveal-once STRAND (CRITICAL,
+both seats) - the close listener bound only in the play path, not the dock-tap
+reseed path, so closing the player after a dock-tap-expand stranded the panel;
+and a TOCTOU where a show opened DURING the up-next rebuild fetch could clobber
+the list (the `currentShow` guard was pre-await only). Both were parity misses
+vs the mirrored music module, fixed + mutation-bound. Both seats APPROVED;
+dual-Node full suite 6705/6705 on v22.23.1 and v24.14.0.
+
+**Dean's on-device pass PENDING** (the final arbiter).
+
 ### v1.104.0 - Music now-playing view: metadata + up-next queue (2026-08-11)
 
 Dean, on-device right after v1.103: "if I tap a song there's no detail about
