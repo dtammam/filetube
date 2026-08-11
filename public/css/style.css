@@ -10927,13 +10927,28 @@ a.queue-upnext-next:hover {
    viewports): the flash exists everywhere; fixing it at the source is
    viewport-independent. If another half-state row shows up, reuse this
    `data-loading` pattern rather than decorating the partial state. */
-.watch-actions[data-loading] {
+/* v1.102 (tranche 4): the SAME reveal-once barrier now also serves the setup
+   Automation toggles (`.reveal-toggle`), which ship a static default and would
+   visibly flip once /api/settings lands (guaranteed on the two default-ON
+   toggles - relocate-hydrated, notifications-enabled). Grouping the selectors
+   here reuses the shared sweep declaration verbatim - no duplicated colour
+   literal for the census to police. loadAutomationSettings drops data-loading
+   from ALL of them on the single /api/settings settle (success OR error), so
+   they reveal together, never a per-row pop. */
+.watch-actions[data-loading],
+.reveal-toggle[data-loading] {
   position: relative;
   overflow: hidden;
   background-color: var(--bg-secondary);
   border-radius: var(--radius);
 }
-.watch-actions[data-loading]::after {
+/* A toggle label wraps an <input> plus a raw TEXT node (not an element), so
+   `> * { visibility:hidden }` below can't hide the label text - `color:
+   transparent` does, and the label's own height (one line) is the reserved,
+   zero-shift box. */
+.reveal-toggle[data-loading] { color: transparent; }
+.watch-actions[data-loading]::after,
+.reveal-toggle[data-loading]::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -10947,12 +10962,14 @@ a.queue-upnext-next:hover {
   animation: skeleton-sweep 1.6s ease-in-out infinite; /* token-exempt: choreography, reuses the shared .skeleton-shimmer keyframes */
 }
 @media (prefers-reduced-motion: reduce) {
-  .watch-actions[data-loading]::after { animation: none; }
+  .watch-actions[data-loading]::after,
+  .reveal-toggle[data-loading]::after { animation: none; }
 }
-/* Every child (the read-only star-rating AND the button sub-group) stays
-   invisible-but-laid-out until reveal, so no partial button set is ever shown
-   and the reserved height is the real (measured) final height. */
-.watch-actions[data-loading] > * { visibility: hidden; }
+/* Every child (the read-only star-rating AND the button sub-group; the setup
+   toggle's checkbox) stays invisible-but-laid-out until reveal, so no partial
+   set is ever shown and the reserved height is the real (measured) final one. */
+.watch-actions[data-loading] > *,
+.reveal-toggle[data-loading] > * { visibility: hidden; }
 
 /* === v1.96 A1: watch action-row buttons sit 5px under the mobile 44px floor.
    Scoped to `.watch-actions .btn` so it BEATS the v1.95 EOF `.btn { min-height:
