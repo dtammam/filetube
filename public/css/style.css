@@ -9511,6 +9511,17 @@ html[data-modern="on"] .video-uploader {
   justify-content: center;
 }
 
+/* v1.101: the notification-bell reserve placeholder's shimmer disc - a 22px
+   circle (matching the real bell's 22px svg) inside a #notif-bell-placeholder
+   styled as a .notif-bell-btn, so the reserved slot is the exact bell size and
+   the reveal is zero-shift. `.skeleton-shimmer` supplies the fill + sweep. */
+.notif-bell-skel {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  display: block;
+}
+
 .notif-bell-btn:hover {
   background-color: var(--bg-secondary);
 }
