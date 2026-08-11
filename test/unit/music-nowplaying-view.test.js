@@ -35,11 +35,12 @@ const SONGS = [
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
-function makePlayer(initialState) {
+function makePlayer(initialState, meta) {
   const s = { value: initialState || 'closed', loadCalls: [], expandCalls: [], trackNav: null };
   const player = {
-    currentId: null,
+    currentId: meta ? meta.id : null,
     getState: () => s.value,
+    getCurrentMeta: () => meta || null,
     load: (id, data, opts) => {
       s.loadCalls.push({ id, data, opts: opts || {} });
       player.currentId = id;
@@ -52,19 +53,27 @@ function makePlayer(initialState) {
   return { player, s, setState: (v) => { s.value = v; } };
 }
 
-async function boot(storage, initialState, run) {
+async function boot(storage, initialState, run, opts) {
+  opts = opts || {};
   const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music' });
   const saved = {
     window: global.window, document: global.document,
     localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController,
   };
-  const mock = makePlayer(initialState);
+  const mock = makePlayer(initialState, opts.meta);
   let registered = null;
   global.window = dom.window;
   global.document = dom.window.document;
   global.localStorage = dom.window.localStorage;
   global.AbortController = dom.window.AbortController;
-  dom.window.FileTube = { registerView: (name, m) => { registered = m; }, shimmerArt: () => {}, player: mock.player };
+  dom.window.FileTube = {
+    registerView: (name, m) => { registered = m; },
+    shimmerArt: () => {},
+    player: mock.player,
+    decodeListContext: opts.decode || (() => null),
+    encodeListContext: () => 'CTX',
+  };
+  dom.window.encodeListContext = () => 'CTX';
   global.fetch = (url, init) => {
     const u = String(url);
     if (/\/api\/music\?/.test(u) || /\/api\/music$/.test(u)) return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: SONGS, total: SONGS.length, offset: 0, limit: 1000 }) });
@@ -122,4 +131,62 @@ test('v1.104: a track tap while DOCKED/closed still DOCKS (browse-while-playing 
     assert.ok(call.opts.dock === true, 'a fresh list tap docks');
     assert.ok(!call.opts.slot, 'not mounted full');
   });
+});
+
+const panel = (dom) => dom.window.document.getElementById('music-nowplaying-panel');
+
+test('v1.104 (panel): playing while EXPANDED shows track metadata + up-next queue', async () => {
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom) => {
+    await clickRow(dom, 0); // play t1 while expanded
+    const el = panel(dom);
+    assert.equal(el.hidden, false, 'panel visible when expanded + playing');
+    assert.match(el.innerHTML, /class="mnp-title"[^>]*>Alpha</, 'shows the playing track title');
+    assert.match(el.innerHTML, /class="mnp-sub">Boards · One</, 'artist · album');
+    // Up next = the queue AFTER t1: t2 (index 1), t3 (index 2).
+    assert.match(el.innerHTML, /class="mnp-queue-row" data-index="1"[\s\S]*>Bravo</);
+    assert.match(el.innerHTML, /data-index="2"[\s\S]*>Charlie</);
+  });
+});
+
+test('v1.104 (panel): DOCKED playback keeps the panel HIDDEN (it is the expanded-view surface)', async () => {
+  await boot({ filetube_music_tab: 'songs' }, 'closed', async (dom) => {
+    await clickRow(dom, 0); // docks
+    assert.equal(panel(dom).hidden, true, 'no now-playing panel while docked');
+    assert.equal(panel(dom).innerHTML, '', 'panel cleared, not stranded');
+  });
+});
+
+test('v1.104 (panel): tapping an up-next row jumps to that track', async () => {
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom, mock) => {
+    await clickRow(dom, 0); // play t1, panel lists t2/t3
+    dom.window.document.querySelector('.mnp-queue-row[data-index="2"]').click();
+    await settle(); await settle();
+    assert.equal(lastLoad(mock).id, 't3', 'up-next tap played the tapped track');
+  });
+});
+
+test('v1.104 (re-init seed): a dock-tap expand re-inits with nowPlaying=null - the panel re-seeds metadata + rebuilds up-next from browseCtx', async () => {
+  // Arrive on the ALBUMS grid (no queue) with a music track still playing and the
+  // player expanded, exactly like a dock-tap return. getCurrentMeta supplies the
+  // metadata; decodeListContext + the songs fetch rebuild up-next.
+  const meta = { id: 't2', title: 'Bravo', artist: 'Boards', album: 'One', albumKey: 'k1', browseCtx: 'CTX', isMusic: true };
+  await boot(
+    { filetube_music_tab: 'albums', filetube_music_sort: JSON.stringify({ albums: 'title-asc' }) },
+    'full',
+    async (dom) => {
+      const el = panel(dom);
+      assert.equal(el.hidden, false, 'panel shows despite a fresh (null) nowPlaying');
+      assert.match(el.innerHTML, /mnp-title"[^>]*>Bravo</, 're-seeded the playing title from the live player');
+      // up-next rebuilt from the album queue (SONGS after t2 -> t3).
+      assert.match(el.innerHTML, /class="mnp-queue-row"[\s\S]*>Charlie</, 'up-next rebuilt from browseCtx');
+    },
+    { meta, decode: (s) => (s === 'CTX' ? { src: 'music', album: 'One', sort: 'album-order' } : null) },
+  );
+});
+
+test('v1.104 (re-init seed): a NON-music item on the shared host does NOT show the music panel', async () => {
+  const meta = { id: 'v9', title: 'A Video', artist: '', album: '', browseCtx: '', isMusic: false };
+  await boot({ filetube_music_tab: 'albums' }, 'full', async (dom) => {
+    assert.equal(panel(dom).hidden, true, 'a video/book on the host never shows the music now-playing panel');
+  }, { meta });
 });

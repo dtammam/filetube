@@ -11,6 +11,7 @@ const path = require('node:path');
 const {
   escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildSongRowHtml,
   drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
+  buildNowPlayingPanelHtml,
   MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
 } = require('../../public/js/music.js');
 
@@ -187,6 +188,30 @@ test('v1.44.2/v1.73/v1.104 SOURCE-LOCK: a fresh tap DOCKS (browse-while-playing)
     'expanded -> slot, else dock (browse-while-playing default)');
   assert.match(MUSIC_JS, /getState\(\) === 'full'/, 'the keep-expanded branch gates on the full state');
   assert.match(MUSIC_JS, /readerHref: '\/music\?nowplaying=1'/, 'the dock tap opens the now-playing view in one gesture');
+});
+
+// ---- v1.104 now-playing panel ----------------------------------------------
+
+test('v1.104: buildNowPlayingPanelHtml renders escaped title + "artist · album" + tappable up-next rows', () => {
+  const html = buildNowPlayingPanelHtml(
+    { title: 'Song "1"', artist: 'A & B', album: 'Alb<x>' },
+    [{ id: 't2', title: 'Two', artist: 'X', index: 3 }, { id: 't3', title: 'Three', artist: 'Y', index: 4 }],
+  );
+  assert.match(html, /class="mnp-title"[^>]*>Song &quot;1&quot;/, 'title escaped');
+  assert.match(html, /class="mnp-sub">A &amp; B · Alb&lt;x&gt;/, 'artist · album, escaped');
+  assert.match(html, /class="mnp-queue-head">Up next/);
+  assert.match(html, /class="mnp-queue-row" data-index="3"[\s\S]*src="\/albumart\/t2"[\s\S]*>Two</, 'first up-next row carries its real queue index + thumb');
+  assert.match(html, /data-index="4"[\s\S]*>Three</);
+  assert.ok((html.match(/art-shimmer/g) || []).length === 2, 'each up-next thumb ships art-shimmer (reveal-once)');
+});
+
+test('v1.104: buildNowPlayingPanelHtml omits the queue when nothing is up next, and the sub when no artist/album', () => {
+  const noQueue = buildNowPlayingPanelHtml({ title: 'Solo' }, []);
+  assert.doesNotMatch(noQueue, /mnp-queue/, 'no up-next section');
+  assert.doesNotMatch(noQueue, /mnp-sub/, 'no artist/album sub-line when both absent');
+  assert.match(noQueue, />Solo</);
+  // A missing title degrades, never throws.
+  assert.match(buildNowPlayingPanelHtml({}, []), /Unknown track/);
 });
 
 // ---- v1.44.2 collapsing drill header ---------------------------------------
