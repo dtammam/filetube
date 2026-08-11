@@ -80,6 +80,48 @@
 
 ## Shipped
 
+### v1.99.0 - Shimmer sweep tranche 2 + the reveal-once contract (2026-08-11)
+
+Dean, on-device (v1.98 feedback): the top chip-row "flow" flickers / gains-or-
+loses a row. Plus: "add it to CONTRIBUTING so any new thing includes this."
+
+- **Avatar-bar flicker (the report).** Root cause was NOT the fixed 6 chips - it's
+  the mobile avatar bar ABOVE them, which shipped `hidden` then popped in after
+  /api/channels, shoving the chips down (variable recent-uploader count = the
+  "more or less"). FIX: persist the last-known count and RESERVE the strip with
+  that many shimmer avatar discs before the fetch (the v1.53 capability-cache
+  pattern) - the real discs reveal in place (true zero-shift: 56 disc + 4 gap + 14
+  line = 74px, matched exactly after the gate caught a 4px miss). Cleared on
+  sign-out so a shared-browser user-switch starts fresh.
+- **Watch RELATED rail** now shimmers instead of a blank rail (audit row 15).
+  (Audit correction: watch COMMENTS load synchronously from localStorage - no
+  fetch, no skeleton needed; the audit was wrong.)
+- **The CONTRACT.** A new MANDATORY CONTRIBUTING section - "Every fetch-then-render
+  surface reveals ONCE - no blank-then-pop" (seed-before-await, zero-shift reuse,
+  strand-safe, no flash-backward, reuse the toolkit) - the same standing as the
+  design-token rules, so NEW work ships compliant from birth.
+
+**Full gate - both seats earned their keep on the persist-and-reserve bar:** QA
+caught a ~4px residual + an overstated "zero-shift" comment/test (presence-not-
+binding); the adversarial caught a reverse-COLLAPSE (a stale per-device count
+reserving a strip that then collapses) AND that my brand-new contract's strand
+clause contradicted its own reference code, AND that a guard test used a
+non-discriminating fixture. All fixed (true 14px zero-shift + real height binding;
+sign-out cache-clear; reworded contract; a discriminating 3.5 guard input).
+
+**KNOWN GAPS (disclosed):** the avatar bar still pops in ONCE on a first-ever
+device load (no cache yet), and can reverse-COLLAPSE once on the paths that skip
+sign-out (tab/browser switch without logout, unsubscribe-all, a warm-cache
+/api/channels error) - one-time, cosmetic, strictly smaller than the pop-in they
+replace. Deferred to tranche 3: header-right cluster (account+bell, structural,
+every shell), stats dashboard, feed-mode home, setup toggles, sidebar, art-decode;
+plus the secondary chrome-dup hypothesis to confirm on-device.
+
+Dual-Node: **Node 22.23.1 6609/6609, Node 24.14.0 6609/6609**, zero failures.
+Census 0, ledger clean. **AWAITING DEAN'S ON-DEVICE PASS** - on mobile modern home:
+the top avatar strip + chips should settle in place (shimmer discs -> real), not
+pop the chips down a beat late; and the watch related rail shimmers then reveals.
+
 ### v1.98.0 - Shimmer sweep, tranche 1: the library views (2026-08-11)
 
 Dean: "any loading moment without shimmer is the defect ... shimmer is beautiful."
