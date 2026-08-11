@@ -265,6 +265,43 @@ function buildFeedRowHtml(row) {
   `;
 }
 
+// v1.102 shimmer sweep (tranche 4): FEED mode was the ONE home layout with no
+// skeleton - the pre-fetch seed lives in `#video-grid`, which feed mode hides
+// (style.css), so `#home-feed-host` stayed blank until /api/home resolved. This
+// seeds a shape-matched shimmer into the feed host BEFORE the fetch: `rows`
+// sections, each a real `.books-home-row` header bar (`.skel-title`) over a real
+// `.books-home-row-scroller` of `cards` `.video-row-card`-shaped shimmer cards
+// (the SAME 164px card + 16:9 cover box the real feed cards use, so the reveal is
+// vertically zero-shift). Pure string builder (buildSkeletonGrid contract):
+// non-positive counts -> '', every node aria-hidden + skeleton-shimmer. Exported
+// for node:test.
+function buildFeedSkeleton(rows, cards) {
+  const rowCount = Number.isInteger(rows) && rows > 0 ? rows : 0;
+  const cardCount = Number.isInteger(cards) && cards > 0 ? cards : 0;
+  if (rowCount === 0 || cardCount === 0) return '';
+  let cardHtml = '';
+  for (let i = 0; i < cardCount; i++) {
+    cardHtml += `
+      <span class="book-row-card music-row-card video-row-card" aria-hidden="true">
+        <span class="book-row-cover video-row-cover skeleton-shimmer"></span>
+        <span class="book-row-title skeleton-line skeleton-line-title skeleton-shimmer"></span>
+        <span class="music-row-artist skeleton-line skeleton-line-meta skeleton-shimmer"></span>
+      </span>`;
+  }
+  let html = '';
+  for (let r = 0; r < rowCount; r++) {
+    html += `
+      <section class="books-home-row music-home-row" aria-hidden="true">
+        <div class="books-home-row-header"><div class="skeleton-shimmer skel-title"></div></div>
+        <div class="books-home-row-scroller">${cardHtml}</div>
+      </section>`;
+  }
+  return html;
+}
+// Enough sections/cards to plausibly fill the feed viewport before the fetch.
+const FEED_SKELETON_ROWS = 3;
+const FEED_SKELETON_CARDS = 6;
+
 // ---- v1.84 Modern Mode: the filter-chip row ---------------------------------
 //
 // The `filter` params are the CLIENT half of the server's MODERN_GRID_FILTERS
@@ -381,6 +418,10 @@ function buildModernEmptyHtml(filter) {
 // away).
 async function renderHomeFeed(host, signal) {
   if (!host) return;
+  // v1.102: shimmer the feed host BEFORE the fetch so it never sits blank while
+  // /api/home is in flight. Every branch below overwrites host.innerHTML, so the
+  // skeleton is always replaced (reveal-once) - real rows, empty state, or error.
+  host.innerHTML = buildFeedSkeleton(FEED_SKELETON_ROWS, FEED_SKELETON_CARDS);
   try {
     const res = await fetch('/api/home', { signal });
     const data = res.ok ? await res.json() : { rows: [] };
@@ -616,6 +657,8 @@ if (typeof module !== 'undefined' && module.exports) {
     buildVideoHomeSectionHtml,
     buildFeedCardHtml,
     buildFeedRowHtml,
+    buildFeedSkeleton,
+    renderHomeFeed,
     homeRowEnabled,
     migrateListeningRowPref,
     resolveCardCornerPrefs,

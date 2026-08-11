@@ -1781,6 +1781,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .book-cover-link.skeleton-shimmer,
 .music-album-art.skeleton-shimmer,
 .podcast-card-art.skeleton-shimmer,
+.book-row-cover.skeleton-shimmer, /* v1.102: the feed-mode skeleton card cover (also has thumbnail-bg) */
 .related-thumb.skeleton-shimmer { /* v1.99: .related-thumb is #000 letterback - restore the fill so the sweep shows */
   background-color: var(--bg-secondary);
 }

@@ -10,7 +10,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const { buildFeedCardHtml, buildFeedRowHtml } = require('../../public/js/main.js');
+const { JSDOM } = require('jsdom');
+const { buildFeedCardHtml, buildFeedRowHtml, buildFeedSkeleton, renderHomeFeed } = require('../../public/js/main.js');
 
 function feedItem(over) {
   return Object.assign({
@@ -88,4 +89,75 @@ test('row: the row title is escaped too', () => {
   const html = buildFeedRowHtml({ id: 'x', title: 'More from <b>Evil</b>', seeAllHref: null, items: [feedItem()] });
   assert.doesNotMatch(html, /<b>Evil<\/b>/);
   assert.match(html, /More from &lt;b&gt;Evil&lt;\/b&gt;/);
+});
+
+// ---- v1.102 shimmer sweep (tranche 4): the feed-mode skeleton ---------------
+
+const countOf = (html, cls) => (html.match(new RegExp('class="[^"]*\\b' + cls + '(?![-\\w])', 'g')) || []).length;
+
+test('skeleton: N rows x M cards, each real .video-row-card chassis + shimmer cover + two text lines', () => {
+  const html = buildFeedSkeleton(3, 6);
+  assert.strictEqual(countOf(html, 'books-home-row'), 3, 'three real feed-row sections');
+  assert.strictEqual(countOf(html, 'video-row-card'), 18, '6 cards per row');
+  // Each card reuses the REAL 16:9 cover box (zero-shift on reveal) + shimmers it.
+  assert.strictEqual(countOf(html, 'book-row-cover'), 18, 'each card reuses the real cover box');
+  assert.strictEqual((html.match(/book-row-cover video-row-cover skeleton-shimmer/g) || []).length, 18, 'the cover box shimmers');
+  // A header title bar per row (the ready-made .skel-title asset).
+  assert.strictEqual((html.match(/skeleton-shimmer skel-title/g) || []).length, 3, 'a shimmer title bar per row header');
+  assert.ok(html.includes('skeleton-line-title') && html.includes('skeleton-line-meta'), 'two text lines per card');
+  assert.ok(html.includes('aria-hidden="true"'), 'placeholders are aria-hidden');
+});
+
+test('skeleton: non-positive / non-integer counts -> \'\' (never throws)', () => {
+  assert.strictEqual(buildFeedSkeleton(0, 6), '');
+  assert.strictEqual(buildFeedSkeleton(3, 0), '');
+  assert.strictEqual(buildFeedSkeleton(-1, 6), '');
+  assert.strictEqual(buildFeedSkeleton('x', 6), '');
+  assert.strictEqual(buildFeedSkeleton(), '');
+});
+
+// renderHomeFeed seeds the skeleton BEFORE awaiting /api/home, then REPLACES it
+// once the fetch settles - real rows on success, empty state on no-rows, a
+// recovery message on error. Binds the reveal (delete the seed -> the pre-fetch
+// assertion goes red), not mere presence.
+async function runFeed(fetchImpl) {
+  delete global.document; delete global.window; delete global.fetch;
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="host"></div></body>', { url: 'http://localhost/' });
+  global.window = dom.window;
+  global.document = dom.window.document;
+  const host = dom.window.document.getElementById('host');
+  // A deferred fetch so we can inspect the host WHILE the fetch is pending.
+  let resolveFetch;
+  const pending = new Promise((res) => { resolveFetch = res; });
+  global.fetch = () => pending.then(() => fetchImpl());
+  const done = renderHomeFeed(host, undefined);
+  // Synchronously after the call, before the fetch resolves: the skeleton is up.
+  const midShimmer = host.querySelectorAll('.skeleton-shimmer').length;
+  resolveFetch();
+  await done;
+  const out = { midShimmer, finalShimmer: host.querySelectorAll('.skeleton-shimmer').length, html: host.innerHTML };
+  dom.window.close();
+  return out;
+}
+
+test('renderHomeFeed: shimmers before the fetch, then reveals real rows (reveal-once)', async () => {
+  const rows = [{ id: 'r', title: 'Recently added', seeAllHref: null, items: [feedItem()] }];
+  const out = await runFeed(() => ({ ok: true, json: async () => ({ rows }) }));
+  assert.ok(out.midShimmer > 0, 'the feed host shimmers while /api/home is in flight');
+  assert.strictEqual(out.finalShimmer, 0, 'the skeleton is gone once real rows render');
+  assert.match(out.html, /Recently added/, 'the real feed row rendered in its place');
+});
+
+test('renderHomeFeed: an empty feed replaces the skeleton with the empty state (never a stranded shimmer)', async () => {
+  const out = await runFeed(() => ({ ok: true, json: async () => ({ rows: [] }) }));
+  assert.ok(out.midShimmer > 0, 'shimmered during the fetch');
+  assert.strictEqual(out.finalShimmer, 0, 'skeleton cleared');
+  assert.match(out.html, /home-feed-empty/, 'the empty state took its place');
+});
+
+test('renderHomeFeed: a fetch error replaces the skeleton with the recovery message', async () => {
+  const out = await runFeed(() => { throw new Error('network'); });
+  assert.ok(out.midShimmer > 0, 'shimmered during the fetch');
+  assert.strictEqual(out.finalShimmer, 0, 'skeleton cleared even on error');
+  assert.match(out.html, /Could not load your home feed/, 'the recovery message took its place');
 });
