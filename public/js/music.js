@@ -221,6 +221,24 @@ function buildMusicSkeletonCards(n) {
   return '<div class="music-card-grid">' + cards + '</div>';
 }
 
+// Artists are TEXT-ONLY cards (no art box, shorter than an album card), so they
+// get their own shape - seeding an album-card skeleton here would collapse ~195px
+// -> ~72px on reveal (gate WARNING 1: the artists tab is a localStorage-persisted
+// COLD landing, so the mismatch is user-reachable straight off a page load).
+function buildMusicArtistSkeletonCards(n) {
+  var count = Number.isInteger(n) && n > 0 ? n : 0;
+  if (count === 0) return '';
+  var cards = '';
+  for (var i = 0; i < count; i++) {
+    cards += '' +
+      '<div class="music-artist-card" aria-hidden="true">' +
+      '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>' +
+      '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>' +
+      '</div>';
+  }
+  return '<div class="music-card-grid music-artist-grid">' + cards + '</div>';
+}
+
 function buildMusicSkeletonRows(n) {
   var count = Number.isInteger(n) && n > 0 ? n : 0;
   if (count === 0) return '';
@@ -243,7 +261,7 @@ if (typeof module !== 'undefined' && module.exports) {
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildSongRowHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
-    buildMusicSkeletonCards, buildMusicSkeletonRows,
+    buildMusicSkeletonCards, buildMusicSkeletonRows, buildMusicArtistSkeletonCards,
   };
 }
 
@@ -537,13 +555,19 @@ if (typeof module !== 'undefined' && module.exports) {
       // sentinel is about to be replaced) — the SPA-swap leak guard.
       disconnectStickyObserver();
       setActiveTab();
-      // v1.98 shimmer sweep: seed the shape-matched shimmer before the fetch (a
-      // song list for drill/songs, a card grid for albums/artists). Each branch
-      // below reveals by replacing content.innerHTML; the catch clears it.
-      if (content) {
-        content.innerHTML = (drill || tab === 'songs')
+      // v1.98 shimmer sweep: seed the EXACT shape the branch below reveals, so
+      // the swap is zero-shift - a song list (songs), a text-only artist grid
+      // (artists), or an album grid (albums). A DRILL is deliberately NOT seeded
+      // (gate WARNING 2): renderDrillView prepends a large .music-drill-header a
+      // bare song-row skeleton can't reserve, so keep the prior content on screen
+      // (the album grid you clicked) until the drill paints - no header jump.
+      // Each branch reveals by replacing content.innerHTML; the catch clears it.
+      if (content && !drill) {
+        content.innerHTML = tab === 'songs'
           ? buildMusicSkeletonRows(8)
-          : buildMusicSkeletonCards(8);
+          : tab === 'artists'
+            ? buildMusicArtistSkeletonCards(12)
+            : buildMusicSkeletonCards(8);
       }
       try {
         if (drill) {

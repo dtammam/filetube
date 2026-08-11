@@ -15,7 +15,7 @@ const path = require('node:path');
 
 const { buildHistorySkeletonRows } = require('../../public/js/history.js');
 const { buildBookSkeletonCards } = require('../../public/js/books.js');
-const { buildMusicSkeletonCards, buildMusicSkeletonRows } = require('../../public/js/music.js');
+const { buildMusicSkeletonCards, buildMusicSkeletonRows, buildMusicArtistSkeletonCards } = require('../../public/js/music.js');
 const { buildPodcastSkeletonCards } = require('../../public/js/podcasts.js');
 
 // Count class-attribute tokens EXACTLY equal to `cls` (a trailing lookahead
@@ -59,27 +59,45 @@ for (const c of CASES) {
   });
 }
 
+// Artists are TEXT-ONLY cards (no art box) - a separate shape so the reveal
+// doesn't collapse an album-card skeleton down to a short artist card (gate W1).
+test('music artist skeleton: text-only cards (NO art box), wrapped in .music-artist-grid, n<=0 -> \'\'', () => {
+  const html = buildMusicArtistSkeletonCards(4);
+  assert.strictEqual(countOf(html, 'music-artist-card'), 4);
+  assert.ok(html.includes('class="music-card-grid music-artist-grid"'), 'the real artists wrapper');
+  assert.ok(!html.includes('music-album-art'), 'NO square art box (that is the album-card shape that would shift)');
+  assert.ok(html.includes('skeleton-line-title') && html.includes('skeleton-line-meta'), 'name + meta lines');
+  assert.doesNotMatch(html, /<span class="skeleton-line/, 'block div text lines');
+  assert.strictEqual(buildMusicArtistSkeletonCards(0), '');
+  assert.strictEqual(buildMusicArtistSkeletonCards('x'), '');
+});
+
 test('each view SEEDS its skeleton into the host before the fetch, and CLEARS it on error (never stranded)', () => {
   const history = fs.readFileSync(path.join(__dirname, '../../public/js/history.js'), 'utf8');
   const books = fs.readFileSync(path.join(__dirname, '../../public/js/books.js'), 'utf8');
   const music = fs.readFileSync(path.join(__dirname, '../../public/js/music.js'), 'utf8');
   const podcasts = fs.readFileSync(path.join(__dirname, '../../public/js/podcasts.js'), 'utf8');
 
-  // Seeded before the first load.
+  // Seeded before the first load (bind CODE, not comment text).
   assert.match(history, /listEl\.innerHTML = buildHistorySkeletonRows\(\d+\);\s*\n\s*fetchPage\(0, true\)/, 'history seeds before fetchPage(0)');
-  assert.match(books, /grid\.innerHTML = buildBookSkeletonCards\(\d+\);/, 'books seeds before its await');
-  assert.match(music, /content\.innerHTML = \(drill \|\| tab === 'songs'\)/, 'music seeds the shape-matched skeleton before its await');
-  assert.match(podcasts, /content\.innerHTML = buildPodcastSkeletonCards\(\d+\);/, 'podcasts seeds before the shows fetch');
+  assert.match(books, /grid\.innerHTML = buildBookSkeletonCards\(\d+\);\s*\n\s*try \{/, 'books seeds before its await');
+  // Music seeds the SHAPE-MATCHED skeleton per tab, and does NOT seed a drill
+  // (its header can't be reserved by a bare song-row skeleton - gate W2).
+  assert.match(music, /if \(content && !drill\) \{[\s\S]*?tab === 'songs'[\s\S]*?buildMusicSkeletonRows\(\d+\)[\s\S]*?tab === 'artists'[\s\S]*?buildMusicArtistSkeletonCards\(\d+\)[\s\S]*?buildMusicSkeletonCards\(\d+\)/, 'music seeds per-tab shape, skips drill');
+  // Podcasts seeds ONLY the true blank moment (grid on screen, not already populated).
+  assert.match(podcasts, /if \(!currentShow && content && !content\.querySelector\('\.podcast-grid'\)\) \{\s*\n\s*content\.innerHTML = buildPodcastSkeletonCards\(\d+\);/, 'podcasts seeds only when the grid is blank (no reveal-once flash-backward)');
 
   // Cleared on error so a failed FIRST load shows the empty state, not a forever-shimmer.
   assert.match(history, /if \(replace\) \{ listEl\.innerHTML = ''; refreshChrome\(\); \}/, 'history clears the shimmer on error');
   assert.match(books, /catch \(err\) \{\s*\n\s*grid\.innerHTML = '';/, 'books clears the shimmer on error');
-  assert.match(music, /if \(content\) content\.innerHTML = ''; \/\/ v1\.98/, 'music clears the shimmer on error');
-  assert.match(podcasts, /if \(!currentShow && content\) content\.innerHTML = ''; \/\/ never strand/, 'podcasts clears the shimmer on error');
+  assert.match(music, /catch \(err\) \{[\s\S]*?if \(content\) content\.innerHTML = '';/, 'music clears the shimmer on error');
+  assert.match(podcasts, /catch[\s\S]*?if \(!currentShow && content\) content\.innerHTML = '';/, 'podcasts clears the shimmer on error');
 });
 
 test('the shimmer base fill is restored on the reused art boxes (so the sweep is visible, not swallowed by --thumbnail-bg)', () => {
   const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
-  assert.match(css, /\.book-cover-link\.skeleton-shimmer,[\s\S]*?\.history-thumb\.skeleton-shimmer \{\s*background-color: var\(--bg-secondary\);/,
+  assert.match(css, /\.book-cover-link\.skeleton-shimmer,\s*\n\s*\.music-album-art\.skeleton-shimmer,\s*\n\s*\.podcast-card-art\.skeleton-shimmer \{\s*background-color: var\(--bg-secondary\);/,
     'a specificity-winning rule restores --bg-secondary on the reused skeleton art boxes');
+  // .history-thumb already uses --bg-secondary, so it is deliberately NOT in the rule.
+  assert.doesNotMatch(css, /\.history-thumb\.skeleton-shimmer \{/, 'history-thumb (already --bg-secondary) is not redundantly re-listed');
 });

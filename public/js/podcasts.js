@@ -678,10 +678,16 @@
       // v1.75: the GET /api/podcasts/liked count-fetch that used to ride along
       // here went with the lane card it gated - the podcasts place shows real
       // shows only now. The route itself stays (other consumers).
-      // v1.98 shimmer sweep: seed the grid shimmer before the fetch (only when
-      // the grid - not an open show's episodes - is on screen); renderShows'
-      // content.textContent='' is the reveal, and the catch clears it too.
-      if (!currentShow && content) content.innerHTML = buildPodcastSkeletonCards(8);
+      // v1.98 shimmer sweep: seed the grid shimmer before the fetch, but ONLY at
+      // the true blank moment - when the grid is on screen (not an open show's
+      // episodes) AND not already populated. Guarding on an existing .podcast-grid
+      // stops a status-poll refresh (refreshCurrentView after a subscribe/like/
+      // check-feeds) from flashing loaded content back to shimmer (gate
+      // SUGGESTION: a reveal-once violation). renderShows' content.textContent=''
+      // is the reveal; the catch clears it.
+      if (!currentShow && content && !content.querySelector('.podcast-grid')) {
+        content.innerHTML = buildPodcastSkeletonCards(8);
+      }
       fetchJson('/api/podcasts/shows').then(function (data) {
         if (signal.aborted) return;
         shows = data.shows || [];
