@@ -491,14 +491,19 @@ test('v1.109 source-lock: T4 the scrub preview names the hovered chapter, indepe
   assert.match(css, /\.seek-preview-img\[hidden\],\s*\.seek-preview-chapter\[hidden\] \{ display: none !important; \}/, 'both toggled elements pin display:none (the [hidden]-loses lesson)');
 });
 
-test('v1.109 source-lock: T5 the persistent current-chapter title chip', () => {
+test('v1.109 source-lock: T5 the current-chapter title chip flashes on change (does not sit over the video)', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
   assert.match(src, /chapterNowEl\.className = 'chapter-now';/, 'the chip is JS-built');
   // Shown only for a genuinely chaptered item (>1) while in a chapter; text is
   // "> Title" (U+203A punctuation, iOS-safe).
-  const fn = src.slice(src.indexOf('function updateChapterNowChip()'), src.indexOf('function updateChapterNowChip()') + 500);
+  const fn = src.slice(src.indexOf('function updateChapterNowChip()'), src.indexOf('function updateChapterNowChip()') + 800);
   assert.match(fn, /var show = currentChapters\.length > 1 && !!ch;/, 'chip shows only for a >1-chapter item in a chapter');
   assert.match(fn, /chapterNowEl\.textContent = '› ' \+ \(ch\.title \|\| 'Chapter'\);/, 'chip text is "> Title"');
+  // v1.109.1 (Dean): FLASH, don't persist -- add .visible then a timer drops it,
+  // so the chip fades out instead of sitting over the video. Deleting the timer
+  // (making it persistent again) must fail here.
+  assert.match(fn, /chapterNowEl\.classList\.add\('visible'\);/, 'chip flashes in via .visible');
+  assert.match(fn, /chapterChipHideTimer = setTimeout\(function \(\) \{[\s\S]*?chapterNowEl\.classList\.remove\('visible'\);[\s\S]*?\}, CHAPTER_CHIP_MS\);/, 'a timer fades the chip out after CHAPTER_CHIP_MS');
   // Refreshed on a chapter-set change (load/edit) past the dispatch no-op, and
   // hidden on the per-load reset (no stale "> Old" flash).
   assert.match(src, /currentChapterIdx = -1;\s*\n\s*updateChapterLoopIndicator\(\);\s*\n\s*buildChaptersMenu\(\);/, 'chapter-set change resets idx so refreshCurrentChapter re-renders');
@@ -507,8 +512,10 @@ test('v1.109 source-lock: T5 the persistent current-chapter title chip', () => {
   assert.match(reset, /currentChapterIdx = -1;\s*\n\s*updateChapterNowChip\(\);/, 'chip hidden on per-load reset');
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
   // Height-agnostic anchor (bottom:100%) so it clears the 40/80/26px bars without
-  // arithmetic; hidden when docked.
+  // arithmetic; hidden when docked; opacity 0 at rest, fading in only via .visible.
   assert.match(css, /\.chapter-now \{[^}]*bottom: 100%;/, 'chip anchored above the bar via bottom:100% (no height math)');
+  assert.match(css, /\.chapter-now \{[^}]*opacity: 0;[^}]*transition: opacity/, 'chip is opacity 0 at rest with an opacity transition');
+  assert.match(css, /\.chapter-now\.visible \{ opacity: 1; \}/, '.visible fades it in');
   assert.match(css, /#player-dock \.chapter-now \{ display: none; \}/, 'chip hidden in the docked mini-player');
 });
 

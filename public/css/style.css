@@ -6744,13 +6744,17 @@ body.ft-css-fullscreen .bottom-nav {
    above) -- the segment overlay hides with it. */
 #player-dock .seek-chapters { display: none; }
 
-/* v1.109 (Dean): the persistent current-chapter title chip. Anchored with
-   `bottom: 100%` so it floats just above the control strip regardless of the
-   strip's height (40px desktop / 80px two-row mobile / 26px docked) -- no
-   height arithmetic (the measure-don't-guess lesson). Left-aligned to the bar's
-   content, ellipsized, a subtle scrim pill. pointer-events:none. Hidden in the
-   dock; the native-controls path hides the whole .player-controls, so the chip
-   goes with it. */
+/* v1.109 (Dean): the current-chapter title chip. Anchored with `bottom: 100%` so
+   it floats just above the control strip regardless of the strip's height (40px
+   desktop / 80px two-row mobile / 26px docked) -- no height arithmetic (the
+   measure-don't-guess lesson). Left-aligned to the bar's content, ellipsized, a
+   subtle scrim pill. pointer-events:none. Hidden in the dock; the native-controls
+   path hides the whole .player-controls, so the chip goes with it.
+   v1.109.1 (Dean, on-device: "don't always obstruct the video"): the chip is
+   opacity 0 at REST and only fades to 1 while `.visible` -- player.js flashes it
+   for CHAPTER_CHIP_MS on each chapter change then drops `.visible`. Kept in the
+   DOM (opacity, not display) so the fade actually transitions; `[hidden]` is only
+   the full chapter-less/dock removal. */
 .chapter-now {
   position: absolute;
   bottom: 100%;
@@ -6767,7 +6771,10 @@ body.ft-css-fullscreen .bottom-nav {
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-slow) var(--ease-ui);
 }
+.chapter-now.visible { opacity: 1; }
 .chapter-now[hidden] { display: none !important; }
 #player-dock .chapter-now { display: none; }
 

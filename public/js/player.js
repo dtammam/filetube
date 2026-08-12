@@ -1367,10 +1367,13 @@ if (typeof module !== 'undefined' && module.exports) {
   // it never joins the flex row, so the battle-won two-row `order` layout is
   // untouched.
   var seekChaptersEl, seekChaptersRO = null;
-  // v1.109 (Dean): the persistent current-chapter title chip ("> Title") that
-  // floats just above the control bar -- the YouTube "you're in this section"
-  // label. Absolute + out of flow like the segments/preview.
-  var chapterNowEl;
+  // v1.109 (Dean): the current-chapter title chip ("> Title") that floats just
+  // above the control bar. v1.109.1 (Dean, on-device): it no longer sits over the
+  // video full-time -- it FLASHES in for a few seconds when the chapter CHANGES,
+  // then fades out (chapterChipHideTimer). Absolute + out of flow like the
+  // segments/preview.
+  var chapterNowEl, chapterChipHideTimer = null;
+  var CHAPTER_CHIP_MS = 3000; // how long the chip stays before fading, per change
   // v1.93.2: the server sends the (derived) geometry for every eligible video,
   // but the sprite FILE 404s until the scan generates it. Track a per-id preload
   // so the scrub preview only shows once the sprite actually LOADS - otherwise
@@ -4289,17 +4292,29 @@ if (typeof module !== 'undefined' && module.exports) {
     updateChapterNowChip();
   }
 
-  // v1.109 (Dean): the persistent "> Chapter title" chip above the bar. Shown
-  // only for a genuinely chaptered item (>1 chapter) while the playhead is in a
-  // chapter; hidden otherwise. Idempotent (reads state), so calling it from the
-  // dispatch, the per-load reset, and the chapter-set change is all safe. `>` is
-  // U+203A (punctuation, not a pictograph) so iOS renders it as plain text.
+  // v1.109 (Dean): the "> Chapter title" chip above the bar. v1.109.1 (Dean,
+  // on-device: "don't always obstruct the video"): it FLASHES on a chapter CHANGE
+  // instead of sitting there. This is only ever called by setCurrentChapter (which
+  // no-ops unless the index actually changed) and the per-load reset, so every
+  // call IS a real change: show the new title, then fade it out after
+  // CHAPTER_CHIP_MS. Only for a genuinely chaptered item (>1 chapter) in a
+  // chapter; otherwise hide immediately (chapter-less / reset / pre-first). `>`
+  // is U+203A (punctuation, not a pictograph) so iOS renders it as plain text.
+  // The fade is opacity via `.visible` (kept in the DOM), so display:none never
+  // kills the transition; `hidden` is reserved for the full chapter-less removal.
   function updateChapterNowChip() {
     if (!chapterNowEl) return;
+    if (chapterChipHideTimer) { clearTimeout(chapterChipHideTimer); chapterChipHideTimer = null; }
     var ch = currentChapterIdx >= 0 ? currentChapters[currentChapterIdx] : null;
     var show = currentChapters.length > 1 && !!ch;
-    chapterNowEl.hidden = !show;
-    if (show) chapterNowEl.textContent = '› ' + (ch.title || 'Chapter');
+    if (!show) { chapterNowEl.hidden = true; chapterNowEl.classList.remove('visible'); return; }
+    chapterNowEl.hidden = false;
+    chapterNowEl.textContent = '› ' + (ch.title || 'Chapter');
+    chapterNowEl.classList.add('visible'); // flash in
+    chapterChipHideTimer = setTimeout(function () {
+      if (chapterNowEl) chapterNowEl.classList.remove('visible'); // fade out (stays opacity 0, out of the way)
+      chapterChipHideTimer = null;
+    }, CHAPTER_CHIP_MS);
   }
   // Recompute the current chapter from the LIVE position and dispatch it -- used
   // on a chapter-set change (load / edit) where the playhead may sit in a
