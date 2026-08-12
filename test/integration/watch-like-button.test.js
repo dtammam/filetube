@@ -167,7 +167,11 @@ test('watch page: the Like button reflects the initial NOT-liked membership stat
     assert.strictEqual(likeLabel(likeBtn), 'Like');
     assert.ok(likeHasIcon(likeBtn), 'the glyph must survive alongside the hideable label');
     assert.strictEqual(likeBtn.getAttribute('aria-pressed'), 'false');
-    assert.ok(likeBtn.classList.contains('btn-primary'), 'not-yet-liked must be the actionable (primary) state');
+    // v1.108 (Dean): the YouTube heart convention -- NOT-liked is the neutral
+    // grey resting state (no `.liked`, and deliberately no `.btn-primary`: the
+    // old red-as-actionable convention is REVERSED).
+    assert.ok(!likeBtn.classList.contains('liked'), 'not-yet-liked must be the neutral/grey resting state');
+    assert.ok(!likeBtn.classList.contains('btn-primary'), 'not-yet-liked is NO LONGER the primary/red CTA (convention reversed)');
   } finally {
     dom.window.close();
   }
@@ -183,7 +187,10 @@ test('watch page: the Like button reflects the initial ALREADY-liked membership 
     assert.ok(likeBtn, 'expected a #like-media-btn to be mounted');
     assert.strictEqual(likeLabel(likeBtn), 'Liked');
     assert.strictEqual(likeBtn.getAttribute('aria-pressed'), 'true');
-    assert.ok(!likeBtn.classList.contains('btn-primary'), 'already-liked must be the neutral (settled) state');
+    // v1.108: LIKED fills the heart red via the `.liked` class (mirrors
+    // `.card-like-btn.liked`); never `.btn-primary`.
+    assert.ok(likeBtn.classList.contains('liked'), 'already-liked must carry .liked (red heart)');
+    assert.ok(!likeBtn.classList.contains('btn-primary'), 'liked state is red-via-.liked, never btn-primary');
   } finally {
     dom.window.close();
   }
@@ -206,6 +213,7 @@ test('watch page: clicking Like toggles via POST then DELETE /api/liked/:id, re-
     assert.deepStrictEqual(calls[0], { url: `/api/liked/${MEDIA_ID}`, method: 'POST' });
     assert.strictEqual(likeLabel(likeBtn), 'Liked', 'expected the button to flip to liked AFTER the POST resolved');
     assert.strictEqual(likeBtn.getAttribute('aria-pressed'), 'true');
+    assert.ok(likeBtn.classList.contains('liked'), 'liked after POST => .liked (red heart)');
     assert.ok(!likeBtn.classList.contains('btn-primary'));
 
     likeBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
@@ -215,7 +223,8 @@ test('watch page: clicking Like toggles via POST then DELETE /api/liked/:id, re-
     assert.deepStrictEqual(calls[1], { url: `/api/liked/${MEDIA_ID}`, method: 'DELETE' });
     assert.strictEqual(likeLabel(likeBtn), 'Like', 'expected the button to flip back to not-liked AFTER the DELETE resolved');
     assert.strictEqual(likeBtn.getAttribute('aria-pressed'), 'false');
-    assert.ok(likeBtn.classList.contains('btn-primary'));
+    assert.ok(!likeBtn.classList.contains('liked'), 'un-liked after DELETE => no .liked (grey heart)');
+    assert.ok(!likeBtn.classList.contains('btn-primary'));
   } finally {
     dom.window.close();
   }

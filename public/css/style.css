@@ -970,6 +970,17 @@ html.reader-immersive .app-container { padding-top: 0; }
   background-color: var(--yt-red-dark);
 }
 
+/* The watch-page Like button's liked state (v1.108, Dean): a plain neutral
+   `.btn` when NOT liked (grey heart, the resting look), turning the heart RED
+   when liked -- the YouTube heart convention, and the exact mirror of
+   `.card-like-btn.liked` below (currentColor tints the `.icon-heart` mask + the
+   "Liked" label together). Deliberately NOT `.btn-primary`: red-as-actionable /
+   grey-as-done read backwards to Dean. `color` only, so the button keeps its
+   era-themed `.btn` background/border. */
+.btn.liked {
+  color: var(--yt-red);
+}
+
 .theme-toggle {
   background: none;
   border: none;
