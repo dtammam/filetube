@@ -3729,6 +3729,24 @@ a.sub-row-channel-link:focus-visible {
   width: 90%;
   padding: var(--space-10);
   box-shadow: var(--shadow-lg);
+  /* v1.108 (Dean: "the Edit chapters section is cut off at the bottom of the
+     scroll window"): the backdrop centres this box in the viewport but it had
+     no height cap, so a TALL modal -- the chapters editor's 10-row textarea plus
+     hint + status + Save/Cancel -- overflowed past the bottom edge on short
+     viewports and the actions row was clipped AND unreachable (nothing
+     scrolled). Cap the height and let the modal scroll internally. The `vh`
+     fallback covers engines without `dvh`; the `dvh` line wins where supported
+     (correct under mobile dynamic toolbars) and subtracts the safe-area insets
+     so a PWA never centres the box under the notch/home-indicator. max-height
+     is census-exempt (layout geometry). Shared by every `.modal-content` (confirm/
+     move/chapters); short modals never reach the cap, so this is a pure
+     tall-modal improvement, not a regression. */
+  max-height: calc(100vh - var(--space-16));
+  max-height: calc(100dvh - var(--space-16) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  /* Keep the last row (Save/Cancel) clear of the PWA home-indicator when the
+     modal is scrolled to its bottom -- same idiom as the mobile nav/sheet. */
+  padding-bottom: calc(var(--space-10) + env(safe-area-inset-bottom, 0px));
   /* Subtle scale-in alongside the backdrop's fade above -- same `.modal-open`
      toggle (added to the BACKDROP, so this rule descends from it). */
   transform: scale(0.97);

@@ -466,6 +466,23 @@ test('.modal-backdrop fades in/out via .modal-open (opacity 0 -> 1) and .modal-c
   assert.match(css, /\.modal-backdrop\.modal-open \.modal-content\s*\{\s*transform:\s*scale\(1\);/);
 });
 
+// v1.108 (Dean: "the Edit chapters section is cut off at the bottom of the
+// scroll window"): the centred .modal-content must cap its height and scroll
+// internally so a tall modal (chapters editor) never clips its Save/Cancel row
+// off the viewport bottom. Bind all three parts -- remove any and a tall modal
+// regresses to the clip.
+test('.modal-content caps its height (dvh + safe-area insets) and scrolls internally, with a safe-area bottom pad', () => {
+  const contentRule = /\.modal-content\s*\{([^}]*)\}/.exec(css);
+  assert.ok(contentRule);
+  const body = contentRule[1];
+  assert.match(body, /overflow-y:\s*auto;/, 'a tall modal must scroll instead of clipping');
+  assert.match(body, /max-height:\s*calc\(100dvh[^;]*env\(safe-area-inset-top[^;]*env\(safe-area-inset-bottom[^;]*\);/,
+    'dvh height cap that clears the PWA notch/home-indicator');
+  assert.match(body, /max-height:\s*calc\(100vh[^;]*\);/, 'vh fallback for engines without dvh');
+  assert.match(body, /padding-bottom:\s*calc\(var\(--space-10\)\s*\+\s*env\(safe-area-inset-bottom,\s*0px\)\);/,
+    'Save/Cancel stays clear of the home indicator when scrolled to the bottom');
+});
+
 test('.playlists-sheet slides up via .sheet-open (translateY(100%) -> translateY(0)), scoped to the mobile :not([hidden]) state', () => {
   assert.match(css, /\.playlists-sheet:not\(\[hidden\]\)\s*\{[^}]*transform:\s*translateY\(100%\);/s);
   assert.match(css, /\.playlists-sheet:not\(\[hidden\]\)\.sheet-open\s*\{\s*transform:\s*translateY\(0\);/);
