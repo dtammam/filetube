@@ -199,6 +199,13 @@ dual-Node (v22.23.1 + v24.14.0), release, device pass pending.
 - Testing followed the repo convention (CONTRIBUTING.md: no player-boot jsdom
   harness): PURE helpers unit-tested (currentChapterIndex, markCurrentChapterItem
   incl. the CLEAR axis, chapterBoundaryPercents), DOM wiring source-locked.
+- **Scrub does NOT move the chip/menu** (gate SUGGESTION, now deliberate): the
+  chip + menu row reflect the COMMITTED playhead ("what you're watching"); the
+  scrub target ("where you'd land") is surfaced by the hover tooltip. On release,
+  `seeked` re-syncs. Documented at the seek `input` handler.
+- **Gate fix round:** removed a dead `has-seek-chapters` host class (no consumer,
+  a vestige of the abandoned neutralise-native approach) + fixed its comment;
+  added a negative-`startTime` resolver test (the `s < 0` guard was untested).
 
 ## Dean's device-pass probes (final arbiter)
 

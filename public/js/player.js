@@ -4314,15 +4314,14 @@ if (typeof module !== 'undefined' && module.exports) {
   // INTERIOR chapter boundary (chapterBoundaryPercents), positioned by % so it
   // scales with the bar. Only segments a >1-chapter item once the total duration
   // is known (called from loadedmetadata/durationchange + chapter-set change);
-  // the continuous red fill stays the native `--seek-fill`. Hidden (and the host
-  // flag cleared) when there's nothing to segment.
+  // the continuous red fill stays the native `--seek-fill`. Hidden when there's
+  // nothing to segment.
   function buildSeekChapters() {
     if (!seekChaptersEl) return;
     seekChaptersEl.replaceChildren();
     var gaps = currentChapters.length > 1 ? chapterBoundaryPercents(currentChapters, seekTotalDuration()) : [];
     var hasSegs = gaps.length > 0;
     seekChaptersEl.hidden = !hasSegs;
-    if (host) host.classList.toggle('has-seek-chapters', hasSegs);
     if (!hasSegs) return;
     for (var i = 0; i < gaps.length; i++) {
       var notch = document.createElement('span');
@@ -4924,6 +4923,11 @@ if (typeof module !== 'undefined' && module.exports) {
         var total = seekTotalDuration();
         seekBar.style.setProperty('--seek-fill', (ratio * 100) + '%');
         if (timeCur) timeCur.textContent = formatDuration(ratio * total);
+        // v1.109 (Dean, follow-along): deliberately DON'T dispatch the current
+        // chapter here. The title chip + menu row reflect the COMMITTED playhead
+        // ("what you're watching"); the scrub TARGET ("where you'd land") is
+        // already surfaced by the hover tooltip (updateSeekPreview, pointermove).
+        // On release, 'seeked' -> updateSeekVisual re-syncs them to the new spot.
       });
       // The ONLY place a scrub is committed -- pure `seekCommitTarget`
       // resolves the absolute target for both a normal source and a
@@ -5562,10 +5566,9 @@ if (typeof module !== 'undefined' && module.exports) {
       if (chaptersMenu) while (chaptersMenu.firstChild) chaptersMenu.removeChild(chaptersMenu.firstChild);
       if (chaptersBtn) chaptersBtn.style.display = 'none';
       if (host) host.classList.remove('has-chapters');
-      // v1.109: drop the seek-bar segments too so a chapter-less item shows the
-      // plain bar (buildSeekChapters would also hide it, but a hard clear here
-      // covers the reset-without-reload path).
-      if (host) host.classList.remove('has-seek-chapters');
+      // v1.109: hide + empty the seek-bar segment overlay so a chapter-less item
+      // shows the plain bar (buildSeekChapters would also hide it, but this hard
+      // clear covers the reset-without-reload path).
       if (seekChaptersEl) { seekChaptersEl.replaceChildren(); seekChaptersEl.hidden = true; }
     };
     // v1.43.1 B2 (Dean: top chapters unreachable on mobile): live half of

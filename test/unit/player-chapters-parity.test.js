@@ -304,6 +304,11 @@ test('currentChapterIndex: skips malformed startTimes and tolerates a non-monoto
   const jumbled = [{ startTime: 0 }, { startTime: 300 }, { startTime: 100 }];
   assert.strictEqual(currentChapterIndex(jumbled, 150), 2, 'last qualifying start (index 2 @100) wins over index 0');
   assert.strictEqual(currentChapterIndex(jumbled, 50), 0);
+  // A negative startTime is skipped like any malformed one (guards the `s < 0`
+  // branch, which no other case exercises).
+  const neg = [{ startTime: -5, title: 'bad' }, { startTime: 10, title: 'ok' }];
+  assert.strictEqual(currentChapterIndex(neg, 3), -1, 'negative start skipped -> before the first valid start');
+  assert.strictEqual(currentChapterIndex(neg, 20), 1, 'the valid later chapter still resolves');
 });
 
 // ---- v1.109: markCurrentChapterItem -- the Ch-menu highlight (BOTH axes) -----
