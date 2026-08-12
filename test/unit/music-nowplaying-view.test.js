@@ -116,13 +116,14 @@ const clickTab = async (dom, name) => {
 };
 const lastLoad = (mock) => mock.s.loadCalls[mock.s.loadCalls.length - 1];
 
-test('v1.104 (fix B): a track change while EXPANDED keeps the player in #player-slot (stays expanded)', async () => {
+test('v1.106: a fresh SELECT while EXPANDED mounts full into #player-slot (stays expanded)', async () => {
+  // v1.106: a select always mounts full; the keep-position-on-NAV behaviour is
+  // bound separately below (the onNext test + "NAV while DOCKED keeps it docked").
   await boot({ filetube_music_tab: 'songs' }, 'full', async (dom, mock) => {
-    // Player is expanded (full in the slot). Tap a different track.
-    await clickRow(dom, 1);
+    await clickRow(dom, 1); // select a different track while expanded
     const call = lastLoad(mock);
     assert.equal(call.id, 't2', 'loaded the tapped track');
-    assert.ok(call.opts.slot, 'loaded INTO #player-slot (stays expanded), not docked');
+    assert.ok(call.opts.slot, 'mounted into #player-slot (expanded), not docked');
     assert.ok(!call.opts.dock, 'not dock:true');
     assert.equal(mock.s.value, 'full', 'player is still full/expanded after');
   });
@@ -182,6 +183,8 @@ test('v1.104 (panel): playing while EXPANDED shows track metadata + up-next queu
 test('v1.104/v1.106 (panel): DOCKED playback keeps the panel HIDDEN (reached via a nav while docked)', async () => {
   await boot({ filetube_music_tab: 'songs' }, 'full', async (dom, mock) => {
     await clickRow(dom, 0); // select -> expands (panel shown)
+    assert.equal(panel(dom).hidden, false, 'panel populated first (non-vacuous)');
+    assert.ok(panel(dom).innerHTML.length > 0, 'has content to strand');
     mock.setState('docked'); // browsed away -> docked
     mock.s.trackNav.onNext(); // nav keeps it docked
     await settle(); await settle();

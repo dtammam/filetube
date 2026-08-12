@@ -993,11 +993,12 @@
               currentShow = data.show || show;
               episodes = data.episodes || [];
               renderEpisodes();
-              // QA W1: the deep-linked row scrolls into view - a card for an
-              // episode 80 rows deep must not land at the top of the list
-              // with its highlighted row off-screen.
-              var rowEl = content ? content.querySelector('[data-episode-id="' + epId + '"]') : null;
-              if (rowEl && typeof rowEl.scrollIntoView === 'function') rowEl.scrollIntoView({ block: 'center' });
+              // v1.106: the earlier QA-W1 row.scrollIntoView (so a deep-linked
+              // episode 80 rows deep wasn't off-screen) is superseded here - a
+              // ?play= SELECT now expands the now-playing view and scrolls to the
+              // top (playAt -> loadTrack window.scrollTo(0,0)), which shows the
+              // playing episode + its up-next, so scrolling to the row would be
+              // clobbered anyway.
               for (var i = 0; i < playable.length; i++) {
                 if (playable[i].id === epId) { playAt(i); return; }
               }
