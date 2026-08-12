@@ -504,6 +504,10 @@ test('v1.109 source-lock: T5 the current-chapter title chip flashes on change (d
   // (making it persistent again) must fail here.
   assert.match(fn, /chapterNowEl\.classList\.add\('visible'\);/, 'chip flashes in via .visible');
   assert.match(fn, /chapterChipHideTimer = setTimeout\(function \(\) \{[\s\S]*?chapterNowEl\.classList\.remove\('visible'\);[\s\S]*?\}, CHAPTER_CHIP_MS\);/, 'a timer fades the chip out after CHAPTER_CHIP_MS');
+  // The prior fade timer MUST be cleared before arming a new one, or two rapid
+  // chapter changes stack timers and the first fires early, fading the chip while
+  // it should still be up. Drop the clearTimeout and this goes red.
+  assert.match(fn, /if \(chapterChipHideTimer\) \{ clearTimeout\(chapterChipHideTimer\); chapterChipHideTimer = null; \}/, 'the prior fade timer is cleared before re-arming (no double-timer early-fade)');
   // Refreshed on a chapter-set change (load/edit) past the dispatch no-op, and
   // hidden on the per-load reset (no stale "> Old" flash).
   assert.match(src, /currentChapterIdx = -1;\s*\n\s*updateChapterLoopIndicator\(\);\s*\n\s*buildChaptersMenu\(\);/, 'chapter-set change resets idx so refreshCurrentChapter re-renders');

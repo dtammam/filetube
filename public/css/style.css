@@ -6777,6 +6777,12 @@ body.ft-css-fullscreen .bottom-nav {
 .chapter-now.visible { opacity: 1; }
 .chapter-now[hidden] { display: none !important; }
 #player-dock .chapter-now { display: none; }
+/* v1.109.1: decorative-motion-off convention -- player.js drives both the show
+   (.visible) and hide axes explicitly, so dropping the fade can't leave a stuck
+   half-state; reduced-motion users get an instant snap instead of the ~0.25s fade. */
+@media (prefers-reduced-motion: reduce) {
+  .chapter-now { transition: none; }
+}
 
 #player-dock .cc-overlay {
   bottom: 26px;      /* matches the trimmed mini-player bar height */ /* token-exempt: positional geometry (Stop A Batch A) */
