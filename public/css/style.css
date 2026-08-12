@@ -61,7 +61,7 @@ summary,
   /* v1.45.0 T1: the offset the sticky home filter bar pins at — the fixed
      header height (--header-h on desktop); overridden to --mobile-header-h
      in the max-width:768px :root below (the mobile header is taller). */
-  --sticky-bar-top: var(--header-h);
+  --sticky-bar-top: calc(var(--header-h) + env(safe-area-inset-top)); /* v1.106: clear the top safe-area at ALL widths - env is 0 on desktop, non-zero on an iPad PWA once the status bar overlays after a fullscreen exit */
   --shadow-lg: 0 4px 12px rgba(0,0,0,0.25);
   --yt-red: #cc0000;
   --yt-red-dark: #990000;
@@ -741,13 +741,20 @@ header {
   top: 0;
   left: 0;
   right: 0;
-  height: var(--header-h);
+  /* v1.106: the top bar clears the status-bar safe area at ALL widths. env is 0
+     on a real desktop (no visual change) and non-zero on an iPad PWA once iPadOS
+     flips the status bar from RESERVED to OVERLAY on exiting native video
+     fullscreen - the "top bar runs under the clock after fullscreen" bug. The
+     mobile (<=768px) block below overrides both of these with its own env-aware
+     rules, so there is no double-count. box-sizing:border-box keeps the content
+     row at var(--header-h); the padding pushes it below the inset. */
+  height: calc(var(--header-h) + env(safe-area-inset-top));
   background-color: var(--header-bg);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--space-8);
+  padding: env(safe-area-inset-top) var(--space-8) 0;
   z-index: var(--z-header);
 }
 
@@ -969,7 +976,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 /* Main Container Layout */
 .app-container {
   display: flex;
-  padding-top: var(--header-h); /* clears the fixed header - the coupling --header-h exists for */
+  padding-top: calc(var(--header-h) + env(safe-area-inset-top)); /* clears the fixed header (incl. the top safe-area, v1.106) - the coupling --header-h exists for */
   min-height: 100vh;
 }
 
@@ -980,7 +987,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   border-right: 1px solid var(--border-color);
   padding: var(--space-6) 0;
   position: fixed;
-  top: var(--header-h); /* pinned flush under the fixed header (was an exempt 56px literal; the coupling is structural now) */
+  top: calc(var(--header-h) + env(safe-area-inset-top)); /* pinned flush under the fixed header, incl. the top safe-area (v1.106) */
   bottom: 0;
   left: 0;
   overflow-y: auto;
@@ -1630,7 +1637,7 @@ html.reader-immersive .app-container { padding-top: 0; }
    on non-touch. z-index 40: above the grid + sticky bar (20), below dock/modals. */
 .ptr-indicator {
   position: fixed;
-  top: calc(var(--mobile-header-h, var(--header-h)) + 8px); /* token-exempt: positional geometry (Stop A Batch A); the desktop fallback now derives --header-h instead of carrying a 56px copy */
+  top: calc(var(--header-h) + env(safe-area-inset-top) + 8px); /* token-exempt: positional geometry; v1.106 - var(--header-h)+env equals --mobile-header-h at <=768px and adds the top safe-area at desktop/iPad width too */
   left: 50%;
   z-index: 40; /* token-exempt: local stacking */
   width: var(--size-control); /* Stop A Batch C: 36px == --size-control, zero-delta */
