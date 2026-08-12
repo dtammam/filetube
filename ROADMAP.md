@@ -80,6 +80,36 @@
 
 ## Shipped
 
+### v1.106.0 - Tap-to-expand now-playing + iPad PWA header safe-area (2026-08-12)
+
+Two Dean on-device reports in one small wave.
+
+- **Selecting a track/episode opens the expanded now-playing view (music +
+  podcasts).** Dean: stop auto-docking to the mini-player when you SELECT a
+  song/episode - go straight to the now-playing view (worth landing on since
+  v1.104/v1.105). A fresh select (row tap, up-next tap, shuffle, drill Play,
+  continue) now mounts FULL into `#player-slot` and scrolls it into view; a NAV
+  (next/prev, and end-of-track auto-advance) KEEPS the player's position -
+  expanded stays expanded, docked stays docked (the v1.104/v1.105 behaviour). The
+  mini-player appears when you navigate away to browse. Threaded via `playAt(i,
+  opts)`; only the registered next/prev handlers pass `{keepPosition:true}`.
+- **iPad PWA: the top bar ran under the status bar after exiting fullscreen.**
+  Root cause (confirmed with Dean): the status-bar safe-area clearance
+  (`env(safe-area-inset-top)`) was applied ONLY in the `<=768px` block. An iPad in
+  landscape is >768px -> the desktop header rule, which never consumed `env`.
+  Before fullscreen iPadOS RESERVES the status bar (`env`=0, header fine); exiting
+  native video fullscreen flips it to OVERLAY (`env` becomes non-zero) but the
+  desktop header ignored it -> the top bar got overrun. This fully explains the
+  "only after fullscreen" timing with no WebKit-staleness hack. Fix: consume
+  `env(safe-area-inset-top)` in the header clearance at ALL widths (base `header`,
+  `.app-container`, `--sticky-bar-top`, `.sidebar`, `.ptr-indicator`) - `env` is 0
+  on a real desktop (byte-identical there) and non-zero on the iPad PWA.
+
+Gate: both seats APPROVE (no CRITICAL/WARNING; three cheap SUGGESTIONs applied -
+a dead deep-link scroll + two test-quality hardenings). Dual-Node full suite
+6710/6710 on v22.23.1 and v24.14.0. **Dean's on-device pass PENDING** (the iPad
+header especially).
+
 ### v1.105.0 - Podcast now-playing view: metadata + show-notes + up-next (2026-08-11)
 
 Dean: "I like it a lot. Can we do the same treatment for the Podcast player?" -
