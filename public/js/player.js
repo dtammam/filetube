@@ -1359,7 +1359,7 @@ if (typeof module !== 'undefined' && module.exports) {
   var ccOverlayEl, ccOverlayTextEl;
   // v1.92: the seek-bar storyboard scrub preview (built in JS, never touches
   // the shared player-host-template so all shells stay byte-identical).
-  var seekPreviewEl, seekPreviewImgEl, seekPreviewTimeEl;
+  var seekPreviewEl, seekPreviewImgEl, seekPreviewTimeEl, seekPreviewChapterEl;
   // v1.109 (Dean): the seek-bar chapter-segment overlay (gap notches at chapter
   // boundaries) + the ResizeObserver that keeps it aligned to the seek bar as
   // the two-row mobile bar reflows. Absolute, out-of-flow, pointer-events:none --
@@ -1926,7 +1926,14 @@ if (typeof module !== 'undefined' && module.exports) {
       seekPreviewImgEl.className = 'seek-preview-img';
       seekPreviewTimeEl = document.createElement('div');
       seekPreviewTimeEl.className = 'seek-preview-time';
+      // v1.109: the hovered chapter's name (YouTube tooltip). Between the
+      // thumbnail and the timestamp; hidden unless the hovered position is in a
+      // chapter.
+      seekPreviewChapterEl = document.createElement('div');
+      seekPreviewChapterEl.className = 'seek-preview-chapter';
+      seekPreviewChapterEl.hidden = true;
       seekPreviewEl.appendChild(seekPreviewImgEl);
+      seekPreviewEl.appendChild(seekPreviewChapterEl);
       seekPreviewEl.appendChild(seekPreviewTimeEl);
       playerControls.appendChild(seekPreviewEl);
       // v1.109: the chapter-segment overlay -- same JS-built, appended-inside-
@@ -4203,27 +4210,47 @@ if (typeof module !== 'undefined' && module.exports) {
   // (v1.93.2: not yet generated), so those cases degrade cleanly to no preview.
   function updateSeekPreview(clientX) {
     if (!seekPreviewEl || !seekBar || !playerControls) return;
-    var geom = currentData && currentData.storyboard;
-    if (!geom || !currentData.id) { hideSeekPreview(); return; }
-    // v1.93.2: only show once the sprite is confirmed loaded (ungenerated -> the
-    // preload 404s, ready stays false, and we hide rather than show an empty box).
-    ensureSeekSprite(currentData.id);
-    if (!seekSpriteReady) { hideSeekPreview(); return; }
     var rect = seekBar.getBoundingClientRect();
     if (!(rect.width > 0)) { hideSeekPreview(); return; }
     var ratio = scrubRatioFromPointer(clientX, rect.left, rect.width);
     if (ratio === null) { hideSeekPreview(); return; }
     var total = seekTotalDuration();
     var t = ratio * total;
-    var tile = storyboardTile(storyboardFrameForTime(t, geom, total), geom);
-    // Sprite frame via CSS background percentages (the shared pure geometry).
-    if (seekPreviewImgEl.style.backgroundImage.indexOf(currentData.id) === -1) {
-      seekPreviewImgEl.style.backgroundImage = 'url("/storyboard/' + encodeURIComponent(currentData.id) + '")';
+    // Thumbnail: only when this item HAS a storyboard sprite and it's loaded
+    // (v1.93.2: an ungenerated sprite 404s -> not ready). Audio/short/legacy
+    // items simply get no thumbnail -- but the chapter name below can still show.
+    var geom = currentData && currentData.storyboard;
+    var showThumb = false;
+    if (geom && currentData.id) {
+      ensureSeekSprite(currentData.id);
+      showThumb = seekSpriteReady;
     }
-    seekPreviewImgEl.style.backgroundSize = tile.sizeXPct + '% ' + tile.sizeYPct + '%';
-    seekPreviewImgEl.style.backgroundPosition = tile.posXPct + '% ' + tile.posYPct + '%';
-    var aspect = (geom.tileH > 0 && geom.tileW > 0) ? (geom.tileH / geom.tileW) : (9 / 16);
-    seekPreviewImgEl.style.height = Math.round(160 * aspect) + 'px';
+    // v1.109 (Dean): the chapter at the HOVERED position (not the playhead) --
+    // YouTube's hover tooltip. Independent of the thumbnail, so an
+    // audio-with-chapters item (no storyboard) still names the section you're
+    // pointing at.
+    var chIdx = currentChapters.length ? currentChapterIndex(currentChapters, t) : -1;
+    var chapterName = chIdx >= 0 && currentChapters[chIdx] ? (currentChapters[chIdx].title || 'Chapter') : '';
+    // Nothing to show -> hide (preserves the old audio/short/legacy no-op path).
+    if (!showThumb && !chapterName) { hideSeekPreview(); return; }
+    if (seekPreviewImgEl) {
+      seekPreviewImgEl.hidden = !showThumb;
+      if (showThumb) {
+        var tile = storyboardTile(storyboardFrameForTime(t, geom, total), geom);
+        // Sprite frame via CSS background percentages (the shared pure geometry).
+        if (seekPreviewImgEl.style.backgroundImage.indexOf(currentData.id) === -1) {
+          seekPreviewImgEl.style.backgroundImage = 'url("/storyboard/' + encodeURIComponent(currentData.id) + '")';
+        }
+        seekPreviewImgEl.style.backgroundSize = tile.sizeXPct + '% ' + tile.sizeYPct + '%';
+        seekPreviewImgEl.style.backgroundPosition = tile.posXPct + '% ' + tile.posYPct + '%';
+        var aspect = (geom.tileH > 0 && geom.tileW > 0) ? (geom.tileH / geom.tileW) : (9 / 16);
+        seekPreviewImgEl.style.height = Math.round(160 * aspect) + 'px';
+      }
+    }
+    if (seekPreviewChapterEl) {
+      seekPreviewChapterEl.hidden = !chapterName;
+      if (chapterName) seekPreviewChapterEl.textContent = chapterName;
+    }
     seekPreviewTimeEl.textContent = formatDuration(t);
     // Center horizontally on the pointer, clamped inside the control strip.
     var cRect = playerControls.getBoundingClientRect();

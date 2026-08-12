@@ -6691,6 +6691,26 @@ body.ft-css-fullscreen .bottom-nav {
   border-radius: var(--radius);
   padding: 0 var(--space-2);
 }
+/* v1.109 (Dean): the hovered chapter's name in the scrub preview (YouTube's
+   hover tooltip). Same chip styling as the timestamp; ellipsized to the sprite
+   width so a long title never blows the preview box wide. */
+.seek-preview-chapter {
+  font-size: var(--fs-xs);
+  color: var(--text-primary);
+  background-color: var(--header-bg);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  padding: 0 var(--space-2);
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+/* Explicit hide (the repo's [hidden]-loses-to-author-display lesson): these two
+   are toggled via the `hidden` property, so pin display:none !important. */
+.seek-preview-img[hidden],
+.seek-preview-chapter[hidden] { display: none !important; }
 @media (max-width: 768px) {
   .seek-preview {
     bottom: 52px; /* token-exempt: positional geometry, above the 44px mobile strip */

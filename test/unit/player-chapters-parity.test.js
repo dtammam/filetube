@@ -470,6 +470,22 @@ test('v1.109 source-lock: the seek-bar segment overlay is JS-built, aligned, reb
   assert.match(css, /\.seek-chapters-gap \{[^}]*background-color: var\(--header-bg\);/, 'gap notch is the bar colour');
 });
 
+test('v1.109 source-lock: T4 the scrub preview names the hovered chapter, independent of the thumbnail', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  assert.match(src, /seekPreviewChapterEl\.className = 'seek-preview-chapter';/, 'the chapter-name line is built');
+  const fn = src.slice(src.indexOf('function updateSeekPreview(clientX)'), src.indexOf('function updateSeekPreview(clientX)') + 2600);
+  // The chapter name comes from the resolver at the HOVERED time t, not the
+  // playhead, and is computed regardless of the storyboard (audio-with-chapters
+  // still names the section).
+  assert.match(fn, /var chIdx = currentChapters\.length \? currentChapterIndex\(currentChapters, t\) : -1;/, 'chapter resolved at the hovered t');
+  // The preview shows when EITHER a thumbnail OR a chapter name is available --
+  // deleting the chapter half must not resurrect the old storyboard-only bail.
+  assert.match(fn, /if \(!showThumb && !chapterName\) \{ hideSeekPreview\(\); return; \}/, 'shows on thumb OR chapter (audio-with-chapters gets the name)');
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.seek-preview-chapter \{[^}]*text-overflow: ellipsis;/, 'the chapter name ellipsizes');
+  assert.match(css, /\.seek-preview-img\[hidden\],\s*\.seek-preview-chapter\[hidden\] \{ display: none !important; \}/, 'both toggled elements pin display:none (the [hidden]-loses lesson)');
+});
+
 test('v1.41.12/v1.108 source-lock: per-row Loop toggle in the menu + styles present (resting word label, armed ∞, fixed width)', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
   // v1.108 (Dean): resting label is the WORD "Loop" (the v1.39 iOS-glyph lesson
