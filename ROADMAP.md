@@ -80,6 +80,57 @@
 
 ## Shipped
 
+### v1.108.0 - Watch/player polish: Like heart, chapter-loop ∞, modal scroll (2026-08-12)
+
+Three on-device polish items Dean reported, one wave. No server/schema/route
+changes - client JS + CSS + tests.
+
+- **Like button reads the right way round (watch page).** The watch-page Like
+  button used the v1.30 "primary-when-actionable" convention: UN-liked was
+  `btn-primary` (red, a call-to-action), liked was neutral - so red read as
+  "click me" and grey as "done", backwards from the familiar YouTube heart. Now
+  NOT-liked is a plain neutral/grey `.btn` and LIKED fills the heart + "Liked"
+  label RED via `.btn.liked { color: var(--yt-red) }`, mirroring the card corner
+  control's already-correct `.card-like-btn.liked`. `aria-pressed` unchanged. The
+  card like button, and the Subscribe/Pin buttons (which keep primary-when-
+  actionable deliberately), were untouched.
+- **Chapter-loop toggle shows ∞ and stops shifting the row.** In the custom
+  player's chapters menu, arming a chapter loop showed the word "Looping"; the
+  wider word reflowed the row and nudged the button's left border out of line
+  with the rows above/below (Dean: "the little line gets pushed"). Now the armed
+  label is **∞** (U+221E, a Mathematical Operator with no emoji-presentation
+  variant - so iOS renders it as plain text, unlike the pictographic transport
+  glyphs the v1.39 lesson warns off), resting stays "Loop", and both ride a
+  fixed-width label span (`min-width: 4.5ch`) so the button never resizes between
+  states. The bar-level `#chapters-btn` red tint is untouched.
+- **Tall modals scroll instead of clipping.** The shared `.modal-content` had no
+  height cap or overflow, so the Edit-chapters editor (10-row textarea + hint +
+  Save/Cancel) overflowed short viewports and its actions row was clipped AND
+  unreachable. Added a `max-height` cap (`vh` fallback then a `dvh` line that
+  subtracts the safe-area insets so a PWA never centres the box under the notch/
+  home-indicator), `overflow-y: auto`, and a safe-area bottom pad. Shared by
+  confirm/move/chapters modals; short modals never reach the cap, so it's a pure
+  tall-modal improvement.
+
+Gate: full two-reviewer gate (both seats), two rounds, both APPROVE. What the
+gate caught: the adversarial seat fonttools-measured that the ∞ fix had a
+**residual ~1-2px reflow** - the armed `.active` state bolded the width-reserving
+label, so its `ch` reservation recomputed against the (wider) bold digit on
+variable-weight fonts like Geist, nudging the very border the fix was meant to
+hold. Fixed weight-invariantly: the label is pinned `font-weight: normal` and the
+now-dead `.active` bold removed, so the reservation is identical in both states
+(0px shift). The gate also closed a coverage gap (the `.btn.liked` CSS rule had
+no source-lock) and I self-caught a vacuous lazy-regex in my own new lock
+(overspanned to one of 8 other `font-weight: normal` in the sheet) and re-anchored
+it block-scoped; all new locks are mutation-verified.
+
+Known/disclosed tradeoff: the armed ∞ is no longer **bold** (that bold was the
+reflow's root cause). The armed state still signals clearly via red colour + the
+∞ glyph + the bar-level tint. `lint:css` TOTAL 0, ledger CLEAN. Dual-Node full
+suite **6717/6717** on v22.23.1 and v24.14.0. **Dean's on-device pass PENDING**
+(arm/disarm a chapter loop on the modern theme and watch the left border hold;
+like/unlike a video; open Edit chapters on a short viewport).
+
 ### v1.107.0 - Modern theme font: Roboto -> Geist (2026-08-12)
 
 Dean: the modern theme's font felt "slightly sloppy / not super modern... modern,
