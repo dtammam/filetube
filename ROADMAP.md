@@ -80,6 +80,23 @@
 
 ## Shipped
 
+### v1.109.1 - Chapter chip flashes on change instead of obstructing the video (2026-08-12)
+
+Dean, on-device after v1.109.0: he likes the "› Chapter title" chip appearing on
+a chapter change but not it "always obstructing the video." So the chip no longer
+persists - it FLASHES in for 3s each time the chapter changes (and at playback
+start, entering the first chapter), then fades out and stays fully out of the way
+(opacity 0, pointer-events:none) until the next change. The other three surfaces
+(seek-bar segments, menu highlight, hover tooltip) are unchanged.
+
+Implementation: `.chapter-now` is opacity 0 at rest; player.js's updateChapterNowChip
+(only ever called on a real chapter change or the per-load reset) adds `.visible`
+then arms a single fade timer (prior timer cleared first, so rapid changes can't
+stack). Fade is opacity (kept in the DOM) so display:none never kills the
+transition; instant under prefers-reduced-motion. Slim gate (adversarial seat)
+APPROVE; both non-blocking suggestions folded (locked the timer-clear guard,
+reduced-motion override). Dual-Node 6731/6731. **Dean's on-device pass PENDING.**
+
 ### v1.109.0 - Chapter follow-along: segmented seek bar + menu highlight + title chip (2026-08-12)
 
 Dean: "If we have content with chapters, colour the section of the chapter
