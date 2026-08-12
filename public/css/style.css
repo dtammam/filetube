@@ -6521,6 +6521,29 @@ body.ft-css-fullscreen .bottom-nav {
 .chapters-menu-loop:hover {
   background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
 }
+/* v1.110 (Dean): the per-chapter share icon -- same structural recipe as the
+   Loop toggle (flex:0, left border, stretch-centered), icon-only. */
+.chapters-menu-share {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border-dark);
+  color: var(--text-secondary);
+  padding: var(--space-4) var(--space-6);
+  cursor: pointer;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--size-control-sm);
+}
+.chapters-menu-share:hover {
+  background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
+}
+.chapters-menu-share .icon-share {
+  width: 14px; /* token-exempt: fixed glyph size (matches .card-share-btn .icon-share) */
+  height: 14px; /* token-exempt: fixed glyph size */
+}
 .chapters-menu-loop.active {
   /* Armed = the loop button turns red (the label's own weight is pinned below,
      so we deliberately do NOT bold here: bolding the width-reserving label
@@ -6601,7 +6624,8 @@ body.ft-css-fullscreen .bottom-nav {
     min-height: var(--size-touch);
   }
   /* v1.41.12: the per-row Loop toggle keeps a real tap target on phones. */
-  .chapters-menu-loop {
+  .chapters-menu-loop,
+  .chapters-menu-share {
     min-width: var(--size-touch);
     min-height: var(--size-touch);
     padding: var(--space-6) var(--space-6);

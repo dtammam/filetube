@@ -411,7 +411,7 @@ test('v1.109 source-lock: the fill loop dispatches the current chapter, and buil
   assert.match(disp, /applyCurrentChapterToMenu\(\);/, 'dispatcher updates the menu highlight');
   // buildChaptersMenu tags each row with its index and re-applies the highlight
   // after every (re)build so an OPEN menu shows the playing row immediately.
-  const build = src.slice(src.indexOf('function buildChaptersMenu()'), src.indexOf('function buildChaptersMenu()') + 6000);
+  const build = src.slice(src.indexOf('function buildChaptersMenu()'), src.indexOf('function buildChaptersMenu()') + 7600);
   assert.match(build, /item\.setAttribute\('data-chapter-index', String\(index\)\);/, 'rows tagged with their chapter index');
   assert.match(build, /applyCurrentChapterToMenu\(\);/, 'highlight re-applied on (re)build');
   // The current-chapter idx is reset per load so the next item re-dispatches fresh.
@@ -595,4 +595,21 @@ test('gate S1: sub-half-second loop windows are refused by the resolver (epsilon
   assert.strictEqual(resolveChapterLoopBounds([{ startTime: 10 }, { startTime: 10.04 }], 0, 100), null, '0.04s window refused');
   assert.strictEqual(resolveChapterLoopBounds([{ startTime: 10 }, { startTime: 10.5 }], 0, 100), null, 'exactly 0.5s refused (boundary)');
   assert.deepStrictEqual(resolveChapterLoopBounds([{ startTime: 10 }, { startTime: 10.6 }], 0, 100), { start: 10, end: 10.6 }, '0.6s allowed');
+});
+
+// ---- v1.110 (Dean): per-chapter share source-lock ---------------------------
+test('v1.110 source-lock: each chapter row gets a share icon (YouTube-only) that shares at the chapter start', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  const build = src.slice(src.indexOf('function buildChaptersMenu()'), src.indexOf('function buildChaptersMenu()') + 6800);
+  // The share icon is gated on a server-resolved watchUrl (local files have no
+  // link to share); read once before the row loop.
+  assert.match(build, /var chapterShareUrl = \(currentData && typeof currentData\.watchUrl === 'string'\) \? currentData\.watchUrl : '';/, 'watchUrl read once, gated');
+  assert.match(build, /if \(chapterShareUrl\) \{/, 'share icon only when there is a link');
+  assert.match(build, /shareBtn\.className = 'chapters-menu-share';/, 'the share button');
+  assert.match(build, /shareIcon\.className = 'icon-share';/, 'icon-share glyph');
+  // Tap shares the ORIGINAL link at THIS chapter's start, and never seeks the row.
+  assert.match(build, /e\.stopPropagation\(\);\s*\n\s*shareExternalUrl\(withShareStartTime\(chapterShareUrl, ch\.startTime\), \(currentData && currentData\.title\) \|\| ''\);/, 'shares withShareStartTime(url, chapter start); stopPropagation');
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.chapters-menu-share \{[\s\S]*?border-left: 1px solid var\(--border-dark\);/, 'share button mirrors the loop recipe');
+  assert.match(css, /\.chapters-menu-loop,\s*\n\s*\.chapters-menu-share \{[\s\S]*?min-width: var\(--size-touch\);/, 'share button gets the mobile tap target');
 });
