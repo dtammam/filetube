@@ -243,7 +243,7 @@ test('v1.41.11: chapters are hidden entirely in the docked mini-player, and dock
 // clamp on BOTH media elements, the 'ended' cascade pre-emption (last
 // chapter), the per-load/per-edit clears, and the menu's per-row toggle.
 
-const { resolveChapterLoopBounds, currentChapterIndex, markCurrentChapterItem } = require('../../public/js/player.js');
+const { resolveChapterLoopBounds, currentChapterIndex, markCurrentChapterItem, chapterBoundaryPercents } = require('../../public/js/player.js');
 const { JSDOM } = require('jsdom');
 
 test('resolveChapterLoopBounds: interior chapter ends at the NEXT chapter start; last chapter ends at duration', () => {
@@ -427,6 +427,47 @@ test('v1.109 source-lock: PLAY no longer closes the chapters menu (follow-along)
 test('v1.109 source-lock: the current-chapter menu row is styled red (the follow-along colour)', () => {
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
   assert.match(css, /\.chapters-menu-item-current \{[^}]*color: var\(--yt-red\);/, 'current row text is --yt-red');
+});
+
+// ---- v1.109 T3: seek-bar segmentation math (chapterBoundaryPercents) ---------
+test('chapterBoundaryPercents: interior boundaries only, as % of total; first-start(0) and out-of-range excluded', () => {
+  const chapters = [{ startTime: 0 }, { startTime: 60 }, { startTime: 200 }];
+  const gaps = chapterBoundaryPercents(chapters, 300);
+  assert.deepStrictEqual(gaps.map((g) => g.index), [1, 2], 'chapter 0 (start 0) is not an interior gap');
+  assert.strictEqual(gaps[0].pct, 20);
+  assert.ok(Math.abs(gaps[1].pct - (200 / 300) * 100) < 1e-9);
+});
+
+test('chapterBoundaryPercents: excludes a start at/after total, skips malformed, empty for bad total/non-array', () => {
+  assert.deepStrictEqual(chapterBoundaryPercents([{ startTime: 0 }, { startTime: 300 }], 300), [], 'a start == total is not interior');
+  assert.deepStrictEqual(chapterBoundaryPercents([{ startTime: 0 }, { startTime: 400 }], 300), [], 'a start > total is excluded');
+  const skipped = chapterBoundaryPercents([{ startTime: 0 }, { startTime: 'x' }, { startTime: 150 }], 300);
+  assert.deepStrictEqual(skipped.map((g) => g.index), [2], 'malformed startTime skipped, valid one kept');
+  assert.deepStrictEqual(chapterBoundaryPercents([{ startTime: 60 }], 0), [], 'zero total');
+  assert.deepStrictEqual(chapterBoundaryPercents([{ startTime: 60 }], NaN), [], 'non-finite total');
+  assert.deepStrictEqual(chapterBoundaryPercents(null, 300), [], 'non-array');
+});
+
+test('v1.109 source-lock: the seek-bar segment overlay is JS-built, aligned, rebuilt on duration/chapter change, and hidden when docked', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  // Built in JS + appended into the positioned .player-controls (no shell edits,
+  // out of the flex flow -- the two-row order layout stays untouched).
+  assert.match(src, /seekChaptersEl\.className = 'seek-chapters';/, 'overlay is JS-built');
+  assert.match(src, /playerControls\.appendChild\(seekChaptersEl\);/, 'appended into the positioned control strip');
+  // Notches use the pure boundary math; rebuilt when duration becomes known and
+  // on chapter-set change; kept aligned by a ResizeObserver.
+  const build = src.slice(src.indexOf('function buildSeekChapters()'), src.indexOf('function buildSeekChapters()') + 900);
+  assert.match(build, /chapterBoundaryPercents\(currentChapters, seekTotalDuration\(\)\)/, 'notches from the pure boundary math');
+  assert.match(src, /addEventListener\('durationchange', function \(\) \{ if \(!isScrubbing\) updateSeekVisual\(\); buildSeekChapters\(\); \}\);/, 'rebuilt on durationchange');
+  assert.match(src, /buildSeekChapters\(\);/, 'rebuilt on chapter-set change (applyChaptersForMedia)');
+  assert.match(src, /seekChaptersRO = new ResizeObserver\(function \(\) \{ positionSeekChapters\(\); \}\);/, 'kept aligned by a ResizeObserver');
+  // Cleared with the rest of the chapters UI on a chapter-less reset (the clear
+  // line is unique to resetChaptersUi, so match it against the whole source --
+  // slicing from 'resetChaptersUi = function ()' hits the no-op STUB first).
+  assert.match(src, /if \(seekChaptersEl\) \{ seekChaptersEl\.replaceChildren\(\); seekChaptersEl\.hidden = true; \}/, 'segments cleared on reset');
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /#player-dock \.seek-chapters \{ display: none; \}/, 'segments hidden in the docked mini-player');
+  assert.match(css, /\.seek-chapters-gap \{[^}]*background-color: var\(--header-bg\);/, 'gap notch is the bar colour');
 });
 
 test('v1.41.12/v1.108 source-lock: per-row Loop toggle in the menu + styles present (resting word label, armed ∞, fixed width)', () => {
