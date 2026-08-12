@@ -6399,6 +6399,16 @@ body.ft-css-fullscreen .bottom-nav {
 .chapters-menu-item:hover {
   background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
 }
+/* v1.109 (Dean): the chapter the playhead is currently in -- the follow-along
+   highlight in the Ch menu. Red text + a red left-accent bar (the SAME --yt-red
+   the loop-armed state uses, per Dean) so you can see which section you're in at
+   a glance and watch it walk down the list as it plays. Independent of the row's
+   Loop button, which carries its own red when armed, so "playing" and
+   "loop-armed" read separately. Placed after the base rule so `color` wins. */
+.chapters-menu-item-current {
+  color: var(--yt-red);
+  box-shadow: inset 3px 0 0 var(--yt-red);
+}
 /* v1.50.3: the speed picker reuses the chapters popup wholesale; only the
    width budget differs (eight short labels need no 220px) and the active
    rate gets the accent treatment. Era/mode correctness rides the shared
@@ -6681,11 +6691,85 @@ body.ft-css-fullscreen .bottom-nav {
   border-radius: var(--radius);
   padding: 0 var(--space-2);
 }
+/* v1.109 (Dean): the hovered chapter's name in the scrub preview (YouTube's
+   hover tooltip). Same chip styling as the timestamp; ellipsized to the sprite
+   width so a long title never blows the preview box wide. */
+.seek-preview-chapter {
+  font-size: var(--fs-xs);
+  color: var(--text-primary);
+  background-color: var(--header-bg);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  padding: 0 var(--space-2);
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+/* Explicit hide (the repo's [hidden]-loses-to-author-display lesson): these two
+   are toggled via the `hidden` property, so pin display:none !important. */
+.seek-preview-img[hidden],
+.seek-preview-chapter[hidden] { display: none !important; }
 @media (max-width: 768px) {
   .seek-preview {
     bottom: 52px; /* token-exempt: positional geometry, above the 44px mobile strip */
   }
 }
+
+/* v1.109 (Dean): the seek-bar chapter-segment overlay -- YouTube-style boundary
+   gaps that split the bar into chapters. Absolute + out of the flex flow (its
+   left/top/width/height are set by player.js to overlay the seek bar box), so it
+   never disturbs the battle-won two-row `order` layout. pointer-events:none so
+   the native range still owns the drag. The bar's own red `--seek-fill` shows
+   how far into the CURRENT chapter the playhead is; these are just the gaps. */
+.seek-chapters {
+  position: absolute;
+  pointer-events: none;
+  z-index: 9; /* token-exempt: local stacking, above the bar fill (8), below the scrub preview (11) */
+}
+.seek-chapters[hidden] { display: none; }
+/* A single boundary notch: a thin sliver in the bar's own colour, centred on the
+   boundary. Full-height -- over the ~6px track it reads as a gap; over the
+   transparent input margins it blends into the bar, so no exact band math. */
+.seek-chapters-gap {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  transform: translateX(-50%);
+  background-color: var(--header-bg);
+}
+/* Docked mini-player: chapters UI is hidden there (see #chapters-btn/.chapters-menu
+   above) -- the segment overlay hides with it. */
+#player-dock .seek-chapters { display: none; }
+
+/* v1.109 (Dean): the persistent current-chapter title chip. Anchored with
+   `bottom: 100%` so it floats just above the control strip regardless of the
+   strip's height (40px desktop / 80px two-row mobile / 26px docked) -- no
+   height arithmetic (the measure-don't-guess lesson). Left-aligned to the bar's
+   content, ellipsized, a subtle scrim pill. pointer-events:none. Hidden in the
+   dock; the native-controls path hides the whole .player-controls, so the chip
+   goes with it. */
+.chapter-now {
+  position: absolute;
+  bottom: 100%;
+  left: var(--space-4);
+  margin-bottom: var(--space-2);
+  max-width: 60%;
+  z-index: 9; /* token-exempt: local stacking, above the bar (8), matches the segments */
+  font-size: var(--fs-xs);
+  color: var(--on-overlay);
+  background-color: var(--scrim);
+  border-radius: var(--radius);
+  padding: var(--space-1) var(--space-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.chapter-now[hidden] { display: none !important; }
+#player-dock .chapter-now { display: none; }
 
 #player-dock .cc-overlay {
   bottom: 26px;      /* matches the trimmed mini-player bar height */ /* token-exempt: positional geometry (Stop A Batch A) */

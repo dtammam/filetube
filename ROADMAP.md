@@ -80,6 +80,52 @@
 
 ## Shipped
 
+### v1.109.0 - Chapter follow-along: segmented seek bar + menu highlight + title chip (2026-08-12)
+
+Dean: "If we have content with chapters, colour the section of the chapter
+actively being played so you can follow along and see what portion you're in."
+On clarification he chose the full YouTube treatment - both a segmented progress
+bar AND a chapters-list highlight, plus a hover tooltip and a persistent title
+chip. Client-only (player.js + style.css + tests); chapters already existed
+end-to-end, this wave is purely how the CURRENT chapter is surfaced on the custom
+control bar. (Native iOS fullscreen video already shows chapters via the native
+player, so it's out of scope - nothing to add there.)
+
+- **Segmented seek bar.** A >1-chapter video's seek bar now shows chapter
+  boundaries as gap notches, so it reads as segments; the bar's own red fill
+  shows how far into the current chapter you are. Built as a JS overlay appended
+  into the control strip (no shell-HTML edits) that's absolute + out of the flex
+  flow - deliberately NOT wrapping `#seek-bar`, which would have moved it out of
+  the mobile two-row `order` layout (the documented trap). The native fill path
+  is byte-identical for a chapter-less item. A ResizeObserver keeps the overlay
+  aligned across the two-row reflow.
+- **Chapters-menu highlight.** The Ch menu marks the chapter you're in in red
+  (the same `--yt-red` as the loop-∞ state) and walks down the list as it plays.
+  The menu no longer closes when you press play (it now dismisses only the speed
+  picker there), so you can open it and actually follow along.
+- **Hover tooltip.** Hovering the seek bar names the chapter under the cursor
+  (added to the existing scrub-preview), independent of the storyboard so an
+  audio-with-chapters item still names the section.
+- **Persistent title chip.** A "› Chapter title" chip floats just above the bar,
+  updating live; anchored with `bottom: 100%` so it clears the 40/80/26px bar
+  heights with no height arithmetic. Hidden when docked / under native controls /
+  chapter-less.
+
+Architecture: one shared `currentChapterIndex` resolver (pure, unit-tested)
+drives every surface off a single answer, dispatched on the existing rAF fill
+loop (no-op unless the chapter changed, so following along costs a comparison
+per frame, not a DOM write).
+
+Gate: full two-reviewer gate, both seats APPROVE, every behavioural mutant killed
+(the resolver boundaries, the menu CLEAR axis, the segment math). Fix round folded
+the non-blocking suggestions: removed a dead `has-seek-chapters` class and closed
+a resolver test gap. **Deferred + disclosed:** the YouTube hover-*thicken* (the bar
+growing on hover) - it fights the native seek-bar track across all four era themes
+and is the least essential piece; the hover *name* tooltip is the hover
+deliverable. Scrub deliberately keeps the chip/menu on the committed playhead
+(the tooltip shows the scrub target). Dual-Node full suite **6731/6731** on
+v22.23.1 and v24.14.0; lint:css TOTAL 0. **Dean's on-device pass PENDING.**
+
 ### v1.108.0 - Watch/player polish: Like heart, chapter-loop ∞, modal scroll (2026-08-12)
 
 Three on-device polish items Dean reported, one wave. No server/schema/route

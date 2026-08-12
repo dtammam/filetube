@@ -121,7 +121,11 @@ test('v1.34.1: the chapters UI is mobile-safe -- has-chapters class toggled per 
 test('v1.34.2: the chapters menu has an explicit close (header ✕), touchstart/play-pause-seek dismissal braces, and custom-mode mobile fullscreen is the CSS faux path', () => {
   assert.ok(playerSrc.includes("closeBtn.className = 'chapters-menu-close'"), 'an explicit ✕ close button in the menu header');
   assert.ok(playerSrc.includes("document.addEventListener('touchstart', closeChaptersMenuOnOutside, { passive: true })"), 'touchstart fallback (iOS click/pointer synthesis quirks)');
-  assert.ok(playerSrc.includes("mediaPlayer.addEventListener('play', closeChaptersMenu)"), 'any playback interaction closes the menu');
+  // v1.109 (Dean, follow-along): PLAY now dismisses only the speed picker so the
+  // chapters menu survives play and follows along; pause/seeking still close both
+  // (see the dedicated v1.109 source-lock below).
+  assert.ok(playerSrc.includes("mediaPlayer.addEventListener('play', closeSpeedMenu)"), 'play dismisses the speed picker (not the chapters menu -- follow-along)');
+  assert.ok(playerSrc.includes("mediaPlayer.addEventListener('pause', closeChaptersMenu)"), 'pause still dismisses the chapters menu');
   // v1.67.5: the exit button is the ONE restore-eligible caller (gate C1) -
   // the toggle now passes { restoreScroll: true }.
   assert.ok(playerSrc.includes("setCssFullscreen(!host.classList.contains('css-fullscreen'), { restoreScroll: true })"), 'custom-mode mobile fullscreen toggles the CSS faux-fullscreen (iPhone element-fullscreen is native-only)');
@@ -239,7 +243,8 @@ test('v1.41.11: chapters are hidden entirely in the docked mini-player, and dock
 // clamp on BOTH media elements, the 'ended' cascade pre-emption (last
 // chapter), the per-load/per-edit clears, and the menu's per-row toggle.
 
-const { resolveChapterLoopBounds } = require('../../public/js/player.js');
+const { resolveChapterLoopBounds, currentChapterIndex, markCurrentChapterItem, chapterBoundaryPercents } = require('../../public/js/player.js');
+const { JSDOM } = require('jsdom');
 
 test('resolveChapterLoopBounds: interior chapter ends at the NEXT chapter start; last chapter ends at duration', () => {
   const chapters = [
@@ -261,6 +266,89 @@ test('resolveChapterLoopBounds: REFUSES (null) anything that cannot make a sane 
   assert.strictEqual(resolveChapterLoopBounds([{ startTime: 'x' }], 0, 100), null, 'malformed startTime');
   assert.strictEqual(resolveChapterLoopBounds(null, 0, 100), null, 'no chapters at all');
   assert.strictEqual(resolveChapterLoopBounds(chapters, '1', 300), null, 'non-numeric index');
+});
+
+// ---- v1.109 (Dean): chapter follow-along -- currentChapterIndex resolver -----
+test('currentChapterIndex: returns the chapter whose [start, nextStart) window holds t; last runs to +inf', () => {
+  const chapters = [
+    { startTime: 0, title: 'Intro' },
+    { startTime: 60, title: 'Track 1' },
+    { startTime: 200, title: 'Track 2' },
+  ];
+  assert.strictEqual(currentChapterIndex(chapters, 0), 0, 'exactly at a boundary belongs to that chapter');
+  assert.strictEqual(currentChapterIndex(chapters, 30), 0);
+  assert.strictEqual(currentChapterIndex(chapters, 60), 1, 'boundary is inclusive of the chapter it starts');
+  assert.strictEqual(currentChapterIndex(chapters, 199.9), 1);
+  assert.strictEqual(currentChapterIndex(chapters, 200), 2);
+  assert.strictEqual(currentChapterIndex(chapters, 99999), 2, 'the last chapter runs to +inf');
+});
+
+test('currentChapterIndex: -1 before the first chapter start, and for empty/malformed input', () => {
+  const late = [{ startTime: 10, title: 'A' }, { startTime: 30, title: 'B' }];
+  assert.strictEqual(currentChapterIndex(late, 5), -1, 't before the first chapter start');
+  assert.strictEqual(currentChapterIndex(late, 10), 0, 'at the first start it becomes current');
+  assert.strictEqual(currentChapterIndex([], 5), -1, 'no chapters');
+  assert.strictEqual(currentChapterIndex(null, 5), -1, 'non-array');
+  assert.strictEqual(currentChapterIndex(late, NaN), -1, 'non-finite t (NaN)');
+  assert.strictEqual(currentChapterIndex(late, Infinity), -1, 'non-finite t (Infinity)');
+});
+
+test('currentChapterIndex: skips malformed startTimes and tolerates a non-monotonic set (last start <= t wins)', () => {
+  // A malformed middle entry must not abort the lookup -- the valid chapters
+  // around it still resolve.
+  const withBad = [{ startTime: 0, title: 'A' }, { startTime: 'x', title: 'bad' }, { startTime: 120, title: 'C' }];
+  assert.strictEqual(currentChapterIndex(withBad, 60), 0, 'malformed entry skipped, prior valid one stands');
+  assert.strictEqual(currentChapterIndex(withBad, 130), 2);
+  // Non-monotonic: the LAST index whose start <= t wins (never throws, never
+  // points ahead of the playhead).
+  const jumbled = [{ startTime: 0 }, { startTime: 300 }, { startTime: 100 }];
+  assert.strictEqual(currentChapterIndex(jumbled, 150), 2, 'last qualifying start (index 2 @100) wins over index 0');
+  assert.strictEqual(currentChapterIndex(jumbled, 50), 0);
+  // A negative startTime is skipped like any malformed one (guards the `s < 0`
+  // branch, which no other case exercises).
+  const neg = [{ startTime: -5, title: 'bad' }, { startTime: 10, title: 'ok' }];
+  assert.strictEqual(currentChapterIndex(neg, 3), -1, 'negative start skipped -> before the first valid start');
+  assert.strictEqual(currentChapterIndex(neg, 20), 1, 'the valid later chapter still resolves');
+});
+
+// ---- v1.109: markCurrentChapterItem -- the Ch-menu highlight (BOTH axes) -----
+function makeMenuItems(n) {
+  const { document } = new JSDOM('<!doctype html><body></body>').window;
+  const items = [];
+  for (let i = 0; i < n; i++) {
+    const b = document.createElement('button');
+    b.className = 'chapters-menu-item';
+    b.setAttribute('data-chapter-index', String(i));
+    items.push(b);
+  }
+  return items;
+}
+const isMarked = (el) => el.classList.contains('chapters-menu-item-current') && el.getAttribute('aria-current') === 'true';
+
+test('markCurrentChapterItem: REVEAL -- only the matching item gets the class + aria-current', () => {
+  const items = makeMenuItems(3);
+  markCurrentChapterItem(items, 1);
+  assert.ok(isMarked(items[1]), 'the current chapter is marked');
+  assert.ok(!items[0].classList.contains('chapters-menu-item-current') && !items[0].hasAttribute('aria-current'), 'others unmarked');
+  assert.ok(!items[2].classList.contains('chapters-menu-item-current') && !items[2].hasAttribute('aria-current'));
+});
+
+test('markCurrentChapterItem: CLEAR -- moving the current chapter un-marks the previous one (not just adds)', () => {
+  const items = makeMenuItems(3);
+  markCurrentChapterItem(items, 1); // populate FIRST (a clear test on a born-empty set is vacuous)
+  assert.ok(isMarked(items[1]));
+  markCurrentChapterItem(items, 2); // playhead crosses into the next chapter
+  assert.ok(!items[1].classList.contains('chapters-menu-item-current'), 'the OLD current row lost its class');
+  assert.ok(!items[1].hasAttribute('aria-current'), 'the OLD current row lost aria-current');
+  assert.ok(isMarked(items[2]), 'the new current row is marked');
+});
+
+test('markCurrentChapterItem: idx < 0 (no/pre-first chapter) clears ALL rows', () => {
+  const items = makeMenuItems(3);
+  markCurrentChapterItem(items, 0);
+  assert.ok(isMarked(items[0]));
+  markCurrentChapterItem(items, -1);
+  assert.ok(items.every((el) => !el.classList.contains('chapters-menu-item-current') && !el.hasAttribute('aria-current')), 'every row cleared at idx -1');
 });
 
 test('v1.41.12 source-lock: the boundary clamp is wired on BOTH media elements and is live-transcode-aware', () => {
@@ -306,6 +394,122 @@ test('v1.41.12 source-lock: the loop is cleared on every load and on every chapt
   assert.match(apply, /chapterLoop = null;/, 'new chapter set clears the loop');
   const editor = src.slice(src.indexOf('window.showChaptersEditor(currentId'), src.indexOf('window.showChaptersEditor(currentId') + 700);
   assert.match(editor, /chapterLoop = null;/, 'edited chapter set clears the loop');
+});
+
+// ---- v1.109 (Dean): chapter follow-along wiring source-locks -----------------
+test('v1.109 source-lock: the fill loop dispatches the current chapter, and buildChaptersMenu tags + re-applies it', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  // The per-frame fill loop resolves the current chapter from the live position
+  // and dispatches it (no-ops unless changed) -- this is what makes the menu row
+  // + chip follow along without a second clock read.
+  const usv = src.slice(src.indexOf('function updateSeekVisual()'), src.indexOf('function updateSeekVisual()') + 1000);
+  assert.match(usv, /setCurrentChapter\(currentChapters\.length \? currentChapterIndex\(currentChapters, cur\) : -1\);/,
+    'fill loop dispatches the live current chapter');
+  // The dispatcher no-ops on an unchanged index (per-frame cheapness) then fans out.
+  const disp = src.slice(src.indexOf('function setCurrentChapter(idx)'), src.indexOf('function setCurrentChapter(idx)') + 260);
+  assert.match(disp, /if \(idx === currentChapterIdx\) return;/, 'dispatcher no-ops unless the chapter changed');
+  assert.match(disp, /applyCurrentChapterToMenu\(\);/, 'dispatcher updates the menu highlight');
+  // buildChaptersMenu tags each row with its index and re-applies the highlight
+  // after every (re)build so an OPEN menu shows the playing row immediately.
+  const build = src.slice(src.indexOf('function buildChaptersMenu()'), src.indexOf('function buildChaptersMenu()') + 6000);
+  assert.match(build, /item\.setAttribute\('data-chapter-index', String\(index\)\);/, 'rows tagged with their chapter index');
+  assert.match(build, /applyCurrentChapterToMenu\(\);/, 'highlight re-applied on (re)build');
+  // The current-chapter idx is reset per load so the next item re-dispatches fresh.
+  const reset = src.slice(src.indexOf('function resetSeekVisual()'), src.indexOf('function resetSeekVisual()') + 700);
+  assert.match(reset, /currentChapterIdx = -1;/, 'current chapter reset on every load');
+});
+
+test('v1.109 source-lock: PLAY no longer closes the chapters menu (follow-along), pause/seeking still do', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  // The play listener dismisses ONLY the speed picker now, so the chapters menu
+  // survives play and can follow along. pause/seeking still close both popups.
+  assert.match(src, /mediaPlayer\.addEventListener\('play', closeSpeedMenu\);/, 'play closes only the speed picker');
+  assert.doesNotMatch(src, /mediaPlayer\.addEventListener\('play', closeChaptersMenu\);/, 'play must NOT close the chapters menu');
+  assert.match(src, /mediaPlayer\.addEventListener\('pause', closeChaptersMenu\);/, 'pause still closes');
+  assert.match(src, /mediaPlayer\.addEventListener\('seeking', closeChaptersMenu\);/, 'seeking still closes');
+});
+
+test('v1.109 source-lock: the current-chapter menu row is styled red (the follow-along colour)', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.chapters-menu-item-current \{[^}]*color: var\(--yt-red\);/, 'current row text is --yt-red');
+});
+
+// ---- v1.109 T3: seek-bar segmentation math (chapterBoundaryPercents) ---------
+test('chapterBoundaryPercents: interior boundaries only, as % of total; first-start(0) and out-of-range excluded', () => {
+  const chapters = [{ startTime: 0 }, { startTime: 60 }, { startTime: 200 }];
+  const gaps = chapterBoundaryPercents(chapters, 300);
+  assert.deepStrictEqual(gaps.map((g) => g.index), [1, 2], 'chapter 0 (start 0) is not an interior gap');
+  assert.strictEqual(gaps[0].pct, 20);
+  assert.ok(Math.abs(gaps[1].pct - (200 / 300) * 100) < 1e-9);
+});
+
+test('chapterBoundaryPercents: excludes a start at/after total, skips malformed, empty for bad total/non-array', () => {
+  assert.deepStrictEqual(chapterBoundaryPercents([{ startTime: 0 }, { startTime: 300 }], 300), [], 'a start == total is not interior');
+  assert.deepStrictEqual(chapterBoundaryPercents([{ startTime: 0 }, { startTime: 400 }], 300), [], 'a start > total is excluded');
+  const skipped = chapterBoundaryPercents([{ startTime: 0 }, { startTime: 'x' }, { startTime: 150 }], 300);
+  assert.deepStrictEqual(skipped.map((g) => g.index), [2], 'malformed startTime skipped, valid one kept');
+  assert.deepStrictEqual(chapterBoundaryPercents([{ startTime: 60 }], 0), [], 'zero total');
+  assert.deepStrictEqual(chapterBoundaryPercents([{ startTime: 60 }], NaN), [], 'non-finite total');
+  assert.deepStrictEqual(chapterBoundaryPercents(null, 300), [], 'non-array');
+});
+
+test('v1.109 source-lock: the seek-bar segment overlay is JS-built, aligned, rebuilt on duration/chapter change, and hidden when docked', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  // Built in JS + appended into the positioned .player-controls (no shell edits,
+  // out of the flex flow -- the two-row order layout stays untouched).
+  assert.match(src, /seekChaptersEl\.className = 'seek-chapters';/, 'overlay is JS-built');
+  assert.match(src, /playerControls\.appendChild\(seekChaptersEl\);/, 'appended into the positioned control strip');
+  // Notches use the pure boundary math; rebuilt when duration becomes known and
+  // on chapter-set change; kept aligned by a ResizeObserver.
+  const build = src.slice(src.indexOf('function buildSeekChapters()'), src.indexOf('function buildSeekChapters()') + 900);
+  assert.match(build, /chapterBoundaryPercents\(currentChapters, seekTotalDuration\(\)\)/, 'notches from the pure boundary math');
+  assert.match(src, /addEventListener\('durationchange', function \(\) \{ if \(!isScrubbing\) updateSeekVisual\(\); buildSeekChapters\(\); \}\);/, 'rebuilt on durationchange');
+  assert.match(src, /buildSeekChapters\(\);/, 'rebuilt on chapter-set change (applyChaptersForMedia)');
+  assert.match(src, /seekChaptersRO = new ResizeObserver\(function \(\) \{ positionSeekChapters\(\); \}\);/, 'kept aligned by a ResizeObserver');
+  // Cleared with the rest of the chapters UI on a chapter-less reset (the clear
+  // line is unique to resetChaptersUi, so match it against the whole source --
+  // slicing from 'resetChaptersUi = function ()' hits the no-op STUB first).
+  assert.match(src, /if \(seekChaptersEl\) \{ seekChaptersEl\.replaceChildren\(\); seekChaptersEl\.hidden = true; \}/, 'segments cleared on reset');
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /#player-dock \.seek-chapters \{ display: none; \}/, 'segments hidden in the docked mini-player');
+  assert.match(css, /\.seek-chapters-gap \{[^}]*background-color: var\(--header-bg\);/, 'gap notch is the bar colour');
+});
+
+test('v1.109 source-lock: T4 the scrub preview names the hovered chapter, independent of the thumbnail', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  assert.match(src, /seekPreviewChapterEl\.className = 'seek-preview-chapter';/, 'the chapter-name line is built');
+  const fn = src.slice(src.indexOf('function updateSeekPreview(clientX)'), src.indexOf('function updateSeekPreview(clientX)') + 2600);
+  // The chapter name comes from the resolver at the HOVERED time t, not the
+  // playhead, and is computed regardless of the storyboard (audio-with-chapters
+  // still names the section).
+  assert.match(fn, /var chIdx = currentChapters\.length \? currentChapterIndex\(currentChapters, t\) : -1;/, 'chapter resolved at the hovered t');
+  // The preview shows when EITHER a thumbnail OR a chapter name is available --
+  // deleting the chapter half must not resurrect the old storyboard-only bail.
+  assert.match(fn, /if \(!showThumb && !chapterName\) \{ hideSeekPreview\(\); return; \}/, 'shows on thumb OR chapter (audio-with-chapters gets the name)');
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.seek-preview-chapter \{[^}]*text-overflow: ellipsis;/, 'the chapter name ellipsizes');
+  assert.match(css, /\.seek-preview-img\[hidden\],\s*\.seek-preview-chapter\[hidden\] \{ display: none !important; \}/, 'both toggled elements pin display:none (the [hidden]-loses lesson)');
+});
+
+test('v1.109 source-lock: T5 the persistent current-chapter title chip', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  assert.match(src, /chapterNowEl\.className = 'chapter-now';/, 'the chip is JS-built');
+  // Shown only for a genuinely chaptered item (>1) while in a chapter; text is
+  // "> Title" (U+203A punctuation, iOS-safe).
+  const fn = src.slice(src.indexOf('function updateChapterNowChip()'), src.indexOf('function updateChapterNowChip()') + 500);
+  assert.match(fn, /var show = currentChapters\.length > 1 && !!ch;/, 'chip shows only for a >1-chapter item in a chapter');
+  assert.match(fn, /chapterNowEl\.textContent = '› ' \+ \(ch\.title \|\| 'Chapter'\);/, 'chip text is "> Title"');
+  // Refreshed on a chapter-set change (load/edit) past the dispatch no-op, and
+  // hidden on the per-load reset (no stale "> Old" flash).
+  assert.match(src, /currentChapterIdx = -1;\s*\n\s*updateChapterLoopIndicator\(\);\s*\n\s*buildChaptersMenu\(\);/, 'chapter-set change resets idx so refreshCurrentChapter re-renders');
+  assert.match(src, /refreshCurrentChapter\(\);/, 'chapter-set change re-dispatches from the live position');
+  const reset = src.slice(src.indexOf('function resetSeekVisual()'), src.indexOf('function resetSeekVisual()') + 700);
+  assert.match(reset, /currentChapterIdx = -1;\s*\n\s*updateChapterNowChip\(\);/, 'chip hidden on per-load reset');
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  // Height-agnostic anchor (bottom:100%) so it clears the 40/80/26px bars without
+  // arithmetic; hidden when docked.
+  assert.match(css, /\.chapter-now \{[^}]*bottom: 100%;/, 'chip anchored above the bar via bottom:100% (no height math)');
+  assert.match(css, /#player-dock \.chapter-now \{ display: none; \}/, 'chip hidden in the docked mini-player');
 });
 
 test('v1.41.12/v1.108 source-lock: per-row Loop toggle in the menu + styles present (resting word label, armed ∞, fixed width)', () => {

@@ -832,6 +832,70 @@ function resolveChapterLoopBounds(chapters, index, duration) {
   return { start: ch.startTime, end: end };
 }
 
+// ---- v1.109 (Dean): chapter follow-along -- which chapter is the playhead in?
+// Pure lookup returning the INDEX of the chapter whose [startTime, nextStart)
+// window contains `t` (the last chapter runs to +inf). Returns -1 when there are
+// no chapters, when `t` precedes the first chapter's start, or when `t`/chapters
+// are malformed. This ONE answer drives every "current chapter" surface (the
+// seek-bar segments, the Ch-menu row, the title chip, the hover tooltip), so
+// they can never disagree; it's recomputed on the existing rAF fill loop.
+// Tolerant of a non-monotonic / duplicate-start set: it returns the LAST index
+// whose start is <= t (never throws, never points ahead of the playhead), and
+// skips entries with a malformed startTime rather than aborting the whole lookup.
+function currentChapterIndex(chapters, t) {
+  if (!Array.isArray(chapters) || chapters.length === 0) return -1;
+  if (typeof t !== 'number' || !isFinite(t)) return -1;
+  var idx = -1;
+  for (var i = 0; i < chapters.length; i++) {
+    var ch = chapters[i];
+    var s = ch && ch.startTime;
+    if (typeof s !== 'number' || !isFinite(s) || s < 0) continue;
+    // Last qualifying start wins -- deliberately NO early break, so a
+    // non-monotonic set still resolves to the last chapter that has begun.
+    if (s <= t) idx = i;
+  }
+  return idx;
+}
+
+// v1.109 (Dean): the Ch-menu follow-along highlight, factored out as a pure
+// DOM helper so BOTH its axes are unit-testable off a real DOM (no player boot):
+//   REVEAL - the item whose data-chapter-index === currentIdx gets the
+//            `chapters-menu-item-current` class + aria-current="true";
+//   CLEAR  - EVERY other item (and ALL items when currentIdx < 0) loses both.
+// The clear axis is the one the repo keeps re-paying for (a highlight that only
+// ever ADDS leaves a stale mark on the previous chapter as the playhead moves),
+// so it's asserted directly: mark one, move, assert the old one cleared.
+function markCurrentChapterItem(items, currentIdx) {
+  if (!items) return;
+  for (var i = 0; i < items.length; i++) {
+    var el = items[i];
+    if (!el) continue;
+    var isCurrent = currentIdx >= 0 &&
+      parseInt(el.getAttribute('data-chapter-index'), 10) === currentIdx;
+    el.classList.toggle('chapters-menu-item-current', isCurrent);
+    if (isCurrent) el.setAttribute('aria-current', 'true');
+    else el.removeAttribute('aria-current');
+  }
+}
+
+// v1.109 (Dean): the seek-bar segmentation math, pure so it's unit-testable off
+// the player. Returns the INTERIOR chapter boundaries as {index, pct} where pct
+// is the boundary's position along the bar (0-100). The first chapter's start
+// (0, or anything <= 0) and any start at/after the total are excluded -- they
+// aren't interior gaps. Empty for a bad/zero total or a non-array. The seek
+// overlay draws one gap notch per returned pct; the bar's own red `--seek-fill`
+// still shows how far into the current chapter the playhead is.
+function chapterBoundaryPercents(chapters, total) {
+  if (!Array.isArray(chapters) || typeof total !== 'number' || !isFinite(total) || total <= 0) return [];
+  var out = [];
+  for (var i = 0; i < chapters.length; i++) {
+    var s = chapters[i] && chapters[i].startTime;
+    if (typeof s !== 'number' || !isFinite(s) || s <= 0 || s >= total) continue;
+    out.push({ index: i, pct: (s / total) * 100 });
+  }
+  return out;
+}
+
 // ---- FR-4 (T1, v1.22.1): persistent playback-speed pure helper ------------
 // v1.50.3 (Dean, item A): slower-than-1x joins the list -- 0.25/0.5/0.75,
 // the YouTube set. The list stays a MODULE-LEVEL constant so the speed MENU
@@ -1178,6 +1242,12 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveEndedAction,
     // v1.41.12: chapter-loop bounds resolver -- see resolveChapterLoopBounds.
     resolveChapterLoopBounds,
+    // v1.109: chapter follow-along -- the shared "current chapter" resolver.
+    currentChapterIndex,
+    // v1.109: the Ch-menu current-chapter highlight applier (reveal + clear).
+    markCurrentChapterItem,
+    // v1.109: the seek-bar segmentation math (interior chapter boundaries).
+    chapterBoundaryPercents,
     // v1.50.3: the speed PICKER's pure row model (nextPlaybackRate -- the
     // retired blind cycle -- is gone with its only caller; see
     // buildSpeedMenuModel's header).
@@ -1255,6 +1325,11 @@ if (typeof module !== 'undefined' && module.exports) {
   // (manual > embedded > description -- resolved server-side).
   var chaptersBtn, chaptersMenu;
   var currentChapters = [];
+  // v1.109 (Dean): chapter follow-along -- the index of the chapter the playhead
+  // is currently in (-1 = none/before-first/no-chapters), resolved from the live
+  // position by currentChapterIndex and fanned out to every "current chapter"
+  // surface by setCurrentChapter (below). Session state, reset to -1 on every load.
+  var currentChapterIdx = -1;
   // v1.41.12 (Dean: "loop that specific section -- like a music album"):
   // the armed chapter loop, or null. { start, end, index } resolved via
   // resolveChapterLoopBounds at arm time. SESSION-ONLY by design: cleared on
@@ -1267,6 +1342,12 @@ if (typeof module !== 'undefined' && module.exports) {
   // teardown racing first wiring can never throw.
   var applyChaptersForMedia = function () {};
   var resetChaptersUi = function () {};
+  // v1.109 chapter follow-along: the Ch-menu row applier is assigned inside
+  // wireHostListeners' closure (it reaches the menu-build internals); inert no-op
+  // until then so the dispatcher never throws before wiring. (The title chip and
+  // seek segments are plain main-level functions -- they touch only main-level
+  // refs -- so they need no bridge.)
+  var applyCurrentChapterToMenu = function () {};
 
   // Feature B (v1.26.1): the AUDIO-mode custom caption overlay -- created
   // once in ensureHost() (never touches the shared player-host-template
@@ -1279,7 +1360,17 @@ if (typeof module !== 'undefined' && module.exports) {
   var ccOverlayEl, ccOverlayTextEl;
   // v1.92: the seek-bar storyboard scrub preview (built in JS, never touches
   // the shared player-host-template so all shells stay byte-identical).
-  var seekPreviewEl, seekPreviewImgEl, seekPreviewTimeEl;
+  var seekPreviewEl, seekPreviewImgEl, seekPreviewTimeEl, seekPreviewChapterEl;
+  // v1.109 (Dean): the seek-bar chapter-segment overlay (gap notches at chapter
+  // boundaries) + the ResizeObserver that keeps it aligned to the seek bar as
+  // the two-row mobile bar reflows. Absolute, out-of-flow, pointer-events:none --
+  // it never joins the flex row, so the battle-won two-row `order` layout is
+  // untouched.
+  var seekChaptersEl, seekChaptersRO = null;
+  // v1.109 (Dean): the persistent current-chapter title chip ("> Title") that
+  // floats just above the control bar -- the YouTube "you're in this section"
+  // label. Absolute + out of flow like the segments/preview.
+  var chapterNowEl;
   // v1.93.2: the server sends the (derived) geometry for every eligible video,
   // but the sprite FILE 404s until the scan generates it. Track a per-id preload
   // so the scrub preview only shows once the sprite actually LOADS - otherwise
@@ -1840,9 +1931,33 @@ if (typeof module !== 'undefined' && module.exports) {
       seekPreviewImgEl.className = 'seek-preview-img';
       seekPreviewTimeEl = document.createElement('div');
       seekPreviewTimeEl.className = 'seek-preview-time';
+      // v1.109: the hovered chapter's name (YouTube tooltip). Between the
+      // thumbnail and the timestamp; hidden unless the hovered position is in a
+      // chapter.
+      seekPreviewChapterEl = document.createElement('div');
+      seekPreviewChapterEl.className = 'seek-preview-chapter';
+      seekPreviewChapterEl.hidden = true;
       seekPreviewEl.appendChild(seekPreviewImgEl);
+      seekPreviewEl.appendChild(seekPreviewChapterEl);
       seekPreviewEl.appendChild(seekPreviewTimeEl);
       playerControls.appendChild(seekPreviewEl);
+      // v1.109: the chapter-segment overlay -- same JS-built, appended-inside-
+      // the-positioned-.player-controls posture as the preview (no shell edits,
+      // out of the flex flow). Populated by buildSeekChapters when a >1-chapter
+      // item loads; hidden otherwise.
+      seekChaptersEl = document.createElement('div');
+      seekChaptersEl.className = 'seek-chapters';
+      seekChaptersEl.setAttribute('aria-hidden', 'true');
+      seekChaptersEl.hidden = true;
+      playerControls.appendChild(seekChaptersEl);
+      // v1.109: the persistent current-chapter title chip. Same JS-built,
+      // appended-inside-.player-controls posture; CSS anchors it just above the
+      // bar. Hidden until a >1-chapter item is playing.
+      chapterNowEl = document.createElement('div');
+      chapterNowEl.className = 'chapter-now';
+      chapterNowEl.setAttribute('aria-live', 'off');
+      chapterNowEl.hidden = true;
+      playerControls.appendChild(chapterNowEl);
     }
     // v1.27.0 (background-audio-for-video, EXPERIMENTAL): the hidden <audio>
     // sidecar -- built in JS (never touches the shared player-host-template
@@ -4108,27 +4223,47 @@ if (typeof module !== 'undefined' && module.exports) {
   // (v1.93.2: not yet generated), so those cases degrade cleanly to no preview.
   function updateSeekPreview(clientX) {
     if (!seekPreviewEl || !seekBar || !playerControls) return;
-    var geom = currentData && currentData.storyboard;
-    if (!geom || !currentData.id) { hideSeekPreview(); return; }
-    // v1.93.2: only show once the sprite is confirmed loaded (ungenerated -> the
-    // preload 404s, ready stays false, and we hide rather than show an empty box).
-    ensureSeekSprite(currentData.id);
-    if (!seekSpriteReady) { hideSeekPreview(); return; }
     var rect = seekBar.getBoundingClientRect();
     if (!(rect.width > 0)) { hideSeekPreview(); return; }
     var ratio = scrubRatioFromPointer(clientX, rect.left, rect.width);
     if (ratio === null) { hideSeekPreview(); return; }
     var total = seekTotalDuration();
     var t = ratio * total;
-    var tile = storyboardTile(storyboardFrameForTime(t, geom, total), geom);
-    // Sprite frame via CSS background percentages (the shared pure geometry).
-    if (seekPreviewImgEl.style.backgroundImage.indexOf(currentData.id) === -1) {
-      seekPreviewImgEl.style.backgroundImage = 'url("/storyboard/' + encodeURIComponent(currentData.id) + '")';
+    // Thumbnail: only when this item HAS a storyboard sprite and it's loaded
+    // (v1.93.2: an ungenerated sprite 404s -> not ready). Audio/short/legacy
+    // items simply get no thumbnail -- but the chapter name below can still show.
+    var geom = currentData && currentData.storyboard;
+    var showThumb = false;
+    if (geom && currentData.id) {
+      ensureSeekSprite(currentData.id);
+      showThumb = seekSpriteReady;
     }
-    seekPreviewImgEl.style.backgroundSize = tile.sizeXPct + '% ' + tile.sizeYPct + '%';
-    seekPreviewImgEl.style.backgroundPosition = tile.posXPct + '% ' + tile.posYPct + '%';
-    var aspect = (geom.tileH > 0 && geom.tileW > 0) ? (geom.tileH / geom.tileW) : (9 / 16);
-    seekPreviewImgEl.style.height = Math.round(160 * aspect) + 'px';
+    // v1.109 (Dean): the chapter at the HOVERED position (not the playhead) --
+    // YouTube's hover tooltip. Independent of the thumbnail, so an
+    // audio-with-chapters item (no storyboard) still names the section you're
+    // pointing at.
+    var chIdx = currentChapters.length ? currentChapterIndex(currentChapters, t) : -1;
+    var chapterName = chIdx >= 0 && currentChapters[chIdx] ? (currentChapters[chIdx].title || 'Chapter') : '';
+    // Nothing to show -> hide (preserves the old audio/short/legacy no-op path).
+    if (!showThumb && !chapterName) { hideSeekPreview(); return; }
+    if (seekPreviewImgEl) {
+      seekPreviewImgEl.hidden = !showThumb;
+      if (showThumb) {
+        var tile = storyboardTile(storyboardFrameForTime(t, geom, total), geom);
+        // Sprite frame via CSS background percentages (the shared pure geometry).
+        if (seekPreviewImgEl.style.backgroundImage.indexOf(currentData.id) === -1) {
+          seekPreviewImgEl.style.backgroundImage = 'url("/storyboard/' + encodeURIComponent(currentData.id) + '")';
+        }
+        seekPreviewImgEl.style.backgroundSize = tile.sizeXPct + '% ' + tile.sizeYPct + '%';
+        seekPreviewImgEl.style.backgroundPosition = tile.posXPct + '% ' + tile.posYPct + '%';
+        var aspect = (geom.tileH > 0 && geom.tileW > 0) ? (geom.tileH / geom.tileW) : (9 / 16);
+        seekPreviewImgEl.style.height = Math.round(160 * aspect) + 'px';
+      }
+    }
+    if (seekPreviewChapterEl) {
+      seekPreviewChapterEl.hidden = !chapterName;
+      if (chapterName) seekPreviewChapterEl.textContent = chapterName;
+    }
     seekPreviewTimeEl.textContent = formatDuration(t);
     // Center horizontally on the pointer, clamped inside the control strip.
     var cRect = playerControls.getBoundingClientRect();
@@ -4139,6 +4274,74 @@ if (typeof module !== 'undefined' && module.exports) {
   }
   function hideSeekPreview() {
     if (seekPreviewEl) seekPreviewEl.classList.remove('visible');
+  }
+
+  // v1.109 (Dean): chapter follow-along dispatcher. Fans a CHANGED current
+  // chapter out to the "current chapter" renderers exactly once -- the per-frame
+  // fill loop calls it every frame, but it no-ops unless the index actually
+  // crossed a boundary, so following along costs a comparison per frame, never a
+  // DOM write. (The seek-bar SEGMENTS are static per chapter-set and built
+  // separately; the continuous red fill stays the native `--seek-fill` below.)
+  function setCurrentChapter(idx) {
+    if (idx === currentChapterIdx) return;
+    currentChapterIdx = idx;
+    applyCurrentChapterToMenu();
+    updateChapterNowChip();
+  }
+
+  // v1.109 (Dean): the persistent "> Chapter title" chip above the bar. Shown
+  // only for a genuinely chaptered item (>1 chapter) while the playhead is in a
+  // chapter; hidden otherwise. Idempotent (reads state), so calling it from the
+  // dispatch, the per-load reset, and the chapter-set change is all safe. `>` is
+  // U+203A (punctuation, not a pictograph) so iOS renders it as plain text.
+  function updateChapterNowChip() {
+    if (!chapterNowEl) return;
+    var ch = currentChapterIdx >= 0 ? currentChapters[currentChapterIdx] : null;
+    var show = currentChapters.length > 1 && !!ch;
+    chapterNowEl.hidden = !show;
+    if (show) chapterNowEl.textContent = '› ' + (ch.title || 'Chapter');
+  }
+  // Recompute the current chapter from the LIVE position and dispatch it -- used
+  // on a chapter-set change (load / edit) where the playhead may sit in a
+  // different chapter, or the SAME index may now hold a different title. Callers
+  // reset currentChapterIdx to -1 first so this always re-renders (the dispatch
+  // no-ops on an unchanged index, which an edit-in-place would otherwise hit).
+  function refreshCurrentChapter() {
+    setCurrentChapter(currentChapters.length ? currentChapterIndex(currentChapters, currentAbsTime()) : -1);
+  }
+
+  // v1.109 (Dean): (re)build the seek-bar segment notches. One gap notch per
+  // INTERIOR chapter boundary (chapterBoundaryPercents), positioned by % so it
+  // scales with the bar. Only segments a >1-chapter item once the total duration
+  // is known (called from loadedmetadata/durationchange + chapter-set change);
+  // the continuous red fill stays the native `--seek-fill`. Hidden when there's
+  // nothing to segment.
+  function buildSeekChapters() {
+    if (!seekChaptersEl) return;
+    seekChaptersEl.replaceChildren();
+    var gaps = currentChapters.length > 1 ? chapterBoundaryPercents(currentChapters, seekTotalDuration()) : [];
+    var hasSegs = gaps.length > 0;
+    seekChaptersEl.hidden = !hasSegs;
+    if (!hasSegs) return;
+    for (var i = 0; i < gaps.length; i++) {
+      var notch = document.createElement('span');
+      notch.className = 'seek-chapters-gap';
+      notch.style.left = gaps[i].pct + '%';
+      seekChaptersEl.appendChild(notch);
+    }
+    positionSeekChapters();
+  }
+
+  // Align the out-of-flow overlay box to the seek bar's current box (offsets are
+  // relative to the positioned .player-controls, the overlay's offsetParent).
+  // Full-height notches over the ~6px track read as gaps; over the transparent
+  // input margins they blend into the bar, so exact track-band math isn't needed.
+  function positionSeekChapters() {
+    if (!seekChaptersEl || !seekBar || seekChaptersEl.hidden) return;
+    seekChaptersEl.style.left = seekBar.offsetLeft + 'px';
+    seekChaptersEl.style.top = seekBar.offsetTop + 'px';
+    seekChaptersEl.style.width = seekBar.offsetWidth + 'px';
+    seekChaptersEl.style.height = seekBar.offsetHeight + 'px';
   }
 
   function updateSeekVisual() {
@@ -4152,6 +4355,10 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (timeCur) timeCur.textContent = formatDuration(cur);
     if (timeDur) timeDur.textContent = formatDuration(total);
+    // Follow-along: keep every current-chapter surface in step with the playhead
+    // (no-ops unless the chapter changed). Shares this loop's already-computed
+    // position, so no extra clock read.
+    setCurrentChapter(currentChapters.length ? currentChapterIndex(currentChapters, cur) : -1);
   }
 
   // Runs only while playing (self-terminating below) -- NOT driven by the
@@ -4195,6 +4402,11 @@ if (typeof module !== 'undefined' && module.exports) {
     if (seekBar) { seekBar.value = '0'; seekBar.style.setProperty('--seek-fill', '0%'); }
     if (timeCur) timeCur.textContent = '0:00';
     if (timeDur) timeDur.textContent = '0:00';
+    // v1.109: drop the previous item's current-chapter so the next item's first
+    // dispatch (from 0) is always treated as a change and re-renders fresh, and
+    // hide the title chip immediately (no stale "> Old chapter" flash on load).
+    currentChapterIdx = -1;
+    updateChapterNowChip();
   }
 
   // ---- volume: clamp/persist + iOS feature-detect --------------------------
@@ -4600,8 +4812,11 @@ if (typeof module !== 'undefined' && module.exports) {
     mediaPlayer.addEventListener('play', startFillLoop);
     mediaPlayer.addEventListener('pause', stopFillLoop);
     mediaPlayer.addEventListener('ended', function () { stopFillLoop(); updateSeekVisual(); });
-    mediaPlayer.addEventListener('loadedmetadata', function () { if (!isScrubbing) updateSeekVisual(); });
-    mediaPlayer.addEventListener('durationchange', function () { if (!isScrubbing) updateSeekVisual(); });
+    // v1.109: the seek-bar segment notches depend on total duration, so (re)build
+    // them the moment it's known/changes (loadedmetadata/durationchange), on top
+    // of the chapter-set-change build in applyChaptersForMedia.
+    mediaPlayer.addEventListener('loadedmetadata', function () { if (!isScrubbing) updateSeekVisual(); buildSeekChapters(); });
+    mediaPlayer.addEventListener('durationchange', function () { if (!isScrubbing) updateSeekVisual(); buildSeekChapters(); });
     mediaPlayer.addEventListener('seeked', function () { if (!isScrubbing) updateSeekVisual(); });
     mediaPlayer.addEventListener('volumechange', function () {
       updateVolumeUI();
@@ -4681,6 +4896,15 @@ if (typeof module !== 'undefined' && module.exports) {
     if (trackNextBtn) trackNextBtn.addEventListener('click', function () { manualTrackStep('next'); });
 
     if (seekBar) {
+      // v1.109: keep the chapter-segment overlay aligned to the seek bar as it
+      // resizes -- window resize, the mobile two-row reflow, dock/expand -- all
+      // change the bar's box and fire this. ResizeObserver observes SIZE, and our
+      // layout changes always change the bar's width, so this covers the moves
+      // too. Guarded for environments without it (older engines / jsdom).
+      if (typeof ResizeObserver !== 'undefined') {
+        seekChaptersRO = new ResizeObserver(function () { positionSeekChapters(); });
+        seekChaptersRO.observe(seekBar);
+      }
       // v1.92: storyboard scrub preview. pointermove drives BOTH desktop hover
       // (mouse moves over the bar) and touch-drag (moves arrive while the
       // finger is down / the pointer is captured), so one handler covers both.
@@ -4699,6 +4923,11 @@ if (typeof module !== 'undefined' && module.exports) {
         var total = seekTotalDuration();
         seekBar.style.setProperty('--seek-fill', (ratio * 100) + '%');
         if (timeCur) timeCur.textContent = formatDuration(ratio * total);
+        // v1.109 (Dean, follow-along): deliberately DON'T dispatch the current
+        // chapter here. The title chip + menu row reflect the COMMITTED playhead
+        // ("what you're watching"); the scrub TARGET ("where you'd land") is
+        // already surfaced by the hover tooltip (updateSeekPreview, pointermove).
+        // On release, 'seeked' -> updateSeekVisual re-syncs them to the new spot.
       });
       // The ONLY place a scrub is committed -- pure `seekCommitTarget`
       // resolves the absolute target for both a normal source and a
@@ -5229,6 +5458,9 @@ if (typeof module !== 'undefined' && module.exports) {
         var item = document.createElement('button');
         item.type = 'button';
         item.className = 'chapters-menu-item';
+        // v1.109: tag the row with its chapter index so applyCurrentChapterToMenu
+        // can mark the one the playhead is in (follow-along highlight).
+        item.setAttribute('data-chapter-index', String(index));
         var time = document.createElement('span');
         time.className = 'chapters-menu-time';
         time.textContent = formatDuration(ch.startTime);
@@ -5281,10 +5513,25 @@ if (typeof module !== 'undefined' && module.exports) {
         edit.addEventListener('click', openChaptersEditorFromMenu);
         chaptersMenu.appendChild(edit);
       }
+      // v1.109: a fresh build starts with no row marked -- re-apply the live
+      // current-chapter highlight so an OPEN menu (Loop arm/disarm rebuilds it,
+      // and the open path builds it) shows the playing row immediately.
+      applyCurrentChapterToMenu();
       // v1.43.1 B2: a rebuild while OPEN (Loop arm/disarm re-renders rows)
       // re-measures; hidden rebuilds no-op inside the clamp's own guard.
       clampChaptersMenuHeight();
     }
+    // v1.109 (Dean): the follow-along highlight -- mark the .chapters-menu-item
+    // whose chapter the playhead is in (currentChapterIdx) so you can see which
+    // section you're in as it plays. Distinct element from the row's Loop button
+    // (which carries its OWN red when armed), so "playing" and "loop-armed" read
+    // independently on the same row. Toggles BOTH the class and aria-current, and
+    // CLEARS every other row (the clear axis: a row that stops being current must
+    // lose the mark). Driven by setCurrentChapter's dispatch + every menu build.
+    applyCurrentChapterToMenu = function () {
+      if (!chaptersMenu) return;
+      markCurrentChapterItem(chaptersMenu.querySelectorAll('.chapters-menu-item[data-chapter-index]'), currentChapterIdx);
+    };
     // Exposed to setupForMedia (which runs outside this wiring closure).
     applyChaptersForMedia = function (data) {
       currentChapters = data && Array.isArray(data.chapters) ? data.chapters : [];
@@ -5292,8 +5539,19 @@ if (typeof module !== 'undefined' && module.exports) {
       // boundaries both shift) -- belt-and-suspenders with teardownMediaState,
       // which already clears it on every load.
       chapterLoop = null;
+      // v1.109: a new/edited chapter set may shift which chapter the playhead is
+      // in AND change the title at the same index -- force a fresh dispatch
+      // (reset to -1 so refreshCurrentChapter always re-renders, past the
+      // dispatch's unchanged-index no-op).
+      currentChapterIdx = -1;
       updateChapterLoopIndicator();
       buildChaptersMenu();
+      // v1.109: (re)segment the seek bar for the new chapter set. Duration may
+      // not be known yet at load; the loadedmetadata/durationchange handlers
+      // rebuild once it is, so this covers the already-buffered case and they
+      // cover the not-yet case.
+      buildSeekChapters();
+      refreshCurrentChapter();
       closeChaptersMenu();
       if (chaptersBtn) chaptersBtn.style.display = '';
       // v1.34.1 (Dean's on-device pass): the mobile custom bar overflowed --
@@ -5308,6 +5566,10 @@ if (typeof module !== 'undefined' && module.exports) {
       if (chaptersMenu) while (chaptersMenu.firstChild) chaptersMenu.removeChild(chaptersMenu.firstChild);
       if (chaptersBtn) chaptersBtn.style.display = 'none';
       if (host) host.classList.remove('has-chapters');
+      // v1.109: hide + empty the seek-bar segment overlay so a chapter-less item
+      // shows the plain bar (buildSeekChapters would also hide it, but this hard
+      // clear covers the reset-without-reload path).
+      if (seekChaptersEl) { seekChaptersEl.replaceChildren(); seekChaptersEl.hidden = true; }
     };
     // v1.43.1 B2 (Dean: top chapters unreachable on mobile): live half of
     // resolveChaptersMenuMaxHeight (see its comment block for the geometry).
@@ -5407,7 +5669,13 @@ if (typeof module !== 'undefined' && module.exports) {
       document.addEventListener('touchstart', closeSpeedMenuOnOutside, { passive: true });
       if (mediaPlayer) {
         // closeChaptersMenu dismisses BOTH bar popups (see its comment).
-        mediaPlayer.addEventListener('play', closeChaptersMenu);
+        // v1.109 (Dean, follow-along): PLAY no longer closes the CHAPTERS menu --
+        // that's what lets you open it and watch the current-chapter highlight
+        // walk down the list as it plays. The speed picker still dismisses on
+        // play (closeSpeedMenu directly), so only the intended popup persists.
+        // pause/seeking still close both (a scrub is a distinct nav intent; a
+        // deliberate pause dismisses the transient popup).
+        mediaPlayer.addEventListener('play', closeSpeedMenu);
         mediaPlayer.addEventListener('pause', closeChaptersMenu);
         mediaPlayer.addEventListener('seeking', closeChaptersMenu);
       }
