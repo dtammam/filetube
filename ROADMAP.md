@@ -80,6 +80,35 @@
 
 ## Shipped
 
+### v1.110.0 - Timestamped sharing: per-chapter share + share-at-current-time (2026-08-12)
+
+Dean: share the ORIGINAL YouTube link WITH a start time. Two surfaces, both
+producing `...&t=<seconds>`; client-only (common.js/player.js/watch.js + CSS +
+tests). Only for YouTube-derived items (the ones that already have a Share button
+/ a server-resolved `watchUrl`); local files are unchanged.
+
+- **Per-chapter share.** Each row in the custom player's chapters menu now has a
+  share icon (next to Loop) that shares the video's YouTube link at THAT chapter's
+  start time. Only rendered when the item has a `watchUrl`.
+- **Share at current time.** The watch-page Share button now PROMPTS "Share video"
+  (the plain link) vs "Share at current time (M:SS)" (the link with `?t=<now>`)
+  whenever there's a meaningful position (>= 1s, non-live). Under 1s / live it
+  shares the plain link directly, unchanged.
+
+Under the hood: one pure `withShareStartTime(url, seconds)` helper sets the `t=`
+param on the ALREADY-server-resolved URL via the platform URL parser (never
+assembles the identity client-side - the v1.52 discipline), and falls back to the
+plain link for any bad input so a share can never emit a broken URL. A reusable
+`showChoiceModal` (createElement + textContent, XSS-safe) drives the prompt.
+
+Gate: full two-reviewer gate, both seats APPROVE, every binding mutation-proven
+(the URL guards, the modal XSS/settle-once axes, the gating). No CRITICAL/WARNING;
+the only notes were explicit non-defects (a redundant guard; a `t=0` edge
+unreachable behind the >= 1s gate). Dual-Node full suite **6741/6741** on v22.23.1
+and v24.14.0; lint:css TOTAL 0. **Dean's on-device pass PENDING** (share a chapter
+-> YouTube opens at that second; Share mid-video -> prompt -> shares at the current
+second).
+
 ### v1.109.1 - Chapter chip flashes on change instead of obstructing the video (2026-08-12)
 
 Dean, on-device after v1.109.0: he likes the "› Chapter title" chip appearing on
