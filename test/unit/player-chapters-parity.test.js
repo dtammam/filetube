@@ -486,6 +486,27 @@ test('v1.109 source-lock: T4 the scrub preview names the hovered chapter, indepe
   assert.match(css, /\.seek-preview-img\[hidden\],\s*\.seek-preview-chapter\[hidden\] \{ display: none !important; \}/, 'both toggled elements pin display:none (the [hidden]-loses lesson)');
 });
 
+test('v1.109 source-lock: T5 the persistent current-chapter title chip', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  assert.match(src, /chapterNowEl\.className = 'chapter-now';/, 'the chip is JS-built');
+  // Shown only for a genuinely chaptered item (>1) while in a chapter; text is
+  // "> Title" (U+203A punctuation, iOS-safe).
+  const fn = src.slice(src.indexOf('function updateChapterNowChip()'), src.indexOf('function updateChapterNowChip()') + 500);
+  assert.match(fn, /var show = currentChapters\.length > 1 && !!ch;/, 'chip shows only for a >1-chapter item in a chapter');
+  assert.match(fn, /chapterNowEl\.textContent = '› ' \+ \(ch\.title \|\| 'Chapter'\);/, 'chip text is "> Title"');
+  // Refreshed on a chapter-set change (load/edit) past the dispatch no-op, and
+  // hidden on the per-load reset (no stale "> Old" flash).
+  assert.match(src, /currentChapterIdx = -1;\s*\n\s*updateChapterLoopIndicator\(\);\s*\n\s*buildChaptersMenu\(\);/, 'chapter-set change resets idx so refreshCurrentChapter re-renders');
+  assert.match(src, /refreshCurrentChapter\(\);/, 'chapter-set change re-dispatches from the live position');
+  const reset = src.slice(src.indexOf('function resetSeekVisual()'), src.indexOf('function resetSeekVisual()') + 700);
+  assert.match(reset, /currentChapterIdx = -1;\s*\n\s*updateChapterNowChip\(\);/, 'chip hidden on per-load reset');
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  // Height-agnostic anchor (bottom:100%) so it clears the 40/80/26px bars without
+  // arithmetic; hidden when docked.
+  assert.match(css, /\.chapter-now \{[^}]*bottom: 100%;/, 'chip anchored above the bar via bottom:100% (no height math)');
+  assert.match(css, /#player-dock \.chapter-now \{ display: none; \}/, 'chip hidden in the docked mini-player');
+});
+
 test('v1.41.12/v1.108 source-lock: per-row Loop toggle in the menu + styles present (resting word label, armed ∞, fixed width)', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
   // v1.108 (Dean): resting label is the WORD "Loop" (the v1.39 iOS-glyph lesson

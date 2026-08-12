@@ -6744,6 +6744,33 @@ body.ft-css-fullscreen .bottom-nav {
    above) -- the segment overlay hides with it. */
 #player-dock .seek-chapters { display: none; }
 
+/* v1.109 (Dean): the persistent current-chapter title chip. Anchored with
+   `bottom: 100%` so it floats just above the control strip regardless of the
+   strip's height (40px desktop / 80px two-row mobile / 26px docked) -- no
+   height arithmetic (the measure-don't-guess lesson). Left-aligned to the bar's
+   content, ellipsized, a subtle scrim pill. pointer-events:none. Hidden in the
+   dock; the native-controls path hides the whole .player-controls, so the chip
+   goes with it. */
+.chapter-now {
+  position: absolute;
+  bottom: 100%;
+  left: var(--space-4);
+  margin-bottom: var(--space-2);
+  max-width: 60%;
+  z-index: 9; /* token-exempt: local stacking, above the bar (8), matches the segments */
+  font-size: var(--fs-xs);
+  color: var(--on-overlay);
+  background-color: var(--scrim);
+  border-radius: var(--radius);
+  padding: var(--space-1) var(--space-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.chapter-now[hidden] { display: none !important; }
+#player-dock .chapter-now { display: none; }
+
 #player-dock .cc-overlay {
   bottom: 26px;      /* matches the trimmed mini-player bar height */ /* token-exempt: positional geometry (Stop A Batch A) */
 }

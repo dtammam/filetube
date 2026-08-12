@@ -1342,11 +1342,12 @@ if (typeof module !== 'undefined' && module.exports) {
   // teardown racing first wiring can never throw.
   var applyChaptersForMedia = function () {};
   var resetChaptersUi = function () {};
-  // v1.109 chapter follow-along renderers -- assigned as each surface is built
-  // inside wireHostListeners' closure (menu row, seek-bar segments, title chip);
-  // inert no-ops until then so the dispatcher never throws before wiring.
+  // v1.109 chapter follow-along: the Ch-menu row applier is assigned inside
+  // wireHostListeners' closure (it reaches the menu-build internals); inert no-op
+  // until then so the dispatcher never throws before wiring. (The title chip and
+  // seek segments are plain main-level functions -- they touch only main-level
+  // refs -- so they need no bridge.)
   var applyCurrentChapterToMenu = function () {};
-  var updateChapterNowChip = function () {};
 
   // Feature B (v1.26.1): the AUDIO-mode custom caption overlay -- created
   // once in ensureHost() (never touches the shared player-host-template
@@ -1366,6 +1367,10 @@ if (typeof module !== 'undefined' && module.exports) {
   // it never joins the flex row, so the battle-won two-row `order` layout is
   // untouched.
   var seekChaptersEl, seekChaptersRO = null;
+  // v1.109 (Dean): the persistent current-chapter title chip ("> Title") that
+  // floats just above the control bar -- the YouTube "you're in this section"
+  // label. Absolute + out of flow like the segments/preview.
+  var chapterNowEl;
   // v1.93.2: the server sends the (derived) geometry for every eligible video,
   // but the sprite FILE 404s until the scan generates it. Track a per-id preload
   // so the scrub preview only shows once the sprite actually LOADS - otherwise
@@ -1945,6 +1950,14 @@ if (typeof module !== 'undefined' && module.exports) {
       seekChaptersEl.setAttribute('aria-hidden', 'true');
       seekChaptersEl.hidden = true;
       playerControls.appendChild(seekChaptersEl);
+      // v1.109: the persistent current-chapter title chip. Same JS-built,
+      // appended-inside-.player-controls posture; CSS anchors it just above the
+      // bar. Hidden until a >1-chapter item is playing.
+      chapterNowEl = document.createElement('div');
+      chapterNowEl.className = 'chapter-now';
+      chapterNowEl.setAttribute('aria-live', 'off');
+      chapterNowEl.hidden = true;
+      playerControls.appendChild(chapterNowEl);
     }
     // v1.27.0 (background-audio-for-video, EXPERIMENTAL): the hidden <audio>
     // sidecar -- built in JS (never touches the shared player-host-template
@@ -4276,6 +4289,27 @@ if (typeof module !== 'undefined' && module.exports) {
     updateChapterNowChip();
   }
 
+  // v1.109 (Dean): the persistent "> Chapter title" chip above the bar. Shown
+  // only for a genuinely chaptered item (>1 chapter) while the playhead is in a
+  // chapter; hidden otherwise. Idempotent (reads state), so calling it from the
+  // dispatch, the per-load reset, and the chapter-set change is all safe. `>` is
+  // U+203A (punctuation, not a pictograph) so iOS renders it as plain text.
+  function updateChapterNowChip() {
+    if (!chapterNowEl) return;
+    var ch = currentChapterIdx >= 0 ? currentChapters[currentChapterIdx] : null;
+    var show = currentChapters.length > 1 && !!ch;
+    chapterNowEl.hidden = !show;
+    if (show) chapterNowEl.textContent = '› ' + (ch.title || 'Chapter');
+  }
+  // Recompute the current chapter from the LIVE position and dispatch it -- used
+  // on a chapter-set change (load / edit) where the playhead may sit in a
+  // different chapter, or the SAME index may now hold a different title. Callers
+  // reset currentChapterIdx to -1 first so this always re-renders (the dispatch
+  // no-ops on an unchanged index, which an edit-in-place would otherwise hit).
+  function refreshCurrentChapter() {
+    setCurrentChapter(currentChapters.length ? currentChapterIndex(currentChapters, currentAbsTime()) : -1);
+  }
+
   // v1.109 (Dean): (re)build the seek-bar segment notches. One gap notch per
   // INTERIOR chapter boundary (chapterBoundaryPercents), positioned by % so it
   // scales with the bar. Only segments a >1-chapter item once the total duration
@@ -4370,8 +4404,10 @@ if (typeof module !== 'undefined' && module.exports) {
     if (timeCur) timeCur.textContent = '0:00';
     if (timeDur) timeDur.textContent = '0:00';
     // v1.109: drop the previous item's current-chapter so the next item's first
-    // dispatch (from 0) is always treated as a change and re-renders fresh.
+    // dispatch (from 0) is always treated as a change and re-renders fresh, and
+    // hide the title chip immediately (no stale "> Old chapter" flash on load).
     currentChapterIdx = -1;
+    updateChapterNowChip();
   }
 
   // ---- volume: clamp/persist + iOS feature-detect --------------------------
@@ -5499,6 +5535,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // boundaries both shift) -- belt-and-suspenders with teardownMediaState,
       // which already clears it on every load.
       chapterLoop = null;
+      // v1.109: a new/edited chapter set may shift which chapter the playhead is
+      // in AND change the title at the same index -- force a fresh dispatch
+      // (reset to -1 so refreshCurrentChapter always re-renders, past the
+      // dispatch's unchanged-index no-op).
+      currentChapterIdx = -1;
       updateChapterLoopIndicator();
       buildChaptersMenu();
       // v1.109: (re)segment the seek bar for the new chapter set. Duration may
@@ -5506,6 +5547,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // rebuild once it is, so this covers the already-buffered case and they
       // cover the not-yet case.
       buildSeekChapters();
+      refreshCurrentChapter();
       closeChaptersMenu();
       if (chaptersBtn) chaptersBtn.style.display = '';
       // v1.34.1 (Dean's on-device pass): the mobile custom bar overflowed --
