@@ -54,6 +54,10 @@ test('v1.107 (gate coverage): EVERY shell that loads style.css preloads geist.wo
       assert.ok(preIdx > -1, `${f} loads style.css but does not preload geist.woff2`);
       assert.ok(preIdx < cssIdx, `${f}: the geist preload must precede the stylesheet <link>`);
       assert.ok(!html.includes('preload" href="/fonts/roboto.woff2"'), `${f} still preloads the OLD roboto font`);
+      // Forcing guard: no shell should reference the OLD font at all (the Modern
+      // face is Geist; Roboto is only a CSS fallback, never named in a shell).
+      // Catches stale "before Roboto takes over"-style comments before they ship.
+      assert.ok(!/Roboto/.test(html), `${f} still references "Roboto" (a stale font reference - the shells' font is Geist)`);
     }
   }
   assert.ok(checked >= 12, `expected >=12 shells to be checked, saw ${checked}`);
