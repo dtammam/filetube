@@ -177,6 +177,29 @@ byte-identity, the docked/native/mobile-two-row state matrix, the reveal/clear
 CLEAR axis, and the resolver's non-monotonic/live-mode edges), fix round(s),
 dual-Node (v22.23.1 + v24.14.0), release, device pass pending.
 
+## As-built notes (deviations from the plan above)
+
+- **T3 approach changed to lowest-risk.** The plan considered neutralising the
+  native track and drawing everything in the overlay. As built, the overlay draws
+  ONLY the boundary gap notches; the native red `--seek-fill` is UNTOUCHED and
+  still shows the current-chapter fill. And the overlay is an ABSOLUTE, out-of-flow
+  child of `.player-controls` (NOT a wrapper around `#seek-bar`) -- wrapping would
+  have moved `#seek-bar` out of the flex row and broken the mobile two-row `order`
+  layout (the documented trap). A `ResizeObserver` keeps the overlay box aligned.
+- **Hover-thicken DEFERRED + disclosed.** The YouTube bar-grows-on-hover fights the
+  native range track across 4 era themes; it's the least-essential piece. The
+  hover chapter-name tooltip (T4) is the hover deliverable. Revisit on-device.
+- **T2 close-on-play:** only the `play` listener was repointed (to `closeSpeedMenu`)
+  so the chapters menu survives play; `pause`/`seeking` still close it.
+- **Segments + chip gate on >1 chapter** (a single "chapter" has no interior
+  boundary and no portion to distinguish); the menu highlight + hover tooltip
+  work for any chapter count.
+- **Chip anchored `bottom: 100%`** (height-agnostic) instead of the measured
+  offset the plan floated.
+- Testing followed the repo convention (CONTRIBUTING.md: no player-boot jsdom
+  harness): PURE helpers unit-tested (currentChapterIndex, markCurrentChapterItem
+  incl. the CLEAR axis, chapterBoundaryPercents), DOM wiring source-locked.
+
 ## Dean's device-pass probes (final arbiter)
 
 Desktop + mobile, a video WITH chapters: (1) seek bar shows segments with gaps,
