@@ -239,7 +239,7 @@ test('v1.41.11: chapters are hidden entirely in the docked mini-player, and dock
 // clamp on BOTH media elements, the 'ended' cascade pre-emption (last
 // chapter), the per-load/per-edit clears, and the menu's per-row toggle.
 
-const { resolveChapterLoopBounds } = require('../../public/js/player.js');
+const { resolveChapterLoopBounds, currentChapterIndex } = require('../../public/js/player.js');
 
 test('resolveChapterLoopBounds: interior chapter ends at the NEXT chapter start; last chapter ends at duration', () => {
   const chapters = [
@@ -261,6 +261,44 @@ test('resolveChapterLoopBounds: REFUSES (null) anything that cannot make a sane 
   assert.strictEqual(resolveChapterLoopBounds([{ startTime: 'x' }], 0, 100), null, 'malformed startTime');
   assert.strictEqual(resolveChapterLoopBounds(null, 0, 100), null, 'no chapters at all');
   assert.strictEqual(resolveChapterLoopBounds(chapters, '1', 300), null, 'non-numeric index');
+});
+
+// ---- v1.109 (Dean): chapter follow-along -- currentChapterIndex resolver -----
+test('currentChapterIndex: returns the chapter whose [start, nextStart) window holds t; last runs to +inf', () => {
+  const chapters = [
+    { startTime: 0, title: 'Intro' },
+    { startTime: 60, title: 'Track 1' },
+    { startTime: 200, title: 'Track 2' },
+  ];
+  assert.strictEqual(currentChapterIndex(chapters, 0), 0, 'exactly at a boundary belongs to that chapter');
+  assert.strictEqual(currentChapterIndex(chapters, 30), 0);
+  assert.strictEqual(currentChapterIndex(chapters, 60), 1, 'boundary is inclusive of the chapter it starts');
+  assert.strictEqual(currentChapterIndex(chapters, 199.9), 1);
+  assert.strictEqual(currentChapterIndex(chapters, 200), 2);
+  assert.strictEqual(currentChapterIndex(chapters, 99999), 2, 'the last chapter runs to +inf');
+});
+
+test('currentChapterIndex: -1 before the first chapter start, and for empty/malformed input', () => {
+  const late = [{ startTime: 10, title: 'A' }, { startTime: 30, title: 'B' }];
+  assert.strictEqual(currentChapterIndex(late, 5), -1, 't before the first chapter start');
+  assert.strictEqual(currentChapterIndex(late, 10), 0, 'at the first start it becomes current');
+  assert.strictEqual(currentChapterIndex([], 5), -1, 'no chapters');
+  assert.strictEqual(currentChapterIndex(null, 5), -1, 'non-array');
+  assert.strictEqual(currentChapterIndex(late, NaN), -1, 'non-finite t (NaN)');
+  assert.strictEqual(currentChapterIndex(late, Infinity), -1, 'non-finite t (Infinity)');
+});
+
+test('currentChapterIndex: skips malformed startTimes and tolerates a non-monotonic set (last start <= t wins)', () => {
+  // A malformed middle entry must not abort the lookup -- the valid chapters
+  // around it still resolve.
+  const withBad = [{ startTime: 0, title: 'A' }, { startTime: 'x', title: 'bad' }, { startTime: 120, title: 'C' }];
+  assert.strictEqual(currentChapterIndex(withBad, 60), 0, 'malformed entry skipped, prior valid one stands');
+  assert.strictEqual(currentChapterIndex(withBad, 130), 2);
+  // Non-monotonic: the LAST index whose start <= t wins (never throws, never
+  // points ahead of the playhead).
+  const jumbled = [{ startTime: 0 }, { startTime: 300 }, { startTime: 100 }];
+  assert.strictEqual(currentChapterIndex(jumbled, 150), 2, 'last qualifying start (index 2 @100) wins over index 0');
+  assert.strictEqual(currentChapterIndex(jumbled, 50), 0);
 });
 
 test('v1.41.12 source-lock: the boundary clamp is wired on BOTH media elements and is live-transcode-aware', () => {

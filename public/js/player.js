@@ -832,6 +832,31 @@ function resolveChapterLoopBounds(chapters, index, duration) {
   return { start: ch.startTime, end: end };
 }
 
+// ---- v1.109 (Dean): chapter follow-along -- which chapter is the playhead in?
+// Pure lookup returning the INDEX of the chapter whose [startTime, nextStart)
+// window contains `t` (the last chapter runs to +inf). Returns -1 when there are
+// no chapters, when `t` precedes the first chapter's start, or when `t`/chapters
+// are malformed. This ONE answer drives every "current chapter" surface (the
+// seek-bar segments, the Ch-menu row, the title chip, the hover tooltip), so
+// they can never disagree; it's recomputed on the existing rAF fill loop.
+// Tolerant of a non-monotonic / duplicate-start set: it returns the LAST index
+// whose start is <= t (never throws, never points ahead of the playhead), and
+// skips entries with a malformed startTime rather than aborting the whole lookup.
+function currentChapterIndex(chapters, t) {
+  if (!Array.isArray(chapters) || chapters.length === 0) return -1;
+  if (typeof t !== 'number' || !isFinite(t)) return -1;
+  var idx = -1;
+  for (var i = 0; i < chapters.length; i++) {
+    var ch = chapters[i];
+    var s = ch && ch.startTime;
+    if (typeof s !== 'number' || !isFinite(s) || s < 0) continue;
+    // Last qualifying start wins -- deliberately NO early break, so a
+    // non-monotonic set still resolves to the last chapter that has begun.
+    if (s <= t) idx = i;
+  }
+  return idx;
+}
+
 // ---- FR-4 (T1, v1.22.1): persistent playback-speed pure helper ------------
 // v1.50.3 (Dean, item A): slower-than-1x joins the list -- 0.25/0.5/0.75,
 // the YouTube set. The list stays a MODULE-LEVEL constant so the speed MENU
@@ -1178,6 +1203,8 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveEndedAction,
     // v1.41.12: chapter-loop bounds resolver -- see resolveChapterLoopBounds.
     resolveChapterLoopBounds,
+    // v1.109: chapter follow-along -- the shared "current chapter" resolver.
+    currentChapterIndex,
     // v1.50.3: the speed PICKER's pure row model (nextPlaybackRate -- the
     // retired blind cycle -- is gone with its only caller; see
     // buildSpeedMenuModel's header).
