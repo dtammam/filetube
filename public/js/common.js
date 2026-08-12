@@ -9641,6 +9641,26 @@ function closeDeliveredPushBanners(mediaId) {
     .catch(() => 0);
 }
 
+// v1.110 (Dean): append a YouTube start-time to an ALREADY-server-resolved share
+// URL. The URL IDENTITY is never assembled client-side (the v1.52 lesson) -- this
+// only SETS the `t=<whole seconds>` query param on a resolved watchUrl via the
+// platform URL parser, so it handles both `youtu.be/ID?t=` and `watch?v=ID&t=`,
+// preserves any other params (e.g. `&list=`), and overwrites a pre-existing `t`.
+// Returns the url UNCHANGED for a non-finite/non-positive time, a non-string url,
+// or a url the parser rejects -- a share can never produce a BROKEN link, only
+// (at worst) fall back to the plain one.
+function withShareStartTime(url, seconds) {
+  if (typeof url !== 'string' || url === '') return url;
+  if (typeof seconds !== 'number' || !isFinite(seconds) || seconds <= 0) return url;
+  try {
+    const u = new URL(url);
+    u.searchParams.set('t', String(Math.floor(seconds)));
+    return u.toString();
+  } catch (e) {
+    return url;
+  }
+}
+
 function shareExternalUrl(url, title) {
   if (typeof navigator.share === 'function') {
     return navigator.share({ title: title || 'FileTube', url })
@@ -11668,6 +11688,8 @@ document.addEventListener('DOMContentLoaded', () => {
 // `module` is undefined there).
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    // v1.110 (Dean): the pure share-URL start-time param appender (unit-tested).
+    withShareStartTime,
     // v1.87.1: first-paint chrome inline-SVG glyphs (map + markup/element
     // builders). chrome-icons.test.js byte-binds the map to the on-disk assets
     // and source-locks the static bottom-nav markup against chromeIconMarkup.
