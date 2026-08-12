@@ -3778,6 +3778,19 @@ a.sub-row-channel-link:focus-visible {
   gap: var(--space-5);
 }
 
+/* v1.110 (Dean): the pick-one action modal (showChoiceModal) -- one full-width
+   stacked button per choice, above the Cancel row. */
+.choice-modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: var(--space-6) 0;
+}
+.choice-modal-btn {
+  width: 100%;
+  justify-content: center;
+}
+
 /* v1.97.1 "Hidden" settings-page section (setup.js renderFeedHiddenSection) -
    the feed-hide restore list, mirroring the Trash section's row layout. The
    settings page scrolls naturally, so no internal max-height/overflow (the

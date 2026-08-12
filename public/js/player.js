@@ -6793,6 +6793,15 @@ if (typeof module !== 'undefined' && module.exports) {
     close: close,
     setTrackNav: setTrackNav, // v1.39.0: register/clear lock-screen prev/next (book chapters)
     getState: function () { return state; },
+    // v1.110 (Dean, share-at-current-time): the live playback position in seconds
+    // for the loaded item, or null when there's nothing to share a timestamp for.
+    // NON-live only -- a live-transcode offset is not a shareable VOD `?t=` (watch.js
+    // hides the "share at current time" option when this is null).
+    getCurrentTime: function () {
+      if (!currentId || !mediaPlayer || liveMode) return null;
+      var t = mediaPlayer.currentTime;
+      return (typeof t === 'number' && isFinite(t)) ? t : null;
+    },
     isLoopEnabled: isLoopEnabled, // FR-7 (TF, v1.22.0) -- watch.js's setupLoopToggle reads/writes through these
     setLoop: setLoop,
     // v1.52 instant watch: the late-detail seam. A seeded pre-load starts
