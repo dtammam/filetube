@@ -30,10 +30,13 @@ test('2014 Flat is Arial, not Roboto (era-accurate: pre-Polymer YouTube desktop 
   assert.doesNotMatch(block, /--font-family:[^;]*Roboto/, 'Roboto in 2014 reads as "2017 wearing a 2014 layout"');
 });
 
-test('2021 Modern headings: YouTube Sans named FIRST (local-only, never bundled), medium weight, slight negative tracking', () => {
+test('v1.107: 2021 Modern is GEIST across all elements (body + logo + headings), medium weight, slight negative tracking', () => {
   const block = eraBlock('2021');
-  assert.match(block, /--heading-font:\s*'YouTube Sans',\s*'Roboto'/, 'the stack ships no files -- local install wins, Roboto is the fallback');
-  assert.match(block, /--heading-weight:\s*500/, 'modern YouTube titles are medium, not bold');
+  assert.match(block, /--font-family:\s*'Geist',\s*'Roboto'/, 'body: Geist first, Roboto the bundled fallback');
+  assert.match(block, /--logo-font:\s*'Geist'/, 'logo: Geist too (one font across all elements)');
+  assert.match(block, /--heading-font:\s*'Geist',\s*'Roboto'/, 'headings: Geist (replaces the old YouTube-Sans-first stack)');
+  assert.doesNotMatch(block, /YouTube Sans/, 'the proprietary YouTube Sans heading face is gone - Geist is bundled');
+  assert.match(block, /--heading-weight:\s*500/, 'Modern titles stay medium, not bold');
   assert.match(block, /--heading-tracking:\s*-0\.01em/);
 });
 
@@ -73,8 +76,15 @@ test('the three title surfaces consume the tokens with safe fallbacks -- and ONL
   }
 });
 
-test('no Roboto @font-face change: the bundled variable font (100-900) is what makes weight 500 genuine', () => {
-  assert.match(css, /font-weight:\s*100 900/, 'the variable-font declaration must survive -- 500 must never be synthesized');
+test('v1.107: the Modern face (Geist) is a self-hosted VARIABLE font (100-900), so weight 500 is genuine not synthesized', () => {
+  // Geist @font-face named FIRST (v1262-pwa-chrome resolves the shells' preload
+  // off the first @font-face src, so it must be Geist).
+  assert.match(css, /@font-face\s*\{[^}]*font-family:\s*'Geist'[^}]*font-weight:\s*100 900[^}]*url\('\/fonts\/geist\.woff2'\)/,
+    'Geist is a self-hosted variable woff2 (100-900)');
+  const firstFace = /@font-face\s*\{[^}]*url\('([^']+)'\)/.exec(css);
+  assert.equal(firstFace[1], '/fonts/geist.woff2', 'Geist @font-face is FIRST (the shells preload it)');
+  // Roboto survives as the bundled fallback, also variable.
+  assert.match(css, /@font-face\s*\{[^}]*font-family:\s*'Roboto'[^}]*font-weight:\s*100 900/, 'Roboto stays bundled as the variable fallback');
 });
 
 test('sentence-case pass: none of the converted Title Case phrases survive in any shell', () => {

@@ -141,7 +141,8 @@ test('the fix is font-independent -- no era-scoped override was used to paper ov
 // ---- v1.47.6: labels hidden at phone widths (Dean's follow-up) -------------
 //
 // After v1.47.5 the row was CONTAINED but Share still dropped to a second line
-// in Original (Verdana) and Classic (Arial), while Flat/Modern (Roboto) fit --
+// in Original (Verdana) and Classic (Arial), while Flat (Arial) / Modern (Geist
+// since v1.107, Roboto before) fit --
 // an exact font-width ordering, confirming the row was only marginally over
 // budget. Five labelled buttons cannot fit a ~328px content box in a wide font;
 // five glyphs fit any font with room to spare. Same treatment `.section-actions`

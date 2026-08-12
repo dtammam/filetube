@@ -118,7 +118,7 @@ const THEME_REGISTRY = [
     blurb: 'Clean flat white with a brighter red.',
     swatch: ['#ffffff', '#e62117'] },
   { id: '2021', name: 'Modern', year: 2021,
-    blurb: 'Rounded cards and Roboto — today\'s look.',
+    blurb: 'Rounded cards and Geist - today\'s look.',
     swatch: ['#ffffff', '#cc0000'] }
 ];
 

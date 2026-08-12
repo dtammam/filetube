@@ -80,6 +80,32 @@
 
 ## Shipped
 
+### v1.107.0 - Modern theme font: Roboto -> Geist (2026-08-12)
+
+Dean: the modern theme's font felt "slightly sloppy / not super modern... modern,
+sleek, high quality, app-like, distinctive, unobtrusive." Swapped the MODERN
+theme's face from Roboto to **Geist** (Vercel's product-UI typeface, OFL) - he
+picked it from a side-by-side of Geist/Manrope/Plus Jakarta/Inter rendered in a
+mock of the modern card grid. MODERN ONLY: the retro eras (2005 Verdana / 2009 &
+2014 Arial) keep their own stacks.
+
+- Self-hosted variable woff2 (`public/fonts/geist.woff2`, latin, 100-900, OFL) -
+  the same self-host pattern Roboto already used. Named FIRST in the `@font-face`
+  list; all 12 shells preload it. Roboto stays bundled as the graceful fallback
+  (`Geist -> Roboto -> system`). `[data-theme="2021"]` + the `:root` pre-theme
+  default set `--font-family`/`--logo-font`/`--heading-font` to Geist (one font
+  across all elements; drops the old proprietary YouTube-Sans-first heading
+  stack). `--heading-weight:500` kept - Geist is variable so 500 is a genuine
+  master, not a synthesized faux-weight. `font-family` isn't a governed census
+  prop, so TOTAL 0.
+
+Gate: both seats APPROVE. The adversarial seat fonttools-verified the woff2 is a
+genuine 100-900 variable (real Medium=500). Two fix rounds swept every stale
+"Roboto"/"YouTube Sans" reference (the era-picker blurb, CSS comments, and 5 shell
+preload comments) -> a forcing guard now fails the suite on any "Roboto" in a
+shell. Dual-Node full suite 6715/6715 on v22.23.1 and v24.14.0. **Dean's on-device
+pass PENDING** (the "does it feel more modern" arbiter).
+
 ### v1.106.0 - Tap-to-expand now-playing + iPad PWA header safe-area (2026-08-12)
 
 Two Dean on-device reports in one small wave.

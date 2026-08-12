@@ -33,10 +33,10 @@
        immediately instead of only discovering it once style.css itself
        parses -- `font-display: swap` (unchanged) still governs the actual
        swap-in, this just shrinks the window where the fallback font is
-       visible before Roboto takes over. `type`/`crossorigin` are required
+       visible before Geist takes over. `type`/`crossorigin` are required
        for the browser to actually treat this as the SAME request the
        @font-face rule will make (a mismatched preload is wasted). -->
-  <link rel="preload" href="/fonts/roboto.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/geist.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/css/style.css">
   <script>
     /* FOUC guard: set era+mode+icons on <html> before first paint. Mirror of
