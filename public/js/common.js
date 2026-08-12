@@ -8935,6 +8935,72 @@ function showConfirmModal(title, bodyText, onConfirm, labels) {
   };
 }
 
+// v1.110 (Dean): a small pick-one action modal -- title + one stacked button per
+// choice + Cancel. Reuses the `.modal-backdrop`/`.modal-content` infra + open/
+// close overlay helpers (so it scrolls, fades, and tears down like every other
+// modal). Built with createElement + textContent ONLY (labels/titles can be
+// media-derived, e.g. a chapter title -- never innerHTML). Settles exactly once:
+// the first choice/cancel/backdrop-tap tears down; a chosen `onPick` runs
+// synchronously in the same click (so navigator.share keeps its user gesture).
+// Returns a `dismiss()` the caller can call on teardown (SPA nav never closes a
+// body-level modal on its own -- the v1.49 lesson).
+function showChoiceModal(title, choices) {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  const content = document.createElement('div');
+  content.className = 'modal-content';
+  backdrop.appendChild(content);
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'modal-title';
+  titleEl.textContent = typeof title === 'string' ? title : '';
+  content.appendChild(titleEl);
+
+  const list = document.createElement('div');
+  list.className = 'choice-modal-list';
+  content.appendChild(list);
+
+  let settled = false;
+  function teardown() {
+    backdrop.classList.add('modal-closing');
+    closeOverlayThen(backdrop, 'modal-open', () => {
+      if (backdrop.parentNode) document.body.removeChild(backdrop);
+    });
+  }
+  function settle(onPick) {
+    if (settled) return;
+    settled = true;
+    teardown();
+    if (typeof onPick === 'function') onPick();
+  }
+
+  (Array.isArray(choices) ? choices : []).forEach((choice) => {
+    if (!choice || typeof choice.label !== 'string') return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn choice-modal-btn';
+    btn.textContent = choice.label;
+    btn.addEventListener('click', () => settle(choice.onPick));
+    list.appendChild(btn);
+  });
+
+  const actions = document.createElement('div');
+  actions.className = 'modal-actions';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('click', () => settle());
+  actions.appendChild(cancelBtn);
+  content.appendChild(actions);
+
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) settle(); });
+
+  document.body.appendChild(backdrop);
+  openOverlay(backdrop, 'modal-open');
+  return function dismiss() { settle(); };
+}
+
 // ---- FR-7 (v1.21.0, T6): extra-deliberate delete for local files ----------
 // See docs/exec-plans/completed/2026-07-08-v1.21-polish-release.md ("FR-7 --
 // extra-deliberate delete for local (non-yt-dlp) files") for the full
@@ -9639,6 +9705,26 @@ function closeDeliveredPushBanners(mediaId) {
       return closed;
     })
     .catch(() => 0);
+}
+
+// v1.110 (Dean): append a YouTube start-time to an ALREADY-server-resolved share
+// URL. The URL IDENTITY is never assembled client-side (the v1.52 lesson) -- this
+// only SETS the `t=<whole seconds>` query param on a resolved watchUrl via the
+// platform URL parser, so it handles both `youtu.be/ID?t=` and `watch?v=ID&t=`,
+// preserves any other params (e.g. `&list=`), and overwrites a pre-existing `t`.
+// Returns the url UNCHANGED for a non-finite/non-positive time, a non-string url,
+// or a url the parser rejects -- a share can never produce a BROKEN link, only
+// (at worst) fall back to the plain one.
+function withShareStartTime(url, seconds) {
+  if (typeof url !== 'string' || url === '') return url;
+  if (typeof seconds !== 'number' || !isFinite(seconds) || seconds <= 0) return url;
+  try {
+    const u = new URL(url);
+    u.searchParams.set('t', String(Math.floor(seconds)));
+    return u.toString();
+  } catch (e) {
+    return url;
+  }
 }
 
 function shareExternalUrl(url, title) {
@@ -11668,6 +11754,10 @@ document.addEventListener('DOMContentLoaded', () => {
 // `module` is undefined there).
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    // v1.110 (Dean): the pure share-URL start-time param appender (unit-tested)
+    // + the pick-one action modal (jsdom-tested for textContent + settle-once).
+    withShareStartTime,
+    showChoiceModal,
     // v1.87.1: first-paint chrome inline-SVG glyphs (map + markup/element
     // builders). chrome-icons.test.js byte-binds the map to the on-disk assets
     // and source-locks the static bottom-nav markup against chromeIconMarkup.

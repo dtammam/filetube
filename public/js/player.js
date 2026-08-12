@@ -5453,6 +5453,11 @@ if (typeof module !== 'undefined' && module.exports) {
       closeBtn.addEventListener('click', closeChaptersMenu);
       header.appendChild(closeBtn);
       chaptersMenu.appendChild(header);
+      // v1.110 (Dean): the ORIGINAL YouTube link for this item, if the server
+      // resolved one (watch.js spreads mediaData into player.load, so it rides
+      // currentData). Present -> each chapter row gets a share icon that shares
+      // the link at that chapter's start; absent (a plain local file) -> no icons.
+      var chapterShareUrl = (currentData && typeof currentData.watchUrl === 'string') ? currentData.watchUrl : '';
       currentChapters.forEach(function (ch, index) {
         // v1.41.12 (Dean): each chapter is now a ROW -- the existing seek
         // button plus a per-chapter Loop toggle (his pick: "like a music
@@ -5516,6 +5521,25 @@ if (typeof module !== 'undefined' && module.exports) {
         });
         row.appendChild(item);
         row.appendChild(loopBtn);
+        // v1.110 (Dean): the per-chapter share icon (only for a YouTube-derived
+        // item). Shares the ORIGINAL link at THIS chapter's start via
+        // withShareStartTime (common.js) + the shared shareExternalUrl decision.
+        // stopPropagation so tapping share never seeks the row.
+        if (chapterShareUrl) {
+          var shareBtn = document.createElement('button');
+          shareBtn.type = 'button';
+          shareBtn.className = 'chapters-menu-share';
+          shareBtn.title = 'Share this chapter';
+          shareBtn.setAttribute('aria-label', 'Share chapter: ' + (ch.title || 'Chapter'));
+          var shareIcon = document.createElement('i');
+          shareIcon.className = 'icon-share';
+          shareBtn.appendChild(shareIcon);
+          shareBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            shareExternalUrl(withShareStartTime(chapterShareUrl, ch.startTime), (currentData && currentData.title) || '');
+          });
+          row.appendChild(shareBtn);
+        }
         chaptersMenu.appendChild(row);
       });
       if (playerCanModifyLibrary) {
@@ -6793,6 +6817,15 @@ if (typeof module !== 'undefined' && module.exports) {
     close: close,
     setTrackNav: setTrackNav, // v1.39.0: register/clear lock-screen prev/next (book chapters)
     getState: function () { return state; },
+    // v1.110 (Dean, share-at-current-time): the live playback position in seconds
+    // for the loaded item, or null when there's nothing to share a timestamp for.
+    // NON-live only -- a live-transcode offset is not a shareable VOD `?t=` (watch.js
+    // hides the "share at current time" option when this is null).
+    getCurrentTime: function () {
+      if (!currentId || !mediaPlayer || liveMode) return null;
+      var t = mediaPlayer.currentTime;
+      return (typeof t === 'number' && isFinite(t)) ? t : null;
+    },
     isLoopEnabled: isLoopEnabled, // FR-7 (TF, v1.22.0) -- watch.js's setupLoopToggle reads/writes through these
     setLoop: setLoop,
     // v1.52 instant watch: the late-detail seam. A seeded pre-load starts

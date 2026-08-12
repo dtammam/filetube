@@ -184,6 +184,10 @@ module.exports = [
         // v1.67 (plan D6): THE share decision (common.js), called by the
         // watch Share button and the card share corner.
         shareExternalUrl: 'readonly',
+        // v1.110 (Dean): timestamped sharing (common.js) - the ?t= appender
+        // (watch.js + player.js) and the pick-one action modal (watch.js).
+        withShareStartTime: 'readonly',
+        showChoiceModal: 'readonly',
         // v1.68 (ruling 4): close a played video's delivered push banner
         // (common.js), called by watch.js's pingView.
         closeDeliveredPushBanners: 'readonly',

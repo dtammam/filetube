@@ -950,6 +950,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // relocation confirm, so navigating away closes it instead of leaving a
     // "move this file" dialog for the PREVIOUS video on screen.
     let relocationDismiss = null;
+    // v1.110 (Dean): dismiss handle for the share "video vs current time" choice
+    // modal, torn down on view abort like relocationDismiss (a body-level modal
+    // survives SPA nav on its own -- the v1.49 lesson).
+    let shareChoiceDismiss = null;
     // One abort registration per view instance (see pollReheat's own comment).
     let reheatAbortHooked = false;
     // FIX C (two-reviewer-gate follow-up): the FR-2-derived display name,
@@ -2766,12 +2770,14 @@ if (typeof module !== 'undefined' && module.exports) {
     // link" ask); clipboard copy with a transient "Copied!" label as the
     // desktop fallback. An AbortError from `navigator.share` is the user
     // closing the sheet -- silently fine, never an error.
-    function handleShareClick() {
-      if (!mediaData || typeof mediaData.watchUrl !== 'string' || mediaData.watchUrl === '') return;
+    // v1.110 (Dean): run the actual share of `url` (the original YouTube link,
+    // optionally with a `?t=`) + the desktop-fallback "Copied!" feedback. Called
+    // directly, or from a share-choice pick below.
+    function runShare(url) {
       // v1.67 (plan D6): the share-sheet-vs-clipboard DECISION lives in
       // common.js's shareExternalUrl (the card share corner runs the same
       // one); only the watch-local "Copied!" label feedback stays here.
-      shareExternalUrl(mediaData.watchUrl, mediaData.title).then((outcome) => {
+      shareExternalUrl(url, mediaData.title).then((outcome) => {
         if (outcome !== 'copied' || !shareBtn) return;
         // v1.47.6: write to the `.btn-label` span, NOT the button's own
         // textContent -- that would wipe the icon element added alongside
@@ -2797,6 +2803,30 @@ if (typeof module !== 'undefined' && module.exports) {
           shareBtnResetTimer = null;
         }, 1500);
       });
+    }
+
+    // v1.110 (Dean): the Share button. When there's a meaningful playback position
+    // to offer (>= 1s, non-live -- player.getCurrentTime returns null for live),
+    // PROMPT "Share video" vs "Share at current time (M:SS)"; each shares the
+    // original YouTube link, the second with a `?t=` start. Under 1s / no position
+    // it shares the plain link directly (no pointless 0:00 prompt), the pre-v1.110
+    // behaviour. The choice modal is body-level, so its dismiss is torn down on
+    // view abort.
+    function handleShareClick() {
+      if (!mediaData || typeof mediaData.watchUrl !== 'string' || mediaData.watchUrl === '') return;
+      const base = mediaData.watchUrl;
+      const player = (typeof window !== 'undefined' && window.FileTube) ? window.FileTube.player : null;
+      const t = (player && typeof player.getCurrentTime === 'function') ? player.getCurrentTime() : null;
+      if (typeof t === 'number' && isFinite(t) && t >= 1) {
+        if (shareChoiceDismiss) { signal.removeEventListener('abort', shareChoiceDismiss); shareChoiceDismiss = null; }
+        shareChoiceDismiss = showChoiceModal('Share', [
+          { label: 'Share video', onPick: () => runShare(base) },
+          { label: 'Share at current time (' + formatDuration(t) + ')', onPick: () => runShare(withShareStartTime(base, t)) },
+        ]);
+        signal.addEventListener('abort', shareChoiceDismiss, { once: true });
+        return;
+      }
+      runShare(base);
     }
 
     // Creates (once per view instance) and mounts the Share button as a
