@@ -857,6 +857,27 @@ function currentChapterIndex(chapters, t) {
   return idx;
 }
 
+// v1.109 (Dean): the Ch-menu follow-along highlight, factored out as a pure
+// DOM helper so BOTH its axes are unit-testable off a real DOM (no player boot):
+//   REVEAL - the item whose data-chapter-index === currentIdx gets the
+//            `chapters-menu-item-current` class + aria-current="true";
+//   CLEAR  - EVERY other item (and ALL items when currentIdx < 0) loses both.
+// The clear axis is the one the repo keeps re-paying for (a highlight that only
+// ever ADDS leaves a stale mark on the previous chapter as the playhead moves),
+// so it's asserted directly: mark one, move, assert the old one cleared.
+function markCurrentChapterItem(items, currentIdx) {
+  if (!items) return;
+  for (var i = 0; i < items.length; i++) {
+    var el = items[i];
+    if (!el) continue;
+    var isCurrent = currentIdx >= 0 &&
+      parseInt(el.getAttribute('data-chapter-index'), 10) === currentIdx;
+    el.classList.toggle('chapters-menu-item-current', isCurrent);
+    if (isCurrent) el.setAttribute('aria-current', 'true');
+    else el.removeAttribute('aria-current');
+  }
+}
+
 // ---- FR-4 (T1, v1.22.1): persistent playback-speed pure helper ------------
 // v1.50.3 (Dean, item A): slower-than-1x joins the list -- 0.25/0.5/0.75,
 // the YouTube set. The list stays a MODULE-LEVEL constant so the speed MENU
@@ -1205,6 +1226,8 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveChapterLoopBounds,
     // v1.109: chapter follow-along -- the shared "current chapter" resolver.
     currentChapterIndex,
+    // v1.109: the Ch-menu current-chapter highlight applier (reveal + clear).
+    markCurrentChapterItem,
     // v1.50.3: the speed PICKER's pure row model (nextPlaybackRate -- the
     // retired blind cycle -- is gone with its only caller; see
     // buildSpeedMenuModel's header).
@@ -1282,6 +1305,11 @@ if (typeof module !== 'undefined' && module.exports) {
   // (manual > embedded > description -- resolved server-side).
   var chaptersBtn, chaptersMenu;
   var currentChapters = [];
+  // v1.109 (Dean): chapter follow-along -- the index of the chapter the playhead
+  // is currently in (-1 = none/before-first/no-chapters), resolved from the live
+  // position by currentChapterIndex and fanned out to every "current chapter"
+  // surface by setCurrentChapter (below). Session state, reset to -1 on every load.
+  var currentChapterIdx = -1;
   // v1.41.12 (Dean: "loop that specific section -- like a music album"):
   // the armed chapter loop, or null. { start, end, index } resolved via
   // resolveChapterLoopBounds at arm time. SESSION-ONLY by design: cleared on
@@ -1294,6 +1322,11 @@ if (typeof module !== 'undefined' && module.exports) {
   // teardown racing first wiring can never throw.
   var applyChaptersForMedia = function () {};
   var resetChaptersUi = function () {};
+  // v1.109 chapter follow-along renderers -- assigned as each surface is built
+  // inside wireHostListeners' closure (menu row, seek-bar segments, title chip);
+  // inert no-ops until then so the dispatcher never throws before wiring.
+  var applyCurrentChapterToMenu = function () {};
+  var updateChapterNowChip = function () {};
 
   // Feature B (v1.26.1): the AUDIO-mode custom caption overlay -- created
   // once in ensureHost() (never touches the shared player-host-template
@@ -4168,6 +4201,19 @@ if (typeof module !== 'undefined' && module.exports) {
     if (seekPreviewEl) seekPreviewEl.classList.remove('visible');
   }
 
+  // v1.109 (Dean): chapter follow-along dispatcher. Fans a CHANGED current
+  // chapter out to the "current chapter" renderers exactly once -- the per-frame
+  // fill loop calls it every frame, but it no-ops unless the index actually
+  // crossed a boundary, so following along costs a comparison per frame, never a
+  // DOM write. (The seek-bar SEGMENTS are static per chapter-set and built
+  // separately; the continuous red fill stays the native `--seek-fill` below.)
+  function setCurrentChapter(idx) {
+    if (idx === currentChapterIdx) return;
+    currentChapterIdx = idx;
+    applyCurrentChapterToMenu();
+    updateChapterNowChip();
+  }
+
   function updateSeekVisual() {
     if (!mediaPlayer) return;
     var total = seekTotalDuration();
@@ -4179,6 +4225,10 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (timeCur) timeCur.textContent = formatDuration(cur);
     if (timeDur) timeDur.textContent = formatDuration(total);
+    // Follow-along: keep every current-chapter surface in step with the playhead
+    // (no-ops unless the chapter changed). Shares this loop's already-computed
+    // position, so no extra clock read.
+    setCurrentChapter(currentChapters.length ? currentChapterIndex(currentChapters, cur) : -1);
   }
 
   // Runs only while playing (self-terminating below) -- NOT driven by the
@@ -4222,6 +4272,9 @@ if (typeof module !== 'undefined' && module.exports) {
     if (seekBar) { seekBar.value = '0'; seekBar.style.setProperty('--seek-fill', '0%'); }
     if (timeCur) timeCur.textContent = '0:00';
     if (timeDur) timeDur.textContent = '0:00';
+    // v1.109: drop the previous item's current-chapter so the next item's first
+    // dispatch (from 0) is always treated as a change and re-renders fresh.
+    currentChapterIdx = -1;
   }
 
   // ---- volume: clamp/persist + iOS feature-detect --------------------------
@@ -5256,6 +5309,9 @@ if (typeof module !== 'undefined' && module.exports) {
         var item = document.createElement('button');
         item.type = 'button';
         item.className = 'chapters-menu-item';
+        // v1.109: tag the row with its chapter index so applyCurrentChapterToMenu
+        // can mark the one the playhead is in (follow-along highlight).
+        item.setAttribute('data-chapter-index', String(index));
         var time = document.createElement('span');
         time.className = 'chapters-menu-time';
         time.textContent = formatDuration(ch.startTime);
@@ -5308,10 +5364,25 @@ if (typeof module !== 'undefined' && module.exports) {
         edit.addEventListener('click', openChaptersEditorFromMenu);
         chaptersMenu.appendChild(edit);
       }
+      // v1.109: a fresh build starts with no row marked -- re-apply the live
+      // current-chapter highlight so an OPEN menu (Loop arm/disarm rebuilds it,
+      // and the open path builds it) shows the playing row immediately.
+      applyCurrentChapterToMenu();
       // v1.43.1 B2: a rebuild while OPEN (Loop arm/disarm re-renders rows)
       // re-measures; hidden rebuilds no-op inside the clamp's own guard.
       clampChaptersMenuHeight();
     }
+    // v1.109 (Dean): the follow-along highlight -- mark the .chapters-menu-item
+    // whose chapter the playhead is in (currentChapterIdx) so you can see which
+    // section you're in as it plays. Distinct element from the row's Loop button
+    // (which carries its OWN red when armed), so "playing" and "loop-armed" read
+    // independently on the same row. Toggles BOTH the class and aria-current, and
+    // CLEARS every other row (the clear axis: a row that stops being current must
+    // lose the mark). Driven by setCurrentChapter's dispatch + every menu build.
+    applyCurrentChapterToMenu = function () {
+      if (!chaptersMenu) return;
+      markCurrentChapterItem(chaptersMenu.querySelectorAll('.chapters-menu-item[data-chapter-index]'), currentChapterIdx);
+    };
     // Exposed to setupForMedia (which runs outside this wiring closure).
     applyChaptersForMedia = function (data) {
       currentChapters = data && Array.isArray(data.chapters) ? data.chapters : [];
@@ -5434,7 +5505,13 @@ if (typeof module !== 'undefined' && module.exports) {
       document.addEventListener('touchstart', closeSpeedMenuOnOutside, { passive: true });
       if (mediaPlayer) {
         // closeChaptersMenu dismisses BOTH bar popups (see its comment).
-        mediaPlayer.addEventListener('play', closeChaptersMenu);
+        // v1.109 (Dean, follow-along): PLAY no longer closes the CHAPTERS menu --
+        // that's what lets you open it and watch the current-chapter highlight
+        // walk down the list as it plays. The speed picker still dismisses on
+        // play (closeSpeedMenu directly), so only the intended popup persists.
+        // pause/seeking still close both (a scrub is a distinct nav intent; a
+        // deliberate pause dismisses the transient popup).
+        mediaPlayer.addEventListener('play', closeSpeedMenu);
         mediaPlayer.addEventListener('pause', closeChaptersMenu);
         mediaPlayer.addEventListener('seeking', closeChaptersMenu);
       }

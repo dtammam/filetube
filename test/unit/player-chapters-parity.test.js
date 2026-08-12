@@ -121,7 +121,11 @@ test('v1.34.1: the chapters UI is mobile-safe -- has-chapters class toggled per 
 test('v1.34.2: the chapters menu has an explicit close (header ✕), touchstart/play-pause-seek dismissal braces, and custom-mode mobile fullscreen is the CSS faux path', () => {
   assert.ok(playerSrc.includes("closeBtn.className = 'chapters-menu-close'"), 'an explicit ✕ close button in the menu header');
   assert.ok(playerSrc.includes("document.addEventListener('touchstart', closeChaptersMenuOnOutside, { passive: true })"), 'touchstart fallback (iOS click/pointer synthesis quirks)');
-  assert.ok(playerSrc.includes("mediaPlayer.addEventListener('play', closeChaptersMenu)"), 'any playback interaction closes the menu');
+  // v1.109 (Dean, follow-along): PLAY now dismisses only the speed picker so the
+  // chapters menu survives play and follows along; pause/seeking still close both
+  // (see the dedicated v1.109 source-lock below).
+  assert.ok(playerSrc.includes("mediaPlayer.addEventListener('play', closeSpeedMenu)"), 'play dismisses the speed picker (not the chapters menu -- follow-along)');
+  assert.ok(playerSrc.includes("mediaPlayer.addEventListener('pause', closeChaptersMenu)"), 'pause still dismisses the chapters menu');
   // v1.67.5: the exit button is the ONE restore-eligible caller (gate C1) -
   // the toggle now passes { restoreScroll: true }.
   assert.ok(playerSrc.includes("setCssFullscreen(!host.classList.contains('css-fullscreen'), { restoreScroll: true })"), 'custom-mode mobile fullscreen toggles the CSS faux-fullscreen (iPhone element-fullscreen is native-only)');
@@ -239,7 +243,8 @@ test('v1.41.11: chapters are hidden entirely in the docked mini-player, and dock
 // clamp on BOTH media elements, the 'ended' cascade pre-emption (last
 // chapter), the per-load/per-edit clears, and the menu's per-row toggle.
 
-const { resolveChapterLoopBounds, currentChapterIndex } = require('../../public/js/player.js');
+const { resolveChapterLoopBounds, currentChapterIndex, markCurrentChapterItem } = require('../../public/js/player.js');
+const { JSDOM } = require('jsdom');
 
 test('resolveChapterLoopBounds: interior chapter ends at the NEXT chapter start; last chapter ends at duration', () => {
   const chapters = [
@@ -301,6 +306,46 @@ test('currentChapterIndex: skips malformed startTimes and tolerates a non-monoto
   assert.strictEqual(currentChapterIndex(jumbled, 50), 0);
 });
 
+// ---- v1.109: markCurrentChapterItem -- the Ch-menu highlight (BOTH axes) -----
+function makeMenuItems(n) {
+  const { document } = new JSDOM('<!doctype html><body></body>').window;
+  const items = [];
+  for (let i = 0; i < n; i++) {
+    const b = document.createElement('button');
+    b.className = 'chapters-menu-item';
+    b.setAttribute('data-chapter-index', String(i));
+    items.push(b);
+  }
+  return items;
+}
+const isMarked = (el) => el.classList.contains('chapters-menu-item-current') && el.getAttribute('aria-current') === 'true';
+
+test('markCurrentChapterItem: REVEAL -- only the matching item gets the class + aria-current', () => {
+  const items = makeMenuItems(3);
+  markCurrentChapterItem(items, 1);
+  assert.ok(isMarked(items[1]), 'the current chapter is marked');
+  assert.ok(!items[0].classList.contains('chapters-menu-item-current') && !items[0].hasAttribute('aria-current'), 'others unmarked');
+  assert.ok(!items[2].classList.contains('chapters-menu-item-current') && !items[2].hasAttribute('aria-current'));
+});
+
+test('markCurrentChapterItem: CLEAR -- moving the current chapter un-marks the previous one (not just adds)', () => {
+  const items = makeMenuItems(3);
+  markCurrentChapterItem(items, 1); // populate FIRST (a clear test on a born-empty set is vacuous)
+  assert.ok(isMarked(items[1]));
+  markCurrentChapterItem(items, 2); // playhead crosses into the next chapter
+  assert.ok(!items[1].classList.contains('chapters-menu-item-current'), 'the OLD current row lost its class');
+  assert.ok(!items[1].hasAttribute('aria-current'), 'the OLD current row lost aria-current');
+  assert.ok(isMarked(items[2]), 'the new current row is marked');
+});
+
+test('markCurrentChapterItem: idx < 0 (no/pre-first chapter) clears ALL rows', () => {
+  const items = makeMenuItems(3);
+  markCurrentChapterItem(items, 0);
+  assert.ok(isMarked(items[0]));
+  markCurrentChapterItem(items, -1);
+  assert.ok(items.every((el) => !el.classList.contains('chapters-menu-item-current') && !el.hasAttribute('aria-current')), 'every row cleared at idx -1');
+});
+
 test('v1.41.12 source-lock: the boundary clamp is wired on BOTH media elements and is live-transcode-aware', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
   assert.match(src, /mediaPlayer\.addEventListener\('timeupdate', enforceChapterLoop\)/, 'foreground element clamped');
@@ -344,6 +389,44 @@ test('v1.41.12 source-lock: the loop is cleared on every load and on every chapt
   assert.match(apply, /chapterLoop = null;/, 'new chapter set clears the loop');
   const editor = src.slice(src.indexOf('window.showChaptersEditor(currentId'), src.indexOf('window.showChaptersEditor(currentId') + 700);
   assert.match(editor, /chapterLoop = null;/, 'edited chapter set clears the loop');
+});
+
+// ---- v1.109 (Dean): chapter follow-along wiring source-locks -----------------
+test('v1.109 source-lock: the fill loop dispatches the current chapter, and buildChaptersMenu tags + re-applies it', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  // The per-frame fill loop resolves the current chapter from the live position
+  // and dispatches it (no-ops unless changed) -- this is what makes the menu row
+  // + chip follow along without a second clock read.
+  const usv = src.slice(src.indexOf('function updateSeekVisual()'), src.indexOf('function updateSeekVisual()') + 1000);
+  assert.match(usv, /setCurrentChapter\(currentChapters\.length \? currentChapterIndex\(currentChapters, cur\) : -1\);/,
+    'fill loop dispatches the live current chapter');
+  // The dispatcher no-ops on an unchanged index (per-frame cheapness) then fans out.
+  const disp = src.slice(src.indexOf('function setCurrentChapter(idx)'), src.indexOf('function setCurrentChapter(idx)') + 260);
+  assert.match(disp, /if \(idx === currentChapterIdx\) return;/, 'dispatcher no-ops unless the chapter changed');
+  assert.match(disp, /applyCurrentChapterToMenu\(\);/, 'dispatcher updates the menu highlight');
+  // buildChaptersMenu tags each row with its index and re-applies the highlight
+  // after every (re)build so an OPEN menu shows the playing row immediately.
+  const build = src.slice(src.indexOf('function buildChaptersMenu()'), src.indexOf('function buildChaptersMenu()') + 6000);
+  assert.match(build, /item\.setAttribute\('data-chapter-index', String\(index\)\);/, 'rows tagged with their chapter index');
+  assert.match(build, /applyCurrentChapterToMenu\(\);/, 'highlight re-applied on (re)build');
+  // The current-chapter idx is reset per load so the next item re-dispatches fresh.
+  const reset = src.slice(src.indexOf('function resetSeekVisual()'), src.indexOf('function resetSeekVisual()') + 700);
+  assert.match(reset, /currentChapterIdx = -1;/, 'current chapter reset on every load');
+});
+
+test('v1.109 source-lock: PLAY no longer closes the chapters menu (follow-along), pause/seeking still do', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  // The play listener dismisses ONLY the speed picker now, so the chapters menu
+  // survives play and can follow along. pause/seeking still close both popups.
+  assert.match(src, /mediaPlayer\.addEventListener\('play', closeSpeedMenu\);/, 'play closes only the speed picker');
+  assert.doesNotMatch(src, /mediaPlayer\.addEventListener\('play', closeChaptersMenu\);/, 'play must NOT close the chapters menu');
+  assert.match(src, /mediaPlayer\.addEventListener\('pause', closeChaptersMenu\);/, 'pause still closes');
+  assert.match(src, /mediaPlayer\.addEventListener\('seeking', closeChaptersMenu\);/, 'seeking still closes');
+});
+
+test('v1.109 source-lock: the current-chapter menu row is styled red (the follow-along colour)', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.chapters-menu-item-current \{[^}]*color: var\(--yt-red\);/, 'current row text is --yt-red');
 });
 
 test('v1.41.12/v1.108 source-lock: per-row Loop toggle in the menu + styles present (resting word label, armed ∞, fixed width)', () => {

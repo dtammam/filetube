@@ -6399,6 +6399,16 @@ body.ft-css-fullscreen .bottom-nav {
 .chapters-menu-item:hover {
   background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
 }
+/* v1.109 (Dean): the chapter the playhead is currently in -- the follow-along
+   highlight in the Ch menu. Red text + a red left-accent bar (the SAME --yt-red
+   the loop-armed state uses, per Dean) so you can see which section you're in at
+   a glance and watch it walk down the list as it plays. Independent of the row's
+   Loop button, which carries its own red when armed, so "playing" and
+   "loop-armed" read separately. Placed after the base rule so `color` wins. */
+.chapters-menu-item-current {
+  color: var(--yt-red);
+  box-shadow: inset 3px 0 0 var(--yt-red);
+}
 /* v1.50.3: the speed picker reuses the chapters popup wholesale; only the
    width budget differs (eight short labels need no 220px) and the active
    rate gets the accent treatment. Era/mode correctness rides the shared
