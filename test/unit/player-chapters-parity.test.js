@@ -325,7 +325,19 @@ test('v1.41.12/v1.108 source-lock: per-row Loop toggle in the menu + styles pres
   // The fixed-width label is what keeps the row's border aligned across loop
   // states; without it the Loop<->∞ swap would reflow the button. Delete the
   // `min-width` and this goes red.
-  assert.match(css, /\.chapters-menu-loop-label \{[\s\S]*?min-width: 4\.5ch;[\s\S]*?text-align: center;/, 'fixed-width centered label so Loop<->∞ never reflows the row');
+  assert.match(css, /\.chapters-menu-loop-label \{[^}]*min-width: 4\.5ch;[^}]*text-align: center;/, 'fixed-width centered label so Loop<->∞ never reflows the row');
+  // v1.108 gate WARNING T2-W1: the reservation is in `ch`, which is the advance
+  // of the digit "0" in the CURRENT weight. If the label ever inherits the
+  // armed `.active` bold, its `ch` recomputes against the bold digit and the
+  // button widens ~1-2px on variable-weight fonts (Geist) -- reintroducing the
+  // exact border shift this fix kills. `font-weight: normal` on the label pins
+  // that. Drop it (or re-bold `.active`) and the residual returns.
+  // Block-anchored (`[^}]*`, not `[\s\S]*?`): `font-weight: normal;` recurs all
+  // over style.css, so a lazy cross-block match would find a LATER one and pass
+  // even with the label's pin deleted (caught in the fix round). `[^}]*` stops
+  // at the block's own `}`, so this only matches the pin INSIDE the label rule.
+  assert.match(css, /\.chapters-menu-loop-label \{[^}]*font-weight: normal;/, 'label weight pinned so the armed state cannot widen the ch reservation (T2-W1)');
+  assert.doesNotMatch(css, /\.chapters-menu-loop\.active \{[^}]*font-weight/, 'the armed state must NOT bold the width-reserving label (T2-W1 root cause)');
 });
 
 // ---- v1.41.12 gate fix round: locks for the round-1 findings ----------------

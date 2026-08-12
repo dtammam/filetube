@@ -972,11 +972,13 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 /* The watch-page Like button's liked state (v1.108, Dean): a plain neutral
    `.btn` when NOT liked (grey heart, the resting look), turning the heart RED
-   when liked -- the YouTube heart convention, and the exact mirror of
-   `.card-like-btn.liked` below (currentColor tints the `.icon-heart` mask + the
-   "Liked" label together). Deliberately NOT `.btn-primary`: red-as-actionable /
-   grey-as-done read backwards to Dean. `color` only, so the button keeps its
-   era-themed `.btn` background/border. */
+   when liked -- the YouTube heart convention, the same red-heart idea as
+   `.card-like-btn.liked` below (there `color: var(--yt-red)` rides an `opacity:1`;
+   here it's `color`-only because a full `.btn` has no resting dim to undo).
+   currentColor tints the `.icon-heart` mask + the "Liked" label together.
+   Deliberately NOT `.btn-primary`: red-as-actionable / grey-as-done read
+   backwards to Dean. `color` only, so the button keeps its era-themed `.btn`
+   background/border. */
 .btn.liked {
   color: var(--yt-red);
 }
@@ -6497,23 +6499,32 @@ body.ft-css-fullscreen .bottom-nav {
   background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
 }
 .chapters-menu-loop.active {
+  /* Armed = the loop button turns red (the label's own weight is pinned below,
+     so we deliberately do NOT bold here: bolding the width-reserving label
+     recomputes its `ch` against the bold digit and reintroduces a ~1-2px border
+     nudge on variable-weight fonts -- the exact shift T2 exists to kill, gate
+     WARNING T2-W1). The bar-level #chapters-btn tint (below) is the other armed
+     signal. */
   color: var(--yt-red);
-  font-weight: var(--fw-bold);
 }
 /* v1.108 (Dean): the armed state shows "∞" (U+221E) instead of the word
    "Looping". The resting "Loop" and the armed "∞" ride this fixed-width label
    so the button never resizes between states -- its left border (Dean's "little
    line") stays aligned with the rows above/below no matter which chapter is
    looping. Width is reserved in `ch` (font-relative, so it holds across every
-   era font and at any zoom, unlike a magic px) at 4.5ch -- comfortably wider
-   than the resting "Loop" (~4.0-4.1ch even in the widest era font, Verdana),
-   with the glyph centered. `min-width`/`width` are census-exempt by design
-   (scripts/css-token-lint.js: "layout geometry literal"), so a unit literal is
-   allowed here. The button's own tap-target min-width/min-height (mobile MQ)
-   are unaffected floors -- 4.5ch + padding already exceeds them. */
+   era font and at any zoom, unlike a magic px) at 4.5ch -- comfortably clears
+   the resting "Loop", whose worst case across the shipped era fonts is ~4.0ch
+   (Arial; Geist/Roboto/Verdana are narrower in `ch`). `font-weight: normal` is
+   the LOAD-BEARING half of the guarantee: it holds the reservation weight-stable
+   so the `.active` state can never widen it via a bold digit (T2-W1). `min-width`
+   /`width` are census-exempt by design (scripts/css-token-lint.js: "layout
+   geometry literal"), so a unit literal is allowed here. The button's own
+   tap-target min-width/min-height (mobile MQ) are unaffected floors -- 4.5ch +
+   padding already exceeds them. */
 .chapters-menu-loop-label {
   display: inline-block;
   min-width: 4.5ch;
+  font-weight: normal;
   text-align: center;
 }
 /* Bar-level armed signal: the Ch button tints while a chapter loop is on, so
