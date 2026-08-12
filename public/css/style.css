@@ -342,7 +342,7 @@ summary,
   /* v1.50.2 gate C1: :root now defines --heading-font (the safe-default
      contract), and custom properties INHERIT -- without a per-era
      override the var() fallback in the title rules is dead and every
-     era would render 2021's Roboto/YouTube Sans titles. Re-point the
+     era would render 2021 Modern's own title font. Re-point the
      heading family at this era's own body stack. */
   --heading-font: var(--font-family);
   --font-family: Verdana, Arial, Helvetica, sans-serif;
@@ -398,7 +398,7 @@ summary,
   /* v1.50.2 gate C1: :root now defines --heading-font (the safe-default
      contract), and custom properties INHERIT -- without a per-era
      override the var() fallback in the title rules is dead and every
-     era would render 2021's Roboto/YouTube Sans titles. Re-point the
+     era would render 2021 Modern's own title font. Re-point the
      heading family at this era's own body stack. */
   --heading-font: var(--font-family);
   --font-family: Arial, Helvetica, sans-serif;
@@ -454,7 +454,7 @@ summary,
   /* v1.50.2 gate C1: :root now defines --heading-font (the safe-default
      contract), and custom properties INHERIT -- without a per-era
      override the var() fallback in the title rules is dead and every
-     era would render 2021's Roboto/YouTube Sans titles. Re-point the
+     era would render 2021 Modern's own title font. Re-point the
      heading family at this era's own body stack. */
   --heading-font: var(--font-family);
   /* v1.50.2 (Dean, font pass): Roboto was WRONG for this era -- the real
@@ -1151,8 +1151,8 @@ html.reader-immersive .app-container { padding-top: 0; }
 .section-title {
   font-size: var(--fs-2xl);
   /* v1.50.2 (Dean, font pass): title surfaces are era-token driven -- 2021
-     goes medium/tighter (YouTube Sans locally when installed, else medium
-     Roboto); every other era resolves to the same bold/normal this always
+     goes medium/tighter (Geist since v1.107, the bundled Modern face); every
+     other era resolves to the same bold/normal this always
      was. The var() fallbacks keep any era that doesn't define the tokens
      byte-identical to before. Applied to the three title surfaces only
      (.section-title/.video-title/.watch-title); body text untouched. */
@@ -5175,7 +5175,8 @@ a.sub-row-channel-link:focus-visible {
 
   /* v1.47.6 (Dean, on-device follow-up to v1.47.5): with wrapping in place the
      row was CONTAINED, but Share still dropped to a second line in Original
-     (Verdana) and Classic (Arial) while Flat/Modern (Roboto) fit -- an exact
+     (Verdana) and Classic (Arial) while Flat (Arial) / Modern (Geist since
+     v1.107, Roboto before) fit -- an exact
      font-width ordering, and confirmation that the row was only marginally
      over budget.
 

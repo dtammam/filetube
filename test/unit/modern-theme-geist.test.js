@@ -37,3 +37,32 @@ test('v1.107: the retro eras are UNTOUCHED (no Geist leaks into 2005/2009/2014)'
     assert.doesNotMatch(block, /Geist/, `era ${era} must not name Geist - Geist is Modern-only`);
   }
 });
+
+test('v1.107 (gate coverage): EVERY shell that loads style.css preloads geist.woff2, before the stylesheet', () => {
+  // Widens the v1262-pwa-chrome preload lock (which only covers 5 of 12 shells)
+  // to ALL shells - incl. login.html, the pre-login/cold-visit surface whose FOUC
+  // matters most. Any shell that references the stylesheet must preload the font.
+  const dirs = [path.join(ROOT, 'public'), path.join(ROOT, 'lib', 'ytdlp', 'views')];
+  let checked = 0;
+  for (const dir of dirs) {
+    for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('.html'))) {
+      const html = fs.readFileSync(path.join(dir, f), 'utf8');
+      const cssIdx = html.indexOf('rel="stylesheet" href="/css/style.css"');
+      if (cssIdx === -1) continue; // not a full shell
+      checked++;
+      const preIdx = html.indexOf('rel="preload" href="/fonts/geist.woff2"');
+      assert.ok(preIdx > -1, `${f} loads style.css but does not preload geist.woff2`);
+      assert.ok(preIdx < cssIdx, `${f}: the geist preload must precede the stylesheet <link>`);
+      assert.ok(!html.includes('preload" href="/fonts/roboto.woff2"'), `${f} still preloads the OLD roboto font`);
+    }
+  }
+  assert.ok(checked >= 12, `expected >=12 shells to be checked, saw ${checked}`);
+});
+
+test('v1.107: the era-picker blurb for Modern names Geist, not the old Roboto (shipped-feature self-consistency)', () => {
+  const common = fs.readFileSync(path.join(ROOT, 'public', 'js', 'common.js'), 'utf8');
+  const modern = /id:\s*'2021'[\s\S]*?blurb:\s*'([^']*)'/.exec(common);
+  assert.ok(modern, 'the Modern (2021) THEME_REGISTRY entry exists');
+  assert.match(modern[1], /Geist/, "the Modern era-picker blurb must say Geist");
+  assert.doesNotMatch(modern[1], /Roboto/, "the Modern blurb must not still say Roboto (it renders Geist)");
+});
