@@ -177,16 +177,16 @@ test('v1.44.2: buildSongRowHtml carries the CSS equalizer glyph (3 bars, NEVER a
   assert.doesNotMatch(html, /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u, 'no emoji codepoint in a song row');
 });
 
-test('v1.44.2/v1.73/v1.104 SOURCE-LOCK: a fresh tap DOCKS (browse-while-playing); a track change while EXPANDED keeps the slot', () => {
-  // v1.104: loadTrack now KEEPS the player's position across a track change - a
-  // docked/closed player still docks (browse-while-playing survives ruling 2),
-  // but an EXPANDED player (state 'full') loads the next track into #player-slot
-  // so next/prev no longer collapse it to the mini-bar. The BEHAVIOUR (which
-  // position each state loads into) is bound in music-nowplaying-view.test.js;
-  // this lock just guards the conditional's shape against silent reversion.
-  assert.match(MUSIC_JS, /keepSlot \? \{ slot: keepSlot \} : \{ dock: true \}/,
-    'expanded -> slot, else dock (browse-while-playing default)');
-  assert.match(MUSIC_JS, /getState\(\) === 'full'/, 'the keep-expanded branch gates on the full state');
+test('v1.106 SOURCE-LOCK: a fresh SELECT expands (slot); a NAV keeps position', () => {
+  // v1.106: a fresh select (default) always mounts FULL into #player-slot (open
+  // the now-playing view); a NAV (opts.keepPosition, next/prev) keeps position -
+  // slot only if already 'full', else dock. The BEHAVIOUR (which position each
+  // path loads into, + the scroll) is bound in music-nowplaying-view.test.js;
+  // this lock guards the conditional's shape against silent reversion.
+  assert.match(MUSIC_JS, /var useSlot = opts\.keepPosition\s*\n?\s*\? \(pl && typeof pl\.getState === 'function' && pl\.getState\(\) === 'full'\)\s*\n?\s*: true;/,
+    'select -> true (expand); nav -> full-only (keep position)');
+  assert.match(MUSIC_JS, /\(useSlot && slot\) \? \{ slot: slot \} : \{ dock: true \}/, 'expand mounts slot, else dock');
+  assert.match(MUSIC_JS, /if \(!opts\.keepPosition && useSlot && slot\) \{ try \{ window\.scrollTo\(0, 0\)/, 'a fresh select scrolls the player into view');
   assert.match(MUSIC_JS, /readerHref: '\/music\?nowplaying=1'/, 'the dock tap opens the now-playing view in one gesture');
 });
 

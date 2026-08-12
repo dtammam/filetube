@@ -68,6 +68,9 @@ async function boot(storage, initialState, run, opts) {
   global.document = dom.window.document;
   global.localStorage = dom.window.localStorage;
   global.AbortController = dom.window.AbortController;
+  // v1.106: a fresh select scrolls the expanded player into view - record it.
+  mock.scrollCalls = [];
+  dom.window.scrollTo = function () { mock.scrollCalls.push(Array.prototype.slice.call(arguments)); };
   // The `emptied` listener defers via requestAnimationFrame; jsdom provides one.
   global.requestAnimationFrame = dom.window.requestAnimationFrame
     ? dom.window.requestAnimationFrame.bind(dom.window)
@@ -137,12 +140,27 @@ test('v1.104 (fix B): the same via the NEXT-track handler (setTrackNav.onNext) s
   });
 });
 
-test('v1.104: a track tap while DOCKED/closed still DOCKS (browse-while-playing unchanged)', async () => {
+test('v1.106: a fresh track tap EXPANDS (selecting opens the now-playing view) + scrolls it into view', async () => {
   await boot({ filetube_music_tab: 'songs' }, 'closed', async (dom, mock) => {
     await clickRow(dom, 0);
     const call = lastLoad(mock);
-    assert.ok(call.opts.dock === true, 'a fresh list tap docks');
-    assert.ok(!call.opts.slot, 'not mounted full');
+    assert.ok(call.opts.slot, 'a fresh select mounts FULL into #player-slot (was dock pre-v1.106)');
+    assert.ok(!call.opts.dock, 'not docked');
+    assert.equal(mock.s.value, 'full', 'player is expanded after a select');
+    assert.ok(mock.scrollCalls.some((a) => a[0] === 0 && a[1] === 0), 'scrolled the expanded player into view');
+  });
+});
+
+test('v1.106: a NAV step (next/prev) while DOCKED keeps it docked (does NOT force-expand)', async () => {
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom, mock) => {
+    await clickRow(dom, 0); // select -> expands, registers trackNav for index 0
+    mock.setState('docked'); // player later docked (e.g. browsed away and back)
+    mock.scrollCalls.length = 0;
+    mock.s.trackNav.onNext(); // next = a NAV, keepPosition
+    await settle(); await settle();
+    const call = lastLoad(mock);
+    assert.ok(call.opts.dock === true && !call.opts.slot, 'nav kept the docked position');
+    assert.equal(mock.scrollCalls.length, 0, 'a nav does not scroll');
   });
 });
 
@@ -161,9 +179,12 @@ test('v1.104 (panel): playing while EXPANDED shows track metadata + up-next queu
   });
 });
 
-test('v1.104 (panel): DOCKED playback keeps the panel HIDDEN (it is the expanded-view surface)', async () => {
-  await boot({ filetube_music_tab: 'songs' }, 'closed', async (dom) => {
-    await clickRow(dom, 0); // docks
+test('v1.104/v1.106 (panel): DOCKED playback keeps the panel HIDDEN (reached via a nav while docked)', async () => {
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom, mock) => {
+    await clickRow(dom, 0); // select -> expands (panel shown)
+    mock.setState('docked'); // browsed away -> docked
+    mock.s.trackNav.onNext(); // nav keeps it docked
+    await settle(); await settle();
     assert.equal(panel(dom).hidden, true, 'no now-playing panel while docked');
     assert.equal(panel(dom).innerHTML, '', 'panel cleared, not stranded');
   });

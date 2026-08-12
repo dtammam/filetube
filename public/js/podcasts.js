@@ -754,7 +754,10 @@
       updateNowPlayingPanel();
     }
 
-    function playAt(i) {
+    // `opts.keepPosition` = a NAV step (next/prev) - keep the player where it is.
+    // Omitted (a fresh SELECT: an episode tap, up-next tap, continue) - expand.
+    function playAt(i, opts) {
+      opts = opts || {};
       var ep = playable[i];
       if (!ep || !currentShow) return;
       // v1.71: derive show identity per-EPISODE where the payload carries it
@@ -789,15 +792,20 @@
       // player after a dock-tap re-init (seedNowPlayingFromPlayer + rebuildPlayable).
       nowPlaying = { id: ep.id, title: ep.title || '', showName: showName, pubDateMs: ep.pubDateMs, durationSec: ep.durationSec || 0, description: ep.description || '', subId: artSubId };
       applyPlayingHighlight();
-      // v1.105 (mirror music v1.104 T1): keep the player WHERE IT IS across an
-      // episode change - if the expanded now-playing view (#player-slot, state
-      // 'full') is open, load the next episode INTO that slot so next/prev STAYS
-      // expanded; a docked/closed player docks (unchanged).
+      // v1.106 (Dean, mirror music): SELECTING an episode opens the EXPANDED
+      // now-playing view (mount FULL into #player-slot); a NAV (next/prev, opts.
+      // keepPosition, v1.105) keeps the player's position - expanded stays
+      // expanded, docked stays docked. So a fresh select -> slot; a nav -> slot
+      // only if already full, else dock (the mini-player appears when you browse).
       var pl = window.FileTube.player;
-      var keepSlot = (pl && typeof pl.getState === 'function' && pl.getState() === 'full')
-        ? root.querySelector('#player-slot')
-        : null;
-      pl.load(ep.id, data, keepSlot ? { slot: keepSlot } : { dock: true });
+      var slot = root.querySelector('#player-slot');
+      var useSlot = opts.keepPosition
+        ? (pl && typeof pl.getState === 'function' && pl.getState() === 'full')
+        : true;
+      pl.load(ep.id, data, (useSlot && slot) ? { slot: slot } : { dock: true });
+      // Bring the freshly-expanded player into view (it mounts at the top). Only
+      // on a SELECT - a nav keeps you where you are.
+      if (!opts.keepPosition && useSlot && slot) { try { window.scrollTo(0, 0); } catch (_) { /* no window scroll */ } }
       ensureEmptiedListener(); // the host (with #media-player) now exists
       registerTrackNav(i);
       updateNowPlayingPanel();
@@ -809,8 +817,8 @@
     function registerTrackNav(i) {
       if (!window.FileTube.player || typeof window.FileTube.player.setTrackNav !== 'function') return;
       window.FileTube.player.setTrackNav({
-        onPrev: i > 0 ? function () { playAt(i - 1); } : undefined,
-        onNext: (i >= 0 && i < playable.length - 1) ? function () { playAt(i + 1); } : undefined,
+        onPrev: i > 0 ? function () { playAt(i - 1, { keepPosition: true }); } : undefined,
+        onNext: (i >= 0 && i < playable.length - 1) ? function () { playAt(i + 1, { keepPosition: true }); } : undefined,
       });
     }
 

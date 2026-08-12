@@ -70,6 +70,8 @@ async function boot(url, initialState, run, opts) {
   global.document = dom.window.document;
   global.localStorage = dom.window.localStorage;
   global.AbortController = dom.window.AbortController;
+  mock.scrollCalls = [];
+  dom.window.scrollTo = function () { mock.scrollCalls.push(Array.prototype.slice.call(arguments)); };
   global.requestAnimationFrame = dom.window.requestAnimationFrame
     ? dom.window.requestAnimationFrame.bind(dom.window)
     : (cb) => setTimeout(cb, 0);
@@ -126,10 +128,26 @@ test('v1.105 (T1): an episode change while EXPANDED keeps the player in #player-
   });
 });
 
-test('v1.105 (T1): an episode tap while DOCKED/closed still DOCKS', async () => {
+test('v1.106: a fresh episode tap EXPANDS (opens the now-playing view) + scrolls it into view', async () => {
   await boot('http://localhost/podcasts?show=s1', 'closed', async (dom, mock) => {
     await playEp(dom, 0);
-    assert.ok(lastLoad(mock).opts.dock === true && !lastLoad(mock).opts.slot, 'a fresh tap docks');
+    const call = lastLoad(mock);
+    assert.ok(call.opts.slot && !call.opts.dock, 'a fresh select mounts FULL into #player-slot (was dock pre-v1.106)');
+    assert.equal(mock.s.value, 'full', 'expanded after a select');
+    assert.ok(mock.scrollCalls.some((a) => a[0] === 0 && a[1] === 0), 'scrolled the expanded player into view');
+  });
+});
+
+test('v1.106: a NAV step (next/prev) while DOCKED keeps it docked (does NOT force-expand)', async () => {
+  await boot('http://localhost/podcasts?show=s1', 'full', async (dom, mock) => {
+    await playEp(dom, 0); // select -> expands, registers trackNav for index 0
+    mock.setState('docked');
+    mock.scrollCalls.length = 0;
+    mock.s.trackNav.onNext(); // nav (keepPosition)
+    await settle(); await settle();
+    const call = lastLoad(mock);
+    assert.ok(call.opts.dock === true && !call.opts.slot, 'nav kept the docked position');
+    assert.equal(mock.scrollCalls.length, 0, 'a nav does not scroll');
   });
 });
 
@@ -168,13 +186,14 @@ test('v1.105 (T2 tap): tapping an up-next row jumps to that episode', async () =
   });
 });
 
-test('v1.105 (reveal-once CLEAR): a shown panel clears when the player docks', async () => {
+test('v1.105/v1.106 (reveal-once CLEAR): a shown panel clears when a NAV docks the player', async () => {
   await boot('http://localhost/podcasts?show=s1', 'full', async (dom, mock) => {
     await playEp(dom, 0);
     assert.equal(panel(dom).hidden, false);
     assert.ok(panel(dom).textContent.length > 0, 'populated first (non-vacuous)');
     mock.setState('docked');
-    await playEp(dom, 1); // a docked play re-runs updateNowPlayingPanel -> hide+clear
+    mock.s.trackNav.onNext(); // a NAV keeps it docked -> updateNowPlayingPanel hides+clears
+    await settle(); await settle();
     assert.equal(panel(dom).hidden, true, 'docked -> panel HIDDEN');
     assert.equal(panel(dom).textContent, '', 'and CLEARED');
   });

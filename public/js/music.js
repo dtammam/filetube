@@ -896,7 +896,8 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     var playGen = 0; // guards against a stale prewarm poll clobbering a newer tap
 
-    function loadTrack(item, i) {
+    function loadTrack(item, i, opts) {
+      opts = opts || {};
       var data = {
         type: 'audio',
         title: item.title,
@@ -920,22 +921,25 @@ if (typeof module !== 'undefined' && module.exports) {
         // target and the router's same-URL no-op never swallows the dock-tap.
         readerHref: '/music?nowplaying=1',
       };
-      // v1.44.2 (Spotify feel): play in the DOCKED mini-player, not FULL at the
-      // top — the album header + tracklist stay on screen (browse-while-playing)
-      // and the tapped row highlights. dock:true mounts straight into #player-dock.
       playingId = item.id;
       nowPlaying = { id: item.id, title: item.title || '', artist: item.artist || '', album: item.album || '', albumKey: item.albumKey || '' };
       applyPlayingHighlight();
-      // v1.104: keep the player WHERE IT IS across a track change. If the expanded
-      // now-playing view (#player-slot, state 'full') is open, load the next track
-      // INTO that slot so it STAYS expanded; a docked/closed player docks (the
-      // browse-while-playing default for a fresh list tap). Fixes next/prev
-      // collapsing the expanded view to the mini-bar (Dean, on-device v1.103).
+      // v1.106 (Dean): SELECTING a track opens the EXPANDED now-playing view
+      // (mount FULL into #player-slot) instead of the docked mini-player - the
+      // now-playing view is worth landing on since v1.104. NAV (next/prev, opts.
+      // keepPosition) instead KEEPS the player's position (v1.104): expanded stays
+      // expanded, docked stays docked. So a fresh select -> slot; a nav -> slot
+      // only if already full, else dock (the mini-player then appears when you
+      // navigate away to browse).
       var pl = window.FileTube.player;
-      var keepSlot = (pl && typeof pl.getState === 'function' && pl.getState() === 'full')
-        ? root.querySelector('#player-slot')
-        : null;
-      pl.load(item.id, data, keepSlot ? { slot: keepSlot } : { dock: true });
+      var slot = root.querySelector('#player-slot');
+      var useSlot = opts.keepPosition
+        ? (pl && typeof pl.getState === 'function' && pl.getState() === 'full')
+        : true;
+      pl.load(item.id, data, (useSlot && slot) ? { slot: slot } : { dock: true });
+      // Bring the freshly-expanded player into view (it mounts at the top of the
+      // view, above the list). Only on a SELECT - a nav keeps you where you are.
+      if (!opts.keepPosition && useSlot && slot) { try { window.scrollTo(0, 0); } catch (_) { /* no window scroll */ } }
       ensureEmptiedListener(); // gate W1: the host (with #media-player) now exists — bind if we hadn't yet
       registerTrackNav(i);
       // AFTER load (the player's currentId is now the new track) - so both the
@@ -958,8 +962,8 @@ if (typeof module !== 'undefined' && module.exports) {
       // i<0 (no known index) registers NO neighbors - clears any stale closures
       // rather than binding onNext to playAt(0) off a negative index.
       window.FileTube.player.setTrackNav({
-        onPrev: i > 0 ? function () { playAt(i - 1); } : undefined,
-        onNext: (i >= 0 && i < queue.length - 1) ? function () { playAt(i + 1); } : undefined,
+        onPrev: i > 0 ? function () { playAt(i - 1, { keepPosition: true }); } : undefined,
+        onNext: (i >= 0 && i < queue.length - 1) ? function () { playAt(i + 1, { keepPosition: true }); } : undefined,
       });
     }
 
@@ -1014,7 +1018,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // PRE-WARMED here (poll until the route stops 503-ing) before we hand it to
     // the player; otherwise the first play would silently fail. Native formats
     // (needsTranscode false) skip this entirely — zero added latency.
-    function prewarmThenLoad(item, i, gen) {
+    function prewarmThenLoad(item, i, gen, opts) {
       var attempts = 0;
       var MAX_ATTEMPTS = 40; // ~60s at 1.5s spacing
       setStatus('Preparing “' + item.title + '”…');
@@ -1028,7 +1032,7 @@ if (typeof module !== 'undefined' && module.exports) {
           .then(function (res) {
             if (res.body && res.body.cancel) { try { res.body.cancel(); } catch (_) { /* ignore */ } }
             if (gen !== playGen) return;
-            if (res.ok) { setStatus(''); loadTrack(item, i); return; } // 200/206 -> ready
+            if (res.ok) { setStatus(''); loadTrack(item, i, opts); return; } // 200/206 -> ready
             attempts += 1;
             if (attempts >= MAX_ATTEMPTS) { setStatus('Could not prepare this track. Try again shortly.'); return; }
             setTimeout(poll, 1500);
@@ -1043,13 +1047,15 @@ if (typeof module !== 'undefined' && module.exports) {
       poll();
     }
 
-    function playAt(i) {
+    // `opts.keepPosition` = a NAV step (next/prev) - keep the player where it is.
+    // Omitted (a fresh SELECT: a row tap, shuffle, drill Play, continue) - expand.
+    function playAt(i, opts) {
       if (i < 0 || i >= queue.length || !window.FileTube || !window.FileTube.player) return;
       var item = queue[i];
       playGen += 1;
-      if (item.needsTranscode) { prewarmThenLoad(item, i, playGen); return; }
+      if (item.needsTranscode) { prewarmThenLoad(item, i, playGen, opts); return; }
       setStatus('');
-      loadTrack(item, i);
+      loadTrack(item, i, opts);
     }
 
     // A "Continue listening" card lands here as /music?play=<trackId> and must
