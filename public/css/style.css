@@ -6482,6 +6482,22 @@ body.ft-css-fullscreen .bottom-nav {
   color: var(--yt-red);
   font-weight: var(--fw-bold);
 }
+/* v1.108 (Dean): the armed state shows "∞" (U+221E) instead of the word
+   "Looping". The resting "Loop" and the armed "∞" ride this fixed-width label
+   so the button never resizes between states -- its left border (Dean's "little
+   line") stays aligned with the rows above/below no matter which chapter is
+   looping. Width is reserved in `ch` (font-relative, so it holds across every
+   era font and at any zoom, unlike a magic px) at 4.5ch -- comfortably wider
+   than the resting "Loop" (~4.0-4.1ch even in the widest era font, Verdana),
+   with the glyph centered. `min-width`/`width` are census-exempt by design
+   (scripts/css-token-lint.js: "layout geometry literal"), so a unit literal is
+   allowed here. The button's own tap-target min-width/min-height (mobile MQ)
+   are unaffected floors -- 4.5ch + padding already exceeds them. */
+.chapters-menu-loop-label {
+  display: inline-block;
+  min-width: 4.5ch;
+  text-align: center;
+}
 /* Bar-level armed signal: the Ch button tints while a chapter loop is on, so
    the state is visible with the menu closed. */
 #chapters-btn.chapter-looping {
