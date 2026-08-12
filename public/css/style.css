@@ -34,6 +34,18 @@ summary,
 /* Self-hosted Roboto (variable weight axis, latin subset) for YouTube-like
    typography without a Google Fonts CDN call — fully offline. Apache-2.0;
    see public/fonts/README.md. */
+/* v1.107 (Dean): the MODERN theme's face is Geist (Vercel's product font -
+   modern/sleek/app-like, OFL). Self-hosted variable woff2 (one file, 100-900),
+   named FIRST so v1262-pwa-chrome's preload lock resolves the shells' preload to
+   THIS src. Roboto stays bundled as the graceful fallback (and the 2014/legacy
+   eras' own stacks are untouched). */
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/geist.woff2') format('woff2');
+}
 @font-face {
   font-family: 'Roboto';
   font-style: normal;
@@ -44,14 +56,18 @@ summary,
 
 :root {
   /* Safe default == 2021 Modern light. Guarantees every token resolves even
-     if data-theme / data-mode is missing or invalid. */
-  --font-family: 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
-  --logo-font: 'Roboto', "Arial Black", Gadget, sans-serif;
+     if data-theme / data-mode is missing or invalid. v1.107: Modern is Geist,
+     so the pre-theme default mirrors it (no Roboto->Geist FOUC flash); Roboto is
+     the self-hosted fallback. */
+  --font-family: 'Geist', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
+  --logo-font: 'Geist', 'Roboto', "Arial Black", Gadget, sans-serif;
   --mono-font: monospace;
   /* v1.50.2 gate S2: the heading tokens honor the same contract -- an
      invalid/missing era must resolve to the full 2021 look, headings
-     included, not a bold/normal hybrid from the var() fallbacks. */
-  --heading-font: 'YouTube Sans', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
+     included, not a bold/normal hybrid from the var() fallbacks. v1.107: Dean
+     wants ONE font across all elements, so Modern headings are Geist too (no
+     separate YouTube Sans heading face). */
+  --heading-font: 'Geist', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
   --heading-weight: 500;
   --heading-tracking: -0.01em;
   --radius: 4px;
@@ -263,19 +279,17 @@ summary,
 
 /* ---- 2021 Modern: today's shipped look, verbatim (structural + light palette) ---- */
 [data-theme="2021"] {
-  --font-family: 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
-  --logo-font: 'Roboto', "Arial Black", Gadget, sans-serif;
+  /* v1.107 (Dean): the Modern face is GEIST (Vercel's product font - modern,
+     sleek, app-like, distinctive-but-unobtrusive), applied across ALL elements
+     (body, logo, headings). Self-hosted variable woff2 (100-900); Roboto is the
+     bundled fallback. This REPLACES the v1.50.2 YouTube-Sans-first heading stack:
+     Dean wanted one font everywhere, and Geist is bundled (weight 500 renders
+     genuinely from the variable file, so titles stay medium). Sizes/spacing
+     untouched; only family. Other eras keep their own stacks. */
+  --font-family: 'Geist', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
+  --logo-font: 'Geist', 'Roboto', "Arial Black", Gadget, sans-serif;
   --mono-font: monospace;
-  /* v1.50.2 (Dean, font pass): modern YouTube titles are YouTube Sans at
-     MEDIUM weight. YouTube Sans is a proprietary commissioned face with no
-     open license, so it can never be BUNDLED (Roboto is Apache-licensed;
-     that's the difference) -- but naming it FIRST in the stack ships zero
-     files and breaks no license: browsers use it only when it's installed
-     locally on that machine, and everyone else gets medium Roboto with a
-     hair of negative tracking, the honest approximation (bundled
-     roboto.woff2 is a VARIABLE font, 100-900, so 500 renders genuinely).
-     Weight/tracking/family only -- sizes and spacing untouched. */
-  --heading-font: 'YouTube Sans', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
+  --heading-font: 'Geist', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
   --heading-weight: 500;
   --heading-tracking: -0.01em;
   --radius: 4px;

@@ -48,7 +48,7 @@ test('every shell preloads the app font (matches the @font-face src in style.css
 test('every shell\'s font preload appears in <head>, before the stylesheet link (so the browser starts fetching before it even parses style.css)', () => {
   for (const shellPath of SHELLS) {
     const html = fs.readFileSync(shellPath, 'utf8');
-    const preloadIdx = html.indexOf('rel="preload" href="/fonts/roboto.woff2"');
+    const preloadIdx = html.indexOf('rel="preload" href="/fonts/geist.woff2"'); // v1.107: Modern face is Geist
     const stylesheetIdx = html.indexOf('rel="stylesheet" href="/css/style.css"');
     assert.ok(preloadIdx > -1, `${shellPath} is missing the font preload`);
     assert.ok(stylesheetIdx > -1, `${shellPath} is missing the stylesheet link`);
