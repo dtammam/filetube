@@ -2607,24 +2607,22 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
 
-    // v1.30 C2 (Visual polish cluster, T11): "Like" toggle. Mirrors
-    // `applyPinButtonLabel`'s exact primary-when-actionable /
-    // neutral-when-already-done convention (B3, above) -- reuses the SAME
-    // era-themed `.btn`/`.btn-primary` tokens, no new CSS/icon assets (same
-    // "no new icon assets" call `setupMoveButton` already made above --
-    // there is no dedicated heart/like glyph in the icon-set either, so this
-    // uses a plain unicode heart in the text label, exactly like `pinBtn`'s
-    // own "Pinned ★" uses a plain unicode star).
+    // "Like" toggle, painted in the YouTube heart convention (v1.108, Dean):
+    // NOT-liked is the neutral/grey resting state; LIKED fills the heart RED.
+    // This is a DELIBERATE reversal of the old v1.30 "primary-when-actionable"
+    // convention (which made the un-liked button `btn-primary`/red as a
+    // call-to-action and the liked button neutral) -- Dean found red-as-CTA /
+    // grey-as-done backwards, since it read the wrong way round. The state is
+    // now carried by the `.liked` class (red heart via `color: var(--yt-red)`,
+    // exactly mirroring `.card-like-btn.liked`, style.css) instead of
+    // `btn-primary`; `aria-pressed` still carries it for AT and at phone widths
+    // where the `.btn-label` word is hidden.
     // v1.47.6: rebuilt as icon + `.btn-label` instead of `textContent`.
     //   - `textContent =` wiped every child, so the button could never hold a
     //     glyph or a hideable label at all.
-    //   - the unicode heart is gone. This repo's own v1.38 lesson is "draw
-    //     glyphs in CSS, never emoji codepoints" (iOS renders them
-    //     inconsistently), and `.icon-heart` HAS existed since v1.40 -- the
-    //     comment above claiming "there is no dedicated heart/like glyph in the
-    //     icon-set" was true when written and has been stale ever since.
-    //   - with the label hidden at phone widths, liked state is still carried
-    //     by `btn-primary` and `aria-pressed`, so nothing depends on the word.
+    //   - the heart is a real `.icon-heart` CSS mask, never a unicode codepoint:
+    //     this repo's v1.38 lesson is "draw glyphs in CSS, never emoji
+    //     codepoints" (iOS force-renders U+2665 as the red-heart emoji).
     function applyLikeButtonLabel(liked) {
       if (!likeBtn) return;
       likeBtn.replaceChildren();
@@ -2637,7 +2635,7 @@ if (typeof module !== 'undefined' && module.exports) {
       likeBtn.appendChild(document.createTextNode(' '));
       likeBtn.appendChild(label);
       likeBtn.setAttribute('aria-pressed', liked ? 'true' : 'false');
-      likeBtn.classList.toggle('btn-primary', !liked);
+      likeBtn.classList.toggle('liked', liked);
     }
 
     // One-tap like/unlike -- `POST`/`DELETE /api/liked/:id` (the server-side

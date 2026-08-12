@@ -3948,7 +3948,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // here, so looping itself is unaffected. Controller-level (can't reach the
   // closure's updateChapterLoopIndicator), so it clears the button tint
   // directly, like teardownMediaState; the menu itself rebuilds on every
-  // open, so a stale 'Looping' label can't survive to the next look.
+  // open, so a stale armed (∞) loop label can't survive to the next look.
   function disarmChapterLoopIfSeekOutside(targetAbs) {
     if (!chapterLoop) return;
     if (typeof targetAbs !== 'number' || !isFinite(targetAbs)) return;
@@ -5212,9 +5212,18 @@ if (typeof module !== 'undefined' && module.exports) {
       currentChapters.forEach(function (ch, index) {
         // v1.41.12 (Dean): each chapter is now a ROW -- the existing seek
         // button plus a per-chapter Loop toggle (his pick: "like a music
-        // album" -- loop one track). Text label, deliberately not a glyph:
-        // the v1.39 lesson is that transport-glyph codepoints render as
+        // album" -- loop one track). The RESTING label is the word "Loop",
+        // deliberately not a transport glyph: the v1.39 lesson is that
+        // transport-glyph codepoints (play/pause/repeat arrows) render as
         // forced blue emoji on iOS; a word can't.
+        // v1.108 (Dean): the ARMED label is the infinity sign instead of the
+        // word "Looping". U+221E is a Mathematical Operator, NOT a transport
+        // pictograph -- it has no emoji-presentation variant, so iOS renders it
+        // as plain text (the v1.39 hazard was specific to the pictographic
+        // transport glyphs, not every codepoint). Paired with a fixed-width
+        // `.chapters-menu-loop` (style.css) so the Loop<->∞ swap never reflows
+        // the row and shifts its left border out of line with the rows
+        // above/below (Dean's "little line gets pushed").
         var row = document.createElement('div');
         row.className = 'chapters-menu-row';
         var item = document.createElement('button');
@@ -5236,7 +5245,16 @@ if (typeof module !== 'undefined' && module.exports) {
         var loopBtn = document.createElement('button');
         loopBtn.type = 'button';
         loopBtn.className = 'chapters-menu-loop' + (isLooping ? ' active' : '');
-        loopBtn.textContent = isLooping ? 'Looping' : 'Loop';
+        // The visible glyph rides a fixed-width `.chapters-menu-loop-label`
+        // span (min-width in `ch`, style.css) so the resting "Loop" and the
+        // armed "∞" occupy the SAME width -- the button never resizes, so
+        // its left border stays in line with the rows above/below regardless of
+        // loop state (Dean: "the little line gets pushed"). The accessible name
+        // is the aria-label below, not this decorative glyph.
+        var loopLabel = document.createElement('span');
+        loopLabel.className = 'chapters-menu-loop-label';
+        loopLabel.textContent = isLooping ? '∞' : 'Loop'; // U+221E INFINITY (armed) / "Loop" (resting)
+        loopBtn.appendChild(loopLabel);
         loopBtn.setAttribute('aria-pressed', isLooping ? 'true' : 'false');
         loopBtn.setAttribute('aria-label', (isLooping ? 'Stop looping chapter: ' : 'Loop chapter: ') + (ch.title || 'Chapter'));
         loopBtn.addEventListener('click', function (e) {

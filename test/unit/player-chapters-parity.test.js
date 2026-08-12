@@ -308,15 +308,36 @@ test('v1.41.12 source-lock: the loop is cleared on every load and on every chapt
   assert.match(editor, /chapterLoop = null;/, 'edited chapter set clears the loop');
 });
 
-test('v1.41.12 source-lock: per-row Loop toggle in the menu + styles present (word label, never a glyph)', () => {
+test('v1.41.12/v1.108 source-lock: per-row Loop toggle in the menu + styles present (resting word label, armed ∞, fixed width)', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
-  assert.match(src, /loopBtn\.textContent = isLooping \? 'Looping' : 'Loop';/, 'text label (iOS glyph lesson)');
+  // v1.108 (Dean): resting label is the WORD "Loop" (the v1.39 iOS-glyph lesson
+  // still holds for the pictographic transport glyphs); the ARMED label is
+  // U+221E INFINITY -- a Mathematical Operator with no emoji-presentation
+  // variant, so iOS renders it as plain text. It rides a fixed-width label span.
+  assert.match(src, /loopLabel\.textContent = isLooping \? '∞' : 'Loop';/, 'armed = ∞ (U+221E), resting = "Loop" word');
+  assert.match(src, /loopLabel\.className = 'chapters-menu-loop-label';/, 'the fixed-width label span carries the glyph');
   assert.match(src, /loopBtn\.addEventListener\('click', function \(e\) \{\s*e\.stopPropagation\(\);/, 'loop tap never triggers the row seek');
   assert.match(src, /armChapterLoop\(index, \{ rebuild: true, seekIn: true \}\)/, 'arming from outside the chapter seeks into it');
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
   assert.match(css, /\.chapters-menu-row \{\s*display: flex;/, 'row layout');
   assert.match(css, /#chapters-btn\.chapter-looping \{/, 'bar-level armed indicator');
   assert.match(rt(css), /\.chapters-menu-loop \{[\s\S]*?min-height: 44px;/, 'mobile tap target for the toggle');
+  // The fixed-width label is what keeps the row's border aligned across loop
+  // states; without it the Loop<->∞ swap would reflow the button. Delete the
+  // `min-width` and this goes red.
+  assert.match(css, /\.chapters-menu-loop-label \{[^}]*min-width: 4\.5ch;[^}]*text-align: center;/, 'fixed-width centered label so Loop<->∞ never reflows the row');
+  // v1.108 gate WARNING T2-W1: the reservation is in `ch`, which is the advance
+  // of the digit "0" in the CURRENT weight. If the label ever inherits the
+  // armed `.active` bold, its `ch` recomputes against the bold digit and the
+  // button widens ~1-2px on variable-weight fonts (Geist) -- reintroducing the
+  // exact border shift this fix kills. `font-weight: normal` on the label pins
+  // that. Drop it (or re-bold `.active`) and the residual returns.
+  // Block-anchored (`[^}]*`, not `[\s\S]*?`): `font-weight: normal;` recurs all
+  // over style.css, so a lazy cross-block match would find a LATER one and pass
+  // even with the label's pin deleted (caught in the fix round). `[^}]*` stops
+  // at the block's own `}`, so this only matches the pin INSIDE the label rule.
+  assert.match(css, /\.chapters-menu-loop-label \{[^}]*font-weight: normal;/, 'label weight pinned so the armed state cannot widen the ch reservation (T2-W1)');
+  assert.doesNotMatch(css, /\.chapters-menu-loop\.active \{[^}]*font-weight/, 'the armed state must NOT bold the width-reserving label (T2-W1 root cause)');
 });
 
 // ---- v1.41.12 gate fix round: locks for the round-1 findings ----------------
