@@ -225,15 +225,14 @@ test('v1.22.1 FR-4: #speed-btn has its own rule reusing .pc-btn sizing/theming (
   assert.match(rule[1], /width:\s*auto;/);
 });
 
-test('v1.22.1 FR-4: mobile #speed-btn keeps a >=44px touch-target floor via min-width (not a clipping fixed width)', () => {
-  // v1.50.5: anchored to the BARE rule -- the new row-2 order rule
-  // (#player-slot .player-controls #speed-btn) also ends in `#speed-btn {`
-  // and shadowed the loose match.
-  const rule = /(?:^|\n)\s*#speed-btn\s*\{([^}]*)\}/.exec(mobileMediaBlock);
-  assert.ok(rule, 'expected a mobile-scoped #speed-btn rule inside the @media block immediately preceding the v1.22/v1.22.1 FR-1 section');
-  const minWidthMatch = /min-width:\s*(\d+(?:\.\d+)?)px/.exec(rt(rule[1]));
-  assert.ok(minWidthMatch, 'expected a `min-width: <n>px` declaration');
-  assert.ok(Number(minWidthMatch[1]) >= 44, `expected mobile #speed-btn min-width >= 44px (got ${minWidthMatch[1]}px)`);
+test('v1.112: mobile #speed-btn no longer carries a bar touch-target floor (it is a cog menu row)', () => {
+  // v1.112: Speed moved OFF the bar into #settings-menu, so BOTH the old mobile
+  // bar rules for it are gone -- the `#speed-btn { min-width:44px }` touch floor
+  // AND the `#player-slot .player-controls #speed-btn { order }` row-2 rule. The
+  // row's sizing now comes from `#settings-menu .settings-menu-item` (full-width).
+  const bare = /(?:^|\n)\s*#speed-btn\s*\{/.exec(mobileMediaBlock);
+  assert.ok(!bare, 'the mobile-scoped bare #speed-btn bar rule must be gone (speed is a cog row now)');
+  assert.doesNotMatch(mobileMediaBlock, /#player-slot \.player-controls #speed-btn \{/, 'the stale row-2 order rule for #speed-btn must be gone too');
 });
 
 test('AC24: the #speed-btn rules introduce no hardcoded color values (era tokens / .pc-btn theming only)', () => {

@@ -111,8 +111,14 @@ test('cog wiring: the gear toggles the menu, dismissing other bar popups first, 
 });
 
 test('cog wiring: opening the speed picker closes the cog (no stacked popups)', () => {
-  const speedHandler = /speedBtn\.addEventListener\('click', function \(e\) \{[\s\S]*?closeSettingsMenu\(\);/.exec(code);
-  assert.ok(speedHandler, 'the speed row closes the cog before opening its picker');
+  // Gate WARNING (adversarial M1): the old lazy `[\s\S]*?` re-anchored ~3900
+  // chars away to the closeSettingsMenu() inside closeChaptersMenu, so deleting
+  // the speed-row call stayed GREEN (presence != binding). Anchor to the handler
+  // HEAD so the call must be the first statement after stopPropagation -- delete
+  // it and stopPropagation is followed by `if (!speedMenu)`, so this reddens.
+  // (`code` has comment-only lines stripped, so the call sits right below.)
+  const speedHandler = /speedBtn\.addEventListener\('click', function \(e\) \{\s*\n\s*e\.stopPropagation\(\);\s*\n\s*closeSettingsMenu\(\);/.exec(code);
+  assert.ok(speedHandler, 'the speed row must call closeSettingsMenu() FIRST, before opening its picker');
 });
 
 test('cog wiring: the cog has its own outside-close (click + pointerdown), guarded on its own open state', () => {

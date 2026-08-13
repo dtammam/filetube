@@ -4094,7 +4094,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (typeof targetAbs !== 'number' || !isFinite(targetAbs)) return;
     if (targetAbs < chapterLoop.start || targetAbs >= chapterLoop.end) {
       chapterLoop = null;
-      if (chaptersBtn) chaptersBtn.classList.remove('chapter-looping');
+      if (chapterNowEl) chapterNowEl.classList.remove('chapter-looping');
     }
   }
 
@@ -4325,16 +4325,24 @@ if (typeof module !== 'undefined' && module.exports) {
   // `>` is U+203A (punctuation, not a pictograph) so iOS renders it as plain text.
   function updateChapterNowLabel(changed) {
     if (!chapterNowEl) return;
-    var ch = currentChapterIdx >= 0 ? currentChapters[currentChapterIdx] : null;
-    var show = currentChapters.length > 1 && !!ch;
-    if (!show) {
+    // v1.112 gate fix (both seats, WARNING-1): the label is the SOLE chapters
+    // trigger now, so it must stay reachable for the WHOLE chaptered item -- not
+    // only while the playhead is inside a resolved chapter. currentChapterIndex
+    // returns -1 for any position BEFORE the first chapter's start (manual /
+    // embedded chapters are NOT forced to begin at 0:00), which would otherwise
+    // hide the only affordance during [0, firstStart) and strand the list. So:
+    // show whenever the item is chaptered (>1); read "Chapters" when we're
+    // pre-first-chapter (idx < 0), the chapter title otherwise.
+    var chaptered = currentChapters.length > 1;
+    if (!chaptered) {
       chapterNowEl.hidden = true;
       chapterNowEl.classList.remove('changed');
       if (chapterChipHideTimer) { clearTimeout(chapterChipHideTimer); chapterChipHideTimer = null; }
       return;
     }
+    var ch = currentChapterIdx >= 0 ? currentChapters[currentChapterIdx] : null;
     chapterNowEl.hidden = false;
-    chapterNowEl.textContent = '› ' + (ch.title || 'Chapter');
+    chapterNowEl.textContent = ch ? ('› ' + (ch.title || 'Chapter')) : 'Chapters';
     if (changed) {
       // Re-arm the highlight from scratch on every change (clear a prior timer
       // so a rapid change never early-clears the new highlight).
@@ -5438,11 +5446,12 @@ if (typeof module !== 'undefined' && module.exports) {
       if (opts && opts.rebuild) buildChaptersMenu();
     }
 
-    // The bar-level "a loop is armed" signal: the chapters button carries
-    // .chapter-looping (style.css tints it) so the state is visible with the
-    // menu closed.
+    // The bar-level "a loop is armed" signal: the persistent chapter-name label
+    // carries .chapter-looping (style.css tints it red) so the armed state is
+    // visible with the menu closed. v1.112: moved off the removed #chapters-btn
+    // onto .chapter-now (the label is the sole chapters surface on the bar now).
     function updateChapterLoopIndicator() {
-      if (chaptersBtn) chaptersBtn.classList.toggle('chapter-looping', !!chapterLoop);
+      if (chapterNowEl) chapterNowEl.classList.toggle('chapter-looping', !!chapterLoop);
     }
 
     // v1.41.12: the seek half without the menu-close, so armChapterLoop's
@@ -5635,12 +5644,15 @@ if (typeof module !== 'undefined' && module.exports) {
       // cover the not-yet case.
       buildSeekChapters();
       refreshCurrentChapter();
+      // v1.112 gate fix (WARNING-1): refreshCurrentChapter's setCurrentChapter
+      // no-ops when the resolved index is unchanged (notably still -1, i.e. the
+      // playhead is BEFORE the first chapter), so sync the name label explicitly
+      // here. The label is the sole chapters trigger, so it must appear the
+      // moment a chaptered item loads -- reading "Chapters" while pre-first.
+      updateChapterNowLabel(false);
       closeChaptersMenu();
-      if (chaptersBtn) chaptersBtn.style.display = '';
-      // v1.34.1 (Dean's on-device pass): the mobile custom bar overflowed --
-      // CSS hides the Ch button on .ff-mobile when the item has NO chapters
-      // (the button was pure clutter there; "Add chapters" stays reachable
-      // on desktop and on any mobile item that already HAS chapters).
+      // v1.112: `.has-chapters` is retained as a semantic host marker; its former
+      // consumer -- the mobile `#chapters-btn` hide -- was removed with the button.
       if (host) host.classList.toggle('has-chapters', currentChapters.length > 0);
     };
     resetChaptersUi = function () {
@@ -6157,7 +6169,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.41.12: chapter loops are session-only and PER-ITEM -- a loop armed
     // on the previous item must never clamp the next one's playback.
     chapterLoop = null;
-    if (chaptersBtn) chaptersBtn.classList.remove('chapter-looping');
+    if (chapterNowEl) chapterNowEl.classList.remove('chapter-looping');
     if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
     if (transcodePollTimer) { clearTimeout(transcodePollTimer); transcodePollTimer = null; }
     // F7 (two-reviewer NIT): cancel a still-pending audio-status repoll too, mirroring the two timers just above
@@ -6847,7 +6859,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // above -- a chapter loop never survives a CLOSE either (teardown on the
     // next load would clear it anyway, but that safety is indirect).
     chapterLoop = null;
-    if (chaptersBtn) chaptersBtn.classList.remove('chapter-looping');
+    if (chapterNowEl) chapterNowEl.classList.remove('chapter-looping');
     pendingAutoplayNextOnForeground = false; // F2: never let a deferred advance survive a CLOSE either
     if (bgAudioEl) {
       try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }

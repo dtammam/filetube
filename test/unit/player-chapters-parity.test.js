@@ -103,16 +103,20 @@ test('scrubRatioFromPointer clamps to [0,1] and returns null for a degenerate re
 });
 
 // ---- v1.34.1 (Dean's on-device pass): mobile declutter + dismissable menu ---
-test('v1.34.1: the chapters UI is mobile-safe -- has-chapters class toggled per load, pointerdown outside-close wired, chapterless-mobile CSS hide + the TWO-ROW mobile bar present', () => {
+test('v1.34.1/v1.112: the chapters UI is mobile-safe -- has-chapters marker, pointerdown outside-close, chapterless hide is now JS, TWO-ROW mobile bar present', () => {
   assert.ok(playerSrc.includes("host.classList.toggle('has-chapters', currentChapters.length > 0)"),
-    'applyChaptersForMedia must expose the has-chapters hook CSS keys off');
+    'applyChaptersForMedia still exposes the has-chapters host marker');
   assert.ok(playerSrc.includes("host.classList.remove('has-chapters')"),
     'teardown must clear it');
   assert.ok(playerSrc.includes("document.addEventListener('pointerdown', closeChaptersMenuOnOutside)"),
     'the outside-close must ALSO bind pointerdown -- iOS never synthesizes click over the gesture-layer video surface');
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /#player-wrapper\.ff-mobile:not\(\.has-chapters\) #chapters-btn \{\s*display: none !important;/,
-    'a chapterless mobile item must not spend a bar slot on the Ch button');
+  // v1.112: the chapterless HIDE moved from CSS (the removed
+  // `:not(.has-chapters) #chapters-btn` rule) to JS -- the persistent name label
+  // hides itself on a chapterless item. The old rule referenced the removed
+  // button; it must be gone, and the JS hide must be present.
+  assert.doesNotMatch(css, /:not\(\.has-chapters\) #chapters-btn/, 'the dead chapterless Ch-button rule must be removed');
+  assert.match(playerSrc, /var chaptered = currentChapters\.length > 1;[\s\S]*?chapterNowEl\.hidden = true;/, 'a chapterless item hides the name label in JS');
   // The two-row mobile bar (Dean: seek bar had collapsed to an unusable
   // sliver): full-width scrub row + 80px bar/strip, FULL in-slot player
   // only, with the native-controls strip-removal outranking the 2-ID
@@ -397,7 +401,7 @@ test('v1.41.12 source-lock: the loop is cleared on every load and on every chapt
   const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
   const teardown = src.slice(src.indexOf('function teardownMediaState()'), src.indexOf('function teardownMediaState()') + 1200);
   assert.match(teardown, /chapterLoop = null;/, 'per-load clear');
-  assert.match(teardown, /chaptersBtn\.classList\.remove\('chapter-looping'\)/, 'indicator cleared with it');
+  assert.match(teardown, /chapterNowEl\.classList\.remove\('chapter-looping'\)/, 'indicator cleared with it');
   const apply = src.slice(src.indexOf('applyChaptersForMedia = function (data)'), src.indexOf('applyChaptersForMedia = function (data)') + 700);
   assert.match(apply, /chapterLoop = null;/, 'new chapter set clears the loop');
   const editor = src.slice(src.indexOf('window.showChaptersEditor(currentId'), src.indexOf('window.showChaptersEditor(currentId') + 700);
@@ -506,10 +510,18 @@ test('v1.112 source-lock: the current-chapter NAME label is PERSISTENT, clickabl
   assert.match(src, /chapterNowEl = document\.createElement\('button'\);/, 'the label is a <button>');
   assert.match(src, /chapterNowEl\.className = 'chapter-now';/, 'the label is JS-built');
   assert.match(src, /chapterNowEl\.setAttribute\('aria-haspopup', 'true'\);/, 'it advertises the popup it opens');
-  // Shown only for a genuinely chaptered item (>1) while in a chapter; text "> Title".
-  const fn = src.slice(src.indexOf('function updateChapterNowLabel(changed)'), src.indexOf('function updateChapterNowLabel(changed)') + 1400);
-  assert.match(fn, /var show = currentChapters\.length > 1 && !!ch;/, 'label shows only for a >1-chapter item in a chapter');
-  assert.match(fn, /chapterNowEl\.textContent = '› ' \+ \(ch\.title \|\| 'Chapter'\);/, 'label text is "> Title"');
+  // v1.112 gate fix (WARNING-1, both seats): the label is the SOLE chapters
+  // trigger, so it shows for the WHOLE chaptered item -- gated on `chaptered`
+  // (length>1), NOT on a resolved `ch`. Before the first chapter (idx<0, which
+  // currentChapterIndex returns for manual/embedded chapters not starting at
+  // 0:00) it reads "Chapters" so the list is never stranded; inside a chapter it
+  // reads "> Title".
+  const fn = src.slice(src.indexOf('function updateChapterNowLabel(changed)'), src.indexOf('function updateChapterNowLabel(changed)') + 2400);
+  assert.match(fn, /var chaptered = currentChapters\.length > 1;/, 'visibility is gated on the item being chaptered, not on the playhead being inside a chapter');
+  assert.match(fn, /if \(!chaptered\) \{\s*\n\s*chapterNowEl\.hidden = true;/, 'ONLY a chapterless item hides the label (never a pre-first-chapter position)');
+  assert.match(fn, /chapterNowEl\.textContent = ch \? \('› ' \+ \(ch\.title \|\| 'Chapter'\)\) : 'Chapters';/, 'reads "> Title" inside a chapter, "Chapters" pre-first');
+  // Regression guard: reverting the gate to `&& !!ch` (the WARNING-1 bug) reddens.
+  assert.doesNotMatch(fn, /var show = currentChapters\.length > 1 && !!ch;/, 'the old idx-gated hide must not return');
   // PERSISTENT: the show path must NOT arm a timer that hides the element. Only a
   // CHANGE toggles the `.changed` highlight (cleared after CHAPTER_CHIP_MS); the
   // element itself never hides on that timer. Re-introducing a hide-the-element
@@ -522,6 +534,11 @@ test('v1.112 source-lock: the current-chapter NAME label is PERSISTENT, clickabl
   assert.match(fn, /if \(chapterChipHideTimer\) \{ clearTimeout\(chapterChipHideTimer\); chapterChipHideTimer = null; \}/, 'the prior highlight timer is cleared before re-arming');
   // A real change highlights; the per-load reset hides WITHOUT a highlight.
   assert.match(src, /applyCurrentChapterToMenu\(\);\s*\n\s*updateChapterNowLabel\(true\);/, 'setCurrentChapter highlights the change');
+  // WARNING-1 fix: applyChaptersForMedia syncs the label AFTER refreshCurrentChapter
+  // so a pre-first-chapter load (where setCurrentChapter no-ops on the unchanged
+  // idx -1) still renders "Chapters" -- the trigger appears the moment the item loads.
+  const apply112 = src.slice(src.indexOf('applyChaptersForMedia = function (data)'), src.indexOf('applyChaptersForMedia = function (data)') + 1800);
+  assert.match(apply112, /refreshCurrentChapter\(\);[\s\S]*?updateChapterNowLabel\(false\);/, 'the chapter-set apply path syncs the name label (covers the pre-first case)');
   const reset = src.slice(src.indexOf('function resetSeekVisual()'), src.indexOf('function resetSeekVisual()') + 700);
   assert.match(reset, /currentChapterIdx = -1;\s*\n\s*updateChapterNowLabel\(false\);/, 'label hidden (no highlight) on per-load reset');
   // The label is THE chapters trigger: click -> toggleChaptersMenu; closeChaptersMenu
@@ -563,7 +580,8 @@ test('v1.41.12/v1.108 source-lock: per-row Loop toggle in the menu + styles pres
   assert.match(src, /armChapterLoop\(index, \{ rebuild: true, seekIn: true \}\)/, 'arming from outside the chapter seeks into it');
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
   assert.match(css, /\.chapters-menu-row \{\s*display: flex;/, 'row layout');
-  assert.match(css, /#chapters-btn\.chapter-looping \{/, 'bar-level armed indicator');
+  assert.match(css, /\.chapter-now\.chapter-looping \{/, 'bar-level armed indicator (v1.112: on the name label, not the removed Ch button)');
+  assert.match(src, /function updateChapterLoopIndicator\(\) \{\s*\n\s*if \(chapterNowEl\) chapterNowEl\.classList\.toggle\('chapter-looping'/, 'the armed indicator toggles the tint on the name label');
   assert.match(rt(css), /\.chapters-menu-loop \{[\s\S]*?min-height: 44px;/, 'mobile tap target for the toggle');
   // The fixed-width label is what keeps the row's border aligned across loop
   // states; without it the Loop<->∞ swap would reflow the button. Delete the
@@ -603,7 +621,7 @@ test('gate W3: every explicit-seek commit point disarms an out-of-bounds chapter
     'the lock-screen scrubber disarms before it seeks');
   const helper = src.slice(src.indexOf('function disarmChapterLoopIfSeekOutside('), src.indexOf('function disarmChapterLoopIfSeekOutside(') + 900);
   assert.match(helper, /targetAbs < chapterLoop\.start \|\| targetAbs >= chapterLoop\.end/, 'outside = strictly outside [start, end)');
-  assert.match(helper, /chaptersBtn\.classList\.remove\('chapter-looping'\)/, 'the bar tint clears with the disarm');
+  assert.match(helper, /chapterNowEl\.classList\.remove\('chapter-looping'\)/, 'the bar tint clears with the disarm');
 });
 
 test('gate round-1 polish locks: menu rebuilds on every open; loop seek-in never closes the menu; close() clears the loop', () => {

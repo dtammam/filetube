@@ -6141,13 +6141,9 @@ a.sub-row-channel-link:focus-visible {
     width: var(--size-touch);
     height: var(--size-touch);
   }
-  /* #speed-btn keeps its auto width (see the FR-4 rule below) even on
-     mobile, but the touch-target FLOOR still needs to hit >=44px like every
-     other .pc-btn here -- min-width (not a fixed width) lets a longer label
-     grow past 44px instead of clipping. */
-  #speed-btn {
-    min-width: var(--size-touch);
-  }
+  /* v1.112: the former mobile `#speed-btn { min-width }` floor is gone -- the
+     speed control is now a full-width row inside #settings-menu (a popup), no
+     longer a touch-target on the bar, so it needs no bar sizing here. */
 }
 
 /* === v1.22/v1.22.1 FR-1: responsive controls =================================
@@ -6356,15 +6352,12 @@ body.ft-css-fullscreen .bottom-nav {
 }
 
 /* v1.34.1 (Dean's on-device pass): mobile bar declutter.
-   (1) The Ch button only earns its slot on mobile when the item actually
-   HAS chapters (player.js toggles .has-chapters per load) -- on a
-   chapterless item it was pure clutter on an already-tight bar.
-   (2) On narrow phones the total-duration label gives its ~60px to the
-   seek bar (the current-time label stays) -- the seek bar had collapsed
-   to a sliver. Desktop is untouched by both. */
-#player-wrapper.ff-mobile:not(.has-chapters) #chapters-btn {
-  display: none !important;
-}
+   On narrow phones the total-duration label gives its ~60px to the seek bar
+   (the current-time label stays) -- the seek bar had collapsed to a sliver.
+   Desktop is untouched.
+   v1.112: the former companion rule here (hide the Ch button on a chapterless
+   mobile item) is gone with the #chapters-btn itself -- chapters are now the
+   persistent name label, which hides itself on a chapterless item in JS. */
 
 /* v1.34 T3 (Dean): chapter picker popup. Anchored to the control bar
    (#player-controls is the positioning context), opening UPWARD above the
@@ -6594,8 +6587,8 @@ body.ft-css-fullscreen .bottom-nav {
      so we deliberately do NOT bold here: bolding the width-reserving label
      recomputes its `ch` against the bold digit and reintroduces a ~1-2px border
      nudge on variable-weight fonts -- the exact shift T2 exists to kill, gate
-     WARNING T2-W1). The bar-level #chapters-btn tint (below) is the other armed
-     signal. */
+     WARNING T2-W1). The bar-level chapter-name label tint (.chapter-now.chapter-
+     looping) is the other armed signal. */
   color: var(--yt-red);
 }
 /* v1.108 (Dean): the armed state shows "∞" (U+221E) instead of the word
@@ -6618,9 +6611,10 @@ body.ft-css-fullscreen .bottom-nav {
   font-weight: normal;
   text-align: center;
 }
-/* Bar-level armed signal: the Ch button tints while a chapter loop is on, so
-   the state is visible with the menu closed. */
-#chapters-btn.chapter-looping {
+/* Bar-level armed signal: the persistent chapter-name label tints red while a
+   chapter loop is on, so the armed state is visible with the menu closed.
+   v1.112: moved off the removed #chapters-btn onto .chapter-now. */
+.chapter-now.chapter-looping {
   color: var(--yt-red);
 }
 .chapters-editor-textarea {
@@ -6826,17 +6820,6 @@ body.ft-css-fullscreen .bottom-nav {
    above) -- the segment overlay hides with it. */
 #player-dock .seek-chapters { display: none; }
 
-/* v1.109 (Dean): the current-chapter title chip. Anchored with `bottom: 100%` so
-   it floats just above the control strip regardless of the strip's height (40px
-   desktop / 80px two-row mobile / 26px docked) -- no height arithmetic (the
-   measure-don't-guess lesson). Left-aligned to the bar's content, ellipsized, a
-   subtle scrim pill. pointer-events:none. Hidden in the dock; the native-controls
-   path hides the whole .player-controls, so the chip goes with it.
-   v1.109.1 (Dean, on-device: "don't always obstruct the video"): the chip is
-   opacity 0 at REST and only fades to 1 while `.visible` -- player.js flashes it
-   for CHAPTER_CHIP_MS on each chapter change then drops `.visible`. Kept in the
-   DOM (opacity, not display) so the fade actually transitions; `[hidden]` is only
-   the full chapter-less/dock removal. */
 /* v1.112 (Dean): the persistent current-chapter NAME label -- a <button> that
    OPENS the chapter list (the separate `Ch` button is gone). Dean's pick: it
    sits IN LINE with the transport controls (in-flow on the bar, same level as
@@ -7085,6 +7068,10 @@ body.ft-css-fullscreen .bottom-nav {
 }
 
 /* === v1.22.1 FR-4: persistent playback-speed control (#speed-btn) ==========
+   v1.112 (Dean, settings cog): #speed-btn is now a ROW inside #settings-menu,
+   not a bar button -- `#settings-menu .settings-menu-item` (higher specificity)
+   supersedes the width/min-width/padding below for the menu presentation. This
+   base rule is retained (harmless, overridden) as the FR-4 fallback.
    Reuses `.pc-btn`'s sizing/theming (era tokens, no new colors) for the
    border/background/hover/active states. The one difference: `.pc-btn`'s
    base 30px (44px on mobile, above) square is sized for icon glyphs, while
