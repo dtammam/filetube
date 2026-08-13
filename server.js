@@ -9607,6 +9607,16 @@ app.get('/api/videos', (req, res) => {
     const watchUrl = typeof item.youtubeId === 'string' ? buildWatchUrl(item.youtubeId) : null;
     return {
       ...item,
+      // v1.113 (Fix A): resolve the channel avatar the SAME way /api/home and
+      // /api/notifications already do (item.channelAvatarUrl wins when baked;
+      // otherwise the registry/subscription resolver recovers it). Search was
+      // the ONE read surface spreading the raw item, so a channel with a
+      // resolvable avatar showed art on home but a monogram in search.
+      // resolveItemChannelAvatarUrl is READ-ONLY (store.js) -- no cached-db
+      // mutation, no clone; bounded to the page `limit` (this projection's scope).
+      channelAvatarUrl: (typeof item.channelAvatarUrl === 'string' && item.channelAvatarUrl !== '')
+        ? item.channelAvatarUrl
+        : (ytdlp.resolveItemChannelAvatarUrl(db, item) || ''),
       ...(watchUrl ? { watchUrl } : {}),
       // v1.93.2: DERIVED storyboard descriptor (eligible videos only), so the
       // list projection carries the same geometry as the grid/watch payloads

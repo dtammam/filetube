@@ -118,6 +118,37 @@ test('GET /api/videos preserves the fields the author resolver needs', async () 
   assert.equal(item.artist, '');
 });
 
+// v1.113 Fix A: search was the ONE read surface spreading the raw item, so a
+// channel whose avatar is resolvable from the channelId registry (what /api/home
+// + the avatar bar use) showed a MONOGRAM in search but art on home. The
+// projection now resolves it like /api/home -- and read-only (must not mutate
+// the shared cached db, a named attack surface).
+test('GET /api/videos resolves the channel avatar from the registry (Fix A) without mutating the cached db', async () => {
+  const CHID = 'UC-lHJZR3Gqxm24_Vd_AJ5Yw'; // valid UC + 22-char shape (mirrors modern-grid-api.test.js)
+  saveDatabase({
+    folders: ['/media/Reg'],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      regV: {
+        id: 'regV', title: 'Reg clip', type: 'video', ext: '.mp4',
+        folderName: '@reg', rootFolder: '/media/Reg', channelId: CHID,
+        channelName: '', channelAvatarUrl: '', // metadata-less name, empty baked avatar, but a resolvable id
+        size: 1000, addedAt: 1700000000002,
+      },
+    },
+    ytdlp: { allowMembersOnly: false, subscriptions: [], channelAvatars: { [CHID]: { avatarUrl: 'https://cdn/reg.jpg', channelUrl: '', fetchedAt: 1 } } },
+  });
+  const res = await fetch(`${base}/api/videos`);
+  assert.equal(res.status, 200);
+  const { items } = await res.json();
+  const item = items.find((i) => i.id === 'regV');
+  assert.ok(item, 'seeded item is returned');
+  assert.equal(item.channelAvatarUrl, 'https://cdn/reg.jpg', 'search resolves the avatar via the registry, like /api/home (no more monogram-in-search)');
+  // Read-only: the serve-time resolve must NOT write the avatar back onto the cached item.
+  assert.equal(loadDatabase().metadata.regV.channelAvatarUrl, '', 'the resolve must not mutate the cached db (item keeps its empty baked avatar)');
+});
+
 test('GET /api/videos/:id returns 404 for an unknown id', async () => {
   const res = await fetch(`${base}/api/videos/does-not-exist`);
   assert.equal(res.status, 404);
