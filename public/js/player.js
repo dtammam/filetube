@@ -1324,6 +1324,11 @@ if (typeof module !== 'undefined' && module.exports) {
   // RESOLVED list GET /api/videos/:id served for the loaded item
   // (manual > embedded > description -- resolved server-side).
   var chaptersBtn, chaptersMenu;
+  // v1.112 (Dean): the settings COG + its popup. The cog centralizes the
+  // relocated Speed/CC/PiP rows (now children of #settings-menu -- their own
+  // ids/handlers are unchanged). Queried once alongside the rest of the custom
+  // bar so they ride the reparented host across FULL/DOCKED/CLOSED.
+  var settingsBtn, settingsMenu;
   var currentChapters = [];
   // v1.109 (Dean): chapter follow-along -- the index of the chapter the playhead
   // is currently in (-1 = none/before-first/no-chapters), resolved from the live
@@ -1905,6 +1910,8 @@ if (typeof module !== 'undefined' && module.exports) {
     ccTrack = host.querySelector('#cc-track');
     chaptersBtn = host.querySelector('#chapters-btn');
     chaptersMenu = host.querySelector('#chapters-menu');
+    settingsBtn = host.querySelector('#settings-btn'); // v1.112: the gear
+    settingsMenu = host.querySelector('#settings-menu'); // v1.112: holds Speed/CC/PiP rows
     artPlayGlyph = host.querySelector('#art-play-glyph');
     // Feature B (v1.26.1): built in JS (never touches the shared
     // player-host-template markup, so all 5 shells stay byte-identical) --
@@ -5137,6 +5144,10 @@ if (typeof module !== 'undefined' && module.exports) {
     if (speedBtn) {
       speedBtn.addEventListener('click', function (e) {
         e.stopPropagation();
+        // v1.112: the speed row lives INSIDE the cog; opening the picker
+        // replaces the settings menu (no stacked popups). CC/PiP rows toggle
+        // in place and deliberately leave the cog open (state stays visible).
+        closeSettingsMenu();
         if (!speedMenu) {
           // Defensive only (the parity test locks #speed-menu into all
           // seven shells): a shell somehow missing it degrades to a
@@ -5347,11 +5358,20 @@ if (typeof module !== 'undefined' && module.exports) {
       // INLINES the equivalent statements against the module-level refs for
       // both menus (see its own comment) -- change one, change both.
       closeSpeedMenu();
+      closeSettingsMenu(); // v1.112: the cog is a bar popup too -- same lifecycle
     }
     function closeSpeedMenu() {
       if (speedMenu) speedMenu.hidden = true;
       closeSpeedSheet(); // v1.90: also tear down the mobile body-level sheet
       if (speedBtn) speedBtn.setAttribute('aria-expanded', 'false');
+    }
+    // v1.112 (Dean): dismiss the settings cog popup. Part of the SAME shared
+    // close chain as the chapters/speed popups (called from closeChaptersMenu
+    // above, whose callers are teardown/outside-tap/play-pause-seek); dock()
+    // INLINES the equivalent against the module ref (change one, change both).
+    function closeSettingsMenu() {
+      if (settingsMenu) settingsMenu.hidden = true;
+      if (settingsBtn) settingsBtn.setAttribute('aria-expanded', 'false');
     }
     // v1.41.12: arm (or move) the chapter loop. Bounds come from the pure
     // resolveChapterLoopBounds -- duration prefers the live element's
@@ -5638,6 +5658,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // (hidden → the guard above makes this free). Both popups covered.
     window.addEventListener('resize', clampChaptersMenuHeight);
     window.addEventListener('resize', function () { clampBarMenuHeight(speedMenu); });
+    window.addEventListener('resize', function () { clampBarMenuHeight(settingsMenu); }); // v1.112: the cog re-clamps too
     if (chaptersBtn) {
       chaptersBtn.addEventListener('click', function (e) {
         e.stopPropagation();
@@ -5654,6 +5675,25 @@ if (typeof module !== 'undefined' && module.exports) {
         // the buildChaptersMenu tail call below.
         if (opening) clampChaptersMenuHeight();
         chaptersBtn.setAttribute('aria-expanded', opening ? 'true' : 'false');
+      });
+    }
+    // v1.112 (Dean): the settings COG. Toggles #settings-menu (static rows --
+    // no rebuild), clamped after unhiding like the other bar popups. Opening it
+    // first dismisses any other open bar popup: closeChaptersMenu() is the
+    // shared teardown (chapters + speed + the mobile speed sheet + settings), so
+    // we re-open settings AFTER it. stopPropagation keeps this click from
+    // reaching the document outside-close below.
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (!settingsMenu) return;
+        var opening = settingsMenu.hidden;
+        closeChaptersMenu();
+        if (opening) {
+          settingsMenu.hidden = false;
+          clampBarMenuHeight(settingsMenu);
+          settingsBtn.setAttribute('aria-expanded', 'true');
+        }
       });
     }
     if (!chaptersOutsideCloseWired) {
@@ -5682,6 +5722,16 @@ if (typeof module !== 'undefined' && module.exports) {
       };
       document.addEventListener('click', closeSpeedMenuOnOutside);
       document.addEventListener('pointerdown', closeSpeedMenuOnOutside);
+      // v1.112: identical outside-close for the settings cog. A tap inside the
+      // menu (a Speed/CC/PiP row) or on the gear itself is NOT outside -- the
+      // speed row runs closeSettingsMenu() itself, CC/PiP toggle in place.
+      var closeSettingsMenuOnOutside = function (e) {
+        if (!settingsMenu || settingsMenu.hidden) return;
+        if (settingsMenu.contains(e.target) || (settingsBtn && settingsBtn.contains(e.target))) return;
+        closeSettingsMenu();
+      };
+      document.addEventListener('click', closeSettingsMenuOnOutside);
+      document.addEventListener('pointerdown', closeSettingsMenuOnOutside);
       // v1.34.5 (Dean round 5): iOS AUTO-ENTERS the native fullscreen player
       // when a playing inline video rotates to landscape (a Safari behavior,
       // playsinline notwithstanding) -- in CUSTOM mode that hijacks the
@@ -6675,6 +6725,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // and resurrected it stale on re-expand.
     if (speedMenu) speedMenu.hidden = true;
     if (speedBtn) speedBtn.setAttribute('aria-expanded', 'false');
+    // v1.112: same for the settings cog -- a Back-button dock must not leave it
+    // invisibly open to resurrect stale on re-expand (closeSettingsMenu's exact
+    // two statements against the module-level refs).
+    if (settingsMenu) settingsMenu.hidden = true;
+    if (settingsBtn) settingsBtn.setAttribute('aria-expanded', 'false');
     // v1.90: closeSpeedSheet lives in wireHostListeners' closure (out of reach
     // here at module scope), so remove any open mobile speed sheet by its
     // body-level class -- same "no stale popup survives a Back-button dock" aim.

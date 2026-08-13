@@ -77,3 +77,57 @@ test('cog parity: the cog + settings-menu + popups tail is byte-identical across
     assert.equal(t.tail, ref.tail, `${t.name}'s control-bar tail drifted from ${ref.name}`);
   }
 });
+
+// ---- v1.112 T2: cog open/close WIRING source-locks --------------------------
+// jsdom cannot exercise the real popup feel (Dean's device pass is the arbiter);
+// these bind the load-bearing wiring so a refactor that severs it goes red.
+const playerJs = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+const code = playerJs.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+
+test('cog wiring: ensureHost caches the cog refs alongside the rest of the bar', () => {
+  assert.match(code, /settingsBtn = host\.querySelector\('#settings-btn'\)/, 'the gear ref is cached');
+  assert.match(code, /settingsMenu = host\.querySelector\('#settings-menu'\)/, 'the menu ref is cached');
+});
+
+test('cog wiring: closeSettingsMenu hides the popup + resets aria, and rides the SHARED close chain', () => {
+  const fn = /function closeSettingsMenu\(\) \{[\s\S]*?\n {4}\}/.exec(code);
+  assert.ok(fn, 'closeSettingsMenu exists');
+  assert.match(fn[0], /settingsMenu\.hidden = true/, 'it hides the menu');
+  assert.match(fn[0], /settingsBtn\.setAttribute\('aria-expanded', 'false'\)/, 'it resets aria');
+  // The shared lifecycle teardown (teardown/outside-tap/play-pause-seek) must
+  // dismiss the cog too -- closeChaptersMenu is the one funnel.
+  const closeChapters = /function closeChaptersMenu\(\) \{[\s\S]*?\n {4}\}/.exec(code);
+  assert.ok(closeChapters, 'closeChaptersMenu exists');
+  assert.match(closeChapters[0], /closeSettingsMenu\(\)/, 'closeChaptersMenu also dismisses the cog');
+});
+
+test('cog wiring: the gear toggles the menu, dismissing other bar popups first, clamped after unhiding', () => {
+  const handler = /settingsBtn\.addEventListener\('click', function \(e\) \{[\s\S]*?\n {6}\}\);/.exec(code);
+  assert.ok(handler, 'the cog click handler exists');
+  assert.match(handler[0], /e\.stopPropagation\(\)/, 'stops the click reaching the document outside-close');
+  assert.match(handler[0], /var opening = settingsMenu\.hidden;/, 'reads open state before mutating');
+  assert.match(handler[0], /closeChaptersMenu\(\);/, 'opening the cog first tears down chapters/speed/sheet (and settings)');
+  assert.match(handler[0], /settingsMenu\.hidden = false;\s*\n\s*clampBarMenuHeight\(settingsMenu\);/, 'clamps AFTER unhiding (rendered geometry)');
+});
+
+test('cog wiring: opening the speed picker closes the cog (no stacked popups)', () => {
+  const speedHandler = /speedBtn\.addEventListener\('click', function \(e\) \{[\s\S]*?closeSettingsMenu\(\);/.exec(code);
+  assert.ok(speedHandler, 'the speed row closes the cog before opening its picker');
+});
+
+test('cog wiring: the cog has its own outside-close (click + pointerdown), guarded on its own open state', () => {
+  const outside = /var closeSettingsMenuOnOutside = function \(e\) \{[\s\S]*?\n {6}\};/.exec(code);
+  assert.ok(outside, 'closeSettingsMenuOnOutside exists');
+  assert.match(outside[0], /if \(!settingsMenu \|\| settingsMenu\.hidden\) return;/, 'guards on its own open state');
+  assert.match(outside[0], /settingsMenu\.contains\(e\.target\) \|\| \(settingsBtn && settingsBtn\.contains\(e\.target\)\)/, 'a tap on the menu or the gear is not outside');
+  assert.match(code, /addEventListener\('click', closeSettingsMenuOnOutside\)/, 'click bound');
+  assert.match(code, /addEventListener\('pointerdown', closeSettingsMenuOnOutside\)/, 'pointerdown bound (iOS)');
+});
+
+test('cog wiring: dock() inlines the cog dismissal (Back-button dock has no click for the outside-close)', () => {
+  const dockStart = code.indexOf('function dock()');
+  assert.notEqual(dockStart, -1, 'dock() exists');
+  const dockBody = code.slice(dockStart, code.indexOf('\n  function ', dockStart + 10));
+  assert.match(dockBody, /settingsMenu\.hidden = true/, 'dock() must not leave the cog invisibly open');
+  assert.match(dockBody, /settingsBtn\.setAttribute\('aria-expanded', 'false'\)/, 'dock() resets the cog aria');
+});
