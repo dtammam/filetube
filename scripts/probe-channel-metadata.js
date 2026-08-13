@@ -25,14 +25,23 @@ const { readPersistedDatabase, SQLITE_FILENAME } = require('../lib/db/sqlite');
 function classifyChannelMetadata(item) {
   const str = (v) => (typeof v === 'string' ? v.trim() : '');
   const isVideo = !!item && item.type === 'video';
-  const hasName = str(item && item.channelName) !== '';
+  const name = str(item && item.channelName);
+  const hasName = name !== '';
+  // v1.114 fix: the REAL affected set is "shows a bad name", which is TWO cases:
+  //   - missing channelName -> falls back to the folderName (e.g. "AfterSkool"),
+  //   - channelName captured the HANDLE ("@nestalgiamusic") instead of the name.
+  // The prior version only counted @handle FOLDERS (0 on real data) and measured
+  // re-pullability only inside that empty branch -> under-reported the target as 0.
+  const handleName = hasName && name.startsWith('@'); // the handle stored AS the name
   const folderName = str(item && item.folderName);
   const handleFolder = folderName.startsWith('@');
-  const repullable = str(item && item.youtubeId) !== ''; // a source to re-pull from
+  const repullable = str(item && item.youtubeId) !== ''; // a source to re-pull from (youtubeId proxy)
   const hasAvatar = str(item && item.channelAvatarUrl) !== '';
   const hasChannelId = str(item && item.channelId) !== '';
   const manuallyAttributed = !!(item && item.channelAttributedManually);
-  return { isVideo, hasName, folderName, handleFolder, repullable, hasAvatar, hasChannelId, manuallyAttributed };
+  // "bad name" = anything that is NOT the real channel name on the card.
+  const badName = !hasName || handleName;
+  return { isVideo, hasName, handleName, folderName, handleFolder, repullable, hasAvatar, hasChannelId, manuallyAttributed, badName };
 }
 
 function parseArgs(argv) {
@@ -69,57 +78,59 @@ function main() {
   const meta = (db && db.metadata) || {};
 
   const stats = {
-    videos: 0, hasName: 0,
-    noName: 0, noNameHandle: 0, noNameHandleRepullable: 0, noNameHandleNoSource: 0, noNameOther: 0,
+    videos: 0, goodName: 0, handleName: 0, noName: 0, manualSkipped: 0,
+    fixBTarget: 0, noSource: 0,
     noAvatarNoId: 0, noAvatarHasId: 0, hasAvatar: 0,
-    manualSkipped: 0,
   };
-  const ex = { handleRepullable: [], handleNoSource: [], avatarRecoverable: [] };
+  const ex = { backfill: [], noSource: [], handleName: [], avatarRecoverable: [] };
   const push = (arr, s) => { if (arr.length < args.examples) arr.push(s); };
 
   for (const id of Object.keys(meta)) {
     const c = classifyChannelMetadata(meta[id]);
     if (!c.isVideo) continue;
     stats.videos++;
-    if (c.hasName) stats.hasName++;
+    // Name buckets: a "bad name" is what shows on the card when the real
+    // channelName was never captured (folder fallback) OR the handle was stored
+    // as the name. That is the Fix B population; the rest render the real name.
+    if (!c.badName) stats.goodName++;
     else {
-      stats.noName++;
-      if (c.manuallyAttributed) stats.manualSkipped++; // won't be backfilled (attribution wins)
-      if (c.handleFolder) {
-        stats.noNameHandle++;
-        if (c.repullable && !c.manuallyAttributed) { stats.noNameHandleRepullable++; push(ex.handleRepullable, `${c.folderName}  (id ${id})`); }
-        else { stats.noNameHandleNoSource++; push(ex.handleNoSource, `${c.folderName}  (id ${id}, no youtubeId)`); }
-      } else {
-        stats.noNameOther++;
-      }
+      if (c.handleName) { stats.handleName++; push(ex.handleName, `channelName="${(meta[id].channelName || '').trim()}"  folder="${c.folderName}"  (id ${id})`); }
+      else stats.noName++;
+      if (c.manuallyAttributed) stats.manualSkipped++;
+      else if (c.repullable) { stats.fixBTarget++; push(ex.backfill, `${c.handleName ? (meta[id].channelName || '').trim() : (c.folderName || '(no folder)')}  (id ${id})`); }
+      else { stats.noSource++; push(ex.noSource, `${c.folderName || '(no folder)'}  (id ${id}, no youtubeId)`); }
     }
-    // Avatar split (independent of name)
+    // Avatar split (independent of the name).
     if (c.hasAvatar) stats.hasAvatar++;
     else if (c.hasChannelId) { stats.noAvatarHasId++; push(ex.avatarRecoverable, `${c.folderName || '(no folder)'}  (id ${id}, has channelId)`); }
     else stats.noAvatarNoId++;
   }
 
   console.log('\n=== channel-metadata report ===');
-  console.log(`video items:                              ${stats.videos}`);
-  console.log(`  with a captured channelName (fine):     ${stats.hasName}`);
-  console.log(`  MISSING channelName:                    ${stats.noName}`);
-  console.log(`    of those, folderName is an "@handle":  ${stats.noNameHandle}`);
-  console.log(`      re-pullable (has youtubeId) -> FIX B:  ${stats.noNameHandleRepullable}`);
-  console.log(`      no source (cannot backfill):           ${stats.noNameHandleNoSource}`);
-  console.log(`    non-@handle missing-name items:        ${stats.noNameOther}`);
-  console.log(`  manually-attributed (backfill SKIPS):   ${stats.manualSkipped}`);
-  console.log('\n--- avatar ---');
-  console.log(`  has avatar art:                         ${stats.hasAvatar}`);
-  console.log(`  no avatar but HAS channelId -> FIX A recovers: ${stats.noAvatarHasId}`);
-  console.log(`  no avatar and no channelId -> needs FIX B:     ${stats.noAvatarNoId}`);
+  console.log(`video items:                                 ${stats.videos}`);
+  console.log(`  showing the REAL channel name (fine):      ${stats.goodName}`);
+  console.log(`  showing an "@handle" AS the name:          ${stats.handleName}`);
+  console.log(`  MISSING channelName (shows the folder):    ${stats.noName}`);
+  console.log('\n--- FIX B name backfill (bad name = @handle-name OR missing-name) ---');
+  console.log(`  re-pullable (has youtubeId) -> FIX B:      ${stats.fixBTarget}`);
+  console.log(`  no re-pullable source (cannot backfill):   ${stats.noSource}`);
+  console.log(`  manually-attributed (backfill SKIPS):      ${stats.manualSkipped}`);
+  console.log('\n--- avatar (Fix A shipped in v1.113) ---');
+  console.log(`  has avatar art:                            ${stats.hasAvatar}`);
+  console.log(`  no avatar but HAS channelId -> Fix A recovers: ${stats.noAvatarHasId}`);
+  console.log(`  no avatar and no channelId -> needs Fix B:     ${stats.noAvatarNoId}`);
 
-  console.log(`\n=> FIX B backfill target (repullable @handle, no manual attr): ${stats.noNameHandleRepullable}`);
-  console.log(`=> FIX A search-avatar recoveries (no avatar but resolvable id): ${stats.noAvatarHasId}`);
+  console.log(`\n=> FIX B name-backfill target (bad name, re-pullable, not manual): ${stats.fixBTarget}`);
+  console.log(`=> FIX A avatar recoveries (live in v1.113): ${stats.noAvatarHasId}`);
+  console.log('   (NOTE: "re-pullable" here = has a youtubeId. The real reheat can');
+  console.log('    ALSO derive a source from a filename [id] bracket or an embedded');
+  console.log('    purl, so the true backfillable count may be HIGHER than above.)');
 
   if (args.examples > 0) {
     const dump = (label, arr) => { if (arr.length) { console.log(`\n--- ${label} ---`); arr.forEach(s => console.log('  ' + s)); } };
-    dump('example @handle items to backfill (Fix B)', ex.handleRepullable);
-    dump('example @handle items with NO source (cannot backfill)', ex.handleNoSource);
+    dump('example Fix B backfill targets (bad name, re-pullable)', ex.backfill);
+    dump('example "@handle stored as the name" items', ex.handleName);
+    dump('example bad-name items with NO source (cannot backfill)', ex.noSource);
     dump('example avatar-recoverable items (Fix A)', ex.avatarRecoverable);
   }
 }

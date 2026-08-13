@@ -46,7 +46,25 @@ test('manuallyAttributed is surfaced so the sizer/backfill can SKIP it (attribut
   assert.equal(classifyChannelMetadata({ type: 'video' }).manuallyAttributed, false);
 });
 
-test('the exact Fix-B target: missing name + @handle folder + a source + not manual', () => {
-  const c = classifyChannelMetadata({ type: 'video', folderName: '@nestalgia', youtubeId: 'abc123', channelName: '' });
-  assert.ok(!c.hasName && c.handleFolder && c.repullable && !c.manuallyAttributed, 'this is the backfill target row');
+test('v1.114: handleName flags a channelName that captured the "@handle" (the bad-name case the folder-only check missed)', () => {
+  const h = classifyChannelMetadata({ type: 'video', channelName: '@nestalgiamusic' });
+  assert.equal(h.hasName, true, 'it has a (bad) name');
+  assert.equal(h.handleName, true, 'the name is an @handle');
+  assert.equal(h.badName, true, 'so it counts as a bad name to backfill');
+  const real = classifyChannelMetadata({ type: 'video', channelName: 'NESTALGIA' });
+  assert.equal(real.handleName, false, 'a real name is not an @handle');
+  assert.equal(real.badName, false, 'a real name is fine');
+});
+
+test('v1.114: badName = missing name OR @handle-name (the real Fix B population, NOT just @handle folders)', () => {
+  assert.equal(classifyChannelMetadata({ type: 'video', channelName: '', folderName: 'AfterSkool' }).badName, true, 'missing name -> folder fallback = bad');
+  assert.equal(classifyChannelMetadata({ type: 'video', channelName: '@x' }).badName, true, 'handle-as-name = bad');
+  assert.equal(classifyChannelMetadata({ type: 'video', channelName: 'Bob Steel' }).badName, false, 'real name = good');
+});
+
+test('the exact Fix-B target: a bad name (missing OR @handle) + a source + not manual', () => {
+  const missing = classifyChannelMetadata({ type: 'video', folderName: 'AfterSkool', youtubeId: 'abc123', channelName: '' });
+  assert.ok(missing.badName && missing.repullable && !missing.manuallyAttributed, 'missing-name + source = backfill target');
+  const handle = classifyChannelMetadata({ type: 'video', channelName: '@handle', youtubeId: 'abc123' });
+  assert.ok(handle.badName && handle.repullable && !handle.manuallyAttributed, '@handle-name + source = backfill target');
 });

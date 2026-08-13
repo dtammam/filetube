@@ -67,13 +67,33 @@ The reheat/repull machinery ALREADY re-pulls + gap-fills channel identity:
 :5126/5178 avatar). Existing endpoint: `POST /api/ytdlp/repull-metadata` (the
 "reheat", client `#sub-reheat-btn`, subscriptions.js:1587).
 
+### AFFECTED-SET model CORRECTED by Dean's prod diagnostic run (2026-08-13)
+The v1.113 diagnostic run on Dean's server FALSIFIED the "@handle folder" model:
+of 2032 videos, **0** had a `folderName` starting with `@`. The real affected set
+is **"bad name"** = a card NOT showing the real channel name, which is TWO cases:
+- **missing `channelName`** (1294 of 2032) -> the card falls back to the FOLDER
+  name (the handle/name with spaces stripped: "AfterSkool", "anthropic-ai",
+  "eli_handle_bwav"); AND
+- **`channelName` that captured the HANDLE** ("@nestalgiamusic") - these were
+  hiding in the "has a name" bucket, undetected by the folder-only check.
+The old diagnostic ALSO measured re-pullability only inside the (empty) @handle-
+folder branch, so it printed "Fix B target = 0" when the true target is the
+re-pullable subset of ~1294+. The diagnostic is fixed (T1 here): `badName =
+!channelName || channelName.startsWith('@')`, re-pullability measured for ALL
+bad-name items. Dean re-runs the corrected script to get the real target size.
+Avatar side (already live via v1.113 Fix A): 491 items had a channelId but no
+baked avatar -> now resolved; 1371 have neither (need Fix B's re-pull for the avatar).
+
 So Fix B is TARGETING + a button, not a new backend:
+- `itemNeedsChannelBackfill(item)` = **`badName` (no `channelName` OR a
+  `channelName` starting with `@`) AND NOT `channelAttributedManually`** - NOT the
+  old "@handle folder" check.
 - A **manual "Refresh channel metadata" button** (Dean's pick over auto-on-scan)
-  that runs the reheat scoped to the AFFECTED set: items with no `channelName`
-  (or no `channelId`) that HAVE a re-pullable source (a valid `youtubeId`/purl),
-  batched PER CHANNEL (folderName), skipping `channelAttributedManually` items and
-  items with no source. Reuse the existing repull single-flight latch + cancel +
-  the run-log/history surface.
+  that runs the reheat scoped to that AFFECTED set that HAS a re-pullable source
+  (a valid `youtubeId` OR a filename `[id]` bracket in the download root OR an
+  embedded purl - the reheat derives all three), batched PER CHANNEL (folderName),
+  skipping manual-attribution + no-source items. Reuse the existing repull
+  single-flight latch + cancel + the run-log/history surface.
 - Throttle: reuse the existing repull pacing (`--sleep-*`/retries); batch per
   channel not per video.
 - Leave `folderName` as-is (on-disk grouping key + `/?folder=` link target,
