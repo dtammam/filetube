@@ -64,6 +64,15 @@ COPY public/ ./public/
 # subscriptions. This also ships the module's UI assets served via
 # sendFile: lib/ytdlp/views/subscriptions.html and lib/ytdlp/client/subscriptions.js.
 COPY lib/ ./lib/
+# v1.113: ship the ops/diagnostic scripts so they are runnable on a deployed
+# server, e.g. `docker exec <container> node scripts/probe-channel-metadata.js`
+# (WORKDIR /app, so the scripts' `../lib/...` requires and the /app/data
+# auto-find both resolve). Previously scripts/ was NOT copied, so the v1.111
+# device-pass note pointing at `node scripts/probe-faststart.js` referenced a
+# file absent from the image - this also retroactively makes THAT runnable.
+# These are the same scripts the repo already trusts (reset-admin, migrate-check,
+# the probe-* diagnostics); a few KB of JS, no runtime deps.
+COPY scripts/ ./scripts/
 
 # Expose server port
 EXPOSE 3000
