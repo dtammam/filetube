@@ -6792,6 +6792,14 @@ body.ft-css-fullscreen .bottom-nav {
    for CHAPTER_CHIP_MS on each chapter change then drops `.visible`. Kept in the
    DOM (opacity, not display) so the fade actually transitions; `[hidden]` is only
    the full chapter-less/dock removal. */
+/* v1.112 (Dean): the persistent current-chapter NAME label -- now a <button>
+   that OPENS the chapter list (the separate `Ch` button is gone). It is shown
+   the whole time a >1-chapter item plays (no flash-then-fade); a chapter CHANGE
+   briefly adds `.changed` for a subtle red highlight (the follow-along colour),
+   then player.js drops it. FINAL on-bar placement -- desktop inline + the mobile
+   two-row slot -- is tuned in T4 after Dean's screenshot pick; the anchor below
+   is the interim posture (still overlapping the picture until T4 moves it onto
+   the bar chrome). Button reset + pointer-events auto so it is clickable. */
 .chapter-now {
   position: absolute;
   bottom: 100%;
@@ -6799,24 +6807,24 @@ body.ft-css-fullscreen .bottom-nav {
   margin-bottom: var(--space-2);
   max-width: 60%;
   z-index: 9; /* token-exempt: local stacking, above the bar (8), matches the segments */
+  font: inherit;
   font-size: var(--fs-xs);
   color: var(--on-overlay);
   background-color: var(--scrim);
+  border: 0;
   border-radius: var(--radius);
   padding: var(--space-1) var(--space-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity var(--dur-slow) var(--ease-ui);
+  cursor: pointer;
+  transition: background-color var(--dur-slow) var(--ease-ui);
 }
-.chapter-now.visible { opacity: 1; }
+.chapter-now.changed { background-color: var(--yt-red); color: var(--on-accent); }
 .chapter-now[hidden] { display: none !important; }
 #player-dock .chapter-now { display: none; }
-/* v1.109.1: decorative-motion-off convention -- player.js drives both the show
-   (.visible) and hide axes explicitly, so dropping the fade can't leave a stuck
-   half-state; reduced-motion users get an instant snap instead of the ~0.25s fade. */
+/* Reduced-motion: skip the highlight fade (the label + its text are always
+   explicit, so there is no stuck half-state to worry about). */
 @media (prefers-reduced-motion: reduce) {
   .chapter-now { transition: none; }
 }

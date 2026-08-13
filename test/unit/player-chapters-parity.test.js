@@ -499,36 +499,48 @@ test('v1.109 source-lock: T4 the scrub preview names the hovered chapter, indepe
   assert.match(css, /\.seek-preview-img\[hidden\],\s*\.seek-preview-chapter\[hidden\] \{ display: none !important; \}/, 'both toggled elements pin display:none (the [hidden]-loses lesson)');
 });
 
-test('v1.109 source-lock: T5 the current-chapter title chip flashes on change (does not sit over the video)', () => {
+test('v1.112 source-lock: the current-chapter NAME label is PERSISTENT, clickable, and opens the chapter list', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
-  assert.match(src, /chapterNowEl\.className = 'chapter-now';/, 'the chip is JS-built');
-  // Shown only for a genuinely chaptered item (>1) while in a chapter; text is
-  // "> Title" (U+203A punctuation, iOS-safe).
-  const fn = src.slice(src.indexOf('function updateChapterNowChip()'), src.indexOf('function updateChapterNowChip()') + 800);
-  assert.match(fn, /var show = currentChapters\.length > 1 && !!ch;/, 'chip shows only for a >1-chapter item in a chapter');
-  assert.match(fn, /chapterNowEl\.textContent = '› ' \+ \(ch\.title \|\| 'Chapter'\);/, 'chip text is "> Title"');
-  // v1.109.1 (Dean): FLASH, don't persist -- add .visible then a timer drops it,
-  // so the chip fades out instead of sitting over the video. Deleting the timer
-  // (making it persistent again) must fail here.
-  assert.match(fn, /chapterNowEl\.classList\.add\('visible'\);/, 'chip flashes in via .visible');
-  assert.match(fn, /chapterChipHideTimer = setTimeout\(function \(\) \{[\s\S]*?chapterNowEl\.classList\.remove\('visible'\);[\s\S]*?\}, CHAPTER_CHIP_MS\);/, 'a timer fades the chip out after CHAPTER_CHIP_MS');
-  // The prior fade timer MUST be cleared before arming a new one, or two rapid
-  // chapter changes stack timers and the first fires early, fading the chip while
-  // it should still be up. Drop the clearTimeout and this goes red.
-  assert.match(fn, /if \(chapterChipHideTimer\) \{ clearTimeout\(chapterChipHideTimer\); chapterChipHideTimer = null; \}/, 'the prior fade timer is cleared before re-arming (no double-timer early-fade)');
-  // Refreshed on a chapter-set change (load/edit) past the dispatch no-op, and
-  // hidden on the per-load reset (no stale "> Old" flash).
-  assert.match(src, /currentChapterIdx = -1;\s*\n\s*updateChapterLoopIndicator\(\);\s*\n\s*buildChaptersMenu\(\);/, 'chapter-set change resets idx so refreshCurrentChapter re-renders');
-  assert.match(src, /refreshCurrentChapter\(\);/, 'chapter-set change re-dispatches from the live position');
+  // v1.112: the label is a JS-built <button> (keyboard-reachable) that opens the
+  // chapter menu -- the separate `Ch` button is gone, so this is the ONLY trigger.
+  assert.match(src, /chapterNowEl = document\.createElement\('button'\);/, 'the label is a <button>');
+  assert.match(src, /chapterNowEl\.className = 'chapter-now';/, 'the label is JS-built');
+  assert.match(src, /chapterNowEl\.setAttribute\('aria-haspopup', 'true'\);/, 'it advertises the popup it opens');
+  // Shown only for a genuinely chaptered item (>1) while in a chapter; text "> Title".
+  const fn = src.slice(src.indexOf('function updateChapterNowLabel(changed)'), src.indexOf('function updateChapterNowLabel(changed)') + 1400);
+  assert.match(fn, /var show = currentChapters\.length > 1 && !!ch;/, 'label shows only for a >1-chapter item in a chapter');
+  assert.match(fn, /chapterNowEl\.textContent = '› ' \+ \(ch\.title \|\| 'Chapter'\);/, 'label text is "> Title"');
+  // PERSISTENT: the show path must NOT arm a timer that hides the element. Only a
+  // CHANGE toggles the `.changed` highlight (cleared after CHAPTER_CHIP_MS); the
+  // element itself never hides on that timer. Re-introducing a hide-the-element
+  // timer (the reverted v1.109.1 flash) must fail here.
+  assert.match(fn, /if \(changed\) \{/, 'the highlight only fires on a genuine change');
+  assert.match(fn, /chapterNowEl\.classList\.add\('changed'\);/, 'a change adds the .changed highlight');
+  assert.match(fn, /chapterChipHideTimer = setTimeout\(function \(\) \{[\s\S]*?chapterNowEl\.classList\.remove\('changed'\);[\s\S]*?\}, CHAPTER_CHIP_MS\);/, 'the timer clears the HIGHLIGHT (not the element) after CHAPTER_CHIP_MS');
+  assert.doesNotMatch(fn, /setTimeout[\s\S]*?chapterNowEl\.hidden = true/, 'no timer may hide the element -- it is persistent');
+  // The prior highlight timer is cleared before re-arming (no double-timer flicker).
+  assert.match(fn, /if \(chapterChipHideTimer\) \{ clearTimeout\(chapterChipHideTimer\); chapterChipHideTimer = null; \}/, 'the prior highlight timer is cleared before re-arming');
+  // A real change highlights; the per-load reset hides WITHOUT a highlight.
+  assert.match(src, /applyCurrentChapterToMenu\(\);\s*\n\s*updateChapterNowLabel\(true\);/, 'setCurrentChapter highlights the change');
   const reset = src.slice(src.indexOf('function resetSeekVisual()'), src.indexOf('function resetSeekVisual()') + 700);
-  assert.match(reset, /currentChapterIdx = -1;\s*\n\s*updateChapterNowChip\(\);/, 'chip hidden on per-load reset');
+  assert.match(reset, /currentChapterIdx = -1;\s*\n\s*updateChapterNowLabel\(false\);/, 'label hidden (no highlight) on per-load reset');
+  // The label is THE chapters trigger: click -> toggleChaptersMenu; closeChaptersMenu
+  // resets its aria; the outside-close treats a tap on it as "inside".
+  assert.match(src, /chapterNowEl\.addEventListener\('click', function \(e\) \{ e\.stopPropagation\(\); toggleChaptersMenu\(chapterNowEl\); \}\);/, 'clicking the label opens the chapter list');
+  assert.match(src, /function closeChaptersMenu\(\) \{[\s\S]*?chapterNowEl\.setAttribute\('aria-expanded', 'false'\);/, 'closeChaptersMenu resets the label aria');
+  assert.match(src, /chaptersMenu\.contains\(e\.target\)[\s\S]*?chapterNowEl && chapterNowEl\.contains\(e\.target\)/, 'a tap on the label is not "outside"');
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
-  // Height-agnostic anchor (bottom:100%) so it clears the 40/80/26px bars without
-  // arithmetic; hidden when docked; opacity 0 at rest, fading in only via .visible.
-  assert.match(css, /\.chapter-now \{[^}]*bottom: 100%;/, 'chip anchored above the bar via bottom:100% (no height math)');
-  assert.match(css, /\.chapter-now \{[^}]*opacity: 0;[^}]*transition: opacity/, 'chip is opacity 0 at rest with an opacity transition');
-  assert.match(css, /\.chapter-now\.visible \{ opacity: 1; \}/, '.visible fades it in');
-  assert.match(css, /#player-dock \.chapter-now \{ display: none; \}/, 'chip hidden in the docked mini-player');
+  // Persistent + clickable: NOT opacity:0-at-rest, NOT pointer-events:none; a
+  // button reset (border:0) + cursor:pointer; the change-highlight is `.changed`.
+  const rule = /\.chapter-now \{[^}]*\}/.exec(css);
+  assert.ok(rule, 'the .chapter-now rule exists');
+  assert.doesNotMatch(rule[0], /opacity: 0;/, 'the label is NOT hidden-at-rest anymore (persistent)');
+  assert.doesNotMatch(rule[0], /pointer-events: none;/, 'the label must be clickable');
+  assert.match(rule[0], /cursor: pointer;/, 'clickable affordance');
+  assert.match(css, /\.chapter-now\.changed \{ background-color: var\(--yt-red\); color: var\(--on-accent\); \}/, 'a change flashes the follow-along red highlight');
+  assert.match(css, /#player-dock \.chapter-now \{ display: none; \}/, 'label hidden in the docked mini-player');
+  // Refreshed on a chapter-set change (load/edit) past the dispatch no-op.
+  assert.match(src, /refreshCurrentChapter\(\);/, 'chapter-set change re-dispatches from the live position');
 });
 
 test('v1.41.12/v1.108 source-lock: per-row Loop toggle in the menu + styles present (resting word label, armed ∞, fixed width)', () => {
@@ -588,7 +600,10 @@ test('gate W3: every explicit-seek commit point disarms an out-of-bounds chapter
 
 test('gate round-1 polish locks: menu rebuilds on every open; loop seek-in never closes the menu; close() clears the loop', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
-  assert.match(src, /if \(opening\) buildChaptersMenu\(\);/, 'open re-derives Loop labels (a controller-level disarm cannot reach the builder)');
+  // v1.112: the toggle moved into the shared toggleChaptersMenu(anchor); the
+  // rebuild-on-open still fires (now inside the `if (opening)` block that also
+  // dismisses the sibling bar popups).
+  assert.match(src, /if \(opening\) \{[\s\S]*?buildChaptersMenu\(\);/, 'open re-derives Loop labels (a controller-level disarm cannot reach the builder)');
   assert.match(src, /if \(now < bounds\.start \|\| now >= bounds\.end\) seekToChapterTime\(bounds\.start\);/,
     'arming seeks via the no-close variant');
   // Anchor on close()'s unique v1.27.2 sibling-clear comment (a bare
