@@ -3391,21 +3391,33 @@ test('formatReheatSubsSummary: positive totals render channel counts (plural/sin
   }
 });
 
-test('v1.115 A1: formatChannelNameBackfillSummary + progress render name-flavored copy, clamp garbage, POST the right route', () => {
-  assert.strictEqual(formatChannelNameBackfillSummary(3), 'Refreshing names for 3 channels…');
-  assert.strictEqual(formatChannelNameBackfillSummary(1), 'Refreshing names for 1 channel…');
-  assert.strictEqual(formatChannelNameBackfillSummary(0), 'No channels need a name refresh.');
+test('v1.115/v1.116: formatChannelNameBackfillSummary + progress render heal+probe copy, clamp garbage, POST the right route', () => {
+  // v1.116: the summary now reflects BOTH the local heal and the online refresh.
+  assert.strictEqual(formatChannelNameBackfillSummary(3), 'refreshing 3 channels online…');
+  assert.strictEqual(formatChannelNameBackfillSummary(1), 'refreshing 1 channel online…');
+  assert.strictEqual(formatChannelNameBackfillSummary(0, 0), 'No channels need a name refresh.');
+  assert.strictEqual(formatChannelNameBackfillSummary(0, 5), 'repairing 5 channels locally…');
+  assert.strictEqual(formatChannelNameBackfillSummary(2, 5), 'repairing 5 channels locally + refreshing 2 channels online…');
   for (const bad of [undefined, null, NaN, -3, 'x', {}]) {
-    const r = formatChannelNameBackfillSummary(bad);
+    const r = formatChannelNameBackfillSummary(bad, bad);
     assert.ok(!r.includes('undefined') && !r.includes('NaN'), `leaked on ${bad}: ${r}`);
   }
-  const running = formatChannelNameBackfillProgressText({ state: 'running', total: 5, done: 2, itemsUpdated: 8, current: 'AfterSkool' });
+  // Probe-phase running text.
+  const running = formatChannelNameBackfillProgressText({ state: 'running', phase: 'probe', total: 5, done: 2, itemsUpdated: 8, current: 'AfterSkool' });
   assert.match(running, /2 of 5 channels done/);
-  assert.match(running, /8 videos renamed/);
+  assert.match(running, /8 items updated/);
+  // Heal-phase running text (no total yet).
+  const healing = formatChannelNameBackfillProgressText({ state: 'running', phase: 'heal', healedItems: 12, current: 'NESTALGIA' });
+  assert.match(healing, /Repairing channel identities locally/);
+  assert.match(healing, /12 items fixed/);
+  // Done text surfaces the local-heal channel count. "items" not "videos" (audio).
+  const done = formatChannelNameBackfillProgressText({ state: 'done', total: 0, done: 0, itemsUpdated: 516, healedChannels: 8 });
+  assert.match(done, /516 items updated/);
+  assert.match(done, /8 channels repaired locally/);
   assert.strictEqual(formatChannelNameBackfillProgressText(null), '', 'malformed -> empty (leave last text alone)');
   // The trigger POSTs the backfill route (a fake fetch records the URL).
   let posted = null;
-  triggerChannelNameBackfill({ button: {}, status: {} }, (url, opts) => { posted = { url, method: opts && opts.method }; return Promise.resolve({ ok: true, status: 202, json: () => Promise.resolve({ started: true, total: 3 }) }); });
+  triggerChannelNameBackfill({ button: {}, status: {} }, (url, opts) => { posted = { url, method: opts && opts.method }; return Promise.resolve({ ok: true, status: 202, json: () => Promise.resolve({ started: true, total: 3, healChannels: 8 }) }); });
   assert.deepEqual(posted, { url: '/api/ytdlp/backfill-channel-names', method: 'POST' });
 });
 

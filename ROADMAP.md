@@ -80,6 +80,48 @@
 
 ## Shipped
 
+### v1.116.0 - "Refresh channel names" now heals MUSIC channels locally from a sibling (2026-08-13)
+
+Dean's v1.115 device pass found NESTALGIA (and 7 other channels) still showing
+"@nestalgiamusic". Root cause, proven on prod (read-only diagnostic): (1) the
+v1.115 backfill hard-filtered `type:'video'` -> the whole MUSIC library (audio
+items) was skipped; (2) each channel is FRAGMENTED in the DB - some items carry
+the real `channelId` + name ("NESTALGIA" / UC-6oT0…), others only the "@handle"
++ a null id. This wave uses the item that already has the id as LOCAL GROUND
+TRUTH and heals the fragments - no network.
+
+- **Widened to audio.** The name backfill (and the new heal) now cover video AND
+  audio via a shared `isChannelBearingMediaType` predicate.
+- **Local reconciliation, folded into the "Refresh channel names" button.**
+  Pressing it now runs a LOCAL pass first (instant, no yt-dlp): bucket items by
+  physical folder, and for any folder with exactly ONE canonical `channelId`
+  (real id + real name) plus bad-name siblings, adopt that identity UNIT
+  (id + name + url + handle + avatar) onto the siblings - corroborated by the
+  shared `@handle` URL so a foreign channel sharing a folder is never touched, and
+  conflict folders (>1 canonical id, e.g. a junk-drawer) are skipped wholesale.
+  Then the existing network probe mops up whatever is still bad, recomputed on the
+  healed db so a fixed channel is not re-probed.
+- **Machine-derived sizing (Dean's prod):** 8 channels / 516 items heal locally
+  (NESTALGIA 332, CGTioMusic 96, heavymachinegun 66, Hungry Skull 10, +4). The
+  ~1217 items with no id AND no URL still need a re-download (disclosed).
+- **Survives a later scan** (persist-gate): the healed id/name/avatar are carried
+  through the scan's Phase-2 merge, including OVERWRITING a wrong pre-existing id.
+
+Gate: FULL two-reviewer gate (data-mutating). Both APPROVE after ONE fix round -
+QA's persist-gate WARNING (a wrong pre-existing channelId could survive as a mixed
+identity and poison its folder into a "conflict") fixed + mutation-bound (QA
+further drove 270 in-process scan/heal interleaves: 0 reverts, 0 mixed); plus a
+"video"->"item" copy fix and a bridge-test flake hardened to poll-until-done.
+Disclosed residuals: tech-debt #144 (a no-URL item misfiled into a channel folder
+heals on folder membership alone - prod-unreachable, backstopped by the 516-item
+re-run) and #145 (a midscan test read-timing flake under pathological CPU
+starvation - product proven correct). Dual-Node full suite **6834/6834** on
+v22.23.1 and v24.14.0.
+
+**VERIFICATION IS DEAN'S DEVICE PASS** (dev env has no yt-dlp; the live heal +
+fan-out is proven on-device). Expected on pull: NESTALGIA's 332 stragglers unify
+to "NESTALGIA" + the real channelId, and 7 more music channels snap into place.
+
 ### v1.115.0 - "Refresh channel names" backfill: real names for @handle/foldername channels (2026-08-13)
 
 The ACCURATE per-channel name backfill (option A1) that v1.113/v1.114 deferred.

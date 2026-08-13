@@ -39,13 +39,20 @@ test('enumerator: one target per DISTINCT bad-name channel with an identity', ()
   assert.deepEqual(t.map(x => x.channelId).sort(), [CH_A, CH_B].sort());
 });
 
-test('enumerator: skips manually-attributed, no-identity, and non-video items', () => {
+test('enumerator: skips manually-attributed, no-identity, and non-media (book/podcast) items', () => {
   const db = { metadata: {
     manual: { type: 'video', channelName: '', channelId: CH_A, channelAttributedManually: true },
     noId:   { type: 'video', channelName: '', folderName: 'AfterSkool' }, // no channelId/url -> unprobeable
-    audio:  { type: 'audio', channelName: '', channelId: CH_B },
+    book:   { type: 'book', channelName: '', channelId: CH_B }, // v1.116: only video+audio bear yt-dlp channels
   } };
   assert.deepEqual(collectDistinctChannelNameTargets(db), [], 'nothing probeable/eligible');
+});
+
+test('enumerator: v1.116 -- an AUDIO (music) bad-name channel IS now a target', () => {
+  const db = { metadata: { m: { type: 'audio', channelName: '@handle', channelId: CH_B } } };
+  const t = collectDistinctChannelNameTargets(db);
+  assert.equal(t.length, 1, 'the music-library gap is closed');
+  assert.equal(t[0].channelId, CH_B);
 });
 
 test('enumerator: falls back to channelUrl/handleUrl when no channelId', () => {
