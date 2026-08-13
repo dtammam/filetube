@@ -129,6 +129,8 @@ const CLASSIFICATION = {
   'POST /api/ytdlp/refresh-avatars/cancel': 'manage-subs',
   'POST /api/ytdlp/reheat-sub-counts': 'manage-subs',
   'POST /api/ytdlp/reheat-sub-counts/cancel': 'manage-subs',
+  'POST /api/ytdlp/backfill-channel-names': 'manage-subs', // v1.115 A1: writes db.metadata channel names (+ pins), RBAC-gated + readonly-media-guarded
+  'POST /api/ytdlp/backfill-channel-names/cancel': 'manage-subs',
   'POST /api/ytdlp/repull-metadata': 'manage-subs',
   'POST /api/ytdlp/repull-metadata/cancel': 'manage-subs',
   'POST /api/ytdlp/repull-metadata/preview': 'manage-subs',
