@@ -2,8 +2,17 @@
 
 - Owner: main session (lean mode)
 - Opened: 2026-08-13
-- Status: ACTIVE (intake locked with Dean; root cause verified in-code; implementation pending)
-- Target: v1.113.0
+- Status: ACTIVE. SPLIT SHIP (Dean, 2026-08-13):
+  - **v1.113.0** ships the SAFE, non-data-mutating half NOW: Fix A (search
+    avatar resolve) + the read-only sizing diagnostic + a Dockerfile fix
+    (`COPY scripts/` - the diagnostics were never in the image; Dean's catch,
+    which also retroactively makes v1.111's probe-faststart.js runnable on his
+    server). Gets the general avatar improvement out + a runnable sizer on prod.
+  - **v1.114.0** ships Fix B (the channelName BACKFILL) + the pin-label refresh
+    (below) - the data-mutating headline, its own FULL gate.
+  This plan stays ACTIVE through v1.113 (Fix B pending) and moves to completed/
+  only when v1.114 ships.
+- Target: v1.113.0 (Fix A + diagnostic + Dockerfile) then v1.114.0 (Fix B)
 - Device pass: PENDING (Dean) - the live bug data is on Dean's server.
 - DATA-MUTATING wave (Fix B writes channel identity onto existing db rows) ->
   FULL gate, adversarial briefed to DESTROY the attribution. Never slim.
@@ -61,6 +70,22 @@ So Fix B is TARGETING + a button, not a new backend:
   channel not per video.
 - Leave `folderName` as-is (on-disk grouping key + `/?folder=` link target,
   main.js:2016). Once `channelName` is backfilled it is no longer shown.
+
+### Fix B companion: PIN-LABEL refresh (Dean's catch, VERIFIED in-code)
+Most surfaces resolve the channel name LIVE (real `channelName` else the
+`@handle` folder): item cards (`resolveChannelName`, common.js:774), and the
+channel/avatar-bar list (`/api/channels` upgrades `name` from the folder to the
+first item's `channelName`). So the backfill normalizes all of those at once.
+EXCEPTION: a channel PIN is a SNAPSHOT `{ id, channelDir, label, pinnedAt }`
+where `label` is frozen at PIN time, NOT a live join (store.js:2016-2024, a
+gated hard invariant - deliberately isolated in `db.ytdlp`). So a channel pinned
+while it showed "@handle" keeps the stale label even after the backfill. Fix B
+must therefore ALSO refresh pin `label`s for backfilled channels: pins key by
+`channelDir` (the folder), so re-derive each affected pin's `label` from its
+channel's NEW `channelName`. RESPECT the snapshot design (update the label as a
+deliberate write, don't convert pins to a live join). Attack surface: the pin
+namespace round-trips through every config save (the FR-5 data-safety invariant)
+- a pin-label write must not corrupt/drop the pins array.
 
 ## Machine-derived sizing (Fix B) - DEAN RUNS ON HIS SERVER
 Dev DB has 0 yt-dlp channels, so I cannot exhibit live rows. New read-only script
