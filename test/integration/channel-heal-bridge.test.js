@@ -42,7 +42,17 @@ after(async () => {
   delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
   fs.rmSync(downloadDir, { recursive: true, force: true });
 });
-const flush = (ms = 80) => new Promise((r) => setTimeout(r, ms));
+// v1.116 (QA flake observation): poll-until-done instead of a fixed sleep-then-
+// assert -- the batch finishes asynchronously and a fixed flush is a latent flake.
+async function waitForBackfillDone(maxMs = 5000) {
+  const s = Date.now();
+  for (;;) {
+    const e = activity.getSnapshot().oneShots[ytdlp.CHANNEL_NAME_BACKFILL_ACTIVITY_ID];
+    if (e && (e.state === 'done' || e.state === 'error' || e.state === 'cancelled')) return e;
+    if (Date.now() - s > maxMs) return e;
+    await new Promise((r) => setTimeout(r, 15));
+  }
+}
 
 const UC = 'UC-6oT0FOyAqCGfdNLi4fmXA';
 const HANDLE = 'https://www.youtube.com/@nestalgiamusic';
@@ -70,9 +80,7 @@ test('the endpoint LOCALLY heals an audio channel fragment (id+name+avatar) with
   const body = await res.json();
   assert.equal(body.healChannels, 1, 'one channel is locally healable');
 
-  await flush(100);
-
-  const entry = activity.getSnapshot().oneShots[ytdlp.CHANNEL_NAME_BACKFILL_ACTIVITY_ID];
+  const entry = await waitForBackfillDone();
   assert.ok(entry, 'activity one-shot exists');
   assert.equal(entry.state, 'done');
   assert.equal(entry.healedItems, 2, 'the two fragments healed');

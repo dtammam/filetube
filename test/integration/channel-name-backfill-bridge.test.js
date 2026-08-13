@@ -45,7 +45,17 @@ after(async () => {
   delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
   fs.rmSync(downloadDir, { recursive: true, force: true });
 });
-const flush = (ms = 60) => new Promise((r) => setTimeout(r, ms));
+// v1.116 (QA flake observation): poll-until-done instead of a fixed sleep-then-
+// assert -- the batch finishes asynchronously and a fixed flush is a latent flake.
+async function waitForBackfillDone(maxMs = 5000) {
+  const s = Date.now();
+  for (;;) {
+    const e = activity.getSnapshot().oneShots[ytdlp.CHANNEL_NAME_BACKFILL_ACTIVITY_ID];
+    if (e && (e.state === 'done' || e.state === 'error' || e.state === 'cancelled')) return e;
+    if (Date.now() - s > maxMs) return e;
+    await new Promise((r) => setTimeout(r, 15));
+  }
+}
 
 const UC_A = 'UCaaaaaaaaaaaaaaaaaaaaaa';
 const URL_A = 'https://www.youtube.com/channel/' + UC_A;
@@ -84,9 +94,7 @@ test('POST /api/ytdlp/backfill-channel-names against the REAL app writes the can
   // (url-only). The manual/good items don't add A again; "other" has no probe hit.
   assert.ok(body.total >= 1, 'at least channel A is a target');
 
-  await flush(90);
-
-  const entry = activity.getSnapshot().oneShots[ytdlp.CHANNEL_NAME_BACKFILL_ACTIVITY_ID];
+  const entry = await waitForBackfillDone();
   assert.ok(entry, 'the activity one-shot exists');
   assert.equal(entry.state, 'done');
   assert.equal(entry.itemsUpdated, 2, 'exactly the two bad-name channel-A items written');

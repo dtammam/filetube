@@ -54,15 +54,18 @@ async function waitIdle() {
 before(async () => {
   mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-heal-midscan-media-'));
   const md = {};
-  // 3 canonical siblings (real id + name) + 297 @handle fragments (bad name,
-  // has the handle url, NULL channelId) -- all in ONE folder.
+  // 3 canonical siblings (real id + name) + fragments (bad name, has the handle
+  // url) -- all in ONE folder. Most fragments carry a NULL channelId; ONE (v101)
+  // carries a WRONG pre-existing channelId (the QA-WARNING edge: the heal must
+  // OVERWRITE it, and the mid-scan persist-gate must carry the overwrite, not
+  // leave a mixed wrong-id + healed-name identity).
   for (let i = 0; i < 300; i++) {
     const f = path.join(mediaDir, `v${i}.mp4`);
     fs.writeFileSync(f, 'bytes' + i);
     const canonical = i < 3;
     const it = baseItem(f, canonical
       ? { channelName: REAL, channelId: UC, channelUrl: CANON_URL, channelHandleUrl: HANDLE, channelAvatarUrl: 'https://yt3.ggpht.com/a.jpg' }
-      : { channelName: '@nestalgiamusic', channelId: null, channelUrl: HANDLE });
+      : { channelName: '@nestalgiamusic', channelId: i === 101 ? 'UCwrongwrongwrongwrong1' : null, channelUrl: HANDLE });
     md[it.id] = it;
   }
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
@@ -93,7 +96,16 @@ test('a local heal landing DURING a scan keeps its channelId + name through the 
   await scan;
   await waitIdle();
 
-  const item = loadDatabase().metadata[victim];
+  const db = loadDatabase();
+  const item = db.metadata[victim];
   assert.equal(item.channelName, REAL, `name survived (write landed ${duringScan ? 'MID-SCAN -- gap-fill exercised' : 'outside the window'})`);
   assert.equal(item.channelId, UC, 'the healed channelId survived the merge (T4 gap-fill)');
+  assert.equal(item.channelUrl, CANON_URL, 'the healed canonical url survived too (identity UNIT, adversarial SUGGESTION-1)');
+
+  // QA WARNING: a fragment that carried a WRONG pre-existing channelId must end
+  // up with the CANONICAL id (overwrite carried through the merge), never a
+  // mixed wrong-id + healed-name identity.
+  const wrong = db.metadata[getMediaId(path.join(mediaDir, 'v101.mp4'))];
+  assert.equal(wrong.channelName, REAL, 'wrong-id fragment name healed');
+  assert.equal(wrong.channelId, UC, 'wrong pre-existing channelId was OVERWRITTEN with the canonical, and survived the merge');
 });

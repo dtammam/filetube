@@ -3405,14 +3405,14 @@ test('v1.115/v1.116: formatChannelNameBackfillSummary + progress render heal+pro
   // Probe-phase running text.
   const running = formatChannelNameBackfillProgressText({ state: 'running', phase: 'probe', total: 5, done: 2, itemsUpdated: 8, current: 'AfterSkool' });
   assert.match(running, /2 of 5 channels done/);
-  assert.match(running, /8 videos updated/);
+  assert.match(running, /8 items updated/);
   // Heal-phase running text (no total yet).
   const healing = formatChannelNameBackfillProgressText({ state: 'running', phase: 'heal', healedItems: 12, current: 'NESTALGIA' });
   assert.match(healing, /Repairing channel identities locally/);
-  assert.match(healing, /12 videos fixed/);
-  // Done text surfaces the local-heal channel count.
+  assert.match(healing, /12 items fixed/);
+  // Done text surfaces the local-heal channel count. "items" not "videos" (audio).
   const done = formatChannelNameBackfillProgressText({ state: 'done', total: 0, done: 0, itemsUpdated: 516, healedChannels: 8 });
-  assert.match(done, /516 videos updated/);
+  assert.match(done, /516 items updated/);
   assert.match(done, /8 channels repaired locally/);
   assert.strictEqual(formatChannelNameBackfillProgressText(null), '', 'malformed -> empty (leave last text alone)');
   // The trigger POSTs the backfill route (a fake fetch records the URL).

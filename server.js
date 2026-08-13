@@ -5019,9 +5019,15 @@ async function runScanDirectories() {
           // scan's OWN name is still bad (empty/@handle) but the LIVE db now has a
           // real one, adopt it -- never over a manual attribution. isBadChannelName
           // is the SAME predicate the backfill enumerator/writer + strip-@ use.
+          // v1.116 gate round: capture the SNAPSHOT's bad-name state ONCE, before
+          // the name gap-fill below mutates item.channelName -- the channelId
+          // companion (further down) shares this predicate and must not re-read
+          // the already-healed name (it would then never fire).
+          const snapshotChannelNameWasBad = ytdlp.isBadChannelName(item.channelName);
+          const freshChannelNameIsGood = !ytdlp.isBadChannelName(freshItem.channelName);
           if (!item.channelAttributedManually
-              && ytdlp.isBadChannelName(item.channelName)
-              && !ytdlp.isBadChannelName(freshItem.channelName)) {
+              && snapshotChannelNameWasBad
+              && freshChannelNameIsGood) {
             item.channelName = freshItem.channelName;
           }
           // v1.116 (Dean) gate fix -- persist-gate, the local-heal companion to
@@ -5029,11 +5035,20 @@ async function runScanDirectories() {
           // channelId (+ canonical url/handle/avatar) onto items that ALREADY
           // carry a channelUrl (the @handle fragments), so the `!item.channelUrl`
           // identity-carry above SKIPS them -- a heal landing mid-scan would be
-          // reverted by the wholesale newMetadata replace. Gap-fill the identity
-          // UNIT when the snapshot lacks a channelId but the live db now has one
-          // (never over a manual attribution; never overwrite an existing id).
+          // reverted by the wholesale newMetadata replace.
+          //
+          // v1.116 gate round (QA WARNING): trigger this on the SAME predicate as
+          // the name gap-fill (snapshot name bad -> live name good), NOT on
+          // `!item.channelId`. The heal writer OVERWRITES channelId unconditionally
+          // (a fragment can carry a WRONG pre-existing id); gating the carry on
+          // `!item.channelId` would revert only the id, persisting a MIXED identity
+          // (wrong id + healed name) and -- worse -- promoting that item to a
+          // second "canonical" that flips its folder to a conflict and stops all
+          // future healing. `freshItem` is the SAME item's live row, so adopting
+          // its whole identity unit is authoritative and never mixes across items.
           if (!item.channelAttributedManually
-              && !item.channelId
+              && snapshotChannelNameWasBad
+              && freshChannelNameIsGood
               && typeof freshItem.channelId === 'string' && freshItem.channelId !== '') {
             item.channelId = freshItem.channelId;
             if (typeof freshItem.channelUrl === 'string' && freshItem.channelUrl !== '') item.channelUrl = freshItem.channelUrl;
