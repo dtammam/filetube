@@ -80,6 +80,46 @@
 
 ## Shipped
 
+### v1.115.0 - "Refresh channel names" backfill: real names for @handle/foldername channels (2026-08-13)
+
+The ACCURATE per-channel name backfill (option A1) that v1.113/v1.114 deferred.
+A new **"Refresh channel names"** button on the Subscriptions page enumerates every
+DISTINCT channel whose captured name is bad (empty -> folder fallback, or the raw
+"@handle"), probes each channel ONCE for its canonical display name ("mkbhd" ->
+"Marques Brownlee") via the existing avatar-probe path, and fans that name out onto
+every bad-name item of that channel. DATA-MUTATING -> full two-reviewer gate.
+
+- **One probe per channel, not per video.** `collectDistinctChannelNameTargets`
+  dedups the bad-name library down to one target per channel identity (channelId,
+  else channelUrl/handleUrl); the probe reuses `probeChannelAvatar` (now also
+  returning the canonical `channelName` from `channel`/`uploader`), so it refreshes
+  the avatar as a bonus.
+- **Writes are guarded and idempotent.** `applyBackfilledChannelName` only ever
+  REPLACES a bad name (never a good one, never a manual attribution), keyed on the
+  probed channel identity (no cross-channel bleed), bounded to 200 chars, and
+  control-char/NUL stripped. Re-running writes 0.
+- **Channel pins re-label too** - the pinned-sidebar snapshot label is refreshed to
+  the real name, matched on the pin's full folder path (not a folder basename, so a
+  same-named folder in a different root can't be cross-relabelled).
+- **Survives a subsequent scan** (persist-gate/stale-snapshot class): an
+  unconditional Phase-2 gap-fill adopts the live real name over the scan's stale
+  bad-name snapshot, and the folder-backfill branch can no longer downgrade a
+  just-backfilled name to an "@handle".
+
+Gate: FULL two-reviewer gate (data-mutating). QA WARNING (control-char strip) +
+SUGGESTION (folder-backfill reversion), adversarial WARNING (persist-gate mid-scan
+revert) + 3 SUGGESTIONS (pin basename collision, fanout dedup miss, control chars)
+- ALL fixed, each bound by a mutation-verified test (incl. a mid-scan-interleave
+integration test the adversarial demanded, proven load-bearing against the commit).
+Both APPROVE. Dual-Node full suite **6815/6815** on v22.23.1 and v24.14.0.
+
+Known/disclosed: only channels with a probeable identity (channelId or a channel
+URL/handle) get their real name - ~1000 true imports that carry NO channelId can
+only get their name by re-downloading (a channelUrl-less local import has nothing
+to probe). The channel-metadata-backfill exec plan CLOSES with this wave.
+**VERIFICATION IS DEAN'S DEVICE PASS** (dev env has no yt-dlp, so the live probe +
+fan-out is proven on-device).
+
 ### v1.114.0 - Clean "@handle" channel names + no "›" on the chapter label (2026-08-13)
 
 Two small display-only cleanups (read-layer, no data mutation), off Dean's prod
