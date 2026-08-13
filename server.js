@@ -9992,7 +9992,12 @@ app.get('/api/channels', (req, res) => {
     g.count++;
     // First non-empty wins for name/avatar: every item of a channel folder
     // carries the same scan-captured values, so "first" is not a lottery.
-    if (g.name === g.folder && typeof item.channelName === 'string' && item.channelName !== '') g.name = item.channelName;
+    // v1.114 A2: prefer the captured channelName, stripping a leading "@" so a
+    // handle-stored-as-the-name ("@Apple") shows the name ("Apple") on the
+    // channel/avatar bar too (mirrors common.js displayChannelName, read-layer).
+    if (g.name === g.folder && typeof item.channelName === 'string' && item.channelName !== '') {
+      g.name = item.channelName.charAt(0) === '@' ? item.channelName.slice(1) : item.channelName;
+    }
     if (!g.isSub && (subNames.has(item.folderName) || subNames.has(item.channelName))) g.isSub = true;
     // v1.85 (#3a): resolve through the channelId-keyed registry (the SAME chain
     // the Subscriptions menu + per-card avatar use), not just the baked

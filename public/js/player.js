@@ -4342,7 +4342,9 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     var ch = currentChapterIdx >= 0 ? currentChapters[currentChapterIdx] : null;
     chapterNowEl.hidden = false;
-    chapterNowEl.textContent = ch ? ('› ' + (ch.title || 'Chapter')) : 'Chapters';
+    // v1.114 (Dean): no leading "›" -- just the chapter title (it felt silly on
+    // the bar; the menu already shows the plain title). "Chapters" pre-first.
+    chapterNowEl.textContent = ch ? (ch.title || 'Chapter') : 'Chapters';
     if (changed) {
       // Re-arm the highlight from scratch on every change (clear a prior timer
       // so a rapid change never early-clears the new highlight).

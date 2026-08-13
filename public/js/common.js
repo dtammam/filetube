@@ -771,9 +771,25 @@ function bytesToGb(bytes) {
 // UNCHANGED existing chain: the mapped folder's friendly display name (if
 // set), else the file's artist tag, else the immediate folder name. Keeps the
 // list cards and the watch page in agreement (both call this).
+// v1.114 (Dean, "A2"): a channelName that captured the "@handle" ("@Apple")
+// shows the handle instead of the name. Strip a SINGLE leading "@" for DISPLAY
+// only (read-layer, no data mutation) -- a YouTube channel DISPLAY name never
+// starts with "@" (that is the handle syntax), so this only ever cleans a
+// handle-stored-as-the-name. Pure; a non-string / non-handle passes through
+// unchanged; "@@x" -> "@x" (single strip, intentional).
+// Applied at every channel-name DISPLAY surface: this common.js file
+// (resolveChannelName + the bell/queue row models + the pinned-sidebar render),
+// and -- because the server does not require client code -- the same one-liner
+// is INLINED at server.js /api/channels, public/js/history.js and public/js/
+// setup.js's Feed-Hidden row (their own renderers, not buildCardHtml). Change
+// the rule -> update all four sites (a small, accepted duplication).
+function displayChannelName(name) {
+  return typeof name === 'string' && name.charAt(0) === '@' ? name.slice(1) : name;
+}
+
 function resolveChannelName(item, folderSettings) {
   if (item && typeof item.channelName === 'string' && item.channelName.trim() !== '') {
-    return item.channelName;
+    return displayChannelName(item.channelName.trim());
   }
   const settings = folderSettings || {};
   const mapped = settings[item.rootFolder] && settings[item.rootFolder].name;
@@ -3291,7 +3307,7 @@ function formatNotificationBadge(count) {
 // builder (percent-encode at ONE URL layer -- and that layer is not here).
 function buildNotificationRowModel(row) {
   if (!row || typeof row.mediaId !== 'string' || row.mediaId === '') return null;
-  const channelName = typeof row.channelName === 'string' ? row.channelName.trim() : '';
+  const channelName = displayChannelName(typeof row.channelName === 'string' ? row.channelName.trim() : ''); // v1.114 A2: "@handle" -> name
   const folderName = typeof row.folderName === 'string' ? row.folderName.trim() : '';
   // v1.73: podcast rows deep-link the podcasts place (?play= resumes the
   // episode) and wear the SHOW cover; media rows are byte-identical.
@@ -3758,7 +3774,7 @@ function queueEntryHref(entry) {
 function buildQueueRowModel(entry, pointerUid) {
   if (!entry || typeof entry.uid !== 'string' || entry.uid === '' || !entry.item) return null;
   const item = entry.item;
-  const channelName = typeof item.channelName === 'string' ? item.channelName.trim() : '';
+  const channelName = displayChannelName(typeof item.channelName === 'string' ? item.channelName.trim() : ''); // v1.114 A2: "@handle" -> name
   const folderName = typeof item.folderName === 'string' ? item.folderName.trim() : '';
   return {
     uid: entry.uid,
@@ -8181,7 +8197,7 @@ function derivePinnedPlaylistEntries(pins) {
   return list
     .filter((p) => p && typeof p.channelDir === 'string' && p.channelDir !== '')
     .map((p) => {
-      const trimmedLabel = typeof p.label === 'string' ? p.label.trim() : '';
+      const trimmedLabel = displayChannelName(typeof p.label === 'string' ? p.label.trim() : ''); // v1.114 A2: a pin's snapshot label may be an "@handle" -> show the name
       const base = p.channelDir.split(/[\\/]/).pop() || p.channelDir;
       const avatarUrl = typeof p.channelAvatarUrl === 'string' && p.channelAvatarUrl.trim() !== '' ? p.channelAvatarUrl.trim() : null;
       return {
@@ -11790,7 +11806,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatRepullAckText,
     // v1.32 (gate fix): the chip's one-line breaker summary.
     formatBreakerChipText,
-    getStarRating, getCommentCount, resolveChannelName, clampPositionState,
+    getStarRating, getCommentCount, resolveChannelName, displayChannelName, clampPositionState,
     resolveTheme, THEME_REGISTRY, activeNavItem,
     // v1.82: the account menu injector + avatar builder + shared sign-out +
     // theme-glyph sync.

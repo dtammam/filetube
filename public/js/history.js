@@ -74,7 +74,11 @@ function historyBarPercent(item) {
 function buildHistoryRowHtml(item, nowMs) {
   var id = escapeHistoryHtml(item.id);
   var title = escapeHistoryHtml(item.title || item.name || 'Untitled');
-  var channel = escapeHistoryHtml(item.channelName || item.folderName || '');
+  // v1.114 A2 (gate WARNING): strip a leading "@" so a handle-stored-as-the-name
+  // ("@Apple") shows the name here too (this standalone History list has its own
+  // row renderer, not buildCardHtml -- mirrors common.js displayChannelName).
+  var chName = typeof item.channelName === 'string' && item.channelName.charAt(0) === '@' ? item.channelName.slice(1) : item.channelName;
+  var channel = escapeHistoryHtml(chName || item.folderName || '');
   var watchHref = '/watch.html?v=' + encodeURIComponent(item.id || '');
   var durationStr = item.duration > 0 ? formatHistoryDuration(item.duration) : (item.type === 'audio' ? 'Audio' : '');
   var when = formatHistoryWhen(item.lastWatchedAt, nowMs);

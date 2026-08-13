@@ -521,7 +521,9 @@ test('v1.112 source-lock: the current-chapter NAME label is PERSISTENT, clickabl
   const fn = src.slice(src.indexOf('function updateChapterNowLabel(changed)'), src.indexOf('function updateChapterNowLabel(changed)') + 2400);
   assert.match(fn, /var chaptered = currentChapters\.length > 1;/, 'visibility is gated on the item being chaptered, not on the playhead being inside a chapter');
   assert.match(fn, /if \(!chaptered\) \{\s*\n\s*chapterNowEl\.hidden = true;/, 'ONLY a chapterless item hides the label (never a pre-first-chapter position)');
-  assert.match(fn, /chapterNowEl\.textContent = ch \? \('› ' \+ \(ch\.title \|\| 'Chapter'\)\) : 'Chapters';/, 'reads "> Title" inside a chapter, "Chapters" pre-first');
+  // v1.114 (Dean): the leading "›" was dropped -- just the plain chapter title.
+  assert.match(fn, /chapterNowEl\.textContent = ch \? \(ch\.title \|\| 'Chapter'\) : 'Chapters';/, 'reads the plain title inside a chapter, "Chapters" pre-first');
+  assert.doesNotMatch(fn, /'› '/, 'no leading "›" character on the bar label');
   // Regression guard: reverting the gate to `&& !!ch` (the WARNING-1 bug) reddens.
   assert.doesNotMatch(fn, /var show = currentChapters\.length > 1 && !!ch;/, 'the old idx-gated hide must not return');
   // PERSISTENT: the show path must NOT arm a timer that hides the element. Only a

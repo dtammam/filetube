@@ -2256,7 +2256,10 @@ function renderTrashSection(signal) {
 function buildFeedHiddenRowHtml(item) {
   var id = escapeTrashHtml(item.id);
   var title = escapeTrashHtml(item.title || 'Untitled');
-  var meta = item.channelName ? escapeTrashHtml(item.channelName) : '';
+  // v1.114 A2 (gate WARNING): the Feed-Hidden row renders channelName raw; strip
+  // a leading "@" so "@Apple" -> "Apple" here too (mirrors displayChannelName).
+  var chName = typeof item.channelName === 'string' && item.channelName.charAt(0) === '@' ? item.channelName.slice(1) : item.channelName;
+  var meta = chName ? escapeTrashHtml(chName) : '';
   return '' +
     '<div class="feed-hidden-row" data-id="' + id + '">' +
     '<img class="feed-hidden-thumb" src="/thumbnail/' + encodeURIComponent(item.id || '') + '" alt="" loading="lazy" />' +
