@@ -254,6 +254,22 @@ test('buildYtdlpDownloadArgs (video): includes a -f quality selector, defaulting
   assert.match(result[fIndex + 1], /best/);
 });
 
+test('v1.111 (Dean, faststart): a VIDEO download front-loads the moov via a faststart postprocessor arg', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video' }), config, ['vid1']);
+  const i = result.indexOf('--postprocessor-args');
+  assert.ok(i >= 0, 'the postprocessor-args flag is present for video');
+  // ONE array element carries the value (the shell-less argv spawn hands it to
+  // yt-dlp verbatim; yt-dlp shlex-splits it), and it targets every ffmpeg PP.
+  assert.strictEqual(result[i + 1], 'ffmpeg:-movflags +faststart', 'ffmpeg PP gets -movflags +faststart in one element');
+});
+
+test('v1.111: an AUDIO download does NOT get the faststart arg (mp3 has no moov to move)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'audio' }), config, ['vid1']);
+  assert.ok(!result.includes('ffmpeg:-movflags +faststart'), 'no faststart PPA on audio');
+});
+
 test('buildYtdlpDownloadArgs: the target watch URL is the last, positional argument after "--"', () => {
   const config = makeConfig();
   const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
@@ -1481,6 +1497,10 @@ test('AC6.3: buildYtdlpDownloadArgs argv is byte-identical to the pre-T3(b) shap
     '--no-mtime',
     '-f', 'bestvideo+bestaudio/best',
     '-S', args.VIDEO_FORMAT_SORT,
+    // v1.111 (Dean, faststart Tier 1): DELIBERATE lock update. Video-only
+    // front-loaded moov via the ffmpeg postprocessors that already re-mux every
+    // download (lossless container remux, no re-encode). One array element.
+    '--postprocessor-args', 'ffmpeg:-movflags +faststart',
     '--embed-metadata', '--embed-thumbnail', '--embed-chapters',
     '--write-subs', '--write-auto-subs', '--sub-langs', 'en.*', '--sub-format', 'vtt', '--convert-subs', 'vtt',
     '--download-archive', archivePath,
