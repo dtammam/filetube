@@ -850,20 +850,12 @@ if (typeof module !== 'undefined' && module.exports) {
       }, { signal });
     }
 
-    // v1.22.0 FR-5 (AC32-AC38): desktop-sidebar channel pins -- a SEPARATE
-    // fetch against the module's own gated pin store, independent of
-    // initWatch()'s own folder-list fetch/render below: renderPinnedSidebar
-    // inserts `#sidebar-pinned-section` as a SIBLING of, never a child of,
-    // `#sidebar-folders-list`, so it is unaffected regardless of fetch/
-    // render ordering between the two. A 404 (module disabled) resolves to
-    // `[]` (no pins rendered), preserving the disabled-module no-op
-    // guarantee -- this never logs/throws on a 404. Read-only: never writes
-    // db.folders/folderSettings.
-    // v1.37.0: channel pins + book-shelf pins, one merged sidebar section.
-    // v1.53: paint the pinned section from the capability cache in frame one;
-    // the real fetch below replaces it wholesale (reconcile-by-rebuild).
-    primePinnedSidebarFromCache();
-    fetchAllPins().then((pins) => renderPinnedSidebar(pins));
+    // v1.117 (Dean bug): the desktop-sidebar pin BOOT render moved to common.js's
+    // shell-level DOMContentLoaded (runs on every page now, so pins no longer
+    // vanish on Stats/Music/etc.). This watch-only boot call is retired; the
+    // pinned section still paints on the watch page via that shared owner, and
+    // `refreshPinnedSidebar()` below still re-renders it on a pin/unpin from
+    // this page (unchanged).
 
     // Parse media ID (?v=, with the legacy ?id= push-banner fallback -- see
     // resolveWatchMediaId's own comment above).

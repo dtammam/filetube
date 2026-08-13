@@ -2832,20 +2832,12 @@ const PreviewCards = (function () {
       if (armState === 'armed') disarmCardDelete();
     }, { signal, capture: true, passive: true });
 
-    // v1.22.0 FR-5 (AC32-AC38): desktop-sidebar channel pins -- a SEPARATE
-    // fetch against the module's own gated pin store, independent of
-    // loadLibrary()'s folder-list rendering above: renderPinnedSidebar
-    // inserts `#sidebar-pinned-section` as a SIBLING of, never a child of,
-    // `#sidebar-folders-list`, so it is unaffected regardless of fetch/
-    // render ordering between the two. A 404 (module disabled) resolves to
-    // `[]` (no pins rendered), preserving the disabled-module no-op
-    // guarantee -- this never logs/throws on a 404. Read-only: never writes
-    // db.folders/folderSettings.
-    // v1.37.0: channel pins + book-shelf pins, one merged sidebar section.
-    // v1.53: paint the pinned section from the capability cache in frame one;
-    // the real fetch below replaces it wholesale (reconcile-by-rebuild).
-    primePinnedSidebarFromCache();
-    fetchAllPins().then((pins) => renderPinnedSidebar(pins));
+    // v1.117 (Dean bug): the desktop-sidebar pin render moved to common.js's
+    // shell-level DOMContentLoaded boot (it runs on EVERY page, not just here +
+    // watch.js, so pins no longer vanish on Stats/Music/History/etc.). This
+    // home-only boot call is retired; the pinned section still renders on the
+    // home page via that shared owner (and re-renders on unpin/reorder via
+    // refreshAllPinSurfaces, unchanged).
 
     // v1.37.0 T10 (books): the home book surfaces. BARE home view -> a
     // 'Continue reading' row above the grid; SEARCH view -> a 'Books'

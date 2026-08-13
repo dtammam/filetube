@@ -11685,6 +11685,18 @@ document.addEventListener('DOMContentLoaded', () => {
   injectDownloadsNavLinkIfEnabled(); // v1.73: the Downloads hard entry + bottom-item gate
   // v1.64 history: same injection, gated on >=1 history item (the Liked rule).
   injectHistoryNavLinkIfEnabled();
+  // v1.117 (Dean bug): the PINNED sidebar is a SHELL-LEVEL surface (it lives in
+  // #sidebar, outside #view-root), but its render was only booted by main.js
+  // (home) and watch.js (watch) -- so pins vanished on Stats/Music/History/
+  // Books/Podcasts/Subscriptions, every page whose controller didn't rebuild it.
+  // Boot it HERE, once per full page load, on every shell that carries a sidebar
+  // -- exactly like the nav injectors above. Idempotent (renderPinnedSidebar
+  // removes+rebuilds its own #sidebar-pinned-section) and fail-closed
+  // (fetchAllPins 404s -> [] on a disabled module; a rejection renders nothing).
+  if (document.getElementById('sidebar-folders-list')) {
+    primePinnedSidebarFromCache(); // v1.53 warm instant-paint from the capability cache
+    fetchAllPins().then((pins) => renderPinnedSidebar(pins)).catch(() => {});
+  }
   // v1.44 T12: apply the user's bottom-bar layout to the STATIC items now; the
   // async injectors (subscriptions/download) re-apply after inserting theirs.
   applyBottomNavCustomization();

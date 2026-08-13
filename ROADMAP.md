@@ -80,6 +80,31 @@
 
 ## Shipped
 
+### v1.117.0 - left sidebar consistent on every page (pins + Stats link no longer vanish) (2026-08-13)
+
+Dean bug: on some pages the left sidebar dropped content - going to Stats made all
+pins vanish, and refreshing on a video page lost the "Stats" link. Root cause was
+the recurring "each shell/controller assembles its own copy of a shared surface"
+class: the sidebar was built per-page, so pages that didn't rebuild a piece showed
+it missing.
+
+- **Pins now render on every page.** The pinned-sidebar boot render was only
+  wired by the Home (main.js) and Watch (watch.js) controllers - so pins vanished
+  on Stats/Music/History/Books/Podcasts/Subscriptions/Setup. Hoisted into
+  common.js's shell-level boot (runs on every page); the redundant per-controller
+  copies retired. (Bonus: this revived the warm instant-paint that had gone dead.)
+- **The "Stats" link is on every sidebar page.** It lived only in index.html +
+  stats.html; added the static link to the 8 shells that lacked it, so the top nav
+  (Home / Library settings / Stats) is identical across all 10 sidebar pages.
+- **Forcing net** (sidebar-nav-parity test): every sidebar shell must carry all
+  three nav links, and the pin render must live only in common.js's boot - a new
+  page or a refactor that drops either now reddens in CI, not on-device.
+
+Gate: slim gate (adversarial, display-only). Caught a THIRD hidden boot owner
+(setup.js) the first cut missed - the exact enumerate-every-surface completeness
+this fix targets; fixed + the net extended to guard every controller. APPROVE on
+the delta. Dual-Node full suite **6838/6838** on v22.23.1 and v24.14.0.
+
 ### v1.116.0 - "Refresh channel names" now heals MUSIC channels locally from a sibling (2026-08-13)
 
 Dean's v1.115 device pass found NESTALGIA (and 7 other channels) still showing
