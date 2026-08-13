@@ -101,6 +101,9 @@ const {
   applyReheatSubsStateToControls,
   triggerReheatSubs,
   triggerReheatSubsCancel,
+  formatChannelNameBackfillSummary,
+  formatChannelNameBackfillProgressText,
+  triggerChannelNameBackfill,
   // C5 (v1.30.0, T12): the shared avatar-precedence render helper.
   applySubAvatar,
   // v1.29.0 T9 (R4.1-R4.4): durable download-history section -- pure
@@ -3386,6 +3389,24 @@ test('formatReheatSubsSummary: positive totals render channel counts (plural/sin
     assert.ok(!result.includes('undefined'), `formatReheatSubsSummary(${bad}) leaked "undefined": ${result}`);
     assert.ok(!result.includes('NaN'), `formatReheatSubsSummary(${bad}) leaked "NaN": ${result}`);
   }
+});
+
+test('v1.115 A1: formatChannelNameBackfillSummary + progress render name-flavored copy, clamp garbage, POST the right route', () => {
+  assert.strictEqual(formatChannelNameBackfillSummary(3), 'Refreshing names for 3 channels…');
+  assert.strictEqual(formatChannelNameBackfillSummary(1), 'Refreshing names for 1 channel…');
+  assert.strictEqual(formatChannelNameBackfillSummary(0), 'No channels need a name refresh.');
+  for (const bad of [undefined, null, NaN, -3, 'x', {}]) {
+    const r = formatChannelNameBackfillSummary(bad);
+    assert.ok(!r.includes('undefined') && !r.includes('NaN'), `leaked on ${bad}: ${r}`);
+  }
+  const running = formatChannelNameBackfillProgressText({ state: 'running', total: 5, done: 2, itemsUpdated: 8, current: 'AfterSkool' });
+  assert.match(running, /2 of 5 channels done/);
+  assert.match(running, /8 videos renamed/);
+  assert.strictEqual(formatChannelNameBackfillProgressText(null), '', 'malformed -> empty (leave last text alone)');
+  // The trigger POSTs the backfill route (a fake fetch records the URL).
+  let posted = null;
+  triggerChannelNameBackfill({ button: {}, status: {} }, (url, opts) => { posted = { url, method: opts && opts.method }; return Promise.resolve({ ok: true, status: 202, json: () => Promise.resolve({ started: true, total: 3 }) }); });
+  assert.deepEqual(posted, { url: '/api/ytdlp/backfill-channel-names', method: 'POST' });
 });
 
 test('formatReheatSubsProgressText: "running" renders channels done/total, and omits itemsUpdated/skipped/failed/current when zero/absent', () => {
