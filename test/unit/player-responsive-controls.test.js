@@ -307,17 +307,19 @@ test('v1.112: mobile row 2 is play, chapter-name, then the cog+fullscreen cluste
   }
 });
 
-test('v1.50.5 gate C1 lock: the reader now-playing bar resets ALL EIGHT button orders with id-specificity', () => {
+test('v1.50.5/v1.112 gate C1 lock: the reader now-playing bar resets every remaining button order with id-specificity', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
   // The reader mounts #player-slot, so the watch bar's 2-id order rules
   // apply there too; the reset must name every button (a future unhide
   // must not resurrect the leak) at >= specificity (id selectors, never a
-  // class reset that loses 1-id-vs-2-id).
-  for (const id of ['pp-btn', 'mute-btn', 'vol-bar', 'speed-btn', 'cc-btn', 'chapters-btn', 'pip-btn', 'fs-btn']) {
+  // class reset that loses 1-id-vs-2-id). v1.112: #chapters-btn was removed
+  // from the bar (and this group); the rest still reset here.
+  for (const id of ['pp-btn', 'mute-btn', 'vol-bar', 'speed-btn', 'cc-btn', 'pip-btn', 'fs-btn']) {
     assert.match(css, new RegExp(`\\.reader-nowplaying #player-slot \\.player-controls #${id}[,\\s]`), `reader reset covers #${id}`);
   }
+  assert.doesNotMatch(css, /\.reader-nowplaying #player-slot \.player-controls #chapters-btn/, 'the removed #chapters-btn must be gone from the reader reset too');
   const resetRule = /\.reader-nowplaying #player-slot \.player-controls #fs-btn \{([^}]*)\}/.exec(css);
   assert.ok(resetRule, 'expected the reader reset rule block');
   assert.match(resetRule[1], /order:\s*0/);

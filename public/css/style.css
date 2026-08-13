@@ -6678,8 +6678,7 @@ body.ft-css-fullscreen .bottom-nav {
    the button and the menu entirely while docked; the full chapters UI
    reappears the moment the host expands back to FULL. player.js's dock()
    also closes the menu so the button's aria-expanded state stays truthful. */
-#player-dock #chapters-btn,
-#player-dock .chapters-menu {
+#player-dock .chapters-menu { /* v1.112: the removed #chapters-btn dropped from this group */
   display: none !important;
 }
 
@@ -6816,8 +6815,8 @@ body.ft-css-fullscreen .bottom-nav {
   transform: translateX(-50%);
   background-color: var(--header-bg);
 }
-/* Docked mini-player: chapters UI is hidden there (see #chapters-btn/.chapters-menu
-   above) -- the segment overlay hides with it. */
+/* Docked mini-player: chapters UI is hidden there (see the #player-dock
+   .chapters-menu / .chapter-now rules above) -- the segment overlay hides too. */
 #player-dock .seek-chapters { display: none; }
 
 /* v1.112 (Dean): the persistent current-chapter NAME label -- a <button> that
@@ -8745,7 +8744,6 @@ html[data-modern="on"] .video-uploader {
 .reader-nowplaying #fs-btn,
 .reader-nowplaying #pip-btn,
 .reader-nowplaying #cc-btn,
-.reader-nowplaying #chapters-btn,
 .reader-nowplaying #mute-btn,
 .reader-nowplaying #vol-bar { display: none !important; }
 .reader-nowplaying .player-container {
@@ -8798,7 +8796,6 @@ html[data-modern="on"] .video-uploader {
   .reader-nowplaying #player-slot .player-controls #vol-bar,
   .reader-nowplaying #player-slot .player-controls #speed-btn,
   .reader-nowplaying #player-slot .player-controls #cc-btn,
-  .reader-nowplaying #player-slot .player-controls #chapters-btn,
   .reader-nowplaying #player-slot .player-controls #pip-btn,
   .reader-nowplaying #player-slot .player-controls #fs-btn {
     order: 0;

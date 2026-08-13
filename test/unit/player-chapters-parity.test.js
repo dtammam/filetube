@@ -238,8 +238,10 @@ test('v1.41.11: mobile chapters menu spans the player width with 44px tap target
 
 test('v1.41.11: chapters are hidden entirely in the docked mini-player, and dock() closes the menu for ARIA truth', () => {
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /#player-dock #chapters-btn,\s*#player-dock \.chapters-menu \{\s*display: none !important;/,
-    'both the button and the popup are display:none inside #player-dock (skip-controls precedent)');
+  // v1.112: the #chapters-btn is gone; the popup alone is display:none in the dock
+  // (the chapter-name label has its own `#player-dock .chapter-now { display:none }`).
+  assert.match(css, /#player-dock \.chapters-menu \{[^}]*display: none !important;/,
+    'the chapters popup is display:none inside #player-dock (skip-controls precedent)');
   const playerSrc = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
   const dockStart = playerSrc.indexOf('function dock()');
   const dockEnd = playerSrc.indexOf('function close()', dockStart);
