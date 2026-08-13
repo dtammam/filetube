@@ -2,6 +2,13 @@
 
 - Owner: main session (lean mode)
 - Opened: 2026-08-13
+- **CLOSED: 2026-08-13 - shipped as v1.116.0. Full gate: both seats APPROVE after
+  a one-round fix (QA persist-gate id-overwrite WARNING + copy/flake SUGGESTIONs;
+  adversarial no-url-corroboration WARNING disclosed as tech-debt #144). QA
+  mutation-proved the persist-gate beyond the test (270 in-process interleaves,
+  0 reverts / 0 mixed). Dual-Node 6834/6834 on v22.23.1 + v24.14.0. Device pass
+  PENDING (no yt-dlp in dev; the live heal is Dean's arbiter). Predicted heal:
+  8 channels / 516 items (machine-derived; a prod re-run is the backstop).**
 - Target: v1.116.0
 - Device pass: PENDING (Dean) - the live library is the arbiter.
 - DATA-MUTATING wave (writes channelId + channelName + channelUrl/handleUrl +
