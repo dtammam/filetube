@@ -14664,6 +14664,60 @@ async function recordChannelFollowerCountFanout(deps, target, probed, nowMs = Da
   return updated;
 }
 
+// v1.115 (Dean, A1): PURE pin-label refresh. A channel PIN is a SNAPSHOT
+// { id, channelDir, label, pinnedAt } whose `label` was frozen at pin time (a
+// gated data-safety invariant -- store.js), so a name backfill does NOT reach it
+// live. After a channel's items get a new name, re-derive the label for any pin
+// whose `channelDir` basename matches one of THIS channel's item folders. Mutates
+// the passed `db` in place (called inside the fanout's updateDatabase closure,
+// holding the lock); returns the count of pins relabelled. Never throws; a
+// blank/absent name is a no-op. RESPECTS the snapshot design -- a deliberate
+// label write keyed by the folder match, not a conversion to a live join.
+function refreshPinLabelsForBackfilledChannel(db, target, name) {
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  if (trimmed === '') return 0;
+  const pins = db && db.ytdlp && Array.isArray(db.ytdlp.pins) ? db.ytdlp.pins : null;
+  if (!pins || pins.length === 0) return 0;
+  const t = target && typeof target === 'object' ? target : {};
+  const folders = new Set();
+  for (const item of Object.values((db && db.metadata) || {})) {
+    if (!item) continue;
+    const matches = t.channelId
+      ? item.channelId === t.channelId
+      : (!!t.channelUrl && (item.channelUrl === t.channelUrl || item.channelHandleUrl === t.channelUrl));
+    if (matches && typeof item.folderName === 'string' && item.folderName !== '') folders.add(item.folderName);
+  }
+  if (folders.size === 0) return 0;
+  let relabelled = 0;
+  for (const pin of pins) {
+    if (!pin || typeof pin.channelDir !== 'string' || pin.channelDir === '') continue;
+    const base = pin.channelDir.split(/[\\/]/).pop() || pin.channelDir;
+    if (folders.has(base) && pin.label !== trimmed) { pin.label = trimmed; relabelled += 1; }
+  }
+  return relabelled;
+}
+
+// v1.115 (Dean, A1): server.js's ONE channel->items name writer, deps-injected
+// into the name-backfill batch exactly like `recordChannelFollowerCountFanout`.
+// Runs the tested pure `ytdlp.applyBackfilledChannelName` (which enforces the
+// attribution / cross-channel / bad-name-only / bound guards) + the pin-label
+// refresh INSIDE the ONE serialized `updateDatabase` mutator, persisting only
+// when something changed. Returns the item count written.
+async function recordChannelNameBackfillFanout(deps, target, probed, nowMs = Date.now()) {
+  void nowMs;
+  const d = deps || {};
+  if (typeof d.updateDatabase !== 'function') return 0;
+  const name = probed && typeof probed.channelName === 'string' ? probed.channelName : '';
+  if (name.trim() === '') return 0;
+  let updated = 0;
+  await d.updateDatabase((db) => {
+    updated = ytdlp.applyBackfilledChannelName((db && db.metadata) || {}, target, name);
+    if (updated > 0) refreshPinLabelsForBackfilledChannel(db, target, name);
+    return updated > 0;
+  });
+  return updated;
+}
+
 // API: Library-wide "fun stats" dashboard (C4, v1.24 UX Round Wave 3).
 // Computed LIVE from `db.metadata` on every request via the pure helpers in
 // `lib/stats.js` -- deliberately no cached aggregate (see that module's
@@ -16061,6 +16115,9 @@ ytdlp.registerRoutes(app, {
   // writer -- server.js owns db.metadata, so the module's reheat-subs batch
   // gets it deps-injected like `recordRepulledItemMeta` above.
   recordChannelFollowerCountFanout,
+  // v1.115 (Dean, A1): the channel->items NAME fan-out writer (+ pin-label
+  // refresh), deps-injected into the name-backfill batch the same way.
+  recordChannelNameBackfillFanout,
   enumerateRepullableItems,
   // v1.43 (chunk 4b): channel pins are per-user (user_channel_pins rows).
   // The pin routes keep lib/ytdlp/store.js's PURE reducers as the single
@@ -16491,6 +16548,10 @@ module.exports = {
   // v1.56: the bulk sub-count reheat's channel->items fan-out writer --
   // exported for direct test coverage, same posture as recordRepulledItemMeta.
   recordChannelFollowerCountFanout,
+  // v1.115 (Dean, A1): the name fan-out writer + the pure pin-label refresh --
+  // exported for direct test coverage.
+  recordChannelNameBackfillFanout,
+  refreshPinLabelsForBackfilledChannel,
   enumerateRepullableItems,
   // v1.41.6: the reheat's import-relocation (move a hydrated MeTube import into
   // its channel folder + native filename) and the pure title->filename helper it
