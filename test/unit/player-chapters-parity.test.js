@@ -19,32 +19,40 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
+// v1.112: widened to ALL NINE player-host shells (was a 5-shell subset).
 const SHELLS = [
+  path.join(ROOT, 'lib', 'ytdlp', 'views', 'subscriptions.html'),
+  path.join(ROOT, 'public', 'history.html'),
   path.join(ROOT, 'public', 'index.html'),
-  path.join(ROOT, 'public', 'watch.html'),
+  path.join(ROOT, 'public', 'music.html'),
+  path.join(ROOT, 'public', 'podcasts.html'),
+  path.join(ROOT, 'public', 'read.html'),
   path.join(ROOT, 'public', 'setup.html'),
   path.join(ROOT, 'public', 'stats.html'),
-  path.join(ROOT, 'lib', 'ytdlp', 'views', 'subscriptions.html'),
+  path.join(ROOT, 'public', 'watch.html'),
 ];
 
-const CHAPTERS_BTN_MARKUP = '<button type="button" id="chapters-btn" class="pc-btn chapters-btn" aria-label="Chapters" aria-expanded="false" style="display: none;">Ch</button>';
 const CHAPTERS_MENU_MARKUP = '<div id="chapters-menu" class="chapters-menu" hidden></div>';
 
-test('chapters parity: #chapters-btn + #chapters-menu are byte-identical in every owned shell, placed after #cc-btn', () => {
+// v1.112 (Dean, settings cog + chapter label): the separate `Ch` button
+// (#chapters-btn) is REMOVED from the bar. Chapters are now opened by clicking
+// the persistent on-bar chapter-NAME label (.chapter-now, JS-built in ensureHost
+// and wired in T3), mirroring YouTube. The #chapters-menu popup itself stays and
+// still rides every shell, now placed after #settings-menu.
+test('chapters parity: v1.112 #chapters-btn is GONE from every shell (the name label is the new trigger)', () => {
   for (const shell of SHELLS) {
     const html = fs.readFileSync(shell, 'utf8');
-    assert.ok(html.includes(CHAPTERS_BTN_MARKUP), `expected the exact #chapters-btn markup in ${path.basename(shell)}`);
-    assert.ok(html.includes(CHAPTERS_MENU_MARKUP), `expected the exact #chapters-menu markup in ${path.basename(shell)}`);
-    const ccIdx = html.indexOf('id="cc-btn"');
-    const chIdx = html.indexOf('id="chapters-btn"');
-    assert.ok(ccIdx >= 0 && chIdx > ccIdx, `#chapters-btn must come after #cc-btn in ${path.basename(shell)} (cc-btn parity suite pins cc-btn's own position)`);
+    assert.equal((html.match(/id="chapters-btn"/g) || []).length, 0, `${path.basename(shell)} must no longer carry the removed #chapters-btn`);
   }
 });
 
-test('chapters parity: exactly one #chapters-btn per shell (no duplicate insertion)', () => {
+test('chapters parity: #chapters-menu is byte-identical in every shell, placed immediately after #settings-menu', () => {
+  const afterSettings = /<\/div>\s*\n\s*<div id="chapters-menu" class="chapters-menu" hidden><\/div>/;
   for (const shell of SHELLS) {
     const html = fs.readFileSync(shell, 'utf8');
-    assert.equal((html.match(/id="chapters-btn"/g) || []).length, 1, path.basename(shell));
+    assert.ok(html.includes(CHAPTERS_MENU_MARKUP), `expected the exact #chapters-menu markup in ${path.basename(shell)}`);
+    assert.equal((html.match(/id="chapters-menu"/g) || []).length, 1, `exactly one #chapters-menu in ${path.basename(shell)}`);
+    assert.match(html, afterSettings, `#chapters-menu must follow #settings-menu's close in ${path.basename(shell)}`);
   }
 });
 

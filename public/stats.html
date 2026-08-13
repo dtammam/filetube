@@ -331,14 +331,19 @@
           <span class="mute-icon-off" aria-hidden="true"></span>
         </button>
         <input type="range" id="vol-bar" class="pc-range pc-vol" min="0" max="1" step="0.01" value="1" aria-label="Volume">
-        <button type="button" id="speed-btn" class="pc-btn speed-btn" aria-label="Playback speed">1×</button>
+        <button type="button" id="settings-btn" class="pc-btn settings-btn" aria-label="Settings" aria-haspopup="true" aria-expanded="false">
+          <svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><path d="m370-80-16-128q-13-5-24.5-12T307-235l-119 50L78-375l103-78q-1-7-1-13.5v-27q0-6.5 1-13.5L78-585l110-190 119 50q11-8 23-15t24-12l16-128h220l16 128q13 5 24.5 12t22.5 15l119-50 110 190-103 78q1 7 1 13.5v27q0 6.5-2 13.5l103 78-110 190-118-50q-11 8-23 15t-24 12L590-80H370Zm112-260q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Z"/></svg>
+        </button>
         <button type="button" id="fs-btn" class="pc-btn fs-btn" aria-label="Fullscreen">⛶</button>
-        <button type="button" id="pip-btn" class="pc-btn pip-btn" aria-label="Picture in picture">⧉</button>
-        <button type="button" id="cc-btn" class="pc-btn cc-btn" aria-label="Toggle captions" aria-pressed="false" style="display: none;">CC</button>
-        <!-- v1.34 T3 (Dean): chapter picker -- hidden until a media item is
-             loaded (player.js applyChaptersForMedia). "Ch" text glyph, same
-             convention as CC (the chrome-emoji list is off-limits). -->
-        <button type="button" id="chapters-btn" class="pc-btn chapters-btn" aria-label="Chapters" aria-expanded="false" style="display: none;">Ch</button>
+        <!-- v1.112 (Dean): settings cog centralizes Speed + CC + PiP off the bar
+             (YouTube's gear). The three controls are RELOCATED here as menu rows
+             with their ids + wired handlers intact; cc-btn/pip-btn keep their own
+             visibility gates, which now hide the ROW. -->
+        <div id="settings-menu" class="chapters-menu settings-menu" hidden>
+          <button type="button" id="speed-btn" class="pc-btn settings-menu-item speed-btn" aria-label="Playback speed">1×</button>
+          <button type="button" id="cc-btn" class="pc-btn settings-menu-item cc-btn" aria-label="Toggle captions" aria-pressed="false" style="display: none;">CC</button>
+          <button type="button" id="pip-btn" class="pc-btn settings-menu-item pip-btn" aria-label="Picture in picture">⧉</button>
+        </div>
         <div id="chapters-menu" class="chapters-menu" hidden></div>
         <!-- v1.50.3: the playback-speed picker (chapters-menu popup pattern) -->
         <div id="speed-menu" class="chapters-menu speed-menu" hidden></div>
