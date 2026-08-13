@@ -75,10 +75,16 @@ test('the RUNTIME-injected sidebar Liked entry wears .icon-liked too', () => {
     'no stale icon-star assignment may survive in applyLikedSidebarEntry');
 });
 
-test('the split is REAL: .icon-star survives for the Stats links only', () => {
+test('the split is REAL: .icon-star survives for the Stats links ONLY (never leaks to a non-Stats use)', () => {
   // The other half of the ruling. If a future sweep repoints these too, the
   // split has silently collapsed back into one glyph and Liked/Stats can no
   // longer diverge - so this asserts the non-repoint on purpose.
+  //
+  // v1.117 (Dean bug): the Stats top-nav link is now on EVERY sidebar-bearing
+  // shell (was only index.html + stats.html), so there are more than 2 icon-star
+  // sites now. The load-bearing invariant is UNCHANGED and asserted per-site
+  // below: every surviving icon-star is a STATS link -- the glyph never leaks to
+  // a non-Stats use. (sidebar-nav-parity.test.js owns "every shell HAS Stats".)
   const stats = [];
   for (const f of fs.readdirSync(PUB).filter((x) => x.endsWith('.html'))) {
     const html = fs.readFileSync(path.join(PUB, f), 'utf8');
@@ -86,8 +92,8 @@ test('the split is REAL: .icon-star survives for the Stats links only', () => {
       if (line.includes('icon-star')) stats.push(`${f}: ${line.trim()}`);
     }
   }
-  assert.equal(stats.length, 2, `expected exactly 2 surviving .icon-star sites (the Stats links), found:\n${stats.join('\n')}`);
+  assert.ok(stats.length >= 2, `expected .icon-star to survive at the Stats links (the split), found ${stats.length}`);
   for (const s of stats) {
-    assert.match(s, /Stats/, `a surviving .icon-star site is not the Stats link: ${s}`);
+    assert.match(s, /Stats/, `a surviving .icon-star site is not the Stats link (glyph leaked): ${s}`);
   }
 });

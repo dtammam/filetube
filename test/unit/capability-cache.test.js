@@ -83,9 +83,11 @@ test('LOCK (wiring): the probes WRITE the cache and the render sites READ it opt
   assert.equal((watch.match(/writeCapabilityCache\(\{/g) || []).length >= 5, true, 'a watch.js cache write (probe or mutation write-through) was deleted');
   const common = stripped('public/js/common.js');
   assert.match(common, /writeCapabilityCache\(\{ pins \}\)/, 'pins write deleted');
-  assert.equal((watch.match(/primePinnedSidebarFromCache\(\);/g) || []).length >= 1, true, 'watch pinned priming deleted');
-  const main = stripped('public/js/main.js');
-  assert.match(main, /primePinnedSidebarFromCache\(\);/, 'main pinned priming deleted');
+  // v1.117 (Dean bug): the pinned-sidebar BOOT render (warm prime + live fetch)
+  // moved OUT of main.js/watch.js INTO common.js's shell-level DOMContentLoaded
+  // so it runs on EVERY page (pins no longer vanish on Stats/Music/History/etc.).
+  // The optimistic prime + the reconciling render now live in common.js.
+  assert.match(common, /primePinnedSidebarFromCache\(\);\s*\n\s*fetchAllPins\(\)\.then\(\(pins\) => renderPinnedSidebar\(pins\)\)/, 'common.js pinned priming+render deleted (moved here in v1.117)');
   // The no-service-worker constraint stays load-bearing.
   assert.match(common, /unregisterStaleServiceWorkers/, 'the SW shedding function must survive this wave');
   // Gate QA-W1: the two remaining latches the exec plan promised are wired.
