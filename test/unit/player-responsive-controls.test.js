@@ -200,15 +200,21 @@ test('mobile .pc-btn is 44px square (bumped from the v1.21/v1.22.0 36px) -- comf
 // ---- FIX 2 (v1.22.1 gate round): #speed-btn trimmed from the docked bar ---
 
 test('FIX 2: #player-dock hides #speed-btn alongside the other secondary controls (time/mute/vol/fullscreen/PiP/CC) -- impractical at 160-280px mini-dock width', () => {
-  const rule = /#player-dock\s*\.pc-time,\s*\n#player-dock\s*\.mute-btn,\s*\n#player-dock\s*\.pc-vol,\s*\n#player-dock\s*\.fs-btn,\s*\n#player-dock\s*\.pip-btn,\s*\n#player-dock\s*\.speed-btn,\s*\n#player-dock\s*\.cc-btn\s*\{([^}]*)\}/.exec(css);
-  assert.ok(rule, 'expected #player-dock .speed-btn AND #player-dock .cc-btn to be part of the same hidden-controls group as .pc-time/.mute-btn/.pc-vol/.fs-btn/.pip-btn');
-  assert.match(rule[1], /display:\s*none;/);
+  // v1.112: the group grew a trailing `#player-dock .settings-btn` (the cog);
+  // it stays ONE hidden-controls group sharing `{ display: none; }`.
+  const group = /#player-dock\s*\.pc-time,[\s\S]*?#player-dock\s*\.settings-btn\s*\{[^}]*display:\s*none;/;
+  assert.match(css, group, 'expected the docked hidden-controls group to end at .settings-btn with display:none');
+  for (const sel of ['pc-time', 'mute-btn', 'pc-vol', 'fs-btn', 'pip-btn', 'speed-btn', 'cc-btn', 'settings-btn']) {
+    assert.match(css, new RegExp('#player-dock\\s*\\.' + sel + '[,{\\s]'), `#player-dock .${sel} must be in the docked hide group`);
+  }
 });
 
 // ---- T16 completion follow-up (v1.24 UX Round): #cc-btn trimmed too -------
 
 test('T16 follow-up FIX 2: #player-dock hides #cc-btn (the CC toggle added by T16) -- cramped/impractical at the ~26px docked control bar height', () => {
-  assert.match(css, /#player-dock\s*\.cc-btn\s*\{[^}]*display:\s*none;/, 'expected #player-dock .cc-btn to be hidden in the docked mini-player');
+  // v1.112: .cc-btn is now a mid-group selector (followed by .settings-btn), so
+  // match through to the shared display:none rather than a `.cc-btn {` boundary.
+  assert.match(css, /#player-dock\s*\.cc-btn,[\s\S]*?display:\s*none;/, 'expected #player-dock .cc-btn to be hidden in the docked mini-player');
 });
 
 // ---- v1.22.1 FR-4: #speed-btn styling --------------------------------------
@@ -272,28 +278,34 @@ test('AC12: the v1.22/v1.22.1 FR-1 section introduces no hardcoded color values 
 // pure flex order + one auto margin inside the mobile block; the two-row
 // geometry (80px, structural ::after break) is untouched by construction.
 
-test('v1.50.5: mobile row 2 is ordered transport-left / cluster-right with fullscreen in the far corner', () => {
+test('v1.112: mobile row 2 is play, chapter-name, then the cog+fullscreen cluster far-right', () => {
   const fs = require('node:fs');
   const path = require('node:path');
-  // Gate W1/W2: scoped to the MOBILE media block (the file's own
-  // mobileMediaBlock, like the neighboring tests) and anchored to
-  // line-start -- a whole-file unanchored regex would stay green if the
-  // orders moved OUTSIDE the media query (desktop regression) and would
-  // mis-bind the reader's longer 4-part reset selectors.
-  const orderOf = (id) => {
-    const m = new RegExp(`(?:^|\\n)\\s*#player-slot \\.player-controls #${id} \\{[^}]*order:\\s*(\\d+)`).exec(mobileMediaBlock);
-    assert.ok(m, `expected a MOBILE-scoped order for #${id}`);
+  // Gate W1/W2: scoped to the MOBILE media block, anchored to line-start.
+  const orderOfSel = (sel) => {
+    const esc = sel.replace(/\./g, '\\.');
+    const m = new RegExp(`(?:^|\\n)\\s*#player-slot \\.player-controls ${esc} \\{[^}]*order:\\s*(\\d+)`).exec(mobileMediaBlock);
+    assert.ok(m, `expected a MOBILE-scoped order for ${sel}`);
     return Number(m[1]);
   };
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  const orders = ['pp-btn', 'mute-btn', 'vol-bar', 'speed-btn', 'cc-btn', 'chapters-btn', 'pip-btn', 'fs-btn'].map(orderOf);
-  assert.deepStrictEqual([...orders].sort((a, b) => a - b), orders, 'row 2 runs play, mute, vol, then the right cluster, in order');
-  assert.strictEqual(Math.max(...orders), orderOf('fs-btn'), 'fullscreen is the far-right corner -- the YouTube signature');
-  // The push lives on the ALWAYS-RENDERED speed button, not the sometimes-
-  // hidden CC button (a hidden element's auto margin splits nothing).
-  assert.match(css, /#player-slot \.player-controls #speed-btn \{[^}]*margin-left:\s*auto/);
-  const ccRule = /#player-slot \.player-controls #cc-btn \{([^}]*)\}/.exec(css);
-  assert.doesNotMatch(ccRule[1], /margin-left/, 'the auto margin must never sit on the hidable CC button');
+  // v1.112: speed/cc/pip/chapters left the bar (relocated into the cog popup /
+  // removed), so the bar's ordered flex children are now play, the (hidden on
+  // mobile) mute/vol, the persistent chapter-NAME label, then the cog +
+  // fullscreen cluster.
+  const seq = ['#pp-btn', '#mute-btn', '#vol-bar', '.chapter-now', '#settings-btn', '#fs-btn'];
+  const orders = seq.map(orderOfSel);
+  assert.deepStrictEqual([...orders].sort((a, b) => a - b), orders, 'row 2 runs play, (mute, vol), chapter name, then the cog+fullscreen cluster in order');
+  assert.strictEqual(Math.max(...orders), orderOfSel('#fs-btn'), 'fullscreen is the far-right corner -- the YouTube signature');
+  // The push now lives on the ALWAYS-RENDERED cog (mute/vol are hidden on mobile;
+  // the chapter label is hidden when an item has no chapters -- neither can carry it).
+  assert.match(css, /#player-slot \.player-controls #settings-btn \{[^}]*margin-left:\s*auto/);
+  // The label fills the freed middle space and truncates (flex:1 1 auto + min-width:0).
+  assert.match(css, /#player-slot \.player-controls \.chapter-now \{[^}]*flex:\s*1 1 auto/);
+  // The stale bar order rules for the relocated/removed controls are GONE.
+  for (const gone of ['#speed-btn', '#cc-btn', '#pip-btn', '#chapters-btn']) {
+    assert.doesNotMatch(mobileMediaBlock, new RegExp(`#player-slot \\.player-controls ${gone} \\{[^}]*order:`), `${gone} must no longer carry a bar order rule`);
+  }
 });
 
 test('v1.50.5 gate C1 lock: the reader now-playing bar resets ALL EIGHT button orders with id-specificity', () => {

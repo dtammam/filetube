@@ -79,7 +79,22 @@ reparented host, so relocation does not change what fires; only their CSS role
   open-buildChaptersMenu-toggle-clamp-aria logic `#chapters-btn` ran. `#chapters-
   menu` re-anchors near the label (bottom-left) instead of the removed button.
 
-### OPEN SUB-DECISION - mobile placement of the label (Q3: prototype + screenshot)
+### RESOLVED - label placement (Dean, 2026-08-13, off the mock)
+
+Dean picked a THIRD option neither mock panel showed: the label sits **IN LINE
+with the transport controls** (in-flow on the bar, same level as
+play/settings/fullscreen), not a floating pill (mock-A) and not a dedicated line
+(mock-B). This works because **mute/volume are hidden on mobile** (iOS ignores
+volume), freeing the button row. Implementation: the label is inserted in the DOM
+just before the cog (desktop single row shows it inline near the gear/fullscreen);
+the mobile block gives it `order: 4; flex: 1 1 auto` so it drops onto the button
+row and fills the freed space, truncating before the cog. Plain text at rest; a
+chapter change briefly turns the text `--yt-red`. Desktop caveat (accepted): the
+single row is tighter, so the name truncates harder there; fallback if it bites
+on-device is mock-B. His words: "sits in line with play/settings/full screen. Yes
+in sync. I like it."
+
+### (superseded) prototype note - mobile placement of the label
 
 The narrow **two-row mobile bar** is the one real layout risk. It is a battle-won
 flex-`order` layout: a zero-height `::after` (order -1, flex-basis 100%) forces the

@@ -6054,7 +6054,8 @@ a.sub-row-channel-link:focus-visible {
 #player-dock .fs-btn,
 #player-dock .pip-btn,
 #player-dock .speed-btn,
-#player-dock .cc-btn {
+#player-dock .cc-btn,
+#player-dock .settings-btn { /* v1.112: the cog too -- no room in the 26px mini-dock */
   display: none;
 }
 #player-dock .pc-btn {
@@ -6110,22 +6111,21 @@ a.sub-row-channel-link:focus-visible {
     flex-basis: 100%;
     height: 0;
   }
-  /* v1.50.5 (Dean): YouTube-ish row 2 -- transport on the LEFT (play,
-     mute, volume), the settings-ish cluster pushed to the RIGHT with
-     fullscreen anchored in the far corner, YouTube's signature position.
-     PURE flex `order` + one auto margin: no height/padding/wrap/DOM
-     change, so the two-row trap history stays sealed. The auto margin
-     lives on #speed-btn (always rendered) rather than #cc-btn (hidden
-     until captions exist -- a hidden element's margin splits nothing).
-     Side effect that helps: the speed/chapters popups anchor at the
-     bar's right edge, so they now open directly above their buttons. */
+  /* v1.50.5 / v1.112 (Dean): YouTube-ish row 2 -- transport on the LEFT
+     (play), then the persistent chapter-name label filling the middle, then
+     the settings-ish cluster pushed to the RIGHT with fullscreen in the far
+     corner. mute/volume are hidden on mobile (below), which is what frees the
+     row for the chapter name IN LINE with the controls (Dean's pick). PURE
+     flex `order` + one auto margin: no height/padding/wrap/DOM change, so the
+     two-row trap history stays sealed. v1.112 removed the stale speed/cc/pip/
+     chapters order rules -- those controls now live inside #settings-menu (an
+     absolute popup, out of the flex flow), so only the gear (#settings-btn)
+     rides the bar; the auto margin moved onto it (always rendered). */
   #player-slot .player-controls #pp-btn { order: 1; }
   #player-slot .player-controls #mute-btn { order: 2; }
   #player-slot .player-controls #vol-bar { order: 3; }
-  #player-slot .player-controls #speed-btn { order: 5; margin-left: auto; }
-  #player-slot .player-controls #cc-btn { order: 6; }
-  #player-slot .player-controls #chapters-btn { order: 7; }
-  #player-slot .player-controls #pip-btn { order: 8; }
+  #player-slot .player-controls .chapter-now { order: 4; flex: 1 1 auto; max-width: none; }
+  #player-slot .player-controls #settings-btn { order: 8; margin-left: auto; }
   #player-slot .player-controls #fs-btn { order: 9; }
   #player-slot .player-controls .pc-seek {
     flex: 1 1 auto;
@@ -6421,6 +6421,51 @@ body.ft-css-fullscreen .bottom-nav {
 .chapters-menu-item-current {
   color: var(--yt-red);
   box-shadow: inset 3px 0 0 var(--yt-red);
+}
+
+/* v1.112 (Dean): the settings COG menu. #settings-menu reuses the .chapters-menu
+   popup shell (position/border/shadow); these rows override the .pc-btn square/
+   bevel the RELOCATED Speed/CC/PiP buttons still carry. Scoped under #settings-menu
+   so the (0,1,1,0) selector beats the bare `#speed-btn` id rule's width:auto. A
+   ::before supplies the descriptive LABEL; the button's own text ("1×"/"CC"/"⧉")
+   sits at the right as the live value/state (justify-content: space-between). */
+#settings-menu .settings-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: none;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: var(--fs-base);
+  font-weight: normal;
+  padding: var(--space-4) var(--space-6);
+  cursor: pointer;
+}
+#settings-menu .settings-menu-item:hover {
+  background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback (matches .chapters-menu-item:hover) */
+}
+#settings-menu .settings-menu-item::before { font-weight: var(--fw-semibold); }
+#settings-menu #speed-btn::before { content: "Playback speed"; }
+#settings-menu #cc-btn::before { content: "Subtitles"; }
+#settings-menu #pip-btn::before { content: "Picture-in-picture"; }
+/* CC row lights up in the follow-along red when captions are ON. */
+#settings-menu .cc-btn.active { color: var(--yt-red); }
+
+/* the cog glyph -- an inline <svg> sized like the nav chrome icons (relative to
+   the button font-size, fill via currentColor). */
+.pc-svg-ico {
+  display: inline-block;
+  width: 1.25em;
+  height: 1.25em;
+  fill: currentColor;
 }
 /* v1.50.3: the speed picker reuses the chapters popup wholesale; only the
    width budget differs (eight short labels need no 220px) and the active
@@ -6792,38 +6837,40 @@ body.ft-css-fullscreen .bottom-nav {
    for CHAPTER_CHIP_MS on each chapter change then drops `.visible`. Kept in the
    DOM (opacity, not display) so the fade actually transitions; `[hidden]` is only
    the full chapter-less/dock removal. */
-/* v1.112 (Dean): the persistent current-chapter NAME label -- now a <button>
-   that OPENS the chapter list (the separate `Ch` button is gone). It is shown
-   the whole time a >1-chapter item plays (no flash-then-fade); a chapter CHANGE
-   briefly adds `.changed` for a subtle red highlight (the follow-along colour),
-   then player.js drops it. FINAL on-bar placement -- desktop inline + the mobile
-   two-row slot -- is tuned in T4 after Dean's screenshot pick; the anchor below
-   is the interim posture (still overlapping the picture until T4 moves it onto
-   the bar chrome). Button reset + pointer-events auto so it is clickable. */
+/* v1.112 (Dean): the persistent current-chapter NAME label -- a <button> that
+   OPENS the chapter list (the separate `Ch` button is gone). Dean's pick: it
+   sits IN LINE with the transport controls (in-flow on the bar, same level as
+   play/settings/fullscreen), NOT over the video and NOT a floating pill. Shown
+   the whole time a >1-chapter item plays; a chapter CHANGE briefly turns the
+   text red (`.changed`, the follow-along colour) then player.js drops it. On the
+   desktop single row it sits just before the cog (its DOM position); on the
+   mobile two-row bar a flex `order` drops it onto the button row, filling the
+   space the hidden mute/volume vacate (see the mobile block). Plain text at
+   rest -- a button reset removes the bevel/border the .pc-siblings carry. */
 .chapter-now {
-  position: absolute;
-  bottom: 100%;
-  left: var(--space-4);
-  margin-bottom: var(--space-2);
-  max-width: 60%;
-  z-index: 9; /* token-exempt: local stacking, above the bar (8), matches the segments */
+  order: 0; /* desktop: DOM order places it; mobile overrides (button row) */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
   font: inherit;
   font-size: var(--fs-xs);
-  color: var(--on-overlay);
-  background-color: var(--scrim);
+  color: var(--text-secondary);
+  background: none;
   border: 0;
-  border-radius: var(--radius);
-  padding: var(--space-1) var(--space-3);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0 var(--space-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
-  transition: background-color var(--dur-slow) var(--ease-ui);
+  transition: color var(--dur-slow) var(--ease-ui);
 }
-.chapter-now.changed { background-color: var(--yt-red); color: var(--on-accent); }
+.chapter-now:hover { color: var(--text-primary); }
+.chapter-now.changed { color: var(--yt-red); }
 .chapter-now[hidden] { display: none !important; }
 #player-dock .chapter-now { display: none; }
-/* Reduced-motion: skip the highlight fade (the label + its text are always
+/* Reduced-motion: skip the colour fade (the label + its text are always
    explicit, so there is no stuck half-state to worry about). */
 @media (prefers-reduced-motion: reduce) {
   .chapter-now { transition: none; }

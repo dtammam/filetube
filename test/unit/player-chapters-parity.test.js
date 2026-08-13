@@ -532,13 +532,21 @@ test('v1.112 source-lock: the current-chapter NAME label is PERSISTENT, clickabl
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
   // Persistent + clickable: NOT opacity:0-at-rest, NOT pointer-events:none; a
   // button reset (border:0) + cursor:pointer; the change-highlight is `.changed`.
-  const rule = /\.chapter-now \{[^}]*\}/.exec(css);
-  assert.ok(rule, 'the .chapter-now rule exists');
+  // Anchor to the BASE rule (line-start `.chapter-now {`), not the earlier
+  // mobile-scoped `#player-slot .player-controls .chapter-now { order... }`.
+  const rule = /\n\.chapter-now \{[^}]*\}/.exec(css);
+  assert.ok(rule, 'the base .chapter-now rule exists');
   assert.doesNotMatch(rule[0], /opacity: 0;/, 'the label is NOT hidden-at-rest anymore (persistent)');
   assert.doesNotMatch(rule[0], /pointer-events: none;/, 'the label must be clickable');
+  // v1.112 (Dean's pick): IN LINE with the controls -- in-flow, NOT a floating
+  // absolute pill (it no longer overlaps the video). Plain text at rest.
+  assert.doesNotMatch(rule[0], /position: absolute/, 'the label is in-flow, in line with the controls (not an absolute pill)');
   assert.match(rule[0], /cursor: pointer;/, 'clickable affordance');
-  assert.match(css, /\.chapter-now\.changed \{ background-color: var\(--yt-red\); color: var\(--on-accent\); \}/, 'a change flashes the follow-along red highlight');
+  assert.match(css, /\.chapter-now\.changed \{ color: var\(--yt-red\); \}/, 'a change flashes the follow-along red TEXT (subtle, at rest it is plain)');
   assert.match(css, /#player-dock \.chapter-now \{ display: none; \}/, 'label hidden in the docked mini-player');
+  // Placed in the DOM just before the cog so desktop's single row shows it in
+  // line with the gear/fullscreen; the mobile block re-orders it onto the button row.
+  assert.match(src, /playerControls\.insertBefore\(chapterNowEl, settingsBtn\)/, 'the label is inserted in line before the cog');
   // Refreshed on a chapter-set change (load/edit) past the dispatch no-op.
   assert.match(src, /refreshCurrentChapter\(\);/, 'chapter-set change re-dispatches from the live position');
 });

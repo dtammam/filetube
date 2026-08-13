@@ -1976,7 +1976,13 @@ if (typeof module !== 'undefined' && module.exports) {
       chapterNowEl.setAttribute('aria-haspopup', 'true');
       chapterNowEl.setAttribute('aria-expanded', 'false');
       chapterNowEl.hidden = true;
-      playerControls.appendChild(chapterNowEl);
+      // v1.112 (Dean): IN-FLOW, in line with the controls. Insert it right
+      // before the settings cog so on desktop's single row it sits inline near
+      // the gear/fullscreen cluster (DOM order = visual order there); on the
+      // mobile two-row bar a flex `order` (style.css) drops it onto the button
+      // row, filling the space the hidden mute/volume vacate.
+      if (settingsBtn && settingsBtn.parentNode === playerControls) playerControls.insertBefore(chapterNowEl, settingsBtn);
+      else playerControls.appendChild(chapterNowEl);
     }
     // v1.27.0 (background-audio-for-video, EXPERIMENTAL): the hidden <audio>
     // sidecar -- built in JS (never touches the shared player-host-template

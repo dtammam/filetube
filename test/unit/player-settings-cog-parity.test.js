@@ -131,3 +131,28 @@ test('cog wiring: dock() inlines the cog dismissal (Back-button dock has no clic
   assert.match(dockBody, /settingsMenu\.hidden = true/, 'dock() must not leave the cog invisibly open');
   assert.match(dockBody, /settingsBtn\.setAttribute\('aria-expanded', 'false'\)/, 'dock() resets the cog aria');
 });
+
+// ---- v1.112 T4: cog + settings-menu CSS ------------------------------------
+const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+
+test('cog CSS: the gear glyph is a sized inline svg (fill: currentColor)', () => {
+  const rule = /\.pc-svg-ico \{[^}]*\}/.exec(css);
+  assert.ok(rule, '.pc-svg-ico rule exists');
+  assert.match(rule[0], /fill: currentColor/, 'the glyph inherits the button colour');
+  assert.match(rule[0], /width: [^;]+;/, 'the glyph is sized');
+});
+
+test('cog CSS: the relocated controls render as full-width menu rows (bevel/border reset), labelled via ::before', () => {
+  // Scoped under #settings-menu so the (id+class) selector beats the bare
+  // `#speed-btn { width:auto }` id rule the relocated speed button still carries.
+  const row = /#settings-menu \.settings-menu-item \{[^}]*\}/.exec(css);
+  assert.ok(row, 'the #settings-menu .settings-menu-item row rule exists');
+  assert.match(row[0], /width: 100%/, 'rows fill the menu width (overriding the .pc-btn square)');
+  assert.match(row[0], /border: 0/, 'the .pc-btn border is reset');
+  assert.match(row[0], /box-shadow: none/, 'the .pc-btn bevel is reset');
+  assert.match(row[0], /justify-content: space-between/, 'label left, the value/glyph right');
+  // ::before supplies each row's descriptive label.
+  assert.match(css, /#settings-menu #speed-btn::before \{ content: "Playback speed"; \}/, 'speed row label');
+  assert.match(css, /#settings-menu #cc-btn::before \{ content: "Subtitles"; \}/, 'CC row label');
+  assert.match(css, /#settings-menu #pip-btn::before \{ content: "Picture-in-picture"; \}/, 'PiP row label');
+});
