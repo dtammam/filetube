@@ -338,6 +338,18 @@
               </button>
               <button class="btn btn-sm" id="sub-reheat-subs-cancel-btn" type="button" hidden>Cancel</button>
             </span>
+            <!-- v1.115 (Dean, A1): re-fetch the canonical channel NAME for every
+                 channel that currently shows a handle/folder instead of its real
+                 name and fan it out to all its videos + pins
+                 (POST /api/ytdlp/backfill-channel-names). One cheap channel-level
+                 probe per channel; progress rides the SAME status poll. -->
+            <span class="action-bar-cell">
+              <button class="btn btn-sm" id="sub-backfill-names-btn" type="button"
+                      title="Re-fetch the real name for every channel showing a handle/folder instead, and update all its videos">
+                <i class="icon-refresh"></i> Refresh channel names
+              </button>
+              <button class="btn btn-sm" id="sub-backfill-names-cancel-btn" type="button" hidden>Cancel</button>
+            </span>
           </div>
           <!-- v1.26.2 polish fix (Dean punchlist #5): the three status spans
                below used to live INSIDE .sub-list-header-actions (the
@@ -356,6 +368,7 @@
             <span id="sub-reheat-status" class="sub-repull-status action-status" aria-live="polite"></span>
             <span id="sub-refresh-avatars-status" class="sub-repull-status action-status" aria-live="polite"></span>
             <span id="sub-reheat-subs-status" class="sub-repull-status action-status" aria-live="polite"></span>
+            <span id="sub-backfill-names-status" class="sub-repull-status action-status" aria-live="polite"></span>
           </div>
         </div>
         <div id="sub-list-container" class="sub-list">

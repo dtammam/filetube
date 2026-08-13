@@ -2,7 +2,15 @@
 
 - Owner: main session (lean mode)
 - Opened: 2026-08-13
-- Status: ACTIVE. SPLIT SHIP (Dean, 2026-08-13):
+- **CLOSED: 2026-08-13 - shipped across v1.113.0 (Fix A + diagnostic + Docker),
+  v1.114.0 (A2 strip-@ display cleanup), v1.115.0 (Fix B as option A1: the
+  "Refresh channel names" per-channel `channelId` -> canonical-name backfill +
+  pin-label refresh + persist-gate survival). Full gate both APPROVE; dual-Node
+  6815/6815. Device pass PENDING (dev env has no yt-dlp - the live probe/fan-out
+  is Dean's on-device arbiter).** Fix B was PIVOTED from the original
+  "re-pullable = youtubeId" reheat model to a channelId-keyed name backfill after
+  Dean's prod diagnostic falsified the youtubeId proxy (only 56/1351 re-pullable).
+- Status: SHIPPED (was ACTIVE). SPLIT SHIP (Dean, 2026-08-13):
   - **v1.113.0** ships the SAFE, non-data-mutating half NOW: Fix A (search
     avatar resolve) + the read-only sizing diagnostic + a Dockerfile fix
     (`COPY scripts/` - the diagnostics were never in the image; Dean's catch,

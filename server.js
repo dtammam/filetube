@@ -5007,6 +5007,23 @@ async function runScanDirectories() {
             if (freshItem.channelName) item.channelName = freshItem.channelName;
             if (freshItem.channelAvatarUrl) item.channelAvatarUrl = freshItem.channelAvatarUrl;
           }
+          // v1.115 (Dean, A1) gate fix -- persist-gate/stale-snapshot class, the
+          // 6th strike (adversarial WARNING-1): a "Refresh channel names" backfill
+          // can commit a real channelName to the LIVE db BETWEEN this scan's
+          // Phase-1 snapshot and this Phase-2 merge. The snapshot's `item` still
+          // carries the OLD bad name and -- because it already HAS a channelUrl --
+          // is skipped by the `!item.channelUrl` carry above, so the wholesale
+          // db.metadata=newMetadata replace below would REVERT the backfill. This
+          // is an UNCONDITIONAL, marker-agnostic gap-fill (mirrors the
+          // sourceFollowerCount partial-reheat gap-fill above): whenever the
+          // scan's OWN name is still bad (empty/@handle) but the LIVE db now has a
+          // real one, adopt it -- never over a manual attribution. isBadChannelName
+          // is the SAME predicate the backfill enumerator/writer + strip-@ use.
+          if (!item.channelAttributedManually
+              && ytdlp.isBadChannelName(item.channelName)
+              && !ytdlp.isBadChannelName(freshItem.channelName)) {
+            item.channelName = freshItem.channelName;
+          }
           // v1.41.13: the same mid-scan-reheat gap-fill for the universal
           // source identity (persist-gate checkpoint). Keyed on sourceExtractor
           // as a unit (never mix one item's extractor with another's id), and
@@ -5216,7 +5233,11 @@ async function runScanDirectories() {
           // name (not the generic "Downloads"/folder label) appear on the
           // watch page + cards -- resolveChannelName (common.js) already
           // ranks a captured item.channelName first; no client change needed.
-          if (backfilled.channelName) item.channelName = backfilled.channelName;
+          // v1.115 (Dean, A1) gate fix (QA SUGGESTION): only fill a BAD name --
+          // an id-only item just backfilled to its real name (by the name-backfill
+          // batch, carried across this scan by the gap-fill above) must not be
+          // downgraded to a matched subscription's @handle here.
+          if (backfilled.channelName && ytdlp.isBadChannelName(item.channelName)) item.channelName = backfilled.channelName;
           if (backfilled.channelId) item.channelId = backfilled.channelId;
           // C6 (T11, Wave 3): heals a matched subscription's avatar onto an
           // identity-less old item too -- `backfillChannelIdentityFromFolder`
@@ -14664,6 +14685,68 @@ async function recordChannelFollowerCountFanout(deps, target, probed, nowMs = Da
   return updated;
 }
 
+// v1.115 (Dean, A1): PURE pin-label refresh. A channel PIN is a SNAPSHOT
+// { id, channelDir, label, pinnedAt } whose `label` was frozen at pin time (a
+// gated data-safety invariant -- store.js), so a name backfill does NOT reach it
+// live. After a channel's items get a new name, re-derive the label for any pin
+// whose `channelDir` basename matches one of THIS channel's item folders. Mutates
+// the passed `db` in place (called inside the fanout's updateDatabase closure,
+// holding the lock); returns the count of pins relabelled. Never throws; a
+// blank/absent name is a no-op. RESPECTS the snapshot design -- a deliberate
+// label write keyed by the folder match, not a conversion to a live join.
+function refreshPinLabelsForBackfilledChannel(db, target, name) {
+  // v1.115 gate fix (both seats): the pin label is a durable write too -- strip
+  // control chars/NUL here as well (the pin-label reducer store.js:2071 does).
+  // eslint-disable-next-line no-control-regex
+  const trimmed = typeof name === 'string' ? name.replace(/[\x00-\x1f\x7f]/g, '').trim() : '';
+  if (trimmed === '') return 0;
+  const pins = db && db.ytdlp && Array.isArray(db.ytdlp.pins) ? db.ytdlp.pins : null;
+  if (!pins || pins.length === 0) return 0;
+  const t = target && typeof target === 'object' ? target : {};
+  // v1.115 gate fix (adversarial SUGGESTION-1): key on the channel's item FOLDER
+  // PATHS (dirname of filePath), not the folder BASENAME -- two channels in
+  // different roots sharing a folder basename ("News") would otherwise both get
+  // relabelled. A pin's channelDir IS the channel's download folder, and this
+  // channel's items live under it, so dirname(filePath) === channelDir is the
+  // precise association.
+  const dirs = new Set();
+  for (const item of Object.values((db && db.metadata) || {})) {
+    if (!item) continue;
+    const matches = t.channelId
+      ? item.channelId === t.channelId
+      : (!!t.channelUrl && (item.channelUrl === t.channelUrl || item.channelHandleUrl === t.channelUrl));
+    if (matches && typeof item.filePath === 'string' && item.filePath !== '') dirs.add(path.dirname(item.filePath));
+  }
+  if (dirs.size === 0) return 0;
+  let relabelled = 0;
+  for (const pin of pins) {
+    if (!pin || typeof pin.channelDir !== 'string' || pin.channelDir === '') continue;
+    if (dirs.has(pin.channelDir) && pin.label !== trimmed) { pin.label = trimmed; relabelled += 1; }
+  }
+  return relabelled;
+}
+
+// v1.115 (Dean, A1): server.js's ONE channel->items name writer, deps-injected
+// into the name-backfill batch exactly like `recordChannelFollowerCountFanout`.
+// Runs the tested pure `ytdlp.applyBackfilledChannelName` (which enforces the
+// attribution / cross-channel / bad-name-only / bound guards) + the pin-label
+// refresh INSIDE the ONE serialized `updateDatabase` mutator, persisting only
+// when something changed. Returns the item count written.
+async function recordChannelNameBackfillFanout(deps, target, probed, nowMs = Date.now()) {
+  void nowMs;
+  const d = deps || {};
+  if (typeof d.updateDatabase !== 'function') return 0;
+  const name = probed && typeof probed.channelName === 'string' ? probed.channelName : '';
+  if (name.trim() === '') return 0;
+  let updated = 0;
+  await d.updateDatabase((db) => {
+    updated = ytdlp.applyBackfilledChannelName((db && db.metadata) || {}, target, name);
+    if (updated > 0) refreshPinLabelsForBackfilledChannel(db, target, name);
+    return updated > 0;
+  });
+  return updated;
+}
+
 // API: Library-wide "fun stats" dashboard (C4, v1.24 UX Round Wave 3).
 // Computed LIVE from `db.metadata` on every request via the pure helpers in
 // `lib/stats.js` -- deliberately no cached aggregate (see that module's
@@ -16061,6 +16144,9 @@ ytdlp.registerRoutes(app, {
   // writer -- server.js owns db.metadata, so the module's reheat-subs batch
   // gets it deps-injected like `recordRepulledItemMeta` above.
   recordChannelFollowerCountFanout,
+  // v1.115 (Dean, A1): the channel->items NAME fan-out writer (+ pin-label
+  // refresh), deps-injected into the name-backfill batch the same way.
+  recordChannelNameBackfillFanout,
   enumerateRepullableItems,
   // v1.43 (chunk 4b): channel pins are per-user (user_channel_pins rows).
   // The pin routes keep lib/ytdlp/store.js's PURE reducers as the single
@@ -16491,6 +16577,10 @@ module.exports = {
   // v1.56: the bulk sub-count reheat's channel->items fan-out writer --
   // exported for direct test coverage, same posture as recordRepulledItemMeta.
   recordChannelFollowerCountFanout,
+  // v1.115 (Dean, A1): the name fan-out writer + the pure pin-label refresh --
+  // exported for direct test coverage.
+  recordChannelNameBackfillFanout,
+  refreshPinLabelsForBackfilledChannel,
   enumerateRepullableItems,
   // v1.41.6: the reheat's import-relocation (move a hydrated MeTube import into
   // its channel folder + native filename) and the pure title->filename helper it
