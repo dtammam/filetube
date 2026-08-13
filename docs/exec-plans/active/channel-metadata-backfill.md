@@ -84,20 +84,41 @@ bad-name items. Dean re-runs the corrected script to get the real target size.
 Avatar side (already live via v1.113 Fix A): 491 items had a channelId but no
 baked avatar -> now resolved; 1371 have neither (need Fix B's re-pull for the avatar).
 
-So Fix B is TARGETING + a button, not a new backend:
-- `itemNeedsChannelBackfill(item)` = **`badName` (no `channelName` OR a
-  `channelName` starting with `@`) AND NOT `channelAttributedManually`** - NOT the
-  old "@handle folder" check.
-- A **manual "Refresh channel metadata" button** (Dean's pick over auto-on-scan)
-  that runs the reheat scoped to that AFFECTED set that HAS a re-pullable source
-  (a valid `youtubeId` OR a filename `[id]` bracket in the download root OR an
-  embedded purl - the reheat derives all three), batched PER CHANNEL (folderName),
-  skipping manual-attribution + no-source items. Reuse the existing repull
-  single-flight latch + cancel + the run-log/history surface.
-- Throttle: reuse the existing repull pacing (`--sleep-*`/retries); batch per
-  channel not per video.
-- Leave `folderName` as-is (on-disk grouping key + `/?folder=` link target,
-  main.js:2016). Once `channelName` is backfilled it is no longer shown.
+### DIRECTION PIVOT (Dean chose "A", off the refined prod run, 2026-08-13)
+The per-VIDEO reheat only reaches **56 of 1351** bad-name items: 1295 have no
+stored `youtubeId` AND no filename `[id]` bracket (many are non-yt-dlp imports,
+e.g. "Miscellaneous from SLS") - re-pulling per video is dead for them. Bad ROI.
+Dean picked the higher-leverage, accurate path:
+
+**A1 - per-CHANNEL name resolve from `channelId` (the real backfill, data-mutating).**
+491 bad-name items carry a `channelId` = only a few dozen DISTINCT channels. One
+`--dump-single-json --playlist-items 0` probe per channel (EXACTLY
+`probeChannelAvatar`'s existing spawn shape, run.js) yields the canonical
+`channel`/`uploader` NAME ("Marques Brownlee", not "mkbhd"). Extend
+`probeChannelAvatar` to also return `channelName` (the name is already in the
+payload it parses), then write that name onto EVERY item of that channel.
+- Group bad-name items by `channelId` (or `channelUrl`); probe ONCE per distinct
+  channel; reuse the avatar-probe FIFO gate + `ensureChannelAvatar` registry.
+- WRITE guard: skip `channelAttributedManually`; persist-gate class (reuse the
+  EXISTING `channelName` field + its carry-forward, server.js:5007/5030); write
+  through the serialized `updateDatabase` mutator; NEVER cross channel A's name
+  onto channel B's item (key strictly on the probed channelId).
+- **PIN-LABEL refresh** (companion): after a channel's name is backfilled, refresh
+  any pin whose `channelDir` maps to that channel (pins snapshot their label -
+  store.js:2016 gated invariant).
+- A **manual "Refresh channel names" button** (Dean's pick over auto-scan),
+  reusing the repull single-flight latch + cancel + run-log/history surface.
+
+**A2 - strip-`@` display cleanup (read-layer, NON-data-mutating, ships first).**
+When the resolved display name is an `@handle` ("@Apple"), strip the leading `@`
+for display ("Apple") - a shared pure helper applied in `resolveChannelName`
+(common.js, the card resolver) AND `/api/channels` (the channel/pin aggregation)
+AND the pin render. Kills the literal "@handle" for all 136 immediately, safely.
+Does NOT de-camelCase folder fallbacks (Dean declined B - too approximate).
+
+Leave `folderName` as-is (on-disk grouping key + `/?folder=` link target,
+main.js:2016). The ~1000 true imports with no channelId/source stay on the folder
+name (honest ceiling - only a re-download gets their canonical name; disclosed).
 
 ### Fix B companion: PIN-LABEL refresh (Dean's catch, VERIFIED in-code)
 Most surfaces resolve the channel name LIVE (real `channelName` else the
