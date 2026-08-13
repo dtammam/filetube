@@ -30,11 +30,14 @@ Affected items were ingested WITHOUT a captured yt-dlp channel-metadata block
    `folderName`. The "@handle" is the folder name surfacing - never stored as name.
 2. No channel key -> no avatar (`modernCardAvatar`/`resolveAvatarSource`,
    common.js:499/612 - monogram unless `item.channelAvatarUrl`).
-3. SEARCH-SPECIFIC GAP (independent): `GET /api/videos` (server.js:9474, projection
-   9599-9626) spreads the RAW item and does NOT resolve the avatar, while
-   `/api/notifications` (server.js:9024) and `/api/home` (server.js:9711) DO call
-   `ytdlp.resolveItemChannelAvatarUrl(db, item)`. So a channel whose avatar is
-   registry/subscription-resolvable shows on home but NOT in search.
+3. CARD-SURFACE GAP (independent): the CARD read surfaces `GET /api/videos`,
+   `/api/liked` and `/api/history` all spread the RAW item and do NOT resolve the
+   avatar, while `/api/home` (9711), `/api/notifications` (9024) and the watch
+   route (10006) DO. So a channel whose avatar is registry/subscription-resolvable
+   shows on home but a MONOGRAM in search/liked/history. (Slim-gate WARNING
+   correction: an earlier draft called search "the ONE" surface - false; the
+   shared buildCardHtml->modernCardAvatar path reads item.channelAvatarUrl on all
+   three, so Fix A sweeps all three, not just /api/videos.)
 
 ## Framing (agreed with Dean): B-led wave, A is a cheap rider
 - Dean's ACTUAL complaint (the "@handle" name + missing art) is fixed by **Fix B**
@@ -43,13 +46,18 @@ Affected items were ingested WITHOUT a captured yt-dlp channel-metadata block
 - **Fix A** only fixes a DIFFERENT set: channels we CAN identify but whose avatar
   wasn't baked - monogram in search, avatar on home. A safe consistency win (~2 lines).
 
-## Fix A - close the search-avatar gap (cheap, safe, ~2 lines)
-In the `/api/videos` item projection (server.js:9608-9625) override the spread's
-avatar the way `/api/home`/`/api/notifications` already do:
-`channelAvatarUrl: (item.channelAvatarUrl && item.channelAvatarUrl !== '') ? item.channelAvatarUrl : (ytdlp.resolveItemChannelAvatarUrl(db, item) || '')`.
+## Fix A - close the card-surface avatar gap (cheap, safe)
+In EACH card-read projection -- `/api/videos` (server.js:9609), `/api/liked`
+(11237) and `/api/history` (11304) -- resolve the avatar the way `/api/home`
+already does: `channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(db, item) || ''`
+(the resolver checks the baked value FIRST, re-sanitizing it, then the registry/
+subscription join -- byte-identical to /api/home, and it re-sanitizes a corrupted
+baked value the raw spread would have passed through).
 - `resolveItemChannelAvatarUrl` is READ-ONLY (store.js:75/895; safe on the shared
   cached db, no clone). Bound to the page `limit` (already the projection's scope).
-- Attack surface: must NOT clone/mutate the cached db; no per-row full-registry blowup.
+- Attack surface: must NOT clone/mutate the cached db; no per-row full-registry
+  blowup; ALL card surfaces swept (enumerated the `...item` projections - videos,
+  liked, history; the watch route + home + notifications already resolve).
 
 ## Fix B - backfill real channel metadata (the headline; reuses existing infra)
 The reheat/repull machinery ALREADY re-pulls + gap-fills channel identity:

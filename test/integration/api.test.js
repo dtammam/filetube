@@ -149,6 +149,29 @@ test('GET /api/videos resolves the channel avatar from the registry (Fix A) with
   assert.equal(loadDatabase().metadata.regV.channelAvatarUrl, '', 'the resolve must not mutate the cached db (item keeps its empty baked avatar)');
 });
 
+// v1.113 slim-gate WARNING: search was NOT the only card surface -- /api/liked
+// (and /api/history) spread the raw item through the SAME buildCardHtml ->
+// modernCardAvatar path, so the monogram bug was live there too. Sweep lock.
+test('GET /api/liked resolves the channel avatar too (Fix A sweep -- no monogram in Liked)', async () => {
+  const CHID = 'UC-lHJZR3Gqxm24_Vd_AJ5Yw';
+  saveDatabase({
+    folders: ['/media/Reg'], folderSettings: {}, progress: {},
+    metadata: {
+      regL: {
+        id: 'regL', title: 'Reg clip', type: 'video', ext: '.mp4',
+        folderName: '@reg', rootFolder: '/media/Reg', channelId: CHID,
+        channelName: '', channelAvatarUrl: '', size: 1000, addedAt: 1700000000003,
+      },
+    },
+    ytdlp: { allowMembersOnly: false, subscriptions: [], channelAvatars: { [CHID]: { avatarUrl: 'https://cdn/reg.jpg', channelUrl: '', fetchedAt: 1 } } },
+  });
+  userStore.addLiked(auth.user.id, 'regL', new Date().toISOString());
+  const { items } = await (await fetch(`${base}/api/liked`)).json();
+  const item = items.find((i) => i.id === 'regL');
+  assert.ok(item, 'liked item is returned');
+  assert.equal(item.channelAvatarUrl, 'https://cdn/reg.jpg', '/api/liked resolves the avatar like /api/videos (the swept sibling)');
+});
+
 test('GET /api/videos/:id returns 404 for an unknown id', async () => {
   const res = await fetch(`${base}/api/videos/does-not-exist`);
   assert.equal(res.status, 404);
