@@ -13,6 +13,8 @@ require('dotenv').config();
 // `isEnabled(config)` inside the functions themselves. See
 // lib/ytdlp/index.js for the dormant-wiring mechanism.
 const ytdlp = require('./lib/ytdlp');
+// v1.111 (Dean, streaming Tier 1): faststart detection + safe in-place remux.
+const faststart = require('./lib/faststart');
 // v1.69: the podcasts place (RSS subscription engine). First-class like
 // music/books - routes always registered, nav gated client-side on content.
 const podcasts = require('./lib/podcasts');
@@ -4431,6 +4433,29 @@ async function runScanDirectories() {
       // v1.20.0 FR-2: mark this id as freshly-scanned -- see the Phase-2
       // channel-identity bridge, below.
       freshlyScannedIds.add(id);
+      // v1.111 (Dean, streaming Tier 1): a genuinely-NEW mp4 download under the
+      // (writable) yt-dlp download dir gets its `moov` atom front-loaded
+      // (+faststart) so it starts + seeks fast in the browser. Guards:
+      //   !existing        -- NEW-to-db only (Dean deferred the existing-library
+      //                       backfill; also skips a re-encoded replacement).
+      //   !isAudio         -- video only (mp3 has no moov).
+      //   isFaststartEligible -- .mp4 ONLY: the -movflags safety boundary, so it
+      //                       can never reach a webm/mkv muxer.
+      //   under ytdlpDownloadRoots -- guaranteed writable (yt-dlp wrote it there);
+      //                       never attempt-and-fail on a read-only-mount import.
+      //   !READ_ONLY_MEDIA + ffmpegAvailable -- honor safe-mode; no ffmpeg -> skip.
+      // remuxFaststartInPlace is best-effort, non-throwing, atomic, and preserves
+      // mtime, so it can never break the scan or lose the file. A real remux
+      // changes the byte length, so refresh info.size HERE (before the entry is
+      // built below) -- else the next scan sees a size change and needlessly
+      // re-inits the item. Mirrors restoreMissingStoryboard's best-effort posture.
+      if (!existing && !isAudio && !READ_ONLY_MEDIA && ffmpegAvailable &&
+          matchRootFolder(filePath, ytdlpDownloadRoots) && faststart.isFaststartEligible(filePath)) {
+        const outcome = await faststart.remuxFaststartInPlace(filePath);
+        if (outcome === 'remuxed') {
+          try { info.size = fs.statSync(filePath).size; } catch (_) { /* keep stale size; next scan self-heals */ }
+        }
+      }
       // v1.35 (preExtractAudio): a freshly-indexed yt-dlp-rooted VIDEO is a
       // download -- queue its sidecar extraction (after the save; see the
       // collector's comment above) when the setting is ON.

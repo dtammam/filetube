@@ -134,3 +134,21 @@ test('remuxFaststartInPlace: spawn throws -> failed (never throws out)', async (
   assert.strictEqual(outcome, 'failed');
   assert.strictEqual(calls.renamed, null);
 });
+
+// ---- server.js scan wiring source-lock (v1.111 T2) --------------------------
+test('v1.111 source-lock: the scan faststarts only NEW, .mp4, writable-download, ffmpeg-available files, and refreshes size', () => {
+  const path2 = require('node:path');
+  const src = fs.readFileSync(path2.join(__dirname, '..', '..', 'server.js'), 'utf8');
+  assert.match(src, /const faststart = require\('\.\/lib\/faststart'\);/, 'server requires the faststart lib');
+  // The full guard: new-to-db + video + not read-only + ffmpeg + under the yt-dlp
+  // download dir + .mp4-eligible. Deleting any conjunct changes this.
+  assert.match(
+    src,
+    /if \(!existing && !isAudio && !READ_ONLY_MEDIA && ffmpegAvailable &&\s*\n\s*matchRootFolder\(filePath, ytdlpDownloadRoots\) && faststart\.isFaststartEligible\(filePath\)\) \{/,
+    'the six-part safety guard is intact'
+  );
+  assert.match(src, /const outcome = await faststart\.remuxFaststartInPlace\(filePath\);/, 'awaits the in-place remux');
+  // The remux changes byte length -> size MUST be refreshed on a real remux, or
+  // the next scan needlessly re-inits the item.
+  assert.match(src, /if \(outcome === 'remuxed'\) \{\s*\n\s*try \{ info\.size = fs\.statSync\(filePath\)\.size;/, 'size refreshed after a real remux');
+});
