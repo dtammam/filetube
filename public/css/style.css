@@ -8787,8 +8787,9 @@ html[data-modern="on"] .video-uploader {
   /* v1.50.5 gate CRITICAL 1: the watch bar's YouTube-ish row-2 orders
      (above, #player-slot-scoped) LEAK into this bar -- the reader mounts
      #player-slot too -- and flex-sorted the play button behind the scrub
-     row ([0:00][seek][3:45][>][1x]). Reset ALL EIGHT buttons, not just the
-     two visible today (a future unhide must not resurrect the leak), with
+     row ([0:00][seek][3:45][>][1x]). Reset every remaining bar button (v1.112:
+     seven now that #chapters-btn is gone), not just the ones visible today (a
+     future unhide must not resurrect the leak), with
      ID selectors: a class reset (1 id) LOSES to the order rules' 2-id
      specificity. 2 ids + 2 classes beats 2 ids + 1 class. */
   .reader-nowplaying #player-slot .player-controls #pp-btn,
