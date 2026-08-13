@@ -28,16 +28,26 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
+// v1.112: widened to ALL NINE player-host shells (was a 5-shell subset -- the
+// same latent drift gap the other parity files closed).
 const SHELLS = [
+  path.join(ROOT, 'lib', 'ytdlp', 'views', 'subscriptions.html'),
+  path.join(ROOT, 'public', 'history.html'),
   path.join(ROOT, 'public', 'index.html'),
-  path.join(ROOT, 'public', 'watch.html'),
+  path.join(ROOT, 'public', 'music.html'),
+  path.join(ROOT, 'public', 'podcasts.html'),
+  path.join(ROOT, 'public', 'read.html'),
   path.join(ROOT, 'public', 'setup.html'),
   path.join(ROOT, 'public', 'stats.html'),
-  path.join(ROOT, 'lib', 'ytdlp', 'views', 'subscriptions.html'),
+  path.join(ROOT, 'public', 'watch.html'),
 ];
 
 const CC_TRACK_MARKUP = '<track id="cc-track" kind="captions" srclang="en" label="English">';
-const CC_BTN_MARKUP = '<button type="button" id="cc-btn" class="pc-btn cc-btn" aria-label="Toggle captions" aria-pressed="false" style="display: none;">CC</button>';
+// v1.112 (Dean, settings cog): #cc-btn moved OFF the bar into #settings-menu as a
+// menu row (class gains `settings-menu-item`). It KEEPS style="display: none;" --
+// setupForMedia() still reveals it only when hasSubtitles, which now shows/hides
+// the ROW. Every wired toggle handler is unchanged (id-keyed).
+const CC_BTN_MARKUP = '<button type="button" id="cc-btn" class="pc-btn settings-menu-item cc-btn" aria-label="Toggle captions" aria-pressed="false" style="display: none;">CC</button>';
 
 test('cc-track parity: both owned shells\' #player-host-template carry the exact same <track id="cc-track"> markup, inside #media-player', () => {
   for (const shellPath of SHELLS) {
@@ -57,11 +67,11 @@ test('cc-btn parity: both owned shells\' #player-host-template carry the exact s
   }
 });
 
-test('cc-btn parity: #cc-btn is placed immediately after #pip-btn in #player-controls, in every owned shell', () => {
-  const afterPipBtn = /id="pip-btn"[^>]*>⧉<\/button>\s*\n\s*<button type="button" id="cc-btn"/;
+test('cc-btn parity: v1.112 #cc-btn sits between #speed-btn and #pip-btn inside #settings-menu, in every shell', () => {
+  const betweenSpeedAndPip = /<button type="button" id="speed-btn"[^>]*>1×<\/button>\s*\n\s*<button type="button" id="cc-btn"[^>]*>CC<\/button>\s*\n\s*<button type="button" id="pip-btn"/;
   for (const shellPath of SHELLS) {
     const html = fs.readFileSync(shellPath, 'utf8');
-    assert.match(html, afterPipBtn, `${shellPath} does not place #cc-btn immediately after #pip-btn`);
+    assert.match(html, betweenSpeedAndPip, `${shellPath} does not place #cc-btn between #speed-btn and #pip-btn in #settings-menu`);
   }
 });
 

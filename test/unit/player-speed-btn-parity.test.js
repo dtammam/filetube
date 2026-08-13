@@ -15,14 +15,27 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
+// v1.112: ALL NINE shells that carry #player-host-template (machine-derived:
+// `grep -rl 'id="player-host-template"' --include=*.html`). The prior 4-shell
+// subset was a latent drift gap -- a session booting from an un-covered shell
+// (history/music/podcasts/read) would clone a host that never got re-checked.
+// The settings-cog wave widened every player-control parity file to all nine.
 const SHELLS = [
-  path.join(ROOT, 'public', 'index.html'),
-  path.join(ROOT, 'public', 'setup.html'),
-  path.join(ROOT, 'public', 'watch.html'),
   path.join(ROOT, 'lib', 'ytdlp', 'views', 'subscriptions.html'),
+  path.join(ROOT, 'public', 'history.html'),
+  path.join(ROOT, 'public', 'index.html'),
+  path.join(ROOT, 'public', 'music.html'),
+  path.join(ROOT, 'public', 'podcasts.html'),
+  path.join(ROOT, 'public', 'read.html'),
+  path.join(ROOT, 'public', 'setup.html'),
+  path.join(ROOT, 'public', 'stats.html'),
+  path.join(ROOT, 'public', 'watch.html'),
 ];
 
-const SPEED_BTN_MARKUP = '<button type="button" id="speed-btn" class="pc-btn speed-btn" aria-label="Playback speed">1×</button>';
+// v1.112 (Dean, settings cog): #speed-btn moved OFF the bar into #settings-menu
+// as a menu row (class gains `settings-menu-item`); its id + every wired handler
+// are unchanged, so the picker/apply/dock/sheet locks below still hold verbatim.
+const SPEED_BTN_MARKUP = '<button type="button" id="speed-btn" class="pc-btn settings-menu-item speed-btn" aria-label="Playback speed">1×</button>';
 
 test('speed-btn parity: every shell\'s #player-host-template carries the exact same #speed-btn markup', () => {
   for (const shellPath of SHELLS) {
@@ -31,11 +44,13 @@ test('speed-btn parity: every shell\'s #player-host-template carries the exact s
   }
 });
 
-test('speed-btn parity: #speed-btn is placed immediately BEFORE #fs-btn in #player-controls, in every shell', () => {
-  const beforeFsBtn = /<button type="button" id="speed-btn"[^>]*>1×<\/button>\s*\n\s*<button type="button" id="fs-btn"/;
+test('speed-btn parity: v1.112 #speed-btn is the FIRST row of #settings-menu, immediately before #cc-btn, in every shell', () => {
+  // The cog centralizes Speed/CC/PiP: speed is the first menu row, and the
+  // settings-menu wrapper opens immediately before it.
+  const firstInSettings = /<div id="settings-menu" class="chapters-menu settings-menu" hidden>\s*\n\s*<button type="button" id="speed-btn"[^>]*>1×<\/button>\s*\n\s*<button type="button" id="cc-btn"/;
   for (const shellPath of SHELLS) {
     const html = fs.readFileSync(shellPath, 'utf8');
-    assert.match(html, beforeFsBtn, `${shellPath} does not place #speed-btn immediately before #fs-btn`);
+    assert.match(html, firstInSettings, `${shellPath} does not place #speed-btn as the first #settings-menu row before #cc-btn`);
   }
 });
 
@@ -53,15 +68,7 @@ test('speed-btn parity: exactly one #speed-btn per shell (no accidental duplicat
 // player host (all seven, not just this file's original four -- the picker
 // works wherever the docked player can expand).
 
-const ALL_TEMPLATE_SHELLS = [
-  path.join(ROOT, 'public', 'index.html'),
-  path.join(ROOT, 'public', 'setup.html'),
-  path.join(ROOT, 'public', 'watch.html'),
-  path.join(ROOT, 'public', 'music.html'),
-  path.join(ROOT, 'public', 'read.html'),
-  path.join(ROOT, 'public', 'stats.html'),
-  path.join(ROOT, 'lib', 'ytdlp', 'views', 'subscriptions.html'),
-];
+const ALL_TEMPLATE_SHELLS = SHELLS; // v1.112: the popup rides all nine shells too
 const SPEED_MENU_MARKUP = '<div id="speed-menu" class="chapters-menu speed-menu" hidden></div>';
 
 test('speed-menu parity: every player-host shell carries the byte-identical #speed-menu popup', () => {

@@ -80,6 +80,49 @@
 
 ## Shipped
 
+### v1.112.0 - Settings cog + persistent chapter-name label (2026-08-13)
+
+Dean wanted the player's menu-ish controls centralized YouTube-style and the
+current chapter name kept visible (the v1.109.1 chip flashed then faded because
+it overlaid the video). Two things, framed at intake into the cleaner split:
+
+- **Settings cog (gear)** centralizes **Speed + CC + Picture-in-Picture** off the
+  control bar into one `#settings-menu` popup. Implemented by RELOCATING the
+  existing `#speed-btn`/`#cc-btn`/`#pip-btn` elements (ids + every iOS-scarred
+  handler unchanged) across all 9 shells that carry the player template -- not a
+  rebuild. The cog joins the shared close/dock/outside-close lifecycle.
+- **Persistent chapter-name label** on the bar, IN LINE with the controls (Dean's
+  pick off a placement mock -- not a floating pill, not a separate line; it fills
+  the space mobile's hidden mute/volume vacate). Clicking it opens the chapter
+  list -- it's the sole chapters trigger now (the separate `Ch` button is gone).
+  A chapter change briefly flashes it red; the loop-armed red cue moved onto it.
+
+Also closed a latent shell-DRIFT gap the census exposed (two shells had drifted
+comments; the per-control parity tests each covered only a 4-5 shell subset) --
+all 9 shells are now byte-identical with a cross-shell tail-equality lock, and
+every parity file asserts all nine.
+
+Gate: full two-reviewer gate. Both seats REQUEST CHANGES (no criticals) and
+caught two REAL regressions I'd have shipped: (1) with the label as the sole
+trigger, the chapter list was UNREACHABLE before the first chapter for
+manual/embedded chapters not starting at 0:00 (fixed -- the label now shows
+"Chapters" whenever the item is chaptered); (2) the loop-armed cue was toggling a
+class on the removed button, so it went dead (migrated to the label). Plus a
+non-binding source-lock the adversarial seat's mutation caught (tightened) and
+stale/dead CSS. All fixes mutation-verified; both seats then APPROVE, slim gate
+on the cleanup APPROVE. A disclosed detached-HEAD near-miss (the harness pulled a
+reviewer's worktree mid-run) was caught and re-verified -- no harm.
+
+Dual-Node full suite **6766/6766** on both v22.23.1 and v24.14.0.
+
+**VERIFICATION IS DEAN'S DEVICE PASS:** no browser/iOS in the dev env, so the
+visual fit + feel are on-device. On-device probe list: cog opens/closes and
+Speed/CC/PiP work from inside it (desktop popup + mobile bottom sheet for speed);
+the chapter name sits in line with play/gear/fullscreen (desktop + the mobile
+two-row bar) and never over the video; tapping it opens the chapter list; the
+name shows "Chapters" before the first chapter on a chaptered item; the red flash
+on chapter change + the persistent red while a chapter loop is armed.
+
 ### v1.111.0 - Faststart for new mp4 downloads (streaming Tier 1) (2026-08-13)
 
 Dean asked about streaming robustness given the yt-dlp module downloads .mp4s.

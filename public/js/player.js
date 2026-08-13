@@ -1324,6 +1324,11 @@ if (typeof module !== 'undefined' && module.exports) {
   // RESOLVED list GET /api/videos/:id served for the loaded item
   // (manual > embedded > description -- resolved server-side).
   var chaptersBtn, chaptersMenu;
+  // v1.112 (Dean): the settings COG + its popup. The cog centralizes the
+  // relocated Speed/CC/PiP rows (now children of #settings-menu -- their own
+  // ids/handlers are unchanged). Queried once alongside the rest of the custom
+  // bar so they ride the reparented host across FULL/DOCKED/CLOSED.
+  var settingsBtn, settingsMenu;
   var currentChapters = [];
   // v1.109 (Dean): chapter follow-along -- the index of the chapter the playhead
   // is currently in (-1 = none/before-first/no-chapters), resolved from the live
@@ -1367,13 +1372,16 @@ if (typeof module !== 'undefined' && module.exports) {
   // it never joins the flex row, so the battle-won two-row `order` layout is
   // untouched.
   var seekChaptersEl, seekChaptersRO = null;
-  // v1.109 (Dean): the current-chapter title chip ("> Title") that floats just
-  // above the control bar. v1.109.1 (Dean, on-device): it no longer sits over the
-  // video full-time -- it FLASHES in for a few seconds when the chapter CHANGES,
-  // then fades out (chapterChipHideTimer). Absolute + out of flow like the
+  // v1.109 / v1.112 (Dean): the current-chapter NAME label ("> Title") ON the
+  // control bar. v1.109 was a floating chip; v1.109.1 made it flash-then-fade;
+  // v1.112 makes it PERSISTENT (Dean: "know where I am" without overlaying the
+  // video) and turns it into the chapters TRIGGER (click -> #chapters-menu, the
+  // `Ch` button is gone). The element stays shown the whole time a >1-chapter
+  // item plays; only a chapter CHANGE briefly toggles a `.changed` highlight
+  // (chapterChipHideTimer clears it). Out of the flex flow like the
   // segments/preview.
   var chapterNowEl, chapterChipHideTimer = null;
-  var CHAPTER_CHIP_MS = 3000; // how long the chip stays before fading, per change
+  var CHAPTER_CHIP_MS = 3000; // how long the change-highlight lingers, per change
   // v1.93.2: the server sends the (derived) geometry for every eligible video,
   // but the sprite FILE 404s until the scan generates it. Track a per-id preload
   // so the scrub preview only shows once the sprite actually LOADS - otherwise
@@ -1905,6 +1913,8 @@ if (typeof module !== 'undefined' && module.exports) {
     ccTrack = host.querySelector('#cc-track');
     chaptersBtn = host.querySelector('#chapters-btn');
     chaptersMenu = host.querySelector('#chapters-menu');
+    settingsBtn = host.querySelector('#settings-btn'); // v1.112: the gear
+    settingsMenu = host.querySelector('#settings-menu'); // v1.112: holds Speed/CC/PiP rows
     artPlayGlyph = host.querySelector('#art-play-glyph');
     // Feature B (v1.26.1): built in JS (never touches the shared
     // player-host-template markup, so all 5 shells stay byte-identical) --
@@ -1953,14 +1963,26 @@ if (typeof module !== 'undefined' && module.exports) {
       seekChaptersEl.setAttribute('aria-hidden', 'true');
       seekChaptersEl.hidden = true;
       playerControls.appendChild(seekChaptersEl);
-      // v1.109: the persistent current-chapter title chip. Same JS-built,
-      // appended-inside-.player-controls posture; CSS anchors it just above the
-      // bar. Hidden until a >1-chapter item is playing.
-      chapterNowEl = document.createElement('div');
+      // v1.109 / v1.112: the current-chapter NAME label. Same JS-built,
+      // appended-inside-.player-controls posture (no shell edits, out of the
+      // flex flow); CSS places it ON the bar. v1.112 (Dean): it is PERSISTENT
+      // (shown the whole time a >1-chapter item plays, not a flash-then-fade
+      // chip) and is now the chapters TRIGGER -- clicking it opens
+      // #chapters-menu (the separate `Ch` button is gone). A <button> so it is
+      // keyboard-reachable; its accessible name is the chapter title it shows.
+      chapterNowEl = document.createElement('button');
+      chapterNowEl.type = 'button';
       chapterNowEl.className = 'chapter-now';
-      chapterNowEl.setAttribute('aria-live', 'off');
+      chapterNowEl.setAttribute('aria-haspopup', 'true');
+      chapterNowEl.setAttribute('aria-expanded', 'false');
       chapterNowEl.hidden = true;
-      playerControls.appendChild(chapterNowEl);
+      // v1.112 (Dean): IN-FLOW, in line with the controls. Insert it right
+      // before the settings cog so on desktop's single row it sits inline near
+      // the gear/fullscreen cluster (DOM order = visual order there); on the
+      // mobile two-row bar a flex `order` (style.css) drops it onto the button
+      // row, filling the space the hidden mute/volume vacate.
+      if (settingsBtn && settingsBtn.parentNode === playerControls) playerControls.insertBefore(chapterNowEl, settingsBtn);
+      else playerControls.appendChild(chapterNowEl);
     }
     // v1.27.0 (background-audio-for-video, EXPERIMENTAL): the hidden <audio>
     // sidecar -- built in JS (never touches the shared player-host-template
@@ -4072,7 +4094,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (typeof targetAbs !== 'number' || !isFinite(targetAbs)) return;
     if (targetAbs < chapterLoop.start || targetAbs >= chapterLoop.end) {
       chapterLoop = null;
-      if (chaptersBtn) chaptersBtn.classList.remove('chapter-looping');
+      if (chapterNowEl) chapterNowEl.classList.remove('chapter-looping');
     }
   }
 
@@ -4289,32 +4311,48 @@ if (typeof module !== 'undefined' && module.exports) {
     if (idx === currentChapterIdx) return;
     currentChapterIdx = idx;
     applyCurrentChapterToMenu();
-    updateChapterNowChip();
+    updateChapterNowLabel(true); // a genuine change -> flash the highlight
   }
 
-  // v1.109 (Dean): the "> Chapter title" chip above the bar. v1.109.1 (Dean,
-  // on-device: "don't always obstruct the video"): it FLASHES on a chapter CHANGE
-  // instead of sitting there. This is only ever called by setCurrentChapter (which
-  // no-ops unless the index actually changed) and the per-load reset, so every
-  // call IS a real change: show the new title, then fade it out after
-  // CHAPTER_CHIP_MS. Only for a genuinely chaptered item (>1 chapter) in a
-  // chapter; otherwise hide immediately (chapter-less / reset / pre-first). `>`
-  // is U+203A (punctuation, not a pictograph) so iOS renders it as plain text.
-  // The fade is opacity via `.visible` (kept in the DOM), so display:none never
-  // kills the transition; `hidden` is reserved for the full chapter-less removal.
-  function updateChapterNowChip() {
+  // v1.109 / v1.112 (Dean): the current-chapter NAME label on the bar. v1.112
+  // reversed v1.109.1's flash-then-fade chip -- Dean wants the name PERSISTENTLY
+  // visible ("know where I am") without it overlaying the video, so it now lives
+  // ON the bar and STAYS shown the whole time a >1-chapter item plays. A genuine
+  // chapter CHANGE still gets a brief `.changed` highlight (the subtle transition
+  // cue) that clears after CHAPTER_CHIP_MS; the element itself never hides on
+  // that timer (only chapter-less/reset hides it). `changed` is passed true only
+  // by setCurrentChapter (a real index change); the per-load reset passes false.
+  // `>` is U+203A (punctuation, not a pictograph) so iOS renders it as plain text.
+  function updateChapterNowLabel(changed) {
     if (!chapterNowEl) return;
-    if (chapterChipHideTimer) { clearTimeout(chapterChipHideTimer); chapterChipHideTimer = null; }
+    // v1.112 gate fix (both seats, WARNING-1): the label is the SOLE chapters
+    // trigger now, so it must stay reachable for the WHOLE chaptered item -- not
+    // only while the playhead is inside a resolved chapter. currentChapterIndex
+    // returns -1 for any position BEFORE the first chapter's start (manual /
+    // embedded chapters are NOT forced to begin at 0:00), which would otherwise
+    // hide the only affordance during [0, firstStart) and strand the list. So:
+    // show whenever the item is chaptered (>1); read "Chapters" when we're
+    // pre-first-chapter (idx < 0), the chapter title otherwise.
+    var chaptered = currentChapters.length > 1;
+    if (!chaptered) {
+      chapterNowEl.hidden = true;
+      chapterNowEl.classList.remove('changed');
+      if (chapterChipHideTimer) { clearTimeout(chapterChipHideTimer); chapterChipHideTimer = null; }
+      return;
+    }
     var ch = currentChapterIdx >= 0 ? currentChapters[currentChapterIdx] : null;
-    var show = currentChapters.length > 1 && !!ch;
-    if (!show) { chapterNowEl.hidden = true; chapterNowEl.classList.remove('visible'); return; }
     chapterNowEl.hidden = false;
-    chapterNowEl.textContent = '› ' + (ch.title || 'Chapter');
-    chapterNowEl.classList.add('visible'); // flash in
-    chapterChipHideTimer = setTimeout(function () {
-      if (chapterNowEl) chapterNowEl.classList.remove('visible'); // fade out (stays opacity 0, out of the way)
-      chapterChipHideTimer = null;
-    }, CHAPTER_CHIP_MS);
+    chapterNowEl.textContent = ch ? ('› ' + (ch.title || 'Chapter')) : 'Chapters';
+    if (changed) {
+      // Re-arm the highlight from scratch on every change (clear a prior timer
+      // so a rapid change never early-clears the new highlight).
+      if (chapterChipHideTimer) { clearTimeout(chapterChipHideTimer); chapterChipHideTimer = null; }
+      chapterNowEl.classList.add('changed');
+      chapterChipHideTimer = setTimeout(function () {
+        if (chapterNowEl) chapterNowEl.classList.remove('changed');
+        chapterChipHideTimer = null;
+      }, CHAPTER_CHIP_MS);
+    }
   }
   // Recompute the current chapter from the LIVE position and dispatch it -- used
   // on a chapter-set change (load / edit) where the playhead may sit in a
@@ -4419,9 +4457,9 @@ if (typeof module !== 'undefined' && module.exports) {
     if (timeDur) timeDur.textContent = '0:00';
     // v1.109: drop the previous item's current-chapter so the next item's first
     // dispatch (from 0) is always treated as a change and re-renders fresh, and
-    // hide the title chip immediately (no stale "> Old chapter" flash on load).
+    // hide the name label immediately (no stale "> Old chapter" on load).
     currentChapterIdx = -1;
-    updateChapterNowChip();
+    updateChapterNowLabel(false); // reset/hide -- no highlight
   }
 
   // ---- volume: clamp/persist + iOS feature-detect --------------------------
@@ -5137,6 +5175,10 @@ if (typeof module !== 'undefined' && module.exports) {
     if (speedBtn) {
       speedBtn.addEventListener('click', function (e) {
         e.stopPropagation();
+        // v1.112: the speed row lives INSIDE the cog; opening the picker
+        // replaces the settings menu (no stacked popups). CC/PiP rows toggle
+        // in place and deliberately leave the cog open (state stays visible).
+        closeSettingsMenu();
         if (!speedMenu) {
           // Defensive only (the parity test locks #speed-menu into all
           // seven shells): a shell somehow missing it degrades to a
@@ -5339,6 +5381,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function closeChaptersMenu() {
       if (chaptersMenu) chaptersMenu.hidden = true;
       if (chaptersBtn) chaptersBtn.setAttribute('aria-expanded', 'false');
+      if (chapterNowEl) chapterNowEl.setAttribute('aria-expanded', 'false'); // v1.112: the label is the trigger now
       // v1.50.3 (comment corrected in the gate round): every CALLER of this
       // function (teardown via resetChaptersUi, outside taps, play/pause/
       // seek, menu row actions) must dismiss the speed picker for the
@@ -5347,11 +5390,20 @@ if (typeof module !== 'undefined' && module.exports) {
       // INLINES the equivalent statements against the module-level refs for
       // both menus (see its own comment) -- change one, change both.
       closeSpeedMenu();
+      closeSettingsMenu(); // v1.112: the cog is a bar popup too -- same lifecycle
     }
     function closeSpeedMenu() {
       if (speedMenu) speedMenu.hidden = true;
       closeSpeedSheet(); // v1.90: also tear down the mobile body-level sheet
       if (speedBtn) speedBtn.setAttribute('aria-expanded', 'false');
+    }
+    // v1.112 (Dean): dismiss the settings cog popup. Part of the SAME shared
+    // close chain as the chapters/speed popups (called from closeChaptersMenu
+    // above, whose callers are teardown/outside-tap/play-pause-seek); dock()
+    // INLINES the equivalent against the module ref (change one, change both).
+    function closeSettingsMenu() {
+      if (settingsMenu) settingsMenu.hidden = true;
+      if (settingsBtn) settingsBtn.setAttribute('aria-expanded', 'false');
     }
     // v1.41.12: arm (or move) the chapter loop. Bounds come from the pure
     // resolveChapterLoopBounds -- duration prefers the live element's
@@ -5394,11 +5446,12 @@ if (typeof module !== 'undefined' && module.exports) {
       if (opts && opts.rebuild) buildChaptersMenu();
     }
 
-    // The bar-level "a loop is armed" signal: the chapters button carries
-    // .chapter-looping (style.css tints it) so the state is visible with the
-    // menu closed.
+    // The bar-level "a loop is armed" signal: the persistent chapter-name label
+    // carries .chapter-looping (style.css tints it red) so the armed state is
+    // visible with the menu closed. v1.112: moved off the removed #chapters-btn
+    // onto .chapter-now (the label is the sole chapters surface on the bar now).
     function updateChapterLoopIndicator() {
-      if (chaptersBtn) chaptersBtn.classList.toggle('chapter-looping', !!chapterLoop);
+      if (chapterNowEl) chapterNowEl.classList.toggle('chapter-looping', !!chapterLoop);
     }
 
     // v1.41.12: the seek half without the menu-close, so armChapterLoop's
@@ -5591,12 +5644,15 @@ if (typeof module !== 'undefined' && module.exports) {
       // cover the not-yet case.
       buildSeekChapters();
       refreshCurrentChapter();
+      // v1.112 gate fix (WARNING-1): refreshCurrentChapter's setCurrentChapter
+      // no-ops when the resolved index is unchanged (notably still -1, i.e. the
+      // playhead is BEFORE the first chapter), so sync the name label explicitly
+      // here. The label is the sole chapters trigger, so it must appear the
+      // moment a chaptered item loads -- reading "Chapters" while pre-first.
+      updateChapterNowLabel(false);
       closeChaptersMenu();
-      if (chaptersBtn) chaptersBtn.style.display = '';
-      // v1.34.1 (Dean's on-device pass): the mobile custom bar overflowed --
-      // CSS hides the Ch button on .ff-mobile when the item has NO chapters
-      // (the button was pure clutter there; "Add chapters" stays reachable
-      // on desktop and on any mobile item that already HAS chapters).
+      // v1.112: `.has-chapters` is retained as a semantic host marker; its former
+      // consumer -- the mobile `#chapters-btn` hide -- was removed with the button.
       if (host) host.classList.toggle('has-chapters', currentChapters.length > 0);
     };
     resetChaptersUi = function () {
@@ -5638,22 +5694,55 @@ if (typeof module !== 'undefined' && module.exports) {
     // (hidden → the guard above makes this free). Both popups covered.
     window.addEventListener('resize', clampChaptersMenuHeight);
     window.addEventListener('resize', function () { clampBarMenuHeight(speedMenu); });
-    if (chaptersBtn) {
-      chaptersBtn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        if (!chaptersMenu) return;
-        var opening = chaptersMenu.hidden;
+    window.addEventListener('resize', function () { clampBarMenuHeight(settingsMenu); }); // v1.112: the cog re-clamps too
+    // v1.34 T3 / v1.112 (Dean): the chapters-menu toggle, SHARED by the
+    // persistent chapter-name label (#chapter-now, the new primary trigger) and
+    // -- defensively -- the removed #chapters-btn (null now, so its branch never
+    // binds). `anchor` is whichever control opened it; its aria-expanded tracks
+    // the menu. Opening dismisses the other bar popups (speed + cog) so only one
+    // is ever open.
+    function toggleChaptersMenu(anchor) {
+      if (!chaptersMenu) return;
+      var opening = chaptersMenu.hidden;
+      if (opening) {
+        closeSpeedMenu();
+        closeSettingsMenu();
         // v1.41.12: rebuild on every OPEN so the per-row Loop labels always
         // reflect the live chapterLoop state -- a seek-outside disarm
         // (disarmChapterLoopIfSeekOutside, controller-level) can't reach the
         // menu builder, so the menu re-derives truth each time it appears.
-        if (opening) buildChaptersMenu();
-        chaptersMenu.hidden = !opening;
-        // v1.43.1 B2: clamp AFTER unhiding — the measurement needs rendered
-        // geometry, and a rebuild-while-open (Loop toggles) re-clamps via
-        // the buildChaptersMenu tail call below.
-        if (opening) clampChaptersMenuHeight();
-        chaptersBtn.setAttribute('aria-expanded', opening ? 'true' : 'false');
+        buildChaptersMenu();
+      }
+      chaptersMenu.hidden = !opening;
+      // v1.43.1 B2: clamp AFTER unhiding — the measurement needs rendered
+      // geometry, and a rebuild-while-open (Loop toggles) re-clamps via
+      // the buildChaptersMenu tail call.
+      if (opening) clampChaptersMenuHeight();
+      if (anchor) anchor.setAttribute('aria-expanded', opening ? 'true' : 'false');
+    }
+    if (chaptersBtn) {
+      chaptersBtn.addEventListener('click', function (e) { e.stopPropagation(); toggleChaptersMenu(chaptersBtn); });
+    }
+    if (chapterNowEl) {
+      chapterNowEl.addEventListener('click', function (e) { e.stopPropagation(); toggleChaptersMenu(chapterNowEl); });
+    }
+    // v1.112 (Dean): the settings COG. Toggles #settings-menu (static rows --
+    // no rebuild), clamped after unhiding like the other bar popups. Opening it
+    // first dismisses any other open bar popup: closeChaptersMenu() is the
+    // shared teardown (chapters + speed + the mobile speed sheet + settings), so
+    // we re-open settings AFTER it. stopPropagation keeps this click from
+    // reaching the document outside-close below.
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (!settingsMenu) return;
+        var opening = settingsMenu.hidden;
+        closeChaptersMenu();
+        if (opening) {
+          settingsMenu.hidden = false;
+          clampBarMenuHeight(settingsMenu);
+          settingsBtn.setAttribute('aria-expanded', 'true');
+        }
       });
     }
     if (!chaptersOutsideCloseWired) {
@@ -5666,7 +5755,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // harmless second close on an already-hidden menu.
       var closeChaptersMenuOnOutside = function (e) {
         if (!chaptersMenu || chaptersMenu.hidden) return;
-        if (chaptersMenu.contains(e.target) || (chaptersBtn && chaptersBtn.contains(e.target))) return;
+        if (chaptersMenu.contains(e.target) || (chaptersBtn && chaptersBtn.contains(e.target)) || (chapterNowEl && chapterNowEl.contains(e.target))) return;
         closeChaptersMenu();
       };
       document.addEventListener('click', closeChaptersMenuOnOutside);
@@ -5682,6 +5771,16 @@ if (typeof module !== 'undefined' && module.exports) {
       };
       document.addEventListener('click', closeSpeedMenuOnOutside);
       document.addEventListener('pointerdown', closeSpeedMenuOnOutside);
+      // v1.112: identical outside-close for the settings cog. A tap inside the
+      // menu (a Speed/CC/PiP row) or on the gear itself is NOT outside -- the
+      // speed row runs closeSettingsMenu() itself, CC/PiP toggle in place.
+      var closeSettingsMenuOnOutside = function (e) {
+        if (!settingsMenu || settingsMenu.hidden) return;
+        if (settingsMenu.contains(e.target) || (settingsBtn && settingsBtn.contains(e.target))) return;
+        closeSettingsMenu();
+      };
+      document.addEventListener('click', closeSettingsMenuOnOutside);
+      document.addEventListener('pointerdown', closeSettingsMenuOnOutside);
       // v1.34.5 (Dean round 5): iOS AUTO-ENTERS the native fullscreen player
       // when a playing inline video rotates to landscape (a Safari behavior,
       // playsinline notwithstanding) -- in CUSTOM mode that hijacks the
@@ -6070,7 +6169,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.41.12: chapter loops are session-only and PER-ITEM -- a loop armed
     // on the previous item must never clamp the next one's playback.
     chapterLoop = null;
-    if (chaptersBtn) chaptersBtn.classList.remove('chapter-looping');
+    if (chapterNowEl) chapterNowEl.classList.remove('chapter-looping');
     if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
     if (transcodePollTimer) { clearTimeout(transcodePollTimer); transcodePollTimer = null; }
     // F7 (two-reviewer NIT): cancel a still-pending audio-status repoll too, mirroring the two timers just above
@@ -6675,6 +6774,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // and resurrected it stale on re-expand.
     if (speedMenu) speedMenu.hidden = true;
     if (speedBtn) speedBtn.setAttribute('aria-expanded', 'false');
+    // v1.112: same for the settings cog -- a Back-button dock must not leave it
+    // invisibly open to resurrect stale on re-expand (closeSettingsMenu's exact
+    // two statements against the module-level refs).
+    if (settingsMenu) settingsMenu.hidden = true;
+    if (settingsBtn) settingsBtn.setAttribute('aria-expanded', 'false');
     // v1.90: closeSpeedSheet lives in wireHostListeners' closure (out of reach
     // here at module scope), so remove any open mobile speed sheet by its
     // body-level class -- same "no stale popup survives a Back-button dock" aim.
@@ -6755,7 +6859,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // above -- a chapter loop never survives a CLOSE either (teardown on the
     // next load would clear it anyway, but that safety is indirect).
     chapterLoop = null;
-    if (chaptersBtn) chaptersBtn.classList.remove('chapter-looping');
+    if (chapterNowEl) chapterNowEl.classList.remove('chapter-looping');
     pendingAutoplayNextOnForeground = false; // F2: never let a deferred advance survive a CLOSE either
     if (bgAudioEl) {
       try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }
