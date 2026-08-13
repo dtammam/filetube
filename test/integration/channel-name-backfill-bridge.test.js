@@ -56,7 +56,12 @@ test('POST /api/ytdlp/backfill-channel-names against the REAL app writes the can
     db.metadata.a1 = { id: 'a1', type: 'video', filePath: path.join(downloadDir, 'a1.mp4'), channelName: '', channelId: UC_A, folderName: 'AfterSkool' };
     db.metadata.a2 = { id: 'a2', type: 'video', filePath: path.join(downloadDir, 'a2.mp4'), channelName: '@AfterSkool', channelId: UC_A, folderName: 'AfterSkool' };
     db.metadata.manual = { id: 'manual', type: 'video', filePath: path.join(downloadDir, 'm.mp4'), channelName: '@AfterSkool', channelId: UC_A, channelAttributedManually: true, folderName: 'AfterSkool' };
-    db.metadata.good = { id: 'good', type: 'video', filePath: path.join(downloadDir, 'g.mp4'), channelName: 'Already Real', channelId: UC_A, folderName: 'AfterSkool' };
+    // v1.116: 'good' lives in its OWN subfolder so the AfterSkool (downloadDir)
+    // bucket has no canonical sibling -> the local-heal phase is a no-op here and
+    // this test exercises the NETWORK path in isolation (local heal has its own
+    // bridge test). It still shares channelId UC_A, so the network fanout's
+    // good-name guard is what protects it.
+    db.metadata.good = { id: 'good', type: 'video', filePath: path.join(downloadDir, 'goodsub', 'g.mp4'), channelName: 'Already Real', channelId: UC_A, folderName: 'AfterSkool' };
     db.metadata.other = { id: 'other', type: 'video', filePath: path.join(downloadDir, 'o.mp4'), channelName: '', channelUrl: 'https://www.youtube.com/@someoneelse', folderName: 'Other' };
     db.ytdlp = db.ytdlp || {};
     // channelDir IS the channel's on-disk download folder -- the same folder the

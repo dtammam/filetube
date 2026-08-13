@@ -5024,6 +5024,25 @@ async function runScanDirectories() {
               && !ytdlp.isBadChannelName(freshItem.channelName)) {
             item.channelName = freshItem.channelName;
           }
+          // v1.116 (Dean) gate fix -- persist-gate, the local-heal companion to
+          // the name gap-fill above. The LOCAL reconciliation populates a
+          // channelId (+ canonical url/handle/avatar) onto items that ALREADY
+          // carry a channelUrl (the @handle fragments), so the `!item.channelUrl`
+          // identity-carry above SKIPS them -- a heal landing mid-scan would be
+          // reverted by the wholesale newMetadata replace. Gap-fill the identity
+          // UNIT when the snapshot lacks a channelId but the live db now has one
+          // (never over a manual attribution; never overwrite an existing id).
+          if (!item.channelAttributedManually
+              && !item.channelId
+              && typeof freshItem.channelId === 'string' && freshItem.channelId !== '') {
+            item.channelId = freshItem.channelId;
+            if (typeof freshItem.channelUrl === 'string' && freshItem.channelUrl !== '') item.channelUrl = freshItem.channelUrl;
+            if (typeof freshItem.channelHandleUrl === 'string' && freshItem.channelHandleUrl !== '') item.channelHandleUrl = freshItem.channelHandleUrl;
+            if (typeof freshItem.channelAvatarUrl === 'string' && freshItem.channelAvatarUrl !== ''
+                && (typeof item.channelAvatarUrl !== 'string' || item.channelAvatarUrl === '')) {
+              item.channelAvatarUrl = freshItem.channelAvatarUrl;
+            }
+          }
           // v1.41.13: the same mid-scan-reheat gap-fill for the universal
           // source identity (persist-gate checkpoint). Keyed on sourceExtractor
           // as a unit (never mix one item's extractor with another's id), and
@@ -14747,6 +14766,29 @@ async function recordChannelNameBackfillFanout(deps, target, probed, nowMs = Dat
   return updated;
 }
 
+// v1.116 (Dean): the LOCAL-heal fanout writer -- mirrors the network fanout but
+// takes a folder-scoped heal target (its own local ground truth, no probe) and
+// adopts the full identity UNIT (id/name/url/handle/avatar) onto the bad
+// siblings, then re-labels the channel pin to the real name. Runs inside ONE
+// serialized updateDatabase mutator (the caller holds the lock).
+async function recordLocalChannelHealFanout(deps, target) {
+  const d = deps || {};
+  if (typeof d.updateDatabase !== 'function') return 0;
+  if (!target || !target.identity || !target.identity.channelId) return 0;
+  let updated = 0;
+  await d.updateDatabase((db) => {
+    updated = ytdlp.applyLocalChannelHeal((db && db.metadata) || {}, target);
+    if (updated > 0) {
+      // The pin re-label already keys on the channel's item folder full paths,
+      // and the healed items now carry the canonical id -- pass the canonical
+      // identity so the pin adopts the real name.
+      refreshPinLabelsForBackfilledChannel(db, { channelId: target.identity.channelId }, target.identity.channelName);
+    }
+    return updated > 0;
+  });
+  return updated;
+}
+
 // API: Library-wide "fun stats" dashboard (C4, v1.24 UX Round Wave 3).
 // Computed LIVE from `db.metadata` on every request via the pure helpers in
 // `lib/stats.js` -- deliberately no cached aggregate (see that module's
@@ -16147,6 +16189,9 @@ ytdlp.registerRoutes(app, {
   // v1.115 (Dean, A1): the channel->items NAME fan-out writer (+ pin-label
   // refresh), deps-injected into the name-backfill batch the same way.
   recordChannelNameBackfillFanout,
+  // v1.116 (Dean): the LOCAL-heal fan-out writer (adopts the canonical identity
+  // UNIT from a same-folder sibling), deps-injected into the same batch.
+  recordLocalChannelHealFanout,
   enumerateRepullableItems,
   // v1.43 (chunk 4b): channel pins are per-user (user_channel_pins rows).
   // The pin routes keep lib/ytdlp/store.js's PURE reducers as the single
@@ -16581,6 +16626,8 @@ module.exports = {
   // exported for direct test coverage.
   recordChannelNameBackfillFanout,
   refreshPinLabelsForBackfilledChannel,
+  // v1.116 (Dean): the local-heal fan-out writer -- exported for direct tests.
+  recordLocalChannelHealFanout,
   enumerateRepullableItems,
   // v1.41.6: the reheat's import-relocation (move a hydrated MeTube import into
   // its channel folder + native filename) and the pure title->filename helper it
