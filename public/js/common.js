@@ -772,13 +772,17 @@ function bytesToGb(bytes) {
 // set), else the file's artist tag, else the immediate folder name. Keeps the
 // list cards and the watch page in agreement (both call this).
 // v1.114 (Dean, "A2"): a channelName that captured the "@handle" ("@Apple")
-// shows the handle instead of the name. Strip a single leading "@" for DISPLAY
+// shows the handle instead of the name. Strip a SINGLE leading "@" for DISPLAY
 // only (read-layer, no data mutation) -- a YouTube channel DISPLAY name never
 // starts with "@" (that is the handle syntax), so this only ever cleans a
-// handle-stored-as-the-name. Every channel-name display path uses this same
-// one-liner (resolveChannelName here, the pinned-sidebar render, and the
-// server's /api/channels aggregation). Pure; a non-string / non-handle passes
-// through unchanged.
+// handle-stored-as-the-name. Pure; a non-string / non-handle passes through
+// unchanged; "@@x" -> "@x" (single strip, intentional).
+// Applied at every channel-name DISPLAY surface: this common.js file
+// (resolveChannelName + the bell/queue row models + the pinned-sidebar render),
+// and -- because the server does not require client code -- the same one-liner
+// is INLINED at server.js /api/channels, public/js/history.js and public/js/
+// setup.js's Feed-Hidden row (their own renderers, not buildCardHtml). Change
+// the rule -> update all four sites (a small, accepted duplication).
 function displayChannelName(name) {
   return typeof name === 'string' && name.charAt(0) === '@' ? name.slice(1) : name;
 }

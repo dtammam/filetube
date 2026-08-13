@@ -74,6 +74,11 @@ test('buildHistoryRowHtml: escapes hostile titles AND channel names, carries dat
   assert.ok(!/style\s*=/.test(html), 'no inline style attribute, ever (#71/ratchet posture)');
 });
 
+test('buildHistoryRowHtml: v1.114 A2 strips a leading "@" so a handle-as-name shows the name (the standalone History page was an un-swept surface)', () => {
+  const html = buildHistoryRowHtml({ id: 'x', title: 'V', channelName: '@Apple' }, Date.now());
+  assert.ok(html.includes('Apple') && !html.includes('@Apple'), 'renders "Apple", not "@Apple"');
+});
+
 test('buildHistoryRowHtml: watched item gets the chip and no bar; audio gets the Audio badge', () => {
   const watched = buildHistoryRowHtml({ id: 'w1', title: 'Done', duration: 100, progressPercent: 97, watchState: 'watched', lastWatchedAt: '2026-07-19T10:00:00.000Z' }, NOW);
   assert.ok(watched.includes('history-watched-chip'));

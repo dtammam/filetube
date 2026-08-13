@@ -202,6 +202,7 @@ test('resolveChannelName: a blank/whitespace-only channelName does not win -- fa
 test('displayChannelName: strips a single leading "@" (the handle-as-name case)', () => {
   assert.equal(displayChannelName('@Apple'), 'Apple');
   assert.equal(displayChannelName('@Fireship'), 'Fireship');
+  assert.equal(displayChannelName('@@x'), '@x', 'SINGLE strip only (intentional; binds against a multi-strip drift)');
 });
 
 test('displayChannelName: a real name / empty / non-string passes through unchanged', () => {

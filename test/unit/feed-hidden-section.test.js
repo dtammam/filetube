@@ -26,6 +26,11 @@ test('buildFeedHiddenRowHtml: escapes hostile titles, carries data-id + thumbnai
   assert.ok(!/style\s*=/.test(html), 'no inline style attribute (ratchet posture)');
 });
 
+test('buildFeedHiddenRowHtml: v1.114 A2 strips a leading "@" (handle-as-name -> name; this section was an un-swept surface)', () => {
+  const html = buildFeedHiddenRowHtml({ id: 'x', title: 'V', channelName: '@Apple' });
+  assert.ok(html.includes('Apple') && !html.includes('@Apple'), 'renders "Apple", not "@Apple"');
+});
+
 test('buildFeedHiddenRowHtml: a missing title falls back, and no channel omits the meta line', () => {
   const html = buildFeedHiddenRowHtml({ id: 'v', title: '', channelName: '' });
   assert.ok(html.includes('Untitled'), 'empty title -> Untitled');
