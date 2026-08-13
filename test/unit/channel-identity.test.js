@@ -14,6 +14,7 @@ const {
   channelIdentityMatches,
   resolveFileChannelIdentity,
   resolveChannelName,
+  displayChannelName,
 } = require('../../public/js/common.js');
 
 // ---- canonicalizeChannelUrl -------------------------------------------------
@@ -194,4 +195,26 @@ test('resolveChannelName: non-yt-dlp item (no channelName field at all) is compl
 test('resolveChannelName: a blank/whitespace-only channelName does not win -- falls through unchanged', () => {
   const item = { channelName: '   ', artist: 'Some Artist', rootFolder: '/media/movies' };
   assert.equal(resolveChannelName(item, {}), 'Some Artist');
+});
+
+// ---- v1.114 A2: strip a leading "@" from a handle-stored-as-the-name ---------
+
+test('displayChannelName: strips a single leading "@" (the handle-as-name case)', () => {
+  assert.equal(displayChannelName('@Apple'), 'Apple');
+  assert.equal(displayChannelName('@Fireship'), 'Fireship');
+});
+
+test('displayChannelName: a real name / empty / non-string passes through unchanged', () => {
+  assert.equal(displayChannelName('NESTALGIA'), 'NESTALGIA');
+  assert.equal(displayChannelName('Bob Steel'), 'Bob Steel');
+  assert.equal(displayChannelName(''), '');
+  assert.equal(displayChannelName(null), null);
+  assert.equal(displayChannelName(undefined), undefined);
+});
+
+test('resolveChannelName: an "@handle" captured as the channelName is shown as the name (v1.114 A2)', () => {
+  const item = { channelName: '@Apple', rootFolder: '/data/dl' };
+  assert.equal(resolveChannelName(item, {}), 'Apple', 'the leading @ is stripped for display');
+  const real = { channelName: 'Marques Brownlee', rootFolder: '/data/dl' };
+  assert.equal(resolveChannelName(real, {}), 'Marques Brownlee', 'a real name is untouched');
 });
