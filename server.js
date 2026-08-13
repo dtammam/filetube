@@ -5438,7 +5438,15 @@ async function scanDirRecursive(rootFolder, dirPath, results, unreadable, yieldS
       // This is intentionally distinct from FileTube's OWN `.tmp.mp4`
       // transcode-cache temp file (a different pattern, in a different
       // directory) -- that exclusion is unaffected.
-      if (isYtdlpIntermediate(file.name)) {
+      // v1.111: ALSO skip an in-flight/crash-left faststart temp
+      // (`<orig>.faststart.tmp.mp4`, caught by isInFlightTranscode's `.tmp.mp4`
+      // suffix). UNLIKE the transcode-cache `.tmp.mp4` (in TRANSCODE_DIR, outside
+      // every scan root), the faststart remux writes its temp as a SIBLING of the
+      // media file -- INSIDE a scan root -- so a process death between temp-write
+      // and the atomic rename would otherwise leave a full-size `.tmp.mp4` the
+      // walk indexes as a phantom/duplicate card (gate WARNING). Harmless for the
+      // transcode-cache temp (never under a scan root anyway).
+      if (isYtdlpIntermediate(file.name) || isInFlightTranscode(file.name)) {
         await maybeYieldScan(yieldState);
         continue;
       }

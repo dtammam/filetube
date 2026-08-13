@@ -45,10 +45,10 @@ test('probeMp4Faststart: non-mp4-box garbage -> null (never claims false)', () =
 });
 
 // ---- buildFaststartRemuxArgs / isFaststartEligible ---------------------------
-test('buildFaststartRemuxArgs: lossless copy + faststart, in->out', () => {
+test('buildFaststartRemuxArgs: lossless copy + faststart + -map 0 (keep ALL streams), in->out', () => {
   assert.deepStrictEqual(
     buildFaststartRemuxArgs('/in.mp4', '/out.mp4'),
-    ['-hide_banner', '-loglevel', 'error', '-y', '-i', '/in.mp4', '-c', 'copy', '-movflags', '+faststart', '/out.mp4']
+    ['-hide_banner', '-loglevel', 'error', '-y', '-i', '/in.mp4', '-map', '0', '-c', 'copy', '-movflags', '+faststart', '/out.mp4']
   );
 });
 test('isFaststartEligible: ONLY .mp4 (never webm/mkv/mp3) -- the hard safety boundary', () => {
@@ -109,11 +109,16 @@ test('remuxFaststartInPlace: trailing moov + ffmpeg OK + temp faststart -> remux
 
 test('remuxFaststartInPlace: ffmpeg NON-ZERO -> failed, ORIGINAL UNTOUCHED, temp cleaned', async () => {
   const { io, calls } = fakeFsi({ existsSync: () => true });
-  const outcome = await remuxFaststartInPlace('/a.mp4', {
-    fsi: io, probe: () => ({ faststart: false }), spawn: fakeSpawn(1),
-  });
+  // BIND the exit-code guard (gate WARNING: it was mutation-surviving). The temp
+  // probes as a VALID faststart -- so ONLY the `code === 0` check stands between a
+  // dud (ffmpeg exited 1) and the atomic rename. If that guard were dropped, the
+  // dud would be sworn in and `calls.renamed` would be non-null. Original probes
+  // trailing (false); temp probes faststart (true).
+  let n = 0;
+  const probe = () => (n++ === 0 ? { faststart: false } : { faststart: true });
+  const outcome = await remuxFaststartInPlace('/a.mp4', { fsi: io, probe, spawn: fakeSpawn(1) });
   assert.strictEqual(outcome, 'failed');
-  assert.strictEqual(calls.renamed, null, 'original NEVER replaced on failure (no data loss)');
+  assert.strictEqual(calls.renamed, null, 'ffmpeg exit 1 -> the good original is NEVER replaced, even by a would-be-valid temp');
   assert.ok(calls.unlinked.includes('/a.mp4.faststart.tmp.mp4'), 'temp cleaned up');
 });
 
@@ -151,4 +156,8 @@ test('v1.111 source-lock: the scan faststarts only NEW, .mp4, writable-download,
   // The remux changes byte length -> size MUST be refreshed on a real remux, or
   // the next scan needlessly re-inits the item.
   assert.match(src, /if \(outcome === 'remuxed'\) \{\s*\n\s*try \{ info\.size = fs\.statSync\(filePath\)\.size;/, 'size refreshed after a real remux');
+  // A crash-left `<orig>.faststart.tmp.mp4` (a sibling INSIDE a scan root) must
+  // be excluded from the walk, or it's indexed as a phantom/duplicate card
+  // (gate WARNING). isInFlightTranscode matches its `.tmp.mp4` suffix.
+  assert.match(src, /if \(isYtdlpIntermediate\(file\.name\) \|\| isInFlightTranscode\(file\.name\)\) \{/, 'the scan walk skips faststart temps');
 });
