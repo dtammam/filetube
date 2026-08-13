@@ -9607,6 +9607,16 @@ app.get('/api/videos', (req, res) => {
     const watchUrl = typeof item.youtubeId === 'string' ? buildWatchUrl(item.youtubeId) : null;
     return {
       ...item,
+      // v1.113 (Fix A): resolve the channel avatar EXACTLY like /api/home,
+      // /api/notifications and the watch route -- resolveItemChannelAvatarUrl
+      // checks the baked item.channelAvatarUrl FIRST (re-sanitizing it) then the
+      // registry/subscription join. The CARD read surfaces still spreading the
+      // raw item -- search (here), /api/liked and /api/history -- all get the
+      // same one-liner (gate WARNING: "the ONE read surface" was false; the
+      // shared buildCardHtml->modernCardAvatar path reads item.channelAvatarUrl
+      // on all three). READ-ONLY (store.js): no cached-db mutation, no clone;
+      // bounded to the page `limit`.
+      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(db, item) || '',
       ...(watchUrl ? { watchUrl } : {}),
       // v1.93.2: DERIVED storyboard descriptor (eligible videos only), so the
       // list projection carries the same geometry as the grid/watch payloads
@@ -11225,6 +11235,10 @@ app.get('/api/liked', (req, res) => {
     const progressPercent = progress.duration > 0 ? (progress.timestamp / progress.duration) * 100 : 0;
     return {
       ...item,
+      // v1.113 (Fix A sweep): the Liked grid feeds the SAME buildCardHtml ->
+      // modernCardAvatar path as /api/videos, so resolve the avatar identically
+      // (read-only) or a registry-resolvable channel shows a monogram here.
+      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(db, item) || '',
       kind: 'media', // v1.72: kind is CARRIED on every item, never inferred
       liked: true, // every item in this listing is, by construction, a liked member
       // v1.93.2: DERIVED storyboard descriptor - the Liked view feeds
@@ -11292,6 +11306,9 @@ app.get('/api/history', (req, res) => {
     const progressPercent = dur > 0 ? (progress.timestamp / dur) * 100 : 0;
     return {
       ...item,
+      // v1.113 (Fix A sweep): History feeds the SAME buildCardHtml ->
+      // modernCardAvatar path, so resolve the avatar identically (read-only).
+      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(db, item) || '',
       liked: likedSet.has(id),
       progress: progress.timestamp || 0,
       progressPercent,

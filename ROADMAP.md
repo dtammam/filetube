@@ -80,6 +80,41 @@
 
 ## Shipped
 
+### v1.113.0 - Channel avatars in search/liked/history + shippable diagnostics (2026-08-13)
+
+The safe, non-data-mutating HALF of the channel "@handle" investigation (Dean's
+"some channels show @nestalgia, others show the real name"). The full backfill
+that turns "@handle" into the real NAME is v1.114 (Fix B); this ships the avatar
+half + the tooling to size the backfill.
+
+- **Channel avatars resolve on every card surface.** `/api/videos` (search), plus
+  its un-swept siblings `/api/liked` and `/api/history`, spread the raw item and
+  showed a MONOGRAM where a channel's avatar is registry/subscription-resolvable,
+  while `/api/home` showed the art. All three now route through the same read-only
+  `resolveItemChannelAvatarUrl` as home (it also re-sanitizes a corrupted baked
+  value). A source-level forcing net locks every `...item` card projection so a
+  future surface can't reintroduce the gap. NOTE: this does NOT fix the "@handle"
+  NAME or channels with no identity at all - that is Fix B (v1.114).
+- **Ops/diagnostic scripts now ship in the Docker image** (`COPY scripts/`). They
+  were never copied, so `node scripts/probe-channel-metadata.js` (the read-only
+  backfill sizer added here) - and v1.111's `probe-faststart.js` - were absent
+  from a deployed server. Run on prod with
+  `docker exec <container> node scripts/probe-channel-metadata.js --examples 5`.
+  (Dean's catch: the v1.111 device-pass note pointed at a script not in the image.)
+
+Gate: slim gate (adversarial seat, non-data-mutating). It caught the false "search
+is the ONE read surface" claim with a runnable repro - `/api/liked` + `/api/history`
+had the identical bug. Swept all three, added the forcing net + a liked lock, both
+mutation-verified; APPROVE on the delta. Dual-Node full suite **6779/6779** on
+v22.23.1 and v24.14.0.
+
+Known/disclosed: the "@handle" NAME itself (and channels with zero captured
+identity) is UNCHANGED here - Fix B (v1.114) backfills the real channelName via the
+existing reheat, plus a pin-label refresh (pins snapshot their label). The
+channel-metadata-backfill exec plan stays ACTIVE (not moved to completed) until
+v1.114 ships. **VERIFICATION IS DEAN'S DEVICE PASS:** the avatar improvement + the
+`docker exec` diagnostic are on-device.
+
 ### v1.112.0 - Settings cog + persistent chapter-name label (2026-08-13)
 
 Dean wanted the player's menu-ish controls centralized YouTube-style and the
