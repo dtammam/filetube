@@ -72,6 +72,7 @@ test('the Stats link points at /stats.html on every sidebar shell', () => {
 const commonJs = read('public/js/common.js');
 const mainJs = read('public/js/main.js');
 const watchJs = read('public/js/watch.js');
+const setupJs = read('public/js/setup.js');
 
 test('common.js DOMContentLoaded boot renders the pinned sidebar on EVERY shell', () => {
   // Guarded on the sidebar being present, then fetch+render (idempotent rebuild).
@@ -79,13 +80,29 @@ test('common.js DOMContentLoaded boot renders the pinned sidebar on EVERY shell'
     'common.js boot must fetchAllPins().then(renderPinnedSidebar) when a sidebar is present');
 });
 
-test('the per-page BOOT pin render was retired from main.js and watch.js (single owner)', () => {
-  // The boot call `primePinnedSidebarFromCache(); fetchAllPins().then(...)` must
-  // no longer live in the page controllers' init -- common.js owns it now.
-  // (watch.js keeps refreshPinnedSidebar() for the on-pin-action re-render; that
-  // is NOT the boot render and is allowed.)
-  assert.ok(!/primePinnedSidebarFromCache\(\);\s*\n\s*fetchAllPins\(\)\.then/.test(mainJs),
-    'main.js should no longer boot the pinned sidebar (common.js owns it)');
+test('the per-page BOOT pin render was retired from EVERY page controller (single owner = common.js)', () => {
+  // common.js owns the boot render now. NO page controller may boot it itself
+  // (the slim-gate WARNING: setup.js was a THIRD un-retired owner that double-
+  // fetched/double-painted on /setup.html). Enumerate EVERY controller that
+  // loads a sidebar, not just the two the first cut fixed -- the exact
+  // "enumerate every surface" completeness this wave exists to enforce.
+  //
+  // A controller's boot render is `fetchAllPins().then((pins) => renderPinnedSidebar(pins))`
+  // at TOP LEVEL of its init. It is legal to call the pair inside a NAMED
+  // re-render helper driven by a user action (watch.js's refreshPinnedSidebar,
+  // common.js's refreshAllPinSurfaces) -- so we forbid the BOOT shape
+  // specifically: the render pair NOT preceded by `function ...{`.
+  const bootRender = /fetchAllPins\(\)\.then\(\(pins\)\s*=>\s*renderPinnedSidebar\(pins\)\)/; // no /g: .test() must be stateless
+  for (const [name, src] of [['main.js', mainJs], ['setup.js', setupJs]]) {
+    // main.js + setup.js have NO legitimate re-render helper -- any occurrence is a boot.
+    assert.ok(!bootRender.test(src), `${name} must not boot the pinned sidebar (common.js is the single owner)`);
+  }
+  // watch.js may contain the pair ONLY inside its named refreshPinnedSidebar
+  // helper; assert the BOOT-shaped occurrence (right after initWatch's own setup,
+  // not inside a function) is gone -- i.e. the pair appears at most where the
+  // helper defines it.
   assert.ok(!/primePinnedSidebarFromCache\(\);\s*\n\s*fetchAllPins\(\)\.then/.test(watchJs),
-    'watch.js should no longer boot the pinned sidebar (common.js owns it)');
+    'watch.js should no longer BOOT the pinned sidebar (its refreshPinnedSidebar helper stays)');
+  assert.ok(!/primePinnedSidebarFromCache\(\)/.test(mainJs) && !/primePinnedSidebarFromCache\(\)/.test(setupJs),
+    'the warm-prime boot call must not survive in main.js/setup.js either');
 });

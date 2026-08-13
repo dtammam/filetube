@@ -2512,17 +2512,12 @@ function init(root) {
   // v1.43: Account chip + sign out + (admin) user management.
   initAccountSection(controller.signal);
 
-  // v1.22.0 FR-5 (AC32-AC38): desktop-sidebar channel pins -- a SEPARATE
-  // fetch against the module's own gated pin store, independent of
-  // loadConfig()'s folder-list rendering above: renderPinnedSidebar inserts
-  // `#sidebar-pinned-section` as a SIBLING of, never a child of,
-  // `#sidebar-folders-list`, so it is unaffected regardless of fetch/render
-  // ordering between the two. A 404 (module disabled) resolves to `[]` (no
-  // pins rendered), preserving the disabled-module no-op guarantee -- this
-  // never logs/throws on a 404. Read-only: never writes db.folders/
-  // folderSettings.
-  // v1.37.0: channel pins + book-shelf pins, one merged sidebar section.
-  fetchAllPins().then((pins) => renderPinnedSidebar(pins));
+  // v1.117 (Dean bug, slim-gate WARNING): the desktop-sidebar pin BOOT render
+  // moved to common.js's shell-level DOMContentLoaded (the single owner, running
+  // on every page). This setup-page boot call is retired -- keeping it here would
+  // double-fetch/double-paint the pinned section on /setup.html (the exact
+  // "each shell owns its own copy of a shared surface" duplication this wave
+  // removes). The pinned section still paints on setup via the common.js owner.
 
   // Start
   loadConfig();
