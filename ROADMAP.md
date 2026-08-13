@@ -80,6 +80,39 @@
 
 ## Shipped
 
+### v1.114.0 - Clean "@handle" channel names + no "›" on the chapter label (2026-08-13)
+
+Two small display-only cleanups (read-layer, no data mutation), off Dean's prod
+diagnostic run + an on-device nit. The ACCURATE per-channel name backfill (option
+A1) remains its own later wave.
+
+- **"@handle"-as-the-name is cleaned everywhere.** Some channels captured the
+  HANDLE as the channelName ("@Apple") and showed it verbatim. New pure
+  `displayChannelName` strips a single leading "@" ("@Apple" -> "Apple") at every
+  scanned-item display surface: cards/watch (resolveChannelName), the notification
+  bell, the queue, the pinned sidebar, `/api/channels` (channel bar), the
+  standalone History page, and the Feed-Hidden section. 136 such items on Dean's
+  library fixed instantly. (Channel TARGET surfaces - subscriptions, the
+  attribution picker, one-off-download identity - are deliberately untouched.)
+- **The chapter-bar label dropped its leading "›"** (Dean: it "felt silly") - now
+  just the plain title ("Float Islands"), matching the chapter menu.
+- The channel-metadata sizing diagnostic was corrected (Dean's prod run proved the
+  "@handle folder" model wrong: 0 such folders; the real bad-name set is
+  missing-name + handle-as-name) and now ships correctly in the image.
+
+Gate: slim gate (adversarial, non-data-mutating). Caught the strip-"@" sweep
+missing the History page + Feed-Hidden section (their own row renderers, not the
+shared card builder) - the recurring "enumerate every surface" class (v1.41.4,
+v1.80, v1.113 liked/history). Swept both + a source-bound test on each; APPROVE on
+the delta. Dual-Node full suite **6786/6786** on v22.23.1 and v24.14.0.
+
+Known/disclosed: the ~1294 channels MISSING a name still show their folder name;
+the accurate fix (option A1 - per-channel `channelId` -> canonical name backfill,
+"mkbhd" -> "Marques Brownlee", ~491 identifiable, data-mutating, FULL gate) is the
+NEXT wave. ~1000 true imports with no channelId can only get their real name by
+re-downloading. The channel-metadata-backfill exec plan stays ACTIVE until A1
+ships. **VERIFICATION IS DEAN'S DEVICE PASS.**
+
 ### v1.113.0 - Channel avatars in search/liked/history + shippable diagnostics (2026-08-13)
 
 The safe, non-data-mutating HALF of the channel "@handle" investigation (Dean's
