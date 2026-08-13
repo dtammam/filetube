@@ -5007,6 +5007,23 @@ async function runScanDirectories() {
             if (freshItem.channelName) item.channelName = freshItem.channelName;
             if (freshItem.channelAvatarUrl) item.channelAvatarUrl = freshItem.channelAvatarUrl;
           }
+          // v1.115 (Dean, A1) gate fix -- persist-gate/stale-snapshot class, the
+          // 6th strike (adversarial WARNING-1): a "Refresh channel names" backfill
+          // can commit a real channelName to the LIVE db BETWEEN this scan's
+          // Phase-1 snapshot and this Phase-2 merge. The snapshot's `item` still
+          // carries the OLD bad name and -- because it already HAS a channelUrl --
+          // is skipped by the `!item.channelUrl` carry above, so the wholesale
+          // db.metadata=newMetadata replace below would REVERT the backfill. This
+          // is an UNCONDITIONAL, marker-agnostic gap-fill (mirrors the
+          // sourceFollowerCount partial-reheat gap-fill above): whenever the
+          // scan's OWN name is still bad (empty/@handle) but the LIVE db now has a
+          // real one, adopt it -- never over a manual attribution. isBadChannelName
+          // is the SAME predicate the backfill enumerator/writer + strip-@ use.
+          if (!item.channelAttributedManually
+              && ytdlp.isBadChannelName(item.channelName)
+              && !ytdlp.isBadChannelName(freshItem.channelName)) {
+            item.channelName = freshItem.channelName;
+          }
           // v1.41.13: the same mid-scan-reheat gap-fill for the universal
           // source identity (persist-gate checkpoint). Keyed on sourceExtractor
           // as a unit (never mix one item's extractor with another's id), and
@@ -5216,7 +5233,11 @@ async function runScanDirectories() {
           // name (not the generic "Downloads"/folder label) appear on the
           // watch page + cards -- resolveChannelName (common.js) already
           // ranks a captured item.channelName first; no client change needed.
-          if (backfilled.channelName) item.channelName = backfilled.channelName;
+          // v1.115 (Dean, A1) gate fix (QA SUGGESTION): only fill a BAD name --
+          // an id-only item just backfilled to its real name (by the name-backfill
+          // batch, carried across this scan by the gap-fill above) must not be
+          // downgraded to a matched subscription's @handle here.
+          if (backfilled.channelName && ytdlp.isBadChannelName(item.channelName)) item.channelName = backfilled.channelName;
           if (backfilled.channelId) item.channelId = backfilled.channelId;
           // C6 (T11, Wave 3): heals a matched subscription's avatar onto an
           // identity-less old item too -- `backfillChannelIdentityFromFolder`
@@ -14674,25 +14695,33 @@ async function recordChannelFollowerCountFanout(deps, target, probed, nowMs = Da
 // blank/absent name is a no-op. RESPECTS the snapshot design -- a deliberate
 // label write keyed by the folder match, not a conversion to a live join.
 function refreshPinLabelsForBackfilledChannel(db, target, name) {
-  const trimmed = typeof name === 'string' ? name.trim() : '';
+  // v1.115 gate fix (both seats): the pin label is a durable write too -- strip
+  // control chars/NUL here as well (the pin-label reducer store.js:2071 does).
+  // eslint-disable-next-line no-control-regex
+  const trimmed = typeof name === 'string' ? name.replace(/[\x00-\x1f\x7f]/g, '').trim() : '';
   if (trimmed === '') return 0;
   const pins = db && db.ytdlp && Array.isArray(db.ytdlp.pins) ? db.ytdlp.pins : null;
   if (!pins || pins.length === 0) return 0;
   const t = target && typeof target === 'object' ? target : {};
-  const folders = new Set();
+  // v1.115 gate fix (adversarial SUGGESTION-1): key on the channel's item FOLDER
+  // PATHS (dirname of filePath), not the folder BASENAME -- two channels in
+  // different roots sharing a folder basename ("News") would otherwise both get
+  // relabelled. A pin's channelDir IS the channel's download folder, and this
+  // channel's items live under it, so dirname(filePath) === channelDir is the
+  // precise association.
+  const dirs = new Set();
   for (const item of Object.values((db && db.metadata) || {})) {
     if (!item) continue;
     const matches = t.channelId
       ? item.channelId === t.channelId
       : (!!t.channelUrl && (item.channelUrl === t.channelUrl || item.channelHandleUrl === t.channelUrl));
-    if (matches && typeof item.folderName === 'string' && item.folderName !== '') folders.add(item.folderName);
+    if (matches && typeof item.filePath === 'string' && item.filePath !== '') dirs.add(path.dirname(item.filePath));
   }
-  if (folders.size === 0) return 0;
+  if (dirs.size === 0) return 0;
   let relabelled = 0;
   for (const pin of pins) {
     if (!pin || typeof pin.channelDir !== 'string' || pin.channelDir === '') continue;
-    const base = pin.channelDir.split(/[\\/]/).pop() || pin.channelDir;
-    if (folders.has(base) && pin.label !== trimmed) { pin.label = trimmed; relabelled += 1; }
+    if (dirs.has(pin.channelDir) && pin.label !== trimmed) { pin.label = trimmed; relabelled += 1; }
   }
   return relabelled;
 }

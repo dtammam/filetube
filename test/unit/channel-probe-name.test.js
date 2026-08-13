@@ -34,6 +34,15 @@ test('the "total miss" contract holds: null unless an avatar OR channelId surviv
   assert.equal(channelProbeResultFromParsed({ channel_id: CHID, channel: 'X' }).channelId, CHID);
 });
 
+test('control characters (incl. NUL) are stripped from the probed name', () => {
+  // node:sqlite truncates TEXT at NUL and a stray control byte corrupts the
+  // rendered card -- the probe strips them at the source (gate fix).
+  assert.equal(channelProbeResultFromParsed({ channel: 'Marques\x00 Brownlee', channel_id: CHID }).channelName, 'Marques Brownlee');
+  assert.equal(channelProbeResultFromParsed({ channel: 'A\tB\nC', channel_id: CHID }).channelName, 'ABC');
+  assert.equal(channelProbeResultFromParsed({ channel: '\x00\x1f', uploader: 'Fallback', channel_id: CHID }).channelName, 'Fallback',
+    'a name that is ALL control chars is unusable -> falls back');
+});
+
 test('the pre-existing avatar/id/url mapping is unchanged + never throws on junk', () => {
   const r = channelProbeResultFromParsed({ channel_id: CHID, channel_url: 'https://www.youtube.com/channel/' + CHID, channel: 'X' });
   assert.equal(r.channelId, CHID);

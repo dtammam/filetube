@@ -112,6 +112,15 @@ test('writer: a blank probed name is a no-op; the name is bounded to 200 chars',
   assert.equal(meta.a.channelName.length, 200, 'bounded');
 });
 
+test('writer: strips control chars (incl. NUL) at the write; an all-control name is a no-op', () => {
+  const meta = { a: chan(), b: chan() };
+  assert.equal(applyBackfilledChannelName(meta, { channelId: CH_A }, 'Real\x00 Name\t'), 2);
+  assert.equal(meta.a.channelName, 'Real Name', 'NUL + trailing tab stripped/trimmed');
+  const meta2 = { a: chan() };
+  assert.equal(applyBackfilledChannelName(meta2, { channelId: CH_A }, '\x00\x1f\x7f'), 0, 'all-control -> no write');
+  assert.equal(meta2.a.channelName, '');
+});
+
 test('writer: re-running is idempotent (the now-good name is not bad, so a second pass writes 0)', () => {
   const meta = { a: chan() };
   assert.equal(applyBackfilledChannelName(meta, { channelId: CH_A }, 'Real'), 1);

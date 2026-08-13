@@ -59,7 +59,9 @@ test('POST /api/ytdlp/backfill-channel-names against the REAL app writes the can
     db.metadata.good = { id: 'good', type: 'video', filePath: path.join(downloadDir, 'g.mp4'), channelName: 'Already Real', channelId: UC_A, folderName: 'AfterSkool' };
     db.metadata.other = { id: 'other', type: 'video', filePath: path.join(downloadDir, 'o.mp4'), channelName: '', channelUrl: 'https://www.youtube.com/@someoneelse', folderName: 'Other' };
     db.ytdlp = db.ytdlp || {};
-    db.ytdlp.pins = [{ id: 'p1', channelDir: path.join('/media', 'AfterSkool'), label: '@AfterSkool', pinnedAt: 1 }];
+    // channelDir IS the channel's on-disk download folder -- the same folder the
+    // A items live in -- so the pure pin re-label matches it by full path.
+    db.ytdlp.pins = [{ id: 'p1', channelDir: downloadDir, label: '@AfterSkool', pinnedAt: 1 }];
     return true;
   });
 

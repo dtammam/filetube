@@ -28,7 +28,11 @@ function makeDeps(metadata, ytdlp) {
     deps: { updateDatabase: (fn) => { calls += 1; mutatorReturns.push(fn(db)); return Promise.resolve(); } },
   };
 }
-const vid = (over) => Object.assign({ type: 'video', channelName: '', channelId: UC_A, folderName: 'AfterSkool' }, over);
+const vid = (over) => {
+  const m = Object.assign({ type: 'video', channelName: '', channelId: UC_A, folderName: 'AfterSkool' }, over);
+  if (!m.filePath) m.filePath = `/media/${m.folderName}/clip.mp4`;
+  return m;
+};
 
 test('fanout: writes the probed name to matching bad-name items, persists only on a change', async () => {
   const h = makeDeps({ a1: vid(), a2: vid({ channelName: '@handle' }), b: vid({ channelId: UC_B, folderName: 'Other' }) });
@@ -63,7 +67,7 @@ test('fanout ALSO refreshes the channel pin label (the snapshot the backfill wou
 });
 
 // ---- refreshPinLabelsForBackfilledChannel (pure) ----------------------------
-test('pin refresh: only relabels pins whose channelDir basename matches THIS channel folders', () => {
+test('pin refresh: only relabels pins whose channelDir (full path) matches THIS channel item folders', () => {
   const db = {
     metadata: { a: vid({ folderName: 'AfterSkool' }), b: vid({ channelId: UC_B, folderName: 'Other' }) },
     ytdlp: { pins: [
@@ -77,6 +81,27 @@ test('pin refresh: only relabels pins whose channelDir basename matches THIS cha
   assert.equal(db.ytdlp.pins[0].label, 'After Skool');
   assert.equal(db.ytdlp.pins[1].label, '@other', 'a different channel pin untouched');
   assert.equal(db.ytdlp.pins[2].label, 'Unrelated');
+});
+
+// v1.115 gate fix (adversarial SUGGESTION-1) BINDING: two channels in different
+// ROOTS share a folder basename ("News"). Backfilling channel A must NOT relabel
+// the unrelated pin at /root2/News. Delete the full-path match (revert to
+// basename) and this goes red.
+test('pin refresh: a same-BASENAME folder in a DIFFERENT root is NOT relabelled (collision guard)', () => {
+  const db = {
+    metadata: {
+      a: vid({ channelId: UC_A, folderName: 'News', filePath: '/root1/News/a.mp4' }),
+      b: vid({ channelId: UC_B, folderName: 'News', filePath: '/root2/News/b.mp4' }),
+    },
+    ytdlp: { pins: [
+      { id: 'pA', channelDir: '/root1/News', label: '@a', pinnedAt: 1 },
+      { id: 'pB', channelDir: '/root2/News', label: 'Real B Name', pinnedAt: 1 },
+    ] },
+  };
+  const n = refreshPinLabelsForBackfilledChannel(db, { channelId: UC_A }, 'Channel A');
+  assert.equal(n, 1, 'only A\'s own /root1/News pin relabelled');
+  assert.equal(db.ytdlp.pins[0].label, 'Channel A');
+  assert.equal(db.ytdlp.pins[1].label, 'Real B Name', 'the same-basename pin in another root is untouched');
 });
 
 test('pin refresh: blank name / no pins / no matching folder are safe no-ops', () => {
