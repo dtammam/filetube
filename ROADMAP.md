@@ -80,6 +80,46 @@
 
 ## Shipped
 
+### v1.111.0 - Faststart for new mp4 downloads (streaming Tier 1) (2026-08-13)
+
+Dean asked about streaming robustness given the yt-dlp module downloads .mp4s.
+The concrete win, no re-download: a trailing MP4 `moov` atom (the index) forces
+the browser to fetch deep into the file before it can start/seek ("slow to start
+on click"). This front-loads it (+faststart) so playback starts + seeks after
+buffering only the start. Server-only; "new downloads only" slice (existing
+library deferred to a later wave, per Dean).
+
+- New video downloads: when the scan first ingests a genuinely-NEW `.mp4` under
+  the yt-dlp download dir, the server losslessly moves its `moov` to the front
+  IN PLACE (`ffmpeg -map 0 -c copy -movflags +faststart` -> a verified temp ->
+  atomic rename). No re-encode, no re-download, all streams preserved.
+- SAFE by construction (this is data-adjacent -- it overwrites a media file):
+  it only ever touches `.mp4` (so the mp4-only `-movflags` can never reach a
+  webm/mkv muxer), only a genuinely-trailing-moov file, and NEVER replaces the
+  original except with a temp that verified as exit-0 + itself-faststart; on ANY
+  failure it keeps the original byte-for-byte. mtime preserved.
+
+First attempt (a yt-dlp `--postprocessor-args` flag) was REVERTED: the slim gate
+caught it would spray the mp4-only option onto webm/mkv/subtitle postprocessors
+and abort those downloads. The app-side remux replaced it.
+
+Gate: full two-reviewer gate (data-adjacent), two rounds. Both seats proved the
+never-lose-the-original core in-code, then REQUEST CHANGES on three cheap
+findings (missing `-map 0` -> silent stream drop; a crash-left temp indexable as
+a phantom card; a mutation-surviving exit-code guard) -- all fixed and
+mutation-verified, both APPROVE. Dual-Node full suite **6754/6754** on v22.23.1
+and v24.14.0.
+
+Known/disclosed: `!existing` is "new-or-rebuilt", so a fresh db pointed at an
+existing yt-dlp library would faststart the whole library once on that scan
+(lossless, no storage cost, probe-gated). A hard-kill mid-remux leaves a
+harmless (walk-excluded) temp orphan nothing sweeps -- tech-debt #143.
+**VERIFICATION IS DEAN'S DEVICE PASS:** ffmpeg isn't in the dev env, so the
+"moov actually moves + streams retained" proof is on-device
+(`node scripts/probe-faststart.js --list` on a fresh download should NOT list it;
+the file keeps its thumbnail/chapters/tracks). The "never lose a file" safety is
+proven in-code.
+
 ### v1.110.0 - Timestamped sharing: per-chapter share + share-at-current-time (2026-08-12)
 
 Dean: share the ORIGINAL YouTube link WITH a start time. Two surfaces, both

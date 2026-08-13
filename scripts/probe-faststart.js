@@ -80,49 +80,10 @@ function walkDir(dir) {
   return out;
 }
 
-// Walk top-level MP4 boxes; return the order in which moov/mdat first appear.
-// Returns { faststart: true|false|null, order: [...], reason }.
-function probeMp4(filePath) {
-  let fd;
-  try { fd = fs.openSync(filePath, 'r'); } catch (e) { return { error: e.code || String(e) }; }
-  try {
-    const size = fs.fstatSync(fd).size;
-    const header = Buffer.alloc(16);
-    let offset = 0;
-    const order = [];
-    let guard = 0;
-    while (offset + 8 <= size && guard++ < 100000) {
-      const got = fs.readSync(fd, header, 0, 16, offset);
-      if (got < 8) break;
-      let boxSize = header.readUInt32BE(0);
-      const type = header.toString('latin1', 4, 8);
-      let headerLen = 8;
-      if (boxSize === 1) {
-        // 64-bit largesize in bytes 8..16
-        if (got < 16) break;
-        const hi = header.readUInt32BE(8);
-        const lo = header.readUInt32BE(12);
-        boxSize = hi * 4294967296 + lo;
-        headerLen = 16;
-      } else if (boxSize === 0) {
-        // extends to end of file
-        boxSize = size - offset;
-      }
-      if (!/^[\x20-\x7e]{4}$/.test(type)) {
-        return { faststart: null, reason: 'not-mp4-box-structure', order };
-      }
-      if ((type === 'moov' || type === 'mdat') && !order.includes(type)) order.push(type);
-      if (order.includes('moov') && order.includes('mdat')) break;
-      if (boxSize < headerLen) break; // malformed
-      offset += boxSize;
-    }
-    if (!order.includes('moov')) return { faststart: null, reason: 'no-moov-seen', order };
-    if (!order.includes('mdat')) return { faststart: true, reason: 'moov-only-or-first', order };
-    return { faststart: order.indexOf('moov') < order.indexOf('mdat'), reason: 'compared', order };
-  } finally {
-    fs.closeSync(fd);
-  }
-}
+// v1.111: the box-walker moved to lib/faststart.js so this diagnostic script and
+// the runtime remux share ONE source of truth (they must never disagree about
+// what "trailing moov" means). Same signature/return shape as before.
+const { probeMp4Faststart: probeMp4 } = require('../lib/faststart');
 
 function main() {
   const args = parseArgs(process.argv);
