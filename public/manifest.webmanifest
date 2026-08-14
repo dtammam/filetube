@@ -2,6 +2,8 @@
   "name": "FileTube",
   "short_name": "FileTube",
   "description": "Self-hosted, nostalgic-YouTube media server.",
+  "id": "/",
+  "scope": "/",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f0f0f",

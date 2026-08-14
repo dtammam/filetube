@@ -27,6 +27,7 @@ const CSS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 's
 // would reveal early with stale content - the v1.96 partial-render lesson).
 const SETTINGS_FED = [
   'autoplay-next-check', 'background-audio-check', 'pre-extract-audio-check',
+  'bg-audio-sync-check', // v1.121: the position pre-sync toggle joins the fed set
   'relocate-hydrated-check', 'notifications-enabled-check', 'mobile-custom-player-check',
   'prune-missing-check',
 ];
@@ -53,8 +54,9 @@ test('setup.html: NO foreign-fetch control carries the barrier (no early-reveal 
   }
 });
 
-test('setup.html: exactly 7 reveal-toggle barriers exist (matches the /api/settings-fed set)', () => {
-  assert.strictEqual((SETUP_HTML.match(/class="reveal-toggle" data-loading/g) || []).length, 7);
+test('setup.html: exactly 8 reveal-toggle barriers exist (matches the /api/settings-fed set)', () => {
+  // v1.121 DELIBERATE count bump (7 -> 8): the bg-audio-sync-check toggle.
+  assert.strictEqual((SETUP_HTML.match(/class="reveal-toggle" data-loading/g) || []).length, 8);
 });
 
 test('style.css: .reveal-toggle[data-loading] reuses the shared v1.96 sweep barrier', () => {
@@ -83,7 +85,7 @@ const barrierCount = (doc) => doc.querySelectorAll('.reveal-toggle[data-loading]
 
 test('loadAutomationSettings: reveals every toggle AND applies the server values (success)', async () => {
   const { mod, dom } = loadSetupInDom();
-  assert.strictEqual(barrierCount(dom.window.document), 7, 'all 7 shimmer before the fetch');
+  assert.strictEqual(barrierCount(dom.window.document), 8, 'all 8 shimmer before the fetch'); // v1.121: +bg-audio-sync-check
 
   global.fetch = async () => ({
     json: async () => ({
