@@ -2,6 +2,14 @@
 
 - Owner: main session (lean mode)
 - Opened: 2026-08-14
+- **CLOSED: 2026-08-14 - shipped as v1.122.0. Slim gate (adversarial) APPROVE
+  after one fix round: W1 my badge comment was a LYING COMMENT (the count badge
+  is the header's SIBLING, not child - corrected + the no-op call removed); W2
+  the gate found a THIRD folder-named surface (buildVideoRowCardHtml, classic
+  Continue-watching row - swept); W3 the honest page-0-sample-strong contract +
+  the diagnosis-discipline probe note. 11/11 mutants killed on the delta.
+  Dual-Node 6870/6870. DEVICE PASS PENDING. First wave under the branch-hygiene
+  ceremony (branches deleted post-tag).**
 - Target: v1.122.0
 - Device pass: PENDING (Dean). Display-only -> slim gate (adversarial).
 - FIRST WAVE under the new branch-hygiene ceremony (branch deleted remote+local
