@@ -42,8 +42,15 @@ before(async () => {
     // and a trashed restricted item (trash list) - the two surfaces the security
     // gate found leaking restricted titles/counts.
     viewCounts: { blocked: 100, allowed: 5 },
-    trash: { t1: { originalId: 'blocked', originalPath: blockedFile, rootFolder: DATA_DIR, trashedAt: 5,
-      item: { id: 'blocked', title: 'Adult Video', name: 'Adult Video', filePath: blockedFile, folderName: 'Adult', rootFolder: DATA_DIR, type: 'video', ext: '.mp4' } } },
+    trash: {
+      t1: { originalId: 'blocked', originalPath: blockedFile, rootFolder: DATA_DIR, trashedAt: 5,
+        item: { id: 'blocked', title: 'Adult Video', name: 'Adult Video', filePath: blockedFile, folderName: 'Adult', rootFolder: DATA_DIR, type: 'video', ext: '.mp4' } },
+      // v1.123 T3: a VISIBLE trashed item (Kids), so the capable-but-restricted
+      // member can be shown to reach the trash-mutation handlers for what they
+      // CAN see - proving the t1 block is visibility, not the write capability.
+      t2: { originalId: 'allowed', originalPath: allowedFile, rootFolder: DATA_DIR, trashedAt: 4,
+        item: { id: 'allowed', title: 'Kids Video', name: 'Kids Video', filePath: allowedFile, folderName: 'Kids', rootFolder: DATA_DIR, type: 'video', ext: '.mp4' } },
+    },
     liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
 
@@ -156,4 +163,28 @@ test('STATS + TRASH: restricted titles/counts do not leak to the member (securit
   assert.ok((adminStats.mostWatched || []).some((m) => m.id === 'blocked'), 'admin mostWatched includes the item');
   const adminTrash = (await (await asAdmin('/api/trash')).json()).items || [];
   assert.ok(adminTrash.some((t) => t.originalId === 'blocked'), 'admin sees the trashed item');
+});
+
+// v1.123 T3 (security): the trash MUTATION routes shared the podcast bypass class
+// - requireModifyLibrary gates the capability, but restore/purge never checked
+// VISIBILITY, so a capable-but-restricted member could restore or PERMANENTLY
+// purge a trashed item hidden from them. `member` holds canModifyLibrary and is
+// restricted on the "Adult" folder, so the 404s below can only be the visibility
+// guard; the t2 (Kids) purge proves the capability is genuinely present. Runs
+// last: it retires t1/t2, which earlier tests need intact.
+test('TRASH MUTATION: capable-but-restricted member 404s on restore/purge of a hidden trashed item', async () => {
+  const del = (p, admin) => fetch(`${base}${p}`, { method: 'DELETE', headers: admin ? {} : { Cookie: member.cookie } });
+  const post = (p) => fetch(`${base}${p}`, { method: 'POST', headers: { Cookie: member.cookie, 'Content-Type': 'application/json' }, body: '{}' });
+
+  // Restricted trashed item (t1 = Adult): both mutation routes 404 for the member.
+  assert.strictEqual((await post('/api/trash/t1/restore')).status, 404, 'restricted trash RESTORE -> 404 (visibility)');
+  assert.strictEqual((await del('/api/trash/t1')).status, 404, 'restricted trash PURGE -> 404 (visibility)');
+
+  // Discrimination: the SAME capable member reaches the handler for a VISIBLE
+  // trashed item (t2 = Kids) -> 200 (unconfined trashPath -> record retired,
+  // nothing touched on disk). Proves the t1 block was visibility, not capability.
+  assert.strictEqual((await del('/api/trash/t2')).status, 200, 'visible trash PURGE reaches the handler for the capable member');
+
+  // The admin is never visibility-blocked: purge of the restricted t1 -> 200.
+  assert.strictEqual((await del('/api/trash/t1', true)).status, 200, 'admin not visibility-blocked on the restricted purge');
 });

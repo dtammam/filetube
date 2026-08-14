@@ -165,6 +165,79 @@ const CLASSIFICATION = {
 // Categories whose routes MUST refuse a member holding none of the capabilities.
 const CAPABILITY_CATEGORIES = new Set(['library-write', 'manage-subs', 'admin']);
 
+// v1.123 T3: the VISIBILITY axis. The classification above binds "a flag-less
+// member gets 403". This binds the ORTHOGONAL question the podcast delete/restore
+// bypass exposed (and, found in the same audit, the trash restore/purge and the
+// book-cover routes): a member WITH the capability but RESTRICTED from the
+// resource must not mutate it. Every CONTENT-addressed mutating route (one that
+// carries a media/book/episode id) is forced into exactly one bucket below; a
+// new one fails the completeness test until classified.
+//
+//   VIS_ENFORCED  - the handler checks visibility (mediaVisibleTo /
+//                   episodeVisibleTo / bookVisibleTo / trashRecordVisibleTo) and
+//                   404s a restricted member. Behavioral proof lives in the
+//                   rbac-{video,podcast}-enforcement suites.
+//   VIS_PERSONAL  - writes ONLY the caller's own per-user state keyed by a
+//                   content id (liked/progress/finished/played). A restricted
+//                   member can at worst write a useless row for an item they
+//                   cannot see - an existence oracle, non-blocking. Video's
+//                   own-state routes ADDITIONALLY enforce; the music/book/podcast
+//                   ones do not, by decision. Listed so a NEW own-state route
+//                   cannot silently skip this axis.
+const VIS_ENFORCED = new Set([
+  'DELETE /api/videos/:id',
+  'POST /api/videos/:id/move',
+  'POST /api/videos/:id/chapters',
+  'POST /api/videos/:id/attribute-channel',
+  'POST /api/videos/:id/view',
+  'POST /api/videos/:id/dimensions',
+  'POST /api/videos/:id/prepare-audio',
+  'POST /api/liked/:id',
+  'DELETE /api/liked/:id',
+  'POST /api/watched/:id',
+  'DELETE /api/watched/:id',
+  'POST /api/feed-hidden/:id',
+  'DELETE /api/feed-hidden/:id',
+  'POST /api/trash/:id/restore',
+  'DELETE /api/trash/:id',
+  'DELETE /api/podcasts/episodes/:id',
+  'POST /api/podcasts/episodes/:id/restore',
+  'POST /api/books/:id/cover',
+  'POST /book/:id/tts/:spineIndex/ensure',
+]);
+const VIS_PERSONAL = new Set([
+  'POST /api/music/liked/:id',
+  'DELETE /api/music/liked/:id',
+  'POST /api/books/:id/finished',
+  'POST /api/books/:id/progress',
+  'POST /api/books/liked/:id',
+  'DELETE /api/books/liked/:id',
+  'POST /api/podcasts/episodes/:id/liked',
+  'DELETE /api/podcasts/episodes/:id/liked',
+  'POST /api/podcasts/episodes/:id/played',
+]);
+
+// Which live mutating routes ADDRESS a restrictable content resource by id (and
+// so must sit in one of the two visibility buckets). Registry ids - pins,
+// subscriptions/shows, users, ytdlp :mediaId - are NOT per-content visibility.
+function isContentAddressed(route) {
+  const p = route.split(' ')[1];
+  if (/\/pins(\/|$)/.test(p)) return false;
+  if (/\/subscriptions(\/|$)/.test(p)) return false;
+  if (/\/users\//.test(p)) return false;
+  if (/:mediaId/.test(p)) return false;
+  if (!/:id(\/|$)/.test(p)) return false;
+  return (
+    /^\/api\/videos\//.test(p)
+    || /^\/api\/(liked|watched|feed-hidden)\//.test(p)
+    || /^\/api\/trash\//.test(p)
+    || /^\/api\/music\/liked\//.test(p)
+    || /^\/api\/books\//.test(p)
+    || /^\/book\//.test(p)
+    || /^\/api\/podcasts\/episodes\//.test(p)
+  );
+}
+
 function liveMutatingRoutes() {
   const out = [];
   for (const layer of (app._router && app._router.stack) || []) {
@@ -229,4 +302,35 @@ test('ENFORCEMENT: every capability-gated route 403s a member holding NO capabil
     if (res.status !== 403) failures.push(`${route} [${cat}] -> ${res.status} (expected 403)`);
   }
   assert.deepStrictEqual(failures, [], `capability-gated routes NOT refusing a flag-less member:\n  ${failures.join('\n  ')}`);
+});
+
+test('VISIBILITY COMPLETENESS: every content-addressed mutating route is classified (a new one fails here)', () => {
+  const content = liveMutatingRoutes().filter(isContentAddressed);
+  const unclassified = content.filter((r) => !VIS_ENFORCED.has(r) && !VIS_PERSONAL.has(r));
+  assert.deepStrictEqual(unclassified, [],
+    `content-addressed mutating route(s) with NO visibility classification - add each to\n`
+    + `VIS_ENFORCED (handler must 404 a restricted member) or VIS_PERSONAL (own-state only):\n  ${unclassified.join('\n  ')}`);
+  // No stale entries for routes that no longer exist.
+  const liveSet = new Set(liveMutatingRoutes());
+  const stale = [...VIS_ENFORCED, ...VIS_PERSONAL].filter((r) => !liveSet.has(r));
+  assert.deepStrictEqual(stale, [], `stale visibility entrie(s) - route no longer exists:\n  ${stale.join('\n  ')}`);
+  // Predicate/bucket coherence: every classified route is actually detected as
+  // content-addressed, so the predicate can't drift away from the buckets and
+  // silently stop forcing new routes into a decision.
+  const contentSet = new Set(content);
+  const notDetected = [...VIS_ENFORCED, ...VIS_PERSONAL].filter((r) => !contentSet.has(r));
+  assert.deepStrictEqual(notDetected, [],
+    `classified route(s) NOT matched by isContentAddressed (predicate drift):\n  ${notDetected.join('\n  ')}`);
+});
+
+test('VISIBILITY REGRESSION GUARD: the routes this wave fixed stay pinned ENFORCED', () => {
+  for (const r of [
+    'DELETE /api/podcasts/episodes/:id',
+    'POST /api/podcasts/episodes/:id/restore',
+    'POST /api/trash/:id/restore',
+    'DELETE /api/trash/:id',
+    'POST /api/books/:id/cover',
+  ]) {
+    assert.ok(VIS_ENFORCED.has(r), `${r} must stay visibility-enforced (v1.123 T3)`);
+  }
 });

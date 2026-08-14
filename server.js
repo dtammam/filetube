@@ -935,6 +935,20 @@ function podcastEpisodeVisibleTo(req, ep) {
 function bookVisibleTo(req, book) {
   return !!book && !visibility.isBlocked(userRestrictionIndex(req), { kind: 'book', filePath: book.filePath, folderName: book.folderName });
 }
+// v1.123 T3 (security): the trash MUTATION routes (restore/purge) must share the
+// trash LIST's visibility posture - a restricted member must not restore or
+// PERMANENTLY purge a trashed item hidden from them. Builds the SAME media
+// descriptor the GET /api/trash filter builds (from the snapshot, or the
+// record's own path fields for a snapshot-less orphan). A missing record is
+// "visible" so the route's own 404 path reports it neutrally (no oracle).
+function trashRecordVisibleTo(req, rec) {
+  return !rec || !visibility.isBlocked(userRestrictionIndex(req), {
+    kind: 'media',
+    filePath: (rec.item && rec.item.filePath) || rec.originalPath,
+    folderName: rec.item && rec.item.folderName,
+    rootFolder: rec.rootFolder || (rec.item && rec.item.rootFolder),
+  });
+}
 // v1.80 RBAC (security-gate W1): a restricted member must not delete / move /
 // mutate an item they cannot even SEE. Returns true (and 404s) when the id's
 // media item is restricted for req.user. Admin's empty index never restricts.
@@ -7262,6 +7276,10 @@ app.post(
     const ns = booksStore.readBooks(getCachedDatabase());
     const item = ns.items[req.params.id];
     if (!item) return res.status(404).json({ error: 'Book not found' });
+    // v1.123 T3 (security): visibility axis - this writes a SHARED cover for the
+    // book, so a member restricted from it must not set it. Symmetric with the
+    // GET cover route's bookVisibleTo 404. Neutral (same 404 as a missing id).
+    if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' });
     if (item.hasCover === true) return res.status(200).json({ applied: false, reason: 'already has a cover' });
     const mime = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
     const sniff = BOOK_COVER_TYPES[mime];
@@ -11503,6 +11521,12 @@ app.get('/api/trash', (req, res) => {
 app.post('/api/trash/:id/restore', async (req, res) => {
   if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (refuseIfReadOnlyMedia(res)) return;
+  // v1.123 T3 (security): visibility axis. requireModifyLibrary gates the
+  // capability; a member holding it but RESTRICTED from the item's folder must
+  // still not re-materialize it. 404 (neutral - same as a missing id below).
+  if (!trashRecordVisibleTo(req, (getCachedDatabase().trash || {})[req.params.id])) {
+    return res.status(404).json({ error: 'Trash item not found' });
+  }
   const result = await restoreTrashItem({ loadDatabase, updateDatabase, getMediaId }, req.params.id);
   if (!result.ok) {
     return res.status(result.status).json({ error: result.error, ...(result.code ? { code: result.code } : {}) });
@@ -11513,6 +11537,12 @@ app.post('/api/trash/:id/restore', async (req, res) => {
 app.delete('/api/trash/:id', async (req, res) => {
   if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (refuseIfReadOnlyMedia(res)) return;
+  // v1.123 T3 (security): visibility axis - purge PERMANENTLY destroys the file,
+  // so a capable-but-restricted member must never reach it for a hidden item.
+  // 404 (neutral - same as a missing id below).
+  if (!trashRecordVisibleTo(req, (getCachedDatabase().trash || {})[req.params.id])) {
+    return res.status(404).json({ error: 'Trash item not found' });
+  }
   const result = await purgeTrashItem({ loadDatabase, updateDatabase }, req.params.id);
   if (!result.ok) {
     return res.status(result.status).json({ error: result.error, ...(result.code ? { code: result.code } : {}) });
