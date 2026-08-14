@@ -27,7 +27,8 @@ test('armControlsAutoHide is scoped to faux fullscreen AND never fires while pau
   const m = /function armControlsAutoHide\(\) \{([\s\S]*?)\n {2}\}/.exec(SRC);
   assert.ok(m, 'armControlsAutoHide exists');
   const body = m[1];
-  assert.match(body, /if \(!inImmersiveMode\(\)\) return;/, 'only arms in faux fullscreen');
+  assert.match(body, /if \(!inImmersiveMode\(\)\) return;/, 'only arms in an immersive overlay');
+  assert.match(body, /if \(!isMobileFormFactor\(\)\) return;/, 'v1.120: auto-hide is a touch convention -- MOBILE only (desktop keeps its bar)');
   assert.match(body, /if \(!mediaPlayer \|\| mediaPlayer\.paused \|\| mediaPlayer\.ended\) return;/, 'never arms while paused/ended (bar stays up)');
   // The fire callback RE-checks the same guards (a pause/exit during the window
   // cancels the hide) AND never hides mid-scrub (a seek drag never pauses, so
@@ -56,12 +57,24 @@ test('playback events drive the auto-hide: play arms, pause/ended reveal+hold', 
   assert.match(SRC, /mediaPlayer\.addEventListener\('ended', function \(\) \{ clearControlsAutoHide\(\); showControlsBar\(\); \}\);/, 'ended reveals + holds');
 });
 
-test('any tap on the video, the bar, OR the audio art reveals + re-arms (additive/passive; skip-gesture untouched)', () => {
-  // Reveal listeners on ALL THREE surfaces, gated on an immersive overlay, passive.
-  // v1.120: #audio-bg-art is the audio tap surface (#media-player is
-  // pointer-events:none in audio-mode), so the expanded audio view reveals too.
-  assert.match(SRC, /\['touchstart', 'pointerdown'\]\.forEach\(function \(evt\) \{[\s\S]*?mediaPlayer\.addEventListener\(evt, function \(\) \{ if \(inImmersiveMode\(\)\) revealControlsAndReArm\(\); \}, \{ passive: true \}\);[\s\S]*?playerControls\.addEventListener\(evt, function \(\) \{ if \(inImmersiveMode\(\)\) revealControlsAndReArm\(\); \}, \{ passive: true \}\);[\s\S]*?audioBgArt\.addEventListener\(evt, function \(\) \{ if \(inImmersiveMode\(\)\) revealControlsAndReArm\(\); \}, \{ passive: true \}\);/,
-    'touchstart+pointerdown on video, bar AND audio art reveal, passive, immersive-gated');
+test('a tap on the video or the bar reveals + re-arms (additive/passive; skip-gesture untouched)', () => {
+  // Reveal listeners on the video + bar, gated on an immersive overlay, passive.
+  const loop = /\['touchstart', 'pointerdown'\]\.forEach\(function \(evt\) \{([\s\S]*?)\n {4}\}\);/.exec(SRC);
+  assert.ok(loop, 'the reveal-listener loop exists');
+  assert.match(loop[1], /mediaPlayer\.addEventListener\(evt, function \(\) \{ if \(inImmersiveMode\(\)\) revealControlsAndReArm\(\); \}, \{ passive: true \}\);/, 'video reveal');
+  assert.match(loop[1], /playerControls\.addEventListener\(evt, function \(\) \{ if \(inImmersiveMode\(\)\) revealControlsAndReArm\(\); \}, \{ passive: true \}\);/, 'bar reveal');
+  // v1.120 gate fix: the audio cover art is NOT in this blind-reveal loop -- its
+  // own click handler reveals-without-toggling (a blind reveal here would also
+  // toggle play/pause on the same tap).
+  assert.ok(!/audioBgArt\.addEventListener\(evt,/.test(loop[1]), 'audio art must NOT be a blind-reveal surface');
+});
+
+test('v1.120: an audio cover-art tap reveals a HIDDEN bar without toggling playback (toggles only when the bar is up)', () => {
+  const m = /audioBgArt\.addEventListener\('click', function \(e\) \{([\s\S]*?)\n {6}\}\);/.exec(SRC);
+  assert.ok(m, 'the audio art click handler exists');
+  // The reveal-if-hidden branch returns BEFORE the play/pause toggle.
+  assert.match(m[1], /if \(inImmersiveMode\(\) && host && host\.classList\.contains\('controls-autohidden'\)\) \{\s*revealControlsAndReArm\(\);\s*return;\s*\}[\s\S]*?scheduleArtSingleTap\(toggleArtPlayPause\)/,
+    'reveal-if-hidden must precede (and short-circuit) the play/pause toggle');
 });
 
 test('inImmersiveMode covers BOTH video faux fullscreen AND the audio expanded view', () => {

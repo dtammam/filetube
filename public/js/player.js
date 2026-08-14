@@ -1776,6 +1776,11 @@ if (typeof module !== 'undefined' && module.exports) {
   function armControlsAutoHide() {
     clearControlsAutoHide();
     if (!inImmersiveMode()) return;
+    // v1.120 gate fix (adversarial WARNING): auto-hide is a TOUCH convention --
+    // mobile only. Desktop (incl. the desktop audio-expand overlay) keeps its bar
+    // up, matching desktop-player expectations and sidestepping the click-only
+    // reveal there.
+    if (!isMobileFormFactor()) return;
     if (!mediaPlayer || mediaPlayer.paused || mediaPlayer.ended) return;
     controlsAutoHideTimer = setTimeout(function () {
       controlsAutoHideTimer = null;
@@ -4978,12 +4983,13 @@ if (typeof module !== 'undefined' && module.exports) {
     // long scrub; see armControlsAutoHide.) Additive + passive: the skip/hold
     // gesture layer is untouched (a single tap just reveals; it triggers no
     // skip). No-op outside an immersive overlay.
-    // v1.120: `#audio-bg-art` is the audio tap surface (#media-player is
-    // pointer-events:none in audio-mode), so the expanded audio view reveals too.
+    // (v1.120: the audio cover-art tap surface #audio-bg-art is deliberately NOT
+    // wired here -- its own click handler reveals a HIDDEN bar WITHOUT toggling
+    // play/pause, then toggles only when the bar is already up. A blind reveal
+    // here would let that same tap ALSO toggle playback -- a reveal that pauses.)
     ['touchstart', 'pointerdown'].forEach(function (evt) {
       mediaPlayer.addEventListener(evt, function () { if (inImmersiveMode()) revealControlsAndReArm(); }, { passive: true });
       if (playerControls) playerControls.addEventListener(evt, function () { if (inImmersiveMode()) revealControlsAndReArm(); }, { passive: true });
-      if (audioBgArt) audioBgArt.addEventListener(evt, function () { if (inImmersiveMode()) revealControlsAndReArm(); }, { passive: true });
     });
     mediaPlayer.addEventListener('ended', function () { stopFillLoop(); updateSeekVisual(); });
     // v1.109: the seek-bar segment notches depend on total duration, so (re)build
@@ -6002,6 +6008,14 @@ if (typeof module !== 'undefined' && module.exports) {
         if (state !== STATE_FULL) return;
         e.stopPropagation();
         if (!mediaPlayer) return;
+        // v1.120 gate fix: in the expanded audio view, a tap on the art while the
+        // auto-hidden bar is DOWN reveals it WITHOUT toggling playback (the native
+        // "first tap wakes the controls" convention) -- so you can bring the
+        // scrubber back without pausing. A tap while the bar is UP toggles as before.
+        if (inImmersiveMode() && host && host.classList.contains('controls-autohidden')) {
+          revealControlsAndReArm();
+          return;
+        }
         if (pendingArtTapTimer) {
           cancelPendingArtTap();
           return;

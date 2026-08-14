@@ -210,6 +210,10 @@ test('wiring: onOrientationChange has an AUDIO branch that expands/collapses on 
   assert.match(body, /currentData && currentData\.type === 'audio'/, 'an audio-typed branch exists');
   assert.match(body, /shouldEnterFauxOnRotate\(\{[\s\S]*?setAudioExpanded\(true\)/, 'rotate-to-landscape expands the audio view');
   assert.match(body, /shouldExitFauxOnRotate\(\{[\s\S]*?setAudioExpanded\(false\)/, 'rotate-back collapses it');
+  // v1.120 (gate SUGGESTION): the audio branch must RETURN, never fall through to
+  // shouldAutoFullscreenOnRotate -> enterFullscreen() (which on iOS would leak a
+  // {once:true} loadedmetadata -> webkitEnterFullscreen onto the next load).
+  assert.match(body, /setAudioExpanded\(false\);\s*\n\s*\}\s*\n\s*return;/, 'the audio branch returns (no fall-through to the native path)');
   // The audio collapse is a pure class toggle -- it must NOT use the native
   // fullscreen exit (audio has none, and the invariant is that rotate never
   // programmatically exits native).
