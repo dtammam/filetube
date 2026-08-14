@@ -7232,7 +7232,11 @@ app.get('/bookcover/:id', (req, res) => {
       // Covers are immutable per id (a changed file gets a new path-hash id
       // only if the path changes; a re-extracted cover overwrites in place,
       // so cap the cache at a day rather than immutable).
-      res.setHeader('Cache-Control', 'public, max-age=86400');
+      // v1.123 T4 (security): `private`, not `public` - this route 404s per-user
+      // via bookVisibleTo, so a SHARED cache keyed on the URL alone could serve
+      // one user's (or a restricted book's) cover to another. Matches the
+      // /thumbnail posture. The user's OWN browser still caches it.
+      res.setHeader('Cache-Control', 'private, max-age=86400');
       return res.sendFile(coverPath);
     }
   }
@@ -8154,13 +8158,15 @@ app.get('/albumart/:id', (req, res) => {
     for (const ext of ['.jpg', '.png']) {
       const p = path.join(ALBUMART_DIR, `${key}${ext}`);
       if (fs.existsSync(p)) {
-        res.set('Cache-Control', 'public, max-age=86400');
+        // v1.123 T4 (security): `private` - albumart 404s per-user via
+        // trackVisibleTo, so a shared cache must not store/replay it cross-user.
+        res.set('Cache-Control', 'private, max-age=86400');
         return res.sendFile(p);
       }
     }
   }
   res.set('Content-Type', 'image/svg+xml');
-  res.set('Cache-Control', 'public, max-age=3600');
+  res.set('Cache-Control', 'private, max-age=3600'); // v1.123 T4: keep the axis uniform behind the auth wall
   res.send(musicArtPlaceholderSvg(track));
 });
 
@@ -8534,6 +8540,11 @@ app.get('/api/admin/backup', async (req, res) => {
       return false; // read-only pass — never save
     });
     res.setHeader('Content-Disposition', contentDispositionAttachment(`filetube-backup-${new Date().toISOString().slice(0, 10)}.json`));
+    // v1.123 T4 (security): the bundle carries password hashes, the full account
+    // set and every per-user state - it must never sit in ANY cache (shared or
+    // the browser's own disk). `no-store` is stricter than the `private` used on
+    // art: art may live in the user's own cache; this must not persist anywhere.
+    res.setHeader('Cache-Control', 'no-store');
     res.json(bundle);
   } catch (err) {
     console.error('Error building backup bundle:', err);
