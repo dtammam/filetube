@@ -2,6 +2,14 @@
 
 - Owner: main session (lean mode)
 - Opened: 2026-08-14
+- **CLOSED: 2026-08-14 - shipped as v1.121.0. Slim gate (adversarial) APPROVE
+  after one fix round: 3 WARNINGs, all "the kill-switch's plumbing was deletable
+  with the suite green" (KNOWN_KEYS round-trip unbound; setup.js populate+listener
+  deletable; gate signals hardcodable - mobile the one with no backstop) + 3
+  SUGGESTIONs (digits bound, stale titles, diagnostics honesty). All mutants
+  redden post-fix; the battle-won handoff machinery verified BYTE-IDENTICAL to
+  main. Dual-Node 6862/6862. DEVICE PASS PENDING (the blip shrink + the
+  ?debugLifecycle bgAudio:presync records are the arbiters).**
 - Target: v1.121.0
 - Device pass: PENDING (Dean) - the blip size is only measurable on his iPhone.
 - NOT data-mutating (player lifecycle + a settings key + manifest). Slim gate

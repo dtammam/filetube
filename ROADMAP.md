@@ -80,6 +80,37 @@
 
 ## Shipped
 
+### v1.121.0 - "Instant background-audio handoff" (the lock-blip tuning) + manifest identity (2026-08-14)
+
+Dean's on-device report: audio background play is gapless-perfect; VIDEO
+background audio works (the v1.27 hidden-audio handoff) but blips ~1/4s at lock.
+Root cause: preExtractAudio buffers the sidecar eagerly but FROM ZERO - the
+handoff's seek to minute-N lands unbuffered and fetches at lock-time.
+
+- **New experimental setting: "Instant background-audio handoff"** (default OFF,
+  Settings -> next to the other two background-audio levers - Dean's live
+  kill-switch). When ON: while a mobile video plays, the hidden background-audio
+  track quietly keeps pace with the live position (a nudge at most every 10s,
+  plus immediately after a scrub, only when drifted >8s), so the lock-time
+  switch-over lands on already-buffered audio. The handoff machinery itself is
+  byte-untouched; the sync is structurally impossible while the sidecar is live
+  or handing off.
+- **Manifest identity** (`id` + `scope`): the only web-side signal iOS gets for
+  its Now Playing session->app attribution - the disclosed LOW-odds dice roll on
+  the Control Center tap opening a sibling-domain PWA (an iOS-level
+  misattribution, confirmed unfixable website-side; needs a home-screen
+  delete+re-add to take). Workaround if it persists: the app switcher.
+
+Gate: slim gate (adversarial). One fix round - all three WARNINGs were "the
+kill-switch's own plumbing was deletable with the suite green" (unsavable
+toggle, dead populate/save wiring, hardcodable gate signals); every mutant now
+reds. Dual-Node full suite **6862/6862** on v22.23.1 and v24.14.0.
+
+**DEVICE PASS PENDING (Dean):** toggle ON -> long video -> seek to ~minute 20 ->
+lock: did the blip shrink? (?debugLifecycle=1 shows `bgAudio:presync` records if
+the nudges are firing.) Plus one final delete+re-add of the home-screen icon for
+the manifest dice roll.
+
 ### v1.120.0 - audio gets the full fullscreen experience (rotate-to-expand + auto-hide) (2026-08-14)
 
 Dean: apply the v1.118/v1.119 mobile-fullscreen experience to AUDIO too. Audio has
