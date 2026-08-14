@@ -36,17 +36,24 @@ jobs:
       - name: Scan working tree for secrets
         run: ./gitleaks dir . --no-banner --redact --config .gitleaks.toml --exit-code 1
 
-  # Single job's worth of lint+test, run across the Node versions the app is
-  # verified on (see Dockerfile + the dual-Node release ceremony).
+  # v1.123 T5: lint + token-ratchet + suite across BOTH Node versions the app is
+  # verified on. Was a single Node-22 job whose comment claimed "the only Node
+  # that matters" while the release ceremony (CLAUDE.md) verifies dual-Node 22 +
+  # 24 - the matrix makes CI match the ceremony it contradicted. Node 24's
+  # reporter prints `ℹ`, not `#` (memory: an empty grep is not green).
   ci:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['22', '24']
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up Node.js
+      - name: Set up Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
@@ -85,6 +92,8 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-output
+          # Matrix-scoped name: upload-artifact@v4 errors on a duplicate name, so
+          # the two Node legs must not both upload `test-output`.
+          name: test-output-node${{ matrix.node-version }}
           path: test-output.txt
           retention-days: 14

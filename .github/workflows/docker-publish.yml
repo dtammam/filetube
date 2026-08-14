@@ -14,7 +14,61 @@ on:
     tags: ['v*.*.*']
 
 jobs:
+  # v1.123 T5: publish is GATED on qualification of the EXACT ref being
+  # published. Before this, docker-publish fired on any push to main / any v* tag
+  # with ZERO dependency on CI - a red suite still shipped `latest`. `qualify`
+  # re-runs the full lint + token-ratchet + dual-Node suite on this ref, and a
+  # secret scan (a TAG push does NOT trigger ci.yml, so the released tree would
+  # otherwise never be scanned); `publish` `needs` it, so a red qualify blocks
+  # the push. This is intentionally self-contained (not a cross-workflow
+  # dependency) so the gate travels with the artifact.
+  qualify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        node-version: ['22', '24']
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Token ratchet
+        run: node scripts/css-token-lint.js --enforce
+      - name: Test
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test-output.txt
+
+  # A pinned secret scan of the ref being published (mirrors ci.yml's job; runs
+  # here too because tag pushes skip ci.yml). Publish blocks on this as well.
+  secret-scan:
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: 8.21.2
+      GITLEAKS_SHA256: 5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install gitleaks (pinned + checksum-verified)
+        run: |
+          set -euo pipefail
+          curl -sSL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+      - name: Scan working tree for secrets
+        run: ./gitleaks dir . --no-banner --redact --config .gitleaks.toml --exit-code 1
+
   publish:
+    needs: [qualify, secret-scan]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
