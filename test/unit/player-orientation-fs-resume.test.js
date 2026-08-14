@@ -166,10 +166,24 @@ test('wiring: onFsChange Fix A drops an armed faux ONLY on a genuine (non-handof
   const body = stripLineComments(onFsChangeMatch[1]);
   // Clears faux via setCssFullscreen(false) when css-fullscreen is armed...
   assert.match(body, /css-fullscreen[\s\S]*?setCssFullscreen\(false/, 'Fix A must clear an armed faux on a genuine native exit');
-  // ...but ONLY well after the intercept armed it (the handoff-vs-user-exit guard),
-  // and it must NOT itself call a native exit (no pause).
-  assert.match(body, /Date\.now\(\) - fauxHandoffAt\) > \d+/, 'the handoff-vs-user-exit time guard must gate the faux clear');
+  // ...gated on the intercept having ARMED faux (fauxHandoffAt truthy -- SUGGESTION
+  // 2 belt: a button-faux never stamps it, so it is never spuriously dropped)...
+  assert.match(body, /if \(fauxHandoffAt &&/, 'Fix A must require the intercept to have armed faux (fauxHandoffAt truthy)');
+  // ...and ONLY well after the arming. `> \d{4}`: a >=4-digit ms threshold, so a
+  // laxity mutation to `> 0`/`> 250` (which would clear on the intercept's OWN
+  // ~250ms bounce-exit and break rotate-to-our-fullscreen) is caught, while the
+  // exact device-tuned value stays free to move within 1000-9999ms.
+  assert.match(body, /Date\.now\(\) - fauxHandoffAt\) > \d{4}/, 'the handoff-vs-user-exit time guard must be a substantial (>=4-digit ms) threshold');
   assert.ok(!/webkitExitFullscreen/.test(body), 'onFsChange must not call webkitExitFullscreen');
+});
+
+test('wiring: setCssFullscreen RESETS the handoff stamp on every faux EXIT (SUGGESTION 2 belt)', () => {
+  // A faux exited by ANY path (rotate-back, button, teardown) ends the intercept
+  // handoff window, so a later button-faux can never inherit a stale timestamp and
+  // be spuriously dropped by Fix A. Bound against setCssFullscreen's body.
+  const m = /function setCssFullscreen\(on, opts\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(m, "expected setCssFullscreen's body");
+  assert.match(stripLineComments(m[1]), /if \(!on\) fauxHandoffAt = 0;/, 'every faux OFF must reset fauxHandoffAt');
 });
 
 test('CSS: phone landscape non-fullscreen caps the media element height (picture + strip + header fit the viewport)', () => {

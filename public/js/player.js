@@ -1720,9 +1720,21 @@ if (typeof module !== 'undefined' && module.exports) {
   // scroll placement must win (gate C1 - see resolveCssFsScrollPlan's
   // header for the measured watch->watch clobber the state-only gate had).
   var cssFsSavedScrollY = null;
+  // v1.118 (Dean): timestamp of when the webkitbeginfullscreen intercept last
+  // ARMED faux from an iOS auto-native event -- so onFsChange (Fix A) can tell
+  // that instantaneous handoff from a genuine, much-later user native exit. 0 =
+  // "no intercept arming in effect". Hoisted here (beside cssFsSavedScrollY, its
+  // sibling in the faux lifecycle) so setCssFullscreen can RESET it on every faux
+  // exit -- a faux entered by the BUTTON (which never stamps it) then can't
+  // inherit a stale timestamp and be spuriously dropped by Fix A (slim-gate
+  // SUGGESTION 2). Set by the intercept, read+cleared by Fix A.
+  var fauxHandoffAt = 0;
   function setCssFullscreen(on, opts) {
     var wasOn = !!(host && host.classList.contains('css-fullscreen'));
     if (host) host.classList.toggle('css-fullscreen', !!on);
+    // v1.118 SUGGESTION 2: ANY faux exit ends the intercept-handoff window, so a
+    // subsequent (e.g. button) faux can never be read as a stale handoff.
+    if (!on) fauxHandoffAt = 0;
     if (typeof document !== 'undefined' && document.body) {
       document.body.classList.toggle('ft-css-fullscreen', !!on);
     }
@@ -5808,10 +5820,6 @@ if (typeof module !== 'undefined' && module.exports) {
       };
       document.addEventListener('click', closeSettingsMenuOnOutside);
       document.addEventListener('pointerdown', closeSettingsMenuOnOutside);
-      // v1.118 (Dean): when the intercept below armed faux from an iOS
-      // auto-native-fullscreen event -- so onFsChange (Fix A) can tell that
-      // instantaneous handoff from a genuine, much-later user exit. 0 = never.
-      var fauxHandoffAt = 0;
       // v1.34.5 (Dean round 5): iOS AUTO-ENTERS the native fullscreen player
       // when a playing inline video rotates to landscape (a Safari behavior,
       // playsinline notwithstanding) -- in CUSTOM mode that hijacks the
@@ -5982,7 +5990,8 @@ if (typeof module !== 'undefined' && module.exports) {
       // So only drop faux when this exit came well after the arming: a real
       // Done/X/swipe seconds later, never the instantaneous handoff. Pure CSS, so
       // no iOS pause. Custom-video only (native-controls keeps Apple's player).
-      if (host && host.classList.contains('css-fullscreen') &&
+      if (fauxHandoffAt &&
+          host && host.classList.contains('css-fullscreen') &&
           isMobileFormFactor() && !inNativeControlsMode() &&
           currentData && currentData.type !== 'audio' &&
           (Date.now() - fauxHandoffAt) > 1500) {
