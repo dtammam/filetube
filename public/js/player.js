@@ -3894,7 +3894,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // v1.34 T2 (Dean, desktop CC sync): keep the caption <track> aligned with
   // the LIVE-transcode timeline. The ffmpeg pipe restarts its clock at 0 on
   // every `?t=` reload while the sidecar's cue times are absolute -- so
-  // after any live seek, native cue matching would drift by exactly
+  // after any live seek, cue matching would drift by exactly
   // `liveOffset` seconds. The server shifts cues on demand (`?offset=`,
   // lib/subtitles.js shiftVttCues); this re-points the track at the matching
   // document and re-asserts the user's CC on/off choice across the src swap.
@@ -5534,12 +5534,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // once) since `mediaPlayer.load()` (called by `teardownMediaState()` on
     // every genuine new load) can invalidate a previously-held reference.
     //
-    // Feature B (v1.26.1): AUDIO gets its OWN branch here -- the existing
-    // 'showing'/'hidden' toggle below is VIDEO-only and completely
-    // untouched. For audio, native cue rendering never shows on iOS (the
-    // <video> is transparent/pointer-events:none over #audio-bg-art in
-    // audio mode, see that class's own comment in style.css), so the track
-    // is NEVER set to 'showing' -- it toggles between 'disabled' (CC off;
+    // Feature B (v1.26.1) + v1.124 F1: BOTH audio and video captions render
+    // through the CUSTOM overlay now -- this handler is a SINGLE unified branch
+    // (no media-type split, no `'showing'` toggle anywhere). Video used to use
+    // the browser's native `<track>` paint (`mode='showing'`), which the custom
+    // control bar occluded in fullscreen; F1 retired that. For BOTH types the
+    // track is NEVER set to 'showing' -- it toggles between 'disabled' (CC off;
     // matches teardownMediaState()'s reset default, no cuechange events)
     // and 'hidden' (CC on; cuechange fires, but only the CUSTOM overlay --
     // wired once via the 'cuechange' listener just below -- ever renders
@@ -5569,11 +5569,11 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // Feature B (v1.26.1) / v1.26.4 fix (frozen audio-CC overlay, on-device
     // iOS bug): the overlay's `cuechange` data source. `cuechange` fires for
-    // BOTH 'hidden' and 'showing' track modes (per the WebVTT spec), so
-    // VIDEO's own 'hidden' <-> 'showing' toggle above would ALSO reach this
-    // handler -- the `currentData.type === 'audio'` guard is what keeps
-    // VIDEO mode completely untouched (native rendering only, exactly as
-    // before this feature).
+    // 'hidden' track mode (per the WebVTT spec), which is the mode BOTH audio
+    // and video captions use when CC is on (v1.124 F1). The handler is gated on
+    // `audioCaptionsOn` (the overlay's on/off flag) -- when CC is OFF the mode is
+    // 'disabled' and no cuechange fires anyway. There is no longer a native
+    // video `'showing'` path (F1 retired it); both media types render here.
     //
     // ROOT CAUSE (v1.26.4, high confidence, Dean's iPhone): iOS WebKit does
     // not reliably fire `cuechange` on a TextTrack whose `mode` is 'hidden'

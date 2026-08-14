@@ -81,24 +81,26 @@ Mapped against the live tree: DOM in `public/watch.html`, behavior in
   bottom-offset rule so the overlay clears the fullscreen bar height. Unifies
   audio+video caption rendering; the pure `buildCaptionOverlayText` stays
   node-tested.
-- **F2 - auto-hide the controls bar on the desktop inline player (iOS/YouTube
+- **F2 - auto-hide the controls bar on DESKTOP in the immersive views (iOS/YouTube
   style).** The machinery EXISTS (`armControlsAutoHide`/`clearControlsAutoHide`/
   `showControlsBar`/`revealControlsAndReArm`, the `controls-autohidden` host class,
   `player.js:~1765-1829`) but is gated to immersive (`inImmersiveMode()`) AND
-  touch-only (`!isMobileFormFactor()` bail at `~:1811`), and the only CSS rule for
-  the class targets the immersive selectors (`style.css:6356`) - so it is inert on
-  the normal inline desktop player.
-  FIX: allow the DESKTOP inline case (arm on play when not immersive AND not mobile;
-  never hide while paused/ended/scrubbing - keep those existing guards), add a
-  `mousemove` reveal-and-re-arm on the host for desktop (today only touch reveals,
-  and host mousemove only reveals the skip buttons), and add a
-  `#player-wrapper.controls-autohidden .player-controls` opacity/pointer-events rule
-  for the non-immersive context + a base `transition` on `.player-controls`. Keep
-  MOBILE behavior byte-identical (the `.native-controls` bar is `display:none`
-  already; do not touch the immersive/mobile path). Hide delay ~3000ms (reuse the
-  existing constant). When captions are showing (F1), the overlay is above the bar,
-  so hiding the bar must NOT hide captions - verify the overlay is a separate layer
-  (it is; different element).
+  touch-only (`!isMobileFormFactor()` bail) - so it never runs on desktop.
+  IMPORTANT SCOPING (decided during implementation, contra an earlier draft of
+  this line): auto-hide applies ONLY to the IMMERSIVE views (video faux-fullscreen
+  + the audio-expanded overlay), where the bar OVERLAYS the picture. The desktop
+  INLINE bar is a reserved 40px strip BELOW the video, so fading it there would
+  leave an empty band - inline must STAY always-visible. So the fix keeps the
+  `!inImmersiveMode()` early return (inline untouched, no new non-immersive CSS)
+  and only lifts the `!isMobileFormFactor()` bail so DESKTOP immersive auto-hides.
+  FIX: remove the mobile-only bail (keep the paused/ended/scrubbing guards + the
+  re-check on fire); add a host `mousemove` reveal-and-re-arm guarded by
+  `inImmersiveMode()` (desktop has no touch, so the existing touchstart/pointerdown
+  reveal is not enough); add `cursor:none` on `.css-fullscreen.controls-autohidden`
+  (YouTube convention). The existing `controls-autohidden` immersive CSS rule
+  already covers desktop (same selectors). MOBILE behavior is byte-identical (the
+  removed bail only affected desktop). Hide delay ~3000ms (existing constant).
+  Captions (F1) are a separate z-index-9 layer, so hiding the bar never hides them.
 
 ## Machine-derived predictions (re-verified at every commit)
 
