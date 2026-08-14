@@ -10,6 +10,10 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-test-'));
 const { test } = require('node:test');
 const assert = require('node:assert');
 const main = require('../../public/js/main.js');
+// v1.122: buildVideoRowCardHtml now routes its artist line through the shared
+// resolveChannelName (a browser global from common.js -- the two files share
+// window scope in the shells). Bridge it for the Node harness.
+global.resolveChannelName = require('../../public/js/common.js').resolveChannelName;
 
 // v1.73 (Dean ruling 1): the two per-kind section builders retired; the
 // MERGED builder interleaves tracks + episodes by recency, capped at
@@ -101,7 +105,7 @@ test('v1.72: buildVideoHomeSectionHtml renders the shared chassis with media thu
   assert.match(html, /music-home-row/, 'the shared chassis');
   assert.match(html, /\/thumbnail\/v1/, 'the media thumb route');
   assert.match(html, /Movie &lt;Night&gt;/, 'title escaped');
-  assert.match(html, /Films &amp; Stuff/, 'folder byline escaped');
+  assert.match(html, /Films &amp; Stuff/, 'folder byline escaped (nameless item -> resolver falls back to folderName, v1.122)');
   assert.ok(!html.includes('books-row-seeall'), 'no see-all link');
 });
 

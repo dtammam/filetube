@@ -43,6 +43,27 @@ test('resolveRootHeaderLabel: empty/absent items keep the fallback; nameless ite
   // cards use).
   const nameless = [{ folderName: 'nestalgiamusic' }, { folderName: 'nestalgiamusic' }];
   assert.strictEqual(resolveRootHeaderLabel(nameless, {}, FALLBACK), 'nestalgiamusic');
+  // A PARTIALLY-healed folder (some items resolve to the channel, some fall
+  // back to the folder) = TWO distinct names -> the folder label. The header
+  // never disagrees with the page-0 cards (the fallback-named cards on that
+  // page also show the folder) -- the honest contract, gate W3.
+  const partial = [
+    { channelName: 'NESTALGIA', folderName: 'nestalgiamusic' },
+    { folderName: 'nestalgiamusic' },
+  ];
+  assert.strictEqual(resolveRootHeaderLabel(partial, {}, FALLBACK), FALLBACK);
+});
+
+test('resolveRootHeaderLabel: defensive branches bind (gate S1)', () => {
+  // A null array element is skipped, never thrown on (resolveChannelName would
+  // read properties off it).
+  assert.strictEqual(resolveRootHeaderLabel([null, { channelName: 'X', folderName: 'f' }], {}, FALLBACK), 'X');
+  // A whitespace-only unified label (e.g. a whitespace folderSettings name)
+  // falls back rather than titling the view with blank space.
+  assert.strictEqual(
+    resolveRootHeaderLabel([{ rootFolder: '/r', folderName: '' }], { '/r': { name: '   ' } }, FALLBACK),
+    FALLBACK
+  );
 });
 
 test('resolveRootHeaderLabel: routes through resolveChannelName (an @handle strips, matching the cards)', () => {
@@ -69,9 +90,18 @@ test('main.js: fetchLibraryPage0 retitles a ?root= view via resolveRootHeaderLab
   assert.match(m[1], /if \(rootFilter && videosHeader\) \{[\s\S]*?resolveRootHeaderLabel\(currentItems, folderSettings, rootLabel\)/,
     'root views retitle from page-0 items; non-root views are untouched by the gate');
   // The fallback is DERIVED (folderSettings name || basename), never read back
-  // from the DOM (the count badge renders INSIDE the header).
+  // from the DOM. (Gate W1 corrected the mechanism note: the count badge is the
+  // header's NEXT SIBLING -- renderItemCountBadge inserts via
+  // headerEl.nextSibling -- so the retitle's textContent set cannot touch it;
+  // no badge re-render is needed or performed here.)
   assert.match(m[1], /const rootLabel = \(folderSettings\[rootFilter\] && folderSettings\[rootFilter\]\.name\) \|\| rootBase;/,
     'derived fallback, not videosHeader.textContent');
-  // The badge is re-rendered after the retitle (textContent wipes it).
-  assert.match(m[1], /resolveRootHeaderLabel[\s\S]*?updateItemCountBadge\(\);/, 'badge re-render follows the retitle');
+});
+
+test('main.js: the classic "Continue watching" row card renders resolveChannelName, never raw folderName (gate W2 -- the THIRD missed surface)', () => {
+  const m = /function buildVideoRowCardHtml\(item\) \{([\s\S]*?)\n\}/.exec(MAIN_JS);
+  assert.ok(m, 'buildVideoRowCardHtml exists');
+  assert.match(m[1], /music-row-artist">\$\{escapeBookRowHtml\(resolveChannelName\(item\)\)\}/,
+    'the row artist line routes through the shared resolver (a healed item shows its channel name)');
+  assert.ok(!/escapeBookRowHtml\(item\.folderName/.test(m[1]), 'the raw folderName render must not return');
 });
