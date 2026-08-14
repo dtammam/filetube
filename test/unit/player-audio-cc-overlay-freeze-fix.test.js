@@ -102,12 +102,14 @@ test('behavioral: the idempotent guard expression skips a repeated identical tex
 // Part 2: dual cuechange binding (element AND TextTrack)
 // ---------------------------------------------------------------------------
 
-test('a shared handleCcCueChange handler exists, gated on currentData.type === "audio", reading ccTrack.track FRESH', () => {
+test('a shared handleCcCueChange handler exists, gated on audioCaptionsOn (overlay captions, audio+video since v1.124 F1), reading ccTrack.track FRESH', () => {
   assert.match(PLAYER_JS, /function handleCcCueChange\(\) \{[\s\S]*?\n {4}\}/);
   const fnMatch = /function handleCcCueChange\(\) \{([\s\S]*?)\n {4}\}/.exec(PLAYER_JS);
   assert.ok(fnMatch, 'expected to find handleCcCueChange()\'s source body');
   const body = fnMatch[1];
-  assert.match(body, /if \(!currentData \|\| currentData\.type !== 'audio'\) return;/);
+  // v1.124 F1: the overlay now covers BOTH audio and video, so the gate is the
+  // overlay on/off flag (audioCaptionsOn), not the media type.
+  assert.match(body, /if \(!currentData \|\| !audioCaptionsOn\) return;/);
   assert.match(body, /renderActiveCueOverlay\(ccTrack\.track\)/, 'expected a fresh (uncached) read of ccTrack.track');
 });
 
@@ -141,31 +143,43 @@ test('wireHostListeners() exists and is isolated for inspection', () => {
   assert.ok(wireHostListenersMatch, 'expected to find wireHostListeners()\'s source body in player.js');
 });
 
-test('a timeupdate fallback is wired on mediaPlayer, gated on audioCaptionsOn AND currentData.type === "audio"', () => {
+test('a timeupdate fallback is wired on mediaPlayer, gated on audioCaptionsOn (audio+video overlay captions since v1.124 F1)', () => {
   const body = wireHostListenersMatch[1];
-  const tuMatch = /mediaPlayer\.addEventListener\('timeupdate', function \(\) \{\s*\n\s*if \(!audioCaptionsOn \|\| !currentData \|\| currentData\.type !== 'audio'\) return;\s*\n\s*if \(ccTrack && ccTrack\.track\) renderActiveCueOverlay\(ccTrack\.track\);\s*\n\s*\}\);/.exec(body);
+  const tuMatch = /mediaPlayer\.addEventListener\('timeupdate', function \(\) \{\s*\n\s*if \(!audioCaptionsOn \|\| !currentData\) return;\s*\n\s*if \(ccTrack && ccTrack\.track\) renderActiveCueOverlay\(ccTrack\.track\);\s*\n\s*\}\);/.exec(body);
   assert.ok(tuMatch, 'expected a gated mediaPlayer timeupdate listener calling renderActiveCueOverlay(ccTrack.track)');
 });
 
-test('the timeupdate fallback is inert when captions are off, item is video, or no track exists', () => {
+test('the timeupdate fallback renders for audio AND video when captions are on, inert otherwise (v1.124 F1)', () => {
   // Executable proof of the exact gate expression pulled from source above.
   function shouldRender(audioCaptionsOn, currentData, ccTrack) {
-    if (!audioCaptionsOn || !currentData || currentData.type !== 'audio') return false;
+    if (!audioCaptionsOn || !currentData) return false;
     return !!(ccTrack && ccTrack.track);
   }
   assert.strictEqual(shouldRender(false, { type: 'audio' }, { track: {} }), false, 'CC off must not render');
-  assert.strictEqual(shouldRender(true, { type: 'video' }, { track: {} }), false, 'video items must not render via this fallback');
+  assert.strictEqual(shouldRender(true, { type: 'video' }, { track: {} }), true, 'v1.124 F1: video items now render through the same overlay');
   assert.strictEqual(shouldRender(true, null, { track: {} }), false, 'no currentData must not render');
   assert.strictEqual(shouldRender(true, { type: 'audio' }, null), false, 'no ccTrack must not render');
   assert.strictEqual(shouldRender(true, { type: 'audio' }, { track: null }), false, 'no live TextTrack must not render');
   assert.strictEqual(shouldRender(true, { type: 'audio' }, { track: {} }), true, 'CC on + audio + a live track must render');
 });
 
-test('video CC path is untouched: the VIDEO showing/hidden toggle branch in the #cc-btn click handler is unchanged', () => {
+test('v1.124 F1: video captions route through the custom overlay - the native showing/hidden toggle branch is GONE and the toggle is unified', () => {
+  // The old native-paint video branch (mode='showing') that the control bar
+  // occluded in fullscreen must be removed entirely.
+  assert.ok(
+    !/track\.mode = showing \? 'hidden' : 'showing'/.test(PLAYER_JS),
+    'the native-paint video branch (mode=showing) must be gone - video now uses the custom overlay'
+  );
+  assert.ok(
+    !/= track\.mode === 'showing'/.test(PLAYER_JS),
+    'no code should still read track.mode === "showing" (the native-video caption path is retired)'
+  );
+  // The #cc-btn click handler now unconditionally drives the overlay for both
+  // media types (audioCaptionsOn flag + mode hidden/disabled, never showing).
   assert.match(
     PLAYER_JS,
-    /var showing = track\.mode === 'showing';\s*\n\s*track\.mode = showing \? 'hidden' : 'showing';\s*\n\s*ccBtn\.classList\.toggle\('active', !showing\);\s*\n\s*ccBtn\.setAttribute\('aria-pressed', showing \? 'false' : 'true'\);/,
-    'expected the pre-existing VIDEO branch of the #cc-btn click handler to be byte-identical'
+    /audioCaptionsOn = !audioCaptionsOn;\s*\n\s*track\.mode = audioCaptionsOn \? 'hidden' : 'disabled';\s*\n\s*ccBtn\.classList\.toggle\('active', audioCaptionsOn\);/,
+    'expected the unified overlay toggle in the #cc-btn click handler (audio + video)'
   );
 });
 
