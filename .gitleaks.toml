@@ -1,0 +1,27 @@
+# gitleaks config for FileTube (v1.123 T2 - secret scanning).
+#
+# Extends gitleaks' default rule set and adds PATH allowlists for locations
+# that legitimately contain FAKE credentials or are not first-party source:
+#
+#  - test/       fixtures use published RFC 8291 s5 example vectors and invented
+#                tokens (e.g. SeCrEtT0ken123) whose whole purpose is to exercise
+#                the redaction/crypto code paths. Real secrets never live here.
+#  - public/vendor/  third-party vendored client libs (eslint-ignored too).
+#  - node_modules/, .claude/  not source; dir-mode scan would otherwise walk
+#                the installed deps and the transient subagent worktrees.
+#
+# CI scans the WORKING TREE in dir/--no-git mode, NOT history: the one
+# historical leak (session-secret, v1.43-v1.123) is known, disclosed, and dead
+# after rotation, so a history scan would be permanently and uselessly red.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "FileTube false-positive paths (test fixtures + vendored/non-source)"
+paths = [
+  '''(^|/)test/''',
+  '''(^|/)public/vendor/''',
+  '''(^|/)node_modules/''',
+  '''(^|/)\.claude/''',
+]
