@@ -122,41 +122,34 @@ test('inNativeFullscreen: unchanged single-expression definition (no audio-expan
 
 // ---- toggleAudioExpand / exitAudioExpand (FULL-only, force-clear sites) ----
 
-test('toggleAudioExpand: FULL-only guard, toggles audio-expanded on host', () => {
+// v1.120: toggleAudioExpand / exitAudioExpand now route through the ONE
+// setAudioExpanded(on) setter (which owns the class + aria + body freeze/black
+// belt + the auto-hide cycle). These bind the new structure.
+test('toggleAudioExpand: FULL-only guard, routes through setAudioExpanded(toggle)', () => {
   const toggleMatch = /function toggleAudioExpand\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(toggleMatch, 'expected to find toggleAudioExpand() in player.js');
   const body = toggleMatch[1];
   assert.match(body, /state !== STATE_FULL/, 'expected a FULL-only guard, matching every other fullscreen/gesture guard in this file');
-  assert.match(body, /host\.classList\.toggle\(\s*['"]audio-expanded['"]\s*\)/, 'expected host.classList.toggle(\'audio-expanded\')');
+  assert.match(body, /setAudioExpanded\(!host\.classList\.contains\('audio-expanded'\)\)/, 'expected it to route through setAudioExpanded with the toggled value');
 });
 
-test('toggleAudioExpand: reflects the new state on #fs-btn via aria-pressed (a11y)', () => {
-  const toggleMatch = /function toggleAudioExpand\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
-  assert.ok(toggleMatch);
-  const body = toggleMatch[1];
-  assert.match(
-    body,
-    /fsBtn\.setAttribute\('aria-pressed',\s*expanded\s*\?\s*'true'\s*:\s*'false'\)/,
-    'expected toggleAudioExpand() to set #fs-btn\'s aria-pressed to reflect the toggled state'
-  );
+test('setAudioExpanded: toggles the class, reflects aria-pressed (a11y), and freezes/blacks the body', () => {
+  const m = /function setAudioExpanded\(on\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(m, 'expected to find setAudioExpanded(on) in player.js');
+  const body = m[1];
+  assert.match(body, /host\.classList\.toggle\('audio-expanded', !!on\)/, 'sets the expanded class from the bool');
+  assert.match(body, /fsBtn\.setAttribute\('aria-pressed', on \? 'true' : 'false'\)/, "reflects the state on #fs-btn's aria-pressed");
+  assert.match(body, /document\.body\.classList\.toggle\('ft-audio-expanded', !!on\)/, 'toggles the body freeze/black belt');
+  // Drives the SAME auto-hide cycle as video faux fullscreen.
+  assert.match(body, /if \(on\) revealControlsAndReArm\(\);\s*\n\s*else \{ clearControlsAutoHide\(\); showControlsBar\(\); \}/, 'drives the control-bar auto-hide cycle');
 });
 
-test('exitAudioExpand: unconditionally removes audio-expanded from host (no state guard -- must be safe to call from any lifecycle exit)', () => {
+test('exitAudioExpand: unconditionally collapses via setAudioExpanded(false) (no state guard -- safe from any lifecycle exit)', () => {
   const exitMatch = /function exitAudioExpand\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(exitMatch, 'expected to find exitAudioExpand() in player.js');
   const body = exitMatch[1];
-  assert.match(body, /host\.classList\.remove\(\s*['"]audio-expanded['"]\s*\)/, 'expected host.classList.remove(\'audio-expanded\')');
-});
-
-test('exitAudioExpand: also resets #fs-btn aria-pressed to false (a11y, safe to call unconditionally)', () => {
-  const exitMatch = /function exitAudioExpand\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
-  assert.ok(exitMatch);
-  const body = exitMatch[1];
-  assert.match(
-    body,
-    /fsBtn\.setAttribute\('aria-pressed', 'false'\)/,
-    'expected exitAudioExpand() to reset #fs-btn\'s aria-pressed to false'
-  );
+  assert.match(body, /setAudioExpanded\(false\)/, 'expected exitAudioExpand() to force-collapse via setAudioExpanded(false)');
+  assert.ok(!/state !== STATE_FULL/.test(body), 'no state guard -- must be safe to call from any lifecycle exit');
 });
 
 test('teardownMediaState: force-clears the expanded state on every genuine new load (AC5)', () => {
@@ -283,7 +276,10 @@ test('module.exports: exposes resolveFsButtonAction for node:test (no DOM/browse
 const CSS_PATH = path.join(__dirname, '..', '..', 'public', 'css', 'style.css');
 const CSS = fs.readFileSync(CSS_PATH, 'utf8');
 const overlayRuleMatch = /#player-wrapper\.audio-mode\.audio-expanded\s*\{([^}]*)\}/.exec(CSS);
-const controlsRuleMatch = /#player-wrapper\.audio-mode\.audio-expanded \.player-controls\s*\{([^}]*)\}/.exec(CSS);
+// v1.120: require the body to contain `bottom: 0` so this picks the actual bar
+// LAYOUT rule, not the (earlier) reduced-motion `{ transition: none }` rule that
+// now also carries this selector.
+const controlsRuleMatch = /#player-wrapper\.audio-mode\.audio-expanded \.player-controls\s*\{([^}]*bottom:\s*0[^}]*)\}/.exec(CSS);
 
 test('CSS overlay rule: the #player-wrapper.audio-mode.audio-expanded rule is found and isolated for inspection', () => {
   assert.ok(overlayRuleMatch, 'expected to find the #player-wrapper.audio-mode.audio-expanded rule in style.css');
@@ -329,4 +325,18 @@ test('SUGGESTION FIX -- CSS: the expanded control bar clears the bottom safe-are
   const baseControlsMatch = /(?:^|\n)\.player-controls\s*\{([^}]*)\}/.exec(CSS);
   assert.ok(baseControlsMatch, 'expected to find the base .player-controls rule');
   assert.ok(!/safe-area-inset-bottom/.test(baseControlsMatch[1]), 'the base .player-controls rule must not itself reference the safe-area inset -- that must stay scoped to .audio-expanded only');
+});
+
+// ---- v1.120 (Dean): audio-expanded parity CSS (bleed belt + body freeze) -----
+
+test('CSS: the audio-expanded overlay covers the visual viewport (dvh/dvw belt) + body freezes/blacks', () => {
+  assert.ok(overlayRuleMatch, 'the audio-expanded overlay rule');
+  assert.match(overlayRuleMatch[1], /height:\s*100vh;\s*height:\s*100dvh;/, 'height pins to the visual viewport (dvh, vh fallback) -- iOS-landscape bleed belt');
+  assert.match(overlayRuleMatch[1], /width:\s*100vw;\s*width:\s*100dvw;/, 'width pins to the visual viewport');
+  assert.match(CSS, /body\.ft-audio-expanded \{[^}]*overflow:\s*hidden;[^}]*background:\s*#000;/, 'body freezes scroll + paints black as the bleed belt');
+});
+
+test('CSS: when the audio bar auto-hides, the cover art reclaims its reserved strip (bottom:0)', () => {
+  assert.match(CSS, /#player-wrapper\.audio-mode\.audio-expanded\.controls-autohidden #audio-bg-art \{\s*bottom:\s*0;/,
+    'a hidden audio bar lets the cover art fill to the true bottom edge');
 });

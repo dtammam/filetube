@@ -1756,9 +1756,13 @@ if (typeof module !== 'undefined' && module.exports) {
     if (plan.restoreTo !== null) window.scrollTo(0, plan.restoreTo);
   }
 
-  // ---- v1.119 faux-fullscreen control-bar auto-hide -------------------------
-  function inFauxFullscreen() {
-    return !!(host && host.classList.contains('css-fullscreen'));
+  // ---- v1.119 control-bar auto-hide (v1.120: also the audio expanded view) ---
+  // The ONE immersive-overlay predicate both paths share: video FAUX fullscreen
+  // (.css-fullscreen) and the audio EXPANDED now-playing view (.audio-expanded).
+  // Both are `position:fixed; inset:0` overlays whose bar overlays/reserves the
+  // bottom, so both auto-hide identically.
+  function inImmersiveMode() {
+    return !!(host && (host.classList.contains('css-fullscreen') || host.classList.contains('audio-expanded')));
   }
   function clearControlsAutoHide() {
     if (controlsAutoHideTimer) { clearTimeout(controlsAutoHideTimer); controlsAutoHideTimer = null; }
@@ -1771,7 +1775,12 @@ if (typeof module !== 'undefined' && module.exports) {
   // same guards when it fires so a pause/exit during the window cancels the hide.
   function armControlsAutoHide() {
     clearControlsAutoHide();
-    if (!inFauxFullscreen()) return;
+    if (!inImmersiveMode()) return;
+    // v1.120 gate fix (adversarial WARNING): auto-hide is a TOUCH convention --
+    // mobile only. Desktop (incl. the desktop audio-expand overlay) keeps its bar
+    // up, matching desktop-player expectations and sidestepping the click-only
+    // reveal there.
+    if (!isMobileFormFactor()) return;
     if (!mediaPlayer || mediaPlayer.paused || mediaPlayer.ended) return;
     controlsAutoHideTimer = setTimeout(function () {
       controlsAutoHideTimer = null;
@@ -1780,7 +1789,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // seek bar under the finger on a >3s drag (and pointer-events:none on the
       // captured element risks breaking the scrub on iOS). The 'change' handler
       // re-arms once the drag commits, so the fade resumes after the scrub.
-      if (inFauxFullscreen() && mediaPlayer && !mediaPlayer.paused && !mediaPlayer.ended && !isScrubbing) {
+      if (inImmersiveMode() && mediaPlayer && !mediaPlayer.paused && !mediaPlayer.ended && !isScrubbing) {
         if (host) host.classList.add('controls-autohidden');
       }
     }, 3000);
@@ -4290,6 +4299,22 @@ if (typeof module !== 'undefined' && module.exports) {
     flashArtGlyph(willPlay);
   }
 
+  // v1.120 gate round: the cover-art single-tap action. In the expanded audio
+  // view, a tap while the auto-hidden bar is DOWN wakes the controls WITHOUT
+  // toggling playback (the native "first tap reveals" convention -- so you can
+  // bring the scrubber back without pausing); otherwise it toggles play/pause.
+  // Shared by BOTH the touch single-tap (wireSkipHoldGestures onSingleTap) and
+  // the mouse 'click' path, so it fires on iOS where the synthetic click is
+  // suppressed -- the round-1 fix put the guard in the click handler ONLY, which
+  // a touchend preventDefault made dead on a phone.
+  function artSingleTapOrReveal() {
+    if (inImmersiveMode() && host && host.classList.contains('controls-autohidden')) {
+      revealControlsAndReArm();
+      return;
+    }
+    toggleArtPlayPause();
+  }
+
   // Cover-art click-to-play overlay glyph (AC9): flashes via the same
   // remove/reflow/add idiom `flashRipple` (above) already uses for the
   // skip-ripple feedback, so a rapid repeat click always re-triggers the fade.
@@ -4790,13 +4815,26 @@ if (typeof module !== 'undefined' && module.exports) {
   // `.audio-expanded` are present. FULL-only, matching every other
   // fullscreen/gesture guard in this file (`state !== STATE_FULL` checks
   // throughout) -- a docked mini-player audio item has no expand affordance.
+  // v1.120 (Dean, audio parity): the ONE audio-expand setter. Owns the class,
+  // the `#fs-btn` aria toggle state, the body freeze/black belt (mirrors video
+  // faux fullscreen's `ft-css-fullscreen`), and the control-bar auto-hide cycle
+  // (reveal+arm on expand; cancel+show on collapse). toggleAudioExpand (the
+  // button) and exitAudioExpand (force-off) both route through it.
+  function setAudioExpanded(on) {
+    if (!host) return;
+    host.classList.toggle('audio-expanded', !!on);
+    // Cheap a11y (v1.22.2): reflect the toggle state on the reused `#fs-btn`.
+    if (fsBtn) fsBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.toggle('ft-audio-expanded', !!on);
+    }
+    if (on) revealControlsAndReArm();
+    else { clearControlsAutoHide(); showControlsBar(); }
+  }
+
   function toggleAudioExpand() {
     if (!host || state !== STATE_FULL) return;
-    var expanded = host.classList.toggle('audio-expanded');
-    // Cheap a11y (gate round, v1.22.2): reflect the toggle state on the
-    // reused `#fs-btn` so assistive tech announces it as a real toggle
-    // button, not a stateless one.
-    if (fsBtn) fsBtn.setAttribute('aria-pressed', expanded ? 'true' : 'false');
+    setAudioExpanded(!host.classList.contains('audio-expanded'));
   }
 
   // Force-clears the expanded class. Called from every FULL-exit path
@@ -4807,8 +4845,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // `wireHostListeners` below). Safe to call unconditionally (no-ops if the
   // class isn't present or `host` doesn't exist yet).
   function exitAudioExpand() {
-    if (host) host.classList.remove('audio-expanded');
-    if (fsBtn) fsBtn.setAttribute('aria-pressed', 'false');
+    setAudioExpanded(false);
   }
 
   // ---- one-time element-scoped listener wiring (never re-run) ----------------
@@ -4961,10 +4998,14 @@ if (typeof module !== 'undefined' && module.exports) {
     // guard -- plus the 'change' re-arm -- is what keeps the bar up through a
     // long scrub; see armControlsAutoHide.) Additive + passive: the skip/hold
     // gesture layer is untouched (a single tap just reveals; it triggers no
-    // skip). No-op outside faux fullscreen.
+    // skip). No-op outside an immersive overlay.
+    // (v1.120: the audio cover-art tap surface #audio-bg-art is deliberately NOT
+    // wired here -- its own click handler reveals a HIDDEN bar WITHOUT toggling
+    // play/pause, then toggles only when the bar is already up. A blind reveal
+    // here would let that same tap ALSO toggle playback -- a reveal that pauses.)
     ['touchstart', 'pointerdown'].forEach(function (evt) {
-      mediaPlayer.addEventListener(evt, function () { if (inFauxFullscreen()) revealControlsAndReArm(); }, { passive: true });
-      if (playerControls) playerControls.addEventListener(evt, function () { if (inFauxFullscreen()) revealControlsAndReArm(); }, { passive: true });
+      mediaPlayer.addEventListener(evt, function () { if (inImmersiveMode()) revealControlsAndReArm(); }, { passive: true });
+      if (playerControls) playerControls.addEventListener(evt, function () { if (inImmersiveMode()) revealControlsAndReArm(); }, { passive: true });
     });
     mediaPlayer.addEventListener('ended', function () { stopFillLoop(); updateSeekVisual(); });
     // v1.109: the seek-bar segment notches depend on total duration, so (re)build
@@ -5987,7 +6028,10 @@ if (typeof module !== 'undefined' && module.exports) {
           cancelPendingArtTap();
           return;
         }
-        scheduleArtSingleTap(toggleArtPlayPause);
+        // v1.120 gate round: reveal-if-hidden-else-toggle -- the SAME action the
+        // touch single-tap uses, so the "wake controls without pausing" behavior
+        // fires on iOS (where the synthetic click is suppressed) too.
+        scheduleArtSingleTap(artSingleTapOrReveal);
       });
     }
 
@@ -6032,7 +6076,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // -- so attaching both here is safe: whichever surface a tap/click/hold
     // actually lands on is the only one that ever fires.
     wireSkipHoldGestures(mediaPlayer);
-    wireSkipHoldGestures(audioBgArt, toggleArtPlayPause);
+    wireSkipHoldGestures(audioBgArt, artSingleTapOrReveal);
 
     function onEnterFullscreen() { clearTimeout(holdTimer); releaseHold(); keeperNativeFsCapture(); }
     document.addEventListener('fullscreenchange', function () { if (document.fullscreenElement) onEnterFullscreen(); });
@@ -6095,6 +6139,20 @@ if (typeof module !== 'undefined' && module.exports) {
             // restoreScroll: an exit puts the page back where the user left it,
             // same as the fullscreen-button exit (the only other restore caller).
             setCssFullscreen(false, { restoreScroll: true });
+          }
+          return;
+        }
+        // v1.120 (Dean, audio parity): AUDIO has no iOS native fullscreen -- its
+        // immersive view is the EXPANDED now-playing overlay. Rotate to landscape
+        // while playing -> EXPAND; rotate back to portrait -> COLLAPSE. The SAME
+        // pure decisions as video, keyed on `.audio-expanded`. Pure class toggle
+        // (no iOS player, no bounce, no pause). Mobile + FULL only.
+        if (isMobileFormFactor() && currentData && currentData.type === 'audio') {
+          var expanded = !!(host && host.classList.contains('audio-expanded'));
+          if (shouldEnterFauxOnRotate({ landscape: landscape, playing: playing, fauxOn: expanded })) {
+            setAudioExpanded(true);
+          } else if (shouldExitFauxOnRotate({ landscape: landscape, fauxOn: expanded })) {
+            setAudioExpanded(false);
           }
           return;
         }

@@ -6351,12 +6351,21 @@ a.sub-row-channel-link:focus-visible {
      .controls-autohidden) and reveals on any tap. */
   transition: opacity var(--dur-slow) var(--ease-ui);
 }
-#player-wrapper.css-fullscreen.controls-autohidden .player-controls {
+/* v1.120: the audio EXPANDED view auto-hides its bar the same way (its own bar
+   rule further down carries the matching transition). */
+#player-wrapper.css-fullscreen.controls-autohidden .player-controls,
+#player-wrapper.audio-mode.audio-expanded.controls-autohidden .player-controls {
   opacity: 0;
-  pointer-events: none; /* taps pass through to the video, which reveals the bar */
+  pointer-events: none; /* taps pass through to the video/art, which reveals the bar */
 }
 @media (prefers-reduced-motion: reduce) {
-  #player-wrapper.css-fullscreen .player-controls { transition: none; }
+  #player-wrapper.css-fullscreen .player-controls,
+  #player-wrapper.audio-mode.audio-expanded .player-controls { transition: none; }
+}
+/* v1.120: when the audio bar is hidden, reclaim its reserved 52px strip so the
+   cover art fills to the true bottom edge. */
+#player-wrapper.audio-mode.audio-expanded.controls-autohidden #audio-bg-art {
+  bottom: 0;
 }
 /* The app chrome is fully covered by the overlay, but hide it explicitly
    too (belt), freeze page scroll, and paint the body black so nothing can peek
@@ -6369,6 +6378,13 @@ body.ft-css-fullscreen {
 body.ft-css-fullscreen header,
 body.ft-css-fullscreen .bottom-nav {
   visibility: hidden;
+}
+/* v1.120 (Dean, audio parity): the same freeze + black-body belt for the audio
+   EXPANDED overlay (position:fixed z-index:--z-player-max already covers the app
+   chrome, so no visibility rule is needed -- just no scroll + no bleed). */
+body.ft-audio-expanded {
+  overflow: hidden;
+  background: #000; /* token-exempt: fullscreen letterbox black belt */
 }
 
 /* v1.34.1 (Dean's on-device pass): mobile bar declutter.
@@ -7011,6 +7027,14 @@ body.ft-css-fullscreen .bottom-nav {
      matching the video path's own black letterbox, per Dean's "max to the
      width with black space above". */
   background-color: #000; /* token-exempt: letterbox black */
+  /* v1.120 (Dean, parity with the v1.119 video bleed fix): `inset:0` can stop
+     at the layout-viewport edge on an iOS PWA in landscape, letting the page
+     peek through below the overlay. Pin to the VISUAL viewport (dvh/dvw, vh/vw
+     fallback); body.ft-audio-expanded also freezes scroll + paints black. */
+  height: 100vh;
+  height: 100dvh;
+  width: 100vw;
+  width: 100dvw;
 }
 
 /* Expanded audio shows the WHOLE cover art scaled to fit (contain), NOT the
@@ -7049,6 +7073,8 @@ body.ft-css-fullscreen .bottom-nav {
   min-height: 40px;
   padding-top: var(--space-2);
   padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
+  /* v1.120 (Dean): auto-hide fade, parity with the video faux-fullscreen bar. */
+  transition: opacity var(--dur-slow) var(--ease-ui);
 }
 
 /* Feature B (v1.26.1): same safe-area lift as the control bar directly

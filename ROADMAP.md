@@ -80,6 +80,33 @@
 
 ## Shipped
 
+### v1.120.0 - audio gets the full fullscreen experience (rotate-to-expand + auto-hide) (2026-08-14)
+
+Dean: apply the v1.118/v1.119 mobile-fullscreen experience to AUDIO too. Audio has
+no iOS native fullscreen (no video track); its equivalent is the EXPANDED
+now-playing view (the big cover-art overlay). Full parity:
+
+- **Rotate to landscape while a track plays -> the now-playing view EXPANDS**
+  (big cover art); rotate back to portrait -> collapses. Zero taps. Pure class
+  toggle -- cleaner than video (no iOS player to fight, no bounce, no pause).
+- **Auto-hide the control bar** over the cover art (same machinery as video,
+  generalised to cover both overlays; a tap on the art wakes the controls without
+  pausing the track; stays up while paused; never fades mid-scrub). Mobile only --
+  desktop keeps its bar.
+- **Same bleed belt** -- the expanded overlay pinned to the visual viewport
+  (100dvh/100dvw) + a black, scroll-frozen body; a hidden bar lets the art fill
+  to the bottom edge.
+
+Gate: slim gate (adversarial). APPROVE after two fix rounds - it caught that the
+first "reveal without pausing" fix was DEAD on a phone (the guard sat in the mouse
+'click' handler, which a touchend preventDefault suppresses on iOS); moved it onto
+the real touch single-tap path. Dual-Node full suite **6854/6854** on v22.23.1 and
+v24.14.0.
+
+**DEVICE PASS PENDING** (iOS runtime arbiter). On-device: play a track -> rotate
+sideways (expands to full cover art) -> let the bar fade -> tap the art (wakes
+controls, no pause) -> rotate back (collapses).
+
 ### v1.119.0 - fullscreen polish: auto-hide controls + fix the iOS-landscape bleed (2026-08-14)
 
 Dean's v1.118 device pass: the rotate-to-our-fullscreen dream WORKS. Two polish

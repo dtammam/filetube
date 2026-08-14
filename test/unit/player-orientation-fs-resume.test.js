@@ -197,3 +197,25 @@ test('CSS: phone landscape non-fullscreen caps the media element height (picture
     'expected the landscape cap, scoped to the FULL slot and excluding both fullscreen modes'
   );
 });
+
+// ---- v1.120 (Dean): AUDIO expand/collapse on rotate (parity with video) -----
+// Audio has no iOS native fullscreen; its immersive view is the EXPANDED
+// now-playing overlay. onOrientationChange gets an audio branch that reuses the
+// SAME pure rotate decisions (shouldEnterFauxOnRotate/shouldExitFauxOnRotate,
+// keyed on .audio-expanded) and toggles via setAudioExpanded -- pure class
+// toggle, no iOS player, no pause. Dean's iOS pass is the runtime arbiter.
+
+test('wiring: onOrientationChange has an AUDIO branch that expands/collapses on rotate via setAudioExpanded', () => {
+  const body = stripLineComments(onOrientationChangeMatch[1]);
+  assert.match(body, /currentData && currentData\.type === 'audio'/, 'an audio-typed branch exists');
+  assert.match(body, /shouldEnterFauxOnRotate\(\{[\s\S]*?setAudioExpanded\(true\)/, 'rotate-to-landscape expands the audio view');
+  assert.match(body, /shouldExitFauxOnRotate\(\{[\s\S]*?setAudioExpanded\(false\)/, 'rotate-back collapses it');
+  // v1.120 (gate SUGGESTION): the audio branch must RETURN, never fall through to
+  // shouldAutoFullscreenOnRotate -> enterFullscreen() (which on iOS would leak a
+  // {once:true} loadedmetadata -> webkitEnterFullscreen onto the next load).
+  assert.match(body, /setAudioExpanded\(false\);\s*\n\s*\}\s*\n\s*return;/, 'the audio branch returns (no fall-through to the native path)');
+  // The audio collapse is a pure class toggle -- it must NOT use the native
+  // fullscreen exit (audio has none, and the invariant is that rotate never
+  // programmatically exits native).
+  assert.ok(!/webkitExitFullscreen/.test(body), 'the rotate handler never calls webkitExitFullscreen');
+});
