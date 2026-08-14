@@ -298,6 +298,27 @@ function shouldHandOffToBackgroundAudio(ctx) {
   return ctx.bgAudioState === BG_AUDIO_STATES.INLINE_VIDEO;
 }
 
+// v1.121 (Dean, the lock-blip tuning): pure gate for the POSITION PRE-SYNC --
+// periodically nudging the (paused, pre-armed) background-audio sidecar's
+// currentTime to track the playing video, so its buffer window follows the live
+// position and the handoff's seek (attemptBackgroundAudioHandoff's
+// `bgAudioEl.currentTime = resumeTime`) lands in an ALREADY-BUFFERED range
+// instead of fetching at lock-time. All SIX conditions required, fail-safe
+// false on garbage:
+//   - presyncOn: the NEW experimental setting (bgAudioSyncPosition) -- Dean's
+//     kill-switch; a disabled install never pays the periodic range-requests.
+//   - bgAudioOn + statusReady: the same eligibility the handoff itself needs --
+//     no point warming a sidecar that could never be handed off to (and the
+//     F3b invariant: never touch /audio/:id with the feature off).
+//   - mobile + isVideo: the handoff only exists for mobile video.
+//   - INLINE_VIDEO only: NEVER while HANDING_OFF/BACKGROUND_AUDIO -- a sync
+//     then would SCRUB the element that is actually playing (or about to).
+function shouldPresyncBgAudio(ctx) {
+  var c = ctx || {};
+  return !!(c.presyncOn && c.bgAudioOn && c.statusReady && c.mobile && c.isVideo
+    && c.bgAudioState === BG_AUDIO_STATES.INLINE_VIDEO);
+}
+
 // Pure (v1.27.2, pre-pause candidate bridge): is a previously-armed
 // pre-pause candidate still fresh enough for the arriving
 // `visibilitychangeHidden` to consume it as "iOS system-paused us on the
@@ -1238,6 +1259,8 @@ if (typeof module !== 'undefined' && module.exports) {
     BG_AUDIO_STATES,
     nextBackgroundAudioState,
     shouldHandOffToBackgroundAudio,
+    // v1.121: the position pre-sync gate (the lock-blip tuning).
+    shouldPresyncBgAudio,
     // v1.27.2 (pre-pause candidate bridge): pure freshness check for the
     // pause->visibilitychange bridge -- see its own comment.
     isFreshPrePauseCandidate,
@@ -1451,6 +1474,11 @@ if (typeof module !== 'undefined' && module.exports) {
   // watch) is gated on preExtractAudio -- the setting whose copy discloses
   // resource costs. Cached off the same per-load settings fetch.
   var preExtractAudioCached = false;
+  // v1.121 (Dean, lock-blip tuning): the POSITION PRE-SYNC experimental setting
+  // (bgAudioSyncPosition) -- cached off the same per-load settings fetch. See
+  // shouldPresyncBgAudio + presyncBackgroundAudioPosition.
+  var bgAudioSyncPositionCached = false;
+  var lastBgAudioPresyncAt = 0; // throttle stamp; reset per load (teardown)
   // v1.34 T4 (Dean): the "Use custom player controls on mobile" setting --
   // when ON, mobile VIDEO in FULL keeps the CUSTOM control bar instead of
   // flipping to the native iOS strip (applyControlsMode below). Cached per
@@ -2636,6 +2664,41 @@ if (typeof module !== 'undefined' && module.exports) {
       recordLifecycleEvent('bgAudio:prearm', { detail: preExtractAudioCached ? 'src set + preloading' : 'src set (lazy buffer)' });
     }
     return true;
+  }
+
+  // v1.121 (Dean, the lock-blip tuning -- EXPERIMENTAL, bgAudioSyncPosition):
+  // nudge the paused, pre-armed sidecar's currentTime to the live video
+  // position, so its buffer window FOLLOWS the watcher and the handoff's seek
+  // lands in an already-buffered range (the ~1/4s blip Dean hears at lock is
+  // that seek fetching cold at minute-N; the eager buffer only fills from 0).
+  // Guards: the pure shouldPresyncBgAudio gate (setting + eligibility +
+  // INLINE_VIDEO only -- NEVER scrub a handing-off/live sidecar), the armed
+  // sidecar (armBackgroundAudioSrc, the F3b single-assignment site, idempotent),
+  // and a drift threshold so an in-window position never causes churn. Callers
+  // throttle (timeupdate) or fire on a real jump (seeked).
+  var PRESYNC_DRIFT_SECONDS = 8;
+  var PRESYNC_THROTTLE_MS = 10000;
+  function presyncBackgroundAudioPosition() {
+    if (!bgAudioEl || !mediaPlayer) return;
+    if (!shouldPresyncBgAudio({
+      presyncOn: bgAudioSyncPositionCached,
+      bgAudioOn: bgAudioSettingCached,
+      statusReady: bgAudioStatusKnown === 'ready',
+      mobile: isMobileFormFactor(),
+      isVideo: !!(currentData && currentData.type !== 'audio'),
+      bgAudioState: bgAudioState,
+    })) return;
+    if (!armBackgroundAudioSrc()) return; // src armed (or refused -> bail)
+    var target = currentAbsTime();
+    if (!isFinite(target) || target < 0) return;
+    var drift = Math.abs((bgAudioEl.currentTime || 0) - target);
+    if (drift < PRESYNC_DRIFT_SECONDS) return; // already tracking -- no churn
+    // Gate S3 (diagnostics honesty): the record lives INSIDE the try so the
+    // ?debugLifecycle overlay never logs a nudge whose currentTime set threw.
+    try {
+      bgAudioEl.currentTime = target;
+      recordLifecycleEvent('bgAudio:presync', { detail: 't=' + target.toFixed(1) + 's drift=' + drift.toFixed(1) + 's' });
+    } catch (_) { /* not seekable yet -- next tick */ }
   }
 
   function attemptBackgroundAudioHandoff(trigger) {
@@ -4974,6 +5037,22 @@ if (typeof module !== 'undefined' && module.exports) {
     mediaPlayer.addEventListener('seeked', function () { updatePositionState(true); });
     mediaPlayer.addEventListener('ratechange', function () { updatePositionState(true); });
     mediaPlayer.addEventListener('timeupdate', function () { updatePositionState(false); });
+    // v1.121 (Dean, lock-blip tuning): position pre-sync -- throttled off
+    // timeupdate (>=10s between syncs; timeupdate only fires while playing, so
+    // a paused player never syncs), plus an immediate re-sync on a REAL user
+    // jump (seeked -- the buffer window must follow a scrub NOW, not in 10s).
+    // presyncBackgroundAudioPosition's own pure gate makes both no-ops unless
+    // the experimental setting + the whole bg-audio eligibility chain hold.
+    mediaPlayer.addEventListener('timeupdate', function () {
+      var now = Date.now();
+      if (now - lastBgAudioPresyncAt < PRESYNC_THROTTLE_MS) return;
+      lastBgAudioPresyncAt = now;
+      presyncBackgroundAudioPosition();
+    });
+    mediaPlayer.addEventListener('seeked', function () {
+      lastBgAudioPresyncAt = Date.now(); // a jump-sync counts as the cadence tick
+      presyncBackgroundAudioPosition();
+    });
     // v1.41.12: chapter-loop boundary clamp (foreground element) -- see
     // enforceChapterLoop's own comment for the live/background contracts.
     mediaPlayer.addEventListener('timeupdate', enforceChapterLoop);
@@ -6405,6 +6484,8 @@ if (typeof module !== 'undefined' && module.exports) {
     bgAudioState = nextBackgroundAudioState(bgAudioState, 'TEARDOWN', {});
     bgAudioGesturePrimed = false;
     bgAudioSettingCached = false;
+    bgAudioSyncPositionCached = false; // v1.121: per-load, like its setting siblings
+    lastBgAudioPresyncAt = 0; // v1.121: fresh throttle window for the next load
     bgAudioStatusKnown = null;
     prePauseCandidateAt = 0; // v1.27.2: a candidate never survives into a new load
     pendingAutoplayNextOnForeground = false; // F2: never let a deferred advance survive into a genuinely new load
@@ -6621,6 +6702,7 @@ if (typeof module !== 'undefined' && module.exports) {
           // is idempotent and cheap; a no-change re-run is a no-op).
           mobileCustomPlayerCached = !!(settings && settings.mobileCustomPlayer);
           preExtractAudioCached = !!(settings && settings.preExtractAudio); // v1.35 gate fix: the eager-buffer lever
+          bgAudioSyncPositionCached = !!(settings && settings.bgAudioSyncPosition); // v1.121: the position pre-sync lever
           applyControlsMode();
           if (!bgAudioSettingCached) {
             // v1.27.2 (diagnostics): the arm line now records on EVERY

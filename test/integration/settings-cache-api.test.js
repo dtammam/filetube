@@ -86,7 +86,7 @@ beforeEach(async () => {
 
 // ---- GET /api/settings -----------------------------------------------------
 
-test('GET /api/settings returns the 16-field shape with backfilled defaults on a fresh DB', async () => {
+test('GET /api/settings returns the full-shape settings projection with backfilled defaults on a fresh DB', async () => {
   const res = await fetch(`${base}/api/settings`);
   assert.equal(res.status, 200);
   const json = await res.json();
@@ -105,6 +105,7 @@ test('GET /api/settings returns the 16-field shape with backfilled defaults on a
     defaultSort: 'release-date', // v1.34: the real-YouTube-feed flip
     mobileCustomPlayer: false, // v1.34 T4: native mobile video controls by default
     preExtractAudio: false, // v1.35: deterministic background audio, OFF by default
+    bgAudioSyncPosition: false, // v1.121: position pre-sync (lock-blip tuning), OFF by default
     // v1.41.6 DELIBERATE key-set change (this full-shape deep-equal is the
     // settings-API LOCK): the reheat's import-relocation lever. ON by default
     // -- the ONLY default-on boolean here, because relocating a hydrated
@@ -466,6 +467,14 @@ test('POST /api/settings rejects an off-allowlist defaultSort and a non-boolean 
     });
     assert.equal(res.status, 400, `preExtractAudio=${JSON.stringify(bad)} must 400`);
   }
+  // v1.121: same boolean gate for bgAudioSyncPosition.
+  for (const bad of ['true', 1, null, {}]) {
+    const res = await fetch(`${base}/api/settings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bgAudioSyncPosition: bad }),
+    });
+    assert.equal(res.status, 400, `bgAudioSyncPosition=${JSON.stringify(bad)} must 400`);
+  }
 
   // v1.41.6: same boolean gate for relocateHydratedImports -- this key decides
   // whether user FILES get moved, so a non-boolean 400s rather than being
@@ -495,4 +504,14 @@ test('POST /api/settings rejects an off-allowlist defaultSort and a non-boolean 
   });
   assert.equal(off.status, 200);
   assert.equal((await (await fetch(`${base}/api/settings`)).json()).relocateHydratedImports, false);
+
+  // v1.121 gate W1: the presync toggle ROUND-TRIPS (a KNOWN_KEYS omission would
+  // 400 the save -- the experimental kill-switch would be unsavable with the
+  // suite green; this valid-value POST binds the key's acceptance + persistence).
+  const presyncOn = await fetch(`${base}/api/settings`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bgAudioSyncPosition: true }),
+  });
+  assert.equal(presyncOn.status, 200, 'a boolean bgAudioSyncPosition must be ACCEPTED (KNOWN_KEYS)');
+  assert.equal((await (await fetch(`${base}/api/settings`)).json()).bgAudioSyncPosition, true, 'and it round-trips');
 });

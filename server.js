@@ -367,6 +367,14 @@ const DEFAULT_SETTINGS = {
   // age sweep (the manual Settings "Clear cache" button still clears them
   // -- explicit user intent wins). ~1MB per minute of audio on disk.
   preExtractAudio: false,
+  // v1.121 (Dean, EXPERIMENTAL): background-audio position PRE-SYNC -- the
+  // client-side lock-blip tuning. When ON, the (paused, pre-armed) hidden
+  // background-audio sidecar's position periodically tracks the playing video,
+  // so its buffer window follows the watcher and the lock-time handoff seek
+  // lands already-buffered (costs periodic range-requests while a mobile video
+  // plays). Client-only lever (player.js reads it off GET /api/settings);
+  // pairs with backgroundAudioForVideo + preExtractAudio above.
+  bgAudioSyncPosition: false,
   // v1.41.6 (Dean's MeTube-import relocation): after the reheat hydrates an
   // imported video with its real channel identity (v1.41.5), physically MOVE
   // the file into that channel's folder under the yt-dlp download dir, so an
@@ -7469,6 +7477,8 @@ function settingsResponse(settings) {
     mobileCustomPlayer: settings.mobileCustomPlayer,
     // v1.35: deterministic background audio (see DEFAULT_SETTINGS).
     preExtractAudio: settings.preExtractAudio,
+    // v1.121: background-audio position pre-sync (see DEFAULT_SETTINGS).
+    bgAudioSyncPosition: settings.bgAudioSyncPosition,
     // v1.41.6: relocate hydrated imports into their channel folder (see
     // DEFAULT_SETTINGS) -- ON by default.
     relocateHydratedImports: settings.relocateHydratedImports,
@@ -8868,7 +8878,7 @@ app.post('/api/settings', async (req, res) => {
   // test/integration/settings-cache-api.test.js's full-shape assertion, both
   // updated in the same commit): `relocateHydratedImports` joins the set --
   // the reheat's "move a hydrated import into its channel folder" lever.
-  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'trashRetentionDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer', 'preExtractAudio', 'relocateHydratedImports', 'notificationsEnabled'];
+  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'trashRetentionDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer', 'preExtractAudio', 'bgAudioSyncPosition', 'relocateHydratedImports', 'notificationsEnabled'];
   for (const key of Object.keys(body)) {
     if (!KNOWN_KEYS.includes(key)) {
       return res.status(400).json({ error: `unknown settings key: ${key}` });
@@ -8914,6 +8924,10 @@ app.post('/api/settings', async (req, res) => {
   }
   if ('preExtractAudio' in body && typeof body.preExtractAudio !== 'boolean') {
     return res.status(400).json({ error: 'preExtractAudio must be a boolean' });
+  }
+  // v1.121: bgAudioSyncPosition -- boolean, mirrors preExtractAudio exactly.
+  if ('bgAudioSyncPosition' in body && typeof body.bgAudioSyncPosition !== 'boolean') {
+    return res.status(400).json({ error: 'bgAudioSyncPosition must be a boolean' });
   }
   // v1.41.6: relocateHydratedImports -- boolean, mirrors preExtractAudio's own
   // validation exactly. A non-boolean here would decide whether user FILES get

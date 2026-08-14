@@ -971,6 +971,9 @@ async function loadAutomationSettings() {
     // v1.35: deterministic background audio, OFF by default.
     const preExtractAudioCheck = document.getElementById('pre-extract-audio-check');
     if (preExtractAudioCheck) preExtractAudioCheck.checked = !!s.preExtractAudio;
+    // v1.121: background-audio position pre-sync (lock-blip tuning), OFF by default.
+    const bgAudioSyncCheck = document.getElementById('bg-audio-sync-check');
+    if (bgAudioSyncCheck) bgAudioSyncCheck.checked = !!s.bgAudioSyncPosition;
     // v1.41.6: relocate hydrated imports into their channel folder. ON by
     // default -- so an older server (or a fetch that returned no such key) must
     // NOT render this as off: `!== false` keeps `undefined` checked, matching
@@ -1535,6 +1538,15 @@ function wireStaticControls(signal) {
     preExtractAudioCheck.addEventListener('change', (e) => {
       saveAutomationSetting('preExtractAudio', e.target.checked,
         document.getElementById('pre-extract-audio-error'));
+    }, { signal });
+  }
+
+  // v1.121: background-audio position pre-sync toggle -- same pattern.
+  const bgAudioSyncCheck = document.getElementById('bg-audio-sync-check');
+  if (bgAudioSyncCheck) {
+    bgAudioSyncCheck.addEventListener('change', (e) => {
+      saveAutomationSetting('bgAudioSyncPosition', e.target.checked,
+        document.getElementById('bg-audio-sync-error'));
     }, { signal });
   }
 

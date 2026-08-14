@@ -52,6 +52,7 @@ const DEFAULT_SETTINGS = {
   defaultSort: 'release-date', // v1.34: the real-YouTube-feed flip
   mobileCustomPlayer: false, // v1.34 T4: native mobile video controls by default
   preExtractAudio: false, // v1.35: deterministic background audio, OFF by default
+  bgAudioSyncPosition: false, // v1.121: position pre-sync (lock-blip tuning), OFF by default
   // v1.41.6 DELIBERATE key-set change (this deep-equal is the settings-shape
   // LOCK -- adding a key here is a conscious act, not a fixup): the reheat's
   // import-relocation lever. ON by default, unlike every other boolean above,
