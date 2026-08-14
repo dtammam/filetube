@@ -16247,6 +16247,7 @@ app.post('/api/videos/:id/prepare-audio', (req, res) => {
 // what avoids it, exactly like every other primitive below).
 ytdlp.registerRoutes(app, {
   requireManageSubscriptions, // v1.80 RBAC: gate for channel-registry mutations
+  mediaVisibleTo, // v1.123 T3: visibility axis for the per-item repull/relocate routes
   updateDatabase,
   loadDatabase,
   scanDirectories,

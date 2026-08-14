@@ -19,8 +19,13 @@ useDefault = true
 
 [allowlist]
 description = "FileTube false-positive paths (test fixtures + vendored/non-source)"
+# NOTE (gate round 1, QA S2): `^test/` is the ROOT test/ tree only - deliberately
+# NOT `(^|/)test/`, which would blind a `test/` dir ANYWHERE (e.g. lib/x/test/).
+# This does mean a real secret committed under the root test/ tree ships
+# unscanned - an accepted, disclosed trade-off (fixtures there carry intentional
+# fake credentials: RFC 8291 vectors, SeCrEtT0ken123). Tracked as tech-debt.
 paths = [
-  '''(^|/)test/''',
+  '''^test/''',
   '''(^|/)public/vendor/''',
   '''(^|/)node_modules/''',
   '''(^|/)\.claude/''',
