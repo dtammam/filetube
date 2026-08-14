@@ -2,6 +2,14 @@
 
 - Owner: main session (lean mode)
 - Opened: 2026-08-14
+- **CLOSED: 2026-08-14 - shipped as v1.120.0. Slim gate (adversarial) APPROVE
+  after 2 fix rounds: (1) auto-hide gated to mobile + audio reveal-without-toggle;
+  (2) the reveal guard was DEAD on touch (lived in the 'click' handler that a
+  touchend preventDefault suppresses on iOS) -> moved into a shared
+  artSingleTapOrReveal() wired to the TOUCH single-tap. Dual-Node 6854/6854.
+  Device pass PENDING.** LESSON: "it's in the source" != "it runs on the device"
+  - a reveal guard on the mouse 'click' path is dead on a phone; bind the reachable
+  path, not presence.
 - Target: v1.120.0
 - Device pass: PENDING (Dean) — iOS runtime arbiter (same as v1.118/v1.119).
 - NOT data-mutating (player UI). Slim gate (adversarial).
