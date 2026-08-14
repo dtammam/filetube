@@ -27,12 +27,12 @@ test('armControlsAutoHide is scoped to faux fullscreen AND never fires while pau
   const m = /function armControlsAutoHide\(\) \{([\s\S]*?)\n {2}\}/.exec(SRC);
   assert.ok(m, 'armControlsAutoHide exists');
   const body = m[1];
-  assert.match(body, /if \(!inFauxFullscreen\(\)\) return;/, 'only arms in faux fullscreen');
+  assert.match(body, /if \(!inImmersiveMode\(\)\) return;/, 'only arms in faux fullscreen');
   assert.match(body, /if \(!mediaPlayer \|\| mediaPlayer\.paused \|\| mediaPlayer\.ended\) return;/, 'never arms while paused/ended (bar stays up)');
   // The fire callback RE-checks the same guards (a pause/exit during the window
   // cancels the hide) AND never hides mid-scrub (a seek drag never pauses, so
   // `!paused` alone would fade the seek bar under the finger -- gate WARNING).
-  assert.match(body, /setTimeout\(function \(\) \{[\s\S]*?inFauxFullscreen\(\) && mediaPlayer && !mediaPlayer\.paused && !mediaPlayer\.ended && !isScrubbing[\s\S]*?classList\.add\('controls-autohidden'\)/,
+  assert.match(body, /setTimeout\(function \(\) \{[\s\S]*?inImmersiveMode\(\) && mediaPlayer && !mediaPlayer\.paused && !mediaPlayer\.ended && !isScrubbing[\s\S]*?classList\.add\('controls-autohidden'\)/,
     'the fire callback re-checks faux + playing + NOT scrubbing before hiding');
 });
 
@@ -56,21 +56,34 @@ test('playback events drive the auto-hide: play arms, pause/ended reveal+hold', 
   assert.match(SRC, /mediaPlayer\.addEventListener\('ended', function \(\) \{ clearControlsAutoHide\(\); showControlsBar\(\); \}\);/, 'ended reveals + holds');
 });
 
-test('any tap on the video OR the bar reveals + re-arms (additive/passive; skip-gesture untouched)', () => {
-  // Reveal listeners on BOTH surfaces, gated on faux fullscreen, passive.
-  assert.match(SRC, /\['touchstart', 'pointerdown'\]\.forEach\(function \(evt\) \{[\s\S]*?mediaPlayer\.addEventListener\(evt, function \(\) \{ if \(inFauxFullscreen\(\)\) revealControlsAndReArm\(\); \}, \{ passive: true \}\);[\s\S]*?playerControls\.addEventListener\(evt, function \(\) \{ if \(inFauxFullscreen\(\)\) revealControlsAndReArm\(\); \}, \{ passive: true \}\);/,
-    'touchstart+pointerdown on video and bar reveal, passive, faux-gated');
+test('any tap on the video, the bar, OR the audio art reveals + re-arms (additive/passive; skip-gesture untouched)', () => {
+  // Reveal listeners on ALL THREE surfaces, gated on an immersive overlay, passive.
+  // v1.120: #audio-bg-art is the audio tap surface (#media-player is
+  // pointer-events:none in audio-mode), so the expanded audio view reveals too.
+  assert.match(SRC, /\['touchstart', 'pointerdown'\]\.forEach\(function \(evt\) \{[\s\S]*?mediaPlayer\.addEventListener\(evt, function \(\) \{ if \(inImmersiveMode\(\)\) revealControlsAndReArm\(\); \}, \{ passive: true \}\);[\s\S]*?playerControls\.addEventListener\(evt, function \(\) \{ if \(inImmersiveMode\(\)\) revealControlsAndReArm\(\); \}, \{ passive: true \}\);[\s\S]*?audioBgArt\.addEventListener\(evt, function \(\) \{ if \(inImmersiveMode\(\)\) revealControlsAndReArm\(\); \}, \{ passive: true \}\);/,
+    'touchstart+pointerdown on video, bar AND audio art reveal, passive, immersive-gated');
+});
+
+test('inImmersiveMode covers BOTH video faux fullscreen AND the audio expanded view', () => {
+  const m = /function inImmersiveMode\(\) \{([\s\S]*?)\n {2}\}/.exec(SRC);
+  assert.ok(m, 'inImmersiveMode exists');
+  assert.match(m[1], /classList\.contains\('css-fullscreen'\) \|\| host\.classList\.contains\('audio-expanded'\)/,
+    'the one shared predicate is css-fullscreen OR audio-expanded');
 });
 
 // ---- CSS ------------------------------------------------------------------
 
-test('CSS: the auto-hidden bar is opacity 0 + pointer-events none, with a tokenised transition', () => {
-  assert.match(STYLE_CSS, /#player-wrapper\.css-fullscreen\.controls-autohidden \.player-controls \{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/,
-    'the hidden state fades out and lets taps pass through to the video');
+test('CSS: the auto-hidden bar is opacity 0 + pointer-events none for BOTH overlays, with a tokenised transition', () => {
+  // The hidden state is a comma-group covering video faux fullscreen AND the
+  // audio expanded view.
+  assert.match(STYLE_CSS, /#player-wrapper\.css-fullscreen\.controls-autohidden \.player-controls,\s*\n\s*#player-wrapper\.audio-mode\.audio-expanded\.controls-autohidden \.player-controls \{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/,
+    'both overlays fade the bar and let taps pass through');
   assert.match(STYLE_CSS, /#player-wrapper\.css-fullscreen \.player-controls \{[^}]*transition:\s*opacity var\(--dur-slow\) var\(--ease-ui\);/,
-    'the bar transitions opacity via motion TOKENS (census-clean)');
-  assert.match(STYLE_CSS, /@media \(prefers-reduced-motion: reduce\) \{\s*#player-wrapper\.css-fullscreen \.player-controls \{ transition: none; \}/,
-    'reduced-motion users get an instant toggle');
+    'the video bar transitions opacity via motion TOKENS (census-clean)');
+  assert.match(STYLE_CSS, /#player-wrapper\.audio-mode\.audio-expanded \.player-controls \{[^}]*transition:\s*opacity var\(--dur-slow\) var\(--ease-ui\);/,
+    'the audio expanded bar transitions the same way (parity)');
+  assert.match(STYLE_CSS, /@media \(prefers-reduced-motion: reduce\) \{\s*#player-wrapper\.css-fullscreen \.player-controls,\s*\n\s*#player-wrapper\.audio-mode\.audio-expanded \.player-controls \{ transition: none; \}/,
+    'reduced-motion users get an instant toggle on both');
 });
 
 test('CSS: the faux-fullscreen overlay covers the VISUAL viewport edge-to-edge (iOS landscape bleed belt)', () => {
