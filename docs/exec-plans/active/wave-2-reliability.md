@@ -1,13 +1,13 @@
-# Wave 2: reliability hazards (planned - not started)
+# Wave 2: reliability hazards + desktop-player features (v1.124.0)
 
-Status: PLANNED. Date: 2026-08-14. Grounded at `aa06fa2` (v1.122.0).
-Do NOT start until Wave 1 (v1.123.0) has shipped and device-passed.
+Status: IN PROGRESS (2026-08-14). Grounded at `a4f1f24` (v1.123.0 shipped).
+Branch `feat/v1.124-reliability-player`. R1 done (`88ec97a`), R2 done (`e658b69`).
 
-Origin: the external review's item 4 ("enclosure backpressure and
-unreadable-book-subtree pruning"). Both claims were RE-VERIFIED against the
-tree before this plan was written, and BOTH turned out narrower and more
-precise than the review stated - the corrections are recorded below so the
-implementing session does not chase the vaguer framing.
+Scope = the two reliability findings from the external review's item 4 (R1, R2)
+PLUS two desktop-player features Dean asked for with this wave (F1, F2). Both
+reliability claims were RE-VERIFIED against the current tree and BOTH are
+narrower than the review stated - corrections recorded below. The player
+features were mapped against the live DOM/CSS/JS before planning; anchors below.
 
 ## Verified findings (and corrections to the review)
 
@@ -57,6 +57,49 @@ implementing session does not chase the vaguer framing.
   absent from the walk; mutation-verify by deleting the guard and watching a
   per-user reading position get destroyed.
 
+## Desktop-player features (Dean, added to this wave 2026-08-14)
+
+Mapped against the live tree: DOM in `public/watch.html`, behavior in
+`public/js/player.js`, layout in `public/css/style.css` (NOT public/style.css).
+
+- **F1 - video captions render BEHIND the media-controls bar.** Mechanism (mapped):
+  video captions use the browser's NATIVE `<track>` rendering painted inside
+  `<video id="media-player">`; the controls bar `.player-controls` is
+  `position:absolute; bottom:0; z-index:8; height:40px`. The UA lifts native cues
+  above NATIVE controls but knows nothing of FileTube's CUSTOM bar, so cues in the
+  video's bottom band are occluded (worst in fullscreen, where the 40px bar-reserve
+  padding is dropped). The tree ALREADY has the correctly-layered model: the custom
+  `.cc-overlay > .cc-overlay-text` (`z-index:9`, above the bar, with per-view bottom
+  offsets) at `style.css:6740`, built in player.js `ensureHost()` (`~:2048`) and fed
+  by `renderActiveCueOverlay`/`buildCaptionOverlayText` - but it is AUDIO-ONLY (the
+  `cuechange` handler is gated `type==='audio'` at `player.js:~5591/6078`; the CC
+  click sets video `track.mode='showing'` at `~5549`).
+  FIX (reuse, don't rebuild - the battle-won-overlay rule): route VIDEO captions
+  through the SAME custom overlay - set the video track `mode='hidden'` (fires
+  cuechange, suppresses native paint) and let the overlay render them, so they sit
+  in the z-index-9 layer above the bar with the existing offsets. Add a fullscreen
+  bottom-offset rule so the overlay clears the fullscreen bar height. Unifies
+  audio+video caption rendering; the pure `buildCaptionOverlayText` stays
+  node-tested.
+- **F2 - auto-hide the controls bar on the desktop inline player (iOS/YouTube
+  style).** The machinery EXISTS (`armControlsAutoHide`/`clearControlsAutoHide`/
+  `showControlsBar`/`revealControlsAndReArm`, the `controls-autohidden` host class,
+  `player.js:~1765-1829`) but is gated to immersive (`inImmersiveMode()`) AND
+  touch-only (`!isMobileFormFactor()` bail at `~:1811`), and the only CSS rule for
+  the class targets the immersive selectors (`style.css:6356`) - so it is inert on
+  the normal inline desktop player.
+  FIX: allow the DESKTOP inline case (arm on play when not immersive AND not mobile;
+  never hide while paused/ended/scrubbing - keep those existing guards), add a
+  `mousemove` reveal-and-re-arm on the host for desktop (today only touch reveals,
+  and host mousemove only reveals the skip buttons), and add a
+  `#player-wrapper.controls-autohidden .player-controls` opacity/pointer-events rule
+  for the non-immersive context + a base `transition` on `.player-controls`. Keep
+  MOBILE behavior byte-identical (the `.native-controls` bar is `display:none`
+  already; do not touch the immersive/mobile path). Hide delay ~3000ms (reuse the
+  existing constant). When captions are showing (F1), the overlay is above the bar,
+  so hiding the bar must NOT hide captions - verify the overlay is a separate layer
+  (it is; different element).
+
 ## Machine-derived predictions (re-verified at every commit)
 
 - The music reference the books fix mirrors is three sites:
@@ -71,12 +114,18 @@ implementing session does not chase the vaguer framing.
 ## Gate
 
 FULL gate (R2 destroys per-user data on a transient FS blip - the never-slim
-trigger). Adversarial seat briefed to: simulate a mid-scan EACCES on a book
-subtree and prove reading positions survive; drive a slow-consumer enclosure
-and prove memory stays bounded and the file still finalizes byte-correct.
+trigger; R1 is a memory-safety fix). Adversarial seat briefed to: simulate a
+mid-scan EACCES on a book subtree and prove reading positions survive; drive a
+slow-consumer enclosure and prove memory stays bounded and the file still
+finalizes byte-correct; for F1/F2, confirm the player changes are DESKTOP-scoped
+and mobile/immersive behavior is byte-identical (the battle-won iOS path must not
+regress), captions are not hidden with the bar, and the auto-hide never hides
+controls while paused/scrubbing.
 
 ## Stop condition
 
-Both seats APPROVE; dual-Node suites green and reported verbatim; the book
-prune guard fails its own mutant; backpressure test asserts pause+drain. Then
-release ceremony, device-probe list, plan to `completed/`.
+Both seats APPROVE; dual-Node suites green and reported verbatim; the book prune
+guard and the backpressure guard fail their own mutants; F1/F2 have unit coverage
+where node-testable (the pure caption-text join; the mobile-vs-desktop gate
+decision) and the mobile path is proven untouched. Then release ceremony (v1.124.0),
+device-probe list to Dean (he verifies F1/F2 on his devices), plan to `completed/`.
