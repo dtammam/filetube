@@ -506,6 +506,28 @@ function shouldAutoFullscreenOnRotate(ctx) {
   return !!(opts.landscape && !opts.inFullscreen && opts.playing);
 }
 
+// v1.118 (Dean): CUSTOM-mode mobile video makes OUR faux fullscreen supersede
+// Apple's native player on rotate. These two pure decisions drive
+// onOrientationChange's custom-video branch (the native-controls/desktop branch
+// still uses shouldAutoFullscreenOnRotate above, unchanged):
+//   - ENTER faux: rotate to landscape while PLAYING and not already faux. (iOS
+//     also auto-enters its native player here; the webkitbeginfullscreen intercept
+//     bounces that onto this faux surface.)
+//   - EXIT faux: rotate BACK to portrait while in faux -> drop it. Faux is pure
+//     CSS, so this is a setCssFullscreen(false) with NO webkitExitFullscreen() --
+//     which is exactly why it can't hit the iOS "programmatic exit pauses the
+//     video" wall the 2026-07-10 native auto-exit did (see
+//     player-orientation-fs-resume.test.js). Zero taps, still playing.
+// Both fail safe to `false` on missing/garbage context. Exported for node:test.
+function shouldEnterFauxOnRotate(ctx) {
+  var opts = ctx || {};
+  return !!(opts.landscape && opts.playing && !opts.fauxOn);
+}
+function shouldExitFauxOnRotate(ctx) {
+  var opts = ctx || {};
+  return !!(!opts.landscape && opts.fauxOn);
+}
+
 // Bug-fix (v1.17.0 two-reviewer gate, FR-4b leak): pure helper for the
 // "capture-then-reset" step every NEW (non-adopt) load must perform on the
 // one-shot `autoplayAdvancePending` flag, at load START -- not deferred to
@@ -1228,6 +1250,9 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveResumeShortcutAction,
     // v1.50 item 6: rotate-to-landscape auto-fullscreen requires playing.
     shouldAutoFullscreenOnRotate,
+    // v1.118: the custom-video faux-fullscreen rotate decisions.
+    shouldEnterFauxOnRotate,
+    shouldExitFauxOnRotate,
     captureAutoplayAdvanceForLoad,
     clampVolume,
     seekCommitTarget,
@@ -1695,9 +1720,21 @@ if (typeof module !== 'undefined' && module.exports) {
   // scroll placement must win (gate C1 - see resolveCssFsScrollPlan's
   // header for the measured watch->watch clobber the state-only gate had).
   var cssFsSavedScrollY = null;
+  // v1.118 (Dean): timestamp of when the webkitbeginfullscreen intercept last
+  // ARMED faux from an iOS auto-native event -- so onFsChange (Fix A) can tell
+  // that instantaneous handoff from a genuine, much-later user native exit. 0 =
+  // "no intercept arming in effect". Hoisted here (beside cssFsSavedScrollY, its
+  // sibling in the faux lifecycle) so setCssFullscreen can RESET it on every faux
+  // exit -- a faux entered by the BUTTON (which never stamps it) then can't
+  // inherit a stale timestamp and be spuriously dropped by Fix A (slim-gate
+  // SUGGESTION 2). Set by the intercept, read+cleared by Fix A.
+  var fauxHandoffAt = 0;
   function setCssFullscreen(on, opts) {
     var wasOn = !!(host && host.classList.contains('css-fullscreen'));
     if (host) host.classList.toggle('css-fullscreen', !!on);
+    // v1.118 SUGGESTION 2: ANY faux exit ends the intercept-handoff window, so a
+    // subsequent (e.g. button) faux can never be read as a stale handoff.
+    if (!on) fauxHandoffAt = 0;
     if (typeof document !== 'undefined' && document.body) {
       document.body.classList.toggle('ft-css-fullscreen', !!on);
     }
@@ -5795,8 +5832,23 @@ if (typeof module !== 'undefined' && module.exports) {
         mediaPlayer.addEventListener('webkitbeginfullscreen', function () {
           if (!isMobileFormFactor() || inNativeControlsMode()) return;
           if (!currentData || currentData.type === 'audio') return;
-          try { mediaPlayer.webkitExitFullscreen(); } catch (_) { /* not fullscreen anymore -- fine */ }
+          // v1.118 (Dean): arm faux FIRST (it sits ready underneath), and stamp
+          // WHEN -- so a genuine LATER native-fullscreen exit (Fix A in onFsChange)
+          // isn't misread as this instantaneous handoff.
+          fauxHandoffAt = Date.now();
           setCssFullscreen(true);
+          // Bounce OUT of iOS's native player onto our faux. webkitExitFullscreen
+          // can NO-OP when called at the very START of the enter transition
+          // (observed on Dean's device -- he stayed in native with faux armed
+          // underneath), so retry BRIEFLY until native actually releases. Kept
+          // short + enter-window-only so it never becomes the established-
+          // fullscreen exit iOS pauses on.
+          var tries = 0;
+          (function bounce() {
+            if (!mediaPlayer.webkitDisplayingFullscreen) return; // native released -> faux is what shows
+            try { mediaPlayer.webkitExitFullscreen(); } catch (_) { /* fine */ }
+            if (++tries < 5) setTimeout(bounce, 45);
+          })();
         });
       }
       // v1.34.2: iOS belt-and-braces -- touchstart fires even where a
@@ -5930,6 +5982,21 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.68: a real native exit restores the pre-entry scroll (or clears
       // the capture when ineligible - see the helper's guards).
       keeperNativeFsExit();
+      // v1.118 Fix A (Dean): a GENUINE user exit of iOS's native player must land
+      // in the normal inline player, not our faux (armed underneath by the
+      // intercept when its bounce didn't take on-device). The intercept's OWN
+      // bounce-exit fires this within a moment of arming faux (fauxHandoffAt), and
+      // THAT handoff must KEEP faux -- it IS the intended rotate-to-our-fullscreen.
+      // So only drop faux when this exit came well after the arming: a real
+      // Done/X/swipe seconds later, never the instantaneous handoff. Pure CSS, so
+      // no iOS pause. Custom-video only (native-controls keeps Apple's player).
+      if (fauxHandoffAt &&
+          host && host.classList.contains('css-fullscreen') &&
+          isMobileFormFactor() && !inNativeControlsMode() &&
+          currentData && currentData.type !== 'audio' &&
+          (Date.now() - fauxHandoffAt) > 1500) {
+        setCssFullscreen(false, { restoreScroll: true });
+      }
     }
     document.addEventListener('fullscreenchange', onFsChange);
     mediaPlayer.addEventListener('webkitendfullscreen', onFsChange);
@@ -5944,7 +6011,28 @@ if (typeof module !== 'undefined' && module.exports) {
       // rotate-into-fullscreen still wants correct caps on its later exit.
       scheduleViewportCapNudge();
       var landscape = mql.matches;
+      var playing = !!(mediaPlayer && !mediaPlayer.paused && !mediaPlayer.ended);
       try {
+        // v1.118 (Dean): CUSTOM-mode mobile video makes OUR faux fullscreen
+        // SUPERSEDE Apple's native player on rotate. Rotate to landscape while
+        // playing -> faux ON (the webkitbeginfullscreen intercept bounces iOS's
+        // own auto-native onto it); rotate BACK to portrait -> faux OFF. The
+        // exit is a pure-CSS setCssFullscreen(false) -- NEVER webkitExitFullscreen
+        // -- so it cannot hit the iOS "programmatic native exit pauses the video"
+        // wall (2026-07-10). Zero taps, still playing. Native-controls mode and
+        // desktop fall through to the unchanged native path below.
+        if (isMobileFormFactor() && !inNativeControlsMode() && currentData && currentData.type !== 'audio') {
+          var fauxOn = !!(host && host.classList.contains('css-fullscreen'));
+          if (shouldEnterFauxOnRotate({ landscape: landscape, playing: playing, fauxOn: fauxOn })) {
+            setCssFullscreen(true);
+          } else if (shouldExitFauxOnRotate({ landscape: landscape, fauxOn: fauxOn })) {
+            // restoreScroll: an exit puts the page back where the user left it,
+            // same as the fullscreen-button exit (the only other restore caller).
+            setCssFullscreen(false, { restoreScroll: true });
+          }
+          return;
+        }
+        // --- native-controls mode / desktop: unchanged native-fullscreen path ---
         // v1.50 (Dean, item 6): `playing` joins the decision -- see
         // shouldAutoFullscreenOnRotate's header. A paused/idle rotation now
         // falls through to the bounded landscape layout (style.css) instead
@@ -5952,7 +6040,7 @@ if (typeof module !== 'undefined' && module.exports) {
         if (shouldAutoFullscreenOnRotate({
           landscape: landscape,
           inFullscreen: inNativeFullscreen(),
-          playing: !!(mediaPlayer && !mediaPlayer.paused && !mediaPlayer.ended),
+          playing: playing,
         })) {
           autoFullscreen = true;
           // FR-2 (T2, v1.21.0): retargeted through enterFullscreen() --

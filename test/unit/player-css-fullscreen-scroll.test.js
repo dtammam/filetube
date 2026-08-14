@@ -134,12 +134,23 @@ test('setCssFullscreen wiring: exact statements, in the load-bearing order (each
   assert.ok(persistIdx < restoreIdx, 'persist precedes restore (unconditional persist cannot hide inside the restore branch)');
 });
 
-test('call sites: ONLY the fullscreen exit button opts into restore; teardown and the state off-guard stay clear-only (gate C1)', () => {
+test('call sites: ONLY explicit USER-EXIT paths opt into restore; teardown and the state off-guard stay clear-only (gate C1)', () => {
+  // v1.118 (Dean): restore-eligible is now the THREE explicit user-exit paths --
+  // the fullscreen button, the rotate-back-to-portrait faux exit, and the Fix A
+  // genuine-native-exit faux drop. All three are a user LEAVING fullscreen while
+  // still on the watch page (state === STATE_FULL), so putting the page back
+  // where they were is correct -- the SAME intent gate C1 granted the button.
+  // The clear-only callers (teardown / dock / the applyControlsMode state guard)
+  // still pass NO options: they run around navigations whose own scroll must win.
   const optIns = STRIPPED.match(/restoreScroll: true/g) || [];
-  assert.strictEqual(optIns.length, 1, 'exactly ONE restore-eligible call site in the whole file');
+  assert.strictEqual(optIns.length, 3, 'exactly THREE restore-eligible (user-exit) call sites');
   assert.ok(
     STRIPPED.includes("setCssFullscreen(!host.classList.contains('css-fullscreen'), { restoreScroll: true });"),
-    'and it is the exit button toggle'
+    'the exit button toggle'
+  );
+  assert.ok(
+    STRIPPED.includes('setCssFullscreen(false, { restoreScroll: true });'),
+    'the rotate-back / Fix A faux exits (setCssFullscreen(false, { restoreScroll: true }))'
   );
   // The clear-only callers must remain option-free: teardown (the C1
   // clobber path) and the applyControlsMode state guard.

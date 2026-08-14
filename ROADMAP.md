@@ -80,6 +80,36 @@
 
 ## Shipped
 
+### v1.118.0 - mobile: OUR fullscreen supersedes Apple's on rotate (zero-tap exit) (2026-08-14)
+
+Dean (iOS PWA, custom player): playing a video and rotating to landscape hands you
+to Apple's native fullscreen; exiting it dropped you into our own fullscreen
+(costing an extra tap), and rotating back couldn't auto-exit. Apple's native
+fullscreen CANNOT be closed by code without the video PAUSING (proven + reverted
+2026-07-10) - so, Dean's call, OUR faux (CSS) fullscreen now supersedes it. CUSTOM
+player mode only; native-controls mode + desktop are byte-for-byte unchanged.
+
+- **Rotate to landscape -> our fullscreen.** The bounce that kicks iOS's auto-native
+  player off-screen (it was silently failing on Dean's device) now arms our faux
+  first and retries the exit through the enter transition so it reliably takes.
+- **Rotate back to portrait -> auto-exits to the normal player, still playing, ZERO
+  taps.** Pure CSS, so it never hits the iOS pause wall (the no-programmatic-native-
+  exit-on-rotate invariant is preserved + re-asserted by the tests).
+- **Safety net (Fix A):** if the bounce ever doesn't take and you end up in Apple's
+  player, genuinely exiting it drops you straight to the normal player instead of
+  stranding you in faux (handoff vs user-exit disambiguated by timing).
+
+Gate: slim gate (adversarial, player lifecycle). APPROVE after a one-round belt
+(reset the handoff stamp on every faux exit so a button-fullscreen can't be
+spuriously closed; tightened a loose time-guard test). The iOS-pause invariant is
+mutation-bound on both surfaces. Dual-Node full suite **6843/6843** on v22.23.1 and
+v24.14.0.
+
+**DEVICE PASS PENDING - THE ARBITER.** This is iOS runtime behavior no dev-env test
+can reproduce; the bounce timing is a ship -> verify -> iterate loop (tech-debt
+#146). On-device watch-fors: a flash of Apple's player before ours, a pause on
+rotate-into-fullscreen, or a stuck-in-faux on a very fast exit.
+
 ### v1.117.0 - left sidebar consistent on every page (pins + Stats link no longer vanish) (2026-08-13)
 
 Dean bug: on some pages the left sidebar dropped content - going to Stats made all
