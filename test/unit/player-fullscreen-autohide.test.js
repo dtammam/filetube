@@ -69,12 +69,21 @@ test('a tap on the video or the bar reveals + re-arms (additive/passive; skip-ge
   assert.ok(!/audioBgArt\.addEventListener\(evt,/.test(loop[1]), 'audio art must NOT be a blind-reveal surface');
 });
 
-test('v1.120: an audio cover-art tap reveals a HIDDEN bar without toggling playback (toggles only when the bar is up)', () => {
-  const m = /audioBgArt\.addEventListener\('click', function \(e\) \{([\s\S]*?)\n {6}\}\);/.exec(SRC);
-  assert.ok(m, 'the audio art click handler exists');
-  // The reveal-if-hidden branch returns BEFORE the play/pause toggle.
-  assert.match(m[1], /if \(inImmersiveMode\(\) && host && host\.classList\.contains\('controls-autohidden'\)\) \{\s*revealControlsAndReArm\(\);\s*return;\s*\}[\s\S]*?scheduleArtSingleTap\(toggleArtPlayPause\)/,
-    'reveal-if-hidden must precede (and short-circuit) the play/pause toggle');
+test('v1.120: an audio cover-art tap reveals a HIDDEN bar without toggling playback (on TOUCH, not just mouse)', () => {
+  // Gate-round fix: the reveal-if-hidden logic lives in artSingleTapOrReveal,
+  // which is the action wired to the TOUCH single-tap (wireSkipHoldGestures'
+  // onSingleTap -> scheduleArtSingleTap(onSingleTap)). This is the iOS path,
+  // where a touchend preventDefault suppresses the synthetic 'click' -- so a
+  // reveal guard in the click handler alone was DEAD on a phone.
+  const fn = /function artSingleTapOrReveal\(\) \{([\s\S]*?)\n {2}\}/.exec(SRC);
+  assert.ok(fn, 'artSingleTapOrReveal exists');
+  assert.match(fn[1], /if \(inImmersiveMode\(\) && host && host\.classList\.contains\('controls-autohidden'\)\) \{\s*revealControlsAndReArm\(\);\s*return;\s*\}[\s\S]*?toggleArtPlayPause\(\);/,
+    'reveal-if-hidden short-circuits BEFORE the play/pause toggle');
+  // It is the TOUCH single-tap action (the real iOS reveal path), not a
+  // click-only guard.
+  assert.match(SRC, /wireSkipHoldGestures\(audioBgArt, artSingleTapOrReveal\)/, 'the touch single-tap routes through the reveal-or-toggle action');
+  // And the mouse click path uses the SAME action (parity).
+  assert.match(SRC, /scheduleArtSingleTap\(artSingleTapOrReveal\)/, 'the click path uses the same action');
 });
 
 test('inImmersiveMode covers BOTH video faux fullscreen AND the audio expanded view', () => {

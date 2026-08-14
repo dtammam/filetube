@@ -4299,6 +4299,22 @@ if (typeof module !== 'undefined' && module.exports) {
     flashArtGlyph(willPlay);
   }
 
+  // v1.120 gate round: the cover-art single-tap action. In the expanded audio
+  // view, a tap while the auto-hidden bar is DOWN wakes the controls WITHOUT
+  // toggling playback (the native "first tap reveals" convention -- so you can
+  // bring the scrubber back without pausing); otherwise it toggles play/pause.
+  // Shared by BOTH the touch single-tap (wireSkipHoldGestures onSingleTap) and
+  // the mouse 'click' path, so it fires on iOS where the synthetic click is
+  // suppressed -- the round-1 fix put the guard in the click handler ONLY, which
+  // a touchend preventDefault made dead on a phone.
+  function artSingleTapOrReveal() {
+    if (inImmersiveMode() && host && host.classList.contains('controls-autohidden')) {
+      revealControlsAndReArm();
+      return;
+    }
+    toggleArtPlayPause();
+  }
+
   // Cover-art click-to-play overlay glyph (AC9): flashes via the same
   // remove/reflow/add idiom `flashRipple` (above) already uses for the
   // skip-ripple feedback, so a rapid repeat click always re-triggers the fade.
@@ -6008,19 +6024,14 @@ if (typeof module !== 'undefined' && module.exports) {
         if (state !== STATE_FULL) return;
         e.stopPropagation();
         if (!mediaPlayer) return;
-        // v1.120 gate fix: in the expanded audio view, a tap on the art while the
-        // auto-hidden bar is DOWN reveals it WITHOUT toggling playback (the native
-        // "first tap wakes the controls" convention) -- so you can bring the
-        // scrubber back without pausing. A tap while the bar is UP toggles as before.
-        if (inImmersiveMode() && host && host.classList.contains('controls-autohidden')) {
-          revealControlsAndReArm();
-          return;
-        }
         if (pendingArtTapTimer) {
           cancelPendingArtTap();
           return;
         }
-        scheduleArtSingleTap(toggleArtPlayPause);
+        // v1.120 gate round: reveal-if-hidden-else-toggle -- the SAME action the
+        // touch single-tap uses, so the "wake controls without pausing" behavior
+        // fires on iOS (where the synthetic click is suppressed) too.
+        scheduleArtSingleTap(artSingleTapOrReveal);
       });
     }
 
@@ -6065,7 +6076,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // -- so attaching both here is safe: whichever surface a tap/click/hold
     // actually lands on is the only one that ever fires.
     wireSkipHoldGestures(mediaPlayer);
-    wireSkipHoldGestures(audioBgArt, toggleArtPlayPause);
+    wireSkipHoldGestures(audioBgArt, artSingleTapOrReveal);
 
     function onEnterFullscreen() { clearTimeout(holdTimer); releaseHold(); keeperNativeFsCapture(); }
     document.addEventListener('fullscreenchange', function () { if (document.fullscreenElement) onEnterFullscreen(); });
