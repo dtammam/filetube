@@ -1775,7 +1775,12 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!mediaPlayer || mediaPlayer.paused || mediaPlayer.ended) return;
     controlsAutoHideTimer = setTimeout(function () {
       controlsAutoHideTimer = null;
-      if (inFauxFullscreen() && mediaPlayer && !mediaPlayer.paused && !mediaPlayer.ended) {
+      // v1.119 gate fix (adversarial WARNING): NEVER hide mid-scrub. A seek drag
+      // is visual-only and never pauses, so `!paused` alone would fade the very
+      // seek bar under the finger on a >3s drag (and pointer-events:none on the
+      // captured element risks breaking the scrub on iOS). The 'change' handler
+      // re-arms once the drag commits, so the fade resumes after the scrub.
+      if (inFauxFullscreen() && mediaPlayer && !mediaPlayer.paused && !mediaPlayer.ended && !isScrubbing) {
         if (host) host.classList.add('controls-autohidden');
       }
     }, 3000);
@@ -4950,10 +4955,13 @@ if (typeof module !== 'undefined' && module.exports) {
     mediaPlayer.addEventListener('play', armControlsAutoHide);
     mediaPlayer.addEventListener('pause', function () { clearControlsAutoHide(); showControlsBar(); });
     mediaPlayer.addEventListener('ended', function () { clearControlsAutoHide(); showControlsBar(); });
-    // v1.119: ANY interaction with the video OR the bar reveals the bar and
-    // restarts the fade -- so it's always one tap away and never fades mid-scrub.
-    // Additive + passive: the skip/hold gesture layer is untouched (a single tap
-    // just reveals; it triggers no skip). No-op outside faux fullscreen.
+    // v1.119: ANY tap on the video OR the bar reveals the bar and restarts the
+    // fade -- so it's always one tap away. (A continuous seek DRAG emits
+    // pointermove/input, not pointerdown, so the fade timer's own `!isScrubbing`
+    // guard -- plus the 'change' re-arm -- is what keeps the bar up through a
+    // long scrub; see armControlsAutoHide.) Additive + passive: the skip/hold
+    // gesture layer is untouched (a single tap just reveals; it triggers no
+    // skip). No-op outside faux fullscreen.
     ['touchstart', 'pointerdown'].forEach(function (evt) {
       mediaPlayer.addEventListener(evt, function () { if (inFauxFullscreen()) revealControlsAndReArm(); }, { passive: true });
       if (playerControls) playerControls.addEventListener(evt, function () { if (inFauxFullscreen()) revealControlsAndReArm(); }, { passive: true });
@@ -5082,6 +5090,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // the stream exactly as the existing skip() does above.
       seekBar.addEventListener('change', function () {
         isScrubbing = false;
+        // v1.119: a committed scrub is interaction -- reveal the bar (in case a
+        // fire landed just before) and restart the fade countdown from release.
+        revealControlsAndReArm();
         if (!mediaPlayer) return;
         var ratio = Number(seekBar.value);
         var target = seekCommitTarget({

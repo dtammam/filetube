@@ -29,9 +29,18 @@ test('armControlsAutoHide is scoped to faux fullscreen AND never fires while pau
   const body = m[1];
   assert.match(body, /if \(!inFauxFullscreen\(\)\) return;/, 'only arms in faux fullscreen');
   assert.match(body, /if \(!mediaPlayer \|\| mediaPlayer\.paused \|\| mediaPlayer\.ended\) return;/, 'never arms while paused/ended (bar stays up)');
-  // The fire callback RE-checks the same guards (a pause/exit during the window cancels the hide).
-  assert.match(body, /setTimeout\(function \(\) \{[\s\S]*?inFauxFullscreen\(\) && mediaPlayer && !mediaPlayer\.paused && !mediaPlayer\.ended[\s\S]*?classList\.add\('controls-autohidden'\)/,
-    'the fire callback re-checks faux + playing before hiding');
+  // The fire callback RE-checks the same guards (a pause/exit during the window
+  // cancels the hide) AND never hides mid-scrub (a seek drag never pauses, so
+  // `!paused` alone would fade the seek bar under the finger -- gate WARNING).
+  assert.match(body, /setTimeout\(function \(\) \{[\s\S]*?inFauxFullscreen\(\) && mediaPlayer && !mediaPlayer\.paused && !mediaPlayer\.ended && !isScrubbing[\s\S]*?classList\.add\('controls-autohidden'\)/,
+    'the fire callback re-checks faux + playing + NOT scrubbing before hiding');
+});
+
+test('a committed scrub re-arms the fade (bar stays through a long drag, fades after release)', () => {
+  // The seek 'change' handler (drag commit) restarts the auto-hide countdown, so
+  // after a long scrub the bar reveals + fades again rather than staying stuck.
+  assert.match(SRC, /seekBar\.addEventListener\('change', function \(\) \{\s*isScrubbing = false;\s*revealControlsAndReArm\(\);/,
+    "the seek 'change' handler re-arms the fade after a scrub commits");
 });
 
 test('setCssFullscreen drives the auto-hide cycle (reveal+arm on enter, cancel+show on exit)', () => {
