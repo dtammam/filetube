@@ -80,6 +80,29 @@
 
 ## Shipped
 
+### v1.119.0 - fullscreen polish: auto-hide controls + fix the iOS-landscape bleed (2026-08-14)
+
+Dean's v1.118 device pass: the rotate-to-our-fullscreen dream WORKS. Two polish
+follow-ups from the on-device screenshots.
+
+- **The control bar auto-hides in fullscreen** (the native convention). It overlays
+  the picture (v1.34.4), so keeping it up permanently blocked the bottom of the
+  frame + the captions. Now it fades out after ~3s of no interaction while playing,
+  reveals on any tap (video or bar), and stays up while paused (a paused frame
+  keeps its scrubber). It never fades mid-scrub (the gate caught that), and the
+  skip/hold gestures are untouched. Faux fullscreen only.
+- **The bottom bleed is gone.** On an iOS-landscape PWA `inset:0` alone stopped at
+  the layout-viewport edge, letting the page peek through a strip below the overlay;
+  the overlay now pins to the visual viewport (100dvh/100dvw) and the body paints
+  black, so any sliver reads as letterbox, not page content.
+
+Gate: slim gate (adversarial). APPROVE after one round - it caught a real scrub
+regression (a >3s continuous drag hid the seek bar under the finger, since a scrub
+never pauses); fixed by guarding the fade on `!isScrubbing` + re-arming on the drag
+commit. Dual-Node full suite **6850/6850** on v22.23.1 and v24.14.0.
+
+**DEVICE PASS PENDING** (iOS landscape layout + the autohide feel are the arbiter).
+
 ### v1.118.0 - mobile: OUR fullscreen supersedes Apple's on rotate (zero-tap exit) (2026-08-14)
 
 Dean (iOS PWA, custom player): playing a video and rotating to landscape hands you
