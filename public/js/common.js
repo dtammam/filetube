@@ -796,6 +796,24 @@ function resolveChannelName(item, folderSettings) {
   return mapped || item.artist || item.folderName || 'Library';
 }
 
+// v1.122 (Dean): the `?root=` folder-view HEADER prefers the CHANNEL the
+// folder's items resolve to -- but only when they ALL agree on exactly one
+// non-empty name (a healed channel folder). A mixed folder (e.g. a junk-drawer
+// holding many channels) or an empty page keeps the caller's existing folder
+// label -- never a guess. Pure; reuses resolveChannelName so this can never
+// diverge from what the cards themselves display.
+function resolveRootHeaderLabel(items, folderSettings, fallbackLabel) {
+  const list = Array.isArray(items) ? items : [];
+  let only = null;
+  for (const item of list) {
+    if (!item) continue;
+    const name = resolveChannelName(item, folderSettings);
+    if (only === null) only = name;
+    else if (name !== only) return fallbackLabel; // mixed folder -- keep the folder label
+  }
+  return (typeof only === 'string' && only.trim() !== '') ? only : fallbackLabel;
+}
+
 // ---- FR-2 channel-identity matcher (T2, v1.20.0) ---------------------------
 // See docs/exec-plans/completed/2026-07-08-v1.20-subscribe.md ("Matcher") for the
 // full design/rationale. Pure, client-side, node:test-covered -- the server
@@ -11818,7 +11836,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatRepullAckText,
     // v1.32 (gate fix): the chip's one-line breaker summary.
     formatBreakerChipText,
-    getStarRating, getCommentCount, resolveChannelName, displayChannelName, clampPositionState,
+    getStarRating, getCommentCount, resolveChannelName, displayChannelName, resolveRootHeaderLabel, clampPositionState,
     resolveTheme, THEME_REGISTRY, activeNavItem,
     // v1.82: the account menu injector + avatar builder + shared sign-out +
     // theme-glyph sync.

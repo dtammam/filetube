@@ -163,6 +163,8 @@ module.exports = [
         rankRelated: 'readonly',
         resolveAudioArtUrl: 'readonly',
         resolveChannelName: 'readonly',
+        // v1.122: the ?root= header's single-channel folder label (common.js).
+        resolveRootHeaderLabel: 'readonly',
         resolveTheme: 'readonly',
         // v1.48 item 2: real day-of view counts (wraps getMockViews as fallback).
         resolveViewCountLabel: 'readonly',

@@ -80,6 +80,35 @@
 
 ## Shipped
 
+### v1.122.0 - channel names consistent on the last folder-named surfaces (2026-08-14)
+
+Dean (on-device, v1.121): the healed channel names (v1.115/116) show on all
+cards, but the watch page's RELATED rail still said "nestalgiamusic", and tapping
+the channel name landed on a folder view titled "nestalgiamusic". The recurring
+enumerate-every-surface class - and the gate found a THIRD surface Dean couldn't
+see (the classic home's "Continue watching" row; invisible in Modern mode).
+
+- **The related rail** now routes through the same name resolver every card uses
+  -> "NESTALGIA"; items with no name fall back to the folder exactly as before.
+- **The `?root=` folder view header** retitles to the channel's display name when
+  the page's items all agree on one name; a MIXED folder (a junk-drawer holding
+  many channels) keeps its folder title - the header never disagrees with the
+  cards below it. Honest edge (disclosed): a PARTIALLY-healed folder (some items
+  still nameless on page 1) keeps the folder title, matching those cards - if
+  NESTALGIA still shows the folder name, run "Refresh channel names" first.
+- **The classic "Continue watching" row** (gate catch) swept to the resolver too.
+- **Docs rider:** the release ceremony now codifies Dean's branch-hygiene norm -
+  push main + tag only; wave branches are deleted (remote where pushed + local)
+  once the tag verifies. This wave is the norm's first run.
+
+Gate: slim gate (adversarial). One fix round - it caught a LYING COMMENT (my
+badge-mechanism claim was false; corrected + the no-op call it justified removed)
+plus the third surface and the honest partial-heal contract; 11/11 mutants killed
+on the delta. Dual-Node full suite **6870/6870** on v22.23.1 and v24.14.0.
+
+**DEVICE PASS PENDING (Dean):** related rail shows NESTALGIA; tapping the channel
+name lands on a view titled NESTALGIA; a mixed folder keeps its folder title.
+
 ### v1.121.0 - "Instant background-audio handoff" (the lock-blip tuning) + manifest identity (2026-08-14)
 
 Dean's on-device report: audio background play is gapless-perfect; VIDEO
