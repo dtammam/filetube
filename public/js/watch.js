@@ -1527,7 +1527,7 @@ if (typeof module !== 'undefined' && module.exports) {
               </div>
               <div class="related-info">
                 <div class="related-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
-                <div class="related-uploader">${escapeHtml(item.folderName)}</div>
+                <div class="related-uploader">${escapeHtml(resolveChannelName(item, folderSettings))}</div>
                 <div class="related-meta">${views}</div>
               </div>
             </a>

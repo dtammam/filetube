@@ -1638,6 +1638,22 @@ const PreviewCards = (function () {
       currentTotal = typeof data.total === 'number' ? data.total : currentItems.length;
       renderMediaGridPage(currentItems, { append: false });
       updateItemCountBadge();
+      // v1.122 (Dean): a `?root=` CHANNEL-folder view titles itself with the
+      // channel's resolved display name ("NESTALGIA") once page 0 shows every
+      // item agreeing on one name -- so tapping a channel name never lands on a
+      // header showing the raw folder ("nestalgiamusic"). A MIXED folder (or an
+      // empty page) keeps the folder label -- resolveRootHeaderLabel never
+      // guesses. The fallback is DERIVED (same spelling as the initial header
+      // set above), never read back from the DOM -- the count badge renders
+      // INSIDE the header, so textContent would capture it. Page-0 only
+      // (appends never retitle); non-root views (search/liked/subs/bare home)
+      // are untouched by the rootFilter gate.
+      if (rootFilter && videosHeader) {
+        const rootBase = rootFilter.split(/[\\/]/).pop() || rootFilter;
+        const rootLabel = (folderSettings[rootFilter] && folderSettings[rootFilter].name) || rootBase;
+        videosHeader.textContent = resolveRootHeaderLabel(currentItems, folderSettings, rootLabel);
+        updateItemCountBadge(); // the badge lives inside the header -- re-render it after the retitle
+      }
       // v1.100: the format + watch-state toggles now render synchronously at the
       // top of loadLibrary (before the fetch) so the toolbar is complete from
       // first paint - no longer injected here post-fetch. A guarded re-render

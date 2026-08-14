@@ -57,9 +57,15 @@ Dean's trust rests on two pillars, and neither is ever traded for speed:
    ROADMAP.md "Shipped" entry (honest: include what the gate caught and
    any known gaps) -> move the exec plan to `completed/` when its Stop
    closes -> commit on `release/vX.Y.Z` -> `git merge --no-ff` into main
-   -> `git tag vX.Y.Z` -> push all refs. The tag push auto-publishes
-   Docker (X.Y.Z + latest); **the Docker pull onto Dean's server is
-   always Dean's.** Waves RELEASE with Dean's device pass PENDING and
+   -> `git tag vX.Y.Z` -> push `main` + the tag. The tag push
+   auto-publishes Docker (X.Y.Z + latest); **the Docker pull onto Dean's
+   server is always Dean's.** Then BRANCH HYGIENE (Dean, 2026-08-14):
+   once the tag is confirmed on the remote, DELETE the wave's
+   feat/fix/release branches BOTH remote (`git push origin --delete`,
+   only those actually pushed) and local (`git branch -d`, never `-D` -
+   it refuses unmerged). Branches may live on origin DURING a wave
+   (multi-PC access) but never after the merge; main + tags are the only
+   permanent refs. Waves RELEASE with Dean's device pass PENDING and
    disclosed - never merged-but-unreleased.
 8. **Memory + report.** Update persistent memory (condense in-flight
    briefs into a shipped record with the lessons), then report: outcome
