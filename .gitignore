@@ -66,6 +66,11 @@ bin/
 # the file was already sitting untracked in a dev tree, one `git add -A` from
 # being published.)
 /vapid-keys.json
+# v1.123: the session-signing secret (mints on first boot to DATA_DIR/session-secret,
+# 0600). A CREDENTIAL - anyone holding it can forge session cookies for this
+# instance. It was tracked from v1.43 until v1.123 (public repo); rotated and
+# untracked here. Same repo-root landing spot as the files above in local dev.
+/session-secret
 .thumbnails/
 /data/
 

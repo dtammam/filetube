@@ -9,18 +9,51 @@ permissions:
   contents: read
 
 jobs:
-  # Single job on Node 22 (current LTS) — the one version this app targets and
-  # deploys on (see Dockerfile). No matrix: this is a single-target self-hosted
-  # app, so the only Node that matters is the one it ships with.
-  ci:
+  # v1.123 T2: secret scanning. A pinned gitleaks binary scans the WORKING TREE
+  # (dir/--no-git), NOT history: the one historical leak (session-secret,
+  # v1.43-v1.123) is known, disclosed, and dead after rotation, so a history
+  # scan would be permanently and uselessly red. Config + path allowlists live
+  # in .gitleaks.toml (test fixtures carry intentional fake secrets). Its own
+  # job (no Node needed) so it runs in parallel and stays independent of the
+  # Node matrix below.
+  secret-scan:
     runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: 8.21.2
+      GITLEAKS_SHA256: 5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up Node.js
+      - name: Install gitleaks (pinned + checksum-verified)
+        run: |
+          set -euo pipefail
+          curl -sSL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+
+      - name: Scan working tree for secrets
+        run: ./gitleaks dir . --no-banner --redact --config .gitleaks.toml --exit-code 1
+
+  # v1.123 T5: lint + token-ratchet + suite across BOTH Node versions the app is
+  # verified on. Was a single Node-22 job whose comment claimed "the only Node
+  # that matters" while the release ceremony (CLAUDE.md) verifies dual-Node 22 +
+  # 24 - the matrix makes CI match the ceremony it contradicted. Node 24's
+  # reporter prints `ℹ`, not `#` (memory: an empty grep is not green).
+  ci:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['22', '24']
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
@@ -59,6 +92,8 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-output
+          # Matrix-scoped name: upload-artifact@v4 errors on a duplicate name, so
+          # the two Node legs must not both upload `test-output`.
+          name: test-output-node${{ matrix.node-version }}
           path: test-output.txt
           retention-days: 14

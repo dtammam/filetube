@@ -72,3 +72,27 @@ test('BOOKS: restricted member 404 on file/cover/tts + omitted from list; admin 
   const adminIds = ((await (await asAdmin('/api/books?limit=50')).json()).items || []).map((i) => i.id).sort();
   assert.deepStrictEqual(adminIds, ['blk', 'ok']);
 });
+
+// v1.123 T3 (gate, both seats W1): the book-cover POST writes a SHARED cover and
+// was fixed to check bookVisibleTo, but shipped with NO behavioral binding - a
+// mutant removing the guard survived the whole suite. This binds it: a restricted
+// member must 404 and NO cover file may be written for the hidden book; a visible
+// book reaches the handler (cover POST is not capability-gated, so a 200 there
+// proves the block was visibility). Runs after the read test above.
+test('BOOKS MUTATION: restricted member 404s on cover POST of a hidden book; no cover written; visible book reaches the handler', async () => {
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]); // minimal valid-magic JPEG
+  const coverDir = path.join(DATA_DIR, '.bookcovers');
+  const post = (id, cookie) => fetch(`${base}/api/books/${id}/cover`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'image/jpeg', ...(cookie ? { Cookie: cookie } : {}) },
+    body: jpeg,
+  });
+
+  // Hidden book (Private): 404 on the visibility axis, and the write never ran.
+  assert.strictEqual((await post('blk', member.cookie)).status, 404, 'restricted cover POST -> 404 (visibility)');
+  assert.ok(!fs.existsSync(path.join(coverDir, 'blk.jpg')), 'no cover written for the hidden book');
+
+  // Visible book (Kids): reaches the handler (200 applied) - proves the block was
+  // visibility, not a missing capability (cover POST is not capability-gated).
+  assert.strictEqual((await post('ok', member.cookie)).status, 200, 'visible cover POST reaches the handler');
+});

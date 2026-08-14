@@ -147,6 +147,41 @@ test('disabled module: both per-video routes are native 404s and nothing is spaw
   }
 });
 
+// ---- v1.123 T3: the visibility axis (adversarial W3) -----------------------
+
+test('restricted member: both per-video routes 404 for a HIDDEN item and nothing is spawned', async () => {
+  let called = false;
+  run.repullItemMetaAndSubs = async () => { called = true; return null; };
+  const deps = makeFakeDeps();
+  deps.mediaVisibleTo = () => false; // this member is restricted from the item's folder
+  deps.relocateHydratedImport = async () => ({ status: 'skipped' }); // wire the seam so relocate reaches the guard, not the 503
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    // Both the repull and the file-moving relocate must 404 on the visibility
+    // axis alone (this harness sets no requireManageSubscriptions, so a 404 here
+    // can only be the mediaVisibleTo guard).
+    assert.equal((await fetch(itemUrl(base), { method: 'POST' })).status, 404, 'repull hidden -> 404');
+    assert.equal((await fetch(`${itemUrl(base)}/relocate`, { method: 'POST' })).status, 404, 'relocate hidden -> 404');
+    await flush();
+    assert.equal(called, false, 'no reheat spawned for a hidden item');
+  } finally {
+    await close();
+  }
+});
+
+test('positive control: with the item VISIBLE, the per-video repull proceeds (202) - proves the block was visibility', async () => {
+  run.repullItemMetaAndSubs = async () => ({ sourceTitle: 'X', sourceViewCount: 1, wroteSubs: false });
+  const deps = makeFakeDeps();
+  deps.mediaVisibleTo = () => true; // visible
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    assert.equal((await fetch(itemUrl(base), { method: 'POST' })).status, 202, 'visible repull proceeds');
+    await flush();
+  } finally {
+    await close();
+  }
+});
+
 // ---- The happy path --------------------------------------------------------
 
 test('202 {started, mediaId}, then the shared per-item pass runs and persists with allowViewCountDecrease', async () => {

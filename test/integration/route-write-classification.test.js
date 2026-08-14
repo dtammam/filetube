@@ -165,6 +165,165 @@ const CLASSIFICATION = {
 // Categories whose routes MUST refuse a member holding none of the capabilities.
 const CAPABILITY_CATEGORIES = new Set(['library-write', 'manage-subs', 'admin']);
 
+// v1.123 T3: the VISIBILITY axis. The classification above binds "a flag-less
+// member gets 403". This binds the ORTHOGONAL question the podcast delete/restore
+// bypass exposed (and, in the same audit, trash restore/purge, book covers and
+// the two ytdlp per-item routes): a member WITH the capability but RESTRICTED
+// from the resource must not mutate it.
+//
+// GATE FIX (both seats, round 1): the first cut used an ALLOWLIST predicate
+// (`isContentAddressed` matched today's `/api/videos/` etc. prefixes) so a NEW
+// media namespace - e.g. a future `DELETE /api/music/tracks/:id` - escaped the
+// net silently, re-shipping the exact class this wave closes. The adversarial
+// seat proved it end-to-end. This is now a DENYLIST exactly like CLASSIFICATION:
+// EVERY live mutating route must be explicitly bucketed here, there is NO
+// default, and the completeness test below fails until a new route is classified.
+//
+//   enforced - content-addressed AND the handler checks visibility
+//              (mediaVisibleTo / episodeVisibleTo / bookVisibleTo /
+//              trashRecordVisibleTo) and 404s a restricted member. Behavioral
+//              proof lives in the rbac-{video,books,podcast}-enforcement +
+//              ytdlp-repull-item-endpoint suites.
+//   personal - writes ONLY the caller's own per-user state (liked / watched /
+//              progress / finished / played / queue / prefs). A restricted
+//              member can at worst write or clear a useless row for an item they
+//              cannot see - an existence oracle at worst, non-blocking. Note the
+//              POST video routes (view/liked/watched/feed-hidden) ADDITIONALLY
+//              enforce (they run restrictedVideoMutation) so they are `enforced`;
+//              their DELETE siblings do NOT (un-liking a since-restricted item is
+//              legitimate cleanup) so they are `personal` - the asymmetry is
+//              deliberate, not an oversight (gate round 1, QA W2).
+//   n/a      - not per-content: session/auth, instance config, the channel/
+//              podcast REGISTRY (subscriptions/shows/pins/users), and
+//              LIBRARY-WIDE operations (scan/cache/bulk/reheat/backfill/
+//              repull-library/check/downloads). Capability-gated, not
+//              visibility-gated.
+const VISIBILITY = {
+  // --- session / auth ---
+  'POST /api/auth/login': 'n/a',
+  'POST /api/auth/setup': 'n/a',
+  'POST /api/auth/logout': 'n/a',
+
+  // --- content-addressed, visibility ENFORCED ---
+  'POST /api/videos/:id/view': 'enforced',
+  'POST /api/videos/:id/dimensions': 'enforced',
+  'POST /api/videos/:id/prepare-audio': 'enforced',
+  'POST /api/liked/:id': 'enforced',
+  'POST /api/watched/:id': 'enforced',
+  'POST /api/feed-hidden/:id': 'enforced',
+  'DELETE /api/videos/:id': 'enforced',
+  'POST /api/videos/:id/move': 'enforced',
+  'POST /api/videos/:id/chapters': 'enforced',
+  'POST /api/videos/:id/attribute-channel': 'enforced',
+  'POST /api/trash/:id/restore': 'enforced',
+  'DELETE /api/trash/:id': 'enforced',
+  'DELETE /api/podcasts/episodes/:id': 'enforced',
+  'POST /api/podcasts/episodes/:id/restore': 'enforced',
+  'POST /api/books/:id/cover': 'enforced',
+  'POST /book/:id/tts/:spineIndex/ensure': 'enforced',
+  'POST /api/ytdlp/repull-metadata/item/:mediaId': 'enforced',
+  'POST /api/ytdlp/repull-metadata/item/:mediaId/relocate': 'enforced',
+
+  // --- the caller's OWN per-user state (oracle at worst, non-blocking) ---
+  'POST /api/progress': 'personal',
+  'DELETE /api/liked/:id': 'personal',
+  'DELETE /api/watched/:id': 'personal',
+  'DELETE /api/feed-hidden/:id': 'personal',
+  'DELETE /api/history': 'personal',
+  'DELETE /api/history/:id': 'personal',
+  'POST /api/search-history': 'personal',
+  'DELETE /api/search-history/:term': 'personal',
+  'DELETE /api/search-history': 'personal',
+  'POST /api/queue/items': 'personal',
+  'DELETE /api/queue/items/:uid': 'personal',
+  'DELETE /api/queue': 'personal',
+  'POST /api/queue/pointer': 'personal',
+  'POST /api/queue/reorder': 'personal',
+  'POST /api/me/settings': 'personal',
+  'POST /api/me/avatar': 'personal',
+  'DELETE /api/me/avatar': 'personal',
+  'POST /api/notifications/clear': 'personal',
+  'POST /api/notifications/dismiss': 'personal',
+  'POST /api/notifications/read': 'personal',
+  'POST /api/notifications/seen': 'personal',
+  'POST /api/push/subscribe': 'personal',
+  'POST /api/push/unsubscribe': 'personal',
+  'POST /api/music/progress': 'personal',
+  'POST /api/music/resume': 'personal',
+  'POST /api/music/liked/:id': 'personal',
+  'DELETE /api/music/liked/:id': 'personal',
+  'POST /api/books/liked/:id': 'personal',
+  'DELETE /api/books/liked/:id': 'personal',
+  'POST /api/books/:id/finished': 'personal',
+  'POST /api/books/:id/progress': 'personal',
+  'POST /api/books/pins': 'personal',
+  'POST /api/books/pins/reorder': 'personal',
+  'DELETE /api/books/pins/:id': 'personal',
+  'POST /api/podcasts/progress': 'personal',
+  'POST /api/podcasts/episodes/:id/liked': 'personal',
+  'DELETE /api/podcasts/episodes/:id/liked': 'personal',
+  'POST /api/podcasts/episodes/:id/played': 'personal',
+  'POST /api/podcasts/pins': 'personal',
+  'POST /api/podcasts/pins/reorder': 'personal',
+  'DELETE /api/podcasts/pins/:id': 'personal',
+  'POST /api/subscriptions/pins': 'personal',
+  'POST /api/subscriptions/pins/reorder': 'personal',
+  'DELETE /api/subscriptions/pins/:id': 'personal',
+
+  // --- not per-content: registry / config / library-wide (n/a) ---
+  'POST /api/videos/attribute-channel-bulk': 'n/a',
+  'POST /api/videos/attribute-channel-bulk/cancel': 'n/a',
+  'POST /api/scan': 'n/a',
+  'POST /api/books/scan': 'n/a',
+  'POST /api/music/scan': 'n/a',
+  'POST /api/cache/clear': 'n/a',
+  'POST /api/subscriptions': 'n/a',
+  'DELETE /api/subscriptions/:id': 'n/a',
+  'PATCH /api/subscriptions/:id': 'n/a',
+  'POST /api/subscriptions/:id/cancel': 'n/a',
+  'POST /api/subscriptions/:id/repull': 'n/a',
+  'POST /api/subscriptions/:id/skip': 'n/a',
+  'POST /api/subscriptions/downloads/cancel': 'n/a',
+  'POST /api/subscriptions/reorder': 'n/a',
+  'POST /api/subscriptions/repull': 'n/a',
+  'POST /api/subscriptions/settings': 'n/a',
+  'DELETE /api/subscriptions/failures/:id': 'n/a',
+  'DELETE /api/subscriptions/failures/all': 'n/a',
+  'POST /api/ytdlp/download': 'n/a',
+  'POST /api/ytdlp/download/:jobId/cancel': 'n/a',
+  'POST /api/ytdlp/refresh-avatars': 'n/a',
+  'POST /api/ytdlp/refresh-avatars/cancel': 'n/a',
+  'POST /api/ytdlp/reheat-sub-counts': 'n/a',
+  'POST /api/ytdlp/reheat-sub-counts/cancel': 'n/a',
+  'POST /api/ytdlp/backfill-channel-names': 'n/a',
+  'POST /api/ytdlp/backfill-channel-names/cancel': 'n/a',
+  'POST /api/ytdlp/repull-metadata': 'n/a',
+  'POST /api/ytdlp/repull-metadata/cancel': 'n/a',
+  'POST /api/ytdlp/repull-metadata/preview': 'n/a',
+  'POST /api/podcasts/check': 'n/a',
+  'POST /api/podcasts/subscriptions': 'n/a',
+  'DELETE /api/podcasts/subscriptions/:id': 'n/a',
+  'PATCH /api/podcasts/subscriptions/:id': 'n/a',
+  'POST /api/podcasts/subscriptions/:id/check': 'n/a',
+  'POST /api/podcasts/subscriptions/:id/feed-url': 'n/a',
+  'POST /api/podcasts/settings': 'n/a',
+  'POST /api/config': 'n/a',
+  'POST /api/books/config': 'n/a',
+  'POST /api/music/config': 'n/a',
+  'POST /api/settings': 'n/a',
+  'POST /api/settings/logo': 'n/a',
+  'DELETE /api/settings/logo': 'n/a',
+  'POST /api/admin/restore': 'n/a',
+  'POST /api/users': 'n/a',
+  'DELETE /api/users/:id': 'n/a',
+  'POST /api/users/:id/disabled': 'n/a',
+  'POST /api/users/:id/password': 'n/a',
+  'POST /api/users/:id/role': 'n/a',
+  'POST /api/users/:id/subscriptions-flag': 'n/a',
+  'POST /api/users/:id/modify-library-flag': 'n/a',
+  'PUT /api/users/:id/restrictions': 'n/a',
+};
+
 function liveMutatingRoutes() {
   const out = [];
   for (const layer of (app._router && app._router.stack) || []) {
@@ -229,4 +388,43 @@ test('ENFORCEMENT: every capability-gated route 403s a member holding NO capabil
     if (res.status !== 403) failures.push(`${route} [${cat}] -> ${res.status} (expected 403)`);
   }
   assert.deepStrictEqual(failures, [], `capability-gated routes NOT refusing a flag-less member:\n  ${failures.join('\n  ')}`);
+});
+
+test('VISIBILITY COMPLETENESS (denylist): EVERY live mutating route has a visibility bucket - a new one fails here', () => {
+  const live = liveMutatingRoutes();
+  const VALID = new Set(['enforced', 'personal', 'n/a']);
+  // (1) every live mutating route must be explicitly bucketed - NO default. This
+  // is what makes a brand-new media namespace (e.g. DELETE /api/music/tracks/:id)
+  // FAIL until someone decides its visibility, instead of escaping silently.
+  const unclassified = live.filter((r) => !(r in VISIBILITY));
+  assert.deepStrictEqual(unclassified, [],
+    `mutating route(s) with NO visibility bucket - add each to VISIBILITY as\n`
+    + `'enforced' (handler must 404 a restricted member) | 'personal' (own-state only)\n`
+    + `| 'n/a' (registry/config/library-wide, not per-content):\n  ${unclassified.join('\n  ')}`);
+  // (2) no stale entries, and every value is a legal bucket.
+  const liveSet = new Set(live);
+  const stale = Object.keys(VISIBILITY).filter((r) => !liveSet.has(r));
+  assert.deepStrictEqual(stale, [], `stale VISIBILITY entrie(s) - route no longer exists:\n  ${stale.join('\n  ')}`);
+  const badValue = Object.entries(VISIBILITY).filter(([, v]) => !VALID.has(v)).map(([r, v]) => `${r} -> ${v}`);
+  assert.deepStrictEqual(badValue, [], `VISIBILITY value must be enforced|personal|n/a:\n  ${badValue.join('\n  ')}`);
+  // (3) the two axes cover the SAME routes (both are denylists over the live
+  // table), so neither can drift out from under the other.
+  const capOnly = Object.keys(CLASSIFICATION).filter((r) => !(r in VISIBILITY));
+  const visOnly = Object.keys(VISIBILITY).filter((r) => !(r in CLASSIFICATION));
+  assert.deepStrictEqual([capOnly, visOnly], [[], []],
+    `CLASSIFICATION and VISIBILITY must classify the same route set;\n  cap-only: ${capOnly.join(', ')}\n  vis-only: ${visOnly.join(', ')}`);
+});
+
+test('VISIBILITY REGRESSION GUARD: the routes this wave fixed stay pinned `enforced`', () => {
+  for (const r of [
+    'DELETE /api/podcasts/episodes/:id',
+    'POST /api/podcasts/episodes/:id/restore',
+    'POST /api/trash/:id/restore',
+    'DELETE /api/trash/:id',
+    'POST /api/books/:id/cover',
+    'POST /api/ytdlp/repull-metadata/item/:mediaId',
+    'POST /api/ytdlp/repull-metadata/item/:mediaId/relocate',
+  ]) {
+    assert.strictEqual(VISIBILITY[r], 'enforced', `${r} must stay visibility-enforced (v1.123 T3)`);
+  }
 });

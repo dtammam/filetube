@@ -935,6 +935,20 @@ function podcastEpisodeVisibleTo(req, ep) {
 function bookVisibleTo(req, book) {
   return !!book && !visibility.isBlocked(userRestrictionIndex(req), { kind: 'book', filePath: book.filePath, folderName: book.folderName });
 }
+// v1.123 T3 (security): the trash MUTATION routes (restore/purge) must share the
+// trash LIST's visibility posture - a restricted member must not restore or
+// PERMANENTLY purge a trashed item hidden from them. Builds the SAME media
+// descriptor the GET /api/trash filter builds (from the snapshot, or the
+// record's own path fields for a snapshot-less orphan). A missing record is
+// "visible" so the route's own 404 path reports it neutrally (no oracle).
+function trashRecordVisibleTo(req, rec) {
+  return !rec || !visibility.isBlocked(userRestrictionIndex(req), {
+    kind: 'media',
+    filePath: (rec.item && rec.item.filePath) || rec.originalPath,
+    folderName: rec.item && rec.item.folderName,
+    rootFolder: rec.rootFolder || (rec.item && rec.item.rootFolder),
+  });
+}
 // v1.80 RBAC (security-gate W1): a restricted member must not delete / move /
 // mutate an item they cannot even SEE. Returns true (and 404s) when the id's
 // media item is restricted for req.user. Admin's empty index never restricts.
@@ -7218,7 +7232,11 @@ app.get('/bookcover/:id', (req, res) => {
       // Covers are immutable per id (a changed file gets a new path-hash id
       // only if the path changes; a re-extracted cover overwrites in place,
       // so cap the cache at a day rather than immutable).
-      res.setHeader('Cache-Control', 'public, max-age=86400');
+      // v1.123 T4 (security): `private`, not `public` - this route 404s per-user
+      // via bookVisibleTo, so a SHARED cache keyed on the URL alone could serve
+      // one user's (or a restricted book's) cover to another. Matches the
+      // /thumbnail posture. The user's OWN browser still caches it.
+      res.setHeader('Cache-Control', 'private, max-age=86400');
       return res.sendFile(coverPath);
     }
   }
@@ -7262,6 +7280,10 @@ app.post(
     const ns = booksStore.readBooks(getCachedDatabase());
     const item = ns.items[req.params.id];
     if (!item) return res.status(404).json({ error: 'Book not found' });
+    // v1.123 T3 (security): visibility axis - this writes a SHARED cover for the
+    // book, so a member restricted from it must not set it. Symmetric with the
+    // GET cover route's bookVisibleTo 404. Neutral (same 404 as a missing id).
+    if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' });
     if (item.hasCover === true) return res.status(200).json({ applied: false, reason: 'already has a cover' });
     const mime = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
     const sniff = BOOK_COVER_TYPES[mime];
@@ -8136,13 +8158,15 @@ app.get('/albumart/:id', (req, res) => {
     for (const ext of ['.jpg', '.png']) {
       const p = path.join(ALBUMART_DIR, `${key}${ext}`);
       if (fs.existsSync(p)) {
-        res.set('Cache-Control', 'public, max-age=86400');
+        // v1.123 T4 (security): `private` - albumart 404s per-user via
+        // trackVisibleTo, so a shared cache must not store/replay it cross-user.
+        res.set('Cache-Control', 'private, max-age=86400');
         return res.sendFile(p);
       }
     }
   }
   res.set('Content-Type', 'image/svg+xml');
-  res.set('Cache-Control', 'public, max-age=3600');
+  res.set('Cache-Control', 'private, max-age=3600'); // v1.123 T4: keep the axis uniform behind the auth wall
   res.send(musicArtPlaceholderSvg(track));
 });
 
@@ -8516,6 +8540,11 @@ app.get('/api/admin/backup', async (req, res) => {
       return false; // read-only pass — never save
     });
     res.setHeader('Content-Disposition', contentDispositionAttachment(`filetube-backup-${new Date().toISOString().slice(0, 10)}.json`));
+    // v1.123 T4 (security): the bundle carries password hashes, the full account
+    // set and every per-user state - it must never sit in ANY cache (shared or
+    // the browser's own disk). `no-store` is stricter than the `private` used on
+    // art: art may live in the user's own cache; this must not persist anywhere.
+    res.setHeader('Cache-Control', 'no-store');
     res.json(bundle);
   } catch (err) {
     console.error('Error building backup bundle:', err);
@@ -11503,6 +11532,12 @@ app.get('/api/trash', (req, res) => {
 app.post('/api/trash/:id/restore', async (req, res) => {
   if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (refuseIfReadOnlyMedia(res)) return;
+  // v1.123 T3 (security): visibility axis. requireModifyLibrary gates the
+  // capability; a member holding it but RESTRICTED from the item's folder must
+  // still not re-materialize it. 404 (neutral - same as a missing id below).
+  if (!trashRecordVisibleTo(req, (getCachedDatabase().trash || {})[req.params.id])) {
+    return res.status(404).json({ error: 'Trash item not found' });
+  }
   const result = await restoreTrashItem({ loadDatabase, updateDatabase, getMediaId }, req.params.id);
   if (!result.ok) {
     return res.status(result.status).json({ error: result.error, ...(result.code ? { code: result.code } : {}) });
@@ -11513,6 +11548,12 @@ app.post('/api/trash/:id/restore', async (req, res) => {
 app.delete('/api/trash/:id', async (req, res) => {
   if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (refuseIfReadOnlyMedia(res)) return;
+  // v1.123 T3 (security): visibility axis - purge PERMANENTLY destroys the file,
+  // so a capable-but-restricted member must never reach it for a hidden item.
+  // 404 (neutral - same as a missing id below).
+  if (!trashRecordVisibleTo(req, (getCachedDatabase().trash || {})[req.params.id])) {
+    return res.status(404).json({ error: 'Trash item not found' });
+  }
   const result = await purgeTrashItem({ loadDatabase, updateDatabase }, req.params.id);
   if (!result.ok) {
     return res.status(result.status).json({ error: result.error, ...(result.code ? { code: result.code } : {}) });
@@ -16206,6 +16247,7 @@ app.post('/api/videos/:id/prepare-audio', (req, res) => {
 // what avoids it, exactly like every other primitive below).
 ytdlp.registerRoutes(app, {
   requireManageSubscriptions, // v1.80 RBAC: gate for channel-registry mutations
+  mediaVisibleTo, // v1.123 T3: visibility axis for the per-item repull/relocate routes
   updateDatabase,
   loadDatabase,
   scanDirectories,

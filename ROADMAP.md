@@ -80,6 +80,64 @@
 
 ## Shipped
 
+### v1.123.0 - security emergency: secret rotation, object-visibility bypass, cache + publish hardening (2026-08-14)
+
+An external adversarial codebase review graded security F on five claims. Every
+claim was re-verified against the tree before any work, and one turned out worse
+than reported (the repo is PUBLIC). Dean's deployment is LAN-only self-hosted,
+which bounds the blast radius but not the fixes.
+
+- **The session-signing secret was tracked in a PUBLIC repo since v1.43.** Anyone
+  could read `session-secret` and forge session cookies for any instance whose
+  secret matched. Untracked + gitignored; the resolver re-mints a fresh 0600
+  secret on next boot. NO git-history rewrite (the secret is dead after rotation;
+  rewriting main would break every tag/clone) - the historical exposure is
+  disclosed here instead. **Your instance's secret lives in its DATA_DIR volume,
+  almost certainly already distinct from the leaked value; to be certain, delete
+  `DATA_DIR/session-secret` on the server and restart (everyone re-logs in once).**
+- **The object-visibility bypass class.** A member holding the library-modify (or
+  manage-subs) capability but RESTRICTED from a folder/show could still mutate
+  items hidden from them BY ID. The review named one route; the audit found FIVE:
+  podcast episode delete + restore, trash restore + **permanent purge** (the
+  worst - irreversible deletion of a hidden item), and the shared book-cover
+  write. All now 404 a restricted member, neutrally. Plus a capability×visibility
+  forcing net over every mutating route.
+- **RBAC-gated art was publicly cacheable; the backup wasn't cache-controlled at
+  all.** Book covers, album art and podcast art (404'd per-user) now serve
+  `private` so no shared/proxy cache can replay one user's art to another; the
+  admin backup bundle (password hashes + all per-user state) now serves
+  `no-store`.
+- **Docker publish was ungated.** It fired on any push/tag with zero CI
+  dependency - a red suite still shipped `latest`. Publish now `needs` an
+  exact-SHA qualify job (lint + token ratchet + dual-Node 22/24 suite) plus a
+  secret scan (a tag push skips ci.yml, so the released tree would otherwise never
+  be scanned). CI itself is now dual-Node, matching the release ceremony it used
+  to contradict.
+- **Secret scanning** (pinned, checksum-verified gitleaks) now runs in CI on the
+  working tree.
+
+Gate: FULL gate, both seats (this wave forges admin sessions and permanently
+destroys data - never slim). Both APPROVED after ONE fix round, which caught real
+things in the wave's OWN completeness claims: the book-cover guard shipped
+UNBOUND (a mutant removing it survived the entire suite); the first visibility
+forcing net was an ALLOWLIST that let a NEW media namespace escape silently
+(rebuilt as a denylist - the adversarial seat proved the escape end-to-end, then
+proved it closed); and the audit had MISSED two live `:mediaId` ytdlp
+content-mutators (metadata repull + file relocate) behind a mis-stated exclusion,
+now guarded and bound. Every fix mutation-verified by both seats independently.
+Dual-Node full suite **6880/6880** on v22.23.1 and v24.14.0 (0 fail; 0-3
+environment-conditional skips depending on optional binaries).
+
+Known gaps (DISCLOSED, low-severity, LAN-appropriate): tech-debt **#147** -
+`private` art can still replay from the USER'S OWN browser cache on a shared
+device within the day cap (matches the pre-existing `/thumbnail` posture);
+**#148** - the gitleaks scan is blind to the root `test/` tree (fixtures there
+carry intentional fake credentials). Both have revisit triggers.
+
+**DEVICE PASS PENDING (Dean):** everyone re-logs in once after you pull v1.123.0
+(the secret rotation). Optional hard-rotation: delete `DATA_DIR/session-secret`
+and restart. Nothing else is user-visible - the rest is guard-rails.
+
 ### v1.122.0 - channel names consistent on the last folder-named surfaces (2026-08-14)
 
 Dean (on-device, v1.121): the healed channel names (v1.115/116) show on all
