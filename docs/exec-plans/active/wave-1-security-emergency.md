@@ -1,6 +1,11 @@
 # Wave 1: security emergency (v1.123.0)
 
-Status: ACTIVE (implementing). Date: 2026-08-14. Grounded at `aa06fa2` (v1.122.0).
+Status: ACTIVE (implemented; two-reviewer gate in progress). Date: 2026-08-14.
+Grounded at `aa06fa2` (v1.122.0). Implementation commits: T1 `8ecc2f6`,
+T2 `137fd4c`, T3 `4a6479d`, T4 `5a0ffdb`, T5 `9fa6a71` (design `262b3c6`).
+Full Node-22 suite green at implementation close: 6877/6877, 0 fail. During
+T3 the audit widened the visibility fix from the 1 route the review named to
+5 (podcast delete/restore, trash restore/purge, book cover).
 
 Origin: an external adversarial codebase review (2026-08-14) graded security F
 on five claims. Every claim in scope here was RE-VERIFIED against the tree
