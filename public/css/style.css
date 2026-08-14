@@ -6367,6 +6367,13 @@ a.sub-row-channel-link:focus-visible {
 #player-wrapper.audio-mode.audio-expanded.controls-autohidden #audio-bg-art {
   bottom: 0;
 }
+/* v1.124 F2: hide the mouse cursor with the controls in faux fullscreen (the
+   YouTube/desktop convention). The next mousemove reveals both the cursor and
+   the bar (host mousemove -> revealControlsAndReArm). Fullscreen only - the
+   audio-expanded view keeps its cursor. */
+#player-wrapper.css-fullscreen.controls-autohidden {
+  cursor: none;
+}
 /* The app chrome is fully covered by the overlay, but hide it explicitly
    too (belt), freeze page scroll, and paint the body black so nothing can peek
    out under the overlay in landscape (the "gap under displaying webpage"

@@ -1804,11 +1804,14 @@ if (typeof module !== 'undefined' && module.exports) {
   function armControlsAutoHide() {
     clearControlsAutoHide();
     if (!inImmersiveMode()) return;
-    // v1.120 gate fix (adversarial WARNING): auto-hide is a TOUCH convention --
-    // mobile only. Desktop (incl. the desktop audio-expand overlay) keeps its bar
-    // up, matching desktop-player expectations and sidestepping the click-only
-    // reveal there.
-    if (!isMobileFormFactor()) return;
+    // v1.124 F2 (Dean): auto-hide now runs on DESKTOP immersive views too
+    // (video fullscreen + the audio-expanded overlay), YouTube-style - the bar
+    // overlays the picture there, so fading it while playing is the right
+    // convention. The v1.120 desktop exclusion existed only because desktop had
+    // NO reveal path but a click; F2 adds a `mousemove` reveal (wired in
+    // wireHostListeners), so the exclusion is lifted. INLINE stays untouched
+    // (its bar is a reserved strip below the video, not an overlay - the early
+    // `!inImmersiveMode()` return above already keeps it always-visible).
     if (!mediaPlayer || mediaPlayer.paused || mediaPlayer.ended) return;
     controlsAutoHideTimer = setTimeout(function () {
       controlsAutoHideTimer = null;
@@ -5128,6 +5131,12 @@ if (typeof module !== 'undefined' && module.exports) {
     if (skipFwdBtn) skipFwdBtn.addEventListener('click', function () { skip(SKIP_SECONDS); revealSkipButtons(); });
     host.addEventListener('mousemove', revealSkipButtons);
     host.addEventListener('mouseleave', hideSkipButtons);
+    // v1.124 F2: desktop mouse-move reveals the auto-hidden control bar and
+    // restarts the fade countdown (the YouTube/desktop convention - touch devices
+    // use the touchstart/pointerdown reveal above). No-op outside an immersive
+    // overlay (inline never auto-hides), and armControlsAutoHide's own guards
+    // keep it from ever hiding while paused/ended/scrubbing.
+    host.addEventListener('mousemove', function () { if (inImmersiveMode()) revealControlsAndReArm(); });
 
     // ---- FR-2 (T2, v1.21.0): the custom control bar's own listeners --------
 
