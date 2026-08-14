@@ -1,11 +1,18 @@
 # Wave 1: security emergency (v1.123.0)
 
-Status: ACTIVE (implemented; two-reviewer gate in progress). Date: 2026-08-14.
+Status: SHIPPED v1.123.0 (2026-08-14). Both seats APPROVED after one fix round.
 Grounded at `aa06fa2` (v1.122.0). Implementation commits: T1 `8ecc2f6`,
-T2 `137fd4c`, T3 `4a6479d`, T4 `5a0ffdb`, T5 `9fa6a71` (design `262b3c6`).
-Full Node-22 suite green at implementation close: 6877/6877, 0 fail. During
-T3 the audit widened the visibility fix from the 1 route the review named to
-5 (podcast delete/restore, trash restore/purge, book cover).
+T2 `137fd4c`, T3 `4a6479d`, T4 `5a0ffdb`, T5 `9fa6a71`, gate fix round `f8bb67e`
+(design `262b3c6`). Dual-Node full suite 6880/6880 on v22.23.1 + v24.14.0.
+
+The T3 audit widened the visibility fix from the 1 route the review named to
+SEVEN: podcast delete/restore, trash restore/purge, book cover, and (found by
+the adversarial seat) the two ytdlp `:mediaId` routes (metadata repull +
+relocate). The gate also caught the wave's own completeness gaps: the book-cover
+guard shipped unbound, and the first forcing net was an allowlist that let a new
+namespace escape (rebuilt as a denylist). Residuals: tech-debt #147 (same-device
+art cache replay) and #148 (gitleaks root-test/ blindness), both disclosed.
+DEVICE PASS PENDING: everyone re-logs in once after the secret rotation.
 
 Origin: an external adversarial codebase review (2026-08-14) graded security F
 on five claims. Every claim in scope here was RE-VERIFIED against the tree
