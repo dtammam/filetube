@@ -6309,9 +6309,16 @@ a.sub-row-channel-link:focus-visible {
      would squash the fixed overlay into a band -- release every sizing
      constraint while fullscreen. */
   max-height: none !important;
-  height: auto !important;
+  /* v1.119 (Dean, iOS landscape bleed): `inset:0` alone can stop at the
+     layout-viewport edge on an iOS PWA in landscape, letting the page peek
+     through a strip below the overlay. Pin the height to the VISUAL viewport
+     (dvh, with a vh fallback for older engines) so the black covers edge to
+     edge -- and body.ft-css-fullscreen paints black too as a belt. */
+  height: 100vh !important;
+  height: 100dvh !important;
   aspect-ratio: auto !important;
-  width: auto !important;
+  width: 100vw !important;
+  width: 100dvw !important;
 }
 #player-wrapper.css-fullscreen:not(.audio-expanded) #media-player {
   aspect-ratio: auto;
@@ -6339,12 +6346,25 @@ a.sub-row-channel-link:focus-visible {
   background: var(--scrim-heavy);
   border-top: none;
   box-shadow: none;
+  /* v1.119 (Dean): auto-hide -- the bar overlays the picture in faux fullscreen,
+     so it fades out after a few seconds of no interaction while playing (JS adds
+     .controls-autohidden) and reveals on any tap. */
+  transition: opacity var(--dur-slow) var(--ease-ui);
+}
+#player-wrapper.css-fullscreen.controls-autohidden .player-controls {
+  opacity: 0;
+  pointer-events: none; /* taps pass through to the video, which reveals the bar */
+}
+@media (prefers-reduced-motion: reduce) {
+  #player-wrapper.css-fullscreen .player-controls { transition: none; }
 }
 /* The app chrome is fully covered by the overlay, but hide it explicitly
-   too (belt) and freeze page scroll so nothing can peek out under the
-   overlay in landscape (the "gap under displaying webpage" symptom). */
+   too (belt), freeze page scroll, and paint the body black so nothing can peek
+   out under the overlay in landscape (the "gap under displaying webpage"
+   symptom -- v1.119 belt for the iOS-landscape safe-area strip). */
 body.ft-css-fullscreen {
   overflow: hidden;
+  background: #000; /* token-exempt: fullscreen letterbox black belt */
 }
 body.ft-css-fullscreen header,
 body.ft-css-fullscreen .bottom-nav {

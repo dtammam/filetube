@@ -1729,6 +1729,12 @@ if (typeof module !== 'undefined' && module.exports) {
   // inherit a stale timestamp and be spuriously dropped by Fix A (slim-gate
   // SUGGESTION 2). Set by the intercept, read+cleared by Fix A.
   var fauxHandoffAt = 0;
+  // v1.119 (Dean): auto-hide the control bar in FAUX fullscreen. The bar overlays
+  // the picture there (v1.34.4), so keeping it up permanently blocks the bottom of
+  // the frame + the captions. It fades out after a few seconds of no interaction
+  // WHILE PLAYING, reveals on any tap/activity, and stays up while PAUSED (the
+  // native convention). Scoped to faux fullscreen only.
+  var controlsAutoHideTimer = null;
   function setCssFullscreen(on, opts) {
     var wasOn = !!(host && host.classList.contains('css-fullscreen'));
     if (host) host.classList.toggle('css-fullscreen', !!on);
@@ -1738,11 +1744,46 @@ if (typeof module !== 'undefined' && module.exports) {
     if (typeof document !== 'undefined' && document.body) {
       document.body.classList.toggle('ft-css-fullscreen', !!on);
     }
+    // v1.119: entering faux starts the auto-hide cycle (bar visible, then fades);
+    // leaving it cancels the timer and always restores a visible bar (inline,
+    // docked and native-controls never auto-hide).
+    if (on) revealControlsAndReArm();
+    else { clearControlsAutoHide(); showControlsBar(); }
     var currentY = typeof window.pageYOffset === 'number' ? window.pageYOffset : window.scrollY;
     var restoreEligible = !!(opts && opts.restoreScroll) && state === STATE_FULL;
     var plan = resolveCssFsScrollPlan(wasOn, !!on, restoreEligible, cssFsSavedScrollY, currentY);
     cssFsSavedScrollY = plan.savedY;
     if (plan.restoreTo !== null) window.scrollTo(0, plan.restoreTo);
+  }
+
+  // ---- v1.119 faux-fullscreen control-bar auto-hide -------------------------
+  function inFauxFullscreen() {
+    return !!(host && host.classList.contains('css-fullscreen'));
+  }
+  function clearControlsAutoHide() {
+    if (controlsAutoHideTimer) { clearTimeout(controlsAutoHideTimer); controlsAutoHideTimer = null; }
+  }
+  function showControlsBar() {
+    if (host) host.classList.remove('controls-autohidden');
+  }
+  // Arm the fade timer -- only in faux fullscreen, and NEVER while paused/ended
+  // (a paused frame keeps its scrubber, the native convention). Re-checks the
+  // same guards when it fires so a pause/exit during the window cancels the hide.
+  function armControlsAutoHide() {
+    clearControlsAutoHide();
+    if (!inFauxFullscreen()) return;
+    if (!mediaPlayer || mediaPlayer.paused || mediaPlayer.ended) return;
+    controlsAutoHideTimer = setTimeout(function () {
+      controlsAutoHideTimer = null;
+      if (inFauxFullscreen() && mediaPlayer && !mediaPlayer.paused && !mediaPlayer.ended) {
+        if (host) host.classList.add('controls-autohidden');
+      }
+    }, 3000);
+  }
+  // Any interaction (or a play) reveals the bar and restarts the fade countdown.
+  function revealControlsAndReArm() {
+    showControlsBar();
+    armControlsAutoHide();
   }
 
   // v1.68: the NATIVE-fullscreen half of the scroll keeper (iOS clobbers
@@ -4903,6 +4944,20 @@ if (typeof module !== 'undefined' && module.exports) {
     mediaPlayer.addEventListener('ended', updatePlayPauseUI);
     mediaPlayer.addEventListener('play', startFillLoop);
     mediaPlayer.addEventListener('pause', stopFillLoop);
+    // v1.119: faux-fullscreen control-bar auto-hide follows playback -- start the
+    // fade countdown on play, and reveal+hold the bar on pause/ended (a paused
+    // frame keeps its scrubber). No-ops entirely outside faux fullscreen.
+    mediaPlayer.addEventListener('play', armControlsAutoHide);
+    mediaPlayer.addEventListener('pause', function () { clearControlsAutoHide(); showControlsBar(); });
+    mediaPlayer.addEventListener('ended', function () { clearControlsAutoHide(); showControlsBar(); });
+    // v1.119: ANY interaction with the video OR the bar reveals the bar and
+    // restarts the fade -- so it's always one tap away and never fades mid-scrub.
+    // Additive + passive: the skip/hold gesture layer is untouched (a single tap
+    // just reveals; it triggers no skip). No-op outside faux fullscreen.
+    ['touchstart', 'pointerdown'].forEach(function (evt) {
+      mediaPlayer.addEventListener(evt, function () { if (inFauxFullscreen()) revealControlsAndReArm(); }, { passive: true });
+      if (playerControls) playerControls.addEventListener(evt, function () { if (inFauxFullscreen()) revealControlsAndReArm(); }, { passive: true });
+    });
     mediaPlayer.addEventListener('ended', function () { stopFillLoop(); updateSeekVisual(); });
     // v1.109: the seek-bar segment notches depend on total duration, so (re)build
     // them the moment it's known/changes (loadedmetadata/durationchange), on top
