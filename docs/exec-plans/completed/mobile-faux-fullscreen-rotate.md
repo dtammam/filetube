@@ -2,6 +2,14 @@
 
 - Owner: main session (lean mode)
 - Opened: 2026-08-14
+- **CLOSED: 2026-08-14 - shipped as v1.118.0. Slim gate (adversarial) APPROVE
+  after a one-round belt (SUGGESTION 2: hoist + reset fauxHandoffAt so a
+  button-faux can't inherit a stale handoff stamp; SUGGESTION 1: tightened the
+  time-guard test lock `> \d+` -> `> \d{4}`). SUGGESTION 3 (bounce-fail +
+  exit-within-1500ms window; whether a ~225ms native fs is "established" enough to
+  pause) is a device-runtime residual = tech-debt #146, Dean's device pass. The
+  iOS-pause invariant (no programmatic native exit on rotate) is mutation-bound on
+  both surfaces. Dual-Node 6843/6843. DEVICE PASS PENDING.**
 - Target: v1.118.0
 - Device pass: PENDING (Dean) - **THE ARBITER**. This is iOS-runtime behavior no
   dev-env test can reproduce; the pure decisions are unit-locked, the iOS bounce
