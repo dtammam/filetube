@@ -2693,8 +2693,12 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!isFinite(target) || target < 0) return;
     var drift = Math.abs((bgAudioEl.currentTime || 0) - target);
     if (drift < PRESYNC_DRIFT_SECONDS) return; // already tracking -- no churn
-    try { bgAudioEl.currentTime = target; } catch (_) { /* not seekable yet -- next tick */ }
-    recordLifecycleEvent('bgAudio:presync', { detail: 't=' + target.toFixed(1) + 's drift=' + drift.toFixed(1) + 's' });
+    // Gate S3 (diagnostics honesty): the record lives INSIDE the try so the
+    // ?debugLifecycle overlay never logs a nudge whose currentTime set threw.
+    try {
+      bgAudioEl.currentTime = target;
+      recordLifecycleEvent('bgAudio:presync', { detail: 't=' + target.toFixed(1) + 's drift=' + drift.toFixed(1) + 's' });
+    } catch (_) { /* not seekable yet -- next tick */ }
   }
 
   function attemptBackgroundAudioHandoff(trigger) {

@@ -50,11 +50,28 @@ test('presyncBackgroundAudioPosition: pure gate -> armed sidecar -> drift-guarde
   const m = /function presyncBackgroundAudioPosition\(\) \{([\s\S]*?)\n {2}\}/.exec(SRC);
   assert.ok(m, 'presyncBackgroundAudioPosition exists');
   const body = m[1];
-  assert.match(body, /shouldPresyncBgAudio\(\{[\s\S]*?presyncOn: bgAudioSyncPositionCached,[\s\S]*?bgAudioOn: bgAudioSettingCached,[\s\S]*?bgAudioState: bgAudioState,/,
-    'routes through the pure gate with the real signals');
+  // v1.121 gate W3: pin EVERY signal mapping, not just three -- a `mobile: true`
+  // hardcode (desktop installs paying sidecar scrubs + range requests, invisible
+  // to the suite) must redden here. `mobile` is the one signal with NO backstop
+  // in armBackgroundAudioSrc's own guards.
+  assert.match(body, /shouldPresyncBgAudio\(\{\s*presyncOn: bgAudioSyncPositionCached,\s*bgAudioOn: bgAudioSettingCached,\s*statusReady: bgAudioStatusKnown === 'ready',\s*mobile: isMobileFormFactor\(\),\s*isVideo: !!\(currentData && currentData\.type !== 'audio'\),\s*bgAudioState: bgAudioState,\s*\}\)/,
+    'routes through the pure gate with ALL SIX real signals (no hardcodes)');
   assert.match(body, /if \(!armBackgroundAudioSrc\(\)\) return;/, 'F3b: arms via the single assignment site, bails if refused');
   assert.match(body, /drift < PRESYNC_DRIFT_SECONDS\) return;/, 'a within-window position never causes churn');
   assert.match(body, /bgAudioEl\.currentTime = target;/, 'the nudge is a currentTime set on the paused sidecar');
+});
+
+test('the tuning digits are bound (gate S1): 8s drift, 10s throttle', () => {
+  // A zero/zero mutation turns the "gentle" sync into a per-tick scrub storm --
+  // pin the shipped values; a deliberate retune updates this lock consciously.
+  assert.match(SRC, /var PRESYNC_DRIFT_SECONDS = 8;/, 'drift threshold is 8s');
+  assert.match(SRC, /var PRESYNC_THROTTLE_MS = 10000;/, 'throttle is 10s');
+});
+
+test('setup.js: the toggle CHANGE listener is wired (gate W2, the save half)', () => {
+  const setupSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'setup.js'), 'utf8');
+  assert.match(setupSrc, /bgAudioSyncCheck\.addEventListener\('change', \(e\) => \{\s*saveAutomationSetting\('bgAudioSyncPosition', e\.target\.checked,/,
+    "flipping the toggle must save bgAudioSyncPosition (a deleted wiring block leaves the kill-switch flip a silent no-op)");
 });
 
 test('wiring: throttled timeupdate + immediate seeked both drive the presync; throttle stamp resets at teardown', () => {

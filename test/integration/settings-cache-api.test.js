@@ -86,7 +86,7 @@ beforeEach(async () => {
 
 // ---- GET /api/settings -----------------------------------------------------
 
-test('GET /api/settings returns the 16-field shape with backfilled defaults on a fresh DB', async () => {
+test('GET /api/settings returns the full-shape settings projection with backfilled defaults on a fresh DB', async () => {
   const res = await fetch(`${base}/api/settings`);
   assert.equal(res.status, 200);
   const json = await res.json();
@@ -504,4 +504,14 @@ test('POST /api/settings rejects an off-allowlist defaultSort and a non-boolean 
   });
   assert.equal(off.status, 200);
   assert.equal((await (await fetch(`${base}/api/settings`)).json()).relocateHydratedImports, false);
+
+  // v1.121 gate W1: the presync toggle ROUND-TRIPS (a KNOWN_KEYS omission would
+  // 400 the save -- the experimental kill-switch would be unsavable with the
+  // suite green; this valid-value POST binds the key's acceptance + persistence).
+  const presyncOn = await fetch(`${base}/api/settings`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bgAudioSyncPosition: true }),
+  });
+  assert.equal(presyncOn.status, 200, 'a boolean bgAudioSyncPosition must be ACCEPTED (KNOWN_KEYS)');
+  assert.equal((await (await fetch(`${base}/api/settings`)).json()).bgAudioSyncPosition, true, 'and it round-trips');
 });

@@ -2,7 +2,7 @@
 
 // [UNIT] v1.102 shimmer sweep (tranche 4) - the setup Automation toggles no
 // longer flash their static default then flip when /api/settings lands. Each of
-// the 7 /api/settings-fed toggle rows ships `class="reveal-toggle" data-loading`
+// the /api/settings-fed toggle rows (8 as of v1.121) ship `class="reveal-toggle" data-loading`
 // (shimmered, hidden via the shared v1.96 barrier CSS); loadAutomationSettings
 // drops `data-loading` from ALL of them on the SINGLE fetch settle - success OR
 // error - so they reveal together in final state, never a per-row pop.
@@ -94,6 +94,9 @@ test('loadAutomationSettings: reveals every toggle AND applies the server values
       relocateHydratedImports: true, notificationsEnabled: true,
       pruneMissing: false, autoplayNext: true,
       backgroundAudioForVideo: false, preExtractAudio: false, mobileCustomPlayer: false,
+      // v1.121 gate W2: sent ON (flips from the static unchecked default) --
+      // proves the populate line actually applies the server value.
+      bgAudioSyncPosition: true,
     }),
   });
   await mod.loadAutomationSettings();
@@ -104,6 +107,7 @@ test('loadAutomationSettings: reveals every toggle AND applies the server values
   assert.strictEqual(g('notifications-enabled-check'), true);
   assert.strictEqual(g('autoplay-next-check'), true, 'flipped ON from the static default');
   assert.strictEqual(g('prune-missing-check'), false, 'flipped OFF from the static `checked`');
+  assert.strictEqual(g('bg-audio-sync-check'), true, 'v1.121: presync toggle flipped ON from the static default (populate line bound)');
   dom.window.close();
 });
 
