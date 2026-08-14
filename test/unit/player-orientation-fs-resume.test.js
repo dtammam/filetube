@@ -113,11 +113,63 @@ test('shouldAutoFullscreenOnRotate: landscape + not-fullscreen + playing is the 
   assert.strictEqual(shouldAutoFullscreenOnRotate(null), false);
 });
 
-test('wiring: onOrientationChange routes its enter decision through shouldAutoFullscreenOnRotate with a real playing signal', () => {
+test('wiring: onOrientationChange routes its NATIVE-branch enter decision through shouldAutoFullscreenOnRotate with a real playing signal', () => {
   const body = stripLineComments(onOrientationChangeMatch[1]);
-  assert.match(body, /shouldAutoFullscreenOnRotate\(\{/, 'the decision must go through the pure helper');
-  assert.match(body, /playing:\s*!!\(mediaPlayer && !mediaPlayer\.paused && !mediaPlayer\.ended\)/, 'playing = not paused and not ended, from the live element');
+  assert.match(body, /shouldAutoFullscreenOnRotate\(\{/, 'the native-branch decision must go through the pure helper');
+  // v1.118: `playing` is now computed ONCE into a local (shared by the faux
+  // branch and the native branch) rather than inlined at the call site.
+  assert.match(body, /var playing = !!\(mediaPlayer && !mediaPlayer\.paused && !mediaPlayer\.ended\)/, 'playing = not paused and not ended, from the live element');
   assert.match(body, /inFullscreen:\s*inNativeFullscreen\(\)/, 'the double-enter guard survives inside the helper context');
+});
+
+// ---- v1.118 (Dean): our FAUX fullscreen supersedes Apple's native on rotate ---
+// CUSTOM-mode mobile video: rotate to landscape -> faux ON; rotate back to
+// portrait -> faux OFF (pure CSS, NO webkitExitFullscreen -> no iOS pause). The
+// native-controls/desktop branch is unchanged (still enterFullscreen). Dean's iOS
+// pass is the arbiter of the actual bounce/rotate runtime behavior.
+
+test('shouldEnterFauxOnRotate: landscape + playing + not-already-faux is the ONLY yes', () => {
+  const { shouldEnterFauxOnRotate } = playerExports;
+  assert.strictEqual(shouldEnterFauxOnRotate({ landscape: true, playing: true, fauxOn: false }), true);
+  assert.strictEqual(shouldEnterFauxOnRotate({ landscape: true, playing: false, fauxOn: false }), false, 'paused rotation does not enter faux');
+  assert.strictEqual(shouldEnterFauxOnRotate({ landscape: true, playing: true, fauxOn: true }), false, 'already faux -> no re-enter');
+  assert.strictEqual(shouldEnterFauxOnRotate({ landscape: false, playing: true, fauxOn: false }), false, 'portrait never enters faux');
+  assert.strictEqual(shouldEnterFauxOnRotate(), false, 'missing context fails safe to no');
+  assert.strictEqual(shouldEnterFauxOnRotate(null), false);
+});
+
+test('shouldExitFauxOnRotate: portrait + currently-faux is the ONLY yes (the zero-tap rotate-back exit)', () => {
+  const { shouldExitFauxOnRotate } = playerExports;
+  assert.strictEqual(shouldExitFauxOnRotate({ landscape: false, fauxOn: true }), true);
+  assert.strictEqual(shouldExitFauxOnRotate({ landscape: true, fauxOn: true }), false, 'still landscape -> stay faux');
+  assert.strictEqual(shouldExitFauxOnRotate({ landscape: false, fauxOn: false }), false, 'not in faux -> nothing to exit');
+  assert.strictEqual(shouldExitFauxOnRotate(), false, 'missing context fails safe to no');
+  assert.strictEqual(shouldExitFauxOnRotate(null), false);
+});
+
+test('wiring: onOrientationChange custom-video branch enters/exits FAUX via setCssFullscreen (never a native exit -> never the iOS pause)', () => {
+  const body = onOrientationChangeMatch[1];
+  const stripped = stripLineComments(body);
+  // Gated to custom mobile video.
+  assert.match(stripped, /isMobileFormFactor\(\) && !inNativeControlsMode\(\) && currentData && currentData\.type !== 'audio'/, 'the faux branch must be gated to custom mobile video');
+  // Enter faux on rotate-to-landscape; exit faux on rotate-back -- both via setCssFullscreen.
+  assert.match(stripped, /shouldEnterFauxOnRotate\(\{[\s\S]*?setCssFullscreen\(true\)/, 'rotate-to-landscape enters faux');
+  assert.match(stripped, /shouldExitFauxOnRotate\(\{[\s\S]*?setCssFullscreen\(false/, 'rotate-back exits faux');
+  // THE load-bearing invariant (still true after v1.118): the rotate handler
+  // never programmatically exits NATIVE fullscreen -- that is the 2026-07-10 iOS
+  // pause wall. The faux exit is CSS-only.
+  assert.ok(!/webkitExitFullscreen/.test(stripped), 'the rotate handler must NEVER call webkitExitFullscreen (iOS pauses on it)');
+  assert.ok(!/\bexitFullscreen\(\)/.test(stripped), 'the rotate handler must NEVER call document.exitFullscreen (iOS pauses on it)');
+});
+
+test('wiring: onFsChange Fix A drops an armed faux ONLY on a genuine (non-handoff) native exit', () => {
+  const body = stripLineComments(onFsChangeMatch[1]);
+  // Clears faux via setCssFullscreen(false) when css-fullscreen is armed...
+  assert.match(body, /css-fullscreen[\s\S]*?setCssFullscreen\(false/, 'Fix A must clear an armed faux on a genuine native exit');
+  // ...but ONLY well after the intercept armed it (the handoff-vs-user-exit guard),
+  // and it must NOT itself call a native exit (no pause).
+  assert.match(body, /Date\.now\(\) - fauxHandoffAt\) > \d+/, 'the handoff-vs-user-exit time guard must gate the faux clear');
+  assert.ok(!/webkitExitFullscreen/.test(body), 'onFsChange must not call webkitExitFullscreen');
 });
 
 test('CSS: phone landscape non-fullscreen caps the media element height (picture + strip + header fit the viewport)', () => {
