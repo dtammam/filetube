@@ -243,3 +243,42 @@ test('GATE FIX (QA CRITICAL #2, the v1.33 Option-C lesson): a root that EXISTS b
   await scanBooksSettled();
   await updateDatabase((db) => { db.settings.pruneMissing = false; return true; });
 });
+
+// v1.124 R2: walkBookRoot RECORDS an unreadable subtree, and selectPrunableBookIds
+// protects a book UNDER it from a prune - a transient EACCES must never delete a
+// book (or its per-user reading position) whose file is still on disk. Mirrors
+// lib/music/scan.js's GATE ADV-1 test (the same class, ported to books).
+test('R2: walkBookRoot records an unreadable dir; selectPrunableBookIds protects books UNDER it', (t) => {
+  // chmod 000 is a no-op for root (root Docker CI) - skip rather than false-pass.
+  if (typeof process.getuid === 'function' && process.getuid() === 0) {
+    t.skip('running as root: chmod 000 does not deny access');
+    return;
+  }
+  const booksScan = require('../../lib/books/scan');
+  const booksStore = require('../../lib/books/store');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-books-eacces-'));
+  const locked = path.join(root, 'Locked');
+  try {
+    fs.mkdirSync(path.join(root, 'Readable'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'Readable/ok.epub'), 'x');
+    fs.mkdirSync(locked, { recursive: true });
+    fs.writeFileSync(path.join(locked, 'hidden.epub'), 'x');
+    fs.chmodSync(locked, 0o000);
+
+    const erroredDirs = [];
+    const found = booksScan.walkBookRoot(root, erroredDirs).map((p) => path.basename(p));
+    assert.ok(erroredDirs.includes(locked), 'the unreadable dir is recorded');
+    assert.deepEqual(found, ['ok.epub'], 'only the readable file surfaced');
+
+    const items = {
+      alive: { id: 'alive', rootFolder: root, filePath: path.join(root, 'Readable/ok.epub') },
+      hidden: { id: 'hidden', rootFolder: root, filePath: path.join(locked, 'hidden.epub') },
+      gone: { id: 'gone', rootFolder: root, filePath: path.join(root, 'Readable/deleted.epub') },
+    };
+    const prunable = booksStore.selectPrunableBookIds(items, new Set(['alive']), { missingRoots: new Set(), pruneMissing: true, erroredDirs });
+    assert.deepEqual(prunable, ['gone'], 'the errored-subtree book is protected; a genuinely-deleted book still prunes');
+  } finally {
+    try { fs.chmodSync(locked, 0o755); } catch (_) { /* best-effort */ }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

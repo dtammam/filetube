@@ -6665,7 +6665,7 @@ async function runBookScan() {
   const ns = booksStore.ensureBooks(db);
   const folders = ns.folders.slice();
   if (folders.length === 0 && Object.keys(ns.items).length === 0) return; // books-less: total no-op
-  const { items, covers, survivingIds, missingRoots } = await booksScan.collectBooks(folders, ns.items, getMediaId);
+  const { items, covers, survivingIds, missingRoots, erroredDirs } = await booksScan.collectBooks(folders, ns.items, getMediaId);
   for (const root of missingRoots) {
     console.warn(`books: configured folder is missing/unmounted -- nothing under it will be pruned: ${root}`);
   }
@@ -6711,7 +6711,7 @@ async function runBookScan() {
         console.warn(`books: root ${root} exists but scanned EMPTY while the library has items under it -- treating as unmounted, pruning nothing beneath it`);
       }
     }
-    const prunable = new Set(booksStore.selectPrunableBookIds(freshNs.items, survivingIds, { missingRoots: effectiveMissingRoots, pruneMissing }));
+    const prunable = new Set(booksStore.selectPrunableBookIds(freshNs.items, survivingIds, { missingRoots: effectiveMissingRoots, pruneMissing, erroredDirs }));
     const next = {};
     for (const [id, item] of Object.entries(items)) {
       // The books-internal persist-gate carve-out (exec plan risk #1): the
