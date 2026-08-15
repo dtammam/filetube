@@ -78,6 +78,9 @@ function buildHistoryRowHtml(item, nowMs) {
   // ("@Apple") shows the name here too (this standalone History list has its own
   // row renderer, not buildCardHtml -- mirrors common.js displayChannelName).
   var chName = typeof item.channelName === 'string' && item.channelName.charAt(0) === '@' ? item.channelName.slice(1) : item.channelName;
+  // v1.126 (gate WARNING): a nameless item takes the folder display map before
+  // the raw folderName (mirrors resolveChannelName's fallback order).
+  if (!chName && typeof folderDisplayName === 'function') { var mapped = folderDisplayName(item.folderName); if (mapped) chName = mapped; }
   var channel = escapeHistoryHtml(chName || item.folderName || '');
   var watchHref = '/watch.html?v=' + encodeURIComponent(item.id || '');
   var durationStr = item.duration > 0 ? formatHistoryDuration(item.duration) : (item.type === 'audio' ? 'Audio' : '');
@@ -145,6 +148,14 @@ if (typeof module !== 'undefined' && module.exports) {
   function init(root) {
     controller = new AbortController();
     var signal = controller.signal;
+
+    // v1.126 (gate WARNING): seed the shell folder-display map so the row byline
+    // resolves renamed folders on a COLD load too (in-app nav from home leaves
+    // the shell cache already warm; a direct /history.html load does not). One
+    // cheap read, non-blocking - a failure just leaves the raw folderName.
+    fetch('/api/config', { signal }).then(function (r) { return r.ok ? r.json() : null; }).then(function (cfg) {
+      if (cfg && typeof setFolderDisplayNames === 'function') setFolderDisplayNames(cfg.folderDisplayNames);
+    }).catch(function () { /* signed-out / aborted -> raw folderName */ });
 
     var listEl = root.querySelector('#history-list');
     var emptyEl = root.querySelector('#history-empty');

@@ -52,6 +52,10 @@ async function loadConfig() {
     const data = await response.json();
     configuredFolders = data.folders || [];
     folderSettings = data.folderSettings || {};
+    // v1.126 (gate WARNING): seed the shell folder-display map so the Feed-Hidden
+    // row byline below can resolve renamed folders (this page owns its own config
+    // fetch, so it must seed the common.js cache itself).
+    if (typeof setFolderDisplayNames === 'function') setFolderDisplayNames(data.folderDisplayNames);
     syntheticFolders = data.syntheticFolders || [];
     renderFolders();
     renderSidebarFolders(configuredFolders, folderSettings);
@@ -2271,6 +2275,9 @@ function buildFeedHiddenRowHtml(item) {
   // v1.114 A2 (gate WARNING): the Feed-Hidden row renders channelName raw; strip
   // a leading "@" so "@Apple" -> "Apple" here too (mirrors displayChannelName).
   var chName = typeof item.channelName === 'string' && item.channelName.charAt(0) === '@' ? item.channelName.slice(1) : item.channelName;
+  // v1.126 (gate WARNING): a nameless item takes the folder display map before
+  // the raw folderName (the enumerate-every-surface class; mirrors resolveChannelName).
+  if (!chName && typeof folderDisplayName === 'function') { var mapped = folderDisplayName(item.folderName); if (mapped) chName = mapped; }
   var meta = chName ? escapeTrashHtml(chName) : '';
   return '' +
     '<div class="feed-hidden-row" data-id="' + id + '">' +

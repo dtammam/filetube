@@ -21,7 +21,7 @@ const assert = require('node:assert');
 const { app, saveDatabase, userStore, __mintTestSession } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 
-let server, base, auth, flagless, writerRestricted;
+let server, base, auth, flagless, writerRestricted, writerPathRestricted;
 
 before(async () => {
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
@@ -44,11 +44,19 @@ before(async () => {
   flagless = __mintTestSession({ username: 'nocaps', role: 'member' });
   userStore.setCanManageSubscriptions(flagless.user.id, false);
 
-  // Capable-but-restricted: holds library-write, but 'rawdir' is hidden from
-  // them - only the VISIBILITY axis can refuse the rename.
+  // Capable-but-restricted by FOLDER kind: holds library-write, but 'rawdir' is
+  // hidden - only the VISIBILITY axis can refuse the rename.
   writerRestricted = __mintTestSession({ username: 'blockedwriter', role: 'member' });
   userStore.setCanModifyLibrary(writerRestricted.user.id, true);
   userStore.setRestrictions(writerRestricted.user.id, [{ kind: 'folder', value: 'rawdir' }]);
+
+  // Capable-but-restricted by PATH kind (the kid-account/root fail-safe lane):
+  // the descriptor a `folder`-kind restriction catches does NOT carry filePath,
+  // so a bare-folderName check would MISS this - both gate seats' CRITICAL. The
+  // whole DATA_DIR root is blocked, so every item is hidden from this member.
+  writerPathRestricted = __mintTestSession({ username: 'pathwriter', role: 'member' });
+  userStore.setCanModifyLibrary(writerPathRestricted.user.id, true);
+  userStore.setRestrictions(writerPathRestricted.user.id, [{ kind: 'path', value: DATA_DIR }]);
 });
 after(async () => {
   auth.restore();
@@ -69,10 +77,25 @@ test('GATING: flag-less member 403s; capable-but-restricted member 404s (neutral
   assert.strictEqual(hidden.status, 404, 'visibility axis - restricted folder');
   const missing = await rename({ folderName: 'no-such-folder', name: 'X' }, writerRestricted.cookie);
   assert.strictEqual(missing.status, 404, 'unknown folder');
-  assert.deepStrictEqual(await hidden.json(), await missing.json(), 'hidden and missing are indistinguishable (neutral 404)');
-  // The blocked writes must not have landed.
+  const missingBody = await missing.json(); // captured once - Response bodies read only once
+  assert.deepStrictEqual(await hidden.json(), missingBody, 'hidden and missing are indistinguishable (neutral 404)');
+  // PATH-kind restriction (both seats' CRITICAL): a member who cannot SEE the
+  // folder's items must not rename it, and must get the SAME neutral 404 -
+  // the bare-folderName descriptor missed this axis entirely.
+  const pathHidden = await rename({ folderName: 'rawdir', name: 'PWNED' }, writerPathRestricted.cookie);
+  assert.strictEqual(pathHidden.status, 404, 'path-restricted member is refused (visibility axis, full descriptor)');
+  assert.deepStrictEqual(await pathHidden.json(), missingBody, 'path-hidden == missing (no existence oracle)');
+  // The blocked writes must not have landed (none of the three refused paths).
   const cfg = await (await fetch(`${base}/api/config`)).json();
   assert.deepStrictEqual(cfg.folderDisplayNames, {}, 'no mapping written by refused requests');
+});
+
+test('BOUND: a display name over 150 chars is truncated at storage (not stored whole)', async () => {
+  const huge = 'z'.repeat(5000);
+  assert.strictEqual((await rename({ folderName: 'rawdir', name: huge })).status, 200);
+  const cfg = await (await fetch(`${base}/api/config`)).json();
+  assert.strictEqual(cfg.folderDisplayNames.rawdir.length, 150, 'stored name is capped at 150 chars');
+  await rename({ folderName: 'rawdir', name: '' }); // cleanup for the next test
 });
 
 test('WRITE + VEHICLE + ORDER: admin renames; /api/config carries it; /api/channels uses it ONLY as the fallback', async () => {

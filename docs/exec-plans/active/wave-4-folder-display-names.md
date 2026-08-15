@@ -19,10 +19,17 @@ other, unhealable folders). Two-part ask; part 2 resolved with zero code (below)
   fallbacks. No item-level heal can ever fix them; only a folder-level display
   name can.
 - **M3 - the folder-label surfaces have no name source but the basename**:
-  the Playlists sheet (`common.js` renderPlaylistsSheet: `settings[f].name ||
-  base`), the home folder list (`main.js:2132`), the `?root=` initial label
-  (`main.js:1326`), a pin's default label (`derivePinnedPlaylistEntries` base
-  fallback). Dean's unpin/repin couldn't help because the SOURCES are unhealed.
+  the `?root=` initial label (`main.js:1326`), the `?folder=` header, the
+  related rail, the channels bar, and a pin's default label
+  (`derivePinnedPlaylistEntries` base fallback). Dean's unpin/repin couldn't
+  help because the SOURCES are unhealed.
+  NOTE (gate SUGGESTION-2 correction): `renderPlaylistsSheet` and the home
+  folder list (`renderSidebarFolders`) are DELIBERATELY NOT swept - they key on
+  configured scan ROOTS by full path (`db.folders`), a different namespace from
+  `folderDisplayNames`'s channel-`folderName` basenames, so the map would never
+  match there (except the coincidental case where a channel dir is itself a
+  configured root - accepted as not worth the surface). The history-page byline
+  and the setup Feed-Hidden row DO consult the map (fixed in the gate round).
 
 ## Part 1 - the fix: `db.folderDisplayNames`
 
@@ -39,8 +46,11 @@ folder-label surface.
   two `[...DOC_KV_NAMESPACES, ...SINGLETON_NAMES]` spreads cover
   assertNoUnknownKeys + import automatically), `BACKUP_NAMESPACE_KEYS`
   (server.js:8507), loadDatabase backfill (`db.folderDisplayNames ||= {}`),
-  restore path (rides the namespace loop). Names NUL-checked by the existing
-  row-key guard.
+  restore path (rides the namespace loop). NUL SAFETY (gate SUGGESTION-3
+  correction): `assertRowKeySafe` guards only the OUTER singleton row key
+  (`'folderDisplayNames'`); the inner folderName keys and the display-name
+  values are NUL-safe because the whole namespace is stored as ONE JSON blob
+  (JSON escapes control bytes), not by that guard.
 - **T2 auto-write on heal**: the "Refresh channel names" local-reconcile
   already computes per-folder canonical names (the folder-unanimity pass,
   lib/ytdlp/index.js ~:1769 heal lane); when a folder heals to EXACTLY ONE
@@ -61,7 +71,7 @@ folder-label surface.
   name, then the item-unanimity retitle extended to folderFilter views);
   `main.js:1326`+`:1655` the `?root=` labels consult the map first (mapping
   beats page-0 sampling; unanimity stays as the no-mapping fallback);
-  `renderPlaylistsSheet`; the home folder list `main.js:2132`; the pin default
+  the pin default
   label. Delivery: the map rides the same payload as `folderSettings`
   (server.js:6396 `{folders, folderSettings, ...}`) into the existing client
   cache path.

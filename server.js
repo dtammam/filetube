@@ -6418,11 +6418,19 @@ app.post('/api/folders/display-name', async (req, res) => {
   const folderName = typeof body.folderName === 'string' ? body.folderName.trim() : '';
   if (folderName === '') return res.status(400).json({ error: 'folderName is required' });
   const db = getCachedDatabase();
-  const exists = Object.values(db.metadata || {}).some((it) => it && it.folderName === folderName);
-  if (!exists) return res.status(404).json({ error: 'No such folder' });
-  if (visibility.isBlocked(userRestrictionIndex(req), { kind: 'media', folderName })) {
-    return res.status(404).json({ error: 'No such folder' }); // neutral - never confirm a hidden folder exists
-  }
+  // Gate fix (both seats CRITICAL): existence AND visibility in ONE pass through
+  // the CANONICAL decision - the folder is renamable iff it has at least one
+  // item VISIBLE to this member. The earlier split used a bare
+  // `{kind:'media', folderName}` descriptor, which only matches `folder`-kind
+  // restrictions; `path`-kind and allowlist-mode restrictions carry no filePath,
+  // so they never matched - a member restricted from a root by the path lane
+  // could rename (and existence-oracle) a folder they cannot see. mediaVisibleTo
+  // builds the FULL descriptor (filePath/folderName/rootFolder), so all four
+  // restriction kinds bite. A wholly-hidden folder is indistinguishable from a
+  // non-existent one (both -> the same neutral 404). NEVER re-implement the
+  // visibility decision with a narrower descriptor (the v1.41.4 scar).
+  const visibleExists = Object.values(db.metadata || {}).some((it) => it && it.folderName === folderName && mediaVisibleTo(req, it));
+  if (!visibleExists) return res.status(404).json({ error: 'No such folder' });
   const rawName = typeof body.name === 'string' ? body.name.trim() : '';
   const name = rawName.slice(0, 150); // the pin-label bound
   await updateDatabase((mdb) => {

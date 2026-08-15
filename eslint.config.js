@@ -131,7 +131,7 @@ module.exports = [
     // (v1.63 gate NEW-3: music.js briefly joined for addToQueue, then its
     // affordance was pulled - it consumes nothing from common.js again and
     // left the roster with the comment that had gone stale.)
-    files: ['public/js/main.js', 'public/js/watch.js', 'public/js/setup.js', 'public/js/player.js', 'public/js/books.js', 'public/js/read.js', 'public/js/stats.js', 'lib/ytdlp/client/subscriptions.js'],
+    files: ['public/js/main.js', 'public/js/watch.js', 'public/js/setup.js', 'public/js/player.js', 'public/js/books.js', 'public/js/read.js', 'public/js/stats.js', 'public/js/history.js', 'lib/ytdlp/client/subscriptions.js'],
     languageOptions: {
       globals: {
         clampPositionState: 'readonly',
