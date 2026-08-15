@@ -16,8 +16,13 @@ on:
 # v1.129 C6: serialize publishes so an OLDER slow run can never finish last and
 # overwrite a newer `edge`/`latest` with stale bytes. One lane for all TAG
 # publishes (every tag push rewrites `latest`, so tag runs must be ordered) and
-# one for branch pushes (`edge`). Queue, never cancel - a release build in
-# flight is never killed by the next one; it just goes first.
+# one for branch pushes (`edge`). cancel-in-progress:false protects the RUNNING
+# release build - but GitHub holds at most ONE pending run per group, so in a
+# rapid tag chain (v1.130.0 running, .1 pending, .2 pushed) the MIDDLE tag's
+# run is cancelled and its versioned image never publishes (`latest` still ends
+# correct). Accepted trade (gate W3): the stale-`latest` overwrite this
+# prevents is worse; RELEASING.md tells the operator to re-run a cancelled
+# publish after a hotfix chain.
 concurrency:
   group: docker-publish-${{ github.ref_type }}
   cancel-in-progress: false
@@ -89,14 +94,18 @@ jobs:
       # different version forever. Refuse the mismatch at the gate.
       - name: Assert tag matches package.json version
         if: github.ref_type == 'tag'
+        # ref_name routed via env, never interpolated into the script body
+        # (gate S4 hygiene: the v*.*.* glob is not a shell-safety filter).
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           PKG="v$(node -p "require('./package.json').version")"
-          if [ "$PKG" != "${{ github.ref_name }}" ]; then
-            echo "::error::tag ${{ github.ref_name }} != package.json ${PKG} - refusing to publish a mismatched artifact"
+          if [ "$PKG" != "$REF_NAME" ]; then
+            echo "::error::tag ${REF_NAME} != package.json ${PKG} - refusing to publish a mismatched artifact"
             exit 1
           fi
-          echo "tag ${{ github.ref_name }} == package.json ${PKG}"
+          echo "tag ${REF_NAME} == package.json ${PKG}"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

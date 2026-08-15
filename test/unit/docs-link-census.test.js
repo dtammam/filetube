@@ -33,6 +33,10 @@ function docFiles() {
 
 // Markdown links + images: [text](target) / ![alt](target). Skips external
 // schemes and pure anchors; strips a #fragment before resolving.
+// DELIBERATE SCOPE (gate S2): reference-style definitions (`[ref]: path`) and
+// autolinks (`<path>`) are NOT scanned - the corpus contains zero today; if
+// one is ever introduced and rots, extend this regex rather than assuming
+// coverage.
 const LINK = /!?\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 
 // Code spans/fences are NOT links: regexes like `[a-z]*(x)` written in

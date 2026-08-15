@@ -34,9 +34,9 @@ Standards for keeping this project stable and maintainable.
   needed. As of v1.128 the full suite is ~6,900 tests.
 - **E2E tests:** None automated yet. The FFmpeg-dependent transcode paths
   (desktop live stream, mobile lazy transcode) are still verified manually in a
-  browser; keep FFmpeg out of the automated suite (not installed on CI). Two
-  Chromium capture tests run only where a separately-installed Playwright
-  exists and skip cleanly elsewhere.
+  browser; keep FFmpeg out of the automated suite (not installed on CI). The
+  Chromium capture tests (three cases across two files) run only where a
+  separately-installed Playwright exists and skip cleanly elsewhere.
 - **CI** (`.github/workflows/ci.yml`): runs `npm run lint` + `npm test` on a
   Node **22 + 24 matrix** for every push and PR (matching the dual-Node
   release ceremony; v1.123). The Docker publish workflow re-qualifies the

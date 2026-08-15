@@ -28,7 +28,10 @@ DEBT_FILE="$ROOT/docs/exec-plans/tech-debt-tracker.md"
 DEBT_COUNT=0
 if [ -f "$DEBT_FILE" ]; then
   ACTIVE_ROWS="$(awk '/^## Active/,/^## Closed/' "$DEBT_FILE" | grep -cE '^\| *[0-9]' || true)"
-  OPEN_ROWS="$(grep -E '^\| *[0-9]+ \|' "$DEBT_FILE" | grep -cE '\| *OPEN[^|]*\| *$' || true)"
+  # [*_]* tolerates emphasis markup around OPEN (gate W2: a bolded **OPEN**
+  # cell silently dropped from the count; the census test strips the same
+  # markup and goes red if this grep and its parse ever disagree).
+  OPEN_ROWS="$(grep -E '^\| *[0-9]+ \|' "$DEBT_FILE" | grep -cE '\| *[*_]*OPEN[^|]*\| *$' || true)"
   DEBT_COUNT=$((ACTIVE_ROWS + OPEN_ROWS))
 fi
 

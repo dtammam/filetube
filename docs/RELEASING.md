@@ -34,7 +34,9 @@ on each release; following a pinned `1.4.2` never moves.
    ```
 2. Bump the version in `package.json` to match the release, commit it
    (stage EXPLICIT paths - never `-a`/`-A`; blind staging once swept scratch
-   files into a release commit, and the repo's pre-commit hook blocks it):
+   files into a release commit. A Claude Code PreToolUse hook blocks it in
+   agent sessions; on a plain shell NOTHING blocks it - the discipline is
+   yours):
    ```bash
    npm version 1.4.0 --no-git-tag-version
    git add package.json package-lock.json
@@ -50,6 +52,12 @@ on each release; following a pinned `1.4.2` never moves.
    (publishing it creates and pushes the tag, which triggers the same build).
 4. Watch the **Publish Docker Image** workflow. When it's green,
    `deantammam/filetube:1.4.0` and `:latest` are live.
+
+   > **Rapid tag chains:** publishes are serialized per concurrency group and
+   > GitHub holds at most ONE pending run per group - pushing three tags in
+   > quick succession cancels the MIDDLE tag's run, so its versioned image
+   > never publishes (`latest` still ends correct). After a same-day hotfix
+   > chain, check the Actions list for a cancelled publish and re-run it.
 
 Use [semver](https://semver.org/): bump **patch** for fixes, **minor** for
 backward-compatible features, **major** for breaking changes.
