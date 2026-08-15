@@ -923,6 +923,20 @@ function mediaVisibleTo(req, item) {
     kind: 'media', filePath: item.filePath, folderName: item.folderName, rootFolder: item.rootFolder,
   });
 }
+// v1.127 Wave A (external review round 2, HIGH): a req-FREE snapshot of the
+// mediaVisibleTo decision, for work that outlives its request - the
+// bulk-attribution selector re-runs inside updateDatabase and its move loop
+// runs AFTER the 202 response, where holding `req` would be a leak. Captures
+// the requester's restriction index ONCE; the descriptor is the FULL canonical
+// media descriptor and must stay byte-identical to mediaVisibleTo's above
+// (the v1.126 lesson: never a hand-built narrower one - a bare
+// {kind,folderName} check misses PATH-kind and allowlist restrictions).
+function mediaVisiblePredicate(req) {
+  const idx = userRestrictionIndex(req);
+  return (item) => !!item && !visibility.isBlocked(idx, {
+    kind: 'media', filePath: item.filePath, folderName: item.folderName, rootFolder: item.rootFolder,
+  });
+}
 function trackVisibleTo(req, track) {
   return !!track && !visibility.isBlocked(userRestrictionIndex(req), {
     kind: 'track', filePath: track.filePath, folderName: track.folderName, rootFolder: track.rootFolder,
@@ -15470,6 +15484,13 @@ app.post('/api/videos/attribute-channel-bulk', async (req, res) => {
   // bulk attribute is the same kind of write the single endpoint allows).
   if (relocate && !preview && refuseIfReadOnlyMedia(res)) return;
   const db0 = getCachedDatabase();
+  // v1.127 Wave A (external review round 2, HIGH): this selector used to sweep
+  // EVERY item under root - hidden ones included - letting a
+  // capable-but-restricted member preview counts for, rewrite, and physically
+  // RELOCATE media they cannot see. The requester's visibility is captured
+  // req-free here so the shared selector AND the post-202 move loop below can
+  // both apply it.
+  const bulkItemVisible = mediaVisiblePredicate(req);
   const root = confineBulkRoot(db0, body.root);
   if (!root) return res.status(400).json({ error: 'root must be a configured library folder (or a folder inside one)' });
   const check = sanitizeAttributionTarget(body.target);
@@ -15488,6 +15509,7 @@ app.post('/api/videos/attribute-channel-bulk', async (req, res) => {
     for (const item of Object.values(db.metadata || {})) {
       if (!item || typeof item.filePath !== 'string') continue;
       if (!matchRootFolder(item.filePath, [root])) continue;
+      if (!bulkItemVisible(item)) continue; // v1.127: hidden items never enter the worklist
       const unattributed = !(typeof item.channelUrl === 'string' && item.channelUrl !== '');
       if (unattributed) { toAttribute.push(item.id); continue; }
       if (item.channelAttributedManually === true && item.channelUrl === identity.channelUrl
@@ -15557,6 +15579,12 @@ app.post('/api/videos/attribute-channel-bulk', async (req, res) => {
         // never a phantom failure.
         const current = loadDatabase().metadata[id];
         if (!current) { done++; continue; }
+        // v1.127: re-check visibility between selection and move. The worklist
+        // was already filtered, but this loop runs after the response - an item
+        // whose current path now matches the requester's restrictions must be
+        // skipped, never relocated blind (same belt-and-suspenders posture as
+        // the `!current` skip above).
+        if (!bulkItemVisible(current)) { done++; continue; }
         if (path.dirname(current.filePath) === destinationDir) {
           alreadyThere++; done++;
           ytdlpActivity.setOneShot(ATTRIBUTE_BULK_ONESHOT_KEY, { done, moved, collisions, alreadyThere, failed });
