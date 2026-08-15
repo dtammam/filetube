@@ -23,11 +23,13 @@ const crypto = require('node:crypto');
 const { app, updateDatabase, userStore, __mintTestSession } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 
-let server, base, auth, kid;
+let server, base, auth, kid, unrestricted;
 const OPEN_SUB = 'ffffffffffffffffffffffffffff1001';
 const HID_SUB = 'ffffffffffffffffffffffffffff1002';
+const EMPTY_SUB = 'ffffffffffffffffffffffffffff1003';
 const OPEN_CHAN = 'Open Pod';
 const HID_CHAN = 'Secret Pod';
+const EMPTY_CHAN = 'Empty Pod';
 let hiddenDir;
 
 function seedItem(chan, fileName) {
@@ -52,6 +54,9 @@ before(async () => {
     db.ytdlp.subscriptions = [
       { id: OPEN_SUB, channelUrl: 'https://youtube.com/@openpod', name: OPEN_CHAN, format: 'audio', quality: 'best', paused: false, order: 1, libraryPlace: 'podcasts', lastStatus: 'ok' },
       { id: HID_SUB, channelUrl: 'https://youtube.com/@secretpod', name: HID_CHAN, format: 'audio', quality: 'best', paused: false, order: 2, libraryPlace: 'podcasts', lastStatus: 'ok' },
+      // A genuinely EMPTY external show (subscribed, nothing downloaded yet) -
+      // must stay visible for admin AND unrestricted member (gate WARNING-1).
+      { id: EMPTY_SUB, channelUrl: 'https://youtube.com/@emptypod', name: EMPTY_CHAN, format: 'audio', quality: 'best', paused: false, order: 3, libraryPlace: 'podcasts', lastStatus: 'ok' },
     ];
     db.metadata = db.metadata || {};
     db.metadata[openEp.id] = openEp;
@@ -61,6 +66,7 @@ before(async () => {
 
   kid = __mintTestSession({ username: 'kidpodext', role: 'member' });
   userStore.setRestrictions(kid.user.id, [{ kind: 'path', value: hiddenDir }]);
+  unrestricted = __mintTestSession({ username: 'freepodext', role: 'member' });
 });
 after(async () => {
   delete process.env.FILETUBE_YTDLP_ENABLED;
@@ -82,6 +88,19 @@ test('L10 /api/podcasts/shows: restricted member sees no hidden external show', 
   assert.ok(kidNames.includes(OPEN_CHAN), 'restricted member keeps the visible show');
   assert.ok(!kidNames.includes(HID_CHAN), 'restricted member does NOT see the hidden show');
   assert.ok(!JSON.stringify(k).includes('Secret Pod'), 'no hidden show name anywhere');
+});
+
+test('L10 byte-identity (gate WARNING-1): a genuinely-EMPTY external show stays visible for admin AND unrestricted member', async () => {
+  const admin = (await getJson('/api/podcasts/shows', undefined)).shows;
+  assert.ok(admin.some((s) => s.name === EMPTY_CHAN && s.episodeCount === 0), 'admin sees the empty show (count 0)');
+
+  const free = (await getJson('/api/podcasts/shows', unrestricted.cookie)).shows;
+  assert.ok(free.some((s) => s.name === EMPTY_CHAN && s.episodeCount === 0), 'unrestricted member sees the empty show too');
+
+  // And a restricted member also sees the empty show (its name is registry-
+  // level, and it has NO hidden items to leak) - only ALL-HIDDEN shows drop.
+  const k = (await getJson('/api/podcasts/shows', kid.cookie)).shows;
+  assert.ok(k.some((s) => s.name === EMPTY_CHAN), 'restricted member sees the empty (registry-level) show');
 });
 
 test('L11 /api/podcasts/shows/:id/episodes: restricted member cannot list the hidden show episodes', async () => {

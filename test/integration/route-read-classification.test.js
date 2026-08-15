@@ -82,7 +82,7 @@ const READ = {
   '/api/podcasts/settings': 'TRACKED', // #152: the general podcasts root abs path
   '/api/podcasts/shows': 'GATED',
   '/api/podcasts/shows/:id/episodes': 'GATED',
-  '/api/podcasts/status': 'NO_CONTENT',
+  '/api/podcasts/status': 'TRACKED', // #152: activity map keyed by subId + "N/M" poll count = per-hidden-show count-oracle
   '/api/podcasts/subscriptions': 'GATED',
   '/api/progress/:id': 'OWN_STATE',
   '/api/push/key': 'NO_CONTENT',

@@ -16612,10 +16612,11 @@ function ytdlpPodcastItemsUnder(db, dir, itemVisible) {
     const it = db.metadata[id];
     if (it && typeof it.filePath === 'string' && it.filePath.startsWith(prefix)) {
       // v1.128 Wave B (L10/L11): these are yt-dlp MEDIA items filed under
-      // Podcasts, so a restricted member must not see hidden ones in the
-      // external show count / episode list. `itemVisible` is a
-      // (item)->boolean predicate (mediaVisibleTo bound to the requester);
-      // absent = no filtering (admin/unrestricted, and the health-count path).
+      // Podcasts. `itemVisible` is an optional (item)->boolean predicate
+      // (mediaVisibleTo bound to the requester). The EPISODES path passes it to
+      // filter per-episode; the SHOWS path calls this WITHOUT it (it needs the
+      // raw count to decide the all-hidden drop) and filters afterward. Absent
+      // = no filtering (episodes for admin/unrestricted, and the health count).
       if (typeof itemVisible === 'function' && !itemVisible(it)) continue;
       items.push(it);
     }
@@ -16629,8 +16630,16 @@ function listYtdlpPodcastShows(db, itemVisible) {
   const subs = (db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [])
     .filter((s) => s && s.libraryPlace === 'podcasts');
   return subs.map((sub) => {
-    let items = [];
-    try { items = ytdlpPodcastItemsUnder(db, ytdlpArgs.resolveChannelDir(cfg, sub), itemVisible); } catch (_) { items = []; }
+    // v1.128 Wave B (L10, gate WARNING-1 fix): decide the show-level drop from
+    // RAW-vs-VISIBLE counts, NOT from predicate-presence. `mediaItemVisible`
+    // hands a predicate to EVERY requester (admin included - it just returns
+    // true for all their items), so gating the drop on `typeof itemVisible ===
+    // 'function'` wrongly dropped a genuinely-EMPTY external show (subscribed,
+    // nothing downloaded yet) for admins too. Capture the unfiltered count so
+    // the drop below fires ONLY for an all-HIDDEN show.
+    let rawItems = [];
+    try { rawItems = ytdlpPodcastItemsUnder(db, ytdlpArgs.resolveChannelDir(cfg, sub)); } catch (_) { rawItems = []; }
+    const items = typeof itemVisible === 'function' ? rawItems.filter(itemVisible) : rawItems;
     return {
       id: `yt:${sub.id}`,
       name: sub.name || sub.channelUrl,
@@ -16647,13 +16656,16 @@ function listYtdlpPodcastShows(db, itemVisible) {
       artUrl: items.length ? `/thumbnail/${items[0].id}` : null,
       lastStatus: typeof sub.lastStatus === 'string' ? sub.lastStatus : '',
       secretMissing: false,
+      __rawCount: rawItems.length, // internal: drop decision only, stripped below
     };
   })
-    // v1.128 Wave B (L10): for a RESTRICTED requester (itemVisible provided), a
-    // show whose every item is hidden must not appear at all - otherwise its
-    // name + zero-count leak. Admin/unrestricted (no predicate) keep all shows,
-    // including genuinely-empty ones (byte-identical to pre-Wave-B).
-    .filter((show) => typeof itemVisible !== 'function' || show.episodeCount > 0);
+    // v1.128 Wave B (L10): drop a show ONLY when it HAD items but the requester
+    // can see none (an all-hidden show, whose name + count would otherwise
+    // leak). A genuinely-empty show (rawCount 0) is kept for EVERYONE, so admin
+    // + unrestricted stay byte-identical to pre-Wave-B (for them visible==raw,
+    // so this only ever keeps). An all-hidden show never occurs for an admin.
+    .filter((show) => show.__rawCount === 0 || show.episodeCount > 0)
+    .map((show) => { const { __rawCount, ...rest } = show; return rest; });
 }
 function listYtdlpPodcastEpisodes(db, showId, userId, itemVisible) {
   const shows = listYtdlpPodcastShows(db, itemVisible);

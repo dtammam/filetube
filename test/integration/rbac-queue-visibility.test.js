@@ -16,11 +16,16 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, getMediaId, userStore, __mintTestSession } = require('../../server');
+const { app, saveDatabase, updateDatabase, getMediaId, userStore, __mintTestSession } = require('../../server');
+const musicStore = require('../../lib/music/store');
+const podcastStore = require('../../lib/podcasts/store');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, auth, kid;
 let pubRoot, hidRoot, openId, hiddenId;
+const OPEN_SUB = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaa0001';
+const HID_SUB = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaa0002';
+let openEpId, hidEpId;
 
 function vid(root, folderName, name) {
   const dir = path.join(root, folderName);
@@ -49,13 +54,45 @@ before(async () => {
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
 
+  // A visible + a hidden TRACK (music) and a visible + a hidden downloaded
+  // podcast EPISODE, all under pub/hid roots so the ONE path restriction covers
+  // the hidden ones - this binds the track and podcast drops in shapedQueue,
+  // not just the media drop (gate adversarial WARNING-1).
+  const openTrackFile = path.join(pubRoot, 'Music', 'opentrack.mp3');
+  const hidTrackFile = path.join(hidRoot, 'Music', 'SECRETTRACK.mp3');
+  const openEpFile = path.join(pubRoot, 'Pods', 'openep.mp3');
+  const hidEpFile = path.join(hidRoot, 'Pods', 'SECRETEP.mp3');
+  for (const f of [openTrackFile, hidTrackFile, openEpFile, hidEpFile]) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, 'A'); }
+  openEpId = podcastStore.episodeIdFor(OPEN_SUB, 'og');
+  hidEpId = podcastStore.episodeIdFor(HID_SUB, 'hg');
+  await updateDatabase((db) => {
+    const m = musicStore.ensureMusic(db);
+    m.tracks = {
+      opentrk: { id: 'opentrk', title: 'Open Track', artist: 'A', album: 'Al', filePath: openTrackFile, rootFolder: pubRoot, folderName: 'Music', ext: '.mp3', durationSec: 100, addedAt: '2026-01-01T00:00:00Z' },
+      hidtrk: { id: 'hidtrk', title: 'SECRETTRACK', artist: 'B', album: 'Bl', filePath: hidTrackFile, rootFolder: hidRoot, folderName: 'Music', ext: '.mp3', durationSec: 100, addedAt: '2026-01-02T00:00:00Z' },
+    };
+    const p = podcastStore.ensurePodcasts(db);
+    p.subscriptions = []; p.episodes = {};
+    podcastStore.reduceAddSubscription(p, { id: OPEN_SUB, name: 'Open Show', feedUrl: 'https://e.com/o.xml' });
+    podcastStore.reduceAddSubscription(p, { id: HID_SUB, name: 'Secret Show', feedUrl: 'https://e.com/s.xml' });
+    podcastStore.reduceUpsertEpisodes(p, OPEN_SUB, [{ guid: 'og', title: 'Open Ep', pubDateMs: 1, durationSec: 100 }], 'pending', 5000);
+    podcastStore.reduceUpsertEpisodes(p, HID_SUB, [{ guid: 'hg', title: 'SECRETEP', pubDateMs: 2, durationSec: 100 }], 'pending', 5000);
+    podcastStore.reduceEpisodeDownloaded(p, openEpId, { fileName: 'openep.mp3', filePath: openEpFile, bytes: 5, nowMs: 6000 });
+    podcastStore.reduceEpisodeDownloaded(p, hidEpId, { fileName: 'SECRETEP.mp3', filePath: hidEpFile, bytes: 5, nowMs: 6000 });
+    return true;
+  });
+
   kid = __mintTestSession({ username: 'kidqueue', role: 'member' });
   userStore.setRestrictions(kid.user.id, [{ kind: 'path', value: hidRoot }]);
-  // Pre-seed the restricted member's queue with BOTH ids (as if queued before
-  // the restriction, or via a restored bundle).
+  // Pre-seed the restricted member's queue with ALL THREE kinds, visible +
+  // hidden (as if queued before the restriction, or via a restored bundle).
   userStore.setQueue(kid.user.id, [
     { uid: 'u1', mediaId: openId, kind: 'media' },
     { uid: 'u2', mediaId: hiddenId, kind: 'media' },
+    { uid: 'u3', mediaId: 'opentrk', kind: 'track' },
+    { uid: 'u4', mediaId: 'hidtrk', kind: 'track' },
+    { uid: 'u5', mediaId: openEpId, kind: 'podcast' },
+    { uid: 'u6', mediaId: hidEpId, kind: 'podcast' },
   ], 'u1', Date.now());
 });
 after(async () => {
@@ -70,12 +107,16 @@ const addItem = (cookie, mediaId) => fetch(`${base}/api/queue/items`, {
   method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, cookie ? { Cookie: cookie } : {}), body: JSON.stringify({ mediaId }),
 });
 
-test('L9 read: a restricted member never sees the hidden queued entry or its title/path', async () => {
+test('L9 read: a restricted member never sees the hidden queued entry or its title/path (all 3 kinds)', async () => {
   const q = await getQueue(kid.cookie);
-  const ids = q.entries.map((e) => e.mediaId);
-  assert.deepStrictEqual(ids, [openId], 'only the visible entry survives the shaped queue');
+  const ids = q.entries.map((e) => e.mediaId).sort();
+  // The three VISIBLE entries survive; all three HIDDEN entries silent-drop.
+  assert.deepStrictEqual(ids, [openId, 'opentrk', openEpId].sort(), 'only the 3 visible entries survive (media+track+podcast)');
   const text = JSON.stringify(q);
-  assert.ok(!text.includes('SECRETCLIP'), 'no hidden title');
+  assert.ok(!text.includes('SECRETCLIP'), 'no hidden media title');
+  assert.ok(!text.includes('SECRETTRACK'), 'no hidden track title');
+  assert.ok(!text.includes('SECRETEP'), 'no hidden episode title');
+  assert.ok(!text.includes('Secret Show'), 'no hidden show name');
   assert.ok(!text.includes(hidRoot), 'no hidden path');
 });
 

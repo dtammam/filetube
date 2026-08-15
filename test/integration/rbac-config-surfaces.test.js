@@ -22,7 +22,7 @@ const booksStore = require('../../lib/books/store');
 const musicStore = require('../../lib/music/store');
 const { authenticateFetch } = require('../helpers/auth');
 
-let server, base, auth, kidFolder, kidPath, unrestricted;
+let server, base, auth, kidFolder, kidPath, kidAllow, unrestricted;
 let pubRoot, hidRoot, bookPubRoot, bookHidRoot, musicPubRoot, musicHidRoot;
 
 function vid(root, folderName, name) {
@@ -75,6 +75,10 @@ before(async () => {
   userStore.setRestrictions(kidFolder.user.id, [{ kind: 'folder', value: 'SecretChannel' }, { kind: 'path', value: bookHidRoot }, { kind: 'path', value: musicHidRoot }]);
   kidPath = __mintTestSession({ username: 'kidpath', role: 'member' });
   userStore.setRestrictions(kidPath.user.id, [{ kind: 'path', value: hidRoot }, { kind: 'path', value: bookHidRoot }, { kind: 'path', value: musicHidRoot }]);
+  // ALLOWLIST mode (the primary kid-account shape, the v1.126 scar): blocked
+  // UNLESS matched, so allowlisting only the public roots hides everything else.
+  kidAllow = __mintTestSession({ username: 'kidallow', role: 'member' });
+  userStore.setRestrictions(kidAllow.user.id, [{ kind: 'mode', value: 'allowlist' }, { kind: 'path', value: pubRoot }, { kind: 'path', value: bookPubRoot }, { kind: 'path', value: musicPubRoot }]);
   // An unrestricted member - MUST see the full config, byte-identical to admin.
   unrestricted = __mintTestSession({ username: 'freemember', role: 'member' });
 });
@@ -95,7 +99,7 @@ test('L1 /api/config: a path-restricted member sees only visible roots + display
   const freeCfg = await getJson('/api/config', unrestricted.cookie);
   assert.deepStrictEqual(freeCfg, adminCfg, 'an UNRESTRICTED member gets the byte-identical config (no empty-folder vanish)');
 
-  for (const [label, who] of [['folder-kind', kidFolder], ['path-kind', kidPath]]) {
+  for (const [label, who] of [['folder-kind', kidFolder], ['path-kind', kidPath], ['allowlist', kidAllow]]) {
     const cfg = await getJson('/api/config', who.cookie);
     assert.ok(cfg.folders.includes(pubRoot), `${label}: keeps the visible root`);
     assert.ok(!cfg.folders.includes(hidRoot), `${label}: drops the hidden root`);
