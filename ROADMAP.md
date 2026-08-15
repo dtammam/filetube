@@ -80,6 +80,33 @@
 
 ## Shipped
 
+### v1.124.1 - hotfix: desktop fullscreen never armed the controls auto-hide (2026-08-15)
+
+Dean's device pass, minutes after v1.124.0: subtitles-above-the-bar (F1) works;
+the controls fade (F2) was dead on desktop fullscreen. Root cause: desktop
+fullscreen is the NATIVE Fullscreen API (`requestFullscreen()`, no class),
+while the fade gate only recognized the FAUX `.css-fullscreen`/`.audio-expanded`
+CLASSES (the mobile mechanism) - so the timer never armed. F1 escaped the same
+trap only because its CSS declared both selector forms.
+
+Fix: the immersive gate also accepts a native fullscreen element inside the
+player; a `fullscreenchange` listener arms the fade on enter (entering
+fullscreen mid-playback fires no `play` event, so nothing else would) and
+restores the bar on exit; native `:fullscreen` CSS twins for the fade,
+reduced-motion, and cursor-hide.
+
+Slim gate (adversarial): APPROVE, zero findings - diagnosis confirmed by code
+reading, mobile/iOS path proven inert by construction (webkit fullscreen
+populates neither unprefixed API), no stuck-hidden state reachable, all 8
+mutants killed (including a comment-porous variant). Disclosed, pre-existing,
+NOT this fix: on macOS Safari the fs-btn may route to Apple's native video
+player (webkitEnterFullscreen checked first, an AC14-era branch) - if your
+desktop is Safari and you see Apple's chrome instead of ours, that's that,
+and it wants its own probe/decision.
+
+**DEVICE RE-PROBE (Dean):** fullscreen a video on desktop -> controls + cursor
+fade after ~3s, return on mouse move; never fade while paused/scrubbing.
+
 ### v1.124.0 - reliability hazards + desktop-player features (2026-08-14)
 
 Two reliability fixes from the external review's item 4, plus two desktop-player
