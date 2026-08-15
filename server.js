@@ -952,6 +952,41 @@ function podcastEpisodeVisibleTo(req, ep) {
 function bookVisibleTo(req, book) {
   return !!book && !visibility.isBlocked(userRestrictionIndex(req), { kind: 'book', filePath: book.filePath, folderName: book.folderName });
 }
+// v1.128 Wave B: does the requester carry ANY restriction? Admins get an empty
+// index (userRestrictionIndex returns buildRestrictionIndex([]) for role
+// 'admin'), and an unrestricted member gets one too - for BOTH, every
+// visibility list/config surface must stay BYTE-IDENTICAL to its pre-Wave-B
+// output (an empty folder must not vanish from an unrestricted user's sidebar).
+// So the metadata-filtering config surfaces gate on THIS: filter only when the
+// requester actually has a restriction (allowlist mode, or any listed unit).
+// Same emptiness test isBlocked would short-circuit on, made explicit so a
+// caller can skip the whole filter pass.
+function requesterHasRestrictions(req) {
+  const idx = userRestrictionIndex(req);
+  return idx.mode === 'allowlist'
+    || idx.paths.length > 0
+    || idx.folders.size > 0
+    || idx.shows.size > 0
+    || idx.libraries.size > 0;
+}
+// v1.128 Wave B (L2/L3): filter a configured-ROOTS list to the roots a
+// restricted member can actually see (holds >=1 item that passes `visiblePred`).
+// Admin + unrestricted member get the list back UNCHANGED (byte-identical),
+// including empty roots - the visibility filter never prunes a folder from a
+// user who has no restriction to enforce. `items` is the store's item/track
+// list; each item is matched to its root by path prefix.
+function visibleConfigRoots(req, roots, items, visiblePred) {
+  const list = Array.isArray(roots) ? roots : [];
+  if (!requesterHasRestrictions(req)) return list;
+  const visibleRoots = new Set();
+  for (const item of items) {
+    if (!item || typeof item.filePath !== 'string') continue;
+    if (!visiblePred(req, item)) continue;
+    const root = matchRootFolder(item.filePath, list);
+    if (root) visibleRoots.add(root);
+  }
+  return list.filter((r) => visibleRoots.has(r));
+}
 // v1.123 T3 (security): the trash MUTATION routes (restore/purge) must share the
 // trash LIST's visibility posture - a restricted member must not restore or
 // PERMANENTLY purge a trashed item hidden from them. Builds the SAME media
@@ -6415,7 +6450,43 @@ app.get('/api/config', (req, res) => {
   // Playlists sheet, the folder list, resolveChannelName's fallback) reads it
   // client-side from ONE fetch. Response-only here; writes go through
   // POST /api/folders/display-name below.
-  res.json({ folders, folderSettings, folderDisplayNames: db.folderDisplayNames || {}, syntheticFolders: synthRoots });
+  let outFolders = folders;
+  let outFolderSettings = folderSettings;
+  let outDisplayNames = db.folderDisplayNames || {};
+  // v1.128 Wave B (L1): this response drives the MEMBER sidebar nav, so it
+  // can't be admin-gated - but for a RESTRICTED member it leaked every root
+  // abs path + folderSettings + folder/channel display name, hidden ones
+  // included. Filter to what the member can actually see: a root stays if some
+  // visible video item lives under it; a display name stays if the member can
+  // see an item in that folder. Admin + unrestricted member short-circuit to
+  // the byte-identical payload (an empty configured folder must not vanish
+  // from their sidebar).
+  if (requesterHasRestrictions(req)) {
+    const visibleRoots = new Set();
+    const visibleFolderNames = new Set();
+    for (const item of Object.values(db.metadata || {})) {
+      if (!item || typeof item.filePath !== 'string') continue;
+      if (!mediaVisibleTo(req, item)) continue;
+      const root = matchRootFolder(item.filePath, folders);
+      if (root) visibleRoots.add(root);
+      if (typeof item.folderName === 'string' && item.folderName !== '') visibleFolderNames.add(item.folderName);
+    }
+    outFolders = folders.filter((f) => visibleRoots.has(f));
+    outFolderSettings = {};
+    for (const f of outFolders) if (folderSettings[f] !== undefined) outFolderSettings[f] = folderSettings[f];
+    outDisplayNames = {};
+    for (const name of Object.keys(db.folderDisplayNames || {})) {
+      if (visibleFolderNames.has(name)) outDisplayNames[name] = db.folderDisplayNames[name];
+    }
+  }
+  res.json({
+    folders: outFolders,
+    folderSettings: outFolderSettings,
+    folderDisplayNames: outDisplayNames,
+    // syntheticFolders is a display hint (which folders are the module download
+    // root); intersect it with what actually survived the visibility filter.
+    syntheticFolders: synthRoots.filter((r) => outFolders.includes(r)),
+  });
 });
 
 // v1.126 (Dean): manual per-folder display name - the ONLY fix possible for
@@ -6887,7 +6958,13 @@ async function scanBooks() {
 }
 
 app.get('/api/books/config', (req, res) => {
-  res.json({ folders: booksStore.readBooks(getCachedDatabase()).folders });
+  const ns = booksStore.readBooks(getCachedDatabase());
+  const folders = ns.folders || [];
+  // v1.128 Wave B (L2): common.js reads this on every page to decide whether
+  // to show the Books nav tab, so members reach it - but it leaked every book
+  // ROOT abs path. For a restricted member, return only roots holding >=1
+  // visible book; admin + unrestricted member get the byte-identical list.
+  res.json({ folders: visibleConfigRoots(req, folders, Object.values(ns.items || {}), bookVisibleTo) });
 });
 
 app.post('/api/books/config', async (req, res) => {
@@ -7128,6 +7205,10 @@ app.get('/api/books/folders', (req, res) => {
   const byDir = new Map();
   for (const item of Object.values(ns.items)) {
     if (typeof item.filePath !== 'string') continue;
+    // v1.128 Wave B (L4): filter BEFORE aggregating (the music/albums pattern)
+    // - this route emitted abs dir + folderName + count for EVERY book folder
+    // with no visibility check, so a books-restricted member saw hidden shelves.
+    if (!bookVisibleTo(req, item)) continue;
     const dir = path.dirname(item.filePath);
     const existing = byDir.get(dir);
     if (existing) existing.count += 1;
@@ -7871,7 +7952,12 @@ async function scanMusic() {
 }
 
 app.get('/api/music/config', (req, res) => {
-  res.json({ folders: musicStore.readMusic(getCachedDatabase()).folders });
+  const ns = musicStore.readMusic(getCachedDatabase());
+  const folders = ns.folders || [];
+  // v1.128 Wave B (L3): same as books/config - common.js reads it for the
+  // Music nav tab, so filter to roots holding >=1 visible track for a
+  // restricted member; admin + unrestricted member byte-identical.
+  res.json({ folders: visibleConfigRoots(req, folders, Object.values(ns.tracks || {}), trackVisibleTo) });
 });
 
 app.post('/api/music/config', async (req, res) => {
