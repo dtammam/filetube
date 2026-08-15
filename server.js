@@ -987,6 +987,17 @@ function visibleConfigRoots(req, roots, items, visiblePred) {
   }
   return list.filter((r) => visibleRoots.has(r));
 }
+// v1.128 Wave B: return the db.metadata MAP filtered to items the requester
+// may see - the SAME transform /api/stats builds inline (id -> item), extracted
+// so the duplicates report and scan-status share it. Admin + unrestricted
+// member get the SAME map object back (byte-identical downstream output).
+function visibleMetadataFor(req, metadata) {
+  const map = metadata || {};
+  if (!requesterHasRestrictions(req)) return map;
+  const out = {};
+  for (const id of Object.keys(map)) if (mediaVisibleTo(req, map[id])) out[id] = map[id];
+  return out;
+}
 // v1.123 T3 (security): the trash MUTATION routes (restore/purge) must share the
 // trash LIST's visibility posture - a restricted member must not restore or
 // PERMANENTLY purge a trashed item hidden from them. Builds the SAME media
@@ -7583,7 +7594,16 @@ const TRANSCODE_LIST_CAP = 10;
 // API: Live scan/transcode status for progress feedback in the UI
 app.get('/api/scan-status', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader (was the one T2 left on loadDatabase)
-  const items = Object.values(db.metadata);
+  // v1.128 Wave B (L5): the content-derived fields (fileCount, folderCount,
+  // transcodeNames) leaked full-library counts + pending-transcode item TITLES
+  // to a restricted member. Scope the item set to what the requester may see;
+  // admin + unrestricted member get the byte-identical full view. The
+  // operational fields (scanning/processed/total/phase) are not content.
+  const visibleMap = visibleMetadataFor(req, db.metadata);
+  const items = Object.values(visibleMap);
+  const folderCount = requesterHasRestrictions(req)
+    ? visibleConfigRoots(req, db.folders || [], items, mediaVisibleTo).length
+    : (db.folders || []).length;
   // Same filter that has always produced the `transcoding` count -- this is
   // T2's generalized, codec-aware `needsTranscode`/`transcodeStatus` (a
   // codec-flagged HEVC .mp4 rides this exact filter, not a divergent one).
@@ -7602,7 +7622,7 @@ app.get('/api/scan-status', (req, res) => {
     total: scanState.total,
     phase: scanState.phase,
     fileCount: items.length,
-    folderCount: (db.folders || []).length,
+    folderCount,
     transcoding: pending.length,
     transcodeNames,
     transcodeOverflow
@@ -15174,7 +15194,11 @@ app.get('/api/stats', (req, res) => {
 // anywhere on this surface (Dean's no-data-loss norm); he cleans up by hand.
 app.get('/api/duplicates', (req, res) => {
   const db = getCachedDatabase(); // pure read on a request path (v1.30 A3)
-  res.json(stats.computeDuplicateReport(db.metadata, { extractVideoId: extractYtdlpVideoId }));
+  // v1.128 Wave B (L6): this report is rendered on the member-reachable stats
+  // page, so it can't be admin-gated - but it emitted abs filePaths + counts
+  // over RAW db.metadata. Scope to the requester's visible items (the /api/stats
+  // posture); admin + unrestricted member see the byte-identical full report.
+  res.json(stats.computeDuplicateReport(visibleMetadataFor(req, db.metadata), { extractVideoId: extractYtdlpVideoId }));
 });
 
 // The same report as a downloadable CSV (Dean: "exportable output"). Static
@@ -15187,7 +15211,9 @@ app.get('/api/duplicates', (req, res) => {
 // grow an order of magnitude past that.
 app.get('/api/duplicates.csv', (req, res) => {
   const db = getCachedDatabase();
-  const csv = stats.duplicateReportToCsv(stats.computeDuplicateReport(db.metadata, { extractVideoId: extractYtdlpVideoId }));
+  // v1.128 Wave B (L7): same visibility scope as /api/duplicates above - the
+  // CSV file_path column emitted abs paths of hidden items.
+  const csv = stats.duplicateReportToCsv(stats.computeDuplicateReport(visibleMetadataFor(req, db.metadata), { extractVideoId: extractYtdlpVideoId }));
   res.set('Content-Type', 'text/csv; charset=utf-8');
   res.set('Content-Disposition', 'attachment; filename="filetube-duplicates.csv"');
   res.send(csv);
