@@ -1,6 +1,6 @@
 # Playback queue - "think YouTube" (exec plan)
 
-STATUS: DESIGNED at intake with Dean (2026-08-01), executes as v1.63.0
+STATUS: SHIPPED v1.63.0 (docs reset 2026-08-15; see ROADMAP.md). Was: DESIGNED at intake with Dean (2026-08-01), executes as v1.63.0
 after the ratchet (v1.62.0). Dean's rulings, verbatim scope:
 
 1. Queueable = anything the watch page plays (videos + audio/music);

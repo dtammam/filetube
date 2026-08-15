@@ -20,7 +20,8 @@ One process, one SQLite file, no server-side runtime deps beyond ffmpeg and
   auth routes + user management, the books and music route surfaces,
   backup/restore, notifications, queue, stats, and byte streaming
   (`sendRangeable`). ~140 route registrations.
-- **`lib/`** (~28k lines) - extracted modules. Two own their whole route
+- **`lib/`** (~28k lines of server-side modules; excludes lib/ytdlp's
+  browser-served client assets under `client/` + `views/`) - extracted modules. Two own their whole route
   surface via `registerRoutes(app, deps)` with dependency injection:
   `lib/podcasts/` and `lib/ytdlp/`. The rest are pure/feature libraries the
   monolith calls (see the inventory below).

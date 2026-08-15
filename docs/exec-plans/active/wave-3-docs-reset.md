@@ -1,10 +1,20 @@
 # Wave 3: documentation reset (v1.125.0)
 
-Status: IMPLEMENTED (2026-08-15); slim gate next. Numbers re-derived at start:
-36 regex matches in completed/ = 29 true stales + 7 false positives, and the
-stronger first-Status-line check surfaced 4 MORE stales the keyword regex
-missed - 33 files corrected total, every version machine-verified against its
-ROADMAP entry first. T2: 3 plans archived (2 false-future ytdlp + the shipped
+Status: IMPLEMENTED (2026-08-15); gate round 1 findings APPLIED. Final count:
+**41 files corrected** - 29 via the original keyword regex, 4 via the stronger
+first-Status-line check, and 8 MORE the gate caught using the all-caps
+`STATUS:` spelling with `DESIGNED`/`EXECUTING` keywords (the repo's
+divergent-spelling survivor class - the sweep instrument was case-sensitive;
+gate W1). Every version machine-verified against ROADMAP first. THE METRIC
+(restated per gate W1/S2): the first `status:` line of every completed/ plan,
+matched CASE-INSENSITIVELY, must contain SHIPPED|COMPLETED|CLOSED (the
+terminal set; DESIGNED/EXECUTING/ACTIVE/DRAFT/planned/in-progress are
+non-terminal) - now holds at ZERO violations. Gate W2: the first archive
+banners carried hand-written WRONG version anchors (subscriptions "v1.29+",
+one-offs "v1.39+"); corrected to measured anchors (lib/ytdlp born v1.11.0 by
+tag-contains; reliability hardened v1.29.0; universal one-offs v1.41.13) -
+a truth-reset wave writing new false history is the inverted form of the
+hazard it fights. T2: 3 plans archived (2 false-future ytdlp + the shipped
 shimmer-sweep audit input); future/ now means genuinely-unbuilt. T3:
 ARCHITECTURE.md rewritten (250 lines) off the db.json era, grounded in a
 fresh whole-tree survey; remaining db.json mentions are legacy-framed only.
