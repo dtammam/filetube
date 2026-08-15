@@ -18,11 +18,18 @@ if [ -d "$ACTIVE_DIR" ]; then
 fi
 PLAN_COUNT="$(echo "$PLANS" | grep -c . || true)"
 
-# Tech debt active count
+# Tech debt OPEN count (v1.129 C4): the legacy Active table's rows (presence =
+# open; it has no status cell) PLUS every row anywhere whose LAST cell starts
+# with OPEN (the chronological Ledger mixes OPEN and CLOSED; the status cell
+# is authoritative). The old expression counted only the Active section and
+# injected 42 while ~111 items were open - test/unit/tech-debt-census.test.js
+# now EXECUTES this hook and fails if this count drifts from its own parse.
 DEBT_FILE="$ROOT/docs/exec-plans/tech-debt-tracker.md"
 DEBT_COUNT=0
 if [ -f "$DEBT_FILE" ]; then
-  DEBT_COUNT="$(awk '/^## Active/,/^## Closed/' "$DEBT_FILE" | grep -cE '^\| *[0-9]' || true)"
+  ACTIVE_ROWS="$(awk '/^## Active/,/^## Closed/' "$DEBT_FILE" | grep -cE '^\| *[0-9]' || true)"
+  OPEN_ROWS="$(grep -E '^\| *[0-9]+ \|' "$DEBT_FILE" | grep -cE '\| *OPEN[^|]*\| *$' || true)"
+  DEBT_COUNT=$((ACTIVE_ROWS + OPEN_ROWS))
 fi
 
 # Output
