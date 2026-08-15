@@ -16591,25 +16591,33 @@ function ytdlpPodcastItemDateMs(item) {
   if (item && typeof item.addedAt === 'number' && Number.isFinite(item.addedAt)) return item.addedAt;
   return 0;
 }
-function ytdlpPodcastItemsUnder(db, dir) {
+function ytdlpPodcastItemsUnder(db, dir, itemVisible) {
   const prefix = dir.endsWith(path.sep) ? dir : dir + path.sep;
   const items = [];
   for (const id of Object.keys(db.metadata || {})) {
     if (!Object.prototype.hasOwnProperty.call(db.metadata, id)) continue;
     const it = db.metadata[id];
-    if (it && typeof it.filePath === 'string' && it.filePath.startsWith(prefix)) items.push(it);
+    if (it && typeof it.filePath === 'string' && it.filePath.startsWith(prefix)) {
+      // v1.128 Wave B (L10/L11): these are yt-dlp MEDIA items filed under
+      // Podcasts, so a restricted member must not see hidden ones in the
+      // external show count / episode list. `itemVisible` is a
+      // (item)->boolean predicate (mediaVisibleTo bound to the requester);
+      // absent = no filtering (admin/unrestricted, and the health-count path).
+      if (typeof itemVisible === 'function' && !itemVisible(it)) continue;
+      items.push(it);
+    }
   }
   items.sort((a, b) => ytdlpPodcastItemDateMs(b) - ytdlpPodcastItemDateMs(a));
   return items;
 }
-function listYtdlpPodcastShows(db) {
+function listYtdlpPodcastShows(db, itemVisible) {
   const cfg = ytdlp.parseYtdlpConfig();
   if (!ytdlp.isEnabled(cfg)) return [];
   const subs = (db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [])
     .filter((s) => s && s.libraryPlace === 'podcasts');
   return subs.map((sub) => {
     let items = [];
-    try { items = ytdlpPodcastItemsUnder(db, ytdlpArgs.resolveChannelDir(cfg, sub)); } catch (_) { items = []; }
+    try { items = ytdlpPodcastItemsUnder(db, ytdlpArgs.resolveChannelDir(cfg, sub), itemVisible); } catch (_) { items = []; }
     return {
       id: `yt:${sub.id}`,
       name: sub.name || sub.channelUrl,
@@ -16627,15 +16635,20 @@ function listYtdlpPodcastShows(db) {
       lastStatus: typeof sub.lastStatus === 'string' ? sub.lastStatus : '',
       secretMissing: false,
     };
-  });
+  })
+    // v1.128 Wave B (L10): for a RESTRICTED requester (itemVisible provided), a
+    // show whose every item is hidden must not appear at all - otherwise its
+    // name + zero-count leak. Admin/unrestricted (no predicate) keep all shows,
+    // including genuinely-empty ones (byte-identical to pre-Wave-B).
+    .filter((show) => typeof itemVisible !== 'function' || show.episodeCount > 0);
 }
-function listYtdlpPodcastEpisodes(db, showId, userId) {
-  const shows = listYtdlpPodcastShows(db);
+function listYtdlpPodcastEpisodes(db, showId, userId, itemVisible) {
+  const shows = listYtdlpPodcastShows(db, itemVisible);
   const show = shows.find((s) => s.id === showId);
   if (!show) return null;
   const sub = db.ytdlp.subscriptions.find((s) => s && `yt:${s.id}` === showId);
   let items = [];
-  try { items = ytdlpPodcastItemsUnder(db, ytdlpArgs.resolveChannelDir(ytdlp.parseYtdlpConfig(), sub)); } catch (_) { items = []; }
+  try { items = ytdlpPodcastItemsUnder(db, ytdlpArgs.resolveChannelDir(ytdlp.parseYtdlpConfig(), sub), itemVisible); } catch (_) { items = []; }
   const progress = userStore.getProgress(userId);
   const watched = userStore.getWatchedTimes(userId);
   return {
@@ -16684,6 +16697,11 @@ podcasts.registerRoutes(app, {
   listExternalEpisodes: listYtdlpPodcastEpisodes,
   recordPresenceFromPing, // v1.78: the ONE presence writer, shared by all three kinds
   episodeVisibleTo: podcastEpisodeVisibleTo, // v1.80 RBAC: per-user episode/show visibility
+  // v1.128 Wave B (L10/L11): external (yt-dlp) podcast shows/episodes are MEDIA
+  // items, so their per-requester visibility is the MEDIA decision, not the
+  // podcast one - the module binds this to req and passes it into
+  // listExternalShows/Episodes so a restricted member sees no hidden yt-dlp show.
+  mediaVisibleTo,
   requireManageSubscriptions, // v1.80 RBAC gate: the podcast registry parallels the ytdlp one
   requireModifyLibrary, // v1.81 write-RBAC gate: episode delete is a CONTENT delete, not registry mgmt
 });
