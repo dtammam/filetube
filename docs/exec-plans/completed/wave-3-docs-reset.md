@@ -1,6 +1,6 @@
 # Wave 3: documentation reset (v1.125.0)
 
-Status: IMPLEMENTED (2026-08-15); gate round 1 findings APPLIED. Final count:
+Status: SHIPPED v1.125.0 (2026-08-15; see ROADMAP.md). Gate round 1 findings applied and re-verified. Final count:
 **41 files corrected** - 29 via the original keyword regex, 4 via the stronger
 first-Status-line check, and 8 MORE the gate caught using the all-caps
 `STATUS:` spelling with `DESIGNED`/`EXECUTING` keywords (the repo's

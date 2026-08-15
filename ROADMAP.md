@@ -80,6 +80,42 @@
 
 ## Shipped
 
+### v1.125.0 - documentation reset: the repo's AI knowledge base tells the truth again (2026-08-15)
+
+Wave 3 of the stabilization arc (external review, 2026-08-14): stale plans and
+authority docs were letting a future agent "confidently follow obsolete
+information". Docs-only.
+
+- **41 shipped plans in `docs/exec-plans/completed/` corrected** from
+  in-flight statuses (ACTIVE / DESIGN / DRAFT / "in implementation" /
+  DESIGNED / EXECUTING) to terminal `SHIPPED vX.Y.Z` lines - every version
+  machine-verified against its ROADMAP entry before rewriting. The standing
+  invariant (now stated in the plan): the first status line of every completed
+  plan, matched case-insensitively, contains SHIPPED|COMPLETED|CLOSED.
+- **`future/` now means genuinely-unbuilt**: its two yt-dlp plans (superseded
+  by the shipped `lib/ytdlp/` since ~v1.11) and the shipped shimmer-sweep
+  audit moved to a new `docs/exec-plans/archive/` with loud ARCHIVED banners.
+- **`ARCHITECTURE.md` rewritten** (387 -> 250 lines): the old edition
+  described the pre-v1.42 db.json era with no auth, no SQLite, no RBAC, no
+  podcasts. The new one is survey-grounded current state - the SQLite adapter
+  (schema v17, doc/relational split, append-only migrations), auth + RBAC +
+  the forcing nets, the media pipeline and its prune guards, the four places
+  + ytdlp, the client (router, battle-won player subsystems, tokens,
+  PWA/push), Roku, config, CI, testing - and survived an adversarial
+  fact-check of its load-bearing claims against the tree.
+- Skipped, disclosed: the optional generated route inventory (the live route
+  table is already machine-enumerated by the forcing-net tests).
+  `QUALITY_SCORE.md` untouched (owner-frozen header - Dean's per-instance
+  call).
+
+Gate: slim (adversarial), one fix round - and it caught the wave's own
+classes turned inward: the status sweep was CASE-SENSITIVE and 8 all-caps
+`STATUS: DESIGNED/EXECUTING` files survived it (the divergent-spelling
+class), and my first archive banners HAND-WROTE wrong version anchors (a
+truth-reset writing new false history) - both corrected with measured values,
+then re-verified by the seat from scratch. Suites untouched by docs; full
+suite green through the pre-push hooks.
+
 ### v1.124.1 - hotfix: desktop fullscreen never armed the controls auto-hide (2026-08-15)
 
 Dean's device pass, minutes after v1.124.0: subtitles-above-the-bar (F1) works;
