@@ -1790,7 +1790,16 @@ if (typeof module !== 'undefined' && module.exports) {
   // Both are `position:fixed; inset:0` overlays whose bar overlays/reserves the
   // bottom, so both auto-hide identically.
   function inImmersiveMode() {
-    return !!(host && (host.classList.contains('css-fullscreen') || host.classList.contains('audio-expanded')));
+    if (!host) return false;
+    if (host.classList.contains('css-fullscreen') || host.classList.contains('audio-expanded')) return true;
+    // v1.124.1 (Dean's device pass): DESKTOP fullscreen is the NATIVE Fullscreen
+    // API on the host (the fs-btn calls requestFullscreen(); no class is added),
+    // so the v1.124 F2 gate - which only knew the faux/audio CLASSES - never
+    // armed the fade there ("no fading on desktop, full screened"). Native
+    // fullscreen is immersive too: the bar overlays the picture identically.
+    // `contains` covers both fullscreen targets (host, or mediaPlayer on the
+    // no-host-API fallback) since Node.contains(node) includes the node itself.
+    return !!(typeof document !== 'undefined' && document.fullscreenElement && host.contains(document.fullscreenElement));
   }
   function clearControlsAutoHide() {
     if (controlsAutoHideTimer) { clearTimeout(controlsAutoHideTimer); controlsAutoHideTimer = null; }
@@ -6204,6 +6213,19 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     document.addEventListener('fullscreenchange', onFsChange);
     mediaPlayer.addEventListener('webkitendfullscreen', onFsChange);
+
+    // v1.124.1 (Dean's device pass): NATIVE (desktop) fullscreen transitions
+    // must drive the controls auto-hide cycle exactly like the faux path does in
+    // setCssFullscreen - entering arms the fade (bar visible, then fades while
+    // playing), leaving cancels the timer and restores a visible bar. Without
+    // this, entering native fullscreen while already playing armed NOTHING (no
+    // play event fires mid-playback) and the bar never faded. A dedicated
+    // listener rather than a branch inside onFsChange: that handler owns the
+    // battle-won faux-handoff logic and stays untouched.
+    document.addEventListener('fullscreenchange', function () {
+      if (inImmersiveMode()) revealControlsAndReArm();
+      else { clearControlsAutoHide(); showControlsBar(); }
+    });
 
     var mql = window.matchMedia('(orientation: landscape)');
     function onOrientationChange() {
