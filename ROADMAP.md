@@ -80,6 +80,36 @@
 
 ## Shipped
 
+### v1.130.0 - immersive fullscreen carries across playback continuations (2026-08-15)
+
+Dean's iOS report: landscape faux fullscreen, video advances (autoplay or
+skip-to-next) -> dumped onto the raw landscape page. Root cause: the load
+teardown's unconditional v1.34.2 overlay drop is right for a fresh pick,
+wrong for a continuation - and the rotate machinery only re-enters on
+orientation CHANGE. Now a one-shot carry, armed at all 8 continuation seams
+(autoplay-ended, queue advance, manual track next/prev, lock-screen/media-key,
+Shift+N/P), keeps the immersive surface across the load; cross-kind advances
+land on the NEW item's own surface (video faux fullscreen <-> expanded audio
+now-playing). Keyed on immersive STATE at advance time, never orientation.
+
+What the gate caught (slim/adversarial, 2 rounds): an artless-audio
+destination would have landed in a scroll-frozen black page - twice (the
+set axis in round 1, the teardown-PRESERVED class axis in round 2, the
+reveal-once two-axes class); two unbound surface-swap mutants; a
+comment-porous arm-count lock; scroll-keeper + adopt-branch one-shot gaps.
+All fixed and mutant-verified red.
+
+Known gaps (disclosed): cross-VIEW continuations (e.g. queue advance
+video -> /music track) stay non-immersive - the SPA router's dock()
+transition drops the classes before the destination captures; behavior
+equals pre-wave; deferred as the v1.103 router-depth bug-magnet class.
+Desktop NATIVE fullscreen across advances is browser-gesture-gated (out of
+scope). Artless audio destinations degrade to the plain page by design.
+
+Dual-Node: 6942/6942 on v22.23.1 AND v24.14.0. Dean's on-device pass
+PENDING (headline probe: fullscreen video -> autoplay/skip -> stays
+fullscreen).
+
 ### v1.129.0 - docs truth sweep round 2 + release mechanicals (2026-08-15)
 
 Wave C, closing the external-review-round-2 response arc (v1.127 security,

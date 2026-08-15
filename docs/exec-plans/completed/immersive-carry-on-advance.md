@@ -1,5 +1,8 @@
 # Immersive carry-on-advance (v1.130.0)
 
+Status: SHIPPED v1.130.0 (2026-08-15) - slim gate (adversarial), 2 rounds,
+APPROVE; dual-Node 6942/6942 both; Dean's on-device pass PENDING.
+
 Dean's report (2026-08-15): iOS, landscape, faux fullscreen, video advances
 (autoplay `ended` or manual skip) -> the load teardown drops fullscreen and he
 lands on the raw landscape page view he "never really gets to otherwise".
