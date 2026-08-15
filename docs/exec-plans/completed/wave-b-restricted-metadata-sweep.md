@@ -1,8 +1,12 @@
 # Wave B (v1.128): restricted-account metadata isolation sweep
 
-Status: PLANNED 2026-08-15 (Dean chose "fix it, own wave" over tech-debt).
-Runs AFTER Wave A ships. Authored by the Fable session that verified the
-spot-checked claims below; step S1 machine-derives the full surface list.
+Status: SHIPPED v1.128.0 (2026-08-15; see ROADMAP.md). FULL gate in isolated
+worktrees; no CRITICALs; both seats APPROVED after one fix round (a byte-
+identity regression on empty external podcast shows + a presence-not-binding
+gap on 2 of the 3 queue drops). Dual-Node 6923/6923. 11 census leaks fixed
+(L1-L11); residuals tracked: #150 (registry job-logs), #152 (podcasts
+count-oracles + root path), #153 (personal-write existence-oracle tail).
+Authored + executed by the Fable session; census machine-derived by 4 agents.
 
 Problem: restricted accounts (path/folder/show restrictions, kid allowlist
 mode) never receive protected BYTES, but several read surfaces still leak
