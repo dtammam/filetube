@@ -1,7 +1,11 @@
 # Wave 2: reliability hazards + desktop-player features (v1.124.0)
 
-Status: IN PROGRESS (2026-08-14). Grounded at `a4f1f24` (v1.123.0 shipped).
-Branch `feat/v1.124-reliability-player`. R1 done (`88ec97a`), R2 done (`e658b69`).
+Status: SHIPPED v1.124.0 (2026-08-14). Both seats APPROVED after one comment-only
+fix round. Grounded at `a4f1f24` (v1.123.0). Commits: R1 `88ec97a`, R2 `e658b69`,
+F1 `5157b99`, F2 `f43e94b`, gate fix `f72ec6d`. Dual-Node full suite 6885/6885 on
+v22.23.1 + v24.14.0. The gate found NO code defect - the sole round-1 blocker was
+two stale comments F1 left in the battle-won caption subsystem (corrected). F2
+shipped IMMERSIVE-scoped (inline stays always-visible; see the F2 section).
 
 Scope = the two reliability findings from the external review's item 4 (R1, R2)
 PLUS two desktop-player features Dean asked for with this wave (F1, F2). Both

@@ -80,6 +80,48 @@
 
 ## Shipped
 
+### v1.124.0 - reliability hazards + desktop-player features (2026-08-14)
+
+Two reliability fixes from the external review's item 4, plus two desktop-player
+features Dean asked for with the wave.
+
+- **Podcast enclosure downloads now honor write backpressure.** A fast feed
+  origin over a slow disk (NAS/SMB) used to let Node buffer the download
+  unbounded in memory - up to 2 GB per concurrent enclosure, enough to OOM a
+  small box. The read now pauses when the write buffer is full and resumes on
+  drain; every existing guard (size cap, idle/deadline timeout, fsync-rename,
+  partial-file cleanup) is untouched, and no bytes are dropped.
+- **Books under a transiently-unreadable folder are protected from pruning.** A
+  momentary permission error (EACCES) or failed automount on a book SUBTREE used
+  to delete every book under it AND its per-user reading position - even when the
+  rest of the library was fine. Ported the guard the music scanner already had:
+  a book whose file sits under a directory that errored this scan is never
+  pruned. (Data-loss class - full gate.)
+- **F1 (Dean): video subtitles no longer hide behind the controls bar.** Video
+  captions used the browser's native rendering, which the custom control bar
+  overlays in fullscreen. They now render through the same custom overlay the
+  audio player already used - always above the bar, in every view including
+  fullscreen. Unifies audio and video caption rendering on one path.
+- **F2 (Dean): desktop controls auto-hide in fullscreen, YouTube/iOS style.** In
+  the fullscreen (and audio-expanded) views the control bar now fades after ~3s
+  of no activity while playing, and reappears on mouse movement (the cursor hides
+  with it and returns on the next move). The normal inline player is unchanged -
+  its bar sits in a reserved strip below the video, so it stays visible.
+
+Gate: FULL gate (the book-prune fix can lose data), both seats APPROVED after one
+comment-only fix round - F1 had left two stale comments in the battle-won caption
+code describing the old (deleted) native-video path; corrected. No code defect was
+found in any of the four - each guard was mutation-verified by both seats
+independently. Dual-Node full suite **6885/6885** on v22.23.1 and v24.14.0.
+
+**DEVICE PASS PENDING (Dean):** F1 - turn on subtitles for a video and confirm
+they sit ABOVE the controls bar, including in fullscreen. F2 - fullscreen a video,
+stop moving the mouse, and confirm the controls (and cursor) fade after a few
+seconds and return on a mouse move; confirm they never fade while paused or mid-
+scrub, and that the normal (non-fullscreen) player still shows its bar. NOTE: F2
+is scoped to fullscreen/immersive - if you want the inline bar to overlay-and-hide
+too, that's a follow-up layout change, your call.
+
 ### v1.123.0 - security emergency: secret rotation, object-visibility bypass, cache + publish hardening (2026-08-14)
 
 An external adversarial codebase review graded security F on five claims. Every
