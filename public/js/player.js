@@ -572,6 +572,38 @@ function captureAutoplayAdvanceForLoad(pending) {
   return { value: !!pending, nextPending: false };
 }
 
+// ---- v1.130 immersive carry-on-advance pure helpers ------------------------
+// Dean (2026-08-15): a playback CONTINUATION (autoplay 'ended', queue
+// advance, manual track Next/Prev, lock-screen next) must keep the immersive
+// overlay - faux CSS video fullscreen or the expanded audio now-playing view
+// - across the load boundary, instead of dumping him onto the raw landscape
+// page (the teardown's v1.34.2 "never leak the fixed overlay" drop is right
+// for a fresh browse pick, wrong for a continuation). Keyed on the immersive
+// STATE at advance time, never orientation (Dean ruling 3).
+//
+// Same leak-proof one-shot shape as `captureAutoplayAdvanceForLoad` above:
+// the module-level `immersiveCarryPending` arm is captured + unconditionally
+// cleared at the START of every genuine new load. Two extra guards live in
+// the capture itself:
+//  - `liveKind` (the host's immersive class AT LOAD START, or null) must be
+//    present: an arm that outlived a manual fullscreen exit (e.g. an edge
+//    tap whose handler no-op'd, then the user exited and browsed) is INERT.
+//  - conversely, a live immersive class WITHOUT the arm still gets dropped
+//    by the teardown - the v1.34.2 belt survives for every non-continuation
+//    load, leaked classes included.
+function captureImmersiveCarryForLoad(pending, liveKind) {
+  var kind = liveKind === 'video' || liveKind === 'audio' ? liveKind : null;
+  return { value: pending ? kind : null, nextPending: false };
+}
+
+// Which immersive surface the NEW item gets when a carry rode in: the new
+// item's own overlay (Dean ruling 2 - cross-kind advances stay immersive on
+// the destination's surface). `null` carried -> no reconcile at all.
+function resolveImmersiveCarryTarget(carriedKind, newType) {
+  if (carriedKind !== 'video' && carriedKind !== 'audio') return null;
+  return newType === 'audio' ? 'audio-expanded' : 'video-fs';
+}
+
 // ---- FR-2 (T2, v1.21.0): custom control-bar pure helpers -------------------
 // Both hoisted above the browser-only runtime below, same "pure helpers
 // first" split every other state-machine decision in this file already uses
@@ -1277,6 +1309,9 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldEnterFauxOnRotate,
     shouldExitFauxOnRotate,
     captureAutoplayAdvanceForLoad,
+    // v1.130: immersive carry-on-advance (fullscreen survives autoplay/skip).
+    captureImmersiveCarryForLoad,
+    resolveImmersiveCarryTarget,
     clampVolume,
     seekCommitTarget,
     scrubRatioFromPointer,
@@ -1610,6 +1645,16 @@ if (typeof module !== 'undefined' && module.exports) {
   // STALE gen's poll chain can never read a since-overwritten value here.
   var loadAutoplayAdvance = false;
 
+  // v1.130 immersive carry-on-advance: one-shot arm + per-load snapshot,
+  // exactly the `autoplayAdvancePending`/`loadAutoplayAdvance` pattern above
+  // (armed immediately before every CONTINUATION navigation/handler call;
+  // captured + unconditionally cleared at the start of every genuine new
+  // load via `captureImmersiveCarryForLoad`, which also requires the
+  // immersive class to still be LIVE at load start - see its header).
+  // `loadImmersiveCarry` holds 'video' | 'audio' | null for THIS load.
+  var immersiveCarryPending = false;
+  var loadImmersiveCarry = null;
+
   var currentChannelName = '';
   var lastPositionSync = 0;
   var POSITION_SYNC_MS = 5000;
@@ -1800,6 +1845,18 @@ if (typeof module !== 'undefined' && module.exports) {
     // `contains` covers both fullscreen targets (host, or mediaPlayer on the
     // no-host-API fallback) since Node.contains(node) includes the node itself.
     return !!(typeof document !== 'undefined' && document.fullscreenElement && host.contains(document.fullscreenElement));
+  }
+  // v1.130 immersive carry-on-advance: which CLASS-based immersive surface is
+  // live right now - 'video' (.css-fullscreen) | 'audio' (.audio-expanded) |
+  // null. Deliberately NARROWER than `inImmersiveMode()` above: desktop
+  // NATIVE fullscreen (classless, Fullscreen API) is excluded because
+  // reparenting the host into the next view's slot exits it at the BROWSER
+  // level and re-entry needs a user gesture - a carry could never honor it.
+  function currentImmersiveKind() {
+    if (!host) return null;
+    if (host.classList.contains('css-fullscreen')) return 'video';
+    if (host.classList.contains('audio-expanded')) return 'audio';
+    return null;
   }
   function clearControlsAutoHide() {
     if (controlsAutoHideTimer) { clearTimeout(controlsAutoHideTimer); controlsAutoHideTimer = null; }
@@ -2490,6 +2547,11 @@ if (typeof module !== 'undefined' && module.exports) {
           return;
         }
         var h = trackNavHandlers && (dir === 'prev' ? trackNavHandlers.onPrev : trackNavHandlers.onNext);
+        // v1.130: a manual track step is a continuation - arm the immersive
+        // carry before the page handler navigates. (An edge tap whose handler
+        // no-ops leaves the arm set, but the capture's live-class guard makes
+        // a stale arm inert - see captureImmersiveCarryForLoad.)
+        immersiveCarryPending = true;
         if (typeof h === 'function') h();
       });
   }
@@ -2499,8 +2561,12 @@ if (typeof module !== 'undefined' && module.exports) {
     var hasNext = !!(handlers && typeof handlers.onNext === 'function');
     trackNavHandlers = (hasPrev || hasNext) ? handlers : null;
     updateTrackNavButtons();
-    setMediaSessionAction('previoustrack', hasPrev ? function () { handlers.onPrev(); } : null);
-    setMediaSessionAction('nexttrack', hasNext ? function () { handlers.onNext(); } : null);
+    // v1.130: lock-screen / media-key prev/next are continuations too - arm
+    // the immersive carry before the page handler navigates (this is the
+    // in-fullscreen "skip to next" path: the page's own buttons sit UNDER the
+    // fixed overlay, so hardware/lock-screen keys are what actually fire).
+    setMediaSessionAction('previoustrack', hasPrev ? function () { immersiveCarryPending = true; handlers.onPrev(); } : null);
+    setMediaSessionAction('nexttrack', hasNext ? function () { immersiveCarryPending = true; handlers.onNext(); } : null);
   }
 
   // ---- FR-5 (T4): background/force-close lifecycle pause+persist ------------
@@ -4005,6 +4071,7 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       recordLifecycleEvent('autoplay:queue-advance', { detail: 'to=' + queueNext.mediaId });
       autoplayAdvancePending = true;
+      immersiveCarryPending = true; // v1.130: a queue advance is a continuation - carry the immersive state
       window.FileTube.navigate(advanceHref);
     } else {
       window.location.href = advanceHref;
@@ -4038,7 +4105,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // advance is on the device-probe list).
     if (currentData && currentData.autoAdvanceViaTrackNav) {
       var fallbackToTrackNav = function () {
-        if (trackNavHandlers && typeof trackNavHandlers.onNext === 'function') trackNavHandlers.onNext();
+        if (trackNavHandlers && typeof trackNavHandlers.onNext === 'function') {
+          immersiveCarryPending = true; // v1.130: an 'ended' trackNav advance is a continuation - carry the immersive state
+          trackNavHandlers.onNext();
+        }
       };
       fetch('/api/queue')
         .then(function (res) { return res.ok ? res.json() : null; })
@@ -4176,6 +4246,7 @@ if (typeof module !== 'undefined' && module.exports) {
               // handleResumePlayback (via shouldShowResumeOverlay) to skip
               // the resume-overlay prompt for THIS specific advance only.
               autoplayAdvancePending = true;
+              immersiveCarryPending = true; // v1.130: autoplay-ended context advance is a continuation - carry the immersive state
               // v1.40.0: preserve the context so the NEXT autoplay hop keeps
               // walking the same list (pre-v1.40.0 this dropped it entirely).
               // advanceRawCtx is the DECODED value -> re-encode it for the URL.
@@ -6361,12 +6432,14 @@ if (typeof module !== 'undefined' && module.exports) {
         case 'N':
           if (e.shiftKey && trackNavHandlers && typeof trackNavHandlers.onNext === 'function') {
             e.preventDefault();
+            immersiveCarryPending = true; // v1.130: keyboard track-next is a continuation - carry the immersive state
             trackNavHandlers.onNext();
           }
           break;
         case 'P':
           if (e.shiftKey && trackNavHandlers && typeof trackNavHandlers.onPrev === 'function') {
             e.preventDefault();
+            immersiveCarryPending = true; // v1.130: keyboard track-prev is a continuation - carry the immersive state
             trackNavHandlers.onPrev();
           }
           break;
@@ -6489,7 +6562,14 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // ---- per-media setup (runs on every genuine, non-adopt load()) -------------
 
-  function teardownMediaState() {
+  // v1.130: `opts.preserveImmersive` ('video' | 'audio', from THIS load's
+  // `loadImmersiveCarry` capture) keeps the live immersive overlay class up
+  // through the teardown so a playback CONTINUATION never flashes out of
+  // fullscreen mid-transition; `load()` reconciles it onto the NEW item's own
+  // surface right after `setupForMedia`. Absent/falsy (every other path, and
+  // every non-continuation load) -> both drops run exactly as before.
+  function teardownMediaState(opts) {
+    var preserveImmersive = !!(opts && opts.preserveImmersive);
     loadGeneration++; // invalidate any in-flight poll/resume-check tied to the previous media
     // v1.39.0: clear any lock-screen prev/next CHAPTER handlers from a prior
     // load (they close over a specific view). A book-audio load re-registers
@@ -6558,7 +6638,10 @@ if (typeof module !== 'undefined' && module.exports) {
     if (ccBtn) { ccBtn.style.display = 'none'; ccBtn.classList.remove('active'); ccBtn.setAttribute('aria-pressed', 'false'); }
     if (ccTrack && ccTrack.track) ccTrack.track.mode = 'disabled';
     resetChaptersUi(); // v1.34 T3: menu closed/emptied, button hidden until next load
-    setCssFullscreen(false); // v1.34.2: never leak the fixed overlay across loads
+    // v1.34.2: never leak the fixed overlay across loads -- EXCEPT (v1.130) a
+    // playback continuation carrying its immersive state, which `load()`
+    // reconciles onto the new item immediately after `setupForMedia`.
+    if (!preserveImmersive) setCssFullscreen(false);
     // v1.68: the LOAD BOUNDARY kills any held keeper capture outright - a
     // capture from the previous video must never restore onto the next
     // video's page at a later native Done-exit (the cross-page leak the C1
@@ -6579,7 +6662,10 @@ if (typeof module !== 'undefined' && module.exports) {
     applyMediaAspect(null, null);
     if (host) host.classList.remove('audio-mode');
     updateTrackNavButtons(); // v1.73: leaving audio mode hides the Prev/Next pair
-    exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): every genuine new load force-clears any expanded state left over from the previous media
+    // FR-1 (T1, v1.22.2, AC5): every genuine new load force-clears any expanded
+    // state left over from the previous media -- same v1.130 continuation
+    // carve-out as the css-fullscreen drop above.
+    if (!preserveImmersive) exitAudioExpand();
     // FR-1 (T1, v1.22.0): belt-and-suspenders -- `mountInSlot()` (called a
     // few lines below, in `load()`) re-derives the real controls-mode for
     // the NEW media via `applyControlsMode()` microseconds later, but
@@ -7209,6 +7295,45 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // The main entry point watch.js calls on every view init(). See the
   // top-of-file API doc for the adopt/no-restart contract.
+  // v1.130 immersive carry-on-advance: after `setupForMedia` (the new item's
+  // type is known), reconcile a carried immersive state onto the NEW item's
+  // own surface -- faux CSS fullscreen for video, the expanded now-playing
+  // view for audio (Dean ruling 2: cross-kind advances stay immersive on the
+  // destination's surface). Re-calling a setter whose class is already on is
+  // a harmless toggle no-op whose `revealControlsAndReArm()` re-arms the
+  // v1.119 auto-hide cycle for the new item. No carry (the overwhelmingly
+  // common case) -> pure no-op, every non-continuation load byte-identical.
+  function applyCarriedImmersive() {
+    var target = resolveImmersiveCarryTarget(loadImmersiveCarry, currentData && currentData.type);
+    if (!target) return;
+    if (target === 'video-fs') {
+      exitAudioExpand(); // an audio->video carry swaps surfaces; no-op otherwise
+      setCssFullscreen(true);
+      // Gate S1 (v1.130 fix round): a carried on->on "entry" never re-captures
+      // the scroll keeper (teardown nulls it unconditionally; the on->on call
+      // above is a no-transition for resolveCssFsScrollPlan) - seed the NEW
+      // page's natural top so the eventual manual exit restores 0 instead of
+      // restoring nothing (iOS drift under the overlay otherwise survives the
+      // exit - the v1.67.5 mechanism).
+      if (cssFsSavedScrollY === null) cssFsSavedScrollY = 0;
+    } else {
+      setCssFullscreen(false); // a video->audio carry swaps surfaces; no-op otherwise (no restoreScroll: we stay immersive)
+      // Gate W1 + W1-bis (v1.130 fix rounds 1+2): the expanded overlay's CSS
+      // is the COMPOUND `#player-wrapper.audio-mode.audio-expanded`
+      // (style.css), and setupForMedia adds `.audio-mode` ONLY when art
+      // resolves - an ARTLESS audio item (hasThumbnail false) has no expanded
+      // surface at all. `.audio-expanded` alone freezes/blacks the page body
+      // (`body.ft-audio-expanded`) with NO overlay and no touch escape on iOS
+      // (the #fs-btn routes to native-fullscreen without audio-mode). This
+      // ONE call binds BOTH axes (the reveal-once two-axes class): surface
+      // exists -> expand; artless -> DROP, which also clears an
+      // `.audio-expanded` the teardown PRESERVED from the outgoing item
+      // (audio->artless-audio would otherwise keep it forever - W1-bis).
+      // Either way the artless case degrades to the plain pre-wave page.
+      setAudioExpanded(!!(host && host.classList.contains('audio-mode')));
+    }
+  }
+
   function load(id, data, opts) {
     var options = opts || {};
     if (!ensureHost()) return false;
@@ -7223,6 +7348,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // current navigation: a context-less re-open clears it to the folder
       // fallback. Skipped only when data carries no browseCtx field at all.
       if (data && typeof data.browseCtx === 'string' && currentData) currentData.browseCtx = data.browseCtx;
+      // Gate S2 (v1.130 fix round): an adopt returns before the capture below,
+      // so an armed immersive carry would otherwise survive it and wrongly
+      // apply to a LATER unrelated load. Consume it here too - an adopt never
+      // tears down, so whatever immersive state is live simply stays live.
+      immersiveCarryPending = false;
       // v1.44.2: a re-tap of the SAME track from /music's play->dock flow docks
       // (adopt = reparent only, no restart) rather than expanding FULL.
       if (options.dock) dock(); else expand(options.slot);
@@ -7237,13 +7367,22 @@ if (typeof module !== 'undefined' && module.exports) {
     var capturedAutoplayAdvance = captureAutoplayAdvanceForLoad(autoplayAdvancePending);
     loadAutoplayAdvance = capturedAutoplayAdvance.value;
     autoplayAdvancePending = capturedAutoplayAdvance.nextPending;
-    teardownMediaState();
+    // v1.130 immersive carry-on-advance: same capture-at-load-start shape as
+    // the autoplay flag above (arm cleared unconditionally, value snapshotted
+    // per-load). A DOCK destination never carries -- a docked mini-player has
+    // no immersive surface, so a preserved overlay there would be a stuck
+    // fixed layer -- the arm is still consumed, the value dropped.
+    var capturedImmersiveCarry = captureImmersiveCarryForLoad(immersiveCarryPending, currentImmersiveKind());
+    loadImmersiveCarry = options.dock ? null : capturedImmersiveCarry.value;
+    immersiveCarryPending = capturedImmersiveCarry.nextPending;
+    teardownMediaState({ preserveImmersive: loadImmersiveCarry });
     currentId = id;
     currentData = data || {};
     // v1.44.2: `dock:true` mounts straight into the corner mini-player (the
     // /music play->dock flow); otherwise FULL into the given #player-slot.
     if (options.dock) mountInDock(); else mountInSlot(options.slot);
     setupForMedia(id, currentData);
+    applyCarriedImmersive();
     return true;
   }
 

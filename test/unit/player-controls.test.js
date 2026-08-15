@@ -375,7 +375,9 @@ test('v1.41.11 source-lock: watch.js registers its context-aware prev/next with 
 test('v1.41.11 source-lock: setTrackNav stores handlers for the keyboard seam and still sets MediaSession per-direction', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
   assert.match(src, /trackNavHandlers = \(hasPrev \|\| hasNext\) \? handlers : null;/, 'handlers stored for Shift+N/P');
-  assert.match(src, /setMediaSessionAction\('previoustrack', hasPrev \? function \(\) \{ handlers\.onPrev\(\); \} : null\);/, 'per-direction MediaSession wiring unchanged');
+  // v1.130: the wrapper also arms the immersive carry (lock-screen next IS
+  // the in-fullscreen skip path) -- the per-direction shape is unchanged.
+  assert.match(src, /setMediaSessionAction\('previoustrack', hasPrev \? function \(\) \{ immersiveCarryPending = true; handlers\.onPrev\(\); \} : null\);/, 'per-direction MediaSession wiring (with the v1.130 carry arm)');
 });
 
 // ---- v1.41.11 gate fix round: source-locks for the three seat findings ------
