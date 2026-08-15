@@ -227,7 +227,7 @@ test('ensureHost() creates the hidden <audio> element in JS (no shell/template e
 
 test('teardownMediaState() and close() both reset the state machine to INLINE_VIDEO and stop+detach bgAudioEl', () => {
   for (const fnName of ['teardownMediaState', 'close']) {
-    const match = new RegExp(`function ${fnName}\\(\\) \\{([\\s\\S]*?)\\n {2}\\}`).exec(PLAYER_JS);
+    const match = new RegExp(`function ${fnName}\\([^)]*\\) \\{([\\s\\S]*?)\\n {2}\\}`).exec(PLAYER_JS);
     assert.ok(match, `expected to find ${fnName}()'s source body`);
     const body = match[1];
     assert.match(body, /nextBackgroundAudioState\(bgAudioState, 'TEARDOWN', \{\}\)/, `${fnName} must reset the background-audio state machine`);
@@ -479,7 +479,7 @@ test('F2 source-lock: handleForegroundSwapBack() consumes a deferred pendingAuto
 
 test('F2 source-lock: pendingAutoplayNextOnForeground is reset alongside every other per-load background-audio flag (teardownMediaState + close)', () => {
   for (const fnName of ['teardownMediaState', 'close']) {
-    const match = new RegExp(`function ${fnName}\\(\\) \\{([\\s\\S]*?)\\n {2}\\}`).exec(PLAYER_JS);
+    const match = new RegExp(`function ${fnName}\\([^)]*\\) \\{([\\s\\S]*?)\\n {2}\\}`).exec(PLAYER_JS);
     assert.ok(match, `expected to find ${fnName}()'s source body`);
     assert.match(match[1], /pendingAutoplayNextOnForeground = false;/, `${fnName} must reset the deferred-autoplay-next flag`);
   }
@@ -840,7 +840,7 @@ test('F7 source-lock: scheduleAudioStatusRepoll() assigns its setTimeout handle 
 
 test('F7 source-lock: teardownMediaState() and close() both cancel a still-pending audioStatusRepollTimer, mirroring how they already cancel progressInterval/transcodePollTimer', () => {
   for (const fnName of ['teardownMediaState', 'close']) {
-    const match = new RegExp(`function ${fnName}\\(\\) \\{([\\s\\S]*?)\\n {2}\\}`).exec(PLAYER_JS);
+    const match = new RegExp(`function ${fnName}\\([^)]*\\) \\{([\\s\\S]*?)\\n {2}\\}`).exec(PLAYER_JS);
     assert.ok(match, `expected to find ${fnName}()'s source body`);
     assert.match(
       match[1],
@@ -964,7 +964,7 @@ test('the full bgAudio:skip vocabulary is exactly: setting-off | status-<x> | st
 test('F-D source-lock: suppressPauseHandoff is declared as per-instance state (not per-load -- never reset in teardownMediaState/close)', () => {
   assert.match(PLAYER_JS, /var suppressPauseHandoff = false;/);
   for (const fnName of ['teardownMediaState', 'close']) {
-    const match = new RegExp(`function ${fnName}\\(\\) \\{([\\s\\S]*?)\\n {2}\\}`).exec(PLAYER_JS);
+    const match = new RegExp(`function ${fnName}\\([^)]*\\) \\{([\\s\\S]*?)\\n {2}\\}`).exec(PLAYER_JS);
     assert.ok(match, `expected to find ${fnName}()'s source body`);
     assert.ok(!/suppressPauseHandoff/.test(match[1]), `${fnName} must never touch suppressPauseHandoff -- it is only ever meaningful for the synchronous extent of a single pause() call, nothing to reset per-load`);
   }
@@ -1003,7 +1003,7 @@ test('F-D/F1/F5 source-lock: every one of this file\'s own lifecycle-driven medi
 
   // F5 (two-reviewer gate, structural consistency, v1.27.1 post-release):
   // the two remaining bare lifecycle pauses, extended to the same wrapper.
-  const teardownMatch = /function teardownMediaState\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  const teardownMatch = /function teardownMediaState\(opts\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(teardownMatch, 'expected to find teardownMediaState()\'s source body');
   assert.match(teardownMatch[1], /pauseSuppressingHandoff\(mediaPlayer\);/);
   assert.ok(!/mediaPlayer\.pause\(\);/.test(teardownMatch[1]), 'expected no bare mediaPlayer.pause() left in teardownMediaState');
@@ -1164,7 +1164,7 @@ test('candidate hygiene (source-lock): PRE_PAUSE_CANDIDATE_WINDOW_MS is 1500 and
     'resumed playback must invalidate a pending candidate (pause -> play -> lock must consult live state)'
   );
   for (const fnName of ['teardownMediaState', 'close']) {
-    const match = new RegExp(`function ${fnName}\\(\\) \\{([\\s\\S]*?)\\n {2}\\}`).exec(PLAYER_JS);
+    const match = new RegExp(`function ${fnName}\\([^)]*\\) \\{([\\s\\S]*?)\\n {2}\\}`).exec(PLAYER_JS);
     assert.ok(match, `expected to find ${fnName}()`);
     assert.match(match[1], /prePauseCandidateAt = 0;/, `${fnName}() must clear the candidate`);
   }

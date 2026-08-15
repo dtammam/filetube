@@ -401,7 +401,7 @@ test('v1.41.12 source-lock: the ended cascade pre-empts for an armed chapter loo
 
 test('v1.41.12 source-lock: the loop is cleared on every load and on every chapter-set change', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
-  const teardown = src.slice(src.indexOf('function teardownMediaState()'), src.indexOf('function teardownMediaState()') + 1200);
+  const teardown = src.slice(src.indexOf('function teardownMediaState(opts)'), src.indexOf('function teardownMediaState(opts)') + 1200);
   assert.match(teardown, /chapterLoop = null;/, 'per-load clear');
   assert.match(teardown, /chapterNowEl\.classList\.remove\('chapter-looping'\)/, 'indicator cleared with it');
   const apply = src.slice(src.indexOf('applyChaptersForMedia = function (data)'), src.indexOf('applyChaptersForMedia = function (data)') + 700);

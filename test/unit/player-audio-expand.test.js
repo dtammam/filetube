@@ -152,10 +152,16 @@ test('exitAudioExpand: unconditionally collapses via setAudioExpanded(false) (no
   assert.ok(!/state !== STATE_FULL/.test(body), 'no state guard -- must be safe to call from any lifecycle exit');
 });
 
-test('teardownMediaState: force-clears the expanded state on every genuine new load (AC5)', () => {
-  const teardownMatch = /function teardownMediaState\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+test('teardownMediaState: force-clears the expanded state on every genuine new load (AC5; v1.130 carves out ONLY a carried immersive continuation)', () => {
+  const teardownMatch = /function teardownMediaState\(opts\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(teardownMatch, 'expected to find teardownMediaState() in player.js');
-  assert.match(teardownMatch[1], /exitAudioExpand\(\)\s*;/, 'expected teardownMediaState() to call exitAudioExpand()');
+  // v1.130 immersive carry-on-advance: the AC5 drop is now gated on the
+  // per-load carry snapshot -- a NON-carried load (every fresh pick, and
+  // every load whose arm/live-class capture came back null) still clears.
+  // Locking the GATED spelling (not the bare call) means both hard-wiring
+  // the drop back on (breaking the carry) and deleting it outright
+  // (breaking AC5) go red here.
+  assert.match(teardownMatch[1], /if \(!preserveImmersive\) exitAudioExpand\(\);/, 'expected teardownMediaState() to call exitAudioExpand() gated only by the v1.130 carry');
 });
 
 test('dock: force-clears the expanded state before docking (AC5 -- never dock a fixed-overlay expanded wrapper)', () => {
