@@ -1,387 +1,250 @@
-# Architecture
+# FileTube Architecture
 
-<!-- This file is generated during onboarding by scanning the existing codebase. -->
-<!-- If hydrating into a brownfield repo, the onboarding agent populates this. -->
-<!-- If greenfield, fill this in as the project takes shape. -->
+Current-state reference, rewritten 2026-08-15 (v1.124.1) - the previous edition
+described the pre-v1.42 db.json era. Facts here are anchored to real files;
+when this document and the code disagree, the code wins and this file is the
+bug. History lives in ROADMAP.md and docs/exec-plans/completed/, not here.
 
-## Overview
+FileTube is a self-hosted media server styled after old-school YouTube: a
+Node.js/Express monolith that scans local folders, extracts durations/
+thumbnails/chapters via FFmpeg, and streams video, audio, books, and podcasts
+to a retro web UI - transcoding browser-incompatible containers on demand.
+One process, one SQLite file, no server-side runtime deps beyond ffmpeg and
+(optionally) yt-dlp.
 
-FileTube is a single-process Node.js/Express monolith that turns local media
-folders into a self-hosted, YouTube-style streaming site. The server scans
-configured folders, uses FFmpeg/FFprobe to extract durations and thumbnails,
-persists lightweight metadata to a JSON file database, and serves both a static
-retro web UI and Range-aware media streaming endpoints. Browser-incompatible
-containers (e.g. AVI) are transcoded to MP4 — lazily and on demand — so mobile
-clients (iOS Safari) can play them.
+## System overview
 
-## Components
+- **`server.js`** (~17k lines) - the monolith host: boot/env, the DB
+  load/save/update/cache layer, the media scan + every FFmpeg pipeline
+  (transcode/audio/storyboard/preview/Roku/TTS queues), trash, move/relocate,
+  auth routes + user management, the books and music route surfaces,
+  backup/restore, notifications, queue, stats, and byte streaming
+  (`sendRangeable`). ~140 route registrations.
+- **`lib/`** (~28k lines) - extracted modules. Two own their whole route
+  surface via `registerRoutes(app, deps)` with dependency injection:
+  `lib/podcasts/` and `lib/ytdlp/`. The rest are pure/feature libraries the
+  monolith calls (see the inventory below).
+- **`public/`** - the client: static page shells + an SPA-lite router that
+  swaps only `#view-root`, one persistent player host, one token-governed
+  stylesheet.
+- **`roku/`** - a sideloadable BrightScript channel speaking the same API.
 
-- **`server.js`** — the entire backend: Express routes, folder scanning, the
-  JSON database (`db.json`), FFmpeg metadata/thumbnail extraction, the
-  single-worker transcode queue, and the `/video/:id` streaming endpoint.
-- **`public/`** — static frontend (HTML + CSS + vanilla JS). `public/js/watch.js`
-  drives the watch page, including desktop live-transcode playback and the
-  mobile lazy-transcode "preparing…" overlay + polling. ALL styling (CSS and
-  JS-applied) runs on the governed design-token system — see the MANDATORY
-  section in `docs/CONTRIBUTING.md` and the contract in
-  `docs/references/design-token-audit-v1.1.md` before changing any style value.
-- **FFmpeg / FFprobe** — external binaries invoked via `child_process.spawn` for
-  thumbnails, duration probing, and transcoding to H.264/AAC MP4.
-- **Data directory (`data/`)** — persistent state: `db.json` (metadata),
-  `thumbnails/`, and `transcoded/` (cached MP4 sidecars).
-- **Docker** — `Dockerfile` (Node 22 Alpine + ffmpeg) and `docker-compose.yml`
-  for deployment; media folders and `data/` are mounted as volumes.
-- **`lib/ytdlp/` — optional yt-dlp subscription module (v1.11.0, dormant by
-  default).** A self-contained directory of pure helpers (config/ENV parse, URL
-  allowlist, argument-array builders, path-confinement resolver, `shouldSkip`
-  rules, premiere poll-and-defer, archive dedup) plus a thin wiring surface
-  (`registerRoutes`, `armYtdlpTimer`/`currentYtdlpPollTimer`, `runPoll`,
-  `startBackground`). It is **inert unless `FILETUBE_YTDLP_ENABLED` is truthy**:
-  `require()`-ing it is side-effect-free, and every side effect (route
-  registration, poll arming, directory creation, presence check) early-returns
-  when disabled — so with the flag off FileTube is byte-identical to today (no
-  `/subscriptions` route or nav link, no poll timer, no yt-dlp assumption). When
-  enabled it spawns a **pinned, bundled** yt-dlp as a child process
-  (arg-array, never a shell) to download channel subscriptions into
-  `FILETUBE_YTDLP_DOWNLOAD_DIR`. Each channel's metadata LISTING is capped to
-  its newest `FILETUBE_YTDLP_MAX_VIDEOS` videos (default 25; `0` = unlimited)
-  via yt-dlp's own `--playlist-end` flag, so a fresh subscribe never attempts
-  a channel's entire back-catalog. The download tree is scanned via a
-  **module-owned scan root** (`extraScanRoots()`, merged into the scanner's
-  folder set) rather than by injecting into the client-owned `db.folders` — so
-  the existing scanner indexes the results (one source of truth, normal delete
-  semantics) while `GET`/`POST /api/config` never see or evict it.
-  `extraScanRoots()` contributes the resolved download directory whenever
-  **the module is enabled OR the directory exists on disk** (an OR-gate, not
-  either condition alone):
-  - **never-enabled** ⇒ the directory was never created ⇒ inert, `[]` —
-    byte-identical to a never-enabled install (the fresh-install no-op
-    guarantee is unchanged).
-  - **enabled** ⇒ always contributed, **unconditionally, even if the
-    directory is transiently absent** (an NFS/external-drive unmount, a
-    rename, or an EACCES) — this is deliberate: it is what lands the download
-    root in the scanner's `missingRoots` set so the mandatory mount-loss guard
-    (below) protects previously-downloaded content instead of the default-on
-    prune-missing pass reaping it. (An earlier revision of this gate checked
-    only `fs.existsSync`, dropping the enabled flag from the decision
-    entirely — an infra hiccup while enabled would then silently defeat the
-    mount-loss guard and permanently delete downloaded content's metadata,
-    thumbnails, transcode sidecars, and watch-progress. Fixed: enabled always
-    means "a scan root," full stop.)
-  - **was-enabled-then-disabled, directory still holds content** ⇒ still
-    contributed (`fs.existsSync` is true) ⇒ still scanned, so the default-on
-    prune-missing pass never deletes that content just because the module was
-    turned off (disabling stops new downloads and polling, but never destroys
-    what was already downloaded).
-  - **disabled AND the directory is simultaneously, transiently absent** ⇒
-    `[]` — a **known, narrow limitation**: with the module off, a volume
-    unmount coinciding with that off state is unprotected (the same reap the
-    mount-loss guard would otherwise prevent). This is inherent to
-    deliberately NOT persisting a "managed root" marker independent of
-    `config.enabled`/`fs.existsSync` (see the module-owned scan-root design
-    above) — not closed by design; revisit only if it proves to bite in
-    practice.
-  Subscriptions persist in `db.json` under `db.ytdlp` via the same
-  `updateDatabase` primitive; dedup is yt-dlp's own `--download-archive` file
-  (a deleted video stays recorded, never re-downloaded) — FileTube's own
-  delete/prune-missing paths intentionally never touch this file (only the
-  media metadata/thumbnail/transcode sidecar), so a deleted download stays
-  gone across future polls. This guarantee is only as durable as the archive
-  file itself: it lives inside `FILETUBE_YTDLP_DOWNLOAD_DIR`, so if that
-  directory is a network share (SMB/NFS) that is transiently unmounted at
-  poll time, or is wiped outright, dedup state is lost and a subsequent poll
-  re-downloads each subscribed channel's videos up to its `maxVideos` window
-  — keep the download directory on stable, always-mounted storage. A **second,
-  deliberately-separate** dotfile lives beside the archive:
-  `.ytdlp-skiplist.txt` (v1.37.5), the permanent per-video SKIP list a user's
-  "Skip" action on a failed-download row writes to (`args.resolveSkiplistPath`
-  / `index.js` `recordSkip`). It shares the archive's `<extractor> <id>` line
-  format (so `rules.isArchived` doubles as its membership check) and the
-  survivor loop consults it once per cycle to exclude skipped ids from every
-  channel's downloads forever — kept distinct from the archive so "already
-  downloaded" and "deliberately rejected" never bleed together (a skip stays
-  independently inspectable, and clearing the archive to force a re-download
-  never un-skips a rejected video). The poll mirrors
-  `armScanTimer` (`.unref()`'d, re-armable, off when the interval is 0), and
-  long downloads run OUTSIDE the `updateDatabase` lock (only a short
-  last-checked/status write re-enters it). Security-critical surface (command
-  injection, path traversal, cookies handling); ships behind the full
-  two-reviewer QA gate.
-- **`lib/ytdlp/runlog.js` — durable, capped per-run history (v1.29.0).** A
-  small module-owned writer/reader for a JSON Lines file, `ytdlp-runs.jsonl`,
-  living in the same directory as `db.json` (the app `DATA_DIR`, NOT
-  `FILETUBE_YTDLP_DOWNLOAD_DIR` — the log is app state, not media, and must
-  stay on stable local disk even when downloads target a network share). It is
-  **separate from `db.json`** deliberately: an append-mostly history must not
-  bloat the re-read-merge-on-save `db.json` snapshot or contend on the
-  `updateDatabase` mutex. Each **completed** run (subscription poll cycle or
-  one-shot) appends exactly ONE terminal line: `{ ts, kind, id, name, outcome
-  (success|partial|error|cancelled), succeeded, failed, reason, failures[] }`,
-  every string sanitized/bounded by the same `sanitizeReason`/
-  `MAX_REASON_LENGTH` (lib/ytdlp/failures.js) and `MAX_STATUS_LENGTH`
-  (lib/ytdlp/index.js) posture the live status already uses. The file is
-  **bounded**: each write reads, trims to the newest `YTDLP_RUNLOG_MAX_ENTRIES`
-  (500) lines, and atomically rewrites (temp file + `rename`, mirroring
-  `saveDatabase`), so it can never grow without bound. It obeys the same
-  disabled-module no-op guarantee as the rest of `lib/ytdlp`: the writer is
-  only ever called from enabled-only code paths and the read route
-  (`GET /api/subscriptions/history`) is registered only inside the
-  `isEnabled`-gated `registerRoutes`, so with `FILETUBE_YTDLP_ENABLED` off no
-  file is ever created and no route is reachable. `/subscriptions` renders this
-  log as a capped download-history list.
+## Storage - SQLite via `node:sqlite`
 
-## Data flow
+**`lib/db/sqlite.js` is the only file allowed to touch `node:sqlite`**
+(source-locked by `test/unit/db-sqlite-source-lock.test.js`; the API is
+experimental on both supported Node versions, so an API shift is a one-file
+fix). The store is `DATA_DIR/filetube.db`, WAL mode (falling back to DELETE on
+network filesystems, with a log line), `PRAGMA foreign_keys = ON`,
+`BEGIN IMMEDIATE` transactions.
 
-1. **Scan:** on startup / rescan, the server walks configured folders, and for
-   each media file computes a stable id (hash), probes duration, extracts a
-   thumbnail, and reconciles transcode status — writing all of it to `db.json`.
-   Scanning does **not** transcode anything.
-2. **Browse:** the frontend fetches metadata via JSON API endpoints and renders
-   the grid/watch UI, using `/thumbnail/:id` for posters.
-3. **Playback:** the client hits `/video/:id`, which serves the file with HTTP
-   Range support. For AVI/incompatible containers: desktop requests `?live=1`
-   (live FFmpeg pipe, not written to disk); mobile triggers a lazy, one-at-a-time
-   transcode to a cached MP4 in `data/transcoded/` and polls until ready.
+Schema version: `PRAGMA user_version`, currently **17**
+(`SCHEMA_VERSION`, lib/db/sqlite.js). `migrateSchema()` is a forward-only
+chain and blocks are **APPEND-ONLY once executed** - editing an executed block
+strands existing databases (this happened; the lesson is written into the
+source). A late table gets a new version, full stop.
 
-## Key decisions
+Two buckets coexist in the one file:
 
-<!-- Record significant architectural decisions here. -->
+1. **The document store** - the old db.json object shape, persisted per row:
+   `doc_kv(namespace, key, json)` for per-item namespaces (`metadata`,
+   `progress`, `trash`, `books.items`, `music.tracks`, `podcasts.episodes`,
+   `ytdlp.downloadMeta`, ...) and `doc_single(name, json)` for small whole
+   objects (`folders`, `settings`, `podcasts.subscriptions`, ...). The two
+   namespace lists are a LOCK: `assertNoUnknownKeys()` throws on any key
+   outside them, so a new namespace can never be silently dropped. `save()` is
+   a diff-save against a per-row snapshot - only changed rows are written, in
+   one transaction.
+2. **Relational per-user tables** - everything user-scoped: `users`,
+   `user_progress`, `user_liked`, `user_watched`, `user_queue`,
+   `user_restrictions`, `user_search_history`, `user_feed_hidden`,
+   notifications/push tables, and the per-place progress/liked/pins tables for
+   books, music, and podcasts. The accessor layer is `lib/auth/store.js`.
 
-- **Lazy transcoding:** AVIs are converted only when actually watched on mobile,
-  not up front on scan, to avoid converting the whole library (huge disk cost).
-- **Single-worker transcode queue:** jobs run one at a time (`transcodeBusy`
-  gate) to avoid overloading a home server with parallel FFmpeg runs.
-  v1.27.0 added a second, independent single-worker queue for background-audio
-  extraction (`audioExtractBusy`), so up to 2 FFmpeg processes can run
-  concurrently — deliberate: a slow video transcode must never starve a
-  background-audio prewarm. Revisit if on-device CPU contention shows.
-- **Atomic MP4 finalize:** transcodes write to a `.tmp.mp4` and are renamed on
-  success, so a half-written file is never served.
-- **JSON file database:** `db.json` instead of a real DB — simple, portable,
-  good enough for a single-user home media server.
-- **Server-side automation settings:** scan cadence, prune-on-scan, and transcode-
-  cache size/age limits are persisted in a top-level `db.settings` object (not
-  per-browser `localStorage`), backfilled with defaults on load like
-  `folderSettings`. Scan pruning carries a mandatory mount-loss guard: a
-  missing/unmounted root folder never prunes its library entries (a mount failure is
-  not a deletion). The periodic scan is armed by `armScanTimer()`, which reads
-  `db.settings.scanIntervalMinutes` and re-arms live (no restart) whenever
-  `POST /api/settings` changes it; `GET/POST /api/settings`, `GET /api/cache/size`,
-  and `POST /api/cache/clear` expose these settings and the transcode-cache
-  housekeeping to the Settings UI.
-- **Re-read-merge-on-save (concurrency invariant):** every `db.json` writer
-  (`setTranscodeStatus`, `recordServed`, the scan's final merge, `POST
-  /api/config`, `POST /api/settings`, `POST /api/progress`, `DELETE
-  /api/videos/:id`) is serialized through one in-process async-mutex,
-  `updateDatabase(mutatorFn)` — a module-level promise chain that, per call,
-  loads a FRESH `db` from disk, applies the caller's synchronous mutator, and
-  (unless the mutator returns `false`) saves atomically. Because the read,
-  mutate, and save happen inside one serialized critical section, no two
-  writers can ever race a read-modify-write against each other; a failed
-  mutation is isolated so it rejects only that caller's promise and never
-  wedges the chain for subsequent writes. `saveDatabase` itself is atomic
-  on disk (write to a unique same-directory temp file, `fsync`, then
-  `rename` over `db.json`), so a crash mid-write can never leave a
-  half-written/truncated database — the temp is cleaned up on any failure
-  and the original is left intact. Readers (`loadDatabase()`) are
-  unchanged: every GET route still reads fresh from disk and never observes
-  a torn file, thanks to the atomic rename. The long-running scan still
-  never writes back a whole-`db.json` snapshot taken at its start —
-  concurrent writes (settings, folders, watch progress, `lastServedAt`)
-  would be clobbered — but instead of a standalone explicit re-read, its
-  final merge (root backfill, the FR3.3 `transcodeStatus` seed,
-  `mergeScannedMetadata`, and the progress/`persistedServedAt` prune) runs as
-  ONE `updateDatabase` mutator, so it merges into the fresh
-  db-at-lock-time rather than overwriting the scan's start-of-scan snapshot;
-  `db.metadata[id].lastServedAt` is never regressed by this merge (the
-  on-disk value is the source of truth; in-memory serve maps like
-  `persistedServedAt` are only write-throttles). The scan's FFmpeg-awaiting
-  extraction loop runs entirely OUTSIDE the lock, so writes stay unblocked
-  for the whole scan — only the final synchronous merge+save is serialized.
+Integrity guards worth knowing: `node:sqlite` truncates TEXT at NUL
+(row keys are refused loudly if they carry one); hostile `__proto__` row keys
+round-trip as inert data via `Object.defineProperty`; the module-level
+`backup()` API is deliberately unused (unsafe under same-process writes) -
+backup bundles are SELECT-assembled.
 
-- **In-memory DB read cache (v1.30, A3):** hot GET routes
-  (`/thumbnail/:id`, `/video/:id`, `/audio/:id`, `/api/videos`,
-  `/api/videos/:id`, `/api/progress/:id`, `/api/config`, `/api/settings`,
-  `/api/scan-status`, subtitles) read through `getCachedDatabase()` instead of a
-  per-request `loadDatabase()` (readFileSync + `JSON.parse` of the whole db).
-  The cache is a read-through of the *last committed write*: `updateDatabase`
-  still loads a FRESH copy from disk inside the lock, applies the mutator, and
-  `saveDatabase`s atomically — the re-read-merge-on-save invariant above is
-  UNCHANGED — and, on a successful save, sets the cache to the just-saved object
-  inside the same synchronous critical section (no `await` between save and
-  cache-set). Coherency rests on: one serialized writer chain; Node's
-  single-threaded synchronous readers (a reader runs entirely before or after a
-  write's tick, never interleaved); this process being the ONLY writer of
-  `db.json`; and the cached object being replaced by reference, never mutated in
-  place. This is why deferring SQLite is safe at this scale (the whole db is
-  ~1 MB and lives in memory); see the v1.30 Design's A6 verdict and tech-debt
-  tracker #28 for the revisit triggers.
-- **Batched progress writes (v1.30, A4):** `POST /api/progress` no longer does a
-  whole-file write+fsync per 4 s ping. Latest-position-wins entries accumulate in
-  an in-memory `pendingProgress` map and flush as ONE atomic `updateDatabase`
-  write per ≤5 s window (and once more on `SIGTERM`/`SIGINT`/`beforeExit`).
-  Reads overlay `pendingProgress` over the cache for read-your-writes. This is a
-  DELIBERATE, BOUNDED durability relaxation for WATCH POSITION ONLY: a hard
-  `SIGKILL` can lose ≤5 s of watch position, never corruption, never anything
-  else. Every OTHER mutation (delete, config, settings, scan final-merge, the
-  `db.liked` routes) keeps the 1:1 atomic-write+fsync guarantee unchanged.
-- **Paginated `/api/videos` (v1.30, A5):** the endpoint now takes
-  `limit`/`offset` (default 60/0) plus server-authoritative `sort`, `format`,
-  and `seed` (for stable `random` across pages), in addition to the existing
-  `search`/`folder`/`root`. It applies filter+sort across the FULL library
-  before slicing, and returns `{ items, total, offset, limit }` (was a bare
-  array). The client renders the first page and appends one page per
-  IntersectionObserver sentinel trigger. Sort/filter/search semantics therefore
-  apply across the whole library, not just the first window. The comparators/
-  predicates live in the pure `lib/videoQuery.js` module (shared contract with
-  the client's `sortItems`/`filterByMediaType`).
-- **Cooperative, non-blocking scan (v1.30, A2):** `POST /api/scan` returns `202`
-  immediately (fire-and-forget, like `POST /api/config`) and the walk runs
-  cooperatively (async `fs.promises` + batch-yielding every N entries) so it
-  never blocks the event loop for more than a bounded stretch; the boot scan is
-  kicked off AFTER `app.listen` so route serving is never gated behind it. The
-  client polls `/api/scan-status` (now carrying `processed`/`total`/`phase`) and
-  refreshes the grid in place on completion — never `window.location.reload`.
-  The overlap-coalescing guard, mount-loss/prune protections, and incremental
-  ffprobe/thumbnail reuse are all preserved (the walk is made cooperative INSIDE
-  the existing guard, not around it).
-- **`db.liked` (v1.30, C2):** a top-level array of media ids; "like" state IS
-  membership in this Liked collection (no separate boolean flag). Managed via
-  `POST`/`DELETE`/`GET /api/liked`, each a real mutation through
-  `updateDatabase` (atomic, backfilled to `[]` by `loadDatabase` like the other
-  top-level keys).
+**db.json is a read-only legacy artifact.** Boot: `filetube.db` exists → use
+it; else import `db.json` once (strict - unknown keys ABORT rather than lose
+data), atomically; else fresh schema. Nothing writes db.json anymore
+(byte-hash-locked by `test/integration/dbjson-frozen.test.js`).
 
-## Constraints
+Write path in the monolith: `updateDatabase(mutatorFn)` is a single in-process
+promise-chain mutex (mutators are synchronous; returning false skips the
+save); `getCachedDatabase()` is the read-through cache whose readers get a
+throwing Proxy under test (mutating a cached read is a bug, loudly).
 
-- Single-node, single-process; state lives on local disk (no external services).
-- Requires FFmpeg/FFprobe on PATH; without them, metadata/transcode features degrade.
-- Node.js 22 LTS (`engines` >=22.13.0 - node:sqlite needs it).
-- The transcode cache in `data/transcoded/` is **bounded**: a size-capped LRU
-  eviction (default 5 GB, `TRANSCODE_CACHE_MAX_BYTES`/UI override) plus an optional
-  age-retention sweep (default 30 days) keep it from growing unbounded. Age is keyed
-  off a FileTube-controlled `db.metadata[id].lastServedAt` timestamp (filesystem
-  atime is only a fallback, being unreliable under `relatime`/`noatime`).
-- iOS Safari cannot play a non-seekable live stream, which is why mobile uses the
-  pre-transcoded, seekable MP4 path.
+## Auth + RBAC
 
-## Podcasts module (v1.69.0)
+`lib/auth/` - four files: `gate.js` (the middleware + cookies + rate limit),
+`crypto.js` (scrypt passwords, HMAC session tokens), `store.js` (per-user
+tables), `visibility.js` (the ONE pure visibility decision).
 
-A fourth media class: podcast RSS subscriptions (free feeds and private
-tokened ones - Patreon's "listen in other podcast apps" export) downloaded
-as an offline audio cache and browsed in a first-class Podcasts place.
-Design record: `docs/exec-plans/completed/2026-08-02-v1.69-podcasts-place.md` (its
-Stop closed 2026-08-03).
+- **Session secret**: `FILETUBE_SESSION_SECRET` env → `DATA_DIR/session-secret`
+  file → minted fresh (0600). Fail-closed on short/placeholder values.
+- **Cookie**: name is per-instance (`ft_session_` + hash of DATA_DIR - prod and
+  beta share a host), HMAC-signed `{uid, tokenVersion}`, 30-day TTL, HttpOnly,
+  SameSite=Lax, Secure when HTTPS is trusted (`FILETUBE_TRUST_PROXY=1`).
+- **The gate**: ONE `app.use(authGate)` covers every route, static asset, and
+  byte stream by default. A small exact allowlist serves the pre-login surface
+  (login/welcome/logo/fonts/icons, traversal-refused). Each request re-checks
+  the user row (disabled / bumped tokenVersion = dead cookie NOW). Login is
+  token-bucket rate-limited per (ip|username), fail-open.
+- **Roles + capabilities**: `admin` | `member`, plus two grantable member
+  capabilities - `canManageSubscriptions` (channel/podcast registry) and
+  `canModifyLibrary` (destructive content actions; default off). Guards:
+  `requireAdmin`, `requireManageSubscriptions`, `requireModifyLibrary`.
+- **Per-user visibility restrictions** (`user_restrictions` +
+  `lib/auth/visibility.js`, pure): kinds `path` (boundary-correct prefix),
+  `folder` (video channel), `show` (podcast), `library` (whole place), and
+  `mode: allowlist` to flip the semantics default-deny. Admin is an EMPTY
+  index - no role branch to forget. server.js wraps this as `mediaVisibleTo`,
+  `trackVisibleTo`, `podcastEpisodeVisibleTo`, `bookVisibleTo`,
+  `trashRecordVisibleTo`, `restrictedVideoMutation`.
+- **The forcing nets** (tests that fail on ABSENCE): `route-write-
+  classification.test.js` enumerates every mutating route from the live
+  Express table and forces each into a capability class AND a visibility class
+  (`enforced` | `personal` | `n/a`) - an unclassified new route reds the
+  suite; `rbac-census` + `route-census` sweep the read surfaces and the
+  gate's allowlist.
+- **Mutation audit**: a middleware after the gate logs every mutating request
+  with its actor (born from a real incident: a screenshot harness issuing live
+  DELETEs).
 
-- **Namespace**: `db.podcasts` (`subscriptions/episodes/settings`), owned by
-  `lib/podcasts/store.js` (ensure/read split, the music discipline). Episode
-  records are guid-derived-id keyed and DOUBLE as the download archive: a
-  `tombstone`/`deleted-on-disk` record blocks re-download forever (the ytdlp
-  "deleted stays gone" law). No scanner and no `db.metadata` involvement -
-  the engine writes episode records itself, structurally retiring the
-  persist-gate class (the books precedent).
-- **SECRETS**: a feed URL is a CREDENTIAL (Patreon `?auth=` tokens; the
-  enclosure URLs embed the same token). Full URLs live ONLY in
-  `<DATA_DIR>/podcast-feeds.json` (0600, atomic writes, corrupt-file
-  preserved aside), which is structurally outside backup bundles; db records
-  carry origin+pathname display form only. Episode identity (guid) is
-  normalized through `guidKey` - a one-way hash for anything outside the
-  safe charset, so the parser's guid fallback (a guid-less item adopts its
-  enclosure URL, which carries the token) can never persist a token, and
-  identity depends on nothing but the guid itself (NEVER on redaction:
-  gate CRITICAL D2 measured that keying identity through the secrets-map-
-  dependent scrubber let an unrelated subscription re-key and re-download
-  an untouched show's archive). Feed-derived PROSE (title/link/
-  description/author) passes `redactSecretText` (stored secrets + generic
-  token shapes) at the persist boundary, as do error/status strings. Raw
-  enclosure URLs live in memory only for the duration of a poll cycle
-  (re-derived from the fresh feed each time - Patreon signs them with
-  expiring tokens anyway). Consequence,
-  disclosed: a bundle restored onto a fresh box marks tokened subs
-  `secretMissing` and the UI asks for the URL again (same-feed display-form
-  match required).
-- **Fetching**: `lib/podcasts/fetchGuard.js` on the shortlink.js SSRF
-  envelope - guardHop (literal private/loopback reject + fail-closed DNS
-  resolve-then-check) on the start URL and EVERY manual redirect hop, for
-  feeds AND enclosures (feed-author-controlled = hostile). Enclosures
-  stream to a dot-prefixed `.ptpart` then fsync + atomic rename; any
-  failure unlinks the partial (a kill loses at most one partial, swept at
-  boot). Caps: 25 MB feeds, 2 GB/episode, absolute wall-clock deadlines.
-  Downloads serialize through the server-wide heavy-job gate
-  (`lib/heavyGate.js`, extracted verbatim from lib/ytdlp at v1.69 T2) so a
-  42 GB back-catalog backfill never runs alongside a yt-dlp job.
-- **Parser**: `lib/podcasts/feed.js`, a bounded indexOf scanner - NOT an
-  XML parser. No entity-expansion machinery exists, so XXE/billion-laughs
-  are structurally inert; caps everywhere with truncation FLAGS (silent
-  truncation forbidden); malformed input degrades, never throws.
-- **Files**: `<root>/<sanitized show title>/<title, <=100ch> [rss=<guidKey>].mp3`
-  (the universal bracket - `extractMediaRef` parses these with zero
-  changes); root = `db.podcasts.settings.downloadDir` >
-  `FILETUBE_PODCASTS_DIR` > `<DATA_DIR>/podcasts`, confined by the
-  resolveChannelDir two-line defense and joined to the FOUR-way
-  media/books/music/podcasts root-overlap rejection. Show cover downloads
-  once as `cover.jpg|png`. Reconcile tombstones `deleted-on-disk` only
-  while the root EXISTS (the mount-loss law); an unmounted root prunes
-  nothing.
-- **Per-user state**: schema v9 `user_podcast_progress` +
-  `user_podcast_played` (resume + played latch, manual toggle + >=95%
-  auto-latch), episode-id keyed - the TENTH id-keyed carrier: delete half
-  `removePodcastEpisodeState`, NO re-key half by construction (ids derive
-  from guid, not path), per-user backup halves ride the users bundle.
-  Progress pings are direct row upserts (no coalescer): SQLite row writes
-  are cheap and podcast listening is low-concurrency - revisit only if
-  write volume ever shows.
-- **The place**: `/podcasts` (shell + lazy `/js/podcasts.js` view), a
-  Library-section nav entry gated on CONTENT (>=1 show; zero subscriptions
-  renders byte-identical chrome). Episodes play in the DOCKED mini-player
-  with `resumeMode: 'podcast'` - ALWAYS resumes silently (the music 600s
-  smart-restart rule deliberately not inherited). A yt-dlp subscription
-  toggled `libraryPlace: 'podcasts'` (D15) surfaces as a show whose
-  episodes are its channel dir's db.metadata items - watch-page playback
-  and watch-history state, read-only played latch.
-- **No destructive per-episode verb ships in v1.69** (amended at T7): the
-  v1.65 trash machinery is welded to db.metadata, and a bare unlink would
-  violate the every-delete-is-recoverable law - sub deletion keeps files
-  on disk (disclosed in the confirm), external deletions reconcile to
-  tombstones. A trash-integrated episode delete is tracked tech debt.
+## The media pipeline
 
-## Books module (v1.37.0)
+- **Scan**: one entry point with overlap-coalescing; a fully async walker that
+  skips trash dirs and in-flight transcode temps, yields cooperatively, and
+  records unreadable directories. `id = md5(filePath)` - path-derived, which
+  is why every move/relocate has an explicit re-key lane. Reuse fast-path: an
+  unchanged file's metadata is never re-extracted.
+- **Prune policy** (the data-loss-hardened part, uniform across places): an
+  indexed item is pruned only when (a) pruneMissing is on, (b) it vanished
+  from the walk, (c) its ROOT is not missing/unmounted (mount-loss guard),
+  (d) its path is not under a directory that ERRORED this walk (transient-
+  EACCES guard - media `unreadablePaths`, music + books `erroredDirs`), and
+  (e) the root didn't "vanish" wholesale (a mounted-but-empty root prunes
+  nothing, loudly).
+- **FFmpeg**: metadata + thumbnails; chapters and embedded tags via ffprobe;
+  on-demand H.264/AAC transcode (queue + live-stream fallback) with
+  `+faststart`; storyboard sprites and hover preview clips (pure planners in
+  `lib/storyboard.js` / `lib/previewClip.js`); `.m4a` background-audio sidecar
+  extraction; Roku compat renditions; TTS synthesis for books. Caches are
+  size-capped LRU with age sweeps; in-flight files are eviction-protected.
+- **Trash** (soft delete): atomic rename into a per-root `.filetube-trash`
+  dir (same filesystem - no copy), records in `db.trash`, per-item
+  restore/purge routes only (deliberately no bulk delete), double-gated
+  (capability + visibility), retention-swept on the scan interval.
+- **Background work**: ONE scan interval drives media+books+music scans and
+  the trash sweep; ytdlp and podcasts each own an unref'd poll timer (0 =
+  manual-only); heavy jobs (yt-dlp runs, enclosure downloads) serialize
+  through `lib/heavyGate.js` - one FIFO promise chain, never wedged by a
+  failing job.
 
-A third media class alongside video/audio: EPUB + PDF libraries scanned from
-operator-configured folders, read in-app, with per-book position/percent
-progress. Design record: `docs/exec-plans/completed/2026-07-12-v1.37.0-books.md`.
+## The media places
 
-- **Namespace**: everything lives under `db.books`
-  (`folders/items/progress/pins/settings`), owned by `lib/books/store.js`
-  (`ensureBooks` backfill). Deliberately NOT `db.metadata`: the media scan's
-  Phase-2 merge never sees books, structurally retiring the persist-gate bug
-  class for this feature. Book ids reuse `getMediaId(filePath)`.
-- **Scanner**: `lib/books/scan.js` (pure walk/extract) + `scanBooks()` in
-  server.js (own `bookScanState` with the media scan's overlap/coalescing
-  discipline; boot/manual/config-save/interval-piggyback triggers). EPUB
-  metadata comes from a dependency-free zip reader (`lib/books/zip.js`,
-  central-directory authority, zip-bomb caps) + a scoped OPF scanner
-  (`lib/books/opf.js`); covers extract to `DATA_DIR/.bookcovers/`. Every
-  malformed book degrades to a filename-titled card -- never a scan abort.
-  Book roots may not overlap media roots (rejected at config save, both
-  directions).
-- **Serving**: `GET /api/books` (videos-contract parity + `filter=reading`),
-  `GET /api/books/:id` (spine + locator), `GET /book/:id/file` (native 206
-  ranges), `GET /bookcover/:id` (real cover else escaped SVG placeholder),
-  `POST /api/books/:id/cover` (the PDF page-1 client backfill: magic-sniffed,
-  no-clobber). Progress pings coalesce in a books-owned twin of the v1.30
-  progress coalescer.
-- **Client**: `/books` (cover-card grid, shelf chips w/ pin toggles) and
-  `/read.html?b=<id>` (reader chassis; vendored epub.js/JSZip/pdf.js under
-  `public/vendor/`, lazily loaded by the reader only). Locators:
-  `{kind:'epub', cfi, spineIndex, blockIndex}` / `{kind:'pdf', page}` --
-  `blockIndex` counts block elements (`READER_BLOCK_SELECTOR` in read.js) and
-  is the dual-implementation contract for wave-2 TTS "Listen from Here".
-  Shelf pins join the existing pinned-playlists sidebar via `fetchAllPins` +
-  the one deliberate renderer widening (optional `href`).
-- **Disabled-module posture**: zero configured folders = no nav link, no home
-  row, no scans, no db writes -- byte-identical chrome (the ytdlp guarantee).
-- **Wave 2 (v1.37.1, designed not built)**: server-side TTS (Piper default /
-  espeak-ng fallback, strictly opt-in binaries), one-chapter-at-a-time
-  serialized synthesis to `DATA_DIR/tts-cache/<key>.m4a` +
-  `<key>.blocks.json` (blockIndex -> startSec: the Listen-from-Here index),
-  played through the existing background-audio machinery.
+- **Video** (core, in server.js): roots `db.folders`; namespaces `metadata`,
+  `viewCounts`, `trash`, `deleteTombstones`; per-user progress/liked/watched/
+  feed-hidden/queue. Browse contract lives in `lib/videoQuery.js`, kept in
+  provable parity with the client's sort (`videoquery-parity.test.js`).
+- **Music** (v1.44): `db.music.*`; separate roots (three-way overlap-rejected
+  against video and books roots); embedded tags win over the
+  `Artist/Album/NN Title` path convention per-field; `/track/:id` +
+  `/albumart/:id` bytes.
+- **Books** (v1.37): `db.books.*`; dependency-free ZIP/OPF readers for EPUB
+  metadata + covers (PDF by filename); per-user reading position, manual
+  finished latch; optional TTS (espeak-ng in the image; Piper opt-in) with an
+  m4a chunk cache.
+- **Podcasts** (v1.69): `lib/podcasts/`; private-RSS engine. Feed URLs are
+  CREDENTIALS (Patreon auth tokens) and live OUTSIDE the db in
+  `DATA_DIR/podcast-feeds.json` (0600) - structurally excluded from backups.
+  The feed reader is a bounded scanner, not an XML parser (XXE inert); the
+  enclosure fetcher applies the SSRF envelope per redirect hop, streams to
+  `.ptpart` + fsync + atomic rename, honors write backpressure. Episode
+  records double as the download archive (a tombstone blocks re-download).
+- **yt-dlp subscriptions** (`lib/ytdlp/`, the largest subsystem; strictly
+  opt-in via `FILETUBE_YTDLP_ENABLED`): channel subscriptions + one-off
+  downloads. `run.js` is the only child_process caller (argv arrays, never
+  shell); `url.js` re-validates every URL immediately before spawn;
+  per-video failure attribution; durable run/failure logs; the one-off API
+  accepts an `X-FileTube-Token` (iOS Shortcut) as session-less auth for
+  exactly that route.
+
+## The client
+
+- **Shells**: every `public/*.html` page is a complete server-rendered
+  document; the router is progressive enhancement.
+- **SPA-lite router** (`common.js`): swaps ONLY `#view-root` (header, nav,
+  and the player host stay mounted), pushState + a single-entry home view
+  cache; every view registers listeners through one per-view AbortController.
+  THE consequence that bites: page-local `<head>` styles are lost on in-app
+  nav - view styles belong in `style.css` (source-locked).
+- **The player** (`player.js`): ONE `#player-host` cloned once, moved between
+  FULL / DOCKED / CLOSED by reparenting. Battle-won subsystems - reuse, never
+  rebuild: the iOS background-audio handoff (hidden `<audio>` playing the
+  `.m4a` sidecar), the caption overlay (`.cc-overlay`, both audio AND video
+  render through it since v1.124 - `track.mode='showing'` native paint is
+  retired), faux fullscreen (`.css-fullscreen`, the iOS mechanism) vs NATIVE
+  fullscreen (desktop `requestFullscreen()`) - anything gating on fullscreen
+  must handle BOTH (v1.124.1's lesson), and the controls auto-hide covers
+  both immersive forms.
+- **Design tokens**: `style.css` is governed by `scripts/css-token-lint.js`
+  (colors, font sizes/weights, z-index, shadows...); the census is ZERO and
+  ratcheted in pre-commit + CI (self-canary first, so a broken linter fails
+  loud). `token-exempt` comments are the escape hatch, with reasons.
+- **Eras + modes**: two orthogonal axes on `<html>` - `data-theme` (2005 /
+  2009 / 2014 / 2021) and `data-mode` (light/dark). Three home layouts with
+  precedence modern > feed > classic (`resolveHomeLayout`, pure).
+- **PWA + push**: `filetube-worker.js` is PUSH-ONLY by hard contract (never a
+  fetch handler, never Cache Storage - a fetch handler breaks background
+  media on WebKit; the filename avoids ad-blocker lists). VAPID keys in
+  DATA_DIR (0600), never in backups.
+
+## Roku
+
+A BrightScript channel (`roku/`) using the normal API with the session cookie
+in the Roku registry. Server-side compat renditions (`lib/rokuCompat.js` +
+server.js wiring) fix the two Roku-specific demuxer issues (embedded cover-art
+track → lossless strip; rotation side-data → upright re-encode), cache-only,
+served exclusively to `?compat=roku`, never mutating the original file.
+
+## Configuration
+
+Core env: `PORT`, `DATA_DIR` (everything hangs off it), `FILETUBE_SESSION_SECRET`,
+`FILETUBE_TRUST_PROXY`, `FILETUBE_API_TOKEN`, `FILETUBE_READ_ONLY_MEDIA` /
+`FILETUBE_READONLY` (safe-mode levers), transcode/roku cache dirs + caps,
+`FILETUBE_PODCASTS_DIR`, `FILETUBE_TTS_*`, and ~20 `FILETUBE_YTDLP_*` vars
+(every parse defensive, nothing throws at startup). Docker: node:22-alpine +
+ffmpeg + espeak-ng + pip yt-dlp; `VOLUME /app/data`; explicit COPYs (never
+`COPY . .` - a leaked local file can't enter the image).
+
+CI (`.github/workflows/ci.yml`): pinned gitleaks working-tree scan + a
+dual-Node (22/24) lint + token-ratchet + full-suite matrix. Publish
+(`docker-publish.yml`): gated - the image only builds after a qualify job
+re-runs the dual-Node suite and the secret scan on the exact ref; tags
+`edge`/`sha-*` from main, semver + `latest` from `v*` tags.
+
+## Testing
+
+`node:test`, no runner deps. ~340 unit files (pure logic, jsdom, source
+locks) + ~180 integration files (real server, real Express table, real SQLite
+in temp DATA_DIRs); full suite ~6,888 tests, run on BOTH Node 22 and 24
+before every release. The house pattern is the FORCING NET - tests that fail
+on absence (an unclassified route, an unlisted namespace, a view style outside
+style.css) so a discipline can't be silently skipped. Auth in tests is a real
+minted cookie, never an env bypass. The pre-commit hook runs lint + the unit
+suite and refuses red; the pre-push hook runs the full suite.
+
+## Where the rest lives
+
+- Working method + hard-won lessons: `CLAUDE.md` (the contract),
+  `docs/references/lean-mode-methodology.md` (portable spec).
+- Coding standards incl. the MANDATORY design-token rules:
+  `docs/CONTRIBUTING.md`.
+- Operational/reliability posture: `docs/RELIABILITY.md`.
+- Release mechanics: `docs/RELEASING.md`. Config detail: `docs/CONFIGURATION.md`.
+- Plans: `docs/exec-plans/{active,completed,archive}/`;
+  debt: `docs/exec-plans/tech-debt-tracker.md`.

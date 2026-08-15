@@ -1,7 +1,17 @@
-# Wave 3: documentation reset (planned - not started)
+# Wave 3: documentation reset (v1.125.0)
 
-Status: PLANNED. Date: 2026-08-14. Grounded at `aa06fa2` (v1.122.0).
-Do NOT start until Waves 1-2 have shipped. Chosen over the review's items
+Status: IMPLEMENTED (2026-08-15); slim gate next. Numbers re-derived at start:
+36 regex matches in completed/ = 29 true stales + 7 false positives, and the
+stronger first-Status-line check surfaced 4 MORE stales the keyword regex
+missed - 33 files corrected total, every version machine-verified against its
+ROADMAP entry first. T2: 3 plans archived (2 false-future ytdlp + the shipped
+shimmer-sweep audit input); future/ now means genuinely-unbuilt. T3:
+ARCHITECTURE.md rewritten (250 lines) off the db.json era, grounded in a
+fresh whole-tree survey; remaining db.json mentions are legacy-framed only.
+T4 (generated route inventory) SKIPPED per this plan's own if-cheap clause -
+the live route table is already machine-enumerated by the forcing-net tests.
+D4 honored: QUALITY_SCORE.md untouched (owner-frozen header; Dean has not
+asked). Originally grounded at `aa06fa2` (v1.122.0). Chosen over the review's items
 6/7/9/10 (architecture extraction, typed contracts, observability, product
 narrowing) because it is CHEAP and directly de-hazards future agent sessions -
 which the review correctly named the single biggest AI-specific risk. Items

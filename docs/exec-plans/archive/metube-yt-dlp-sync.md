@@ -1,3 +1,8 @@
+> ARCHIVED (docs reset 2026-08-15): this "future" plan is HISTORY - the yt-dlp
+> integration SHIPPED as lib/ytdlp/ (subscriptions v1.29+, one-off downloads
+> v1.39+), evolving well beyond this sketch. Kept as archaeology; do NOT treat
+> any statement below as a plan or as current architecture.
+
 # Future plan: MeTube / yt-dlp delete-sync
 
 **Status:** Deferred (analyzed 2026-07-04, not yet scheduled). Documented so the
