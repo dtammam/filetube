@@ -13,6 +13,15 @@ on:
     branches: ['main']
     tags: ['v*.*.*']
 
+# v1.129 C6: serialize publishes so an OLDER slow run can never finish last and
+# overwrite a newer `edge`/`latest` with stale bytes. One lane for all TAG
+# publishes (every tag push rewrites `latest`, so tag runs must be ordered) and
+# one for branch pushes (`edge`). Queue, never cancel - a release build in
+# flight is never killed by the next one; it just goes first.
+concurrency:
+  group: docker-publish-${{ github.ref_type }}
+  cancel-in-progress: false
+
 jobs:
   # v1.123 T5: publish is GATED on qualification of the EXACT ref being
   # published. Before this, docker-publish fired on any push to main / any v* tag
@@ -73,6 +82,21 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      # v1.129 C6: a release image's identity is the TAG, but the app reports
+      # package.json's version - if the ceremony ever tags without bumping (or
+      # bumps without tagging), the published X.Y.Z image would self-report a
+      # different version forever. Refuse the mismatch at the gate.
+      - name: Assert tag matches package.json version
+        if: github.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          PKG="v$(node -p "require('./package.json').version")"
+          if [ "$PKG" != "${{ github.ref_name }}" ]; then
+            echo "::error::tag ${{ github.ref_name }} != package.json ${PKG} - refusing to publish a mismatched artifact"
+            exit 1
+          fi
+          echo "tag ${{ github.ref_name }} == package.json ${PKG}"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
