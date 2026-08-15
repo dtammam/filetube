@@ -6351,15 +6351,25 @@ a.sub-row-channel-link:focus-visible {
      .controls-autohidden) and reveals on any tap. */
   transition: opacity var(--dur-slow) var(--ease-ui);
 }
+/* v1.124.1 (Dean's device pass): NATIVE (desktop) fullscreen needs the same
+   fade wiring as faux - the fs-btn uses requestFullscreen() on desktop, which
+   adds NO class, so the faux-only selectors below never matched and the bar
+   never faded ("no fading on desktop"). `:fullscreen` on the wrapper is the
+   native twin of `.css-fullscreen`. */
+.player-container:fullscreen .player-controls {
+  transition: opacity var(--dur-slow) var(--ease-ui);
+}
 /* v1.120: the audio EXPANDED view auto-hides its bar the same way (its own bar
    rule further down carries the matching transition). */
 #player-wrapper.css-fullscreen.controls-autohidden .player-controls,
+.player-container:fullscreen.controls-autohidden .player-controls,
 #player-wrapper.audio-mode.audio-expanded.controls-autohidden .player-controls {
   opacity: 0;
   pointer-events: none; /* taps pass through to the video/art, which reveals the bar */
 }
 @media (prefers-reduced-motion: reduce) {
   #player-wrapper.css-fullscreen .player-controls,
+  .player-container:fullscreen .player-controls,
   #player-wrapper.audio-mode.audio-expanded .player-controls { transition: none; }
 }
 /* v1.120: when the audio bar is hidden, reclaim its reserved 52px strip so the
@@ -6371,7 +6381,8 @@ a.sub-row-channel-link:focus-visible {
    YouTube/desktop convention). The next mousemove reveals both the cursor and
    the bar (host mousemove -> revealControlsAndReArm). Fullscreen only - the
    audio-expanded view keeps its cursor. */
-#player-wrapper.css-fullscreen.controls-autohidden {
+#player-wrapper.css-fullscreen.controls-autohidden,
+.player-container:fullscreen.controls-autohidden {
   cursor: none;
 }
 /* The app chrome is fully covered by the overlay, but hide it explicitly
