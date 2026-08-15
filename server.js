@@ -15464,6 +15464,13 @@ app.get('/api/attribution-targets', (req, res) => {
   }
   for (const item of Object.values(db.metadata || {})) {
     if (!item || typeof item.channelUrl !== 'string' || item.channelUrl === '') continue;
+    // v1.128 Wave B (L8): the library-sourced arm emitted channelName /
+    // folderName for EVERY item, so a restricted member (the attribute-channel
+    // dialog is a library-edit feature) learned the channel/folder names of
+    // content hidden from them. Skip items they cannot see; the
+    // subscription-sourced arm above is the shared channel REGISTRY (by design,
+    // the tech-debt #150 class) and is left as-is.
+    if (!mediaVisibleTo(req, item)) continue;
     addTarget({
       channelUrl: item.channelUrl,
       channelName: (typeof item.channelName === 'string' && item.channelName !== '') ? item.channelName : (item.folderName || item.channelUrl),
