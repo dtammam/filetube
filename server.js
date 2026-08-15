@@ -9463,7 +9463,14 @@ app.post('/api/push/unsubscribe', (req, res) => {
 // removeMediaState carrier's suspenders (a restore from another library,
 // or a delete racing a stale client, must never 500 the panel).
 
-function shapedQueue(db, userId) {
+// v1.128 Wave B (L9): shapedQueue now takes `req` (was userId) so it can drop
+// entries the requester cannot see. A hidden entry is SILENT-DROPPED exactly
+// like a dead/phantom id already is - hidden and dead are indistinguishable to
+// the client, which is the oracle-free posture the plan wants (a restricted
+// member with a hidden item queued before the restriction, or via a restored
+// bundle, simply never sees it echoed back with its title/path).
+function shapedQueue(db, req) {
+  const userId = req.user.id;
   const raw = userStore.getQueue(userId);
   const live = queueStore.normalize(raw);
   const podcastNs = podcastStore.readPodcasts(db);
@@ -9476,7 +9483,7 @@ function shapedQueue(db, userId) {
       // space too - a trashed/tombstoned/phantom episode disappears from
       // the panel, belt to the delQueueByEpisode carrier's suspenders.
       const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, e.mediaId) ? podcastNs.episodes[e.mediaId] : null;
-      if (ep && ep.status === 'downloaded') {
+      if (ep && ep.status === 'downloaded' && podcastEpisodeVisibleTo(req, ep)) {
         const sub = podcastNs.subscriptions.find((s) => s && s.id === ep.subId);
         entries.push({
           uid: e.uid,
@@ -9505,7 +9512,7 @@ function shapedQueue(db, userId) {
       // delQueueByTrack carrier's suspenders. (adversarial S3: the ns is
       // hoisted like the podcast one, not re-read per entry.)
       const track = ownTrack(musicNs.tracks, e.mediaId);
-      if (track) {
+      if (track && trackVisibleTo(req, track)) {
         entries.push({
           uid: e.uid,
           mediaId: e.mediaId,
@@ -9527,7 +9534,7 @@ function shapedQueue(db, userId) {
     // keys as mediaIds; they must silent-drop like any dead id, never serve
     // a garbage item from the prototype.
     const item = Object.prototype.hasOwnProperty.call(db.metadata, e.mediaId) ? db.metadata[e.mediaId] : null;
-    if (item) entries.push({ uid: e.uid, mediaId: e.mediaId, kind: 'media', item });
+    if (item && mediaVisibleTo(req, item)) entries.push({ uid: e.uid, mediaId: e.mediaId, kind: 'media', item });
   }
   // Dead-id filtering can orphan the pointer; normalize AGAIN on the
   // filtered view so the client never sees a pointer to a missing row.
@@ -9536,7 +9543,7 @@ function shapedQueue(db, userId) {
 }
 
 app.get('/api/queue', (req, res) => {
-  res.json(shapedQueue(getCachedDatabase(), req.user.id));
+  res.json(shapedQueue(getCachedDatabase(), req));
 });
 
 app.post('/api/queue/items', (req, res) => {
@@ -9549,16 +9556,22 @@ app.post('/api/queue/items', (req, res) => {
   // v1.72: 'track' joins (music in the one queue) - the row must still
   // exist in ns.tracks (the own-property ownTrack rule).
   const kind = (body.kind === 'podcast' || body.kind === 'track') ? body.kind : 'media';
+  // v1.128 Wave B (L9): each kind visibility-checks after the existence check,
+  // returning the SAME 404 as a missing id so a restricted member cannot use
+  // the insert as an existence oracle for a hidden item (and never gets it
+  // echoed back through the shaped queue).
   if (kind === 'podcast') {
     const podcastNs = podcastStore.readPodcasts(db);
     const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, mediaId) ? podcastNs.episodes[mediaId] : null;
-    if (!ep || ep.status !== 'downloaded') return res.status(404).json({ error: 'Episode not found' });
+    if (!ep || ep.status !== 'downloaded' || !podcastEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'Episode not found' });
   } else if (kind === 'track') {
-    if (!ownTrack(musicStore.readMusic(db).tracks, mediaId)) return res.status(404).json({ error: 'no such track' });
-  } else if (!Object.prototype.hasOwnProperty.call(db.metadata, mediaId)) {
+    const track = ownTrack(musicStore.readMusic(db).tracks, mediaId);
+    if (!track || !trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' });
+  } else if (!Object.prototype.hasOwnProperty.call(db.metadata, mediaId) || !mediaVisibleTo(req, db.metadata[mediaId])) {
     // hasOwnProperty (gate S5): a prototype-chain key ('__proto__',
     // 'constructor', 'toString') must 404 like any phantom, never queue an
-    // item-less entry the shaped view then serves as garbage.
+    // item-less entry the shaped view then serves as garbage. Wave B: a hidden
+    // item 404s here too, indistinguishable from a missing one.
     return res.status(404).json({ error: 'Media file not found' });
   }
   const position = body.position === 'next' ? 'next' : 'end';
@@ -9567,14 +9580,14 @@ app.post('/api/queue/items', (req, res) => {
     return res.status(400).json({ error: result.error === 'queue-full' ? `Queue is full (${queueStore.QUEUE_CAP} items)` : 'Could not add to queue' });
   }
   userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ added: result.added, queue: shapedQueue(db, req.user.id) });
+  res.json({ added: result.added, queue: shapedQueue(db, req) });
 });
 
 app.delete('/api/queue/items/:uid', (req, res) => {
   const result = queueStore.reduceRemove(userStore.getQueue(req.user.id), req.params.uid);
   if (!result.changed) return res.status(404).json({ error: 'Queue entry not found' });
   userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ queue: shapedQueue(getCachedDatabase(), req.user.id) });
+  res.json({ queue: shapedQueue(getCachedDatabase(), req) });
 });
 
 // Strict uid bijection (the reducer refuses drops/inventions): a stale
@@ -9589,12 +9602,12 @@ app.post('/api/queue/reorder', (req, res) => {
   // client but still lives in the raw queue (that is what buys restore
   // fidelity), and without this every reorder after a trash 409s forever.
   const rawQueue = userStore.getQueue(req.user.id);
-  const visibleUids = shapedQueue(getCachedDatabase(), req.user.id).entries.map((e) => e.uid);
+  const visibleUids = shapedQueue(getCachedDatabase(), req).entries.map((e) => e.uid);
   const fullOrder = queueStore.expandVisibleOrder(rawQueue, visibleUids, orderedUids);
   const result = queueStore.reduceReorder(rawQueue, fullOrder);
   if (!result.changed) return res.status(409).json({ error: 'Queue changed - refresh and retry' });
   userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ queue: shapedQueue(getCachedDatabase(), req.user.id) });
+  res.json({ queue: shapedQueue(getCachedDatabase(), req) });
 });
 
 // The now-playing pointer. body.uid = an entry uid, or null to restart
@@ -9607,7 +9620,7 @@ app.post('/api/queue/pointer', (req, res) => {
   const result = queueStore.reduceSetPointer(userStore.getQueue(req.user.id), uid);
   if (!result.changed) return res.status(404).json({ error: 'Queue entry not found' });
   userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ queue: shapedQueue(getCachedDatabase(), req.user.id) });
+  res.json({ queue: shapedQueue(getCachedDatabase(), req) });
 });
 
 // Clear = the whole queue dies (icon disappears). Ephemeral by design -
