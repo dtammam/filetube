@@ -39,11 +39,16 @@ fix). The store is `DATA_DIR/filetube.db`, WAL mode (falling back to DELETE on
 network filesystems, with a log line), `PRAGMA foreign_keys = ON`,
 `BEGIN IMMEDIATE` transactions.
 
-Schema version: `PRAGMA user_version`, currently **17**
+Schema version: `PRAGMA user_version`, currently **18**
 (`SCHEMA_VERSION`, lib/db/sqlite.js). `migrateSchema()` is a forward-only
 chain and blocks are **APPEND-ONLY once executed** - editing an executed block
 strands existing databases (this happened; the lesson is written into the
-source). A late table gets a new version, full stop.
+source). A late table gets a new version, full stop. Since v1.127 two more
+rules apply (see RELEASING.md "Schema versions and the rollback floor"): any
+new persisted NAMESPACE bumps the version in the same commit (v18 is such a
+marker, for v1.126's `folderDisplayNames`), and a build REFUSES at boot any
+database stamped newer than itself. Rollback floor: databases touched by
+>=v1.126 are not writable by <=v1.125.
 
 Two buckets coexist in the one file:
 

@@ -181,11 +181,16 @@ const CAPABILITY_CATEGORIES = new Set(['library-write', 'manage-subs', 'admin'])
 // EVERY live mutating route must be explicitly bucketed here, there is NO
 // default, and the completeness test below fails until a new route is classified.
 //
-//   enforced - content-addressed AND the handler checks visibility
-//              (mediaVisibleTo / episodeVisibleTo / bookVisibleTo /
-//              trashRecordVisibleTo) and 404s a restricted member. Behavioral
-//              proof lives in the rbac-{video,books,podcast}-enforcement +
-//              ytdlp-repull-item-endpoint suites.
+//   enforced - content-addressed AND the handler applies the canonical
+//              visibility decision (mediaVisibleTo / episodeVisibleTo /
+//              bookVisibleTo / trashRecordVisibleTo / mediaVisiblePredicate):
+//              single-target routes 404 a restricted member; LIBRARY-WIDE
+//              routes (bulk attribute, the repull batch/preview) FILTER their
+//              worklist and counts through the requester's predicate
+//              (v1.127). Behavioral proof lives in the
+//              rbac-{video,books,podcast}-enforcement +
+//              ytdlp-repull-item-endpoint + rbac-bulk-visibility +
+//              rbac-reheat-visibility suites.
 //   personal - writes ONLY the caller's own per-user state (liked / watched /
 //              progress / finished / played / queue / prefs). A restricted
 //              member can at worst write or clear a useless row for an item they
@@ -196,15 +201,24 @@ const CAPABILITY_CATEGORIES = new Set(['library-write', 'manage-subs', 'admin'])
 //              legitimate cleanup) so they are `personal` - the asymmetry is
 //              deliberate, not an oversight (gate round 1, QA W2).
 //   n/a      - not per-content: session/auth, instance config, the channel/
-//              podcast REGISTRY (subscriptions/shows/pins/users), and
-//              LIBRARY-WIDE operations (scan/cache/bulk/reheat/backfill/
-//              repull-library/check/downloads). Capability-gated, not
-//              visibility-gated.
+//              podcast REGISTRY (subscriptions/shows/pins/users), and job
+//              control (cancels/scans). Capability-gated, not visibility-
+//              gated - and since v1.127 every entry is na('why'): the
+//              exemption must state WHAT the route touches and WHY no
+//              per-item visibility decision applies (external review round 2
+//              proved a bare label here exempted two routes that DID address
+//              per-item content).
+// v1.127 Wave A: an n/a exemption must CARRY its justification - see the
+// bucket's own comment below. The shape is deliberately an object so a bare
+// 'n/a' string fails the VALID check: exempting a route now costs a sentence
+// a reviewer can refute, not a label.
+const na = (why) => ({ na: why });
+
 const VISIBILITY = {
   // --- session / auth ---
-  'POST /api/auth/login': 'n/a',
-  'POST /api/auth/setup': 'n/a',
-  'POST /api/auth/logout': 'n/a',
+  'POST /api/auth/login': na('session mint; no content addressed'),
+  'POST /api/auth/setup': na('first-run admin creation; no content addressed'),
+  'POST /api/auth/logout': na('session teardown; no content addressed'),
 
   // --- content-addressed, visibility ENFORCED ---
   'POST /api/videos/:id/view': 'enforced',
@@ -225,6 +239,16 @@ const VISIBILITY = {
   'POST /book/:id/tts/:spineIndex/ensure': 'enforced',
   'POST /api/ytdlp/repull-metadata/item/:mediaId': 'enforced',
   'POST /api/ytdlp/repull-metadata/item/:mediaId/relocate': 'enforced',
+  // v1.127 Wave A (external review round 2, HIGH): the two LIBRARY-WIDE
+  // mutators this net used to exempt as 'n/a' - the exemption WAS the bug
+  // (they enumerate per-item content and can RELOCATE files). Their handlers
+  // now filter the worklist through the requester's mediaVisiblePredicate
+  // (the library-wide flavor of 'enforced': FILTER, where single-target
+  // routes 404). Behavioral proof: rbac-bulk-visibility.test.js +
+  // rbac-reheat-visibility.test.js, both mutation-verified.
+  'POST /api/videos/attribute-channel-bulk': 'enforced',
+  'POST /api/ytdlp/repull-metadata': 'enforced',
+  'POST /api/ytdlp/repull-metadata/preview': 'enforced',
   // v1.126: the folder rename addresses a restrictable FOLDER (body-carried,
   // not URL-carried - still content-addressed); the handler 404s a member
   // restricted from the folder. Behavioral proof: folder-display-names.test.js.
@@ -276,58 +300,89 @@ const VISIBILITY = {
   'POST /api/subscriptions/pins/reorder': 'personal',
   'DELETE /api/subscriptions/pins/:id': 'personal',
 
-  // --- not per-content: registry / config / library-wide (n/a) ---
-  'POST /api/videos/attribute-channel-bulk': 'n/a',
-  'POST /api/videos/attribute-channel-bulk/cancel': 'n/a',
-  'POST /api/scan': 'n/a',
-  'POST /api/books/scan': 'n/a',
-  'POST /api/music/scan': 'n/a',
-  'POST /api/cache/clear': 'n/a',
-  'POST /api/subscriptions': 'n/a',
-  'DELETE /api/subscriptions/:id': 'n/a',
-  'PATCH /api/subscriptions/:id': 'n/a',
-  'POST /api/subscriptions/:id/cancel': 'n/a',
-  'POST /api/subscriptions/:id/repull': 'n/a',
-  'POST /api/subscriptions/:id/skip': 'n/a',
-  'POST /api/subscriptions/downloads/cancel': 'n/a',
-  'POST /api/subscriptions/reorder': 'n/a',
-  'POST /api/subscriptions/repull': 'n/a',
-  'POST /api/subscriptions/settings': 'n/a',
-  'DELETE /api/subscriptions/failures/:id': 'n/a',
-  'DELETE /api/subscriptions/failures/all': 'n/a',
-  'POST /api/ytdlp/download': 'n/a',
-  'POST /api/ytdlp/download/:jobId/cancel': 'n/a',
-  'POST /api/ytdlp/refresh-avatars': 'n/a',
-  'POST /api/ytdlp/refresh-avatars/cancel': 'n/a',
-  'POST /api/ytdlp/reheat-sub-counts': 'n/a',
-  'POST /api/ytdlp/reheat-sub-counts/cancel': 'n/a',
-  'POST /api/ytdlp/backfill-channel-names': 'n/a',
-  'POST /api/ytdlp/backfill-channel-names/cancel': 'n/a',
-  'POST /api/ytdlp/repull-metadata': 'n/a',
-  'POST /api/ytdlp/repull-metadata/cancel': 'n/a',
-  'POST /api/ytdlp/repull-metadata/preview': 'n/a',
-  'POST /api/podcasts/check': 'n/a',
-  'POST /api/podcasts/subscriptions': 'n/a',
-  'DELETE /api/podcasts/subscriptions/:id': 'n/a',
-  'PATCH /api/podcasts/subscriptions/:id': 'n/a',
-  'POST /api/podcasts/subscriptions/:id/check': 'n/a',
-  'POST /api/podcasts/subscriptions/:id/feed-url': 'n/a',
-  'POST /api/podcasts/settings': 'n/a',
-  'POST /api/config': 'n/a',
-  'POST /api/books/config': 'n/a',
-  'POST /api/music/config': 'n/a',
-  'POST /api/settings': 'n/a',
-  'POST /api/settings/logo': 'n/a',
-  'DELETE /api/settings/logo': 'n/a',
-  'POST /api/admin/restore': 'n/a',
-  'POST /api/users': 'n/a',
-  'DELETE /api/users/:id': 'n/a',
-  'POST /api/users/:id/disabled': 'n/a',
-  'POST /api/users/:id/password': 'n/a',
-  'POST /api/users/:id/role': 'n/a',
-  'POST /api/users/:id/subscriptions-flag': 'n/a',
-  'POST /api/users/:id/modify-library-flag': 'n/a',
-  'PUT /api/users/:id/restrictions': 'n/a',
+  // --- not per-content (n/a) - EVERY exemption carries its WHY -----------
+  //
+  // v1.127 Wave A: external review round 2 proved this bucket was the net's
+  // own blind spot - a bare 'n/a' label exempted attribute-channel-bulk and
+  // the library-wide repull, which DID address per-item content by the
+  // REQUESTER's selection (they enumerated a requester-chosen root/library and
+  // could RELOCATE hidden media; both are 'enforced' above now). The lesson is
+  // the v1.123 one pointed at ourselves: a forcing net must be a denylist, and
+  // an exemption without a stated, reviewable reason is an allowlist entry.
+  // Every n/a is now na('why') - the why must say what the route touches and
+  // why no per-REQUESTER visibility decision applies.
+  //
+  // The reviewer's question for every new na(): "does the route act on a set
+  // of library items that the REQUESTER selected or scoped?" If yes -> NOT
+  // n/a, it is 'enforced' (single-target 404, or library-wide FILTER). A
+  // route may still be n/a while touching items IF its target set is fixed by
+  // the shared REGISTRY, not by requester input:
+  //   - the three yt-dlp fan-outs below (refresh-avatars / reheat-sub-counts /
+  //     backfill-channel-names) WRITE channel-identity DISPLAY fields onto
+  //     items, but the target set is "every item whose channel is in the
+  //     registry", identical for every caller - there is no per-requester
+  //     selection to honor. Their residual (an aggregate count-oracle, and a
+  //     display write onto items a restricted member can't see) is DISCLOSED
+  //     in tech-debt #150 and belongs to Wave B's read-surface census, not
+  //     here. This is a NAMED exception, not a hole: a NEW route that writes
+  //     items by requester selection is still 'enforced', full stop.
+  // HONEST SCOPE (plan deviation, disclosed): the plan prescribed a MECHANICAL
+  // handler-source scan (fail if an n/a handler references db.metadata et al).
+  // That was descoped - a shallow handler.toString() grep is blind to
+  // deps-injected fan-outs (the exact fan-out case above) and a sound
+  // reachability analysis is undecidable (adversarial S3). The net's real
+  // closure is: every live route MUST be classified (unclassified -> red), an
+  // n/a MUST carry a reviewable justification, and the fixed routes are
+  // pinned. Recurrence risk (a future item-touching route mislabeled n/a with
+  // a plausible reason) is tracked in tech-debt #151.
+  'POST /api/videos/attribute-channel-bulk/cancel': na('sets the cooperative-cancel latch for an in-flight job; reads/writes no item'),
+  'POST /api/scan': na('triggers a rescan of the configured roots; writes scan state, returns no per-item data'),
+  'POST /api/books/scan': na('triggers the book rescan; same shape as /api/scan'),
+  'POST /api/music/scan': na('triggers the music rescan; same shape as /api/scan'),
+  'POST /api/cache/clear': na('transcode-cache lifecycle; touches derived cache files only, never library items'),
+  'POST /api/subscriptions': na('channel REGISTRY row create; the registry is shared by design (documented product shape)'),
+  'DELETE /api/subscriptions/:id': na('channel registry row delete; no library item addressed'),
+  'PATCH /api/subscriptions/:id': na('channel registry row edit; no library item addressed'),
+  'POST /api/subscriptions/:id/cancel': na('stops one subscription\'s in-flight downloads; job control only'),
+  'POST /api/subscriptions/:id/repull': na('re-polls one registry channel for NEW downloads into the download root; creates content, never touches existing items'),
+  'POST /api/subscriptions/:id/skip': na('appends to the shared skip/archive list; registry-scoped state'),
+  'POST /api/subscriptions/downloads/cancel': na('stops all in-flight subscription downloads; job control only'),
+  'POST /api/subscriptions/reorder': na('registry display order; no library item addressed'),
+  'POST /api/subscriptions/repull': na('re-polls the whole registry for NEW downloads; creates content, never touches existing items'),
+  'POST /api/subscriptions/settings': na('module settings write; instance configuration'),
+  'DELETE /api/subscriptions/failures/:id': na('clears one failure-log row; job bookkeeping only'),
+  'DELETE /api/subscriptions/failures/all': na('clears the failure log; job bookkeeping only'),
+  'POST /api/ytdlp/download': na('one-off download of a NEW file into the download root; addresses no existing item'),
+  'POST /api/ytdlp/download/:jobId/cancel': na('stops one one-off download job; job control only'),
+  'POST /api/ytdlp/refresh-avatars': na('registry fan-out: rewrites channel AVATAR files derived from the registry; response is aggregate counts only (count-oracle residual: Wave B read-surface census)'),
+  'POST /api/ytdlp/refresh-avatars/cancel': na('cancel latch for the avatar fan-out; job control only'),
+  'POST /api/ytdlp/reheat-sub-counts': na('registry fan-out: writes channel FOLLOWER COUNTS onto items, derived from the registry; aggregate counts only (count-oracle residual: Wave B read-surface census)'),
+  'POST /api/ytdlp/reheat-sub-counts/cancel': na('cancel latch for the sub-count fan-out; job control only'),
+  'POST /api/ytdlp/backfill-channel-names': na('registry fan-out: heals channel NAME display fields on items from the registry; aggregate counts only (count-oracle residual: Wave B read-surface census)'),
+  'POST /api/ytdlp/backfill-channel-names/cancel': na('cancel latch for the name fan-out; job control only'),
+  'POST /api/ytdlp/repull-metadata/cancel': na('sets the cooperative-cancel latch for the reheat batch; reads/writes no item'),
+  'POST /api/podcasts/check': na('polls the podcast REGISTRY feeds for new episodes; creates content, never touches existing items'),
+  'POST /api/podcasts/subscriptions': na('podcast registry row create; the registry is shared by design'),
+  'DELETE /api/podcasts/subscriptions/:id': na('podcast registry row delete (show removal is a registry operation; episode deletes are the enforced routes above)'),
+  'PATCH /api/podcasts/subscriptions/:id': na('podcast registry row edit; no episode addressed'),
+  'POST /api/podcasts/subscriptions/:id/check': na('polls one show\'s feed; creates content only'),
+  'POST /api/podcasts/subscriptions/:id/feed-url': na('rewrites one show\'s private feed URL in the secrets file; registry-scoped'),
+  'POST /api/podcasts/settings': na('module settings write; instance configuration'),
+  'POST /api/config': na('library ROOTS configuration write; admin-shaped instance config'),
+  'POST /api/books/config': na('book roots configuration write; instance config'),
+  'POST /api/music/config': na('music roots configuration write; instance config'),
+  'POST /api/settings': na('instance settings write; no item addressed'),
+  'POST /api/settings/logo': na('custom logo upload; instance branding asset'),
+  'DELETE /api/settings/logo': na('custom logo removal; instance branding asset'),
+  'POST /api/admin/restore': na('whole-instance backup restore; admin-only by definition, replaces ALL state'),
+  'POST /api/users': na('user administration (create); admin-only'),
+  'DELETE /api/users/:id': na('user administration (delete); admin-only'),
+  'POST /api/users/:id/disabled': na('user administration (disable flag); admin-only'),
+  'POST /api/users/:id/password': na('user administration (password reset); admin-only'),
+  'POST /api/users/:id/role': na('user administration (role); admin-only'),
+  'POST /api/users/:id/subscriptions-flag': na('user administration (capability flag); admin-only'),
+  'POST /api/users/:id/modify-library-flag': na('user administration (capability flag); admin-only'),
+  'PUT /api/users/:id/restrictions': na('user administration (the restriction rows themselves); admin-only'),
 };
 
 function liveMutatingRoutes() {
@@ -398,21 +453,27 @@ test('ENFORCEMENT: every capability-gated route 403s a member holding NO capabil
 
 test('VISIBILITY COMPLETENESS (denylist): EVERY live mutating route has a visibility bucket - a new one fails here', () => {
   const live = liveMutatingRoutes();
-  const VALID = new Set(['enforced', 'personal', 'n/a']);
   // (1) every live mutating route must be explicitly bucketed - NO default. This
   // is what makes a brand-new media namespace (e.g. DELETE /api/music/tracks/:id)
   // FAIL until someone decides its visibility, instead of escaping silently.
   const unclassified = live.filter((r) => !(r in VISIBILITY));
   assert.deepStrictEqual(unclassified, [],
     `mutating route(s) with NO visibility bucket - add each to VISIBILITY as\n`
-    + `'enforced' (handler must 404 a restricted member) | 'personal' (own-state only)\n`
-    + `| 'n/a' (registry/config/library-wide, not per-content):\n  ${unclassified.join('\n  ')}`);
-  // (2) no stale entries, and every value is a legal bucket.
+    + `'enforced' (handler 404s a restricted member, or FILTERS a library-wide\n`
+    + `worklist) | 'personal' (own-state only) | na('why') (not per-content -\n`
+    + `the why must survive the reviewer's "does it touch any item?"):\n  ${unclassified.join('\n  ')}`);
+  // (2) no stale entries, and every value is a legal bucket. v1.127: a bare
+  // 'n/a' string is deliberately ILLEGAL - an exemption must carry a
+  // non-empty justification via na('why').
   const liveSet = new Set(live);
   const stale = Object.keys(VISIBILITY).filter((r) => !liveSet.has(r));
   assert.deepStrictEqual(stale, [], `stale VISIBILITY entrie(s) - route no longer exists:\n  ${stale.join('\n  ')}`);
-  const badValue = Object.entries(VISIBILITY).filter(([, v]) => !VALID.has(v)).map(([r, v]) => `${r} -> ${v}`);
-  assert.deepStrictEqual(badValue, [], `VISIBILITY value must be enforced|personal|n/a:\n  ${badValue.join('\n  ')}`);
+  const isNa = (v) => v && typeof v === 'object' && typeof v.na === 'string' && v.na.trim().length >= 15;
+  const badValue = Object.entries(VISIBILITY)
+    .filter(([, v]) => !(v === 'enforced' || v === 'personal' || isNa(v)))
+    .map(([r, v]) => `${r} -> ${JSON.stringify(v)}`);
+  assert.deepStrictEqual(badValue, [],
+    `VISIBILITY value must be 'enforced' | 'personal' | na('a real justification, >=15 chars'):\n  ${badValue.join('\n  ')}`);
   // (3) the two axes cover the SAME routes (both are denylists over the live
   // table), so neither can drift out from under the other.
   const capOnly = Object.keys(CLASSIFICATION).filter((r) => !(r in VISIBILITY));
@@ -432,5 +493,15 @@ test('VISIBILITY REGRESSION GUARD: the routes this wave fixed stay pinned `enfor
     'POST /api/ytdlp/repull-metadata/item/:mediaId/relocate',
   ]) {
     assert.strictEqual(VISIBILITY[r], 'enforced', `${r} must stay visibility-enforced (v1.123 T3)`);
+  }
+  // v1.127 Wave A: the two library-wide routes external review round 2 caught
+  // (and the preview that rendered hidden paths) stay pinned too - moving any
+  // of these back to na() reopens the reheat/bulk RBAC bypass.
+  for (const r of [
+    'POST /api/videos/attribute-channel-bulk',
+    'POST /api/ytdlp/repull-metadata',
+    'POST /api/ytdlp/repull-metadata/preview',
+  ]) {
+    assert.strictEqual(VISIBILITY[r], 'enforced', `${r} must stay visibility-enforced (v1.127 Wave A)`);
   }
 });

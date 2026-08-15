@@ -13,7 +13,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { SqliteAdapter, SQLITE_FILENAME } = require('../../lib/db/sqlite');
+const { SqliteAdapter, SQLITE_FILENAME, SCHEMA_VERSION } = require('../../lib/db/sqlite');
 const createUserStore = require('../../lib/auth/store');
 
 let dir, adapter, store;
@@ -108,7 +108,7 @@ test('schema v10 -> v11 migration: an existing db gains the two tables without t
 
   adapter = new SqliteAdapter(dbPath, { log: () => {} });
   store = createUserStore(adapter);
-  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 17);
+  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
   const admin2 = store.getByUsername('a');
   assert.equal(store.getOneBookProgress(admin2.id, 'bk1').percent, 40, 'pre-existing rows untouched');
   store.addBookLiked(admin2.id, 'bk2', ISO);

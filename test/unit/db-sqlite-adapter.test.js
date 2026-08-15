@@ -32,6 +32,7 @@ const {
   openAdapter,
   importDbJson,
   readPersistedDatabase,
+  SCHEMA_VERSION,
 } = require('../../lib/db/sqlite');
 
 let dir;
@@ -52,6 +53,9 @@ function fullFixture() {
   return {
     folders: ['/media/videos', '/media/music'],
     folderSettings: { '/media/videos': { name: 'Videos', hidden: false } },
+    // v1.126/v1.127: the per-channel-folder display-name map (the namespace
+    // whose missing fixture coverage external review round 2 flagged).
+    folderDisplayNames: { NESTALGIA: 'Nestalgia Music' },
     progress: { vid1: 42.5, vid2: 918 },
     metadata: {
       vid1: { id: 'vid1', name: 'clip.mp4', title: 'Clip', filePath: '/media/videos/clip.mp4', viewCount: 7, chaptersManual: [{ t: 0, title: 'Intro' }] },
@@ -115,7 +119,7 @@ test('fresh open creates the full v1 schema with empty user tables', () => {
       const { c } = a.sql.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get();
       assert.strictEqual(c, 0, `${table} exists and is empty (born-complete schema, exec plan)`);
     }
-    assert.strictEqual(a.sql.prepare('PRAGMA user_version').get().user_version, 17);
+    assert.strictEqual(a.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
     // v1.43 schema v2: users.id is AUTOINCREMENT (never reuses a reaped id —
     // design-delta SUGGESTION-6). sqlite_autoindex/sqlite_sequence presence
     // is the fingerprint.
@@ -137,7 +141,7 @@ test('v3 -> v4 upgrade: an existing populated schema gains the empty user_watche
 
   const b = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 17, 'forward-only migration ran (to the CURRENT version)');
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION, 'forward-only migration ran (to the CURRENT version)');
     assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_watched').get().c, 0, 'latch table born empty');
     // v1.51 schema v5 rides the same forward run.
     assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM notifications').get().c, 0, 'notification feed born empty');
@@ -161,7 +165,7 @@ test('v14 -> v15 upgrade: an existing populated users table gains can_modify_lib
 
   const b = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 17, 'forward-only migration ran');
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION, 'forward-only migration ran');
     const hasCol = b.sql.prepare("SELECT COUNT(*) AS n FROM pragma_table_info('users') WHERE name = 'can_modify_library'").get().n;
     assert.strictEqual(hasCol, 1, 'the ALTER added the column');
     // Every pre-existing row defaults to 0 (OFF) — existing members lose
@@ -188,7 +192,7 @@ test('v15 -> v16 upgrade: an existing populated db gains the empty user_search_h
 
   const b = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 17, 'forward-only migration ran');
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION, 'forward-only migration ran');
     assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_search_history').get().c, 0, 'search-history table born empty');
     // its shape: (user_id, term, searched_at, PK(user_id, term))
     const cols = b.sql.prepare("SELECT name FROM pragma_table_info('user_search_history') ORDER BY name").all().map((r) => r.name);
@@ -210,7 +214,7 @@ test('v16 -> v17 upgrade: an existing populated db gains the empty user_feed_hid
 
   const b = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 17, 'forward-only migration ran');
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION, 'forward-only migration ran');
     assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_feed_hidden').get().c, 0, 'feed-hidden table born empty');
     // its shape: (user_id, media_id, hidden_at, PK(user_id, media_id)) -- mirrors user_liked
     const cols = b.sql.prepare("SELECT name FROM pragma_table_info('user_feed_hidden') ORDER BY name").all().map((r) => r.name);
@@ -653,4 +657,52 @@ test('exclusiveReplace: rollback-on-throw preserves prior data; success rebuilds
   } finally {
     a.close();
   }
+});
+
+// ---- v1.127 Wave A (T4): the v18 marker + the future-version refusal --------
+//
+// External review round 2 (HIGH): v1.126 added the `folderDisplayNames`
+// doc_single namespace at an UNCHANGED user_version 17, so a downgraded
+// <=v1.125 adapter loads the row and then refuses every save
+// (assertNoUnknownKeys) - a rollback-wide write outage. Released adapters
+// can't be repaired; these tests bind the two forward fixes: the v18 stamp
+// and the loud refusal of any database from the future.
+
+test('v17 -> v18 marker migration: a v1.126-shaped database (folderDisplayNames at v17) upgrades and round-trips', () => {
+  // Simulate exactly what a v1.126 instance leaves behind: the new namespace
+  // persisted, the version stamp still 17.
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  const shape = fullFixtureForUpgrade();
+  a.save(shape);
+  a.sql.exec('PRAGMA user_version = 17');
+  a.close();
+
+  const b = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION,
+      'the marker migration stamps the current version (no structural change to run)');
+    const loaded = b.load();
+    assert.deepStrictEqual(loaded.folderDisplayNames, shape.folderDisplayNames,
+      'the v1.126 namespace survives the marker migration');
+    // And the file is still WRITABLE end-to-end after the stamp (the exact
+    // axis the downgrade outage broke).
+    loaded.folderDisplayNames.NEWDIR = 'New Display Name';
+    b.save(loaded);
+    assert.strictEqual(b.load().folderDisplayNames.NEWDIR, 'New Display Name', 'durable write after the marker migration');
+  } finally {
+    b.close();
+  }
+});
+
+test('a database stamped NEWER than this build is REFUSED at open, never silently accepted', () => {
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  a.save(fullFixtureForUpgrade());
+  a.sql.exec(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`);
+  a.close();
+
+  assert.throws(
+    () => new SqliteAdapter(dbPath(), { log: () => {} }),
+    new RegExp(`schema is v${SCHEMA_VERSION + 1}, but this build understands only v${SCHEMA_VERSION}`),
+    'the refusal names both versions and happens at open, before any write'
+  );
 });

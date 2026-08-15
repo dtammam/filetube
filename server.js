@@ -923,6 +923,20 @@ function mediaVisibleTo(req, item) {
     kind: 'media', filePath: item.filePath, folderName: item.folderName, rootFolder: item.rootFolder,
   });
 }
+// v1.127 Wave A (external review round 2, HIGH): a req-FREE snapshot of the
+// mediaVisibleTo decision, for work that outlives its request - the
+// bulk-attribution selector re-runs inside updateDatabase and its move loop
+// runs AFTER the 202 response, where holding `req` would be a leak. Captures
+// the requester's restriction index ONCE; the descriptor is the FULL canonical
+// media descriptor and must stay byte-identical to mediaVisibleTo's above
+// (the v1.126 lesson: never a hand-built narrower one - a bare
+// {kind,folderName} check misses PATH-kind and allowlist restrictions).
+function mediaVisiblePredicate(req) {
+  const idx = userRestrictionIndex(req);
+  return (item) => !!item && !visibility.isBlocked(idx, {
+    kind: 'media', filePath: item.filePath, folderName: item.folderName, rootFolder: item.rootFolder,
+  });
+}
 function trackVisibleTo(req, track) {
   return !!track && !visibility.isBlocked(userRestrictionIndex(req), {
     kind: 'track', filePath: track.filePath, folderName: track.folderName, rootFolder: track.rootFolder,
@@ -14097,8 +14111,10 @@ async function relocateHydratedImportIntoChannelFolder(deps, config, mediaId, op
 //
 // @param {{loadDatabase: Function, updateDatabase: Function, getMediaId: Function, fs?: object}} deps
 // @param {object} config a parsed yt-dlp config
+// @param {Function} [itemVisible] v1.127: requester-visibility predicate (from
+//   mediaVisiblePredicate); a hidden item contributes no row and no counts
 // @returns {{moves: Array, skips: Array, summary: object}}
-function buildImportRelocationPreview(deps, config) {
+function buildImportRelocationPreview(deps, config, itemVisible) {
   const d = deps || {};
   const loadDb = d.loadDatabase;
   const moves = [];
@@ -14127,13 +14143,17 @@ function buildImportRelocationPreview(deps, config) {
   const ids = Object.keys(metadata);
 
   for (const mediaId of ids) {
+    const item = metadata[mediaId];
+    // v1.127 Wave A: requester visibility - a hidden item contributes NOTHING
+    // to the preview: no move row (its current AND destination paths would
+    // render for a restricted manage-subs member), no summary counts.
+    if (typeof itemVisible === 'function' && !itemVisible(item)) continue;
     // ONE shared decision -- identical to what the executor would decide for this
     // item right now. No fetch, no ffprobe: purely persisted db state + read-only
     // fs stats. The already-loaded `db` snapshot is threaded in (perf: no per-item
     // reload) -- the decision LOGIC is byte-identical to the executor's, only the
     // db source differs.
     const plan = planImportRelocation(deps, config, mediaId, db);
-    const item = metadata[mediaId];
     // The metadata half -- the SAME predicate the batch gates on (see
     // `classifyMetadataEffect`). Preferred off the plan (item-bearing paths),
     // else computed from the item directly for the rare global-skip paths
@@ -14202,7 +14222,11 @@ function buildImportRelocationPreview(deps, config) {
     moves,
     skips,
     summary: {
-      totalItems: ids.length,
+      // v1.127: derived from the rows, not `ids.length` - every non-hidden id
+      // lands in exactly one of moves/skips, so this is byte-identical for an
+      // unrestricted caller and honestly EXCLUDES hidden items for a
+      // restricted one (ids.length would have leaked their count).
+      totalItems: moves.length + skips.length,
       moveCount: moves.length,
       skipCount: skips.length,
       hardlinkCount,
@@ -14354,9 +14378,13 @@ function resolveRelocationTitle(item) {
 // observe an incomplete (still-`{}`) exports object -- the deps bridge is
 // what avoids that circular-require trap, exactly like every other
 // server.js-owned primitive this module already receives.
-//   - `enumerateRepullableItems` takes `(db, config)` directly (no db access
-//     of its own) -- the caller already has a fresh `db` (from `deps.loadDatabase()`)
-//     and its own parsed yt-dlp config in hand.
+//   - `enumerateRepullableItems` takes `(db, config, itemVisible?)` directly
+//     (no db access of its own) -- the caller already has a fresh `db` (from
+//     `deps.loadDatabase()`) and its own parsed yt-dlp config in hand. The
+//     THIRD arg (v1.127 Wave A) is the OPTIONAL requester-visibility predicate
+//     (from `deps.mediaVisiblePredicate(req)`): a new caller that omits it
+//     enumerates the WHOLE library, so a caller acting on behalf of a
+//     restricted member MUST pass it (the batch/preview/per-item routes do).
 //   - `recordRepulledItemMeta` takes `(deps, mediaId, meta, nowMs)` -- pass
 //     the SAME `deps` object `registerRoutes` itself received.
 
@@ -14420,9 +14448,14 @@ function resolveRelocationTitle(item) {
  *
  * @param {object} db a `loadDatabase()`-shaped db snapshot
  * @param {object} config a parsed yt-dlp config (`ytdlp.parseYtdlpConfig()`)
+ * @param {Function} [itemVisible] v1.127 Wave A: an optional requester-visibility
+ *   predicate (the full metadata item -> boolean, from `mediaVisiblePredicate`).
+ *   When passed, a hidden item enters NEITHER the worklist NOR the
+ *   eligible/withSourceId counts; when omitted, the whole library is enumerated
+ *   (the pre-v1.127 behavior, correct only for admin/system callers).
  * @returns {{items: Array<{mediaId: string, filePath: string, videoId: string|null, watchUrl: string|null, inDownloadRoot: boolean, alreadyRepulled: boolean}>, eligible: number, ineligible: number, withSourceId: number}}
  */
-function enumerateRepullableItems(db, config) {
+function enumerateRepullableItems(db, config, itemVisible) {
   const result = { items: [], eligible: 0, ineligible: 0, withSourceId: 0 };
   const metadata = (db && db.metadata) || {};
   const downloadRoots = ytdlp.extraScanRoots(config);
@@ -14433,6 +14466,12 @@ function enumerateRepullableItems(db, config) {
       result.ineligible++;
       continue;
     }
+    // v1.127 Wave A: optional requester-visibility predicate (from
+    // mediaVisiblePredicate). A hidden item never enters the worklist NOR the
+    // eligible/withSourceId counts - counting it would leak its existence to a
+    // restricted manage-subs member. Checked AFTER the broken-record branch so
+    // the ineligible count stays identical for every caller.
+    if (typeof itemVisible === 'function' && !itemVisible(item)) continue;
     const baseName = path.basename(item.filePath, path.extname(item.filePath));
     // Filename `[id]` bracket first -- but ONLY inside the download root (see
     // this function's doc comment: the bracket is a yt-dlp naming convention
@@ -15470,6 +15509,13 @@ app.post('/api/videos/attribute-channel-bulk', async (req, res) => {
   // bulk attribute is the same kind of write the single endpoint allows).
   if (relocate && !preview && refuseIfReadOnlyMedia(res)) return;
   const db0 = getCachedDatabase();
+  // v1.127 Wave A (external review round 2, HIGH): this selector used to sweep
+  // EVERY item under root - hidden ones included - letting a
+  // capable-but-restricted member preview counts for, rewrite, and physically
+  // RELOCATE media they cannot see. The requester's visibility is captured
+  // req-free here so the shared selector AND the post-202 move loop below can
+  // both apply it.
+  const bulkItemVisible = mediaVisiblePredicate(req);
   const root = confineBulkRoot(db0, body.root);
   if (!root) return res.status(400).json({ error: 'root must be a configured library folder (or a folder inside one)' });
   const check = sanitizeAttributionTarget(body.target);
@@ -15488,6 +15534,7 @@ app.post('/api/videos/attribute-channel-bulk', async (req, res) => {
     for (const item of Object.values(db.metadata || {})) {
       if (!item || typeof item.filePath !== 'string') continue;
       if (!matchRootFolder(item.filePath, [root])) continue;
+      if (!bulkItemVisible(item)) continue; // v1.127: hidden items never enter the worklist
       const unattributed = !(typeof item.channelUrl === 'string' && item.channelUrl !== '');
       if (unattributed) { toAttribute.push(item.id); continue; }
       if (item.channelAttributedManually === true && item.channelUrl === identity.channelUrl
@@ -15557,6 +15604,19 @@ app.post('/api/videos/attribute-channel-bulk', async (req, res) => {
         // never a phantom failure.
         const current = loadDatabase().metadata[id];
         if (!current) { done++; continue; }
+        // v1.127 Wave A: the LOAD-BEARING visibility guard is the selector
+        // filter (bulkItemVisible in selectWork) - it, not this line, is what
+        // both gate seats mutation-bound. This per-item re-check is pure
+        // belt-and-suspenders and is in fact UNREACHABLE: the restriction
+        // index is frozen at request time, and the only way an item could turn
+        // hidden mid-loop is a filePath/folderName change, which re-keys its
+        // md5(filePath) id so the fresh `loadDatabase().metadata[id]` read
+        // above already returns undefined and hits `!current`. Kept as a cheap
+        // fail-safe only (e.g. against a future non-path-derived id scheme); do
+        // NOT treat it as the guard. The T2 reheat batch deliberately omits
+        // the analogous re-check for the same reason - its enumeration filter
+        // is the load-bearing guard (plan wave-a T2, disclosed).
+        if (!bulkItemVisible(current)) { done++; continue; }
         if (path.dirname(current.filePath) === destinationDir) {
           alreadyThere++; done++;
           ytdlpActivity.setOneShot(ATTRIBUTE_BULK_ONESHOT_KEY, { done, moved, collisions, alreadyThere, failed });
@@ -16328,6 +16388,11 @@ app.post('/api/videos/:id/prepare-audio', (req, res) => {
 ytdlp.registerRoutes(app, {
   requireManageSubscriptions, // v1.80 RBAC: gate for channel-registry mutations
   mediaVisibleTo, // v1.123 T3: visibility axis for the per-item repull/relocate routes
+  // v1.127 Wave A: the req-FREE visibility snapshot for LIBRARY-WIDE reheat
+  // work (batch + preview) - the per-item route got its axis in v1.123; the
+  // batch and relocation preview enumerate the whole library and needed the
+  // same decision in a form that survives past the 202 response.
+  mediaVisiblePredicate,
   updateDatabase,
   loadDatabase,
   scanDirectories,

@@ -80,6 +80,71 @@
 
 ## Shipped
 
+### v1.127.0 - close the bulk-route RBAC bypass + schema rollback floor (2026-08-15)
+
+Origin: an external static review (round 2, comparing the v1.122 and v1.126
+snapshots) that we verified against the tree before acting on. Two of its
+findings were real and confirmed mechanically in-session; this wave closes
+both, plus the process gap that let them through.
+
+- **Bulk-route visibility (HIGH, verified).** `POST
+  /api/videos/attribute-channel-bulk` gated the library-EDIT capability
+  (v1.81) but never VISIBILITY: its selector swept every item under the target
+  root, so a member with edit capability but a path/folder/allowlist
+  restriction could preview counts for, rewrite attribution on, and physically
+  RELOCATE media hidden from them. Same class in the library-wide yt-dlp
+  reheat (`/api/ytdlp/repull-metadata` + its preview), whose per-item sibling
+  got a visibility axis in v1.123 while the batch and preview did not. Both now
+  filter their worklist AND their reported counts through the requester's one
+  canonical visibility decision (`mediaVisiblePredicate`, the full descriptor -
+  never the narrower shape that let the v1.126 bug through). An admin is
+  unaffected; a restricted member's hidden items are structurally invisible to
+  these routes.
+- **The forcing net's own blind spot.** The route-write-classification net
+  that is supposed to prevent exactly this class had classified both routes
+  `n/a` - its exemption list WAS the hole. Rebuilt: the fixed routes are
+  `enforced` and regression-pinned, and every remaining `n/a` now costs a
+  reviewable written justification (a bare label is rejected). A shipped
+  residual is disclosed: the net checks the classification LABEL, not the
+  handler source (a sound scan is undecidable) - tracked as tech-debt #151.
+- **Schema rollback floor (HIGH, verified with a live repro).** v1.126 added
+  the `folderDisplayNames` namespace at an unchanged schema version 17, which
+  silently broke downgrading: a <=v1.125 build boots and reads such a database
+  but then FAILS every durable write. A repro built from the released v1.122.0
+  adapter confirmed it. Released builds can't be repaired retroactively, so per
+  Dean's call the fix is forward-only: schema bumped 17->18 (a marker), the
+  adapter now REFUSES at boot any database newer than it understands, and the
+  rollback floor (databases touched by >=v1.126 are not writable by <=v1.125)
+  is documented in RELEASING.md. Any new persisted namespace must bump the
+  version in the same commit from now on.
+- **Secret debt closed.** The v1.123 tracked-`session-secret` finding's
+  operational half is done: Dean rotated the deployed instance and re-logged-in
+  (confirmed 2026-08-15). Tracker row 77 closed; the only residual is the old
+  bytes in git history (repo private) - reopen on any repo-visibility change.
+
+Gate: FULL gate (file relocation = data-loss class, never slim). The
+adversarial seat was briefed to DESTROY hidden media and ran the downgrade
+repro itself; it APPROVED round 1 (3 SUGGESTIONs). The QA seat REQUESTED
+CHANGES on two WARNINGs - both "a task deviated from the wave's own exec plan
+without disclosing it" (the reheat batch omitted a plan-specified executor
+re-check; the net dropped a plan-specified mechanical handler scan). Neither
+was a security hole - the batch re-check is tautological (a mid-batch hide
+re-keys the item's path-derived id and dead-ends on `item-gone`; a frozen
+predicate can't catch restriction drift regardless), and the scan is
+undecidable - so both were resolved by verified disclosure (plan + tracker
+#151), and both seats APPROVED the fix round. Dual-Node 6908/6908 on v22.23.1
++ v24.14.0. Process note for the record: round 1 ran both seats against one
+working tree and their mutation churn collided - the "one tree, one seat" norm;
+the delta round was clean.
+
+**DEVICE PASS PENDING (Dean):** this wave is capability-tightening and
+schema-hardening - nothing changes for an unrestricted account, so normal smoke
+is enough. If you want to confirm the fix: as a restricted (kid-mode) member
+with library-edit, the bulk "attribute channel" and library reheat must act
+only on visible folders. Optional caption/PiP probe still open from the review
+(tech-debt-adjacent, not this wave): play a captioned video, enter PiP - are
+captions visible in the floating window?
+
 ### v1.126.0 - per-channel-folder display names: name the unnameable playlists (2026-08-15)
 
 Dean: tapping a NESTALGIA link landed on "Playlist: nestalgiamusic", and the

@@ -51,6 +51,28 @@ on each release; following a pinned `1.4.2` never moves.
 Use [semver](https://semver.org/): bump **patch** for fixes, **minor** for
 backward-compatible features, **major** for breaking changes.
 
+## Schema versions and the rollback floor
+
+FileTube's SQLite schema is versioned by `PRAGMA user_version`
+(`SCHEMA_VERSION` in `lib/db/sqlite.js`). Two rules, both instated in
+v1.127 after an external review proved the cost of skipping them
+(v1.126 added the `folderDisplayNames` namespace at an unchanged version,
+which made every durable write FAIL after a downgrade to <=v1.125):
+
+1. **Any commit that adds or renames a persisted namespace bumps
+   `SCHEMA_VERSION` in that same commit** - even when there is no
+   structural migration to run (v18 is exactly such a marker). The stamp is
+   what makes the change visible to other builds.
+2. **A build refuses to open a database stamped newer than itself**
+   (`migrateSchema` throws at boot, naming both versions). Silent
+   forward-acceptance is how the v1.126 outage became possible.
+
+**Rollback floor: a database touched by v1.126 or later is not writable by
+v1.125 or earlier.** Released adapters can't be repaired retroactively
+(they skip, rather than refuse, any version at or above their own), so
+never downgrade an instance across that line; restore the matching backup
+instead if you truly must run an older build.
+
 ## Notes
 
 - The version tag drives the image version; `package.json` is kept in sync by
