@@ -32,10 +32,13 @@ on each release; following a pinned `1.4.2` never moves.
    ```bash
    git checkout main && git pull
    ```
-2. Bump the version in `package.json` to match the release, commit it:
+2. Bump the version in `package.json` to match the release, commit it
+   (stage EXPLICIT paths - never `-a`/`-A`; blind staging once swept scratch
+   files into a release commit, and the repo's pre-commit hook blocks it):
    ```bash
    npm version 1.4.0 --no-git-tag-version
-   git commit -am "Release v1.4.0"
+   git add package.json package-lock.json
+   git commit -m "Release v1.4.0"
    git push
    ```
 3. Tag and push the tag (this triggers the versioned image build):
