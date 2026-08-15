@@ -80,6 +80,58 @@
 
 ## Shipped
 
+### v1.128.0 - restricted-account metadata isolation sweep (2026-08-15)
+
+Wave B of the external-review-round-2 response. A restricted/kid account never
+received protected media BYTES (v1.80/v1.81 gated those), but a machine-derived
+census of every read surface found that several still leaked hidden TITLES,
+folder names, absolute server PATHS, and meaningful counts. This wave closes
+that class.
+
+- **The census (machine-derived).** Four parallel read-only agents audited
+  every GET route across server.js + the podcasts and yt-dlp modules (~85
+  surfaces), reporting per route whether a restricted member's response exposed
+  hidden data. Result: 11 leaking surfaces, 3 minor residuals deferred with
+  disclosure. The census is committed as the wave's worklist.
+- **The 11 fixes.** `/api/config`, `/api/books/config`, `/api/music/config`,
+  and `/api/books/folders` (the sidebar-nav surfaces); `/api/scan-status`
+  (counts + pending-transcode titles); `/api/duplicates` + its CSV;
+  `/api/attribution-targets`; the shared playback-queue reader and its insert
+  route; and the two yt-dlp "file-under-Podcasts" external-show surfaces. Each
+  now filters through the one canonical visibility decision.
+- **Byte-identical for everyone else.** Filtering only engages for a member who
+  actually carries a restriction - an admin and a normal unrestricted member
+  get the exact pre-Wave-B payload, so no folder ever vanishes from a regular
+  user's sidebar. The config/report surfaces are FILTERED (not admin-gated)
+  precisely because members need them for navigation.
+- **An un-rottable net.** A new read-surface completeness test classifies all
+  84 GET routes and fails if a future route ships unclassified - the same
+  forcing-net discipline the write side has, so this census can't silently rot
+  the way past sweeps did.
+
+Deferred with tracker rows (disclosed, not silent): a podcasts show/episode
+count-oracle and poll-status count-oracle (#152), the general podcasts root
+path (#152), the shared yt-dlp registry job-log titles (#150 class), and the
+personal-write existence-oracle tail (#153).
+
+Gate: FULL gate (access-control - the repo's most-repeated CRITICAL class),
+seats run in ISOLATED worktrees this time (the v1.127 "one tree, one seat"
+scar). No CRITICALs; the adversarial seat confirmed by repro that none of the
+11 fixes leak under folder-kind, path-kind, allowlist, or partial-visibility
+attacks. One fix round closed both seats' WARNINGs: a byte-identity regression
+where a genuinely-empty external podcast show vanished for admins (the drop was
+gated on predicate-presence instead of raw-vs-visible counts), and a
+presence-not-binding gap where 2 of the queue's 3 visibility drops were
+untested. Both seats APPROVED after the fix round. Dual-Node 6923/6923 on
+v22.23.1 + v24.14.0.
+
+**DEVICE PASS PENDING (Dean):** as a kid-mode account, confirm nothing hidden
+appears in the sidebar folders, the stats/duplicates report, the queue, the
+books/music tabs, or the podcasts list - including NAMES in dropdowns and
+chips. As an ADMIN, confirm the settings page, duplicates report, and
+attribution dialog are still fully populated (an empty folder or empty
+subscribed podcast must still show).
+
 ### v1.127.0 - close the bulk-route RBAC bypass + schema rollback floor (2026-08-15)
 
 Origin: an external static review (round 2, comparing the v1.122 and v1.126

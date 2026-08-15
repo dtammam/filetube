@@ -1,8 +1,12 @@
 # Wave B (v1.128): restricted-account metadata isolation sweep
 
-Status: PLANNED 2026-08-15 (Dean chose "fix it, own wave" over tech-debt).
-Runs AFTER Wave A ships. Authored by the Fable session that verified the
-spot-checked claims below; step S1 machine-derives the full surface list.
+Status: SHIPPED v1.128.0 (2026-08-15; see ROADMAP.md). FULL gate in isolated
+worktrees; no CRITICALs; both seats APPROVED after one fix round (a byte-
+identity regression on empty external podcast shows + a presence-not-binding
+gap on 2 of the 3 queue drops). Dual-Node 6923/6923. 11 census leaks fixed
+(L1-L11); residuals tracked: #150 (registry job-logs), #152 (podcasts
+count-oracles + root path), #153 (personal-write existence-oracle tail).
+Authored + executed by the Fable session; census machine-derived by 4 agents.
 
 Problem: restricted accounts (path/folder/show restrictions, kid allowlist
 mode) never receive protected BYTES, but several read surfaces still leak
@@ -99,3 +103,55 @@ row S1's census missed. Mutation-test at least one filter per surface family.
   from hidden folders, INCLUDING names in dropdowns and folder chips.
 - Admin account: settings page, duplicates report, attribution dialog all
   still fully populated.
+
+## Census (S1 - machine-derived 2026-08-15, 4 parallel read-only agents over
+## every GET route in server.js + lib/podcasts + lib/ytdlp, ~85 surfaces)
+
+Method: each agent read the handler source and reported, per route, whether a
+restricted member's RESPONSE leaks hidden titles / folder names / absolute
+paths / counts. Verdicts corroborated where families overlapped (shapedQueue
+seen by 2 agents, same LEAK verdict).
+
+### LEAK - fixed in this wave (title / path / folder-name / meaningful count)
+
+| # | Surface | What leaks | Fix |
+| - | ------- | ---------- | --- |
+| L1 | GET /api/config (server.js:6378) | all root abs paths + folderSettings + folderDisplayNames (folder/channel names), incl. hidden | filter to visible roots/folders for a RESTRICTED member; admin + unrestricted member byte-identical |
+| L2 | GET /api/books/config (6889) | every book ROOT abs path | filter to roots with >=1 visible book |
+| L3 | GET /api/music/config (7873) | every music ROOT abs path | filter to roots with >=1 visible track |
+| L4 | GET /api/books/folders (7126) | abs dir + folderName + count per book folder, no bookVisibleTo | filter by bookVisibleTo BEFORE aggregating (the music/albums pattern) |
+| L5 | GET /api/scan-status (7503) | fileCount (full db.metadata), folderCount, transcodeNames (pending item TITLES) | scope counts + titles to the visible set for a restricted member |
+| L6 | GET /api/duplicates (15089) | abs filePaths + counts over raw db.metadata | pass visibleMetadata (the /api/stats pattern) not raw db.metadata |
+| L7 | GET /api/duplicates.csv (15102) | abs filePaths (CSV) | same visibleMetadata filter |
+| L8 | GET /api/attribution-targets (15327) | channelName / folderName of every item (library-sourced arm) | filter library-sourced targets by mediaVisibleTo |
+| L9 | GET /api/queue + shapedQueue (9360/9432) | RAW db.metadata record (title, folderName, filePath) for media; ep/track titles; INSERT is existence-only | thread requester visibility, silent-drop hidden entries; INSERT visibility-checks (S3) |
+| L10 | GET /api/podcasts/shows (lib/podcasts:910) | external (yt-dlp) show names + counts + thumb ids appended UNFILTERED | filter externalShows by the underlying items' mediaVisibleTo |
+| L11 | GET /api/podcasts/shows/:id/episodes (1048) | external `yt:` branch lists ALL items (title + watchHref), no visibility | filter external episodes by mediaVisibleTo |
+
+### TRACK - deliberately deferred (minor: aggregate count only, or shared
+### registry by design, or a general root path not tied to a hidden item)
+
+| Surface | Why deferred | Where |
+| ------- | ------------ | ----- |
+| GET /api/podcasts/health (754) | TOTAL show+episode counts only, no titles/paths - a coarse count-oracle | new tracker row |
+| GET /api/podcasts/settings (1313) | the general podcasts ROOT abs path (not per-hidden-item), same class as the config-trio root paths but with no member consumer needing it | new tracker row |
+| GET /api/subscriptions/status,history,failures (lib/ytdlp) | channel REGISTRY job-logs; can surface a currently/failed-downloading item TITLE. Registry is shared by design (same class as tech-debt #150 fan-outs); gating per-visibility is a different model | fold into #150 |
+
+### SAFE - verified filtered / own-state / no content in body (spot list)
+
+/api/videos, /api/home, /api/channels, /api/videos/:id, /api/feed-hidden,
+/api/liked, /api/history, /api/trash, /api/stats (visibleMetadata),
+/api/notifications(+badge), /api/handoff, all byte-serve routes
+(/video,/track,/thumbnail,/bookcover,/albumart,/episode,/podcastart - each
+404s a restricted id), /api/books, /api/books/:id, /api/music,
+/api/music/albums, /api/music/artists (all filter BEFORE aggregating),
+podcasts subscriptions/episodes/episodes/:id/liked/pins, and every
+own-per-user-state route (progress/resume/search-history/*-liked ids). Admin
+surfaces (backup, users, restrictions) are requireAdmin-gated.
+
+### S4 personal-write oracle tail
+The POST like/progress/played/queue-insert routes the write net calls
+`personal` are existence-oracles-at-worst (no title/path in the response).
+Upgrade the queue INSERT (L9/S3) to a real visibility check; the rest get the
+predicate where it is already loaded, else a tracker row - the net's
+"existence oracle at worst" comment must end this wave TRUE or deleted.

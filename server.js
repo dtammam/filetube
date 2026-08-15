@@ -952,6 +952,52 @@ function podcastEpisodeVisibleTo(req, ep) {
 function bookVisibleTo(req, book) {
   return !!book && !visibility.isBlocked(userRestrictionIndex(req), { kind: 'book', filePath: book.filePath, folderName: book.folderName });
 }
+// v1.128 Wave B: does the requester carry ANY restriction? Admins get an empty
+// index (userRestrictionIndex returns buildRestrictionIndex([]) for role
+// 'admin'), and an unrestricted member gets one too - for BOTH, every
+// visibility list/config surface must stay BYTE-IDENTICAL to its pre-Wave-B
+// output (an empty folder must not vanish from an unrestricted user's sidebar).
+// So the metadata-filtering config surfaces gate on THIS: filter only when the
+// requester actually has a restriction (allowlist mode, or any listed unit).
+// Same emptiness test isBlocked would short-circuit on, made explicit so a
+// caller can skip the whole filter pass.
+function requesterHasRestrictions(req) {
+  const idx = userRestrictionIndex(req);
+  return idx.mode === 'allowlist'
+    || idx.paths.length > 0
+    || idx.folders.size > 0
+    || idx.shows.size > 0
+    || idx.libraries.size > 0;
+}
+// v1.128 Wave B (L2/L3): filter a configured-ROOTS list to the roots a
+// restricted member can actually see (holds >=1 item that passes `visiblePred`).
+// Admin + unrestricted member get the list back UNCHANGED (byte-identical),
+// including empty roots - the visibility filter never prunes a folder from a
+// user who has no restriction to enforce. `items` is the store's item/track
+// list; each item is matched to its root by path prefix.
+function visibleConfigRoots(req, roots, items, visiblePred) {
+  const list = Array.isArray(roots) ? roots : [];
+  if (!requesterHasRestrictions(req)) return list;
+  const visibleRoots = new Set();
+  for (const item of items) {
+    if (!item || typeof item.filePath !== 'string') continue;
+    if (!visiblePred(req, item)) continue;
+    const root = matchRootFolder(item.filePath, list);
+    if (root) visibleRoots.add(root);
+  }
+  return list.filter((r) => visibleRoots.has(r));
+}
+// v1.128 Wave B: return the db.metadata MAP filtered to items the requester
+// may see - the SAME transform /api/stats builds inline (id -> item), extracted
+// so the duplicates report and scan-status share it. Admin + unrestricted
+// member get the SAME map object back (byte-identical downstream output).
+function visibleMetadataFor(req, metadata) {
+  const map = metadata || {};
+  if (!requesterHasRestrictions(req)) return map;
+  const out = {};
+  for (const id of Object.keys(map)) if (mediaVisibleTo(req, map[id])) out[id] = map[id];
+  return out;
+}
 // v1.123 T3 (security): the trash MUTATION routes (restore/purge) must share the
 // trash LIST's visibility posture - a restricted member must not restore or
 // PERMANENTLY purge a trashed item hidden from them. Builds the SAME media
@@ -6415,7 +6461,43 @@ app.get('/api/config', (req, res) => {
   // Playlists sheet, the folder list, resolveChannelName's fallback) reads it
   // client-side from ONE fetch. Response-only here; writes go through
   // POST /api/folders/display-name below.
-  res.json({ folders, folderSettings, folderDisplayNames: db.folderDisplayNames || {}, syntheticFolders: synthRoots });
+  let outFolders = folders;
+  let outFolderSettings = folderSettings;
+  let outDisplayNames = db.folderDisplayNames || {};
+  // v1.128 Wave B (L1): this response drives the MEMBER sidebar nav, so it
+  // can't be admin-gated - but for a RESTRICTED member it leaked every root
+  // abs path + folderSettings + folder/channel display name, hidden ones
+  // included. Filter to what the member can actually see: a root stays if some
+  // visible video item lives under it; a display name stays if the member can
+  // see an item in that folder. Admin + unrestricted member short-circuit to
+  // the byte-identical payload (an empty configured folder must not vanish
+  // from their sidebar).
+  if (requesterHasRestrictions(req)) {
+    const visibleRoots = new Set();
+    const visibleFolderNames = new Set();
+    for (const item of Object.values(db.metadata || {})) {
+      if (!item || typeof item.filePath !== 'string') continue;
+      if (!mediaVisibleTo(req, item)) continue;
+      const root = matchRootFolder(item.filePath, folders);
+      if (root) visibleRoots.add(root);
+      if (typeof item.folderName === 'string' && item.folderName !== '') visibleFolderNames.add(item.folderName);
+    }
+    outFolders = folders.filter((f) => visibleRoots.has(f));
+    outFolderSettings = {};
+    for (const f of outFolders) if (folderSettings[f] !== undefined) outFolderSettings[f] = folderSettings[f];
+    outDisplayNames = {};
+    for (const name of Object.keys(db.folderDisplayNames || {})) {
+      if (visibleFolderNames.has(name)) outDisplayNames[name] = db.folderDisplayNames[name];
+    }
+  }
+  res.json({
+    folders: outFolders,
+    folderSettings: outFolderSettings,
+    folderDisplayNames: outDisplayNames,
+    // syntheticFolders is a display hint (which folders are the module download
+    // root); intersect it with what actually survived the visibility filter.
+    syntheticFolders: synthRoots.filter((r) => outFolders.includes(r)),
+  });
 });
 
 // v1.126 (Dean): manual per-folder display name - the ONLY fix possible for
@@ -6887,7 +6969,13 @@ async function scanBooks() {
 }
 
 app.get('/api/books/config', (req, res) => {
-  res.json({ folders: booksStore.readBooks(getCachedDatabase()).folders });
+  const ns = booksStore.readBooks(getCachedDatabase());
+  const folders = ns.folders || [];
+  // v1.128 Wave B (L2): common.js reads this on every page to decide whether
+  // to show the Books nav tab, so members reach it - but it leaked every book
+  // ROOT abs path. For a restricted member, return only roots holding >=1
+  // visible book; admin + unrestricted member get the byte-identical list.
+  res.json({ folders: visibleConfigRoots(req, folders, Object.values(ns.items || {}), bookVisibleTo) });
 });
 
 app.post('/api/books/config', async (req, res) => {
@@ -7128,6 +7216,10 @@ app.get('/api/books/folders', (req, res) => {
   const byDir = new Map();
   for (const item of Object.values(ns.items)) {
     if (typeof item.filePath !== 'string') continue;
+    // v1.128 Wave B (L4): filter BEFORE aggregating (the music/albums pattern)
+    // - this route emitted abs dir + folderName + count for EVERY book folder
+    // with no visibility check, so a books-restricted member saw hidden shelves.
+    if (!bookVisibleTo(req, item)) continue;
     const dir = path.dirname(item.filePath);
     const existing = byDir.get(dir);
     if (existing) existing.count += 1;
@@ -7502,7 +7594,16 @@ const TRANSCODE_LIST_CAP = 10;
 // API: Live scan/transcode status for progress feedback in the UI
 app.get('/api/scan-status', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader (was the one T2 left on loadDatabase)
-  const items = Object.values(db.metadata);
+  // v1.128 Wave B (L5): the content-derived fields (fileCount, folderCount,
+  // transcodeNames) leaked full-library counts + pending-transcode item TITLES
+  // to a restricted member. Scope the item set to what the requester may see;
+  // admin + unrestricted member get the byte-identical full view. The
+  // operational fields (scanning/processed/total/phase) are not content.
+  const visibleMap = visibleMetadataFor(req, db.metadata);
+  const items = Object.values(visibleMap);
+  const folderCount = requesterHasRestrictions(req)
+    ? visibleConfigRoots(req, db.folders || [], items, mediaVisibleTo).length
+    : (db.folders || []).length;
   // Same filter that has always produced the `transcoding` count -- this is
   // T2's generalized, codec-aware `needsTranscode`/`transcodeStatus` (a
   // codec-flagged HEVC .mp4 rides this exact filter, not a divergent one).
@@ -7521,7 +7622,7 @@ app.get('/api/scan-status', (req, res) => {
     total: scanState.total,
     phase: scanState.phase,
     fileCount: items.length,
-    folderCount: (db.folders || []).length,
+    folderCount,
     transcoding: pending.length,
     transcodeNames,
     transcodeOverflow
@@ -7871,7 +7972,12 @@ async function scanMusic() {
 }
 
 app.get('/api/music/config', (req, res) => {
-  res.json({ folders: musicStore.readMusic(getCachedDatabase()).folders });
+  const ns = musicStore.readMusic(getCachedDatabase());
+  const folders = ns.folders || [];
+  // v1.128 Wave B (L3): same as books/config - common.js reads it for the
+  // Music nav tab, so filter to roots holding >=1 visible track for a
+  // restricted member; admin + unrestricted member byte-identical.
+  res.json({ folders: visibleConfigRoots(req, folders, Object.values(ns.tracks || {}), trackVisibleTo) });
 });
 
 app.post('/api/music/config', async (req, res) => {
@@ -9357,7 +9463,14 @@ app.post('/api/push/unsubscribe', (req, res) => {
 // removeMediaState carrier's suspenders (a restore from another library,
 // or a delete racing a stale client, must never 500 the panel).
 
-function shapedQueue(db, userId) {
+// v1.128 Wave B (L9): shapedQueue now takes `req` (was userId) so it can drop
+// entries the requester cannot see. A hidden entry is SILENT-DROPPED exactly
+// like a dead/phantom id already is - hidden and dead are indistinguishable to
+// the client, which is the oracle-free posture the plan wants (a restricted
+// member with a hidden item queued before the restriction, or via a restored
+// bundle, simply never sees it echoed back with its title/path).
+function shapedQueue(db, req) {
+  const userId = req.user.id;
   const raw = userStore.getQueue(userId);
   const live = queueStore.normalize(raw);
   const podcastNs = podcastStore.readPodcasts(db);
@@ -9370,7 +9483,7 @@ function shapedQueue(db, userId) {
       // space too - a trashed/tombstoned/phantom episode disappears from
       // the panel, belt to the delQueueByEpisode carrier's suspenders.
       const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, e.mediaId) ? podcastNs.episodes[e.mediaId] : null;
-      if (ep && ep.status === 'downloaded') {
+      if (ep && ep.status === 'downloaded' && podcastEpisodeVisibleTo(req, ep)) {
         const sub = podcastNs.subscriptions.find((s) => s && s.id === ep.subId);
         entries.push({
           uid: e.uid,
@@ -9399,7 +9512,7 @@ function shapedQueue(db, userId) {
       // delQueueByTrack carrier's suspenders. (adversarial S3: the ns is
       // hoisted like the podcast one, not re-read per entry.)
       const track = ownTrack(musicNs.tracks, e.mediaId);
-      if (track) {
+      if (track && trackVisibleTo(req, track)) {
         entries.push({
           uid: e.uid,
           mediaId: e.mediaId,
@@ -9421,7 +9534,7 @@ function shapedQueue(db, userId) {
     // keys as mediaIds; they must silent-drop like any dead id, never serve
     // a garbage item from the prototype.
     const item = Object.prototype.hasOwnProperty.call(db.metadata, e.mediaId) ? db.metadata[e.mediaId] : null;
-    if (item) entries.push({ uid: e.uid, mediaId: e.mediaId, kind: 'media', item });
+    if (item && mediaVisibleTo(req, item)) entries.push({ uid: e.uid, mediaId: e.mediaId, kind: 'media', item });
   }
   // Dead-id filtering can orphan the pointer; normalize AGAIN on the
   // filtered view so the client never sees a pointer to a missing row.
@@ -9430,7 +9543,7 @@ function shapedQueue(db, userId) {
 }
 
 app.get('/api/queue', (req, res) => {
-  res.json(shapedQueue(getCachedDatabase(), req.user.id));
+  res.json(shapedQueue(getCachedDatabase(), req));
 });
 
 app.post('/api/queue/items', (req, res) => {
@@ -9443,16 +9556,22 @@ app.post('/api/queue/items', (req, res) => {
   // v1.72: 'track' joins (music in the one queue) - the row must still
   // exist in ns.tracks (the own-property ownTrack rule).
   const kind = (body.kind === 'podcast' || body.kind === 'track') ? body.kind : 'media';
+  // v1.128 Wave B (L9): each kind visibility-checks after the existence check,
+  // returning the SAME 404 as a missing id so a restricted member cannot use
+  // the insert as an existence oracle for a hidden item (and never gets it
+  // echoed back through the shaped queue).
   if (kind === 'podcast') {
     const podcastNs = podcastStore.readPodcasts(db);
     const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, mediaId) ? podcastNs.episodes[mediaId] : null;
-    if (!ep || ep.status !== 'downloaded') return res.status(404).json({ error: 'Episode not found' });
+    if (!ep || ep.status !== 'downloaded' || !podcastEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'Episode not found' });
   } else if (kind === 'track') {
-    if (!ownTrack(musicStore.readMusic(db).tracks, mediaId)) return res.status(404).json({ error: 'no such track' });
-  } else if (!Object.prototype.hasOwnProperty.call(db.metadata, mediaId)) {
+    const track = ownTrack(musicStore.readMusic(db).tracks, mediaId);
+    if (!track || !trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' });
+  } else if (!Object.prototype.hasOwnProperty.call(db.metadata, mediaId) || !mediaVisibleTo(req, db.metadata[mediaId])) {
     // hasOwnProperty (gate S5): a prototype-chain key ('__proto__',
     // 'constructor', 'toString') must 404 like any phantom, never queue an
-    // item-less entry the shaped view then serves as garbage.
+    // item-less entry the shaped view then serves as garbage. Wave B: a hidden
+    // item 404s here too, indistinguishable from a missing one.
     return res.status(404).json({ error: 'Media file not found' });
   }
   const position = body.position === 'next' ? 'next' : 'end';
@@ -9461,14 +9580,14 @@ app.post('/api/queue/items', (req, res) => {
     return res.status(400).json({ error: result.error === 'queue-full' ? `Queue is full (${queueStore.QUEUE_CAP} items)` : 'Could not add to queue' });
   }
   userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ added: result.added, queue: shapedQueue(db, req.user.id) });
+  res.json({ added: result.added, queue: shapedQueue(db, req) });
 });
 
 app.delete('/api/queue/items/:uid', (req, res) => {
   const result = queueStore.reduceRemove(userStore.getQueue(req.user.id), req.params.uid);
   if (!result.changed) return res.status(404).json({ error: 'Queue entry not found' });
   userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ queue: shapedQueue(getCachedDatabase(), req.user.id) });
+  res.json({ queue: shapedQueue(getCachedDatabase(), req) });
 });
 
 // Strict uid bijection (the reducer refuses drops/inventions): a stale
@@ -9483,12 +9602,12 @@ app.post('/api/queue/reorder', (req, res) => {
   // client but still lives in the raw queue (that is what buys restore
   // fidelity), and without this every reorder after a trash 409s forever.
   const rawQueue = userStore.getQueue(req.user.id);
-  const visibleUids = shapedQueue(getCachedDatabase(), req.user.id).entries.map((e) => e.uid);
+  const visibleUids = shapedQueue(getCachedDatabase(), req).entries.map((e) => e.uid);
   const fullOrder = queueStore.expandVisibleOrder(rawQueue, visibleUids, orderedUids);
   const result = queueStore.reduceReorder(rawQueue, fullOrder);
   if (!result.changed) return res.status(409).json({ error: 'Queue changed - refresh and retry' });
   userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ queue: shapedQueue(getCachedDatabase(), req.user.id) });
+  res.json({ queue: shapedQueue(getCachedDatabase(), req) });
 });
 
 // The now-playing pointer. body.uid = an entry uid, or null to restart
@@ -9501,7 +9620,7 @@ app.post('/api/queue/pointer', (req, res) => {
   const result = queueStore.reduceSetPointer(userStore.getQueue(req.user.id), uid);
   if (!result.changed) return res.status(404).json({ error: 'Queue entry not found' });
   userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ queue: shapedQueue(getCachedDatabase(), req.user.id) });
+  res.json({ queue: shapedQueue(getCachedDatabase(), req) });
 });
 
 // Clear = the whole queue dies (icon disappears). Ephemeral by design -
@@ -15088,7 +15207,11 @@ app.get('/api/stats', (req, res) => {
 // anywhere on this surface (Dean's no-data-loss norm); he cleans up by hand.
 app.get('/api/duplicates', (req, res) => {
   const db = getCachedDatabase(); // pure read on a request path (v1.30 A3)
-  res.json(stats.computeDuplicateReport(db.metadata, { extractVideoId: extractYtdlpVideoId }));
+  // v1.128 Wave B (L6): this report is rendered on the member-reachable stats
+  // page, so it can't be admin-gated - but it emitted abs filePaths + counts
+  // over RAW db.metadata. Scope to the requester's visible items (the /api/stats
+  // posture); admin + unrestricted member see the byte-identical full report.
+  res.json(stats.computeDuplicateReport(visibleMetadataFor(req, db.metadata), { extractVideoId: extractYtdlpVideoId }));
 });
 
 // The same report as a downloadable CSV (Dean: "exportable output"). Static
@@ -15101,7 +15224,9 @@ app.get('/api/duplicates', (req, res) => {
 // grow an order of magnitude past that.
 app.get('/api/duplicates.csv', (req, res) => {
   const db = getCachedDatabase();
-  const csv = stats.duplicateReportToCsv(stats.computeDuplicateReport(db.metadata, { extractVideoId: extractYtdlpVideoId }));
+  // v1.128 Wave B (L7): same visibility scope as /api/duplicates above - the
+  // CSV file_path column emitted abs paths of hidden items.
+  const csv = stats.duplicateReportToCsv(stats.computeDuplicateReport(visibleMetadataFor(req, db.metadata), { extractVideoId: extractYtdlpVideoId }));
   res.set('Content-Type', 'text/csv; charset=utf-8');
   res.set('Content-Disposition', 'attachment; filename="filetube-duplicates.csv"');
   res.send(csv);
@@ -15352,6 +15477,13 @@ app.get('/api/attribution-targets', (req, res) => {
   }
   for (const item of Object.values(db.metadata || {})) {
     if (!item || typeof item.channelUrl !== 'string' || item.channelUrl === '') continue;
+    // v1.128 Wave B (L8): the library-sourced arm emitted channelName /
+    // folderName for EVERY item, so a restricted member (the attribute-channel
+    // dialog is a library-edit feature) learned the channel/folder names of
+    // content hidden from them. Skip items they cannot see; the
+    // subscription-sourced arm above is the shared channel REGISTRY (by design,
+    // the tech-debt #150 class) and is left as-is.
+    if (!mediaVisibleTo(req, item)) continue;
     addTarget({
       channelUrl: item.channelUrl,
       channelName: (typeof item.channelName === 'string' && item.channelName !== '') ? item.channelName : (item.folderName || item.channelUrl),
@@ -16472,25 +16604,42 @@ function ytdlpPodcastItemDateMs(item) {
   if (item && typeof item.addedAt === 'number' && Number.isFinite(item.addedAt)) return item.addedAt;
   return 0;
 }
-function ytdlpPodcastItemsUnder(db, dir) {
+function ytdlpPodcastItemsUnder(db, dir, itemVisible) {
   const prefix = dir.endsWith(path.sep) ? dir : dir + path.sep;
   const items = [];
   for (const id of Object.keys(db.metadata || {})) {
     if (!Object.prototype.hasOwnProperty.call(db.metadata, id)) continue;
     const it = db.metadata[id];
-    if (it && typeof it.filePath === 'string' && it.filePath.startsWith(prefix)) items.push(it);
+    if (it && typeof it.filePath === 'string' && it.filePath.startsWith(prefix)) {
+      // v1.128 Wave B (L10/L11): these are yt-dlp MEDIA items filed under
+      // Podcasts. `itemVisible` is an optional (item)->boolean predicate
+      // (mediaVisibleTo bound to the requester). The EPISODES path passes it to
+      // filter per-episode; the SHOWS path calls this WITHOUT it (it needs the
+      // raw count to decide the all-hidden drop) and filters afterward. Absent
+      // = no filtering (episodes for admin/unrestricted, and the health count).
+      if (typeof itemVisible === 'function' && !itemVisible(it)) continue;
+      items.push(it);
+    }
   }
   items.sort((a, b) => ytdlpPodcastItemDateMs(b) - ytdlpPodcastItemDateMs(a));
   return items;
 }
-function listYtdlpPodcastShows(db) {
+function listYtdlpPodcastShows(db, itemVisible) {
   const cfg = ytdlp.parseYtdlpConfig();
   if (!ytdlp.isEnabled(cfg)) return [];
   const subs = (db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [])
     .filter((s) => s && s.libraryPlace === 'podcasts');
   return subs.map((sub) => {
-    let items = [];
-    try { items = ytdlpPodcastItemsUnder(db, ytdlpArgs.resolveChannelDir(cfg, sub)); } catch (_) { items = []; }
+    // v1.128 Wave B (L10, gate WARNING-1 fix): decide the show-level drop from
+    // RAW-vs-VISIBLE counts, NOT from predicate-presence. `mediaItemVisible`
+    // hands a predicate to EVERY requester (admin included - it just returns
+    // true for all their items), so gating the drop on `typeof itemVisible ===
+    // 'function'` wrongly dropped a genuinely-EMPTY external show (subscribed,
+    // nothing downloaded yet) for admins too. Capture the unfiltered count so
+    // the drop below fires ONLY for an all-HIDDEN show.
+    let rawItems = [];
+    try { rawItems = ytdlpPodcastItemsUnder(db, ytdlpArgs.resolveChannelDir(cfg, sub)); } catch (_) { rawItems = []; }
+    const items = typeof itemVisible === 'function' ? rawItems.filter(itemVisible) : rawItems;
     return {
       id: `yt:${sub.id}`,
       name: sub.name || sub.channelUrl,
@@ -16507,16 +16656,24 @@ function listYtdlpPodcastShows(db) {
       artUrl: items.length ? `/thumbnail/${items[0].id}` : null,
       lastStatus: typeof sub.lastStatus === 'string' ? sub.lastStatus : '',
       secretMissing: false,
+      __rawCount: rawItems.length, // internal: drop decision only, stripped below
     };
-  });
+  })
+    // v1.128 Wave B (L10): drop a show ONLY when it HAD items but the requester
+    // can see none (an all-hidden show, whose name + count would otherwise
+    // leak). A genuinely-empty show (rawCount 0) is kept for EVERYONE, so admin
+    // + unrestricted stay byte-identical to pre-Wave-B (for them visible==raw,
+    // so this only ever keeps). An all-hidden show never occurs for an admin.
+    .filter((show) => show.__rawCount === 0 || show.episodeCount > 0)
+    .map((show) => { const { __rawCount, ...rest } = show; return rest; });
 }
-function listYtdlpPodcastEpisodes(db, showId, userId) {
-  const shows = listYtdlpPodcastShows(db);
+function listYtdlpPodcastEpisodes(db, showId, userId, itemVisible) {
+  const shows = listYtdlpPodcastShows(db, itemVisible);
   const show = shows.find((s) => s.id === showId);
   if (!show) return null;
   const sub = db.ytdlp.subscriptions.find((s) => s && `yt:${s.id}` === showId);
   let items = [];
-  try { items = ytdlpPodcastItemsUnder(db, ytdlpArgs.resolveChannelDir(ytdlp.parseYtdlpConfig(), sub)); } catch (_) { items = []; }
+  try { items = ytdlpPodcastItemsUnder(db, ytdlpArgs.resolveChannelDir(ytdlp.parseYtdlpConfig(), sub), itemVisible); } catch (_) { items = []; }
   const progress = userStore.getProgress(userId);
   const watched = userStore.getWatchedTimes(userId);
   return {
@@ -16565,6 +16722,11 @@ podcasts.registerRoutes(app, {
   listExternalEpisodes: listYtdlpPodcastEpisodes,
   recordPresenceFromPing, // v1.78: the ONE presence writer, shared by all three kinds
   episodeVisibleTo: podcastEpisodeVisibleTo, // v1.80 RBAC: per-user episode/show visibility
+  // v1.128 Wave B (L10/L11): external (yt-dlp) podcast shows/episodes are MEDIA
+  // items, so their per-requester visibility is the MEDIA decision, not the
+  // podcast one - the module binds this to req and passes it into
+  // listExternalShows/Episodes so a restricted member sees no hidden yt-dlp show.
+  mediaVisibleTo,
   requireManageSubscriptions, // v1.80 RBAC gate: the podcast registry parallels the ytdlp one
   requireModifyLibrary, // v1.81 write-RBAC gate: episode delete is a CONTENT delete, not registry mgmt
 });
