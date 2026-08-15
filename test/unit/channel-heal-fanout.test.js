@@ -62,3 +62,29 @@ test('heal fanout: a no-op target (no writes) never persists; a bad/absent targe
   assert.equal(await recordLocalChannelHealFanout(h.deps, { folderKey: FOLDER, identity: {} }), 0, 'no channelId -> 0');
   assert.equal(await recordLocalChannelHealFanout(h.deps, null), 0);
 });
+
+// ---- v1.126: the heal ALSO writes the per-folder display map ---------------
+// A folder healing to one canonical name is exactly the signal the folder-label
+// surfaces (the ?folder= header, the channels bar, pins' fallback) need - the
+// fanout writes db.folderDisplayNames[folderName] = canonical name, OVERWRITE
+// posture (a re-run with a fresher name wins; never gated on absence).
+
+test('v1.126: a successful heal writes folderDisplayNames[folderName] (and OVERWRITES a stale entry)', async () => {
+  const h = makeDeps({
+    b1: frag({ folderName: 'nestalgiamusic' }),
+    good: { type: 'audio', filePath: FOLDER + '/g.mp3', folderName: 'nestalgiamusic', channelName: 'NESTALGIA', channelId: UC, channelUrl: CANON_URL, channelHandleUrl: HANDLE },
+  });
+  h.db.folderDisplayNames = { nestalgiamusic: 'Stale Old Name' };
+  const n = await recordLocalChannelHealFanout(h.deps, target());
+  assert.equal(n, 1, 'the bad sibling healed');
+  assert.equal(h.db.folderDisplayNames.nestalgiamusic, 'NESTALGIA',
+    'the display map takes the canonical name, overwriting the stale entry');
+});
+
+test('v1.126: a no-op heal (nothing written) never touches the display map', async () => {
+  const h = makeDeps({
+    good: { type: 'audio', filePath: FOLDER + '/g.mp3', folderName: 'nestalgiamusic', channelName: 'NESTALGIA', channelId: UC, channelUrl: CANON_URL, channelHandleUrl: HANDLE },
+  });
+  await recordLocalChannelHealFanout(h.deps, target());
+  assert.equal(h.db.folderDisplayNames, undefined, 'no heal -> no map write, no key created');
+});

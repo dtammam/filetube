@@ -787,10 +787,33 @@ function displayChannelName(name) {
   return typeof name === 'string' && name.charAt(0) === '@' ? name.slice(1) : name;
 }
 
+// v1.126: the per-channel-folder display map ({ [folderName]: displayName }),
+// served on GET /api/config beside folderSettings and cached ONCE at shell
+// level so every resolveChannelName caller (cards, the related rail, bell/
+// queue rows, headers) gets the fallback without a signature change. The
+// setter is called by whichever controller fetches /api/config (main.js,
+// watch.js); the cache survives SPA navigation because common.js is
+// shell-owned. Written by the "Refresh channel names" reconcile and the
+// manual rename route - the ONLY name source for permanently-unhealable
+// folders (no channelId, no URL anywhere in their items).
+let folderDisplayNamesCache = {};
+function setFolderDisplayNames(map) {
+  folderDisplayNamesCache = (map && typeof map === 'object' && !Array.isArray(map)) ? map : {};
+}
+function folderDisplayName(folderName) {
+  const mapped = folderDisplayNamesCache[folderName];
+  return (typeof mapped === 'string' && mapped.trim() !== '') ? mapped.trim() : null;
+}
+
 function resolveChannelName(item, folderSettings) {
   if (item && typeof item.channelName === 'string' && item.channelName.trim() !== '') {
     return displayChannelName(item.channelName.trim());
   }
+  // v1.126: the folder display map beats the raw folderName - this is what
+  // heals the related rail (and every other item surface) for items whose
+  // channelName can never self-heal.
+  const dirMapped = item && typeof item.folderName === 'string' ? folderDisplayName(item.folderName) : null;
+  if (dirMapped) return displayChannelName(dirMapped);
   const settings = folderSettings || {};
   const mapped = settings[item.rootFolder] && settings[item.rootFolder].name;
   return mapped || item.artist || item.folderName || 'Library';
@@ -8216,7 +8239,10 @@ function derivePinnedPlaylistEntries(pins) {
     .filter((p) => p && typeof p.channelDir === 'string' && p.channelDir !== '')
     .map((p) => {
       const trimmedLabel = displayChannelName(typeof p.label === 'string' ? p.label.trim() : ''); // v1.114 A2: a pin's snapshot label may be an "@handle" -> show the name
-      const base = p.channelDir.split(/[\\/]/).pop() || p.channelDir;
+      const rawBase = p.channelDir.split(/[\\/]/).pop() || p.channelDir;
+      // v1.126: a label-less pin's fallback consults the folder display map
+      // before the raw dir basename (the unhealable-folder rename lane).
+      const base = folderDisplayName(rawBase) || rawBase;
       const avatarUrl = typeof p.channelAvatarUrl === 'string' && p.channelAvatarUrl.trim() !== '' ? p.channelAvatarUrl.trim() : null;
       return {
         channelDir: p.channelDir,
@@ -11837,6 +11863,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.32 (gate fix): the chip's one-line breaker summary.
     formatBreakerChipText,
     getStarRating, getCommentCount, resolveChannelName, displayChannelName, resolveRootHeaderLabel, clampPositionState,
+    // v1.126: the folder display-name map cache (setter + reader).
+    setFolderDisplayNames, folderDisplayName,
     resolveTheme, THEME_REGISTRY, activeNavItem,
     // v1.82: the account menu injector + avatar builder + shared sign-out +
     // theme-glyph sync.

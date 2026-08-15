@@ -165,6 +165,9 @@ module.exports = [
         resolveChannelName: 'readonly',
         // v1.122: the ?root= header's single-channel folder label (common.js).
         resolveRootHeaderLabel: 'readonly',
+        // v1.126: the per-folder display map cache (common.js) - setter + reader.
+        setFolderDisplayNames: 'readonly',
+        folderDisplayName: 'readonly',
         resolveTheme: 'readonly',
         // v1.48 item 2: real day-of view counts (wraps getMockViews as fallback).
         resolveViewCountLabel: 'readonly',

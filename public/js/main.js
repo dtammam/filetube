@@ -1179,7 +1179,13 @@ const PreviewCards = (function () {
     } else if (likedFilter) {
       videosHeader.textContent = 'Playlist: Liked';
     } else if (folderFilter) {
-      videosHeader.textContent = `Playlist: ${folderFilter}`;
+      // v1.126: the display map beats the raw folder name on FIRST paint - the
+      // v1.122 heal only covered `?root=` views, but the surfaces users tap
+      // (a card's channel link, the channels bar) link to `?folder=`, so this
+      // header rendered "Playlist: nestalgiamusic" style raw names (Dean's
+      // report). The post-fetch retitle below refines with page-0 unanimity.
+      const mappedFolder = (typeof folderDisplayName === 'function') ? folderDisplayName(folderFilter) : null;
+      videosHeader.textContent = `Playlist: ${mappedFolder || folderFilter}`;
     } else if (subsFilter) {
       videosHeader.textContent = 'From your subscriptions'; // v1.79.1 See-all target
     }
@@ -1271,6 +1277,9 @@ const PreviewCards = (function () {
         const configData = await configRes.json();
         const folders = configData.folders || [];
         folderSettings = configData.folderSettings || {};
+        // v1.126: seed the shell-level folder display map (common.js cache) so
+        // resolveChannelName + every folder-label surface see it from one fetch.
+        if (typeof setFolderDisplayNames === 'function') setFolderDisplayNames(configData.folderDisplayNames);
         syntheticFolderPaths = Array.isArray(configData.syntheticFolders) ? configData.syntheticFolders : [];
 
         if (folders.length === 0) {
@@ -1656,6 +1665,53 @@ const PreviewCards = (function () {
         const rootBase = rootFilter.split(/[\\/]/).pop() || rootFilter;
         const rootLabel = (folderSettings[rootFilter] && folderSettings[rootFilter].name) || rootBase;
         videosHeader.textContent = resolveRootHeaderLabel(currentItems, folderSettings, rootLabel);
+      }
+      // v1.126: the SAME heal for `?folder=` views - the entry path the v1.122
+      // sweep missed (cards' channel links + the channels bar navigate here).
+      // Order: the display map beats page-0 sampling (a mapping is an explicit
+      // decision; unanimity is the automatic fallback for unmapped folders),
+      // and the raw folder name is last. Keeps the familiar "Playlist:" frame.
+      if (folderFilter && videosHeader) {
+        const mapped = (typeof folderDisplayName === 'function') ? folderDisplayName(folderFilter) : null;
+        const label = mapped || resolveRootHeaderLabel(currentItems, folderSettings, folderFilter);
+        videosHeader.textContent = `Playlist: ${label}`;
+      }
+      // v1.126: the rename affordance - a small pencil AFTER the header (a
+      // SIBLING, never inside it: textContent writes above would wipe an inner
+      // node - the v1.122 count-badge lesson). Folder views only, library-write
+      // members only. Re-rendered idempotently on every page-0 load.
+      const staleRenameBtn = document.getElementById('folder-rename-btn');
+      if (staleRenameBtn && staleRenameBtn.parentNode) staleRenameBtn.parentNode.removeChild(staleRenameBtn);
+      if (folderFilter && videosHeader && cardCornerCaps && cardCornerCaps.canModifyLibrary === true) {
+        const btn = document.createElement('button');
+        btn.id = 'folder-rename-btn';
+        btn.type = 'button';
+        btn.className = 'folder-rename-btn';
+        btn.title = 'Rename this playlist';
+        btn.setAttribute('aria-label', 'Rename this playlist');
+        btn.textContent = '✎'; // pencil glyph
+        btn.addEventListener('click', async () => {
+          const current = (typeof folderDisplayName === 'function' && folderDisplayName(folderFilter)) || '';
+          const entered = window.prompt('Display name for this playlist (empty to reset):', current);
+          if (entered === null) return; // cancelled
+          try {
+            const res = await fetch('/api/folders/display-name', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ folderName: folderFilter, name: entered.trim() }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            // Refresh the shell cache from the server (one authoritative read),
+            // then repaint the header from the SAME rule as above.
+            const cfg = await (await fetch('/api/config')).json();
+            if (typeof setFolderDisplayNames === 'function') setFolderDisplayNames(cfg.folderDisplayNames);
+            const mappedNow = (typeof folderDisplayName === 'function') ? folderDisplayName(folderFilter) : null;
+            videosHeader.textContent = `Playlist: ${mappedNow || resolveRootHeaderLabel(currentItems, folderSettings, folderFilter)}`;
+          } catch (err) {
+            window.alert('Could not save the name. ' + (err && err.message ? err.message : ''));
+          }
+        });
+        videosHeader.insertAdjacentElement('afterend', btn);
       }
       // v1.100: the format + watch-state toggles now render synchronously at the
       // top of loadLibrary (before the fetch) so the toolbar is complete from

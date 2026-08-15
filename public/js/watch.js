@@ -1119,6 +1119,9 @@ if (typeof module !== 'undefined' && module.exports) {
         ]);
         const configData = await configRes.json();
         folderSettings = configData.folderSettings || {};
+        // v1.126: seed the shell-level folder display map (common.js cache) so
+        // the related rail's resolveChannelName sees renamed folders here too.
+        if (typeof setFolderDisplayNames === 'function') setFolderDisplayNames(configData.folderDisplayNames);
         watchSyntheticFolders = Array.isArray(configData.syntheticFolders) ? configData.syntheticFolders : [];
         currentFolders = configData.folders || [];
         renderSidebarFolders(configData.folders || [], folderSettings);

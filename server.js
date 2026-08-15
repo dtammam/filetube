@@ -431,6 +431,9 @@ function loadDatabase() {
   // `metadata`.
   if (!Array.isArray(db.folders)) db.folders = [];
   if (!db.folderSettings || typeof db.folderSettings !== 'object') db.folderSettings = {}; // backfill for older databases
+  // v1.126: backfill `folderDisplayNames` ({ [folderName]: displayName }) like
+  // every other top-level key - the per-channel-folder display map.
+  if (!db.folderDisplayNames || typeof db.folderDisplayNames !== 'object' || Array.isArray(db.folderDisplayNames)) db.folderDisplayNames = {};
   if (!db.progress || typeof db.progress !== 'object') db.progress = {};
   if (!db.metadata || typeof db.metadata !== 'object') db.metadata = {};
   // v1.30 C2: backfill `liked` (array of media ids) the same way every other
@@ -6393,7 +6396,48 @@ app.get('/api/config', (req, res) => {
   // never accepted back on POST, and does not change any synthetic-root
   // HANDLING (the splice/rename/order logic above, and the db.folders-
   // exclusion in POST /api/config below, are both untouched).
-  res.json({ folders, folderSettings, syntheticFolders: synthRoots });
+  // v1.126: the per-channel-folder display map rides the same read-only
+  // payload folderSettings does - every folder-label surface (headers, the
+  // Playlists sheet, the folder list, resolveChannelName's fallback) reads it
+  // client-side from ONE fetch. Response-only here; writes go through
+  // POST /api/folders/display-name below.
+  res.json({ folders, folderSettings, folderDisplayNames: db.folderDisplayNames || {}, syntheticFolders: synthRoots });
+});
+
+// v1.126 (Dean): manual per-folder display name - the ONLY fix possible for
+// the ~70 folders whose items are permanently unhealable (no channelId, no
+// URL), and the override lane for everything else. `folderName` must name a
+// folder that actually exists in the library (derived from live metadata -
+// no junk-key writes); an empty/absent `name` CLEARS the mapping. Gated on
+// BOTH axes: requireModifyLibrary (capability - shared display metadata),
+// and visibility (a member restricted from the folder must not rename it -
+// neutral 404, the v1.123 T3 posture).
+app.post('/api/folders/display-name', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return;
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const folderName = typeof body.folderName === 'string' ? body.folderName.trim() : '';
+  if (folderName === '') return res.status(400).json({ error: 'folderName is required' });
+  const db = getCachedDatabase();
+  const exists = Object.values(db.metadata || {}).some((it) => it && it.folderName === folderName);
+  if (!exists) return res.status(404).json({ error: 'No such folder' });
+  if (visibility.isBlocked(userRestrictionIndex(req), { kind: 'media', folderName })) {
+    return res.status(404).json({ error: 'No such folder' }); // neutral - never confirm a hidden folder exists
+  }
+  const rawName = typeof body.name === 'string' ? body.name.trim() : '';
+  const name = rawName.slice(0, 150); // the pin-label bound
+  await updateDatabase((mdb) => {
+    if (!mdb.folderDisplayNames || typeof mdb.folderDisplayNames !== 'object') mdb.folderDisplayNames = {};
+    const current = mdb.folderDisplayNames[folderName];
+    if (name === '') {
+      if (current === undefined) return false; // nothing to clear - skip the save
+      delete mdb.folderDisplayNames[folderName];
+      return true;
+    }
+    if (current === name) return false; // unchanged - skip the save
+    mdb.folderDisplayNames[folderName] = name;
+    return true;
+  });
+  res.json({ success: true, folderName, name: name === '' ? null : name });
 });
 
 // API: Save folder configuration
@@ -8504,7 +8548,7 @@ const BACKUP_SCHEMA = 'filetube-backup-v1';
 // v1.69: 'podcasts' rides the bundle (subscriptions/episodes/settings) but
 // feed URLS do not - they are secrets, stored OUTSIDE the db (see
 // lib/podcasts/secrets.js), so a restored sub may need its URL re-entered.
-const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'trash', 'books', 'music', 'podcasts', 'ytdlp'];
+const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'folderDisplayNames', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'trash', 'books', 'music', 'podcasts', 'ytdlp'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -10110,6 +10154,16 @@ app.get('/api/channels', (req, res) => {
       if (resolvedAvatar) g.avatarUrl = resolvedAvatar;
     }
     if (typeof item.addedAt === 'number' && item.addedAt > g.latestAddedAt) g.latestAddedAt = item.addedAt;
+  }
+  // v1.126: a group whose name never resolved past the raw folderName (no item
+  // ever captured a channelName - the permanently-unhealable folders) takes the
+  // per-folder display map, mirroring resolveChannelName's fallback order
+  // client-side (channelName wins, then the map, then the raw folder).
+  const displayNames = db.folderDisplayNames || {};
+  for (const g of groups.values()) {
+    if (g.name === g.folder && typeof displayNames[g.folder] === 'string' && displayNames[g.folder].trim() !== '') {
+      g.name = displayNames[g.folder].trim();
+    }
   }
   // localeCompare: a consistent comparator (gate S4 -- the previous one
   // never returned 0, undefined order for equal lowercased names).
@@ -14853,6 +14907,24 @@ async function recordLocalChannelHealFanout(deps, target) {
       // and the healed items now carry the canonical id -- pass the canonical
       // identity so the pin adopts the real name.
       refreshPinLabelsForBackfilledChannel(db, { channelId: target.identity.channelId }, target.identity.channelName);
+      // v1.126: a folder that healed to ONE canonical name also writes the
+      // per-folder display map, so every folder-LABEL surface (the `?folder=`
+      // header, the channels bar, pins' fallback) heals with it. folderName
+      // comes from a healed ITEM (the scan's top-level-segment field), never
+      // from the folderKey path (nested channel dirs would mis-key on the
+      // basename). OVERWRITE posture (the v1.116 lesson): a heal that runs
+      // again with a fresher canonical name wins - never gated on absence.
+      const healName = typeof target.identity.channelName === 'string' ? target.identity.channelName.trim() : '';
+      if (healName !== '') {
+        for (const it of Object.values(db.metadata || {})) {
+          if (!it || typeof it.folderName !== 'string' || it.folderName === '') continue;
+          if (it.channelId !== target.identity.channelId) continue;
+          if (ytdlp.folderKeyOf(it) !== target.folderKey) continue;
+          if (!db.folderDisplayNames || typeof db.folderDisplayNames !== 'object') db.folderDisplayNames = {};
+          db.folderDisplayNames[it.folderName] = healName;
+          break;
+        }
+      }
     }
     return updated > 0;
   });

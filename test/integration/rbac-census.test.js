@@ -65,7 +65,7 @@ const { authenticateFetch } = require('../helpers/auth');
 // mutating pair carries the restricted-id guard (no oracle/persist); GET is
 // RBAC-filtered (mediaVisibleTo) so a since-restricted item never leaks. Bound by
 // feed-hidden-api.test.js.
-const EXPECTED_ROUTE_COUNT = 199; // v1.115 A1: +2 (POST /api/ytdlp/backfill-channel-names + /cancel), both manage-subs-gated (classified in route-write-classification.test.js -> that net asserts each 403s a flag-less member)
+const EXPECTED_ROUTE_COUNT = 200; // v1.126: +1 (POST /api/folders/display-name, library-write + visibility-enforced; classified on BOTH axes in route-write-classification.test.js). v1.115 A1 history: +2 backfill-channel-names + cancel.
 
 let server, base, auth, member;
 const vidFile = path.join(DATA_DIR, 'v.mp4');

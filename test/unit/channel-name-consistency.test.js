@@ -105,3 +105,55 @@ test('main.js: the classic "Continue watching" row card renders resolveChannelNa
     'the row artist line routes through the shared resolver (a healed item shows its channel name)');
   assert.ok(!/escapeBookRowHtml\(item\.folderName/.test(m[1]), 'the raw folderName render must not return');
 });
+
+// ---- v1.126: the per-folder display map -------------------------------------
+// The map is the ONLY name source for permanently-unhealable folders (no
+// channelId/URL on any item). Order contract: a captured channelName WINS,
+// then the map, then the folderSettings root name, then the raw folderName.
+
+const { setFolderDisplayNames, folderDisplayName } = require('../../public/js/common.js');
+
+test('v1.126: setFolderDisplayNames/folderDisplayName round-trip; hostile shapes reset to empty', () => {
+  setFolderDisplayNames({ rawdir: 'Saturday Uploads', blank: '   ' });
+  assert.strictEqual(folderDisplayName('rawdir'), 'Saturday Uploads');
+  assert.strictEqual(folderDisplayName('blank'), null, 'whitespace-only mapping reads as unset');
+  assert.strictEqual(folderDisplayName('missing'), null);
+  setFolderDisplayNames(['not', 'a', 'map']);
+  assert.strictEqual(folderDisplayName('rawdir'), null, 'an array resets the cache (never throws)');
+  setFolderDisplayNames(null);
+  assert.strictEqual(folderDisplayName('rawdir'), null, 'null resets the cache');
+});
+
+test('v1.126: resolveChannelName order - channelName WINS over the map; the map beats folderName', () => {
+  setFolderDisplayNames({ nestalgiamusic: 'Mapped Name' });
+  try {
+    assert.strictEqual(
+      resolveChannelName({ channelName: 'NESTALGIA', folderName: 'nestalgiamusic' }, {}),
+      'NESTALGIA', 'a captured channelName always wins');
+    assert.strictEqual(
+      resolveChannelName({ folderName: 'nestalgiamusic' }, {}),
+      'Mapped Name', 'a nameless item takes the folder mapping, not the raw folderName');
+    assert.strictEqual(
+      resolveChannelName({ channelName: '@MappedHandle', folderName: 'x' }, {}),
+      'MappedHandle', 'the @-strip still applies on the winning name');
+  } finally {
+    setFolderDisplayNames({}); // never leak the cache into sibling tests
+  }
+  assert.strictEqual(
+    resolveChannelName({ folderName: 'nestalgiamusic' }, {}),
+    'nestalgiamusic', 'with no mapping the raw folderName fallback is unchanged');
+});
+
+test('v1.126: the map heals resolveRootHeaderLabel unanimity for nameless items (the ?folder header path)', () => {
+  setFolderDisplayNames({ nestalgiamusic: 'NESTALGIA' });
+  try {
+    const items = [
+      { folderName: 'nestalgiamusic' },
+      { folderName: 'nestalgiamusic' },
+    ];
+    assert.strictEqual(resolveRootHeaderLabel(items, {}, FALLBACK), 'NESTALGIA',
+      'nameless items unify on the mapped name through the shared resolver');
+  } finally {
+    setFolderDisplayNames({});
+  }
+});

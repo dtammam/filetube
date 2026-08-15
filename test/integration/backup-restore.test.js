@@ -67,6 +67,9 @@ function fullState() {
   return {
     folders: ['/media/videos'],
     folderSettings: { '/media/videos': { name: 'Videos', hidden: false } },
+    // v1.126: the per-folder display map RIDES the bundle (a non-empty value so
+    // the deep-equal proves carriage, not just an empty default).
+    folderDisplayNames: { Videos: 'Saturday Uploads' },
     progress: { vid1: { timestamp: 42, duration: 100 } },
     metadata: { vid1: { id: 'vid1', name: 'clip.mp4', title: 'Clip', type: 'video', ext: '.mp4', filePath: '/media/videos/clip.mp4', duration: 100, folderName: 'Videos' } },
     liked: ['vid1'],
