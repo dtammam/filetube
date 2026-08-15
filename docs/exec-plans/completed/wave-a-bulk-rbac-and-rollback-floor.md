@@ -1,8 +1,12 @@
 # Wave A (v1.127): bulk-route RBAC bypass + schema rollback floor
 
-Status: PLANNED 2026-08-15 (Dean approved scope + approach; authored by the
-Fable session that verified every claim below against the tree/git - an Opus
-session can execute this plan without re-deriving the analysis).
+Status: SHIPPED v1.127.0 (2026-08-15; see ROADMAP.md). FULL gate: adversarial
+APPROVED round 1 (3 SUGGESTIONs); QA REQUEST CHANGES on 2 WARNINGs (both
+undisclosed plan deviations, neither a security hole), both APPROVED after one
+fix round. Dual-Node 6908/6908 (v22.23.1 + v24.14.0). Residuals: tech-debt
+#149 (basename-keyed display identity), #150 (fan-out count-oracle), #151
+(net checks label not handler). Authored by the Fable session that verified
+every claim against the tree/git and executed the wave.
 
 Origin: external static review round 2 (v1.122 vs v1.126 comparison). The two
 HIGH findings below were independently verified in-session on 2026-08-15.
