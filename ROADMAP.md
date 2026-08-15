@@ -80,6 +80,45 @@
 
 ## Shipped
 
+### v1.126.0 - per-channel-folder display names: name the unnameable playlists (2026-08-15)
+
+Dean: tapping a NESTALGIA link landed on "Playlist: nestalgiamusic", and the
+related rail showed raw folder names - and unpin/repin couldn't fix it. Two
+root causes: (1) the v1.122 header heal only ran on `?root=` views, but the
+links users tap (a card's channel name, the channels bar) go to `?folder=`,
+whose header rendered the raw folder name; (2) ~70 folders / ~1,217 items are
+PERMANENTLY unhealable (no channelId, no URL on any item), so no per-item heal
+can ever fix their names.
+
+- **A per-folder display map** (`db.folderDisplayNames`) now backs every
+  folder-label surface. "Refresh channel names" writes it automatically when a
+  folder resolves to one canonical name; a **Rename pencil** on the folder-view
+  header lets you name the unhealable ones by hand. The map heals the `?folder=`
+  header, the channels bar, the related rail, pins, the history byline, and the
+  Feed-Hidden row all at once - a captured real channel name always still wins.
+- Reachable to library-edit members only; a member restricted from a folder
+  can't rename (or probe) it.
+
+Gate: FULL gate (a new persisted namespace + a new mutating route - two scarred
+classes). Both seats CONVERGED on a CRITICAL in the first round: the rename
+route checked visibility with a too-narrow descriptor, so a member restricted
+from a folder by the path/root lane could rename (and existence-probe) a folder
+they can't see. Fixed to the one canonical visibility decision (a restricted
+account is now refused with a neutral 404, structurally indistinguishable from
+a missing folder); both seats re-verified with runnable repros. Dual-Node
+6897/6897 on v22.23.1 + v24.14.0.
+
+Part 2 (Dean's faststart probe request): the read-only probe already ships -
+`docker exec -i filetube node scripts/probe-faststart.js`. Dean's run:
+122/1117 mp4s (11%) have a trailing moov (90 are one training course). NO-OP
+by Dean's choice; a lossless in-place remux-on-reheat is a named future wave
+(no delete/rescan needed - same path keeps the same id).
+
+**DEVICE PASS PENDING (Dean):** tap a NESTALGIA link -> header reads
+"Playlist: NESTALGIA"; open one of the raw-named folders -> pencil -> name it ->
+it heals across the header, channels bar, and that folder's related-rail
+entries; a folder with a real captured channel name is unaffected.
+
 ### v1.125.0 - documentation reset: the repo's AI knowledge base tells the truth again (2026-08-15)
 
 Wave 3 of the stabilization arc (external review, 2026-08-14): stale plans and

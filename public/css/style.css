@@ -1098,6 +1098,23 @@ html.reader-immersive .app-container { padding-top: 0; }
 .library-item-count::before { content: "("; }
 .library-item-count::after { content: ")"; }
 
+/* v1.126: the folder-rename pencil - a header SIBLING (main.js inserts it
+   afterend; never inside the header, whose textContent writes would wipe it -
+   the v1.122 count-badge lesson). Quiet chrome: secondary color, no border,
+   brightens on hover. */
+.folder-rename-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--fs-md);
+  padding: 0 var(--space-2);
+  vertical-align: baseline;
+}
+.folder-rename-btn:hover {
+  color: var(--text-primary);
+}
+
 .library-item-count {
   font-size: var(--fs-sm);
   color: var(--text-secondary);
@@ -5440,6 +5457,9 @@ a.sub-row-channel-link:focus-visible {
     overflow-wrap: break-word;
     word-break: break-word;
   }
+
+  /* v1.126: the folder-rename pencil (a HEADER SIBLING - see main.js) inherits
+     the row layout on phones the same as desktop; no phone-specific override. */
 
   /* ---- v1.15.0 item 2: tighter video-card grid on phones ---------------
      Pre-fix: `.video-grid` used the desktop `minmax(210px, 1fr)` / 20px gap

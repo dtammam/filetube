@@ -107,6 +107,8 @@ const CLASSIFICATION = {
   'POST /api/cache/clear': 'library-write',
   'POST /api/trash/:id/restore': 'library-write',
   'DELETE /api/trash/:id': 'library-write',
+  'POST /api/folders/display-name': 'library-write', // v1.126: shared display metadata
+
   'DELETE /api/podcasts/episodes/:id': 'library-write',
   'POST /api/podcasts/episodes/:id/restore': 'library-write',
 
@@ -223,6 +225,10 @@ const VISIBILITY = {
   'POST /book/:id/tts/:spineIndex/ensure': 'enforced',
   'POST /api/ytdlp/repull-metadata/item/:mediaId': 'enforced',
   'POST /api/ytdlp/repull-metadata/item/:mediaId/relocate': 'enforced',
+  // v1.126: the folder rename addresses a restrictable FOLDER (body-carried,
+  // not URL-carried - still content-addressed); the handler 404s a member
+  // restricted from the folder. Behavioral proof: folder-display-names.test.js.
+  'POST /api/folders/display-name': 'enforced',
 
   // --- the caller's OWN per-user state (oracle at worst, non-blocking) ---
   'POST /api/progress': 'personal',

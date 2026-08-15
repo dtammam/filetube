@@ -131,7 +131,7 @@ module.exports = [
     // (v1.63 gate NEW-3: music.js briefly joined for addToQueue, then its
     // affordance was pulled - it consumes nothing from common.js again and
     // left the roster with the comment that had gone stale.)
-    files: ['public/js/main.js', 'public/js/watch.js', 'public/js/setup.js', 'public/js/player.js', 'public/js/books.js', 'public/js/read.js', 'public/js/stats.js', 'lib/ytdlp/client/subscriptions.js'],
+    files: ['public/js/main.js', 'public/js/watch.js', 'public/js/setup.js', 'public/js/player.js', 'public/js/books.js', 'public/js/read.js', 'public/js/stats.js', 'public/js/history.js', 'lib/ytdlp/client/subscriptions.js'],
     languageOptions: {
       globals: {
         clampPositionState: 'readonly',
@@ -165,6 +165,9 @@ module.exports = [
         resolveChannelName: 'readonly',
         // v1.122: the ?root= header's single-channel folder label (common.js).
         resolveRootHeaderLabel: 'readonly',
+        // v1.126: the per-folder display map cache (common.js) - setter + reader.
+        setFolderDisplayNames: 'readonly',
+        folderDisplayName: 'readonly',
         resolveTheme: 'readonly',
         // v1.48 item 2: real day-of view counts (wraps getMockViews as fallback).
         resolveViewCountLabel: 'readonly',
