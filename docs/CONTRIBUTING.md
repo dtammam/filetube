@@ -146,7 +146,7 @@ image, or a whole view:
 
 Reviewers: for every new fetch-then-render surface in a diff, verify the seed +
 zero-shift reveal + strand-clear exist - it is the exact check the census cannot
-do. The FOUC audit (`docs/exec-plans/active/fouc-shimmer-audit.md`) tracks the
+do. The FOUC audit (`docs/exec-plans/archive/fouc-shimmer-audit.md`) tracks the
 remaining retrofit; NEW work ships compliant from birth.
 
 ## The first-class media experience (MANDATORY vocabulary for any media-kind work)
