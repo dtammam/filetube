@@ -117,15 +117,24 @@ test('load() reconciles the carried state onto the new item immediately after se
   // whole suite green (the adversarial seat's surviving-mutant pair).
   assert.match(applyBody[1], /exitAudioExpand\(\);/, 'the video-fs branch must drop a carried audio surface');
   assert.match(applyBody[1], /setCssFullscreen\(false\);/, 'the audio branch must drop a carried video surface');
-  // Gate W1 (v1.130 fix round): the expanded overlay only exists as the
-  // COMPOUND .audio-mode.audio-expanded, and setupForMedia adds .audio-mode
-  // only when art resolves - an ARTLESS audio destination must degrade to the
-  // plain page, never a bodiless .audio-expanded (scroll-frozen black page
-  // with no overlay and no touch escape). The gated spelling is the lock:
-  // hard-wiring setAudioExpanded(true) back to unconditional goes red here.
-  assert.match(applyBody[1], /if \(host && host\.classList\.contains\('audio-mode'\)\) setAudioExpanded\(true\);/,
-    'the audio-expanded reconcile must be gated on the surface actually existing');
-  assert.ok(!/^\s*setAudioExpanded\(true\);/m.test(applyBody[1]), 'no unconditional setAudioExpanded(true) may exist in the reconcile');
+  // Gate W1 + W1-bis (v1.130 fix rounds 1+2): the expanded overlay only
+  // exists as the COMPOUND .audio-mode.audio-expanded, and setupForMedia adds
+  // .audio-mode only when art resolves - an ARTLESS audio destination must
+  // degrade to the plain page, never a bodiless .audio-expanded
+  // (scroll-frozen black page, no overlay, no touch escape). Round 2 (the
+  // reveal-once TWO-AXES class): the ONE both-axes call is the lock - it
+  // expands when the surface exists AND drops an .audio-expanded the teardown
+  // PRESERVED from the outgoing item when it doesn't (audio->artless-audio).
+  // Reverting to a set-only gate OR an unconditional set both go red here.
+  const SANCTIONED_AUDIO_SET = /setAudioExpanded\(!!\(host && host\.classList\.contains\('audio-mode'\)\)\);/;
+  assert.match(applyBody[1], SANCTIONED_AUDIO_SET,
+    'the audio reconcile must be the ONE both-axes call (set when the surface exists, drop the preserved class when it does not)');
+  // Gate S3 (round 2): position-INDEPENDENT negative - strip the one
+  // sanctioned call, then NO other setAudioExpanded( may remain in the body
+  // (a same-line or re-indented unconditional set slipped the old ^-anchored
+  // negative; this survives any formatting).
+  assert.ok(!/setAudioExpanded\(/.test(applyBody[1].replace(SANCTIONED_AUDIO_SET, '')),
+    'no setAudioExpanded call besides the sanctioned both-axes one may exist in the reconcile');
   // Gate S1 (v1.130 fix round): a carried on->on entry re-seeds the scroll
   // keeper (teardown nulled it; the on->on call is a no-transition) so the
   // eventual manual exit restores the new page's top instead of nothing.

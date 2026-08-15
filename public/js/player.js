@@ -7318,15 +7318,19 @@ if (typeof module !== 'undefined' && module.exports) {
       if (cssFsSavedScrollY === null) cssFsSavedScrollY = 0;
     } else {
       setCssFullscreen(false); // a video->audio carry swaps surfaces; no-op otherwise (no restoreScroll: we stay immersive)
-      // Gate W1 (v1.130 fix round): the expanded overlay's CSS is the COMPOUND
-      // `#player-wrapper.audio-mode.audio-expanded` (style.css), and
-      // setupForMedia adds `.audio-mode` ONLY when art resolves - an ARTLESS
-      // audio item (hasThumbnail false) has no expanded surface at all.
-      // `.audio-expanded` alone would still freeze/black the page body
+      // Gate W1 + W1-bis (v1.130 fix rounds 1+2): the expanded overlay's CSS
+      // is the COMPOUND `#player-wrapper.audio-mode.audio-expanded`
+      // (style.css), and setupForMedia adds `.audio-mode` ONLY when art
+      // resolves - an ARTLESS audio item (hasThumbnail false) has no expanded
+      // surface at all. `.audio-expanded` alone freezes/blacks the page body
       // (`body.ft-audio-expanded`) with NO overlay and no touch escape on iOS
-      // (the #fs-btn routes to native-fullscreen without audio-mode). Degrade
-      // to the plain page (exactly the pre-wave behavior) instead.
-      if (host && host.classList.contains('audio-mode')) setAudioExpanded(true);
+      // (the #fs-btn routes to native-fullscreen without audio-mode). This
+      // ONE call binds BOTH axes (the reveal-once two-axes class): surface
+      // exists -> expand; artless -> DROP, which also clears an
+      // `.audio-expanded` the teardown PRESERVED from the outgoing item
+      // (audio->artless-audio would otherwise keep it forever - W1-bis).
+      // Either way the artless case degrades to the plain pre-wave page.
+      setAudioExpanded(!!(host && host.classList.contains('audio-mode')));
     }
   }
 
