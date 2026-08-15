@@ -1,6 +1,6 @@
 # Exec plan: chapter follow-along (segmented seek bar + menu highlight + title chip)
 
-Status: ACTIVE. Owner: main session. Target: ~v1.109.0. Gate: FULL two-reviewer.
+Status: SHIPPED v1.109.0 (docs reset 2026-08-15; see ROADMAP.md). Was: ACTIVE. Owner: main session. Target: ~v1.109.0. Gate: FULL two-reviewer.
 
 ## Goal (Dean, verbatim intent)
 

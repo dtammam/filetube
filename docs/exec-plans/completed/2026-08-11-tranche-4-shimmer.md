@@ -1,6 +1,6 @@
 # Shimmer sweep - Tranche 4 (v1.102.0)
 
-Status: ACTIVE. Release branch `release/v1.102.0`. Grounded against the tree at
+Status: SHIPPED v1.102.0 (docs reset 2026-08-15; see ROADMAP.md). Was: ACTIVE. Release branch `release/v1.102.0`. Grounded against the tree at
 branch-point off `main` @ `d411679` (v1.101.0 shipped). Feeds the same
 "every loading moment is beautiful" sweep as t1-t3; audit source is
 `docs/exec-plans/active/fouc-shimmer-audit.md`.

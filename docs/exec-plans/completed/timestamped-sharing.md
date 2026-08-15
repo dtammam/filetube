@@ -1,6 +1,6 @@
 # Exec plan: timestamped sharing (chapter share + share-at-current-time)
 
-Status: ACTIVE. Owner: main session. Target ~v1.110.0. Gate: FULL two-reviewer.
+Status: SHIPPED v1.110.0 (docs reset 2026-08-15; see ROADMAP.md). Was: ACTIVE. Owner: main session. Target ~v1.110.0. Gate: FULL two-reviewer.
 
 ## Goal (Dean)
 
