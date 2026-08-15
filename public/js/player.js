@@ -7309,9 +7309,24 @@ if (typeof module !== 'undefined' && module.exports) {
     if (target === 'video-fs') {
       exitAudioExpand(); // an audio->video carry swaps surfaces; no-op otherwise
       setCssFullscreen(true);
+      // Gate S1 (v1.130 fix round): a carried on->on "entry" never re-captures
+      // the scroll keeper (teardown nulls it unconditionally; the on->on call
+      // above is a no-transition for resolveCssFsScrollPlan) - seed the NEW
+      // page's natural top so the eventual manual exit restores 0 instead of
+      // restoring nothing (iOS drift under the overlay otherwise survives the
+      // exit - the v1.67.5 mechanism).
+      if (cssFsSavedScrollY === null) cssFsSavedScrollY = 0;
     } else {
       setCssFullscreen(false); // a video->audio carry swaps surfaces; no-op otherwise (no restoreScroll: we stay immersive)
-      setAudioExpanded(true);
+      // Gate W1 (v1.130 fix round): the expanded overlay's CSS is the COMPOUND
+      // `#player-wrapper.audio-mode.audio-expanded` (style.css), and
+      // setupForMedia adds `.audio-mode` ONLY when art resolves - an ARTLESS
+      // audio item (hasThumbnail false) has no expanded surface at all.
+      // `.audio-expanded` alone would still freeze/black the page body
+      // (`body.ft-audio-expanded`) with NO overlay and no touch escape on iOS
+      // (the #fs-btn routes to native-fullscreen without audio-mode). Degrade
+      // to the plain page (exactly the pre-wave behavior) instead.
+      if (host && host.classList.contains('audio-mode')) setAudioExpanded(true);
     }
   }
 
@@ -7329,6 +7344,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // current navigation: a context-less re-open clears it to the folder
       // fallback. Skipped only when data carries no browseCtx field at all.
       if (data && typeof data.browseCtx === 'string' && currentData) currentData.browseCtx = data.browseCtx;
+      // Gate S2 (v1.130 fix round): an adopt returns before the capture below,
+      // so an armed immersive carry would otherwise survive it and wrongly
+      // apply to a LATER unrelated load. Consume it here too - an adopt never
+      // tears down, so whatever immersive state is live simply stays live.
+      immersiveCarryPending = false;
       // v1.44.2: a re-tap of the SAME track from /music's play->dock flow docks
       // (adopt = reparent only, no restart) rather than expanding FULL.
       if (options.dock) dock(); else expand(options.slot);

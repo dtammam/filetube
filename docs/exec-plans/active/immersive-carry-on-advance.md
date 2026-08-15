@@ -75,6 +75,20 @@ One-shot arm -> per-load capture -> teardown preserve -> post-setup reconcile.
 - Desktop NATIVE fullscreen across advances (gesture-gated by browsers).
 - Auto-entering fullscreen when a FRESH pick starts while landscape
   (Dean did not ask; behavior change beyond the report).
+- Cross-VIEW continuations (gate W2, disclosed not fixed): a queue advance
+  that changes VIEWS (watch -> /music?play= for a track, or music -> watch)
+  loses immersive - the SPA router's applyPlayerTransition runs dock() on
+  the view swap, which drops both immersive classes BEFORE the destination
+  view's own load() captures, so the carry is inert (liveKind null) even
+  though the destination mounts FULL. Behavior there equals pre-wave
+  exactly. Fixing it means threading carry state through the router's
+  dock transition - the v1.103 "router depth invariants" bug-magnet class;
+  deliberately deferred. Ruling 2's cross-kind mapping is delivered
+  within-view (watch-page video <-> watch-page audio).
+- Artless audio destinations (gate W1): an audio item without a thumbnail
+  has NO expanded surface (the overlay CSS is the compound
+  .audio-mode.audio-expanded and .audio-mode is art-gated), so a carry
+  onto one degrades to the plain page rather than a bodiless overlay.
 
 ## Gate
 
