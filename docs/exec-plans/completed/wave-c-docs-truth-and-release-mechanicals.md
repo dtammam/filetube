@@ -1,8 +1,12 @@
 # Wave C (v1.129): docs truth sweep round 2 + cheap release mechanicals
 
-Status: PLANNED 2026-08-15. Runs after Waves A and B. Slim gate is
-acceptable (docs + workflow config; nothing can lose data) UNLESS the
-release-workflow edits grow beyond the two named below - then full.
+Status: SHIPPED v1.129.0 (2026-08-15; see ROADMAP.md). Slim gate (adversarial
+seat, isolated worktree): 3 WARNINGs round 1 (a false claim in the truth pass
+itself, a markup-variant blind spot in the debt census, an overclaimed
+concurrency comment) - all fixed + mutant-re-verified; APPROVE on delta.
+Dual-Node 6928/6928. QUALITY_SCORE.md re-graded under Dean's explicit
+per-instance authorization ("Update it, it's okay"). Deviation from plan:
+QUALITY_SCORE was RETIRE-or-refresh per C3; Dean chose refresh mid-wave.
 
 Origin: external review round 2 found the v1.125 docs reset incomplete and
 its own invariant false. Verified in-session 2026-08-15:

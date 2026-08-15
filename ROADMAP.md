@@ -80,6 +80,59 @@
 
 ## Shipped
 
+### v1.129.0 - docs truth sweep round 2 + release mechanicals (2026-08-15)
+
+Wave C, closing the external-review-round-2 response arc (v1.127 security,
+v1.128 metadata isolation, this). The review's process finding: the v1.125
+docs reset was incomplete and its own "zero violations" claim was false. This
+wave's answer is CHECKER-FIRST - every sweep is now a test that lives in the
+suite, so the truth can't rot back:
+
+- **Status census** - every completed plan's first status line must be
+  terminal, every observed spelling handled. On its FIRST run it caught the
+  three surviving `APPROVED` plans (v1.29/30/31, now fixed with tag-derived
+  facts) plus a fourth spelling nobody knew about. The 37 status-less
+  early-era docs are a ratchet ceiling, not a hand-edit sweep.
+- **Link census** - every relative doc link and every backtick `docs/*.md`
+  reference in a living doc must resolve (frozen history scoped out). Caught
+  the CONTRIBUTING shimmer-audit reference the review named.
+- **Tracker truth** - the session-start hook had been injecting "42 open
+  debt items" into every session while 114 were actually open (72 OPEN rows
+  appended under the Closed region for weeks). The chronological region is
+  now the "## Ledger" with the status cell authoritative, the hook counts
+  truthfully, and a census test EXECUTES the hook and reds on drift.
+- **Doc truth pass** - RELIABILITY's "CI is Node 22" corrected to the 22+24
+  matrix; RELEASING's `git commit -am` replaced with explicit staging;
+  Docker comments no longer describe db.json; README's egress claim now
+  names the three opt-in outbound flows, the backup claim is scoped to
+  app-state, the Roku section says video-first, and podcasts finally appear
+  in the pitch. QUALITY_SCORE.md fully re-graded at Dean's explicit
+  per-instance authorization (its banner requires exactly that) - headline:
+  Security D -> B, persistence B- -> B, honest non-movements stated.
+- **Release mechanicals** - the publish workflow now asserts the pushed tag
+  equals package.json's version, and a concurrency group serializes
+  publishes so an older run can't overwrite a newer `latest`. The heavier
+  supply-chain items are bundled as tech-debt #154 ("Wave D: pre-exposure
+  hardening", trigger = any plan to leave the LAN/VPN); the caption/PiP
+  static inference is tracked as #155 awaiting Dean's probe.
+
+Gate: slim (adversarial seat alone, isolated worktree - docs + workflow
+config, nothing can lose data). It earned its keep: three WARNINGs, two of
+them the wave's own sin class - the truth pass itself shipped a false claim
+(crediting the git pre-commit hook with blocking blind staging; the real
+blocker is an agent-session hook, and a plain shell has NO guard), and a
+bolded **OPEN** cell silently vanished from the debt count with everything
+green. Plus a real correction on GitHub concurrency semantics (a rapid tag
+chain cancels the middle tag's publish - documented with a re-run note).
+All fixed and re-measured, incl. the reviewer's exact mutants; APPROVE on
+the delta. Dual-Node 6928/6928 (v22.23.1 + v24.14.0).
+
+**DEVICE PASS PENDING (Dean):** nothing user-facing changed - docs, one hook,
+and the publish workflow. Worth a glance: the next release's publish run
+should show the new "Assert tag matches package.json version" step green.
+Note for the record: QUALITY_SCORE.md was re-graded under your "Update it,
+it's okay" authorization; give it a skim when convenient.
+
 ### v1.128.0 - restricted-account metadata isolation sweep (2026-08-15)
 
 Wave B of the external-review-round-2 response. A restricted/kid account never

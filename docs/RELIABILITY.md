@@ -21,19 +21,28 @@ Standards for keeping this project stable and maintainable.
 
 ## Testing strategy
 
-- **Unit tests** (`test/unit/`): `node:test` covers the regression-prone pure
-  logic — id hashing, `needsTranscode`, `matchRootFolder` (prefix boundaries),
-  `transcodedPath`, `loadDatabase`/`saveDatabase` (defaults, corrupt-JSON
-  recovery, round-trip), and every branch of `reconcileTranscode`.
-- **Integration tests** (`test/integration/`): boot `app` on an ephemeral port
-  against an isolated temp `DATA_DIR` and exercise the real routes — status
-  codes, validation (400/404), and a watch-progress round-trip. No FFmpeg needed.
+- **Unit tests** (`test/unit/`): `node:test` over the regression-prone pure
+  logic — id hashing, `needsTranscode`, `matchRootFolder`, `transcodedPath`,
+  the SQLite adapter (schema migrations incl. the future-version refusal,
+  save/load round-trip, the unknown-key persistence lock, the db.json
+  importer's strict-parse abort), query/reducer modules, and the docs censuses.
+- **Integration tests** (`test/integration/`): boot the real `app` on an
+  ephemeral port against an isolated temp `DATA_DIR` (real SQLite, real auth
+  sessions) and exercise the live routes — RBAC visibility and write gates,
+  the route-table-derived forcing nets (write classification + read
+  classification), backup/restore, scan/prune, podcasts, queues. No FFmpeg
+  needed. As of v1.128 the full suite is ~6,900 tests.
 - **E2E tests:** None automated yet. The FFmpeg-dependent transcode paths
   (desktop live stream, mobile lazy transcode) are still verified manually in a
-  browser; keep FFmpeg out of the automated suite (not installed on CI).
-- **CI** (`.github/workflows/ci.yml`): runs `npm run lint` + `npm test` on Node
-  22 for every push and PR. `pre-commit` gates lint + unit tests locally;
-  `pre-push` runs the full suite.
+  browser; keep FFmpeg out of the automated suite (not installed on CI). The
+  Chromium capture tests (three cases across two files) run only where a
+  separately-installed Playwright exists and skip cleanly elsewhere.
+- **CI** (`.github/workflows/ci.yml`): runs `npm run lint` + `npm test` on a
+  Node **22 + 24 matrix** for every push and PR (matching the dual-Node
+  release ceremony; v1.123). The Docker publish workflow re-qualifies the
+  exact pushed ref on the same matrix plus a secret scan before any image is
+  built. `pre-commit` gates lint + unit tests locally; `pre-push` runs the
+  full suite.
 
 ## Monitoring
 

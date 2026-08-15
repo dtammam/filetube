@@ -27,7 +27,9 @@ looks and feels like the YouTube you remember - pick your era (2005, 2009,
 2014, or 2021), light or dark. It runs on your own server or LAN with a single
 container, streams to desktop, phone (PWA), and Roku, and keeps watch
 progress, likes, and reading positions per account, synced across devices.
-Your data never leaves your network.
+Your library never leaves your network - the only outbound traffic is what
+you explicitly opt into (yt-dlp channel downloads, podcast RSS fetches, and
+Web Push notifications).
 
 ## Screenshots
 
@@ -70,10 +72,11 @@ Your data never leaves your network.
 - **First-class music library** - Albums / Artists / Songs / Liked with album art, shuffle, search and sort, and an art-forward phone-first now-playing view. ALAC transcodes on demand.
 - **Books library + reader** - EPUB and PDF in the browser: paginated reader, table of contents, paper/sepia/night themes, per-account positions.
 - **"Listen from Here" (TTS)** - have book chapters read aloud (lock-screen friendly); works out of the box, upgradeable to a natural [Piper](https://github.com/OHF-Voice/piper1-gpl) voice.
+- **Podcasts, self-hosted** - subscribe to RSS feeds (private/paid feed URLs stay in a secrets file outside the database), auto-download new episodes for offline playback, with show art, per-user progress/played state, pins, and a recoverable trash - background playback and lock-screen controls included.
 
 ### Run your library
 
-- **Multi-account** - an auth wall with per-user progress, likes, pins, and reading positions; admin user management; **per-user library access control** (block-list or a fail-closed allow-list for a kid-safe account - scoped across video, music, podcasts, and books, on both listings and direct file access); full backup/restore.
+- **Multi-account** - an auth wall with per-user progress, likes, pins, and reading positions; admin user management; **per-user library access control** (block-list or a fail-closed allow-list for a kid-safe account - scoped across video, music, podcasts, and books, on both listings and direct file access); one-click app-state backup/restore (settings, accounts, watch state, library metadata - your media files themselves stay wherever you keep them and are not in the bundle).
 - **Auto-scan with safe pruning** - rescans on an interval; removes entries only for files that are truly gone (an unmounted share is never treated as a deletion).
 - **Auto thumbnails** - FFmpeg extracts video frames and audio cover art; caches are size-capped and age-swept.
 - **Optional YouTube subscriptions (yt-dlp)** - off by default. Subscribe to channels, auto-download new videos into your library, with per-channel quality/length/Shorts controls and one-shot URL downloads. [Full guide →](docs/CONFIGURATION.md#optional-youtube-subscriptions-yt-dlp)
@@ -87,6 +90,8 @@ pickers (with avatars), and play with resume, captions, chapters, loop, and
 autoplay - watch progress syncs with the web app both ways. The server
 transparently fixes Roku-hostile files (embedded thumbnail tracks, rotated
 phone videos) with cache-only renditions that never touch your originals.
+The channel is video-first: music, books, and podcasts live on the web app
+and PWA, not (yet) on the TV.
 Setup and deploy: [roku/README.md](roku/README.md).
 
 ## Quick Start (Docker)

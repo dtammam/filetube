@@ -19,7 +19,8 @@ services:
       # FILETUBE_YTDLP_DOWNLOAD_DIR: /app/data/ytdlp-downloads
       # FILETUBE_YTDLP_MAX_VIDEOS: 25
     volumes:
-      # Persists configuration, db.json, and thumbnails
+      # Persists the SQLite database (filetube.db), configuration, thumbnails,
+      # and per-instance secrets
       - ./data:/app/data
 
       # MOUNT YOUR MEDIA FILES HERE
