@@ -16,7 +16,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { SqliteAdapter, SQLITE_FILENAME } = require('../../lib/db/sqlite');
+const { SqliteAdapter, SQLITE_FILENAME, SCHEMA_VERSION } = require('../../lib/db/sqlite');
 const createUserStore = require('../../lib/auth/store');
 
 let dir, adapter, store;
@@ -51,7 +51,7 @@ test('schema v7: push_subscriptions exists on a fresh adapter, and a v6 db forwa
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = 'push_subscriptions'")
     .all().length;
   assert.equal(has(), 1);
-  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 17);
+  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
 
   // Simulate a v1.65 file: drop the v7 table, stamp user_version 6, reopen.
   adapter.sql.exec('DROP TABLE push_subscriptions;');
@@ -60,7 +60,7 @@ test('schema v7: push_subscriptions exists on a fresh adapter, and a v6 db forwa
   adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} });
   store = createUserStore(adapter);
   assert.equal(has(), 1, 'v6 -> v7 recreated the table');
-  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 17);
+  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
 });
 
 test('upsert: valid row lands with its initial cursor; garbage shapes THROW, never coerce', () => {
