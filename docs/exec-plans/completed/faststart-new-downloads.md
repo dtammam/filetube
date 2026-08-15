@@ -1,6 +1,6 @@
 # Exec plan: app-side faststart for new mp4 downloads (streaming Tier 1)
 
-Status: ACTIVE. Owner: main session. Target ~v1.111.0. Gate: FULL two-reviewer
+Status: SHIPPED v1.111.0 (docs reset 2026-08-15; see ROADMAP.md). Was: ACTIVE. Owner: main session. Target ~v1.111.0. Gate: FULL two-reviewer
 (DATA-ADJACENT -- it overwrites a media file in place).
 
 ## Goal (Dean)

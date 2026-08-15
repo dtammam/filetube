@@ -10,7 +10,7 @@ v1.57.0 image + pinned capture profile remain available as the
 BEFORE-baseline for Tier 4's per-era work, where screenshots are still
 the gate (amendment b, ghost-red, mono-font).
 
-STATUS: **EXECUTING (Dean's ruling, 2026-07-31: "stop the capture
+STATUS: SHIPPED v1.58.0 (docs reset 2026-08-15; see ROADMAP.md). Was: **EXECUTING (Dean's ruling, 2026-07-31: "stop the capture
 chase... proceed with enforcing the token changes in the meantime").**
 The original gate - baseline before-shots preceding any declaration
 edit - is SUPERSEDED by a stronger equivalent: the before-state is

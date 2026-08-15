@@ -1,3 +1,9 @@
+> ARCHIVED (docs reset 2026-08-15): this "future" plan is HISTORY - the yt-dlp
+> integration SHIPPED as lib/ytdlp/ (born v1.11.0 by tag-contains; downloads
+> reliability hardened v1.29.0; universal any-site one-offs v1.41.13), evolving
+> well beyond this sketch. Kept as archaeology; do NOT treat any statement
+> below as a plan or as current architecture.
+
 # Future plan: optional yt-dlp integration module
 
 **Status:** Parked — for the branch *after next* (2026-07-05). Documented so the

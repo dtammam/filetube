@@ -1,3 +1,8 @@
+> ARCHIVED (docs reset 2026-08-15): this AUDIT was the INPUT to the FOUC/shimmer
+> sweep that SHIPPED across v1.98-v1.102 (see ROADMAP.md). Its per-surface
+> checklist is historical; the deliberately-unswept residuals are tracked in
+> docs/exec-plans/tech-debt-tracker.md (#141) and the memory index.
+
 # FOUC / shimmer audit - the "make every loading moment beautiful" sweep
 
 Status: AUDIT ONLY (read-only). This document is the input to a later

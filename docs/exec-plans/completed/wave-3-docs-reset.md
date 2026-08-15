@@ -1,7 +1,27 @@
-# Wave 3: documentation reset (planned - not started)
+# Wave 3: documentation reset (v1.125.0)
 
-Status: PLANNED. Date: 2026-08-14. Grounded at `aa06fa2` (v1.122.0).
-Do NOT start until Waves 1-2 have shipped. Chosen over the review's items
+Status: SHIPPED v1.125.0 (2026-08-15; see ROADMAP.md). Gate round 1 findings applied and re-verified. Final count:
+**41 files corrected** - 29 via the original keyword regex, 4 via the stronger
+first-Status-line check, and 8 MORE the gate caught using the all-caps
+`STATUS:` spelling with `DESIGNED`/`EXECUTING` keywords (the repo's
+divergent-spelling survivor class - the sweep instrument was case-sensitive;
+gate W1). Every version machine-verified against ROADMAP first. THE METRIC
+(restated per gate W1/S2): the first `status:` line of every completed/ plan,
+matched CASE-INSENSITIVELY, must contain SHIPPED|COMPLETED|CLOSED (the
+terminal set; DESIGNED/EXECUTING/ACTIVE/DRAFT/planned/in-progress are
+non-terminal) - now holds at ZERO violations. Gate W2: the first archive
+banners carried hand-written WRONG version anchors (subscriptions "v1.29+",
+one-offs "v1.39+"); corrected to measured anchors (lib/ytdlp born v1.11.0 by
+tag-contains; reliability hardened v1.29.0; universal one-offs v1.41.13) -
+a truth-reset wave writing new false history is the inverted form of the
+hazard it fights. T2: 3 plans archived (2 false-future ytdlp + the shipped
+shimmer-sweep audit input); future/ now means genuinely-unbuilt. T3:
+ARCHITECTURE.md rewritten (250 lines) off the db.json era, grounded in a
+fresh whole-tree survey; remaining db.json mentions are legacy-framed only.
+T4 (generated route inventory) SKIPPED per this plan's own if-cheap clause -
+the live route table is already machine-enumerated by the forcing-net tests.
+D4 honored: QUALITY_SCORE.md untouched (owner-frozen header; Dean has not
+asked). Originally grounded at `aa06fa2` (v1.122.0). Chosen over the review's items
 6/7/9/10 (architecture extraction, typed contracts, observability, product
 narrowing) because it is CHEAP and directly de-hazards future agent sessions -
 which the review correctly named the single biggest AI-specific risk. Items
