@@ -88,6 +88,26 @@ F5. The adapter full-shape fixture in test/*db-sqlite-adapter* omits
 - Same test shape as T1 (restricted member, visible+hidden, preview + execute
   + filesystem non-mutation).
 
+**DELIVERED + gate-round deviation (2026-08-15, both QA reports WARNING 1).**
+The enumeration filter shipped and is mutation-bound (batch + preview
+threadings each red a test when dropped). The plan's "executor re-checks
+before touching a file" was NOT added to the reheat batch, and this is
+correct-by-verification, not an oversight: the batch's relocate step
+(`maybeRelocate` -> `relocateHydratedImport(deps, config, item.mediaId)`)
+resolves the STALE worklist `mediaId` against a FRESH `loadDatabase()` read
+inside `planImportRelocation`, which returns `{action:'skip',
+reason:'item-gone'}` the moment the id no longer resolves. The only way an
+enumerated item turns hidden mid-batch is (a) a filePath/folderName change,
+which re-keys its `md5(filePath)` id so the stale-id lookup dead-ends on
+`item-gone`, or (b) a restriction edit on the member - which a re-check
+could NOT catch anyway, because the predicate (like T1's) is frozen at
+request time. An executor re-check with the frozen predicate is therefore
+tautological in BOTH T1 and T2; T1 carries one as harmless belt-and-
+suspenders (comment softened this round to say so), T2 omits it. The
+load-bearing guard in both is the enumeration/selector filter. Restriction-
+drift-mid-job is normal job semantics (QA SUGGESTION 5), disclosed here and
+not closable by any frozen-predicate re-check.
+
 ### T3. Rebuild the forcing net's n/a class as a denylist
 
 - New rule, enforced by the net itself: a route classified `'n/a'` must not
@@ -103,6 +123,23 @@ F5. The adapter full-shape fixture in test/*db-sqlite-adapter* omits
   predicts zero others but the TEST is the authority, not this sentence.
 - Order matters: land T3 AFTER T1/T2 so the net proves closure (it must fail
   if T1/T2 were reverted - verify by mutation before committing).
+
+**DELIVERED + gate-round deviation (2026-08-15, both QA reports WARNING 2).**
+The reclassification (three routes -> `enforced`, pinned) and mandatory-
+classification denylist shipped. The plan's MECHANICAL handler-source scan
+was DESCOPED, and this is a genuine reduction in guarantee that is now
+disclosed here + in code + in tech-debt: a shallow `handler.toString()` grep
+is blind to the deps-injected fan-out helpers (the exact registry-fan-out
+case), and a sound "does this reach an item store" reachability analysis is
+undecidable (adversarial S3 concurred). What shipped instead: every live
+route must be classified (unclassified -> red), an `n/a` must carry a
+reviewable >=15-char justification, and the fixed routes are regression-
+pinned. The n/a rule prose was ALSO corrected this round - it previously read
+as an absolute "touches an item -> not n/a", which three co-resident entries
+(the registry fan-outs, which DO write display fields onto items) openly
+violated; it now names that registry-fan-out exception explicitly and points
+at tech-debt #150. Residual recurrence risk (a future item-touching route
+mislabeled `n/a` with a plausible reason) is tracked in tech-debt #151.
 
 ### T4. Schema strictness + version bump
 

@@ -14378,9 +14378,13 @@ function resolveRelocationTitle(item) {
 // observe an incomplete (still-`{}`) exports object -- the deps bridge is
 // what avoids that circular-require trap, exactly like every other
 // server.js-owned primitive this module already receives.
-//   - `enumerateRepullableItems` takes `(db, config)` directly (no db access
-//     of its own) -- the caller already has a fresh `db` (from `deps.loadDatabase()`)
-//     and its own parsed yt-dlp config in hand.
+//   - `enumerateRepullableItems` takes `(db, config, itemVisible?)` directly
+//     (no db access of its own) -- the caller already has a fresh `db` (from
+//     `deps.loadDatabase()`) and its own parsed yt-dlp config in hand. The
+//     THIRD arg (v1.127 Wave A) is the OPTIONAL requester-visibility predicate
+//     (from `deps.mediaVisiblePredicate(req)`): a new caller that omits it
+//     enumerates the WHOLE library, so a caller acting on behalf of a
+//     restricted member MUST pass it (the batch/preview/per-item routes do).
 //   - `recordRepulledItemMeta` takes `(deps, mediaId, meta, nowMs)` -- pass
 //     the SAME `deps` object `registerRoutes` itself received.
 
@@ -14444,6 +14448,11 @@ function resolveRelocationTitle(item) {
  *
  * @param {object} db a `loadDatabase()`-shaped db snapshot
  * @param {object} config a parsed yt-dlp config (`ytdlp.parseYtdlpConfig()`)
+ * @param {Function} [itemVisible] v1.127 Wave A: an optional requester-visibility
+ *   predicate (the full metadata item -> boolean, from `mediaVisiblePredicate`).
+ *   When passed, a hidden item enters NEITHER the worklist NOR the
+ *   eligible/withSourceId counts; when omitted, the whole library is enumerated
+ *   (the pre-v1.127 behavior, correct only for admin/system callers).
  * @returns {{items: Array<{mediaId: string, filePath: string, videoId: string|null, watchUrl: string|null, inDownloadRoot: boolean, alreadyRepulled: boolean}>, eligible: number, ineligible: number, withSourceId: number}}
  */
 function enumerateRepullableItems(db, config, itemVisible) {
@@ -15595,11 +15604,18 @@ app.post('/api/videos/attribute-channel-bulk', async (req, res) => {
         // never a phantom failure.
         const current = loadDatabase().metadata[id];
         if (!current) { done++; continue; }
-        // v1.127: re-check visibility between selection and move. The worklist
-        // was already filtered, but this loop runs after the response - an item
-        // whose current path now matches the requester's restrictions must be
-        // skipped, never relocated blind (same belt-and-suspenders posture as
-        // the `!current` skip above).
+        // v1.127 Wave A: the LOAD-BEARING visibility guard is the selector
+        // filter (bulkItemVisible in selectWork) - it, not this line, is what
+        // both gate seats mutation-bound. This per-item re-check is pure
+        // belt-and-suspenders and is in fact UNREACHABLE: the restriction
+        // index is frozen at request time, and the only way an item could turn
+        // hidden mid-loop is a filePath/folderName change, which re-keys its
+        // md5(filePath) id so the fresh `loadDatabase().metadata[id]` read
+        // above already returns undefined and hits `!current`. Kept as a cheap
+        // fail-safe only (e.g. against a future non-path-derived id scheme); do
+        // NOT treat it as the guard. The T2 reheat batch deliberately omits
+        // the analogous re-check for the same reason - its enumeration filter
+        // is the load-bearing guard (plan wave-a T2, disclosed).
         if (!bulkItemVisible(current)) { done++; continue; }
         if (path.dirname(current.filePath) === destinationDir) {
           alreadyThere++; done++;

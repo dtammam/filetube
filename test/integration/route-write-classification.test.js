@@ -304,15 +304,37 @@ const VISIBILITY = {
   //
   // v1.127 Wave A: external review round 2 proved this bucket was the net's
   // own blind spot - a bare 'n/a' label exempted attribute-channel-bulk and
-  // the library-wide repull, which DID address per-item content (they
-  // enumerated and could RELOCATE hidden media; both are 'enforced' above
-  // now). The lesson is the v1.123 one pointed at ourselves: a forcing net
-  // must be a denylist, and an exemption without a stated, reviewable reason
-  // is an allowlist entry. Every n/a is now na('why') - the why must say what
-  // the route touches and why no per-item visibility decision applies. The
-  // reviewer's question for every new na(): "does the handler (or anything it
-  // fans out to) read, write, count, or move a library item?" If yes, it is
-  // NOT n/a.
+  // the library-wide repull, which DID address per-item content by the
+  // REQUESTER's selection (they enumerated a requester-chosen root/library and
+  // could RELOCATE hidden media; both are 'enforced' above now). The lesson is
+  // the v1.123 one pointed at ourselves: a forcing net must be a denylist, and
+  // an exemption without a stated, reviewable reason is an allowlist entry.
+  // Every n/a is now na('why') - the why must say what the route touches and
+  // why no per-REQUESTER visibility decision applies.
+  //
+  // The reviewer's question for every new na(): "does the route act on a set
+  // of library items that the REQUESTER selected or scoped?" If yes -> NOT
+  // n/a, it is 'enforced' (single-target 404, or library-wide FILTER). A
+  // route may still be n/a while touching items IF its target set is fixed by
+  // the shared REGISTRY, not by requester input:
+  //   - the three yt-dlp fan-outs below (refresh-avatars / reheat-sub-counts /
+  //     backfill-channel-names) WRITE channel-identity DISPLAY fields onto
+  //     items, but the target set is "every item whose channel is in the
+  //     registry", identical for every caller - there is no per-requester
+  //     selection to honor. Their residual (an aggregate count-oracle, and a
+  //     display write onto items a restricted member can't see) is DISCLOSED
+  //     in tech-debt #150 and belongs to Wave B's read-surface census, not
+  //     here. This is a NAMED exception, not a hole: a NEW route that writes
+  //     items by requester selection is still 'enforced', full stop.
+  // HONEST SCOPE (plan deviation, disclosed): the plan prescribed a MECHANICAL
+  // handler-source scan (fail if an n/a handler references db.metadata et al).
+  // That was descoped - a shallow handler.toString() grep is blind to
+  // deps-injected fan-outs (the exact fan-out case above) and a sound
+  // reachability analysis is undecidable (adversarial S3). The net's real
+  // closure is: every live route MUST be classified (unclassified -> red), an
+  // n/a MUST carry a reviewable justification, and the fixed routes are
+  // pinned. Recurrence risk (a future item-touching route mislabeled n/a with
+  // a plausible reason) is tracked in tech-debt #151.
   'POST /api/videos/attribute-channel-bulk/cancel': na('sets the cooperative-cancel latch for an in-flight job; reads/writes no item'),
   'POST /api/scan': na('triggers a rescan of the configured roots; writes scan state, returns no per-item data'),
   'POST /api/books/scan': na('triggers the book rescan; same shape as /api/scan'),
