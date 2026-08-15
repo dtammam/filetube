@@ -1,6 +1,6 @@
 # Wave 4: folder display names (v1.126.0) + the faststart probe record
 
-Status: ACTIVE (building, 2026-08-15). Branch `feat/v1.126-folder-display-names`.
+Status: SHIPPED v1.126.0 (2026-08-15; see ROADMAP.md). FULL gate, both seats APPROVED after one fix round (a CRITICAL path-restriction RBAC bypass - closed). Dual-Node 6897/6897.
 Intake: Dean approved the mapping fix shape and confirmed both mechanisms
 ("tapping a NESTALGIA folder lands on nestalgiamusic"; rail's bad names are
 other, unhealable folders). Two-part ask; part 2 resolved with zero code (below).
