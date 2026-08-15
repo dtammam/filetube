@@ -28,13 +28,30 @@ test('armControlsAutoHide is scoped to faux fullscreen AND never fires while pau
   assert.ok(m, 'armControlsAutoHide exists');
   const body = m[1];
   assert.match(body, /if \(!inImmersiveMode\(\)\) return;/, 'only arms in an immersive overlay');
-  assert.match(body, /if \(!isMobileFormFactor\(\)\) return;/, 'v1.120: auto-hide is a touch convention -- MOBILE only (desktop keeps its bar)');
+  // v1.124 F2: the mobile-only bail is GONE - desktop immersive views auto-hide
+  // too (with a mousemove reveal). The immersive gate above still keeps INLINE
+  // (reserved-strip) always-visible.
+  assert.ok(!/if \(!isMobileFormFactor\(\)\) return;/.test(body),
+    'v1.124 F2: the mobile-only exclusion must be removed so desktop immersive auto-hides');
   assert.match(body, /if \(!mediaPlayer \|\| mediaPlayer\.paused \|\| mediaPlayer\.ended\) return;/, 'never arms while paused/ended (bar stays up)');
   // The fire callback RE-checks the same guards (a pause/exit during the window
   // cancels the hide) AND never hides mid-scrub (a seek drag never pauses, so
   // `!paused` alone would fade the seek bar under the finger -- gate WARNING).
   assert.match(body, /setTimeout\(function \(\) \{[\s\S]*?inImmersiveMode\(\) && mediaPlayer && !mediaPlayer\.paused && !mediaPlayer\.ended && !isScrubbing[\s\S]*?classList\.add\('controls-autohidden'\)/,
     'the fire callback re-checks faux + playing + NOT scrubbing before hiding');
+});
+
+test('v1.124 F2: a host mousemove reveals the auto-hidden bar and re-arms the fade (desktop reveal path)', () => {
+  // Desktop has no touch; the mousemove reveal is what lets the bar come back
+  // (and the cursor with it) after it auto-hides. Guarded by inImmersiveMode so
+  // inline is never affected.
+  assert.match(SRC, /host\.addEventListener\('mousemove', function \(\) \{ if \(inImmersiveMode\(\)\) revealControlsAndReArm\(\); \}\);/,
+    'expected a host mousemove listener that reveals + re-arms in immersive mode');
+});
+
+test('v1.124 F2: the cursor hides with the controls in faux fullscreen (YouTube convention)', () => {
+  assert.match(STYLE_CSS, /#player-wrapper\.css-fullscreen\.controls-autohidden \{\s*\n\s*cursor: none;/,
+    'expected cursor:none on the auto-hidden faux-fullscreen wrapper');
 });
 
 test('a committed scrub re-arms the fade (bar stays through a long drag, fades after release)', () => {

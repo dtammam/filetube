@@ -189,3 +189,59 @@ test('downloadEnclosure: HTTP 404 from the CDN is a clean failure', async () => 
   assert.strictEqual(r.error, 'HTTP 404');
   assert.deepStrictEqual(fs.readdirSync(dir), []);
 });
+
+// v1.124 R1: honor write backpressure. A fast origin over a slow disk (Dean's
+// NAS/SMB) would otherwise buffer the write stream unbounded in memory up to the
+// size cap. When out.write() returns false the read must pause; 'drain' resumes
+// it. Binds by RECORDING res.pause()/res.resume() calls: neutralize the guard
+// and the recorded order goes empty -> this fails.
+test('downloadEnclosure: honors write backpressure - pauses on a full sink, resumes on drain (R1)', async () => {
+  const dir = tmpShowDir();
+  const realFs = require('fs');
+
+  // Fake sink: first write() returns false (buffer full) and emits 'drain' next
+  // tick; later writes return true. Everything else delegates to real fs, so the
+  // .ptpart finalize path runs normally (openSync/rename against the real file
+  // this writable actually created via realFs? no - it never writes to disk, so
+  // the finalize resolves ok:false; we assert the backpressure calls, not ok).
+  const writable = new (require('node:events').EventEmitter)();
+  let firstWrite = true;
+  writable.write = (c) => {
+    if (firstWrite) { firstWrite = false; setImmediate(() => writable.emit('drain')); return false; }
+    return true;
+  };
+  writable.end = (cb) => { if (cb) cb(); };
+  writable.close = (cb) => { if (cb) cb(); };
+  const fsImpl = Object.assign(Object.create(realFs), { createWriteStream: () => writable });
+
+  const order = [];
+  const url = 'https://cdn.example/bp.mp3';
+  const fakeReq = {
+    request(_u, _opts, cb) {
+      const res = new (require('node:events').EventEmitter)();
+      res.statusCode = 200; res.headers = {};
+      res.destroy = () => { res.destroyed = true; };
+      res.pause = () => order.push('pause');
+      res.resume = () => order.push('resume');
+      setImmediate(() => {
+        cb(res);
+        setImmediate(() => {
+          res.emit('data', Buffer.from('AAAA')); // first write -> false -> pause
+          setImmediate(() => {
+            res.emit('data', Buffer.from('BBBB')); // after drain/resume
+            res.emit('end');
+          });
+        });
+      });
+      return { setTimeout() {}, on() {}, end() {}, destroy() {} };
+    },
+  };
+
+  await downloadEnclosure(url, dir, 'Ep [rss=9].mp3', {
+    http: fakeReq, https: fakeReq, lookup: fakeLookup(), fsImpl,
+  });
+
+  assert.ok(order.includes('pause'), 'a full sink must pause the read');
+  assert.ok(order.includes('resume'), 'drain must resume the read');
+  assert.ok(order.indexOf('pause') < order.indexOf('resume'), 'pause precedes resume');
+});

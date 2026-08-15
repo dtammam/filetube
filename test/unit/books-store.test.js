@@ -134,6 +134,32 @@ test('T3: prune policy matrix -- pruneMissing off prunes nothing; missing root p
   );
 });
 
+test('T3 (v1.124 R2): a book under a dir that errored THIS walk is NOT pruned - a transient EACCES protects its file + reading position', () => {
+  const items = {
+    keep: { id: 'keep', rootFolder: '/books/a', filePath: '/books/a/kept.epub' },
+    goneReal: { id: 'goneReal', rootFolder: '/books/a', filePath: '/books/a/deleted.epub' },
+    underErrored: { id: 'underErrored', rootFolder: '/books/a', filePath: '/books/a/locked/secret.epub' },
+  };
+  // The whole root /books/a still has a survivor (`keep`), so the mount-loss
+  // guard does NOT protect the subtree - only the errored-dir guard can.
+  const surviving = new Set(['keep']);
+  assert.deepEqual(
+    store.selectPrunableBookIds(items, surviving, { missingRoots: new Set(), pruneMissing: true, erroredDirs: ['/books/a/locked'] }).sort(),
+    ['goneReal'], 'the errored-subtree book survives; the genuine delete still prunes',
+  );
+  // CONTROL: absent the errored-dir signal, the subtree book WOULD be pruned
+  // (and its per-user reading position destroyed) - exactly the data loss R2 fixes.
+  assert.deepEqual(
+    store.selectPrunableBookIds(items, surviving, { missingRoots: new Set(), pruneMissing: true }).sort(),
+    ['goneReal', 'underErrored'], 'control: with no errored-dir signal, the transient subtree is wrongly pruned',
+  );
+  // Set form is accepted too (parity with the music predicate).
+  assert.deepEqual(
+    store.selectPrunableBookIds(items, surviving, { missingRoots: new Set(), pruneMissing: true, erroredDirs: new Set(['/books/a/locked']) }).sort(),
+    ['goneReal'], 'erroredDirs accepts a Set',
+  );
+});
+
 // ---- validateShelfPinInput ----------------------------------------------------
 
 test('T3: shelf-pin validation -- confinement under a configured book root, label trim/bound, hostile shapes rejected', () => {

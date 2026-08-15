@@ -6367,6 +6367,13 @@ a.sub-row-channel-link:focus-visible {
 #player-wrapper.audio-mode.audio-expanded.controls-autohidden #audio-bg-art {
   bottom: 0;
 }
+/* v1.124 F2: hide the mouse cursor with the controls in faux fullscreen (the
+   YouTube/desktop convention). The next mousemove reveals both the cursor and
+   the bar (host mousemove -> revealControlsAndReArm). Fullscreen only - the
+   audio-expanded view keeps its cursor. */
+#player-wrapper.css-fullscreen.controls-autohidden {
+  cursor: none;
+}
 /* The app chrome is fully covered by the overlay, but hide it explicitly
    too (belt), freeze page scroll, and paint the body black so nothing can peek
    out under the overlay in landscape (the "gap under displaying webpage"
@@ -6768,6 +6775,18 @@ body.ft-audio-expanded {
   .cc-overlay {
     bottom: 44px;    /* matches the 44px mobile control strip */ /* token-exempt: positional geometry (Stop A Batch A) */
   }
+}
+
+/* v1.124 F1: in fullscreen the control bar is TALLER than the in-slot 40px
+   (min-height 40px + vertical padding + safe-area), so the base `bottom: 40px`
+   would sit INSIDE it and the caption would hide behind the bar - exactly the
+   occlusion this feature fixes, now that VIDEO captions render through this
+   overlay too. Lift the overlay to clear the fullscreen bar. Covers both faux
+   fullscreen (`.css-fullscreen`) and real element fullscreen (`:fullscreen`);
+   both resolve to the same `#player-wrapper` / `.player-container` node. */
+#player-wrapper.css-fullscreen .cc-overlay,
+.player-container:fullscreen .cc-overlay {
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px)); /* token-exempt: positional geometry over the taller fullscreen bar */
 }
 
 /* ---- v1.92 storyboard scrub preview (seek-bar hover / touch-drag) -------- */

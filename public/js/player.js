@@ -1804,11 +1804,14 @@ if (typeof module !== 'undefined' && module.exports) {
   function armControlsAutoHide() {
     clearControlsAutoHide();
     if (!inImmersiveMode()) return;
-    // v1.120 gate fix (adversarial WARNING): auto-hide is a TOUCH convention --
-    // mobile only. Desktop (incl. the desktop audio-expand overlay) keeps its bar
-    // up, matching desktop-player expectations and sidestepping the click-only
-    // reveal there.
-    if (!isMobileFormFactor()) return;
+    // v1.124 F2 (Dean): auto-hide now runs on DESKTOP immersive views too
+    // (video fullscreen + the audio-expanded overlay), YouTube-style - the bar
+    // overlays the picture there, so fading it while playing is the right
+    // convention. The v1.120 desktop exclusion existed only because desktop had
+    // NO reveal path but a click; F2 adds a `mousemove` reveal (wired in
+    // wireHostListeners), so the exclusion is lifted. INLINE stays untouched
+    // (its bar is a reserved strip below the video, not an overlay - the early
+    // `!inImmersiveMode()` return above already keeps it always-visible).
     if (!mediaPlayer || mediaPlayer.paused || mediaPlayer.ended) return;
     controlsAutoHideTimer = setTimeout(function () {
       controlsAutoHideTimer = null;
@@ -2042,9 +2045,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // style.css) can position it purely off the SAME `#player-wrapper`
     // ancestor every other in-host overlay/layer already uses. Starts
     // `hidden` (native attribute -- matches `renderActiveCueOverlay`'s own
-    // hide path) with an empty inner text node; VIDEO mode never shows this
-    // (see the `#cc-btn` click handler and the `cuechange` listener below,
-    // both gated on `currentData.type === 'audio'`).
+    // hide path) with an empty inner text node. v1.124 F1: BOTH audio and video
+    // captions render here now (video used native `<track>` paint before, which
+    // the controls bar occluded in fullscreen); the `#cc-btn` click handler and
+    // the cuechange/timeupdate paths below are gated on `audioCaptionsOn` (the
+    // overlay's on/off flag), not on the media type.
     ccOverlayEl = document.createElement('div');
     ccOverlayEl.className = 'cc-overlay';
     ccOverlayEl.hidden = true;
@@ -3889,7 +3894,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // v1.34 T2 (Dean, desktop CC sync): keep the caption <track> aligned with
   // the LIVE-transcode timeline. The ffmpeg pipe restarts its clock at 0 on
   // every `?t=` reload while the sidecar's cue times are absolute -- so
-  // after any live seek, native cue matching would drift by exactly
+  // after any live seek, cue matching would drift by exactly
   // `liveOffset` seconds. The server shifts cues on demand (`?offset=`,
   // lib/subtitles.js shiftVttCues); this re-points the track at the matching
   // document and re-asserts the user's CC on/off choice across the src swap.
@@ -5126,6 +5131,12 @@ if (typeof module !== 'undefined' && module.exports) {
     if (skipFwdBtn) skipFwdBtn.addEventListener('click', function () { skip(SKIP_SECONDS); revealSkipButtons(); });
     host.addEventListener('mousemove', revealSkipButtons);
     host.addEventListener('mouseleave', hideSkipButtons);
+    // v1.124 F2: desktop mouse-move reveals the auto-hidden control bar and
+    // restarts the fade countdown (the YouTube/desktop convention - touch devices
+    // use the touchstart/pointerdown reveal above). No-op outside an immersive
+    // overlay (inline never auto-hides), and armControlsAutoHide's own guards
+    // keep it from ever hiding while paused/ended/scrubbing.
+    host.addEventListener('mousemove', function () { if (inImmersiveMode()) revealControlsAndReArm(); });
 
     // ---- FR-2 (T2, v1.21.0): the custom control bar's own listeners --------
 
@@ -5523,12 +5534,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // once) since `mediaPlayer.load()` (called by `teardownMediaState()` on
     // every genuine new load) can invalidate a previously-held reference.
     //
-    // Feature B (v1.26.1): AUDIO gets its OWN branch here -- the existing
-    // 'showing'/'hidden' toggle below is VIDEO-only and completely
-    // untouched. For audio, native cue rendering never shows on iOS (the
-    // <video> is transparent/pointer-events:none over #audio-bg-art in
-    // audio mode, see that class's own comment in style.css), so the track
-    // is NEVER set to 'showing' -- it toggles between 'disabled' (CC off;
+    // Feature B (v1.26.1) + v1.124 F1: BOTH audio and video captions render
+    // through the CUSTOM overlay now -- this handler is a SINGLE unified branch
+    // (no media-type split, no `'showing'` toggle anywhere). Video used to use
+    // the browser's native `<track>` paint (`mode='showing'`), which the custom
+    // control bar occluded in fullscreen; F1 retired that. For BOTH types the
+    // track is NEVER set to 'showing' -- it toggles between 'disabled' (CC off;
     // matches teardownMediaState()'s reset default, no cuechange events)
     // and 'hidden' (CC on; cuechange fires, but only the CUSTOM overlay --
     // wired once via the 'cuechange' listener just below -- ever renders
@@ -5538,30 +5549,31 @@ if (typeof module !== 'undefined' && module.exports) {
       ccBtn.addEventListener('click', function () {
         if (!mediaPlayer || !mediaPlayer.textTracks || !mediaPlayer.textTracks[0]) return;
         var track = mediaPlayer.textTracks[0];
-        var isAudio = !!(currentData && currentData.type === 'audio');
-        if (isAudio) {
-          audioCaptionsOn = !audioCaptionsOn;
-          track.mode = audioCaptionsOn ? 'hidden' : 'disabled';
-          ccBtn.classList.toggle('active', audioCaptionsOn);
-          ccBtn.setAttribute('aria-pressed', audioCaptionsOn ? 'true' : 'false');
-          if (audioCaptionsOn) renderActiveCueOverlay(track);
-          else hideCaptionOverlay();
-        } else {
-          var showing = track.mode === 'showing';
-          track.mode = showing ? 'hidden' : 'showing';
-          ccBtn.classList.toggle('active', !showing);
-          ccBtn.setAttribute('aria-pressed', showing ? 'false' : 'true');
-        }
+        // v1.124 F1: BOTH audio AND video captions now render through the custom
+        // z-index-9 overlay (`.cc-overlay`, above the controls bar). Video used
+        // to use the browser's NATIVE `<track>` paint (`mode='showing'`), which
+        // the custom control bar occluded in fullscreen (the bar overlays the
+        // video's bottom band there by design, so native cues at the video's
+        // bottom edge hid behind it). Routing video through the same overlay the
+        // audio path already uses puts captions ABOVE the bar in every view, and
+        // `mode='showing'` is no longer set anywhere. `audioCaptionsOn` is the
+        // overlay's on/off flag for both media types now.
+        audioCaptionsOn = !audioCaptionsOn;
+        track.mode = audioCaptionsOn ? 'hidden' : 'disabled';
+        ccBtn.classList.toggle('active', audioCaptionsOn);
+        ccBtn.setAttribute('aria-pressed', audioCaptionsOn ? 'true' : 'false');
+        if (audioCaptionsOn) renderActiveCueOverlay(track);
+        else hideCaptionOverlay();
       });
     }
 
     // Feature B (v1.26.1) / v1.26.4 fix (frozen audio-CC overlay, on-device
     // iOS bug): the overlay's `cuechange` data source. `cuechange` fires for
-    // BOTH 'hidden' and 'showing' track modes (per the WebVTT spec), so
-    // VIDEO's own 'hidden' <-> 'showing' toggle above would ALSO reach this
-    // handler -- the `currentData.type === 'audio'` guard is what keeps
-    // VIDEO mode completely untouched (native rendering only, exactly as
-    // before this feature).
+    // 'hidden' track mode (per the WebVTT spec), which is the mode BOTH audio
+    // and video captions use when CC is on (v1.124 F1). The handler is gated on
+    // `audioCaptionsOn` (the overlay's on/off flag) -- when CC is OFF the mode is
+    // 'disabled' and no cuechange fires anyway. There is no longer a native
+    // video `'showing'` path (F1 retired it); both media types render here.
     //
     // ROOT CAUSE (v1.26.4, high confidence, Dean's iPhone): iOS WebKit does
     // not reliably fire `cuechange` on a TextTrack whose `mode` is 'hidden'
@@ -5588,7 +5600,10 @@ if (typeof module !== 'undefined' && module.exports) {
     //     freeze on iOS -- see the `timeupdate` fallback wired below, which
     //     is the load-bearing path.
     function handleCcCueChange() {
-      if (!currentData || currentData.type !== 'audio') return;
+      // v1.124 F1: overlay captions now cover audio AND video, so this is gated
+      // on the overlay's on/off flag rather than the media type. When captions
+      // are OFF the track mode is 'disabled' and no cuechange fires anyway.
+      if (!currentData || !audioCaptionsOn) return;
       if (ccTrack && ccTrack.track) renderActiveCueOverlay(ccTrack.track);
     }
     if (ccTrack) ccTrack.addEventListener('cuechange', handleCcCueChange);
@@ -6068,14 +6083,14 @@ if (typeof module !== 'undefined' && module.exports) {
     // above) -- `timeupdate` has no such history of flakiness and is
     // already relied on elsewhere in this file (see updatePositionState's
     // own 'timeupdate' listener above). Tightly gated so it's a total no-op
-    // whenever captions aren't actually in play: CC must be toggled ON, the
-    // current item must be audio, and a track must exist -- video playback,
-    // CC-off audio, and items with no captions never pay for this at all.
-    // `renderActiveCueOverlay`'s idempotent guard means the ~4x/sec calls
-    // only ever touch the DOM on an actual cue change, exactly like the
-    // cuechange-driven paths above.
+    // whenever captions aren't actually in play: CC must be toggled ON and a
+    // track must exist -- CC-off and items with no captions never pay for this.
+    // v1.124 F1: the audio-only restriction is gone - VIDEO captions now use
+    // this same overlay, so video gets the identical iOS-safe timeupdate fallback
+    // (harmless on desktop; the idempotent guard means the ~4x/sec calls only
+    // touch the DOM on an actual cue change).
     mediaPlayer.addEventListener('timeupdate', function () {
-      if (!audioCaptionsOn || !currentData || currentData.type !== 'audio') return;
+      if (!audioCaptionsOn || !currentData) return;
       if (ccTrack && ccTrack.track) renderActiveCueOverlay(ccTrack.track);
     });
 
