@@ -1282,6 +1282,10 @@ test('v1.35 T1 / v1.136: ONE playback-declaration writer, called from BOTH the v
   assert.match(body[1],
     /else if \(navigator\.audioSession && !audioSessionDeclareLogged\) \{\s*audioSessionDeclareLogged = true;\s*recordLifecycleEvent\('audioSession:declare', \{ detail: 'already-playback' \}\);\s*\}/,
     'the skip path records once per page (the flag), never per call');
+  // Delta N2 (reviewer-verified prescription): the flag's INITIALIZER was
+  // unbound - an init-true flip silently kills the skip-path evidence line.
+  assert.match(PLAYER_JS, /var audioSessionDeclareLogged = false;/,
+    'the page-scoped flag starts FALSE - an init-true flip silently kills the skip-path evidence line');
   // ONE writer, TWO callers: the v1.35 video arm (inside the settings-fetch
   // continuation - only a background-audio-enabled install declares there)
   // and the v1.136 plain-audio branch (music/podcast-only sessions
