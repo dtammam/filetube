@@ -1270,10 +1270,13 @@ test('v1.35 T1 / v1.136: ONE playback-declaration writer, called from BOTH the v
   assert.match(body[1], /try \{/, 'never throws where the API is absent/locked');
   // v1.136 diagnostics: recorded on the TRANSITION only (inside the if), so
   // the ?debugLifecycle overlay shows whether the declaration was live
-  // during a coupling repro.
-  const ifIdx = body[1].indexOf("navigator.audioSession.type = 'playback';");
-  const recIdx = body[1].indexOf("recordLifecycleEvent('audioSession:declare'");
-  assert.ok(recIdx > ifIdx && recIdx !== -1, 'the declare event records inside the transition branch');
+  // during a coupling repro. CONTAINMENT-bound, not position-bound - the
+  // first draft asserted recIdx > ifIdx, which a record moved BELOW the
+  // closing brace (fires every call = overlay spam) satisfied (my own M4
+  // mutant survived it).
+  assert.match(body[1],
+    /if \(navigator\.audioSession && navigator\.audioSession\.type !== 'playback'\) \{\s*navigator\.audioSession\.type = 'playback';\s*recordLifecycleEvent\('audioSession:declare', \{ detail: 'type=playback' \}\);\s*\}/,
+    'the declare event records INSIDE the transition branch, contiguous with the setter');
   // ONE writer, TWO callers: the v1.35 video arm (inside the settings-fetch
   // continuation - only a background-audio-enabled install declares there)
   // and the v1.136 plain-audio branch (music/podcast-only sessions
