@@ -29,6 +29,13 @@ test('a single-item order never wraps (the Loop toggle owns replay intent)', () 
   assert.strictEqual(resolveAutoplayAdvanceTarget(null, [], 'gone'), null);
 });
 
+test('gate W1: a TRUNCATED list (listComplete false) never wraps - the >MAX_LIMIT prefix must visibly stop, not loop', () => {
+  assert.strictEqual(resolveAutoplayAdvanceTarget(null, ['a', 'b', 'c'], 'c', false), null);
+  assert.strictEqual(resolveAutoplayAdvanceTarget('b', ['a', 'b', 'c'], 'a', false), 'b', 'the natural next is NEVER completeness-gated');
+  assert.strictEqual(resolveAutoplayAdvanceTarget(null, ['a', 'b', 'c'], 'c', true), 'a');
+  assert.strictEqual(resolveAutoplayAdvanceTarget(null, ['a', 'b', 'c'], 'c', undefined), 'a', 'absent totals count as complete (pre-cap common case)');
+});
+
 test('a foreign/stale ended-id never teleports to the list head', () => {
   assert.strictEqual(resolveAutoplayAdvanceTarget(null, ['a', 'b'], 'not-in-list'), null);
   assert.strictEqual(resolveAutoplayAdvanceTarget(null, null, 'x'), null);
@@ -40,9 +47,11 @@ test('a foreign/stale ended-id never teleports to the list head', () => {
 const PLAYER_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
 
 test('the context-advance seam routes through the wrap decision, and BOTH consumers use its target', () => {
-  assert.match(PLAYER_JS, /var advanceTargetId = resolveAutoplayAdvanceTarget\(neighbors\.nextId, orderedIds, endedId\);/,
-    'the one converged seam (ctx + folder flows) consults the wrap decision');
-  assert.match(PLAYER_JS, /if \(!advanceTargetId\) return; \/\/ single-item\/foreign-id -- no wrap, no-op/);
+  assert.match(PLAYER_JS, /var advanceTargetId = resolveAutoplayAdvanceTarget\(neighbors\.nextId, orderedIds, endedId, listComplete\);/,
+    'the one converged seam (ctx + folder flows) consults the wrap decision WITH the completeness gate');
+  assert.match(PLAYER_JS, /var listComplete = !\(data && typeof data\.total === 'number'\) \|\| rawItemCount >= data\.total;/,
+    'completeness derives from the RAW pre-kind-filter count vs the server total');
+  assert.match(PLAYER_JS, /if \(!advanceTargetId\) return; \/\/ single-item\/foreign-id\/truncated -- no wrap, no-op/);
   // The seed lookup and the navigate must BOTH use the wrapped target - a
   // half-migration would seed the wrong item or navigate to null.
   assert.match(PLAYER_JS, /videos\[vi\]\.id === advanceTargetId\) \{ nextItem = videos\[vi\]; break; \}/);

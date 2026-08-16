@@ -666,8 +666,15 @@ function resumeCountdownLabel(baseLabel, secondsLeft) {
 // has MORE than one item (a single-item context replaying forever is the
 // Loop toggle's explicit job, not autoplay's surprise). The QUEUE stays
 // finite by design - this decision only serves the browse-context advance.
-function resolveAutoplayAdvanceTarget(nextId, orderedIds, endedId) {
+// Gate W1 (v1.139 fix round): `listComplete` gates the WRAP only, never the
+// natural next - the ctx endpoints clamp at MAX_LIMIT (10k), so a >10k
+// context fetches a truncated PREFIX; wrapping there would loop the prefix
+// forever and MASK the truncation (pre-wave it visibly stopped, the v1.30
+// documented degradation - preserved for the truncated case). Absent/unknown
+// totals count as complete (the pre-cap common case).
+function resolveAutoplayAdvanceTarget(nextId, orderedIds, endedId, listComplete) {
   if (nextId) return nextId;
+  if (listComplete === false) return null;
   if (!Array.isArray(orderedIds) || orderedIds.length < 2) return null;
   if (orderedIds.indexOf(endedId) === -1) return null;
   return orderedIds[0];
@@ -4456,7 +4463,10 @@ if (typeof module !== 'undefined' && module.exports) {
           // AUTOPLAY_ADVANCE_FULL_LIST_LIMIT, above) -- deriveOrderedIds needs
           // the ended item's folder-mates in full, or its next-in-order
           // neighbor could sit past a truncated page-1 boundary and autoplay
-          // would silently stop advancing.
+          // would silently stop advancing. (v1.139: the server still clamps
+          // at MAX_LIMIT, so a >10k context IS a truncated prefix - the wrap
+          // is completeness-gated there and truncation keeps the old visible
+          // STOP, never a prefix-loop that would mask it.)
           var advanceBaseUrl = advanceFolder ? '/api/videos?root=' + encodeURIComponent(advanceFolder) : '/api/videos';
           var advanceSeparator = advanceBaseUrl.indexOf('?') !== -1 ? '&' : '?';
           advanceUrl = advanceBaseUrl + advanceSeparator + 'limit=' + AUTOPLAY_ADVANCE_FULL_LIST_LIMIT;
@@ -4482,9 +4492,13 @@ if (typeof module !== 'undefined' && module.exports) {
             var neighbors = computeNeighbors(orderedIds, endedId);
             // v1.139 (Dean, overturning the v1.30 no-wrap decision): the end
             // of a playlist/folder order WRAPS to its first item - guarded by
-            // the pure helper (multi-item, ended-item-in-order).
-            var advanceTargetId = resolveAutoplayAdvanceTarget(neighbors.nextId, orderedIds, endedId);
-            if (!advanceTargetId) return; // single-item/foreign-id -- no wrap, no-op
+            // the pure helper (multi-item, ended-item-in-order, and gate W1's
+            // completeness: the RAW pre-kind-filter item count vs the
+            // server's total, so a >MAX_LIMIT truncated prefix never wraps).
+            var rawItemCount = Array.isArray(data && data.items) ? data.items.length : 0;
+            var listComplete = !(data && typeof data.total === 'number') || rawItemCount >= data.total;
+            var advanceTargetId = resolveAutoplayAdvanceTarget(neighbors.nextId, orderedIds, endedId, listComplete);
+            if (!advanceTargetId) return; // single-item/foreign-id/truncated -- no wrap, no-op
             if (window.FileTube && typeof window.FileTube.navigate === 'function') {
               // v1.52 gate C1 (both seats): the next item's FULL record is in
               // hand -- seed the next watch view so the most passive hop in
