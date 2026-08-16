@@ -90,4 +90,5 @@ webkitbeginfullscreen intercept on iPads (desktop-class + touch);
 :fullscreen CSS respell blast radius across eras; state-machine
 consistency (getState() while staged).
 
-Status: IN PROGRESS
+Status: SHIPPED v1.138.0 (2026-08-16) - FULL two-seat gate, 1 fix round,
+both seats APPROVE; dual-Node 7002/7002; Dean's desktop probe PENDING.
