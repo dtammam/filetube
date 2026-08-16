@@ -240,10 +240,11 @@ re-runs the dual-Node suite and the secret scan on the exact ref; tags
 
 ## Testing
 
-`node:test`, no runner deps. 345 unit files (pure logic, jsdom, source
+`node:test`, no runner deps. 346 unit files (pure logic, jsdom, source
 locks) + 190 integration files (real server, real Express table, real SQLite
-in temp DATA_DIRs); full suite 6,982 tests (all counts measured at v1.135.0;
-they grow every wave), run on BOTH Node 22 and 24 before every release. The house pattern is the FORCING NET - tests that fail
+in temp DATA_DIRs); full suite 6,986 tests (all counts measured at v1.135.0
+INCLUDING this wave's own additions; they grow every wave), run on BOTH
+Node 22 and 24 before every release. The house pattern is the FORCING NET - tests that fail
 on absence (an unclassified route, an unlisted namespace, a view style outside
 style.css) so a discipline can't be silently skipped. Auth in tests is a real
 minted cookie, never an env bypass. The pre-commit hook runs lint + the unit

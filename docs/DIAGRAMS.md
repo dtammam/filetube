@@ -41,7 +41,7 @@ flowchart TD
     subgraph LIBS["lib/ - feature + pure libraries the monolith calls"]
         AUTHL["lib/auth/<br/>crypto.js store.js visibility.js"]
         VQ["lib/videoQuery.js<br/>browse contract (client-parity-locked)"]
-        MEDIA["ffmpeg planners<br/>lib/storyboard.js lib/previewClip.js<br/>lib/faststart.js lib/subtitles.js<br/>lib/rokuCompat.js lib/trashPaths.js"]
+        MEDIA["media libs - PURE planners<br/>lib/storyboard.js lib/previewClip.js<br/>lib/subtitles.js lib/rokuCompat.js lib/trashPaths.js<br/>(+ lib/faststart.js, which spawns ffmpeg ITSELF)"]
         PLACES["places<br/>lib/books/ lib/music/ lib/home/<br/>lib/queue/ lib/stats.js lib/presence/"]
         PUSHL["lib/push/<br/>Web Push delivery (VAPID)"]
         HG["lib/heavyGate.js<br/>ONE FIFO chain for heavy jobs"]
@@ -50,7 +50,7 @@ flowchart TD
     subgraph STORAGE["DATA_DIR"]
         DB[("filetube.db<br/>SQLite via lib/db/sqlite.js<br/>the ONLY node:sqlite caller")]
         SECRETS["0600 secrets OUTSIDE the db:<br/>session-secret, vapid-keys.json,<br/>podcast-feeds.json (feed URLs = credentials)"]
-        CACHES["size-capped LRU caches:<br/>transcoded/, storyboards/, roku/, tts/"]
+        CACHES["derived-output caches:<br/>transcoded/ + roku-compat/ (size-capped LRU),<br/>tts-cache/ (manual clear only),<br/>storyboard/preview files ({id}.sb.jpg / {id}.pv.mp4)<br/>inside the thumbnail dir"]
     end
 
     EXT["child processes<br/>ffmpeg / ffprobe / yt-dlp (argv arrays, never shell)"]
@@ -64,6 +64,8 @@ flowchart TD
     GATE --> PODR
     GATE --> YTDR
     ROUTES --> AUDIT
+    PODR --> AUDIT
+    YTDR --> AUDIT
     ROUTES --> AUTHL
     ROUTES --> VQ
     ROUTES --> MEDIA
@@ -76,8 +78,9 @@ flowchart TD
     YTDR --> DB
     AUTHL --> DB
     PODR --> SECRETS
-    MEDIA --> CACHES
+    ROUTES --> CACHES
     ROUTES --> EXT
+    MEDIA --> EXT
     YTDR --> EXT
     PUSHL --> SW
 ```
@@ -168,14 +171,14 @@ sequenceDiagram
     S->>D: item lookup (cached read)
     alt browser-compatible container
         S-->>B: sendRangeable - 206 byte ranges
-    else needs transcode
-        S->>F: queue H.264/AAC (+faststart)
-        alt finished in cache
-            S-->>B: 206 from transcoded/ (LRU, eviction-protected in flight)
-        else still transcoding
-            S-->>B: live-stream fallback (growing file)
-        end
+    else needs transcode, cached result exists
+        S-->>B: 206 from transcoded/ (LRU, eviction-protected in flight)
+    else needs transcode, not cached
+        S->>F: queueTranscode H.264/AAC (+faststart)
+        S-->>B: 503 {error: transcoding}
+        Note over B: client POLLS, shows "Preparing video"<br/>until the cache path serves 206
     end
+    Note over B,S: separate DESKTOP-ONLY opt-in: ?live=1 -><br/>streamLiveTranscode pipes ffmpeg stdout as<br/>fragmented MP4 over a 200 - chosen by the client<br/>from the FIRST request, never a server fallback
     Note over B: progress saved every 4s -> per-user user_progress
     B->>G: POST /api/videos/:id/prepare-audio (video items, mobile)
     G->>S: authorized

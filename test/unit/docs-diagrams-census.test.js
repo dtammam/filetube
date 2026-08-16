@@ -32,6 +32,12 @@ test('every repo path named in DIAGRAMS.md exists on disk', () => {
   const found = new Set(DOC.match(pathRe) || []);
   found.add('server.js');
   found.add('CLAUDE.md');
+  // Gate S4: bare filenames in mermaid node labels sit outside the
+  // dir-prefixed regex - bind the ones the diagrams name to their real
+  // homes so a rename cannot leave a label stale silently.
+  ['crypto.js', 'store.js', 'visibility.js', 'gate.js'].forEach((f) => found.add('lib/auth/' + f));
+  ['main.js', 'watch.js', 'music.js', 'podcasts.js', 'books.js', 'read.js',
+    'history.js', 'stats.js', 'setup.js', 'common.js', 'player.js'].forEach((f) => found.add('public/js/' + f));
   assert.ok(found.size > 15, `sanity: the doc names real paths (found ${found.size})`);
   const missing = [...found].filter((p) => !fs.existsSync(path.join(ROOT, p)));
   assert.deepStrictEqual(missing, [],
@@ -40,24 +46,24 @@ test('every repo path named in DIAGRAMS.md exists on disk', () => {
 
 // ---- live derivation from the schema source --------------------------------
 
+// ONE comment-stripped view of the source for every derivation (gate S2:
+// the first draft stripped // for the lists but both comment kinds only for
+// the table sweep - a future block comment with an apostrophe inside a list
+// would have derailed the quote matcher; comment-porous CHECKERS are a
+// thing, not just comment-porous locks - prose like "the CREATE TABLE
+// above" bit the table sweep's first draft too).
+const SQLITE_CODE = SQLITE_SRC.replace(/\/\*[\s\S]*?\*\//g, '')
+  .split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+
 function parseList(src, marker) {
   const start = src.indexOf(marker);
   assert.ok(start !== -1, `expected ${marker} in lib/db/sqlite.js`);
-  // Strip comments FIRST (the house strip-once-at-read rule - an apostrophe
-  // in a block comment otherwise derails the quote matcher; this bit THIS
-  // census's own first draft).
-  const block = src.slice(start, src.indexOf('];', start))
-    .split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+  const block = src.slice(start, src.indexOf('];', start));
   return [...block.matchAll(/'([^']+)'/g)].map((m) => m[1]);
 }
 
-const kvNamespaces = parseList(SQLITE_SRC, 'const DOC_KV_NAMESPACES');
-const singletonNames = parseList(SQLITE_SRC, 'const SINGLETON_NAMES');
-// Comment-stripped for the table sweep too: prose like "the CREATE TABLE
-// above" in a comment matched the first draft's regex (comment-porous
-// CHECKERS are a thing, not just comment-porous locks).
-const SQLITE_CODE = SQLITE_SRC.replace(/\/\*[\s\S]*?\*\//g, '')
-  .split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+const kvNamespaces = parseList(SQLITE_CODE, 'const DOC_KV_NAMESPACES');
+const singletonNames = parseList(SQLITE_CODE, 'const SINGLETON_NAMES');
 const tables = [...SQLITE_CODE.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?(\w+)/g)].map((m) => m[1]);
 const relationalTables = [...new Set(tables)].filter((t) => t !== 'doc_kv' && t !== 'doc_single');
 const schemaVersion = (() => {
@@ -68,12 +74,30 @@ const schemaVersion = (() => {
 
 // ---- 2. every namespace + table appears in the data-model section ----------
 
-test('every doc_kv namespace, doc_single name, and relational table appears in DIAGRAMS.md', () => {
+test('every doc_kv namespace, doc_single name, and relational table appears in the DATA-MODEL section, boundary-delimited', () => {
   assert.ok(kvNamespaces.length >= 10 && singletonNames.length >= 10 && relationalTables.length >= 20,
     `sanity: live derivation looks real (${kvNamespaces.length}/${singletonNames.length}/${relationalTables.length})`);
-  const missing = [...kvNamespaces, ...singletonNames, ...relationalTables].filter((n) => !DOC.includes(n));
+  // Gate W3 (measured porosity): whole-doc String.includes let 11 of 53
+  // names be dropped from diagram 2 and stay green - `progress` matched
+  // inside `books.progress`, `user_queue` inside `user_queue_state`, bare
+  // words matched prose in other sections. Two fixes: scope the search to
+  // the data-model SECTION, and require the name delimited by
+  // non-name-characters on both sides.
+  const sectionStart = DOC.indexOf('## 2. Data model');
+  const sectionEnd = DOC.indexOf('## 3.');
+  assert.ok(sectionStart !== -1 && sectionEnd > sectionStart, 'the data-model section exists');
+  // Scope to the section's MERMAID BLOCKS, not its prose - the ownership
+  // prose below diagram 2 mentions several names, so a name dropped from a
+  // DIAGRAM box could otherwise stay green via prose (the M8 survivor).
+  const section = (DOC.slice(sectionStart, sectionEnd).match(/```mermaid[\s\S]*?```/g) || []).join('\n');
+  assert.ok(section.length > 500, 'the data-model section carries its mermaid blocks');
+  const appears = (name) => {
+    const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(?:^|[^A-Za-z0-9_.])${esc}(?![A-Za-z0-9_.])`).test(section);
+  };
+  const missing = [...kvNamespaces, ...singletonNames, ...relationalTables].filter((n) => !appears(n));
   assert.deepStrictEqual(missing, [],
-    'persisted names missing from DIAGRAMS.md (new namespace/table? renamed?) - update diagram 2:\n  ' + missing.join('\n  '));
+    'persisted names missing from diagram 2 (new namespace/table? renamed?) - update the data-model section:\n  ' + missing.join('\n  '));
 });
 
 // ---- 3. the stated headline counts match the live derivation ---------------
