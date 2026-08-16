@@ -2557,12 +2557,13 @@ if (typeof module !== 'undefined' && module.exports) {
   // exact same navigation the hardware media keys / lock screen get -- one
   // registration, three surfaces, no second neighbor model.
   var trackNavHandlers = null;
-  // v1.73 (Dean ruling 6): the on-screen Prev/Next TRACK buttons mirror the
-  // lock-screen pair - visible only in AUDIO mode (the watch page's video
-  // chrome has its own page-level Prev/Next; duplicating them would be the
-  // two-writers class) and only while a trackNav context is registered.
-  // Per-direction disabled tracks handler presence; the QUEUE can still
-  // upgrade a click (manualTrackStep) exactly like the ended flow.
+  // v1.73 (Dean ruling 6) introduced the on-screen Prev/Next TRACK buttons
+  // mirroring the lock-screen pair; v1.133 (Dean) shows them for EVERY kind
+  // whenever a trackNav context is registered - the ruling history lives
+  // inside updateTrackNavButtons below. Shown buttons stay ENABLED in both
+  // directions (the v1.73 W4 fix - an edge tap must reach manualTrackStep's
+  // queue consult); the QUEUE can upgrade a click exactly like the ended
+  // flow.
   function updateTrackNavButtons() {
     if (!trackPrevBtn || !trackNextBtn) return;
     // v1.133 (Dean, 2026-08-16, SUPERSEDES the v1.73 QA-W1 audio-only gate):
@@ -2571,9 +2572,13 @@ if (typeof module !== 'undefined' && module.exports) {
     // the page-level Prev/Next existed and a second writer was the risk;
     // both halves have since dissolved: faux fullscreen (v1.118) + the
     // immersive carry (v1.130) put Dean INSIDE fullscreen where the page
-    // buttons are unreachable, and every surface (this pair, the page
-    // buttons, media keys, lock screen) reads the SAME setTrackNav seam -
-    // one source of truth, so they cannot disagree. The page buttons STAY
+    // buttons are unreachable, and every surface reads the SAME setTrackNav
+    // registration. (NOT identical consult TIMING, per the gate: this
+    // pair's manualTrackStep fetches the queue FRESH at tap time, while the
+    // page buttons/media keys run closures upgraded from the page-load
+    // queue snapshot - a cross-device queue edit between renders can send
+    // the two surfaces to different neighbors. Pre-existing behavior, and
+    // the fresh consult is the better answer.) The page buttons STAY
     // (Dean: "keep both for now"). Docked and reader contexts remain hidden
     // via CSS (#player-dock/.reader-nowplaying rules) regardless of this
     // flag; a single-item context still registers no handlers -> hidden
