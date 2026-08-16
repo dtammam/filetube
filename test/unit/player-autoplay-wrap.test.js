@@ -51,6 +51,11 @@ test('the context-advance seam routes through the wrap decision, and BOTH consum
     'the one converged seam (ctx + folder flows) consults the wrap decision WITH the completeness gate');
   assert.match(PLAYER_JS, /var listComplete = !\(data && typeof data\.total === 'number'\) \|\| rawItemCount >= data\.total;/,
     'completeness derives from the RAW pre-kind-filter count vs the server total');
+  // The derivation itself is bound too (my W1c mutant survived without it):
+  // the FILTERED videos.length undercounts mixed lists (/api/liked), which
+  // would misread COMPLETE lists as truncated and silently kill the wrap.
+  assert.match(PLAYER_JS, /var rawItemCount = Array\.isArray\(data && data\.items\) \? data\.items\.length : 0;/,
+    'the raw count reads data.items, never the kind-filtered videos');
   assert.match(PLAYER_JS, /if \(!advanceTargetId\) return; \/\/ single-item\/foreign-id\/truncated -- no wrap, no-op/);
   // The seed lookup and the navigate must BOTH use the wrapped target - a
   // half-migration would seed the wrong item or navigate to null.
