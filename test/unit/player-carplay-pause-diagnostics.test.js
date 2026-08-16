@@ -30,6 +30,11 @@ test('formatPauseProvenance: a gesture-adjacent pause carries its age in ms', ()
   assert.strictEqual(
     formatPauseProvenance({ el: 'video', gestureAgeMs: 1234, suppressed: false, ended: false, state: 'INLINE_VIDEO' }),
     'el=video gestureAge=1234ms suppressed=0 ended=0 state=INLINE_VIDEO');
+  // Gate W2 (v1.131 fix round): age ZERO is a same-millisecond user tap and
+  // must render '0ms', never 'none' - a `>= 0` -> `> 0` mutant would dress a
+  // USER pause in the SYSTEM-pause signature, the exact distinction this
+  // diagnostic exists to make.
+  assert.match(formatPauseProvenance({ el: 'video', gestureAgeMs: 0 }), / gestureAge=0ms /);
 });
 
 test('formatPauseProvenance: no gesture yet (null/undefined/non-finite/negative) reads "none" - the system-pause signature', () => {
@@ -75,7 +80,13 @@ test('setMediaSessionAction records every action ARRIVAL before the real handler
 test('recordDiagnosticPauseEvent: flag-gated before any context read, and reads the four live provenance sources', () => {
   const body = /function recordDiagnosticPauseEvent\(elName\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(body, 'recordDiagnosticPauseEvent body not found');
-  assert.match(body[1], /^\s*if \(!isDebugLifecycleEnabled\(\)\) return;/, 'the flag gate must come FIRST (the listeners cost one boolean when the overlay is off)');
+  assert.match(body[1], /^\s*if \(!isDebugLifecycleEnabled\(\)\) return;/, 'the flag gate must come FIRST (context reads never run with the overlay off)');
+  // Gate W1 (v1.131 fix round): the element-selection ternary is what makes
+  // the `ended` bit truthful - swapped, a video pause would read
+  // bgAudioEl.ended and a real end-of-track pause would wear the
+  // interruption-pause signature (ended=0). Bind the exact mapping.
+  assert.match(body[1], /var el = elName === 'bgAudio' \? bgAudioEl : mediaPlayer;/,
+    'the provenance must read the element it names - swapped, the ended bit lies');
   assert.match(body[1], /formatPauseProvenance\(\{/, 'the detail line must come from the ONE pure formatter');
   assert.match(body[1], /gestureAgeMs: lastUserGestureAt \? \(Date\.now\(\) - lastUserGestureAt\) : null,/);
   assert.match(body[1], /suppressed: suppressPauseHandoff,/);

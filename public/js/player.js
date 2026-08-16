@@ -3368,9 +3368,10 @@ if (typeof module !== 'undefined' && module.exports) {
   // pause has none adjacent; a user tap does), whether this file's own
   // lifecycle machinery suppressed the handoff trigger for it, whether it
   // was an 'ended' pause, and the background-audio state at that moment.
-  // Gated on the debug flag BEFORE any context read, so the wired listeners
-  // below cost one boolean check when the overlay is off. PASSIVE observer
-  // only - this must never mutate playback state.
+  // Gated on the debug flag BEFORE any context read (the flag check itself is
+  // the same try/catch'd localStorage read every pre-existing lifecycle
+  // listener already pays per event). PASSIVE observer only - this must never
+  // mutate playback state.
   function recordDiagnosticPauseEvent(elName) {
     if (!isDebugLifecycleEnabled()) return;
     var el = elName === 'bgAudio' ? bgAudioEl : mediaPlayer;
