@@ -80,6 +80,36 @@
 
 ## Shipped
 
+### v1.135.0 - architecture diagrams, checker-bound (2026-08-16)
+
+Dean: "a diagram.md outlining the architecture visually - data model and
+data flows module to module." New docs/DIAGRAMS.md: five Mermaid diagrams
+(module map, data model, scan pipeline, watch/stream sequence, client SPA +
+player state machine), rendered natively by GitHub. Checker-first per the
+v1.129 discipline: test/unit/docs-diagrams-census.test.js live-derives from
+lib/db/sqlite.js and the filesystem - named paths must exist, every
+namespace/table must appear in the data-model diagram (boundary-delimited,
+block-scoped), the stated counts must match the derivation, fences must
+balance - so a rename turns the diagram red instead of letting it lie.
+ARCHITECTURE.md links it and gets measured test counts; CLAUDE.md's map
+gains the row.
+
+The censuses earned their keep before AND during the gate: pre-gate they
+caught two hand-count errors of mine and their own parser eating a comment
+apostrophe; the gate (which built a real headless Mermaid parser and proved
+all six blocks parse) caught the flagship watch/stream diagram lying about
+the transcode fallback (truth: 503 + client poll; ?live=1 is a desktop-only
+client choice), a caches node with three wrong directory names and a wrong
+writer arrow, census porosity that let 11 of 53 names drop silently (now
+1 disclosed residual: the `notifications` header-mask, named in the test),
+and stale "measured" counts that excluded the wave's own additions.
+Process: the blind-checkout scar struck AGAIN (mutants ran while the doc
+carried uncommitted fix edits; caught by tree inspection, re-applied) - the
+rule is now absolute: mutants never run against a file with uncommitted
+edits, docs included.
+
+Dual-Node: 6986/6986 on v22.23.1 AND v24.14.0.
+
 ### v1.134.0 - tap the video to play/pause (2026-08-16)
 
 Dean: "I can't just tap in the middle and have it paused." Now a tap
