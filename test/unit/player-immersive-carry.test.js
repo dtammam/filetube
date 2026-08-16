@@ -144,7 +144,10 @@ test('load() reconciles the carried state onto the new item immediately after se
 test('the adopt branch consumes a pending arm too (gate S2) - no arm survives past ANY load() entry', () => {
   // An adopt returns before the capture, so without this clear an armed carry
   // from a no-op'd advance would survive into a later unrelated load.
-  assert.match(PLAYER_JS, /immersiveCarryPending = false;\n\s*\/\/ v1\.44\.2[\s\S]{0,200}if \(options\.dock\) dock\(\); else expand\(options\.slot\);\n\s*return true;/,
+  // v1.138 respell: the adopt branch now routes through the pure mount
+  // decision (resolveLoadMountTarget) - the arm-clear must still precede
+  // the early return through whatever mount shape.
+  assert.match(PLAYER_JS, /immersiveCarryPending = false;\n\s*\/\/ v1\.44\.2[\s\S]{0,700}?else expand\(options\.slot\);\n\s*return true;/,
     'the adopt early-return must clear the one-shot arm before returning');
 });
 

@@ -6138,6 +6138,21 @@ a.sub-row-channel-link:focus-visible {
   height: 100%;
 }
 
+/* v1.138: the desktop fullscreen STAGE (#fs-stage, one per shell, outside
+   #view-root - see the exec plan). Hidden and empty except while it IS the
+   fullscreen element; the host mounts INSIDE it, so the host is no longer
+   the :fullscreen element itself - every rule keying on
+   `.player-container:fullscreen` below carries a staged twin. */
+#fs-stage { display: none; }
+#fs-stage:fullscreen {
+  display: block;
+  background: #000; /* token-exempt: fullscreen letterbox black belt (matches body.ft-css-fullscreen's) */
+}
+#fs-stage:fullscreen .player-container {
+  width: 100%;
+  height: 100%;
+}
+
 @media (max-width: 768px) {
   .player-controls {
     height: var(--size-touch); /* comfortable >=44px touch target row, matching the existing mobile tap-target convention elsewhere in this file */
@@ -6431,13 +6446,15 @@ a.sub-row-channel-link:focus-visible {
    adds NO class, so the faux-only selectors below never matched and the bar
    never faded ("no fading on desktop"). `:fullscreen` on the wrapper is the
    native twin of `.css-fullscreen`. */
-.player-container:fullscreen .player-controls {
+.player-container:fullscreen .player-controls,
+#fs-stage:fullscreen .player-container .player-controls {
   transition: opacity var(--dur-slow) var(--ease-ui);
 }
 /* v1.120: the audio EXPANDED view auto-hides its bar the same way (its own bar
    rule further down carries the matching transition). */
 #player-wrapper.css-fullscreen.controls-autohidden .player-controls,
 .player-container:fullscreen.controls-autohidden .player-controls,
+#fs-stage:fullscreen .player-container.controls-autohidden .player-controls,
 #player-wrapper.audio-mode.audio-expanded.controls-autohidden .player-controls {
   opacity: 0;
   pointer-events: none; /* taps pass through to the video/art, which reveals the bar */
@@ -6445,6 +6462,7 @@ a.sub-row-channel-link:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   #player-wrapper.css-fullscreen .player-controls,
   .player-container:fullscreen .player-controls,
+  #fs-stage:fullscreen .player-container .player-controls,
   #player-wrapper.audio-mode.audio-expanded .player-controls { transition: none; }
 }
 /* v1.120: when the audio bar is hidden, reclaim its reserved 52px strip so the
@@ -6457,7 +6475,8 @@ a.sub-row-channel-link:focus-visible {
    the bar (host mousemove -> revealControlsAndReArm). Fullscreen only - the
    audio-expanded view keeps its cursor. */
 #player-wrapper.css-fullscreen.controls-autohidden,
-.player-container:fullscreen.controls-autohidden {
+.player-container:fullscreen.controls-autohidden,
+#fs-stage:fullscreen .player-container.controls-autohidden {
   cursor: none;
 }
 /* The app chrome is fully covered by the overlay, but hide it explicitly

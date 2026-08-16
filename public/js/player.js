@@ -658,6 +658,24 @@ function resumeCountdownLabel(baseLabel, secondsLeft) {
   return String(baseLabel) + ' · ' + secondsLeft;
 }
 
+// ---- v1.138 desktop fullscreen stage pure helpers --------------------------
+// Where does a genuine new load MOUNT? While staged fullscreen is live the
+// host must stay inside the never-moving #fs-stage (reparenting it force-
+// exits fullscreen - the whole bug); staged WINS over a dock request (the
+// user's fullscreen intent persists until they exit). Otherwise the v1.44.2
+// dock/slot split is unchanged.
+function resolveLoadMountTarget(stagedFullscreen, wantDock) {
+  if (stagedFullscreen) return 'stage';
+  return wantDock ? 'dock' : 'slot';
+}
+
+// Where does the host land when staged fullscreen EXITS? The current view's
+// #player-slot when it has one (watch/read/music), else the shell dock -
+// the same placement a normal navigation would have produced.
+function resolveStageExitPlacement(viewHasSlot) {
+  return viewHasSlot ? 'slot' : 'dock';
+}
+
 // ---- v1.134 video tap-to-pause pure helper ---------------------------------
 // Was THIS single tap already consumed by its own touch-down's blind reveal
 // of a hidden immersive bar? (See videoSingleTapOrReveal's header for the
@@ -1401,6 +1419,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.134: video tap-to-pause reveal-consume + stamp-idempotence decisions.
     shouldConsumeTapAsReveal,
     nextVideoTapStamp,
+    // v1.138: desktop fullscreen stage mount/exit decisions.
+    resolveLoadMountTarget,
+    resolveStageExitPlacement,
     clampVolume,
     seekCommitTarget,
     scrubRatioFromPointer,
@@ -1744,6 +1765,14 @@ if (typeof module !== 'undefined' && module.exports) {
   var immersiveCarryPending = false;
   var loadImmersiveCarry = null;
 
+  // v1.138 desktop fullscreen stage: the never-moving shell container the
+  // host reparents INTO for native fullscreen (see the exec plan). The flag
+  // is true from the reparent+request until the fullscreenchange exit (or a
+  // refused request's immediate rollback); while true, dock() no-ops and
+  // every load mounts into the stage (resolveLoadMountTarget).
+  var fsStageEl = null;
+  var stagedFullscreen = false;
+
   var currentChannelName = '';
   var lastPositionSync = 0;
   var POSITION_SYNC_MS = 5000;
@@ -1933,7 +1962,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // fullscreen is immersive too: the bar overlays the picture identically.
     // `contains` covers both fullscreen targets (host, or mediaPlayer on the
     // no-host-API fallback) since Node.contains(node) includes the node itself.
-    return !!(typeof document !== 'undefined' && document.fullscreenElement && host.contains(document.fullscreenElement));
+    // v1.138: the STAGED shape adds a third target - the fullscreen element
+    // is the host's PARENT (#fs-stage), so the reverse containment is
+    // checked too; without it the auto-hide fade goes blind in staged
+    // fullscreen (the plan's named predicate surface).
+    if (typeof document === 'undefined' || !document.fullscreenElement) return false;
+    return !!(host.contains(document.fullscreenElement) || document.fullscreenElement.contains(host));
   }
   // v1.130 immersive carry-on-advance: which CLASS-based immersive surface is
   // live right now - 'video' (.css-fullscreen) | 'audio' (.audio-expanded) |
@@ -2171,6 +2205,7 @@ if (typeof module !== 'undefined' && module.exports) {
     transcodeTitle = host.querySelector('#transcode-title');
     transcodeMessage = host.querySelector('#transcode-message');
     resumeOverlay = host.querySelector('#resume-overlay');
+    fsStageEl = document.getElementById('fs-stage'); // v1.138: shell-level, NOT inside host
     resumeTimeStr = host.querySelector('#resume-time-str');
     resumeYesBtn = host.querySelector('#resume-yes-btn');
     resumeNoBtn = host.querySelector('#resume-no-btn');
@@ -5282,11 +5317,47 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       return null;
     }
+    // v1.138: fullscreen the never-moving STAGE with the host inside it -
+    // navigation reparents the HOST, and moving a fullscreen element
+    // force-exits fullscreen (the v1.130 disclosed desktop gap). Children
+    // of a fullscreen element may move freely, so loads keep working while
+    // the stage itself never moves. ORDER MATTERS: reparent BEFORE the
+    // request (reparenting after would exit what we just entered). A
+    // refused request rolls the reparent back immediately.
+    if (host && fsStageEl && fsStageEl.requestFullscreen) {
+      if (host.parentNode !== fsStageEl) fsStageEl.appendChild(host);
+      stagedFullscreen = true;
+      try {
+        var req = fsStageEl.requestFullscreen();
+        if (req && req.catch) {
+          req.catch(function () { stagedFullscreen = false; placeHostAfterStageExit(); });
+        }
+        return req;
+      } catch (_) {
+        stagedFullscreen = false;
+        placeHostAfterStageExit();
+        return null;
+      }
+    }
+    // Fallback (no #fs-stage in the DOM - e.g. a cached pre-v1.138 shell):
+    // the old direct-host fullscreen, which still works minus the carry.
     var target = (host && host.requestFullscreen) ? host : mediaPlayer;
     if (target && target.requestFullscreen) {
       try { return target.requestFullscreen(); } catch (_) { return null; }
     }
     return null;
+  }
+
+  // v1.138: where the host lands after staged fullscreen ends (exit,
+  // refusal, or rollback). Placement mirrors what a normal navigation
+  // would have produced for the CURRENT view (resolveStageExitPlacement);
+  // a CLOSED/DOCKED-while-staged edge leaves nothing to re-place - the
+  // state guard keeps this a no-op there.
+  function placeHostAfterStageExit() {
+    if (state !== STATE_FULL) return;
+    var slot = document.getElementById('player-slot');
+    if (resolveStageExitPlacement(!!slot) === 'slot') mountInSlot(slot);
+    else dock();
   }
 
   // ---- FR-1 (T1, v1.22.2): audio "fullscreen" -- CSS full-viewport expand ---
@@ -6672,6 +6743,17 @@ if (typeof module !== 'undefined' && module.exports) {
       else { clearControlsAutoHide(); showControlsBar(); }
     });
 
+    // v1.138: the staged-fullscreen EXIT. Dedicated listener (the v1.124.1
+    // precedent - onFsChange owns the battle-won faux-handoff logic and
+    // stays untouched). Clear the flag BEFORE placing: placement may call
+    // dock(), whose staged guard would otherwise no-op it.
+    document.addEventListener('fullscreenchange', function () {
+      if (!document.fullscreenElement && stagedFullscreen) {
+        stagedFullscreen = false;
+        placeHostAfterStageExit();
+      }
+    });
+
     var mql = window.matchMedia('(orientation: landscape)');
     function onOrientationChange() {
       if (state !== STATE_FULL) return; // FULL-only shortcut/gesture surface
@@ -7378,8 +7460,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // declare the playback session too. v1.136.1 (Dean's DEVICE FAIL,
       // same day): the unconditional declare made backgrounding WORSE on
       // iOS 26.6 - audio stopped the moment he exited the app, and a
-      // foregrounded same-domain sibling RESUMED it (the domain coupling
-      // in both directions; matches the webkit.org/b/261554 class -
+      // foregrounded sibling PWA RESUMED it (the multi-PWA coupling in both
+      // directions - grouping criterion UNKNOWN, the registrable-domain
+      // hypothesis was falsified the same day, see
+      // docs/references/pwa-ios-notes.md; matches the webkit.org/b/261554 -
       // suspension despite type='playback'). Demoted to the device-local
       // experiment toggle Dean originally approved, DEFAULT OFF = the
       // pre-v1.136 behavior byte-for-byte on this path. The v1.35 VIDEO
@@ -7536,6 +7620,11 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function dock() {
+    // v1.138: while staged fullscreen is live, the router's view-change dock
+    // must not yank the host out of the fullscreen stage (reparenting =
+    // force-exit, the exact bug this wave fixes). The fullscreenchange exit
+    // handler places the host when fullscreen genuinely ends.
+    if (stagedFullscreen) return;
     if (!host || !mediaPlayer || !currentId || state === STATE_CLOSED || state === STATE_DOCKED) return;
     var dockEl = document.getElementById('player-dock');
     if (!dockEl) return;
@@ -7733,7 +7822,13 @@ if (typeof module !== 'undefined' && module.exports) {
       immersiveCarryPending = false;
       // v1.44.2: a re-tap of the SAME track from /music's play->dock flow docks
       // (adopt = reparent only, no restart) rather than expanding FULL.
-      if (options.dock) dock(); else expand(options.slot);
+      // v1.138: an adopt while staged stays in the stage (expand into it is a
+      // reparent no-op - the host is already there; reparenting to a view
+      // slot would force-exit fullscreen).
+      var adoptTarget = resolveLoadMountTarget(stagedFullscreen, !!options.dock);
+      if (adoptTarget === 'stage') expand(fsStageEl);
+      else if (adoptTarget === 'dock') dock();
+      else expand(options.slot);
       return true;
     }
     // Bug-fix (v1.17.0 two-reviewer gate, FR-4b leak): capture+reset the
@@ -7758,7 +7853,13 @@ if (typeof module !== 'undefined' && module.exports) {
     currentData = data || {};
     // v1.44.2: `dock:true` mounts straight into the corner mini-player (the
     // /music play->dock flow); otherwise FULL into the given #player-slot.
-    if (options.dock) mountInDock(); else mountInSlot(options.slot);
+    // v1.138: while staged fullscreen is live the mount target is the STAGE
+    // (staged wins over dock - the pure table documents it), which is what
+    // lets an advance play its next item without ever exiting fullscreen.
+    var mountTarget = resolveLoadMountTarget(stagedFullscreen, !!options.dock);
+    if (mountTarget === 'stage') mountInSlot(fsStageEl);
+    else if (mountTarget === 'dock') mountInDock();
+    else mountInSlot(options.slot);
     setupForMedia(id, currentData);
     applyCarriedImmersive();
     return true;

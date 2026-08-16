@@ -381,6 +381,12 @@
        here is where the host reparents to when the user navigates AWAY from
        this watch page while media is loaded (see player.js's dock()). -->
   <div id="player-dock" hidden></div>
+  <!-- v1.138: the desktop fullscreen STAGE - a never-moving shell-level
+       container the host reparents INTO for native fullscreen, so
+       navigation (which swaps #view-root and re-mounts the host) can never
+       force-exit fullscreen. Empty + display:none except while fullscreen
+       (style.css). -->
+  <div id="fs-stage"></div>
   <template id="player-host-template">
     <div class="player-container" id="player-wrapper">
       <!-- Audio thumbnail-as-background art layer (Feature 1, v1.10.0).
