@@ -80,6 +80,38 @@
 
 ## Shipped
 
+### v1.136.0 - playback audio-session declaration for plain-audio items (2026-08-16)
+
+The PWA audio-coupling deep dive's E2, reshaped by a code discovery:
+navigator.audioSession.type='playback' (iOS's "I am a media app" signal)
+has shipped since v1.35 - but only on the video background-audio arm path.
+A music/podcast-only session never declared it and ran as the default
+'auto' type, a credible suspect for background audio dying when iOS
+rebalances audio (Dean's sibling-PWA-close symptom, now E1-diagnosed as
+REGISTRABLE-DOMAIN-scoped coupling). One writer
+(declarePlaybackAudioSession), two callers: the v1.35 video arm (gating
+unchanged, now lock-windowed) and the plain-audio branch (the gap-close).
+The ?debugLifecycle overlay gets one audioSession:declare line per page
+load, always, so coupling repros carry evidence.
+
+DEVIATION disclosed for Dean's ratification: E2 was approved as a new
+toggle; shipped instead as unconditional on the audio path, matching the
+v1.35 posture (the signal is already live unconditionally on video; audio
+items have always background-played by design - gating them on the
+unrelated video setting would be incoherent). Say the word and it becomes
+a toggle.
+
+What the gate caught (slim/adversarial, 2 rounds): my lock respell had
+silently LOST the v1.35 ordering anchor (moving the video call above the
+settings fetch - un-gating shipped behavior - stayed green; re-windowed);
+the overlay's transition-only record could neither prove nor disprove
+"declaration live during THIS repro" (30-entry persisted ring buffer; now
+one line per load, always); a comment orphaned from its function; the
+evidence flag's initializer unbound (N2, folded in). Disclosed: literal
+count locks can't beat deliberate alias/wrapper evasion.
+
+Dual-Node: 6986/6986 on v22.23.1 AND v24.14.0.
+
 ### v1.135.0 - architecture diagrams, checker-bound (2026-08-16)
 
 Dean: "a diagram.md outlining the architecture visually - data model and
