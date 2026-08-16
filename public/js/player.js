@@ -604,6 +604,33 @@ function resolveImmersiveCarryTarget(carriedKind, newType) {
   return newType === 'audio' ? 'audio-expanded' : 'video-fs';
 }
 
+// ---- v1.131 CarPlay pause-provenance diagnostics pure helper ---------------
+// Dean's car repro (2026-08-16, wired CarPlay, physical knob/steering wheel):
+// changing volume from the car pauses playback until he presses play IN THE
+// APP - the car's own play button does NOT resume. A web app receives NO
+// volume events on iOS, so something between the head unit and WebKit
+// delivers a real pause: either a MediaSession 'pause' action (a car-sent
+// transport command) or a bare element pause (an audio-session interruption,
+// which iOS never auto-resumes for web media). The ?debugLifecycle=1 overlay
+// recorded NEITHER raw element pause/play arrivals NOR MediaSession action
+// invocations - exactly the distinguishing evidence. This formats the
+// per-pause provenance detail line the overlay shows.
+// gestureAgeMs: ms since the last in-page gesture, or null/non-finite when
+// none has happened - a system pause has no adjacent gesture; a user tap
+// does. Ages above the readable window collapse to '>99s' (the exact number
+// stops mattering; "long ago" is the signal).
+function formatPauseProvenance(ctx) {
+  var c = ctx || {};
+  var age = (typeof c.gestureAgeMs === 'number' && isFinite(c.gestureAgeMs) && c.gestureAgeMs >= 0)
+    ? (c.gestureAgeMs > 99999 ? '>99s' : Math.round(c.gestureAgeMs) + 'ms')
+    : 'none';
+  return 'el=' + (c.el || '?')
+    + ' gestureAge=' + age
+    + ' suppressed=' + (c.suppressed ? '1' : '0')
+    + ' ended=' + (c.ended ? '1' : '0')
+    + ' state=' + (c.state || '?');
+}
+
 // ---- FR-2 (T2, v1.21.0): custom control-bar pure helpers -------------------
 // Both hoisted above the browser-only runtime below, same "pure helpers
 // first" split every other state-machine decision in this file already uses
@@ -1312,6 +1339,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.130: immersive carry-on-advance (fullscreen survives autoplay/skip).
     captureImmersiveCarryForLoad,
     resolveImmersiveCarryTarget,
+    // v1.131: CarPlay pause-provenance diagnostics detail line.
+    formatPauseProvenance,
     clampVolume,
     seekCommitTarget,
     scrubRatioFromPointer,
@@ -2408,7 +2437,19 @@ if (typeof module !== 'undefined' && module.exports) {
   // registering.
   function setMediaSessionAction(action, handler) {
     if (!('mediaSession' in navigator) || typeof navigator.mediaSession.setActionHandler !== 'function') return;
-    try { navigator.mediaSession.setActionHandler(action, handler); } catch (_) { /* action unsupported by this browser */ }
+    // v1.131 (CarPlay pause diagnostics): record every MediaSession action
+    // ARRIVAL (a no-op unless the ?debugLifecycle=1 flag is on) BEFORE the
+    // real handler runs - whether the car/lock screen actually sent 'pause'
+    // is THE distinguishing evidence for the CarPlay volume-knob pause
+    // report. Wrapping HERE (the one registration seam) keeps every call
+    // site byte-identical. A null handler stays null - clearing an action
+    // must keep clearing it, so per-direction availability (prev/next) and
+    // teardown-time clears are untouched.
+    var wrapped = handler ? function (details) {
+      recordLifecycleEvent('msAction:' + action, {});
+      return handler(details);
+    } : null;
+    try { navigator.mediaSession.setActionHandler(action, wrapped); } catch (_) { /* action unsupported by this browser */ }
   }
 
   // v1.27.0: every handler below is retargeted from a hardcoded `mediaPlayer`
@@ -3320,6 +3361,28 @@ if (typeof module !== 'undefined' && module.exports) {
       localStorage.setItem(LIFECYCLE_LOG_STORAGE_KEY, JSON.stringify(log));
       renderLifecycleOverlay(); // keep an already-visible overlay live-updated
     } catch (_) { /* localStorage unavailable/full -- best-effort only, never throws */ }
+  }
+
+  // v1.131 (CarPlay pause diagnostics): the per-pause provenance record -
+  // WHICH element paused, how long since the last in-page gesture (a system
+  // pause has none adjacent; a user tap does), whether this file's own
+  // lifecycle machinery suppressed the handoff trigger for it, whether it
+  // was an 'ended' pause, and the background-audio state at that moment.
+  // Gated on the debug flag BEFORE any context read, so the wired listeners
+  // below cost one boolean check when the overlay is off. PASSIVE observer
+  // only - this must never mutate playback state.
+  function recordDiagnosticPauseEvent(elName) {
+    if (!isDebugLifecycleEnabled()) return;
+    var el = elName === 'bgAudio' ? bgAudioEl : mediaPlayer;
+    recordLifecycleEvent('media:pause', {
+      detail: formatPauseProvenance({
+        el: elName,
+        gestureAgeMs: lastUserGestureAt ? (Date.now() - lastUserGestureAt) : null,
+        suppressed: suppressPauseHandoff,
+        ended: !!(el && el.ended),
+        state: bgAudioState,
+      }),
+    });
   }
 
   // Small, unobtrusive, fixed-position monospace overlay -- built entirely in
@@ -5012,6 +5075,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // rationale (iOS can system-pause an inline video BEFORE
     // `visibilitychangeHidden` fires) and its layered safety guards.
     mediaPlayer.addEventListener('pause', handlePossibleIOSPrePauseHandoff);
+    // v1.131 (CarPlay pause diagnostics): raw pause/play provenance for the
+    // video element - no-ops unless the ?debugLifecycle=1 flag is on. Passive
+    // observers; registered AFTER the handoff trigger so the suppression flag
+    // they record reflects the same synchronous dispatch it guards.
+    mediaPlayer.addEventListener('pause', function () { recordDiagnosticPauseEvent('video'); });
+    mediaPlayer.addEventListener('play', function () { recordLifecycleEvent('media:play', { detail: 'el=video' }); });
     // v1.27.2 (pre-pause candidate bridge): any resumed playback invalidates
     // a pending candidate -- the pause it described is no longer "the last
     // thing that happened" (e.g. user paused, changed their mind, hit play,
@@ -5065,6 +5134,12 @@ if (typeof module !== 'undefined' && module.exports) {
     bgAudioEl.addEventListener('pause', function () { if (activeMediaElement() !== bgAudioEl) return; stopProgressSaver(); });
     bgAudioEl.addEventListener('play', function () { if (activeMediaElement() !== bgAudioEl) return; setPlaybackState('playing'); updatePositionState(true); });
     bgAudioEl.addEventListener('pause', function () { if (activeMediaElement() !== bgAudioEl) return; setPlaybackState('paused'); updatePositionState(true); });
+    // v1.131 (CarPlay pause diagnostics): same raw provenance pair for the
+    // background-audio sidecar - deliberately UNfiltered by
+    // activeMediaElement() (unlike the state-sync listeners above): a pause
+    // arriving on the non-active element is itself diagnostic signal.
+    bgAudioEl.addEventListener('pause', function () { recordDiagnosticPauseEvent('bgAudio'); });
+    bgAudioEl.addEventListener('play', function () { recordLifecycleEvent('media:play', { detail: 'el=bgAudio' }); });
     // v1.27.0 (F2, two-reviewer gate): bgAudioEl's own 'ended' counterpart to
     // mediaPlayer's completion cascade below -- ONLY acts when this element
     // is the one actually BACKGROUND_AUDIO-playing for the current item
