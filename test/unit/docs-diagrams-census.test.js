@@ -95,6 +95,12 @@ test('every doc_kv namespace, doc_single name, and relational table appears in t
     const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return new RegExp(`(?:^|[^A-Za-z0-9_.])${esc}(?![A-Za-z0-9_.])`).test(section);
   };
+  // KNOWN single survivor (gate delta, mutant-proven, shipped disclosed):
+  // dropping the `notifications` TABLE from the NOTIF box's list stays green
+  // because the box HEADER "notifications + push" boundary-matches in the
+  // same block. 1 of 53; both source-side vectors (add/rename) still red;
+  // closing it means structurally parsing the ·-separated lists - not worth
+  // it. Do not over-trust "boundary-delimited" past this named residual.
   const missing = [...kvNamespaces, ...singletonNames, ...relationalTables].filter((n) => !appears(n));
   assert.deepStrictEqual(missing, [],
     'persisted names missing from diagram 2 (new namespace/table? renamed?) - update the data-model section:\n  ' + missing.join('\n  '));
