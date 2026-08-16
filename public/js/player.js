@@ -658,6 +658,18 @@ function resumeCountdownLabel(baseLabel, secondsLeft) {
   return String(baseLabel) + ' · ' + secondsLeft;
 }
 
+// ---- v1.134 video tap-to-pause pure helper ---------------------------------
+// Was THIS single tap already consumed by its own touch-down's blind reveal
+// of a hidden immersive bar? (See videoSingleTapOrReveal's header for the
+// race.) `stampAt` 0/absent = no pending consume; a stamp only counts while
+// fresh (the same gesture's touchstart -> classified-single-tap span - the
+// per-gesture rewrite makes staleness structurally impossible, the window is
+// the belt). Pure so the comparison DIRECTION and the zero-stamp semantics
+// are bound by tests (the v1.132 W2 lesson: unbound arithmetic mutates green).
+function shouldConsumeTapAsReveal(stampAt, now, windowMs) {
+  return typeof stampAt === 'number' && stampAt > 0 && (now - stampAt) < windowMs;
+}
+
 // ---- FR-2 (T2, v1.21.0): custom control-bar pure helpers -------------------
 // Both hoisted above the browser-only runtime below, same "pure helpers
 // first" split every other state-machine decision in this file already uses
@@ -1371,6 +1383,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.132: resume-countdown config + ticking-label builders.
     resolveResumeCountdownConfig,
     resumeCountdownLabel,
+    // v1.134: video tap-to-pause reveal-consume decision.
+    shouldConsumeTapAsReveal,
     clampVolume,
     seekCommitTarget,
     scrubRatioFromPointer,
@@ -4566,6 +4580,36 @@ if (typeof module !== 'undefined' && module.exports) {
     toggleArtPlayPause();
   }
 
+  // v1.134 (Dean): tap ANYWHERE on the VIDEO surface toggles play/pause with
+  // the same fading glyph the cover-art tap has had since v1.21 - the iOS
+  // "tap the picture" convention. Rides the EXISTING gesture layer: the
+  // wireSkipHoldGestures(mediaPlayer, ...) call site finally passes an
+  // onSingleTap (touch-path only, so desktop is byte-identical; double-tap
+  // ±15s skip and hold-to-2x are untouched, the classifier already
+  // disambiguates). Differs from artSingleTapOrReveal in ONE respect: the
+  // video surface carries the v1.119 blind-reveal touchstart/pointerdown
+  // listeners (the art deliberately does not - see their comment), so by
+  // single-tap classification time a bar this SAME gesture woke is already
+  // up and the reveal-first guard below would see it visible and toggle -
+  // "a reveal that pauses", the exact v1.120 bug class. The blind-reveal
+  // listener therefore STAMPS videoTapConsumedByRevealAt whenever its own
+  // touch woke a HIDDEN bar (re-stamped or zeroed on EVERY gesture, so a
+  // stale stamp never outlives the next touch), and this callback treats a
+  // freshly-stamped tap as consumed by the reveal.
+  var videoTapConsumedByRevealAt = 0;
+  var VIDEO_TAP_REVEAL_CONSUME_MS = 600; // touchstart -> classified single tap, generous
+  function videoSingleTapOrReveal() {
+    if (shouldConsumeTapAsReveal(videoTapConsumedByRevealAt, Date.now(), VIDEO_TAP_REVEAL_CONSUME_MS)) return;
+    // Belt (mirrors artSingleTapOrReveal): if the bar is somehow STILL
+    // hidden here (a future wiring change drops the blind reveal), first
+    // tap reveals without toggling - the v1.120 convention either way.
+    if (inImmersiveMode() && host && host.classList.contains('controls-autohidden')) {
+      revealControlsAndReArm();
+      return;
+    }
+    toggleArtPlayPause();
+  }
+
   // Cover-art click-to-play overlay glyph (AC9): flashes via the same
   // remove/reflow/add idiom `flashRipple` (above) already uses for the
   // skip-ripple feedback, so a rapid repeat click always re-triggers the fade.
@@ -5384,9 +5428,19 @@ if (typeof module !== 'undefined' && module.exports) {
     // (v1.120: the audio cover-art tap surface #audio-bg-art is deliberately NOT
     // wired here -- its own click handler reveals a HIDDEN bar WITHOUT toggling
     // play/pause, then toggles only when the bar is already up. A blind reveal
-    // here would let that same tap ALSO toggle playback -- a reveal that pauses.)
+    // here would let that same tap ALSO toggle playback -- a reveal that pauses.
+    // v1.134: the VIDEO surface now has a single-tap toggle too, and it keeps
+    // this instant blind reveal by STAMPING when a gesture's own touch-down
+    // woke a hidden bar -- videoSingleTapOrReveal treats that tap as consumed
+    // by the reveal. The stamp is re-written on EVERY gesture (hidden -> now,
+    // visible -> 0) so it can never go stale across gestures; see
+    // videoSingleTapOrReveal's header for the full mechanism.)
     ['touchstart', 'pointerdown'].forEach(function (evt) {
-      mediaPlayer.addEventListener(evt, function () { if (inImmersiveMode()) revealControlsAndReArm(); }, { passive: true });
+      mediaPlayer.addEventListener(evt, function () {
+        if (!inImmersiveMode()) { videoTapConsumedByRevealAt = 0; return; } // inline gestures also rewrite the stamp - no cross-mode staleness
+        videoTapConsumedByRevealAt = (host && host.classList.contains('controls-autohidden')) ? Date.now() : 0;
+        revealControlsAndReArm();
+      }, { passive: true });
       if (playerControls) playerControls.addEventListener(evt, function () { if (inImmersiveMode()) revealControlsAndReArm(); }, { passive: true });
     });
     mediaPlayer.addEventListener('ended', function () { stopFillLoop(); updateSeekVisual(); });
@@ -6469,7 +6523,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // instead) and `#audio-bg-art` is `display: none` outside `.audio-mode`
     // -- so attaching both here is safe: whichever surface a tap/click/hold
     // actually lands on is the only one that ever fires.
-    wireSkipHoldGestures(mediaPlayer);
+    // v1.134: the video surface's single-tap slot is finally filled - tap
+    // anywhere on the picture toggles play/pause (reveal-first when the
+    // immersive bar is hidden; see videoSingleTapOrReveal).
+    wireSkipHoldGestures(mediaPlayer, videoSingleTapOrReveal);
     wireSkipHoldGestures(audioBgArt, artSingleTapOrReveal);
 
     function onEnterFullscreen() { clearTimeout(holdTimer); releaseHold(); keeperNativeFsCapture(); }
