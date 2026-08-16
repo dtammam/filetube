@@ -80,6 +80,26 @@
 
 ## Shipped
 
+### v1.136.1 - HOTFIX: audio-path declare demoted to a default-OFF toggle (2026-08-16)
+
+Dean's same-day device test of v1.136.0 (iOS 26.6): WORSE - audio stopped
+the moment he exited the app; a foregrounded same-domain sibling RESUMED
+it; closing that stopped it again. The E2 experiment's honest result:
+declaring the playback session at load makes backgrounded PWA audio MORE
+eagerly suspended on 26.6 (the webkit.org/b/261554 class), and the
+registrable-domain coupling operates in both directions. The audio-path
+declare now sits behind the device-local toggle Dean originally approved
+(Setup -> Playback, DEFAULT OFF = pre-v1.136 behavior byte-for-byte);
+the v1.35 video arm is untouched and mutation-guarded against
+over-demotion. Caveat for A/B tests: the video arm's one-way declaration
+still stands within a page session - verify toggle-off music behavior in
+a fresh session that didn't first arm a video.
+
+Gate (same adversarial seat, round 3, APPROVE): default-off traced to
+byte-identical pre-v1.136 behavior; N5 folded (the checkbox must store
+the literal '1' the player checks - a 'true' drift left the experiment
+silently dead while appearing configured). Dual-Node: 6986/6986 both.
+
 ### v1.136.0 - playback audio-session declaration for plain-audio items (2026-08-16)
 
 The PWA audio-coupling deep dive's E2, reshaped by a code discovery:
