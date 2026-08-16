@@ -102,6 +102,11 @@ test('gate W2: a drag past tolerance vetoes ONLY the single-tap scheduling (scro
   // tap-to-pause would go intermittently dead, all green.
   assert.match(move[1], /if \(Math\.abs\(t\.clientX - startX\) > MOVE_TOL \|\| Math\.abs\(t\.clientY - startY\) > MOVE_TOL\) \{[\s\S]*?tapGestureMoved = true;/,
     'the veto sets ONLY past the movement tolerance');
+  // ...and EXACTLY once - an ADDED unconditional set above the conjunct is
+  // the same harm as a moved one (my own M11 repro survived the pin alone:
+  // I ADDED a hoisted set where the reviewer MOVED it; both variants must red).
+  assert.strictEqual((move[1].match(/tapGestureMoved = true;/g) || []).length, 1,
+    'exactly one veto set in the touchmove handler, inside the conjunct');
   assert.match(PLAYER_JS, /if \(shouldArtSingleTapAct\(state, onSingleTap\) && !tapGestureMoved\) \{/,
     'the veto gates exactly the scheduling conjunct - skip/hold/double-tap paths untouched');
 });
