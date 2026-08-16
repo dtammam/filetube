@@ -39,7 +39,7 @@ test('resolveEndedAction: loop off, autoplay on, has next -- advance', () => {
   assert.strictEqual(resolveEndedAction({ loop: false, autoplayNext: true, hasNext: true }), 'advance');
 });
 
-test('resolveEndedAction: loop off, autoplay on, no next -- stop (end of the order, no wrap)', () => {
+test('resolveEndedAction: loop off, autoplay on, no advance TARGET -- stop (v1.139: hasNext includes the playlist-wrap target, so this is the single-item/foreign-id case)', () => {
   assert.strictEqual(resolveEndedAction({ loop: false, autoplayNext: true, hasNext: false }), 'stop');
 });
 

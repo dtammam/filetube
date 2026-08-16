@@ -80,6 +80,37 @@
 
 ## Shipped
 
+### v1.139.0 - autoplay wraps a playlist back to the top (2026-08-16)
+
+Dean, overturning the v1.30 no-wrap decision: with autoplay on, ending
+the LAST item of a playlist/folder context advances back to the FIRST.
+Rulings encoded pure: natural next always wins; single-item contexts
+never wrap (the Loop toggle owns replay); a stale/deleted item never
+teleports playback to someone else's list head; the QUEUE stays finite by
+design. Gate-added guard: the wrap is COMPLETENESS-gated - a context past
+the server's 10k list cap fetches a truncated prefix, and wrapping there
+would loop the prefix forever while masking the truncation; those keep
+the old visible stop.
+
+OPEN RULING (disclosed, awaiting Dean): a wrap can land at the first
+item's SAVED position from an earlier abandoned session (identical to
+every autoplay advance since v1.24, self-healing after one playthrough) -
+if "loops back to the beginning" should mean position 0 of video 1, say
+so and the wrap gains a start-over hint. Also noted for device judgment:
+the page's Next BUTTON still greys at the last item - autoplay wraps, the
+button doesn't.
+
+What the gate caught (slim/adversarial, 2 rounds): the truncation-mask
+WARNING above; a derivation-source mutant of my own that survived the
+first lock (completeness from the kind-FILTERED count would have silently
+killed the wrap on mixed lists); plus the resolveEndedAction mirror-table
+re-documentation verified truthful. Fourth strike of the measure-then-
+claim class in a commit message (pre-claimed 7008, truth 7009) - caught
+by self-check, amended, and the structural rule is now: measurement and
+commit commands never share a chain.
+
+Dual-Node: 7009/7009 on v22.23.1 AND v24.14.0.
+
 ### v1.138.0 - desktop fullscreen survives advances: the fullscreen stage (2026-08-16)
 
 Dean: desktop fullscreen must survive autoplay/Next "just like iOS" -
