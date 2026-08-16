@@ -2557,32 +2557,37 @@ if (typeof module !== 'undefined' && module.exports) {
   // exact same navigation the hardware media keys / lock screen get -- one
   // registration, three surfaces, no second neighbor model.
   var trackNavHandlers = null;
-  // v1.73 (Dean ruling 6): the on-screen Prev/Next TRACK buttons mirror the
-  // lock-screen pair - visible only in AUDIO mode (the watch page's video
-  // chrome has its own page-level Prev/Next; duplicating them would be the
-  // two-writers class) and only while a trackNav context is registered.
-  // Per-direction disabled tracks handler presence; the QUEUE can still
-  // upgrade a click (manualTrackStep) exactly like the ended flow.
+  // v1.73 (Dean ruling 6) introduced the on-screen Prev/Next TRACK buttons
+  // mirroring the lock-screen pair; v1.133 (Dean) shows them for EVERY kind
+  // whenever a trackNav context is registered - the ruling history lives
+  // inside updateTrackNavButtons below. Shown buttons stay ENABLED in both
+  // directions (the v1.73 W4 fix - an edge tap must reach manualTrackStep's
+  // queue consult); the QUEUE can upgrade a click exactly like the ended
+  // flow.
   function updateTrackNavButtons() {
     if (!trackPrevBtn || !trackNextBtn) return;
-    var audioMode = !!(host && host.classList.contains('audio-mode'));
-    // Gate fixes (v1.73 round 1, both seats):
-    // - QA W1: the WATCH page plays plain audio library files too (its
-    //   background-audio mode sets audio-mode and it registers trackNav
-    //   for folder neighbors) - and it has its OWN page-level Prev/Next.
-    //   autoAdvanceViaTrackNav is the marker ONLY the kind surfaces
-    //   (music/podcasts) set, so it is the gate: the watch chrome Dean
-    //   rates perfect stays byte-identical for audio items.
-    // - Adversarial W4: the buttons stay ENABLED whenever shown - a
-    //   context-edge tap (last track of an album) must still reach
-    //   manualTrackStep's queue consult (the queue owns up-next; a
-    //   disabled button made the queue unreachable, the same
-    //   manual-vs-queue asymmetry as Dean's device bug one surface over).
-    //   An edge tap with no queue neighbor AND no handler is a silent
-    //   no-op. Residual: a single-item context registers NO handlers, so
-    //   the pair hides with a queue banked - tech-debt #101.
-    var show = audioMode && !!trackNavHandlers
-      && !!(currentData && currentData.autoAdvanceViaTrackNav === true);
+    // v1.133 (Dean, 2026-08-16, SUPERSEDES the v1.73 QA-W1 audio-only gate):
+    // the pair shows for EVERY kind - video included, "always" - whenever a
+    // trackNav context is registered. v1.73 hid it on the watch page because
+    // the page-level Prev/Next existed and a second writer was the risk;
+    // both halves have since dissolved: faux fullscreen (v1.118) + the
+    // immersive carry (v1.130) put Dean INSIDE fullscreen where the page
+    // buttons are unreachable, and every surface reads the SAME setTrackNav
+    // registration. (NOT identical consult TIMING, per the gate: this
+    // pair's manualTrackStep fetches the queue FRESH at tap time, while the
+    // page buttons/media keys run closures upgraded from the page-load
+    // queue snapshot - a cross-device queue edit between renders can send
+    // the two surfaces to different neighbors. Pre-existing behavior, and
+    // the fresh consult is the better answer.) The page buttons STAY
+    // (Dean: "keep both for now"). Docked and reader contexts remain hidden
+    // via CSS (#player-dock/.reader-nowplaying rules) regardless of this
+    // flag; a single-item context still registers no handlers -> hidden
+    // (tech-debt #101's residual, unchanged).
+    // v1.73 Adversarial W4 (kept): shown buttons stay ENABLED - a
+    // context-edge tap must still reach manualTrackStep's queue consult
+    // (the queue owns up-next); an edge tap with no queue neighbor AND no
+    // handler is a silent no-op.
+    var show = !!trackNavHandlers;
     trackPrevBtn.hidden = !show;
     trackNextBtn.hidden = !show;
     if (show) {
@@ -6877,7 +6882,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // (16:9) via `computeMediaAspectRatio`'s degrade-safe `null` return.
     applyMediaAspect(null, null);
     if (host) host.classList.remove('audio-mode');
-    updateTrackNavButtons(); // v1.73: leaving audio mode hides the Prev/Next pair
+    updateTrackNavButtons(); // v1.133: visibility keys on the trackNav registration alone now (setTrackNav(null) above already hid the pair; this re-derive is belt)
     // FR-1 (T1, v1.22.2, AC5): every genuine new load force-clears any expanded
     // state left over from the previous media -- same v1.130 continuation
     // carve-out as the css-fullscreen drop above.
@@ -7239,7 +7244,7 @@ if (typeof module !== 'undefined' && module.exports) {
           audioBgArt.style.backgroundImage = 'url("' + artUrl + '")';
           audioBgArt.style.display = 'block';
           host.classList.add('audio-mode');
-          updateTrackNavButtons(); // v1.73: entering audio mode shows the pair (when a trackNav context exists)
+          updateTrackNavButtons(); // v1.133: re-derive (visibility keys on the trackNav registration alone now, not audio-mode)
         }
       } else {
         audioVisualizer.style.display = 'flex';

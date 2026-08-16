@@ -253,11 +253,14 @@ test('v1.73 (ruling 6): the audio Prev/Next pair - queue-aware steps, audio-mode
   assert.ok(step.indexOf('advanceIntoQueueEntry') < step.indexOf('trackNavHandlers && (dir'), 'queue consult precedes the context fallback');
   // Visibility (v1.73 round 1, adversarial W2 + QA W1): the WHOLE show
   // expression is bound - audio mode AND a registered context AND the
-  // kind-surface marker (the watch page plays plain audio and registers
-  // trackNav; only music/podcasts set autoAdvanceViaTrackNav, so the
-  // watch chrome never grows the pair). An ||-for-&& mutant dies here.
-  assert.ok(playerSrc.includes("var show = audioMode && !!trackNavHandlers\n      && !!(currentData && currentData.autoAdvanceViaTrackNav === true);"),
-    'the exact show expression - all three conjuncts, AND-composed');
+  // v1.133 (Dean, supersedes the v1.73 three-conjunct audio-only gate): the
+  // pair shows for EVERY kind whenever a trackNav context is registered -
+  // the exact one-term expression is the lock. Re-adding an audio-mode or
+  // kind-marker conjunct (re-hiding the pair for video) goes red here.
+  assert.ok(playerSrc.includes('var show = !!trackNavHandlers;'),
+    'the exact show expression - trackNav registration alone');
+  assert.ok(!playerSrc.includes('audioMode && !!trackNavHandlers'),
+    'the v1.73 audio-only conjunct chain must be gone, not merely bypassed');
   assert.ok((playerSrc.match(/updateTrackNavButtons\(\);/g) || []).length >= 3, 'setTrackNav + BOTH audio-mode toggle sites update visibility');
   // Adversarial W3: dead-button class - the CLICK wiring is bound.
   assert.ok(playerSrc.includes("if (trackPrevBtn) trackPrevBtn.addEventListener('click', function () { manualTrackStep('prev'); });"), 'prev wired');
