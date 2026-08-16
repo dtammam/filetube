@@ -590,6 +590,12 @@ function loadResumeThresholdControl() {
 // RESUME_THRESHOLD_KEY above -- grep it there for the precedent).
 const DEBUG_LIFECYCLE_STORAGE_KEY = 'ft-debug-lifecycle';
 
+// v1.132: resume-countdown keys -- MUST match player.js's
+// RESUME_COUNTDOWN_STORAGE_KEY / RESUME_COUNTDOWN_ACTION_STORAGE_KEY exactly
+// (the RESUME_THRESHOLD_KEY cross-file string-literal convention above).
+const RESUME_COUNTDOWN_KEY = 'filetube_resume_countdown';
+const RESUME_COUNTDOWN_ACTION_KEY = 'filetube_resume_countdown_action';
+
 // Prefills the checkbox from whatever's currently stored -- mirrors
 // `isDebugLifecycleEnabled()`'s own `=== '1'` check in player.js exactly, so
 // the two never disagree about what counts as "on".
@@ -1654,6 +1660,38 @@ function wireStaticControls(signal) {
       const value = raw !== '' && Number.isFinite(n) && n >= 0 ? n : RESUME_THRESHOLD_DEFAULT;
       e.target.value = String(value);
       try { localStorage.setItem(RESUME_THRESHOLD_KEY, String(value)); } catch (_) { /* storage disabled/full -- best-effort only */ }
+    }, { signal });
+  }
+
+  // v1.132: resume-countdown controls -- same immediate-apply localStorage
+  // pattern as the resume-threshold control just above. Keys MUST match
+  // RESUME_COUNTDOWN_STORAGE_KEY / RESUME_COUNTDOWN_ACTION_STORAGE_KEY in
+  // player.js exactly (the RESUME_THRESHOLD cross-file convention). The
+  // checkbox stores '0' ONLY when unchecked (absent = ON, the default -
+  // mirrors player.js's resolveResumeCountdownConfig `!== '0'` check); the
+  // action select stores its value verbatim ('resume' | 'beginning'), where
+  // anything but the literal 'beginning' resolves to resume on the player
+  // side. The select stays enabled regardless of the checkbox - a stored
+  // preference survives toggling the feature off and back on.
+  const resumeCountdownCheck = document.getElementById('resume-countdown-check');
+  const resumeCountdownActionSelect = document.getElementById('resume-countdown-action-select');
+  if (resumeCountdownCheck) {
+    let rawEnabled = null;
+    try { rawEnabled = localStorage.getItem(RESUME_COUNTDOWN_KEY); } catch (_) { /* storage disabled -- show the default (on) */ }
+    resumeCountdownCheck.checked = rawEnabled !== '0';
+    resumeCountdownCheck.addEventListener('change', (e) => {
+      try {
+        if (e.target.checked) localStorage.removeItem(RESUME_COUNTDOWN_KEY);
+        else localStorage.setItem(RESUME_COUNTDOWN_KEY, '0');
+      } catch (_) { /* storage disabled/full -- best-effort only */ }
+    }, { signal });
+  }
+  if (resumeCountdownActionSelect) {
+    let rawAction = null;
+    try { rawAction = localStorage.getItem(RESUME_COUNTDOWN_ACTION_KEY); } catch (_) { /* storage disabled -- show the default */ }
+    resumeCountdownActionSelect.value = rawAction === 'beginning' ? 'beginning' : 'resume';
+    resumeCountdownActionSelect.addEventListener('change', (e) => {
+      try { localStorage.setItem(RESUME_COUNTDOWN_ACTION_KEY, e.target.value === 'beginning' ? 'beginning' : 'resume'); } catch (_) { /* storage disabled/full -- best-effort only */ }
     }, { signal });
   }
 

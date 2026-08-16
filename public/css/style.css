@@ -2321,6 +2321,43 @@ img.art-shimmer {
   gap: var(--space-6);
 }
 
+/* v1.132 resume-countdown: the prompt's DEFAULT button ticks ("Resume · 4",
+   label written by player.js) and drains a thin progress underline over the
+   countdown window. The animation duration comes from the JS constant
+   (RESUME_COUNTDOWN_SECONDS -> the --resume-countdown-duration custom
+   property set inline in startResumeCountdown), so the visual can never
+   drift from the timer. Cancelled = class removed -> the bar vanishes and
+   the label is restored by the same cancel. */
+.resume-actions .btn.countdown-armed {
+  position: relative;
+  overflow: hidden;
+}
+.resume-actions .btn.countdown-armed::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: var(--space-1);
+  width: 100%;
+  background: currentColor;
+  opacity: 0.5; /* token-exempt: decorative underline strength on an already-token colour */
+  transform-origin: left;
+  /* No fallback duration ON PURPOSE: startResumeCountdown (player.js) always
+     sets --resume-countdown-duration before adding the class (single-sourced
+     from RESUME_COUNTDOWN_SECONDS), and an unset var() invalidates the
+     declaration -> no drain bar, the correct degrade for a class only that
+     JS applies. A raw fallback literal would also re-enter the motion census. */
+  animation: resume-countdown-drain var(--resume-countdown-duration) linear forwards;
+}
+@keyframes resume-countdown-drain {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The ticking label still counts down; only the motion is dropped. */
+  .resume-actions .btn.countdown-armed::after { animation: none; }
+}
+
 /* "Preparing video" (transcode) spinner */
 .transcode-spinner {
   width: 44px;

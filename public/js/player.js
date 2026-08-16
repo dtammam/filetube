@@ -631,6 +631,33 @@ function formatPauseProvenance(ctx) {
     + ' state=' + (c.state || '?');
 }
 
+// ---- v1.132 resume-countdown pure helpers ----------------------------------
+// Dean (2026-08-16): the "Resume at..." prompt forces an interaction - while
+// driving or heads-down that friction is the whole cost of opening the next
+// item. With the (default-ON) Setup -> Playback option, the prompt arms a
+// short countdown on its DEFAULT button and fires that button's own click
+// when it expires; any interaction with the player cancels the auto-fire and
+// leaves the prompt up. OFF = exactly the pre-wave prompt.
+//
+// Config resolution from the two raw localStorage values (both read LIVE at
+// every prompt, the getStoredResumeThreshold posture). Deliberate defaults:
+// absent/garbage enabled-flag -> ON (Dean: "defaulted as on"; only the
+// literal '0' the Setup checkbox writes disables), absent/garbage action ->
+// 'resume' (continuing is the common intent; only the literal 'beginning'
+// selects start-over).
+function resolveResumeCountdownConfig(rawEnabled, rawAction) {
+  return {
+    enabled: rawEnabled !== '0',
+    action: rawAction === 'beginning' ? 'beginning' : 'resume',
+  };
+}
+
+// The armed button's ticking label, e.g. "Resume · 4". One builder so the
+// per-tick rewrite and the initial arm can never drift in format.
+function resumeCountdownLabel(baseLabel, secondsLeft) {
+  return String(baseLabel) + ' · ' + secondsLeft;
+}
+
 // ---- FR-2 (T2, v1.21.0): custom control-bar pure helpers -------------------
 // Both hoisted above the browser-only runtime below, same "pure helpers
 // first" split every other state-machine decision in this file already uses
@@ -1341,6 +1368,9 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveImmersiveCarryTarget,
     // v1.131: CarPlay pause-provenance diagnostics detail line.
     formatPauseProvenance,
+    // v1.132: resume-countdown config + ticking-label builders.
+    resolveResumeCountdownConfig,
+    resumeCountdownLabel,
     clampVolume,
     seekCommitTarget,
     scrubRatioFromPointer,
@@ -3897,6 +3927,10 @@ if (typeof module !== 'undefined' && module.exports) {
             if (resumeTimeStr) resumeTimeStr.textContent = formatDuration(savedProgress);
             if (resumeOverlay) resumeOverlay.style.display = 'flex';
             mediaPlayer.autoplay = false;
+            // v1.132: arm the auto-fire countdown on the prompt's default
+            // button (config read LIVE here, like the threshold above; OFF
+            // -> this is a no-op and the prompt behaves exactly as before).
+            startResumeCountdown(gen);
           }
         } else if (savedProgress > 5) {
           // Overlay suppressed (autoplay just advanced here, or savedProgress
@@ -4956,6 +4990,109 @@ if (typeof module !== 'undefined' && module.exports) {
     try { return resolveResumeThreshold(localStorage.getItem(RESUME_THRESHOLD_STORAGE_KEY)); } catch (_) { return DEFAULT_RESUME_THRESHOLD_SECONDS; }
   }
 
+  // ---- v1.132 resume-countdown machinery -------------------------------------
+  // See resolveResumeCountdownConfig's header for the feature contract. The
+  // keys MUST match RESUME_COUNTDOWN_KEY/RESUME_COUNTDOWN_ACTION_KEY in
+  // setup.js exactly (the RESUME_THRESHOLD cross-file string-literal
+  // convention); read LIVE at every prompt, never cached at boot.
+  var RESUME_COUNTDOWN_STORAGE_KEY = 'filetube_resume_countdown';
+  var RESUME_COUNTDOWN_ACTION_STORAGE_KEY = 'filetube_resume_countdown_action';
+  // Dean (intake ruling 2): 5 seconds, variableized so a future tweak is one
+  // edit - the CSS fill animation reads THIS value (inline animationDuration
+  // in startResumeCountdown below), so the visual can never drift from the
+  // timer.
+  var RESUME_COUNTDOWN_SECONDS = 5;
+
+  function getStoredResumeCountdownConfig() {
+    try {
+      return resolveResumeCountdownConfig(
+        localStorage.getItem(RESUME_COUNTDOWN_STORAGE_KEY),
+        localStorage.getItem(RESUME_COUNTDOWN_ACTION_STORAGE_KEY)
+      );
+    } catch (_) {
+      return resolveResumeCountdownConfig(null, null); // storage disabled -> the defaults (on, resume)
+    }
+  }
+
+  // Per-prompt countdown state. The interval handle is per-load state and is
+  // cancelled at EVERY seam that hides the prompt (both choice buttons, the
+  // dock-transition auto-resume, teardownMediaState, close) plus every
+  // user interaction with the player (the pointerdown/keydown listeners
+  // armed in startResumeCountdown) - an auto-fire must never race a human
+  // who is actively deciding, and a stale timer must never fire into a
+  // LATER load (the gen guard inside the tick is the TOCTOU belt).
+  var resumeCountdownTimer = null;
+  var resumeCountdownBtn = null;
+  var resumeCountdownBaseLabel = '';
+  var resumeCountdownCancelPointer = null;
+  var resumeCountdownCancelKey = null;
+
+  function cancelResumeCountdown() {
+    if (resumeCountdownTimer) { clearInterval(resumeCountdownTimer); resumeCountdownTimer = null; }
+    if (resumeCountdownBtn) {
+      resumeCountdownBtn.textContent = resumeCountdownBaseLabel;
+      resumeCountdownBtn.classList.remove('countdown-armed');
+      resumeCountdownBtn.style.removeProperty('--resume-countdown-duration');
+      resumeCountdownBtn = null;
+    }
+    resumeCountdownBaseLabel = '';
+    if (resumeCountdownCancelPointer && host) {
+      host.removeEventListener('pointerdown', resumeCountdownCancelPointer, true);
+      resumeCountdownCancelPointer = null;
+    }
+    if (resumeCountdownCancelKey) {
+      document.removeEventListener('keydown', resumeCountdownCancelKey, true);
+      resumeCountdownCancelKey = null;
+    }
+  }
+
+  function startResumeCountdown(gen) {
+    cancelResumeCountdown(); // belt: never two timers (a re-prompt on the same load)
+    var config = getStoredResumeCountdownConfig();
+    if (!config.enabled) return;
+    var btn = config.action === 'beginning' ? resumeNoBtn : resumeYesBtn;
+    if (!btn) return;
+    resumeCountdownBtn = btn;
+    resumeCountdownBaseLabel = btn.textContent;
+    btn.classList.add('countdown-armed');
+    // The CSS fill reads the SAME constant the timer runs on (see the
+    // constant's comment) - custom property, consumed by style.css.
+    btn.style.setProperty('--resume-countdown-duration', RESUME_COUNTDOWN_SECONDS + 's');
+    var secondsLeft = RESUME_COUNTDOWN_SECONDS;
+    btn.textContent = resumeCountdownLabel(resumeCountdownBaseLabel, secondsLeft);
+    // Any interaction with the player surface cancels the auto-fire and
+    // leaves the prompt up: capture-phase so a tap/keypress is seen before
+    // any handler it triggers (a tap ON a choice button still runs its
+    // click - the cancel only stops the timer; R/S shortcuts likewise
+    // cancel first, then their own dismiss logic runs).
+    resumeCountdownCancelPointer = function () { cancelResumeCountdown(); };
+    resumeCountdownCancelKey = function () { cancelResumeCountdown(); };
+    if (host) host.addEventListener('pointerdown', resumeCountdownCancelPointer, true);
+    document.addEventListener('keydown', resumeCountdownCancelKey, true);
+    resumeCountdownTimer = setInterval(function () {
+      // TOCTOU belt: a newer load, or a prompt hidden by any seam that
+      // (correctly) also cancelled, must never be auto-clicked into.
+      if (gen !== loadGeneration || !resumeOverlay || resumeOverlay.style.display === 'none') {
+        cancelResumeCountdown();
+        return;
+      }
+      secondsLeft--;
+      if (secondsLeft > 0) {
+        if (resumeCountdownBtn) resumeCountdownBtn.textContent = resumeCountdownLabel(resumeCountdownBaseLabel, secondsLeft);
+        return;
+      }
+      var fireBtn = resumeCountdownBtn;
+      cancelResumeCountdown(); // restores the label BEFORE the click - the handler hides the prompt
+      // Fire the SAME handler a human tap runs - never a duplicated
+      // seek/play path (behavior parity by construction). On iOS the
+      // programmatic play() inside that handler can be refused without a
+      // fresh gesture (the existing v1.23.6 first-play posture, .catch'd
+      // there): the prompt still dismisses and the position is set, one tap
+      // resumes. Disclosed in the ROADMAP entry.
+      if (fireBtn) fireBtn.click();
+    }, 1000);
+  }
+
   function updateSpeedBtnUI(rate) {
     if (!speedBtn) return;
     speedBtn.textContent = rate + '×'; // e.g. "1.5×" -- textContent only, never innerHTML
@@ -5261,6 +5398,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     if (resumeYesBtn) {
       resumeYesBtn.addEventListener('click', function () {
+        cancelResumeCountdown(); // v1.132 belt: a programmatic dismiss must kill the timer too
         if (resumeOverlay) resumeOverlay.style.display = 'none';
         if (liveMode) {
           startLiveStream(savedProgress, true);
@@ -5272,6 +5410,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (resumeNoBtn) {
       resumeNoBtn.addEventListener('click', function () {
+        cancelResumeCountdown(); // v1.132 belt: mirrors resumeYesBtn's own
         if (resumeOverlay) resumeOverlay.style.display = 'none';
         if (liveMode) {
           startLiveStream(0, true);
@@ -6702,6 +6841,7 @@ if (typeof module !== 'undefined' && module.exports) {
     cancelPendingArtTap();
     if (artPlayGlyph) artPlayGlyph.classList.remove('art-play-glyph-flash', 'art-play-glyph-playing');
     if (resumeOverlay) resumeOverlay.style.display = 'none';
+    cancelResumeCountdown(); // v1.132: a stale timer must never fire into the NEXT load
     if (transcodeOverlay) transcodeOverlay.style.display = 'none';
     if (transcodeSpinner) transcodeSpinner.classList.remove('failed');
     // A6 (T16, v1.24 UX Round, Wave 5): reset the CC button/track for the
@@ -7252,6 +7392,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var resumeOverlayVisible = !!(resumeOverlay && resumeOverlay.style.display !== 'none');
     if (resolveDockTransitionResumeAction({ resumeOverlayVisible: resumeOverlayVisible }) === 'dismiss-and-auto-resume') {
       resumeOverlay.style.display = 'none';
+      cancelResumeCountdown(); // v1.132: the dock transition dismissed the prompt - its timer dies with it
       resumeDirectly(savedProgress);
     }
     exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): never dock a fixed-overlay expanded wrapper
@@ -7314,6 +7455,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // that, so bare r/s anywhere on the page would keep firing clicks at a
     // torn-down player until the next genuine load().
     if (resumeOverlay) resumeOverlay.style.display = 'none';
+    cancelResumeCountdown(); // v1.132: a closed player must never auto-click a vanished prompt
     exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): never leave a closed player's host expanded for a future re-open
     // FIX D (player-hardening round, hygiene): clear the native-controls
     // marker + attribute here too, mirroring teardownMediaState()'s identical
