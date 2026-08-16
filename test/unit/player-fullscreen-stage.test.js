@@ -43,8 +43,14 @@ test('enterFullscreen reparents into the stage BEFORE requesting (reversed order
   const requestIdx = block[1].indexOf('fsStageEl.requestFullscreen();');
   assert.ok(reparentIdx !== -1 && flagIdx !== -1 && requestIdx !== -1, 'reparent + flag + request all present');
   assert.ok(reparentIdx < requestIdx && flagIdx < requestIdx, 'reparent and flag precede the request');
-  // A refused request must roll back BOTH the flag and the placement.
+  // A refused request must roll back BOTH the flag and the placement -
+  // IN THAT ORDER, in BOTH rollback shapes: placement calls dock(), whose
+  // staged guard would no-op while the flag is still true, stranding the
+  // host in the hidden stage. (My own M4 mutant hit the sync catch by
+  // accident and survived - the order was unbound there.)
   assert.match(block[1], /req\.catch\(function \(\) \{ stagedFullscreen = false; placeHostAfterStageExit\(\); \}\);/);
+  assert.match(block[1], /catch \(_\) \{\s*stagedFullscreen = false;\s*placeHostAfterStageExit\(\);\s*return null;/,
+    'the sync-catch rollback clears the flag BEFORE placing');
 });
 
 test('dock() no-ops while staged (the router transition must not yank the host out of fullscreen)', () => {
