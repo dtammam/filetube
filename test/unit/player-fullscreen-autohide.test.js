@@ -48,21 +48,30 @@ test('v1.124.1: inImmersiveMode treats NATIVE fullscreen as immersive (desktop f
   // the host. Source-lock + executable proof of the gate expression.
   const m = /function inImmersiveMode\(\) \{([\s\S]*?)\n {2}\}/.exec(SRC);
   assert.ok(m, 'inImmersiveMode exists');
-  assert.match(m[1], /document\.fullscreenElement && host\.contains\(document\.fullscreenElement\)/,
-    'the gate must accept a native fullscreen element inside the host');
+  // v1.138 respell: the gate accepts BOTH containment directions - the
+  // fullscreen element inside the host (v1.124.1 native-on-host) OR the
+  // host inside the fullscreen element (the staged shape, where #fs-stage
+  // is the host's PARENT).
+  assert.match(m[1], /host\.contains\(document\.fullscreenElement\) \|\| document\.fullscreenElement\.contains\(host\)/,
+    'the gate must accept a native fullscreen element inside the host AND the staged parent shape');
 
-  // Executable proof of the same shape: class OR contained fullscreenElement.
+  // Executable proof of the same shape: class OR either containment direction.
   function immersive(host, doc) {
     if (!host) return false;
     if (host.classes.includes('css-fullscreen') || host.classes.includes('audio-expanded')) return true;
-    return !!(doc.fullscreenElement && host.contains(doc.fullscreenElement));
+    if (!doc.fullscreenElement) return false;
+    return !!(host.contains(doc.fullscreenElement) || doc.fullscreenElement.contains(host));
   }
   const mkHost = (classes, containedEls) => ({ classes, contains: (el) => containedEls.includes(el) });
   const video = {};
   assert.strictEqual(immersive(mkHost([], []), { fullscreenElement: null }), false, 'inline is never immersive');
   assert.strictEqual(immersive(mkHost(['css-fullscreen'], []), { fullscreenElement: null }), true, 'faux still immersive');
   assert.strictEqual(immersive(mkHost([], [video]), { fullscreenElement: video }), true, 'NATIVE fullscreen (host or child) is immersive');
-  assert.strictEqual(immersive(mkHost([], []), { fullscreenElement: video }), false, 'someone else\'s fullscreen element is not ours');
+  const hostObj = mkHost([], []);
+  const stage = { contains: (el) => el === hostObj };
+  assert.strictEqual(immersive(hostObj, { fullscreenElement: stage }), true, 'v1.138 STAGED fullscreen (host inside the fullscreen element) is immersive');
+  const stranger = { contains: () => false };
+  assert.strictEqual(immersive(mkHost([], []), { fullscreenElement: stranger }), false, 'someone else\'s fullscreen element is not ours');
 });
 
 test('v1.124.1: a fullscreenchange transition arms the fade (enter) / restores the bar (exit)', () => {
@@ -74,11 +83,13 @@ test('v1.124.1: a fullscreenchange transition arms the fade (enter) / restores t
 });
 
 test('v1.124.1: the native :fullscreen CSS twins exist (transition, fade, cursor)', () => {
-  assert.match(STYLE_CSS, /\.player-container:fullscreen \.player-controls \{\s*\n\s*transition: opacity/,
+  // v1.138: the group gained the staged twin selector - anchor on the
+  // native selector reaching the SAME declaration through the group.
+  assert.match(STYLE_CSS, /\.player-container:fullscreen \.player-controls,\s*\n\s*#fs-stage:fullscreen \.player-container \.player-controls \{\s*\n\s*transition: opacity/,
     'native fullscreen bar needs the fade transition');
   assert.match(STYLE_CSS, /\.player-container:fullscreen\.controls-autohidden \.player-controls/,
     'native fullscreen needs the autohidden opacity/pointer-events rule');
-  assert.match(STYLE_CSS, /\.player-container:fullscreen\.controls-autohidden \{[\s\S]{0,80}cursor: none/,
+  assert.match(STYLE_CSS, /\.player-container:fullscreen\.controls-autohidden,\s*\n\s*#fs-stage:fullscreen \.player-container\.controls-autohidden \{[\s\S]{0,40}cursor: none/,
     'native fullscreen hides the cursor with the bar');
 });
 
@@ -91,7 +102,7 @@ test('v1.124 F2: a host mousemove reveals the auto-hidden bar and re-arms the fa
 });
 
 test('v1.124 F2: the cursor hides with the controls in faux fullscreen (YouTube convention)', () => {
-  assert.match(STYLE_CSS, /#player-wrapper\.css-fullscreen\.controls-autohidden,\s*\n\s*\.player-container:fullscreen\.controls-autohidden \{\s*\n\s*cursor: none;/,
+  assert.match(STYLE_CSS, /#player-wrapper\.css-fullscreen\.controls-autohidden,\s*\n\s*\.player-container:fullscreen\.controls-autohidden,\s*\n\s*#fs-stage:fullscreen \.player-container\.controls-autohidden \{\s*\n\s*cursor: none;/,
     'expected cursor:none on the auto-hidden faux-fullscreen wrapper');
 });
 
@@ -162,13 +173,13 @@ test('inImmersiveMode covers BOTH video faux fullscreen AND the audio expanded v
 test('CSS: the auto-hidden bar is opacity 0 + pointer-events none for BOTH overlays, with a tokenised transition', () => {
   // The hidden state is a comma-group covering video faux fullscreen AND the
   // audio expanded view.
-  assert.match(STYLE_CSS, /#player-wrapper\.css-fullscreen\.controls-autohidden \.player-controls,\s*\n\s*\.player-container:fullscreen\.controls-autohidden \.player-controls,\s*\n\s*#player-wrapper\.audio-mode\.audio-expanded\.controls-autohidden \.player-controls \{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/,
+  assert.match(STYLE_CSS, /#player-wrapper\.css-fullscreen\.controls-autohidden \.player-controls,\s*\n\s*\.player-container:fullscreen\.controls-autohidden \.player-controls,\s*\n\s*#fs-stage:fullscreen \.player-container\.controls-autohidden \.player-controls,\s*\n\s*#player-wrapper\.audio-mode\.audio-expanded\.controls-autohidden \.player-controls \{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/,
     'both overlays fade the bar and let taps pass through');
   assert.match(STYLE_CSS, /#player-wrapper\.css-fullscreen \.player-controls \{[^}]*transition:\s*opacity var\(--dur-slow\) var\(--ease-ui\);/,
     'the video bar transitions opacity via motion TOKENS (census-clean)');
   assert.match(STYLE_CSS, /#player-wrapper\.audio-mode\.audio-expanded \.player-controls \{[^}]*transition:\s*opacity var\(--dur-slow\) var\(--ease-ui\);/,
     'the audio expanded bar transitions the same way (parity)');
-  assert.match(STYLE_CSS, /@media \(prefers-reduced-motion: reduce\) \{\s*#player-wrapper\.css-fullscreen \.player-controls,\s*\n\s*\.player-container:fullscreen \.player-controls,\s*\n\s*#player-wrapper\.audio-mode\.audio-expanded \.player-controls \{ transition: none; \}/,
+  assert.match(STYLE_CSS, /@media \(prefers-reduced-motion: reduce\) \{\s*#player-wrapper\.css-fullscreen \.player-controls,\s*\n\s*\.player-container:fullscreen \.player-controls,\s*\n\s*#fs-stage:fullscreen \.player-container \.player-controls,\s*\n\s*#player-wrapper\.audio-mode\.audio-expanded \.player-controls \{ transition: none; \}/,
     'reduced-motion users get an instant toggle on both');
 });
 

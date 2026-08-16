@@ -80,6 +80,50 @@
 
 ## Shipped
 
+### v1.138.0 - desktop fullscreen survives advances: the fullscreen stage (2026-08-16)
+
+Dean: desktop fullscreen must survive autoplay/Next "just like iOS" -
+v1.130's disclosed desktop gap, closed for real. Native fullscreen now
+targets a never-moving shell-level #fs-stage with the player host
+reparented INSIDE it: navigation can no longer force-exit fullscreen, so
+advances just keep playing fullscreen. dock() no-ops while staged; every
+mount (including the views' eager expand reparents) redirects to the
+stage at the ONE helper; exit places the host by the current view's slot;
+the fullscreen predicates know the staged shape.
+
+What the FULL two-seat gate caught (QA + adversarial in isolated
+worktrees, 1 fix round, both APPROVE) - three CRITICALs, two found
+independently by both seats: (1) the views' eager expand() reparent was a
+third mount seam the load-seam decisions missed - every staged autoplay
+advance black-screened until re-mount (fixed at the helper, by
+construction); (2) inNativeFullscreen was staged-blind - the fullscreen
+button's EXIT half was broken (a one-way door), with the adversarial seat
+also catching the null===null trap a naive fix would have introduced on
+no-stage shells; (3) three :fullscreen CSS groups missed their staged
+twins via the divergent spelling (#player-wrapper IS .player-container) -
+bar-reserve strip, width-bound video, and the v1.124 caption occlusion
+would all have regressed in staged fullscreen. Plus: the feature's
+enabling wire was deletable with every test green (now bound), a false
+machine-derived plan prediction (corrected), and a defensive
+close-while-staged clear.
+
+Known gaps (disclosed): Safari desktop and desktop-class iPads never
+reach the staged branch (their video elements expose
+webkitEnterFullscreen, which wins) - the v1.130 advance-exits-fullscreen
+gap persists there unchanged. The staged-CSS completeness net exempts
+bare-subject rules (tech-debt #158). The adversarial delta saw a 1-of-3
+unattributed suite flake on its loaded worktree (#142 class); both
+release dual-Node runs were clean.
+
+SEPARATE OPEN QUESTION (Dean's report, pre-release): his Edge desktop may
+not be reaching NATIVE fullscreen at all ("fullscreen in the tab") - the
+classifier says Windows routes native, his eyes say otherwise. The
+falsifying probe (taskbar visible? document.fullscreenElement in
+console?) is on the device list; if faux is somehow winning there, that
+is a second bug this wave does not touch.
+
+Dual-Node: 7002/7002 on v22.23.1 AND v24.14.0.
+
 ### v1.137.0 - the iOS PWA lore reference (2026-08-16)
 
 docs/references/pwa-ios-notes.md - everything the PWA audio-coupling arc

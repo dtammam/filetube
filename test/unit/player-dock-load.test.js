@@ -13,13 +13,19 @@ const path = require('node:path');
 
 const PLAYER_JS = fs.readFileSync(path.join(__dirname, '../../public/js/player.js'), 'utf8');
 
-test('load() branches on options.dock for BOTH the adopt and the fresh path', () => {
-  // The fresh-load branch mounts into the dock instead of a FULL slot.
-  assert.match(PLAYER_JS, /if \(options\.dock\) mountInDock\(\); else mountInSlot\(options\.slot\);/,
-    'a fresh load with {dock:true} must mountInDock, not mountInSlot');
+test('load() branches on options.dock for BOTH the adopt and the fresh path (v1.138: via the pure mount decision)', () => {
+  // v1.138 respell: both seams now consult resolveLoadMountTarget - the
+  // dock:true contract survives via the pure table (un-staged + dock ->
+  // 'dock'), bound behaviorally here and in player-fullscreen-stage.test.js.
+  const { resolveLoadMountTarget } = require('../../public/js/player.js');
+  assert.strictEqual(resolveLoadMountTarget(false, true), 'dock', 'a fresh load with {dock:true} must mount into the dock');
+  assert.strictEqual(resolveLoadMountTarget(false, false), 'slot');
+  // The fresh-load branch mounts by the decision.
+  assert.match(PLAYER_JS, /else if \(mountTarget === 'dock'\) mountInDock\(\);\s*\n\s*else mountInSlot\(options\.slot\);/,
+    'the fresh seam maps dock->mountInDock, slot->mountInSlot');
   // The adopt (re-tap same track) branch docks instead of expanding FULL.
-  assert.match(PLAYER_JS, /if \(options\.dock\) dock\(\); else expand\(options\.slot\);/,
-    'an adopt load with {dock:true} must dock, not expand FULL');
+  assert.match(PLAYER_JS, /else if \(adoptTarget === 'dock'\) dock\(\);\s*\n\s*else expand\(options\.slot\);/,
+    'the adopt seam maps dock->dock, slot->expand');
 });
 
 test('mountInDock() reparents the host into #player-dock and lands DOCKED', () => {

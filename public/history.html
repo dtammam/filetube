@@ -180,6 +180,12 @@
        shift) unless a video is actively loaded AND the user has navigated
        away from its watch page -- see player.js's dock()/expand()/close(). -->
   <div id="player-dock" hidden></div>
+  <!-- v1.138: the desktop fullscreen STAGE - a never-moving shell-level
+       container the host reparents INTO for native fullscreen, so
+       navigation (which swaps #view-root and re-mounts the host) can never
+       force-exit fullscreen. Empty + display:none except while fullscreen
+       (style.css). -->
+  <div id="fs-stage"></div>
   <template id="player-host-template">
     <div class="player-container" id="player-wrapper">
       <div id="audio-bg-art" class="audio-bg-art"></div>
