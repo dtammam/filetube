@@ -96,7 +96,12 @@ test('gate W2: a drag past tolerance vetoes ONLY the single-tap scheduling (scro
   assert.match(PLAYER_JS, /tapGestureMoved = false; \/\/ gate W2 .*fresh gesture/);
   const move = /el\.addEventListener\('touchmove', function \(e\) \{([\s\S]*?)\}, \{ passive: true \}\);/.exec(PLAYER_JS);
   assert.ok(move, 'touchmove handler not found');
-  assert.match(move[1], /tapGestureMoved = true;/, 'movement past MOVE_TOL sets the veto');
+  // Gate W-DELTA (delta round 2): the veto must be pinned INSIDE the
+  // MOVE_TOL conjunct - hoisted to fire on ANY touchmove, sub-tolerance
+  // thumb jitter (the v1.22.1 class) would veto ordinary taps and
+  // tap-to-pause would go intermittently dead, all green.
+  assert.match(move[1], /if \(Math\.abs\(t\.clientX - startX\) > MOVE_TOL \|\| Math\.abs\(t\.clientY - startY\) > MOVE_TOL\) \{[\s\S]*?tapGestureMoved = true;/,
+    'the veto sets ONLY past the movement tolerance');
   assert.match(PLAYER_JS, /if \(shouldArtSingleTapAct\(state, onSingleTap\) && !tapGestureMoved\) \{/,
     'the veto gates exactly the scheduling conjunct - skip/hold/double-tap paths untouched');
 });
