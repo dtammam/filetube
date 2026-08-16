@@ -2149,7 +2149,14 @@ if (typeof module !== 'undefined' && module.exports) {
   // specifically means only THIS player's own fullscreen surface (the
   // `#player-wrapper` host or the `<video>` itself) counts.
   function inNativeFullscreen() {
+    // v1.138 QA-C2: the STAGED shape's fullscreen element is #fs-stage, not
+    // the host - without this clause the fs-btn's exit half went blind
+    // (one-way button), keeper capture died, and every
+    // inNativeFullscreen-gated guard mis-reported while staged. Kept
+    // element-scoped (the FIX A discipline): the flag AND the identity
+    // check, never a bare fullscreenElement truthiness.
     return !!(document.fullscreenElement === host || document.fullscreenElement === mediaPlayer) ||
+      !!(stagedFullscreen && fsStageEl && document.fullscreenElement === fsStageEl) ||
       !!(mediaPlayer && mediaPlayer.webkitDisplayingFullscreen) ||
       !!(mediaPlayer && mediaPlayer.webkitPresentationMode === 'picture-in-picture') ||
       !!(document.pictureInPictureElement && document.pictureInPictureElement === mediaPlayer);
@@ -7536,6 +7543,15 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function mountInSlot(slotEl) {
     if (!host || !slotEl) return;
+    // v1.138 QA-C1: while staged fullscreen is live, EVERY mount lands in
+    // the stage - including the views' eager expand(playerSlot) reparents
+    // (watch/music/podcasts), which the load-seam decisions alone missed:
+    // a staged autoplay advance reparented the host OUT of the stage into
+    // the incoming slot, black-screening fullscreen until load() re-mounted
+    // (two extra reparents of a playing element per advance). Redirecting
+    // HERE covers every caller by construction - the "seat that forgot the
+    // shared helper" class, closed at the helper.
+    if (stagedFullscreen && fsStageEl && slotEl !== fsStageEl) slotEl = fsStageEl;
     var wasPlaying = mediaPlayer && !mediaPlayer.paused;
     if (host.parentNode !== slotEl) {
       slotEl.appendChild(host);
@@ -7677,6 +7693,18 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function close() {
+    // v1.138 gate S1 (both seats, defensive - no reachable trigger was
+    // constructed): a close while staged must not leave the browser
+    // fullscreen on an emptied black stage with the flag stuck true.
+    if (stagedFullscreen) {
+      stagedFullscreen = false;
+      try {
+        if (document.fullscreenElement === fsStageEl && document.exitFullscreen) {
+          var xp = document.exitFullscreen();
+          if (xp && xp.catch) xp.catch(function () {});
+        }
+      } catch (_) { /* best-effort only */ }
+    }
     loadGeneration++; // invalidate any in-flight poll/resume-check
     setTrackNav(null); // v1.39.0: drop the lock-screen prev/next chapter handlers
     if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }

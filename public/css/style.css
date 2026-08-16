@@ -6141,8 +6141,11 @@ a.sub-row-channel-link:focus-visible {
 /* v1.138: the desktop fullscreen STAGE (#fs-stage, one per shell, outside
    #view-root - see the exec plan). Hidden and empty except while it IS the
    fullscreen element; the host mounts INSIDE it, so the host is no longer
-   the :fullscreen element itself - every rule keying on
-   `.player-container:fullscreen` below carries a staged twin. */
+   the :fullscreen element itself - every rule keying on the host being
+   :fullscreen (BOTH spellings: `.player-container:fullscreen` AND
+   `#player-wrapper:fullscreen` - same node, the divergent-spelling class
+   that bit this wave's first sweep) carries a staged twin, bound by
+   test/unit/player-fullscreen-stage.test.js. */
 #fs-stage { display: none; }
 #fs-stage:fullscreen {
   display: block;
@@ -6890,7 +6893,8 @@ body.ft-audio-expanded {
    fullscreen (`.css-fullscreen`) and real element fullscreen (`:fullscreen`);
    both resolve to the same `#player-wrapper` / `.player-container` node. */
 #player-wrapper.css-fullscreen .cc-overlay,
-.player-container:fullscreen .cc-overlay {
+.player-container:fullscreen .cc-overlay,
+#fs-stage:fullscreen .player-container .cc-overlay {
   bottom: calc(64px + env(safe-area-inset-bottom, 0px)); /* token-exempt: positional geometry over the taller fullscreen bar */
 }
 
@@ -7025,17 +7029,26 @@ body.ft-audio-expanded {
 /* FULLSCREEN restore: desktop fullscreen targets the container and keeps the
    custom bar overlaying (AC14); a reserved strip would clip the picture. Put
    the overlay layout back for both the standard and -webkit- fullscreen. */
+/* v1.138 gate (both seats): these restore rules keyed on the WRAPPER being
+   the :fullscreen element - the divergent spelling (#player-wrapper IS
+   .player-container) that the twin sweep missed. Staged, the wrapper is a
+   CHILD of the fullscreen #fs-stage, so each carries its staged twin;
+   without them the 40px bar-reserve strip and the width-bound aspect box
+   survived into staged fullscreen (bar off-screen on wide displays). */
 #player-wrapper:fullscreen,
-#player-wrapper:-webkit-full-screen {
+#player-wrapper:-webkit-full-screen,
+#fs-stage:fullscreen #player-wrapper {
   padding-bottom: 0;
 }
 #player-wrapper:fullscreen #media-player,
-#player-wrapper:-webkit-full-screen #media-player {
+#player-wrapper:-webkit-full-screen #media-player,
+#fs-stage:fullscreen #player-wrapper #media-player {
   aspect-ratio: auto;
   height: 100%;
 }
 #player-wrapper.audio-mode:fullscreen #audio-bg-art,
-#player-wrapper.audio-mode:-webkit-full-screen #audio-bg-art {
+#player-wrapper.audio-mode:-webkit-full-screen #audio-bg-art,
+#fs-stage:fullscreen #player-wrapper.audio-mode #audio-bg-art {
   bottom: 0;
 }
 

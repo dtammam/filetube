@@ -58,8 +58,10 @@ adopt loads.
 ## Predictions (tool-verified at every commit)
 
 - 8 shells gain `#fs-stage` (one line each).
-- `requestFullscreen(` call sites in player.js: 1 before and after (the
-  enterFullscreen branch; the count is the one-writer lock).
+- `requestFullscreen(` call sites in player.js: 1 before, 2 after (the
+  staged writer + the retained no-stage fallback) - CORRECTED in the gate
+  fix round (both seats measured the original "1 after" prediction false);
+  the count-2 lock lives in the wave test.
 - No new `:fullscreen` census violations (lint:css TOTAL 0).
 
 ## Test plan

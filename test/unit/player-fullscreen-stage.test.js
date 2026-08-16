@@ -86,6 +86,44 @@ test('placeHostAfterStageExit: state-guarded, slot-or-dock via the pure decision
   assert.match(body[1], /resolveStageExitPlacement\(!!slot\)/, 'placement routes through the pure decision');
 });
 
+test('gate ADV-W1: the enabling wire is bound - fsStageEl must be looked up, or the whole wave is inert with green tests', () => {
+  // The adversarial seat deleted this one line and every wave test stayed
+  // green while Dean's exact bug shipped "fixed": the locks bound the
+  // branch's text, never its enablement.
+  assert.match(PLAYER_JS, /fsStageEl = document\.getElementById\('fs-stage'\);/,
+    'the stage lookup wires the feature - without it enterFullscreen silently takes the pre-v1.138 fallback');
+});
+
+test('gate QA-C2/ADV-C1: inNativeFullscreen knows the staged shape, truthiness-guarded (the null===null trap)', () => {
+  const body = /function inNativeFullscreen\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(body, 'inNativeFullscreen found');
+  assert.match(body[1], /!!\(stagedFullscreen && fsStageEl && document\.fullscreenElement === fsStageEl\)/,
+    'the staged clause is guarded on BOTH the flag and a non-null stage - a bare === would read null===null as true whenever nothing is fullscreen');
+});
+
+test('gate QA-C1: mountInSlot itself redirects to the stage - EVERY caller covered by construction', () => {
+  const body = /function mountInSlot\(slotEl\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(body, 'mountInSlot found');
+  const guardIdx = body[1].indexOf('if (!host || !slotEl) return;');
+  const redirectIdx = body[1].indexOf('if (stagedFullscreen && fsStageEl && slotEl !== fsStageEl) slotEl = fsStageEl;');
+  const reparentIdx = body[1].indexOf('slotEl.appendChild(host);');
+  assert.ok(guardIdx !== -1 && redirectIdx !== -1 && reparentIdx !== -1, 'guard + redirect + reparent present');
+  assert.ok(guardIdx < redirectIdx && redirectIdx < reparentIdx,
+    'the redirect sits between the null guard and the reparent - the views\' eager expand(playerSlot) black-screened staged advances without it');
+});
+
+test('exactly two requestFullscreen call sites: the staged writer + the retained no-stage fallback (the corrected plan prediction)', () => {
+  const sites = (PLAYER_JS.match(/\.requestFullscreen\(\);/g) || []).length;
+  assert.strictEqual(sites, 2, 'stage + fallback; found ' + sites);
+});
+
+test('gate S1: close() clears the staged flag and best-effort exits (no black stuck stage)', () => {
+  const body = /function close\(\) \{([\s\S]*?)loadGeneration\+\+;/.exec(PLAYER_JS);
+  assert.ok(body, 'close head found');
+  assert.match(body[1], /stagedFullscreen = false;/);
+  assert.match(body[1], /document\.fullscreenElement === fsStageEl && document\.exitFullscreen/);
+});
+
 test('inImmersiveMode covers the staged shape (fullscreen element = the host\'s PARENT)', () => {
   const body = /function inImmersiveMode\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(body, 'inImmersiveMode body found');
@@ -115,7 +153,7 @@ test('all 8 shells carry #fs-stage exactly once, outside #view-root', () => {
 
 // ---- the CSS staged twins ---------------------------------------------------
 
-test('style.css: every .player-container:fullscreen rule group carries its staged twin', () => {
+test('style.css: EVERY host-is-:fullscreen rule group carries its staged twin - both spellings (the divergent-spelling class)', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
   assert.match(css, /#fs-stage \{ display: none; \}/);
   assert.match(css, /#fs-stage:fullscreen \{\s*display: block;/);
@@ -123,4 +161,24 @@ test('style.css: every .player-container:fullscreen rule group carries its stage
   assert.match(css, /#fs-stage:fullscreen \.player-container \.player-controls \{[\s\S]{0,80}transition: opacity/);
   assert.match(css, /#fs-stage:fullscreen \.player-container\.controls-autohidden \.player-controls/);
   assert.match(css, /#fs-stage:fullscreen \.player-container\.controls-autohidden \{[\s\S]{0,40}cursor: none/);
+  // Gate (BOTH seats, the divergent-spelling class): #player-wrapper IS
+  // .player-container - the first sweep grepped one spelling and missed the
+  // FULLSCREEN-restore block + the caption overlay. Bound now:
+  assert.match(css, /#fs-stage:fullscreen #player-wrapper \{\s*padding-bottom: 0;/,
+    'the 40px bar-reserve strip must not survive into staged fullscreen');
+  assert.match(css, /#fs-stage:fullscreen #player-wrapper #media-player \{\s*aspect-ratio: auto;\s*height: 100%;/,
+    'the width-bound aspect box must not survive (bar off-screen on wide displays)');
+  assert.match(css, /#fs-stage:fullscreen #player-wrapper\.audio-mode #audio-bg-art \{\s*bottom: 0;/);
+  assert.match(css, /#fs-stage:fullscreen \.player-container \.cc-overlay/,
+    'captions ride the taller fullscreen bar offset (the v1.124 F1 occlusion must not return staged)');
+  // The completeness NET, not a hand list: every :fullscreen rule whose
+  // subject is the host (either spelling) must have a #fs-stage twin
+  // somewhere in the file for its terminal selector tail.
+  const hostFsRules = [...css.matchAll(/^(?:#player-wrapper|\.player-container)([^,{\n]*):fullscreen([^,{\n]*)[,{]/gm)];
+  for (const m of hostFsRules) {
+    const tail = (m[1] + m[2]).trim();
+    const twinRe = new RegExp('#fs-stage:fullscreen [^{]*' + tail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    assert.ok(tail === '' || twinRe.test(css), 'missing staged twin for host :fullscreen rule tail: "' + tail + '"');
+  }
+  assert.ok(hostFsRules.length >= 8, 'sanity: the net sees the host :fullscreen rules (found ' + hostFsRules.length + ')');
 });

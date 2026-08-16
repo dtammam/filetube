@@ -102,7 +102,7 @@ test('#fs-btn click handler: the native-fullscreen branch is present and byte-id
 
 // ---- enterFullscreen()/inNativeFullscreen() -- untouched by this FR --------
 
-test('enterFullscreen: still routes iOS through webkitEnterFullscreen and desktop through host.requestFullscreen -- unchanged by FR-1', () => {
+test('enterFullscreen: still routes iOS through webkitEnterFullscreen; desktop stage-first with the host fallback (v1.138) -- audio-expand untouched', () => {
   const enterFullscreenMatch = /function enterFullscreen\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(enterFullscreenMatch, 'expected to find enterFullscreen() in player.js');
   const body = enterFullscreenMatch[1];
@@ -111,7 +111,7 @@ test('enterFullscreen: still routes iOS through webkitEnterFullscreen and deskto
   assert.ok(!/audio-expand/.test(body), 'enterFullscreen() must never reference the audio-expand path -- video fullscreen stays byte-identical');
 });
 
-test('inNativeFullscreen: unchanged single-expression definition (no audio-expand branch added)', () => {
+test('inNativeFullscreen: single-expression definition incl. the v1.138 staged clause (no audio-expand branch added)', () => {
   const inNativeFullscreenMatch = /function inNativeFullscreen\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(inNativeFullscreenMatch, 'expected to find inNativeFullscreen() in player.js');
   const body = inNativeFullscreenMatch[1];
