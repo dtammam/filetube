@@ -100,8 +100,15 @@ test('gate W2: a drag past tolerance vetoes ONLY the single-tap scheduling (scro
   // MOVE_TOL conjunct - hoisted to fire on ANY touchmove, sub-tolerance
   // thumb jitter (the v1.22.1 class) would veto ordinary taps and
   // tap-to-pause would go intermittently dead, all green.
-  assert.match(move[1], /if \(Math\.abs\(t\.clientX - startX\) > MOVE_TOL \|\| Math\.abs\(t\.clientY - startY\) > MOVE_TOL\) \{[\s\S]*?tapGestureMoved = true;/,
-    'the veto sets ONLY past the movement tolerance');
+  // W-DELTA round 3 (reviewer-verified fix): brace-EXCLUDING classes so the
+  // match cannot escape the conjunct block - a set moved BELOW the closing
+  // brace (V3) satisfied `[\s\S]*?` with the count still 1. A future
+  // brace-bearing comment inside the block fails closed (acceptable noise).
+  assert.match(move[1], /if \(Math\.abs\(t\.clientX - startX\) > MOVE_TOL \|\| Math\.abs\(t\.clientY - startY\) > MOVE_TOL\) \{[^{}]*tapGestureMoved = true;[^{}]*\}/,
+    'the veto sets ONLY past the movement tolerance, INSIDE the conjunct block');
+  // The reviewer's optional residual: MOVE_TOL=0 delivers the same
+  // jitter-veto harm through the shared constant - bind the literal.
+  assert.match(PLAYER_JS, /var MOVE_TOL = 16;/, 'the shared movement tolerance is pinned (0 would veto every jittery tap)');
   // ...and EXACTLY once - an ADDED unconditional set above the conjunct is
   // the same harm as a moved one (my own M11 repro survived the pin alone:
   // I ADDED a hoisted set where the reviewer MOVED it; both variants must red).
