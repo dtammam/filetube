@@ -80,6 +80,34 @@
 
 ## Shipped
 
+### v1.132.0 - resume prompt auto-fires its default after a countdown (2026-08-16)
+
+Dean: while driving or heads-down, the "Resume at..." prompt's forced
+interaction is friction. The prompt's default button now ticks down 5
+seconds ("Resume · 4" + a thin draining underline) and fires its OWN click
+if you don't choose; any tap or keypress on the player cancels the
+countdown and leaves the prompt up. Configurable in Setup -> Playback
+(device-local, like the resume threshold): on/off (default ON; off =
+exactly the old prompt) and the default action (resume from saved position
+[default] vs start from beginning). The 5 is one constant
+(RESUME_COUNTDOWN_SECONDS), single-sourced into the CSS drain.
+
+What the gate caught (slim/adversarial, 1 fix round): the action-to-button
+mapping was unbound - inverted, the default would have auto-clicked "Start
+from beginning" and WIPED saved progress with the suite green; the tick
+interval was the unbound half of the wall-clock duration; a cancel-count
+floor had slack; plus a pre-existing keyboard-drift-lock hole (M/mute was
+never bound). All closed and mutant-verified.
+
+Known posture (disclosed): on iOS, a session's FIRST auto-fired play can be
+refused without a fresh gesture (the long-standing v1.23.6 posture) - the
+prompt still dismisses and the position is set; one tap plays. Cancel
+boundary: a keypress anywhere cancels, but a tap OUTSIDE the player (page
+scroll, sidebar) does not - the countdown fires the configured default. On
+the device probe list.
+
+Dual-Node: 6966/6966 on v22.23.1 AND v24.14.0.
+
 ### v1.131.0 - CarPlay pause-provenance diagnostics (2026-08-16)
 
 Dean's car report: wired CarPlay + physical volume knob/steering wheel ->
