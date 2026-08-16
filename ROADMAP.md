@@ -80,6 +80,33 @@
 
 ## Shipped
 
+### v1.131.0 - CarPlay pause-provenance diagnostics (2026-08-16)
+
+Dean's car report: wired CarPlay + physical volume knob/steering wheel ->
+playback pauses and only the in-app play button resumes it (the car's play
+button does not). A web app receives no volume events on iOS, so the pause
+is DELIVERED - either a MediaSession 'pause' action (car-sent transport
+command) or a bare element pause (audio-session interruption, which iOS
+never auto-resumes for web media). INSTRUMENTATION ONLY, per the diagnosis
+discipline: no behavior change; the ?debugLifecycle=1 overlay now records
+msAction:<name> on every MediaSession action arrival (one wrapper at the
+registration seam) and media:pause/media:play provenance on both elements
+(gesture age, handoff suppression, ended, bg-audio state). Dean's next car
+repro names the mechanism; the fix ships after.
+
+What the gate caught (slim/adversarial, 1 fix round): two surviving mutants
+in the evidence path itself - a swapped element ternary would make the
+`ended` bit lie (end-of-track pause wearing the interruption signature),
+and a zero-age boundary mutant dressed a same-millisecond user tap as a
+system pause. Both bound red. Probe protocol note: the 30-entry log evicts
+after ~10 track transitions - screenshot at the repro moment, parked.
+
+Tracker: row 156 - books-tts T8 flakes under external CPU load (two
+loaded-box runs failed only there; 10/10 in isolation; reviewer's loaded
+run and both release runs green).
+
+Dual-Node: 6951/6951 on v22.23.1 AND v24.14.0.
+
 ### v1.130.0 - immersive fullscreen carries across playback continuations (2026-08-15)
 
 Dean's iOS report: landscape faux fullscreen, video advances (autoplay or
