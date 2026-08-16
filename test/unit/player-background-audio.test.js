@@ -1290,8 +1290,28 @@ test('v1.35 T1 / v1.136: ONE playback-declaration writer, called from BOTH the v
   // continuation - only a background-audio-enabled install declares there)
   // and the v1.136 plain-audio branch (music/podcast-only sessions
   // previously never declared and ran as the default "auto" type).
-  const calls = (PLAYER_JS.match(/^\s*declarePlaybackAudioSession\(\);/gm) || []).length;
+  // v1.136.1: the audio-branch call is GATED behind the device-local
+  // experiment toggle (Dean's device FAIL demoted the unconditional
+  // declare) - count every call spelling, then pin each site's exact shape.
+  const calls = (PLAYER_JS.match(/declarePlaybackAudioSession\(\);/g) || []).length;
   assert.strictEqual(calls, 2, 'exactly two call sites; found ' + calls);
+  assert.match(PLAYER_JS, /if \(isAudioSessionDeclareEnabled\(\)\) declarePlaybackAudioSession\(\);/,
+    'the audio-branch call is toggle-gated (default OFF - the failed-experiment posture)');
+  assert.match(PLAYER_JS, /^\s*declarePlaybackAudioSession\(\);$/m,
+    'the video-arm call stays UNgated (v1.35 shipped posture)');
+  // The toggle: only the literal '1' enables; storage failure = off; the
+  // key matches setup.js byte-for-byte.
+  assert.match(PLAYER_JS, /return localStorage\.getItem\(AUDIO_SESSION_DECLARE_STORAGE_KEY\) === '1'; \} catch \(_\) \{ return false; \}/,
+    'default OFF, fail-closed');
+  assert.match(PLAYER_JS, /var AUDIO_SESSION_DECLARE_STORAGE_KEY = 'filetube_audio_session_declare';/);
+  const SETUP_JS_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'setup.js'), 'utf8');
+  assert.match(SETUP_JS_SRC, /const AUDIO_SESSION_DECLARE_KEY = 'filetube_audio_session_declare';/,
+    'setup.js shares the key byte-for-byte (the cross-file convention)');
+  // Round-3 N5 (reviewer-verified): the enable VALUE is part of the contract
+  // - a setup.js drift to 'true' leaves the experiment silently dead while
+  // appearing configured (player requires the literal '1').
+  assert.match(SETUP_JS_SRC, /localStorage\.setItem\(AUDIO_SESSION_DECLARE_KEY, '1'\);/,
+    "the checkbox stores the literal '1' the player's === '1' check requires");
   const setterCount = (PLAYER_JS.match(/navigator\.audioSession\.type = 'playback';/g) || []).length;
   assert.strictEqual(setterCount, 1, 'the raw setter appears ONLY inside the one writer');
   // Gate W1 (v1.136 fix round, reviewer-verified prescription): the respell
@@ -1307,8 +1327,8 @@ test('v1.35 T1 / v1.136: ONE playback-declaration writer, called from BOTH the v
   assert.ok(cachedIdx !== -1 && audioBranchIdx !== -1 && videoCallIdx !== -1
     && videoCallIdx < audioBranchIdx,
     'the video-path call still rides the same settings resolution that arms the feature (windowed before the audio branch)');
-  assert.match(PLAYER_JS, /if \(data\.type === 'audio'\) \{\n[\s\S]{0,500}?declarePlaybackAudioSession\(\);/,
-    'the plain-audio branch declares too (the v1.136 gap-close)');
+  assert.match(PLAYER_JS, /if \(data\.type === 'audio'\) \{\n[\s\S]{0,900}?if \(isAudioSessionDeclareEnabled\(\)\) declarePlaybackAudioSession\(\);/,
+    'the plain-audio branch declares only when the experiment toggle is on (v1.136.1)');
 });
 
 test('v1.35 T2: pre-arm fires at every readiness point -- settings-fetch (ready at load), repoll ready-flip, and post-swap-back re-arm', () => {

@@ -595,6 +595,8 @@ const DEBUG_LIFECYCLE_STORAGE_KEY = 'ft-debug-lifecycle';
 // (the RESUME_THRESHOLD_KEY cross-file string-literal convention above).
 const RESUME_COUNTDOWN_KEY = 'filetube_resume_countdown';
 const RESUME_COUNTDOWN_ACTION_KEY = 'filetube_resume_countdown_action';
+// v1.136.1: MUST match AUDIO_SESSION_DECLARE_STORAGE_KEY in player.js.
+const AUDIO_SESSION_DECLARE_KEY = 'filetube_audio_session_declare';
 
 // Prefills the checkbox from whatever's currently stored -- mirrors
 // `isDebugLifecycleEnabled()`'s own `=== '1'` check in player.js exactly, so
@@ -1692,6 +1694,24 @@ function wireStaticControls(signal) {
     resumeCountdownActionSelect.value = rawAction === 'beginning' ? 'beginning' : 'resume';
     resumeCountdownActionSelect.addEventListener('change', (e) => {
       try { localStorage.setItem(RESUME_COUNTDOWN_ACTION_KEY, e.target.value === 'beginning' ? 'beginning' : 'resume'); } catch (_) { /* storage disabled/full -- best-effort only */ }
+    }, { signal });
+  }
+
+  // v1.136.1: the audio-session declare experiment toggle - same immediate-
+  // apply localStorage pattern. Key MUST match
+  // AUDIO_SESSION_DECLARE_STORAGE_KEY in player.js exactly; stores '1' only
+  // when checked (absent = OFF, the failed-experiment default - mirrors
+  // player.js's === '1' check).
+  const audioSessionDeclareCheck = document.getElementById('audio-session-declare-check');
+  if (audioSessionDeclareCheck) {
+    let rawDeclare = null;
+    try { rawDeclare = localStorage.getItem(AUDIO_SESSION_DECLARE_KEY); } catch (_) { /* storage disabled -- show default (off) */ }
+    audioSessionDeclareCheck.checked = rawDeclare === '1';
+    audioSessionDeclareCheck.addEventListener('change', (e) => {
+      try {
+        if (e.target.checked) localStorage.setItem(AUDIO_SESSION_DECLARE_KEY, '1');
+        else localStorage.removeItem(AUDIO_SESSION_DECLARE_KEY);
+      } catch (_) { /* storage disabled/full -- best-effort only */ }
     }, { signal });
   }
 

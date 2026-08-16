@@ -3469,6 +3469,16 @@ if (typeof module !== 'undefined' && module.exports) {
   // the first skipped call - because the 30-entry ring buffer both evicts
   // old lines and persists across loads, so a transition-only record could
   // neither prove nor disprove "the declaration was live during THIS repro".
+  // v1.136.1: the audio-path declare experiment's device-local switch. The
+  // key MUST match AUDIO_SESSION_DECLARE_KEY in setup.js exactly (the
+  // RESUME_THRESHOLD cross-file convention); read LIVE per load. Only the
+  // literal '1' the Setup checkbox writes enables - absent/garbage = OFF
+  // (an experiment that FAILED its first device test defaults off).
+  var AUDIO_SESSION_DECLARE_STORAGE_KEY = 'filetube_audio_session_declare';
+  function isAudioSessionDeclareEnabled() {
+    try { return localStorage.getItem(AUDIO_SESSION_DECLARE_STORAGE_KEY) === '1'; } catch (_) { return false; }
+  }
+
   var audioSessionDeclareLogged = false;
   function declarePlaybackAudioSession() {
     try {
@@ -7364,12 +7374,17 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     if (data.type === 'audio') {
-      // v1.136 (PWA audio-coupling deep dive, E2): plain-audio items now
-      // declare the playback session too - background continuation IS this
-      // path's established behavior (the battle-won bg machinery), but the
-      // iOS-facing session-type declaration only ever rode the VIDEO
-      // bg-audio arm, so a music/podcast-only session ran as 'auto'.
-      declarePlaybackAudioSession();
+      // v1.136 (PWA audio-coupling deep dive, E2): plain-audio items can
+      // declare the playback session too. v1.136.1 (Dean's DEVICE FAIL,
+      // same day): the unconditional declare made backgrounding WORSE on
+      // iOS 26.6 - audio stopped the moment he exited the app, and a
+      // foregrounded same-domain sibling RESUMED it (the domain coupling
+      // in both directions; matches the webkit.org/b/261554 class -
+      // suspension despite type='playback'). Demoted to the device-local
+      // experiment toggle Dean originally approved, DEFAULT OFF = the
+      // pre-v1.136 behavior byte-for-byte on this path. The v1.35 VIDEO
+      // arm is untouched (months of device-passed history).
+      if (isAudioSessionDeclareEnabled()) declarePlaybackAudioSession();
       mediaPlayer.style.display = 'block';
       // v1.38.0: a book-TTS item's id has no db.metadata thumbnail; use its
       // explicit artUrl (book cover) as the poster instead of a 404 /thumbnail.
