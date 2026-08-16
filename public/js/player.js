@@ -670,6 +670,21 @@ function shouldConsumeTapAsReveal(stampAt, now, windowMs) {
   return typeof stampAt === 'number' && stampAt > 0 && (now - stampAt) < windowMs;
 }
 
+// Gate C1 (v1.134 fix round) - the next stamp value for a video down event.
+// ONE physical touch fires BOTH pointerdown AND touchstart on every modern
+// touch browser, and the naive ternary was not idempotent across the pair:
+// the FIRST invocation's reveal removed the very `controls-autohidden` class
+// the SECOND invocation's read keyed on, so the second ZEROED the stamp the
+// first wrote - "a reveal that pauses" came back through the double-fire
+// (the reviewer's sim proved it end-to-end). The primary fix is a single
+// registration (one down event, see the listener), and THIS pure function is
+// the idempotence belt either way: a visible bar clears the stamp EXCEPT
+// when a fresh stamp from this same gesture's other down event exists.
+function nextVideoTapStamp(barHidden, prevStamp, now, sameGestureMs) {
+  if (barHidden) return now;
+  return (typeof prevStamp === 'number' && prevStamp > 0 && (now - prevStamp) < sameGestureMs) ? prevStamp : 0;
+}
+
 // ---- FR-2 (T2, v1.21.0): custom control-bar pure helpers -------------------
 // Both hoisted above the browser-only runtime below, same "pure helpers
 // first" split every other state-machine decision in this file already uses
@@ -1383,8 +1398,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.132: resume-countdown config + ticking-label builders.
     resolveResumeCountdownConfig,
     resumeCountdownLabel,
-    // v1.134: video tap-to-pause reveal-consume decision.
+    // v1.134: video tap-to-pause reveal-consume + stamp-idempotence decisions.
     shouldConsumeTapAsReveal,
+    nextVideoTapStamp,
     clampVolume,
     seekCommitTarget,
     scrubRatioFromPointer,
@@ -3614,6 +3630,10 @@ if (typeof module !== 'undefined' && module.exports) {
   var lastTapTime = 0;
   var lastTapLeft = false;
   var startX = 0, startY = 0;
+  // Gate W2 (v1.134 fix round): true once the current touch drags past
+  // MOVE_TOL - a scroll, not a tap. Reset at every touchstart; read only by
+  // the touchend single-tap scheduling gate (skip/hold/double-tap unaffected).
+  var tapGestureMoved = false;
   var HOLD_MS = 500;
   // v1.22.1 FR-2 (bug-fix): raised from `10` -- the hold-cancel tolerance
   // used ONLY by the `touchmove` listener below to abort an armed
@@ -3730,6 +3750,7 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
+      tapGestureMoved = false; // gate W2 (v1.134 fix round): fresh gesture, no movement yet
       clearTimeout(holdTimer);
       holdTimer = setTimeout(engageHold, HOLD_MS);
     }, { passive: true });
@@ -3739,6 +3760,15 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!t || holdActive) return;
       if (Math.abs(t.clientX - startX) > MOVE_TOL || Math.abs(t.clientY - startY) > MOVE_TOL) {
         clearTimeout(holdTimer);
+        // Gate W2 (v1.134 fix round): a drag past tolerance is a SCROLL, not
+        // a tap - veto the single-tap scheduling at touchend (iOS delivers
+        // touchend, not touchcancel, after a pan that started on a passive
+        // surface, so without this a page scroll beginning on the playing
+        // video would pause it 350ms after finger-lift). Latent for the
+        // audio art since v1.21 - this fixes both surfaces. Deliberately
+        // narrow: only the onSingleTap scheduling is gated, never the
+        // skip/hold/double-tap paths (the reviewer's prescription).
+        tapGestureMoved = true;
       }
     }, { passive: true });
 
@@ -3776,7 +3806,7 @@ if (typeof module !== 'undefined' && module.exports) {
         lastTapTime = now;
         lastTapLeft = onLeft;
         revealSkipButtons();
-        if (shouldArtSingleTapAct(state, onSingleTap)) {
+        if (shouldArtSingleTapAct(state, onSingleTap) && !tapGestureMoved) {
           // Suppress the synthetic 'click' the browser would otherwise
           // dispatch after this touchend -- the tap is handled entirely by
           // the debounced timer below, so a stray synthetic click could
@@ -4597,7 +4627,18 @@ if (typeof module !== 'undefined' && module.exports) {
   // stale stamp never outlives the next touch), and this callback treats a
   // freshly-stamped tap as consumed by the reveal.
   var videoTapConsumedByRevealAt = 0;
-  var VIDEO_TAP_REVEAL_CONSUME_MS = 600; // touchstart -> classified single tap, generous
+  // Gate W1 (v1.134 fix round): the window must absorb touch-DOWN -> fired
+  // single tap, which is finger dwell + the DOUBLE_TAP_MS (350) debounce -
+  // the old 600 left only 250ms of dwell budget and a hesitant tap escaped
+  // it (paused instead of consuming). While PLAYING, hold-to-2x caps tap
+  // dwell at HOLD_MS (500), so 500 + 350 + slack = 1000 covers every tap
+  // that can still be classified single; while PAUSED the bar never
+  // auto-hides, so no stamp exists and the window is moot. Every down event
+  // rewrites the stamp, so a wider window cannot leak across gestures.
+  var VIDEO_TAP_REVEAL_CONSUME_MS = 1000;
+  // Same-gesture epsilon for the pointerdown/touchstart double-fire (they
+  // arrive within a few ms of each other; real human re-taps are >150ms).
+  var VIDEO_TAP_SAME_GESTURE_MS = 150;
   function videoSingleTapOrReveal() {
     if (shouldConsumeTapAsReveal(videoTapConsumedByRevealAt, Date.now(), VIDEO_TAP_REVEAL_CONSUME_MS)) return;
     // Belt (mirrors artSingleTapOrReveal): if the bar is somehow STILL
@@ -5435,12 +5476,26 @@ if (typeof module !== 'undefined' && module.exports) {
     // by the reveal. The stamp is re-written on EVERY gesture (hidden -> now,
     // visible -> 0) so it can never go stale across gestures; see
     // videoSingleTapOrReveal's header for the full mechanism.)
+    // Gate C1 (v1.134 fix round): the VIDEO listener registers on exactly ONE
+    // down event - one physical touch fires BOTH pointerdown and touchstart,
+    // and two invocations were not idempotent (the first's reveal removed the
+    // class the second's read keyed on, zeroing the stamp -> the tap that
+    // woke the bar also paused). pointerdown covers mouse+touch+pen wherever
+    // PointerEvent exists; the touchstart fallback serves legacy WebKit. The
+    // stamp write additionally routes through nextVideoTapStamp (the
+    // idempotence belt - a fresh same-gesture stamp survives a visible-bar
+    // read even if a second invocation ever returns).
+    var videoDownEvt = (typeof window !== 'undefined' && window.PointerEvent) ? 'pointerdown' : 'touchstart';
+    mediaPlayer.addEventListener(videoDownEvt, function () {
+      if (!inImmersiveMode()) { videoTapConsumedByRevealAt = 0; return; } // inline gestures also rewrite the stamp - no cross-mode staleness
+      videoTapConsumedByRevealAt = nextVideoTapStamp(
+        !!(host && host.classList.contains('controls-autohidden')),
+        videoTapConsumedByRevealAt, Date.now(), VIDEO_TAP_SAME_GESTURE_MS);
+      revealControlsAndReArm();
+    }, { passive: true });
+    // The BAR keeps the both-event blind reveal - it never stamps, so the
+    // double-fire is harmless there (revealControlsAndReArm is idempotent).
     ['touchstart', 'pointerdown'].forEach(function (evt) {
-      mediaPlayer.addEventListener(evt, function () {
-        if (!inImmersiveMode()) { videoTapConsumedByRevealAt = 0; return; } // inline gestures also rewrite the stamp - no cross-mode staleness
-        videoTapConsumedByRevealAt = (host && host.classList.contains('controls-autohidden')) ? Date.now() : 0;
-        revealControlsAndReArm();
-      }, { passive: true });
       if (playerControls) playerControls.addEventListener(evt, function () { if (inImmersiveMode()) revealControlsAndReArm(); }, { passive: true });
     });
     mediaPlayer.addEventListener('ended', function () { stopFillLoop(); updateSeekVisual(); });

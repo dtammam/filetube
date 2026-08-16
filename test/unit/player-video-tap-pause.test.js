@@ -63,19 +63,63 @@ test('videoSingleTapOrReveal: consume-check FIRST, reveal-first belt SECOND, the
   assert.ok(!/mediaPlayer\.(play|pause)\(/.test(body[1]), 'no duplicated playback writes');
 });
 
-test('the blind-reveal listener rewrites the stamp on EVERY gesture, reading the hidden state BEFORE revealing', () => {
-  // Inline gestures zero it (no cross-mode staleness after a fullscreen exit).
-  assert.match(PLAYER_JS, /if \(!inImmersiveMode\(\)\) \{ videoTapConsumedByRevealAt = 0; return; \}/);
-  // Immersive: hidden -> stamp now, visible -> 0 - ONE ternary, and it must
-  // run before revealControlsAndReArm() strips the class it reads.
-  const listener = /if \(!inImmersiveMode\(\)\) \{ videoTapConsumedByRevealAt = 0; return; \}([\s\S]*?)\}, \{ passive: true \}\);/.exec(PLAYER_JS);
-  assert.ok(listener, 'blind-reveal listener body not found');
-  const stampIdx = listener[1].indexOf("videoTapConsumedByRevealAt = (host && host.classList.contains('controls-autohidden')) ? Date.now() : 0;");
-  const revealIdx = listener[1].indexOf('revealControlsAndReArm();');
-  assert.ok(stampIdx !== -1 && revealIdx !== -1, 'stamp ternary + reveal present');
-  assert.ok(stampIdx < revealIdx, 'the stamp MUST precede the reveal - reversed, the ternary reads an already-revealed bar and never stamps');
+test('gate C1: the VIDEO down listener registers on exactly ONE event (the pointerdown+touchstart double-fire zeroed the stamp)', () => {
+  // One physical touch fires BOTH events; two invocations were not
+  // idempotent (the first's reveal removed the class the second read).
+  assert.match(PLAYER_JS, /var videoDownEvt = \(typeof window !== 'undefined' && window\.PointerEvent\) \? 'pointerdown' : 'touchstart';/);
+  assert.match(PLAYER_JS, /mediaPlayer\.addEventListener\(videoDownEvt, function \(\) \{/);
+  // The two-event loop must contain ONLY the bar's stamp-less blind reveal -
+  // re-adding mediaPlayer there resurrects the double-fire.
+  const loop = /\['touchstart', 'pointerdown'\]\.forEach\(function \(evt\) \{([\s\S]*?)\n {4}\}\);/.exec(PLAYER_JS);
+  assert.ok(loop, 'the bar reveal loop exists');
+  assert.ok(!/mediaPlayer/.test(loop[1]), 'mediaPlayer must NOT be in the two-event loop');
 });
 
-test('the consume window is variableized and generous-but-bounded', () => {
-  assert.match(PLAYER_JS, /var VIDEO_TAP_REVEAL_CONSUME_MS = 600;/);
+test('the stamp write routes through nextVideoTapStamp BEFORE the reveal strips the class it reads', () => {
+  const listener = /if \(!inImmersiveMode\(\)\) \{ videoTapConsumedByRevealAt = 0; return; \}([\s\S]*?)\}, \{ passive: true \}\);/.exec(PLAYER_JS);
+  assert.ok(listener, 'blind-reveal listener body not found');
+  const stampIdx = listener[1].indexOf('videoTapConsumedByRevealAt = nextVideoTapStamp(');
+  const revealIdx = listener[1].indexOf('revealControlsAndReArm();');
+  assert.ok(stampIdx !== -1 && revealIdx !== -1, 'stamp call + reveal present');
+  assert.ok(stampIdx < revealIdx, 'the stamp MUST precede the reveal');
+  assert.match(listener[1], /host\.classList\.contains\('controls-autohidden'\)/, 'the hidden read feeds the pure stamp function');
+});
+
+test('gate W1: the consume window absorbs dwell + the 350ms debounce; both constants variableized', () => {
+  // 600 left only 250ms dwell budget; hold-to-2x caps playing-tap dwell at
+  // HOLD_MS (500), so 500 + 350 + slack = 1000 covers every classifiable tap.
+  assert.match(PLAYER_JS, /var VIDEO_TAP_REVEAL_CONSUME_MS = 1000;/);
+  assert.match(PLAYER_JS, /var VIDEO_TAP_SAME_GESTURE_MS = 150;/);
+});
+
+test('gate W2: a drag past tolerance vetoes ONLY the single-tap scheduling (scroll-on-video must never pause)', () => {
+  assert.match(PLAYER_JS, /tapGestureMoved = false; \/\/ gate W2 .*fresh gesture/);
+  const move = /el\.addEventListener\('touchmove', function \(e\) \{([\s\S]*?)\}, \{ passive: true \}\);/.exec(PLAYER_JS);
+  assert.ok(move, 'touchmove handler not found');
+  assert.match(move[1], /tapGestureMoved = true;/, 'movement past MOVE_TOL sets the veto');
+  assert.match(PLAYER_JS, /if \(shouldArtSingleTapAct\(state, onSingleTap\) && !tapGestureMoved\) \{/,
+    'the veto gates exactly the scheduling conjunct - skip/hold/double-tap paths untouched');
+});
+
+// ---- nextVideoTapStamp (pure) - the C1 idempotence belt, BEHAVIORALLY ------
+
+const { nextVideoTapStamp } = require('../../public/js/player.js');
+
+test('C1 double-fire sequence: the second down event of the SAME gesture preserves the stamp the first wrote', () => {
+  // The reviewer's sim as a pure two-step: down#1 sees the hidden bar and
+  // stamps; its reveal makes the bar visible; down#2 (same touch, ms later)
+  // reads visible + a fresh stamp -> must PRESERVE, not zero. This is the
+  // exact sequence that paused-on-reveal in the shipped round-1 shape.
+  const t0 = 100000;
+  const first = nextVideoTapStamp(true, 0, t0, 150);
+  assert.strictEqual(first, t0, 'hidden bar -> stamp now');
+  const second = nextVideoTapStamp(false, first, t0 + 5, 150);
+  assert.strictEqual(second, t0, 'same-gesture double-fire must preserve the stamp');
+});
+
+test('a genuinely LATER gesture against a visible bar zeroes the stamp (no cross-gesture leakage)', () => {
+  assert.strictEqual(nextVideoTapStamp(false, 100000, 100300, 150), 0, 'a 300ms-later down is a new gesture');
+  assert.strictEqual(nextVideoTapStamp(false, 100000, 100150, 150), 0, 'exactly the epsilon -> new gesture (exclusive boundary)');
+  assert.strictEqual(nextVideoTapStamp(false, 0, 100000, 150), 0, 'no prior stamp -> stays zero');
+  assert.strictEqual(nextVideoTapStamp(false, null, 100000, 150), 0, 'garbage prior -> zero');
 });
