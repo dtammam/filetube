@@ -5,6 +5,11 @@ described the pre-v1.42 db.json era. Facts here are anchored to real files;
 when this document and the code disagree, the code wins and this file is the
 bug. History lives in ROADMAP.md and docs/exec-plans/completed/, not here.
 
+**Visual companion: [docs/DIAGRAMS.md](DIAGRAMS.md)** (v1.135) - the module
+map, data model, scan pipeline, watch/stream flow, and client/player
+lifecycle as Mermaid diagrams, checker-bound by
+`test/unit/docs-diagrams-census.test.js` so they cannot silently rot.
+
 FileTube is a self-hosted media server styled after old-school YouTube: a
 Node.js/Express monolith that scans local folders, extracts durations/
 thumbnails/chapters via FFmpeg, and streams video, audio, books, and podcasts
@@ -235,10 +240,10 @@ re-runs the dual-Node suite and the secret scan on the exact ref; tags
 
 ## Testing
 
-`node:test`, no runner deps. ~340 unit files (pure logic, jsdom, source
-locks) + ~180 integration files (real server, real Express table, real SQLite
-in temp DATA_DIRs); full suite ~6,888 tests, run on BOTH Node 22 and 24
-before every release. The house pattern is the FORCING NET - tests that fail
+`node:test`, no runner deps. 345 unit files (pure logic, jsdom, source
+locks) + 190 integration files (real server, real Express table, real SQLite
+in temp DATA_DIRs); full suite 6,982 tests (all counts measured at v1.135.0;
+they grow every wave), run on BOTH Node 22 and 24 before every release. The house pattern is the FORCING NET - tests that fail
 on absence (an unclassified route, an unlisted namespace, a view style outside
 style.css) so a discipline can't be silently skipped. Auth in tests is a real
 minted cookie, never an env bypass. The pre-commit hook runs lint + the unit

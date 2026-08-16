@@ -155,6 +155,7 @@ not failing.
 | Portable, repo-agnostic spec of this methodology | `docs/references/lean-mode-methodology.md` |
 | Active exec plans / tech debt | `docs/exec-plans/active/`, `docs/exec-plans/tech-debt-tracker.md` |
 | System architecture / coding standards (incl. the MANDATORY design-token rules) | `docs/ARCHITECTURE.md`, `docs/CONTRIBUTING.md` |
+| Architecture diagrams (module map, data model, flows - checker-bound) | `docs/DIAGRAMS.md` |
 | Release/Docker tagging mechanics | `docs/RELEASING.md` |
 | Reliability/operational hardening reference | `docs/RELIABILITY.md` |
 | The retired 2025 multi-agent pipeline this repo was seeded with (archive only - never route work through it) | `docs/references/legacy-agent-pipeline.md` |
