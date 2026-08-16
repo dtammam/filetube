@@ -119,7 +119,13 @@ test('a tap on the video or the bar reveals + re-arms (additive/passive; skip-ge
   // Reveal listeners on the video + bar, gated on an immersive overlay, passive.
   const loop = /\['touchstart', 'pointerdown'\]\.forEach\(function \(evt\) \{([\s\S]*?)\n {4}\}\);/.exec(SRC);
   assert.ok(loop, 'the reveal-listener loop exists');
-  assert.match(loop[1], /mediaPlayer\.addEventListener\(evt, function \(\) \{ if \(inImmersiveMode\(\)\) revealControlsAndReArm\(\); \}, \{ passive: true \}\);/, 'video reveal');
+  // v1.134 (+C1 fix round): the video listener grew the tap-consume STAMP and
+  // moved OUT of the two-event loop onto a SINGLE down event (one touch fires
+  // both pointerdown and touchstart; two invocations zeroed the stamp). The
+  // reveal is still there, still immersive-gated, still passive - now on the
+  // standalone videoDownEvt registration; the stamp mechanics are bound in
+  // player-video-tap-pause.test.js.
+  assert.match(SRC, /mediaPlayer\.addEventListener\(videoDownEvt, function \(\) \{\n[\s\S]{0,500}?revealControlsAndReArm\(\);\n\s*\}, \{ passive: true \}\);/, 'video reveal (single-event registration)');
   assert.match(loop[1], /playerControls\.addEventListener\(evt, function \(\) \{ if \(inImmersiveMode\(\)\) revealControlsAndReArm\(\); \}, \{ passive: true \}\);/, 'bar reveal');
   // v1.120 gate fix: the audio cover art is NOT in this blind-reveal loop -- its
   // own click handler reveals-without-toggling (a blind reveal here would also

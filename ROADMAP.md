@@ -80,6 +80,35 @@
 
 ## Shipped
 
+### v1.134.0 - tap the video to play/pause (2026-08-16)
+
+Dean: "I can't just tap in the middle and have it paused." Now a tap
+anywhere on the picture toggles play/pause with the same fading glyph the
+cover-art tap has had since v1.21 - unobtrusive, iOS-style. Rides the
+existing gesture layer (the single-tap slot the video surface left empty
+since v1.21), so double-tap ±15s skip and hold-to-2x are untouched; in
+fullscreen with the bar hidden, the first tap reveals the controls without
+pausing (the reveal-first convention), the next tap toggles.
+
+What the gate caught - the headline save: a CRITICAL that would have
+shipped "a reveal that pauses" to the device. One physical touch fires
+BOTH pointerdown and touchstart, and the two invocations of the reveal
+listener weren't idempotent - the first's reveal removed the class the
+second's read keyed on, zeroing the consume stamp, so the tap that woke a
+hidden fullscreen bar would ALSO have paused, on the feature's primary
+flow, with every test green (the reviewer proved it with a runnable sim).
+Fixed two-layered: single-event registration + a pure idempotent stamp
+function whose double-fire sequence is now a behavioral test. Also: the
+consume window's dwell arithmetic was wrong by the debounce (600 -> 1000);
+a page scroll STARTING on the playing video would have paused it 350ms
+after finger-lift (movement veto added - fixing the same latent trait the
+audio art has had since v1.21); and three rounds of lock-porosity tennis
+on the veto binding (move/add/move-below-brace variants all bound red now,
+MOVE_TOL literal-locked). Runtime code unchanged after the first fix
+round - the tennis was test-granularity, disclosed per the pacing norm.
+
+Dual-Node: 6982/6982 on v22.23.1 AND v24.14.0.
+
 ### v1.133.0 - chapter-name wrap fix + Prev/Next in the player for video (2026-08-16)
 
 Two from Dean's screenshot session. (1) A long chapter name shoved the

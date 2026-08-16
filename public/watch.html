@@ -390,10 +390,12 @@
            this element. -->
       <div id="audio-bg-art" class="audio-bg-art"></div>
 
-      <!-- v1.21 FR-2 (T2): fading play/pause overlay glyph for the
-           click-the-cover-art surface (#audio-bg-art's click handler, wired
-           once in player.js's wireHostListeners()). Sits above the art,
-           below the resume/transcode overlays. -->
+      <!-- v1.21 FR-2 (T2): fading play/pause overlay glyph, originally for
+           the click-the-cover-art surface (#audio-bg-art); v1.134 the VIDEO
+           tap-to-pause surface flashes the SAME glyph (one writer,
+           flashArtGlyph - it spans the whole wrapper, so it centers over
+           either surface). Sits above the art/video, below the
+           resume/transcode overlays. -->
       <div id="art-play-glyph" class="art-play-glyph" aria-hidden="true"></div>
 
       <!-- Resume overlay popup -->
