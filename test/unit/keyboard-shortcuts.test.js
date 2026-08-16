@@ -44,12 +44,26 @@ const allItems = () => KEYBOARD_SHORTCUT_GROUPS.flatMap((g) => g.items);
  * named `handler` and the comment claimed the switch was the source of truth.
  */
 function playerShortcutHandler() {
-  const start = PLAYER.indexOf("document.addEventListener('keydown'");
-  assert.notEqual(start, -1, 'expected the player keydown handler');
-  // The handler ends where the NEXT document-level keydown listener begins
-  // (player.js binds a second one for the audio-expand Escape).
-  const next = PLAYER.indexOf("document.addEventListener('keydown'", start + 10);
-  const raw = PLAYER.slice(start, next === -1 ? PLAYER.length : next);
+  // v1.132: player.js now binds MORE document-level keydown listeners than
+  // the shortcut switch + the audio-expand Escape (the resume-countdown
+  // cancel listener registers/unregisters dynamically and sits EARLIER in
+  // the file), so "the first occurrence" is no longer the handler. Anchor on
+  // content instead: the shortcut handler is the ONE keydown block that
+  // contains the `switch (` dispatch; still bounded to the next keydown
+  // listener (the W5 lesson - never slice to EOF).
+  const occurrences = [];
+  for (let i = PLAYER.indexOf("document.addEventListener('keydown'"); i !== -1; i = PLAYER.indexOf("document.addEventListener('keydown'", i + 10)) {
+    occurrences.push(i);
+  }
+  assert.ok(occurrences.length > 0, 'expected the player keydown handler');
+  let start = -1;
+  let next = -1;
+  for (let i = 0; i < occurrences.length; i++) {
+    const end = i + 1 < occurrences.length ? occurrences[i + 1] : PLAYER.length;
+    if (/switch \(/.test(PLAYER.slice(occurrences[i], end))) { start = occurrences[i]; next = end; break; }
+  }
+  assert.notEqual(start, -1, 'expected the ONE keydown listener containing the shortcut switch');
+  const raw = PLAYER.slice(start, next);
   // Strip line comments: the slice still trails ~15 lines of inter-listener
   // prose, and player.js's own commentary contains the literal `case 'Escape':`
   // -- so without this, a shortcut written only in a COMMENT satisfies the lock
@@ -81,6 +95,10 @@ test('DRIFT LOCK: every documented playback key is actually handled in player.js
     '>': "case '>':",
     N: "case 'N':",
     P: "case 'P':",
+    // v1.132 gate S1 (pre-existing hole, measured on both sides of the wave):
+    // the dialog documents M/mute but no row bound it - deleting case 'm'
+    // stayed green. Both directions of the drift lock derive from rows here.
+    M: "case 'm':",
   };
   const documented = new Set(allItems().flatMap((i) => i.keys));
   for (const [cap, literal] of Object.entries(expectations)) {

@@ -83,7 +83,10 @@ test('v1.70: every fallback-less var() names a token the stylesheet defines (the
   // BOTH) and case-SENSITIVE (custom properties are).
   const defined = new Set([...css.matchAll(/(?:^|[;{])\s*(--[A-Za-z0-9_-]+)\s*:/gm)].map((m) => m[1]));
   // Custom properties set from JS at runtime (never declared in CSS).
-  const jsSet = new Set(['--history-pct', '--media-aspect', '--music-sticky-top', '--ptr-pull', '--seek-fill', '--vol-fill']);
+  // v1.132: --resume-countdown-duration is set inline by startResumeCountdown
+  // (player.js, single-sourced from RESUME_COUNTDOWN_SECONDS) - deliberately
+  // never declared in CSS so the timer and the drain can't drift.
+  const jsSet = new Set(['--history-pct', '--media-aspect', '--music-sticky-top', '--ptr-pull', '--resume-countdown-duration', '--seek-fill', '--vol-fill']);
   const missing = new Set();
   // Usages: allow the whitespace shapes ordinary wrapped formatting produces
   // (`var(\n  --token\n)`, tabs, spaces) and the full custom-property
