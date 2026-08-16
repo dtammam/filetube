@@ -3437,6 +3437,29 @@ if (typeof module !== 'undefined' && module.exports) {
   // the same try/catch'd localStorage read every pre-existing lifecycle
   // listener already pays per event). PASSIVE observer only - this must never
   // mutate playback state.
+  // v1.35 T1, extracted v1.136 (the PWA audio-coupling deep dive): declare a
+  // PLAYBACK audio session (Safari 16.4+) - tells iOS this app's media
+  // should continue in the background and play through the silent switch
+  // (Dean-approved since v1.35) - the closest a web app gets to a native
+  // audio app's background entitlement. ONE writer, two callers: the video
+  // background-audio arm path (v1.35, setting-gated) and - NEW in v1.136 -
+  // the plain-AUDIO item path in setupForMedia, which previously NEVER
+  // declared it: a music/podcast-only session ran with the default 'auto'
+  // session type, a credible suspect for background audio dying when iOS
+  // rebalances audio (e.g. a sibling PWA closing). Deliberately ONE-WAY for
+  // the page lifetime: reverting live would risk yanking an active session
+  // out from under playback. Records `audioSession:declare` on the
+  // TRANSITION only, so the ?debugLifecycle=1 overlay shows whether the
+  // declaration was live during an E-test repro (evidence fidelity).
+  function declarePlaybackAudioSession() {
+    try {
+      if (navigator.audioSession && navigator.audioSession.type !== 'playback') {
+        navigator.audioSession.type = 'playback';
+        recordLifecycleEvent('audioSession:declare', { detail: 'type=playback' });
+      }
+    } catch (_) { /* API absent/locked -- fine */ }
+  }
+
   function recordDiagnosticPauseEvent(elName) {
     if (!isDebugLifecycleEnabled()) return;
     var el = elName === 'bgAudio' ? bgAudioEl : mediaPlayer;
@@ -7204,20 +7227,10 @@ if (typeof module !== 'undefined' && module.exports) {
               // `scheduleAudioStatusRepoll`'s own `!body` guard already ends
               // the chain there, so nothing further is needed here.
               bgAudioStatusKnown = body ? (body.audioStatus || null) : null;
-              // v1.35 T1: declare a PLAYBACK audio session (Safari 16.4+)
-              // the moment the setting resolves ON -- tells iOS this app's
-              // media should continue in the background (and play through
-              // the silent switch, Dean-approved) -- the closest a web app
-              // gets to a native audio app's background entitlement.
-              // (Deliberately one-way for the page lifetime: turning the
-              // setting OFF mid-session leaves the declaration standing
-              // until the next reload -- harmless, and reverting live would
-              // risk yanking an active session out from under playback.)
-              try {
-                if (navigator.audioSession && navigator.audioSession.type !== 'playback') {
-                  navigator.audioSession.type = 'playback';
-                }
-              } catch (_) { /* API absent/locked -- fine */ }
+              // v1.35 T1 (v1.136: extracted to the ONE writer,
+              // declarePlaybackAudioSession - see its header): declare the
+              // playback session the moment the setting resolves ON.
+              declarePlaybackAudioSession();
               // v1.35 T2: sidecar already ready -> pre-arm NOW, so the
               // eventual background handoff is a bare play().
               armBackgroundAudioSrc();
@@ -7342,6 +7355,12 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     if (data.type === 'audio') {
+      // v1.136 (PWA audio-coupling deep dive, E2): plain-audio items now
+      // declare the playback session too - background continuation IS this
+      // path's established behavior (the battle-won bg machinery), but the
+      // iOS-facing session-type declaration only ever rode the VIDEO
+      // bg-audio arm, so a music/podcast-only session ran as 'auto'.
+      declarePlaybackAudioSession();
       mediaPlayer.style.display = 'block';
       // v1.38.0: a book-TTS item's id has no db.metadata thumbnail; use its
       // explicit artUrl (book cover) as the poster instead of a 404 /thumbnail.

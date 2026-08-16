@@ -1260,19 +1260,34 @@ test('gate fix (behavioral property): a user pause followed by an immediate lock
 
 // ---- v1.35 (deterministic background audio): source-locks -------------------
 
-test('v1.35 T1: the playback audio-session declaration exists, is setting-gated, and never throws where the API is absent', () => {
-  assert.match(PLAYER_JS, /navigator\.audioSession && navigator\.audioSession\.type !== 'playback'/,
+test('v1.35 T1 / v1.136: ONE playback-declaration writer, called from BOTH the video arm path and the plain-audio branch', () => {
+  const body = /function declarePlaybackAudioSession\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(body, 'declarePlaybackAudioSession body not found');
+  assert.match(body[1], /navigator\.audioSession && navigator\.audioSession\.type !== 'playback'/,
     'idempotent feature-detected declaration');
-  assert.match(PLAYER_JS, /navigator\.audioSession\.type = 'playback';/,
+  assert.match(body[1], /navigator\.audioSession\.type = 'playback';/,
     'the Safari 16.4+ playback session type -- the background-continuation entitlement');
-  // It must live inside the settings-fetch .then, AFTER bgAudioSettingCached
-  // resolves -- i.e. only a background-audio-enabled install ever declares it.
-  const idx = PLAYER_JS.indexOf("navigator.audioSession.type = 'playback'");
+  assert.match(body[1], /try \{/, 'never throws where the API is absent/locked');
+  // v1.136 diagnostics: recorded on the TRANSITION only (inside the if), so
+  // the ?debugLifecycle overlay shows whether the declaration was live
+  // during a coupling repro.
+  const ifIdx = body[1].indexOf("navigator.audioSession.type = 'playback';");
+  const recIdx = body[1].indexOf("recordLifecycleEvent('audioSession:declare'");
+  assert.ok(recIdx > ifIdx && recIdx !== -1, 'the declare event records inside the transition branch');
+  // ONE writer, TWO callers: the v1.35 video arm (inside the settings-fetch
+  // continuation - only a background-audio-enabled install declares there)
+  // and the v1.136 plain-audio branch (music/podcast-only sessions
+  // previously never declared and ran as the default "auto" type).
+  const calls = (PLAYER_JS.match(/^\s*declarePlaybackAudioSession\(\);/gm) || []).length;
+  assert.strictEqual(calls, 2, 'exactly two call sites; found ' + calls);
+  const setterCount = (PLAYER_JS.match(/navigator\.audioSession\.type = 'playback';/g) || []).length;
+  assert.strictEqual(setterCount, 1, 'the raw setter appears ONLY inside the one writer');
   const cachedIdx = PLAYER_JS.indexOf('bgAudioSettingCached = !!(settings && settings.backgroundAudioForVideo)');
-  // (Ordering-only assertion: the declaration sits inside the prepare-audio
-  // continuation that only runs once the setting resolved ON.)
-  assert.ok(cachedIdx !== -1 && idx > cachedIdx,
-    'the declaration rides the same settings resolution that arms the feature');
+  const videoCallIdx = PLAYER_JS.indexOf('declarePlaybackAudioSession();', cachedIdx);
+  assert.ok(cachedIdx !== -1 && videoCallIdx !== -1,
+    'the video-path call still rides the same settings resolution that arms the feature');
+  assert.match(PLAYER_JS, /if \(data\.type === 'audio'\) \{\n[\s\S]{0,500}?declarePlaybackAudioSession\(\);/,
+    'the plain-audio branch declares too (the v1.136 gap-close)');
 });
 
 test('v1.35 T2: pre-arm fires at every readiness point -- settings-fetch (ready at load), repoll ready-flip, and post-swap-back re-arm', () => {
