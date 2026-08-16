@@ -1268,15 +1268,20 @@ test('v1.35 T1 / v1.136: ONE playback-declaration writer, called from BOTH the v
   assert.match(body[1], /navigator\.audioSession\.type = 'playback';/,
     'the Safari 16.4+ playback session type -- the background-continuation entitlement');
   assert.match(body[1], /try \{/, 'never throws where the API is absent/locked');
-  // v1.136 diagnostics: recorded on the TRANSITION only (inside the if), so
-  // the ?debugLifecycle overlay shows whether the declaration was live
-  // during a coupling repro. CONTAINMENT-bound, not position-bound - the
-  // first draft asserted recIdx > ifIdx, which a record moved BELOW the
-  // closing brace (fires every call = overlay spam) satisfied (my own M4
-  // mutant survived it).
+  // v1.136 diagnostics (gate S1 shape): ONE overlay line per page load,
+  // always - 'type=playback' inside the transition branch, 'already-playback'
+  // once on the skip path (page-scoped flag) - because the 30-entry ring
+  // buffer evicts and persists across loads, so a transition-only record
+  // could not prove the declaration was live during THIS repro.
+  // CONTAINMENT-bound, not position-bound - the first draft asserted
+  // recIdx > ifIdx, which a record moved BELOW the closing brace satisfied
+  // (my own M4 mutant survived it).
   assert.match(body[1],
-    /if \(navigator\.audioSession && navigator\.audioSession\.type !== 'playback'\) \{\s*navigator\.audioSession\.type = 'playback';\s*recordLifecycleEvent\('audioSession:declare', \{ detail: 'type=playback' \}\);\s*\}/,
+    /if \(navigator\.audioSession && navigator\.audioSession\.type !== 'playback'\) \{\s*navigator\.audioSession\.type = 'playback';\s*audioSessionDeclareLogged = true;\s*recordLifecycleEvent\('audioSession:declare', \{ detail: 'type=playback' \}\);\s*\}/,
     'the declare event records INSIDE the transition branch, contiguous with the setter');
+  assert.match(body[1],
+    /else if \(navigator\.audioSession && !audioSessionDeclareLogged\) \{\s*audioSessionDeclareLogged = true;\s*recordLifecycleEvent\('audioSession:declare', \{ detail: 'already-playback' \}\);\s*\}/,
+    'the skip path records once per page (the flag), never per call');
   // ONE writer, TWO callers: the v1.35 video arm (inside the settings-fetch
   // continuation - only a background-audio-enabled install declares there)
   // and the v1.136 plain-audio branch (music/podcast-only sessions
@@ -1285,10 +1290,19 @@ test('v1.35 T1 / v1.136: ONE playback-declaration writer, called from BOTH the v
   assert.strictEqual(calls, 2, 'exactly two call sites; found ' + calls);
   const setterCount = (PLAYER_JS.match(/navigator\.audioSession\.type = 'playback';/g) || []).length;
   assert.strictEqual(setterCount, 1, 'the raw setter appears ONLY inside the one writer');
+  // Gate W1 (v1.136 fix round, reviewer-verified prescription): the respell
+  // had LOST the old lock's ordering anchor - `indexOf(call, cachedIdx)`
+  // was satisfiable by the AUDIO-branch call, so moving the video-arm call
+  // ABOVE the settings fetch (silently un-gating shipped v1.35 behavior)
+  // stayed green. WINDOW the check: the call found after the settings
+  // resolution must sit BEFORE the audio branch, i.e. it is the video-arm
+  // call itself.
   const cachedIdx = PLAYER_JS.indexOf('bgAudioSettingCached = !!(settings && settings.backgroundAudioForVideo)');
   const videoCallIdx = PLAYER_JS.indexOf('declarePlaybackAudioSession();', cachedIdx);
-  assert.ok(cachedIdx !== -1 && videoCallIdx !== -1,
-    'the video-path call still rides the same settings resolution that arms the feature');
+  const audioBranchIdx = PLAYER_JS.indexOf("if (data.type === 'audio') {");
+  assert.ok(cachedIdx !== -1 && audioBranchIdx !== -1 && videoCallIdx !== -1
+    && videoCallIdx < audioBranchIdx,
+    'the video-path call still rides the same settings resolution that arms the feature (windowed before the audio branch)');
   assert.match(PLAYER_JS, /if \(data\.type === 'audio'\) \{\n[\s\S]{0,500}?declarePlaybackAudioSession\(\);/,
     'the plain-audio branch declares too (the v1.136 gap-close)');
 });

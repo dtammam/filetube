@@ -3437,29 +3437,6 @@ if (typeof module !== 'undefined' && module.exports) {
   // the same try/catch'd localStorage read every pre-existing lifecycle
   // listener already pays per event). PASSIVE observer only - this must never
   // mutate playback state.
-  // v1.35 T1, extracted v1.136 (the PWA audio-coupling deep dive): declare a
-  // PLAYBACK audio session (Safari 16.4+) - tells iOS this app's media
-  // should continue in the background and play through the silent switch
-  // (Dean-approved since v1.35) - the closest a web app gets to a native
-  // audio app's background entitlement. ONE writer, two callers: the video
-  // background-audio arm path (v1.35, setting-gated) and - NEW in v1.136 -
-  // the plain-AUDIO item path in setupForMedia, which previously NEVER
-  // declared it: a music/podcast-only session ran with the default 'auto'
-  // session type, a credible suspect for background audio dying when iOS
-  // rebalances audio (e.g. a sibling PWA closing). Deliberately ONE-WAY for
-  // the page lifetime: reverting live would risk yanking an active session
-  // out from under playback. Records `audioSession:declare` on the
-  // TRANSITION only, so the ?debugLifecycle=1 overlay shows whether the
-  // declaration was live during an E-test repro (evidence fidelity).
-  function declarePlaybackAudioSession() {
-    try {
-      if (navigator.audioSession && navigator.audioSession.type !== 'playback') {
-        navigator.audioSession.type = 'playback';
-        recordLifecycleEvent('audioSession:declare', { detail: 'type=playback' });
-      }
-    } catch (_) { /* API absent/locked -- fine */ }
-  }
-
   function recordDiagnosticPauseEvent(elName) {
     if (!isDebugLifecycleEnabled()) return;
     var el = elName === 'bgAudio' ? bgAudioEl : mediaPlayer;
@@ -3472,6 +3449,38 @@ if (typeof module !== 'undefined' && module.exports) {
         state: bgAudioState,
       }),
     });
+  }
+
+  // v1.35 T1, extracted v1.136 (the PWA audio-coupling deep dive): declare a
+  // PLAYBACK audio session (Safari 16.4+) - tells iOS this app's media
+  // should continue in the background and play through the silent switch
+  // (Dean-approved since v1.35) - the closest a web app gets to a native
+  // audio app's background entitlement. ONE writer, two callers: the video
+  // background-audio arm path (v1.35, setting-gated) and - NEW in v1.136 -
+  // the plain-AUDIO item path in setupForMedia, which previously NEVER
+  // declared it: a music/podcast-only session ran with the default 'auto'
+  // session type, a credible suspect for background audio dying when iOS
+  // rebalances audio (e.g. a sibling PWA closing). Deliberately ONE-WAY for
+  // the page lifetime: reverting live would risk yanking an active session
+  // out from under playback.
+  // Diagnostics (gate S1, evidence fidelity for the coupling E-tests): the
+  // ?debugLifecycle=1 overlay gets ONE `audioSession:declare` line per PAGE
+  // LOAD, always - 'type=playback' on the transition, 'already-playback' on
+  // the first skipped call - because the 30-entry ring buffer both evicts
+  // old lines and persists across loads, so a transition-only record could
+  // neither prove nor disprove "the declaration was live during THIS repro".
+  var audioSessionDeclareLogged = false;
+  function declarePlaybackAudioSession() {
+    try {
+      if (navigator.audioSession && navigator.audioSession.type !== 'playback') {
+        navigator.audioSession.type = 'playback';
+        audioSessionDeclareLogged = true;
+        recordLifecycleEvent('audioSession:declare', { detail: 'type=playback' });
+      } else if (navigator.audioSession && !audioSessionDeclareLogged) {
+        audioSessionDeclareLogged = true;
+        recordLifecycleEvent('audioSession:declare', { detail: 'already-playback' });
+      }
+    } catch (_) { /* API absent/locked -- fine */ }
   }
 
   // Small, unobtrusive, fixed-position monospace overlay -- built entirely in
