@@ -4,8 +4,10 @@ Status: LIVING REFERENCE (updated 2026-08-16, iOS 26.6 era). Everything
 here is device-tested on Dean's hardware or sourced from cited platform
 documentation/bugs - when iOS changes, re-test before trusting a line.
 This is the "future tweaks" file: each section ends with its revisit
-trigger. Product code references are anchored to real files; the docs
-censuses sweep the links.
+trigger. Code references were HAND-verified against source on 2026-08-16
+(the gate's truth pass) - NOTE: the docs censuses sweep markdown links and
+docs/*.md backtick paths only, NOT this file's `public/...` references, so
+a future rename can rot them silently; re-verify on read.
 
 ## 1. The multi-PWA audio coupling (UNSOLVED - the big one)
 
@@ -50,7 +52,7 @@ fully-offline FileTube-like app, or a NON-media self-hosted sibling).
 ## 2. `navigator.audioSession.type = 'playback'` - handle with care
 
 - v1.35: declared on the VIDEO background-audio arm path (settings-gated).
-  Months of device-passed history. UNCHANGED, still shipped.
+  Device-passed since v1.35 (2026-07-13). UNCHANGED, still shipped.
 - v1.136.0 (2026-08-16): extended unconditionally to plain-audio items.
   **Device result on iOS 26.6: WORSE** - audio stopped the moment the app
   was backgrounded; a foregrounded same-domain sibling RESUMED it (the
@@ -63,13 +65,22 @@ fully-offline FileTube-like app, or a NON-media self-hosted sibling).
 - A/B caveat: the video arm's declaration is ONE-WAY per page session -
   toggle-off music tests need a fresh session that never armed a video.
 
+Evidence instrument for every experiment in sections 1-2: the
+?debugLifecycle=1 overlay (Setup -> "Show lifecycle debug log") - since
+v1.136 it records ONE `audioSession:declare` line per page load, always
+('type=playback' | 'already-playback'), so a repro carries proof of
+whether the declaration was live. Screenshot AT the repro moment (the
+30-entry ring buffer evicts).
+
 Revisit trigger: an iOS release notes change to the Audio Session API, or
 webkit.org/b/261554 closing as fixed - then re-run the toggle experiment.
 
 ## 3. Background audio + lock behavior (working as designed)
 
-- AUDIO items (music/podcasts/books): the ORIGINAL file plays through
-  lock/background - continuity is perfect by construction.
+- AUDIO items (music/podcasts/books): ONE continuous stream plays through
+  lock/background (the original file, or its server-side m4a rendition
+  for browser-incompatible sources like ALAC) - no lock-time element
+  swap, so continuity is perfect by construction.
 - VIDEO items: iOS will not play video in a backgrounded PWA. At
   lock/background the player hands off to a hidden audio element playing
   a pre-extracted `.m4a` sidecar (`public/js/player.js`, the v1.27
@@ -96,6 +107,9 @@ Dean wants it.
 - Each home-screen install is its own isolated storage world (login,
   device-local prefs) - server-side state is shared through the API.
 
+Revisit trigger: if push is ever wanted on a test-rig install, probe
+Media Session on an insecure context first (unverified above).
+
 ## 5. Control Center / Now Playing attribution (UNFIXABLE website-side)
 
 Tapping the Now Playing tile can open the WRONG sibling PWA while
@@ -121,6 +135,10 @@ switcher. A native shell fixes attribution outright (section 6).
 - Cost: an Xcode project + a JS<->native playback seam. The player's
   `activeMediaElement()` abstraction is the natural seam.
 
+Revisit trigger: Dean deciding the coupling (section 1) or attribution
+(section 5) pain outweighs the shell's maintenance cost - the pilot is a
+weekend, not a quarter.
+
 ## 7. Assorted iOS PWA lore (paid for elsewhere, kept for reference)
 
 - iOS pauses any PROGRAMMATIC exit of native video fullscreen -> faux CSS
@@ -139,3 +157,6 @@ switcher. A native shell fixes attribution outright (section 6).
 - iOS home-screen web apps get isolated per-app storage (cookies copied
   once at install; nothing shared after) - but storage isolation is NOT
   audio/process isolation (section 1).
+
+Revisit trigger (section 7): on any lesson superseded by a device test,
+correct it here in the same wave that learns better.
