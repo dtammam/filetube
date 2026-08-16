@@ -80,6 +80,34 @@
 
 ## Shipped
 
+### v1.137.0 - the iOS PWA lore reference (2026-08-16)
+
+docs/references/pwa-ios-notes.md - everything the PWA audio-coupling arc
+taught, captured with revisit triggers per section: the coupling evidence
+timeline, the audioSession declare findings, lock/background behavior +
+the sidecar quality tweak (future wave), the install-origin matrix, the
+CC misroute, the native-shell assessment, and the assorted paid-for lore.
+
+SUPERSESSION (gate S4, for the record): v1.136.0/.1's ROADMAP entries
+describe the coupling as "REGISTRABLE-DOMAIN-scoped" - that hypothesis
+was FALSIFIED the same day by the raw-IP install test (coupled
+identically; Squoosh still didn't). The grouping criterion is UNKNOWN;
+those entries stay as written (history), this line is the correction.
+The player.js v1.136.1 comment carries the same stale phrase - rides the
+next code wave.
+
+What the gate caught (slim/adversarial, 3 rounds): two false SELF-claims
+in a doc premised on verification (the header credited censuses with
+coverage they don't have - mutation-proven; "each section ends with its
+revisit trigger" false for 4 then 1 sections - the last one a python
+replace that silently no-opped while my delta claimed it landed, the
+claims-vs-tree class in a new costume; scripted doc edits now assert
+match AND effect with independent post-state reads). Plus precision:
+"months" that was one month, the ALAC-rendition nuance, the evidence
+instrument documented.
+
+Dual-Node: 6986/6986 on v22.23.1 AND v24.14.0.
+
 ### v1.136.1 - HOTFIX: audio-path declare demoted to a default-OFF toggle (2026-08-16)
 
 Dean's same-day device test of v1.136.0 (iOS 26.6): WORSE - audio stopped
