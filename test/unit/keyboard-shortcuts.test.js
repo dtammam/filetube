@@ -95,6 +95,10 @@ test('DRIFT LOCK: every documented playback key is actually handled in player.js
     '>': "case '>':",
     N: "case 'N':",
     P: "case 'P':",
+    // v1.132 gate S1 (pre-existing hole, measured on both sides of the wave):
+    // the dialog documents M/mute but no row bound it - deleting case 'm'
+    // stayed green. Both directions of the drift lock derive from rows here.
+    M: "case 'm':",
   };
   const documented = new Set(allItems().flatMap((i) => i.keys));
   for (const [cap, literal] of Object.entries(expectations)) {

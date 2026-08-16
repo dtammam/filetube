@@ -63,6 +63,16 @@ test('the countdown arms in the overlay-SHOW branch with the load generation, an
   assert.ok(startBody, 'startResumeCountdown body not found');
   assert.match(startBody[1], /var config = getStoredResumeCountdownConfig\(\);/, 'config must be read fresh per prompt (the getStoredResumeThreshold posture), never cached at boot');
   assert.match(startBody[1], /if \(!config\.enabled\) return;/, 'disabled = a no-op, the pre-wave prompt exactly');
+  // Gate W1 (v1.132 fix round): the action->BUTTON mapping is the wave's
+  // central decision and was unbound - inverted, the shipped default would
+  // auto-click "Start from beginning", whose handler saveProgressToServer(0)s
+  // the saved position away, with the whole suite green. Bind the ternary.
+  assert.match(startBody[1], /var btn = config\.action === 'beginning' \? resumeNoBtn : resumeYesBtn;/,
+    "'beginning' maps to the start-over button and everything else to Resume - inverted, the default DESTROYS saved progress");
+  // Gate W3 (v1.132 fix round): the arm-time re-arm belt - unreachable today
+  // (one overlay-show per load) but desired; bind it so a future re-prompt
+  // path inherits it instead of a second live timer.
+  assert.match(startBody[1], /^\s*cancelResumeCountdown\(\); \/\/ belt/m, 'arming always clears any prior timer first');
 });
 
 test('the expiry fires the default button\'s OWN click - never a duplicated seek/play path', () => {
@@ -87,8 +97,11 @@ test('any player interaction cancels the auto-fire: capture-phase pointerdown + 
 test('EVERY prompt-hide seam cancels the countdown (the enumerate-every-writer discipline)', () => {
   // The five hide-writers + the arm site's own re-arm belt. A stale timer
   // that survives any of these auto-clicks into a vanished/next-load prompt.
+  // Gate W3 (v1.132 fix round): EXACT count, not a floor - >= 7 left three
+  // sites of slack, enough for a deleted seam to hide behind. A new
+  // legitimate site moves this number consciously, in this lock.
   const cancels = (PLAYER_JS.match(/cancelResumeCountdown\(\);/g) || []).length;
-  assert.ok(cancels >= 7, 'expected cancels at both choice buttons, dock-transition, teardown, close, the re-arm belt and the tick guard; found ' + cancels);
+  assert.strictEqual(cancels, 10, 'the 10 cancel sites: both choice buttons, dock-transition, teardown, close, the arm-time belt, the tick guard + expiry, and the two interaction listeners; found ' + cancels);
   assert.match(PLAYER_JS, /resumeYesBtn\.addEventListener\('click', function \(\) \{\n\s*cancelResumeCountdown\(\);/);
   assert.match(PLAYER_JS, /resumeNoBtn\.addEventListener\('click', function \(\) \{\n\s*cancelResumeCountdown\(\);/);
   assert.match(PLAYER_JS, /resumeOverlay\.style\.display = 'none';\n\s*cancelResumeCountdown\(\); \/\/ v1\.132: the dock transition dismissed the prompt/);
@@ -101,6 +114,13 @@ test('the 5 is variableized (Dean) and single-sourced into the CSS drain via the
   assert.match(startBody[1], /btn\.style\.setProperty\('--resume-countdown-duration', RESUME_COUNTDOWN_SECONDS \+ 's'\);/);
   assert.match(startBody[1], /var secondsLeft = RESUME_COUNTDOWN_SECONDS;/);
   assert.match(cancelBody[1], /removeProperty\('--resume-countdown-duration'\)/);
+  // Gate W2 (v1.132 fix round): the wall-clock length is ticks x INTERVAL and
+  // only the tick count was bound - a 500ms interval fires at half the CSS
+  // drain with everything green, falsifying "the visual can never drift from
+  // the timer". Bind the second factor and the per-tick label rewrite.
+  assert.match(startBody[1], /\}, 1000\);/, 'the tick interval is the other half of the wall-clock duration');
+  assert.match(startBody[1], /resumeCountdownBtn\.textContent = resumeCountdownLabel\(resumeCountdownBaseLabel, secondsLeft\);/,
+    'every tick rewrites the label through the ONE builder');
 });
 
 // ---- source locks: the CSS drain -------------------------------------------
