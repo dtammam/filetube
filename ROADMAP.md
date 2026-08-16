@@ -80,6 +80,34 @@
 
 ## Shipped
 
+### v1.133.0 - chapter-name wrap fix + Prev/Next in the player for video (2026-08-16)
+
+Two from Dean's screenshot session. (1) A long chapter name shoved the
+fullscreen button onto a clipped third bar row - a wrapping flex container
+line-breaks on hypothetical (content) sizes before shrinking, and the
+v1.112 mobile rule's basis:auto re-opened the v1.34.1 trap through that
+one gap; short names fit, so it looked healed. Fixed with flex-basis 0 -
+the label claims only leftover space, ellipsis truncates. Not tokens. (2)
+The control bar's Prev/Next pair (audio-only since v1.73) now shows for
+EVERY kind whenever neighbors are registered - video included, in faux
+fullscreen especially (the whole point: the page's own buttons are
+unreachable there). Page-level Previous/Next stay; both surfaces read the
+same registration. Bonus (gate-found): the mobile order pins fix a
+pre-existing prev|next|play mis-order on the music/podcasts expanded bar.
+
+What the gate caught (slim/adversarial, 3 rounds): a divergent-spelling
+mutant that silently re-hid the pair for video with the suite green
+(net widened; residual blocklist limitation tracked as tech-debt #157);
+three lying comments including a consult-timing claim of mine that
+overstated surface agreement; narrow-window row arithmetic (volume slider
+now shrinkable); the reader reset-list contract; AND - the honesty line -
+a fix-round commit whose message claimed comment fixes its tree did not
+contain (my mutant-cycle blind checkout ate the uncommitted edits; the
+gate's tree-vs-claims diff caught it; re-committed for real, scar named
+in the history).
+
+Dual-Node: 6971/6971 on v22.23.1 AND v24.14.0.
+
 ### v1.132.0 - resume prompt auto-fires its default after a countdown (2026-08-16)
 
 Dean: while driving or heads-down, the "Resume at..." prompt's forced
