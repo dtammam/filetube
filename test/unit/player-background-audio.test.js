@@ -1307,6 +1307,11 @@ test('v1.35 T1 / v1.136: ONE playback-declaration writer, called from BOTH the v
   const SETUP_JS_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'setup.js'), 'utf8');
   assert.match(SETUP_JS_SRC, /const AUDIO_SESSION_DECLARE_KEY = 'filetube_audio_session_declare';/,
     'setup.js shares the key byte-for-byte (the cross-file convention)');
+  // Round-3 N5 (reviewer-verified): the enable VALUE is part of the contract
+  // - a setup.js drift to 'true' leaves the experiment silently dead while
+  // appearing configured (player requires the literal '1').
+  assert.match(SETUP_JS_SRC, /localStorage\.setItem\(AUDIO_SESSION_DECLARE_KEY, '1'\);/,
+    "the checkbox stores the literal '1' the player's === '1' check requires");
   const setterCount = (PLAYER_JS.match(/navigator\.audioSession\.type = 'playback';/g) || []).length;
   assert.strictEqual(setterCount, 1, 'the raw setter appears ONLY inside the one writer');
   // Gate W1 (v1.136 fix round, reviewer-verified prescription): the respell
