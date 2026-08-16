@@ -47,7 +47,13 @@ test('updateTrackNavButtons: visibility keys on the trackNav registration ALONE 
   const body = /function updateTrackNavButtons\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(body, 'updateTrackNavButtons body not found');
   assert.match(body[1], /var show = !!trackNavHandlers;/, 'one term - re-adding an audio-mode/kind conjunct re-hides the pair for video');
-  assert.ok(!/audioMode|autoAdvanceViaTrackNav/.test(body[1]), 'no trace of the v1.73 gate may remain in the body');
+  // Gate W1 (v1.133 fix round): the no-trace net must catch DIVERGENT
+  // spellings too (the v1.41.9 class) - the reviewer re-gated via a direct
+  // `classList.contains('audio-mode')` check and shipped green through the
+  // full suite. Any class read, mode identifier, or kind marker inside this
+  // body is a re-gate.
+  assert.ok(!/audioMode|audio-mode|classList|autoAdvanceViaTrackNav|currentData/.test(body[1]),
+    'no trace of ANY mode/kind gate spelling may remain in the body');
   // v1.73 W4 survives the reshape: shown buttons stay enabled so an edge tap
   // still reaches the queue consult.
   assert.match(body[1], /trackPrevBtn\.disabled = false;/);

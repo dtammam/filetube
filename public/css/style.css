@@ -5866,7 +5866,12 @@ a.sub-row-channel-link:focus-visible {
   cursor: pointer;
 }
 .pc-vol {
-  flex: 0 0 56px;
+  /* v1.133 gate S1: SHRINKABLE (0 1, was 0 0). The pair's two extra 44px
+     buttons widened the narrow-desktop-window third-row threshold to
+     ~386px; letting the volume slider give ground (its .pc-range base
+     already carries min-width: 0) keeps the row on one line instead of
+     clipping a wrapped row. Phones are unaffected (mute/vol hidden there). */
+  flex: 0 1 56px;
 }
 
 /* Square (border-radius: 0) thumb, both engines. */
@@ -8846,9 +8851,10 @@ html[data-modern="on"] .video-uploader {
 }
 /* v1.73 (Dean ruling 6): Prev/Next TRACK buttons in the player's control
    bar - the reader-np glyph technique (CSS triangle + bar, never emoji
-   codepoints) on neutral track-nav classes. [hidden] by default; player.js
-   unhides them in the expanded AUDIO view only (the dock and the reader
-   bar keep them off below - full view only, Dean's ruling). */
+   codepoints) on neutral track-nav classes. [hidden] by default; v1.133
+   (Dean: "always") player.js unhides them for EVERY kind whenever a
+   trackNav context is registered - video included (the dock and the reader
+   bar keep them off below regardless). */
 .track-nav-btn { flex-shrink: 0; }
 .track-nav-btn:disabled { opacity: 0.35; cursor: default; }
 .track-nav-ico { position: relative; display: block; width: 15px; height: 14px; }
@@ -8944,6 +8950,11 @@ html[data-modern="on"] .video-uploader {
   .reader-nowplaying #player-slot .player-controls #speed-btn,
   .reader-nowplaying #player-slot .player-controls #cc-btn,
   .reader-nowplaying #player-slot .player-controls #pip-btn,
+  /* v1.133 gate S2: the track pair gained mobile order pins - reset here
+     too so this list stays the COMPLETE contract its comment promises
+     (display:none keeps them invisible in the reader; this is the belt). */
+  .reader-nowplaying #player-slot .player-controls #track-prev-btn,
+  .reader-nowplaying #player-slot .player-controls #track-next-btn,
   .reader-nowplaying #player-slot .player-controls #fs-btn {
     order: 0;
     margin-left: 0;
