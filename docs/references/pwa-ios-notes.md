@@ -118,6 +118,9 @@ survives app delete+re-add; manifest changes don't help). iOS picks an
 arbitrary member of the coupled group (section 1). Workaround: the app
 switcher. A native shell fixes attribution outright (section 6).
 
+Revisit trigger: any iOS major release ("unfixable website-side" holds
+only until Apple changes attribution grouping).
+
 ## 6. The native-shell assessment (the known full fix)
 
 - A BARE WKWebView wrapper does NOT fix background audio - HTML5 audio in
@@ -136,8 +139,8 @@ switcher. A native shell fixes attribution outright (section 6).
   `activeMediaElement()` abstraction is the natural seam.
 
 Revisit trigger: Dean deciding the coupling (section 1) or attribution
-(section 5) pain outweighs the shell's maintenance cost - the pilot is a
-weekend, not a quarter.
+(section 5) pain outweighs the shell's maintenance cost - the pilot is
+days, not months.
 
 ## 7. Assorted iOS PWA lore (paid for elsewhere, kept for reference)
 
