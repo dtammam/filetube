@@ -176,7 +176,9 @@ test('every continuation seam arms the one-shot carry (comment-stripped count + 
   // 3. The queue advance both autoplay-'ended' and manual steps funnel through.
   assert.match(PLAYER_JS, /autoplayAdvancePending = true;\n\s*immersiveCarryPending = true;[^\n]*\n\s*window\.FileTube\.navigate\(advanceHref\);/);
   // 4. The autoplay-'ended' browse-context advance.
-  assert.match(PLAYER_JS, /autoplayAdvancePending = true;\n\s*immersiveCarryPending = true;[^\n]*\n[\s\S]{0,400}?window\.FileTube\.navigate\('\/watch\.html\?v=' \+ encodeURIComponent\(neighbors\.nextId\)/);
+  // v1.139 respell: the context advance now navigates to the WRAPPED target
+  // (resolveAutoplayAdvanceTarget) - the arm still precedes the navigate.
+  assert.match(PLAYER_JS, /autoplayAdvancePending = true;\n\s*immersiveCarryPending = true;[^\n]*\n[\s\S]{0,400}?window\.FileTube\.navigate\('\/watch\.html\?v=' \+ encodeURIComponent\(advanceTargetId\)/);
   // 5. The manual track step (on-screen prev/next pair), armed before the
   // handler runs regardless of queue-vs-context resolution.
   const manualStep = /function manualTrackStep\(dir\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);

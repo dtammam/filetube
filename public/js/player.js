@@ -658,6 +658,21 @@ function resumeCountdownLabel(baseLabel, secondsLeft) {
   return String(baseLabel) + ' · ' + secondsLeft;
 }
 
+// ---- v1.139 autoplay playlist wrap pure helper -----------------------------
+// Dean (2026-08-16): autoplay in a playlist/folder context WRAPS - the last
+// item's 'ended' advances back to the FIRST. Wrap only when: there is no
+// natural next, the ended item is genuinely IN the order (a stale/foreign id
+// must never teleport playback to someone else's list head), and the order
+// has MORE than one item (a single-item context replaying forever is the
+// Loop toggle's explicit job, not autoplay's surprise). The QUEUE stays
+// finite by design - this decision only serves the browse-context advance.
+function resolveAutoplayAdvanceTarget(nextId, orderedIds, endedId) {
+  if (nextId) return nextId;
+  if (!Array.isArray(orderedIds) || orderedIds.length < 2) return null;
+  if (orderedIds.indexOf(endedId) === -1) return null;
+  return orderedIds[0];
+}
+
 // ---- v1.138 desktop fullscreen stage pure helpers --------------------------
 // Where does a genuine new load MOUNT? While staged fullscreen is live the
 // host must stay inside the never-moving #fs-stage (reparenting it force-
@@ -948,6 +963,12 @@ function resolveEndedAction(ctx) {
   // precedence, "Loop would stop it" in Dean's own words). Queue exhausted
   // or absent -> exactly the pre-v1.63 table.
   if (opts.autoplayNext && opts.queueHasNext) return 'queue-advance';
+  // v1.139: `hasNext` means "has an advance TARGET" - since the playlist
+  // wrap, the context flow derives that target through
+  // resolveAutoplayAdvanceTarget (natural next OR the wrap to the list
+  // head), so a multi-item context at its last item still 'advance's.
+  // 'stop' remains the truth for single-item/foreign-id contexts and the
+  // exhausted queue.
   if (opts.autoplayNext && opts.hasNext) return 'advance';
   return 'stop';
 }
@@ -1422,6 +1443,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.138: desktop fullscreen stage mount/exit decisions.
     resolveLoadMountTarget,
     resolveStageExitPlacement,
+    // v1.139: autoplay playlist wrap-around.
+    resolveAutoplayAdvanceTarget,
     clampVolume,
     seekCommitTarget,
     scrubRatioFromPointer,
@@ -4457,7 +4480,11 @@ if (typeof module !== 'undefined' && module.exports) {
               orderedIds = deriveOrderedIds(videos, sortKey);
             }
             var neighbors = computeNeighbors(orderedIds, endedId);
-            if (!neighbors.nextId) return; // end of the order -- no wrap, no-op
+            // v1.139 (Dean, overturning the v1.30 no-wrap decision): the end
+            // of a playlist/folder order WRAPS to its first item - guarded by
+            // the pure helper (multi-item, ended-item-in-order).
+            var advanceTargetId = resolveAutoplayAdvanceTarget(neighbors.nextId, orderedIds, endedId);
+            if (!advanceTargetId) return; // single-item/foreign-id -- no wrap, no-op
             if (window.FileTube && typeof window.FileTube.navigate === 'function') {
               // v1.52 gate C1 (both seats): the next item's FULL record is in
               // hand -- seed the next watch view so the most passive hop in
@@ -4468,7 +4495,7 @@ if (typeof module !== 'undefined' && module.exports) {
               if (typeof window.FileTube.stashWatchSeed === 'function') {
                 var nextItem = null;
                 for (var vi = 0; vi < videos.length; vi++) {
-                  if (videos[vi] && videos[vi].id === neighbors.nextId) { nextItem = videos[vi]; break; }
+                  if (videos[vi] && videos[vi].id === advanceTargetId) { nextItem = videos[vi]; break; }
                 }
                 if (nextItem) window.FileTube.stashWatchSeed(nextItem);
               }
@@ -4481,7 +4508,7 @@ if (typeof module !== 'undefined' && module.exports) {
               // v1.40.0: preserve the context so the NEXT autoplay hop keeps
               // walking the same list (pre-v1.40.0 this dropped it entirely).
               // advanceRawCtx is the DECODED value -> re-encode it for the URL.
-              window.FileTube.navigate('/watch.html?v=' + encodeURIComponent(neighbors.nextId) + (advanceRawCtx ? '&ctx=' + encodeURIComponent(advanceRawCtx) : ''));
+              window.FileTube.navigate('/watch.html?v=' + encodeURIComponent(advanceTargetId) + (advanceRawCtx ? '&ctx=' + encodeURIComponent(advanceRawCtx) : ''));
             }
           });
         } // end runContextAdvance (v1.63: the pre-queue context flow, verbatim)
