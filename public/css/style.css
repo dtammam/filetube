@@ -6181,7 +6181,20 @@ a.sub-row-channel-link:focus-visible {
   #player-slot .player-controls #pp-btn { order: 1; }
   #player-slot .player-controls #mute-btn { order: 2; }
   #player-slot .player-controls #vol-bar { order: 3; }
-  #player-slot .player-controls .chapter-now { order: 4; flex: 1 1 auto; max-width: none; }
+  /* v1.133 (Dean's screenshot): flex-BASIS 0, not auto. A wrapping flex
+     container breaks lines on each item's HYPOTHETICAL size (content width
+     clamped by max-width) BEFORE any shrinking - with basis:auto and the
+     desktop 40% cap lifted, a long chapter name presented its full text
+     width to the line-breaker and shoved #fs-btn onto a clipped third row
+     (the v1.34.1 trap, back through this one gap). Basis 0 = the label
+     claims only LEFTOVER row space; the base rule's ellipsis truncates. */
+  #player-slot .player-controls .chapter-now { order: 4; flex: 1 1 0; max-width: none; }
+  /* v1.133: the Prev/Next pair now shows for video too (Dean: "always") -
+     pin prev | play | next on the ordered mobile button row (unordered they
+     would BOTH sort at 0, ahead of #pp-btn's order:1; next shares 1 and DOM
+     order breaks the tie after play). */
+  #player-slot .player-controls #track-prev-btn { order: 0; }
+  #player-slot .player-controls #track-next-btn { order: 1; }
   #player-slot .player-controls #settings-btn { order: 8; margin-left: auto; }
   #player-slot .player-controls #fs-btn { order: 9; }
   #player-slot .player-controls .pc-seek {

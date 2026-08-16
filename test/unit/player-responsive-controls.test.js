@@ -299,8 +299,11 @@ test('v1.112: mobile row 2 is play, chapter-name, then the cog+fullscreen cluste
   // The push now lives on the ALWAYS-RENDERED cog (mute/vol are hidden on mobile;
   // the chapter label is hidden when an item has no chapters -- neither can carry it).
   assert.match(css, /#player-slot \.player-controls #settings-btn \{[^}]*margin-left:\s*auto/);
-  // The label fills the freed middle space and truncates (flex:1 1 auto + min-width:0).
-  assert.match(css, /#player-slot \.player-controls \.chapter-now \{[^}]*flex:\s*1 1 auto/);
+  // The label fills the freed middle space and truncates. v1.133: flex-BASIS
+  // 0, not auto - a wrapping container line-breaks on hypothetical (content)
+  // size, so basis:auto let a LONG chapter name shove #fs-btn onto a clipped
+  // third row (Dean's screenshot; the v1.34.1 trap through this one gap).
+  assert.match(css, /#player-slot \.player-controls \.chapter-now \{[^}]*flex:\s*1 1 0/);
   // The stale bar order rules for the relocated/removed controls are GONE.
   for (const gone of ['#speed-btn', '#cc-btn', '#pip-btn', '#chapters-btn']) {
     assert.doesNotMatch(mobileMediaBlock, new RegExp(`#player-slot \\.player-controls ${gone} \\{[^}]*order:`), `${gone} must no longer carry a bar order rule`);
