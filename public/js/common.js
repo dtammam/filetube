@@ -5289,6 +5289,17 @@ function appVersionString() {
   return (typeof v === 'string' && /^\d+\.\d+\.\d+/.test(v)) ? v : '';
 }
 
+// v1.144 (Dean): the release-notes link for a running version - the GitHub
+// release page for that build's tag, published from docs/releases.json by
+// scripts/sync-github-releases.js (see docs/RELEASING.md). Pure + bounded
+// (a malformed version yields null, never a garbage URL); exported for
+// node:test.
+function releaseNotesUrl(version) {
+  return /^\d+\.\d+\.\d+$/.test(String(version || ''))
+    ? `https://github.com/dtammam/filetube/releases/tag/v${version}`
+    : null;
+}
+
 function buildAccountMenuRow(tag, label, iconClass) {
   const row = document.createElement(tag);
   row.className = 'account-menu-item';
@@ -5859,10 +5870,19 @@ function injectAccountMenu() {
     // "You" bottom-nav tab both open, so it covers both surfaces at once. Absent
     // meta (e.g. a shell not templated) -> no footer, never a broken "Version undefined".
     const version = appVersionString();
-    if (version) {
+    const notesUrl = releaseNotesUrl(version);
+    if (version && notesUrl) {
       menu.appendChild(accountMenuDivider());
-      const ver = document.createElement('div');
+      // v1.144 (Dean): the version row is a LINK now - click it to open this
+      // build's release notes (the user-language ledger entry from
+      // docs/releases.json, published to GitHub Releases). New tab +
+      // noopener since it leaves the app.
+      const ver = document.createElement('a');
       ver.className = 'account-menu-version';
+      ver.href = notesUrl;
+      ver.target = '_blank';
+      ver.rel = 'noopener';
+      ver.setAttribute('aria-label', `Version ${version} - open release notes`);
       ver.textContent = 'Version ' + version;
       menu.appendChild(ver);
     }
@@ -11930,6 +11950,8 @@ if (typeof module !== 'undefined' && module.exports) {
     deriveOrderedIds, computeNeighbors, parentFolder,
     encodeListContext, decodeListContext, buildContextListUrl,
     appVersionString,
+    // v1.144: the version row's release-notes link (pure, bounded).
+    releaseNotesUrl,
     visibleSidebarFolders, resolveDefaultView,
     moveArrayItem, computeDropIndex, rebuildFullFolderOrder,
     // v1.76: the one drag-to-reorder gesture layer -- the two pure decisions

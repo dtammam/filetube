@@ -10418,13 +10418,24 @@ html[data-modern="on"] .video-uploader {
    menu. LEFT-aligned at the SAME horizontal inset as the rows (--space-6), so it
    reads as a quiet footer that belongs to the left-aligned list rather than a
    centered stamp that breaks the column's vertical rhythm. */
+/* v1.144: the version row became an <a> (opens the build's release notes on
+   GitHub) - keep the exact subtle footer look (block layout, muted color, no
+   link styling) with a quiet underline on hover as the affordance. Known +
+   accepted (gate S1): the 2005 era skin's global `a { text-decoration:
+   underline }` outranks this rule's 0,1,0, so THAT skin underlines the row
+   always - era-correct, since 2005 underlined every link. */
 .account-menu-version {
+  display: block;
+  text-decoration: none;
   padding: var(--space-2) var(--space-6);
   color: var(--text-secondary);
   font-size: var(--fs-sm);
   text-align: left;
   font-variant-numeric: tabular-nums;
   user-select: text;
+}
+.account-menu-version:hover {
+  text-decoration: underline;
 }
 /* v1.82: the Settings->Account profile-photo controls. */
 .account-photo-actions {
