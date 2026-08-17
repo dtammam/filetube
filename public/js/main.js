@@ -1123,6 +1123,13 @@ const PreviewCards = (function () {
     // Modern chrome host (chip row + avatar bar) mounted above the grid, once.
     let modernChromeHost = null;
     let activeModernChip = (typeof resolveModernChip === 'function') ? resolveModernChip('all') : 'all';
+    // v1.143 (Dean): the chip filter now persists per-device EXACTLY like the
+    // sort right below it - pick Audio, close the app or refresh, and the feed
+    // is still on Audio until you toggle it off (picking All persists 'all',
+    // the natural cleared state; no extra setting). Read through the whitelist
+    // (localStorage is untrusted): resolveModernChip bounds a stale/invalid
+    // stored value to 'all', the same posture as the sort's own read.
+    try { activeModernChip = resolveModernChip(localStorage.getItem('filetube_modern_chip')); } catch (_) { /* private mode -> default */ }
     // v1.86.0 (Dean): the modern grid's chosen sort, persisted per-device. Read
     // through the whitelist (localStorage is untrusted); the server bounds it too.
     let activeModernSort = MODERN_SORT_DEFAULT;
@@ -1513,6 +1520,9 @@ const PreviewCards = (function () {
                 const next = resolveModernChip(btn.dataset.chip);
                 if (next === activeModernChip) return;
                 activeModernChip = next;
+                // v1.143 (Dean): remember the pick per-device - the mirror of
+                // the sort's own persistence line (see openModernSortMenu).
+                try { localStorage.setItem('filetube_modern_chip', next); } catch (_) { /* private mode */ }
                 chipRow.querySelectorAll('.modern-chip').forEach((b) => {
                   const on = b.dataset.chip === next;
                   b.classList.toggle('active', on);
