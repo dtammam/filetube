@@ -853,6 +853,15 @@ function storyboardTile(index, geom) {
 // exactly as the video surface always has.
 function classifyTapGesture(ctx) {
   var opts = ctx || {};
+  // v1.140 (Dean's confirmed friction): the SKIP CHAIN - after a double-tap
+  // skip, every further tap while the chain is hot keeps skipping in the
+  // tapped half's direction (no same-half or timing pairing required, the
+  // YouTube convention) and tap-to-pause stays suppressed until the chain
+  // cools. Without this, tap #3 of a skip-skip-skip run started a fresh
+  // cycle, classified single, and PAUSED - the exact inadvertent pause.
+  if (opts.skipChainActive) {
+    return opts.onLeft ? 'skip-back' : 'skip-fwd';
+  }
   var gap = opts.now - opts.lastTapTime;
   if (opts.lastTapTime > 0 && gap > 0 && gap < opts.doubleTapMs && opts.onLeft === opts.lastTapLeft) {
     return opts.onLeft ? 'skip-back' : 'skip-fwd';
@@ -3759,6 +3768,13 @@ if (typeof module !== 'undefined' && module.exports) {
   // tap/double-tap classification (`classifyTapGesture`, above) -- that
   // table is driven purely by tap POSITION and timing, never by movement.
   var MOVE_TOL = 16;
+  // v1.140 (Dean): the skip-CHAIN window - after any tap-skip, taps landing
+  // before this deadline keep skipping (refreshing the deadline) and
+  // tap-to-pause stays suppressed. 800ms = comfortably slower than rapid
+  // chain-tapping, comfortably faster than "I stopped skipping and now want
+  // to pause". Variableized like every gesture constant here.
+  var SKIP_CHAIN_MS = 800;
+  var skipChainUntil = 0;
   // v1.21 FIX 1 (post-gate hardening): the double-tap/double-click window,
   // named+shared so `wireSkipHoldGestures`'s touchend classification and the
   // audio cover-art's `scheduleArtSingleTap` debounce (below) always agree
@@ -3910,12 +3926,20 @@ if (typeof module !== 'undefined' && module.exports) {
         lastTapLeft: lastTapLeft,
         onLeft: onLeft,
         doubleTapMs: DOUBLE_TAP_MS,
+        // v1.140: a hot chain makes EVERY tap a skip (see the classifier);
+        // the moved-veto still applies via the shared single/skip dispatch
+        // below - a drag never chains.
+        skipChainActive: !tapGestureMoved && now < skipChainUntil,
       });
       if (gesture === 'skip-back' || gesture === 'skip-fwd') {
         e.preventDefault();
         if (onSingleTap) cancelPendingArtTap(); // the pending single-tap toggle from this double-tap's FIRST half must never fire
         skip(gesture === 'skip-back' ? -SKIP_SECONDS : SKIP_SECONDS);
         lastTapTime = 0;
+        // v1.140: EVERY skip (the pairing double AND each chain tap) arms/
+        // refreshes the chain window - the run keeps going as long as taps
+        // keep landing.
+        skipChainUntil = now + SKIP_CHAIN_MS;
       } else {
         lastTapTime = now;
         lastTapLeft = onLeft;
