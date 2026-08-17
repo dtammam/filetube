@@ -10420,7 +10420,10 @@ html[data-modern="on"] .video-uploader {
    centered stamp that breaks the column's vertical rhythm. */
 /* v1.144: the version row became an <a> (opens the build's release notes on
    GitHub) - keep the exact subtle footer look (block layout, muted color, no
-   link styling) with a quiet underline on hover as the only affordance. */
+   link styling) with a quiet underline on hover as the affordance. Known +
+   accepted (gate S1): the 2005 era skin's global `a { text-decoration:
+   underline }` outranks this rule's 0,1,0, so THAT skin underlines the row
+   always - era-correct, since 2005 underlined every link. */
 .account-menu-version {
   display: block;
   text-decoration: none;

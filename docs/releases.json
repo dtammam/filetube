@@ -356,7 +356,7 @@
   {
     "version": "1.25.6",
     "date": "2026-07-10",
-    "title": "Zoom regression fixed",
+    "title": "Watch-page zoom fixed",
     "intent": "The watch page stopped zooming oddly on iPhone."
   },
   {
@@ -495,7 +495,7 @@
     "version": "1.34.1",
     "date": "2026-07-12",
     "title": "Roomier mobile controls",
-    "intent": "A two-row mobile control bar and a chapters menu you can dismiss."
+    "intent": "A two-row mobile control bar, plus a first pass at a dismissable chapters menu - the dismissal was fully fixed two releases later."
   },
   {
     "version": "1.34.2",
@@ -770,8 +770,8 @@
   {
     "version": "1.41.17",
     "date": "2026-07-16",
-    "title": "No more logo flash",
-    "intent": "The header logo and theme stopped flashing on refresh."
+    "title": "Chasing the header flash",
+    "intent": "A first pass at the header flashing on refresh - the theme flash stopped here; the logo half needed the next release."
   },
   {
     "version": "1.41.18",
@@ -860,8 +860,8 @@
   {
     "version": "1.45.4",
     "date": "2026-07-21",
-    "title": "Surface laptops are desktops",
-    "intent": "Touchscreen laptops get the desktop experience they deserve."
+    "title": "Touchscreen laptops, first attempt",
+    "intent": "A first attempt at giving touchscreen laptops like the Surface the desktop experience - completed in the next release."
   },
   {
     "version": "1.45.5",
@@ -1256,8 +1256,8 @@
   {
     "version": "1.78.1",
     "date": "2026-08-05",
-    "title": "Test-suite revival",
-    "intent": "Internal test infrastructure repair - the app itself unchanged."
+    "title": "Behind-the-scenes repair",
+    "intent": "Internal test-infrastructure repair - the app itself unchanged."
   },
   {
     "version": "1.79.0",
@@ -1706,8 +1706,8 @@
   {
     "version": "1.136.0",
     "date": "2026-08-16",
-    "title": "Audio session experiment",
-    "intent": "A playback experiment for smoother background audio behavior."
+    "title": "A background-audio attempt",
+    "intent": "A playback change aiming at smoother background-audio behavior on iPhone."
   },
   {
     "version": "1.136.1",

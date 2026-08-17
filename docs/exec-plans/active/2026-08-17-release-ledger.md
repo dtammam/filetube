@@ -55,9 +55,15 @@ existing tags - nothing force-moved), linked from the app.
   unit-tested; gh-shelling walked by the script): for every tag with a
   ledger entry and NO existing GitHub Release, `gh release create
   <tag> --verify-tag` with title + intent. Idempotent - safe to run any
-  time. Wired as a new job in docker-publish.yml running on tag push
-  (future releases publish themselves) AND `workflow_dispatch` (Dean's
-  ONE manual click backfills all 294 - this is the only human step).
+  time. DEVIATION (recorded, gate W3): originally planned as a job inside
+  docker-publish.yml; BUILT as the separate `release-notes.yml` workflow
+  instead - a job in the shared workflow would have made every manual
+  backfill dispatch spin the whole qualify/publish pipeline, and jobs
+  without an `if` run on ALL of a workflow's triggers. Same triggers as
+  planned: tag push (future releases publish themselves) AND
+  `workflow_dispatch` (Dean's ONE manual click backfills all 294 - the
+  only human step). Creating a release on an existing tag emits a
+  `release` event, never `push`, so the sync can never re-trigger Docker.
 - **T5 - the contract.** CLAUDE.md release ceremony gains the step
   (ledger entry in user language BEFORE the release commit; the checker
   enforces); RELEASING.md documents the mechanics + the dispatch

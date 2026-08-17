@@ -168,6 +168,22 @@ test('injectAccountMenu: the version row is an ANCHOR to the running build\'s re
   assert.strictEqual(ver.textContent, 'Version 1.144.0', 'the visible text is unchanged from v1.90');
 });
 
+test('injectAccountMenu: a version the URL builder rejects renders NO row (gate W1 - the bounding guard is load-bearing, not decoration)', async () => {
+  // appVersionString prefix-matches (so '1.144.0-evil' passes it), but
+  // releaseNotesUrl is anchored and returns null - the row must not render.
+  // The seat's surviving mutant dropped the notesUrl guard and raw-concatted
+  // the href: this case is what makes that mutant red.
+  const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', username: 'dean', role: 'admin', avatar: { present: false, version: 0 } } });
+  const meta = global.document.createElement('meta');
+  meta.setAttribute('name', 'ft-version');
+  meta.setAttribute('content', '1.144.0-evil');
+  global.document.head.appendChild(meta);
+  injectAccountMenu();
+  await tick();
+  assert.strictEqual(global.document.querySelector('.account-menu-version'), null,
+    'a version that cannot build a valid release URL renders no row - never a dead or attacker-shaped link');
+});
+
 test('injectAccountMenu: no version meta -> no version row at all (never a dead link)', async () => {
   const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', username: 'dean', role: 'admin', avatar: { present: false, version: 0 } } });
   injectAccountMenu();

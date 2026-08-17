@@ -56,7 +56,10 @@ test('ledger: the RUNNING version has its note, and it is the newest entry (the 
 test('ledger: the tone tripwire - titles and intents carry NO process jargon (pure user language, Dean\'s ruling)', () => {
   // A blocklist is porous by nature (#157) - this is a tripwire against the
   // obvious leaks, not the editorial contract itself.
-  const JARGON = /\b(gate|mutant|adversarial|dual-?node|reviewer|APPROVE|test suite|unit test|regression[- ]lock|source[- ]lock|semver|refactor|jsdom|localStorage|RBAC|schema v\d)\b/i;
+  // Gate W2: `test[- ]suite` (the shipped "Test-suite" title sailed past the
+  // space-only spelling) and bare `regression` (only the -lock compound was
+  // blocked while a shipped title used the bare word) both widened.
+  const JARGON = /\b(gate|mutant|adversarial|dual-?node|reviewer|APPROVE|test[- ]suite|unit test|regression|source[- ]lock|semver|refactor|jsdom|localStorage|RBAC|schema v\d)\b/i;
   for (const e of ledger) {
     const hit = (e.title + ' ' + e.intent).match(JARGON);
     assert.ok(!hit, `process jargon "${hit && hit[0]}" in ${e.version} - release notes are for the humans using the app`);
