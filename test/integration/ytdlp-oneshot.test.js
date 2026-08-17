@@ -1411,7 +1411,11 @@ test('a successful one-off download with a resolved channel probes the channel a
   }
 });
 
-test('a one-off download with an EXPLICIT manual folder override skips the avatar probe entirely (no channel identity to key it off of)', async () => {
+test('v1.142: an EXPLICIT manual folder override no longer skips the avatar probe (the capture exists regardless of folder choice)', async () => {
+  // INVERTED from the v1.25.5 original: the old skip conflated the FOLDER
+  // probe with the FTCHMETA capture - the capture runs during the download
+  // whatever folder was chosen, so an explicit-folder one-off has the same
+  // probeable identity as an auto-routed one and now gets the same avatar.
   const deps = makeFakeDeps();
   const config = enabledConfig();
   run.runDownload = async () => ({
@@ -1428,10 +1432,10 @@ test('a one-off download with an EXPLICIT manual folder override skips the avata
     }],
   });
 
-  let probeCalls = 0;
-  run.probeChannelAvatar = async () => {
-    probeCalls += 1;
-    return 'https://example.com/avatar.jpg';
+  const probeCalls = [];
+  run.probeChannelAvatar = async (channelUrl) => {
+    probeCalls.push(channelUrl);
+    return { avatarUrl: 'https://example.com/avatar.jpg', channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw', channelUrl };
   };
 
   const { base, close } = await startTestApp(deps, config);
@@ -1440,13 +1444,51 @@ test('a one-off download with an EXPLICIT manual folder override skips the avata
     assert.equal(res.status, 202);
     await new Promise((resolve) => setTimeout(resolve, 30));
 
-    assert.equal(probeCalls, 0, 'an explicit manual folder override must skip the avatar probe entirely');
+    assert.deepEqual(probeCalls, ['https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw'],
+      'an explicit-folder one-off probes exactly like an auto-routed one');
 
     const ns = store.ensureYtdlp(deps.loadDatabase());
-    assert.equal(ns.downloadMeta.dQw4w9WgXcQ.channelAvatarUrl, undefined, 'no avatar must be persisted when the probe was skipped');
-    // The identity capture itself (channel name etc, unrelated to the
-    // avatar) is still recorded exactly as before this feature.
+    assert.equal(ns.downloadMeta.dQw4w9WgXcQ.channelAvatarUrl, 'https://example.com/avatar.jpg');
+    assert.equal(ns.channelAvatars.UCuAXFkgsw1L7xaCfnd5JJOw.avatarUrl, 'https://example.com/avatar.jpg');
     assert.equal(ns.downloadMeta.dQw4w9WgXcQ.channelName, 'Rick Astley');
+  } finally {
+    await close();
+  }
+});
+
+test('v1.142: a capture with a bare channelId (no channelUrl) probes the id-DERIVED canonical URL (Dean\'s on-device gap)', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  run.runDownload = async () => ({
+    ok: true,
+    code: 0,
+    stdout: '',
+    stderr: '',
+    channelMeta: [{
+      videoId: 'dQw4w9WgXcQ',
+      channelUrl: null,
+      channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+      uploaderUrl: null,
+      channelName: 'Rick Astley',
+    }],
+  });
+
+  const probeCalls = [];
+  run.probeChannelAvatar = async (channelUrl) => {
+    probeCalls.push(channelUrl);
+    return { avatarUrl: 'https://example.com/avatar.jpg', channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw', channelUrl };
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    assert.deepEqual(probeCalls, ['https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw'],
+      'pre-v1.142 this capture was silently unprobeable - the item stayed avatar-less forever');
+    const ns = store.ensureYtdlp(deps.loadDatabase());
+    assert.equal(ns.channelAvatars.UCuAXFkgsw1L7xaCfnd5JJOw.avatarUrl, 'https://example.com/avatar.jpg');
   } finally {
     await close();
   }

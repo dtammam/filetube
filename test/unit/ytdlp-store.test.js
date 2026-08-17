@@ -710,9 +710,17 @@ test('sanitizeCapturedChannelMeta: falls back to uploaderUrl when channelUrl is 
   assert.equal(result.channelHandleUrl, undefined);
 });
 
-test('sanitizeCapturedChannelMeta: drops the ENTIRE entry when NEITHER channelUrl nor uploaderUrl passes validation', () => {
-  assert.equal(store.sanitizeCapturedChannelMeta(validMeta({ channelUrl: null, uploaderUrl: null })), null);
-  assert.equal(store.sanitizeCapturedChannelMeta(validMeta({ channelUrl: 'not a url', uploaderUrl: 'also not a url' })), null);
+test('sanitizeCapturedChannelMeta: v1.142 - when NEITHER URL passes validation, a VALID channelId rescues identity via the DERIVED canonical URL; without one the entry still drops entirely', () => {
+  // The v1.142 change: the pattern-gated UC… id alone IS identity - the
+  // canonical URL derives from it, so the capture survives. The hostile/junk
+  // URLs themselves are still never stored (asserted exactly below).
+  const rescued = store.sanitizeCapturedChannelMeta(validMeta({ channelUrl: null, uploaderUrl: null }));
+  assert.equal(rescued.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw');
+  const rescued2 = store.sanitizeCapturedChannelMeta(validMeta({ channelUrl: 'not a url', uploaderUrl: 'also not a url' }));
+  assert.equal(rescued2.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw', 'the junk URL never survives - only the id-derived canonical form');
+  // The pre-v1.142 total-drop posture HOLDS when no valid id exists either:
+  assert.equal(store.sanitizeCapturedChannelMeta(validMeta({ channelUrl: null, uploaderUrl: null, channelId: null })), null);
+  assert.equal(store.sanitizeCapturedChannelMeta(validMeta({ channelUrl: 'not a url', uploaderUrl: 'also not a url', channelId: 'not-an-id' })), null);
 });
 
 test('sanitizeCapturedChannelMeta: HOSTILE channelUrl (shell metacharacters) is dropped, never stored (falls back to uploaderUrl if that is valid)', () => {
@@ -720,20 +728,32 @@ test('sanitizeCapturedChannelMeta: HOSTILE channelUrl (shell metacharacters) is 
   assert.equal(result.channelUrl, 'https://www.youtube.com/@RickAstley', 'the hostile channelUrl must never be used -- falls back to the valid uploaderUrl');
 });
 
-test('sanitizeCapturedChannelMeta: HOSTILE channelUrl AND uploaderUrl together drop the whole entry', () => {
-  const result = store.sanitizeCapturedChannelMeta(validMeta({
+test('sanitizeCapturedChannelMeta: HOSTILE channelUrl AND uploaderUrl are BOTH rejected - v1.142: a valid channelId rescues identity via the derived canonical URL, never the hostile bytes; no id -> total drop', () => {
+  const rescued = store.sanitizeCapturedChannelMeta(validMeta({
     channelUrl: 'https://youtube.com/@x; rm -rf /',
     uploaderUrl: 'javascript:alert(1)',
   }));
-  assert.equal(result, null);
+  assert.equal(rescued.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw', 'neither hostile URL ever survives in any field');
+  assert.ok(!JSON.stringify(rescued).includes('rm -rf') && !JSON.stringify(rescued).includes('javascript:'),
+    'no hostile byte reaches the sanitized entry anywhere');
+  assert.equal(store.sanitizeCapturedChannelMeta(validMeta({
+    channelUrl: 'https://youtube.com/@x; rm -rf /',
+    uploaderUrl: 'javascript:alert(1)',
+    channelId: null,
+  })), null, 'without a valid id the total-drop posture holds');
 });
 
-test('sanitizeCapturedChannelMeta: a CRLF header-injection-shaped channelUrl with NO embedded legitimate URL is dropped (control-char reject in validateChannelUrl)', () => {
-  const result = store.sanitizeCapturedChannelMeta(validMeta({
+test('sanitizeCapturedChannelMeta: a CRLF header-injection-shaped channelUrl is rejected (control-char reject) - v1.142: identity survives ONLY via the id-derived canonical URL; no id -> dropped', () => {
+  const rescued = store.sanitizeCapturedChannelMeta(validMeta({
     channelUrl: '\r\nSet-Cookie: evil=1\r\n',
     uploaderUrl: null,
   }));
-  assert.equal(result, null);
+  assert.equal(rescued.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw', 'the injection-shaped value never survives');
+  assert.equal(store.sanitizeCapturedChannelMeta(validMeta({
+    channelUrl: '\r\nSet-Cookie: evil=1\r\n',
+    uploaderUrl: null,
+    channelId: null,
+  })), null);
 });
 
 test('sanitizeCapturedChannelMeta: a CRLF-suffixed channelUrl is normalized to just its embedded legitimate URL (documented FR-5 v1.16.0 extraction, never a bypass -- the injected suffix is discarded, not smuggled through)', () => {
@@ -744,18 +764,24 @@ test('sanitizeCapturedChannelMeta: a CRLF-suffixed channelUrl is normalized to j
   assert.equal(result.channelUrl, 'https://www.youtube.com/@x', 'only the clean, validated URL prefix ever survives -- the CRLF-injected text is dropped, never persisted');
 });
 
-test('sanitizeCapturedChannelMeta: a disallowed (non-YouTube) host is dropped', () => {
-  const result = store.sanitizeCapturedChannelMeta(validMeta({
+test('sanitizeCapturedChannelMeta: a disallowed (non-YouTube) host is rejected - v1.142: id-derived canonical URL rescues identity; no id -> dropped', () => {
+  const rescued = store.sanitizeCapturedChannelMeta(validMeta({
     channelUrl: 'https://evil.com/@somechannel',
     uploaderUrl: null,
   }));
-  assert.equal(result, null);
+  assert.equal(rescued.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw', 'the foreign host never survives');
+  assert.equal(store.sanitizeCapturedChannelMeta(validMeta({
+    channelUrl: 'https://evil.com/@somechannel',
+    uploaderUrl: null,
+    channelId: null,
+  })), null);
 });
 
-test('sanitizeCapturedChannelMeta: an overlong channelUrl is dropped (MAX_URL_LENGTH reject in validateChannelUrl)', () => {
+test('sanitizeCapturedChannelMeta: an overlong channelUrl is rejected (MAX_URL_LENGTH) - v1.142: id-derived canonical URL rescues identity; no id -> dropped', () => {
   const overlong = `https://www.youtube.com/@${'a'.repeat(3000)}`;
-  const result = store.sanitizeCapturedChannelMeta(validMeta({ channelUrl: overlong, uploaderUrl: null }));
-  assert.equal(result, null);
+  const rescued = store.sanitizeCapturedChannelMeta(validMeta({ channelUrl: overlong, uploaderUrl: null }));
+  assert.equal(rescued.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw', 'the overlong value never survives');
+  assert.equal(store.sanitizeCapturedChannelMeta(validMeta({ channelUrl: overlong, uploaderUrl: null, channelId: null })), null);
 });
 
 test('sanitizeCapturedChannelMeta: a video URL (not a channel URL) never passes as a channel identity', () => {
@@ -820,7 +846,10 @@ test('recordDownloadChannelMeta: persists a sanitized entry into db.ytdlp.downlo
 
 test('recordDownloadChannelMeta: a hostile/invalid entry is dropped -- resolves false, nothing is written', async () => {
   const deps = makeFakeDeps();
-  const recorded = await store.recordDownloadChannelMeta(deps, validMeta({ channelUrl: null, uploaderUrl: null }));
+  // v1.142: a URL-less capture with a VALID channelId now derives its
+  // identity (see sanitizeCapturedChannelMeta), so the truly-invalid fixture
+  // must also lack the id for the total-drop posture this test binds.
+  const recorded = await store.recordDownloadChannelMeta(deps, validMeta({ channelUrl: null, uploaderUrl: null, channelId: null }));
   assert.equal(recorded, false);
   const ns = store.ensureYtdlp(deps.loadDatabase());
   assert.deepEqual(ns.downloadMeta, {});
