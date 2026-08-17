@@ -80,6 +80,28 @@
 
 ## Shipped
 
+### v1.144.1 - ledger census shallow-checkout hotfix (2026-08-17)
+
+The v1.144.0 tag push went red in docker-publish's qualify job - the new
+ledger census's phantom check flagged 293 entries, because its guard only
+skipped a TAGLESS checkout while a TAG-push checkout is shallow WITH
+exactly one tag (the ref being built). The publish gate correctly
+blocked the v1.144.0 image; nothing broken shipped. Fix: the census now
+skips on ANY shallow (or tagless) checkout via
+`git rev-parse --is-shallow-repository` - a partial tag list can never
+support a completeness census - with a diagnostic naming both signals.
+Verified in a real depth-1 single-tag clone (old test reproduces the CI
+red exactly; fixed test 7/7). The running-version + tone checks still
+run in EVERY environment including the tag build; the full census runs
+on every full clone (every dev-box hook run). Gate: slim (the same
+seat), APPROVE - it measured all four environment arms, confirmed the
+`--no-tags` full-clone arm still guards, and honestly scored its own
+round-1 share of the miss (neither of us enumerated the qualify job's
+tag-push checkout). Residual #161: the skip-guard's polarity is bound by
+environment, not by a test - disclosed.
+
+Dual-Node: 7068/7068 on v22.23.1 AND v24.14.0.
+
 ### v1.144.0 - the release ledger (2026-08-17)
 
 Dean: releases should be "clearer into the intent organically",
