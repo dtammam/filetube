@@ -80,6 +80,45 @@
 
 ## Shipped
 
+### v1.142.0 - channel avatars for non-subscribed channels (2026-08-17)
+
+Dean's report + on-device probe (channelId present, channelAvatarUrl
+blank on a one-off download): a channel with a KNOWN `UC…` id but no
+captured/validated channel URL was unprobeable - and at the capture
+boundary, identity-DROPPED entirely - at every avatar populate point.
+The id alone determines the canonical channel endpoint. Fix: one
+pattern-gated pure helper (deriveChannelUrlFromId) wired through four
+limbs - the capture boundary (a bare-id capture now keeps its identity;
+hostile/junk URLs still never survive), the shared probe choke point
+(refresh button + subscribe inherit it), the one-off download fold
+(whose over-broad explicit-folder skip is also gone), and a NEW
+automatic self-heal: every poll cycle's tail spends leftover
+avatar-probe budget on channels known only from library items -
+breaker-gated, freshness-gated, one attempt per channel per server run.
+Dean's existing item heals within a poll cycle or two of deploying, no
+button press needed; "Refresh channel avatars" covers it manually too.
+
+What the gate caught (slim/adversarial, 1 fix round -> APPROVE): three
+claimed protections were unverified-by-instrument - the refresh
+batch's derive could be reverted with the FULL suite green, the sweep's
+target filter had divergent-spelling survivors, and the breaker gate
+was bound only by regex (a `breakerTripped = false;` insert survived
+everything). All three now bound BEHAVIORALLY (route-driven batch test
+from the seat's own repro; handle-URL-only sweep test; a real
+tripped-breaker poll asserting zero probes). Security verified: no new
+trust grant - the derived URL is a fixed template over the
+already-trusted pattern-gated id; hostile bytes still cannot transit.
+
+DISCLOSED (S1): a manual single-sub repull while a tripped breaker's
+retry timer is armed still runs the item sweep with a fresh budget -
+consistent with the subscription self-heal's own posture, memo-bounded.
+KNOWN LIMIT: if the avatar PROBE itself fails on-device (yt-dlp/YouTube
+drift), this wave makes the retry automatic and the failure visible in
+the refresh batch's counts rather than fixing the probe - Dean's device
+pass arbitrates which world we are in.
+
+Dual-Node: 7050/7050 on v22.23.1 AND v24.14.0. Device pass PENDING.
+
 ### v1.141.1 - single-painter in real-fullscreen audio (2026-08-17)
 
 Dean's device pass (both v1.140/v1.141 otherwise PASSED): a small strip
