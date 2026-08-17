@@ -83,8 +83,12 @@ test('toggleAudioExpandFullscreen: EXIT is total - EITHER live surface drops BOT
   // "in fullscreen -> this press exits".
   assert.match(body, /if \(host\.classList\.contains\('audio-expanded'\) \|\| inNativeFullscreen\(\)\) \{/,
     'the exit predicate reads either surface');
-  assert.match(body, /exitAudioExpand\(\);\s*if \(inNativeFullscreen\(\) && document\.exitFullscreen\) \{/,
-    'exit drops the class AND (when native is live) the API fullscreen');
+  // Gate S1 (round 1): the lock runs through the promise guard - the seat's
+  // surviving mutant deleted `px.catch` (an fs-btn exit racing an Esc that
+  // already left fullscreen -> exitFullscreen() rejects -> unhandled
+  // rejection) with the whole suite green.
+  assert.match(body, /exitAudioExpand\(\);\s*if \(inNativeFullscreen\(\) && document\.exitFullscreen\) \{\s*var px = document\.exitFullscreen\(\);\s*if \(px && px\.catch\) px\.catch\(function \(\) \{\}\);/,
+    'exit drops the class AND (when native is live) the API fullscreen, promise-guarded');
 });
 
 test('enterFullscreen: audio NEVER takes the webkit video branch (a track-less element no-ops there silently - the wave-eating trap)', () => {
