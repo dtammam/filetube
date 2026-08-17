@@ -3936,8 +3936,8 @@ if (typeof module !== 'undefined' && module.exports) {
         onLeft: onLeft,
         doubleTapMs: DOUBLE_TAP_MS,
         // v1.140: a hot chain makes EVERY tap a skip (see the classifier);
-        // the moved-veto still applies via the shared single/skip dispatch
-        // below - a drag never chains.
+        // the moved-veto is applied INLINE right here (`!tapGestureMoved &&`)
+        // - a drag never chains.
         skipChainActive: !tapGestureMoved && now < skipChainUntil,
       });
       if (gesture === 'skip-back' || gesture === 'skip-fwd') {
