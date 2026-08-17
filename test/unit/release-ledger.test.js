@@ -67,17 +67,26 @@ test('ledger: the tone tripwire - titles and intents carry NO process jargon (pu
 });
 
 test('ledger: complete against the tag history (every tag has a note; no phantom entries)', (t) => {
-  let tags;
+  // v1.144.1 (the census's own first CI run caught this): the original guard
+  // only skipped on a TAGLESS checkout - but a TAG-push checkout (the
+  // docker-publish qualify job) is shallow with exactly ONE tag (the ref
+  // being built), so the census saw 293 "phantom" entries and blocked the
+  // v1.144.0 publish. A PARTIAL tag list can never support this census; the
+  // honest completeness signal is the clone NOT being shallow. On any
+  // shallow or tagless checkout the census skips (the shape, ordering,
+  // running-version, and tone tests above still hold the ledger honest
+  // there); the full census runs wherever the full history exists - every
+  // dev clone, and therefore every pre-commit/pre-push hook run.
+  let tags = [];
+  let shallow = true;
   try {
+    shallow = execFileSync('git', ['rev-parse', '--is-shallow-repository'],
+      { cwd: ROOT, encoding: 'utf8' }).trim() === 'true';
     tags = execFileSync('git', ['tag'], { cwd: ROOT, encoding: 'utf8' })
       .split('\n').filter((l) => /^v\d+\.\d+\.\d+$/.test(l)).map((l) => l.slice(1));
-  } catch (_) {
-    tags = [];
-  }
-  if (tags.length === 0) {
-    // A shallow/tagless checkout (CI) cannot run the census - the shape,
-    // ordering, running-version, and tone tests above still hold it honest.
-    t.diagnostic('git tags unavailable (shallow checkout?) - tag census skipped');
+  } catch (_) { /* no git at all -> treated as unusable below */ }
+  if (shallow || tags.length === 0) {
+    t.diagnostic(`tag census skipped (shallow=${shallow}, tags=${tags.length}) - a partial tag list cannot support a completeness census`);
     return;
   }
   const entries = new Set(ledger.map((e) => e.version));
