@@ -7204,9 +7204,9 @@ body.ft-audio-expanded {
    section) AND the media element's poster (player.js's audio branch hands
    the art to the <video> tag; in .audio-mode that element stacks ABOVE the
    art layer, z-index 1 vs 0). Their contain-fit boxes differ by the 52px
-   bar clearance, so at exact-fullscreen proportions the misaligned lower
-   copy peeked out as a duplicate strip near the top. Hide the poster's
-   paint in REAL fullscreen only (visibility, never display - display:none
+   bar clearance, so at exact-fullscreen proportions the art copy's top
+   edge peeked out above the poster's paint as a duplicate strip. Hide the
+   poster's paint in REAL fullscreen only (visibility, never display - display:none
    can pause media on iOS-family engines) so the art layer is the one
    painter. Scoped to the API-fullscreen spellings ONLY: the in-window
    expanded view (mobile's surface + the desktop refused-request degrade)

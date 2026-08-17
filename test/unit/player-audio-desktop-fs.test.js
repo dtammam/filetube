@@ -155,9 +155,15 @@ test('CSS v1.141.1: SINGLE-PAINTER in real-fullscreen audio - the poster paint i
   // selector that pairs the expanded #media-player with a visibility body
   // must carry a fullscreen scope - walked per-selector so a substring of a
   // scoped selector can never satisfy (or falsely trip) the guard.
+  // Gate round (WARNING, measured evasion c8): flatten @media wrappers
+  // FIRST - the naive walk captured `@media (...)` as the "selector" and
+  // swallowed the first inner rule into the body, so an unscoped poster-hide
+  // INSIDE a media query shipped green. Stray closing braces left by the
+  // flatten are harmlessly skipped by the `[^{}]+` selector class.
+  const FLAT = CSS.replace(/@media[^{]*\{/g, '');
   const ruleRe = /([^{}]+)\{([^}]*)\}/g;
   let r;
-  while ((r = ruleRe.exec(CSS)) !== null) {
+  while ((r = ruleRe.exec(FLAT)) !== null) {
     if (!/visibility/.test(r[2])) continue;
     r[1].split(',').forEach((sel) => {
       if (/audio-expanded/.test(sel) && /#media-player/.test(sel)) {
