@@ -80,6 +80,41 @@
 
 ## Shipped
 
+### v1.140.0 - the skip chain: repeated tap-skips never pause (2026-08-17)
+
+Dean's confirmed friction: tap #3 of a skip-skip-skip run started a
+fresh classification cycle, landed as a single, and PAUSED. Now (the
+YouTube convention): after any tap-skip, every tap landing while the
+chain is hot (800ms, refreshed per skip) keeps skipping in the tapped
+half's direction - no same-half pairing, no timing pairing - and
+tap-to-pause stays suppressed until the chain cools. Serves BOTH tap
+surfaces (video + audio cover art) via the shared classifier. SCOPE:
+touch-only by design - desktop mouse keeps the click-pause/dblclick-skip
+convention unchanged. Deliberately NOT built: slow-double "forgiveness"
+(converting a late second tap into a skip would hand a genuine slow
+pause-then-resume a surprise 15s seek); that row is locked as a design
+decision.
+
+What the gate caught (slim/adversarial, round 1 + a fresh-seat
+confirmation round): W2 - a chain hot at a teardown/dock/close boundary
+leaked onto the NEXT item (first tap skipped instead of paused; docked,
+it ate the tap-to-expand tap while hiding a seek) - the chain now dies
+with its surface; W1 - two silent-writer survivors forced a writer
+census; then W-A - the census ITSELF was porous at divergent spellings
+(a no-space respelling, a comment shadow - the repo's thrice-paid
+comment-porous-lock class, and a seed relocated across the `} else {`
+boundary its regex windows spanned) - rebuilt comment-blind,
+spelling-tolerant, and brace-walk branch-scoped; 12 mutants (incl. a
+dead-decoy dispatch replica) all killed against the final commits.
+
+DISCLOSED (gate S-A, no code): a chain BORN on the docked surface (a
+double-tap-skip while docked) eats a tap-to-expand tap for the next
+800ms. It never crosses a boundary (the W2 ruling is intact) and is
+arguably the feature working on that surface; on-device judgment is
+Dean's - flagged in the probe list.
+
+Dual-Node: 7015/7015 on v22.23.1 AND v24.14.0. Device pass PENDING.
+
 ### v1.139.0 - autoplay wraps a playlist back to the top (2026-08-16)
 
 Dean, overturning the v1.30 no-wrap decision: with autoplay on, ending
