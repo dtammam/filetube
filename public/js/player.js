@@ -1171,13 +1171,21 @@ function shouldDesktopVideoTapToggle(playerState, isMobile) {
 // v1.22.1 hid the button for mobile audio in the first place. This round
 // re-shows it (style.css, T2) and gives the SAME button a second, CSS-only
 // destination for audio: a full-viewport `.audio-expanded` class toggle on
-// `host` (`#player-wrapper`), never the Fullscreen API. This pure lookup is
-// the exact seam the live `#fs-btn` click handler branches on (below) --
-// kept here, `node:test`-able with no DOM, so the audio/video split is
-// locked independently of the live handler's own wiring.
+// `host` (`#player-wrapper`). This pure lookup is the exact seam the live
+// `#fs-btn` click handler branches on (below) -- kept here, `node:test`-able
+// with no DOM, so the audio/video split is locked independently of the live
+// handler's own wiring.
+// v1.141 (Dean): the iPhone refusal is a MOBILE constraint that had been
+// applied to every platform - desktop "fullscreen" on audio only filled the
+// browser window. An EXPLICIT desktop signal (`mobile === false`) now routes
+// audio to 'audio-expand-fullscreen': the real Fullscreen API (the v1.138
+// stage) with the expanded now-playing view rendered inside it, one button
+// press (see `toggleAudioExpandFullscreen()`). Absent/true `mobile` keeps
+// the CSS-only expand - the fail-safe surface every platform can render.
 function resolveFsButtonAction(ctx) {
   var opts = ctx || {};
-  return opts.audioMode ? 'audio-expand' : 'native-fullscreen';
+  if (!opts.audioMode) return 'native-fullscreen';
+  return opts.mobile === false ? 'audio-expand-fullscreen' : 'audio-expand';
 }
 
 // ---- Feature A (v1.26.1): reserved-aspect pure helpers ---------------------
@@ -5376,6 +5384,15 @@ if (typeof module !== 'undefined' && module.exports) {
   // call sites already did.
   function enterFullscreen() {
     if (!mediaPlayer) return null;
+    // v1.141: an AUDIO item never takes the webkit VIDEO branch below - on a
+    // track-less element `webkitSupportsFullscreen` stays false forever, so
+    // on any browser exposing the prefixed API the branch is a silent no-op
+    // that would eat desktop audio fullscreen. Audio goes straight to the
+    // stage/host requestFullscreen() paths. iPhone is unaffected either way:
+    // its expanded-audio route never reaches this helper (see
+    // resolveFsButtonAction), and the artless-audio edge that does was a
+    // no-op on both branches (requestFullscreen is refused there too).
+    var audioItem = !!(currentData && currentData.type === 'audio');
     // iOS iPhone: requestFullscreen() is refused on every element, so the ONLY
     // way to fullscreen an inline <video> is its own webkitEnterFullscreen().
     // It requires the video to actually support fullscreen (a loaded video
@@ -5384,7 +5401,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // Dean's device reads as "the mobile-video fullscreen button does nothing"
     // (the v1.22.1 regression: the custom #fs-btn replaced the native controls'
     // own fullscreen button, and this readiness case was never handled).
-    if (typeof mediaPlayer.webkitEnterFullscreen === 'function') {
+    if (!audioItem && typeof mediaPlayer.webkitEnterFullscreen === 'function') {
       if (mediaPlayer.webkitSupportsFullscreen) {
         try { mediaPlayer.webkitEnterFullscreen(); } catch (_) { /* refused -- ignore */ }
       } else {
@@ -5468,6 +5485,30 @@ if (typeof module !== 'undefined' && module.exports) {
   function toggleAudioExpand() {
     if (!host || state !== STATE_FULL) return;
     setAudioExpanded(!host.classList.contains('audio-expanded'));
+  }
+
+  // v1.141 (Dean): desktop audio fullscreen - the REAL Fullscreen API (the
+  // v1.138 stage, via enterFullscreen()) and the expanded now-playing view
+  // together, one button press. Exit is symmetric and total: EITHER surface
+  // live (the class, or any native fullscreen - including a bare staged
+  // fullscreen carried in from a video advance) -> BOTH drop in one press;
+  // the fullscreenchange listener in wireHostListeners mirrors the same
+  // ruling for Esc/API exits. A refused requestFullscreen degrades to the
+  // in-window expanded view (the pre-v1.141 desktop behavior) - the next
+  // press exits cleanly through the class half of the toggle.
+  function toggleAudioExpandFullscreen() {
+    if (!host || state !== STATE_FULL) return;
+    if (host.classList.contains('audio-expanded') || inNativeFullscreen()) {
+      exitAudioExpand();
+      if (inNativeFullscreen() && document.exitFullscreen) {
+        var px = document.exitFullscreen();
+        if (px && px.catch) px.catch(function () {});
+      }
+    } else {
+      setAudioExpanded(true);
+      var pe = enterFullscreen();
+      if (pe && pe.catch) pe.catch(function () {});
+    }
   }
 
   // Force-clears the expanded class. Called from every FULL-exit path
@@ -6052,9 +6093,13 @@ if (typeof module !== 'undefined' && module.exports) {
 
     if (fsBtn) {
       fsBtn.addEventListener('click', function () {
-        var action = resolveFsButtonAction({ audioMode: host.classList.contains('audio-mode') });
+        var action = resolveFsButtonAction({ audioMode: host.classList.contains('audio-mode'), mobile: isMobileFormFactor() });
         if (action === 'audio-expand') {
           toggleAudioExpand();
+          return;
+        }
+        if (action === 'audio-expand-fullscreen') {
+          toggleAudioExpandFullscreen();
           return;
         }
         // v1.34.2 (Dean round 2): CUSTOM-mode mobile video fullscreen. On
@@ -6835,6 +6880,20 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     });
 
+    // v1.141: leaving native fullscreen takes the expanded audio view with
+    // it - one Esc (or any API exit: the fs-btn, F, a browser affordance)
+    // lands back on the normal page, never on a stranded in-window overlay
+    // (Dean's exit ruling). Dedicated listener per the v1.124.1/v1.138
+    // precedent. Safe everywhere else by construction: exitAudioExpand
+    // no-ops when the class is absent, and this only fires on a REAL
+    // API-fullscreen exit transition - which mobile's rotate/tap expanded
+    // view (never API-coupled) cannot produce while expanded.
+    document.addEventListener('fullscreenchange', function () {
+      if (!document.fullscreenElement && host && host.classList.contains('audio-expanded')) {
+        exitAudioExpand();
+      }
+    });
+
     var mql = window.matchMedia('(orientation: landscape)');
     function onOrientationChange() {
       if (state !== STATE_FULL) return; // FULL-only shortcut/gesture surface
@@ -7031,9 +7090,13 @@ if (typeof module !== 'undefined' && module.exports) {
           // are never two diverging "fullscreen audio" affordances. Audio
           // takes the CSS expand toggle; the video path below is otherwise
           // completely untouched (AC4).
-          var fsAction = resolveFsButtonAction({ audioMode: host.classList.contains('audio-mode') });
+          var fsAction = resolveFsButtonAction({ audioMode: host.classList.contains('audio-mode'), mobile: isMobileFormFactor() });
           if (fsAction === 'audio-expand') {
             toggleAudioExpand();
+            break;
+          }
+          if (fsAction === 'audio-expand-fullscreen') {
+            toggleAudioExpandFullscreen();
             break;
           }
           // 'native-fullscreen' -- EXISTING video path, byte-identical to
@@ -7877,14 +7940,24 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!target) return;
     if (target === 'video-fs') {
       exitAudioExpand(); // an audio->video carry swaps surfaces; no-op otherwise
-      setCssFullscreen(true);
-      // Gate S1 (v1.130 fix round): a carried on->on "entry" never re-captures
-      // the scroll keeper (teardown nulls it unconditionally; the on->on call
-      // above is a no-transition for resolveCssFsScrollPlan) - seed the NEW
-      // page's natural top so the eventual manual exit restores 0 instead of
-      // restoring nothing (iOS drift under the overlay otherwise survives the
-      // exit - the v1.67.5 mechanism).
-      if (cssFsSavedScrollY === null) cssFsSavedScrollY = 0;
+      // v1.141: STAGED (desktop native) fullscreen IS the video immersion -
+      // the stage keeps real fullscreen across the advance by itself, and
+      // the faux class is the MOBILE surface. Stamping faux here (reachable
+      // once desktop audio-expanded rides fullscreen: expanded+staged ->
+      // video advance carries 'audio') would strand the page in faux after
+      // the native exit - the staged-exit listener knows nothing of the
+      // class. Degraded desktop expand (refused fullscreen) still takes the
+      // faux carry, exactly the pre-v1.141 in-window behavior.
+      if (!inNativeFullscreen()) {
+        setCssFullscreen(true);
+        // Gate S1 (v1.130 fix round): a carried on->on "entry" never re-captures
+        // the scroll keeper (teardown nulls it unconditionally; the on->on call
+        // above is a no-transition for resolveCssFsScrollPlan) - seed the NEW
+        // page's natural top so the eventual manual exit restores 0 instead of
+        // restoring nothing (iOS drift under the overlay otherwise survives the
+        // exit - the v1.67.5 mechanism).
+        if (cssFsSavedScrollY === null) cssFsSavedScrollY = 0;
+      }
     } else {
       setCssFullscreen(false); // a video->audio carry swaps surfaces; no-op otherwise (no restoreScroll: we stay immersive)
       // Gate W1 + W1-bis (v1.130 fix rounds 1+2): the expanded overlay's CSS
