@@ -80,6 +80,33 @@
 
 ## Shipped
 
+### v1.143.0 - the home feed remembers your chip (2026-08-17)
+
+Dean: pick Audio, close the app or refresh, and the feed should still be
+on Audio "unless toggled off." The chip state was reborn as All on every
+load - while its sibling one line below (the modern sort, v1.86.0) has
+persisted per-device all along. This wave is that sibling's exact
+mirror: the boot read goes through resolveModernChip (untrusted-storage
+bounding: stale/invalid -> All), the chip click persists the resolved
+pick, and choosing All persists the cleared state - the pill itself is
+the toggle-off, so no extra checkbox/setting (Dean floated one at
+intake; this recommendation shipped disclosed - say the word for the
+opt-in variant).
+
+What the gate caught (slim/adversarial, 3 tight rounds -> APPROVE): the
+restored chip could FILTER correctly while PAINTING All as active (the
+enabling-wire class - the mount-site hardcode survived the full suite);
+a PRE-EXISTING v1.86 gap where nothing bound the chip to the fetch URL
+at all (taken here rather than tech-debted); and in round 2 the seat
+caught a gap in its own round-1 prescription - the builder ignoring its
+parameter revived the same symptom one link deeper. All four links of
+the state->paint chain are now individually locked. RESIDUAL (seat's
+line, agreed): these are stripped-source locks, the accepted posture for
+main.js DOM wiring - if a main.js DOM harness ever lands, this chip row
+is the first candidate for behavioral conversion.
+
+Dual-Node: 7057/7057 on v22.23.1 AND v24.14.0. Device pass PENDING.
+
 ### v1.142.0 - channel avatars for non-subscribed channels (2026-08-17)
 
 Dean's report + on-device probe (channelId present, channelAvatarUrl
