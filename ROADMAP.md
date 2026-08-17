@@ -80,6 +80,38 @@
 
 ## Shipped
 
+### v1.141.0 - desktop audio fullscreen goes REAL (2026-08-17)
+
+Dean: "if I go to full screen an audio thing, it doesn't actually full
+screen" on desktop. Root cause: the v1.22.2 iPhone constraint (Safari
+refuses requestFullscreen on non-video elements) had been applied to
+EVERY platform - all audio routed to the CSS-only in-window expand. Now
+an explicit desktop signal routes audio fullscreen to the REAL
+Fullscreen API (the v1.138 never-moving stage) with the expanded
+now-playing view rendered inside it: one press in, one press or ONE Esc
+all the way out (either live surface drops both). Mobile byte-identical
+(intake ruling 4). Rider fixes the wave required: enterFullscreen's
+webkit video branch is a silent no-op on track-less elements and now
+skips audio (desktop artless audio gains real fullscreen from the same
+guard); a carried video advance no longer stamps the MOBILE faux class
+over staged desktop fullscreen (which would have stranded the page in
+faux after Esc); a staged+expanded CSS twin keeps the cover art's
+bar-strip clearance (the v1.138 3-id restore rule out-specified it).
+
+What the gate caught (slim/adversarial, 1 round APPROVE): S1 - the exit
+half's promise-guard was unlocked (deleting the exitFullscreen .catch
+survived the suite; lock extended, mutant re-killed); S2 disclosed
+below. The seat independently re-derived and re-ran all 13 of my mutants
+plus 9 of its own (8 killed).
+
+DISCLOSED (S2, tech-debt #159): the expanded+staged -> video advance ->
+audio advance round trip lands the second audio item BARE staged - real
+fullscreen holds but the expanded view is lost (the staged video leg
+carries no immersive class). Every exit works; same accepted cell as
+v1.138's video->audio bare-stage look. On-device judgment is Dean's.
+
+Dual-Node: 7027/7027 on v22.23.1 AND v24.14.0. Device pass PENDING.
+
 ### v1.140.0 - the skip chain: repeated tap-skips never pause (2026-08-17)
 
 Dean's confirmed friction: tap #3 of a skip-skip-skip run started a
