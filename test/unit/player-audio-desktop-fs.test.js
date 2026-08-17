@@ -138,3 +138,38 @@ test('CSS: the staged twin restores the expanded art-canvas geometry (the v1.138
   assert.match(m[1], /bottom:\s*calc\(52px \+ env\(safe-area-inset-bottom,\s*0px\)\)/,
     'same value as the unstaged expanded rule (v1.34.6: the art canvas ends above the bar)');
 });
+
+test('CSS v1.141.1: SINGLE-PAINTER in real-fullscreen audio - the poster paint is hidden in all three fullscreen spellings, and ONLY there', () => {
+  // Dean's device pass: the art paints TWICE in expanded audio (the art
+  // layer + the media element's poster, stacked z1-over-z0 in differing
+  // contain boxes) - at exact-fullscreen proportions the misaligned copy
+  // peeked as a duplicate strip near the top. The fix hides the poster's
+  // paint in API fullscreen only.
+  const m = /#player-wrapper\.audio-mode\.audio-expanded:fullscreen #media-player,\s*#player-wrapper\.audio-mode\.audio-expanded:-webkit-full-screen #media-player,\s*#fs-stage:fullscreen #player-wrapper\.audio-mode\.audio-expanded #media-player\s*\{([^}]*)\}/.exec(CSS);
+  assert.ok(m, 'the three-spelling single-painter group exists (host :fullscreen x2 per the pre-stage fallback + the staged twin)');
+  // visibility, never display: display:none can PAUSE media on iOS-family
+  // engines - the element must keep playing, only stop painting.
+  assert.match(m[1], /visibility:\s*hidden/, 'the poster stops painting');
+  assert.ok(!/display\s*:/.test(m[1]), 'display is untouched (display:none can pause media)');
+  // The in-window expanded view stays byte-identical (mobile ruling): EVERY
+  // selector that pairs the expanded #media-player with a visibility body
+  // must carry a fullscreen scope - walked per-selector so a substring of a
+  // scoped selector can never satisfy (or falsely trip) the guard.
+  // Gate round (WARNING, measured evasion c8): flatten @media wrappers
+  // FIRST - the naive walk captured `@media (...)` as the "selector" and
+  // swallowed the first inner rule into the body, so an unscoped poster-hide
+  // INSIDE a media query shipped green. Stray closing braces left by the
+  // flatten are harmlessly skipped by the `[^{}]+` selector class.
+  const FLAT = CSS.replace(/@media[^{]*\{/g, '');
+  const ruleRe = /([^{}]+)\{([^}]*)\}/g;
+  let r;
+  while ((r = ruleRe.exec(FLAT)) !== null) {
+    if (!/visibility/.test(r[2])) continue;
+    r[1].split(',').forEach((sel) => {
+      if (/audio-expanded/.test(sel) && /#media-player/.test(sel)) {
+        assert.ok(/:fullscreen|:-webkit-full-screen/.test(sel),
+          'fullscreen-unscoped expanded poster-hide found (mobile/in-window must keep its exact pre-fix paint): ' + sel.trim());
+      }
+    });
+  }
+});

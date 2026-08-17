@@ -7199,6 +7199,26 @@ body.ft-audio-expanded {
   bottom: calc(52px + env(safe-area-inset-bottom, 0px)); /* token-exempt: positional geometry */
 }
 
+/* v1.141.1 (Dean's device pass): SINGLE-PAINTER in real-fullscreen audio.
+   The same art is painted TWICE in the expanded view - #audio-bg-art (this
+   section) AND the media element's poster (player.js's audio branch hands
+   the art to the <video> tag; in .audio-mode that element stacks ABOVE the
+   art layer, z-index 1 vs 0). Their contain-fit boxes differ by the 52px
+   bar clearance, so at exact-fullscreen proportions the art copy's top
+   edge peeked out above the poster's paint as a duplicate strip. Hide the
+   poster's paint in REAL fullscreen only (visibility, never display - display:none
+   can pause media on iOS-family engines) so the art layer is the one
+   painter. Scoped to the API-fullscreen spellings ONLY: the in-window
+   expanded view (mobile's surface + the desktop refused-request degrade)
+   stays byte-identical per the v1.141 intake ruling. All three fullscreen
+   spellings per the v1.138 staged-twin discipline (the host IS :fullscreen
+   only on the pre-v1.138 no-stage fallback path). */
+#player-wrapper.audio-mode.audio-expanded:fullscreen #media-player,
+#player-wrapper.audio-mode.audio-expanded:-webkit-full-screen #media-player,
+#fs-stage:fullscreen #player-wrapper.audio-mode.audio-expanded #media-player {
+  visibility: hidden;
+}
+
 /* The control bar (and `#fs-btn`, the exit affordance) is `position:
    absolute; bottom: 0` (see `.player-controls` above); once the wrapper
    goes `position: fixed; inset: 0` that bottom edge IS the true viewport

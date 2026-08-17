@@ -80,6 +80,31 @@
 
 ## Shipped
 
+### v1.141.1 - single-painter in real-fullscreen audio (2026-08-17)
+
+Dean's device pass (both v1.140/v1.141 otherwise PASSED): a small strip
+copy of the cover art near the top in fullscreen audio, gone when not
+fullscreen. Root cause: the art paints TWICE in the expanded view - the
+#audio-bg-art layer AND the media element's poster (the audio branch
+hands the art to the <video> tag, stacked z1 over z0). Their contain-fit
+boxes differ by the 52px bar clearance, so at exact-fullscreen
+proportions the art copy's top edge peeked above the poster's paint. Fix:
+visibility:hidden on the poster's paint, scoped to the three
+API-fullscreen spellings ONLY (visibility never display - display:none
+can pause media on iOS-family engines); the in-window expanded view
+(mobile + the desktop refused-request degrade) keeps its exact pre-fix
+paint, guard-locked.
+
+What the gate caught (slim/adversarial, same seat as v1.141, 1 fix
+round): the guard's rule-walk was @media-BLIND - an unscoped poster-hide
+inside a media query shipped green (runnable evasion); the walk now
+flattens media wrappers first. Tracked residual #160: non-visibility
+hiders (opacity etc.) evade the guard by design - the #157/#158
+blocklist-porosity class; real closure is a computed-style harness.
+
+Dual-Node: 7028/7028 on v22.23.1 AND v24.14.0. Device pass PENDING (the
+strip specifically).
+
 ### v1.141.0 - desktop audio fullscreen goes REAL (2026-08-17)
 
 Dean: "if I go to full screen an audio thing, it doesn't actually full
