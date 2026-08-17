@@ -161,7 +161,7 @@ test('sweep: a subscription-covered channel is NOT the sweep\'s job (the poll se
   assert.equal(probeCalls, 0, 'targets with a subId are filtered out - never double-handled');
 });
 
-test('sweep: a channel with a FRESH registry entry costs zero probes', async () => {
+test('sweep: a channel with a FRESH registry entry costs zero probes AND zero budget', async () => {
   const channelId = mkChannelId('sweep-fresh');
   const deps = makeFakeDeps({
     metadata: { item1: { channelId } },
@@ -169,8 +169,23 @@ test('sweep: a channel with a FRESH registry entry costs zero probes', async () 
   });
   let probeCalls = 0;
   run.probeChannelAvatar = async () => { probeCalls += 1; return null; };
-  await ytdlp.sweepItemChannelAvatars(deps, baseConfig(), { remaining: 5 });
+  const budget = { remaining: 5 };
+  await ytdlp.sweepItemChannelAvatars(deps, baseConfig(), budget);
   assert.equal(probeCalls, 0);
+  assert.equal(budget.remaining, 5,
+    'a fresh channel is skipped BEFORE the budget/memo spend - the sweep-level freshness check is load-bearing, not just ensureChannelAvatar\'s own gate');
+});
+
+test('sweep: the budget stops the loop MID-SWEEP - two eligible channels, budget for one', async () => {
+  const idA = mkChannelId('sweep-midloop-a');
+  const idB = mkChannelId('sweep-midloop-b');
+  const deps = makeFakeDeps({ metadata: { a: { channelId: idA }, b: { channelId: idB } } });
+  let probeCalls = 0;
+  run.probeChannelAvatar = async (url) => { probeCalls += 1; return { avatarUrl: 'https://yt3.ggpht.com/x.jpg', channelId: url.slice(-24), channelUrl: url }; };
+  const budget = { remaining: 1 };
+  await ytdlp.sweepItemChannelAvatars(deps, baseConfig(), budget);
+  assert.equal(probeCalls, 1, 'exactly one probe - the AVATAR_SELFHEAL_PER_POLL contract holds mid-loop, not just at entry');
+  assert.equal(budget.remaining, 0);
 });
 
 test('sweep: a FAILED probe is memoized - never re-attempted on later cycles this server run', async () => {
