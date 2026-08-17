@@ -11,7 +11,12 @@
 // `resolveFsButtonAction` is the pure decision seam: `.audio-mode` ->
 // `'audio-expand'` (toggles `#player-wrapper.audio-expanded`, T2's CSS
 // overlay), else `'native-fullscreen'` (the EXISTING, byte-identical video
-// Fullscreen-API block). `toggleAudioExpand()`/`exitAudioExpand()` are
+// Fullscreen-API block). v1.141: an explicit desktop signal
+// (`mobile === false`) routes audio to a THIRD action,
+// `'audio-expand-fullscreen'` (real Fullscreen API + the expanded view
+// together - see test/unit/player-audio-desktop-fs.test.js, the wave's own
+// file); the rows here keep the original two-action table binding for the
+// mobile/absent-signal cases. `toggleAudioExpand()`/`exitAudioExpand()` are
 // impure (they read/write live DOM: `host`, `state`) and this codebase has
 // no jsdom/browser harness, so -- mirroring test/unit/player-form-
 // factor.test.js's own `applyControlsMode` regression-lock posture -- their
@@ -43,9 +48,11 @@ test('resolveFsButtonAction: a falsy/missing audioMode signal (e.g. video, no `.
   assert.strictEqual(resolveFsButtonAction({ audioMode: undefined }), 'native-fullscreen');
 });
 
-test('resolveFsButtonAction: only ever returns one of the two documented action strings', () => {
-  assert.ok(['audio-expand', 'native-fullscreen'].includes(resolveFsButtonAction({ audioMode: true })));
-  assert.ok(['audio-expand', 'native-fullscreen'].includes(resolveFsButtonAction({ audioMode: false })));
+test('resolveFsButtonAction: only ever returns one of the three documented action strings (v1.141 added audio-expand-fullscreen)', () => {
+  const ACTIONS = ['audio-expand', 'audio-expand-fullscreen', 'native-fullscreen'];
+  assert.ok(ACTIONS.includes(resolveFsButtonAction({ audioMode: true })));
+  assert.ok(ACTIONS.includes(resolveFsButtonAction({ audioMode: false })));
+  assert.ok(ACTIONS.includes(resolveFsButtonAction({ audioMode: true, mobile: false })));
 });
 
 // ---- source-level regression locks (no DOM harness -- see module comment) --
@@ -62,12 +69,12 @@ test('#fs-btn click handler: the source block is found and isolated for inspecti
   assert.ok(fsBtnHandlerMatch, 'expected to find the #fs-btn click handler\'s source body in player.js');
 });
 
-test('#fs-btn click handler: branches on resolveFsButtonAction({ audioMode: ... }) before doing anything else', () => {
+test('#fs-btn click handler: branches on resolveFsButtonAction({ audioMode, mobile }) before doing anything else', () => {
   const body = fsBtnHandlerMatch[1];
   assert.match(
     body,
-    /resolveFsButtonAction\(\{\s*audioMode:\s*host\.classList\.contains\('audio-mode'\)\s*\}\)/,
-    'expected the handler to call resolveFsButtonAction({ audioMode: host.classList.contains(\'audio-mode\') })'
+    /resolveFsButtonAction\(\{\s*audioMode:\s*host\.classList\.contains\('audio-mode'\),\s*mobile:\s*isMobileFormFactor\(\)\s*\}\)/,
+    'expected the handler to consult resolveFsButtonAction with BOTH the audio-mode class and the live form-factor signal (v1.141)'
   );
 });
 
@@ -197,12 +204,12 @@ test('f/F shortcut: the case block is found and isolated for inspection', () => 
   assert.ok(fCaseMatch, 'expected to find the case \'f\': case \'F\': { ... } block in the shortcut switch');
 });
 
-test('f/F shortcut: branches on resolveFsButtonAction({ audioMode: ... }) before doing anything else', () => {
+test('f/F shortcut: branches on resolveFsButtonAction({ audioMode, mobile }) before doing anything else', () => {
   const body = fCaseMatch[1];
   assert.match(
     body,
-    /resolveFsButtonAction\(\{\s*audioMode:\s*host\.classList\.contains\('audio-mode'\)\s*\}\)/,
-    'expected the f/F case to call resolveFsButtonAction({ audioMode: host.classList.contains(\'audio-mode\') }), same as the #fs-btn click handler'
+    /resolveFsButtonAction\(\{\s*audioMode:\s*host\.classList\.contains\('audio-mode'\),\s*mobile:\s*isMobileFormFactor\(\)\s*\}\)/,
+    'expected the f/F case to consult resolveFsButtonAction with BOTH signals, same as the #fs-btn click handler (v1.141)'
   );
 });
 
