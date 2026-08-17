@@ -80,6 +80,38 @@
 
 ## Shipped
 
+### v1.144.0 - the release ledger (2026-08-17)
+
+Dean: releases should be "clearer into the intent organically",
+retroactively, and the settings-menu version should click through to the
+release's context. Shipped: docs/releases.json - user-language notes for
+ALL 294 releases back to v1.0.0 (tiered: v1.31+ distilled from this
+file's entries, earlier from merge subjects), machine-validated against
+the tag list; a checker test that makes every future release commit
+unable to ship without its note (presence, ordering, tag census, and a
+jargon tripwire enforcing the pure-user-language ruling); an idempotent
+CI publisher (release-notes.yml, deliberately separate from
+docker-publish) that creates the GitHub Release for any ledger-bearing
+tag on every tag push - the 294-release backfill is ONE manual
+"Run workflow" click by Dean; and the account-menu version row is now a
+link to the running build's release page. The engineering record
+(ROADMAP, commits, tags) is untouched - the ledger is a new layer, not a
+rewrite.
+
+What the gate caught (slim/adversarial, 1 fix round -> APPROVE): a
+CRITICAL - three ledger entries claimed victories the record refutes
+(first-of-a-pair releases claiming the win their follow-up earned);
+reworded as honest attempts. Also: the tone tripwire was already
+escaped by two shipped titles (widened + reworded); the href-bounding
+guard was deletable with a green suite (now bound by a hostile-version
+case); the exec plan described a design that was deviated from
+(recorded). The seat also caught a wrong test-count in MY delta message
+(claimed 21/21, measured 18/18) - the measure-then-claim class's 5th
+strike, recorded here per the honesty norm.
+
+Dual-Node: 7068/7068 on v22.23.1 AND v24.14.0. Device pass PENDING
+(plus Dean's one-click backfill dispatch).
+
 ### v1.143.0 - the home feed remembers your chip (2026-08-17)
 
 Dean: pick Audio, close the app or refresh, and the feed should still be

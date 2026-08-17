@@ -1762,5 +1762,11 @@
     "date": "2026-08-17",
     "title": "The feed remembers your filter",
     "intent": "Pick Audio and it's still Audio after a refresh or restart - pick All to reset."
+  },
+  {
+    "version": "1.144.0",
+    "date": "2026-08-17",
+    "title": "Release notes you can read",
+    "intent": "Every release ever made now has plain-language notes published on GitHub, and the version number in the account menu is a link straight to the notes for the exact build you are running."
   }
 ]

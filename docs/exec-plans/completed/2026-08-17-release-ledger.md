@@ -1,5 +1,7 @@
 # The release ledger: user-intent release notes, GitHub-published, version-row linked
 
+Status: SHIPPED v1.144.0 (2026-08-17). Slim gate, 1 fix round, APPROVE (the CRITICAL: three first-of-a-pair ledger entries claimed their follow-up's victory - reworded). Owner: main session.
+
 Dean (2026-08-17): "Make the releases more clear. Clearer into the intent
 organically. If possible retroactively update descriptions. And make the
 version in the settings menu when you click avatar be clickable, go to the
