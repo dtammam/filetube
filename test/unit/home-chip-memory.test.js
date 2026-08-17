@@ -62,9 +62,13 @@ test('gate W1: the restored chip PAINTS active - the mount site feeds the live s
   assert.match(MAIN_SRC, /buildModernChipRowHtml\(activeModernChip\)/,
     'the mount site consumes the LIVE (possibly restored) chip - never a literal');
   assert.ok(!/buildModernChipRowHtml\('all'\)/.test(MAIN_SRC), 'no hardcoded-All mount exists');
-  // The builder's active derivation: on = (chip === bounded active), painted
-  // into BOTH the class and the aria state.
-  assert.match(MAIN_SRC, /const on = c\.filter === a;/, 'the active derivation');
+  // The builder's active derivation: EVERY link of the four-link paint chain
+  // is individually locked (round-2 mutant F: `const a = 'all';` inside the
+  // builder survived while mount->param, a->on, and on->markup all still
+  // matched - the param->a link was the one unlocked seam).
+  assert.match(MAIN_SRC, /const a = typeof resolveModernChip === 'function' \? resolveModernChip\(active\) : 'all';/,
+    'link 2: the builder actually consumes its parameter, bounded');
+  assert.match(MAIN_SRC, /const on = c\.filter === a;/, 'link 3: the active derivation');
   assert.match(MAIN_SRC, /class="modern-chip\$\{on \? ' active' : ''\}"/, 'paints .active from it');
   assert.match(MAIN_SRC, /aria-selected="\$\{on\}"/, 'and aria-selected from it');
 });
