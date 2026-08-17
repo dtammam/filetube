@@ -563,3 +563,94 @@ test('disabled module: POST /api/subscriptions 404s and never reaches probeChann
     await close();
   }
 });
+
+// ---- v1.142 gate fix round: W1 + W3 (behavioral bindings) ------------------
+// W1: the refresh batch's bare-id derive was completely unbound (reverting it
+// survived the FULL suite). W3: the sweep's runPoll wiring and breaker gate
+// were bound only by stripped-source regex - a `breakerTripped = false;`
+// insert above the gate survived everything. Both now bound by BEHAVIOR
+// (adapted from the adversarial seat's own runnable repro).
+
+const activity = require('../../lib/ytdlp/activity');
+
+test('v1.142 W1: "Refresh channel avatars" probes a bare-id ITEM channel via the DERIVED canonical URL', async () => {
+  ytdlp.resetRefreshAvatarsStateForTests();
+  activity.resetForTests();
+  const channelId = 'UC' + crypto.createHash('md5').update('w1-batch-bare-id').digest('hex').slice(0, 22);
+  const deps = makeFakeDeps({ metadata: { item1: { channelId } } });
+  const probeCalls = [];
+  run.probeChannelAvatar = async (url) => {
+    probeCalls.push(url);
+    return { avatarUrl: 'https://yt3.ggpht.com/batch.jpg', channelId, channelUrl: url };
+  };
+  const { base, close } = await startTestApp(deps, baseConfig());
+  try {
+    const res = await fetch(`${base}/api/ytdlp/refresh-avatars`, { method: 'POST' });
+    assert.equal(res.status, 202);
+    await new Promise((r) => setTimeout(r, 60));
+    assert.deepEqual(probeCalls, [`https://www.youtube.com/channel/${channelId}`],
+      'pre-v1.142 this target was counted `skipped` - the button (Dean\'s explicit repair path) must probe it');
+  } finally {
+    ytdlp.resetRefreshAvatarsStateForTests();
+    activity.resetForTests();
+    await close();
+  }
+});
+
+test('v1.142 W3a: runPoll\'s tail sweep probes an item-only channel (behavioral wiring, not a source lock)', async () => {
+  ytdlp.resetItemAvatarSweepStateForTests();
+  const channelId = 'UC' + crypto.createHash('md5').update('w3-sweep-wired').digest('hex').slice(0, 22);
+  const deps = makeFakeDeps({ metadata: { item1: { channelId } } });
+  const sub = await store.addSubscription(deps, {
+    channelUrl: 'https://www.youtube.com/@w3healthy',
+    format: 'video', quality: 'best',
+  });
+  await store.recordSubscriptionChannelAvatar(deps, sub.channelUrl, 'https://yt3.ggpht.com/sub-has-one.jpg');
+  const probeCalls = [];
+  run.probeChannelAvatar = async (url) => {
+    probeCalls.push(url);
+    return { avatarUrl: 'https://yt3.ggpht.com/swept-in-poll.jpg', channelId, channelUrl: url };
+  };
+  run.runList = async () => ({ ok: true, stdout: ndjson([]), stderr: '' });
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [] });
+  try {
+    const result = await ytdlp.runPoll(deps, baseConfig());
+    assert.equal(result.started, true);
+    assert.deepEqual(probeCalls, [`https://www.youtube.com/channel/${channelId}`],
+      'the poll tail heals the item-only channel (the sub already has its avatar - no other probe expected)');
+    assert.equal(store.getChannelAvatar(deps.loadDatabase(), channelId), 'https://yt3.ggpht.com/swept-in-poll.jpg');
+  } finally {
+    ytdlp.resetItemAvatarSweepStateForTests();
+  }
+});
+
+test('v1.142 W3b: a TRIPPED breaker suppresses the item sweep entirely (a throttled session is never hammered with probes)', async () => {
+  ytdlp.resetItemAvatarSweepStateForTests();
+  const channelId = 'UC' + crypto.createHash('md5').update('w3-breaker-block').digest('hex').slice(0, 22);
+  const deps = makeFakeDeps({ metadata: { item1: { channelId } } });
+  const subA = await store.addSubscription(deps, {
+    channelUrl: 'https://www.youtube.com/@w3failing',
+    format: 'video', quality: 'best',
+  });
+  const subB = await store.addSubscription(deps, {
+    channelUrl: 'https://www.youtube.com/@w3nevereached',
+    format: 'video', quality: 'best',
+  });
+  await store.recordSubscriptionChannelAvatar(deps, subA.channelUrl, 'https://yt3.ggpht.com/a.jpg');
+  await store.recordSubscriptionChannelAvatar(deps, subB.channelUrl, 'https://yt3.ggpht.com/b.jpg');
+  const probeCalls = [];
+  run.probeChannelAvatar = async (url) => { probeCalls.push(url); return null; };
+  run.runList = async () => { throw new Error('simulated throttle/bot-check'); };
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [] });
+  try {
+    // breakerFailures: 1 -> the first failing channel trips it; a second
+    // target must exist for the trip branch to fire (i < targets.length - 1).
+    const result = await ytdlp.runPoll(deps, baseConfig({ breakerFailures: 1 }));
+    assert.equal(result.started, true);
+    assert.deepEqual(probeCalls, [],
+      'after the breaker trips, ZERO sweep probes run - the gate is behavior, not comment text');
+  } finally {
+    ytdlp.resetItemAvatarSweepStateForTests();
+    ytdlp.resetPollRerunStateForTests(); // clears the tripped breaker + its armed retry timer
+  }
+});

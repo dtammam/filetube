@@ -139,6 +139,50 @@ test('sweep: an ITEM-only bare-id channel is probed via its derived URL and land
   assert.equal(store.getChannelAvatar(deps.loadDatabase(), channelId), 'https://yt3.ggpht.com/swept.jpg');
 });
 
+test('sweep: an item-only channel known by HANDLE URL alone (no channelId) is probed at that URL (gate W2)', async () => {
+  // The seat's divergent-spelling survivors both lived here: a subId-filter
+  // respelled to `!t.channelUrl` and a memo key narrowed to channelId-only
+  // each silently excluded URL-bearing item channels - arguably the sweep's
+  // PRIMARY production population (a one-off whose download-time probe
+  // failed, handle-URL-only items).
+  const handleUrl = 'https://www.youtube.com/@handleonly-sweep';
+  const deps = makeFakeDeps({ metadata: { item1: { channelHandleUrl: handleUrl } } });
+  const probedUrls = [];
+  const channelId = mkChannelId('sweep-handle-discovered');
+  run.probeChannelAvatar = async (url) => {
+    probedUrls.push(url);
+    return { avatarUrl: 'https://yt3.ggpht.com/handle.jpg', channelId, channelUrl: url };
+  };
+  const budget = { remaining: 3 };
+  await ytdlp.sweepItemChannelAvatars(deps, baseConfig(), budget);
+  assert.deepStrictEqual(probedUrls, [handleUrl], 'the captured URL is probed as-is - no channelId required');
+  assert.equal(budget.remaining, 2);
+});
+
+test('sweep: an item channel with BOTH id and captured URL probes the captured URL (never the derived one)', async () => {
+  const channelId = mkChannelId('sweep-both');
+  const capturedUrl = 'https://www.youtube.com/@both-captured';
+  const deps = makeFakeDeps({ metadata: { item1: { channelId, channelUrl: capturedUrl } } });
+  const probedUrls = [];
+  run.probeChannelAvatar = async (url) => {
+    probedUrls.push(url);
+    return { avatarUrl: 'https://yt3.ggpht.com/both.jpg', channelId, channelUrl: url };
+  };
+  await ytdlp.sweepItemChannelAvatars(deps, baseConfig(), { remaining: 3 });
+  assert.deepStrictEqual(probedUrls, [capturedUrl], 'a real captured URL always outranks the derived fallback');
+});
+
+test('ensureChannelAvatar: a probe that yields no channelUrl of its own registers under the DERIVED probe URL (the seat\'s unmeasured suspicion, bound)', async () => {
+  const deps = makeFakeDeps({});
+  const channelId = mkChannelId('register-fallback');
+  run.probeChannelAvatar = async () => ({ avatarUrl: 'https://yt3.ggpht.com/nofb.jpg', channelId, channelUrl: null });
+  await ytdlp.ensureChannelAvatar(deps, baseConfig(), { channelId });
+  const entry = deps.loadDatabase().ytdlp.channelAvatars[channelId];
+  assert.equal(entry.avatarUrl, 'https://yt3.ggpht.com/nofb.jpg');
+  assert.equal(entry.channelUrl, `https://www.youtube.com/channel/${channelId}`,
+    'the registry entry carries the derived probe URL when the probe returned none');
+});
+
 test('sweep: an exhausted budget probes nothing (the AVATAR_SELFHEAL_PER_POLL contract holds)', async () => {
   const channelId = mkChannelId('sweep-no-budget');
   const deps = makeFakeDeps({ metadata: { item1: { channelId } } });
