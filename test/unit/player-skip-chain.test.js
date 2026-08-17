@@ -52,3 +52,18 @@ test('the window is variableized', () => {
   assert.match(PLAYER_JS, /var SKIP_CHAIN_MS = 800;/);
   assert.match(PLAYER_JS, /var skipChainUntil = 0;/);
 });
+
+test('gate W1: the WRITER CENSUS - exactly three skipChainUntil writers, each positionally bound', () => {
+  // The reviewer's two survivors: an extra zero-out in touchstart killed
+  // the feature end-to-end (green); an extra seed in the single branch made
+  // any two taps a surprise seek (green). The census makes any new writer
+  // red until consciously bound here.
+  const writers = (PLAYER_JS.match(/skipChainUntil = /g) || []).length;
+  assert.strictEqual(writers, 3, 'var init + the ONE skip-branch seed + the W2 teardown reset; found ' + writers);
+  // Each writer positionally bound:
+  assert.match(PLAYER_JS, /var skipChainUntil = 0;/, 'the module init');
+  assert.match(PLAYER_JS, /lastTapTime = 0;\s*\n[\s\S]{0,300}?skipChainUntil = now \+ SKIP_CHAIN_MS;/, 'the seed lives in the skip dispatch');
+  const reset = /function resetTransientPlaybackUi\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(reset, 'resetTransientPlaybackUi found');
+  assert.match(reset[1], /skipChainUntil = 0;/, 'gate W2: the chain dies with the surface (teardown/dock/close) - a leaked chain ate the docked tap-to-expand click while hiding a seek');
+});

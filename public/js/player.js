@@ -3772,7 +3772,9 @@ if (typeof module !== 'undefined' && module.exports) {
   // before this deadline keep skipping (refreshing the deadline) and
   // tap-to-pause stays suppressed. 800ms = comfortably slower than rapid
   // chain-tapping, comfortably faster than "I stopped skipping and now want
-  // to pause". Variableized like every gesture constant here.
+  // to pause". Variableized like every gesture constant here. SCOPE (gate
+  // S1): TOUCH-only by design - desktop mouse rides the FR-5 click debounce
+  // and dblclick path unchanged (click-pauses is the desktop convention).
   var SKIP_CHAIN_MS = 800;
   var skipChainUntil = 0;
   // v1.21 FIX 1 (post-gate hardening): the double-tap/double-click window,
@@ -3807,6 +3809,13 @@ if (typeof module !== 'undefined' && module.exports) {
     clearTimeout(holdTimer);
     releaseHold();
     hideSkipButtons();
+    // v1.140 gate W2: the skip chain dies with the gesture surface it
+    // belonged to - without this, a chain hot at teardown/dock/close leaked
+    // onto the NEXT item (first tap skipped instead of paused) and, docked,
+    // ate the tap-to-expand click while hiding a 15s seek. Ruling encoded:
+    // a chain never survives a load/dock - the new surface's first tap is
+    // always a single.
+    skipChainUntil = 0;
   }
 
   // v1.21 FIX 1 (post-gate hardening, both reviewers -- FR-2 regression,
