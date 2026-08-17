@@ -1,0 +1,39 @@
+name: Sync Release Notes
+
+# v1.144 (Dean): publish the release LEDGER (docs/releases.json - the
+# user-language release notes) to GitHub Releases. Idempotent: creates a
+# release for every existing vX.Y.Z tag that has a ledger entry and no
+# GitHub Release yet, so the SAME job serves:
+#   - every future tag push (the new release's notes publish themselves), and
+#   - the one-time historical backfill / any re-run: trigger "Run workflow"
+#     from the Actions tab.
+# Deliberately a SEPARATE workflow from docker-publish.yml: a manual
+# dispatch here must never spin the qualify/publish pipeline, and this
+# publishes TEXT onto already-existing tags - creating a release on an
+# existing tag does not push a tag, so it can never re-trigger the Docker
+# publish. The account-menu version row links to these pages.
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-notes-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # the sync walks ALL tags, not just this ref
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Sync GitHub Releases from docs/releases.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/sync-github-releases.js

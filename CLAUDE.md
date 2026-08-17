@@ -55,11 +55,19 @@ Dean's trust rests on two pillars, and neither is ever traded for speed:
    grep is not green.
 7. **Release ceremony:** `npm version X.Y.Z --no-git-tag-version` ->
    ROADMAP.md "Shipped" entry (honest: include what the gate caught and
-   any known gaps) -> move the exec plan to `completed/` when its Stop
-   closes -> commit on `release/vX.Y.Z` -> `git merge --no-ff` into main
-   -> `git tag vX.Y.Z` -> push `main` + the tag. The tag push
-   auto-publishes Docker (X.Y.Z + latest); **the Docker pull onto Dean's
-   server is always Dean's.** Then BRANCH HYGIENE (Dean, 2026-08-14):
+   any known gaps) -> **the release LEDGER entry** (v1.144, Dean's
+   ruling): append `{version, date, title, intent}` to
+   `docs/releases.json` in PURE USER LANGUAGE - what changed and why the
+   person using the app would care; ZERO process jargon (no gates,
+   mutants, suites - the engineering story stays in ROADMAP). The
+   release-ledger checker test enforces presence + tone, so the release
+   commit cannot ship without it; the tag push then auto-publishes it to
+   the GitHub Release the account-menu version row links to
+   (docs/RELEASING.md has the mechanics) -> move the exec plan to
+   `completed/` when its Stop closes -> commit on `release/vX.Y.Z` ->
+   `git merge --no-ff` into main -> `git tag vX.Y.Z` -> push `main` +
+   the tag. The tag push auto-publishes Docker (X.Y.Z + latest); **the
+   Docker pull onto Dean's server is always Dean's.** Then BRANCH HYGIENE (Dean, 2026-08-14):
    once the tag is confirmed on the remote, DELETE the wave's
    feat/fix/release branches BOTH remote (`git push origin --delete`,
    only those actually pushed) and local (`git branch -d`, never `-D` -

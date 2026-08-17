@@ -20,6 +20,28 @@ So consumers can:
 [Watchtower](https://containrrr.dev/watchtower/) following `latest` auto-updates
 on each release; following a pinned `1.4.2` never moves.
 
+## Release notes (the ledger)
+
+v1.144 (Dean): every release carries USER-LANGUAGE release notes, and the
+app's account-menu version row links straight to them.
+
+- **Source of truth:** `docs/releases.json` - one `{version, date, title,
+  intent}` entry per release, appended in the release commit alongside the
+  version bump. `intent` is 1-3 sentences for the person using the app:
+  what changed and why they'd care. No process jargon - the
+  `release-ledger` checker test enforces presence, ordering, tag
+  completeness, and a jargon tripwire, so a release literally cannot ship
+  without its note.
+- **Publishing:** `.github/workflows/release-notes.yml` runs
+  `scripts/sync-github-releases.js` on every tag push - it creates the
+  GitHub Release for any tag that has a ledger entry and no release yet
+  (idempotent; re-runs are always safe). The historical backfill (and any
+  recovery re-run) is the same job triggered manually: Actions -> "Sync
+  Release Notes" -> Run workflow.
+- **The link:** the account menu's version row opens
+  `https://github.com/dtammam/filetube/releases/tag/v<version>` - the
+  running build's own notes.
+
 ## Cutting a release
 
 > **Scope note:** the steps below are the minimal manual/Docker-tag

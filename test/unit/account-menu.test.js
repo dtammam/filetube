@@ -136,3 +136,41 @@ test('injectAccountMenu: a signed-out shell (401 me) injects nothing', async () 
   await tick();
   assert.strictEqual(global.document.getElementById('account-menu-root'), null, 'no menu for a signed-out shell');
 });
+
+// ---- v1.144 (Dean): the version row links to the build's release notes ----
+
+test('releaseNotesUrl: a valid version maps to its GitHub release page; junk maps to null', () => {
+  const { releaseNotesUrl } = fresh({});
+  assert.strictEqual(releaseNotesUrl('1.143.0'), 'https://github.com/dtammam/filetube/releases/tag/v1.143.0');
+  assert.strictEqual(releaseNotesUrl(''), null);
+  assert.strictEqual(releaseNotesUrl('1.143'), null, 'incomplete version never builds a URL');
+  assert.strictEqual(releaseNotesUrl('1.143.0-evil/../x'), null, 'nothing unvalidated reaches the href');
+  assert.strictEqual(releaseNotesUrl(null), null);
+});
+
+test('injectAccountMenu: the version row is an ANCHOR to the running build\'s release notes (new tab, noopener)', async () => {
+  const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', username: 'dean', role: 'admin', avatar: { present: false, version: 0 } } });
+  const meta = global.document.createElement('meta');
+  meta.setAttribute('name', 'ft-version');
+  meta.setAttribute('content', '1.144.0');
+  global.document.head.appendChild(meta);
+
+  injectAccountMenu();
+  await tick();
+
+  const ver = global.document.querySelector('.account-menu-version');
+  assert.ok(ver, 'the version row rendered (meta present)');
+  assert.strictEqual(ver.tagName, 'A', 'it is a link now, not a static div');
+  assert.strictEqual(ver.getAttribute('href'), 'https://github.com/dtammam/filetube/releases/tag/v1.144.0',
+    'clicking lands on THIS build\'s release notes');
+  assert.strictEqual(ver.getAttribute('target'), '_blank');
+  assert.strictEqual(ver.getAttribute('rel'), 'noopener');
+  assert.strictEqual(ver.textContent, 'Version 1.144.0', 'the visible text is unchanged from v1.90');
+});
+
+test('injectAccountMenu: no version meta -> no version row at all (never a dead link)', async () => {
+  const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', username: 'dean', role: 'admin', avatar: { present: false, version: 0 } } });
+  injectAccountMenu();
+  await tick();
+  assert.strictEqual(global.document.querySelector('.account-menu-version'), null);
+});

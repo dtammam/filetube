@@ -1,0 +1,1766 @@
+[
+  {
+    "version": "1.0.0",
+    "date": "2026-07-04",
+    "title": "FileTube is born",
+    "intent": "The first release: a self-hosted media server with a retro YouTube-style interface, Docker packaging, and release management."
+  },
+  {
+    "version": "1.1.0",
+    "date": "2026-07-04",
+    "title": "AVI files play in the browser",
+    "intent": "Older AVI videos now convert on the fly so they play right in the browser, with smarter caching behind the scenes."
+  },
+  {
+    "version": "1.2.0",
+    "date": "2026-07-04",
+    "title": "Better playback on phones",
+    "intent": "Videos play inline on mobile the way you expect, with polish across the mobile experience."
+  },
+  {
+    "version": "1.2.1",
+    "date": "2026-07-04",
+    "title": "Lock-screen controls",
+    "intent": "Now Playing info and controls show up on your phone's lock screen."
+  },
+  {
+    "version": "1.2.2",
+    "date": "2026-07-04",
+    "title": "Background audio on iPhone fixed",
+    "intent": "Audio keeps playing when you lock your iPhone or switch apps."
+  },
+  {
+    "version": "1.3.0",
+    "date": "2026-07-04",
+    "title": "A friendlier look",
+    "intent": "Cleaner typography, rounded corners, and a smarter show-more toggle on descriptions."
+  },
+  {
+    "version": "1.4.0",
+    "date": "2026-07-04",
+    "title": "Era themes",
+    "intent": "Pick the YouTube era you miss: 2005, 2009, 2014, or 2021 - each in light and dark."
+  },
+  {
+    "version": "1.5.0",
+    "date": "2026-07-04",
+    "title": "A real app feel on phones",
+    "intent": "A YouTube-style bottom navigation bar and mobile app shell, so FileTube feels like an app, not a webpage."
+  },
+  {
+    "version": "1.6.0",
+    "date": "2026-07-05",
+    "title": "Crisp icons everywhere",
+    "intent": "Emoji icons replaced with proper self-hosted icons that look sharp on every screen."
+  },
+  {
+    "version": "1.7.0",
+    "date": "2026-07-05",
+    "title": "Choose your icon style",
+    "intent": "An icon-set picker so you can choose the look you like."
+  },
+  {
+    "version": "1.8.0",
+    "date": "2026-07-05",
+    "title": "Library upkeep, automated",
+    "intent": "The library now keeps itself tidy with automated scanning and maintenance."
+  },
+  {
+    "version": "1.9.0",
+    "date": "2026-07-05",
+    "title": "Hardening and a proper logo",
+    "intent": "Reliability fixes under the hood, plus logo polish including a mobile top-left home link."
+  },
+  {
+    "version": "1.10.0",
+    "date": "2026-07-05",
+    "title": "Album art for audio",
+    "intent": "Audio files show their artwork as a full-player backdrop instead of a blank box."
+  },
+  {
+    "version": "1.10.1",
+    "date": "2026-07-05",
+    "title": "Audio controls visible again on iPhone",
+    "intent": "Fixed the player controls hiding behind album art on iOS."
+  },
+  {
+    "version": "1.11.0",
+    "date": "2026-07-06",
+    "title": "Subscribe to YouTube channels",
+    "intent": "The big one: subscribe to channels and FileTube downloads new videos for you automatically."
+  },
+  {
+    "version": "1.11.1",
+    "date": "2026-07-06",
+    "title": "Big channels list reliably",
+    "intent": "Listing huge channels no longer stalls, and only the most recent videos are considered for download."
+  },
+  {
+    "version": "1.12.0",
+    "date": "2026-07-06",
+    "title": "Download manager grows up",
+    "intent": "Subscription downloads gain the conveniences of a real download manager."
+  },
+  {
+    "version": "1.13.0",
+    "date": "2026-07-06",
+    "title": "Polish and mobile fixes",
+    "intent": "A round of refinements to the download manager plus assorted mobile fixes."
+  },
+  {
+    "version": "1.14.0",
+    "date": "2026-07-06",
+    "title": "Quick wins",
+    "intent": "A batch of small improvements you asked for."
+  },
+  {
+    "version": "1.15.0",
+    "date": "2026-07-06",
+    "title": "Polish, downloads, and plumbing",
+    "intent": "Interface refinements, download improvements, and sturdier infrastructure."
+  },
+  {
+    "version": "1.15.1",
+    "date": "2026-07-06",
+    "title": "One-off downloads, more reliable",
+    "intent": "Downloading a single video by URL got smoother and more dependable."
+  },
+  {
+    "version": "1.16.0",
+    "date": "2026-07-06",
+    "title": "The mini-player",
+    "intent": "Navigate anywhere while your video keeps playing in a docked mini-player - pages switch instantly now too."
+  },
+  {
+    "version": "1.17.0",
+    "date": "2026-07-07",
+    "title": "Autoplay and quality-of-life",
+    "intent": "Autoplay to the next video, quick delete, better mobile layout, and smoother app behavior when installed to your home screen."
+  },
+  {
+    "version": "1.17.1",
+    "date": "2026-07-07",
+    "title": "Watch page fits on phones",
+    "intent": "Long titles and file paths no longer stretch the watch page off-screen."
+  },
+  {
+    "version": "1.18.0",
+    "date": "2026-07-07",
+    "title": "iPhone playback that just works",
+    "intent": "More formats play on iOS, with player polish to match."
+  },
+  {
+    "version": "1.19.0",
+    "date": "2026-07-07",
+    "title": "Download to your device",
+    "intent": "Save any video to your phone or computer, plus interface polish and a thumbnail fix."
+  },
+  {
+    "version": "1.19.1",
+    "date": "2026-07-07",
+    "title": "Missing thumbnails heal themselves",
+    "intent": "Thumbnails that had gone missing come back on the next scan."
+  },
+  {
+    "version": "1.20.0",
+    "date": "2026-07-07",
+    "title": "The Subscribe button",
+    "intent": "Downloaded a one-off video you love? Subscribe to its channel right from the watch page."
+  },
+  {
+    "version": "1.21.0",
+    "date": "2026-07-07",
+    "title": "The polish release",
+    "intent": "A custom player with double-tap skip and press-to-fast-forward, pinned channels, theatre mode, and much more."
+  },
+  {
+    "version": "1.22.0",
+    "date": "2026-07-07",
+    "title": "Player parity",
+    "intent": "Picture-in-picture, loop, pinned channels on desktop, per-card downloads, and mobile control fixes."
+  },
+  {
+    "version": "1.22.1",
+    "date": "2026-07-07",
+    "title": "Mobile player fixes",
+    "intent": "The custom control bar works properly on mobile video, playback speed control arrives, and desktop gets click-to-pause."
+  },
+  {
+    "version": "1.22.2",
+    "date": "2026-07-07",
+    "title": "Fullscreen for audio",
+    "intent": "The fullscreen button now works on audio too, expanding into a full-screen now-playing view."
+  },
+  {
+    "version": "1.22.3",
+    "date": "2026-07-07",
+    "title": "Fullscreen fixes",
+    "intent": "Mobile video fullscreen works again and the audio expanded view fits the screen properly."
+  },
+  {
+    "version": "1.23.0",
+    "date": "2026-07-08",
+    "title": "Mobile quick wins",
+    "intent": "No more accidental double-tap zoom on iPhone, and Shuffle is back by name."
+  },
+  {
+    "version": "1.23.1",
+    "date": "2026-07-08",
+    "title": "I'm Feeling Lucky",
+    "intent": "The random sort got its rightful name."
+  },
+  {
+    "version": "1.23.2",
+    "date": "2026-07-08",
+    "title": "The sort row fits",
+    "intent": "One-word action labels so everything fits on one line on phones."
+  },
+  {
+    "version": "1.23.3",
+    "date": "2026-07-08",
+    "title": "See more of your video",
+    "intent": "The mobile control bar became a translucent overlay so it stops covering the picture."
+  },
+  {
+    "version": "1.23.4",
+    "date": "2026-07-08",
+    "title": "Controls below the picture",
+    "intent": "The mobile control bar moved below the video so nothing is ever covered."
+  },
+  {
+    "version": "1.23.5",
+    "date": "2026-07-08",
+    "title": "Controls below, everywhere",
+    "intent": "The control bar sits below the picture or album art on every device."
+  },
+  {
+    "version": "1.23.6",
+    "date": "2026-07-08",
+    "title": "Tap and it plays",
+    "intent": "Picking a video on mobile starts playback immediately, and the mini-player got the bar-below treatment."
+  },
+  {
+    "version": "1.23.7",
+    "date": "2026-07-08",
+    "title": "Tap the creator's name",
+    "intent": "Clicking a creator's name opens everything from that channel."
+  },
+  {
+    "version": "1.23.8",
+    "date": "2026-07-08",
+    "title": "Next stays in the folder",
+    "intent": "Previous/Next and autoplay walk the current folder instead of jumping across your whole library."
+  },
+  {
+    "version": "1.23.9",
+    "date": "2026-07-08",
+    "title": "Playlist sheet closes itself",
+    "intent": "Tapping a playlist on mobile closes the sheet like you'd expect."
+  },
+  {
+    "version": "1.23.10",
+    "date": "2026-07-08",
+    "title": "Delete never gets stuck",
+    "intent": "Deleting a video whose file is already gone now just works."
+  },
+  {
+    "version": "1.24.0",
+    "date": "2026-07-09",
+    "title": "Visual and library quick wins",
+    "intent": "The first wave of a big usability round: visual refinements and library conveniences."
+  },
+  {
+    "version": "1.24.1",
+    "date": "2026-07-09",
+    "title": "Subscriptions, refined",
+    "intent": "Wave two: the subscriptions page gets its usability pass."
+  },
+  {
+    "version": "1.24.2",
+    "date": "2026-07-09",
+    "title": "Library data improvements",
+    "intent": "Release dates are captured properly, files can move between folders, and more."
+  },
+  {
+    "version": "1.24.3",
+    "date": "2026-07-09",
+    "title": "Pinned channels, your order",
+    "intent": "Drag pinned channels into the order you want; accidental home-card moves removed."
+  },
+  {
+    "version": "1.24.4",
+    "date": "2026-07-10",
+    "title": "Resume where you left off",
+    "intent": "A resume prompt when you reopen a video, and Previous/Next no longer flash."
+  },
+  {
+    "version": "1.24.5",
+    "date": "2026-07-10",
+    "title": "Watch page fixes",
+    "intent": "Mobile watch-page overflow fixed and the docked player resumes properly."
+  },
+  {
+    "version": "1.24.6",
+    "date": "2026-07-10",
+    "title": "Consistent mobile zoom",
+    "intent": "Every page fits the width of your phone the same way."
+  },
+  {
+    "version": "1.24.7",
+    "date": "2026-07-10",
+    "title": "Download errors you can read",
+    "intent": "Clear error messages, a cancel button, and subtitles come along with downloads."
+  },
+  {
+    "version": "1.24.8",
+    "date": "2026-07-10",
+    "title": "See and stop downloads",
+    "intent": "Watch subscription downloads as they happen - and stop them if you need to."
+  },
+  {
+    "version": "1.25.0",
+    "date": "2026-07-10",
+    "title": "Quality-of-life round one",
+    "intent": "App icon, better buttons, and the lock screen's Play button works from a cold start."
+  },
+  {
+    "version": "1.25.1",
+    "date": "2026-07-10",
+    "title": "Downloads re-architected",
+    "intent": "The download engine rebuilt for reliability."
+  },
+  {
+    "version": "1.25.2",
+    "date": "2026-07-10",
+    "title": "Native iPhone controls option",
+    "intent": "Mobile video can use the built-in iOS player controls if you prefer them."
+  },
+  {
+    "version": "1.25.3",
+    "date": "2026-07-10",
+    "title": "Re-pull metadata",
+    "intent": "Existing downloads can refresh their metadata and subtitles after the fact."
+  },
+  {
+    "version": "1.25.4",
+    "date": "2026-07-10",
+    "title": "On-device fixes",
+    "intent": "A round of fixes straight from real phone testing: the one-off dialog, channel avatars, buttons, and zoom."
+  },
+  {
+    "version": "1.25.5",
+    "date": "2026-07-10",
+    "title": "Avatars round two",
+    "intent": "Channel avatars show up in more places, with polish alongside."
+  },
+  {
+    "version": "1.25.6",
+    "date": "2026-07-10",
+    "title": "Zoom regression fixed",
+    "intent": "The watch page stopped zooming oddly on iPhone."
+  },
+  {
+    "version": "1.25.7",
+    "date": "2026-07-10",
+    "title": "Avatars for every channel",
+    "intent": "A per-channel avatar registry so any video can show its channel's face - subscribed or not."
+  },
+  {
+    "version": "1.25.8",
+    "date": "2026-07-10",
+    "title": "The downloads chip",
+    "intent": "The corner download indicator became clearer about what's happening."
+  },
+  {
+    "version": "1.25.9",
+    "date": "2026-07-10",
+    "title": "Rotate without pausing",
+    "intent": "Rotating your phone no longer pauses the video."
+  },
+  {
+    "version": "1.25.10",
+    "date": "2026-07-10",
+    "title": "Force-close stops audio",
+    "intent": "Swiping the app away stops playback, plus a search-box zoom fix."
+  },
+  {
+    "version": "1.25.11",
+    "date": "2026-07-10",
+    "title": "Stay fullscreen on rotate",
+    "intent": "Rotating while fullscreen keeps you fullscreen."
+  },
+  {
+    "version": "1.26.0",
+    "date": "2026-07-10",
+    "title": "Real download progress",
+    "intent": "Progress bars that actually move while something downloads."
+  },
+  {
+    "version": "1.26.1",
+    "date": "2026-07-10",
+    "title": "No more layout jumps",
+    "intent": "The player reserves the right shape before the video loads, and audio gets a caption overlay."
+  },
+  {
+    "version": "1.26.2",
+    "date": "2026-07-10",
+    "title": "CSS polish wave",
+    "intent": "A sweep of small visual fixes."
+  },
+  {
+    "version": "1.26.3",
+    "date": "2026-07-10",
+    "title": "Subscriptions page fixed",
+    "intent": "The subscriptions page rendered empty for a moment there - not anymore."
+  },
+  {
+    "version": "1.26.4",
+    "date": "2026-07-10",
+    "title": "Clearer states",
+    "intent": "Loading and empty states look intentional, and a captions freeze got fixed."
+  },
+  {
+    "version": "1.27.0",
+    "date": "2026-07-10",
+    "title": "Background audio for video",
+    "intent": "Keep listening to a video's audio with the screen off (experimental)."
+  },
+  {
+    "version": "1.27.1",
+    "date": "2026-07-10",
+    "title": "Background audio fixes",
+    "intent": "Fullscreen no longer breaks background audio, with smoother handoffs."
+  },
+  {
+    "version": "1.27.2",
+    "date": "2026-07-11",
+    "title": "Smoother background handoff",
+    "intent": "Switching between screen-on and screen-off playback got more seamless."
+  },
+  {
+    "version": "1.28.0",
+    "date": "2026-07-11",
+    "title": "Share to FileTube",
+    "intent": "Share a YouTube link from any app (or an iOS Shortcut) straight into a FileTube download."
+  },
+  {
+    "version": "1.28.1",
+    "date": "2026-07-11",
+    "title": "Transparent icons",
+    "intent": "App icons lost their background boxes."
+  },
+  {
+    "version": "1.29.0",
+    "date": "2026-07-11",
+    "title": "Downloads you can trust",
+    "intent": "A deep reliability pass: failed downloads retry sensibly, errors are honest, and nothing silently stalls."
+  },
+  {
+    "version": "1.30.0",
+    "date": "2026-07-11",
+    "title": "Faster with a big library",
+    "intent": "Pages load fast even with a large library, plus assorted polish."
+  },
+  {
+    "version": "1.31.0",
+    "date": "2026-07-11",
+    "title": "Download hardening",
+    "intent": "More edge cases handled in the download pipeline."
+  },
+  {
+    "version": "1.32.0",
+    "date": "2026-07-12",
+    "title": "Liked videos and a custom logo",
+    "intent": "A Liked view for your favorites, upload your own logo, and download history you can actually diagnose."
+  },
+  {
+    "version": "1.33.0",
+    "date": "2026-07-12",
+    "title": "Sort by release date, Share button",
+    "intent": "Videos sort by when they were actually released, a Share button arrives, emoji in titles render properly, and deletions are safer."
+  },
+  {
+    "version": "1.33.1",
+    "date": "2026-07-12",
+    "title": "Liked, everywhere",
+    "intent": "The Liked entry appears across the app, and the logo adapts to light and dark."
+  },
+  {
+    "version": "1.34.0",
+    "date": "2026-07-12",
+    "title": "The player quality wave",
+    "intent": "Shorts stop stretching the page, desktop captions sync, chapters appear, drag-to-scrub arrives, and stuck downloads get unstuck."
+  },
+  {
+    "version": "1.34.1",
+    "date": "2026-07-12",
+    "title": "Roomier mobile controls",
+    "intent": "A two-row mobile control bar and a chapters menu you can dismiss."
+  },
+  {
+    "version": "1.34.2",
+    "date": "2026-07-12",
+    "title": "Fullscreen on mobile, our way",
+    "intent": "A proper fullscreen for mobile video that keeps FileTube's own controls on screen."
+  },
+  {
+    "version": "1.34.3",
+    "date": "2026-07-12",
+    "title": "Menu dismissal, actually fixed",
+    "intent": "Chased the real cause of menus refusing to close, and hardened mobile fullscreen."
+  },
+  {
+    "version": "1.34.4",
+    "date": "2026-07-12",
+    "title": "Edge-to-edge fullscreen",
+    "intent": "Mobile fullscreen covers everything it should, respecting the iPhone notch."
+  },
+  {
+    "version": "1.34.5",
+    "date": "2026-07-12",
+    "title": "Rotate into our fullscreen",
+    "intent": "Rotating your phone lands in FileTube's fullscreen instead of Apple's."
+  },
+  {
+    "version": "1.34.6",
+    "date": "2026-07-12",
+    "title": "Expanded audio polish",
+    "intent": "The full-screen audio view got its finishing touches."
+  },
+  {
+    "version": "1.35.0",
+    "date": "2026-07-12",
+    "title": "Background audio, dependable",
+    "intent": "Screen-off listening became deterministic instead of hit-or-miss."
+  },
+  {
+    "version": "1.36.0",
+    "date": "2026-07-12",
+    "title": "Subscriptions all get their turn",
+    "intent": "One slow channel can no longer starve the rest; each gets a fair check with honest status."
+  },
+  {
+    "version": "1.36.1",
+    "date": "2026-07-12",
+    "title": "Shorts stay excluded",
+    "intent": "Channels that hide their Shorts markers can't sneak Shorts into your downloads."
+  },
+  {
+    "version": "1.36.2",
+    "date": "2026-07-12",
+    "title": "Liked navigation + honest deletes",
+    "intent": "Previous/Next inside Liked, lock-screen controls re-arm after app switching, and deletes are authoritative."
+  },
+  {
+    "version": "1.37.0",
+    "date": "2026-07-13",
+    "title": "Books arrive",
+    "intent": "A full EPUB and PDF library with an in-app reader, reading progress, and shelves."
+  },
+  {
+    "version": "1.37.1",
+    "date": "2026-07-13",
+    "title": "EPUBs open reliably",
+    "intent": "The reader opens every EPUB it should, and its styles survive in-app navigation."
+  },
+  {
+    "version": "1.37.2",
+    "date": "2026-07-13",
+    "title": "The reader fits your device",
+    "intent": "Page layout measures your screen and adapts, including two-page spreads where they fit."
+  },
+  {
+    "version": "1.37.3",
+    "date": "2026-07-13",
+    "title": "Crisper book pages",
+    "intent": "Pagination sharpened with precise sizing and a repaint fix."
+  },
+  {
+    "version": "1.37.4",
+    "date": "2026-07-13",
+    "title": "Continue-reading behaves",
+    "intent": "The continue-reading row no longer widens the page."
+  },
+  {
+    "version": "1.37.5",
+    "date": "2026-07-13",
+    "title": "Deletes stick, skips persist",
+    "intent": "Deleted items stay deleted, and per-video Skip is remembered permanently."
+  },
+  {
+    "version": "1.38.0",
+    "date": "2026-07-13",
+    "title": "Listen from Here",
+    "intent": "Your books can read themselves aloud from wherever you are on the page."
+  },
+  {
+    "version": "1.38.1",
+    "date": "2026-07-13",
+    "title": "Narration out of the box",
+    "intent": "Text-to-speech ships built in - no setup."
+  },
+  {
+    "version": "1.38.2",
+    "date": "2026-07-13",
+    "title": "Narration starts on iPhone",
+    "intent": "Worked around iOS autoplay rules so Listen from Here starts when you ask."
+  },
+  {
+    "version": "1.38.3",
+    "date": "2026-07-13",
+    "title": "Narration in the player",
+    "intent": "Listen from Here plays through the real player with all its controls."
+  },
+  {
+    "version": "1.38.4",
+    "date": "2026-07-13",
+    "title": "Tap-to-play fallback",
+    "intent": "When iOS refuses to auto-start narration, a reliable tap gets it going."
+  },
+  {
+    "version": "1.39.0",
+    "date": "2026-07-13",
+    "title": "Narration now-playing bar",
+    "intent": "Book narration gets its own now-playing bar, chapter navigation, and lock-screen controls."
+  },
+  {
+    "version": "1.39.1",
+    "date": "2026-07-13",
+    "title": "Narration bar on phones",
+    "intent": "The narration bar got its mobile fit-and-finish."
+  },
+  {
+    "version": "1.39.2",
+    "date": "2026-07-13",
+    "title": "Narration bar details",
+    "intent": "Icons, a progress bar, and sensible ordering."
+  },
+  {
+    "version": "1.39.3",
+    "date": "2026-07-13",
+    "title": "Reading progress stays visible",
+    "intent": "The reading percentage no longer hides behind the narration bar."
+  },
+  {
+    "version": "1.39.4",
+    "date": "2026-07-13",
+    "title": "Aligned chapter icons",
+    "intent": "Chapter icons line up with the control bar."
+  },
+  {
+    "version": "1.39.5",
+    "date": "2026-07-13",
+    "title": "A centered mute slash",
+    "intent": "The muted-volume icon's slash sits where it should."
+  },
+  {
+    "version": "1.40.0",
+    "date": "2026-07-14",
+    "title": "Like from the card",
+    "intent": "Like videos right from their cards, and Next/Previous understand the list you came from."
+  },
+  {
+    "version": "1.40.1",
+    "date": "2026-07-14",
+    "title": "Portrait cards sized right",
+    "intent": "Vertical videos stopped rendering oversized cards."
+  },
+  {
+    "version": "1.41.0",
+    "date": "2026-07-14",
+    "title": "About page and stats",
+    "intent": "An About section with version info, a books inventory, and one consistent sort control."
+  },
+  {
+    "version": "1.41.1",
+    "date": "2026-07-14",
+    "title": "Subtitles where they belong",
+    "intent": "Subtitles render bottom-center like every other player."
+  },
+  {
+    "version": "1.41.2",
+    "date": "2026-07-14",
+    "title": "One filter row",
+    "intent": "A custom sort dropdown makes the filter row uniform everywhere."
+  },
+  {
+    "version": "1.41.3",
+    "date": "2026-07-14",
+    "title": "Deleted means deleted",
+    "intent": "Deleted videos can no longer resurrect after a rescan."
+  },
+  {
+    "version": "1.41.4",
+    "date": "2026-07-14",
+    "title": "Hidden folders stay hidden",
+    "intent": "Hidden folders no longer peek through on the watch page."
+  },
+  {
+    "version": "1.41.5",
+    "date": "2026-07-14",
+    "title": "Imported videos get their channel",
+    "intent": "Videos imported from other tools are matched to their real channel - name, avatar, and Subscribe button."
+  },
+  {
+    "version": "1.41.6",
+    "date": "2026-07-14",
+    "title": "Imports move home",
+    "intent": "Those matched imports also relocate into their channel's folder."
+  },
+  {
+    "version": "1.41.7",
+    "date": "2026-07-14",
+    "title": "Preview changes first",
+    "intent": "See exactly what a cleanup will do before it does it, with checksum-verified file moves."
+  },
+  {
+    "version": "1.41.8",
+    "date": "2026-07-15",
+    "title": "Preview modal fixed",
+    "intent": "The preview dialog appears reliably during in-app navigation."
+  },
+  {
+    "version": "1.41.9",
+    "date": "2026-07-15",
+    "title": "Resurrection bug, root-fixed",
+    "intent": "The real reason deleted downloads reappeared - found and fixed for good."
+  },
+  {
+    "version": "1.41.10",
+    "date": "2026-07-16",
+    "title": "A file-handle leak, plugged",
+    "intent": "Streaming videos no longer leaks file handles that blocked deletions."
+  },
+  {
+    "version": "1.41.11",
+    "date": "2026-07-16",
+    "title": "Chapters on mobile + shortcuts",
+    "intent": "Mobile chapter navigation, a duplicates report, and keyboard shortcuts."
+  },
+  {
+    "version": "1.41.12",
+    "date": "2026-07-16",
+    "title": "Chapter loop",
+    "intent": "Loop a single chapter over and over - great for practice and replays."
+  },
+  {
+    "version": "1.41.13",
+    "date": "2026-07-16",
+    "title": "Download from anywhere",
+    "intent": "One-off downloads now work for any site yt-dlp supports, not just YouTube."
+  },
+  {
+    "version": "1.41.14",
+    "date": "2026-07-16",
+    "title": "Tidy uploader folders",
+    "intent": "Universal downloads file themselves under their uploader, and Reddit links share cleanly."
+  },
+  {
+    "version": "1.41.15",
+    "date": "2026-07-16",
+    "title": "Facebook links work",
+    "intent": "Facebook share links resolve past the interstitial page."
+  },
+  {
+    "version": "1.41.16",
+    "date": "2026-07-16",
+    "title": "Long titles can't break saves",
+    "intent": "Extremely long video titles get capped instead of failing the download."
+  },
+  {
+    "version": "1.41.17",
+    "date": "2026-07-16",
+    "title": "No more logo flash",
+    "intent": "The header logo and theme stopped flashing on refresh."
+  },
+  {
+    "version": "1.41.18",
+    "date": "2026-07-16",
+    "title": "Logo flash, root-fixed",
+    "intent": "The header flash eliminated at the source."
+  },
+  {
+    "version": "1.41.19",
+    "date": "2026-07-16",
+    "title": "Foundation work",
+    "intent": "Internal working-method consolidation - the app itself is unchanged."
+  },
+  {
+    "version": "1.42.0",
+    "date": "2026-07-17",
+    "title": "A real database + backups",
+    "intent": "Your library metadata moved into a proper database, with instance backup and restore."
+  },
+  {
+    "version": "1.43.0",
+    "date": "2026-07-17",
+    "title": "Accounts and login",
+    "intent": "Multiple users with a login screen - everyone gets their own watch history and likes."
+  },
+  {
+    "version": "1.43.1",
+    "date": "2026-07-17",
+    "title": "Login polish and recovery",
+    "intent": "Admin account recovery, a cleaner login screen, large-upload fix, and mobile touch-ups."
+  },
+  {
+    "version": "1.44.0",
+    "date": "2026-07-18",
+    "title": "The Music section",
+    "intent": "Music becomes first-class: albums, artists, and a customizable bottom bar."
+  },
+  {
+    "version": "1.44.1",
+    "date": "2026-07-18",
+    "title": "Music hotfixes",
+    "intent": "The mini-player survives navigation, every album shows, and continue-listening plays the right song."
+  },
+  {
+    "version": "1.44.2",
+    "date": "2026-07-18",
+    "title": "Music feels like Spotify",
+    "intent": "Play docks the player, album headers collapse as you scroll, and the playing row highlights."
+  },
+  {
+    "version": "1.44.3",
+    "date": "2026-07-18",
+    "title": "Housekeeping",
+    "intent": "Sample-data cleanup, an immersive reader touch, and richer stats."
+  },
+  {
+    "version": "1.44.4",
+    "date": "2026-07-18",
+    "title": "More housekeeping",
+    "intent": "The last sample-data names cleaned up."
+  },
+  {
+    "version": "1.45.0",
+    "date": "2026-07-20",
+    "title": "Sticky filters + faster Home",
+    "intent": "The filter bar sticks while you scroll, Home loads incrementally, and music handles rotation."
+  },
+  {
+    "version": "1.45.1",
+    "date": "2026-07-20",
+    "title": "No more scroll jump",
+    "intent": "The sticky filter bar pins flush - the jarring jump is gone."
+  },
+  {
+    "version": "1.45.2",
+    "date": "2026-07-21",
+    "title": "Filter bar cleanup",
+    "intent": "Tidier filter bar; the logo takes you to the top of Home."
+  },
+  {
+    "version": "1.45.3",
+    "date": "2026-07-21",
+    "title": "Filter bar sizing",
+    "intent": "Equal desktop buttons and a mobile row that stopped mangling."
+  },
+  {
+    "version": "1.45.4",
+    "date": "2026-07-21",
+    "title": "Surface laptops are desktops",
+    "intent": "Touchscreen laptops get the desktop experience they deserve."
+  },
+  {
+    "version": "1.45.5",
+    "date": "2026-07-21",
+    "title": "The real Surface fix",
+    "intent": "Detecting desktop-class systems properly this time."
+  },
+  {
+    "version": "1.45.6",
+    "date": "2026-07-21",
+    "title": "Views that remember",
+    "intent": "Each page remembers its own sort and card/list view choice."
+  },
+  {
+    "version": "1.45.7",
+    "date": "2026-07-21",
+    "title": "Tamed rubber-banding",
+    "intent": "The iPhone top-of-page bounce reined in."
+  },
+  {
+    "version": "1.45.8",
+    "date": "2026-07-21",
+    "title": "Pull to refresh",
+    "intent": "Pull down to rescan your library - the natural gesture does the natural thing."
+  },
+  {
+    "version": "1.46.0",
+    "date": "2026-07-25",
+    "title": "FileTube on your Roku",
+    "intent": "A Roku channel, with compatibility renditions so everything plays on the TV."
+  },
+  {
+    "version": "1.46.1",
+    "date": "2026-07-25",
+    "title": "Roku thumbnail fix",
+    "intent": "Odd embedded thumbnails no longer break Roku playback."
+  },
+  {
+    "version": "1.47.0",
+    "date": "2026-07-25",
+    "title": "Roku playback wave",
+    "intent": "Queue, menus, chapters, filtering, and channels - the TV experience fills out."
+  },
+  {
+    "version": "1.47.1",
+    "date": "2026-07-25",
+    "title": "Roku remembers your spot",
+    "intent": "Watch progress syncs back from the TV, videos start faster, and the screen stays awake."
+  },
+  {
+    "version": "1.47.2",
+    "date": "2026-07-26",
+    "title": "Roku restart loop fixed",
+    "intent": "The 30-second restart loop on Roku - gone."
+  },
+  {
+    "version": "1.47.3",
+    "date": "2026-07-26",
+    "title": "Roku replay fix",
+    "intent": "Re-selecting the video you just watched works."
+  },
+  {
+    "version": "1.47.4",
+    "date": "2026-07-27",
+    "title": "UX hardening wave",
+    "intent": "A broad polish-and-fix pass across the app."
+  },
+  {
+    "version": "1.47.5",
+    "date": "2026-07-27",
+    "title": "On-device follow-ups",
+    "intent": "Fixes straight from real-device testing of the previous wave."
+  },
+  {
+    "version": "1.47.6",
+    "date": "2026-07-27",
+    "title": "Icon-only actions on phones",
+    "intent": "The watch page's action row slims to icons on small screens."
+  },
+  {
+    "version": "1.47.7",
+    "date": "2026-07-27",
+    "title": "Share icon visible",
+    "intent": "The Share icon had turned invisible - fixed."
+  },
+  {
+    "version": "1.47.8",
+    "date": "2026-07-27",
+    "title": "Keyboard shortcuts reference",
+    "intent": "Press ? to see every keyboard shortcut."
+  },
+  {
+    "version": "1.48.0",
+    "date": "2026-07-27",
+    "title": "Real view counts",
+    "intent": "Full descriptions, true YouTube view counts, and twenty related videos."
+  },
+  {
+    "version": "1.49.0",
+    "date": "2026-07-29",
+    "title": "Per-video reheat",
+    "intent": "A flame button refreshes a single video's metadata, with confirmed relocation."
+  },
+  {
+    "version": "1.50.0",
+    "date": "2026-07-29",
+    "title": "Watched filter + era player skins",
+    "intent": "Filter by watched/unwatched, and the player dresses to match your chosen era."
+  },
+  {
+    "version": "1.50.1",
+    "date": "2026-07-29",
+    "title": "On-device polish",
+    "intent": "Small refinements from device testing."
+  },
+  {
+    "version": "1.50.2",
+    "date": "2026-07-29",
+    "title": "Typography pass",
+    "intent": "Type sizes and weights aligned across the app."
+  },
+  {
+    "version": "1.50.3",
+    "date": "2026-07-29",
+    "title": "Speed picker + D shortcut",
+    "intent": "A proper playback-speed picker, and D toggles it from the keyboard."
+  },
+  {
+    "version": "1.50.4",
+    "date": "2026-07-29",
+    "title": "Re-pull row fix",
+    "intent": "The metadata re-pull row renders correctly again."
+  },
+  {
+    "version": "1.50.5",
+    "date": "2026-07-29",
+    "title": "YouTube-ish mobile controls",
+    "intent": "Mobile controls edge closer to the YouTube feel you know."
+  },
+  {
+    "version": "1.51.0",
+    "date": "2026-07-29",
+    "title": "The notification bell",
+    "intent": "A bell in the header tells you when new subscription videos arrive."
+  },
+  {
+    "version": "1.52.0",
+    "date": "2026-07-29",
+    "title": "Instant watch",
+    "intent": "Videos start the moment you tap - no spinner limbo."
+  },
+  {
+    "version": "1.53.0",
+    "date": "2026-07-29",
+    "title": "Fix a video's channel by hand",
+    "intent": "Manually attribute any video to the right channel when automation can't tell."
+  },
+  {
+    "version": "1.54.0",
+    "date": "2026-07-30",
+    "title": "Real subscriber counts",
+    "intent": "Channels show their true subscriber counts, and the Subscribe/Pin buttons stopped flashing on load."
+  },
+  {
+    "version": "1.55.0",
+    "date": "2026-07-30",
+    "title": "One design language",
+    "intent": "Activity messages and visual details unified across the app."
+  },
+  {
+    "version": "1.56.0",
+    "date": "2026-07-30",
+    "title": "Subscriber counts, refreshed",
+    "intent": "One action updates subscriber counts across all your channels."
+  },
+  {
+    "version": "1.57.0",
+    "date": "2026-07-30",
+    "title": "Safety hardening",
+    "intent": "Internal safety guards for maintenance operations - invisible when everything's normal, protective when it isn't."
+  },
+  {
+    "version": "1.58.0",
+    "date": "2026-07-31",
+    "title": "A single design system",
+    "intent": "Colors and styles consolidated into one token system - the foundation for consistent theming."
+  },
+  {
+    "version": "1.59.0",
+    "date": "2026-07-31",
+    "title": "Era consistency",
+    "intent": "Each era theme became internally consistent down to the details."
+  },
+  {
+    "version": "1.60.0",
+    "date": "2026-08-01",
+    "title": "Design cleanup, nearly done",
+    "intent": "The long march to a fully token-driven design almost complete."
+  },
+  {
+    "version": "1.60.1",
+    "date": "2026-08-01",
+    "title": "Reading theme fix",
+    "intent": "The reader's theme toggle works both directions again."
+  },
+  {
+    "version": "1.61.0",
+    "date": "2026-08-01",
+    "title": "Design cleanup complete",
+    "intent": "Every color in the app now flows from the design system - zero stragglers."
+  },
+  {
+    "version": "1.62.0",
+    "date": "2026-08-01",
+    "title": "The design system defends itself",
+    "intent": "Automated checks now prevent any future change from breaking design consistency."
+  },
+  {
+    "version": "1.63.0",
+    "date": "2026-08-01",
+    "title": "The queue",
+    "intent": "Queue up videos to watch next, YouTube-style."
+  },
+  {
+    "version": "1.63.1",
+    "date": "2026-08-01",
+    "title": "Centered rows + optional stars",
+    "intent": "List rows center properly and star ratings became optional."
+  },
+  {
+    "version": "1.64.0",
+    "date": "2026-08-01",
+    "title": "Watch history",
+    "intent": "A real history page: everything you've watched, in order."
+  },
+  {
+    "version": "1.65.0",
+    "date": "2026-08-02",
+    "title": "The Trash",
+    "intent": "Deleted items go to a Trash first - restore anything you didn't mean to delete."
+  },
+  {
+    "version": "1.66.0",
+    "date": "2026-08-02",
+    "title": "Push notifications",
+    "intent": "Get a notification on your phone when new videos arrive - even with FileTube closed."
+  },
+  {
+    "version": "1.67.0",
+    "date": "2026-08-02",
+    "title": "Card corner customization",
+    "intent": "Choose how rounded your video cards are."
+  },
+  {
+    "version": "1.67.1",
+    "date": "2026-08-02",
+    "title": "Push button visibility fix",
+    "intent": "The enable-notifications button shows when it should."
+  },
+  {
+    "version": "1.67.2",
+    "date": "2026-08-02",
+    "title": "Push diagnostics",
+    "intent": "A visible way to check why notifications might not be working."
+  },
+  {
+    "version": "1.67.3",
+    "date": "2026-08-02",
+    "title": "Push plumbing rename",
+    "intent": "Internal notification plumbing renamed to avoid conflicts."
+  },
+  {
+    "version": "1.67.4",
+    "date": "2026-08-02",
+    "title": "Notifications open the video",
+    "intent": "Tapping a notification takes you straight to the new video."
+  },
+  {
+    "version": "1.67.5",
+    "date": "2026-08-02",
+    "title": "Fullscreen exit restores scroll",
+    "intent": "Leaving fullscreen puts the page back exactly where you were."
+  },
+  {
+    "version": "1.68.0",
+    "date": "2026-08-02",
+    "title": "Notification hygiene",
+    "intent": "Notifications keep themselves tidy, and fullscreen scroll handling extended to more paths."
+  },
+  {
+    "version": "1.68.1",
+    "date": "2026-08-02",
+    "title": "Rotation stops cropping",
+    "intent": "Rotating the phone no longer crops the video, and stale notifications resolve."
+  },
+  {
+    "version": "1.68.2",
+    "date": "2026-08-02",
+    "title": "Rotate-and-back, actually fixed",
+    "intent": "The layout shift after rotating and rotating back - truly gone."
+  },
+  {
+    "version": "1.68.3",
+    "date": "2026-08-02",
+    "title": "Design convergence",
+    "intent": "The last visual inconsistencies between sections ironed out."
+  },
+  {
+    "version": "1.69.0",
+    "date": "2026-08-02",
+    "title": "Podcasts",
+    "intent": "A Podcasts section with private-RSS support: subscribe, episodes arrive, listen anywhere."
+  },
+  {
+    "version": "1.69.1",
+    "date": "2026-08-02",
+    "title": "Podcasts zero-state",
+    "intent": "An inviting front door when you haven't added any podcasts yet."
+  },
+  {
+    "version": "1.70.0",
+    "date": "2026-08-03",
+    "title": "Safer episode deletes",
+    "intent": "Deleted episodes are recoverable, and giant podcast covers no longer bloat the page."
+  },
+  {
+    "version": "1.71.0",
+    "date": "2026-08-03",
+    "title": "Podcasts everywhere",
+    "intent": "Podcasts join search, continue-listening, and every surface they belong on."
+  },
+  {
+    "version": "1.71.1",
+    "date": "2026-08-03",
+    "title": "Episode row icons",
+    "intent": "Episode rows got their proper icons."
+  },
+  {
+    "version": "1.72.0",
+    "date": "2026-08-03",
+    "title": "First-class everything",
+    "intent": "Books, music, and podcasts reach full parity: mixed Liked, Continue rows, one queue across kinds."
+  },
+  {
+    "version": "1.73.0",
+    "date": "2026-08-03",
+    "title": "Audio experience converges",
+    "intent": "Music, podcasts, and audiobooks share one polished audio player; Downloads becomes a real section."
+  },
+  {
+    "version": "1.73.1",
+    "date": "2026-08-03",
+    "title": "Duplicate downloads die",
+    "intent": "The same item can no longer appear twice across watch, sheets, and pickers."
+  },
+  {
+    "version": "1.73.2",
+    "date": "2026-08-03",
+    "title": "Books icon + housekeeping",
+    "intent": "A proper Books icon and documentation tidy-up."
+  },
+  {
+    "version": "1.74.0",
+    "date": "2026-08-03",
+    "title": "Era scrollbars",
+    "intent": "Even the scrollbars match your chosen era, in all four skins."
+  },
+  {
+    "version": "1.75.0",
+    "date": "2026-08-04",
+    "title": "Liked, consolidated",
+    "intent": "One Liked home for everything, and the bottom bar is fully yours to arrange."
+  },
+  {
+    "version": "1.76.0",
+    "date": "2026-08-04",
+    "title": "Drag to reorder, everywhere",
+    "intent": "One consistent drag gesture reorders pins, queue items, and bottom-bar entries - on desktop and phone."
+  },
+  {
+    "version": "1.77.0",
+    "date": "2026-08-04",
+    "title": "Pick your folder icons",
+    "intent": "Choose an icon for any folder, rendered beautifully in every era skin."
+  },
+  {
+    "version": "1.78.0",
+    "date": "2026-08-04",
+    "title": "Continue on another device",
+    "intent": "Start on your phone, pick up on the PC - a handoff card offers exactly where you left off."
+  },
+  {
+    "version": "1.78.1",
+    "date": "2026-08-05",
+    "title": "Test-suite revival",
+    "intent": "Internal test infrastructure repair - the app itself unchanged."
+  },
+  {
+    "version": "1.79.0",
+    "date": "2026-08-05",
+    "title": "The home feed",
+    "intent": "Home became a YouTube-style feed of your own library: rows, sections, and See-all links."
+  },
+  {
+    "version": "1.79.1",
+    "date": "2026-08-05",
+    "title": "See-all links fixed",
+    "intent": "Every See-all link lands somewhere that works."
+  },
+  {
+    "version": "1.80.0",
+    "date": "2026-08-05",
+    "title": "Kid-safe accounts",
+    "intent": "Per-user library access control: each account sees only the folders you allow."
+  },
+  {
+    "version": "1.81.0",
+    "date": "2026-08-05",
+    "title": "Who can change what",
+    "intent": "Restricted accounts can watch but not delete, move, or modify - with honest messaging when something's off-limits."
+  },
+  {
+    "version": "1.82.0",
+    "date": "2026-08-05",
+    "title": "Avatars and the account menu",
+    "intent": "Users get profile pictures and a proper account menu."
+  },
+  {
+    "version": "1.83.0",
+    "date": "2026-08-05",
+    "title": "Crop your avatar",
+    "intent": "Pan and zoom your photo into the perfect circle."
+  },
+  {
+    "version": "1.84.0",
+    "date": "2026-08-05",
+    "title": "Modern YouTube Mode",
+    "intent": "Flip a switch and FileTube looks like today's YouTube: big thumbnails, filter chips, a modern grid."
+  },
+  {
+    "version": "1.85.0",
+    "date": "2026-08-05",
+    "title": "Modern mode polish",
+    "intent": "Mobile search, the You tab, and avatar/corner refinements."
+  },
+  {
+    "version": "1.85.1",
+    "date": "2026-08-06",
+    "title": "Mobile hotfix",
+    "intent": "Search and the account menu had died on phones - revived, with header and Download button fixes."
+  },
+  {
+    "version": "1.85.2",
+    "date": "2026-08-06",
+    "title": "Download button root fix",
+    "intent": "The one-off Download button fixed at its root, and the modern home decluttered."
+  },
+  {
+    "version": "1.86.0",
+    "date": "2026-08-06",
+    "title": "Sort the whole library",
+    "intent": "A sort menu on the modern home covering your entire library, remembered per device."
+  },
+  {
+    "version": "1.86.1",
+    "date": "2026-08-06",
+    "title": "Gesture guard",
+    "intent": "Pull-to-refresh no longer fires during sideways swipes."
+  },
+  {
+    "version": "1.86.2",
+    "date": "2026-08-06",
+    "title": "Feed loads as you scroll",
+    "intent": "The modern feed lazy-loads, Home scrolls to top on tap, and card delete is back."
+  },
+  {
+    "version": "1.86.3",
+    "date": "2026-08-06",
+    "title": "Uniform header icons",
+    "intent": "Every header icon at the same size."
+  },
+  {
+    "version": "1.86.4",
+    "date": "2026-08-06",
+    "title": "Search closes itself",
+    "intent": "Submitting a mobile search closes the search bar."
+  },
+  {
+    "version": "1.87.0",
+    "date": "2026-08-06",
+    "title": "Instant header icons",
+    "intent": "Header icons paint immediately on load - no pop-in."
+  },
+  {
+    "version": "1.87.1",
+    "date": "2026-08-06",
+    "title": "Cold-start pop-in, root-fixed",
+    "intent": "The real fix for icons popping in on a cold start."
+  },
+  {
+    "version": "1.88.0",
+    "date": "2026-08-06",
+    "title": "Next respects your filter",
+    "intent": "Previous/Next honor the home filter pill you're browsing under."
+  },
+  {
+    "version": "1.89.0",
+    "date": "2026-08-07",
+    "title": "The FileTube banner",
+    "intent": "A proper built-in banner logo as the default."
+  },
+  {
+    "version": "1.90.0",
+    "date": "2026-08-07",
+    "title": "Version in the menu",
+    "intent": "See which build you're on at a glance, plus all eight speeds in the mobile speed sheet."
+  },
+  {
+    "version": "1.91.0",
+    "date": "2026-08-07",
+    "title": "Dark-mode app icon",
+    "intent": "The home-screen icon respects dark mode."
+  },
+  {
+    "version": "1.91.1",
+    "date": "2026-08-07",
+    "title": "Version footer alignment",
+    "intent": "The version line sits properly in the menu."
+  },
+  {
+    "version": "1.91.2",
+    "date": "2026-08-07",
+    "title": "Narrow mobile account card",
+    "intent": "The mobile account menu became a tidy right-anchored card."
+  },
+  {
+    "version": "1.92.0",
+    "date": "2026-08-09",
+    "title": "Scrub previews",
+    "intent": "See preview thumbnails as you scrub the timeline, and cards preview on hover."
+  },
+  {
+    "version": "1.93.0",
+    "date": "2026-08-10",
+    "title": "Fast preview generation",
+    "intent": "Preview strips generate quickly using smart seeking."
+  },
+  {
+    "version": "1.93.1",
+    "date": "2026-08-10",
+    "title": "Preview memory fix",
+    "intent": "Preview generation stopped eating memory on the server."
+  },
+  {
+    "version": "1.93.2",
+    "date": "2026-08-10",
+    "title": "Previews converge",
+    "intent": "Previews are stored smartly and serve reliably."
+  },
+  {
+    "version": "1.93.3",
+    "date": "2026-08-10",
+    "title": "Preview polish",
+    "intent": "A hover delay, crossfade, and sharper tiles."
+  },
+  {
+    "version": "1.94.0",
+    "date": "2026-08-10",
+    "title": "Animated hover previews",
+    "intent": "Hover a card and a moving clip plays - just like YouTube."
+  },
+  {
+    "version": "1.94.1",
+    "date": "2026-08-10",
+    "title": "Newest previews first",
+    "intent": "The scan generates previews for your newest videos first."
+  },
+  {
+    "version": "1.95.0",
+    "date": "2026-08-10",
+    "title": "Bigger touch targets",
+    "intent": "Everything on mobile is easier to hit, without changing the look."
+  },
+  {
+    "version": "1.96.0",
+    "date": "2026-08-11",
+    "title": "The watch action bar",
+    "intent": "Tighter buttons under the video, revealed smoothly without layout jumps."
+  },
+  {
+    "version": "1.97.0",
+    "date": "2026-08-11",
+    "title": "Hide from feed",
+    "intent": "Hide any video from your personal feed - it stays in the library for everyone else."
+  },
+  {
+    "version": "1.97.1",
+    "date": "2026-08-11",
+    "title": "Hidden, managed",
+    "intent": "Your hidden list lives in settings where you can unhide things."
+  },
+  {
+    "version": "1.98.0",
+    "date": "2026-08-11",
+    "title": "No more loading flicker",
+    "intent": "Library views load with smooth placeholder shimmer instead of popping."
+  },
+  {
+    "version": "1.99.0",
+    "date": "2026-08-11",
+    "title": "Shimmer everywhere",
+    "intent": "The smooth-loading treatment extended across more of the app."
+  },
+  {
+    "version": "1.100.0",
+    "date": "2026-08-11",
+    "title": "Toolbar complete at first paint",
+    "intent": "The classic toolbar arrives fully formed - nothing appears late."
+  },
+  {
+    "version": "1.101.0",
+    "date": "2026-08-11",
+    "title": "Header loads smoothly",
+    "intent": "The header's right side joins the smooth-loading treatment."
+  },
+  {
+    "version": "1.102.0",
+    "date": "2026-08-11",
+    "title": "Six more surfaces smoothed",
+    "intent": "The loading-flicker sweep reaches six more corners of the app."
+  },
+  {
+    "version": "1.103.0",
+    "date": "2026-08-11",
+    "title": "Music page overhaul",
+    "intent": "An artist mosaic, per-tab sorting, and rock-solid return from the mini-player."
+  },
+  {
+    "version": "1.104.0",
+    "date": "2026-08-11",
+    "title": "Music now-playing view",
+    "intent": "A full now-playing screen for music: artwork, metadata, and the up-next queue."
+  },
+  {
+    "version": "1.105.0",
+    "date": "2026-08-11",
+    "title": "Podcast now-playing view",
+    "intent": "Podcasts get the same treatment: show notes, metadata, and up-next."
+  },
+  {
+    "version": "1.106.0",
+    "date": "2026-08-12",
+    "title": "Tap to expand",
+    "intent": "Tap the mini-player to expand into now-playing, and iPad screens respect the notch."
+  },
+  {
+    "version": "1.107.0",
+    "date": "2026-08-12",
+    "title": "A sharper typeface",
+    "intent": "The modern theme moves to a crisper font."
+  },
+  {
+    "version": "1.108.0",
+    "date": "2026-08-12",
+    "title": "Watch page touches",
+    "intent": "A heart for Like, an infinity badge for chapter loop, and modals scroll properly."
+  },
+  {
+    "version": "1.109.0",
+    "date": "2026-08-12",
+    "title": "Chapter follow-along",
+    "intent": "The seek bar shows chapter segments, and the current chapter highlights as you watch."
+  },
+  {
+    "version": "1.109.1",
+    "date": "2026-08-12",
+    "title": "Chapter chip placement",
+    "intent": "The chapter name flashes on change instead of sitting over the video."
+  },
+  {
+    "version": "1.110.0",
+    "date": "2026-08-12",
+    "title": "Share with timestamps",
+    "intent": "Share links to an exact moment or a specific chapter."
+  },
+  {
+    "version": "1.111.0",
+    "date": "2026-08-13",
+    "title": "Videos start faster",
+    "intent": "New downloads are optimized so streaming starts immediately."
+  },
+  {
+    "version": "1.112.0",
+    "date": "2026-08-13",
+    "title": "The settings cog",
+    "intent": "Player settings gather under one cog, and the current chapter name stays visible."
+  },
+  {
+    "version": "1.113.0",
+    "date": "2026-08-13",
+    "title": "Channel avatars on cards",
+    "intent": "Every card surface shows its channel's avatar."
+  },
+  {
+    "version": "1.114.0",
+    "date": "2026-08-13",
+    "title": "Clean channel names",
+    "intent": "@handles resolve to real channel names."
+  },
+  {
+    "version": "1.115.0",
+    "date": "2026-08-13",
+    "title": "Refresh channel names",
+    "intent": "One action backfills proper names across your whole library."
+  },
+  {
+    "version": "1.116.0",
+    "date": "2026-08-13",
+    "title": "Local channels heal",
+    "intent": "Music and local content get consistent channel identity without touching the network."
+  },
+  {
+    "version": "1.117.0",
+    "date": "2026-08-13",
+    "title": "One sidebar everywhere",
+    "intent": "The left sidebar is identical on every page."
+  },
+  {
+    "version": "1.118.0",
+    "date": "2026-08-14",
+    "title": "Rotate into FileTube's fullscreen",
+    "intent": "Rotating your phone lands in FileTube's fullscreen with its own controls - not Apple's takeover."
+  },
+  {
+    "version": "1.119.0",
+    "date": "2026-08-14",
+    "title": "Fullscreen polish",
+    "intent": "Controls auto-hide while you watch, and iPhone landscape stops bleeding page edges."
+  },
+  {
+    "version": "1.120.0",
+    "date": "2026-08-14",
+    "title": "Audio joins fullscreen",
+    "intent": "Audio gets the complete fullscreen treatment - rotate or tap, controls auto-hide, the works."
+  },
+  {
+    "version": "1.121.0",
+    "date": "2026-08-14",
+    "title": "Instant background handoff",
+    "intent": "Screen-off listening hands over instantly, and the installed app gets proper identity."
+  },
+  {
+    "version": "1.122.0",
+    "date": "2026-08-14",
+    "title": "Channel names, everywhere",
+    "intent": "The last folder-named surfaces show real channel names."
+  },
+  {
+    "version": "1.123.0",
+    "date": "2026-08-14",
+    "title": "Security hardening",
+    "intent": "A same-day security pass: credentials rotated, a permissions gap closed, caching and publishing hardened."
+  },
+  {
+    "version": "1.124.0",
+    "date": "2026-08-15",
+    "title": "Reliability + desktop features",
+    "intent": "A batch of reliability fixes plus desktop player conveniences."
+  },
+  {
+    "version": "1.124.1",
+    "date": "2026-08-15",
+    "title": "Desktop fullscreen auto-hide",
+    "intent": "Desktop fullscreen now auto-hides its controls like it always should have."
+  },
+  {
+    "version": "1.125.0",
+    "date": "2026-08-15",
+    "title": "Documentation reset",
+    "intent": "The project's internal documentation rebuilt - the app itself unchanged."
+  },
+  {
+    "version": "1.126.0",
+    "date": "2026-08-15",
+    "title": "Rename channel folders",
+    "intent": "Give any channel folder a display name of your choosing."
+  },
+  {
+    "version": "1.127.0",
+    "date": "2026-08-15",
+    "title": "Permissions tightened",
+    "intent": "Restricted accounts lose two more edge-case paths around their limits."
+  },
+  {
+    "version": "1.128.0",
+    "date": "2026-08-15",
+    "title": "Restricted accounts see less",
+    "intent": "Metadata surfaces (titles, counts) respect account restrictions everywhere."
+  },
+  {
+    "version": "1.129.0",
+    "date": "2026-08-15",
+    "title": "Docs truth sweep",
+    "intent": "Internal documentation verified against reality - the app itself unchanged."
+  },
+  {
+    "version": "1.130.0",
+    "date": "2026-08-15",
+    "title": "Fullscreen survives the playlist",
+    "intent": "Fullscreen and expanded-audio carry across autoplay and track changes instead of dumping you back."
+  },
+  {
+    "version": "1.131.0",
+    "date": "2026-08-16",
+    "title": "CarPlay diagnostics",
+    "intent": "Groundwork to understand why CarPlay volume changes pause playback - evidence gathering first."
+  },
+  {
+    "version": "1.132.0",
+    "date": "2026-08-16",
+    "title": "Resume counts down",
+    "intent": "The resume prompt auto-picks after a five-second countdown; configure what it picks."
+  },
+  {
+    "version": "1.133.0",
+    "date": "2026-08-16",
+    "title": "Chapter names wrap right",
+    "intent": "Long chapter names stop breaking the layout, and video always shows Previous/Next."
+  },
+  {
+    "version": "1.134.0",
+    "date": "2026-08-16",
+    "title": "Tap to pause",
+    "intent": "Tap anywhere on the video to play or pause - with scroll detection so a swipe never pauses."
+  },
+  {
+    "version": "1.135.0",
+    "date": "2026-08-16",
+    "title": "Architecture diagrams",
+    "intent": "Internal system diagrams that verify themselves - the app itself unchanged."
+  },
+  {
+    "version": "1.136.0",
+    "date": "2026-08-16",
+    "title": "Audio session experiment",
+    "intent": "A playback experiment for smoother background audio behavior."
+  },
+  {
+    "version": "1.136.1",
+    "date": "2026-08-16",
+    "title": "Experiment dialed back",
+    "intent": "The audio experiment made things worse on-device, so it's off by default - flip it on in settings if curious."
+  },
+  {
+    "version": "1.137.0",
+    "date": "2026-08-16",
+    "title": "iPhone lore, recorded",
+    "intent": "Everything learned about iPhone web-app quirks, written down for good - the app itself unchanged."
+  },
+  {
+    "version": "1.138.0",
+    "date": "2026-08-16",
+    "title": "Desktop fullscreen survives Next",
+    "intent": "On desktop, fullscreen persists across autoplay and Next instead of kicking you out."
+  },
+  {
+    "version": "1.139.0",
+    "date": "2026-08-16",
+    "title": "Playlists loop back",
+    "intent": "With autoplay on, finishing the last video wraps back to the first."
+  },
+  {
+    "version": "1.140.0",
+    "date": "2026-08-17",
+    "title": "Skip taps chain",
+    "intent": "Rapid tap-skips keep skipping - the third tap no longer pauses mid-flow."
+  },
+  {
+    "version": "1.141.0",
+    "date": "2026-08-17",
+    "title": "Real fullscreen for audio on desktop",
+    "intent": "Fullscreening audio on desktop now truly fullscreens - expanded artwork view and all, one press in, one Esc out."
+  },
+  {
+    "version": "1.141.1",
+    "date": "2026-08-17",
+    "title": "Artwork strip fix",
+    "intent": "A duplicate sliver of album art at the top of fullscreen audio - gone."
+  },
+  {
+    "version": "1.142.0",
+    "date": "2026-08-17",
+    "title": "Avatars for every channel",
+    "intent": "Channels you've never subscribed to get their avatars too - including one-off downloads, healed automatically."
+  },
+  {
+    "version": "1.143.0",
+    "date": "2026-08-17",
+    "title": "The feed remembers your filter",
+    "intent": "Pick Audio and it's still Audio after a refresh or restart - pick All to reset."
+  }
+]

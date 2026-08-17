@@ -10418,13 +10418,21 @@ html[data-modern="on"] .video-uploader {
    menu. LEFT-aligned at the SAME horizontal inset as the rows (--space-6), so it
    reads as a quiet footer that belongs to the left-aligned list rather than a
    centered stamp that breaks the column's vertical rhythm. */
+/* v1.144: the version row became an <a> (opens the build's release notes on
+   GitHub) - keep the exact subtle footer look (block layout, muted color, no
+   link styling) with a quiet underline on hover as the only affordance. */
 .account-menu-version {
+  display: block;
+  text-decoration: none;
   padding: var(--space-2) var(--space-6);
   color: var(--text-secondary);
   font-size: var(--fs-sm);
   text-align: left;
   font-variant-numeric: tabular-nums;
   user-select: text;
+}
+.account-menu-version:hover {
+  text-decoration: underline;
 }
 /* v1.82: the Settings->Account profile-photo controls. */
 .account-photo-actions {
