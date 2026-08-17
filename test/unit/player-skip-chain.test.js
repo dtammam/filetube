@@ -103,6 +103,12 @@ test('gate W1 + W-A: the WRITER CENSUS - exactly three writers, spelling-toleran
   assert.strictEqual(countWriters(PLAYER_JS), 3,
     'var init + the ONE skip-branch seed + the W2 teardown reset');
   assert.match(PLAYER_JS, /var skipChainUntil\s*=\s*0;/, 'the module init');
+  // Round-2 SUGGESTION: the walker audits the FIRST header match, so the
+  // header must be provably UNIQUE - a duplicated dispatch (decoy or a
+  // future second gesture surface) would otherwise leave the live copy
+  // unaudited. A second header must be a conscious binding decision here.
+  assert.strictEqual((PLAYER_JS.match(new RegExp(SKIP_DISPATCH_HEADER.source, 'g')) || []).length, 1,
+    'the walker audits the ONE dispatch - a second header is an unaudited copy');
   const b = extractIfElseBranches(PLAYER_JS, SKIP_DISPATCH_HEADER);
   assert.strictEqual(countWriters(b.ifBody), 1, 'exactly ONE writer inside the skip branch');
   assert.match(b.ifBody, /skipChainUntil\s*=\s*now\s*\+\s*SKIP_CHAIN_MS;/, 'and it is the seed');
