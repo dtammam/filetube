@@ -53,6 +53,34 @@ test('key consistency: exactly the two wired sites use the storage key - a third
   assert.strictEqual(uses, 2, 'one read (boot) + one write (click) - a drifted key name silently forks the memory');
 });
 
+test('gate W1: the restored chip PAINTS active - the mount site feeds the live state into the row builder, and the builder derives .active/aria-selected from it', () => {
+  // The seat's surviving mutant: hardcoding buildModernChipRowHtml('all') at
+  // the mount site kept the whole suite green while the restored chip
+  // filtered correctly but PAINTED All as active (the v1.138 enabling-wire
+  // class - state-restore and state-write were bound, the state->paint
+  // consumer was not).
+  assert.match(MAIN_SRC, /buildModernChipRowHtml\(activeModernChip\)/,
+    'the mount site consumes the LIVE (possibly restored) chip - never a literal');
+  assert.ok(!/buildModernChipRowHtml\('all'\)/.test(MAIN_SRC), 'no hardcoded-All mount exists');
+  // The builder's active derivation: on = (chip === bounded active), painted
+  // into BOTH the class and the aria state.
+  assert.match(MAIN_SRC, /const on = c\.filter === a;/, 'the active derivation');
+  assert.match(MAIN_SRC, /class="modern-chip\$\{on \? ' active' : ''\}"/, 'paints .active from it');
+  assert.match(MAIN_SRC, /aria-selected="\$\{on\}"/, 'and aria-selected from it');
+});
+
+test('gate W2 (pre-existing v1.86 gap): the chip actually drives the fetch URL - the ?filter= wire is bound end to end', () => {
+  // The seat's second survivor: `const filter = 'all';` in buildModernGridUrl
+  // kept the suite green - chips painted active while every fetch ignored
+  // them. The memory wave restores a value into this wire, so it gets bound
+  // here rather than tech-debted.
+  assert.match(MAIN_SRC,
+    /const filter = \(typeof resolveModernChip === 'function'\) \? resolveModernChip\(activeModernChip\) : activeModernChip;/,
+    'the fetch filter derives from the live chip, bounded');
+  assert.match(MAIN_SRC, /&filter=\$\{encodeURIComponent\(filter\)\}/,
+    'and the derived value is what reaches the server');
+});
+
 test('the persisted value is the RESOLVED chip, never the raw dataset attribute', () => {
   // `next` is resolveModernChip(btn.dataset.chip) - assert the write consumes
   // the bounded variable, and that no path stores the raw dataset value.

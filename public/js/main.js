@@ -1521,7 +1521,8 @@ const PreviewCards = (function () {
                 if (next === activeModernChip) return;
                 activeModernChip = next;
                 // v1.143 (Dean): remember the pick per-device - the mirror of
-                // the sort's own persistence line (see openModernSortMenu).
+                // the sort's own persistence line (injectModernHeaderSort's
+                // choose(), the 'filetube_modern_sort' write).
                 try { localStorage.setItem('filetube_modern_chip', next); } catch (_) { /* private mode */ }
                 chipRow.querySelectorAll('.modern-chip').forEach((b) => {
                   const on = b.dataset.chip === next;
