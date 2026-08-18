@@ -19,6 +19,29 @@ const ytdlp = require('../../lib/ytdlp');
 const engine = require('../../lib/ytdlp/engine');
 
 const originalSpawn = cp.spawn;
+// NETWORK TRIPWIRE (v1.147.0 tag-push scar): engine._resetForTests() also
+// clears the fake-PyPI fetch override, and two tests that reset mid-test
+// (to prove startBackground does its own binding) then fell through to
+// globalThis.fetch - LIVE pypi.org. They passed for a day by coincidence
+// (the live latest nightly equaled the fixture's self-report) and went red
+// the moment yt-dlp published the next nightly, refusing the release tag
+// at the pre-push hook.
+//
+// The trip is recorded OUT-OF-BAND (slim-gate W-LOUD): a bare thrower is
+// swallowed by fetchChannelLatest's own defensive try (that function never
+// throws BY DESIGN), leaving only a mute downstream assertion. So the
+// thrower also stamps `networkTripped` + console.errors the mechanism, and
+// afterEach asserts the stamp is clean - EVERY fallthrough (even one whose
+// own assertions would survive the degraded nulls) fails its test WITH the
+// tripwire message, with zero network possible either way.
+const originalFetch = globalThis.fetch;
+let networkTripped = null;
+globalThis.fetch = (...args) => {
+  networkTripped = `ytdlp-engine-boot.test.js hit globalThis.fetch (${String(args[0]).slice(0, 120)}) - re-arm armPypi() after any engine._resetForTests()`;
+  console.error('NETWORK TRIPWIRE:', networkTripped);
+  throw new Error(networkTripped);
+};
+process.on('exit', () => { globalThis.fetch = originalFetch; });
 let dataDir, bells, deps;
 
 const NIGHTLY = '2026.8.17.73947.dev0';
@@ -89,6 +112,13 @@ afterEach(async () => {
   if (t) clearInterval(t);
   engine._resetForTests();
   fs.rmSync(dataDir, { recursive: true, force: true });
+  // LAST, after all cleanup (a throw here must not skip the lines above):
+  // the network tripwire's out-of-band assertion - node:test attributes an
+  // afterEach failure to the test that just ran, so every fallthrough
+  // fails ITS OWN test carrying the mechanism message.
+  const tripped = networkTripped;
+  networkTripped = null;
+  assert.equal(tripped, null, tripped || 'network tripwire clean');
 });
 
 test('the tick is a four-way no-op gate: opt-out, bundled channel, not-due, busy', async () => {
@@ -236,6 +266,7 @@ test('adversarial W2: startBackground itself binds the seam, reconciles, and arm
     armSpawns();
     engine.setChannelIntent({ dataDir, channel: 'nightly' }); // wanted engine, venv missing
     engine._resetForTests(); // startBackground must do the binding itself
+    armPypi(); // the reset ALSO cleared the fetch fake - re-arm or the boot recovery hits the tripwire
     ytdlp.startBackground({
       updateDatabase: async () => {},
       loadDatabase: () => ({ ytdlp: { subscriptions: [] }, settings: {}, metadata: {} }),
@@ -322,6 +353,7 @@ test('adversarial round 2 W-WIRE: the REAL initRuntime wiring suppresses failure
     engine.setChannelIntent({ dataDir, channel: 'nightly' });
     engine.setAutoUpdate({ dataDir, enabled: true });
     engine._resetForTests();
+    armPypi(); // the reset ALSO cleared the fetch fake - re-arm (network tripwire above)
     ytdlp.startBackground({
       updateDatabase: async () => {}, loadDatabase: () => ({ ytdlp: { subscriptions: [] }, settings: {}, metadata: {} }),
       scanDirectories: async () => {}, getMediaId: () => 'x', dataDir,
