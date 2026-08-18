@@ -51,7 +51,7 @@ jobs:
       matrix:
         node-version: ['22', '24']
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Set up Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v5
         with:
@@ -79,7 +79,7 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
@@ -94,7 +94,7 @@ jobs:
       GITLEAKS_VERSION: 8.21.2
       GITLEAKS_SHA256: 5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install gitleaks (pinned + checksum-verified)
         run: |
           set -euo pipefail
@@ -111,7 +111,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       # v1.129 C6: a release image's identity is the TAG, but the app reports
       # package.json's version - if the ceremony ever tags without bumping (or
