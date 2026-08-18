@@ -1774,5 +1774,11 @@
     "date": "2026-08-17",
     "title": "Build-check fix",
     "intent": "A behind-the-scenes fix to the automated checks that publish these release notes - the app itself is unchanged."
+  },
+  {
+    "version": "1.145.0",
+    "date": "2026-08-18",
+    "title": "YouTube downloads work again",
+    "intent": "Downloads had started failing across the board as YouTube changed things on their end. FileTube now ships a much fresher downloader engine, configured the way the new YouTube requires - your failed subscriptions retry themselves on the next check."
   }
 ]

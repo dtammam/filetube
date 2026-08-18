@@ -80,6 +80,51 @@
 
 ## Shipped
 
+### v1.145.0 - yt-dlp nightly channel + the JS-runtime opt-in (2026-08-18)
+
+Dean's live outage: downloads failing through three distinct signatures
+in one evening - data-phase 403s on ~every channel (cleared on-device by
+a cookies file, FILETUBE_YTDLP_COOKIES_FILE), then "Requested format is
+not available" from the cookie'd web client, then "The page needs to be
+reloaded" from a TV-client override. The stable yt-dlp (2026.7.4) is the
+NEWEST stable that exists and is six weeks behind YouTube's enforcement
+changes; no env var fixes a too-old binary. Shipped: (1) the Dockerfile
+pin moves to yt-dlp's NIGHTLY channel (exact pin 2026.8.17.73947.dev0 -
+reproducible builds preserved, only the channel changed; install of the
+exact wheel verified locally); (2) the gate's discovery taken as code -
+yt-dlp deprecated running without a JavaScript runtime ("some formats
+may be missing", the signature-2 shape) and only auto-enables deno,
+while the image ships node: new FILETUBE_YTDLP_JS_RUNTIMES (validated
+like the player-client lever, split into repeated flags because yt-dlp
+never comma-splits the value - the gate measured the comma'd form
+silently degrading to NO runtime), defaulted to `node` by the image ENV,
+unset on bare metal so older binaries never see the flag.
+
+What the gate caught (slim/adversarial, 2 fix rounds -> APPROVE): the
+JS-runtime deprecation itself (round 1, taken as code); the comma'd
+multi-runtime form my comment and tests certified was INERT upstream
+(round 2, measured against the real binary); a stale version-bearing
+comment; an overconfident "already fixed in nightly" claim softened to
+"believed - Dean's device pass is the verification."
+
+DISCLOSED (the honest list): (a) nightlies can regress - rollback is
+re-pinning the ARG (PyPI retains every nightly) and re-releasing;
+(b) commit a8ae1ad's message misstates that CI's qualify job exercises
+the image build - nothing builds the Dockerfile before the tag-push
+publish step (failure direction verified safe: a broken pin fails the
+build before anything is pushed); (c) commit b70d7b8's message says
+"7073/7073" where the run printed 7072 - the 6th and 7th
+measure-then-claim strikes in two commits (the 7th also violated the
+v1.139 structural rule by chaining measurement and commit); this
+release's numbers were read from standalone runs; (d) About/Stats shows
+the binary's normalized self-report (2026.08.17.073947, no .dev0 - same
+release, different spelling); (e) the JS-runtimes lever is
+download-path-only (player-client parity) - if format failures persist
+on-device, probe that lever FIRST, not another re-pin.
+
+Dual-Node: 7072/7072 on v22.23.1 AND v24.14.0. Device pass = Dean's
+morning pull; cookies stay on, the player-client override stays OFF.
+
 ### v1.144.1 - ledger census shallow-checkout hotfix (2026-08-17)
 
 The v1.144.0 tag push went red in docker-publish's qualify job - the new
