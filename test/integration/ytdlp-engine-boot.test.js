@@ -24,12 +24,14 @@ let dataDir, bells, deps;
 const NIGHTLY = '2026.8.17.73947.dev0';
 const NEWER_NIGHTLY = '2026.8.18.10203.dev0';
 
-function fakeChild({ code = 0, stdout = '', stderr = '' } = {}) {
+function fakeChild({ code = 0, stdout = '', stderr = '', neverClose = false, errorEvent = null } = {}) {
   const child = new EventEmitter();
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
   child.kill = () => { setImmediate(() => child.emit('close', null, 'SIGKILL')); };
   setImmediate(() => {
+    if (errorEvent) { child.emit('error', errorEvent); return; }
+    if (neverClose) return; // held open until the test closes it explicitly
     if (stdout) child.stdout.emit('data', Buffer.from(stdout));
     if (stderr) child.stderr.emit('data', Buffer.from(stderr));
     child.emit('close', code, null);
@@ -296,4 +298,92 @@ test('QA W2 heal: a venv-active state whose binary is GONE is repaired to bundle
   const after = engine.readState(dataDir);
   assert.equal(after.active, 'bundled');
   assert.match(after.lastResult.message, /ENOTFOUND|unreachable/);
+});
+
+test('adversarial round 2 W-WIRE: the REAL initRuntime wiring suppresses failure reports mid-install (through startBackground)', async () => {
+  const run = require('../../lib/ytdlp/run');
+  const prevEnv = {
+    FILETUBE_YTDLP_ENABLED: process.env.FILETUBE_YTDLP_ENABLED,
+    FILETUBE_YTDLP_POLL_MINUTES: process.env.FILETUBE_YTDLP_POLL_MINUTES,
+    FILETUBE_READ_ONLY_MEDIA: process.env.FILETUBE_READ_ONLY_MEDIA,
+    FILETUBE_YTDLP_DOWNLOAD_DIR: process.env.FILETUBE_YTDLP_DOWNLOAD_DIR,
+  };
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_POLL_MINUTES = '0';
+  process.env.FILETUBE_READ_ONLY_MEDIA = '1';
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = path.join(dataDir, 'dl');
+  const venvBin = path.join(dataDir, 'ytdlp-engine', 'venv', 'bin');
+  let releasePip = null;
+  let pipDone = false;
+  try {
+    // Bind the runtime through the REAL wiring (deleting isInstallActive
+    // from index.js's initRuntime call sites turns this test red).
+    armSpawns();
+    engine.setChannelIntent({ dataDir, channel: 'nightly' });
+    engine.setAutoUpdate({ dataDir, enabled: true });
+    engine._resetForTests();
+    ytdlp.startBackground({
+      updateDatabase: async () => {}, loadDatabase: () => ({ ytdlp: { subscriptions: [] }, settings: {}, metadata: {} }),
+      scanDirectories: async () => {}, getMediaId: () => 'x', dataDir,
+      recordEngineEvent: (event, version) => bells.push({ event, version }),
+    });
+    await awaitJob(); // boot recovery completes: venv active
+    assert.equal(engine.readState(dataDir).active, 'venv');
+    bells.length = 0;
+    // Now an UPDATE whose pip HOLDS mid-install, with a newer build offered.
+    armPypi(NEWER_NIGHTLY);
+    cp.spawn = (cmd, argv) => {
+      if (cmd === 'python3' && argv[0] === '--version') return fakeChild({ stdout: 'Python 3.12.9\n' });
+      if (cmd === 'python3' && argv[1] === 'venv') {
+        fs.mkdirSync(venvBin, { recursive: true });
+        fs.writeFileSync(path.join(venvBin, 'python'), '#!fake');
+        fs.writeFileSync(path.join(venvBin, 'pip'), '#!fake');
+        return fakeChild({});
+      }
+      if (cmd.endsWith(path.join('bin', 'pip'))) {
+        const child = fakeChild({ neverClose: true });
+        releasePip = () => {
+          pipDone = true;
+          fs.writeFileSync(path.join(venvBin, 'yt-dlp'), '#!fake');
+          child.emit('close', 0, null);
+        };
+        return child;
+      }
+      if (cmd.endsWith(path.join('bin', 'yt-dlp'))) {
+        // While pip is still rewriting the venv, its binary fails to spawn
+        // - the exact measured race. After release: the healthy probe.
+        if (pipDone) return fakeChild({ stdout: '2026.08.18.010203\n' });
+        return fakeChild({ errorEvent: new Error('spawn ENOENT (half-written venv)') });
+      }
+      if (cmd === 'yt-dlp') return fakeChild({ stdout: '2026.8.10.11111.dev0\n' });
+      throw new Error(`unexpected spawn in wire test: ${cmd} ${argv.join(' ')}`);
+    };
+    await ytdlp.engineAutoUpdateTick(deps, Date.now() + ytdlp.ENGINE_AUTO_UPDATE_INTERVAL_MS + 1);
+    // Wait until pip has actually spawned and is being HELD open.
+    await new Promise((resolve) => {
+      const check = () => (releasePip !== null ? resolve() : setImmediate(check));
+      check();
+    });
+    assert.equal(ytdlp.currentEngineJob().status, 'installing');
+    // The race: an ungated spawn fails against the mid-rewrite venv. With
+    // the REAL wire, this must be suppressed - no revert, no bell.
+    const raceResult = await run.spawnYtdlp(["--version"], { phaseLabel: "version check" });
+    assert.equal(raceResult.ok, false);
+    assert.equal(engine.readState(dataDir).active, 'venv', 'no revert while the install rewrites the venv');
+    assert.equal(bells.filter((b) => b.event === 'reverted').length, 0, 'no false alarm bell');
+    // Release pip; the install completes, probes healthy, activates.
+    releasePip();
+    await awaitJob();
+    const state = engine.readState(dataDir);
+    assert.equal(state.active, 'venv');
+    assert.equal(state.installed.version, NEWER_NIGHTLY);
+    assert.deepEqual(bells, [{ event: 'updated', version: '2026.08.18.010203' }]);
+  } finally {
+    if (releasePip) { try { releasePip(); } catch (_) { /* already released */ } }
+    const t = ytdlp.currentEngineTimer();
+    if (t) clearInterval(t);
+    for (const [k, v] of Object.entries(prevEnv)) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  }
 });

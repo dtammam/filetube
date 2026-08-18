@@ -273,23 +273,29 @@ test('W5/QA W1: a channel write while an engine job is pending is refused WHOLE 
   await fetch(`${base}/api/ytdlp/engine`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'nightly' }),
   });
-  assert.equal(ytdlp.currentEngineJob().status, 'queued');
-  // Second switch while busy: refused, intent untouched.
-  const second = await fetch(`${base}/api/ytdlp/engine`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'stable' }),
-  });
-  assert.equal(second.status, 409);
-  // A bundled flip while busy is refused too (it would race the pending activation).
-  const toBundled = await fetch(`${base}/api/ytdlp/engine`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'bundled' }),
-  });
-  assert.equal(toBundled.status, 409);
-  // autoUpdate-only writes stay fine while busy.
-  const auto = await fetch(`${base}/api/ytdlp/engine`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autoUpdate: true }),
-  });
-  assert.equal(auto.status, 200);
-  releaseBlocker();
+  // Round 2 S-HANG fix: the blocker is released in finally - a failing
+  // assert must read as a clean red, never a held FIFO gate hanging every
+  // later awaitEngineJob() to the runner timeout.
+  try {
+    assert.equal(ytdlp.currentEngineJob().status, 'queued');
+    // Second switch while busy: refused, intent untouched.
+    const second = await fetch(`${base}/api/ytdlp/engine`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'stable' }),
+    });
+    assert.equal(second.status, 409);
+    // A bundled flip while busy is refused too (it would race the pending activation).
+    const toBundled = await fetch(`${base}/api/ytdlp/engine`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'bundled' }),
+    });
+    assert.equal(toBundled.status, 409);
+    // autoUpdate-only writes stay fine while busy.
+    const auto = await fetch(`${base}/api/ytdlp/engine`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autoUpdate: true }),
+    });
+    assert.equal(auto.status, 200);
+  } finally {
+    releaseBlocker();
+  }
   await blocker;
   await awaitEngineJob();
   const s = await (await fetch(`${base}/api/ytdlp/engine`)).json();
@@ -316,15 +322,33 @@ test('QA W2: the status surfaces report bundled the moment the venv binary is go
   assert.equal(stats.system.ytdlp.engine.active, 'bundled');
 });
 
-test('adversarial S1: the version cache reports the NEW engine as soon as the install job completes', async () => {
+test('adversarial S1 (round 2 reshape): the version cache tracks EVERY activation, including against a PRIMED fresh cache', async () => {
+  // First switch: also PRIMES the cache (the pre-fix code passed here
+  // because priming takes the unguarded path - the divergent fixture).
   armSpawns();
   await fetch(`${base}/api/ytdlp/engine`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'nightly' }),
   });
   await awaitEngineJob();
-  // The refresh is AWAITED inside the gated job, so this read is ordered.
-  const stats = await (await fetch(`${base}/api/stats`)).json();
+  let stats = await (await fetch(`${base}/api/stats`)).json();
   assert.equal(stats.system.ytdlp.version, '2026.08.17.073947');
+  // Second activation runs against a primed, TTL-fresh cache - the
+  // production shape. Pre-fix, force did NOT beat the TTL guard and this
+  // read kept the OLD version for up to 6h.
+  const NEWER = '2026.8.18.10203.dev0';
+  engine._setFetchImplForTests(() => {
+    const bytes = Buffer.from(JSON.stringify({ releases: { [STABLE]: [{ yanked: false }], [NEWER]: [{ yanked: false }] } }));
+    return Promise.resolve({ ok: true, status: 200, body: (async function* () { yield bytes; })() });
+  });
+  armSpawns({ probe: { stdout: '2026.08.18.010203\n' } });
+  try {
+    await fetch(`${base}/api/ytdlp/engine/update`, { method: 'POST' });
+    await awaitEngineJob();
+    stats = await (await fetch(`${base}/api/stats`)).json();
+    assert.equal(stats.system.ytdlp.version, '2026.08.18.010203', 'the awaited forced refresh must beat the TTL');
+  } finally {
+    engine._setFetchImplForTests(fakePypiFetch); // restore for later tests
+  }
 });
 
 test('QA S2: without requireAdmin in the deps bundle the engine routes fail CLOSED (403 for everyone)', async () => {
