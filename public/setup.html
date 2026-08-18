@@ -691,6 +691,58 @@
 
       <!-- v1.65: Trash -- every delete lands here for the retention window;
            rows render from GET /api/trash (public/js/setup.js). -->
+      <!-- v1.146 (downloader-engine): the Downloads box. Admin-only AND
+           yt-dlp-module-only - it stays hidden until the /api/ytdlp/engine
+           probe answers 200 (the notification-bell probe pattern), so
+           members and module-off instances never see it. Its controls are
+           fed by that FOREIGN fetch, so none of them carry the
+           /api/settings reveal-toggle barrier (the v1.96 partial-render
+           lesson); the box reveals whole, already populated. -->
+      <details class="setup-box sub-collapsible" id="downloads-box" hidden data-collapse-key="downloads" open>
+        <summary>Downloads</summary>
+        <h3>Downloader engine</h3>
+        <p>
+          FileTube downloads videos with the yt-dlp engine. The bundled engine
+          ships inside the app image and always remains as the fallback. The
+          stable and nightly channels install the newest yt-dlp release at
+          runtime - nightly tracks YouTube's changes closest. Every installed
+          engine must pass a health check before it is used, and an engine
+          that breaks later automatically reverts to bundled - the bell
+          reports it either way.
+        </p>
+        <div class="engine-channels" id="engine-channels">
+          <label class="engine-channel">
+            <input type="radio" name="engine-channel" value="bundled" id="engine-channel-bundled" />
+            <span class="engine-channel-name">Bundled</span>
+            <span class="engine-channel-version" id="engine-version-bundled">&hellip;</span>
+          </label>
+          <label class="engine-channel">
+            <input type="radio" name="engine-channel" value="stable" id="engine-channel-stable" />
+            <span class="engine-channel-name">Latest stable</span>
+            <span class="engine-channel-version" id="engine-version-stable">&hellip;</span>
+          </label>
+          <label class="engine-channel">
+            <input type="radio" name="engine-channel" value="nightly" id="engine-channel-nightly" />
+            <span class="engine-channel-name">Latest nightly</span>
+            <span class="engine-channel-version" id="engine-version-nightly">&hellip;</span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
+            <input type="checkbox" id="engine-autoupdate-check" />
+            Check for engine updates daily and install them automatically
+          </label>
+          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
+            Off by default. FileTube rings the bell with the result either way.
+          </small>
+        </div>
+        <div class="form-group" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm" id="engine-update-btn">Update now</button>
+          <span id="engine-status" class="action-status"></span>
+        </div>
+        <small id="engine-error" class="field-error"></small>
+      </details>
+
       <details class="setup-box sub-collapsible" data-collapse-key="trash" open>
         <summary>Trash</summary>
         <p>
