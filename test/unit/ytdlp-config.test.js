@@ -419,3 +419,19 @@ t31('v1.36: parseYtdlpConfig threads FILETUBE_YTDLP_LIST_SCAN_CAP (and defaults 
   assert.equal(config.parseYtdlpConfig({}).listScanCap, 200);
   assert.equal(config.parseYtdlpConfig({ FILETUBE_YTDLP_LIST_SCAN_CAP: 'garbage' }).listScanCap, 200);
 });
+
+// ---- v1.145 (gate W2): FILETUBE_YTDLP_JS_RUNTIMES --------------------------
+
+test('parseYtdlpConfig: FILETUBE_YTDLP_JS_RUNTIMES - valid runtime lists pass, junk/injection/oversize/unset are null', () => {
+  const parse = (v) => parseYtdlpConfig({ FILETUBE_YTDLP_ENABLED: 'true', FILETUBE_YTDLP_JS_RUNTIMES: v }).jsRuntimes;
+  assert.equal(parse('node'), 'node');
+  assert.equal(parse('deno,node'), 'deno,node');
+  assert.equal(parse('quickjs'), 'quickjs');
+  assert.equal(parse('node --exec x'), null, 'spaces/injection rejected');
+  assert.equal(parse('NODE'), null, 'uppercase rejected - the allowlist is lowercase');
+  assert.equal(parse('node;rm'), null);
+  assert.equal(parse('a'.repeat(80)), null, 'oversize rejected');
+  assert.equal(parse(''), null);
+  assert.equal(parse(undefined), null);
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_ENABLED: 'true' }).jsRuntimes, null, 'unset -> null (bare-metal safety)');
+});

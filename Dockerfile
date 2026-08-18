@@ -29,12 +29,16 @@ RUN apk add --no-cache ffmpeg python3 py3-pip espeak-ng
 # continuously and the stable channel lags them by WEEKS (2026.7.4 stable
 # was six weeks old while Dean's downloads failed through three distinct
 # signatures - data 403s, empty web-client format lists, and the TV client
-# rejected outright - each a countermeasure already fixed in nightly).
+# rejected outright - each BELIEVED countered in nightly; Dean's device pass
+# is the verification, and if format failures persist there, the FIRST probe
+# is the JS-runtime lever below, not another re-pin).
 # Still an EXACT version pin - reproducible builds are preserved; only the
-# CHANNEL changed. Bump cadence: refresh this pin whenever a release wave
-# touches downloads, and immediately when download failures spike on-device
-# (latest nightly: pip index versions yt-dlp --pre, or the
-# yt-dlp-nightly-builds GitHub releases page).
+# CHANNEL changed. Note (gate S1): the binary SELF-REPORTS the normalized
+# spelling `2026.08.17.073947` (no `.dev0`) - same release, different
+# spelling; not a mismatch to "diagnose". Bump cadence: refresh this pin
+# whenever a release wave touches downloads, and immediately when download
+# failures spike on-device (latest nightly: `pip index versions yt-dlp
+# --pre`, or the yt-dlp-nightly-builds GitHub releases page).
 ARG YTDLP_VERSION=2026.8.17.73947.dev0
 
 # node:22-alpine is musl libc, so yt-dlp's standalone PyInstaller binary
@@ -46,8 +50,20 @@ ARG YTDLP_VERSION=2026.8.17.73947.dev0
 RUN pip install --no-cache-dir --break-system-packages "yt-dlp==${YTDLP_VERSION}"
 
 # Mirror the pin into the running app's env so its informational
-# `config.version` (lib/ytdlp/config.js) matches the binary actually bundled.
+# `config.version` (lib/ytdlp/config.js) matches the binary actually bundled
+# (spelling-loose: the binary normalizes the version string - see the pin
+# block's gate-S1 note; config.version is display-only with no consumers).
 ENV FILETUBE_YTDLP_VERSION=${YTDLP_VERSION}
+
+# v1.145 (gate W2): yt-dlp deprecated running with NO JavaScript runtime
+# ("some formats may be missing" on every extraction) and auto-enables only
+# deno - but THIS image ships node, a supported runtime yt-dlp will not use
+# unless told. Default the opt-in here so every image deployment extracts
+# with a runtime; compose-level env overrides it, and bare-metal deployments
+# (no image ENV) stay unset so an older operator-installed binary that
+# rejects unknown flags never sees the flag. See lib/ytdlp/config.js's
+# parseJsRuntimes for the validation posture.
+ENV FILETUBE_YTDLP_JS_RUNTIMES=node
 
 # v1.38.1: the image ships espeak-ng (above), so default the TTS engine to it --
 # the "Listen from Here" control lights up with no configuration. A user who

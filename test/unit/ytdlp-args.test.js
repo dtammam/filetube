@@ -1736,3 +1736,27 @@ test('universal template caps the title to 100 chars (ENAMETOOLONG fix) with the
   assert.match(args.UNIVERSAL_OUTPUT_TEMPLATE, /%\(title\)\.100s \[%\(extractor_key\)s=%\(id\)s\]\.%\(ext\)s/,
     'the universal filename template caps the title at 100 chars so a long FB/Reddit description-as-title cannot overrun the 255-byte limit');
 });
+
+// ---- v1.145 (gate W2): the --js-runtimes opt-in ---------------------------
+
+test('buildYtdlpDownloadArgs: --js-runtimes is emitted ONLY when config.jsRuntimes is a set, validated string', () => {
+  const without = args.buildYtdlpDownloadArgs(baseSub(), makeConfig(), ['vid1']);
+  assert.ok(!without.includes('--js-runtimes'), 'unset jsRuntimes must emit no flag - older binaries reject unknown flags');
+
+  const withRuntime = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ jsRuntimes: 'node' }), ['vid1']);
+  const idx = withRuntime.indexOf('--js-runtimes');
+  assert.ok(idx >= 0, 'set jsRuntimes emits the flag');
+  assert.equal(withRuntime[idx + 1], 'node', 'two fixed-shape argv elements, value as its own element');
+
+  const multi = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ jsRuntimes: 'deno,node' }), ['vid1']);
+  assert.equal(multi[multi.indexOf('--js-runtimes') + 1], 'deno,node');
+});
+
+test('buildYtdlpDownloadArgs: a hostile jsRuntimes value is re-validated at the argv boundary and emits NOTHING', () => {
+  for (const hostile of ['node --exec rm', 'node;evil', 'node$(x)', 'NODE', `x${'a'.repeat(80)}`]) {
+    const result = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ jsRuntimes: hostile }), ['vid1']);
+    assert.ok(!result.includes('--js-runtimes'), `hostile value must be dropped entirely: ${hostile}`);
+    assert.ok(!result.includes(hostile) && !result.some((el) => el.includes('evil') || el.includes('$(')),
+      'no hostile value reaches any argv element');
+  }
+});
