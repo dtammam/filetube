@@ -36,6 +36,7 @@ const SETTINGS_FED = [
 const FOREIGN = [
   'home-feed-check', 'modern-mode-check', 'per-page-sort-check', 'debug-lifecycle-check',
   'push-user-enabled-check', 'home-continue-watching-check',
+  'engine-autoupdate-check', // v1.146: fed by /api/ytdlp/engine, never /api/settings
 ];
 
 // ---- source locks: the barrier ships at first paint, scoped correctly -------

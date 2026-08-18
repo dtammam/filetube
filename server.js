@@ -9201,7 +9201,10 @@ function notificationsFeatureEnabled(db) {
 app.get('/api/notifications/badge', (req, res) => {
   const db = getCachedDatabase(); // hot poll reader (60s cadence per client)
   if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  res.json({ count: userStore.countUnseenNotifications(req.user.id) });
+  // v1.146: engine rows are admin-only - the badge and the panel must agree
+  // (a member badge ticking for a row the panel filters out is a phantom
+  // badge that user could never clear by reading).
+  res.json({ count: userStore.countUnseenNotifications(req.user.id, { includeEngine: req.user.role === 'admin' }) });
 });
 
 // The panel list: feed rows joined against the CURRENT library item (title/
@@ -9222,6 +9225,30 @@ app.get('/api/notifications', (req, res) => {
   const podcastNsForFeed = podcastStore.readPodcasts(db);
   const podcastSubNames = new Map(podcastNsForFeed.subscriptions.filter(Boolean).map((sub) => [sub.id, sub.name]));
   for (const row of items) {
+    // v1.146 (downloader-engine T5): engine event rows - ADMIN-ONLY (an
+    // engine revert is an operator concern; members must see neither the
+    // row nor, via the badge/unseenCount above, its existence). The id
+    // carries the whole payload; a malformed one (crafted backup bundle)
+    // parses to null and renders NOTHING - never garbage.
+    if (row.kind === 'engine') {
+      if (!req.user || req.user.role !== 'admin') continue;
+      const parsed = ytdlp.parseEngineNotificationId(row.mediaId);
+      if (!parsed) continue;
+      rows.push({
+        id: row.id,
+        mediaId: row.mediaId,
+        createdAt: row.createdAt,
+        unread: row.unread,
+        kind: 'engine',
+        title: ytdlp.describeEngineEvent(parsed.event, parsed.version),
+        channelName: 'Downloader engine',
+        folderName: '',
+        channelAvatarUrl: '',
+        hasThumbnail: false,
+        type: 'engine',
+      });
+      continue;
+    }
     if (row.kind === 'podcast') {
       const ep = Object.prototype.hasOwnProperty.call(podcastNsForFeed.episodes, row.mediaId) ? podcastNsForFeed.episodes[row.mediaId] : null;
       if (!ep) {
@@ -9321,7 +9348,8 @@ app.get('/api/notifications', (req, res) => {
       console.error('Notifications: failed to prune phantom podcast feed rows (continuing):', err && err.message);
     }
   }
-  res.json({ items: rows, unseenCount: userStore.countUnseenNotifications(req.user.id) });
+  // v1.146: same admin-only engine-row inclusion as the badge route above.
+  res.json({ items: rows, unseenCount: userStore.countUnseenNotifications(req.user.id, { includeEngine: req.user.role === 'admin' }) });
 });
 
 // Opening the panel zeroes the NUMBER badge (two-tier semantics, decision 3:
@@ -15193,7 +15221,10 @@ app.get('/api/stats', (req, res) => {
     system: {
       version: APP_VERSION,
       repoUrl: REPO_URL,
-      ytdlp: { enabled: ytdlpEnabled, version: ytdlpEnabled ? ytdlp.getCachedYtdlpVersion() : null },
+      // v1.146: `engine` names WHICH engine the version belongs to - the
+      // version cache probes the ACTIVE binary (the ruling: About/Stats
+      // reports the active engine, never just the image ENV).
+      ytdlp: { enabled: ytdlpEnabled, version: ytdlpEnabled ? ytdlp.getCachedYtdlpVersion() : null, engine: ytdlpEnabled ? ytdlp.getEngineSummary() : null },
       tts: { available: ttsAvailable(), engine: ttsConfig.engine, version: ttsEngineVersion },
     },
   });
@@ -16517,8 +16548,31 @@ app.post('/api/videos/:id/prepare-audio', (req, res) => {
 // full wiring-contract rationale (a `require('../../server')` from inside
 // lib/ytdlp/index.js would hit a circular-require trap; this deps object is
 // what avoids it, exactly like every other primitive below).
+// v1.146 (downloader-engine): the bell producer for engine events (updated
+// / update-failed / reverted). The id encodes the whole payload (kind
+// 'engine' rows are admin-only at every read surface); a null id (unknown
+// event) records nothing. Never throws into the caller - a lost bell must
+// not break an install flow or a boot.
+function recordEngineEvent(event, version) {
+  try {
+    const id = ytdlp.buildEngineNotificationId(event, version);
+    if (!id) return;
+    userStore.recordNotifications([{ mediaId: id, createdAt: Date.now(), kind: 'engine' }]);
+  } catch (err) {
+    console.error('Engine bell event failed (continuing):', err && err.message);
+  }
+}
+
 ytdlp.registerRoutes(app, {
   requireManageSubscriptions, // v1.80 RBAC: gate for channel-registry mutations
+  // v1.146 (downloader-engine): the engine routes are ADMIN-only - they
+  // cause pip to execute code from PyPI. Same guard function POST
+  // /api/settings uses; the module side fails CLOSED if this is absent.
+  requireAdmin,
+  // v1.146: the bell producer for engine events - shared with the
+  // startBackground bundle below (its own copy of the deps object, but the
+  // SAME function; the v1.29 separate-bundles lesson).
+  recordEngineEvent,
   mediaVisibleTo, // v1.123 T3: visibility axis for the per-item repull/relocate routes
   // v1.127 Wave A: the req-FREE visibility snapshot for LIBRARY-WIDE reheat
   // work (batch + preview) - the per-item route got its axis in v1.123; the
@@ -16860,7 +16914,10 @@ if (require.main === module) {
     // -> `armYtdlpTimer` -> the scheduled `runPoll` closure), so it needs its
     // own copy for the scheduled-poll run-log emit path to work, not just the
     // route-triggered one.
-    ytdlp.startBackground({ updateDatabase, loadDatabase, scanDirectories, getMediaId, dataDir: DATA_DIR });
+    // v1.146: + recordEngineEvent so the engine's boot recovery and daily
+    // auto-update tick can bell their outcomes (same producer as the
+    // routes bundle - each bundle carries its own reference, v1.29 lesson).
+    ytdlp.startBackground({ updateDatabase, loadDatabase, scanDirectories, getMediaId, dataDir: DATA_DIR, recordEngineEvent });
 
     // v1.69 podcasts: boot hygiene (.ptpart sweep + reconcile) + the poll
     // timer. Early-returns doing NOTHING (no dir, no timer) with zero

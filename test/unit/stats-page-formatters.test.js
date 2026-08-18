@@ -124,3 +124,38 @@ test('shortenChannelLabel: a missing/blank channelUrl reads "Unknown channel"', 
 test('shortenChannelLabel: never throws on a malformed URL', () => {
   assert.doesNotThrow(() => shortenChannelLabel('http://'));
 });
+
+// ---------------------------------------------------------------------------
+// v1.146 (downloader-engine T8): the About row's engine label. The label
+// describes what is RUNNING: only active === 'venv' earns a channel name;
+// bundled-active, post-revert fallback, and missing summary all read
+// "(bundled)". No version -> no row (null).
+// ---------------------------------------------------------------------------
+
+const { formatYtdlpAboutText } = require('../../public/js/stats.js');
+
+test('formatYtdlpAboutText: active venv earns the channel name, everything else reads bundled', () => {
+  assert.equal(
+    formatYtdlpAboutText({ version: '2026.08.17.073947', engine: { channel: 'nightly', active: 'venv' } }),
+    '2026.08.17.073947 (nightly)'
+  );
+  assert.equal(
+    formatYtdlpAboutText({ version: '2026.07.04', engine: { channel: 'stable', active: 'venv' } }),
+    '2026.07.04 (stable)'
+  );
+  // Post-revert: the intent says nightly but bundled is what runs.
+  assert.equal(
+    formatYtdlpAboutText({ version: '2026.08.10.011111', engine: { channel: 'nightly', active: 'bundled' } }),
+    '2026.08.10.011111 (bundled)'
+  );
+  // Pre-wave shapes (no engine summary at all) stay honest too.
+  assert.equal(formatYtdlpAboutText({ version: '2026.7.4', engine: null }), '2026.7.4 (bundled)');
+  assert.equal(formatYtdlpAboutText({ version: '2026.7.4' }), '2026.7.4 (bundled)');
+});
+
+test('formatYtdlpAboutText: no version -> null (no row), garbage-safe', () => {
+  assert.equal(formatYtdlpAboutText(null), null);
+  assert.equal(formatYtdlpAboutText({}), null);
+  assert.equal(formatYtdlpAboutText({ version: '' }), null);
+  assert.equal(formatYtdlpAboutText({ version: 42, engine: { channel: 'nightly', active: 'venv' } }), null);
+});

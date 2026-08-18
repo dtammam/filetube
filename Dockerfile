@@ -16,29 +16,31 @@ FROM node:22-alpine
 # .onnx voice model (see README) to upgrade the voice.
 RUN apk add --no-cache ffmpeg python3 py3-pip espeak-ng
 
-# Pin the bundled yt-dlp version. This ARG (and the mirrored ENV below) is
-# the SOURCE OF TRUTH for the binary shipped in the image -- the app-level
-# FILETUBE_YTDLP_VERSION env var (lib/ytdlp/config.js) only reflects it for
-# display and never enforces or triggers an install. There is no runtime
-# auto-update (locked decision D5): bumping this ARG and rebuilding the
-# image is the only supported way to move to a newer yt-dlp.
+# Pin the BUNDLED yt-dlp version. This ARG (and the mirrored ENV below) is
+# the source of truth for the binary BAKED INTO the image - the permanent
+# fallback engine. v1.146 (Dean's ruling, 2026-08-18) OVERTURNED the old
+# locked decision D5 ("no runtime auto-update"): FileTube now carries a
+# runtime engine selector (Setup -> Downloads -> "Downloader engine",
+# lib/ytdlp/engine.js) that can pin the ACTIVE engine to the latest STABLE
+# or NIGHTLY from PyPI, installed into a persistent venv under /app/data
+# and health-gated (install-time --version probe + a runtime failure net
+# that auto-reverts to THIS bundled binary with a bell). The bundled
+# binary is NEVER removed; the DEFAULT channel is bundled, so a fresh
+# install keeps the pre-v1.146 trust posture and runtime pip installs
+# happen only after a conscious admin opt-in (the supply-chain trade is
+# disclosed in README + docs/CONFIGURATION.md + ROADMAP).
 #
-# v1.145 (Dean's on-device 403 outage, 2026-08-17/18): the pin now tracks
-# yt-dlp's NIGHTLY channel (PyPI pre-release builds, e.g. 2026.8.17.*.dev0)
-# instead of stable. Rationale: YouTube's enforcement changes land
-# continuously and the stable channel lags them by WEEKS (2026.7.4 stable
-# was six weeks old while Dean's downloads failed through three distinct
-# signatures - data 403s, empty web-client format lists, and the TV client
-# rejected outright - each BELIEVED countered in nightly; Dean's device pass
-# is the verification, and if format failures persist there, the FIRST probe
-# is the JS-runtime lever below, not another re-pin).
-# Still an EXACT version pin - reproducible builds are preserved; only the
-# CHANNEL changed. Note (gate S1): the binary SELF-REPORTS the normalized
-# spelling `2026.08.17.073947` (no `.dev0`) - same release, different
-# spelling; not a mismatch to "diagnose". Bump cadence: refresh this pin
-# whenever a release wave touches downloads, and immediately when download
-# failures spike on-device (latest nightly: `pip index versions yt-dlp
-# --pre`, or the yt-dlp-nightly-builds GitHub releases page).
+# This pin therefore still matters on every channel: it is what "bundled"
+# means, what every auto-revert lands on, and what an offline instance
+# runs forever. Still an EXACT version pin - reproducible builds are
+# preserved. The pin tracks yt-dlp's NIGHTLY channel since v1.145 (stable
+# lags YouTube's enforcement rollout by WEEKS - Dean's live 403 outage,
+# 2026-08-17/18). Note (v1.145 gate S1): the binary SELF-REPORTS the
+# normalized spelling `2026.08.17.073947` (no `.dev0`) - same release,
+# different spelling; not a mismatch to "diagnose". Bump cadence: refresh
+# this pin whenever a release wave touches downloads, and immediately when
+# download failures spike on-device (latest nightly: `pip index versions
+# yt-dlp --pre`, or the yt-dlp-nightly-builds GitHub releases page).
 ARG YTDLP_VERSION=2026.8.17.73947.dev0
 
 # node:22-alpine is musl libc, so yt-dlp's standalone PyInstaller binary

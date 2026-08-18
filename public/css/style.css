@@ -11585,3 +11585,35 @@ a.queue-upnext-next:hover {
 @media (max-width: 768px) {
   .card-feedhide-btn { min-width: var(--size-touch); min-height: var(--size-touch); }
 }
+
+/* ---- v1.146 downloader-engine: the Downloads box's channel selector.
+   Three side-by-side radio cards (the ruling's term 5); wraps on narrow
+   widths via flex-wrap, so no media query is needed. Version strings can
+   be long nightly spellings - break-all keeps a card from forcing the
+   row wide. */
+.engine-channels {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin: var(--space-4) 0;
+}
+.engine-channel {
+  flex: 1 1 150px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  cursor: pointer;
+  background-color: var(--bg-secondary);
+}
+.engine-channel-name {
+  font-weight: var(--fw-semibold);
+}
+.engine-channel-version {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  word-break: break-all;
+}

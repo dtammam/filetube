@@ -144,3 +144,19 @@ test('v1.73 (adversarial W5): the bell row TAP stashes a watch seed for MEDIA ro
   assert.ok(tail.includes("if ((m.kind || 'media') === 'media') {"), 'the media-positive guard exists at the bell click site');
   assert.ok(tail.indexOf("(m.kind || 'media') === 'media'") < tail.indexOf('stashWatchSeed({'), 'and the stash sits INSIDE it');
 });
+
+test('v1.146: buildNotificationRowModel maps an engine row to the Setup href with no thumb/avatar', () => {
+  const m = buildNotificationRowModel({
+    id: 9, mediaId: 'engine:reverted:2026.8.17.73947.dev0', createdAt: Date.now() - 60000,
+    unread: true, kind: 'engine',
+    title: 'Downloader engine 2026.8.17.73947.dev0 stopped working - reverted to the bundled engine',
+    channelName: 'Downloader engine', folderName: '', channelAvatarUrl: '', hasThumbnail: false, type: 'engine',
+  });
+  assert.equal(m.kind, 'engine');
+  assert.equal(m.href, '/setup.html', 'an engine row must NEVER build a /watch.html href from its synthetic id');
+  assert.match(m.title, /reverted to the bundled engine/);
+  assert.equal(m.channelLabel, 'Downloader engine');
+  assert.equal(m.thumbnailUrl, null);
+  assert.equal(m.channelAvatarUrl, '');
+  assert.equal(m.unread, true);
+});

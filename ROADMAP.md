@@ -80,6 +80,59 @@
 
 ## Shipped
 
+### v1.146.0 - the downloader engine selector (2026-08-18)
+
+Dean's ruling (2026-08-18) overturned the Dockerfile's locked decision D5:
+FileTube now has a RUNTIME downloader-engine selector. Setup gains a
+"Downloads" box (admin-only; the page had no such section, so the ruling
+created one) whose "Downloader engine" section shows the bundled engine,
+the latest stable, and the latest nightly side by side (live PyPI
+metadata; offline shows bundled and never blocks boot) and pins the
+ACTIVE engine to any of the three. Stable/nightly install into a
+persistent venv under the data dir via pip (exact charset-validated pins,
+no shell anywhere, PyPI host pinned + size-capped); every install must
+pass a health probe before activation, and a venv engine that fails at
+runtime (spawn-level, or an import-time ModuleNotFoundError/ImportError/
+SyntaxError crash) auto-reverts to the bundled binary - which is never
+removed - with an admin-only bell. Auto-update is a daily opt-in
+checkbox, DEFAULT OFF, over a 24h ledger that survives restarts; "Update
+now" is always available. The channel intent survives reverts, and
+unattended triggers (daily tick, boot recovery) never reinstall the
+exact build that was reverted (the anti-flap guard). About/Stats reports
+the ACTIVE engine as "version (channel)". The supply-chain trade
+(runtime pip executes what yt-dlp publishes to PyPI; the bundled default
+preserves the old posture) is disclosed in README + docs/CONFIGURATION.md.
+
+What the gate caught (FULL two-seat gate, 2 fix rounds -> both APPROVE):
+QA - a channel switch during a pending install could half-apply forever
+(now refused whole + a boot heal), status surfaces claiming a venv whose
+binary was gone (effective-active derivation + synchronous boot repair),
+backup export downgrading engine bells to a member-visible kind, and a
+falsified count prediction in the committed exec plan. Adversarial -
+three full-suite-surviving mutants on the wave's own claims (the FIFO
+gate wiring, the startBackground wiring, and - round 2 - a fix of mine
+that neither awaited nor forced: the "forced" version-cache refresh
+never beat its 6h TTL, so About could label the OLD engine's version
+with the NEW channel; all three now mutation-bound), a MEASURED false
+auto-revert from ungated probes racing a mid-rewrite venv (closed with
+an install-phase suppression window), and the SyntaxError engine-death
+shape the failure net originally missed.
+
+DISCLOSED (the honest list): (a) the runtime failure net is deliberately
+NARROW - AttributeError/TypeError tracebacks stay download failures (the
+thrash surface), so an engine broken ONLY in that shape waits for the
+daily check or a manual update instead of auto-reverting; (b) engine
+bells ride the existing bell feature gate (yt-dlp on + at least one
+subscription + bell enabled) and do not web-push; (c) Alpine's
+venv/ensurepip behavior is unverified on the dev box (no docker) - the
+install chain has a fallback ladder and Dean's on-device channel switch
+is the empirical check; (d) tech-debt #162: the combined-body 409
+atomicity is untested (the shipped UI only sends single-key bodies);
+(e) the Setup box reuses the page's existing inline-style pattern.
+
+Dual-Node: 7177/7177 on v22.23.1 AND v24.14.0, 0 fail on both,
+sequential. Device pass = Dean's pull + the probe list in the report.
+
 ### v1.145.0 - yt-dlp nightly channel + the JS-runtime opt-in (2026-08-18)
 
 Dean's live outage: downloads failing through three distinct signatures

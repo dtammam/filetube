@@ -162,6 +162,10 @@ const CLASSIFICATION = {
   'POST /api/users/:id/subscriptions-flag': 'admin',
   'POST /api/users/:id/modify-library-flag': 'admin',
   'PUT /api/users/:id/restrictions': 'admin',
+  // v1.146 downloader-engine: RCE-adjacent (these cause pip to execute code
+  // from PyPI) - admin, never a lesser capability.
+  'POST /api/ytdlp/engine': 'admin',
+  'POST /api/ytdlp/engine/update': 'admin',
 };
 
 // Categories whose routes MUST refuse a member holding none of the capabilities.
@@ -372,6 +376,10 @@ const VISIBILITY = {
   'POST /api/books/config': na('book roots configuration write; instance config'),
   'POST /api/music/config': na('music roots configuration write; instance config'),
   'POST /api/settings': na('instance settings write; no item addressed'),
+  // v1.146 downloader-engine: instance-wide engine configuration/update -
+  // no library item is ever addressed, so per-item visibility cannot apply.
+  'POST /api/ytdlp/engine': na('downloader-engine channel/auto-update config; instance-wide, no item addressed'),
+  'POST /api/ytdlp/engine/update': na('downloader-engine manual update trigger; instance-wide, no item addressed'),
   'POST /api/settings/logo': na('custom logo upload; instance branding asset'),
   'DELETE /api/settings/logo': na('custom logo removal; instance branding asset'),
   'POST /api/admin/restore': na('whole-instance backup restore; admin-only by definition, replaces ALL state'),

@@ -384,3 +384,60 @@ test('v1.73: isValidNotificationEntry drops a GARBAGE kind, never coerces; bundl
   assert.equal(rows.find((r) => r.mediaId === 'x2').kind, 'podcast', 'kind survives the bundle round-trip');
   assert.equal(rows.find((r) => r.mediaId === 'x3').kind, 'media', 'absent kind restores as media');
 });
+
+// ---------------------------------------------------------------------------
+// v1.146 (downloader-engine T5): the 'engine' kind. Feed rows whose id
+// encodes the event; admin-only at the READ surfaces - the store's badge
+// count must be able to exclude them, defaulting to the SAFE direction.
+// ---------------------------------------------------------------------------
+
+test("v1.146: kind 'engine' inserts, lists with its kind carried, and replaces on the same id", () => {
+  const u = mkAdmin();
+  const inserted = store.recordNotifications([
+    { mediaId: 'engine:updated:2026.8.17.73947.dev0', createdAt: ACCOUNT_MS + HOUR, kind: 'engine' },
+  ]);
+  assert.equal(inserted, 1);
+  let { items } = store.listNotifications(u.id);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].kind, 'engine');
+  // Replace-on-same-id: a second identical event refreshes, never duplicates.
+  store.recordNotifications([
+    { mediaId: 'engine:updated:2026.8.17.73947.dev0', createdAt: ACCOUNT_MS + 2 * HOUR, kind: 'engine' },
+  ]);
+  ({ items } = store.listNotifications(u.id));
+  assert.equal(items.length, 1);
+  assert.equal(items[0].createdAt, ACCOUNT_MS + 2 * HOUR);
+});
+
+test('v1.146: a garbage kind is still dropped, never coerced', () => {
+  assert.equal(store.recordNotifications([
+    { mediaId: 'engine:updated:2026.7.4', createdAt: ACCOUNT_MS + HOUR, kind: 'motor' },
+  ]), 0);
+});
+
+test('v1.146: badge count excludes engine rows unless includeEngine is EXACTLY true', () => {
+  const u = mkAdmin();
+  store.recordNotifications([
+    { mediaId: 'mediä-EIN', createdAt: ACCOUNT_MS + HOUR },
+    { mediaId: 'engine:reverted:2026.8.17.73947.dev0', createdAt: ACCOUNT_MS + HOUR + 1, kind: 'engine' },
+  ]);
+  assert.equal(store.countUnseenNotifications(u.id), 1, 'default: the member-safe count');
+  assert.equal(store.countUnseenNotifications(u.id, {}), 1);
+  assert.equal(store.countUnseenNotifications(u.id, { includeEngine: 'yes' }), 1, 'strict boolean, never truthy-coerced');
+  assert.equal(store.countUnseenNotifications(u.id, { includeEngine: true }), 2, 'the admin count sees the engine row');
+});
+
+test("v1.146 (gate QA W3): backup export carries kind 'engine' - the admin-only invariant survives the round trip", () => {
+  mkAdmin();
+  store.recordNotifications([
+    { mediaId: 'mediä-EX', createdAt: ACCOUNT_MS + HOUR },
+    { mediaId: 'engine:updated:2026.8.17.73947.dev0', createdAt: ACCOUNT_MS + HOUR + 1, kind: 'engine' },
+  ]);
+  const exported = store.exportNotificationsForBackup();
+  const engineRow = exported.find((r) => r.mediaId.startsWith('engine:'));
+  assert.equal(engineRow.kind, 'engine', 'the pre-fix mapping downgraded this to media');
+  // And the round trip: restore the export, the row comes back kind-intact.
+  store.replaceAllNotificationsRaw(exported);
+  const back = store.exportNotificationsForBackup().find((r) => r.mediaId.startsWith('engine:'));
+  assert.equal(back.kind, 'engine');
+});

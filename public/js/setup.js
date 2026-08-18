@@ -2554,6 +2554,157 @@ function initPushControls(signal) {
     .catch(() => { /* probe failure -> group stays hidden (fail closed) */ });
 }
 
+// ---- v1.146 (downloader-engine): the Downloads box ------------------------
+// Fed by GET /api/ytdlp/engine (admin-only; absent when the yt-dlp module is
+// off) - the box stays hidden unless that probe answers 200, and reveals
+// whole, already populated (its controls are deliberately NOT part of the
+// /api/settings reveal-toggle set - the v1.96 partial-render lesson).
+
+// The busy poll's timer - module-level so destroy() can clear it (listeners
+// ride the per-view AbortController; timers need the explicit clear).
+let enginePollTimer = null;
+
+// Pure: server status -> everything the DOM writer needs. The status line
+// composes honestly: "Active engine: X." leads, then the unsupported
+// reason, then any revert record, then busy-or-last-result. Null for
+// garbage (the DOM writer no-ops).
+function buildEngineViewModel(s) {
+  if (!s || typeof s !== 'object') return null;
+  const latest = s.latest && typeof s.latest === 'object' ? s.latest : null;
+  const channelText = (v) => {
+    if (typeof v === 'string' && v !== '') return v;
+    return latest && latest.error ? 'unavailable (offline?)' : 'unavailable';
+  };
+  const busy = s.busy && typeof s.busy === 'object' ? s.busy : null;
+  const lines = [];
+  if (s.supported !== true && typeof s.reason === 'string' && s.reason) lines.push(s.reason);
+  if (s.revert && typeof s.revert === 'object') {
+    lines.push(`Reverted from ${s.revert.fromVersion || 'the installed engine'}: ${s.revert.reason || 'engine failure'}`);
+  }
+  if (busy) {
+    lines.push(busy.status === 'installing' ? 'Installing…' : 'Queued behind the current download…');
+  } else if (s.lastResult && typeof s.lastResult === 'object' && s.lastResult.message) {
+    lines.push(`${s.lastResult.ok === true ? '' : 'Problem: '}${s.lastResult.message}`);
+  }
+  const activeText = s.active === 'venv' && s.installed
+    ? `${s.installed.reported || s.installed.version} (${s.installed.channel})`
+    : 'bundled';
+  lines.unshift(`Active engine: ${activeText}.`);
+  return {
+    bundledText: typeof s.bundledVersion === 'string' && s.bundledVersion !== '' ? s.bundledVersion : 'unknown',
+    stableText: channelText(latest && latest.stable),
+    nightlyText: channelText(latest && latest.nightly),
+    channel: typeof s.channel === 'string' ? s.channel : 'bundled',
+    autoUpdate: s.autoUpdate === true,
+    controlsDisabled: Boolean(busy) || s.supported !== true,
+    updateDisabled: Boolean(busy) || s.supported !== true || s.channel === 'bundled',
+    busy: Boolean(busy),
+    statusText: lines.join(' '),
+  };
+}
+
+function renderEngineSection(status) {
+  const vm = buildEngineViewModel(status);
+  if (!vm || typeof document === 'undefined') return;
+  const setText = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  };
+  setText('engine-version-bundled', vm.bundledText);
+  setText('engine-version-stable', vm.stableText);
+  setText('engine-version-nightly', vm.nightlyText);
+  document.querySelectorAll('input[name="engine-channel"]').forEach((el) => {
+    el.checked = el.value === vm.channel;
+    el.disabled = vm.controlsDisabled;
+  });
+  const autoCheck = document.getElementById('engine-autoupdate-check');
+  if (autoCheck) {
+    autoCheck.checked = vm.autoUpdate;
+    autoCheck.disabled = vm.controlsDisabled;
+  }
+  const updateBtn = document.getElementById('engine-update-btn');
+  if (updateBtn) updateBtn.disabled = vm.updateDisabled;
+  setText('engine-status', vm.statusText);
+  if (vm.busy) scheduleEnginePoll();
+}
+
+// While a queued/installing job runs, re-sync every 2s until busy clears.
+// The job itself is hard-bounded server-side (venv/pip/probe timeouts), so
+// this poll always terminates; destroy() clears a mid-flight timer, and
+// (gate round 1 QA S1) the tick itself re-checks the view's controller so
+// a fetch that was in flight at navigation can never re-arm the loop
+// against a dead view - the fetch also rides the controller's signal.
+function scheduleEnginePoll() {
+  if (enginePollTimer) clearTimeout(enginePollTimer);
+  if (!controller || controller.signal.aborted) return;
+  enginePollTimer = setTimeout(async () => {
+    enginePollTimer = null;
+    if (!controller || controller.signal.aborted) return;
+    try {
+      const r = await fetch('/api/ytdlp/engine', { signal: controller.signal });
+      if (!r.ok) return;
+      renderEngineSection(await r.json());
+    } catch (_) { /* transient or aborted; the next user action re-syncs */ }
+  }, 2000);
+}
+
+async function postEngine(url, body) {
+  const errorEl = document.getElementById('engine-error');
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      setFieldError(errorEl, data.error || 'Could not update the downloader engine.');
+      return;
+    }
+    setFieldError(errorEl, null);
+    renderEngineSection(data);
+  } catch (_) {
+    setFieldError(errorEl, 'Could not update the downloader engine (network error).');
+  }
+}
+
+async function loadEngineSection(signal) {
+  const box = document.getElementById('downloads-box');
+  if (!box) return;
+  let r;
+  try {
+    r = await fetch('/api/ytdlp/engine');
+  } catch (_) {
+    return; // network failure at probe time: the box just stays hidden
+  }
+  if (!r.ok) return; // 401/403/404 - not an admin, or the module is off
+  let status;
+  try {
+    status = await r.json();
+  } catch (_) {
+    return;
+  }
+  box.hidden = false;
+  renderEngineSection(status);
+  document.querySelectorAll('input[name="engine-channel"]').forEach((el) => {
+    el.addEventListener('change', (e) => {
+      if (e.target.checked) postEngine('/api/ytdlp/engine', { channel: e.target.value });
+    }, { signal });
+  });
+  const autoCheck = document.getElementById('engine-autoupdate-check');
+  if (autoCheck) {
+    autoCheck.addEventListener('change', (e) => {
+      postEngine('/api/ytdlp/engine', { autoUpdate: e.target.checked });
+    }, { signal });
+  }
+  const updateBtn = document.getElementById('engine-update-btn');
+  if (updateBtn) {
+    updateBtn.addEventListener('click', () => {
+      postEngine('/api/ytdlp/engine/update');
+    }, { signal });
+  }
+}
+
 function init(root) {
   controller = new AbortController();
   configuredFolders = [];
@@ -2584,6 +2735,7 @@ function init(root) {
   loadAutomationSettings();
   loadCacheSize();
   loadScanStatusLine();
+  loadEngineSection(controller.signal); // v1.146: the Downloads box (admin + module-on probe)
   // v1.32 (custom logo): wire the Appearance-box upload/reset controls.
   wireLogoControls();
   // v1.43: Account chip + sign out + (admin) user management.
@@ -2613,6 +2765,12 @@ function destroy() {
     clearTimeout(scanRedirectTimer);
     scanRedirectTimer = null;
   }
+  // v1.146: the engine busy-poll timer (listeners rode the controller; the
+  // timer needs the explicit clear, same as scanRedirectTimer above).
+  if (enginePollTimer) {
+    clearTimeout(enginePollTimer);
+    enginePollTimer = null;
+  }
 }
 
 if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.registerView === 'function') {
@@ -2636,6 +2794,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // ORDER, its label coverage and its >=1-visible floor are all behaviour
     // no constant can stand in for.
     renderBottomBarEditor, BOTTOMBAR_LABELS,
+    // v1.146: the Downloads box's pure status->view-model mapper (the DOM
+    // writer + wiring are the usual on-device-validated thin shell).
+    buildEngineViewModel,
     // v1.76: the wizard's directory list is jsdom-tested through its REAL
     // render + REAL gesture wiring (the arrows it used to be driven by are
     // gone). `init()` normally owns this module state, so a test needs a seat

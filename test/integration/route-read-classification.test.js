@@ -105,6 +105,7 @@ const READ = {
   '/api/users/:id/restrictions': 'ADMIN',
   '/api/videos': 'GATED',
   '/api/videos/:id': 'GATED',
+  '/api/ytdlp/engine': 'ADMIN', // v1.146: downloader-engine status; requireAdmin first-line (fail-closed gate in lib/ytdlp/index.js)
   '/audio/:id': 'GATED',
   '/book/:id/file': 'GATED',
   '/book/:id/tts/:spineIndex': 'GATED',
