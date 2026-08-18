@@ -1,0 +1,45 @@
+# v1.148 T3 (Dean's intake decisions 1-3, 2026-08-18): dependency drift
+# arrives as PRs instead of being invisible.
+#
+# - Dependabot over Renovate: native to GitHub (no third-party app on this
+#   repo), one file, and its limits don't bite at three runtime deps.
+# - NO AUTO-MERGE, EVER: PRs sit until Dean says merge; each runs full CI
+#   (both Node legs + the audit gate). Merging one is a normal slim wave.
+#   There is deliberately no auto-merge configuration anywhere in this
+#   repo - a lock test binds that absence.
+# - The docker ecosystem watches the FROM line (node:22-alpine) ONLY. The
+#   yt-dlp pin is an ARG, invisible to Dependabot BY DESIGN - the runtime
+#   engine selector (v1.146) and the pin-bump cadence in the Dockerfile
+#   comment own that lifecycle.
+# - Weekly on Monday, npm minor+patch grouped into one PR (majors arrive
+#   individually - they deserve individual scrutiny), PR count bounded.
+#
+# Reverting this whole feature = delete this file (close any open PRs).
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 2
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3

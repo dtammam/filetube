@@ -48,3 +48,29 @@ test('the audit gate stays OUT of the local git hooks (network-dependent local g
     assert.doesNotMatch(body, /audit/, `${hook} must not run the audit gate`);
   }
 });
+
+// ---- T3: dependabot --------------------------------------------------------
+
+const DEPENDABOT = stripped('.github/dependabot.yml');
+
+test('dependabot watches exactly the three agreed ecosystems, weekly', () => {
+  const ecosystems = [...DEPENDABOT.matchAll(/package-ecosystem: "([a-z-]+)"/g)].map((m) => m[1]).sort();
+  assert.deepEqual(ecosystems, ['docker', 'github-actions', 'npm']);
+  assert.equal((DEPENDABOT.match(/interval: "weekly"/g) || []).length, 3, 'every ecosystem is weekly');
+  assert.equal((DEPENDABOT.match(/open-pull-requests-limit:/g) || []).length, 3, 'every ecosystem is PR-bounded');
+});
+
+test('npm updates group minor+patch (majors arrive individually for individual scrutiny)', () => {
+  assert.match(DEPENDABOT, /applies-to: version-updates/);
+  assert.match(DEPENDABOT, /update-types:\s*\n\s*- "minor"\s*\n\s*- "patch"/);
+});
+
+test('NO auto-merge, ever: neither dependabot.yml nor any workflow contains auto-merge machinery', () => {
+  // Dean's intake decision 3. Auto-merge for dependency PRs arrives via a
+  // dependabot key or a workflow calling the merge API on dependabot PRs -
+  // bind the absence in every pipeline file, comment-stripped.
+  const files = ['.github/dependabot.yml', '.github/workflows/ci.yml', '.github/workflows/docker-publish.yml', '.github/workflows/release-notes.yml'];
+  for (const f of files) {
+    assert.doesNotMatch(stripped(f), /auto-?merge/i, `${f} must carry no auto-merge`);
+  }
+});
