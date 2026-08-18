@@ -28,7 +28,10 @@ looks and feels like the YouTube you remember - pick your era (2005, 2009,
 container, streams to desktop, phone (PWA), and Roku, and keeps watch
 progress, likes, and reading positions per account, synced across devices.
 Your library never leaves your network - the only outbound traffic is what
-you explicitly opt into (yt-dlp channel downloads, podcast RSS fetches, and
+you explicitly opt into (yt-dlp channel downloads, podcast RSS fetches,
+optional downloader-engine updates installed from PyPI at runtime - off by
+default, bundled engine otherwise, see the
+[configuration guide](docs/CONFIGURATION.md#keeping-yt-dlp-up-to-date) - and
 Web Push notifications).
 
 ## Screenshots

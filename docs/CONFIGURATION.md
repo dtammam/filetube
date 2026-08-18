@@ -294,10 +294,39 @@ you'd treat `DATA_DIR`.
 
 ## Keeping yt-dlp up to date
 
-The bundled `yt-dlp` binary is **pinned inside the Docker image** at build
-time - there is no runtime or in-app auto-update. To pick up a newer
-`yt-dlp` release, pull or rebuild a newer FileTube image (see
-[Staying up to date](#staying-up-to-date-or-pinning-a-version), above).
+FileTube ships with a **bundled** `yt-dlp` pinned inside the Docker image
+at build time. That binary is never removed and is always the fallback.
+Since v1.146 an admin can additionally pin the RUNNING engine to a release
+channel at runtime, from **Setup -> Downloads -> Downloader engine**. The
+section shows three versions side by side - the bundled engine, the latest
+stable release, and the latest nightly - and lets you switch:
+
+- **Bundled** (the default): exactly the pre-v1.146 behavior. The engine
+  updates only when you pull a newer FileTube image (see
+  [Staying up to date](#staying-up-to-date-or-pinning-a-version), above).
+- **Latest stable / Latest nightly**: FileTube installs that yt-dlp
+  release from PyPI into a small private environment under your data
+  directory (`ytdlp-engine/` - it survives container recreation). Nightly
+  tracks YouTube's changes closest.
+- Every installed engine must pass a health check before it is used, and
+  an engine that stops working later **automatically reverts to bundled**;
+  the notification bell reports the outcome either way (admins only).
+- **Check for engine updates daily** is a separate opt-in checkbox, off by
+  default. **Update now** is always available on the stable/nightly
+  channels.
+- Offline instances: the bundled row always renders; the stable/nightly
+  columns read "unavailable" and nothing blocks startup.
+
+**The trade, stated plainly:** choosing stable or nightly means FileTube
+runs `pip install` at runtime and executes whatever the yt-dlp project
+published to PyPI - a wider supply-chain surface than the image's
+build-time pin. The bundled default preserves the old posture; the
+channels are a conscious opt-in for outage resilience (YouTube changes
+faster than FileTube releases).
+
+Bare metal: the selector needs `python3` (with its `venv` module and a
+pip). Without it the section shows an honest "not available" message and
+whatever `yt-dlp` is on the PATH keeps being used.
 
 ---
 
