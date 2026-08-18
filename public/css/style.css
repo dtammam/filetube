@@ -11654,4 +11654,30 @@ a.queue-upnext-next:hover {
     position: absolute;
     inset: -9px -7px; /* token-exempt: positional geometry (invisible tap-zone extension to the 44px touch guideline) */
   }
+  /* v1.147 gate W3: phone LIST view pins the thumb to 120px wide (~68px
+     tall), where the full -9px vertical extension made the BL corner's
+     invisible zone shadow the BOTTOM edge of the TL pill (BL renders
+     last at equal z, so its zone wins the overlap - tapping the visible
+     lower edge of the TL button fired the BL action). List view keeps
+     the horizontal growth and pulls vertical back to -2px: the zones
+     clear each other and neither covers a sibling's VISIBLE pill. */
+  .video-grid.list-view .card-download-btn::after,
+  .video-grid.list-view .card-delete-btn::after,
+  .video-grid.list-view .card-like-btn::after,
+  .video-grid.list-view .card-share-btn::after,
+  .video-grid.list-view .card-reheat-btn::after,
+  .video-grid.list-view .card-queue-btn::after {
+    inset: -2px -7px; /* token-exempt: positional geometry (list-view corner zones must not shadow sibling pills) */
+  }
+  /* v1.147 gate S1: the emoji icon set sizes .icon-delete/.icon-download
+     with width/height auto (the AC7 no-square fix) - re-imposing a fixed
+     18px box would grow the pill around an UNCHANGED font-sized glyph.
+     Restore auto: under the emoji set those two simply keep their
+     pre-v1.147 look (disclosed; the other four corner icons have no
+     emoji variants and grow normally). */
+  [data-icons="emoji"] .card-delete-btn .icon-delete,
+  [data-icons="emoji"] .card-download-btn .icon-download {
+    width: auto;
+    height: auto;
+  }
 }
