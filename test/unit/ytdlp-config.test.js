@@ -435,3 +435,9 @@ test('parseYtdlpConfig: FILETUBE_YTDLP_JS_RUNTIMES - valid runtime lists pass, j
   assert.equal(parse(undefined), null);
   assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_ENABLED: 'true' }).jsRuntimes, null, 'unset -> null (bare-metal safety)');
 });
+
+test('parseYtdlpConfig: FILETUBE_YTDLP_JS_RUNTIMES length boundary is exact (gate round-2 S1 - the sibling playerClient posture)', () => {
+  const parse = (v) => parseYtdlpConfig({ FILETUBE_YTDLP_ENABLED: 'true', FILETUBE_YTDLP_JS_RUNTIMES: v }).jsRuntimes;
+  assert.equal(parse('a'.repeat(64)), 'a'.repeat(64), '64 accepted');
+  assert.equal(parse('a'.repeat(65)), null, '65 rejected');
+});

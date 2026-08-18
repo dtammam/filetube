@@ -1748,8 +1748,14 @@ test('buildYtdlpDownloadArgs: --js-runtimes is emitted ONLY when config.jsRuntim
   assert.ok(idx >= 0, 'set jsRuntimes emits the flag');
   assert.equal(withRuntime[idx + 1], 'node', 'two fixed-shape argv elements, value as its own element');
 
+  // Gate W3: yt-dlp never comma-splits this value - a comma'd single pair is
+  // "Ignoring unsupported JavaScript runtime(s)" and degrades to NO runtime.
+  // Multi-runtime = REPEATED pairs, one per name.
   const multi = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ jsRuntimes: 'deno,node' }), ['vid1']);
-  assert.equal(multi[multi.indexOf('--js-runtimes') + 1], 'deno,node');
+  const pairs = [];
+  multi.forEach((el, i) => { if (el === '--js-runtimes') pairs.push(multi[i + 1]); });
+  assert.deepStrictEqual(pairs, ['deno', 'node'], 'one repeated flag pair per runtime');
+  assert.ok(!multi.includes('deno,node'), 'the comma form must never reach argv - upstream silently ignores it');
 });
 
 test('buildYtdlpDownloadArgs: a hostile jsRuntimes value is re-validated at the argv boundary and emits NOTHING', () => {
