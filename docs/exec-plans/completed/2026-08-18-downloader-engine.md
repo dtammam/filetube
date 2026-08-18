@@ -1,6 +1,6 @@
 # Downloader engine channel selector (bundled / stable / nightly at runtime)
 
-Status: ACTIVE (implementing). Owner: main session. Target: v1.146.0, FULL two-seat gate (this wave executes downloaded code - never slim).
+Status: SHIPPED v1.146.0 (2026-08-18). FULL two-seat gate, 2 fix rounds, both seats APPROVE. Owner: main session.
 
 Dean's ruling (2026-08-18, overturns locked decision D5 in the Dockerfile), verbatim terms:
 

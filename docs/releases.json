@@ -1780,5 +1780,11 @@
     "date": "2026-08-18",
     "title": "YouTube downloads work again",
     "intent": "Downloads had started failing across the board as YouTube changed things on their end. FileTube now ships a much fresher downloader engine, configured the way the new YouTube requires - your failed subscriptions retry themselves on the next check."
+  },
+  {
+    "version": "1.146.0",
+    "date": "2026-08-18",
+    "title": "Choose your downloader engine",
+    "intent": "A new Downloads section in Setup lets you point FileTube's YouTube downloader at the newest stable or nightly engine release, so you no longer wait for a FileTube update when YouTube changes things. The engine that ships with the app always stays as the safety net: every new engine is health-checked before it takes over, a broken one switches back automatically and rings the bell, and a daily auto-update is there if you want it (off unless you turn it on)."
   }
 ]
