@@ -11617,3 +11617,67 @@ a.queue-upnext-next:hover {
   font-size: var(--fs-sm);
   word-break: break-all;
 }
+
+/* ---- v1.147 (Dean): bigger card-corner controls on mobile -----------------
+   The six corner overlays (download/delete/like/queue/share/reheat) read
+   fine on desktop but their 14px glyphs are a hard press on a phone. Two
+   levers, BOTH mobile-only and scoped to exactly these six (each button's
+   own base rule keeps the 14px sibling convention - desktop stays
+   byte-identical):
+   1. The glyph grows 14px -> 18px (Dean's +30%); the scrim pill grows
+      with it (flex + padding), so the VISIBLE button is honestly bigger.
+   2. An invisible tap-zone extension via an inset ::after - the pill's
+      look is unchanged but the hit box reaches the 44px touch guideline
+      (the pill is ~30x26 at the new glyph size; -7/-9 reaches ~44x44).
+      The .card-feedhide-btn precedent grows min-width instead ONLY
+      because that button has no background; these six wear the visible
+      scrim pill, which min-width would visibly stretch. The extension
+      necessarily overlaps a sliver of the surrounding watch-link - the
+      standard price of any corner tap-target growth. */
+@media (max-width: 768px) {
+  .card-download-btn .icon-download,
+  .card-delete-btn .icon-delete,
+  .card-like-btn .icon-heart,
+  .card-share-btn .icon-share,
+  .card-reheat-btn .icon-flame,
+  .card-queue-btn .icon-queue {
+    width: 18px;
+    height: 18px;
+  }
+  .card-download-btn::after,
+  .card-delete-btn::after,
+  .card-like-btn::after,
+  .card-share-btn::after,
+  .card-reheat-btn::after,
+  .card-queue-btn::after {
+    content: '';
+    position: absolute;
+    inset: -9px -7px; /* token-exempt: positional geometry (invisible tap-zone extension to the 44px touch guideline) */
+  }
+  /* v1.147 gate W3: phone LIST view pins the thumb to 120px wide (~68px
+     tall), where the full -9px vertical extension made the BL corner's
+     invisible zone shadow the BOTTOM edge of the TL pill (BL renders
+     last at equal z, so its zone wins the overlap - tapping the visible
+     lower edge of the TL button fired the BL action). List view keeps
+     the horizontal growth and pulls vertical back to -2px: the zones
+     clear each other and neither covers a sibling's VISIBLE pill. */
+  .video-grid.list-view .card-download-btn::after,
+  .video-grid.list-view .card-delete-btn::after,
+  .video-grid.list-view .card-like-btn::after,
+  .video-grid.list-view .card-share-btn::after,
+  .video-grid.list-view .card-reheat-btn::after,
+  .video-grid.list-view .card-queue-btn::after {
+    inset: -2px -7px; /* token-exempt: positional geometry (list-view corner zones must not shadow sibling pills) */
+  }
+  /* v1.147 gate S1: the emoji icon set sizes .icon-delete/.icon-download
+     with width/height auto (the AC7 no-square fix) - re-imposing a fixed
+     18px box would grow the pill around an UNCHANGED font-sized glyph.
+     Restore auto: under the emoji set those two simply keep their
+     pre-v1.147 look (disclosed; the other four corner icons have no
+     emoji variants and grow normally). */
+  [data-icons="emoji"] .card-delete-btn .icon-delete,
+  [data-icons="emoji"] .card-download-btn .icon-download {
+    width: auto;
+    height: auto;
+  }
+}
