@@ -11617,3 +11617,41 @@ a.queue-upnext-next:hover {
   font-size: var(--fs-sm);
   word-break: break-all;
 }
+
+/* ---- v1.147 (Dean): bigger card-corner controls on mobile -----------------
+   The six corner overlays (download/delete/like/queue/share/reheat) read
+   fine on desktop but their 14px glyphs are a hard press on a phone. Two
+   levers, BOTH mobile-only and scoped to exactly these six (each button's
+   own base rule keeps the 14px sibling convention - desktop stays
+   byte-identical):
+   1. The glyph grows 14px -> 18px (Dean's +30%); the scrim pill grows
+      with it (flex + padding), so the VISIBLE button is honestly bigger.
+   2. An invisible tap-zone extension via an inset ::after - the pill's
+      look is unchanged but the hit box reaches the 44px touch guideline
+      (the pill is ~30x26 at the new glyph size; -7/-9 reaches ~44x44).
+      The .card-feedhide-btn precedent grows min-width instead ONLY
+      because that button has no background; these six wear the visible
+      scrim pill, which min-width would visibly stretch. The extension
+      necessarily overlaps a sliver of the surrounding watch-link - the
+      standard price of any corner tap-target growth. */
+@media (max-width: 768px) {
+  .card-download-btn .icon-download,
+  .card-delete-btn .icon-delete,
+  .card-like-btn .icon-heart,
+  .card-share-btn .icon-share,
+  .card-reheat-btn .icon-flame,
+  .card-queue-btn .icon-queue {
+    width: 18px;
+    height: 18px;
+  }
+  .card-download-btn::after,
+  .card-delete-btn::after,
+  .card-like-btn::after,
+  .card-share-btn::after,
+  .card-reheat-btn::after,
+  .card-queue-btn::after {
+    content: '';
+    position: absolute;
+    inset: -9px -7px; /* token-exempt: positional geometry (invisible tap-zone extension to the 44px touch guideline) */
+  }
+}
