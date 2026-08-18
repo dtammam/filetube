@@ -15221,7 +15221,10 @@ app.get('/api/stats', (req, res) => {
     system: {
       version: APP_VERSION,
       repoUrl: REPO_URL,
-      ytdlp: { enabled: ytdlpEnabled, version: ytdlpEnabled ? ytdlp.getCachedYtdlpVersion() : null },
+      // v1.146: `engine` names WHICH engine the version belongs to - the
+      // version cache probes the ACTIVE binary (the ruling: About/Stats
+      // reports the active engine, never just the image ENV).
+      ytdlp: { enabled: ytdlpEnabled, version: ytdlpEnabled ? ytdlp.getCachedYtdlpVersion() : null, engine: ytdlpEnabled ? ytdlp.getEngineSummary() : null },
       tts: { available: ttsAvailable(), engine: ttsConfig.engine, version: ttsEngineVersion },
     },
   });

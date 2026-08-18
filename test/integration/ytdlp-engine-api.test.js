@@ -242,3 +242,18 @@ test('a probe-lying binary never activates (health gate binds the route flow end
   assert.equal(s.active, 'bundled');
   assert.match(s.lastResult.message, /reports 2020\.01\.01, expected/);
 });
+
+test('T8: /api/stats reports the ACTIVE engine - venv after a switch, bundled after switching back', async () => {
+  armSpawns();
+  await fetch(`${base}/api/ytdlp/engine`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'nightly' }),
+  });
+  await awaitEngineJob();
+  let stats = await (await fetch(`${base}/api/stats`)).json();
+  assert.deepEqual(stats.system.ytdlp.engine, { channel: 'nightly', active: 'venv' });
+  await fetch(`${base}/api/ytdlp/engine`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'bundled' }),
+  });
+  stats = await (await fetch(`${base}/api/stats`)).json();
+  assert.deepEqual(stats.system.ytdlp.engine, { channel: 'bundled', active: 'bundled' });
+});

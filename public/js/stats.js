@@ -363,6 +363,21 @@ function buildAboutRow(label, valueNode) {
   return row;
 }
 
+// v1.146 (downloader-engine T8): the About row's text - "version (label)"
+// where the label is the ACTIVE engine's channel. `active === 'venv'` is
+// what earns a channel name; anything else (bundled active, post-revert
+// fallback, unbound runtime, missing summary) HONESTLY reads "(bundled)" -
+// the label describes what is running, never what is merely wished for.
+// Null when no version is known (the row is not rendered at all).
+function formatYtdlpAboutText(info) {
+  if (!info || typeof info.version !== 'string' || info.version === '') return null;
+  const eng = info.engine;
+  const label = eng && eng.active === 'venv' && (eng.channel === 'stable' || eng.channel === 'nightly')
+    ? eng.channel
+    : 'bundled';
+  return `${info.version} (${label})`;
+}
+
 function renderAbout(root, system) {
   clearChildren(root);
   const sys = system || {};
@@ -373,9 +388,11 @@ function renderAbout(root, system) {
     root.appendChild(buildAboutRow('FileTube', buildRepoLink(`${repoUrl}/releases/tag/v${sys.version}`, `v${sys.version}`)));
   }
   // yt-dlp -- shown ONLY when the module is enabled AND a version is known
-  // (Dean: if it isn't installed, don't show the row at all).
-  if (sys.ytdlp && sys.ytdlp.enabled && sys.ytdlp.version) {
-    root.appendChild(buildAboutRow('yt-dlp', document.createTextNode(sys.ytdlp.version)));
+  // (Dean: if it isn't installed, don't show the row at all). v1.146: the
+  // row names WHICH engine is active - "version (bundled|stable|nightly)".
+  const ytdlpText = formatYtdlpAboutText(sys.ytdlp);
+  if (sys.ytdlp && sys.ytdlp.enabled && ytdlpText) {
+    root.appendChild(buildAboutRow('yt-dlp', document.createTextNode(ytdlpText)));
   }
   // Text-to-speech -- shown when available; version when known (espeak-ng),
   // otherwise just the engine name (piper's --version isn't trustworthy).
@@ -630,5 +647,5 @@ if (typeof document !== 'undefined') {
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors setup.js/player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS };
+  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS };
 }
