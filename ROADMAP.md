@@ -108,11 +108,25 @@ prefix-porous (three measured escape spellings; honest closure is an
 allowlist + substring net on the next touch); (b) the two invisible tap
 zones in list view still share a 0.5px hairline band (no visible pill is
 ever covered); (c) under the emoji icon set, delete/download get no size
-bump (auto-sized glyphs, disclosed above).
+bump (auto-sized glyphs, disclosed above); (d) post-ceremony: the FIRST
+v1.147.0 tag push was REFUSED by the pre-push hook - two v1.146 boot
+tests were latently NETWORK-dependent (a mid-test engine reset also
+cleared the fake-PyPI fetch, falling through to live pypi.org; they
+passed for a day only while the live latest nightly coincidentally
+equaled the fixture's self-report, and went red the moment yt-dlp
+published the next nightly). Fixed before the tag ever reached the
+remote (re-arm the fake after every reset + a global-fetch tripwire
+whose out-of-band afterEach assertion fails ANY fallthrough's own test
+with the mechanism named - the gate caught the first tripwire draft
+being swallowed mute by a defensive try), which also means every earlier
+green run of those two tests had silently depended on live PyPI - the
+dual-Node counts below are the POST-fix re-runs. The v1.146.0 tag's
+tree retains the latent (test-only) flake; published tags are never
+re-pointed, and the app itself is unaffected.
 
-Dual-Node: 7183/7183 on v22.23.1 AND v24.14.0, 0 fail on both,
-sequential. Device pass = Dean's pull; probe the corner taps in BOTH
-grid and list view on the phone.
+Dual-Node (post-network-fix re-runs): 7183/7183 on v22.23.1 AND
+v24.14.0, 0 fail on both, sequential. Device pass = Dean's pull; probe
+the corner taps in BOTH grid and list view on the phone.
 
 ### v1.146.0 - the downloader engine selector (2026-08-18)
 
