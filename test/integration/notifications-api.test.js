@@ -356,3 +356,48 @@ test('v1.73 gate (QA W4b): the phantom prune + episode purge actually DELETE fee
   assert.ok(after.some((r) => r.mediaId === 'mediä-2' && r.kind === 'media'),
     'a MEDIA feed row survives the episode carrier even when its id rides the purge list (kind-scoped delete)');
 });
+
+// ---------------------------------------------------------------------------
+// v1.146 (downloader-engine T5): engine event rows are ADMIN-ONLY at every
+// read surface - the panel list, the badge, AND the panel's own
+// unseenCount. A member must see neither the row nor evidence of it.
+// ---------------------------------------------------------------------------
+
+test('v1.146: engine rows render for the admin (composed title) and are invisible to a member - list AND badge', async () => {
+  await armFeature();
+  userStore.recordNotifications([
+    { mediaId: 'engine:updated:2026.8.17.73947.dev0', createdAt: T0 + 10, kind: 'engine' },
+    { mediaId: 'engine:garbage-not-parseable', createdAt: T0 + 11, kind: 'engine' },
+  ]);
+
+  const { __mintTestSession } = require('../../server');
+  // A member whose account PREDATES nothing here would suppress unread via
+  // account age; visibility (rows present at all) is what this test binds.
+  const member = __mintTestSession({ username: 'kid-nocaps', role: 'member' });
+  const asMember = (url, opts = {}) => fetch(`${base}${url}`, { ...opts, headers: { ...(opts.headers || {}), Cookie: member.cookie } });
+
+  // Admin panel: the two media rows + ONE engine row (the malformed id
+  // renders NOTHING - crafted-bundle defense), newest first.
+  const adminView = await (await fetch(`${base}/api/notifications`)).json();
+  const engineRows = adminView.items.filter((i) => i.kind === 'engine');
+  assert.equal(engineRows.length, 1, 'exactly the well-formed engine row, never the malformed one');
+  assert.equal(engineRows[0].title, 'Downloader engine updated to 2026.8.17.73947.dev0');
+  assert.equal(engineRows[0].channelName, 'Downloader engine');
+  assert.equal(engineRows[0].hasThumbnail, false);
+
+  // Admin badge counts the engine row (2 media + 1 well-formed engine + 1
+  // malformed engine = 4 raw rows; the badge is a kind-level count, so the
+  // malformed row still ticks it - it is invisible only at RENDER; both
+  // remain clearable through the normal seen/clear flow).
+  const adminBadge = await (await fetch(`${base}/api/notifications/badge`)).json();
+  assert.equal(adminBadge.count, 4);
+
+  // Member: no engine rows in the panel, and a badge of 0 - the two media
+  // rows predate the member's account (the account-age rule), and the
+  // engine rows are excluded by KIND, so nothing here can tick it.
+  const memberView = await (await asMember('/api/notifications')).json();
+  assert.equal(memberView.items.filter((i) => i.kind === 'engine').length, 0, 'no engine rows for a member');
+  assert.equal(memberView.unseenCount, 0);
+  const memberBadge = await (await asMember('/api/notifications/badge')).json();
+  assert.equal(memberBadge.count, 0, 'a member badge NEVER ticks for engine events');
+});

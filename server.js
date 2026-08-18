@@ -9201,7 +9201,10 @@ function notificationsFeatureEnabled(db) {
 app.get('/api/notifications/badge', (req, res) => {
   const db = getCachedDatabase(); // hot poll reader (60s cadence per client)
   if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  res.json({ count: userStore.countUnseenNotifications(req.user.id) });
+  // v1.146: engine rows are admin-only - the badge and the panel must agree
+  // (a member badge ticking for a row the panel filters out is a phantom
+  // badge that user could never clear by reading).
+  res.json({ count: userStore.countUnseenNotifications(req.user.id, { includeEngine: req.user.role === 'admin' }) });
 });
 
 // The panel list: feed rows joined against the CURRENT library item (title/
@@ -9222,6 +9225,30 @@ app.get('/api/notifications', (req, res) => {
   const podcastNsForFeed = podcastStore.readPodcasts(db);
   const podcastSubNames = new Map(podcastNsForFeed.subscriptions.filter(Boolean).map((sub) => [sub.id, sub.name]));
   for (const row of items) {
+    // v1.146 (downloader-engine T5): engine event rows - ADMIN-ONLY (an
+    // engine revert is an operator concern; members must see neither the
+    // row nor, via the badge/unseenCount above, its existence). The id
+    // carries the whole payload; a malformed one (crafted backup bundle)
+    // parses to null and renders NOTHING - never garbage.
+    if (row.kind === 'engine') {
+      if (!req.user || req.user.role !== 'admin') continue;
+      const parsed = ytdlp.parseEngineNotificationId(row.mediaId);
+      if (!parsed) continue;
+      rows.push({
+        id: row.id,
+        mediaId: row.mediaId,
+        createdAt: row.createdAt,
+        unread: row.unread,
+        kind: 'engine',
+        title: ytdlp.describeEngineEvent(parsed.event, parsed.version),
+        channelName: 'Downloader engine',
+        folderName: '',
+        channelAvatarUrl: '',
+        hasThumbnail: false,
+        type: 'engine',
+      });
+      continue;
+    }
     if (row.kind === 'podcast') {
       const ep = Object.prototype.hasOwnProperty.call(podcastNsForFeed.episodes, row.mediaId) ? podcastNsForFeed.episodes[row.mediaId] : null;
       if (!ep) {
@@ -9321,7 +9348,8 @@ app.get('/api/notifications', (req, res) => {
       console.error('Notifications: failed to prune phantom podcast feed rows (continuing):', err && err.message);
     }
   }
-  res.json({ items: rows, unseenCount: userStore.countUnseenNotifications(req.user.id) });
+  // v1.146: same admin-only engine-row inclusion as the badge route above.
+  res.json({ items: rows, unseenCount: userStore.countUnseenNotifications(req.user.id, { includeEngine: req.user.role === 'admin' }) });
 });
 
 // Opening the panel zeroes the NUMBER badge (two-tier semantics, decision 3:

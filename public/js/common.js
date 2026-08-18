@@ -3348,6 +3348,25 @@ function formatNotificationBadge(count) {
 // builder (percent-encode at ONE URL layer -- and that layer is not here).
 function buildNotificationRowModel(row) {
   if (!row || typeof row.mediaId !== 'string' || row.mediaId === '') return null;
+  // v1.146 (downloader-engine): engine event rows - server-composed title,
+  // no thumbnail, the generated-glyph avatar tile, and a tap that lands on
+  // the Setup page's Downloads box (admin-only rows; the server already
+  // filtered). Kept ABOVE the media/podcast paths so an engine row can
+  // never fall through to a /watch.html href built from its synthetic id.
+  if (row.kind === 'engine') {
+    return {
+      id: row.id,
+      mediaId: row.mediaId,
+      kind: 'engine',
+      href: '/setup.html',
+      title: typeof row.title === 'string' ? row.title : '',
+      channelLabel: 'Downloader engine',
+      channelAvatarUrl: '',
+      thumbnailUrl: null,
+      timeLabel: formatRelativeTime(row.createdAt),
+      unread: row.unread === true,
+    };
+  }
   const channelName = displayChannelName(typeof row.channelName === 'string' ? row.channelName.trim() : ''); // v1.114 A2: "@handle" -> name
   const folderName = typeof row.folderName === 'string' ? row.folderName.trim() : '';
   // v1.73: podcast rows deep-link the podcasts place (?play= resumes the

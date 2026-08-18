@@ -656,3 +656,35 @@ test('activateBundled while already bundled records nothing new (no thrash)', ()
   assert.equal(state.revert, null);
   assert.deepEqual(state, before);
 });
+
+// ---------------------------------------------------------------------------
+// T5: bell-event vocabulary (id build/parse/describe)
+// ---------------------------------------------------------------------------
+
+test('engine notification ids round-trip build -> parse for every event', () => {
+  for (const event of ['updated', 'update-failed', 'reverted']) {
+    const id = engine.buildEngineNotificationId(event, NIGHTLY);
+    assert.equal(id, `engine:${event}:${NIGHTLY}`);
+    assert.deepEqual(engine.parseEngineNotificationId(id), { event, version: NIGHTLY });
+  }
+  // Unknown version spells 'unknown' and parses back to null version.
+  const id = engine.buildEngineNotificationId('reverted', null);
+  assert.equal(id, 'engine:reverted:unknown');
+  assert.deepEqual(engine.parseEngineNotificationId(id), { event: 'reverted', version: null });
+});
+
+test('engine notification id building/parsing is defensive on both sides', () => {
+  assert.equal(engine.buildEngineNotificationId('exploded', '2026.7.4'), null);
+  // Unsafe version falls to 'unknown' on build (never a malformed id).
+  assert.equal(engine.buildEngineNotificationId('updated', 'x; rm -rf /'), 'engine:updated:unknown');
+  for (const bad of [null, 42, '', 'engine:', 'engine:updated', 'engine:updated:', 'engine:pwn:2026.7.4', 'engine:updated:evil;string', 'mediä-1']) {
+    assert.equal(engine.parseEngineNotificationId(bad), null, `expected null for: ${String(bad)}`);
+  }
+});
+
+test('describeEngineEvent matches the ruling phrasing and never renders junk versions', () => {
+  assert.equal(engine.describeEngineEvent('updated', NIGHTLY), `Downloader engine updated to ${NIGHTLY}`);
+  assert.match(engine.describeEngineEvent('update-failed', '2026.7.4'), /2026\.7\.4 failed its health check/);
+  assert.match(engine.describeEngineEvent('reverted', null), /stopped working - reverted to the bundled engine/);
+  assert.match(engine.describeEngineEvent('updated', 'x; rm -rf /'), /updated to a new version/);
+});
