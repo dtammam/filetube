@@ -65,6 +65,48 @@ test('npm updates group minor+patch (majors arrive individually for individual s
   assert.match(DEPENDABOT, /update-types:\s*\n\s*- "minor"\s*\n\s*- "patch"/);
 });
 
+// ---- T4: build once, smoke, promote by identity ----------------------------
+
+const PUBLISH = stripped('.github/workflows/docker-publish.yml');
+
+test('docker-publish: the build step LOADS a local candidate and nothing builds-and-pushes in one breath', () => {
+  assert.equal((PUBLISH.match(/docker\/build-push-action/g) || []).length, 1, 'exactly ONE build - a second build is the rebuild sin this wave kills');
+  assert.match(PUBLISH, /load: true/);
+  assert.match(PUBLISH, /tags: filetube-candidate:local/);
+  assert.doesNotMatch(PUBLISH, /^\s*push: true\s*$/m, 'the old build-and-push spelling is gone');
+});
+
+test('docker-publish: the smoke asserts the MEASURED contract and blocks the push on failure', () => {
+  const smoke = PUBLISH.slice(PUBLISH.indexOf('Smoke-test the built image'), PUBLISH.indexOf('Log in to Docker Hub'));
+  assert.match(smoke, /docker run -d --name smoke/);
+  assert.match(smoke, /curl -sL[^\n]*\/login/, 'polls /login FOLLOWING redirects (302 -> /welcome -> 200, measured 2026-08-18)');
+  assert.match(smoke, /"\$code" = "200"/);
+  assert.match(smoke, /\/api\/stats/);
+  assert.match(smoke, /"\$api" = "401"/, 'the unauthenticated API contract (measured)');
+  assert.match(smoke, /docker logs smoke/, 'a failed smoke dumps the container logs');
+});
+
+test('docker-publish: promotion is BY IDENTITY (docker tag + push of the smoked image), push-event-gated', () => {
+  const promote = PUBLISH.slice(PUBLISH.indexOf('Log in to Docker Hub'));
+  assert.equal((promote.match(/if: github\.event_name == 'push'/g) || []).length, 2, 'login AND promote are both push-gated (the dispatch dry-run skips them)');
+  assert.match(promote, /docker tag filetube-candidate:local "\$t"/);
+  assert.match(promote, /docker push "\$t"/);
+  assert.match(promote, /refusing a silent no-op publish/, 'an empty tag list on a push event is an error, never a quiet skip');
+});
+
+test('docker-publish: the dry-run trigger exists and the v1.129 C6 protections survive byte-for-byte', () => {
+  assert.match(PUBLISH, /^\s*workflow_dispatch:\s*$/m);
+  assert.match(PUBLISH, /group: docker-publish-\$\{\{ github\.ref_type \}\}/, 'C6 concurrency lane');
+  assert.match(PUBLISH, /cancel-in-progress: false/);
+  assert.match(PUBLISH, /Assert tag matches package\.json version/, 'C6 tag==version refusal');
+  assert.match(PUBLISH, /needs: \[qualify, secret-scan\]/, 'publish still blocks on qualify + secret scan');
+});
+
+test('docker-publish: single-arch by decision - no QEMU, no platforms key (intake decision 6)', () => {
+  assert.doesNotMatch(PUBLISH, /setup-qemu/);
+  assert.doesNotMatch(PUBLISH, /platforms:/);
+});
+
 test('NO auto-merge, ever: neither dependabot.yml nor any workflow contains auto-merge machinery', () => {
   // Dean's intake decision 3. Auto-merge for dependency PRs arrives via a
   // dependabot key or a workflow calling the merge API on dependabot PRs -
