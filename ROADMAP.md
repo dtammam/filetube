@@ -80,6 +80,65 @@
 
 ## Shipped
 
+### v1.148.0 - release integrity + dependency automation (2026-08-18)
+
+Dean's "what's not first class about this repo" question, items 1 and 3,
+full-gate by his explicit ruling. The publish pipeline now BUILDS ONCE,
+smoke-tests that exact image (fresh data volume; the measured first-run
+contract: /login follows to /welcome at 200, unauthenticated /api/stats
+refuses with 401; failure dumps container logs and blocks the push), and
+promotes THE SAME LOCAL IMAGE by identity to every tag - the shipped
+artifact IS the tested artifact, with the image id + digests in each
+run's summary. A workflow_dispatch DRY-RUN runs the whole pipeline with
+push-side steps skipped (required validation after any pipeline edit).
+Dependencies: the wave's own baseline measurement found 4 standing
+advisories (1 low runtime-transitive, 3 high dev-transitives) that the
+repo had no instrument to see - healed with lockfile-only bumps, and
+now guarded by a fail-closed audit gate in CI AND on the release path
+(high/critical fail; docs/audit-exceptions.json is the empty-by-default
+reviewed escape hatch) plus weekly Dependabot PRs (npm grouped
+minor+patch, the docker base image, github-actions; never auto-merged).
+
+What the gate caught (FULL two-seat gate, 1 fix round -> both APPROVE):
+QA - a FALSE fixture-provenance comment (the test claimed its
+chain-reference entry came from the captured real audit document; that
+entry was modeled, not captured - the lying-comment class, caught and
+rewritten honestly; the false claim also stands in the T2 commit
+message, disclosed here since history is immutable) and the audit gate
+missing from the RELEASE path (tag pushes skip ci.yml - the exact gap
+v1.123 closed for tests/secret-scan, now mirrored the same way).
+Adversarial - FOUR surviving mutants against the pipeline lock test
+(a smoke failure that did not exit, a raw rebuild between smoke and
+push, a quoted push: smuggle, an inline-comment spelling escape - all
+now bound red) and the audit CLI's exit code (the gate's actual
+product) bound by no test (now spawn-level tested through a shimmed
+npm), plus an unwalkable-via fail-open hardened closed.
+
+DISCLOSED (the honest list): (a) the old buildx push attached default
+provenance attestations; classic docker-push promotion publishes a
+plain manifest, so provenance quietly stops shipping - consistent with
+tech-debt #154(c) (supply-chain signing) remaining deferred, now stated
+rather than silent; (b) an upstream advisory can red all CI overnight
+with zero local changes - accepted at intake ("part of the game"); the
+exceptions file is the reviewed escape hatch; (c) the dry-run shares
+the branch-push concurrency lane with edge publishes (one pending slot;
+edge self-heals on the next main push); (d) regex source locks on the
+workflows remain porous to hostile dead-spelling smuggles (the #157
+blocklist class) - the dispatch dry-run is the behavioral backstop for
+the paths it reaches, and the push-side paths are bound by the hardened
+locks only; (e) the smoke asserts boots-serves-refuses (terminal 200 +
+401), not the /welcome hop specifically - a future pre-seeded-users
+image stays green by design; (f) T1's commit said "diff is
+package-lock.json only" - the commit also carried the exec plan,
+disclosed a paragraph above it in the same message; phrasing, not
+substance; (g) the T1 lockfile sync also re-synced the lockfile's
+engines stanza to package.json's (benign, inside the counted 13/13).
+
+Dual-Node: 7209/7209 on v22.23.1 AND v24.14.0, 0 fail on both,
+sequential. No device pass needed (nothing user-facing changes); the
+release-time proof is the dispatch dry-run before this very tag plus
+the tag publish itself running the new pipeline.
+
 ### v1.147.0 - bigger card-corner controls on mobile (2026-08-18)
 
 Dean: the corner action icons on cards (share/queue/delete/download/

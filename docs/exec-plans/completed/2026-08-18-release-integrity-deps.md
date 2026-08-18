@@ -1,6 +1,6 @@
 # Release integrity + dependency automation (test the artifact you ship; drift arrives as PRs)
 
-Status: ACTIVE (implementing). Owner: main session. Target: v1.148.0, FULL two-seat gate (Dean, 2026-08-18: "full treatment versus slim-gate ... a pretty fundamental way of changing CI and handling dependencies").
+Status: SHIPPED v1.148.0 (2026-08-18). FULL two-seat gate, 1 fix round, both seats APPROVE at d017002. Owner: main session.
 
 Dean's intake (all six recommendations accepted as proposed; his one
 question - revertibility - answered: every piece is pure config, one
