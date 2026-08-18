@@ -10,7 +10,8 @@
     "test:unit": "node --require ./test/helpers/tmp-cleanup.js --test test/unit/*.test.js",
     "lint": "eslint .",
     "lint:css": "node scripts/css-token-lint.js",
-    "ledger:check": "node scripts/ledger-check.js"
+    "ledger:check": "node scripts/ledger-check.js",
+    "audit:check": "node scripts/audit-check.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

@@ -1,0 +1,4 @@
+{
+  "comment": "Reviewed exceptions to the CI dependency-audit gate (scripts/audit-check.js). EMPTY is the healthy state. Every entry needs: advisory (GHSA id), reason (>=15 chars - why this is acceptable to ship), added (YYYY-MM-DD), revisit (the trigger that reopens it). Adding an entry is a reviewed commit - see docs/RELEASING.md.",
+  "exceptions": []
+}
