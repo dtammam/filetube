@@ -1,12 +1,19 @@
 'use strict';
 
 // [UNIT] v1.148 T2 - the dependency audit gate's pure decision core
-// (scripts/audit-check.js evaluateAudit/validateExceptions). Fixtures are
-// TRIMMED FROM REAL `npm audit --json` output captured on this repo's own
-// pre-T1 lockfile (the 4 live advisories healed in T1) - real GHSA ids,
-// real via shapes, real chain-reference strings - not invented schema.
-// Fail-closed is the load-bearing posture: garbage in any input must red,
-// never allow.
+// (scripts/audit-check.js evaluateAudit/validateExceptions) plus the CLI
+// product itself (spawn-level exit codes through a PATH-shimmed npm - gate
+// round 1, adversarial W2: the exit code IS the gate, and a main()-level
+// mutant survived the pure-core-only suite).
+//
+// Fixture provenance, stated honestly (gate round 1, QA W1): the GHSA ids,
+// urls, titles and via-OBJECT shapes are taken from the REAL
+// `npm audit --json` document captured on this repo's pre-T1 lockfile (the
+// 4 live advisories healed in T1); the chain-reference STRING entry
+// (eslint below) is MODELED on npm's documented via form - the captured
+// document happened to contain none, and the earlier claim that it did was
+// a QA finding. Fail-closed is the load-bearing posture: garbage in any
+// input must red, never allow.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -138,7 +145,7 @@ test('an unidentifiable high advisory (no GHSA url) still gates and cannot be ex
   assert.match(v.offending[0].id, /^UNIDENTIFIED:mystery:/);
   // And the synthetic id can never enter the exceptions file: it fails the
   // GHSA shape validation, which fails the WHOLE file closed.
-  const hostile = { exceptions: [{ advisory: v.offending[0].id, reason: 'trying to allowlist the unnameable', added: 'x', revisit: 'y' }] };
+  const hostile = { exceptions: [{ advisory: v.offending[0].id, reason: 'trying to allowlist the unnameable', added: '2026-08-18', revisit: 'a real trigger' }] };
   assert.match(validateExceptions(hostile).error, /not a GHSA id/);
 });
 
@@ -167,9 +174,11 @@ test('malformed exceptions files fail CLOSED (a typo must never allow)', () => {
     {},
     { exceptions: 'not-an-array' },
     { exceptions: [null] },
-    { exceptions: [{ advisory: 'not-a-ghsa', reason: 'long enough reason here', added: 'x', revisit: 'y' }] },
-    { exceptions: [{ advisory: GHSA_JSYAML, reason: 'short', added: 'x', revisit: 'y' }] },
-    { exceptions: [{ advisory: GHSA_JSYAML, reason: 'long enough reason here', added: 'x', revisit: '' }] },
+    { exceptions: [{ advisory: 'not-a-ghsa', reason: 'long enough reason here', added: '2026-08-18', revisit: 'y' }] },
+    { exceptions: [{ advisory: GHSA_JSYAML, reason: 'short', added: '2026-08-18', revisit: 'y' }] },
+    { exceptions: [{ advisory: GHSA_JSYAML, reason: 'long enough reason here', added: '2026-08-18', revisit: '' }] },
+    { exceptions: [{ advisory: GHSA_JSYAML, reason: 'long enough reason here', revisit: 'a real trigger' }] }, // missing added (QA S1)
+    { exceptions: [{ advisory: GHSA_JSYAML, reason: 'long enough reason here', added: 'not-a-date', revisit: 'a real trigger' }] },
   ];
   for (const bad of cases) {
     const v = evaluateAudit(cleanDoc(), bad);
@@ -185,4 +194,57 @@ test('docs/audit-exceptions.json parses, validates, and is EMPTY (the healthy st
   const result = validateExceptions(real);
   assert.equal(result.error, undefined, 'the committed file must satisfy the validator it feeds');
   assert.deepEqual([...result.ids], [], 'empty is the healthy state; a non-empty file is a conscious, reviewed decision');
+});
+
+// ---- gate round 1 additions -------------------------------------------------
+
+test('adversarial S2: an UNWALKABLE high/critical via shape fails closed even when other advisories attribute', () => {
+  // Format-drift model: one high package with a via the walk cannot read,
+  // while a NORMAL high advisory coexists (and is even excepted) - the
+  // pre-hardening zero-attribution check alone would read this green.
+  for (const badVia of [undefined, null, 42, {}, [], [42], [null]]) {
+    const doc = vulnerableDoc();
+    doc.vulnerabilities.driftpkg = { name: 'driftpkg', severity: 'high', via: badVia };
+    doc.metadata.vulnerabilities.high += 1;
+    const v = evaluateAudit(doc, exceptions(GHSA_BRACE_1, GHSA_BRACE_2, GHSA_JSYAML));
+    assert.equal(v.ok, false, `expected fail for via=${JSON.stringify(badVia)}`);
+    assert.match(v.failClosed || '', /unwalkable via shape/, `and it must be the CLOSED kind for via=${JSON.stringify(badVia)}`);
+  }
+  // A LOW-severity unwalkable entry does not gate (severity floor holds).
+  const doc = cleanDoc();
+  doc.vulnerabilities.lowdrift = { name: 'lowdrift', severity: 'low', via: 42 };
+  assert.equal(evaluateAudit(doc, EMPTY).ok, true);
+});
+
+test('adversarial W2: the CLI exit code is the product - four spawn-level scenarios through a PATH-shimmed npm', () => {
+  const os = require('node:os');
+  const { spawnSync } = require('node:child_process');
+  const shimDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-audit-shim-'));
+  try {
+    const fixtureFile = path.join(shimDir, 'doc.json');
+    fs.writeFileSync(path.join(shimDir, 'npm'), `#!/bin/sh\ncat "${fixtureFile}"\n`, { mode: 0o755 });
+    const script = path.join(__dirname, '..', '..', 'scripts', 'audit-check.js');
+    const runCli = () => spawnSync(process.execPath, [script], {
+      env: { ...process.env, PATH: `${shimDir}:${process.env.PATH}` },
+      encoding: 'utf8',
+      timeout: 30000,
+    });
+    fs.writeFileSync(fixtureFile, JSON.stringify(vulnerableDoc()));
+    let r = runCli();
+    assert.equal(r.status, 1, `vulnerable must exit 1 (stderr: ${r.stderr})`);
+    assert.match(r.stderr, /GHSA-/, 'and it names the advisories');
+    fs.writeFileSync(fixtureFile, JSON.stringify({ error: { code: 'ENETWORK', summary: 'registry unreachable' } }));
+    r = runCli();
+    assert.equal(r.status, 1, 'npm error document must exit 1 (fail closed)');
+    assert.match(r.stderr, /npm audit itself errored/);
+    fs.writeFileSync(fixtureFile, 'not json at all');
+    r = runCli();
+    assert.equal(r.status, 1, 'unparseable stdout must exit 1 (fail closed)');
+    fs.writeFileSync(fixtureFile, JSON.stringify(cleanDoc()));
+    r = runCli();
+    assert.equal(r.status, 0, `clean must exit 0 (stderr: ${r.stderr})`);
+    assert.match(r.stdout, /audit-check: OK/);
+  } finally {
+    fs.rmSync(shimDir, { recursive: true, force: true });
+  }
 });

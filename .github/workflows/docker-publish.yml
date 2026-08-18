@@ -69,6 +69,23 @@ jobs:
           set -o pipefail
           npm test 2>&1 | tee test-output.txt
 
+  # v1.148 gate round 1 (QA W2): the dependency audit gate mirrored onto the
+  # RELEASE path, exactly the way qualify/secret-scan were mirrored in
+  # v1.123 - a tag push does not trigger ci.yml, so without this a high
+  # advisory publishing between the last branch push and the tag would ship
+  # inside the release image with the gate never having seen it. The
+  # exceptions file (docs/audit-exceptions.json) remains the emergency
+  # escape hatch for an outage-day hotfix blocked by an unrelated advisory.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Dependency audit gate (high/critical fail closed)
+        run: npm run audit:check
+
   # A pinned secret scan of the ref being published (mirrors ci.yml's job; runs
   # here too because tag pushes skip ci.yml). Publish blocks on this as well.
   secret-scan:
@@ -90,7 +107,7 @@ jobs:
         run: ./gitleaks dir . --no-banner --redact --config .gitleaks.toml --exit-code 1
 
   publish:
-    needs: [qualify, secret-scan]
+    needs: [qualify, secret-scan, audit]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -170,12 +187,12 @@ jobs:
           }
           code=000
           for i in $(seq 1 45); do
-            code=$(curl -sL -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/login || echo 000)
+            code=$(curl -sL --max-time 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/login || echo 000)
             [ "$code" = "200" ] && break
             sleep 2
           done
           [ "$code" = "200" ] || fail "GET /login (following redirects) never reached 200 (last: $code)"
-          api=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/stats || echo 000)
+          api=$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/stats || echo 000)
           [ "$api" = "401" ] || fail "unauthenticated GET /api/stats returned $api, expected 401 (auth gate)"
           echo "smoke OK: /login -> 200 (via /welcome), /api/stats unauth -> 401"
           docker rm -f smoke

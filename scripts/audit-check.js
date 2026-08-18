@@ -21,9 +21,13 @@
 //   for. It is deliberately NOT in the pre-commit/pre-push hooks.
 //
 // The decision core (evaluateAudit) is PURE and exported for the unit
-// suite; fixtures are trimmed from REAL `npm audit --json` output captured
-// on this repo's own pre-T1 lockfile (4 live advisories), not hand-invented
-// shapes.
+// suite. Fixture provenance, stated honestly (gate round 1, QA W1): the
+// GHSA ids, urls, titles and via-OBJECT shapes are taken from the REAL
+// `npm audit --json` document captured on this repo's pre-T1 lockfile;
+// the chain-reference STRING entry is modeled on npm's documented via
+// form - the captured document happened to contain none. The full real
+// document was separately fed through evaluateAudit during the gate
+// (offending = exactly its 5 high GHSA ids).
 
 const fs = require('fs');
 const path = require('path');
@@ -54,9 +58,21 @@ function extractAdvisories(doc) {
   const vulns = doc.vulnerabilities;
   if (!vulns || typeof vulns !== 'object') return null;
   const advisories = new Map();
+  // Gate round 1 (adversarial S2 hardening): every FAILING-severity package
+  // entry must be walkable - carrying a non-empty via array whose entries
+  // are objects (advisories) or strings (chain references). A future npm
+  // format drift that made some high/critical entries unwalkable would
+  // otherwise slip past the zero-attribution cross-check whenever at least
+  // one OTHER advisory still attributed. Unwalkable = fail closed.
+  const unwalkable = [];
   for (const name of Object.keys(vulns)) {
     const entry = vulns[name];
-    if (!entry || !Array.isArray(entry.via)) continue;
+    const entrySeverity = entry && typeof entry.severity === 'string' ? entry.severity.toLowerCase() : '';
+    if (!entry || !Array.isArray(entry.via) || entry.via.length === 0 ||
+        entry.via.some((v) => !v || (typeof v !== 'object' && typeof v !== 'string'))) {
+      if (FAILING_SEVERITIES.has(entrySeverity)) unwalkable.push(name);
+      continue;
+    }
     for (const via of entry.via) {
       if (!via || typeof via !== 'object') continue; // string = chain reference
       const severity = typeof via.severity === 'string' ? via.severity.toLowerCase() : '';
@@ -72,7 +88,7 @@ function extractAdvisories(doc) {
       }
     }
   }
-  return { advisories, meta };
+  return { advisories, meta, unwalkable };
 }
 
 /**
@@ -97,6 +113,10 @@ function validateExceptions(doc) {
     if (typeof e.reason !== 'string' || e.reason.trim().length < 15) {
       return { error: `exception ${e.advisory} needs a reason of at least 15 characters (the forcing-net justification convention)` };
     }
+    // Gate round 1 (QA S1): the docs promised an added date; enforce it.
+    if (typeof e.added !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(e.added)) {
+      return { error: `exception ${e.advisory} needs an added date (YYYY-MM-DD)` };
+    }
     if (typeof e.revisit !== 'string' || e.revisit.trim() === '') {
       return { error: `exception ${e.advisory} needs a revisit trigger (the tech-debt-tracker convention)` };
     }
@@ -118,7 +138,10 @@ function evaluateAudit(auditDoc, exceptionsDoc) {
   const exceptions = validateExceptions(exceptionsDoc);
   if (exceptions.error) return { ok: false, failClosed: `invalid exceptions file: ${exceptions.error}` };
 
-  const { advisories, meta } = extracted;
+  const { advisories, meta, unwalkable } = extracted;
+  if (unwalkable.length > 0) {
+    return { ok: false, failClosed: `high/critical package entr${unwalkable.length === 1 ? 'y' : 'ies'} with an unwalkable via shape (npm format drift?): ${unwalkable.join(', ')}` };
+  }
   const failingCount = (Number(meta.high) || 0) + (Number(meta.critical) || 0);
   // Attribution cross-check: metadata claims failing-severity vulns that
   // the walk could not attribute to a single advisory -> fail closed.

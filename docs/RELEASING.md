@@ -126,7 +126,10 @@ depends on the runner executing the image.
 
 **The dry-run lever (REQUIRED after any edit to docker-publish.yml):**
 the workflow has a `workflow_dispatch` trigger that runs qualify, the
-secret scan, the build, and the smoke with ALL push-side steps skipped.
+secret scan, the audit gate, the build, and the smoke with ALL push-side
+steps skipped. (A dry-run shares the branch-push concurrency lane with
+`edge` publishes - one pending slot; an evicted `edge` self-heals on the
+next main push, and the tag lane is unaffected.)
 The workflows cannot execute on the dev box, so a wave that changes
 this file validates it with a post-merge dry-run (Actions -> "Publish
 Docker Image" -> Run workflow) BEFORE the next real tag.
@@ -134,7 +137,10 @@ Docker Image" -> Run workflow) BEFORE the next real tag.
 ## The dependency audit gate (v1.148)
 
 CI fails on any HIGH or CRITICAL `npm audit` advisory (full tree,
-lockfile-only - `npm run audit:check`). The escape hatch is
+lockfile-only - `npm run audit:check`), and the SAME gate runs as its
+own job on the release path inside docker-publish.yml (tag pushes skip
+ci.yml - the v1.123 mirroring pattern), blocking a publish. The escape
+hatch is
 `docs/audit-exceptions.json`: EMPTY is the healthy state, and every
 entry needs a GHSA id, a reason (>=15 chars), an added date, and a
 revisit trigger - adding one is a reviewed commit, never a shrug. Stale

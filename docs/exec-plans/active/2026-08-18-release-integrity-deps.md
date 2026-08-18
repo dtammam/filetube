@@ -62,7 +62,11 @@ it: 4 standing advisories, 3 high, found the moment we measured).
   re-run `npm audit` (expect 0) and the FULL suite. The gate must be
   born green; the 4 advisories die as the wave's first proof of value.
 - **T2 - the audit gate.** scripts/audit-check.js: spawns
-  `npm audit --json` (injectable for tests), fails on any high/critical
+  `npm audit --json` (testability via a PURE exported decision core
+  taking parsed documents, plus - gate round 1 - spawn-level CLI tests
+  through a PATH-shimmed npm; AMENDED per QA S2: the original
+  "injectable spawn" wording did not match the shipped seam), fails on
+  any high/critical
   advisory whose GHSA id is not in docs/audit-exceptions.json
   (committed, empty array, schema {advisory, reason, added, revisit});
   stale exceptions WARN (never red - a fixed advisory disappearing must
@@ -70,6 +74,10 @@ it: 4 standing advisories, 3 high, found the moment we measured).
   CLOSED with the raw error shown. `npm run audit:check` script;
   ci.yml gains the step ONCE (not per matrix leg where avoidable);
   fixture-driven unit tests (pass/fail/exception/stale/malformed).
+  [AMENDED, gate round 1 QA W2: "ci.yml gains the step ONCE" inherited
+  the exact v1.123 gap - tag pushes skip ci.yml - so the gate is ALSO
+  mirrored as its own job in docker-publish.yml, in publish's needs,
+  the same way qualify/secret-scan were mirrored.]
   NOT in the pre-commit/pre-push hooks - it needs the registry, and
   network-dependent local gates are the exact class v1.147's refused
   tag just paid for.
