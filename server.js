@@ -16547,6 +16547,24 @@ app.post('/api/videos/:id/prepare-audio', (req, res) => {
 // what avoids it, exactly like every other primitive below).
 ytdlp.registerRoutes(app, {
   requireManageSubscriptions, // v1.80 RBAC: gate for channel-registry mutations
+  // v1.146 (downloader-engine): the engine routes are ADMIN-only - they
+  // cause pip to execute code from PyPI. Same guard function POST
+  // /api/settings uses; the module side fails CLOSED if this is absent.
+  requireAdmin,
+  // v1.146: the bell producer for engine events (updated / update-failed /
+  // reverted). The id encodes the whole payload (kind 'engine' rows are
+  // admin-only at every read surface); a null id (unknown event) records
+  // nothing. Never throws into the caller - a lost bell must not break an
+  // install flow.
+  recordEngineEvent: (event, version) => {
+    try {
+      const id = ytdlp.buildEngineNotificationId(event, version);
+      if (!id) return;
+      userStore.recordNotifications([{ mediaId: id, createdAt: Date.now(), kind: 'engine' }]);
+    } catch (err) {
+      console.error('Engine bell event failed (continuing):', err && err.message);
+    }
+  },
   mediaVisibleTo, // v1.123 T3: visibility axis for the per-item repull/relocate routes
   // v1.127 Wave A: the req-FREE visibility snapshot for LIBRARY-WIDE reheat
   // work (batch + preview) - the per-item route got its axis in v1.123; the
