@@ -16545,26 +16545,31 @@ app.post('/api/videos/:id/prepare-audio', (req, res) => {
 // full wiring-contract rationale (a `require('../../server')` from inside
 // lib/ytdlp/index.js would hit a circular-require trap; this deps object is
 // what avoids it, exactly like every other primitive below).
+// v1.146 (downloader-engine): the bell producer for engine events (updated
+// / update-failed / reverted). The id encodes the whole payload (kind
+// 'engine' rows are admin-only at every read surface); a null id (unknown
+// event) records nothing. Never throws into the caller - a lost bell must
+// not break an install flow or a boot.
+function recordEngineEvent(event, version) {
+  try {
+    const id = ytdlp.buildEngineNotificationId(event, version);
+    if (!id) return;
+    userStore.recordNotifications([{ mediaId: id, createdAt: Date.now(), kind: 'engine' }]);
+  } catch (err) {
+    console.error('Engine bell event failed (continuing):', err && err.message);
+  }
+}
+
 ytdlp.registerRoutes(app, {
   requireManageSubscriptions, // v1.80 RBAC: gate for channel-registry mutations
   // v1.146 (downloader-engine): the engine routes are ADMIN-only - they
   // cause pip to execute code from PyPI. Same guard function POST
   // /api/settings uses; the module side fails CLOSED if this is absent.
   requireAdmin,
-  // v1.146: the bell producer for engine events (updated / update-failed /
-  // reverted). The id encodes the whole payload (kind 'engine' rows are
-  // admin-only at every read surface); a null id (unknown event) records
-  // nothing. Never throws into the caller - a lost bell must not break an
-  // install flow.
-  recordEngineEvent: (event, version) => {
-    try {
-      const id = ytdlp.buildEngineNotificationId(event, version);
-      if (!id) return;
-      userStore.recordNotifications([{ mediaId: id, createdAt: Date.now(), kind: 'engine' }]);
-    } catch (err) {
-      console.error('Engine bell event failed (continuing):', err && err.message);
-    }
-  },
+  // v1.146: the bell producer for engine events - shared with the
+  // startBackground bundle below (its own copy of the deps object, but the
+  // SAME function; the v1.29 separate-bundles lesson).
+  recordEngineEvent,
   mediaVisibleTo, // v1.123 T3: visibility axis for the per-item repull/relocate routes
   // v1.127 Wave A: the req-FREE visibility snapshot for LIBRARY-WIDE reheat
   // work (batch + preview) - the per-item route got its axis in v1.123; the
@@ -16906,7 +16911,10 @@ if (require.main === module) {
     // -> `armYtdlpTimer` -> the scheduled `runPoll` closure), so it needs its
     // own copy for the scheduled-poll run-log emit path to work, not just the
     // route-triggered one.
-    ytdlp.startBackground({ updateDatabase, loadDatabase, scanDirectories, getMediaId, dataDir: DATA_DIR });
+    // v1.146: + recordEngineEvent so the engine's boot recovery and daily
+    // auto-update tick can bell their outcomes (same producer as the
+    // routes bundle - each bundle carries its own reference, v1.29 lesson).
+    ytdlp.startBackground({ updateDatabase, loadDatabase, scanDirectories, getMediaId, dataDir: DATA_DIR, recordEngineEvent });
 
     // v1.69 podcasts: boot hygiene (.ptpart sweep + reconcile) + the poll
     // timer. Early-returns doing NOTHING (no dir, no timer) with zero
