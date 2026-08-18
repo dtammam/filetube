@@ -1,6 +1,6 @@
 {
   "name": "filetube",
-  "version": "1.147.0",
+  "version": "1.148.0",
   "description": "A self-hosted media server resembling old-school YouTube",
   "main": "server.js",
   "scripts": {
@@ -10,7 +10,8 @@
     "test:unit": "node --require ./test/helpers/tmp-cleanup.js --test test/unit/*.test.js",
     "lint": "eslint .",
     "lint:css": "node scripts/css-token-lint.js",
-    "ledger:check": "node scripts/ledger-check.js"
+    "ledger:check": "node scripts/ledger-check.js",
+    "audit:check": "node scripts/audit-check.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
@@ -26,6 +27,7 @@
     "@eslint/js": "^9.39.4",
     "eslint": "^9.39.4",
     "globals": "^17.7.0",
+    "js-yaml": "^4.3.1",
     "jsdom": "^29.1.1"
   }
 }

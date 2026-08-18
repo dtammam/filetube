@@ -106,6 +106,55 @@ v1.125 or earlier.** Released adapters can't be repaired retroactively
 never downgrade an instance across that line; restore the matching backup
 instead if you truly must run an older build.
 
+## The publish pipeline: build once, smoke, promote (v1.148)
+
+Since v1.148 the publish job never rebuilds between testing and pushing:
+
+1. The image is built ONCE (`load: true`, a local `filetube-candidate`
+   tag) - nothing is pushed yet.
+2. A SMOKE TEST boots that exact image against a fresh anonymous data
+   volume and asserts the measured first-run contract: `GET /login`
+   (following redirects) reaches 200 via `/welcome`, and an
+   unauthenticated `GET /api/stats` answers 401. A failed smoke dumps
+   the container logs and blocks the push - nothing untested ships.
+3. The SAME local image is promoted by identity (`docker tag` +
+   `docker push`) to every release tag; the image id and repo digests
+   are written to the run's step summary.
+
+The pipeline is single-arch (amd64) by decision - build/load/run/push
+depends on the runner executing the image.
+
+**The dry-run lever (REQUIRED after any edit to docker-publish.yml):**
+the workflow has a `workflow_dispatch` trigger that runs qualify, the
+secret scan, the audit gate, the build, and the smoke with ALL push-side
+steps skipped. (A dry-run shares the branch-push concurrency lane with
+`edge` publishes - one pending slot; an evicted `edge` self-heals on the
+next main push, and the tag lane is unaffected.)
+The workflows cannot execute on the dev box, so a wave that changes
+this file validates it with a post-merge dry-run (Actions -> "Publish
+Docker Image" -> Run workflow) BEFORE the next real tag.
+
+## The dependency audit gate (v1.148)
+
+CI fails on any HIGH or CRITICAL `npm audit` advisory (full tree,
+lockfile-only - `npm run audit:check`), and the SAME gate runs as its
+own job on the release path inside docker-publish.yml (tag pushes skip
+ci.yml - the v1.123 mirroring pattern), blocking a publish. The escape
+hatch is
+`docs/audit-exceptions.json`: EMPTY is the healthy state, and every
+entry needs a GHSA id, a reason (>=15 chars), an added date, and a
+revisit trigger - adding one is a reviewed commit, never a shrug. Stale
+entries (advisory no longer reported) warn until removed. An upstream
+advisory can red all CI overnight with zero local changes: that is the
+gate working - fix with `npm audit fix` (preferred) or add the reviewed
+exception. Dependabot (`.github/dependabot.yml`, weekly: npm grouped
+minor+patch, the docker base image, github-actions) surfaces the fixes
+as PRs; they are NEVER auto-merged.
+
+**Reverting any of this** is one commit: delete `.github/dependabot.yml`
+(bot stops; close open PRs), drop the `audit` job from ci.yml, or
+`git revert` the docker-publish.yml change - all pure config, no data.
+
 ## Notes
 
 - The version tag drives the image version; `package.json` is kept in sync by

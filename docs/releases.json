@@ -1792,5 +1792,11 @@
     "date": "2026-08-18",
     "title": "Easier-to-tap card buttons on your phone",
     "intent": "The little action buttons on video cards (share, queue, delete, and friends) are now about a third bigger on phones, with a more forgiving tap area around each one - so you press the thing you meant to press. Desktop looks exactly the same."
+  },
+  {
+    "version": "1.148.0",
+    "date": "2026-08-18",
+    "title": "Safer releases behind the scenes",
+    "intent": "Every FileTube release is now started up and checked before it is published, and the exact copy that was checked is the copy you download. FileTube also keeps watch over the building blocks it is made from: known security problems now block a release until they are fixed, and updates to those building blocks arrive as tidy weekly proposals. Nothing changes in how you use the app - four such problems were found and fixed as part of building this."
   }
 ]
