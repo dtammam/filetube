@@ -1786,5 +1786,11 @@
     "date": "2026-08-18",
     "title": "Choose your downloader engine",
     "intent": "A new Downloads section in Setup lets you point FileTube's YouTube downloader at the newest stable or nightly engine release, so you no longer wait for a FileTube update when YouTube changes things. The engine that ships with the app always stays as the safety net: every new engine is health-checked before it takes over, a broken one switches back automatically and rings the bell, and a daily auto-update is there if you want it (off unless you turn it on)."
+  },
+  {
+    "version": "1.147.0",
+    "date": "2026-08-18",
+    "title": "Easier-to-tap card buttons on your phone",
+    "intent": "The little action buttons on video cards (share, queue, delete, and friends) are now about a third bigger on phones, with a more forgiving tap area around each one - so you press the thing you meant to press. Desktop looks exactly the same."
   }
 ]

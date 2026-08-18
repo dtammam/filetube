@@ -80,6 +80,40 @@
 
 ## Shipped
 
+### v1.147.0 - bigger card-corner controls on mobile (2026-08-18)
+
+Dean: the corner action icons on cards (share/queue/delete/download/
+like/reheat) were a hard press on a phone. Two levers, both mobile-only
+and scoped to exactly those six so desktop stays byte-identical and no
+token value changes: the glyphs grow 14px -> 18px (+30%, the scrim pill
+grows with them), and an invisible inset ::after extends each button's
+tap box to the 44px touch guideline. Phone LIST view scopes the vertical
+extension down (thumbs are ~68px tall there - the full extension made
+the bottom-left zone shadow the top-left pill's bottom edge, a silent
+wrong-action tap the gate caught before it shipped). The emoji icon
+set's delete/download glyphs keep their auto sizing (no empty 18px box;
+they simply keep their pre-wave look under that icon set).
+
+What the gate caught (slim/adversarial, 1 fix round -> APPROVE): the
+list-view zone-shadowing mis-tap above; the lock's brace-walker was
+comment-porous (5th strike of the class - a media-query spelling inside
+comment prose opened a bogus range that let a trailing DESKTOP 18px rule
+ship green, breaching the wave's own "without altering anything else"
+contract); and per-button bindings were presence-only (a same-block
+override re-shrinking one button survived). All killed and re-verified
+by the seat's own mutants.
+
+DISCLOSED: (a) tech-debt #163 - the hardened lock's anchored matching is
+prefix-porous (three measured escape spellings; honest closure is an
+allowlist + substring net on the next touch); (b) the two invisible tap
+zones in list view still share a 0.5px hairline band (no visible pill is
+ever covered); (c) under the emoji icon set, delete/download get no size
+bump (auto-sized glyphs, disclosed above).
+
+Dual-Node: 7183/7183 on v22.23.1 AND v24.14.0, 0 fail on both,
+sequential. Device pass = Dean's pull; probe the corner taps in BOTH
+grid and list view on the phone.
+
 ### v1.146.0 - the downloader engine selector (2026-08-18)
 
 Dean's ruling (2026-08-18) overturned the Dockerfile's locked decision D5:
