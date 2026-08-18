@@ -688,3 +688,48 @@ test('describeEngineEvent matches the ruling phrasing and never renders junk ver
   assert.match(engine.describeEngineEvent('reverted', null), /stopped working - reverted to the bundled engine/);
   assert.match(engine.describeEngineEvent('updated', 'x; rm -rf /'), /updated to a new version/);
 });
+
+// ---------------------------------------------------------------------------
+// Gate round 1 fixes: crash-classifier width (W3) + install-phase
+// suppression (W4)
+// ---------------------------------------------------------------------------
+
+test('gate W3: a SyntaxError traceback classifies as engine crash; AttributeError stays a download failure (disclosed residue)', () => {
+  const syntaxCrash = {
+    ok: false, code: 1, stdout: '', error: null,
+    stderr: 'Traceback (most recent call last):\n  File "/x/yt-dlp", line 1\nSyntaxError: invalid syntax\n',
+  };
+  assert.equal(engine.looksLikeEngineCrash(syntaxCrash), true, 'a nightly needing a newer Python dies with SyntaxError on EVERY spawn - engine death');
+  const attrCrash = {
+    ok: false, code: 1, stdout: '', error: null,
+    stderr: 'Traceback (most recent call last):\n  ...\nAttributeError: NoneType has no attribute x\n',
+  };
+  assert.equal(engine.looksLikeEngineCrash(attrCrash), false, 'mid-extraction AttributeError on one video must never revert (thrash surface)');
+});
+
+test('gate W4: reportEngineFailure no-ops while an install is rewriting the venv', async () => {
+  installDispatcher();
+  engine.setChannelIntent({ dataDir, channel: 'nightly' });
+  await engine.installEngine({ dataDir, version: NIGHTLY, channel: 'nightly' });
+  let installActive = true;
+  const reverts = [];
+  engine.initRuntime({ dataDir, onAutoRevert: (i) => reverts.push(i), isInstallActive: () => installActive });
+  const bin = engine.resolveVenvBinaryPath(dataDir);
+  assert.equal(engine.reportEngineFailure({ binaryUsed: bin, reason: 'ENOENT against half-written venv' }), false);
+  assert.equal(engine.readState(dataDir).active, 'venv', 'no revert during the install phase');
+  assert.deepEqual(reverts, []);
+  installActive = false;
+  assert.equal(engine.reportEngineFailure({ binaryUsed: bin, reason: 'real crash' }), true);
+  assert.equal(engine.readState(dataDir).active, 'bundled');
+  assert.equal(reverts.length, 1);
+});
+
+test('gate QA W2: effectiveActive and runtimeStateSummary never claim a venv whose binary is gone', async () => {
+  installDispatcher();
+  await engine.installEngine({ dataDir, version: NIGHTLY, channel: 'nightly' });
+  engine.initRuntime({ dataDir });
+  assert.deepEqual(engine.runtimeStateSummary(), { channel: 'bundled', active: 'venv' });
+  fs.rmSync(engine.resolveVenvBinaryPath(dataDir));
+  assert.equal(engine.effectiveActive(dataDir, engine.readState(dataDir)), 'bundled');
+  assert.deepEqual(engine.runtimeStateSummary(), { channel: 'bundled', active: 'bundled' });
+});

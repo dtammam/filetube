@@ -257,3 +257,90 @@ test('T8: /api/stats reports the ACTIVE engine - venv after a switch, bundled af
   stats = await (await fetch(`${base}/api/stats`)).json();
   assert.deepEqual(stats.system.ytdlp.engine, { channel: 'bundled', active: 'bundled' });
 });
+
+// ---------------------------------------------------------------------------
+// Gate round 1 fixes (route-level halves)
+// ---------------------------------------------------------------------------
+
+test('W5/QA W1: a channel write while an engine job is pending is refused WHOLE (409, nothing persisted)', async () => {
+  armSpawns();
+  // Hold the FIFO gate so the first switch stays queued.
+  let releaseBlocker;
+  const blocker = ytdlp.runExclusive(
+    () => new Promise((resolve) => { releaseBlocker = resolve; }),
+    { kind: 'channel', label: 'blocker-download' }
+  );
+  await fetch(`${base}/api/ytdlp/engine`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'nightly' }),
+  });
+  assert.equal(ytdlp.currentEngineJob().status, 'queued');
+  // Second switch while busy: refused, intent untouched.
+  const second = await fetch(`${base}/api/ytdlp/engine`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'stable' }),
+  });
+  assert.equal(second.status, 409);
+  // A bundled flip while busy is refused too (it would race the pending activation).
+  const toBundled = await fetch(`${base}/api/ytdlp/engine`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'bundled' }),
+  });
+  assert.equal(toBundled.status, 409);
+  // autoUpdate-only writes stay fine while busy.
+  const auto = await fetch(`${base}/api/ytdlp/engine`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autoUpdate: true }),
+  });
+  assert.equal(auto.status, 200);
+  releaseBlocker();
+  await blocker;
+  await awaitEngineJob();
+  const s = await (await fetch(`${base}/api/ytdlp/engine`)).json();
+  assert.equal(s.channel, 'nightly', 'the refused switches never half-applied');
+  assert.equal(s.installed.channel, 'nightly');
+  assert.equal(s.autoUpdate, true);
+  // restore for later tests
+  await fetch(`${base}/api/ytdlp/engine`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autoUpdate: false }),
+  });
+});
+
+test('QA W2: the status surfaces report bundled the moment the venv binary is gone', async () => {
+  armSpawns();
+  await fetch(`${base}/api/ytdlp/engine`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'nightly' }),
+  });
+  await awaitEngineJob();
+  fs.rmSync(path.join(DATA_DIR, 'ytdlp-engine', 'venv', 'bin', 'yt-dlp'));
+  const s = await (await fetch(`${base}/api/ytdlp/engine`)).json();
+  assert.equal(s.active, 'bundled', 'never claim a venv whose binary is gone');
+  assert.equal(s.channel, 'nightly');
+  const stats = await (await fetch(`${base}/api/stats`)).json();
+  assert.equal(stats.system.ytdlp.engine.active, 'bundled');
+});
+
+test('adversarial S1: the version cache reports the NEW engine as soon as the install job completes', async () => {
+  armSpawns();
+  await fetch(`${base}/api/ytdlp/engine`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'nightly' }),
+  });
+  await awaitEngineJob();
+  // The refresh is AWAITED inside the gated job, so this read is ordered.
+  const stats = await (await fetch(`${base}/api/stats`)).json();
+  assert.equal(stats.system.ytdlp.version, '2026.08.17.073947');
+});
+
+test('QA S2: without requireAdmin in the deps bundle the engine routes fail CLOSED (403 for everyone)', async () => {
+  const express = require('express');
+  const bare = express();
+  bare.use(express.json());
+  ytdlp.registerRoutes(bare, { dataDir: DATA_DIR }, ytdlp.parseYtdlpConfig());
+  const bareServer = await new Promise((resolve) => { const s = bare.listen(0, '127.0.0.1', () => resolve(s)); });
+  try {
+    const bareBase = `http://127.0.0.1:${bareServer.address().port}`;
+    for (const [method, url] of [['GET', '/api/ytdlp/engine'], ['POST', '/api/ytdlp/engine'], ['POST', '/api/ytdlp/engine/update']]) {
+      const r = await fetch(`${bareBase}${url}`, { method, headers: { 'Content-Type': 'application/json' }, body: method === 'POST' ? '{}' : undefined });
+      assert.equal(r.status, 403, `${method} ${url} must refuse everyone with no gate wired`);
+    }
+  } finally {
+    bareServer.closeAllConnections?.();
+    await new Promise((resolve) => bareServer.close(resolve));
+  }
+});

@@ -48,7 +48,13 @@ the daily opt-in tick.
   This wave adds 3 routes -> prediction: 203.
 - `grep -c 'class="reveal-toggle" data-loading' public/setup.html` = 8
   (hard-locked in test/unit/setup-automation-reveal.test.js:60). Prediction
-  after T7: +1 for the auto-update checkbox -> 9.
+  after T7: UNCHANGED at 8 - the reveal-toggle barrier is exclusively for
+  /api/settings-fed controls, and the engine checkbox is fed by the FOREIGN
+  /api/ytdlp/engine fetch (the v1.96 partial-render lesson: the box reveals
+  whole instead). Bound by joining the reveal test's FOREIGN list.
+  [AMENDED in the gate fix round - QA W4: the original plan predicted 8 ->
+  9 before the barrier-scoping rule was re-read during T7; the T7 commit
+  disclosed the deviation but this doc had not been updated.]
 - `grep -c 'data-collapse-key=' public/setup.html` = 11 (lock is >= 8).
   Prediction after T7: 12.
 - package.json version = 1.145.0. Suite baseline on main being re-measured
@@ -170,8 +176,9 @@ podcasts `fetchFeedImpl` precedent).
   Tests: boot with missing venv stays bundled + schedules; timer disarmed
   by default; tick respects the 24h ledger and the opt-in.
 - **T7 - Setup UI.** New "Downloads" setup box (admin-only, collapse key),
-  three versions side by side, channel radios, auto-update reveal-toggle
-  (count lock 8 -> 9), Update now button, busy polling, token-clean CSS.
+  three versions side by side, channel radios, auto-update checkbox (a
+  FOREIGN-fetch control - NO /api/settings reveal barrier, count lock stays
+  8; amended per QA W4), Update now button, busy polling, token-clean CSS.
 - **T8 - About/Stats surface.** /api/stats + stats.js render "version
   (channel)".
 - **T9 - Dockerfile rewrite + docs.** Pin block, README supply-chain

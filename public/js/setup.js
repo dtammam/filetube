@@ -2630,16 +2630,21 @@ function renderEngineSection(status) {
 
 // While a queued/installing job runs, re-sync every 2s until busy clears.
 // The job itself is hard-bounded server-side (venv/pip/probe timeouts), so
-// this poll always terminates; destroy() clears a mid-flight timer.
+// this poll always terminates; destroy() clears a mid-flight timer, and
+// (gate round 1 QA S1) the tick itself re-checks the view's controller so
+// a fetch that was in flight at navigation can never re-arm the loop
+// against a dead view - the fetch also rides the controller's signal.
 function scheduleEnginePoll() {
   if (enginePollTimer) clearTimeout(enginePollTimer);
+  if (!controller || controller.signal.aborted) return;
   enginePollTimer = setTimeout(async () => {
     enginePollTimer = null;
+    if (!controller || controller.signal.aborted) return;
     try {
-      const r = await fetch('/api/ytdlp/engine');
+      const r = await fetch('/api/ytdlp/engine', { signal: controller.signal });
       if (!r.ok) return;
       renderEngineSection(await r.json());
-    } catch (_) { /* transient; the next user action re-syncs */ }
+    } catch (_) { /* transient or aborted; the next user action re-syncs */ }
   }, 2000);
 }
 

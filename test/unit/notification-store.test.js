@@ -426,3 +426,18 @@ test('v1.146: badge count excludes engine rows unless includeEngine is EXACTLY t
   assert.equal(store.countUnseenNotifications(u.id, { includeEngine: 'yes' }), 1, 'strict boolean, never truthy-coerced');
   assert.equal(store.countUnseenNotifications(u.id, { includeEngine: true }), 2, 'the admin count sees the engine row');
 });
+
+test("v1.146 (gate QA W3): backup export carries kind 'engine' - the admin-only invariant survives the round trip", () => {
+  mkAdmin();
+  store.recordNotifications([
+    { mediaId: 'mediä-EX', createdAt: ACCOUNT_MS + HOUR },
+    { mediaId: 'engine:updated:2026.8.17.73947.dev0', createdAt: ACCOUNT_MS + HOUR + 1, kind: 'engine' },
+  ]);
+  const exported = store.exportNotificationsForBackup();
+  const engineRow = exported.find((r) => r.mediaId.startsWith('engine:'));
+  assert.equal(engineRow.kind, 'engine', 'the pre-fix mapping downgraded this to media');
+  // And the round trip: restore the export, the row comes back kind-intact.
+  store.replaceAllNotificationsRaw(exported);
+  const back = store.exportNotificationsForBackup().find((r) => r.mediaId.startsWith('engine:'));
+  assert.equal(back.kind, 'engine');
+});

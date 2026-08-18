@@ -189,3 +189,111 @@ test('armEngineTimer arms one interval, re-arming replaces it, and the accessor 
   assert.equal(ytdlp.currentEngineTimer(), second);
   clearInterval(second);
 });
+
+// ---------------------------------------------------------------------------
+// Gate round 1 fixes: the FIFO-gate binding (adversarial W1), the
+// startBackground wiring (adversarial W2), and the reconcile heals
+// (both seats' W5/QA W1 mismatch + QA W2 state honesty).
+// ---------------------------------------------------------------------------
+
+test('adversarial W1: an engine install queued behind a held FIFO job does NOT touch the venv until the gate frees', async () => {
+  armSpawns();
+  engine.setAutoUpdate({ dataDir, enabled: true });
+  engine.setChannelIntent({ dataDir, channel: 'nightly' });
+  // Hold the gate open with a foreign heavy job (a 3h download stand-in).
+  let releaseBlocker;
+  const blocker = ytdlp.runExclusive(
+    () => new Promise((resolve) => { releaseBlocker = resolve; }),
+    { kind: 'channel', label: 'blocker-download' }
+  );
+  const r = await ytdlp.engineAutoUpdateTick(deps, Date.now());
+  assert.deepEqual(r, { queued: true });
+  // The job must sit QUEUED behind the blocker with the venv untouched -
+  // the mutant that drops the runExclusive wrapper runs it immediately.
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(ytdlp.currentEngineJob().status, 'queued');
+  assert.equal(fs.existsSync(engine.resolveVenvDir(dataDir)), false, 'the venv must not be touched while the gate is held');
+  releaseBlocker();
+  await blocker;
+  await awaitJob();
+  assert.equal(engine.readState(dataDir).installed.version, NIGHTLY, 'the install completes after the gate frees');
+});
+
+test('adversarial W2: startBackground itself binds the seam, reconciles, and arms the daily gate', async () => {
+  const prevEnv = {
+    FILETUBE_YTDLP_ENABLED: process.env.FILETUBE_YTDLP_ENABLED,
+    FILETUBE_YTDLP_POLL_MINUTES: process.env.FILETUBE_YTDLP_POLL_MINUTES,
+    FILETUBE_READ_ONLY_MEDIA: process.env.FILETUBE_READ_ONLY_MEDIA,
+    FILETUBE_YTDLP_DOWNLOAD_DIR: process.env.FILETUBE_YTDLP_DOWNLOAD_DIR,
+  };
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_POLL_MINUTES = '0';
+  process.env.FILETUBE_READ_ONLY_MEDIA = '1'; // skips boot migration/requeue - this test binds the ENGINE lines
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = path.join(dataDir, 'dl');
+  try {
+    armSpawns();
+    engine.setChannelIntent({ dataDir, channel: 'nightly' }); // wanted engine, venv missing
+    engine._resetForTests(); // startBackground must do the binding itself
+    ytdlp.startBackground({
+      updateDatabase: async () => {},
+      loadDatabase: () => ({ ytdlp: { subscriptions: [] }, settings: {}, metadata: {} }),
+      scanDirectories: async () => {},
+      getMediaId: () => 'x',
+      dataDir,
+      recordEngineEvent: (event, version) => bells.push({ event, version }),
+    });
+    assert.ok(ytdlp.currentEngineTimer(), 'the daily gate timer is armed by startBackground');
+    await awaitJob();
+    const state = engine.readState(dataDir);
+    assert.equal(state.active, 'venv', 'boot recovery installed the wanted engine');
+    assert.equal(state.installed.channel, 'nightly');
+    // And the seam is bound: run.js would now resolve the venv binary.
+    assert.equal(engine.activeBinaryPath(), engine.resolveVenvBinaryPath(dataDir));
+  } finally {
+    const t = ytdlp.currentEngineTimer();
+    if (t) clearInterval(t);
+    for (const [k, v] of Object.entries(prevEnv)) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  }
+});
+
+test('W5 heal: boot reconcile treats an installed-channel/intent mismatch as unhealthy and recovers', async () => {
+  armSpawns();
+  engine.setChannelIntent({ dataDir, channel: 'nightly' });
+  ytdlp.reconcileEngineAtBoot(deps);
+  await awaitJob();
+  // Simulate the half-applied switch (or a restored older state file):
+  // intent stable, installed nightly, venv binary present.
+  const state = engine.readState(dataDir);
+  state.channel = 'stable';
+  engine.writeState(dataDir, state);
+  armSpawns('2026.07.04'); // the recovery installs latest STABLE
+  const r = ytdlp.reconcileEngineAtBoot(deps);
+  assert.deepEqual(r, { action: 'queued' }, 'mismatch is NOT healthy');
+  await awaitJob();
+  const healed = engine.readState(dataDir);
+  assert.equal(healed.installed.channel, 'stable');
+  assert.equal(healed.channel, 'stable');
+});
+
+test('QA W2 heal: a venv-active state whose binary is GONE is repaired to bundled BEFORE the recovery (PyPI down)', async () => {
+  armSpawns();
+  engine.setChannelIntent({ dataDir, channel: 'nightly' });
+  ytdlp.reconcileEngineAtBoot(deps);
+  await awaitJob();
+  fs.rmSync(engine.resolveVenvBinaryPath(dataDir));
+  // PyPI unreachable: the recovery install will dead-end - the state must
+  // already be honest by then.
+  engine._setFetchImplForTests(() => Promise.reject(new Error('getaddrinfo ENOTFOUND pypi.org')));
+  const r = ytdlp.reconcileEngineAtBoot(deps);
+  assert.deepEqual(r, { action: 'queued' });
+  const repaired = engine.readState(dataDir);
+  assert.equal(repaired.active, 'bundled', 'repaired synchronously, not after the async recovery');
+  assert.equal(repaired.installed, null);
+  assert.equal(repaired.revert, null, 'a repair is not a revert - no false alarm');
+  await awaitJob();
+  const after = engine.readState(dataDir);
+  assert.equal(after.active, 'bundled');
+  assert.match(after.lastResult.message, /ENOTFOUND|unreachable/);
+});
