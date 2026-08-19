@@ -99,8 +99,11 @@ test('LOCK: every management page carries its collapsible cards AND wires persis
   for (const key of ['subscriptions-list', 'add-subscription', 'one-off-download']) {
     assert.ok(subsHtml.includes(`data-collapse-key="${key}"`), `subscriptions.html lost the ${key} card`);
   }
-  assert.match(stripped('public/js/setup.js'), /wireCollapsibleSections\('setup', root \|\| document, controller\.signal\);/,
-    'setup persistence wiring deleted');
+  // v1.152: Settings moved from per-section <details> collapse to the
+  // master-detail menu (wireMasterDetail consumes the SAME data-collapse-key
+  // sections, so the "carries its cards" assertions above still hold).
+  assert.match(stripped('public/js/setup.js'), /wireMasterDetail\('setup', root \|\| document, controller\.signal\);/,
+    'setup master-detail wiring deleted');
   // v1.151: Stats became a routed view, so its collapse wiring now scopes to
   // the swapped-in root and binds toggle listeners to the view's abort signal
   // (so they die on destroy()) - was the arg-less wireCollapse('stats').

@@ -19,7 +19,9 @@ const SETUP_HTML = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 's
 // ---- source locks ----------------------------------------------------------
 
 test('setup.html: the Downloads box ships hidden with a collapse key and all three channel radios', () => {
-  assert.match(SETUP_HTML, /<details class="setup-box sub-collapsible" id="downloads-box" hidden data-collapse-key="downloads" open>/);
+  // v1.152: the opening tag gained data-md-* attrs for the master-detail menu;
+  // match the load-bearing bits (hidden + collapse key) without pinning attr order.
+  assert.match(SETUP_HTML, /<details class="setup-box sub-collapsible"[^>]*id="downloads-box"[^>]*hidden[^>]*data-collapse-key="downloads"[^>]*open>/);
   for (const value of ['bundled', 'stable', 'nightly']) {
     assert.match(SETUP_HTML, new RegExp(`<input type="radio" name="engine-channel" value="${value}"`), `radio ${value}`);
   }
