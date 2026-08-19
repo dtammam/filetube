@@ -202,6 +202,21 @@ releases; it moves to `completed/` when Item 2 ships.
 - Desktop: does the category rail collapse under the folder sidebar at narrow
   desktop widths? Measure, don't guess (v1 layout lesson).
 
+### Item 2 status (2026-08-19): IMPLEMENTED, in gate
+Built in 6 commits (foundation -> Settings -> Stats -> Subscriptions -> cleanup).
+All 3 pages use wireMasterDetail; retired wireCollapsibleSections removed.
+Tests: master-detail.test.js (component) + setup/stats/subscriptions-master-detail
+binders (real markup, incl. admin reveal + dynamic subs cards). Full suite
+7256/7256, census 0. NO browser render was possible in the build env (no
+chromium/puppeteer), so the VISUAL layout is Dean's device pass; structure +
+behaviour + gating are gate-verified. Device-pass visual items to probe:
+- desktop two-rail (folder sidebar + category rail + pane) not cramped;
+- each detail section keeps its `.setup-box` card chrome inside the pane (safe
+  default; a cleaner "content directly in pane" look is a quick CSS hotfix if
+  Dean prefers the prototype's exact framing);
+- phone menu->detail push-in + back; the era Appearance tile shifting with the
+  skin; Subscriptions' extra tap (uniform master-detail, Dean's call).
+
 ## Definition of done
 - v1.151: Stats keeps the mini-player alive on navigation (Dean device pass);
   dual-Node green; gate APPROVE x required seats; nav-link regression net in place.
