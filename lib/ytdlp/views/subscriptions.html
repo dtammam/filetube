@@ -236,6 +236,9 @@
       <!-- Per-view content boundary (FR-1, T1): see index.html's matching
            comment. The router swaps ONLY this node on in-app navigation. -->
       <div id="view-root" data-view="subscriptions">
+      <!-- v1.152: master-detail menu wrapper (wireMasterDetail in common.js).
+           The reloc-preview modal below stays a sibling OUTSIDE .md-root. -->
+      <div class="md-root" data-md-page="subscriptions" data-md-title="Subscriptions" data-md-groups="Following,Add,Activity">
       <!-- v1.21.0 FR-3 (T3): subscriptions-FIRST information architecture.
            "Your subscriptions" is now the FIRST, primary content on this
            page (AC18) -- a dense `.sub-list` list (no 240px scroll cap,
@@ -248,10 +251,10 @@
            FR-4 channel link + a single trailing kebab/gear opening an
            in-shell settings bottom-sheet, built entirely in JS -- see that
            file's buildSettingsSheet). -->
-      <!-- v1.55 Track D (Dean: "not just a subscriptions pane"): the whole
-           section is a collapsible details card now; open by default, state
-           remembered per browser (wireCollapsibleSections). -->
-      <details class="setup-box sub-collapsible" id="sub-list-details" data-collapse-key="subscriptions-list" open>
+      <!-- v1.152: this section is a master-detail menu item now (the
+           data-md-* attrs feed wireMasterDetail); it was a per-browser
+           collapsible details card (v1.55 Track D). -->
+      <details class="setup-box sub-collapsible" id="sub-list-details" data-collapse-key="subscriptions-list" data-md-icon="bell" data-md-group="Following" open>
         <summary>Your subscriptions</summary>
         <div class="sub-list-header">
           <!-- v1.24.0 T6 (A5): "check all subscriptions now" -- moved up
@@ -379,7 +382,7 @@
         </div>
       </details>
 
-      <details class="setup-box sub-collapsible" id="sub-add-details" data-collapse-key="add-subscription">
+      <details class="setup-box sub-collapsible" id="sub-add-details" data-collapse-key="add-subscription" data-md-icon="plus" data-md-group="Add" data-md-label="Add a subscription">
         <summary>+ Add a subscription</summary>
         <p>
           Automatically download new videos from YouTube channels you subscribe
@@ -460,7 +463,7 @@
 
       </details>
 
-      <details class="setup-box sub-collapsible" id="oneshot-details" data-collapse-key="one-off-download">
+      <details class="setup-box sub-collapsible" id="oneshot-details" data-collapse-key="one-off-download" data-md-icon="download" data-md-group="Add">
         <summary>One-off download</summary>
         <p>
           Download a single YouTube video once -- no subscription is created.
@@ -509,6 +512,8 @@
           <!-- Populated dynamically by /js/subscriptions.js from GET /api/subscriptions/status's oneShots -->
         </div>
       </details>
+
+      </div><!-- /.md-root -->
 
       <!-- v1.41.7 (Dean has NO media backup): the DRY-RUN relocation preview
            modal. Opened by #sub-reheat-preview-btn (see subscriptions.js's

@@ -109,8 +109,10 @@ test('LOCK: every management page carries its collapsible cards AND wires persis
   assert.match(stripped('public/js/stats.js'), /wireMD\('stats', mdScope, signal\);/,
     'stats master-detail wiring deleted');
   const subs = stripped('lib/ytdlp/client/subscriptions.js');
-  assert.match(subs, /wireCollapsibleSections\('subscriptions', root \|\| document, signal\);/,
-    'subscriptions persistence wiring deleted');
-  assert.equal((subs.match(/wireCollapse\(\);/g) || []).length >= 3, true,
-    'a dynamic mount (history/failures) stopped re-wiring persistence');
+  // v1.152: subscriptions moved to the master-detail menu; the dynamic history/
+  // failures cards are adopted by re-calling wireMenu() (-> wireMasterDetail).
+  assert.match(subs, /wireMasterDetail\('subscriptions', root \|\| document, signal\);/,
+    'subscriptions master-detail wiring deleted');
+  assert.equal((subs.match(/wireMenu\(\);/g) || []).length >= 3, true,
+    'a dynamic mount (history/failures) stopped re-adopting into the menu');
 });
