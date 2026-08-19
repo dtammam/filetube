@@ -137,15 +137,42 @@ releases; it moves to `completed/` when Item 2 ships.
 - **Groups:** Settings -> (Appearance) / Library / System / Account;
   Stats -> Overview / Breakdowns / System; Subscriptions -> Following / Add / Activity.
 
-### Build approach
-- New shared **master-detail component** (replaces `wireCollapsibleSections` at
-  its 3 call sites + the 2 dynamic subs appenders). One reusable controller +
-  one token-compliant CSS block in `style.css` (NOT page-local `<head>` styles -
-  the SPA swaps only `#view-root`, v1.38 lesson). Design-token census
-  (`lint:css`) must stay ZERO; new colours ride existing tokens or add
-  justified `token-exempt`.
-- **Icons:** reuse FileTube's existing icon-font glyphs where they exist
-  (music/books/podcasts/history/…); add the missing ones in the same language.
+### Build architecture (concrete, from recon 2026-08-19)
+- **Progressive enhancement, minimal markup churn.** A new
+  `wireMasterDetail(pageKey, root, signal)` consumes the EXISTING
+  `details[data-collapse-key]` sections inside a one-line wrapper
+  `<div class="md-root" data-md-page="…">…sections…</div>` added to each shell.
+  Per-section additive attrs only: `data-md-icon="video"` and
+  `data-md-group="Library"`. Replaces `wireCollapsibleSections` at all 3 call
+  sites; the old native-`<details>` collapse + its `ft-collapse:` persistence
+  retire.
+- **Runtime transform:** the component moves the sections into an injected
+  `.md-panes`, injects `.md-nav` (grouped rows: inline-SVG tile + summary text
+  + optional Admin chip + chevron) and a phone-only `.md-detail-head`
+  (back + active title). Native `<summary>` hidden in md-mode (the row is the
+  heading); `<details>` forced open; visibility driven by `.md-active`.
+- **Icons = inline SVG** (the approved-prototype set embedded in the component),
+  NOT the `.icon-*` mask classes: full control over the material-specific
+  glyphs, no per-icon-set (default/rounded/filled) asset duplication, and it
+  dodges the known iOS mask decode-lag (v1.91). The rest of the app keeps its
+  mask chrome. Tight palette per GROUP: red `#cc0000` / graphite / steel
+  (tokenised or `token-exempt`-justified). CSS block lives in `style.css`
+  (NOT page-local `<head>` - SPA swaps only `#view-root`, v1.38).
+- **MutationObserver keeps the menu in sync (correctness-critical).** Admin
+  sections (Users/Backup/Downloads) are revealed ASYNCHRONOUSLY - setup.js sets
+  `box.hidden = false` AFTER a `/api/me` capability fetch, well after init - and
+  the subs history/failures sections are appended dynamically. The component
+  observes `.md-root` (childList subtree + `attributes:['hidden']`) and rebuilds
+  the nav rows from CURRENTLY-VISIBLE sections; disconnect on `signal` abort.
+  Because the menu is built only from non-hidden sections, a restricted user
+  never sees an admin section's title/row (the v1.80 leak class - the
+  adversarial seat gets briefed to enumerate an admin row as a non-admin).
+- **Era-reactive Appearance tile:** special-cased inline SVG (play badge) whose
+  tint + corner-radius track the REAL selected era pref (not a local copy);
+  refresh the tile when the era changes.
+- **Build order:** Settings (pilot, most sections + admin gating) -> Stats
+  (read-only) -> Subscriptions (dynamic sections last). Each page green before
+  the next.
 - **Capability gating preserved:** admin-only sections (Users, Backup, Downloads)
   stay hidden for non-admins - gating is orthogonal to the menu structure and
   must not leak section titles/counts into the menu for a restricted user
