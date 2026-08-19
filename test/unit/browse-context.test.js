@@ -180,3 +180,18 @@ test('buildContextListUrl: a null/empty context still yields a valid full-librar
   assert.strictEqual(buildContextListUrl(null, 42), '/api/videos?limit=42');
   assert.strictEqual(buildContextListUrl({}, 42), '/api/videos?limit=42');
 });
+
+// ---- v1.149 gate W1: the search scope rides the ctx (the v1.88 class) ------
+
+test('v1.149: encodeListContext carries searchIn only for a non-all scope DURING a search; buildContextListUrl reproduces it', () => {
+  const withScope = JSON.parse(encodeListContext({ src: 'videos', search: 'brotkanal', searchIn: 'channel', sort: 'newest' }));
+  assert.strictEqual(withScope.searchIn, 'channel');
+  const allScope = JSON.parse(encodeListContext({ src: 'videos', search: 'brotkanal', searchIn: 'all', sort: 'newest' }));
+  assert.strictEqual('searchIn' in allScope, false, "'all' never rides - pre-v1.149 ctx byte-identity");
+  const noSearch = JSON.parse(encodeListContext({ src: 'videos', searchIn: 'channel', folder: 'F', sort: 'newest' }));
+  assert.strictEqual('searchIn' in noSearch, false, 'a scope without a search is meaningless and must not ride');
+  const url = buildContextListUrl({ search: 'brotkanal', searchIn: 'channel', sort: 'newest' }, 500);
+  assert.ok(url.includes('searchIn=channel'), `the re-fetch narrows exactly like the grid did: ${url}`);
+  const urlAll = buildContextListUrl({ search: 'brotkanal', searchIn: 'all', sort: 'newest' }, 500);
+  assert.ok(!urlAll.includes('searchIn'), 'all-scope re-fetches are byte-identical to pre-v1.149');
+});

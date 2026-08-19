@@ -1798,5 +1798,11 @@
     "date": "2026-08-18",
     "title": "Safer releases behind the scenes",
     "intent": "Every FileTube release is now started up and checked before it is published, and the exact copy that was checked is the copy you download. FileTube also keeps watch over the building blocks it is made from: known security problems now block a release until they are fixed, and updates to those building blocks arrive as tidy weekly proposals. Nothing changes in how you use the app - four such problems were found and fixed as part of building this."
+  },
+  {
+    "version": "1.149.0",
+    "date": "2026-08-19",
+    "title": "Search finds channels now",
+    "intent": "Searching for a channel's name now finds that channel's videos - even when they live in a folder with a different name, came from a one-off download, or you renamed the folder yourself. Search results also get a small All / Titles / Channels filter, so you can point your search at just video titles or just channel names, YouTube-style. Everything you could find before, you still find."
   }
 ]

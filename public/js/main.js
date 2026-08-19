@@ -1072,6 +1072,16 @@ const PreviewCards = (function () {
     // potentially with different query params.
     const urlParams = new URLSearchParams(window.location.search);
     const searchQuery = urlParams.get('search') || '';
+    // v1.149 (Dean): the search-scope filter (All | Titles | Channels).
+    // Deep-linkable via ?searchIn= (whitelisted; junk -> 'all'), otherwise
+    // every new search starts on 'all' - DELIBERATELY unpersisted (the
+    // YouTube posture; the v1.143 chip persistence was the fiddly half of
+    // that wave and a search filter should not follow you between
+    // searches). State lives here in the view closure; the toggle below
+    // and buildVideosApiUrl both read/write it.
+    let activeSearchScope = (typeof normalizeSearchScopeMode === 'function')
+      ? normalizeSearchScopeMode(urlParams.get('searchIn'))
+      : 'all';
     const folderFilter = urlParams.get('folder') || '';
     // mapped folder (recursive) -- `let` because a bare home load (no query
     // param at all) may apply the configured item-4 defaultView in its place
@@ -1259,6 +1269,25 @@ const PreviewCards = (function () {
       if (!modernMode && sectionActions && !sectionActions.querySelector('#library-format-toggle')) {
         renderFormatToggle(sectionActions, getStoredFormatFilter(), () => resetAndReload());
         renderWatchToggle(sectionActions, getStoredWatchFilter(), () => resetAndReload());
+      }
+      // v1.149: the search-scope toggle - SEARCH VIEWS ONLY (the guard is the
+      // whole feature gate: no search, no third toggle, every other view
+      // byte-identical). Same synchronous-before-fetch posture as its two
+      // siblings above (the v1.100 complete-from-first-paint rule; the scope
+      // is known synchronously from the URL). On change: state + URL
+      // (replaceState keeps the deep link shareable without a history spam
+      // entry per click) + the same resetAndReload the siblings use.
+      if (!modernMode && searchQuery && !likedFilter && sectionActions && !sectionActions.querySelector('#library-search-scope-toggle')) {
+        renderSearchScopeToggle(sectionActions, activeSearchScope, (mode) => {
+          activeSearchScope = mode;
+          try {
+            const u = new URL(window.location.href);
+            if (mode === 'all') u.searchParams.delete('searchIn');
+            else u.searchParams.set('searchIn', mode);
+            history.replaceState(null, '', u);
+          } catch (_) { /* URL/history quirk - the in-view state still drives the fetch */ }
+          resetAndReload();
+        });
       }
       // v1.102 (tranche 4 shimmer): the Library folder list built after
       // /api/config with no placeholder - a blank rail until the fetch landed.
@@ -1621,6 +1650,10 @@ const PreviewCards = (function () {
     function buildVideosApiUrl(offset) {
       const queryParams = [];
       if (searchQuery) queryParams.push(`search=${encodeURIComponent(searchQuery)}`);
+      // v1.149: the scope narrows server-side (pagination must stay honest
+      // under the filter, the format/watch precedent). 'all' is the server
+      // default - omitted so pre-v1.149 URLs and requests stay byte-identical.
+      if (searchQuery && activeSearchScope !== 'all') queryParams.push(`searchIn=${encodeURIComponent(activeSearchScope)}`);
       if (folderFilter) queryParams.push(`folder=${encodeURIComponent(folderFilter)}`);
       if (rootFilter) queryParams.push(`root=${encodeURIComponent(rootFilter)}`);
       if (subsFilter) queryParams.push('subs=1'); // v1.79.1: subscription-scoped browse
@@ -1732,6 +1765,20 @@ const PreviewCards = (function () {
       if (sectionActions && !sectionActions.querySelector('#library-format-toggle')) {
         renderFormatToggle(sectionActions, getStoredFormatFilter(), () => resetAndReload());
         renderWatchToggle(sectionActions, getStoredWatchFilter(), () => resetAndReload());
+      }
+      // v1.149: the guarded re-render twin of the search-scope toggle (same
+      // rare-path rationale as the siblings directly above).
+      if (searchQuery && !likedFilter && sectionActions && !sectionActions.querySelector('#library-search-scope-toggle')) {
+        renderSearchScopeToggle(sectionActions, activeSearchScope, (mode) => {
+          activeSearchScope = mode;
+          try {
+            const u = new URL(window.location.href);
+            if (mode === 'all') u.searchParams.delete('searchIn');
+            else u.searchParams.set('searchIn', mode);
+            history.replaceState(null, '', u);
+          } catch (_) { /* URL/history quirk - the in-view state still drives the fetch */ }
+          resetAndReload();
+        });
       }
       // v1.53 (Dean): the bulk-attribution control for folder views (data-
       // dependent - it needs the fetched items to know eligibility, so it stays
@@ -2016,6 +2063,7 @@ const PreviewCards = (function () {
         sort: currentSort,
         seed: currentSeed,
         search: searchQuery,
+        searchIn: activeSearchScope, // v1.149 gate W1: the scope rides the ctx (encodeListContext drops 'all')
         folder: folderFilter,
         root: rootFilter,
         format: getStoredFormatFilter(),
