@@ -11707,6 +11707,17 @@ a.queue-upnext-next:hover {
        Chromium 121+ would discard the ::-webkit-scrollbar art). */
   }
   .section-actions.search-scoped-toolbar::-webkit-scrollbar { display: none; }
+  /* v1.150 gate W1 (adversarial): `overflow-x: auto` force-computes
+     overflow-y to auto too, and the sort dropdown's below-row menu is an
+     absolutely-positioned DESCENDANT of this toolbar - it cannot escape
+     the strip's clip (z-index never beats an overflow clip), and with
+     both scrollbars deliberately hidden the open menu would be invisible
+     and unreachable. While the menu is OPEN, lift the clip on BOTH axes;
+     the strip simply pauses scrolling for the duration of the menu
+     interaction. */
+  .section-actions.search-scoped-toolbar:has(#sort-menu:not([hidden])) {
+    overflow: visible;
+  }
   /* Neutralize the two-row machinery inside the strip: the watch group's
      row-2 anchors (order 10 / basis 70%) and its evenly-stretched inner
      pills would otherwise fight the nowrap strip. */

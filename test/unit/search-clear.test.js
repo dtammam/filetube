@@ -142,8 +142,8 @@ test('v1.150 locks: main.js dispatches the synthetic input event after its progr
 test('v1.150 locks: the mobile strip - both mounts stamp the class, the non-search belt removes toggle AND class', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
   assert.strictEqual((src.match(/classList\.add\('search-scoped-toolbar'\)/g) || []).length, 2, 'both mount sites stamp the strip class');
-  assert.match(src, /!searchQuery && sectionActions[\s\S]{0,400}library-search-scope-toggle[\s\S]{0,400}classList\.remove\('search-scoped-toolbar'\)/,
-    'the non-search cleanup belt removes both the stale toggle and the class');
+  assert.match(src, /!searchQuery && sectionActions[\s\S]{0,400}removeChild\(staleScope\)[\s\S]{0,200}classList\.remove\('search-scoped-toolbar'\)/,
+    'the belt ACTUALLY removes the stale toggle (gate S1: the old lock was satisfied by the querySelector string alone) and the class');
 });
 
 test('v1.150 locks: the CSS carries the strip and the X with their load-bearing declarations', () => {
@@ -152,6 +152,11 @@ test('v1.150 locks: the CSS carries the strip and the X with their load-bearing 
   // The strip: nowrap + scroll inside the mobile block, scoped to the class.
   assert.match(css, /\.section-actions\.search-scoped-toolbar \{[^}]*flex-wrap: nowrap;[^}]*overflow-x: auto;/);
   assert.match(css, /\.section-actions\.search-scoped-toolbar::-webkit-scrollbar \{ display: none; \}/);
+  // Gate W1: the sort menu's clip escape - while the menu is open the strip
+  // lifts its overflow on BOTH axes (the popout cannot escape a scroll
+  // container's clip otherwise, and both scrollbars are hidden).
+  assert.match(css, /\.section-actions\.search-scoped-toolbar:has\(#sort-menu:not\(\[hidden\]\)\) \{[^}]*overflow: visible;/,
+    'the open sort menu lifts the strip clip');
   assert.match(css, /\.section-actions\.search-scoped-toolbar > \* \{[^}]*flex: 0 0 auto;[^}]*order: 0;/,
     'the two-row machinery is neutralized inside the strip');
   // The X: a styling source exists, the [hidden] override survives, and the
