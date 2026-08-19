@@ -1883,6 +1883,70 @@ function renderWatchToggle(actionsEl, currentMode, onChange) {
   actionsEl.insertBefore(control, formatToggle ? formatToggle.nextSibling : actionsEl.firstChild);
 }
 
+// ---- v1.149 (Dean): search-scope toggle (All | Titles | Channels) ----------
+//
+// The classic toolbar's THIRD segmented group, rendered ONLY while a search
+// is active (main.js guards on searchQuery). A sibling of the format/watch
+// toggles in every way EXCEPT persistence: each new search deliberately
+// starts on 'all' (the YouTube posture), so there is NO storage key - the
+// current value lives in the search view's closure and deep links carry it
+// via ?searchIn=. Labels are Titles/Channels (not YouTube's Videos/
+// Channels) because the format toggle beside it already owns a "Videos"
+// button - two same-labeled buttons in one toolbar would be a coin flip.
+// Three buttons = the format toggle's exact width budget, so the shared
+// .format-toggle classes style it with ZERO new CSS.
+const SEARCH_SCOPE_MODES = ['all', 'title', 'channel'];
+
+function normalizeSearchScopeMode(raw) {
+  return SEARCH_SCOPE_MODES.includes(raw) ? raw : 'all';
+}
+
+const SEARCH_SCOPE_OPTIONS = [
+  { mode: 'all', label: 'All' },
+  { mode: 'title', label: 'Titles' },
+  { mode: 'channel', label: 'Channels' },
+];
+
+// Builds a fresh search-scope toggle -- createElement + textContent only,
+// mirroring buildFormatToggleControl exactly (minus the storage write:
+// the caller owns the state).
+function buildSearchScopeToggleControl(currentMode, onChange) {
+  const active = normalizeSearchScopeMode(currentMode);
+  const container = document.createElement('div');
+  container.className = 'format-toggle';
+  container.id = 'library-search-scope-toggle';
+  SEARCH_SCOPE_OPTIONS.forEach((opt) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm format-toggle-btn' + (opt.mode === active ? ' active' : '');
+    btn.dataset.searchScope = opt.mode;
+    btn.setAttribute('aria-pressed', opt.mode === active ? 'true' : 'false');
+    btn.appendChild(document.createTextNode(opt.label));
+    btn.addEventListener('click', () => {
+      Array.prototype.forEach.call(container.querySelectorAll('.format-toggle-btn'), (b) => {
+        const isActive = b.dataset.searchScope === opt.mode;
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+      if (typeof onChange === 'function') onChange(opt.mode);
+    });
+    container.appendChild(btn);
+  });
+  return container;
+}
+
+// Idempotent mount AFTER the watch toggle (or the format toggle, or first) -
+// the same container-scoped de-dupe posture as its two siblings (see
+// renderFormatToggle's doubled-row rationale above).
+function renderSearchScopeToggle(actionsEl, currentMode, onChange) {
+  if (!actionsEl) return;
+  const existing = actionsEl.querySelector('#library-search-scope-toggle');
+  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+  const control = buildSearchScopeToggleControl(currentMode, onChange);
+  const anchor = actionsEl.querySelector('#library-watch-toggle') || actionsEl.querySelector('#library-format-toggle');
+  actionsEl.insertBefore(control, anchor ? anchor.nextSibling : actionsEl.firstChild);
+}
+
 // ---- Prev/next derived-order helpers (FR-2, T3) ----------------------------
 //
 // The watch page's Prev/Next controls (public/js/watch.js) and the persistent
@@ -12063,6 +12127,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.50: the watched-state filter toggle (the format toggle's sibling).
     WATCH_TOGGLE_MODES, getStoredWatchFilter, setStoredWatchFilter,
     buildWatchToggleControl, renderWatchToggle,
+    // v1.149: the search-scope toggle family (no storage - caller-owned state).
+    SEARCH_SCOPE_MODES, normalizeSearchScopeMode, buildSearchScopeToggleControl, renderSearchScopeToggle,
     deriveAvatar, resolveAvatarSource, AVATAR_PALETTE,
     // v1.24.1 (B1 fast-follow): relocated "Re-pull this channel now" widget.
     REPULL_BTN_ID, findRepullSubscriptionForRoot, shouldShowRepullButton,

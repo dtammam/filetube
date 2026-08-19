@@ -309,6 +309,9 @@ module.exports = [
         // v1.50: watched-state toggle (common.js), consumed by main.js.
         getStoredWatchFilter: 'readonly',
         renderWatchToggle: 'readonly',
+        // v1.149: the search-scope toggle family (common.js -> main.js).
+        normalizeSearchScopeMode: 'readonly',
+        renderSearchScopeToggle: 'readonly',
         // v1.45.6 (Dean): library view-mode + per-page-sort helpers (common.js),
         // consumed by main.js's grid render and setup.js's Settings toggles.
         getStoredViewMode: 'readonly',

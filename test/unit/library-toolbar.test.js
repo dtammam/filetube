@@ -547,3 +547,79 @@ test('renderWatchToggle: idempotent + detached-cache safe (the doubled-row class
   assert.doesNotThrow(() => renderWatchToggle(null, 'all'), 'no-ops safely without a container');
   delete global.document;
 });
+
+// ---- v1.149: the search-scope toggle (All | Titles | Channels) --------------
+//
+// A sibling of format/watch in structure but DELIBERATELY unpersisted:
+// clicking must never touch localStorage (each new search starts on 'all' -
+// the design decision, bound below by a spying fake). Requires the same
+// fake-doc shims as its siblings.
+
+const {
+  SEARCH_SCOPE_MODES, normalizeSearchScopeMode,
+  buildSearchScopeToggleControl, renderSearchScopeToggle,
+} = require('../../public/js/common.js');
+
+test('v1.149 normalizeSearchScopeMode: whitelist with all-fallback, mirroring the server normalizer', () => {
+  assert.deepEqual(SEARCH_SCOPE_MODES, ['all', 'title', 'channel']);
+  assert.strictEqual(normalizeSearchScopeMode('channel'), 'channel');
+  assert.strictEqual(normalizeSearchScopeMode('title'), 'title');
+  for (const junk of ['channels', 'ALL', '', null, undefined, 7]) {
+    assert.strictEqual(normalizeSearchScopeMode(junk), 'all');
+  }
+});
+
+test('v1.149 buildSearchScopeToggleControl: three buttons (All/Titles/Channels - never a second "Videos" label), active from the argument', () => {
+  global.document = makeFakeDoc({});
+  const control = buildSearchScopeToggleControl('channel');
+  assert.strictEqual(control.id, 'library-search-scope-toggle');
+  assert.strictEqual(control.children.length, 3);
+  // FakeNode keeps appended text nodes in `children` (nodeType 3) rather
+  // than aggregating textContent - read the label from the text-node child.
+  const labels = Array.prototype.map.call(control.children,
+    (b) => (b.children.find((c) => c.nodeType === 3) || {}).textContent);
+  assert.deepEqual(labels, ['All', 'Titles', 'Channels'], 'the format toggle beside it owns "Videos" - this one must not');
+  assert.deepEqual(Array.prototype.map.call(control.children, (b) => b.dataset.searchScope), ['all', 'title', 'channel']);
+  assert.ok(control.children[2].classList.contains('active'));
+  assert.strictEqual(control.children[2].getAttribute('aria-pressed'), 'true');
+  assert.strictEqual(control.children[0].getAttribute('aria-pressed'), 'false');
+  delete global.document;
+});
+
+test('v1.149 buildSearchScopeToggleControl: click flips active + fires onChange - and NEVER touches localStorage (the no-persistence decision)', () => {
+  global.document = makeFakeDoc({});
+  const writes = [];
+  global.localStorage = { getItem: () => null, setItem: (k, v) => { writes.push([k, v]); } };
+  let changedTo = null;
+  const control = buildSearchScopeToggleControl('all', (mode) => { changedTo = mode; });
+  control.children[2].click();
+  assert.strictEqual(changedTo, 'channel');
+  assert.ok(control.children[2].classList.contains('active'));
+  assert.strictEqual(control.children[0].getAttribute('aria-pressed'), 'false');
+  assert.deepEqual(writes, [], 'a scope click must not persist anything - each new search starts on all');
+  delete global.document;
+  delete global.localStorage;
+});
+
+test('v1.149 renderSearchScopeToggle: mounts AFTER the watch toggle and de-dupes container-scoped', () => {
+  global.document = makeFakeDoc({});
+  const actions = global.document.createElement('div');
+  renderFormatToggle(actions, 'both', () => {});
+  renderWatchToggle(actions, 'all', () => {});
+  renderSearchScopeToggle(actions, 'title', () => {});
+  const ids = Array.prototype.map.call(actions.children, (c) => c.id);
+  assert.deepEqual(ids, ['library-format-toggle', 'library-watch-toggle', 'library-search-scope-toggle']);
+  renderSearchScopeToggle(actions, 'channel', () => {});
+  assert.strictEqual(actions.children.length, 3, 'a re-render replaces, never accumulates (the doubled-row class)');
+  delete global.document;
+});
+
+test('v1.149 main.js source locks: the scope rides the query only under a search, and both toolbar sites are search-gated', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
+  assert.match(src, /if \(searchQuery && activeSearchScope !== 'all'\) queryParams\.push\(`searchIn=\$\{encodeURIComponent\(activeSearchScope\)\}`\)/,
+    'buildVideosApiUrl sends searchIn only for a non-default scope during a search');
+  assert.strictEqual((src.match(/searchQuery && sectionActions && !sectionActions\.querySelector\('#library-search-scope-toggle'\)/g) || []).length, 2,
+    'both toolbar render sites exist and both are search-gated');
+});
