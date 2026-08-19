@@ -685,6 +685,8 @@ summary,
      it here, inside the one guard, so the partition stays intact. */
   .modern-chip-row,
   .modern-avatar-bar { scrollbar-width: none; }
+  /* v1.150: the mobile search-toolbar strip hides its bar the same way. */
+  .section-actions.search-scoped-toolbar { scrollbar-width: none; }
 }
 
 * {
@@ -11680,4 +11682,70 @@ a.queue-upnext-next:hover {
     width: auto;
     height: auto;
   }
+}
+
+/* ---- v1.150 (Dean's device report): search toolbar strip + the clear X ----
+   Half 1: v1.149's scope toggle carried no mobile order/flex rules, so it
+   fell into row 1's zero-slack budget and orphaned onto a THIRD toolbar
+   row (the v1.50.4 orphan-row class, restruck). On SEARCH views only
+   (main.js stamps .search-scoped-toolbar while mounting the scope toggle,
+   and removes it on every non-search render), the mobile toolbar becomes
+   ONE horizontally scrollable strip - the .modern-chip-row recipe:
+   full-size buttons, nothing wraps, hidden scrollbar, the search-specific
+   scope toggle leading. Non-search views keep the hard-won v1.45/v1.50
+   two-row contract byte-identical (the class is simply absent); desktop
+   is untouched (media-scoped). */
+@media (max-width: 768px) {
+  .section-actions.search-scoped-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: flex-start;
+    -webkit-overflow-scrolling: touch;
+    /* scrollbar hiding is ENGINE-PARTITIONED: the webkit pseudo below, and
+       the standard scrollbar-width inside the one @supports guard (the
+       era-scrollbar census forbids an unguarded standard declaration -
+       Chromium 121+ would discard the ::-webkit-scrollbar art). */
+  }
+  .section-actions.search-scoped-toolbar::-webkit-scrollbar { display: none; }
+  /* Neutralize the two-row machinery inside the strip: the watch group's
+     row-2 anchors (order 10 / basis 70%) and its evenly-stretched inner
+     pills would otherwise fight the nowrap strip. */
+  .section-actions.search-scoped-toolbar > * {
+    flex: 0 0 auto;
+    order: 0;
+  }
+  .section-actions.search-scoped-toolbar .watch-toggle .format-toggle-btn {
+    flex: 0 0 auto;
+  }
+  .section-actions.search-scoped-toolbar #library-search-scope-toggle {
+    order: -1; /* the search-specific control leads the strip */
+  }
+}
+
+/* Half 2: the search-box clear X (injected by common.js into every shell's
+   .search-form, between the input and the Search button). Glyph-only on a
+   transparent ground - the .card-feedhide-btn posture - so the mobile
+   touch-size bump below grows only the invisible tap zone. Visible ONLY
+   while the input carries text ([hidden] toggled on input events; the
+   explicit display override is the [hidden]-loses-to-author-display
+   lesson). */
+.search-clear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--fs-base);
+  line-height: 1; /* token-exempt: glyph centering */
+  padding: 0 var(--space-4);
+  cursor: pointer;
+}
+.search-clear-btn:hover,
+.search-clear-btn:focus-visible {
+  color: var(--text-primary);
+}
+.search-clear-btn[hidden] { display: none !important; }
+@media (max-width: 768px) {
+  .search-clear-btn { min-width: var(--size-touch); min-height: var(--size-touch); }
 }
