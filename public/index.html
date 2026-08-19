@@ -115,11 +115,10 @@
           <i class="icon-cog"></i> Library settings
         </a>
         <!-- C4 (v1.24 UX Round, Wave 3): "fun stats" dashboard nav link.
-             /stats.html is not one of common.js's four known SPA routes (see
-             public/js/stats.js's header comment), so this is a plain link --
-             a click on it falls through to a normal, full-page browser
-             navigation, the router's own documented behavior for any route
-             it doesn't recognize. -->
+             v1.151: /stats.html IS an SPA route now (deriveRouteView maps it
+             to 'stats'; see public/js/stats.js's header), so a click swaps
+             #view-root in-app and the docked mini-player keeps playing instead
+             of the old full-page reload that destroyed it. -->
         <a href="/stats.html" class="sidebar-item" id="sidebar-stats-link">
           <i class="icon-star"></i> Stats
         </a>
@@ -344,13 +343,13 @@
     <div class="playlists-sheet-list" id="playlists-sheet-list"></div>
   </aside>
 
-  <!-- FR-1, T1: every shell loads ALL core view scripts (common.js's router
-       + registry, then each registered view module) regardless of which page
-       is the entry point, so any of the four views is already registered by
-       the time the router boots or an in-app swap targets it.
-       subscriptions.js stays lazy-loaded (fetched only on the first
-       /subscriptions navigation) -- see common.js's
-       ensureSubscriptionsScriptLoaded. -->
+  <!-- FR-1, T1: every shell loads the core view scripts (common.js's router
+       + registry, then each shell-registered view module) regardless of which
+       page is the entry point, so those views are already registered by the
+       time the router boots or an in-app swap targets it. The secondary views
+       (subscriptions/books/read/music/podcasts/history/stats) stay
+       lazy-loaded -- fetched only on their first in-app navigation -- see
+       common.js's VIEW_SCRIPT_SRC / ensureViewScriptLoaded. -->
   <script src="/js/glyph-pool.js"></script>
   <script src="/js/common.js"></script>
   <script src="/js/main.js"></script>

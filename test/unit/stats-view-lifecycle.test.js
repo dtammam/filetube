@@ -116,3 +116,52 @@ test('a fresh init() after destroy() gets its own live controller (re-entering S
     restore();
   }
 });
+
+// The CLEAR/error axis of the AbortController (the reveal-once-has-two-axes
+// lesson): after destroy(), a fetch that rejects with AbortError must be
+// SWALLOWED - never rendered as an error into the (now replaced) tree. Deleting
+// the `err.name === 'AbortError'` early-returns in stats.js turns this red
+// (renderStatsError paints "Could not load stats" into the detached document).
+test('an AbortError-rejecting fetch after destroy() is swallowed, not rendered as an error', async () => {
+  const origFetch = global.fetch;
+  const origWindow = global.window;
+  const origDocument = global.document;
+
+  const dom = new JSDOM(
+    '<!DOCTYPE html><body>' + ALL_IDS.map((id) => `<div id="${id}"></div>`).join('') + '</body>',
+    { url: 'http://localhost/stats.html' });
+
+  const captured = {};
+  dom.window.FileTube = { registerView: (name, handlers) => { captured[name] = handlers; } };
+
+  const rejecters = [];
+  const fetchStub = () => new Promise((_resolve, reject) => {
+    rejecters.push(() => { const e = new Error('The operation was aborted'); e.name = 'AbortError'; reject(e); });
+  });
+  dom.window.fetch = fetchStub;
+  global.fetch = fetchStub;
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  delete require.cache[STATS];
+  require(STATS);
+
+  try {
+    captured.stats.init(dom.window.document.body);
+    captured.stats.destroy();
+    rejecters.forEach((r) => r());                       // both fetches now reject with AbortError, post-teardown
+    await new Promise((r) => setImmediate(r));            // flush the .catch microtasks
+    assert.doesNotMatch(
+      dom.window.document.getElementById('stats-glance-grid').textContent, /Could not load stats/,
+      'a post-destroy AbortError must NOT paint the /api/stats error into the replaced tree');
+    assert.doesNotMatch(
+      dom.window.document.getElementById('stats-duplicates-list').textContent, /Could not load the duplicates/,
+      'a post-destroy AbortError must NOT paint the /api/duplicates error either');
+  } finally {
+    global.fetch = origFetch;
+    global.window = origWindow;
+    global.document = origDocument;
+    delete require.cache[STATS];
+    dom.window.close();
+  }
+});

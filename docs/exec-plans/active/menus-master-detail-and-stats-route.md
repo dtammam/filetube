@@ -63,9 +63,13 @@ releases; it moves to `completed/` when Item 2 ships.
 
 ### The contract (verified against source)
 - Router allowlist: `deriveRouteView(pathname)` (`public/js/common.js`) - add
-  `if (pathname === '/stats.html') return 'stats';`. `activeNavItem` already maps
-  stats (the deriveRouteView comment references it), so the rail highlight is
-  already correct.
+  `if (pathname === '/stats.html') return 'stats';`. **Nav highlight (gate
+  round 1 finding):** `activeNavItem` did NOT map stats - once deriveRouteView
+  returns non-null, bootRouter stops no-op'ing and runs the highlight pass,
+  which STRIPS stats.html's server-rendered `active` class and lights nothing.
+  So `activeNavItem` AND `SIDEBAR_HREF_BY_NAV_KEY` also gain a `stats ->
+  /stats.html` entry, and a test binds every static sidebar link to light
+  itself.
 - Lazy script map: `VIEW_SCRIPT_SRC` (`common.js`) - add `stats: '/js/stats.js'`
   so the router loads it on first navigation (books/music/podcasts/history pattern).
 - View contract: `window.FileTube.registerView('stats', { init, destroy })`.
@@ -80,10 +84,12 @@ releases; it moves to `completed/` when Item 2 ships.
   and to the `show-shortcuts-btn` listener, and ignores `AbortError` in the
   `.catch`es (a navigate-away must not render into a replaced tree).
 - `destroy()` aborts the controller.
-- Register at parse time; KEEP the `DOMContentLoaded -> init()` boot for standalone
-  full-page loads (bookmark / hard refresh of `/stats.html`). Only one path runs
-  per load: a lazy SPA entry injects the script AFTER `DOMContentLoaded` has fired,
-  so that listener never double-fires.
+- Register `{ init, destroy }` at parse time and **DROP** the old
+  `DOMContentLoaded -> init()` self-boot. Now that `/stats.html` is a recognized
+  route, `bootRouter` runs `init()` for the initial view on a standalone
+  full-page load too - so keeping the self-boot would DOUBLE-init. One init
+  path only: bootRouter (standalone) or swapToView (in-app). (Corrected after
+  gate round 1 - the original plan text here wrongly said to keep the boot.)
 
 ### Player continuity (the actual fix, traced)
 - watch/read/music/podcasts -> stats: `shouldDockOnTransition` true -> `dock()`

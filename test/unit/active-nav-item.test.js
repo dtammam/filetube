@@ -32,6 +32,15 @@ test('activeNavItem: /setup.html is settings', () => {
   assert.strictEqual(activeNavItem('/setup.html', ''), 'settings');
 });
 
+// v1.151 (gate round 1 regression fix): Stats became a route, so bootRouter now
+// runs the highlight pass on it. Without this mapping it strips the server
+// `active` class and lights nothing. Bind BOTH directions: the path resolves to
+// 'stats', and the key maps back to the sidebar entry's exact href.
+test('activeNavItem: /stats.html is stats, and lights the /stats.html sidebar entry', () => {
+  assert.strictEqual(activeNavItem('/stats.html', ''), 'stats');
+  assert.strictEqual(SIDEBAR_HREF_BY_NAV_KEY.stats, '/stats.html');
+});
+
 // T5: the optional yt-dlp module's dedicated page (D4). The route/nav link
 // only ever exist server-side when the module is enabled, but this pure
 // mapping is unconditional -- harmless when nothing ever navigates there.
@@ -108,6 +117,7 @@ test('S3: every key activeNavItem can return has a sidebar href - including like
   const keys = new Set();
   for (const [p, q] of [
     ['/', ''], ['/', '?liked=1'], ['/index.html', ''], ['/setup.html', ''],
+    ['/stats.html', ''],
     ['/subscriptions', ''], ['/books', ''], ['/books.html', ''], ['/read.html', ''],
     ['/music', ''], ['/music.html', ''], ['/podcasts', ''], ['/podcasts.html', ''],
     ['/history', ''], ['/history.html', ''],

@@ -2867,6 +2867,10 @@ function resolveViewCountLabel(item, opts) {
 // watch.html (and anything else) has no active item. Exported for node:test.
 function activeNavItem(pathname, search) {
   if (pathname === '/setup.html') return 'settings';
+  // v1.151: Stats is a route now; light its sidebar entry (id=sidebar-stats-link,
+  // href=/stats.html). Without this, bootRouter's highlight pass strips the
+  // server-rendered active class and Stats shows no lit rail item.
+  if (pathname === '/stats.html') return 'stats';
   if (pathname === '/subscriptions') return 'subscriptions';
   // v1.37.0 books: same unconditional-mapping posture as /subscriptions
   // (the link only exists when >=1 book folder is configured). The reader
@@ -2902,6 +2906,7 @@ const SIDEBAR_HREF_BY_NAV_KEY = {
   home: '/',
   liked: '/?liked=1',
   settings: '/setup.html',
+  stats: '/stats.html', // v1.151: the Stats rail entry (id=sidebar-stats-link)
   subscriptions: '/subscriptions',
   books: '/books',
   music: '/music',
@@ -6264,8 +6269,10 @@ function deriveRouteView(pathname) {
   // destination deriveRouteView returned null for -- so a click fell through
   // to a full browser page load, unloading the whole document (including the
   // persistent #player-host that lives outside #view-root) and stopping
-  // playback. activeNavItem already maps stats, so the rail highlight is
-  // unchanged; this makes the route actually navigable in-app.
+  // playback. activeNavItem + SIDEBAR_HREF_BY_NAV_KEY gain a matching 'stats'
+  // entry so the rail lights Stats: once this returns non-null, bootRouter
+  // stops no-op'ing and runs the highlight pass, which would otherwise STRIP
+  // stats.html's server-rendered `active` class and light nothing.
   if (pathname === '/stats.html') return 'stats';
   // The /subscriptions route + nav link only ever exist server-side (and are
   // only ever linked to from the shell) when the optional yt-dlp module is
@@ -7589,10 +7596,11 @@ if (typeof window !== 'undefined') {
     podcasts: '/js/podcasts.js',
     history: '/js/history.js',
     // v1.151: lazy-load the Stats view script on first in-app navigation
-    // (same posture as the other secondary views above). stats.js ships in
-    // stats.html for standalone/hard-refresh loads and self-guards against a
-    // double init/destroy (its DOMContentLoaded boot never fires on a lazy
-    // SPA entry, which injects the script after DOMContentLoaded).
+    // (same posture as the other secondary views above). stats.js registers
+    // { init, destroy } at parse time and has NO DOMContentLoaded self-boot,
+    // so there is exactly one init path (bootRouter on a standalone load,
+    // swapToView on an in-app entry); ensureScriptLoaded's registry/promise
+    // cache dedups so a standalone-loaded stats.js is never re-executed here.
     stats: '/js/stats.js',
   };
 
