@@ -80,6 +80,52 @@
 
 ## Shipped
 
+### v1.152.0 - the master-detail menus (2026-08-19)
+
+Item 2 of the menus wave. Settings / Stats / Subscriptions dropped the
+per-section `<details>` accordion (expand one, the page reflows, you lose your
+place) for an iOS-Settings **master-detail** menu: a grouped list of sections,
+each with a material-specific icon on a tinted tile, that opens ONE section at
+a time - on phones a menu that pushes into the section with a back button, on
+desktop a category rail beside a detail pane (living to the right of the
+existing folder sidebar). The palette is tight - FileTube red plus two neutrals,
+assigned per GROUP so colour tells you the group and the icon shape tells you
+the row - and the **Appearance** tile is era-reactive: its badge tint + corner
+shift with the active era skin (2005 -> 2021). Design was iterated to Dean's
+sign-off via a clickable prototype ("Love it").
+
+One reusable component (`wireMasterDetail`) consumes the SAME
+`<details data-collapse-key>` sections the accordion used, via a `.md-root`
+wrapper + additive `data-md-icon`/`data-md-group` attrs - minimal markup churn.
+Admin-only sections (Users / Backup / Downloads) still ship hidden and are
+revealed asynchronously for admins; the menu is built from visible sections
+only, so a restricted user never sees an admin row, and a MutationObserver adds
+the rows when they're revealed. Subscriptions' dynamic history/failures cards
+are adopted into the menu when they load. The retired `wireCollapsibleSections`
+was removed.
+
+What the FULL gate caught (both seats, 1 fix round -> both APPROVE): (a) the
+10 new design tokens were census-clean but NOT value-pinned in the token
+value-authority - a later edit could silently drift a tile tint; now pinned
+byte-exact. (b) Stats' "Keyboard shortcuts" section is `display:none` on phones
+(Dean's directive), but the new menu ROW showed on phone and could open it -
+the hide now propagates to the row + its pane. (c) the dynamic-card dedup guard
+(the repo's most-repeated bug class) was correct but unbound by test - now
+locked (removing it duplicates rows -> red). The privacy-critical admin-row
+leak surface was mutation-bound and held.
+
+DISCLOSED - Dean's DEVICE PASS is the VISUAL arbiter: the build environment had
+no browser, so structure + behaviour + gating are gate-verified but the actual
+rendering was not. Probe on-device: the phone menu->detail push-in + back; the
+desktop two-rail (folder sidebar + category rail + pane) not cramped; the era
+Appearance tile shifting with the skin; each section keeping its `.setup-box`
+card chrome inside the pane (a cleaner "content directly in the pane" look is a
+quick CSS hotfix if you prefer the prototype's exact framing); and whether
+Subscriptions' uniform master-detail (one extra tap for its short list, your
+call) still feels right.
+
+Dual-Node: 7257/7257 on v22.23.1 AND v24.14.0, 0 fail on both, sequential.
+
 ### v1.151.0 - Stats keeps the mini-player playing (2026-08-19)
 
 Dean's report: selecting Stats while something is playing STOPS it. Root

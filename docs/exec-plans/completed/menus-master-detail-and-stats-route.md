@@ -1,6 +1,6 @@
 # Exec plan: mini-player-safe Stats + master-detail menus
 
-Status: ACTIVE (started 2026-08-19)
+Status: SHIPPED v1.151.0 + v1.152.0 (2026-08-19). Was: ACTIVE (started 2026-08-19).
 Owner: main session (lean mode)
 Design sign-off: Dean, 2026-08-19 (prototype iterated to APPROVE - "Love it")
 Prototype (design source of truth): the master-detail artifact
