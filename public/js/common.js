@@ -11526,6 +11526,44 @@ function reconcilePushSubscription() {
   } catch (_) { /* best-effort reconcile only */ }
 }
 
+// ---- v1.150 (Dean): the search-box clear X ---------------------------------
+// TOP LEVEL (outside the document guard below - module.exports needs them;
+// both touch `document` only inside function bodies, the house rule). The
+// boot block inside the guard calls the injector once per page load - the
+// notification-bell one-injection-point posture, all shells covered.
+function shouldShowSearchClear(value) {
+  return typeof value === 'string' && value.length > 0;
+}
+
+// Injects the clear X into the search form, BEFORE the Search button
+// (Dean: "all the way to the right next to search"). Idempotent; no-ops on
+// shells without the form pair. Visibility rides 'input' events (main.js
+// dispatches one after its programmatic value set); clicking clears the BOX
+// and refocuses - never navigates, never closes the mobile reveal (the user
+// is mid-search). Returns the button (test seam).
+function injectSearchClearButton(inputEl, btnEl) {
+  if (!inputEl || !btnEl || !btnEl.parentNode) return null;
+  const already = document.getElementById('search-clear-btn');
+  if (already) return already;
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
+  clearBtn.id = 'search-clear-btn';
+  clearBtn.className = 'search-clear-btn';
+  clearBtn.setAttribute('aria-label', 'Clear search');
+  clearBtn.appendChild(document.createTextNode('✕'));
+  clearBtn.hidden = !shouldShowSearchClear(inputEl.value);
+  btnEl.parentNode.insertBefore(clearBtn, btnEl);
+  inputEl.addEventListener('input', () => {
+    clearBtn.hidden = !shouldShowSearchClear(inputEl.value);
+  });
+  clearBtn.addEventListener('click', () => {
+    inputEl.value = '';
+    clearBtn.hidden = true;
+    inputEl.focus();
+  });
+  return clearBtn;
+}
+
 // Sidebar toggle responsive menu helper. Guarded so requiring this file in Node
 // (for unit tests) never touches `document`.
 if (typeof document !== 'undefined') {
@@ -11797,6 +11835,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.key === 'Enter') performGlobalSearch();
     });
   }
+  // v1.150 (Dean): the search-box clear X (top-level helper above; injected
+  // once here at boot, between the input and the Search button).
+  injectSearchClearButton(searchInput, searchBtn);
 
   // v1.47.4 item 6: a cold PWA start restores where the user was, so an iOS
   // eviction costs only the relaunch tap. Checked BEFORE the view-building work
@@ -12136,6 +12177,8 @@ if (typeof module !== 'undefined' && module.exports) {
     buildWatchToggleControl, renderWatchToggle,
     // v1.149: the search-scope toggle family (no storage - caller-owned state).
     SEARCH_SCOPE_MODES, normalizeSearchScopeMode, buildSearchScopeToggleControl, renderSearchScopeToggle,
+    // v1.150: the search-box clear X (pure predicate + injector).
+    shouldShowSearchClear, injectSearchClearButton,
     deriveAvatar, resolveAvatarSource, AVATAR_PALETTE,
     // v1.24.1 (B1 fast-follow): relocated "Re-pull this channel now" widget.
     REPULL_BTN_ID, findRepullSubscriptionForRoot, shouldShowRepullButton,

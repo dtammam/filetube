@@ -80,6 +80,46 @@
 
 ## Shipped
 
+### v1.150.0 - the mobile search toolbar strip + the clear X (2026-08-19)
+
+Dean's device report on v1.149: the scope toggle "adds a third row" on
+phones (it carried no mobile order/flex rules, so it fell into the
+v1.45/v1.50 toolbar's zero-slack row-1 budget and orphaned - the
+v1.50.4 class, restruck). On SEARCH views only, the mobile toolbar now
+collapses into ONE horizontally scrollable strip (the chip-row recipe:
+full-size buttons, nothing wraps, hidden scrollbar, the scope toggle
+leading); every non-search view keeps the hard-won two-row contract
+byte-identical, desktop untouched. Plus his second ask: a clear X in
+the search box, between the input and the Search button, on every
+shell - visible only while the box carries text, one tap clears and
+refocuses (select-all + delete was the friction), never navigates,
+never closes the mobile search reveal.
+
+What the gate caught (slim/adversarial, 1 fix round -> APPROVE): the
+strip's overflow made the toolbar a SCROLL CONTAINER, and the sort
+dropdown's below-row menu - an absolutely-positioned descendant - was
+clipped inside it with both scrollbars hidden: sorting search results
+on mobile, working in v1.149, would have been broken by the very wave
+fixing that toolbar. Fixed with a menu-open overflow escape, locked
+down to the both-axes shorthand (the subtly-wrong one-axis version
+reds). Two of this wave's own censuses also fired mid-build: the
+era-scrollbar engine-partition census (an unguarded scrollbar-width)
+and a first draft of the clear-X helpers landing inside the document
+guard where the exports could not see them - both disclosed in the
+commit bodies.
+
+DISCLOSED: (a) cosmetic residual - opening the sort menu resets the
+strip's scroll position on close (the overflow flip discards
+scrollLeft; the sort button must be on-screen to be tapped, so the
+snap-back is harmless); (b) the strip recipe lesson: copying a
+container recipe means walking the NEW container's children - the
+popout child was the one nobody enumerated.
+
+Dual-Node: 7233/7233 on v22.23.1 AND v24.14.0, 0 fail on both,
+sequential. Device pass = Dean: phone search view shows ONE scrollable
+toolbar row (scope toggle first), sort menu opens over it, and the X
+clears the box everywhere.
+
 ### v1.149.0 - channel-aware search + the scope filter (2026-08-19)
 
 Dean: searching a channel name should find that channel's videos. It

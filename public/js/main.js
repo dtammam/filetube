@@ -1191,7 +1191,12 @@ const PreviewCards = (function () {
     }
 
     if (searchQuery) {
-      if (searchInput) searchInput.value = searchQuery;
+      if (searchInput) {
+        searchInput.value = searchQuery;
+        // v1.150: programmatic sets fire no 'input' - the clear X (common.js)
+        // syncs its visibility off this event, so dispatch it explicitly.
+        try { searchInput.dispatchEvent(new Event('input')); } catch (_) { /* jsdom-less test shells */ }
+      }
       videosHeader.textContent = `Search results for "${searchQuery}"`;
     } else if (likedFilter) {
       videosHeader.textContent = 'Playlist: Liked';
@@ -1270,6 +1275,15 @@ const PreviewCards = (function () {
         renderFormatToggle(sectionActions, getStoredFormatFilter(), () => resetAndReload());
         renderWatchToggle(sectionActions, getStoredWatchFilter(), () => resetAndReload());
       }
+      // v1.150 belt: a NON-search render must never inherit a prior search
+      // render's scope toggle or its mobile strip class (cached/reused view
+      // DOM - the homeViewCache posture makes persistence possible, so the
+      // cleanup is unconditional rather than reasoned away).
+      if (!searchQuery && sectionActions) {
+        const staleScope = sectionActions.querySelector('#library-search-scope-toggle');
+        if (staleScope && staleScope.parentNode) staleScope.parentNode.removeChild(staleScope);
+        sectionActions.classList.remove('search-scoped-toolbar');
+      }
       // v1.149: the search-scope toggle - SEARCH VIEWS ONLY (the guard is the
       // whole feature gate: no search, no third toggle, every other view
       // byte-identical). Same synchronous-before-fetch posture as its two
@@ -1278,6 +1292,11 @@ const PreviewCards = (function () {
       // (replaceState keeps the deep link shareable without a history spam
       // entry per click) + the same resetAndReload the siblings use.
       if (!modernMode && searchQuery && !likedFilter && sectionActions && !sectionActions.querySelector('#library-search-scope-toggle')) {
+        // v1.150 (Dean's device report): mark the toolbar as search-scoped so
+        // mobile CSS collapses it into ONE scrollable strip instead of the
+        // v1.50 two-row layout (whose zero-slack budget orphaned this toggle
+        // onto a third row). Removed by the non-search cleanup below.
+        sectionActions.classList.add('search-scoped-toolbar');
         renderSearchScopeToggle(sectionActions, activeSearchScope, (mode) => {
           activeSearchScope = mode;
           try {
@@ -1769,6 +1788,7 @@ const PreviewCards = (function () {
       // v1.149: the guarded re-render twin of the search-scope toggle (same
       // rare-path rationale as the siblings directly above).
       if (searchQuery && !likedFilter && sectionActions && !sectionActions.querySelector('#library-search-scope-toggle')) {
+        sectionActions.classList.add('search-scoped-toolbar'); // v1.150: the mobile strip marker (twin of site 1)
         renderSearchScopeToggle(sectionActions, activeSearchScope, (mode) => {
           activeSearchScope = mode;
           try {

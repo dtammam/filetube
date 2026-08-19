@@ -1804,5 +1804,11 @@
     "date": "2026-08-19",
     "title": "Search finds channels now",
     "intent": "Searching for a channel's name now finds that channel's videos - even when they live in a folder with a different name, came from a one-off download, or you renamed the folder yourself. Search results also get a small All / Titles / Channels filter, so you can point your search at just video titles or just channel names, YouTube-style. Everything you could find before, you still find."
+  },
+  {
+    "version": "1.150.0",
+    "date": "2026-08-19",
+    "title": "A tidier search toolbar on phones, and a clear button",
+    "intent": "On phones, the search results toolbar now fits on one neat swipeable row instead of stacking a third row of buttons. And the search box gets a little X on the right - one tap empties it so you can type your next search, no more select-all-and-delete."
   }
 ]
