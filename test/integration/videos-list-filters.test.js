@@ -179,3 +179,50 @@ test('no folder is marked hidden -> the default view returns everything unfilter
   const { body } = await getVideos();
   assert.deepEqual(body.map((i) => i.id).sort(), ['a', 'b']);
 });
+
+// ---- v1.149: search scopes (?searchIn=all|title|channel) --------------------
+
+test('v1.149: searching a CHANNEL NAME finds its items even when the folder differs (the original gap), and display names match too', async () => {
+  writeDb({
+    folders: ['/media/Downloads'],
+    folderSettings: {},
+    folderDisplayNames: { rohordner: 'Omas Küche' },
+    progress: {},
+    metadata: {
+      byChannel: seedItem('byChannel', { title: 'Ein Rezept', folderName: 'ytdlp-downloads', filePath: '/media/Downloads/a.mp4', channelName: 'Kochen mit Maria' }),
+      byDisplay: seedItem('byDisplay', { title: 'Anderes Video', folderName: 'rohordner', filePath: '/media/Downloads/b.mp4' }),
+      unrelated: seedItem('unrelated', { title: 'Nix Davon', folderName: 'sonstiges', filePath: '/media/Downloads/c.mp4', channelName: 'Anderer Kanal' }),
+    },
+  });
+  // channelName match - pre-v1.149 this returned NOTHING (folder differs).
+  let r = await getVideos('search=kochen%20mit%20maria');
+  assert.deepEqual(r.body.map((i) => i.id), ['byChannel']);
+  // v1.126 display-name match - also previously invisible to search.
+  r = await getVideos('search=omas');
+  assert.deepEqual(r.body.map((i) => i.id), ['byDisplay']);
+});
+
+test('v1.149: searchIn=title and searchIn=channel narrow with NO leaks; junk searchIn falls back to all', async () => {
+  writeDb({
+    folders: ['/media/Downloads'],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      titleHit: seedItem('titleHit', { title: 'Brotkanal Spezial', folderName: 'irgendwo', filePath: '/media/Downloads/t.mp4' }),
+      channelHit: seedItem('channelHit', { title: 'Sauerteig Folge 3', folderName: 'anderswo', filePath: '/media/Downloads/c.mp4', channelName: 'Brotkanal' }),
+    },
+  });
+  // all (default): both match "brotkanal".
+  let r = await getVideos('search=brotkanal');
+  assert.deepEqual(r.body.map((i) => i.id).sort(), ['channelHit', 'titleHit']);
+  // title: only the title hit - the channel-identity match must not leak.
+  r = await getVideos('search=brotkanal&searchIn=title');
+  assert.deepEqual(r.body.map((i) => i.id), ['titleHit']);
+  // channel: only the channel hit - the title match must not leak.
+  r = await getVideos('search=brotkanal&searchIn=channel');
+  assert.deepEqual(r.body.map((i) => i.id), ['channelHit']);
+  // junk scope: the permissive fallback to all, never a 400/empty.
+  r = await getVideos('search=brotkanal&searchIn=kanäle');
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.map((i) => i.id).sort(), ['channelHit', 'titleHit']);
+});

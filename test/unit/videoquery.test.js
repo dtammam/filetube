@@ -210,3 +210,60 @@ test('normalizeSeed: missing/empty/non-numeric returns undefined (caller falls b
   assert.equal(videoQuery.normalizeSeed(''), undefined);
   assert.equal(videoQuery.normalizeSeed('not-a-number'), undefined);
 });
+
+// ---- v1.149: matchesSearch scopes (All/Titles/Channels) ---------------------
+//
+// The four-field 'all' scope is a strict SUPERSET of the pre-v1.149
+// title+folder behavior; 'title'/'channel' are the narrowing filters. The
+// no-leak directions are the load-bearing ones: a channel-scoped search must
+// never admit a title-only hit and vice versa. Divergent fixture spellings
+// (v1.41.9): nothing below matches a default the code could invent.
+
+test('v1.149 matchesSearch all-scope: title, folder, channelName, and folder DISPLAY name all match (case-insensitive)', () => {
+  const it = item({ title: 'Grüne Soße Tutorial', folderName: '@kochkanal', channelName: 'Kochen mit Maria' });
+  assert.ok(videoQuery.matchesSearch(it, 'grüne soße'));
+  assert.ok(videoQuery.matchesSearch(it, '@kochkanal'));
+  assert.ok(videoQuery.matchesSearch(it, 'kochen mit maria'), 'the healed channelName matches - the original v1.149 gap');
+  assert.ok(!videoQuery.matchesSearch(it, 'maria kocht'));
+  assert.ok(videoQuery.matchesSearch(it, 'omas küche', { displayName: 'Omas Küche' }), 'the v1.126 folder display name matches when threaded');
+  assert.ok(!videoQuery.matchesSearch(it, 'omas küche'), 'and does NOT match when the caller threads no display name');
+});
+
+test('v1.149 matchesSearch: the two-arg legacy call is the all-scope (back-compat is the superset)', () => {
+  const it = item({ title: 'Titel Eins', folderName: 'OrdnerZwei' });
+  assert.ok(videoQuery.matchesSearch(it, 'titel'));
+  assert.ok(videoQuery.matchesSearch(it, 'ordnerzwei'));
+  assert.ok(!videoQuery.matchesSearch(it, 'fehlt'));
+  assert.ok(videoQuery.matchesSearch(it, ''), 'empty search matches everything (unchanged)');
+});
+
+test("v1.149 matchesSearch scope 'title': ONLY the title - a channel-identity hit must not leak in", () => {
+  const it = item({ title: 'Sauerteig Basics', folderName: 'Brotkanal', channelName: 'Brot & Butter' });
+  assert.ok(videoQuery.matchesSearch(it, 'sauerteig', { scope: 'title' }));
+  assert.ok(!videoQuery.matchesSearch(it, 'brotkanal', { scope: 'title' }));
+  assert.ok(!videoQuery.matchesSearch(it, 'brot & butter', { scope: 'title' }));
+  assert.ok(!videoQuery.matchesSearch(it, 'schaufenster', { scope: 'title', displayName: 'Schaufenster' }));
+});
+
+test("v1.149 matchesSearch scope 'channel': ONLY channel identity - a title hit must not leak in", () => {
+  const it = item({ title: 'Sauerteig Basics', folderName: 'Brotkanal', channelName: 'Brot & Butter' });
+  assert.ok(!videoQuery.matchesSearch(it, 'sauerteig', { scope: 'channel' }));
+  assert.ok(videoQuery.matchesSearch(it, 'brotkanal', { scope: 'channel' }));
+  assert.ok(videoQuery.matchesSearch(it, 'brot & butter', { scope: 'channel' }));
+  assert.ok(videoQuery.matchesSearch(it, 'schaufen', { scope: 'channel', displayName: 'Schaufenster' }));
+});
+
+test('v1.149 matchesSearch: items without channelName (pre-v1.112 shapes) never throw and match by the other fields', () => {
+  const it = item({ title: 'Alt Video', folderName: 'AltOrdner' }); // no channelName at all
+  assert.ok(videoQuery.matchesSearch(it, 'altordner', { scope: 'channel' }));
+  assert.ok(!videoQuery.matchesSearch(it, 'kanalname', { scope: 'channel' }));
+});
+
+test('v1.149 normalizeSearchScope: whitelist with all-fallback (the permissive-filter posture)', () => {
+  assert.equal(videoQuery.normalizeSearchScope('all'), 'all');
+  assert.equal(videoQuery.normalizeSearchScope('title'), 'title');
+  assert.equal(videoQuery.normalizeSearchScope('channel'), 'channel');
+  for (const junk of ['channels', 'TITLE', '', null, undefined, 42, {}, ['channel']]) {
+    assert.equal(videoQuery.normalizeSearchScope(junk), 'all', `junk: ${String(junk)}`);
+  }
+});

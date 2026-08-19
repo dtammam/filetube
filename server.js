@@ -9815,9 +9815,18 @@ app.get('/api/videos', (req, res) => {
     }
   }
 
-  // Search filter
+  // Search filter. v1.149: `searchIn` scopes the match (all|title|channel;
+  // anything else normalizes to 'all', which is a strict SUPERSET of the
+  // pre-v1.149 title+folder behavior - it adds the healed channelName and
+  // the v1.126 folder DISPLAY name, so searching a channel by the name a
+  // human knows finds its items even when the on-disk folder differs).
   if (search) {
-    list = list.filter(item => videoQuery.matchesSearch(item, search));
+    const searchScope = videoQuery.normalizeSearchScope(req.query.searchIn);
+    const searchDisplayNames = db.folderDisplayNames || {};
+    list = list.filter(item => videoQuery.matchesSearch(item, search, {
+      scope: searchScope,
+      displayName: searchDisplayNames[item.folderName],
+    }));
   }
 
   // Mapped-folder filter: recursive — everything under the configured folder (incl. subfolders).
