@@ -1277,7 +1277,7 @@ const PreviewCards = (function () {
       // is known synchronously from the URL). On change: state + URL
       // (replaceState keeps the deep link shareable without a history spam
       // entry per click) + the same resetAndReload the siblings use.
-      if (!modernMode && searchQuery && sectionActions && !sectionActions.querySelector('#library-search-scope-toggle')) {
+      if (!modernMode && searchQuery && !likedFilter && sectionActions && !sectionActions.querySelector('#library-search-scope-toggle')) {
         renderSearchScopeToggle(sectionActions, activeSearchScope, (mode) => {
           activeSearchScope = mode;
           try {
@@ -1768,7 +1768,7 @@ const PreviewCards = (function () {
       }
       // v1.149: the guarded re-render twin of the search-scope toggle (same
       // rare-path rationale as the siblings directly above).
-      if (searchQuery && sectionActions && !sectionActions.querySelector('#library-search-scope-toggle')) {
+      if (searchQuery && !likedFilter && sectionActions && !sectionActions.querySelector('#library-search-scope-toggle')) {
         renderSearchScopeToggle(sectionActions, activeSearchScope, (mode) => {
           activeSearchScope = mode;
           try {
@@ -2063,6 +2063,7 @@ const PreviewCards = (function () {
         sort: currentSort,
         seed: currentSeed,
         search: searchQuery,
+        searchIn: activeSearchScope, // v1.149 gate W1: the scope rides the ctx (encodeListContext drops 'all')
         folder: folderFilter,
         root: rootFilter,
         format: getStoredFormatFilter(),

@@ -267,3 +267,12 @@ test('v1.149 normalizeSearchScope: whitelist with all-fallback (the permissive-f
     assert.equal(videoQuery.normalizeSearchScope(junk), 'all', `junk: ${String(junk)}`);
   }
 });
+
+test('v1.149 gate S1: a NON-STRING channelName (hostile/legacy shape) never matches and never throws, in every scope', () => {
+  for (const bad of [42, { toLowerCase: () => 'kanal' }, null, ['Kanal'], true]) {
+    const it = item({ title: 'Egal', folderName: 'Ordner', channelName: bad });
+    assert.ok(!videoQuery.matchesSearch(it, 'kanal', { scope: 'channel' }), `channelName=${JSON.stringify(bad)} must not match`);
+    assert.ok(!videoQuery.matchesSearch(it, '42', { scope: 'channel' }), 'nor via stringification');
+    assert.ok(videoQuery.matchesSearch(it, 'egal'), 'the other fields still match around it');
+  }
+});

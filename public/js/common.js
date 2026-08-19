@@ -2046,6 +2046,11 @@ function encodeListContext(ctx) {
   if (ctx.sort) out.sort = String(ctx.sort);
   if (ctx.seed !== undefined && ctx.seed !== null && ctx.seed !== '') out.seed = String(ctx.seed);
   if (ctx.search) out.search = String(ctx.search);
+  // v1.149 (gate W1, the v1.88 format-threading class): a Channels/Titles-
+  // scoped search grid must hand Prev/Next/autoplay the SAME scope, or Next
+  // can land on an item the user's grid never showed. 'all' never rides
+  // (byte-identity with pre-v1.149 contexts).
+  if (ctx.search && ctx.searchIn && ctx.searchIn !== 'all') out.searchIn = String(ctx.searchIn);
   if (ctx.folder) out.folder = String(ctx.folder);
   if (ctx.root) out.root = String(ctx.root);
   if (ctx.format) out.format = String(ctx.format);
@@ -2073,6 +2078,8 @@ function buildContextListUrl(ctx, fullLimit) {
   var c = ctx || {};
   var params = [];
   if (c.search) params.push('search=' + encodeURIComponent(c.search));
+  // v1.149 (gate W1): the scope reproduces the browsed list exactly.
+  if (c.search && c.searchIn && c.searchIn !== 'all') params.push('searchIn=' + encodeURIComponent(c.searchIn));
   if (c.folder) params.push('folder=' + encodeURIComponent(c.folder));
   if (c.root) params.push('root=' + encodeURIComponent(c.root));
   if (c.sort) params.push('sort=' + encodeURIComponent(c.sort));

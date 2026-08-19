@@ -620,6 +620,21 @@ test('v1.149 main.js source locks: the scope rides the query only under a search
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
   assert.match(src, /if \(searchQuery && activeSearchScope !== 'all'\) queryParams\.push\(`searchIn=\$\{encodeURIComponent\(activeSearchScope\)\}`\)/,
     'buildVideosApiUrl sends searchIn only for a non-default scope during a search');
-  assert.strictEqual((src.match(/searchQuery && sectionActions && !sectionActions\.querySelector\('#library-search-scope-toggle'\)/g) || []).length, 2,
-    'both toolbar render sites exist and both are search-gated');
+  assert.strictEqual((src.match(/searchQuery && !likedFilter && sectionActions && !sectionActions\.querySelector\('#library-search-scope-toggle'\)/g) || []).length, 2,
+    'both toolbar render sites exist, search-gated and liked-excluded (gate S2 tightened the original search-only guard)');
+});
+
+test('v1.149 gate round 1: main.js source locks - deep-link init, ctx threading, and the liked-view mount exclusion', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
+  // W2: a shared ?searchIn= link must initialize the scope (the surviving
+  // mutant replaced this with a hardcoded 'all' and nothing redded).
+  assert.match(src, /normalizeSearchScopeMode\(urlParams\.get\('searchIn'\)\)/,
+    'the view closure initializes the scope from the deep link through the whitelist');
+  // W1: the scope rides the watch-page list context.
+  assert.match(src, /searchIn: activeSearchScope/, 'encodeListContext receives the live scope');
+  // S2: no scope toggle over a Liked view (its endpoint ignores search).
+  assert.strictEqual((src.match(/searchQuery && !likedFilter && sectionActions && !sectionActions\.querySelector\('#library-search-scope-toggle'\)/g) || []).length, 2,
+    'both mount sites are search-gated AND liked-excluded');
 });
