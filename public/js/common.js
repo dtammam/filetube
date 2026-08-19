@@ -6172,12 +6172,26 @@ function injectAccountMenu() {
 
     menu.appendChild(accountMenuDivider());
 
-    // Quick links (plain hrefs -- a full navigation, like the bottom-nav items).
+    // Quick links to the library pages. Plain hrefs to known routes -- the
+    // router's delegated click handler intercepts them into in-app swaps.
+    // v1.153 (Dean): this "You" menu is mobile's main way into these pages
+    // (the sidebar is a drawer there), so Stats + Subscriptions join it -
+    // they are sidebar-only otherwise, unreachable on a phone without opening
+    // the drawer or rotating.
     const liked = buildAccountMenuRow('a', 'Liked', 'icon-heart'); liked.href = '/?liked=1';
     const history = buildAccountMenuRow('a', 'History', 'icon-history'); history.href = '/history';
+    const stats = buildAccountMenuRow('a', 'Stats', 'icon-star'); stats.href = '/stats.html';
     const settings = buildAccountMenuRow('a', 'Settings', 'icon-cog'); settings.href = '/setup.html';
     menu.appendChild(liked);
     menu.appendChild(history);
+    menu.appendChild(stats);
+    // Subscriptions only when the optional yt-dlp module is enabled - gated by
+    // the presence of its already-injected nav entry (the same signal the
+    // sidebar/bottom-nav links use; absent module -> no row).
+    if (document.querySelector('[data-nav="subscriptions"], [data-nav-sidebar="subscriptions"]')) {
+      const subs = buildAccountMenuRow('a', 'Subscriptions', 'icon-refresh'); subs.href = '/subscriptions';
+      menu.appendChild(subs);
+    }
     // v1.97.1 (Dean): the feed-hidden RESTORE surface moved OUT of this menu and
     // into a "Hidden" SECTION on the settings page beside Trash (setup.html /
     // setup.js renderFeedHiddenSection) - the settings page scrolls, so a long

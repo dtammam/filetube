@@ -73,15 +73,34 @@ test('injectAccountMenu: builds the trigger + full dropdown, once, with account 
   assert.strictEqual(trigger.querySelector('.account-avatar').textContent, 'D', 'monogram in the trigger');
 
   const labels = [...root.querySelectorAll('.account-menu-item span')].map((s) => s.textContent);
-  assert.deepStrictEqual(labels, ['Change photo', 'Liked', 'History', 'Settings', 'Theme', 'Sign out'], 'all items present, in order');
+  // v1.153: Stats joined the quick links (mobile's way in, sidebar-only otherwise).
+  // Subscriptions is NOT here because this fixture has no subscriptions nav entry
+  // (the enabled-module gate) - covered by its own test below.
+  assert.deepStrictEqual(labels, ['Change photo', 'Liked', 'History', 'Stats', 'Settings', 'Theme', 'Sign out'], 'all items present, in order');
   assert.strictEqual(root.querySelector('.account-menu-name').textContent, 'Dean');
   assert.strictEqual(root.querySelector('.account-menu-role').textContent, 'Admin');
   const links = [...root.querySelectorAll('a.account-menu-item')].map((a) => a.getAttribute('href'));
-  assert.deepStrictEqual(links, ['/?liked=1', '/history', '/setup.html']);
+  assert.deepStrictEqual(links, ['/?liked=1', '/history', '/stats.html', '/setup.html']);
 
   injectAccountMenu();
   await tick();
   assert.strictEqual(global.document.querySelectorAll('#account-menu-root').length, 1, 'injected exactly once');
+});
+
+test('injectAccountMenu: the Subscriptions quick link appears only when the module is enabled (v1.153)', async () => {
+  const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', role: 'member', avatar: { present: false } } });
+  // simulate the enabled yt-dlp module: its nav entry is already in the DOM
+  const marker = global.document.createElement('a');
+  marker.setAttribute('data-nav', 'subscriptions');
+  global.document.body.appendChild(marker);
+  injectAccountMenu();
+  await tick();
+  const root = global.document.getElementById('account-menu-root');
+  const labels = [...root.querySelectorAll('.account-menu-item span')].map((s) => s.textContent);
+  assert.deepStrictEqual(labels, ['Change photo', 'Liked', 'History', 'Stats', 'Subscriptions', 'Settings', 'Theme', 'Sign out'],
+    'Subscriptions joins the quick links when enabled');
+  const subs = [...root.querySelectorAll('a.account-menu-item')].find((a) => a.textContent.includes('Subscriptions'));
+  assert.strictEqual(subs.getAttribute('href'), '/subscriptions');
 });
 
 test('injectAccountMenu: click toggles the dropdown; outside-click + Escape close it', async () => {
