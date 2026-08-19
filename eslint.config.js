@@ -176,7 +176,7 @@ module.exports = [
         // section persistence (common.js).
         setActionStatus: 'readonly',
         setButtonBusy: 'readonly',
-        wireCollapsibleSections: 'readonly',
+        wireMasterDetail: 'readonly',
         showConfirmModal: 'readonly',
         // FR-3 (T2): the toast helper (watch.js's post-delete success +
         // main.js's card trash-can outcomes) and the card trash-can's pure

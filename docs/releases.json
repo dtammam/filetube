@@ -1816,5 +1816,11 @@
     "date": "2026-08-19",
     "title": "Open Stats without stopping your music",
     "intent": "Playing a video or track and want to peek at your library stats? Tapping Stats used to stop whatever was playing. Now it keeps right on going in the mini-player, just like every other page in the app, and the Stats item lights up in the sidebar while you're there."
+  },
+  {
+    "version": "1.152.0",
+    "date": "2026-08-19",
+    "title": "A cleaner way to get around Settings",
+    "intent": "Settings, Stats, and Subscriptions got a fresh menu. Instead of one long page of sections you expand and collapse (and lose your place in), each page is now a tidy list with a little icon for every section - tap one and just that section opens, with a back button to return. On a computer the list sits alongside the section you're viewing. Everything that was there is still there, just easier to find, and the Appearance section's icon even changes to match the retro era you've picked."
   }
 ]

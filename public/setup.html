@@ -135,12 +135,16 @@
       <!-- Per-view content boundary (FR-1, T1): see index.html's matching
            comment. The router swaps ONLY this node on in-app navigation. -->
       <div id="view-root" data-view="setup">
+      <!-- v1.152: master-detail menu wrapper. wireMasterDetail (common.js) turns
+           these <details data-collapse-key> sections into a grouped menu +
+           detail pane; the data-md-icon/data-md-group attrs below feed it. -->
+      <div class="md-root" data-md-page="setup" data-md-title="Library settings" data-md-groups="Library,System,Account">
       <!-- v1.48 item 5 (Dean): Appearance sits FIRST, above the folder boxes.
            It is the section reached most often and the one users came here to
            change; the folder configuration below it is set-once. Moving the
            box is a pure markup reorder -- every control inside is wired by id
            from public/js/setup.js, never by document order. -->
-      <details class="setup-box sub-collapsible" data-collapse-key="appearance" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="appearance" data-md-icon="era" open>
         <summary>Appearance</summary>
         <p>Pick the YouTube era FileTube dresses up as. Light / dark lives in
            the account menu (your avatar, top-right).</p>
@@ -217,7 +221,7 @@
         <div id="logo-status" class="action-status" style="margin-top:6px;" aria-live="polite"></div>
       </details>
 
-      <details class="setup-box sub-collapsible" data-collapse-key="video-folders" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="video-folders" data-md-icon="video" data-md-group="Library" data-md-label="Video folders" open>
         <summary>FileTube Setup & Configuration</summary>
         <p>
           Configure the local directories where your media (videos and audio files) are stored.
@@ -262,7 +266,7 @@
            wired to the existing GET/POST /api/books/config + POST /api/books/scan
            (config was API-only since v1.37.0 -- this closes that gap). Book roots
            are an unordered set with no per-folder display/hide/reorder. -->
-      <details class="setup-box sub-collapsible" data-collapse-key="book-folders" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="book-folders" data-md-icon="book" data-md-group="Library" open>
         <summary>Book folders</summary>
         <p>
           Directories where your EPUB and PDF books live. They appear in the Books library.
@@ -300,7 +304,7 @@
            GET/POST /api/music/config + POST /api/music/scan. Music roots are an
            unordered set. The server rejects any overlap with media OR book
            folders (three-way, both directions). -->
-      <details class="setup-box sub-collapsible" data-collapse-key="music-folders" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="music-folders" data-md-icon="music" data-md-group="Library" open>
         <summary>Music folders</summary>
         <p>
           Directories where your music lives (MP3, M4A/AAC, FLAC, WAV). They appear in the Music library.
@@ -340,7 +344,7 @@
            (zero subscriptions = no sidebar link), so without this box a
            fresh install had NO path to /podcasts at all (the chicken-and-egg
            the v1.69.0 gate missed). A static link; no wiring. -->
-      <details class="setup-box sub-collapsible" data-collapse-key="podcasts-place" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="podcasts-place" data-md-icon="podcast" data-md-group="Library" open>
         <summary>Podcasts</summary>
         <p>
           Subscribe to podcast RSS feeds - public ones, or private tokened
@@ -359,7 +363,7 @@
         </div>
       </details>
 
-      <details class="setup-box sub-collapsible" data-collapse-key="automation-storage" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="automation-storage" data-md-icon="sliders" data-md-group="System" open>
         <summary>Automation & Storage</summary>
         <p>
           Control how often FileTube rescans your library and how the on-demand
@@ -698,7 +702,7 @@
            fed by that FOREIGN fetch, so none of them carry the
            /api/settings reveal-toggle barrier (the v1.96 partial-render
            lesson); the box reveals whole, already populated. -->
-      <details class="setup-box sub-collapsible" id="downloads-box" hidden data-collapse-key="downloads" open>
+      <details class="setup-box sub-collapsible" id="downloads-box" hidden data-collapse-key="downloads" data-md-icon="download" data-md-group="System" data-md-badge="Admin" open>
         <summary>Downloads</summary>
         <h3>Downloader engine</h3>
         <p>
@@ -743,7 +747,7 @@
         <small id="engine-error" class="field-error"></small>
       </details>
 
-      <details class="setup-box sub-collapsible" data-collapse-key="trash" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="trash" data-md-icon="trash" data-md-group="System" open>
         <summary>Trash</summary>
         <p>
           Deleted videos move to a per-folder trash instead of being erased.
@@ -768,7 +772,7 @@
       <!-- v1.97.1: Hidden -- videos you pruned from YOUR modern feed. Moved here
            from the account menu (Dean) so a long list scrolls with the page.
            Rows render from GET /api/feed-hidden (public/js/setup.js). -->
-      <details class="setup-box sub-collapsible" data-collapse-key="feedhidden" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="feedhidden" data-md-icon="hidden" data-md-group="System" open>
         <summary>Hidden</summary>
         <p>
           Videos you've hidden from your modern feed. Hiding never deletes them -
@@ -782,7 +786,7 @@
       <!-- v1.43: Account (everyone) - who you are + sign out. Markup lives
            INSIDE #view-root and styles in style.css (the v1.41.8 SPA-swap
            lesson). -->
-      <details class="setup-box sub-collapsible" id="account-box" data-collapse-key="account" open>
+      <details class="setup-box sub-collapsible" id="account-box" data-collapse-key="account" data-md-icon="account" data-md-group="Account" open>
         <summary>Account</summary>
         <div class="account-row">
           <span id="account-chip" aria-live="polite">Loading your account...</span>
@@ -802,7 +806,7 @@
 
       <!-- v1.43: Users (admin only - revealed by setup.js after /api/auth/me
            confirms the role; the server enforces it regardless). -->
-      <details class="setup-box sub-collapsible" id="users-box" hidden data-collapse-key="users" open>
+      <details class="setup-box sub-collapsible" id="users-box" hidden data-collapse-key="users" data-md-icon="users" data-md-group="Account" data-md-badge="Admin" open>
         <summary>Users</summary>
         <p>
           Accounts for your family and friends. Everyone signed in sees the same library for now -
@@ -848,7 +852,7 @@
       <!-- v1.43: instance backup/restore (admin only - revealed with the
            Users box). The bundle now includes user accounts, so the download
            is flagged sensitive. -->
-      <details class="setup-box sub-collapsible" id="backup-box" hidden data-collapse-key="backup-restore" open>
+      <details class="setup-box sub-collapsible" id="backup-box" hidden data-collapse-key="backup-restore" data-md-icon="backup" data-md-group="Account" data-md-badge="Admin" open>
         <summary>Backup &amp; Restore</summary>
         <p>
           Downloads a snapshot of this FileTube's configuration and everyone's personal state -
@@ -876,6 +880,7 @@
           </small>
         </div>
       </details>
+      </div><!-- /.md-root -->
       </div>
     </main>
   </div>

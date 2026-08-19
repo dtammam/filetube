@@ -2712,9 +2712,13 @@ function init(root) {
   syntheticFolders = [];
   loadedDefaultView = null;
 
-  // v1.55 Track D: per-section collapse persistence (details toggles).
-  // Scoped to the view root (QA S1) with a document fallback.
-  wireCollapsibleSections('setup', root || document, controller.signal);
+  // v1.152: the master-detail menu (was per-section <details> collapse). Turns
+  // the .md-root sections into a grouped menu + detail pane; scoped to the view
+  // root (QA S1) with a document fallback. Admin sections (Users/Backup/
+  // Downloads) are revealed asynchronously below via box.hidden=false; the
+  // component's MutationObserver adds their rows then (and never before - a
+  // restricted user never sees them).
+  wireMasterDetail('setup', root || document, controller.signal);
   wireStaticControls(controller.signal);
   wireBookFolderControls(controller.signal); // v1.38.0 Part A
   wireMusicFolderControls(controller.signal); // v1.44 music

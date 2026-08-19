@@ -141,7 +141,9 @@
            init(); on an in-app navigation the router swaps this #view-root in
            and runs the same init -- keeping the docked mini-player alive. -->
       <div id="view-root" data-view="stats">
-      <details class="setup-box sub-collapsible" data-collapse-key="fun-stats" open>
+      <!-- v1.152: master-detail menu wrapper (wireMasterDetail in common.js). -->
+      <div class="md-root" data-md-page="stats" data-md-title="Stats" data-md-groups="Overview,Breakdowns,System">
+      <details class="setup-box sub-collapsible" data-collapse-key="fun-stats" data-md-icon="chart" data-md-group="Overview" open>
         <summary>Fun stats</summary>
         <p>
           A quick, always-fresh snapshot of your library -- computed live from
@@ -158,8 +160,11 @@
            one file, so it cannot repeat the nav-injector idempotency class that
            v1.47.4 had to fix. `?` opens the same dialog from anywhere.
            `.shortcuts-entry` is display:none at the phone breakpoint (Dean:
-           "Ignore/not display on mobile viewport"). -->
-      <details class="setup-box sub-collapsible shortcuts-entry" data-collapse-key="keyboard-shortcuts" open>
+           "Ignore/not display on mobile viewport"); v1.152 propagates that to
+           the master-detail menu via data-md-hide-mobile, so the menu row and
+           its pane are dropped <=768px too (the .shortcuts-entry rule alone
+           lost to the .md-active pane rule). -->
+      <details class="setup-box sub-collapsible shortcuts-entry" data-collapse-key="keyboard-shortcuts" data-md-icon="keyboard" data-md-group="System" data-md-hide-mobile open>
         <summary>Keyboard shortcuts</summary>
         <p>
           FileTube mirrors the shortcuts you already know from YouTube -- space to
@@ -173,35 +178,35 @@
         </div>
       </details>
 
-      <details class="setup-box sub-collapsible" data-collapse-key="by-type" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="by-type" data-md-icon="layers" data-md-group="Breakdowns" open>
         <summary>By type</summary>
         <div class="theme-picker" id="stats-by-type">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
       </details>
 
-      <details class="setup-box sub-collapsible" data-collapse-key="by-folder" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="by-folder" data-md-icon="folder" data-md-group="Breakdowns" open>
         <summary>By folder</summary>
         <div class="folder-list-builder" id="stats-folder-list">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
       </details>
 
-      <details class="setup-box sub-collapsible" data-collapse-key="by-channel" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="by-channel" data-md-icon="channel" data-md-group="Breakdowns" open>
         <summary>By channel</summary>
         <div class="folder-list-builder" id="stats-channel-list">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
       </details>
 
-      <details class="setup-box sub-collapsible" data-collapse-key="records" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="records" data-md-icon="trophy" data-md-group="Overview" open>
         <summary>Records</summary>
         <div class="theme-picker" id="stats-records-grid">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
       </details>
 
-      <details class="setup-box sub-collapsible" data-collapse-key="most-watched" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="most-watched" data-md-icon="eye" data-md-group="Overview" open>
         <summary>Most watched</summary>
         <p>
           Counted once per watch-page open -- not every progress save, so a
@@ -215,7 +220,7 @@
       <!-- v1.41.0 (Dean): books are part of the same library -- inventory them
            here too (count, size, EPUB/PDF split, how many have TTS narration,
            and a per-folder breakdown). -->
-      <details class="setup-box sub-collapsible" data-collapse-key="books" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="books" data-md-icon="book" data-md-group="Breakdowns" open>
         <summary>Books</summary>
         <div class="theme-picker" id="stats-books-grid">
           <!-- Populated dynamically by /js/stats.js -->
@@ -229,7 +234,7 @@
            same-videoid/different-filename groups, straight from the library
            index. READ-ONLY (no delete buttons here, by explicit decision);
            the CSV link downloads the full flat report for offline cleanup. -->
-      <details class="setup-box sub-collapsible" data-collapse-key="duplicates" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="duplicates" data-md-icon="copy" data-md-group="Breakdowns" open>
         <summary>Duplicates</summary>
         <p>
           Files that share an exact filename, or the same YouTube video under
@@ -247,7 +252,7 @@
       <!-- v1.44.3 (Dean): "under the hood" -- a plain count of every persisted
            namespace (the same things the backup bundle carries), so the page
            answers "what is actually in my database". -->
-      <details class="setup-box sub-collapsible" data-collapse-key="under-the-hood" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="under-the-hood" data-md-icon="wrench" data-md-group="System" open>
         <summary>Under the hood</summary>
         <p>A count of everything FileTube has stored -- the same namespaces your backup carries.</p>
         <div class="folder-list-builder" id="stats-inventory-list">
@@ -258,22 +263,23 @@
       <!-- v1.41.0 (Dean): the About/version hub -- FileTube + yt-dlp + TTS
            versions and GitHub links, all in one place. Rows hide themselves
            when a component isn't installed. -->
-      <details class="setup-box sub-collapsible" data-collapse-key="about-filetube" open>
+      <details class="setup-box sub-collapsible" data-collapse-key="about-filetube" data-md-icon="info" data-md-group="System" open>
         <summary>About FileTube</summary>
         <div class="folder-list-builder" id="stats-about">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
       </details>
+      </div><!-- /.md-root -->
       </div>
     </main>
   </div>
 
   <!-- Persistent player dock + host template (FR-1, T1/T2) -- see
-       index.html's matching comment. The docked mini-player keeps playing
-       here too when the user browses to Stats with media loaded (an in-app
-       SPA swap only -- a hard navigation here, like any unrecognized route,
-       does not carry playback across, matching the router's own documented
-       fallback behavior). -->
+       index.html's matching comment. The docked mini-player keeps playing here
+       when the user browses to Stats with media loaded: v1.151 made Stats an
+       SPA route, so an in-app navigation swaps #view-root and carries playback
+       across (a hard full-page load of /stats.html, like any full reload,
+       still starts fresh). -->
   <div id="player-dock" hidden></div>
   <!-- v1.138: the desktop fullscreen STAGE - a never-moving shell-level
        container the host reparents INTO for native fullscreen, so

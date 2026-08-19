@@ -122,6 +122,20 @@ summary,
   --fs-3xl: 20px;
   --fs-4xl: 22px;
   --fs-5xl: 32px;
+
+  /* v1.152 master-detail menu: tile tones (colour encodes the group) + the
+     era-reactive Appearance tile tints. Fixed, mode-invariant tints that read
+     on both light and dark grounds; defined once (no era/mode override). */
+  --md-graphite: #3a3f47;
+  --md-steel: #4a6178;
+  --md-era-2014: #e62117;
+  --md-era-2009: #c11a20;
+  --md-era-2005: #b31217;
+  --md-tile-glyph: #ffffff;
+  --md-tile-radius: 8px;
+  --md-nav-width: 250px;
+  --md-divider-inset: 56px; /* row divider starts past the icon tile + gap */
+  --tracking-caps: 0.05em;  /* uppercase group titles / badges */
 }
 
 /* ==== Design-token layer, Phase 1 (docs/references/design-token-audit-v1.1.md)
@@ -7347,6 +7361,106 @@ body.ft-audio-expanded {
 .sub-collapsible > summary::-webkit-details-marker,
 .sub-collapsible > summary::marker {
   color: var(--yt-red);
+}
+
+/* ===========================================================================
+   v1.152 master-detail menu (wireMasterDetail in common.js). Mobile-first:
+   the menu and the detail are two "screens" (data-md-open toggles which shows,
+   with a push-in on the detail); at >=769px they become a rail + pane. The
+   JS only sets classes/data-attrs - all colour/size here rides tokens.
+   =========================================================================== */
+.md-root { display: block; }
+/* sections live in the panes now: full width, not the centered .setup-box card */
+.md-root .setup-box { max-width: none; margin: 0; }
+.md-root .md-panes > details.setup-box { display: none; }
+.md-root .md-panes > details.setup-box.md-active { display: block; }
+/* the menu row is the heading now - retire the native summary + its marker */
+.md-root .md-panes > details.setup-box > summary { display: none; }
+
+.md-nav { display: flex; flex-direction: column; gap: var(--space-10); }
+.md-group { display: flex; flex-direction: column; }
+.md-group-title {
+  font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: var(--tracking-caps); padding: 0 var(--space-6) var(--space-3);
+}
+.md-group-card {
+  background: var(--card-bg); border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg); overflow: hidden;
+}
+.md-row {
+  display: flex; align-items: center; gap: var(--space-6); width: 100%;
+  text-align: left; background: none; border: 0; cursor: pointer; font: inherit;
+  color: var(--text-primary); padding: var(--space-5) var(--space-6); position: relative;
+}
+.md-row + .md-row::before {
+  content: ""; position: absolute; top: 0; left: var(--md-divider-inset); right: 0; height: 1px; background: var(--border-color);
+}
+.md-row:hover { background: var(--bg-secondary); }
+.md-row--active { background: var(--bg-secondary); }
+.md-row:focus-visible { outline: 2px solid var(--yt-red); outline-offset: -2px; }
+.md-row-label { flex: 1; font-size: var(--fs-lg); }
+.md-row-badge {
+  font-size: var(--fs-2xs); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--tracking-caps);
+  background: var(--bg-secondary); color: var(--text-secondary);
+  padding: var(--space-1) var(--space-3); border-radius: var(--radius-full);
+}
+.md-row-chev { color: var(--text-secondary); opacity: 0.55; display: inline-flex; }
+.md-row-chev svg { width: 16px; height: 16px; }
+
+.md-tile {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: var(--md-tile-radius);
+  display: grid; place-items: center; color: var(--md-tile-glyph);
+}
+.md-tile svg { width: 60%; height: 60%; }
+.md-tile[data-md-tone="red"] { background: var(--yt-red); }
+.md-tile[data-md-tone="graphite"] { background: var(--md-graphite); }
+.md-tile[data-md-tone="steel"] { background: var(--md-steel); }
+.md-tile[data-md-era="2021"] { background: var(--yt-red); }
+.md-tile[data-md-era="2014"] { background: var(--md-era-2014); }
+.md-tile[data-md-era="2009"] { background: var(--md-era-2009); }
+.md-tile[data-md-era="2005"] { background: var(--md-era-2005); }
+
+.md-detail-head { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4) 0 var(--space-8); }
+.md-back {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  background: none; border: 0; cursor: pointer; color: var(--yt-red); font: inherit;
+  font-size: var(--fs-lg); padding: var(--space-3) var(--space-2);
+}
+.md-back svg { width: 18px; height: 18px; }
+.md-detail-title { margin: 0; font-size: var(--fs-4xl); font-weight: var(--fw-bold); }
+
+/* --- phone (mobile-first base is the two-screen slide) --- */
+.md-root[data-md-open="false"] .md-panes { display: none; }
+.md-root[data-md-open="true"] .md-nav { display: none; }
+.md-root[data-md-open="true"] .md-panes { animation: md-push-in var(--dur-slow) var(--ease-ui); }
+@keyframes md-push-in {
+  from { transform: translateX(6%); opacity: 0.35; }
+  to { transform: none; opacity: 1; }
+}
+
+/* --- desktop: rail + pane, both visible, no back bar --- */
+@media (min-width: 769px) {
+  .md-track {
+    display: grid; grid-template-columns: var(--md-nav-width) minmax(0, 1fr);
+    gap: var(--space-12); align-items: start; max-width: 1040px; margin: 0 auto;
+  }
+  .md-root[data-md-open="false"] .md-panes,
+  .md-root[data-md-open="true"] .md-nav { display: block; }
+  .md-root[data-md-open="true"] .md-panes { animation: none; }
+  .md-nav { position: sticky; top: calc(var(--header-h) + var(--space-8)); }
+  .md-row-chev { display: none; }
+  .md-back { display: none; }
+}
+
+/* --- phone: a section marked data-md-hide-mobile stays off the menu AND
+   cannot open (Stats' keyboard shortcuts - Dean: not on mobile viewport) --- */
+@media (max-width: 768px) {
+  .md-row.md-hide-mobile { display: none; }
+  .md-root .md-panes > details[data-md-hide-mobile].md-active { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md-root[data-md-open="true"] .md-panes { animation: none; }
 }
 
 /* ---- settings bottom-sheet (AC21/AC22) ------------------------------------

@@ -186,3 +186,19 @@ on-accent consumers; the docs and ledger were always correct.)
     handling.
 - Linter ruling: the zero-dependency script STAYS (stylelint's
   dependency surface is not worth one rule).
+
+## Addendum v1.152 (2026-08-19): master-detail menu tokens
+
+The master-detail menu (wireMasterDetail) added ten mode-invariant tokens,
+all pinned byte-exact in `test/unit/token-scale-lock.test.js` (the value
+authority) and defined exactly once in the base `:root`:
+- Tile tones (colour encodes the menu group): `--md-graphite` #3a3f47,
+  `--md-steel` #4a6178 (red reuses the existing `--yt-red`).
+- Era-reactive Appearance tile tints (track `<html data-theme>`; 2021 reuses
+  `--yt-red`): `--md-era-2014` #e62117, `--md-era-2009` #c11a20,
+  `--md-era-2005` #b31217.
+- `--md-tile-glyph` #ffffff (white glyph on the tinted tile), `--md-tile-radius`
+  8px.
+- Layout constants (the narrow "layout geometry" amendment, like
+  `--header-h`/`--sidebar-w`): `--md-nav-width` 250px, `--md-divider-inset` 56px.
+- `--tracking-caps` 0.05em (uppercase group titles / badges).
