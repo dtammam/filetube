@@ -7429,6 +7429,23 @@ body.ft-audio-expanded {
 .md-back svg { width: 18px; height: 18px; }
 .md-detail-title { margin: 0; font-size: var(--fs-4xl); font-weight: var(--fw-bold); }
 
+/* v1.153: the iOS-Settings-style page header box (built by wireMasterDetail from
+   data-md-title/desc/hero-icon). Uniform height across pages: min-height + a
+   2-line clamp on the description. */
+.md-hero {
+  display: flex; align-items: center; gap: var(--space-6);
+  background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-lg);
+  margin: var(--space-8); padding: var(--space-8); min-height: 96px;
+}
+.md-hero .md-tile--hero { width: 60px; height: 60px; border-radius: var(--radius-lg); }
+.md-hero .md-tile--hero svg { width: 54%; height: 54%; }
+.md-hero-text { min-width: 0; }
+.md-hero-text h2 { margin: 0; font-size: var(--fs-4xl); font-weight: var(--fw-bold); }
+.md-hero-text p {
+  margin: var(--space-2) 0 0; color: var(--text-secondary); font-size: var(--fs-base); line-height: var(--lh-relaxed);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
 /* --- phone (mobile-first base is the two-screen slide) --- */
 .md-root[data-md-open="false"] .md-panes { display: none; }
 .md-root[data-md-open="true"] .md-nav { display: none; }
@@ -7447,7 +7464,21 @@ body.ft-audio-expanded {
   .md-root[data-md-open="false"] .md-panes,
   .md-root[data-md-open="true"] .md-nav { display: block; }
   .md-root[data-md-open="true"] .md-panes { animation: none; }
-  .md-nav { position: sticky; top: calc(var(--header-h) + var(--space-8)); }
+  /* v1.153 (Dean device report): the category rail "shifts up and stays" on the
+     first row click (desktop, all pages). HYPOTHESIS, not yet reproduced in a
+     browser here: the `position: sticky` rail's geometry couples to the grid row
+     height, which changes with the selected pane, and the sticky box then
+     repositions. Fix pins it as a self-contained, top-aligned,
+     independently-scrolling rail (align-self:start makes the alignment explicit,
+     max-height + overflow keep the rail's own height off the pane). DEVICE-VERIFY
+     with Dean; if it persists, re-root-cause from a screen recording. */
+  .md-nav {
+    position: sticky;
+    top: calc(var(--header-h) + var(--space-8));
+    align-self: start;
+    max-height: calc(100vh - var(--header-h) - var(--space-12));
+    overflow-y: auto;
+  }
   .md-row-chev { display: none; }
   .md-back { display: none; }
 }
@@ -7457,6 +7488,9 @@ body.ft-audio-expanded {
 @media (max-width: 768px) {
   .md-row.md-hide-mobile { display: none; }
   .md-root .md-panes > details[data-md-hide-mobile].md-active { display: none; }
+  /* v1.153: the page header box belongs to the menu screen; hide it on the
+     detail (desktop keeps it - it's the full-width page header there). */
+  .md-root[data-md-open="true"] .md-hero { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

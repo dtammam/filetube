@@ -3056,7 +3056,7 @@ function injectSubscriptionsNavLinkIfEnabled() {
 // The actual DOM builders, shared by the optimistic (cache) and confirmed
 // (probe) paths -- v1.53 extraction, byte-identical markup to pre-v1.53.
 function injectSubscriptionsNavNodes() {
-  // Sidebar entry, inserted right after the existing "Library settings"
+  // Sidebar entry, inserted right after the existing "Settings"
   // link so it reads as a sibling settings-adjacent surface.
       const settingsSidebarLink = document.querySelector('a.sidebar-item[href="/setup.html"]');
       if (settingsSidebarLink && settingsSidebarLink.parentElement) {
@@ -4976,6 +4976,25 @@ function wireMasterDetail(pageKey, root, signal) {
   head.appendChild(backBtn); head.appendChild(headTitle);
   panes.appendChild(head);
   sections.forEach((s) => { s.open = true; panes.appendChild(s); });
+
+  // v1.153: the iOS-Settings-style page header box. REUSABLE - any .md-root page
+  // gets one by declaring data-md-title / data-md-desc / data-md-hero-icon (no
+  // code change). Sits ABOVE the track: a full-width page header on desktop; on
+  // phone it shows on the menu screen and hides on the detail (CSS keys the hide
+  // on [data-md-open="true"]). Uniform height via CSS min-height + a 2-line
+  // clamp on the description.
+  const heroDesc = mdRoot.getAttribute('data-md-desc') || '';
+  const heroIcon = mdRoot.getAttribute('data-md-hero-icon') || '';
+  const heroTitle = mdRoot.getAttribute('data-md-title') || '';
+  if (heroTitle || heroDesc) {
+    const hero = doc.createElement('div');
+    hero.className = 'md-hero';
+    hero.innerHTML = '<span class="md-tile md-tile--hero" data-md-tone="graphite">' + mdSvg(heroIcon) + '</span>'
+      + '<div class="md-hero-text"><h2>' + mdEsc(heroTitle) + '</h2>'
+      + (heroDesc ? '<p>' + mdEsc(heroDesc) + '</p>' : '') + '</div>';
+    mdRoot.appendChild(hero);
+  }
+
   track.appendChild(nav); track.appendChild(panes);
   mdRoot.appendChild(track);
 
@@ -9511,7 +9530,7 @@ function showHardDeleteModal(item, onConfirm, doc) {
 
   const warning = d.createElement('div');
   warning.className = 'hard-delete-modal-warning';
-  warning.textContent = 'This local file cannot be re-downloaded. It moves to Trash and can be restored from Library settings until the retention window empties it.';
+  warning.textContent = 'This local file cannot be re-downloaded. It moves to Trash and can be restored from Settings until the retention window empties it.';
   modal.appendChild(warning);
 
   const nameEl = d.createElement('div');

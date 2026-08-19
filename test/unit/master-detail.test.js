@@ -118,6 +118,36 @@ test('data-md-groups declares the group order (and thus tone), independent of do
   } finally { teardown(dom); }
 });
 
+test('renders a REUSABLE header box from data-md-title/desc/hero-icon (above the track)', () => {
+  const { dom, doc, signal } = setup(`
+    <div class="md-root" data-md-page="hx" data-md-title="Settings" data-md-desc="Manage your setup." data-md-hero-icon="sliders">
+      <details data-collapse-key="a" data-md-icon="account" data-md-group="G"><summary>A</summary></details>
+    </div>`);
+  try {
+    wireMasterDetail('hx', doc, signal);
+    const hero = doc.querySelector('.md-hero');
+    assert.ok(hero, 'a header box is rendered from the .md-root attrs (no per-page code)');
+    assert.strictEqual(hero.querySelector('h2').textContent, 'Settings');
+    assert.match(hero.querySelector('p').textContent, /Manage your setup/);
+    const tile = hero.querySelector('.md-tile--hero');
+    assert.ok(tile, 'a large hero tile');
+    assert.strictEqual(tile.getAttribute('data-md-tone'), 'graphite', 'neutral graphite tile');
+    assert.ok(hero.nextElementSibling && hero.nextElementSibling.classList.contains('md-track'),
+      'the hero sits before the track (full-width page header on desktop)');
+  } finally { teardown(dom); }
+});
+
+test('no header box when a .md-root declares no title/desc (opt-in)', () => {
+  const { dom, doc, signal } = setup(`
+    <div class="md-root" data-md-page="hy">
+      <details data-collapse-key="a" data-md-icon="account" data-md-group="G"><summary>A</summary></details>
+    </div>`);
+  try {
+    wireMasterDetail('hy', doc, signal);
+    assert.strictEqual(doc.querySelector('.md-hero'), null, 'no hero without a title/desc');
+  } finally { teardown(dom); }
+});
+
 test('the era tile repaints when the era skin (html data-theme) changes', async () => {
   const { dom, doc, signal } = setup(FIXTURE);
   try {

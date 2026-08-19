@@ -329,7 +329,7 @@ function renderBookFolders(root, books) {
   if (groups.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'theme-card-blurb';
-    empty.textContent = 'No books yet — add a book folder in Library settings.';
+    empty.textContent = 'No books yet: add a book folder in Settings.';
     root.appendChild(empty);
     return;
   }
