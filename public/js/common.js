@@ -4960,6 +4960,15 @@ function mdEraGlyph(era) {
     + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
     + '<rect x="3" y="6" width="18" height="12" rx="' + rx + '"/><path d="M10.5 9.2v5.6l4.5-2.8z"/></svg>';
 }
+// Group ordering: the ungrouped/era group ('') is always first; the rest follow
+// the .md-root[data-md-groups] declared order (so tone assignment is
+// deterministic regardless of the sections' document order); any group not
+// listed keeps its first-appearance position after the declared ones.
+function mdGroupRank(title, order) {
+  if (title === '') return -1;
+  const i = order.indexOf(title);
+  return i === -1 ? 1000 : i;
+}
 function mdTileHtml(section, groupTone) {
   const icon = section.getAttribute('data-md-icon') || 'info';
   if (icon === 'era') {
@@ -5006,6 +5015,8 @@ function wireMasterDetail(pageKey, root, signal) {
   const backLabel = backBtn.querySelector('.md-back-label');
   if (backLabel) backLabel.textContent = pageTitle;
 
+  const declaredGroupOrder = (mdRoot.getAttribute('data-md-groups') || '').split(',').map((s) => s.trim()).filter(Boolean);
+
   let selectedKey = null;
   try { const saved = localStorage.getItem('ft-md:' + pageKey); if (saved) selectedKey = saved; } catch (_) { /* private mode */ }
   mdRoot.dataset.mdOpen = 'false';
@@ -5044,6 +5055,7 @@ function wireMasterDetail(pageKey, root, signal) {
       byTitle[g].items.push(s);
       if ((s.getAttribute('data-md-icon') || '') === 'era') byTitle[g].hasEra = true;
     });
+    groups.sort((a, b) => mdGroupRank(a.title, declaredGroupOrder) - mdGroupRank(b.title, declaredGroupOrder));
     groups.forEach((grp) => { grp.tone = grp.hasEra ? null : MD_TONE_CYCLE[(toneIdx++) % MD_TONE_CYCLE.length]; });
 
     let html = '';

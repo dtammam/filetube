@@ -591,13 +591,13 @@ function init(viewRoot) {
   statsController = new AbortController();
   const signal = statsController.signal;
 
-  // v1.55 Track D: persistence for the collapsible section cards. Same
-  // window-guarded reach as openShortcutsModal below (node:test requires
-  // this file without common.js). Scope to the swapped-in view root and bind
-  // its toggle listeners to this init's signal so they die on destroy().
-  const wireCollapse = (typeof window !== 'undefined') ? window.wireCollapsibleSections : undefined;
-  const collapseRoot = viewRoot || (typeof document !== 'undefined' ? document : undefined);
-  if (typeof wireCollapse === 'function') wireCollapse('stats', collapseRoot, signal);
+  // v1.152: the master-detail menu (was per-section <details> collapse). Same
+  // window-guarded reach as openShortcutsModal below (node:test requires this
+  // file without common.js). Scope to the swapped-in view root; the component's
+  // listeners bind to this init's signal so they die on destroy().
+  const wireMD = (typeof window !== 'undefined') ? window.wireMasterDetail : undefined;
+  const mdScope = viewRoot || (typeof document !== 'undefined' ? document : undefined);
+  if (typeof wireMD === 'function') wireMD('stats', mdScope, signal);
 
   // v1.102 (tranche 4 shimmer): seed every container's shimmer BEFORE the two
   // fetches below, so the dashboard shimmers-then-reveals instead of painting

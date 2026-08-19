@@ -104,11 +104,10 @@ test('LOCK: every management page carries its collapsible cards AND wires persis
   // sections, so the "carries its cards" assertions above still hold).
   assert.match(stripped('public/js/setup.js'), /wireMasterDetail\('setup', root \|\| document, controller\.signal\);/,
     'setup master-detail wiring deleted');
-  // v1.151: Stats became a routed view, so its collapse wiring now scopes to
-  // the swapped-in root and binds toggle listeners to the view's abort signal
-  // (so they die on destroy()) - was the arg-less wireCollapse('stats').
-  assert.match(stripped('public/js/stats.js'), /wireCollapse\('stats', collapseRoot, signal\);/,
-    'stats persistence wiring deleted');
+  // v1.152: Stats moved from per-section collapse to the master-detail menu
+  // (same data-collapse-key sections, consumed by wireMasterDetail).
+  assert.match(stripped('public/js/stats.js'), /wireMD\('stats', mdScope, signal\);/,
+    'stats master-detail wiring deleted');
   const subs = stripped('lib/ytdlp/client/subscriptions.js');
   assert.match(subs, /wireCollapsibleSections\('subscriptions', root \|\| document, signal\);/,
     'subscriptions persistence wiring deleted');

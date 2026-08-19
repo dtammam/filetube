@@ -100,6 +100,24 @@ test('a restricted user never sees an admin row; revealing it asynchronously add
   } finally { teardown(dom); }
 });
 
+test('data-md-groups declares the group order (and thus tone), independent of document order', () => {
+  // sections deliberately OUT of group order in the DOM; the declared order wins.
+  const { dom, doc, signal } = setup(`
+    <div class="md-root" data-md-page="ord" data-md-groups="Overview,Breakdowns,System">
+      <details data-collapse-key="fun" data-md-icon="chart" data-md-group="Overview"><summary>Fun</summary></details>
+      <details data-collapse-key="keys" data-md-icon="keyboard" data-md-group="System"><summary>Keys</summary></details>
+      <details data-collapse-key="type" data-md-icon="layers" data-md-group="Breakdowns"><summary>Type</summary></details>
+    </div>`);
+  try {
+    wireMasterDetail('ord', doc, signal);
+    const titles = Array.from(doc.querySelectorAll('.md-group-title')).map((t) => t.textContent);
+    assert.deepStrictEqual(titles, ['Overview', 'Breakdowns', 'System'], 'declared order, not the DOM order (Overview, System, Breakdowns)');
+    assert.strictEqual(doc.querySelector('.md-row[data-md-target="fun"] .md-tile').getAttribute('data-md-tone'), 'red');
+    assert.strictEqual(doc.querySelector('.md-row[data-md-target="type"] .md-tile').getAttribute('data-md-tone'), 'graphite');
+    assert.strictEqual(doc.querySelector('.md-row[data-md-target="keys"] .md-tile').getAttribute('data-md-tone'), 'steel');
+  } finally { teardown(dom); }
+});
+
 test('the era tile repaints when the era skin (html data-theme) changes', async () => {
   const { dom, doc, signal } = setup(FIXTURE);
   try {
