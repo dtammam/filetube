@@ -66,6 +66,26 @@ test('shouldDockOnTransition: v1.44 -- leaving music (a track mounts FULL there)
   assert.strictEqual(shouldDockOnTransition('music', 'music'), false); // an in-page re-play adopts, no dock
 });
 
+test('shouldDockOnTransition: v1.151 -- leaving a FULL host for STATS docks (Stats is now a route; the mini-player must survive), both copies agree', () => {
+  // The user-facing promise of the v1.151 fix: playing something and tapping
+  // Stats keeps it playing as the mini-player. That relies on the transition
+  // to a 'stats' destination docking, not tearing down. Bind it explicitly so
+  // a future destination special-case can't silently regress it.
+  for (const dock of [shouldDockOnTransition, routerShouldDockOnTransition]) {
+    assert.strictEqual(dock('watch', 'stats'), true);
+    assert.strictEqual(dock('music', 'stats'), true);
+    assert.strictEqual(dock('read', 'stats'), true);
+    assert.strictEqual(dock('podcasts', 'stats'), true);
+  }
+});
+
+test('nextPlayerState: v1.151 -- watch -> stats docks; stats -> home stays docked; stats -> watch re-adopts; nothing playing stays closed', () => {
+  assert.strictEqual(nextPlayerState('watch', 'stats', 'full', true), 'docked');   // tap Stats mid-watch -> mini-player
+  assert.strictEqual(nextPlayerState('stats', 'home', 'docked', true), 'docked');  // Stats hosts nothing; keep the dock
+  assert.strictEqual(nextPlayerState('stats', 'watch', 'docked', true), 'full');   // back to watch re-adopts full
+  assert.strictEqual(nextPlayerState('watch', 'stats', 'closed', true), 'closed'); // nothing playing -> nothing to dock
+});
+
 test('shouldDockOnTransition: v1.71 -- leaving podcasts (the expanded now-playing FULL host) docks; podcasts->podcasts does not', () => {
   assert.strictEqual(shouldDockOnTransition('podcasts', 'home'), true);
   assert.strictEqual(shouldDockOnTransition('podcasts', 'watch'), true);
