@@ -1810,5 +1810,11 @@
     "date": "2026-08-19",
     "title": "A tidier search toolbar on phones, and a clear button",
     "intent": "On phones, the search results toolbar now fits on one neat swipeable row instead of stacking a third row of buttons. And the search box gets a little X on the right - one tap empties it so you can type your next search, no more select-all-and-delete."
+  },
+  {
+    "version": "1.151.0",
+    "date": "2026-08-19",
+    "title": "Open Stats without stopping your music",
+    "intent": "Playing a video or track and want to peek at your library stats? Tapping Stats used to stop whatever was playing. Now it keeps right on going in the mini-player, just like every other page in the app, and the Stats item lights up in the sidebar while you're there."
   }
 ]
