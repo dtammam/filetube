@@ -4889,6 +4889,242 @@ function wireCollapsibleSections(pageKey, root, signal) {
   });
 }
 
+// ===========================================================================
+// v1.152: master-detail menu (iOS-Settings feel) for the management pages.
+// Design + rationale: docs/exec-plans/active/menus-master-detail-and-stats-route.md
+//
+// Progressive enhancement over the SAME `<details data-collapse-key>` sections
+// wireCollapsibleSections used to persist: a `.md-root[data-md-page]` wrapper
+// holds them, and wireMasterDetail turns them into a grouped menu (icon tile +
+// label) that opens ONE section at a time - a phone menu->detail slide, a
+// desktop rail + pane. Per-section additive attrs only: data-md-icon,
+// data-md-group, optional data-md-label / data-md-badge. Colours all come from
+// CSS tokens (JS only sets data-attrs/classes) so the token census stays 0.
+// ===========================================================================
+
+// Inline-SVG glyphs for the tiles (the approved-prototype set). Inline SVG, not
+// the .icon-* masks: full control + no iOS mask decode-lag (v1.91) + no
+// per-icon-set asset duplication. stroke=currentColor; the tile paints white.
+const MD_ICON_PATHS = {
+  appearance: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
+  video: '<rect x="3" y="6" width="18" height="12" rx="2.5"/><path d="M10.5 9.2v5.6l4.5-2.8z"/>',
+  book: '<path d="M12 6c-2-1.4-5-1.4-7.2 0v11.4c2.2-1.4 5.2-1.4 7.2 0m0-11.4c2-1.4 5-1.4 7.2 0v11.4c-2.2-1.4-5.2-1.4-7.2 0m0-11.4v11.4"/>',
+  music: '<path d="M9 17.5V6l10-2v9.5"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="13.5" r="2.5"/>',
+  podcast: '<rect x="9" y="3" width="6" height="10" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  sliders: '<path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="8" cy="17" r="2"/>',
+  download: '<path d="M12 3v11m-4.5-4.5L12 14l4.5-4.5M5 20h14"/>',
+  trash: '<path d="M4 7h16M6.5 7l1 12.5h9L17.5 7M9.5 7V4h5v3M10 11v5.5M14 11v5.5"/>',
+  hidden: '<path d="M3 3l18 18M10.6 6.2A9 9 0 0 1 21 12a10 10 0 0 1-2.4 3.1M6.5 6.6A10 10 0 0 0 3 12a9 9 0 0 0 12.2 5"/>',
+  account: '<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c.7-4 3.9-6 7.5-6s6.8 2 7.5 6"/>',
+  users: '<circle cx="9" cy="8" r="3.3"/><path d="M2.5 20c.4-3.3 3.1-5 6.5-5s6.1 1.7 6.5 5"/><path d="M16 5.2a3.3 3.3 0 0 1 0 6.6M17.5 15.2c2.6.5 4.2 2 4.5 4.8"/>',
+  backup: '<rect x="3" y="6" width="18" height="4" rx="1"/><path d="M5 10v9.5h14V10M9.5 14h5"/>',
+  chart: '<path d="M5 20V10M12 20V4M19 20v-7"/>',
+  keyboard: '<rect x="3" y="6.5" width="18" height="11" rx="2"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17.5 10h.01M6.5 13.5h.01M17.5 13.5h.01M9 13.5h6"/>',
+  layers: '<path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h3.5l2 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  channel: '<rect x="3.5" y="8" width="17" height="11.5" rx="2"/><path d="M8.5 3.5L12 8l3.5-4.5"/>',
+  trophy: '<path d="M8 4h8v3.5a4 4 0 0 1-8 0zM8 5.5H5.5v1a3 3 0 0 0 3 3M16 5.5h2.5v1a3 3 0 0 1-3 3M10.5 12h3l.7 4h-4.4zM8 20h8"/>',
+  eye: '<path d="M2.5 12s3.6-6.8 9.5-6.8S21.5 12 21.5 12s-3.6 6.8-9.5 6.8S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.7"/>',
+  copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5"/>',
+  wrench: '<path d="M14.5 6.5a4 4 0 0 0-5.3 5.1l-5.4 5.4 2.2 2.2 5.4-5.4a4 4 0 0 0 5.1-5.3l-2.4 2.4-2.1-.5-.5-2.1z"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.8h.01"/>',
+  bell: '<path d="M6.5 9.5a5.5 5.5 0 0 1 11 0c0 4.5 2 5.5 2 5.5H4.5s2-1 2-5.5zM10 19a2 2 0 0 0 4 0"/>',
+  plus: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+  warning: '<path d="M12 4l9 16H3zM12 10v4.5M12 17.5h.01"/>',
+  clock: '<path d="M3.5 12a8.5 8.5 0 1 0 8.5-8.5A8.5 8.5 0 0 0 4 8"/><path d="M3.5 3.5v4.5H8M12 8v4.2l3 1.8"/>',
+};
+// Group tint cycle (colour encodes the group). The values live in CSS tokens
+// keyed by these names; JS only sets data-md-tone.
+const MD_TONE_CYCLE = ['red', 'graphite', 'steel'];
+// The era-reactive Appearance tile tracks <html data-theme> (the era skin).
+const MD_ERAS = ['2021', '2014', '2009', '2005'];
+const MD_ERA_RX = { '2021': 6, '2014': 4, '2009': 2.5, '2005': 1.5 };
+
+function mdEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function mdSvg(name) {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" '
+    + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (MD_ICON_PATHS[name] || MD_ICON_PATHS.info) + '</svg>';
+}
+function mdCurrentEra() {
+  let era = null;
+  try { if (typeof document !== 'undefined') era = document.documentElement.getAttribute('data-theme'); } catch (_) { /* SSR/node */ }
+  return MD_ERAS.indexOf(era) !== -1 ? era : '2021';
+}
+function mdEraGlyph(era) {
+  const rx = MD_ERA_RX[era] || 6; // the play-badge corner shifts with the era
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" '
+    + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + '<rect x="3" y="6" width="18" height="12" rx="' + rx + '"/><path d="M10.5 9.2v5.6l4.5-2.8z"/></svg>';
+}
+function mdTileHtml(section, groupTone) {
+  const icon = section.getAttribute('data-md-icon') || 'info';
+  if (icon === 'era') {
+    const era = mdCurrentEra();
+    return '<span class="md-tile md-tile--era" data-md-era="' + mdEsc(era) + '" data-md-era-tile>' + mdEraGlyph(era) + '</span>';
+  }
+  return '<span class="md-tile" data-md-tone="' + mdEsc(groupTone || 'graphite') + '">' + mdSvg(icon) + '</span>';
+}
+
+// Wire the `.md-root[data-md-page=pageKey]` inside `root` into a master-detail
+// menu. Idempotent: a re-call just refreshes the nav (dynamic sections). All
+// listeners bind to `signal` so a view destroy() unwires cleanly.
+function wireMasterDetail(pageKey, root, signal) {
+  const scope = root || (typeof document !== 'undefined' ? document : null);
+  if (!scope || typeof scope.querySelector !== 'function') return;
+  const mdRoot = scope.querySelector('.md-root[data-md-page="' + pageKey + '"]') || scope.querySelector('.md-root');
+  if (!mdRoot) return;
+  if (mdRoot.dataset.mdWired === '1') { if (typeof mdRoot._mdRefresh === 'function') mdRoot._mdRefresh(); return; }
+  mdRoot.dataset.mdWired = '1';
+
+  const doc = mdRoot.ownerDocument || (typeof document !== 'undefined' ? document : null);
+  if (!doc) return;
+
+  const sections = Array.prototype.slice.call(mdRoot.querySelectorAll('details[data-collapse-key]'))
+    .filter((s) => s.parentNode === mdRoot);
+
+  const track = doc.createElement('div'); track.className = 'md-track';
+  const nav = doc.createElement('nav'); nav.className = 'md-nav'; nav.setAttribute('aria-label', 'Sections');
+  const panes = doc.createElement('div'); panes.className = 'md-panes';
+  const head = doc.createElement('div'); head.className = 'md-detail-head';
+  const backBtn = doc.createElement('button');
+  backBtn.type = 'button'; backBtn.className = 'md-back';
+  backBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" '
+    + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>'
+    + '<span class="md-back-label"></span>';
+  const headTitle = doc.createElement('h2'); headTitle.className = 'md-detail-title';
+  head.appendChild(backBtn); head.appendChild(headTitle);
+  panes.appendChild(head);
+  sections.forEach((s) => { s.open = true; panes.appendChild(s); });
+  track.appendChild(nav); track.appendChild(panes);
+  mdRoot.appendChild(track);
+
+  const pageTitle = mdRoot.getAttribute('data-md-title') || '';
+  const backLabel = backBtn.querySelector('.md-back-label');
+  if (backLabel) backLabel.textContent = pageTitle;
+
+  let selectedKey = null;
+  try { const saved = localStorage.getItem('ft-md:' + pageKey); if (saved) selectedKey = saved; } catch (_) { /* private mode */ }
+  mdRoot.dataset.mdOpen = 'false';
+
+  const chevron = '<span class="md-row-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" '
+    + 'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>';
+
+  function labelOf(s) {
+    const override = s.getAttribute('data-md-label');
+    if (override) return override;
+    const sum = s.querySelector('summary');
+    return sum ? sum.textContent.trim() : (s.getAttribute('data-collapse-key') || '');
+  }
+  function visibleSections() { return sections.filter((s) => !s.hidden); }
+
+  function applySelection() {
+    sections.forEach((s) => {
+      const on = s.getAttribute('data-collapse-key') === selectedKey;
+      if (s.classList) s.classList.toggle('md-active', on);
+    });
+    const rows = nav.querySelectorAll('.md-row');
+    for (let i = 0; i < rows.length; i += 1) {
+      rows[i].classList.toggle('md-row--active', rows[i].getAttribute('data-md-target') === selectedKey);
+    }
+    const sel = sections.filter((s) => s.getAttribute('data-collapse-key') === selectedKey)[0];
+    headTitle.textContent = sel ? labelOf(sel) : '';
+  }
+
+  function buildNav() {
+    const groups = []; const byTitle = {}; let toneIdx = 0;
+    visibleSections().forEach((s) => {
+      const g = s.getAttribute('data-md-group') || '';
+      if (!Object.prototype.hasOwnProperty.call(byTitle, g)) {
+        byTitle[g] = { title: g, items: [], hasEra: false }; groups.push(byTitle[g]);
+      }
+      byTitle[g].items.push(s);
+      if ((s.getAttribute('data-md-icon') || '') === 'era') byTitle[g].hasEra = true;
+    });
+    groups.forEach((grp) => { grp.tone = grp.hasEra ? null : MD_TONE_CYCLE[(toneIdx++) % MD_TONE_CYCLE.length]; });
+
+    let html = '';
+    groups.forEach((grp) => {
+      html += '<div class="md-group">';
+      if (grp.title) html += '<div class="md-group-title">' + mdEsc(grp.title) + '</div>';
+      html += '<div class="md-group-card">';
+      grp.items.forEach((s) => {
+        const key = s.getAttribute('data-collapse-key');
+        const badge = s.getAttribute('data-md-badge');
+        html += '<button type="button" class="md-row" data-md-target="' + mdEsc(key) + '">'
+          + mdTileHtml(s, grp.tone)
+          + '<span class="md-row-label">' + mdEsc(labelOf(s)) + '</span>'
+          + (badge ? '<span class="md-row-badge">' + mdEsc(badge) + '</span>' : '')
+          + chevron + '</button>';
+      });
+      html += '</div></div>';
+    });
+    nav.innerHTML = html;
+
+    const vis = visibleSections().map((s) => s.getAttribute('data-collapse-key'));
+    if (!selectedKey || vis.indexOf(selectedKey) === -1) selectedKey = vis[0] || null;
+    applySelection();
+    observeSections();
+  }
+
+  function selectKey(key, openDetail) {
+    const s = sections.filter((x) => x.getAttribute('data-collapse-key') === key && !x.hidden)[0];
+    if (!s) return;
+    selectedKey = key;
+    applySelection();
+    try { localStorage.setItem('ft-md:' + pageKey, key); } catch (_) { /* private mode */ }
+    if (openDetail) { mdRoot.dataset.mdOpen = 'true'; panes.scrollTop = 0; }
+  }
+
+  nav.addEventListener('click', (e) => {
+    const row = e.target && e.target.closest ? e.target.closest('.md-row') : null;
+    if (!row || !nav.contains(row)) return;
+    selectKey(row.getAttribute('data-md-target'), true);
+  }, signal ? { signal } : undefined);
+  backBtn.addEventListener('click', () => { mdRoot.dataset.mdOpen = 'false'; }, signal ? { signal } : undefined);
+
+  // Keep the menu in sync with ASYNC admin-box reveals (setup.js sets
+  // box.hidden=false after a capability fetch): observe each section's `hidden`.
+  // Because the nav is built from non-hidden sections only, an admin row never
+  // renders for a restricted user (the v1.80 leak class). Observing the section
+  // NODES (not the mdRoot subtree) avoids a rebuild loop when buildNav rewrites
+  // nav.innerHTML.
+  let hiddenObs = null;
+  function observeSections() {
+    if (typeof MutationObserver === 'undefined') return;
+    if (!hiddenObs) hiddenObs = new MutationObserver(() => buildNav());
+    sections.forEach((s) => { try { hiddenObs.observe(s, { attributes: true, attributeFilter: ['hidden'] }); } catch (_) { /* detached */ } });
+  }
+
+  // A re-call (dynamic sections appended after init, e.g. the subs history /
+  // failures cards) adopts any new details into the panes and rebuilds.
+  mdRoot._mdRefresh = function mdRefresh() {
+    const fresh = Array.prototype.slice.call(mdRoot.querySelectorAll('details[data-collapse-key]'));
+    let added = false;
+    fresh.forEach((s) => {
+      if (sections.indexOf(s) === -1) { s.open = true; if (s.parentNode !== panes) panes.appendChild(s); sections.push(s); added = true; }
+    });
+    if (added) buildNav();
+  };
+
+  // Era-reactive Appearance tile: repaint when <html data-theme> changes.
+  if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined') {
+    const eraObs = new MutationObserver(() => {
+      const era = mdCurrentEra();
+      const tiles = nav.querySelectorAll('[data-md-era-tile]');
+      for (let i = 0; i < tiles.length; i += 1) { tiles[i].setAttribute('data-md-era', era); tiles[i].innerHTML = mdEraGlyph(era); }
+    });
+    try { eraObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] }); } catch (_) { /* detached */ }
+    if (signal) signal.addEventListener('abort', () => eraObs.disconnect(), { once: true });
+  }
+  if (signal) signal.addEventListener('abort', () => { if (hiddenObs) hiddenObs.disconnect(); }, { once: true });
+
+  buildNav();
+}
+
 function formatOneOffStatusText(entry) {
   if (!entry || typeof entry !== 'object') return null;
   const state = entry.state;
@@ -12164,7 +12400,7 @@ if (typeof module !== 'undefined' && module.exports) {
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     ACTIVITY_CHIP_LABELS, formatActivityStatusText,
-    setActionStatus, setButtonBusy, wireCollapsibleSections,
+    setActionStatus, setButtonBusy, wireCollapsibleSections, wireMasterDetail,
     shouldShowDownloadChipOnPath, injectDownloadStatusChip,
     // v1.29.0 T8: the pure done-edge detector + the in-place library-refresh
     // hook invoker, exported for direct node:test coverage (no DOM/timers).
