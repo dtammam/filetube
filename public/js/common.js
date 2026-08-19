@@ -5034,7 +5034,11 @@ function wireMasterDetail(pageKey, root, signal) {
       grp.items.forEach((s) => {
         const key = s.getAttribute('data-collapse-key');
         const badge = s.getAttribute('data-md-badge');
-        html += '<button type="button" class="md-row" data-md-target="' + mdEsc(key) + '">'
+        // v1.152 (gate): a section marked data-md-hide-mobile (e.g. Stats'
+        // keyboard shortcuts - Dean: "not on mobile viewport") propagates the
+        // hide to its generated row; CSS drops the row AND its active pane <=768px.
+        const hideMobile = s.getAttribute('data-md-hide-mobile') !== null ? ' md-hide-mobile' : '';
+        html += '<button type="button" class="md-row' + hideMobile + '" data-md-target="' + mdEsc(key) + '">'
           + mdTileHtml(s, grp.tone)
           + '<span class="md-row-label">' + mdEsc(labelOf(s)) + '</span>'
           + (badge ? '<span class="md-row-badge">' + mdEsc(badge) + '</span>' : '')
@@ -5090,8 +5094,11 @@ function wireMasterDetail(pageKey, root, signal) {
     if (added) buildNav();
   };
 
-  // Era-reactive Appearance tile: repaint when <html data-theme> changes.
-  if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined') {
+  // Era-reactive Appearance tile: repaint when <html data-theme> changes. Only
+  // wired when the page actually HAS an era tile (Settings) - Stats/Subscriptions
+  // have none, so skip the observer entirely (an admin reveal never adds one).
+  const hasEraTile = sections.some((s) => (s.getAttribute('data-md-icon') || '') === 'era');
+  if (hasEraTile && typeof MutationObserver !== 'undefined' && typeof document !== 'undefined') {
     const eraObs = new MutationObserver(() => {
       const era = mdCurrentEra();
       const tiles = nav.querySelectorAll('[data-md-era-tile]');

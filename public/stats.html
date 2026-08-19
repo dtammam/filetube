@@ -160,8 +160,11 @@
            one file, so it cannot repeat the nav-injector idempotency class that
            v1.47.4 had to fix. `?` opens the same dialog from anywhere.
            `.shortcuts-entry` is display:none at the phone breakpoint (Dean:
-           "Ignore/not display on mobile viewport"). -->
-      <details class="setup-box sub-collapsible shortcuts-entry" data-collapse-key="keyboard-shortcuts" data-md-icon="keyboard" data-md-group="System" open>
+           "Ignore/not display on mobile viewport"); v1.152 propagates that to
+           the master-detail menu via data-md-hide-mobile, so the menu row and
+           its pane are dropped <=768px too (the .shortcuts-entry rule alone
+           lost to the .md-active pane rule). -->
+      <details class="setup-box sub-collapsible shortcuts-entry" data-collapse-key="keyboard-shortcuts" data-md-icon="keyboard" data-md-group="System" data-md-hide-mobile open>
         <summary>Keyboard shortcuts</summary>
         <p>
           FileTube mirrors the shortcuts you already know from YouTube -- space to

@@ -49,10 +49,19 @@ const CONTRACT = {
   // F.5 ruling 1 close-out (Dean-approved 2026-08-01): white on saturated
   // accent surfaces - the census's final family.
   '--on-accent': '#fff',
+  // v1.152 master-detail menu: the group tile tones + era-reactive Appearance
+  // tile tints (fixed, mode-invariant - the tile reads on both grounds), plus
+  // its two layout constants (like --header-h/--sidebar-w above) and the
+  // uppercase-label tracking. The value authority for the menu's look.
+  '--md-graphite': '#3a3f47', '--md-steel': '#4a6178',
+  '--md-era-2014': '#e62117', '--md-era-2009': '#c11a20', '--md-era-2005': '#b31217',
+  '--md-tile-glyph': '#ffffff', '--md-tile-radius': '8px',
+  '--md-nav-width': '250px', '--md-divider-inset': '56px',
+  '--tracking-caps': '0.05em',
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 49, 'the 38-name contract + --thumbnail-bg (Tier 4) + six --reader-* + --header-h/--sidebar-w + --on-accent (tranche F.5; --radius-lg predates the layer and lives in the era blocks) + --size-touch-watch-action (v1.96)');
+  assert.equal(Object.keys(CONTRACT).length, 59, 'the 38-name contract + --thumbnail-bg (Tier 4) + six --reader-* + --header-h/--sidebar-w + --on-accent (tranche F.5; --radius-lg predates the layer and lives in the era blocks) + --size-touch-watch-action (v1.96) + the ten --md-*/--tracking-caps master-detail tokens (v1.152)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());

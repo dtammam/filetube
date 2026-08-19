@@ -7452,6 +7452,13 @@ body.ft-audio-expanded {
   .md-back { display: none; }
 }
 
+/* --- phone: a section marked data-md-hide-mobile stays off the menu AND
+   cannot open (Stats' keyboard shortcuts - Dean: not on mobile viewport) --- */
+@media (max-width: 768px) {
+  .md-row.md-hide-mobile { display: none; }
+  .md-root .md-panes > details[data-md-hide-mobile].md-active { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .md-root[data-md-open="true"] .md-panes { animation: none; }
 }

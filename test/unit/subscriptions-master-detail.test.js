@@ -43,25 +43,33 @@ test('Subscriptions static menu: Following + Add (no Activity until a card mount
   } finally { unload(dom); }
 });
 
-test('Subscriptions: a dynamically-mounted history/failures card is adopted into Activity on re-wire', () => {
+test('Subscriptions: dynamic history/failures cards are adopted into Activity - once each, no duplicate rows', () => {
   const { dom, doc, signal } = load();
   try {
     wireMasterDetail('subscriptions', doc, signal);
     const panes = doc.querySelector('.md-panes');
-    // build the cards with the client's OWN exported builders (binds the real
-    // data-md-* attrs the builders set), mount them into the panes like the
-    // client's mount sites do, then re-wire (what wireMenu() does).
+    // Reproduce the client's REAL mount path: insertAdjacentElement('afterend')
+    // of listContainer.closest('.setup-box') === #sub-list-details (which now
+    // lives in .md-panes), then a wireMenu() re-call per mount - exactly the
+    // repeated-re-call pattern the _mdRefresh dedup must survive.
+    const anchor = doc.getElementById('sub-list-details');
     const hist = subsClient.createHistorySectionElement(doc).section;
+    anchor.insertAdjacentElement('afterend', hist);
+    wireMasterDetail('subscriptions', doc, signal); // re-call #2
     const fail = subsClient.createFailureSectionElement(doc, {}).section;
-    panes.appendChild(hist);
-    panes.appendChild(fail);
-    wireMasterDetail('subscriptions', doc, signal); // the re-call -> _mdRefresh adopts them
+    anchor.insertAdjacentElement('afterend', fail);
+    wireMasterDetail('subscriptions', doc, signal); // re-call #3
+    wireMasterDetail('subscriptions', doc, signal); // re-call #4 (extra idempotency probe)
 
-    assert.deepStrictEqual(groupTitles(doc), ['Following', 'Add', 'Activity'], 'Activity group now present');
-    assert.ok(doc.querySelector('.md-row[data-md-target="download-history"]'), 'history row adopted');
-    assert.ok(doc.querySelector('.md-row[data-md-target="download-failures"]'), 'failures row adopted');
+    assert.deepStrictEqual(groupTitles(doc), ['Following', 'Add', 'Activity'], 'Activity group present');
+    const keys = rowKeys(doc);
+    // The load-bearing dedup: removing `sections.indexOf(s) === -1` from
+    // _mdRefresh triplicates the static rows + duplicates the dynamic ones ->
+    // this deep-equal / length / uniqueness triad goes RED.
+    assert.strictEqual(keys.length, 5, `exactly 5 rows, got ${keys.length} (dupes = dedup regressed): ${keys.join(',')}`);
+    assert.strictEqual(new Set(keys).size, 5, 'no duplicate rows');
+    assert.deepStrictEqual([...keys].sort(), ['add-subscription', 'download-failures', 'download-history', 'one-off-download', 'subscriptions-list']);
     assert.strictEqual(doc.querySelector('.md-row[data-md-target="download-history"] .md-tile').getAttribute('data-md-tone'), 'steel', 'Activity = steel');
-    // and the adopted cards live in the panes (so selection can show them)
-    assert.strictEqual(hist.parentNode, panes);
+    assert.strictEqual(hist.parentNode, panes, 'adopted into the panes so selection can show it');
   } finally { unload(dom); }
 });
