@@ -1,14 +1,14 @@
 'use strict';
 
-// C4 "fun stats" page (v1.24 UX Round, Wave 3) -- a standalone dashboard
-// page, NOT registered with the SPA-lite router in common.js (that router
-// deliberately only knows the four routes it has always known -- home/
-// watch/setup/subscriptions; see deriveRouteView's own comment). A link to
-// `/stats.html` therefore falls through to a normal, full-page browser
-// navigation (the router's own documented behavior for any route it doesn't
-// recognize) rather than an in-app swap -- this page runs its own plain
-// DOMContentLoaded boot below, the same progressive-enhancement posture
-// every other page's inline boot used before the router existed.
+// C4 "fun stats" page (v1.24 UX Round, Wave 3). v1.151: Stats is now a
+// REGISTERED SPA route -- deriveRouteView maps /stats.html -> 'stats', so
+// navigating to it in-app swaps #view-root and keeps the docked mini-player
+// playing, instead of the full page reload that used to destroy it. This
+// module follows the routed-view contract (setup.js/books.js): it registers
+// { init, destroy } and lets bootRouter run init() on a standalone full-page
+// load AND swapToView run it on an in-app navigation -- ONE init path. There
+// is deliberately NO self-run DOMContentLoaded boot: now that bootRouter no
+// longer no-ops on this recognized route, a self-boot would double-init.
 //
 // Fetches GET /api/stats ONCE per page load (the route itself computes live,
 // server-side, on every request -- see lib/stats.js's header comment) and
@@ -580,12 +580,24 @@ function renderStatsError() {
   glanceRoot.appendChild(error);
 }
 
-function init() {
+// v1.151: per-view AbortController so destroy() (navigate-away) cancels the
+// in-flight fetches and unbinds the { signal }-bound listeners -- mirrors
+// books.js. Module-scoped so destroy() can reach it. A slow /api/stats
+// resolving after the user left would otherwise render into a #view-root that
+// has already been replaced.
+let statsController = null;
+
+function init(viewRoot) {
+  statsController = new AbortController();
+  const signal = statsController.signal;
+
   // v1.55 Track D: persistence for the collapsible section cards. Same
   // window-guarded reach as openShortcutsModal below (node:test requires
-  // this file without common.js).
+  // this file without common.js). Scope to the swapped-in view root and bind
+  // its toggle listeners to this init's signal so they die on destroy().
   const wireCollapse = (typeof window !== 'undefined') ? window.wireCollapsibleSections : undefined;
-  if (typeof wireCollapse === 'function') wireCollapse('stats');
+  const collapseRoot = viewRoot || (typeof document !== 'undefined' ? document : undefined);
+  if (typeof wireCollapse === 'function') wireCollapse('stats', collapseRoot, signal);
 
   // v1.102 (tranche 4 shimmer): seed every container's shimmer BEFORE the two
   // fetches below, so the dashboard shimmers-then-reveals instead of painting
@@ -602,46 +614,63 @@ function init() {
     shortcutsBtn.addEventListener('click', () => {
       const open = (typeof window !== 'undefined') ? window.openShortcutsModal : undefined;
       if (typeof open === 'function') open();
-    });
+    }, { signal });
   }
 
-  fetch('/api/stats')
+  fetch('/api/stats', { signal })
     .then((res) => {
       if (!res.ok) throw new Error(`GET /api/stats failed (${res.status})`);
       return res.json();
     })
     .then((statsData) => renderStatsDashboard(statsData))
     .catch((err) => {
+      if (err && err.name === 'AbortError') return; // navigated away before it resolved -- expected
       console.error('Failed to load stats:', err);
       renderStatsError();
     });
   // v1.41.11: the duplicates report is its own fetch + render, deliberately
   // independent of /api/stats above -- a failure in either never blanks the
   // other's sections.
-  fetch('/api/duplicates')
+  fetch('/api/duplicates', { signal })
     .then((res) => {
       if (!res.ok) throw new Error(`GET /api/duplicates failed (${res.status})`);
       return res.json();
     })
     .then((report) => {
-      const root = document.getElementById('stats-duplicates-list');
-      if (root) renderDuplicates(root, report);
+      const dupRoot = document.getElementById('stats-duplicates-list');
+      if (dupRoot) renderDuplicates(dupRoot, report);
     })
     .catch((err) => {
+      if (err && err.name === 'AbortError') return; // navigated away before it resolved -- expected
       console.error('Failed to load duplicates report:', err);
-      const root = document.getElementById('stats-duplicates-list');
-      if (root) {
-        clearChildren(root);
+      const dupRoot = document.getElementById('stats-duplicates-list');
+      if (dupRoot) {
+        clearChildren(dupRoot);
         const error = document.createElement('div');
         error.className = 'theme-card-blurb';
         error.textContent = 'Could not load the duplicates report right now. Try refreshing the page.';
-        root.appendChild(error);
+        dupRoot.appendChild(error);
       }
     });
 }
 
-if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', init);
+// v1.151: the routed-view teardown. Aborts both fetches and removes the
+// { signal }-bound listeners; the next init() opens a fresh controller.
+function destroy() {
+  if (statsController) {
+    statsController.abort();
+    statsController = null;
+  }
+}
+
+// v1.151: register with the SPA router (the setup.js/books.js contract).
+// bootRouter runs init() for the initial view on a full-page load, and
+// swapToView runs it on an in-app navigation -- ONE path, so no
+// DOMContentLoaded self-boot (which would double-init now that /stats.html is
+// a recognized route). Window-guarded so require()ing this file in node:test
+// never touches window.
+if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.registerView === 'function') {
+  window.FileTube.registerView('stats', { init, destroy });
 }
 
 // Guarded so requiring this file in Node (for unit tests) never touches

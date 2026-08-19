@@ -135,11 +135,11 @@
     </aside>
 
     <main class="main-content" id="main-content">
-      <!-- This page is NOT one of common.js's four known SPA routes (see
-           public/js/stats.js's header comment) -- #view-root is kept here
-           only for shell-markup consistency with the other pages; the
-           router's own bootRouter() no-ops harmlessly on an unrecognized
-           route, and stats.js runs its own plain DOMContentLoaded boot. -->
+      <!-- v1.151: Stats IS an SPA route now (deriveRouteView maps /stats.html
+           -> 'stats'; see public/js/stats.js's header). On a standalone load
+           bootRouter finds this #view-root and runs stats.js's registered
+           init(); on an in-app navigation the router swaps this #view-root in
+           and runs the same init -- keeping the docked mini-player alive. -->
       <div id="view-root" data-view="stats">
       <details class="setup-box sub-collapsible" data-collapse-key="fun-stats" open>
         <summary>Fun stats</summary>

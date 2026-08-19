@@ -2867,6 +2867,10 @@ function resolveViewCountLabel(item, opts) {
 // watch.html (and anything else) has no active item. Exported for node:test.
 function activeNavItem(pathname, search) {
   if (pathname === '/setup.html') return 'settings';
+  // v1.151: Stats is a route now; light its sidebar entry (id=sidebar-stats-link,
+  // href=/stats.html). Without this, bootRouter's highlight pass strips the
+  // server-rendered active class and Stats shows no lit rail item.
+  if (pathname === '/stats.html') return 'stats';
   if (pathname === '/subscriptions') return 'subscriptions';
   // v1.37.0 books: same unconditional-mapping posture as /subscriptions
   // (the link only exists when >=1 book folder is configured). The reader
@@ -2902,6 +2906,7 @@ const SIDEBAR_HREF_BY_NAV_KEY = {
   home: '/',
   liked: '/?liked=1',
   settings: '/setup.html',
+  stats: '/stats.html', // v1.151: the Stats rail entry (id=sidebar-stats-link)
   subscriptions: '/subscriptions',
   books: '/books',
   music: '/music',
@@ -6234,9 +6239,10 @@ function escapeAttr(text) {
 //
 // FileTube is a persistent app shell: the header/sidebar/bottom-nav (and, once
 // T2 lands, the player) stay mounted across in-app navigation -- only each
-// page's `#view-root` fragment is swapped. Every one of the four view URLs
-// (`/`, `/watch.html`, `/setup.html`, `/subscriptions`) still resolves to a
-// COMPLETE, correct server-rendered document on its own -- this router is
+// page's `#view-root` fragment is swapped. Every routable view URL (the full
+// set lives in `deriveRouteView` below -- home/watch/setup/stats/subscriptions/
+// books/read/music/podcasts/history) still resolves to a COMPLETE, correct
+// server-rendered document on its own -- this router is
 // strictly a progressive-enhancement layer on top of that (see `bootRouter`
 // near the bottom of this section, which runs the exact same `init()` a swap
 // runs). No framework/router library/bundler (CONTRIBUTING.md) -- vanilla DOM
@@ -6258,6 +6264,16 @@ function deriveRouteView(pathname) {
   if (pathname === '/' || pathname === '/index.html') return 'home';
   if (pathname === '/watch.html') return 'watch';
   if (pathname === '/setup.html') return 'setup';
+  // v1.151: Stats is an SPA route, so navigating to it keeps the docked
+  // mini-player playing. Before this, /stats.html was the ONE shell nav
+  // destination deriveRouteView returned null for -- so a click fell through
+  // to a full browser page load, unloading the whole document (including the
+  // persistent #player-host that lives outside #view-root) and stopping
+  // playback. activeNavItem + SIDEBAR_HREF_BY_NAV_KEY gain a matching 'stats'
+  // entry so the rail lights Stats: once this returns non-null, bootRouter
+  // stops no-op'ing and runs the highlight pass, which would otherwise STRIP
+  // stats.html's server-rendered `active` class and light nothing.
+  if (pathname === '/stats.html') return 'stats';
   // The /subscriptions route + nav link only ever exist server-side (and are
   // only ever linked to from the shell) when the optional yt-dlp module is
   // enabled -- this pure mapping is unconditional (harmless when nothing ever
@@ -7065,7 +7081,7 @@ function shouldInterceptLinkClick({ button, metaKey, ctrlKey, shiftKey, altKey, 
   if (metaKey || ctrlKey || shiftKey || altKey) return false; // let the browser open-in-new-tab/window etc.
   if (targetAttr === '_blank') return false;
   if (!sameOrigin) return false;
-  if (!view) return false; // not one of the four known routes
+  if (!view) return false; // not a known SPA route (deriveRouteView returned null)
   return true;
 }
 
@@ -7579,6 +7595,13 @@ if (typeof window !== 'undefined') {
     music: '/js/music.js',
     podcasts: '/js/podcasts.js',
     history: '/js/history.js',
+    // v1.151: lazy-load the Stats view script on first in-app navigation
+    // (same posture as the other secondary views above). stats.js registers
+    // { init, destroy } at parse time and has NO DOMContentLoaded self-boot,
+    // so there is exactly one init path (bootRouter on a standalone load,
+    // swapToView on an in-app entry); ensureScriptLoaded's registry/promise
+    // cache dedups so a standalone-loaded stats.js is never re-executed here.
+    stats: '/js/stats.js',
   };
 
   function ensureViewScriptLoaded(view) {

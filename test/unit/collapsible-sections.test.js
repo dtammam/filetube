@@ -101,7 +101,10 @@ test('LOCK: every management page carries its collapsible cards AND wires persis
   }
   assert.match(stripped('public/js/setup.js'), /wireCollapsibleSections\('setup', root \|\| document, controller\.signal\);/,
     'setup persistence wiring deleted');
-  assert.match(stripped('public/js/stats.js'), /wireCollapse\('stats'\);/,
+  // v1.151: Stats became a routed view, so its collapse wiring now scopes to
+  // the swapped-in root and binds toggle listeners to the view's abort signal
+  // (so they die on destroy()) - was the arg-less wireCollapse('stats').
+  assert.match(stripped('public/js/stats.js'), /wireCollapse\('stats', collapseRoot, signal\);/,
     'stats persistence wiring deleted');
   const subs = stripped('lib/ytdlp/client/subscriptions.js');
   assert.match(subs, /wireCollapsibleSections\('subscriptions', root \|\| document, signal\);/,

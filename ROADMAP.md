@@ -80,6 +80,47 @@
 
 ## Shipped
 
+### v1.151.0 - Stats keeps the mini-player playing (2026-08-19)
+
+Dean's report: selecting Stats while something is playing STOPS it. Root
+cause (traced, not theorised): `/stats.html` was the ONE shell nav
+destination `deriveRouteView` returned null for, so a click fell through
+to a full browser page load - which unloads the whole document, including
+the persistent `#player-host` that lives OUTSIDE `#view-root`, so playback
+stopped. It was never a teardown bug; Stats simply wasn't a route. Fix:
+Stats now follows the setup.js/books.js routed-view contract - a lazy
+`/js/stats.js` (VIEW_SCRIPT_SRC), `registerView('stats', { init, destroy })`,
+a per-view AbortController that cancels the two `/api/*` fetches on
+navigate-away, and the old DOMContentLoaded self-boot dropped (bootRouter
+now drives init on standalone loads too, so keeping it would double-init).
+An audit net now fails if ANY future sidebar/bottom-nav link would
+full-reload. This is Item 1 of a two-release wave; Item 2 (the
+master-detail menu redesign) follows as v1.152.
+
+What the gate caught (FULL gate, both seats, 1 fix round -> both APPROVE):
+a real regression I missed - making Stats a route made bootRouter run the
+nav-HIGHLIGHT pass on it, and because `activeNavItem` had no stats case it
+STRIPPED stats.html's server-rendered `active` class and lit nothing, so
+Stats would have shown with no lit rail item on every entry path. Fixed
+(`activeNavItem` + `SIDEBAR_HREF_BY_NAV_KEY` gain a stats entry) and locked
+with a "every static sidebar link lights itself" net. The gate also caught
+THREE lying comments - one authored this very wave (a comment describing a
+DOMContentLoaded boot the same wave had just deleted) - plus the exec plan
+still prescribing the double-init approach; all corrected. The named
+critical attack surfaces (double/missed-init, AbortController
+presence-not-binding, vacuous audit net) held under the adversarial seat's
+mutation testing.
+
+DISCLOSED: the end-to-end "navigate reaches swapToView instead of a full
+reload" wiring has unit-level coverage (deriveRouteView + the nav nets),
+not an integration/browser test - this repo has no jsdom router harness,
+so Dean's device pass is the arbiter of the actual smooth-no-reload swap.
+
+Dual-Node: 7246/7246 on v22.23.1 AND v24.14.0, 0 fail on both, sequential.
+Device pass = Dean: play something, tap Stats -> it keeps playing as the
+mini-player AND the Stats rail item is lit; then tap back to watch -> it
+re-expands to full.
+
 ### v1.150.0 - the mobile search toolbar strip + the clear X (2026-08-19)
 
 Dean's device report on v1.149: the scope toggle "adds a third row" on
