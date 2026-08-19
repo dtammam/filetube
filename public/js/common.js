@@ -6234,9 +6234,10 @@ function escapeAttr(text) {
 //
 // FileTube is a persistent app shell: the header/sidebar/bottom-nav (and, once
 // T2 lands, the player) stay mounted across in-app navigation -- only each
-// page's `#view-root` fragment is swapped. Every one of the four view URLs
-// (`/`, `/watch.html`, `/setup.html`, `/subscriptions`) still resolves to a
-// COMPLETE, correct server-rendered document on its own -- this router is
+// page's `#view-root` fragment is swapped. Every routable view URL (the full
+// set lives in `deriveRouteView` below -- home/watch/setup/stats/subscriptions/
+// books/read/music/podcasts/history) still resolves to a COMPLETE, correct
+// server-rendered document on its own -- this router is
 // strictly a progressive-enhancement layer on top of that (see `bootRouter`
 // near the bottom of this section, which runs the exact same `init()` a swap
 // runs). No framework/router library/bundler (CONTRIBUTING.md) -- vanilla DOM
@@ -6258,6 +6259,14 @@ function deriveRouteView(pathname) {
   if (pathname === '/' || pathname === '/index.html') return 'home';
   if (pathname === '/watch.html') return 'watch';
   if (pathname === '/setup.html') return 'setup';
+  // v1.151: Stats is an SPA route, so navigating to it keeps the docked
+  // mini-player playing. Before this, /stats.html was the ONE shell nav
+  // destination deriveRouteView returned null for -- so a click fell through
+  // to a full browser page load, unloading the whole document (including the
+  // persistent #player-host that lives outside #view-root) and stopping
+  // playback. activeNavItem already maps stats, so the rail highlight is
+  // unchanged; this makes the route actually navigable in-app.
+  if (pathname === '/stats.html') return 'stats';
   // The /subscriptions route + nav link only ever exist server-side (and are
   // only ever linked to from the shell) when the optional yt-dlp module is
   // enabled -- this pure mapping is unconditional (harmless when nothing ever
@@ -7065,7 +7074,7 @@ function shouldInterceptLinkClick({ button, metaKey, ctrlKey, shiftKey, altKey, 
   if (metaKey || ctrlKey || shiftKey || altKey) return false; // let the browser open-in-new-tab/window etc.
   if (targetAttr === '_blank') return false;
   if (!sameOrigin) return false;
-  if (!view) return false; // not one of the four known routes
+  if (!view) return false; // not a known SPA route (deriveRouteView returned null)
   return true;
 }
 
@@ -7579,6 +7588,12 @@ if (typeof window !== 'undefined') {
     music: '/js/music.js',
     podcasts: '/js/podcasts.js',
     history: '/js/history.js',
+    // v1.151: lazy-load the Stats view script on first in-app navigation
+    // (same posture as the other secondary views above). stats.js ships in
+    // stats.html for standalone/hard-refresh loads and self-guards against a
+    // double init/destroy (its DOMContentLoaded boot never fires on a lazy
+    // SPA entry, which injects the script after DOMContentLoaded).
+    stats: '/js/stats.js',
   };
 
   function ensureViewScriptLoaded(view) {

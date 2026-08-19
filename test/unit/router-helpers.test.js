@@ -48,6 +48,18 @@ test('deriveRouteView: "/subscriptions" is the subscriptions view (unconditional
   assert.strictEqual(deriveRouteView('/subscriptions'), 'subscriptions');
 });
 
+test('deriveRouteView: "/stats.html" is the stats view (v1.151 - keeps the mini-player)', () => {
+  assert.strictEqual(deriveRouteView('/stats.html'), 'stats');
+});
+
+test('VIEW_SCRIPT_SRC lazy-loads /js/stats.js for the stats view (v1.151)', () => {
+  // VIEW_SCRIPT_SRC is module-internal (not exported); source-lock the entry so
+  // the lazy-load wiring cannot silently drop while deriveRouteView still maps
+  // the route (which would leave Stats reachable but never hydrated).
+  assert.match(COMMON_JS, /VIEW_SCRIPT_SRC\s*=\s*\{[\s\S]*?stats:\s*'\/js\/stats\.js'[\s\S]*?\};/,
+    "VIEW_SCRIPT_SRC maps stats -> '/js/stats.js'");
+});
+
 test('deriveRouteView: an unknown path is null (falls through to a normal navigation)', () => {
   assert.strictEqual(deriveRouteView('/thumbnail/abc123'), null);
   assert.strictEqual(deriveRouteView('/api/videos'), null);

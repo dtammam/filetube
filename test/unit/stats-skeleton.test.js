@@ -114,7 +114,7 @@ test('init seeds the skeleton BEFORE the fetches (source-lock, comments stripped
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
   // seedStatsSkeleton() must appear before the first /api/stats fetch in init.
   const seedAt = src.indexOf('seedStatsSkeleton();');
-  const fetchAt = src.indexOf("fetch('/api/stats')");
+  const fetchAt = src.indexOf("fetch('/api/stats'"); // v1.151: now fetch('/api/stats', { signal }) - match the call, not the exact arg list
   assert.ok(seedAt > -1 && fetchAt > -1, 'both the seed call and the fetch exist');
   assert.ok(seedAt < fetchAt, 'seedStatsSkeleton() runs before /api/stats fetch (shimmer before the wait)');
 });
