@@ -80,6 +80,45 @@
 
 ## Shipped
 
+### v1.149.0 - channel-aware search + the scope filter (2026-08-19)
+
+Dean: searching a channel name should find that channel's videos. It
+only worked when the on-disk folder happened to share the name - the
+one search matcher checked title + folder, so the healed per-item
+channel names (v1.112+) and the v1.126 folder DISPLAY names were
+invisible to search. The default match is now a strict SUPERSET (title
++ folder + folder display name + channel name; existing searches only
+gain results), and search views grow a third toolbar toggle -
+All | Titles | Channels - the YouTube-style scope filter, FileTube-
+native (Channels returns the matching channels' items). Reuses the
+format/watch toggle machinery and classes wholesale: zero new CSS,
+token census untouched, every non-search view byte-identical.
+Deliberately unpersisted (each new search starts on All; ?searchIn=
+deep links work and stay shareable). Server-side narrowing keeps
+pagination honest; junk searchIn falls back to All.
+
+What the gate caught (slim/adversarial, 1 fix round -> APPROVE): the
+scope did not ride the watch page's Prev/Next/autoplay list context -
+the exact v1.88 class (a Channels-scoped grid could Next onto a
+title-only hit the grid never showed); now threaded and bound. Plus a
+surviving deep-link mutant (the ?searchIn= init was correct but
+unbound), a non-string channelName guard bound as behavior, and the
+scope toggle excluded from the hand-crafted liked+search corner where
+it would have been a visible no-op. RBAC measured unchanged: a
+restricted member searching a hidden channel by ANY field in ANY scope
+gets nothing, items and total both.
+
+DISCLOSED: (a) case folding is toLowerCase (matches the pre-existing
+search semantics; exotic unicode case pairs may not fold - unchanged
+behavior, wider fields); (b) the regex source locks on main.js remain
+porous in principle (#163 class) - the seat's real mutants all red
+against them today.
+
+Dual-Node: 7225/7225 on v22.23.1 AND v24.14.0, 0 fail on both,
+sequential. Device pass = Dean: search a channel name that lives in a
+differently-named folder; flip Titles/Channels; Prev/Next from a
+Channels-scoped result.
+
 ### v1.148.0 - release integrity + dependency automation (2026-08-18)
 
 Dean's "what's not first class about this repo" question, items 1 and 3,
