@@ -91,3 +91,28 @@ test('GATE: the per-item two-tap Purge DELETEs the CORRECT item after a sort', a
     assert.strictEqual(del.url, '/api/trash/t-c', 'DELETEd Charlie (the actual row-0 item), not a stale index');
   } finally { teardownTrash(dom); }
 });
+
+test('GATE SUGGESTION: a sort while a Purge is armed CLEARS the arm (no invisible one-tap delete)', async () => {
+  const dom = mountTrash();
+  const calls = [];
+  try {
+    global.fetch = (url, opts) => {
+      if (url === '/api/trash') return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: ITEMS, total: 3, totalSizeBytes: 15 * 1024 ** 3, retentionDays: 30 }) });
+      calls.push({ url, method: (opts && opts.method) || 'GET' });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
+    };
+    setup.renderTrashSection(new dom.window.AbortController().signal);
+    await tick();
+    const listEl = global.document.getElementById('trash-list');
+    const btnFor = (tid) => listEl.querySelector('.trash-purge-btn[data-trash-id="' + tid + '"]');
+    // Arm the Purge for a SPECIFIC item (t-a), then sort so it moves position.
+    btnFor('t-a').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    listEl.querySelector('.stable-th[data-col="size"]').dispatchEvent(new dom.window.Event('click')); // Size desc -> t-a is no longer row 0
+    assert.strictEqual(listEl.querySelector('.trash-purge-btn.trash-confirming'), null, 'no button is left visibly armed after the re-render');
+    // A SINGLE tap on the SAME item t-a must only RE-ARM, never DELETE (without
+    // the onRender disarm, the stale arm would make this one tap delete t-a).
+    btnFor('t-a').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(calls.filter((c) => c.method === 'DELETE').length, 0, 'the stale arm did not carry into a one-tap delete of t-a');
+    assert.ok(btnFor('t-a').classList.contains('trash-confirming'), 're-armed cleanly instead');
+  } finally { teardownTrash(dom); }
+});

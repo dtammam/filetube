@@ -514,7 +514,7 @@ function renderInventory(root, inventory) {
 // then reflows twice as the two independent fetches land. Reuses ONLY existing
 // shared classes (the real `.theme-card` tile box + the `.skeleton-line`/
 // `.skeleton-shimmer` toolkit) and the SAME inline row box model as
-// buildBreakdownRow/buildAboutRow -- this page still owns no CSS. Every render*
+// buildAboutRow -- this page still owns no CSS. Every render*
 // below does clearChildren(root) before it fills, so the swap to real content is
 // automatic; on the four FIXED-shape tile grids the seed count is the real count
 // (true zero-shift), and the variable-length lists seed a representative row
@@ -669,9 +669,9 @@ function init(viewRoot) {
   const mdScope = viewRoot || (typeof document !== 'undefined' ? document : undefined);
   if (typeof wireMD === 'function') wireMD('stats', mdScope, signal);
 
-  // v1.102 (tranche 4 shimmer): seed every container's shimmer BEFORE the two
+  // v1.102 (tranche 4 shimmer): seed every container's shimmer BEFORE the three
   // fetches below, so the dashboard shimmers-then-reveals instead of painting
-  // empty and reflowing twice as /api/stats and /api/duplicates land.
+  // empty and reflowing as /api/stats, /api/duplicates and /api/library-items land.
   seedStatsSkeleton();
 
   // v1.47.8: the keyboard-shortcuts entry point. `openShortcutsModal` is a
@@ -747,7 +747,7 @@ function init(viewRoot) {
     });
 }
 
-// v1.151: the routed-view teardown. Aborts both fetches and removes the
+// v1.151: the routed-view teardown. Aborts all three fetches and removes the
 // { signal }-bound listeners; the next init() opens a fresh controller.
 function destroy() {
   if (statsController) {

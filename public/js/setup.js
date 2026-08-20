@@ -2397,6 +2397,10 @@ function renderTrashSection(signal) {
             filter: { text: (it) => it.title || it.name || '', placeholder: 'Filter by title...' },
             defaultSort: { key: 'trashed', dir: 'desc' },
             persistKey: 'ft-stable:trash',
+            // v1.159 (gate SUGGESTION): a sort/filter re-render rebuilds the rows;
+            // clear any armed per-item Purge so it can't survive INVISIBLY (its
+            // "Sure?" button is gone) into a one-tap delete on the next tap.
+            onRender: disarm,
           });
         }
         if (emptyEl) emptyEl.hidden = count > 0;

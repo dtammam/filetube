@@ -12099,6 +12099,10 @@ function buildSortableTable(host, config) {
       more.textContent = 'Showing ' + shown.length + ' of ' + total + ' - refine the filter to see more.';
       body.appendChild(more);
     }
+    // onRender: fires after EVERY (re)render incl. a sort/filter. A caller with
+    // per-row transient state (e.g. Trash's two-tap Purge arm) uses this to
+    // reset that state so a re-render can't leave a stale, invisible arm.
+    if (typeof cfg.onRender === 'function') { try { cfg.onRender(); } catch (_) { /* caller hook */ } }
   }
 
   if (filterInput) filterInput.addEventListener('input', render);
