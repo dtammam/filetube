@@ -80,6 +80,50 @@
 
 ## Shipped
 
+### v1.158.0 - Empty trash + trash total, You-menu disk size, admin-row shimmer (2026-08-20)
+
+Four independent asks from Dean, one release, one full gate (Part B destroys
+data - the adversarial seat was briefed to destroy it).
+
+- **Empty trash + total (destructive).** A new `POST /api/trash/purge-all`
+  permanently purges every trash item the requester can SEE, guarded exactly
+  like the single-item purge (write-RBAC + read-only refusal + per-item
+  visibility) and enumerating the SAME visibility-filtered set as GET, so a
+  restricted member purges only their visible items. The Trash section shows a
+  "N items - X GB" total (what emptying reclaims) and a two-tap "Empty trash"
+  button (tap 1 arms "Sure? Deletes N (X GB)", tap 2 within ~4s wipes).
+- **Total size on disk in the You menu.** A new lightweight
+  `GET /api/storage-summary` returns the visibility-scoped total via the SAME
+  computeLibraryStats path the Stats "Total size on disk" tile uses, so the two
+  figures can never drift. Surfaced as a link into Stats above the Version row,
+  shimmering while it lazily loads on menu-open.
+- **Admin-section nav shimmer.** The Downloads/Users/Backup menu rows popped in a
+  beat after the is-admin capability fetch un-hid them. Now a returning admin
+  (last-known `ft-is-admin` flag) sees a reserved shimmer slot in the menu that
+  the real row replaces with zero shift. The placeholder carries no label/icon
+  (a hidden section's identity never renders - the v1.80 rule), a non-admin never
+  reserves, and both the non-admin and admin-without-yt-dlp paths clear the slot
+  so no shimmer strands.
+
+FULL two-reviewer gate, ONE fix round, both seats APPROVE. The gate's catch was
+the destructive-surface discipline "guard exists != guard binds": the
+read-only-media guard on purge-all (and, pre-existing, on the single-item purge)
+was correct but UNBOUND - a mutant survived the whole suite - now bound with a
+seeded-trash refuse test (both mutants killed); the two-tap disarm timer was
+likewise unbound (a stale arm could carry into a one-tap wipe) and is now
+mock-timer bound; and GET /api/trash was consolidated onto the shared
+`trashRecordVisibleTo` predicate so "what a member can list" == "what they can
+destroy" is enforced in code, not by comment. Dual-Node 7328/7328 on v22.23.1
+AND v24.14.0. No browser in the build env -> Dean's device probe is the arbiter.
+(A reviewer's delta worktree vanished mid-round and its checkout fell through to
+main - the v1.80/.82/.156 scar; caught by the branch==HEAD + on-disk-marker
+check before release, restored, re-qualified.)
+
+Device probes: Settings/Stats desktop unaffected by v1.157.1's fix; open Settings
+as admin -> Downloads/Users/Backup shimmer then fill, no pop-in (non-admin: none);
+Trash -> the total reads right, two taps to empty, one tap never wipes; the You
+menu shows the on-disk size (== Stats) and taps through to Stats.
+
 ### v1.157.1 - desktop nav-gap collapse + You-avatar shimmer (2026-08-20)
 
 Two desktop-only bugs Dean reported on his device after v1.157.
