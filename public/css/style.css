@@ -7425,7 +7425,7 @@ body.ft-audio-expanded {
    with the back button). Desktop reverts to a left-aligned pane heading below. */
 .md-detail-head {
   position: relative; display: flex; align-items: center; justify-content: center;
-  min-height: 44px; padding: var(--space-3) var(--space-12) var(--space-5);
+  min-height: var(--size-touch); padding: var(--space-3) var(--space-12) var(--space-5);
   border-bottom: 1px solid var(--border-color); margin-bottom: var(--space-6);
 }
 .md-back {

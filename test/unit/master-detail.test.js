@@ -164,6 +164,16 @@ test('v1.154: the phone detail header is an iOS nav-bar (pinned back + centered 
     'desktop title is left-aligned, not a centered nav-bar');
 });
 
+test('v1.154: the back button carries an accessible name (its visible label is CSS-hidden on phone)', () => {
+  const { dom, doc, signal } = setup(FIXTURE);
+  try {
+    wireMasterDetail('setup', doc, signal);
+    const back = doc.querySelector('.md-back');
+    assert.ok(back.getAttribute('aria-label'), 'the back button has an aria-label for assistive tech');
+    assert.match(back.getAttribute('aria-label'), /Back/);
+  } finally { teardown(dom); }
+});
+
 test('no header box when a .md-root declares no title/desc (opt-in)', () => {
   const { dom, doc, signal } = setup(`
     <div class="md-root" data-md-page="hy">
