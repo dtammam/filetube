@@ -11453,6 +11453,80 @@ a.queue-upnext-next:hover {
   padding: var(--space-6) 0;
 }
 
+/* ---- v1.159 (Dean): the reusable sortable/filterable table (buildSortableTable)
+   Mobile-first: the first (name) column flexes + truncates; numeric columns are
+   narrow, right-aligned, tabular. Header labels are tappable sort buttons with a
+   caret on the active column (keyed off aria-sort). Design tokens only. */
+/* buildSortableTable sets --stable-cols per table (name flex + one auto track
+   per remaining column); this default keeps the grid sane if JS never runs. */
+.stable { width: 100%; --stable-cols: minmax(0, 1fr) auto; }
+.stable-toolbar { margin-bottom: var(--space-5); }
+.stable-filter {
+  width: 100%;
+  padding: var(--space-4) var(--space-6);
+  background: var(--input-bg, var(--bg-secondary));
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  font: inherit;
+}
+.stable-filter::placeholder { color: var(--text-secondary); }
+.stable-head,
+.stable-row {
+  display: grid;
+  grid-template-columns: var(--stable-cols);
+  gap: var(--space-5);
+  align-items: center;
+}
+.stable-head {
+  padding: 0 var(--space-6) var(--space-3);
+  border-bottom: 1px solid var(--border-color);
+}
+.stable-th {
+  background: none;
+  border: 0;
+  padding: var(--space-3) 0;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.stable-th--end { justify-content: flex-end; text-align: right; }
+.stable-th--actions { cursor: default; }
+.stable-th:hover { color: var(--text-primary); }
+.stable-th[aria-sort="ascending"],
+.stable-th[aria-sort="descending"] { color: var(--text-primary); }
+/* the caret marks (and points for) the active sort column */
+.stable-th[aria-sort="ascending"]::after { content: "\25B4"; font-size: var(--fs-xs); }
+.stable-th[aria-sort="descending"]::after { content: "\25BE"; font-size: var(--fs-xs); }
+.stable-row {
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--border-color);
+}
+.stable-row:last-child { border-bottom: 0; }
+.stable-cell { min-width: 0; }
+.stable-cell--name {
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stable-cell--num {
+  text-align: right;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.stable-actions { display: inline-flex; justify-content: flex-end; gap: var(--space-3); }
+.stable-empty { color: var(--text-secondary); padding: var(--space-8) var(--space-6); text-align: center; }
+
 /* ---- v1.69 Podcasts place ---------------------------------------------------
    Era/mode tokens only (the type-scale lock); glyphs via icon-* masks never
    emoji; [hidden] enforced; all markup inside #view-root so these rules live
