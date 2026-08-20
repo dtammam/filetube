@@ -7665,17 +7665,24 @@ const SWIPE_BACK_THRESHOLD_PX = 90; // a deliberate rightward travel (more than 
 // eagerly-registered non-passive document touchmove would force the whole page
 // off it - gate WARNING v1.160.1).
 const SWIPE_BACK_CLAIM_PX = 16;
+// v1.160.3 gate (Surface D): a swipe-back from ANYWHERE demands CLEAR horizontal
+// dominance, not a bare |dx|>|dy| - else a big diagonal drag (100 right, 95 down)
+// both fires a back and (while claimed) eats the scroll. dx must beat dy by this
+// factor. Used by BOTH the claim and the fire decision so they never disagree (a
+// gesture that is claimed-and-prevented but not fired would eat a scroll for
+// nothing - keeping one predicate closes that band).
+const SWIPE_BACK_DOMINANCE = 1.5;
 function swipeBackShouldClaim(deltaX, deltaY) {
   const dx = Number(deltaX) || 0;
   const dy = Number(deltaY) || 0;
-  return dx > SWIPE_BACK_CLAIM_PX && Math.abs(dx) > Math.abs(dy);
+  return dx > SWIPE_BACK_CLAIM_PX && Math.abs(dx) > Math.abs(dy) * SWIPE_BACK_DOMINANCE;
 }
 function decideSwipeBack(g) {
   if (!g) return false;
   const dx = Number(g.deltaX) || 0;
   const dy = Number(g.deltaY) || 0;
-  if (dx < SWIPE_BACK_THRESHOLD_PX) return false;   // enough rightward travel
-  if (Math.abs(dx) <= Math.abs(dy)) return false;   // horizontal-dominant, not a scroll
+  if (dx < SWIPE_BACK_THRESHOLD_PX) return false;                    // enough rightward travel
+  if (Math.abs(dx) <= Math.abs(dy) * SWIPE_BACK_DOMINANCE) return false; // clearly horizontal, not a scroll
   return true;
 }
 // A drag that BEGINS inside a horizontally-scrollable box (a wide table, a pill
@@ -8460,8 +8467,13 @@ if (typeof window !== 'undefined') {
     // gesture ends. A vertical scroll never claims, so it never attaches this and
     // never leaves the compositor fast-path (the v1.160.1 gate lesson: an eager or
     // global non-passive document touchmove taxes every scroll).
+    // v1.160.3 gate WARNING 1: RE-EVALUATE direction every move - do NOT latch.
+    // A gesture that claimed early (a slight rightward arc) but then curves
+    // vertical must STOP being prevented, or it eats an intended scroll and fires
+    // no back. Re-checking swipeBackShouldClaim on the live cumulative delta
+    // restores the per-move semantics the v1.160.1 edge handler had.
     function onClaimedMove(e) {
-      if (e.cancelable) e.preventDefault();
+      if (e.cancelable && track && swipeBackShouldClaim(track.x - track.startX, track.y - track.startY)) e.preventDefault();
     }
     function stopTracking() {
       if (!track) return;

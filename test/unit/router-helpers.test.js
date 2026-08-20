@@ -432,6 +432,10 @@ test('decideSwipeBack: any rightward, horizontal-dominant drag past the threshol
   assert.strictEqual(decideSwipeBack({ deltaX: 89, deltaY: 5 }), false, 'just under the 90px threshold');
   assert.strictEqual(decideSwipeBack({ deltaX: 90, deltaY: 5 }), true, 'exactly at the threshold');
   assert.strictEqual(decideSwipeBack({ deltaX: 120, deltaY: 200 }), false, 'vertical-dominant = a scroll, not a back');
+  // v1.160.3 gate (Surface D): a big DIAGONAL drag must NOT fire - dx must beat dy
+  // by the 1.5x dominance factor, so 100-right/95-down is a scroll, not a back.
+  assert.strictEqual(decideSwipeBack({ deltaX: 100, deltaY: 95 }), false, 'a barely-diagonal drag is not a back (needs clear horizontal dominance)');
+  assert.strictEqual(decideSwipeBack({ deltaX: 150, deltaY: 40 }), true, 'clearly horizontal (dx > 1.5*dy) = back');
   assert.strictEqual(decideSwipeBack({ deltaX: -120, deltaY: 5 }), false, 'a leftward drag never goes back');
   assert.strictEqual(decideSwipeBack(null), false, 'garbage is harmless');
 });
@@ -471,6 +475,10 @@ test('swipeBackShouldClaim: true once a rightward horizontal drag commits past t
   assert.strictEqual(swipeBackShouldClaim(40, 5), true, 'rightward + horizontal-dominant -> claim (preventDefault)');
   assert.strictEqual(swipeBackShouldClaim(10, 1), false, 'below the 16px claim distance -> let the browser handle it');
   assert.strictEqual(swipeBackShouldClaim(40, 60), false, 'vertical-dominant -> a scroll, do NOT claim');
+  // v1.160.3 (Surface D): the same 1.5x dominance as decideSwipeBack, so a claimed
+  // gesture is always one that would fire - no "prevented but never backed" band
+  // that would eat a scroll for nothing.
+  assert.strictEqual(swipeBackShouldClaim(40, 30), false, 'a barely-diagonal drag does NOT claim (dx must beat dy by 1.5x)');
   assert.strictEqual(swipeBackShouldClaim(-40, 2), false, 'leftward -> never claim');
 });
 
@@ -478,8 +486,12 @@ test('v1.160.3: the claim listener is non-passive + preventDefaults, LAZILY atta
   const src = COMMON_JS.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
   const fn = src.slice(src.indexOf('function wireSwipeBack('));
   const body = fn.slice(0, fn.indexOf('\n  }\n'));
-  // the claimed move preventDefaults
-  assert.match(body, /function onClaimedMove\(e\)\s*\{[^}]*e\.preventDefault\(\)/, 'onClaimedMove preventDefaults the claimed drag');
+  // the claimed move preventDefaults, but RE-EVALUATES direction first (gate
+  // WARNING 1): it must call swipeBackShouldClaim on the live delta before
+  // preventDefault, so a gesture that curves vertical stops being prevented (no
+  // scroll-eating latch). Binding the re-check kills a regression back to a bare
+  // `if (e.cancelable) e.preventDefault()` latch.
+  assert.match(body, /function onClaimedMove\(e\)\s*\{[^}]*swipeBackShouldClaim\([^}]*\)\)\s*e\.preventDefault\(\)/, 'onClaimedMove re-evaluates direction (does not latch) before preventDefault');
   // v1.160.1/.3 gate lesson: the non-passive listener must be attached LAZILY,
   // GATED by the claim (swipeBackShouldClaim) - never eagerly on touchstart, or it
   // taxes every vertical scroll off the compositor fast-path. Bind that the
