@@ -310,23 +310,8 @@ function renderBookTiles(root, books) {
   root.appendChild(buildStatTile(formatCount(b.narratedCount || 0), 'With narration'));
 }
 
-// Book folder rows are size-only (books have no duration) -- so a dedicated row
-// rather than buildBreakdownRow (which shows a duration segment).
-function buildBookFolderRow(group) {
-  const row = document.createElement('div');
-  row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
-  const labelEl = document.createElement('span');
-  labelEl.textContent = group.folderName;
-  labelEl.style.cssText = 'font-weight:var(--fw-bold); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
-  const valueEl = document.createElement('span');
-  valueEl.textContent = `${formatCount(group.count)} · ${formatByteSize(group.totalSizeBytes)}`;
-  valueEl.className = 'stats-meta-text';
-  valueEl.style.cssText = 'flex-shrink:0;';
-  row.appendChild(labelEl);
-  row.appendChild(valueEl);
-  return row;
-}
-
+// v1.159: Book folders as a sortable table -- size-only (books have no
+// duration), so Name | Books | Size (default Size-desc), with a name filter.
 function renderBookFolders(root, books) {
   clearChildren(root);
   const groups = (books && Array.isArray(books.byFolder)) ? books.byFolder : [];
@@ -337,7 +322,23 @@ function renderBookFolders(root, books) {
     root.appendChild(empty);
     return;
   }
-  for (const group of groups) root.appendChild(buildBookFolderRow(group));
+  const rows = groups.map((g) => ({
+    name: g.folderName,
+    count: Number(g.count) || 0,
+    bytes: Number(g.totalSizeBytes) || 0,
+  }));
+  buildSortableTable(root, {
+    caption: 'Books by folder',
+    columns: [
+      { key: 'name', label: 'Name', format: (r) => r.name },
+      { key: 'count', label: 'Books', numeric: true, align: 'end', sortValue: (r) => r.count, format: (r) => formatCount(r.count) },
+      { key: 'bytes', label: 'Size', numeric: true, align: 'end', sortValue: (r) => r.bytes, format: (r) => formatByteSize(r.bytes) },
+    ],
+    rows,
+    filter: { text: (r) => r.name, placeholder: 'Filter by name...' },
+    defaultSort: { key: 'bytes', dir: 'desc' },
+    persistKey: 'ft-stable:stats-books-folder',
+  });
 }
 
 // A GitHub-style external link. href is always a server-provided repo URL (a
@@ -684,5 +685,5 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors setup.js/player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS, renderBreakdownList };
+  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS, renderBreakdownList, renderBookFolders };
 }

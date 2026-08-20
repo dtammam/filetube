@@ -65,6 +65,20 @@ test('sorting by Entries and filtering by name both work on the built table', ()
   } finally { teardown(dom); }
 });
 
+test('Books folders render a 3-column (Name|Books|Size) sortable table, no Length', () => {
+  const dom = mount();
+  try {
+    const host = global.document.getElementById('host');
+    stats.renderBookFolders(host, { byFolder: [
+      { folderName: 'Fiction', count: 40, totalSizeBytes: 5 * 1024 ** 3 },
+      { folderName: 'Manuals', count: 12, totalSizeBytes: 800 * 1024 ** 2 },
+    ] });
+    const headers = Array.from(host.querySelectorAll('.stable-th')).map((t) => t.textContent);
+    assert.deepEqual(headers, ['Name', 'Books', 'Size'], 'no Length column for books');
+    assert.deepEqual(names(host), ['Fiction', 'Manuals'], 'default Size desc');
+  } finally { teardown(dom); }
+});
+
 test('empty groups keep the friendly blurb (no empty table)', () => {
   const dom = mount();
   try {
