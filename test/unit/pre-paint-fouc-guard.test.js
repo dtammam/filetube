@@ -87,6 +87,16 @@ test('subscriptions.html is an injectable shell (carries the theme guard, <html 
   assert.match(head, /setAttribute\('data-theme'/, 'carries the theme guard before <body>');
   assert.match(html, /<html\b[^>]*lang="en"[^>]*>/i, 'has an injectable <html lang="en"> tag');
   assert.match(html, /href="\/css\/style\.css"/, 'links style.css so the .ft-custom-logo rule applies');
+  // v1.157 (P2b): the STAR-hide pref is a client-only localStorage value the
+  // server cannot inject (unlike ft-custom-logo, baked in server-side above), so
+  // subscriptions.html must carry the same pre-paint ft-hide-stars stamp the
+  // other shells do -- else a hidden-stars user flashes star markup on a direct
+  // /subscriptions load. (The ft-custom-logo client stamp is added too, for
+  // parity, though the route already injects it server-side.)
+  assert.match(head, /localStorage\.getItem\('ft-star-ratings'\)/,
+    'subscriptions.html must read the star-hide pref before <body>');
+  assert.match(head, /classList\.add\('ft-hide-stars'\)/,
+    'subscriptions.html must stamp html.ft-hide-stars before <body> (client-only pref, no server injection)');
 });
 
 test('the /subscriptions route renders via the shared sendShellHtml helper (server-side logo injection)', () => {

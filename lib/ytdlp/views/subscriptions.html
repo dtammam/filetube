@@ -160,6 +160,13 @@
           : storedIcons === 'auto' ? iconAutoMap[era]
           : 'outlined';
         d.setAttribute('data-icons', iconSet);
+
+        /* v1.157 (P2b): FOUC-guard parity with the other shells. A custom-logo
+           user must not flash the "FileTube" wordmark before applyCustomLogoIfSet
+           swaps the image; a hidden-stars user must not flash star markup. Inline
+           mirrors of applyCustomLogoIfSet / bootStarRatingsPref -- keep in sync. */
+        if (localStorage.getItem('ft-custom-logo') === '1') d.classList.add('ft-custom-logo');
+        if (localStorage.getItem('ft-star-ratings') === 'hidden') d.classList.add('ft-hide-stars');
       } catch (_) {
         d.setAttribute('data-theme', '2021');
         d.setAttribute('data-mode', 'light');
