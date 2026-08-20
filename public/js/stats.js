@@ -205,6 +205,10 @@ function renderRecordTiles(root, statsData) {
   }
 }
 
+// v1.160 (Dean): Most watched as a sortable table (Title | Plays, default Plays
+// desc = the ranking; the old "N." rank prefix is dropped since sorting redefines
+// it). "Plays" is the LOCAL watch counter (db.viewCounts, times played HERE) -
+// NOT the source "views" cards show (the v1.48 W6 distinction, preserved).
 function renderMostWatched(root, mostWatched) {
   clearChildren(root);
   if (!Array.isArray(mostWatched) || mostWatched.length === 0) {
@@ -214,25 +218,17 @@ function renderMostWatched(root, mostWatched) {
     root.appendChild(empty);
     return;
   }
-  mostWatched.forEach((entry, index) => {
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
-    const labelEl = document.createElement('span');
-    labelEl.textContent = `${index + 1}. ${entry.title}`;
-    labelEl.style.cssText = 'overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
-    const valueEl = document.createElement('span');
-    // v1.48 gate fix (adversarial WARNING W6): "plays", not "views". This is the
-    // LOCAL watch counter (db.viewCounts -- how many times it was played here),
-    // while cards and the watch page now render the video's SOURCE view count
-    // under the word "views". Same word for two unrelated numbers meant one file
-    // could read "1,672,000,000 views" on its card and "3 views" in Most
-    // watched.
-    valueEl.textContent = `${formatCount(entry.viewCount)} plays`;
-    valueEl.className = 'stats-meta-text';
-  valueEl.style.cssText = 'flex-shrink:0;';
-    row.appendChild(labelEl);
-    row.appendChild(valueEl);
-    root.appendChild(row);
+  const rows = mostWatched.map((e) => ({ title: (e.title || '').toString(), plays: Number(e.viewCount) || 0 }));
+  buildSortableTable(root, {
+    caption: 'Most watched',
+    columns: [
+      { key: 'title', label: 'Title', format: (r) => r.title },
+      { key: 'plays', label: 'Plays', numeric: true, align: 'end', sortValue: (r) => r.plays, format: (r) => formatCount(r.plays) },
+    ],
+    rows,
+    filter: { text: (r) => r.title, placeholder: 'Filter by title...' },
+    defaultSort: { key: 'plays', dir: 'desc' },
+    persistKey: 'ft-stable:stats-most-watched',
   });
 }
 
@@ -547,9 +543,9 @@ const STATS_FETCH_CONTAINERS = [
   'stats-records-grid', 'stats-most-watched-list', 'stats-books-grid',
   'stats-books-folder-list', 'stats-inventory-list', 'stats-about',
 ];
-// The shared row box model -- tracks buildAboutRow (Most watched / inventory /
-// About still render as these flex rows). v1.159: the By-folder / By-channel /
-// Books / Duplicates breakdowns now render via the sortable `.stable` table
+// The shared row box model -- tracks buildAboutRow (inventory / About still
+// render as these flex rows). v1.159/v1.160: the By-folder / By-channel /
+// Books / Duplicates / Most-watched breakdowns now render via the sortable `.stable` table
 // instead, so their skeleton is an APPROXIMATE placeholder (the real table adds
 // a filter bar + header row) -- a minor one-time Stats-open reflow, accepted as
 // tech-debt (a shape-matched .stable skeleton is the fast-follow).
@@ -769,5 +765,5 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors setup.js/player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS, renderBreakdownList, renderBookFolders, renderDuplicates, DUPLICATE_GROUPS_RENDER_CAP, renderAvTable, AV_RENDER_CAP };
+  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS, renderBreakdownList, renderBookFolders, renderDuplicates, DUPLICATE_GROUPS_RENDER_CAP, renderAvTable, AV_RENDER_CAP, renderMostWatched };
 }

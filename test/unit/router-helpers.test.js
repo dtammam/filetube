@@ -22,6 +22,7 @@ const {
   nextHistoryDepth,
   resolveHomeButtonAction,
   isHomeRootTarget,
+  decideEdgeSwipeBack,
 } = require('../../public/js/common.js');
 
 const COMMON_JS = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
@@ -400,4 +401,49 @@ test('goHomeControl: the already-at-home branch scrolls to the top (not a silent
     "the already-home branch must scroll to the top, not do nothing");
   assert.doesNotMatch(elseBlock, /navigate\(|history\.back/,
     'the already-home branch only scrolls; it never navigates/pops (that would tear down / leave home)');
+});
+
+// v1.160 (Dean): the SPA must take MANUAL scroll control. Default
+// history.scrollRestoration='auto' makes the browser restore a remembered scroll
+// on a pushState in-app nav, which fires AFTER swapToView's window.scrollTo(0,0)
+// and overrides it -> the page lands scrolled up under the fixed header. jsdom
+// does not implement scrollRestoration, so this is a source-lock (device-
+// observable, like the pre-paint FOUC guards): bootRouter must set it 'manual'.
+test('v1.160: bootRouter takes manual scroll control (scrollRestoration = manual)', () => {
+  const src = COMMON_JS.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const boot = src.slice(src.indexOf('function bootRouter('));
+  const body = boot.slice(0, boot.indexOf('\n  }\n'));
+  assert.match(body, /window\.history\.scrollRestoration\s*=\s*'manual'/,
+    'bootRouter must set history.scrollRestoration to manual so the app owns scroll (not the browser auto-restore)');
+  assert.match(body, /'scrollRestoration' in window\.history/,
+    'guarded for browsers without scrollRestoration');
+});
+
+// v1.160 (Dean): the left-edge swipe-back decision. Fires ONLY for a touch that
+// started at the left edge, moved right past the threshold, and was horizontal-
+// dominant - so a vertical scroll, a tap, a leftward drag, or a mid-screen start
+// never triggers a back.
+test('decideEdgeSwipeBack: only a left-edge, rightward, horizontal-dominant drag counts', () => {
+  assert.strictEqual(decideEdgeSwipeBack({ startX: 8, deltaX: 120, deltaY: 10 }), true, 'edge start + strong rightward = back');
+  assert.strictEqual(decideEdgeSwipeBack({ startX: 200, deltaX: 120, deltaY: 10 }), false, 'must START at the left edge');
+  assert.strictEqual(decideEdgeSwipeBack({ startX: 8, deltaX: 30, deltaY: 5 }), false, 'below the travel threshold');
+  assert.strictEqual(decideEdgeSwipeBack({ startX: 8, deltaX: 120, deltaY: 200 }), false, 'vertical-dominant = a scroll, not a back');
+  assert.strictEqual(decideEdgeSwipeBack({ startX: 8, deltaX: -120, deltaY: 5 }), false, 'a leftward drag never goes back');
+  assert.strictEqual(decideEdgeSwipeBack(null), false, 'garbage is harmless');
+});
+
+// Source-locks (jsdom has no touch/scroll model; device is the arbiter):
+test('v1.160: bootRouter wires the swipe-back, and it only pops in-app history (never exits the app)', () => {
+  const src = COMMON_JS.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  assert.match(src, /wireSwipeBack\(\);/, 'bootRouter calls wireSwipeBack');
+  const fn = src.slice(src.indexOf('function swipeBackIfPossible('));
+  const body = fn.slice(0, fn.indexOf('\n  }\n'));
+  assert.match(body, /depth > 0/, 'backs ONLY when there is in-app history (never exits to an external referrer)');
+  assert.match(body, /window\.history\.back\(\)/, 'uses history.back (the SPA popstate path)');
+  // adversarial SUGGESTION 1: bind the EARLY-RETURN guard, not just a mention of
+  // the flag (the assignment `homeBackPending = true` alone satisfied a bare
+  // /homeBackPending/ match, so deleting the guard shipped green) - two rapid
+  // edge-swipes must not both fire history.back() off the same stale state.
+  assert.match(body, /if\s*\(homeBackPending\)\s*return;/, 'the double-pop coalescing GUARD (early return), not just a flag mention');
+  assert.match(body, /homeBackPending\s*=\s*true;/, 'and sets the flag before history.back()');
 });

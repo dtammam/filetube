@@ -80,6 +80,50 @@
 
 ## Shipped
 
+### v1.160.0 - navigation + clarity follow-ups (Dean's 7-item branch) (2026-08-20)
+
+Seven follow-ups after the sortable-tables wave.
+
+- **Most watched (Stats)** is now a sortable table (Title | Plays, biggest first)
+  and **fills the screen**; **Under the hood** also fills (kept its reference-list
+  look - mixed-unit metrics, nothing to sort). The 240px card cap is lifted on
+  both (`.stats-table-host` for the table, `.folder-list-builder--fill` for the
+  list).
+- **Subscriptions Activity redo:** Download history, Download failures, AND the
+  Maintenance button row are now three DEFAULT-COLLAPSED collapsible sections
+  (the janky bottom buttons tucked into a `<details>`), styled like the Settings
+  collapsibles. All 5 maintenance ids + 4 status spans unchanged (wiring intact).
+- **Scroll-under-the-header on in-app nav - fixed.** ROOT CAUSE: the app never
+  set `history.scrollRestoration`, so it defaulted to `'auto'` and the browser's
+  scroll-restore overrode the app's `scrollTo(0,0)` on a pushState nav. Now
+  `'manual'` in bootRouter - the app owns scroll (resets forward, restores the
+  recorded scrollY on back).
+- **Left-edge swipe-back** (net-new gesture): a touch from the left edge (<=24px)
+  travelling right past 64px, horizontal-dominant, goes back one page - the same
+  depth-aware back the Home control does (never exits the app, coalesced against
+  double-pop). Home button already walked back on these SPA pages (verified).
+- **Modern-home card/list toggle:** the classic toggle lived in a bar modern mode
+  hides, so the modern feed honored a stored `ft-view-mode` but couldn't change
+  it. Added a toggle to the modern top bar driving the same setting.
+
+FULL two-reviewer gate, ONE fix round, both seats APPROVE. The two-seat gate
+earned its keep: the QA seat caught a real orphan the adversarial missed - the
+modern toggle appends to the PERSISTENT header, and home is CACHED (not
+destroyed) on nav-away so its abort cleanup never fires, which would have left
+the toggle stranded on watch/stats/etc with a hidden click side-effect; fixed
+with the same route-CSS home-gate `.modern-sort` already uses. The adversarial
+seat mutation-confirmed the swipe decision (edge/threshold/dominance), the manual
+scroll, the depth>0 guard, and the wire-call, and had a vacuous coalesce
+source-lock strengthened. Dual-Node 7361/7361 on v22.23.1 AND v24.14.0.
+
+DEVICE items (no browser in the build env -> Dean's device is the arbiter): the
+swipe-back FEEL/threshold and its two disclosed gaps (a horizontal-scroller
+reaching the left edge; iOS-Safari's own native edge-swipe in a browser tab), and
+the scroll-restoration fix. Probes: tap into Stats/Settings/Subscriptions - top
+no longer hides under the bar; swipe in from the left edge to go back; Most
+watched + Under the hood fill the screen; the Activity panel opens tidy; the
+modern feed's new card/list toggle matches Downloads.
+
 ### v1.159.0 - the clarity wave: sortable, filterable tables (2026-08-20)
 
 Dean: the Stats "By folder" view (and its siblings) were small on mobile and not

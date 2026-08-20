@@ -115,6 +115,27 @@ test('SOURCE-LOCK (#2): the view toggle applies .list-view to #video-grid, persi
   assert.match(CSS, /\.icon-list \{[^}]*view_list\.svg/, 'list glyph registered');
 });
 
+test('SOURCE-LOCK v1.160 (#7): the MODERN home injects a card/list toggle driving the SAME ft-view-mode', () => {
+  // The classic #view-mode-btn lives in .section-actions, which modern mode
+  // hides; modern home needs its own control (Dean). It must drive the SAME
+  // key/helpers so a change in Downloads and a change here are one setting.
+  assert.match(MAIN, /function injectModernViewToggle\(/, 'a modern view toggle is defined');
+  assert.match(MAIN, /injectModernViewToggle\(sig\)/, 'and injected in renderModernHome');
+  const fn = MAIN.slice(MAIN.indexOf('function injectModernViewToggle('));
+  const body = fn.slice(0, fn.indexOf('\n        }\n'));
+  assert.match(body, /getStoredViewMode\(\)/, 'reads the shared view-mode key');
+  assert.match(body, /setStoredViewMode\(next\)/, 'persists to the SAME key');
+  assert.match(body, /applyViewMode\(next\)/, 'applies via the SAME reflow path');
+  assert.match(body, /modern-view-toggle/, 'a distinct class for placement + cleanup');
+  // cleaned up on destroy like the modern sort (no orphan in the persistent shell)
+  assert.match(body, /\.modern-view-toggle'\)/, 'removed on the abort/destroy path');
+  // gate WARNING: home is CACHED (not destroyed) on nav-away so abort may not
+  // fire - it MUST also be route-gated in CSS like .modern-sort, or it orphans
+  // in the persistent header on watch/stats/etc.
+  assert.match(CSS, /\.modern-view-toggle\s*\{[^}]*display:\s*none/, 'route-gated off by default (persistent-header safety)');
+  assert.match(CSS, /body\[data-view="home"\]\s*\.modern-view-toggle\s*\{[^}]*display:\s*inline-flex/, 'shown only on the home view');
+});
+
 test('SOURCE-LOCK (#1): per-page sort reads/writes by pageSortKey only when enabled, and pins over defaultSort', () => {
   assert.match(MAIN, /perPageSortActive = isPerPageSortEnabled\(\)/, 'reads the flag');
   assert.match(MAIN, /getPerPageSort\(sortPageKeyValue\)/, "reads this page's stored sort");

@@ -431,8 +431,12 @@
               <!-- v1.156: the 5 power-user maintenance actions moved here from the
                    old list header (Dean Q3) -- ids unchanged, so their getElementById
                    wiring + the ~2.5s status poll bindings are untouched. -->
-              <div class="sub-maint">
-                <h3 class="sub-maint-title">Maintenance</h3>
+              <!-- v1.160 (Dean): Maintenance is now a DEFAULT-COLLAPSED section
+                   (like Download history/failures) so the Activity panel opens
+                   tidy - the janky button row is tucked away. All ids unchanged
+                   (getElementById wiring + the ~2.5s status poll untouched). -->
+              <details class="sub-maint setup-box sub-collapsible" data-collapse-key="maintenance">
+                <summary>Maintenance</summary>
                 <div class="sub-list-header-actions action-bar">
             <button class="btn btn-sm" id="sub-reheat-preview-btn" type="button"
                     title="See exactly which files a reheat would move — and which get copied across filesystems — without moving anything">
@@ -499,7 +503,7 @@
             <span id="sub-reheat-subs-status" class="sub-repull-status action-status" aria-live="polite"></span>
             <span id="sub-backfill-names-status" class="sub-repull-status action-status" aria-live="polite"></span>
                 </div>
-              </div>
+              </details>
             </div>
           </div>
         </div>
