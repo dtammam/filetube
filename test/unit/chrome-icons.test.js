@@ -52,6 +52,9 @@ const NAME_ASSET = {
   download: 'download', caret: 'keyboard_arrow_down',
   // v1.102 (tranche 4): the music/podcast row action glyphs.
   queue: 'queue', heart: 'heart', delete: 'delete',
+  // v1.157 (P2a): the hamburger + Stats sidebar glyphs. star == the same
+  // rounded/star.svg `liked` uses (the Stats glyph).
+  menu: 'menu', star: 'star',
 };
 
 function assetSvg(asset) {
@@ -112,6 +115,36 @@ for (const shell of SHELLS) {
     }
     assert.doesNotMatch(block, /<i class="icon-/,
       'no `.icon-*` mask <i> survives in the bottom-nav (a mask decode-lags -> pop-in)');
+  });
+}
+
+// v1.157 (P2a): the header hamburger + the desktop-sidebar Home/Settings/Stats
+// glyphs were `.icon-*` masks - masks show nothing until decoded, so on an iOS
+// cold start the hamburger popped in a beat late. Converted to inline
+// chrome-icon <svg> across EVERY sidebar shell (the pop-in hits each shell's
+// cold launch, not just index - the bottom-nav cross-shell lesson). Binds each
+// to the byte-exact chromeIconMarkup output + asserts no menu/home/cog/star
+// mask survives. (The home-toolbar shuffle/rescan/view-mode masks were left as
+// masks - out of scope for the hamburger+sidebar ask.)
+const SIDEBAR_ICON_SHELLS = fs.readdirSync(path.join(REPO, 'public'))
+  .filter((f) => f.endsWith('.html'))
+  .map((f) => path.join('public', f))
+  .concat(['lib/ytdlp/views/subscriptions.html'])
+  .filter((rel) => fs.readFileSync(path.join(REPO, rel), 'utf8').includes('id="sidebar"'));
+
+test('roster sanity: the sidebar-icon shell set is non-vacuous', () => {
+  assert.ok(SIDEBAR_ICON_SHELLS.length >= 9, `expected >=9 sidebar shells, found ${SIDEBAR_ICON_SHELLS.length}`);
+});
+
+for (const rel of SIDEBAR_ICON_SHELLS) {
+  test(`${rel}: hamburger + sidebar Home/Settings/Stats are inline chrome-icon <svg>, NO menu/home/cog/star mask`, () => {
+    const html = fs.readFileSync(path.join(REPO, rel), 'utf8');
+    for (const name of ['menu', 'home', 'cog', 'star']) {
+      assert.ok(html.includes(chromeIconMarkup(name)),
+        `${rel} must embed the inline chrome-icon <svg> for "${name}" (byte-exact chromeIconMarkup output)`);
+    }
+    assert.doesNotMatch(html, /class="icon-(menu|home|cog|star)"/,
+      `no menu/home/cog/star icon-* mask may survive in ${rel} (decode-lag -> iOS cold-start pop-in)`);
   });
 }
 

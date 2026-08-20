@@ -340,6 +340,72 @@ function buildFeedSkeleton(rows, cards) {
 const FEED_SKELETON_ROWS = 3;
 const FEED_SKELETON_CARDS = 6;
 
+// v1.157 (P1, gate WARNING): a PER-KIND home-row skeleton so the reserved COVER
+// height matches the real row -- a truly zero-shift reveal. buildFeedSkeleton is
+// video-shaped (`.video-row-cover`, 16:9 ~92px), which left the books/listening
+// rows (`.book-row-cover`, 138px) ~46px short. Same `.books-home-row` chassis;
+// the card + cover classes are the real per-kind ones ('video' | 'music' |
+// 'book'), so the shimmer cover is the same box the real card reveals into.
+// Pure string builder -> node:test-covered.
+function buildHomeRowSkeleton(kind, n) {
+  const count = Number.isInteger(n) && n > 0 ? n : 0;
+  if (count === 0) return '';
+  // BYTE-MATCH the real per-kind card/cover classes (buildVideoRowCardHtml /
+  // buildBookRowCardHtml / buildMusicRowCardHtml). `.book-row-cover` is the ONLY
+  // class that sets display:block + a box on these covers -- WITHOUT it the
+  // cover is an inline <span> and width/height/aspect-ratio do not apply, so it
+  // collapses to a line-box (the gate WARNING: dropping it made the video cover
+  // ~15px, not ~92px). The video/music modifiers refine width/aspect ON TOP of
+  // book-row-cover: video -> 164px 16:9 (~92px), music -> inert (stays 138px).
+  const cardCls = kind === 'video' ? 'book-row-card music-row-card video-row-card'
+    : kind === 'music' ? 'book-row-card music-row-card'
+      : 'book-row-card';
+  const coverCls = kind === 'video' ? 'book-row-cover video-row-cover'
+    : kind === 'music' ? 'book-row-cover music-row-cover'
+      : 'book-row-cover';
+  // video (channel) + music (artist) rows carry a second line; the book row does not.
+  const meta = (kind === 'video' || kind === 'music')
+    ? '<span class="music-row-artist skeleton-line skeleton-line-meta skeleton-shimmer"></span>'
+    : '';
+  let cards = '';
+  for (let i = 0; i < count; i++) {
+    cards += '<span class="' + cardCls + '" aria-hidden="true">'
+      + '<span class="' + coverCls + ' skeleton-shimmer"></span>'
+      + '<span class="book-row-title skeleton-line skeleton-line-title skeleton-shimmer"></span>'
+      + meta + '</span>';
+  }
+  return '<section class="books-home-row music-home-row" aria-hidden="true">'
+    + '<div class="books-home-row-header"><div class="skeleton-shimmer skel-title"></div></div>'
+    + '<div class="books-home-row-scroller">' + cards + '</div></section>';
+}
+
+// v1.157 (P1, cold-launch crispness): hydrate one home "Continue *" row without
+// a layout jump. The row hosts are inserted EMPTY above #video-grid, then filled
+// after an async fetch -- which shoved the whole grid DOWN on every cold launch
+// for anyone with in-progress items (classic is the default layout,
+// homeRowEnabled defaults ON). Now, when the row had content LAST launch (a
+// per-row `ft-home-row-seen:*` flag -- the avatar/bell last-known-state
+// pattern), we seed the caller's shape-matched `skeletonHtml` FIRST, reserving
+// the row's height so the fetched content replaces it IN PLACE (zero shift). A
+// user with nothing to continue has no flag, so gets no skeleton -- never a
+// reserve-then-collapse. `fetcher` resolves to the section HTML ('' when the
+// kind has no in-progress items); the flag is then set to whether content
+// actually rendered. On a fetch error only the HOST is cleared -- the flag is
+// left intact so a transient failure still reserves next launch.
+function hydrateHomeRow(host, seenId, fetcher, skeletonHtml) {
+  if (!host) return;
+  const seenKey = 'ft-home-row-seen:' + seenId;
+  let hadItems = false;
+  try { hadItems = localStorage.getItem(seenKey) === '1'; } catch { hadItems = false; }
+  if (hadItems && skeletonHtml) host.innerHTML = skeletonHtml;
+  fetcher()
+    .then((html) => {
+      host.innerHTML = html || '';
+      try { localStorage.setItem(seenKey, html ? '1' : '0'); } catch { /* private mode -- session-only */ }
+    })
+    .catch(() => { host.innerHTML = ''; });
+}
+
 // ---- v1.84 Modern Mode: the filter-chip row ---------------------------------
 //
 // The `filter` params are the CLIENT half of the server's MODERN_GRID_FILTERS
@@ -703,6 +769,11 @@ if (typeof module !== 'undefined' && module.exports) {
     buildFeedCardHtml,
     buildFeedRowHtml,
     buildFeedSkeleton,
+    // v1.157 (P1): the per-kind Continue-row skeleton + the reserve-then-fill
+    // hydrator, exported so the shape-match + the no-jump behaviour (seed only
+    // when last-seen; reveal both axes) are bound by EXECUTION.
+    buildHomeRowSkeleton,
+    hydrateHomeRow,
     renderHomeFeed,
     homeRowEnabled,
     migrateListeningRowPref,
@@ -3012,46 +3083,44 @@ const PreviewCards = (function () {
         // the same home resume surface every other kind already had. Same
         // rules as the rows below: toggleable, empty selection renders
         // NOTHING.
+        // v1.157 (P1): each Continue row reserves a shape-matched skeleton
+        // before its fetch (gated on a per-row last-known flag) so the grid no
+        // longer jumps down as the rows arrive -- see hydrateHomeRow.
         const videosRowHost = document.createElement('div');
         booksRowHost.insertAdjacentElement('beforebegin', videosRowHost);
         if (homeRowEnabled('ft-home-continue-watching')) {
-          fetch(`/api/videos?filter=recent-watching&limit=${HOME_ROW_CAP}`)
-            .then((r) => (r.ok ? r.json() : { items: [] }))
-            .then((data) => {
-              // No See-all href: the watched-state filter is a stored
-              // toolbar pref, not a URL scope - a ?watch= link would
-              // silently no-op (the v1.68.1 bystander-artifact lesson).
-              videosRowHost.innerHTML = buildVideoHomeSectionHtml(data.items, 'Continue watching', '');
-            })
-            .catch(() => { videosRowHost.innerHTML = ''; });
+          hydrateHomeRow(videosRowHost, 'watching', () =>
+            fetch(`/api/videos?filter=recent-watching&limit=${HOME_ROW_CAP}`)
+              .then((r) => (r.ok ? r.json() : { items: [] }))
+              // No See-all href: the watched-state filter is a stored toolbar
+              // pref, not a URL scope - a ?watch= link would silently no-op
+              // (the v1.68.1 bystander-artifact lesson).
+              .then((data) => buildVideoHomeSectionHtml(data.items, 'Continue watching', '')),
+          buildHomeRowSkeleton('video', HOME_ROW_CAP));
         }
         // v1.73 (Dean ruling 1): ONE merged "Continue listening" host sits
-        // ABOVE the books one - music tracks + podcast episodes interleaved
-        // by recency. One toggle governs it; a device where EITHER
-        // pre-v1.73 toggle was on shows the row (both-off stays off - the
-        // retired podcasts key is still READ for that migration, just no
-        // longer offered in Settings).
+        // ABOVE the books one - music tracks + podcast episodes interleaved by
+        // recency. One toggle governs it; a device where EITHER pre-v1.73
+        // toggle was on shows the row (both-off stays off - the retired
+        // podcasts key is still READ for that migration).
         const listeningRowHost = document.createElement('div');
         booksRowHost.insertAdjacentElement('beforebegin', listeningRowHost);
         // Gate C1: fold the retired key ONCE, then the ONE key governs.
         migrateListeningRowPref();
         if (homeRowEnabled('ft-home-continue-listening')) {
-          Promise.all([
-            fetch(`/api/music?filter=recent-listening&limit=${HOME_ROW_CAP}`).then((r) => (r.ok ? r.json() : { items: [] })).catch(() => ({ items: [] })),
-            fetch(`/api/podcasts/episodes?filter=recent-listening&limit=${HOME_ROW_CAP}`).then((r) => (r.ok ? r.json() : { episodes: [] })).catch(() => ({ episodes: [] })),
-          ])
-            .then(([music, pods]) => {
-              listeningRowHost.innerHTML = buildListeningHomeSectionHtml(music.items, pods.episodes, 'Continue listening');
-            })
-            .catch(() => { listeningRowHost.innerHTML = ''; });
+          hydrateHomeRow(listeningRowHost, 'listening', () =>
+            Promise.all([
+              fetch(`/api/music?filter=recent-listening&limit=${HOME_ROW_CAP}`).then((r) => (r.ok ? r.json() : { items: [] })).catch(() => ({ items: [] })),
+              fetch(`/api/podcasts/episodes?filter=recent-listening&limit=${HOME_ROW_CAP}`).then((r) => (r.ok ? r.json() : { episodes: [] })).catch(() => ({ episodes: [] })),
+            ]).then(([music, pods]) => buildListeningHomeSectionHtml(music.items, pods.episodes, 'Continue listening')),
+          buildHomeRowSkeleton('music', HOME_ROW_CAP));
         }
         if (homeRowEnabled('ft-home-continue-reading')) {
-          fetch(`/api/books?filter=reading&limit=${HOME_ROW_CAP}`)
-            .then((r) => (r.ok ? r.json() : { items: [] }))
-            .then((data) => {
-              booksRowHost.innerHTML = buildBooksHomeSectionHtml(data.items, 'Continue reading', '/books');
-            })
-            .catch(() => { booksRowHost.innerHTML = ''; });
+          hydrateHomeRow(booksRowHost, 'reading', () =>
+            fetch(`/api/books?filter=reading&limit=${HOME_ROW_CAP}`)
+              .then((r) => (r.ok ? r.json() : { items: [] }))
+              .then((data) => buildBooksHomeSectionHtml(data.items, 'Continue reading', '/books')),
+          buildHomeRowSkeleton('book', HOME_ROW_CAP));
         }
       } else if (searchQuery) {
         fetch('/api/books?search=' + encodeURIComponent(searchQuery) + '&limit=12')

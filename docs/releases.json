@@ -1864,5 +1864,11 @@
     "date": "2026-08-20",
     "title": "Tidied up the Subscriptions list",
     "intent": "Removed the A-Z letter strip that was running down the side of the Subscriptions list - it sat awkwardly in empty space and slid out of reach on a long list. The channel list now uses the full width, and the search box plus the A-Z section headers are all you need to find a channel."
+  },
+  {
+    "version": "1.157.0",
+    "date": "2026-08-20",
+    "title": "A crisper cold start - no more jump and pop-in",
+    "intent": "Polished how the app looks the instant it opens. The home page no longer lurches downward as your Continue watching/listening/reading rows load in - their space is held ahead of time. On iPhone, the menu and side icons appear instantly instead of blinking in a moment late. And a few pages that used to flash empty before filling - Settings' folder list, a podcast's episode list - now show a gentle placeholder while they load."
   }
 ]
