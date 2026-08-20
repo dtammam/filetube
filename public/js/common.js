@@ -7645,6 +7645,24 @@ function nextHistoryDepth(currentState, isReplace) {
 //   - depth 0, at home     -> 'noop'   (already at the session-root home)
 // Pure — exported for node:test so every branch is covered without a live
 // history/location.
+// v1.160 (Dean): the left-edge swipe-back decision (PURE, top-level so it's
+// exportable/testable; the touch wiring lives in the router closure). Fires only
+// for a touch that STARTED at the left edge, travelled RIGHT past a threshold,
+// and was horizontal-dominant - so a vertical scroll, a tap, a leftward drag, or
+// a mid-screen start never triggers a back.
+const SWIPE_BACK_EDGE_PX = 24;
+const SWIPE_BACK_THRESHOLD_PX = 64;
+function decideEdgeSwipeBack(g) {
+  if (!g) return false;
+  const startX = Number(g.startX) || 0;
+  const dx = Number(g.deltaX) || 0;
+  const dy = Number(g.deltaY) || 0;
+  if (startX > SWIPE_BACK_EDGE_PX) return false;    // must begin at the left edge
+  if (dx < SWIPE_BACK_THRESHOLD_PX) return false;   // enough rightward travel
+  if (Math.abs(dx) <= Math.abs(dy)) return false;   // horizontal-dominant, not a scroll
+  return true;
+}
+
 function resolveHomeButtonAction(depth, currentPathAndSearch) {
   const d = (typeof depth === 'number' && depth >= 0) ? Math.floor(depth) : 0;
   // v1.45.0 gate-fix (C1): the home ROOT is the TOP of the walk — being there
@@ -8398,6 +8416,40 @@ if (typeof window !== 'undefined') {
     }
   }
 
+  // Back only when there IS in-app history to pop (depth>0) - never exit the app
+  // to an external referrer, never surprise-navigate from a directly-loaded page.
+  function swipeBackIfPossible() {
+    if (homeBackPending) return;
+    const state = window.history.state;
+    const depth = (state && typeof state.depth === 'number') ? state.depth : 0;
+    if (depth > 0) { homeBackPending = true; window.history.back(); }
+  }
+  let swipeBackWired = false;
+  function wireSwipeBack() {
+    if (typeof document === 'undefined' || swipeBackWired) return;
+    swipeBackWired = true;
+    let track = null; // { startX, startY, x, y } for a single-touch edge start
+    document.addEventListener('touchstart', (e) => {
+      if (!e.touches || e.touches.length !== 1) { track = null; return; }
+      const t = e.touches[0];
+      track = (t.clientX <= SWIPE_BACK_EDGE_PX)
+        ? { startX: t.clientX, startY: t.clientY, x: t.clientX, y: t.clientY }
+        : null;
+    }, { passive: true });
+    document.addEventListener('touchmove', (e) => {
+      if (!track || !e.touches || e.touches.length !== 1) return;
+      const t = e.touches[0]; track.x = t.clientX; track.y = t.clientY;
+    }, { passive: true });
+    const finish = () => {
+      if (!track) return;
+      const g = { startX: track.startX, deltaX: track.x - track.startX, deltaY: track.y - track.startY };
+      track = null;
+      if (decideEdgeSwipeBack(g)) swipeBackIfPossible();
+    };
+    document.addEventListener('touchend', finish, { passive: true });
+    document.addEventListener('touchcancel', () => { track = null; }, { passive: true });
+  }
+
   // v1.45.2 (#1a): the header LOGO is the "escape hatch" straight to the top of
   // home — the classic logo->home convention — distinct from the incremental
   // walk-back that the bottom-nav / sidebar Home affordances do (goHomeControl).
@@ -8532,6 +8584,7 @@ if (typeof window !== 'undefined') {
     // header. The app already resets on forward nav (swapToView) and restores the
     // recorded scrollY on back (handlePopState), so it owns scroll fully now.
     try { if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual'; } catch (_) { /* unsupported */ }
+    wireSwipeBack(); // v1.160: the left-edge swipe-back gesture (once per session)
     if (!window.history.state) {
       // v1.45.0 (T2): the session's first stamped entry is depth 0 — the floor
       // the Home control's history.back() can never cross (see buildHistoryState).
@@ -12814,6 +12867,8 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldDockOnTransition, isSameLocationNav, toPathAndQuery, isStaleNavGeneration,
     // v1.45.0 (T2): incremental-pop Home helpers.
     nextHistoryDepth, resolveHomeButtonAction, isHomeRootTarget,
+    // v1.160: the left-edge swipe-back decision (pure; the wiring is DOM/device).
+    decideEdgeSwipeBack,
     canonicalizeChannelUrl, channelIdentityMatches, resolveFileChannelIdentity,
     shouldShowSubscribeButton, decideSubscribeButtonState,
     buildSubscribeRequestBody, buildSubscribeModal,

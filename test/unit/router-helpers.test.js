@@ -22,6 +22,7 @@ const {
   nextHistoryDepth,
   resolveHomeButtonAction,
   isHomeRootTarget,
+  decideEdgeSwipeBack,
 } = require('../../public/js/common.js');
 
 const COMMON_JS = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
@@ -416,4 +417,28 @@ test('v1.160: bootRouter takes manual scroll control (scrollRestoration = manual
     'bootRouter must set history.scrollRestoration to manual so the app owns scroll (not the browser auto-restore)');
   assert.match(body, /'scrollRestoration' in window\.history/,
     'guarded for browsers without scrollRestoration');
+});
+
+// v1.160 (Dean): the left-edge swipe-back decision. Fires ONLY for a touch that
+// started at the left edge, moved right past the threshold, and was horizontal-
+// dominant - so a vertical scroll, a tap, a leftward drag, or a mid-screen start
+// never triggers a back.
+test('decideEdgeSwipeBack: only a left-edge, rightward, horizontal-dominant drag counts', () => {
+  assert.strictEqual(decideEdgeSwipeBack({ startX: 8, deltaX: 120, deltaY: 10 }), true, 'edge start + strong rightward = back');
+  assert.strictEqual(decideEdgeSwipeBack({ startX: 200, deltaX: 120, deltaY: 10 }), false, 'must START at the left edge');
+  assert.strictEqual(decideEdgeSwipeBack({ startX: 8, deltaX: 30, deltaY: 5 }), false, 'below the travel threshold');
+  assert.strictEqual(decideEdgeSwipeBack({ startX: 8, deltaX: 120, deltaY: 200 }), false, 'vertical-dominant = a scroll, not a back');
+  assert.strictEqual(decideEdgeSwipeBack({ startX: 8, deltaX: -120, deltaY: 5 }), false, 'a leftward drag never goes back');
+  assert.strictEqual(decideEdgeSwipeBack(null), false, 'garbage is harmless');
+});
+
+// Source-locks (jsdom has no touch/scroll model; device is the arbiter):
+test('v1.160: bootRouter wires the swipe-back, and it only pops in-app history (never exits the app)', () => {
+  const src = COMMON_JS.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  assert.match(src, /wireSwipeBack\(\);/, 'bootRouter calls wireSwipeBack');
+  const fn = src.slice(src.indexOf('function swipeBackIfPossible('));
+  const body = fn.slice(0, fn.indexOf('\n  }\n'));
+  assert.match(body, /depth > 0/, 'backs ONLY when there is in-app history (never exits to an external referrer)');
+  assert.match(body, /window\.history\.back\(\)/, 'uses history.back (the SPA popstate path)');
+  assert.match(body, /homeBackPending/, 'coalesces with the Home-back guard so a double-fire cannot double-pop');
 });
