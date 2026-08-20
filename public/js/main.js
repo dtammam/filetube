@@ -1637,7 +1637,9 @@ const PreviewCards = (function () {
           if (prior) prior.remove(); // idempotent
           const btn = document.createElement('button');
           btn.type = 'button';
-          btn.className = 'btn view-mode-btn modern-view-toggle';
+          // v1.160.1 (Dean): the transparent glyph style (like .modern-sort-btn),
+          // NOT the filled .btn look which read as "always selected/grey".
+          btn.className = 'modern-view-toggle';
           const icon = document.createElement('i');
           btn.appendChild(icon);
           const sync = () => {

@@ -238,8 +238,16 @@
            fork). The reloc-preview modal stays a sibling OUTSIDE .subs-root
            (still inside #view-root). -->
       <div class="subs-root">
-        <div class="subs-head">
-          <h1 class="subs-title">Your subscriptions</h1>
+        <!-- v1.160.1 (Dean): the iOS-style hero header block (icon tile + title +
+             explainer) the master-detail pages (Stats/Settings) show - Subscriptions
+             lost it moving off the master-detail menu in v1.156. Reuses the shared
+             .md-hero styling (static markup; this page is not a .md-root). -->
+        <div class="subs-head md-hero">
+          <span class="md-tile md-tile--hero"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="8" width="17" height="11.5" rx="2"/><path d="M8.5 3.5L12 8l3.5-4.5"/></svg></span>
+          <div class="md-hero-text">
+            <h2>Subscriptions</h2>
+            <p>The channels you follow. Check for new videos, add or remove channels, and review download history in Activity.</p>
+          </div>
         </div>
         <div class="sub-toolbar" role="toolbar" aria-label="Subscription actions">
           <button class="btn btn-primary btn-sm sub-pill sub-pill-primary" id="sub-repull-all-btn" type="button">

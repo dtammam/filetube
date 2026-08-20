@@ -722,6 +722,9 @@ summary,
    leaving overflow-y and iOS safe-area/visual-viewport behavior untouched. */
 html {
   overflow-x: clip;
+  /* v1.160.1 (Dean): no horizontal rubber-band on the left-edge swipe-back drag
+     (the swipe handler also preventDefaults it, this is belt-and-suspenders). */
+  overscroll-behavior-x: none;
 }
 
 body {
@@ -7372,12 +7375,12 @@ body.ft-audio-expanded {
    =========================================================================== */
 .subs-root { display: block; }
 .subs-head { margin-bottom: var(--space-6); }
-.subs-title {
-  margin: 0;
-  font-size: var(--fs-4xl);
-  font-weight: var(--fw-bold);
-  color: var(--yt-red);
-}
+/* v1.160.1: the Subscriptions header is now the shared .md-hero block (title via
+   .md-hero-text h2) - the old .subs-title h1 rule was removed with it. The hero
+   tile colours itself via CSS here (the graphite tone), NOT a data-md-tone attr,
+   so subscriptions.html keeps zero data-md-* attrs (the v1.156 master-detail
+   drop lock). */
+.subs-head .md-tile--hero { background: var(--md-graphite); }
 /* A single horizontally-scrollable pill strip (the v1.150 pattern) so the four
    pills never orphan onto a second row. No abspos popout children, so the
    overflow-x:auto force-computed overflow-y cannot clip anything (v1.150). */
@@ -8580,8 +8583,20 @@ body[data-view="home"] .modern-sort {
    header, and home is CACHED (not destroyed) on nav-away, so its abort cleanup
    does not fire - route-gate it like .modern-sort so it never orphans on
    watch/stats/etc (where clicking it would hide-side-effect the cached grid). */
-.modern-view-toggle { display: none; }
+.modern-view-toggle {
+  display: none;                 /* route-gated (below); shown only on home */
+  background: none;              /* v1.160.1 (Dean): transparent glyph, NOT the
+                                    filled .btn look that read as always-selected */
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: var(--space-3);
+  border-radius: var(--radius-full);
+  align-items: center;
+  justify-content: center;
+}
 body[data-view="home"] .modern-view-toggle { display: inline-flex; }
+.modern-view-toggle:hover { background-color: var(--bg-secondary); }
 .modern-sort-btn {
   background: none;
   border: none;

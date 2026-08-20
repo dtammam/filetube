@@ -70,6 +70,21 @@ test('the Activity panel holds the history/failures mount points + all 5 mainten
   }
 });
 
+test('v1.160.1: the header is the shared iOS-style .md-hero block (icon tile + title + explainer)', () => {
+  // Dean: Subscriptions lost the master-detail hero (title + explainer) in v1.156;
+  // it now reuses the shared .md-hero styling as static markup (this page is not a
+  // .md-root, so wireMasterDetail never touches it).
+  const hero = /<div class="subs-head md-hero">[\s\S]*?<\/div>\s*<\/div>/.exec(SUBS_HTML);
+  assert.ok(hero, 'the header is a .md-hero block');
+  assert.match(hero[0], /<span class="md-tile md-tile--hero"><svg[\s\S]*?<\/svg><\/span>/, 'the hero icon tile (no data-md-* attr - the v1.156 drop lock)');
+  assert.doesNotMatch(hero[0], /data-md-/, 'the hero carries NO data-md-* attrs (coloured via CSS instead)');
+  assert.match(hero[0], /<div class="md-hero-text">\s*<h2>Subscriptions<\/h2>/, 'the title in .md-hero-text h2 (matches Stats/Settings)');
+  assert.match(hero[0], /<p>[^<]*channels you follow[\s\S]*?<\/p>/, 'an explainer paragraph');
+  // the old .subs-title h1 + its dead CSS are gone
+  assert.doesNotMatch(SUBS_HTML, /class="subs-title"/, 'the old .subs-title element is gone');
+  assert.doesNotMatch(STYLE_CSS, /\.subs-title\s*\{/, 'and its now-dead CSS rule is removed');
+});
+
 test('v1.160: Maintenance is a DEFAULT-COLLAPSED collapsible section, ids + status spans intact', () => {
   const activity = /id="sub-panel-activity"([\s\S]*)$/.exec(SUBS_HTML);
   const body = activity[0];

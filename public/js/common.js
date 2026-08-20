@@ -7652,6 +7652,17 @@ function nextHistoryDepth(currentState, isReplace) {
 // a mid-screen start never triggers a back.
 const SWIPE_BACK_EDGE_PX = 24;
 const SWIPE_BACK_THRESHOLD_PX = 64;
+// v1.160.1 (Dean device report): once an edge drag has committed to horizontal +
+// rightward (past a small claim distance), the handler preventDefaults it so the
+// browser does NOT also pan/rubber-band the page - the "whole app shakes with
+// it" abruptness. Pure so it's testable; the touchmove is non-passive only while
+// an edge start is tracked, so normal vertical scrolling stays passive/fast.
+const SWIPE_BACK_CLAIM_PX = 8;
+function edgeSwipeShouldClaim(deltaX, deltaY) {
+  const dx = Number(deltaX) || 0;
+  const dy = Number(deltaY) || 0;
+  return dx > SWIPE_BACK_CLAIM_PX && Math.abs(dx) > Math.abs(dy);
+}
 function decideEdgeSwipeBack(g) {
   if (!g) return false;
   const startX = Number(g.startX) || 0;
@@ -8439,7 +8450,11 @@ if (typeof window !== 'undefined') {
     document.addEventListener('touchmove', (e) => {
       if (!track || !e.touches || e.touches.length !== 1) return;
       const t = e.touches[0]; track.x = t.clientX; track.y = t.clientY;
-    }, { passive: true });
+      // v1.160.1: claim the gesture once it's clearly a horizontal edge drag, so
+      // the browser doesn't ALSO pan/rubber-band the page ("the whole app shakes
+      // with it"). Non-passive only while an edge start is tracked.
+      if (e.cancelable && edgeSwipeShouldClaim(track.x - track.startX, track.y - track.startY)) e.preventDefault();
+    }, { passive: false });
     const finish = () => {
       if (!track) return;
       const g = { startX: track.startX, deltaX: track.x - track.startX, deltaY: track.y - track.startY };
@@ -12869,6 +12884,8 @@ if (typeof module !== 'undefined' && module.exports) {
     nextHistoryDepth, resolveHomeButtonAction, isHomeRootTarget,
     // v1.160: the left-edge swipe-back decision (pure; the wiring is DOM/device).
     decideEdgeSwipeBack,
+    // v1.160.1: the in-progress "claim the horizontal drag" decision (pure).
+    edgeSwipeShouldClaim,
     canonicalizeChannelUrl, channelIdentityMatches, resolveFileChannelIdentity,
     shouldShowSubscribeButton, decideSubscribeButtonState,
     buildSubscribeRequestBody, buildSubscribeModal,

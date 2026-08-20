@@ -134,6 +134,10 @@ test('SOURCE-LOCK v1.160 (#7): the MODERN home injects a card/list toggle drivin
   // in the persistent header on watch/stats/etc.
   assert.match(CSS, /\.modern-view-toggle\s*\{[^}]*display:\s*none/, 'route-gated off by default (persistent-header safety)');
   assert.match(CSS, /body\[data-view="home"\]\s*\.modern-view-toggle\s*\{[^}]*display:\s*inline-flex/, 'shown only on the home view');
+  // v1.160.1 (Dean): the transparent glyph style (like .modern-sort-btn), NOT the
+  // filled .btn look that read as "always selected/grey".
+  assert.match(CSS, /\.modern-view-toggle\s*\{[^}]*background:\s*none/, 'transparent, not the filled .btn look');
+  assert.match(MAIN, /className\s*=\s*'modern-view-toggle'/, 'the button does not carry the filled .btn class');
 });
 
 test('SOURCE-LOCK (#1): per-page sort reads/writes by pageSortKey only when enabled, and pins over defaultSort', () => {
