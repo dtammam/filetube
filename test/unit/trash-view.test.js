@@ -7,7 +7,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const {
-  escapeTrashHtml, trashDaysLeftLabel, formatTrashSize, buildTrashRowHtml,
+  escapeTrashHtml, trashDaysLeftLabel, formatTrashSize,
 } = require('../../public/js/setup.js');
 
 const NOW = Date.parse('2026-08-01T12:00:00.000Z');
@@ -29,18 +29,10 @@ test('formatTrashSize: KB/MB/GB ladder; empty for zero/garbage', () => {
   assert.equal(formatTrashSize('nope'), '');
 });
 
-test('buildTrashRowHtml: escapes hostile titles, carries data-trash-id, no inline styles', () => {
-  const html = buildTrashRowHtml({
-    trashId: 'tid123', title: '<img src=x onerror=alert(1)>', size: 1024 ** 2, trashedAt: NOW - 2 * DAY,
-  }, 30, NOW);
-  assert.ok(!html.includes('<img src=x'), 'title escaped');
-  assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'));
-  assert.ok(html.includes('data-trash-id="tid123"'));
-  assert.ok(html.includes('/thumbnail/tid123'), 'the re-keyed sidecar thumbnail renders');
-  assert.ok(html.includes('28 days left'));
-  assert.ok(html.includes('trash-restore-btn') && html.includes('trash-purge-btn'));
-  assert.ok(!/style\s*=/.test(html), 'no inline style attribute (#71/ratchet posture)');
-});
+// v1.159: the trash rows now render via buildSortableTable (Title | Size |
+// Expires + Restore/Purge). The row builders (buildTrashTitleCell escaping,
+// the data-trash-id action wiring, thumbnail) are jsdom-tested in
+// trash-table.test.js; the pure label/size/escape helpers stay bound here.
 
 test('escapeTrashHtml: the five metacharacters; null/undefined -> empty', () => {
   assert.equal(escapeTrashHtml('<a href="x">&\'</a>'), '&lt;a href=&quot;x&quot;&gt;&amp;&#039;&lt;/a&gt;');

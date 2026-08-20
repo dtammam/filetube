@@ -14,6 +14,9 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
 
+// v1.159: renderTrashSection renders the list via the shared table component
+// (a common.js global in the browser); wire it for node.
+global.buildSortableTable = require('../../public/js/common.js').buildSortableTable;
 const {
   formatTrashToolbarLabel, formatTrashArmLabel, renderTrashSection,
 } = require('../../public/js/setup.js');

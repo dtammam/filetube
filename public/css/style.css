@@ -11432,6 +11432,9 @@ a.queue-upnext-next:hover {
   color: var(--text-secondary);
   font-size: var(--fs-sm);
 }
+/* v1.159: the Trash Title cell (thumb + truncating title) + its actions cell. */
+.trash-title-cell { display: flex; align-items: center; gap: var(--space-5); min-width: 0; }
+.trash-actions { display: inline-flex; gap: var(--space-3); }
 .trash-purge-confirm { display: none; }
 .trash-purge-btn.trash-confirming .trash-purge-label { display: none; }
 .trash-purge-btn.trash-confirming .trash-purge-confirm { display: inline; }

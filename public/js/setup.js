@@ -2276,25 +2276,46 @@ function formatTrashSize(bytes) {
 
 // One trash row: thumbnail (the sidecar re-keyed with the move, so
 // /thumbnail/<trashId> resolves), title, meta line, Restore + two-tap Purge.
-function buildTrashRowHtml(item, retentionDays, nowMs) {
-  var tid = escapeTrashHtml(item.trashId);
-  var title = escapeTrashHtml(item.title || item.name || 'Untitled');
-  var metaBits = [];
-  var size = formatTrashSize(item.size);
-  if (size) metaBits.push(escapeTrashHtml(size));
-  metaBits.push(escapeTrashHtml(trashDaysLeftLabel(item.trashedAt, retentionDays, nowMs)));
-  return '' +
-    '<div class="trash-row" data-trash-id="' + tid + '">' +
-    '<img class="trash-thumb" src="/thumbnail/' + encodeURIComponent(item.trashId || '') + '" alt="" loading="lazy" />' +
-    '<div class="trash-info">' +
-    '<div class="trash-title" title="' + title + '">' + title + '</div>' +
-    '<div class="trash-meta">' + metaBits.join(' &bull; ') + '</div>' +
-    '</div>' +
-    '<button type="button" class="btn btn-sm trash-restore-btn" data-trash-id="' + tid + '">Restore</button>' +
-    '<button type="button" class="btn btn-sm trash-purge-btn" data-trash-id="' + tid + '">' +
-    '<span class="trash-purge-label">Purge</span><span class="trash-purge-confirm">Sure?</span>' +
-    '</button>' +
-    '</div>';
+// v1.159 (Dean): the Trash Title cell - thumbnail + title (textContent-escaped);
+// the title truncates, the thumb is fixed.
+function buildTrashTitleCell(item) {
+  var box = document.createElement('div');
+  box.className = 'trash-title-cell';
+  var img = document.createElement('img');
+  img.className = 'trash-thumb';
+  img.src = '/thumbnail/' + encodeURIComponent(item.trashId || '');
+  img.alt = '';
+  img.loading = 'lazy';
+  var t = document.createElement('span');
+  t.className = 'trash-title';
+  t.textContent = item.title || item.name || 'Untitled';
+  t.title = t.textContent;
+  box.appendChild(img);
+  box.appendChild(t);
+  return box;
+}
+
+// The Trash actions cell: Restore + the two-tap Purge, SAME classes + data-
+// trash-id the delegated listEl handler (restore/purge + the per-item two-tap
+// arm) keys off - so that wiring is UNCHANGED, only the layout moved into a
+// sortable-table cell.
+function buildTrashActions(item) {
+  var tid = item.trashId || '';
+  var box = document.createElement('div');
+  box.className = 'trash-actions';
+  var restore = document.createElement('button');
+  restore.type = 'button';
+  restore.className = 'btn btn-sm trash-restore-btn';
+  restore.setAttribute('data-trash-id', tid);
+  restore.textContent = 'Restore';
+  var purge = document.createElement('button');
+  purge.type = 'button';
+  purge.className = 'btn btn-sm trash-purge-btn';
+  purge.setAttribute('data-trash-id', tid);
+  purge.innerHTML = '<span class="trash-purge-label">Purge</span><span class="trash-purge-confirm">Sure?</span>';
+  box.appendChild(restore);
+  box.appendChild(purge);
+  return box;
 }
 
 // v1.158: the trash toolbar's two label strings, pure (unit-tested). The
@@ -2355,8 +2376,29 @@ function renderTrashSection(signal) {
         if (signal.aborted) return;
         disarm();
         disarmEmpty();
-        listEl.innerHTML = body.items.map((item) => buildTrashRowHtml(item, body.retentionDays)).join('');
+        // v1.159: render the trash as a sortable table (Title | Size | Expires,
+        // + Restore/Purge actions). The delegated restore/purge handler + the
+        // per-item two-tap arm below are UNCHANGED (they key off the button
+        // classes + data-trash-id, which the actions cell still carries).
         const count = body.items.length;
+        if (count === 0) {
+          listEl.textContent = ''; // the #trash-empty blurb below carries the empty state
+        } else {
+          const retention = body.retentionDays;
+          buildSortableTable(listEl, {
+            caption: 'Trash',
+            columns: [
+              { key: 'title', label: 'Title', format: (it) => buildTrashTitleCell(it), sortValue: (it) => (it.title || it.name || '').toLowerCase() },
+              { key: 'size', label: 'Size', numeric: true, align: 'end', sortValue: (it) => Number(it.size) || 0, format: (it) => (formatTrashSize(it.size) || '-') },
+              { key: 'trashed', label: 'Expires', numeric: true, align: 'end', sortValue: (it) => Number(it.trashedAt) || 0, format: (it) => trashDaysLeftLabel(it.trashedAt, retention) },
+            ],
+            rows: body.items,
+            actions: (it) => buildTrashActions(it),
+            filter: { text: (it) => it.title || it.name || '', placeholder: 'Filter by title...' },
+            defaultSort: { key: 'trashed', dir: 'desc' },
+            persistKey: 'ft-stable:trash',
+          });
+        }
         if (emptyEl) emptyEl.hidden = count > 0;
         // The toolbar (total + Empty button) only shows when there is something
         // to empty; hide it wholesale on an empty trash.
@@ -2930,7 +2972,9 @@ if (typeof module !== 'undefined' && module.exports) {
     loadUsersList, buildUserRoleCell,
     // v1.157 (P3): the configured-folder-list skeleton (pure string builder).
     buildSetupFolderSkeleton,
-    transcodeNamesSuffix, escapeTrashHtml, trashDaysLeftLabel, formatTrashSize, buildTrashRowHtml,
+    transcodeNamesSuffix, escapeTrashHtml, trashDaysLeftLabel, formatTrashSize,
+    // v1.159: the trash-table cell builders (jsdom-tested in trash-table.test.js).
+    buildTrashTitleCell, buildTrashActions,
     // v1.158: the trash toolbar's two pure label strings + the render/wiring
     // (jsdom-mounted to bind the DESTRUCTIVE two-tap: one tap never fires).
     formatTrashToolbarLabel, formatTrashArmLabel, renderTrashSection,
