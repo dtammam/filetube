@@ -122,6 +122,24 @@ test('v1.153 (Dean): a quick-link click SPA-navigates + closes the menu (keeps t
   assert.strictEqual(global.document.querySelector('.account-menu-dropdown').hidden, true, 'the menu closed');
 });
 
+test('v1.153.1: Subscriptions is added to an ALREADY-BUILT menu when the module enables late (cold-cache first load)', async () => {
+  const common = fresh({ user: { id: 1, displayName: 'Dean', role: 'member', avatar: { present: false } } });
+  const { injectAccountMenu, ensureAccountMenuSubscriptionsRow } = common;
+  // cold cache: NO subscriptions marker in the DOM when the menu builds
+  injectAccountMenu();
+  await tick();
+  const labelsOf = () => [...global.document.querySelectorAll('.account-menu-item span')].map((s) => s.textContent);
+  assert.ok(!labelsOf().includes('Subscriptions'), 'not present at build time (cold cache)');
+  // the /health probe resolves later -> injectSubscriptionsNavNodes patches the menu
+  ensureAccountMenuSubscriptionsRow();
+  assert.deepStrictEqual(labelsOf(), ['Change photo', 'Liked', 'History', 'Stats', 'Subscriptions', 'Settings', 'Theme', 'Sign out'],
+    'Subscriptions inserted after Stats, before Settings');
+  assert.strictEqual([...global.document.querySelectorAll('a.account-menu-item[href="/subscriptions"]')].length, 1);
+  // idempotent: a second call never duplicates
+  ensureAccountMenuSubscriptionsRow();
+  assert.strictEqual([...global.document.querySelectorAll('a.account-menu-item[href="/subscriptions"]')].length, 1);
+});
+
 test('injectAccountMenu: click toggles the dropdown; outside-click + Escape close it', async () => {
   const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', role: 'member', avatar: { present: false } } });
   injectAccountMenu();

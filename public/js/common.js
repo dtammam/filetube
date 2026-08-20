@@ -3102,6 +3102,32 @@ function injectSubscriptionsNavNodes() {
         // v1.44 T12: re-apply the user's bar layout now that this item exists.
         applyBottomNavCustomization();
       }
+      // v1.153.1 (Dean device): also add the "You" account-menu Subscriptions
+      // row. The build-time gate in injectAccountMenu only sees the marker on a
+      // WARM capability cache; on a session's first load this injection (the
+      // /health resolve) can land AFTER the menu is built, so patch it here too.
+      // Idempotent.
+      ensureAccountMenuSubscriptionsRow();
+}
+
+// v1.153.1: add the Subscriptions quick link to an already-built account menu
+// (the cold-first-load path -- see injectSubscriptionsNavNodes). No-op if the
+// menu isn't built yet (the build-time gate covers the warm-cache case) or the
+// row already exists. Inserted after Stats, before Settings, matching the
+// build-time order; the menu's delegated click handler gives it the same
+// in-app SPA navigation as the other quick links.
+function ensureAccountMenuSubscriptionsRow() {
+  if (typeof document === 'undefined') return;
+  const menu = document.querySelector('.account-menu-dropdown');
+  if (!menu) return;
+  if (menu.querySelector('a.account-menu-item[href="/subscriptions"]')) return;
+  const subs = buildAccountMenuRow('a', 'Subscriptions', 'icon-refresh');
+  subs.href = '/subscriptions';
+  const stats = menu.querySelector('a.account-menu-item[href="/stats.html"]');
+  const settings = menu.querySelector('a.account-menu-item[href="/setup.html"]');
+  if (stats) stats.insertAdjacentElement('afterend', subs);
+  else if (settings) settings.insertAdjacentElement('beforebegin', subs);
+  else menu.appendChild(subs);
 }
 
 // ---- v1.52 instant watch: the seed-from-card stash --------------------------
@@ -12327,7 +12353,7 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveTheme, THEME_REGISTRY, activeNavItem,
     // v1.82: the account menu injector + avatar builder + shared sign-out +
     // theme-glyph sync.
-    injectAccountMenu, buildAccountAvatarEl, accountSignOut, updateAccountMenuThemeItem,
+    injectAccountMenu, ensureAccountMenuSubscriptionsRow, buildAccountAvatarEl, accountSignOut, updateAccountMenuThemeItem,
     // v1.83: the pure avatar-crop geometry + the crop modal.
     avatarMinScale, clampAvatarOffset, avatarSourceRect, cropAvatarFile,
     // v1.78 device handoff: the UA label table. Pure, and exactly the kind of

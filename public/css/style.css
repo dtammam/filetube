@@ -7435,7 +7435,7 @@ body.ft-audio-expanded {
 .md-hero {
   display: flex; align-items: center; gap: var(--space-6);
   background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-lg);
-  margin: var(--space-8); padding: var(--space-8); min-height: 96px;
+  margin: var(--space-8) 0; padding: var(--space-8); min-height: 96px;
 }
 .md-hero .md-tile--hero { width: 60px; height: 60px; border-radius: var(--radius-lg); }
 .md-hero .md-tile--hero svg { width: 54%; height: 54%; }
@@ -7461,6 +7461,9 @@ body.ft-audio-expanded {
     display: grid; grid-template-columns: var(--md-nav-width) minmax(0, 1fr);
     gap: var(--space-12); align-items: start; max-width: 1040px; margin: 0 auto;
   }
+  /* v1.153.1: constrain the full-width page header to the track's width + centre
+     it, so the header box and the rail+pane below share the same left/right. */
+  .md-hero { max-width: 1040px; margin-left: auto; margin-right: auto; }
   .md-root[data-md-open="false"] .md-panes,
   .md-root[data-md-open="true"] .md-nav { display: block; }
   .md-root[data-md-open="true"] .md-panes { animation: none; }
