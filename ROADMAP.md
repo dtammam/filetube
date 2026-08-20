@@ -80,6 +80,31 @@
 
 ## Shipped
 
+### v1.155.1 - hotfix: the collapse toggle crushed the channel list (2026-08-20)
+
+Dean's device (213 subscriptions): every channel name in the new list wrapped
+ONE LETTER PER LINE. Root-caused in code, not theory: `mountCollapseToggle`
+inserts the "Hide subscriptions" toggle `beforebegin` the list container, and
+v1.155 (T1) had wrapped that container in a `.sub-list-body` FLEX ROW (list +
+A-Z scrubber). So the toggle landed INSIDE that row as a flex sibling of the
+list, stealing its width; with the list's `min-width:0` it shrank below content
+and the rows wrapped catastrophically. A regression this exact wave introduced.
+
+Fix: `chooseCollapseToggleAnchor(listContainer)` returns the `.sub-list-body`
+wrapper (via `closest`), so the toggle inserts ABOVE the whole row, never as a
+flex sibling. Falls back to the list itself on an un-wrapped shell. Extracted to
+module scope + exported; a jsdom test binds the anchor choice + the insertion
+outcome, and (after the slim gate's SUGGESTION) a comment-stripped tripwire
+binds the caller too - the first cut was porous (matched the helper's own
+definition), which mutation-testing caught. Diff is subscriptions.js + tests
+only; no CSS/markup change, so no new layout risk.
+
+Slim gate (adversarial): APPROVE, no CRITICAL/WARNING - all three anchor mutants
+confirmed red, the single `.sub-list-body` verified as the list's direct parent.
+Dual-Node 7270/7270 on v22.23.1 AND v24.14.0. No browser in the build env, so
+Dean's device is the visual arbiter. Device pass: the channel names render on
+one line at full width again.
+
 ### v1.155.0 - Subscriptions redesign, part 1: scale + iOS panels (2026-08-20)
 
 The first half of the Subscriptions redesign Dean approved via prototype, split

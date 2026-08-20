@@ -1846,5 +1846,11 @@
     "date": "2026-08-20",
     "title": "Subscriptions that scale, and a tap-to-open channel page",
     "intent": "The Subscriptions list is built for a big library now. There's a search box at the top to find a channel instantly, the list is grouped into A-Z sections, and there's an A-Z strip down the side to jump straight to a letter - no more endless scrolling to reach the ones near the bottom. Tap any channel and its settings slide in as their own page, with the name centered and a back arrow to slide back. This is the first half of the Subscriptions makeover; more is on the way."
+  },
+  {
+    "version": "1.155.1",
+    "date": "2026-08-20",
+    "title": "Fix: channel names were squished to one letter per line",
+    "intent": "A quick fix to yesterday's Subscriptions update. On a large library the channel list was getting badly squeezed - each name stretched down the screen one letter at a time - because the 'Hide subscriptions' button was crowding the list sideways. The list now uses its full width again, so channel names read normally."
   }
 ]
