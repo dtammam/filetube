@@ -79,6 +79,35 @@ test('Books folders render a 3-column (Name|Books|Size) sortable table, no Lengt
   } finally { teardown(dom); }
 });
 
+test('v1.160: Most watched is a Title|Plays sortable table, default Plays desc, no rank prefix', () => {
+  const dom = mount();
+  try {
+    const host = global.document.getElementById('host');
+    stats.renderMostWatched(host, [
+      { title: 'Rewatched Lots', viewCount: 40 },
+      { title: 'Watched Once', viewCount: 1 },
+      { title: 'Middle', viewCount: 12 },
+    ]);
+    const headers = Array.from(host.querySelectorAll('.stable-th')).map((t) => t.textContent);
+    assert.deepEqual(headers, ['Title', 'Plays']);
+    assert.deepEqual(names(host), ['Rewatched Lots', 'Middle', 'Watched Once'], 'default Plays desc (the ranking)');
+    assert.ok(!names(host)[0].startsWith('1.'), 'no "N." rank prefix (sorting redefines rank)');
+    // Plays shows the raw count (header says Plays); sort by title works too
+    host.querySelector('.stable-th[data-col="title"]').dispatchEvent(new dom.window.Event('click'));
+    assert.deepEqual(names(host), ['Middle', 'Rewatched Lots', 'Watched Once'], 'title asc');
+  } finally { teardown(dom); }
+});
+
+test('v1.160: Under the hood fill class lifts the 240px cap but keeps padding (not a .stable table)', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.folder-list-builder--fill\s*\{[^}]*max-height:\s*none/, 'the fill class lifts the cap');
+  assert.doesNotMatch(css, /\.folder-list-builder--fill\s*\{[^}]*padding:\s*0/, 'fill KEEPS card padding (only -host zeroes it for a .stable table)');
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'stats.html'), 'utf8');
+  assert.match(html, /id="stats-inventory-list"[^>]*folder-list-builder--fill|folder-list-builder--fill[^>]*id="stats-inventory-list"/, 'Under the hood uses the fill class');
+  assert.match(html, /id="stats-most-watched-list"[^>]*stats-table-host|stats-table-host[^>]*id="stats-most-watched-list"/, 'Most watched uses the table-host fill');
+});
+
 test('empty groups keep the friendly blurb (no empty table)', () => {
   const dom = mount();
   try {
