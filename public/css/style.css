@@ -11530,7 +11530,18 @@ a.queue-upnext-next:hover {
   white-space: nowrap;
 }
 .stable-actions { display: inline-flex; justify-content: flex-end; gap: var(--space-3); }
+/* a wrap column (e.g. Duplicates' filename + its file paths) is not truncated,
+   and its rows top-align so the numeric columns sit against the first line. */
+.stable--top .stable-row { align-items: start; }
+.stable-cell--wrap { min-width: 0; }
 .stable-empty { color: var(--text-secondary); padding: var(--space-8) var(--space-6); text-align: center; }
+/* Duplicates: a section title above each table, and the wrap cell's key + paths. */
+.stable-section-title {
+  font-weight: var(--fw-bold);
+  padding: var(--space-6) var(--space-6) var(--space-3);
+}
+.dup-key { font-weight: var(--fw-semibold); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dup-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- v1.69 Podcasts place ---------------------------------------------------
    Era/mode tokens only (the type-scale lock); glyphs via icon-* masks never

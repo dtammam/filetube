@@ -11984,7 +11984,7 @@ function buildSortableTable(host, config) {
   if (!sortKey) { sortKey = columns[0].key; sortDir = defaultSortDir(columns[0]); }
 
   const root = doc.createElement('div');
-  root.className = 'stable';
+  root.className = 'stable' + (columns.some((c) => c.wrap) ? ' stable--top' : '');
   root.setAttribute('role', 'table');
   if (cfg.caption) root.setAttribute('aria-label', cfg.caption);
   // Grid template: the FIRST column flexes + truncates, the rest size to
@@ -12067,7 +12067,7 @@ function buildSortableTable(host, config) {
       tr.setAttribute('role', 'row');
       columns.forEach((c, ci) => {
         const cell = doc.createElement('div');
-        cell.className = 'stable-cell' + (c.align === 'end' ? ' stable-cell--num' : (ci === 0 ? ' stable-cell--name' : ''));
+        cell.className = 'stable-cell' + (c.align === 'end' ? ' stable-cell--num' : (c.wrap ? ' stable-cell--wrap' : (ci === 0 ? ' stable-cell--name' : '')));
         cell.setAttribute('role', 'cell');
         const out = c.format ? c.format(row) : (row ? row[c.key] : '');
         if (out && out.nodeType) cell.appendChild(out);

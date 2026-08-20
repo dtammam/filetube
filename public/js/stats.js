@@ -257,32 +257,56 @@ function renderDuplicates(root, report) {
     root.appendChild(empty);
     return;
   }
-  const renderSection = (title, groups, keyLabel) => {
+  // The "Duplicate" cell: the group key (truncated) over its file paths - a
+  // wrap column so the paths show (textContent throughout: filenames are
+  // user-controlled). READ-ONLY, no delete affordance (unchanged).
+  const dupNameCell = (group, keyText) => {
+    const box = document.createElement('div');
+    const key = document.createElement('div');
+    key.className = 'dup-key';
+    key.textContent = keyText;
+    box.appendChild(key);
+    (Array.isArray(group.items) ? group.items : []).forEach((item) => {
+      const p = document.createElement('div');
+      p.className = 'dup-path stats-meta-text';
+      p.textContent = `${item.filePath} (${formatByteSize(item.size)})`;
+      box.appendChild(p);
+    });
+    return box;
+  };
+  const renderSection = (title, groups, keyLabel, persistKey) => {
     if (groups.length === 0) return;
     const header = document.createElement('div');
+    header.className = 'stable-section-title';
     header.textContent = title;
-    header.style.cssText = 'font-weight:var(--fw-bold); padding:var(--space-5) var(--space-2) var(--space-2);';
     root.appendChild(header);
-    groups.slice(0, DUPLICATE_GROUPS_RENDER_CAP).forEach((group) => {
-      const items = Array.isArray(group.items) ? group.items : [];
-      const row = document.createElement('div');
-      row.style.cssText = 'padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
-      const label = document.createElement('div');
-      label.textContent = keyLabel(group);
-      label.style.cssText = 'overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
-      const meta = document.createElement('div');
-      meta.textContent = `${formatCount(items.length)} copies · ${formatByteSize(group.totalBytes)} total · ${formatByteSize(group.wastedBytes)} reclaimable (keeping the largest)`;
-      meta.className = 'stats-meta-text';
-      row.appendChild(label);
-      row.appendChild(meta);
-      items.forEach((item) => {
-        const pathLine = document.createElement('div');
-        pathLine.textContent = `${item.filePath} (${formatByteSize(item.size)})`;
-        pathLine.className = 'stats-meta-text';
-        pathLine.style.cssText = 'padding-left:var(--space-6); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
-        row.appendChild(pathLine);
-      });
-      root.appendChild(row);
+    // v1.159 (Dean): sort by Reclaimable DESC BEFORE the 50-group cap, so the
+    // biggest offenders always survive the cap (the old order was arbitrary);
+    // the sortable table then re-sorts the shown set by any column.
+    const shown = groups.slice()
+      .sort((a, b) => (Number(b.wastedBytes) || 0) - (Number(a.wastedBytes) || 0))
+      .slice(0, DUPLICATE_GROUPS_RENDER_CAP);
+    const rows = shown.map((g) => ({
+      group: g,
+      key: keyLabel(g),
+      copies: Array.isArray(g.items) ? g.items.length : 0,
+      total: Number(g.totalBytes) || 0,
+      wasted: Number(g.wastedBytes) || 0,
+    }));
+    const host = document.createElement('div');
+    root.appendChild(host);
+    buildSortableTable(host, {
+      caption: title,
+      columns: [
+        { key: 'key', label: 'Duplicate', wrap: true, format: (r) => dupNameCell(r.group, r.key) },
+        { key: 'copies', label: 'Copies', numeric: true, align: 'end', sortValue: (r) => r.copies, format: (r) => formatCount(r.copies) },
+        { key: 'total', label: 'Total', numeric: true, align: 'end', sortValue: (r) => r.total, format: (r) => formatByteSize(r.total) },
+        { key: 'wasted', label: 'Reclaim', numeric: true, align: 'end', sortValue: (r) => r.wasted, format: (r) => formatByteSize(r.wasted) },
+      ],
+      rows,
+      filter: { text: (r) => r.key, placeholder: 'Filter by name...' },
+      defaultSort: { key: 'wasted', dir: 'desc' },
+      persistKey,
     });
     if (groups.length > DUPLICATE_GROUPS_RENDER_CAP) {
       const more = document.createElement('div');
@@ -291,8 +315,8 @@ function renderDuplicates(root, report) {
       root.appendChild(more);
     }
   };
-  renderSection('Same filename', nameGroups, (group) => group.key);
-  renderSection('Same video, different filenames', idGroups, (group) => `Video id [${group.key}]`);
+  renderSection('Same filename', nameGroups, (group) => group.key, 'ft-stable:stats-dup-name');
+  renderSection('Same video, different filenames', idGroups, (group) => `Video id [${group.key}]`, 'ft-stable:stats-dup-id');
 }
 
 // ---- v1.41.0: Books inventory + About/version section ----------------------
@@ -685,5 +709,5 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors setup.js/player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS, renderBreakdownList, renderBookFolders };
+  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS, renderBreakdownList, renderBookFolders, renderDuplicates, DUPLICATE_GROUPS_RENDER_CAP };
 }
