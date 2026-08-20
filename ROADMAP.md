@@ -80,6 +80,42 @@
 
 ## Shipped
 
+### v1.157.1 - desktop nav-gap collapse + You-avatar shimmer (2026-08-20)
+
+Two desktop-only bugs Dean reported on his device after v1.157.
+
+- The master-detail nav group headers (LIBRARY/SYSTEM/ACCOUNT on Settings,
+  BREAKDOWNS/SYSTEM on Stats) "shifted up and stayed until refresh" the moment
+  you clicked any row - desktop only, never on iOS or Subscriptions.
+  RE-ROOT-CAUSED (the v1.153 `position: sticky` guess was WRONG and is deleted):
+  `.md-nav` is a flex column whose `gap` is the SOLE separator between the groups
+  (`.md-group` carries no margin). The desktop rule that re-shows the nav when a
+  detail opens (`data-md-open="true"`, overriding the mobile hide) used
+  `display: block`, which drops the flex gap - so the groups collapsed together
+  and stayed collapsed while `data-md-open` stayed true. The tell that falsified
+  the sticky theory was Dean's own wording: "persists until REFRESH", a
+  persistent-STATE signature, not the scroll-reset a sticky box would show. Fix:
+  re-show the opened nav as `flex`. One line, plus removing the dead sticky patch.
+- The "You" button avatar photo painted an EMPTY disc until it loaded+decoded
+  ("empty then fills"). It now shimmers the disc (.skeleton-shimmer) as a
+  placeholder and reveals the <img> only once its `load` fires (CSS holds it at
+  opacity:0 until `.is-loaded`); a load error drops the photo and paints the
+  initials monogram, so the disc is never left blank.
+
+SLIM gate (adversarial seat, client-only hotfix, no data at risk): APPROVE, no
+CRITICAL/WARNING. It mutation-killed all four fix points (including two mutants
+the commit didn't claim - the load-reveal and the error-monogram), proved the
+flex override does NOT leak below 769px (mobile push-in intact), proved every
+avatar caller routes through the load->is-loaded path (no stuck-invisible img),
+and applied its one non-blocking test-hardening suggestion. Dual-Node 7305/7305
+on v22.23.1 AND v24.14.0. No browser in the build env -> Dean's desktop probe is
+the final arbiter.
+
+Device probes (desktop): open Settings, click any nav row - the LIBRARY/SYSTEM/
+ACCOUNT headers stay put (no upward shift, no persist-until-refresh); same on
+Stats (BREAKDOWNS/SYSTEM). The "You" avatar shows a brief shimmer then the photo,
+never an empty disc. Confirm iOS + Subscriptions are unchanged.
+
 ### v1.157.0 - cold-launch crispness sweep (2026-08-20)
 
 Dean's #2: kill flash-of-unstyled/unloaded content + layout SHIFT on a cold PWA

@@ -1870,5 +1870,11 @@
     "date": "2026-08-20",
     "title": "A crisper cold start - no more jump and pop-in",
     "intent": "Polished how the app looks the instant it opens. The home page no longer lurches downward as your Continue watching/listening/reading rows load in - their space is held ahead of time. On iPhone, the menu and side icons appear instantly instead of blinking in a moment late. And a few pages that used to flash empty before filling - Settings' folder list, a podcast's episode list - now show a gentle placeholder while they load."
+  },
+  {
+    "version": "1.157.1",
+    "date": "2026-08-20",
+    "title": "Two desktop polish fixes",
+    "intent": "Fixed a desktop quirk where clicking a menu item on Settings or Stats made the section headings jump upward and stay bunched together until you reloaded the page - they now stay neatly spaced. And the little account picture in the top-right 'You' button now shows a soft shimmer while it loads instead of popping in from an empty circle."
   }
 ]
