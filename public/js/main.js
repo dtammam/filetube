@@ -340,6 +340,32 @@ function buildFeedSkeleton(rows, cards) {
 const FEED_SKELETON_ROWS = 3;
 const FEED_SKELETON_CARDS = 6;
 
+// v1.157 (P1, cold-launch crispness): hydrate one home "Continue *" row without
+// a layout jump. The row hosts are inserted EMPTY above #video-grid, then filled
+// after an async fetch -- which shoved the whole grid DOWN on every cold launch
+// for anyone with in-progress items (classic is the default layout,
+// homeRowEnabled defaults ON). Now, when the row had content LAST launch (a
+// per-row `ft-home-row-seen:*` flag -- the avatar/bell last-known-state
+// pattern), we seed a shape-matched skeleton (a single buildFeedSkeleton row)
+// into the host FIRST, reserving the row's height so the fetched content
+// replaces it IN PLACE (zero shift). A user with nothing to continue has no
+// flag, so gets no skeleton -- never a reserve-then-collapse. `fetcher` resolves
+// to the section HTML ('' when the kind has no in-progress items); the flag is
+// then set to whether content actually rendered, and cleared on a fetch error.
+function hydrateHomeRow(host, seenId, fetcher) {
+  if (!host) return;
+  const seenKey = 'ft-home-row-seen:' + seenId;
+  let hadItems = false;
+  try { hadItems = localStorage.getItem(seenKey) === '1'; } catch { hadItems = false; }
+  if (hadItems) host.innerHTML = buildFeedSkeleton(1, HOME_ROW_CAP);
+  fetcher()
+    .then((html) => {
+      host.innerHTML = html || '';
+      try { localStorage.setItem(seenKey, html ? '1' : '0'); } catch { /* private mode -- session-only */ }
+    })
+    .catch(() => { host.innerHTML = ''; });
+}
+
 // ---- v1.84 Modern Mode: the filter-chip row ---------------------------------
 //
 // The `filter` params are the CLIENT half of the server's MODERN_GRID_FILTERS
@@ -703,6 +729,10 @@ if (typeof module !== 'undefined' && module.exports) {
     buildFeedCardHtml,
     buildFeedRowHtml,
     buildFeedSkeleton,
+    // v1.157 (P1): the Continue-row reserve-then-fill hydrator, exported so the
+    // no-jump behaviour (seed skeleton only when last-seen; reveal both axes) is
+    // bound by EXECUTION.
+    hydrateHomeRow,
     renderHomeFeed,
     homeRowEnabled,
     migrateListeningRowPref,
@@ -3012,46 +3042,41 @@ const PreviewCards = (function () {
         // the same home resume surface every other kind already had. Same
         // rules as the rows below: toggleable, empty selection renders
         // NOTHING.
+        // v1.157 (P1): each Continue row reserves a shape-matched skeleton
+        // before its fetch (gated on a per-row last-known flag) so the grid no
+        // longer jumps down as the rows arrive -- see hydrateHomeRow.
         const videosRowHost = document.createElement('div');
         booksRowHost.insertAdjacentElement('beforebegin', videosRowHost);
         if (homeRowEnabled('ft-home-continue-watching')) {
-          fetch(`/api/videos?filter=recent-watching&limit=${HOME_ROW_CAP}`)
-            .then((r) => (r.ok ? r.json() : { items: [] }))
-            .then((data) => {
-              // No See-all href: the watched-state filter is a stored
-              // toolbar pref, not a URL scope - a ?watch= link would
-              // silently no-op (the v1.68.1 bystander-artifact lesson).
-              videosRowHost.innerHTML = buildVideoHomeSectionHtml(data.items, 'Continue watching', '');
-            })
-            .catch(() => { videosRowHost.innerHTML = ''; });
+          hydrateHomeRow(videosRowHost, 'watching', () =>
+            fetch(`/api/videos?filter=recent-watching&limit=${HOME_ROW_CAP}`)
+              .then((r) => (r.ok ? r.json() : { items: [] }))
+              // No See-all href: the watched-state filter is a stored toolbar
+              // pref, not a URL scope - a ?watch= link would silently no-op
+              // (the v1.68.1 bystander-artifact lesson).
+              .then((data) => buildVideoHomeSectionHtml(data.items, 'Continue watching', '')));
         }
         // v1.73 (Dean ruling 1): ONE merged "Continue listening" host sits
-        // ABOVE the books one - music tracks + podcast episodes interleaved
-        // by recency. One toggle governs it; a device where EITHER
-        // pre-v1.73 toggle was on shows the row (both-off stays off - the
-        // retired podcasts key is still READ for that migration, just no
-        // longer offered in Settings).
+        // ABOVE the books one - music tracks + podcast episodes interleaved by
+        // recency. One toggle governs it; a device where EITHER pre-v1.73
+        // toggle was on shows the row (both-off stays off - the retired
+        // podcasts key is still READ for that migration).
         const listeningRowHost = document.createElement('div');
         booksRowHost.insertAdjacentElement('beforebegin', listeningRowHost);
         // Gate C1: fold the retired key ONCE, then the ONE key governs.
         migrateListeningRowPref();
         if (homeRowEnabled('ft-home-continue-listening')) {
-          Promise.all([
-            fetch(`/api/music?filter=recent-listening&limit=${HOME_ROW_CAP}`).then((r) => (r.ok ? r.json() : { items: [] })).catch(() => ({ items: [] })),
-            fetch(`/api/podcasts/episodes?filter=recent-listening&limit=${HOME_ROW_CAP}`).then((r) => (r.ok ? r.json() : { episodes: [] })).catch(() => ({ episodes: [] })),
-          ])
-            .then(([music, pods]) => {
-              listeningRowHost.innerHTML = buildListeningHomeSectionHtml(music.items, pods.episodes, 'Continue listening');
-            })
-            .catch(() => { listeningRowHost.innerHTML = ''; });
+          hydrateHomeRow(listeningRowHost, 'listening', () =>
+            Promise.all([
+              fetch(`/api/music?filter=recent-listening&limit=${HOME_ROW_CAP}`).then((r) => (r.ok ? r.json() : { items: [] })).catch(() => ({ items: [] })),
+              fetch(`/api/podcasts/episodes?filter=recent-listening&limit=${HOME_ROW_CAP}`).then((r) => (r.ok ? r.json() : { episodes: [] })).catch(() => ({ episodes: [] })),
+            ]).then(([music, pods]) => buildListeningHomeSectionHtml(music.items, pods.episodes, 'Continue listening')));
         }
         if (homeRowEnabled('ft-home-continue-reading')) {
-          fetch(`/api/books?filter=reading&limit=${HOME_ROW_CAP}`)
-            .then((r) => (r.ok ? r.json() : { items: [] }))
-            .then((data) => {
-              booksRowHost.innerHTML = buildBooksHomeSectionHtml(data.items, 'Continue reading', '/books');
-            })
-            .catch(() => { booksRowHost.innerHTML = ''; });
+          hydrateHomeRow(booksRowHost, 'reading', () =>
+            fetch(`/api/books?filter=reading&limit=${HOME_ROW_CAP}`)
+              .then((r) => (r.ok ? r.json() : { items: [] }))
+              .then((data) => buildBooksHomeSectionHtml(data.items, 'Continue reading', '/books')));
         }
       } else if (searchQuery) {
         fetch('/api/books?search=' + encodeURIComponent(searchQuery) + '&limit=12')
