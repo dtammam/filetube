@@ -137,6 +137,21 @@ test('renders a REUSABLE header box from data-md-title/desc/hero-icon (above the
   } finally { teardown(dom); }
 });
 
+test('the header box ESCAPES title/desc (reusable surface: no HTML injection)', () => {
+  const { dom, doc, signal } = setup(`
+    <div class="md-root" data-md-page="hz" data-md-title="<b>t</b>" data-md-desc="<i>d</i>">
+      <details data-collapse-key="a" data-md-icon="account" data-md-group="G"><summary>A</summary></details>
+    </div>`);
+  try {
+    wireMasterDetail('hz', doc, signal);
+    const hero = doc.querySelector('.md-hero');
+    assert.strictEqual(hero.querySelector('h2 b'), null, 'title not parsed as HTML');
+    assert.strictEqual(hero.querySelector('p i'), null, 'desc not parsed as HTML');
+    assert.strictEqual(hero.querySelector('h2').textContent, '<b>t</b>', 'title is literal text');
+    assert.strictEqual(hero.querySelector('p').textContent, '<i>d</i>', 'desc is literal text');
+  } finally { teardown(dom); }
+});
+
 test('no header box when a .md-root declares no title/desc (opt-in)', () => {
   const { dom, doc, signal } = setup(`
     <div class="md-root" data-md-page="hy">

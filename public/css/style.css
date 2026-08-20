@@ -3019,7 +3019,7 @@ img.art-shimmer {
 }
 
 /* Setup Wizard Styles */
-/* v1.13.0 item 6: widened from 650px -- the Setup (Library Settings) and
+/* v1.13.0 item 6: widened from 650px -- the Setup (Settings) and
    /subscriptions pages read cramped on a normal desktop viewport at 650px,
    with the multi-control add/one-shot rows wrapping onto several lines
    awkwardly. 780px gives those rows (URL + format + quality + filetype +
@@ -7468,14 +7468,13 @@ body.ft-audio-expanded {
      first row click (desktop, all pages). HYPOTHESIS, not yet reproduced in a
      browser here: the `position: sticky` rail's geometry couples to the grid row
      height, which changes with the selected pane, and the sticky box then
-     repositions. Fix pins it as a self-contained, top-aligned,
-     independently-scrolling rail (align-self:start makes the alignment explicit,
-     max-height + overflow keep the rail's own height off the pane). DEVICE-VERIFY
+     repositions. Fix keeps the rail top-aligned (already, via the track's
+     align-items:start) but caps its own height so it can't couple to the pane:
+     max-height + overflow make it an independently-scrolling box. DEVICE-VERIFY
      with Dean; if it persists, re-root-cause from a screen recording. */
   .md-nav {
     position: sticky;
     top: calc(var(--header-h) + var(--space-8));
-    align-self: start;
     max-height: calc(100vh - var(--header-h) - var(--space-12));
     overflow-y: auto;
   }
@@ -11244,7 +11243,7 @@ a.queue-upnext-next:hover {
   .history-title { font-size: var(--fs-base); }
 }
 
-/* ---- v1.65 trash (Library settings section) -------------------------------- */
+/* ---- v1.65 trash (Settings section) -------------------------------- */
 .trash-list {
   display: flex;
   flex-direction: column;

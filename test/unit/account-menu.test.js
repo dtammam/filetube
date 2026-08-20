@@ -103,6 +103,25 @@ test('injectAccountMenu: the Subscriptions quick link appears only when the modu
   assert.strictEqual(subs.getAttribute('href'), '/subscriptions');
 });
 
+test('v1.153 (Dean): a quick-link click SPA-navigates + closes the menu (keeps the mini-player), not a full reload', async () => {
+  const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', role: 'member', avatar: { present: false } } });
+  const navd = [];
+  global.window.FileTube = { navigate: (url) => navd.push(url) };
+  injectAccountMenu();
+  await tick();
+  const settings = [...global.document.querySelectorAll('a.account-menu-item')].find((a) => a.getAttribute('href') === '/setup.html');
+  assert.ok(settings, 'the Settings quick link exists');
+  // open the menu, then plain-click Settings
+  global.document.querySelector('.account-menu-trigger').click();
+  const evt = new global.window.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+  settings.dispatchEvent(evt);
+  // The menu stops propagation to the document router, so WITHOUT the explicit
+  // handler this click would full-reload (default nav) and kill playback.
+  assert.strictEqual(evt.defaultPrevented, true, 'the default full navigation is prevented');
+  assert.deepStrictEqual(navd, ['http://localhost/setup.html'], 'routed through the in-app SPA navigate');
+  assert.strictEqual(global.document.querySelector('.account-menu-dropdown').hidden, true, 'the menu closed');
+});
+
 test('injectAccountMenu: click toggles the dropdown; outside-click + Escape close it', async () => {
   const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', role: 'member', avatar: { present: false } } });
   injectAccountMenu();

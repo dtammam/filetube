@@ -6172,8 +6172,10 @@ function injectAccountMenu() {
 
     menu.appendChild(accountMenuDivider());
 
-    // Quick links to the library pages. Plain hrefs to known routes -- the
-    // router's delegated click handler intercepts them into in-app swaps.
+    // Quick links to the library pages. Hrefs to known routes; the menu's own
+    // click handler (below) SPA-navigates them in-app -- the delegated document
+    // router can't see these clicks (the menu stops their propagation), so
+    // without that they full-reloaded.
     // v1.153 (Dean): this "You" menu is mobile's main way into these pages
     // (the sidebar is a drawer there), so Stats + Subscriptions join it -
     // they are sidebar-only otherwise, unreachable on a phone without opening
@@ -6186,8 +6188,13 @@ function injectAccountMenu() {
     menu.appendChild(history);
     menu.appendChild(stats);
     // Subscriptions only when the optional yt-dlp module is enabled - gated by
-    // the presence of its already-injected nav entry (the same signal the
-    // sidebar/bottom-nav links use; absent module -> no row).
+    // the presence of its nav entry (the same signal the sidebar/bottom-nav
+    // links use; absent module -> no row). NOTE: on a session's FIRST load the
+    // capability cache (sessionStorage) is cold, so this marker may not be in
+    // the DOM yet when the menu builds (the /api/subscriptions/health probe can
+    // resolve after it) -> the row can be missing until the next full load.
+    // Self-heals then (warm cache injects synchronously first); the sidebar
+    // still exposes Subscriptions meanwhile. Disclosed in ROADMAP.
     if (document.querySelector('[data-nav="subscriptions"], [data-nav-sidebar="subscriptions"]')) {
       const subs = buildAccountMenuRow('a', 'Subscriptions', 'icon-refresh'); subs.href = '/subscriptions';
       menu.appendChild(subs);
@@ -6251,8 +6258,30 @@ function injectAccountMenu() {
       setOpen(menu.hidden);
     });
     // Keep clicks INSIDE the menu from bubbling to the document-close handler
-    // (except the links/items, which navigate/act and then the page changes).
-    menu.addEventListener('click', (e) => { e.stopPropagation(); });
+    // (so a Theme toggle etc. doesn't close the menu). But that same
+    // stopPropagation ALSO starves the document-level SPA router
+    // (handleDocumentClick) of the quick-link anchor clicks, so a plain tap on
+    // e.g. Settings fell through to a FULL page reload -- which unloads the
+    // shell and TEARS DOWN the docked mini-player (Dean, v1.153: "You ->
+    // Settings on mobile stops playback"; the sidebar works because it is not
+    // inside this stopPropagation container). Drive the router EXPLICITLY here
+    // for a same-origin known-route anchor -- close the menu and SPA-navigate,
+    // mirroring shouldInterceptLinkClick -- so the mini-player survives.
+    menu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a.account-menu-item[href]') : null;
+      if (!a) return;
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.getAttribute('target') === '_blank') return;
+      let u;
+      try { u = new URL(a.getAttribute('href'), window.location.href); } catch (_) { return; }
+      if (u.origin !== window.location.origin) return;
+      if (typeof deriveRouteView === 'function' && deriveRouteView(u.pathname)
+        && window.FileTube && typeof window.FileTube.navigate === 'function') {
+        e.preventDefault();
+        setOpen(false);
+        window.FileTube.navigate(u.href);
+      }
+    });
     document.addEventListener('click', () => { if (!menu.hidden) setOpen(false); });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !menu.hidden) { setOpen(false); trigger.focus(); }
