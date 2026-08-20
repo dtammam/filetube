@@ -8525,6 +8525,13 @@ if (typeof window !== 'undefined') {
     const view = deriveRouteView(window.location.pathname);
     const root = getViewRoot();
     if (!view || !root) return; // not a known route, or this page has no shell yet
+    // v1.160 (Dean): take MANUAL scroll control. Default 'auto' makes the browser
+    // restore a remembered scroll position on a pushState in-app nav, which fires
+    // AFTER swapToView's synchronous window.scrollTo(0,0) and overrides it - so a
+    // tap into Stats/Settings/Subscriptions landed scrolled up under the fixed
+    // header. The app already resets on forward nav (swapToView) and restores the
+    // recorded scrollY on back (handlePopState), so it owns scroll fully now.
+    try { if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual'; } catch (_) { /* unsupported */ }
     if (!window.history.state) {
       // v1.45.0 (T2): the session's first stamped entry is depth 0 — the floor
       // the Home control's history.back() can never cross (see buildHistoryState).

@@ -401,3 +401,19 @@ test('goHomeControl: the already-at-home branch scrolls to the top (not a silent
   assert.doesNotMatch(elseBlock, /navigate\(|history\.back/,
     'the already-home branch only scrolls; it never navigates/pops (that would tear down / leave home)');
 });
+
+// v1.160 (Dean): the SPA must take MANUAL scroll control. Default
+// history.scrollRestoration='auto' makes the browser restore a remembered scroll
+// on a pushState in-app nav, which fires AFTER swapToView's window.scrollTo(0,0)
+// and overrides it -> the page lands scrolled up under the fixed header. jsdom
+// does not implement scrollRestoration, so this is a source-lock (device-
+// observable, like the pre-paint FOUC guards): bootRouter must set it 'manual'.
+test('v1.160: bootRouter takes manual scroll control (scrollRestoration = manual)', () => {
+  const src = COMMON_JS.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const boot = src.slice(src.indexOf('function bootRouter('));
+  const body = boot.slice(0, boot.indexOf('\n  }\n'));
+  assert.match(body, /window\.history\.scrollRestoration\s*=\s*'manual'/,
+    'bootRouter must set history.scrollRestoration to manual so the app owns scroll (not the browser auto-restore)');
+  assert.match(body, /'scrollRestoration' in window\.history/,
+    'guarded for browsers without scrollRestoration');
+});
