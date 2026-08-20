@@ -122,6 +122,24 @@ test('build: the chosen sort persists to localStorage and restores on the next b
   } finally { teardown(dom); }
 });
 
+test('build: renderCap shows only the top-N of the current sort + an honest "showing N of M" hint', () => {
+  const dom = mount();
+  try {
+    const many = [];
+    for (let i = 0; i < 10; i += 1) many.push({ name: 'f' + i, bytes: i, sizeLabel: i + 'B' });
+    const host = global.document.createElement('div');
+    buildSortableTable(host, { columns: [NAME, SIZE], rows: many, renderCap: 3, defaultSort: { key: 'size', dir: 'desc' } });
+    assert.strictEqual(host.querySelectorAll('.stable-row').length, 3, 'only 3 rows rendered');
+    // desc -> the 3 BIGGEST (f9,f8,f7), proving the cap is applied AFTER the full sort
+    assert.deepEqual(names(host), ['f9', 'f8', 'f7']);
+    assert.match(host.querySelector('.stable-more').textContent, /Showing 3 of 10/);
+    // a filter that narrows below the cap drops the hint
+    const th = host.querySelector('.stable-th[data-col="size"]');
+    th.dispatchEvent(new dom.window.Event('click')); // flip to asc -> smallest 3 (f0,f1,f2)
+    assert.deepEqual(names(host), ['f0', 'f1', 'f2'], 'asc reaches the smallest across the FULL set, not just the capped view');
+  } finally { teardown(dom); }
+});
+
 test('build: an actions node maps to the CORRECT row after a sort (not the pre-sort position)', () => {
   const dom = mount();
   try {

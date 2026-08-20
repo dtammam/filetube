@@ -35,7 +35,7 @@ test('Stats builds Overview / Breakdowns / System from the DOM-scattered section
     const keys = Array.from(doc.querySelectorAll('.md-nav .md-row')).map((r) => r.getAttribute('data-md-target'));
     assert.deepStrictEqual(keys, [
       'fun-stats', 'records', 'most-watched',
-      'by-type', 'by-folder', 'by-channel', 'books', 'duplicates',
+      'by-type', 'by-folder', 'by-channel', 'videos-audio', 'books', 'duplicates',
       'keyboard-shortcuts', 'under-the-hood', 'about-filetube',
     ], 'grouped, each group in its own document order');
   } finally { unload(dom); }

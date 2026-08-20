@@ -11535,6 +11535,7 @@ a.queue-upnext-next:hover {
 .stable--top .stable-row { align-items: start; }
 .stable-cell--wrap { min-width: 0; }
 .stable-empty { color: var(--text-secondary); padding: var(--space-8) var(--space-6); text-align: center; }
+.stable-more { color: var(--text-secondary); font-size: var(--fs-sm); padding: var(--space-5) var(--space-6); text-align: center; }
 /* Duplicates: a section title above each table, and the wrap cell's key + paths. */
 .stable-section-title {
   font-weight: var(--fw-bold);

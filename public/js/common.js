@@ -12060,8 +12060,14 @@ function buildSortableTable(host, config) {
       body.appendChild(empty);
       return;
     }
+    // renderCap: for large sets (e.g. the whole A/V library) render only the top
+    // N of the CURRENT sort/filter + an honest "showing N of M" hint - never a
+    // silent truncation. Sort/filter still run over the FULL set, so "biggest"
+    // (desc) or "smallest" (asc) or a name filter all reach any item.
+    const total = view.length;
+    const shown = (cfg.renderCap && total > cfg.renderCap) ? view.slice(0, cfg.renderCap) : view;
     const frag = doc.createDocumentFragment();
-    view.forEach((row) => {
+    shown.forEach((row) => {
       const tr = doc.createElement('div');
       tr.className = 'stable-row';
       tr.setAttribute('role', 'row');
@@ -12085,6 +12091,12 @@ function buildSortableTable(host, config) {
       frag.appendChild(tr);
     });
     body.appendChild(frag);
+    if (shown.length < total) {
+      const more = doc.createElement('div');
+      more.className = 'stable-more';
+      more.textContent = 'Showing ' + shown.length + ' of ' + total + ' - refine the filter to see more.';
+      body.appendChild(more);
+    }
   }
 
   if (filterInput) filterInput.addEventListener('input', render);

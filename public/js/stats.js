@@ -319,6 +319,43 @@ function renderDuplicates(root, report) {
   renderSection('Same video, different filenames', idGroups, (group) => `Video id [${group.key}]`, 'ft-stable:stats-dup-id');
 }
 
+// v1.159 (Dean): the "Videos & audio" table - the whole visible library as
+// sortable rows (Title | Type | Length | Size) from its own /api/library-items
+// fetch. renderCap keeps a multi-thousand-item library from mounting thousands
+// of nodes; sort (biggest/longest) + the title filter reach the FULL set.
+const AV_RENDER_CAP = 300;
+function renderAvTable(root, items) {
+  clearChildren(root);
+  const list = Array.isArray(items) ? items : [];
+  if (list.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'theme-card-blurb';
+    empty.textContent = 'No videos or audio in your library yet.';
+    root.appendChild(empty);
+    return;
+  }
+  const rows = list.map((it) => ({
+    title: (it.title || '').toString(),
+    type: it.type === 'audio' ? 'audio' : 'video',
+    dur: Number(it.durationSeconds) || 0,
+    bytes: Number(it.sizeBytes) || 0,
+  }));
+  buildSortableTable(root, {
+    caption: 'Videos and audio',
+    columns: [
+      { key: 'title', label: 'Title', format: (r) => r.title },
+      { key: 'type', label: 'Type', sortValue: (r) => r.type, format: (r) => (r.type === 'audio' ? 'Audio' : 'Video') },
+      { key: 'dur', label: 'Length', numeric: true, align: 'end', sortValue: (r) => r.dur, format: (r) => formatItemDuration(r.dur) },
+      { key: 'bytes', label: 'Size', numeric: true, align: 'end', sortValue: (r) => r.bytes, format: (r) => formatByteSize(r.bytes) },
+    ],
+    rows,
+    filter: { text: (r) => r.title, placeholder: 'Filter by title...' },
+    defaultSort: { key: 'bytes', dir: 'desc' },
+    persistKey: 'ft-stable:stats-av',
+    renderCap: AV_RENDER_CAP,
+  });
+}
+
 // ---- v1.41.0: Books inventory + About/version section ----------------------
 
 function renderBookTiles(root, books) {
@@ -685,6 +722,29 @@ function init(viewRoot) {
         dupRoot.appendChild(error);
       }
     });
+  // v1.159: the A/V table's own fetch (its own titles/sizes payload), independent
+  // of /api/stats + /api/duplicates so any one failure never blanks the others.
+  fetch('/api/library-items', { signal })
+    .then((res) => {
+      if (!res.ok) throw new Error(`GET /api/library-items failed (${res.status})`);
+      return res.json();
+    })
+    .then((body) => {
+      const avRoot = document.getElementById('stats-av-list');
+      if (avRoot) renderAvTable(avRoot, body && body.items);
+    })
+    .catch((err) => {
+      if (err && err.name === 'AbortError') return; // navigated away -- expected
+      console.error('Failed to load the videos & audio list:', err);
+      const avRoot = document.getElementById('stats-av-list');
+      if (avRoot) {
+        clearChildren(avRoot);
+        const error = document.createElement('div');
+        error.className = 'theme-card-blurb';
+        error.textContent = 'Could not load the videos & audio list right now. Try refreshing the page.';
+        avRoot.appendChild(error);
+      }
+    });
 }
 
 // v1.151: the routed-view teardown. Aborts both fetches and removes the
@@ -709,5 +769,5 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors setup.js/player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS, renderBreakdownList, renderBookFolders, renderDuplicates, DUPLICATE_GROUPS_RENDER_CAP };
+  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS, renderBreakdownList, renderBookFolders, renderDuplicates, DUPLICATE_GROUPS_RENDER_CAP, renderAvTable, AV_RENDER_CAP };
 }
