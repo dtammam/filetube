@@ -12084,7 +12084,9 @@ function buildSortableTable(host, config) {
         const act = doc.createElement('div');
         act.className = 'stable-cell stable-actions';
         act.setAttribute('role', 'cell');
-        const node = cfg.actions(row);
+        // Pass the row ELEMENT too, so an action can attach a full-row expando
+        // (e.g. the Users access editor: .stable-row child, grid-column 1/-1).
+        const node = cfg.actions(row, tr);
         if (node) act.appendChild(node);
         tr.appendChild(act);
       }

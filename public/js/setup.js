@@ -1,5 +1,7 @@
 'use strict';
 
+/* global buildSortableTable */ // v1.159: the shared table component (common.js, loaded first)
+
 // FileTube Setup/Settings page — registered VIEW MODULE (FR-1, T1).
 //
 // Extracted from setup.html's former inline <script> (byte-for-byte the same
@@ -2013,6 +2015,11 @@ function wireRestoreControls(signal) {
   }, { signal });
 }
 
+// v1.159 (Dean): the Users list as a sortable, filterable table (Name | Role |
+// Status), sortable by any, filter by name; each row's admin actions live in the
+// trailing actions cell, and the per-user Access editor attaches to the row
+// element (full-row expando). The action wiring + RBAC calls are UNCHANGED -
+// only the layout/sort/filter around them.
 async function loadUsersList(signal, me) {
   const listEl = document.getElementById('users-list');
   if (!listEl) return;
@@ -2025,35 +2032,44 @@ async function loadUsersList(signal, me) {
     listEl.textContent = 'Could not load the user list.';
     return;
   }
-  listEl.innerHTML = '';
-  for (const user of payload.users) {
-    listEl.appendChild(renderUserRow(user, me, signal));
-  }
+  buildSortableTable(listEl, {
+    caption: 'User accounts',
+    columns: [
+      { key: 'name', label: 'Name', format: (u) => u.displayName || u.username, sortValue: (u) => (u.displayName || u.username || '').toLowerCase() },
+      { key: 'role', label: 'Role', sortValue: (u) => u.role || '', format: (u) => buildUserRoleCell(u) },
+      { key: 'status', label: 'Status', sortValue: (u) => (u.id === me.id ? 0 : (u.disabled ? 1 : 2)), format: (u) => (u.id === me.id ? 'You' : (u.disabled ? 'Disabled' : 'Active')) },
+    ],
+    rows: payload.users,
+    actions: (user, rowEl) => buildUserActions(user, me, signal, rowEl),
+    filter: { text: (u) => `${u.displayName || ''} ${u.username || ''}`, placeholder: 'Filter by name...' },
+    defaultSort: { key: 'name', dir: 'asc' },
+    persistKey: 'ft-stable:users',
+  });
 }
 
-// One row per user: name + badges, then the admin actions. Buttons re-fetch
-// the list after every change so the rendered state is always the server's.
-function renderUserRow(user, me, signal) {
-  const row = document.createElement('div');
-  row.className = 'users-row';
+// The Role cell: the role word + small capability badges (subscriptions / edit).
+function buildUserRoleCell(user) {
+  const box = document.createElement('span');
+  const role = document.createElement('span');
+  role.textContent = user.role === 'admin' ? 'Admin' : 'Member';
+  box.appendChild(role);
+  const caps = [];
+  if (user.canManageSubscriptions) caps.push('subscriptions');
+  if (user.canModifyLibrary) caps.push('can edit'); // v1.81 write-RBAC
+  caps.forEach((c) => {
+    const b = document.createElement('span');
+    b.className = 'users-cap-badge';
+    b.textContent = c;
+    box.appendChild(b);
+  });
+  return box;
+}
+
+// The per-user admin actions (the RBAC calls + Access editor), UNCHANGED from
+// the old renderUserRow - just returned as the row's actions cell. `rowEl` is
+// the .stable-row, so the Access editor still attaches as a full-row expando.
+function buildUserActions(user, me, signal, rowEl) {
   const isSelf = user.id === me.id;
-
-  const who = document.createElement('div');
-  who.className = 'users-row-who';
-  const name = document.createElement('strong');
-  name.textContent = user.displayName || user.username;
-  who.appendChild(name);
-  const meta = document.createElement('span');
-  meta.className = 'users-row-meta';
-  const badges = [user.username, user.role];
-  if (user.canManageSubscriptions) badges.push('subscriptions');
-  if (user.canModifyLibrary) badges.push('can edit'); // v1.81 write-RBAC
-  if (user.disabled) badges.push('disabled');
-  if (isSelf) badges.push('you');
-  meta.textContent = badges.join(' - ');
-  who.appendChild(meta);
-  row.appendChild(who);
-
   const actions = document.createElement('div');
   actions.className = 'users-row-actions';
   const refresh = () => loadUsersList(signal, me);
@@ -2101,14 +2117,13 @@ function renderUserRow(user, me, signal) {
     // v1.81 write-RBAC: grant/revoke library-MODIFY (delete/move/edit/scan).
     // Admins always can, so the toggle is member-only like the Access editor.
     addBtn(user.canModifyLibrary ? 'Revoke edit' : 'Allow edit', () => act(`/api/users/${user.id}/modify-library-flag`, { canModifyLibrary: !user.canModifyLibrary }));
-    addBtn('Access', () => openAccessEditor(user, row, signal));
+    addBtn('Access', () => openAccessEditor(user, rowEl, signal));
   }
   if (!isSelf) {
     addBtn('Delete', () => act(`/api/users/${user.id}`, undefined,
       `Delete ${user.username}? Their watch progress, likes, reading positions, and pins go with the account. This cannot be undone.`));
   }
-  row.appendChild(actions);
-  return row;
+  return actions;
 }
 
 // v1.80 RBAC: the per-user access editor. Blocklist (see-all-except-checked) or
@@ -2911,6 +2926,8 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // `window`/`document` -- mirrors player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    // v1.159: the Users list as a sortable table (jsdom-tested action wiring).
+    loadUsersList, buildUserRoleCell,
     // v1.157 (P3): the configured-folder-list skeleton (pure string builder).
     buildSetupFolderSkeleton,
     transcodeNamesSuffix, escapeTrashHtml, trashDaysLeftLabel, formatTrashSize, buildTrashRowHtml,

@@ -11536,6 +11536,19 @@ a.queue-upnext-next:hover {
 .stable-cell--wrap { min-width: 0; }
 .stable-empty { color: var(--text-secondary); padding: var(--space-8) var(--space-6); text-align: center; }
 .stable-more { color: var(--text-secondary); font-size: var(--fs-sm); padding: var(--space-5) var(--space-6); text-align: center; }
+/* v1.159: action-dense tables (Users/Trash/Music) - the actions cell wraps its
+   buttons, and the Users access editor spans the whole row as an expando. */
+.stable-actions { flex-wrap: wrap; }
+.stable-row .access-editor { grid-column: 1 / -1; }
+.users-cap-badge {
+  display: inline-block;
+  margin-left: var(--space-3);
+  padding: 0 var(--space-3);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+}
 /* Duplicates: a section title above each table, and the wrap cell's key + paths. */
 .stable-section-title {
   font-weight: var(--fw-bold);
