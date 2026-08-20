@@ -3484,8 +3484,8 @@ select {
 /* v1.155 (Subscriptions redesign, Q2): the subscription-row drag-to-reorder
    CSS (.sub-row.reorder-row / .sub-row-dragging / .sub-row-drag-over-*) was
    removed with manual reordering -- the list is alphabetical (A-Z sections +
-   search) now. See the new .sub-search / .sub-list-body / .sub-section /
-   .sub-scrubber block further down this file. */
+   search) now. See the .sub-search / .sub-list-body / .sub-section block
+   further down this file. */
 .sub-row-navigable {
   cursor: pointer;
 }
@@ -7314,8 +7314,8 @@ body.ft-audio-expanded {
 
 /* ===========================================================================
    v1.155 Subscriptions redesign: the list-first, scale-ready channel list --
-   a live search field, A-Z sections, and a pointer-only A-Z scrubber rail
-   (answers Dean's "how do we deal with 200+ subscriptions"). Global so it
+   a live search field + A-Z sections (answers Dean's "how do we deal with 200+
+   subscriptions"; the A-Z scrubber rail was removed in v1.156.1). Global so it
    survives the SPA #view-root swap -- page-local <head> styles do not (the
    reloc-preview lesson). All colour/size rides tokens (census ceiling ZERO).
    =========================================================================== */
@@ -7336,16 +7336,10 @@ body.ft-audio-expanded {
   outline: 1px solid var(--border-dark);
   outline-offset: -1px;
 }
-/* The list grows; the scrubber is a thin sticky column beside it -- a real
-   layout column, never an overlay, so it can never cover a row. */
+/* v1.156.1 (Dean device): the A-Z scrubber rail was removed, so the list is
+   the sole child here -- a plain full-width block, no flex column. */
 .sub-list-body {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-4);
-}
-.sub-list-body > .sub-list {
-  flex: 1 1 auto;
-  min-width: 0;
+  display: block;
 }
 /* An A-Z section header: a styled divider labelling its run of rows. (A
    position:sticky variant is a follow-up -- it needs the fixed-header offset
@@ -7358,34 +7352,6 @@ body.ft-audio-expanded {
   color: var(--text-secondary);
   background-color: var(--bg-color);
   border-bottom: 1px solid var(--border-color);
-}
-/* The pointer-only A-Z index rail (aria-hidden; its dots are tabindex=-1).
-   Sticky against the page scroll so it stays reachable through a long list. */
-.sub-scrubber {
-  position: sticky;
-  top: var(--space-8);
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2) 0;
-}
-.sub-scrubber[hidden] {
-  display: none;
-}
-.sub-scrubber-letter {
-  appearance: none;
-  border: none;
-  background: none;
-  padding: 0;
-  width: var(--size-touch);
-  min-height: var(--space-6);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-bold);
-  line-height: var(--lh-tight);
-  color: var(--yt-red);
-  cursor: pointer;
 }
 
 /* ===========================================================================

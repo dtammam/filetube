@@ -137,9 +137,9 @@ test('subscriptions.html still carries its page-local <style> block for the list
   // v1.155 (Subscriptions redesign, Q2): the `.sub-row` drag-and-drop classes
   // (.sub-row-dragging / .sub-row-drag-over-before/after) were REMOVED with
   // manual reordering -- the list is alphabetical (A-Z sections + search) now,
-  // and the new .sub-search / .sub-section / .sub-scrubber rules live in the
-  // GLOBAL style.css (so they survive the SPA #view-root swap). Only the
-  // header-chrome rules remain page-local.
+  // and the .sub-search / .sub-section rules live in the GLOBAL style.css (so
+  // they survive the SPA #view-root swap). Only the header-chrome rules remain
+  // page-local.
   const styleMatch = /<style>[\s\S]*?<\/style>/.exec(subsHtml);
   assert.ok(styleMatch, 'expected a <style> block in subscriptions.html');
   // Strip CSS comments FIRST -- the block's own comment names the retired

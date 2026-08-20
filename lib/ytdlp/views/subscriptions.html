@@ -116,10 +116,10 @@
     /* v1.155 (Subscriptions redesign, Q2): the drag-to-reorder CSS
        (.sub-row.reorder-row / .sub-row-dragging / .sub-row-drag-over-*) was
        REMOVED with manual reordering -- the list is alphabetical (A-Z sections
-       + search) now. The new .sub-search / .sub-list-body / .sub-section /
-       .sub-scrubber rules live in public/css/style.css (global, so they
-       survive the SPA #view-root swap -- page-local <head> styles do not; see
-       the reloc-preview note above). */
+       + search) now. The .sub-search / .sub-list-body / .sub-section rules
+       live in public/css/style.css (global, so they survive the SPA
+       #view-root swap -- page-local <head> styles do not; see the
+       reloc-preview note above). */
 
     /* v1.24.0 A2 (T14): the per-item {video: reason} detail line under a
        subscription row's status line, shown only while that subscription's
@@ -254,16 +254,13 @@
                  aria-label="Search your subscriptions"
                  autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
         </div>
-        <!-- v1.155: the list and its A-Z scrubber rail sit side by side. The
-             scrubber (#sub-scrubber) is built in JS from the sections actually
-             rendered and is a pointer-only visual index (aria-hidden) mirroring
-             the sticky section headers -- the sections + rows are the
-             accessible navigation. -->
+        <!-- v1.156.1 (Dean device): the A-Z scrubber rail was removed (it read
+             as a fat floating column and scrolled away on a long list). The
+             search box + the A-Z section headers are the navigation now. -->
         <div class="sub-list-body">
           <div id="sub-list-container" class="sub-list">
             <!-- Populated dynamically by /js/subscriptions.js -->
           </div>
-          <div id="sub-scrubber" class="sub-scrubber" aria-hidden="true" hidden></div>
         </div>
 
         <!-- ===== slide-in panels (static, hidden until a pill opens one) ===== -->
