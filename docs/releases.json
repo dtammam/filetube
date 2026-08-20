@@ -1828,5 +1828,11 @@
     "date": "2026-08-20",
     "title": "Your music keeps playing when you open Settings",
     "intent": "A few finishing touches to the new menus. The big one: opening Settings from the You menu on your phone no longer stops whatever you're playing - it keeps going in the mini-player, like everywhere else. Each menu page now opens with a friendly header that says what the page is for. Settings is just called \"Settings\" now. And you can jump straight to Stats and Subscriptions from the You menu on your phone, without digging through the side menu."
+  },
+  {
+    "version": "1.153.1",
+    "date": "2026-08-20",
+    "title": "Menu header lines up, and Subscriptions is back in the You menu",
+    "intent": "Two small fixes to yesterday's menu update. The header box at the top of each Settings-style page now lines up neatly with the rows beneath it instead of sitting slightly narrow. And Subscriptions is reliably in the You menu on your phone now - before, it could go missing right after the app first opened."
   }
 ]
