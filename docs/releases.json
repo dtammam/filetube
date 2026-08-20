@@ -1894,5 +1894,11 @@
     "date": "2026-08-20",
     "title": "Swipe back, and a few page polish fixes",
     "intent": "You can now swipe in from the left edge of the screen to go back a page - handy for backing out of a Stats section or Settings. A few Stats pages got the same fill-the-screen and sorting treatment as the others (Most watched is now a sortable table). The Subscriptions Activity view is tidier - the download history, failures, and maintenance buttons are now neat collapsible sections that start closed. The annoying bug where the top of a page was hidden under the top bar when you opened it is fixed. And the modern home feed finally has its own card-vs-list view toggle, matching the one in your download folders."
+  },
+  {
+    "version": "1.160.1",
+    "date": "2026-08-20",
+    "title": "Smoother swipe-back and a couple of polish fixes",
+    "intent": "Follow-ups to the swipe-back gesture and a few small touches. Swiping back from the left edge no longer makes the whole screen shake as it moves - it's smooth now, and normal scrolling stays just as quick. The card-vs-list button on the home feed no longer looks like it's always switched on. And the Subscriptions page gets its header back - a title and a short explainer at the top, matching the other pages."
   }
 ]

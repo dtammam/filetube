@@ -23,6 +23,7 @@ const {
   resolveHomeButtonAction,
   isHomeRootTarget,
   decideEdgeSwipeBack,
+  edgeSwipeShouldClaim,
 } = require('../../public/js/common.js');
 
 const COMMON_JS = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
@@ -446,4 +447,30 @@ test('v1.160: bootRouter wires the swipe-back, and it only pops in-app history (
   // edge-swipes must not both fire history.back() off the same stale state.
   assert.match(body, /if\s*\(homeBackPending\)\s*return;/, 'the double-pop coalescing GUARD (early return), not just a flag mention');
   assert.match(body, /homeBackPending\s*=\s*true;/, 'and sets the flag before history.back()');
+});
+
+// v1.160.1 (Dean device report): the swipe "claim" decision - once an edge drag
+// is clearly horizontal + rightward, the touchmove preventDefaults it so the
+// browser doesn't ALSO pan/rubber-band the page ("the whole app shakes with it").
+test('edgeSwipeShouldClaim: true once a rightward horizontal edge drag commits; false otherwise', () => {
+  assert.strictEqual(edgeSwipeShouldClaim(40, 5), true, 'rightward + horizontal-dominant -> claim (preventDefault)');
+  assert.strictEqual(edgeSwipeShouldClaim(4, 1), false, 'below the small claim distance -> let the browser handle it');
+  assert.strictEqual(edgeSwipeShouldClaim(40, 60), false, 'vertical-dominant -> a scroll, do NOT claim');
+  assert.strictEqual(edgeSwipeShouldClaim(-40, 2), false, 'leftward -> never claim');
+});
+
+test('v1.160.1: the edge-swipe touchmove is non-passive + preventDefaults, and the root kills horizontal overscroll', () => {
+  const src = COMMON_JS.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const fn = src.slice(src.indexOf('function wireSwipeBack('));
+  const body = fn.slice(0, fn.indexOf('\n  }\n'));
+  assert.match(body, /edgeSwipeShouldClaim\([^)]*\)\)\s*e\.preventDefault\(\)/, 'the tracked move preventDefaults once the drag is claimed');
+  assert.match(body, /touchmove'[\s\S]*?\{\s*passive:\s*false\s*\}/, 'the touchmove is non-passive (so preventDefault works)');
+  // v1.160.1 gate WARNING: the non-passive touchmove must be SCOPED to a live edge
+  // gesture (added on an edge touchstart, removed on end/cancel) - a globally
+  // registered non-passive document touchmove taxes every vertical scroll off the
+  // compositor fast-path. Bind that it is removed, so a regression to a permanent
+  // global listener reds here.
+  assert.match(body, /removeEventListener\(\s*'touchmove'/, 'the non-passive touchmove is removed when the gesture ends (scoped, not global)');
+  const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/css/style.css'), 'utf8');
+  assert.match(css, /html\s*\{[^}]*overscroll-behavior-x:\s*none/, 'the root kills horizontal rubber-band (belt-and-suspenders vs the shake)');
 });

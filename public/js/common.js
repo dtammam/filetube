@@ -7652,6 +7652,20 @@ function nextHistoryDepth(currentState, isReplace) {
 // a mid-screen start never triggers a back.
 const SWIPE_BACK_EDGE_PX = 24;
 const SWIPE_BACK_THRESHOLD_PX = 64;
+// v1.160.1 (Dean device report): once an edge drag has committed to horizontal +
+// rightward (past a small claim distance), the handler preventDefaults it so the
+// browser does NOT also pan/rubber-band the page - the "whole app shakes with
+// it" abruptness. Pure so it's testable. A non-passive touchmove is what lets us
+// preventDefault; wireSwipeBack installs that listener ONLY while an edge start
+// is live and removes it the instant the gesture ends, so every normal vertical
+// scroll keeps the compositor fast-path (a globally-registered non-passive
+// document touchmove would force the whole page off it - gate WARNING v1.160.1).
+const SWIPE_BACK_CLAIM_PX = 8;
+function edgeSwipeShouldClaim(deltaX, deltaY) {
+  const dx = Number(deltaX) || 0;
+  const dy = Number(deltaY) || 0;
+  return dx > SWIPE_BACK_CLAIM_PX && Math.abs(dx) > Math.abs(dy);
+}
 function decideEdgeSwipeBack(g) {
   if (!g) return false;
   const startX = Number(g.startX) || 0;
@@ -8429,25 +8443,39 @@ if (typeof window !== 'undefined') {
     if (typeof document === 'undefined' || swipeBackWired) return;
     swipeBackWired = true;
     let track = null; // { startX, startY, x, y } for a single-touch edge start
-    document.addEventListener('touchstart', (e) => {
-      if (!e.touches || e.touches.length !== 1) { track = null; return; }
-      const t = e.touches[0];
-      track = (t.clientX <= SWIPE_BACK_EDGE_PX)
-        ? { startX: t.clientX, startY: t.clientY, x: t.clientX, y: t.clientY }
-        : null;
-    }, { passive: true });
-    document.addEventListener('touchmove', (e) => {
+    // v1.160.1: claim the gesture once it's clearly a horizontal edge drag, so the
+    // browser doesn't ALSO pan/rubber-band the page ("the whole app shakes with
+    // it"). This listener is non-passive (so preventDefault works) and is attached
+    // ONLY while an edge start is live - added in the touchstart branch, removed by
+    // stopTracking - so it never taxes the compositor scroll fast-path outside a
+    // swipe-back gesture.
+    function onEdgeTouchMove(e) {
       if (!track || !e.touches || e.touches.length !== 1) return;
       const t = e.touches[0]; track.x = t.clientX; track.y = t.clientY;
+      if (e.cancelable && edgeSwipeShouldClaim(track.x - track.startX, track.y - track.startY)) e.preventDefault();
+    }
+    function stopTracking() {
+      if (!track) return;
+      track = null;
+      document.removeEventListener('touchmove', onEdgeTouchMove);
+    }
+    document.addEventListener('touchstart', (e) => {
+      stopTracking(); // drop any stale edge start (missed end / second finger)
+      if (!e.touches || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      if (t.clientX <= SWIPE_BACK_EDGE_PX) {
+        track = { startX: t.clientX, startY: t.clientY, x: t.clientX, y: t.clientY };
+        document.addEventListener('touchmove', onEdgeTouchMove, { passive: false });
+      }
     }, { passive: true });
     const finish = () => {
       if (!track) return;
       const g = { startX: track.startX, deltaX: track.x - track.startX, deltaY: track.y - track.startY };
-      track = null;
+      stopTracking();
       if (decideEdgeSwipeBack(g)) swipeBackIfPossible();
     };
     document.addEventListener('touchend', finish, { passive: true });
-    document.addEventListener('touchcancel', () => { track = null; }, { passive: true });
+    document.addEventListener('touchcancel', stopTracking, { passive: true });
   }
 
   // v1.45.2 (#1a): the header LOGO is the "escape hatch" straight to the top of
@@ -12869,6 +12897,8 @@ if (typeof module !== 'undefined' && module.exports) {
     nextHistoryDepth, resolveHomeButtonAction, isHomeRootTarget,
     // v1.160: the left-edge swipe-back decision (pure; the wiring is DOM/device).
     decideEdgeSwipeBack,
+    // v1.160.1: the in-progress "claim the horizontal drag" decision (pure).
+    edgeSwipeShouldClaim,
     canonicalizeChannelUrl, channelIdentityMatches, resolveFileChannelIdentity,
     shouldShowSubscribeButton, decideSubscribeButtonState,
     buildSubscribeRequestBody, buildSubscribeModal,
