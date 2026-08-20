@@ -2272,6 +2272,21 @@ function buildTrashRowHtml(item, retentionDays, nowMs) {
     '</div>';
 }
 
+// v1.158: the trash toolbar's two label strings, pure (unit-tested). The
+// resting total ("N items - X GB", size omitted when 0/unknown) and the armed
+// confirm ("Sure? Deletes N (X GB)") both name exactly what emptying destroys.
+function formatTrashToolbarLabel(count, totalSizeBytes) {
+  var n = Number(count) || 0;
+  var sizeLabel = formatTrashSize(totalSizeBytes);
+  var noun = n === 1 ? '1 item' : n + ' items';
+  return sizeLabel ? noun + ' - ' + sizeLabel : noun;
+}
+function formatTrashArmLabel(count, totalSizeBytes) {
+  var n = Number(count) || 0;
+  var sizeLabel = formatTrashSize(totalSizeBytes);
+  return 'Sure? Deletes ' + n + (sizeLabel ? ' (' + sizeLabel + ')' : '');
+}
+
 // Fetch + render the Trash list; wires Restore (single tap -- it destroys
 // nothing) and the two-tap Purge (the history/queue arm pattern). Re-renders
 // after every action and after a retention change (the days-left labels).
@@ -2279,6 +2294,10 @@ function renderTrashSection(signal) {
   const listEl = document.getElementById('trash-list');
   const emptyEl = document.getElementById('trash-empty');
   if (!listEl) return;
+  // v1.158: the "N items - X GB" line + the two-tap "Empty trash" button.
+  const toolbarEl = document.getElementById('trash-toolbar');
+  const totalEl = document.getElementById('trash-total');
+  const emptyAllBtn = document.getElementById('trash-empty-all');
 
   let armed = null; // { id, timer }
   function disarm() {
@@ -2289,16 +2308,67 @@ function renderTrashSection(signal) {
     armed = null;
   }
 
+  // v1.158: separate arm state for the bulk button. Its label at arm time names
+  // exactly what the second tap destroys ("Sure? Deletes N (X GB)"). lastCount/
+  // lastSizeLabel are the most recent /api/trash figures.
+  let lastCount = 0;
+  let lastTotalBytes = 0;
+  let emptyArmed = null; // { timer }
+  function emptyLabel(text) { if (emptyAllBtn) emptyAllBtn.textContent = text; }
+  function disarmEmpty() {
+    if (!emptyArmed) return;
+    clearTimeout(emptyArmed.timer);
+    emptyArmed = null;
+    if (emptyAllBtn) emptyAllBtn.classList.remove('trash-confirming');
+    emptyLabel('Empty trash');
+  }
+
   function refresh() {
     fetch('/api/trash')
       .then((r) => { if (!r.ok) throw new Error('trash fetch failed: ' + r.status); return r.json(); })
       .then((body) => {
         if (signal.aborted) return;
         disarm();
+        disarmEmpty();
         listEl.innerHTML = body.items.map((item) => buildTrashRowHtml(item, body.retentionDays)).join('');
-        if (emptyEl) emptyEl.hidden = body.items.length > 0;
+        const count = body.items.length;
+        if (emptyEl) emptyEl.hidden = count > 0;
+        // The toolbar (total + Empty button) only shows when there is something
+        // to empty; hide it wholesale on an empty trash.
+        lastCount = count;
+        lastTotalBytes = body.totalSizeBytes;
+        if (totalEl) totalEl.textContent = formatTrashToolbarLabel(count, body.totalSizeBytes);
+        if (toolbarEl) toolbarEl.hidden = count === 0;
       })
       .catch((err) => { if (!signal.aborted) console.error('Trash: list failed', err); });
+  }
+
+  // Two-tap Empty-trash: first tap arms (naming the count + size), second tap
+  // within ~4s purges ALL visible items. Disarms on timeout or a refresh.
+  if (emptyAllBtn) {
+    emptyAllBtn.addEventListener('click', () => {
+      if (!emptyArmed) {
+        if (lastCount === 0) return; // nothing to empty
+        emptyAllBtn.classList.add('trash-confirming');
+        emptyLabel(formatTrashArmLabel(lastCount, lastTotalBytes));
+        emptyArmed = { timer: setTimeout(disarmEmpty, 4000) };
+        return;
+      }
+      disarmEmpty();
+      emptyAllBtn.disabled = true;
+      fetch('/api/trash/purge-all', { method: 'POST' })
+        .then(async (r) => {
+          if (signal.aborted) return;
+          const body = await r.json().catch(() => ({}));
+          if (!r.ok || body.success === false) {
+            if (typeof showToast === 'function') showToast((body && body.error) || 'Could not empty the trash.');
+          } else if (typeof showToast === 'function') {
+            showToast('Trash emptied.');
+          }
+        })
+        .catch(() => { if (!signal.aborted && typeof showToast === 'function') showToast('Could not empty the trash.'); })
+        .finally(() => { if (!signal.aborted) { emptyAllBtn.disabled = false; refresh(); } });
+    }, { signal });
   }
 
   listEl.addEventListener('click', (e) => {
@@ -2815,6 +2885,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.157 (P3): the configured-folder-list skeleton (pure string builder).
     buildSetupFolderSkeleton,
     transcodeNamesSuffix, escapeTrashHtml, trashDaysLeftLabel, formatTrashSize, buildTrashRowHtml,
+    // v1.158: the trash toolbar's two pure label strings + the render/wiring
+    // (jsdom-mounted to bind the DESTRUCTIVE two-tap: one tap never fires).
+    formatTrashToolbarLabel, formatTrashArmLabel, renderTrashSection,
     // v1.97.1 "Hidden" section row builder (pure; the render/wiring is jsdom-adjacent).
     buildFeedHiddenRowHtml,
     // v1.67: the card-corner editor (drawn pieces are jsdom-tested).

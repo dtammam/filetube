@@ -765,6 +765,12 @@
           </select>
           <small id="trash-retention-error" class="field-error"></small>
         </div>
+        <!-- v1.158 (Dean): the total held + a one-button "Empty trash" (two-tap
+             arm). Hidden while the trash is empty; populated by setup.js. -->
+        <div id="trash-toolbar" class="trash-toolbar" hidden>
+          <span id="trash-total" class="trash-total"></span>
+          <button type="button" id="trash-empty-all" class="btn btn-sm trash-empty-all">Empty trash</button>
+        </div>
         <div id="trash-list" class="trash-list"></div>
         <div id="trash-empty" class="trash-empty" hidden>Trash is empty.</div>
       </details>

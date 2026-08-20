@@ -11406,6 +11406,18 @@ a.queue-upnext-next:hover {
 .trash-purge-btn.trash-confirming .trash-purge-label { display: none; }
 .trash-purge-btn.trash-confirming .trash-purge-confirm { display: inline; }
 .trash-purge-btn.trash-confirming { color: var(--yt-red); }
+/* v1.158: the trash toolbar (total held + two-tap Empty). display:flex would
+   beat a bare [hidden], so guard it explicitly (the repo [hidden]-loses rule). */
+.trash-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin-bottom: var(--space-6);
+}
+.trash-toolbar[hidden] { display: none; }
+.trash-total { color: var(--text-secondary); font-size: var(--fs-sm); }
+.trash-empty-all.trash-confirming { color: var(--yt-red); }
 .trash-empty {
   color: var(--text-secondary);
   padding: var(--space-6) 0;
