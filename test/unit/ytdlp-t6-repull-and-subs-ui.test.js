@@ -132,10 +132,22 @@ test('A5: the relocated control sits directly under the "Your subscriptions" hea
 
 // ---- B4: CSS ownership for the new DnD affordance --------------------------
 
-test('B4: subscriptions.html carries its own <style> block for the new .sub-row drag-and-drop classes (no style.css edit)', () => {
+test('subscriptions.html still carries its page-local <style> block for the list-header chrome', () => {
+  // v1.155 (Subscriptions redesign, Q2): the `.sub-row` drag-and-drop classes
+  // (.sub-row-dragging / .sub-row-drag-over-before/after) were REMOVED with
+  // manual reordering -- the list is alphabetical (A-Z sections + search) now,
+  // and the new .sub-search / .sub-section / .sub-scrubber rules live in the
+  // GLOBAL style.css (so they survive the SPA #view-root swap). Only the
+  // header-chrome rules remain page-local.
   const styleMatch = /<style>[\s\S]*?<\/style>/.exec(subsHtml);
   assert.ok(styleMatch, 'expected a <style> block in subscriptions.html');
-  for (const cls of ['.sub-row-dragging', '.sub-row-drag-over-before', '.sub-row-drag-over-after', '.sub-list-header']) {
-    assert.ok(styleMatch[0].includes(cls), `expected ${cls} to be styled in the new <style> block`);
+  // Strip CSS comments FIRST -- the block's own comment names the retired
+  // classes (explaining why they left), and a substring check against raw
+  // text would be satisfied by that prose (the comment-porous-lock class this
+  // repo has repeatedly paid for). Assert against actual RULES only.
+  const styleRules = styleMatch[0].replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(styleRules.includes('.sub-list-header'), 'expected .sub-list-header to be styled page-locally');
+  for (const cls of ['.sub-row-dragging', '.sub-row-drag-over-before', '.sub-row-drag-over-after']) {
+    assert.ok(!styleRules.includes(cls), `${cls} should be gone with manual reorder`);
   }
 });

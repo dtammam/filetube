@@ -80,6 +80,51 @@
 
 ## Shipped
 
+### v1.155.0 - Subscriptions redesign, part 1: scale + iOS panels (2026-08-20)
+
+The first half of the Subscriptions redesign Dean approved via prototype, split
+on his call to ship the scale fix now and device-validate before the bigger
+navigation change. Answers his question: "how do we deal with 200+
+subscriptions - it'd be a lot of scrolling to get to that bottom set?"
+
+T1 - the channel list: a flat row list became iOS-Contacts-style A-Z sections
+with a pointer-only A-Z scrubber rail (jump to a letter) and a live search box
+that filters by channel name OR handle/URL on every keystroke. Manual
+drag-to-reorder was removed with the alphabetical list (Dean's Q2); the server
+`order` field + `POST /api/subscriptions/reorder` route are left intact but
+client-unused (a disclosed residual). The ~2.5s status poll's in-place row
+updater now keys off a queried `data-sub-id` map instead of flat child index,
+so section nesting is transparent to it (the FR-1 no-re-render invariant holds).
+
+T2 - the per-channel settings: the bottom sheet became an iOS push-in PANEL
+(slides in from the right, full-height) with a nav-bar header - back chevron
+pinned left, channel name centered as the title - and the avatar + subscribed
+date in a centered hero below it. Every field + the save/pause/repull/delete
+PATCH wiring is byte-for-byte unchanged (mutation-verified). Tapping a channel
+row now opens its settings (the iOS list idiom), for every row; whole-row
+playlist navigation moved onto the row's own "View as Playlist" link.
+
+FULL two-reviewer gate. Adversarial: APPROVE (every named surface
+mutation-verified - the poll-vs-sections row map, the row-tap guard both axes,
+the unchanged save patch, no dangling reorder ref, the pure helpers, the
+comment-porous lock, CSS/reduced-motion; tree restored byte-identical). QA:
+one WARNING -> fix round -> APPROVE: dropping the reorder functions had left
+three comments describing them as live (the lying-comment class), the worst a
+test title that could have led a maintainer to delete `data-sub-id` and
+silently break the status poll; all three repointed. Dual-Node 7266/7266 on
+v22.23.1 AND v24.14.0.
+
+Known gaps (DISCLOSED): this is T1+T2 only. T3 (the prototype's pinned toolbar
+pills - Check all / One-off / Activity / + Add - replacing today's Following/
+Add/Activity master-detail menu, plus moving the 5 maintenance buttons into
+Activity) and T4 (this view's cold-launch crispness) are DEFERRED to v1.156, so
+v1.155 still shows the current menu with the new list inside it. Sticky A-Z
+section headers are a follow-up (they need the fixed-header offset measured, not
+guessed). Device pass: search filters instantly on a large library; the A-Z
+scrubber jumps; tap a channel -> settings slide in with centered title + back
+arrow that slides back; Save/Pause/Repull/Delete still work; a download in
+progress keeps updating while you search/scroll.
+
 ### v1.154.0 - iOS nav-bar detail header (2026-08-20)
 
 Dean device feedback: inside a menu section, the detail header's title sat left,
