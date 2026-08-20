@@ -1625,8 +1625,46 @@ const PreviewCards = (function () {
             if (el) el.remove();
           }, { once: true });
         }
+        // v1.160 (Dean): the card/list toggle for the MODERN home. The classic
+        // #view-mode-btn lives in .section-actions, which modern mode hides - but
+        // ft-view-mode + applyViewMode already drive the modern grid, so it just
+        // needs a control. Same key/helpers as the classic button; lives in the
+        // header top-right beside the sort glyph. Cleaned up on destroy like it.
+        function injectModernViewToggle(sig) {
+          const headerRight = document.querySelector('.header-right');
+          if (!headerRight) return;
+          const prior = headerRight.querySelector('.modern-view-toggle');
+          if (prior) prior.remove(); // idempotent
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn view-mode-btn modern-view-toggle';
+          const icon = document.createElement('i');
+          btn.appendChild(icon);
+          const sync = () => {
+            const isList = getStoredViewMode() === 'list';
+            icon.className = isList ? 'icon-grid' : 'icon-list'; // show the mode a click switches TO
+            const label = isList ? 'Switch to card view' : 'Switch to list view';
+            btn.title = label;
+            btn.setAttribute('aria-label', label);
+          };
+          sync();
+          btn.addEventListener('click', () => {
+            const next = getStoredViewMode() === 'list' ? 'card' : 'list';
+            setStoredViewMode(next);
+            applyViewMode(next);
+            sync();
+          }, sig ? { signal: sig } : undefined);
+          const modernSort = headerRight.querySelector('.modern-sort');
+          if (modernSort) headerRight.insertBefore(btn, modernSort); // left of the sort glyph
+          else headerRight.appendChild(btn);
+          sig.addEventListener('abort', () => {
+            const el = document.querySelector('.modern-view-toggle');
+            if (el) el.remove();
+          }, { once: true });
+        }
         async function renderModernHome(chromeHost, sig) {
           injectModernHeaderSort(sig); // glyph-only ▾, leftmost in the header top-right
+          injectModernViewToggle(sig); // v1.160: card/list toggle beside it
           if (chromeHost) {
             // #modern-avatar-bar is filled by T4 (mobile-only). The chip row is
             // wired with ONE delegated listener covering every chip.
