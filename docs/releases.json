@@ -1840,5 +1840,11 @@
     "date": "2026-08-20",
     "title": "Tidier headers when you open a settings section",
     "intent": "When you tap into a section (like Appearance or Downloads) on your phone, the header now looks like a proper iOS screen: the title is centered with a clean back arrow on the left, instead of the title being squished next to the back button. A small thing that makes the menus feel a lot more finished."
+  },
+  {
+    "version": "1.155.0",
+    "date": "2026-08-20",
+    "title": "Subscriptions that scale, and a tap-to-open channel page",
+    "intent": "The Subscriptions list is built for a big library now. There's a search box at the top to find a channel instantly, the list is grouped into A-Z sections, and there's an A-Z strip down the side to jump straight to a letter - no more endless scrolling to reach the ones near the bottom. Tap any channel and its settings slide in as their own page, with the name centered and a back arrow to slide back. This is the first half of the Subscriptions makeover; more is on the way."
   }
 ]
