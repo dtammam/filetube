@@ -29,6 +29,20 @@ function unload(dom) {
 }
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
+test('Settings header box: renamed to "Settings" + a description, em-dash-free', () => {
+  const { dom, doc, signal } = load();
+  try {
+    wireMasterDetail('setup', doc, signal);
+    const hero = doc.querySelector('.md-hero');
+    assert.ok(hero, 'the Settings page has a header box');
+    assert.strictEqual(hero.querySelector('h2').textContent, 'Settings', 'renamed from "Library settings"');
+    assert.match(hero.querySelector('p').textContent, /appearance, folders, downloads/);
+    assert.ok(!/—/.test(hero.querySelector('p').textContent), 'no em dashes in the copy (Dean norm)');
+    // and the back-button label follows the renamed title
+    assert.strictEqual(doc.querySelector('.md-back .md-back-label').textContent, 'Settings');
+  } finally { unload(dom); }
+});
+
 test('Settings builds the expected visible menu (admin sections hidden for a non-admin)', () => {
   const { dom, doc, signal } = load();
   try {

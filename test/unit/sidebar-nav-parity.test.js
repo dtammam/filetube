@@ -39,15 +39,15 @@ const SIDEBAR_SHELLS = [
 ];
 
 // The three STATIC top-nav items every sidebar shell must carry, matched by
-// their icon+label markup (unique to the nav -- the inline "Library settings"
+// their icon+label markup (unique to the nav -- the inline "Settings"
 // links in music/books empty-states don't carry the icon, so they don't match).
 const REQUIRED_NAV = [
   { label: 'Home', needle: 'icon-home"></i> Home' },
-  { label: 'Library settings', needle: 'icon-cog"></i> Library settings' },
+  { label: 'Settings', needle: 'icon-cog"></i> Settings' },
   { label: 'Stats', needle: 'icon-star"></i> Stats' },
 ];
 
-test('every sidebar shell carries the identical top-nav (Home + Library settings + Stats)', () => {
+test('every sidebar shell carries the identical top-nav (Home + Settings + Stats)', () => {
   const missing = [];
   for (const shell of SIDEBAR_SHELLS) {
     const html = read(shell);

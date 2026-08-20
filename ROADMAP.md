@@ -80,6 +80,59 @@
 
 ## Shipped
 
+### v1.153.0 - Settings menu polish + the You-menu mini-player fix (2026-08-20)
+
+On-device feedback on the v1.152 master-detail menus (Dean, same day):
+
+- **The mini-player bug (his screen recording cracked it).** Tapping **You ->
+  Settings** on mobile stopped playback. Root cause (confirmed from the
+  recording + code, not theorised): the account-menu dropdown has a
+  `click -> stopPropagation` (so an in-menu Theme toggle does not close it),
+  which ALSO starves the document-level SPA router of the quick-link anchor
+  clicks - so they fell through to a FULL page reload that tore down the docked
+  mini-player. The sidebar worked because it is not inside that container. Fix:
+  the menu's own click handler now drives the router explicitly for a
+  same-origin known-route anchor (close menu + in-app navigate), mirroring the
+  interception guards, so ALL the quick links (Liked / History / Stats /
+  Subscriptions / Settings) keep playback alive.
+- **Per-page header box (reusable).** Each menu page (Settings / Stats /
+  Subscriptions) opens with an iOS-Settings-style header: a large icon tile, the
+  page title, and a one-line description, then the grouped list. It is
+  data-driven - a NEW settings page gets one by declaring
+  `data-md-title/-desc/-hero-icon`, no code. Uniform height across pages.
+- **"Library settings" -> "Settings"** everywhere (sidebar, page header, back
+  label, body copy). No em dashes in the new copy.
+- **Stats + Subscriptions in the "You" account menu** so mobile (where the
+  sidebar is a drawer) can reach them without rotating. Subscriptions shows only
+  when the yt-dlp module is enabled.
+- **Desktop rail "shift up on click" fix.** Pinned the category rail as an
+  independently-scrolling box so its height cannot couple to the detail pane.
+
+What the gate caught (FULL gate, both seats, 1 fix round -> both APPROVE): the
+header-box title/desc escaping was correct but UNBOUND by test (added a payload
+test); the account-menu Subscriptions row can miss on a session's FIRST load
+(cold capability cache races the menu build) - DISCLOSED below; plus a lying
+comment I had introduced (the "delegated router intercepts these" claim - the
+`stopPropagation` starves it) which the recording then disproved and the fix
+corrected. Notably the QA seat had earlier signed off that same comment from a
+pure code-trace: the lesson is that "does the delegated handler RECEIVE this
+event" is a distinct question from "does it route this path" - an upstream
+`stopPropagation` invalidates the former.
+
+DISCLOSED, PENDING DEAN'S DEVICE PASS:
+- The **desktop rail-shift fix is an unreproduced hypothesis** (no browser in
+  the build env); if it persists, re-root-cause from a recording.
+- The **You-menu Subscriptions row can be absent on a session's very first app
+  load** (the capability cache is cold, so the enable signal can land after the
+  menu is built); it appears on the next load, and the sidebar exposes
+  Subscriptions meanwhile.
+- The header box + rail visual rendering are Dean's device pass.
+
+Dual-Node: 7263/7263 on v22.23.1 AND v24.14.0, 0 fail on both, sequential.
+Device probe: play something -> You -> Settings keeps playing; the per-page
+header boxes; Stats/Subscriptions reachable from the You menu; the desktop rail
+no longer shifting on click.
+
 ### v1.152.0 - the master-detail menus (2026-08-19)
 
 Item 2 of the menus wave. Settings / Stats / Subscriptions dropped the

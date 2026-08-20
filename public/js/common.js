@@ -3056,7 +3056,7 @@ function injectSubscriptionsNavLinkIfEnabled() {
 // The actual DOM builders, shared by the optimistic (cache) and confirmed
 // (probe) paths -- v1.53 extraction, byte-identical markup to pre-v1.53.
 function injectSubscriptionsNavNodes() {
-  // Sidebar entry, inserted right after the existing "Library settings"
+  // Sidebar entry, inserted right after the existing "Settings"
   // link so it reads as a sibling settings-adjacent surface.
       const settingsSidebarLink = document.querySelector('a.sidebar-item[href="/setup.html"]');
       if (settingsSidebarLink && settingsSidebarLink.parentElement) {
@@ -4976,6 +4976,25 @@ function wireMasterDetail(pageKey, root, signal) {
   head.appendChild(backBtn); head.appendChild(headTitle);
   panes.appendChild(head);
   sections.forEach((s) => { s.open = true; panes.appendChild(s); });
+
+  // v1.153: the iOS-Settings-style page header box. REUSABLE - any .md-root page
+  // gets one by declaring data-md-title / data-md-desc / data-md-hero-icon (no
+  // code change). Sits ABOVE the track: a full-width page header on desktop; on
+  // phone it shows on the menu screen and hides on the detail (CSS keys the hide
+  // on [data-md-open="true"]). Uniform height via CSS min-height + a 2-line
+  // clamp on the description.
+  const heroDesc = mdRoot.getAttribute('data-md-desc') || '';
+  const heroIcon = mdRoot.getAttribute('data-md-hero-icon') || '';
+  const heroTitle = mdRoot.getAttribute('data-md-title') || '';
+  if (heroTitle || heroDesc) {
+    const hero = doc.createElement('div');
+    hero.className = 'md-hero';
+    hero.innerHTML = '<span class="md-tile md-tile--hero" data-md-tone="graphite">' + mdSvg(heroIcon) + '</span>'
+      + '<div class="md-hero-text"><h2>' + mdEsc(heroTitle) + '</h2>'
+      + (heroDesc ? '<p>' + mdEsc(heroDesc) + '</p>' : '') + '</div>';
+    mdRoot.appendChild(hero);
+  }
+
   track.appendChild(nav); track.appendChild(panes);
   mdRoot.appendChild(track);
 
@@ -6153,12 +6172,33 @@ function injectAccountMenu() {
 
     menu.appendChild(accountMenuDivider());
 
-    // Quick links (plain hrefs -- a full navigation, like the bottom-nav items).
+    // Quick links to the library pages. Hrefs to known routes; the menu's own
+    // click handler (below) SPA-navigates them in-app -- the delegated document
+    // router can't see these clicks (the menu stops their propagation), so
+    // without that they full-reloaded.
+    // v1.153 (Dean): this "You" menu is mobile's main way into these pages
+    // (the sidebar is a drawer there), so Stats + Subscriptions join it -
+    // they are sidebar-only otherwise, unreachable on a phone without opening
+    // the drawer or rotating.
     const liked = buildAccountMenuRow('a', 'Liked', 'icon-heart'); liked.href = '/?liked=1';
     const history = buildAccountMenuRow('a', 'History', 'icon-history'); history.href = '/history';
+    const stats = buildAccountMenuRow('a', 'Stats', 'icon-star'); stats.href = '/stats.html';
     const settings = buildAccountMenuRow('a', 'Settings', 'icon-cog'); settings.href = '/setup.html';
     menu.appendChild(liked);
     menu.appendChild(history);
+    menu.appendChild(stats);
+    // Subscriptions only when the optional yt-dlp module is enabled - gated by
+    // the presence of its nav entry (the same signal the sidebar/bottom-nav
+    // links use; absent module -> no row). NOTE: on a session's FIRST load the
+    // capability cache (sessionStorage) is cold, so this marker may not be in
+    // the DOM yet when the menu builds (the /api/subscriptions/health probe can
+    // resolve after it) -> the row can be missing until the next full load.
+    // Self-heals then (warm cache injects synchronously first); the sidebar
+    // still exposes Subscriptions meanwhile. Disclosed in ROADMAP.
+    if (document.querySelector('[data-nav="subscriptions"], [data-nav-sidebar="subscriptions"]')) {
+      const subs = buildAccountMenuRow('a', 'Subscriptions', 'icon-refresh'); subs.href = '/subscriptions';
+      menu.appendChild(subs);
+    }
     // v1.97.1 (Dean): the feed-hidden RESTORE surface moved OUT of this menu and
     // into a "Hidden" SECTION on the settings page beside Trash (setup.html /
     // setup.js renderFeedHiddenSection) - the settings page scrolls, so a long
@@ -6218,8 +6258,30 @@ function injectAccountMenu() {
       setOpen(menu.hidden);
     });
     // Keep clicks INSIDE the menu from bubbling to the document-close handler
-    // (except the links/items, which navigate/act and then the page changes).
-    menu.addEventListener('click', (e) => { e.stopPropagation(); });
+    // (so a Theme toggle etc. doesn't close the menu). But that same
+    // stopPropagation ALSO starves the document-level SPA router
+    // (handleDocumentClick) of the quick-link anchor clicks, so a plain tap on
+    // e.g. Settings fell through to a FULL page reload -- which unloads the
+    // shell and TEARS DOWN the docked mini-player (Dean, v1.153: "You ->
+    // Settings on mobile stops playback"; the sidebar works because it is not
+    // inside this stopPropagation container). Drive the router EXPLICITLY here
+    // for a same-origin known-route anchor -- close the menu and SPA-navigate,
+    // mirroring shouldInterceptLinkClick -- so the mini-player survives.
+    menu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a.account-menu-item[href]') : null;
+      if (!a) return;
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.getAttribute('target') === '_blank') return;
+      let u;
+      try { u = new URL(a.getAttribute('href'), window.location.href); } catch (_) { return; }
+      if (u.origin !== window.location.origin) return;
+      if (typeof deriveRouteView === 'function' && deriveRouteView(u.pathname)
+        && window.FileTube && typeof window.FileTube.navigate === 'function') {
+        e.preventDefault();
+        setOpen(false);
+        window.FileTube.navigate(u.href);
+      }
+    });
     document.addEventListener('click', () => { if (!menu.hidden) setOpen(false); });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !menu.hidden) { setOpen(false); trigger.focus(); }
@@ -9511,7 +9573,7 @@ function showHardDeleteModal(item, onConfirm, doc) {
 
   const warning = d.createElement('div');
   warning.className = 'hard-delete-modal-warning';
-  warning.textContent = 'This local file cannot be re-downloaded. It moves to Trash and can be restored from Library settings until the retention window empties it.';
+  warning.textContent = 'This local file cannot be re-downloaded. It moves to Trash and can be restored from Settings until the retention window empties it.';
   modal.appendChild(warning);
 
   const nameEl = d.createElement('div');
