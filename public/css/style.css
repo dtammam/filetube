@@ -3481,38 +3481,11 @@ select {
   border-bottom: none;
 }
 
-/* v1.24.1 Wave 3 fast-follow: subscription-row drag-and-drop reordering.
-   wireSubRowDragAndDrop() (this file) toggles these classes on `.sub-row`
-   during drag, but shipped in v1.24.1 T6 with no CSS for them -- the
-   feature worked under the hood (reorder persisted) but had zero visual
-   feedback on desktop or mobile (the "client-file ownership trap": the JS
-   lives here in lib/ytdlp/client/, one directory away from the shared
-   public/css/style.css that styles it). Mirrors the working folder-list
-   DnD styling above (.folder-item-row.dragging/.drag-over-before/
-   .drag-over-after, v1.15.0) -- same dim-while-dragging + inset box-shadow
-   drop-indicator-line technique, era tokens only. v1.76: the grab affordance
-   follows `.reorder-row` (stamped by common.js's wireReorderable on every row
-   it wires) instead of the `draggable="true"` attribute, which no longer
-   exists anywhere -- keyed on the attribute, this rule had gone inert and
-   subscription rows silently lost their grab cursor. Still only real
-   subscription rows: one-shot job rows are never wired. */
-.sub-row.reorder-row {
-  cursor: grab;
-}
-
-.sub-row.sub-row-dragging {
-  opacity: 0.5;
-  cursor: grabbing;
-}
-
-.sub-row.sub-row-drag-over-before {
-  box-shadow: inset 0 2px 0 0 var(--yt-red);
-}
-
-.sub-row.sub-row-drag-over-after {
-  box-shadow: inset 0 -2px 0 0 var(--yt-red);
-}
-
+/* v1.155 (Subscriptions redesign, Q2): the subscription-row drag-to-reorder
+   CSS (.sub-row.reorder-row / .sub-row-dragging / .sub-row-drag-over-*) was
+   removed with manual reordering -- the list is alphabetical (A-Z sections +
+   search) now. See the new .sub-search / .sub-list-body / .sub-section /
+   .sub-scrubber block further down this file. */
 .sub-row-navigable {
   cursor: pointer;
 }
@@ -7337,6 +7310,82 @@ body.ft-audio-expanded {
   background-color: var(--bg-secondary);
   border-radius: var(--radius);
   overflow: hidden;
+}
+
+/* ===========================================================================
+   v1.155 Subscriptions redesign: the list-first, scale-ready channel list --
+   a live search field, A-Z sections, and a pointer-only A-Z scrubber rail
+   (answers Dean's "how do we deal with 200+ subscriptions"). Global so it
+   survives the SPA #view-root swap -- page-local <head> styles do not (the
+   reloc-preview lesson). All colour/size rides tokens (census ceiling ZERO).
+   =========================================================================== */
+.sub-search {
+  margin-bottom: var(--space-6);
+}
+.sub-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--fs-md);
+  color: var(--text-primary);
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+}
+.sub-search-input:focus {
+  outline: 1px solid var(--border-dark);
+  outline-offset: -1px;
+}
+/* The list grows; the scrubber is a thin sticky column beside it -- a real
+   layout column, never an overlay, so it can never cover a row. */
+.sub-list-body {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+.sub-list-body > .sub-list {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* An A-Z section header: a styled divider labelling its run of rows. (A
+   position:sticky variant is a follow-up -- it needs the fixed-header offset
+   measured rather than guessed, per the layout-measurement lesson.) */
+.sub-section-head {
+  padding: var(--space-3) var(--space-6);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--tracking-caps);
+  color: var(--text-secondary);
+  background-color: var(--bg-color);
+  border-bottom: 1px solid var(--border-color);
+}
+/* The pointer-only A-Z index rail (aria-hidden; its dots are tabindex=-1).
+   Sticky against the page scroll so it stays reachable through a long list. */
+.sub-scrubber {
+  position: sticky;
+  top: var(--space-8);
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+}
+.sub-scrubber[hidden] {
+  display: none;
+}
+.sub-scrubber-letter {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  width: var(--size-touch);
+  min-height: var(--space-6);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  color: var(--yt-red);
+  cursor: pointer;
 }
 
 /* Native `<details>`/`<summary>` disclosures demoting add-subscription/

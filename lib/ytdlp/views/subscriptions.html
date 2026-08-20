@@ -113,27 +113,13 @@
        on a hard load). Global style.css survives the swap. Tech-debt #34 / the
        playlists-sheet pattern. See .reloc-preview-* in public/css/style.css. */
 
-    /* v1.24.0 T6 (B4): drag-and-drop reorder on the subscriptions management
-       list -- mirrors public/css/style.css's .sidebar-item.dragging/
-       .drag-over-before/.drag-over-after (v1.15.0 folder DnD) exactly, same
-       era tokens. Scoped to this page only: the reorder affordance applies
-       to THIS management list, never the pinned sidebar (a distinct
-       concept -- see B4's design note). v1.76: keyed on `.reorder-row`
-       (stamped by common.js's wireReorderable) rather than the retired
-       `draggable="true"` attribute, which no longer exists anywhere -- keyed
-       on the attribute this rule had gone inert. */
-    .sub-row.reorder-row {
-      cursor: grab;
-    }
-    .sub-row-dragging {
-      opacity: 0.5;
-    }
-    .sub-row-drag-over-before {
-      box-shadow: inset 0 2px 0 0 var(--yt-red);
-    }
-    .sub-row-drag-over-after {
-      box-shadow: inset 0 -2px 0 0 var(--yt-red);
-    }
+    /* v1.155 (Subscriptions redesign, Q2): the drag-to-reorder CSS
+       (.sub-row.reorder-row / .sub-row-dragging / .sub-row-drag-over-*) was
+       REMOVED with manual reordering -- the list is alphabetical (A-Z sections
+       + search) now. The new .sub-search / .sub-list-body / .sub-section /
+       .sub-scrubber rules live in public/css/style.css (global, so they
+       survive the SPA #view-root swap -- page-local <head> styles do not; see
+       the reloc-preview note above). */
 
     /* v1.24.0 A2 (T14): the per-item {video: reason} detail line under a
        subscription row's status line, shown only while that subscription's
@@ -377,8 +363,26 @@
             <span id="sub-backfill-names-status" class="sub-repull-status action-status" aria-live="polite"></span>
           </div>
         </div>
-        <div id="sub-list-container" class="sub-list">
-          <!-- Populated dynamically by /js/subscriptions.js -->
+        <!-- v1.155 (Subscriptions redesign): live channel search. Scoped to
+             this list; filters the A-Z sections below on every keystroke
+             (subscriptions.js's filterSubscriptions). Unpersisted -- starts
+             empty on each view mount, like a native search bar. -->
+        <div class="sub-search">
+          <input type="search" id="sub-search-input" class="sub-search-input"
+                 placeholder="Search your channels"
+                 aria-label="Search your subscriptions"
+                 autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
+        </div>
+        <!-- v1.155: the list and its A-Z scrubber rail sit side by side. The
+             scrubber (#sub-scrubber) is built in JS from the sections actually
+             rendered and is a pointer-only visual index (aria-hidden) mirroring
+             the sticky section headers -- the sections + rows are the
+             accessible navigation. -->
+        <div class="sub-list-body">
+          <div id="sub-list-container" class="sub-list">
+            <!-- Populated dynamically by /js/subscriptions.js -->
+          </div>
+          <div id="sub-scrubber" class="sub-scrubber" aria-hidden="true" hidden></div>
         </div>
       </details>
 

@@ -1266,8 +1266,15 @@ test('createSubscriptionsListElement: derives each row\'s pinned flag from the p
     { id: '2', name: 'B', channelUrl: 'https://www.youtube.com/@b', channelDir: '/data/b' },
   ];
   const container = createSubscriptionsListElement(subs, fakeDoc, {}, undefined, new Set(['/data/b']));
-  const rowA = container.children[0];
-  const rowB = container.children[1];
+  // v1.155: rows are nested inside `.sub-section` wrappers now -- find them by
+  // class rather than flat child index, and map A/B by their rendered name.
+  const rows = [...container.walk()].filter((el) => el.className === 'sub-row');
+  const nameOf = (row) => {
+    const info = row.children.find((el) => el.className === 'sub-row-info');
+    return info.children.find((el) => el.className === 'sub-row-name').textContent;
+  };
+  const rowA = rows.find((r) => nameOf(r) === 'A');
+  const rowB = rows.find((r) => nameOf(r) === 'B');
   const pinA = rowA.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
   const pinB = rowB.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
   assert.strictEqual(pinA.className, 'sub-row-pin', 'row A\'s channelDir is not in the pinned set');
@@ -1278,7 +1285,8 @@ test('createSubscriptionsListElement: an omitted pinnedChannelDirs defaults ever
   const subs = [{ id: '1', name: 'A', channelUrl: 'https://www.youtube.com/@a', channelDir: '/data/a' }];
   assert.doesNotThrow(() => createSubscriptionsListElement(subs, fakeDoc, {}));
   const container = createSubscriptionsListElement(subs, fakeDoc, {});
-  const pin = container.children[0].children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
+  const row = [...container.walk()].find((el) => el.className === 'sub-row');
+  const pin = row.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
   assert.strictEqual(pin.className, 'sub-row-pin');
 });
 
@@ -2000,15 +2008,25 @@ test('createSubscriptionsListElement: renders an empty-state message when there 
   assert.ok(texts.some((t) => t.includes('No subscriptions yet')));
 });
 
-test('createSubscriptionsListElement: renders one row per subscription, in order (container.children[i] <-> subs[i])', () => {
+test('createSubscriptionsListElement: renders each subscription as a row inside its A-Z section, alphabetically (case-insensitive)', () => {
+  // Input deliberately out of order and mixed-case: the builder sorts.
   const subs = [
-    { id: '1', name: 'Channel A', channelUrl: 'https://www.youtube.com/@a' },
-    { id: '2', name: 'Channel B', channelUrl: 'https://www.youtube.com/@b' },
+    { id: '2', name: 'Beta', channelUrl: 'https://www.youtube.com/@b' },
+    { id: '1', name: 'alpha', channelUrl: 'https://www.youtube.com/@a' },
   ];
   const container = createSubscriptionsListElement(subs, fakeDoc, {});
-  assert.strictEqual(container.children.length, 2);
-  assert.strictEqual(container.children[0].children[1].children.find((el) => el.className === 'sub-row-name').textContent, 'Channel A');
-  assert.strictEqual(container.children[1].children[1].children.find((el) => el.className === 'sub-row-name').textContent, 'Channel B');
+  // v1.155: one `.sub-section[data-letter]` per present letter (rows nested
+  // inside), in A..Z order -- replacing the old flat children[i] <-> subs[i].
+  const sections = container.children.filter((el) => el.className === 'sub-section');
+  assert.strictEqual(sections.length, 2, 'an A section and a B section');
+  assert.strictEqual(sections[0].attributes['data-letter'], 'A');
+  assert.strictEqual(sections[1].attributes['data-letter'], 'B');
+  const nameOf = (row) => row.children.find((el) => el.className === 'sub-row-info')
+    .children.find((el) => el.className === 'sub-row-name').textContent;
+  const rows = [...container.walk()].filter((el) => el.className === 'sub-row');
+  assert.strictEqual(rows.length, 2, 'one row per subscription');
+  assert.strictEqual(nameOf(rows[0]), 'alpha', 'alpha sorts before Beta case-insensitively');
+  assert.strictEqual(nameOf(rows[1]), 'Beta');
 });
 
 // ---- v1.21.0 FR-3 (AC21): the settings bottom-sheet -------------------------

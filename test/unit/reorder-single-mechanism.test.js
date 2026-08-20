@@ -149,12 +149,14 @@ const ROW_SELECTORS = FILES.flatMap((f) =>
   Array.from(stripComments(f.source).matchAll(/rowSelector:\s*'([^']+)'/g)).map((m) => ({ file: f.rel, selector: m[1] }))
 );
 
-test('v1.76: exactly the six known reorder surfaces are wired, each through the shared layer', () => {
-  // If a seventh appears, this fails and the author has to say what it is -
+test('v1.155: exactly the five known reorder surfaces are wired, each through the shared layer', () => {
+  // If a sixth appears, this fails and the author has to say what it is -
   // which is the point. If one DISAPPEARS, a surface silently lost its
   // reordering, which is the failure this wave could most easily have caused.
+  // v1.155: the subscriptions list (`.sub-row[data-sub-id]`) was REMOVED from
+  // this set on purpose -- the Subscriptions redesign dropped manual reorder
+  // for an alphabetical A-Z list + search (Q2). Six -> five.
   assert.deepEqual(ROW_SELECTORS.slice().sort((a, b) => (a.file + a.selector).localeCompare(b.file + b.selector)), [
-    { file: 'lib/ytdlp/client/subscriptions.js', selector: '.sub-row[data-sub-id]' },
     { file: 'public/js/common.js', selector: '.sidebar-item[data-pin-id]' },
     { file: 'public/js/main.js', selector: '.sidebar-item[data-index]' },
     { file: 'public/js/setup.js', selector: '.bottombar-editor-row' },
@@ -178,19 +180,21 @@ test('v1.76: every wired surface names a real onReorder, never a bare selector',
 
 // ---- every wired surface must actually SHOW the drag ------------------------
 
-// The stylesheets a client rule can live in: the shared one, plus the
-// subscriptions page's own <style> block (its rows are styled page-locally).
+// The stylesheets a client rule can live in. v1.155: this is now just the
+// shared style.css -- the subscriptions page's own <style> block used to be
+// included here for its page-local drag CSS, but the Subscriptions redesign
+// removed subscription-row reordering entirely, so no reorder surface styles
+// itself page-locally any more.
 //
 // COMMENTS STRIPPED (QA delta N1). Shipped without this, the lock below was
 // satisfied by PROSE: style.css:3229 and :7037 each mention
 // `.folder-item-row.dragging` / `.sidebar-item.dragging` inside a comment, so
 // deleting the actual rules left the lock green. Measured at the delta: of the
-// six wired surfaces it claims to cover, only two were really bound. A lock
-// that lies is worse than no lock - this repo has paid for that one repeatedly.
+// wired surfaces it claims to cover, only two were really bound. A lock that
+// lies is worse than no lock - this repo has paid for that one repeatedly.
 const stripCssComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '');
 const STYLESHEETS = [
   fs.readFileSync(path.join(REPO, 'public/css/style.css'), 'utf8'),
-  fs.readFileSync(path.join(REPO, 'lib/ytdlp/views/subscriptions.html'), 'utf8'),
 ].map(stripCssComments).join('\n');
 
 // The class family a given surface uses: the defaults, unless the call site
@@ -209,7 +213,7 @@ function classFamilyFor(source, selector) {
   };
 }
 
-// `.sub-row[data-sub-id]` -> `.sub-row`; `.folder-item-row` -> itself.
+// `.sidebar-item[data-index]` -> `.sidebar-item`; `.folder-item-row` -> itself.
 const baseClassOf = (selector) => selector.replace(/\[[^\]]*\]/g, '');
 
 // Does `sheets` carry an UNSCOPED rule for `base` + `cls`?
