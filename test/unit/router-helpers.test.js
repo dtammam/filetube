@@ -465,6 +465,12 @@ test('v1.160.1: the edge-swipe touchmove is non-passive + preventDefaults, and t
   const body = fn.slice(0, fn.indexOf('\n  }\n'));
   assert.match(body, /edgeSwipeShouldClaim\([^)]*\)\)\s*e\.preventDefault\(\)/, 'the tracked move preventDefaults once the drag is claimed');
   assert.match(body, /touchmove'[\s\S]*?\{\s*passive:\s*false\s*\}/, 'the touchmove is non-passive (so preventDefault works)');
+  // v1.160.1 gate WARNING: the non-passive touchmove must be SCOPED to a live edge
+  // gesture (added on an edge touchstart, removed on end/cancel) - a globally
+  // registered non-passive document touchmove taxes every vertical scroll off the
+  // compositor fast-path. Bind that it is removed, so a regression to a permanent
+  // global listener reds here.
+  assert.match(body, /removeEventListener\(\s*'touchmove'/, 'the non-passive touchmove is removed when the gesture ends (scoped, not global)');
   const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/css/style.css'), 'utf8');
   assert.match(css, /html\s*\{[^}]*overscroll-behavior-x:\s*none/, 'the root kills horizontal rubber-band (belt-and-suspenders vs the shake)');
 });
