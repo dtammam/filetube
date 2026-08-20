@@ -7420,14 +7420,28 @@ body.ft-audio-expanded {
 .md-tile[data-md-era="2009"] { background: var(--md-era-2009); }
 .md-tile[data-md-era="2005"] { background: var(--md-era-2005); }
 
-.md-detail-head { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4) 0 var(--space-8); }
-.md-back {
-  display: inline-flex; align-items: center; gap: var(--space-1);
-  background: none; border: 0; cursor: pointer; color: var(--yt-red); font: inherit;
-  font-size: var(--fs-lg); padding: var(--space-3) var(--space-2);
+/* v1.154: iOS nav-bar detail header on phone - back chevron pinned to the left
+   edge, title CENTERED, hairline under (Dean: the left-aligned title conflicted
+   with the back button). Desktop reverts to a left-aligned pane heading below. */
+.md-detail-head {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  min-height: 44px; padding: var(--space-3) var(--space-12) var(--space-5);
+  border-bottom: 1px solid var(--border-color); margin-bottom: var(--space-6);
 }
-.md-back svg { width: 18px; height: 18px; }
-.md-detail-title { margin: 0; font-size: var(--fs-4xl); font-weight: var(--fw-bold); }
+.md-back {
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center;
+  background: none; border: 0; cursor: pointer; color: var(--yt-red); font: inherit;
+  font-size: var(--fs-lg); padding: var(--space-3) var(--space-4);
+}
+.md-back svg { width: 20px; height: 20px; }
+/* iOS 26 back is a bare chevron (no parent label); the page name lives in the
+   menu's header box, so the label would be redundant here. */
+.md-back .md-back-label { display: none; }
+.md-detail-title {
+  margin: 0; font-size: var(--fs-3xl); font-weight: var(--fw-bold);
+  text-align: center; max-width: 62%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 /* v1.153: the iOS-Settings-style page header box (built by wireMasterDetail from
    data-md-title/desc/hero-icon). Uniform height across pages: min-height + a
@@ -7483,6 +7497,13 @@ body.ft-audio-expanded {
   }
   .md-row-chev { display: none; }
   .md-back { display: none; }
+  /* desktop has no back button (both columns show), so the header is a plain
+     left-aligned pane heading, not a centered nav-bar. */
+  .md-detail-head {
+    justify-content: flex-start; min-height: 0; border-bottom: 0;
+    padding: var(--space-4) 0 var(--space-8); margin-bottom: 0;
+  }
+  .md-detail-title { text-align: left; font-size: var(--fs-4xl); max-width: none; white-space: normal; }
 }
 
 /* --- phone: a section marked data-md-hide-mobile stays off the menu AND
