@@ -702,7 +702,7 @@
            fed by that FOREIGN fetch, so none of them carry the
            /api/settings reveal-toggle barrier (the v1.96 partial-render
            lesson); the box reveals whole, already populated. -->
-      <details class="setup-box sub-collapsible" id="downloads-box" hidden data-collapse-key="downloads" data-md-icon="download" data-md-group="System" data-md-badge="Admin" open>
+      <details class="setup-box sub-collapsible" id="downloads-box" hidden data-collapse-key="downloads" data-md-icon="download" data-md-group="System" data-md-badge="Admin" data-md-reserve open>
         <summary>Downloads</summary>
         <h3>Downloader engine</h3>
         <p>
@@ -765,6 +765,12 @@
           </select>
           <small id="trash-retention-error" class="field-error"></small>
         </div>
+        <!-- v1.158 (Dean): the total held + a one-button "Empty trash" (two-tap
+             arm). Hidden while the trash is empty; populated by setup.js. -->
+        <div id="trash-toolbar" class="trash-toolbar" hidden>
+          <span id="trash-total" class="trash-total"></span>
+          <button type="button" id="trash-empty-all" class="btn btn-sm trash-empty-all">Empty trash</button>
+        </div>
         <div id="trash-list" class="trash-list"></div>
         <div id="trash-empty" class="trash-empty" hidden>Trash is empty.</div>
       </details>
@@ -806,7 +812,7 @@
 
       <!-- v1.43: Users (admin only - revealed by setup.js after /api/auth/me
            confirms the role; the server enforces it regardless). -->
-      <details class="setup-box sub-collapsible" id="users-box" hidden data-collapse-key="users" data-md-icon="users" data-md-group="Account" data-md-badge="Admin" open>
+      <details class="setup-box sub-collapsible" id="users-box" hidden data-collapse-key="users" data-md-icon="users" data-md-group="Account" data-md-badge="Admin" data-md-reserve open>
         <summary>Users</summary>
         <p>
           Accounts for your family and friends. Everyone signed in sees the same library for now -
@@ -852,7 +858,7 @@
       <!-- v1.43: instance backup/restore (admin only - revealed with the
            Users box). The bundle now includes user accounts, so the download
            is flagged sensitive. -->
-      <details class="setup-box sub-collapsible" id="backup-box" hidden data-collapse-key="backup-restore" data-md-icon="backup" data-md-group="Account" data-md-badge="Admin" open>
+      <details class="setup-box sub-collapsible" id="backup-box" hidden data-collapse-key="backup-restore" data-md-icon="backup" data-md-group="Account" data-md-badge="Admin" data-md-reserve open>
         <summary>Backup &amp; Restore</summary>
         <p>
           Downloads a snapshot of this FileTube's configuration and everyone's personal state -

@@ -254,7 +254,17 @@ function fetchCurrentUser() {
     try {
       const r = await fetch('/api/auth/me');
       if (!r.ok) return null; // signed-out shell (login/welcome) or auth failure
-      return await r.json();
+      const me = await r.json();
+      // v1.158 (Dean): remember admin-ness per-device (single writer) so the
+      // master-detail nav can reserve a shimmer slot for the admin-only
+      // sections BEFORE setup.js's async reveal - killing the "rows pop in a
+      // second later" insert. Gates a shimmer ONLY; the server enforces every
+      // admin route and no admin label is ever rendered for a hidden section.
+      try {
+        if (me && me.user && me.user.role === 'admin') localStorage.setItem('ft-is-admin', '1');
+        else localStorage.removeItem('ft-is-admin');
+      } catch (_) { /* storage off - the nav just won't pre-reserve */ }
+      return me;
     } catch (_) { return null; }
   })();
   return currentUserPromise;
@@ -5058,6 +5068,19 @@ function wireMasterDetail(pageKey, root, signal) {
     return sum ? sum.textContent.trim() : (s.getAttribute('data-collapse-key') || '');
   }
   function visibleSections() { return sections.filter((s) => !s.hidden); }
+  // v1.158 (Dean): sections still HIDDEN behind setup.js's async capability
+  // reveal that want a shimmer slot held for them (data-md-reserve), gated on
+  // the last-known-admin flag - so a RETURNING admin's Downloads/Users/Backup
+  // rows do not "pop in a second later". Never reserves for a non-admin (no
+  // flag), and the placeholder carries NO label/icon, so a hidden section's
+  // identity is never rendered (the v1.80 privacy rule).
+  function mdReserveAdmin() {
+    try { return localStorage.getItem('ft-is-admin') === '1'; } catch (_) { return false; }
+  }
+  function reservedSections() {
+    if (!mdReserveAdmin()) return [];
+    return sections.filter((s) => s.hidden && s.getAttribute('data-md-reserve') !== null);
+  }
 
   function applySelection() {
     sections.forEach((s) => {
@@ -5074,14 +5097,21 @@ function wireMasterDetail(pageKey, root, signal) {
 
   function buildNav() {
     const groups = []; const byTitle = {}; let toneIdx = 0;
-    visibleSections().forEach((s) => {
-      const g = s.getAttribute('data-md-group') || '';
+    const ensureGroup = (g) => {
       if (!Object.prototype.hasOwnProperty.call(byTitle, g)) {
-        byTitle[g] = { title: g, items: [], hasEra: false }; groups.push(byTitle[g]);
+        byTitle[g] = { title: g, items: [], reserved: 0, hasEra: false }; groups.push(byTitle[g]);
       }
-      byTitle[g].items.push(s);
-      if ((s.getAttribute('data-md-icon') || '') === 'era') byTitle[g].hasEra = true;
+      return byTitle[g];
+    };
+    visibleSections().forEach((s) => {
+      const grp = ensureGroup(s.getAttribute('data-md-group') || '');
+      grp.items.push(s);
+      if ((s.getAttribute('data-md-icon') || '') === 'era') grp.hasEra = true;
     });
+    // Count a reserved shimmer slot into each admin section's group (creating
+    // the group if it has no visible sections yet). Placeholders come AFTER the
+    // real rows - the admin sections sit last in System/Account.
+    reservedSections().forEach((s) => { ensureGroup(s.getAttribute('data-md-group') || '').reserved += 1; });
     groups.sort((a, b) => mdGroupRank(a.title, declaredGroupOrder) - mdGroupRank(b.title, declaredGroupOrder));
     groups.forEach((grp) => { grp.tone = grp.hasEra ? null : MD_TONE_CYCLE[(toneIdx++) % MD_TONE_CYCLE.length]; });
 
@@ -5103,6 +5133,14 @@ function wireMasterDetail(pageKey, root, signal) {
           + (badge ? '<span class="md-row-badge">' + mdEsc(badge) + '</span>' : '')
           + chevron + '</button>';
       });
+      // v1.158: the reserved shimmer rows (non-interactive, aria-hidden, no
+      // label/icon). A .md-row with a 30px tile block matches a real row's
+      // height so the real row replaces it with ZERO shift on reveal.
+      for (let i = 0; i < grp.reserved; i += 1) {
+        html += '<div class="md-row md-row-skeleton" aria-hidden="true">'
+          + '<span class="md-row-skeleton-tile skeleton-shimmer"></span>'
+          + '<span class="md-row-skeleton-label skeleton-shimmer"></span></div>';
+      }
       html += '</div></div>';
     });
     nav.innerHTML = html;
@@ -5152,6 +5190,12 @@ function wireMasterDetail(pageKey, root, signal) {
     });
     if (added) buildNav();
   };
+
+  // v1.158 (Dean): rebuild the nav on demand. setup.js calls this after its
+  // admin check resolves NON-admin, to drop any reserved shimmer slot a stale
+  // last-known-admin flag put up (the reveal-once CLEAR axis - a shared-device
+  // non-admin must never strand an admin placeholder).
+  mdRoot._mdRebuild = buildNav;
 
   // Era-reactive Appearance tile: repaint when <html data-theme> changes. Only
   // wired when the page actually HAS an era tile (Settings) - Stats/Subscriptions
@@ -5630,6 +5674,10 @@ function accountSignOut() {
     // v1.101: the notification-bell reserve flag is per-device too - drop it so
     // the next user doesn't reserve a bell slot this instance/user had enabled.
     try { localStorage.removeItem('ft-notif-bell-enabled'); } catch (_) { /* storage disabled */ }
+    // v1.158: the admin-reserve flag is per-device too - drop it so the next
+    // user (e.g. a non-admin on a shared device) never reserves an admin
+    // shimmer slot the master-detail nav would strand.
+    try { localStorage.removeItem('ft-is-admin'); } catch (_) { /* storage disabled */ }
     window.location.href = '/login';
   };
   fetch('/api/auth/logout', { method: 'POST' }).then(done, done);
@@ -5693,6 +5741,19 @@ function releaseNotesUrl(version) {
   return /^\d+\.\d+\.\d+$/.test(String(version || ''))
     ? `https://github.com/dtammam/filetube/releases/tag/v${version}`
     : null;
+}
+
+// v1.158 (Dean): format the account-menu "total on disk" figure. A byte-exact
+// copy of stats.js's formatByteSize (common.js loads on every shell; stats.js
+// does not) so the You-menu string matches the Stats "Total size on disk" tile
+// character-for-character. account-menu.test.js locks the two outputs equal.
+function formatDiskBytes(bytes) {
+  const value = (typeof bytes === 'number' && Number.isFinite(bytes) && bytes >= 0) ? bytes : 0;
+  if (value === 0) return '0 B';
+  const k = 1024;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const exponent = Math.min(Math.floor(Math.log(value) / Math.log(k)), units.length - 1);
+  return `${parseFloat((value / Math.pow(k, exponent)).toFixed(1))} ${units[exponent]}`;
 }
 
 function buildAccountMenuRow(tag, label, iconClass) {
@@ -6285,10 +6346,44 @@ function injectAccountMenu() {
     // fetch). This ONE menu is what the desktop header dropdown AND the mobile
     // "You" bottom-nav tab both open, so it covers both surfaces at once. Absent
     // meta (e.g. a shell not templated) -> no footer, never a broken "Version undefined".
+    // v1.158 (Dean): the library's total size on disk - the core self-hosted
+    // number, surfaced here so it is not a tap away in Stats. A link INTO Stats
+    // (rides the account-menu-item SPA intercept above, so no full reload).
+    // Lazily fetched on first menu-open (shimmer until then); on a fetch failure
+    // the row + its divider hide, never a broken value (the version-footer
+    // posture). Sits ABOVE the version row, sharing this one footer divider.
+    const diskDivider = accountMenuDivider();
+    menu.appendChild(diskDivider);
+    // Its OWN class (not account-menu-item) - it is a footer info-link like the
+    // version row, and must stay out of the quick-link censuses. The SPA
+    // intercept below is broadened to route it too.
+    const diskRow = document.createElement('a');
+    diskRow.className = 'account-menu-disk';
+    diskRow.href = '/stats.html';
+    diskRow.setAttribute('role', 'menuitem');
+    diskRow.setAttribute('aria-label', 'Total size on disk - open Stats');
+    const diskLabel = document.createElement('span');
+    diskLabel.className = 'account-menu-disk-shimmer skeleton-shimmer';
+    diskRow.appendChild(diskLabel);
+    menu.appendChild(diskRow);
+    let diskLoaded = false;
+    const loadDiskUsage = () => {
+      if (diskLoaded) return; // fetch once per menu instance, on first open
+      diskLoaded = true;
+      fetch('/api/storage-summary')
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error('storage-summary ' + r.status))))
+        .then((body) => {
+          const bytes = body && Number(body.totalSizeBytes);
+          if (!Number.isFinite(bytes)) throw new Error('bad total');
+          diskLabel.className = ''; // drop the shimmer, reveal the value
+          diskLabel.textContent = formatDiskBytes(bytes) + ' on disk';
+        })
+        .catch(() => { diskRow.hidden = true; diskDivider.hidden = true; });
+    };
+
     const version = appVersionString();
     const notesUrl = releaseNotesUrl(version);
     if (version && notesUrl) {
-      menu.appendChild(accountMenuDivider());
       // v1.144 (Dean): the version row is a LINK now - click it to open this
       // build's release notes (the user-language ledger entry from
       // docs/releases.json, published to GitHub Releases). New tab +
@@ -6310,6 +6405,7 @@ function injectAccountMenu() {
     const setOpen = (open) => {
       menu.hidden = !open;
       trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) loadDiskUsage(); // v1.158: lazily resolve the on-disk total on first open
     };
     trigger.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -6327,7 +6423,7 @@ function injectAccountMenu() {
     // mirroring shouldInterceptLinkClick -- so the mini-player survives.
     menu.addEventListener('click', (e) => {
       e.stopPropagation();
-      const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a.account-menu-item[href]') : null;
+      const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a.account-menu-item[href], a.account-menu-disk[href]') : null;
       if (!a) return;
       if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.getAttribute('target') === '_blank') return;
       let u;
@@ -12387,6 +12483,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.82: the account menu injector + avatar builder + shared sign-out +
     // theme-glyph sync.
     injectAccountMenu, ensureAccountMenuSubscriptionsRow, buildAccountAvatarEl, accountSignOut, updateAccountMenuThemeItem,
+    // v1.158: the account-menu disk-size formatter (byte-exact vs stats.js's).
+    formatDiskBytes,
     // v1.83: the pure avatar-crop geometry + the crop modal.
     avatarMinScale, clampAvatarOffset, avatarSourceRect, cropAvatarFile,
     // v1.78 device handoff: the UA label table. Pure, and exactly the kind of

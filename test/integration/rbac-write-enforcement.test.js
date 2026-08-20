@@ -78,6 +78,7 @@ const WRITE_ROUTES = [
   ['POST', '/api/videos/attribute-channel-bulk/cancel', undefined],
   ['POST', '/api/trash/t1/restore', undefined],
   ['DELETE', '/api/trash/t1', undefined],
+  ['POST', '/api/trash/purge-all', undefined], // v1.158: the bulk-purge sibling joins the write gate (route-count lock)
   ['POST', '/api/scan', undefined],
   ['POST', '/api/books/scan', undefined],
   ['POST', '/api/music/scan', undefined],

@@ -91,6 +91,7 @@ const READ = {
   '/api/search-history': 'OWN_STATE',
   '/api/settings': 'NO_CONTENT',
   '/api/stats': 'GATED',
+  '/api/storage-summary': 'GATED', // v1.158: visibility-scoped total bytes (same scoping as /api/stats)
   '/api/subscriptions': 'NO_CONTENT', // shared channel registry: names/avatars, not per-content
   '/api/subscriptions/failures': 'TRACKED', // #150: registry job-log titles
   '/api/subscriptions/health': 'NO_CONTENT',

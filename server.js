@@ -11720,25 +11720,21 @@ app.delete('/api/search-history', (req, res) => {
 });
 
 // ---- v1.65 trash routes -----------------------------------------------------
-// PER-ITEM ONLY, by construction (the v1.64 route-alias lesson): restore is
-// a POST under the id, purge is DELETE under the id, and NO collection-wide
-// DELETE /api/trash exists at all -- an empty-id form matches no route.
-// GET lists newest-first; items render from the stored metadata snapshot,
-// and /thumbnail/<trashId> works (the sidecar re-keyed with the move).
+// GET lists newest-first (items render from the stored metadata snapshot, and
+// /thumbnail/<trashId> works - the sidecar re-keyed with the move). Mutations:
+// restore is a POST under the id, single-purge is DELETE under the id, and
+// v1.158 added POST /api/trash/purge-all (bulk "Empty trash"). There is still NO
+// collection-wide DELETE /api/trash (the v1.64 route-alias lesson - an empty-id
+// DELETE matches no route). v1.80 RBAC: a restricted member must not even see a
+// restricted item's TITLE/existence in the trash - so GET and EVERY purge path
+// (single + bulk) filter by the SAME shared trashRecordVisibleTo predicate, so
+// the set a member can list is exactly the set they can destroy (admin's empty
+// index keeps everything).
 app.get('/api/trash', (req, res) => {
   const db = getCachedDatabase();
   const retentionDays = Number(db.settings && db.settings.trashRetentionDays);
   const items = Object.entries(db.trash || {})
-    // v1.80 RBAC (security-gate finding): a restricted member must not see the
-    // TITLE/existence of a restricted item in the trash either. Build the media
-    // descriptor from the snapshot (or the record's own path fields for an
-    // orphan with no snapshot). Admin's empty index keeps everything.
-    .filter(([, rec]) => !visibility.isBlocked(userRestrictionIndex(req), {
-      kind: 'media',
-      filePath: (rec.item && rec.item.filePath) || rec.originalPath,
-      folderName: rec.item && rec.item.folderName,
-      rootFolder: rec.rootFolder || (rec.item && rec.item.rootFolder),
-    }))
+    .filter(([, rec]) => trashRecordVisibleTo(req, rec)) // the ONE predicate (shared with purge/restore)
     .map(([tid, rec]) => ({
       trashId: tid,
       originalId: rec.originalId,
@@ -11757,8 +11753,43 @@ app.get('/api/trash', (req, res) => {
   res.json({
     items,
     total: items.length,
+    // v1.158 (Dean): the total bytes the VISIBLE trash holds - what "Empty
+    // trash" reclaims. Summed over the SAME visibility-filtered set, so the
+    // figure the client shows == what purge-all frees. Orphans with no snapshot
+    // size contribute 0 (best-effort; disclosed).
+    totalSizeBytes: items.reduce((sum, it) => sum + (Number(it.size) || 0), 0),
     retentionDays: Number.isFinite(retentionDays) ? retentionDays : null,
   });
+});
+
+// v1.158 (Dean): "Empty trash" - permanently purge EVERY trash item the
+// requester can see, in one call. Destructive: same three guards as the single-
+// item DELETE below (write-RBAC, read-only refusal, per-item visibility), and
+// it enumerates the SAME visibility-filtered set GET /api/trash returns - a
+// restricted member purges ONLY their visible items, never a hidden one (v1.80/
+// v1.81 route-count-lock class). Registered BEFORE POST /api/trash/:id/restore
+// so the static `purge-all` segment can never be captured as an `:id`.
+app.post('/api/trash/purge-all', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
+  if (refuseIfReadOnlyMedia(res)) return;
+  const db = getCachedDatabase();
+  // Snapshot the visible id set + each record's size BEFORE any purge (each
+  // purgeTrashItem reloads + mutates the db; freedBytes must read the size from
+  // the pre-purge snapshot).
+  const targets = Object.entries(db.trash || {})
+    .filter(([, rec]) => trashRecordVisibleTo(req, rec))
+    .map(([tid, rec]) => ({ tid, size: (rec.item && Number(rec.item.size)) || 0 }));
+  let purgedCount = 0;
+  let freedBytes = 0;
+  const failures = [];
+  for (const { tid, size } of targets) {
+    // Sequential on purpose: purgeTrashItem reload/mutates the db per call;
+    // concurrent purges would race the write.
+    const result = await purgeTrashItem({ loadDatabase, updateDatabase }, tid);
+    if (result.ok) { purgedCount += 1; freedBytes += size; }
+    else failures.push({ tid, error: result.error, code: result.code });
+  }
+  res.json({ success: failures.length === 0, purgedCount, freedBytes, failures });
 });
 
 app.post('/api/trash/:id/restore', async (req, res) => {
@@ -15140,6 +15171,21 @@ async function recordLocalChannelHealFanout(deps, target) {
 // header comment): at home-server scale an O(n) pass per request is trivial
 // and always fresh, and a cache would need its own invalidation story for no
 // real benefit.
+// v1.158 (Dean): the library's total bytes on disk, visibility-scoped - the
+// SAME figure the Stats "Total size on disk" tile shows (computeLibraryStats
+// over the requester's VISIBLE metadata, built exactly as /api/stats builds it
+// below), surfaced in the account ("You") menu so the core self-hosted number
+// is not a tap away in Stats. Tiny payload; the menu fetches it lazily on open.
+app.get('/api/storage-summary', (req, res) => {
+  const db = getCachedDatabase();
+  const withVc = withEffectiveViewCounts(db);
+  const visibleMetadata = {};
+  for (const id of Object.keys(withVc)) {
+    if (mediaVisibleTo(req, withVc[id])) visibleMetadata[id] = withVc[id];
+  }
+  res.json({ totalSizeBytes: stats.computeLibraryStats(visibleMetadata).totalSizeBytes });
+});
+
 app.get('/api/stats', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: pure read on a request/serve path
   const books = booksStore.readBooks(db);

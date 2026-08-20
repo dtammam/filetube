@@ -7474,6 +7474,16 @@ body.ft-audio-expanded {
 }
 .md-row-chev { color: var(--text-secondary); opacity: 0.55; display: inline-flex; }
 .md-row-chev svg { width: 16px; height: 16px; }
+/* v1.158 (Dean): the reserved shimmer row for an admin section still loading
+   behind setup.js's capability reveal. A .md-row (same flex/gap/padding) with a
+   30px tile block - matching a real row's height so the real row replaces it
+   with ZERO shift. Non-interactive; carries no label/icon (privacy). */
+.md-row-skeleton { cursor: default; pointer-events: none; }
+.md-row-skeleton-tile {
+  flex: 0 0 auto; width: 30px; height: 30px; /* == .md-tile, so the row height matches */
+  border-radius: var(--md-tile-radius);
+}
+.md-row-skeleton-label { flex: 1; height: var(--fs-lg); border-radius: var(--radius); }
 
 .md-tile {
   flex: 0 0 auto; width: 30px; height: 30px; border-radius: var(--md-tile-radius);
@@ -10710,6 +10720,26 @@ html[data-modern="on"] .video-uploader {
 .account-menu-version:hover {
   text-decoration: underline;
 }
+/* v1.158 (Dean): the "total size on disk" footer link into Stats - styled like
+   the version row beside it. Tabular digits so the figure sits steady; the
+   shimmer is a fixed-size loading bar in the label span until the lazy fetch
+   resolves. */
+.account-menu-disk {
+  display: block;
+  text-decoration: none;
+  padding: var(--space-2) var(--space-6);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.account-menu-disk:hover { text-decoration: underline; }
+.account-menu-disk-shimmer {
+  display: inline-block;
+  min-width: 5em;
+  height: 0.9em;
+  border-radius: var(--radius);
+}
 /* v1.82: the Settings->Account profile-photo controls. */
 .account-photo-actions {
   display: inline-flex;
@@ -11406,6 +11436,18 @@ a.queue-upnext-next:hover {
 .trash-purge-btn.trash-confirming .trash-purge-label { display: none; }
 .trash-purge-btn.trash-confirming .trash-purge-confirm { display: inline; }
 .trash-purge-btn.trash-confirming { color: var(--yt-red); }
+/* v1.158: the trash toolbar (total held + two-tap Empty). display:flex would
+   beat a bare [hidden], so guard it explicitly (the repo [hidden]-loses rule). */
+.trash-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin-bottom: var(--space-6);
+}
+.trash-toolbar[hidden] { display: none; }
+.trash-total { color: var(--text-secondary); font-size: var(--fs-sm); }
+.trash-empty-all.trash-confirming { color: var(--yt-red); }
 .trash-empty {
   color: var(--text-secondary);
   padding: var(--space-6) 0;
