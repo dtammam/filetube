@@ -80,6 +80,28 @@
 
 ## Shipped
 
+### v1.160.2 - modern card/list toggle glyph size (Dean device report) (2026-08-20)
+
+Dean's device pass on v1.160.1: the modern-home card/list toggle glyph "is a
+little small." ROOT CAUSE: the grid/list icon is a `1em` mask (`.icon-grid` /
+`.icon-list`, width/height 1em); `.modern-view-toggle` set NO `font-size`, so the
+glyph inherited the ambient ~16px, while every sibling header glyph (the download
+`#ytdlp-oneoff-btn`, the `.search-toggle-btn`, the `.modern-sort-btn` caret) is
+`--fs-4xl` (22px) - the uniform header glyph family. Added `font-size:
+var(--fs-4xl); line-height: 1;` so the glyph joins that family.
+
+SLIM gate (adversarial alone, one-line cosmetic CSS), APPROVE, no findings in
+scope. Source-lock added (library-view-prefs) binding the `--fs-4xl` sizing so it
+can't silently shrink again - mutation-confirmed (reverting the font-size reds
+11/12). Census 0. Dual-Node 7364/7364 on v22.23.1 AND v24.14.0.
+
+Known cheap sweep (out of scope here, logged): the `.modern-sort-btn` comment's
+"one step MORE than the download/search glyphs" is stale - those glyphs are also
+22px; correct it next time style.css is touched.
+
+DEVICE item: the modern feed's card/list toggle glyph now reads the same size as
+its neighbours.
+
 ### v1.160.1 - swipe-shake + grey toggle + Subscriptions hero (Dean device report) (2026-08-20)
 
 Three fixes from Dean's device pass on v1.160.0 (a fourth - the Activity view -

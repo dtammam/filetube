@@ -8594,6 +8594,11 @@ body[data-view="home"] .modern-sort {
   border-radius: var(--radius-full);
   align-items: center;
   justify-content: center;
+  font-size: var(--fs-4xl); /* v1.160.2 (Dean): the grid/list mask glyph is 1em,
+                               so size it 22px to join the header glyph family
+                               (download/search/sort) - unset it inherited ~16px
+                               and read "a little small". */
+  line-height: 1; /* token-exempt: glyph centering */
 }
 body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 .modern-view-toggle:hover { background-color: var(--bg-secondary); }
