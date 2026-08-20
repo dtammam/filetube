@@ -15175,6 +15175,21 @@ async function recordLocalChannelHealFanout(deps, target) {
 // header comment): at home-server scale an O(n) pass per request is trivial
 // and always fresh, and a cache would need its own invalidation story for no
 // real benefit.
+// v1.158 (Dean): the library's total bytes on disk, visibility-scoped - the
+// SAME figure the Stats "Total size on disk" tile shows (computeLibraryStats
+// over the requester's VISIBLE metadata, built exactly as /api/stats builds it
+// below), surfaced in the account ("You") menu so the core self-hosted number
+// is not a tap away in Stats. Tiny payload; the menu fetches it lazily on open.
+app.get('/api/storage-summary', (req, res) => {
+  const db = getCachedDatabase();
+  const withVc = withEffectiveViewCounts(db);
+  const visibleMetadata = {};
+  for (const id of Object.keys(withVc)) {
+    if (mediaVisibleTo(req, withVc[id])) visibleMetadata[id] = withVc[id];
+  }
+  res.json({ totalSizeBytes: stats.computeLibraryStats(visibleMetadata).totalSizeBytes });
+});
+
 app.get('/api/stats', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: pure read on a request/serve path
   const books = booksStore.readBooks(db);

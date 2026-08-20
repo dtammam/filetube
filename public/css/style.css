@@ -10710,6 +10710,26 @@ html[data-modern="on"] .video-uploader {
 .account-menu-version:hover {
   text-decoration: underline;
 }
+/* v1.158 (Dean): the "total size on disk" footer link into Stats - styled like
+   the version row beside it. Tabular digits so the figure sits steady; the
+   shimmer is a fixed-size loading bar in the label span until the lazy fetch
+   resolves. */
+.account-menu-disk {
+  display: block;
+  text-decoration: none;
+  padding: var(--space-2) var(--space-6);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.account-menu-disk:hover { text-decoration: underline; }
+.account-menu-disk-shimmer {
+  display: inline-block;
+  min-width: 5em;
+  height: 0.9em;
+  border-radius: var(--radius);
+}
 /* v1.82: the Settings->Account profile-photo controls. */
 .account-photo-actions {
   display: inline-flex;

@@ -246,3 +246,96 @@ test('injectAccountMenu: no version meta -> no version row at all (never a dead 
   await tick();
   assert.strictEqual(global.document.querySelector('.account-menu-version'), null);
 });
+
+// ---- v1.158 (Dean): the "Total size on disk" footer row --------------------
+
+const { formatByteSize } = require('../../public/js/stats.js');
+
+test('formatDiskBytes: byte-exact with the Stats formatByteSize (the two figures can never drift)', () => {
+  const { formatDiskBytes } = fresh({});
+  for (const b of [0, 1, 1023, 1024, 1536, 1048576, 2.5 * 1024 ** 3, 999 * 1024 ** 4, -5, NaN, 'x']) {
+    assert.strictEqual(formatDiskBytes(b), formatByteSize(b), `same string for ${b}`);
+  }
+});
+
+function withDiskMenu(mePayload) {
+  const common = fresh(mePayload || { user: { id: 1, displayName: 'Dean', role: 'admin', avatar: { present: false } } });
+  const meta = global.document.createElement('meta'); // so the version row exists (ordering test)
+  meta.setAttribute('name', 'ft-version'); meta.setAttribute('content', '1.158.0');
+  global.document.head.appendChild(meta);
+  return common;
+}
+// Re-point fetch so the storage-summary open-fetch resolves with `bytes` (or
+// fails when bytes === null). /api/auth/me already resolved at inject time.
+function stubStorage(bytes) {
+  global.fetch = async (url) => {
+    if (url === '/api/storage-summary') {
+      return bytes === null
+        ? { ok: false, status: 500, json: async () => ({}) }
+        : { ok: true, status: 200, json: async () => ({ totalSizeBytes: bytes }) };
+    }
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+}
+
+test('the disk row is an account-menu-disk LINK to Stats, ABOVE the version row, shimmering before open', async () => {
+  const { injectAccountMenu } = withDiskMenu();
+  injectAccountMenu();
+  await tick();
+  const disk = global.document.querySelector('.account-menu-disk');
+  assert.ok(disk, 'the disk row rendered');
+  assert.strictEqual(disk.tagName, 'A');
+  assert.strictEqual(disk.getAttribute('href'), '/stats.html', 'clicking opens Stats');
+  assert.ok(disk.querySelector('.account-menu-disk-shimmer.skeleton-shimmer'), 'shimmers until the lazy fetch');
+  // Ordering: disk sits ABOVE the version row.
+  const ver = global.document.querySelector('.account-menu-version');
+  assert.ok(ver, 'the version row exists');
+  assert.ok(disk.compareDocumentPosition(ver) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING,
+    'the version row comes AFTER the disk row (disk is above version)');
+});
+
+test('on first open the disk total resolves: shimmer clears, shows "<size> on disk" matching formatDiskBytes', async () => {
+  const { injectAccountMenu, formatDiskBytes } = withDiskMenu();
+  injectAccountMenu();
+  await tick();
+  stubStorage(2.5 * 1024 ** 3);
+  global.document.querySelector('.account-menu-trigger').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick();
+  const disk = global.document.querySelector('.account-menu-disk');
+  assert.strictEqual(disk.hidden, false, 'the row stays');
+  assert.strictEqual(disk.querySelector('.skeleton-shimmer'), null, 'the shimmer is gone');
+  assert.strictEqual(disk.textContent, formatDiskBytes(2.5 * 1024 ** 3) + ' on disk');
+});
+
+test('the disk fetch is lazy (only on open) and happens at most once across opens', async () => {
+  const { injectAccountMenu } = withDiskMenu();
+  injectAccountMenu();
+  await tick();
+  let hits = 0;
+  global.fetch = async (url) => {
+    if (url === '/api/storage-summary') hits += 1;
+    return { ok: true, status: 200, json: async () => ({ totalSizeBytes: 100 }) };
+  };
+  assert.strictEqual(hits, 0, 'no fetch before the menu is ever opened');
+  const trigger = global.document.querySelector('.account-menu-trigger');
+  trigger.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // open
+  await tick();
+  trigger.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // close
+  trigger.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // open again
+  await tick();
+  assert.strictEqual(hits, 1, 'fetched exactly once (first open), not on every open');
+});
+
+test('a failed disk fetch hides the row AND its divider (never a broken value)', async () => {
+  const { injectAccountMenu } = withDiskMenu();
+  injectAccountMenu();
+  await tick();
+  const disk = global.document.querySelector('.account-menu-disk');
+  const divider = disk.previousElementSibling; // the footer divider we added above it
+  assert.ok(divider.classList.contains('account-menu-divider'), 'precondition: a divider sits above the disk row');
+  stubStorage(null); // 500
+  global.document.querySelector('.account-menu-trigger').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick();
+  assert.strictEqual(disk.hidden, true, 'the disk row hides on failure');
+  assert.strictEqual(divider.hidden, true, 'and its divider hides too (no orphan separator)');
+});

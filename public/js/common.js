@@ -5695,6 +5695,19 @@ function releaseNotesUrl(version) {
     : null;
 }
 
+// v1.158 (Dean): format the account-menu "total on disk" figure. A byte-exact
+// copy of stats.js's formatByteSize (common.js loads on every shell; stats.js
+// does not) so the You-menu string matches the Stats "Total size on disk" tile
+// character-for-character. account-menu.test.js locks the two outputs equal.
+function formatDiskBytes(bytes) {
+  const value = (typeof bytes === 'number' && Number.isFinite(bytes) && bytes >= 0) ? bytes : 0;
+  if (value === 0) return '0 B';
+  const k = 1024;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const exponent = Math.min(Math.floor(Math.log(value) / Math.log(k)), units.length - 1);
+  return `${parseFloat((value / Math.pow(k, exponent)).toFixed(1))} ${units[exponent]}`;
+}
+
 function buildAccountMenuRow(tag, label, iconClass) {
   const row = document.createElement(tag);
   row.className = 'account-menu-item';
@@ -6285,10 +6298,44 @@ function injectAccountMenu() {
     // fetch). This ONE menu is what the desktop header dropdown AND the mobile
     // "You" bottom-nav tab both open, so it covers both surfaces at once. Absent
     // meta (e.g. a shell not templated) -> no footer, never a broken "Version undefined".
+    // v1.158 (Dean): the library's total size on disk - the core self-hosted
+    // number, surfaced here so it is not a tap away in Stats. A link INTO Stats
+    // (rides the account-menu-item SPA intercept above, so no full reload).
+    // Lazily fetched on first menu-open (shimmer until then); on a fetch failure
+    // the row + its divider hide, never a broken value (the version-footer
+    // posture). Sits ABOVE the version row, sharing this one footer divider.
+    const diskDivider = accountMenuDivider();
+    menu.appendChild(diskDivider);
+    // Its OWN class (not account-menu-item) - it is a footer info-link like the
+    // version row, and must stay out of the quick-link censuses. The SPA
+    // intercept below is broadened to route it too.
+    const diskRow = document.createElement('a');
+    diskRow.className = 'account-menu-disk';
+    diskRow.href = '/stats.html';
+    diskRow.setAttribute('role', 'menuitem');
+    diskRow.setAttribute('aria-label', 'Total size on disk - open Stats');
+    const diskLabel = document.createElement('span');
+    diskLabel.className = 'account-menu-disk-shimmer skeleton-shimmer';
+    diskRow.appendChild(diskLabel);
+    menu.appendChild(diskRow);
+    let diskLoaded = false;
+    const loadDiskUsage = () => {
+      if (diskLoaded) return; // fetch once per menu instance, on first open
+      diskLoaded = true;
+      fetch('/api/storage-summary')
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error('storage-summary ' + r.status))))
+        .then((body) => {
+          const bytes = body && Number(body.totalSizeBytes);
+          if (!Number.isFinite(bytes)) throw new Error('bad total');
+          diskLabel.className = ''; // drop the shimmer, reveal the value
+          diskLabel.textContent = formatDiskBytes(bytes) + ' on disk';
+        })
+        .catch(() => { diskRow.hidden = true; diskDivider.hidden = true; });
+    };
+
     const version = appVersionString();
     const notesUrl = releaseNotesUrl(version);
     if (version && notesUrl) {
-      menu.appendChild(accountMenuDivider());
       // v1.144 (Dean): the version row is a LINK now - click it to open this
       // build's release notes (the user-language ledger entry from
       // docs/releases.json, published to GitHub Releases). New tab +
@@ -6310,6 +6357,7 @@ function injectAccountMenu() {
     const setOpen = (open) => {
       menu.hidden = !open;
       trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) loadDiskUsage(); // v1.158: lazily resolve the on-disk total on first open
     };
     trigger.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -6327,7 +6375,7 @@ function injectAccountMenu() {
     // mirroring shouldInterceptLinkClick -- so the mini-player survives.
     menu.addEventListener('click', (e) => {
       e.stopPropagation();
-      const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a.account-menu-item[href]') : null;
+      const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a.account-menu-item[href], a.account-menu-disk[href]') : null;
       if (!a) return;
       if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.getAttribute('target') === '_blank') return;
       let u;
@@ -12387,6 +12435,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.82: the account menu injector + avatar builder + shared sign-out +
     // theme-glyph sync.
     injectAccountMenu, ensureAccountMenuSubscriptionsRow, buildAccountAvatarEl, accountSignOut, updateAccountMenuThemeItem,
+    // v1.158: the account-menu disk-size formatter (byte-exact vs stats.js's).
+    formatDiskBytes,
     // v1.83: the pure avatar-crop geometry + the crop modal.
     avatarMinScale, clampAvatarOffset, avatarSourceRect, cropAvatarFile,
     // v1.78 device handoff: the UA label table. Pure, and exactly the kind of
