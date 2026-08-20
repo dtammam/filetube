@@ -956,8 +956,10 @@ test('buildSettingsSheet: renders a real <img> avatar inside .sub-sheet-avatar w
   };
   const backdrop = buildSettingsSheet(sub, fakeDoc, {});
   const sheet = backdrop.children[0];
-  const header = sheet.children[0];
-  const avatar = header.children[0];
+  // v1.155: the avatar moved from the header into the centered hero block
+  // (sheet.children[1]); the header (children[0]) is now the nav-bar.
+  const hero = sheet.children[1];
+  const avatar = hero.children[0];
   assert.strictEqual(avatar.className, 'sub-sheet-avatar');
   assert.strictEqual(avatar.children.length, 1);
   const img = avatar.children[0];
@@ -969,22 +971,25 @@ test('buildSettingsSheet: renders a real <img> avatar inside .sub-sheet-avatar w
 test('buildSettingsSheet: falls back to the SAME deterministic generated avatar deriveAvatar produces in .sub-sheet-avatar when channelAvatarUrl is absent (AC7.5)', () => {
   const backdrop = buildSettingsSheet({ id: 'sheet-av2', name: 'Letter Sheet' }, fakeDoc, {});
   const sheet = backdrop.children[0];
-  const header = sheet.children[0];
-  const avatar = header.children[0];
+  // v1.155: avatar lives in the hero (sheet.children[1]) now.
+  const hero = sheet.children[1];
+  const avatar = hero.children[0];
   assert.strictEqual(avatar.textContent, deriveAvatar('Letter Sheet').glyph);
   assert.strictEqual(avatar.children.length, 0);
 });
 
 test('createSubscriptionRow and buildSettingsSheet: the SAME subscription name/avatar renders IDENTICALLY in both (never a divergent implementation, AC7.5)', () => {
+  // v1.155: sheet avatar path is backdrop -> sheet -> hero(children[1]) ->
+  // avatar (the header is the nav-bar now, not the avatar host).
   const named = { id: 'consistency-1', name: 'Consistent Creator', channelUrl: 'https://www.youtube.com/@consistent' };
   const rowAvatar = createSubscriptionRow(named, fakeDoc, {}).children[0];
-  const sheetAvatar = buildSettingsSheet(named, fakeDoc, {}).children[0].children[0].children[0];
+  const sheetAvatar = buildSettingsSheet(named, fakeDoc, {}).children[0].children[1].children[0];
   assert.strictEqual(rowAvatar.textContent, sheetAvatar.textContent);
   assert.strictEqual(rowAvatar.style.backgroundColor, sheetAvatar.style.backgroundColor);
 
   const withAvatar = { id: 'consistency-2', name: 'Consistent Creator', channelUrl: 'https://www.youtube.com/@consistent', channelAvatarUrl: 'https://example.com/c.jpg' };
   const rowImg = createSubscriptionRow(withAvatar, fakeDoc, {}).children[0].children[0];
-  const sheetImg = buildSettingsSheet(withAvatar, fakeDoc, {}).children[0].children[0].children[0].children[0];
+  const sheetImg = buildSettingsSheet(withAvatar, fakeDoc, {}).children[0].children[1].children[0].children[0];
   assert.strictEqual(rowImg.src, sheetImg.src);
 });
 
@@ -1074,74 +1079,75 @@ test('createSubscriptionRow: omits the <a> tag (renders a plain, non-link elemen
 
 // ---- AC20: row tap navigation, gated on a resolved channelDir --------------
 
-test('createSubscriptionRow: row tap invokes onRowTap when channelDir is resolved', () => {
+// v1.155 (Subscriptions redesign): a row tap opens the channel's settings
+// panel (iOS list idiom), for EVERY row -- replacing the old onRowTap ->
+// channel-playlist navigation, which moved onto the "View as Playlist" link.
+
+test('createSubscriptionRow: a tap on the row body opens the settings panel via onOpenSettings (channelDir resolved)', () => {
   const sub = { id: 'r1', name: 'Nav', channelUrl: 'https://www.youtube.com/@nav', channelDir: '/data/x' };
-  const tapCalls = [];
-  const row = createSubscriptionRow(sub, fakeDoc, { onRowTap: (s) => tapCalls.push(s) });
+  const openCalls = [];
+  const row = createSubscriptionRow(sub, fakeDoc, { onOpenSettings: (s) => openCalls.push(s) });
   row.click();
-  assert.deepStrictEqual(tapCalls, [sub]);
+  assert.deepStrictEqual(openCalls, [sub]);
 });
 
-test('createSubscriptionRow: no row-tap listener is attached at all when channelDir is unresolved (fail-safe non-navigating)', () => {
-  const sub = { id: 'r2', name: 'NoNav', channelUrl: 'https://www.youtube.com/@nonav' };
-  const tapCalls = [];
-  const row = createSubscriptionRow(sub, fakeDoc, { onRowTap: (s) => tapCalls.push(s) });
-  row.click();
-  assert.deepStrictEqual(tapCalls, [], 'a row with no resolved channelDir must never navigate');
+test('createSubscriptionRow: EVERY row is tappable -> settings, even when channelDir is unresolved (v1.155)', () => {
+  // Before v1.155 a row with no resolved channelDir got NO click listener at
+  // all (fail-safe non-navigating). Now every channel has settings to edit, so
+  // every row opens the panel regardless of whether its folder resolved.
+  for (const sub of [
+    { id: 'r2', name: 'NoDir', channelUrl: 'https://www.youtube.com/@nodir' },
+    { id: 'r3', name: 'EmptyDir', channelUrl: 'https://www.youtube.com/@emptydir', channelDir: '' },
+  ]) {
+    const openCalls = [];
+    const row = createSubscriptionRow(sub, fakeDoc, { onOpenSettings: (s) => openCalls.push(s) });
+    row.click();
+    assert.deepStrictEqual(openCalls, [sub], `${sub.name} row must open settings on tap`);
+  }
 });
 
-test('createSubscriptionRow: an empty-string channelDir is also treated as unresolved (non-navigating)', () => {
-  const sub = { id: 'r3', name: 'EmptyDir', channelUrl: 'https://www.youtube.com/@emptydir', channelDir: '' };
-  const tapCalls = [];
-  const row = createSubscriptionRow(sub, fakeDoc, { onRowTap: (s) => tapCalls.push(s) });
-  row.click();
-  assert.deepStrictEqual(tapCalls, []);
-});
+// ---- a click on an inner link/button must NOT also open the panel -----------
+// The channel `<a>`, the "View as Playlist" `<a>` and the inner buttons all
+// live inside the row; the row handler guards closest('a')/closest('button')
+// so tapping one of them never ALSO opens the settings panel.
 
-// ---- v1.21 FIX 2 (post-gate hardening, QA -- FR-3/FR-4): a click landing
-// on the channel link or the playlist link must NOT also fire row-tap
-// navigation (previously both links opened AND navigated the current tab
-// away, since only the kebab/pin-toggle stopPropagation'd).
-
-test('createSubscriptionRow: clicking the channel link does not also trigger row-tap navigation', () => {
+test('createSubscriptionRow: clicking the channel link does not also open the settings panel', () => {
   const sub = { id: 'rl1', name: 'LinkRow', channelUrl: 'https://www.youtube.com/@linkrow', channelDir: '/data/lr' };
-  const tapCalls = [];
-  const row = createSubscriptionRow(sub, fakeDoc, { onRowTap: (s) => tapCalls.push(s) });
+  const openCalls = [];
+  const row = createSubscriptionRow(sub, fakeDoc, { onOpenSettings: (s) => openCalls.push(s) });
   const channelLink = [...row.walk()].find((el) => el.className === 'sub-row-channel-link');
   assert.ok(channelLink, 'expected a .sub-row-channel-link to exist');
   assert.strictEqual(channelLink.tagName, 'A');
   row.click({ target: channelLink });
-  assert.deepStrictEqual(tapCalls, [], 'a click on the channel link must never also navigate the row');
+  assert.deepStrictEqual(openCalls, [], 'a click on the channel link must not also open settings');
 });
 
-test('createSubscriptionRow: clicking the "View as Playlist" link does not also trigger row-tap navigation', () => {
+test('createSubscriptionRow: clicking the "View as Playlist" link does not also open the settings panel', () => {
   const sub = { id: 'rl2', name: 'PlaylistRow', channelUrl: 'https://www.youtube.com/@plrow', channelDir: '/data/pr' };
-  const tapCalls = [];
-  const row = createSubscriptionRow(sub, fakeDoc, { onRowTap: (s) => tapCalls.push(s) });
+  const openCalls = [];
+  const row = createSubscriptionRow(sub, fakeDoc, { onOpenSettings: (s) => openCalls.push(s) });
   const playlistLink = [...row.walk()].find((el) => el.className === 'sub-row-playlist-link');
   assert.ok(playlistLink, 'expected a .sub-row-playlist-link to exist');
   row.click({ target: playlistLink });
-  assert.deepStrictEqual(tapCalls, [], 'a click on the playlist link must never also navigate the row');
+  assert.deepStrictEqual(openCalls, [], 'a click on the playlist link must not also open settings');
 });
 
-test('createSubscriptionRow: a click on the row body (not a link) still navigates', () => {
+test('createSubscriptionRow: a tap on the row body (not a link) opens the settings panel', () => {
   const sub = { id: 'rl3', name: 'BodyRow', channelUrl: 'https://www.youtube.com/@bodyrow', channelDir: '/data/br' };
-  const tapCalls = [];
-  const row = createSubscriptionRow(sub, fakeDoc, { onRowTap: (s) => tapCalls.push(s) });
+  const openCalls = [];
+  const row = createSubscriptionRow(sub, fakeDoc, { onOpenSettings: (s) => openCalls.push(s) });
   const nameEl = [...row.walk()].find((el) => el.className === 'sub-row-name');
   assert.ok(nameEl, 'expected a .sub-row-name to exist');
   row.click({ target: nameEl });
-  assert.deepStrictEqual(tapCalls, [sub], 'clicking any non-link part of the row body must still navigate');
+  assert.deepStrictEqual(openCalls, [sub], 'tapping any non-link part of the row body opens settings');
 });
 
 // ---- AC21/AC22: kebab opens the settings sheet, independent of row tap ----
 
 test('createSubscriptionRow: the kebab button opens the settings sheet via onOpenSettings, and never also fires row-tap navigation', () => {
   const sub = { id: 'k1', name: 'K', channelUrl: 'https://www.youtube.com/@k', channelDir: '/data/k' };
-  const tapCalls = [];
   const openCalls = [];
   const row = createSubscriptionRow(sub, fakeDoc, {
-    onRowTap: (s) => tapCalls.push(s),
     onOpenSettings: (s) => openCalls.push(s),
   });
   // v1.21.0 FR-5: a navigable row (channelDir present) now also renders a
@@ -1151,8 +1157,12 @@ test('createSubscriptionRow: the kebab button opens the settings sheet via onOpe
   const kebab = row.children.find((el) => el.className === 'sub-row-kebab');
   assert.ok(kebab, 'expected a .sub-row-kebab child to exist');
   kebab.click({ stopPropagation: () => {} });
-  assert.deepStrictEqual(openCalls, [sub]);
-  assert.deepStrictEqual(tapCalls, [], 'the kebab click must never also trigger row navigation');
+  assert.deepStrictEqual(openCalls, [sub], 'the kebab opens the settings panel');
+  // v1.155: a row-level click that LANDS on the kebab (a <button>) is guarded
+  // by closest('button'), so it never opens the panel a second time.
+  openCalls.length = 0;
+  row.click({ target: kebab });
+  assert.deepStrictEqual(openCalls, [], 'a row click targeting the kebab is guarded');
 });
 
 // ---- v1.20.0 FR-4: per-channel Playlist link (unchanged, still present) ---
@@ -1223,18 +1233,20 @@ test('createSubscriptionRow: omits the pin toggle entirely when channelDir is ab
   assert.strictEqual(pinBtn, undefined, 'no pin toggle can exist without a resolved channelDir to pin');
 });
 
-test('createSubscriptionRow: clicking the pin toggle calls onTogglePin(sub, pinned) and never also fires row-tap navigation', () => {
+test('createSubscriptionRow: clicking the pin toggle calls onTogglePin(sub, pinned) and never also opens the settings panel', () => {
   const sub = { id: 'pin4', name: 'Tap', channelUrl: 'https://www.youtube.com/@tap', channelDir: '/data/z' };
-  const tapCalls = [];
+  const openCalls = [];
   const pinCalls = [];
   const row = createSubscriptionRow(sub, fakeDoc, {
-    onRowTap: (s) => tapCalls.push(s),
+    onOpenSettings: (s) => openCalls.push(s),
     onTogglePin: (s, p) => pinCalls.push([s, p]),
   }, undefined, false);
   const pinBtn = row.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
   pinBtn.click({ stopPropagation: () => {} });
   assert.deepStrictEqual(pinCalls, [[sub, false]]);
-  assert.deepStrictEqual(tapCalls, [], 'the pin toggle click must never also trigger row navigation');
+  // v1.155: a row-level click landing on the pin <button> is guarded.
+  row.click({ target: pinBtn });
+  assert.deepStrictEqual(openCalls, [], 'a row click on the pin toggle never opens settings');
 });
 
 // ---- B4 (v1.24.0, T6, FR-8): DnD reorder attributes ------------------------
@@ -1924,18 +1936,20 @@ test('createSubscriptionRow: NO Retry button when there is no error/partial sign
   assert.strictEqual(retryBtn, undefined);
 });
 
-test('createSubscriptionRow: clicking Retry calls h.onRepull(sub.id) and stops propagation (never also fires row-tap navigation)', () => {
+test('createSubscriptionRow: clicking Retry calls h.onRepull(sub.id) and never also opens the settings panel', () => {
   const sub = { id: 'retry-click', name: 'Chan', channelUrl: 'https://www.youtube.com/@retry-click', channelDir: '/data/retry-click', lastStatus: 'error: x' };
   const repullCalls = [];
-  const tapCalls = [];
+  const openCalls = [];
   const row = createSubscriptionRow(sub, fakeDoc, {
-    onRowTap: (s) => tapCalls.push(s),
+    onOpenSettings: (s) => openCalls.push(s),
     onRepull: (id) => { repullCalls.push(id); return Promise.resolve(null); },
   });
   const retryBtn = row.children.find((el) => el.className === 'btn btn-sm sub-row-retry');
   retryBtn.click({ stopPropagation: () => {} });
   assert.deepStrictEqual(repullCalls, ['retry-click']);
-  assert.deepStrictEqual(tapCalls, [], 'the Retry click must never also trigger row navigation');
+  // v1.155: a row-level click landing on the Retry <button> is guarded.
+  row.click({ target: retryBtn });
+  assert.deepStrictEqual(openCalls, [], 'a row click on Retry never opens settings');
 });
 
 test('createSubscriptionRow: Retry renders "queued behind current run" (sub-row-status-queued + textContent) when the repull response is {started:false, reason:"busy"}', async () => {

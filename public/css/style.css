@@ -7586,8 +7586,11 @@ body.ft-audio-expanded {
   z-index: calc(var(--z-panel) + 1); /* 1601: one above --z-panel, deliberately breaking the old accidental tie with the notif panel (their openers are POINTER-blocked by each other's full-cover backdrops; keyboard focus is NOT trapped - pre-existing gap, tech-debt #67 - so a Tab+Enter co-open exists, and either stacking order is acceptable there; the tie itself was DOM-order-dependent fragility, Tier 4 re-ladder); above the Playlists sheet (--z-sheet band); below the toast (--z-top)/generic modal (--z-modal+), which never coexist with this page's own sheet in practice */
   background: var(--scrim);
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
+  /* v1.155 (Subscriptions redesign): the settings panel is a right-anchored,
+     full-height iOS push-in page now (was a bottom sheet) -- anchor the panel
+     to the trailing edge and stretch it top-to-bottom. */
+  align-items: stretch;
+  justify-content: flex-end;
   /* v1.26.2 polish (Dean punchlist -- sheet/modal transitions): this
      backdrop is freshly created + appended on every open and removed
      entirely on close (lib/ytdlp/client/subscriptions.js's
@@ -7605,43 +7608,49 @@ body.ft-audio-expanded {
 .sub-sheet {
   width: 100%;
   max-width: 480px;
-  max-height: 85vh;
+  height: 100%;
   overflow-y: auto;
   background-color: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
-  border-bottom: none;
-  border-top-left-radius: var(--radius-lg);
-  border-top-right-radius: var(--radius-lg);
+  border: none;
+  border-left: 1px solid var(--border-color);
   box-shadow: var(--shadow-lg);
+  padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
   font-family: var(--font-family);
-  /* Slide-up on open / slide-down on close -- mirrors `.playlists-sheet`'s
-     own translateY(100%) -> .sheet-open's translateY(0) treatment. */
-  transform: translateY(100%);
+  /* v1.155 (Subscriptions redesign): slide in from the trailing edge (iOS
+     push-in) rather than up from the bottom -- translateX(100%) -> 0. */
+  transform: translateX(100%);
   transition: transform var(--dur-fast) ease-out;
 }
 
 .sub-sheet.sheet-open {
-  transform: translateY(0);
+  transform: translateX(0);
 }
 
+/* v1.155: the iOS nav-bar -- the back chevron is pinned left (absolute), the
+   channel name is centered as the title. Horizontal padding reserves the
+   back-button gutter on BOTH sides so a long centered title never sits under
+   it. Mirrors the v1.154 master-detail `.md-detail-head` treatment. */
 .sub-sheet-header {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-6);
-  padding: var(--space-8);
+  justify-content: center;
+  min-height: var(--size-touch);
+  padding: var(--space-4) var(--size-touch);
   border-bottom: 1px solid var(--border-color);
 }
 
 .sub-sheet-avatar {
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
+  /* v1.155: larger in the centered hero than the old inline-header 40px. */
+  width: 64px;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: var(--fw-bold);
-  font-size: var(--fs-xl);
+  font-size: var(--fs-2xl);
   color: var(--text-primary);
   background-color: var(--bg-color);
   border: 1px solid var(--border-dark);
@@ -7659,33 +7668,53 @@ body.ft-audio-expanded {
   display: block;
 }
 
-.sub-sheet-titlewrap {
-  flex: 1 1 auto;
-  min-width: 0;
+/* v1.155 (Subscriptions redesign): the avatar + subscribed-date hero, centered
+   below the nav-bar (the channel name lives in the nav-bar title now). */
+.sub-sheet-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8);
+  border-bottom: 1px solid var(--border-color);
 }
 
-/* READ-ONLY (coordinator decision): rendered as plain text, no input
-   control backs this field anywhere in the sheet -- see
-   buildSettingsSheet's doc comment in subscriptions.js. */
+/* READ-ONLY (coordinator decision): rendered as plain text, no input control
+   backs this field anywhere in the sheet -- see buildSettingsSheet's doc
+   comment in subscriptions.js. v1.155: it is the nav-bar's centered title now
+   -- one line, ellipsised, never overlapping the pinned back button. */
 .sub-sheet-name {
   font-family: var(--font-family);
   font-size: var(--fs-lg);
   font-weight: var(--fw-bold);
-  overflow-wrap: break-word;
-  word-break: break-word;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .sub-sheet-subtext {
   font-size: var(--fs-sm);
   color: var(--text-secondary);
-  margin-top: var(--space-1);
 }
 
+/* v1.155: the nav-bar back button, pinned to the leading edge and vertically
+   centered (a large chevron). Class kept as `.sub-sheet-close` -- its onClose
+   wiring and the tests that bind it are unchanged; only the look/position now
+   read as "Back". */
 .sub-sheet-close {
-  flex-shrink: 0;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--size-touch);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
-  font-size: var(--fs-4xl);
+  font-size: var(--fs-3xl);
   line-height: 1; /* token-exempt: glyph centering */
   color: var(--text-secondary);
   cursor: pointer;

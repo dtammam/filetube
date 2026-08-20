@@ -488,9 +488,11 @@ test('.playlists-sheet slides up via .sheet-open (translateY(100%) -> translateY
   assert.match(css, /\.playlists-sheet:not\(\[hidden\]\)\.sheet-open\s*\{\s*transform:\s*translateY\(0\);/);
 });
 
-test('.sub-sheet slides up via .sheet-open (translateY(100%) -> translateY(0)) at every viewport width (not gated by [hidden] -- fresh create/destroy)', () => {
-  assert.match(css, /\.sub-sheet\s*\{[^}]*transform:\s*translateY\(100%\);/s);
-  assert.match(css, /\.sub-sheet\.sheet-open\s*\{\s*transform:\s*translateY\(0\);/);
+test('.sub-sheet slides IN FROM THE RIGHT via .sheet-open (translateX(100%) -> translateX(0)) at every viewport width (not gated by [hidden] -- fresh create/destroy)', () => {
+  // v1.155 (Subscriptions redesign): the settings sheet became a right-anchored
+  // iOS push-in PANEL (was a bottom sheet), so it slides on the X axis now.
+  assert.match(css, /\.sub-sheet\s*\{[^}]*transform:\s*translateX\(100%\);/s);
+  assert.match(css, /\.sub-sheet\.sheet-open\s*\{\s*transform:\s*translateX\(0\);/);
 });
 
 test('prefers-reduced-motion: reduce collapses every sheet/modal transition to instant, fully-visible/in-place (no stuck half-state)', () => {
