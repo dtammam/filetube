@@ -1906,5 +1906,11 @@
     "date": "2026-08-20",
     "title": "A slightly bigger card/list button",
     "intent": "The card-vs-list button on the home feed was a touch smaller than the icons next to it. It's now sized to match, so the row of buttons at the top of the page looks even."
+  },
+  {
+    "version": "1.160.3",
+    "date": "2026-08-20",
+    "title": "Swipe back from anywhere on the screen",
+    "intent": "The swipe-to-go-back gesture no longer needs to start right at the very left edge - now you can start a left-to-right swipe from anywhere on the screen to go back a page. It's smart about it: swiping across something that scrolls sideways (like the filter strips on the Stats page) scrolls that instead, and a slightly diagonal scroll won't send you back by accident."
   }
 ]
