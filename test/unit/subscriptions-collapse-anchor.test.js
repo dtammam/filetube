@@ -42,3 +42,38 @@ test('chooseCollapseToggleAnchor: never throws on a null or closest-less element
   const fake = {};
   assert.strictEqual(chooseCollapseToggleAnchor(fake), fake, 'an element without closest() returns itself');
 });
+
+// Caller tripwire (adversarial slim-gate SUGGESTION): the pure helper is bound
+// above, but mountCollapseToggle is closure-internal (no mount harness), so
+// nothing asserts the caller USES it. A revert of that one line to a bare
+// `beforebegin` on the list would pass every other test yet re-introduce the
+// crush. This comment-stripped source lock catches exactly that revert. It is a
+// tripwire, not a full behavioral bind - the jsdom helper tests above are that.
+test('mountCollapseToggle inserts via chooseCollapseToggleAnchor, never a bare beforebegin on the list (crush-revert tripwire)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  // Strip block + line comments first (line comments guarded against `://` so
+  // URLs survive) - the repo's comment-porous-lock lesson: assert on CODE only.
+  const src = fs.readFileSync(path.join(__dirname, '../../lib/ytdlp/client/subscriptions.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+  // Bind the CALLER's assignment specifically (not the helper's own definition
+  // signature, which also reads `chooseCollapseToggleAnchor(listContainer)`):
+  // the anchor the toggle is inserted against must be the helper's RESULT.
+  // Reverting this assignment to `= listContainer` is the exact crush regression
+  // the slim gate flagged, and it fails this assertion.
+  assert.ok(
+    /collapseAnchor\s*=\s*chooseCollapseToggleAnchor\(\s*listContainer\s*\)/.test(src),
+    'the toggle anchor must be assigned from chooseCollapseToggleAnchor(listContainer), not the list directly',
+  );
+  // And the toggle must be inserted against that resolved anchor, never the raw
+  // list container by either DOM path.
+  assert.ok(
+    !/listContainer\.insertAdjacentElement\(\s*['"]beforebegin['"]\s*,\s*collapseToggleBtn/.test(src),
+    'must NOT insert the toggle directly beforebegin the list (that put it inside the .sub-list-body flex row -> the v1.155.1 crush)',
+  );
+  assert.ok(
+    !/parentNode\.insertBefore\(\s*collapseToggleBtn\s*,\s*listContainer\s*\)/.test(src),
+    'must NOT insert the toggle directly before the list via parentNode either',
+  );
+});
