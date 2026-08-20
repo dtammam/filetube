@@ -22,8 +22,9 @@ const {
   nextHistoryDepth,
   resolveHomeButtonAction,
   isHomeRootTarget,
-  decideEdgeSwipeBack,
-  edgeSwipeShouldClaim,
+  decideSwipeBack,
+  swipeBackShouldClaim,
+  isHorizontalScrollerBox,
 } = require('../../public/js/common.js');
 
 const COMMON_JS = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
@@ -420,17 +421,35 @@ test('v1.160: bootRouter takes manual scroll control (scrollRestoration = manual
     'guarded for browsers without scrollRestoration');
 });
 
-// v1.160 (Dean): the left-edge swipe-back decision. Fires ONLY for a touch that
-// started at the left edge, moved right past the threshold, and was horizontal-
-// dominant - so a vertical scroll, a tap, a leftward drag, or a mid-screen start
-// never triggers a back.
-test('decideEdgeSwipeBack: only a left-edge, rightward, horizontal-dominant drag counts', () => {
-  assert.strictEqual(decideEdgeSwipeBack({ startX: 8, deltaX: 120, deltaY: 10 }), true, 'edge start + strong rightward = back');
-  assert.strictEqual(decideEdgeSwipeBack({ startX: 200, deltaX: 120, deltaY: 10 }), false, 'must START at the left edge');
-  assert.strictEqual(decideEdgeSwipeBack({ startX: 8, deltaX: 30, deltaY: 5 }), false, 'below the travel threshold');
-  assert.strictEqual(decideEdgeSwipeBack({ startX: 8, deltaX: 120, deltaY: 200 }), false, 'vertical-dominant = a scroll, not a back');
-  assert.strictEqual(decideEdgeSwipeBack({ startX: 8, deltaX: -120, deltaY: 5 }), false, 'a leftward drag never goes back');
-  assert.strictEqual(decideEdgeSwipeBack(null), false, 'garbage is harmless');
+// v1.160/.3 (Dean): the swipe-back decision. v1.160.3 dropped the left-EDGE start
+// requirement ("left swipe from the middle") - a rightward, horizontal-dominant
+// drag from ANYWHERE past the threshold goes back. A vertical scroll, a tap, or a
+// leftward drag never triggers it (a drag inside a horizontal scroller is excluded
+// by the wiring, tested via isHorizontalScrollerBox below).
+test('decideSwipeBack: any rightward, horizontal-dominant drag past the threshold counts (NO edge requirement)', () => {
+  assert.strictEqual(decideSwipeBack({ deltaX: 120, deltaY: 10 }), true, 'strong rightward from anywhere = back');
+  assert.strictEqual(decideSwipeBack({ deltaX: 30, deltaY: 5 }), false, 'below the travel threshold');
+  assert.strictEqual(decideSwipeBack({ deltaX: 89, deltaY: 5 }), false, 'just under the 90px threshold');
+  assert.strictEqual(decideSwipeBack({ deltaX: 90, deltaY: 5 }), true, 'exactly at the threshold');
+  assert.strictEqual(decideSwipeBack({ deltaX: 120, deltaY: 200 }), false, 'vertical-dominant = a scroll, not a back');
+  // v1.160.3 gate (Surface D): a big DIAGONAL drag must NOT fire - dx must beat dy
+  // by the 1.5x dominance factor, so 100-right/95-down is a scroll, not a back.
+  assert.strictEqual(decideSwipeBack({ deltaX: 100, deltaY: 95 }), false, 'a barely-diagonal drag is not a back (needs clear horizontal dominance)');
+  assert.strictEqual(decideSwipeBack({ deltaX: 150, deltaY: 40 }), true, 'clearly horizontal (dx > 1.5*dy) = back');
+  assert.strictEqual(decideSwipeBack({ deltaX: -120, deltaY: 5 }), false, 'a leftward drag never goes back');
+  assert.strictEqual(decideSwipeBack(null), false, 'garbage is harmless');
+});
+
+// v1.160.3: the horizontal-scroller guard predicate - a drag beginning inside a
+// box that scrolls sideways (a wide table, a pill strip) must scroll THAT box, so
+// the wiring bails on it instead of arming a back.
+test('isHorizontalScrollerBox: only an auto/scroll overflow-x with real horizontal overflow counts', () => {
+  assert.strictEqual(isHorizontalScrollerBox('auto', 800, 400), true, 'auto + content wider than the box');
+  assert.strictEqual(isHorizontalScrollerBox('scroll', 800, 400), true, 'scroll + overflow');
+  assert.strictEqual(isHorizontalScrollerBox('auto', 400, 400), false, 'no actual overflow (equal widths)');
+  assert.strictEqual(isHorizontalScrollerBox('hidden', 800, 400), false, 'hidden never scrolls');
+  assert.strictEqual(isHorizontalScrollerBox('visible', 800, 400), false, 'visible never scrolls');
+  assert.strictEqual(isHorizontalScrollerBox('', 800, 400), false, 'unset never scrolls');
 });
 
 // Source-locks (jsdom has no touch/scroll model; device is the arbiter):
@@ -449,28 +468,41 @@ test('v1.160: bootRouter wires the swipe-back, and it only pops in-app history (
   assert.match(body, /homeBackPending\s*=\s*true;/, 'and sets the flag before history.back()');
 });
 
-// v1.160.1 (Dean device report): the swipe "claim" decision - once an edge drag
-// is clearly horizontal + rightward, the touchmove preventDefaults it so the
-// browser doesn't ALSO pan/rubber-band the page ("the whole app shakes with it").
-test('edgeSwipeShouldClaim: true once a rightward horizontal edge drag commits; false otherwise', () => {
-  assert.strictEqual(edgeSwipeShouldClaim(40, 5), true, 'rightward + horizontal-dominant -> claim (preventDefault)');
-  assert.strictEqual(edgeSwipeShouldClaim(4, 1), false, 'below the small claim distance -> let the browser handle it');
-  assert.strictEqual(edgeSwipeShouldClaim(40, 60), false, 'vertical-dominant -> a scroll, do NOT claim');
-  assert.strictEqual(edgeSwipeShouldClaim(-40, 2), false, 'leftward -> never claim');
+// v1.160.1 (Dean device report): the swipe "claim" decision - once a drag is
+// clearly horizontal + rightward, the touchmove preventDefaults it so the browser
+// doesn't ALSO pan/rubber-band the page ("the whole app shakes with it").
+test('swipeBackShouldClaim: true once a rightward horizontal drag commits past the claim distance; false otherwise', () => {
+  assert.strictEqual(swipeBackShouldClaim(40, 5), true, 'rightward + horizontal-dominant -> claim (preventDefault)');
+  assert.strictEqual(swipeBackShouldClaim(10, 1), false, 'below the 16px claim distance -> let the browser handle it');
+  assert.strictEqual(swipeBackShouldClaim(40, 60), false, 'vertical-dominant -> a scroll, do NOT claim');
+  // v1.160.3 (Surface D): the same 1.5x dominance as decideSwipeBack, so a claimed
+  // gesture is always one that would fire - no "prevented but never backed" band
+  // that would eat a scroll for nothing.
+  assert.strictEqual(swipeBackShouldClaim(40, 30), false, 'a barely-diagonal drag does NOT claim (dx must beat dy by 1.5x)');
+  assert.strictEqual(swipeBackShouldClaim(-40, 2), false, 'leftward -> never claim');
 });
 
-test('v1.160.1: the edge-swipe touchmove is non-passive + preventDefaults, and the root kills horizontal overscroll', () => {
+test('v1.160.3: the claim listener is non-passive + preventDefaults, LAZILY attached (never taxes scroll), scoped, and the root kills horizontal overscroll', () => {
   const src = COMMON_JS.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
   const fn = src.slice(src.indexOf('function wireSwipeBack('));
   const body = fn.slice(0, fn.indexOf('\n  }\n'));
-  assert.match(body, /edgeSwipeShouldClaim\([^)]*\)\)\s*e\.preventDefault\(\)/, 'the tracked move preventDefaults once the drag is claimed');
-  assert.match(body, /touchmove'[\s\S]*?\{\s*passive:\s*false\s*\}/, 'the touchmove is non-passive (so preventDefault works)');
-  // v1.160.1 gate WARNING: the non-passive touchmove must be SCOPED to a live edge
-  // gesture (added on an edge touchstart, removed on end/cancel) - a globally
-  // registered non-passive document touchmove taxes every vertical scroll off the
-  // compositor fast-path. Bind that it is removed, so a regression to a permanent
-  // global listener reds here.
-  assert.match(body, /removeEventListener\(\s*'touchmove'/, 'the non-passive touchmove is removed when the gesture ends (scoped, not global)');
+  // the claimed move preventDefaults, but RE-EVALUATES direction first (gate
+  // WARNING 1): it must call swipeBackShouldClaim on the live delta before
+  // preventDefault, so a gesture that curves vertical stops being prevented (no
+  // scroll-eating latch). Binding the re-check kills a regression back to a bare
+  // `if (e.cancelable) e.preventDefault()` latch.
+  assert.match(body, /function onClaimedMove\(e\)\s*\{[^}]*swipeBackShouldClaim\([^}]*\)\)\s*e\.preventDefault\(\)/, 'onClaimedMove re-evaluates direction (does not latch) before preventDefault');
+  // v1.160.1/.3 gate lesson: the non-passive listener must be attached LAZILY,
+  // GATED by the claim (swipeBackShouldClaim) - never eagerly on touchstart, or it
+  // taxes every vertical scroll off the compositor fast-path. Bind that the
+  // { passive: false } attach sits INSIDE the claim branch.
+  assert.match(body, /swipeBackShouldClaim\([\s\S]*?addEventListener\(\s*'touchmove',\s*onClaimedMove,\s*\{\s*passive:\s*false\s*\}\)/,
+    'the non-passive touchmove is attached only AFTER swipeBackShouldClaim (lazy, not eager)');
+  // and removed when the gesture ends (scoped, not a permanent global listener)
+  assert.match(body, /removeEventListener\(\s*'touchmove',\s*onClaimedMove\)/, 'the non-passive touchmove is removed when the gesture ends');
+  // v1.160.3: a drag starting inside a horizontal scroller is excluded so the two
+  // don't fight - the guard must cause an early return in touchstart.
+  assert.match(body, /startsInHorizontalScroller\(e\.target\)\)\s*return;/, 'a drag beginning in a horizontal scroller bails (lets the box scroll)');
   const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/css/style.css'), 'utf8');
   assert.match(css, /html\s*\{[^}]*overscroll-behavior-x:\s*none/, 'the root kills horizontal rubber-band (belt-and-suspenders vs the shake)');
 });

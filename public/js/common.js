@@ -7645,36 +7645,53 @@ function nextHistoryDepth(currentState, isReplace) {
 //   - depth 0, at home     -> 'noop'   (already at the session-root home)
 // Pure — exported for node:test so every branch is covered without a live
 // history/location.
-// v1.160 (Dean): the left-edge swipe-back decision (PURE, top-level so it's
-// exportable/testable; the touch wiring lives in the router closure). Fires only
-// for a touch that STARTED at the left edge, travelled RIGHT past a threshold,
-// and was horizontal-dominant - so a vertical scroll, a tap, a leftward drag, or
-// a mid-screen start never triggers a back.
-const SWIPE_BACK_EDGE_PX = 24;
-const SWIPE_BACK_THRESHOLD_PX = 64;
-// v1.160.1 (Dean device report): once an edge drag has committed to horizontal +
-// rightward (past a small claim distance), the handler preventDefaults it so the
-// browser does NOT also pan/rubber-band the page - the "whole app shakes with
-// it" abruptness. Pure so it's testable. A non-passive touchmove is what lets us
-// preventDefault; wireSwipeBack installs that listener ONLY while an edge start
-// is live and removes it the instant the gesture ends, so every normal vertical
-// scroll keeps the compositor fast-path (a globally-registered non-passive
-// document touchmove would force the whole page off it - gate WARNING v1.160.1).
-const SWIPE_BACK_CLAIM_PX = 8;
-function edgeSwipeShouldClaim(deltaX, deltaY) {
+// v1.160 / v1.160.3 (Dean): the swipe-back decision (PURE, top-level so it's
+// exportable/testable; the touch wiring lives in the router closure). v1.160.3
+// dropped the left-EDGE start requirement (Dean: "left swipe from the middle") -
+// a drag from ANYWHERE that travels RIGHT past the threshold and is
+// horizontal-dominant goes back. A vertical scroll, a tap, or a leftward drag
+// never triggers it; a drag that BEGINS inside a horizontal scroller is excluded
+// by the wiring (isHorizontalScrollerBox) so the two never fight.
+const SWIPE_BACK_THRESHOLD_PX = 90; // a deliberate rightward travel (more than the
+                                    // old 64 edge value - a mid-screen start needs
+                                    // to be unambiguous vs an ordinary drag).
+// v1.160.1 (Dean device report): once a drag has committed to horizontal +
+// rightward (past a claim distance), the handler preventDefaults the REST of it
+// so the browser does NOT also pan/rubber-band the page - the "whole app shakes
+// with it" abruptness. Pure so it's testable. A non-passive touchmove is what
+// lets us preventDefault; v1.160.3 attaches that listener LAZILY - only once a
+// drag is CONFIRMED horizontal (swipeBackShouldClaim), never on a vertical
+// scroll - so normal scrolling keeps the compositor fast-path (a globally- or
+// eagerly-registered non-passive document touchmove would force the whole page
+// off it - gate WARNING v1.160.1).
+const SWIPE_BACK_CLAIM_PX = 16;
+// v1.160.3 gate (Surface D): a swipe-back from ANYWHERE demands CLEAR horizontal
+// dominance, not a bare |dx|>|dy| - else a big diagonal drag (100 right, 95 down)
+// both fires a back and (while claimed) eats the scroll. dx must beat dy by this
+// factor. Used by BOTH the claim and the fire decision so they never disagree (a
+// gesture that is claimed-and-prevented but not fired would eat a scroll for
+// nothing - keeping one predicate closes that band).
+const SWIPE_BACK_DOMINANCE = 1.5;
+function swipeBackShouldClaim(deltaX, deltaY) {
   const dx = Number(deltaX) || 0;
   const dy = Number(deltaY) || 0;
-  return dx > SWIPE_BACK_CLAIM_PX && Math.abs(dx) > Math.abs(dy);
+  return dx > SWIPE_BACK_CLAIM_PX && Math.abs(dx) > Math.abs(dy) * SWIPE_BACK_DOMINANCE;
 }
-function decideEdgeSwipeBack(g) {
+function decideSwipeBack(g) {
   if (!g) return false;
-  const startX = Number(g.startX) || 0;
   const dx = Number(g.deltaX) || 0;
   const dy = Number(g.deltaY) || 0;
-  if (startX > SWIPE_BACK_EDGE_PX) return false;    // must begin at the left edge
-  if (dx < SWIPE_BACK_THRESHOLD_PX) return false;   // enough rightward travel
-  if (Math.abs(dx) <= Math.abs(dy)) return false;   // horizontal-dominant, not a scroll
+  if (dx < SWIPE_BACK_THRESHOLD_PX) return false;                    // enough rightward travel
+  if (Math.abs(dx) <= Math.abs(dy) * SWIPE_BACK_DOMINANCE) return false; // clearly horizontal, not a scroll
   return true;
+}
+// A drag that BEGINS inside a horizontally-scrollable box (a wide table, a pill
+// strip) must scroll THAT box, never fire a back - or the gesture and the scroll
+// fight. Pure predicate over one box's computed overflow + measured extent; the
+// wiring walks the ancestor chain with it.
+function isHorizontalScrollerBox(overflowX, scrollWidth, clientWidth) {
+  const ox = String(overflowX || '');
+  return (ox === 'auto' || ox === 'scroll') && Number(scrollWidth) > Number(clientWidth);
 }
 
 function resolveHomeButtonAction(depth, currentPathAndSearch) {
@@ -8442,37 +8459,61 @@ if (typeof window !== 'undefined') {
   function wireSwipeBack() {
     if (typeof document === 'undefined' || swipeBackWired) return;
     swipeBackWired = true;
-    let track = null; // { startX, startY, x, y } for a single-touch edge start
-    // v1.160.1: claim the gesture once it's clearly a horizontal edge drag, so the
-    // browser doesn't ALSO pan/rubber-band the page ("the whole app shakes with
-    // it"). This listener is non-passive (so preventDefault works) and is attached
-    // ONLY while an edge start is live - added in the touchstart branch, removed by
-    // stopTracking - so it never taxes the compositor scroll fast-path outside a
-    // swipe-back gesture.
-    function onEdgeTouchMove(e) {
-      if (!track || !e.touches || e.touches.length !== 1) return;
-      const t = e.touches[0]; track.x = t.clientX; track.y = t.clientY;
-      if (e.cancelable && edgeSwipeShouldClaim(track.x - track.startX, track.y - track.startY)) e.preventDefault();
+    let track = null; // { startX, startY, x, y, claimed } for a single-touch drag
+    // v1.160.1/.3: once a drag is CONFIRMED horizontal we preventDefault the rest
+    // of it, so the browser can't also pan/rubber-band the page ("the whole app
+    // shakes with it"). This non-passive listener is attached LAZILY - only after
+    // swipeBackShouldClaim fires (in the passive move below) - and removed when the
+    // gesture ends. A vertical scroll never claims, so it never attaches this and
+    // never leaves the compositor fast-path (the v1.160.1 gate lesson: an eager or
+    // global non-passive document touchmove taxes every scroll).
+    // v1.160.3 gate WARNING 1: RE-EVALUATE direction every move - do NOT latch.
+    // A gesture that claimed early (a slight rightward arc) but then curves
+    // vertical must STOP being prevented, or it eats an intended scroll and fires
+    // no back. Re-checking swipeBackShouldClaim on the live cumulative delta
+    // restores the per-move semantics the v1.160.1 edge handler had.
+    function onClaimedMove(e) {
+      if (e.cancelable && track && swipeBackShouldClaim(track.x - track.startX, track.y - track.startY)) e.preventDefault();
     }
     function stopTracking() {
       if (!track) return;
+      if (track.claimed) document.removeEventListener('touchmove', onClaimedMove);
       track = null;
-      document.removeEventListener('touchmove', onEdgeTouchMove);
+    }
+    // A drag beginning inside a horizontal scroller belongs to THAT box, not to a
+    // back gesture - walk the ancestor chain and bail if any box scrolls sideways.
+    function startsInHorizontalScroller(startEl) {
+      if (typeof window.getComputedStyle !== 'function') return false;
+      for (let node = startEl; node && node.nodeType === 1 && node !== document.body;
+        node = node.parentElement) {
+        const cs = window.getComputedStyle(node);
+        if (cs && isHorizontalScrollerBox(cs.overflowX, node.scrollWidth, node.clientWidth)) return true;
+      }
+      return false;
     }
     document.addEventListener('touchstart', (e) => {
-      stopTracking(); // drop any stale edge start (missed end / second finger)
+      stopTracking(); // drop any stale drag (missed end / second finger)
       if (!e.touches || e.touches.length !== 1) return;
+      if (e.target && startsInHorizontalScroller(e.target)) return; // let the scroller scroll
       const t = e.touches[0];
-      if (t.clientX <= SWIPE_BACK_EDGE_PX) {
-        track = { startX: t.clientX, startY: t.clientY, x: t.clientX, y: t.clientY };
-        document.addEventListener('touchmove', onEdgeTouchMove, { passive: false });
+      track = { startX: t.clientX, startY: t.clientY, x: t.clientX, y: t.clientY, claimed: false };
+    }, { passive: true });
+    document.addEventListener('touchmove', (e) => {
+      if (!track || !e.touches || e.touches.length !== 1) return;
+      const t = e.touches[0]; track.x = t.clientX; track.y = t.clientY;
+      // Confirmed horizontal + rightward: claim the REST of the drag (attach the
+      // non-passive preventDefault). Done once per drag; vertical scrolls never
+      // reach here so they stay passive/fast.
+      if (!track.claimed && swipeBackShouldClaim(track.x - track.startX, track.y - track.startY)) {
+        track.claimed = true;
+        document.addEventListener('touchmove', onClaimedMove, { passive: false });
       }
     }, { passive: true });
     const finish = () => {
       if (!track) return;
-      const g = { startX: track.startX, deltaX: track.x - track.startX, deltaY: track.y - track.startY };
+      const g = { deltaX: track.x - track.startX, deltaY: track.y - track.startY };
       stopTracking();
-      if (decideEdgeSwipeBack(g)) swipeBackIfPossible();
+      if (decideSwipeBack(g)) swipeBackIfPossible();
     };
     document.addEventListener('touchend', finish, { passive: true });
     document.addEventListener('touchcancel', stopTracking, { passive: true });
@@ -8612,7 +8653,7 @@ if (typeof window !== 'undefined') {
     // header. The app already resets on forward nav (swapToView) and restores the
     // recorded scrollY on back (handlePopState), so it owns scroll fully now.
     try { if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual'; } catch (_) { /* unsupported */ }
-    wireSwipeBack(); // v1.160: the left-edge swipe-back gesture (once per session)
+    wireSwipeBack(); // v1.160/.3: swipe-right-from-anywhere back gesture (once per session)
     if (!window.history.state) {
       // v1.45.0 (T2): the session's first stamped entry is depth 0 — the floor
       // the Home control's history.back() can never cross (see buildHistoryState).
@@ -12895,10 +12936,16 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldDockOnTransition, isSameLocationNav, toPathAndQuery, isStaleNavGeneration,
     // v1.45.0 (T2): incremental-pop Home helpers.
     nextHistoryDepth, resolveHomeButtonAction, isHomeRootTarget,
-    // v1.160: the left-edge swipe-back decision (pure; the wiring is DOM/device).
-    decideEdgeSwipeBack,
-    // v1.160.1: the in-progress "claim the horizontal drag" decision (pure).
-    edgeSwipeShouldClaim,
+    // v1.160/.3: the swipe-back decision (pure; the wiring is DOM/device). v1.160.3
+    // dropped the edge-start requirement - a rightward horizontal drag from
+    // anywhere goes back.
+    decideSwipeBack,
+    // v1.160.1: the "claim the horizontal drag" decision (pure).
+    swipeBackShouldClaim,
+    // v1.160.3: the horizontal-scroller guard predicate (pure; the wiring walks
+    // the ancestor chain with it so a drag inside a wide table/pill strip scrolls
+    // instead of going back).
+    isHorizontalScrollerBox,
     canonicalizeChannelUrl, channelIdentityMatches, resolveFileChannelIdentity,
     shouldShowSubscribeButton, decideSubscribeButtonState,
     buildSubscribeRequestBody, buildSubscribeModal,

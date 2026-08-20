@@ -80,6 +80,47 @@
 
 ## Shipped
 
+### v1.160.3 - swipe-back from anywhere, not just the left edge (Dean) (2026-08-20)
+
+Dean: "any chance we can have the drag be from the middle versus the edge?" He
+wanted the left-to-right back-swipe to start from anywhere, not a fiddly left-edge
+start.
+
+- `decideSwipeBack` drops the `startX <= 24` edge gate - a rightward,
+  horizontal-dominant drag from ANYWHERE past the threshold goes back. Travel
+  threshold bumped 64 -> 90px so a mid-screen start is deliberate.
+- **Horizontal-scroller guard** (`isHorizontalScrollerBox` + an ancestor walk): a
+  drag that BEGINS inside a sideways-scrolling box (the Stats/By-folder pill
+  strips, the search toolbar strip, the books/music/chip rows) scrolls that box
+  and never fires a back. The gate enumerated all six real horizontal scrollers
+  and confirmed the generic walk catches each.
+- The anti-shake `preventDefault` is kept but attached LAZILY - only once a drag
+  is confirmed horizontal - so a vertical scroll never leaves the compositor
+  fast-path (the v1.160.1 gate lesson).
+
+SLIM gate (adversarial alone), ONE fix round, APPROVE. The seat caught a real
+blocking regression (WARNING 1): the first cut LATCHED the preventDefault, so a
+scroll starting with a slight rightward arc then curving down had its vertical
+scroll EATEN - fixed by re-evaluating direction every move (restoring the
+v1.160.1 per-move semantics), plus a shared 1.5x horizontal-dominance factor
+across the claim AND fire decisions so a big diagonal is neither prevented nor
+fired (no accidental back, no scroll eaten for nothing). Mutation-bound.
+Dual-Node 7365/7365 on v22.23.1 AND v24.14.0.
+
+KNOWN GAP / top device-probe (WARNING 2, disclosed): the lazy `preventDefault` is
+attached mid-gesture, so on iOS the later touchmoves MAY be non-cancelable and the
+`preventDefault` a no-op - in which case the no-shake guarantee rests on the CSS
+belt (`html { overflow-x: clip; overscroll-behavior-x: none }`) alone, which the
+gate assessed as sufficient (nothing to pan/rubber-band horizontally). If a
+mid-screen swipe shakes on Dean's device, the fix is the CSS belt, NOT the
+threshold. Edge-start still works (it's a subset of "anywhere"), so a fall-back to
+edge is trivial if middle feels wrong.
+
+DEVICE probes: swipe right from the MIDDLE of the screen to go back; confirm no
+shake on a long page; confirm a sideways scroll (Stats pill strips, search
+toolbar) still scrolls and doesn't trigger a back; confirm a diagonal scroll
+doesn't accidentally navigate back.
+
 ### v1.160.2 - modern card/list toggle glyph size (Dean device report) (2026-08-20)
 
 Dean's device pass on v1.160.1: the modern-home card/list toggle glyph "is a
