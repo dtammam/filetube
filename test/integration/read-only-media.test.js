@@ -24,6 +24,7 @@ const {
 } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
+const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
 let server;
 let base;
@@ -46,7 +47,9 @@ after(async () => {
 
 beforeEach(async () => {
   await __resetDatabaseForTests();
-  for (const name of fs.readdirSync(libDir)) fs.rmSync(path.join(libDir, name), { force: true });
+  // recursive: a trash case leaves a .filetube-trash DIR under libDir; without
+  // it rmSync throws on the directory and poisons every later case's setup.
+  for (const name of fs.readdirSync(libDir)) fs.rmSync(path.join(libDir, name), { recursive: true, force: true });
 });
 
 function seedVideo(fileName) {
@@ -69,6 +72,27 @@ function seedVideo(fileName) {
     settings: { scanIntervalMinutes: 30, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
   return { filePath, id };
+}
+
+// A trashed file on disk + its db.trash record (real trashPath under a
+// .filetube-trash dir, so purgeTrashItem WOULD unlink it if the guard let it).
+function seedTrash(fileName) {
+  const trashDir = path.join(libDir, TRASH_DIR_NAME);
+  fs.mkdirSync(trashDir, { recursive: true });
+  const trashPath = path.join(trashDir, fileName);
+  fs.writeFileSync(trashPath, 'trashed-bytes');
+  const tid = 'trash-' + fileName.replace(/\W/g, '');
+  const originalPath = path.join(libDir, fileName);
+  saveDatabase({
+    folders: [libDir], folderSettings: {}, progress: {}, metadata: {},
+    trash: { [tid]: {
+      originalId: 'orig', originalPath, trashedAt: 5, rootFolder: libDir, trashPath,
+      item: { id: 'orig', title: fileName, name: fileName, filePath: originalPath, folderName: path.basename(libDir), rootFolder: libDir, type: 'video', ext: '.mp4', size: 13 },
+    } },
+    liked: [], deleteTombstones: {},
+    settings: { scanIntervalMinutes: 30, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
+  });
+  return { tid, trashPath };
 }
 
 async function expectRefused(res) {
@@ -123,6 +147,23 @@ test('v1.49: the per-video reheat and its relocation confirm refuse too, and the
   await expectRefused(await fetch(`${base}/api/ytdlp/repull-metadata/item/${id}/relocate`, { method: 'POST' }));
 
   assert.ok(fs.existsSync(filePath), 'the relocation confirm must not move the file in read-only media mode');
+});
+
+// v1.158 (adversarial gate WARNING 1): the trash PURGE routes permanently
+// unlink files, so safe mode MUST refuse them - and the bulk "Empty trash"
+// (purge-all) destroys EVERY visible trashed file in one call, so a dropped
+// guard there is the worst blast radius on this surface. Neither purge-all NOR
+// the single-item DELETE had a read-only lock; both mutants survived the whole
+// suite (the "guard exists != guard binds" class this file exists to catch).
+test('v1.158: BOTH trash purge routes (single DELETE + bulk purge-all) refuse in read-only media mode; the trashed file is untouched', async () => {
+  const { tid, trashPath } = seedTrash('gone [fffffffffff].mp4');
+  const before = readPersistedDatabase(DATA_DIR);
+
+  await expectRefused(await fetch(`${base}/api/trash/${tid}`, { method: 'DELETE' }));      // single-item purge
+  await expectRefused(await fetch(`${base}/api/trash/purge-all`, { method: 'POST' }));     // bulk "Empty trash"
+
+  assert.ok(fs.existsSync(trashPath), 'the trashed file is NOT unlinked under safe mode');
+  assert.deepEqual(readPersistedDatabase(DATA_DIR), before, 'the trash map is byte-identical (nothing purged)');
 });
 
 test('AC8 scan leg (review F1): a tombstone-matched file survives the scan — not unlinked, not indexed, tombstone kept', async () => {

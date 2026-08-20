@@ -11720,25 +11720,21 @@ app.delete('/api/search-history', (req, res) => {
 });
 
 // ---- v1.65 trash routes -----------------------------------------------------
-// PER-ITEM ONLY, by construction (the v1.64 route-alias lesson): restore is
-// a POST under the id, purge is DELETE under the id, and NO collection-wide
-// DELETE /api/trash exists at all -- an empty-id form matches no route.
-// GET lists newest-first; items render from the stored metadata snapshot,
-// and /thumbnail/<trashId> works (the sidecar re-keyed with the move).
+// GET lists newest-first (items render from the stored metadata snapshot, and
+// /thumbnail/<trashId> works - the sidecar re-keyed with the move). Mutations:
+// restore is a POST under the id, single-purge is DELETE under the id, and
+// v1.158 added POST /api/trash/purge-all (bulk "Empty trash"). There is still NO
+// collection-wide DELETE /api/trash (the v1.64 route-alias lesson - an empty-id
+// DELETE matches no route). v1.80 RBAC: a restricted member must not even see a
+// restricted item's TITLE/existence in the trash - so GET and EVERY purge path
+// (single + bulk) filter by the SAME shared trashRecordVisibleTo predicate, so
+// the set a member can list is exactly the set they can destroy (admin's empty
+// index keeps everything).
 app.get('/api/trash', (req, res) => {
   const db = getCachedDatabase();
   const retentionDays = Number(db.settings && db.settings.trashRetentionDays);
   const items = Object.entries(db.trash || {})
-    // v1.80 RBAC (security-gate finding): a restricted member must not see the
-    // TITLE/existence of a restricted item in the trash either. Build the media
-    // descriptor from the snapshot (or the record's own path fields for an
-    // orphan with no snapshot). Admin's empty index keeps everything.
-    .filter(([, rec]) => !visibility.isBlocked(userRestrictionIndex(req), {
-      kind: 'media',
-      filePath: (rec.item && rec.item.filePath) || rec.originalPath,
-      folderName: rec.item && rec.item.folderName,
-      rootFolder: rec.rootFolder || (rec.item && rec.item.rootFolder),
-    }))
+    .filter(([, rec]) => trashRecordVisibleTo(req, rec)) // the ONE predicate (shared with purge/restore)
     .map(([tid, rec]) => ({
       trashId: tid,
       originalId: rec.originalId,

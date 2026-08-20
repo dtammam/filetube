@@ -118,6 +118,44 @@ test('two-tap: renders the total, ARMS on tap 1 (no network), PURGES on tap 2', 
   }
 });
 
+test('two-tap: the arm auto-disarms after ~4s - a stale first tap never carries into a later purge', async (t) => {
+  const dom = mountTrashDom();
+  const calls = [];
+  global.fetch = (url, opts) => {
+    calls.push({ url, method: (opts && opts.method) || 'GET' });
+    if (url === '/api/trash') {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({
+        items: [{ trashId: 't1', title: 'A', trashedAt: 1700000000000, size: 1024 ** 3, type: 'video' }],
+        total: 1, totalSizeBytes: 1024 ** 3, retentionDays: 30,
+      }) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
+  };
+  try {
+    renderTrashSection(new dom.window.AbortController().signal);
+    await tick(); // initial GET resolves (real timers)
+
+    const btn = dom.window.document.getElementById('trash-empty-all');
+    const purges = () => calls.filter((c) => c.url === '/api/trash/purge-all').length;
+
+    t.mock.timers.enable({ apis: ['setTimeout'] }); // now control the 4s disarm window
+    btn.dispatchEvent(new dom.window.Event('click'));  // tap 1: arms
+    assert.ok(btn.classList.contains('trash-confirming'), 'armed after tap 1');
+    t.mock.timers.tick(4000); // the window elapses with no second tap
+    assert.ok(!btn.classList.contains('trash-confirming'), 'auto-disarmed');
+    assert.strictEqual(btn.textContent, 'Empty trash', 'label reset');
+
+    // A later single tap must ARM again, NOT purge (the stale arm is gone).
+    btn.dispatchEvent(new dom.window.Event('click'));
+    assert.strictEqual(purges(), 0, 'a lone tap after the window never purges');
+    assert.ok(btn.classList.contains('trash-confirming'), 're-arms cleanly');
+  } finally {
+    t.mock.timers.reset();
+    delete global.fetch; delete global.document; delete global.window;
+    dom.window.close();
+  }
+});
+
 test('two-tap: a bare empty trash never shows the toolbar (nothing to purge)', async () => {
   const dom = mountTrashDom();
   global.fetch = (url) => {
