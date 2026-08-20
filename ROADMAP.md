@@ -80,6 +80,50 @@
 
 ## Shipped
 
+### v1.159.0 - the clarity wave: sortable, filterable tables (2026-08-20)
+
+Dean: the Stats "By folder" view (and its siblings) were small on mobile and not
+sortable or filterable. This turns every list-that-is-really-a-table into a real
+sortable, filterable table via ONE reusable component - and fixes the layout bug
+where the card was height-capped and stranded the bottom half of the screen.
+
+- **The component** (`buildSortableTable`, common.js): tappable column headers
+  (tap to sort, tap again to flip; aria-sort + a CSS caret mark the active
+  column), a name-search filter, per-table sort persistence (localStorage), and
+  a `renderCap` (top-N of the current sort + an honest "Showing N of M" hint) for
+  large sets. Numeric columns sort by the RAW value, not the label ("9.3 GB" <
+  "24.8 GB"). Mobile-first, design-token census 0.
+- **Seven surfaces converted:** Stats By folder, By channel, Books folders,
+  Duplicates (now sorted by RECLAIMABLE space BEFORE its 50-group cap, so the
+  biggest offenders always show), and a NEW "Videos & audio" table (the whole
+  library, Title/Type/Length/Size) backed by a new visibility-scoped
+  `GET /api/library-items`; plus admin Users (Name/Role/Status) and Trash
+  (Title/Size/Expires). The `.folder-list-builder` 240px cap is lifted on these
+  (fills the screen). The A/V table is a hard cap of 300 rows + the "refine the
+  filter" hint, NOT lazy infinite scroll.
+- **Deferred (disclosed, tech-debt #165):** the Music tracklist. Its rows are
+  coupled to the PLAY QUEUE by index (row-play, next/prev, the playing
+  highlight, lock-screen, sticky drill header), so sorting the view would reorder
+  the play queue itself - touching the battle-won player machinery the repo says
+  to reuse, not rebuild, and raising a real sort-vs-play-order design question.
+  A deliberate follow-up, not a rushed bolt-on.
+
+FULL two-reviewer gate, ONE fix round, both seats APPROVE. The gate's catch was a
+destructive-path invariant: the Trash per-item two-tap Purge arm SURVIVED a
+sort/filter re-render (the "Sure?" vanished but the arm stayed live ~3s), so a
+single tap could then delete with no on-screen confirmation - fixed with an
+`onRender` hook that disarms on every re-render, mutation-bound. The A/V titles
+endpoint was proven visibility-scoped (a restricted member can't see a hidden
+title); Users/Trash actions were proven to hit the right row after a sort.
+Dual-Node 7354/7354 on v22.23.1 AND v24.14.0. No browser in the build env ->
+Dean's device probe is the arbiter (esp. the Users actions cell fit at 360px).
+
+Device probes: Stats By folder/channel/Books/Duplicates + the new Videos & audio
+tab - tap a header to sort, type to filter, and the table fills the screen (no
+more half-empty card). Settings Users + Trash sort/filter, and every row action
+still works (Trash: two taps to purge an item, one tap never deletes). Duplicates
+sorts biggest-reclaimable first.
+
 ### v1.158.0 - Empty trash + trash total, You-menu disk size, admin-row shimmer (2026-08-20)
 
 Four independent asks from Dean, one release, one full gate (Part B destroys
