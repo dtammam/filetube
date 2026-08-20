@@ -339,3 +339,24 @@ test('a failed disk fetch hides the row AND its divider (never a broken value)',
   assert.strictEqual(disk.hidden, true, 'the disk row hides on failure');
   assert.strictEqual(divider.hidden, true, 'and its divider hides too (no orphan separator)');
 });
+
+// ---- v1.158 (Dean): the per-device admin flag (drives the nav admin-reserve) --
+
+test('fetchCurrentUser stamps ft-is-admin for an admin and CLEARS it for a member (single writer)', async () => {
+  // admin -> flag set
+  const a = fresh({ user: { id: 1, displayName: 'Dean', role: 'admin', avatar: { present: false } } });
+  global.localStorage = dom.window.localStorage;
+  a.injectAccountMenu(); // calls the shared, memoized fetchCurrentUser
+  await tick();
+  assert.strictEqual(global.localStorage.getItem('ft-is-admin'), '1', 'admin -> flag set (so the nav can pre-reserve)');
+  delete global.localStorage;
+
+  // member -> a stale admin flag is cleared (fresh require resets the memoized promise)
+  const m = fresh({ user: { id: 2, displayName: 'Kid', role: 'member', avatar: { present: false } } });
+  global.localStorage = dom.window.localStorage;
+  global.localStorage.setItem('ft-is-admin', '1'); // left over from a prior admin session on this device
+  m.injectAccountMenu();
+  await tick();
+  assert.strictEqual(global.localStorage.getItem('ft-is-admin'), null, 'member -> the stale flag is cleared (no phantom admin reserve)');
+  delete global.localStorage;
+});

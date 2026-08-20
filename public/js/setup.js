@@ -1958,6 +1958,16 @@ async function initAccountSection(signal) {
     const backupBox = document.getElementById('backup-box');
     if (backupBox) backupBox.hidden = false;
     wireRestoreControls(signal);
+    // (Users/Backup reveal fires the nav's hidden-observer -> their reserved
+    // shimmer slots become real rows. Downloads is settled by loadEngineSection.)
+  } else {
+    // v1.158: NOT an admin -> Users/Backup/Downloads will never show. Clear the
+    // per-device admin flag and rebuild the nav so any reserved shimmer slot a
+    // STALE flag put up (e.g. an admin used this device earlier) is dropped -
+    // the reveal-once CLEAR axis; a non-admin must never strand an admin
+    // placeholder. (The server enforces every admin route regardless.)
+    try { localStorage.removeItem('ft-is-admin'); } catch (_) { /* storage off */ }
+    mdRebuildNav();
   }
 }
 
@@ -2765,6 +2775,25 @@ async function postEngine(url, body) {
   }
 }
 
+// v1.158 (Dean): rebuild the master-detail nav so the reserved admin shimmer
+// slots reconcile after an async capability check settles (a revealed section
+// becomes a real row; a section that will NOT reveal drops its placeholder).
+function mdRebuildNav() {
+  if (typeof document === 'undefined') return;
+  const mdRoot = document.querySelector('.md-root');
+  if (mdRoot && typeof mdRoot._mdRebuild === 'function') mdRoot._mdRebuild();
+}
+// The Downloads section will NOT reveal (not an admin, or the yt-dlp module is
+// off/unreachable): stop reserving its slot so the shimmer doesn't strand, then
+// rebuild. (An admin WITH the module keeps its data-md-reserve until the box
+// reveals, whose hidden-change fires the nav's own observer.)
+function dropDownloadsReserve() {
+  if (typeof document === 'undefined') return;
+  const box = document.getElementById('downloads-box');
+  if (box) box.removeAttribute('data-md-reserve');
+  mdRebuildNav();
+}
+
 async function loadEngineSection(signal) {
   const box = document.getElementById('downloads-box');
   if (!box) return;
@@ -2772,14 +2801,14 @@ async function loadEngineSection(signal) {
   try {
     r = await fetch('/api/ytdlp/engine');
   } catch (_) {
-    return; // network failure at probe time: the box just stays hidden
+    dropDownloadsReserve(); return; // network failure at probe time: the box stays hidden
   }
-  if (!r.ok) return; // 401/403/404 - not an admin, or the module is off
+  if (!r.ok) { dropDownloadsReserve(); return; } // 401/403/404 - not an admin, or the module is off
   let status;
   try {
     status = await r.json();
   } catch (_) {
-    return;
+    dropDownloadsReserve(); return;
   }
   box.hidden = false;
   renderEngineSection(status);

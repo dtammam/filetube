@@ -254,7 +254,17 @@ function fetchCurrentUser() {
     try {
       const r = await fetch('/api/auth/me');
       if (!r.ok) return null; // signed-out shell (login/welcome) or auth failure
-      return await r.json();
+      const me = await r.json();
+      // v1.158 (Dean): remember admin-ness per-device (single writer) so the
+      // master-detail nav can reserve a shimmer slot for the admin-only
+      // sections BEFORE setup.js's async reveal - killing the "rows pop in a
+      // second later" insert. Gates a shimmer ONLY; the server enforces every
+      // admin route and no admin label is ever rendered for a hidden section.
+      try {
+        if (me && me.user && me.user.role === 'admin') localStorage.setItem('ft-is-admin', '1');
+        else localStorage.removeItem('ft-is-admin');
+      } catch (_) { /* storage off - the nav just won't pre-reserve */ }
+      return me;
     } catch (_) { return null; }
   })();
   return currentUserPromise;
@@ -5058,6 +5068,19 @@ function wireMasterDetail(pageKey, root, signal) {
     return sum ? sum.textContent.trim() : (s.getAttribute('data-collapse-key') || '');
   }
   function visibleSections() { return sections.filter((s) => !s.hidden); }
+  // v1.158 (Dean): sections still HIDDEN behind setup.js's async capability
+  // reveal that want a shimmer slot held for them (data-md-reserve), gated on
+  // the last-known-admin flag - so a RETURNING admin's Downloads/Users/Backup
+  // rows do not "pop in a second later". Never reserves for a non-admin (no
+  // flag), and the placeholder carries NO label/icon, so a hidden section's
+  // identity is never rendered (the v1.80 privacy rule).
+  function mdReserveAdmin() {
+    try { return localStorage.getItem('ft-is-admin') === '1'; } catch (_) { return false; }
+  }
+  function reservedSections() {
+    if (!mdReserveAdmin()) return [];
+    return sections.filter((s) => s.hidden && s.getAttribute('data-md-reserve') !== null);
+  }
 
   function applySelection() {
     sections.forEach((s) => {
@@ -5074,14 +5097,21 @@ function wireMasterDetail(pageKey, root, signal) {
 
   function buildNav() {
     const groups = []; const byTitle = {}; let toneIdx = 0;
-    visibleSections().forEach((s) => {
-      const g = s.getAttribute('data-md-group') || '';
+    const ensureGroup = (g) => {
       if (!Object.prototype.hasOwnProperty.call(byTitle, g)) {
-        byTitle[g] = { title: g, items: [], hasEra: false }; groups.push(byTitle[g]);
+        byTitle[g] = { title: g, items: [], reserved: 0, hasEra: false }; groups.push(byTitle[g]);
       }
-      byTitle[g].items.push(s);
-      if ((s.getAttribute('data-md-icon') || '') === 'era') byTitle[g].hasEra = true;
+      return byTitle[g];
+    };
+    visibleSections().forEach((s) => {
+      const grp = ensureGroup(s.getAttribute('data-md-group') || '');
+      grp.items.push(s);
+      if ((s.getAttribute('data-md-icon') || '') === 'era') grp.hasEra = true;
     });
+    // Count a reserved shimmer slot into each admin section's group (creating
+    // the group if it has no visible sections yet). Placeholders come AFTER the
+    // real rows - the admin sections sit last in System/Account.
+    reservedSections().forEach((s) => { ensureGroup(s.getAttribute('data-md-group') || '').reserved += 1; });
     groups.sort((a, b) => mdGroupRank(a.title, declaredGroupOrder) - mdGroupRank(b.title, declaredGroupOrder));
     groups.forEach((grp) => { grp.tone = grp.hasEra ? null : MD_TONE_CYCLE[(toneIdx++) % MD_TONE_CYCLE.length]; });
 
@@ -5103,6 +5133,14 @@ function wireMasterDetail(pageKey, root, signal) {
           + (badge ? '<span class="md-row-badge">' + mdEsc(badge) + '</span>' : '')
           + chevron + '</button>';
       });
+      // v1.158: the reserved shimmer rows (non-interactive, aria-hidden, no
+      // label/icon). A .md-row with a 30px tile block matches a real row's
+      // height so the real row replaces it with ZERO shift on reveal.
+      for (let i = 0; i < grp.reserved; i += 1) {
+        html += '<div class="md-row md-row-skeleton" aria-hidden="true">'
+          + '<span class="md-row-skeleton-tile skeleton-shimmer"></span>'
+          + '<span class="md-row-skeleton-label skeleton-shimmer"></span></div>';
+      }
       html += '</div></div>';
     });
     nav.innerHTML = html;
@@ -5152,6 +5190,12 @@ function wireMasterDetail(pageKey, root, signal) {
     });
     if (added) buildNav();
   };
+
+  // v1.158 (Dean): rebuild the nav on demand. setup.js calls this after its
+  // admin check resolves NON-admin, to drop any reserved shimmer slot a stale
+  // last-known-admin flag put up (the reveal-once CLEAR axis - a shared-device
+  // non-admin must never strand an admin placeholder).
+  mdRoot._mdRebuild = buildNav;
 
   // Era-reactive Appearance tile: repaint when <html data-theme> changes. Only
   // wired when the page actually HAS an era tile (Settings) - Stats/Subscriptions
@@ -5630,6 +5674,10 @@ function accountSignOut() {
     // v1.101: the notification-bell reserve flag is per-device too - drop it so
     // the next user doesn't reserve a bell slot this instance/user had enabled.
     try { localStorage.removeItem('ft-notif-bell-enabled'); } catch (_) { /* storage disabled */ }
+    // v1.158: the admin-reserve flag is per-device too - drop it so the next
+    // user (e.g. a non-admin on a shared device) never reserves an admin
+    // shimmer slot the master-detail nav would strand.
+    try { localStorage.removeItem('ft-is-admin'); } catch (_) { /* storage disabled */ }
     window.location.href = '/login';
   };
   fetch('/api/auth/logout', { method: 'POST' }).then(done, done);

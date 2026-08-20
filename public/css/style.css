@@ -7474,6 +7474,16 @@ body.ft-audio-expanded {
 }
 .md-row-chev { color: var(--text-secondary); opacity: 0.55; display: inline-flex; }
 .md-row-chev svg { width: 16px; height: 16px; }
+/* v1.158 (Dean): the reserved shimmer row for an admin section still loading
+   behind setup.js's capability reveal. A .md-row (same flex/gap/padding) with a
+   30px tile block - matching a real row's height so the real row replaces it
+   with ZERO shift. Non-interactive; carries no label/icon (privacy). */
+.md-row-skeleton { cursor: default; pointer-events: none; }
+.md-row-skeleton-tile {
+  flex: 0 0 auto; width: 30px; height: 30px; /* == .md-tile, so the row height matches */
+  border-radius: var(--md-tile-radius);
+}
+.md-row-skeleton-label { flex: 1; height: var(--fs-lg); border-radius: var(--radius); }
 
 .md-tile {
   flex: 0 0 auto; width: 30px; height: 30px; border-radius: var(--md-tile-radius);
