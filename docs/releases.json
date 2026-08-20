@@ -1858,5 +1858,11 @@
     "date": "2026-08-20",
     "title": "A cleaner Subscriptions page with a simple button bar",
     "intent": "The Subscriptions page got its final makeover. Instead of the old menu, there's now a tidy row of buttons across the top - Check all, One-off, Activity, and Add - and each one slides open its own clean page. The channel list stays front and center with its search and A-Z jump strip. All the power-user upkeep buttons (refresh avatars, reheat, and so on) are tucked neatly into Activity, and the old 'Hide subscriptions' button is gone, so the A-Z strip no longer floats in empty space."
+  },
+  {
+    "version": "1.156.1",
+    "date": "2026-08-20",
+    "title": "Tidied up the Subscriptions list",
+    "intent": "Removed the A-Z letter strip that was running down the side of the Subscriptions list - it sat awkwardly in empty space and slid out of reach on a long list. The channel list now uses the full width, and the search box plus the A-Z section headers are all you need to find a channel."
   }
 ]

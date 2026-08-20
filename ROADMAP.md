@@ -80,6 +80,20 @@
 
 ## Shipped
 
+### v1.156.1 - remove the A-Z scrubber rail (2026-08-20)
+
+Dean device feedback on v1.156.0: the A-Z scrubber rail read as a fat column
+floating in a gap beside the list, and on his 213-channel library it was taller
+than the viewport so it scrolled away instead of staying pinned (the iOS
+Contacts index it aimed for stays put). His call: remove it - the search box +
+the A-Z section headers are the navigation. Deleted the #sub-scrubber element,
+renderScrubber() + its ref/call, and the .sub-scrubber CSS; .sub-list-body is a
+plain full-width block now (the list is its only child). The A-Z grouping +
+search helpers stay (they build the sections). Slim gate (adversarial): APPROVE,
+no findings; the deletion leaves no dangling ref and the list/search are intact.
+Dual-Node 7273/7273 on v22.23.1 AND v24.14.0. Device pass: the list is full
+width with no floating rail.
+
 ### v1.156.0 - Subscriptions redesign, part 2: the pills toolbar (2026-08-20)
 
 The final act of the Subscriptions redesign. The Following/Add/Activity
