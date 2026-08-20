@@ -2,9 +2,22 @@
 
 Status: ACTIVE
 Branch: `feat/subscriptions-redesign`
-Target release: v1.155.0
+Target releases: **v1.155.0 = T1 + T2** (Dean's call, 2026-08-20: ship the
+scale fix + iOS panels now, device-validate before the nav restructure);
+**v1.156.0 = T3 + T4** (toolbar-pills restructure + crispness).
 Owner: main session (lean mode)
 Design spec: the approved prototype (Artifact `e824d76e-...`), captured below.
+
+## Progress
+- **T1 DONE** (committed): A-Z sectioned list + live search + scrubber; drop
+  drag-reorder. 5444/5444 unit at commit.
+- **T2 DONE** (committed): channel row -> iOS slide-in settings panel (nav-bar +
+  back); every row tappable -> settings. 5443/5443 unit at commit.
+- **T3 DEFERRED to v1.156**: toolbar pills + remove master-detail shell +
+  maintenance into Activity.
+- **T4 DEFERRED to v1.156**: crispness.
+- v1.155 ships T1+T2 THROUGH THE GATE; the page keeps today's Following/Add/
+  Activity menu (with the new list inside it) until T3.
 
 ## Why
 
