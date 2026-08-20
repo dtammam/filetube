@@ -8576,6 +8576,12 @@ body.ft-audio-expanded {
 body[data-view="home"] .modern-sort {
   display: inline-flex;
 }
+/* v1.160 (gate WARNING): the modern card/list toggle lives in the PERSISTENT
+   header, and home is CACHED (not destroyed) on nav-away, so its abort cleanup
+   does not fire - route-gate it like .modern-sort so it never orphans on
+   watch/stats/etc (where clicking it would hide-side-effect the cached grid). */
+.modern-view-toggle { display: none; }
+body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 .modern-sort-btn {
   background: none;
   border: none;

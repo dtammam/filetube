@@ -1653,7 +1653,7 @@ const PreviewCards = (function () {
             setStoredViewMode(next);
             applyViewMode(next);
             sync();
-          }, sig ? { signal: sig } : undefined);
+          }, { signal: sig }); // sig is always passed (like the sort); the abort below relies on it
           const modernSort = headerRight.querySelector('.modern-sort');
           if (modernSort) headerRight.insertBefore(btn, modernSort); // left of the sort glyph
           else headerRight.appendChild(btn);

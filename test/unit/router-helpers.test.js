@@ -440,5 +440,10 @@ test('v1.160: bootRouter wires the swipe-back, and it only pops in-app history (
   const body = fn.slice(0, fn.indexOf('\n  }\n'));
   assert.match(body, /depth > 0/, 'backs ONLY when there is in-app history (never exits to an external referrer)');
   assert.match(body, /window\.history\.back\(\)/, 'uses history.back (the SPA popstate path)');
-  assert.match(body, /homeBackPending/, 'coalesces with the Home-back guard so a double-fire cannot double-pop');
+  // adversarial SUGGESTION 1: bind the EARLY-RETURN guard, not just a mention of
+  // the flag (the assignment `homeBackPending = true` alone satisfied a bare
+  // /homeBackPending/ match, so deleting the guard shipped green) - two rapid
+  // edge-swipes must not both fire history.back() off the same stale state.
+  assert.match(body, /if\s*\(homeBackPending\)\s*return;/, 'the double-pop coalescing GUARD (early return), not just a flag mention');
+  assert.match(body, /homeBackPending\s*=\s*true;/, 'and sets the flag before history.back()');
 });

@@ -129,6 +129,11 @@ test('SOURCE-LOCK v1.160 (#7): the MODERN home injects a card/list toggle drivin
   assert.match(body, /modern-view-toggle/, 'a distinct class for placement + cleanup');
   // cleaned up on destroy like the modern sort (no orphan in the persistent shell)
   assert.match(body, /\.modern-view-toggle'\)/, 'removed on the abort/destroy path');
+  // gate WARNING: home is CACHED (not destroyed) on nav-away so abort may not
+  // fire - it MUST also be route-gated in CSS like .modern-sort, or it orphans
+  // in the persistent header on watch/stats/etc.
+  assert.match(CSS, /\.modern-view-toggle\s*\{[^}]*display:\s*none/, 'route-gated off by default (persistent-header safety)');
+  assert.match(CSS, /body\[data-view="home"\]\s*\.modern-view-toggle\s*\{[^}]*display:\s*inline-flex/, 'shown only on the home view');
 });
 
 test('SOURCE-LOCK (#1): per-page sort reads/writes by pageSortKey only when enabled, and pins over defaultSort', () => {
