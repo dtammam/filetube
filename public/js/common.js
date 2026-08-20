@@ -5642,15 +5642,33 @@ function buildAccountAvatarEl(user, big) {
   const el = document.createElement('span');
   el.className = 'account-avatar' + (big ? ' account-avatar-lg' : '');
   const avatar = user && user.avatar;
-  if (avatar && avatar.present) {
-    const img = document.createElement('img');
-    img.src = `/api/users/${user.id}/avatar?v=${avatar.version || 0}`;
-    img.alt = '';
-    el.appendChild(img);
-  } else {
+  const paintMonogram = () => {
     const d = deriveAvatar((user && (user.displayName || user.username)) || '');
     el.textContent = d.glyph;
     el.style.backgroundColor = d.color; // runtime palette value (not a literal -- census-safe)
+  };
+  if (avatar && avatar.present) {
+    // v1.157.1 (Dean device report): the "You" avatar painted an EMPTY disc
+    // until the photo loaded+decoded ("empty then fills"). Shimmer the disc as a
+    // placeholder and reveal the <img> only once it has loaded (CSS keeps it
+    // opacity:0 until .is-loaded); on a load error drop it and paint the monogram
+    // so the disc is never left blank.
+    el.classList.add('skeleton-shimmer');
+    const img = document.createElement('img');
+    img.alt = '';
+    img.addEventListener('load', () => {
+      el.classList.remove('skeleton-shimmer');
+      img.classList.add('is-loaded');
+    }, { once: true });
+    img.addEventListener('error', () => {
+      el.classList.remove('skeleton-shimmer');
+      img.remove();
+      paintMonogram();
+    }, { once: true });
+    img.src = `/api/users/${user.id}/avatar?v=${avatar.version || 0}`; // set last: the listeners are already attached
+    el.appendChild(img);
+  } else {
+    paintMonogram();
   }
   return el;
 }

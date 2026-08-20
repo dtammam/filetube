@@ -7546,23 +7546,21 @@ body.ft-audio-expanded {
   /* v1.153.1: constrain the full-width page header to the track's width + centre
      it, so the header box and the rail+pane below share the same left/right. */
   .md-hero { max-width: 1040px; margin-left: auto; margin-right: auto; }
-  .md-root[data-md-open="false"] .md-panes,
-  .md-root[data-md-open="true"] .md-nav { display: block; }
+  .md-root[data-md-open="false"] .md-panes { display: block; }
+  /* v1.157.1 (Dean device report, RE-ROOT-CAUSED): the nav group headers
+     (LIBRARY/SYSTEM/ACCOUNT on Settings, BREAKDOWNS/SYSTEM on Stats) "shift up
+     and stay until refresh" on the first row click - desktop only, Settings +
+     Stats, never iOS or Subscriptions. Cause: `.md-nav` is display:flex whose
+     `gap: var(--space-10)` is the SOLE separator between groups (.md-group has no
+     margin). This rule re-shows the nav when a detail opens (data-md-open=true,
+     overriding the mobile `.md-nav { display:none }`) and used `display: block`,
+     which drops the flex gap -> the groups collapse together, and stay collapsed
+     while data-md-open stays true (hence "until refresh"). Re-show as FLEX so the
+     gap survives. (The v1.153 `position: sticky` guess was wrong and is removed:
+     the tell was "persists until refresh" - a persistent-state signature, not
+     the scroll-reset a sticky box would show.) */
+  .md-root[data-md-open="true"] .md-nav { display: flex; }
   .md-root[data-md-open="true"] .md-panes { animation: none; }
-  /* v1.153 (Dean device report): the category rail "shifts up and stays" on the
-     first row click (desktop, all pages). HYPOTHESIS, not yet reproduced in a
-     browser here: the `position: sticky` rail's geometry couples to the grid row
-     height, which changes with the selected pane, and the sticky box then
-     repositions. Fix keeps the rail top-aligned (already, via the track's
-     align-items:start) but caps its own height so it can't couple to the pane:
-     max-height + overflow make it an independently-scrolling box. DEVICE-VERIFY
-     with Dean; if it persists, re-root-cause from a screen recording. */
-  .md-nav {
-    position: sticky;
-    top: calc(var(--header-h) + var(--space-8));
-    max-height: calc(100vh - var(--header-h) - var(--space-12));
-    overflow-y: auto;
-  }
   .md-row-chev { display: none; }
   .md-back { display: none; }
   /* desktop has no back button (both columns show), so the header is a plain
@@ -10622,6 +10620,11 @@ html[data-modern="on"] .video-uploader {
   height: 100%;
   object-fit: cover;
 }
+/* v1.157.1 (Dean): the avatar photo reveals only once it has loaded+decoded -
+   the disc shimmers (.skeleton-shimmer, added in buildAccountAvatarEl) until
+   then, so the "You" button never paints an empty box first. */
+.account-avatar img:not(.is-loaded) { opacity: 0; }
+.account-avatar img.is-loaded { opacity: 1; }
 .account-menu-dropdown {
   position: absolute;
   top: calc(100% + var(--space-2));
