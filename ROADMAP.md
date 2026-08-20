@@ -80,6 +80,42 @@
 
 ## Shipped
 
+### v1.160.1 - swipe-shake + grey toggle + Subscriptions hero (Dean device report) (2026-08-20)
+
+Three fixes from Dean's device pass on v1.160.0 (a fourth - the Activity view -
+is PARKED at Dean's request: "closer but just not great, I need time to sit with
+it to articulate, not on you").
+
+- **Swipe-back no longer shakes the page.** The v1.160.0 left-edge swipe let the
+  browser ALSO pan/rubber-band the page ("the whole app shakes with it"). The
+  edge drag now `preventDefault`s once it commits to horizontal + rightward (new
+  pure `edgeSwipeShouldClaim`, claim distance 8px), plus `overscroll-behavior-x:
+  none` on the root. Edge (not middle) kept, per Dean. The gate's WARNING drove
+  the real fix: a `preventDefault` needs a NON-passive touchmove, and registering
+  one globally would tax EVERY vertical scroll off the compositor fast-path - so
+  the non-passive listener is attached only on an edge touchstart and removed the
+  instant the gesture ends (scoped, mutation-bound). Normal scrolling stays fast.
+- **Modern card/list toggle no longer reads as "always selected/grey."** It
+  carried the filled `.btn` look; now the transparent glyph style of its
+  `.modern-sort-btn` sibling (the home-view route-gate from v1.160.0 preserved).
+- **Subscriptions header block restored.** Subscriptions lost its title/explainer
+  moving off the master-detail menu in v1.156; re-added the shared iOS-style
+  `.md-hero` block (icon tile + "Subscriptions" + explainer). Static markup - the
+  tile colours via CSS, carrying ZERO `data-md-*` attrs so the v1.156
+  master-detail-drop lock still holds. The dead `.subs-title` removed.
+
+SLIM gate (adversarial alone - a device-report hotfix), ONE fix round, APPROVE.
+The seat's WARNING was a lying comment + a latent scroll-stutter (the global
+non-passive listener); fixed for real, not re-worded, and the source-lock
+strengthened to require the scoped `removeEventListener` (mutation-confirmed:
+dropping it reds router-helpers 60/61). Dual-Node 7364/7364 on v22.23.1 AND
+v24.14.0.
+
+DEVICE items (Dean's device is the arbiter): the swipe-back should no longer
+shake; scroll the modern home feed hard and confirm no new scroll stutter (the
+perf face of the fix); the modern toggle no longer looks pre-selected; the
+Subscriptions page shows its header block. Activity remains parked.
+
 ### v1.160.0 - navigation + clarity follow-ups (Dean's 7-item branch) (2026-08-20)
 
 Seven follow-ups after the sortable-tables wave.
