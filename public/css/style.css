@@ -7388,6 +7388,49 @@ body.ft-audio-expanded {
   cursor: pointer;
 }
 
+/* ===========================================================================
+   v1.156 (T3): the pills-toolbar Subscriptions shell (replaces the v1.152
+   master-detail menu). A page title + a horizontally-scrollable pill strip
+   over the always-visible A-Z channel list; One-off / Activity / + Add open
+   the static `.sub-sheet` slide-in panels below. All tokens (census 0).
+   =========================================================================== */
+.subs-root { display: block; }
+.subs-head { margin-bottom: var(--space-6); }
+.subs-title {
+  margin: 0;
+  font-size: var(--fs-4xl);
+  font-weight: var(--fw-bold);
+  color: var(--yt-red);
+}
+/* A single horizontally-scrollable pill strip (the v1.150 pattern) so the four
+   pills never orphan onto a second row. No abspos popout children, so the
+   overflow-x:auto force-computed overflow-y cannot clip anything (v1.150). */
+.sub-toolbar {
+  display: flex;
+  gap: var(--space-4);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.sub-pill {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  border-radius: var(--radius-lg);
+}
+/* The static slide-in panels reuse `.sub-sheet-backdrop`/`.sub-sheet`. While
+   hidden they must NOT show -- a bare [hidden] loses to `.sub-sheet-backdrop`'s
+   `display:flex` (the repo's [hidden]-loses lesson), so scope it explicitly. */
+.sub-sheet-backdrop.sub-panel[hidden] { display: none; }
+/* Maintenance subsection at the foot of the Activity panel. */
+.sub-maint { margin-top: var(--space-8); }
+.sub-maint-title {
+  margin: 0 0 var(--space-5);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  color: var(--text-primary);
+}
+
 /* Native `<details>`/`<summary>` disclosures demoting add-subscription/
    one-off download BELOW the list (AC23) -- no JS required to expand them.
    Reuses `.setup-box` for the same card chrome the rest of this page

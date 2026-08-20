@@ -80,6 +80,48 @@
 
 ## Shipped
 
+### v1.156.0 - Subscriptions redesign, part 2: the pills toolbar (2026-08-20)
+
+The final act of the Subscriptions redesign. The Following/Add/Activity
+master-detail MENU is replaced by the approved prototype's compact pills
+toolbar over the always-visible A-Z channel list: [Check all][One-off]
+[Activity][+ Add]. Check all is an action pill (unchanged re-pull-all wiring);
+One-off / Activity / + Add open iOS slide-in panels (the same .sub-sheet
+push-in the per-channel settings panel uses, so desktop = mobile with no
+two-rail fork, Dean Q3). The 5 power-user maintenance buttons moved into the
+Activity panel under a Maintenance subsection (Dean Q3); history + failures
+mount there too. The "Hide subscriptions" collapse toggle is gone (Dean Q1) -
+search + A-Z replace it, and its removal also fixes the v1.155.1 residual where
+the A-Z rail floated in empty space while the list was collapsed.
+
+Built as OPTION B (a fresh pills+panel controller; stopped calling
+wireMasterDetail for this page) per a codebase investigation: the shared
+master-detail component has no programmatic open-a-group API and forcing
+desktop=mobile under it would fork shared CSS. Setup/Stats keep master-detail
+untouched. The HTML restructure (moving forms + maintenance into panels while
+preserving every id) was done via a verified Python transform.
+
+FULL two-reviewer gate. Both seats REQUEST-CHANGES/APPROVE arc: QA an Esc-
+layering papercut (with the Preview modal open over the Activity panel, Esc
+closed the panel underneath) + a call for behavioral controller coverage;
+adversarial two WARNINGs, both coverage gaps on provably-correct code but on the
+repo's two most-struck classes (presence-not-binding: the panel controller's
+`sub-panel-<key>` id concat shipped green under mutation; and [hidden]-loses:
+the hidden-at-rest CSS guard was unbound). Fix round: a jsdom behavioral test
+that mounts the real view and drives the controller (mutation-verified - the id
+concat, the backdrop guard, and the CSS guard mutants all go red), the Esc
+layering fix, and a source-lock on the CSS guard. Both seats then APPROVE.
+Dual-Node 7273/7273 on v22.23.1 AND v24.14.0.
+
+Process note (honest): a reviewer subagent left the shared checkout on `main`
+after its run (the v1.80/v1.82 detached-HEAD scar); caught by the pre-release
+branch==HEAD check before dual-Node, restored, no work lost.
+
+Known gap: T4 (this view's cold-launch crispness) folded into Dean's separate
+full-shell crispness sweep. Device pass PENDING - probe: the four pills; each
+panel slides in with a back arrow; Activity holds history/failures/maintenance;
+Check all still runs; no floating A-Z rail; desktop shows the same pills+panels.
+
 ### v1.155.1 - hotfix: the collapse toggle crushed the channel list (2026-08-20)
 
 Dean's device (213 subscriptions): every channel name in the new list wrapped

@@ -111,10 +111,13 @@ test('the /subscriptions page and the Setup page share the same .setup-box/.form
     path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html'),
     'utf8'
   );
-  for (const cls of ['setup-box', 'form-group', 'folder-list-builder']) {
-    // v1.55 Track D (DELIBERATE lock update): prefix match -- the setup-box
-    // class now co-occurs with sub-collapsible on the details cards; the
-    // shared-selector intent is unchanged.
+  // v1.156 (T3): the subscriptions FORMS moved into .sub-sheet slide-in panels,
+  // so subscriptions.html no longer wraps them in .setup-box cards (that card
+  // chrome now lives only on setup.html + the JS-built history/failures
+  // sections). The .form-group / .folder-list-builder selectors are still
+  // shared -- the "one fix improves both" intent holds for those.
+  assert.ok(setupHtml.includes('class="setup-box'), 'setup.html must use .setup-box');
+  for (const cls of ['form-group', 'folder-list-builder']) {
     assert.ok(setupHtml.includes(`class="${cls}`), `setup.html must use .${cls}`);
     assert.ok(subsHtml.includes(`class="${cls}`), `subscriptions.html must use .${cls}`);
   }

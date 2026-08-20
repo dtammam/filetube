@@ -56,17 +56,21 @@ test('no other .sub-* selector still uses --mono-font (only the intentional path
 test('subscriptions.html: the three status spans moved OUT of .sub-list-header-actions into a dedicated .sub-list-header-status row', () => {
   // v1.55 Track B (DELIBERATE lock update): the div gained the sitewide
   // action-bar class -- match the class list openly, keep the capture shape.
-  const actionsBlock = /<div class="sub-list-header-actions[^"]*">([\s\S]*?)<\/div>/.exec(subsHtml);
-  assert.ok(actionsBlock, 'expected a .sub-list-header-actions block');
-  assert.ok(!/id="sub-repull-status"/.test(actionsBlock[1]), 'sub-repull-status must no longer live inside .sub-list-header-actions');
-  assert.ok(!/id="sub-reheat-status"/.test(actionsBlock[1]), 'sub-reheat-status must no longer live inside .sub-list-header-actions');
-  assert.ok(!/id="sub-refresh-avatars-status"/.test(actionsBlock[1]), 'sub-refresh-avatars-status must no longer live inside .sub-list-header-actions');
-
-  const statusBlock = /<div class="sub-list-header-status">([\s\S]*?)<\/div>/.exec(subsHtml);
-  assert.ok(statusBlock, 'expected a dedicated .sub-list-header-status row');
-  assert.match(statusBlock[1], /id="sub-repull-status"/);
-  assert.match(statusBlock[1], /id="sub-reheat-status"/);
-  assert.match(statusBlock[1], /id="sub-refresh-avatars-status"/);
+  // v1.156 (T3): no status span may sit inside a button (.sub-list-header-actions)
+  // row -- the v1.26.2 invariant that growing status text never reflows the
+  // buttons. The spans now live in TWO dedicated .sub-list-header-status rows
+  // (Check all's on the main screen; the maintenance ones in the Activity
+  // panel with their buttons), so check every actions block and the union of
+  // every status row.
+  const actionBlocks = [...subsHtml.matchAll(/<div class="sub-list-header-actions[^"]*">([\s\S]*?)<\/div>/g)].map((m) => m[1]).join('');
+  for (const id of ['sub-repull-status', 'sub-reheat-status', 'sub-refresh-avatars-status']) {
+    assert.ok(!new RegExp(`id="${id}"`).test(actionBlocks), `${id} must not live inside a .sub-list-header-actions row`);
+  }
+  const statusRows = [...subsHtml.matchAll(/<div class="sub-list-header-status">([\s\S]*?)<\/div>/g)].map((m) => m[1]).join('');
+  assert.ok(statusRows.length > 0, 'expected at least one dedicated .sub-list-header-status row');
+  assert.match(statusRows, /id="sub-repull-status"/);
+  assert.match(statusRows, /id="sub-reheat-status"/);
+  assert.match(statusRows, /id="sub-refresh-avatars-status"/);
 });
 
 test('subscriptions.html: .sub-list-header-status reserves a min-height so populate/clear can never reflow the buttons row', () => {

@@ -1852,5 +1852,11 @@
     "date": "2026-08-20",
     "title": "Fix: channel names were squished to one letter per line",
     "intent": "A quick fix to yesterday's Subscriptions update. On a large library the channel list was getting badly squeezed - each name stretched down the screen one letter at a time - because the 'Hide subscriptions' button was crowding the list sideways. The list now uses its full width again, so channel names read normally."
+  },
+  {
+    "version": "1.156.0",
+    "date": "2026-08-20",
+    "title": "A cleaner Subscriptions page with a simple button bar",
+    "intent": "The Subscriptions page got its final makeover. Instead of the old menu, there's now a tidy row of buttons across the top - Check all, One-off, Activity, and Add - and each one slides open its own clean page. The channel list stays front and center with its search and A-Z jump strip. All the power-user upkeep buttons (refresh avatars, reheat, and so on) are tucked neatly into Activity, and the old 'Hide subscriptions' button is gone, so the A-Z strip no longer floats in empty space."
   }
 ]
