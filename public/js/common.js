@@ -3041,6 +3041,10 @@ function injectSubscriptionsNavLinkIfEnabled() {
         if (sidebarLink) sidebarLink.remove();
         const navLink = document.querySelector('#bottom-nav [data-nav="subscriptions"]');
         if (navLink) navLink.remove();
+        // v1.153.1: the You-menu row too, or the optimistic inject leaves it
+        // orphaned pointing at a now-disabled /subscriptions (slim-gate note).
+        const acctRow = document.querySelector('a.account-menu-item[href="/subscriptions"]');
+        if (acctRow) acctRow.remove();
         return; // disabled (404) -- inject nothing
       }
       // v1.47.4 item 4: RE-CHECK after the await. The guard at the top runs
