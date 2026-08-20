@@ -1822,5 +1822,11 @@
     "date": "2026-08-19",
     "title": "A cleaner way to get around Settings",
     "intent": "Settings, Stats, and Subscriptions got a fresh menu. Instead of one long page of sections you expand and collapse (and lose your place in), each page is now a tidy list with a little icon for every section - tap one and just that section opens, with a back button to return. On a computer the list sits alongside the section you're viewing. Everything that was there is still there, just easier to find, and the Appearance section's icon even changes to match the retro era you've picked."
+  },
+  {
+    "version": "1.153.0",
+    "date": "2026-08-20",
+    "title": "Your music keeps playing when you open Settings",
+    "intent": "A few finishing touches to the new menus. The big one: opening Settings from the You menu on your phone no longer stops whatever you're playing - it keeps going in the mini-player, like everywhere else. Each menu page now opens with a friendly header that says what the page is for. Settings is just called \"Settings\" now. And you can jump straight to Stats and Subscriptions from the You menu on your phone, without digging through the side menu."
   }
 ]
