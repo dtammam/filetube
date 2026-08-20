@@ -1,10 +1,13 @@
 # Exec plan: Subscriptions redesign (list-first, scale-ready)
 
-Status: ACTIVE
-Branch: `feat/subscriptions-redesign`
+Status: SHIPPED - T1+T2 in v1.155.0 (+ v1.155.1 hotfix), T3 in v1.156.0. T4
+(this view's cold-launch crispness) was reassigned to Dean's separate full-shell
+crispness sweep (#2), so the redesign's toolbar/panel arc is complete.
+Branches: `feat/subscriptions-redesign` (v1.155), `feat/subs-toolbar-pills-t3`
+(v1.156).
 Target releases: **v1.155.0 = T1 + T2** (Dean's call, 2026-08-20: ship the
 scale fix + iOS panels now, device-validate before the nav restructure);
-**v1.156.0 = T3 + T4** (toolbar-pills restructure + crispness).
+**v1.156.0 = T3** (toolbar-pills restructure; T4 folded into the #2 sweep).
 Owner: main session (lean mode)
 Design spec: the approved prototype (Artifact `e824d76e-...`), captured below.
 
