@@ -5031,6 +5031,9 @@ function wireMasterDetail(pageKey, root, signal) {
   const pageTitle = mdRoot.getAttribute('data-md-title') || '';
   const backLabel = backBtn.querySelector('.md-back-label');
   if (backLabel) backLabel.textContent = pageTitle;
+  // v1.154: the visible back label is CSS-hidden on phone (iOS bare chevron) and
+  // the svg is aria-hidden, so give the button an accessible name (slim-gate a11y).
+  backBtn.setAttribute('aria-label', pageTitle ? ('Back to ' + pageTitle) : 'Back');
 
   const declaredGroupOrder = (mdRoot.getAttribute('data-md-groups') || '').split(',').map((s) => s.trim()).filter(Boolean);
 

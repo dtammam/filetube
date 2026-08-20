@@ -1834,5 +1834,11 @@
     "date": "2026-08-20",
     "title": "Menu header lines up, and Subscriptions is back in the You menu",
     "intent": "Two small fixes to yesterday's menu update. The header box at the top of each Settings-style page now lines up neatly with the rows beneath it instead of sitting slightly narrow. And Subscriptions is reliably in the You menu on your phone now - before, it could go missing right after the app first opened."
+  },
+  {
+    "version": "1.154.0",
+    "date": "2026-08-20",
+    "title": "Tidier headers when you open a settings section",
+    "intent": "When you tap into a section (like Appearance or Downloads) on your phone, the header now looks like a proper iOS screen: the title is centered with a clean back arrow on the left, instead of the title being squished next to the back button. A small thing that makes the menus feel a lot more finished."
   }
 ]

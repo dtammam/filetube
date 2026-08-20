@@ -9,6 +9,8 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const { wireMasterDetail } = require('../../public/js/common.js');
 
@@ -149,6 +151,26 @@ test('the header box ESCAPES title/desc (reusable surface: no HTML injection)', 
     assert.strictEqual(hero.querySelector('p i'), null, 'desc not parsed as HTML');
     assert.strictEqual(hero.querySelector('h2').textContent, '<b>t</b>', 'title is literal text');
     assert.strictEqual(hero.querySelector('p').textContent, '<i>d</i>', 'desc is literal text');
+  } finally { teardown(dom); }
+});
+
+test('v1.154: the phone detail header is an iOS nav-bar (pinned back + centered title); desktop is a left heading', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+  // phone base: back chevron absolute-pinned to the left edge; title centered
+  assert.match(css, /\.md-back \{[^}]*position: absolute;[^}]*left: 0;/, 'the back button is pinned to the left edge');
+  assert.match(css, /\.md-detail-title \{[^}]*text-align: center;/, 'the title is centered on phone');
+  // desktop (min-width:769): reverts to a left-aligned pane heading
+  assert.match(css, /@media \(min-width: 769px\)[\s\S]*?\.md-detail-title \{ text-align: left;/,
+    'desktop title is left-aligned, not a centered nav-bar');
+});
+
+test('v1.154: the back button carries an accessible name (its visible label is CSS-hidden on phone)', () => {
+  const { dom, doc, signal } = setup(FIXTURE);
+  try {
+    wireMasterDetail('setup', doc, signal);
+    const back = doc.querySelector('.md-back');
+    assert.ok(back.getAttribute('aria-label'), 'the back button has an aria-label for assistive tech');
+    assert.match(back.getAttribute('aria-label'), /Back/);
   } finally { teardown(dom); }
 });
 
