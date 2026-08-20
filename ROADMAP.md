@@ -80,6 +80,25 @@
 
 ## Shipped
 
+### v1.154.0 - iOS nav-bar detail header (2026-08-20)
+
+Dean device feedback: inside a menu section, the detail header's title sat left,
+jammed against the back button - "it just doesn't feel right." Reworked it to an
+iOS nav-bar on phone: the back chevron is pinned to the left edge, the title is
+CENTERED, with a hairline under it (matches his iOS 26 About/General reference).
+The back label is dropped (iOS 26's back is a bare chevron; the page name lives
+in the menu's header box), and the button gains an aria-label so the bare
+chevron still has an accessible name. No per-sub-page explainer box - Dean agreed
+that would be overkill inside a section. Desktop is unchanged (no back button
+there, so the header stays a left-aligned pane heading).
+
+Slim gate (adversarial) -> APPROVE; source-locked (phone centered + pinned back,
+desktop left) and mutation-verified; its two suggestions (the aria-label + the
+--size-touch token) folded in. Dual-Node 7266/7266 on v22.23.1 AND v24.14.0.
+Device pass: the centered title + pinned chevron on the sub-pages (watch a long
+title vs the chevron). Next up (Dean's asks): a full cold-launch crispness /
+shimmer sweep, and a fresh Subscriptions-page prototype.
+
 ### v1.153.1 - Settings header width + You-menu Subscriptions (2026-08-20)
 
 Dean's device pass on v1.153 (the You -> Settings mini-player fix CONFIRMED
