@@ -1888,5 +1888,11 @@
     "date": "2026-08-20",
     "title": "Sort and filter your lists",
     "intent": "The lists that are really tables can now be sorted and filtered. On the Stats page, By folder, By channel, Books, and Duplicates each get tappable column headings - tap one to sort by name, number of items, length, or size, tap again to reverse - plus a search box to jump to a folder or channel fast. There's a new 'Videos & audio' table too, so you can sort your whole library by size or length right from Stats and find your biggest or longest files. The Users and Trash lists in Settings are sortable and searchable the same way. And these tables now fill the screen instead of squeezing into a small box that wasted half the page on your phone. The Duplicates list now shows the biggest space-wasters first."
+  },
+  {
+    "version": "1.160.0",
+    "date": "2026-08-20",
+    "title": "Swipe back, and a few page polish fixes",
+    "intent": "You can now swipe in from the left edge of the screen to go back a page - handy for backing out of a Stats section or Settings. A few Stats pages got the same fill-the-screen and sorting treatment as the others (Most watched is now a sortable table). The Subscriptions Activity view is tidier - the download history, failures, and maintenance buttons are now neat collapsible sections that start closed. The annoying bug where the top of a page was hidden under the top bar when you opened it is fixed. And the modern home feed finally has its own card-vs-list view toggle, matching the one in your download folders."
   }
 ]
