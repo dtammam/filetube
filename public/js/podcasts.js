@@ -199,6 +199,10 @@
     // ---- the episode list ----
     function openShow(show) {
       currentShow = show;
+      // v1.157 (P3): reserve the show view before the episodes fetch so it does
+      // not paint empty then pop in. renderEpisodes (success) clears content and
+      // rebuilds; the catch clears the shimmer (reveal-once error axis).
+      if (content) content.innerHTML = buildPodcastShowSkeleton(6);
       fetchJson('/api/podcasts/shows/' + encodeURIComponent(show.id) + '/episodes')
         .then(function (data) {
           if (signal.aborted) return;
@@ -206,7 +210,11 @@
           episodes = data.episodes || [];
           renderEpisodes();
         })
-        .catch(function () { setStatus('Could not load episodes.'); });
+        .catch(function () {
+          if (signal.aborted) return;
+          if (content) content.innerHTML = ''; // never strand the shimmer
+          setStatus('Could not load episodes.');
+        });
     }
 
     function backToGrid() {
@@ -987,6 +995,9 @@
           for (var k = 0; k < shows.length; k++) { if (shows[k].id === ep.subId) { show = shows[k]; break; } }
           if (!show) show = { id: ep.subId, name: ep.showName || 'Podcast' };
           currentShow = show;
+          // v1.157 (P3): reserve the show view before the episodes fetch (same
+          // as openShow) so a ?play= deep link does not flash empty.
+          if (content) content.innerHTML = buildPodcastShowSkeleton(6);
           return fetchJson('/api/podcasts/shows/' + encodeURIComponent(show.id) + '/episodes')
             .then(function (data) {
               if (signal.aborted) return;
@@ -1125,6 +1136,27 @@
     return '<div class="podcast-grid">' + cards + '</div>';
   }
 
+  // v1.157 (P3, crispness): a header-over-episode-rows shimmer for the opened /
+  // pinned SHOW view, seeded into #podcasts-content before the episodes fetch so
+  // the show does not paint empty then pop in (the GRID already seeds its own
+  // via buildPodcastSkeletonCards). A `.podcast-show-art` box + title over N
+  // episode-row lines; existing skeleton primitives + inline spacing, no new
+  // CSS. Pure -> node:test-covered.
+  function buildPodcastShowSkeleton(n) {
+    var count = Number.isInteger(n) && n > 0 ? n : 0;
+    var rows = '';
+    for (var i = 0; i < count; i++) {
+      rows += '<div aria-hidden="true" style="margin-top:16px;">' +
+        '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>' +
+        '<div class="skeleton-line skeleton-line-meta skeleton-shimmer" style="margin-top:6px; max-width:45%;"></div>' +
+        '</div>';
+    }
+    return '<div aria-hidden="true" style="display:flex; gap:16px; align-items:center; margin-bottom:8px;">' +
+      '<span class="podcast-show-art skeleton-shimmer" style="flex:none;"></span>' +
+      '<div class="skeleton-line skeleton-line-title skeleton-shimmer" style="max-width:60%;"></div>' +
+      '</div>' + rows;
+  }
+
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
       formatEpisodeDuration: formatEpisodeDuration,
@@ -1133,6 +1165,7 @@
       resumeFraction: resumeFraction,
       showCountLine: showCountLine,
       buildPodcastSkeletonCards: buildPodcastSkeletonCards,
+      buildPodcastShowSkeleton: buildPodcastShowSkeleton,
     };
   }
 })();

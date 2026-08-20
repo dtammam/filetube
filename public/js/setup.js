@@ -45,8 +45,32 @@ function escapeHtml(text) {
     .replace(/'/g, '&#039;');
 }
 
+// v1.157 (P3, crispness): a shape-matched skeleton for the configured-folder
+// list -- N `.folder-item-row`-height shimmer rows (a title bar over a shorter
+// meta bar, mirroring renderFolders' real row) reserved BEFORE /api/config
+// resolves so the list does not paint empty then pop in on an in-app nav to
+// Settings. Reuses the shared `.skeleton-shimmer`/`.skeleton-line` primitives.
+function buildSetupFolderSkeleton(n) {
+  const count = Number.isInteger(n) && n > 0 ? n : 0;
+  let html = '';
+  for (let i = 0; i < count; i++) {
+    html += '<div class="folder-item-row" aria-hidden="true">'
+      + '<span class="drag-handle"></span>'
+      + '<div style="flex:1; min-width:0;">'
+      + '<div class="skeleton-shimmer skeleton-line skeleton-line-title"></div>'
+      + '<div class="skeleton-shimmer skeleton-line" style="margin-top:8px; max-width:55%;"></div>'
+      + '</div></div>';
+  }
+  return html;
+}
+
 // Load initial folders
 async function loadConfig() {
+  // v1.157 (P3): reserve the folder list before the fetch so it never paints
+  // empty-then-fills. renderFolders() (success) or the catch (error) replaces
+  // the skeleton -- both reveal axes.
+  const folderList = document.getElementById('folders-builder-list');
+  if (folderList) folderList.innerHTML = buildSetupFolderSkeleton(3);
   try {
     const response = await fetch('/api/config');
     const data = await response.json();
@@ -62,6 +86,9 @@ async function loadConfig() {
     populateDefaultViewSelect();
   } catch (err) {
     console.error('Failed to load configuration:', err);
+    // v1.157 (P3): clear the reserved skeleton on error so it never shimmers
+    // forever (the reveal-once error axis).
+    if (folderList) folderList.innerHTML = '';
   }
 }
 
@@ -2785,6 +2812,8 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // `window`/`document` -- mirrors player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    // v1.157 (P3): the configured-folder-list skeleton (pure string builder).
+    buildSetupFolderSkeleton,
     transcodeNamesSuffix, escapeTrashHtml, trashDaysLeftLabel, formatTrashSize, buildTrashRowHtml,
     // v1.97.1 "Hidden" section row builder (pure; the render/wiring is jsdom-adjacent).
     buildFeedHiddenRowHtml,

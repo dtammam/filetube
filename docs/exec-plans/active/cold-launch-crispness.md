@@ -39,13 +39,20 @@ for a custom-logo user / star markup for a hide-stars user. Add the two
 localStorage->classList lines to match index/stats/setup.
 
 ### P3 - the #141 in-app-nav surfaces (Dean: sweep them too)
-- read pane (`read.js`, 0 skeletons today) -> add a reading-pane skeleton.
-- setup lists (`setup.js` - folder/hidden/trash lists paint empty then fill) ->
-  seed skeleton rows (reuse buildSidebarSkeletonRows-style).
-- podcast pin / show art (`podcasts.js` - pinned-show landing has no card
-  skeleton) -> reserve/skeleton.
-- custom-logo width reflow (`.logo-img` width unknown until load) -> reserve a
-  width or accept (decide during build; low priority, custom-logo only).
+- **DONE - setup folder list** (`setup.js` loadConfig): buildSetupFolderSkeleton
+  seeds shape-matched `.folder-item-row` shimmer before /api/config; cleared on
+  success (renderFolders) + error.
+- **DONE - podcast show view** (`podcasts.js` openShow + the ?play= deep link;
+  ?show= routes through openShow): buildPodcastShowSkeleton (art header + episode
+  rows) seeded before the episodes fetch; the grid already had its own.
+- **DEFERRED (disclosed) - reader pane** (`read.js`): the reader ALREADY shows an
+  "Opening book..." status during load (not a blank flash), and a shimmer must
+  match the 3 reader themes AND coexist with epub.js's finicky renderTo/iframe
+  lifecycle (this file is full of epub.js-quirk hotfix comments). Low marginal
+  value (status already mitigates) vs real risk to a high-value feature -> a
+  careful standalone follow-up if Dean finds the reflow jarring on device, not a
+  rushed tail-end change. Tech-debt #141.
+- custom-logo width reflow: NOT done (custom-logo only, low priority) - #141.
 
 ## Reusable primitives (reuse, do NOT invent)
 - CSS `.skeleton-shimmer`/`.skeleton-line`/`.skel-*` (style.css:~1799-1931),
