@@ -80,6 +80,30 @@
 
 ## Shipped
 
+### v1.153.1 - Settings header width + You-menu Subscriptions (2026-08-20)
+
+Dean's device pass on v1.153 (the You -> Settings mini-player fix CONFIRMED
+working on his phone - the screenshot shows playback continuing on the Settings
+page). Two follow-ups:
+
+- **The per-page header box was narrower than the section rows on mobile.** It
+  carried a 16px horizontal margin ON TOP of `.main-content`'s own 16px padding,
+  so it sat 32px in while the rows sat at 16px. Dropped the horizontal margin so
+  the box lines up with the rows; on desktop it is constrained to the track's
+  width and centred, so header and rail+pane share the same left/right.
+- **The You-menu Subscriptions row was missing** - exactly the disclosed
+  cold-cache race (the account menu builds once, and on a session's first load
+  the enable signal lands after it). Now the subscriptions nav-injection (which
+  runs when the module confirms) also patches the built menu, inserting the row
+  after Stats; it inherits the menu's in-app SPA navigation, and the revoke path
+  removes it too. The build-time gate still covers the warm-cache path.
+
+Slim gate (adversarial) -> APPROVE; the fixes are mutation-bound (idempotent
+row, guards un-bypassable, revoke-path-scoped removal). Dual-Node 7264/7264 on
+v22.23.1 AND v24.14.0, 0 fail. Accepted residual (tech-debt): the revoke
+reconcile branch's DOM removals (sidebar/bottom-nav/account-menu) are not
+jsdom-bound - a pre-existing gap, see docs/exec-plans/tech-debt-tracker.md.
+
 ### v1.153.0 - Settings menu polish + the You-menu mini-player fix (2026-08-20)
 
 On-device feedback on the v1.152 master-detail menus (Dean, same day):
