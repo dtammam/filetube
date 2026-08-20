@@ -100,14 +100,15 @@ test('B1: public/index.html no longer contains its own inline copy of the widget
 
 // ---- A5: relocated, prominent "check all subscriptions now" control -------
 
-test('A5: #sub-repull-all-btn is no longer nested inside the collapsed "+ Add a subscription" <details> disclosure', () => {
-  // v1.55 Track D (DELIBERATE lock update): the disclosure gained a
-  // data-collapse-key attribute for persistence -- match attrs openly.
-  const detailsMatch = /<details class="setup-box sub-collapsible" id="sub-add-details"[^>]*>[\s\S]*?<\/details>/.exec(subsHtml);
-  assert.ok(detailsMatch, 'expected the sub-add-details disclosure to still exist');
+test('A5/T3: #sub-repull-all-btn is not nested inside the Add-a-subscription panel', () => {
+  // v1.156 (T3): the Add form is a slide-in PANEL now (#sub-panel-add), not a
+  // <details> disclosure. Check all must stay on the main screen (its own pill),
+  // never inside a panel a user must open first.
+  const panelMatch = /<div class="sub-sheet-backdrop sub-panel" id="sub-panel-add"[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/.exec(subsHtml);
+  assert.ok(panelMatch, 'expected the #sub-panel-add slide-in panel to exist');
   assert.ok(
-    !detailsMatch[0].includes('sub-repull-all-btn'),
-    'the re-pull-all control must be relocated OUT of the collapsed disclosure (A5: reachable without expanding anything)'
+    !panelMatch[0].includes('sub-repull-all-btn'),
+    'the re-pull-all control must live in the toolbar, never inside the Add panel'
   );
 });
 
@@ -118,15 +119,15 @@ test('A5: #sub-repull-all-btn and #sub-repull-status exist exactly once, both ou
   assert.strictEqual(statusMatches.length, 1, 'sub-repull-status must appear exactly once');
 });
 
-test('A5: the relocated control sits directly under the "Your subscriptions" heading, inside .sub-list-header', () => {
-  // v1.55 Track D (DELIBERATE lock update): the section is a collapsible
-  // details card now -- the heading is its <summary>, and the control still
-  // sits in the header row directly under it. A5's "reachable without
-  // expanding" evolves: the card defaults OPEN; only a user's own persisted
-  // collapse hides it, which is that user's explicit choice.
+test('A5/T3: Check all sits in the pills toolbar above the channel list', () => {
+  // v1.156 (T3): the master-detail menu + the .sub-list-header are gone.
+  // "Check all" is the primary pill in .sub-toolbar (Dean-approved), directly
+  // above the search + the always-visible A-Z list -- reachable with no
+  // expanding, no scrolling.
   assert.match(
     subsHtml,
-    /<summary>Your subscriptions<\/summary>\s*<div class="sub-list-header">[\s\S]*?id="sub-repull-all-btn"[\s\S]*?<div id="sub-list-container"/
+    /<div class="sub-toolbar"[\s\S]*?id="sub-repull-all-btn"[\s\S]*?<\/div>[\s\S]*?<div class="sub-search">[\s\S]*?<div id="sub-list-container"/,
+    'expected Check all in .sub-toolbar, above .sub-search and the list'
   );
 });
 

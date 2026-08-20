@@ -222,151 +222,32 @@
       <!-- Per-view content boundary (FR-1, T1): see index.html's matching
            comment. The router swaps ONLY this node on in-app navigation. -->
       <div id="view-root" data-view="subscriptions">
-      <!-- v1.152: master-detail menu wrapper (wireMasterDetail in common.js).
-           The reloc-preview modal below stays a sibling OUTSIDE .md-root. -->
-      <div class="md-root" data-md-page="subscriptions" data-md-title="Subscriptions" data-md-desc="Channels you follow and one-off downloads, plus their history and failures." data-md-hero-icon="bell" data-md-groups="Following,Add,Activity">
-      <!-- v1.21.0 FR-3 (T3): subscriptions-FIRST information architecture.
-           "Your subscriptions" is now the FIRST, primary content on this
-           page (AC18) -- a dense `.sub-list` list (no 240px scroll cap,
-           AC24), replacing the old .folder-list-builder container. Add a
-           subscription / one-off download are DEMOTED below it into native
-           `<details>`/`<summary>` disclosures (AC23) -- fully reachable, no
-           JS required to expand them, just not the top-of-page focus
-           anymore. See lib/ytdlp/client/subscriptions.js's createSubscriptionRow
-           for the new row anatomy (avatar + name + one muted metadata line +
-           FR-4 channel link + a single trailing kebab/gear opening an
-           in-shell settings bottom-sheet, built entirely in JS -- see that
-           file's buildSettingsSheet). -->
-      <!-- v1.152: this section is a master-detail menu item now (the
-           data-md-* attrs feed wireMasterDetail); it was a per-browser
-           collapsible details card (v1.55 Track D). -->
-      <details class="setup-box sub-collapsible" id="sub-list-details" data-collapse-key="subscriptions-list" data-md-icon="bell" data-md-group="Following" open>
-        <summary>Your subscriptions</summary>
-        <div class="sub-list-header">
-          <!-- v1.24.0 T6 (A5): "check all subscriptions now" -- moved up
-               here from the collapsed "+ Add a subscription" disclosure
-               below (same ids, same wiring in /js/subscriptions.js; only the
-               markup's POSITION changed) so it's reachable without
-               scrolling or expanding anything, on both desktop and mobile.
-               Calls the EXISTING POST /api/subscriptions/repull unchanged --
-               no new backend route. -->
-          <!-- v1.55 Track B: the actions live on ONE equal-width grid
-               (.action-bar); each cancellable trigger shares an
-               .action-bar-cell with its Cancel, which SWAPS IN PLACE while
-               the batch runs (applyReheatStateToControls /
-               applyRefreshAvatarsStateToControls hide the trigger) -- no
-               more popping a fifth button into the row. Cells are spans,
-               not divs, so the v1262 status-relocation lock (which captures
-               up to the first closing div) still sees the whole block.
-               (No apostrophes in this comment: the t6 route-lock literal
-               scanner pairs quote characters across prose.) -->
-          <div class="sub-list-header-actions action-bar">
-            <button class="btn btn-primary btn-sm" id="sub-repull-all-btn" type="button">
-              <i class="icon-refresh"></i> Check all subscriptions now
-            </button>
-            <!-- v1.25 QoL follow-up, reheat: triggers a metadata+subtitle
-                 re-pull over EXISTING library items (POST
-                 /api/ytdlp/repull-metadata), distinct from the Check-all
-                 button above (which polls for NEW videos). v1.41.5: no longer
-                 limited to FileTube's own downloads -- an imported/MeTube-era
-                 video anywhere in the library is hydrated with its real
-                 channel (name, avatar, Subscribe button) from the YouTube URL
-                 embedded in its own file tags, hence the widened label.
-                 Progress/terminal state ride the SAME ~2.5s
-                 GET /api/subscriptions/status poll this page already runs --
-                 see lib/ytdlp/client/subscriptions.js's applyReheatStateToControls. -->
-            <!-- v1.41.7 (Dean has NO media backup): a DRY-RUN "Preview changes"
-                 button sitting right beside Reheat. It POSTs
-                 /api/ytdlp/repull-metadata/preview (read-only: moves nothing,
-                 writes nothing, no network) and opens the #reloc-preview-backdrop
-                 modal below showing EXACTLY which files a reheat would move --
-                 and, critically, which will be hard-linked (no data copied) vs
-                 COPIED across filesystems (bytes duplicated, original deleted
-                 after a checksum match). See subscriptions.js's
-                 triggerReheatPreview/renderRelocationPreview. -->
-            <button class="btn btn-sm" id="sub-reheat-preview-btn" type="button"
-                    title="See exactly which files a reheat would move — and which get copied across filesystems — without moving anything">
-              <i class="icon-refresh"></i> Preview changes
-            </button>
-            <span class="action-bar-cell">
-              <button class="btn btn-sm" id="sub-reheat-btn" type="button"
-                      title="Re-fetch channel, title, date, chapters and subtitles for videos already in your library — including imported/MeTube ones">
-                <i class="icon-refresh"></i> Reheat metadata &amp; channels
-              </button>
-              <button class="btn btn-sm" id="sub-reheat-cancel-btn" type="button" hidden>Cancel</button>
-            </span>
-            <!-- v1.25.5 QoL follow-up (channel avatars, round 2): triggers a
-                 bulk re-probe of EVERY subscription's channel avatar (POST
-                 /api/ytdlp/refresh-avatars), distinct from the Reheat button
-                 above (which re-pulls metadata+subtitles for existing
-                 downloaded items) and from the Check-all button (which polls
-                 for new videos). Progress/terminal state ride the SAME
-                 ~2.5s GET /api/subscriptions/status poll this page already
-                 runs -- see
-                 lib/ytdlp/client/subscriptions.js's
-                 applyRefreshAvatarsStateToControls. -->
-            <span class="action-bar-cell">
-              <button class="btn btn-sm" id="sub-refresh-avatars-btn" type="button">
-                <i class="icon-refresh"></i> Refresh avatars
-              </button>
-              <button class="btn btn-sm" id="sub-refresh-avatars-cancel-btn" type="button" hidden>Cancel</button>
-            </span>
-            <!-- v1.56 (Dean): triggers a bulk re-probe of EVERY distinct
-                 channel with content in the library -- subscriptions AND
-                 one-off-downloaded channels alike -- and fans the fresh
-                 subscriber count out to every video of that channel
-                 (POST /api/ytdlp/reheat-sub-counts). One cheap
-                 channel-level probe per channel, never per-video; distinct
-                 from the Reheat button above (per-video metadata dumps) and
-                 from Refresh avatars (same unit of work, different value).
-                 Progress/terminal state ride the SAME ~2.5s
-                 GET /api/subscriptions/status poll this page already runs --
-                 see lib/ytdlp/client/subscriptions.js
-                 applyReheatSubsStateToControls. -->
-            <span class="action-bar-cell">
-              <button class="btn btn-sm" id="sub-reheat-subs-btn" type="button"
-                      title="Re-fetch the current subscriber count for every channel and update all its videos">
-                <i class="icon-refresh"></i> Reheat sub counts
-              </button>
-              <button class="btn btn-sm" id="sub-reheat-subs-cancel-btn" type="button" hidden>Cancel</button>
-            </span>
-            <!-- v1.115 (Dean, A1): re-fetch the canonical channel NAME for every
-                 channel that currently shows a handle/folder instead of its real
-                 name and fan it out to all its videos + pins
-                 (POST /api/ytdlp/backfill-channel-names). One cheap channel-level
-                 probe per channel; progress rides the SAME status poll. -->
-            <span class="action-bar-cell">
-              <button class="btn btn-sm" id="sub-backfill-names-btn" type="button"
-                      title="Re-fetch the real name for every channel showing a handle/folder instead, and update all its videos">
-                <i class="icon-refresh"></i> Refresh channel names
-              </button>
-              <button class="btn btn-sm" id="sub-backfill-names-cancel-btn" type="button" hidden>Cancel</button>
-            </span>
-          </div>
-          <!-- v1.26.2 polish fix (Dean punchlist #5): the three status spans
-               below used to live INSIDE .sub-list-header-actions (the
-               buttons' own flex row) and start out EMPTY. When
-               applyReheatStateToControls/applyRefreshAvatarsStateToControls
-               (subscriptions.js) or the plain repull-status poll populate
-               one with text, the growing span re-wrapped the button row --
-               a line of text appearing to shove itself "between" the
-               buttons, then vanishing again on clear. Moving them into
-               their OWN always-present row below the buttons (with a
-               reserved min-height via .sub-list-header-status in the
-               <style> block below) means populate/clear only ever changes
-               this row's text, never the buttons' layout. -->
-          <div class="sub-list-header-status">
-            <span id="sub-repull-status" class="sub-repull-status action-status" aria-live="polite"></span>
-            <span id="sub-reheat-status" class="sub-repull-status action-status" aria-live="polite"></span>
-            <span id="sub-refresh-avatars-status" class="sub-repull-status action-status" aria-live="polite"></span>
-            <span id="sub-reheat-subs-status" class="sub-repull-status action-status" aria-live="polite"></span>
-            <span id="sub-backfill-names-status" class="sub-repull-status action-status" aria-live="polite"></span>
-          </div>
+      <!-- v1.156 (T3, Subscriptions redesign part 2): a compact pills toolbar
+           over an always-visible channel list REPLACES the v1.152 master-detail
+           menu. Check all is an action pill (its #sub-repull-all-btn keeps the
+           same re-pull-all wiring, unchanged); One-off / Activity / + Add open
+           the .sub-sheet slide-in panels below (the same iOS push-in overlay
+           the per-channel settings panel uses -- desktop = mobile, no two-rail
+           fork). The reloc-preview modal stays a sibling OUTSIDE .subs-root
+           (still inside #view-root). -->
+      <div class="subs-root">
+        <div class="subs-head">
+          <h1 class="subs-title">Your subscriptions</h1>
         </div>
-        <!-- v1.155 (Subscriptions redesign): live channel search. Scoped to
-             this list; filters the A-Z sections below on every keystroke
-             (subscriptions.js's filterSubscriptions). Unpersisted -- starts
-             empty on each view mount, like a native search bar. -->
+        <div class="sub-toolbar" role="toolbar" aria-label="Subscription actions">
+          <button class="btn btn-primary btn-sm sub-pill sub-pill-primary" id="sub-repull-all-btn" type="button">
+            <i class="icon-refresh"></i> Check all
+          </button>
+          <button class="btn btn-sm sub-pill" type="button" data-sub-panel="oneoff">One-off</button>
+          <button class="btn btn-sm sub-pill" type="button" data-sub-panel="activity">Activity</button>
+          <button class="btn btn-sm sub-pill" type="button" data-sub-panel="add">+ Add</button>
+        </div>
+        <!-- Check all's own status line stays on the main screen (its pill is
+             here); the four maintenance status spans live with their buttons in
+             the Activity panel. -->
+        <div class="sub-list-header-status">
+          <span id="sub-repull-status" class="sub-repull-status action-status" aria-live="polite"></span>
+        </div>
         <div class="sub-search">
           <input type="search" id="sub-search-input" class="sub-search-input"
                  placeholder="Search your channels"
@@ -384,10 +265,15 @@
           </div>
           <div id="sub-scrubber" class="sub-scrubber" aria-hidden="true" hidden></div>
         </div>
-      </details>
 
-      <details class="setup-box sub-collapsible" id="sub-add-details" data-collapse-key="add-subscription" data-md-icon="plus" data-md-group="Add" data-md-label="Add a subscription">
-        <summary>+ Add a subscription</summary>
+        <!-- ===== slide-in panels (static, hidden until a pill opens one) ===== -->
+        <div class="sub-sheet-backdrop sub-panel" id="sub-panel-add" hidden>
+          <div class="sub-sheet" role="dialog" aria-modal="true" aria-label="Add a subscription">
+            <div class="sub-sheet-header">
+              <button class="sub-sheet-close" type="button" aria-label="Back" data-sub-panel-close>‹</button>
+              <div class="sub-sheet-name">Add a subscription</div>
+            </div>
+            <div class="sub-sheet-body">
         <p>
           Automatically download new videos from YouTube channels you subscribe
           to here. Downloaded media lands in your library like any other file --
@@ -465,10 +351,18 @@
           </label>
         </div>
 
-      </details>
+      
+            </div>
+          </div>
+        </div>
 
-      <details class="setup-box sub-collapsible" id="oneshot-details" data-collapse-key="one-off-download" data-md-icon="download" data-md-group="Add">
-        <summary>One-off download</summary>
+        <div class="sub-sheet-backdrop sub-panel" id="sub-panel-oneoff" hidden>
+          <div class="sub-sheet" role="dialog" aria-modal="true" aria-label="One-off download">
+            <div class="sub-sheet-header">
+              <button class="sub-sheet-close" type="button" aria-label="Back" data-sub-panel-close>‹</button>
+              <div class="sub-sheet-name">One-off download</div>
+            </div>
+            <div class="sub-sheet-body">
         <p>
           Download a single YouTube video once -- no subscription is created.
           Lands in a per-channel folder by default (v1.25 QoL, T3).
@@ -515,9 +409,97 @@
         <div id="oneshot-list-container" class="folder-list-builder">
           <!-- Populated dynamically by /js/subscriptions.js from GET /api/subscriptions/status's oneShots -->
         </div>
-      </details>
+      
+            </div>
+          </div>
+        </div>
 
-      </div><!-- /.md-root -->
+        <div class="sub-sheet-backdrop sub-panel" id="sub-panel-activity" hidden>
+          <div class="sub-sheet" role="dialog" aria-modal="true" aria-label="Activity">
+            <div class="sub-sheet-header">
+              <button class="sub-sheet-close" type="button" aria-label="Back" data-sub-panel-close>‹</button>
+              <div class="sub-sheet-name">Activity</div>
+            </div>
+            <div class="sub-sheet-body">
+              <!-- history + failures mount into these containers (mountHistorySection / mountFailureSection). -->
+              <div id="sub-activity-history"></div>
+              <div id="sub-activity-failures"></div>
+              <!-- v1.156: the 5 power-user maintenance actions moved here from the
+                   old list header (Dean Q3) -- ids unchanged, so their getElementById
+                   wiring + the ~2.5s status poll bindings are untouched. -->
+              <div class="sub-maint">
+                <h3 class="sub-maint-title">Maintenance</h3>
+                <div class="sub-list-header-actions action-bar">
+            <button class="btn btn-sm" id="sub-reheat-preview-btn" type="button"
+                    title="See exactly which files a reheat would move — and which get copied across filesystems — without moving anything">
+              <i class="icon-refresh"></i> Preview changes
+            </button>
+            <span class="action-bar-cell">
+              <button class="btn btn-sm" id="sub-reheat-btn" type="button"
+                      title="Re-fetch channel, title, date, chapters and subtitles for videos already in your library — including imported/MeTube ones">
+                <i class="icon-refresh"></i> Reheat metadata &amp; channels
+              </button>
+              <button class="btn btn-sm" id="sub-reheat-cancel-btn" type="button" hidden>Cancel</button>
+            </span>
+            <!-- v1.25.5 QoL follow-up (channel avatars, round 2): triggers a
+                 bulk re-probe of EVERY subscription's channel avatar (POST
+                 /api/ytdlp/refresh-avatars), distinct from the Reheat button
+                 above (which re-pulls metadata+subtitles for existing
+                 downloaded items) and from the Check-all button (which polls
+                 for new videos). Progress/terminal state ride the SAME
+                 ~2.5s GET /api/subscriptions/status poll this page already
+                 runs -- see
+                 lib/ytdlp/client/subscriptions.js's
+                 applyRefreshAvatarsStateToControls. -->
+            <span class="action-bar-cell">
+              <button class="btn btn-sm" id="sub-refresh-avatars-btn" type="button">
+                <i class="icon-refresh"></i> Refresh avatars
+              </button>
+              <button class="btn btn-sm" id="sub-refresh-avatars-cancel-btn" type="button" hidden>Cancel</button>
+            </span>
+            <!-- v1.56 (Dean): triggers a bulk re-probe of EVERY distinct
+                 channel with content in the library -- subscriptions AND
+                 one-off-downloaded channels alike -- and fans the fresh
+                 subscriber count out to every video of that channel
+                 (POST /api/ytdlp/reheat-sub-counts). One cheap
+                 channel-level probe per channel, never per-video; distinct
+                 from the Reheat button above (per-video metadata dumps) and
+                 from Refresh avatars (same unit of work, different value).
+                 Progress/terminal state ride the SAME ~2.5s
+                 GET /api/subscriptions/status poll this page already runs --
+                 see lib/ytdlp/client/subscriptions.js
+                 applyReheatSubsStateToControls. -->
+            <span class="action-bar-cell">
+              <button class="btn btn-sm" id="sub-reheat-subs-btn" type="button"
+                      title="Re-fetch the current subscriber count for every channel and update all its videos">
+                <i class="icon-refresh"></i> Reheat sub counts
+              </button>
+              <button class="btn btn-sm" id="sub-reheat-subs-cancel-btn" type="button" hidden>Cancel</button>
+            </span>
+            <!-- v1.115 (Dean, A1): re-fetch the canonical channel NAME for every
+                 channel that currently shows a handle/folder instead of its real
+                 name and fan it out to all its videos + pins
+                 (POST /api/ytdlp/backfill-channel-names). One cheap channel-level
+                 probe per channel; progress rides the SAME status poll. -->
+            <span class="action-bar-cell">
+              <button class="btn btn-sm" id="sub-backfill-names-btn" type="button"
+                      title="Re-fetch the real name for every channel showing a handle/folder instead, and update all its videos">
+                <i class="icon-refresh"></i> Refresh channel names
+              </button>
+              <button class="btn btn-sm" id="sub-backfill-names-cancel-btn" type="button" hidden>Cancel</button>
+            </span>
+                </div>
+                <div class="sub-list-header-status">
+            <span id="sub-reheat-status" class="sub-repull-status action-status" aria-live="polite"></span>
+            <span id="sub-refresh-avatars-status" class="sub-repull-status action-status" aria-live="polite"></span>
+            <span id="sub-reheat-subs-status" class="sub-repull-status action-status" aria-live="polite"></span>
+            <span id="sub-backfill-names-status" class="sub-repull-status action-status" aria-live="polite"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div><!-- /.subs-root -->
 
       <!-- v1.41.7 (Dean has NO media backup): the DRY-RUN relocation preview
            modal. Opened by #sub-reheat-preview-btn (see subscriptions.js's

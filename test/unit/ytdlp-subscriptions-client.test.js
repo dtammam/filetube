@@ -3653,9 +3653,12 @@ test('subscriptions.html: #sub-reheat-subs-cancel-btn exists exactly once and st
 
   const statusMatches = SUBS_HTML.match(/id="sub-reheat-subs-status"/g) || [];
   assert.strictEqual(statusMatches.length, 1, 'expected exactly one status span');
-  const statusRow = /<div class="sub-list-header-status">([\s\S]*?)<\/div>/.exec(SUBS_HTML);
-  assert.ok(statusRow, 'expected the reserved status row');
-  assert.match(statusRow[1], /id="sub-reheat-subs-status"/, 'the status span must live in the reserved row (v1.26.2: growing status text must never re-wrap the button row)');
+  // v1.156 (T3): the maintenance status spans live in the Activity panel's own
+  // .sub-list-header-status row (there are two such rows now -- Check all's is
+  // on the main screen). Assert the span lives in SOME dedicated status row.
+  const statusRows = [...SUBS_HTML.matchAll(/<div class="sub-list-header-status">([\s\S]*?)<\/div>/g)].map((m) => m[1]);
+  assert.ok(statusRows.length > 0, 'expected a reserved status row');
+  assert.ok(statusRows.some((r) => /id="sub-reheat-subs-status"/.test(r)), 'the status span must live in a reserved .sub-list-header-status row (v1.26.2: growing status text must never re-wrap the button row)');
   const statusSpanMatch = /<span id="sub-reheat-subs-status"[^>]*>/.exec(SUBS_HTML);
   assert.match(statusSpanMatch[0], /aria-live="polite"/, 'status updates must announce politely');
 });

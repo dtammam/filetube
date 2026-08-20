@@ -22,27 +22,31 @@ test('LOCK: every management page carries its section cards AND wires the master
   const statsHtml = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'stats.html'), 'utf8');
   const subsHtml = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html'), 'utf8');
 
-  // the section cards the menu is built from
+  // the section cards the menu is built from (setup + stats still use it)
   assert.ok((setupHtml.match(/data-collapse-key="/g) || []).length >= 8, 'all setup section cards present');
   assert.ok((statsHtml.match(/data-collapse-key="/g) || []).length >= 10, 'the stats section cards present');
-  for (const key of ['subscriptions-list', 'add-subscription', 'one-off-download']) {
-    assert.ok(subsHtml.includes(`data-collapse-key="${key}"`), `subscriptions.html lost the ${key} card`);
-  }
-  // each page carries the .md-root wrapper the component targets
+  // each master-detail page carries the .md-root wrapper the component targets
   assert.match(setupHtml, /class="md-root" data-md-page="setup"/, 'setup.html lost its .md-root');
   assert.match(statsHtml, /class="md-root" data-md-page="stats"/, 'stats.html lost its .md-root');
-  assert.match(subsHtml, /class="md-root" data-md-page="subscriptions"/, 'subscriptions.html lost its .md-root');
 
   // the wiring calls (comments stripped)
   assert.match(stripped('public/js/setup.js'), /wireMasterDetail\('setup', root \|\| document, controller\.signal\);/,
     'setup master-detail wiring deleted');
   assert.match(stripped('public/js/stats.js'), /wireMD\('stats', mdScope, signal\);/,
     'stats master-detail wiring deleted');
+
+  // v1.156 (T3): the SUBSCRIPTIONS page LEFT the master-detail pattern for a
+  // pills toolbar + slide-in panels (Dean-approved prototype). It must no
+  // longer carry the .md-root shell or call wireMasterDetail, and its content
+  // now lives in a pills toolbar over the always-visible A-Z list.
+  assert.ok(!/class="md-root"/.test(subsHtml), 'subscriptions.html should have dropped .md-root (T3)');
+  assert.ok(!/data-md-/.test(subsHtml), 'subscriptions.html should have no data-md-* attrs (T3)');
   const subs = stripped('lib/ytdlp/client/subscriptions.js');
-  assert.match(subs, /wireMasterDetail\('subscriptions', root \|\| document, signal\);/,
-    'subscriptions master-detail wiring deleted');
-  assert.equal((subs.match(/wireMenu\(\);/g) || []).length >= 3, true,
-    'a dynamic mount (history/failures) stopped re-adopting into the menu');
+  assert.ok(!/wireMasterDetail\('subscriptions'/.test(subs), 'subscriptions must not wire master-detail (T3)');
+  assert.match(subsHtml, /class="sub-toolbar"/, 'subscriptions.html gained the pills toolbar');
+  for (const key of ['sub-panel-add', 'sub-panel-oneoff', 'sub-panel-activity']) {
+    assert.ok(subsHtml.includes(`id="${key}"`), `subscriptions.html lost the ${key} panel`);
+  }
 });
 
 test('LOCK: the retired wireCollapsibleSections is fully gone (no dangling caller/export)', () => {

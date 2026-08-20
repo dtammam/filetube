@@ -9,15 +9,21 @@ Owner: main session (lean mode)
 Design spec: the approved prototype (Artifact `e824d76e-...`), captured below.
 
 ## Progress
-- **T1 DONE** (committed): A-Z sectioned list + live search + scrubber; drop
-  drag-reorder. 5444/5444 unit at commit.
-- **T2 DONE** (committed): channel row -> iOS slide-in settings panel (nav-bar +
-  back); every row tappable -> settings. 5443/5443 unit at commit.
-- **T3 DEFERRED to v1.156**: toolbar pills + remove master-detail shell +
-  maintenance into Activity.
-- **T4 DEFERRED to v1.156**: crispness.
-- v1.155 ships T1+T2 THROUGH THE GATE; the page keeps today's Following/Add/
-  Activity menu (with the new list inside it) until T3.
+- **T1 DONE** (v1.155.0): A-Z sectioned list + live search + scrubber; drop
+  drag-reorder.
+- **T2 DONE** (v1.155.0): channel row -> iOS slide-in settings panel.
+- **v1.155.1 hotfix**: the collapse toggle crushed the list (Dean device).
+- **T3 DONE** (v1.156, this build): the master-detail menu REPLACED by a pills
+  toolbar [Check all][One-off][Activity][+ Add] over the always-visible A-Z
+  list; One-off/Activity/+Add open static `.sub-sheet` slide-in panels;
+  maintenance moved into the Activity panel; collapse toggle removed (Dean Q1,
+  kills the floating-rail jank); desktop = mobile (Q3). Built as OPTION B (a
+  fresh pills+panel controller; stopped calling wireMasterDetail for this page)
+  per the investigation - the shared component has no open-a-group API and the
+  `.sub-sheet` overlay is already desktop=mobile with no media fork.
+- **T4 (this view's cold-launch crispness) FOLDS INTO Dean's #2 full-shell
+  crispness sweep** (a separate wave) rather than gating v1.156 on it. The list
+  already skeletons; the panels are static. So v1.156 ships T3.
 
 ## Why
 
