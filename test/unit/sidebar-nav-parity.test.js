@@ -20,6 +20,8 @@ const path = require('node:path');
 const { test } = require('node:test');
 const assert = require('node:assert');
 
+const { chromeIconMarkup } = require('../../public/js/common.js');
+
 const ROOT = path.join(__dirname, '..', '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
@@ -39,12 +41,15 @@ const SIDEBAR_SHELLS = [
 ];
 
 // The three STATIC top-nav items every sidebar shell must carry, matched by
-// their icon+label markup (unique to the nav -- the inline "Settings"
-// links in music/books empty-states don't carry the icon, so they don't match).
+// their icon+label markup (unique to the nav -- the inline "Settings" links in
+// music/books empty-states don't carry the icon, so they don't match). v1.157
+// (P2a): the glyphs are inline chrome-icon <svg> now (byte-exact
+// chromeIconMarkup output), not `.icon-*` masks -- a shell reverting one to a
+// mask fails to match here.
 const REQUIRED_NAV = [
-  { label: 'Home', needle: 'icon-home"></i> Home' },
-  { label: 'Settings', needle: 'icon-cog"></i> Settings' },
-  { label: 'Stats', needle: 'icon-star"></i> Stats' },
+  { label: 'Home', needle: chromeIconMarkup('home') + ' Home' },
+  { label: 'Settings', needle: chromeIconMarkup('cog') + ' Settings' },
+  { label: 'Stats', needle: chromeIconMarkup('star') + ' Stats' },
 ];
 
 test('every sidebar shell carries the identical top-nav (Home + Settings + Stats)', () => {

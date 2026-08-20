@@ -75,25 +75,25 @@ test('the RUNTIME-injected sidebar Liked entry wears .icon-liked too', () => {
     'no stale icon-star assignment may survive in applyLikedSidebarEntry');
 });
 
-test('the split is REAL: .icon-star survives for the Stats links ONLY (never leaks to a non-Stats use)', () => {
-  // The other half of the ruling. If a future sweep repoints these too, the
-  // split has silently collapsed back into one glyph and Liked/Stats can no
-  // longer diverge - so this asserts the non-repoint on purpose.
-  //
-  // v1.117 (Dean bug): the Stats top-nav link is now on EVERY sidebar-bearing
-  // shell (was only index.html + stats.html), so there are more than 2 icon-star
-  // sites now. The load-bearing invariant is UNCHANGED and asserted per-site
-  // below: every surviving icon-star is a STATS link -- the glyph never leaks to
-  // a non-Stats use. (sidebar-nav-parity.test.js owns "every shell HAS Stats".)
-  const stats = [];
+test('v1.157: the Stats glyph is the inline chrome-icon star (no .icon-star mask survives; the Liked/Stats split holds)', () => {
+  // v1.117 (Dean bug): the Stats top-nav link is on EVERY sidebar-bearing shell.
+  // v1.157 (P2a): the Stats glyph moved from the `.icon-star` MASK to the inline
+  // chrome-icon `star` <svg> (iOS cold-start pop-in fix). The split's invariant
+  // is UNCHANGED - Liked and Stats are different intents and must not collapse:
+  //   (a) NO `.icon-star` mask survives anywhere (Stats fully converted), and
+  //   (b) where a shell has a Stats link, it carries the byte-exact inline star.
+  // Liked keeps its own themeable `.icon-liked` glyph (untouched here; owned by
+  // glyph-pool.test.js) so the two never share a class.
+  const { chromeIconMarkup } = require('../../public/js/common.js');
+  const starSvg = chromeIconMarkup('star');
+  let statsSvgSites = 0;
   for (const f of fs.readdirSync(PUB).filter((x) => x.endsWith('.html'))) {
     const html = fs.readFileSync(path.join(PUB, f), 'utf8');
-    for (const line of html.split('\n')) {
-      if (line.includes('icon-star')) stats.push(`${f}: ${line.trim()}`);
+    assert.doesNotMatch(html, /class="icon-star"/, `${f}: no .icon-star mask should survive - Stats is the inline chrome-icon star now`);
+    if (html.includes('href="/stats.html"')) {
+      assert.ok(html.includes(starSvg), `${f}: the Stats link must embed the inline chrome-icon star <svg>`);
+      statsSvgSites++;
     }
   }
-  assert.ok(stats.length >= 2, `expected .icon-star to survive at the Stats links (the split), found ${stats.length}`);
-  for (const s of stats) {
-    assert.match(s, /Stats/, `a surviving .icon-star site is not the Stats link (glyph leaked): ${s}`);
-  }
+  assert.ok(statsSvgSites >= 2, `expected the inline Stats star on multiple shells, found ${statsSvgSites}`);
 });

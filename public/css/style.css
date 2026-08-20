@@ -1081,6 +1081,16 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-size: var(--fs-xl);
   color: var(--text-secondary);
 }
+/* v1.157 (P2a): the desktop sidebar Home/Settings/Stats glyphs are inline
+   chrome-icon <svg> now (not `.icon-*` mask <i>), so `.sidebar-item i` no
+   longer sizes them. Match the same 18px box + secondary tint (chrome-icon's
+   fill:currentColor picks up `color`). Dynamic folder-row `.icon-*` masks, if
+   any, still ride the `.sidebar-item i` rule above. */
+.sidebar-item .chrome-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--text-secondary);
+}
 
 /* Item 1 (v1.15.0): sidebar drag-and-drop folder reordering. The dragged
    item dims; the row currently under the pointer shows a drop-indicator
