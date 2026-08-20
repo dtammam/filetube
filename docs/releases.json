@@ -1882,5 +1882,11 @@
     "date": "2026-08-20",
     "title": "Empty the trash in one tap, and see your storage at a glance",
     "intent": "Three handy additions. The Trash section now shows how many items are in it and how much space they're taking - and a new 'Empty trash' button clears the whole thing at once (it takes two taps, so a single misclick can't wipe it). Your total library size on disk now appears right in the 'You' menu, so the number you check most is no longer buried in Stats - tap it to jump straight there. And on the Settings page, the admin sections (Downloads, Users, Backup & Restore) now fade in smoothly instead of popping in a moment after the page loads."
+  },
+  {
+    "version": "1.159.0",
+    "date": "2026-08-20",
+    "title": "Sort and filter your lists",
+    "intent": "The lists that are really tables can now be sorted and filtered. On the Stats page, By folder, By channel, Books, and Duplicates each get tappable column headings - tap one to sort by name, number of items, length, or size, tap again to reverse - plus a search box to jump to a folder or channel fast. There's a new 'Videos & audio' table too, so you can sort your whole library by size or length right from Stats and find your biggest or longest files. The Users and Trash lists in Settings are sortable and searchable the same way. And these tables now fill the screen instead of squeezing into a small box that wasted half the page on your phone. The Duplicates list now shows the biggest space-wasters first."
   }
 ]

@@ -1,5 +1,7 @@
 'use strict';
 
+/* global buildSortableTable */ // v1.159: the shared table component (common.js, loaded first)
+
 // FileTube Setup/Settings page — registered VIEW MODULE (FR-1, T1).
 //
 // Extracted from setup.html's former inline <script> (byte-for-byte the same
@@ -2013,6 +2015,11 @@ function wireRestoreControls(signal) {
   }, { signal });
 }
 
+// v1.159 (Dean): the Users list as a sortable, filterable table (Name | Role |
+// Status), sortable by any, filter by name; each row's admin actions live in the
+// trailing actions cell, and the per-user Access editor attaches to the row
+// element (full-row expando). The action wiring + RBAC calls are UNCHANGED -
+// only the layout/sort/filter around them.
 async function loadUsersList(signal, me) {
   const listEl = document.getElementById('users-list');
   if (!listEl) return;
@@ -2025,35 +2032,44 @@ async function loadUsersList(signal, me) {
     listEl.textContent = 'Could not load the user list.';
     return;
   }
-  listEl.innerHTML = '';
-  for (const user of payload.users) {
-    listEl.appendChild(renderUserRow(user, me, signal));
-  }
+  buildSortableTable(listEl, {
+    caption: 'User accounts',
+    columns: [
+      { key: 'name', label: 'Name', format: (u) => u.displayName || u.username, sortValue: (u) => (u.displayName || u.username || '').toLowerCase() },
+      { key: 'role', label: 'Role', sortValue: (u) => u.role || '', format: (u) => buildUserRoleCell(u) },
+      { key: 'status', label: 'Status', sortValue: (u) => (u.id === me.id ? 0 : (u.disabled ? 1 : 2)), format: (u) => (u.id === me.id ? 'You' : (u.disabled ? 'Disabled' : 'Active')) },
+    ],
+    rows: payload.users,
+    actions: (user, rowEl) => buildUserActions(user, me, signal, rowEl),
+    filter: { text: (u) => `${u.displayName || ''} ${u.username || ''}`, placeholder: 'Filter by name...' },
+    defaultSort: { key: 'name', dir: 'asc' },
+    persistKey: 'ft-stable:users',
+  });
 }
 
-// One row per user: name + badges, then the admin actions. Buttons re-fetch
-// the list after every change so the rendered state is always the server's.
-function renderUserRow(user, me, signal) {
-  const row = document.createElement('div');
-  row.className = 'users-row';
+// The Role cell: the role word + small capability badges (subscriptions / edit).
+function buildUserRoleCell(user) {
+  const box = document.createElement('span');
+  const role = document.createElement('span');
+  role.textContent = user.role === 'admin' ? 'Admin' : 'Member';
+  box.appendChild(role);
+  const caps = [];
+  if (user.canManageSubscriptions) caps.push('subscriptions');
+  if (user.canModifyLibrary) caps.push('can edit'); // v1.81 write-RBAC
+  caps.forEach((c) => {
+    const b = document.createElement('span');
+    b.className = 'users-cap-badge';
+    b.textContent = c;
+    box.appendChild(b);
+  });
+  return box;
+}
+
+// The per-user admin actions (the RBAC calls + Access editor), UNCHANGED from
+// the old renderUserRow - just returned as the row's actions cell. `rowEl` is
+// the .stable-row, so the Access editor still attaches as a full-row expando.
+function buildUserActions(user, me, signal, rowEl) {
   const isSelf = user.id === me.id;
-
-  const who = document.createElement('div');
-  who.className = 'users-row-who';
-  const name = document.createElement('strong');
-  name.textContent = user.displayName || user.username;
-  who.appendChild(name);
-  const meta = document.createElement('span');
-  meta.className = 'users-row-meta';
-  const badges = [user.username, user.role];
-  if (user.canManageSubscriptions) badges.push('subscriptions');
-  if (user.canModifyLibrary) badges.push('can edit'); // v1.81 write-RBAC
-  if (user.disabled) badges.push('disabled');
-  if (isSelf) badges.push('you');
-  meta.textContent = badges.join(' - ');
-  who.appendChild(meta);
-  row.appendChild(who);
-
   const actions = document.createElement('div');
   actions.className = 'users-row-actions';
   const refresh = () => loadUsersList(signal, me);
@@ -2101,14 +2117,13 @@ function renderUserRow(user, me, signal) {
     // v1.81 write-RBAC: grant/revoke library-MODIFY (delete/move/edit/scan).
     // Admins always can, so the toggle is member-only like the Access editor.
     addBtn(user.canModifyLibrary ? 'Revoke edit' : 'Allow edit', () => act(`/api/users/${user.id}/modify-library-flag`, { canModifyLibrary: !user.canModifyLibrary }));
-    addBtn('Access', () => openAccessEditor(user, row, signal));
+    addBtn('Access', () => openAccessEditor(user, rowEl, signal));
   }
   if (!isSelf) {
     addBtn('Delete', () => act(`/api/users/${user.id}`, undefined,
       `Delete ${user.username}? Their watch progress, likes, reading positions, and pins go with the account. This cannot be undone.`));
   }
-  row.appendChild(actions);
-  return row;
+  return actions;
 }
 
 // v1.80 RBAC: the per-user access editor. Blocklist (see-all-except-checked) or
@@ -2261,25 +2276,46 @@ function formatTrashSize(bytes) {
 
 // One trash row: thumbnail (the sidecar re-keyed with the move, so
 // /thumbnail/<trashId> resolves), title, meta line, Restore + two-tap Purge.
-function buildTrashRowHtml(item, retentionDays, nowMs) {
-  var tid = escapeTrashHtml(item.trashId);
-  var title = escapeTrashHtml(item.title || item.name || 'Untitled');
-  var metaBits = [];
-  var size = formatTrashSize(item.size);
-  if (size) metaBits.push(escapeTrashHtml(size));
-  metaBits.push(escapeTrashHtml(trashDaysLeftLabel(item.trashedAt, retentionDays, nowMs)));
-  return '' +
-    '<div class="trash-row" data-trash-id="' + tid + '">' +
-    '<img class="trash-thumb" src="/thumbnail/' + encodeURIComponent(item.trashId || '') + '" alt="" loading="lazy" />' +
-    '<div class="trash-info">' +
-    '<div class="trash-title" title="' + title + '">' + title + '</div>' +
-    '<div class="trash-meta">' + metaBits.join(' &bull; ') + '</div>' +
-    '</div>' +
-    '<button type="button" class="btn btn-sm trash-restore-btn" data-trash-id="' + tid + '">Restore</button>' +
-    '<button type="button" class="btn btn-sm trash-purge-btn" data-trash-id="' + tid + '">' +
-    '<span class="trash-purge-label">Purge</span><span class="trash-purge-confirm">Sure?</span>' +
-    '</button>' +
-    '</div>';
+// v1.159 (Dean): the Trash Title cell - thumbnail + title (textContent-escaped);
+// the title truncates, the thumb is fixed.
+function buildTrashTitleCell(item) {
+  var box = document.createElement('div');
+  box.className = 'trash-title-cell';
+  var img = document.createElement('img');
+  img.className = 'trash-thumb';
+  img.src = '/thumbnail/' + encodeURIComponent(item.trashId || '');
+  img.alt = '';
+  img.loading = 'lazy';
+  var t = document.createElement('span');
+  t.className = 'trash-title';
+  t.textContent = item.title || item.name || 'Untitled';
+  t.title = t.textContent;
+  box.appendChild(img);
+  box.appendChild(t);
+  return box;
+}
+
+// The Trash actions cell: Restore + the two-tap Purge, SAME classes + data-
+// trash-id the delegated listEl handler (restore/purge + the per-item two-tap
+// arm) keys off - so that wiring is UNCHANGED, only the layout moved into a
+// sortable-table cell.
+function buildTrashActions(item) {
+  var tid = item.trashId || '';
+  var box = document.createElement('div');
+  box.className = 'trash-actions';
+  var restore = document.createElement('button');
+  restore.type = 'button';
+  restore.className = 'btn btn-sm trash-restore-btn';
+  restore.setAttribute('data-trash-id', tid);
+  restore.textContent = 'Restore';
+  var purge = document.createElement('button');
+  purge.type = 'button';
+  purge.className = 'btn btn-sm trash-purge-btn';
+  purge.setAttribute('data-trash-id', tid);
+  purge.innerHTML = '<span class="trash-purge-label">Purge</span><span class="trash-purge-confirm">Sure?</span>';
+  box.appendChild(restore);
+  box.appendChild(purge);
+  return box;
 }
 
 // v1.158: the trash toolbar's two label strings, pure (unit-tested). The
@@ -2340,8 +2376,33 @@ function renderTrashSection(signal) {
         if (signal.aborted) return;
         disarm();
         disarmEmpty();
-        listEl.innerHTML = body.items.map((item) => buildTrashRowHtml(item, body.retentionDays)).join('');
+        // v1.159: render the trash as a sortable table (Title | Size | Expires,
+        // + Restore/Purge actions). The delegated restore/purge handler + the
+        // per-item two-tap arm below are UNCHANGED (they key off the button
+        // classes + data-trash-id, which the actions cell still carries).
         const count = body.items.length;
+        if (count === 0) {
+          listEl.textContent = ''; // the #trash-empty blurb below carries the empty state
+        } else {
+          const retention = body.retentionDays;
+          buildSortableTable(listEl, {
+            caption: 'Trash',
+            columns: [
+              { key: 'title', label: 'Title', format: (it) => buildTrashTitleCell(it), sortValue: (it) => (it.title || it.name || '').toLowerCase() },
+              { key: 'size', label: 'Size', numeric: true, align: 'end', sortValue: (it) => Number(it.size) || 0, format: (it) => (formatTrashSize(it.size) || '-') },
+              { key: 'trashed', label: 'Expires', numeric: true, align: 'end', sortValue: (it) => Number(it.trashedAt) || 0, format: (it) => trashDaysLeftLabel(it.trashedAt, retention) },
+            ],
+            rows: body.items,
+            actions: (it) => buildTrashActions(it),
+            filter: { text: (it) => it.title || it.name || '', placeholder: 'Filter by title...' },
+            defaultSort: { key: 'trashed', dir: 'desc' },
+            persistKey: 'ft-stable:trash',
+            // v1.159 (gate SUGGESTION): a sort/filter re-render rebuilds the rows;
+            // clear any armed per-item Purge so it can't survive INVISIBLY (its
+            // "Sure?" button is gone) into a one-tap delete on the next tap.
+            onRender: disarm,
+          });
+        }
         if (emptyEl) emptyEl.hidden = count > 0;
         // The toolbar (total + Empty button) only shows when there is something
         // to empty; hide it wholesale on an empty trash.
@@ -2911,9 +2972,13 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // `window`/`document` -- mirrors player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    // v1.159: the Users list as a sortable table (jsdom-tested action wiring).
+    loadUsersList, buildUserRoleCell,
     // v1.157 (P3): the configured-folder-list skeleton (pure string builder).
     buildSetupFolderSkeleton,
-    transcodeNamesSuffix, escapeTrashHtml, trashDaysLeftLabel, formatTrashSize, buildTrashRowHtml,
+    transcodeNamesSuffix, escapeTrashHtml, trashDaysLeftLabel, formatTrashSize,
+    // v1.159: the trash-table cell builders (jsdom-tested in trash-table.test.js).
+    buildTrashTitleCell, buildTrashActions,
     // v1.158: the trash toolbar's two pure label strings + the render/wiring
     // (jsdom-mounted to bind the DESTRUCTIVE two-tap: one tap never fires).
     formatTrashToolbarLabel, formatTrashArmLabel, renderTrashSection,

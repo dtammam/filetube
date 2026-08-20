@@ -15186,6 +15186,29 @@ app.get('/api/storage-summary', (req, res) => {
   res.json({ totalSizeBytes: stats.computeLibraryStats(visibleMetadata).totalSizeBytes });
 });
 
+// v1.159 (Dean): the flat, VISIBILITY-SCOPED A/V item list backing the Stats
+// "Videos & audio" sortable table - a restricted member never sees a hidden
+// item's title/size (scoped exactly like /api/stats: withEffectiveViewCounts +
+// mediaVisibleTo). A lean payload (id/title/type/duration/size only, no
+// filePath) sorted client-side; GATED in the read census.
+app.get('/api/library-items', (req, res) => {
+  const db = getCachedDatabase();
+  const withVc = withEffectiveViewCounts(db);
+  const items = [];
+  for (const id of Object.keys(withVc)) {
+    const it = withVc[id];
+    if (!mediaVisibleTo(req, it)) continue;
+    items.push({
+      id,
+      title: (it.title || it.name || '').toString(),
+      type: it.type === 'audio' ? 'audio' : 'video',
+      durationSeconds: Number(it.duration) || 0,
+      sizeBytes: Number(it.size) || 0,
+    });
+  }
+  res.json({ items, total: items.length });
+});
+
 app.get('/api/stats', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: pure read on a request/serve path
   const books = booksStore.readBooks(db);

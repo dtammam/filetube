@@ -1,5 +1,7 @@
 'use strict';
 
+/* global buildSortableTable */ // v1.159: the shared table component (common.js, loaded first)
+
 // C4 "fun stats" page (v1.24 UX Round, Wave 3). v1.151: Stats is now a
 // REGISTERED SPA route -- deriveRouteView maps /stats.html -> 'stats', so
 // navigating to it in-app swaps #view-root and keeps the docked mini-player
@@ -153,25 +155,11 @@ function renderGlanceTiles(root, statsData) {
   root.appendChild(buildStatTile(formatByteSize(statsData.totalSizeBytes), 'Total size on disk'));
 }
 
-// A single "label ... count / duration / size" row for the folder/channel
-// breakdown lists -- a plain flex row (inline-styled, matching the rest of
-// this app's ad hoc one-off layout tweaks) rather than a new CSS class.
-function buildBreakdownRow(label, group) {
-  const row = document.createElement('div');
-  row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
-  const labelEl = document.createElement('span');
-  labelEl.textContent = label;
-  labelEl.style.cssText = 'font-weight:var(--fw-bold); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
-  const valueEl = document.createElement('span');
-  valueEl.textContent = `${formatCount(group.count)} · ${formatTotalDuration(group.totalDurationSeconds)} · ${formatByteSize(group.totalSizeBytes)}`;
-  valueEl.className = 'stats-meta-text';
-  valueEl.style.cssText = 'flex-shrink:0;';
-  row.appendChild(labelEl);
-  row.appendChild(valueEl);
-  return row;
-}
-
-function renderBreakdownList(root, groups, labelFn, emptyMessage) {
+// v1.159 (Dean): the folder/channel breakdown as a real sortable, filterable
+// table (Name | Entries | Length | Size) via the shared buildSortableTable -
+// replacing the old fused "count · duration · size" flex row. Numeric columns
+// sort by the RAW value (bytes/seconds), default biggest-Size-first.
+function renderBreakdownList(root, groups, labelFn, emptyMessage, persistKey) {
   clearChildren(root);
   if (!Array.isArray(groups) || groups.length === 0) {
     const empty = document.createElement('div');
@@ -180,9 +168,25 @@ function renderBreakdownList(root, groups, labelFn, emptyMessage) {
     root.appendChild(empty);
     return;
   }
-  for (const group of groups) {
-    root.appendChild(buildBreakdownRow(labelFn(group), group));
-  }
+  const rows = groups.map((g) => ({
+    name: labelFn(g),
+    count: Number(g.count) || 0,
+    dur: Number(g.totalDurationSeconds) || 0,
+    bytes: Number(g.totalSizeBytes) || 0,
+  }));
+  buildSortableTable(root, {
+    caption: 'Breakdown by name',
+    columns: [
+      { key: 'name', label: 'Name', format: (r) => r.name },
+      { key: 'count', label: 'Entries', numeric: true, align: 'end', sortValue: (r) => r.count, format: (r) => formatCount(r.count) },
+      { key: 'dur', label: 'Length', numeric: true, align: 'end', sortValue: (r) => r.dur, format: (r) => formatTotalDuration(r.dur) },
+      { key: 'bytes', label: 'Size', numeric: true, align: 'end', sortValue: (r) => r.bytes, format: (r) => formatByteSize(r.bytes) },
+    ],
+    rows,
+    filter: { text: (r) => r.name, placeholder: 'Filter by name...' },
+    defaultSort: { key: 'bytes', dir: 'desc' },
+    persistKey,
+  });
 }
 
 function renderRecordTiles(root, statsData) {
@@ -253,32 +257,56 @@ function renderDuplicates(root, report) {
     root.appendChild(empty);
     return;
   }
-  const renderSection = (title, groups, keyLabel) => {
+  // The "Duplicate" cell: the group key (truncated) over its file paths - a
+  // wrap column so the paths show (textContent throughout: filenames are
+  // user-controlled). READ-ONLY, no delete affordance (unchanged).
+  const dupNameCell = (group, keyText) => {
+    const box = document.createElement('div');
+    const key = document.createElement('div');
+    key.className = 'dup-key';
+    key.textContent = keyText;
+    box.appendChild(key);
+    (Array.isArray(group.items) ? group.items : []).forEach((item) => {
+      const p = document.createElement('div');
+      p.className = 'dup-path stats-meta-text';
+      p.textContent = `${item.filePath} (${formatByteSize(item.size)})`;
+      box.appendChild(p);
+    });
+    return box;
+  };
+  const renderSection = (title, groups, keyLabel, persistKey) => {
     if (groups.length === 0) return;
     const header = document.createElement('div');
+    header.className = 'stable-section-title';
     header.textContent = title;
-    header.style.cssText = 'font-weight:var(--fw-bold); padding:var(--space-5) var(--space-2) var(--space-2);';
     root.appendChild(header);
-    groups.slice(0, DUPLICATE_GROUPS_RENDER_CAP).forEach((group) => {
-      const items = Array.isArray(group.items) ? group.items : [];
-      const row = document.createElement('div');
-      row.style.cssText = 'padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
-      const label = document.createElement('div');
-      label.textContent = keyLabel(group);
-      label.style.cssText = 'overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
-      const meta = document.createElement('div');
-      meta.textContent = `${formatCount(items.length)} copies · ${formatByteSize(group.totalBytes)} total · ${formatByteSize(group.wastedBytes)} reclaimable (keeping the largest)`;
-      meta.className = 'stats-meta-text';
-      row.appendChild(label);
-      row.appendChild(meta);
-      items.forEach((item) => {
-        const pathLine = document.createElement('div');
-        pathLine.textContent = `${item.filePath} (${formatByteSize(item.size)})`;
-        pathLine.className = 'stats-meta-text';
-        pathLine.style.cssText = 'padding-left:var(--space-6); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
-        row.appendChild(pathLine);
-      });
-      root.appendChild(row);
+    // v1.159 (Dean): sort by Reclaimable DESC BEFORE the 50-group cap, so the
+    // biggest offenders always survive the cap (the old order was arbitrary);
+    // the sortable table then re-sorts the shown set by any column.
+    const shown = groups.slice()
+      .sort((a, b) => (Number(b.wastedBytes) || 0) - (Number(a.wastedBytes) || 0))
+      .slice(0, DUPLICATE_GROUPS_RENDER_CAP);
+    const rows = shown.map((g) => ({
+      group: g,
+      key: keyLabel(g),
+      copies: Array.isArray(g.items) ? g.items.length : 0,
+      total: Number(g.totalBytes) || 0,
+      wasted: Number(g.wastedBytes) || 0,
+    }));
+    const host = document.createElement('div');
+    root.appendChild(host);
+    buildSortableTable(host, {
+      caption: title,
+      columns: [
+        { key: 'key', label: 'Duplicate', wrap: true, format: (r) => dupNameCell(r.group, r.key) },
+        { key: 'copies', label: 'Copies', numeric: true, align: 'end', sortValue: (r) => r.copies, format: (r) => formatCount(r.copies) },
+        { key: 'total', label: 'Total', numeric: true, align: 'end', sortValue: (r) => r.total, format: (r) => formatByteSize(r.total) },
+        { key: 'wasted', label: 'Reclaim', numeric: true, align: 'end', sortValue: (r) => r.wasted, format: (r) => formatByteSize(r.wasted) },
+      ],
+      rows,
+      filter: { text: (r) => r.key, placeholder: 'Filter by name...' },
+      defaultSort: { key: 'wasted', dir: 'desc' },
+      persistKey,
     });
     if (groups.length > DUPLICATE_GROUPS_RENDER_CAP) {
       const more = document.createElement('div');
@@ -287,8 +315,45 @@ function renderDuplicates(root, report) {
       root.appendChild(more);
     }
   };
-  renderSection('Same filename', nameGroups, (group) => group.key);
-  renderSection('Same video, different filenames', idGroups, (group) => `Video id [${group.key}]`);
+  renderSection('Same filename', nameGroups, (group) => group.key, 'ft-stable:stats-dup-name');
+  renderSection('Same video, different filenames', idGroups, (group) => `Video id [${group.key}]`, 'ft-stable:stats-dup-id');
+}
+
+// v1.159 (Dean): the "Videos & audio" table - the whole visible library as
+// sortable rows (Title | Type | Length | Size) from its own /api/library-items
+// fetch. renderCap keeps a multi-thousand-item library from mounting thousands
+// of nodes; sort (biggest/longest) + the title filter reach the FULL set.
+const AV_RENDER_CAP = 300;
+function renderAvTable(root, items) {
+  clearChildren(root);
+  const list = Array.isArray(items) ? items : [];
+  if (list.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'theme-card-blurb';
+    empty.textContent = 'No videos or audio in your library yet.';
+    root.appendChild(empty);
+    return;
+  }
+  const rows = list.map((it) => ({
+    title: (it.title || '').toString(),
+    type: it.type === 'audio' ? 'audio' : 'video',
+    dur: Number(it.durationSeconds) || 0,
+    bytes: Number(it.sizeBytes) || 0,
+  }));
+  buildSortableTable(root, {
+    caption: 'Videos and audio',
+    columns: [
+      { key: 'title', label: 'Title', format: (r) => r.title },
+      { key: 'type', label: 'Type', sortValue: (r) => r.type, format: (r) => (r.type === 'audio' ? 'Audio' : 'Video') },
+      { key: 'dur', label: 'Length', numeric: true, align: 'end', sortValue: (r) => r.dur, format: (r) => formatItemDuration(r.dur) },
+      { key: 'bytes', label: 'Size', numeric: true, align: 'end', sortValue: (r) => r.bytes, format: (r) => formatByteSize(r.bytes) },
+    ],
+    rows,
+    filter: { text: (r) => r.title, placeholder: 'Filter by title...' },
+    defaultSort: { key: 'bytes', dir: 'desc' },
+    persistKey: 'ft-stable:stats-av',
+    renderCap: AV_RENDER_CAP,
+  });
 }
 
 // ---- v1.41.0: Books inventory + About/version section ----------------------
@@ -306,23 +371,8 @@ function renderBookTiles(root, books) {
   root.appendChild(buildStatTile(formatCount(b.narratedCount || 0), 'With narration'));
 }
 
-// Book folder rows are size-only (books have no duration) -- so a dedicated row
-// rather than buildBreakdownRow (which shows a duration segment).
-function buildBookFolderRow(group) {
-  const row = document.createElement('div');
-  row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
-  const labelEl = document.createElement('span');
-  labelEl.textContent = group.folderName;
-  labelEl.style.cssText = 'font-weight:var(--fw-bold); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
-  const valueEl = document.createElement('span');
-  valueEl.textContent = `${formatCount(group.count)} · ${formatByteSize(group.totalSizeBytes)}`;
-  valueEl.className = 'stats-meta-text';
-  valueEl.style.cssText = 'flex-shrink:0;';
-  row.appendChild(labelEl);
-  row.appendChild(valueEl);
-  return row;
-}
-
+// v1.159: Book folders as a sortable table -- size-only (books have no
+// duration), so Name | Books | Size (default Size-desc), with a name filter.
 function renderBookFolders(root, books) {
   clearChildren(root);
   const groups = (books && Array.isArray(books.byFolder)) ? books.byFolder : [];
@@ -333,7 +383,23 @@ function renderBookFolders(root, books) {
     root.appendChild(empty);
     return;
   }
-  for (const group of groups) root.appendChild(buildBookFolderRow(group));
+  const rows = groups.map((g) => ({
+    name: g.folderName,
+    count: Number(g.count) || 0,
+    bytes: Number(g.totalSizeBytes) || 0,
+  }));
+  buildSortableTable(root, {
+    caption: 'Books by folder',
+    columns: [
+      { key: 'name', label: 'Name', format: (r) => r.name },
+      { key: 'count', label: 'Books', numeric: true, align: 'end', sortValue: (r) => r.count, format: (r) => formatCount(r.count) },
+      { key: 'bytes', label: 'Size', numeric: true, align: 'end', sortValue: (r) => r.bytes, format: (r) => formatByteSize(r.bytes) },
+    ],
+    rows,
+    filter: { text: (r) => r.name, placeholder: 'Filter by name...' },
+    defaultSort: { key: 'bytes', dir: 'desc' },
+    persistKey: 'ft-stable:stats-books-folder',
+  });
 }
 
 // A GitHub-style external link. href is always a server-provided repo URL (a
@@ -448,7 +514,7 @@ function renderInventory(root, inventory) {
 // then reflows twice as the two independent fetches land. Reuses ONLY existing
 // shared classes (the real `.theme-card` tile box + the `.skeleton-line`/
 // `.skeleton-shimmer` toolkit) and the SAME inline row box model as
-// buildBreakdownRow/buildAboutRow -- this page still owns no CSS. Every render*
+// buildAboutRow -- this page still owns no CSS. Every render*
 // below does clearChildren(root) before it fills, so the swap to real content is
 // automatic; on the four FIXED-shape tile grids the seed count is the real count
 // (true zero-shift), and the variable-length lists seed a representative row
@@ -481,8 +547,12 @@ const STATS_FETCH_CONTAINERS = [
   'stats-records-grid', 'stats-most-watched-list', 'stats-books-grid',
   'stats-books-folder-list', 'stats-inventory-list', 'stats-about',
 ];
-// The shared row box model -- MUST track buildBreakdownRow/buildAboutRow so the
-// skeleton row reserves the height the real row fills.
+// The shared row box model -- tracks buildAboutRow (Most watched / inventory /
+// About still render as these flex rows). v1.159: the By-folder / By-channel /
+// Books / Duplicates breakdowns now render via the sortable `.stable` table
+// instead, so their skeleton is an APPROXIMATE placeholder (the real table adds
+// a filter bar + header row) -- a minor one-time Stats-open reflow, accepted as
+// tech-debt (a shape-matched .stable skeleton is the fast-follow).
 const STATS_SKELETON_ROW_CSS = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
 
 // A `.theme-card`-shaped shimmer tile: two block skeleton lines (value + caption)
@@ -554,8 +624,8 @@ function renderStatsDashboard(statsData) {
     byTypeRoot.appendChild(buildStatTile(`${formatCount(statsData.byType.video.count)} · ${formatTotalDuration(statsData.byType.video.totalDurationSeconds)} · ${formatByteSize(statsData.byType.video.totalSizeBytes)}`, 'Video'));
     byTypeRoot.appendChild(buildStatTile(`${formatCount(statsData.byType.audio.count)} · ${formatTotalDuration(statsData.byType.audio.totalDurationSeconds)} · ${formatByteSize(statsData.byType.audio.totalSizeBytes)}`, 'Audio'));
   }
-  if (folderRoot) renderBreakdownList(folderRoot, statsData.byFolder, (g) => g.folderName, 'No folders yet.');
-  if (channelRoot) renderBreakdownList(channelRoot, statsData.byChannel, (g) => shortenChannelLabel(g.channelUrl), 'No subscribed-channel content yet.');
+  if (folderRoot) renderBreakdownList(folderRoot, statsData.byFolder, (g) => g.folderName, 'No folders yet.', 'ft-stable:stats-folder');
+  if (channelRoot) renderBreakdownList(channelRoot, statsData.byChannel, (g) => shortenChannelLabel(g.channelUrl), 'No subscribed-channel content yet.', 'ft-stable:stats-channel');
   if (recordsRoot) renderRecordTiles(recordsRoot, statsData);
   if (mostWatchedRoot) renderMostWatched(mostWatchedRoot, statsData.mostWatched);
   if (booksRoot) renderBookTiles(booksRoot, statsData.books);
@@ -599,9 +669,9 @@ function init(viewRoot) {
   const mdScope = viewRoot || (typeof document !== 'undefined' ? document : undefined);
   if (typeof wireMD === 'function') wireMD('stats', mdScope, signal);
 
-  // v1.102 (tranche 4 shimmer): seed every container's shimmer BEFORE the two
+  // v1.102 (tranche 4 shimmer): seed every container's shimmer BEFORE the three
   // fetches below, so the dashboard shimmers-then-reveals instead of painting
-  // empty and reflowing twice as /api/stats and /api/duplicates land.
+  // empty and reflowing as /api/stats, /api/duplicates and /api/library-items land.
   seedStatsSkeleton();
 
   // v1.47.8: the keyboard-shortcuts entry point. `openShortcutsModal` is a
@@ -652,9 +722,32 @@ function init(viewRoot) {
         dupRoot.appendChild(error);
       }
     });
+  // v1.159: the A/V table's own fetch (its own titles/sizes payload), independent
+  // of /api/stats + /api/duplicates so any one failure never blanks the others.
+  fetch('/api/library-items', { signal })
+    .then((res) => {
+      if (!res.ok) throw new Error(`GET /api/library-items failed (${res.status})`);
+      return res.json();
+    })
+    .then((body) => {
+      const avRoot = document.getElementById('stats-av-list');
+      if (avRoot) renderAvTable(avRoot, body && body.items);
+    })
+    .catch((err) => {
+      if (err && err.name === 'AbortError') return; // navigated away -- expected
+      console.error('Failed to load the videos & audio list:', err);
+      const avRoot = document.getElementById('stats-av-list');
+      if (avRoot) {
+        clearChildren(avRoot);
+        const error = document.createElement('div');
+        error.className = 'theme-card-blurb';
+        error.textContent = 'Could not load the videos & audio list right now. Try refreshing the page.';
+        avRoot.appendChild(error);
+      }
+    });
 }
 
-// v1.151: the routed-view teardown. Aborts both fetches and removes the
+// v1.151: the routed-view teardown. Aborts all three fetches and removes the
 // { signal }-bound listeners; the next init() opens a fresh controller.
 function destroy() {
   if (statsController) {
@@ -676,5 +769,5 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors setup.js/player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS };
+  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS, renderBreakdownList, renderBookFolders, renderDuplicates, DUPLICATE_GROUPS_RENDER_CAP, renderAvTable, AV_RENDER_CAP };
 }

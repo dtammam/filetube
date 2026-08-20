@@ -11905,6 +11905,217 @@ function probeAndReconcileRepullButton() {
 // IN PLACE (same scope keeps the subscription). Shedding them instead
 // would silently kill every existing device's push. `/sw.js` alone is
 // still shed forever.
+// ---- v1.159 (Dean): the reusable sortable/filterable table -----------------
+// The clarity wave's one component. Every tabular surface (Stats breakdowns,
+// the A/V table, Users, Trash, Music) was a div-list with a FUSED
+// "count · duration · size" string and no sort/filter; this splits that back
+// into real columns with tappable headers (tap to sort, tap again to flip),
+// a name-search filter, and per-table sort persistence.
+//
+// PURE CORE first (sortTableRows/filterTableRows), unit-tested with no DOM; the
+// DOM builder is jsdom-mounted. Numeric columns sort by their RAW value (bytes/
+// seconds), NOT the formatted label - so "9.3 GB" sorts below "24.8 GB".
+
+// Compare rows by one column. Numeric cols use sortValue (a raw number); text
+// cols locale-compare (case-insensitive, numeric-aware). STABLE: ties keep the
+// input order (decorate-with-index), so a second sort key never scrambles.
+function sortTableRows(rows, col, dir) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!col) return list.slice();
+  const factor = dir === 'asc' ? 1 : -1;
+  const valOf = col.sortValue
+    ? (r) => col.sortValue(r)
+    : (r) => (r ? r[col.key] : undefined);
+  const decorated = list.map((row, i) => ({ row, i }));
+  decorated.sort((a, b) => {
+    let cmp;
+    if (col.numeric) {
+      cmp = (Number(valOf(a.row)) || 0) - (Number(valOf(b.row)) || 0);
+    } else {
+      const av = String(valOf(a.row) == null ? '' : valOf(a.row));
+      const bv = String(valOf(b.row) == null ? '' : valOf(b.row));
+      cmp = av.localeCompare(bv, undefined, { sensitivity: 'base', numeric: true });
+    }
+    return cmp !== 0 ? cmp * factor : a.i - b.i;
+  });
+  return decorated.map((d) => d.row);
+}
+
+// Narrow rows by a case-folded substring match against a per-row text extractor
+// (what the caller decides is searchable - usually the name/title column). An
+// empty query returns a copy of everything.
+function filterTableRows(rows, textOf, query) {
+  const list = Array.isArray(rows) ? rows : [];
+  const q = String(query == null ? '' : query).trim().toLowerCase();
+  if (!q) return list.slice();
+  const get = typeof textOf === 'function' ? textOf : () => '';
+  return list.filter((row) => String(get(row) == null ? '' : get(row)).toLowerCase().includes(q));
+}
+
+// The natural first-click direction for a column: numeric -> DESC (biggest
+// first, the useful default for size/length/count), text -> ASC (A-Z).
+function defaultSortDir(col) { return col && col.numeric ? 'desc' : 'asc'; }
+
+// buildSortableTable(host, config) -> { root, update(rows) }
+//   columns: [{ key, label, numeric, align:'start'|'end', format(row)->string|Node, sortValue(row) }]
+//   rows, actions?(row)->Node, filter?:{ text(row)->string, placeholder }, caption,
+//   defaultSort?:{ key, dir }, persistKey?
+function buildSortableTable(host, config) {
+  const cfg = config || {};
+  const columns = Array.isArray(cfg.columns) ? cfg.columns : [];
+  const doc = (host && host.ownerDocument) || (typeof document !== 'undefined' ? document : null);
+  if (!host || !doc || !columns.length) return { root: null, update() {} };
+  let allRows = Array.isArray(cfg.rows) ? cfg.rows : [];
+
+  // Restore the saved {key,dir}, else the configured default, else the first col.
+  let sortKey = null; let sortDir = null;
+  const applySaved = (key, dir) => {
+    const col = columns.filter((c) => c.key === key)[0];
+    if (col && (dir === 'asc' || dir === 'desc')) { sortKey = key; sortDir = dir; return true; }
+    return false;
+  };
+  if (cfg.persistKey) {
+    try {
+      const raw = JSON.parse(window.localStorage.getItem(cfg.persistKey) || 'null');
+      if (raw) applySaved(raw.key, raw.dir);
+    } catch (_) { /* bad/absent -> fall through */ }
+  }
+  if (!sortKey && cfg.defaultSort) applySaved(cfg.defaultSort.key, cfg.defaultSort.dir);
+  if (!sortKey) { sortKey = columns[0].key; sortDir = defaultSortDir(columns[0]); }
+
+  const root = doc.createElement('div');
+  root.className = 'stable' + (columns.some((c) => c.wrap) ? ' stable--top' : '');
+  root.setAttribute('role', 'table');
+  if (cfg.caption) root.setAttribute('aria-label', cfg.caption);
+  // Grid template: the FIRST column flexes + truncates, the rest size to
+  // content; an actions column adds one more auto track. fr/auto only (no
+  // governed literals - census-safe).
+  const trackCount = columns.length + (cfg.actions ? 1 : 0);
+  root.style.setProperty('--stable-cols', 'minmax(0, 1fr)' + ' auto'.repeat(Math.max(0, trackCount - 1)));
+
+  // Filter box (optional).
+  let filterInput = null;
+  if (cfg.filter && typeof cfg.filter.text === 'function') {
+    const bar = doc.createElement('div');
+    bar.className = 'stable-toolbar';
+    filterInput = doc.createElement('input');
+    filterInput.type = 'search';
+    filterInput.className = 'stable-filter';
+    filterInput.setAttribute('aria-label', cfg.filter.placeholder || 'Filter');
+    filterInput.placeholder = cfg.filter.placeholder || 'Filter...';
+    bar.appendChild(filterInput);
+    root.appendChild(bar);
+  }
+
+  // Header row of tappable column buttons.
+  const head = doc.createElement('div');
+  head.className = 'stable-head';
+  head.setAttribute('role', 'row');
+  const headBtns = {};
+  columns.forEach((col) => {
+    const th = doc.createElement('button');
+    th.type = 'button';
+    th.className = 'stable-th' + (col.align === 'end' ? ' stable-th--end' : '');
+    th.setAttribute('role', 'columnheader');
+    th.dataset.col = col.key;
+    th.textContent = col.label;
+    th.addEventListener('click', () => {
+      if (sortKey === col.key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      else { sortKey = col.key; sortDir = defaultSortDir(col); }
+      if (cfg.persistKey) {
+        try { window.localStorage.setItem(cfg.persistKey, JSON.stringify({ key: sortKey, dir: sortDir })); } catch (_) { /* storage off */ }
+      }
+      render();
+    });
+    headBtns[col.key] = th;
+    head.appendChild(th);
+  });
+  if (cfg.actions) {
+    const spacer = doc.createElement('div');
+    spacer.className = 'stable-th stable-th--actions';
+    spacer.setAttribute('role', 'columnheader');
+    spacer.setAttribute('aria-hidden', 'true');
+    head.appendChild(spacer);
+  }
+  root.appendChild(head);
+
+  const body = doc.createElement('div');
+  body.className = 'stable-body';
+  root.appendChild(body);
+
+  function render() {
+    // aria-sort on the active header (+ a CSS caret keys off it).
+    columns.forEach((col) => {
+      headBtns[col.key].setAttribute('aria-sort',
+        col.key === sortKey ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none');
+    });
+    const col = columns.filter((c) => c.key === sortKey)[0];
+    const q = filterInput ? filterInput.value : '';
+    const view = sortTableRows(filterTableRows(allRows, cfg.filter && cfg.filter.text, q), col, sortDir);
+    body.textContent = '';
+    if (!view.length) {
+      const empty = doc.createElement('div');
+      empty.className = 'stable-empty';
+      empty.textContent = q ? 'No matches.' : 'Nothing here yet.';
+      body.appendChild(empty);
+      return;
+    }
+    // renderCap: for large sets (e.g. the whole A/V library) render only the top
+    // N of the CURRENT sort/filter + an honest "showing N of M" hint - never a
+    // silent truncation. Sort/filter still run over the FULL set, so "biggest"
+    // (desc) or "smallest" (asc) or a name filter all reach any item.
+    const total = view.length;
+    const shown = (cfg.renderCap && total > cfg.renderCap) ? view.slice(0, cfg.renderCap) : view;
+    const frag = doc.createDocumentFragment();
+    shown.forEach((row) => {
+      const tr = doc.createElement('div');
+      tr.className = 'stable-row';
+      tr.setAttribute('role', 'row');
+      columns.forEach((c, ci) => {
+        const cell = doc.createElement('div');
+        cell.className = 'stable-cell' + (c.align === 'end' ? ' stable-cell--num' : (c.wrap ? ' stable-cell--wrap' : (ci === 0 ? ' stable-cell--name' : '')));
+        cell.setAttribute('role', 'cell');
+        const out = c.format ? c.format(row) : (row ? row[c.key] : '');
+        if (out && out.nodeType) cell.appendChild(out);
+        else cell.textContent = out == null ? '' : String(out);
+        tr.appendChild(cell);
+      });
+      if (cfg.actions) {
+        const act = doc.createElement('div');
+        act.className = 'stable-cell stable-actions';
+        act.setAttribute('role', 'cell');
+        // Pass the row ELEMENT too, so an action can attach a full-row expando
+        // (e.g. the Users access editor: .stable-row child, grid-column 1/-1).
+        const node = cfg.actions(row, tr);
+        if (node) act.appendChild(node);
+        tr.appendChild(act);
+      }
+      frag.appendChild(tr);
+    });
+    body.appendChild(frag);
+    if (shown.length < total) {
+      const more = doc.createElement('div');
+      more.className = 'stable-more';
+      more.textContent = 'Showing ' + shown.length + ' of ' + total + ' - refine the filter to see more.';
+      body.appendChild(more);
+    }
+    // onRender: fires after EVERY (re)render incl. a sort/filter. A caller with
+    // per-row transient state (e.g. Trash's two-tap Purge arm) uses this to
+    // reset that state so a re-render can't leave a stale, invisible arm.
+    if (typeof cfg.onRender === 'function') { try { cfg.onRender(); } catch (_) { /* caller hook */ } }
+  }
+
+  if (filterInput) filterInput.addEventListener('input', render);
+  host.textContent = '';
+  host.appendChild(root);
+  render();
+
+  return {
+    root,
+    update(rows) { allRows = Array.isArray(rows) ? rows : []; render(); },
+  };
+}
+
 function unregisterStaleServiceWorkers() {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
   try {
@@ -12485,6 +12696,8 @@ if (typeof module !== 'undefined' && module.exports) {
     injectAccountMenu, ensureAccountMenuSubscriptionsRow, buildAccountAvatarEl, accountSignOut, updateAccountMenuThemeItem,
     // v1.158: the account-menu disk-size formatter (byte-exact vs stats.js's).
     formatDiskBytes,
+    // v1.159: the reusable sortable/filterable table + its pure core.
+    buildSortableTable, sortTableRows, filterTableRows, defaultSortDir,
     // v1.83: the pure avatar-crop geometry + the crop modal.
     avatarMinScale, clampAvatarOffset, avatarSourceRect, cropAvatarFile,
     // v1.78 device handoff: the UA label table. Pure, and exactly the kind of

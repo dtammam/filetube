@@ -187,15 +187,22 @@
 
       <details class="setup-box sub-collapsible" data-collapse-key="by-folder" data-md-icon="folder" data-md-group="Breakdowns" open>
         <summary>By folder</summary>
-        <div class="folder-list-builder" id="stats-folder-list">
+        <div class="folder-list-builder stats-table-host" id="stats-folder-list">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
       </details>
 
       <details class="setup-box sub-collapsible" data-collapse-key="by-channel" data-md-icon="channel" data-md-group="Breakdowns" open>
         <summary>By channel</summary>
-        <div class="folder-list-builder" id="stats-channel-list">
+        <div class="folder-list-builder stats-table-host" id="stats-channel-list">
           <!-- Populated dynamically by /js/stats.js -->
+        </div>
+      </details>
+
+      <details class="setup-box sub-collapsible" data-collapse-key="videos-audio" data-md-icon="video" data-md-group="Breakdowns" open>
+        <summary>Videos &amp; audio</summary>
+        <div class="folder-list-builder stats-table-host" id="stats-av-list">
+          <!-- Populated dynamically by /js/stats.js (fetches /api/library-items) -->
         </div>
       </details>
 
@@ -225,7 +232,7 @@
         <div class="theme-picker" id="stats-books-grid">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
-        <div class="folder-list-builder" id="stats-books-folder-list" style="margin-top:12px;">
+        <div class="folder-list-builder stats-table-host" id="stats-books-folder-list" style="margin-top:12px;">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
       </details>
@@ -244,7 +251,7 @@
           hand; nothing on this page deletes anything.
           <a href="/api/duplicates.csv" id="stats-duplicates-export">Export CSV</a>
         </p>
-        <div class="folder-list-builder" id="stats-duplicates-list">
+        <div class="folder-list-builder stats-table-host" id="stats-duplicates-list">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
       </details>

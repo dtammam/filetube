@@ -11432,6 +11432,9 @@ a.queue-upnext-next:hover {
   color: var(--text-secondary);
   font-size: var(--fs-sm);
 }
+/* v1.159: the Trash Title cell (thumb + truncating title) + its actions cell. */
+.trash-title-cell { display: flex; align-items: center; gap: var(--space-5); min-width: 0; }
+.trash-actions { display: inline-flex; gap: var(--space-3); }
 .trash-purge-confirm { display: none; }
 .trash-purge-btn.trash-confirming .trash-purge-label { display: none; }
 .trash-purge-btn.trash-confirming .trash-purge-confirm { display: inline; }
@@ -11452,6 +11455,110 @@ a.queue-upnext-next:hover {
   color: var(--text-secondary);
   padding: var(--space-6) 0;
 }
+
+/* ---- v1.159 (Dean): the reusable sortable/filterable table (buildSortableTable)
+   Mobile-first: the first (name) column flexes + truncates; numeric columns are
+   narrow, right-aligned, tabular. Header labels are tappable sort buttons with a
+   caret on the active column (keyed off aria-sort). Design tokens only. */
+/* buildSortableTable sets --stable-cols per table (name flex + one auto track
+   per remaining column); this default keeps the grid sane if JS never runs. */
+.stable { width: 100%; --stable-cols: minmax(0, 1fr) auto; }
+/* v1.159: a .folder-list-builder that HOSTS a sortable table drops the shared
+   240px cap (Dean: "takes half the screen") so the table fills, and zeroes its
+   own padding since .stable rows carry their own - the header/rows sit
+   edge-to-edge in the card. */
+.folder-list-builder.stats-table-host { max-height: none; overflow: visible; padding: 0; }
+.stable-toolbar { padding: var(--space-5) var(--space-6) var(--space-4); }
+.stable-filter {
+  width: 100%;
+  padding: var(--space-4) var(--space-6);
+  background: var(--input-bg, var(--bg-secondary));
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  font: inherit;
+}
+.stable-filter::placeholder { color: var(--text-secondary); }
+.stable-head,
+.stable-row {
+  display: grid;
+  grid-template-columns: var(--stable-cols);
+  gap: var(--space-5);
+  align-items: center;
+}
+.stable-head {
+  padding: 0 var(--space-6) var(--space-3);
+  border-bottom: 1px solid var(--border-color);
+}
+.stable-th {
+  background: none;
+  border: 0;
+  padding: var(--space-3) 0;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.stable-th--end { justify-content: flex-end; text-align: right; }
+.stable-th--actions { cursor: default; }
+.stable-th:hover { color: var(--text-primary); }
+.stable-th[aria-sort="ascending"],
+.stable-th[aria-sort="descending"] { color: var(--text-primary); }
+/* the caret marks (and points for) the active sort column */
+.stable-th[aria-sort="ascending"]::after { content: "\25B4"; font-size: var(--fs-xs); }
+.stable-th[aria-sort="descending"]::after { content: "\25BE"; font-size: var(--fs-xs); }
+.stable-row {
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--border-color);
+}
+.stable-row:last-child { border-bottom: 0; }
+.stable-cell { min-width: 0; }
+.stable-cell--name {
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stable-cell--num {
+  text-align: right;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.stable-actions { display: inline-flex; justify-content: flex-end; gap: var(--space-3); }
+/* a wrap column (e.g. Duplicates' filename + its file paths) is not truncated,
+   and its rows top-align so the numeric columns sit against the first line. */
+.stable--top .stable-row { align-items: start; }
+.stable-cell--wrap { min-width: 0; }
+.stable-empty { color: var(--text-secondary); padding: var(--space-8) var(--space-6); text-align: center; }
+.stable-more { color: var(--text-secondary); font-size: var(--fs-sm); padding: var(--space-5) var(--space-6); text-align: center; }
+/* v1.159: action-dense tables (Users/Trash/Music) - the actions cell wraps its
+   buttons, and the Users access editor spans the whole row as an expando. */
+.stable-actions { flex-wrap: wrap; }
+.stable-row .access-editor { grid-column: 1 / -1; }
+.users-cap-badge {
+  display: inline-block;
+  margin-left: var(--space-3);
+  padding: 0 var(--space-3);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+}
+/* Duplicates: a section title above each table, and the wrap cell's key + paths. */
+.stable-section-title {
+  font-weight: var(--fw-bold);
+  padding: var(--space-6) var(--space-6) var(--space-3);
+}
+.dup-key { font-weight: var(--fw-semibold); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dup-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- v1.69 Podcasts place ---------------------------------------------------
    Era/mode tokens only (the type-scale lock); glyphs via icon-* masks never
