@@ -1,6 +1,10 @@
 # Exec plan: cold-launch crispness sweep
 
-Status: ACTIVE
+Status: SHIPPED in v1.157.0. P1 (per-kind Continue-row skeletons, zero-shift) +
+P2a (hamburger/sidebar inline SVG) + P2b (subs FOUC parity) + P3 (setup +
+podcast skeletons). The reader-pane skeleton was DEFERRED (disclosed) to a
+careful #141 follow-up (it already shows an "Opening book..." status; epub.js
+iframe risk). FULL gate 2 fix rounds, both APPROVE; dual-Node 7299/7299.
 Branch: `feat/cold-launch-crispness`
 Target release: v1.157.0
 Owner: main session (lean mode)

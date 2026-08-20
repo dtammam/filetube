@@ -80,6 +80,49 @@
 
 ## Shipped
 
+### v1.157.0 - cold-launch crispness sweep (2026-08-20)
+
+Dean's #2: kill flash-of-unstyled/unloaded content + layout SHIFT on a cold PWA
+launch. A codebase recon found the shell already largely crisp (grid/sidebar/You
+avatar/bell/menus/theme/router all reserve or hydrate correctly); this fixes the
+real offenders.
+
+- P1 (the worst): the home "Continue watching/listening/reading" rows were
+  inserted EMPTY above the grid then filled async, shoving the whole grid down
+  on every cold launch for anyone with in-progress items. Now each reserves a
+  PER-KIND shape-matched skeleton (buildHomeRowSkeleton byte-matches the real
+  video/book/music card + cover) BEFORE its fetch - but ONLY when it had items
+  last launch (a per-row localStorage flag), so an empty-continue user gets no
+  phantom skeleton. Zero-shift reveal for all three rows.
+- P2a: the header hamburger + the desktop-sidebar Home/Settings/Stats glyphs
+  were `.icon-*` masks (iOS shows nothing until the mask decodes -> pop-in a
+  beat late). Converted to inline chrome-icon <svg> across EVERY sidebar shell
+  (the bottom nav was already done). Trade-off (Dean): they no longer follow the
+  icon-set picker. Home-toolbar shuffle/rescan/view-mode masks left as-is
+  (out of scope).
+- P2b: subscriptions.html's FOUC guard gained the ft-hide-stars stamp (a
+  client-only pref the server can't inject), so a hidden-stars user no longer
+  flashes star markup on a direct /subscriptions load.
+- P3 (the #141 in-app-nav backlog): Settings' folder list + the podcast show
+  view reserve shape-matched skeletons before their fetches (cleared on success
+  AND error). The reader pane is a DISCLOSED deferral - it already shows an
+  "Opening book..." status, and a shimmer tangles with epub.js's iframe
+  lifecycle; a careful #141 follow-up, not a rushed change.
+
+FULL two-reviewer gate, TWO fix rounds. Round 1: adversarial caught the P1
+skeleton was video-shaped (books/listening rows shifted ~46px); both caught a
+podcast deep-link that stranded a shimmer on a fetch error. Round 2: QA caught
+that the round-1 per-kind fix collapsed the VIDEO cover (a bare video-row-cover
+span is inline; `.book-row-cover` is the sole display:block source) - byte-
+matched to the real cards. Both seats APPROVE. Dual-Node 7299/7299 on v22.23.1
+AND v24.14.0. No browser in the build env -> the skeleton heights are derived
+from the CSS cascade; Dean's cold-launch device probe is the final arbiter.
+
+Device probes (cold PWA launch): the home grid does NOT jump down as the
+Continue rows arrive (watch/listen/read); the hamburger + sidebar icons are
+there instantly on iOS (no pop-in); a direct /subscriptions load with hidden
+stars shows no star flash; open Settings / a pinned podcast -> no empty-then-fill.
+
 ### v1.156.1 - remove the A-Z scrubber rail (2026-08-20)
 
 Dean device feedback on v1.156.0: the A-Z scrubber rail read as a fat column
