@@ -350,13 +350,21 @@ const FEED_SKELETON_CARDS = 6;
 function buildHomeRowSkeleton(kind, n) {
   const count = Number.isInteger(n) && n > 0 ? n : 0;
   if (count === 0) return '';
-  const cardCls = kind === 'video' ? 'video-row-card'
+  // BYTE-MATCH the real per-kind card/cover classes (buildVideoRowCardHtml /
+  // buildBookRowCardHtml / buildMusicRowCardHtml). `.book-row-cover` is the ONLY
+  // class that sets display:block + a box on these covers -- WITHOUT it the
+  // cover is an inline <span> and width/height/aspect-ratio do not apply, so it
+  // collapses to a line-box (the gate WARNING: dropping it made the video cover
+  // ~15px, not ~92px). The video/music modifiers refine width/aspect ON TOP of
+  // book-row-cover: video -> 164px 16:9 (~92px), music -> inert (stays 138px).
+  const cardCls = kind === 'video' ? 'book-row-card music-row-card video-row-card'
     : kind === 'music' ? 'book-row-card music-row-card'
       : 'book-row-card';
-  const coverCls = kind === 'video' ? 'video-row-cover'
+  const coverCls = kind === 'video' ? 'book-row-cover video-row-cover'
     : kind === 'music' ? 'book-row-cover music-row-cover'
       : 'book-row-cover';
-  const meta = kind === 'music'
+  // video (channel) + music (artist) rows carry a second line; the book row does not.
+  const meta = (kind === 'video' || kind === 'music')
     ? '<span class="music-row-artist skeleton-line skeleton-line-meta skeleton-shimmer"></span>'
     : '';
   let cards = '';

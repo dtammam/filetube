@@ -72,17 +72,20 @@ test('hydrateHomeRow: a null host is a safe no-op', () => {
 
 // ---- buildHomeRowSkeleton: the per-kind cover shape (zero-shift) -------------
 
-test('buildHomeRowSkeleton: the video row reserves a .video-row-cover (16:9), never the taller book cover', () => {
+test('buildHomeRowSkeleton: the video row byte-matches the real video card - book-row-cover video-row-cover (display:block + 16:9 ~92px), NOT a bare video-row-cover', () => {
   const html = buildHomeRowSkeleton('video', 4);
-  assert.match(html, /class="video-row-card"/, 'video cards');
-  assert.match(html, /class="video-row-cover skeleton-shimmer"/, 'the 16:9 video cover box (~92px), matching the real video row');
-  assert.ok(!/book-row-cover/.test(html), 'the video skeleton must NOT use the 138px book cover');
+  // gate WARNING: `.book-row-cover` is the ONLY display:block+box source; a bare
+  // `video-row-cover` span is inline and collapses to a line-box (~15px), so the
+  // "Continue watching" row still shifts ~75px. The cover MUST carry both.
+  assert.match(html, /class="book-row-card music-row-card video-row-card"/, 'video cards byte-match the real card classes (incl. book-row-card for display/flex)');
+  assert.match(html, /class="book-row-cover video-row-cover skeleton-shimmer"/, 'the video cover carries book-row-cover (display:block+size) AND video-row-cover (16:9)');
 });
 
-test('buildHomeRowSkeleton: books + listening reserve the taller .book-row-cover (so those rows do not shift ~46px)', () => {
+test('buildHomeRowSkeleton: books use book-row-cover ALONE (138px); listening adds music-row-cover + an artist line', () => {
   const book = buildHomeRowSkeleton('book', 4);
   assert.match(book, /class="book-row-card"/);
-  assert.match(book, /class="book-row-cover skeleton-shimmer"/, 'the 138px book cover, matching the real reading row');
+  assert.match(book, /class="book-row-cover skeleton-shimmer"/, 'the book cover is book-row-cover alone (138px), matching the real reading card');
+  assert.ok(!/video-row-cover|music-row-cover/.test(book), 'the book cover carries no video/music modifier');
   const music = buildHomeRowSkeleton('music', 4);
   assert.match(music, /class="book-row-card music-row-card"/, 'listening cards carry both classes like the real music/podcast card');
   assert.match(music, /class="book-row-cover music-row-cover skeleton-shimmer"/, 'the 138px music cover');
