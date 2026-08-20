@@ -28,9 +28,13 @@ Static `<i class="icon-*">` render via `-webkit-mask-image` (show nothing until
 iOS decodes -> pop in). The nav was already converted (chromeIconMarkup /
 CHROME_ICON_SVG, common.js:~29-81); these were left behind:
 `index.html:92` icon-menu (hamburger), `:112/115/123` icon-home/cog/star
-(desktop sidebar), `:186-191` icon-shuffle/refresh/list (home toolbar). Convert
-to inline SVG reusing the chrome-icon primitive (add any missing glyph paths to
-CHROME_ICON_SVG). Trade-off (Dean-approved): they stop following the icon-set.
+(desktop sidebar). Converted these to inline SVG reusing the chrome-icon
+primitive (added menu/star glyphs to CHROME_ICON_SVG). Trade-off (Dean-
+approved): they stop following the icon-set.
+SHIPPED SCOPE (Dean's ask was the hamburger + sidebar): the home-toolbar
+`icon-shuffle/refresh/list` (`index.html:186-191`) were deliberately LEFT as
+masks -- converting them cascaded into main.js's rescanBtn re-renders + several
+tests, out of scope for this wave.
 
 ### P2b - Subscriptions FOUC-guard parity
 `subscriptions.html` FOUC guard omits `ft-custom-logo` + `ft-hide-stars` (every
@@ -71,8 +75,9 @@ localStorage->classList lines to match index/stats/setup.
 
 ## Predictions (machine-derived; re-verify at every commit)
 - Unit baseline: **5450/5450**. Net positive (new skeleton/icon/FOUC tests).
-- Masked `class="icon-(menu|home|cog|star|shuffle|refresh|list)"` in
-  index.html: **7 -> 0** (converted to inline SVG).
+- Masked `class="icon-(menu|home|cog|star)"` in index.html + every sidebar
+  shell: **-> 0** (converted to inline SVG). The home-toolbar
+  shuffle/refresh/list masks are deliberately OUT of scope (kept as masks).
 - `ft-custom-logo` + `ft-hide-stars` in subscriptions.html FOUC guard: **0 -> 2**.
 - Token census stays **0**; lint + ledger green.
 

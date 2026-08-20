@@ -7,6 +7,8 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const { buildSetupFolderSkeleton } = require('../../public/js/setup.js');
 const { buildPodcastShowSkeleton } = require('../../public/js/podcasts.js');
@@ -39,4 +41,23 @@ test('buildPodcastShowSkeleton: zero rows still renders the header, negative/gar
   assert.match(buildPodcastShowSkeleton(0), /podcast-show-art/, 'the header shows even with no episode rows');
   assert.doesNotThrow(() => buildPodcastShowSkeleton(-3));
   assert.doesNotThrow(() => buildPodcastShowSkeleton('x'));
+});
+
+// Gate WARNING (both seats): the ?play= deep link seeded the show skeleton but
+// its catch was a no-op -> a failed /episodes fetch stranded the shimmer forever
+// with the grid gone (the reveal-once error axis, 5+ prior strikes). openShow /
+// consumeDeepLink are closure-internal, so this binds the invariant at the
+// source: any function that SEEDS the show skeleton must also CLEAR content on
+// its error path. Remove either clear and this goes red.
+test('podcasts.js: every show-view skeleton seed pairs with a clear-on-error (no stranded shimmer)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'podcasts.js'), 'utf8');
+  for (const fn of ['openShow', 'consumeDeepLink']) {
+    const start = src.indexOf('function ' + fn + '(');
+    assert.ok(start !== -1, `${fn} must exist`);
+    const body = src.slice(start, start + 2600); // covers each function's body (incl. embedded comments)
+    if (body.includes('buildPodcastShowSkeleton')) {
+      assert.match(body, /content\.innerHTML = ''/,
+        `${fn} seeds the show skeleton but never clears content on error (stranded-shimmer regression)`);
+    }
+  }
 });

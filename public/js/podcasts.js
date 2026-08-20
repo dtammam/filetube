@@ -1015,7 +1015,14 @@
               }
             });
         })
-        .catch(function () { /* the grid stands */ });
+        .catch(function () {
+          if (signal.aborted) return;
+          // v1.157 (P3, gate WARNING): once this path seeds the show skeleton
+          // (before the /episodes fetch above), an error must CLEAR it -- else
+          // it shimmers forever with the grid gone. Mirror openShow's catch.
+          if (content) content.innerHTML = '';
+          setStatus('Could not load episodes.');
+        });
     }
     var playParam = null;
     try { playParam = new URLSearchParams(window.location.search).get('play'); } catch (_) { playParam = null; }
