@@ -14,6 +14,10 @@ const SUBS_HTML = fs.readFileSync(
   path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html'),
   'utf8',
 );
+const STYLE_CSS = fs.readFileSync(
+  path.join(__dirname, '..', '..', 'public', 'css', 'style.css'),
+  'utf8',
+).replace(/\/\*[\s\S]*?\*\//g, ''); // comments stripped -- assert on RULES only
 
 test('every data-sub-panel pill points at a real #sub-panel-<key> that exists', () => {
   const keys = [...SUBS_HTML.matchAll(/data-sub-panel="([a-z-]+)"/g)].map((m) => m[1]);
@@ -64,4 +68,16 @@ test('the Activity panel holds the history/failures mount points + all 5 mainten
   for (const id of ['sub-reheat-preview-btn', 'sub-reheat-btn', 'sub-refresh-avatars-btn', 'sub-reheat-subs-btn', 'sub-backfill-names-btn']) {
     assert.ok(body.includes(`id="${id}"`), `Activity panel lost the maintenance control #${id}`);
   }
+});
+
+test('the static panels are hidden at rest: the [hidden] guard exists and out-specifies the display:flex base (gate WARNING 2)', () => {
+  // The three panels reuse `.sub-sheet-backdrop` (position:fixed; display:flex).
+  // If the guard is dropped, all three full-screen backdrops render STACKED over
+  // the channel list on load -- the [hidden]-loses-to-display class this repo
+  // has repeatedly paid for. jsdom can't measure the cascade, so bind the guard
+  // by source: it must exist AND out-specify the flex base it has to beat.
+  assert.match(STYLE_CSS, /\.sub-sheet-backdrop\s*\{[^}]*display:\s*flex/,
+    'the .sub-sheet-backdrop display:flex base must exist (what the guard beats)');
+  assert.match(STYLE_CSS, /\.sub-sheet-backdrop\.sub-panel\[hidden\]\s*\{[^}]*display:\s*none/,
+    'the .sub-sheet-backdrop.sub-panel[hidden] { display:none } guard must exist -- else the panels render over the list on load');
 });
