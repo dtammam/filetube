@@ -8446,8 +8446,9 @@ if (typeof window !== 'undefined') {
     // v1.160.1: claim the gesture once it's clearly a horizontal edge drag, so the
     // browser doesn't ALSO pan/rubber-band the page ("the whole app shakes with
     // it"). This listener is non-passive (so preventDefault works) and is attached
-    // ONLY while an edge start is live - see startTracking/stopTracking - so it
-    // never taxes the compositor scroll fast-path outside a swipe-back gesture.
+    // ONLY while an edge start is live - added in the touchstart branch, removed by
+    // stopTracking - so it never taxes the compositor scroll fast-path outside a
+    // swipe-back gesture.
     function onEdgeTouchMove(e) {
       if (!track || !e.touches || e.touches.length !== 1) return;
       const t = e.touches[0]; track.x = t.clientX; track.y = t.clientY;
