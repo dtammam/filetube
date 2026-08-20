@@ -1,5 +1,7 @@
 'use strict';
 
+/* global buildSortableTable */ // v1.159: the shared table component (common.js, loaded first)
+
 // C4 "fun stats" page (v1.24 UX Round, Wave 3). v1.151: Stats is now a
 // REGISTERED SPA route -- deriveRouteView maps /stats.html -> 'stats', so
 // navigating to it in-app swaps #view-root and keeps the docked mini-player
@@ -153,25 +155,11 @@ function renderGlanceTiles(root, statsData) {
   root.appendChild(buildStatTile(formatByteSize(statsData.totalSizeBytes), 'Total size on disk'));
 }
 
-// A single "label ... count / duration / size" row for the folder/channel
-// breakdown lists -- a plain flex row (inline-styled, matching the rest of
-// this app's ad hoc one-off layout tweaks) rather than a new CSS class.
-function buildBreakdownRow(label, group) {
-  const row = document.createElement('div');
-  row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
-  const labelEl = document.createElement('span');
-  labelEl.textContent = label;
-  labelEl.style.cssText = 'font-weight:var(--fw-bold); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
-  const valueEl = document.createElement('span');
-  valueEl.textContent = `${formatCount(group.count)} · ${formatTotalDuration(group.totalDurationSeconds)} · ${formatByteSize(group.totalSizeBytes)}`;
-  valueEl.className = 'stats-meta-text';
-  valueEl.style.cssText = 'flex-shrink:0;';
-  row.appendChild(labelEl);
-  row.appendChild(valueEl);
-  return row;
-}
-
-function renderBreakdownList(root, groups, labelFn, emptyMessage) {
+// v1.159 (Dean): the folder/channel breakdown as a real sortable, filterable
+// table (Name | Entries | Length | Size) via the shared buildSortableTable -
+// replacing the old fused "count · duration · size" flex row. Numeric columns
+// sort by the RAW value (bytes/seconds), default biggest-Size-first.
+function renderBreakdownList(root, groups, labelFn, emptyMessage, persistKey) {
   clearChildren(root);
   if (!Array.isArray(groups) || groups.length === 0) {
     const empty = document.createElement('div');
@@ -180,9 +168,25 @@ function renderBreakdownList(root, groups, labelFn, emptyMessage) {
     root.appendChild(empty);
     return;
   }
-  for (const group of groups) {
-    root.appendChild(buildBreakdownRow(labelFn(group), group));
-  }
+  const rows = groups.map((g) => ({
+    name: labelFn(g),
+    count: Number(g.count) || 0,
+    dur: Number(g.totalDurationSeconds) || 0,
+    bytes: Number(g.totalSizeBytes) || 0,
+  }));
+  buildSortableTable(root, {
+    caption: 'Breakdown by name',
+    columns: [
+      { key: 'name', label: 'Name', format: (r) => r.name },
+      { key: 'count', label: 'Entries', numeric: true, align: 'end', sortValue: (r) => r.count, format: (r) => formatCount(r.count) },
+      { key: 'dur', label: 'Length', numeric: true, align: 'end', sortValue: (r) => r.dur, format: (r) => formatTotalDuration(r.dur) },
+      { key: 'bytes', label: 'Size', numeric: true, align: 'end', sortValue: (r) => r.bytes, format: (r) => formatByteSize(r.bytes) },
+    ],
+    rows,
+    filter: { text: (r) => r.name, placeholder: 'Filter by name...' },
+    defaultSort: { key: 'bytes', dir: 'desc' },
+    persistKey,
+  });
 }
 
 function renderRecordTiles(root, statsData) {
@@ -481,8 +485,12 @@ const STATS_FETCH_CONTAINERS = [
   'stats-records-grid', 'stats-most-watched-list', 'stats-books-grid',
   'stats-books-folder-list', 'stats-inventory-list', 'stats-about',
 ];
-// The shared row box model -- MUST track buildBreakdownRow/buildAboutRow so the
-// skeleton row reserves the height the real row fills.
+// The shared row box model -- tracks buildAboutRow (Most watched / inventory /
+// About still render as these flex rows). v1.159: the By-folder / By-channel /
+// Books / Duplicates breakdowns now render via the sortable `.stable` table
+// instead, so their skeleton is an APPROXIMATE placeholder (the real table adds
+// a filter bar + header row) -- a minor one-time Stats-open reflow, accepted as
+// tech-debt (a shape-matched .stable skeleton is the fast-follow).
 const STATS_SKELETON_ROW_CSS = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
 
 // A `.theme-card`-shaped shimmer tile: two block skeleton lines (value + caption)
@@ -554,8 +562,8 @@ function renderStatsDashboard(statsData) {
     byTypeRoot.appendChild(buildStatTile(`${formatCount(statsData.byType.video.count)} · ${formatTotalDuration(statsData.byType.video.totalDurationSeconds)} · ${formatByteSize(statsData.byType.video.totalSizeBytes)}`, 'Video'));
     byTypeRoot.appendChild(buildStatTile(`${formatCount(statsData.byType.audio.count)} · ${formatTotalDuration(statsData.byType.audio.totalDurationSeconds)} · ${formatByteSize(statsData.byType.audio.totalSizeBytes)}`, 'Audio'));
   }
-  if (folderRoot) renderBreakdownList(folderRoot, statsData.byFolder, (g) => g.folderName, 'No folders yet.');
-  if (channelRoot) renderBreakdownList(channelRoot, statsData.byChannel, (g) => shortenChannelLabel(g.channelUrl), 'No subscribed-channel content yet.');
+  if (folderRoot) renderBreakdownList(folderRoot, statsData.byFolder, (g) => g.folderName, 'No folders yet.', 'ft-stable:stats-folder');
+  if (channelRoot) renderBreakdownList(channelRoot, statsData.byChannel, (g) => shortenChannelLabel(g.channelUrl), 'No subscribed-channel content yet.', 'ft-stable:stats-channel');
   if (recordsRoot) renderRecordTiles(recordsRoot, statsData);
   if (mostWatchedRoot) renderMostWatched(mostWatchedRoot, statsData.mostWatched);
   if (booksRoot) renderBookTiles(booksRoot, statsData.books);
@@ -676,5 +684,5 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors setup.js/player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS };
+  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS, renderBreakdownList };
 }

@@ -11460,7 +11460,12 @@ a.queue-upnext-next:hover {
 /* buildSortableTable sets --stable-cols per table (name flex + one auto track
    per remaining column); this default keeps the grid sane if JS never runs. */
 .stable { width: 100%; --stable-cols: minmax(0, 1fr) auto; }
-.stable-toolbar { margin-bottom: var(--space-5); }
+/* v1.159: a .folder-list-builder that HOSTS a sortable table drops the shared
+   240px cap (Dean: "takes half the screen") so the table fills, and zeroes its
+   own padding since .stable rows carry their own - the header/rows sit
+   edge-to-edge in the card. */
+.folder-list-builder.stats-table-host { max-height: none; overflow: visible; padding: 0; }
+.stable-toolbar { padding: var(--space-5) var(--space-6) var(--space-4); }
 .stable-filter {
   width: 100%;
   padding: var(--space-4) var(--space-6);
