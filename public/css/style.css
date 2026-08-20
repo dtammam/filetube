@@ -7400,12 +7400,6 @@ body.ft-audio-expanded {
 .sub-sheet-backdrop.sub-panel[hidden] { display: none; }
 /* Maintenance subsection at the foot of the Activity panel. */
 .sub-maint { margin-top: var(--space-8); }
-.sub-maint-title {
-  margin: 0 0 var(--space-5);
-  font-size: var(--fs-lg);
-  font-weight: var(--fw-bold);
-  color: var(--text-primary);
-}
 
 /* Native `<details>`/`<summary>` disclosures demoting add-subscription/
    one-off download BELOW the list (AC23) -- no JS required to expand them.

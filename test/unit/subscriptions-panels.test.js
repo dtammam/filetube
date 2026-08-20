@@ -70,6 +70,23 @@ test('the Activity panel holds the history/failures mount points + all 5 mainten
   }
 });
 
+test('v1.160: Maintenance is a DEFAULT-COLLAPSED collapsible section, ids + status spans intact', () => {
+  const activity = /id="sub-panel-activity"([\s\S]*)$/.exec(SUBS_HTML);
+  const body = activity[0];
+  // Maintenance is now a <details data-collapse-key="maintenance"> with NO `open`
+  // (collapsed) - matching the history/failures sections; the old <div class="sub-maint">
+  // + <h3> are gone.
+  const maint = /<details[^>]*data-collapse-key="maintenance"[^>]*>[\s\S]*?<\/details>/.exec(body);
+  assert.ok(maint, 'Maintenance is a collapsible <details data-collapse-key="maintenance">');
+  assert.doesNotMatch(maint[0].match(/<details[^>]*>/)[0], /\bopen\b/, 'default COLLAPSED (no open attr)');
+  assert.match(maint[0], /<summary[^>]*>Maintenance<\/summary>/, 'a summary, not an <h3>');
+  // all 5 action ids + 4 status ids still live INSIDE the collapsible (wiring untouched)
+  for (const id of ['sub-reheat-preview-btn', 'sub-reheat-btn', 'sub-refresh-avatars-btn', 'sub-reheat-subs-btn', 'sub-backfill-names-btn',
+    'sub-reheat-status', 'sub-refresh-avatars-status', 'sub-reheat-subs-status', 'sub-backfill-names-status']) {
+    assert.ok(maint[0].includes(`id="${id}"`), `Maintenance collapsible lost #${id}`);
+  }
+});
+
 test('the static panels are hidden at rest: the [hidden] guard exists and out-specifies the display:flex base (gate WARNING 2)', () => {
   // The three panels reuse `.sub-sheet-backdrop` (position:fixed; display:flex).
   // If the guard is dropped, all three full-screen backdrops render STACKED over

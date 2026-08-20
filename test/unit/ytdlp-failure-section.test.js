@@ -163,7 +163,7 @@ test('createFailureSectionElement: a collapsible details card reusing the existi
   const { section, list } = createFailureSectionElement(d, {});
   assert.equal(section.tagName, 'DETAILS');
   assert.equal(section.className, 'setup-box sub-collapsible');
-  assert.equal(section.open, true);
+  assert.equal(section.open, false); // v1.160: default-collapsed (Dean)
   assert.equal(section.getAttribute('data-collapse-key'), 'download-failures');
   assert.equal(list.className, 'sub-list');
   assert.match(section.querySelector('summary').textContent, /Download failures/);

@@ -1744,7 +1744,7 @@ test('createHistorySectionElement: builds a collapsible details card + an empty 
   const { section, list } = createHistorySectionElement(fakeDoc);
   assert.strictEqual(section.className, 'setup-box sub-collapsible');
   assert.strictEqual(section.tagName, 'DETAILS');
-  assert.strictEqual(section.open, true, 'defaults OPEN - the collapse is opt-in');
+  assert.strictEqual(section.open, false, 'v1.160 (Dean): defaults COLLAPSED - the Activity panel opens tidy');
   assert.strictEqual(section.getAttribute('data-collapse-key'), 'download-history');
   const summary = section.children.find((el) => el.tagName === 'SUMMARY');
   assert.ok(summary, 'expected a summary heading');
