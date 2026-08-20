@@ -1249,20 +1249,20 @@ test('createSubscriptionRow: clicking the pin toggle calls onTogglePin(sub, pinn
   assert.deepStrictEqual(openCalls, [], 'a row click on the pin toggle never opens settings');
 });
 
-// ---- B4 (v1.24.0, T6, FR-8): DnD reorder attributes ------------------------
-// Reordering applies to every row with a real id (unlike the Playlist link/
-// pin toggle, it does not need a resolved channelDir) -- the live wiring
-// (subscriptions.js's wireSubRowDragAndDrop, untestable DOM drag events, see
-// its own doc comment) reads `data-sub-id` back off each row; this only
-// proves the pure builder sets the two attributes it must.
+// ---- data-sub-id: the poll's row-map key (v1.155) --------------------------
+// Every row with a real id carries `data-sub-id` (unlike the Playlist link/
+// pin toggle, this does not need a resolved channelDir). renderSubscriptions
+// queries `.sub-row[data-sub-id]` to build `rowElementsById`, which the ~2.5s
+// status poll (applyStatusUpdatesInPlace) reads to update each row's live
+// status IN PLACE. (Before v1.155 this attribute keyed drag-to-reorder, since
+// removed.) This proves the pure builder stamps that key.
 
-test('createSubscriptionRow: stamps data-sub-id for reordering, even without a resolved channelDir', () => {
-  const sub = { id: 'drag1', name: 'Draggable', channelUrl: 'https://www.youtube.com/@drag1' };
+test('createSubscriptionRow: stamps data-sub-id (the poll row-map key), even without a resolved channelDir', () => {
+  const sub = { id: 'sub1', name: 'Poll Keyed', channelUrl: 'https://www.youtube.com/@sub1' };
   const row = createSubscriptionRow(sub, fakeDoc, {});
-  assert.strictEqual(row.attributes['data-sub-id'], 'drag1');
-  // v1.76: reordering is a POINTER gesture now, so the row must NOT also
-  // advertise native HTML5 drag -- the browser would start one out from under
-  // the pointer gesture and cancel it.
+  assert.strictEqual(row.attributes['data-sub-id'], 'sub1');
+  // The row must not advertise native HTML5 drag either -- there is no
+  // drag-to-reorder any more (v1.155, Q2).
   assert.strictEqual(row.attributes.draggable, undefined);
 });
 

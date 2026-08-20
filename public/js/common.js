@@ -8929,12 +8929,12 @@ function renderPinnedSidebar(pins) {
   folderList.parentNode.insertBefore(section, folderList.nextSibling);
 
   // v1.24.3: (re-)wire drag-and-drop on every full rebuild -- a fresh set of
-  // `.sidebar-item` elements needs fresh listeners each time, exactly like
-  // subscriptions.js's `wireSubRowDragAndDrop` re-wires after every
-  // renderSubscriptions() call. Since this function always REBUILDS the
-  // whole section from scratch (the `existing`/removeChild above), the
-  // previous section's nodes -- and their listeners -- are simply detached
-  // and eligible for GC, never doubly wired.
+  // `.sidebar-item` elements needs fresh listeners each time. Since this
+  // function always REBUILDS the whole section from scratch (the
+  // `existing`/removeChild above), the previous section's nodes -- and their
+  // listeners -- are simply detached and eligible for GC, never doubly wired.
+  // (The subscriptions list once re-wired the same way; its drag-to-reorder
+  // was removed in v1.155, so this is now the pinned sidebar's own pattern.)
   wirePinnedSidebarDragAndDrop(section, validPins);
 }
 
@@ -9010,8 +9010,9 @@ function wirePinnedSidebarDragAndDrop(section, validPins) {
 // -- see `store.reducePinReorder`'s doc comment). A failed request RELOADS
 // pins from the server instead of trusting the optimistic client-side order,
 // so a rejected/errored drag can never leave the sidebar silently diverged
-// from what is actually persisted -- mirrors
-// lib/ytdlp/client/subscriptions.js's `persistReorder` fail-safe EXACTLY.
+// from what is actually persisted. (The subscriptions list once carried the
+// same reload-on-failure fail-safe in `persistReorder`; that reorder was
+// removed in v1.155, so this is now the pinned sidebar's own pattern.)
 function persistPinReorder(orderedIds, source) {
   // v1.37.0 gate fix (BOTH reviewers' CRITICAL): the endpoint is the pin
   // SOURCE's own (book shelves have their own reorder route -- previously
