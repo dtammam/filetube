@@ -138,6 +138,10 @@ test('SOURCE-LOCK v1.160 (#7): the MODERN home injects a card/list toggle drivin
   // filled .btn look that read as "always selected/grey".
   assert.match(CSS, /\.modern-view-toggle\s*\{[^}]*background:\s*none/, 'transparent, not the filled .btn look');
   assert.match(MAIN, /className\s*=\s*'modern-view-toggle'/, 'the button does not carry the filled .btn class');
+  // v1.160.2 (Dean): the grid/list glyph is a 1em mask - without a font-size it
+  // inherited ~16px and read "a little small" next to the 22px header glyph
+  // family (download/search/sort). Bind the sizing so it can't silently regress.
+  assert.match(CSS, /\.modern-view-toggle\s*\{[^}]*font-size:\s*var\(--fs-4xl\)/, 'sized to 22px, uniform with the header glyph family');
 });
 
 test('SOURCE-LOCK (#1): per-page sort reads/writes by pageSortKey only when enabled, and pins over defaultSort', () => {
