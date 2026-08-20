@@ -107,6 +107,7 @@ const CLASSIFICATION = {
   'POST /api/cache/clear': 'library-write',
   'POST /api/trash/:id/restore': 'library-write',
   'DELETE /api/trash/:id': 'library-write',
+  'POST /api/trash/purge-all': 'library-write', // v1.158: bulk "Empty trash"
   'POST /api/folders/display-name': 'library-write', // v1.126: shared display metadata
 
   'DELETE /api/podcasts/episodes/:id': 'library-write',
@@ -237,6 +238,10 @@ const VISIBILITY = {
   'POST /api/videos/:id/attribute-channel': 'enforced',
   'POST /api/trash/:id/restore': 'enforced',
   'DELETE /api/trash/:id': 'enforced',
+  // v1.158: purge-all FILTERS the trash worklist to the requester's visible set
+  // (trashRecordVisibleTo) - a restricted member never purges/counts a hidden
+  // item. Bound end-to-end in trash-purge-all.test.js.
+  'POST /api/trash/purge-all': 'enforced',
   'DELETE /api/podcasts/episodes/:id': 'enforced',
   'POST /api/podcasts/episodes/:id/restore': 'enforced',
   'POST /api/books/:id/cover': 'enforced',

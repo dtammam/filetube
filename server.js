@@ -11757,8 +11757,43 @@ app.get('/api/trash', (req, res) => {
   res.json({
     items,
     total: items.length,
+    // v1.158 (Dean): the total bytes the VISIBLE trash holds - what "Empty
+    // trash" reclaims. Summed over the SAME visibility-filtered set, so the
+    // figure the client shows == what purge-all frees. Orphans with no snapshot
+    // size contribute 0 (best-effort; disclosed).
+    totalSizeBytes: items.reduce((sum, it) => sum + (Number(it.size) || 0), 0),
     retentionDays: Number.isFinite(retentionDays) ? retentionDays : null,
   });
+});
+
+// v1.158 (Dean): "Empty trash" - permanently purge EVERY trash item the
+// requester can see, in one call. Destructive: same three guards as the single-
+// item DELETE below (write-RBAC, read-only refusal, per-item visibility), and
+// it enumerates the SAME visibility-filtered set GET /api/trash returns - a
+// restricted member purges ONLY their visible items, never a hidden one (v1.80/
+// v1.81 route-count-lock class). Registered BEFORE POST /api/trash/:id/restore
+// so the static `purge-all` segment can never be captured as an `:id`.
+app.post('/api/trash/purge-all', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
+  if (refuseIfReadOnlyMedia(res)) return;
+  const db = getCachedDatabase();
+  // Snapshot the visible id set + each record's size BEFORE any purge (each
+  // purgeTrashItem reloads + mutates the db; freedBytes must read the size from
+  // the pre-purge snapshot).
+  const targets = Object.entries(db.trash || {})
+    .filter(([, rec]) => trashRecordVisibleTo(req, rec))
+    .map(([tid, rec]) => ({ tid, size: (rec.item && Number(rec.item.size)) || 0 }));
+  let purgedCount = 0;
+  let freedBytes = 0;
+  const failures = [];
+  for (const { tid, size } of targets) {
+    // Sequential on purpose: purgeTrashItem reload/mutates the db per call;
+    // concurrent purges would race the write.
+    const result = await purgeTrashItem({ loadDatabase, updateDatabase }, tid);
+    if (result.ok) { purgedCount += 1; freedBytes += size; }
+    else failures.push({ tid, error: result.error, code: result.code });
+  }
+  res.json({ success: failures.length === 0, purgedCount, freedBytes, failures });
 });
 
 app.post('/api/trash/:id/restore', async (req, res) => {
