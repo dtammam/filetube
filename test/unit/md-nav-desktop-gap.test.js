@@ -34,7 +34,17 @@ function desktopMdBlock() {
   let depth = 0;
   for (let i = open; i < CSS.length; i += 1) {
     if (CSS[i] === '{') depth += 1;
-    else if (CSS[i] === '}') { depth -= 1; if (depth === 0) return CSS.slice(open + 1, i); }
+    else if (CSS[i] === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        const block = CSS.slice(open + 1, i);
+        // Gate SUGGESTION: anchor on the master-detail grid so that if a future
+        // edit adds an EARLIER `@media (min-width: 769px)`, this fails loudly
+        // instead of silently asserting against the wrong block.
+        assert.match(block, /\.md-track\s*\{/, 'the desktop @media block is the master-detail one (has .md-track)');
+        return block;
+      }
+    }
   }
   throw new Error('unbalanced braces after the desktop @media');
 }
