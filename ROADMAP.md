@@ -80,6 +80,34 @@
 
 ## Shipped
 
+### v1.161.5 - keep-alive: bound the battery footgun + damp the lock-screen position (Dean) (2026-08-21)
+
+Dean device-confirmed the v1.161.4 keep-alive works (lock-screen play/pause past
+the first cycle), and asked for two refinements after reasoning through the
+second-order costs:
+
+- **#1 paused-idle auto-stop (the battery footgun).** The keep-alive kept the
+  process awake whenever a video was backgrounded - including PAUSED-and-forgotten,
+  which would loop silently forever until a force-close. Now, while the sidecar is
+  PAUSED in the background, a 5-min timer (`KEEPALIVE_IDLE_STOP_MS`) is armed; if it
+  stays paused that long the keep-alive stops and iOS suspends (a resume after that
+  legitimately won't work - if you paused 5+ min, the app sleeping is correct).
+  Cancelled the instant the sidecar resumes and on any teardown. Keeps the quick
+  pause->resume win, bounds the forgotten-in-pocket drain to 5 min.
+- **#2 lock-screen position damp.** The silent loop competed with the sidecar for
+  iOS's "now playing" timeline, so the scrubber briefly showed the loop's 0->3s
+  counter (Dean saw it "reset to 0:00,01,02,03" then reconcile). A timeupdate
+  listener on the keep-alive element now force-asserts the REAL sidecar position
+  every tick + once on start, so iOS always shows the video's time.
+
+SLIM gate (adversarial), APPROVE - NO findings; every binding mutation-verified (8
+mutants killed), the off-path genuinely inert, no timer or position can misfire.
+Dual-Node 7387/7387 on v22.23.1 AND v24.14.0.
+
+DEVICE (keep-alive checkbox on): the lock-screen scrubber should now show the real
+video time (no 0-3s counter); pausing and walking away should stop draining after
+~5 min (a resume then legitimately won't work); a quick pause->resume still works.
+
 ### v1.161.4 - background keep-alive loops a long silent clip (Dean device iteration) (2026-08-21)
 
 Dean device-tested the v1.161.3 keep-alive: it WORKED for the first pause/resume

@@ -1942,5 +1942,11 @@
     "date": "2026-08-21",
     "title": "Improving the keep-locked-controllable experiment",
     "intent": "A tune-up to the opt-in 'keep background video-audio controllable while locked' setting from the last release. It now works in a way iOS is more likely to honor for longer, so pausing and resuming from your AirPods or the lock screen should keep working past the first time, not just once. Still off by default and still uses extra battery while it's on - turn it on to try it."
+  },
+  {
+    "version": "1.161.5",
+    "date": "2026-08-21",
+    "title": "Battery guard + tidier lock screen for the keep-locked setting",
+    "intent": "Two polish touches to the opt-in 'keep background video-audio controllable while locked' setting. First, a battery guard: if you pause a backgrounded video and walk away, it now stops keeping the app awake after a few minutes instead of forever (so a forgotten video in your pocket won't drain the battery). Second, the lock-screen scrubber now shows the real video time instead of briefly flickering a little 0-to-3-second counter. Still off by default."
   }
 ]
