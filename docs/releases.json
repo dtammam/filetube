@@ -1930,5 +1930,11 @@
     "date": "2026-08-21",
     "title": "Headphone play/pause works on the first press again",
     "intent": "Fixed: when a video is playing in the background, pausing from your AirPods or the lock screen now works on the first press. Before, the first press often did nothing (the system had the wrong idea of whether you were playing or paused) and you had to press twice. This is the fix the last release's diagnostic log helped track down."
+  },
+  {
+    "version": "1.161.3",
+    "date": "2026-08-21",
+    "title": "Try-it setting for resuming background audio while locked",
+    "intent": "A small fix and an opt-in experiment. The fix: the lock screen no longer shows 'Pause' when a resume didn't actually take, so the button always matches reality. The experiment (Settings, off by default): 'keep background video-audio controllable while locked' - when a video's audio is playing in the background, it keeps the app awake so you can un-pause it from your AirPods or the lock screen, which normally can't be done once the audio stops. It costs extra battery while playing in the background, so it's off unless you turn it on to try it."
   }
 ]
