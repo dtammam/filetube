@@ -80,6 +80,42 @@
 
 ## Shipped
 
+### v1.161.2 - fix: AirPods/lock-screen play-pause during background play (Dean) (2026-08-21)
+
+The v1.161.1 diagnostics paid off: Dean's lifecycle-log screenshot CONFIRMED the
+bug and named the mechanism, so this is the real fix (not a theory).
+
+- Log evidence: `bgAudio:ok playing=true` -> `msAction:play` -> `msAction:pause`.
+  iOS sent PLAY on the first AirPods squeeze because its MediaSession
+  `playbackState` read 'paused' while the hidden `<audio>` sidecar was actually
+  playing. PLAY on an already-playing sidecar is a no-op ("nothing happened"); the
+  second squeeze sent PAUSE and worked.
+- ROOT CAUSE: the sidecar's play/pause listeners are guarded on
+  `activeMediaElement() !== bgAudioEl` (they only touch playbackState when they are
+  the active element), but the VIDEO element's playbackState listeners were
+  UNGUARDED. During a background handoff the video is deliberately paused while the
+  sidecar plays, so the video's unguarded `pause` stamped playbackState='paused'
+  over the truth.
+- FIX: the mirror guard `if (activeMediaElement() !== mediaPlayer) return;` on the
+  video's play/pause playbackState listeners. Handoff sets HANDING_OFF before the
+  video pause (so the late pause event is skipped); swapback resets INLINE_VIDEO
+  before the video replays (+ an explicit re-assert). Common case (INLINE_VIDEO)
+  the guard is a no-op - byte-unchanged.
+
+SLIM gate (adversarial), APPROVE - every surface mutation-verified (common-case
+no-op, handoff ordering, swapback, stuck-state enumeration, completeness of every
+setPlaybackState site, progress-saver listeners untouched); the guard binds
+(dropping it reds 110/111). ACCEPTED RESIDUAL (disclosed, self-healing): on the
+rare HANDOFF_FAILED path (iOS gesture-wall rejects the sidecar play, so no audio is
+playing anyway) playbackState could momentarily read stale 'playing' before the
+next event's re-assert corrects it - transient, not durable. Dual-Node 7379/7379 on
+v22.23.1 AND v24.14.0.
+
+DEVICE: play a video, background it, squeeze the AirPods ONCE - it should pause on
+the FIRST press now (and resume on the next). (Optional: leave Settings -> "Show
+lifecycle debug log" on and confirm the first backgrounded squeeze now logs
+`msAction:pause`, not `msAction:play`.)
+
 ### v1.161.1 - MediaSession-action diagnostics (AirPods play-pause bug) (Dean) (2026-08-21)
 
 Dean device report: AirPods/lock-screen play-pause is INCONSISTENT during background

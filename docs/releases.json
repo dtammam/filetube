@@ -1924,5 +1924,11 @@
     "date": "2026-08-21",
     "title": "Groundwork for the background play/pause fix",
     "intent": "Some quiet groundwork toward a known issue: controlling playback from your headphones or the lock screen while a video plays in the background is unreliable. This release adds an on-screen diagnostic log (Settings, 'Show lifecycle debug log') that captures exactly what happens when a play/pause command comes in, so the actual cause can be pinned down and fixed properly. Nothing about normal playback changes."
+  },
+  {
+    "version": "1.161.2",
+    "date": "2026-08-21",
+    "title": "Headphone play/pause works on the first press again",
+    "intent": "Fixed: when a video is playing in the background, pausing from your AirPods or the lock screen now works on the first press. Before, the first press often did nothing (the system had the wrong idea of whether you were playing or paused) and you had to press twice. This is the fix the last release's diagnostic log helped track down."
   }
 ]

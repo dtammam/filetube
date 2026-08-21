@@ -5735,8 +5735,19 @@ if (typeof module !== 'undefined' && module.exports) {
     mediaPlayer.addEventListener('ended', function () {
       runEndedCompletionCascade(mediaPlayer);
     });
-    mediaPlayer.addEventListener('play', function () { setPlaybackState('playing'); updatePositionState(true); });
-    mediaPlayer.addEventListener('pause', function () { setPlaybackState('paused'); updatePositionState(true); });
+    // v1.161.2 (Dean device bug: AirPods/lock-screen play-pause dropped the first
+    // press during background play). These MUST be guarded on "is the video the
+    // ACTIVE element", exactly like bgAudioEl's own pair above - during a
+    // background handoff the video is DELIBERATELY paused while the hidden sidecar
+    // keeps playing, and an UNGUARDED `pause` here stamped MediaSession
+    // playbackState='paused' over the truth, so iOS thought we were paused and the
+    // first AirPods squeeze sent PLAY (a no-op on the already-playing sidecar)
+    // instead of PAUSE. When the sidecar is active, the sidecar's own guarded
+    // listeners own playbackState; when the video is active (the common case,
+    // feature-off/desktop/audio-only, where activeMediaElement() is always
+    // mediaPlayer) this is a no-op guard and behaviour is byte-unchanged.
+    mediaPlayer.addEventListener('play', function () { if (activeMediaElement() !== mediaPlayer) return; setPlaybackState('playing'); updatePositionState(true); });
+    mediaPlayer.addEventListener('pause', function () { if (activeMediaElement() !== mediaPlayer) return; setPlaybackState('paused'); updatePositionState(true); });
     // Feature A (v1.26.1, Shorts player-size jump)'s no-data fallback + lazy
     // per-item dimensions backfill, and F2's same-session orientation
     // self-heal, used to be wired ONCE here, reading `currentData`/
