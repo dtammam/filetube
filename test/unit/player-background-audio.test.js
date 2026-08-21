@@ -1515,6 +1515,7 @@ test('buildSilentWavDataUri: a valid mono 8-bit PCM WAV of the requested duratio
   // Length: 44-byte header + rate*seconds sample bytes, and the data-chunk size agrees.
   const n = 8000 * 3;
   assert.strictEqual(buf.length, 44 + n, 'header + 3s of samples');
+  assert.strictEqual(buf.readUInt32LE(4), 36 + n, 'the RIFF chunk-size field (offset 4) = 36 + dataLen');
   assert.strictEqual(buf.readUInt32LE(40), n, 'the data-chunk size field matches');
   // Every sample is 128 == unsigned-8-bit silence (spot-check across the range).
   for (const i of [44, 44 + 1, 44 + Math.floor(n / 2), buf.length - 1]) {

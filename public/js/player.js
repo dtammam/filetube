@@ -362,7 +362,8 @@ var SILENT_PRIME_SRC = 'data:audio/wav;base64,UklGRiwAAABXQVZFZm10IBAAAAABAAEAQB
 // pause/resume cycle before the process was reclaimed (Dean's device report:
 // "worked after the first pause/play but then stopped"). A long, rarely-restarting
 // silent clip reads to iOS as sustained audio. 8-bit mono PCM, every sample = 128
-// (unsigned silence). Pure + exported (btoa in the browser, Buffer under node:test).
+// (unsigned silence). Pure + exported; encodes via btoa in BOTH the browser and
+// node:test (btoa is a Node global) - no Buffer (which the browser ruleset rejects).
 function buildSilentWavDataUri(seconds, sampleRate) {
   var rate = (sampleRate > 0) ? Math.floor(sampleRate) : 8000;
   var n = Math.max(1, Math.floor(((seconds > 0) ? seconds : 1) * rate)); // 8-bit mono sample bytes
