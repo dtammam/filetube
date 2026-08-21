@@ -18,7 +18,8 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { resolveResumeCountdownConfig, resumeCountdownLabel } = require('../../public/js/player.js');
+const { resolveResumeCountdownConfig, resumeCountdownLabel, resolveResumeCountdownSeconds } = require('../../public/js/player.js');
+const { clampResumeSeconds } = require('../../public/js/setup.js');
 
 // ---- resolveResumeCountdownConfig (pure) -----------------------------------
 
@@ -41,6 +42,34 @@ test('config: absent/garbage action -> resume (continuing is the common intent);
 test('config: enabled and action resolve independently (a disabled config still carries the stored action)', () => {
   assert.deepStrictEqual(resolveResumeCountdownConfig('0', 'beginning'), { enabled: false, action: 'beginning' });
   assert.deepStrictEqual(resolveResumeCountdownConfig(null, 'beginning'), { enabled: true, action: 'beginning' });
+});
+
+// ---- resolveResumeCountdownSeconds (pure, v1.161) --------------------------
+
+test('seconds (player read): integer clamp [0,30]; absent/garbage -> default 5', () => {
+  assert.strictEqual(resolveResumeCountdownSeconds('5'), 5);
+  assert.strictEqual(resolveResumeCountdownSeconds('0'), 0, '0 is a real value (instant), NOT the default');
+  assert.strictEqual(resolveResumeCountdownSeconds('12'), 12);
+  assert.strictEqual(resolveResumeCountdownSeconds('30'), 30);
+  assert.strictEqual(resolveResumeCountdownSeconds('99'), 30, 'over-max clamps to 30');
+  assert.strictEqual(resolveResumeCountdownSeconds('-4'), 0, 'negative clamps to 0');
+  assert.strictEqual(resolveResumeCountdownSeconds('7.9'), 7, 'floored to an integer');
+  for (const junk of [null, undefined, '', 'abc', {}]) {
+    assert.strictEqual(resolveResumeCountdownSeconds(junk), 5, `absent/garbage (${String(junk)}) -> default 5`);
+  }
+});
+
+// ---- clampResumeSeconds (setup WRITE side, v1.161) -------------------------
+
+test('seconds (setup write): blank -> null (clear the key -> default); real values clamp to [0,30]', () => {
+  assert.strictEqual(clampResumeSeconds(''), null, 'a cleared field removes the key (player default 5 returns)');
+  assert.strictEqual(clampResumeSeconds('   '), null, 'whitespace-only is blank too');
+  assert.strictEqual(clampResumeSeconds(null), null);
+  assert.strictEqual(clampResumeSeconds('abc'), null, 'garbage removes the key rather than storing junk');
+  assert.strictEqual(clampResumeSeconds('0'), 0, '0 is stored (instant), distinct from blank/null');
+  assert.strictEqual(clampResumeSeconds('8'), 8);
+  assert.strictEqual(clampResumeSeconds('99'), 30);
+  assert.strictEqual(clampResumeSeconds('-2'), 0);
 });
 
 // ---- resumeCountdownLabel (pure) -------------------------------------------
@@ -109,10 +138,15 @@ test('EVERY prompt-hide seam cancels the countdown (the enumerate-every-writer d
   assert.match(PLAYER_JS, /if \(resumeOverlay\) resumeOverlay\.style\.display = 'none';\n\s*cancelResumeCountdown\(\); \/\/ v1\.132: a closed player must never auto-click a vanished prompt/);
 });
 
-test('the 5 is variableized (Dean) and single-sourced into the CSS drain via the custom property', () => {
-  assert.match(PLAYER_JS, /var RESUME_COUNTDOWN_SECONDS = 5;/);
-  assert.match(startBody[1], /btn\.style\.setProperty\('--resume-countdown-duration', RESUME_COUNTDOWN_SECONDS \+ 's'\);/);
-  assert.match(startBody[1], /var secondsLeft = RESUME_COUNTDOWN_SECONDS;/);
+test('v1.161: the countdown length is read LIVE from the store and single-sourced into the CSS drain', () => {
+  // The hardcoded 5 is gone; the length now comes from getStoredResumeCountdownSeconds
+  // (which validates via resolveResumeCountdownSeconds), read fresh in the arm - and
+  // the CSS drain + the tick counter both read that SAME resolved value, so the
+  // visual can never drift from the timer.
+  assert.doesNotMatch(PLAYER_JS, /var RESUME_COUNTDOWN_SECONDS = 5;/, 'the hardcoded 5 is replaced by the configurable read');
+  assert.match(startBody[1], /var countdownSeconds = getStoredResumeCountdownSeconds\(\);/, 'the length is read live at arm time');
+  assert.match(startBody[1], /btn\.style\.setProperty\('--resume-countdown-duration', countdownSeconds \+ 's'\);/);
+  assert.match(startBody[1], /var secondsLeft = countdownSeconds;/);
   assert.match(cancelBody[1], /removeProperty\('--resume-countdown-duration'\)/);
   // Gate W2 (v1.132 fix round): the wall-clock length is ticks x INTERVAL and
   // only the tick count was bound - a 500ms interval fires at half the CSS
@@ -121,6 +155,22 @@ test('the 5 is variableized (Dean) and single-sourced into the CSS drain via the
   assert.match(startBody[1], /\}, 1000\);/, 'the tick interval is the other half of the wall-clock duration');
   assert.match(startBody[1], /resumeCountdownBtn\.textContent = resumeCountdownLabel\(resumeCountdownBaseLabel, secondsLeft\);/,
     'every tick rewrites the label through the ONE builder');
+});
+
+test('v1.161: 0 seconds = INSTANT - fires the configured button with NO overlay show, and reuses the countdown\'s action->button mapping', () => {
+  // The instant branch must (a) be gated on enabled AND a 0 length, (b) fire the
+  // SAME action->button mapping the countdown uses (beginning->resumeNoBtn, else
+  // resumeYesBtn) so behaviour is identical, and (c) NOT set the overlay to 'flex'
+  // in that branch (no prompt flash). Binding the mapping stops a regression that
+  // instant-fires the WRONG button (which, for 'resume', would start-over and wipe
+  // saved progress - the v1.132 W1 destructive class).
+  assert.match(PLAYER_JS, /if \(rcConfig\.enabled && getStoredResumeCountdownSeconds\(\) === 0\) \{[\s\S]{0,400}?var instantBtn = rcConfig\.action === 'beginning' \? resumeNoBtn : resumeYesBtn;[\s\S]{0,200}?if \(instantBtn\) instantBtn\.click\(\);/,
+    'enabled + 0s fires the correctly-mapped button immediately');
+  // The instant branch must NOT show the overlay (no prompt). Slice the branch and
+  // assert it carries no display='flex'.
+  const instantBranch = /if \(rcConfig\.enabled && getStoredResumeCountdownSeconds\(\) === 0\) \{([\s\S]*?)\n {12}\} else \{/.exec(PLAYER_JS);
+  assert.ok(instantBranch, 'the instant branch is present');
+  assert.doesNotMatch(instantBranch[1], /style\.display = 'flex'/, 'instant resume never shows the prompt overlay');
 });
 
 // ---- source locks: the CSS drain -------------------------------------------
@@ -147,11 +197,22 @@ test('setup.html: the checkbox (default checked) + the action select exist in th
   assert.match(SETUP_HTML, /<select id="resume-countdown-action-select"[^>]*>\s*<option value="resume">Resume from saved position<\/option>\s*<option value="beginning">Start from beginning<\/option>\s*<\/select>/);
 });
 
-test('setup.js and player.js agree on BOTH storage keys byte-for-byte (the RESUME_THRESHOLD cross-file convention)', () => {
+test('setup.js and player.js agree on ALL THREE storage keys byte-for-byte (the RESUME_THRESHOLD cross-file convention)', () => {
   assert.match(SETUP_JS, /const RESUME_COUNTDOWN_KEY = 'filetube_resume_countdown';/);
   assert.match(SETUP_JS, /const RESUME_COUNTDOWN_ACTION_KEY = 'filetube_resume_countdown_action';/);
+  assert.match(SETUP_JS, /const RESUME_COUNTDOWN_SECONDS_KEY = 'filetube_resume_countdown_seconds';/);
   assert.match(PLAYER_JS, /var RESUME_COUNTDOWN_STORAGE_KEY = 'filetube_resume_countdown';/);
   assert.match(PLAYER_JS, /var RESUME_COUNTDOWN_ACTION_STORAGE_KEY = 'filetube_resume_countdown_action';/);
+  assert.match(PLAYER_JS, /var RESUME_COUNTDOWN_SECONDS_STORAGE_KEY = 'filetube_resume_countdown_seconds';/);
+});
+
+test('v1.161: setup.html carries the seconds field (0-30) + the "0 = instant" hint, and setup.js clamps on write', () => {
+  assert.match(SETUP_HTML, /<input type="number" id="resume-countdown-seconds-input" min="0" max="30" step="1"[^>]*\/>/);
+  assert.match(SETUP_HTML, /0 = resume instantly with no prompt at all/);
+  // The field stores a clamped value, and a BLANK/garbage entry removes the key so
+  // the player default (5) returns - never stores junk.
+  assert.match(SETUP_JS, /const clamped = clampResumeSeconds\(e\.target\.value\);/);
+  assert.match(SETUP_JS, /if \(clamped === null\) localStorage\.removeItem\(RESUME_COUNTDOWN_SECONDS_KEY\);\s*else localStorage\.setItem\(RESUME_COUNTDOWN_SECONDS_KEY, String\(clamped\)\);/);
 });
 
 test('setup.js: the checkbox stores \'0\' ONLY when unchecked (absent = on, mirroring resolveResumeCountdownConfig\'s !== \'0\')', () => {
