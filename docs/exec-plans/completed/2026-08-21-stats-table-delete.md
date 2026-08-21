@@ -1,6 +1,8 @@
 # Stats-table per-item delete (Dean) - DESTRUCTIVE
 
-Status: IN PROGRESS (branch `feat/stats-table-delete`)
+Status: SHIPPED v1.162.0 (2026-08-21). FULL gate both APPROVE (one docs-only fix
+round; a QA/adversarial contradiction on resetStatsArm self-resolved by mutation -
+it is defensive-only). Dual-Node 7396/7396. Device pass pending.
 
 Dean prunes his library by sorting the Stats "Videos & audio" table by size, then
 searches for the item and deletes it from a card. Bypass that: add the tried-and-
