@@ -3707,6 +3707,28 @@ if (typeof module !== 'undefined' && module.exports) {
   // must never leave audio - even silent audio - alive; the v1.25.x force-close
   // law). A strict no-op when the setting is off: the element is never even
   // created, so the default path is byte-unchanged.
+  // v1.161.5 (Dean): bound the battery footgun. The keep-alive is worth it for a
+  // quick pause->resume, not for a video PAUSED-and-forgotten in the background
+  // (which would otherwise loop silently forever, never letting the process sleep).
+  // So while the sidecar is PAUSED in the background, arm a timer; if it stays
+  // paused this long, stop the keep-alive and let iOS suspend (a resume after that
+  // legitimately won't work - if you paused 5+ min, the app sleeping is correct).
+  // Cancelled the moment the sidecar resumes (see the bgAudioEl 'play'/'pause'
+  // listeners) or the keep-alive is torn down.
+  var KEEPALIVE_IDLE_STOP_MS = 5 * 60 * 1000;
+  var keepAliveIdleTimer = null;
+  function cancelKeepAliveIdleStop() {
+    if (keepAliveIdleTimer) { clearTimeout(keepAliveIdleTimer); keepAliveIdleTimer = null; }
+  }
+  function armKeepAliveIdleStop() {
+    cancelKeepAliveIdleStop();
+    if (!keepAliveEl) return; // nothing running -> nothing to time out
+    keepAliveIdleTimer = setTimeout(function () {
+      keepAliveIdleTimer = null;
+      recordLifecycleEvent('bgKeepAlive:idle-stop', {});
+      stopBgKeepAlive();
+    }, KEEPALIVE_IDLE_STOP_MS);
+  }
   function startBgKeepAlive() {
     if (!isBgKeepAliveEnabled()) return;
     if (typeof document === 'undefined' || !host) return;
@@ -3716,14 +3738,25 @@ if (typeof module !== 'undefined' && module.exports) {
       keepAliveEl.loop = true;
       keepAliveEl.hidden = true;
       keepAliveEl.style.display = 'none';
+      // v1.161.5 (Dean, #2): the silent loop competes with the sidecar for iOS's
+      // "now playing" timeline, so the lock-screen scrubber briefly showed the
+      // loop's 0->3s counter until a real position re-assert fixed it. Force-push
+      // the REAL position (activeMediaElement() = the sidecar, frozen at the pause
+      // point or moving with playback) on every keep-alive tick so iOS always
+      // shows the video's time, never the loop's.
+      keepAliveEl.addEventListener('timeupdate', function () {
+        if (activeMediaElement() === bgAudioEl) updatePositionState(true);
+      });
       host.appendChild(keepAliveEl);
     }
     keepAliveEl.src = getKeepAliveSilenceSrc(); // v1.161.4: a ~3s silent loop (re-armed; stop strips it)
     keepAliveEl.loop = true;
     try { var p = keepAliveEl.play(); if (p && p.catch) p.catch(function () {}); } catch (_) { /* gesture wall - best effort */ }
+    updatePositionState(true); // #2: assert the real position immediately, before iOS reads the loop's
     recordLifecycleEvent('bgKeepAlive:start', {});
   }
   function stopBgKeepAlive() {
+    cancelKeepAliveIdleStop(); // v1.161.5: the idle timer never outlives the keep-alive
     if (!keepAliveEl) return;
     try { keepAliveEl.pause(); keepAliveEl.removeAttribute('src'); keepAliveEl.load(); } catch (_) { /* best-effort, page may be unloading */ }
     recordLifecycleEvent('bgKeepAlive:stop', {});
@@ -5781,8 +5814,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // `bgAudioState`, and therefore `activeMediaElement()`) is unaffected.
     bgAudioEl.addEventListener('play', function () { if (activeMediaElement() !== bgAudioEl) return; startProgressSaver(); });
     bgAudioEl.addEventListener('pause', function () { if (activeMediaElement() !== bgAudioEl) return; stopProgressSaver(); });
-    bgAudioEl.addEventListener('play', function () { if (activeMediaElement() !== bgAudioEl) return; setPlaybackState('playing'); updatePositionState(true); });
-    bgAudioEl.addEventListener('pause', function () { if (activeMediaElement() !== bgAudioEl) return; setPlaybackState('paused'); updatePositionState(true); });
+    bgAudioEl.addEventListener('play', function () { if (activeMediaElement() !== bgAudioEl) return; setPlaybackState('playing'); updatePositionState(true); cancelKeepAliveIdleStop(); });
+    bgAudioEl.addEventListener('pause', function () { if (activeMediaElement() !== bgAudioEl) return; setPlaybackState('paused'); updatePositionState(true); armKeepAliveIdleStop(); });
     // v1.131 (CarPlay pause diagnostics): same raw provenance pair for the
     // background-audio sidecar - deliberately UNfiltered by
     // activeMediaElement() (unlike the state-sync listeners above): a pause
