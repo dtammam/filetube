@@ -159,7 +159,63 @@ test('KEY HANDLER: an arrow key lights the matching arrow and is swallowed while
   }
 });
 
-test('SOURCE: the arrow-key handler is capture-phase and is unbound on close', () => {
+test('KEY HANDLER: a modifier+arrow combo passes through (bare arrows only)', () => {
+  // OS/browser shortcuts like Cmd/Ctrl/Alt+Arrow must not be eaten or play a note
+  // (gate fix: mirror player.js's modifier bail).
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/' });
+  const origWindow = global.window;
+  const origDocument = global.document;
+  global.window = dom.window;
+  global.document = dom.window.document;
+  try {
+    openShortcutsModal();
+    const left = [...dom.window.document.querySelectorAll('.shortcuts-ddr-arrow')][0]; // ArrowLeft
+    for (const mod of ['ctrlKey', 'metaKey', 'altKey']) {
+      const evt = new dom.window.KeyboardEvent('keydown', { key: 'ArrowLeft', [mod]: true, cancelable: true, bubbles: true });
+      dom.window.document.dispatchEvent(evt);
+      assert.equal(evt.defaultPrevented, false, `${mod}+Arrow must pass through to the browser/OS`);
+      assert.ok(!left.classList.contains('ddr-hit'), `${mod}+Arrow must NOT play a note`);
+    }
+    // ...but a bare arrow still fires.
+    const bare = new dom.window.KeyboardEvent('keydown', { key: 'ArrowLeft', cancelable: true, bubbles: true });
+    dom.window.document.dispatchEvent(bare);
+    assert.equal(bare.defaultPrevented, true, 'a bare arrow is still consumed and plays');
+    closeShortcutsModal();
+  } finally {
+    global.window = origWindow;
+    global.document = origDocument;
+    dom.window.close();
+  }
+});
+
+test('LEAK GUARD: a stranded backdrop, then a fresh open, does NOT leave the old capture handler eating arrows', () => {
+  // The strand-recovery arm of openShortcutsModal must unbind the leaked DDR
+  // handler, or the old capture listener keeps swallowing arrows session-wide
+  // (gate: QA WARNING / adversarial S3). Simulate a strand: remove the backdrop
+  // WITHOUT routing through closeShortcutsModal, then re-open and close.
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/' });
+  const origWindow = global.window;
+  const origDocument = global.document;
+  global.window = dom.window;
+  global.document = dom.window.document;
+  try {
+    openShortcutsModal();                                           // binds handler H1
+    dom.window.document.querySelector('.oneoff-modal-backdrop').remove(); // strand it (H1 still on document)
+    openShortcutsModal();                                           // strand-recovery: must release H1, bind H2
+    closeShortcutsModal();                                          // releases H2
+    // If H1 leaked, it is still a capture listener on document and would eat this.
+    const evt = new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', cancelable: true, bubbles: true });
+    dom.window.document.dispatchEvent(evt);
+    assert.equal(evt.defaultPrevented, false,
+      'after a strand+recover+close, NO leaked handler eats the arrow (the strand arm unbound it)');
+  } finally {
+    global.window = origWindow;
+    global.document = origDocument;
+    dom.window.close();
+  }
+});
+
+test('SOURCE: the arrow-key handler is capture-phase, bare-arrow-only, and unbound on both close and strand', () => {
   // Capture phase so it beats player.js's seek/volume handlers; unbound on close
   // so it never eats arrow keys session-wide (a stuck capture listener would).
   const openStart = COMMON.indexOf('function openShortcutsModal()');
@@ -167,12 +223,27 @@ test('SOURCE: the arrow-key handler is capture-phase and is unbound on close', (
   assert.match(openBody, /addEventListener\('keydown', ddrKeyHandler, true\)/,
     'bound on the CAPTURE phase');
   assert.match(openBody, /e\.preventDefault\(\)/, 'consumes the arrow');
+  assert.match(openBody, /e\.stopPropagation\(\)/, 'stops the arrow bubbling to other keydown consumers');
+  assert.match(openBody, /e\.ctrlKey \|\| e\.metaKey \|\| e\.altKey/,
+    'bare arrows only - OS modifier combos pass through');
   assert.match(openBody, /shortcutsModalState\.ddrKeyHandler = ddrKeyHandler/, 'stashed for teardown');
+  // The strand-recovery arm must ALSO release the leaked handler.
+  assert.match(openBody, /removeEventListener\('keydown', shortcutsModalState\.ddrKeyHandler, true\)/,
+    'the strand-recovery arm unbinds the leaked capture handler');
 
   const closeStart = COMMON.indexOf('function closeShortcutsModal()');
   const closeBody = COMMON.slice(closeStart, COMMON.indexOf('\n}\n', closeStart));
   assert.match(closeBody, /removeEventListener\('keydown', shortcutsModalState\.ddrKeyHandler, true\)/,
     'the capture listener is removed on close');
+});
+
+test('SOURCE: the pulse forces a reflow between remove and add so a rapid re-press retriggers the pop', () => {
+  // `void el.offsetWidth` between removing and re-adding .ddr-hit is what makes a
+  // second quick press restart the CSS animation instead of no-op'ing. Bind the
+  // exact sequence (adversarial S1: the bare reflow line had no lock).
+  assert.match(COMMON,
+    /classList\.remove\('ddr-hit'\);\s*void [A-Za-z_$][\w$]*\.offsetWidth;\s*[A-Za-z_$][\w$]*\.classList\.add\('ddr-hit'\)/,
+    'remove -> reflow -> add, in that order');
 });
 
 // ---- the desktop two-column layout (Dean: "fit without scrolling") ----------

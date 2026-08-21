@@ -10164,8 +10164,10 @@ html[data-modern="on"] .video-uploader {
 /* Desktop: widen the window and flow the shortcut groups into two columns so
    the whole reference fits without scrolling (Dean's ask). Mobile keeps the
    single 560px column. `break-inside: avoid` keeps a group whole across the
-   column break; the first group loses its top margin so both columns start
-   level at the top edge. */
+   column break; the DOM-first group loses its top margin so column one starts
+   flush at the top (column two's first group keeps its natural top margin --
+   browsers vary on top-of-column margins, so the two columns need not align
+   pixel-perfect). */
 @media (min-width: 769px) {
   .shortcuts-modal {
     max-width: 840px;

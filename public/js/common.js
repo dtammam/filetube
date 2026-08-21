@@ -7575,6 +7575,15 @@ function openShortcutsModal() {
   // fix for a live bug.
   if (shortcutsModalState) {
     if (shortcutsModalState.backdrop.isConnected) return; // genuinely open -- never stack
+    // Stranded (backdrop removed without routing through closeShortcutsModal):
+    // recover -- but FIRST unbind the leaked capture-phase DDR handler, or it
+    // would keep eating every arrow key session-wide while the fresh window's
+    // own handler is bound on top (gate: QA WARNING / adversarial S3). The next
+    // closeShortcutsModal only knows about the NEW handler, so this branch is
+    // the sole place the stranded one can be released.
+    if (shortcutsModalState.ddrKeyHandler && typeof document !== 'undefined') {
+      try { document.removeEventListener('keydown', shortcutsModalState.ddrKeyHandler, true); } catch (_) { /* ignore */ }
+    }
     shortcutsModalState = null; // stranded -- recover instead of dying quietly
   }
   shortcutsModalState = buildShortcutsModal(document, { onClose: closeShortcutsModal });
@@ -7597,6 +7606,10 @@ function openShortcutsModal() {
   const ddrByKey = shortcutsModalState.ddrByKey || {};
   const ddrKeyHandler = (e) => {
     if (!e || !ddrByKey[e.key]) return;
+    // Only a BARE arrow press plays -- let OS/browser modifier combos
+    // (Cmd/Ctrl/Alt+Arrow) pass through untouched, mirroring player.js's own
+    // modifier bail (gate: QA SUGGESTION).
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     e.preventDefault();
     e.stopPropagation();
     const a = ddrByKey[e.key];
