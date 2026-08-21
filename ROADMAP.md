@@ -80,6 +80,32 @@
 
 ## Shipped
 
+### v1.161.4 - background keep-alive loops a long silent clip (Dean device iteration) (2026-08-21)
+
+Dean device-tested the v1.161.3 keep-alive: it WORKED for the first pause/resume
+cycle while locked, then stopped - proving the concept (keeping the process awake
+does enable a locked resume) but revealing the loop source didn't sustain.
+
+- ROOT CAUSE: the keep-alive looped `SILENT_PRIME_SRC`, an ~1ms (8-sample) clip -
+  as a keep-alive it restarts its loop ~1000x/second, which iOS throttles in the
+  background, so it read as not-continuously-producing-audio and the process was
+  reclaimed after one cycle.
+- FIX: loop a LONG (~3s), rarely-restarting silent clip built at runtime
+  (`buildSilentWavDataUri` - a real mono 8-bit PCM all-silence WAV data URI, cached
+  once), so iOS treats it as sustained audio. `SILENT_PRIME_SRC` keeps its original
+  one-shot prime job; only the keep-alive's source changed. Still opt-in/default-off,
+  same 4-site teardown safety, same no-op-when-off.
+
+SLIM gate (adversarial), APPROVE. The generated WAV is measurably valid (header /
+rate / 8-bit / mono / length / all-silence, degrade-safe) and mutation-bound; both
+gate SUGGESTIONs applied (bound the RIFF-size field; fixed a stale btoa comment).
+Dual-Node 7385/7385 on v22.23.1 AND v24.14.0.
+
+DEVICE: with the "keep background video-audio controllable while locked" checkbox
+on, play a video, lock, pause from AirPods, and confirm resume now survives PAST
+the first cycle. If it still hits a wall after a longer stretch, that is iOS's hard
+suspension ceiling and native (Capacitor/AVPlayer) is the only real fix.
+
 ### v1.161.3 - honest lock-screen glyph + opt-in background keep-alive (Dean) (2026-08-21)
 
 Follow-up to Dean's "background video-audio pauses fine when locked but won't
