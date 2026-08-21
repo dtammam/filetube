@@ -933,6 +933,24 @@ test("F-A source-lock: mediaPlayer's own play/pause listeners (progress saver) a
   assert.match(body, /mediaPlayer\.addEventListener\('pause', stopProgressSaver\);/);
 });
 
+test("v1.161.2: the mediaPlayer MediaSession playbackState listeners ARE guarded on `activeMediaElement() !== mediaPlayer` -- else the video's handoff-pause clobbers playbackState to 'paused' and iOS sends PLAY on the first AirPods squeeze", () => {
+  const body = wireHostListenersMatch[1];
+  // Mirror of the bgAudioEl guard: while the sidecar is the active element, the
+  // video's deliberate handoff-pause must NOT stamp playbackState='paused'. In
+  // the common case (INLINE_VIDEO) activeMediaElement() is always mediaPlayer, so
+  // the guard is a no-op and behaviour is unchanged.
+  assert.match(
+    body,
+    /mediaPlayer\.addEventListener\('play', function \(\) \{ if \(activeMediaElement\(\) !== mediaPlayer\) return; setPlaybackState\('playing'\); updatePositionState\(true\); \}\);/,
+    "the video's MediaSession 'playing' listener must be guarded on activeMediaElement() === mediaPlayer"
+  );
+  assert.match(
+    body,
+    /mediaPlayer\.addEventListener\('pause', function \(\) \{ if \(activeMediaElement\(\) !== mediaPlayer\) return; setPlaybackState\('paused'\); updatePositionState\(true\); \}\);/,
+    "the video's MediaSession 'paused' listener must be guarded (the AirPods-first-press bug)"
+  );
+});
+
 // ---- Full skip-reason vocabulary (documentation-as-test) -------------------
 // Pins the exact 5 reason strings the overlay can ever show for a
 // background-audio handoff that did not happen, split across the two call
