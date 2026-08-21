@@ -13,7 +13,9 @@ const path = require('node:path');
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const { shouldShowSearchClear, injectSearchClearButton } = require('../../public/js/common.js');
+const {
+  shouldShowSearchClear, injectSearchClearButton, shouldClearSearchInputAfterResults,
+} = require('../../public/js/common.js');
 
 // ---- the pure predicate -----------------------------------------------------
 
@@ -22,6 +24,17 @@ test('shouldShowSearchClear: text shows, empty/non-string hides', () => {
   assert.equal(shouldShowSearchClear(' '), true, 'whitespace still counts - the box is non-empty and clearable');
   assert.equal(shouldShowSearchClear(''), false);
   for (const junk of [null, undefined, 0, {}]) assert.equal(shouldShowSearchClear(junk), false);
+});
+
+// ---- v1.161 (Dean): clear the box after a search that FOUND something --------
+
+test('shouldClearSearchInputAfterResults: >0 clears, 0 keeps the query (the X still resets it)', () => {
+  assert.equal(shouldClearSearchInputAfterResults(1), true, 'a hit clears the box for the next search');
+  assert.equal(shouldClearSearchInputAfterResults(42), true);
+  assert.equal(shouldClearSearchInputAfterResults(0), false, 'zero results KEEP the query so the X can reset it');
+  for (const junk of [null, undefined, NaN, -1, 'x']) {
+    assert.equal(shouldClearSearchInputAfterResults(junk), false, `non-positive/garbage (${String(junk)}) keeps the box`);
+  }
 });
 
 // ---- a minimal DOM shim -----------------------------------------------------
@@ -137,6 +150,16 @@ test('v1.150 locks: main.js dispatches the synthetic input event after its progr
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
   assert.match(src, /searchInput\.value = searchQuery;[\s\S]{0,400}dispatchEvent\(new Event\('input'\)\)/,
     'the value set and the dispatch travel together');
+});
+
+test('v1.161 lock: fetchLibraryPage0 clears the box on a search that returned results (gated on searchQuery + count)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
+  // The clear must be GATED on a real search AND on results (the pure predicate),
+  // set the value empty, and re-dispatch 'input' so the clear-X hides. Binding all
+  // three keeps a regression to an unconditional clear (which would wipe the box on
+  // a zero-result search, stranding the X's purpose) from shipping green.
+  assert.match(src, /if \(searchQuery && searchInput && shouldClearSearchInputAfterResults\(currentTotal\)\) \{[\s\S]{0,200}searchInput\.value = '';[\s\S]{0,200}dispatchEvent\(new Event\('input'\)\)/,
+    'the clear is gated on searchQuery + a positive count, empties the box, and re-syncs the X');
 });
 
 test('v1.150 locks: the mobile strip - both mounts stamp the class, the non-search belt removes toggle AND class', () => {

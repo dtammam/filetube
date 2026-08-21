@@ -12338,6 +12338,15 @@ function shouldShowSearchClear(value) {
   return typeof value === 'string' && value.length > 0;
 }
 
+// v1.161 (Dean): after a search that FINDS something, clear the box so the next
+// search needs no X-press first. On ZERO results, KEEP the text (the X still
+// resets it - "the X is useful when it didn't find what you wanted"). The results
+// themselves are driven by the `?search=` URL, never the box, so emptying it never
+// wipes them. Pure; the wiring (main.js fetchLibraryPage0) passes the page-0 total.
+function shouldClearSearchInputAfterResults(resultCount) {
+  return Number(resultCount) > 0;
+}
+
 // Injects the clear X into the search form, BEFORE the Search button
 // (Dean: "all the way to the right next to search"). Idempotent; no-ops on
 // shells without the form pair. Visibility rides 'input' events (main.js
@@ -12995,7 +13004,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.149: the search-scope toggle family (no storage - caller-owned state).
     SEARCH_SCOPE_MODES, normalizeSearchScopeMode, buildSearchScopeToggleControl, renderSearchScopeToggle,
     // v1.150: the search-box clear X (pure predicate + injector).
-    shouldShowSearchClear, injectSearchClearButton,
+    shouldShowSearchClear, injectSearchClearButton, shouldClearSearchInputAfterResults,
     deriveAvatar, resolveAvatarSource, AVATAR_PALETTE,
     // v1.24.1 (B1 fast-follow): relocated "Re-pull this channel now" widget.
     REPULL_BTN_ID, findRepullSubscriptionForRoot, shouldShowRepullButton,
