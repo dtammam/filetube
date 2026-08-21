@@ -1954,5 +1954,11 @@
     "date": "2026-08-21",
     "title": "Delete videos straight from the Stats page",
     "intent": "You can now delete a video right from the Stats page instead of hunting for it on the main library. The 'Videos & audio' and 'Most watched' tables get a trash button on each row (tap once, tap again to confirm), and the Duplicates section lets you expand a group and remove the exact extra copies you don't want. Deletions go to the Trash, so they're recoverable, and the buttons only appear if your account can manage the library. Handy for pruning: sort by size, delete the biggest, done."
+  },
+  {
+    "version": "1.163.0",
+    "date": "2026-08-21",
+    "title": "The keyboard shortcuts window fits without scrolling (plus a hidden toy)",
+    "intent": "On a computer, the keyboard shortcuts window (press ?) now shows every shortcut in two columns so you can see them all at once without scrolling. On phones it looks the same as before. And a little easter egg: there are now four arrows tucked in the top-right corner of that window. Press your arrow keys, or click them, and each one plays a musical note so you can tap out a tune. Be the best FileTube FileTube Revolution player."
   }
 ]

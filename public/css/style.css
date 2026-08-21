@@ -10102,6 +10102,88 @@ html[data-modern="on"] .video-uploader {
   max-width: 560px;
 }
 
+/* v1.163 (Dean): the DDR easter egg + the desktop two-column layout.
+   ------------------------------------------------------------------
+   The header lays out as: title | (arrow row + close). `margin-left:auto` on
+   the arrow row consumes the free space so the arrows + close sit together at
+   the top-right, the title stays left. */
+.shortcuts-ddr {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.shortcuts-ddr-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: var(--fs-lg);
+  line-height: 1; /* token-exempt: glyph centering */
+  color: var(--text-secondary);
+  background-color: var(--btn-bg);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.shortcuts-ddr-arrow:hover {
+  color: var(--text-primary);
+}
+
+/* The light-up: a matching arrow key (or a click) lands the arrow on the brand
+   accent and pops it. The class is toggled off/on in JS to retrigger. */
+.shortcuts-ddr-arrow.ddr-hit {
+  color: var(--on-accent);
+  background-color: var(--yt-red);
+  border-color: var(--yt-red);
+  animation: ddr-arrow-pop var(--dur-slow) ease-out;
+}
+
+@keyframes ddr-arrow-pop {
+  0% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shortcuts-ddr-arrow.ddr-hit { animation: none; }
+}
+
+/* The Discord-homage subtitle, sitting just under the title/arrow header. */
+.shortcuts-subtitle {
+  margin-top: calc(-1 * var(--space-3));
+  margin-bottom: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  font-style: italic; /* token-exempt: easter-egg flavour text */
+}
+
+/* Desktop: widen the window and flow the shortcut groups into two columns so
+   the whole reference fits without scrolling (Dean's ask). Mobile keeps the
+   single 560px column. `break-inside: avoid` keeps a group whole across the
+   column break; the DOM-first group loses its top margin so column one starts
+   flush at the top (column two's first group keeps its natural top margin --
+   browsers vary on top-of-column margins, so the two columns need not align
+   pixel-perfect). */
+@media (min-width: 769px) {
+  .shortcuts-modal {
+    max-width: 840px;
+  }
+  .shortcuts-body {
+    column-count: 2;
+    column-gap: var(--space-10);
+  }
+  .shortcuts-body .shortcuts-group {
+    break-inside: avoid;
+  }
+  .shortcuts-body .shortcuts-group:first-child {
+    margin-top: 0;
+  }
+}
+
 .shortcuts-group {
   margin-top: var(--space-6);
 }
