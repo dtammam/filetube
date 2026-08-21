@@ -347,9 +347,13 @@ function renderDuplicates(root, report, canModify) {
 // on canModify); the server DELETE is RBAC-guarded regardless. `armRef` is a shared
 // {current} so only ONE delete is armed at a time; `onDeleted` removes the row
 // after a confirmed 2xx (NON-OPTIMISTIC - failure re-enables). RE-RENDER SAFETY
-// (the v1.159 Trash-arm class): armState is closure-local so a sort/filter rebuild
-// makes the new button idle, and the table's onRender calls resetStatsArm to clear
-// the shared armRef - an arm can never survive a re-render into a one-tap delete.
+// (the v1.159 Trash-arm class): the LOAD-BEARING guarantee is that armState is
+// closure-local, so a sort/filter/update rebuild makes every new button idle - a
+// re-render can NEVER leave a hot one-tap delete. resetStatsArm (the table's
+// onRender) is DEFENSIVE belt-and-suspenders on top: it clears a dangling armRef
+// pointer to the now-detached armed button. The safety holds without it (gate:
+// neutering resetStatsArm keeps the destructive suite green; the closure-local
+// armState is what binds).
 function buildStatsDeleteAction(mediaId, title, onDeleted, armRef) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -400,9 +404,10 @@ function buildStatsDeleteAction(mediaId, title, onDeleted, armRef) {
   return btn;
 }
 
-// The buildSortableTable onRender hook for a table with delete buttons: clear the
-// shared armed reference so a sort/filter re-render leaves no logically-armed item
-// (its rebuilt button is idle; this drops the stale pointer). The v1.159 lesson.
+// The buildSortableTable onRender hook: DEFENSIVE cleanup - drop the shared armed
+// pointer after a re-render so it never dangles at a detached button. NOT the
+// load-bearing safety (that is the closure-local armState in buildStatsDeleteAction,
+// which rebuilds every button idle); this is belt-and-suspenders only.
 function resetStatsArm(armRef) {
   if (armRef && armRef.current && typeof armRef.current._disarm === 'function') armRef.current._disarm();
   if (armRef) armRef.current = null;

@@ -36,10 +36,20 @@ rebuilds the row) must not let an arm survive a re-render into a one-tap delete.
   the card/notification two-tap arm (nextArmState) -> DELETE /api/videos/:id ->
   deleteResultToast -> onDeleted(). NON-OPTIMISTIC (row leaves only on 2xx; failure
   re-enables). One-armed-at-a-time via a shared `armRef`.
-- RE-RENDER SAFETY (v1.159): each button's armState is closure-local (a re-render
-  rebuilds it idle) AND buildSortableTable's `onRender` resets the shared armRef, so
-  a sort/filter can never strand a hot one-tap delete. Bound by a behavioural test
-  (arm, re-sort, tap the SAME item -> it re-ARMS, never deletes).
+- RE-RENDER SAFETY (v1.159): the LOAD-BEARING guarantee is the closure-local
+  armState (a re-render rebuilds every button idle) - bound by a behavioural test
+  (arm, re-sort, tap the SAME item -> it re-ARMS, never deletes). `onRender`/
+  resetStatsArm is DEFENSIVE belt-and-suspenders only (clears a dangling armRef);
+  the two gate seats disagreed on whether it binds, and a self-run mutation settled
+  it: neutering resetStatsArm keeps the destructive suite green.
+
+## Accepted residual (disclosed, both seats non-blocking)
+- Duplicates in-place: deleting a copy that does NOT collapse the group updates the
+  row DATA (recomputeRowAggregates) + the open panel, but the group row's
+  Copies/Total/Reclaim CELLS stay stale until the next sort/filter re-render.
+  Cosmetic, self-heals; a table.update would fix the cells but re-collapse the
+  expando (worse for multi-copy pruning), and it matches Dean's "totals refresh
+  next load" ruling. Left as-is.
 - Row removal: keep the table handle from buildSortableTable; on delete, splice the
   row from the caller's `rows` array and call `table.update(rows)` (removal survives
   a later sort).
