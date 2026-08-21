@@ -1131,6 +1131,16 @@ function chapterBoundaryPercents(chapters, total) {
 // so every stored preference survives the widening.
 var PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
+// v1.161 (Dean): a finite, positive playback rate or 1. Used to carry the video's
+// live rate onto the background-audio sidecar at handoff - the hidden <audio>
+// defaults to 1x, so a 1.5x video otherwise dropped to 1x in the background (and
+// only for VIDEO: audio-only never hands off, so it was immune). Guards a 0/NaN/
+// negative rate (which would freeze or reverse the sidecar) back to 1.
+function sanitizePlaybackRate(rate) {
+  var n = Number(rate);
+  return (isFinite(n) && n > 0) ? n : 1;
+}
+
 // v1.50.3 (Dean, item A): the blind cycle (`nextPlaybackRate`, v1.22.1) is
 // RETIRED -- with eight rates, click-to-cycle means up to seven clicks
 // through speeds you don't want, so #speed-btn now opens a PICKER (the
@@ -1478,6 +1488,8 @@ if (typeof module !== 'undefined' && module.exports) {
     resumeCountdownLabel,
     // v1.161 (Dean): the configurable countdown length (0 = instant).
     resolveResumeCountdownSeconds,
+    // v1.161 (Dean): the background-audio playback-rate carry sanitizer.
+    sanitizePlaybackRate,
     // v1.134: video tap-to-pause reveal-consume + stamp-idempotence decisions.
     shouldConsumeTapAsReveal,
     nextVideoTapStamp,
@@ -3021,6 +3033,16 @@ if (typeof module !== 'undefined' && module.exports) {
     // required settingOn + status ready).
     armBackgroundAudioSrc();
     bgAudioEl.currentTime = resumeTime;
+    // v1.161 (Dean device bug): carry the video's LIVE playback rate onto the
+    // sidecar. The hidden <audio> defaults to 1x, so a 1.5x video dropped to 1x
+    // the moment it backgrounded (audio-only never hands off, hence it was immune;
+    // the video element keeps its own rate, so foregrounding was already correct).
+    // Set AFTER armBackgroundAudioSrc() - a src assignment resets an <audio>
+    // element's rate to its default - and set defaultPlaybackRate too so any
+    // internal reload preserves it (the initPlaybackRate posture).
+    var carriedRate = sanitizePlaybackRate(mediaPlayer && mediaPlayer.playbackRate);
+    bgAudioEl.playbackRate = carriedRate;
+    bgAudioEl.defaultPlaybackRate = carriedRate;
     // F-D (v1.27.1): `trigger` documents WHICH path fired -- 'visibility'
     // (the original, from handleBackgroundLifecycle) or 'pause-hidden' (the
     // new iOS-pre-pause-ordering trigger, from handlePossibleIOSPrePauseHandoff).
