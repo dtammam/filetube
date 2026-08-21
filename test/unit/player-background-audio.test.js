@@ -1466,6 +1466,25 @@ test('v1.161.3: the keep-alive starts on a successful handoff and STOPS on BOTH 
     'stop fully releases the element (pause + strip src)');
 });
 
+test('v1.161.3 (gate WARNING): stopBgKeepAlive is mirrored at ALL FOUR bgAudioEl-teardown sites, not just release* - a backgrounded teardownMediaState/close must not orphan a silent loop', () => {
+  // The gate found a reachable orphan: a background-triggered close()/load() drops
+  // bgAudioState to INLINE_VIDEO, so the foreground swapback (which only acts on
+  // BACKGROUND_AUDIO) never stops it. Enumerate every writer that tears down
+  // bgAudioEl and require stopBgKeepAlive() adjacent to each (the "mirror the
+  // teardown at every writer" discipline).
+  // Match each site's stopBgKeepAlive() immediately followed by the inline
+  // bgAudioEl teardown (adjacency on the full source - the two extra sites carry
+  // distinct comments so we can pin each one).
+  assert.match(PLAYER_JS, /stopBgKeepAlive\(\); \/\/ v1\.161\.3: the keep-alive dies with the sidecar at EVERY teardown site[\s\S]{0,80}?if \(bgAudioEl\) \{/,
+    'teardownMediaState stops the keep-alive with its bgAudioEl teardown');
+  assert.match(PLAYER_JS, /stopBgKeepAlive\(\); \/\/ v1\.161\.3: a CLOSE can never leave the keep-alive playing[\s\S]{0,80}?if \(bgAudioEl\) \{/,
+    'close() stops the keep-alive with its bgAudioEl teardown');
+  // Exactly four call sites (release-sidecar, release-session, teardown, close);
+  // a NEW bgAudioEl-teardown site must add its own and move this count consciously.
+  const stops = (PLAYER_JS.match(/stopBgKeepAlive\(\);/g) || []).length;
+  assert.strictEqual(stops, 4, 'stopBgKeepAlive is invoked at exactly the 4 teardown sites; found ' + stops);
+});
+
 test('v1.161.3: setup.js and player.js agree on the keep-alive key byte-for-byte', () => {
   const SETUP_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'setup.js'), 'utf8');
   const SETUP_HTML = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'setup.html'), 'utf8');

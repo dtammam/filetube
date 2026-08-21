@@ -7367,6 +7367,7 @@ if (typeof module !== 'undefined' && module.exports) {
     bgAudioStatusKnown = null;
     prePauseCandidateAt = 0; // v1.27.2: a candidate never survives into a new load
     pendingAutoplayNextOnForeground = false; // F2: never let a deferred advance survive into a genuinely new load
+    stopBgKeepAlive(); // v1.161.3: the keep-alive dies with the sidecar at EVERY teardown site (gate: enumerate all 4 bgAudioEl-teardowns, not just release*)
     if (bgAudioEl) {
       try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }
     }
@@ -8073,6 +8074,7 @@ if (typeof module !== 'undefined' && module.exports) {
     chapterLoop = null;
     if (chapterNowEl) chapterNowEl.classList.remove('chapter-looping');
     pendingAutoplayNextOnForeground = false; // F2: never let a deferred advance survive a CLOSE either
+    stopBgKeepAlive(); // v1.161.3: a CLOSE can never leave the keep-alive playing either (all 4 teardown sites)
     if (bgAudioEl) {
       try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }
     }
