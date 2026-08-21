@@ -918,13 +918,13 @@ test("F-A source-lock: all four bgAudioEl play/pause listeners (progress-saver s
   );
   assert.match(
     body,
-    /bgAudioEl\.addEventListener\('play', function \(\) \{ if \(activeMediaElement\(\) !== bgAudioEl\) return; setPlaybackState\('playing'\); updatePositionState\(true\); \}\);/,
-    "expected the MediaSession 'playing' listener to be guarded"
+    /bgAudioEl\.addEventListener\('play', function \(\) \{ if \(activeMediaElement\(\) !== bgAudioEl\) return; setPlaybackState\('playing'\); updatePositionState\(true\); cancelKeepAliveIdleStop\(\); \}\);/,
+    "expected the MediaSession 'playing' listener to be guarded (v1.161.5: also cancels the idle-stop on a background resume)"
   );
   assert.match(
     body,
-    /bgAudioEl\.addEventListener\('pause', function \(\) \{ if \(activeMediaElement\(\) !== bgAudioEl\) return; setPlaybackState\('paused'\); updatePositionState\(true\); \}\);/,
-    "expected the MediaSession 'paused' listener to be guarded"
+    /bgAudioEl\.addEventListener\('pause', function \(\) \{ if \(activeMediaElement\(\) !== bgAudioEl\) return; setPlaybackState\('paused'\); updatePositionState\(true\); armKeepAliveIdleStop\(\); \}\);/,
+    "expected the MediaSession 'paused' listener to be guarded (v1.161.5: also arms the idle-stop on a background pause)"
   );
 });
 
@@ -1479,10 +1479,11 @@ test('v1.161.3 (gate WARNING): stopBgKeepAlive is mirrored at ALL FOUR bgAudioEl
     'teardownMediaState stops the keep-alive with its bgAudioEl teardown');
   assert.match(PLAYER_JS, /stopBgKeepAlive\(\); \/\/ v1\.161\.3: a CLOSE can never leave the keep-alive playing[\s\S]{0,80}?if \(bgAudioEl\) \{/,
     'close() stops the keep-alive with its bgAudioEl teardown');
-  // Exactly four call sites (release-sidecar, release-session, teardown, close);
-  // a NEW bgAudioEl-teardown site must add its own and move this count consciously.
+  // Exactly FIVE call sites: the 4 bgAudioEl-teardown sites (release-sidecar,
+  // release-session, teardown, close) + the v1.161.5 paused-idle timeout. A NEW
+  // bgAudioEl-teardown site must add its own and move this count consciously.
   const stops = (PLAYER_JS.match(/stopBgKeepAlive\(\);/g) || []).length;
-  assert.strictEqual(stops, 4, 'stopBgKeepAlive is invoked at exactly the 4 teardown sites; found ' + stops);
+  assert.strictEqual(stops, 5, 'stopBgKeepAlive: the 4 teardown sites + the idle-stop timeout; found ' + stops);
 });
 
 test('v1.161.3: setup.js and player.js agree on the keep-alive key byte-for-byte', () => {
@@ -1526,4 +1527,35 @@ test('buildSilentWavDataUri: a valid mono 8-bit PCM WAV of the requested duratio
   assert.match(junk, /^data:audio\/wav;base64,/);
   const jbuf = Buffer.from(junk.replace(/^data:audio\/wav;base64,/, ''), 'base64');
   assert.ok(jbuf.length >= 45, 'a non-empty silent clip even for 0/0 (defaults applied)');
+});
+
+// ---- v1.161.5 (Dean): paused-idle auto-stop (#1) + lock-screen position damp (#2) ----
+
+test('v1.161.5 #1: the keep-alive auto-stops after a bounded paused-idle window - armed on a background pause, cancelled on resume/stop', () => {
+  // The battery footgun: a video paused-and-forgotten in the background would loop
+  // silently forever. Bound it - arm a timeout on the sidecar's background pause,
+  // cancel it on resume (both bgAudioEl guarded listeners) and on teardown.
+  assert.match(PLAYER_JS, /var KEEPALIVE_IDLE_STOP_MS = 5 \* 60 \* 1000;/, 'a bounded idle window (5 min)');
+  const arm = /function armKeepAliveIdleStop\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(arm, 'armKeepAliveIdleStop body');
+  assert.match(arm[1], /cancelKeepAliveIdleStop\(\);/, 'arming clears any prior timer first');
+  assert.match(arm[1], /if \(!keepAliveEl\) return;/, 'no keep-alive running -> nothing to time out');
+  assert.match(arm[1], /setTimeout\(function \(\) \{[\s\S]*?stopBgKeepAlive\(\);[\s\S]*?\}, KEEPALIVE_IDLE_STOP_MS\)/, 'the timeout stops the keep-alive');
+  // Wired onto the sidecar's own guarded pause/play listeners.
+  assert.match(PLAYER_JS, /setPlaybackState\('paused'\); updatePositionState\(true\); armKeepAliveIdleStop\(\);/, 'a background pause ARMS the idle-stop');
+  assert.match(PLAYER_JS, /setPlaybackState\('playing'\); updatePositionState\(true\); cancelKeepAliveIdleStop\(\);/, 'a background resume CANCELS it');
+  // And a teardown/stop cancels it so no timer outlives the keep-alive.
+  assert.match(PLAYER_JS, /function stopBgKeepAlive\(\) \{\s*cancelKeepAliveIdleStop\(\);/, 'stopBgKeepAlive cancels the idle timer first');
+});
+
+test('v1.161.5 #2: the keep-alive re-asserts the REAL position so iOS never surfaces the silent loop\'s timeline on the lock screen', () => {
+  const start = /function startBgKeepAlive\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(start, 'startBgKeepAlive body');
+  // A timeupdate listener on the keep-alive element forces the real position
+  // (the active sidecar's, frozen or moving) over the loop's 0->3s counter.
+  assert.match(start[1], /keepAliveEl\.addEventListener\('timeupdate', function \(\) \{\s*if \(activeMediaElement\(\) === bgAudioEl\) updatePositionState\(true\);\s*\}\);/,
+    'each keep-alive tick force-asserts the real sidecar position');
+  // And an immediate assert right after play, before iOS reads the loop.
+  assert.match(start[1], /keepAliveEl\.play\(\)[\s\S]*?updatePositionState\(true\); \/\/ #2/,
+    'the real position is asserted immediately on start');
 });
