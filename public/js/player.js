@@ -355,6 +355,34 @@ function isFreshPrePauseCandidate(candidateAt, nowMs, windowMs) {
 // ever was.
 var SILENT_PRIME_SRC = 'data:audio/wav;base64,UklGRiwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQgAAACAgICAgICAgA==';
 
+// v1.161.4 (Dean): a runtime-built silent WAV data URI of arbitrary length. The
+// background keep-alive (v1.161.3) originally looped SILENT_PRIME_SRC, but that is
+// an ~1ms (8-sample) clip - as a keep-alive it restarts its loop ~1000x/second,
+// and iOS throttles that in the background so the keep-alive sustained only ONE
+// pause/resume cycle before the process was reclaimed (Dean's device report:
+// "worked after the first pause/play but then stopped"). A long, rarely-restarting
+// silent clip reads to iOS as sustained audio. 8-bit mono PCM, every sample = 128
+// (unsigned silence). Pure + exported; encodes via btoa in BOTH the browser and
+// node:test (btoa is a Node global) - no Buffer (which the browser ruleset rejects).
+function buildSilentWavDataUri(seconds, sampleRate) {
+  var rate = (sampleRate > 0) ? Math.floor(sampleRate) : 8000;
+  var n = Math.max(1, Math.floor(((seconds > 0) ? seconds : 1) * rate)); // 8-bit mono sample bytes
+  var buffer = new ArrayBuffer(44 + n);
+  var view = new DataView(buffer);
+  var bytes = new Uint8Array(buffer);
+  function putStr(off, s) { for (var i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); }
+  putStr(0, 'RIFF'); view.setUint32(4, 36 + n, true); putStr(8, 'WAVE');
+  putStr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true); view.setUint32(28, rate, true); view.setUint16(32, 1, true); view.setUint16(34, 8, true);
+  putStr(36, 'data'); view.setUint32(40, n, true);
+  for (var k = 0; k < n; k++) bytes[44 + k] = 128;
+  var bin = '';
+  for (var m = 0; m < bytes.length; m++) bin += String.fromCharCode(bytes[m]);
+  // btoa exists in the browser AND in node:test (Node 16+ global), so no Buffer
+  // fallback is needed - and Buffer would trip the browser ruleset's no-undef.
+  return 'data:audio/wav;base64,' + ((typeof btoa === 'function') ? btoa(bin) : '');
+}
+
 // D2 (v1.24.0, T13): the resume-prompt threshold, in seconds, applied by
 // `shouldShowResumeOverlay` below. Saved progress AT OR ABOVE this still
 // shows the "Resume at..." overlay; progress below it is treated as too
@@ -1500,6 +1528,8 @@ if (typeof module !== 'undefined' && module.exports) {
     formatPauseProvenance,
     // v1.161.1: the MediaSession-action arrival detail line (element + bg state).
     formatMsActionDetail,
+    // v1.161.4: the runtime silent-WAV builder (the background keep-alive's loop).
+    buildSilentWavDataUri,
     // v1.132: resume-countdown config + ticking-label builders.
     resolveResumeCountdownConfig,
     resumeCountdownLabel,
@@ -1710,6 +1740,12 @@ if (typeof module !== 'undefined' && module.exports) {
   // v1.161.3 (Dean, EXPERIMENTAL): the inaudible background keep-alive element -
   // created lazily ONLY when the opt-in setting is on (see startBgKeepAlive).
   var keepAliveEl = null;
+  // v1.161.4: the ~3s silent loop the keep-alive plays, built once on first use.
+  var keepAliveSilenceSrc = null;
+  function getKeepAliveSilenceSrc() {
+    if (!keepAliveSilenceSrc) keepAliveSilenceSrc = buildSilentWavDataUri(3, 8000);
+    return keepAliveSilenceSrc;
+  }
   // v1.35 gate fix (adversarial): the EAGER BUFFER half of the pre-arm
   // (preload=auto + load(), a real network fetch of the whole sidecar per
   // watch) is gated on preExtractAudio -- the setting whose copy discloses
@@ -3682,7 +3718,7 @@ if (typeof module !== 'undefined' && module.exports) {
       keepAliveEl.style.display = 'none';
       host.appendChild(keepAliveEl);
     }
-    keepAliveEl.src = SILENT_PRIME_SRC; // re-arm (stop strips it)
+    keepAliveEl.src = getKeepAliveSilenceSrc(); // v1.161.4: a ~3s silent loop (re-armed; stop strips it)
     keepAliveEl.loop = true;
     try { var p = keepAliveEl.play(); if (p && p.catch) p.catch(function () {}); } catch (_) { /* gesture wall - best effort */ }
     recordLifecycleEvent('bgKeepAlive:start', {});

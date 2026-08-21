@@ -1442,7 +1442,7 @@ test('v1.161.3: the keep-alive is opt-in (a no-op when off) - startBgKeepAlive g
   assert.ok(m, 'startBgKeepAlive body');
   assert.match(m[1], /^\s*if \(!isBgKeepAliveEnabled\(\)\) return;/, 'the setting gate is the FIRST statement (strict no-op when off)');
   assert.match(m[1], /keepAliveEl = document\.createElement\('audio'\)/, 'the element is created LAZILY inside start (never on the default path)');
-  assert.match(m[1], /keepAliveEl\.src = SILENT_PRIME_SRC;/, 'it loops the existing silent clip, no hand-rolled blob');
+  assert.match(m[1], /keepAliveEl\.src = getKeepAliveSilenceSrc\(\);/, 'v1.161.4: it loops a LONG generated silent clip (not the ~1ms prime clip iOS throttled)');
   assert.match(m[1], /keepAliveEl\.loop = true;/);
   assert.match(PLAYER_JS, /function isBgKeepAliveEnabled\(\) \{\s*try \{ return localStorage\.getItem\(BG_KEEPALIVE_STORAGE_KEY\) === '1'; \}/,
     'enabled only by the literal 1 (absent/garbage = OFF, the default)');
@@ -1495,4 +1495,35 @@ test('v1.161.3: setup.js and player.js agree on the keep-alive key byte-for-byte
   assert.match(SETUP_JS, /if \(e\.target\.checked\) localStorage\.setItem\(BG_KEEPALIVE_KEY, '1'\);\s*else localStorage\.removeItem\(BG_KEEPALIVE_KEY\);/,
     'stores 1 only when checked (absent = off)');
   assert.ok(!SERVER_JS.includes('filetube_bg_keepalive'), 'device-local only - never a server surface');
+});
+
+// ---- v1.161.4 (Dean): the runtime silent-WAV builder for the keep-alive loop ----
+
+test('buildSilentWavDataUri: a valid mono 8-bit PCM WAV of the requested duration, all-silence, cached long clip for the keep-alive', () => {
+  const { buildSilentWavDataUri } = require('../../public/js/player.js');
+  const uri = buildSilentWavDataUri(3, 8000);
+  assert.match(uri, /^data:audio\/wav;base64,/, 'a WAV data URI');
+  const buf = Buffer.from(uri.replace(/^data:audio\/wav;base64,/, ''), 'base64');
+  // Header sanity.
+  assert.strictEqual(buf.toString('ascii', 0, 4), 'RIFF');
+  assert.strictEqual(buf.toString('ascii', 8, 12), 'WAVE');
+  assert.strictEqual(buf.toString('ascii', 12, 16), 'fmt ');
+  assert.strictEqual(buf.toString('ascii', 36, 40), 'data');
+  assert.strictEqual(buf.readUInt16LE(22), 1, 'mono');
+  assert.strictEqual(buf.readUInt32LE(24), 8000, 'the requested sample rate');
+  assert.strictEqual(buf.readUInt16LE(34), 8, '8-bit samples');
+  // Length: 44-byte header + rate*seconds sample bytes, and the data-chunk size agrees.
+  const n = 8000 * 3;
+  assert.strictEqual(buf.length, 44 + n, 'header + 3s of samples');
+  assert.strictEqual(buf.readUInt32LE(4), 36 + n, 'the RIFF chunk-size field (offset 4) = 36 + dataLen');
+  assert.strictEqual(buf.readUInt32LE(40), n, 'the data-chunk size field matches');
+  // Every sample is 128 == unsigned-8-bit silence (spot-check across the range).
+  for (const i of [44, 44 + 1, 44 + Math.floor(n / 2), buf.length - 1]) {
+    assert.strictEqual(buf[i], 128, `sample at ${i} is silence`);
+  }
+  // Degrades safely on garbage input (still a >=1-sample valid WAV).
+  const junk = buildSilentWavDataUri(0, 0);
+  assert.match(junk, /^data:audio\/wav;base64,/);
+  const jbuf = Buffer.from(junk.replace(/^data:audio\/wav;base64,/, ''), 'base64');
+  assert.ok(jbuf.length >= 45, 'a non-empty silent clip even for 0/0 (defaults applied)');
 });

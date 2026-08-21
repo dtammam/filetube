@@ -1936,5 +1936,11 @@
     "date": "2026-08-21",
     "title": "Try-it setting for resuming background audio while locked",
     "intent": "A small fix and an opt-in experiment. The fix: the lock screen no longer shows 'Pause' when a resume didn't actually take, so the button always matches reality. The experiment (Settings, off by default): 'keep background video-audio controllable while locked' - when a video's audio is playing in the background, it keeps the app awake so you can un-pause it from your AirPods or the lock screen, which normally can't be done once the audio stops. It costs extra battery while playing in the background, so it's off unless you turn it on to try it."
+  },
+  {
+    "version": "1.161.4",
+    "date": "2026-08-21",
+    "title": "Improving the keep-locked-controllable experiment",
+    "intent": "A tune-up to the opt-in 'keep background video-audio controllable while locked' setting from the last release. It now works in a way iOS is more likely to honor for longer, so pausing and resuming from your AirPods or the lock screen should keep working past the first time, not just once. Still off by default and still uses extra battery while it's on - turn it on to try it."
   }
 ]
