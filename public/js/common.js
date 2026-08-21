@@ -7371,6 +7371,46 @@ function shouldOpenShortcuts(e, activeTag, isEditable) {
  * comment credited (gate S12). That rule only matters to code that sets
  * `.hidden`, and this dialog never does; it is irrelevant here.
  */
+// v1.163 (Dean): the DDR "Keyboard Combos" easter egg - a hidden mini-synth in the
+// shortcuts window (the Discord homage). Four arrows sit in the header top-right;
+// pressing the matching arrow key (or clicking one) lights it up and plays a note,
+// so you can noodle out a melody - "be the best FileTube FileTube Revolution
+// player". The notes are a consonant C-D-E-G run (no dissonant clash). Pure map so
+// it is testable; the synth is Web Audio, fully guarded (silent + never throws
+// where AudioContext is absent, e.g. node:test).
+var DDR_ARROWS = [
+  { key: 'ArrowLeft', glyph: '←', freq: 523.25 },  // C5
+  { key: 'ArrowDown', glyph: '↓', freq: 587.33 },  // D5
+  { key: 'ArrowUp', glyph: '↑', freq: 659.25 },    // E5
+  { key: 'ArrowRight', glyph: '→', freq: 783.99 }, // G5
+];
+function ddrNoteForArrow(key) {
+  for (var i = 0; i < DDR_ARROWS.length; i++) if (DDR_ARROWS[i].key === key) return DDR_ARROWS[i].freq;
+  return 0;
+}
+var ddrAudioCtx = null;
+function playDdrNote(freq) {
+  if (typeof window === 'undefined' || !(Number(freq) > 0)) return;
+  var Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  try {
+    if (!ddrAudioCtx) ddrAudioCtx = new Ctx();
+    if (ddrAudioCtx.state === 'suspended' && typeof ddrAudioCtx.resume === 'function') ddrAudioCtx.resume();
+    var now = ddrAudioCtx.currentTime;
+    var osc = ddrAudioCtx.createOscillator();
+    var gain = ddrAudioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = Number(freq);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.22, now + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+    osc.connect(gain);
+    gain.connect(ddrAudioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.34);
+  } catch (_) { /* audio unavailable -> the easter egg is silent, never throws */ }
+}
+
 function buildShortcutsModal(doc, handlers) {
   const d = doc || document;
   const onClose = handlers && typeof handlers.onClose === 'function' ? handlers.onClose : null;
@@ -7392,6 +7432,27 @@ function buildShortcutsModal(doc, handlers) {
   const title = d.createElement('h3');
   title.textContent = 'Keyboard shortcuts';
   header.appendChild(title);
+
+  // v1.163 (Dean): the DDR arrow row (top-right, before the close) + the mini-synth.
+  // Each arrow lights + plays a note on its key press or a click; `ddrByKey` lets
+  // the key handler (openShortcutsModal) reach the same play+pulse.
+  const ddrByKey = {};
+  const ddrRow = d.createElement('div');
+  ddrRow.className = 'shortcuts-ddr';
+  ddrRow.setAttribute('aria-hidden', 'true'); // decorative easter egg; keys still work
+  const pulse = (el) => { el.classList.remove('ddr-hit'); void el.offsetWidth; el.classList.add('ddr-hit'); };
+  DDR_ARROWS.forEach((a) => {
+    const arrow = d.createElement('button');
+    arrow.type = 'button';
+    arrow.className = 'shortcuts-ddr-arrow';
+    arrow.tabIndex = -1;
+    arrow.textContent = a.glyph;
+    arrow.addEventListener('click', () => { playDdrNote(a.freq); pulse(arrow); });
+    ddrRow.appendChild(arrow);
+    ddrByKey[a.key] = { el: arrow, freq: a.freq, pulse: () => pulse(arrow) };
+  });
+  header.appendChild(ddrRow);
+
   const closeBtn = d.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'oneoff-modal-close';
@@ -7400,6 +7461,18 @@ function buildShortcutsModal(doc, handlers) {
   if (onClose) closeBtn.addEventListener('click', onClose);
   header.appendChild(closeBtn);
   modal.appendChild(header);
+
+  // The DDR pun subtitle (the Discord homage).
+  const subtitle = d.createElement('div');
+  subtitle.className = 'shortcuts-subtitle';
+  subtitle.textContent = 'Master these to be the best FileTube FileTube Revolution player';
+  modal.appendChild(subtitle);
+
+  // v1.163: the groups live in a BODY wrapper so it can flow into two columns on
+  // desktop (no scroll) while the header/subtitle/note stay full width.
+  const body = d.createElement('div');
+  body.className = 'shortcuts-body';
+  modal.appendChild(body);
 
   KEYBOARD_SHORTCUT_GROUPS.forEach((group) => {
     const section = d.createElement('div');
@@ -7432,7 +7505,7 @@ function buildShortcutsModal(doc, handlers) {
       row.appendChild(descEl);
       section.appendChild(row);
     });
-    modal.appendChild(section);
+    body.appendChild(section);
   });
 
   // v1.47.8 gate CRITICAL 1 + WARNING 3: the original one-liner ("while a video
@@ -7460,7 +7533,7 @@ function buildShortcutsModal(doc, handlers) {
   modal.appendChild(note);
 
   backdrop.appendChild(modal);
-  return { backdrop, modal, closeBtn };
+  return { backdrop, modal, closeBtn, ddrByKey };
 }
 
 // The live dialog, or null. Module-level so `?` cannot stack two of them.
@@ -7479,6 +7552,12 @@ function isShortcutsModalOpen() {
 
 function closeShortcutsModal() {
   if (!shortcutsModalState) return;
+  // v1.163: unbind the DDR arrow-key handler so the arrows go back to the player
+  // (seek/volume) the moment the window closes -- it is a capture-phase document
+  // listener, so leaving it bound would silently eat every arrow key session-wide.
+  if (shortcutsModalState.ddrKeyHandler && typeof document !== 'undefined') {
+    try { document.removeEventListener('keydown', shortcutsModalState.ddrKeyHandler, true); } catch (_) { /* ignore */ }
+  }
   // REMOVED from the DOM, not hidden -- the v1.17.0 lesson: a modal backdrop
   // left in the tree with an author `display` is a full-viewport, invisible
   // touch/click eater.
@@ -7510,6 +7589,22 @@ function openShortcutsModal() {
   if (shortcutsModalState.closeBtn && typeof shortcutsModalState.closeBtn.focus === 'function') {
     shortcutsModalState.closeBtn.focus();
   }
+  // v1.163 (Dean): the DDR mini-synth - while the window is open, the arrow keys
+  // PLAY a note (they never seek/volume/scroll behind the dialog). Capture-phase
+  // so it consumes the arrows before player.js's seek/volume handlers see them;
+  // only the four arrows are intercepted, so Esc/Tab/? are untouched. Removed on
+  // close (closeShortcutsModal).
+  const ddrByKey = shortcutsModalState.ddrByKey || {};
+  const ddrKeyHandler = (e) => {
+    if (!e || !ddrByKey[e.key]) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const a = ddrByKey[e.key];
+    playDdrNote(a.freq);
+    a.pulse();
+  };
+  document.addEventListener('keydown', ddrKeyHandler, true);
+  shortcutsModalState.ddrKeyHandler = ddrKeyHandler;
 }
 
 /**
@@ -13020,6 +13115,8 @@ if (typeof module !== 'undefined' && module.exports) {
     isRestorableSessionUrl, shouldRestoreSession, LAST_SESSION_KEY, LAST_SESSION_MAX_AGE_MS,
     // v1.47.8: the keyboard-shortcuts reference.
     KEYBOARD_SHORTCUT_GROUPS, shouldOpenShortcuts, buildShortcutsModal,
+    // v1.163: the DDR easter-egg mini-synth (pure key->note map + the synth).
+    DDR_ARROWS, ddrNoteForArrow, playDdrNote,
     // v1.50.3: the D dark/light toggle's pure decision.
     shouldToggleThemeKey,
     openShortcutsModal, closeShortcutsModal, isDesktopViewport, SHORTCUTS_DESKTOP_QUERY,
