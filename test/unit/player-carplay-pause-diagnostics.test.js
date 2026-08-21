@@ -61,6 +61,22 @@ test('formatPauseProvenance: missing element/state degrade to "?" and a bare cal
   assert.strictEqual(formatPauseProvenance(), 'el=? gestureAge=none suppressed=0 ended=0 state=?');
 });
 
+// ---- formatMsActionDetail (pure, v1.161.1) ---------------------------------
+// The AirPods/lock-screen play-pause diagnostic: which element the action will
+// act on + bg state + backgrounded-ness, at ARRIVAL time.
+
+test('formatMsActionDetail: records the element, bg state, and hidden/visible', () => {
+  const { formatMsActionDetail } = require('../../public/js/player.js');
+  assert.strictEqual(
+    formatMsActionDetail({ el: 'bgAudio', state: 'background_audio', hidden: true }),
+    'el=bgAudio state=background_audio hidden');
+  assert.strictEqual(
+    formatMsActionDetail({ el: 'video', state: 'inline_video', hidden: false }),
+    'el=video state=inline_video visible');
+  assert.strictEqual(formatMsActionDetail({}), 'el=? state=? visible', 'missing fields degrade safely');
+  assert.strictEqual(formatMsActionDetail(), 'el=? state=? visible', 'no ctx is harmless');
+});
+
 // ---- source-level regression locks (no DOM harness - see module comment) ---
 
 const PLAYER_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
@@ -71,8 +87,13 @@ test('setMediaSessionAction records every action ARRIVAL before the real handler
   // The wrapper: non-null handlers record first, then delegate with the
   // action details intact; null (clearing a registration - per-direction
   // prev/next availability, teardown clears) is preserved as null.
-  assert.match(body[1], /var wrapped = handler \? function \(details\) \{\s*recordLifecycleEvent\('msAction:' \+ action, \{\}\);\s*return handler\(details\);\s*\} : null;/,
-    'the msAction wrapper must record BEFORE delegating and preserve null');
+  // v1.161.1: the record now carries a formatMsActionDetail line naming the
+  // element the action will act on (bgAudio sidecar vs paused video) + bg state,
+  // read at ARRIVAL time - the decisive evidence for the AirPods play-pause bug.
+  assert.match(body[1], /var wrapped = handler \? function \(details\) \{/, 'the wrapper guards on a non-null handler');
+  assert.match(body[1], /recordLifecycleEvent\('msAction:' \+ action, \{[\s\S]*?detail: formatMsActionDetail\(\{[\s\S]*?el: activeMediaElement\(\) === bgAudioEl \? 'bgAudio' : 'video',[\s\S]*?state: bgAudioState,[\s\S]*?hidden: [\s\S]*?document\.visibilityState === 'hidden',[\s\S]*?\}\),[\s\S]*?\}\);[\s\S]*?return handler\(details\);/,
+    'the wrapper records the element+state detail BEFORE delegating');
+  assert.match(body[1], /\} : null;/, 'a null handler is preserved as null (clears keep clearing)');
   assert.match(body[1], /setActionHandler\(action, wrapped\)/, 'the WRAPPED handler must be what registers');
   assert.ok(!/setActionHandler\(action, handler\)/.test(body[1]), 'the raw handler must never register directly (that silently drops the diagnostics)');
 });
