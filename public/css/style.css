@@ -10525,6 +10525,55 @@ html[data-modern="on"] .video-uploader {
   color: var(--text-primary);
 }
 
+/* v1.161 (Dean): the per-video delete button - a SIBLING of the row anchor,
+   left of the dismiss X. Resting: a de-emphasised trash glyph; hover/focus goes
+   red; ARMED reveals the "Sure?" confirm on a red fill (mirrors .card-delete-btn's
+   two-tap reveal). Media rows only. */
+.notif-row-delete {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: var(--size-control);
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 0.7; /* token-exempt: resting de-emphasis, full on hover/focus/armed */
+  touch-action: manipulation;
+}
+
+.notif-row-delete:hover,
+.notif-row-delete:focus-visible {
+  opacity: 1;
+  color: var(--yt-red);
+}
+
+.notif-row-delete .icon-delete {
+  width: 16px;
+  height: 16px;
+}
+
+.notif-row-delete .notif-row-delete-confirm {
+  display: none;
+  white-space: nowrap;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+}
+
+.notif-row-delete.notif-row-delete-armed {
+  opacity: 1;
+  color: var(--on-overlay);
+  background-color: var(--yt-red);
+}
+
+.notif-row-delete.notif-row-delete-armed .notif-row-delete-confirm {
+  display: inline;
+}
+
 .notif-row {
   display: flex;
   align-items: center;
@@ -11895,6 +11944,10 @@ a.queue-upnext-next:hover {
 
   /* notification dismiss x: 36px -> a centered 44px box, same glyph */
   .notif-row-dismiss { min-width: var(--size-touch); min-height: var(--size-touch); }
+
+  /* v1.161 (Dean): the delete button gets the same 44px touch floor so it does
+     not sit fat-finger-close to the dismiss X on a phone. */
+  .notif-row-delete { min-width: var(--size-touch); min-height: var(--size-touch); }
 
   /* queue remove x: pad-only -> a centered 44px box, same glyph */
   .queue-row-remove {

@@ -652,6 +652,21 @@ function resolveResumeCountdownConfig(rawEnabled, rawAction) {
   };
 }
 
+// v1.161 (Dean): the countdown length in seconds, configurable in Setup ->
+// Playback. Integer, clamped to [0, 30] (a countdown past ~30s is just a stuck
+// prompt); absent/garbage -> the default 5. ZERO is special and handled by the
+// wiring: 0 fires the configured action IMMEDIATELY with no prompt at all
+// ("instant resume"). Read LIVE at every prompt, like the config above.
+var RESUME_COUNTDOWN_SECONDS_DEFAULT = 5;
+var RESUME_COUNTDOWN_SECONDS_MAX = 30;
+function resolveResumeCountdownSeconds(raw) {
+  var n = parseInt(raw, 10);
+  if (!isFinite(n)) return RESUME_COUNTDOWN_SECONDS_DEFAULT; // absent/garbage
+  if (n < 0) return 0;
+  if (n > RESUME_COUNTDOWN_SECONDS_MAX) return RESUME_COUNTDOWN_SECONDS_MAX;
+  return n;
+}
+
 // The armed button's ticking label, e.g. "Resume · 4". One builder so the
 // per-tick rewrite and the initial arm can never drift in format.
 function resumeCountdownLabel(baseLabel, secondsLeft) {
@@ -1116,6 +1131,16 @@ function chapterBoundaryPercents(chapters, total) {
 // so every stored preference survives the widening.
 var PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
+// v1.161 (Dean): a finite, positive playback rate or 1. Used to carry the video's
+// live rate onto the background-audio sidecar at handoff - the hidden <audio>
+// defaults to 1x, so a 1.5x video otherwise dropped to 1x in the background (and
+// only for VIDEO: audio-only never hands off, so it was immune). Guards a 0/NaN/
+// negative rate (which would freeze or reverse the sidecar) back to 1.
+function sanitizePlaybackRate(rate) {
+  var n = Number(rate);
+  return (isFinite(n) && n > 0) ? n : 1;
+}
+
 // v1.50.3 (Dean, item A): the blind cycle (`nextPlaybackRate`, v1.22.1) is
 // RETIRED -- with eight rates, click-to-cycle means up to seven clicks
 // through speeds you don't want, so #speed-btn now opens a PICKER (the
@@ -1461,6 +1486,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.132: resume-countdown config + ticking-label builders.
     resolveResumeCountdownConfig,
     resumeCountdownLabel,
+    // v1.161 (Dean): the configurable countdown length (0 = instant).
+    resolveResumeCountdownSeconds,
+    // v1.161 (Dean): the background-audio playback-rate carry sanitizer.
+    sanitizePlaybackRate,
     // v1.134: video tap-to-pause reveal-consume + stamp-idempotence decisions.
     shouldConsumeTapAsReveal,
     nextVideoTapStamp,
@@ -3004,6 +3033,16 @@ if (typeof module !== 'undefined' && module.exports) {
     // required settingOn + status ready).
     armBackgroundAudioSrc();
     bgAudioEl.currentTime = resumeTime;
+    // v1.161 (Dean device bug): carry the video's LIVE playback rate onto the
+    // sidecar. The hidden <audio> defaults to 1x, so a 1.5x video dropped to 1x
+    // the moment it backgrounded (audio-only never hands off, hence it was immune;
+    // the video element keeps its own rate, so foregrounding was already correct).
+    // Set AFTER armBackgroundAudioSrc() - a src assignment resets an <audio>
+    // element's rate to its default - and set defaultPlaybackRate too so any
+    // internal reload preserves it (the initPlaybackRate posture).
+    var carriedRate = sanitizePlaybackRate(mediaPlayer && mediaPlayer.playbackRate);
+    bgAudioEl.playbackRate = carriedRate;
+    bgAudioEl.defaultPlaybackRate = carriedRate;
     // F-D (v1.27.1): `trigger` documents WHICH path fired -- 'visibility'
     // (the original, from handleBackgroundLifecycle) or 'pause-hidden' (the
     // new iOS-pre-pause-ordering trigger, from handlePossibleIOSPrePauseHandoff).
@@ -4128,13 +4167,27 @@ if (typeof module !== 'undefined' && module.exports) {
             // autoplay-advance direct-resume branch just below.
             resumeDirectly(savedProgress);
           } else {
-            if (resumeTimeStr) resumeTimeStr.textContent = formatDuration(savedProgress);
-            if (resumeOverlay) resumeOverlay.style.display = 'flex';
-            mediaPlayer.autoplay = false;
-            // v1.132: arm the auto-fire countdown on the prompt's default
-            // button (config read LIVE here, like the threshold above; OFF
-            // -> this is a no-op and the prompt behaves exactly as before).
-            startResumeCountdown(gen);
+            // v1.161 (Dean): 0 seconds = INSTANT resume - no prompt at all. When
+            // the countdown is enabled AND its length is 0, fire the configured
+            // action's button immediately (the SAME handler the countdown would
+            // auto-click, so behaviour is identical by construction) and never
+            // show the overlay. Any positive length keeps the prompt + countdown.
+            // Config + length read LIVE here, like the threshold above.
+            var rcConfig = getStoredResumeCountdownConfig();
+            if (rcConfig.enabled && getStoredResumeCountdownSeconds() === 0) {
+              if (resumeTimeStr) resumeTimeStr.textContent = formatDuration(savedProgress);
+              var instantBtn = rcConfig.action === 'beginning' ? resumeNoBtn : resumeYesBtn;
+              if (instantBtn) instantBtn.click();
+              else resumeDirectly(savedProgress); // belt: buttons absent -> still resume
+            } else {
+              if (resumeTimeStr) resumeTimeStr.textContent = formatDuration(savedProgress);
+              if (resumeOverlay) resumeOverlay.style.display = 'flex';
+              mediaPlayer.autoplay = false;
+              // v1.132: arm the auto-fire countdown on the prompt's default
+              // button (config read LIVE here, like the threshold above; OFF
+              // -> this is a no-op and the prompt behaves exactly as before).
+              startResumeCountdown(gen);
+            }
           }
         } else if (savedProgress > 5) {
           // Overlay suppressed (autoplay just advanced here, or savedProgress
@@ -5253,11 +5306,12 @@ if (typeof module !== 'undefined' && module.exports) {
   // convention); read LIVE at every prompt, never cached at boot.
   var RESUME_COUNTDOWN_STORAGE_KEY = 'filetube_resume_countdown';
   var RESUME_COUNTDOWN_ACTION_STORAGE_KEY = 'filetube_resume_countdown_action';
-  // Dean (intake ruling 2): 5 seconds, variableized so a future tweak is one
-  // edit - the CSS fill animation reads THIS value (inline animationDuration
-  // in startResumeCountdown below), so the visual can never drift from the
-  // timer.
-  var RESUME_COUNTDOWN_SECONDS = 5;
+  // v1.161 (Dean): the countdown length is now configurable (Setup -> Playback).
+  // Key MUST match setup.js's RESUME_COUNTDOWN_SECONDS_KEY. Read LIVE at every
+  // prompt (like the config), clamped to [0,30] with a default of 5; the CSS fill
+  // animation reads the SAME resolved value (inline --resume-countdown-duration in
+  // startResumeCountdown), so the visual can never drift from the timer.
+  var RESUME_COUNTDOWN_SECONDS_STORAGE_KEY = 'filetube_resume_countdown_seconds';
 
   function getStoredResumeCountdownConfig() {
     try {
@@ -5267,6 +5321,14 @@ if (typeof module !== 'undefined' && module.exports) {
       );
     } catch (_) {
       return resolveResumeCountdownConfig(null, null); // storage disabled -> the defaults (on, resume)
+    }
+  }
+
+  function getStoredResumeCountdownSeconds() {
+    try {
+      return resolveResumeCountdownSeconds(localStorage.getItem(RESUME_COUNTDOWN_SECONDS_STORAGE_KEY));
+    } catch (_) {
+      return resolveResumeCountdownSeconds(null); // storage disabled -> the default (5)
     }
   }
 
@@ -5311,10 +5373,12 @@ if (typeof module !== 'undefined' && module.exports) {
     resumeCountdownBtn = btn;
     resumeCountdownBaseLabel = btn.textContent;
     btn.classList.add('countdown-armed');
-    // The CSS fill reads the SAME constant the timer runs on (see the
-    // constant's comment) - custom property, consumed by style.css.
-    btn.style.setProperty('--resume-countdown-duration', RESUME_COUNTDOWN_SECONDS + 's');
-    var secondsLeft = RESUME_COUNTDOWN_SECONDS;
+    // v1.161: the configured length (0 is handled at the prompt site as an
+    // instant fire, so this path always sees >=1). The CSS fill reads the SAME
+    // resolved value the timer runs on - custom property, consumed by style.css.
+    var countdownSeconds = getStoredResumeCountdownSeconds();
+    btn.style.setProperty('--resume-countdown-duration', countdownSeconds + 's');
+    var secondsLeft = countdownSeconds;
     btn.textContent = resumeCountdownLabel(resumeCountdownBaseLabel, secondsLeft);
     // Any interaction with the player surface cancels the auto-fire and
     // leaves the prompt up: capture-phase so a tap/keypress is seen before

@@ -1364,3 +1364,38 @@ test('v1.35 gate fix (adversarial): the eager BUFFER (preload=auto + load) is ga
   assert.match(PLAYER_JS, /preExtractAudioCached = !!\(settings && settings\.preExtractAudio\);/,
     'cached off the same per-load settings fetch as its siblings');
 });
+
+// ---- v1.161 (Dean): the background-audio handoff carries the video's RATE ----
+// Bug: a video played at 1.5x dropped to 1x the moment it backgrounded, because
+// the hidden <audio> sidecar defaults to 1x and the handoff never copied the
+// rate. Audio-only was immune (it never hands off); the video element kept its
+// own rate, so foregrounding was instantly correct. Pure sanitizer tested by
+// invocation; the DOM assignment locked against source (no jsdom audio harness).
+
+const { sanitizePlaybackRate } = require('../../public/js/player.js');
+
+test('sanitizePlaybackRate: a finite positive rate passes; 0/NaN/negative/garbage -> 1', () => {
+  assert.equal(sanitizePlaybackRate(1.5), 1.5);
+  assert.equal(sanitizePlaybackRate(0.25), 0.25);
+  assert.equal(sanitizePlaybackRate(2), 2);
+  assert.equal(sanitizePlaybackRate('1.75'), 1.75, 'numeric strings coerce');
+  for (const bad of [0, -1, NaN, Infinity, null, undefined, 'fast', {}]) {
+    assert.equal(sanitizePlaybackRate(bad), 1, `${String(bad)} -> 1 (never freeze/reverse the sidecar)`);
+  }
+});
+
+test('v1.161: attemptBackgroundAudioHandoff copies the live video rate onto bgAudioEl, AFTER arm + seek', () => {
+  const body = /function attemptBackgroundAudioHandoff\(trigger\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(body, 'handoff body not found');
+  // The rate carry must read the LIVE mediaPlayer rate through the sanitizer and
+  // assign BOTH playbackRate and defaultPlaybackRate (so an internal reload keeps
+  // it), and it must sit AFTER armBackgroundAudioSrc() (a src set resets an
+  // <audio> element's rate) - bind the ordering so a future edit can't hoist it
+  // above the arm and get silently clobbered.
+  assert.match(body[1], /armBackgroundAudioSrc\(\);[\s\S]*?var carriedRate = sanitizePlaybackRate\(mediaPlayer && mediaPlayer\.playbackRate\);[\s\S]*?bgAudioEl\.playbackRate = carriedRate;[\s\S]*?bgAudioEl\.defaultPlaybackRate = carriedRate;/,
+    'the rate carry reads the live video rate and sets both bg rates, after the arm');
+  // And it must precede the play() - a rate set after play has already started at 1x.
+  const carryIdx = body[1].indexOf('bgAudioEl.playbackRate = carriedRate;');
+  const playIdx = body[1].indexOf('bgAudioEl.play()');
+  assert.ok(carryIdx !== -1 && playIdx !== -1 && carryIdx < playIdx, 'the rate is set BEFORE play() starts');
+});

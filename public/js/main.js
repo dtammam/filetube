@@ -1821,6 +1821,15 @@ const PreviewCards = (function () {
       currentTotal = typeof data.total === 'number' ? data.total : currentItems.length;
       renderMediaGridPage(currentItems, { append: false });
       updateItemCountBadge();
+      // v1.161 (Dean): a SUCCESSFUL search clears the box so the next search needs
+      // no X-press first; a zero-result search KEEPS the query (its X still resets
+      // it). The header still shows "Search results for ..." so the query is never
+      // lost. Results ride the `?search=` URL, so clearing the box never wipes them.
+      // Dispatch 'input' so the clear-X (common.js) hides now that the box is empty.
+      if (searchQuery && searchInput && shouldClearSearchInputAfterResults(currentTotal)) {
+        searchInput.value = '';
+        try { searchInput.dispatchEvent(new Event('input')); } catch (_) { /* jsdom-less test shells */ }
+      }
       // v1.122 (Dean): a `?root=` CHANNEL-folder view titles itself with the
       // channel's resolved display name ("NESTALGIA") once page 0 shows every
       // item agreeing on one name -- so tapping a channel name never lands on a
