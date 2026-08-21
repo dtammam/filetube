@@ -80,6 +80,56 @@
 
 ## Shipped
 
+### v1.161.0 - search-clear + resume timing + notification delete + bg-speed fix (Dean) (2026-08-21)
+
+A four-item QoL branch; one item (the notification delete) is DESTRUCTIVE, so the
+whole wave took the FULL two-reviewer gate.
+
+- **Search box clears on a successful search.** After a search that returns
+  results, `#search-input` clears so the next search needs no clear-X first; a
+  ZERO-result search KEEPS the query (its X still resets it). Results ride the
+  `?search=` URL, so emptying the box never wipes them; the "Search results for..."
+  header still shows what was searched. Pure `shouldClearSearchInputAfterResults`.
+- **Configurable resume-countdown length, 0 = instant.** The v1.132 resume prompt's
+  hardcoded 5s is now a Setup -> Playback field (0-30, default 5). 0 = resume
+  instantly with no prompt at all - it fires the configured action's button (the
+  SAME resume/beginning mapping the countdown uses, so no progress-wipe on the
+  default) with no overlay shown. `resolveResumeCountdownSeconds` (player read,
+  clamp) + `clampResumeSeconds` (setup write, blank -> default). Resume prompt only;
+  autoplay-next untouched.
+- **Delete button on video notifications (DESTRUCTIVE).** A per-video delete on
+  MEDIA notification rows (podcast/engine rows excluded), a SIBLING of the row
+  anchor so a tap can't navigate (no stopPropagation - the v1.153 scar), a two-tap
+  "Sure?" arm (`nextArmState`), `DELETE /api/videos/:id` -> Trash (recoverable, the
+  same flow a card uses), NON-OPTIMISTIC (row leaves only on a 2xx). Arm state is
+  render-local so a panel reopen never inherits a hot one-tap delete (the v1.159
+  Trash-arm class - the adversarial seat built the exact reopen attack and could
+  not reproduce it). The row-removal + focus-keep + badge-reconcile is now a shared
+  helper used by both the dismiss X and delete. 44px mobile touch floor.
+- **Video background-play no longer drops 1.5x to 1x.** ROOT CAUSE (evidence, not
+  theory - Dean's "the video is instantly right on foreground" was the tell): the
+  hidden `<audio>` sidecar that carries background audio for VIDEO
+  (`attemptBackgroundAudioHandoff`) seeked and played but never copied the rate, so
+  it defaulted to 1x. Audio-only never hands off (it was immune); the video element
+  keeps its own rate (instantly correct on return). Fix: carry the live rate onto
+  the sidecar at handoff (after the src arm, before play; playbackRate +
+  defaultPlaybackRate), guarded by a new `sanitizePlaybackRate`.
+
+FULL gate, both seats APPROVE, ONE docs-only fix round (two non-blocking
+SUGGESTIONs: a mildly-optimistic comment softened, a spec line corrected). The
+adversarial seat's destroy-the-data pass found no one-tap-delete, no wrong-item
+delete, no armed-survives-reopen leak, and no progress-wipe on instant resume - all
+mutation-confirmed. Dual-Node 7377/7377 on v22.23.1 AND v24.14.0.
+
+DEVICE probes: (1) search something -> the box clears; search that finds nothing ->
+the query + X stay. (2) Set resume seconds to 0 -> a video resumes instantly with
+no prompt; a custom value counts down that long; NOTE the 0=instant path is gated
+on the resume-countdown toggle being ON (toggle off = the prompt always waits) -
+confirm that matches your mental model. (3) On a video notification, the trash
+button: one tap shows "Sure?", a second deletes to Trash; it never opens the video;
+it is not fat-finger-close to the X. (4) Play a video at 1.5x, background it -> the
+audio stays at 1.5x.
+
 ### v1.160.3 - swipe-back from anywhere, not just the left edge (Dean) (2026-08-20)
 
 Dean: "any chance we can have the drag be from the middle versus the edge?" He
