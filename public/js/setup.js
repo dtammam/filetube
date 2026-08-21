@@ -631,6 +631,8 @@ const RESUME_COUNTDOWN_ACTION_KEY = 'filetube_resume_countdown_action';
 const RESUME_COUNTDOWN_SECONDS_KEY = 'filetube_resume_countdown_seconds';
 // v1.136.1: MUST match AUDIO_SESSION_DECLARE_STORAGE_KEY in player.js.
 const AUDIO_SESSION_DECLARE_KEY = 'filetube_audio_session_declare';
+// v1.161.3 (Dean): MUST match BG_KEEPALIVE_STORAGE_KEY in player.js.
+const BG_KEEPALIVE_KEY = 'filetube_bg_keepalive';
 
 // v1.161 (Dean): clamp a raw seconds input to the SAME contract as player.js's
 // resolveResumeCountdownSeconds - integer [0,30]. Returns null for absent/blank
@@ -1781,6 +1783,22 @@ function wireStaticControls(signal) {
       try {
         if (e.target.checked) localStorage.setItem(AUDIO_SESSION_DECLARE_KEY, '1');
         else localStorage.removeItem(AUDIO_SESSION_DECLARE_KEY);
+      } catch (_) { /* storage disabled/full -- best-effort only */ }
+    }, { signal });
+  }
+
+  // v1.161.3 (Dean): the background keep-alive experiment - same immediate-apply
+  // device-local pattern. Key MUST match BG_KEEPALIVE_STORAGE_KEY in player.js;
+  // stores '1' only when checked (absent = OFF, the default - real battery cost).
+  const bgKeepAliveCheck = document.getElementById('bg-keepalive-check');
+  if (bgKeepAliveCheck) {
+    let rawKeepAlive = null;
+    try { rawKeepAlive = localStorage.getItem(BG_KEEPALIVE_KEY); } catch (_) { /* storage disabled -- show default (off) */ }
+    bgKeepAliveCheck.checked = rawKeepAlive === '1';
+    bgKeepAliveCheck.addEventListener('change', (e) => {
+      try {
+        if (e.target.checked) localStorage.setItem(BG_KEEPALIVE_KEY, '1');
+        else localStorage.removeItem(BG_KEEPALIVE_KEY);
       } catch (_) { /* storage disabled/full -- best-effort only */ }
     }, { signal });
   }

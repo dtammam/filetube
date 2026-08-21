@@ -80,6 +80,43 @@
 
 ## Shipped
 
+### v1.161.3 - honest lock-screen glyph + opt-in background keep-alive (Dean) (2026-08-21)
+
+Follow-up to Dean's "background video-audio pauses fine when locked but won't
+resume" report. A three-agent code review (state map + resume-failure trace +
+v1.161.2-delta/iOS-reality) concluded the code path is symmetric/correct - the
+resume failure is iOS suspending the audio-less backgrounded process (a platform
+wall, aggravated by v1.161.2 making pause genuinely stop the audio). Two
+website-side responses + a reference doc:
+
+- **Honest glyph.** The MediaSession `play` handler set `playbackState='playing'`
+  unconditionally after `el.play()`, so a rejected resume (suspended session /
+  gesture wall) flipped the lock screen to show Pause while nothing resumed. Now
+  promise-gated: resolve -> 'playing', reject -> honest 'paused'.
+- **Keep-alive (EXPERIMENTAL, Settings checkbox, default OFF).** Plays an inaudible
+  loop (the existing `SILENT_PRIME_SRC`) alongside the sidecar and keeps it running
+  THROUGH a background pause, so iOS keeps the process awake and the resume handler
+  survives. Started on a confirmed handoff; stopped at ALL FOUR bgAudioEl-teardown
+  sites (release-sidecar, release-session, teardownMediaState, close) - a force-close
+  can never leave even silent audio alive. Strict no-op when off (element never
+  created). Real battery cost + device-dependent effectiveness, hence opt-in.
+- **`docs/references/ios-background-audio-behavior-map.md`** - the 3-state behavior
+  map, root cause, fixable-vs-iOS-wall, and the native (Capacitor/AVPlayer) endgame.
+
+SLIM gate (adversarial), ONE fix round. The seat caught a reachable orphan (the
+keep-alive was stopped at only 2 of the 4 teardown sites -> a background close()
+could leave a silent loop draining battery into the next foreground video); fixed
+by mirroring stopBgKeepAlive at all four, bound by an exact-count source-lock,
+mutation-confirmed. Every safety claim (no-op-when-off, no-leak, honest glyph,
+listener isolation, key agreement) measured + mutation-verified. Dual-Node
+7384/7384 on v22.23.1 AND v24.14.0.
+
+DEVICE: the honest-glyph fix needs no action. To try the keep-alive: Settings ->
+"keep background video-audio controllable while locked" -> on; then play a video,
+background/lock, pause from AirPods, and see if a second squeeze now RESUMES it -
+weighed against the extra battery (the app won't sleep while backgrounded). Report
+back and we decide whether it earns its place or we wait for native.
+
 ### v1.161.2 - fix: AirPods/lock-screen play-pause during background play (Dean) (2026-08-21)
 
 The v1.161.1 diagnostics paid off: Dean's lifecycle-log screenshot CONFIRMED the

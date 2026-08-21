@@ -306,11 +306,12 @@ test("F1 source-lock: the MediaSession 'pause' action handler routes mediaPlayer
   assert.ok(ifIdx !== -1 && elseIdx !== -1 && ifIdx < elseIdx, 'expected the mediaPlayer branch before the bare bgAudioEl fallback');
 });
 
-test("F1 source-lock: the MediaSession 'play' action handler is UNCHANGED (still a bare el.play(), regardless of which element is active) -- only 'pause' needed the fix, since a lock-screen Play can never be misread as the iOS pre-pause-ordering signal", () => {
+test("F1 source-lock: the MediaSession 'play' action handler never routes through the pause-suppression wrapper (a lock-screen Play can never be misread as the iOS pre-pause-ordering signal). v1.161.3: it now promise-gates the playbackState set (honest glyph), but still just plays the active element.", () => {
   const match = /setMediaSessionAction\('play', function \(\) \{([\s\S]*?)\n {2}\}\);/.exec(PLAYER_JS);
   assert.ok(match, 'expected to find the MediaSession \'play\' action handler\'s source body');
-  assert.match(match[1], /el\.play\(\)\.catch\(function \(\) \{\}\);/);
+  assert.match(match[1], /var attempt = el\.play\(\);/, 'still just plays the active element (no suppression, no per-element branch)');
   assert.ok(!/pauseSuppressingHandoff/.test(match[1]), 'the play handler must never reference the pause-suppression wrapper');
+  assert.ok(!/el === mediaPlayer/.test(match[1]), 'the play handler must never branch on which element is active (unlike pause)');
 });
 
 test('F1 comment-lock: the F-D trigger never asserts the old "a real user pause only ever happens while visible" premise, and (v1.27.2) documents the pre-pause candidate bridge for the visible-at-pause ordering', () => {
@@ -1416,4 +1417,82 @@ test('v1.161: attemptBackgroundAudioHandoff copies the live video rate onto bgAu
   const carryIdx = body[1].indexOf('bgAudioEl.playbackRate = carriedRate;');
   const playIdx = body[1].indexOf('bgAudioEl.play()');
   assert.ok(carryIdx !== -1 && playIdx !== -1 && carryIdx < playIdx, 'the rate is set BEFORE play() starts');
+});
+
+// ---- v1.161.3 (Dean): honest lock-screen glyph + the keep-alive experiment ----
+
+test("v1.161.3: the msAction 'play' handler claims playbackState='playing' ONLY if play() resolved (no lying glyph on a failed resume)", () => {
+  // On a locked resume the play() can reject (suspended session / gesture wall);
+  // the OLD code set 'playing' unconditionally, so the lock screen flipped to
+  // Pause while nothing resumed. Bind the promise-gated form: success -> 'playing',
+  // rejection -> 'paused', and the no-promise fallback stays best-effort.
+  const m = /setMediaSessionAction\('play', function \(\) \{([\s\S]*?)\n {2}\}\);/.exec(PLAYER_JS);
+  assert.ok(m, "the 'play' action handler body");
+  assert.match(m[1], /var attempt = el\.play\(\);/, 'captures the play() promise');
+  assert.match(m[1], /attempt\.then\(function \(\) \{ setPlaybackState\('playing'\); \}, function \(\) \{ setPlaybackState\('paused'\); \}\)/,
+    'resolve -> playing, reject -> honest paused');
+  // The unconditional `el.play().catch(()=>{}); setPlaybackState('playing');` form
+  // (the lying glyph) must be gone.
+  assert.doesNotMatch(m[1], /el\.play\(\)\.catch\(function \(\) \{\}\);\s*setPlaybackState\('playing'\);/,
+    'the unconditional set-playing (lying glyph) is removed');
+});
+
+test('v1.161.3: the keep-alive is opt-in (a no-op when off) - startBgKeepAlive gates on the setting and lazily creates the element', () => {
+  const m = /function startBgKeepAlive\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(m, 'startBgKeepAlive body');
+  assert.match(m[1], /^\s*if \(!isBgKeepAliveEnabled\(\)\) return;/, 'the setting gate is the FIRST statement (strict no-op when off)');
+  assert.match(m[1], /keepAliveEl = document\.createElement\('audio'\)/, 'the element is created LAZILY inside start (never on the default path)');
+  assert.match(m[1], /keepAliveEl\.src = SILENT_PRIME_SRC;/, 'it loops the existing silent clip, no hand-rolled blob');
+  assert.match(m[1], /keepAliveEl\.loop = true;/);
+  assert.match(PLAYER_JS, /function isBgKeepAliveEnabled\(\) \{\s*try \{ return localStorage\.getItem\(BG_KEEPALIVE_STORAGE_KEY\) === '1'; \}/,
+    'enabled only by the literal 1 (absent/garbage = OFF, the default)');
+});
+
+test('v1.161.3: the keep-alive starts on a successful handoff and STOPS on BOTH foreground-return and force-close teardown (the v1.25.x no-leak law)', () => {
+  // Start: right after the handoff-success setPlaybackState('playing').
+  assert.match(PLAYER_JS, /recordLifecycleEvent\('bgAudio:ok'[\s\S]{0,300}?startBgKeepAlive\(\);/,
+    'started on bgAudio:ok (a confirmed handoff)');
+  // Stop: the sidecar-release path (foreground swap-back).
+  const rel = /function releaseBackgroundAudioElement\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(rel, 'releaseBackgroundAudioElement body');
+  assert.match(rel[1], /^\s*stopBgKeepAlive\(\);/, 'foreground return stops the keep-alive');
+  // Stop: the terminal teardown / force-close path (a killed app must not keep
+  // even silent audio alive).
+  const teardown = /function releaseAudioSession\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(teardown, 'releaseAudioSession body');
+  assert.match(teardown[1], /^\s*stopBgKeepAlive\(\);/, 'force-close/teardown stops the keep-alive');
+  // Full stop strips src (no leaked resource / no audio past a kill).
+  assert.match(PLAYER_JS, /function stopBgKeepAlive\(\) \{[\s\S]*?keepAliveEl\.pause\(\); keepAliveEl\.removeAttribute\('src'\); keepAliveEl\.load\(\);/,
+    'stop fully releases the element (pause + strip src)');
+});
+
+test('v1.161.3 (gate WARNING): stopBgKeepAlive is mirrored at ALL FOUR bgAudioEl-teardown sites, not just release* - a backgrounded teardownMediaState/close must not orphan a silent loop', () => {
+  // The gate found a reachable orphan: a background-triggered close()/load() drops
+  // bgAudioState to INLINE_VIDEO, so the foreground swapback (which only acts on
+  // BACKGROUND_AUDIO) never stops it. Enumerate every writer that tears down
+  // bgAudioEl and require stopBgKeepAlive() adjacent to each (the "mirror the
+  // teardown at every writer" discipline).
+  // Match each site's stopBgKeepAlive() immediately followed by the inline
+  // bgAudioEl teardown (adjacency on the full source - the two extra sites carry
+  // distinct comments so we can pin each one).
+  assert.match(PLAYER_JS, /stopBgKeepAlive\(\); \/\/ v1\.161\.3: the keep-alive dies with the sidecar at EVERY teardown site[\s\S]{0,80}?if \(bgAudioEl\) \{/,
+    'teardownMediaState stops the keep-alive with its bgAudioEl teardown');
+  assert.match(PLAYER_JS, /stopBgKeepAlive\(\); \/\/ v1\.161\.3: a CLOSE can never leave the keep-alive playing[\s\S]{0,80}?if \(bgAudioEl\) \{/,
+    'close() stops the keep-alive with its bgAudioEl teardown');
+  // Exactly four call sites (release-sidecar, release-session, teardown, close);
+  // a NEW bgAudioEl-teardown site must add its own and move this count consciously.
+  const stops = (PLAYER_JS.match(/stopBgKeepAlive\(\);/g) || []).length;
+  assert.strictEqual(stops, 4, 'stopBgKeepAlive is invoked at exactly the 4 teardown sites; found ' + stops);
+});
+
+test('v1.161.3: setup.js and player.js agree on the keep-alive key byte-for-byte', () => {
+  const SETUP_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'setup.js'), 'utf8');
+  const SETUP_HTML = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'setup.html'), 'utf8');
+  const SERVER_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'server.js'), 'utf8');
+  assert.match(PLAYER_JS, /var BG_KEEPALIVE_STORAGE_KEY = 'filetube_bg_keepalive';/);
+  assert.match(SETUP_JS, /const BG_KEEPALIVE_KEY = 'filetube_bg_keepalive';/);
+  assert.match(SETUP_HTML, /<input type="checkbox" id="bg-keepalive-check" \/>/, 'the Settings checkbox exists');
+  assert.match(SETUP_JS, /if \(e\.target\.checked\) localStorage\.setItem\(BG_KEEPALIVE_KEY, '1'\);\s*else localStorage\.removeItem\(BG_KEEPALIVE_KEY\);/,
+    'stores 1 only when checked (absent = off)');
+  assert.ok(!SERVER_JS.includes('filetube_bg_keepalive'), 'device-local only - never a server surface');
 });
