@@ -209,7 +209,7 @@ function renderRecordTiles(root, statsData) {
 // desc = the ranking; the old "N." rank prefix is dropped since sorting redefines
 // it). "Plays" is the LOCAL watch counter (db.viewCounts, times played HERE) -
 // NOT the source "views" cards show (the v1.48 W6 distinction, preserved).
-function renderMostWatched(root, mostWatched) {
+function renderMostWatched(root, mostWatched, canModify) {
   clearChildren(root);
   if (!Array.isArray(mostWatched) || mostWatched.length === 0) {
     const empty = document.createElement('div');
@@ -218,8 +218,10 @@ function renderMostWatched(root, mostWatched) {
     root.appendChild(empty);
     return;
   }
-  const rows = mostWatched.map((e) => ({ title: (e.title || '').toString(), plays: Number(e.viewCount) || 0 }));
-  buildSortableTable(root, {
+  const rows = mostWatched.map((e) => ({ id: (e.id || '').toString(), title: (e.title || '').toString(), plays: Number(e.viewCount) || 0 }));
+  const armRef = { current: null };
+  let table = null;
+  const cfg = {
     caption: 'Most watched',
     columns: [
       { key: 'title', label: 'Title', format: (r) => r.title },
@@ -229,19 +231,31 @@ function renderMostWatched(root, mostWatched) {
     filter: { text: (r) => r.title, placeholder: 'Filter by title...' },
     defaultSort: { key: 'plays', dir: 'desc' },
     persistKey: 'ft-stable:stats-most-watched',
-  });
+  };
+  if (canModify) {
+    cfg.actions = (row) => (row && row.id)
+      ? buildStatsDeleteAction(row.id, row.title, () => {
+        const idx = rows.indexOf(row);
+        if (idx >= 0) rows.splice(idx, 1);
+        if (table) table.update(rows);
+      }, armRef)
+      : null;
+    cfg.onRender = () => resetStatsArm(armRef);
+  }
+  table = buildSortableTable(root, cfg);
 }
 
 // ---- v1.41.11 (Dean): duplicates report -------------------------------------
 // Renders GET /api/duplicates (see lib/stats.js computeDuplicateReport for the
 // two sections' semantics). Same idioms as the rest of this page: textContent
 // only (filenames are user-controlled), inline styles (this page owns no CSS),
-// and the existing container classes. READ-ONLY -- deliberately no delete
-// affordance anywhere in here. Long reports render the top groups per section
-// with an explicit "N more in the CSV" line -- never a silent cap.
+// and the existing container classes. v1.162 (Dean): library-write users get a
+// per-group expand toggle -> per-copy two-tap delete (buildDuplicateExpando);
+// read-only users see the report unchanged. Long reports render the top groups
+// per section with an explicit "N more in the CSV" line -- never a silent cap.
 const DUPLICATE_GROUPS_RENDER_CAP = 50;
 
-function renderDuplicates(root, report) {
+function renderDuplicates(root, report, canModify) {
   clearChildren(root);
   const rep = report || {};
   const nameGroups = Array.isArray(rep.nameGroups) ? rep.nameGroups : [];
@@ -291,7 +305,9 @@ function renderDuplicates(root, report) {
     }));
     const host = document.createElement('div');
     root.appendChild(host);
-    buildSortableTable(host, {
+    const armRef = { current: null };
+    let table = null;
+    const cfg = {
       caption: title,
       columns: [
         { key: 'key', label: 'Duplicate', wrap: true, format: (r) => dupNameCell(r.group, r.key) },
@@ -303,7 +319,17 @@ function renderDuplicates(root, report) {
       filter: { text: (r) => r.key, placeholder: 'Filter by name...' },
       defaultSort: { key: 'wasted', dir: 'desc' },
       persistKey,
-    });
+    };
+    // v1.162: library-write users get an expand toggle per group -> per-copy deletes.
+    if (canModify) {
+      cfg.actions = (row, tr) => buildDuplicateExpando(row, tr, armRef, () => {
+        const idx = rows.indexOf(row);
+        if (idx >= 0) rows.splice(idx, 1);
+        if (table) table.update(rows); // group is no longer a duplicate -> drop the row
+      });
+      cfg.onRender = () => resetStatsArm(armRef);
+    }
+    table = buildSortableTable(host, cfg);
     if (groups.length > DUPLICATE_GROUPS_RENDER_CAP) {
       const more = document.createElement('div');
       more.className = 'theme-card-blurb';
@@ -315,12 +341,137 @@ function renderDuplicates(root, report) {
   renderSection('Same video, different filenames', idGroups, (group) => `Video id [${group.key}]`, 'ft-stable:stats-dup-id');
 }
 
+// v1.162 (Dean): the shared two-tap delete affordance for the Stats tables that
+// list deletable media - the SAME card/notification flow (DELETE /api/videos/:id
+// -> Trash, recoverable). Only rendered for library-write users (the caller gates
+// on canModify); the server DELETE is RBAC-guarded regardless. `armRef` is a shared
+// {current} so only ONE delete is armed at a time; `onDeleted` removes the row
+// after a confirmed 2xx (NON-OPTIMISTIC - failure re-enables). RE-RENDER SAFETY
+// (the v1.159 Trash-arm class): armState is closure-local so a sort/filter rebuild
+// makes the new button idle, and the table's onRender calls resetStatsArm to clear
+// the shared armRef - an arm can never survive a re-render into a one-tap delete.
+function buildStatsDeleteAction(mediaId, title, onDeleted, armRef) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'stable-delete-btn';
+  btn.setAttribute('aria-label', 'Delete ' + (title || 'this item'));
+  btn.title = 'Delete';
+  const icon = document.createElement('i');
+  icon.className = 'icon-delete';
+  const confirm = document.createElement('span');
+  confirm.className = 'stable-delete-confirm';
+  confirm.textContent = 'Sure?';
+  btn.appendChild(icon);
+  btn.appendChild(confirm);
+  let armState = 'idle';
+  let armTimer = null;
+  const disarm = () => {
+    armState = 'idle';
+    btn.classList.remove('stable-delete-armed');
+    if (armTimer) { clearTimeout(armTimer); armTimer = null; }
+    if (armRef && armRef.current === btn) armRef.current = null;
+  };
+  btn._disarm = disarm;
+  btn.addEventListener('click', () => {
+    if (btn.disabled) return;
+    const next = nextArmState(armState, 'tap');
+    armState = next.state;
+    if (!next.deleted) {
+      if (armRef && armRef.current && armRef.current !== btn && typeof armRef.current._disarm === 'function') armRef.current._disarm();
+      if (armRef) armRef.current = btn;
+      btn.classList.add('stable-delete-armed');
+      if (armTimer) clearTimeout(armTimer);
+      armTimer = setTimeout(disarm, 3000);
+      return;
+    }
+    disarm();
+    btn.disabled = true;
+    fetch('/api/videos/' + encodeURIComponent(mediaId), { method: 'DELETE' })
+      .then((res) => (res.ok ? res.json().catch(() => ({})) : Promise.reject(new Error(`delete failed: ${res.status}`))))
+      .then((data) => {
+        if (typeof showToast === 'function' && typeof deleteResultToast === 'function') showToast(deleteResultToast(data));
+        if (typeof onDeleted === 'function') onDeleted();
+      })
+      .catch(() => {
+        btn.disabled = false; // non-optimistic: failure re-enables for retry
+        if (typeof showToast === 'function') showToast('Could not delete. Try again.');
+      });
+  });
+  return btn;
+}
+
+// The buildSortableTable onRender hook for a table with delete buttons: clear the
+// shared armed reference so a sort/filter re-render leaves no logically-armed item
+// (its rebuilt button is idle; this drops the stale pointer). The v1.159 lesson.
+function resetStatsArm(armRef) {
+  if (armRef && armRef.current && typeof armRef.current._disarm === 'function') armRef.current._disarm();
+  if (armRef) armRef.current = null;
+}
+
+// v1.162 (Dean): the Duplicates per-copy delete. A duplicate ROW is a GROUP of N
+// copies, so instead of guessing which copy to keep, an expand toggle reveals each
+// actual copy (its path + size) with its OWN two-tap delete - you remove exactly
+// the copies you choose. The expando is a full-row child of the .stable-row (the
+// Users-access-editor pattern, grid-column 1/-1). Deleting a copy removes it from
+// the group + the panel and keeps the row's aggregates honest for a later re-sort;
+// when a group drops to <=1 copy it is no longer a duplicate, so onGroupCollapsed
+// removes the whole row. armRef is shared with the table so only one delete arms.
+function buildDuplicateExpando(row, tr, armRef, onGroupCollapsed) {
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'stable-expand-btn';
+  toggle.setAttribute('aria-expanded', 'false');
+  toggle.setAttribute('aria-label', 'Delete individual copies');
+  toggle.title = 'Delete individual copies';
+  const chevron = document.createElement('i');
+  chevron.className = 'icon-arrow-down';
+  toggle.appendChild(chevron);
+  let panel = null;
+  const recomputeRowAggregates = () => {
+    const items = Array.isArray(row.group.items) ? row.group.items : [];
+    row.copies = items.length;
+    row.total = items.reduce((sum, x) => sum + (Number(x.size) || 0), 0);
+    const maxSize = items.reduce((m, x) => Math.max(m, Number(x.size) || 0), 0);
+    row.wasted = row.total - maxSize;
+  };
+  const buildPanel = () => {
+    const box = document.createElement('div');
+    box.className = 'stable-expando dup-expando';
+    (Array.isArray(row.group.items) ? row.group.items : []).slice().forEach((item) => {
+      const line = document.createElement('div');
+      line.className = 'dup-copy-row';
+      const label = document.createElement('span');
+      label.className = 'dup-copy-path stats-meta-text';
+      label.textContent = `${item.filePath} (${formatByteSize(Number(item.size) || 0)})`;
+      const del = buildStatsDeleteAction(item.id, item.filePath, () => {
+        const gi = row.group.items.indexOf(item);
+        if (gi >= 0) row.group.items.splice(gi, 1);
+        line.remove();
+        recomputeRowAggregates();
+        if (row.group.items.length <= 1 && typeof onGroupCollapsed === 'function') onGroupCollapsed();
+      }, armRef);
+      line.appendChild(label);
+      line.appendChild(del);
+      box.appendChild(line);
+    });
+    return box;
+  };
+  toggle.addEventListener('click', () => {
+    if (panel) { panel.remove(); panel = null; toggle.setAttribute('aria-expanded', 'false'); return; }
+    panel = buildPanel();
+    tr.appendChild(panel); // full-row child; CSS spans it grid-column 1 / -1
+    toggle.setAttribute('aria-expanded', 'true');
+  });
+  return toggle;
+}
+
 // v1.159 (Dean): the "Videos & audio" table - the whole visible library as
 // sortable rows (Title | Type | Length | Size) from its own /api/library-items
 // fetch. renderCap keeps a multi-thousand-item library from mounting thousands
 // of nodes; sort (biggest/longest) + the title filter reach the FULL set.
+// v1.162: library-write users get a per-row trash icon (two-tap -> Trash).
 const AV_RENDER_CAP = 300;
-function renderAvTable(root, items) {
+function renderAvTable(root, items, canModify) {
   clearChildren(root);
   const list = Array.isArray(items) ? items : [];
   if (list.length === 0) {
@@ -331,12 +482,15 @@ function renderAvTable(root, items) {
     return;
   }
   const rows = list.map((it) => ({
+    id: (it.id || '').toString(),
     title: (it.title || '').toString(),
     type: it.type === 'audio' ? 'audio' : 'video',
     dur: Number(it.durationSeconds) || 0,
     bytes: Number(it.sizeBytes) || 0,
   }));
-  buildSortableTable(root, {
+  const armRef = { current: null };
+  let table = null;
+  const cfg = {
     caption: 'Videos and audio',
     columns: [
       { key: 'title', label: 'Title', format: (r) => r.title },
@@ -349,7 +503,21 @@ function renderAvTable(root, items) {
     defaultSort: { key: 'bytes', dir: 'desc' },
     persistKey: 'ft-stable:stats-av',
     renderCap: AV_RENDER_CAP,
-  });
+  };
+  // v1.162: library-write users get a per-row two-tap delete (-> Trash). The row
+  // closes over its own `id`/`title` (never a render index), so a sort can't
+  // mis-target; onRender resets the shared arm (the v1.159 re-render-arm safety).
+  if (canModify) {
+    cfg.actions = (row) => (row && row.id)
+      ? buildStatsDeleteAction(row.id, row.title, () => {
+        const idx = rows.indexOf(row);
+        if (idx >= 0) rows.splice(idx, 1);
+        if (table) table.update(rows);
+      }, armRef)
+      : null;
+    cfg.onRender = () => resetStatsArm(armRef);
+  }
+  table = buildSortableTable(root, cfg);
 }
 
 // ---- v1.41.0: Books inventory + About/version section ----------------------
@@ -602,7 +770,7 @@ function seedStatsSkeleton() {
   }
 }
 
-function renderStatsDashboard(statsData) {
+function renderStatsDashboard(statsData, canModify) {
   const glanceRoot = document.getElementById('stats-glance-grid');
   const byTypeRoot = document.getElementById('stats-by-type');
   const folderRoot = document.getElementById('stats-folder-list');
@@ -623,7 +791,7 @@ function renderStatsDashboard(statsData) {
   if (folderRoot) renderBreakdownList(folderRoot, statsData.byFolder, (g) => g.folderName, 'No folders yet.', 'ft-stable:stats-folder');
   if (channelRoot) renderBreakdownList(channelRoot, statsData.byChannel, (g) => shortenChannelLabel(g.channelUrl), 'No subscribed-channel content yet.', 'ft-stable:stats-channel');
   if (recordsRoot) renderRecordTiles(recordsRoot, statsData);
-  if (mostWatchedRoot) renderMostWatched(mostWatchedRoot, statsData.mostWatched);
+  if (mostWatchedRoot) renderMostWatched(mostWatchedRoot, statsData.mostWatched, canModify);
   if (booksRoot) renderBookTiles(booksRoot, statsData.books);
   if (booksFolderRoot) renderBookFolders(booksFolderRoot, statsData.books);
   if (inventoryRoot) renderInventory(inventoryRoot, statsData.inventory);
@@ -653,9 +821,23 @@ function renderStatsError() {
 // has already been replaced.
 let statsController = null;
 
+// v1.162 (Dean): resolve the library-write capability once for the Stats delete
+// affordances - admin OR the modify-library flag, the same admin-OR-flag the card
+// delete uses (main.js fetchCardCornerState). Any failure/abort resolves FALSE (no
+// delete controls) - the safe default; the server DELETE is RBAC-guarded regardless.
+function resolveStatsCanModify(signal) {
+  return fetch('/api/auth/me', { signal })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((me) => !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true)))
+    .catch(() => false);
+}
+
 function init(viewRoot) {
   statsController = new AbortController();
   const signal = statsController.signal;
+  // Resolved once, awaited by each deletable table so it renders WITH the correct
+  // delete gating (never a flash of delete buttons before the capability is known).
+  const capPromise = resolveStatsCanModify(signal);
 
   // v1.152: the master-detail menu (was per-section <details> collapse). Same
   // window-guarded reach as openShortcutsModal below (node:test requires this
@@ -688,7 +870,7 @@ function init(viewRoot) {
       if (!res.ok) throw new Error(`GET /api/stats failed (${res.status})`);
       return res.json();
     })
-    .then((statsData) => renderStatsDashboard(statsData))
+    .then((statsData) => capPromise.then((canModify) => renderStatsDashboard(statsData, canModify)))
     .catch((err) => {
       if (err && err.name === 'AbortError') return; // navigated away before it resolved -- expected
       console.error('Failed to load stats:', err);
@@ -702,10 +884,10 @@ function init(viewRoot) {
       if (!res.ok) throw new Error(`GET /api/duplicates failed (${res.status})`);
       return res.json();
     })
-    .then((report) => {
+    .then((report) => capPromise.then((canModify) => {
       const dupRoot = document.getElementById('stats-duplicates-list');
-      if (dupRoot) renderDuplicates(dupRoot, report);
-    })
+      if (dupRoot) renderDuplicates(dupRoot, report, canModify);
+    }))
     .catch((err) => {
       if (err && err.name === 'AbortError') return; // navigated away before it resolved -- expected
       console.error('Failed to load duplicates report:', err);
@@ -725,10 +907,10 @@ function init(viewRoot) {
       if (!res.ok) throw new Error(`GET /api/library-items failed (${res.status})`);
       return res.json();
     })
-    .then((body) => {
+    .then((body) => capPromise.then((canModify) => {
       const avRoot = document.getElementById('stats-av-list');
-      if (avRoot) renderAvTable(avRoot, body && body.items);
-    })
+      if (avRoot) renderAvTable(avRoot, body && body.items, canModify);
+    }))
     .catch((err) => {
       if (err && err.name === 'AbortError') return; // navigated away -- expected
       console.error('Failed to load the videos & audio list:', err);
@@ -765,5 +947,5 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors setup.js/player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS, renderBreakdownList, renderBookFolders, renderDuplicates, DUPLICATE_GROUPS_RENDER_CAP, renderAvTable, AV_RENDER_CAP, renderMostWatched };
+  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS, renderBreakdownList, renderBookFolders, renderDuplicates, DUPLICATE_GROUPS_RENDER_CAP, renderAvTable, AV_RENDER_CAP, renderMostWatched, buildStatsDeleteAction, resolveStatsCanModify };
 }

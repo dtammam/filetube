@@ -11615,6 +11615,62 @@ a.queue-upnext-next:hover {
    buttons, and the Users access editor spans the whole row as an expando. */
 .stable-actions { flex-wrap: wrap; }
 .stable-row .access-editor { grid-column: 1 / -1; }
+
+/* v1.162 (Dean): the Stats-table per-item delete (two-tap) + the Duplicates
+   per-copy expando. Mirrors .notif-row-delete's armed reveal. */
+.stable-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  min-width: var(--size-touch);
+  min-height: var(--size-touch);
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 0.7; /* token-exempt: resting de-emphasis, full on hover/focus/armed */
+  touch-action: manipulation;
+}
+.stable-delete-btn:hover,
+.stable-delete-btn:focus-visible { opacity: 1; color: var(--yt-red); }
+.stable-delete-btn .icon-delete { width: 16px; height: 16px; }
+.stable-delete-confirm { display: none; white-space: nowrap; font-size: var(--fs-xs); font-weight: var(--fw-bold); }
+.stable-delete-btn.stable-delete-armed { opacity: 1; color: var(--on-overlay); background-color: var(--yt-red); }
+.stable-delete-btn.stable-delete-armed .stable-delete-confirm { display: inline; }
+
+/* the Duplicates expand toggle + the full-row copies panel */
+.stable-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--size-touch);
+  min-height: var(--size-touch);
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 0.7; /* token-exempt: resting de-emphasis */
+  touch-action: manipulation;
+}
+.stable-expand-btn:hover,
+.stable-expand-btn:focus-visible { opacity: 1; color: var(--text-primary); }
+.stable-expand-btn[aria-expanded="true"] .icon-arrow-down { transform: rotate(180deg); }
+.stable-expando { grid-column: 1 / -1; }
+.dup-expando {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0 var(--space-3) var(--space-6);
+}
+.dup-copy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.dup-copy-path { min-width: 0; word-break: break-all; }
 .users-cap-badge {
   display: inline-block;
   margin-left: var(--space-3);
