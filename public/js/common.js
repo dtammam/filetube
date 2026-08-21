@@ -3639,8 +3639,34 @@ function injectNotificationBellIfEnabled() {
         list.appendChild(empty);
       };
 
+      // v1.161 (Dean): shared row teardown - drop the wrap, keep keyboard focus in
+      // the list (the next row's dismiss/delete, else the bell), surface the empty
+      // state when the last row goes, and reconcile the badge from the SERVER truth
+      // (never arithmetic on a stale count; same panel-open suppression the poll
+      // uses). Used by BOTH the dismiss X and the v1.161 delete button so the two
+      // removal paths can never drift.
+      const removeNotifRowReconcile = (wrap) => {
+        const wraps = Array.from(list.querySelectorAll('.notif-row-wrap'));
+        const idx = wraps.indexOf(wrap);
+        const nextWrap = wraps[idx + 1] || wraps[idx - 1] || null;
+        wrap.remove();
+        const nextFocus = (nextWrap && (nextWrap.querySelector('.notif-row-dismiss') || nextWrap.querySelector('.notif-row-delete'))) || bellBtn;
+        if (nextFocus && document.activeElement === document.body) nextFocus.focus();
+        if (!list.querySelector('.notif-row')) {
+          renderEmpty('No notifications yet. New downloads land here.');
+        }
+        return fetch('/api/notifications/badge')
+          .then((r) => (r.ok ? r.json() : null))
+          .then((b) => { if (b && panel.hidden) setBadge(b.count); })
+          .catch(() => { /* cosmetic - next open reconciles */ });
+      };
+
       const renderRows = (rows) => {
         list.textContent = '';
+        // v1.161: at most ONE delete button armed at a time (the card-delete UX).
+        // Render-local: rebuilt fresh every render, so a reopen never inherits a
+        // "hot" armed button (the v1.159 Trash-arm class).
+        let armedNotifDelete = null;
         const models = rows.map(buildNotificationRowModel).filter(Boolean);
         if (models.length === 0) {
           renderEmpty('No notifications yet. New downloads land here.');
@@ -3716,27 +3742,10 @@ function injectNotificationBellIfEnabled() {
             })
               .then((res) => {
                 if (!res.ok) throw new Error(`dismiss failed: ${res.status}`);
-                // QA gate: keep a keyboard user in the list - focus the next
-                // row's X (else the previous one's, else the bell) BEFORE the
-                // removal drops focus to <body>.
-                const wraps = Array.from(list.querySelectorAll('.notif-row-wrap'));
-                const idx = wraps.indexOf(wrap);
-                const nextWrap = wraps[idx + 1] || wraps[idx - 1] || null;
-                wrap.remove();
-                const nextFocus = (nextWrap && nextWrap.querySelector('.notif-row-dismiss')) || bellBtn;
-                if (nextFocus && document.activeElement === document.body) nextFocus.focus();
-                if (!list.querySelector('.notif-row')) {
-                  renderEmpty('No notifications yet. New downloads land here.');
-                }
-                // The badge must agree with the shrunken panel - re-read the
-                // server truth rather than arithmetic on a stale count. Same
-                // panel-open suppression as the poll (QA gate: an in-flight
-                // /seen could otherwise lose to this refetch and resurrect a
-                // stale count beside an open, fully-seen panel).
-                return fetch('/api/notifications/badge')
-                  .then((r) => (r.ok ? r.json() : null))
-                  .then((b) => { if (b && panel.hidden) setBadge(b.count); })
-                  .catch(() => { /* cosmetic - next open reconciles */ });
+                // v1.161: the removal + focus-keep + empty-state + badge-reconcile
+                // (server truth, not stale arithmetic) is the shared helper the
+                // delete button also uses.
+                return removeNotifRowReconcile(wrap);
               })
               .catch(() => {
                 dismissBtn.disabled = false;
@@ -3776,7 +3785,80 @@ function injectNotificationBellIfEnabled() {
             a.classList.remove('notif-row-unread');
             closePanel();
           });
+          // v1.161 (Dean): a per-VIDEO delete button - a SIBLING of the anchor
+          // (never nested in the <a>), so a tap on it can NEVER navigate to the
+          // video; no stopPropagation, so the delegated SPA router is untouched
+          // (the v1.153 scar). Two-tap arm (the pure nextArmState reducer), same
+          // DELETE /api/videos/:id -> Trash flow a card uses (recoverable),
+          // NON-OPTIMISTIC (v1.54 law): the row leaves only on a confirmed 2xx.
+          // MEDIA rows only - an 'engine' id is synthetic and a 'podcast' row is
+          // not a /api/videos item; both keep just the dismiss X.
+          let deleteBtn = null;
+          if (m.kind === 'media') {
+            deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'notif-row-delete';
+            deleteBtn.setAttribute('aria-label', 'Delete this video');
+            deleteBtn.title = 'Delete video';
+            const delIcon = document.createElement('i');
+            delIcon.className = 'icon-delete';
+            const delConfirm = document.createElement('span');
+            delConfirm.className = 'notif-row-delete-confirm';
+            delConfirm.textContent = 'Sure?';
+            deleteBtn.appendChild(delIcon);
+            deleteBtn.appendChild(delConfirm);
+            let armState = 'idle';
+            let armTimer = null;
+            const disarm = () => {
+              armState = 'idle';
+              deleteBtn.classList.remove('notif-row-delete-armed');
+              if (armTimer) { clearTimeout(armTimer); armTimer = null; }
+              if (armedNotifDelete === deleteBtn) armedNotifDelete = null;
+            };
+            deleteBtn._disarm = disarm; // a sibling arming disarms this one
+            deleteBtn.addEventListener('click', () => {
+              if (deleteBtn.disabled) return;
+              const next = nextArmState(armState, 'tap');
+              armState = next.state;
+              if (!next.deleted) {
+                // first tap: arm THIS, disarm any other (one armed at a time).
+                if (armedNotifDelete && armedNotifDelete !== deleteBtn && typeof armedNotifDelete._disarm === 'function') {
+                  armedNotifDelete._disarm();
+                }
+                armedNotifDelete = deleteBtn;
+                deleteBtn.classList.add('notif-row-delete-armed');
+                if (armTimer) clearTimeout(armTimer);
+                armTimer = setTimeout(disarm, 3000); // auto-disarm, like a card
+                return;
+              }
+              // second tap on the SAME armed button: DELETE -> Trash.
+              disarm();
+              deleteBtn.disabled = true;
+              fetch('/api/videos/' + encodeURIComponent(m.mediaId), { method: 'DELETE' })
+                .then((res) => (res.ok ? res.json().catch(() => ({})) : Promise.reject(new Error(`delete failed: ${res.status}`))))
+                .then((data) => {
+                  // The video is gone -> also dismiss its notification server-side
+                  // so it never reappears, then drop the row + reconcile the badge.
+                  fetch('/api/notifications/dismiss', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: m.id }),
+                  }).catch(() => { /* cosmetic - the row is already gone client-side */ });
+                  if (typeof window !== 'undefined' && typeof window.showToast === 'function' && typeof deleteResultToast === 'function') {
+                    window.showToast(deleteResultToast(data));
+                  }
+                  return removeNotifRowReconcile(wrap);
+                })
+                .catch(() => {
+                  deleteBtn.disabled = false; // non-optimistic: failure re-enables for retry
+                  if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
+                    window.showToast('Could not delete the video.');
+                  }
+                });
+            });
+          }
           wrap.appendChild(a);
+          if (deleteBtn) wrap.appendChild(deleteBtn); // left of the dismiss X
           wrap.appendChild(dismissBtn);
           list.appendChild(wrap);
         }
