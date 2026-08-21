@@ -3837,8 +3837,11 @@ function injectNotificationBellIfEnabled() {
               fetch('/api/videos/' + encodeURIComponent(m.mediaId), { method: 'DELETE' })
                 .then((res) => (res.ok ? res.json().catch(() => ({})) : Promise.reject(new Error(`delete failed: ${res.status}`))))
                 .then((data) => {
-                  // The video is gone -> also dismiss its notification server-side
-                  // so it never reappears, then drop the row + reconcile the badge.
+                  // The video is gone -> best-effort dismiss its notification
+                  // server-side so it does not reappear pointing at a trashed
+                  // video (a failed dismiss self-heals on the next manual one - the
+                  // video is safely in Trash either way), then drop the row +
+                  // reconcile the badge.
                   fetch('/api/notifications/dismiss', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
