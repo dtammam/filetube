@@ -80,6 +80,42 @@
 
 ## Shipped
 
+### v1.163.0 - "FileTube FileTube Revolution" easter egg + desktop no-scroll shortcuts (Dean) (2026-08-21)
+
+Two things in one small, fun wave. The original ask: the desktop keyboard-shortcuts
+window (`?`) used to need scrolling to see every shortcut. It now flows its groups
+into TWO columns and widens so the whole reference fits in one view without
+scrolling; mobile is unchanged (the single 560px column). Then, the Discord homage
+Dean remembered: a hidden mini-synth in the top-right of that window.
+
+- **The DDR mini-synth**: four DDR arrows (left/down/up/right) sit top-right of the
+  shortcuts window. Press the matching arrow KEY or click an arrow and it lights up
+  and plays a distinct note (C5 / D5 / E5 / G5 - a C-major chord you can noodle a
+  tune on). Subtitle: "Master these to be the best FileTube FileTube Revolution
+  player". Built on Web Audio; silently no-ops (never throws) where audio is
+  unavailable; the light-up pulse honours prefers-reduced-motion.
+- **Why the arrow keys are safe** (the real engineering): arrow keys normally
+  seek/scrub the player, so the synth's key handler is CAPTURE-phase (it beats
+  player.js), consumes ONLY the four bare arrows (Esc / Tab / `?` / j / k / l and
+  every Cmd/Ctrl/Alt+Arrow OS combo pass through), and is UNBOUND the instant the
+  window closes so it can never eat arrow keys afterward.
+
+FULL gate (both seats, not slim - the capture-phase arrow interception touches the
+player's core keyboard path). Both APPROVE, one fix round. Both seats independently
+flagged the same latent trap: `openShortcutsModal`'s stranded-recovery arm rebuilt
+the window without unbinding a leaked capture handler - which would have eaten every
+arrow key session-wide if a future code path ever stranded the backdrop. Unreachable
+in the shipped tree, fixed anyway and mutation-bound (neutering ONLY the strand-arm
+unbind, with close's intact, still reds a behavioural leak test - proving the strand
+arm is independently the sole releaser). Also folded in: a modifier-key bail
+mirroring player.js, and source-locks for the reflow-retrigger and stopPropagation
+that survived round 1. Dual-Node 7411/7411 on v22.23.1 AND v24.14.0.
+
+DEVICE (Dean): on desktop, press `?` - the whole shortcut reference fits with no
+scroll; the four arrows sit top-right; press the arrow keys (or click them) and hear
+four distinct notes; noodle a little tune; confirm the arrows do NOT scrub the player
+while the window is open, and DO scrub again once it is closed.
+
 ### v1.162.0 - per-item delete on the Stats tables (Dean) - DESTRUCTIVE (2026-08-21)
 
 Dean prunes his library by sorting the Stats "Videos & audio" table by size, then
