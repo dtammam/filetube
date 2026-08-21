@@ -80,6 +80,38 @@
 
 ## Shipped
 
+### v1.162.0 - per-item delete on the Stats tables (Dean) - DESTRUCTIVE (2026-08-21)
+
+Dean prunes his library by sorting the Stats "Videos & audio" table by size, then
+searching for the item to delete it from a card. Bypass that: the tried-and-true
+trash icon + two-tap confirm now lives on the Stats tables that list deletable
+media, same flow as a card (DELETE /api/videos/:id -> Trash, recoverable).
+
+- **Videos & audio + Most watched**: a per-row two-tap delete, library-write gated
+  (admin OR the modify-library flag; read-only users see NO delete controls; the
+  server DELETE is RBAC + visibility guarded regardless). Row removed on a confirmed
+  2xx (non-optimistic).
+- **Duplicates**: a per-group expand toggle -> per-copy deletes (a dup row is a
+  GROUP of N copies, so you delete EXACTLY the copies you choose - zero wrong-file
+  risk; the Users-access-editor full-row expando pattern). Deleting to <=1 copy
+  drops the whole group row.
+- No server change (ids already in the payloads; the reports are visibility-scoped).
+
+FULL gate (destructive), both seats APPROVE, ONE docs-only fix round. The load-
+bearing v1.159 re-render safety (an armed two-tap must never survive a sort into a
+one-tap delete) is the closure-local armState + full row rebuild - mutation-bound
+by a behavioural test. The two seats CONTRADICTED on whether resetStatsArm binds; a
+self-run mutation settled it (defensive-only, adversarial correct) and the comment
+was corrected. Dual-Node 7396/7396 on v22.23.1 AND v24.14.0.
+
+ACCEPTED RESIDUAL (disclosed): an in-place Duplicates copy delete leaves the group
+row's Copies/Reclaim cells stale until a re-sort (self-heals; matches the "refresh
+next load" ruling; a table.update would re-collapse the expando mid-prune).
+
+DEVICE: sort Videos & audio by size, delete the biggest (two-tap) -> lands in Trash,
+restorable; Most watched delete; expand a duplicate, delete a specific copy; a
+read-only account sees NO delete buttons anywhere.
+
 ### v1.161.5 - keep-alive: bound the battery footgun + damp the lock-screen position (Dean) (2026-08-21)
 
 Dean device-confirmed the v1.161.4 keep-alive works (lock-screen play/pause past

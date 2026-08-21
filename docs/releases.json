@@ -1948,5 +1948,11 @@
     "date": "2026-08-21",
     "title": "Battery guard + tidier lock screen for the keep-locked setting",
     "intent": "Two polish touches to the opt-in 'keep background video-audio controllable while locked' setting. First, a battery guard: if you pause a backgrounded video and walk away, it now stops keeping the app awake after a few minutes instead of forever (so a forgotten video in your pocket won't drain the battery). Second, the lock-screen scrubber now shows the real video time instead of briefly flickering a little 0-to-3-second counter. Still off by default."
+  },
+  {
+    "version": "1.162.0",
+    "date": "2026-08-21",
+    "title": "Delete videos straight from the Stats page",
+    "intent": "You can now delete a video right from the Stats page instead of hunting for it on the main library. The 'Videos & audio' and 'Most watched' tables get a trash button on each row (tap once, tap again to confirm), and the Duplicates section lets you expand a group and remove the exact extra copies you don't want. Deletions go to the Trash, so they're recoverable, and the buttons only appear if your account can manage the library. Handy for pruning: sort by size, delete the biggest, done."
   }
 ]

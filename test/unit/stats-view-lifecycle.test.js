@@ -71,14 +71,15 @@ test('stats.js registers a routed view with init + destroy', () => {
   }
 });
 
-test('init() fires all three fetches with a live (un-aborted) AbortSignal', () => {
+test('init() fires all four fetches with a live (un-aborted) AbortSignal', () => {
   const { dom, captured, signals, urls, restore } = loadRoutedStats();
   try {
     captured.stats.init(dom.window.document.body);
+    assert.ok(urls.includes('/api/auth/me'), 'fetched /api/auth/me (v1.162 delete-capability gate)');
     assert.ok(urls.includes('/api/stats'), 'fetched /api/stats');
     assert.ok(urls.includes('/api/duplicates'), 'fetched /api/duplicates');
     assert.ok(urls.includes('/api/library-items'), 'fetched /api/library-items (v1.159 A/V table)');
-    assert.strictEqual(signals.length, 3, 'exactly the three dashboard fetches fired');
+    assert.strictEqual(signals.length, 4, 'exactly the four dashboard fetches fired (v1.162: + the capability)');
     for (const s of signals) {
       assert.ok(s && typeof s.aborted === 'boolean', 'each fetch carried an AbortSignal (the { signal } arg)');
       assert.strictEqual(s.aborted, false, 'signal is live while the view is mounted');
@@ -94,7 +95,7 @@ test('destroy() aborts all in-flight fetches (navigate-away cancels stale render
     captured.stats.init(dom.window.document.body);
     assert.strictEqual(signals.every((s) => s && s.aborted === false), true, 'live before teardown');
     captured.stats.destroy();
-    assert.strictEqual(signals.length, 3, 'still the same three signals');
+    assert.strictEqual(signals.length, 4, 'still the same four signals');
     for (const s of signals) {
       assert.strictEqual(s.aborted, true, 'destroy() aborted the fetch so a late resolve cannot render into a replaced #view-root');
     }
@@ -109,9 +110,9 @@ test('a fresh init() after destroy() gets its own live controller (re-entering S
     captured.stats.init(dom.window.document.body);
     captured.stats.destroy();
     captured.stats.init(dom.window.document.body); // navigate back into Stats
-    // signals 0/1/2 aborted (first mount), 3/4/5 live (second mount)
-    assert.strictEqual(signals.length, 6, 'second mount fired its own three fetches');
-    assert.strictEqual(signals[3].aborted, false, 'second controller is live, not the aborted first');
+    // signals 0-3 aborted (first mount), 4-7 live (second mount)
+    assert.strictEqual(signals.length, 8, 'second mount fired its own four fetches');
+    assert.strictEqual(signals[4].aborted, false, 'second controller is live, not the aborted first');
     assert.strictEqual(signals[0].aborted, true, 'the first mount\'s controller stays aborted');
   } finally {
     restore();
