@@ -80,6 +80,35 @@
 
 ## Shipped
 
+### v1.161.1 - MediaSession-action diagnostics (AirPods play-pause bug) (Dean) (2026-08-21)
+
+Dean device report: AirPods/lock-screen play-pause is INCONSISTENT during background
+play (works in every other app). INSTRUMENTATION ONLY - no playback behaviour change;
+the fix ships after the device repro names the mechanism (diagnosis discipline - the
+play/pause handlers already retarget to `activeMediaElement()`, so a naive
+wrong-element bug is ruled out; the two live root causes need opposite fixes).
+
+- New pure `formatMsActionDetail({el,state,hidden})` (mirrors `formatPauseProvenance`).
+- The `setMediaSessionAction` wrapper's `msAction:<name>` lifecycle-log record now
+  carries WHICH element the action will act on (`bgAudio` sidecar vs paused `video`),
+  the `bgAudioState`, and hidden/visible - read at the action's ARRIVAL. So one log
+  screenshot distinguishes: no `msAction:pause` entry = iOS never routed the command
+  (session-ownership / sibling tamm.am domain-coupling class); `el=video` = we acted
+  on the wrong element (our bug); `el=bgAudio` + a following `media:pause(bgAudio)` =
+  it worked that time.
+
+SLIM gate (adversarial, instrumentation-only), APPROVE. Mutation-verified: zero
+playback behaviour change, and the enrichment CANNOT throw inside a real AirPods/
+lock-screen command (the arg is built before recordLifecycleEvent's flag gate, so
+every read in it - activeMediaElement/bgAudioEl/bgAudioState/guarded document - is
+throw-free). One negligible SUGGESTION (two side-effect-free reads run flag-off)
+left as-is. Dual-Node 7378/7378 on v22.23.1 AND v24.14.0.
+
+DEVICE: no URL needed - Settings -> "Show lifecycle debug log" (the installed PWA
+drops `?debugLifecycle=1` on launch). Enable it, play a video, background it, squeeze
+the AirPods to pause, then screenshot the green log strip and send it - that names
+which of the two root causes to fix.
+
 ### v1.161.0 - search-clear + resume timing + notification delete + bg-speed fix (Dean) (2026-08-21)
 
 A four-item QoL branch; one item (the notification delete) is DESTRUCTIVE, so the

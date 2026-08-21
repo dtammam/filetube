@@ -1918,5 +1918,11 @@
     "date": "2026-08-21",
     "title": "Delete from notifications, instant resume, and a few fixes",
     "intent": "Four handy improvements. You can now delete a video straight from its notification - tap the trash button, tap again to confirm, and it goes to the Trash just like deleting it from a card, so you can clear out downloads you already know you don't want without opening them. The search box now clears itself after a search that finds something, so you can search the next thing without clearing it first (if a search finds nothing, it stays put so you can tweak it). The 'Resume playback?' countdown length is now yours to set in Settings - make it longer, shorter, or set it to zero to have videos resume instantly with no prompt at all. And a fix: playing a video at a faster speed and sending the app to the background no longer drops it back to normal speed - your 1.5x keeps going."
+  },
+  {
+    "version": "1.161.1",
+    "date": "2026-08-21",
+    "title": "Groundwork for the background play/pause fix",
+    "intent": "Some quiet groundwork toward a known issue: controlling playback from your headphones or the lock screen while a video plays in the background is unreliable. This release adds an on-screen diagnostic log (Settings, 'Show lifecycle debug log') that captures exactly what happens when a play/pause command comes in, so the actual cause can be pinned down and fixed properly. Nothing about normal playback changes."
   }
 ]

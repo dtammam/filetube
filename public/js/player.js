@@ -631,6 +631,21 @@ function formatPauseProvenance(ctx) {
     + ' state=' + (c.state || '?');
 }
 
+// v1.161.1 (Dean device bug: AirPods/lock-screen play-pause inconsistent during
+// background play). The detail line for a MediaSession action ARRIVAL - records
+// WHICH element the handler will act on (`bgAudio` sidecar vs the paused `video`)
+// and the background-audio state at that instant, so a single lifecycle-log
+// screenshot distinguishes the two root causes: (a) the command arrived but we
+// acted on the wrong/paused element (our bug), vs (b) no msAction entry at all =
+// iOS never routed the command to us (session-ownership / sibling-domain class).
+// Pure so it is testable; the format mirrors formatPauseProvenance.
+function formatMsActionDetail(ctx) {
+  var c = ctx || {};
+  return 'el=' + (c.el || '?')
+    + ' state=' + (c.state || '?')
+    + ' ' + (c.hidden ? 'hidden' : 'visible');
+}
+
 // ---- v1.132 resume-countdown pure helpers ----------------------------------
 // Dean (2026-08-16): the "Resume at..." prompt forces an interaction - while
 // driving or heads-down that friction is the whole cost of opening the next
@@ -1483,6 +1498,8 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveImmersiveCarryTarget,
     // v1.131: CarPlay pause-provenance diagnostics detail line.
     formatPauseProvenance,
+    // v1.161.1: the MediaSession-action arrival detail line (element + bg state).
+    formatMsActionDetail,
     // v1.132: resume-countdown config + ticking-label builders.
     resolveResumeCountdownConfig,
     resumeCountdownLabel,
@@ -2624,7 +2641,17 @@ if (typeof module !== 'undefined' && module.exports) {
     // must keep clearing it, so per-direction availability (prev/next) and
     // teardown-time clears are untouched.
     var wrapped = handler ? function (details) {
-      recordLifecycleEvent('msAction:' + action, {});
+      // v1.161.1 (Dean): record WHICH element this action will act on + the bg
+      // state + backgrounded-ness, so an AirPods/lock-screen play-pause that
+      // "does nothing" is diagnosable from the lifecycle log alone. A no-op unless
+      // the debug flag is on; reads activeMediaElement() at ARRIVAL time.
+      recordLifecycleEvent('msAction:' + action, {
+        detail: formatMsActionDetail({
+          el: activeMediaElement() === bgAudioEl ? 'bgAudio' : 'video',
+          state: bgAudioState,
+          hidden: typeof document !== 'undefined' && document.visibilityState === 'hidden',
+        }),
+      });
       return handler(details);
     } : null;
     try { navigator.mediaSession.setActionHandler(action, wrapped); } catch (_) { /* action unsupported by this browser */ }
