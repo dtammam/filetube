@@ -1707,6 +1707,9 @@ if (typeof module !== 'undefined' && module.exports) {
   var bgAudioEl = null;
   var bgAudioState = BG_AUDIO_STATES.INLINE_VIDEO;
   var bgAudioSettingCached = false;
+  // v1.161.3 (Dean, EXPERIMENTAL): the inaudible background keep-alive element -
+  // created lazily ONLY when the opt-in setting is on (see startBgKeepAlive).
+  var keepAliveEl = null;
   // v1.35 gate fix (adversarial): the EAGER BUFFER half of the pre-arm
   // (preload=auto + load(), a real network fetch of the whole sidecar per
   // watch) is gated on preExtractAudio -- the setting whose copy discloses
@@ -2585,6 +2588,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // `src` fresh (see attemptBackgroundAudioHandoff), so this is never a
   // one-way trip.
   function releaseBackgroundAudioElement() {
+    stopBgKeepAlive(); // v1.161.3: the keep-alive dies with the sidecar on a foreground return
     if (!bgAudioEl) return;
     try { bgAudioEl.pause(); } catch (_) {}
     try { bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) {}
@@ -2668,8 +2672,18 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!el) return;
     // The lock-screen tap IS the user gesture iOS needs to resume audio
     // output for a previously-paused/backgrounded element.
-    el.play().catch(function () {});
-    setPlaybackState('playing');
+    // v1.161.3 (Dean): claim 'playing' ONLY if the resume actually succeeded.
+    // A play() rejected at the iOS gesture wall (or against a suspended audio
+    // session, e.g. resuming a video's background audio after a locked pause)
+    // would otherwise flip the lock screen to show Pause while nothing resumed
+    // - the "lying glyph". On success the element's own guarded 'play' listener
+    // also asserts 'playing' (covered twice); on failure we stay honest 'paused'.
+    var attempt = el.play();
+    if (attempt && typeof attempt.then === 'function') {
+      attempt.then(function () { setPlaybackState('playing'); }, function () { setPlaybackState('paused'); });
+    } else {
+      setPlaybackState('playing'); // no-promise browsers: best-effort, unchanged
+    }
   });
   setMediaSessionAction('pause', function () {
     var el = activeMediaElement();
@@ -2921,6 +2935,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function releaseAudioSession() {
+    stopBgKeepAlive(); // v1.161.3: a force-close/terminal teardown must stop the (silent) keep-alive too - the v1.25.x "a killed app must not keep audio alive" law
     pauseSuppressingHandoff(mediaPlayer);
     if (bgAudioEl) {
       try { bgAudioEl.pause(); } catch (_) { /* best-effort only -- page is unloading */ }
@@ -3103,6 +3118,8 @@ if (typeof module !== 'undefined' && module.exports) {
       setupMediaSession(currentId, currentChannelName, currentData && currentData.title);
       setPlaybackState('playing');
       updatePositionState(true);
+      startBgKeepAlive(); // v1.161.3 (opt-in): keep the process awake THROUGH a background pause
+
     }, function (err) {
       if (currentId !== handoffId || bgAudioState !== BG_AUDIO_STATES.HANDING_OFF) return;
       bgAudioState = nextBackgroundAudioState(bgAudioState, 'HANDOFF_FAILED', {});
@@ -3632,6 +3649,48 @@ if (typeof module !== 'undefined' && module.exports) {
   var AUDIO_SESSION_DECLARE_STORAGE_KEY = 'filetube_audio_session_declare';
   function isAudioSessionDeclareEnabled() {
     try { return localStorage.getItem(AUDIO_SESSION_DECLARE_STORAGE_KEY) === '1'; } catch (_) { return false; }
+  }
+
+  // v1.161.3 (Dean) EXPERIMENTAL, default OFF: the background keep-alive. A
+  // backgrounded web page is kept alive by iOS essentially only while it is
+  // actively producing audio; pausing a video's background audio on a locked
+  // phone removes that keep-alive reason, so iOS suspends the process and the
+  // next lock-screen/AirPods PLAY has no live handler to resume it (pause works,
+  // resume doesn't). This plays an INAUDIBLE looping clip (SILENT_PRIME_SRC)
+  // alongside the sidecar and keeps it running THROUGH a pause, so the process
+  // stays awake and the resume handler survives. It is a device-tested PROTOTYPE
+  // with a real battery cost (the process never sleeps while backgrounded), hence
+  // opt-in. Key MUST match BG_KEEPALIVE_KEY in setup.js (the cross-file convention);
+  // read LIVE; only the literal '1' enables.
+  var BG_KEEPALIVE_STORAGE_KEY = 'filetube_bg_keepalive';
+  function isBgKeepAliveEnabled() {
+    try { return localStorage.getItem(BG_KEEPALIVE_STORAGE_KEY) === '1'; } catch (_) { return false; }
+  }
+  // Started on a successful background handoff, kept playing THROUGH a sidecar
+  // pause, stopped on foreground return AND on teardown/force-close (a killed app
+  // must never leave audio - even silent audio - alive; the v1.25.x force-close
+  // law). A strict no-op when the setting is off: the element is never even
+  // created, so the default path is byte-unchanged.
+  function startBgKeepAlive() {
+    if (!isBgKeepAliveEnabled()) return;
+    if (typeof document === 'undefined' || !host) return;
+    if (!keepAliveEl) {
+      keepAliveEl = document.createElement('audio');
+      keepAliveEl.id = 'bg-keepalive';
+      keepAliveEl.loop = true;
+      keepAliveEl.hidden = true;
+      keepAliveEl.style.display = 'none';
+      host.appendChild(keepAliveEl);
+    }
+    keepAliveEl.src = SILENT_PRIME_SRC; // re-arm (stop strips it)
+    keepAliveEl.loop = true;
+    try { var p = keepAliveEl.play(); if (p && p.catch) p.catch(function () {}); } catch (_) { /* gesture wall - best effort */ }
+    recordLifecycleEvent('bgKeepAlive:start', {});
+  }
+  function stopBgKeepAlive() {
+    if (!keepAliveEl) return;
+    try { keepAliveEl.pause(); keepAliveEl.removeAttribute('src'); keepAliveEl.load(); } catch (_) { /* best-effort, page may be unloading */ }
+    recordLifecycleEvent('bgKeepAlive:stop', {});
   }
 
   var audioSessionDeclareLogged = false;
