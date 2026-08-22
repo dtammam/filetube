@@ -2002,5 +2002,11 @@
     "date": "2026-08-22",
     "title": "The critters actually show up now",
     "intent": "Fixes Sneaky critter mode showing nothing at all: the critters were being drawn underneath the page background, so turning the mode on appeared to do nothing on any device. They now peek out from behind cards and menus the way they were meant to, on phone and desktop alike. Bonus: there are now five built-in placeholder figurines instead of three - a bunny, cat, bear, fox, and chick - until you drop your own images into the critters folder."
+  },
+  {
+    "version": "1.166.2",
+    "date": "2026-08-22",
+    "title": "Critters visit the video page too",
+    "intent": "Sneaky critters now show up on the page where you watch a video as well - peeking from behind the description box and the related-video thumbnails. They still never touch the video player itself."
   }
 ]

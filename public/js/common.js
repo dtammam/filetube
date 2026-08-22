@@ -7472,7 +7472,13 @@ var CRITTER_STORAGE_DENSITY = 'ft-critters:density';
 // entry must PAINT A BACKGROUND (the z-index -1 layer hides the overlap by the
 // anchor painting over it) - `.action-bar` was dropped for exactly that reason
 // (grid + gap only, no background: the "hidden" half showed through the gutters).
-var CRITTER_ANCHOR_SELECTORS = ['.video-card', '.setup-box', '.md-group-card', '.md-hero'];
+// v1.166.2 (Dean's device pass: the WATCH page had none - it uses none of the
+// original four): + `.description-container` (paints --bg-sidebar) and
+// `.related-thumb` (paints letterbox black - the CARD itself is a transparent flex row, caught by the ground-contract lock). The comments section is
+// deliberately NOT an anchor: it paints no background, so a critter "behind"
+// it would show through. Peeks that would reach the adjacent #player-wrapper
+// are already skipped by the placement-rect exclusion check.
+var CRITTER_ANCHOR_SELECTORS = ['.video-card', '.setup-box', '.md-group-card', '.md-hero', '.description-container', '.related-thumb'];
 // Playback surfaces + modals: never an anchor, never overlapped, and the tap
 // handler stands down over them (Dean's hard constraint - critters must not
 // disrupt the video/audio experience). `[class*="-backdrop"]` covers the WHOLE
