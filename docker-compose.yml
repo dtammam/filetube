@@ -23,6 +23,14 @@ services:
       # and per-instance secrets
       - ./data:/app/data
 
+      # v1.166.3: Sneaky critter mode's drop-in art folder. The image BAKES
+      # public/ in, so without this mount, files dropped into the host folder
+      # never reach the container and the folder-is-the-manifest contract only
+      # holds for git-checkout runs. Mounting the repo's own public/critters
+      # keeps the README (the drop-in contract) visible and makes host drops
+      # live on the next page refresh.
+      - ./public/critters:/app/public/critters
+
       # MOUNT YOUR MEDIA FILES HERE
       # Format: - /host/path/to/media:/container/path
       # Inside FileTube Setup wizard, register directories using their container paths (e.g. /media/videos)
