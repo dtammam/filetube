@@ -259,6 +259,24 @@ test('renderCritterPlacements: renders each placement positioned + rotated; re-r
   } finally { unmount(dom); }
 });
 
+// ---- the empty-first-pass retry ladder (v1.166.4) ---------------------------
+
+test('v1.166.4: an EMPTY scatter earns a bounded retry ladder (1.5s then 4s), re-armed per navigation - placed critters never re-roll', () => {
+  // Dean's device pass: the watch page stayed critter-less - its anchors are
+  // all fetch-then-render (related rail seeds AFTER /api/videos/:id), slower
+  // than the 200ms debounce on a VPN'd phone. The empty branch retries; the
+  // non-empty branch NEVER does (that would move placed critters mid-view).
+  const start = COMMON.indexOf('function scatterCritters()');
+  const body = COMMON.slice(start, COMMON.indexOf('\nfunction scheduleCritterScatter', start))
+    .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.match(body, /if \(!placements\.length && critterEmptyRetries < 2\)/,
+    'ONLY an empty result retries, capped at two attempts');
+  assert.match(body, /critterEmptyRetries === 0 \? 1500 : 4000/, 'the ladder: +1.5s then +4s');
+  assert.match(body, /setTimeout\(scatterCritters, delay\)/, 'the retry re-runs the full measure+plan+render');
+  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter()'), COMMON.indexOf('\nfunction wireCritterListeners'));
+  assert.match(sched, /critterEmptyRetries = 0;/, 'every scheduled scatter (a navigation) re-arms the ladder');
+});
+
 // ---- the Docker mount lockstep (v1.166.3 - gate S1) -------------------------
 
 test('v1.166.3: the compose mount and the server folder path stay in LOCKSTEP (the folder-is-the-manifest chain)', () => {

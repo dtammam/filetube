@@ -7628,6 +7628,7 @@ var critterPlacements = [];
 var critterManifestPromise = null;
 var critterScatterTimer = null;
 var critterWired = false;
+var critterEmptyRetries = 0; // v1.166.4: the empty-first-pass retry ladder's count (re-armed per schedule)
 
 function ensureCritterLayer() {
   var layer = document.getElementById('critter-layer');
@@ -7732,6 +7733,19 @@ function scatterCritters() {
     });
     critterPlacements = placements;
     renderCritterPlacements(ensureCritterLayer(), placements);
+    // v1.166.4 (Dean's device pass: the WATCH page stayed critter-less): views
+    // whose anchors are ALL fetch-then-render (watch seeds its related rail and
+    // fills the description only AFTER /api/videos/:id resolves - slower than
+    // the 200ms debounce on a VPN'd phone) measure ZERO anchors on the first
+    // pass. An EMPTY result earns a bounded retry ladder - once at +1.5s, once
+    // more at +4s - and STOPS. Retrying only when NOTHING was placed keeps
+    // Dean's "never move mid-view" rule intact: placed critters never re-roll.
+    // The counter re-arms on every scheduled scatter (a new navigation).
+    if (!placements.length && critterEmptyRetries < 2) {
+      var delay = critterEmptyRetries === 0 ? 1500 : 4000;
+      critterEmptyRetries += 1;
+      setTimeout(scatterCritters, delay);
+    }
   });
 }
 
@@ -7740,6 +7754,7 @@ function scatterCritters() {
 // mid-view otherwise (Dean: fresh per navigation, still while you read).
 function scheduleCritterScatter() {
   if (typeof window === 'undefined') return;
+  critterEmptyRetries = 0; // a fresh navigation re-arms the empty-result retry ladder
   if (critterScatterTimer) clearTimeout(critterScatterTimer);
   critterScatterTimer = setTimeout(function () { critterScatterTimer = null; scatterCritters(); }, 200);
 }
