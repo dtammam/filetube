@@ -80,6 +80,27 @@
 
 ## Shipped
 
+### v1.166.2 - critters on the watch page (Dean device report) (2026-08-22)
+
+Dean's device pass: the watch page had zero critters - it uses none of the four
+original anchor selectors. Added two watch anchors: `.description-container`
+(paints --bg-sidebar) and `.related-thumb` (paints letterbox black). NOT
+`.related-card` - a transparent flex row: a NEW ground-contract test lock (every
+anchor's base rule must PAINT a background) caught exactly that mid-wave when
+the card was tried first, and it also documents why the comments section stays
+un-anchored. Peeks toward the adjacent player are already skipped by the
+placement-rect exclusion check.
+
+SLIM gate APPROVE, 5/5 mutants killed (incl. re-adding the transparent card ->
+red). Disclosed nits (no action): the paint lock accepts a `background: none`
+spelling (no anchor uses one) and checks base rules only (a skin-level
+transparent override at higher specificity would evade it - static-cascade
+limit). Dual-Node PENDING at time of writing.
+
+DEVICE (Dean): open any video's watch page with critter mode on - critters peek
+from behind the description box and the related-video thumbnails; never over
+the player itself.
+
 ### v1.166.1 - critters actually visible: the paint-ground fix (Dean device report) (2026-08-22)
 
 Dean's device pass on v1.166.0: ZERO critters visible, any density, mobile AND
