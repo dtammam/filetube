@@ -17,8 +17,8 @@ The contract:
 - **No duplicates on a page**: each critter appears at most once per page, so
   the more files you add, the fuller the higher density tiers get (Obscene shows
   up to 16 distinct critters when the folder has 16+ images).
-- While this folder holds no images, the app shows its three built-in
-  placeholder figurines instead.
+- While this folder holds no images, the app shows its five built-in
+  placeholder figurines instead (bunny, cat, bear, fox, chick).
 - **Real files only** - a symlink to an image elsewhere is skipped; copy the
   file in.
 - Files are picked up on the next full page load (a refresh), or immediately

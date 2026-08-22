@@ -7501,6 +7501,8 @@ var CRITTER_BUILTINS = [
   { id: 'builtin-bun', svg: '<svg viewBox="0 0 64 64" aria-hidden="true"><ellipse cx="24" cy="14" rx="5" ry="12" fill="currentColor" opacity="0.85"/><ellipse cx="40" cy="14" rx="5" ry="12" fill="currentColor" opacity="0.85"/><circle cx="32" cy="30" r="14" fill="currentColor"/><ellipse cx="32" cy="50" rx="16" ry="12" fill="currentColor" opacity="0.9"/><circle cx="27" cy="28" r="2" fill="currentColor" opacity="0.35"/><circle cx="37" cy="28" r="2" fill="currentColor" opacity="0.35"/></svg>' },
   { id: 'builtin-cat', svg: '<svg viewBox="0 0 64 64" aria-hidden="true"><polygon points="18,20 24,6 30,18" fill="currentColor" opacity="0.85"/><polygon points="34,18 40,6 46,20" fill="currentColor" opacity="0.85"/><circle cx="32" cy="30" r="14" fill="currentColor"/><ellipse cx="32" cy="51" rx="15" ry="11" fill="currentColor" opacity="0.9"/><circle cx="27" cy="28" r="2" fill="currentColor" opacity="0.35"/><circle cx="37" cy="28" r="2" fill="currentColor" opacity="0.35"/><path d="M54 46 q6 -6 2 -14" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.85"/></svg>' },
   { id: 'builtin-bear', svg: '<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="20" cy="14" r="7" fill="currentColor" opacity="0.85"/><circle cx="44" cy="14" r="7" fill="currentColor" opacity="0.85"/><circle cx="32" cy="31" r="15" fill="currentColor"/><ellipse cx="32" cy="52" rx="17" ry="11" fill="currentColor" opacity="0.9"/><circle cx="26" cy="29" r="2" fill="currentColor" opacity="0.35"/><circle cx="38" cy="29" r="2" fill="currentColor" opacity="0.35"/><ellipse cx="32" cy="36" rx="4" ry="3" fill="currentColor" opacity="0.35"/></svg>' },
+  { id: 'builtin-fox', svg: '<svg viewBox="0 0 64 64" aria-hidden="true"><polygon points="16,22 20,4 30,16" fill="currentColor" opacity="0.85"/><polygon points="34,16 44,4 48,22" fill="currentColor" opacity="0.85"/><circle cx="32" cy="30" r="14" fill="currentColor"/><polygon points="26,34 32,44 38,34" fill="currentColor" opacity="0.7"/><ellipse cx="32" cy="51" rx="15" ry="11" fill="currentColor" opacity="0.9"/><circle cx="26" cy="27" r="2" fill="currentColor" opacity="0.35"/><circle cx="38" cy="27" r="2" fill="currentColor" opacity="0.35"/><path d="M50 52 q10 -2 8 -14" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.8"/></svg>' },
+  { id: 'builtin-chick', svg: '<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="26" r="13" fill="currentColor"/><ellipse cx="32" cy="48" rx="14" ry="12" fill="currentColor" opacity="0.9"/><polygon points="28,26 20,29 28,32" fill="currentColor" opacity="0.7"/><circle cx="35" cy="24" r="2" fill="currentColor" opacity="0.35"/><ellipse cx="44" cy="47" rx="5" ry="8" fill="currentColor" opacity="0.75"/><ellipse cx="20" cy="47" rx="5" ry="8" fill="currentColor" opacity="0.75"/><path d="M28 8 q4 -6 8 0" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.8"/></svg>' },
 ];
 
 function critterRectsIntersect(a, b) {
@@ -7628,7 +7630,16 @@ function ensureCritterLayer() {
   layer.id = 'critter-layer';
   layer.className = 'critter-layer';
   layer.setAttribute('aria-hidden', 'true'); // decorative; never in the a11y tree
-  document.body.appendChild(layer);
+  // v1.166.1 (Dean's device pass: NOTHING was visible): the layer must live
+  // INSIDE `.main-content` - as a body child its z-index:-1 painted BELOW the
+  // `.main-content`/`.app-container` background stack, hiding every critter on
+  // every page. Inside .main-content (which now carries `isolation: isolate`),
+  // the negative-z critters paint ABOVE the page ground but still BELOW the
+  // in-flow furniture backgrounds = the peek. Neither wrapper is positioned,
+  // so the absolute layer keeps DOCUMENT coordinates. Shells without
+  // .main-content (login/welcome) fall back to body.
+  var host = document.querySelector('.main-content') || document.body;
+  host.appendChild(layer);
   return layer;
 }
 
@@ -13510,6 +13521,7 @@ if (typeof module !== 'undefined' && module.exports) {
     CRITTER_DENSITY_COUNTS, CRITTER_BUILTINS, CRITTER_ANCHOR_SELECTORS, CRITTER_EXCLUSION_SELECTORS,
     CRITTER_REACTIONS, resolveCritterConfig, planCritterScatter, critterTapHit,
     renderCritterPlacements, scatterCritters, applyCritterMode, playCritterChirp,
+    ensureCritterLayer,
     // v1.163.1: force text (non-emoji) presentation on the arrow glyphs.
     DDR_TEXT_PRESENTATION, ddrArrowDisplayGlyph,
     // v1.50.3: the D dark/light toggle's pure decision.

@@ -102,11 +102,11 @@ test('planCritterScatter: respects count, never duplicates a critter OR an ancho
   assert.strictEqual(new Set(out.map((p) => p.anchor.x + ',' + p.anchor.y)).size, 6, 'one critter per anchor');
 });
 
-test('planCritterScatter: the count caps at the manifest length (3 with only the built-ins) and at the anchor pool', () => {
+test('planCritterScatter: the count caps at the manifest length (5 with only the built-ins) and at the anchor pool', () => {
   const anchors = Array.from({ length: 12 }, (_, i) => ANCHOR(10, 10 + i * 200));
   assert.strictEqual(
     planCritterScatter({ anchors, exclusions: [], manifest: CRITTER_BUILTINS, count: 16, rng: seededRng(1) }).length,
-    3, 'obscene with an empty folder = the 3 built-ins, never repeats');
+    5, 'obscene with an empty folder = the 5 built-ins, never repeats');
   assert.strictEqual(
     planCritterScatter({ anchors: anchors.slice(0, 2), exclusions: [], manifest: MANIFEST_8, count: 16, rng: seededRng(2) }).length,
     2, 'few anchors = few critters');
@@ -211,9 +211,9 @@ test('critterTapHit: the visually-topmost (last-rendered) critter wins an overla
 
 // ---- the built-ins ----------------------------------------------------------
 
-test('the 3 built-in figurines are distinct, original, and colour-token-pure (currentColor only)', () => {
-  assert.strictEqual(CRITTER_BUILTINS.length, 3);
-  assert.strictEqual(new Set(CRITTER_BUILTINS.map((c) => c.id)).size, 3);
+test('the 5 built-in figurines are distinct, original, and colour-token-pure (currentColor only)', () => {
+  assert.strictEqual(CRITTER_BUILTINS.length, 5, 'v1.166.1: bun/cat/bear/fox/chick');
+  assert.strictEqual(new Set(CRITTER_BUILTINS.map((c) => c.id)).size, 5);
   for (const c of CRITTER_BUILTINS) {
     assert.match(c.svg, /currentColor/, 'colour rides currentColor (era tokens + hue-rotate do the rest)');
     assert.doesNotMatch(c.svg, /#[0-9a-fA-F]{3,6}\b/, 'no raw colour literal hides in the svg');
@@ -257,6 +257,32 @@ test('renderCritterPlacements: renders each placement positioned + rotated; re-r
     renderCritterPlacements(layer, [{ id: 'c', x: 1, y: 2, w: 44, h: 44, angle: 0, hue: 0, img: null, svg: null }]);
     assert.strictEqual(layer.querySelectorAll('.critter').length, 1, 'no accumulation across scatters');
   } finally { unmount(dom); }
+});
+
+// ---- the paint ground (v1.166.1 - Dean's device pass: NOTHING was visible) --
+
+test('v1.166.1: the layer parents INSIDE .main-content (else z-index:-1 hides under the page background)', () => {
+  const dom = new JSDOM('<!DOCTYPE html><body><div class="app-container"><div class="main-content"><div id="view-root"></div></div></div></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const { ensureCritterLayer } = require('../../public/js/common.js');
+    const layer = ensureCritterLayer();
+    assert.strictEqual(layer.parentElement.className, 'main-content',
+      'inside .main-content, whose isolation:isolate makes negative-z paint above the ground, below the furniture');
+    // A shell WITHOUT .main-content (login/welcome) falls back to body.
+  } finally {
+    delete global.window; delete global.document;
+    dom.window.close();
+  }
+});
+
+test('v1.166.1 CSS: .main-content carries isolation:isolate - the critter plane\'s stacking contract', () => {
+  const rule = /\.main-content\s*\{([^}]*)\}/.exec(CSS);
+  assert.ok(rule, '.main-content rule exists');
+  assert.match(rule[1], /isolation:\s*isolate/,
+    'without its own stacking context, the layer\'s z-index:-1 resolves against the ROOT context and paints UNDER .main-content\'s background - zero critters visible anywhere (the v1.166.0 device finding)');
+  assert.match(rule[1], /background-color:\s*var\(--bg-color\)/,
+    'the background this contract exists to get above is still painted here (if it moves, re-verify the ground)');
 });
 
 // ---- inertness + wiring source locks ---------------------------------------

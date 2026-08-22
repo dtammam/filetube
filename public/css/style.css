@@ -1200,6 +1200,13 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: var(--space-12);
   background-color: var(--bg-color);
   transition: margin-left var(--dur-fast);
+  /* v1.166.1: OWN stacking context so the critter plane (#critter-layer's
+     z-index:-1 children, parented INSIDE this element) paints ABOVE this
+     background but BELOW the in-flow furniture backgrounds. Without this, a
+     negative-z layer resolves against the ROOT stacking context and hides
+     under this very background - Dean's device pass found ZERO critters
+     visible. `isolation` changes stacking only: no layout, no paint change. */
+  isolation: isolate;
 }
 
 .main-content.expanded {
