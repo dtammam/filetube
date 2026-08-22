@@ -24,7 +24,7 @@
   "author": "Dean Tammam",
   "license": "MIT",
   "devDependencies": {
-    "@eslint/js": "^9.39.4",
+    "@eslint/js": "^10.0.1",
     "eslint": "^9.39.4",
     "globals": "^17.7.0",
     "js-yaml": "^4.3.1",
