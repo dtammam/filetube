@@ -80,6 +80,29 @@
 
 ## Shipped
 
+### v1.163.2 - DDR press flash by direction: left/right blue, up/down red (Dean) (2026-08-22)
+
+Corrects what v1.163.1 mis-scoped. Dean wanted the arrow GLYPHS left alone (neutral) -
+only the SQUARE that flashes when you press a key should differ by direction: up/down
+flash red (as before), left/right flash BLUE. So: reverted the resting per-axis glyph
+colour, and moved the axis colour onto the press state - `.shortcuts-ddr-arrow--h.ddr-hit`
+lights `var(--text-link)` (blue), `--v.ddr-hit` lights `var(--yt-red)` (red). Both are
+two-class rules declared after the base `.ddr-hit`, so at equal specificity left/right's
+blue beats the base red while up/down keep it; the white glyph + pop animation are
+unchanged. The U+FE0E / `font-variant-emoji: text` groundwork stays so iOS still can't
+emoji-colour the glyph itself.
+
+PROCESS (honest, and a repeat): this is the THIRD read of the same one-line ask - I
+first heard "make them neutral", then "colour the glyphs blue/red", before Dean pinned
+it: colour the PRESS FLASH by direction, not the glyph. Each attempt was gated + green;
+the churn was interpretation, not defects. LESSON logged: on a terse visual tweak,
+restate the exact element + state (glyph vs square, resting vs pressed) and get a yes
+before building. SLIM gate, adversarial APPROVE (3 mutants: token-swap, source-order,
+glyph-recolour-revert-enforced). Dual-Node PENDING at time of writing.
+
+DEVICE (Dean): open `?`, press the arrow keys - left/right squares flash BLUE, up/down
+squares flash RED; the arrow glyphs themselves stay neutral (uncoloured).
+
 ### v1.163.1 - DDR arrows: intentional left/right blue, up/down red (Dean) (2026-08-22)
 
 Dean WANTS the DDR arrows coloured - left/right blue, up/down red (the classic pad

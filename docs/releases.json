@@ -1966,5 +1966,11 @@
     "date": "2026-08-22",
     "title": "The DDR arrows are properly colored: left/right blue, up/down red",
     "intent": "A small tweak to the shortcuts-window easter egg: the four arrows are now colored on purpose and the same on every device - left and right are blue, up and down are red, like a real dance pad. Pressing an arrow still lights it up red. Before this they were either grey or whatever color your phone happened to pick."
+  },
+  {
+    "version": "1.163.2",
+    "date": "2026-08-22",
+    "title": "DDR arrows flash by direction when you press them",
+    "intent": "The shortcuts-window easter egg now flashes each arrow's square in its own color when you press it: left and right flash blue, up and down flash red, like a real dance pad. The arrows themselves stay a plain neutral color; only the square lights up."
   }
 ]
