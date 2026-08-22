@@ -1990,5 +1990,11 @@
     "date": "2026-08-22",
     "title": "The dance-pad easter egg comes to your phone",
     "intent": "The keyboard shortcuts window is now reachable on phones too: Stats has a Keyboard shortcuts entry that opens it, and the four little dance-pad arrows in its corner play their notes when you tap them - left and right flash blue, up and down flash red, just like on desktop. The shortcut list is there for reference; the arrows are the fun part."
+  },
+  {
+    "version": "1.166.0",
+    "date": "2026-08-22",
+    "title": "Sneaky critter mode",
+    "intent": "A completely optional bit of fun, off unless you turn it on: little critters peek out from behind cards and menus all around the app, tilted at cute angles - never over the video or music you're playing. Tap one and it makes a little noise and wiggles, shivers, or hops. Pick how many you want (an odd one, a tasteful smattering, or a little extreme) under Settings, Appearance. Three placeholder figurines are included; drop your own transparent images into the critters folder and they join in automatically, each with its own sound if you add a matching audio file."
   }
 ]

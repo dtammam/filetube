@@ -104,3 +104,10 @@ tuning after device feel, critters in modals/overlays.
 ## Gate
 FULL gate (new subsystem touching the shared router path), standard brief - no
 data-loss surface.
+
+Status: SHIPPED (v1.166.0, 2026-08-22).
+Skeleton complete: engine + folder-manifest + settings + tap reactions, FULL gate
+(both seats REQUEST CHANGES -> all findings applied -> both APPROVE on delta),
+dual-Node 7444/7444. Dean's device pass PENDING. The asset wave is Dean dropping
+files into public/critters/ - no code needed; revisit only if the device pass
+demands art-driven tuning (per-critter sizing, density feel, img-tint opt-out).

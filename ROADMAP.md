@@ -80,6 +80,51 @@
 
 ## Shipped
 
+### v1.166.0 - Sneaky critter mode: the skeleton (Dean) (2026-08-22)
+
+Dean's fun mode, OFF by default and completely optional: little critters peek out
+from behind page furniture (cards, boxes, menus) at jaunty angles - never over the
+video/audio surfaces - with density tiers Sparse 1 / Normal 6 / Obscene 16 (his
+names, his curve). Tap a critter's exposed sliver: its own sound file (or a synth
+chirp) plus one random tiny reaction (wiggle / shiver / hop; transform-only;
+reduced-motion-safe). Settings -> Appearance, per-device. THE FOLDER IS THE
+MANIFEST: drop any images into public/critters/ (README in the folder documents
+the contract) - name-agnostic, a same-basename sound file becomes that critter's
+voice, code owns display size so huge crisp renders are ideal. Empty folder ->
+three built-in ORIGINAL SVG figurines (deliberate deviation, disclosed: not
+committing trademarked Calico Critters art pulled from the web; Dean supplies his
+own files). Exec plan: docs/exec-plans/active/critter-mode-skeleton.md.
+
+FULL gate - BOTH seats REQUEST CHANGES round 1, every finding applied:
+- The gate's sharpest catches, all measured: a peek could REACH INTO an adjacent
+  player/dock (123/500 seeded runs - the placement's own rect is now checked, not
+  just its anchor); a zero-clamp made ~1/3 of critters on full-bleed mobile cards
+  FULLY hidden and untappable (clamp removed; off-page peeks clip instead); a
+  legal double-quote filename made every tap on that critter THROW (taps resolve
+  by index now - no id-built selector); the modal exclusion was one class of
+  twelve (now a [class*="-backdrop"] suffix net + the tap handler stands down
+  over every exclusion); iOS URL-bar resizes re-scattered mid-view (width-only
+  gate now).
+- Delta re-confirm: BOTH seats APPROVE; adversarial re-ran its own repro probes
+  (0/377, 0/600, 0/250) and killed 10/10 new-guard mutants; QA independently ran
+  the full release bar (7444/7444).
+- Server surface: ONE read-only GET /api/critters (folder listing; session-gated;
+  classified NO_CONTENT; RBAC route-count pin bumped with review). The v1.79
+  run-full-test-first discipline caught both census nets pre-gate.
+
+DISCLOSED residuals: tap-path guard bindings are source-locked (jsdom cannot
+click real layouts); anchors measured shortly after init (a late-growing surface
+may be critter-less until the next navigation); symlinked files skipped (README
+says so); the backdrop net depends on the -backdrop naming convention (uniform
+today, test-locked). Dual-Node PENDING at time of writing. The peek visuals are
+Dean's device pass.
+
+DEVICE (Dean): Settings -> Appearance -> enable Sneaky critter mode -> the three
+placeholder figurines peek from behind cards/boxes at angles; tap one -> chirp +
+a tiny reaction; density tiers change the count; NOTHING over the player, dock,
+or fullscreen; OFF -> everything vanishes. Then drop PNGs into public/critters/
+and refresh - they take over. Probe right-edge cards on mobile (bounds skip).
+
 ### v1.165.0 - the keyboard-shortcuts window (and the DDR toy) comes to mobile (Dean) (2026-08-22)
 
 Dean reversed his own v1.47.8 "ignore/not display on mobile viewport" ruling: "let's
