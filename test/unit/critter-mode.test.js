@@ -391,6 +391,23 @@ test('the anchor pool excludes every playback surface (both directions of Dean\'
   }
 });
 
+test('v1.166.2: the WATCH page has anchors, and every anchor honours the ground contract (paints a background)', () => {
+  // Dean's device pass: the watch view had zero critters - none of the original
+  // four selectors exist there. The two watch anchors, and the CONTRACT for
+  // every pool entry: its base CSS rule paints a background (the z-1 layer
+  // hides the overlap only when the anchor paints over it).
+  assert.ok(CRITTER_ANCHOR_SELECTORS.indexOf('.description-container') !== -1, 'the description box anchors');
+  assert.ok(CRITTER_ANCHOR_SELECTORS.indexOf('.related-thumb') !== -1, 'related thumbs anchor (the card itself is transparent - this lock caught that)');
+  assert.ok(CRITTER_ANCHOR_SELECTORS.indexOf('.comments-section') === -1,
+    'the comments section paints NO background - a critter behind it would show through (deliberately not an anchor)');
+  for (const sel of CRITTER_ANCHOR_SELECTORS.filter((s) => s.startsWith('.'))) {
+    const rule = new RegExp('(?:^|\\n)' + sel.replace('.', '\\.') + '\\s*\\{([^}]*)\\}').exec(CSS);
+    assert.ok(rule, sel + ' has a base CSS rule');
+    assert.match(rule[1].replace(/\/\*[\s\S]*?\*\//g, ''), /background(?:-color)?:/,
+      sel + ' must PAINT a background (the ground contract for every anchor)');
+  }
+});
+
 // ---- CSS locks --------------------------------------------------------------
 
 test('tap reactions: a pool of tiny transform-only animations, each defined in CSS and all reduced-motion-safe', () => {
