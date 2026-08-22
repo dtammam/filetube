@@ -502,6 +502,39 @@ test('v1.167: scale-to-anchor - behind a small button the critter shrinks to ~1.
   assert.ok(out[0].w >= 44 && out[0].w <= 88, 'large anchors keep 44-88');
 });
 
+test('gate PNB: collectCritterRects WIRING - fixed subtrees skipped AND .btn tagged weight 3 (kills both survivors)', () => {
+  // The adversarial's two surviving mutants: deleting the fixed-guard CALLSITE
+  // and neutering the weight TAGGING both stayed green - the helper and the
+  // pure planner were bound, their wiring was not. This is the seat's verified
+  // prescription: one behavioural test through the REAL collector (jsdom
+  // reports 0-rects, so marked elements get stub geometry - the .4 lesson).
+  const dom = new JSDOM('<!DOCTYPE html><body>'
+    + '<div style="position: fixed;"><button class="btn" data-m="1">Pinned</button></div>'
+    + '<button class="btn" data-m="1" id="free">Free</button>'
+    + '<div class="sub-row" data-m="1"></div>'
+    + '</body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  const proto = dom.window.Element.prototype;
+  const orig = proto.getBoundingClientRect;
+  proto.getBoundingClientRect = function () {
+    if (this.getAttribute && this.getAttribute('data-m')) {
+      return { left: 10, top: 10, width: 200, height: 60, right: 210, bottom: 70 };
+    }
+    return orig.call(this);
+  };
+  try {
+    const { collectCritterRects, CRITTER_ANCHOR_SELECTORS: POOL } = require('../../public/js/common.js');
+    const rects = collectCritterRects(POOL, true);
+    assert.strictEqual(rects.length, 2, 'the fixed-wrapped button is SKIPPED (viewport rect vs document critters)');
+    const weights = rects.map((r) => r.weight).sort();
+    assert.deepStrictEqual(weights, [1, 3], 'the free .btn is TAGGED weight 3; .sub-row stays 1 (the ambush priority wiring)');
+  } finally {
+    proto.getBoundingClientRect = orig;
+    delete global.window; delete global.document;
+    dom.window.close();
+  }
+});
+
 test('v1.167: an anchor inside a FIXED subtree is skipped (its rect is viewport-anchored; critters are document-anchored)', () => {
   const dom = new JSDOM('<!DOCTYPE html><body><div id="fixedwrap" style="position: fixed;"><button class="btn" style="width:100px;height:40px">Pinned</button></div><button id="free" class="btn" style="width:100px;height:40px">Free</button></body>', { url: 'http://localhost/' });
   global.window = dom.window; global.document = dom.window.document;

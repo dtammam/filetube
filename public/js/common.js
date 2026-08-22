@@ -7727,7 +7727,10 @@ function fetchCritterManifest() {
 // buttons, the bottom nav). Such subtrees are never anchors.
 function critterInsideFixed(el) {
   for (var p = el; p && p !== document.body && p.nodeType === 1; p = p.parentElement) {
-    try { if (window.getComputedStyle(p).position === 'fixed') return true; } catch (_) { return false; }
+    // Fail CLOSED (gate S2): if computed style is unreadable, do NOT anchor -
+    // wrongly skipping one candidate is invisible; wrongly anchoring a fixed
+    // one detaches its critter on scroll.
+    try { if (window.getComputedStyle(p).position === 'fixed') return true; } catch (_) { return true; }
   }
   return false;
 }
@@ -13597,8 +13600,9 @@ if (typeof module !== 'undefined' && module.exports) {
     CRITTER_REACTIONS, resolveCritterConfig, planCritterScatter, critterTapHit,
     renderCritterPlacements, scatterCritters, applyCritterMode, playCritterChirp,
     ensureCritterLayer,
-    // v1.167: button priority + the fixed-subtree guard.
-    CRITTER_PRIORITY_SELECTORS, CRITTER_PRIORITY_WEIGHT, critterInsideFixed,
+    // v1.167: button priority + the fixed-subtree guard (+ the collector, so
+    // the WIRING of both is behaviourally bound, not just the helper - gate PNB).
+    CRITTER_PRIORITY_SELECTORS, CRITTER_PRIORITY_WEIGHT, critterInsideFixed, collectCritterRects,
     // v1.163.1: force text (non-emoji) presentation on the arrow glyphs.
     DDR_TEXT_PRESENTATION, ddrArrowDisplayGlyph,
     // v1.50.3: the D dark/light toggle's pure decision.
