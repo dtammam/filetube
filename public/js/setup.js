@@ -599,6 +599,26 @@ function wireHideStarsControl(signal) {
   }, { signal });
 }
 
+// v1.166 (Dean): Sneaky critter mode. Per-device (localStorage); common.js owns
+// the engine (applyCritterMode re-scatters or clears immediately) - these
+// controls just reflect and fire it, the hide-stars posture.
+function wireCritterModeControls(signal) {
+  const check = document.getElementById('critter-mode-check');
+  const density = document.getElementById('critter-density-select');
+  if (!check || !density) return;
+  const cfg = (typeof resolveCritterConfig === 'function') ? resolveCritterConfig() : { enabled: false, density: 'normal' };
+  check.checked = cfg.enabled;
+  density.value = cfg.density;
+  check.addEventListener('change', () => {
+    try { localStorage.setItem('ft-critters:on', check.checked ? '1' : '0'); } catch (_) { /* storage off */ }
+    if (typeof applyCritterMode === 'function') applyCritterMode();
+  }, { signal });
+  density.addEventListener('change', () => {
+    try { localStorage.setItem('ft-critters:density', density.value); } catch (_) { /* storage off */ }
+    if (typeof applyCritterMode === 'function') applyCritterMode();
+  }, { signal });
+}
+
 function loadResumeThresholdControl() {
   const input = document.getElementById('resume-threshold-input');
   if (!input) return;
@@ -2971,6 +2991,7 @@ function init(root) {
   renderThemePicker();
   renderIconPicker();
   wireHideStarsControl(controller.signal); // v1.63.1: the fake-stars toggle
+  wireCritterModeControls(controller.signal); // v1.166: Sneaky critter mode
   loadResumeThresholdControl();
   loadDebugLifecycleControl();
   loadHomeRowControl('home-continue-watching-check', 'ft-home-continue-watching');

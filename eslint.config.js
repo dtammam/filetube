@@ -200,6 +200,10 @@ module.exports = [
         // toggle reflects + fires it).
         shouldShowStarRatings: 'readonly',
         applyStarRatingsPref: 'readonly',
+        // v1.166: Sneaky critter mode (common.js owns the engine; setup.js's
+        // controls reflect + fire it).
+        resolveCritterConfig: 'readonly',
+        applyCritterMode: 'readonly',
         // v1.79: the home-feed toggle (common.js owns it; main.js reads it at
         // home init, setup.js's toggle reflects + mirrors it).
         homeFeedEnabled: 'readonly',

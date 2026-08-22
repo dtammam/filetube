@@ -15209,6 +15209,54 @@ app.get('/api/library-items', (req, res) => {
   res.json({ items, total: items.length });
 });
 
+// ---- v1.166 (Dean): Sneaky critter mode - THE FOLDER IS THE MANIFEST -------
+// `public/critters/` is enumerated name-agnostically: ANY image file dropped in
+// becomes a critter (no array-to-filename matching, Dean's explicit ruling), and
+// a sound file with the SAME BASENAME becomes that critter's tap noise. Dean
+// populates the folder with big crisp transparent PNGs; the CLIENT owns display
+// size, so source dimensions never matter. Pure mapping split out for unit
+// coverage (the route itself is readdir + this).
+const CRITTER_IMAGE_EXTS = new Set(['.png', '.webp', '.gif', '.svg', '.jpg', '.jpeg']);
+const CRITTER_SOUND_EXTS = new Set(['.mp3', '.wav', '.m4a', '.ogg']);
+function buildCritterListing(fileNames) {
+  const names = Array.isArray(fileNames) ? fileNames.filter((n) => typeof n === 'string') : [];
+  const sounds = new Map();
+  for (const name of names) {
+    // Strip with the RAW extname (gate S1): lowercasing the ext before
+    // basename() left `Mopsy.MP3` unstripped and the pairing silently died.
+    const rawExt = path.extname(name);
+    if (CRITTER_SOUND_EXTS.has(rawExt.toLowerCase())) sounds.set(path.basename(name, rawExt), name);
+  }
+  const out = [];
+  const seen = new Set(); // gate S3: `mopsy.png` + `mopsy.webp` is ONE critter -
+  // the no-duplicates-per-page rule is keyed on id, so the id must be unique
+  // here (first image in sorted order wins).
+  for (const name of names.filter((n) => CRITTER_IMAGE_EXTS.has(path.extname(n).toLowerCase())).sort()) {
+    const base = path.basename(name, path.extname(name));
+    if (seen.has(base)) continue;
+    seen.add(base);
+    out.push({
+      id: base,
+      img: '/critters/' + encodeURIComponent(name),
+      sound: sounds.has(base) ? '/critters/' + encodeURIComponent(sounds.get(base)) : null,
+    });
+  }
+  return out;
+}
+
+app.get('/api/critters', (req, res) => {
+  const dir = path.join(__dirname, 'public', 'critters');
+  let entries = [];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+  } catch (_) {
+    // Missing/unreadable folder is a NORMAL state (fresh install) - empty list,
+    // the client falls back to its built-in figurines.
+    return res.json({ critters: [] });
+  }
+  res.json({ critters: buildCritterListing(entries) });
+});
+
 app.get('/api/stats', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: pure read on a request/serve path
   const books = booksStore.readBooks(db);
@@ -17048,6 +17096,8 @@ module.exports = {
   app,
   needsTranscode,
   transcodedPath,
+  // v1.166: the pure critter-folder -> manifest mapping (Sneaky critter mode).
+  buildCritterListing,
   // 2026-07-30 hardening: exported so the capture harness's request policy
   // can assert its allowlist stays a subset of this one (twin contracts),
   // and so the audit middleware's close-path is provable with a deferred
