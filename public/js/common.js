@@ -5269,6 +5269,10 @@ function wireMasterDetail(pageKey, root, signal) {
   backBtn.addEventListener('click', () => {
     mdRoot.dataset.mdOpen = 'false';
     // Return to the SAME spot in the list the user tapped from (not the top).
+    // ORDER MATTERS (gate S1): restore AFTER the mdOpen swap above - while the
+    // (often short) detail pane is still displayed, the browser would CLAMP
+    // scrollTo(0, navScrollY) to the detail's max scroll and the list would
+    // re-appear at a truncated offset. jsdom cannot bind this (no layout).
     if (typeof window !== 'undefined') {
       try { window.scrollTo(0, navScrollY); } catch (_) { /* jsdom: scrollTo unimplemented */ }
     }
