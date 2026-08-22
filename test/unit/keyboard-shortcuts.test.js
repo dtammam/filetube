@@ -367,18 +367,27 @@ test('MOBILE: the trigger is desktop-gated at EVENT time, not at boot', () => {
     'Esc must be handled before the desktop gate');
 });
 
-test('MOBILE: the Stats entry point is hidden at the phone breakpoint', () => {
-  // v1.55 Track D (DELIBERATE lock update): the box gained sub-collapsible
-  // between the two anchor classes -- match the list openly.
+test('MOBILE (v1.165 DELIBERATE lock INVERSION): the Stats entry is VISIBLE on phones now', () => {
+  // Dean reversed his v1.47.8 "not on mobile" ruling on 2026-08-22: the
+  // shortcuts window hosts the DDR mini-synth (v1.163) whose arrows are
+  // TAPPABLE, so the phone gets the entry (the toy) and the shortcut list rides
+  // along as reference. Only the `?` KEY stays desktop-gated (next test).
   assert.match(STATS_HTML, /class="setup-box[^"]*shortcuts-entry"/);
   assert.match(STATS_HTML, /id="show-shortcuts-btn"/);
-  // v1.63 lock conversion (disclosed): this used to slice from the LAST
-  // phone media block - an incidental anchor that broke the day the queue
-  // panel appended a newer one. The semantics were always "SOME phone
-  // block hides the entry"; assert that directly across every block.
-  const phoneBlocks = CSS.split('@media (max-width: 768px)').slice(1);
-  assert.ok(phoneBlocks.some((b) => /\.shortcuts-entry \{\s*display: none;\s*\}/.test(b)),
-    'a phone must not be offered a keyboard reference it cannot use');
+  // NO rule may hide the entry any more, at ANY width (the entry is now the
+  // phone's ONLY route to the window). Gate W1 (delta): a `{`-anchored regex was
+  // porous to a SELECTOR-LIST spelling (`.shortcuts-entry, .other { display:none }`
+  // survived - the divergent-fixture class), so this net matches the class
+  // anywhere in a selector prelude. Comments are stripped FIRST (the
+  // comment-porous class): style.css legitimately MENTIONS .shortcuts-entry in
+  // the v1.165 prose explaining the removal, and an unstripped net false-reds
+  // on it.
+  const cssNoComments = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(!/[^{}]*\.shortcuts-entry[^{}]*\{[^}]*display:\s*none/.test(cssNoComments),
+    'no rule (any width, any selector-list spelling) may display:none the shortcuts entry');
+  // ...and the section must not re-acquire the master-detail phone hide either.
+  assert.doesNotMatch(STATS_HTML, /data-collapse-key="keyboard-shortcuts"[^>]*data-md-hide-mobile/,
+    'keyboard-shortcuts must not be marked data-md-hide-mobile');
 });
 
 test('the desktop query matches the stylesheet phone breakpoint', () => {

@@ -80,6 +80,37 @@
 
 ## Shipped
 
+### v1.165.0 - the keyboard-shortcuts window (and the DDR toy) comes to mobile (Dean) (2026-08-22)
+
+Dean reversed his own v1.47.8 "ignore/not display on mobile viewport" ruling: "let's
+do keyboard shortcuts as the DDR bit is cute!" The shortcuts window hosts the DDR
+mini-synth (v1.163) whose arrows play on CLICK/TAP - no keyboard needed - so the
+phone now gets the toy. Stats -> Keyboard shortcuts is visible on phones; tapping it
+opens the same window (single column, scrolls inside the modal's 85vh cap; the
+two-column no-scroll layout stays desktop-only). The shortcut list rides along as
+reference. Only the `?` KEY stays desktop-gated - a phone has no key to press.
+
+Mechanics: removed `data-md-hide-mobile` from the Stats entry + the phone
+`display:none` on `.shortcuts-entry`. The generic v1.152 hide-mobile mechanism is
+KEPT for future sections, now bound via a synthetic marking so it stays
+mutation-locked with zero production users. Two DELIBERATE test-lock inversions,
+documented in-test.
+
+SLIM gate: REQUEST CHANGES first - two WARNINGs, both this repo's recurring
+classes, both taken as prescribed: (1) the new visibility lock was porous to a
+selector-list CSS spelling (divergent-fixture class) - now a comment-stripped
+whole-stylesheet net, spelling- and width-agnostic; (2) the Stats button became the
+SOLE mobile route while its wiring was presence-only bound - deleting the listener
+kept all 5586 tests green. Now bound behaviourally (click -> opens; destroy ->
+unwires), and fixing it exposed WHY the suite was blind: the test fixture never had
+the button, so the wiring silently skipped. Delta re-confirm APPROVE - every mutant
+(including a fresh width/spelling probe and a dropped-{signal} probe) killed.
+Dual-Node PENDING at time of writing.
+
+DEVICE (Dean): phone -> Stats -> Keyboard shortcuts (now visible) -> tap it -> the
+window opens; tap the four arrows -> notes play, left/right flash blue, up/down
+red. The `?` key on desktop unchanged.
+
 ### v1.164.0 - settings scroll ownership: sections open at the top, Back restores your place (Dean) (2026-08-22)
 
 Dean's device report: opening a settings section (Stats -> "Under the hood") landed

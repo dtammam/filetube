@@ -1984,5 +1984,11 @@
     "date": "2026-08-22",
     "title": "Settings sections open at the top, and Back remembers your spot",
     "intent": "Opening a section on the Settings, Stats, or Subscriptions pages (like Under the hood) used to land you partway down, with the section's title and back arrow hidden under the header. Now every section opens right at the top, and tapping Back returns you to the exact spot in the list you came from, the way the iPhone Settings app does."
+  },
+  {
+    "version": "1.165.0",
+    "date": "2026-08-22",
+    "title": "The dance-pad easter egg comes to your phone",
+    "intent": "The keyboard shortcuts window is now reachable on phones too: Stats has a Keyboard shortcuts entry that opens it, and the four little dance-pad arrows in its corner play their notes when you tap them - left and right flash blue, up and down flash red, just like on desktop. The shortcut list is there for reference; the arrows are the fun part."
   }
 ]
