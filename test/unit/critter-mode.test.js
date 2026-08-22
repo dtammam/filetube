@@ -272,9 +272,15 @@ test('v1.166.4: an EMPTY scatter earns a bounded retry ladder (1.5s then 4s), re
   assert.match(body, /if \(!placements\.length && critterEmptyRetries < 2\)/,
     'ONLY an empty result retries, capped at two attempts');
   assert.match(body, /critterEmptyRetries === 0 \? 1500 : 4000/, 'the ladder: +1.5s then +4s');
-  assert.match(body, /setTimeout\(scatterCritters, delay\)/, 'the retry re-runs the full measure+plan+render');
+  // Gate WARNING (demonstrated race): the two belts that make "never move
+  // mid-view" literally true - the STASHED handle + the fire-time emptiness guard.
+  assert.match(body, /critterRetryTimer = setTimeout\(function \(\) \{/, 'the retry handle is STASHED (cancellable)');
+  assert.match(body, /if \(!critterPlacements\.length\) scatterCritters\(\);/,
+    'the retry re-checks emptiness at FIRE time - placed critters can never re-roll');
   const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter()'), COMMON.indexOf('\nfunction wireCritterListeners'));
   assert.match(sched, /critterEmptyRetries = 0;/, 'every scheduled scatter (a navigation) re-arms the ladder');
+  assert.match(sched, /if \(critterRetryTimer\) \{ clearTimeout\(critterRetryTimer\); critterRetryTimer = null; \}/,
+    'a new navigation CANCELS the previous view\'s pending retry (the stale-timer race, demonstrated by the gate)');
 });
 
 // ---- the Docker mount lockstep (v1.166.3 - gate S1) -------------------------
