@@ -80,6 +80,33 @@
 
 ## Shipped
 
+### v1.166.3 - the critter folder works under Docker (the volume mount) (2026-08-22)
+
+Dean's clerical agent dropped 5 PNGs into ~/filetube/public/critters/ on his
+server and found no folder, no README, no reading code - his checkout predated
+v1.166.x, AND it exposed a real deployment gap: the image BAKES public/ in and
+compose mounted only data + media, so on ANY Docker deployment host-side critter
+drops never reached the container. The folder-is-the-manifest contract held only
+for git-checkout runs.
+
+- docker-compose.yml now binds `./public/critters:/app/public/critters` (active,
+  the ./data posture). The seat verified BOTH ends resolve inside the mount (the
+  API readdir at /app/public/critters AND express.static's /critters/* byte
+  serve), the bind shadows the baked README with the identical tracked one, and
+  CI/scripts are untouched (the publish smoke uses plain docker run; compose is
+  dockerignored, so the image is byte-identical).
+- Gate S1: a LOCKSTEP unit test pairs the compose bind with server.js's folder
+  path - nothing else binds the compose file, so moving the folder now forces a
+  human to move both ends. S2: README notes the root-owned auto-created dir for
+  compose-without-checkout users, and the plain-docker-run -v requirement.
+
+SLIM gate APPROVE. Dual-Node PENDING at time of writing.
+
+DEVICE (Dean): on cutecontainer - git pull in ~/filetube (the 5 PNGs are
+untracked and survive), pull the v1.166.3 image, recreate with the updated
+compose -> Pearl/Milo/Hazel/Maple/Biscuit replace the built-in figurines on the
+next refresh.
+
 ### v1.166.2 - critters on the watch page (Dean device report) (2026-08-22)
 
 Dean's device pass: the watch page had zero critters - it uses none of the four

@@ -2008,5 +2008,11 @@
     "date": "2026-08-22",
     "title": "Critters visit the video page too",
     "intent": "Sneaky critters now show up on the page where you watch a video as well - peeking from behind the description box and the related-video thumbnails. They still never touch the video player itself."
+  },
+  {
+    "version": "1.166.3",
+    "date": "2026-08-22",
+    "title": "Your own critter pictures now work when running in Docker",
+    "intent": "If FileTube runs in Docker, pictures you dropped into the critters folder on your server were invisible to the app - it only saw its own built-in copies. The Docker setup now connects that folder to the app, so your own critters appear on the next refresh after updating. The folder's README also explains the one extra step for setups without a full code checkout."
   }
 ]
