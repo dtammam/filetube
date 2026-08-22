@@ -57,6 +57,7 @@ const READ = {
   '/api/config': 'GATED',
   '/api/duplicates': 'GATED',
   '/api/duplicates.csv': 'GATED',
+  '/api/critters': 'NO_CONTENT', // v1.166: decorative critter-folder listing (asset filenames only, no library/user data)
   '/api/feed-hidden': 'GATED',
   '/api/handoff': 'GATED',
   '/api/history': 'GATED',
