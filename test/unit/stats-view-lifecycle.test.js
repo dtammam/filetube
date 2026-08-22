@@ -31,9 +31,11 @@ function loadRoutedStats() {
   const origFetch = global.fetch;
   const origWindow = global.window;
   const origDocument = global.document;
+  const origAbortController = global.AbortController;
 
   const dom = new JSDOM(
-    '<!DOCTYPE html><body>' + ALL_IDS.map((id) => `<div id="${id}"></div>`).join('') + '</body>',
+    '<!DOCTYPE html><body>' + ALL_IDS.map((id) => `<div id="${id}"></div>`).join('')
+      + '<button id="show-shortcuts-btn" type="button"></button></body>',
     { url: 'http://localhost/stats.html' });
 
   const captured = {};
@@ -46,6 +48,12 @@ function loadRoutedStats() {
   global.fetch = fetchStub;
   global.window = dom.window;
   global.document = dom.window.document;
+  // v1.165: the fixture now carries #show-shortcuts-btn, so init() really wires
+  // it - jsdom's addEventListener refuses a NODE AbortSignal in { signal }, so
+  // stats.js must construct jsdom's. (Before the button existed here the wiring
+  // silently skipped, which is exactly how the deleted-listener mutant stayed
+  // green - the gate W2 finding.)
+  global.AbortController = dom.window.AbortController;
 
   delete require.cache[STATS];
   require(STATS); // registers via the injected registerView; does NOT fetch (no init yet)
@@ -54,6 +62,7 @@ function loadRoutedStats() {
     global.fetch = origFetch;
     global.window = origWindow;
     global.document = origDocument;
+    global.AbortController = origAbortController;
     delete require.cache[STATS];
     dom.window.close();
   };
@@ -100,6 +109,31 @@ test('destroy() aborts all in-flight fetches (navigate-away cancels stale render
       assert.strictEqual(s.aborted, true, 'destroy() aborted the fetch so a late resolve cannot render into a replaced #view-root');
     }
   } finally {
+    restore();
+  }
+});
+
+// v1.165 (gate W2): the Show-keyboard-shortcuts button is now the phone's ONLY
+// route to the shortcuts window (the `?` key stays desktop-gated), so its wiring
+// must be bound BEHAVIOURALLY - a markup presence match let a deleted
+// addEventListener ship green through the whole suite. Deleting the wiring
+// block in stats.js reds this.
+test('init() wires #show-shortcuts-btn -> window.openShortcutsModal (the sole mobile route)', () => {
+  const { dom, captured, restore } = loadRoutedStats();
+  try {
+    captured.stats.init(dom.window.document.body);
+    let calls = 0;
+    dom.window.openShortcutsModal = () => { calls += 1; }; // read at CLICK time by the handler
+    const btn = dom.window.document.getElementById('show-shortcuts-btn');
+    btn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+    assert.strictEqual(calls, 1, 'a tap on the Stats button opens the shortcuts window');
+    // The wire respects the view lifecycle: after destroy(), the aborted signal
+    // must have unbound it (a stale handler on a persistent shell element).
+    captured.stats.destroy();
+    btn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+    assert.strictEqual(calls, 1, 'destroy() unwires the button (signal-bound listener)');
+  } finally {
+    delete dom.window.openShortcutsModal;
     restore();
   }
 });

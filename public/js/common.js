@@ -7477,7 +7477,7 @@ function buildShortcutsModal(doc, handlers) {
   const ddrByKey = {};
   const ddrRow = d.createElement('div');
   ddrRow.className = 'shortcuts-ddr';
-  ddrRow.setAttribute('aria-hidden', 'true'); // decorative easter egg; keys still work
+  ddrRow.setAttribute('aria-hidden', 'true'); // decorative easter egg (keys/taps both play; arrows are tabIndex -1, never in the a11y tree)
   const pulse = (el) => { el.classList.remove('ddr-hit'); void el.offsetWidth; el.classList.add('ddr-hit'); };
   DDR_ARROWS.forEach((a) => {
     const arrow = d.createElement('button');

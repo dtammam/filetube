@@ -374,10 +374,17 @@ test('MOBILE (v1.165 DELIBERATE lock INVERSION): the Stats entry is VISIBLE on p
   // along as reference. Only the `?` KEY stays desktop-gated (next test).
   assert.match(STATS_HTML, /class="setup-box[^"]*shortcuts-entry"/);
   assert.match(STATS_HTML, /id="show-shortcuts-btn"/);
-  // NO phone block may hide the entry any more (the old rule, now removed)...
-  const phoneBlocks = CSS.split('@media (max-width: 768px)').slice(1);
-  assert.ok(!phoneBlocks.some((b) => /\.shortcuts-entry\s*\{[^}]*display:\s*none/.test(b)),
-    'the phone hide on .shortcuts-entry must stay removed (the DDR toy is tappable on mobile)');
+  // NO rule may hide the entry any more, at ANY width (the entry is now the
+  // phone's ONLY route to the window). Gate W1 (delta): a `{`-anchored regex was
+  // porous to a SELECTOR-LIST spelling (`.shortcuts-entry, .other { display:none }`
+  // survived - the divergent-fixture class), so this net matches the class
+  // anywhere in a selector prelude. Comments are stripped FIRST (the
+  // comment-porous class): style.css legitimately MENTIONS .shortcuts-entry in
+  // the v1.165 prose explaining the removal, and an unstripped net false-reds
+  // on it.
+  const cssNoComments = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(!/[^{}]*\.shortcuts-entry[^{}]*\{[^}]*display:\s*none/.test(cssNoComments),
+    'no rule (any width, any selector-list spelling) may display:none the shortcuts entry');
   // ...and the section must not re-acquire the master-detail phone hide either.
   assert.doesNotMatch(STATS_HTML, /data-collapse-key="keyboard-shortcuts"[^>]*data-md-hide-mobile/,
     'keyboard-shortcuts must not be marked data-md-hide-mobile');
