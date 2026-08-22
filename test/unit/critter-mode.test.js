@@ -285,6 +285,22 @@ test('v1.166.1 CSS: .main-content carries isolation:isolate - the critter plane\
     'the background this contract exists to get above is still painted here (if it moves, re-verify the ground)');
 });
 
+test('gate C1: BOTH overlay modes escape the isolation (else the in-slot player paints UNDER the fixed chrome)', () => {
+  // isolation makes .main-content paint atomically, trapping the in-slot
+  // audio-expanded (z 1100) and faux-fullscreen (z 1500) overlays below the
+  // header (1000) / bottom-nav (900) / dock (950) - a regression of shipped,
+  // device-passed features for EVERY user. Each body class must lift it;
+  // dropping EITHER arm regresses one overlay mode.
+  const esc = /body\.ft-audio-expanded \.main-content,\s*\nbody\.ft-css-fullscreen \.main-content\s*\{([^}]*)\}/.exec(CSS);
+  assert.ok(esc, 'the two-arm escape rule exists (audio-expanded AND css-fullscreen)');
+  assert.match(esc[1], /isolation:\s*auto/, 'the escape lifts the isolation');
+  // Ordering: the escape must come AFTER the base isolate rule (equal
+  // specificity would not matter - the escape is MORE specific - but keep the
+  // reading order honest: contract first, escape beside it).
+  assert.ok(CSS.indexOf('body.ft-audio-expanded .main-content') > CSS.indexOf('isolation: isolate'),
+    'the escape follows the contract it escapes');
+});
+
 // ---- inertness + wiring source locks ---------------------------------------
 
 test('SOURCE: the mode is inert when disabled - scatterCritters removes the layer and clears placements', () => {
