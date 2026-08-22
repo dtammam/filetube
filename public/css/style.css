@@ -11066,11 +11066,9 @@ html[data-modern="on"] .video-uploader {
   }
 }
 
-@media (max-width: 768px) {
-  .shortcuts-entry {
-    display: none;
-  }
-}
+/* v1.165 (Dean): the phone hide on `.shortcuts-entry` is REMOVED - the shortcuts
+   window is now reachable on mobile (the tappable DDR mini-synth lives there).
+   The `?` key stays desktop-gated in JS; this was the entry's visibility only. */
 
 /* ---- v1.63: the playback queue (header icon + panel) ---------------------
    Mirrors the bell chrome one section up: same button treatment, same

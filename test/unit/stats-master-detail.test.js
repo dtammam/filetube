@@ -52,22 +52,36 @@ test('Stats tone follows the declared group order (Overview red / Breakdowns gra
   } finally { unload(dom); }
 });
 
-// Gate WARNING 2: Keyboard shortcuts is display:none on phones (Dean's directive);
-// the generated menu row must carry the hide too, and the CSS must drop the row
-// AND its active pane <=768px (the .shortcuts-entry rule alone loses to .md-active).
-test('Stats: the keyboard-shortcuts row is marked md-hide-mobile; the CSS hides row + pane on phone', () => {
+// v1.165 DELIBERATE LOCK UPDATE (Dean, reversing his v1.47.8 ruling): the
+// keyboard-shortcuts entry is now VISIBLE on phones - the shortcuts window hosts
+// the tappable DDR mini-synth (v1.163), so the phone gets the toy. This test
+// binds BOTH halves of the new state:
+//   (a) stats.html no longer marks the section data-md-hide-mobile, so its menu
+//       row renders un-hidden on phones (re-marking it reds this), AND
+//   (b) the GENERIC v1.152 hide-mobile mechanism still works for any future
+//       section - bound with a synthetic marking on the same real fixture, plus
+//       the CSS row+pane rules (deleting the mechanism reds this too).
+test('Stats: keyboard-shortcuts is NOT phone-hidden any more; the generic hide-mobile mechanism survives', () => {
   const { dom, doc, signal } = load();
   try {
+    // (b) synthetically mark a section BEFORE wiring - the mechanism must still propagate.
+    doc.querySelector('details[data-collapse-key="fun-stats"]').setAttribute('data-md-hide-mobile', '');
     wireMasterDetail('stats', doc, signal);
     const ks = doc.querySelector('.md-row[data-md-target="keyboard-shortcuts"]');
-    assert.ok(ks.classList.contains('md-hide-mobile'), 'the phone-hidden section propagates the hide to its row');
-    // a normal row does NOT carry it
-    assert.ok(!doc.querySelector('.md-row[data-md-target="fun-stats"]').classList.contains('md-hide-mobile'));
-    // and the source markup: section marked, CSS rule present
-    assert.match(STATS_HTML, /data-collapse-key="keyboard-shortcuts"[^>]*data-md-hide-mobile/, 'stats.html marks the section');
+    assert.ok(ks, 'the keyboard-shortcuts row renders');
+    assert.ok(!ks.classList.contains('md-hide-mobile'),
+      'v1.165: the row is NOT phone-hidden (the DDR mini-synth is tappable on mobile)');
+    assert.ok(doc.querySelector('.md-row[data-md-target="fun-stats"]').classList.contains('md-hide-mobile'),
+      'the generic mechanism still propagates a marked section to its row');
+    // (a) the source markup no longer marks the section...
+    assert.doesNotMatch(STATS_HTML, /data-collapse-key="keyboard-shortcuts"[^>]*data-md-hide-mobile/,
+      'stats.html must NOT mark keyboard-shortcuts hide-mobile (Dean reversed the ruling)');
+    assert.doesNotMatch(STATS_HTML, /\.shortcuts-entry[^}]*display:\s*none/,
+      'no inline phone hide crept back into stats.html');
+    // ...and the generic CSS mechanism remains for future users.
     const cssPath = path.join(__dirname, '../../public/css/style.css');
     const css = fs.readFileSync(cssPath, 'utf8');
-    assert.match(css, /max-width: 768px[\s\S]*\.md-row\.md-hide-mobile\s*\{\s*display: none/, 'the phone rule hides the row');
-    assert.match(css, /details\[data-md-hide-mobile\]\.md-active\s*\{\s*display: none/, 'and hides its pane even when active');
+    assert.match(css, /max-width: 768px[\s\S]*\.md-row\.md-hide-mobile\s*\{\s*display: none/, 'the generic phone row rule survives');
+    assert.match(css, /details\[data-md-hide-mobile\]\.md-active\s*\{\s*display: none/, 'and the pane rule survives');
   } finally { unload(dom); }
 });
