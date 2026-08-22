@@ -207,3 +207,40 @@ test('after signal abort, a later reveal does NOT rebuild the nav (observers dis
     assert.strictEqual(doc.querySelector('.md-row[data-md-target="users"]'), null, 'destroy() unwired the hidden-observer');
   } finally { teardown(dom); }
 });
+
+// ---- v1.164 (Dean): SCROLL OWNERSHIP on the push-in --------------------------
+// On phone the WINDOW is the scroller (the panes container does not overflow),
+// so `panes.scrollTop = 0` alone was a no-op there: scrolling a long nav list
+// and tapping a bottom section (Stats' "Under the hood") kept the window offset
+// and landed the pane title + back arrow off-screen under the app header.
+// Contract: OPENING a section snaps the window to the top; BACK restores the
+// saved list offset (return to your place, iOS-Settings style). Neutering the
+// window.scrollTo(0,0), the navScrollY save, or the Back restore reds this.
+test('SCROLL OWNERSHIP: opening a section snaps the window to top; Back restores the saved list offset', () => {
+  const { dom, doc, signal } = setup(FIXTURE);
+  try {
+    const calls = [];
+    dom.window.scrollTo = (x, y) => { calls.push([x, y]); };
+    Object.defineProperty(dom.window, 'scrollY', { value: 420, configurable: true });
+    wireMasterDetail('setup', doc, signal);
+
+    // Open a section from a scrolled-down list (window at 420).
+    doc.querySelector('.md-row[data-md-target="video"]').click();
+    assert.deepStrictEqual(calls[calls.length - 1], [0, 0],
+      'opening a section scrolls the WINDOW to the top (the pane heading/back arrow must be visible)');
+
+    // Back restores the exact list offset the user tapped from.
+    doc.querySelector('.md-back').click();
+    assert.deepStrictEqual(calls[calls.length - 1], [0, 420],
+      'Back restores the saved list offset, not the top');
+    assert.strictEqual(doc.querySelector('.md-root').getAttribute('data-md-open'), 'false');
+
+    // A second open from a DIFFERENT offset re-saves (not a one-shot latch).
+    Object.defineProperty(dom.window, 'scrollY', { value: 77, configurable: true });
+    doc.querySelector('.md-row[data-md-target="music"]').click();
+    assert.deepStrictEqual(calls[calls.length - 1], [0, 0], 'second open snaps to top again');
+    doc.querySelector('.md-back').click();
+    assert.deepStrictEqual(calls[calls.length - 1], [0, 77],
+      'Back restores the FRESH offset - the save re-arms on every open');
+  } finally { teardown(dom); }
+});
