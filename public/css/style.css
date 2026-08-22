@@ -1198,34 +1198,20 @@ html.reader-immersive .app-container { padding-top: 0; }
   flex: 1;
   margin-left: var(--sidebar-w); /* clears the fixed sidebar */
   padding: var(--space-12);
-  background-color: var(--bg-color);
+  /* v1.166.1 GROUND CONTRACT (gate C1+C2, the structural fix): .main-content
+     paints NO background. `body` already paints the identical var(--bg-color)
+     (propagated to the canvas, same token in every era/skin), so the old
+     declaration here was redundant - and it was the ONLY paint between the
+     canvas and the furniture, which hid the z-index:-1 critter plane
+     completely (Dean's device pass: ZERO critters). The first attempt fixed
+     that with `isolation: isolate`, which TRAPPED every in-view fixed overlay
+     (audio-expanded/faux-fullscreen players, the podcasts/subscriptions/reloc
+     sheets) below the fixed chrome - two CRITICALs. With no background and no
+     isolation, the critter plane resolves in the root context: above the
+     canvas ground, below every furniture background, and no overlay stacking
+     changes AT ALL. Re-adding a background here re-hides the critters - the
+     critter-mode test locks this contract. */
   transition: margin-left var(--dur-fast);
-  /* v1.166.1: OWN stacking context so the critter plane (#critter-layer's
-     z-index:-1 children, parented INSIDE this element) paints ABOVE this
-     background but BELOW the in-flow furniture backgrounds. Without this, a
-     negative-z layer resolves against the ROOT stacking context and hides
-     under this very background - Dean's device pass found ZERO critters
-     visible. `isolation` changes stacking only: no layout, no paint change.
-     MUST pair with the overlay-mode escape arms directly below. */
-  isolation: isolate;
-}
-
-/* v1.166.1 gate C1 (adversarial CRITICAL): isolation makes .main-content paint
-   ATOMICALLY in the root context's in-flow step, so the IN-SLOT player's
-   overlay modes (audio-expanded z 1100, faux css-fullscreen z 1500 - both live
-   INSIDE #view-root and never reparent) would get trapped and paint UNDER the
-   fixed chrome (header 1000, bottom-nav 900, dock/handoff 950) - an
-   unconditional regression of shipped, device-passed features for EVERY user,
-   critters on or off. Escape: while either overlay mode is active (the body
-   classes are each owned by a single player.js setter), the isolation lifts and
-   the overlay out-stacks the chrome exactly as before the critter plane
-   existed. What this costs: critters are not visible DURING those modes -
-   desirable (both paint the screen black, and the constraint is "never disrupt
-   playback"). BOTH arms are mutation-bound - removing either regresses one
-   overlay mode. */
-body.ft-audio-expanded .main-content,
-body.ft-css-fullscreen .main-content {
-  isolation: auto;
 }
 
 .main-content.expanded {

@@ -276,29 +276,29 @@ test('v1.166.1: the layer parents INSIDE .main-content (else z-index:-1 hides un
   }
 });
 
-test('v1.166.1 CSS: .main-content carries isolation:isolate - the critter plane\'s stacking contract', () => {
+test('v1.166.1 GROUND CONTRACT (gate C1+C2 structural fix): .main-content paints NO background, creates NO stacking context', () => {
+  // The critter plane's z-index:-1 resolves in the ROOT context: above the
+  // CANVAS (body's bg), below every furniture background. That works only
+  // while nothing between them paints or isolates:
+  // - a background here was the v1.166.0 bug (ZERO critters visible on device);
+  // - `isolation: isolate` was the first fix and TRAPPED every in-view fixed
+  //   overlay (players, podcasts/subscriptions/reloc sheets) under the fixed
+  //   chrome - two adversarial CRITICALs. Neither may return.
   const rule = /\.main-content\s*\{([^}]*)\}/.exec(CSS);
   assert.ok(rule, '.main-content rule exists');
-  assert.match(rule[1], /isolation:\s*isolate/,
-    'without its own stacking context, the layer\'s z-index:-1 resolves against the ROOT context and paints UNDER .main-content\'s background - zero critters visible anywhere (the v1.166.0 device finding)');
-  assert.match(rule[1], /background-color:\s*var\(--bg-color\)/,
-    'the background this contract exists to get above is still painted here (if it moves, re-verify the ground)');
-});
-
-test('gate C1: BOTH overlay modes escape the isolation (else the in-slot player paints UNDER the fixed chrome)', () => {
-  // isolation makes .main-content paint atomically, trapping the in-slot
-  // audio-expanded (z 1100) and faux-fullscreen (z 1500) overlays below the
-  // header (1000) / bottom-nav (900) / dock (950) - a regression of shipped,
-  // device-passed features for EVERY user. Each body class must lift it;
-  // dropping EITHER arm regresses one overlay mode.
-  const esc = /body\.ft-audio-expanded \.main-content,\s*\nbody\.ft-css-fullscreen \.main-content\s*\{([^}]*)\}/.exec(CSS);
-  assert.ok(esc, 'the two-arm escape rule exists (audio-expanded AND css-fullscreen)');
-  assert.match(esc[1], /isolation:\s*auto/, 'the escape lifts the isolation');
-  // Ordering: the escape must come AFTER the base isolate rule (equal
-  // specificity would not matter - the escape is MORE specific - but keep the
-  // reading order honest: contract first, escape beside it).
-  assert.ok(CSS.indexOf('body.ft-audio-expanded .main-content') > CSS.indexOf('isolation: isolate'),
-    'the escape follows the contract it escapes');
+  // Comments stripped FIRST (the comment-porous class, in reverse: the ground-
+  // contract comment inside the rule SAYS "background"/"isolation").
+  const decls = rule[1].replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(decls, /background/i,
+    're-adding a background here re-hides the whole critter plane (the v1.166.0 device finding)');
+  assert.doesNotMatch(decls, /isolation/i,
+    'isolation traps in-view overlays under the fixed chrome (gate C1+C2) - the escape-arm approach is retired');
+  assert.doesNotMatch(CSS, /body\.ft-[a-z-]+ \.main-content/,
+    'no per-mode escape arms remain (the structural fix made them unnecessary; their return means someone re-isolated)');
+  // The canvas ground this design relies on: body still paints the token.
+  const body = /(?:^|\n)body\s*\{([^}]*)\}/.exec(CSS);
+  assert.match(body[1], /background-color:\s*var\(--bg-color\)/,
+    'body paints the ground the critters sit on (propagates to the canvas, below negative-z)');
 });
 
 // ---- inertness + wiring source locks ---------------------------------------

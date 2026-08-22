@@ -7630,14 +7630,16 @@ function ensureCritterLayer() {
   layer.id = 'critter-layer';
   layer.className = 'critter-layer';
   layer.setAttribute('aria-hidden', 'true'); // decorative; never in the a11y tree
-  // v1.166.1 (Dean's device pass: NOTHING was visible): the layer must live
-  // INSIDE `.main-content` - as a body child its z-index:-1 painted BELOW the
-  // `.main-content`/`.app-container` background stack, hiding every critter on
-  // every page. Inside .main-content (which now carries `isolation: isolate`),
-  // the negative-z critters paint ABOVE the page ground but still BELOW the
-  // in-flow furniture backgrounds = the peek. Neither wrapper is positioned,
-  // so the absolute layer keeps DOCUMENT coordinates. Shells without
-  // .main-content (login/welcome) fall back to body.
+  // v1.166.1 (Dean's device pass: NOTHING was visible): the critters' z-index
+  // -1 resolves in the ROOT stacking context, so they paint above the CANVAS
+  // (body's var(--bg-color)) and below every in-flow furniture background -
+  // which works ONLY because no wrapper between them paints a background. That
+  // is the GROUND CONTRACT: .main-content deliberately paints none (its old
+  // redundant background was exactly what hid every critter; see the
+  // .main-content CSS comment for the two-CRITICAL isolation detour this
+  // replaced). The layer parents inside .main-content (sibling of #view-root:
+  // survives view swaps, keeps document coordinates - no wrapper is
+  // positioned); shells without one (login/welcome) fall back to body.
   var host = document.querySelector('.main-content') || document.body;
   host.appendChild(layer);
   return layer;
