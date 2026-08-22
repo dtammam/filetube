@@ -1198,7 +1198,19 @@ html.reader-immersive .app-container { padding-top: 0; }
   flex: 1;
   margin-left: var(--sidebar-w); /* clears the fixed sidebar */
   padding: var(--space-12);
-  background-color: var(--bg-color);
+  /* v1.166.1 GROUND CONTRACT (gate C1+C2, the structural fix): .main-content
+     paints NO background. `body` already paints the identical var(--bg-color)
+     (propagated to the canvas, same token in every era/skin), so the old
+     declaration here was redundant - and it was the ONLY paint between the
+     canvas and the furniture, which hid the z-index:-1 critter plane
+     completely (Dean's device pass: ZERO critters). The first attempt fixed
+     that with `isolation: isolate`, which TRAPPED every in-view fixed overlay
+     (audio-expanded/faux-fullscreen players, the podcasts/subscriptions/reloc
+     sheets) below the fixed chrome - two CRITICALs. With no background and no
+     isolation, the critter plane resolves in the root context: above the
+     canvas ground, below every furniture background, and no overlay stacking
+     changes AT ALL. Re-adding a background here re-hides the critters - the
+     critter-mode test locks this contract. */
   transition: margin-left var(--dur-fast);
 }
 

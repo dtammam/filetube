@@ -80,6 +80,48 @@
 
 ## Shipped
 
+### v1.166.1 - critters actually visible: the paint-ground fix (Dean device report) (2026-08-22)
+
+Dean's device pass on v1.166.0: ZERO critters visible, any density, mobile AND
+desktop (mobile was always in scope - nothing gated it; the bug hid them
+everywhere equally). Root cause: #critter-layer lived on <body>, so its
+z-index:-1 children resolved against the ROOT stacking context and painted BELOW
+`.main-content`'s background - the exact jsdom-unverifiable stacking surface the
+exec plan disclosed as "Dean's device pass", and it fired.
+
+A THREE-round fix arc, each round a real adversarial catch:
+- Round 1 (isolation: isolate on .main-content): CRITICAL C1 - it trapped the
+  IN-SLOT player overlays (audio-expanded z1100, faux-fullscreen z1500) under
+  the fixed chrome for EVERY user, critters on or off.
+- Round 2 (per-mode escape arms): CRITICAL C2 - three MORE static in-view
+  overlay families (podcasts sheets, subscriptions panels, reloc preview) were
+  trapped the same way; per-mode arms = hand-enumerating the one-of-N class.
+- Round 3 (STRUCTURAL, the seat's own prescription, taken): .main-content's
+  background was REDUNDANT (body paints the identical var(--bg-color) canvas
+  token in every era/skin; .app-container paints nothing - an earlier
+  "two stacked wrappers" claim was a misread grep). DELETED it + the isolation +
+  both arms. The critter plane now sits between the canvas and the furniture by
+  plain root-context paint order - no stacking context anywhere, the entire
+  trap class structurally dead. The seat verified the WHOLE branch-vs-main CSS
+  behaviour delta is that single deleted declaration, and bound every regression
+  arm (re-add background / re-add isolation / re-add an arm / drop body's canvas
+  token / reparent to body - 5/5 mutants red). APPROVE at round 4 (the pacing
+  norm's closure round).
+
+Also: TWO more original figurines (fox, chick) -> FIVE built-ins, so densities
+feel populated until Dean's art lands (his sample ask, answered with originals -
+trademarked character art stays un-committed, disclosed again).
+
+HONEST LIMIT (unchanged): jsdom renders nothing - the mechanism is verified at
+the source (nothing painted between canvas and furniture remains), but critters
+APPEARING is Dean's re-pass; if still invisible, the diagnosis is wrong and we
+re-root-cause. Dual-Node PENDING at time of writing.
+
+DEVICE (Dean): pull, enable Sneaky critter mode -> five figurines now VISIBLY
+peek from behind cards/boxes on phone and desktop; the audio-expanded player and
+faux fullscreen still cover the whole screen with no header/nav bleeding over
+them; podcasts add-subscription sheet still sits above everything.
+
 ### v1.166.0 - Sneaky critter mode: the skeleton (Dean) (2026-08-22)
 
 Dean's fun mode, OFF by default and completely optional: little critters peek out

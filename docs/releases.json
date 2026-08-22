@@ -1996,5 +1996,11 @@
     "date": "2026-08-22",
     "title": "Sneaky critter mode",
     "intent": "A completely optional bit of fun, off unless you turn it on: little critters peek out from behind cards and menus all around the app, tilted at cute angles - never over the video or music you're playing. Tap one and it makes a little noise and wiggles, shivers, or hops. Pick how many you want (an odd one, a tasteful smattering, or a little extreme) under Settings, Appearance. Three placeholder figurines are included; drop your own transparent images into the critters folder and they join in automatically, each with its own sound if you add a matching audio file."
+  },
+  {
+    "version": "1.166.1",
+    "date": "2026-08-22",
+    "title": "The critters actually show up now",
+    "intent": "Fixes Sneaky critter mode showing nothing at all: the critters were being drawn underneath the page background, so turning the mode on appeared to do nothing on any device. They now peek out from behind cards and menus the way they were meant to, on phone and desktop alike. Bonus: there are now five built-in placeholder figurines instead of three - a bunny, cat, bear, fox, and chick - until you drop your own images into the critters folder."
   }
 ]
