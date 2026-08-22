@@ -6883,7 +6883,17 @@ body.ft-audio-expanded {
 
 @media (max-width: 768px) {
   .cc-overlay {
-    bottom: 44px;    /* matches the 44px mobile control strip */ /* token-exempt: positional geometry (Stop A Batch A) */
+    bottom: 44px;    /* fallback for a single-row 44px mobile strip */ /* token-exempt: positional geometry (Stop A Batch A) */
+  }
+  /* v1.163.3 (Dean, regression): the IN-SLOT mobile control bar is the TWO-ROW
+     80px bar (`#player-slot .player-controls`, v1.34.1) - one 44px row can't hold
+     scrub + all the buttons. Video captions started routing through this overlay
+     in v1.124 but kept the 44px lift, so on a phone they landed ON the top (scrub)
+     row of the 80px bar instead of clearing it. Match the real bar height so the
+     caption sits inside the video, above the whole bar - the same bar-height <->
+     lift pairing every other context already has (desktop 40, dock 26, fs 64+). */
+  #player-slot .cc-overlay {
+    bottom: 80px;    /* clears the two-row 80px in-slot mobile bar */ /* token-exempt: positional geometry, mirrors #player-slot .player-controls height */
   }
 }
 
@@ -7026,6 +7036,19 @@ body.ft-audio-expanded {
 
 #player-dock .cc-overlay {
   bottom: 26px;      /* matches the trimmed mini-player bar height */ /* token-exempt: positional geometry (Stop A Batch A) */
+}
+/* v1.163.3 (Dean): in the 160/280px dock a full-size cue (--fs-md, unclamped)
+   grew UP out of the thumbnail and covered the whole video. Shrink to fit and
+   clamp to 2 lines so the caption is a small strip that stays BOUND inside the
+   mini-player frame (the dock's own `overflow: hidden` is the final clip). */
+#player-dock .cc-overlay-text {
+  font-size: var(--fs-xs);
+  line-height: 1.2; /* token-exempt: caption legibility spacing in the mini-dock */
+  padding: var(--space-1) var(--space-3);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2; /* at most two lines; a long cue clips instead of growing */
+  overflow: hidden;
 }
 
 /* FULLSCREEN restore: desktop fullscreen targets the container and keeps the

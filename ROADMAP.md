@@ -80,6 +80,36 @@
 
 ## Shipped
 
+### v1.163.3 - captions bound inside the video frame (mobile bar + mini-player) (Dean) (2026-08-22)
+
+Device regression (Dean, screenshots): the custom caption overlay is lifted a fixed
+distance to clear the control bar, one lift per context. Two were wrong. (1) MOBILE
+in-slot: the bar is the TWO-ROW 80px bar (`#player-slot .player-controls`, v1.34.1),
+but video captions - routed through this overlay only since v1.124 - kept the audio-era
+44px lift, so on a phone they landed ON the top (scrub) row of the controls. Added
+`#player-slot .cc-overlay { bottom: 80px }` so the lift matches the real bar height,
+the same pairing every other context has (desktop 40, dock 26, fullscreen 64+). (2)
+MINI-PLAYER: the docked cue used the full `--fs-md` unclamped, so a 2-3 line cue grew
+up out of the 160px thumbnail and covered the video. Shrunk to `--fs-xs` + clamped to
+two lines with `overflow: hidden` so it's a small strip bound inside the frame (Dean's
+pick: shrink-to-fit, not hide). Root cause: the seam between v1.34.1 (two-row bar) and
+v1.124 (video captions through the overlay).
+
+Bound by a MATCHED-PAIR source-lock (the in-slot mobile caption lift must EQUAL the
+two-row bar height - change either alone and it reds) plus a docked shrink/clamp lock.
+SLIM gate, adversarial APPROVE, zero blocking findings; dual-Node PENDING at time of
+writing. Visual feel is Dean's on-device arbiter (jsdom has no layout engine).
+
+KNOWN GAP (disclosed, tech-debt #166): a benign, unreachable CSS cascade inversion -
+the new in-slot rule outranks the LEGACY fallback-fullscreen offset (pre-v1.138 shells
+only, where iOS refuses element fullscreen and others have ~0 safe-area, so it merely
+over-clears by 16px with no occlusion). Not fixed because the harden would risk a real
+audio-expanded regression; prescription + revisit trigger recorded in the tracker.
+
+DEVICE (Dean): on a phone, play a captioned video - the caption sits INSIDE the video,
+above the two-row control bar (not over it); dock it to the mini-player - the caption
+is small and stays inside the thumbnail. Desktop unchanged.
+
 ### v1.163.2 - DDR press flash by direction: left/right blue, up/down red (Dean) (2026-08-22)
 
 Corrects what v1.163.1 mis-scoped. Dean wanted the arrow GLYPHS left alone (neutral) -

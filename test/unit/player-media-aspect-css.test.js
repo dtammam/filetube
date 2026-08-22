@@ -71,6 +71,35 @@ test('.cc-overlay gets the mobile 44px offset and the docked 26px offset, mirror
   assert.match(css, /#player-dock\s+\.cc-overlay\s*\{\s*bottom:\s*26px;/);
 });
 
+// ---- v1.163.3 (Dean, regression): captions BOUND within the video frame -----
+// The overlay is lifted a fixed distance to clear the control bar; each context
+// must pair its bar height with an equal caption lift. The in-slot MOBILE bar is
+// the two-row 80px bar (v1.34.1), but video captions (routed through this overlay
+// since v1.124) kept the audio-era 44px lift and landed ON the bar's top row.
+// This locks the MATCHED PAIR: change either the bar height or the lift alone and
+// the test reds.
+test('v1.163.3: the in-slot MOBILE caption lift equals the two-row bar height (the 44-vs-80 regression)', () => {
+  const mobileBlocks = [...css.matchAll(/@media \(max-width: 768px\)\s*\{([\s\S]*?)\n\}/g)].map((mm) => mm[1]);
+  const firstMatch = (re) => {
+    for (const b of mobileBlocks) { const m = re.exec(b); if (m) return m[1]; }
+    return null;
+  };
+  const barH = firstMatch(/#player-slot\s+\.player-controls\s*\{[^}]*height:\s*(\d+)px/);
+  const capLift = firstMatch(/#player-slot\s+\.cc-overlay\s*\{[^}]*bottom:\s*(\d+)px/);
+  assert.equal(barH, '80', 'the in-slot mobile control bar is the two-row 80px bar (#player-slot .player-controls)');
+  assert.ok(capLift, 'an in-slot-scoped mobile .cc-overlay bottom override must exist (else it inherits the wrong 44px)');
+  assert.equal(capLift, barH,
+    'the caption lift MUST equal the bar height so the caption clears the whole bar and stays inside the video');
+});
+
+test('v1.163.3: the DOCKED caption is shrunk + clamped so it stays bound inside the mini-player thumbnail', () => {
+  const rule = /#player-dock\s+\.cc-overlay-text\s*\{([^}]*)\}/.exec(css);
+  assert.ok(rule, 'expected a docked-scoped .cc-overlay-text override');
+  assert.match(rule[1], /font-size:\s*var\(--fs-xs\)/, 'shrunk from the full-size --fs-md so it fits the thumbnail');
+  assert.match(rule[1], /-webkit-line-clamp:\s*2/, 'clamped to at most two lines');
+  assert.match(rule[1], /overflow:\s*hidden/, 'clips so a long cue never grows up out of the frame (belt to #player-dock overflow:hidden)');
+});
+
 test('the audio-expanded view offsets .cc-overlay above the FLUSH control bar (v1.34.6: 56px desktop / 94px two-row mobile + safe-area-inset-bottom)', () => {
   assert.match(css, /#player-wrapper\.audio-mode\.audio-expanded\s+\.cc-overlay\s*\{\s*bottom:\s*calc\(56px \+ env\(safe-area-inset-bottom,\s*0px\)\);/);
   const mobileBlockMatch = /@media \(max-width: 768px\)\s*\{([\s\S]*?)\n\}/g;
