@@ -1978,5 +1978,11 @@
     "date": "2026-08-22",
     "title": "Subtitles stay inside the video, even on your phone",
     "intent": "Fixed subtitles spilling out of the video on mobile: they were drifting up over the playback controls, and in the little corner mini-player they were huge and overflowed the frame. Now subtitles always sit inside the video picture, above the controls, and in the mini-player they shrink to fit neatly inside the thumbnail."
+  },
+  {
+    "version": "1.164.0",
+    "date": "2026-08-22",
+    "title": "Settings sections open at the top, and Back remembers your spot",
+    "intent": "Opening a section on the Settings, Stats, or Subscriptions pages (like Under the hood) used to land you partway down, with the section's title and back arrow hidden under the header. Now every section opens right at the top, and tapping Back returns you to the exact spot in the list you came from, the way the iPhone Settings app does."
   }
 ]
