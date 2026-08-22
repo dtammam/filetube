@@ -80,6 +80,40 @@
 
 ## Shipped
 
+### v1.164.0 - settings scroll ownership: sections open at the top, Back restores your place (Dean) (2026-08-22)
+
+Dean's device report: opening a settings section (Stats -> "Under the hood") landed
+with the pane's own title and back arrow hidden under the app header - you had to
+scroll just to see where you were. Root cause: on phone the master-detail push-in
+swaps what fills the viewport, but the WINDOW is the scroller there (the panes
+container never overflows), so the pre-existing `panes.scrollTop = 0` was a silent
+no-op and the nav list's scroll offset survived into the opened section. The same
+class as the v1.160 watch-page scroll-under-header fix, one layer deeper (in-page
+swap vs route swap).
+
+- Opening a section now lands at the TOP - phone AND desktop (Dean's call).
+- The back arrow RESTORES the saved list offset (return to your place,
+  iOS-Settings style); the save re-arms on every open, never a one-shot latch.
+- ONE shared component = Settings, Stats, and Subscriptions all fixed at once;
+  grep-verified there is no other open/close path that bypasses the reset.
+- **Prevention (Dean's explicit ask): a new MANDATORY "scroll ownership" rule in
+  docs/CONTRIBUTING.md** - any viewport swap must identify the REAL scroller by
+  measurement (a container reset that doesn't overflow is exactly how this
+  shipped), land forward navigation at the top, restore on back, and bind the
+  VALUES behaviourally.
+
+Bound behaviourally (stubbed scrollTo + overridden scrollY: open -> [0,0], back ->
+[0,savedY], fresh-offset re-arm). SLIM gate, adversarial APPROVE - all four
+briefed mutants killed; its surviving ordering mutant (restore-before-swap clamps
+in a real browser, invisible to jsdom) is bound by an in-code comment where a
+refactor would trip it. Dual-Node PENDING at time of writing. The rendered feel
+(title + back arrow visible on arrival) is Dean's on-device arbiter.
+
+DEVICE (Dean): phone - Stats, scroll the list down, open "Under the hood" -> the
+section title + back arrow are immediately visible at the top; tap Back -> the
+list is where you left it. Same on Settings and Subscriptions; desktop section
+clicks also land at the top.
+
 ### v1.163.3 - captions bound inside the video frame (mobile bar + mini-player) (Dean) (2026-08-22)
 
 Device regression (Dean, screenshots): the custom caption overlay is lifted a fixed

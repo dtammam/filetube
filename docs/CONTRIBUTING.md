@@ -149,6 +149,37 @@ zero-shift reveal + strand-clear exist - it is the exact check the census cannot
 do. The FOUC audit (`docs/exec-plans/archive/fouc-shimmer-audit.md`) tracks the
 remaining retrofit; NEW work ships compliant from birth.
 
+### Every view/pane swap owns its scroll - the top is visible on arrival (MANDATORY)
+
+Ruled by Dean (v1.164) after the same bug class shipped twice: the watch page
+opened scrolled-under the header (fixed in v1.160 with `scrollRestoration ->
+'manual'` + an explicit reset), then the settings master-detail push-in did the
+exact same thing (a long nav list's scroll offset survived into the just-opened
+section, hiding its title and back arrow under the app header).
+
+The rule, for ANY change that swaps what fills the viewport - an SPA route, a
+master-detail push-in/back, a tab/filter that replaces the page body, a
+full-screen panel:
+
+1. **Identify the REAL scroller by measurement, never assumption.** On mobile it
+   is usually the WINDOW; a container's `scrollTop = 0` is a silent no-op unless
+   that container actually overflows (the settings bug shipped with exactly that
+   no-op in place). If the scroller differs by breakpoint, reset BOTH.
+2. **Forward navigation lands at the TOP.** The new surface's heading and its
+   primary controls (a back arrow) must be visible without scrolling.
+3. **Backward navigation RESTORES the saved offset.** Save the scroller's offset
+   at the moment of forward navigation, re-save on every forward pass (never a
+   one-shot latch), and restore it on back - the user returns to their place in
+   the list (iOS-Settings style).
+4. **Bind it behaviourally.** Stub the scroller, drive the swap, and assert the
+   reset AND the restore fire with the right values (see
+   `test/unit/master-detail.test.js` "SCROLL OWNERSHIP"). A presence-grep of
+   `scrollTo` is not the lock; the VALUES are.
+
+Reviewers: for any diff that adds or reroutes a viewport swap, ask "which element
+scrolls here, on EACH breakpoint - and who resets/restores it?" If the answer
+names a container, demand the measurement that shows it actually overflows.
+
 ## The first-class media experience (MANDATORY vocabulary for any media-kind work)
 
 FileTube serves several media KINDS - videos/ytdlp, music, books,

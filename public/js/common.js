@@ -5236,13 +5236,29 @@ function wireMasterDetail(pageKey, root, signal) {
     observeSections();
   }
 
+  // v1.164 (Dean): SCROLL OWNERSHIP. On phone the push-in swaps what fills the
+  // viewport, but the WINDOW is the scroller there - the panes container does
+  // not overflow, so its scrollTop reset below is a no-op on mobile. The nav
+  // list's window offset used to survive into the just-opened section, landing
+  // the pane title + back arrow off-screen under the app header ("Under the
+  // hood" needed a scroll just to see its own heading). Opening a section now
+  // lands at the TOP (window AND panes - whichever actually scrolls); Back
+  // restores the saved list offset so you return to your place in the list
+  // (iOS-Settings style). Desktop section clicks snap to top too (Dean's call).
+  let navScrollY = 0;
+
   function selectKey(key, openDetail) {
     const s = sections.filter((x) => x.getAttribute('data-collapse-key') === key && !x.hidden)[0];
     if (!s) return;
     selectedKey = key;
     applySelection();
     try { localStorage.setItem('ft-md:' + pageKey, key); } catch (_) { /* private mode */ }
-    if (openDetail) { mdRoot.dataset.mdOpen = 'true'; panes.scrollTop = 0; }
+    if (openDetail) {
+      if (typeof window !== 'undefined') {
+        try { navScrollY = window.scrollY || 0; window.scrollTo(0, 0); } catch (_) { /* jsdom: scrollTo unimplemented */ }
+      }
+      mdRoot.dataset.mdOpen = 'true'; panes.scrollTop = 0;
+    }
   }
 
   nav.addEventListener('click', (e) => {
@@ -5250,7 +5266,17 @@ function wireMasterDetail(pageKey, root, signal) {
     if (!row || !nav.contains(row)) return;
     selectKey(row.getAttribute('data-md-target'), true);
   }, signal ? { signal } : undefined);
-  backBtn.addEventListener('click', () => { mdRoot.dataset.mdOpen = 'false'; }, signal ? { signal } : undefined);
+  backBtn.addEventListener('click', () => {
+    mdRoot.dataset.mdOpen = 'false';
+    // Return to the SAME spot in the list the user tapped from (not the top).
+    // ORDER MATTERS (gate S1): restore AFTER the mdOpen swap above - while the
+    // (often short) detail pane is still displayed, the browser would CLAMP
+    // scrollTo(0, navScrollY) to the detail's max scroll and the list would
+    // re-appear at a truncated offset. jsdom cannot bind this (no layout).
+    if (typeof window !== 'undefined') {
+      try { window.scrollTo(0, navScrollY); } catch (_) { /* jsdom: scrollTo unimplemented */ }
+    }
+  }, signal ? { signal } : undefined);
 
   // Keep the menu in sync with ASYNC admin-box reveals (setup.js sets
   // box.hidden=false after a capability fetch): observe each section's `hidden`.
