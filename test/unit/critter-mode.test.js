@@ -259,6 +259,21 @@ test('renderCritterPlacements: renders each placement positioned + rotated; re-r
   } finally { unmount(dom); }
 });
 
+// ---- the Docker mount lockstep (v1.166.3 - gate S1) -------------------------
+
+test('v1.166.3: the compose mount and the server folder path stay in LOCKSTEP (the folder-is-the-manifest chain)', () => {
+  // Dean's server exposed the gap: the image bakes public/ in, so without the
+  // compose bind, host drops never reach the container. Nothing else binds the
+  // compose file (grep: zero test hits) - this pair forces a human to move BOTH
+  // ends if the folder ever moves.
+  const COMPOSE = fs.readFileSync(path.join(__dirname, '../../docker-compose.yml'), 'utf8');
+  assert.match(COMPOSE, /- \.\/public\/critters:\/app\/public\/critters/,
+    'docker-compose.yml binds the host critter folder over the baked one');
+  const SERVER = fs.readFileSync(path.join(__dirname, '../../server.js'), 'utf8');
+  assert.match(SERVER, /path\.join\(__dirname, 'public', 'critters'\)/,
+    'server.js reads the SAME path the mount targets (WORKDIR /app -> /app/public/critters)');
+});
+
 // ---- the paint ground (v1.166.1 - Dean's device pass: NOTHING was visible) --
 
 test('v1.166.1: the layer parents INSIDE .main-content (else z-index:-1 hides under the page background)', () => {

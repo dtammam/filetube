@@ -31,4 +31,6 @@ Turn the mode on under Settings -> Appearance -> Sneaky critter mode.
 host is only seen by the container through the volume mount that
 `docker-compose.yml` ships (`./public/critters:/app/public/critters`). If you
 run with plain `docker run` or an older compose file, add that `-v` mount -
-otherwise files you drop here never reach the app.
+otherwise files you drop here never reach the app. If you run compose WITHOUT a
+git checkout, Docker auto-creates the host folder ROOT-owned - `chown` it (or
+create it yourself first) so you can drop files in without sudo.
