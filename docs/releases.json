@@ -1960,5 +1960,11 @@
     "date": "2026-08-21",
     "title": "The keyboard shortcuts window fits without scrolling (plus a hidden toy)",
     "intent": "On a computer, the keyboard shortcuts window (press ?) now shows every shortcut in two columns so you can see them all at once without scrolling. On phones it looks the same as before. And a little easter egg: there are now four arrows tucked in the top-right corner of that window. Press your arrow keys, or click them, and each one plays a musical note so you can tap out a tune. Be the best FileTube FileTube Revolution player."
+  },
+  {
+    "version": "1.163.1",
+    "date": "2026-08-22",
+    "title": "The DDR arrows are properly colored: left/right blue, up/down red",
+    "intent": "A small tweak to the shortcuts-window easter egg: the four arrows are now colored on purpose and the same on every device - left and right are blue, up and down are red, like a real dance pad. Pressing an arrow still lights it up red. Before this they were either grey or whatever color your phone happened to pick."
   }
 ]
