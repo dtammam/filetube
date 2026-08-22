@@ -10123,10 +10123,10 @@ html[data-modern="on"] .video-uploader {
   font-size: var(--fs-lg);
   line-height: 1; /* token-exempt: glyph centering */
   /* v1.163.1: force MONOCHROME text presentation (belt to the U+FE0E in the glyph)
-     so the OS never paints these as its OWN colour emoji - OUR per-axis colours
-     below then decide the colour, identically on every device. */
+     so iOS never paints the arrow glyph itself as a colour emoji - the glyph
+     stays the neutral resting colour; only the SQUARE lights up on press. */
   font-variant-emoji: text;
-  color: var(--text-secondary); /* fallback; the axis rules below set the real colour */
+  color: var(--text-secondary);
   background-color: var(--btn-bg);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
@@ -10134,24 +10134,29 @@ html[data-modern="on"] .video-uploader {
   cursor: pointer;
 }
 
-/* Dean's DDR colour scheme: left/right BLUE, up/down RED. Theme tokens, so both
-   stay legible in light and dark. Same specificity as the base rule, declared
-   after it, so they win; `.ddr-hit` (two classes) still overrides on press. */
-.shortcuts-ddr-arrow--h { color: var(--text-link); } /* ← → */
-.shortcuts-ddr-arrow--v { color: var(--yt-red); }    /* ↑ ↓ */
-
-/* Hover brightens whatever the arrow's own colour is, rather than recolouring it. */
 .shortcuts-ddr-arrow:hover {
   filter: brightness(1.2);
 }
 
-/* The light-up: a matching arrow key (or a click) lands the arrow on the brand
-   accent and pops it. The class is toggled off/on in JS to retrigger. */
+/* The light-up: pressing (or clicking) an arrow flashes its SQUARE and pops it.
+   v1.163.2 (Dean): the flash colour is by AXIS - left/right (--h) light BLUE,
+   up/down (--v) light RED. The arrow GLYPH stays uncoloured; only the square's
+   background changes. The class is toggled off/on in JS to retrigger the pop. */
 .shortcuts-ddr-arrow.ddr-hit {
   color: var(--on-accent);
   background-color: var(--yt-red);
   border-color: var(--yt-red);
   animation: ddr-arrow-pop var(--dur-slow) ease-out;
+}
+/* Same (two-class) specificity as the rule above, declared after it, so these
+   axis colours win; up/down keep the red default, left/right override to blue. */
+.shortcuts-ddr-arrow--v.ddr-hit {
+  background-color: var(--yt-red);
+  border-color: var(--yt-red);
+}
+.shortcuts-ddr-arrow--h.ddr-hit {
+  background-color: var(--text-link);
+  border-color: var(--text-link);
 }
 
 @keyframes ddr-arrow-pop {

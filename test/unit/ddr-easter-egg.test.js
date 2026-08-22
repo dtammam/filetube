@@ -129,28 +129,35 @@ test('the text-presentation selector is U+FE0E and is appended by ddrArrowDispla
   assert.equal(ddrArrowDisplayGlyph(undefined), SEL);
 });
 
-test('CSS: arrows are pinned to monochrome text, then coloured by axis (left/right blue, up/down red)', () => {
+test('CSS: the arrow GLYPH stays neutral (never coloured); only the SQUARE lights up on press, by axis', () => {
   const block = CSS.slice(CSS.indexOf('.shortcuts-ddr-arrow {'));
   const baseRule = block.slice(0, block.indexOf('}'));
   assert.match(baseRule, /font-variant-emoji:\s*text/,
-    'the arrow button forces text (non-emoji) presentation so the OS cannot colour it - OUR CSS wins');
-  // The DDR scheme (Dean): left/right (--h) BLUE, up/down (--v) RED. Theme tokens.
-  assert.match(CSS, /\.shortcuts-ddr-arrow--h\s*\{\s*color:\s*var\(--text-link\)/,
-    'left/right arrows are blue (--text-link)');
-  assert.match(CSS, /\.shortcuts-ddr-arrow--v\s*\{\s*color:\s*var\(--yt-red\)/,
-    'up/down arrows are red (--yt-red)');
-  // The axis rules must come AFTER the base rule so equal-specificity source order lets them win.
-  assert.ok(CSS.indexOf('.shortcuts-ddr-arrow--h') > CSS.indexOf('.shortcuts-ddr-arrow {'),
-    'the axis colours are declared after the base rule (source order wins at equal specificity)');
+    'the glyph is forced to monochrome text so iOS cannot emoji-colour the arrow itself');
+  assert.match(baseRule, /color:\s*var\(--text-secondary\)/,
+    'the glyph rests at the neutral secondary colour');
+  // v1.163.2 (Dean): the GLYPH is NOT recoloured by axis - the resting axis-colour
+  // rules were removed. Only .ddr-hit (the pressed SQUARE) is coloured by axis.
+  assert.doesNotMatch(CSS, /\.shortcuts-ddr-arrow--[hv]\s*\{\s*color:/,
+    'no resting axis rule recolours the glyph (that was the misread; it is gone)');
+  // Pressed square: left/right (--h) flash BLUE, up/down (--v) flash RED. Theme tokens.
+  assert.match(CSS, /\.shortcuts-ddr-arrow--h\.ddr-hit\s*\{[^}]*background-color:\s*var\(--text-link\)/,
+    'left/right SQUARE lights blue on press (--text-link)');
+  assert.match(CSS, /\.shortcuts-ddr-arrow--v\.ddr-hit\s*\{[^}]*background-color:\s*var\(--yt-red\)/,
+    'up/down SQUARE lights red on press (--yt-red)');
+  // The axis press-rules must follow the base .ddr-hit rule so equal-specificity
+  // source order lets left/right's blue beat the base red.
+  assert.ok(CSS.indexOf('.shortcuts-ddr-arrow--h.ddr-hit') > CSS.indexOf('.shortcuts-ddr-arrow.ddr-hit {'),
+    'the axis press-colours are declared after the base .ddr-hit (source order wins at equal specificity)');
 });
 
-test('render: left/right arrows carry the blue (--h) class, up/down the red (--v) class', () => {
+test('render: left/right arrows carry the --h class (blue press), up/down the --v class (red press)', () => {
   const d = doc();
   const { ddrByKey } = buildShortcutsModal(d, {});
-  assert.ok(ddrByKey.ArrowLeft.el.classList.contains('shortcuts-ddr-arrow--h'), 'left = horizontal/blue');
-  assert.ok(ddrByKey.ArrowRight.el.classList.contains('shortcuts-ddr-arrow--h'), 'right = horizontal/blue');
-  assert.ok(ddrByKey.ArrowUp.el.classList.contains('shortcuts-ddr-arrow--v'), 'up = vertical/red');
-  assert.ok(ddrByKey.ArrowDown.el.classList.contains('shortcuts-ddr-arrow--v'), 'down = vertical/red');
+  assert.ok(ddrByKey.ArrowLeft.el.classList.contains('shortcuts-ddr-arrow--h'), 'left = horizontal -> blue press');
+  assert.ok(ddrByKey.ArrowRight.el.classList.contains('shortcuts-ddr-arrow--h'), 'right = horizontal -> blue press');
+  assert.ok(ddrByKey.ArrowUp.el.classList.contains('shortcuts-ddr-arrow--v'), 'up = vertical -> red press');
+  assert.ok(ddrByKey.ArrowDown.el.classList.contains('shortcuts-ddr-arrow--v'), 'down = vertical -> red press');
   // and the data field that drives it:
   for (const a of DDR_ARROWS) {
     assert.ok(a.axis === 'h' || a.axis === 'v', `${a.key} has a colour axis`);
