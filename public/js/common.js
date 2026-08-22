@@ -7449,6 +7449,292 @@ function playDdrNote(freq) {
   } catch (_) { /* audio unavailable -> the easter egg is silent, never throws */ }
 }
 
+// ---- v1.166 (Dean): Sneaky critter mode -------------------------------------
+// A completely optional fun mode: little critters PEEK OUT FROM BEHIND page
+// furniture (cards, boxes, menus) at jaunty angles - never over the playback
+// surfaces. The whole subsystem is inert until the per-device setting is on.
+// Architecture (exec plan: docs/exec-plans/active/critter-mode-skeleton.md):
+//   - `#critter-layer` sits at z-index -1, so any in-flow element WITH A
+//     BACKGROUND naturally paints over the critters = "peeking" for free.
+//   - The pure core (config/plan/hit) takes rects in and gives placements out,
+//     so it is node:test-able without layout; only the thin measure/render
+//     shims touch the live DOM.
+//   - The manifest is THE FOLDER: /api/critters lists public/critters/ (name-
+//     agnostic; Dean drops files in). Empty folder -> 3 built-in SVG figurines.
+//   - Tap (on the EXPOSED sliver only) -> the critter's own sound file if one
+//     exists, else a synth chirp. The listener never preventDefaults and stands
+//     down when the click landed on real interactive UI.
+var CRITTER_DENSITY_COUNTS = { sparse: 1, normal: 6, obscene: 16 };
+var CRITTER_STORAGE_ON = 'ft-critters:on';
+var CRITTER_STORAGE_DENSITY = 'ft-critters:density';
+// Anchors: page furniture worth peeking from behind. Curated, generic across
+// views; each candidate must also SURVIVE the exclusion filters below.
+var CRITTER_ANCHOR_SELECTORS = ['.video-card', '.setup-box', '.md-group-card', '.md-hero', '.action-bar'];
+// Playback surfaces + modals: never an anchor, never overlapped (Dean's hard
+// constraint - critters must not disrupt the video/audio experience).
+var CRITTER_EXCLUSION_SELECTORS = ['#player-wrapper', '.player-container', '#player-dock', '#fs-stage', '.oneoff-modal-backdrop'];
+// Tap reactions (Dean): tiny, transform-only, contained to the critter's own
+// box; one is picked at random per tap. All die under prefers-reduced-motion.
+var CRITTER_REACTIONS = ['critter-wiggle', 'critter-shiver', 'critter-hop'];
+
+function resolveCritterConfig(read) {
+  var get = typeof read === 'function' ? read : function (k) {
+    try { return localStorage.getItem(k); } catch (_) { return null; }
+  };
+  var enabled = get(CRITTER_STORAGE_ON) === '1';
+  var raw = get(CRITTER_STORAGE_DENSITY);
+  var density = Object.prototype.hasOwnProperty.call(CRITTER_DENSITY_COUNTS, raw) ? raw : 'normal';
+  return { enabled: enabled, density: density, count: CRITTER_DENSITY_COUNTS[density] };
+}
+
+// The three ORIGINAL built-in figurines (bunny / cat / bear silhouettes), used
+// only while public/critters/ holds no images. fill/stroke ride currentColor so
+// the era tokens + per-critter hue-rotate colour them; no raw colour literals.
+var CRITTER_BUILTINS = [
+  { id: 'builtin-bun', svg: '<svg viewBox="0 0 64 64" aria-hidden="true"><ellipse cx="24" cy="14" rx="5" ry="12" fill="currentColor" opacity="0.85"/><ellipse cx="40" cy="14" rx="5" ry="12" fill="currentColor" opacity="0.85"/><circle cx="32" cy="30" r="14" fill="currentColor"/><ellipse cx="32" cy="50" rx="16" ry="12" fill="currentColor" opacity="0.9"/><circle cx="27" cy="28" r="2" fill="currentColor" opacity="0.35"/><circle cx="37" cy="28" r="2" fill="currentColor" opacity="0.35"/></svg>' },
+  { id: 'builtin-cat', svg: '<svg viewBox="0 0 64 64" aria-hidden="true"><polygon points="18,20 24,6 30,18" fill="currentColor" opacity="0.85"/><polygon points="34,18 40,6 46,20" fill="currentColor" opacity="0.85"/><circle cx="32" cy="30" r="14" fill="currentColor"/><ellipse cx="32" cy="51" rx="15" ry="11" fill="currentColor" opacity="0.9"/><circle cx="27" cy="28" r="2" fill="currentColor" opacity="0.35"/><circle cx="37" cy="28" r="2" fill="currentColor" opacity="0.35"/><path d="M54 46 q6 -6 2 -14" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.85"/></svg>' },
+  { id: 'builtin-bear', svg: '<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="20" cy="14" r="7" fill="currentColor" opacity="0.85"/><circle cx="44" cy="14" r="7" fill="currentColor" opacity="0.85"/><circle cx="32" cy="31" r="15" fill="currentColor"/><ellipse cx="32" cy="52" rx="17" ry="11" fill="currentColor" opacity="0.9"/><circle cx="26" cy="29" r="2" fill="currentColor" opacity="0.35"/><circle cx="38" cy="29" r="2" fill="currentColor" opacity="0.35"/><ellipse cx="32" cy="36" rx="4" ry="3" fill="currentColor" opacity="0.35"/></svg>' },
+];
+
+function critterRectsIntersect(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+// PURE: rects in -> placements out. `rng` is injectable for deterministic tests.
+// Samples anchors AND critters WITHOUT replacement (the no-duplicate rule is
+// absolute: the count caps at the manifest length - 3 while only the built-ins
+// exist, growing as Dean fills the folder). Each critter straddles one edge of
+// its anchor: ~55% hidden behind it (z-index -1 does the hiding), ~45% peeking.
+function planCritterScatter(opts) {
+  var anchors = (opts && opts.anchors) || [];
+  var exclusions = (opts && opts.exclusions) || [];
+  var manifest = (opts && opts.manifest) || [];
+  var count = (opts && opts.count) | 0;
+  var rng = (opts && typeof opts.rng === 'function') ? opts.rng : Math.random;
+
+  var usable = anchors.filter(function (a) {
+    if (!a || a.w < 48 || a.h < 32) return false; // too small to hide behind
+    return !exclusions.some(function (e) { return critterRectsIntersect(a, e); });
+  });
+  var shuffle = function (arr) {
+    var out = arr.slice();
+    for (var i = out.length - 1; i > 0; i -= 1) {
+      var j = Math.floor(rng() * (i + 1));
+      var t = out[i]; out[i] = out[j]; out[j] = t;
+    }
+    return out;
+  };
+  var anchorPool = shuffle(usable);
+  var critterPool = shuffle(manifest);
+  var n = Math.min(count, anchorPool.length, critterPool.length);
+  var placements = [];
+  var EDGES = ['top', 'left', 'right', 'bottom'];
+  for (var k = 0; k < n; k += 1) {
+    var a = anchorPool[k];
+    var c = critterPool[k];
+    var size = 44 + Math.floor(rng() * 44); // 44-88px box - CODE owns display size
+    var edge = EDGES[Math.floor(rng() * EDGES.length)];
+    var x; var y;
+    if (edge === 'top') { x = a.x + rng() * Math.max(0, a.w - size); y = a.y - size * 0.45; }
+    else if (edge === 'bottom') { x = a.x + rng() * Math.max(0, a.w - size); y = a.y + a.h - size * 0.55; }
+    else if (edge === 'left') { x = a.x - size * 0.45; y = a.y + rng() * Math.max(0, a.h - size); }
+    else { x = a.x + a.w - size * 0.55; y = a.y + rng() * Math.max(0, a.h - size); }
+    x = Math.max(0, Math.round(x)); y = Math.max(0, Math.round(y));
+    placements.push({
+      id: c.id, img: c.img || null, sound: c.sound || null, svg: c.svg || null,
+      x: x, y: y, w: size, h: size,
+      angle: Math.round(rng() * 48) - 24, // Dean: "come in at different angles"
+      hue: Math.round(rng() * 360),
+      anchor: { x: a.x, y: a.y, w: a.w, h: a.h },
+    });
+  }
+  return placements;
+}
+
+// PURE tap hit-test: only the EXPOSED sliver counts (inside the critter's box
+// but OUTSIDE its anchor - the part actually visible from behind the furniture).
+// Later placements are "on top" visually, so scan last-to-first.
+function critterTapHit(placements, x, y) {
+  var list = placements || [];
+  for (var i = list.length - 1; i >= 0; i -= 1) {
+    var p = list[i];
+    var inCritter = x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h;
+    if (!inCritter) continue;
+    var an = p.anchor;
+    var inAnchor = an && x >= an.x && x <= an.x + an.w && y >= an.y && y <= an.y + an.h;
+    if (!inAnchor) return p;
+  }
+  return null;
+}
+
+// The synth fallback chirp (two quick rising notes; the ddr synth's posture:
+// guarded, a silent no-op wherever Web Audio is unavailable, never throws).
+function playCritterChirp() {
+  if (typeof window === 'undefined') return;
+  var Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  try {
+    if (!ddrAudioCtx) ddrAudioCtx = new Ctx();
+    if (ddrAudioCtx.state === 'suspended' && typeof ddrAudioCtx.resume === 'function') ddrAudioCtx.resume();
+    var now = ddrAudioCtx.currentTime;
+    [987.77, 1318.51].forEach(function (freq, i) { // B5 -> E6, a happy little blip
+      var osc = ddrAudioCtx.createOscillator();
+      var gain = ddrAudioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      var t0 = now + i * 0.09;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.18, t0 + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12);
+      osc.connect(gain);
+      gain.connect(ddrAudioCtx.destination);
+      osc.start(t0);
+      osc.stop(t0 + 0.14);
+    });
+  } catch (_) { /* silent, never throws */ }
+}
+
+// DOM half. Renderer is jsdom-testable (placements injected); the measuring
+// collectors are layout-dependent (device pass + source locks - disclosed).
+var critterPlacements = [];
+var critterManifestPromise = null;
+var critterScatterTimer = null;
+var critterWired = false;
+
+function ensureCritterLayer() {
+  var layer = document.getElementById('critter-layer');
+  if (layer) return layer;
+  layer = document.createElement('div');
+  layer.id = 'critter-layer';
+  layer.className = 'critter-layer';
+  layer.setAttribute('aria-hidden', 'true'); // decorative; never in the a11y tree
+  document.body.appendChild(layer);
+  return layer;
+}
+
+function renderCritterPlacements(layer, placements) {
+  layer.textContent = ''; // full rebuild every scatter - no accumulation
+  (placements || []).forEach(function (p) {
+    var el = document.createElement('div');
+    el.className = 'critter';
+    el.setAttribute('data-critter-id', p.id);
+    el.style.left = p.x + 'px';
+    el.style.top = p.y + 'px';
+    el.style.width = p.w + 'px';
+    el.style.height = p.h + 'px';
+    el.style.setProperty('--critter-angle', p.angle + 'deg');
+    el.style.setProperty('--critter-hue', p.hue + 'deg');
+    if (p.img) {
+      var img = document.createElement('img');
+      img.src = p.img;
+      img.alt = '';
+      img.draggable = false;
+      el.appendChild(img);
+    } else if (p.svg) {
+      el.innerHTML = p.svg; // static built-in figurine markup, never user input
+    }
+    layer.appendChild(el);
+  });
+}
+
+function fetchCritterManifest() {
+  if (critterManifestPromise) return critterManifestPromise;
+  critterManifestPromise = fetch('/api/critters')
+    .then(function (res) { return res.ok ? res.json() : { critters: [] }; })
+    .then(function (data) {
+      var list = (data && Array.isArray(data.critters)) ? data.critters : [];
+      return list.length ? list : CRITTER_BUILTINS;
+    })
+    .catch(function () { return CRITTER_BUILTINS; });
+  return critterManifestPromise;
+}
+
+function collectCritterRects(selectors, requireSize) {
+  var rects = [];
+  var nodes = document.querySelectorAll(selectors.join(','));
+  for (var i = 0; i < nodes.length; i += 1) {
+    var el = nodes[i];
+    if (requireSize && el.closest && el.closest(CRITTER_EXCLUSION_SELECTORS.join(','))) continue;
+    var r = el.getBoundingClientRect();
+    if (requireSize && (r.width < 1 || r.height < 1)) continue; // hidden
+    rects.push({ x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height });
+  }
+  return rects;
+}
+
+function scatterCritters() {
+  if (typeof document === 'undefined' || !document.body) return;
+  var cfg = resolveCritterConfig();
+  if (!cfg.enabled) {
+    var existing = document.getElementById('critter-layer');
+    if (existing) existing.remove();
+    critterPlacements = [];
+    return;
+  }
+  wireCritterListeners();
+  fetchCritterManifest().then(function (manifest) {
+    // RE-CHECK after the await (the TOCTOU lesson): the user may have toggled
+    // the mode off while the manifest fetch was in flight.
+    if (!resolveCritterConfig().enabled) return;
+    var placements = planCritterScatter({
+      anchors: collectCritterRects(CRITTER_ANCHOR_SELECTORS, true),
+      exclusions: collectCritterRects(CRITTER_EXCLUSION_SELECTORS, false),
+      manifest: manifest,
+      count: resolveCritterConfig().count,
+    });
+    critterPlacements = placements;
+    renderCritterPlacements(ensureCritterLayer(), placements);
+  });
+}
+
+// Debounced entry point - the ONLY way anything asks for a scatter (router
+// hooks, resize, the Settings apply path). Coalesces bursts; never re-scatters
+// mid-view otherwise (Dean: fresh per navigation, still while you read).
+function scheduleCritterScatter() {
+  if (typeof window === 'undefined') return;
+  if (critterScatterTimer) clearTimeout(critterScatterTimer);
+  critterScatterTimer = setTimeout(function () { critterScatterTimer = null; scatterCritters(); }, 200);
+}
+
+function wireCritterListeners() {
+  if (critterWired || typeof document === 'undefined') return;
+  critterWired = true;
+  // Tap: plain passive listener; NEVER preventDefault; stands down entirely
+  // when the click landed on real interactive UI (a critter sliver can sit
+  // under empty background next to a link - the link always wins).
+  document.addEventListener('click', function (e) {
+    if (!critterPlacements.length) return;
+    if (e.target && e.target.closest && e.target.closest('a, button, input, select, textarea, label, [role="button"]')) return;
+    var hit = critterTapHit(critterPlacements, e.pageX, e.pageY);
+    if (!hit) return;
+    var el = document.querySelector('.critter[data-critter-id="' + hit.id + '"]');
+    if (el) {
+      // Dean: "a variety of very very small visual things" - one random tiny
+      // reaction per tap, all transform-only and fully contained to the
+      // critter's own box (no layout shift, no graphical garbage elsewhere).
+      var reaction = CRITTER_REACTIONS[Math.floor(Math.random() * CRITTER_REACTIONS.length)];
+      CRITTER_REACTIONS.forEach(function (cls) { el.classList.remove(cls); });
+      void el.offsetWidth; // restart the animation on rapid re-taps
+      el.classList.add(reaction);
+    }
+    if (hit.sound) {
+      try { new Audio(hit.sound).play().catch(function () { playCritterChirp(); }); } catch (_) { playCritterChirp(); }
+    } else {
+      playCritterChirp();
+    }
+  });
+  // Reflow moves the furniture; re-scatter (debounced) so critters follow.
+  window.addEventListener('resize', scheduleCritterScatter);
+}
+
+// The Settings page calls this after toggling the checkbox / density select.
+function applyCritterMode() {
+  critterManifestPromise = null; // fresh folder listing on next scatter
+  scheduleCritterScatter();
+  // An immediate OFF must clear NOW, not after the debounce.
+  if (!resolveCritterConfig().enabled) scatterCritters();
+}
+
 function buildShortcutsModal(doc, handlers) {
   const d = doc || document;
   const onClose = handlers && typeof handlers.onClose === 'function' ? handlers.onClose : null;
@@ -8393,6 +8679,7 @@ if (typeof window !== 'undefined') {
     // own comment (above `probeAndReconcileRepullButton`) for why this is
     // hooked here instead of a MutationObserver.
     probeAndReconcileRepullButton();
+    scheduleCritterScatter(); // v1.166: Sneaky critter mode re-scatters per navigation
   }
 
   // v1.30.0 T8 (B1, AC5.2b): the SAME fetch -> extract `#view-root` -> swap
@@ -8520,6 +8807,7 @@ if (typeof window !== 'undefined') {
     // (possibly different) `?root=` folder, even though it skips home's own
     // init(). See `probeAndReconcileRepullButton`'s comment above.
     probeAndReconcileRepullButton();
+    scheduleCritterScatter(); // v1.166: Sneaky critter mode re-scatters per navigation
   }
 
   // `navigate(url, { replace })`: fetch -> parse -> extract `#view-root` ->
@@ -8906,6 +9194,7 @@ if (typeof window !== 'undefined') {
     // watch.html/setup.html/subscriptions.html (no swap ever happens for
     // those), and it fires again harmlessly if a page IS the home view.
     probeAndReconcileRepullButton();
+    scheduleCritterScatter(); // v1.166: Sneaky critter mode re-scatters per navigation
   }
 
   window.FileTube = window.FileTube || {};
@@ -13170,6 +13459,10 @@ if (typeof module !== 'undefined' && module.exports) {
     KEYBOARD_SHORTCUT_GROUPS, shouldOpenShortcuts, buildShortcutsModal,
     // v1.163: the DDR easter-egg mini-synth (pure key->note map + the synth).
     DDR_ARROWS, ddrNoteForArrow, playDdrNote,
+    // v1.166: Sneaky critter mode - the pure core + the jsdom-testable DOM shims.
+    CRITTER_DENSITY_COUNTS, CRITTER_BUILTINS, CRITTER_ANCHOR_SELECTORS, CRITTER_EXCLUSION_SELECTORS,
+    CRITTER_REACTIONS, resolveCritterConfig, planCritterScatter, critterTapHit,
+    renderCritterPlacements, scatterCritters, applyCritterMode, playCritterChirp,
     // v1.163.1: force text (non-emoji) presentation on the arrow glyphs.
     DDR_TEXT_PRESENTATION, ddrArrowDisplayGlyph,
     // v1.50.3: the D dark/light toggle's pure decision.

@@ -10200,6 +10200,86 @@ html[data-modern="on"] .video-uploader {
   font-style: italic; /* token-exempt: easter-egg flavour text */
 }
 
+/* ---- v1.166 (Dean): Sneaky critter mode -----------------------------------
+   The layer sits BELOW in-flow content (z-index -1), so anything with a painted
+   background naturally covers the hidden ~55% of each critter = the "peeking
+   from behind the furniture" effect with zero per-view CSS. The layer itself is
+   inert (pointer-events none, aria-hidden); taps are resolved by a document
+   listener against the EXPOSED sliver geometry, so no critter ever intercepts a
+   click meant for real UI. Colour rides currentColor + a per-critter hue-rotate
+   (set inline as --critter-hue), so the placeholders stay token-pure while
+   still varied; Dean's real transparent PNGs render un-tinted (filter only
+   hue-rotates the transparent-PNG pixels' own colours, subtly - acceptable, and
+   the asset wave can opt img critters out if the tint reads wrong on device). */
+.critter-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 0;
+  overflow: visible;
+  z-index: -1; /* token-exempt: the behind-content critter plane sits deliberately BELOW the z-ladder */
+  pointer-events: none;
+}
+
+.critter {
+  position: absolute;
+  color: var(--text-secondary);
+  transform: rotate(var(--critter-angle, 0deg));
+  filter: hue-rotate(var(--critter-hue, 0deg));
+  opacity: 0.95; /* token-exempt: decorative layer softness */
+}
+
+.critter svg,
+.critter img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* Dean drops in HUGE renders; the box, not the file, decides size */
+}
+
+/* Tap reactions (Dean): a random tiny one per tap. ALL transform-only, so each
+   stays contained to the critter's own box - zero layout shift, zero spillover. */
+.critter-wiggle {
+  animation: critter-wiggle var(--dur-slow) ease-in-out;
+}
+
+@keyframes critter-wiggle {
+  0% { transform: rotate(var(--critter-angle, 0deg)) scale(1); }
+  40% { transform: rotate(calc(var(--critter-angle, 0deg) + 9deg)) scale(1.14); }
+  100% { transform: rotate(var(--critter-angle, 0deg)) scale(1); }
+}
+
+.critter-shiver {
+  animation: critter-shiver var(--dur-slow) linear;
+}
+
+@keyframes critter-shiver {
+  0% { transform: rotate(var(--critter-angle, 0deg)) translateX(0); }
+  20% { transform: rotate(var(--critter-angle, 0deg)) translateX(-2px); }
+  40% { transform: rotate(var(--critter-angle, 0deg)) translateX(2px); }
+  60% { transform: rotate(var(--critter-angle, 0deg)) translateX(-2px); }
+  80% { transform: rotate(var(--critter-angle, 0deg)) translateX(2px); }
+  100% { transform: rotate(var(--critter-angle, 0deg)) translateX(0); }
+}
+
+.critter-hop {
+  animation: critter-hop var(--dur-slow) ease-out;
+}
+
+@keyframes critter-hop {
+  0% { transform: rotate(var(--critter-angle, 0deg)) translateY(0); }
+  35% { transform: rotate(var(--critter-angle, 0deg)) translateY(-7px); }
+  70% { transform: rotate(var(--critter-angle, 0deg)) translateY(1px); }
+  100% { transform: rotate(var(--critter-angle, 0deg)) translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .critter-wiggle,
+  .critter-shiver,
+  .critter-hop { animation: none; }
+}
+
 /* Desktop: widen the window and flow the shortcut groups into two columns so
    the whole reference fits without scrolling (Dean's ask). Mobile keeps the
    single 560px column. `break-inside: avoid` keeps a group whole across the

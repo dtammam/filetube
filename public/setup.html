@@ -166,6 +166,28 @@
           <input type="checkbox" id="hide-stars-check" />
           Hide star ratings
         </label>
+        <!-- v1.166 (Dean): Sneaky critter mode. Per-DEVICE (localStorage), the
+             hide-stars posture: common.js owns the behavior (applyCritterMode);
+             this page just reflects and fires it. The critter art lives in
+             public/critters/ (the folder IS the manifest - see its README). -->
+        <h3 class="setup-subhead">Sneaky critter mode</h3>
+        <p>Completely optional and purely for fun: adorable little critters peek
+           out from behind cards and menus around the app &mdash; never over the
+           video or audio player. Tap one for a little noise. Saved on this
+           device. Drop your own transparent images into the
+           <code>public/critters</code> folder and they join in automatically.</p>
+        <label class="setup-check-label">
+          <input type="checkbox" id="critter-mode-check" />
+          Enable sneaky critter mode
+        </label>
+        <label class="setup-check-label" id="critter-density-label">
+          How many:
+          <select id="critter-density-select">
+            <option value="sparse">Sparse (an odd one)</option>
+            <option value="normal">Normal (a tasteful smattering)</option>
+            <option value="obscene">Obscene (a little extreme)</option>
+          </select>
+        </label>
         <!-- v1.67 (Dean): per-corner card controls. Three pickers rendered
              by setup.js renderCardCornerEditor; per-user SERVER-persisted
              (ruling C1), one POST /api/me/settings key per change.
