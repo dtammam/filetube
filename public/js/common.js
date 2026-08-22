@@ -7628,6 +7628,8 @@ var critterPlacements = [];
 var critterManifestPromise = null;
 var critterScatterTimer = null;
 var critterWired = false;
+var critterEmptyRetries = 0; // v1.166.4: the empty-first-pass retry ladder's count (re-armed per schedule)
+var critterRetryTimer = null; // stashed so a NEW navigation can cancel a stale pending retry (the v1.163 stash-and-unbind class)
 
 function ensureCritterLayer() {
   var layer = document.getElementById('critter-layer');
@@ -7732,6 +7734,25 @@ function scatterCritters() {
     });
     critterPlacements = placements;
     renderCritterPlacements(ensureCritterLayer(), placements);
+    // v1.166.4 (Dean's device pass: the WATCH page stayed critter-less): views
+    // whose anchors are ALL fetch-then-render (watch seeds its related rail and
+    // fills the description only AFTER /api/videos/:id resolves - slower than
+    // the 200ms debounce on a VPN'd phone) measure ZERO anchors on the first
+    // pass. An EMPTY result earns a bounded retry ladder - once at +1.5s, once
+    // more at +4s - and STOPS. "Never move mid-view" holds via TWO belts (gate
+    // WARNING: a stale pending retry from a PREVIOUS nav could fire after a new
+    // nav placed critters and re-roll them - demonstrated): the timer is
+    // STASHED so scheduleCritterScatter cancels it on every navigation, AND the
+    // callback re-checks emptiness so placed critters can never re-roll even if
+    // some future writer places between arm and fire.
+    if (!placements.length && critterEmptyRetries < 2) {
+      var delay = critterEmptyRetries === 0 ? 1500 : 4000;
+      critterEmptyRetries += 1;
+      critterRetryTimer = setTimeout(function () {
+        critterRetryTimer = null;
+        if (!critterPlacements.length) scatterCritters();
+      }, delay);
+    }
   });
 }
 
@@ -7740,6 +7761,10 @@ function scatterCritters() {
 // mid-view otherwise (Dean: fresh per navigation, still while you read).
 function scheduleCritterScatter() {
   if (typeof window === 'undefined') return;
+  critterEmptyRetries = 0; // a fresh navigation re-arms the empty-result retry ladder
+  // ...and CANCELS any stale pending retry from the previous view - an unstashed
+  // handle is uncancellable by construction (gate WARNING; the v1.163 class).
+  if (critterRetryTimer) { clearTimeout(critterRetryTimer); critterRetryTimer = null; }
   if (critterScatterTimer) clearTimeout(critterScatterTimer);
   critterScatterTimer = setTimeout(function () { critterScatterTimer = null; scatterCritters(); }, 200);
 }

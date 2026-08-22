@@ -2014,5 +2014,11 @@
     "date": "2026-08-22",
     "title": "Your own critter pictures now work when running in Docker",
     "intent": "If FileTube runs in Docker, pictures you dropped into the critters folder on your server were invisible to the app - it only saw its own built-in copies. The Docker setup now connects that folder to the app, so your own critters appear on the next refresh after updating. The folder's README also explains the one extra step for setups without a full code checkout."
+  },
+  {
+    "version": "1.166.4",
+    "date": "2026-08-22",
+    "title": "Critters make it to the video page",
+    "intent": "The page where you watch a video builds its content a moment after it opens, and the critters were only looking for hiding spots before that content arrived - so video pages stayed empty. The critters now check back a couple of times as the page fills in, then settle: within a second or two they peek out from behind the description and the related videos, and once placed they never jump around. Tip: the maximum number of critters on a page equals how many images are in your critters folder, so add more pictures to make the Obscene setting live up to its name."
   }
 ]

@@ -259,6 +259,30 @@ test('renderCritterPlacements: renders each placement positioned + rotated; re-r
   } finally { unmount(dom); }
 });
 
+// ---- the empty-first-pass retry ladder (v1.166.4) ---------------------------
+
+test('v1.166.4: an EMPTY scatter earns a bounded retry ladder (1.5s then 4s), re-armed per navigation - placed critters never re-roll', () => {
+  // Dean's device pass: the watch page stayed critter-less - its anchors are
+  // all fetch-then-render (related rail seeds AFTER /api/videos/:id), slower
+  // than the 200ms debounce on a VPN'd phone. The empty branch retries; the
+  // non-empty branch NEVER does (that would move placed critters mid-view).
+  const start = COMMON.indexOf('function scatterCritters()');
+  const body = COMMON.slice(start, COMMON.indexOf('\nfunction scheduleCritterScatter', start))
+    .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.match(body, /if \(!placements\.length && critterEmptyRetries < 2\)/,
+    'ONLY an empty result retries, capped at two attempts');
+  assert.match(body, /critterEmptyRetries === 0 \? 1500 : 4000/, 'the ladder: +1.5s then +4s');
+  // Gate WARNING (demonstrated race): the two belts that make "never move
+  // mid-view" literally true - the STASHED handle + the fire-time emptiness guard.
+  assert.match(body, /critterRetryTimer = setTimeout\(function \(\) \{/, 'the retry handle is STASHED (cancellable)');
+  assert.match(body, /if \(!critterPlacements\.length\) scatterCritters\(\);/,
+    'the retry re-checks emptiness at FIRE time - placed critters can never re-roll');
+  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter()'), COMMON.indexOf('\nfunction wireCritterListeners'));
+  assert.match(sched, /critterEmptyRetries = 0;/, 'every scheduled scatter (a navigation) re-arms the ladder');
+  assert.match(sched, /if \(critterRetryTimer\) \{ clearTimeout\(critterRetryTimer\); critterRetryTimer = null; \}/,
+    'a new navigation CANCELS the previous view\'s pending retry (the stale-timer race, demonstrated by the gate)');
+});
+
 // ---- the Docker mount lockstep (v1.166.3 - gate S1) -------------------------
 
 test('v1.166.3: the compose mount and the server folder path stay in LOCKSTEP (the folder-is-the-manifest chain)', () => {

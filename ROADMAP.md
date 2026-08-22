@@ -80,6 +80,41 @@
 
 ## Shipped
 
+### v1.166.4 - critters reach the watch page: the empty-scatter retry ladder (Dean device report) (2026-08-22)
+
+Dean (on-device): critters everywhere EXCEPT watch pages, and Obscene not
+obscene. The density half is by-design (count caps at DISTINCT critters in the
+folder - he has 5; 16+ images opens the full tier; documented in the folder
+README). The watch half was real: watch's anchors are ALL fetch-then-render
+(loadRelatedFiles - which seeds the related-rail skeletons - runs as step 5
+INSIDE the /api/videos/:id callback, and the description fills there too), so
+the one-shot scatter at +200ms measured ZERO anchors on a VPN'd phone and
+nothing ever retried. Two hypotheses were falsified first (watch IS a routed
+view with #view-root; #fs-stage is display:none idle) - diagnosis from the
+traced mechanism, not a guess.
+
+Fix: an EMPTY scatter earns a bounded retry ladder (+1.5s, then +4s, then
+stops); non-empty never retries. The gate then DEMONSTRATED a race in round 1
+(a stale pending retry from a previous view fired after a new view placed
+critters and re-rolled them mid-view - violating the never-move-mid-view
+ruling; the shipped comment claiming "by construction" was a lying comment) and
+prescribed the verified 3-line fix, applied verbatim: the retry handle is
+STASHED and cancelled on every navigation, and the callback re-checks emptiness
+at FIRE time. Delta APPROVE: the seat re-ran its own repro (no mid-view move),
+re-verified the target scenario still works (late anchors -> 5 placed at
++1.5s), 8/8 mutants killed (all three belts bind independently), no-loop traced.
+
+Disclosed residuals: a watch page with NO description and NO related files ends
+critter-less after the ladder (nothing to hide behind); the retry binds are
+source locks + the seat's out-of-band behavioural repro (jsdom needs
+scrollWidth stubs for any in-suite behavioural version). Dual-Node PENDING at
+time of writing.
+
+DEVICE (Dean): open a video -> within ~2s of the page settling, critters peek
+from behind the description box and related thumbnails; navigate quickly
+between videos -> placed critters never jump. And to make Obscene obscene: add
+more PNGs to the folder (16+ distinct images = the full 16).
+
 ### v1.166.3 - the critter folder works under Docker (the volume mount) (2026-08-22)
 
 Dean's clerical agent dropped 5 PNGs into ~/filetube/public/critters/ on his
