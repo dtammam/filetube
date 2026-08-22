@@ -15222,20 +15222,26 @@ function buildCritterListing(fileNames) {
   const names = Array.isArray(fileNames) ? fileNames.filter((n) => typeof n === 'string') : [];
   const sounds = new Map();
   for (const name of names) {
-    const ext = path.extname(name).toLowerCase();
-    if (CRITTER_SOUND_EXTS.has(ext)) sounds.set(path.basename(name, ext), name);
+    // Strip with the RAW extname (gate S1): lowercasing the ext before
+    // basename() left `Mopsy.MP3` unstripped and the pairing silently died.
+    const rawExt = path.extname(name);
+    if (CRITTER_SOUND_EXTS.has(rawExt.toLowerCase())) sounds.set(path.basename(name, rawExt), name);
   }
-  return names
-    .filter((name) => CRITTER_IMAGE_EXTS.has(path.extname(name).toLowerCase()))
-    .sort()
-    .map((name) => {
-      const base = path.basename(name, path.extname(name));
-      return {
-        id: base,
-        img: '/critters/' + encodeURIComponent(name),
-        sound: sounds.has(base) ? '/critters/' + encodeURIComponent(sounds.get(base)) : null,
-      };
+  const out = [];
+  const seen = new Set(); // gate S3: `mopsy.png` + `mopsy.webp` is ONE critter -
+  // the no-duplicates-per-page rule is keyed on id, so the id must be unique
+  // here (first image in sorted order wins).
+  for (const name of names.filter((n) => CRITTER_IMAGE_EXTS.has(path.extname(n).toLowerCase())).sort()) {
+    const base = path.basename(name, path.extname(name));
+    if (seen.has(base)) continue;
+    seen.add(base);
+    out.push({
+      id: base,
+      img: '/critters/' + encodeURIComponent(name),
+      sound: sounds.has(base) ? '/critters/' + encodeURIComponent(sounds.get(base)) : null,
     });
+  }
+  return out;
 }
 
 app.get('/api/critters', (req, res) => {

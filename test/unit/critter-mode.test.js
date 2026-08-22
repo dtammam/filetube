@@ -62,6 +62,15 @@ test('resolveCritterConfig: OFF by default, density defaults to normal, garbage 
 
 // ---- the folder IS the manifest (server pure half) --------------------------
 
+test('gate S3/S1: duplicate basenames collapse to ONE critter; uppercase sound extensions still pair', () => {
+  const out = buildCritterListing(['mopsy.png', 'mopsy.webp', 'Rex.png', 'Rex.MP3']);
+  assert.deepStrictEqual(out.map((c) => c.id), ['Rex', 'mopsy'],
+    'two image files sharing a basename are ONE critter (the no-duplicate rule keys on id)');
+  assert.strictEqual(out.find((c) => c.id === 'mopsy').img, '/critters/mopsy.png', 'first in sorted order wins');
+  assert.strictEqual(out.find((c) => c.id === 'Rex').sound, '/critters/Rex.MP3',
+    'an UPPERCASE sound extension pairs (the ext is stripped raw, matched lowercased)');
+});
+
 test('buildCritterListing: any image becomes a critter; a same-basename sound pairs with it; names never matter', () => {
   const out = buildCritterListing([
     'mopsy.png', 'mopsy.mp3',          // image + its sound
@@ -135,6 +144,49 @@ test('planCritterScatter: anchors too small to hide behind are skipped', () => {
     anchors: [{ x: 10, y: 10, w: 30, h: 20 }], exclusions: [], manifest: MANIFEST_8, count: 4, rng: seededRng(5),
   });
   assert.strictEqual(out.length, 0);
+});
+
+test('gate W1: a placement\'s OWN rect never intersects an exclusion (a peek must not REACH INTO the player/dock)', () => {
+  // The adversarial repro: a card 8px above the dock - an unchecked bottom-edge
+  // peek reaches ~40px past the card, INTO the dock. Sweep many seeds; zero
+  // placement rects may touch the exclusion (skipped, never nudged).
+  const card = { x: 100, y: 850, w: 300, h: 142 };
+  const dock = { x: 0, y: 1000, w: 800, h: 80 };
+  for (let seed = 1; seed <= 300; seed += 1) {
+    const out = planCritterScatter({ anchors: [card], exclusions: [dock], manifest: MANIFEST_8, count: 1, rng: seededRng(seed) });
+    for (const p of out) {
+      const hits = p.x < dock.x + dock.w && p.x + p.w > dock.x && p.y < dock.y + dock.h && p.y + p.h > dock.y;
+      assert.ok(!hits, `seed ${seed}: placement rect reached into the excluded dock`);
+    }
+  }
+});
+
+test('gate W2: an ORIGIN-FLUSH anchor still peeks - never a fully-hidden, untappable critter', () => {
+  // The adversarial repro: full-bleed mobile cards at x=0/y=0 engaged the old
+  // zero-clamp, snapping ~1/3 of placements fully INSIDE the anchor. Negative
+  // coords are legal (they clip off-page - still a peek).
+  const flush = { x: 0, y: 0, w: 400, h: 200 };
+  for (let seed = 1; seed <= 300; seed += 1) {
+    const out = planCritterScatter({ anchors: [flush], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(seed) });
+    for (const p of out) {
+      const fullyInside = p.x >= flush.x && p.x + p.w <= flush.x + flush.w && p.y >= flush.y && p.y + p.h <= flush.y + flush.h;
+      assert.ok(!fullyInside, `seed ${seed}: placement fully hidden inside its anchor`);
+    }
+  }
+});
+
+test('gate W4: with document bounds, no placement grows the page (right/bottom edges skip)', () => {
+  // An anchor flush with the right/bottom document edge: any peek past the
+  // bounds is SKIPPED so the scrollable area never widens (zero layout shift).
+  const bounds = { w: 500, h: 900 };
+  const edgeCard = { x: 300, y: 758, w: 200, h: 142 }; // flush right AND bottom
+  for (let seed = 1; seed <= 300; seed += 1) {
+    const out = planCritterScatter({ anchors: [edgeCard], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(seed), bounds });
+    for (const p of out) {
+      assert.ok(p.x + p.w <= bounds.w, `seed ${seed}: placement widens the document`);
+      assert.ok(p.y + p.h <= bounds.h, `seed ${seed}: placement lengthens the document`);
+    }
+  }
 });
 
 // ---- the tap hit-test -------------------------------------------------------
@@ -230,7 +282,7 @@ test('SOURCE: all three router completion sites schedule a scatter (swap / home-
   assert.strictEqual(probeSites.length, 3, 'co-located with the repull probe at ALL THREE router sites');
 });
 
-test('SOURCE: the tap listener stands down for real interactive UI and never preventDefaults', () => {
+test('SOURCE: the tap listener stands down for real UI AND every exclusion; taps resolve by INDEX; never preventDefaults', () => {
   const start = COMMON.indexOf('function wireCritterListeners()');
   // Comments stripped FIRST (the comment-porous class): the prose above the
   // listener SAYS "never preventDefault", which would trip the negative lock.
@@ -238,8 +290,56 @@ test('SOURCE: the tap listener stands down for real interactive UI and never pre
     .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
   assert.match(body, /closest\('a, button, input, select, textarea, label, \[role="button"\]'\)\) return;/,
     'a click on real UI is never treated as a critter tap');
+  // Gate QA-W1: the tap path itself honours the exclusions (a chirp over the
+  // playing dock / under a dismissing modal backdrop is the forbidden disruption).
+  assert.match(body, /closest\(CRITTER_EXCLUSION_SELECTORS\.join\(','\)\)\) return;/,
+    'the tap handler stands down over every playback surface + modal backdrop');
+  // Gate W3: NEVER a selector built from the id (a raw filename - a legal
+  // double-quote name made querySelector THROW). Index into the layer instead.
+  assert.match(body, /children\[critterPlacements\.indexOf\(hit\)\]/, 'reaction element resolved by index');
+  assert.doesNotMatch(body, /querySelector\('\.critter\[data-critter-id/, 'no id-built selector remains');
   assert.doesNotMatch(body, /preventDefault/, 'the critter layer never eats a click');
-  assert.match(body, /addEventListener\('resize', scheduleCritterScatter\)/, 'reflow re-scatters (debounced)');
+  // Gate W5: only a WIDTH change re-scatters (iOS URL-bar collapse fires
+  // height-only resizes mid-scroll; re-scattering then = moving mid-view).
+  assert.match(body, /window\.innerWidth === lastCritterViewportW\) return;/,
+    'height-only resizes (the iOS URL bar) never re-scatter');
+});
+
+test('the exclusion list covers the WHOLE backdrop family via a suffix net (never one-of-N enumeration)', () => {
+  assert.ok(CRITTER_EXCLUSION_SELECTORS.indexOf('[class*="-backdrop"]') !== -1,
+    'one suffix selector covers all present AND future modal/sheet backdrops');
+});
+
+test('gate QA-S7 (behavioural TOCTOU): toggling OFF while the manifest fetch is in flight renders NOTHING', async () => {
+  const dom = new JSDOM('<!DOCTYPE html><body></body></html>', { url: 'http://localhost/' });
+  const origWindow = global.window; const origDocument = global.document;
+  const origFetch = global.fetch; const origLS = global.localStorage;
+  global.window = dom.window; global.document = dom.window.document;
+  global.localStorage = dom.window.localStorage;
+  let resolveFetch;
+  global.fetch = () => new Promise((r) => { resolveFetch = r; });
+  dom.window.fetch = global.fetch;
+  try {
+    const { scatterCritters } = require('../../public/js/common.js');
+    dom.window.localStorage.setItem('ft-critters:on', '1');
+    scatterCritters();                       // enabled -> manifest fetch starts
+    dom.window.localStorage.setItem('ft-critters:on', '0'); // user toggles OFF mid-flight
+    resolveFetch({ ok: true, json: async () => ({ critters: [] }) });
+    await new Promise((r) => setImmediate(r)); await new Promise((r) => setImmediate(r));
+    assert.strictEqual(dom.window.document.getElementById('critter-layer'), null,
+      'the post-await re-check refused to render (deleting the re-check turns this red)');
+  } finally {
+    global.window = origWindow; global.document = origDocument;
+    global.fetch = origFetch; global.localStorage = origLS;
+    dom.window.close();
+  }
+});
+
+test('SOURCE: fetched manifest entries are SANITIZED to {id, img, sound} - the svg field is builtins-only, enforced', () => {
+  const start = COMMON.indexOf('function fetchCritterManifest()');
+  const body = COMMON.slice(start, COMMON.indexOf('\nfunction collectCritterRects', start));
+  assert.match(body, /return \{ id: String\(c && c\.id \|\| ''\), img: \(c && c\.img\) \|\| null, sound: \(c && c\.sound\) \|\| null \};/,
+    'a fetched entry can never smuggle an svg field into the innerHTML branch');
 });
 
 test('the anchor pool excludes every playback surface (both directions of Dean\'s constraint)', () => {

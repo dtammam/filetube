@@ -7468,11 +7468,18 @@ var CRITTER_DENSITY_COUNTS = { sparse: 1, normal: 6, obscene: 16 };
 var CRITTER_STORAGE_ON = 'ft-critters:on';
 var CRITTER_STORAGE_DENSITY = 'ft-critters:density';
 // Anchors: page furniture worth peeking from behind. Curated, generic across
-// views; each candidate must also SURVIVE the exclusion filters below.
-var CRITTER_ANCHOR_SELECTORS = ['.video-card', '.setup-box', '.md-group-card', '.md-hero', '.action-bar'];
-// Playback surfaces + modals: never an anchor, never overlapped (Dean's hard
-// constraint - critters must not disrupt the video/audio experience).
-var CRITTER_EXCLUSION_SELECTORS = ['#player-wrapper', '.player-container', '#player-dock', '#fs-stage', '.oneoff-modal-backdrop'];
+// views; each candidate must also SURVIVE the exclusion filters below. Every
+// entry must PAINT A BACKGROUND (the z-index -1 layer hides the overlap by the
+// anchor painting over it) - `.action-bar` was dropped for exactly that reason
+// (grid + gap only, no background: the "hidden" half showed through the gutters).
+var CRITTER_ANCHOR_SELECTORS = ['.video-card', '.setup-box', '.md-group-card', '.md-hero'];
+// Playback surfaces + modals: never an anchor, never overlapped, and the tap
+// handler stands down over them (Dean's hard constraint - critters must not
+// disrupt the video/audio experience). `[class*="-backdrop"]` covers the WHOLE
+// modal/sheet backdrop family (11 classes today) and any future sibling - the
+// gate's QA seat caught the previous single-class spelling as the recurring
+// one-of-N enumeration hole.
+var CRITTER_EXCLUSION_SELECTORS = ['#player-wrapper', '.player-container', '#player-dock', '#fs-stage', '[class*="-backdrop"]'];
 // Tap reactions (Dean): tiny, transform-only, contained to the critter's own
 // box; one is picked at random per tap. All die under prefers-reduced-motion.
 var CRITTER_REACTIONS = ['critter-wiggle', 'critter-shiver', 'critter-hop'];
@@ -7527,6 +7534,7 @@ function planCritterScatter(opts) {
   var anchorPool = shuffle(usable);
   var critterPool = shuffle(manifest);
   var n = Math.min(count, anchorPool.length, critterPool.length);
+  var bounds = (opts && opts.bounds) || null; // {w,h} document size - placements never grow the page
   var placements = [];
   var EDGES = ['top', 'left', 'right', 'bottom'];
   for (var k = 0; k < n; k += 1) {
@@ -7539,7 +7547,19 @@ function planCritterScatter(opts) {
     else if (edge === 'bottom') { x = a.x + rng() * Math.max(0, a.w - size); y = a.y + a.h - size * 0.55; }
     else if (edge === 'left') { x = a.x - size * 0.45; y = a.y + rng() * Math.max(0, a.h - size); }
     else { x = a.x + a.w - size * 0.55; y = a.y + rng() * Math.max(0, a.h - size); }
-    x = Math.max(0, Math.round(x)); y = Math.max(0, Math.round(y));
+    // NO zero-clamp (gate W2): an origin-flush anchor's left/top peek goes
+    // NEGATIVE and simply clips off-page - still a peek. Clamping snapped the
+    // whole critter INSIDE the anchor: fully hidden, untappable, refuting the
+    // peek invariant ~1/3 of the time on full-bleed mobile cards.
+    x = Math.round(x); y = Math.round(y);
+    var rect = { x: x, y: y, w: size, h: size };
+    // The placement's OWN rect must also clear every exclusion (gate W1: the
+    // anchor check alone let a peek REACH INTO an adjacent player/dock - the
+    // "never overlapped" half of Dean's constraint). Skip, never nudge.
+    if (exclusions.some(function (e) { return critterRectsIntersect(rect, e); })) continue;
+    // And it must never GROW the document (gate W4): a right/bottom-edge peek
+    // past the page bounds would widen the scrollable area = layout shift.
+    if (bounds && (x + size > bounds.w || y + size > bounds.h)) continue;
     placements.push({
       id: c.id, img: c.img || null, sound: c.sound || null, svg: c.svg || null,
       x: x, y: y, w: size, h: size,
@@ -7643,7 +7663,14 @@ function fetchCritterManifest() {
     .then(function (res) { return res.ok ? res.json() : { critters: [] }; })
     .then(function (data) {
       var list = (data && Array.isArray(data.critters)) ? data.critters : [];
-      return list.length ? list : CRITTER_BUILTINS;
+      // SANITIZE to the exact fields a folder critter may carry (gate: the
+      // `innerHTML = p.svg` branch is for the BUILT-INS only, and that
+      // invariant is enforced here, not by convention - a fetched entry can
+      // never smuggle an svg field into the renderer).
+      var clean = list.map(function (c) {
+        return { id: String(c && c.id || ''), img: (c && c.img) || null, sound: (c && c.sound) || null };
+      }).filter(function (c) { return c.id && c.img; });
+      return clean.length ? clean : CRITTER_BUILTINS;
     })
     .catch(function () { return CRITTER_BUILTINS; });
   return critterManifestPromise;
@@ -7676,11 +7703,13 @@ function scatterCritters() {
     // RE-CHECK after the await (the TOCTOU lesson): the user may have toggled
     // the mode off while the manifest fetch was in flight.
     if (!resolveCritterConfig().enabled) return;
+    var docEl = document.documentElement;
     var placements = planCritterScatter({
       anchors: collectCritterRects(CRITTER_ANCHOR_SELECTORS, true),
       exclusions: collectCritterRects(CRITTER_EXCLUSION_SELECTORS, false),
       manifest: manifest,
       count: resolveCritterConfig().count,
+      bounds: { w: docEl.scrollWidth, h: docEl.scrollHeight }, // never grow the page (gate W4)
     });
     critterPlacements = placements;
     renderCritterPlacements(ensureCritterLayer(), placements);
@@ -7705,13 +7734,23 @@ function wireCritterListeners() {
   document.addEventListener('click', function (e) {
     if (!critterPlacements.length) return;
     if (e.target && e.target.closest && e.target.closest('a, button, input, select, textarea, label, [role="button"]')) return;
+    // Stand down over EVERY playback surface and modal backdrop (gate: the tap
+    // path itself must honour the exclusions - a chirp over the playing dock or
+    // under a dismissing modal is exactly the disruption Dean forbade).
+    if (e.target && e.target.closest && e.target.closest(CRITTER_EXCLUSION_SELECTORS.join(','))) return;
     var hit = critterTapHit(critterPlacements, e.pageX, e.pageY);
     if (!hit) return;
-    var el = document.querySelector('.critter[data-critter-id="' + hit.id + '"]');
+    // By INDEX, never a selector built from the id (gate W3: an id is a raw
+    // FILENAME - "names never matter" - and a legal double-quote name made a
+    // built selector THROW; render order == placement order, so index is exact
+    // even when two files share a basename).
+    var layer = document.getElementById('critter-layer');
+    var el = layer ? layer.children[critterPlacements.indexOf(hit)] : null;
     if (el) {
       // Dean: "a variety of very very small visual things" - one random tiny
-      // reaction per tap, all transform-only and fully contained to the
-      // critter's own box (no layout shift, no graphical garbage elsewhere).
+      // reaction per tap, all transform-only (transforms never affect layout,
+      // so nothing else on the page moves - no graphical garbage elsewhere;
+      // the hop's -7px translate paints outside the box but shifts nothing).
       var reaction = CRITTER_REACTIONS[Math.floor(Math.random() * CRITTER_REACTIONS.length)];
       CRITTER_REACTIONS.forEach(function (cls) { el.classList.remove(cls); });
       void el.offsetWidth; // restart the animation on rapid re-taps
@@ -7723,8 +7762,16 @@ function wireCritterListeners() {
       playCritterChirp();
     }
   });
-  // Reflow moves the furniture; re-scatter (debounced) so critters follow.
-  window.addEventListener('resize', scheduleCritterScatter);
+  // Reflow moves the furniture; re-scatter (debounced) so critters follow -
+  // but ONLY on a WIDTH change (gate W5): iOS Safari fires resize on URL-bar
+  // collapse/expand during scroll, and a height-only re-scatter would move
+  // critters mid-view, which Dean's ruling forbids.
+  var lastCritterViewportW = window.innerWidth;
+  window.addEventListener('resize', function () {
+    if (window.innerWidth === lastCritterViewportW) return;
+    lastCritterViewportW = window.innerWidth;
+    scheduleCritterScatter();
+  });
 }
 
 // The Settings page calls this after toggling the checkbox / density select.

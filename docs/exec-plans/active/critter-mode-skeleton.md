@@ -61,10 +61,15 @@ Pure core (node:test-able, rects in / placements out - jsdom has no layout):
   page load; empty folder / failed fetch -> the 3 built-in SVG figurines.
   NO-DUPLICATE rule is absolute, so placements cap at the manifest length
   (3 with builtins only - disclosed; populates itself as Dean adds files).
-- `planCritterScatter({anchors, exclusions, manifest, count, rng, doc})` -> pure
-  placements: sample anchors + manifest WITHOUT replacement, skip anchors
-  intersecting exclusions, position each critter straddling a random anchor edge
-  (~half hidden), angle in +-24deg.
+- `planCritterScatter({anchors, exclusions, manifest, count, rng, bounds})` ->
+  pure placements: sample anchors + manifest WITHOUT replacement, skip anchors
+  intersecting exclusions AND skip any placement whose OWN rect intersects an
+  exclusion (gate W1 - the "never overlapped" half) or exceeds the document
+  bounds (gate W4 - never grow the page), position each critter straddling a
+  random anchor edge (~half hidden; negative coords clip off-page rather than
+  clamping fully-inside - gate W2), angle in +-24deg. Exclusions cover the
+  playback surfaces + the WHOLE `[class*="-backdrop"]` modal family (gate QA-W1:
+  never a one-of-N enumeration), and the tap handler stands down over them too.
 - `critterTapHit(placements, x, y)` -> the placement whose rect contains the
   point AND the point is OUTSIDE its anchor rect (only the exposed sliver is
   tappable; the engine never intercepts a click meant for real UI - the document

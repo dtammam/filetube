@@ -19,5 +19,10 @@ The contract:
   up to 16 distinct critters when the folder has 16+ images).
 - While this folder holds no images, the app shows its three built-in
   placeholder figurines instead.
+- **Real files only** - a symlink to an image elsewhere is skipped; copy the
+  file in.
+- Files are picked up on the next full page load (a refresh), or immediately
+  when you re-apply the setting under Settings -> Appearance. In-app navigation
+  alone keeps the session's cached list.
 
 Turn the mode on under Settings -> Appearance -> Sneaky critter mode.
