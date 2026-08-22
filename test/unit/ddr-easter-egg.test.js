@@ -129,13 +129,32 @@ test('the text-presentation selector is U+FE0E and is appended by ddrArrowDispla
   assert.equal(ddrArrowDisplayGlyph(undefined), SEL);
 });
 
-test('CSS: the arrows are pinned to monochrome text (font-variant-emoji) with color as the single source', () => {
+test('CSS: arrows are pinned to monochrome text, then coloured by axis (left/right blue, up/down red)', () => {
   const block = CSS.slice(CSS.indexOf('.shortcuts-ddr-arrow {'));
-  const rule = block.slice(0, block.indexOf('}'));
-  assert.match(rule, /font-variant-emoji:\s*text/,
-    'the arrow button forces text (non-emoji) presentation so the OS cannot colour it');
-  assert.match(rule, /color:\s*var\(--text-secondary\)/,
-    'grey at rest - the stylesheet, not the OS font, decides the colour');
+  const baseRule = block.slice(0, block.indexOf('}'));
+  assert.match(baseRule, /font-variant-emoji:\s*text/,
+    'the arrow button forces text (non-emoji) presentation so the OS cannot colour it - OUR CSS wins');
+  // The DDR scheme (Dean): left/right (--h) BLUE, up/down (--v) RED. Theme tokens.
+  assert.match(CSS, /\.shortcuts-ddr-arrow--h\s*\{\s*color:\s*var\(--text-link\)/,
+    'left/right arrows are blue (--text-link)');
+  assert.match(CSS, /\.shortcuts-ddr-arrow--v\s*\{\s*color:\s*var\(--yt-red\)/,
+    'up/down arrows are red (--yt-red)');
+  // The axis rules must come AFTER the base rule so equal-specificity source order lets them win.
+  assert.ok(CSS.indexOf('.shortcuts-ddr-arrow--h') > CSS.indexOf('.shortcuts-ddr-arrow {'),
+    'the axis colours are declared after the base rule (source order wins at equal specificity)');
+});
+
+test('render: left/right arrows carry the blue (--h) class, up/down the red (--v) class', () => {
+  const d = doc();
+  const { ddrByKey } = buildShortcutsModal(d, {});
+  assert.ok(ddrByKey.ArrowLeft.el.classList.contains('shortcuts-ddr-arrow--h'), 'left = horizontal/blue');
+  assert.ok(ddrByKey.ArrowRight.el.classList.contains('shortcuts-ddr-arrow--h'), 'right = horizontal/blue');
+  assert.ok(ddrByKey.ArrowUp.el.classList.contains('shortcuts-ddr-arrow--v'), 'up = vertical/red');
+  assert.ok(ddrByKey.ArrowDown.el.classList.contains('shortcuts-ddr-arrow--v'), 'down = vertical/red');
+  // and the data field that drives it:
+  for (const a of DDR_ARROWS) {
+    assert.ok(a.axis === 'h' || a.axis === 'v', `${a.key} has a colour axis`);
+  }
 });
 
 test('buildShortcutsModal exposes ddrByKey mapping each arrow key to its play+pulse handle', () => {

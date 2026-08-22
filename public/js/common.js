@@ -7378,18 +7378,20 @@ function shouldOpenShortcuts(e, activeTag, isEditable) {
 // player". The notes are a consonant C-D-E-G run (no dissonant clash). Pure map so
 // it is testable; the synth is Web Audio, fully guarded (silent + never throws
 // where AudioContext is absent, e.g. node:test).
+// `axis` drives the resting COLOUR (Dean's DDR scheme): 'h' = left/right = BLUE,
+// 'v' = up/down = RED. Rendered as a `.shortcuts-ddr-arrow--h/--v` class the CSS
+// colours; the press state (.ddr-hit) overrides both.
 var DDR_ARROWS = [
-  { key: 'ArrowLeft', glyph: '←', freq: 523.25 },  // C5
-  { key: 'ArrowDown', glyph: '↓', freq: 587.33 },  // D5
-  { key: 'ArrowUp', glyph: '↑', freq: 659.25 },    // E5
-  { key: 'ArrowRight', glyph: '→', freq: 783.99 }, // G5
+  { key: 'ArrowLeft', glyph: '←', freq: 523.25, axis: 'h' },  // C5, blue
+  { key: 'ArrowDown', glyph: '↓', freq: 587.33, axis: 'v' },  // D5, red
+  { key: 'ArrowUp', glyph: '↑', freq: 659.25, axis: 'v' },    // E5, red
+  { key: 'ArrowRight', glyph: '→', freq: 783.99, axis: 'h' }, // G5, blue
 ];
-// v1.163.1 (Dean's device report): iOS was substituting a COLOR emoji glyph for
-// these arrows (left/right blue, up/down red), overriding our grey CSS. U+FE0E
-// (VARIATION SELECTOR-15) requests the monochrome TEXT presentation, handing the
-// colour back to `color:` in the stylesheet. Zero-width, so it never shows. The
-// `.glyph` field stays the bare arrow (its semantic identity); the selector is a
-// pure rendering concern appended only in the DOM.
+// U+FE0E (VARIATION SELECTOR-15) forces the MONOCHROME text presentation of the
+// arrow glyphs so OUR CSS colours win instead of the OS emoji palette (iOS was
+// painting them its own blue/red, which we can neither guarantee across devices
+// nor match to a shade). Zero-width, so it never shows. The `.glyph` field stays
+// the bare arrow (its semantic identity); the selector is appended only in the DOM.
 var DDR_TEXT_PRESENTATION = '\uFE0E';
 function ddrArrowDisplayGlyph(glyph) {
   return String(glyph == null ? '' : glyph) + DDR_TEXT_PRESENTATION;
@@ -7455,6 +7457,8 @@ function buildShortcutsModal(doc, handlers) {
     const arrow = d.createElement('button');
     arrow.type = 'button';
     arrow.className = 'shortcuts-ddr-arrow';
+    // Resting colour by axis: left/right -> blue, up/down -> red (Dean's scheme).
+    if (a.axis === 'h' || a.axis === 'v') arrow.classList.add('shortcuts-ddr-arrow--' + a.axis);
     arrow.tabIndex = -1;
     arrow.textContent = ddrArrowDisplayGlyph(a.glyph); // force text (non-emoji) presentation
     arrow.addEventListener('click', () => { playDdrNote(a.freq); pulse(arrow); });
