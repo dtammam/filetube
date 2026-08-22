@@ -442,8 +442,78 @@ test('v1.166.2: the WATCH page has anchors, and every anchor honours the ground 
   for (const sel of CRITTER_ANCHOR_SELECTORS.filter((s) => s.startsWith('.'))) {
     const rule = new RegExp('(?:^|\\n)' + sel.replace('.', '\\.') + '\\s*\\{([^}]*)\\}').exec(CSS);
     assert.ok(rule, sel + ' has a base CSS rule');
-    assert.match(rule[1].replace(/\/\*[\s\S]*?\*\//g, ''), /background(?:-color)?:/,
-      sel + ' must PAINT a background (the ground contract for every anchor)');
+    // v1.167 TIGHTENED (the .3 gate's disclosed nit became load-bearing:
+    // `.music-artist-card` paints `background: transparent`, which the old
+    // spelling would have false-passed): the value must be REAL paint.
+    assert.match(rule[1].replace(/\/\*[\s\S]*?\*\//g, ''), /background(?:-color)?:\s*(?!transparent|none)\S/,
+      sel + ' must PAINT a real background - transparent/none is not paint (the ground contract)');
+  }
+});
+
+// ---- v1.167: buttons priority + scale-to-anchor + the fixed-subtree guard ---
+
+test('v1.167: the machine-derived sweep is in the pool; the transparent rejects are NOT', () => {
+  for (const sel of ['.btn', '.sub-row', '.history-thumb', '.book-row-cover', '.music-artist-mosaic', '.podcast-card-art', '.comment-input-box']) {
+    assert.ok(CRITTER_ANCHOR_SELECTORS.indexOf(sel) !== -1, sel + ' anchors (verified painting)');
+  }
+  for (const sel of ['.podcast-card', '.music-artist-card', '.music-album-card', '.history-row', '.comment-item', '.stable-row']) {
+    assert.ok(CRITTER_ANCHOR_SELECTORS.indexOf(sel) === -1, sel + ' is transparent - rejected by the ground contract');
+  }
+  const { CRITTER_PRIORITY_SELECTORS, CRITTER_PRIORITY_WEIGHT } = require('../../public/js/common.js');
+  assert.deepStrictEqual(CRITTER_PRIORITY_SELECTORS, ['.btn'], 'buttons are the priority tier (Dean\'s ambush ruling)');
+  assert.strictEqual(CRITTER_PRIORITY_WEIGHT, 3);
+});
+
+test('v1.167: weighted sampling - a priority anchor wins the draw ~3x as often (seeded sweep)', () => {
+  // 1 weighted button among 9 plain anchors, ONE pick per plan: uniform would
+  // select the button ~1/10 of the time; weight 3 targets ~3/12. Sweep seeds
+  // and assert the observed rate lands far from uniform, near the weighted rate.
+  const anchors = Array.from({ length: 10 }, (_, i) => ({ x: 10, y: 10 + i * 300, w: 200, h: 120, weight: i === 0 ? 3 : 1 }));
+  let hits = 0;
+  const RUNS = 600;
+  for (let seed = 1; seed <= RUNS; seed += 1) {
+    // Warm the LCG: its FIRST draw is nearly constant across adjacent seeds
+    // (s*A+C is ~linear in s), which would hand the weighted anchor a fixed
+    // key and sandbag the measurement - discard a few draws to decorrelate.
+    const rng = seededRng(seed * 2654435761 >>> 0);
+    for (let w = 0; w < 7; w += 1) rng();
+    const out = planCritterScatter({ anchors, exclusions: [], manifest: MANIFEST_8, count: 1, rng });
+    if (out.length && out[0].anchor.y === 10) hits += 1;
+  }
+  const rate = hits / RUNS;
+  assert.ok(rate > 0.17, `weighted anchor won only ${(rate * 100).toFixed(1)}% - weighting is not biting (uniform would be ~10%)`);
+  assert.ok(rate < 0.34, `weighted anchor won ${(rate * 100).toFixed(1)}% - weighting overshoots (target ~25%)`);
+});
+
+test('v1.167: scale-to-anchor - behind a small button the critter shrinks to ~1.1-1.5x its height and still peeks', () => {
+  const button = { x: 200, y: 500, w: 120, h: 36, weight: 3 }; // a real .btn footprint
+  for (let seed = 1; seed <= 300; seed += 1) {
+    const out = planCritterScatter({ anchors: [button], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(seed) });
+    for (const p of out) {
+      assert.ok(p.w >= 26 && p.w <= Math.round(36 * 1.5) + 1, `seed ${seed}: size ${p.w} outside the small-anchor band`);
+      const overlaps = p.x < button.x + button.w && p.x + p.w > button.x && p.y < button.y + button.h && p.y + p.h > button.y;
+      const fullyInside = p.x >= button.x && p.x + p.w <= button.x + button.w && p.y >= button.y && p.y + p.h <= button.y + button.h;
+      assert.ok(overlaps && !fullyInside, `seed ${seed}: the shrunk critter must still straddle the button`);
+    }
+  }
+  // Big anchors keep the original band.
+  const box = { x: 10, y: 10, w: 400, h: 200 };
+  const out = planCritterScatter({ anchors: [box], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(9) });
+  assert.ok(out[0].w >= 44 && out[0].w <= 88, 'large anchors keep 44-88');
+});
+
+test('v1.167: an anchor inside a FIXED subtree is skipped (its rect is viewport-anchored; critters are document-anchored)', () => {
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="fixedwrap" style="position: fixed;"><button class="btn" style="width:100px;height:40px">Pinned</button></div><button id="free" class="btn" style="width:100px;height:40px">Free</button></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const { critterInsideFixed } = require('../../public/js/common.js');
+    assert.strictEqual(critterInsideFixed(dom.window.document.querySelector('#fixedwrap .btn')), true,
+      'a button inside a fixed header/nav is never an anchor (it would detach from its critter on scroll)');
+    assert.strictEqual(critterInsideFixed(dom.window.document.getElementById('free')), false,
+      'an in-flow button anchors normally');
+  } finally {
+    delete global.window; delete global.document;
+    dom.window.close();
   }
 });
 
