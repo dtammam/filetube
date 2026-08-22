@@ -80,6 +80,30 @@
 
 ## Shipped
 
+### v1.163.1 - DDR arrows: intentional left/right blue, up/down red (Dean) (2026-08-22)
+
+Dean WANTS the DDR arrows coloured - left/right blue, up/down red (the classic pad
+scheme) - not the grey the v1.163.0 stylesheet gave them. On his iPhone iOS happened
+to colour them (via emoji substitution), but that is device-specific and
+uncontrollable; on desktop they were grey. Make it INTENTIONAL and identical
+everywhere: force the monochrome text presentation of the glyphs (U+FE0E +
+`font-variant-emoji: text`) so the OS emoji palette can't interfere, then set our own
+per-axis colours - `--text-link` (blue) for left/right, `--yt-red` (red) for up/down,
+both theme tokens so they stay legible in light and dark. The press state (`.ddr-hit`,
+red, until the window is reopened) is unchanged - Dean confirmed that was fine. The
+`axis` field on each arrow drives a `.shortcuts-ddr-arrow--h/--v` class; the `.glyph`
+data stays the bare arrow. No raw control byte in source (the U+FE0E constant is a
+`\uFE0E` escape; tests build it from `String.fromCharCode(0xFE0E)`).
+
+PROCESS NOTE (honest): my first read of "can we change that colour" was BACKWARDS - I
+built a monochrome-grey version (gated + APPROVED) before Dean clarified he wanted the
+colours kept and made intentional. Caught pre-release, so nothing shipped grey; the
+text-presentation groundwork was reused, only the colour flipped from grey to
+blue/red. SLIM gate (cosmetic, non-destructive). Dual-Node PENDING at time of writing.
+
+DEVICE (Dean): open `?` - left/right arrows blue, up/down red (same on phone and
+desktop); pressing an arrow still lights it red until the window is reopened.
+
 ### v1.163.0 - "FileTube FileTube Revolution" easter egg + desktop no-scroll shortcuts (Dean) (2026-08-21)
 
 Two things in one small, fun wave. The original ask: the desktop keyboard-shortcuts
