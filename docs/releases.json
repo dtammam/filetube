@@ -1972,5 +1972,11 @@
     "date": "2026-08-22",
     "title": "DDR arrows flash by direction when you press them",
     "intent": "The shortcuts-window easter egg now flashes each arrow's square in its own color when you press it: left and right flash blue, up and down flash red, like a real dance pad. The arrows themselves stay a plain neutral color; only the square lights up."
+  },
+  {
+    "version": "1.163.3",
+    "date": "2026-08-22",
+    "title": "Subtitles stay inside the video, even on your phone",
+    "intent": "Fixed subtitles spilling out of the video on mobile: they were drifting up over the playback controls, and in the little corner mini-player they were huge and overflowed the frame. Now subtitles always sit inside the video picture, above the controls, and in the mini-player they shrink to fit neatly inside the thumbnail."
   }
 ]
