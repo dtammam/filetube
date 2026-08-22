@@ -26,6 +26,8 @@ const {
   openShortcutsModal,
   closeShortcutsModal,
   KEYBOARD_SHORTCUT_GROUPS,
+  DDR_TEXT_PRESENTATION,
+  ddrArrowDisplayGlyph,
 } = require('../../public/js/common.js');
 
 const COMMON = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
@@ -91,7 +93,15 @@ test('buildShortcutsModal renders the DDR arrow row (top-right) and the subtitle
   assert.equal(row.getAttribute('aria-hidden'), 'true', 'decorative to a screen reader');
   const arrows = [...row.querySelectorAll('.shortcuts-ddr-arrow')];
   assert.equal(arrows.length, 4, 'one button per DDR arrow');
-  assert.deepEqual(arrows.map((b) => b.textContent), DDR_ARROWS.map((a) => a.glyph));
+  // Each rendered glyph is the bare arrow PLUS the U+FE0E text-presentation
+  // selector (v1.163.1 - keep iOS from painting them as colour emoji). Uses the
+  // exported constant, never a raw control byte in this source file.
+  assert.deepEqual(arrows.map((b) => b.textContent),
+    DDR_ARROWS.map((a) => a.glyph + DDR_TEXT_PRESENTATION));
+  for (const b of arrows) {
+    assert.ok(b.textContent.includes(DDR_TEXT_PRESENTATION),
+      'the arrow carries the text-presentation selector so the OS renders it monochrome, not colour emoji');
+  }
   for (const b of arrows) {
     assert.equal(b.tabIndex, -1, 'the arrows are not in the tab order (mouse/keys only)');
     assert.equal(b.type, 'button', 'never a submit');
@@ -100,6 +110,32 @@ test('buildShortcutsModal renders the DDR arrow row (top-right) and the subtitle
   assert.ok(subtitle, 'the DDR subtitle renders');
   assert.match(subtitle.textContent, /FileTube FileTube Revolution/,
     'the Discord-homage subtitle (the whole point of the joke)');
+});
+
+test('the text-presentation selector is U+FE0E and is appended by ddrArrowDisplayGlyph', () => {
+  // v1.163.1: the fix for Dean's device (iOS painted the arrows blue/red as
+  // colour emoji). The selector must be exactly VARIATION SELECTOR-15, and the
+  // helper appends it to the bare glyph (which itself stays uncoloured/semantic).
+  // SEL is built from the codepoint so THIS source file carries no raw control byte.
+  const SEL = String.fromCharCode(0xFE0E);
+  assert.equal(DDR_TEXT_PRESENTATION, SEL, 'exactly U+FE0E (text presentation)');
+  assert.equal(DDR_TEXT_PRESENTATION.charCodeAt(0), 0xFE0E);
+  for (const a of DDR_ARROWS) {
+    assert.equal(ddrArrowDisplayGlyph(a.glyph), a.glyph + SEL, 'bare glyph + selector');
+    // the DATA glyph is left bare (no selector baked into DDR_ARROWS).
+    assert.equal(a.glyph.length, 1, 'the source-of-truth glyph carries no selector');
+  }
+  assert.equal(ddrArrowDisplayGlyph(null), SEL, 'never throws on a null glyph');
+  assert.equal(ddrArrowDisplayGlyph(undefined), SEL);
+});
+
+test('CSS: the arrows are pinned to monochrome text (font-variant-emoji) with color as the single source', () => {
+  const block = CSS.slice(CSS.indexOf('.shortcuts-ddr-arrow {'));
+  const rule = block.slice(0, block.indexOf('}'));
+  assert.match(rule, /font-variant-emoji:\s*text/,
+    'the arrow button forces text (non-emoji) presentation so the OS cannot colour it');
+  assert.match(rule, /color:\s*var\(--text-secondary\)/,
+    'grey at rest - the stylesheet, not the OS font, decides the colour');
 });
 
 test('buildShortcutsModal exposes ddrByKey mapping each arrow key to its play+pulse handle', () => {

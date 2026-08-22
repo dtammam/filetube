@@ -10122,6 +10122,10 @@ html[data-modern="on"] .video-uploader {
   padding: 0;
   font-size: var(--fs-lg);
   line-height: 1; /* token-exempt: glyph centering */
+  /* v1.163.1: belt to the U+FE0E in the glyph - keep the arrows MONOCHROME so
+     the OS never paints them as colour emoji (Dean's device: blue/red arrows).
+     `color:` below is then the single source of truth for their colour. */
+  font-variant-emoji: text;
   color: var(--text-secondary);
   background-color: var(--btn-bg);
   border: 1px solid var(--border-dark);

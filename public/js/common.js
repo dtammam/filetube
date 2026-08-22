@@ -7384,6 +7384,16 @@ var DDR_ARROWS = [
   { key: 'ArrowUp', glyph: '↑', freq: 659.25 },    // E5
   { key: 'ArrowRight', glyph: '→', freq: 783.99 }, // G5
 ];
+// v1.163.1 (Dean's device report): iOS was substituting a COLOR emoji glyph for
+// these arrows (left/right blue, up/down red), overriding our grey CSS. U+FE0E
+// (VARIATION SELECTOR-15) requests the monochrome TEXT presentation, handing the
+// colour back to `color:` in the stylesheet. Zero-width, so it never shows. The
+// `.glyph` field stays the bare arrow (its semantic identity); the selector is a
+// pure rendering concern appended only in the DOM.
+var DDR_TEXT_PRESENTATION = '\uFE0E';
+function ddrArrowDisplayGlyph(glyph) {
+  return String(glyph == null ? '' : glyph) + DDR_TEXT_PRESENTATION;
+}
 function ddrNoteForArrow(key) {
   for (var i = 0; i < DDR_ARROWS.length; i++) if (DDR_ARROWS[i].key === key) return DDR_ARROWS[i].freq;
   return 0;
@@ -7446,7 +7456,7 @@ function buildShortcutsModal(doc, handlers) {
     arrow.type = 'button';
     arrow.className = 'shortcuts-ddr-arrow';
     arrow.tabIndex = -1;
-    arrow.textContent = a.glyph;
+    arrow.textContent = ddrArrowDisplayGlyph(a.glyph); // force text (non-emoji) presentation
     arrow.addEventListener('click', () => { playDdrNote(a.freq); pulse(arrow); });
     ddrRow.appendChild(arrow);
     ddrByKey[a.key] = { el: arrow, freq: a.freq, pulse: () => pulse(arrow) };
@@ -13130,6 +13140,8 @@ if (typeof module !== 'undefined' && module.exports) {
     KEYBOARD_SHORTCUT_GROUPS, shouldOpenShortcuts, buildShortcutsModal,
     // v1.163: the DDR easter-egg mini-synth (pure key->note map + the synth).
     DDR_ARROWS, ddrNoteForArrow, playDdrNote,
+    // v1.163.1: force text (non-emoji) presentation on the arrow glyphs.
+    DDR_TEXT_PRESENTATION, ddrArrowDisplayGlyph,
     // v1.50.3: the D dark/light toggle's pure decision.
     shouldToggleThemeKey,
     openShortcutsModal, closeShortcutsModal, isDesktopViewport, SHORTCUTS_DESKTOP_QUERY,
