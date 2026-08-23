@@ -617,9 +617,16 @@ function wireCritterModeControls(signal) {
     try { localStorage.setItem('ft-critters:density', density.value); } catch (_) { /* storage off */ }
     if (typeof applyCritterMode === 'function') applyCritterMode();
   }, { signal });
-  // v1.179.1 instrument (device-boops-with-voices): one tap runs the REAL
-  // manifest + playback path and prints which link breaks. The play attempt
-  // runs INSIDE this click's user gesture, matching the tap path's context.
+}
+
+// v1.179.1 instrument (device-boops-with-voices): one tap runs the REAL
+// manifest + playback path and prints which link breaks. The play attempt
+// runs INSIDE this click's user gesture, matching the tap path's context.
+// v1.181 (gate S2): its OWN function - the button lives in Troubleshooting
+// now, and wiring it inside wireCritterModeControls left it coupled to the
+// CRITTERS section's toggle ids (that early-return guard would have killed
+// this silently if those ids ever moved on).
+function wireVoiceCheck(signal) {
   const voiceBtn = document.getElementById('critter-voice-check-btn');
   const voiceStatus = document.getElementById('critter-voice-check-status');
   if (voiceBtn && voiceStatus && typeof probeCritterVoices === 'function') {
@@ -3183,6 +3190,7 @@ function init(root) {
   renderIconPicker();
   wireHideStarsControl(controller.signal); // v1.63.1: the fake-stars toggle
   wireCritterModeControls(controller.signal); // v1.166: Sneaky critter mode
+  wireVoiceCheck(controller.signal); // v1.181: the Troubleshooting page's critter sound diagnostic
   loadResumeThresholdControl();
   loadDebugLifecycleControl();
   loadHomeRowControl('home-continue-watching-check', 'ft-home-continue-watching');
@@ -3246,7 +3254,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.159: the Users list as a sortable table (jsdom-tested action wiring).
     loadUsersList, buildUserRoleCell,
     // v1.171: the critter pool manager (jsdom-tested: two-tap deletes, uploads, reveal).
-    wireCritterManager,
+    wireCritterManager, wireVoiceCheck,
     // v1.157 (P3): the configured-folder-list skeleton (pure string builder).
     buildSetupFolderSkeleton,
     // v1.161 (Dean): the resume-countdown seconds clamp (mirrors player.js's read).
