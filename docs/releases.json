@@ -2032,5 +2032,11 @@
     "date": "2026-08-23",
     "title": "Critters commit to the bit",
     "intent": "Big critter glow-up. They now peek out from corners as well as edges, lean at wilder angles, face either direction, and vary how boldly they emerge - from a shy sliver to half a body. And the big one: a critter now hides behind exactly ONE thing - its own button or card - and sits on top of everything else nearby, so it never gets weirdly swallowed by a stray divider line the way the first ones did. Menus and popups still open on top of them, and they still never touch the video player."
+  },
+  {
+    "version": "1.169.0",
+    "date": "2026-08-23",
+    "title": "Critters move into the feed",
+    "intent": "On the phone's main feed, critters used to poke out the sides of the full-width cards and get chopped off by the screen edge, which looked like a glitch. Now anything full-width only lets them emerge from the top or bottom - so they climb out from behind a video's artwork onto its title, or peer down over the top of a card. Bonus: they can also hide behind the artwork itself, and keep an eye out for the tiny ones tucked behind a channel's little round avatar."
   }
 ]
