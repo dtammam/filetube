@@ -1059,7 +1059,12 @@ test('v1.175 nudge discipline (source locks): shares the ladder budget, cancels 
   const disabledBranch = scatter.slice(0, scatter.indexOf('wireCritterListeners()'));
   assert.match(disabledBranch, /unwireCritterContentNudge\(\);/,
     'mode off disconnects the observer (the v1.160 lesson: no global observer tax for non-opted users)');
-  assert.match(scatter, /wireCritterContentNudge\(\);/, 'mode on wires it');
+  // Gate S2: anchored past the `un` prefix - the bare substring was vacuously
+  // satisfied by unwireCritterContentNudge() in the disabled branch.
+  assert.match(scatter, /\n {2}wireCritterContentNudge\(\);/, 'mode on wires it (the enabled path\'s own call)');
+  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter()'), COMMON.indexOf('\nfunction wireCritterListeners'));
+  assert.match(sched, /if \(critterNudgeDebounce\) \{ clearTimeout\(critterNudgeDebounce\); critterNudgeDebounce = null; \}/,
+    'gate S1: a navigation cancels the pending nudge debounce along with every other handle');
 });
 
 // ---- CSS locks --------------------------------------------------------------

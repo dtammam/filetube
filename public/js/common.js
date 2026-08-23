@@ -8131,6 +8131,9 @@ function scheduleCritterScatter() {
   // ...and CANCELS any stale pending retry from the previous view - an unstashed
   // handle is uncancellable by construction (gate WARNING; the v1.163 class).
   if (critterRetryTimer) { clearTimeout(critterRetryTimer); critterRetryTimer = null; }
+  // v1.175 gate S1: the content nudge's debounce is a pending handle too - a
+  // navigation cancels EVERY handle from the previous view, same discipline.
+  if (critterNudgeDebounce) { clearTimeout(critterNudgeDebounce); critterNudgeDebounce = null; }
   if (critterScatterTimer) clearTimeout(critterScatterTimer);
   critterScatterTimer = setTimeout(function () { critterScatterTimer = null; scatterCritters(); }, 200);
 }
