@@ -15248,9 +15248,11 @@ function buildCritterListing(fileNames) {
 }
 
 // v1.171 (QA S1/adversarial S2 closure): one resolver for the critter folder.
-// CRITTERS_DIR is a TEST seam (the destructive integration suite seeds a temp
-// folder instead of the repo's real one) and works as a deploy override; the
-// default is the compose-mount lockstep path (see docker-compose.yml).
+// CRITTERS_DIR is a TEST seam ONLY (the destructive integration suite seeds a
+// temp folder instead of the repo's real one) - NOT a deploy override: the
+// static handler serves /critters/<name> from public/critters/ regardless, so
+// pointing the API elsewhere would 404 every thumbnail (QA delta finding).
+// The default is the compose-mount lockstep path (see docker-compose.yml).
 const crittersDir = () => process.env.CRITTERS_DIR || path.join(__dirname, 'public', 'critters');
 
 app.get('/api/critters', (req, res) => {
