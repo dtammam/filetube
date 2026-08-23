@@ -111,6 +111,14 @@ test('v1.179 the VOICE POOL: unmatched critters BORROW a folder sound determinis
   // No sounds anywhere: voice null -> the synth chirp remains the fallback.
   const silent = buildCritterListing(['maple.png', 'biscuit.png']);
   assert.strictEqual(silent.find((c) => c.id === 'maple').voice, null, 'a soundless folder keeps the chirp');
+  // The SPREAD is the point (my constant-hash mutant survived the binds
+  // above - "deterministic and in-pool" is satisfiable by everyone sharing
+  // pool[0]): six unmatched critters over three sounds must land on more
+  // than one voice. Measured against the real hash first: these ids spread
+  // across all three.
+  const spread = buildCritterListing(['a.png', 'b.png', 'c.png', 'd.png', 'e.png', 'f.png', 'x.mp3', 'y.mp3', 'z.mp3']);
+  assert.ok(new Set(spread.map((c) => c.voice)).size >= 2,
+    'borrowed voices SPREAD across the pool - a constant hash (everyone gets pool[0]) reds here');
 });
 
 // ---- the pure planner -------------------------------------------------------
