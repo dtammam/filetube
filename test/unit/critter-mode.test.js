@@ -1344,6 +1344,120 @@ test('v1.177 refactor lock: the clip and the shave consume ONE shared hidden-rec
   assert.match(shave, /var h = critterHiddenRect\(p, pad\);/, 'buildCritterShaveMask derives from the SAME geometry');
 });
 
+// ---- v1.178: anchor ADOPTION (Dean's "flash and find a second position") ----
+
+test('v1.178 ADOPTION end-to-end: a view rebuild that REPLACES the anchor keeps the critter in place on the twin', async (t) => {
+  // Dean's residual flash: views rebuild content wholesale (the related rail,
+  // the feed grid) - the anchor ELEMENT is replaced by an identical twin, the
+  // v1.176 re-glue dropped the orphan, and the empty settle check
+  // re-scattered to fresh spots. Adoption re-attaches the critter to the twin
+  // by selector + geometry: same id, same position, NO flash.
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="view-root"><div class="video-card" id="card" data-rx="100" data-ry="300"></div></div></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  global.MutationObserver = dom.window.MutationObserver;
+  global.localStorage = dom.window.localStorage;
+  localStorage.setItem('ft-critters:on', '1');
+  global.window.Image = class { decode() { return Promise.resolve(); } };
+  const docEl = dom.window.document.documentElement;
+  Object.defineProperty(docEl, 'scrollWidth', { value: 800, configurable: true });
+  Object.defineProperty(docEl, 'scrollHeight', { value: 2000, configurable: true });
+  const proto = dom.window.Element.prototype;
+  const origRect = proto.getBoundingClientRect;
+  proto.getBoundingClientRect = function () {
+    const rx = this.getAttribute && this.getAttribute('data-rx');
+    if (rx !== null && rx !== undefined && rx !== '') {
+      const x = Number(rx); const y = Number(this.getAttribute('data-ry'));
+      const w = Number(this.getAttribute('data-rw') || 300); const h = Number(this.getAttribute('data-rh') || 200);
+      return { left: x, top: y, width: w, height: h, right: x + w, bottom: y + h };
+    }
+    return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+  };
+  t.after(() => {
+    proto.getBoundingClientRect = origRect;
+    const { scatterCritters } = require('../../public/js/common.js');
+    localStorage.setItem('ft-critters:on', '0');
+    scatterCritters();
+    delete global.window; delete global.document; delete global.MutationObserver; delete global.localStorage;
+    dom.window.close();
+  });
+  const { scatterCritters, reglueCritterPlacements } = require('../../public/js/common.js');
+  scatterCritters();
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  const before = [...dom.window.document.querySelectorAll('.critter')].map((el) => ({
+    id: el.getAttribute('data-critter-id'), left: el.style.left, top: el.style.top,
+  }));
+  assert.ok(before.length > 0, 'placed on the card');
+  // THE VIEW REBUILD: the card is REPLACED by an identical twin at the same
+  // spot (relatedContainer.innerHTML = ... semantics).
+  const view = dom.window.document.getElementById('view-root');
+  view.innerHTML = '<div class="video-card" id="card-rebuilt" data-rx="100" data-ry="300"></div>';
+  reglueCritterPlacements();
+  const after = [...dom.window.document.querySelectorAll('.critter')].map((el) => ({
+    id: el.getAttribute('data-critter-id'), left: el.style.left, top: el.style.top,
+  }));
+  assert.deepStrictEqual(after, before, 'ADOPTED: same critter, same position, no flash (the Dean assertion)');
+  // The twin RENDERED 40px lower (the settle shifted it): adopted AND ridden.
+  view.innerHTML = '<div class="video-card" id="card-again" data-rx="100" data-ry="340"></div>';
+  reglueCritterPlacements();
+  const ridden = [...dom.window.document.querySelectorAll('.critter')];
+  assert.strictEqual(ridden.length, before.length, 'still the same critters');
+  assert.strictEqual(parseInt(ridden[0].style.top, 10) - parseInt(before[0].top, 10), 40, 'translated by the twin\'s delta');
+  // TOO FAR: the "twin" appears half a screen away - different furniture, drop.
+  view.innerHTML = '<div class="video-card" id="card-far" data-rx="100" data-ry="900"></div>';
+  reglueCritterPlacements();
+  assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 0, 'a 560px jump is not adoption material');
+});
+
+test('v1.178 adoption discipline: size-mismatched cousins refused; a claimed element is never double-adopted', async (t) => {
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="view-root">'
+    + '<div class="video-card" id="a" data-rx="100" data-ry="300"></div>'
+    + '<div class="video-card" id="b" data-rx="100" data-ry="700"></div>'
+    + '</div></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  global.MutationObserver = dom.window.MutationObserver;
+  global.localStorage = dom.window.localStorage;
+  localStorage.setItem('ft-critters:on', '1');
+  global.window.Image = class { decode() { return Promise.resolve(); } };
+  const docEl = dom.window.document.documentElement;
+  Object.defineProperty(docEl, 'scrollWidth', { value: 800, configurable: true });
+  Object.defineProperty(docEl, 'scrollHeight', { value: 2000, configurable: true });
+  const proto = dom.window.Element.prototype;
+  const origRect = proto.getBoundingClientRect;
+  proto.getBoundingClientRect = function () {
+    const rx = this.getAttribute && this.getAttribute('data-rx');
+    if (rx !== null && rx !== undefined && rx !== '') {
+      const x = Number(rx); const y = Number(this.getAttribute('data-ry'));
+      const w = Number(this.getAttribute('data-rw') || 300); const h = Number(this.getAttribute('data-rh') || 200);
+      return { left: x, top: y, width: w, height: h, right: x + w, bottom: y + h };
+    }
+    return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+  };
+  t.after(() => {
+    proto.getBoundingClientRect = origRect;
+    const { scatterCritters } = require('../../public/js/common.js');
+    localStorage.setItem('ft-critters:on', '0');
+    scatterCritters();
+    delete global.window; delete global.document; delete global.MutationObserver; delete global.localStorage;
+    dom.window.close();
+  });
+  const { scatterCritters, reglueCritterPlacements } = require('../../public/js/common.js');
+  scatterCritters();
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  const placed = dom.window.document.querySelectorAll('.critter').length;
+  assert.strictEqual(placed, 2, 'one critter per card');
+  const view = dom.window.document.getElementById('view-root');
+  // Rebuild replaces BOTH cards with: one size-mismatched cousin CENTERED
+  // exactly where card A was (3x wider, distance ZERO - the size gate is the
+  // ONLY thing refusing it; a first spelling put the cousin off-center and
+  // the distance gate subsumed the size gate, leaving its mutant green - the
+  // survivor-geometry lesson, again) and ONE true twin near card B.
+  view.innerHTML = '<div class="video-card" id="fat" data-rx="-200" data-ry="300" data-rw="900"></div>'
+    + '<div class="video-card" id="twin-b" data-rx="100" data-ry="700"></div>';
+  reglueCritterPlacements();
+  assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 1,
+    'the cousin is refused (0.5x-2x size gate); the true twin is adopted once');
+});
+
 // ---- CSS locks --------------------------------------------------------------
 
 test('v1.175: every critter ARRIVES on a pure-opacity fade (no pop-in; no motion, so no reduced-motion arm needed)', () => {
