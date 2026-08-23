@@ -1264,8 +1264,16 @@ test('v1.177 buildCritterShaveMask (pure): the hole follows the anchor\'s PAINTE
   // corners are inside the wrapper - two arcs on the interior side's ends.
   assert.strictEqual(decodeShave(buildCritterShaveMask(P({ x: 130, y: 110, w: 60, h: 20 }, { tl: 8, tr: 8, br: 8, bl: 8 }), pad)),
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'><path fill-rule='evenodd' d='M0 0H80V80H0ZM53 25H80V45H53A8 8 0 0 1 45 37V33A8 8 0 0 1 53 25Z' fill='#fff'/></svg>");
-  // A preposterous radius clamps to the hole's half-extent (corner-L hole is
-  // 45x35 -> maxR floor(17.5) = 17).
+  // Gate W closure (the orientation class, FOURTH strike): the tr and br arc
+  // emits were mutation-unbound - fixtures covered only tl and tl+bl. Both
+  // strings below were derived independently twice (the seat's and mine
+  // matched byte-for-byte before this was written down).
+  assert.strictEqual(decodeShave(buildCritterShaveMask(P({ x: 0, y: 130, w: 130, h: 200 }, R10), pad)),
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'><path fill-rule='evenodd' d='M0 0H80V80H0ZM0 45H35A10 10 0 0 1 45 55V80H0V45Z' fill='#fff'/></svg>",
+    'tr arc: anchor to the bottom-left');
+  assert.strictEqual(decodeShave(buildCritterShaveMask(P({ x: 0, y: 0, w: 130, h: 130 }, R10), pad)),
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'><path fill-rule='evenodd' d='M0 0H80V80H0ZM0 0H45V35A10 10 0 0 1 35 45H0V0Z' fill='#fff'/></svg>",
+    'br arc: anchor to the top-left');
   const clamped = decodeShave(buildCritterShaveMask(P({ x: 120, y: 130, w: 200, h: 200 }, { tl: 40, tr: 40, br: 40, bl: 40 }), pad));
   assert.match(clamped, /A17 17 0 0 1/, 'radius clamped to 17');
   // Degenerates: no anchor / no overlap emit NOTHING (never a floating cut).
