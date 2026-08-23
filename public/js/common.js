@@ -8278,6 +8278,10 @@ function reglueCritterPlacements() {
 var critterLastChirpReason = null;
 function getCritterLastChirpReason() { return critterLastChirpReason; }
 function probeCritterVoices() {
+  // Gate S1: captured BEFORE the fetch - a COLD manifest means a real network
+  // await sat between the tap and the play, so a NotAllowedError may be an
+  // iOS activation artifact rather than the finding; the report says so.
+  var manifestWasCold = !critterManifestPromise;
   return fetchCritterManifest().then(function (manifest) {
     var withVoice = manifest.filter(function (c) { return !!(c.voice || c.sound); });
     var report = {
@@ -8285,6 +8289,7 @@ function probeCritterVoices() {
       withVoice: withVoice.length,
       sample: withVoice.length ? (withVoice[0].voice || withVoice[0].sound) : null,
       builtins: manifest.length > 0 && !manifest[0].img ? true : false,
+      coldManifest: manifestWasCold,
       lastChirpReason: critterLastChirpReason,
     };
     if (!report.sample) { report.play = 'skipped: no voice in the running client\'s manifest'; return report; }

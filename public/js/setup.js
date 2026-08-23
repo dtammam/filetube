@@ -629,6 +629,8 @@ function wireCritterModeControls(signal) {
         const line = 'Manifest: ' + r.total + ' critters, ' + r.withVoice + ' with a voice'
           + (r.builtins ? ' (BUILTINS fallback active - the folder fetch failed on this device!)' : '')
           + '. Playback: ' + r.play
+          + (r.coldManifest && r.play && r.play.indexOf('NotAllowedError') !== -1
+            ? ' (manifest was COLD - this rejection may be an iOS tap-window artifact; tap Voice check again)' : '')
           + (r.lastChirpReason ? ' | Last chirp fallback: ' + r.lastChirpReason : ' | No chirp fallback recorded yet this session.');
         setActionStatus(voiceStatus, line, r.play && r.play.indexOf('OK') === 0 ? undefined : 'error');
       }).catch((e) => setActionStatus(voiceStatus, 'Probe failed: ' + (e && e.message || e), 'error'));

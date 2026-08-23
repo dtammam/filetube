@@ -1538,9 +1538,12 @@ test('v1.178 adoption discipline: size-mismatched cousins refused; the true twin
 test('v1.179.1 probeCritterVoices: reports the REAL manifest counts and the playback attempt\'s exact failure', async (t) => {
   const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/' });
   global.window = dom.window; global.document = dom.window.document;
+  // Gate S2: a MIXED fixture - one voiceless entry - so the stale-client
+  // detector's filter is distinguished from counting everything.
   global.fetch = () => Promise.resolve({ ok: true, json: async () => ({ critters: [
     { id: 'a', img: '/critters/a.png', sound: null, voice: '/critters/cute1.mp3' },
     { id: 'b', img: '/critters/b.png', sound: null, voice: '/critters/cute2.mp3' },
+    { id: 'mute', img: '/critters/mute.png', sound: null, voice: null },
   ] }) });
   const err = new Error('The operation is not supported.');
   err.name = 'NotSupportedError';
@@ -1557,9 +1560,10 @@ test('v1.179.1 probeCritterVoices: reports the REAL manifest counts and the play
   const { probeCritterVoices, applyCritterMode } = require('../../public/js/common.js');
   applyCritterMode(); // bust any cached manifest from earlier tests
   const r = await probeCritterVoices();
-  assert.strictEqual(r.total, 2);
-  assert.strictEqual(r.withVoice, 2, 'the RUNNING client keeps voice through sanitize (a stale client would show 0 here)');
+  assert.strictEqual(r.total, 3);
+  assert.strictEqual(r.withVoice, 2, 'the FILTER counts voiced entries only (gate S2: an all-voiced fixture let a neutered filter survive)');
   assert.strictEqual(r.sample, '/critters/cute1.mp3');
+  assert.strictEqual(r.coldManifest, true, 'the cold-manifest tell rides the report (gate S1)');
   assert.match(r.play, /^PLAY REJECTED: NotSupportedError/, 'the error NAME reaches the report - codec vs policy vs load distinguishable');
 });
 
