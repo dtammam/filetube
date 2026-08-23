@@ -80,6 +80,39 @@
 
 ## Shipped
 
+### v1.179.0 - the voice pool: every critter gets a real sound (Dean) (2026-08-23)
+
+Dean: "if a given character doesn't have an MP3 with the corresponding
+name, I still want them to get a sound that is not our boop chime...
+if I do arbitrarily decide to keep at least one name the same, it'll use
+that file explicitly."
+
+- The listing now carries `sound` (the OWNED exact-basename pairing,
+  unchanged - the manager's note badge keeps meaning "has its own sound")
+  and `voice` (the effective tap sound: owned first, else a DETERMINISTIC
+  borrow - a stable hash of the critter's id picks from the folder's
+  sorted sound pool, so a nameless-match critter keeps the SAME borrowed
+  voice everywhere, every session). The synth chirp survives only when
+  the folder has no sounds; builtins keep it. Orphan sounds stop being
+  invisible waiters - they ARE the pool (copy updated in the manager and
+  the folder README).
+
+Slim gate (adversarial): APPROVE in two rounds. My own pre-gate mutant
+sweep caught the SPREAD being unbound (a constant hash - everyone
+sharing one voice - passed the first tests; closed before the gate,
+disclosed in-commit along with a corrected assertion-vs-test-count
+slip). The seat's WARNING: dual-extension same-basename sounds
+(rex.mp3 + rex.wav) made both the owned pairing and the pool
+order-DEPENDENT on filesystem readdir order - its one-line fix (sorted
+iteration, lexicographic last-wins) applied with its repro as a
+permanent fixture; the owned-pairing half was pre-existing v1.166
+behavior, fixed now that determinism depends on it. Its suggestion
+(a /critters/ prefix check in the manifest sanitizer) recorded as
+future defense-in-depth, no new exposure. Dual-Node 7501/7501 clean
+first runs. Device pass PENDING (Dean: tap critters that have no
+matching MP3 - each should now speak with a consistent borrowed voice,
+not the boop; exact-name pairs unchanged).
+
 ### v1.178.0 - anchor adoption: a rebuilt view keeps its critters (the flash dies) (Dean) (2026-08-23)
 
 Dean's residual after v1.176: critters still "flash and find a second

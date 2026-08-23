@@ -12,8 +12,10 @@ The contract:
   app scales every critter down to its little on-page footprint automatically.
 - **A sound file with the SAME base name becomes that critter's tap noise.**
   Example: `mopsy.png` + `mopsy.mp3` means tapping Mopsy plays `mopsy.mp3`.
-  MP3, WAV, M4A, or OGG. A critter without a matching sound gets the built-in
-  chirp.
+  MP3, WAV, M4A, or OGG. Names do not have to match (v1.179): a critter
+  without its own sound BORROWS one of the folder's sounds and keeps that
+  same borrowed voice everywhere - the built-in chirp appears only when the
+  folder has no sounds at all. An exact-name match always wins.
 - **No duplicates on a page**: each critter appears at most once per page, so
   the more files you add, the fuller the higher density tiers get (Obscene shows
   up to 16 distinct critters when the folder has 16+ images).

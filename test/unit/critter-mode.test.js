@@ -83,10 +83,51 @@ test('buildCritterListing: any image becomes a critter; a same-basename sound pa
   const mopsy = out.find((c) => c.id === 'mopsy');
   assert.strictEqual(mopsy.img, '/critters/mopsy.png');
   assert.strictEqual(mopsy.sound, '/critters/mopsy.mp3', 'same basename pairs the tap noise');
-  assert.strictEqual(out.find((c) => c.id === 'bear').sound, null, 'no pair -> null (client falls back to the chirp)');
+  assert.strictEqual(out.find((c) => c.id === 'bear').sound, null, 'no pair -> sound stays null (the OWNED-pairing field)');
   assert.strictEqual(out.find((c) => c.id === 'freya the cat').img, '/critters/freya%20the%20cat.webp', 'URL-encoded');
   assert.deepStrictEqual(buildCritterListing([]), []);
   assert.deepStrictEqual(buildCritterListing(null), [], 'never throws on garbage');
+});
+
+test('v1.179 the VOICE POOL: unmatched critters BORROW a folder sound deterministically; owned pairings win; chirp only when soundless', () => {
+  // Dean: "if a given character doesn't have an MP3 with the corresponding
+  // name, I still want them to get a sound that is not our boop... if I do
+  // keep at least one name the same, it'll use that file explicitly."
+  const out = buildCritterListing(['pearl.png', 'pearl.mp3', 'maple.png', 'biscuit.png', 'lonely.wav']);
+  const pearl = out.find((c) => c.id === 'pearl');
+  assert.strictEqual(pearl.sound, '/critters/pearl.mp3', 'the explicit pairing is untouched');
+  assert.strictEqual(pearl.voice, '/critters/pearl.mp3', 'an owned sound IS the voice');
+  const maple = out.find((c) => c.id === 'maple');
+  const biscuit = out.find((c) => c.id === 'biscuit');
+  assert.strictEqual(maple.sound, null, 'no owned pairing (the manager badge stays honest)');
+  const pool = ['/critters/lonely.wav', '/critters/pearl.mp3'];
+  assert.ok(pool.includes(maple.voice), 'maple borrows from the folder pool: ' + maple.voice);
+  assert.ok(pool.includes(biscuit.voice), 'biscuit borrows too: ' + biscuit.voice);
+  // DETERMINISM (the identity property): the same folder yields the same
+  // borrowed voice for the same critter, every call, any file order.
+  const again = buildCritterListing(['lonely.wav', 'biscuit.png', 'pearl.mp3', 'maple.png', 'pearl.png']);
+  assert.strictEqual(again.find((c) => c.id === 'maple').voice, maple.voice, 'stable across calls and input order');
+  assert.strictEqual(again.find((c) => c.id === 'biscuit').voice, biscuit.voice);
+  // No sounds anywhere: voice null -> the synth chirp remains the fallback.
+  const silent = buildCritterListing(['maple.png', 'biscuit.png']);
+  assert.strictEqual(silent.find((c) => c.id === 'maple').voice, null, 'a soundless folder keeps the chirp');
+  // The SPREAD is the point (my constant-hash mutant survived the binds
+  // above - "deterministic and in-pool" is satisfiable by everyone sharing
+  // pool[0]): six unmatched critters over three sounds must land on more
+  // than one voice. Measured against the real hash first: these ids spread
+  // across all three.
+  const spread = buildCritterListing(['a.png', 'b.png', 'c.png', 'd.png', 'e.png', 'f.png', 'x.mp3', 'y.mp3', 'z.mp3']);
+  assert.ok(new Set(spread.map((c) => c.voice)).size >= 2,
+    'borrowed voices SPREAD across the pool - a constant hash (everyone gets pool[0]) reds here');
+  // Gate W closure: a basename with TWO sound extensions must resolve the
+  // same way in ANY readdir order (the seat's repro: last-write-wins on an
+  // UNSORTED iteration flipped both the owned pairing and the pool member
+  // with folder churn). Lexicographic last-wins: rex.wav.
+  const dualA = buildCritterListing(['a.png', 'rex.png', 'rex.mp3', 'rex.wav']);
+  const dualB = buildCritterListing(['rex.wav', 'rex.mp3', 'rex.png', 'a.png']);
+  assert.strictEqual(dualA.find((c) => c.id === 'rex').sound, '/critters/rex.wav', 'deterministic owned pairing');
+  assert.strictEqual(dualB.find((c) => c.id === 'rex').sound, dualA.find((c) => c.id === 'rex').sound, 'order-independent');
+  assert.strictEqual(dualB.find((c) => c.id === 'a').voice, dualA.find((c) => c.id === 'a').voice, 'order-independent borrow');
 });
 
 // ---- the pure planner -------------------------------------------------------
@@ -631,8 +672,12 @@ test('gate QA-S7 (behavioural TOCTOU): toggling OFF while the manifest fetch is 
 test('SOURCE: fetched manifest entries are SANITIZED to {id, img, sound} - the svg field is builtins-only, enforced', () => {
   const start = COMMON.indexOf('function fetchCritterManifest()');
   const body = COMMON.slice(start, COMMON.indexOf('\nfunction collectCritterRects', start));
-  assert.match(body, /return \{ id: String\(c && c\.id \|\| ''\), img: \(c && c\.img\) \|\| null, sound: \(c && c\.sound\) \|\| null \};/,
-    'a fetched entry can never smuggle an svg field into the innerHTML branch');
+  assert.match(body, /return \{ id: String\(c && c\.id \|\| ''\), img: \(c && c\.img\) \|\| null, sound: \(c && c\.sound\) \|\| null, voice: \(c && c\.voice\) \|\| null \};/,
+    'a fetched entry can never smuggle an svg field into the innerHTML branch (v1.179: voice joins the whitelist)');
+  // v1.179: the placement's sound is the EFFECTIVE voice - the tap path
+  // plays owned-or-borrowed unchanged, chirping only when both are null.
+  const planner = COMMON.slice(COMMON.indexOf('function planCritterScatter'), COMMON.indexOf('\nfunction critterTapHit'));
+  assert.match(planner, /sound: c\.voice \|\| c\.sound \|\| null/, 'the borrowed voice reaches the tap through the placement');
 });
 
 test('the anchor pool excludes every playback surface (both directions of Dean\'s constraint)', () => {

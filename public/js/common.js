@@ -7673,7 +7673,11 @@ function planCritterScatter(opts) {
     // sneaky; dangling feet read severed. Tilt still applies around the flip.
     var bottomFamily = edge === 'bottom' || edge === 'bl' || edge === 'br';
     placements.push({
-      id: c.id, img: c.img || null, sound: c.sound || null, svg: c.svg || null,
+      // v1.179: the placement's sound is the EFFECTIVE voice (owned pairing
+      // first, else the deterministic borrow the server assigned) - the tap
+      // path plays it unchanged; the synth chirp remains the no-sounds-at-all
+      // fallback. Builtins carry no voice and keep the chirp.
+      id: c.id, img: c.img || null, sound: c.voice || c.sound || null, svg: c.svg || null,
       x: x, y: y, w: size, h: size,
       angle: bottomFamily ? tilt + 180 : tilt,
       flip: rng() < 0.5 ? -1 : 1, // v1.168: mirrored half the time - twice the poses per PNG
@@ -7997,7 +8001,7 @@ function fetchCritterManifest() {
       // invariant is enforced here, not by convention - a fetched entry can
       // never smuggle an svg field into the renderer).
       var clean = list.map(function (c) {
-        return { id: String(c && c.id || ''), img: (c && c.img) || null, sound: (c && c.sound) || null };
+        return { id: String(c && c.id || ''), img: (c && c.img) || null, sound: (c && c.sound) || null, voice: (c && c.voice) || null };
       }).filter(function (c) { return c.id && c.img; });
       return clean.length ? clean : CRITTER_BUILTINS;
     })
