@@ -80,6 +80,46 @@
 
 ## Shipped
 
+### v1.171.0 - the critter manager: pool management from the browser (Dean) (2026-08-23)
+
+Dean's follow-up to the critter arc: "allow one to upload images to the pool
+and upload sounds... show little icons... download all or delete all or
+delete individuals. Managing this via web UI would really just be excellent."
+Intake rulings: admin-only management, PERMANENT two-tap deletes, own
+Settings section. Exec plan: completed/2026-08-23-critter-manager.md.
+
+- "Sneaky critters" is its own Settings section (paw icon; a sub-page on
+  mobile via the master-detail). The mode toggle + density moved there from
+  Appearance, ids and wiring unchanged.
+- Admin-only manager: pool grid (thumbnail, name, tap-sound note), image and
+  sound uploads (the logo route's raw-body posture - mime allowlist AND
+  magic bytes, tmp+rename, 25/10 MB caps; SVG deliberately not uploadable -
+  a stored-XSS vector; folder drop-ins still accept it, disclosed), per-item
+  and delete-all two-tap deletes, and Download all as a real zip from a
+  dependency-free store-only zip writer (zlib.crc32 - no new server deps).
+- The folder stays the manifest (v1.166): the web UI is a writer to
+  public/critters/, so hand-drops and web uploads coexist; every mutation
+  busts the manifest cache and re-scatters live critters.
+- Destructive-surface hardening: unlink targets resolve ONLY from the real
+  directory listing (README.md, subfolders, symlinks and their targets are
+  structurally unreachable - proven behaviorally by a live-server suite
+  seeded with a symlink pointing outside the folder); 4 new routes admin-
+  gated on both classification axes; rbac route pin 207 -> 211.
+
+FULL gate (destructive wave, per the standing norm). Round 1: QA REQUEST
+CHANGES - its best catch was the presence-not-binding class AGAIN: the
+magic-byte test only proved validators EXIST; a wrong-offset signature
+would have shipped green and refused every real upload. Closed by calling
+every validator with genuine and lying bytes, mutation-verified. QA also
+caught the spec/implementation disagreeing on the section's menu group
+(resolved by amending the spec). Adversarial APPROVE round 1 after failing
+to destroy data live (member 403s, traversal 404s, symlink target
+survived); its zip-local-header and behavioral-symlink suggestions were
+taken. Both seats APPROVE on delta. Dual-Node 7483/7483 clean first runs
+(one QA run honestly observed 7480+3 environment-conditional skips).
+Device pass PENDING (Dean: phone upload, thumbnails, per-item delete,
+delete-all count, the zip opening, folder drop-in still working).
+
 ### v1.170.0 - critter peek-fit polish: cross-axis fit, head-down bottom peeks, circular avatar masks (Dean) (2026-08-23)
 
 Dean's v1.169 device pass surfaced three geometry gaps, all one family: the

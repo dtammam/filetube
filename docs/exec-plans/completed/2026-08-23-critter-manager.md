@@ -1,6 +1,6 @@
 # Critter Manager - web UI for the critter pool (v1.171 candidate)
 
-Status: ACTIVE
+Status: SHIPPED in v1.171.0 (2026-08-23). Full gate: QA REQUEST CHANGES round 1 (2 warnings - presence-not-binding on the magic validators, spec/impl group mismatch - + 6 suggestions), adversarial APPROVE round 1 (4 suggestions); all findings closed in one fix round; both seats APPROVE on delta. Dual-Node 7483/7483 clean first runs. Device pass PENDING.
 
 ## Intent (Dean, 2026-08-23, verbatim core)
 

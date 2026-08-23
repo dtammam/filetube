@@ -2044,5 +2044,11 @@
     "date": "2026-08-23",
     "title": "Critters that actually fit their hiding spots",
     "intent": "Three fit-and-finish fixes for critter mode. Critters now size themselves to whatever they hide behind, so a small button never has a giant peeking out with odd slices floating past its edges. When one emerges from underneath something, it now hangs upside-down with its head poking out - no more disembodied feet dangling below a card. And behind the little round channel avatars, the hidden part now follows the circle's curve instead of cutting a sharp straight edge through the critter."
+  },
+  {
+    "version": "1.171.0",
+    "date": "2026-08-23",
+    "title": "Manage your critters from the browser",
+    "intent": "Sneaky critters get their own Settings section, and admins get a full critter manager right in the app: upload new critter images and their tap sounds from any device, see the whole pool as little thumbnails, delete one critter or clear the pool (with a confirm tap so nothing goes by accident), and download everything as a zip for safekeeping. Dropping files straight into the folder still works exactly like before - the two ways stay in sync."
   }
 ]
