@@ -7591,6 +7591,31 @@ function planCritterScatter(opts) {
     var fullBleed = bounds && a.w >= bounds.w * 0.85;
     var pool = fullBleed ? ['top', 'bottom'] : EDGES;
     var edge = pool[Math.floor(rng() * pool.length)];
+    // v1.170 CROSS-AXIS FIT (Dean's screenshots: a critter TALLER than its
+    // button reads as a notched floating cut-out - the sandwich clip hides
+    // only where the anchor actually covers, so the bands past the anchor's
+    // far edges stay visible). The critter's ROTATED extent perpendicular to
+    // the peek direction may not exceed the anchor's extent there (15% grace):
+    // shrink the critter first; at the 26px floor flatten the TILT instead -
+    // a micro-anchor hosts a near-upright critter its own size. The tilt is
+    // drawn here (not at push) because the fit depends on it: a square of
+    // side s rotated by t has an axis-aligned extent of s*(sin|t|+cos|t|).
+    var tilt = Math.round(rng() * 76) - 38; // v1.168: wilder lean (was +-24)
+    var rad = Math.abs(tilt) * Math.PI / 180;
+    var spread = Math.sin(rad) + Math.cos(rad);
+    var vertical = edge === 'top' || edge === 'bottom';
+    var crossAllow = (edge.length === 2 ? Math.min(a.w, a.h) : (vertical ? a.w : a.h)) * 1.15;
+    if (size * spread > crossAllow) {
+      size = Math.max(26, Math.floor(crossAllow / spread));
+      if (size * spread > crossAllow) {
+        // Floored at 26 and still too wide: solve sin t + cos t <= allow/26
+        // (= sqrt(2)*sin(t+45deg)) for the largest tilt that fits. Anchors are
+        // >=24px, so allow >= 27.6 and a fit always exists at some tilt >= 0.
+        var kFit = Math.min(Math.SQRT2, crossAllow / 26);
+        var maxTilt = Math.max(0, Math.floor(Math.asin(kFit / Math.SQRT2) * 180 / Math.PI - 45));
+        tilt = Math.sign(tilt) * Math.min(Math.abs(tilt), maxTilt);
+      }
+    }
     // Exposed fraction: 30%..65% of the critter sticks out (was a fixed 45%).
     var ex = 0.30 + rng() * 0.35;
     // v1.168 SANDWICH (Dean: "behind its ONE starting thing, above everything
@@ -7627,12 +7652,23 @@ function planCritterScatter(opts) {
     // And it must never GROW the document (gate W4): a right/bottom-edge peek
     // past the page bounds would widen the scrollable area = layout shift.
     if (bounds && (x + size > bounds.w || y + size > bounds.h)) continue;
+    // v1.170 (Dean: "looks like critter feet behind an element" - his own
+    // suggested fix): a BOTTOM-family peek (edge or corner) rotates the pose
+    // 180deg so the HEAD pops out below the ledge - hanging upside-down reads
+    // sneaky; dangling feet read severed. Tilt still applies around the flip.
+    var bottomFamily = edge === 'bottom' || edge === 'bl' || edge === 'br';
     placements.push({
       id: c.id, img: c.img || null, sound: c.sound || null, svg: c.svg || null,
       x: x, y: y, w: size, h: size,
-      angle: Math.round(rng() * 76) - 38, // v1.168: wilder lean (was +-24)
+      angle: bottomFamily ? tilt + 180 : tilt,
       flip: rng() < 0.5 ? -1 : 1, // v1.168: mirrored half the time - twice the poses per PNG
       cover: cover, // v1.168: the anchor-concealed side(s), local px - drives the clip
+      // v1.170 (Dean's Bernard screenshot): a TRUE-CIRCLE anchor's hidden
+      // region is the DISC, not the bounding square - the renderer swaps the
+      // rect clip for a circular mask so the cut follows the avatar's curve.
+      roundCover: a.round
+        ? { cx: Math.round(a.x + a.w / 2) - x, cy: Math.round(a.y + a.h / 2) - y, r: Math.round(Math.min(a.w, a.h) / 2) }
+        : null,
       hue: Math.round(rng() * 360),
       anchor: { x: a.x, y: a.y, w: a.w, h: a.h },
     });
@@ -7741,6 +7777,18 @@ function buildCritterClip(cover, size, pad) {
   return 'polygon(' + cutX + 'px 0px, ' + W + 'px 0px, ' + W + 'px ' + W + 'px, 0px ' + W + 'px, 0px ' + cutY + 'px, ' + cutX + 'px ' + cutY + 'px)'; // l && t
 }
 
+// v1.170 SANDWICH mask for ROUND anchors (pure): the rect clip cuts straight
+// hard edges through a critter wherever a circular avatar's square corners
+// cover nothing (Dean's Bernard screenshot). For a true circle the concealed
+// region IS the disc: a radial-gradient mask - transparent inside the circle,
+// opaque outside (+0.5px feather for a crisp anti-aliased rim) - makes the cut
+// follow the curve. Coordinates are wrapper-local: the placement box origin
+// sits at (pad, pad) inside the inflated wrapper, so the anchor's centre
+// (rc.cx, rc.cy in critter-local px) shifts by pad on both axes.
+function buildCritterRoundMask(rc, pad) {
+  return 'radial-gradient(circle at ' + (pad + rc.cx) + 'px ' + (pad + rc.cy) + 'px, transparent ' + rc.r + 'px, #000 ' + (rc.r + 0.5) + 'px)';
+}
+
 function renderCritterPlacements(layer, placements) {
   layer.textContent = ''; // full rebuild every scatter - no accumulation
   (placements || []).forEach(function (p) {
@@ -7756,7 +7804,15 @@ function renderCritterPlacements(layer, placements) {
     el.style.top = (p.y - pad) + 'px';
     el.style.width = (p.w + 2 * pad) + 'px';
     el.style.height = (p.h + 2 * pad) + 'px';
-    el.style.clipPath = buildCritterClip(p.cover, p.w, pad);
+    if (p.roundCover) {
+      // The mask value rides a CUSTOM PROPERTY; .critter-round in style.css
+      // applies it under BOTH the -webkit- and standard mask-image spellings
+      // (the v1.77 prefixed-vs-standard lesson, and jsdom-bindable besides).
+      el.classList.add('critter-round');
+      el.style.setProperty('--critter-mask', buildCritterRoundMask(p.roundCover, pad));
+    } else {
+      el.style.clipPath = buildCritterClip(p.cover, p.w, pad);
+    }
     var pose = document.createElement('div');
     pose.className = 'critter-pose';
     pose.style.left = pad + 'px';
@@ -7827,7 +7883,20 @@ function collectCritterRects(selectors, requireSize) {
         if (el.matches(CRITTER_PRIORITY_SELECTORS[s])) { weight = CRITTER_PRIORITY_WEIGHT; break; }
       }
     }
-    rects.push({ x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height, weight: weight });
+    // v1.170: TRUE-CIRCLE detection (the channel-avatar disc). Only a square
+    // box whose corner radius reaches half its size counts - a pill button
+    // (radius 50% but wide) is NOT a circle. Fails OPEN to the rect clip: a
+    // wrongly-square avatar just gets the old sharper cut, never a bad hide.
+    var round = false;
+    if (requireSize) {
+      try {
+        var br = String(window.getComputedStyle(el).borderTopLeftRadius || '');
+        var half = Math.min(r.width, r.height) / 2;
+        var radiusPx = br.indexOf('%') !== -1 ? (parseFloat(br) >= 50 ? half : 0) : (parseFloat(br) || 0);
+        round = Math.abs(r.width - r.height) <= 2 && radiusPx >= half - 1;
+      } catch (_) { round = false; }
+    }
+    rects.push({ x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height, weight: weight, round: round });
   }
   return rects;
 }
@@ -13685,6 +13754,7 @@ if (typeof module !== 'undefined' && module.exports) {
     CRITTER_PRIORITY_SELECTORS, CRITTER_PRIORITY_WEIGHT, critterInsideFixed, collectCritterRects,
     // v1.168: the sandwich clip (behind ONE anchor, above everything else).
     buildCritterClip,
+    buildCritterRoundMask,
     // v1.163.1: force text (non-emoji) presentation on the arrow glyphs.
     DDR_TEXT_PRESENTATION, ddrArrowDisplayGlyph,
     // v1.50.3: the D dark/light toggle's pure decision.

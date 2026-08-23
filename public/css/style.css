@@ -10252,6 +10252,17 @@ html[data-modern="on"] .video-uploader {
   color: var(--text-secondary);
 }
 
+/* v1.170 (Dean's Bernard screenshot): behind a TRUE-CIRCLE anchor (the channel
+   avatar disc) the rect clip cuts straight hard edges where the avatar's square
+   corners cover nothing. The renderer instead sets --critter-mask to a
+   radial-gradient whose transparent disc IS the hidden region (see
+   buildCritterRoundMask), so the cut follows the curve. Both spellings: the
+   -webkit- prefix is what iOS Safari honours (the v1.77 lesson). */
+.critter-round {
+  -webkit-mask-image: var(--critter-mask, none);
+  mask-image: var(--critter-mask, none);
+}
+
 .critter-pose {
   position: absolute;
   transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1));
