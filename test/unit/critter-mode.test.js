@@ -359,28 +359,44 @@ test('v1.168 buildCritterClip (pure): edge cuts are insets at pad+cover; corner 
   assert.strictEqual(buildCritterClip({}, 50, 15), 'inset(0px 0px 0px 0px)');
 });
 
-// ---- the empty-first-pass retry ladder (v1.166.4) ---------------------------
+// ---- the post-scatter settle ladder (v1.166.4 empty + v1.173 drift) ---------
 
-test('v1.166.4: an EMPTY scatter earns a bounded retry ladder (1.5s then 4s), re-armed per navigation - placed critters never re-roll', () => {
-  // Dean's device pass: the watch page stayed critter-less - its anchors are
-  // all fetch-then-render (related rail seeds AFTER /api/videos/:id), slower
-  // than the 200ms debounce on a VPN'd phone. The empty branch retries; the
-  // non-empty branch NEVER does (that would move placed critters mid-view).
+test('v1.166.4/v1.173: every scatter arms a bounded settle ladder (1.5s then 4s) whose fire-time decision is the PURE critterSettleAction', () => {
+  // v1.166.4: watch-style views measure ZERO anchors on the first pass
+  // (fetch-then-render, slower than the 200ms debounce on a VPN'd phone).
+  // v1.173 (Dean's "Dreams of a Life" screenshot): a page that placed against
+  // its loading SKELETONS reflows when real content lands - the placed
+  // critters keep their document coords and float over TEXT. The ladder now
+  // re-checks BOTH at fire time via critterSettleAction; a settled page
+  // stands down, so placed critters still never re-roll.
   const start = COMMON.indexOf('function scatterCritters()');
-  const body = COMMON.slice(start, COMMON.indexOf('\nfunction scheduleCritterScatter', start))
+  const body = COMMON.slice(start, COMMON.indexOf('\nfunction critterSettleAction', start))
     .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-  assert.match(body, /if \(!placements\.length && critterEmptyRetries < 2\)/,
-    'ONLY an empty result retries, capped at two attempts');
-  assert.match(body, /critterEmptyRetries === 0 \? 1500 : 4000/, 'the ladder: +1.5s then +4s');
-  // Gate WARNING (demonstrated race): the two belts that make "never move
-  // mid-view" literally true - the STASHED handle + the fire-time emptiness guard.
-  assert.match(body, /critterRetryTimer = setTimeout\(function \(\) \{/, 'the retry handle is STASHED (cancellable)');
-  assert.match(body, /if \(!critterPlacements\.length\) scatterCritters\(\);/,
-    'the retry re-checks emptiness at FIRE time - placed critters can never re-roll');
+  assert.match(body, /if \(critterSettleChecks < 2\)/, 'EVERY scatter arms the ladder, capped at two checks per navigation');
+  assert.match(body, /critterSettleChecks === 0 \? 1500 : 4000/, 'the ladder: +1.5s then +4s');
+  // Gate WARNING (demonstrated race): the belts that make "never move
+  // mid-view" literally true - the STASHED handle + the LIVE fire-time reads.
+  assert.match(body, /critterRetryTimer = setTimeout\(function \(\) \{/, 'the settle handle is STASHED (cancellable)');
+  assert.match(body,
+    /critterSettleAction\(critterPlacements\.length, critterPlacedDocH, document\.documentElement\.scrollHeight\)/,
+    'the fire-time decision reads LIVE placements + LIVE height, never captured snapshots');
+  assert.match(body, /if \(action !== 'stand-down'\) scatterCritters\(\);/, 'stand-down means placed critters never re-roll');
+  assert.match(body, /critterPlacedDocH = docEl\.scrollHeight;/, 'the placed-against height is stashed at placement time');
   const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter()'), COMMON.indexOf('\nfunction wireCritterListeners'));
-  assert.match(sched, /critterEmptyRetries = 0;/, 'every scheduled scatter (a navigation) re-arms the ladder');
+  assert.match(sched, /critterSettleChecks = 0;/, 'every scheduled scatter (a navigation) re-arms the ladder');
   assert.match(sched, /if \(critterRetryTimer\) \{ clearTimeout\(critterRetryTimer\); critterRetryTimer = null; \}/,
-    'a new navigation CANCELS the previous view\'s pending retry (the stale-timer race, demonstrated by the gate)');
+    'a new navigation CANCELS the previous view\'s pending check (the stale-timer race, demonstrated by the gate)');
+});
+
+test('v1.173 critterSettleAction (pure): empty always retries; placed critters re-scatter ONLY past the 24px drift threshold', () => {
+  const { critterSettleAction } = require('../../public/js/common.js');
+  assert.strictEqual(critterSettleAction(0, 1000, 1000), 'rescatter-empty', 'empty placements retry regardless of height');
+  assert.strictEqual(critterSettleAction(0, 1000, 900), 'rescatter-empty');
+  assert.strictEqual(critterSettleAction(6, 1000, 1000), 'stand-down', 'settled page: never re-roll');
+  assert.strictEqual(critterSettleAction(6, 1000, 1024), 'stand-down', 'exactly at threshold: still settled (24px is jitter headroom)');
+  assert.strictEqual(critterSettleAction(6, 1000, 1025), 'rescatter-drift', 'past threshold: the page reflowed under the critters');
+  assert.strictEqual(critterSettleAction(6, 1000, 970), 'rescatter-drift', 'SHRINK drifts too (the one-line-title case shifts content UP)');
+  assert.strictEqual(critterSettleAction(1, 500.4, 500.9), 'stand-down', 'fractional heights are truncated, not drift');
 });
 
 // ---- the Docker mount lockstep (v1.166.3 - gate S1) -------------------------
@@ -919,9 +935,10 @@ test('CSS (v1.168 sandwich): the layer paints ABOVE furniture (z 2, under every 
 // ---- the Settings surface ---------------------------------------------------
 
 test('Settings: the Sneaky critter mode controls exist and setup.js binds them to the two keys + applyCritterMode', () => {
-  // v1.171: the controls moved to their OWN section (Dean's ruling) - the
-  // summary is now "Sneaky critters"; ids and wiring are unchanged.
-  assert.match(SETUP_HTML, /<summary>Sneaky critters<\/summary>/);
+  // v1.171: the controls moved to their OWN section (Dean's ruling); v1.173:
+  // renamed to the generic "Sneaky companions" (user-facing verbiage only -
+  // ids, keys, and wiring stay critter-named).
+  assert.match(SETUP_HTML, /<summary>Sneaky companions<\/summary>/);
   assert.match(SETUP_HTML, /id="critter-mode-check"/);
   assert.match(SETUP_HTML, /id="critter-density-select"/);
   for (const v of ['sparse', 'normal', 'obscene']) {

@@ -1,35 +1,35 @@
-# Sneaky critter mode - the critter folder
+# Sneaky companions - the companion folder
 
-Drop your critters HERE. The folder is the manifest - no code changes, no lists
+Drop your companions HERE - critters, characters, anything with a transparent background. The folder is the manifest - no code changes, no lists
 to edit. FileTube re-reads it on every page load.
 
 The contract:
 
-- **Any image file in this folder becomes a critter.** PNG (transparent
+- **Any image file in this folder becomes a companion.** PNG (transparent
   recommended), WebP, GIF, SVG, or JPEG. File names do not matter and are never
   referenced in code.
 - **Size does not matter.** Drop in the biggest, crispest renders you have - the
-  app scales every critter down to its little on-page footprint automatically.
-- **A sound file with the SAME base name becomes that critter's tap noise.**
+  app scales every companion down to its little on-page footprint automatically.
+- **A sound file with the SAME base name becomes that companion's tap noise.**
   Example: `mopsy.png` + `mopsy.mp3` means tapping Mopsy plays `mopsy.mp3`.
-  MP3, WAV, M4A, or OGG. A critter without a matching sound gets the built-in
+  MP3, WAV, M4A, or OGG. A companion without a matching sound gets the built-in
   chirp.
-- **No duplicates on a page**: each critter appears at most once per page, so
+- **No duplicates on a page**: each companion appears at most once per page, so
   the more files you add, the fuller the higher density tiers get (Obscene shows
-  up to 16 distinct critters when the folder has 16+ images).
+  up to 16 distinct companions when the folder has 16+ images).
 - While this folder holds no images, the app shows its five built-in
   placeholder figurines instead (bunny, cat, bear, fox, chick).
 - **Real files only** - a symlink to an image elsewhere is skipped; copy the
   file in.
 - Files are picked up on the next full page load (a refresh), or immediately
-  when you re-apply the setting under Settings -> Sneaky critters. In-app
+  when you re-apply the setting under Settings -> Sneaky companions. In-app
   navigation alone keeps the session's cached list.
 
-Turn the mode on under Settings -> Sneaky critters.
+Turn the mode on under Settings -> Sneaky companions.
 
 **Prefer a browser?** Since v1.171 an ADMIN can manage this folder from
-Settings -> Sneaky critters -> Critter pool: upload images and sounds, delete
-one critter or the whole pool, and download everything as a zip. The web UI
+Settings -> Sneaky companions -> Companion pool: upload images and sounds, delete
+one companion or the whole pool, and download everything as a zip. The web UI
 writes to THIS folder - both routes stay in sync because the folder itself is
 the only source of truth. (Web upload accepts PNG/JPEG/WebP/GIF and
 MP3/WAV/M4A/OGG; SVG works only as a hand-dropped file here.)

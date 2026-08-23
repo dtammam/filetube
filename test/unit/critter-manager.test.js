@@ -203,7 +203,7 @@ const SETUP_JS = fs.readFileSync(path.join(__dirname, '../../public/js/setup.js'
 const COMMON = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
 const CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
 
-test('setup.html: Sneaky critters is its OWN section (Dean\'s ruling) - the toggle/density MOVED out of Appearance, the manager ships hidden', () => {
+test('setup.html: Sneaky companions is its OWN section (Dean\'s ruling) - the toggle/density MOVED out of Appearance, the manager ships hidden', () => {
   assert.match(SETUP_HTML, /<details class="setup-box sub-collapsible"[^>]*data-collapse-key="critters"[^>]*data-md-icon="paw"[^>]*open>/,
     'the section exists with its own collapse key + paw icon');
   // The toggle/density ids live inside the critters section, NOT in appearance.
@@ -218,6 +218,21 @@ test('setup.html: Sneaky critters is its OWN section (Dean\'s ruling) - the togg
   assert.match(critters, /<div id="critter-manager" hidden>/, 'the manager ships HIDDEN (admin-only reveal)');
   assert.match(critters, /id="critter-download-all-link" href="\/api\/critters\/archive"/, 'Download all is a plain link to the archive route');
   assert.ok(!SETUP_HTML.includes('accept="image/svg') && !critters.includes('.svg'), 'svg is not offered for upload (stored-XSS posture)');
+});
+
+test('v1.173: the section speaks COMPANIONS (Dean: generic verbiage) and its copy carries ZERO em dashes (the CONTRIBUTING rule)', () => {
+  const section = SETUP_HTML.slice(SETUP_HTML.indexOf('data-collapse-key="critters"'), SETUP_HTML.indexOf('data-collapse-key="video-folders"'));
+  assert.ok(section.includes('<summary>Sneaky companions</summary>'), 'the section name');
+  assert.ok(section.includes('Enable sneaky companions'), 'the toggle label');
+  assert.ok(section.includes('Companion pool'), 'the manager heading');
+  // The em-dash rule, both spellings: the literal character AND the entities.
+  assert.ok(!section.includes('&mdash;') && !section.includes('&#8212;') && !/&#x2014;/i.test(section) && !section.includes('—'),
+    'no em dashes in the feature copy - " - " only (Dean, 2026-08-23; codified in CONTRIBUTING)');
+  const readme = fs.readFileSync(path.join(__dirname, '../../public/critters/README.md'), 'utf8');
+  assert.ok(readme.includes('Sneaky companions'), 'the folder README follows the rename');
+  assert.ok(!readme.includes('—'), 'README em-dash-free');
+  const contributing = fs.readFileSync(path.join(__dirname, '../../docs/CONTRIBUTING.md'), 'utf8');
+  assert.match(contributing, /No em dashes, anywhere \(MANDATORY/, 'the rule is codified in CONTRIBUTING');
 });
 
 test('common.js: the paw icon exists for the section; style.css styles the grid + armed state with tokens', () => {

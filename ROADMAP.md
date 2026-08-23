@@ -80,6 +80,45 @@
 
 ## Shipped
 
+### v1.173.0 - Sneaky companions: the settle ladder, the generic rename, and the em-dash rule (Dean) (2026-08-23)
+
+Three follow-ups from Dean's device pass, one wave:
+
+- SETTLE LADDER (his "Dreams of a Life" screenshot: critters floating over
+  the watch page's title/views/channel-name text, unmoored 50-60px from
+  their buttons). Root cause verified against the markup and skeleton CSS,
+  not theorized: placements measured against LOADING skeletons (.skel-title
+  is a fixed 26px; a real title is ~31px per line; the uploader panel fills
+  async) go stale when real content reflows - his two "good" screenshots
+  had settled before placement, the "bad" one had not. The v1.166.4
+  empty-retry ladder generalized: every scatter arms the bounded +1.5s/+4s
+  checks, whose fire-time decision is the pure critterSettleAction (empty /
+  drift past 24px / stand-down) on LIVE placements + LIVE height.
+  Never-move-mid-view holds: bounded, stashed handle, settled pages stand
+  down. The gate's post-render-baseline hardening closes the wrappers'
+  own-pad phantom-drift edge.
+- COMPANIONS (Dean: "really this is for Companions... genericization is
+  better for a product perspective"): user-facing verbiage only, per his
+  scope ruling - "Sneaky companions" section/toggle, "Companion pool",
+  README ("critters, characters, anything with a transparent background").
+  Identifiers, /api/critters routes, and localStorage keys stay
+  critter-named: saved settings survive, censuses do not churn.
+- EM DASHES (Dean: "I don't want em dashes like anywhere"): the feature
+  copy's &mdash; entities replaced with spaced hyphens, and the rule is now
+  CODIFIED as MANDATORY in docs/CONTRIBUTING.md (entities count; legacy
+  untouched text may stay until edited), bound by a test that also nets the
+  hex-entity spelling.
+
+Slim gate (adversarial): APPROVE in two rounds - it REFUTED my own named
+CRITICAL-candidate by arithmetic (the pad-overflow edge is a rare,
+self-correcting single re-roll, not the every-page double I feared),
+downgraded it to the hardening above, and mutation-confirmed every new
+bind. Disclosed residual (seat's ruling): the post-render stash ORDER is
+comment-bound only - an order regression would ship green; judged
+proportionate for a cosmetic hardening. Dual-Node 7487/7487 clean first
+runs. Device pass PENDING (Dean: the Dreams of a Life watch page after a
+fresh load - companions should hug their buttons once the page settles).
+
 ### v1.172.0 - each Settings subpage gets its own critters (md pane re-scatter) (Dean) (2026-08-23)
 
 Dean's two Settings screenshots: the SAME critters floated over BOTH the

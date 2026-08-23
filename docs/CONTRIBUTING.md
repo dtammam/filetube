@@ -35,6 +35,17 @@ that only surface on 22 (see the CI workflow).
 - Comment the *why*: the codebase favors explanatory comments on non-obvious logic (transcode flow, Range requests, iOS quirks)
 - Keep server logic in `server.js`; keep per-page client logic in `public/js/<page>.js`
 
+### No em dashes, anywhere (MANDATORY, Dean's ruling 2026-08-23)
+
+No em dashes in ANY new text: UI copy, HTML (including the `&mdash;` /
+`&#8212;` entities - an entity renders as an em dash and counts), docs,
+comments, commit messages, release notes. Use a spaced hyphen (` - `)
+instead. Pre-existing em dashes in untouched legacy text may stay, but any
+line you EDIT loses its em dashes as part of the edit. This codifies a
+long-standing working norm; the tell that it was needed twice: new feature
+copy shipped `&mdash;` entities by matching a legacy file's local style -
+file-local convention never overrides this rule.
+
 ## Styling: the design-token system (MANDATORY for any CSS/JS style change)
 
 FileTube's styling runs on a governed design-token system (built up

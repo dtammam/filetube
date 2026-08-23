@@ -7737,7 +7737,8 @@ var critterPlacements = [];
 var critterManifestPromise = null;
 var critterScatterTimer = null;
 var critterWired = false;
-var critterEmptyRetries = 0; // v1.166.4: the empty-first-pass retry ladder's count (re-armed per schedule)
+var critterSettleChecks = 0; // v1.166.4/v1.173: the post-scatter settle ladder's count (re-armed per schedule)
+var critterPlacedDocH = 0; // v1.173: document height at placement time - the settle checks judge DRIFT against it
 var critterRetryTimer = null; // stashed so a NEW navigation can cancel a stale pending retry (the v1.163 stash-and-unbind class)
 
 function ensureCritterLayer() {
@@ -7937,26 +7938,50 @@ function scatterCritters() {
     });
     critterPlacements = placements;
     renderCritterPlacements(ensureCritterLayer(), placements);
-    // v1.166.4 (Dean's device pass: the WATCH page stayed critter-less): views
-    // whose anchors are ALL fetch-then-render (watch seeds its related rail and
-    // fills the description only AFTER /api/videos/:id resolves - slower than
-    // the 200ms debounce on a VPN'd phone) measure ZERO anchors on the first
-    // pass. An EMPTY result earns a bounded retry ladder - once at +1.5s, once
-    // more at +4s - and STOPS. "Never move mid-view" holds via TWO belts (gate
-    // WARNING: a stale pending retry from a PREVIOUS nav could fire after a new
-    // nav placed critters and re-roll them - demonstrated): the timer is
-    // STASHED so scheduleCritterScatter cancels it on every navigation, AND the
-    // callback re-checks emptiness so placed critters can never re-roll even if
-    // some future writer places between arm and fire.
-    if (!placements.length && critterEmptyRetries < 2) {
-      var delay = critterEmptyRetries === 0 ? 1500 : 4000;
-      critterEmptyRetries += 1;
+    // Measured AFTER render (gate S1): the pad-inflated wrappers can overflow
+    // the W4-checked placement rects by up to ~26px at the page bottom, and
+    // measuring with that overflow PRESENT on both sides of the comparison
+    // means only real content reflow can trip the drift branch.
+    critterPlacedDocH = docEl.scrollHeight;
+    // v1.166.4 -> v1.173: the post-scatter SETTLE ladder - once at +1.5s, once
+    // more at +4s, then STOP. Two things earn a re-scatter at fire time (the
+    // pure critterSettleAction decides):
+    //  - EMPTY (v1.166.4): watch-style views measure ZERO anchors on the first
+    //    pass because everything is fetch-then-render (slower than the 200ms
+    //    debounce on a VPN'd phone).
+    //  - LAYOUT DRIFT (v1.173, Dean's "Dreams of a Life" screenshot): a page
+    //    that placed against its loading SKELETONS reflows when real content
+    //    lands (a one-line title vs the fixed-height title skeleton, the
+    //    uploader panel filling in) - the placed critters keep their document
+    //    coords and end up floating over TEXT, unmoored from their anchors.
+    //    A document-height change beyond the threshold is the reflow tell.
+    // "Never move mid-view" still holds: the ladder is BOUNDED (two checks per
+    // navigation), the timer is STASHED so scheduleCritterScatter cancels it on
+    // every navigation (the demonstrated stale-retry race), and the fire-time
+    // decision reads the LIVE placements + LIVE height - a settled page stands
+    // down and placed critters never re-roll.
+    if (critterSettleChecks < 2) {
+      var delay = critterSettleChecks === 0 ? 1500 : 4000;
+      critterSettleChecks += 1;
       critterRetryTimer = setTimeout(function () {
         critterRetryTimer = null;
-        if (!critterPlacements.length) scatterCritters();
+        var action = critterSettleAction(critterPlacements.length, critterPlacedDocH, document.documentElement.scrollHeight);
+        if (action !== 'stand-down') scatterCritters();
       }, delay);
     }
   });
+}
+
+// v1.173 PURE fire-time decision for the settle ladder. Empty placements
+// always earn a retry (the v1.166.4 case); placed critters re-scatter ONLY
+// when the document height moved past the threshold since placement (the
+// skeleton-reflow case) - 24px is under any real reflow (a title line is
+// ~31px) but over subpixel/scrollbar jitter. Otherwise: stand down, placed
+// critters never re-roll.
+function critterSettleAction(placedCount, placedDocH, nowDocH) {
+  if (!placedCount) return 'rescatter-empty';
+  if (Math.abs((nowDocH | 0) - (placedDocH | 0)) > 24) return 'rescatter-drift';
+  return 'stand-down';
 }
 
 // Debounced entry point - the ONLY way anything asks for a scatter (router
@@ -7964,7 +7989,7 @@ function scatterCritters() {
 // mid-view otherwise (Dean: fresh per navigation, still while you read).
 function scheduleCritterScatter() {
   if (typeof window === 'undefined') return;
-  critterEmptyRetries = 0; // a fresh navigation re-arms the empty-result retry ladder
+  critterSettleChecks = 0; // a fresh navigation re-arms the settle ladder
   // ...and CANCELS any stale pending retry from the previous view - an unstashed
   // handle is uncancellable by construction (gate WARNING; the v1.163 class).
   if (critterRetryTimer) { clearTimeout(critterRetryTimer); critterRetryTimer = null; }
@@ -13767,6 +13792,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.168: the sandwich clip (behind ONE anchor, above everything else).
     buildCritterClip,
     buildCritterRoundMask,
+    critterSettleAction,
     // v1.163.1: force text (non-emoji) presentation on the arrow glyphs.
     DDR_TEXT_PRESENTATION, ddrArrowDisplayGlyph,
     // v1.50.3: the D dark/light toggle's pure decision.
