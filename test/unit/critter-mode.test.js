@@ -359,12 +359,23 @@ test('v1.174 buildCritterClip (pure GEOMETRIC TRUTH): the hidden region is the M
     'polygon(0px 0px, 35px 0px, 35px 45px, 80px 45px, 80px 80px, 0px 80px)', 'anchor top-right (bl peek)');
   assert.strictEqual(buildCritterClip(P({ x: 0, y: 0, w: 130, h: 130 }), pad),
     'polygon(45px 0px, 80px 0px, 80px 80px, 0px 80px, 0px 45px, 45px 45px)', 'anchor top-left (br peek)');
-  // ONE touched side: the anchor is CROSS-SMALLER than the critter - the old
-  // full-side inset here is exactly Dean's Subscribed-button bug (it sliced
-  // the strips sticking past the anchor's far edges). Now: a C-notch.
+  // ONE touched side (the C-notch): unreachable from today's planner (the
+  // cross-fit caps size at 1.15x the anchor cross extent - the seat measured
+  // 0 occurrences over 92k placements), kept as defense-in-depth. Gate
+  // WARNING closure: ALL FOUR orientations exact-bound - the R-only coverage
+  // left T/B/L emit mutants green, the v1.168 corner class re-struck.
   assert.strictEqual(buildCritterClip(P({ x: 130, y: 110, w: 60, h: 20 }), pad),
     'polygon(0px 0px, 80px 0px, 80px 25px, 45px 25px, 45px 45px, 80px 45px, 80px 80px, 0px 80px)',
-    'small anchor to the right: only its actual [45..80]x[25..45] footprint hides');
+    'R-notch: small anchor to the right hides only its actual [45..80]x[25..45] footprint');
+  assert.strictEqual(buildCritterClip(P({ x: 110, y: 80, w: 20, h: 40 }), pad),
+    'polygon(0px 0px, 25px 0px, 25px 35px, 45px 35px, 45px 0px, 80px 0px, 80px 80px, 0px 80px)',
+    'T-notch: narrow anchor from above');
+  assert.strictEqual(buildCritterClip(P({ x: 110, y: 130, w: 20, h: 60 }), pad),
+    'polygon(0px 0px, 80px 0px, 80px 80px, 45px 80px, 45px 45px, 25px 45px, 25px 80px, 0px 80px)',
+    'B-notch: narrow anchor from below');
+  assert.strictEqual(buildCritterClip(P({ x: 80, y: 110, w: 40, h: 20 }), pad),
+    'polygon(0px 0px, 80px 0px, 80px 80px, 0px 80px, 0px 45px, 35px 45px, 35px 25px, 0px 25px)',
+    'L-notch: small anchor to the left');
   // TWO OPPOSITE sides: a band across (deep inward reach on a short anchor);
   // both free strips ride ONE traced path.
   assert.strictEqual(buildCritterClip(P({ x: 110, y: 90, w: 20, h: 200 }), pad),

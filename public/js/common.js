@@ -7822,8 +7822,14 @@ function buildCritterClip(p, pad) {
   }
   if (touches === 1) {
     // ONE side: the anchor is cross-smaller than the critter - a C-notch.
-    // (The Subscribed-button bug: the old full-side inset here sliced the
-    // critter strips that stick past the anchor's far edges.)
+    // Gate correction (the seat's oracle measured it): today's planner CANNOT
+    // reach this topology - the v1.170 cross-fit caps size at 1.15x the
+    // anchor's cross extent, so a critter is never cross-smaller than its
+    // anchor on both ends. The REACHABLE half of Dean's Subscribed-button fix
+    // is the corner/band branches' MEASURED cut positions (1306 floating cuts
+    // to 0 over a 120x44 button, seat-verified). This branch is kept as
+    // defense-in-depth for future planner geometry, exact-string bound in all
+    // four orientations so it cannot rot silently (the v1.168 lesson).
     if (T) return pts([0, 0, x1, 0, x1, y2, x2, y2, x2, 0, W, 0, W, W, 0, W]);
     if (R) return pts([0, 0, W, 0, W, y1, x1, y1, x1, y2, W, y2, W, W, 0, W]);
     if (B) return pts([0, 0, W, 0, W, W, x2, W, x2, y1, x1, y1, x1, W, 0, W]);
