@@ -80,6 +80,44 @@
 
 ## Shipped
 
+### v1.168.0 - go harder: corners, depth, tilt, mirrors + the SANDWICH (Dean) (2026-08-23)
+
+Dean's two on-device beats. Beat 1 ("not really going as hard as we could"):
+corner peeks join the four edges (diagonal ambushes), peek depth randomizes per
+placement (30-65% exposed, was a fixed 45%), tilt widens to +-38deg, and half
+the critters MIRROR (scaleX flip - two poses per PNG). Beat 2 (his
+subscribe-button kitten screenshot): the peek popped over its button but was
+SWALLOWED by the neighbouring hairline divider and channel box - z:-1 sat below
+EVERY painted element, not just the anchor. His refined rule, now the
+architecture: **a critter is behind exactly its ONE anchor and ABOVE everything
+else it touches.**
+
+THE SANDWICH: the layer paints ABOVE the in-flow furniture (z 2 - under
+popovers/sticky titles/chrome/every ladder rung; the player stays excluded by
+geometry), and the anchor-hidden region is CLIPPED per-critter: an axis-aligned
+wrapper (inflated 30% so rotated poses never crop) carries a clip-path from the
+pure buildCritterClip - edge cuts are insets landing exactly on the anchor's
+edge; corner cuts hide only the shared quadrant (6-point L) - while the POSE
+inside carries rotation/flip/hue, so a tilted critter still gets a straight cut
+hugging its element. Reactions animate the pose (animating the wrapper would
+swing the cut). The ground contract stays as belt (hiding is geometric now).
+
+SLIM gate: REQUEST CHANGES - four surviving mutants (3 of 4 corner orientations
+untested + the pose-targeting unbound; the committed GEOMETRY was correct - the
+seat hand-derived every orientation first). Its 4-line closure adopted verbatim
+(exact corner strings derived independently of the implementation); delta
+APPROVE with each survivor red individually. The z:2 sweep found no utility
+inversion; the one by-design judgment - a 0.95-opacity sliver may sit on a
+NEIGHBOURING card's corner text (clicks always protected) - is flagged for
+Dean's device pass. Tap-geometry asymmetries tracked (#167c).
+
+DUAL-NODE: PENDING at time of writing.
+
+DEVICE (Dean): the kitten (and friends) now pop over hairlines/boxes and duck
+behind ONLY their own element; corner ambushes + shy-to-bold peek depths +
+mirrored poses everywhere; menus/popovers still paint over critters; judge the
+neighbour-overlap feel (the one call only you can make).
+
 ### v1.167.0 - critters everywhere, popping out from behind buttons (Dean) (2026-08-22)
 
 Dean's refined intent after living with v1.166.x: less wallpaper, more AMBUSH -
