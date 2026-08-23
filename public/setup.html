@@ -256,6 +256,13 @@
             <option value="obscene">Obscene (a little extreme)</option>
           </select>
         </label>
+        <!-- v1.179.1 instrument: runs the REAL manifest path + a REAL playback
+             attempt on THIS device and reports which link breaks (incl. the
+             error name) plus why the last tap fell back to the chirp. -->
+        <div class="action-bar">
+          <button type="button" class="btn btn-sm" id="critter-voice-check-btn">Voice check</button>
+        </div>
+        <div id="critter-voice-check-status" class="action-status" style="margin-top:6px;" aria-live="polite"></div>
         <div id="critter-manager" hidden>
           <h3 class="setup-subhead">Critter pool</h3>
           <p>The pool is server-wide - everyone's critters come from here.

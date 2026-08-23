@@ -8270,6 +8270,47 @@ function reglueCritterPlacements() {
 //    exists ONLY while the mode is on (wired in scatterCritters' enabled
 //    path, disconnected on the disabled path - the v1.160 lesson: a global
 //    observer/listener must not tax users who never opted in).
+// v1.179.1 instrument: why the last tap fell back to the chirp, and a
+// one-tap end-to-end voice probe (Settings -> Critters -> Voice check).
+// Diagnosis discipline: Dean's device boops while the API provably carries
+// voices - the probe runs the REAL manifest path and a REAL playback attempt
+// and reports exactly which link breaks, with the error's name.
+var critterLastChirpReason = null;
+function getCritterLastChirpReason() { return critterLastChirpReason; }
+function probeCritterVoices() {
+  return fetchCritterManifest().then(function (manifest) {
+    var withVoice = manifest.filter(function (c) { return !!(c.voice || c.sound); });
+    var report = {
+      total: manifest.length,
+      withVoice: withVoice.length,
+      sample: withVoice.length ? (withVoice[0].voice || withVoice[0].sound) : null,
+      builtins: manifest.length > 0 && !manifest[0].img ? true : false,
+      lastChirpReason: critterLastChirpReason,
+    };
+    if (!report.sample) { report.play = 'skipped: no voice in the running client\'s manifest'; return report; }
+    return new Promise(function (resolve) {
+      var done = false;
+      var finish = function (msg) { if (!done) { done = true; report.play = msg; resolve(report); } };
+      try {
+        var a = new Audio(report.sample);
+        a.addEventListener('error', function () {
+          var mediaErr = a.error ? ('mediaError code ' + a.error.code) : 'element error';
+          finish('LOAD FAILED: ' + mediaErr + ' (' + report.sample + ')');
+        });
+        a.play().then(function () {
+          finish('OK: playback started (' + report.sample + ')');
+          try { a.pause(); } catch (_) { /* probe only */ }
+        }).catch(function (err) {
+          finish('PLAY REJECTED: ' + ((err && err.name) || 'unknown') + ' - ' + ((err && err.message) || ''));
+        });
+        setTimeout(function () { finish('TIMEOUT: play neither started nor rejected in 8s (stalled load)'); }, 8000);
+      } catch (err) {
+        finish('CONSTRUCTOR THREW: ' + ((err && err.name) || 'unknown'));
+      }
+    });
+  });
+}
+
 var critterContentObs = null;
 var critterContentObsDoc = null; // the document the observer was wired against - a swapped document (tests) re-wires
 var critterNudgeDebounce = null;
@@ -8378,8 +8419,19 @@ function wireCritterListeners() {
       el.classList.add(reaction);
     }
     if (hit.sound) {
-      try { new Audio(hit.sound).play().catch(function () { playCritterChirp(); }); } catch (_) { playCritterChirp(); }
+      try {
+        new Audio(hit.sound).play().catch(function (err) {
+          // v1.179.1 instrument (Dean's boops-with-voices device report): the
+          // fallback records WHY, and the Settings Voice check displays it.
+          critterLastChirpReason = 'play rejected: ' + ((err && err.name) || 'unknown') + ' for ' + hit.sound;
+          playCritterChirp();
+        });
+      } catch (err) {
+        critterLastChirpReason = 'Audio constructor threw: ' + ((err && err.name) || 'unknown');
+        playCritterChirp();
+      }
     } else {
+      critterLastChirpReason = 'placement carried no voice (manifest or client mapping)';
       playCritterChirp();
     }
   });
@@ -14142,6 +14194,8 @@ if (typeof module !== 'undefined' && module.exports) {
     warmCritterAssets,
     reglueCritterPlacements,
     buildCritterShaveMask,
+    probeCritterVoices,
+    getCritterLastChirpReason,
     // v1.163.1: force text (non-emoji) presentation on the arrow glyphs.
     DDR_TEXT_PRESENTATION, ddrArrowDisplayGlyph,
     // v1.50.3: the D dark/light toggle's pure decision.
