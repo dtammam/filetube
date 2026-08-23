@@ -814,6 +814,66 @@ test('v1.170 collector: a TRUE circle is marked round; pills and slightly-rounde
   }
 });
 
+// ---- v1.172: master-detail pane swaps re-scatter (Dean's Settings shots) ----
+
+// Dean's screenshots: the SAME critters floated over BOTH the Settings menu
+// and an open section - a pane swap changes what fills the screen but the
+// router never fires, so the stale scatter survived. The bind is END-TO-END
+// behavioral: with critter mode DISABLED, a scatter pass REMOVES an existing
+// #critter-layer - so "the pipeline ran after a pane transition" is observable
+// as the seeded layer disappearing after the 200ms debounce.
+function mountMdWithLayer() {
+  const MD_ROOT = SETUP_HTML.match(/<div class="md-root" data-md-page="setup"[\s\S]*?<\/div><!-- \/\.md-root -->/);
+  assert.ok(MD_ROOT, 'setup.html carries the .md-root wrapper');
+  const dom = new JSDOM('<!DOCTYPE html><html data-theme="2021"><body>' + MD_ROOT[0]
+    + '<div id="critter-layer" class="critter-layer"></div></body></html>', { url: 'http://localhost/setup.html' });
+  global.window = dom.window; global.document = dom.window.document;
+  global.MutationObserver = dom.window.MutationObserver; global.localStorage = dom.window.localStorage;
+  return dom;
+}
+function unmountMd(dom) {
+  delete global.window; delete global.document; delete global.MutationObserver; delete global.localStorage;
+  dom.window.close();
+}
+const settle = () => new Promise((resolve) => setTimeout(resolve, 320)); // past the 200ms debounce
+
+test('v1.172: drilling into a section re-runs the scatter pipeline (the stale cross-pane critters, Dean\'s screenshots)', async () => {
+  const dom = mountMdWithLayer();
+  try {
+    const { wireMasterDetail } = require('../../public/js/common.js');
+    wireMasterDetail('setup', dom.window.document, new dom.window.AbortController().signal);
+    await settle();
+    assert.ok(dom.window.document.getElementById('critter-layer'),
+      'wiring ALONE never scatters - the initial pass belongs to the router hook');
+    const row = dom.window.document.querySelector('.md-nav .md-row');
+    assert.ok(row, 'the menu rendered rows');
+    row.click();
+    await settle();
+    assert.strictEqual(dom.window.document.getElementById('critter-layer'), null,
+      'the pane swap ran the scatter pipeline (mode off -> the stale layer is cleared)');
+  } finally { unmountMd(dom); }
+});
+
+test('v1.172: the Back button (menu pane returns) re-runs the scatter pipeline too - both transition directions bound', async () => {
+  const dom = mountMdWithLayer();
+  try {
+    const { wireMasterDetail } = require('../../public/js/common.js');
+    wireMasterDetail('setup', dom.window.document, new dom.window.AbortController().signal);
+    const row = dom.window.document.querySelector('.md-nav .md-row');
+    row.click();
+    await settle(); // the drill-in scatter consumed the seeded layer...
+    const layer = dom.window.document.createElement('div');
+    layer.id = 'critter-layer';
+    dom.window.document.body.appendChild(layer); // ...re-seed for the Back leg
+    const back = dom.window.document.querySelector('.md-back');
+    assert.ok(back, 'the back control exists');
+    back.click();
+    await settle();
+    assert.strictEqual(dom.window.document.getElementById('critter-layer'), null,
+      'Back ran the scatter pipeline for the returning menu pane');
+  } finally { unmountMd(dom); }
+});
+
 // ---- CSS locks --------------------------------------------------------------
 
 test('tap reactions: a pool of tiny transform-only animations, each defined in CSS and all reduced-motion-safe', () => {

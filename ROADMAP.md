@@ -80,6 +80,33 @@
 
 ## Shipped
 
+### v1.172.0 - each Settings subpage gets its own critters (md pane re-scatter) (Dean) (2026-08-23)
+
+Dean's two Settings screenshots: the SAME critters floated over BOTH the
+menu and an open section, anchored to the other pane's furniture. The
+master-detail is one route - drilling in or tapping Back is a pane swap the
+router never sees, so the stale scatter survived. Dean: "critter mode should
+likely consider each subpage different."
+
+- The two md transition points (selectKey - mobile drill-in AND desktop
+  section switching - and the Back handler) now call the shared 200ms
+  scatter scheduler; hidden panes measure zero-size, so each re-plan sees
+  only the visible pane. The hook lives in the SHARED md machinery, so
+  Stats and future master-detail pages inherit it.
+- Wiring alone never scatters (init stays the router hook's); bound by a
+  no-fire-at-init assertion plus two end-to-end behavioral binds (a seeded
+  layer disappears after drill-in and after Back). Both hook-deletion
+  mutants red.
+
+Slim gate (adversarial): APPROVE, ZERO findings - it measured all five
+named risks shut (no init scatter storm incl. the async admin-reveal
+rebuild; one scatter per rapid burst; the disabled path never fetches the
+manifest; the test observable is hook-exclusive; the v1.164 scroll-restore
+order preserved). Dual-Node 7485/7485 clean first runs. Process disclosure:
+the blind-checkout scar was struck TWICE this day while mutation-testing
+dirty trees (both recovered, both disclosed in commits); the norm is
+re-sharpened - commit first, mutate the commit. Device pass PENDING.
+
 ### v1.171.0 - the critter manager: pool management from the browser (Dean) (2026-08-23)
 
 Dean's follow-up to the critter arc: "allow one to upload images to the pool
