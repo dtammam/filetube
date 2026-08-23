@@ -61,24 +61,45 @@ test('upload name gate: extension and mime must AGREE; svg is never uploadable (
   assert.strictEqual(sanitizeCritterUploadName('README.md', 'image/png'), null, 'the folder contract file is untouchable');
 });
 
-// ---- magic-byte validators (source-locked shapes, exercised via upload sets) -
+// ---- magic-byte validators (BEHAVIORAL - QA W1 closure) ---------------------
 
-test('upload magic bytes: each declared mime validates its real signature and rejects a lying body', () => {
-  // The maps are module-internal; bind them through the source (both defined)
-  // plus behavioral probes of the signature logic re-derived here. The lock:
-  // every mime the raw-body parser accepts has a validator in one of the maps.
-  const start = SERVER.indexOf('const CRITTER_UPLOAD_IMAGE_TYPES');
-  assert.ok(start !== -1, 'image validator map exists');
-  const soundStart = SERVER.indexOf('const CRITTER_UPLOAD_SOUND_TYPES');
-  assert.ok(soundStart !== -1, 'sound validator map exists');
+const { CRITTER_UPLOAD_IMAGE_TYPES, CRITTER_UPLOAD_SOUND_TYPES } = require('../../server.js');
+
+test('upload magic bytes: every declared mime ACCEPTS its real signature and REJECTS a lying body (validators called, not just present)', () => {
+  // QA W1: the previous spelling of this test only source-grepped that each
+  // mime HAD a validator entry - a wrong-offset signature (e.g. ftyp at 0)
+  // would have shipped green and refused every real upload. Now each
+  // validator is CALLED with a genuine-signature buffer and a lying one.
+  const REAL = {
+    'image/png': Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]),
+    'image/jpeg': Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+    'image/webp': Buffer.concat([Buffer.from('RIFF'), Buffer.from([1, 2, 3, 4]), Buffer.from('WEBPx')]),
+    'image/gif': Buffer.from('GIF89a1'),
+    'audio/mpeg': Buffer.from('ID3x'),
+    'audio/wav': Buffer.concat([Buffer.from('RIFF'), Buffer.from([1, 2, 3, 4]), Buffer.from('WAVEx')]),
+    'audio/x-wav': Buffer.concat([Buffer.from('RIFF'), Buffer.from([1, 2, 3, 4]), Buffer.from('WAVEx')]),
+    'audio/mp4': Buffer.concat([Buffer.from([0, 0, 0, 0x20]), Buffer.from('ftypM4A x')]),
+    'audio/x-m4a': Buffer.concat([Buffer.from([0, 0, 0, 0x20]), Buffer.from('ftypM4A x')]),
+    'audio/ogg': Buffer.from('OggSx'),
+  };
+  const LIE = Buffer.from('this is not any media format at all, honest');
+  const maps = { ...CRITTER_UPLOAD_IMAGE_TYPES, ...CRITTER_UPLOAD_SOUND_TYPES };
+  // Completeness both ways: every parser-accepted mime has a validator, and
+  // every REAL fixture above covers a validator (no orphan on either side).
+  assert.deepStrictEqual(Object.keys(maps).sort(), Object.keys(REAL).sort(), 'validator maps and fixtures enumerate the same mimes');
+  for (const [mime, validator] of Object.entries(maps)) {
+    assert.strictEqual(validator(REAL[mime]), true, mime + ' must accept its real signature');
+    assert.strictEqual(!!validator(LIE), false, mime + ' must reject a lying body');
+    assert.strictEqual(!!validator(Buffer.alloc(0)), false, mime + ' must reject an empty buffer');
+  }
+  // The mp3 frame-sync arm (no ID3 tag): 11 set bits at the start.
+  assert.strictEqual(CRITTER_UPLOAD_SOUND_TYPES['audio/mpeg'](Buffer.from([0xff, 0xfb, 0x90, 0x00])), true, 'raw mp3 frame sync accepted');
+  assert.strictEqual(!!CRITTER_UPLOAD_SOUND_TYPES['audio/mpeg'](Buffer.from([0xff, 0x1b, 0x90, 0x00])), false, 'broken sync mask rejected');
+  // And the parser's accept list stays in lockstep with the validator maps.
   const extMapStart = SERVER.indexOf('const CRITTER_UPLOAD_EXT_FOR_MIME');
   const extMapSrc = SERVER.slice(extMapStart, SERVER.indexOf('};', extMapStart));
-  const mimes = [...extMapSrc.matchAll(/'((?:image|audio)\/[a-z0-9+-]+)'/g)].map((m) => m[1]);
-  assert.ok(mimes.length >= 9, 'ext-for-mime map enumerates the full allowlist (' + mimes.length + ')');
-  const validatorsSrc = SERVER.slice(start, SERVER.indexOf('const CRITTER_UPLOAD_EXT_FOR_MIME'));
-  for (const mime of new Set(mimes)) {
-    assert.ok(validatorsSrc.includes(`'${mime}'`), mime + ' accepted by the parser MUST have a magic validator');
-  }
+  const mimes = [...new Set([...extMapSrc.matchAll(/'((?:image|audio)\/[a-z0-9+-]+)'/g)].map((m) => m[1]))];
+  assert.deepStrictEqual(mimes.sort(), Object.keys(maps).sort(), 'every mime the raw parser accepts has a called validator');
 });
 
 // ---- buildStoreZip ----------------------------------------------------------
@@ -87,6 +108,7 @@ function readEocd(zip) {
   const sig = zip.readUInt32LE(zip.length - 22);
   return {
     sig,
+    countThisDisk: zip.readUInt16LE(zip.length - 22 + 8),
     count: zip.readUInt16LE(zip.length - 22 + 10),
     cdSize: zip.readUInt32LE(zip.length - 22 + 12),
     cdStart: zip.readUInt32LE(zip.length - 22 + 16),
@@ -104,6 +126,7 @@ test('buildStoreZip: structurally valid store-only zip - signatures, counts, off
   const eocd = readEocd(zip);
   assert.strictEqual(eocd.sig, 0x06054b50, 'EOCD signature');
   assert.strictEqual(eocd.count, 3, 'entry count');
+  assert.strictEqual(eocd.countThisDisk, 3, 'entries-THIS-DISK count matches (adversarial S1: both EOCD counts bound)');
   assert.strictEqual(eocd.cdStart + eocd.cdSize + 22, zip.length, 'EOCD geometry closes the file exactly');
   // Walk the central directory; verify every record against its local header.
   let p = eocd.cdStart;
@@ -116,8 +139,13 @@ test('buildStoreZip: structurally valid store-only zip - signatures, counts, off
     const nameLen = zip.readUInt16LE(p + 28);
     const localOff = zip.readUInt32LE(p + 42);
     const name = zip.toString('utf8', p + 46, p + 46 + nameLen);
-    // The matching local header.
+    // The matching local header - EVERY field a reader trusts (adversarial
+    // S1: the central-only walk left local CRC/method/sizes mutable green).
     assert.strictEqual(zip.readUInt32LE(localOff), 0x04034b50, `local signature for ${name}`);
+    assert.strictEqual(zip.readUInt16LE(localOff + 8), 0, `local method STORE for ${name}`);
+    assert.strictEqual(zip.readUInt32LE(localOff + 14), crc, `local CRC matches central for ${name}`);
+    assert.strictEqual(zip.readUInt32LE(localOff + 18), size, `local compressed size for ${name}`);
+    assert.strictEqual(zip.readUInt32LE(localOff + 22), size, `local uncompressed size for ${name}`);
     const lNameLen = zip.readUInt16LE(localOff + 26);
     assert.strictEqual(zip.toString('utf8', localOff + 30, localOff + 30 + lNameLen), name, 'names agree');
     const data = zip.subarray(localOff + 30 + lNameLen, localOff + 30 + lNameLen + size);

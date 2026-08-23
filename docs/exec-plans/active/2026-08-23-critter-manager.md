@@ -64,7 +64,10 @@ Intake rulings (all Dean, AskUserQuestion 2026-08-23):
 ### Client
 
 - setup.html: new `<details data-collapse-key="critters" data-md-icon="paw">`
-  section (System group), holding the MOVED toggle + density (same element
+  section in the UNGROUPED top area, directly beside Appearance (QA W2:
+  this spec originally said System group; the fun-mode section is
+  appearance-adjacent and lives where the controls came from - the spec was
+  amended, not the code), holding the MOVED toggle + density (same element
   ids - wireCritterModeControls untouched) plus an admin-only
   `<div id="critter-manager" hidden>`: pool grid, image/sound upload buttons
   (hidden multi-file inputs), Download all (plain link to the archive route),

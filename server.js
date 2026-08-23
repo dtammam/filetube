@@ -6046,7 +6046,9 @@ function publicUser(u) {
 
 function requireAdmin(req, res) {
   if (!req.user || req.user.role !== 'admin') {
-    res.status(403).json({ error: 'Only an admin can manage users.' });
+    // v1.171 (QA S3): domain-neutral copy - this helper gates users, the logo,
+    // AND the critter pool; "can manage users" lied on two of the three.
+    res.status(403).json({ error: 'Admin access required.' });
     return false;
   }
   return true;
@@ -15245,8 +15247,14 @@ function buildCritterListing(fileNames) {
   return out;
 }
 
+// v1.171 (QA S1/adversarial S2 closure): one resolver for the critter folder.
+// CRITTERS_DIR is a TEST seam (the destructive integration suite seeds a temp
+// folder instead of the repo's real one) and works as a deploy override; the
+// default is the compose-mount lockstep path (see docker-compose.yml).
+const crittersDir = () => process.env.CRITTERS_DIR || path.join(__dirname, 'public', 'critters');
+
 app.get('/api/critters', (req, res) => {
-  const dir = path.join(__dirname, 'public', 'critters');
+  const dir = crittersDir();
   let entries = [];
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
@@ -15319,7 +15327,9 @@ function sanitizeCritterUploadName(name, mime) {
 // Node has no zip container built in, but a stored zip is 30/46/22-byte
 // headers + zlib.crc32, which node >=22.2 ships). entries: [{name, data}].
 // Fixed DOS timestamp 1980-01-01 (deterministic output; zips cannot encode
-// earlier). Flag bit 11 marks names as UTF-8.
+// earlier). Flag bit 11 marks names as UTF-8. LIMIT (QA S5): the classic
+// (non-Zip64) format caps at 65535 entries - writeUInt16LE THROWS past that,
+// so a preposterous pool 500s cleanly rather than emitting a corrupt archive.
 function buildStoreZip(entries) {
   const chunks = [];
   const central = [];
@@ -15374,8 +15384,6 @@ function buildStoreZip(entries) {
   return Buffer.concat(chunks);
 }
 
-const crittersDir = () => path.join(__dirname, 'public', 'critters');
-
 // Directory entries the manager owns: REGULAR files with a critter image or
 // sound extension. README.md, subfolders, symlinks, and stray files are never
 // touched by delete-all/archive, and delete-item can never match them.
@@ -15391,6 +15399,10 @@ function listCritterFiles() {
 
 app.post(
   '/api/critters/upload',
+  // NOTE (QA S6, disclosed): express.raw buffers up to 25 MB BEFORE the admin
+  // check answers - an authenticated member can cost that buffering per
+  // request. Faithful mirror of the logo route's posture (1 MB there);
+  // authenticated-only, accepted.
   express.raw({
     type: Object.keys(CRITTER_UPLOAD_EXT_FOR_MIME),
     limit: CRITTER_UPLOAD_MAX_BYTES,
@@ -15438,7 +15450,7 @@ app.post(
   },
   (err, req, res, next) => {
     if (err && (err.type === 'entity.too.large' || err.status === 413)) {
-      return res.status(413).json({ error: 'File too large (max 25 MB).' });
+      return res.status(413).json({ error: 'File too large (images max 25 MB, sounds max 10 MB).' });
     }
     return next(err);
   },
@@ -17351,6 +17363,8 @@ module.exports = {
   buildCritterListing,
   sanitizeCritterUploadName,
   buildStoreZip,
+  CRITTER_UPLOAD_IMAGE_TYPES,
+  CRITTER_UPLOAD_SOUND_TYPES,
   // 2026-07-30 hardening: exported so the capture harness's request policy
   // can assert its allowlist stays a subset of this one (twin contracts),
   // and so the audit middleware's close-path is provable with a deferred

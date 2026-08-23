@@ -765,7 +765,7 @@ function wireCritterManager(signal) {
   delAllBtn.addEventListener('click', async () => {
     if (!delAllArmed) {
       delAllArmed = true;
-      delAllBtn.textContent = 'Really delete all ' + pool.length + '?';
+      delAllBtn.textContent = 'Really delete all ' + pool.length + (pool.length === 1 ? ' critter?' : ' critters?');
       delAllBtn.classList.add('critter-delete-armed');
       return;
     }
@@ -774,7 +774,9 @@ function wireCritterManager(signal) {
       const r = await fetch('/api/critters/all', { method: 'DELETE' });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) setActionStatus(statusEl, body.error || 'Could not delete the pool.', 'error');
-      else setActionStatus(statusEl, 'Deleted ' + (body.deleted || 0) + ' files.');
+      // Units differ on purpose (both seats flagged for clarity): the armed
+      // label counts CRITTERS, the result counts FILES (images + paired sounds).
+      else setActionStatus(statusEl, 'Deleted ' + (body.deleted || 0) + ' files (images and sounds).');
     } catch (_) {
       setActionStatus(statusEl, 'Could not delete the pool (network error).', 'error');
     }
