@@ -10261,6 +10261,13 @@ html[data-modern="on"] .video-uploader {
   to { opacity: 1; }
 }
 
+/* v1.176: a RE-GLUE rebuild (critters riding their moved furniture) must be
+   visually inert - no arrival fade replay for a critter that barely moved. */
+.critter.critter-still {
+  animation: none;
+  opacity: 1;
+}
+
 /* v1.171: the critter pool manager (Settings -> Sneaky critters, admin-only).
    A compact grid of the uploaded pool: thumbnail, name (+ a note glyph when a
    tap sound is paired), and a two-tap delete per item. */
@@ -10370,10 +10377,46 @@ html[data-modern="on"] .video-uploader {
   100% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) translateY(0); }
 }
 
+/* v1.176 (Dean: more VARIED tap reactions): a full twirl, a shy duck-down,
+   and squash-and-stretch. Same contract as the original three: transform-only
+   (zero layout shift), every frame carries the pose's angle + flip. */
+.critter-twirl {
+  animation: critter-twirl var(--dur-slow) ease-in-out;
+}
+
+@keyframes critter-twirl {
+  0% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)); }
+  100% { transform: rotate(calc(var(--critter-angle, 0deg) + 360deg)) scaleX(var(--critter-flip, 1)); }
+}
+
+.critter-duck {
+  animation: critter-duck var(--dur-slow) ease-in-out;
+}
+
+@keyframes critter-duck {
+  0% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) translateY(0); }
+  45% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) translateY(5px) scale(1, 0.9); }
+  100% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) translateY(0); }
+}
+
+.critter-squish {
+  animation: critter-squish var(--dur-slow) ease-out;
+}
+
+@keyframes critter-squish {
+  0% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) scale(1, 1); }
+  30% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) scale(1.15, 0.85); }
+  60% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) scale(0.92, 1.08); }
+  100% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) scale(1, 1); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .critter-wiggle,
   .critter-shiver,
-  .critter-hop { animation: none; }
+  .critter-hop,
+  .critter-twirl,
+  .critter-duck,
+  .critter-squish { animation: none; }
 }
 
 /* Desktop: widen the window and flow the shortcut groups into two columns so
