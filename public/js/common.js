@@ -7674,7 +7674,7 @@ function planCritterScatter(opts) {
       x: x, y: y, w: size, h: size,
       angle: bottomFamily ? tilt + 180 : tilt,
       flip: rng() < 0.5 ? -1 : 1, // v1.168: mirrored half the time - twice the poses per PNG
-      cover: cover, // v1.168: the anchor-concealed side(s), local px - drives the clip
+      cover: cover, // v1.168 claim, INFORMATIONAL since v1.174: the clip derives from measured rects (buildCritterClip); tests classify peek direction by it
       // v1.170 (Dean's Bernard screenshot): a TRUE-CIRCLE anchor's hidden
       // region is the DISC, not the bounding square - the renderer swaps the
       // rect clip for a circular mask so the cut follows the avatar's curve.
@@ -7763,31 +7763,73 @@ function ensureCritterLayer() {
   return layer;
 }
 
-// v1.168 SANDWICH clip (pure): the VISIBLE region of a critter's wrapper, as a
-// clip-path string. The wrapper is the placement box inflated by `pad` on every
-// side (so the ROTATED pose never gets its corners cropped); the anchor-facing
-// side(s) are cut at exactly the anchor's edge (pad + cover px in from the
-// wrapper edge), which is what makes "behind its ONE element" read true while
-// the layer itself paints ABOVE all other furniture. One concealed side -> a
-// rectangular inset; two adjacent sides (a corner peek) -> only the QUADRANT
-// beyond BOTH cuts is hidden (an L-shaped 6-point polygon) - the rest of the
-// pad on those sides lies OUTSIDE the anchor and may paint.
-function buildCritterClip(cover, size, pad) {
-  var c = cover || {};
-  var W = size + 2 * pad;
-  var t = c.t ? pad + c.t : 0;
-  var r = c.r ? pad + c.r : 0;
-  var b = c.b ? pad + c.b : 0;
-  var l = c.l ? pad + c.l : 0;
-  var sides = (t ? 1 : 0) + (r ? 1 : 0) + (b ? 1 : 0) + (l ? 1 : 0);
-  if (sides <= 1) return 'inset(' + t + 'px ' + r + 'px ' + b + 'px ' + l + 'px)';
-  // Corner: exactly two ADJACENT concealed sides; hide only their shared quadrant.
-  var cutX = l ? l : (W - r); // the vertical cut line
-  var cutY = t ? t : (W - b); // the horizontal cut line
-  if (r && b) return 'polygon(0px 0px, ' + W + 'px 0px, ' + W + 'px ' + cutY + 'px, ' + cutX + 'px ' + cutY + 'px, ' + cutX + 'px ' + W + 'px, 0px ' + W + 'px)';
-  if (l && b) return 'polygon(0px 0px, ' + W + 'px 0px, ' + W + 'px ' + W + 'px, ' + cutX + 'px ' + W + 'px, ' + cutX + 'px ' + cutY + 'px, 0px ' + cutY + 'px)';
-  if (r && t) return 'polygon(0px 0px, ' + cutX + 'px 0px, ' + cutX + 'px ' + cutY + 'px, ' + W + 'px ' + cutY + 'px, ' + W + 'px ' + W + 'px, 0px ' + W + 'px)';
-  return 'polygon(' + cutX + 'px 0px, ' + W + 'px 0px, ' + W + 'px ' + W + 'px, 0px ' + W + 'px, 0px ' + cutY + 'px, ' + cutX + 'px ' + cutY + 'px)'; // l && t
+// v1.168 SANDWICH clip -> v1.174 GEOMETRIC TRUTH (Dean's Subscribed-button
+// screenshot: a fragment with a hard cut floating OFF the button). The old
+// clip hid whatever band the planner CLAIMED the anchor covers - claims were
+// derived from the critter's own size and never clamped to the anchor's real
+// extent, so a critter overlapping past the anchor's far edge (which the
+// v1.170 cross-axis fit deliberately allows by 15%) got sliced where nothing
+// hides it. Now the hidden region IS the measured intersection of the critter
+// box and its anchor: pure geometry, no claims. The wrapper is the placement
+// box inflated by `pad` (so the rotated pose never crops); the hidden rect
+// extends to the wrapper edge exactly on the sides where the ANCHOR continues
+// past the critter box (the pad strip there is genuinely covered too). The
+// complement polygon follows from which wrapper edges the hidden rect touches:
+// three -> a plain inset; two adjacent -> the corner L; ONE -> a C-notch (the
+// bug case: anchor smaller than the critter's cross extent); two opposite ->
+// a band with both free strips traced as one path. Every cut line now lies ON
+// an anchor edge - a floating cut is geometrically impossible.
+function buildCritterClip(p, pad) {
+  var a = p && p.anchor;
+  if (!a) return '';
+  var W = p.w + 2 * pad;
+  var ix1 = Math.max(p.x, a.x); var iy1 = Math.max(p.y, a.y);
+  var ix2 = Math.min(p.x + p.w, a.x + a.w); var iy2 = Math.min(p.y + p.h, a.y + a.h);
+  if (ix2 <= ix1 || iy2 <= iy1) return ''; // no overlap: nothing to hide
+  var x1 = a.x <= p.x ? 0 : Math.round(pad + (ix1 - p.x));
+  var y1 = a.y <= p.y ? 0 : Math.round(pad + (iy1 - p.y));
+  var x2 = a.x + a.w >= p.x + p.w ? W : Math.round(pad + (ix2 - p.x));
+  var y2 = a.y + a.h >= p.y + p.h ? W : Math.round(pad + (iy2 - p.y));
+  var T = y1 === 0; var R = x2 === W; var B = y2 === W; var L = x1 === 0;
+  var touches = (T ? 1 : 0) + (R ? 1 : 0) + (B ? 1 : 0) + (L ? 1 : 0);
+  var px = function (n) { return n + 'px'; };
+  var pts = function (list) {
+    var out = [];
+    for (var i = 0; i < list.length; i += 2) out.push(px(list[i]) + ' ' + px(list[i + 1]));
+    return 'polygon(' + out.join(', ') + ')';
+  };
+  if (touches === 4) return 'inset(' + px(Math.ceil(W / 2)) + ')'; // fully covered (planner peeks make this unreachable; guarded)
+  if (touches === 3) {
+    // One free side: the visible region is a single rect - a plain inset
+    // (inset() offsets describe the VISIBLE box, so each cut comes from the
+    // hidden side: free top keeps [0..y1], cutting W-y1 from the bottom).
+    if (!T) return 'inset(0px 0px ' + px(W - y1) + ' 0px)';
+    if (!R) return 'inset(0px 0px 0px ' + px(x2) + ')';
+    if (!B) return 'inset(' + px(y2) + ' 0px 0px 0px)';
+    return 'inset(0px ' + px(W - x1) + ' 0px 0px)'; // free left
+  }
+  if (touches === 2 && !((T && B) || (L && R))) {
+    // Two ADJACENT sides: hide only the shared-quadrant L (v1.168 geometry).
+    if (R && B) return pts([0, 0, W, 0, W, y1, x1, y1, x1, W, 0, W]);
+    if (L && B) return pts([0, 0, W, 0, W, W, x2, W, x2, y1, 0, y1]);
+    if (T && R) return pts([0, 0, x1, 0, x1, y2, W, y2, W, W, 0, W]);
+    return pts([x2, 0, W, 0, W, W, 0, W, 0, y2, x2, y2]); // T && L
+  }
+  if (touches === 2) {
+    // Two OPPOSITE sides: a band across; both free strips traced as one path.
+    if (T && B) return pts([0, 0, x1, 0, x1, W, x2, W, x2, 0, W, 0, W, W, 0, W]);
+    return pts([0, 0, W, 0, W, y1, 0, y1, 0, y2, W, y2, W, W, 0, W]); // L && R
+  }
+  if (touches === 1) {
+    // ONE side: the anchor is cross-smaller than the critter - a C-notch.
+    // (The Subscribed-button bug: the old full-side inset here sliced the
+    // critter strips that stick past the anchor's far edges.)
+    if (T) return pts([0, 0, x1, 0, x1, y2, x2, y2, x2, 0, W, 0, W, W, 0, W]);
+    if (R) return pts([0, 0, W, 0, W, y1, x1, y1, x1, y2, W, y2, W, W, 0, W]);
+    if (B) return pts([0, 0, W, 0, W, W, x2, W, x2, y1, x1, y1, x1, W, 0, W]);
+    return pts([0, 0, W, 0, W, W, 0, W, 0, y2, x2, y2, x2, y1, 0, y1]); // L
+  }
+  return ''; // island (anchor strictly inside the box): unreachable for real peeks; NEVER a floating cut
 }
 
 // v1.170 SANDWICH mask for ROUND anchors (pure): the rect clip cuts straight
@@ -7824,7 +7866,10 @@ function renderCritterPlacements(layer, placements) {
       el.classList.add('critter-round');
       el.style.setProperty('--critter-mask', buildCritterRoundMask(p.roundCover, pad));
     } else {
-      el.style.clipPath = buildCritterClip(p.cover, p.w, pad);
+      // v1.174: the clip derives from the MEASURED placement/anchor rects,
+      // never from the planner's cover claims (see buildCritterClip).
+      var clip = buildCritterClip(p, pad);
+      if (clip) el.style.clipPath = clip;
     }
     var pose = document.createElement('div');
     pose.className = 'critter-pose';

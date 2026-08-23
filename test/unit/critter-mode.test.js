@@ -304,8 +304,8 @@ test('renderCritterPlacements (v1.168 sandwich): clipped wrapper + transform-car
   try {
     const layer = dom.window.document.getElementById('critter-layer');
     renderCritterPlacements(layer, [
-      { id: 'a', x: 10, y: 20, w: 50, h: 50, angle: -12, flip: 1, hue: 90, cover: { b: 25 }, img: null, svg: CRITTER_BUILTINS[0].svg },
-      { id: 'b', x: 300, y: 400, w: 60, h: 60, angle: 8, flip: -1, hue: 200, cover: { l: 30 }, img: '/critters/b.png', svg: null },
+      { id: 'a', x: 10, y: 20, w: 50, h: 50, angle: -12, flip: 1, hue: 90, cover: { b: 25 }, anchor: { x: 0, y: 45, w: 300, h: 100 }, img: null, svg: CRITTER_BUILTINS[0].svg },
+      { id: 'b', x: 300, y: 400, w: 60, h: 60, angle: 8, flip: -1, hue: 200, cover: { l: 30 }, anchor: { x: 200, y: 380, w: 130, h: 120 }, img: '/critters/b.png', svg: null },
     ]);
     const kids = layer.querySelectorAll('.critter');
     assert.strictEqual(kids.length, 2);
@@ -330,33 +330,100 @@ test('renderCritterPlacements (v1.168 sandwich): clipped wrapper + transform-car
     assert.strictEqual(img.getAttribute('src'), '/critters/b.png');
     assert.strictEqual(img.getAttribute('alt'), '', 'decorative');
     // Re-render fully replaces - a second scatter never stacks on the first.
-    renderCritterPlacements(layer, [{ id: 'c', x: 1, y: 2, w: 44, h: 44, angle: 0, flip: 1, hue: 0, cover: { t: 10 }, img: null, svg: null }]);
+    renderCritterPlacements(layer, [{ id: 'c', x: 1, y: 2, w: 44, h: 44, angle: 0, flip: 1, hue: 0, cover: { t: 10 }, anchor: { x: 0, y: 0, w: 200, h: 12 }, img: null, svg: null }]);
     assert.strictEqual(layer.querySelectorAll('.critter').length, 1, 'no accumulation across scatters');
   } finally { unmount(dom); }
 });
 
-test('v1.168 buildCritterClip (pure): edge cuts are insets at pad+cover; corner cuts hide ONLY the shared quadrant', () => {
+test('v1.174 buildCritterClip (pure GEOMETRIC TRUTH): the hidden region is the MEASURED critter/anchor intersection, per topology', () => {
   const { buildCritterClip } = require('../../public/js/common.js');
-  // size 50, pad 15 -> wrapper 80. Bottom concealed by 25 -> bottom inset 40.
-  assert.strictEqual(buildCritterClip({ b: 25 }, 50, 15), 'inset(0px 0px 40px 0px)');
-  assert.strictEqual(buildCritterClip({ t: 10 }, 50, 15), 'inset(25px 0px 0px 0px)');
-  assert.strictEqual(buildCritterClip({ l: 30 }, 50, 15), 'inset(0px 0px 0px 45px)');
-  assert.strictEqual(buildCritterClip({ r: 20 }, 50, 15), 'inset(0px 35px 0px 0px)');
-  // Corner (tl peek -> r+b concealed): the L keeps everything except the
-  // bottom-right quadrant beyond BOTH cuts (cutX = 80-35=45, cutY = 80-40=40).
-  assert.strictEqual(buildCritterClip({ r: 20, b: 25 }, 50, 15),
-    'polygon(0px 0px, 80px 0px, 80px 40px, 45px 40px, 45px 80px, 0px 80px)');
-  // Gate: ALL FOUR corner orientations exact-bound (three shipped untested and
-  // their wrong-quadrant mutants survived - the seat derived these expected
-  // strings independently of the implementation before prescribing them).
-  assert.strictEqual(buildCritterClip({ l: 30, b: 25 }, 50, 15),
-    'polygon(0px 0px, 80px 0px, 80px 80px, 45px 80px, 45px 40px, 0px 40px)');
-  assert.strictEqual(buildCritterClip({ r: 20, t: 10 }, 50, 15),
-    'polygon(0px 0px, 45px 0px, 45px 25px, 80px 25px, 80px 80px, 0px 80px)');
-  assert.strictEqual(buildCritterClip({ l: 30, t: 10 }, 50, 15),
-    'polygon(45px 0px, 80px 0px, 80px 80px, 0px 80px, 0px 25px, 45px 25px)');
-  // A degenerate empty cover still yields a full-box inset (never a throw).
-  assert.strictEqual(buildCritterClip({}, 50, 15), 'inset(0px 0px 0px 0px)');
+  // Fixed placement: box (100,100) 50x50, pad 15 -> wrapper 80x80; a doc
+  // coordinate d maps to wrapper-local 15 + (d - 100).
+  const P = (anchor) => ({ x: 100, y: 100, w: 50, h: 50, anchor });
+  const pad = 15;
+  // THREE touched sides (the classic big-anchor edge peeks) -> plain insets.
+  assert.strictEqual(buildCritterClip(P({ x: 0, y: 125, w: 400, h: 200 }), pad),
+    'inset(0px 0px 40px 0px)', 'anchor below: visible top strip [0..40]');
+  assert.strictEqual(buildCritterClip(P({ x: 0, y: 0, w: 400, h: 125 }), pad),
+    'inset(40px 0px 0px 0px)', 'anchor above: visible bottom strip');
+  assert.strictEqual(buildCritterClip(P({ x: 125, y: 0, w: 300, h: 400 }), pad),
+    'inset(0px 40px 0px 0px)', 'anchor right: visible left strip');
+  assert.strictEqual(buildCritterClip(P({ x: 0, y: 0, w: 125, h: 400 }), pad),
+    'inset(0px 0px 0px 40px)', 'anchor left: visible right strip');
+  // TWO ADJACENT (corner peeks) -> the v1.168 L, all four orientations.
+  assert.strictEqual(buildCritterClip(P({ x: 120, y: 130, w: 200, h: 200 }), pad),
+    'polygon(0px 0px, 80px 0px, 80px 45px, 35px 45px, 35px 80px, 0px 80px)', 'anchor bottom-right (tl peek)');
+  assert.strictEqual(buildCritterClip(P({ x: 0, y: 130, w: 130, h: 200 }), pad),
+    'polygon(0px 0px, 80px 0px, 80px 80px, 45px 80px, 45px 45px, 0px 45px)', 'anchor bottom-left (tr peek)');
+  assert.strictEqual(buildCritterClip(P({ x: 120, y: 0, w: 200, h: 130 }), pad),
+    'polygon(0px 0px, 35px 0px, 35px 45px, 80px 45px, 80px 80px, 0px 80px)', 'anchor top-right (bl peek)');
+  assert.strictEqual(buildCritterClip(P({ x: 0, y: 0, w: 130, h: 130 }), pad),
+    'polygon(45px 0px, 80px 0px, 80px 80px, 0px 80px, 0px 45px, 45px 45px)', 'anchor top-left (br peek)');
+  // ONE touched side: the anchor is CROSS-SMALLER than the critter - the old
+  // full-side inset here is exactly Dean's Subscribed-button bug (it sliced
+  // the strips sticking past the anchor's far edges). Now: a C-notch.
+  assert.strictEqual(buildCritterClip(P({ x: 130, y: 110, w: 60, h: 20 }), pad),
+    'polygon(0px 0px, 80px 0px, 80px 25px, 45px 25px, 45px 45px, 80px 45px, 80px 80px, 0px 80px)',
+    'small anchor to the right: only its actual [45..80]x[25..45] footprint hides');
+  // TWO OPPOSITE sides: a band across (deep inward reach on a short anchor);
+  // both free strips ride ONE traced path.
+  assert.strictEqual(buildCritterClip(P({ x: 110, y: 90, w: 20, h: 200 }), pad),
+    'polygon(0px 0px, 25px 0px, 25px 80px, 45px 80px, 45px 0px, 80px 0px, 80px 80px, 0px 80px)',
+    'narrow tall anchor through the middle: vertical band hidden, both sides visible');
+  // Degenerates: no overlap and no anchor clip NOTHING (never a floating cut);
+  // full cover hides everything (the planner peek invariant makes it unreachable).
+  assert.strictEqual(buildCritterClip(P({ x: 500, y: 500, w: 50, h: 50 }), pad), '');
+  assert.strictEqual(buildCritterClip({ x: 100, y: 100, w: 50, h: 50 }, pad), '');
+  assert.strictEqual(buildCritterClip(P({ x: 0, y: 0, w: 400, h: 400 }), pad), 'inset(40px)');
+});
+
+test('v1.174 THE CLASS INVARIANT: every internal cut line lies ON an anchor edge - floating cuts are geometrically impossible', () => {
+  // Dean: "We fix that class of bugs and it's done." Sweep real planner
+  // output over the shapes that produced the bug (a small wide button, the
+  // 24px micro-anchor, a tall narrow anchor) and assert every coordinate in
+  // every emitted clip is either a wrapper edge (0/W) or an anchor edge
+  // mapped into wrapper coords (+-1px rounding).
+  const shapes = [
+    { x: 200, y: 500, w: 120, h: 44 },
+    { x: 60, y: 400, w: 24, h: 24 },
+    { x: 300, y: 300, w: 44, h: 120 },
+  ];
+  const { buildCritterClip } = require('../../public/js/common.js');
+  let clips = 0;
+  for (const a of shapes) {
+    for (let seed = 1; seed <= 300; seed += 1) {
+      const out = planCritterScatter({ anchors: [a], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(seed) });
+      for (const p of out) {
+        const pad = Math.round(p.w * 0.3);
+        const clip = buildCritterClip(p, pad);
+        if (!clip) continue;
+        clips += 1;
+        const W = p.w + 2 * pad;
+        const anchorEdges = [
+          pad + (a.x - p.x), pad + (a.x + a.w - p.x),
+          pad + (a.y - p.y), pad + (a.y + a.h - p.y),
+        ];
+        // inset(t r b l) values are OFFSETS from each edge - convert to cut
+        // COORDINATES (right cut x = W-r, bottom cut y = W-b); polygon points
+        // are coordinates already. The full-cover guard inset(Npx) is accepted
+        // as-is (its planner case is unreachable; guarded).
+        const raw = [...clip.matchAll(/(-?\d+)px/g)].map((m) => Number(m[1]));
+        let coords = raw;
+        const insetM = clip.match(/^inset\((-?\d+)px (-?\d+)px (-?\d+)px (-?\d+)px\)$/);
+        if (insetM) {
+          const [t, r, b, l] = insetM.slice(1).map(Number);
+          coords = [t, W - r, W - b, l];
+        } else if (/^inset\(-?\d+px\)$/.test(clip)) {
+          coords = [];
+        }
+        for (const c of coords) {
+          const ok = c === 0 || c === W || anchorEdges.some((e) => Math.abs(e - c) <= 1);
+          assert.ok(ok, `seed ${seed} anchor ${a.w}x${a.h}: cut at ${c} is on NO anchor edge (W=${W}, edges ${anchorEdges.map((e) => e.toFixed(1)).join(',')}) - a floating cut (${clip})`);
+        }
+      }
+    }
+  }
+  assert.ok(clips > 500, `the sweep exercised real clips (${clips})`);
 });
 
 // ---- the post-scatter settle ladder (v1.166.4 empty + v1.173 drift) ---------
@@ -756,7 +823,7 @@ test('v1.170 renderer: roundCover swaps the rect clip for the circular mask clas
     const layer = dom.window.document.getElementById('critter-layer');
     renderCritterPlacements(layer, [
       { id: 'r', x: 50, y: 60, w: 30, h: 30, angle: 0, flip: 1, hue: 0, cover: { l: 10 }, roundCover: { cx: 15, cy: 15, r: 12 }, img: '/critters/r.png', svg: null },
-      { id: 'q', x: 200, y: 60, w: 40, h: 40, angle: 0, flip: 1, hue: 0, cover: { l: 10 }, roundCover: null, img: '/critters/q.png', svg: null },
+      { id: 'q', x: 200, y: 60, w: 40, h: 40, angle: 0, flip: 1, hue: 0, cover: { l: 10 }, roundCover: null, anchor: { x: 140, y: 40, w: 70, h: 100 }, img: '/critters/q.png', svg: null },
     ]);
     const roundEl = layer.children[0];
     const rectEl = layer.children[1];
@@ -935,10 +1002,10 @@ test('CSS (v1.168 sandwich): the layer paints ABOVE furniture (z 2, under every 
 // ---- the Settings surface ---------------------------------------------------
 
 test('Settings: the Sneaky critter mode controls exist and setup.js binds them to the two keys + applyCritterMode', () => {
-  // v1.171: the controls moved to their OWN section (Dean's ruling); v1.173:
-  // renamed to the generic "Sneaky companions" (user-facing verbiage only -
-  // ids, keys, and wiring stay critter-named).
-  assert.match(SETUP_HTML, /<summary>Sneaky companions<\/summary>/);
+  // v1.171: the controls moved to their OWN section (Dean's ruling); v1.174:
+  // the name is just "Critters" (Dean killed the v1.173 companions split -
+  // the name now matches every id, key, and route).
+  assert.match(SETUP_HTML, /<summary>Critters<\/summary>/);
   assert.match(SETUP_HTML, /id="critter-mode-check"/);
   assert.match(SETUP_HTML, /id="critter-density-select"/);
   for (const v of ['sparse', 'normal', 'obscene']) {
