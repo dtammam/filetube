@@ -204,6 +204,7 @@ module.exports = [
         // controls reflect + fire it).
         resolveCritterConfig: 'readonly',
         applyCritterMode: 'readonly',
+        probeCritterVoices: 'readonly',
         // v1.79: the home-feed toggle (common.js owns it; main.js reads it at
         // home init, setup.js's toggle reflects + mirrors it).
         homeFeedEnabled: 'readonly',

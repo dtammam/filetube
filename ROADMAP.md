@@ -80,6 +80,34 @@
 
 ## Shipped
 
+### v1.179.1 - the Voice check instrument (device boops with voices assigned) (Dean) (2026-08-23)
+
+Dean's device: every tap boops although /api/critters provably assigns
+voices (his own paste) and the shipped client chain provably carries them
+(his exact manifest run through sanitize + planner emits voiced
+placements). Fresh Safari boops too - the stale-client theory REFUTED by
+his measurement. His history narrows it: the previous NAMED sounds played
+through this same pipeline; boops began after a delete-all + re-upload of
+a new sound pack. Leading hypothesis: the pack's files pass the
+first-bytes magic sniff but do not DECODE on iOS - and the chirp fallback
+was silently eating the real error.
+
+Instrument, not a theory-fix (the v1.161 discipline):
+- The tap fallback now records WHY it chirped (rejected play + error name
+  + URL / constructor threw / no voice on the placement).
+- Settings -> Critters gains a "Voice check": runs the REAL manifest path
+  and a REAL playback attempt, reporting totals, voiced counts (0 = a
+  stale client), the builtins-fallback tell, a cold-manifest annotation
+  (an iOS tap-window artifact can fake NotAllowedError - the report says
+  so and hints tap-again), and the playback outcome with the exact error
+  name: NotSupportedError = codec, NotAllowedError = policy, mediaError
+  code = load, 8s timeout = stalled.
+
+Slim gate (adversarial): APPROVE in two rounds (its two suggestions - the
+cold-manifest tell and a mixed fixture binding the stale-client filter -
+applied and mutation-confirmed). Dual-Node 7503/7503 clean first runs.
+Dean's next tap of Voice check names the broken link.
+
 ### v1.179.0 - the voice pool: every critter gets a real sound (Dean) (2026-08-23)
 
 Dean: "if a given character doesn't have an MP3 with the corresponding

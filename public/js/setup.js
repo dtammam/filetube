@@ -617,6 +617,25 @@ function wireCritterModeControls(signal) {
     try { localStorage.setItem('ft-critters:density', density.value); } catch (_) { /* storage off */ }
     if (typeof applyCritterMode === 'function') applyCritterMode();
   }, { signal });
+  // v1.179.1 instrument (device-boops-with-voices): one tap runs the REAL
+  // manifest + playback path and prints which link breaks. The play attempt
+  // runs INSIDE this click's user gesture, matching the tap path's context.
+  const voiceBtn = document.getElementById('critter-voice-check-btn');
+  const voiceStatus = document.getElementById('critter-voice-check-status');
+  if (voiceBtn && voiceStatus && typeof probeCritterVoices === 'function') {
+    voiceBtn.addEventListener('click', () => {
+      setActionStatus(voiceStatus, 'Checking…', 'busy');
+      probeCritterVoices().then((r) => {
+        const line = 'Manifest: ' + r.total + ' critters, ' + r.withVoice + ' with a voice'
+          + (r.builtins ? ' (BUILTINS fallback active - the folder fetch failed on this device!)' : '')
+          + '. Playback: ' + r.play
+          + (r.coldManifest && r.play && r.play.indexOf('NotAllowedError') !== -1
+            ? ' (manifest was COLD - this rejection may be an iOS tap-window artifact; tap Voice check again)' : '')
+          + (r.lastChirpReason ? ' | Last chirp fallback: ' + r.lastChirpReason : ' | No chirp fallback recorded yet this session.');
+        setActionStatus(voiceStatus, line, r.play && r.play.indexOf('OK') === 0 ? undefined : 'error');
+      }).catch((e) => setActionStatus(voiceStatus, 'Probe failed: ' + (e && e.message || e), 'error'));
+    }, { signal });
+  }
 }
 
 // v1.171 (Dean): the critter pool MANAGER - admin-only web UI over

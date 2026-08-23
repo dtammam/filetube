@@ -1533,6 +1533,47 @@ test('v1.178 adoption discipline: size-mismatched cousins refused; the true twin
     'the survivor kept its exact position');
 });
 
+// ---- v1.179.1: the voice probe instrument -----------------------------------
+
+test('v1.179.1 probeCritterVoices: reports the REAL manifest counts and the playback attempt\'s exact failure', async (t) => {
+  const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  // Gate S2: a MIXED fixture - one voiceless entry - so the stale-client
+  // detector's filter is distinguished from counting everything.
+  global.fetch = () => Promise.resolve({ ok: true, json: async () => ({ critters: [
+    { id: 'a', img: '/critters/a.png', sound: null, voice: '/critters/cute1.mp3' },
+    { id: 'b', img: '/critters/b.png', sound: null, voice: '/critters/cute2.mp3' },
+    { id: 'mute', img: '/critters/mute.png', sound: null, voice: null },
+  ] }) });
+  const err = new Error('The operation is not supported.');
+  err.name = 'NotSupportedError';
+  global.window.Image = class { decode() { return Promise.resolve(); } };
+  global.Audio = global.window.Audio = class {
+    addEventListener() { /* no load error in this scenario */ }
+    play() { return Promise.reject(err); }
+    pause() { /* probe only */ }
+  };
+  t.after(() => {
+    delete global.window; delete global.document; delete global.fetch; delete global.Audio;
+    dom.window.close();
+  });
+  const { probeCritterVoices, applyCritterMode } = require('../../public/js/common.js');
+  applyCritterMode(); // bust any cached manifest from earlier tests
+  const r = await probeCritterVoices();
+  assert.strictEqual(r.total, 3);
+  assert.strictEqual(r.withVoice, 2, 'the FILTER counts voiced entries only (gate S2: an all-voiced fixture let a neutered filter survive)');
+  assert.strictEqual(r.sample, '/critters/cute1.mp3');
+  assert.strictEqual(r.coldManifest, true, 'the cold-manifest tell rides the report (gate S1)');
+  assert.match(r.play, /^PLAY REJECTED: NotSupportedError/, 'the error NAME reaches the report - codec vs policy vs load distinguishable');
+});
+
+test('v1.179.1 the chirp fallback RECORDS why (source locks: all three arms write the reason)', () => {
+  const tap = COMMON.slice(COMMON.indexOf('var hit = critterTapHit'), COMMON.indexOf('\n  // Reflow moves the furniture'));
+  assert.match(tap, /critterLastChirpReason = 'play rejected: ' \+ \(\(err && err\.name\) \|\| 'unknown'\) \+ ' for ' \+ hit\.sound;/, 'rejected play records the name + URL');
+  assert.match(tap, /critterLastChirpReason = 'Audio constructor threw: '/, 'sync throw recorded');
+  assert.match(tap, /critterLastChirpReason = 'placement carried no voice/, 'the no-voice arm recorded');
+});
+
 // ---- CSS locks --------------------------------------------------------------
 
 test('v1.175: every critter ARRIVES on a pure-opacity fade (no pop-in; no motion, so no reduced-motion arm needed)', () => {
