@@ -226,7 +226,7 @@ test('v1.173: the section speaks COMPANIONS (Dean: generic verbiage) and its cop
   assert.ok(section.includes('Enable sneaky companions'), 'the toggle label');
   assert.ok(section.includes('Companion pool'), 'the manager heading');
   // The em-dash rule, both spellings: the literal character AND the entities.
-  assert.ok(!section.includes('&mdash;') && !section.includes('&#8212;') && !section.includes('—'),
+  assert.ok(!section.includes('&mdash;') && !section.includes('&#8212;') && !/&#x2014;/i.test(section) && !section.includes('—'),
     'no em dashes in the feature copy - " - " only (Dean, 2026-08-23; codified in CONTRIBUTING)');
   const readme = fs.readFileSync(path.join(__dirname, '../../public/critters/README.md'), 'utf8');
   assert.ok(readme.includes('Sneaky companions'), 'the folder README follows the rename');

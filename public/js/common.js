@@ -7937,8 +7937,12 @@ function scatterCritters() {
       bounds: { w: docEl.scrollWidth, h: docEl.scrollHeight }, // never grow the page (gate W4)
     });
     critterPlacements = placements;
-    critterPlacedDocH = docEl.scrollHeight; // W4 says placements never grow the page, so this IS the placed-against height
     renderCritterPlacements(ensureCritterLayer(), placements);
+    // Measured AFTER render (gate S1): the pad-inflated wrappers can overflow
+    // the W4-checked placement rects by up to ~26px at the page bottom, and
+    // measuring with that overflow PRESENT on both sides of the comparison
+    // means only real content reflow can trip the drift branch.
+    critterPlacedDocH = docEl.scrollHeight;
     // v1.166.4 -> v1.173: the post-scatter SETTLE ladder - once at +1.5s, once
     // more at +4s, then STOP. Two things earn a re-scatter at fire time (the
     // pure critterSettleAction decides):
