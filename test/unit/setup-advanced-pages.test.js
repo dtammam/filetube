@@ -15,8 +15,11 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { JSDOM } = require('jsdom');
+
 const SETUP_HTML = fs.readFileSync(path.join(__dirname, '../../public/setup.html'), 'utf8');
 const COMMON = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
+const SETUP_JS = fs.readFileSync(path.join(__dirname, '../../public/js/setup.js'), 'utf8');
 
 const section = (key, nextMarker) => {
   const start = SETUP_HTML.indexOf(`data-collapse-key="${key}"`);
@@ -70,4 +73,36 @@ test('v1.181 the MOVES: each control lives in its NEW section and is GONE from i
     'resume-threshold-input', 'push-user-enabled-check']) {
     assert.ok(automation.includes(`id="${id}"`), id + ' stays in Automation & Storage (a settled preference, not an experiment)');
   }
+});
+
+test('v1.181 gate S2: the Voice check is wired INDEPENDENTLY of the critters toggles, and the click actually reports', async (t) => {
+  // The seat's latent-coupling find: the wiring used to live inside
+  // wireCritterModeControls behind its critter-ids early-return guard - if
+  // those ids ever moved on, the Troubleshooting button would die silently
+  // in another section. Now: its own function, its own init call, and a
+  // REAL click bind.
+  assert.match(SETUP_JS, /function wireVoiceCheck\(signal\)/, 'its own function');
+  assert.match(SETUP_JS, /wireVoiceCheck\(controller\.signal\);/, 'its own init-path call');
+  const modeControls = SETUP_JS.slice(SETUP_JS.indexOf('function wireCritterModeControls'), SETUP_JS.indexOf('\nfunction wireVoiceCheck'));
+  assert.ok(!modeControls.includes('critter-voice-check-btn'), 'no longer coupled to the critters guard');
+  const dom = new JSDOM('<!DOCTYPE html><body>'
+    + '<button id="critter-voice-check-btn">Voice check</button>'
+    + '<div id="critter-voice-check-status"></div></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  global.setActionStatus = (el, text) => { if (el && text !== null && text !== undefined) el.textContent = text; };
+  global.probeCritterVoices = () => Promise.resolve({
+    total: 3, withVoice: 3, sample: '/critters/x.mp3', builtins: false,
+    coldManifest: false, play: 'OK: playback started (/critters/x.mp3)', lastChirpReason: null,
+  });
+  t.after(() => {
+    delete global.window; delete global.document; delete global.setActionStatus; delete global.probeCritterVoices;
+    dom.window.close();
+  });
+  const { wireVoiceCheck } = require('../../public/js/setup.js');
+  wireVoiceCheck(new dom.window.AbortController().signal);
+  dom.window.document.getElementById('critter-voice-check-btn').click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const line = dom.window.document.getElementById('critter-voice-check-status').textContent;
+  assert.ok(line.includes('3 critters, 3 with a voice') && line.includes('OK: playback started'),
+    'the click runs the probe and renders the report: ' + line);
 });
