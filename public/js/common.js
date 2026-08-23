@@ -7900,6 +7900,24 @@ function renderCritterPlacements(layer, placements) {
   });
 }
 
+// v1.175 (Dean: "prevent FOUC/load-in after other elements"): pre-warm the
+// pool's images once per manifest generation - download AND decode ahead of
+// the first paint so a critter's arrival never flashes an empty box while a
+// big PNG streams in. Best-effort everywhere: no Image constructor (node), a
+// failed decode, or a 404 all degrade to the old decode-at-paint behavior.
+function warmCritterAssets(manifest) {
+  if (typeof window === 'undefined' || typeof window.Image !== 'function') return;
+  (manifest || []).forEach(function (c) {
+    if (!c || !c.img) return; // built-ins are inline svg - nothing to fetch
+    try {
+      var im = new window.Image();
+      im.decoding = 'async';
+      im.src = c.img;
+      if (typeof im.decode === 'function') im.decode().catch(function () { /* decode at paint instead */ });
+    } catch (_) { /* warming is an accelerator only */ }
+  });
+}
+
 function fetchCritterManifest() {
   if (critterManifestPromise) return critterManifestPromise;
   critterManifestPromise = fetch('/api/critters')
@@ -7915,7 +7933,14 @@ function fetchCritterManifest() {
       }).filter(function (c) { return c.id && c.img; });
       return clean.length ? clean : CRITTER_BUILTINS;
     })
-    .catch(function () { return CRITTER_BUILTINS; });
+    .catch(function () { return CRITTER_BUILTINS; })
+    .then(function (manifest) {
+      // Warming rides the CACHED promise's construction, so it runs exactly
+      // once per manifest generation by structure (applyCritterMode nulls the
+      // promise -> the next fetch warms the fresh pool).
+      warmCritterAssets(manifest);
+      return manifest;
+    });
   return critterManifestPromise;
 }
 
@@ -7972,9 +7997,15 @@ function scatterCritters() {
     var existing = document.getElementById('critter-layer');
     if (existing) existing.remove();
     critterPlacements = [];
+    unwireCritterContentNudge(); // v1.175: no observer cost while the mode is off (the v1.160 global-listener lesson)
+    // Mode off leaves NOTHING pending: a settle timer armed before the toggle
+    // would fire into a no-op scatter (harmless) but is still a live handle -
+    // the v1.166.4 discipline says cancel it, not let it dangle.
+    if (critterRetryTimer) { clearTimeout(critterRetryTimer); critterRetryTimer = null; }
     return;
   }
   wireCritterListeners();
+  wireCritterContentNudge();
   fetchCritterManifest().then(function (manifest) {
     // RE-CHECK after the await (the TOCTOU lesson): the user may have toggled
     // the mode off while the manifest fetch was in flight.
@@ -8021,6 +8052,62 @@ function scatterCritters() {
       }, delay);
     }
   });
+}
+
+// v1.175 (Dean: "prevent FOUC/load-in after other elements"): the CONTENT
+// NUDGE. The settle ladder's +1.5s/+4s timers are the FALLBACK clock; this
+// MutationObserver fast-forwards the SAME bounded decision the moment new
+// page content actually lands, so critters arrive in the same beat as the
+// cards instead of a visible 1.5s later. Discipline:
+//  - It spends the ladder's OWN budget (critterSettleChecks caps everything
+//    at two re-scatters per navigation - the nudge accelerates, never adds).
+//  - The pending fallback timer is CANCELLED before a nudged scatter (the
+//    v1.166.4 unstashed-handle lesson: never leave a stale timer live).
+//  - The critter layer's own render churn is filtered out, and the observer
+//    exists ONLY while the mode is on (wired in scatterCritters' enabled
+//    path, disconnected on the disabled path - the v1.160 lesson: a global
+//    observer/listener must not tax users who never opted in).
+var critterContentObs = null;
+var critterContentObsDoc = null; // the document the observer was wired against - a swapped document (tests) re-wires
+var critterNudgeDebounce = null;
+function wireCritterContentNudge() {
+  if (typeof MutationObserver === 'undefined') return;
+  if (critterContentObs && critterContentObsDoc === document) return;
+  unwireCritterContentNudge(); // a different document (jsdom test contexts) gets a fresh observer
+  critterContentObsDoc = document;
+  critterContentObs = new MutationObserver(function (muts) {
+    // A torn-down or swapped context (a closed jsdom window can still flush
+    // observer queues) must stand down COMPLETELY - never touch globals.
+    if (typeof document === 'undefined' || document !== critterContentObsDoc) return;
+    var layer = document.getElementById('critter-layer');
+    var foreign = false;
+    for (var i = 0; i < muts.length; i += 1) {
+      var t = muts[i].target;
+      if (!layer || !(t === layer || (layer.contains && layer.contains(t)))) { foreign = true; break; }
+    }
+    if (!foreign) return; // only OUR layer churned - never self-trigger
+    if (critterSettleChecks >= 2) return; // the settle window is spent; placed critters never re-roll
+    if (critterNudgeDebounce) clearTimeout(critterNudgeDebounce);
+    critterNudgeDebounce = setTimeout(function () {
+      critterNudgeDebounce = null;
+      if (typeof document === 'undefined' || document !== critterContentObsDoc) return; // context torn down mid-debounce
+      if (!resolveCritterConfig().enabled) return;
+      var action = critterSettleAction(critterPlacements.length, critterPlacedDocH, document.documentElement.scrollHeight);
+      if (action === 'stand-down') return;
+      if (critterRetryTimer) { clearTimeout(critterRetryTimer); critterRetryTimer = null; }
+      scatterCritters();
+    }, 150);
+  });
+  try {
+    critterContentObs.observe(document.body, { childList: true, subtree: true });
+  } catch (_) {
+    critterContentObs = null; // observing is an accelerator only; the fallback timers stand
+  }
+}
+function unwireCritterContentNudge() {
+  if (critterContentObs) { try { critterContentObs.disconnect(); } catch (_) { /* already dead */ } critterContentObs = null; }
+  critterContentObsDoc = null;
+  if (critterNudgeDebounce) { clearTimeout(critterNudgeDebounce); critterNudgeDebounce = null; }
 }
 
 // v1.173 PURE fire-time decision for the settle ladder. Empty placements
@@ -13844,6 +13931,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildCritterClip,
     buildCritterRoundMask,
     critterSettleAction,
+    warmCritterAssets,
     // v1.163.1: force text (non-emoji) presentation on the arrow glyphs.
     DDR_TEXT_PRESENTATION, ddrArrowDisplayGlyph,
     // v1.50.3: the D dark/light toggle's pure decision.

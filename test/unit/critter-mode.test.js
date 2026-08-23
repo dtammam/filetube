@@ -968,7 +968,109 @@ test('v1.172: the Back button (menu pane returns) re-runs the scatter pipeline t
   } finally { unmountMd(dom); }
 });
 
+// ---- v1.175: instant arrival (Dean: "prevent FOUC/load-in") -----------------
+
+test('v1.175 warmCritterAssets: pre-decodes every pool image once per manifest generation; builtins and failures are no-ops', async (t) => {
+  const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  const created = [];
+  let decodes = 0;
+  global.window.Image = class {
+    constructor() { created.push(this); }
+    set src(v) { this._src = v; }
+    get src() { return this._src; }
+    decode() { decodes += 1; return Promise.reject(new Error('decode fails - must be swallowed')); }
+  };
+  t.after(() => { delete global.window; delete global.document; dom.window.close(); });
+  const { warmCritterAssets } = require('../../public/js/common.js');
+  warmCritterAssets([
+    { id: 'pearl', img: '/critters/pearl.png', sound: null },
+    { id: 'builtin', img: null, svg: '<svg/>' },
+    { id: 'milo', img: '/critters/milo.png', sound: '/critters/milo.mp3' },
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 0)); // let the rejected decode settle (must not throw/unhandled)
+  assert.deepStrictEqual(created.map((i) => i.src), ['/critters/pearl.png', '/critters/milo.png'],
+    'every image entry warms; the svg builtin does not');
+  assert.strictEqual(decodes, 2, 'decode() requested per image');
+  // The ONCE-per-generation guarantee is structural: warming rides the CACHED
+  // manifest promise's construction. Source-lock the structure.
+  assert.match(COMMON, /\.catch\(function \(\) \{ return CRITTER_BUILTINS; \}\)\n {4}\.then\(function \(manifest\) \{\n[\s\S]{0,400}warmCritterAssets\(manifest\);/,
+    'warming is chained INSIDE fetchCritterManifest\'s cached promise - once per generation by construction');
+});
+
+test('v1.175 CONTENT NUDGE: critters arrive in the same beat as late content - no 1.5s wait; the ladder budget still caps everything', async (t) => {
+  // The user-facing claim end-to-end: a view whose anchors render AFTER the
+  // first scatter (fetch-then-render) gets its critters ~150ms after the
+  // content lands, NOT at the +1.5s fallback. Real scatterCritters, real
+  // observer, stubbed geometry (jsdom has no layout).
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="view-root"></div></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  global.MutationObserver = dom.window.MutationObserver;
+  global.localStorage = dom.window.localStorage;
+  localStorage.setItem('ft-critters:on', '1');
+  global.window.Image = class { decode() { return Promise.resolve(); } };
+  // No global fetch -> the manifest falls back to the BUILTINS (no network).
+  const docEl = dom.window.document.documentElement;
+  Object.defineProperty(docEl, 'scrollWidth', { value: 800, configurable: true });
+  Object.defineProperty(docEl, 'scrollHeight', { value: 2000, configurable: true });
+  const proto = dom.window.Element.prototype;
+  const origRect = proto.getBoundingClientRect;
+  proto.getBoundingClientRect = function () {
+    if (this.classList && this.classList.contains('video-card')) {
+      return { left: 100, top: 300, width: 300, height: 200, right: 400, bottom: 500 };
+    }
+    return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+  };
+  t.after(() => {
+    proto.getBoundingClientRect = origRect;
+    localStorage.clear();
+    // Disable + rescatter disconnects the observer so no handle outlives the test.
+    const { scatterCritters } = require('../../public/js/common.js');
+    localStorage.setItem('ft-critters:on', '0');
+    scatterCritters();
+    delete global.window; delete global.document; delete global.MutationObserver; delete global.localStorage;
+    dom.window.close();
+  });
+  const { scatterCritters } = require('../../public/js/common.js');
+  scatterCritters(); // first pass: NO anchors in the DOM yet -> empty
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 0, 'nothing to anchor to yet');
+  // The content lands (fetch-then-render resolves) ...
+  const card = dom.window.document.createElement('div');
+  card.className = 'video-card';
+  dom.window.document.getElementById('view-root').appendChild(card);
+  // ... and the nudge places critters ~150ms later - far inside the old 1.5s.
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  assert.ok(dom.window.document.querySelectorAll('.critter').length > 0,
+    'critters arrived with the content (the nudge), not at the +1.5s fallback');
+});
+
+test('v1.175 nudge discipline (source locks): shares the ladder budget, cancels the stale timer, filters its own layer, unwires when off', () => {
+  const nudge = COMMON.slice(COMMON.indexOf('function wireCritterContentNudge'), COMMON.indexOf('\n// v1.173 PURE fire-time decision'));
+  assert.match(nudge, /if \(critterSettleChecks >= 2\) return;/,
+    'the nudge SPENDS the settle ladder\'s own bounded budget - it accelerates, never adds re-rolls');
+  assert.match(nudge, /if \(critterRetryTimer\) \{ clearTimeout\(critterRetryTimer\); critterRetryTimer = null; \}/,
+    'a nudged scatter CANCELS the pending fallback timer first (the v1.166.4 unstashed-handle lesson)');
+  assert.match(nudge, /if \(!foreign\) return;/,
+    'the critter layer\'s own render churn never self-triggers');
+  assert.match(nudge, /var action = critterSettleAction\(critterPlacements\.length, critterPlacedDocH, document\.documentElement\.scrollHeight\);/,
+    'the nudge fires the SAME pure decision as the timers - stand-down still means never move');
+  const scatter = COMMON.slice(COMMON.indexOf('function scatterCritters()'), COMMON.indexOf('\nfunction critterSettleAction'));
+  const disabledBranch = scatter.slice(0, scatter.indexOf('wireCritterListeners()'));
+  assert.match(disabledBranch, /unwireCritterContentNudge\(\);/,
+    'mode off disconnects the observer (the v1.160 lesson: no global observer tax for non-opted users)');
+  assert.match(scatter, /wireCritterContentNudge\(\);/, 'mode on wires it');
+});
+
 // ---- CSS locks --------------------------------------------------------------
+
+test('v1.175: every critter ARRIVES on a pure-opacity fade (no pop-in; no motion, so no reduced-motion arm needed)', () => {
+  assert.match(CSS, /\.critter\s*\{[^}]*animation:\s*critter-arrive/, '.critter carries the arrival animation');
+  const kf = /@keyframes critter-arrive\s*\{([\s\S]*?)\n\}/.exec(CSS);
+  assert.ok(kf, 'the keyframes exist');
+  assert.match(kf[1], /opacity/, 'it fades');
+  assert.doesNotMatch(kf[1], /transform|margin|left:|top:|width|height/, 'OPACITY ONLY - zero motion, zero layout shift');
+});
 
 test('tap reactions: a pool of tiny transform-only animations, each defined in CSS and all reduced-motion-safe', () => {
   const { CRITTER_REACTIONS } = require('../../public/js/common.js');

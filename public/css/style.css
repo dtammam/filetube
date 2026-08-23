@@ -10250,6 +10250,15 @@ html[data-modern="on"] .video-uploader {
 .critter {
   position: absolute;
   color: var(--text-secondary);
+  /* v1.175 (Dean: no FOUC-style pop-in): every (re)arrival fades in - a pure
+     OPACITY ramp (no motion, so no reduced-motion arm needed) that also
+     softens the settle ladder's re-tuck on pages that reflow while loading. */
+  animation: critter-arrive var(--dur-slow) ease-out both;
+}
+
+@keyframes critter-arrive {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* v1.171: the critter pool manager (Settings -> Sneaky critters, admin-only).
