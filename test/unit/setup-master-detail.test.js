@@ -50,10 +50,10 @@ test('Settings builds the expected visible menu (admin sections hidden for a non
     const keys = Array.from(doc.querySelectorAll('.md-nav .md-row')).map((r) => r.getAttribute('data-md-target'));
     assert.deepStrictEqual(keys, [
       'appearance', 'critters', 'video-folders', 'book-folders', 'music-folders', 'podcasts-place',
-      'automation-storage', 'trash', 'feedhidden', 'account',
-    ], 'the 10 non-hidden sections in order (v1.171: + critters); downloads/users/backup (hidden admin) excluded');
+      'automation-storage', 'trash', 'feedhidden', 'account', 'troubleshooting', 'experimental',
+    ], 'the 12 non-hidden sections in order (v1.181: + Troubleshooting/Experimental at the BOTTOM, per Dean); hidden admin excluded');
     const groups = Array.from(doc.querySelectorAll('.md-nav .md-group-title')).map((t) => t.textContent);
-    assert.deepStrictEqual(groups, ['Library', 'System', 'Account']);
+    assert.deepStrictEqual(groups, ['Library', 'System', 'Account', 'Advanced'], 'the new Advanced group sits LAST');
   } finally { unload(dom); }
 });
 
