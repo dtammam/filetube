@@ -80,6 +80,42 @@
 
 ## Shipped
 
+### v1.178.0 - anchor adoption: a rebuilt view keeps its critters (the flash dies) (Dean) (2026-08-23)
+
+Dean's residual after v1.176: critters still "flash and find a second
+position after the first time." Diagnosis verified in the view code:
+views rebuild content wholesale on data arrival (the related rail renders
+skeleton cards via innerHTML, then REPLACES them with real cards; same
+pattern on the feed and comments). The anchor ELEMENT a critter chose is
+replaced by an identical twin - v1.176's re-glue saw a disconnected
+element, dropped the orphan, and the empty settle check full-scattered to
+fresh random spots.
+
+- ADOPTION: the collector records which pool selector matched each
+  anchor; when re-glue meets a disconnected anchor it re-finds the
+  replacement twin (same selector, same size class 0.5x-2x, nearest to
+  the old rect within 240px, never fixed chrome, never an element another
+  placement owns) and the critter re-attaches at its same edge and pose,
+  riding the twin's delta. No twin: the quiet drop stands. The money
+  test: an innerHTML rebuild leaves every critter at the byte-identical
+  position.
+
+Slim gate (adversarial): APPROVE in two rounds. Its WARNING was our
+recurring vacuous-claim class: a test TITLED "never double-adopted" never
+constructed a double-adopt attempt, and the guard it named is
+load-bearing (two orphans in range of one twin would visibly STACK two
+critters on one anchor without it). Closed with the seat's own repro
+shapes: one-adoption-only and the claimed-seed (an orphan cannot poach a
+survivor's anchor - the survivor's position asserted byte-exact). My own
+pre-commit mutant sweep also caught the size-gate fixture being
+distance-subsumed (survivor-geometry lesson re-applied on the spot).
+Disclosed residuals -> tech-debt #168: three cosmetic refusal guards
+mutation-unbound (ship-safe per the seat), and the 240px adoption radius
+is a constant heuristic an extreme whole-page reflow could exceed.
+Dual-Node 7500/7500 clean first runs. Device pass PENDING (Dean: the
+watch/audio pages that flashed - critters should now hold their exact
+spot through the content load).
+
 ### v1.177.0 - the rounded shave: cuts follow the anchor's painted corners (Dean) (2026-08-23)
 
 Dean's Modern-2021 screenshots: square critter shoulders poking past the

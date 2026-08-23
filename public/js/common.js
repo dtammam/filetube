@@ -7687,6 +7687,7 @@ function planCritterScatter(opts) {
       hue: Math.round(rng() * 360),
       anchor: { x: a.x, y: a.y, w: a.w, h: a.h },
       anchorEl: a.el || null, // v1.176: the live element, for the re-glue pass (null in pure tests)
+      anchorSel: a.sel || null, // v1.178: the matched pool selector - lets re-glue ADOPT a rebuilt twin
       radii: a.radii || null, // v1.177: the anchor's painted corner radii - the shave mask follows them
     });
   }
@@ -8034,9 +8035,16 @@ function collectCritterRects(selectors, requireSize) {
     var r = el.getBoundingClientRect();
     if (requireSize && (r.width < 1 || r.height < 1)) continue; // hidden
     var weight = 1;
+    var sel = null;
     if (requireSize && el.matches) {
       for (var s = 0; s < CRITTER_PRIORITY_SELECTORS.length; s += 1) {
         if (el.matches(CRITTER_PRIORITY_SELECTORS[s])) { weight = CRITTER_PRIORITY_WEIGHT; break; }
+      }
+      // v1.178: record WHICH pool selector matched - when a view rebuilds its
+      // content (innerHTML), the re-glue pass re-finds the anchor's TWIN by
+      // this selector instead of dropping the critter.
+      for (var q = 0; q < selectors.length; q += 1) {
+        try { if (el.matches(selectors[q])) { sel = selectors[q]; break; } } catch (_) { /* bad selector: no adoption */ }
       }
     }
     // v1.170: TRUE-CIRCLE detection (the channel-avatar disc). Only a square
@@ -8071,7 +8079,7 @@ function collectCritterRects(selectors, requireSize) {
     }
     // v1.176: the ELEMENT rides along so a settle correction can RE-GLUE a
     // placed critter to its own moved furniture instead of re-rolling.
-    rects.push({ x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height, weight: weight, round: round, radii: radii, el: el });
+    rects.push({ x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height, weight: weight, round: round, radii: radii, el: el, sel: sel });
   }
   return rects;
 }
@@ -8160,16 +8168,63 @@ function armCritterSettleCheck() {
 // violates an exclusion/bounds is DROPPED, never re-rolled elsewhere. The
 // rebuild renders with still=true so a re-glue never replays the arrival
 // fade (an unmoved critter must be visually inert).
+// v1.178 (Dean: critters still "flash and find a second position"): views
+// rebuild their content wholesale (relatedContainer.innerHTML = ..., the
+// feed grid, comments) - the anchor ELEMENT a critter chose gets replaced by
+// an identical TWIN, isConnected goes false, the critter was dropped, and
+// the empty settle check re-scattered to fresh random spots. ADOPTION closes
+// it: re-find the replacement by the anchor's own pool selector - same size
+// class (0.5x-2x), geometrically nearest to the old rect, within 240px (past
+// half a phone screen it is different furniture), never an element another
+// placement already sits on, never fixed chrome. Found -> the critter
+// re-attaches at its same edge/pose; not found -> the old drop stands.
+function refindCritterAnchor(p, claimed) {
+  if (!p.anchorSel) return null;
+  var cands;
+  try { cands = document.querySelectorAll(p.anchorSel); } catch (_) { return null; }
+  var best = null;
+  var bestDist = 240;
+  var cx = p.anchor.x + p.anchor.w / 2;
+  var cy = p.anchor.y + p.anchor.h / 2;
+  for (var i = 0; i < cands.length; i += 1) {
+    var el = cands[i];
+    if (claimed.indexOf(el) !== -1) continue; // one critter per anchor, still
+    if (critterInsideFixed(el)) continue;
+    var r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) continue;
+    var rw = r.width / p.anchor.w;
+    var rh = r.height / p.anchor.h;
+    if (rw < 0.5 || rw > 2 || rh < 0.5 || rh > 2) continue; // a different-sized cousin is not the twin
+    var dx = (r.left + window.scrollX + r.width / 2) - cx;
+    var dy = (r.top + window.scrollY + r.height / 2) - cy;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < bestDist) { bestDist = dist; best = el; }
+  }
+  return best;
+}
+
 function reglueCritterPlacements() {
   if (typeof document === 'undefined' || !document.body) return;
   var exclusions = collectCritterRects(CRITTER_EXCLUSION_SELECTORS, false);
   var docEl = document.documentElement;
   var bounds = { w: docEl.scrollWidth, h: docEl.scrollHeight };
   var survivors = [];
+  // Elements already owned by a still-connected placement may not be adopted
+  // by an orphan (the no-duplicates rule survives adoption).
+  var claimed = [];
+  for (var c = 0; c < critterPlacements.length; c += 1) {
+    var owned = critterPlacements[c].anchorEl;
+    if (owned && owned.isConnected) claimed.push(owned);
+  }
   for (var i = 0; i < critterPlacements.length; i += 1) {
     var p = critterPlacements[i];
     var el = p.anchorEl;
-    if (!el || !el.isConnected) continue; // the furniture left the page
+    if (!el || !el.isConnected) {
+      el = refindCritterAnchor(p, claimed); // v1.178: the rebuilt TWIN, if any
+      if (!el) continue; // the furniture truly left the page
+      p.anchorEl = el;
+      claimed.push(el);
+    }
     var r = el.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) continue; // hidden now
     var a2 = { x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height };

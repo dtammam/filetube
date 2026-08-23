@@ -2086,5 +2086,11 @@
     "date": "2026-08-23",
     "title": "Shaved to the corner",
     "intent": "In the modern look, buttons and artwork have rounded corners - but a critter hiding behind them was cut along a square edge, so little squared-off shoulders could poke past the curve. Now the hidden part of a critter follows the exact rounded shape of whatever it's hiding behind, so every edge is clean and true to the button."
+  },
+  {
+    "version": "1.178.0",
+    "date": "2026-08-23",
+    "title": "No more second positions",
+    "intent": "The last flash is gone. When a page finished loading, it would quietly rebuild its buttons and cards behind the scenes - and critters treated the rebuilt copy as brand-new furniture, vanishing and reappearing somewhere else. Now a critter recognizes the rebuilt version of its hiding spot and stays exactly where it was, so what you see on first glance is what stays."
   }
 ]
