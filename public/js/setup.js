@@ -649,7 +649,7 @@ function wireCritterManager(signal) {
     if (!pool.length) {
       const empty = document.createElement('p');
       empty.className = 'critter-pool-empty';
-      empty.textContent = 'No custom critters yet - the built-in figurines are on duty.';
+      empty.textContent = 'No custom companions yet - the built-in figurines are on duty.';
       grid.appendChild(empty);
       return;
     }
@@ -765,7 +765,7 @@ function wireCritterManager(signal) {
   delAllBtn.addEventListener('click', async () => {
     if (!delAllArmed) {
       delAllArmed = true;
-      delAllBtn.textContent = 'Really delete all ' + pool.length + (pool.length === 1 ? ' critter?' : ' critters?');
+      delAllBtn.textContent = 'Really delete all ' + pool.length + (pool.length === 1 ? ' companion?' : ' companions?');
       delAllBtn.classList.add('critter-delete-armed');
       return;
     }
