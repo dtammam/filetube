@@ -2068,5 +2068,11 @@
     "date": "2026-08-23",
     "title": "Critters, cut clean",
     "intent": "The feature settles on its true name - just Critters - and gets its last visual rough edge filed off: a critter peeking from behind a button could sometimes show a hard slice floating in mid-air where the button doesn't even reach. Now the hidden part of every critter matches exactly what its hiding spot really covers, so every edge you see is the edge of something real."
+  },
+  {
+    "version": "1.175.0",
+    "date": "2026-08-23",
+    "title": "Critters arrive with the page",
+    "intent": "Critters no longer trail in after everything else has loaded. They now appear in the same moment the page's content does, their images are prepared ahead of time so the first peek is always crisp, and every arrival fades in gently instead of popping into place."
   }
 ]
