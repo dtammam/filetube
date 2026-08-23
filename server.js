@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib'); // v1.171: crc32 for the dependency-free critter zip
 const crypto = require('crypto');
 const { pipeline } = require('stream');
 const { exec, execFile, spawn } = require('child_process');
@@ -6045,7 +6046,9 @@ function publicUser(u) {
 
 function requireAdmin(req, res) {
   if (!req.user || req.user.role !== 'admin') {
-    res.status(403).json({ error: 'Only an admin can manage users.' });
+    // v1.171 (QA S3): domain-neutral copy - this helper gates users, the logo,
+    // AND the critter pool; "can manage users" lied on two of the three.
+    res.status(403).json({ error: 'Admin access required.' });
     return false;
   }
   return true;
@@ -15244,8 +15247,16 @@ function buildCritterListing(fileNames) {
   return out;
 }
 
+// v1.171 (QA S1/adversarial S2 closure): one resolver for the critter folder.
+// CRITTERS_DIR is a TEST seam ONLY (the destructive integration suite seeds a
+// temp folder instead of the repo's real one) - NOT a deploy override: the
+// static handler serves /critters/<name> from public/critters/ regardless, so
+// pointing the API elsewhere would 404 every thumbnail (QA delta finding).
+// The default is the compose-mount lockstep path (see docker-compose.yml).
+const crittersDir = () => process.env.CRITTERS_DIR || path.join(__dirname, 'public', 'critters');
+
 app.get('/api/critters', (req, res) => {
-  const dir = path.join(__dirname, 'public', 'critters');
+  const dir = crittersDir();
   let entries = [];
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
@@ -15255,6 +15266,260 @@ app.get('/api/critters', (req, res) => {
     return res.json({ critters: [] });
   }
   res.json({ critters: buildCritterListing(entries) });
+});
+
+// ---- v1.171 (Dean): critter pool MANAGEMENT (web UI) -----------------------
+// The folder stays the manifest (v1.166): these routes are WRITERS to
+// public/critters/, never a registry - folder drop-in keeps working and the
+// Docker compose bind makes web uploads land on the host. All management is
+// ADMIN-ONLY (Dean's intake ruling; the logo-upload posture - the pool is
+// server-wide). Upload mirrors the logo route exactly: route-scoped
+// express.raw (this app deliberately has no multipart dependency),
+// Content-Type allowlist AND magic bytes, size caps, tmp+rename atomicity.
+// SVG is deliberately NOT uploadable (a same-origin stored-XSS vector when
+// fetched directly); Dean's own folder drop-ins may still use it.
+
+const CRITTER_UPLOAD_IMAGE_TYPES = {
+  'image/png': (buf) => buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47,
+  'image/jpeg': (buf) => buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff,
+  'image/webp': (buf) => buf.length > 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP',
+  'image/gif': (buf) => buf.length > 6 && buf.toString('ascii', 0, 4) === 'GIF8',
+};
+const CRITTER_UPLOAD_SOUND_TYPES = {
+  'audio/mpeg': (buf) => buf.length > 3 && (buf.toString('ascii', 0, 3) === 'ID3' || (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0)),
+  'audio/wav': (buf) => buf.length > 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WAVE',
+  'audio/x-wav': (buf) => CRITTER_UPLOAD_SOUND_TYPES['audio/wav'](buf),
+  'audio/mp4': (buf) => buf.length > 12 && buf.toString('ascii', 4, 8) === 'ftyp',
+  'audio/x-m4a': (buf) => buf.length > 12 && buf.toString('ascii', 4, 8) === 'ftyp',
+  'audio/ogg': (buf) => buf.length > 4 && buf.toString('ascii', 0, 4) === 'OggS',
+};
+// The extension a given upload mime may carry - the name AND the bytes must
+// agree with the declared type, or the upload is refused.
+const CRITTER_UPLOAD_EXT_FOR_MIME = {
+  'image/png': ['.png'], 'image/jpeg': ['.jpg', '.jpeg'], 'image/webp': ['.webp'], 'image/gif': ['.gif'],
+  'audio/mpeg': ['.mp3'], 'audio/wav': ['.wav'], 'audio/x-wav': ['.wav'],
+  'audio/mp4': ['.m4a'], 'audio/x-m4a': ['.m4a'], 'audio/ogg': ['.ogg'],
+};
+const CRITTER_UPLOAD_MAX_BYTES = 25 * 1024 * 1024; // the express.raw ceiling (images)
+const CRITTER_SOUND_MAX_BYTES = 10 * 1024 * 1024; // sounds are tap chirps - tighter
+
+// PURE filename gate for uploads. Returns the accepted name or null. The
+// accepted name is later joined under public/critters/ ONLY after this, plus
+// a resolved-dirname belt at the write site.
+function sanitizeCritterUploadName(name, mime) {
+  if (typeof name !== 'string') return null;
+  const n = name.trim();
+  if (!n || n.length > 80) return null;
+  if (n.includes('/') || n.includes('\\')) return null;
+  for (let i = 0; i < n.length; i += 1) {
+    const cc = n.charCodeAt(i);
+    if (cc < 0x20 || cc === 0x7f) return null; // NUL + control bytes
+  }
+  if (n.startsWith('.')) return null; // dotfiles, '.', '..'
+  if (path.basename(n) !== n) return null; // belt: basename equality
+  const allowedExts = CRITTER_UPLOAD_EXT_FOR_MIME[mime];
+  if (!allowedExts) return null;
+  const ext = path.extname(n).toLowerCase();
+  if (!allowedExts.includes(ext)) return null;
+  if (!path.basename(n, path.extname(n))) return null; // an extension alone is not a name
+  return n;
+}
+
+// PURE dependency-free STORE-only ZIP (the "no new server runtime deps" rule:
+// Node has no zip container built in, but a stored zip is 30/46/22-byte
+// headers + zlib.crc32, which node >=22.2 ships). entries: [{name, data}].
+// Fixed DOS timestamp 1980-01-01 (deterministic output; zips cannot encode
+// earlier). Flag bit 11 marks names as UTF-8. LIMIT (QA S5): the classic
+// (non-Zip64) format caps at 65535 entries - writeUInt16LE THROWS past that,
+// so a preposterous pool 500s cleanly rather than emitting a corrupt archive.
+function buildStoreZip(entries) {
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+  for (const e of entries) {
+    const nameBuf = Buffer.from(String(e.name), 'utf8');
+    const data = Buffer.isBuffer(e.data) ? e.data : Buffer.from(e.data || '');
+    const crc = zlib.crc32(data) >>> 0;
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0); // local file header signature
+    local.writeUInt16LE(20, 4);         // version needed: 2.0
+    local.writeUInt16LE(0x0800, 6);     // flags: UTF-8 names
+    local.writeUInt16LE(0, 8);          // method: STORE
+    local.writeUInt16LE(0, 10);         // mod time 00:00
+    local.writeUInt16LE(0x21, 12);      // mod date 1980-01-01
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18); // compressed == uncompressed (store)
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    local.writeUInt16LE(0, 28);         // extra field length
+    chunks.push(local, nameBuf, data);
+    central.push({ nameBuf, crc, size: data.length, offset });
+    offset += 30 + nameBuf.length + data.length;
+  }
+  const cdStart = offset;
+  for (const c of central) {
+    const hdr = Buffer.alloc(46);
+    hdr.writeUInt32LE(0x02014b50, 0);   // central directory signature
+    hdr.writeUInt16LE(20, 4);           // version made by
+    hdr.writeUInt16LE(20, 6);           // version needed
+    hdr.writeUInt16LE(0x0800, 8);       // flags: UTF-8 names
+    hdr.writeUInt16LE(0, 10);           // method: STORE
+    hdr.writeUInt16LE(0, 12);           // mod time
+    hdr.writeUInt16LE(0x21, 14);        // mod date
+    hdr.writeUInt32LE(c.crc, 16);
+    hdr.writeUInt32LE(c.size, 20);
+    hdr.writeUInt32LE(c.size, 24);
+    hdr.writeUInt16LE(c.nameBuf.length, 28);
+    // 30 extra / 32 comment / 34 disk / 36 internal attrs: all zero
+    hdr.writeUInt32LE(0, 38);           // external attrs
+    hdr.writeUInt32LE(c.offset, 42);    // local header offset
+    chunks.push(hdr, c.nameBuf);
+    offset += 46 + c.nameBuf.length;
+  }
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);    // end of central directory signature
+  eocd.writeUInt16LE(central.length, 8);
+  eocd.writeUInt16LE(central.length, 10);
+  eocd.writeUInt32LE(offset - cdStart, 12); // central directory size
+  eocd.writeUInt32LE(cdStart, 16);          // central directory offset
+  chunks.push(eocd);
+  return Buffer.concat(chunks);
+}
+
+// Directory entries the manager owns: REGULAR files with a critter image or
+// sound extension. README.md, subfolders, symlinks, and stray files are never
+// touched by delete-all/archive, and delete-item can never match them.
+function listCritterFiles() {
+  return fs.readdirSync(crittersDir(), { withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e) => e.name)
+    .filter((n) => {
+      const ext = path.extname(n).toLowerCase();
+      return CRITTER_IMAGE_EXTS.has(ext) || CRITTER_SOUND_EXTS.has(ext);
+    });
+}
+
+app.post(
+  '/api/critters/upload',
+  // NOTE (QA S6, disclosed): express.raw buffers up to 25 MB BEFORE the admin
+  // check answers - an authenticated member can cost that buffering per
+  // request. Faithful mirror of the logo route's posture (1 MB there);
+  // authenticated-only, accepted.
+  express.raw({
+    type: Object.keys(CRITTER_UPLOAD_EXT_FOR_MIME),
+    limit: CRITTER_UPLOAD_MAX_BYTES,
+  }),
+  (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const mime = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    const validator = CRITTER_UPLOAD_IMAGE_TYPES[mime] || CRITTER_UPLOAD_SOUND_TYPES[mime];
+    if (!validator) {
+      return res.status(400).json({ error: 'Unsupported type. Images: PNG, JPEG, WebP, GIF. Sounds: MP3, WAV, M4A, OGG.' });
+    }
+    const name = sanitizeCritterUploadName(req.query.name, mime);
+    if (!name) {
+      return res.status(400).json({ error: 'Bad file name (plain names only, extension matching the file type).' });
+    }
+    const bytes = req.body;
+    if (!Buffer.isBuffer(bytes) || bytes.length === 0) {
+      return res.status(400).json({ error: 'Empty upload' });
+    }
+    if (CRITTER_UPLOAD_SOUND_TYPES[mime] && bytes.length > CRITTER_SOUND_MAX_BYTES) {
+      return res.status(413).json({ error: 'Sound too large (max 10 MB).' });
+    }
+    if (!validator(bytes)) {
+      return res.status(400).json({ error: 'File content does not match its declared type' });
+    }
+    const dir = crittersDir();
+    const target = path.join(dir, name);
+    if (path.dirname(target) !== dir) {
+      // Unreachable after sanitize; belt per the logo route's posture.
+      return res.status(400).json({ error: 'Bad file name' });
+    }
+    // tmp+rename (atomic; a mid-upload scatter never sees a half-written file -
+    // the .tmp suffix is outside both extension sets, invisible to the listing).
+    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+    try {
+      fs.mkdirSync(dir, { recursive: true }); // fresh install: the folder may not exist yet
+      fs.writeFileSync(tmp, bytes);
+      fs.renameSync(tmp, target);
+    } catch (err) {
+      try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* best-effort */ }
+      console.error('Error saving critter upload:', err);
+      return res.status(500).json({ error: `Could not save file: ${err.message}` });
+    }
+    return res.json({ ok: true, name });
+  },
+  (err, req, res, next) => {
+    if (err && (err.type === 'entity.too.large' || err.status === 413)) {
+      return res.status(413).json({ error: 'File too large (images max 25 MB, sounds max 10 MB).' });
+    }
+    return next(err);
+  },
+);
+
+app.delete('/api/critters/item', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const id = typeof req.query.id === 'string' ? req.query.id : '';
+  if (!id) return res.status(400).json({ error: 'Missing id' });
+  let names = [];
+  try { names = listCritterFiles(); } catch (_) {
+    return res.status(404).json({ error: 'No critters folder' });
+  }
+  // Resolve against ACTUAL directory entries with the listing's own basename
+  // rule (raw extname strip) - the caller's string is never joined into a
+  // path; only matched real entries are. The image and its paired sound go
+  // together (they are one critter).
+  const matches = names.filter((n) => path.basename(n, path.extname(n)) === id);
+  if (!matches.length) return res.status(404).json({ error: 'No such critter' });
+  const deleted = [];
+  for (const n of matches) {
+    try {
+      fs.unlinkSync(path.join(crittersDir(), n));
+      deleted.push(n);
+    } catch (err) {
+      console.error('Error deleting critter file:', err);
+      return res.status(500).json({ error: `Could not delete ${n}: ${err.message}`, deleted });
+    }
+  }
+  return res.json({ ok: true, deleted });
+});
+
+app.delete('/api/critters/all', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  let names = [];
+  try { names = listCritterFiles(); } catch (_) {
+    return res.json({ ok: true, deleted: 0 }); // no folder = nothing to delete
+  }
+  let deleted = 0;
+  for (const n of names) {
+    try {
+      fs.unlinkSync(path.join(crittersDir(), n));
+      deleted += 1;
+    } catch (err) {
+      console.error('Error deleting critter file:', err);
+      return res.status(500).json({ error: `Could not delete ${n}: ${err.message}`, deleted });
+    }
+  }
+  return res.json({ ok: true, deleted });
+});
+
+app.get('/api/critters/archive', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  let names = [];
+  try { names = listCritterFiles(); } catch (_) { names = []; }
+  const entries = [];
+  for (const n of names.sort()) {
+    try { entries.push({ name: n, data: fs.readFileSync(path.join(crittersDir(), n)) }); }
+    catch (err) { console.error('Error reading critter file for archive:', err); }
+  }
+  // The pool is a handful of figurine images - whole-buffer assembly is fine
+  // (a 16-critter obscene pool of 5 MB PNGs is ~80 MB worst case, one-shot,
+  // admin-only; not a streaming surface).
+  const zip = buildStoreZip(entries);
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', 'attachment; filename="critters.zip"');
+  return res.send(zip);
 });
 
 app.get('/api/stats', (req, res) => {
@@ -17098,6 +17363,10 @@ module.exports = {
   transcodedPath,
   // v1.166: the pure critter-folder -> manifest mapping (Sneaky critter mode).
   buildCritterListing,
+  sanitizeCritterUploadName,
+  buildStoreZip,
+  CRITTER_UPLOAD_IMAGE_TYPES,
+  CRITTER_UPLOAD_SOUND_TYPES,
   // 2026-07-30 hardening: exported so the capture harness's request policy
   // can assert its allowlist stays a subset of this one (twin contracts),
   // and so the audit middleware's close-path is provable with a deferred

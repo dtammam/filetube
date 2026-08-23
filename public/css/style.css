@@ -10252,6 +10252,53 @@ html[data-modern="on"] .video-uploader {
   color: var(--text-secondary);
 }
 
+/* v1.171: the critter pool manager (Settings -> Sneaky critters, admin-only).
+   A compact grid of the uploaded pool: thumbnail, name (+ a note glyph when a
+   tap sound is paired), and a two-tap delete per item. */
+.critter-pool-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-5);
+  margin: var(--space-6) 0;
+}
+
+.critter-pool-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background-color: var(--thumbnail-bg);
+}
+
+.critter-pool-item img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.critter-pool-name {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.critter-pool-empty {
+  color: var(--text-secondary);
+}
+
+/* The armed half of the two-tap delete (per-item AND delete-all). */
+.critter-delete-armed {
+  background-color: var(--yt-red);
+  color: var(--on-overlay);
+  border-color: var(--yt-red);
+}
+
 /* v1.170 (Dean's Bernard screenshot): behind a TRUE-CIRCLE anchor (the channel
    avatar disc) the rect clip cuts straight hard edges where the avatar's square
    corners cover nothing. The renderer instead sets --critter-mask to a

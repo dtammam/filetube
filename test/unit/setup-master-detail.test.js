@@ -49,9 +49,9 @@ test('Settings builds the expected visible menu (admin sections hidden for a non
     wireMasterDetail('setup', doc, signal);
     const keys = Array.from(doc.querySelectorAll('.md-nav .md-row')).map((r) => r.getAttribute('data-md-target'));
     assert.deepStrictEqual(keys, [
-      'appearance', 'video-folders', 'book-folders', 'music-folders', 'podcasts-place',
+      'appearance', 'critters', 'video-folders', 'book-folders', 'music-folders', 'podcasts-place',
       'automation-storage', 'trash', 'feedhidden', 'account',
-    ], 'the 9 non-hidden sections in order; downloads/users/backup (hidden admin) excluded');
+    ], 'the 10 non-hidden sections in order (v1.171: + critters); downloads/users/backup (hidden admin) excluded');
     const groups = Array.from(doc.querySelectorAll('.md-nav .md-group-title')).map((t) => t.textContent);
     assert.deepStrictEqual(groups, ['Library', 'System', 'Account']);
   } finally { unload(dom); }

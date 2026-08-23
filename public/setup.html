@@ -166,28 +166,9 @@
           <input type="checkbox" id="hide-stars-check" />
           Hide star ratings
         </label>
-        <!-- v1.166 (Dean): Sneaky critter mode. Per-DEVICE (localStorage), the
-             hide-stars posture: common.js owns the behavior (applyCritterMode);
-             this page just reflects and fires it. The critter art lives in
-             public/critters/ (the folder IS the manifest - see its README). -->
-        <h3 class="setup-subhead">Sneaky critter mode</h3>
-        <p>Completely optional and purely for fun: adorable little critters peek
-           out from behind cards and menus around the app &mdash; never over the
-           video or audio player. Tap one for a little noise. Saved on this
-           device. Drop your own transparent images into the
-           <code>public/critters</code> folder and they join in automatically.</p>
-        <label class="setup-check-label">
-          <input type="checkbox" id="critter-mode-check" />
-          Enable sneaky critter mode
-        </label>
-        <label class="setup-check-label" id="critter-density-label">
-          How many:
-          <select id="critter-density-select">
-            <option value="sparse">Sparse (an odd one)</option>
-            <option value="normal">Normal (a tasteful smattering)</option>
-            <option value="obscene">Obscene (a little extreme)</option>
-          </select>
-        </label>
+        <!-- v1.171: the Sneaky critter controls MOVED to their own section
+             below (Dean's ruling: sub-page via the master-detail) - every
+             control is wired by id from setup.js, never by document order. -->
         <!-- v1.67 (Dean): per-corner card controls. Three pickers rendered
              by setup.js renderCardCornerEditor; per-user SERVER-persisted
              (ruling C1), one POST /api/me/settings key per change.
@@ -241,6 +222,55 @@
           </div>
         </div>
         <div id="logo-status" class="action-status" style="margin-top:6px;" aria-live="polite"></div>
+      </details>
+
+      <!-- v1.171 (Dean): Sneaky critters get their OWN section (a sub-page on
+           mobile via the master-detail). The mode toggle + density are
+           per-DEVICE (localStorage; moved verbatim from Appearance, ids
+           unchanged - wireCritterModeControls is untouched). The MANAGER
+           below them is ADMIN-ONLY (revealed by setup.js from the account
+           role; the server enforces every management route regardless) and
+           writes the pool itself: the folder stays the manifest (v1.166),
+           this page is just a writer to public/critters/. -->
+      <details class="setup-box sub-collapsible" data-collapse-key="critters" data-md-icon="paw" open>
+        <summary>Sneaky critters</summary>
+        <p>Completely optional and purely for fun: adorable little critters peek
+           out from behind cards and menus around the app &mdash; never over the
+           video or audio player. Tap one for a little noise. Saved on this
+           device. Drop your own transparent images into the
+           <code>public/critters</code> folder and they join in automatically.</p>
+        <label class="setup-check-label">
+          <input type="checkbox" id="critter-mode-check" />
+          Enable sneaky critter mode
+        </label>
+        <label class="setup-check-label" id="critter-density-label">
+          How many:
+          <select id="critter-density-select">
+            <option value="sparse">Sparse (an odd one)</option>
+            <option value="normal">Normal (a tasteful smattering)</option>
+            <option value="obscene">Obscene (a little extreme)</option>
+          </select>
+        </label>
+        <div id="critter-manager" hidden>
+          <h3 class="setup-subhead">Critter pool</h3>
+          <p>The pool is server-wide &mdash; everyone's critters come from here.
+             Upload transparent images (PNG, JPEG, WebP, GIF); a sound with the
+             same name (<code>pearl.png</code> + <code>pearl.mp3</code>) becomes
+             that critter's tap voice. A sound uploaded before its image waits
+             invisibly until the matching image arrives (upload the image to
+             see it here). Deleting is permanent &mdash; Download all first if
+             you want a backup.</p>
+          <div id="critter-pool-grid" class="critter-pool-grid" aria-live="polite"><!-- rendered by JS --></div>
+          <input type="file" id="critter-image-input" accept="image/png,image/jpeg,image/webp,image/gif" multiple style="display:none;">
+          <input type="file" id="critter-sound-input" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/ogg,.mp3,.wav,.m4a,.ogg" multiple style="display:none;">
+          <div class="action-bar">
+            <button type="button" class="btn btn-sm" id="critter-upload-images-btn">Upload images&hellip;</button>
+            <button type="button" class="btn btn-sm" id="critter-upload-sounds-btn">Upload sounds&hellip;</button>
+            <a class="btn btn-sm" id="critter-download-all-link" href="/api/critters/archive">Download all</a>
+            <button type="button" class="btn btn-sm" id="critter-delete-all-btn">Delete all&hellip;</button>
+          </div>
+          <div id="critter-manager-status" class="action-status" style="margin-top:6px;" aria-live="polite"></div>
+        </div>
       </details>
 
       <details class="setup-box sub-collapsible" data-collapse-key="video-folders" data-md-icon="video" data-md-group="Library" data-md-label="Video folders" open>

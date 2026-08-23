@@ -859,7 +859,9 @@ test('CSS (v1.168 sandwich): the layer paints ABOVE furniture (z 2, under every 
 // ---- the Settings surface ---------------------------------------------------
 
 test('Settings: the Sneaky critter mode controls exist and setup.js binds them to the two keys + applyCritterMode', () => {
-  assert.match(SETUP_HTML, /Sneaky critter mode/);
+  // v1.171: the controls moved to their OWN section (Dean's ruling) - the
+  // summary is now "Sneaky critters"; ids and wiring are unchanged.
+  assert.match(SETUP_HTML, /<summary>Sneaky critters<\/summary>/);
   assert.match(SETUP_HTML, /id="critter-mode-check"/);
   assert.match(SETUP_HTML, /id="critter-density-select"/);
   for (const v of ['sparse', 'normal', 'obscene']) {

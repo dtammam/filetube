@@ -619,6 +619,177 @@ function wireCritterModeControls(signal) {
   }, { signal });
 }
 
+// v1.171 (Dean): the critter pool MANAGER - admin-only web UI over
+// public/critters/ (upload images/sounds, per-item + delete-all, download-all
+// zip). Called ONLY from the admin branch of loadAccountSection; the server
+// enforces every management route regardless. The folder stays the manifest:
+// every successful mutation calls applyCritterMode() (invalidates the cached
+// manifest + re-scatters) and re-renders the grid from a fresh listing.
+const CRITTER_IMAGE_MIME_BY_EXT = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif',
+};
+const CRITTER_SOUND_MIME_BY_EXT = {
+  '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg',
+};
+function wireCritterManager(signal) {
+  const box = document.getElementById('critter-manager');
+  const grid = document.getElementById('critter-pool-grid');
+  const statusEl = document.getElementById('critter-manager-status');
+  const imgInput = document.getElementById('critter-image-input');
+  const sndInput = document.getElementById('critter-sound-input');
+  const imgBtn = document.getElementById('critter-upload-images-btn');
+  const sndBtn = document.getElementById('critter-upload-sounds-btn');
+  const delAllBtn = document.getElementById('critter-delete-all-btn');
+  if (!box || !grid || !imgInput || !sndInput || !imgBtn || !sndBtn || !delAllBtn) return;
+  box.hidden = false;
+  let pool = [];
+
+  function renderGrid() {
+    grid.textContent = ''; // FULL rebuild every render - armed delete state can never leak across renders (v1.159/v1.162)
+    if (!pool.length) {
+      const empty = document.createElement('p');
+      empty.className = 'critter-pool-empty';
+      empty.textContent = 'No custom critters yet - the built-in figurines are on duty.';
+      grid.appendChild(empty);
+      return;
+    }
+    pool.forEach((c) => {
+      const item = document.createElement('div');
+      item.className = 'critter-pool-item';
+      const img = document.createElement('img');
+      img.src = c.img;
+      img.alt = '';
+      img.loading = 'lazy';
+      const name = document.createElement('span');
+      name.className = 'critter-pool-name';
+      // ♪ = a small eighth note: this critter has a tap voice.
+      name.textContent = c.sound ? c.id + ' ♪' : c.id;
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn btn-sm critter-pool-delete';
+      del.textContent = 'Delete';
+      let armed = false; // closure-LOCAL two-tap arm (the v1.162 load-bearing shape)
+      del.addEventListener('click', async () => {
+        if (!armed) {
+          armed = true;
+          del.textContent = 'Really delete?';
+          del.classList.add('critter-delete-armed');
+          return;
+        }
+        del.disabled = true;
+        try {
+          const r = await fetch('/api/critters/item?id=' + encodeURIComponent(c.id), { method: 'DELETE' });
+          const body = await r.json().catch(() => ({}));
+          if (!r.ok) {
+            setActionStatus(statusEl, body.error || 'Could not delete ' + c.id + '.', 'error');
+            del.disabled = false;
+            return;
+          }
+          setActionStatus(statusEl, 'Deleted ' + c.id + '.');
+          afterMutation();
+        } catch (_) {
+          setActionStatus(statusEl, 'Could not delete ' + c.id + ' (network error).', 'error');
+          del.disabled = false;
+        }
+      }, { signal });
+      item.append(img, name, del);
+      grid.appendChild(item);
+    });
+  }
+
+  async function refresh() {
+    let list = [];
+    try {
+      const r = await fetch('/api/critters');
+      if (r.ok) {
+        const body = await r.json().catch(() => ({}));
+        if (Array.isArray(body.critters)) list = body.critters;
+      }
+    } catch (_) { /* render what we have; action errors surface via statusEl */ }
+    pool = list;
+    renderGrid();
+  }
+
+  function afterMutation() {
+    if (typeof applyCritterMode === 'function') applyCritterMode(); // busts the manifest cache + re-scatters live critters
+    refresh();
+  }
+
+  async function uploadFiles(files, mimeByExt, kindLabel) {
+    let done = 0;
+    for (const file of files) {
+      const dot = file.name.lastIndexOf('.');
+      const ext = dot === -1 ? '' : file.name.slice(dot).toLowerCase();
+      const mime = mimeByExt[ext];
+      if (!mime) {
+        setActionStatus(statusEl, 'Skipped ' + file.name + ' (not a supported ' + kindLabel + ').', 'error');
+        continue;
+      }
+      setActionStatus(statusEl, 'Uploading ' + file.name + '…', 'busy');
+      try {
+        const r = await fetch('/api/critters/upload?name=' + encodeURIComponent(file.name), {
+          method: 'POST',
+          headers: { 'Content-Type': mime },
+          body: file,
+        });
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          setActionStatus(statusEl, body.error || ('Could not upload ' + file.name + '.'), 'error');
+          continue;
+        }
+        done += 1;
+      } catch (_) {
+        setActionStatus(statusEl, 'Could not upload ' + file.name + ' (network error).', 'error');
+      }
+    }
+    if (done) {
+      setActionStatus(statusEl, 'Uploaded ' + done + (done === 1 ? ' file.' : ' files.'));
+      afterMutation();
+    }
+  }
+
+  imgBtn.addEventListener('click', () => imgInput.click(), { signal });
+  sndBtn.addEventListener('click', () => sndInput.click(), { signal });
+  imgInput.addEventListener('change', () => {
+    const files = Array.from(imgInput.files || []);
+    imgInput.value = ''; // allow re-picking the same files
+    uploadFiles(files, CRITTER_IMAGE_MIME_BY_EXT, 'image (PNG, JPEG, WebP, GIF)');
+  }, { signal });
+  sndInput.addEventListener('change', () => {
+    const files = Array.from(sndInput.files || []);
+    sndInput.value = '';
+    uploadFiles(files, CRITTER_SOUND_MIME_BY_EXT, 'sound (MP3, WAV, M4A, OGG)');
+  }, { signal });
+
+  let delAllArmed = false; // closure-local, same discipline as the per-item arm
+  delAllBtn.addEventListener('click', async () => {
+    if (!delAllArmed) {
+      delAllArmed = true;
+      delAllBtn.textContent = 'Really delete all ' + pool.length + (pool.length === 1 ? ' critter?' : ' critters?');
+      delAllBtn.classList.add('critter-delete-armed');
+      return;
+    }
+    delAllBtn.disabled = true;
+    try {
+      const r = await fetch('/api/critters/all', { method: 'DELETE' });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) setActionStatus(statusEl, body.error || 'Could not delete the pool.', 'error');
+      // Units differ on purpose (both seats flagged for clarity): the armed
+      // label counts CRITTERS, the result counts FILES (images + paired sounds).
+      else setActionStatus(statusEl, 'Deleted ' + (body.deleted || 0) + ' files (images and sounds).');
+    } catch (_) {
+      setActionStatus(statusEl, 'Could not delete the pool (network error).', 'error');
+    }
+    delAllArmed = false;
+    delAllBtn.disabled = false;
+    delAllBtn.textContent = 'Delete all…';
+    delAllBtn.classList.remove('critter-delete-armed');
+    afterMutation();
+  }, { signal });
+
+  refresh();
+}
+
 function loadResumeThresholdControl() {
   const input = document.getElementById('resume-threshold-input');
   if (!input) return;
@@ -2039,6 +2210,7 @@ async function initAccountSection(signal) {
     const backupBox = document.getElementById('backup-box');
     if (backupBox) backupBox.hidden = false;
     wireRestoreControls(signal);
+    wireCritterManager(signal); // v1.171: the critter pool manager is admin-only (Dean's intake ruling)
     // (Users/Backup reveal fires the nav's hidden-observer -> their reserved
     // shimmer slots become real rows. Downloads is settled by loadEngineSection.)
   } else {
@@ -3054,6 +3226,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     // v1.159: the Users list as a sortable table (jsdom-tested action wiring).
     loadUsersList, buildUserRoleCell,
+    // v1.171: the critter pool manager (jsdom-tested: two-tap deletes, uploads, reveal).
+    wireCritterManager,
     // v1.157 (P3): the configured-folder-list skeleton (pure string builder).
     buildSetupFolderSkeleton,
     // v1.161 (Dean): the resume-countdown seconds clamp (mirrors player.js's read).
