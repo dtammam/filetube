@@ -1408,7 +1408,7 @@ test('v1.178 ADOPTION end-to-end: a view rebuild that REPLACES the anchor keeps 
   assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 0, 'a 560px jump is not adoption material');
 });
 
-test('v1.178 adoption discipline: size-mismatched cousins refused; a claimed element is never double-adopted', async (t) => {
+test('v1.178 adoption discipline: size-mismatched cousins refused; the true twin adopts exactly once', async (t) => {
   const dom = new JSDOM('<!DOCTYPE html><body><div id="view-root">'
     + '<div class="video-card" id="a" data-rx="100" data-ry="300"></div>'
     + '<div class="video-card" id="b" data-rx="100" data-ry="700"></div>'
@@ -1456,6 +1456,36 @@ test('v1.178 adoption discipline: size-mismatched cousins refused; a claimed ele
   reglueCritterPlacements();
   assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 1,
     'the cousin is refused (0.5x-2x size gate); the true twin is adopted once');
+  // Gate W closure #1 (the seat's repro; the old title CLAIMED this without
+  // exercising it - the vacuous-claim class): TWO orphans, ONE twin whose
+  // center is within 240px of BOTH old anchors. Exactly one may adopt -
+  // without the claimed-list guard both stack on the same element.
+  localStorage.setItem('ft-critters:on', '1');
+  view.innerHTML = '<div class="video-card" id="a2" data-rx="100" data-ry="300"></div>'
+    + '<div class="video-card" id="b2" data-rx="100" data-ry="700"></div>';
+  scatterCritters();
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 2, 're-seeded on both cards');
+  view.innerHTML = '<div class="video-card" id="one-twin" data-rx="100" data-ry="500"></div>'; // center 600: 200px from both old centers
+  reglueCritterPlacements();
+  assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 1,
+    'ONE adoption, never a stacked pair (delete the claimed guard and this reds with 2)');
+  // Gate W closure #2 (claimed-SEED): a still-connected survivor's anchor may
+  // not be poached by an orphan. Card A stays; card B (within 240px of A) is
+  // removed - B's orphan must DROP, not stack onto A.
+  view.innerHTML = '<div class="video-card" id="a3" data-rx="100" data-ry="300"></div>'
+    + '<div class="video-card" id="b3" data-rx="100" data-ry="460"></div>';
+  scatterCritters();
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 2, 're-seeded again');
+  const survivorPos = [...dom.window.document.querySelectorAll('.critter')].map((el) => el.style.left + '/' + el.style.top);
+  dom.window.document.getElementById('b3').remove();
+  reglueCritterPlacements();
+  const remaining = [...dom.window.document.querySelectorAll('.critter')];
+  assert.strictEqual(remaining.length, 1,
+    'the orphan DROPS rather than poaching the survivor\'s anchor (delete the claimed-seed and this reds with 2)');
+  assert.ok(survivorPos.includes(remaining[0].style.left + '/' + remaining[0].style.top),
+    'the survivor kept its exact position');
 });
 
 // ---- CSS locks --------------------------------------------------------------
