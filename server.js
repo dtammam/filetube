@@ -15234,14 +15234,32 @@ function buildCritterListing(fileNames) {
   const seen = new Set(); // gate S3: `mopsy.png` + `mopsy.webp` is ONE critter -
   // the no-duplicates-per-page rule is keyed on id, so the id must be unique
   // here (first image in sorted order wins).
+  // v1.179 (Dean: "if a given character doesn't have an MP3 with the
+  // corresponding name, I still want them to get a sound that is not our
+  // boop"): the VOICE POOL. Every sound file in the folder, sorted, is a
+  // borrowable voice. An exact-basename match still wins outright (`sound`
+  // stays the OWNED pairing - the manager's music-note badge keeps meaning
+  // "has its own sound"); a critter without one borrows deterministically -
+  // a stable hash of its id picks from the pool, so a nameless-match critter
+  // keeps the SAME voice everywhere, every session (identity, not a
+  // soundboard). The synth chirp remains only when the folder has no sounds.
+  const voicePool = [...sounds.values()].sort();
+  const voiceFor = (id) => {
+    if (!voicePool.length) return null;
+    let h = 0;
+    for (let i = 0; i < id.length; i += 1) h = ((h * 31) + id.charCodeAt(i)) >>> 0;
+    return '/critters/' + encodeURIComponent(voicePool[h % voicePool.length]);
+  };
   for (const name of names.filter((n) => CRITTER_IMAGE_EXTS.has(path.extname(n).toLowerCase())).sort()) {
     const base = path.basename(name, path.extname(name));
     if (seen.has(base)) continue;
     seen.add(base);
+    const owned = sounds.has(base) ? '/critters/' + encodeURIComponent(sounds.get(base)) : null;
     out.push({
       id: base,
       img: '/critters/' + encodeURIComponent(name),
-      sound: sounds.has(base) ? '/critters/' + encodeURIComponent(sounds.get(base)) : null,
+      sound: owned,
+      voice: owned || voiceFor(base),
     });
   }
   return out;
