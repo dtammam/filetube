@@ -80,6 +80,41 @@
 
 ## Shipped
 
+### v1.176.0 - drift corrections RE-GLUE (never re-roll) + three new tap reactions (Dean) (2026-08-23)
+
+Dean's watch/audio report: critters appeared, then SHIFTED to brand-new
+positions in under a second. Not a new bug - the v1.173 drift correction
+always re-SCATTERED (fresh random spots), and v1.175's instant arrival made
+that correction visible for the first time (playback UI genuinely churns
+nodes; watch pages keep settling). The correction was right; the re-roll
+was the jank.
+
+- RE-GLUE: placements carry their live anchor ELEMENT; a drift correction
+  re-measures each critter's own anchor and translates the critter by
+  exactly the anchor's movement - same critter, same edge, same pose, no
+  fade replay (a re-glue rebuild renders STILL). The common case - content
+  loading BELOW the critters - now changes nothing at all. A critter whose
+  anchor left the page, hid, or slid into an exclusion/past bounds is
+  DROPPED, never re-homed. Same bounded 2-check budget; the content nudge
+  maps identically (empty scatters, drift re-glues).
+- REACTIONS (Dean: "I like that to be varied"): critter-twirl (a full
+  spin), critter-duck (a shy dip), critter-squish (squash-and-stretch)
+  join wiggle/shiver/hop - all transform-only, angle+flip carried in every
+  frame, all in the reduced-motion arm.
+
+Slim gate (adversarial): APPROVE across three rounds, and this one earned
+its keep twice: the seat proved my "the overlap predicate subsumes the
+hidden-anchor drop" claim FALSE by measurement (42/289 placements would
+survive a collapsing anchor as stray near-origin critters - the drop is
+LOAD-BEARING, and the record was corrected), and my first attempt at
+binding it was itself too loose (any left/top peek) - the mutant died only
+after deriving the exact survivor geometry (a tl-corner peek straddling
+the anchor's origin). All six re-glue safety drops verified; exclusion,
+bounds, and hidden drops now mutation-bound. Dual-Node 7494/7494 clean
+first runs. Device pass PENDING (Dean: watch/audio pages - critters may
+settle once WITH their buttons but never jump to new spots; tap around
+for the three new reactions).
+
 ### v1.175.0 - critters arrive with the page (content nudge + pre-decode + fade) (Dean) (2026-08-23)
 
 Dean: "prevent FOUC/load-in of them after other elements for a given page."
