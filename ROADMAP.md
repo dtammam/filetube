@@ -80,6 +80,41 @@
 
 ## Shipped
 
+### v1.175.0 - critters arrive with the page (content nudge + pre-decode + fade) (Dean) (2026-08-23)
+
+Dean: "prevent FOUC/load-in of them after other elements for a given page."
+The physics stays honest - critters cannot render BEFORE their furniture
+(the anchors ARE the content) - but every late-arrival source is closed:
+
+- CONTENT NUDGE: a MutationObserver fast-forwards the settle ladder the
+  moment new page content lands, so critters appear in the same beat as
+  the cards instead of at the +1.5s fallback (the timers remain as the
+  safety net). The nudge spends the ladder's own bounded budget (the seat
+  built a formal control-flow model over adversarial interleavings and
+  proved the cap holds at initial + 2 re-scatters per navigation), cancels
+  stale handles, filters its own layer's churn, and exists only while the
+  mode is on.
+- IMAGE PRE-DECODE: the whole pool downloads and decodes once per manifest
+  generation (structurally - the warm rides the cached manifest promise),
+  so a critter's first paint never streams in.
+- ARRIVAL FADE: every (re)appearance fades in over --dur-slow, pure
+  opacity - no motion, no reduced-motion arm needed - which also softens
+  the settle re-tuck on pages that reflow while loading.
+
+Slim gate (adversarial): APPROVE in two rounds - it initially suspected a
+budget-cap violation, modeled the control flow, proved the cap, and
+RETRACTED the suspicion per its own discipline; its two suggestions
+(navigation also cancels the nudge debounce; a porous source lock
+anchored) were applied and delta-confirmed, and it disclosed its own
+first-occurrence perl mutation slip, caught and redone. Hygiene fix along
+the way: toggling the mode off now cancels the pending settle timer.
+Disclosed residual (seat's ruling, not worth a round): the duplicate
+debounce-cancel inside unwireCritterContentNudge is not independently
+bound - its absence would leave a harmless no-op handle on the disable
+path. Dual-Node 7492/7492 clean first runs. Device pass PENDING (Dean:
+navigate around - critters should land with the content, images crisp on
+first paint, arrivals fading in rather than popping).
+
 ### v1.174.0 - Critters: the clip becomes geometric truth (the floating-cut class dies) + the final name (Dean) (2026-08-23)
 
 Dean's "one last swing": his Subscribed-button screenshot showed a critter
