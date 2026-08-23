@@ -2098,5 +2098,11 @@
     "date": "2026-08-23",
     "title": "Every critter finds its voice",
     "intent": "Sound files no longer need matching names. A critter with its own matching sound still uses it, but any critter without one now borrows a voice from the sounds in your folder - and each keeps the same borrowed voice everywhere, so it feels like theirs. The plain beep only remains if the folder has no sounds at all."
+  },
+  {
+    "version": "1.179.1",
+    "date": "2026-08-23",
+    "title": "Voice check",
+    "intent": "A small diagnostic button in the Critters settings for when tap sounds aren't playing: it tests your sound files right on your device and says exactly what went wrong - for example when a sound file turns out to be in a format your phone can't play - instead of quietly falling back to the beep."
   }
 ]
