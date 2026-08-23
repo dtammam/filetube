@@ -119,6 +119,15 @@ test('v1.179 the VOICE POOL: unmatched critters BORROW a folder sound determinis
   const spread = buildCritterListing(['a.png', 'b.png', 'c.png', 'd.png', 'e.png', 'f.png', 'x.mp3', 'y.mp3', 'z.mp3']);
   assert.ok(new Set(spread.map((c) => c.voice)).size >= 2,
     'borrowed voices SPREAD across the pool - a constant hash (everyone gets pool[0]) reds here');
+  // Gate W closure: a basename with TWO sound extensions must resolve the
+  // same way in ANY readdir order (the seat's repro: last-write-wins on an
+  // UNSORTED iteration flipped both the owned pairing and the pool member
+  // with folder churn). Lexicographic last-wins: rex.wav.
+  const dualA = buildCritterListing(['a.png', 'rex.png', 'rex.mp3', 'rex.wav']);
+  const dualB = buildCritterListing(['rex.wav', 'rex.mp3', 'rex.png', 'a.png']);
+  assert.strictEqual(dualA.find((c) => c.id === 'rex').sound, '/critters/rex.wav', 'deterministic owned pairing');
+  assert.strictEqual(dualB.find((c) => c.id === 'rex').sound, dualA.find((c) => c.id === 'rex').sound, 'order-independent');
+  assert.strictEqual(dualB.find((c) => c.id === 'a').voice, dualA.find((c) => c.id === 'a').voice, 'order-independent borrow');
 });
 
 // ---- the pure planner -------------------------------------------------------

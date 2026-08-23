@@ -15224,7 +15224,11 @@ const CRITTER_SOUND_EXTS = new Set(['.mp3', '.wav', '.m4a', '.ogg']);
 function buildCritterListing(fileNames) {
   const names = Array.isArray(fileNames) ? fileNames.filter((n) => typeof n === 'string') : [];
   const sounds = new Map();
-  for (const name of names) {
+  // v1.179 gate W: iterate SORTED (readdir order is filesystem-dependent) so
+  // a basename with two sound extensions (rex.mp3 + rex.wav) resolves to a
+  // deterministic last-write-wins - lexicographic, never folder-churn-lucky.
+  // This pins BOTH the owned pairing and the voice pool's member.
+  for (const name of [...names].sort()) {
     // Strip with the RAW extname (gate S1): lowercasing the ext before
     // basename() left `Mopsy.MP3` unstripped and the pairing silently died.
     const rawExt = path.extname(name);
