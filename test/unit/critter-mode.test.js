@@ -158,6 +158,7 @@ test('v1.169 FULL-BLEED rule: a full-width anchor only peeks TOP or BOTTOM - nev
   // spanning >=85% of the document width protrudes only vertically.
   const bounds = { w: 400, h: 5000 };
   const card = { x: 8, y: 600, w: 384, h: 300 }; // a full-bleed mobile card
+  let tops = 0; let bottoms = 0;
   for (let seed = 1; seed <= 300; seed += 1) {
     const out = planCritterScatter({ anchors: [card], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(seed), bounds });
     for (const p of out) {
@@ -165,8 +166,12 @@ test('v1.169 FULL-BLEED rule: a full-width anchor only peeks TOP or BOTTOM - nev
         `seed ${seed}: horizontal protrusion off a full-bleed card (edge went sideways)`);
       const vertical = p.y < card.y || p.y + p.h > card.y + card.h;
       assert.ok(vertical, `seed ${seed}: the peek must protrude vertically`);
+      if (p.y < card.y) tops += 1; else bottoms += 1;
     }
   }
+  // Gate S1: BOTH vertical directions must occur (a top-only pool halves the
+  // feed's variety silently; ~50/50 over 300 seeds makes >40 each ~8-sigma safe).
+  assert.ok(tops > 40 && bottoms > 40, `both directions used (tops=${tops}, bottoms=${bottoms})`);
   // A NON-full-bleed anchor keeps the full 8-position pool (side peeks appear across seeds).
   const narrow = { x: 100, y: 600, w: 200, h: 300 };
   let sideways = 0;
