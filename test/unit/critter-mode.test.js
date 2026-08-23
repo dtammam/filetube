@@ -763,6 +763,7 @@ test('v1.170 collector: a TRUE circle is marked round; pills and slightly-rounde
     + '<div class="card-channel-avatar" data-m="avatar"></div>'
     + '<button class="btn" data-m="pill">Pill</button>'
     + '<button class="btn" data-m="square">Sq</button>'
+    + '<div class="setup-box" data-m="quarter"></div>'
     + '</body>', { url: 'http://localhost/' });
   global.window = dom.window; global.document = dom.window.document;
   const proto = dom.window.Element.prototype;
@@ -771,6 +772,7 @@ test('v1.170 collector: a TRUE circle is marked round; pills and slightly-rounde
     avatar: { left: 10, top: 10, width: 24, height: 24 },   // square + 50% radius = circle
     pill: { left: 50, top: 10, width: 120, height: 40 },    // 50% radius but WIDE = pill, not a circle
     square: { left: 200, top: 10, width: 44, height: 44 },  // square but small radius
+    quarter: { left: 300, top: 10, width: 60, height: 60 }, // square, 25% radius - rounded, NOT a circle
   };
   proto.getBoundingClientRect = function () {
     const m = this.getAttribute && this.getAttribute('data-m');
@@ -785,7 +787,7 @@ test('v1.170 collector: a TRUE circle is marked round; pills and slightly-rounde
   const origGCS = dom.window.getComputedStyle;
   dom.window.getComputedStyle = (el) => {
     const m = el.getAttribute && el.getAttribute('data-m');
-    return { position: 'static', borderTopLeftRadius: m === 'square' ? '8px' : '50%' };
+    return { position: 'static', borderTopLeftRadius: m === 'square' ? '8px' : (m === 'quarter' ? '25%' : '50%') };
   };
   try {
     const { collectCritterRects, CRITTER_ANCHOR_SELECTORS: POOL } = require('../../public/js/common.js');
@@ -794,6 +796,9 @@ test('v1.170 collector: a TRUE circle is marked round; pills and slightly-rounde
     assert.strictEqual(byW(24).round, true, 'the 24px 50%-radius avatar IS a circle');
     assert.strictEqual(byW(120).round, false, 'a 50%-radius PILL is not (w far from h)');
     assert.strictEqual(byW(44).round, false, 'an 8px-radius square is not');
+    // Gate M12 closure: the sub-50 PERCENT arm was unbound - a 25% radius on
+    // a square box must classify as rounded, never as a circle.
+    assert.strictEqual(byW(60).round, false, 'a 25%-radius square is rounded, NOT a circle');
     // Fail OPEN: an unreadable RADIUS downgrades to the rect clip. (The
     // position read must keep working - a fully-throwing stub would instead
     // trip critterInsideFixed's fail-CLOSED catch and skip the anchor.)
