@@ -1216,7 +1216,11 @@ test('v1.176 gate W closure: the re-glue DROP predicates bind - exclusion (never
   const origRect = proto.getBoundingClientRect;
   proto.getBoundingClientRect = function () {
     if (this.id === 'card') {
-      if (cardHidden) return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+      // v1.180 gate W: the collapse is WIDTH:0 AT POSITION (a real CSS
+      // width-collapse keeps left/top), not the origin zero-rect - the
+      // origin case is vw-subsumed (translated x < 0), the at-position
+      // case is NOT, and only the D5 hidden-drop catches it.
+      if (cardHidden) return { left: cardRect.left, top: cardRect.top, width: 0, height: 0, right: cardRect.left, bottom: cardRect.top };
       return { left: cardRect.left, top: cardRect.top, width: cardRect.width, height: cardRect.height, right: cardRect.left + cardRect.width, bottom: cardRect.top + cardRect.height };
     }
     if (this.id === 'player-dock') {
@@ -1287,15 +1291,15 @@ test('v1.176 gate W closure: the re-glue DROP predicates bind - exclusion (never
   assert.ok(gotTlCornerPeek, 'the sweep drew a tl-corner peek (both coordinates before the anchor corner)');
   cardHidden = true;
   reglueCritterPlacements();
-  // v1.180 honesty note: this assertion binds the BEHAVIOR (hidden anchor ->
-  // critter gone), but the D5 line-mutant is now subsumed by the NEW
-  // screen-edge drop: a collapse survivor requires px < anchor.x, so its
-  // translated x is always < 0 and the viewport drop catches it whenever
-  // window.innerWidth > 0 (i.e. every real browser). D5 stays as the belt
-  // for vw-less contexts. Claimed with the arithmetic, seat-verified - not
-  // by assumption (the v1.176 lesson).
+  // v1.180 gate W CORRECTION (my second subsumption claim, also measured
+  // wrong by the seat): the screen-edge drop subsumes D5 ONLY for the
+  // ORIGIN collapse (display:none-style zero rect at 0,0 - translated x
+  // goes negative). A WIDTH:0-AT-POSITION collapse keeps its coordinates,
+  // the translated critter stays on-screen (seat: 15/29 positions
+  // survive), and ONLY the D5 hidden drop catches it. The stub above uses
+  // the at-position geometry so this assertion reds on the D5 line-mutant.
   assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 0,
-    'a collapsing anchor sheds its critter (hidden drop, screen-edge drop behind it)');
+    'a width:0-at-position collapse sheds its critter - the D5 hidden drop is LOAD-BEARING here, nothing subsumes it');
 });
 
 // ---- v1.177: the rounded shave (Dean's Modern-2021 screenshots) -------------
