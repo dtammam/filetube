@@ -80,6 +80,48 @@
 
 ## Shipped
 
+### v1.180.0 - color-faithful art + the screen-edge invariant (Dean) (2026-08-23)
+
+Two Dean reports and one self-find, one wave. (Aside for the record: the
+v1.179.1 boop investigation RESOLVED as not-a-bug - Dean's uploaded MP3s
+literally contained boop sounds; the pipeline played them faithfully
+throughout. The Voice check stays as a permanent diagnostic, and the
+diagnosis norm gains an arm: when every link measures correct, verify
+the OBSERVATION is a malfunction at all.)
+
+- COLOR-FAITHFUL (Dean: "no gradient or color applied, right?"): the
+  per-placement hue-rotate(0-360) existed to vary the five builtin
+  line-art figurines but sat on the shared pose wrapper - silently
+  recoloring uploaded art on every placement. His ruling: builtins only.
+  Uploads now render exactly as the files are; the 95% opacity softness
+  stays (deliberate).
+- SCREEN-EDGE INVARIANT (his amputated pink-dress screenshot): the
+  v1.169 amputation class through two side doors - horizontal overflow
+  inflates scrollWidth so a visually-full-bleed card kept side peeks, and
+  the old W2 trade allowed negative-x peeks to clip off-page. Now a
+  critter may never CROSS the viewport's left or right edge: the planner
+  skips crossings, full-bleed measures against min(scrollWidth,
+  innerWidth), and the re-glue/adoption path drops off-screen slides.
+- SELF-FIND: armCritterSettleCheck overwrote its stashed timer without
+  cancelling (the v1.166.4 class inside the arm; masked on the
+  timer/nudge paths, orphaned on direct re-glue). The arm now cancels
+  first.
+
+Slim gate (adversarial): APPROVE in two rounds. Its WARNING: my SECOND
+subsumption derivation measured wrong - the screen-edge drop subsumes the
+hidden-anchor guard only for the ORIGIN collapse; a width:0-AT-POSITION
+collapse keeps its coordinates (15/29 positions survive) and only the
+guard catches it. Re-bound at the seat's exact geometry; the false
+comment corrected in place. New standing lesson: NEVER claim a guard is
+subsumed from one failure geometry - enumerate the geometries or bind
+the guard directly. Process disclosures in the commits: the dirty-tree
+blind-checkout scar struck a THIRD time (recovered; commit-before-mutant
+is now absolute), one phantom commit caught by git log, and one
+PATH-clobbered shell made two mutant runs no-ops (caught via
+git diff --stat before crediting). Dual-Node 7505/7505 clean first runs.
+Device pass PENDING (Dean: uploaded critters keep their true colors
+everywhere; no critter ever cut off at the screen's left or right edge).
+
 ### v1.179.1 - the Voice check instrument (device boops with voices assigned) (Dean) (2026-08-23)
 
 Dean's device: every tap boops although /api/critters provably assigns
