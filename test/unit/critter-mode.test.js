@@ -1265,7 +1265,12 @@ test('v1.176 gate W closure: the re-glue DROP predicates bind - exclusion (never
   // tl-corner-family peek: after the translate by (-left, -top) the origin
   // sits strictly inside the box). Loop the unseedable scatter until it
   // draws one, THEN collapse - this bind reds only on the hidden drop.
-  cardRect.left = 10; cardRect.top = 130; cardRect.width = 120; cardRect.height = 44;
+  // v1.180 adjustment: at x=10 a tl-corner peek lands at x<0 and the NEW
+  // screen-edge invariant correctly refuses it - the loop starved. x=60
+  // keeps every draw on-screen while preserving the exact D5 survivor
+  // condition (origin-inside-translated-box needs both coords before the
+  // corner, regardless of where the corner is).
+  cardRect.left = 60; cardRect.top = 130; cardRect.width = 120; cardRect.height = 44;
   let gotTlCornerPeek = false;
   for (let attempt = 0; attempt < 120 && !gotTlCornerPeek; attempt += 1) {
     cardHidden = false;
@@ -1282,8 +1287,15 @@ test('v1.176 gate W closure: the re-glue DROP predicates bind - exclusion (never
   assert.ok(gotTlCornerPeek, 'the sweep drew a tl-corner peek (both coordinates before the anchor corner)');
   cardHidden = true;
   reglueCritterPlacements();
+  // v1.180 honesty note: this assertion binds the BEHAVIOR (hidden anchor ->
+  // critter gone), but the D5 line-mutant is now subsumed by the NEW
+  // screen-edge drop: a collapse survivor requires px < anchor.x, so its
+  // translated x is always < 0 and the viewport drop catches it whenever
+  // window.innerWidth > 0 (i.e. every real browser). D5 stays as the belt
+  // for vw-less contexts. Claimed with the arithmetic, seat-verified - not
+  // by assumption (the v1.176 lesson).
   assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 0,
-    'the LOAD-BEARING hidden drop: a collapsing anchor sheds its critter even when the overlap predicate cannot catch it');
+    'a collapsing anchor sheds its critter (hidden drop, screen-edge drop behind it)');
 });
 
 // ---- v1.177: the rounded shave (Dean's Modern-2021 screenshots) -------------
@@ -1576,6 +1588,47 @@ test('v1.179.1 the chirp fallback RECORDS why (source locks: all three arms writ
   assert.match(tap, /critterLastChirpReason = 'play rejected: ' \+ \(\(err && err\.name\) \|\| 'unknown'\) \+ ' for ' \+ hit\.sound;/, 'rejected play records the name + URL');
   assert.match(tap, /critterLastChirpReason = 'Audio constructor threw: '/, 'sync throw recorded');
   assert.match(tap, /critterLastChirpReason = 'placement carried no voice/, 'the no-voice arm recorded');
+});
+
+// ---- v1.180: the SCREEN-EDGE invariant (Dean's pink-dress amputation) -------
+
+test('v1.180 SCREEN-EDGE: no placement ever crosses the viewport left/right edge - and inflated scrollWidth cannot defeat full-bleed', () => {
+  // Dean's screenshot: a side peek off a card whose edge sits at the screen
+  // boundary, guillotined. Two holes closed: (1) horizontal overflow
+  // inflates scrollWidth, so a visually-full-bleed card computed <85% and
+  // kept side peeks; (2) non-full-bleed anchors near either screen edge
+  // could poke past it (incl. the old negative-x trade). Both directions of
+  // variety still bound (the v1.169 lesson).
+  const bounds = { w: 1200, h: 5000 }; // scrollWidth INFLATED by an overflow
+  const viewportW = 400;
+  // The screenshot case: 95% of the VIEWPORT but only 31% of scrollWidth.
+  const card = { x: 8, y: 600, w: 380, h: 200 };
+  let tops = 0; let bottoms = 0;
+  for (let seed = 1; seed <= 300; seed += 1) {
+    const out = planCritterScatter({ anchors: [card], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(seed), bounds, viewportW });
+    for (const p of out) {
+      assert.ok(p.x >= 0 && p.x + p.w <= viewportW, `seed ${seed}: crossed the screen edge (x=${p.x}, w=${p.w})`);
+      if (p.y < card.y) tops += 1; else bottoms += 1;
+    }
+  }
+  assert.ok(tops > 40 && bottoms > 40, `full-bleed vs the VIEWPORT redirects to both vertical edges (t=${tops}, b=${bottoms})`);
+  // Non-full-bleed anchors flush against either screen edge: side peeks that
+  // would cross are SKIPPED, never emitted; legal placements still occur.
+  let placed = 0;
+  for (const a of [{ x: 0, y: 600, w: 200, h: 300 }, { x: 200, y: 600, w: 200, h: 300 }]) {
+    for (let seed = 1; seed <= 300; seed += 1) {
+      const out = planCritterScatter({ anchors: [a], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(seed), bounds, viewportW });
+      for (const p of out) {
+        placed += 1;
+        assert.ok(p.x >= 0, `seed ${seed}: crossed the LEFT screen edge (x=${p.x})`);
+        assert.ok(p.x + p.w <= viewportW, `seed ${seed}: crossed the RIGHT screen edge`);
+      }
+    }
+  }
+  assert.ok(placed > 200, 'edge-flush anchors still host critters on their legal sides (' + placed + ')');
+  // viewportW absent (pure tests / legacy callers): the old behavior stands.
+  const legacy = planCritterScatter({ anchors: [{ x: 0, y: 0, w: 400, h: 200 }], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(2) });
+  assert.ok(legacy.length >= 0, 'no viewportW: no crossing enforcement (backward-compatible)');
 });
 
 // ---- CSS locks --------------------------------------------------------------

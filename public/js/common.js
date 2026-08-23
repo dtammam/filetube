@@ -7585,6 +7585,7 @@ function planCritterScatter(opts) {
   var critterPool = shuffle(manifest);
   var n = Math.min(count, anchorPool.length, critterPool.length);
   var bounds = (opts && opts.bounds) || null; // {w,h} document size - placements never grow the page
+  var viewportW = (opts && opts.viewportW) || 0; // v1.180: the SCREEN edge; 0 = not enforced (pure tests)
   var placements = [];
   // v1.168 (Dean: "not really going as hard as we could"): four edges PLUS the
   // four corners (diagonal ambushes), and the peek DEPTH is randomized per
@@ -7603,7 +7604,12 @@ function planCritterScatter(opts) {
     // full-width card land ON THE SCREEN EDGE and look amputated): an anchor
     // spanning ~the whole document width only peeks TOP or BOTTOM - emerging
     // between the artwork and the title, never off the side of the phone.
-    var fullBleed = bounds && a.w >= bounds.w * 0.85;
+    // v1.180: full-bleed is judged against the SMALLER of document and
+    // viewport width - an overflowing page inflates scrollWidth and used to
+    // let a visually-full-bleed card keep its side peeks (Dean's amputated
+    // pink-dress screenshot).
+    var effW = bounds ? (viewportW ? Math.min(bounds.w, viewportW) : bounds.w) : 0;
+    var fullBleed = bounds && a.w >= effW * 0.85;
     var pool = fullBleed ? ['top', 'bottom'] : EDGES;
     var edge = pool[Math.floor(rng() * pool.length)];
     // v1.170 CROSS-AXIS FIT (Dean's screenshots: a critter TALLER than its
@@ -7667,6 +7673,11 @@ function planCritterScatter(opts) {
     // And it must never GROW the document (gate W4): a right/bottom-edge peek
     // past the page bounds would widen the scrollable area = layout shift.
     if (bounds && (x + size > bounds.w || y + size > bounds.h)) continue;
+    // v1.180 THE SCREEN-EDGE INVARIANT (supersedes the v1.169 W2 trade that
+    // let negative-x peeks "clip off-page"): a critter may never CROSS the
+    // viewport's left or right edge - horizontal off-screen always reads as
+    // an amputation. Vertical crossing stays legal (pages scroll that way).
+    if (viewportW && (x < 0 || x + size > viewportW)) continue;
     // v1.170 (Dean: "looks like critter feet behind an element" - his own
     // suggested fix): a BOTTOM-family peek (edge or corner) rotates the pose
     // 180deg so the HEAD pops out below the ledge - hanging upside-down reads
@@ -8119,6 +8130,10 @@ function scatterCritters() {
       manifest: manifest,
       count: resolveCritterConfig().count,
       bounds: { w: docEl.scrollWidth, h: docEl.scrollHeight }, // never grow the page (gate W4)
+      // v1.180 (Dean's right-edge amputation screenshot): the SCREEN edge is
+      // its own boundary - scrollWidth can exceed it when anything overflows,
+      // which let side peeks poke past the viewport and get guillotined.
+      viewportW: window.innerWidth || 0,
     });
     critterPlacements = placements;
     renderCritterPlacements(ensureCritterLayer(), placements);
@@ -8253,6 +8268,10 @@ function reglueCritterPlacements() {
     }
     if (hitsExclusion) continue; // slid into the player/dock: drop, never nudge
     if (bounds.w && (p.x + p.w > bounds.w || p.y + p.h > bounds.h)) continue; // gate W4 still holds
+    // v1.180: a drift/adoption slide may never carry a critter across the
+    // screen edge either - same invariant as placement time.
+    var vw = (typeof window !== 'undefined' && window.innerWidth) || 0;
+    if (vw && (p.x < 0 || p.x + p.w > vw)) continue;
     survivors.push(p);
   }
   critterPlacements = survivors;
