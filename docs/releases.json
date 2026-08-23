@@ -2104,5 +2104,11 @@
     "date": "2026-08-23",
     "title": "Voice check",
     "intent": "A small diagnostic button in the Critters settings for when tap sounds aren't playing: it tests your sound files right on your device and says exactly what went wrong - for example when a sound file turns out to be in a format your phone can't play - instead of quietly falling back to the beep."
+  },
+  {
+    "version": "1.180.0",
+    "date": "2026-08-23",
+    "title": "True colors, whole critters",
+    "intent": "Uploaded critters now show their true colors: a leftover effect meant for the built-in figurines was quietly shifting the hues of your own images, so a beige rabbit could come out looking green - your art now renders exactly as the file is. And no critter ever gets cut off at the left or right edge of the screen anymore, on any page, no matter how the layout behaves."
   }
 ]

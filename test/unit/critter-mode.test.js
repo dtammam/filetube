@@ -362,8 +362,12 @@ test('renderCritterPlacements (v1.168 sandwich): clipped wrapper + transform-car
     assert.strictEqual(pose.style.left, '15px');
     assert.strictEqual(pose.style.width, '50px');
     assert.strictEqual(pose.style.getPropertyValue('--critter-angle'), '-12deg');
-    assert.strictEqual(pose.style.getPropertyValue('--critter-hue'), '90deg');
+    assert.strictEqual(pose.style.getPropertyValue('--critter-hue'), '90deg', 'BUILTINS keep the hue variety spin');
     assert.strictEqual(pose.style.getPropertyValue('--critter-flip'), '1', 'un-flipped pose');
+    // v1.179.2 (Dean): uploaded art is COLOR-FAITHFUL - no hue var on an img
+    // critter; the filter's 0deg fallback is a no-op rotation.
+    assert.strictEqual(kids[1].firstElementChild.style.getPropertyValue('--critter-hue'), '',
+      'an IMAGE critter renders exactly as the file - the hue spin is builtins-only');
     assert.strictEqual(kids[1].firstElementChild.style.getPropertyValue('--critter-flip'), '-1', 'mirrored pose');
     assert.ok(pose.querySelector('svg'), 'a folder-less critter renders its built-in figurine');
     const img = kids[1].querySelector('img');
@@ -1212,7 +1216,11 @@ test('v1.176 gate W closure: the re-glue DROP predicates bind - exclusion (never
   const origRect = proto.getBoundingClientRect;
   proto.getBoundingClientRect = function () {
     if (this.id === 'card') {
-      if (cardHidden) return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+      // v1.180 gate W: the collapse is WIDTH:0 AT POSITION (a real CSS
+      // width-collapse keeps left/top), not the origin zero-rect - the
+      // origin case is vw-subsumed (translated x < 0), the at-position
+      // case is NOT, and only the D5 hidden-drop catches it.
+      if (cardHidden) return { left: cardRect.left, top: cardRect.top, width: 0, height: 0, right: cardRect.left, bottom: cardRect.top };
       return { left: cardRect.left, top: cardRect.top, width: cardRect.width, height: cardRect.height, right: cardRect.left + cardRect.width, bottom: cardRect.top + cardRect.height };
     }
     if (this.id === 'player-dock') {
@@ -1261,7 +1269,12 @@ test('v1.176 gate W closure: the re-glue DROP predicates bind - exclusion (never
   // tl-corner-family peek: after the translate by (-left, -top) the origin
   // sits strictly inside the box). Loop the unseedable scatter until it
   // draws one, THEN collapse - this bind reds only on the hidden drop.
-  cardRect.left = 10; cardRect.top = 130; cardRect.width = 120; cardRect.height = 44;
+  // v1.180 adjustment: at x=10 a tl-corner peek lands at x<0 and the NEW
+  // screen-edge invariant correctly refuses it - the loop starved. x=60
+  // keeps every draw on-screen while preserving the exact D5 survivor
+  // condition (origin-inside-translated-box needs both coords before the
+  // corner, regardless of where the corner is).
+  cardRect.left = 60; cardRect.top = 130; cardRect.width = 120; cardRect.height = 44;
   let gotTlCornerPeek = false;
   for (let attempt = 0; attempt < 120 && !gotTlCornerPeek; attempt += 1) {
     cardHidden = false;
@@ -1278,8 +1291,15 @@ test('v1.176 gate W closure: the re-glue DROP predicates bind - exclusion (never
   assert.ok(gotTlCornerPeek, 'the sweep drew a tl-corner peek (both coordinates before the anchor corner)');
   cardHidden = true;
   reglueCritterPlacements();
+  // v1.180 gate W CORRECTION (my second subsumption claim, also measured
+  // wrong by the seat): the screen-edge drop subsumes D5 ONLY for the
+  // ORIGIN collapse (display:none-style zero rect at 0,0 - translated x
+  // goes negative). A WIDTH:0-AT-POSITION collapse keeps its coordinates,
+  // the translated critter stays on-screen (seat: 15/29 positions
+  // survive), and ONLY the D5 hidden drop catches it. The stub above uses
+  // the at-position geometry so this assertion reds on the D5 line-mutant.
   assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 0,
-    'the LOAD-BEARING hidden drop: a collapsing anchor sheds its critter even when the overlap predicate cannot catch it');
+    'a width:0-at-position collapse sheds its critter - the D5 hidden drop is LOAD-BEARING here, nothing subsumes it');
 });
 
 // ---- v1.177: the rounded shave (Dean's Modern-2021 screenshots) -------------
@@ -1572,6 +1592,86 @@ test('v1.179.1 the chirp fallback RECORDS why (source locks: all three arms writ
   assert.match(tap, /critterLastChirpReason = 'play rejected: ' \+ \(\(err && err\.name\) \|\| 'unknown'\) \+ ' for ' \+ hit\.sound;/, 'rejected play records the name + URL');
   assert.match(tap, /critterLastChirpReason = 'Audio constructor threw: '/, 'sync throw recorded');
   assert.match(tap, /critterLastChirpReason = 'placement carried no voice/, 'the no-voice arm recorded');
+});
+
+// ---- v1.180: the SCREEN-EDGE invariant (Dean's pink-dress amputation) -------
+
+test('v1.180 SCREEN-EDGE: no placement ever crosses the viewport left/right edge - and inflated scrollWidth cannot defeat full-bleed', () => {
+  // Dean's screenshot: a side peek off a card whose edge sits at the screen
+  // boundary, guillotined. Two holes closed: (1) horizontal overflow
+  // inflates scrollWidth, so a visually-full-bleed card computed <85% and
+  // kept side peeks; (2) non-full-bleed anchors near either screen edge
+  // could poke past it (incl. the old negative-x trade). Both directions of
+  // variety still bound (the v1.169 lesson).
+  const bounds = { w: 1200, h: 5000 }; // scrollWidth INFLATED by an overflow
+  const viewportW = 400;
+  // The screenshot case: 95% of the VIEWPORT but only 31% of scrollWidth.
+  const card = { x: 8, y: 600, w: 380, h: 200 };
+  let tops = 0; let bottoms = 0;
+  for (let seed = 1; seed <= 300; seed += 1) {
+    const out = planCritterScatter({ anchors: [card], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(seed), bounds, viewportW });
+    for (const p of out) {
+      assert.ok(p.x >= 0 && p.x + p.w <= viewportW, `seed ${seed}: crossed the screen edge (x=${p.x}, w=${p.w})`);
+      if (p.y < card.y) tops += 1; else bottoms += 1;
+    }
+  }
+  assert.ok(tops > 40 && bottoms > 40, `full-bleed vs the VIEWPORT redirects to both vertical edges (t=${tops}, b=${bottoms})`);
+  // Non-full-bleed anchors flush against either screen edge: side peeks that
+  // would cross are SKIPPED, never emitted; legal placements still occur.
+  let placed = 0;
+  for (const a of [{ x: 0, y: 600, w: 200, h: 300 }, { x: 200, y: 600, w: 200, h: 300 }]) {
+    for (let seed = 1; seed <= 300; seed += 1) {
+      const out = planCritterScatter({ anchors: [a], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(seed), bounds, viewportW });
+      for (const p of out) {
+        placed += 1;
+        assert.ok(p.x >= 0, `seed ${seed}: crossed the LEFT screen edge (x=${p.x})`);
+        assert.ok(p.x + p.w <= viewportW, `seed ${seed}: crossed the RIGHT screen edge`);
+      }
+    }
+  }
+  assert.ok(placed > 200, 'edge-flush anchors still host critters on their legal sides (' + placed + ')');
+  // viewportW absent (pure tests / legacy callers): the old behavior stands.
+  const legacy = planCritterScatter({ anchors: [{ x: 0, y: 0, w: 400, h: 200 }], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(2) });
+  assert.ok(legacy.length >= 0, 'no viewportW: no crossing enforcement (backward-compatible)');
+});
+
+test('v1.180 SCREEN-EDGE on the re-glue path: a drift slide that would carry a critter off-screen DROPS it', async (t) => {
+  // scrollWidth (2000) exceeds innerWidth (jsdom 1024) so the document-bounds
+  // check alone cannot catch the slide - only the viewport drop can. The
+  // anchor jumps right by 1400px: every translated critter lands past the
+  // screen edge and must be dropped, never left amputated.
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="view-root"><div class="video-card" id="card" data-rx="100" data-ry="300"></div></div></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  global.MutationObserver = dom.window.MutationObserver;
+  global.localStorage = dom.window.localStorage;
+  localStorage.setItem('ft-critters:on', '1');
+  global.window.Image = class { decode() { return Promise.resolve(); } };
+  const docEl = dom.window.document.documentElement;
+  Object.defineProperty(docEl, 'scrollWidth', { value: 2000, configurable: true });
+  Object.defineProperty(docEl, 'scrollHeight', { value: 2000, configurable: true });
+  const cardRect = { left: 100, top: 300 };
+  const proto = dom.window.Element.prototype;
+  const origRect = proto.getBoundingClientRect;
+  proto.getBoundingClientRect = function () {
+    if (this.id === 'card') return { left: cardRect.left, top: cardRect.top, width: 300, height: 200, right: cardRect.left + 300, bottom: cardRect.top + 200 };
+    return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+  };
+  t.after(() => {
+    proto.getBoundingClientRect = origRect;
+    const { scatterCritters } = require('../../public/js/common.js');
+    localStorage.setItem('ft-critters:on', '0');
+    scatterCritters();
+    delete global.window; delete global.document; delete global.MutationObserver; delete global.localStorage;
+    dom.window.close();
+  });
+  const { scatterCritters, reglueCritterPlacements } = require('../../public/js/common.js');
+  scatterCritters();
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  assert.ok(dom.window.document.querySelectorAll('.critter').length > 0, 'placed');
+  cardRect.left = 1500; // translated critters land ~1440-1830: inside scrollWidth, PAST the screen
+  reglueCritterPlacements();
+  assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 0,
+    'off-screen slides drop (delete the reglue vw check and this reds by leaving amputated critters)');
 });
 
 // ---- CSS locks --------------------------------------------------------------
