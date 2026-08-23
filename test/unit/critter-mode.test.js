@@ -140,11 +140,41 @@ test('planCritterScatter: every placement PEEKS - overlaps its anchor but extend
   }
 });
 
-test('planCritterScatter: anchors too small to hide behind are skipped', () => {
+test('planCritterScatter: anchors too small to hide behind are skipped (v1.169: the minimum is 24x24 for the avatar micro-ambush)', () => {
   const out = planCritterScatter({
     anchors: [{ x: 10, y: 10, w: 30, h: 20 }], exclusions: [], manifest: MANIFEST_8, count: 4, rng: seededRng(5),
   });
-  assert.strictEqual(out.length, 0);
+  assert.strictEqual(out.length, 0, 'h=20 still too small');
+  const avatar = planCritterScatter({
+    anchors: [{ x: 50, y: 500, w: 24, h: 24 }], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(6),
+  });
+  assert.strictEqual(avatar.length, 1, 'a 24x24 avatar circle hosts a micro-ambush');
+  assert.ok(avatar[0].w >= 26 && avatar[0].w <= 36, 'scaled to the tiny anchor (1.1-1.5x its height)');
+});
+
+test('v1.169 FULL-BLEED rule: a full-width anchor only peeks TOP or BOTTOM - never off the screen edge', () => {
+  // Dean's mobile-feed screenshots: side/corner peeks off full-bleed cards
+  // landed on the viewport edge, amputated. With bounds given, an anchor
+  // spanning >=85% of the document width protrudes only vertically.
+  const bounds = { w: 400, h: 5000 };
+  const card = { x: 8, y: 600, w: 384, h: 300 }; // a full-bleed mobile card
+  for (let seed = 1; seed <= 300; seed += 1) {
+    const out = planCritterScatter({ anchors: [card], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(seed), bounds });
+    for (const p of out) {
+      assert.ok(p.x >= card.x && p.x + p.w <= card.x + card.w,
+        `seed ${seed}: horizontal protrusion off a full-bleed card (edge went sideways)`);
+      const vertical = p.y < card.y || p.y + p.h > card.y + card.h;
+      assert.ok(vertical, `seed ${seed}: the peek must protrude vertically`);
+    }
+  }
+  // A NON-full-bleed anchor keeps the full 8-position pool (side peeks appear across seeds).
+  const narrow = { x: 100, y: 600, w: 200, h: 300 };
+  let sideways = 0;
+  for (let seed = 1; seed <= 120; seed += 1) {
+    const out = planCritterScatter({ anchors: [narrow], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(seed), bounds });
+    for (const p of out) { if (p.x < narrow.x || p.x + p.w > narrow.x + narrow.w) sideways += 1; }
+  }
+  assert.ok(sideways > 20, 'narrow anchors still get side/corner peeks (' + sideways + '/120)');
 });
 
 test('gate W1: a placement\'s OWN rect never intersects an exclusion (a peek must not REACH INTO the player/dock)', () => {
@@ -517,7 +547,7 @@ test('v1.166.2: the WATCH page has anchors, and every anchor honours the ground 
 // ---- v1.167: buttons priority + scale-to-anchor + the fixed-subtree guard ---
 
 test('v1.167: the machine-derived sweep is in the pool; the transparent rejects are NOT', () => {
-  for (const sel of ['.btn', '.sub-row', '.history-thumb', '.book-row-cover', '.music-artist-mosaic', '.podcast-card-art', '.comment-input-box']) {
+  for (const sel of ['.btn', '.sub-row', '.history-thumb', '.book-row-cover', '.music-artist-mosaic', '.podcast-card-art', '.comment-input-box', '.thumbnail-container', '.card-channel-avatar']) {
     assert.ok(CRITTER_ANCHOR_SELECTORS.indexOf(sel) !== -1, sel + ' anchors (verified painting)');
   }
   for (const sel of ['.podcast-card', '.music-artist-card', '.music-album-card', '.history-row', '.comment-item', '.stable-row']) {

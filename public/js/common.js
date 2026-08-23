@@ -7488,6 +7488,11 @@ var CRITTER_STORAGE_DENSITY = 'ft-critters:density';
 var CRITTER_ANCHOR_SELECTORS = [
   '.video-card', '.setup-box', '.md-group-card', '.md-hero', '.description-container', '.related-thumb',
   '.btn', '.sub-row', '.history-thumb', '.book-row-cover', '.music-artist-mosaic', '.podcast-card-art', '.comment-input-box',
+  // v1.169 (Dean: the mobile feed needs critters ON the cards): the thumbnail
+  // (paints letterbox black - critters rise from behind the artwork onto the
+  // title zone) and the tiny channel-avatar circle (24px - a micro-ambush;
+  // the anchor minimum drops to 24x24 for it, pool stays curated).
+  '.thumbnail-container', '.card-channel-avatar',
 ];
 // Buttons get sampling PRIORITY (Dean's ambush-over-wallpaper ruling): anchors
 // matching these selectors carry weight 3 in the without-replacement sample.
@@ -7542,7 +7547,9 @@ function planCritterScatter(opts) {
   var rng = (opts && typeof opts.rng === 'function') ? opts.rng : Math.random;
 
   var usable = anchors.filter(function (a) {
-    if (!a || a.w < 48 || a.h < 32) return false; // too small to hide behind
+    // v1.169: minimum lowered 48x32 -> 24x24 so the channel-avatar circle can
+    // host a micro-ambush; the pool is curated, so nothing unintended qualifies.
+    if (!a || a.w < 24 || a.h < 24) return false; // too small to hide behind
     return !exclusions.some(function (e) { return critterRectsIntersect(a, e); });
   });
   var shuffle = function (arr) {
@@ -7577,7 +7584,13 @@ function planCritterScatter(opts) {
     var size = a.h <= 64
       ? Math.min(88, Math.max(26, Math.round(a.h * (1.1 + rng() * 0.4))))
       : 44 + Math.floor(rng() * 44); // CODE owns display size either way
-    var edge = EDGES[Math.floor(rng() * EDGES.length)];
+    // v1.169 FULL-BLEED RULE (Dean's mobile-feed screenshots: side peeks off a
+    // full-width card land ON THE SCREEN EDGE and look amputated): an anchor
+    // spanning ~the whole document width only peeks TOP or BOTTOM - emerging
+    // between the artwork and the title, never off the side of the phone.
+    var fullBleed = bounds && a.w >= bounds.w * 0.85;
+    var pool = fullBleed ? ['top', 'bottom'] : EDGES;
+    var edge = pool[Math.floor(rng() * pool.length)];
     // Exposed fraction: 30%..65% of the critter sticks out (was a fixed 45%).
     var ex = 0.30 + rng() * 0.35;
     // v1.168 SANDWICH (Dean: "behind its ONE starting thing, above everything
