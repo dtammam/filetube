@@ -166,3 +166,184 @@ test('every management route is admin-gated in-route (requireAdmin), matching th
     assert.ok(head.includes('if (!requireAdmin(req, res)) return;'), marker + ' calls requireAdmin first');
   }
 });
+
+// ---- the client half: Settings section + manager UI -------------------------
+
+const { JSDOM } = require('jsdom');
+const SETUP_HTML = fs.readFileSync(path.join(__dirname, '../../public/setup.html'), 'utf8');
+const SETUP_JS = fs.readFileSync(path.join(__dirname, '../../public/js/setup.js'), 'utf8');
+const COMMON = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
+const CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+
+test('setup.html: Sneaky critters is its OWN section (Dean\'s ruling) - the toggle/density MOVED out of Appearance, the manager ships hidden', () => {
+  assert.match(SETUP_HTML, /<details class="setup-box sub-collapsible"[^>]*data-collapse-key="critters"[^>]*data-md-icon="paw"[^>]*open>/,
+    'the section exists with its own collapse key + paw icon');
+  // The toggle/density ids live inside the critters section, NOT in appearance.
+  const appearance = SETUP_HTML.slice(SETUP_HTML.indexOf('data-collapse-key="appearance"'), SETUP_HTML.indexOf('data-collapse-key="critters"'));
+  assert.ok(!appearance.includes('critter-mode-check'), 'the toggle left Appearance');
+  const critters = SETUP_HTML.slice(SETUP_HTML.indexOf('data-collapse-key="critters"'), SETUP_HTML.indexOf('data-collapse-key="video-folders"'));
+  for (const id of ['critter-mode-check', 'critter-density-select', 'critter-manager', 'critter-pool-grid',
+    'critter-image-input', 'critter-sound-input', 'critter-upload-images-btn', 'critter-upload-sounds-btn',
+    'critter-download-all-link', 'critter-delete-all-btn', 'critter-manager-status']) {
+    assert.ok(critters.includes(`id="${id}"`), id + ' lives in the critters section');
+  }
+  assert.match(critters, /<div id="critter-manager" hidden>/, 'the manager ships HIDDEN (admin-only reveal)');
+  assert.match(critters, /id="critter-download-all-link" href="\/api\/critters\/archive"/, 'Download all is a plain link to the archive route');
+  assert.ok(!SETUP_HTML.includes('accept="image/svg') && !critters.includes('.svg'), 'svg is not offered for upload (stored-XSS posture)');
+});
+
+test('common.js: the paw icon exists for the section; style.css styles the grid + armed state with tokens', () => {
+  assert.match(COMMON, /\n {2}paw: '<circle/, 'MD_ICON_PATHS.paw');
+  for (const cls of ['.critter-pool-grid', '.critter-pool-item', '.critter-pool-name', '.critter-pool-empty', '.critter-delete-armed']) {
+    assert.match(CSS, new RegExp(cls.replace(/\./g, '\\.') + '\\s*\\{'), cls + ' has a rule');
+  }
+  assert.match(CSS, /\.critter-delete-armed\s*\{[^}]*var\(--yt-red\)/, 'armed state paints the danger token');
+});
+
+test('setup.js: wireCritterManager is called ONLY from the admin branch (the reveal gate binds)', () => {
+  const adminAt = SETUP_JS.indexOf("if (me.user.role === 'admin')");
+  assert.ok(adminAt !== -1);
+  const elseAt = SETUP_JS.indexOf('} else {', adminAt);
+  const adminBranch = SETUP_JS.slice(adminAt, elseAt);
+  assert.ok(adminBranch.includes('wireCritterManager(signal)'), 'wired inside the admin branch');
+  const callLines = SETUP_JS.split('\n').filter((l) => l.includes('wireCritterManager(signal)') && !l.includes('function '));
+  assert.strictEqual(callLines.length, 1, 'exactly ONE call site - no non-admin path can reach it');
+});
+
+// jsdom harness for the manager: mount the REAL section markup, stub fetch.
+function mountManager(t, fetchImpl) {
+  const critters = SETUP_HTML.slice(SETUP_HTML.indexOf('<details class="setup-box sub-collapsible" data-collapse-key="critters"'), SETUP_HTML.indexOf('data-collapse-key="video-folders"'));
+  const dom = new JSDOM('<!DOCTYPE html><body>' + critters.slice(0, critters.lastIndexOf('<details')) + '</body>', { url: 'http://localhost/' });
+  global.window = dom.window;
+  global.document = dom.window.document;
+  global.fetch = fetchImpl;
+  global.setActionStatus = (el, text) => { if (el && text !== null && text !== undefined) el.textContent = text; };
+  const critterModeCalls = { n: 0 };
+  global.applyCritterMode = () => { critterModeCalls.n += 1; };
+  t.after(() => {
+    delete global.window; delete global.document; delete global.fetch;
+    delete global.setActionStatus; delete global.applyCritterMode;
+    dom.window.close();
+  });
+  return { dom, critterModeCalls };
+}
+
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+function listingFetch(state) {
+  // A stateful fetch stub: GET lists state.pool; DELETEs mutate it. Every call
+  // is recorded verbatim for the assertions.
+  const calls = [];
+  const impl = (url, opts) => {
+    calls.push({ url: String(url), opts: opts || {} });
+    const method = (opts && opts.method) || 'GET';
+    if (method === 'GET') {
+      return Promise.resolve({ ok: true, json: async () => ({ critters: state.pool.slice() }) });
+    }
+    if (method === 'DELETE' && String(url).startsWith('/api/critters/item?id=')) {
+      const id = decodeURIComponent(String(url).split('=')[1]);
+      const before = state.pool.length;
+      state.pool = state.pool.filter((c) => c.id !== id);
+      const hit = state.pool.length < before;
+      return Promise.resolve({ ok: hit, status: hit ? 200 : 404, json: async () => (hit ? { ok: true } : { error: 'No such critter' }) });
+    }
+    if (method === 'DELETE' && String(url) === '/api/critters/all') {
+      const n = state.pool.length;
+      state.pool = [];
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true, deleted: n }) });
+    }
+    if (method === 'POST') {
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true }) });
+    }
+    return Promise.resolve({ ok: false, status: 500, json: async () => ({}) });
+  };
+  impl.calls = calls;
+  return impl;
+}
+
+const POOL2 = () => [
+  { id: 'pearl', img: '/critters/pearl.png', sound: '/critters/pearl.mp3' },
+  { id: 'milo', img: '/critters/milo.png', sound: null },
+];
+
+test('manager: reveals the hidden box and renders the pool grid (thumbnail, name, sound note, per-item delete)', async (t) => {
+  const state = { pool: POOL2() };
+  const fetchImpl = listingFetch(state);
+  const { dom } = mountManager(t, fetchImpl);
+  const { wireCritterManager } = require('../../public/js/setup.js');
+  wireCritterManager(new dom.window.AbortController().signal);
+  await flush();
+  assert.strictEqual(dom.window.document.getElementById('critter-manager').hidden, false, 'the box is revealed');
+  const items = dom.window.document.querySelectorAll('.critter-pool-item');
+  assert.strictEqual(items.length, 2);
+  assert.strictEqual(items[0].querySelector('img').getAttribute('src'), '/critters/pearl.png');
+  assert.ok(items[0].querySelector('.critter-pool-name').textContent.includes('♪'), 'paired sound shows the note');
+  assert.ok(!items[1].querySelector('.critter-pool-name').textContent.includes('♪'), 'no sound, no note');
+  assert.strictEqual(items[0].querySelector('button').textContent, 'Delete');
+});
+
+test('manager DESTRUCTIVE two-tap: ONE tap NEVER deletes; the second fires exactly one DELETE for that id and refreshes', async (t) => {
+  const state = { pool: POOL2() };
+  const fetchImpl = listingFetch(state);
+  const { dom, critterModeCalls } = mountManager(t, fetchImpl);
+  const { wireCritterManager } = require('../../public/js/setup.js');
+  wireCritterManager(new dom.window.AbortController().signal);
+  await flush();
+  const del = dom.window.document.querySelectorAll('.critter-pool-item button')[0];
+  del.click();
+  await flush();
+  assert.strictEqual(fetchImpl.calls.filter((c) => c.opts.method === 'DELETE').length, 0, 'first tap ARMS, never deletes');
+  assert.strictEqual(del.textContent, 'Really delete?');
+  assert.ok(del.classList.contains('critter-delete-armed'));
+  del.click();
+  await flush(); await flush();
+  const dels = fetchImpl.calls.filter((c) => c.opts.method === 'DELETE');
+  assert.strictEqual(dels.length, 1, 'exactly one DELETE');
+  assert.strictEqual(dels[0].url, '/api/critters/item?id=pearl');
+  assert.ok(critterModeCalls.n >= 1, 'applyCritterMode fired (manifest cache bust + live re-scatter)');
+  const items = dom.window.document.querySelectorAll('.critter-pool-item');
+  assert.strictEqual(items.length, 1, 'the grid re-rendered from the fresh listing');
+  assert.strictEqual(items[0].querySelector('button').textContent, 'Delete', 'the rebuilt row is UNARMED (v1.159/v1.162: state never leaks across renders)');
+});
+
+test('manager delete-all two-tap: the armed label carries the LIVE count; the second tap fires DELETE /api/critters/all', async (t) => {
+  const state = { pool: POOL2() };
+  const fetchImpl = listingFetch(state);
+  const { dom, critterModeCalls } = mountManager(t, fetchImpl);
+  const { wireCritterManager } = require('../../public/js/setup.js');
+  wireCritterManager(new dom.window.AbortController().signal);
+  await flush();
+  const btn = dom.window.document.getElementById('critter-delete-all-btn');
+  btn.click();
+  await flush();
+  assert.strictEqual(fetchImpl.calls.filter((c) => c.opts.method === 'DELETE').length, 0, 'first tap arms only');
+  assert.ok(btn.textContent.includes('2'), 'the armed label shows the pool count: ' + btn.textContent);
+  btn.click();
+  await flush(); await flush();
+  const dels = fetchImpl.calls.filter((c) => c.opts.method === 'DELETE');
+  assert.deepStrictEqual(dels.map((c) => c.url), ['/api/critters/all']);
+  assert.ok(critterModeCalls.n >= 1);
+  assert.ok(dom.window.document.querySelector('.critter-pool-empty'), 'empty state after the purge');
+  assert.strictEqual(btn.textContent, 'Delete all…', 'the button disarms after firing');
+});
+
+test('manager upload: each picked file POSTs raw with its name + mime; unsupported extensions are SKIPPED client-side', async (t) => {
+  const state = { pool: [] };
+  const fetchImpl = listingFetch(state);
+  const { dom, critterModeCalls } = mountManager(t, fetchImpl);
+  const { wireCritterManager } = require('../../public/js/setup.js');
+  wireCritterManager(new dom.window.AbortController().signal);
+  await flush();
+  const input = dom.window.document.getElementById('critter-image-input');
+  const fileA = { name: 'new critter.png' };
+  const fileB = { name: 'evil.svg' };
+  Object.defineProperty(input, 'files', { value: [fileA, fileB], configurable: true });
+  input.dispatchEvent(new dom.window.Event('change'));
+  await flush(); await flush();
+  const posts = fetchImpl.calls.filter((c) => c.opts.method === 'POST');
+  assert.strictEqual(posts.length, 1, 'the svg never leaves the client');
+  assert.strictEqual(posts[0].url, '/api/critters/upload?name=' + encodeURIComponent('new critter.png'), 'name is URI-encoded');
+  assert.strictEqual(posts[0].opts.headers['Content-Type'], 'image/png');
+  assert.strictEqual(posts[0].opts.body, fileA, 'the raw File is the body (the logo posture - no multipart)');
+  assert.ok(critterModeCalls.n >= 1, 'a successful upload busts the manifest + re-scatters');
+});
