@@ -1207,6 +1207,34 @@ test('v1.176 gate W closure: the re-glue DROP predicates bind - exclusion (never
   cardHidden = true;
   reglueCritterPlacements();
   assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 0, 'hidden anchor: dropped');
+  // HIDDEN, the NON-SUBSUMING placement (the seat's counterexample, delta
+  // round: my "the overlap predicate subsumes the hidden drop" claim was
+  // REFUTED by measurement - without the hidden drop, a collapse-translate
+  // can slide the critter box OVER the zero-point so `overlaps` stays true
+  // and the stray critter survives at a garbage near-origin position). The
+  // survivor geometry needs BOTH coordinates before the anchor's corner (a
+  // tl-corner-family peek: after the translate by (-left, -top) the origin
+  // sits strictly inside the box). Loop the unseedable scatter until it
+  // draws one, THEN collapse - this bind reds only on the hidden drop.
+  cardRect.left = 10; cardRect.top = 130; cardRect.width = 120; cardRect.height = 44;
+  let gotTlCornerPeek = false;
+  for (let attempt = 0; attempt < 120 && !gotTlCornerPeek; attempt += 1) {
+    cardHidden = false;
+    scatterCritters();
+    await new Promise((resolve) => setTimeout(resolve, 230));
+    const wrap = dom.window.document.querySelector('.critter');
+    if (!wrap) continue;
+    const W = parseInt(wrap.style.width, 10);
+    const pad = Math.round(W * 0.1875); // pad = 0.3w, W = 1.6w
+    const px = parseInt(wrap.style.left, 10) + pad;
+    const py = parseInt(wrap.style.top, 10) + pad;
+    if (px < cardRect.left && py < cardRect.top) gotTlCornerPeek = true;
+  }
+  assert.ok(gotTlCornerPeek, 'the sweep drew a tl-corner peek (both coordinates before the anchor corner)');
+  cardHidden = true;
+  reglueCritterPlacements();
+  assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 0,
+    'the LOAD-BEARING hidden drop: a collapsing anchor sheds its critter even when the overlap predicate cannot catch it');
 });
 
 // ---- CSS locks --------------------------------------------------------------
