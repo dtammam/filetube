@@ -8173,6 +8173,11 @@ function scatterCritters() {
 // while a view is up.
 function armCritterSettleCheck() {
   if (critterSettleChecks >= 2) return;
+  // v1.180: NEVER overwrite a stashed handle without cancelling it (the
+  // v1.166.4 class, found hiding inside the arm itself): the timer and nudge
+  // paths clear the stash before re-arming, but a DIRECT reglue call (tests,
+  // any future caller) would orphan a live, uncancellable timer here.
+  if (critterRetryTimer) { clearTimeout(critterRetryTimer); critterRetryTimer = null; }
   var delay = critterSettleChecks === 0 ? 1500 : 4000;
   critterSettleChecks += 1;
   critterRetryTimer = setTimeout(function () {

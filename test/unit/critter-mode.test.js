@@ -1631,6 +1631,45 @@ test('v1.180 SCREEN-EDGE: no placement ever crosses the viewport left/right edge
   assert.ok(legacy.length >= 0, 'no viewportW: no crossing enforcement (backward-compatible)');
 });
 
+test('v1.180 SCREEN-EDGE on the re-glue path: a drift slide that would carry a critter off-screen DROPS it', async (t) => {
+  // scrollWidth (2000) exceeds innerWidth (jsdom 1024) so the document-bounds
+  // check alone cannot catch the slide - only the viewport drop can. The
+  // anchor jumps right by 1400px: every translated critter lands past the
+  // screen edge and must be dropped, never left amputated.
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="view-root"><div class="video-card" id="card" data-rx="100" data-ry="300"></div></div></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  global.MutationObserver = dom.window.MutationObserver;
+  global.localStorage = dom.window.localStorage;
+  localStorage.setItem('ft-critters:on', '1');
+  global.window.Image = class { decode() { return Promise.resolve(); } };
+  const docEl = dom.window.document.documentElement;
+  Object.defineProperty(docEl, 'scrollWidth', { value: 2000, configurable: true });
+  Object.defineProperty(docEl, 'scrollHeight', { value: 2000, configurable: true });
+  const cardRect = { left: 100, top: 300 };
+  const proto = dom.window.Element.prototype;
+  const origRect = proto.getBoundingClientRect;
+  proto.getBoundingClientRect = function () {
+    if (this.id === 'card') return { left: cardRect.left, top: cardRect.top, width: 300, height: 200, right: cardRect.left + 300, bottom: cardRect.top + 200 };
+    return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+  };
+  t.after(() => {
+    proto.getBoundingClientRect = origRect;
+    const { scatterCritters } = require('../../public/js/common.js');
+    localStorage.setItem('ft-critters:on', '0');
+    scatterCritters();
+    delete global.window; delete global.document; delete global.MutationObserver; delete global.localStorage;
+    dom.window.close();
+  });
+  const { scatterCritters, reglueCritterPlacements } = require('../../public/js/common.js');
+  scatterCritters();
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  assert.ok(dom.window.document.querySelectorAll('.critter').length > 0, 'placed');
+  cardRect.left = 1500; // translated critters land ~1440-1830: inside scrollWidth, PAST the screen
+  reglueCritterPlacements();
+  assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 0,
+    'off-screen slides drop (delete the reglue vw check and this reds by leaving amputated critters)');
+});
+
 // ---- CSS locks --------------------------------------------------------------
 
 test('v1.175: every critter ARRIVES on a pure-opacity fade (no pop-in; no motion, so no reduced-motion arm needed)', () => {
