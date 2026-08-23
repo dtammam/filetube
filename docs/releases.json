@@ -2080,5 +2080,11 @@
     "date": "2026-08-23",
     "title": "Critters hold their spots, plus new tricks",
     "intent": "On pages that finish loading in stages - like a video you're watching - critters used to jump to completely new hiding spots when the page settled. Now each critter stays with the exact button or card it chose and simply rides along if that spot moves. And tapping a critter has more surprises: alongside the wiggle, shiver, and hop, they can now twirl right around, duck down shyly, or do a squishy little bounce."
+  },
+  {
+    "version": "1.177.0",
+    "date": "2026-08-23",
+    "title": "Shaved to the corner",
+    "intent": "In the modern look, buttons and artwork have rounded corners - but a critter hiding behind them was cut along a square edge, so little squared-off shoulders could poke past the curve. Now the hidden part of a critter follows the exact rounded shape of whatever it's hiding behind, so every edge is clean and true to the button."
   }
 ]
