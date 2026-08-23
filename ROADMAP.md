@@ -80,6 +80,52 @@
 
 ## Shipped
 
+### v1.167.0 - critters everywhere, popping out from behind buttons (Dean) (2026-08-22)
+
+Dean's refined intent after living with v1.166.x: less wallpaper, more AMBUSH -
+critters cartoonishly popping out from behind SPECIFIC small elements (a
+subscribe button, a comment), and "every page fair game". Exec plan (completed):
+2026-08-22-critter-everywhere-button-peek.md, with the MACHINE-DERIVED
+accept/reject table.
+
+- Anchor pool += the per-view sweep, every entry checker-verified to paint an
+  opaque token: `.btn` (buttons - PRIORITY weight 3), `.sub-row`,
+  `.history-thumb`, `.book-row-cover`, `.music-artist-mosaic`,
+  `.podcast-card-art`, `.comment-input-box`. Rejected as TRANSPARENT: the
+  music/podcast cards (their art tiles anchor instead), history/song/stable
+  rows, comment-item. The ground-contract lock TIGHTENED (transparent/none no
+  longer counts as paint - the v1.166.3 gate's disclosed nit became
+  load-bearing on literally `.music-artist-card { background: transparent }`).
+- WEIGHTED without-replacement sampling (Efraimidis-Spirakis) - buttons win
+  more of the draw, nothing starves; bound by a 600-seed statistical sweep the
+  seat independently re-derived with a second RNG (~25% observed = theory).
+- SCALE-TO-ANCHOR: behind small elements the critter shrinks to ~1.1-1.5x the
+  anchor's height (floor 26px); big furniture keeps 44-88px.
+- FIXED-SUBTREE guard: header/sidebar/bottom-nav buttons never anchor (their
+  viewport-anchored rects would detach from document-anchored critters on
+  scroll); fails CLOSED on unreadable styles.
+
+SLIM gate: REQUEST CHANGES round 1 - the recurring presence-not-binding class,
+TWICE: the fixed-guard CALLSITE and the weight TAGGING were each deletable with
+the suite green (helper and pure planner were bound; their wiring was not). The
+seat pre-verified a single collector-level test that kills both; adopted
+verbatim; delta APPROVE. One disclosed surviving mutant: the fail-closed catch
+polarity in critterInsideFixed is unreachable-paranoia (the #166 precedent).
+Residuals -> tech-debt #167 (inner-scroller detach - a blanket overflow-skip
+would delete the books shelf's WANTED anchors; lock porosity spellings).
+
+DUAL-NODE (disclosed): v22 7454/7454 clean; v24 run 1 was 7453/7454 with ONE
+failure whose name the count-only capture missed - the re-run was CLEAN (zero
+not-ok lines across the full suite), consistent with the TRACKED flaky classes
+(#142 you-nav / #156 books-tts load), not the new critter tests (which are
+seed-deterministic). Reported as measured.
+
+DEVICE (Dean): every view now hosts critters - subscriptions, history, books,
+music, podcasts included; small critters pop out from behind action buttons
+(scaled to the button); big boxes still host full-size ones; nothing anchors to
+the fixed header/nav; tap chirps unchanged. More folder images still = fuller
+Obscene.
+
 ### v1.166.4 - critters reach the watch page: the empty-scatter retry ladder (Dean device report) (2026-08-22)
 
 Dean (on-device): critters everywhere EXCEPT watch pages, and Obscene not

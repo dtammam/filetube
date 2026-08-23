@@ -7478,7 +7478,21 @@ var CRITTER_STORAGE_DENSITY = 'ft-critters:density';
 // deliberately NOT an anchor: it paints no background, so a critter "behind"
 // it would show through. Peeks that would reach the adjacent #player-wrapper
 // are already skipped by the placement-rect exclusion check.
-var CRITTER_ANCHOR_SELECTORS = ['.video-card', '.setup-box', '.md-group-card', '.md-hero', '.description-container', '.related-thumb'];
+// v1.167 (Dean: "everywhere... popping up behind the button in a cute
+// cartoonish way"): the MACHINE-DERIVED per-view sweep (exec plan carries the
+// full accept/reject table) - `.btn` (buttons, PRIORITY-weighted), `.sub-row`,
+// `.history-thumb`, `.book-row-cover`, `.music-artist-mosaic`,
+// `.podcast-card-art`, `.comment-input-box`. Rejected as TRANSPARENT (the
+// tightened ground contract): the music/podcast CARDS (their art tiles paint
+// instead), history/song/stable rows, comment-item.
+var CRITTER_ANCHOR_SELECTORS = [
+  '.video-card', '.setup-box', '.md-group-card', '.md-hero', '.description-container', '.related-thumb',
+  '.btn', '.sub-row', '.history-thumb', '.book-row-cover', '.music-artist-mosaic', '.podcast-card-art', '.comment-input-box',
+];
+// Buttons get sampling PRIORITY (Dean's ambush-over-wallpaper ruling): anchors
+// matching these selectors carry weight 3 in the without-replacement sample.
+var CRITTER_PRIORITY_SELECTORS = ['.btn'];
+var CRITTER_PRIORITY_WEIGHT = 3;
 // Playback surfaces + modals: never an anchor, never overlapped, and the tap
 // handler stands down over them (Dean's hard constraint - critters must not
 // disrupt the video/audio experience). `[class*="-backdrop"]` covers the WHOLE
@@ -7539,7 +7553,13 @@ function planCritterScatter(opts) {
     }
     return out;
   };
-  var anchorPool = shuffle(usable);
+  // v1.167: WEIGHTED without-replacement anchor sampling (Efraimidis-Spirakis:
+  // key = rng^(1/weight), take the largest keys) - buttons carry weight 3, so
+  // the ambush spots win more of the draw without ever starving other anchors.
+  var anchorPool = usable
+    .map(function (a) { return { a: a, k: Math.pow(rng(), 1 / (a.weight > 0 ? a.weight : 1)) }; })
+    .sort(function (p, q) { return q.k - p.k; })
+    .map(function (p) { return p.a; });
   var critterPool = shuffle(manifest);
   var n = Math.min(count, anchorPool.length, critterPool.length);
   var bounds = (opts && opts.bounds) || null; // {w,h} document size - placements never grow the page
@@ -7548,7 +7568,12 @@ function planCritterScatter(opts) {
   for (var k = 0; k < n; k += 1) {
     var a = anchorPool[k];
     var c = critterPool[k];
-    var size = 44 + Math.floor(rng() * 44); // 44-88px box - CODE owns display size
+    // v1.167 SCALE-TO-ANCHOR (Dean's ruling): behind a SMALL element (a button)
+    // the critter shrinks to ~1.1-1.5x the anchor's height so it reads as
+    // hiding behind it; bigger furniture keeps the original 44-88px band.
+    var size = a.h <= 64
+      ? Math.min(88, Math.max(26, Math.round(a.h * (1.1 + rng() * 0.4))))
+      : 44 + Math.floor(rng() * 44); // CODE owns display size either way
     var edge = EDGES[Math.floor(rng() * EDGES.length)];
     var x; var y;
     if (edge === 'top') { x = a.x + rng() * Math.max(0, a.w - size); y = a.y - size * 0.45; }
@@ -7697,15 +7722,35 @@ function fetchCritterManifest() {
   return critterManifestPromise;
 }
 
+// v1.167: a FIXED-position ancestor makes an element's rect viewport-anchored
+// while critters live in DOCUMENT coordinates - they separate on scroll (header
+// buttons, the bottom nav). Such subtrees are never anchors.
+function critterInsideFixed(el) {
+  for (var p = el; p && p !== document.body && p.nodeType === 1; p = p.parentElement) {
+    // Fail CLOSED (gate S2): if computed style is unreadable, do NOT anchor -
+    // wrongly skipping one candidate is invisible; wrongly anchoring a fixed
+    // one detaches its critter on scroll.
+    try { if (window.getComputedStyle(p).position === 'fixed') return true; } catch (_) { return true; }
+  }
+  return false;
+}
+
 function collectCritterRects(selectors, requireSize) {
   var rects = [];
   var nodes = document.querySelectorAll(selectors.join(','));
   for (var i = 0; i < nodes.length; i += 1) {
     var el = nodes[i];
     if (requireSize && el.closest && el.closest(CRITTER_EXCLUSION_SELECTORS.join(','))) continue;
+    if (requireSize && critterInsideFixed(el)) continue; // anchors only - exclusions may BE fixed (the dock)
     var r = el.getBoundingClientRect();
     if (requireSize && (r.width < 1 || r.height < 1)) continue; // hidden
-    rects.push({ x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height });
+    var weight = 1;
+    if (requireSize && el.matches) {
+      for (var s = 0; s < CRITTER_PRIORITY_SELECTORS.length; s += 1) {
+        if (el.matches(CRITTER_PRIORITY_SELECTORS[s])) { weight = CRITTER_PRIORITY_WEIGHT; break; }
+      }
+    }
+    rects.push({ x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height, weight: weight });
   }
   return rects;
 }
@@ -13555,6 +13600,9 @@ if (typeof module !== 'undefined' && module.exports) {
     CRITTER_REACTIONS, resolveCritterConfig, planCritterScatter, critterTapHit,
     renderCritterPlacements, scatterCritters, applyCritterMode, playCritterChirp,
     ensureCritterLayer,
+    // v1.167: button priority + the fixed-subtree guard (+ the collector, so
+    // the WIRING of both is behaviourally bound, not just the helper - gate PNB).
+    CRITTER_PRIORITY_SELECTORS, CRITTER_PRIORITY_WEIGHT, critterInsideFixed, collectCritterRects,
     // v1.163.1: force text (non-emoji) presentation on the arrow glyphs.
     DDR_TEXT_PRESENTATION, ddrArrowDisplayGlyph,
     // v1.50.3: the D dark/light toggle's pure decision.

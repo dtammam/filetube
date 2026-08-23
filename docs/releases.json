@@ -2020,5 +2020,11 @@
     "date": "2026-08-22",
     "title": "Critters make it to the video page",
     "intent": "The page where you watch a video builds its content a moment after it opens, and the critters were only looking for hiding spots before that content arrived - so video pages stayed empty. The critters now check back a couple of times as the page fills in, then settle: within a second or two they peek out from behind the description and the related videos, and once placed they never jump around. Tip: the maximum number of critters on a page equals how many images are in your critters folder, so add more pictures to make the Obscene setting live up to its name."
+  },
+  {
+    "version": "1.167.0",
+    "date": "2026-08-22",
+    "title": "Critters ambush from behind buttons, on every page",
+    "intent": "The critters got sneakier and spread out. Instead of loitering behind big cards like wallpaper, they now favor popping out from behind buttons - shrunk down to button size, head and ears sticking out, properly cartoonish - and they roam every page now: subscriptions, history, books, music, podcasts, the comment box. They still never touch the player or the app's fixed menus, and tapping them works the same."
   }
 ]
