@@ -134,7 +134,8 @@ test('planCritterScatter: every placement PEEKS - overlaps its anchor but extend
     const fullyInside = p.x >= a.x && p.x + p.w <= a.x + a.w && p.y >= a.y && p.y + p.h <= a.y + a.h;
     assert.ok(overlaps, 'the critter straddles its anchor (the hidden half)');
     assert.ok(!fullyInside, 'part of the critter sticks OUT (the peeking half)');
-    assert.ok(p.angle >= -24 && p.angle <= 24, 'a jaunty but readable angle');
+    assert.ok(p.angle >= -38 && p.angle <= 38, 'a jaunty (v1.168: wilder) but readable angle');
+    assert.ok(p.flip === 1 || p.flip === -1, 'every placement picks a pose direction');
     assert.ok(p.w >= 44 && p.w <= 88, 'CODE owns display size regardless of source render size');
   }
 });
@@ -189,6 +190,30 @@ test('gate W4: with document bounds, no placement grows the page (right/bottom e
   }
 });
 
+test('v1.168 go-harder: corners join the edge pool, peek depth varies, flips split ~50/50, and CSS carries the flip everywhere', () => {
+  // Distribution sweep (seeded): flips near half; exposure never outside the
+  // 30-65% band on plain edges (corners expose 25-50% per axis).
+  const anchors = Array.from({ length: 10 }, (_, i) => ({ x: 200, y: 200 + i * 400, w: 300, h: 200 }));
+  let flips = 0; let total = 0;
+  for (let seed = 1; seed <= 200; seed += 1) {
+    const rng = seededRng(seed * 2654435761 >>> 0);
+    for (let w = 0; w < 5; w += 1) rng();
+    const out = planCritterScatter({ anchors, exclusions: [], manifest: MANIFEST_8, count: 6, rng });
+    for (const p of out) { total += 1; if (p.flip === -1) flips += 1; }
+  }
+  const rate = flips / total;
+  assert.ok(rate > 0.42 && rate < 0.58, `flip rate ${(rate * 100).toFixed(1)}% - expected ~50%`);
+  // The flip must ride EVERY transform (base + all reaction keyframes) or a
+  // tapped mirrored critter would snap un-mirrored mid-animation.
+  const flipSites = (CSS.match(/scaleX\(var\(--critter-flip, 1\)\)/g) || []).length;
+  // CRITTER transforms only (an unrelated pull-to-refresh rotate lives in the
+  // same file - scope by the --critter-angle token, not by bare rotate()).
+  const transformSites = (CSS.match(/rotate\((?:var\(--critter-angle|calc\(var\(--critter-angle)/g) || []).length;
+  assert.strictEqual(flipSites, transformSites,
+    'every critter transform site carries the flip (base + wiggle/shiver/hop keyframes)');
+  assert.ok(flipSites >= 10, 'sanity: the keyframe family is covered, found ' + flipSites);
+});
+
 // ---- the tap hit-test -------------------------------------------------------
 
 test('critterTapHit: only the EXPOSED sliver is tappable; anchor-covered points miss', () => {
@@ -234,29 +259,64 @@ function unmount(dom) {
   dom.window.close();
 }
 
-test('renderCritterPlacements: renders each placement positioned + rotated; re-render REPLACES (no accumulation)', () => {
+test('renderCritterPlacements (v1.168 sandwich): clipped wrapper + transform-carrying pose; re-render REPLACES', () => {
   const dom = mount();
   try {
     const layer = dom.window.document.getElementById('critter-layer');
     renderCritterPlacements(layer, [
-      { id: 'a', x: 10, y: 20, w: 50, h: 50, angle: -12, hue: 90, img: null, svg: CRITTER_BUILTINS[0].svg },
-      { id: 'b', x: 300, y: 400, w: 60, h: 60, angle: 8, hue: 200, img: '/critters/b.png', svg: null },
+      { id: 'a', x: 10, y: 20, w: 50, h: 50, angle: -12, flip: 1, hue: 90, cover: { b: 25 }, img: null, svg: CRITTER_BUILTINS[0].svg },
+      { id: 'b', x: 300, y: 400, w: 60, h: 60, angle: 8, flip: -1, hue: 200, cover: { l: 30 }, img: '/critters/b.png', svg: null },
     ]);
     const kids = layer.querySelectorAll('.critter');
     assert.strictEqual(kids.length, 2);
-    assert.strictEqual(kids[0].style.left, '10px');
-    assert.strictEqual(kids[0].style.top, '20px');
-    assert.strictEqual(kids[0].style.getPropertyValue('--critter-angle'), '-12deg');
-    assert.strictEqual(kids[0].style.getPropertyValue('--critter-hue'), '90deg');
-    assert.ok(kids[0].querySelector('svg'), 'a folder-less critter renders its built-in figurine');
+    // Wrapper: inflated by pad = round(w * 0.3) = 15, clipped, NO transform props.
+    assert.strictEqual(kids[0].style.left, '-5px', 'x - pad');
+    assert.strictEqual(kids[0].style.top, '5px', 'y - pad');
+    assert.strictEqual(kids[0].style.width, '80px', 'w + 2*pad');
+    assert.ok(kids[0].style.clipPath.length > 0, 'the anchor-facing cut is applied');
+    assert.strictEqual(kids[0].style.getPropertyValue('--critter-angle'), '', 'transforms live on the POSE, not the wrapper');
+    // Pose: at (pad, pad), original size, carries angle/flip/hue.
+    const pose = kids[0].firstElementChild;
+    assert.strictEqual(pose.className, 'critter-pose');
+    assert.strictEqual(pose.style.left, '15px');
+    assert.strictEqual(pose.style.width, '50px');
+    assert.strictEqual(pose.style.getPropertyValue('--critter-angle'), '-12deg');
+    assert.strictEqual(pose.style.getPropertyValue('--critter-hue'), '90deg');
+    assert.strictEqual(pose.style.getPropertyValue('--critter-flip'), '1', 'un-flipped pose');
+    assert.strictEqual(kids[1].firstElementChild.style.getPropertyValue('--critter-flip'), '-1', 'mirrored pose');
+    assert.ok(pose.querySelector('svg'), 'a folder-less critter renders its built-in figurine');
     const img = kids[1].querySelector('img');
     assert.ok(img, 'a folder critter renders its image');
     assert.strictEqual(img.getAttribute('src'), '/critters/b.png');
     assert.strictEqual(img.getAttribute('alt'), '', 'decorative');
     // Re-render fully replaces - a second scatter never stacks on the first.
-    renderCritterPlacements(layer, [{ id: 'c', x: 1, y: 2, w: 44, h: 44, angle: 0, hue: 0, img: null, svg: null }]);
+    renderCritterPlacements(layer, [{ id: 'c', x: 1, y: 2, w: 44, h: 44, angle: 0, flip: 1, hue: 0, cover: { t: 10 }, img: null, svg: null }]);
     assert.strictEqual(layer.querySelectorAll('.critter').length, 1, 'no accumulation across scatters');
   } finally { unmount(dom); }
+});
+
+test('v1.168 buildCritterClip (pure): edge cuts are insets at pad+cover; corner cuts hide ONLY the shared quadrant', () => {
+  const { buildCritterClip } = require('../../public/js/common.js');
+  // size 50, pad 15 -> wrapper 80. Bottom concealed by 25 -> bottom inset 40.
+  assert.strictEqual(buildCritterClip({ b: 25 }, 50, 15), 'inset(0px 0px 40px 0px)');
+  assert.strictEqual(buildCritterClip({ t: 10 }, 50, 15), 'inset(25px 0px 0px 0px)');
+  assert.strictEqual(buildCritterClip({ l: 30 }, 50, 15), 'inset(0px 0px 0px 45px)');
+  assert.strictEqual(buildCritterClip({ r: 20 }, 50, 15), 'inset(0px 35px 0px 0px)');
+  // Corner (tl peek -> r+b concealed): the L keeps everything except the
+  // bottom-right quadrant beyond BOTH cuts (cutX = 80-35=45, cutY = 80-40=40).
+  assert.strictEqual(buildCritterClip({ r: 20, b: 25 }, 50, 15),
+    'polygon(0px 0px, 80px 0px, 80px 40px, 45px 40px, 45px 80px, 0px 80px)');
+  // Gate: ALL FOUR corner orientations exact-bound (three shipped untested and
+  // their wrong-quadrant mutants survived - the seat derived these expected
+  // strings independently of the implementation before prescribing them).
+  assert.strictEqual(buildCritterClip({ l: 30, b: 25 }, 50, 15),
+    'polygon(0px 0px, 80px 0px, 80px 80px, 45px 80px, 45px 40px, 0px 40px)');
+  assert.strictEqual(buildCritterClip({ r: 20, t: 10 }, 50, 15),
+    'polygon(0px 0px, 45px 0px, 45px 25px, 80px 25px, 80px 80px, 0px 80px)');
+  assert.strictEqual(buildCritterClip({ l: 30, t: 10 }, 50, 15),
+    'polygon(45px 0px, 80px 0px, 80px 80px, 0px 80px, 0px 25px, 45px 25px)');
+  // A degenerate empty cover still yields a full-box inset (never a throw).
+  assert.strictEqual(buildCritterClip({}, 50, 15), 'inset(0px 0px 0px 0px)');
 });
 
 // ---- the empty-first-pass retry ladder (v1.166.4) ---------------------------
@@ -378,6 +438,10 @@ test('SOURCE: the tap listener stands down for real UI AND every exclusion; taps
   // Gate W3: NEVER a selector built from the id (a raw filename - a legal
   // double-quote name made querySelector THROW). Index into the layer instead.
   assert.match(body, /children\[critterPlacements\.indexOf\(hit\)\]/, 'reaction element resolved by index');
+  // v1.168 gate T-POSE: the reaction must animate the POSE, never the clipped
+  // WRAPPER - animating the wrapper swings the cut and the hidden half rotates
+  // into view mid-tap (the surviving mutant this line kills).
+  assert.match(body, /var el = wrap \? wrap\.firstElementChild : null;/, 'reactions target the pose inside the clip');
   assert.doesNotMatch(body, /querySelector\('\.critter\[data-critter-id/, 'no id-built selector remains');
   assert.doesNotMatch(body, /preventDefault/, 'the critter layer never eats a click');
   // Gate W5: only a WIDTH change re-scatters (iOS URL-bar collapse fires
@@ -572,14 +636,22 @@ test('tap reactions: a pool of tiny transform-only animations, each defined in C
     'the handler picks a random reaction from the shared pool');
 });
 
-test('CSS: the layer sits BEHIND content (z-index -1), inert (pointer-events none); critters are token-coloured', () => {
+test('CSS (v1.168 sandwich): the layer paints ABOVE furniture (z 2, under every ladder rung), pose carries the transform', () => {
+  // The old z:-1 plane let ANY neighbouring hairline/box swallow a peek (Dean's
+  // subscribe-button kitten). Now: layer above z-auto furniture, hidden halves
+  // CLIPPED per-critter, transforms on the POSE so the cut stays straight.
   const layer = /\.critter-layer\s*\{([^}]*)\}/.exec(CSS);
   assert.ok(layer, '.critter-layer rule exists');
-  assert.match(layer[1], /z-index:\s*-1/, 'below in-flow content = the peeking effect');
-  assert.match(layer[1], /pointer-events:\s*none/, 'the layer never intercepts input');
-  const critter = /\.critter\s*\{([^}]*)\}/.exec(CSS);
+  const decls = layer[1].replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(decls, /z-index:\s*2/, 'above in-flow furniture, below popovers (20+)/chrome (99+)');
+  assert.doesNotMatch(decls, /z-index:\s*-1/, 'the swallowed-peek plane must not return');
+  assert.match(decls, /pointer-events:\s*none/, 'the layer never intercepts input');
+  const critter = /(?:^|\n)\.critter\s*\{([^}]*)\}/.exec(CSS);
   assert.match(critter[1], /color:\s*var\(--text-secondary\)/, 'placeholder colour rides a token');
-  assert.match(critter[1], /rotate\(var\(--critter-angle/, 'angles are per-critter custom props');
+  assert.doesNotMatch(critter[1].replace(/\/\*[\s\S]*?\*\//g, ''), /transform/, 'the WRAPPER never transforms (the clip cut must hug the anchor edge)');
+  const pose = /\.critter-pose\s*\{([^}]*)\}/.exec(CSS);
+  assert.ok(pose, '.critter-pose rule exists');
+  assert.match(pose[1], /rotate\(var\(--critter-angle/, 'angles are per-critter custom props on the pose');
   assert.match(CSS, /\.critter svg,\s*\n\.critter img\s*\{[^}]*object-fit:\s*contain/, 'huge source renders scale to the box');
   // (reduced-motion coverage for ALL reactions lives in the tap-reactions test.)
 });

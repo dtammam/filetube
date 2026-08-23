@@ -10230,14 +10230,28 @@ html[data-modern="on"] .video-uploader {
   width: 100%;
   height: 0;
   overflow: visible;
-  z-index: -1; /* token-exempt: the behind-content critter plane sits deliberately BELOW the z-ladder */
+  /* v1.168 SANDWICH (Dean: a critter is behind its ONE anchor, ABOVE everything
+     else - the old z:-1 plane let every hairline/box swallow the peek): the
+     layer now paints ABOVE the in-flow furniture; the "hidden behind the
+     anchor" half is CLIPPED away per-critter (see buildCritterClip), so no
+     stacking context anywhere decides the illusion. z 2 keeps critters UNDER
+     every local popover/menu (z 20-40), the sticky titles (20), the chrome
+     ladder (99+), and the playback surfaces (excluded by geometry anyway). */
+  z-index: 2; /* token-exempt: local stacking - above z-auto furniture, below every ladder rung */
   pointer-events: none;
 }
 
+/* The clipped, axis-aligned WRAPPER: its clip-path cut hugs the anchor's edge
+   exactly (computed in document-aligned coords), which is why the transforms
+   live on the POSE inside - a tilted critter still gets a straight cut. */
 .critter {
   position: absolute;
   color: var(--text-secondary);
-  transform: rotate(var(--critter-angle, 0deg));
+}
+
+.critter-pose {
+  position: absolute;
+  transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1));
   filter: hue-rotate(var(--critter-hue, 0deg));
   opacity: 0.95; /* token-exempt: decorative layer softness */
 }
@@ -10257,9 +10271,9 @@ html[data-modern="on"] .video-uploader {
 }
 
 @keyframes critter-wiggle {
-  0% { transform: rotate(var(--critter-angle, 0deg)) scale(1); }
-  40% { transform: rotate(calc(var(--critter-angle, 0deg) + 9deg)) scale(1.14); }
-  100% { transform: rotate(var(--critter-angle, 0deg)) scale(1); }
+  0% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) scale(1); }
+  40% { transform: rotate(calc(var(--critter-angle, 0deg) + 9deg)) scaleX(var(--critter-flip, 1)) scale(1.14); }
+  100% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) scale(1); }
 }
 
 .critter-shiver {
@@ -10267,12 +10281,12 @@ html[data-modern="on"] .video-uploader {
 }
 
 @keyframes critter-shiver {
-  0% { transform: rotate(var(--critter-angle, 0deg)) translateX(0); }
-  20% { transform: rotate(var(--critter-angle, 0deg)) translateX(-2px); }
-  40% { transform: rotate(var(--critter-angle, 0deg)) translateX(2px); }
-  60% { transform: rotate(var(--critter-angle, 0deg)) translateX(-2px); }
-  80% { transform: rotate(var(--critter-angle, 0deg)) translateX(2px); }
-  100% { transform: rotate(var(--critter-angle, 0deg)) translateX(0); }
+  0% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) translateX(0); }
+  20% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) translateX(-2px); }
+  40% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) translateX(2px); }
+  60% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) translateX(-2px); }
+  80% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) translateX(2px); }
+  100% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) translateX(0); }
 }
 
 .critter-hop {
@@ -10280,10 +10294,10 @@ html[data-modern="on"] .video-uploader {
 }
 
 @keyframes critter-hop {
-  0% { transform: rotate(var(--critter-angle, 0deg)) translateY(0); }
-  35% { transform: rotate(var(--critter-angle, 0deg)) translateY(-7px); }
-  70% { transform: rotate(var(--critter-angle, 0deg)) translateY(1px); }
-  100% { transform: rotate(var(--critter-angle, 0deg)) translateY(0); }
+  0% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) translateY(0); }
+  35% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) translateY(-7px); }
+  70% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) translateY(1px); }
+  100% { transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)) translateY(0); }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -7564,7 +7564,10 @@ function planCritterScatter(opts) {
   var n = Math.min(count, anchorPool.length, critterPool.length);
   var bounds = (opts && opts.bounds) || null; // {w,h} document size - placements never grow the page
   var placements = [];
-  var EDGES = ['top', 'left', 'right', 'bottom'];
+  // v1.168 (Dean: "not really going as hard as we could"): four edges PLUS the
+  // four corners (diagonal ambushes), and the peek DEPTH is randomized per
+  // placement - anywhere from a shy sliver to a bold half-body lean.
+  var EDGES = ['top', 'left', 'right', 'bottom', 'tl', 'tr', 'bl', 'br'];
   for (var k = 0; k < n; k += 1) {
     var a = anchorPool[k];
     var c = critterPool[k];
@@ -7575,11 +7578,29 @@ function planCritterScatter(opts) {
       ? Math.min(88, Math.max(26, Math.round(a.h * (1.1 + rng() * 0.4))))
       : 44 + Math.floor(rng() * 44); // CODE owns display size either way
     var edge = EDGES[Math.floor(rng() * EDGES.length)];
+    // Exposed fraction: 30%..65% of the critter sticks out (was a fixed 45%).
+    var ex = 0.30 + rng() * 0.35;
+    // v1.168 SANDWICH (Dean: "behind its ONE starting thing, above everything
+    // else"): `cover` records, in critter-LOCAL px, which side(s) of the box
+    // the anchor conceals - the renderer CLIPS that region away and the whole
+    // layer now paints ABOVE the furniture, so only the anchor "hides" the
+    // critter and no neighbouring hairline/box ever swallows the peek.
+    var cover = { t: 0, r: 0, b: 0, l: 0 };
+    var hid = Math.round(size * (1 - ex));
     var x; var y;
-    if (edge === 'top') { x = a.x + rng() * Math.max(0, a.w - size); y = a.y - size * 0.45; }
-    else if (edge === 'bottom') { x = a.x + rng() * Math.max(0, a.w - size); y = a.y + a.h - size * 0.55; }
-    else if (edge === 'left') { x = a.x - size * 0.45; y = a.y + rng() * Math.max(0, a.h - size); }
-    else { x = a.x + a.w - size * 0.55; y = a.y + rng() * Math.max(0, a.h - size); }
+    if (edge === 'top') { x = a.x + rng() * Math.max(0, a.w - size); y = a.y - size * ex; cover.b = hid; }
+    else if (edge === 'bottom') { x = a.x + rng() * Math.max(0, a.w - size); y = a.y + a.h - size * (1 - ex); cover.t = hid; }
+    else if (edge === 'left') { x = a.x - size * ex; y = a.y + rng() * Math.max(0, a.h - size); cover.r = hid; }
+    else if (edge === 'right') { x = a.x + a.w - size * (1 - ex); y = a.y + rng() * Math.max(0, a.h - size); cover.l = hid; }
+    else {
+      // Corners: poke out diagonally - each axis exposes 25-50% independently.
+      var cx = 0.25 + rng() * 0.25;
+      var cy = 0.25 + rng() * 0.25;
+      x = (edge === 'tl' || edge === 'bl') ? a.x - size * cx : a.x + a.w - size * (1 - cx);
+      y = (edge === 'tl' || edge === 'tr') ? a.y - size * cy : a.y + a.h - size * (1 - cy);
+      if (edge === 'tl' || edge === 'bl') cover.r = Math.round(size * (1 - cx)); else cover.l = Math.round(size * (1 - cx));
+      if (edge === 'tl' || edge === 'tr') cover.b = Math.round(size * (1 - cy)); else cover.t = Math.round(size * (1 - cy));
+    }
     // NO zero-clamp (gate W2): an origin-flush anchor's left/top peek goes
     // NEGATIVE and simply clips off-page - still a peek. Clamping snapped the
     // whole critter INSIDE the anchor: fully hidden, untappable, refuting the
@@ -7596,7 +7617,9 @@ function planCritterScatter(opts) {
     placements.push({
       id: c.id, img: c.img || null, sound: c.sound || null, svg: c.svg || null,
       x: x, y: y, w: size, h: size,
-      angle: Math.round(rng() * 48) - 24, // Dean: "come in at different angles"
+      angle: Math.round(rng() * 76) - 38, // v1.168: wilder lean (was +-24)
+      flip: rng() < 0.5 ? -1 : 1, // v1.168: mirrored half the time - twice the poses per PNG
+      cover: cover, // v1.168: the anchor-concealed side(s), local px - drives the clip
       hue: Math.round(rng() * 360),
       anchor: { x: a.x, y: a.y, w: a.w, h: a.h },
     });
@@ -7678,27 +7701,68 @@ function ensureCritterLayer() {
   return layer;
 }
 
+// v1.168 SANDWICH clip (pure): the VISIBLE region of a critter's wrapper, as a
+// clip-path string. The wrapper is the placement box inflated by `pad` on every
+// side (so the ROTATED pose never gets its corners cropped); the anchor-facing
+// side(s) are cut at exactly the anchor's edge (pad + cover px in from the
+// wrapper edge), which is what makes "behind its ONE element" read true while
+// the layer itself paints ABOVE all other furniture. One concealed side -> a
+// rectangular inset; two adjacent sides (a corner peek) -> only the QUADRANT
+// beyond BOTH cuts is hidden (an L-shaped 6-point polygon) - the rest of the
+// pad on those sides lies OUTSIDE the anchor and may paint.
+function buildCritterClip(cover, size, pad) {
+  var c = cover || {};
+  var W = size + 2 * pad;
+  var t = c.t ? pad + c.t : 0;
+  var r = c.r ? pad + c.r : 0;
+  var b = c.b ? pad + c.b : 0;
+  var l = c.l ? pad + c.l : 0;
+  var sides = (t ? 1 : 0) + (r ? 1 : 0) + (b ? 1 : 0) + (l ? 1 : 0);
+  if (sides <= 1) return 'inset(' + t + 'px ' + r + 'px ' + b + 'px ' + l + 'px)';
+  // Corner: exactly two ADJACENT concealed sides; hide only their shared quadrant.
+  var cutX = l ? l : (W - r); // the vertical cut line
+  var cutY = t ? t : (W - b); // the horizontal cut line
+  if (r && b) return 'polygon(0px 0px, ' + W + 'px 0px, ' + W + 'px ' + cutY + 'px, ' + cutX + 'px ' + cutY + 'px, ' + cutX + 'px ' + W + 'px, 0px ' + W + 'px)';
+  if (l && b) return 'polygon(0px 0px, ' + W + 'px 0px, ' + W + 'px ' + W + 'px, ' + cutX + 'px ' + W + 'px, ' + cutX + 'px ' + cutY + 'px, 0px ' + cutY + 'px)';
+  if (r && t) return 'polygon(0px 0px, ' + cutX + 'px 0px, ' + cutX + 'px ' + cutY + 'px, ' + W + 'px ' + cutY + 'px, ' + W + 'px ' + W + 'px, 0px ' + W + 'px)';
+  return 'polygon(' + cutX + 'px 0px, ' + W + 'px 0px, ' + W + 'px ' + W + 'px, 0px ' + W + 'px, 0px ' + cutY + 'px, ' + cutX + 'px ' + cutY + 'px)'; // l && t
+}
+
 function renderCritterPlacements(layer, placements) {
   layer.textContent = ''; // full rebuild every scatter - no accumulation
   (placements || []).forEach(function (p) {
+    // v1.168 two-layer sandwich: the WRAPPER is axis-aligned and clipped (so
+    // the cut hugs the anchor edge exactly), the POSE inside carries the
+    // rotation/flip/hue - a tilted critter still gets a straight cut. The
+    // wrapper is inflated by pad so the rotated pose never crops its corners.
+    var pad = Math.round(p.w * 0.3);
     var el = document.createElement('div');
     el.className = 'critter';
     el.setAttribute('data-critter-id', p.id);
-    el.style.left = p.x + 'px';
-    el.style.top = p.y + 'px';
-    el.style.width = p.w + 'px';
-    el.style.height = p.h + 'px';
-    el.style.setProperty('--critter-angle', p.angle + 'deg');
-    el.style.setProperty('--critter-hue', p.hue + 'deg');
+    el.style.left = (p.x - pad) + 'px';
+    el.style.top = (p.y - pad) + 'px';
+    el.style.width = (p.w + 2 * pad) + 'px';
+    el.style.height = (p.h + 2 * pad) + 'px';
+    el.style.clipPath = buildCritterClip(p.cover, p.w, pad);
+    var pose = document.createElement('div');
+    pose.className = 'critter-pose';
+    pose.style.left = pad + 'px';
+    pose.style.top = pad + 'px';
+    pose.style.width = p.w + 'px';
+    pose.style.height = p.h + 'px';
+    pose.style.setProperty('--critter-angle', p.angle + 'deg');
+    pose.style.setProperty('--critter-flip', String(p.flip === -1 ? -1 : 1)); // v1.168: mirror pose
+    pose.style.setProperty('--critter-hue', p.hue + 'deg');
     if (p.img) {
       var img = document.createElement('img');
       img.src = p.img;
       img.alt = '';
       img.draggable = false;
-      el.appendChild(img);
+      pose.appendChild(img);
     } else if (p.svg) {
-      el.innerHTML = p.svg; // static built-in figurine markup, never user input
+      pose.innerHTML = p.svg; // static built-in figurine markup, never user input
     }
+    el.appendChild(pose);
     layer.appendChild(el);
   });
 }
@@ -7834,7 +7898,10 @@ function wireCritterListeners() {
     // built selector THROW; render order == placement order, so index is exact
     // even when two files share a basename).
     var layer = document.getElementById('critter-layer');
-    var el = layer ? layer.children[critterPlacements.indexOf(hit)] : null;
+    var wrap = layer ? layer.children[critterPlacements.indexOf(hit)] : null;
+    // v1.168: reactions animate the POSE (the transform carrier inside the
+    // clipped wrapper) - animating the wrapper would move the clip cut.
+    var el = wrap ? wrap.firstElementChild : null;
     if (el) {
       // Dean: "a variety of very very small visual things" - one random tiny
       // reaction per tap, all transform-only (transforms never affect layout,
@@ -13603,6 +13670,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.167: button priority + the fixed-subtree guard (+ the collector, so
     // the WIRING of both is behaviourally bound, not just the helper - gate PNB).
     CRITTER_PRIORITY_SELECTORS, CRITTER_PRIORITY_WEIGHT, critterInsideFixed, collectCritterRects,
+    // v1.168: the sandwich clip (behind ONE anchor, above everything else).
+    buildCritterClip,
     // v1.163.1: force text (non-emoji) presentation on the arrow glyphs.
     DDR_TEXT_PRESENTATION, ddrArrowDisplayGlyph,
     // v1.50.3: the D dark/light toggle's pure decision.
