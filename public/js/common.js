@@ -5260,6 +5260,16 @@ function wireMasterDetail(pageKey, root, signal) {
       }
       mdRoot.dataset.mdOpen = 'true'; panes.scrollTop = 0;
     }
+    // v1.172 (Dean's Settings screenshots: the SAME critters floated over
+    // BOTH the menu and the open section, anchored to the other pane's
+    // furniture): a master-detail pane swap changes what fills the screen but
+    // the router never sees it - so each subpage earns its own scatter.
+    // Hidden panes measure zero-size and are skipped by the collector, so the
+    // re-plan sees only the visible pane. Covers mobile drill-in AND desktop
+    // section switches (both route through selectKey); the shared 200ms
+    // debounce, retry ladder, and stale-timer cancel all apply as on a
+    // router navigation.
+    scheduleCritterScatter();
   }
 
   nav.addEventListener('click', (e) => {
@@ -5277,6 +5287,7 @@ function wireMasterDetail(pageKey, root, signal) {
     if (typeof window !== 'undefined') {
       try { window.scrollTo(0, navScrollY); } catch (_) { /* jsdom: scrollTo unimplemented */ }
     }
+    scheduleCritterScatter(); // v1.172: Back = the menu pane returns - its own scatter (see selectKey)
   }, signal ? { signal } : undefined);
 
   // Keep the menu in sync with ASYNC admin-box reveals (setup.js sets
