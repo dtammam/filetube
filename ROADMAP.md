@@ -80,6 +80,41 @@
 
 ## Shipped
 
+### v1.169.0 - the mobile feed gets integrated critters (full-bleed rule + card anchors) (Dean) (2026-08-23)
+
+Dean's v1.168 device pass ("incredibly impressed... very very very happy") found
+ONE remaining jank, on his main view: the mobile YouTube-style feed's cards are
+FULL-BLEED, so side/corner peeks landed on the screen edge - amputated critters
+hanging half off the viewport (his screenshots: a kitten cut at the left edge, a
+bear guillotined top-left).
+
+- FULL-BLEED RULE (view-agnostic, no special-casing): an anchor spanning >=85%
+  of the document width peeks only TOP or BOTTOM - emerging between the artwork
+  and the title, never off the side of the phone. Bound by a 300-seed sweep
+  (zero horizontal protrusion; BOTH vertical directions asserted - the gate's
+  surviving top-only mutant killed by its own 3-line prescription; narrow
+  anchors keep the full 8-position pool, rate-asserted). The seat measured the
+  threshold razor-sharp (0.8475 -> 200/300 side peeks; 0.8525 -> 0/300) and
+  closed the desktop question by arithmetic (a content-column element reaches
+  0.85 of docW only at ~2240px+, where a side peek is negligible anyway); the
+  rule also quietly fixes sub-row/setup-box edge amputations on phones.
+- CARD ANCHORS: `.thumbnail-container` (letterbox black - critters rise from
+  behind the artwork onto the title zone) and `.card-channel-avatar` (the 24px
+  byline circle - a MICRO-ambush; anchor minimum lowered 48x32 -> 24x24,
+  pool-curated; the avatar gains a --thumbnail-bg disc so the ground contract
+  holds while the image loads).
+
+SLIM gate APPROVE (6 mutants: 5 killed + the top-only survivor closed by S1).
+DISCLOSED (tech-debt #167c): ~6% of 24px-anchor placements over-clip past the
+tiny disc's far edge (measured 30/500, <=12px strips; the cap-at-overlap
+alternative would paint critter feet OVER byline text - Dean's device-pass
+trade); icon-only .btn micro-anchors now qualify (in-spirit; revisit on device
+feel). DUAL-NODE PENDING at time of writing.
+
+DEVICE (Dean): the mobile feed - critters emerge from behind thumbnails onto
+titles and peer down from card tops; NO more screen-edge amputations; find a
+micro-critter behind a channel avatar; judge the tiny-anchor clip feel (#167c).
+
 ### v1.168.0 - go harder: corners, depth, tilt, mirrors + the SANDWICH (Dean) (2026-08-23)
 
 Dean's two on-device beats. Beat 1 ("not really going as hard as we could"):

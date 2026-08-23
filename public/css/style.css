@@ -8769,6 +8769,9 @@ html[data-modern="on"] .video-uploader {
   border-radius: var(--radius-full);
   overflow: hidden;
   flex: 0 0 auto;
+  /* v1.169: the avatar circle is a critter anchor (the micro-ambush) - paint
+     the disc so the ground contract holds even while the image loads. */
+  background-color: var(--thumbnail-bg);
   font-size: var(--fs-2xs);
   font-weight: var(--fw-semibold);
   color: var(--btn-primary-text, #fff); /* token-exempt: monogram glyph on a coloured disc */
