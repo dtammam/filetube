@@ -51,3 +51,11 @@ be `transparent`/`none`.
 ## Gate
 SLIM (the seasoned adversarial seat) - additive engine evolution on the
 device-passed base; no data surface. Dual-Node, then v1.167.0.
+
+Status: SHIPPED (v1.167.0, 2026-08-22).
+Skeleton evolution complete: machine-derived every-page anchor sweep, button
+priority weighting (E-S sampling), scale-to-anchor sizing, fixed-subtree guard.
+SLIM gate: REQUEST CHANGES (two presence-not-binding survivors on the wiring)
+-> the seat's verified single-test prescription adopted -> delta APPROVE (one
+disclosed paranoia-arm mutant survives per the #166 precedent). Residuals in
+tech-debt #167. Dean device pass PENDING.
