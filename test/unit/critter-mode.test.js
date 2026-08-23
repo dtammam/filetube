@@ -447,10 +447,15 @@ test('v1.166.4/v1.173: every scatter arms a bounded settle ladder (1.5s then 4s)
   // critters keep their document coords and float over TEXT. The ladder now
   // re-checks BOTH at fire time via critterSettleAction; a settled page
   // stands down, so placed critters still never re-roll.
-  const start = COMMON.indexOf('function scatterCritters()');
-  const body = COMMON.slice(start, COMMON.indexOf('\nfunction critterSettleAction', start))
+  const scatterBody = COMMON.slice(COMMON.indexOf('function scatterCritters()'), COMMON.indexOf('\nfunction armCritterSettleCheck'))
     .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-  assert.match(body, /if \(critterSettleChecks < 2\)/, 'EVERY scatter arms the ladder, capped at two checks per navigation');
+  assert.match(scatterBody, /armCritterSettleCheck\(\);/, 'every scatter arms the shared settle check');
+  assert.match(scatterBody, /critterPlacedDocH = docEl\.scrollHeight;/, 'the placed-against height is stashed at placement time');
+  // v1.176: the arm + fire live in the SHARED helper (the re-glue pass keeps
+  // the remaining checks alive through it too).
+  const body = COMMON.slice(COMMON.indexOf('function armCritterSettleCheck'), COMMON.indexOf('\nfunction reglueCritterPlacements'))
+    .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.match(body, /if \(critterSettleChecks >= 2\) return;/, 'capped at two checks per navigation');
   assert.match(body, /critterSettleChecks === 0 \? 1500 : 4000/, 'the ladder: +1.5s then +4s');
   // Gate WARNING (demonstrated race): the belts that make "never move
   // mid-view" literally true - the STASHED handle + the LIVE fire-time reads.
@@ -458,8 +463,17 @@ test('v1.166.4/v1.173: every scatter arms a bounded settle ladder (1.5s then 4s)
   assert.match(body,
     /critterSettleAction\(critterPlacements\.length, critterPlacedDocH, document\.documentElement\.scrollHeight\)/,
     'the fire-time decision reads LIVE placements + LIVE height, never captured snapshots');
-  assert.match(body, /if \(action !== 'stand-down'\) scatterCritters\(\);/, 'stand-down means placed critters never re-roll');
-  assert.match(body, /critterPlacedDocH = docEl\.scrollHeight;/, 'the placed-against height is stashed at placement time');
+  assert.match(body, /if \(action === 'rescatter-empty'\) scatterCritters\(\);/, 'EMPTY earns the full scatter (nothing to preserve)');
+  assert.match(body, /else if \(action === 'rescatter-drift'\) reglueCritterPlacements\(\);/,
+    'v1.176: DRIFT re-GLUES - placed critters ride their own anchors, never re-roll');
+  const reglue = COMMON.slice(COMMON.indexOf('function reglueCritterPlacements'), COMMON.indexOf('\n// Debounced entry point'))
+    .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.match(reglue, /renderCritterPlacements\(ensureCritterLayer\(\), survivors, true\);/, 're-glue renders STILL (no fade replay)');
+  assert.match(reglue, /armCritterSettleCheck\(\);/, 're-glue keeps the remaining checks alive');
+  assert.match(reglue, /critterRectsIntersect\(rect, exclusions\[e\]\)/, 'a critter sliding into the player/dock is DROPPED');
+  const nudge = COMMON.slice(COMMON.indexOf('function wireCritterContentNudge'), COMMON.indexOf('function unwireCritterContentNudge'));
+  assert.match(nudge, /if \(action === 'rescatter-empty'\) scatterCritters\(\);\n\s*else reglueCritterPlacements\(\);/,
+    'the nudge maps identically: empty scatters, drift re-glues');
   const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter()'), COMMON.indexOf('\nfunction wireCritterListeners'));
   assert.match(sched, /critterSettleChecks = 0;/, 'every scheduled scatter (a navigation) re-arms the ladder');
   assert.match(sched, /if \(critterRetryTimer\) \{ clearTimeout\(critterRetryTimer\); critterRetryTimer = null; \}/,
@@ -1067,6 +1081,73 @@ test('v1.175 nudge discipline (source locks): shares the ladder budget, cancels 
     'gate S1: a navigation cancels the pending nudge debounce along with every other handle');
 });
 
+// ---- v1.176: re-glue, never re-roll (Dean's watch-page shift) ---------------
+
+test('v1.176 RE-GLUE end-to-end: a drift correction keeps every critter on ITS OWN anchor - translated with it, never re-rolled', async (t) => {
+  // Dean's report: on watch/audio pages the critters appeared, then <1s later
+  // SHIFTED to brand-new spots - the v1.173 drift re-scatter re-ROLLING, made
+  // visible by v1.175's instant arrival. The bind: drift with UNMOVED anchors
+  // changes nothing; drift with a MOVED anchor slides its critter by exactly
+  // the anchor's delta, same critter id, no fade replay.
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="view-root"><div class="video-card" id="card"></div></div></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  global.MutationObserver = dom.window.MutationObserver;
+  global.localStorage = dom.window.localStorage;
+  localStorage.setItem('ft-critters:on', '1');
+  global.window.Image = class { decode() { return Promise.resolve(); } };
+  const docEl = dom.window.document.documentElement;
+  Object.defineProperty(docEl, 'scrollWidth', { value: 800, configurable: true });
+  let docH = 2000;
+  Object.defineProperty(docEl, 'scrollHeight', { get: () => docH, configurable: true });
+  const cardRect = { left: 100, top: 300, width: 300, height: 200 };
+  const proto = dom.window.Element.prototype;
+  const origRect = proto.getBoundingClientRect;
+  proto.getBoundingClientRect = function () {
+    if (this.id === 'card') {
+      return { left: cardRect.left, top: cardRect.top, width: cardRect.width, height: cardRect.height, right: cardRect.left + cardRect.width, bottom: cardRect.top + cardRect.height };
+    }
+    return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+  };
+  t.after(() => {
+    proto.getBoundingClientRect = origRect;
+    const { scatterCritters } = require('../../public/js/common.js');
+    localStorage.setItem('ft-critters:on', '0');
+    scatterCritters(); // disable: cancels every pending handle
+    delete global.window; delete global.document; delete global.MutationObserver; delete global.localStorage;
+    dom.window.close();
+  });
+  const { scatterCritters, reglueCritterPlacements } = require('../../public/js/common.js');
+  scatterCritters();
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  const before = [...dom.window.document.querySelectorAll('.critter')].map((el) => ({
+    id: el.getAttribute('data-critter-id'), left: el.style.left, top: el.style.top,
+  }));
+  assert.ok(before.length > 0, 'critters placed on the card');
+  // DRIFT with an UNMOVED anchor (content grew far below): nothing may change.
+  docH = 2400;
+  reglueCritterPlacements();
+  const afterStill = [...dom.window.document.querySelectorAll('.critter')].map((el) => ({
+    id: el.getAttribute('data-critter-id'), left: el.style.left, top: el.style.top,
+  }));
+  assert.deepStrictEqual(afterStill, before, 'unmoved anchors: identical critters at identical positions (the Dean bug assertion)');
+  assert.ok(dom.window.document.querySelector('.critter').classList.contains('critter-still'),
+    'a re-glue rebuild is STILL - no arrival-fade replay');
+  // DRIFT with the anchor MOVED down 60px: the critter rides it exactly.
+  cardRect.top = 360;
+  reglueCritterPlacements();
+  const afterMove = [...dom.window.document.querySelectorAll('.critter')];
+  assert.strictEqual(afterMove.length, before.length, 'same critters survive');
+  assert.strictEqual(afterMove[0].getAttribute('data-critter-id'), before[0].id, 'same critter, not a re-roll');
+  const topBefore = parseInt(before[0].top, 10);
+  const topAfter = parseInt(afterMove[0].style.top, 10);
+  assert.strictEqual(topAfter - topBefore, 60, 'translated by exactly the anchor\'s delta');
+  // The anchor LEAVES the page: its critter is dropped, never re-homed.
+  dom.window.document.getElementById('card').remove();
+  reglueCritterPlacements();
+  assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 0,
+    'no furniture, no critter - dropped, never re-rolled elsewhere');
+});
+
 // ---- CSS locks --------------------------------------------------------------
 
 test('v1.175: every critter ARRIVES on a pure-opacity fade (no pop-in; no motion, so no reduced-motion arm needed)', () => {
@@ -1079,7 +1160,7 @@ test('v1.175: every critter ARRIVES on a pure-opacity fade (no pop-in; no motion
 
 test('tap reactions: a pool of tiny transform-only animations, each defined in CSS and all reduced-motion-safe', () => {
   const { CRITTER_REACTIONS } = require('../../public/js/common.js');
-  assert.deepStrictEqual(CRITTER_REACTIONS, ['critter-wiggle', 'critter-shiver', 'critter-hop'],
+  assert.deepStrictEqual(CRITTER_REACTIONS, ['critter-wiggle', 'critter-shiver', 'critter-hop', 'critter-twirl', 'critter-duck', 'critter-squish'],
     'the reaction pool (Dean: "a variety of very very small visual things")');
   const reduced = CSS.split('@media (prefers-reduced-motion: reduce)').slice(1).join('\n');
   for (const cls of CRITTER_REACTIONS) {

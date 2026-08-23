@@ -7519,7 +7519,10 @@ var CRITTER_PRIORITY_WEIGHT = 3;
 var CRITTER_EXCLUSION_SELECTORS = ['#player-wrapper', '.player-container', '#player-dock', '#fs-stage', '[class*="-backdrop"]'];
 // Tap reactions (Dean): tiny, transform-only, contained to the critter's own
 // box; one is picked at random per tap. All die under prefers-reduced-motion.
-var CRITTER_REACTIONS = ['critter-wiggle', 'critter-shiver', 'critter-hop'];
+// v1.176 (Dean: "what other small cute animations can we add? I like that to
+// be varied"): three joiners - a full twirl, a shy duck-down, and a classic
+// squash-and-stretch. All transform-only, all riding the pose's angle+flip.
+var CRITTER_REACTIONS = ['critter-wiggle', 'critter-shiver', 'critter-hop', 'critter-twirl', 'critter-duck', 'critter-squish'];
 
 function resolveCritterConfig(read) {
   var get = typeof read === 'function' ? read : function (k) {
@@ -7683,6 +7686,7 @@ function planCritterScatter(opts) {
         : null,
       hue: Math.round(rng() * 360),
       anchor: { x: a.x, y: a.y, w: a.w, h: a.h },
+      anchorEl: a.el || null, // v1.176: the live element, for the re-glue pass (null in pure tests)
     });
   }
   return placements;
@@ -7850,7 +7854,7 @@ function buildCritterRoundMask(rc, pad) {
   return 'radial-gradient(circle at ' + (pad + rc.cx) + 'px ' + (pad + rc.cy) + 'px, transparent ' + rc.r + 'px, #000 ' + (rc.r + 0.5) + 'px)';
 }
 
-function renderCritterPlacements(layer, placements) {
+function renderCritterPlacements(layer, placements, still) {
   layer.textContent = ''; // full rebuild every scatter - no accumulation
   (placements || []).forEach(function (p) {
     // v1.168 two-layer sandwich: the WRAPPER is axis-aligned and clipped (so
@@ -7859,7 +7863,9 @@ function renderCritterPlacements(layer, placements) {
     // wrapper is inflated by pad so the rotated pose never crops its corners.
     var pad = Math.round(p.w * 0.3);
     var el = document.createElement('div');
-    el.className = 'critter';
+    // still=true (a v1.176 RE-GLUE rebuild): no arrival fade - an unmoved
+    // critter must be visually inert through a correction.
+    el.className = still ? 'critter critter-still' : 'critter';
     el.setAttribute('data-critter-id', p.id);
     el.style.left = (p.x - pad) + 'px';
     el.style.top = (p.y - pad) + 'px';
@@ -7985,7 +7991,9 @@ function collectCritterRects(selectors, requireSize) {
         round = Math.abs(r.width - r.height) <= 2 && radiusPx >= half - 1;
       } catch (_) { round = false; }
     }
-    rects.push({ x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height, weight: weight, round: round });
+    // v1.176: the ELEMENT rides along so a settle correction can RE-GLUE a
+    // placed critter to its own moved furniture instead of re-rolling.
+    rects.push({ x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height, weight: weight, round: round, el: el });
   }
   return rects;
 }
@@ -8041,17 +8049,75 @@ function scatterCritters() {
     // navigation), the timer is STASHED so scheduleCritterScatter cancels it on
     // every navigation (the demonstrated stale-retry race), and the fire-time
     // decision reads the LIVE placements + LIVE height - a settled page stands
-    // down and placed critters never re-roll.
-    if (critterSettleChecks < 2) {
-      var delay = critterSettleChecks === 0 ? 1500 : 4000;
-      critterSettleChecks += 1;
-      critterRetryTimer = setTimeout(function () {
-        critterRetryTimer = null;
-        var action = critterSettleAction(critterPlacements.length, critterPlacedDocH, document.documentElement.scrollHeight);
-        if (action !== 'stand-down') scatterCritters();
-      }, delay);
-    }
+    // down, and since v1.176 a DRIFT correction RE-GLUES rather than re-rolls.
+    armCritterSettleCheck();
   });
+}
+
+// v1.176: the settle check's arm + fire, shared by the full scatter and the
+// re-glue pass (a drift correction must keep the remaining checks alive).
+// The DECISION mapping is the wave's point (Dean: critters visibly re-rolled
+// to brand-new spots when a settling watch page corrected itself - v1.175's
+// instant arrival made the v1.173 drift RE-SCATTER visible): EMPTY still
+// earns a full scatter (there is nothing to preserve), but DRIFT re-GLUES -
+// every placed critter rides its own anchor element, no re-roll, ever,
+// while a view is up.
+function armCritterSettleCheck() {
+  if (critterSettleChecks >= 2) return;
+  var delay = critterSettleChecks === 0 ? 1500 : 4000;
+  critterSettleChecks += 1;
+  critterRetryTimer = setTimeout(function () {
+    critterRetryTimer = null;
+    var action = critterSettleAction(critterPlacements.length, critterPlacedDocH, document.documentElement.scrollHeight);
+    if (action === 'rescatter-empty') scatterCritters();
+    else if (action === 'rescatter-drift') reglueCritterPlacements();
+  }, delay);
+}
+
+// v1.176 RE-GLUE: re-measure each placed critter's OWN anchor element and
+// translate the critter by the anchor's movement - same critter, same edge,
+// same pose, same exposure; the clip re-derives from the moved rects (the
+// v1.174 geometric truth needs no claims). A critter whose anchor left the
+// page, hid, stopped overlapping, became fully covering, or whose new spot
+// violates an exclusion/bounds is DROPPED, never re-rolled elsewhere. The
+// rebuild renders with still=true so a re-glue never replays the arrival
+// fade (an unmoved critter must be visually inert).
+function reglueCritterPlacements() {
+  if (typeof document === 'undefined' || !document.body) return;
+  var exclusions = collectCritterRects(CRITTER_EXCLUSION_SELECTORS, false);
+  var docEl = document.documentElement;
+  var bounds = { w: docEl.scrollWidth, h: docEl.scrollHeight };
+  var survivors = [];
+  for (var i = 0; i < critterPlacements.length; i += 1) {
+    var p = critterPlacements[i];
+    var el = p.anchorEl;
+    if (!el || !el.isConnected) continue; // the furniture left the page
+    var r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) continue; // hidden now
+    var a2 = { x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height };
+    p.x += Math.round(a2.x - p.anchor.x);
+    p.y += Math.round(a2.y - p.anchor.y);
+    p.anchor = a2;
+    if (p.roundCover) {
+      p.roundCover = { cx: Math.round(a2.x + a2.w / 2) - p.x, cy: Math.round(a2.y + a2.h / 2) - p.y, r: Math.round(Math.min(a2.w, a2.h) / 2) };
+    }
+    // The peek invariant, re-validated against the moved/resized anchor.
+    var overlaps = p.x < a2.x + a2.w && p.x + p.w > a2.x && p.y < a2.y + a2.h && p.y + p.h > a2.y;
+    var fullyInside = p.x >= a2.x && p.x + p.w <= a2.x + a2.w && p.y >= a2.y && p.y + p.h <= a2.y + a2.h;
+    if (!overlaps || fullyInside) continue;
+    var rect = { x: p.x, y: p.y, w: p.w, h: p.h };
+    var hitsExclusion = false;
+    for (var e = 0; e < exclusions.length; e += 1) {
+      if (critterRectsIntersect(rect, exclusions[e])) { hitsExclusion = true; break; }
+    }
+    if (hitsExclusion) continue; // slid into the player/dock: drop, never nudge
+    if (bounds.w && (p.x + p.w > bounds.w || p.y + p.h > bounds.h)) continue; // gate W4 still holds
+    survivors.push(p);
+  }
+  critterPlacements = survivors;
+  renderCritterPlacements(ensureCritterLayer(), survivors, true);
+  critterPlacedDocH = docEl.scrollHeight;
+  armCritterSettleCheck();
 }
 
 // v1.175 (Dean: "prevent FOUC/load-in after other elements"): the CONTENT
@@ -8095,7 +8161,9 @@ function wireCritterContentNudge() {
       var action = critterSettleAction(critterPlacements.length, critterPlacedDocH, document.documentElement.scrollHeight);
       if (action === 'stand-down') return;
       if (critterRetryTimer) { clearTimeout(critterRetryTimer); critterRetryTimer = null; }
-      scatterCritters();
+      // v1.176: the nudge maps like the timer - EMPTY scatters, DRIFT re-glues.
+      if (action === 'rescatter-empty') scatterCritters();
+      else reglueCritterPlacements();
     }, 150);
   });
   try {
@@ -13935,6 +14003,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildCritterRoundMask,
     critterSettleAction,
     warmCritterAssets,
+    reglueCritterPlacements,
     // v1.163.1: force text (non-emoji) presentation on the arrow glyphs.
     DDR_TEXT_PRESENTATION, ddrArrowDisplayGlyph,
     // v1.50.3: the D dark/light toggle's pure decision.
