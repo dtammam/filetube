@@ -80,6 +80,44 @@
 
 ## Shipped
 
+### v1.177.0 - the rounded shave: cuts follow the anchor's painted corners (Dean) (2026-08-23)
+
+Dean's Modern-2021 screenshots: square critter shoulders poking past the
+ROUNDED corners of buttons and podcast art tiles - "everything being clean
+proper border, edge being shaved to the actual button." The v1.170 circle
+fix generalized to arbitrary border-radius:
+
+- The collector harvests all four computed corner radii per anchor (px and
+  percent spellings, clamped; era-automatic - 2005's square corners keep
+  the plain clip, 2021's tokens shave).
+- The renderer's ladder: true circles keep the proven radial mask; any
+  corner radius over 2px gets a NEW SVG data-URI mask (an opaque wrapper
+  square with the ROUNDED hole punched out via fill-rule evenodd) riding
+  the same --critter-mask plumbing; square anchors keep the cheaper rect
+  clip. A hole corner rounds ONLY at true anchor corners - a side extended
+  to the wrapper edge stays straight, because the anchor's real corner
+  lies outside.
+- Shared geometry: the clip and the shave both derive from one extracted
+  hidden-rect truth (the v1.174 exact-string locks rode through the
+  refactor unchanged).
+
+Slim gate (adversarial): APPROVE in two rounds. It independently
+hand-derived every fixture and all four arc orientations from first
+principles, proved data-URI injection impossible (all-numeric inputs),
+and proved the percent-radius min-dimension approximation SAFE on real
+pill buttons (over-hides only, never the poking bug - 11k+ sample points;
+disclosed as a possible future x/y-radii refinement). Its WARNING was the
+ORIENTATION CLASS striking a FOURTH time - the tr/br arc emits were
+mutation-unbound - closed with two fixtures derived independently twice
+(the seat's strings and mine matched byte-for-byte before commit); all
+four orientations now exact-bound and every previously-surviving mutant
+reds. Disclosed residuals: re-glue reuses placement-time radii (stale
+radii clamp to the new hole - over-hide only, cosmetic on a bounded
+path); percent radii approximate per-axis ellipse corners with the
+conservative min dimension. Dual-Node 7498/7498 clean first runs. Device
+pass PENDING (Dean: Modern 2021 - critters behind buttons/art tiles
+should shave cleanly along the rounded edge, nothing poking past).
+
 ### v1.176.0 - drift corrections RE-GLUE (never re-roll) + three new tap reactions (Dean) (2026-08-23)
 
 Dean's watch/audio report: critters appeared, then SHIFTED to brand-new
