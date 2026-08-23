@@ -362,8 +362,12 @@ test('renderCritterPlacements (v1.168 sandwich): clipped wrapper + transform-car
     assert.strictEqual(pose.style.left, '15px');
     assert.strictEqual(pose.style.width, '50px');
     assert.strictEqual(pose.style.getPropertyValue('--critter-angle'), '-12deg');
-    assert.strictEqual(pose.style.getPropertyValue('--critter-hue'), '90deg');
+    assert.strictEqual(pose.style.getPropertyValue('--critter-hue'), '90deg', 'BUILTINS keep the hue variety spin');
     assert.strictEqual(pose.style.getPropertyValue('--critter-flip'), '1', 'un-flipped pose');
+    // v1.179.2 (Dean): uploaded art is COLOR-FAITHFUL - no hue var on an img
+    // critter; the filter's 0deg fallback is a no-op rotation.
+    assert.strictEqual(kids[1].firstElementChild.style.getPropertyValue('--critter-hue'), '',
+      'an IMAGE critter renders exactly as the file - the hue spin is builtins-only');
     assert.strictEqual(kids[1].firstElementChild.style.getPropertyValue('--critter-flip'), '-1', 'mirrored pose');
     assert.ok(pose.querySelector('svg'), 'a folder-less critter renders its built-in figurine');
     const img = kids[1].querySelector('img');

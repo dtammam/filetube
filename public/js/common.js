@@ -7957,7 +7957,11 @@ function renderCritterPlacements(layer, placements, still) {
     pose.style.height = p.h + 'px';
     pose.style.setProperty('--critter-angle', p.angle + 'deg');
     pose.style.setProperty('--critter-flip', String(p.flip === -1 ? -1 : 1)); // v1.168: mirror pose
-    pose.style.setProperty('--critter-hue', p.hue + 'deg');
+    // v1.179.2 (Dean's ruling): the hue spin exists so the five BUILT-IN
+    // line-art figurines look varied - real uploaded art renders
+    // COLOR-FAITHFUL, exactly as the file is. Unset, the filter's
+    // var(--critter-hue, 0deg) fallback is a no-op rotation.
+    if (!p.img) pose.style.setProperty('--critter-hue', p.hue + 'deg');
     if (p.img) {
       var img = document.createElement('img');
       img.src = p.img;
