@@ -80,6 +80,40 @@
 
 ## Shipped
 
+### v1.181.0 - the settings cleanup: Troubleshooting + Experimental subpages (Dean) (2026-08-23)
+
+Dean's cleanup pass ("the settings have just been sprawl"): centralize
+diagnostics and experiments into TWO SEPARATE subpages at the bottom of
+the Settings list. Intake rulings: a new Advanced nav group after Account;
+visible to EVERYONE (everything moved is per-DEVICE localStorage - admin
+gating would add reveal plumbing without protecting anything); the whole
+background-audio family moves together; the critter Voice check MOVES,
+never duplicated.
+
+- TROUBLESHOOTING (wrench): the lifecycle debug log + the critter Voice
+  check - diagnostics that observe and report, never change behavior.
+- EXPERIMENTAL (new flask icon): the background-audio family (parent,
+  pre-extract, pre-sync, keep-alive, audio-session-declare) + the custom
+  mobile player toggle - sharp edges and battery costs stated per-setting,
+  copy carried verbatim.
+- Automation & Storage slims to scan/cache/transcode/prune + settled QoL;
+  the Critters page is purely about the pool again. All moves markup-only:
+  every control wired by id (the v1.48 rule), setup.js untouched in the
+  main commit.
+
+Slim gate (adversarial): APPROVE in two rounds. It verified the wiring
+seam completely (every moved control document-wide id-wired; the reveal
+path is a file-wide class selector), proved the copy moved byte-for-byte,
+and its three suggestions were taken: the Voice check wiring DECOUPLED
+from the critters-toggles guard into its own function with a real jsdom
+click bind (the latent silent-death coupling across sections), one legacy
+em dash stripped while its block moved, and a count slip in my wave record
+corrected (unit suite 5671, not 5669 - the recurring assertion-vs-test
+class, caught by the seat this time). Dual-Node 7508/7508 clean first
+runs. Device pass PENDING (Dean: the two new rows at the bottom of
+Settings, everything findable in its new home, every moved toggle still
+working).
+
 ### v1.180.0 - color-faithful art + the screen-edge invariant (Dean) (2026-08-23)
 
 Two Dean reports and one self-find, one wave. (Aside for the record: the
