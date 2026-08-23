@@ -22,10 +22,17 @@ The contract:
 - **Real files only** - a symlink to an image elsewhere is skipped; copy the
   file in.
 - Files are picked up on the next full page load (a refresh), or immediately
-  when you re-apply the setting under Settings -> Appearance. In-app navigation
-  alone keeps the session's cached list.
+  when you re-apply the setting under Settings -> Sneaky critters. In-app
+  navigation alone keeps the session's cached list.
 
-Turn the mode on under Settings -> Appearance -> Sneaky critter mode.
+Turn the mode on under Settings -> Sneaky critters.
+
+**Prefer a browser?** Since v1.171 an ADMIN can manage this folder from
+Settings -> Sneaky critters -> Critter pool: upload images and sounds, delete
+one critter or the whole pool, and download everything as a zip. The web UI
+writes to THIS folder - both routes stay in sync because the folder itself is
+the only source of truth. (Web upload accepts PNG/JPEG/WebP/GIF and
+MP3/WAV/M4A/OGG; SVG works only as a hand-dropped file here.)
 
 **Running under Docker?** The image bakes `public/` in, so THIS folder on your
 host is only seen by the container through the volume mount that
