@@ -7687,6 +7687,7 @@ function planCritterScatter(opts) {
       hue: Math.round(rng() * 360),
       anchor: { x: a.x, y: a.y, w: a.w, h: a.h },
       anchorEl: a.el || null, // v1.176: the live element, for the re-glue pass (null in pure tests)
+      radii: a.radii || null, // v1.177: the anchor's painted corner radii - the shave mask follows them
     });
   }
   return placements;
@@ -7783,17 +7784,31 @@ function ensureCritterLayer() {
 // bug case: anchor smaller than the critter's cross extent); two opposite ->
 // a band with both free strips traced as one path. Every cut line now lies ON
 // an anchor edge - a floating cut is geometrically impossible.
-function buildCritterClip(p, pad) {
+// v1.177 shared geometry: the HIDDEN rect (the measured critter/anchor
+// intersection, extended to the wrapper edge wherever the anchor continues
+// past the critter box), in wrapper-local coordinates. Consumed by BOTH the
+// rectangular clip and the rounded shave mask - one truth, two emitters.
+function critterHiddenRect(p, pad) {
   var a = p && p.anchor;
-  if (!a) return '';
+  if (!a) return null;
   var W = p.w + 2 * pad;
   var ix1 = Math.max(p.x, a.x); var iy1 = Math.max(p.y, a.y);
   var ix2 = Math.min(p.x + p.w, a.x + a.w); var iy2 = Math.min(p.y + p.h, a.y + a.h);
-  if (ix2 <= ix1 || iy2 <= iy1) return ''; // no overlap: nothing to hide
-  var x1 = a.x <= p.x ? 0 : Math.round(pad + (ix1 - p.x));
-  var y1 = a.y <= p.y ? 0 : Math.round(pad + (iy1 - p.y));
-  var x2 = a.x + a.w >= p.x + p.w ? W : Math.round(pad + (ix2 - p.x));
-  var y2 = a.y + a.h >= p.y + p.h ? W : Math.round(pad + (iy2 - p.y));
+  if (ix2 <= ix1 || iy2 <= iy1) return null; // no overlap: nothing to hide
+  return {
+    W: W,
+    x1: a.x <= p.x ? 0 : Math.round(pad + (ix1 - p.x)),
+    y1: a.y <= p.y ? 0 : Math.round(pad + (iy1 - p.y)),
+    x2: a.x + a.w >= p.x + p.w ? W : Math.round(pad + (ix2 - p.x)),
+    y2: a.y + a.h >= p.y + p.h ? W : Math.round(pad + (iy2 - p.y)),
+  };
+}
+
+function buildCritterClip(p, pad) {
+  var h = critterHiddenRect(p, pad);
+  if (!h) return '';
+  var W = h.W;
+  var x1 = h.x1; var y1 = h.y1; var x2 = h.x2; var y2 = h.y2;
   var T = y1 === 0; var R = x2 === W; var B = y2 === W; var L = x1 === 0;
   var touches = (T ? 1 : 0) + (R ? 1 : 0) + (B ? 1 : 0) + (L ? 1 : 0);
   var px = function (n) { return n + 'px'; };
@@ -7854,6 +7869,43 @@ function buildCritterRoundMask(rc, pad) {
   return 'radial-gradient(circle at ' + (pad + rc.cx) + 'px ' + (pad + rc.cy) + 'px, transparent ' + rc.r + 'px, #000 ' + (rc.r + 0.5) + 'px)';
 }
 
+// v1.177 (Dean's Modern-2021 screenshots: square critter shoulders poking
+// past ROUNDED button/tile corners - "edge being shaved to the actual
+// button"): when the anchor paints rounded corners, the hidden region must
+// be the same ROUNDED rect, not its bounding box. clip-path cannot express
+// the complement of a rounded rect, but a mask can: an inline SVG data URI -
+// an opaque full-wrapper square with the rounded hole punched out via
+// fill-rule evenodd - rides the SAME --critter-mask/.critter-round plumbing
+// the v1.170 circle fix proved out. A hole corner is rounded ONLY when it is
+// a TRUE anchor corner (both of its sides are interior cuts); a side at the
+// wrapper edge means the anchor continues past it, so its real corner lies
+// outside the wrapper and the cut stays straight there. Radii clamp to the
+// hole's half-extents.
+function buildCritterShaveMask(p, pad) {
+  var h = critterHiddenRect(p, pad);
+  if (!h) return '';
+  var rd = p.radii || { tl: 0, tr: 0, br: 0, bl: 0 };
+  var W = h.W;
+  var leftIn = h.x1 > 0; var topIn = h.y1 > 0; var rightIn = h.x2 < W; var botIn = h.y2 < W;
+  var maxR = Math.floor(Math.min((h.x2 - h.x1) / 2, (h.y2 - h.y1) / 2));
+  var cr = function (r, isAnchorCorner) {
+    return isAnchorCorner ? Math.max(0, Math.min(Math.round(r || 0), maxR)) : 0;
+  };
+  var tl = cr(rd.tl, leftIn && topIn);
+  var tr = cr(rd.tr, rightIn && topIn);
+  var br = cr(rd.br, rightIn && botIn);
+  var bl = cr(rd.bl, leftIn && botIn);
+  var d = 'M0 0H' + W + 'V' + W + 'H0Z'
+    + 'M' + (h.x1 + tl) + ' ' + h.y1
+    + 'H' + (h.x2 - tr) + (tr ? 'A' + tr + ' ' + tr + ' 0 0 1 ' + h.x2 + ' ' + (h.y1 + tr) : '')
+    + 'V' + (h.y2 - br) + (br ? 'A' + br + ' ' + br + ' 0 0 1 ' + (h.x2 - br) + ' ' + h.y2 : '')
+    + 'H' + (h.x1 + bl) + (bl ? 'A' + bl + ' ' + bl + ' 0 0 1 ' + h.x1 + ' ' + (h.y2 - bl) : '')
+    + 'V' + (h.y1 + tl) + (tl ? 'A' + tl + ' ' + tl + ' 0 0 1 ' + (h.x1 + tl) + ' ' + h.y1 : '')
+    + 'Z';
+  var svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 " + W + ' ' + W + "'><path fill-rule='evenodd' d='" + d + "' fill='#fff'/></svg>";
+  return 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
+}
+
 function renderCritterPlacements(layer, placements, still) {
   layer.textContent = ''; // full rebuild every scatter - no accumulation
   (placements || []).forEach(function (p) {
@@ -7877,6 +7929,15 @@ function renderCritterPlacements(layer, placements, still) {
       // (the v1.77 prefixed-vs-standard lesson, and jsdom-bindable besides).
       el.classList.add('critter-round');
       el.style.setProperty('--critter-mask', buildCritterRoundMask(p.roundCover, pad));
+    } else if (p.radii && (p.radii.tl > 2 || p.radii.tr > 2 || p.radii.br > 2 || p.radii.bl > 2)) {
+      // v1.177: a rounded (non-circle) anchor shaves the cut to its painted
+      // corners via the SVG mask; radii of <=2px stay on the cheaper clip
+      // (imperceptible at critter scale).
+      var shave = buildCritterShaveMask(p, pad);
+      if (shave) {
+        el.classList.add('critter-round');
+        el.style.setProperty('--critter-mask', shave);
+      }
     } else {
       // v1.174: the clip derives from the MEASURED placement/anchor rects,
       // never from the planner's cover claims (see buildCritterClip).
@@ -7983,17 +8044,34 @@ function collectCritterRects(selectors, requireSize) {
     // (radius 50% but wide) is NOT a circle. Fails OPEN to the rect clip: a
     // wrongly-square avatar just gets the old sharper cut, never a bad hide.
     var round = false;
+    var radii = null;
     if (requireSize) {
       try {
-        var br = String(window.getComputedStyle(el).borderTopLeftRadius || '');
+        var cs = window.getComputedStyle(el);
         var half = Math.min(r.width, r.height) / 2;
-        var radiusPx = br.indexOf('%') !== -1 ? (parseFloat(br) >= 50 ? half : 0) : (parseFloat(br) || 0);
-        round = Math.abs(r.width - r.height) <= 2 && radiusPx >= half - 1;
-      } catch (_) { round = false; }
+        // v1.177 (Dean's Modern-2021 screenshots): harvest ALL FOUR corner
+        // radii so the shave mask can follow the PAINTED shape. Percentages
+        // resolve against the box's min dimension (approximation - CSS
+        // resolves each axis separately, but for decorative shaving the min
+        // is the honest conservative read); everything clamps to half.
+        var corner = function (v) {
+          var s = String(v || '');
+          var n = s.indexOf('%') !== -1 ? (parseFloat(s) / 100) * Math.min(r.width, r.height) : (parseFloat(s) || 0);
+          if (!isFinite(n)) n = 0;
+          return Math.max(0, Math.min(n, half));
+        };
+        radii = {
+          tl: corner(cs.borderTopLeftRadius),
+          tr: corner(cs.borderTopRightRadius),
+          br: corner(cs.borderBottomRightRadius),
+          bl: corner(cs.borderBottomLeftRadius),
+        };
+        round = Math.abs(r.width - r.height) <= 2 && radii.tl >= half - 1;
+      } catch (_) { round = false; radii = null; }
     }
     // v1.176: the ELEMENT rides along so a settle correction can RE-GLUE a
     // placed critter to its own moved furniture instead of re-rolling.
-    rects.push({ x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height, weight: weight, round: round, el: el });
+    rects.push({ x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height, weight: weight, round: round, radii: radii, el: el });
   }
   return rects;
 }
@@ -14004,6 +14082,7 @@ if (typeof module !== 'undefined' && module.exports) {
     critterSettleAction,
     warmCritterAssets,
     reglueCritterPlacements,
+    buildCritterShaveMask,
     // v1.163.1: force text (non-emoji) presentation on the arrow glyphs.
     DDR_TEXT_PRESENTATION, ddrArrowDisplayGlyph,
     // v1.50.3: the D dark/light toggle's pure decision.

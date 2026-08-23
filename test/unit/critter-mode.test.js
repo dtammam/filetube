@@ -1237,6 +1237,105 @@ test('v1.176 gate W closure: the re-glue DROP predicates bind - exclusion (never
     'the LOAD-BEARING hidden drop: a collapsing anchor sheds its critter even when the overlap predicate cannot catch it');
 });
 
+// ---- v1.177: the rounded shave (Dean's Modern-2021 screenshots) -------------
+
+function decodeShave(mask) {
+  const m = mask.match(/^url\("data:image\/svg\+xml,(.*)"\)$/);
+  assert.ok(m, 'the mask is an inline SVG data URI: ' + mask.slice(0, 40));
+  return decodeURIComponent(m[1]);
+}
+
+test('v1.177 buildCritterShaveMask (pure): the hole follows the anchor\'s PAINTED corners - rounded only at TRUE anchor corners', () => {
+  const { buildCritterShaveMask } = require('../../public/js/common.js');
+  const P = (anchor, radii) => ({ x: 100, y: 100, w: 50, h: 50, anchor, radii });
+  const pad = 15; // wrapper 80; doc d -> local 15 + (d - 100)
+  const R10 = { tl: 10, tr: 10, br: 10, bl: 10 };
+  // 3-side inset (anchor below, extends past L/R/B): the only interior side
+  // is the anchor's TOP EDGE - no true corner inside the wrapper, so the
+  // hole stays square even though the anchor is rounded (its real corners
+  // lie outside the wrapper).
+  assert.strictEqual(decodeShave(buildCritterShaveMask(P({ x: 0, y: 125, w: 400, h: 200 }, R10), pad)),
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'><path fill-rule='evenodd' d='M0 0H80V80H0ZM0 40H80V80H0V40Z' fill='#fff'/></svg>");
+  // Corner L (anchor to the bottom-right): exactly ONE true anchor corner
+  // (its tl) inside the wrapper - one arc, the rest straight.
+  assert.strictEqual(decodeShave(buildCritterShaveMask(P({ x: 120, y: 130, w: 200, h: 200 }, R10), pad)),
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'><path fill-rule='evenodd' d='M0 0H80V80H0ZM45 45H80V80H35V55A10 10 0 0 1 45 45Z' fill='#fff'/></svg>");
+  // C-notch (small anchor to the right, cross-smaller): its tl AND bl
+  // corners are inside the wrapper - two arcs on the interior side's ends.
+  assert.strictEqual(decodeShave(buildCritterShaveMask(P({ x: 130, y: 110, w: 60, h: 20 }, { tl: 8, tr: 8, br: 8, bl: 8 }), pad)),
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'><path fill-rule='evenodd' d='M0 0H80V80H0ZM53 25H80V45H53A8 8 0 0 1 45 37V33A8 8 0 0 1 53 25Z' fill='#fff'/></svg>");
+  // A preposterous radius clamps to the hole's half-extent (corner-L hole is
+  // 45x35 -> maxR floor(17.5) = 17).
+  const clamped = decodeShave(buildCritterShaveMask(P({ x: 120, y: 130, w: 200, h: 200 }, { tl: 40, tr: 40, br: 40, bl: 40 }), pad));
+  assert.match(clamped, /A17 17 0 0 1/, 'radius clamped to 17');
+  // Degenerates: no anchor / no overlap emit NOTHING (never a floating cut).
+  assert.strictEqual(buildCritterShaveMask({ x: 100, y: 100, w: 50, h: 50, radii: R10 }, pad), '');
+  assert.strictEqual(buildCritterShaveMask(P({ x: 500, y: 500, w: 50, h: 50 }, R10), pad), '');
+});
+
+test('v1.177 renderer ladder: circle -> radial mask; rounded anchor -> SVG shave mask; square/tiny-radius -> the rect clip', () => {
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="critter-layer"></div></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const layer = dom.window.document.getElementById('critter-layer');
+    const base = { x: 100, y: 100, w: 50, h: 50, angle: 0, flip: 1, hue: 0, cover: {}, anchor: { x: 120, y: 130, w: 200, h: 200 } };
+    renderCritterPlacements(layer, [
+      { ...base, id: 'circle', roundCover: { cx: 25, cy: 25, r: 12 } },
+      { ...base, id: 'rounded', roundCover: null, radii: { tl: 10, tr: 10, br: 10, bl: 10 } },
+      { ...base, id: 'tiny', roundCover: null, radii: { tl: 2, tr: 2, br: 2, bl: 2 } },
+      { ...base, id: 'square', roundCover: null, radii: null },
+    ]);
+    const kids = layer.querySelectorAll('.critter');
+    assert.match(kids[0].style.getPropertyValue('--critter-mask'), /^radial-gradient/, 'true circle keeps the radial mask');
+    assert.match(kids[1].style.getPropertyValue('--critter-mask'), /^url\("data:image\/svg\+xml,/, 'rounded anchor gets the SVG shave');
+    assert.ok(kids[1].classList.contains('critter-round'), 'the shave rides the SAME mask plumbing');
+    assert.strictEqual(kids[1].style.clipPath, '', 'never both mask AND clip');
+    assert.ok(kids[2].style.clipPath.length > 0, '<=2px radii stay on the cheaper clip');
+    assert.strictEqual(kids[2].style.getPropertyValue('--critter-mask'), '');
+    assert.ok(kids[3].style.clipPath.length > 0, 'no radii: the rect clip');
+  } finally { delete global.window; delete global.document; dom.window.close(); }
+});
+
+test('v1.177 collector: per-corner radii harvested from computed style (px, %, missing), clamped to half; planner passes them through', () => {
+  const dom = new JSDOM('<!DOCTYPE html><body><button class="btn" data-m="1">B</button></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  const proto = dom.window.Element.prototype;
+  const origRect = proto.getBoundingClientRect;
+  proto.getBoundingClientRect = function () {
+    if (this.getAttribute && this.getAttribute('data-m')) return { left: 10, top: 10, width: 120, height: 40, right: 130, bottom: 50 };
+    return origRect.call(this);
+  };
+  const origGCS = dom.window.getComputedStyle;
+  dom.window.getComputedStyle = () => ({
+    position: 'static',
+    borderTopLeftRadius: '10px',
+    borderTopRightRadius: '50%', // resolves against min dim (40) -> 20, clamps to half (20)
+    borderBottomRightRadius: '999px', // clamps to half (20)
+    // bottom-left missing -> 0
+  });
+  try {
+    const { collectCritterRects, planCritterScatter } = require('../../public/js/common.js');
+    const rects = collectCritterRects(['.btn'], true);
+    assert.strictEqual(rects.length, 1);
+    assert.deepStrictEqual(rects[0].radii, { tl: 10, tr: 20, br: 20, bl: 0 }, 'per-corner parse: px, %, clamp, missing');
+    const out = planCritterScatter({ anchors: rects, exclusions: [], manifest: [{ id: 'c', img: '/critters/c.png', sound: null }], count: 1, rng: () => 0.4 });
+    assert.strictEqual(out.length, 1);
+    assert.deepStrictEqual(out[0].radii, rects[0].radii, 'the planner passes the painted radii through to the renderer');
+  } finally {
+    proto.getBoundingClientRect = origRect;
+    dom.window.getComputedStyle = origGCS;
+    delete global.window; delete global.document;
+    dom.window.close();
+  }
+});
+
+test('v1.177 refactor lock: the clip and the shave consume ONE shared hidden-rect truth', () => {
+  const clip = COMMON.slice(COMMON.indexOf('function buildCritterClip'), COMMON.indexOf('\n// v1.177 (Dean'));
+  assert.match(clip, /var h = critterHiddenRect\(p, pad\);/, 'buildCritterClip derives from the shared geometry');
+  const shave = COMMON.slice(COMMON.indexOf('function buildCritterShaveMask'), COMMON.indexOf('\nfunction renderCritterPlacements'));
+  assert.match(shave, /var h = critterHiddenRect\(p, pad\);/, 'buildCritterShaveMask derives from the SAME geometry');
+});
+
 // ---- CSS locks --------------------------------------------------------------
 
 test('v1.175: every critter ARRIVES on a pure-opacity fade (no pop-in; no motion, so no reduced-motion arm needed)', () => {
