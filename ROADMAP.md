@@ -80,6 +80,38 @@
 
 ## Shipped
 
+### v1.174.0 - Critters: the clip becomes geometric truth (the floating-cut class dies) + the final name (Dean) (2026-08-23)
+
+Dean's "one last swing": his Subscribed-button screenshot showed a critter
+fragment with a hard cut floating OFF the button - the #167c over-clip
+residual class, closed now instead of disclosed.
+
+- THE CLIP IS GEOMETRIC TRUTH: buildCritterClip no longer hides the
+  planner's CLAIMED cover bands (size-derived, never clamped to the
+  anchor's real extent - a critter overlapping past the anchor's far edge,
+  which the v1.170 cross-fit deliberately allows, got sliced where nothing
+  hides it). The hidden region is now the MEASURED intersection of the
+  critter box and its anchor; the complement polygon follows from topology
+  (inset / corner L / C-notch / band). THE CLASS INVARIANT - every cut line
+  lies ON an anchor edge - is bound by a 900-seed sweep; the seat's
+  independent winding oracle proved 1306 floating cuts under the OLD clip
+  became 0 under the new one on a Subscribed-style button.
+- THE NAME IS JUST "CRITTERS" (Dean, twice-confirmed): no "sneaky", no
+  "companions" - the v1.173 rename lasted one release; the name now matches
+  every id, key, and route, so the vocabulary split is gone in the
+  zero-risk direction. The generic spirit stays in the copy.
+
+Slim gate (adversarial): APPROVE in two rounds. Round 1's WARNING was the
+v1.168 orientation class RE-STRUCK: only one of four C-notch orientations
+was exact-bound (in a branch today's planner cannot even reach - the seat
+measured 0 notch topologies over 92k placements), and it caught my
+mutation RECORD being imprecise about which test kills which mutant - both
+corrected in the fix commit, all four orientations now bound and the
+seat's surviving mutants re-run dead. Its oracle independently hand-derived
+every topology fixture. Dual-Node 7488/7488 clean first runs. Device pass
+PENDING (Dean: the Subscribed-button spot on a few watch pages - every cut
+should hug a button edge).
+
 ### v1.173.0 - Sneaky companions: the settle ladder, the generic rename, and the em-dash rule (Dean) (2026-08-23)
 
 Three follow-ups from Dean's device pass, one wave:
