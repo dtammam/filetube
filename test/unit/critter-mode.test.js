@@ -306,6 +306,15 @@ test('v1.168 buildCritterClip (pure): edge cuts are insets at pad+cover; corner 
   // bottom-right quadrant beyond BOTH cuts (cutX = 80-35=45, cutY = 80-40=40).
   assert.strictEqual(buildCritterClip({ r: 20, b: 25 }, 50, 15),
     'polygon(0px 0px, 80px 0px, 80px 40px, 45px 40px, 45px 80px, 0px 80px)');
+  // Gate: ALL FOUR corner orientations exact-bound (three shipped untested and
+  // their wrong-quadrant mutants survived - the seat derived these expected
+  // strings independently of the implementation before prescribing them).
+  assert.strictEqual(buildCritterClip({ l: 30, b: 25 }, 50, 15),
+    'polygon(0px 0px, 80px 0px, 80px 80px, 45px 80px, 45px 40px, 0px 40px)');
+  assert.strictEqual(buildCritterClip({ r: 20, t: 10 }, 50, 15),
+    'polygon(0px 0px, 45px 0px, 45px 25px, 80px 25px, 80px 80px, 0px 80px)');
+  assert.strictEqual(buildCritterClip({ l: 30, t: 10 }, 50, 15),
+    'polygon(45px 0px, 80px 0px, 80px 80px, 0px 80px, 0px 25px, 45px 25px)');
   // A degenerate empty cover still yields a full-box inset (never a throw).
   assert.strictEqual(buildCritterClip({}, 50, 15), 'inset(0px 0px 0px 0px)');
 });
@@ -429,6 +438,10 @@ test('SOURCE: the tap listener stands down for real UI AND every exclusion; taps
   // Gate W3: NEVER a selector built from the id (a raw filename - a legal
   // double-quote name made querySelector THROW). Index into the layer instead.
   assert.match(body, /children\[critterPlacements\.indexOf\(hit\)\]/, 'reaction element resolved by index');
+  // v1.168 gate T-POSE: the reaction must animate the POSE, never the clipped
+  // WRAPPER - animating the wrapper swings the cut and the hidden half rotates
+  // into view mid-tap (the surviving mutant this line kills).
+  assert.match(body, /var el = wrap \? wrap\.firstElementChild : null;/, 'reactions target the pose inside the clip');
   assert.doesNotMatch(body, /querySelector\('\.critter\[data-critter-id/, 'no id-built selector remains');
   assert.doesNotMatch(body, /preventDefault/, 'the critter layer never eats a click');
   // Gate W5: only a WIDTH change re-scatters (iOS URL-bar collapse fires
