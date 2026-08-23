@@ -1148,6 +1148,67 @@ test('v1.176 RE-GLUE end-to-end: a drift correction keeps every critter on ITS O
     'no furniture, no critter - dropped, never re-rolled elsewhere');
 });
 
+test('v1.176 gate W closure: the re-glue DROP predicates bind - exclusion (never over playback), bounds, hidden', async (t) => {
+  // The seat proved the drops correct but mutable-green: removing the
+  // exclusion/bounds/hidden drops shipped green because only the
+  // disconnected-anchor drop was bound. This is the seat's own repro shape.
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="view-root"><div class="video-card" id="card"></div></div><div id="player-dock"></div></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  global.MutationObserver = dom.window.MutationObserver;
+  global.localStorage = dom.window.localStorage;
+  localStorage.setItem('ft-critters:on', '1');
+  global.window.Image = class { decode() { return Promise.resolve(); } };
+  const docEl = dom.window.document.documentElement;
+  Object.defineProperty(docEl, 'scrollWidth', { value: 800, configurable: true });
+  Object.defineProperty(docEl, 'scrollHeight', { value: 2000, configurable: true });
+  const cardRect = { left: 100, top: 300, width: 300, height: 200 };
+  let cardHidden = false;
+  const proto = dom.window.Element.prototype;
+  const origRect = proto.getBoundingClientRect;
+  proto.getBoundingClientRect = function () {
+    if (this.id === 'card') {
+      if (cardHidden) return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+      return { left: cardRect.left, top: cardRect.top, width: cardRect.width, height: cardRect.height, right: cardRect.left + cardRect.width, bottom: cardRect.top + cardRect.height };
+    }
+    if (this.id === 'player-dock') {
+      return { left: 0, top: 1600, width: 800, height: 200, right: 800, bottom: 1800 };
+    }
+    return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+  };
+  t.after(() => {
+    proto.getBoundingClientRect = origRect;
+    const { scatterCritters } = require('../../public/js/common.js');
+    localStorage.setItem('ft-critters:on', '0');
+    scatterCritters();
+    delete global.window; delete global.document; delete global.MutationObserver; delete global.localStorage;
+    dom.window.close();
+  });
+  const { scatterCritters, reglueCritterPlacements } = require('../../public/js/common.js');
+  const place = async () => {
+    cardHidden = false; cardRect.top = 300;
+    scatterCritters();
+    await new Promise((resolve) => setTimeout(resolve, 260));
+    assert.ok(dom.window.document.querySelectorAll('.critter').length > 0, 'placed on the card');
+  };
+  // EXCLUSION: the card slides ONTO the player dock - its critter is dropped,
+  // never left over the playback surface (Dean's founding constraint, on the
+  // NEW mid-view path).
+  await place();
+  cardRect.top = 1620;
+  reglueCritterPlacements();
+  assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 0, 'slid into #player-dock: dropped');
+  // BOUNDS: the card slides past the page end - never grow the document (W4).
+  await place();
+  cardRect.top = 2100;
+  reglueCritterPlacements();
+  assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 0, 'past scrollHeight: dropped');
+  // HIDDEN: the anchor collapses to a zero rect - dropped.
+  await place();
+  cardHidden = true;
+  reglueCritterPlacements();
+  assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 0, 'hidden anchor: dropped');
+});
+
 // ---- CSS locks --------------------------------------------------------------
 
 test('v1.175: every critter ARRIVES on a pure-opacity fade (no pop-in; no motion, so no reduced-motion arm needed)', () => {
