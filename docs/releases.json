@@ -2062,5 +2062,11 @@
     "date": "2026-08-23",
     "title": "Sneaky companions settle in properly",
     "intent": "The critter feature grows up into Sneaky companions - because what you upload can be critters, characters, or anything with a transparent background. Companions also stopped ending up on top of a page's title or channel name: on pages that load in stages, they now take a second look once everything has settled and tuck themselves properly behind their buttons. Plus a small copy cleanup throughout the feature."
+  },
+  {
+    "version": "1.174.0",
+    "date": "2026-08-23",
+    "title": "Critters, cut clean",
+    "intent": "The feature settles on its true name - just Critters - and gets its last visual rough edge filed off: a critter peeking from behind a button could sometimes show a hard slice floating in mid-air where the button doesn't even reach. Now the hidden part of every critter matches exactly what its hiding spot really covers, so every edge you see is the edge of something real."
   }
 ]
