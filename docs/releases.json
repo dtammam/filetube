@@ -2038,5 +2038,11 @@
     "date": "2026-08-23",
     "title": "Critters move into the feed",
     "intent": "On the phone's main feed, critters used to poke out the sides of the full-width cards and get chopped off by the screen edge, which looked like a glitch. Now anything full-width only lets them emerge from the top or bottom - so they climb out from behind a video's artwork onto its title, or peer down over the top of a card. Bonus: they can also hide behind the artwork itself, and keep an eye out for the tiny ones tucked behind a channel's little round avatar."
+  },
+  {
+    "version": "1.170.0",
+    "date": "2026-08-23",
+    "title": "Critters that actually fit their hiding spots",
+    "intent": "Three fit-and-finish fixes for critter mode. Critters now size themselves to whatever they hide behind, so a small button never has a giant peeking out with odd slices floating past its edges. When one emerges from underneath something, it now hangs upside-down with its head poking out - no more disembodied feet dangling below a card. And behind the little round channel avatars, the hidden part now follows the circle's curve instead of cutting a sharp straight edge through the critter."
   }
 ]

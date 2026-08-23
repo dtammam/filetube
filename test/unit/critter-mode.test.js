@@ -124,7 +124,7 @@ test('planCritterScatter: an anchor intersecting a playback exclusion is NEVER u
   assert.deepStrictEqual(out[0].anchor, anchors[2]);
 });
 
-test('planCritterScatter: every placement PEEKS - overlaps its anchor but extends outside it; angle within +-24', () => {
+test('planCritterScatter: every placement PEEKS - overlaps its anchor but extends outside it; tilt within +-38 around its base', () => {
   const anchors = Array.from({ length: 20 }, (_, i) => ANCHOR(200, 200 + i * 300));
   const out = planCritterScatter({ anchors, exclusions: [], manifest: MANIFEST_8, count: 8, rng: seededRng(11) });
   assert.strictEqual(out.length, 8);
@@ -134,8 +134,13 @@ test('planCritterScatter: every placement PEEKS - overlaps its anchor but extend
     const fullyInside = p.x >= a.x && p.x + p.w <= a.x + a.w && p.y >= a.y && p.y + p.h <= a.y + a.h;
     assert.ok(overlaps, 'the critter straddles its anchor (the hidden half)');
     assert.ok(!fullyInside, 'part of the critter sticks OUT (the peeking half)');
-    assert.ok(p.angle >= -38 && p.angle <= 38, 'a jaunty (v1.168: wilder) but readable angle');
+    // v1.170: the angle is a TILT of at most +-38 around a base of 0deg
+    // (upright) or 180deg (a bottom-family peek hangs head-down).
+    const tilt = Math.cos(p.angle * Math.PI / 180) < 0 ? p.angle - 180 : p.angle;
+    assert.ok(tilt >= -38 && tilt <= 38, 'a jaunty (v1.168: wilder) but readable tilt, got angle ' + p.angle);
     assert.ok(p.flip === 1 || p.flip === -1, 'every placement picks a pose direction');
+    // 200x120 anchors: even a max-tilt 88px critter fits the cross axis
+    // (88*1.404 < 120*1.15), so the v1.170 fit never shrinks the big band.
     assert.ok(p.w >= 44 && p.w <= 88, 'CODE owns display size regardless of source render size');
   }
 });
@@ -644,6 +649,166 @@ test('v1.167: an anchor inside a FIXED subtree is skipped (its rect is viewport-
     assert.strictEqual(critterInsideFixed(dom.window.document.getElementById('free')), false,
       'an in-flow button anchors normally');
   } finally {
+    delete global.window; delete global.document;
+    dom.window.close();
+  }
+});
+
+// ---- v1.170 peek-fit polish (Dean's three screenshots) ----------------------
+
+test('v1.170 CROSS-AXIS FIT: no critter towers over a small button - rotated extent capped at 1.15x the anchor cross axis', () => {
+  // Dean's screenshot: critters TALLER than the 44px action buttons read as
+  // notched floating cut-outs (the sandwich clip hides only the covered band;
+  // the bands past the anchor's far edges stay visible). Sweep: every
+  // placement's ROTATED extent perpendicular to its peek direction fits the
+  // anchor's extent there (15% grace, +1px rounding slack).
+  const button = { x: 200, y: 500, w: 120, h: 44 };
+  let sideOrCorner = 0;
+  for (let seed = 1; seed <= 300; seed += 1) {
+    const out = planCritterScatter({ anchors: [button], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(seed) });
+    for (const p of out) {
+      const tilt = Math.cos(p.angle * Math.PI / 180) < 0 ? p.angle - 180 : p.angle;
+      const rad = Math.abs(tilt) * Math.PI / 180;
+      const extent = p.w * (Math.sin(rad) + Math.cos(rad));
+      const c = p.cover;
+      const corner = ((c.l ? 1 : 0) + (c.r ? 1 : 0) + (c.t ? 1 : 0) + (c.b ? 1 : 0)) === 2;
+      const side = !corner && (c.l > 0 || c.r > 0);
+      const allow = corner ? Math.min(button.w, button.h) : (side ? button.h : button.w);
+      assert.ok(extent <= allow * 1.15 + 1,
+        `seed ${seed}: rotated extent ${extent.toFixed(1)} exceeds allowed ${(allow * 1.15).toFixed(1)} (cover ${JSON.stringify(c)})`);
+      if (side || corner) sideOrCorner += 1;
+    }
+  }
+  assert.ok(sideOrCorner > 40, 'the sweep actually exercised side/corner peeks (' + sideOrCorner + ')');
+});
+
+test('v1.170 micro-anchor: a 24px avatar disc hosts a near-upright critter its own size, carrying the disc for the renderer', () => {
+  const avatar = { x: 60, y: 400, w: 24, h: 24, round: true };
+  let placed = 0;
+  for (let seed = 1; seed <= 200; seed += 1) {
+    const out = planCritterScatter({ anchors: [avatar], exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(seed) });
+    for (const p of out) {
+      placed += 1;
+      const tilt = Math.cos(p.angle * Math.PI / 180) < 0 ? p.angle - 180 : p.angle;
+      const rad = Math.abs(tilt) * Math.PI / 180;
+      assert.ok(p.w >= 26, `seed ${seed}: the 26px floor holds`);
+      assert.ok(p.w * (Math.sin(rad) + Math.cos(rad)) <= 24 * 1.15 + 1,
+        `seed ${seed}: micro-anchor fit violated (w=${p.w}, tilt=${tilt})`);
+      assert.ok(Math.abs(tilt) <= 4, `seed ${seed}: at the size floor the TILT flattens instead (got ${tilt})`);
+      // Round pass-through: the disc, in critter-local coordinates.
+      assert.ok(p.roundCover, 'a circle anchor carries roundCover');
+      assert.strictEqual(p.roundCover.r, 12);
+      assert.strictEqual(p.roundCover.cx, 60 + 12 - p.x);
+      assert.strictEqual(p.roundCover.cy, 400 + 12 - p.y);
+    }
+  }
+  assert.ok(placed > 150, 'the sweep placed critters (' + placed + ')');
+});
+
+test('v1.170 bottom-family flip: a peek below its element hangs HEAD-DOWN (base 180deg) - and BOTH bases actually occur', () => {
+  // Dean: "looks like critter feet behind an element... maybe reverse the
+  // image 180 degrees?" - his fix, both directions bound (the v1.169
+  // top-only-pool survivor: directional asserts need explicit counters).
+  const anchors = [{ x: 100, y: 500, w: 200, h: 120 }];
+  let headDownCount = 0; let uprightCount = 0;
+  for (let seed = 1; seed <= 300; seed += 1) {
+    const out = planCritterScatter({ anchors, exclusions: [], manifest: MANIFEST_8, count: 1, rng: seededRng(seed) });
+    for (const p of out) {
+      const bottomFamily = p.cover.t > 0; // concealed from ABOVE = emerging below
+      const headDown = Math.cos(p.angle * Math.PI / 180) < 0;
+      assert.strictEqual(headDown, bottomFamily,
+        `seed ${seed}: 180-flip iff bottom-family (angle ${p.angle}, cover ${JSON.stringify(p.cover)})`);
+      if (headDown) headDownCount += 1; else uprightCount += 1;
+    }
+  }
+  assert.ok(headDownCount > 40 && uprightCount > 40,
+    `both pose bases occur (headDown=${headDownCount}, upright=${uprightCount})`);
+});
+
+test('v1.170 buildCritterRoundMask (pure): transparent inside the disc, opaque past a half-px rim, pad-shifted centre', () => {
+  const { buildCritterRoundMask } = require('../../public/js/common.js');
+  assert.strictEqual(buildCritterRoundMask({ cx: 10, cy: 20, r: 12 }, 15),
+    'radial-gradient(circle at 25px 35px, transparent 12px, #000 12.5px)');
+  assert.strictEqual(buildCritterRoundMask({ cx: -4, cy: 0, r: 22 }, 13),
+    'radial-gradient(circle at 9px 13px, transparent 22px, #000 22.5px)');
+});
+
+test('v1.170 renderer: roundCover swaps the rect clip for the circular mask class + custom property; rect placements the reverse', () => {
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="critter-layer"></div></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const layer = dom.window.document.getElementById('critter-layer');
+    renderCritterPlacements(layer, [
+      { id: 'r', x: 50, y: 60, w: 30, h: 30, angle: 0, flip: 1, hue: 0, cover: { l: 10 }, roundCover: { cx: 15, cy: 15, r: 12 }, img: '/critters/r.png', svg: null },
+      { id: 'q', x: 200, y: 60, w: 40, h: 40, angle: 0, flip: 1, hue: 0, cover: { l: 10 }, roundCover: null, img: '/critters/q.png', svg: null },
+    ]);
+    const roundEl = layer.children[0];
+    const rectEl = layer.children[1];
+    // pad = round(30*0.3) = 9 -> centre shifts to (24, 24).
+    assert.ok(roundEl.classList.contains('critter-round'), 'round anchors get the mask class');
+    assert.strictEqual(roundEl.style.getPropertyValue('--critter-mask'),
+      'radial-gradient(circle at 24px 24px, transparent 12px, #000 12.5px)');
+    assert.strictEqual(roundEl.style.clipPath, '', 'NEVER the rect clip on a disc - square corners cut hard edges (Dean\'s Bernard)');
+    assert.ok(!rectEl.classList.contains('critter-round'), 'rect anchors keep the sandwich clip...');
+    assert.ok(rectEl.style.clipPath.length > 0, '...which is applied');
+    assert.strictEqual(rectEl.style.getPropertyValue('--critter-mask'), '', 'and never the mask');
+    // The CSS side of the seam: BOTH mask spellings consume the custom property.
+    assert.match(CSS, /\.critter-round\s*\{[^}]*-webkit-mask-image:\s*var\(--critter-mask, none\)/, 'webkit spelling (iOS)');
+    assert.match(CSS, /\.critter-round\s*\{[^}]*[^-]mask-image:\s*var\(--critter-mask, none\)/, 'standard spelling (Firefox)');
+  } finally { delete global.window; delete global.document; dom.window.close(); }
+});
+
+test('v1.170 collector: a TRUE circle is marked round; pills and slightly-rounded squares are not; unreadable style fails OPEN', () => {
+  const dom = new JSDOM('<!DOCTYPE html><body>'
+    + '<div class="card-channel-avatar" data-m="avatar"></div>'
+    + '<button class="btn" data-m="pill">Pill</button>'
+    + '<button class="btn" data-m="square">Sq</button>'
+    + '<div class="setup-box" data-m="quarter"></div>'
+    + '</body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  const proto = dom.window.Element.prototype;
+  const orig = proto.getBoundingClientRect;
+  const RECTS = {
+    avatar: { left: 10, top: 10, width: 24, height: 24 },   // square + 50% radius = circle
+    pill: { left: 50, top: 10, width: 120, height: 40 },    // 50% radius but WIDE = pill, not a circle
+    square: { left: 200, top: 10, width: 44, height: 44 },  // square but small radius
+    quarter: { left: 300, top: 10, width: 60, height: 60 }, // square, 25% radius - rounded, NOT a circle
+  };
+  proto.getBoundingClientRect = function () {
+    const m = this.getAttribute && this.getAttribute('data-m');
+    if (m && RECTS[m]) {
+      const r = RECTS[m];
+      return { left: r.left, top: r.top, width: r.width, height: r.height, right: r.left + r.width, bottom: r.top + r.height };
+    }
+    return orig.call(this);
+  };
+  // jsdom's css engine does not expand border-radius shorthands reliably, so
+  // the computed-style READ is stubbed; the parse/decision logic is the target.
+  const origGCS = dom.window.getComputedStyle;
+  dom.window.getComputedStyle = (el) => {
+    const m = el.getAttribute && el.getAttribute('data-m');
+    return { position: 'static', borderTopLeftRadius: m === 'square' ? '8px' : (m === 'quarter' ? '25%' : '50%') };
+  };
+  try {
+    const { collectCritterRects, CRITTER_ANCHOR_SELECTORS: POOL } = require('../../public/js/common.js');
+    const rects = collectCritterRects(POOL, true);
+    const byW = (w) => rects.find((r) => r.w === w);
+    assert.strictEqual(byW(24).round, true, 'the 24px 50%-radius avatar IS a circle');
+    assert.strictEqual(byW(120).round, false, 'a 50%-radius PILL is not (w far from h)');
+    assert.strictEqual(byW(44).round, false, 'an 8px-radius square is not');
+    // Gate M12 closure: the sub-50 PERCENT arm was unbound - a 25% radius on
+    // a square box must classify as rounded, never as a circle.
+    assert.strictEqual(byW(60).round, false, 'a 25%-radius square is rounded, NOT a circle');
+    // Fail OPEN: an unreadable RADIUS downgrades to the rect clip. (The
+    // position read must keep working - a fully-throwing stub would instead
+    // trip critterInsideFixed's fail-CLOSED catch and skip the anchor.)
+    dom.window.getComputedStyle = () => ({ position: 'static', get borderTopLeftRadius() { throw new Error('nope'); } });
+    const rects2 = collectCritterRects(['.card-channel-avatar'], true);
+    assert.strictEqual(rects2.length, 1, 'still collected');
+    assert.strictEqual(rects2[0].round, false, 'unreadable style -> rect clip (a sharper cut, never a bad hide)');
+  } finally {
+    proto.getBoundingClientRect = orig;
+    dom.window.getComputedStyle = origGCS;
     delete global.window; delete global.document;
     dom.window.close();
   }

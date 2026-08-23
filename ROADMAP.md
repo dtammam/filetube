@@ -80,6 +80,40 @@
 
 ## Shipped
 
+### v1.170.0 - critter peek-fit polish: cross-axis fit, head-down bottom peeks, circular avatar masks (Dean) (2026-08-23)
+
+Dean's v1.169 device pass surfaced three geometry gaps, all one family: the
+sandwich clip treats every anchor as a rectangle the critter fits behind, and
+that broke at the edges (his three screenshots: a critter towering over a 44px
+action button as a notched cut-out; dangling FEET below elements; a straight
+hard cut through a critter behind a circular channel avatar).
+
+- CROSS-AXIS FIT: the planner caps a critter's ROTATED extent perpendicular to
+  its peek at 1.15x the anchor's extent there - shrink the critter first, and
+  at the 26px floor flatten the TILT instead (a 24px avatar hosts a
+  near-upright critter its own size, max ~3 degrees of lean). Bound by
+  300-seed sweeps plus the seat's independent 30000-placement mulberry32 sweep
+  with ZERO violations and no rounding slack.
+- BOTTOM-FAMILY FLIP (Dean's own suggested fix): any bottom edge/corner peek
+  rotates the pose 180 degrees so the HEAD pops out below the ledge - hanging
+  upside-down reads sneaky, dangling feet read severed. Bound as an
+  iff-invariant (cover-from-above <=> head-down) with BOTH-base counters.
+- ROUND ANCHORS: the collector marks TRUE circles (square box, radius >= half;
+  pills and 25%-radius squares excluded; fails OPEN to the rect clip), and the
+  renderer swaps the rect clip for a radial-gradient mask via --critter-mask +
+  .critter-round (both -webkit- and standard spellings) - the cut now follows
+  the avatar's curve instead of slicing through the critter.
+
+Slim gate (adversarial): APPROVE in two rounds. Round 1 ran a 15-mutant
+campaign (14 killed) and caught the ONE survivor - the sub-50% arm of circle
+detection was unbound (dead code today, a misclassification trap tomorrow);
+the fix round closed it mutation-verified. Honest residual, judged
+non-blocking: threshold drift strictly inside (25%, 50%) is test-indistinct
+by stub granularity - both semantic classes bound, no live input exists.
+Dual-Node 7463/7463 clean first runs on v22.23.1 + v24.14.0. Device pass
+PENDING (Dean: fit feel on small buttons, upside-down bottom peeks, curved
+avatar cuts).
+
 ### v1.169.0 - the mobile feed gets integrated critters (full-bleed rule + card anchors) (Dean) (2026-08-23)
 
 Dean's v1.168 device pass ("incredibly impressed... very very very happy") found
