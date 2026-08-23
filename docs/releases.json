@@ -2056,5 +2056,11 @@
     "date": "2026-08-23",
     "title": "Critters follow you between Settings pages",
     "intent": "Opening a Settings section (or going back to the list) now gives the critters a fresh look at what's actually on screen, so they hide behind the page you're looking at instead of floating in mid-air where something used to be on the previous page."
+  },
+  {
+    "version": "1.173.0",
+    "date": "2026-08-23",
+    "title": "Sneaky companions settle in properly",
+    "intent": "The critter feature grows up into Sneaky companions - because what you upload can be critters, characters, or anything with a transparent background. Companions also stopped ending up on top of a page's title or channel name: on pages that load in stages, they now take a second look once everything has settled and tuck themselves properly behind their buttons. Plus a small copy cleanup throughout the feature."
   }
 ]
