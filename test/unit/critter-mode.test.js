@@ -1604,11 +1604,14 @@ test('v1.179.1 probeCritterVoices: reports the REAL manifest counts and the play
   assert.match(r.play, /^PLAY REJECTED: NotSupportedError/, 'the error NAME reaches the report - codec vs policy vs load distinguishable');
 });
 
-test('v1.179.1 the chirp fallback RECORDS why (source locks: all three arms write the reason)', () => {
+test('v1.179.1/v1.184 the chirp fallback RECORDS why (source locks: all three arms write the reason)', () => {
+  // v1.184: the two play-failure arms moved into the shared playCritterSound
+  // helper (records the name + URL); the empty-pool arm lives in the tap.
+  const play = COMMON.slice(COMMON.indexOf('function playCritterSound'), COMMON.indexOf('\nfunction buildCritterSoundPool'));
+  assert.match(play, /critterLastChirpReason = 'play rejected: ' \+ \(\(err && err\.name\) \|\| 'unknown'\) \+ ' for ' \+ url;/, 'rejected play records the name + URL');
+  assert.match(play, /critterLastChirpReason = 'Audio constructor threw: '/, 'sync throw recorded');
   const tap = COMMON.slice(COMMON.indexOf('var hit = critterTapHit'), COMMON.indexOf('\n  // Reflow moves the furniture'));
-  assert.match(tap, /critterLastChirpReason = 'play rejected: ' \+ \(\(err && err\.name\) \|\| 'unknown'\) \+ ' for ' \+ hit\.sound;/, 'rejected play records the name + URL');
-  assert.match(tap, /critterLastChirpReason = 'Audio constructor threw: '/, 'sync throw recorded');
-  assert.match(tap, /critterLastChirpReason = 'placement carried no voice/, 'the no-voice arm recorded');
+  assert.match(tap, /critterLastChirpReason = 'no critter voice and the sound pool is empty';/, 'the empty-pool last-resort arm recorded');
 });
 
 // ---- v1.180: the SCREEN-EDGE invariant (Dean's pink-dress amputation) -------
@@ -1939,4 +1942,40 @@ test('v1.182 H (functional cap): the 2.5s cap reveals even against a feed that n
   assert.strictEqual(critterCount(ctx), 0, 'before the cap: nothing placed (the persistent skeleton keeps the quiet gate closed)');
   await napMs(800); // 2x the 400ms cap - generous margin, no cold-start flake
   assert.ok(critterCount(ctx) > 0, 'the cap forced a reveal despite the never-clearing skeleton - the inescapable backstop');
+});
+
+// ---- v1.184: voiceless critters cycle the sound pool (Dean: variety per tap) ----
+
+test('v1.184 buildCritterSoundPool: deduped, SORTED, voice-over-sound, skips the voiceless', () => {
+  const { buildCritterSoundPool } = require('../../public/js/common.js');
+  assert.deepStrictEqual(buildCritterSoundPool([
+    { id: 'a', img: '/c/a.png', voice: '/c/z.mp3' },
+    { id: 'b', img: '/c/b.png', sound: '/c/a.mp3' },
+    { id: 'c', img: '/c/c.png' },                                            // voiceless -> skipped
+    { id: 'd', img: '/c/d.png', voice: '/c/a.mp3' },                         // dup of b -> counted once
+    { id: 'e', img: '/c/e.png', voice: '/c/m.mp3', sound: '/c/IGNORED.mp3' }, // voice wins over sound
+  ]), ['/c/a.mp3', '/c/m.mp3', '/c/z.mp3'], 'sorted + deduped; voiceless dropped; voice preferred');
+  assert.deepStrictEqual(buildCritterSoundPool([]), [], 'empty manifest -> empty pool');
+  assert.deepStrictEqual(buildCritterSoundPool(null), [], 'null-safe');
+});
+
+test('v1.184 nextCritterCycleSound: round-robin that WRAPS; empty pool -> null (chirp fallback)', () => {
+  const { nextCritterCycleSound, setCritterSoundPoolForTest } = require('../../public/js/common.js');
+  setCritterSoundPoolForTest(['/c/a.mp3', '/c/b.mp3', '/c/c.mp3']);
+  const seq = [0, 1, 2, 3, 4].map(() => nextCritterCycleSound());
+  assert.deepStrictEqual(seq, ['/c/a.mp3', '/c/b.mp3', '/c/c.mp3', '/c/a.mp3', '/c/b.mp3'],
+    'each tap advances and the cycle wraps - variety per tap');
+  setCritterSoundPoolForTest([]);
+  assert.strictEqual(nextCritterCycleSound(), null, 'no sound files -> null (the caller falls back to the chirp)');
+});
+
+test('v1.184 the tap: an explicit voice always wins; a voiceless critter cycles the pool (source lock)', () => {
+  const tap = COMMON.slice(COMMON.indexOf('var hit = critterTapHit'), COMMON.indexOf('\n  // Reflow moves the furniture'));
+  assert.match(tap, /var sound = hit\.sound \|\| nextCritterCycleSound\(\);/,
+    'explicit hit.sound short-circuits; only a voiceless critter reaches the cycle');
+  assert.match(tap, /if \(sound\) \{\n\s*playCritterSound\(sound\);/, 'a resolved sound plays via the shared helper');
+  // the pool + rotation are (re)built once per manifest generation.
+  const fetchFn = COMMON.slice(COMMON.indexOf('function fetchCritterManifest'), COMMON.indexOf('\nfunction critterInsideFixed'));
+  assert.match(fetchFn, /critterSoundPool = buildCritterSoundPool\(manifest\);\n\s*critterSoundCycleIdx = 0;/,
+    'the pool + rotation are rebuilt on the once-per-generation manifest seam');
 });

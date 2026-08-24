@@ -7753,10 +7753,56 @@ function playCritterChirp() {
   } catch (_) { /* silent, never throws */ }
 }
 
+// v1.184: play one specific sound file, recording WHY (for the Voice check
+// instrument) and falling back to the synth chirp on any failure. Shared by the
+// explicit-voice tap and the no-voice cycle so both paths behave identically.
+function playCritterSound(url) {
+  try {
+    new Audio(url).play().catch(function (err) {
+      critterLastChirpReason = 'play rejected: ' + ((err && err.name) || 'unknown') + ' for ' + url;
+      playCritterChirp();
+    });
+  } catch (err) {
+    critterLastChirpReason = 'Audio constructor threw: ' + ((err && err.name) || 'unknown');
+    playCritterChirp();
+  }
+}
+
+// v1.184: the deduped, SORTED set of every sound file the manifest carries.
+// Sorted so the readdir order the server happens to return never decides the
+// cycle sequence (the determinism lesson); deduped so one file paired to two
+// critters is not over-weighted in the rotation.
+function buildCritterSoundPool(manifest) {
+  var seen = {};
+  var pool = [];
+  (manifest || []).forEach(function (c) {
+    var s = c && (c.voice || c.sound);
+    if (s && !Object.prototype.hasOwnProperty.call(seen, s)) { seen[s] = true; pool.push(s); }
+  });
+  pool.sort();
+  return pool;
+}
+
+// v1.184: the next sound in the round-robin (advances + wraps), or null when no
+// sound files exist at all (-> the caller falls back to the chirp).
+function nextCritterCycleSound() {
+  if (!critterSoundPool.length) return null;
+  var s = critterSoundPool[critterSoundCycleIdx % critterSoundPool.length];
+  critterSoundCycleIdx += 1;
+  return s;
+}
+
 // DOM half. Renderer is jsdom-testable (placements injected); the measuring
 // collectors are layout-dependent (device pass + source locks - disclosed).
 var critterPlacements = [];
 var critterManifestPromise = null;
+// v1.184 (Dean): a critter with NO explicitly-paired voice cycles through the
+// pool of every available sound file (variety per tap) instead of the synth
+// chirp. The pool is (re)built once per manifest generation; the index advances
+// per cycled tap and wraps - a global round-robin, so re-tapping the same
+// voiceless critter still varies.
+var critterSoundPool = [];
+var critterSoundCycleIdx = 0;
 var critterWired = false;
 var critterSettleChecks = 0; // v1.166.4/v1.173: the post-scatter settle ladder's count (re-armed per schedule)
 var critterPlacedDocH = 0; // v1.173: document height at placement time - the settle checks judge DRIFT against it
@@ -8038,6 +8084,10 @@ function fetchCritterManifest() {
       // once per manifest generation by structure (applyCritterMode nulls the
       // promise -> the next fetch warms the fresh pool).
       warmCritterAssets(manifest);
+      // v1.184: (re)build the no-voice cycle pool on the same once-per-generation
+      // seam and reset the rotation so a changed folder starts a clean cycle.
+      critterSoundPool = buildCritterSoundPool(manifest);
+      critterSoundCycleIdx = 0;
       return manifest;
     });
   return critterManifestPromise;
@@ -8503,6 +8553,13 @@ function setCritterTimingForTest(quietMs, capMs) {
   if (typeof capMs === 'number') CRITTER_REVEAL_CAP_MS = capMs;
 }
 
+// v1.184 test seam: inject the no-voice cycle pool + reset the rotation, so the
+// round-robin can be driven without stubbing the whole manifest fetch. Test-only.
+function setCritterSoundPoolForTest(pool) {
+  critterSoundPool = Array.isArray(pool) ? pool.slice() : [];
+  critterSoundCycleIdx = 0;
+}
+
 // The entry point - the ONLY way anything asks for a scatter (router hooks,
 // resize, the Settings apply path). Per navigation it RESETS + CANCELS every
 // pending handle (incl. the previous view's nudge observer), clears the outgoing
@@ -8581,20 +8638,16 @@ function wireCritterListeners() {
       void el.offsetWidth; // restart the animation on rapid re-taps
       el.classList.add(reaction);
     }
-    if (hit.sound) {
-      try {
-        new Audio(hit.sound).play().catch(function (err) {
-          // v1.179.1 instrument (Dean's boops-with-voices device report): the
-          // fallback records WHY, and the Settings Voice check displays it.
-          critterLastChirpReason = 'play rejected: ' + ((err && err.name) || 'unknown') + ' for ' + hit.sound;
-          playCritterChirp();
-        });
-      } catch (err) {
-        critterLastChirpReason = 'Audio constructor threw: ' + ((err && err.name) || 'unknown');
-        playCritterChirp();
-      }
+    // v1.184 (Dean): an explicit per-critter voice always plays; a critter with
+    // NO voice cycles through the pool of every available sound file (variety
+    // per tap) rather than the synth chirp; the chirp is the last resort only
+    // when no sound files exist at all. (The v1.179.1 instrument still records
+    // WHY inside playCritterSound - the Settings Voice check displays it.)
+    var sound = hit.sound || nextCritterCycleSound();
+    if (sound) {
+      playCritterSound(sound);
     } else {
-      critterLastChirpReason = 'placement carried no voice (manifest or client mapping)';
+      critterLastChirpReason = 'no critter voice and the sound pool is empty';
       playCritterChirp();
     }
   });
@@ -14375,6 +14428,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.182 settle-before-reveal: the wait phase (driven end-to-end in tests).
     scheduleCritterScatter, critterPageLoading, disconnectCritterWait, revealCritterScatter,
     setCritterTimingForTest,
+    // v1.184 no-voice sound cycle.
+    buildCritterSoundPool, nextCritterCycleSound, playCritterSound, setCritterSoundPoolForTest,
     buildCritterShaveMask,
     probeCritterVoices,
     getCritterLastChirpReason,
