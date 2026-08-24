@@ -2140,5 +2140,11 @@
     "date": "2026-08-24",
     "title": "Random critter sounds, your call",
     "intent": "There's a new switch in Settings under Critters: \"Random sound each tap.\" Turn it on and any critter that doesn't have its own matching sound file will play a random one from your collection every time you poke it, for real variety. Leave it off (the default) and each of those critters keeps one consistent sound, exactly as before. Either way, a critter paired with its own sound always plays that. (This is the switch that actually makes the previous version's idea work - nothing to re-upload.)"
+  },
+  {
+    "version": "1.186.0",
+    "date": "2026-08-24",
+    "title": "A cleaner player, and Ambient mode",
+    "intent": "The watch page gets tidier and more immersive. The redundant Previous/Next buttons under the video are gone - the player's own controls already do that. A Theatre button now sits as a small icon next to the gear, and Autoplay and Loop moved into that gear menu to declutter. And new: Ambient mode (in the gear menu, dark themes only) casts a soft, gently shifting glow behind the player in the colors of whatever's on screen - video or album art - for a more cinematic feel, just like YouTube. It's off by default; flip it on and enjoy. It's careful with battery, pausing itself whenever the video is paused or the tab is in the background."
   }
 ]

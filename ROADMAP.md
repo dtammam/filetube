@@ -80,6 +80,46 @@
 
 ## Shipped
 
+### v1.186.0 - watch chrome consolidation + Ambient mode (Dean) (2026-08-24)
+
+Dean's four-part watch-page wave:
+1. REMOVED the page `‹Previous / Next›` buttons (+ the whole bar) - redundant
+   with the player's own track-nav, which already covers feed-order + queue nav
+   for video and audio (setupPrevNext -> setupTrackNavContext keeps the
+   computeNeighbors -> setTrackNav registration; only the page buttons are gone).
+2. THEATRE relocated to an era-style icon (#theater-btn) next to the cog,
+   desktop-only (was a JS-built text button in the removed bar).
+3. AUTOPLAY + LOOP moved into the player's cog menu.
+4. AMBIENT MODE (new, YouTube-style): a blurred, color-sampled bloom cast behind
+   the player from video frames or the audio cover art. Dark-themes-ONLY,
+   default OFF (opt-in, ft-ambient), desktop + mobile. A single pure
+   `ambientShouldRun` gate (prefOn AND dark AND playing AND docVisible) drives a
+   hard-throttled sample loop that is torn down the instant any term goes false
+   (pause, tab hidden, light theme, opt-out, view teardown) - no idle battery
+   cost. Same-origin sources only (no canvas taint); a paint error permanently
+   disables the loop for that view rather than breaking playback.
+
+ARCHITECTURE: the player host template is parity-locked byte-identical across
+nine shells, so the watch-only cog controls are INJECTED at watch init
+(ensureCogControlsInjected, id-guarded), never baked into the shared markup -
+every player-*-parity test stays green with zero shell duplication. The moved
+controls are re-queried post-mount (the v1.181 lesson: pre-mount captured refs
+would be null now that they live in the reparented host).
+
+FULL two-reviewer gate, both APPROVE. Round 1 BOTH seats caught a RED integration
+suite (two tests bound to the removed page buttons / the old synchronous
+theater-btn id) - the recurring v1.79 "unit hook hides an integration failure"
+class; I had run test:unit, not full `npm test`. Fixed: re-pointed
+watch-fulllist-fetch to the player's track-nav visibility (re-proves the >60
+neighbor resolution via the product path, adversarial-confirmed non-vacuous by
+mutation) and dropped shell-smoke's redundant theater-btn signal. Adversarial
+also caught a real WARNING: the ambient loop's paint-error stop() was undone by
+an unconditional reschedule (a hardFailed flag now kills the spin - proven
+load-bearing). Tests: +10 (watch-chrome-ambient). Dual-Node 7533/7533 on v22 +
+v24. Known gap (tech-debt #170): the hardFailed guard is proven-by-harness but
+has no in-suite test (jsdom can't drive a persistent drawImage throw). Device
+pass PENDING.
+
 ### v1.185.0 - critters: "random sound each tap" preference (fixes v1.184's inert cycle) (Dean) (2026-08-24)
 
 v1.184 shipped INERT and Dean caught it on device ("same behavior even after

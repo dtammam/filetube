@@ -1,6 +1,8 @@
 # Watch chrome consolidation + Ambient mode (v1.186.0)
 
-**Status:** IN PROGRESS - FULL gate (new persistent-ish canvas loop + theme gating).
+**Status:** SHIPPED v1.186.0 (2026-08-24) - FULL two-reviewer gate, both APPROVE
+(round 1: both caught a red integration suite - the v1.79 unit-hook-hides-
+integration class; fixed + re-confirmed). Dual-Node 7533/7533. Device pass PENDING.
 
 Dean, one branch, four parts. Intake answered: all four in ONE wave; ambient =
 YouTube-style bloom BEHIND/around the player; desktop + mobile (hard-throttled +
