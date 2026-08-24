@@ -24,7 +24,7 @@ const {
   critterTapHit,
   renderCritterPlacements,
 } = require('../../public/js/common.js');
-const { buildCritterListing } = require('../../server.js');
+const { buildCritterListing, buildCritterVoicePool } = require('../../server.js');
 
 const COMMON = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
 const CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
@@ -48,10 +48,12 @@ test('density tiers are Dean\'s gentler curve: sparse 1 / normal 6 / obscene 16'
 
 test('resolveCritterConfig: OFF by default, density defaults to normal, garbage tolerated', () => {
   const from = (map) => resolveCritterConfig((k) => (k in map ? map[k] : null));
-  assert.deepStrictEqual(from({}), { enabled: false, density: 'normal', count: 6 }, 'fresh device: inert');
-  assert.deepStrictEqual(from({ 'ft-critters:on': '1' }), { enabled: true, density: 'normal', count: 6 });
+  assert.deepStrictEqual(from({}), { enabled: false, density: 'normal', count: 6, randomSound: false }, 'fresh device: inert');
+  assert.deepStrictEqual(from({ 'ft-critters:on': '1' }), { enabled: true, density: 'normal', count: 6, randomSound: false });
   assert.deepStrictEqual(from({ 'ft-critters:on': '1', 'ft-critters:density': 'obscene' }),
-    { enabled: true, density: 'obscene', count: 16 });
+    { enabled: true, density: 'obscene', count: 16, randomSound: false });
+  assert.strictEqual(from({ 'ft-critters:randomsound': '1' }).randomSound, true, 'the pref reads through (default off; literal "1" enables)');
+  assert.strictEqual(from({ 'ft-critters:randomsound': 'yes' }).randomSound, false, 'only the literal "1" enables random');
   assert.deepStrictEqual(from({ 'ft-critters:on': '1', 'ft-critters:density': 'sparse' }).count, 1);
   assert.strictEqual(from({ 'ft-critters:on': '1', 'ft-critters:density': 'ferret' }).density, 'normal',
     'a garbage density falls back to normal');
@@ -695,10 +697,10 @@ test('SOURCE: fetched manifest entries are SANITIZED to {id, img, sound} - the s
   const body = COMMON.slice(start, COMMON.indexOf('\nfunction collectCritterRects', start));
   assert.match(body, /return \{ id: String\(c && c\.id \|\| ''\), img: \(c && c\.img\) \|\| null, sound: \(c && c\.sound\) \|\| null, voice: \(c && c\.voice\) \|\| null \};/,
     'a fetched entry can never smuggle an svg field into the innerHTML branch (v1.179: voice joins the whitelist)');
-  // v1.179: the placement's sound is the EFFECTIVE voice - the tap path
-  // plays owned-or-borrowed unchanged, chirping only when both are null.
+  // v1.185: the placement carries OWNED sound and stable voice SEPARATELY, so
+  // the tap can play the owned file, else random/stable, else chirp.
   const planner = COMMON.slice(COMMON.indexOf('function planCritterScatter'), COMMON.indexOf('\nfunction critterTapHit'));
-  assert.match(planner, /sound: c\.voice \|\| c\.sound \|\| null/, 'the borrowed voice reaches the tap through the placement');
+  assert.match(planner, /sound: c\.sound \|\| null, voice: c\.voice \|\| null/, 'owned sound + stable voice reach the tap separately');
 });
 
 test('the anchor pool excludes every playback surface (both directions of Dean\'s constraint)', () => {
@@ -1074,7 +1076,7 @@ test('v1.175 warmCritterAssets: pre-decodes every pool image once per manifest g
   assert.strictEqual(decodes, 2, 'decode() requested per image');
   // The ONCE-per-generation guarantee is structural: warming rides the CACHED
   // manifest promise's construction. Source-lock the structure.
-  assert.match(COMMON, /\.catch\(function \(\) \{ return CRITTER_BUILTINS; \}\)\n {4}\.then\(function \(manifest\) \{\n[\s\S]{0,400}warmCritterAssets\(manifest\);/,
+  assert.match(COMMON, /\.catch\(function \(\) \{ critterServerVoicePool = null; return CRITTER_BUILTINS; \}\)\n {4}\.then\(function \(manifest\) \{\n[\s\S]{0,400}warmCritterAssets\(manifest\);/,
     'warming is chained INSIDE fetchCritterManifest\'s cached promise - once per generation by construction');
 });
 
@@ -1959,23 +1961,83 @@ test('v1.184 buildCritterSoundPool: deduped, SORTED, voice-over-sound, skips the
   assert.deepStrictEqual(buildCritterSoundPool(null), [], 'null-safe');
 });
 
-test('v1.184 nextCritterCycleSound: round-robin that WRAPS; empty pool -> null (chirp fallback)', () => {
-  const { nextCritterCycleSound, setCritterSoundPoolForTest } = require('../../public/js/common.js');
+test('v1.185 pickCritterRandomSound: a member of the pool via the injected rng; empty pool -> null (chirp fallback)', () => {
+  const { pickCritterRandomSound, setCritterSoundPoolForTest } = require('../../public/js/common.js');
   setCritterSoundPoolForTest(['/c/a.mp3', '/c/b.mp3', '/c/c.mp3']);
-  const seq = [0, 1, 2, 3, 4].map(() => nextCritterCycleSound());
-  assert.deepStrictEqual(seq, ['/c/a.mp3', '/c/b.mp3', '/c/c.mp3', '/c/a.mp3', '/c/b.mp3'],
-    'each tap advances and the cycle wraps - variety per tap');
+  // Deterministic rng -> exact index (floor(rng * len)); covers first, middle, last.
+  assert.strictEqual(pickCritterRandomSound(() => 0), '/c/a.mp3', 'rng 0 -> first');
+  assert.strictEqual(pickCritterRandomSound(() => 0.5), '/c/b.mp3', 'rng 0.5 -> middle');
+  assert.strictEqual(pickCritterRandomSound(() => 0.999), '/c/c.mp3', 'rng ~1 -> last');
+  assert.strictEqual(pickCritterRandomSound(() => 1), '/c/c.mp3', 'rng===1 clamps to last (no out-of-range)');
+  // Real Math.random default: always an in-pool member, never undefined/null.
+  for (let i = 0; i < 50; i += 1) assert.ok(['/c/a.mp3', '/c/b.mp3', '/c/c.mp3'].includes(pickCritterRandomSound()), 'default rng stays in-pool');
   setCritterSoundPoolForTest([]);
-  assert.strictEqual(nextCritterCycleSound(), null, 'no sound files -> null (the caller falls back to the chirp)');
+  assert.strictEqual(pickCritterRandomSound(() => 0), null, 'no sound files -> null (the caller falls back to the chirp)');
 });
 
-test('v1.184 the tap: an explicit voice always wins; a voiceless critter cycles the pool (source lock)', () => {
+test('v1.185 the tap: owned sound always wins; else random-pref picks from the pool, else the stable voice (source lock)', () => {
   const tap = COMMON.slice(COMMON.indexOf('var hit = critterTapHit'), COMMON.indexOf('\n  // Reflow moves the furniture'));
-  assert.match(tap, /var sound = hit\.sound \|\| nextCritterCycleSound\(\);/,
-    'explicit hit.sound short-circuits; only a voiceless critter reaches the cycle');
+  assert.match(tap, /var sound = hit\.sound\s*\n\s*\|\| \(resolveCritterConfig\(\)\.randomSound \? pickCritterRandomSound\(\) : hit\.voice\);/,
+    'owned hit.sound short-circuits; else the pref chooses random-pool vs the stable voice');
   assert.match(tap, /if \(sound\) \{\n\s*playCritterSound\(sound\);/, 'a resolved sound plays via the shared helper');
-  // the pool + rotation are (re)built once per manifest generation.
+  // the full pool is (re)built once per manifest generation - server pool first.
   const fetchFn = COMMON.slice(COMMON.indexOf('function fetchCritterManifest'), COMMON.indexOf('\nfunction critterInsideFixed'));
-  assert.match(fetchFn, /critterSoundPool = buildCritterSoundPool\(manifest\);\n\s*critterSoundCycleIdx = 0;/,
-    'the pool + rotation are rebuilt on the once-per-generation manifest seam');
+  assert.match(fetchFn, /critterSoundPool = critterServerVoicePool \|\| buildCritterSoundPool\(manifest\);/,
+    'the pool is rebuilt on the once-per-generation manifest seam (server voicePool, else derived)');
+});
+
+// ---- v1.185: server voice pool + the "random sound each tap" preference ------
+
+test('v1.185 buildCritterVoicePool (server): full pool as sorted URLs, deduped by basename, UNPAIRED files included', () => {
+  assert.deepStrictEqual(
+    buildCritterVoicePool(['rex.png', 'rex.mp3', 'rex.wav', 'lonely.wav', 'pic.png']),
+    ['/critters/lonely.wav', '/critters/rex.wav'],
+    'sorted URLs; rex dedups to the sorted-last ext; lonely.wav (no image) STILL joins the pool; images excluded');
+  assert.deepStrictEqual(buildCritterVoicePool([]), [], 'empty folder -> empty pool');
+  assert.deepStrictEqual(buildCritterVoicePool(null), [], 'null-safe');
+  assert.deepStrictEqual(buildCritterVoicePool(['a b.mp3']), ['/critters/a%20b.mp3'], 'names are URL-encoded');
+  // buildCritterListing still returns an ARRAY (shape unchanged - the pool is separate).
+  assert.ok(Array.isArray(buildCritterListing(['x.png'])), 'the listing shape is untouched');
+});
+
+test('v1.185 the /api/critters handler returns BOTH the listing and the full voicePool (source lock)', () => {
+  const SERVER = fs.readFileSync(path.join(__dirname, '../../server.js'), 'utf8');
+  assert.match(SERVER, /res\.json\(\{ critters: buildCritterListing\(entries\), voicePool: buildCritterVoicePool\(entries\) \}\);/,
+    'the populated response carries the full pool');
+  assert.match(SERVER, /return res\.json\(\{ critters: \[\], voicePool: \[\] \}\);/,
+    'the missing-folder fallback carries an empty pool too (shape stable)');
+  // both the pairing and the pool draw from ONE collector (no drift).
+  assert.match(SERVER, /function collectCritterSoundMap\(fileNames\)/, 'the shared sound-map collector exists');
+  assert.match(SERVER, /const sounds = collectCritterSoundMap\(names\);/, 'buildCritterListing uses it');
+  assert.match(SERVER, /\[\.\.\.collectCritterSoundMap\(fileNames\)\.values\(\)\]\.sort\(\)/, 'buildCritterVoicePool uses it');
+});
+
+test('v1.185 Settings: the "random sound each tap" control exists and setup.js persists it (no re-scatter)', () => {
+  assert.match(SETUP_HTML, /id="critter-randomsound-check"/, 'the checkbox exists in the Critters section');
+  const start = SETUP_JS.indexOf('function wireCritterModeControls');
+  const body = SETUP_JS.slice(start, SETUP_JS.indexOf('\nfunction ', start + 10));
+  assert.match(body, /getElementById\('critter-randomsound-check'\)/, 'setup.js wires the checkbox');
+  assert.match(body, /randomSound\.checked = !!cfg\.randomSound;/, 'it reflects the saved pref on load');
+  assert.match(body, /localStorage\.setItem\('ft-critters:randomsound', randomSound\.checked \? '1' : '0'\)/, 'it persists the pref');
+  // It must NOT re-scatter (pure per-tap behavior) - only the two mode/density
+  // controls call applyCritterMode.
+  const applies = body.match(/applyCritterMode\(\);/g) || [];
+  assert.strictEqual(applies.length, 2, 'the random-sound pref does NOT trigger a re-scatter (still 2 applyCritterMode calls)');
+});
+
+test('v1.185 (ANTI-INERT): an un-owned critter reaches the tap with sound=null so the pref branch actually fires', () => {
+  // The v1.184 miss: placements collapsed `sound` to the borrowed voice, so
+  // hit.sound was ALWAYS set on a sound-having instance and the new branch was
+  // DEAD CODE. This proves the branch is reachable: an un-owned critter must
+  // arrive with sound=null (owned kept separate) + its stable voice carried.
+  const anchors = Array.from({ length: 4 }, (_, i) => ANCHOR(10, 10 + i * 200));
+  const manifest = [
+    { id: 'owned', img: '/c/owned.png', sound: '/critters/owned.mp3', voice: '/critters/owned.mp3' },
+    { id: 'borrow', img: '/c/borrow.png', sound: null, voice: '/critters/pool1.mp3' }, // no same-named file
+  ];
+  const out = planCritterScatter({ anchors, exclusions: [], manifest, count: 2, rng: seededRng(3) });
+  const byId = Object.fromEntries(out.map((p) => [p.id, p]));
+  assert.strictEqual(byId.owned.sound, '/critters/owned.mp3', 'owned pairing survives to the tap (always plays its own)');
+  assert.strictEqual(byId.borrow.sound, null, 'an un-owned critter carries NO owned sound -> the tap reaches the random/stable branch');
+  assert.strictEqual(byId.borrow.voice, '/critters/pool1.mp3', 'its stable borrowed voice is carried for the OFF path');
 });
