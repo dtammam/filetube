@@ -15221,7 +15221,11 @@ app.get('/api/library-items', (req, res) => {
 // coverage (the route itself is readdir + this).
 const CRITTER_IMAGE_EXTS = new Set(['.png', '.webp', '.gif', '.svg', '.jpg', '.jpeg']);
 const CRITTER_SOUND_EXTS = new Set(['.mp3', '.wav', '.m4a', '.ogg']);
-function buildCritterListing(fileNames) {
+// v1.185: the sound-file collection (basename -> filename), extracted so the
+// owned pairing (buildCritterListing) and the exposed voice pool
+// (buildCritterVoicePool) share ONE source of truth - the same deterministic,
+// raw-extname, sorted, last-write-wins rules. (Was inlined in buildCritterListing.)
+function collectCritterSoundMap(fileNames) {
   const names = Array.isArray(fileNames) ? fileNames.filter((n) => typeof n === 'string') : [];
   const sounds = new Map();
   // v1.179 gate W: iterate SORTED (readdir order is filesystem-dependent) so
@@ -15234,6 +15238,22 @@ function buildCritterListing(fileNames) {
     const rawExt = path.extname(name);
     if (CRITTER_SOUND_EXTS.has(rawExt.toLowerCase())) sounds.set(path.basename(name, rawExt), name);
   }
+  return sounds;
+}
+
+// v1.185 (Dean): the FULL sound pool as client URLs, sorted + deduped-by-basename
+// - every sound file in the folder, whether or not any critter's name matches
+// it. The client's "random sound each tap" preference draws from THIS (the
+// per-critter `voice` field is a lossy hash-assignment that can miss files no
+// critter's hash landed on). Same order/dedup as the owned pairing.
+function buildCritterVoicePool(fileNames) {
+  return [...collectCritterSoundMap(fileNames).values()].sort()
+    .map((n) => '/critters/' + encodeURIComponent(n));
+}
+
+function buildCritterListing(fileNames) {
+  const names = Array.isArray(fileNames) ? fileNames.filter((n) => typeof n === 'string') : [];
+  const sounds = collectCritterSoundMap(names);
   const out = [];
   const seen = new Set(); // gate S3: `mopsy.png` + `mopsy.webp` is ONE critter -
   // the no-duplicates-per-page rule is keyed on id, so the id must be unique
@@ -15285,9 +15305,9 @@ app.get('/api/critters', (req, res) => {
   } catch (_) {
     // Missing/unreadable folder is a NORMAL state (fresh install) - empty list,
     // the client falls back to its built-in figurines.
-    return res.json({ critters: [] });
+    return res.json({ critters: [], voicePool: [] });
   }
-  res.json({ critters: buildCritterListing(entries) });
+  res.json({ critters: buildCritterListing(entries), voicePool: buildCritterVoicePool(entries) });
 });
 
 // ---- v1.171 (Dean): critter pool MANAGEMENT (web UI) -----------------------
@@ -17385,6 +17405,8 @@ module.exports = {
   transcodedPath,
   // v1.166: the pure critter-folder -> manifest mapping (Sneaky critter mode).
   buildCritterListing,
+  buildCritterVoicePool,
+  collectCritterSoundMap,
   sanitizeCritterUploadName,
   buildStoreZip,
   CRITTER_UPLOAD_IMAGE_TYPES,

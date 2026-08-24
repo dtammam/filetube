@@ -74,7 +74,15 @@ Dean's trust rests on two pillars, and neither is ever traded for speed:
    it refuses unmerged). Branches may live on origin DURING a wave
    (multi-PC access) but never after the merge; main + tags are the only
    permanent refs. Waves RELEASE with Dean's device pass PENDING and
-   disclosed - never merged-but-unreleased.
+   disclosed - never merged-but-unreleased. STALE-TRACKING-REF HYGIENE
+   (2026-08-24): a plain `git fetch` (and the hooks) do NOT prune deleted
+   upstream branches, so a clone's `refs/remotes/origin/*` mirror bloats
+   even while origin is clean - `git branch -a` then looks filthy and
+   lies. `git ls-remote --heads origin` is the AUTHORITATIVE remote list;
+   never trust `git branch -a` for it. This clone has `remote.origin.prune
+   true` set (auto-prunes every fetch); each of Dean's machines should run
+   `git config --global fetch.prune true` once (a Dean action - it cannot
+   be set on his other clones from here).
 8. **Memory + report.** Update persistent memory (condense in-flight
    briefs into a shipped record with the lessons), then report: outcome
    first, what the gate caught, then Dean's **on-device probe list**. His

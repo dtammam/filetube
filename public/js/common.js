@@ -7480,6 +7480,11 @@ function playDdrNote(freq) {
 var CRITTER_DENSITY_COUNTS = { sparse: 1, normal: 6, obscene: 16 };
 var CRITTER_STORAGE_ON = 'ft-critters:on';
 var CRITTER_STORAGE_DENSITY = 'ft-critters:density';
+// v1.185 (Dean): opt-in "random sound each tap" for critters WITHOUT their own
+// same-named file. Default OFF preserves v1.179's stable borrowed voice
+// (identity, not a soundboard); ON draws a fresh random sound from the whole
+// pool per tap. A same-named owned sound always plays regardless.
+var CRITTER_STORAGE_RANDOMSOUND = 'ft-critters:randomsound';
 // Anchors: page furniture worth peeking from behind. Curated, generic across
 // views; each candidate must also SURVIVE the exclusion filters below. Every
 // entry must PAINT A BACKGROUND (the z-index -1 layer hides the overlap by the
@@ -7532,7 +7537,8 @@ function resolveCritterConfig(read) {
   var enabled = get(CRITTER_STORAGE_ON) === '1';
   var raw = get(CRITTER_STORAGE_DENSITY);
   var density = Object.prototype.hasOwnProperty.call(CRITTER_DENSITY_COUNTS, raw) ? raw : 'normal';
-  return { enabled: enabled, density: density, count: CRITTER_DENSITY_COUNTS[density] };
+  var randomSound = get(CRITTER_STORAGE_RANDOMSOUND) === '1'; // default OFF (v1.179 stable voice)
+  return { enabled: enabled, density: density, count: CRITTER_DENSITY_COUNTS[density], randomSound: randomSound };
 }
 
 // The three ORIGINAL built-in figurines (bunny / cat / bear silhouettes), used
@@ -7685,11 +7691,12 @@ function planCritterScatter(opts) {
     // sneaky; dangling feet read severed. Tilt still applies around the flip.
     var bottomFamily = edge === 'bottom' || edge === 'bl' || edge === 'br';
     placements.push({
-      // v1.179: the placement's sound is the EFFECTIVE voice (owned pairing
-      // first, else the deterministic borrow the server assigned) - the tap
-      // path plays it unchanged; the synth chirp remains the no-sounds-at-all
-      // fallback. Builtins carry no voice and keep the chirp.
-      id: c.id, img: c.img || null, sound: c.voice || c.sound || null, svg: c.svg || null,
+      // v1.185: carry the OWNED pairing (`sound`, same-named file, null if none)
+      // and the stable borrowed `voice` SEPARATELY - the tap path needs the
+      // distinction: an owned sound always plays; a voiceless critter either
+      // plays a random pool sound (the pref) or its stable borrow (v1.179).
+      // Builtins carry neither and keep the chirp.
+      id: c.id, img: c.img || null, sound: c.sound || null, voice: c.voice || null, svg: c.svg || null,
       x: x, y: y, w: size, h: size,
       angle: bottomFamily ? tilt + 180 : tilt,
       flip: rng() < 0.5 ? -1 : 1, // v1.168: mirrored half the time - twice the poses per PNG
@@ -7755,7 +7762,7 @@ function playCritterChirp() {
 
 // v1.184: play one specific sound file, recording WHY (for the Voice check
 // instrument) and falling back to the synth chirp on any failure. Shared by the
-// explicit-voice tap and the no-voice cycle so both paths behave identically.
+// owned-voice tap and the random/stable pool paths so all behave identically.
 function playCritterSound(url) {
   try {
     new Audio(url).play().catch(function (err) {
@@ -7768,10 +7775,11 @@ function playCritterSound(url) {
   }
 }
 
-// v1.184: the deduped, SORTED set of every sound file the manifest carries.
-// Sorted so the readdir order the server happens to return never decides the
-// cycle sequence (the determinism lesson); deduped so one file paired to two
-// critters is not over-weighted in the rotation.
+// v1.184/v1.185: the deduped, SORTED set of every sound file the manifest
+// carries - the manifest-derived FALLBACK pool for when a server omits its own
+// voicePool. Sorted for a stable, deterministic pool (the determinism lesson);
+// deduped so one file paired to two critters is not over-weighted in the random
+// draw.
 function buildCritterSoundPool(manifest) {
   var seen = {};
   var pool = [];
@@ -7783,26 +7791,30 @@ function buildCritterSoundPool(manifest) {
   return pool;
 }
 
-// v1.184: the next sound in the round-robin (advances + wraps), or null when no
-// sound files exist at all (-> the caller falls back to the chirp).
-function nextCritterCycleSound() {
+// v1.185 (Dean chose random): a RANDOM sound from the full pool, or null when no
+// sound files exist at all (-> the caller falls back to the chirp). `rng` is
+// injectable for deterministic tests; production uses Math.random. Back-to-back
+// repeats are accepted (Dean's ruling: "random each tap").
+function pickCritterRandomSound(rng) {
   if (!critterSoundPool.length) return null;
-  var s = critterSoundPool[critterSoundCycleIdx % critterSoundPool.length];
-  critterSoundCycleIdx += 1;
-  return s;
+  var r = typeof rng === 'function' ? rng : Math.random;
+  var i = Math.floor(r() * critterSoundPool.length);
+  if (i < 0) i = 0;
+  if (i >= critterSoundPool.length) i = critterSoundPool.length - 1; // guard r()===1 / fp edge
+  return critterSoundPool[i];
 }
 
 // DOM half. Renderer is jsdom-testable (placements injected); the measuring
 // collectors are layout-dependent (device pass + source locks - disclosed).
 var critterPlacements = [];
 var critterManifestPromise = null;
-// v1.184 (Dean): a critter with NO explicitly-paired voice cycles through the
-// pool of every available sound file (variety per tap) instead of the synth
-// chirp. The pool is (re)built once per manifest generation; the index advances
-// per cycled tap and wraps - a global round-robin, so re-tapping the same
-// voiceless critter still varies.
+// v1.185 (Dean): with the "random sound each tap" pref ON, a critter WITHOUT its
+// own same-named sound plays a random pick from the whole pool per tap (variety);
+// OFF (default) it keeps v1.179's stable borrowed voice. critterSoundPool is the
+// FULL folder pool - the server's voicePool when present (complete), else a
+// manifest-derived fallback (lossy but harmless for an older server).
 var critterSoundPool = [];
-var critterSoundCycleIdx = 0;
+var critterServerVoicePool = null; // transient: the server's voicePool captured mid-fetch
 var critterWired = false;
 var critterSettleChecks = 0; // v1.166.4/v1.173: the post-scatter settle ladder's count (re-armed per schedule)
 var critterPlacedDocH = 0; // v1.173: document height at placement time - the settle checks judge DRIFT against it
@@ -8076,18 +8088,22 @@ function fetchCritterManifest() {
       var clean = list.map(function (c) {
         return { id: String(c && c.id || ''), img: (c && c.img) || null, sound: (c && c.sound) || null, voice: (c && c.voice) || null };
       }).filter(function (c) { return c.id && c.img; });
+      // v1.185: the server exposes the FULL sound pool (every file, not just the
+      // hash-assigned ones). Captured here; the fallback derives it from the
+      // per-critter voices if an older server omitted it.
+      critterServerVoicePool = (data && Array.isArray(data.voicePool)) ? data.voicePool.slice() : null;
       return clean.length ? clean : CRITTER_BUILTINS;
     })
-    .catch(function () { return CRITTER_BUILTINS; })
+    .catch(function () { critterServerVoicePool = null; return CRITTER_BUILTINS; })
     .then(function (manifest) {
       // Warming rides the CACHED promise's construction, so it runs exactly
       // once per manifest generation by structure (applyCritterMode nulls the
       // promise -> the next fetch warms the fresh pool).
       warmCritterAssets(manifest);
-      // v1.184: (re)build the no-voice cycle pool on the same once-per-generation
-      // seam and reset the rotation so a changed folder starts a clean cycle.
-      critterSoundPool = buildCritterSoundPool(manifest);
-      critterSoundCycleIdx = 0;
+      // v1.185: (re)build the full sound pool on the same once-per-generation
+      // seam - server voicePool when present, else the manifest-derived fallback.
+      critterSoundPool = critterServerVoicePool || buildCritterSoundPool(manifest);
+      critterServerVoicePool = null;
       return manifest;
     });
   return critterManifestPromise;
@@ -8553,11 +8569,11 @@ function setCritterTimingForTest(quietMs, capMs) {
   if (typeof capMs === 'number') CRITTER_REVEAL_CAP_MS = capMs;
 }
 
-// v1.184 test seam: inject the no-voice cycle pool + reset the rotation, so the
-// round-robin can be driven without stubbing the whole manifest fetch. Test-only.
+// v1.185 test seam: inject the sound pool so the random pick can be driven
+// without stubbing the whole manifest fetch. Test-only. (No rotation state - the
+// picker is stateless/random since v1.185.)
 function setCritterSoundPoolForTest(pool) {
   critterSoundPool = Array.isArray(pool) ? pool.slice() : [];
-  critterSoundCycleIdx = 0;
 }
 
 // The entry point - the ONLY way anything asks for a scatter (router hooks,
@@ -8638,12 +8654,14 @@ function wireCritterListeners() {
       void el.offsetWidth; // restart the animation on rapid re-taps
       el.classList.add(reaction);
     }
-    // v1.184 (Dean): an explicit per-critter voice always plays; a critter with
-    // NO voice cycles through the pool of every available sound file (variety
-    // per tap) rather than the synth chirp; the chirp is the last resort only
-    // when no sound files exist at all. (The v1.179.1 instrument still records
-    // WHY inside playCritterSound - the Settings Voice check displays it.)
-    var sound = hit.sound || nextCritterCycleSound();
+    // v1.185 (Dean): an OWNED same-named sound ALWAYS plays (identity for
+    // explicitly-paired critters). Otherwise the "random sound each tap" pref
+    // decides: ON -> a fresh random pick from the whole pool (variety per tap);
+    // OFF -> the stable borrowed voice the server assigned (v1.179 identity).
+    // The synth chirp is the last resort only when no sound files exist at all.
+    // (The v1.179.1 instrument still records WHY inside playCritterSound.)
+    var sound = hit.sound
+      || (resolveCritterConfig().randomSound ? pickCritterRandomSound() : hit.voice);
     if (sound) {
       playCritterSound(sound);
     } else {
@@ -14428,8 +14446,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.182 settle-before-reveal: the wait phase (driven end-to-end in tests).
     scheduleCritterScatter, critterPageLoading, disconnectCritterWait, revealCritterScatter,
     setCritterTimingForTest,
-    // v1.184 no-voice sound cycle.
-    buildCritterSoundPool, nextCritterCycleSound, playCritterSound, setCritterSoundPoolForTest,
+    // v1.184/v1.185 sound pool + the random-each-tap pick.
+    buildCritterSoundPool, pickCritterRandomSound, playCritterSound, setCritterSoundPoolForTest,
+    CRITTER_STORAGE_RANDOMSOUND,
     buildCritterShaveMask,
     probeCritterVoices,
     getCritterLastChirpReason,

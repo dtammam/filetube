@@ -256,6 +256,16 @@
             <option value="obscene">Obscene (a little extreme)</option>
           </select>
         </label>
+        <!-- v1.185 (Dean): opt-in variety. A critter with its own same-named
+             sound always plays that; this only affects the rest. -->
+        <label class="setup-check-label" id="critter-randomsound-label">
+          <input type="checkbox" id="critter-randomsound-check" />
+          Random sound each tap
+        </label>
+        <p>Off: each critter without its own sound file keeps one consistent
+           borrowed sound. On: those critters play a random sound from your
+           collection every tap. Critters paired with their own same-named sound
+           file always play that.</p>
         <!-- v1.181: the Voice check diagnostic moved to Troubleshooting. -->
         <div id="critter-manager" hidden>
           <h3 class="setup-subhead">Critter pool</h3>
