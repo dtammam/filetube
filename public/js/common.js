@@ -7757,11 +7757,22 @@ function playCritterChirp() {
 // collectors are layout-dependent (device pass + source locks - disclosed).
 var critterPlacements = [];
 var critterManifestPromise = null;
-var critterScatterTimer = null;
 var critterWired = false;
 var critterSettleChecks = 0; // v1.166.4/v1.173: the post-scatter settle ladder's count (re-armed per schedule)
 var critterPlacedDocH = 0; // v1.173: document height at placement time - the settle checks judge DRIFT against it
 var critterRetryTimer = null; // stashed so a NEW navigation can cancel a stale pending retry (the v1.163 stash-and-unbind class)
+// v1.182 SETTLE-BEFORE-REVEAL: the wait phase's handles (all cancelled per
+// navigation - the unstashed-handle class). The engine no longer places at a
+// fixed +200ms against loading skeletons and corrects in view (the visible
+// flash Dean reported); the FIRST placement now waits for the view's content
+// to settle, so it is the ONLY placement, at the final layout.
+var CRITTER_QUIET_MS = 300; // reveal this long after the last content mutation (a settled beat)
+var CRITTER_REVEAL_CAP_MS = 2500; // Dean's cap: reveal no later than this even if the page never quiets
+var CRITTER_LOADING_SELECTORS = ['.skeleton-card']; // present => the feed is still loading; a reveal now would re-drift when real cards land
+var critterQuietTimer = null; // the quiet debounce (re-armed by every content mutation, and once leading)
+var critterCapTimer = null; // the hard-cap deadline from wait start
+var critterWaitObs = null; // the wait-phase observer - SEPARATE from the post-reveal nudge observer (they never coexist)
+var critterWaitObsDoc = null; // the document it observes - a swapped/torn-down document (jsdom) stands the callback down
 
 function ensureCritterLayer() {
   var layer = document.getElementById('critter-layer');
@@ -8106,6 +8117,10 @@ function collectCritterRects(selectors, requireSize) {
 
 function scatterCritters() {
   if (typeof document === 'undefined' || !document.body) return;
+  // v1.182: a direct scatter (the reveal, the settle ladder, the Settings
+  // toggle, tests) supersedes any wait phase still pending - tear it down so
+  // its observer + timers never fire a second placement behind this one.
+  disconnectCritterWait();
   var cfg = resolveCritterConfig();
   if (!cfg.enabled) {
     var existing = document.getElementById('critter-layer');
@@ -8402,8 +8417,97 @@ function critterSettleAction(placedCount, placedDocH, nowDocH) {
   return 'stand-down';
 }
 
-// Debounced entry point - the ONLY way anything asks for a scatter (router
-// hooks, resize, the Settings apply path). Coalesces bursts; never re-scatters
+// v1.182 SETTLE-BEFORE-REVEAL -----------------------------------------------
+// The page is still loading if a feed skeleton is on it: placing critters now
+// would re-drift when the real (often shorter-titled) cards replace the
+// skeletons and shift the column. Kept to a NAMED selector list so the coupling
+// to the skeleton class is explicit and greppable.
+function critterPageLoading() {
+  if (typeof document === 'undefined') return false;
+  for (var i = 0; i < CRITTER_LOADING_SELECTORS.length; i += 1) {
+    if (document.querySelector(CRITTER_LOADING_SELECTORS[i])) return true;
+  }
+  return false;
+}
+
+// Tears the wait phase down ATOMICALLY - the observer AND both timers - so no
+// pending handle from the wait ever fires a placement after the view moved on
+// (the unstashed-handle class). Idempotent.
+function disconnectCritterWait() {
+  if (critterWaitObs) { try { critterWaitObs.disconnect(); } catch (_) { /* already dead */ } critterWaitObs = null; }
+  critterWaitObsDoc = null;
+  if (critterQuietTimer) { clearTimeout(critterQuietTimer); critterQuietTimer = null; }
+  if (critterCapTimer) { clearTimeout(critterCapTimer); critterCapTimer = null; }
+}
+
+// The single placement that ends the wait: cancel the wait, then the unchanged
+// scatterCritters() paints the ONE arrival fade at the settled layout (and
+// wires its own post-reveal nudge + settle ladder for a late reflow).
+function revealCritterScatter() {
+  disconnectCritterWait();
+  scatterCritters();
+}
+
+// (Re)arm the quiet debounce. Fires CRITTER_QUIET_MS after the last content
+// mutation - but reveals only once the feed skeletons are gone; while the page
+// still shows skeletons it self-defers (the next mutation re-arms it, and the
+// cap is the backstop). Armed once leading at wait start so a static, NON-
+// loading view (Settings) reveals promptly instead of waiting the full cap.
+function armCritterQuietTimer() {
+  if (critterQuietTimer) clearTimeout(critterQuietTimer);
+  critterQuietTimer = setTimeout(function () {
+    critterQuietTimer = null;
+    if (critterPageLoading()) return; // still loading: wait for the next mutation or the cap
+    revealCritterScatter();
+  }, CRITTER_QUIET_MS);
+}
+
+// Arm the wait phase (mode ON): pre-warm the pool, watch for the view's content
+// to land, and reveal once it settles (or at the cap). Exactly one critter
+// observer is ever live: scheduleCritterScatter unwires the PREVIOUS view's
+// nudge observer before this wait observer is created, and revealCritterScatter
+// disconnects this one before scatterCritters wires the next nudge observer -
+// so the wait and nudge observers never coexist (the gate-CRITICAL fix).
+function armCritterQuietWait() {
+  if (typeof window === 'undefined' || !document || !document.body) return;
+  // Download + decode the pool DURING the wait so the reveal never flashes a
+  // half-decoded PNG (the v1.175 warm, now overlapped with content loading).
+  fetchCritterManifest();
+  if (typeof MutationObserver !== 'undefined') {
+    critterWaitObsDoc = document;
+    critterWaitObs = new MutationObserver(function () {
+      // A torn-down/swapped context (a closed jsdom window can still flush the
+      // queue) stands down completely - never touch globals (the v1.175 class).
+      if (typeof document === 'undefined' || document !== critterWaitObsDoc) return;
+      armCritterQuietTimer(); // content landed/changed -> push the quiet window out
+    });
+    try {
+      critterWaitObs.observe(document.body, { childList: true, subtree: true });
+    } catch (_) {
+      critterWaitObs = null; critterWaitObsDoc = null; // observing is an accelerator; the cap/leading timer still stand
+    }
+  }
+  // The hard cap: reveal even if the page never quiets (a periodic mutator) or
+  // never mutates at all (a fully static, server-rendered view).
+  critterCapTimer = setTimeout(revealCritterScatter, CRITTER_REVEAL_CAP_MS);
+  armCritterQuietTimer(); // the leading arm (fast reveal for a static, non-loading view)
+}
+
+// v1.182 test seam (gate SUGGESTION): the reveal cap is the wave's headline
+// safety invariant ("reveal no matter what"), but 2.5s is impractical to drive
+// in-suite. This lets a test shorten the quiet/cap so the cap path is exercised
+// FUNCTIONALLY, not just source-locked. Production never calls it; tests restore
+// the defaults (the module's require cache persists state across tests).
+function setCritterTimingForTest(quietMs, capMs) {
+  if (typeof quietMs === 'number') CRITTER_QUIET_MS = quietMs;
+  if (typeof capMs === 'number') CRITTER_REVEAL_CAP_MS = capMs;
+}
+
+// The entry point - the ONLY way anything asks for a scatter (router hooks,
+// resize, the Settings apply path). Per navigation it RESETS + CANCELS every
+// pending handle (incl. the previous view's nudge observer), clears the outgoing
+// view's critters, then (mode ON) WAITS for the view to settle before the first
+// and only placement (v1.182); mode OFF clears immediately. Never re-scatters
 // mid-view otherwise (Dean: fresh per navigation, still while you read).
 function scheduleCritterScatter() {
   if (typeof window === 'undefined') return;
@@ -8414,8 +8518,33 @@ function scheduleCritterScatter() {
   // v1.175 gate S1: the content nudge's debounce is a pending handle too - a
   // navigation cancels EVERY handle from the previous view, same discipline.
   if (critterNudgeDebounce) { clearTimeout(critterNudgeDebounce); critterNudgeDebounce = null; }
-  if (critterScatterTimer) clearTimeout(critterScatterTimer);
-  critterScatterTimer = setTimeout(function () { critterScatterTimer = null; scatterCritters(); }, 200);
+  // v1.182: the wait phase's own handles (observer + quiet + cap) are cancelled
+  // on every navigation too - same unstashed-handle discipline.
+  disconnectCritterWait();
+  // v1.182 gate CRITICAL (QA): the PREVIOUS view's post-reveal nudge observer
+  // (critterContentObs, wired in scatterCritters, persistent per-document) is a
+  // SEPARATE observer that survives navigation. Left connected, it fires on the
+  // new view's skeleton grid landing and re-scatters/re-glues onto the loading
+  // skeletons DURING the new wait - the exact flash the wave removes. Disconnect
+  // it now; the reveal re-wires a fresh one (unwireCritterContentNudge is
+  // idempotent). This is what makes "only one critter observer is ever live"
+  // literally true (the wait observer below, then the nudge observer at reveal).
+  unwireCritterContentNudge();
+  // v1.182 gate WARNING (QA): a navigation ends the previous view's critters
+  // NOW - they must not linger at stale document coords over the new (loading)
+  // view for up to the cap. The reveal rebuilds a fresh layer against the
+  // settled new layout; here they simply clear with the outgoing view.
+  if (typeof document !== 'undefined' && document.getElementById) {
+    var staleLayer = document.getElementById('critter-layer');
+    if (staleLayer) staleLayer.remove();
+    critterPlacements = [];
+  }
+  if (!resolveCritterConfig().enabled) {
+    // Mode OFF: nothing more to do - the layer is already cleared above.
+    return;
+  }
+  // Mode ON: wait for the view's content to settle, THEN place once.
+  armCritterQuietWait();
 }
 
 function wireCritterListeners() {
@@ -14227,6 +14356,9 @@ if (typeof module !== 'undefined' && module.exports) {
     critterSettleAction,
     warmCritterAssets,
     reglueCritterPlacements,
+    // v1.182 settle-before-reveal: the wait phase (driven end-to-end in tests).
+    scheduleCritterScatter, critterPageLoading, disconnectCritterWait, revealCritterScatter,
+    setCritterTimingForTest,
     buildCritterShaveMask,
     probeCritterVoices,
     getCritterLastChirpReason,
