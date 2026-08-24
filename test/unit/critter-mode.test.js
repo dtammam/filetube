@@ -1745,3 +1745,116 @@ test('Settings: the Sneaky critter mode controls exist and setup.js binds them t
   assert.strictEqual(applies.length, 2, 'BOTH controls apply immediately (toggle + density)');
   assert.match(SETUP_JS, /wireCritterModeControls\(controller\.signal\)/, 'wired in the settings init path');
 });
+
+// ---- v1.182: settle-before-reveal (Dean: "right place from the jump, no flash") ----
+// Root cause the wave fixes: the engine placed at a fixed +200ms against loading
+// skeletons / a partial feed and corrected in view (the visible flash). The
+// first placement now WAITS for the view's content to settle, so it is the ONLY
+// placement, at the final layout. These drive scheduleCritterScatter end-to-end.
+
+// Shared rig: a JSDOM whose `.video-card`s report a real rect (jsdom has no
+// layout), mode ON, builtins manifest (no network). Cleanup disables the mode,
+// which tears down the layer, the nudge observer, AND every pending wait/settle
+// handle (scatterCritters -> disconnectCritterWait at entry).
+function mountCritterFeed(bodyHtml) {
+  const dom = new JSDOM('<!DOCTYPE html><body>' + (bodyHtml || '<div id="view-root"></div>') + '</body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  global.MutationObserver = dom.window.MutationObserver;
+  global.localStorage = dom.window.localStorage;
+  localStorage.setItem('ft-critters:on', '1');
+  global.window.Image = class { decode() { return Promise.resolve(); } };
+  const docEl = dom.window.document.documentElement;
+  Object.defineProperty(docEl, 'scrollWidth', { value: 800, configurable: true });
+  Object.defineProperty(docEl, 'scrollHeight', { value: 2000, configurable: true });
+  const proto = dom.window.Element.prototype;
+  const origRect = proto.getBoundingClientRect;
+  proto.getBoundingClientRect = function () {
+    if (this.classList && this.classList.contains('video-card')) {
+      return { left: 100, top: 300, width: 300, height: 200, right: 400, bottom: 500 };
+    }
+    return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+  };
+  return { dom, proto, origRect };
+}
+function unmountCritterFeed(ctx) {
+  ctx.proto.getBoundingClientRect = ctx.origRect;
+  const { scatterCritters } = require('../../public/js/common.js');
+  global.localStorage.setItem('ft-critters:on', '0');
+  scatterCritters(); // disable: layer removed, nudge observer + every pending handle cleared
+  delete global.window; delete global.document; delete global.MutationObserver; delete global.localStorage;
+  ctx.dom.window.close();
+}
+const napMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const critterCount = (ctx) => ctx.dom.window.document.querySelectorAll('.critter').length;
+
+test('v1.182 A (the headline): while a feed skeleton is present the scatter reveals NOTHING; it places ONCE after the real cards land', async (t) => {
+  // buildSkeletonGrid renders `.video-card.skeleton-card` - a valid anchor AND a
+  // loading marker. The leading quiet timer must self-defer while it is there
+  // (a reveal now would re-drift when the shorter-titled real cards land), then
+  // reveal the moment the real cards replace it.
+  const ctx = mountCritterFeed('<div id="view-root"><div class="video-card skeleton-card"></div></div>');
+  t.after(() => unmountCritterFeed(ctx));
+  const { scheduleCritterScatter } = require('../../public/js/common.js');
+  scheduleCritterScatter();
+  await napMs(450); // past the leading quiet (300ms) AND the old 200ms debounce
+  assert.strictEqual(critterCount(ctx), 0, 'skeletons present: the reveal self-defers (no flash against loading content)');
+  // The feed resolves: the skeleton is replaced by a real card (a childList mutation).
+  const root = ctx.dom.window.document.getElementById('view-root');
+  root.innerHTML = '<div class="video-card"></div>';
+  await napMs(450); // the mutation re-arms the quiet timer; no skeleton now -> reveal
+  assert.ok(critterCount(ctx) > 0, 'placed once, after the real cards settled - at the final layout');
+});
+
+test('v1.182 B: a static, non-loading view reveals promptly (the leading quiet), well under the 2.5s cap', async (t) => {
+  const ctx = mountCritterFeed('<div id="view-root"><div class="video-card"></div></div>');
+  t.after(() => unmountCritterFeed(ctx));
+  const { scheduleCritterScatter } = require('../../public/js/common.js');
+  scheduleCritterScatter();
+  await napMs(120);
+  assert.strictEqual(critterCount(ctx), 0, 'not instant: still a settle beat, never the old +200ms race');
+  await napMs(400); // total ~520ms: the leading quiet has fired, cap (2500ms) has NOT
+  assert.ok(critterCount(ctx) > 0, 'a static view (no skeletons) does not wait the full cap to reveal');
+});
+
+test('v1.182 C: a new navigation (disconnectCritterWait) cancels a pending wait - nothing places behind the moved-on view', async (t) => {
+  const ctx = mountCritterFeed('<div id="view-root"><div class="video-card skeleton-card"></div></div>');
+  t.after(() => unmountCritterFeed(ctx));
+  const { scheduleCritterScatter, disconnectCritterWait } = require('../../public/js/common.js');
+  scheduleCritterScatter(); // wait armed, deferred by the skeleton
+  await napMs(120);
+  disconnectCritterWait(); // the navigation-away teardown (also called from scheduleCritterScatter + scatterCritters)
+  // Content lands AFTER the wait was torn down: nothing may re-arm it.
+  ctx.dom.window.document.getElementById('view-root').innerHTML = '<div class="video-card"></div>';
+  await napMs(450);
+  assert.strictEqual(critterCount(ctx), 0, 'a torn-down wait never fires a placement (no leaked observer/timer)');
+});
+
+test('v1.182 D (pure): critterPageLoading is true iff a feed skeleton is on the page', async (t) => {
+  const ctx = mountCritterFeed('<div id="view-root"><div class="video-card skeleton-card"></div></div>');
+  t.after(() => unmountCritterFeed(ctx));
+  const { critterPageLoading } = require('../../public/js/common.js');
+  assert.strictEqual(critterPageLoading(), true, 'a .skeleton-card means the feed is still loading');
+  ctx.dom.window.document.getElementById('view-root').innerHTML = '<div class="video-card"></div>';
+  assert.strictEqual(critterPageLoading(), false, 'no skeleton -> settled');
+});
+
+test('v1.182 E (source locks): the wait phase - cap value, doc-guarded observer, skeleton-gated reveal, cancelled on every nav', () => {
+  // The cap is Dean's chosen ceiling; the quiet is the settle beat.
+  assert.match(COMMON, /var CRITTER_REVEAL_CAP_MS = 2500;/, 'the reveal cap is 2.5s (Dean\'s ruling)');
+  assert.match(COMMON, /var CRITTER_QUIET_MS = 300;/, 'the quiet debounce is a settled beat');
+  assert.match(COMMON, /var CRITTER_LOADING_SELECTORS = \['\.skeleton-card'\];/, 'the loading marker is the feed skeleton');
+  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter()'), COMMON.indexOf('\nfunction wireCritterListeners'));
+  assert.match(sched, /disconnectCritterWait\(\);/, 'a navigation cancels the wait phase (observer + quiet + cap) - the unstashed-handle class');
+  assert.match(sched, /if \(!resolveCritterConfig\(\)\.enabled\) \{/, 'mode OFF keeps its own branch');
+  assert.match(sched, /critterScatterTimer = setTimeout\(function \(\) \{ critterScatterTimer = null; scatterCritters\(\); \}, 200\);/, 'mode OFF still tears down on the 200ms debounce');
+  assert.match(sched, /armCritterQuietWait\(\);/, 'mode ON arms the wait, never an immediate placement');
+  const wait = COMMON.slice(COMMON.indexOf('function armCritterQuietWait'), COMMON.indexOf('\nfunction scheduleCritterScatter'));
+  assert.match(wait, /fetchCritterManifest\(\);/, 'the pool warms DURING the wait (no half-decoded flash at reveal)');
+  assert.match(wait, /critterCapTimer = setTimeout\(revealCritterScatter, CRITTER_REVEAL_CAP_MS\);/, 'the hard cap is armed to the reveal');
+  assert.match(wait, /document !== critterWaitObsDoc\) return;/, 'the wait observer stands down on a swapped/torn-down document (the jsdom class)');
+  const quiet = COMMON.slice(COMMON.indexOf('function armCritterQuietTimer'), COMMON.indexOf('\nfunction armCritterQuietWait'));
+  assert.match(quiet, /if \(critterPageLoading\(\)\) return;/, 'the quiet timer never reveals against feed skeletons');
+  assert.match(quiet, /revealCritterScatter\(\);/, 'once settled it reveals');
+  const scatter = COMMON.slice(COMMON.indexOf('function scatterCritters()'), COMMON.indexOf('\nfunction armCritterSettleCheck'));
+  assert.match(scatter, /disconnectCritterWait\(\);/, 'any direct scatter supersedes a pending wait (no double placement)');
+});
