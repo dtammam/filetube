@@ -2134,5 +2134,11 @@
     "date": "2026-08-24",
     "title": "Critters with more to say",
     "intent": "Critters that don't have their own assigned sound now take turns playing through all of your critter sound files, so tapping them gives a bit of variety instead of the same little beep every time. Critters you've paired with a specific sound still play that sound, and if you have no sound files at all you'll still get the friendly default beep."
+  },
+  {
+    "version": "1.185.0",
+    "date": "2026-08-24",
+    "title": "Random critter sounds, your call",
+    "intent": "There's a new switch in Settings under Critters: \"Random sound each tap.\" Turn it on and any critter that doesn't have its own matching sound file will play a random one from your collection every time you poke it, for real variety. Leave it off (the default) and each of those critters keeps one consistent sound, exactly as before. Either way, a critter paired with its own sound always plays that. (This is the switch that actually makes the previous version's idea work - nothing to re-upload.)"
   }
 ]

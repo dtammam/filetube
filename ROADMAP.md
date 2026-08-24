@@ -80,6 +80,50 @@
 
 ## Shipped
 
+### v1.185.0 - critters: "random sound each tap" preference (fixes v1.184's inert cycle) (Dean) (2026-08-24)
+
+v1.184 shipped INERT and Dean caught it on device ("same behavior even after
+pull+rebuild"). Root cause: the SERVER (buildCritterListing) already assigns every
+critter a `voice` - its owned same-named file, or a stable hash-borrowed pool
+member (the v1.179 "identity, not a soundboard" model) - so the client played
+`voice || sound` and the "no sound -> cycle" branch was dead code on any instance
+with sound files. The gate (both seats) missed it because tests fed sound=null
+fixtures the real server never sends. My miss: didn't verify the client/server
+interplay against SOURCE (this repo's own recurring lesson). No user action was
+ever needed - it was never Dean's data.
+
+Intake: Dean chose a PREFERENCE (not a hard behavior change) and RANDOM per tap.
+
+- Server: /api/critters now also returns the full `voicePool` - every sound file
+  as a URL, deduped + sorted, INCLUDING files no critter's name matches (the
+  per-critter `voice` is a lossy hash-assignment). `collectCritterSoundMap`
+  extracted as the ONE source for the owned pairing AND the pool (no drift);
+  buildCritterListing's array shape is unchanged.
+- Client: placements carry the OWNED `sound` (null if no same-named file) and the
+  stable `voice` SEPARATELY. Tap: an owned sound ALWAYS plays; else the pref
+  decides - ON -> a random pick from the full pool (variety per tap); OFF
+  (default) -> the stable borrowed voice (v1.179 preserved). Chirp only when no
+  sound files exist at all.
+- Settings: a "Random sound each tap" checkbox in the Critters section, default
+  OFF (nothing changes until opted in), localStorage `ft-critters:randomsound`,
+  pure per-tap (no re-scatter on toggle).
+
+FULL two-reviewer gate, both APPROVE. Briefed specifically on the inert failure
+mode: both traced the real server->client flow and confirmed the new branch is
+REACHABLE (an un-owned critter's placement carries sound=null), bound by a new
+ANTI-INERT test that reddens the v1.184 collapse. Adversarial killed the
+reintroduction mutants + the pool-completeness / default-OFF / random-edge
+mutants. QA caught a lying comment (the seam still described the removed
+round-robin) - fixed comment-only; also the 7522->7523 count slip (read before
+the anti-inert test was appended). Tests: critter-mode 77 -> 81. Dual-Node
+7523/7523 on both v22 + v24. Device pass PENDING.
+
+Also shipped (rider): a CLAUDE.md stale-tracking-ref hygiene note - `git
+ls-remote` is the authoritative remote list (not `git branch -a`), and
+`remote.origin.prune true` / `git config --global fetch.prune true` keep a
+clone's tracking refs from bloating (root-cause of a "150 stale branches" scare
+that was actually stale local mirror refs; origin was clean).
+
 ### v1.184.0 - critters: voiceless critters cycle the sound pool (Dean) (2026-08-24)
 
 Dean: a critter with no explicitly-paired voice always played the same synth
