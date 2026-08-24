@@ -1801,7 +1801,7 @@ test('v1.182 A (the headline): while a feed skeleton is present the scatter reve
   // The feed resolves: the skeleton is replaced by a real card (a childList mutation).
   const root = ctx.dom.window.document.getElementById('view-root');
   root.innerHTML = '<div class="video-card"></div>';
-  await napMs(450); // the mutation re-arms the quiet timer; no skeleton now -> reveal
+  await napMs(700); // the mutation re-arms the quiet timer (300ms); wait well past it -> reveal
   assert.ok(critterCount(ctx) > 0, 'placed once, after the real cards settled - at the final layout');
 });
 
@@ -1810,9 +1810,10 @@ test('v1.182 B: a static, non-loading view reveals promptly (the leading quiet),
   t.after(() => unmountCritterFeed(ctx));
   const { scheduleCritterScatter } = require('../../public/js/common.js');
   scheduleCritterScatter();
-  await napMs(120);
-  assert.strictEqual(critterCount(ctx), 0, 'not instant: still a settle beat, never the old +200ms race');
-  await napMs(400); // total ~520ms: the leading quiet has fired, cap (2500ms) has NOT
+  // "not instant" proven RACE-FREE: nothing places synchronously (the leading
+  // quiet + cap are both setTimeouts) - no nap, so no timing flake.
+  assert.strictEqual(critterCount(ctx), 0, 'not instant: placement is always deferred, never the old +200ms race');
+  await napMs(700); // well past the 300ms leading quiet, well under the 2500ms cap
   assert.ok(critterCount(ctx) > 0, 'a static view (no skeletons) does not wait the full cap to reveal');
 });
 
@@ -1875,7 +1876,7 @@ test('v1.182 F (gate CRITICAL regression): a SECOND navigation in one document n
   const { scheduleCritterScatter } = require('../../public/js/common.js');
   // VIEW A: settle + reveal (this wires the post-reveal nudge observer).
   scheduleCritterScatter();
-  await napMs(450);
+  await napMs(700); // well past the 300ms leading quiet (generous margin - no cold-start flake)
   assert.ok(critterCount(ctx) > 0, 'view A revealed');
   // NAVIGATE (same document) to VIEW B: a feed rendering a skeleton grid.
   scheduleCritterScatter();
@@ -1887,7 +1888,7 @@ test('v1.182 F (gate CRITICAL regression): a SECOND navigation in one document n
   assert.ok(ctx.dom.window.document.querySelector('.skeleton-card'), 'skeletons still present (still loading)');
   // Real cards land -> reveal once, at the settled layout.
   root.innerHTML = '<div class="video-card"></div>';
-  await napMs(450);
+  await napMs(700); // past the mutation-armed quiet (300ms) with generous margin
   assert.ok(critterCount(ctx) > 0, 'placed once, after view B settled');
 });
 
@@ -1896,7 +1897,7 @@ test('v1.182 G (gate WARNING regression): a navigation clears the outgoing view\
   t.after(() => unmountCritterFeed(ctx));
   const { scheduleCritterScatter } = require('../../public/js/common.js');
   scheduleCritterScatter();
-  await napMs(450);
+  await napMs(700); // past the 300ms leading quiet with generous margin
   assert.ok(critterCount(ctx) > 0, 'view A has critters painted');
   // Navigate away: the outgoing critters must be gone AT ONCE, not float over
   // the new (loading) view for up to the 2.5s cap.
@@ -1908,14 +1909,17 @@ test('v1.182 G (gate WARNING regression): a navigation clears the outgoing view\
 
 test('v1.182 H (functional cap): the 2.5s cap reveals even against a feed that never stops loading', async (t) => {
   const { scheduleCritterScatter, setCritterTimingForTest } = require('../../public/js/common.js');
-  // Shorten the cap (and make quiet effectively never fire) so the ONLY path to
-  // a reveal is the hard cap - the wave's "reveal no matter what" backstop.
-  setCritterTimingForTest(100000, 250);
+  // quiet effectively never fires; the cap is the ONLY path to a reveal - the
+  // wave's "reveal no matter what" backstop. The cap is comfortably above any
+  // nap below so there is NO timing race (the flake the QA seat caught: a
+  // napMs(120) that could overrun a 250ms cap on a cold start).
+  setCritterTimingForTest(100000, 400);
   const ctx = mountCritterFeed('<div id="view-root"><div class="video-card skeleton-card"></div></div>');
   t.after(() => { setCritterTimingForTest(300, 2500); unmountCritterFeed(ctx); }); // restore defaults (require cache persists)
   scheduleCritterScatter();
-  await napMs(120);
-  assert.strictEqual(critterCount(ctx), 0, 'before the cap: the persistent skeleton keeps the quiet gate closed');
-  await napMs(300); // past the 250ms cap
+  // RACE-FREE pre-cap assertion: placement is always deferred (leading quiet +
+  // cap are both setTimeouts), so nothing is painted synchronously - no nap.
+  assert.strictEqual(critterCount(ctx), 0, 'before the cap: nothing placed (the persistent skeleton keeps the quiet gate closed)');
+  await napMs(800); // 2x the 400ms cap - generous margin, no cold-start flake
   assert.ok(critterCount(ctx) > 0, 'the cap forced a reveal despite the never-clearing skeleton - the inescapable backstop');
 });
