@@ -2128,5 +2128,11 @@
     "date": "2026-08-24",
     "title": "Poke a critter, not the page",
     "intent": "On a computer, clicking a critter quickly no longer accidentally highlights the text next to it. You can poke and re-poke them as fast as you like and the page stays put - and a critter sitting over a link still lets your click through to open it."
+  },
+  {
+    "version": "1.184.0",
+    "date": "2026-08-24",
+    "title": "Critters with more to say",
+    "intent": "Critters that don't have their own assigned sound now take turns playing through all of your critter sound files, so tapping them gives a bit of variety instead of the same little beep every time. Critters you've paired with a specific sound still play that sound, and if you have no sound files at all you'll still get the friendly default beep."
   }
 ]

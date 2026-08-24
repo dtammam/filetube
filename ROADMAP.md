@@ -80,6 +80,31 @@
 
 ## Shipped
 
+### v1.184.0 - critters: voiceless critters cycle the sound pool (Dean) (2026-08-24)
+
+Dean: a critter with no explicitly-paired voice always played the same synth
+chirp - cycling the available sound files gives variety per tap.
+
+- On tap, a voiceless critter (`hit.sound` null) plays the NEXT sound in a
+  round-robin over the pool of every available sound file, instead of the chirp.
+  The pool is deduped + SORTED (readdir order must not decide the sequence - the
+  determinism lesson) and rebuilt once per manifest generation (the same cached-
+  promise seam as `warmCritterAssets`), rotation reset on a fresh folder. A
+  GLOBAL cycle, so re-tapping the same voiceless critter still varies. An
+  explicit per-critter voice always wins (short-circuits the cycle); the synth
+  chirp is the last resort ONLY when no sound files exist at all.
+- Refactor: the play + record-why logic is now the shared `playCritterSound(url)`
+  used by both paths (the v1.179.1 Voice-check instrument still records the
+  failure reason inside it).
+
+Slim gate (adversarial): APPROVE, no findings. Nine mutants killed (round-robin,
+sort, dedup, voice-over-sound precedence, empty->null, tap short-circuit, both
+Voice-check reason strings, the idx reset). It traced the change-folder window
+and confirmed the pool always matches the displayed manifest generation (no
+cross-folder wrong-sound), and that the `setCritterSoundPoolForTest` seam has no
+production caller. Tests: critter-mode 74 -> 77. Dual-Node 7519/7519 on v22 +
+v24. Device pass PENDING.
+
 ### v1.183.0 - critters: a tap no longer selects the text beneath it (Dean) (2026-08-24)
 
 Dean, desktop: spam-clicking a critter's exposed sliver highlighted the text
