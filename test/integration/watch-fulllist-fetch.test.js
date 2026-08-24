@@ -1,7 +1,7 @@
 'use strict';
 
 // [INTEGRATION] v1.30.0 T7 (v1.30 Scale Performance + Polish Wave, A5) --
-// watch.js's `loadRelatedFiles()` and `setupPrevNext()` both fetch
+// watch.js's `loadRelatedFiles()` and `setupTrackNavContext()` both fetch
 // `GET /api/videos` to compute their own ordering (fuzzy-similarity ranking,
 // and the home sort order, respectively). T6 made that endpoint paginated
 // (`{ items, total, offset, limit }`, default page size 60) -- both callers
@@ -72,7 +72,7 @@ const mediaResponse = {
   addedAt: 100000 - 65,
 };
 
-// Folder listing for setupPrevNext's `?root=<FOLDER>` fetch: 70 items,
+// Folder listing for setupTrackNavContext's `?root=<FOLDER>` fetch: 70 items,
 // `newest` order (addedAt descending) == index order, INCLUDING the current
 // item itself at position 65 -- its true prev/next neighbors (item-64/
 // item-66) are only discoverable if the full 70-item set is fetched.
@@ -164,7 +164,7 @@ function makeWatchFetchStub() {
       });
     }
     if (url === '/api/settings' && method === 'GET') {
-      // v1.34: setupPrevNext consults defaultSort when this browser has no
+      // v1.34: setupTrackNavContext consults defaultSort when this browser has no
       // explicit filetube_sort pick -- answer like the real server always
       // does (a hanging promise here would wedge prev/next derivation, which
       // is a stub artifact, not a real-server behavior).
@@ -232,7 +232,7 @@ async function settle(times) {
   for (let i = 0; i < (times || 10); i++) await flush();
 }
 
-test('watch page: loadRelatedFiles + setupPrevNext request the FULL list (>60) and correctly use an item past position 60', async () => {
+test('watch page: loadRelatedFiles + setupTrackNavContext request the FULL list (>60) and correctly use an item past position 60', async () => {
   const { fetchImpl, calls } = makeWatchFetchStub();
   const { dom } = await loadWatchWithFetchStub(fetchImpl);
   try {
@@ -246,20 +246,24 @@ test('watch page: loadRelatedFiles + setupPrevNext request the FULL list (>60) a
     assert.ok(relatedLimit > 60, `expected loadRelatedFiles()'s requested limit (${relatedLimit}) to exceed the 60-item default page size`);
 
     const prevNextCall = calls.find((c) => c.url.indexOf('/api/videos?root=') === 0);
-    assert.ok(prevNextCall, 'expected setupPrevNext() to have fetched /api/videos?root=...&limit=...');
+    assert.ok(prevNextCall, 'expected setupTrackNavContext() to have fetched /api/videos?root=...&limit=...');
     const prevNextLimit = parseInt(new URL(prevNextCall.url, 'http://localhost').searchParams.get('limit'), 10);
-    assert.ok(prevNextLimit > 60, `expected setupPrevNext()'s requested limit (${prevNextLimit}) to exceed the 60-item default page size`);
+    assert.ok(prevNextLimit > 60, `expected setupTrackNavContext()'s requested limit (${prevNextLimit}) to exceed the 60-item default page size`);
 
-    // ---- setupPrevNext: the current item (folder-position 65) must have
-    // BOTH neighbors resolved -- impossible unless the full 70-item folder
-    // listing was actually used (a 60-item page wouldn't even contain
-    // position 65, so computeNeighbors couldn't find the current item at
-    // all, and BOTH buttons would stay disabled). ----
-    const prevBtn = document.getElementById('watch-prev-btn');
-    const nextBtn = document.getElementById('watch-next-btn');
-    assert.ok(prevBtn && nextBtn, 'expected the prev/next buttons to exist');
-    assert.strictEqual(prevBtn.disabled, false, 'expected Prev to be enabled -- only possible if the FULL folder list (past position 60) was used');
-    assert.strictEqual(nextBtn.disabled, false, 'expected Next to be enabled -- only possible if the FULL folder list (past position 60) was used');
+    // ---- v1.186: the page Prev/Next buttons were removed; the neighbor
+    // resolution now flows through the PLAYER's track-nav via setTrackNav. The
+    // current item (folder-position 65) is found ONLY if the full 70-item folder
+    // listing was actually used (a 60-item page wouldn't contain position 65, so
+    // computeNeighbors couldn't find the current item and registerTrackNav's
+    // `(effPrev || effNext)` guard would skip setTrackNav entirely). setTrackNav
+    // registering handlers is what updateTrackNavButtons keys the player's own
+    // prev/next visibility on -- so both being SHOWN (hidden===false) is the
+    // DOM proof that the >60 list resolved this past-page item's neighbors. ----
+    const trackPrevBtn = document.getElementById('track-prev-btn');
+    const trackNextBtn = document.getElementById('track-next-btn');
+    assert.ok(trackPrevBtn && trackNextBtn, 'expected the player track-nav buttons to exist in the mounted host');
+    assert.strictEqual(trackPrevBtn.hidden, false, 'expected the player Prev to be SHOWN -- only if setTrackNav registered handlers, which needs the FULL folder list (past position 60)');
+    assert.strictEqual(trackNextBtn.hidden, false, 'expected the player Next to be SHOWN -- same full-list requirement');
 
     // ---- loadRelatedFiles: the one genuinely similar item ("Zephyrfoobar
     // Highlights", pool-position 65) must appear, and RANKED FIRST (ahead of

@@ -406,7 +406,7 @@ test('gate W2: the digit percent-seek honors the liveMode invariant (startLiveSt
   assert.match(body, /disarmChapterLoopIfSeekOutside\(digitTarget\);/, 'digit jumps disarm an out-of-bounds chapter loop');
 });
 
-test('gate W3: setupPrevNext bails on a stale (aborted) view before registering trackNav handlers', () => {
+test('gate W3: setupTrackNavContext bails on a stale (aborted) view before registering trackNav handlers', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'watch.js'), 'utf8');
   const regIdx = src.indexOf('window.FileTube.player.setTrackNav({');
   assert.ok(regIdx >= 0);

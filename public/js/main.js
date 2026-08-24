@@ -2228,7 +2228,7 @@ const PreviewCards = (function () {
       // sort, AND the server shuffle seed -- not the item's own channel folder.
       // The watch page re-fetches the same list-API query and steps through the
       // response order (see common.js buildContextListUrl / watch.js
-      // setupPrevNext). Empty ctx (nothing meaningful to carry) -> bare URL ->
+      // setupTrackNavContext). Empty ctx (nothing meaningful to carry) -> bare URL ->
       // the folder-scoped fallback, byte-identical to pre-v1.40.0.
       const ctxParam = currentBrowseContextParam();
       // A non-media card's destination is its kind's own surface (the ctx

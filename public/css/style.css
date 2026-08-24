@@ -8514,6 +8514,11 @@ body.ft-audio-expanded {
 .ambient-glow.is-on {
   opacity: 0.7;
 }
+/* Belt for a dark->light flip: the JS themeObs stops the loop, but this closes
+   the sub-frame gap before it fires by forcing the glow invisible in light. */
+:root:not([data-mode="dark"]) .ambient-glow {
+  opacity: 0 !important; /* token-exempt: theme-gate override, mirrors #ambient-toggle-row's light belt */
+}
 #player-slot {
   position: relative;
   z-index: 1; /* token-exempt: local stacking - the player paints over its own ambient glow */

@@ -1789,10 +1789,11 @@ if (typeof module !== 'undefined' && module.exports) {
         // always sees aborted=true here and registers nothing. (read.js's
         // own registration is synchronous and never needed this.)
         if (signal.aborted) return;
-        // v1.63: ONE registration function, called immediately with the
-        // context handlers and again on the queue upgrade - the buttons and
-        // this seam read the same mutable effPrev/effNext, so on-page Next,
-        // media keys, and the lock screen can never disagree.
+        // v1.63 / v1.186: ONE registration function, called immediately with the
+        // context handlers and again on the queue upgrade. The page buttons are
+        // gone (v1.186); this seam is now the SOLE reader of the mutable
+        // effPrev/effNext, so the player's own prev/next, the media keys, and the
+        // lock screen all navigate through one source and can never disagree.
         function registerTrackNav() {
           if (signal.aborted) return;
           if (window.FileTube && window.FileTube.player
@@ -1969,6 +1970,7 @@ if (typeof module !== 'undefined' && module.exports) {
       let timerId = null;
       let lastPaint = 0;
       let coverImg = null; // lazily-loaded audio cover art (same-origin thumbnail)
+      let hardFailed = false; // a drawImage throw permanently disables the loop for this view (never re-arm)
 
       function currentlyPlaying() {
         return !!(video && !video.paused && !video.ended && video.readyState >= 2);
@@ -1992,7 +1994,10 @@ if (typeof module !== 'undefined' && module.exports) {
             gctx.drawImage(buf, 0, 0, SRC_W, SRC_H, 0, 0, glow.width, glow.height);
           }
         } catch (_) {
-          // A tainted/again-not-ready source must never break playback: stop.
+          // A tainted/again-not-ready source must never break playback: stop
+          // PERMANENTLY for this view (hardFailed skips the reschedule below, so
+          // the loop cannot spin throw/catch/reschedule; a fresh view resets it).
+          hardFailed = true;
           stop();
         }
       }
@@ -2015,6 +2020,7 @@ if (typeof module !== 'undefined' && module.exports) {
           if (video && video.videoWidth > 0) paintFrom(video);
           else { ensureCover(); if (coverImg) paintFrom(coverImg); }
         }
+        if (hardFailed) return; // paintFrom hit an unrecoverable error -> do NOT re-arm (the WARNING fix)
         schedule();
       }
       function schedule() {
@@ -2022,6 +2028,7 @@ if (typeof module !== 'undefined' && module.exports) {
         else timerId = setTimeout(function () { timerId = null; tick(); }, MIN_INTERVAL);
       }
       function start() {
+        if (hardFailed) return; // an unrecoverable paint error disabled ambient for this view
         if (rafId != null || timerId != null) return; // already running
         glow.hidden = false;
         glow.classList.add('is-on');
