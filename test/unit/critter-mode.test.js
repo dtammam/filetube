@@ -1845,8 +1845,13 @@ test('v1.182 E (source locks): the wait phase - cap value, doc-guarded observer,
   assert.match(COMMON, /var CRITTER_LOADING_SELECTORS = \['\.skeleton-card'\];/, 'the loading marker is the feed skeleton');
   const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter()'), COMMON.indexOf('\nfunction wireCritterListeners'));
   assert.match(sched, /disconnectCritterWait\(\);/, 'a navigation cancels the wait phase (observer + quiet + cap) - the unstashed-handle class');
-  assert.match(sched, /if \(!resolveCritterConfig\(\)\.enabled\) \{/, 'mode OFF keeps its own branch');
-  assert.match(sched, /critterScatterTimer = setTimeout\(function \(\) \{ critterScatterTimer = null; scatterCritters\(\); \}, 200\);/, 'mode OFF still tears down on the 200ms debounce');
+  // gate CRITICAL: the previous view's persistent nudge observer is disconnected
+  // on every navigation so it cannot re-scatter onto the new view's skeletons.
+  assert.match(sched, /unwireCritterContentNudge\(\);/, 'a navigation disconnects the previous view\'s nudge observer (the gate CRITICAL)');
+  // gate WARNING: the outgoing view's critters clear NOW, never linger to the cap.
+  assert.match(sched, /var staleLayer = document\.getElementById\('critter-layer'\);\n\s*if \(staleLayer\) staleLayer\.remove\(\);\n\s*critterPlacements = \[\];/,
+    'a navigation clears the outgoing view\'s critters immediately (no stale linger)');
+  assert.match(sched, /if \(!resolveCritterConfig\(\)\.enabled\) \{[\s\S]*?return;/, 'mode OFF clears + returns (no deferred scatter)');
   assert.match(sched, /armCritterQuietWait\(\);/, 'mode ON arms the wait, never an immediate placement');
   const wait = COMMON.slice(COMMON.indexOf('function armCritterQuietWait'), COMMON.indexOf('\nfunction scheduleCritterScatter'));
   assert.match(wait, /fetchCritterManifest\(\);/, 'the pool warms DURING the wait (no half-decoded flash at reveal)');
@@ -1857,4 +1862,60 @@ test('v1.182 E (source locks): the wait phase - cap value, doc-guarded observer,
   assert.match(quiet, /revealCritterScatter\(\);/, 'once settled it reveals');
   const scatter = COMMON.slice(COMMON.indexOf('function scatterCritters()'), COMMON.indexOf('\nfunction armCritterSettleCheck'));
   assert.match(scatter, /disconnectCritterWait\(\);/, 'any direct scatter supersedes a pending wait (no double placement)');
+});
+
+test('v1.182 F (gate CRITICAL regression): a SECOND navigation in one document never places against the new view\'s skeletons', async (t) => {
+  // The bug the QA seat caught: view A reveals (wiring the persistent nudge
+  // observer); navigating to a skeleton view B left that observer live, and it
+  // re-scattered onto B's loading skeletons DURING B's wait - the exact flash.
+  // Same document across both navigations (the SPA case the fresh-JSDOM tests
+  // could not reach).
+  const ctx = mountCritterFeed('<div id="view-root"><div class="video-card"></div></div>');
+  t.after(() => unmountCritterFeed(ctx));
+  const { scheduleCritterScatter } = require('../../public/js/common.js');
+  // VIEW A: settle + reveal (this wires the post-reveal nudge observer).
+  scheduleCritterScatter();
+  await napMs(450);
+  assert.ok(critterCount(ctx) > 0, 'view A revealed');
+  // NAVIGATE (same document) to VIEW B: a feed rendering a skeleton grid.
+  scheduleCritterScatter();
+  const root = ctx.dom.window.document.getElementById('view-root');
+  root.innerHTML = '<div class="video-card skeleton-card"></div><div class="video-card skeleton-card"></div>';
+  await napMs(450); // past the leftover-observer's old 150ms window AND the leading quiet
+  assert.strictEqual(critterCount(ctx), 0,
+    'NOTHING places onto view B\'s skeletons - the leftover nudge observer was disconnected on nav');
+  assert.ok(ctx.dom.window.document.querySelector('.skeleton-card'), 'skeletons still present (still loading)');
+  // Real cards land -> reveal once, at the settled layout.
+  root.innerHTML = '<div class="video-card"></div>';
+  await napMs(450);
+  assert.ok(critterCount(ctx) > 0, 'placed once, after view B settled');
+});
+
+test('v1.182 G (gate WARNING regression): a navigation clears the outgoing view\'s critters immediately - no stale linger to the cap', async (t) => {
+  const ctx = mountCritterFeed('<div id="view-root"><div class="video-card"></div></div>');
+  t.after(() => unmountCritterFeed(ctx));
+  const { scheduleCritterScatter } = require('../../public/js/common.js');
+  scheduleCritterScatter();
+  await napMs(450);
+  assert.ok(critterCount(ctx) > 0, 'view A has critters painted');
+  // Navigate away: the outgoing critters must be gone AT ONCE, not float over
+  // the new (loading) view for up to the 2.5s cap.
+  scheduleCritterScatter();
+  assert.strictEqual(ctx.dom.window.document.getElementById('critter-layer'), null,
+    'the old layer is removed synchronously on navigation');
+  assert.strictEqual(critterCount(ctx), 0, 'no stale critters linger during the next wait');
+});
+
+test('v1.182 H (functional cap): the 2.5s cap reveals even against a feed that never stops loading', async (t) => {
+  const { scheduleCritterScatter, setCritterTimingForTest } = require('../../public/js/common.js');
+  // Shorten the cap (and make quiet effectively never fire) so the ONLY path to
+  // a reveal is the hard cap - the wave's "reveal no matter what" backstop.
+  setCritterTimingForTest(100000, 250);
+  const ctx = mountCritterFeed('<div id="view-root"><div class="video-card skeleton-card"></div></div>');
+  t.after(() => { setCritterTimingForTest(300, 2500); unmountCritterFeed(ctx); }); // restore defaults (require cache persists)
+  scheduleCritterScatter();
+  await napMs(120);
+  assert.strictEqual(critterCount(ctx), 0, 'before the cap: the persistent skeleton keeps the quiet gate closed');
+  await napMs(300); // past the 250ms cap
+  assert.ok(critterCount(ctx) > 0, 'the cap forced a reveal despite the never-clearing skeleton - the inescapable backstop');
 });

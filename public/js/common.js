@@ -7757,7 +7757,6 @@ function playCritterChirp() {
 // collectors are layout-dependent (device pass + source locks - disclosed).
 var critterPlacements = [];
 var critterManifestPromise = null;
-var critterScatterTimer = null;
 var critterWired = false;
 var critterSettleChecks = 0; // v1.166.4/v1.173: the post-scatter settle ladder's count (re-armed per schedule)
 var critterPlacedDocH = 0; // v1.173: document height at placement time - the settle checks judge DRIFT against it
@@ -8464,9 +8463,11 @@ function armCritterQuietTimer() {
 }
 
 // Arm the wait phase (mode ON): pre-warm the pool, watch for the view's content
-// to land, and reveal once it settles (or at the cap). The observer is SEPARATE
-// from the post-reveal nudge observer and is always torn down before
-// scatterCritters wires that one, so the two never coexist.
+// to land, and reveal once it settles (or at the cap). Exactly one critter
+// observer is ever live: scheduleCritterScatter unwires the PREVIOUS view's
+// nudge observer before this wait observer is created, and revealCritterScatter
+// disconnects this one before scatterCritters wires the next nudge observer -
+// so the wait and nudge observers never coexist (the gate-CRITICAL fix).
 function armCritterQuietWait() {
   if (typeof window === 'undefined' || !document || !document.body) return;
   // Download + decode the pool DURING the wait so the reveal never flashes a
@@ -8492,12 +8493,22 @@ function armCritterQuietWait() {
   armCritterQuietTimer(); // the leading arm (fast reveal for a static, non-loading view)
 }
 
+// v1.182 test seam (gate SUGGESTION): the reveal cap is the wave's headline
+// safety invariant ("reveal no matter what"), but 2.5s is impractical to drive
+// in-suite. This lets a test shorten the quiet/cap so the cap path is exercised
+// FUNCTIONALLY, not just source-locked. Production never calls it; tests restore
+// the defaults (the module's require cache persists state across tests).
+function setCritterTimingForTest(quietMs, capMs) {
+  if (typeof quietMs === 'number') CRITTER_QUIET_MS = quietMs;
+  if (typeof capMs === 'number') CRITTER_REVEAL_CAP_MS = capMs;
+}
+
 // The entry point - the ONLY way anything asks for a scatter (router hooks,
 // resize, the Settings apply path). Per navigation it RESETS + CANCELS every
-// pending handle, then (mode ON) WAITS for the view to settle before the first
-// and only placement (v1.182); mode OFF tears down on the old 200ms debounce.
-// Never re-scatters mid-view otherwise (Dean: fresh per navigation, still while
-// you read).
+// pending handle (incl. the previous view's nudge observer), clears the outgoing
+// view's critters, then (mode ON) WAITS for the view to settle before the first
+// and only placement (v1.182); mode OFF clears immediately. Never re-scatters
+// mid-view otherwise (Dean: fresh per navigation, still while you read).
 function scheduleCritterScatter() {
   if (typeof window === 'undefined') return;
   critterSettleChecks = 0; // a fresh navigation re-arms the settle ladder
@@ -8507,13 +8518,29 @@ function scheduleCritterScatter() {
   // v1.175 gate S1: the content nudge's debounce is a pending handle too - a
   // navigation cancels EVERY handle from the previous view, same discipline.
   if (critterNudgeDebounce) { clearTimeout(critterNudgeDebounce); critterNudgeDebounce = null; }
-  if (critterScatterTimer) { clearTimeout(critterScatterTimer); critterScatterTimer = null; }
   // v1.182: the wait phase's own handles (observer + quiet + cap) are cancelled
   // on every navigation too - same unstashed-handle discipline.
   disconnectCritterWait();
+  // v1.182 gate CRITICAL (QA): the PREVIOUS view's post-reveal nudge observer
+  // (critterContentObs, wired in scatterCritters, persistent per-document) is a
+  // SEPARATE observer that survives navigation. Left connected, it fires on the
+  // new view's skeleton grid landing and re-scatters/re-glues onto the loading
+  // skeletons DURING the new wait - the exact flash the wave removes. Disconnect
+  // it now; the reveal re-wires a fresh one (unwireCritterContentNudge is
+  // idempotent). This is what makes "only one critter observer is ever live"
+  // literally true (the wait observer below, then the nudge observer at reveal).
+  unwireCritterContentNudge();
+  // v1.182 gate WARNING (QA): a navigation ends the previous view's critters
+  // NOW - they must not linger at stale document coords over the new (loading)
+  // view for up to the cap. The reveal rebuilds a fresh layer against the
+  // settled new layout; here they simply clear with the outgoing view.
+  if (typeof document !== 'undefined' && document.getElementById) {
+    var staleLayer = document.getElementById('critter-layer');
+    if (staleLayer) staleLayer.remove();
+    critterPlacements = [];
+  }
   if (!resolveCritterConfig().enabled) {
-    // Mode OFF: tear the layer down on the same short debounce as before.
-    critterScatterTimer = setTimeout(function () { critterScatterTimer = null; scatterCritters(); }, 200);
+    // Mode OFF: nothing more to do - the layer is already cleared above.
     return;
   }
   // Mode ON: wait for the view's content to settle, THEN place once.
@@ -14331,6 +14358,7 @@ if (typeof module !== 'undefined' && module.exports) {
     reglueCritterPlacements,
     // v1.182 settle-before-reveal: the wait phase (driven end-to-end in tests).
     scheduleCritterScatter, critterPageLoading, disconnectCritterWait, revealCritterScatter,
+    setCritterTimingForTest,
     buildCritterShaveMask,
     probeCritterVoices,
     getCritterLastChirpReason,

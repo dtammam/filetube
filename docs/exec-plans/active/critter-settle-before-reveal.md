@@ -39,9 +39,14 @@ byte-identical so its tests and invariants all stand.
 
 New wait phase (mode ON, per navigation):
 - Pre-warm the manifest + image decode during the wait (`fetchCritterManifest`).
-- A dedicated, self-contained `MutationObserver` (SEPARATE from the post-reveal
-  nudge observer - they never coexist): each content mutation (re)arms a quiet
-  debounce (`CRITTER_QUIET_MS = 300`).
+- A dedicated, self-contained `MutationObserver`: each content mutation (re)arms
+  a quiet debounce (`CRITTER_QUIET_MS = 300`). Exactly ONE critter observer is
+  ever live - the gate CRITICAL fix: `scheduleCritterScatter` disconnects the
+  PREVIOUS view's persistent nudge observer (`unwireCritterContentNudge`) before
+  arming this wait, and the reveal disconnects this wait before `scatterCritters`
+  wires the next nudge observer. (The original wave shipped without that
+  schedule-time unwire, so the prior view's nudge observer stayed live through
+  the next wait and re-scattered onto the new view's skeletons - QA caught it.)
 - A leading quiet timer so a static, NON-loading view (Settings) reveals
   promptly instead of waiting the cap.
 - The quiet timer reveals only when `critterPageLoading()` is false (no
@@ -54,9 +59,11 @@ New wait phase (mode ON, per navigation):
   against the settled layout. It wires its own nudge observer + settle ladder as
   the rare post-reveal safety net (e.g. the "Playing on PC" banner landing late).
 
-Mode OFF path unchanged (the 200ms teardown debounce). `applyCritterMode`
-unchanged (Settings has no skeletons -> the leading quiet reveals ~300ms after a
-toggle - good feedback).
+Mode OFF path clears the layer + placements inline and returns (immediate, no
+deferred scatter). `applyCritterMode` unchanged (Settings has no skeletons -> the
+leading quiet reveals ~300ms after a toggle - good feedback). A navigation also
+clears the OUTGOING view's critters at once (gate WARNING fix) so they never
+linger at stale coords over the new loading view up to the cap.
 
 ## Handle discipline (the unstashed-handle class, struck repeatedly)
 
