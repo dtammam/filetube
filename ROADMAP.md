@@ -80,6 +80,38 @@
 
 ## Shipped
 
+### v1.183.0 - critters: a tap no longer selects the text beneath it (Dean) (2026-08-24)
+
+Dean, desktop: spam-clicking a critter's exposed sliver highlighted the text
+under it - the browser's double/triple-click selection gesture. The critter
+layer is pointer-events:none (taps are geometrically hit-tested by a document
+listener), so the mousedown lands on the content under the peek and starts a
+selection there.
+
+- A `mousedown` listener suppresses the selection default (preventDefault) ONLY
+  when the down is a REAL critter hit (`critterTapHit`), with the same
+  stand-downs as the tap (caret-bearing fields - input/textarea/select/
+  contenteditable - and the playback/modal exclusions). preventDefault on
+  mousedown stops the selection + mousedown-focus but NOT the click, so the
+  chirp still fires and any link under the sliver still navigates on click ("the
+  link still wins"). mousedown-only, so touch scroll + long-press-select are
+  untouched. The CLICK path is unchanged and still never preventDefaults; the
+  "never preventDefault" source-lock is now scoped to the click handler, with
+  new locks on the mousedown guard.
+
+Slim gate (adversarial): APPROVE, no CRITICAL/WARNING. It mutation-tested the
+four new bindings (all red their guard), behaviorally confirmed the guard fires
+only on the exposed sliver (not merely near it, via the critterTapHit coverage),
+and confirmed touch is untouched. Two SUGGESTIONs, both non-blocking: a tiny
+disclosed edge (native drag-start is suppressed on the small sliver pixels over
+a draggable image/link - decorative peeks over background, no primary action
+lost); and the handler wiring is source-locked rather than jsdom-dispatched
+(matches the existing pattern for this layout-dependent surface; the load-bearing
+`critterTapHit` IS behaviorally tested).
+
+Tests: critter-mode 74 (the tap source-lock test gained the mousedown
+assertions). Dual-Node 7516/7516 on both v22 + v24. Device pass PENDING.
+
 ### v1.182.0 - critters: settle before reveal (no more load-in flash) (Dean) (2026-08-24)
 
 Dean's report (desktop + mobile screenshots): critters "load, sit in odd

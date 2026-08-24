@@ -636,7 +636,24 @@ test('SOURCE: the tap listener stands down for real UI AND every exclusion; taps
   // into view mid-tap (the surviving mutant this line kills).
   assert.match(body, /var el = wrap \? wrap\.firstElementChild : null;/, 'reactions target the pose inside the clip');
   assert.doesNotMatch(body, /querySelector\('\.critter\[data-critter-id/, 'no id-built selector remains');
-  assert.doesNotMatch(body, /preventDefault/, 'the critter layer never eats a click');
+  // The CLICK path never preventDefaults - it must never eat a click meant for a
+  // link/button under the sliver (scoped to the click handler; the v1.183
+  // mousedown selection-guard below DOES preventDefault, by design).
+  const clickHandler = body.slice(body.indexOf("addEventListener('click'"), body.indexOf("addEventListener('mousedown'"));
+  assert.ok(clickHandler.length > 0, 'the click handler was located');
+  assert.doesNotMatch(clickHandler, /preventDefault/, 'the click path never eats a click (the link always wins)');
+  // v1.183 (Dean, desktop): the mousedown selection-guard stops the
+  // double/triple-click text highlight when the down is a REAL critter hit -
+  // preventDefault on mousedown only (the click, and any underlying link, still
+  // fire), exempting caret-bearing fields and the exclusions.
+  const mousedownHandler = body.slice(body.indexOf("addEventListener('mousedown'"), body.indexOf("addEventListener('resize'"));
+  assert.ok(mousedownHandler.length > 0, 'the mousedown selection-guard was located');
+  assert.match(mousedownHandler, /if \(!critterTapHit\(critterPlacements, e\.pageX, e\.pageY\)\) return;\n\s*e\.preventDefault\(\);/,
+    'it preventDefaults ONLY when the down is a real critter hit (never a blanket selection kill)');
+  assert.match(mousedownHandler, /closest\('input, textarea, select, \[contenteditable\]'\)\) return;/,
+    'caret-bearing fields are exempt - never fight a text cursor');
+  assert.match(mousedownHandler, /closest\(CRITTER_EXCLUSION_SELECTORS\.join\(','\)\)\) return;/,
+    'the selection-guard stands down over every exclusion too');
   // Gate W5: only a WIDTH change re-scatters (iOS URL-bar collapse fires
   // height-only resizes mid-scroll; re-scattering then = moving mid-view).
   assert.match(body, /window\.innerWidth === lastCritterViewportW\) return;/,

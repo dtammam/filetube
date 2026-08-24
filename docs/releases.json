@@ -2122,5 +2122,11 @@
     "date": "2026-08-24",
     "title": "Critters land in place",
     "intent": "The critters no longer flash in at odd spots and then jump behind things while a page loads. They now wait for the page to finish settling and appear once, already tucked into their final hiding spots - so they're in the right place from the moment you see them, on both desktop and phone."
+  },
+  {
+    "version": "1.183.0",
+    "date": "2026-08-24",
+    "title": "Poke a critter, not the page",
+    "intent": "On a computer, clicking a critter quickly no longer accidentally highlights the text next to it. You can poke and re-poke them as fast as you like and the page stays put - and a critter sitting over a link still lets your click through to open it."
   }
 ]
