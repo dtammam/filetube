@@ -345,13 +345,12 @@ test('shell smoke: watch.html loads with zero uncaught errors and the watch view
       result.dom.window.FileTube.player,
       'expected player.js to have installed window.FileTube.player'
     );
-    // Strongest cheap per-shell signal: watch.js's init() synchronously
-    // (before any fetch) calls setupTheatreToggle(), which builds and mounts
-    // a brand-new #watch-theater-btn -- proves bootRouter() derived 'watch'
-    // for this URL and actually ran watch.js's init(), not just that the
-    // script parsed.
-    const theaterBtn = result.dom.window.document.getElementById('watch-theater-btn');
-    assert.ok(theaterBtn, 'expected watch.js\'s init() to have synchronously mounted #watch-theater-btn');
+    // v1.186: the old "init ran" signal (#watch-theater-btn, built synchronously
+    // in init()) is gone - the theatre icon is now #theater-btn, INJECTED
+    // post-mount (ensureCogControlsInjected), not a synchronous init() effect.
+    // The two assertions above (watch view registered + player installed) already
+    // prove bootRouter() derived 'watch' and ran watch.js, so the theater-btn
+    // check was redundant and is dropped rather than re-pointed at async DOM.
   } finally {
     result.dom.window.close();
   }

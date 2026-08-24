@@ -2528,51 +2528,14 @@ img.art-shimmer {
 /* Prev/Next controls (FR-2, T3) -- a slim, minimal row directly under the
    player; disabled at the ends (no wrap-around). Era-token colors only, so
    this reads correctly across every era/light/dark combination. */
-.watch-prevnext {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin: var(--space-5) 0 var(--space-2);
-  flex-wrap: wrap; /* v1.24.6: Prev/Autoplay/Loop/Next row must wrap on a narrow phone rather than overflow the viewport (fit-to-width zoom). */
-}
+/* v1.186: the `.watch-prevnext` bar + `.watch-prevnext-btn` rules were removed
+   with the page Prev/Next buttons (redundant with the player's own track-nav).
+   The autoplay/loop switches below MOVED into the player cog menu but keep these
+   `.watch-autoplay-*` classes (+ the `.settings-menu-toggle` layout modifier). */
 
-/* v1.24 FR F2: same elegance polish as `.btn` above (subtler rounding,
-   lighter weight, smooth transition) -- kept as its own rule (not merged
-   into `.btn`) since watch.html markup is frozen for this task. */
-.watch-prevnext-btn {
-  background-color: var(--btn-bg);
-  border: 1px solid var(--border-dark);
-  color: var(--text-primary);
-  padding: var(--space-3) var(--space-6);
-  border-radius: calc(var(--radius) + 1px);
-  font-weight: var(--fw-semibold);
-  letter-spacing: 0.2px; /* token-exempt: era display styling */
-  font-size: var(--fs-sm);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
-}
-
-.watch-prevnext-btn:hover:not(:disabled) {
-  background-color: var(--btn-hover);
-}
-
-.watch-prevnext-btn:active:not(:disabled) {
-  transform: translateY(1px);
-}
-
-.watch-prevnext-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-/* Autoplay toggle (FR-4a, T3) -- a YouTube-style switch sitting between
-   Previous/Next, backed by the same persisted `autoplayNext` setting the
-   Settings-page checkbox writes (watch.js wires the fetch/POST). Era-token
-   colors only, matching the Prev/Next buttons above. */
+/* Autoplay/Loop/Ambient toggle switch -- a YouTube-style switch. Since v1.186
+   these live in the player's settings cog menu (see `.settings-menu-toggle`).
+   Era-token colors only. */
 .watch-autoplay-label {
   display: inline-flex;
   align-items: center;
@@ -6617,6 +6580,30 @@ body.ft-audio-expanded {
 /* CC row lights up in the follow-along red when captions are ON. */
 #settings-menu .cc-btn.active { color: var(--yt-red); }
 
+/* v1.186 (Dean): Autoplay / Loop / Ambient toggle ROWS in the cog menu. Full-
+   width menu rows matching the .settings-menu-item padding, with the label left
+   and the switch right. Reuses the .watch-autoplay-* switch styling. */
+#settings-menu .settings-menu-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-6);
+  cursor: pointer;
+  font-weight: normal;
+  font-size: var(--fs-base);
+}
+#settings-menu .settings-menu-toggle:hover {
+  background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback (matches .settings-menu-item:hover) */
+}
+#settings-menu .settings-menu-toggle .watch-autoplay-text {
+  font-weight: normal;
+}
+/* Ambient row hides in a light theme (watch.js sets [hidden]; belt via the mode
+   attribute so a mid-session light switch also hides it even before JS runs). */
+:root:not([data-mode="dark"]) #ambient-toggle-row { display: none; }
+#ambient-toggle-row[hidden] { display: none !important; }
+
 /* the cog glyph -- an inline <svg> sized like the nav chrome icons (relative to
    the button font-size, fill via currentColor). */
 .pc-svg-ico {
@@ -8467,25 +8454,20 @@ body.ft-audio-expanded {
   }
 }
 
-/* === v1.21 FR-9: theatre mode ================================================
-   T8. A "Theatre" toggle (built dynamically by watch.js, appended next to the
-   Prev/Next bar -- watch.html's `#player-host-template` region stays T2-owned
-   and untouched this task, see the wave-plan file-ownership note) adds/
-   removes `.theater-mode` on `.watch-container` (inside `#view-root`).
-   WATCH-VIEW layout class only: `#player-dock` (the v1.16 DOCKED mini-player
-   host, line ~733 above) is a completely separate DOM subtree outside
-   `#view-root`, so it is structurally unreachable from this selector and is
-   never affected (AC61). Toggling never touches the `<video>`/host itself --
-   purely a class flip on an ancestor -- so playback is undisturbed.
+/* === v1.21 FR-9 / v1.186: theatre mode ======================================
+   The Theatre toggle (since v1.186 the static era-style icon `#theater-btn` in
+   the player control bar) adds/removes `.theater-mode` on `.watch-container`
+   (inside `#view-root`). WATCH-VIEW layout class only: `#player-dock` is a
+   separate subtree outside `#view-root`, structurally unreachable here and
+   never affected. Toggling never touches the `<video>`/host -- purely a class
+   flip on an ancestor -- so playback is undisturbed.
 
-   Desktop-only by construction: these rules widen `.watch-main`/the player to
-   the majority of page width by stacking `.watch-sidebar` (the related-items
-   list) below it -- exactly the same column layout the existing
-   `@media (max-width: 1024px)` rule (line ~2386 above, untouched) already
-   applies unconditionally below that breakpoint, so `.theater-mode` is a
-   harmless no-op there (AC62). The toggle button itself is hidden below that
-   same breakpoint (AC64) so it's never shown as an inert control on phones,
-   where the layout is already effectively full-width. */
+   Desktop-only by construction: these rules widen `.watch-main`/the player by
+   stacking `.watch-sidebar` below it -- the same column layout the existing
+   `@media (max-width: 1024px)` rule already applies unconditionally below that
+   breakpoint, so `.theater-mode` is a harmless no-op there. The `#theater-btn`
+   icon is hidden below that breakpoint (and when docked) so it's never an inert
+   control on phones. */
 .watch-container.theater-mode {
   flex-direction: column;
 }
@@ -8494,26 +8476,55 @@ body.ft-audio-expanded {
   width: 100%;
 }
 
-/* Groups the dynamically-inserted `#watch-theater-btn` with the existing
-   Next button (watch.js wraps both in this container) so the toggle reads as
-   part of the Prev/Next bar's trailing group rather than disrupting the
-   existing `.watch-prevnext`'s `justify-content: space-between` 3-slot
-   layout (Prev / Autoplay / Next). */
-.watch-nextgroup {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-4);
+/* v1.186: the Theatre icon in the player control bar (a pc-btn like the cog).
+   Pressed state gets the era accent fill. DESKTOP-ONLY: theatre widens the
+   desktop layout, so the icon is hidden below the 1024px breakpoint (where the
+   layout is already full-width) and in the docked mini-player. */
+#theater-btn[aria-pressed="true"] {
+  color: var(--yt-red);
 }
-
-.watch-theater-btn[aria-pressed="true"] {
-  background-color: var(--btn-hover);
-  border-color: var(--text-primary);
-}
-
 @media (max-width: 1024px) {
-  .watch-theater-btn {
-    display: none;
-  }
+  #theater-btn { display: none; }
+}
+#player-dock #theater-btn { display: none; }
+
+/* v1.186 (Dean): AMBIENT MODE glow. The canvas sits BEHIND #player-slot in a
+   relative stage and bleeds a soft, blurred, color-sampled bloom outward
+   (YouTube-style). It is decorative, non-interactive, and only paints when
+   watch.js's ambientShouldRun gate is true (dark theme + playing + visible +
+   opted-in) - the `.is-on` class + `hidden` attr gate visibility. The blur +
+   scale + low opacity turn the tiny 32x18 sample into soft color regions. */
+.watch-player-stage {
+  position: relative;
+}
+.ambient-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0; /* token-exempt: local stacking - behind #player-slot content, above the page */
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(1.3);
+  filter: blur(72px) saturate(1.4);
+  transition: opacity var(--dur-slow) var(--ease-ui);
+  will-change: opacity;
+}
+.ambient-glow.is-on {
+  opacity: 0.7;
+}
+/* Belt for a dark->light flip: the JS themeObs stops the loop, but this closes
+   the sub-frame gap before it fires by forcing the glow invisible in light. */
+:root:not([data-mode="dark"]) .ambient-glow {
+  opacity: 0 !important; /* token-exempt: theme-gate override, mirrors #ambient-toggle-row's light belt */
+}
+#player-slot {
+  position: relative;
+  z-index: 1; /* token-exempt: local stacking - the player paints over its own ambient glow */
+}
+@media (prefers-reduced-motion: reduce) {
+  .ambient-glow { transition: none; }
 }
 
 /* === v1.22 FR-5: desktop-sidebar channel pins ===============================

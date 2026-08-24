@@ -53,6 +53,27 @@ function theaterModeStorageValue(isActive) {
   return isActive ? '1' : '0';
 }
 
+// v1.186 Ambient mode pure helpers (mirroring the theatre trio; unit-tested).
+// Default OFF: any value other than the exact '1' sentinel is off.
+function isAmbientEnabled(rawValue) {
+  return rawValue === '1';
+}
+function ambientStorageValue(on) {
+  return on ? '1' : '0';
+}
+// The SINGLE fire-time predicate for the sampling loop. Ambient paints ONLY when
+// ALL are true: the user turned it on, the theme is DARK (it makes no sense in
+// light - Dean's ruling), the media is playing, and the tab is visible. Any
+// false tears the loop down (no idle battery cost - the v1.160 lesson).
+function ambientShouldRun(s) {
+  return !!(s && s.prefOn && s.dark && s.playing && s.docVisible);
+}
+// Dark-theme detection: the era lives in data-theme, light/dark in data-mode.
+function isDarkMode(doc) {
+  try { return (doc || document).documentElement.getAttribute('data-mode') === 'dark'; }
+  catch (_) { return false; }
+}
+
 // resolveUploaderLinkHref (v1.22.0 FR-3, updated v1.23.x per Dean): the
 // creator/uploader name now links to THIS item's FOLDER content view --
 // "show me this channel/creator's stuff" -- via the home view's existing
@@ -604,6 +625,10 @@ if (typeof module !== 'undefined' && module.exports) {
     nextTheaterState,
     isTheaterModeActive,
     theaterModeStorageValue,
+    isAmbientEnabled,
+    ambientStorageValue,
+    ambientShouldRun,
+    isDarkMode,
     resolveUploaderLinkHref,
     resolveChannelDirFromFilePath,
     resolveWatchEntryReparentAction,
@@ -645,7 +670,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // v1.30.0 T7 (A5): `GET /api/videos` is now PAGINATED (server-authoritative,
   // default page size 60 -- see server.js's T6). `loadRelatedFiles()` and
-  // `setupPrevNext()` (below) both need the FULL matching set to rank/order
+  // `setupTrackNavContext()` (below) both need the FULL matching set to rank/order
   // correctly -- a truncated page would silently break related-video ranking
   // and prev/next for any library/folder over the page size (the current
   // item's own neighbor could sit past position 60). Both pass this
@@ -804,26 +829,21 @@ if (typeof module !== 'undefined' && module.exports) {
     const starRatingControl = root.querySelector('#star-rating-control');
     const ratingText = root.querySelector('#rating-text');
 
-    // FR-2 (T3): Prev/Next controls -- see setupPrevNext() below.
-    const prevBtn = root.querySelector('#watch-prev-btn');
-    const nextBtn = root.querySelector('#watch-next-btn');
+    // v1.186: Autoplay, Loop, Theatre and Ambient controls now live INSIDE the
+    // player host (cog menu / control bar), which is reparented into #player-slot
+    // only when player.load() runs. So their elements do NOT exist at this
+    // pre-mount point - each setup function RE-QUERIES its element and is called
+    // POST-MOUNT (in initWatch, alongside setupAutoplayToggle). The v1.181 lesson:
+    // capturing a moved control's ref before it is in the DOM silently no-ops it.
 
-    // FR-4a (v1.17.0, T3): visible autoplay toggle -- see setupAutoplayToggle() below.
-    const autoplayCheck = root.querySelector('#watch-autoplay-check');
-
-    // v1.22.0 FR-7 (TF): visible loop/repeat toggle -- see setupLoopToggle() below.
-    const loopCheck = root.querySelector('#watch-loop-check');
-
-    // FR-9 (v1.21.0, T8): theatre-mode toggle -- see setupTheatreToggle()
-    // below. Wired synchronously here (not inside initWatch()'s async flow)
-    // since it needs no network data and should be applied immediately, per
-    // the design's "applied on watch init()."
-    setupTheatreToggle();
-
-    // v1.22.0 FR-7 (TF): loop/repeat toggle -- see setupLoopToggle() below.
-    // Also wired synchronously (needs only localStorage, no network data),
-    // mirroring setupTheatreToggle()'s placement above.
-    setupLoopToggle();
+    // FR-9 (v1.21.0): apply theatre-mode's persisted CLASS synchronously here on
+    // the STATIC .watch-container (in the view, not the host) so an enabled
+    // theatre layout never flashes narrow->wide while the host mounts. The
+    // #theater-btn itself is wired post-mount in setupTheatreToggle().
+    try {
+      const wc = root.querySelector('.watch-container');
+      if (wc) wc.classList.toggle('theater-mode', isTheaterModeActive(localStorage.getItem('ft-theater')));
+    } catch (_) { /* storage disabled - default off */ }
 
     // #sidebar-folders-list lives in the PERSISTENT shell (outside
     // #view-root) -- wiring it through this view's own AbortController is
@@ -1216,18 +1236,27 @@ if (typeof module !== 'undefined' && module.exports) {
         // (Comments + star rating render at init() now -- v1.52: they are
         // id-only and belong to frame one, not to the data round trips.)
 
-        // 8. Prev/Next (FR-2, T3): derive this video's position in the
-        // current home sort order and wire the controls.
-        setupPrevNext();
+        // 8. Track-nav context (v1.186, was Prev/Next): derive this video's
+        // feed-order neighbors + queue up-next and register them with the player
+        // (setTrackNav) - powers the player's own prev/next, media keys, lock
+        // screen, and the queue up-next box. The page buttons themselves are gone.
+        setupTrackNavContext();
 
-        // 9. Autoplay toggle (FR-4a, v1.17.0, T3): read/write the persisted
-        // autoplayNext setting.
+        // 9. Cog-menu controls (v1.186): the shared player host template is
+        // parity-locked byte-identical across nine shells, so these watch-only
+        // controls are INJECTED into the (now-mounted) host once, then wired
+        // post-mount. Autoplay (server-backed), Loop (player API), Theatre
+        // (#theater-btn by the cog), Ambient (cog menu row).
+        ensureCogControlsInjected();
         setupAutoplayToggle();
+        setupLoopToggle();
+        setupTheatreToggle();
+        setupAmbientMode();
 
         // 10. Subscribe toggle (FR-1/FR-3, v1.20.0, T3): resolve this file's
         // channel identity, probe the module + existing subscription list,
         // and wire the button's click handler. Its own async setup function
-        // (mirroring setupPrevNext/setupAutoplayToggle's pattern above)
+        // (mirroring setupTrackNavContext/setupAutoplayToggle's pattern above)
         // rather than inlined into populateMetadata(), which stays a plain
         // synchronous DOM-fill -- the state this needs (module-enabled probe
         // + subscription list) is computed here, on this same media load.
@@ -1564,7 +1593,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // uploader block's slot (watch.html #queue-upnext-box) ONLY while this
     // very item is the queue's pointer entry - browsing to an unrelated
     // video leaves the box hidden even with a queue banked. createElement/
-    // textContent only. Re-rendered per load by setupPrevNext (which has
+    // textContent only. Re-rendered per load by setupTrackNavContext (which has
     // the queue payload in hand).
     function renderQueueUpNextBox(q, currentMediaId) {
       const box = root.querySelector('#queue-upnext-box');
@@ -1597,8 +1626,12 @@ if (typeof module !== 'undefined' && module.exports) {
       box.hidden = false;
     }
 
-    async function setupPrevNext() {
-      if (!prevBtn || !nextBtn) return;
+    // v1.186: renamed from setupPrevNext - the PAGE prev/next buttons were
+    // removed (redundant with the player's own track-nav). This still derives
+    // the current item's feed-order neighbors + queue up-next and registers them
+    // with the player via setTrackNav (which powers the player buttons, media
+    // keys, lock screen, and the queue up-next box). No page-button wiring.
+    async function setupTrackNavContext() {
       try {
         // Prev/Next walk the CURRENT ITEM'S FOLDER (Dean: "next/prev should be
         // in the folder your content is in, not all files"), scoped via the
@@ -1721,13 +1754,6 @@ if (typeof module !== 'undefined' && module.exports) {
         let effNext = nextId ? () => navigateToWatch(nextId) : null;
         let effPrev = prevId ? () => navigateToWatch(prevId) : null;
 
-        prevBtn.disabled = !effPrev;
-        nextBtn.disabled = !effNext;
-        // ONE stable listener per button reading the mutable ref - the
-        // queue upgrade swaps the ref, never re-registers.
-        prevBtn.addEventListener('click', () => { if (effPrev) effPrev(); }, { signal });
-        nextBtn.addEventListener('click', () => { if (effNext) effNext(); }, { signal });
-
         fetch('/api/queue')
           .then((res) => (res.ok ? res.json() : null))
           .then((q) => {
@@ -1736,8 +1762,6 @@ if (typeof module !== 'undefined' && module.exports) {
             const queuePrevEntry = computeQueuePrev(q);
             if (queueNextEntry) effNext = () => goQueueEntry(queueNextEntry);
             if (queuePrevEntry) effPrev = () => goQueueEntry(queuePrevEntry);
-            prevBtn.disabled = !effPrev;
-            nextBtn.disabled = !effNext;
             renderQueueUpNextBox(q, mediaId);
             // Re-register trackNav so per-direction MediaSession availability
             // tracks the upgraded handlers (same seam, same staleness guard).
@@ -1765,10 +1789,11 @@ if (typeof module !== 'undefined' && module.exports) {
         // always sees aborted=true here and registers nothing. (read.js's
         // own registration is synchronous and never needed this.)
         if (signal.aborted) return;
-        // v1.63: ONE registration function, called immediately with the
-        // context handlers and again on the queue upgrade - the buttons and
-        // this seam read the same mutable effPrev/effNext, so on-page Next,
-        // media keys, and the lock screen can never disagree.
+        // v1.63 / v1.186: ONE registration function, called immediately with the
+        // context handlers and again on the queue upgrade. The page buttons are
+        // gone (v1.186); this seam is now the SOLE reader of the mutable
+        // effPrev/effNext, so the player's own prev/next, the media keys, and the
+        // lock screen all navigate through one source and can never disagree.
         function registerTrackNav() {
           if (signal.aborted) return;
           if (window.FileTube && window.FileTube.player
@@ -1782,8 +1807,6 @@ if (typeof module !== 'undefined' && module.exports) {
         registerTrackNav();
       } catch (e) {
         console.error('Error deriving prev/next order:', e);
-        prevBtn.disabled = true;
-        nextBtn.disabled = true;
       }
     }
 
@@ -1799,6 +1822,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // completed video, and the Settings page reflects it the next time THAT
     // page loads.
     async function setupAutoplayToggle() {
+      // v1.186: re-query post-mount (the checkbox moved into the host's cog menu).
+      const autoplayCheck = root.querySelector('#watch-autoplay-check');
       if (!autoplayCheck) return;
       try {
         const res = await fetch('/api/settings');
@@ -1820,55 +1845,60 @@ if (typeof module !== 'undefined' && module.exports) {
       }, { signal });
     }
 
-    // FR-9 (v1.21.0, T8): the "Theatre" toggle. Widens the player to the
-    // majority of page width by stacking `.watch-sidebar` (the related-items
-    // list) below `.watch-main`, at desktop widths only -- see the
-    // ".watch-container.theater-mode" rules ("v1.21 FR-9" section in
-    // style.css). Built entirely in JS rather than watch.html: this task's
-    // file-ownership contract leaves `#player-host-template`/the rest of
-    // watch.html's static markup to T2, so the button is created here and
-    // appended next to the existing Prev/Next bar instead.
-    //
-    // WATCH-VIEW-ONLY / DOCKED-unaffected (AC61): this toggles a class on
-    // `.watch-container` ONLY -- `#player-dock` (the v1.16 persistent
-    // mini-player host) lives entirely OUTSIDE `#view-root`/`.watch-container`
-    // in the shell markup, so it is structurally unreachable from this
-    // selector. The toggle never touches the `<video>` element, its `src`,
-    // or playback state in any way -- purely a class flip on an ancestor
-    // element -- so entering/leaving theatre mode never disturbs playback.
-    //
-    // Persistence (AC63, optional per design -- implemented): the last
-    // choice is stored in `localStorage['ft-theater']` and re-applied here on
-    // every `init()` (fresh page load OR an in-app SPA navigation back into
-    // the watch view), via the pure `isTheaterModeActive`/
-    // `theaterModeStorageValue` helpers (module scope, above the IIFE --
-    // unit-tested in test/unit).
+    // v1.186 (Dean): inject the watch-only cog controls into the PERSISTENT
+    // player host (which is parity-locked byte-identical across nine shells, so
+    // they cannot be baked into the shared markup). Runs post-mount; id-guarded
+    // so a re-navigation into watch never double-injects (the host persists, so
+    // the elements live on after the first visit - hidden/inert off-watch;
+    // their event listeners are re-bound per view via the AbortController signal,
+    // so they never accumulate). Mirrors how the old Theatre button was built in
+    // JS, extended to the four controls.
+    function ensureCogControlsInjected() {
+      const controls = document.getElementById('player-controls');
+      const cog = document.getElementById('settings-btn');
+      const menu = document.getElementById('settings-menu');
+      // Theatre icon, just before the cog (era-style inline SVG like the gear).
+      if (controls && cog && !document.getElementById('theater-btn')) {
+        cog.insertAdjacentHTML('beforebegin',
+          '<button type="button" id="theater-btn" class="pc-btn theater-btn" aria-label="Toggle theatre mode" aria-pressed="false">'
+          + '<svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><path d="M240-160q-33 0-56.5-23.5T160-240v-480q0-33 23.5-56.5T240-800h480q33 0 56.5 23.5T800-720v480q0 33-23.5 56.5T720-160H240Zm0-80h480v-480H240v480Z"/></svg>'
+          + '</button>');
+      }
+      // Autoplay + Loop + Ambient toggle rows, appended to the cog menu.
+      if (menu && !document.getElementById('watch-ambient-check')) {
+        menu.insertAdjacentHTML('beforeend',
+          '<label class="watch-autoplay-label settings-menu-toggle" for="watch-autoplay-check">'
+          + '<span class="watch-autoplay-text">Autoplay</span>'
+          + '<span class="watch-autoplay-switch"><input type="checkbox" id="watch-autoplay-check" aria-label="Autoplay next video" />'
+          + '<span class="watch-autoplay-track"><span class="watch-autoplay-thumb"></span></span></span></label>'
+          + '<label class="watch-autoplay-label settings-menu-toggle" for="watch-loop-check">'
+          + '<span class="watch-autoplay-text">Loop</span>'
+          + '<span class="watch-autoplay-switch"><input type="checkbox" id="watch-loop-check" aria-label="Loop current video" />'
+          + '<span class="watch-autoplay-track"><span class="watch-autoplay-thumb"></span></span></span></label>'
+          + '<label class="watch-autoplay-label settings-menu-toggle" id="ambient-toggle-row" for="watch-ambient-check">'
+          + '<span class="watch-autoplay-text">Ambient mode</span>'
+          + '<span class="watch-autoplay-switch"><input type="checkbox" id="watch-ambient-check" aria-label="Ambient mode" />'
+          + '<span class="watch-autoplay-track"><span class="watch-autoplay-thumb"></span></span></span></label>');
+      }
+    }
+
+    // FR-9 (v1.21.0) / v1.186: the Theatre toggle. Widens the player by stacking
+    // `.watch-sidebar` below `.watch-main` at desktop widths (the
+    // ".watch-container.theater-mode" rules in style.css). v1.186 RELOCATED the
+    // control from a JS-built text button in the removed prev/next bar to the
+    // static era-style icon `#theater-btn` in the player control bar (wired here
+    // post-mount; desktop-only via CSS). WATCH-VIEW-ONLY: toggles a class on
+    // `.watch-container` only, never the <video>/src/playback. Persisted in
+    // `localStorage['ft-theater']` (the pure isTheaterModeActive/
+    // theaterModeStorageValue helpers, unit-tested); the class is also applied
+    // synchronously in init() to avoid a widen-flash.
     function setupTheatreToggle() {
+      // v1.186: wire the era-style #theater-btn (in the player control bar),
+      // re-queried post-mount. Desktop-only via CSS; the class was already
+      // applied synchronously in init() to avoid a widen-flash.
       const watchContainer = root.querySelector('.watch-container');
-      const prevNextBar = root.querySelector('#watch-prevnext');
-      if (!watchContainer || !prevNextBar || !nextBtn) return;
-
-      const theaterBtn = document.createElement('button');
-      theaterBtn.type = 'button';
-      theaterBtn.id = 'watch-theater-btn';
-      theaterBtn.className = 'watch-prevnext-btn watch-theater-btn';
-      theaterBtn.setAttribute('aria-pressed', 'false');
-      theaterBtn.setAttribute('aria-label', 'Toggle theatre mode');
-      theaterBtn.textContent = 'Theatre';
-
-      // Groups the new button with the existing Next button (rather than
-      // appending it as a bare 4th child of `.watch-prevnext`) so it doesn't
-      // disturb that row's existing `justify-content: space-between` 3-slot
-      // layout (Prev / Autoplay / Next) -- see the ".watch-nextgroup" rule
-      // in style.css. `nextBtn` is only reparented, never recreated, so the
-      // click listener `setupPrevNext()` wires onto it (elsewhere in this
-      // file) keeps working unaffected by this move, regardless of call
-      // order.
-      const nextGroup = document.createElement('div');
-      nextGroup.className = 'watch-nextgroup';
-      nextBtn.parentNode.insertBefore(nextGroup, nextBtn);
-      nextGroup.appendChild(nextBtn);
-      nextGroup.appendChild(theaterBtn);
+      const theaterBtn = root.querySelector('#theater-btn');
+      if (!watchContainer || !theaterBtn) return;
 
       let isActive = false;
       try {
@@ -1895,6 +1925,159 @@ if (typeof module !== 'undefined' && module.exports) {
       }, { signal });
     }
 
+    // v1.186 (Dean): AMBIENT MODE. Casts a soft, color-sampled bloom behind the
+    // player (YouTube-style), from the live video frames or - for audio - the
+    // cover art. DARK THEMES ONLY (light hides the toggle row AND forces it off);
+    // default OFF, opt-in, persisted in localStorage['ft-ambient']. Desktop +
+    // mobile, but HARD-throttled and torn down whenever ambientShouldRun() is
+    // false (paused, tab hidden, off, or light) - no idle battery cost (v1.160).
+    // The canvas #ambient-glow is a WATCH-VIEW node (never the persistent host),
+    // so it is absent when docked/closed for free.
+    function setupAmbientMode() {
+      const check = root.querySelector('#watch-ambient-check');
+      const row = root.querySelector('#ambient-toggle-row');
+      const glow = root.querySelector('#ambient-glow');
+      const video = document.getElementById('media-player');
+      if (!check || !glow) return;
+
+      // Dark-only: reveal the toggle row only in a dark theme; a light theme
+      // hides the control and guarantees the effect is off.
+      function syncRowVisibility() {
+        const dark = isDarkMode(document);
+        if (row) row.hidden = !dark;
+        return dark;
+      }
+
+      let prefOn = false;
+      try { prefOn = isAmbientEnabled(localStorage.getItem('ft-ambient')); } catch (_) { prefOn = false; }
+      check.checked = prefOn;
+      syncRowVisibility();
+
+      // Tiny offscreen sample buffer (source pixels averaged down cheaply); the
+      // big canvas is painted from it scaled-up + CSS-blurred, so the glow is a
+      // handful of soft color regions, not a sharp copy.
+      const SRC_W = 32;
+      const SRC_H = 18;
+      const buf = document.createElement('canvas');
+      buf.width = SRC_W; buf.height = SRC_H;
+      const bctx = buf.getContext('2d');
+      const gctx = glow.getContext('2d');
+
+      // Hard throttle: coarser on mobile (battery). rAF-gated, min-interval.
+      const isMobile = (typeof window.matchMedia === 'function') && window.matchMedia('(max-width: 768px)').matches;
+      const MIN_INTERVAL = isMobile ? 400 : 180; // ~2.5fps mobile / ~5.5fps desktop
+      let rafId = null;
+      let timerId = null;
+      let lastPaint = 0;
+      let coverImg = null; // lazily-loaded audio cover art (same-origin thumbnail)
+      let hardFailed = false; // a drawImage throw permanently disables the loop for this view (never re-arm)
+
+      function currentlyPlaying() {
+        return !!(video && !video.paused && !video.ended && video.readyState >= 2);
+      }
+      function shouldRun() {
+        return ambientShouldRun({ prefOn: prefOn, dark: isDarkMode(document), playing: currentlyPlaying(), docVisible: !document.hidden });
+      }
+
+      function paintFrom(srcEl, sw, sh) {
+        try {
+          bctx.drawImage(srcEl, 0, 0, SRC_W, SRC_H); // downscale-average
+          // size the glow canvas to its own box once it has one
+          const r = glow.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) {
+            if (glow.width !== Math.round(r.width) || glow.height !== Math.round(r.height)) {
+              glow.width = Math.max(1, Math.round(r.width));
+              glow.height = Math.max(1, Math.round(r.height));
+            }
+            gctx.imageSmoothingEnabled = true;
+            gctx.clearRect(0, 0, glow.width, glow.height);
+            gctx.drawImage(buf, 0, 0, SRC_W, SRC_H, 0, 0, glow.width, glow.height);
+          }
+        } catch (_) {
+          // A tainted/again-not-ready source must never break playback: stop
+          // PERMANENTLY for this view (hardFailed skips the reschedule below, so
+          // the loop cannot spin throw/catch/reschedule; a fresh view resets it).
+          hardFailed = true;
+          stop();
+        }
+      }
+
+      function ensureCover() {
+        if (coverImg || !mediaId) return;
+        const im = new Image();
+        im.decoding = 'async';
+        im.onload = function () { coverImg = im; };
+        im.onerror = function () { coverImg = null; };
+        im.src = '/thumbnail/' + encodeURIComponent(mediaId); // same-origin -> no canvas taint
+      }
+
+      function tick(now) {
+        rafId = null;
+        if (!shouldRun()) { stop(); return; }
+        if (!now) now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        if (now - lastPaint >= MIN_INTERVAL) {
+          lastPaint = now;
+          if (video && video.videoWidth > 0) paintFrom(video);
+          else { ensureCover(); if (coverImg) paintFrom(coverImg); }
+        }
+        if (hardFailed) return; // paintFrom hit an unrecoverable error -> do NOT re-arm (the WARNING fix)
+        schedule();
+      }
+      function schedule() {
+        if (typeof window.requestAnimationFrame === 'function') rafId = window.requestAnimationFrame(tick);
+        else timerId = setTimeout(function () { timerId = null; tick(); }, MIN_INTERVAL);
+      }
+      function start() {
+        if (hardFailed) return; // an unrecoverable paint error disabled ambient for this view
+        if (rafId != null || timerId != null) return; // already running
+        glow.hidden = false;
+        glow.classList.add('is-on');
+        schedule();
+      }
+      function stop() {
+        if (rafId != null && typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(rafId);
+        if (timerId != null) clearTimeout(timerId);
+        rafId = null; timerId = null;
+        glow.classList.remove('is-on');
+        glow.hidden = true;
+        try { if (glow.width && glow.height) gctx.clearRect(0, 0, glow.width, glow.height); } catch (_) { /* nothing painted yet */ }
+      }
+      // The one gate everything funnels through: run iff eligible, else tear down.
+      function evaluate() {
+        syncRowVisibility();
+        if (shouldRun()) start(); else stop();
+      }
+
+      check.addEventListener('change', () => {
+        prefOn = check.checked;
+        try { localStorage.setItem('ft-ambient', ambientStorageValue(prefOn)); } catch (_) { /* not persisted */ }
+        evaluate();
+      }, { signal });
+
+      // Re-evaluate on every signal that can flip ambientShouldRun. All bound to
+      // the view's AbortController signal -> auto-removed on teardown (no leak).
+      document.addEventListener('visibilitychange', evaluate, { signal });
+      if (video) {
+        video.addEventListener('play', evaluate, { signal });
+        video.addEventListener('playing', evaluate, { signal });
+        video.addEventListener('pause', evaluate, { signal });
+        video.addEventListener('ended', evaluate, { signal });
+        video.addEventListener('emptied', () => { coverImg = null; evaluate(); }, { signal });
+      }
+      // A theme flip (era/mode toggle) mutates data-mode on <html>; watch it so
+      // ambient turns off entering light and can resume entering dark.
+      let themeObs = null;
+      if (typeof MutationObserver !== 'undefined') {
+        themeObs = new MutationObserver(evaluate);
+        try { themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-mode', 'data-theme'] }); } catch (_) { themeObs = null; }
+      }
+      // Teardown: the view's signal aborts on destroy() -> stop the loop AND
+      // disconnect the observer (the observer is not signal-bound).
+      if (signal) signal.addEventListener('abort', () => { stop(); if (themeObs) { try { themeObs.disconnect(); } catch (_) { /* dead */ } } }, { once: true });
+
+      evaluate();
+    }
+
     // v1.22.0 FR-7 (TF): the "Loop" toggle -- mirrors setupAutoplayToggle()'s
     // shape (read on load, write on change) but is a watch-page-LOCAL
     // preference persisted in `localStorage['ft-loop']` (coordinator
@@ -1909,6 +2092,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // player.js on every 'ended', regardless of which view (if any) is
     // currently mounted.
     function setupLoopToggle() {
+      // v1.186: re-query post-mount (the checkbox moved into the host's cog menu).
+      const loopCheck = root.querySelector('#watch-loop-check');
       if (!loopCheck) return;
       const player = window.FileTube && window.FileTube.player;
       loopCheck.checked = !!(player && player.isLoopEnabled());

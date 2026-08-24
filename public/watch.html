@@ -143,56 +143,23 @@
                ever, and reparents it into THIS slot (FULL) or the fixed
                #player-dock (DOCKED) -- see watch.js's init(), which calls
                window.FileTube.player.load(id, data, { slot: this element }). -->
-          <div id="player-slot"></div>
-
-          <!-- Prev/Next controls (FR-2, T3): step to the previous/next media
-               in the derived playlist order (the current home sort order --
-               deriveOrderedIds/computeNeighbors in common.js), re-derived on
-               every init() so a refresh/deep-link still computes the correct
-               position. Disabled at the ends (no wrap) -- watch.js toggles
-               `disabled` and wires the click handlers; labels stay static
-               here (no innerHTML). Navigation goes through the SPA router
-               (stays FULL -- watch -> watch never docks, see common.js's
-               shouldDockOnTransition). -->
-          <div class="watch-prevnext" id="watch-prevnext">
-            <button type="button" class="watch-prevnext-btn" id="watch-prev-btn" aria-label="Previous video" disabled>
-              <span aria-hidden="true">&lsaquo;</span> Previous
-            </button>
-
-            <!-- Autoplay toggle (FR-4a, T3): backed by the SAME persisted
-                 db.settings.autoplayNext the Settings-page checkbox writes
-                 (server.js's POST /api/settings partial merge -- see there).
-                 watch.js reads it on load and writes it on change; the two
-                 surfaces sync by re-fetch on next load (no shared client
-                 state, no server change). -->
-            <label class="watch-autoplay-label" for="watch-autoplay-check">
-              <span class="watch-autoplay-switch">
-                <input type="checkbox" id="watch-autoplay-check" aria-label="Autoplay next video" />
-                <span class="watch-autoplay-track"><span class="watch-autoplay-thumb"></span></span>
-              </span>
-              <span class="watch-autoplay-text">Autoplay</span>
-            </label>
-
-            <!-- Loop/repeat toggle (v1.22.0 FR-7, TF): a watch-page-local
-                 preference (localStorage['ft-loop'], NOT the persisted
-                 server db.settings.autoplayNext above) -- watch.js's
-                 setupLoopToggle() reads/writes it through
-                 window.FileTube.player.isLoopEnabled()/setLoop(), and
-                 player.js's own 'ended' listener is what actually replays
-                 the current item. Reuses the autoplay toggle's exact
-                 markup/CSS classes (era tokens) -- no new CSS. -->
-            <label class="watch-autoplay-label" for="watch-loop-check">
-              <span class="watch-autoplay-switch">
-                <input type="checkbox" id="watch-loop-check" aria-label="Loop current video" />
-                <span class="watch-autoplay-track"><span class="watch-autoplay-thumb"></span></span>
-              </span>
-              <span class="watch-autoplay-text">Loop</span>
-            </label>
-
-            <button type="button" class="watch-prevnext-btn" id="watch-next-btn" aria-label="Next video" disabled>
-              Next <span aria-hidden="true">&rsaquo;</span>
-            </button>
+          <!-- v1.186 (Dean): Ambient mode stage. The glow canvas sits BEHIND the
+               player and bleeds a soft, color-sampled bloom outward (YouTube-
+               style). It is a WATCH-VIEW node (never inside the persistent host),
+               so it is absent when docked/closed for free; it samples
+               #media-player / the audio cover by id. Dark-themes-only, opt-in
+               (watch.js drives it). aria-hidden + pointer-events:none. -->
+          <div class="watch-player-stage">
+            <canvas id="ambient-glow" class="ambient-glow" aria-hidden="true" hidden></canvas>
+            <div id="player-slot"></div>
           </div>
+
+          <!-- v1.186: the page-level Prev/Next buttons were REMOVED (redundant -
+               the player's own track-nav covers the same feed-order + queue
+               navigation for video and audio, wired via setTrackNav from
+               computeNeighbors in watch.js). Autoplay + Loop moved INTO the
+               player's settings cog (#settings-menu). The whole #watch-prevnext
+               bar is gone; the theater toggle moved to an icon by the cog. -->
 
           <!-- Video Details -->
           <!-- v1.52 instant watch: NO literal placeholder text anywhere in

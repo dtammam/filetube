@@ -8,7 +8,7 @@
 //
 // Bug A (Dean): "Liked" must power prev/next. The launch context is carried
 // as `?list=liked` from the home grid's cards into watch.html, consumed by
-// setupPrevNext (fetches /api/liked instead of the folder list), and
+// setupTrackNavContext (fetches /api/liked instead of the folder list), and
 // preserved across prev/next hops by navigateToWatch.
 //
 // Bug B (Dean): PWA video controls dead after app-switch. iOS strands the
@@ -46,14 +46,14 @@ test('v1.40.0 A (supersedes v1.36.2 list=liked): home grid cards carry the FULL 
   );
 });
 
-test('v1.36.2 A: watch.js consumes the context -- strict value check, /api/liked branch in setupPrevNext, preserved by navigateToWatch', () => {
+test('v1.36.2 A: watch.js consumes the context -- strict value check, /api/liked branch in setupTrackNavContext, preserved by navigateToWatch', () => {
   assert.ok(
     watchSrc.includes("urlParams.get('list') === 'liked' ? 'liked' : null"),
     'the context param must be strictly validated (unknown values degrade to folder behavior)',
   );
   assert.ok(
     watchSrc.includes("listContext === 'liked' ? '/api/liked' : folderBase"),
-    "setupPrevNext must walk the LIKED list when the context is 'liked'",
+    "setupTrackNavContext must walk the LIKED list when the context is 'liked'",
   );
   assert.ok(
     watchSrc.includes("(listContext ? '&list=' + encodeURIComponent(listContext) : '')"),
