@@ -1,5 +1,9 @@
 # Critters: settle-before-reveal (v1.182.0)
 
+**Status:** SHIPPED v1.182.0 (2026-08-24) - FULL two-reviewer gate, both APPROVE
+(QA caught a CRITICAL the adversarial first pass missed); dual-Node 7516/7516;
+device pass PENDING.
+
 ## Problem (Dean, 2026-08-24, desktop + mobile screenshots)
 
 Critters "load, sit in odd spots, then reconcile behind elements." The three

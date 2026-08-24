@@ -80,6 +80,54 @@
 
 ## Shipped
 
+### v1.182.0 - critters: settle before reveal (no more load-in flash) (Dean) (2026-08-24)
+
+Dean's report (desktop + mobile screenshots): critters "load, sit in odd
+spots, then reconcile behind elements" - a critter floating mid-thumbnail,
+critters on title text, before they settle. Root cause was structural, not a
+tuning bug: the engine placed critters at a fixed +200ms against loading
+skeletons / a partial feed and FADED THEM IN there, then a settle ladder +
+nudge observer corrected them IN VIEW. Every such correction is watchable, so
+the only real cure is to not paint a critter until its position is final. (A
+skeleton card reserves a 2-line title; the real card is often 1 line, so the
+column shifts up when content lands - that shift unmoored the visible critters.)
+
+Intake: Dean chose "wait, then place once" over v1.175's "instant arrival",
+with a ~2.5s cap for slow loads.
+
+- The change is confined to the entry gate `scheduleCritterScatter`; the whole
+  gate-won placement/settle/re-glue/nudge pipeline (`scatterCritters` and
+  below) is byte-identical, so its invariants and tests stand.
+- Mode ON now arms a WAIT phase: a dedicated observer whose every content
+  mutation re-arms a 300ms quiet debounce; a leading quiet arm so a static view
+  (Settings) reveals promptly; a skeleton-presence gate so the quiet timer
+  never reveals against a still-loading feed; and a 2500ms hard cap that
+  reveals no matter what. Reveal = one placement, one arrival fade, at the
+  settled layout. The pool warms during the wait (no half-decoded-PNG flash).
+
+The gate earned its keep. FULL two-reviewer gate. The QA seat caught a
+CRITICAL the adversarial seat's first pass missed: the PREVIOUS view's
+persistent nudge observer survived navigation and re-scattered onto the NEW
+view's loading skeletons during its wait - the exact flash, on every SPA
+navigation after the first (I reproduced it independently before fixing).
+FIX: the schedule now disconnects the prior nudge observer on every navigation
+(one critter observer ever live). Two WARNINGs fixed same round: the outgoing
+view's critters now clear at once instead of lingering at stale coords up to
+the cap (this also folded mode-OFF into an immediate inline clear, removing a
+dead 200ms timer); and a false "never coexist" comment corrected. QA then
+caught a flaky NEW test (a cap probe with a 130ms real-timer margin) - de-raced
+to a synchronous pre-cap assertion + 2x margins. Adversarial re-verified all
+bindings held after the de-race. Both seats APPROVE.
+
+Tests: critter-mode 66 -> 74 (headline skeleton-defer-then-reveal, static
+reveal under cap, cross-navigation CRITICAL regression, outgoing-clear,
+functional cap via a test seam). Dual-Node 7516/7516 clean on both v22 + v24.
+
+Known gap (disclosed): the timing tests still assert reveal after real-timer
+waits (now 2x+ margins); node:test mock timers are the deterministic cure if
+they ever flake in the gate (tech-debt tracker). Device pass PENDING (Dean's
+probe list in the wave report).
+
 ### v1.181.0 - the settings cleanup: Troubleshooting + Experimental subpages (Dean) (2026-08-23)
 
 Dean's cleanup pass ("the settings have just been sprawl"): centralize

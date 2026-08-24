@@ -2116,5 +2116,11 @@
     "date": "2026-08-23",
     "title": "A tidier Settings",
     "intent": "Settings gets a spring cleaning: two new pages at the bottom of the list gather what used to be scattered. Troubleshooting holds the diagnostic tools - the player's debug log and the critter sound check - and Experimental holds the adventurous switches like background audio, the lock-screen keep-alive, and custom player controls, each with its trade-offs spelled out. Everything works the same; it's just finally where you'd look for it."
+  },
+  {
+    "version": "1.182.0",
+    "date": "2026-08-24",
+    "title": "Critters land in place",
+    "intent": "The critters no longer flash in at odd spots and then jump behind things while a page loads. They now wait for the page to finish settling and appear once, already tucked into their final hiding spots - so they're in the right place from the moment you see them, on both desktop and phone."
   }
 ]
