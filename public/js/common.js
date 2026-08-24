@@ -7694,7 +7694,7 @@ function planCritterScatter(opts) {
       // v1.185: carry the OWNED pairing (`sound`, same-named file, null if none)
       // and the stable borrowed `voice` SEPARATELY - the tap path needs the
       // distinction: an owned sound always plays; a voiceless critter either
-      // cycles the pool at random (the pref) or plays its stable borrow (v1.179).
+      // plays a random pool sound (the pref) or its stable borrow (v1.179).
       // Builtins carry neither and keep the chirp.
       id: c.id, img: c.img || null, sound: c.sound || null, voice: c.voice || null, svg: c.svg || null,
       x: x, y: y, w: size, h: size,
@@ -7762,7 +7762,7 @@ function playCritterChirp() {
 
 // v1.184: play one specific sound file, recording WHY (for the Voice check
 // instrument) and falling back to the synth chirp on any failure. Shared by the
-// explicit-voice tap and the no-voice cycle so both paths behave identically.
+// owned-voice tap and the random/stable pool paths so all behave identically.
 function playCritterSound(url) {
   try {
     new Audio(url).play().catch(function (err) {
@@ -7775,10 +7775,11 @@ function playCritterSound(url) {
   }
 }
 
-// v1.184: the deduped, SORTED set of every sound file the manifest carries.
-// Sorted so the readdir order the server happens to return never decides the
-// cycle sequence (the determinism lesson); deduped so one file paired to two
-// critters is not over-weighted in the rotation.
+// v1.184/v1.185: the deduped, SORTED set of every sound file the manifest
+// carries - the manifest-derived FALLBACK pool for when a server omits its own
+// voicePool. Sorted for a stable, deterministic pool (the determinism lesson);
+// deduped so one file paired to two critters is not over-weighted in the random
+// draw.
 function buildCritterSoundPool(manifest) {
   var seen = {};
   var pool = [];
@@ -8568,8 +8569,9 @@ function setCritterTimingForTest(quietMs, capMs) {
   if (typeof capMs === 'number') CRITTER_REVEAL_CAP_MS = capMs;
 }
 
-// v1.184 test seam: inject the no-voice cycle pool + reset the rotation, so the
-// round-robin can be driven without stubbing the whole manifest fetch. Test-only.
+// v1.185 test seam: inject the sound pool so the random pick can be driven
+// without stubbing the whole manifest fetch. Test-only. (No rotation state - the
+// picker is stateless/random since v1.185.)
 function setCritterSoundPoolForTest(pool) {
   critterSoundPool = Array.isArray(pool) ? pool.slice() : [];
 }
