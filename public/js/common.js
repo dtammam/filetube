@@ -8550,9 +8550,9 @@ function scheduleCritterScatter() {
 function wireCritterListeners() {
   if (critterWired || typeof document === 'undefined') return;
   critterWired = true;
-  // Tap: plain passive listener; NEVER preventDefault; stands down entirely
-  // when the click landed on real interactive UI (a critter sliver can sit
-  // under empty background next to a link - the link always wins).
+  // Tap: the CLICK path never preventDefaults (it must never eat a click meant
+  // for a link/button under the sliver - the link always wins); it stands down
+  // entirely over real interactive UI and every exclusion.
   document.addEventListener('click', function (e) {
     if (!critterPlacements.length) return;
     if (e.target && e.target.closest && e.target.closest('a, button, input, select, textarea, label, [role="button"]')) return;
@@ -8597,6 +8597,22 @@ function wireCritterListeners() {
       critterLastChirpReason = 'placement carried no voice (manifest or client mapping)';
       playCritterChirp();
     }
+  });
+  // v1.183 (Dean, desktop): spam-clicking a critter's exposed sliver was
+  // selecting the text beneath it (the browser's double/triple-click gesture) -
+  // the layer is pointer-events:none, so the mousedown lands on the content
+  // under the peek. Suppress the SELECTION default when the down is a REAL
+  // critter hit. mousedown-only, so touch scroll + long-press are untouched;
+  // preventDefault on mousedown stops the selection (and mousedown-focus) but
+  // NOT the click, so the chirp still fires and any link under the sliver still
+  // navigates on click - "the link still wins". Caret-bearing fields are exempt
+  // (never fight a text cursor). Same stand-down over the exclusions as the tap.
+  document.addEventListener('mousedown', function (e) {
+    if (!critterPlacements.length) return;
+    if (e.target && e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
+    if (e.target && e.target.closest && e.target.closest(CRITTER_EXCLUSION_SELECTORS.join(','))) return;
+    if (!critterTapHit(critterPlacements, e.pageX, e.pageY)) return;
+    e.preventDefault(); // stop the text-selection gesture only; the click (chirp + any underlying link) still fires
   });
   // Reflow moves the furniture; re-scatter (debounced) so critters follow -
   // but ONLY on a WIDTH change (gate W5): iOS Safari fires resize on URL-bar
