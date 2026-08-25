@@ -11,11 +11,15 @@
 // for that feel, per the exec plan's LIGHT-gate note for this FR.
 const { test } = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   nextTheaterState,
   isTheaterModeActive,
   theaterModeStorageValue,
 } = require('../../public/js/watch.js');
+
+const STYLE_CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
 
 // ---- nextTheaterState ---------------------------------------------------------
 
@@ -57,4 +61,18 @@ test('theaterModeStorageValue: serializes active/inactive to the exact sentinel 
   // Round-trips through the parser above.
   assert.strictEqual(isTheaterModeActive(theaterModeStorageValue(true)), true);
   assert.strictEqual(isTheaterModeActive(theaterModeStorageValue(false)), false);
+});
+
+// ---- v1.190 (Dean): theatre must not clip the page bottom (the FEEL is Dean's
+// device arbiter; this source-locks the height-cap mechanism) -----------------
+
+test('v1.190 theatre caps the player HEIGHT to the viewport (width bound by 16:9 of the available height), centred, excluding fullscreen/audio-expanded', () => {
+  const rule = /\.watch-container\.theater-mode #player-slot #player-wrapper:not\(\.audio-expanded\):not\(\.css-fullscreen\):not\(:fullscreen\) \{([^}]*)\}/.exec(STYLE_CSS);
+  assert.ok(rule, 'the theatre height-cap rule exists, scoped away from the two fullscreen paths + audio-expanded');
+  const body = rule[1];
+  // Width is bounded by the height the viewport can show, so 16:9 height never
+  // exceeds it -> no bottom clip. `min(100%, ...)` keeps normal cases full-width.
+  assert.match(body, /width:\s*min\(100%,\s*calc\(\(100vh - var\(--header-h\)[^;]*\*\s*16\s*\/\s*9\)\);/, 'vh: width = min(100%, availableHeight*16/9)');
+  assert.match(body, /width:\s*min\(100%,\s*calc\(\(100dvh - var\(--header-h\)[^;]*\*\s*16\s*\/\s*9\)\);/, 'dvh twin present (the repo viewport-height convention)');
+  assert.match(body, /margin-inline:\s*auto/, 'centred when height-bound (page bg to the sides, YouTube-style)');
 });

@@ -38,6 +38,7 @@ test('v1.188 the .section-actions toolbar buttons adopt the modern-chip pill rec
   assert.match(base[1], /background-color:\s*var\(--bg-secondary\)/, 'flat secondary fill');
   assert.match(base[1], /border-color:\s*var\(--border-color\)/, 'hairline border');
   assert.match(base[1], /box-shadow:\s*none/, 'flat - the base .btn shadow is dropped');
+  assert.match(base[1], /font-weight:\s*normal/, 'v1.190: normal weight to match the feed chips (not the base .btn semibold)');
   const hover = /\.section-actions \.btn:hover \{([^}]*)\}/.exec(STYLE_CSS);
   assert.ok(hover, 'the hover rule exists');
   assert.match(hover[1], /background-color:\s*var\(--bg-sidebar\)/, 'hover tints to the sidebar bg like a chip');
@@ -47,6 +48,7 @@ test('v1.188 the .section-actions toolbar buttons adopt the modern-chip pill rec
   assert.ok(active, 'the inverted active-filter rule exists');
   assert.match(active[1], /background-color:\s*var\(--text-primary\)/, 'active fills with the primary ink');
   assert.match(active[1], /color:\s*var\(--bg-color\)/, 'active text inverts to the page bg');
+  assert.match(active[1], /font-weight:\s*normal/, 'v1.190: the active chip is not bold either (the inverted fill is the emphasis)');
   // gate QA-W2: 2009 keeps its gloss (background-image), so the inverted fill
   // never shows there - the active label must stay legible with --text-primary
   // ink rather than the inverted --bg-color (which would be near-invisible on the
@@ -62,6 +64,7 @@ test('v1.189.0 the pill look extends to the books / music / podcasts / history t
   assert.ok(shape, 'the grouped pill-shape rule for the other toolbars exists (books + music/podcasts + history)');
   assert.match(shape[1], /border-radius:\s*var\(--radius-full\)/, 'fully rounded like the home toolbar');
   assert.match(shape[1], /box-shadow:\s*none/, 'flat - base .btn shadow dropped');
+  assert.match(shape[1], /font-weight:\s*normal/, 'v1.190: normal weight to match the feed chips + the home toolbar');
   // The flat secondary FILL is scoped to :not(.btn-primary) so +Add / Subscribe
   // keep their --yt-red accent (only the shape rounds).
   const fill = /\.books-toolbar \.btn:not\(\.btn-primary\),\s*\.music-toolbar-actions \.btn:not\(\.btn-primary\),\s*\.history-toolbar-actions \.btn:not\(\.btn-primary\) \{([^}]*)\}/.exec(STYLE_CSS);

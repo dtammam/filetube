@@ -1231,6 +1231,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   background-color: var(--bg-secondary);
   border-color: var(--border-color);
   box-shadow: none;
+  font-weight: normal; /* v1.190 (Dean): match the modern feed chips (.modern-chip has no weight = normal); the base .btn is --fw-semibold, which read as "bolder / different" next to the feed */
 }
 .section-actions .btn:hover {
   background-color: var(--bg-sidebar);
@@ -1239,6 +1240,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   background-color: var(--text-primary);
   color: var(--bg-color);
   border-color: var(--text-primary);
+  font-weight: normal; /* v1.190: the feed's active chip isn't bold either - the inverted fill is the emphasis */
 }
 /* gate QA-W2: in 2009 the retained gloss (background-image) means the inverted
    active fill never shows, so keep the active label's ink legible against it
@@ -1265,6 +1267,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .history-toolbar-actions .btn {
   border-radius: var(--radius-full);
   box-shadow: none;
+  font-weight: normal; /* v1.190 (Dean): match the modern feed chips' weight (the base .btn is --fw-semibold, which read "bolder / different" than the feed pills) */
 }
 .books-toolbar .btn:not(.btn-primary),
 .music-toolbar-actions .btn:not(.btn-primary),
@@ -8578,6 +8581,24 @@ body.ft-audio-expanded {
 
 .watch-container.theater-mode .watch-sidebar {
   width: 100%;
+}
+
+/* v1.190 (Dean): cap the player HEIGHT in theatre so it never runs past the
+   viewport. Theatre widens the player to the full content column; with the left
+   bar ALSO collapsed that column is nearly the whole viewport width, and a
+   width-driven 16:9 height then exceeds the screen and clips the bottom of the
+   page (real YouTube caps this). Bound the width by the height the viewport can
+   actually show - below the fixed 56px header (--header-h) + the content's top
+   padding + a little breathing room - so once the player WOULD overflow it
+   switches from width-driven to HEIGHT-driven and centres (page bg to the sides),
+   exactly YouTube's theatre behaviour. `min(100%, ...)` keeps normal (non-clipping)
+   cases full-width. Excludes the audio-expanded overlay and both fullscreen paths
+   (their own rules own the sizing). Desktop-only: .theater-mode is only ever
+   applied above 1024px, where 100vh == 100dvh. */
+.watch-container.theater-mode #player-slot #player-wrapper:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen) {
+  width: min(100%, calc((100vh - var(--header-h) - var(--space-16) - var(--space-8)) * 16 / 9));
+  width: min(100%, calc((100dvh - var(--header-h) - var(--space-16) - var(--space-8)) * 16 / 9));
+  margin-inline: auto;
 }
 
 /* v1.186: the Theatre icon in the player control bar (a pc-btn like the cog).
