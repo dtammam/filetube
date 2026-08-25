@@ -1922,6 +1922,12 @@ if (typeof module !== 'undefined' && module.exports) {
           // storage disabled/unavailable -- the choice just doesn't persist
           // past this visit; the toggle itself still works.
         }
+        // v1.186.1 (Dean, device): theatre widens/stacks the layout, moving every
+        // critter anchor - re-place them against the new furniture (the same
+        // wait-then-place scatter the router uses; no-op when critters are off).
+        if (window.FileTube && typeof window.FileTube.scheduleCritterScatter === 'function') {
+          window.FileTube.scheduleCritterScatter();
+        }
       }, { signal });
     }
 

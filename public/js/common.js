@@ -10181,6 +10181,10 @@ if (typeof window !== 'undefined') {
   // on every page that mounts a player, so the binding is always in place.
   window.FileTube.getDeviceId = getDeviceId;
   window.FileTube.getDeviceLabel = getDeviceLabel;
+  // v1.186.1 (Dean, device): an in-view layout change (theatre toggle) must
+  // re-place the critters against the new furniture; exposed so watch.js can
+  // trigger the same wait-then-place scatter the router hooks use.
+  window.FileTube.scheduleCritterScatter = scheduleCritterScatter;
   window.FileTube.applyBottomNavCustomization = applyBottomNavCustomization;
   window.FileTube.readBottomNavConfig = readBottomNavConfig;
   window.FileTube.writeBottomNavConfig = writeBottomNavConfig;

@@ -8494,8 +8494,18 @@ body.ft-audio-expanded {
    watch.js's ambientShouldRun gate is true (dark theme + playing + visible +
    opted-in) - the `.is-on` class + `hidden` attr gate visibility. The blur +
    scale + low opacity turn the tiny 32x18 sample into soft color regions. */
+/* v1.186.1 (Dean, device): the STAGE owns the ambient stacking context (z-index
+   scopes the glow BEHIND #player-slot but above the page); #player-slot itself
+   carries NO z-index, so it never becomes a stacking context that TRAPS the faux
+   fullscreen overlay. #player-wrapper.css-fullscreen is position:fixed
+   z-index:var(--z-sheet); a z-indexed ancestor caps it below the chrome - the
+   v1.166 "isolation traps in-view fixed overlays" class, which broke
+   rotate-to-fullscreen (sidebar/header painted over the video). In faux
+   fullscreen the stage DROPS its context (below) so the fixed overlay escapes to
+   the root and covers everything. */
 .watch-player-stage {
   position: relative;
+  z-index: 0; /* token-exempt: local stacking context scoping the ambient glow (dropped in faux fullscreen) */
 }
 .ambient-glow {
   position: absolute;
@@ -8503,7 +8513,7 @@ body.ft-audio-expanded {
   left: 0;
   width: 100%;
   height: 100%;
-  z-index: 0; /* token-exempt: local stacking - behind #player-slot content, above the page */
+  z-index: -1; /* token-exempt: behind the stage's in-flow content (#player-slot), above the stage backdrop */
   pointer-events: none;
   opacity: 0;
   transform: scale(1.3);
@@ -8519,9 +8529,12 @@ body.ft-audio-expanded {
 :root:not([data-mode="dark"]) .ambient-glow {
   opacity: 0 !important; /* token-exempt: theme-gate override, mirrors #ambient-toggle-row's light belt */
 }
-#player-slot {
-  position: relative;
-  z-index: 1; /* token-exempt: local stacking - the player paints over its own ambient glow */
+/* Faux fullscreen: drop the stage's stacking context so the fixed
+   #player-wrapper.css-fullscreen overlay is NOT trapped beneath the chrome
+   (body.ft-css-fullscreen is set by player.js on rotate/tap fullscreen). This
+   restores the pre-v1.186 rotate-to-fullscreen behavior. */
+body.ft-css-fullscreen .watch-player-stage {
+  z-index: auto;
 }
 @media (prefers-reduced-motion: reduce) {
   .ambient-glow { transition: none; }
