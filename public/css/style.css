@@ -1048,6 +1048,22 @@ html.reader-immersive .app-container { padding-top: 0; }
   transform: translateX(calc(-1 * var(--sidebar-w))); /* the slide-away MUST match the width - the coupling --sidebar-w exists for */
 }
 
+/* v1.188 (Dean: "the ambience hard-stops against the left bar - let it go over
+   the left bar as well, like it does with Related files"). The glow already
+   bleeds LEFT into the sidebar region (main-content paints no background and
+   never clips, so the scaled canvas overflows past its left edge), but the
+   opaque `.sidebar` (z-index 99) painted over it and its `border-right` drew the
+   hard vertical line Dean sees. While ambient runs (root `data-ambient-on`, set
+   by watch.js at the same start/stop funnel as the glow's `is-on`, JS-guaranteed
+   dark-only), drop both so the bloom flows ACROSS the bar. The nav items paint
+   inside the sidebar's own stacking context, above the glow behind it, so
+   Home/Settings/etc. stay fully readable. `transparent` is a keyword (census-
+   exempt); the bar restores its opaque paint the instant ambient stops. */
+:root[data-ambient-on] .sidebar {
+  background-color: transparent;
+  border-right-color: transparent;
+}
+
 .sidebar-section {
   border-bottom: 1px solid var(--border-color);
   padding-bottom: var(--space-4);

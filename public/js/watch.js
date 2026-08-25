@@ -2122,6 +2122,15 @@ if (typeof module !== 'undefined' && module.exports) {
         if (timerId != null) return; // already running
         glow.hidden = false;
         glow.classList.add('is-on');
+        // v1.188 (Dean: "let the ambience go over the left bar"): a ROOT-level
+        // signal so the persistent sidebar (a shell element far from this
+        // watch-view node) can drop its opaque background + border while ambient
+        // runs, letting the glow bleed across it instead of hard-stopping at the
+        // bar's edge. Set/cleared at the SAME funnel as `is-on` (start/stop), so
+        // it tracks ambient exactly and clears on teardown (stop() on abort) and
+        // on a theme flip to light (evaluate -> stop). JS gate guarantees it is
+        // only ever present in dark mode.
+        document.documentElement.setAttribute('data-ambient-on', '');
         if (!isAudioItem() && video && video.videoWidth > 0) paintFrom(video); // first frame immediately, then on the interval
         else { ensureCover(); if (coverImg) paintFrom(coverImg); }
         if (hardFailed) return; // S1: a throw in that first paint must NOT arm a timer
@@ -2132,6 +2141,7 @@ if (typeof module !== 'undefined' && module.exports) {
         timerId = null;
         glow.classList.remove('is-on');
         glow.hidden = true;
+        document.documentElement.removeAttribute('data-ambient-on'); // v1.188: restore the sidebar's opaque bar
         try { gctx.clearRect(0, 0, SRC_W, SRC_H); } catch (_) { /* nothing painted yet */ }
       }
       // The one gate everything funnels through: run iff eligible, else tear down.
