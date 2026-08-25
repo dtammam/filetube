@@ -1886,7 +1886,17 @@ if (typeof module !== 'undefined' && module.exports) {
       if (controls && cog && !document.getElementById('theater-btn')) {
         cog.insertAdjacentHTML('beforebegin',
           '<button type="button" id="theater-btn" class="pc-btn theater-btn" aria-label="Toggle theatre mode" aria-pressed="false">'
-          + '<svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><path d="M345-680a55,55 0 1,0 110,0a55,55 0 1,0 -110,0ZM420-720a60,60 0 1,0 120,0a60,60 0 1,0 -120,0ZM505-680a55,55 0 1,0 110,0a55,55 0 1,0 -110,0ZM395-635a45,45 0 1,0 90,0a45,45 0 1,0 -90,0ZM480-640a45,45 0 1,0 90,0a45,45 0 1,0 -90,0ZM288-620h384l-14 70H302zM300-540h360l-58 360H358z"/></svg>'
+          + '<svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true">'
+          // v1.191 (Dean): clearer, taller popcorn. Two paths - an evenodd tub
+          // with cut-out stripes (the classic striped box) + a rim lip with puffs
+          // overflowing the top/sides - both currentColor like the gear. The `<g>`
+          // scales it 1.2x and re-centres on the viewBox so its footprint matches
+          // the neighbouring settings-cog gear (Dean: "same size as the cog");
+          // uniform scale, so the approved shape is unchanged, just larger.
+          + '<g transform="matrix(1.2 0 0 1.2 -98 54)">'
+          + '<path fill-rule="evenodd" d="M256-556 704-556 652-116 308-116ZM394-544 452-544 452-128 394-128ZM508-544 566-544 566-128 508-128Z"/>'
+          + '<path d="M242-596 718-596 704-556 256-556ZM254-648a58,58 0 1,0 116,0a58,58 0 1,0 -116,0ZM328-704a70,70 0 1,0 140,0a70,70 0 1,0 -140,0ZM428-684a64,64 0 1,0 128,0a64,64 0 1,0 -128,0ZM518-706a68,68 0 1,0 136,0a68,68 0 1,0 -136,0ZM606-646a58,58 0 1,0 116,0a58,58 0 1,0 -116,0ZM398-636a46,46 0 1,0 92,0a46,46 0 1,0 -92,0ZM494-634a46,46 0 1,0 92,0a46,46 0 1,0 -92,0Z"/>'
+          + '</g></svg>'
           + '</button>');
       }
       // Autoplay + Loop + Ambient toggle rows, appended to the cog menu.
