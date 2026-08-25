@@ -1446,8 +1446,17 @@ if (typeof module !== 'undefined' && module.exports) {
       descriptionParagraph.textContent = resolveDisplayDescription(tags, title);
       // v1.52: the cold-load skeleton lines under the description collapse
       // the moment a real (possibly empty) description is painted.
+      // v1.186.1 (gate SUGGESTION): also STRIP the `.skeleton-shimmer` class, not
+      // just hide the node - `querySelector('.skeleton-shimmer')` matches a
+      // `hidden` element too, so a lingering hidden shimmer kept
+      // critterPageLoading() permanently true on watch (critters then only
+      // revealed at the 2.5s cap instead of settling fast). Stripping it restores
+      // the quiet-settle fast path once the description has painted.
       const descSkel = root.querySelector('#video-desc-skel');
-      if (descSkel) descSkel.hidden = true;
+      if (descSkel) {
+        descSkel.hidden = true;
+        descSkel.querySelectorAll('.skeleton-shimmer').forEach((el) => el.classList.remove('skeleton-shimmer'));
+      }
     }
 
     // Only offer "Show more" when the description overflows by a meaningful amount;
