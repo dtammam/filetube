@@ -382,17 +382,19 @@ test('v1.188 flip gate: at tiny/normal scale a bottom-family critter ALWAYS flip
 
 // ---- the tap hit-test -------------------------------------------------------
 
-test('critterTapHit: v1.188 the WHOLE box is tappable, INCLUDING the anchor-covered part (Dean: clickable in any of their area)', () => {
-  // Critter at (90,80) 60x60; its anchor at (100,100) 200x120. The overlap
-  // region used to MISS (fell through to the card); now it HITS - the tap is
-  // swallowed by the capture listener instead of clicking through.
+test('critterTapHit: v1.191 only the VISIBLE region wins - the part behind the anchor MISSES so the button there keeps working (Dean)', () => {
+  // Critter at (90,80) 60x60; its anchor at (100,100) 200x120. The part of the
+  // box OVER the anchor is clipped/not visible (the anchor - a button - shows
+  // through), so a tap there must go to the button, NOT the critter. Only the
+  // exposed peek (box outside the anchor) wins. This is v1.188's whole-box win
+  // WALKED BACK to the visible region (Dean: buttons behind critters must work).
   const placements = [{
     id: 'c1', x: 90, y: 80, w: 60, h: 60, anchor: { x: 100, y: 100, w: 200, h: 120 },
   }];
-  assert.strictEqual(critterTapHit(placements, 95, 90).id, 'c1', 'exposed sliver still hits');
-  assert.strictEqual(critterTapHit(placements, 120, 110).id, 'c1', 'the anchor-covered part now hits too (the reversal)');
-  assert.strictEqual(critterTapHit(placements, 90, 80).id, 'c1', 'the top-left corner (box edge) hits');
-  assert.strictEqual(critterTapHit(placements, 150, 140).id, 'c1', 'the bottom-right corner (box edge) hits');
+  assert.strictEqual(critterTapHit(placements, 95, 90).id, 'c1', 'exposed peek (outside the anchor) wins');
+  assert.strictEqual(critterTapHit(placements, 90, 80).id, 'c1', 'top-left corner (outside the anchor) wins');
+  assert.strictEqual(critterTapHit(placements, 120, 110), null, 'OVER the anchor (clipped): stands down so the button behind works');
+  assert.strictEqual(critterTapHit(placements, 150, 140), null, 'bottom-right, still over the anchor: stands down');
   assert.strictEqual(critterTapHit(placements, 89, 90), null, 'one px left of the box: miss');
   assert.strictEqual(critterTapHit(placements, 400, 400), null, 'outside entirely: miss');
   assert.strictEqual(critterTapHit([], 95, 90), null);
@@ -1932,8 +1934,10 @@ test('v1.175: every critter ARRIVES on a pure-opacity fade (no pop-in; no motion
 
 test('tap reactions: a pool of tiny transform-only animations, each defined in CSS and all reduced-motion-safe', () => {
   const { CRITTER_REACTIONS } = require('../../public/js/common.js');
-  assert.deepStrictEqual(CRITTER_REACTIONS, ['critter-wiggle', 'critter-shiver', 'critter-hop', 'critter-twirl', 'critter-duck', 'critter-squish'],
-    'the reaction pool (Dean: "a variety of very very small visual things")');
+  assert.deepStrictEqual(CRITTER_REACTIONS, ['critter-wiggle', 'critter-shiver', 'critter-hop', 'critter-twirl', 'critter-duck', 'critter-squish', 'critter-nod', 'critter-wobble', 'critter-boing', 'critter-swing', 'critter-pop', 'critter-headshake', 'critter-tada', 'critter-rubberband', 'critter-backflip', 'critter-doublehop', 'critter-peek', 'critter-float'],
+    'the reaction pool (Dean: "a variety" + v1.191 "add a few more" then "even more... a GREAT variety")');
+  assert.ok(CRITTER_REACTIONS.length >= 18, 'v1.191 grew the pool to a great variety (18)');
+  assert.strictEqual(new Set(CRITTER_REACTIONS).size, CRITTER_REACTIONS.length, 'no duplicate reactions');
   const reduced = CSS.split('@media (prefers-reduced-motion: reduce)').slice(1).join('\n');
   for (const cls of CRITTER_REACTIONS) {
     assert.match(CSS, new RegExp('\\.' + cls + '\\s*\\{\\s*animation:\\s*' + cls), cls + ' has its CSS animation');
@@ -1948,6 +1952,24 @@ test('tap reactions: a pool of tiny transform-only animations, each defined in C
   const body = COMMON.slice(start, COMMON.indexOf('\nfunction applyCritterMode', start));
   assert.match(body, /CRITTER_REACTIONS\[Math\.floor\(Math\.random\(\) \* CRITTER_REACTIONS\.length\)\]/,
     'the handler picks a random reaction from the shared pool');
+  // Every pooled reaction must have its CSS class + keyframes + reduced-motion
+  // entry (asserted in the loop above), so the random pick can never land on a
+  // class with no animation.
+  assert.strictEqual(CRITTER_REACTIONS.filter((c) => new RegExp('@keyframes ' + c + '\\b').test(CSS)).length,
+    CRITTER_REACTIONS.length, 'every pooled reaction has keyframes (no dead pick)');
+});
+
+test('v1.191 (Dean): toggling the left sidebar (hamburger) re-scatters critters - the layout width changed', () => {
+  // Collapsing/expanding the left bar widens the content column but fires NO
+  // window resize, so the resize re-scatter never runs - critters hung in place.
+  // The menu-toggle handler must call the same scheduleCritterScatter the theatre
+  // toggle uses (guarded so it is a no-op when critters are off / the fn absent).
+  const start = COMMON.indexOf("const menuToggle = document.getElementById('menu-toggle')");
+  assert.ok(start > 0, 'the menu-toggle wiring was located');
+  const body = COMMON.slice(start, start + 1400);
+  assert.match(body, /menuToggle\.addEventListener\('click'/, 'the hamburger click handler exists');
+  assert.match(body, /mainContent\.classList\.toggle\('expanded'\)/, 'it toggles the collapse (the width change)');
+  assert.match(body, /scheduleCritterScatter\(\)/, 'and re-scatters critters against the new layout width');
 });
 
 test('CSS (v1.168 sandwich): the layer paints ABOVE furniture (z 2, under every ladder rung), pose carries the transform', () => {

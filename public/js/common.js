@@ -7544,7 +7544,12 @@ var CRITTER_EXCLUSION_SELECTORS = ['#player-wrapper', '.player-container', '#pla
 // v1.176 (Dean: "what other small cute animations can we add? I like that to
 // be varied"): three joiners - a full twirl, a shy duck-down, and a classic
 // squash-and-stretch. All transform-only, all riding the pose's angle+flip.
-var CRITTER_REACTIONS = ['critter-wiggle', 'critter-shiver', 'critter-hop', 'critter-twirl', 'critter-duck', 'critter-squish'];
+// v1.191 (Dean: "add a few more sets" then "even more... a GREAT variety"): the
+// original six + nod, wobble (jelly), boing (spring), swing (pendulum), pop,
+// headshake, tada, rubberband, backflip, doublehop, peek, float = 18. All
+// transform-only, all ride the pose's angle+flip, all die under
+// prefers-reduced-motion (see the CSS list). One is picked at random per tap.
+var CRITTER_REACTIONS = ['critter-wiggle', 'critter-shiver', 'critter-hop', 'critter-twirl', 'critter-duck', 'critter-squish', 'critter-nod', 'critter-wobble', 'critter-boing', 'critter-swing', 'critter-pop', 'critter-headshake', 'critter-tada', 'critter-rubberband', 'critter-backflip', 'critter-doublehop', 'critter-peek', 'critter-float'];
 
 function resolveCritterConfig(read) {
   var get = typeof read === 'function' ? read : function (k) {
@@ -7791,24 +7796,31 @@ function planCritterScatter(opts) {
   return placements;
 }
 
-// PURE tap hit-test: the WHOLE critter box counts (v1.188, Dean: "clickable in
-// any of their area"). Previously only the EXPOSED sliver (box minus anchor) was
-// tappable and a tap over the anchor fell through to the card behind; Dean's
-// ruling reverses that - a tap anywhere on the png chirps AND is swallowed by
-// the capture-phase click listener so it never activates the furniture behind
-// it. Later placements are "on top" visually, so scan last-to-first.
+// PURE tap hit-test. v1.191 (Dean): only the VISIBLE region of the critter wins a tap. The part of
+// the box behind the critter's OWN anchor is CLIPPED away by the sandwich (the
+// anchor - e.g. a button the critter peeks from behind - shows through there), so
+// a tap over the anchor must go to the ANCHOR, not the critter. v1.188 made the
+// WHOLE box win, which stole taps meant for the button behind it (Dean's report).
+// The exposed peek + any body overhanging PAST the anchor (genuinely-visible png)
+// still wins; the clipped-behind-the-anchor region stands down. Scan last-to-
+// first so the visually-topmost critter wins an overlap.
 function critterTapHit(placements, x, y) {
   var list = placements || [];
   for (var i = list.length - 1; i >= 0; i -= 1) {
     var p = list[i];
-    if (x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h) return p;
+    var inBox = x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h;
+    if (!inBox) continue;
+    // Inside this critter's box but OVER its own anchor -> clipped/not visible ->
+    // let the anchor keep the tap (fall through to any lower critter).
+    var an = p.anchor;
+    var inAnchor = an && x >= an.x && x <= an.x + an.w && y >= an.y && y <= an.y + an.h;
+    if (!inAnchor) return p;
   }
   return null;
 }
 
-// v1.189.1 (Dean): the whole-box tap swallow (v1.188) hit-tests by COORDINATES
-// only, so a click that geometrically lands in a critter's box but is actually
-// on an overlay PAINTED ABOVE the critter - the notification dropdown, a menu, a
+// v1.189.1 (Dean): even where the critter IS visible, a click that lands on an
+// overlay PAINTED ABOVE the critter - the notification dropdown, a menu, a
 // sheet, all on the --z-* ladder (900+), far above the critter layer's own
 // z-index:2 - was wrongly treated as a critter tap: it chirped AND the
 // capture-phase stopPropagation/preventDefault ATE the overlay's own click.
@@ -14273,6 +14285,12 @@ document.addEventListener('DOMContentLoaded', () => {
       sidebar.classList.toggle('hidden');
       sidebar.classList.toggle('mobile-open');
       mainContent.classList.toggle('expanded');
+      // v1.191 (Dean, desktop): collapsing/expanding the left bar widens the
+      // content column - every critter anchor moves, but nothing re-places them
+      // (a window resize is NOT fired, so the resize re-scatter never runs). Mirror
+      // the theatre toggle's fix: the same wait-then-place scatter the router uses
+      // (no-op when critters are off; debounced past the sidebar's transition).
+      if (typeof scheduleCritterScatter === 'function') scheduleCritterScatter();
     });
   }
 
