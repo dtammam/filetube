@@ -58,6 +58,16 @@ function theaterModeStorageValue(isActive) {
 function isAmbientEnabled(rawValue) {
   return rawValue === '1';
 }
+
+// v1.187 (Dean: "ambient is almost too intense"): the intensity ladder. The name
+// rides a `data-ambient` attribute on the canvas and CSS owns the actual
+// opacity/blur/scale per level (no inline style -> the token census stays clean).
+// DEFAULT is 'normal' - deliberately a step DOWN from v1.186's shipped look,
+// which is now the 'intense' rung.
+var AMBIENT_LEVELS = ['subtle', 'normal', 'intense', 'extreme'];
+function resolveAmbientLevel(rawValue) {
+  return AMBIENT_LEVELS.indexOf(rawValue) !== -1 ? rawValue : 'normal';
+}
 function ambientStorageValue(on) {
   return on ? '1' : '0';
 }
@@ -629,6 +639,8 @@ if (typeof module !== 'undefined' && module.exports) {
     ambientStorageValue,
     ambientShouldRun,
     isDarkMode,
+    AMBIENT_LEVELS,
+    resolveAmbientLevel,
     resolveUploaderLinkHref,
     resolveChannelDirFromFilePath,
     resolveWatchEntryReparentAction,
@@ -1887,7 +1899,17 @@ if (typeof module !== 'undefined' && module.exports) {
           + '<label class="watch-autoplay-label settings-menu-toggle" id="ambient-toggle-row" for="watch-ambient-check">'
           + '<span class="watch-autoplay-text">Ambient mode</span>'
           + '<span class="watch-autoplay-switch"><input type="checkbox" id="watch-ambient-check" aria-label="Ambient mode" />'
-          + '<span class="watch-autoplay-track"><span class="watch-autoplay-thumb"></span></span></span></label>');
+          + '<span class="watch-autoplay-track"><span class="watch-autoplay-thumb"></span></span></span></label>'
+          // v1.187 (Dean): the intensity ladder, right under the toggle so it can
+          // be tuned live while watching. Hidden with the toggle row in a light theme.
+          + '<label class="watch-autoplay-label settings-menu-toggle" id="ambient-level-row" for="watch-ambient-level">'
+          + '<span class="watch-autoplay-text">Ambient amount</span>'
+          + '<select id="watch-ambient-level" class="settings-menu-select" aria-label="Ambient amount">'
+          + '<option value="subtle">Subtle</option>'
+          + '<option value="normal">Normal</option>'
+          + '<option value="intense">Intense</option>'
+          + '<option value="extreme">Extreme</option>'
+          + '</select></label>');
       }
     }
 
@@ -1955,11 +1977,33 @@ if (typeof module !== 'undefined' && module.exports) {
       const video = document.getElementById('media-player');
       if (!check || !glow) return;
 
+      // v1.187 (Dean): the intensity ladder. The level rides a `data-ambient`
+      // attribute; CSS owns the per-level opacity/blur/scale. Persisted in
+      // localStorage['ft-ambient-intensity'], default 'normal' (a step DOWN from
+      // v1.186's shipped look, which is now the 'intense' rung).
+      const levelSel = root.querySelector('#watch-ambient-level');
+      const levelRow = root.querySelector('#ambient-level-row');
+      let level = 'normal';
+      try { level = resolveAmbientLevel(localStorage.getItem('ft-ambient-intensity')); } catch (_) { level = 'normal'; }
+      function applyLevel() {
+        glow.setAttribute('data-ambient', level);
+        if (levelSel) levelSel.value = level;
+      }
+      applyLevel();
+      if (levelSel) {
+        levelSel.addEventListener('change', () => {
+          level = resolveAmbientLevel(levelSel.value);
+          try { localStorage.setItem('ft-ambient-intensity', level); } catch (_) { /* not persisted */ }
+          applyLevel(); // pure CSS swap - the running loop keeps painting, no restart
+        }, { signal });
+      }
+
       // Dark-only: reveal the toggle row only in a dark theme; a light theme
       // hides the control and guarantees the effect is off.
       function syncRowVisibility() {
         const dark = isDarkMode(document);
         if (row) row.hidden = !dark;
+        if (levelRow) levelRow.hidden = !dark; // v1.187: the intensity row hides with its toggle
         return dark;
       }
 

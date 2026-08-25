@@ -617,6 +617,16 @@ function wireCritterModeControls(signal) {
     try { localStorage.setItem('ft-critters:density', density.value); } catch (_) { /* storage off */ }
     if (typeof applyCritterMode === 'function') applyCritterMode();
   }, { signal });
+  // v1.187 (Dean): critter SIZE. Like density this changes PLACEMENT, so it
+  // re-scatters immediately via applyCritterMode().
+  const sizeSel = document.getElementById('critter-size-select');
+  if (sizeSel) {
+    sizeSel.value = cfg.size || 'normal';
+    sizeSel.addEventListener('change', () => {
+      try { localStorage.setItem('ft-critters:size', sizeSel.value); } catch (_) { /* storage off */ }
+      if (typeof applyCritterMode === 'function') applyCritterMode();
+    }, { signal });
+  }
   // v1.185 (Dean): "random sound each tap" pref. Pure per-tap behavior (the tap
   // handler reads the config live), so NO re-scatter needed - just persist it.
   const randomSound = document.getElementById('critter-randomsound-check');

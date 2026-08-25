@@ -7485,6 +7485,13 @@ var CRITTER_STORAGE_DENSITY = 'ft-critters:density';
 // (identity, not a soundboard); ON draws a fresh random sound from the whole
 // pool per tap. A same-named owned sound always plays regardless.
 var CRITTER_STORAGE_RANDOMSOUND = 'ft-critters:randomsound';
+// v1.187 (Dean): critter SIZE choice. The scale multiplies the planner's computed
+// size AND the cross-axis proportion allowance (so "large" actually reads large
+// instead of being shrunk straight back to its anchor's extent) - every SAFETY
+// invariant (exclusions, document bounds, the screen-edge rule, the peek rule) is
+// unscaled and still hard-skips a placement. scale 1 == byte-identical to v1.186.
+var CRITTER_SIZE_SCALES = { tiny: 0.5, normal: 1, large: 2, xlarge: 3 };
+var CRITTER_STORAGE_SIZE = 'ft-critters:size';
 // Anchors: page furniture worth peeking from behind. Curated, generic across
 // views; each candidate must also SURVIVE the exclusion filters below. Every
 // entry must PAINT A BACKGROUND (the z-index -1 layer hides the overlap by the
@@ -7538,7 +7545,18 @@ function resolveCritterConfig(read) {
   var raw = get(CRITTER_STORAGE_DENSITY);
   var density = Object.prototype.hasOwnProperty.call(CRITTER_DENSITY_COUNTS, raw) ? raw : 'normal';
   var randomSound = get(CRITTER_STORAGE_RANDOMSOUND) === '1'; // default OFF (v1.179 stable voice)
-  return { enabled: enabled, density: density, count: CRITTER_DENSITY_COUNTS[density], randomSound: randomSound };
+  // v1.187: size choice - unset/garbage falls back to 'normal' (the fail-safe
+  // shape every critter pref uses, so a corrupt value can never surprise Dean).
+  var rawSize = get(CRITTER_STORAGE_SIZE);
+  var size = Object.prototype.hasOwnProperty.call(CRITTER_SIZE_SCALES, rawSize) ? rawSize : 'normal';
+  return {
+    enabled: enabled,
+    density: density,
+    count: CRITTER_DENSITY_COUNTS[density],
+    randomSound: randomSound,
+    size: size,
+    sizeScale: CRITTER_SIZE_SCALES[size],
+  };
 }
 
 // The three ORIGINAL built-in figurines (bunny / cat / bear silhouettes), used
@@ -7593,6 +7611,11 @@ function planCritterScatter(opts) {
   var n = Math.min(count, anchorPool.length, critterPool.length);
   var bounds = (opts && opts.bounds) || null; // {w,h} document size - placements never grow the page
   var viewportW = (opts && opts.viewportW) || 0; // v1.180: the SCREEN edge; 0 = not enforced (pure tests)
+  // v1.187 (Dean's size choice): multiplies the computed size, its floor/cap, AND
+  // the cross-axis proportion allowance below. Default 1 = byte-identical to
+  // v1.186 (every existing direct-call test passes no sizeScale).
+  var sizeScale = (opts && opts.sizeScale) || 1;
+  var sizeFloor = Math.max(8, Math.round(26 * sizeScale)); // the v1.170 26px floor, scaled (8px keeps 'tiny' non-degenerate)
   var placements = [];
   // v1.168 (Dean: "not really going as hard as we could"): four edges PLUS the
   // four corners (diagonal ambushes), and the peek DEPTH is randomized per
@@ -7604,9 +7627,10 @@ function planCritterScatter(opts) {
     // v1.167 SCALE-TO-ANCHOR (Dean's ruling): behind a SMALL element (a button)
     // the critter shrinks to ~1.1-1.5x the anchor's height so it reads as
     // hiding behind it; bigger furniture keeps the original 44-88px band.
+    // v1.187: the whole band scales with Dean's size choice (floor/cap included).
     var size = a.h <= 64
-      ? Math.min(88, Math.max(26, Math.round(a.h * (1.1 + rng() * 0.4))))
-      : 44 + Math.floor(rng() * 44); // CODE owns display size either way
+      ? Math.min(Math.round(88 * sizeScale), Math.max(sizeFloor, Math.round(a.h * (1.1 + rng() * 0.4) * sizeScale)))
+      : Math.round((44 + Math.floor(rng() * 44)) * sizeScale); // CODE owns display size either way
     // v1.169 FULL-BLEED RULE (Dean's mobile-feed screenshots: side peeks off a
     // full-width card land ON THE SCREEN EDGE and look amputated): an anchor
     // spanning ~the whole document width only peeks TOP or BOTTOM - emerging
@@ -7632,14 +7656,20 @@ function planCritterScatter(opts) {
     var rad = Math.abs(tilt) * Math.PI / 180;
     var spread = Math.sin(rad) + Math.cos(rad);
     var vertical = edge === 'top' || edge === 'bottom';
-    var crossAllow = (edge.length === 2 ? Math.min(a.w, a.h) : (vertical ? a.w : a.h)) * 1.15;
+    // v1.187: the PROPORTION allowance scales with Dean's size choice too -
+    // otherwise this rule would shrink every large critter straight back to its
+    // anchor's extent and "large"/"extra large" would look identical to normal.
+    // The rule keeps its SHAPE (a critter still may not sprawl past its anchor
+    // beyond the grace), just in proportion to the chosen size. scale 1 is
+    // byte-identical to v1.186. The SAFETY invariants below are NOT scaled.
+    var crossAllow = (edge.length === 2 ? Math.min(a.w, a.h) : (vertical ? a.w : a.h)) * 1.15 * sizeScale;
     if (size * spread > crossAllow) {
-      size = Math.max(26, Math.floor(crossAllow / spread));
+      size = Math.max(sizeFloor, Math.floor(crossAllow / spread));
       if (size * spread > crossAllow) {
-        // Floored at 26 and still too wide: solve sin t + cos t <= allow/26
+        // Floored and still too wide: solve sin t + cos t <= allow/floor
         // (= sqrt(2)*sin(t+45deg)) for the largest tilt that fits. Anchors are
         // >=24px, so allow >= 27.6 and a fit always exists at some tilt >= 0.
-        var kFit = Math.min(Math.SQRT2, crossAllow / 26);
+        var kFit = Math.min(Math.SQRT2, crossAllow / sizeFloor);
         var maxTilt = Math.max(0, Math.floor(Math.asin(kFit / Math.SQRT2) * 180 / Math.PI - 45));
         tilt = Math.sign(tilt) * Math.min(Math.abs(tilt), maxTilt);
       }
@@ -8218,6 +8248,7 @@ function scatterCritters() {
       exclusions: collectCritterRects(CRITTER_EXCLUSION_SELECTORS, false),
       manifest: manifest,
       count: resolveCritterConfig().count,
+      sizeScale: resolveCritterConfig().sizeScale, // v1.187 (Dean): tiny/normal/large/xlarge
       bounds: { w: docEl.scrollWidth, h: docEl.scrollHeight }, // never grow the page (gate W4)
       // v1.180 (Dean's right-edge amputation screenshot): the SCREEN edge is
       // its own boundary - scrollWidth can exceed it when anything overflows,
@@ -14460,6 +14491,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.184/v1.185 sound pool + the random-each-tap pick.
     buildCritterSoundPool, pickCritterRandomSound, playCritterSound, setCritterSoundPoolForTest,
     CRITTER_STORAGE_RANDOMSOUND,
+    // v1.187: critter size choice + the pure rect-overlap helper (so the
+    // invariant tests can assert exclusion clearance directly).
+    CRITTER_SIZE_SCALES, CRITTER_STORAGE_SIZE, critterRectsIntersect,
     buildCritterShaveMask,
     probeCritterVoices,
     getCritterLastChirpReason,

@@ -152,3 +152,57 @@ test('v1.186.1 theatre toggle re-scatters critters for the new layout (exposed h
   assert.match(th, /theaterBtn\.addEventListener\('click'[\s\S]*window\.FileTube\.scheduleCritterScatter\(\)/,
     'the theatre toggle re-scatters critters after flipping the layout class');
 });
+
+// ---- v1.187 (Dean): ambient INTENSITY ladder + organic light falloff --------
+
+test('v1.187 resolveAmbientLevel: the four rungs; unset/garbage -> normal (a step DOWN from v1.186)', () => {
+  const { resolveAmbientLevel, AMBIENT_LEVELS } = require('../../public/js/watch.js');
+  assert.deepStrictEqual(AMBIENT_LEVELS, ['subtle', 'normal', 'intense', 'extreme'], 'Dean\'s four rungs, in order');
+  for (const lvl of AMBIENT_LEVELS) assert.strictEqual(resolveAmbientLevel(lvl), lvl, `${lvl} round-trips`);
+  assert.strictEqual(resolveAmbientLevel(null), 'normal', 'unset -> normal (the new default)');
+  assert.strictEqual(resolveAmbientLevel('blinding'), 'normal', 'garbage -> normal (fail-safe)');
+  assert.strictEqual(resolveAmbientLevel(''), 'normal');
+});
+
+test('v1.187 the intensity ladder is CSS-owned per level, and v1.186\'s look is now the "intense" rung', () => {
+  const lvl = (name) => {
+    const m = new RegExp('\\.ambient-glow\\[data-ambient="' + name + '"\\]\\s*\\{([^}]*)\\}').exec(STYLE_CSS);
+    assert.ok(m, `the ${name} rung exists`);
+    return m[1];
+  };
+  const num = (decls, prop) => parseFloat(new RegExp('--ambient-' + prop + ':\\s*([0-9.]+)').exec(decls)[1]);
+  const o = (n) => num(lvl(n), 'opacity');
+  // strictly increasing intensity across the ladder
+  assert.ok(o('subtle') < o('normal'), 'subtle is WAY less than normal');
+  assert.ok(o('normal') < o('intense'), 'normal is slightly less than intense');
+  assert.ok(o('intense') < o('extreme'), 'extreme is more than what we had');
+  assert.strictEqual(o('intense'), 0.7, 'the "intense" rung IS v1.186\'s shipped 0.7 (Dean: "what we have")');
+  // the level drives CSS only - the running sample loop is never restarted
+  const fn = WATCH_JS.slice(WATCH_JS.indexOf('function setupAmbientMode'), WATCH_JS.indexOf('\n    // v1.22.0 FR-7 (TF): the "Loop"'));
+  assert.match(fn, /glow\.setAttribute\('data-ambient', level\)/, 'the level rides a data attribute (CSS owns the numbers)');
+  assert.match(fn, /localStorage\.setItem\('ft-ambient-intensity', level\)/, 'the choice persists');
+  assert.match(fn, /if \(levelRow\) levelRow\.hidden = !dark;/, 'the intensity row hides with its toggle in a light theme');
+});
+
+test('v1.187 ORGANIC FALLOFF: the glow carries a radial alpha mask under BOTH spellings (the v1.77 lesson)', () => {
+  // Dean: "hard cuts where it just stops on lines - it should fade out
+  // organically like normal light." An unmasked rectangle terminates on a line
+  // (and html{overflow-x:clip} guillotines it at the viewport).
+  const glow = /\.ambient-glow\s*\{([^}]*)\}/.exec(STYLE_CSS);
+  assert.ok(glow, '.ambient-glow rule exists');
+  assert.match(glow[1], /-webkit-mask-image:\s*radial-gradient\([^;]*transparent/, 'the -webkit- spelling (iOS)');
+  assert.match(glow[1], /\n\s*mask-image:\s*radial-gradient\([^;]*transparent/, 'AND the standard spelling (Firefox)');
+  // the blur/scale are per-level vars now, so "extreme" reads as more LIGHT
+  assert.match(glow[1], /filter:\s*blur\(var\(--ambient-blur/, 'blur is per-level');
+  assert.match(glow[1], /transform:\s*scale\(var\(--ambient-scale/, 'spread is per-level');
+});
+
+test('v1.187 the ambient intensity select is INJECTED into the cog (the parity-locked host stays untouched)', () => {
+  assert.doesNotMatch(WATCH_HTML, /id="watch-ambient-level"/, 'not baked into the shared markup (nine-shell parity)');
+  const fn = WATCH_JS.slice(WATCH_JS.indexOf('function ensureCogControlsInjected'), WATCH_JS.indexOf('\n    // FR-9 (v1.21.0) / v1.186'));
+  assert.match(fn, /id="watch-ambient-level"/, 'injected with the other cog controls');
+  assert.match(fn, /id="ambient-level-row"/, 'its row is addressable for the dark-only gate');
+  for (const opt of ['subtle', 'normal', 'intense', 'extreme']) {
+    assert.match(fn, new RegExp('value="' + opt + '"'), `the ${opt} option is offered`);
+  }
+});
