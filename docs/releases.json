@@ -2164,5 +2164,11 @@
     "date": "2026-08-25",
     "title": "Ambient mode actually shows up",
     "intent": "Fixes yesterday's Ambient mode: the glow was there but mathematically hidden behind the video, so nothing rendered no matter which amount you picked. It now spreads properly around the player at every level, still fading out softly at its edges. Note that Intense matches the old spread but is gentler at the edge - that softness is the whole point of the fix - so if you want the strongest look, try Extreme."
+  },
+  {
+    "version": "1.187.2",
+    "date": "2026-08-25",
+    "title": "Ambient mode stops interrupting playback",
+    "intent": "On phones, turning Ambient mode on could make playback pause itself a few seconds in and drop the artwork from the lock screen and Dynamic Island. The glow was simply too expensive to draw - a big blurred layer being repainted far more often than it needed to be - so it has been made dramatically cheaper. Two honest notes: the glow is now a somewhat tighter halo around the player than yesterday's version (that softness was where the cost was), and while turning Ambient off definitely stopped the pausing, the exact reason your phone reacted that way is not yet confirmed - so please tell us if it still happens."
   }
 ]
