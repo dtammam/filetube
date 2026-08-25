@@ -2194,5 +2194,11 @@
     "date": "2026-08-25",
     "title": "Theatre mode fits the screen, and the toolbar buttons match everywhere",
     "intent": "Two fixes. In theatre mode on a computer, if you also collapsed the left menu the video used to grow so tall it ran off the bottom of the screen; now it sizes to fit the window and centres, just like YouTube. And the rounded pill buttons across the app now match the weight of the ones on the home feed, so they look consistent whether you're on the home page, Downloads, Books, Music, Podcasts or History."
+  },
+  {
+    "version": "1.191.0",
+    "date": "2026-08-25",
+    "title": "Friendlier critters and a clearer popcorn button",
+    "intent": "A fun little batch for the critters. Tapping a critter now has a great variety of reactions - eighteen of them, from a nod or a wobble to a backflip or a tada - picked at random each time. When a critter is peeking out from behind a button, tapping the button now works as you'd expect instead of setting off the critter. Collapsing the left menu re-tucks the critters against the new layout so they don't hang in mid-air. And the theatre-mode button is now a clearer, taller popcorn bucket that matches the size of the settings gear next to it."
   }
 ]

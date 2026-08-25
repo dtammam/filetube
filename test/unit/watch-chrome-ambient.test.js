@@ -88,6 +88,11 @@ test('v1.186 ensureCogControlsInjected injects the theater icon + 3 toggle rows,
   assert.ok(fn.length > 0, 'ensureCogControlsInjected exists');
   assert.match(fn, /!document\.getElementById\('theater-btn'\)/, 'theater-btn injection is id-guarded');
   assert.match(fn, /cog\.insertAdjacentHTML\('beforebegin'/, 'theater icon goes just before the cog');
+  // v1.191 (Dean): the popcorn glyph - two paths (evenodd striped tub + puffs),
+  // scaled to match the cog's footprint. The transform is what makes it "the same
+  // size as the cog"; bind it so a future edit can't silently shrink the glyph.
+  assert.match(fn, /fill-rule="evenodd"/, 'the popcorn tub uses evenodd (the cut-out stripes)');
+  assert.match(fn, /<g transform="matrix\(1\.2 0 0 1\.2 -98 54\)">/, 'scaled + re-centred to match the settings-cog footprint');
   assert.match(fn, /!document\.getElementById\('watch-ambient-check'\)/, 'toggle rows injection is id-guarded');
   assert.match(fn, /id="watch-autoplay-check"[\s\S]*id="watch-loop-check"[\s\S]*id="watch-ambient-check"/, 'all three rows injected into the menu');
   // it runs post-mount, before the setup wiring
