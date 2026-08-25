@@ -2158,5 +2158,11 @@
     "date": "2026-08-25",
     "title": "Critters sneak in, ambient dials down",
     "intent": "Four bits of polish. The critters now sneak in - a slow, soft fade with a gentle drift into place instead of popping onto the page. There's a new Size setting for them too: tiny, normal, large or extra large (note that the bigger ones need more room, so you'll see somewhat fewer of them, and they'll peek out further from behind small buttons). Ambient mode gets an amount picker in the player's gear menu - subtle, normal, intense or extreme - and it now defaults to a gentler level; pick Intense for exactly what you had before. And the ambient glow finally fades out softly at its edges like real light, instead of stopping on a hard line."
+  },
+  {
+    "version": "1.187.1",
+    "date": "2026-08-25",
+    "title": "Ambient mode actually shows up",
+    "intent": "Fixes yesterday's Ambient mode: the glow was there but mathematically hidden behind the video, so nothing rendered no matter which amount you picked. It now spreads properly around the player at every level, still fading out softly at its edges. Note that Intense matches the old spread but is gentler at the edge - that softness is the whole point of the fix - so if you want the strongest look, try Extreme."
   }
 ]

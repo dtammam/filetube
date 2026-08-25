@@ -80,6 +80,63 @@
 
 ## Shipped
 
+### v1.187.1 - ambient hotfix: the glow was masked INSIDE the player (Dean device) (2026-08-25)
+
+Dean, on device: "I see the options for ambient mode but nothing renders, at any
+level." Root cause was pure geometry, and mine from v1.187. The #ambient-glow
+canvas is exactly the player's box and paints BEHIND it (the player carries an
+opaque letterbox-black background), so ONLY the part spilling outside the player
+is ever visible. Visible reach = the mask's transparent stop x the scale. v1.187
+shipped stop 76% against scales 1.18/1.25/1.30/1.42:
+
+  subtle 0.90 | normal 0.95 | intense 0.99 | extreme 1.08
+
+Three of four rungs sat entirely INSIDE the player's footprint and were painted
+over; `extreme` was an 8% sliver the 56px blur swallowed. The mask added to fix
+Dean's hard-edge complaint shrank the glow inside the footprint it had to escape
+- the falloff was fixed and the feature destroyed in the same edit, because the
+mask was reasoned about in isolation instead of against the one thing that makes
+the glow visible at all.
+
+FIX: the transparent stop moves 76% -> 100% (alpha still reaches zero AT the
+element edge, so no hard cut returns) and the SCALE alone sets the bleed:
+18/25/30/42% past the player. The solid core also widens 15% -> 40% (gate S2:
+the mask ATTENUATES the escaping ring, so the ladder rendered far dimmer than its
+opacity numbers implied - `subtle` was 4.7% effective, likely still "nothing" on
+a phone). Effective peak alpha at the player edge is now 6.6 / 16.7 / 26.9 /
+45.4%. The ramp stays 0.6 of the half-extent, and the core boundary is provably
+buried inside the opaque player at every rung (innermost visible radius 0.704 >
+0.40), so the visible falloff is still a pure linear ramp to zero.
+
+Slim gate (adversarial), APPROVE after two rounds. It caught that my new REACH
+invariant read only the FIRST `transparent N%` - the `-webkit-` line, which every
+modern engine overrides: editing only the standard `mask-image` line re-shipped
+the invisible glow with a green suite (the v1.77 divergent-spelling class landing
+on the very test written to prevent this bug), and a later `.ambient-glow` rule
+could shadow the mask wholesale. The test now reads BOTH declarations, requires
+them to agree, refuses a second base rule, binds the ramp width, and drives its
+rung loop off AMBIENT_LEVELS. 13 mutants, all dead - including three that
+survived round 1. The seat also disclosed that its own S2 advice made the
+mobile screen-edge run-off ~1.4x stronger, and corrected two stale numerals in my
+comment.
+
+Corrected claim: "intense restores v1.186 exactly" is TRUE of the reach (1.30)
+and of its opacity/blur/saturate/scale values, but NOT of edge brightness - the
+falloff necessarily dims the edge, and that dimming IS the hard-cut fix.
+
+Known gaps DISCLOSED: (a) on a mobile full-bleed player the page's overflow clip
+still cuts the halo at the screen edge at 3-36% effective alpha (reach > 1 and
+zero-alpha-at-the-clip are mutually exclusive above scale 1.09; the wave chooses
+visibility - a run-off at the physical screen edge reads as light leaving the
+frame, unlike v1.186's ~70% mid-air cut). `extreme` on a phone is the sharpest
+case and heads Dean's probe list. (b) tech-debt #172: ambient is inert in the
+expanded-audio view (its fixed full-viewport overlay collapses the stage) -
+pre-existing, the visible outcome is correct, and the seat agreed widening the
+hotfix into that stacking path was out of scope.
+
+Tests: watch-chrome-ambient 16 -> 17. Dual-Node 7548/7548 on v22 + v24.
+Device pass PENDING.
+
 ### v1.187.0 - critter sneak-in + size choice, ambient intensity + organic falloff (Dean) (2026-08-25)
 
 Dean's four asks, one wave:

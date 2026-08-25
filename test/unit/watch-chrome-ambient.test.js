@@ -225,3 +225,53 @@ test('v1.187 the ambient intensity select is INJECTED into the cog (the parity-l
     assert.match(fn, new RegExp('value="' + opt + '"'), `the ${opt} option is offered`);
   }
 });
+
+test('v1.187.1 THE REACH INVARIANT: every rung must bleed BEYOND the player, on BOTH mask spellings', () => {
+  // Dean, device: "I see the options for ambient but nothing renders, at any
+  // level." Root cause was pure geometry, not wiring: the canvas is exactly the
+  // player's box and paints BEHIND it (the player has an opaque letterbox-black
+  // background), so ONLY the part spilling outside the player is ever visible.
+  // v1.187's mask faded alpha to ZERO at 76% of the half-extent; after the
+  // 1.18-1.30 scale the glow's outer boundary landed at 0.90-0.99 of the player's
+  // own half-size - entirely inside the footprint, painted over, at three of the
+  // four rungs.
+  //
+  // Gate W1: the FIRST cut of this test read only the first `transparent N%` in
+  // the rule - the `-webkit-` line, which every modern engine OVERRIDES with the
+  // standard spelling below it. Editing only the standard line shipped the
+  // invisible glow gate-green (the v1.77 divergent-spelling class, landing on the
+  // very invariant written to prevent it). It now reads BOTH declarations,
+  // requires them to agree, and refuses a second `.ambient-glow` base rule that
+  // could shadow the mask entirely (the v1.187 `.critter-pose` shadowing gotcha).
+  const baseRules = STYLE_CSS.match(/(^|\n)\.ambient-glow\s*\{/g) || [];
+  assert.strictEqual(baseRules.length, 1, 'exactly ONE .ambient-glow base rule (a second would shadow the mask)');
+  const decls = [...STYLE_CSS.matchAll(/(-webkit-)?mask-image:\s*radial-gradient\(ellipse closest-side at center, black (\d+)%, transparent (\d+)%\)/g)];
+  assert.strictEqual(decls.length, 2, 'both mask spellings present, and nothing else declares the glow mask');
+  const cores = new Set(decls.map((d) => Number(d[2])));
+  const stops = new Set(decls.map((d) => Number(d[3])));
+  assert.strictEqual(cores.size, 1, 'the two spellings must not DIVERGE on the solid core');
+  assert.strictEqual(stops.size, 1, 'the two spellings must not DIVERGE on the transparent stop');
+  const core = [...cores][0] / 100;
+  const stop = [...stops][0] / 100;
+  // Gate S1: the ramp must stay a RAMP. A near-100% core (e.g. black 99%) keeps
+  // every reach assertion green while collapsing the falloff into a hard edge in
+  // mid-air above the player - exactly Dean's original complaint.
+  assert.ok(stop - core >= 0.5, `the falloff must stay organic: core ${core} -> stop ${stop} is only ${(stop - core).toFixed(2)} of the half-extent`);
+  // The fade must complete BY the element edge, or the border-box mask cut lands
+  // in mid-air at real alpha (a hard line).
+  assert.ok(stop <= 1, `the fade must reach zero by the element edge (stop ${stop} > 1 leaves a hard cut)`);
+  // THE invariant: every rung must escape the player, or it is invisible.
+  const { AMBIENT_LEVELS } = require('../../public/js/watch.js'); // gate S3: drive from the JS ladder, not a hardcoded list
+  for (const rung of AMBIENT_LEVELS) {
+    const body = new RegExp('\\.ambient-glow\\[data-ambient="' + rung + '"\\] \\{([^}]*)\\}').exec(STYLE_CSS);
+    assert.ok(body, `${rung} has a CSS rung`);
+    const scale = Number(/--ambient-scale:\s*([0-9.]+)/.exec(body[1])[1]);
+    assert.ok(stop * scale > 1,
+      `${rung}: stop ${stop} x scale ${scale} = ${(stop * scale).toFixed(3)} - the glow must reach PAST the player's half-size (>1) or it is hidden behind the player entirely`);
+  }
+  // intense keeps v1.186's REACH exactly (its brightness necessarily differs -
+  // the falloff dims the edge; that IS the fix for the hard cut).
+  const intense = /\.ambient-glow\[data-ambient="intense"\] \{([^}]*)\}/.exec(STYLE_CSS)[1];
+  assert.strictEqual(Number(/--ambient-scale:\s*([0-9.]+)/.exec(intense)[1]) * stop, 1.3,
+    'intense reaches 1.3 - the same geometric bleed v1.186 had');
+});

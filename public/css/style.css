@@ -8542,22 +8542,43 @@ body.ft-audio-expanded {
      organically like normal light"): the glow was an unmasked rectangle, so its
      blurred edge still terminated on a straight line, and the root's overflow-x
      clip guillotined it at the viewport. A radial falloff makes it read as light.
-     CLOSEST-SIDE is load-bearing (gate W3): the default farthest-corner sizing
-     puts the transparent stop ~7.5% OUTSIDE the box, so ~11-45% mask alpha
-     survived to the clip line and the hard cut remained on mobile - worst at
-     `extreme`, the rung picked for MORE light. closest-side sets the radius to
-     the half-extent, so alpha reaches zero genuinely inside the element and the
-     guillotine has nothing left to cut. BOTH mask spellings - one alone breaks
-     Firefox or iOS (the v1.77 lesson).
+     THE REACH INVARIANT (v1.187.1, Dean: "I see the options but nothing renders"):
+     this canvas is exactly the player's box and paints BEHIND it, so ONLY the part
+     that spills outside the player is ever visible. Visible reach = the mask's
+     transparent stop x the scale. v1.187 shipped stop 76% x scale 1.18-1.30 =
+     0.90-0.99, so the whole glow sat INSIDE the player's footprint and was painted
+     over at three of the four rungs. Stop is now 100%, and the SCALE alone sets
+     the bleed: 18-42% beyond the player. Test-bound - stop x scale MUST exceed 1
+     for every rung, and stop must stay <= 1 (a stop past the edge would put the
+     border-box mask cut in mid-air at real alpha).
+     HONEST SCOPE (gate W2): alpha reaches zero at the element edge in the
+     element's OWN coordinates - but the page guillotine (the root's overflow-x
+     clip) cuts at the VIEWPORT, which on a mobile full-bleed player sits ~1.09
+     half-widths out, INSIDE the scaled glow. So 3-36% effective alpha still
+     terminates at the screen edge there (3.3 / 10.7 / 18.9 / 35.7 across the
+     ladder - re-derived after the core widened to 40%). That is unavoidable: reach > 1 (visible
+     at all) and zero-alpha-at-the-clip (1.09) cannot both hold unless every scale
+     sits in (1.00, 1.09], which would cap the halo at ~16px. The wave chooses
+     VISIBILITY; a run-off at the physical screen edge reads as light leaving the
+     frame, unlike v1.186's ~70% mid-air cut.
+     The 40% solid core is deliberate: the mask attenuates the escaping ring, so a
+     narrow core rendered the whole ladder far dimmer than its opacity numbers
+     imply. `intense` therefore matches v1.186's REACH (1.30), not its brightness
+     - the falloff necessarily dims the edge; that is the fix for the hard cut.
+     CLOSEST-SIDE stays load-bearing: farthest-corner sizes the ending shape to
+     sqrt(2) x the half-extent, so a 100% stop lands 41% OUTSIDE the box and ~49%
+     mask alpha survives to the border-box cut - a hard rectangle, exactly what
+     the mask exists to remove. BOTH mask spellings - one alone breaks Firefox or
+     iOS (the v1.77 lesson).
      NB keep literal braces out of this comment - the suite extracts rule bodies
      with a non-brace regex, so a closing brace here truncates the match. */
-  -webkit-mask-image: radial-gradient(ellipse closest-side at center, black 28%, transparent 76%); /* token-exempt: mask ALPHA ramp, not a theme colour (black/transparent are the mask's opacity stops) */
-  mask-image: radial-gradient(ellipse closest-side at center, black 28%, transparent 76%); /* token-exempt: mask ALPHA ramp, not a theme colour (the standard spelling of the line above) */
+  -webkit-mask-image: radial-gradient(ellipse closest-side at center, black 40%, transparent 100%); /* token-exempt: mask ALPHA ramp, not a theme colour (black/transparent are the mask's opacity stops) */
+  mask-image: radial-gradient(ellipse closest-side at center, black 40%, transparent 100%); /* token-exempt: mask ALPHA ramp, not a theme colour (the standard spelling of the line above) */
 }
 /* v1.187 the INTENSITY ladder (Dean: v1.186's look was "almost too intense").
    `data-ambient` is set by watch.js; CSS owns the numbers so the token census
    stays clean and the level can swap live without restarting the sample loop.
-   `intense` restores v1.186's OPACITY+BLUR+SATURATE exactly (gate W3 caught that
+   `intense` keeps v1.186's opacity+blur+saturate+scale values (gate W3 caught that
    the first cut had quietly changed blur 72->64 and saturate 1.4->1.35, so
    picking "Intense" would NOT have given Dean his old look back); the radial
    falloff is new for every rung by design - it is the fix for the hard edges.
