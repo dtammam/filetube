@@ -2015,18 +2015,31 @@ if (typeof module !== 'undefined' && module.exports) {
       check.checked = prefOn;
       syncRowVisibility();
 
-      // v1.187.2 (Dean, device: playback paused itself ~2-3s in and the Dynamic
-      // Island lost its artwork - BOTH symptoms are releaseAudioSession(), the
-      // terminal teardown iOS triggers by freezing/discarding a page that costs
-      // too much). The effect is now as cheap as it can be while looking the same:
-      //  - the canvas backing store stays TINY (32x18) and CSS stretches it to the
-      //    box. Previously the canvas was resized to the player's own pixel size
-      //    and repainted through an intermediate buffer - a ~1.4MP upload per
-      //    paint, under a huge CSS blur, on a phone.
-      //  - the browser's bilinear upscale of a 32x18 source already smooths ~25px
-      //    per source pixel, so the CSS blur radius drops hard (see style.css).
-      // Proof it was the COST and not the video-sampling: audio playback paused
-      // too, and the audio path never draws the video element at all.
+      // v1.187.2 (Dean, device): playback paused itself ~2-3s in and the Dynamic
+      // Island lost its artwork, on audio AND video, with Ambient ON only.
+      // ATTRIBUTION IS UNCONFIRMED (gate W5). Both symptoms match
+      // releaseAudioSession() (pause + `mediaSession.metadata = null`), but that
+      // is only reachable from a `pagehide` with `persisted === false` - a page
+      // actually UNLOADING, which Dean did not report. The equally consistent
+      // explanation is iOS killing the renderer / interrupting the audio session,
+      // which runs NO app code at all and would leave that function innocent.
+      // The decisive probe is the app's own lifecycle log (`?debugLifecycle=1`):
+      // a `pagehide persisted:false` entry at the pause confirms the function;
+      // no entry at all means the pause came from outside the app. That probe
+      // should have preceded this edit.
+      // What IS certain: Ambient ON reproduces it, OFF does not. So the effect's
+      // COST is reduced to a floor under either mechanism:
+      //  - the backing store stays 32x18 and CSS stretches it. It used to be
+      //    resized to the player's CSS-pixel box and painted through an
+      //    intermediate buffer: ~0.09 MP (~350 KB) per paint on Dean's phone -
+      //    real, but the SMALLEST of the three savings (the earlier "~1.4 MP"
+      //    figure was a desktop-theatre box, ~16x off for the affected device).
+      //  - the loop left the frame loop: rAF woke the main thread ~60x/s to
+      //    early-return for a 2fps sampler. Cheap in CPU, but it is main-thread
+      //    churn a slow sampler has no business creating.
+      //  - the DOMINANT saving is in style.css: a 64-88px blur on a full-width
+      //    composited layer (outset ~3x the radius on every side, times DPR^2)
+      //    plus `will-change` pinning that surface permanently.
       const SRC_W = 32;
       const SRC_H = 18;
       const gctx = glow.getContext('2d');
@@ -2041,6 +2054,19 @@ if (typeof module !== 'undefined' && module.exports) {
       let timerId = null;
       let coverImg = null; // lazily-loaded audio cover art (same-origin thumbnail)
       let hardFailed = false; // a drawImage throw permanently disables the loop for this view (never re-arm)
+
+      // v1.187.2 gate W4: the sampler used `video.videoWidth > 0` to decide "is
+      // this video?" - a WEBKIT-reported property. An audio file carrying embedded
+      // cover art can expose a video track and report a non-zero videoWidth, so
+      // the audio path could draw the video element after all, and the claim that
+      // it never does was an assumption about Dean's files rather than a property
+      // of the code. Gate on the APP's own signal (player.js sets `audio-mode` on
+      // the host) so the claim is true by construction - and so the next device
+      // pass is a clean A/B on the video-sampling theory.
+      function isAudioItem() {
+        const host = document.getElementById('player-wrapper');
+        return !!(host && host.classList.contains('audio-mode'));
+      }
 
       function currentlyPlaying() {
         return !!(video && !video.paused && !video.ended && video.readyState >= 2);
@@ -2075,7 +2101,7 @@ if (typeof module !== 'undefined' && module.exports) {
       function tick() {
         timerId = null;
         if (!shouldRun()) { stop(); return; }
-        if (video && video.videoWidth > 0) paintFrom(video);
+        if (!isAudioItem() && video && video.videoWidth > 0) paintFrom(video);
         else { ensureCover(); if (coverImg) paintFrom(coverImg); }
         if (hardFailed) return; // paintFrom hit an unrecoverable error -> do NOT re-arm (the WARNING fix)
         schedule();
@@ -2088,8 +2114,9 @@ if (typeof module !== 'undefined' && module.exports) {
         if (timerId != null) return; // already running
         glow.hidden = false;
         glow.classList.add('is-on');
-        if (video && video.videoWidth > 0) paintFrom(video); // first frame immediately, then on the interval
+        if (!isAudioItem() && video && video.videoWidth > 0) paintFrom(video); // first frame immediately, then on the interval
         else { ensureCover(); if (coverImg) paintFrom(coverImg); }
+        if (hardFailed) return; // S1: a throw in that first paint must NOT arm a timer
         schedule();
       }
       function stop() {

@@ -118,7 +118,8 @@ test('v1.186 ambient loop is battery-safe: gated on ambientShouldRun, torn down 
   // v1.187.2: the sampler is a plain timer, NOT rAF - rAF woke it 60x a second
   // to early-return on all but ~2 of them, keeping the compositor hot for a 2fps
   // effect (part of the cost that made iOS freeze the page and pause playback).
-  assert.match(fn, /if \(timerId != null\) clearTimeout\(timerId\);/, 'the timer handle is cancelled on stop (no leak)');
+  assert.match(fn, /if \(timerId != null\) clearTimeout\(timerId\);\n\s*timerId = null;/,
+    'stop() cancels AND NULLS the handle - timerId is also the "already running" guard, so leaving it set makes start() early-return forever (ambient never returns after a pause)');
   assert.doesNotMatch(fn, /requestAnimationFrame/, 'a slow sampler must NOT sit in the frame loop');
   assert.match(fn, /timerId = setTimeout\(tick, MIN_INTERVAL\);/, 'it re-arms on the interval');
   // re-evaluated on every signal that flips the predicate
@@ -294,6 +295,14 @@ test('v1.187.2 THE COST INVARIANT: the sampler must stay cheap enough not to get
   // sampler. Audio pausing too is what proved it was the COST, not the
   // video-sampling - the audio path never draws the video element at all.
   const fn = WATCH_JS.slice(WATCH_JS.indexOf('function setupAmbientMode'), WATCH_JS.indexOf('\n    // v1.22.0 FR-7 (TF): the "Loop"'));
+  // 0. AUDIO must never draw the video element - gated on the app's own
+  //    `audio-mode` signal, NOT on WebKit's videoWidth (an audio file with
+  //    embedded cover art can report a non-zero videoWidth, which made the
+  //    "audio never draws the video" falsification an assumption, not a fact).
+  assert.match(fn, /function isAudioItem\(\)/, 'the sampler has an app-owned audio signal');
+  assert.match(fn, /classList\.contains\('audio-mode'\)/, 'it reads player.js\'s own audio-mode class');
+  assert.strictEqual((fn.match(/!isAudioItem\(\) && video && video\.videoWidth > 0/g) || []).length, 2,
+    'BOTH paint sites (the interval tick and the first paint in start) gate the video draw on not-audio');
   // 1. the backing store stays TINY - never resized to the element's pixel box.
   assert.match(fn, /glow\.width = SRC_W;/, 'the canvas backing store is the 32x18 sample, not the player box');
   assert.doesNotMatch(fn, /glow\.width = Math\.max/, 'the canvas must never be resized to its display box (a megapixel upload per paint)');
@@ -306,7 +315,15 @@ test('v1.187.2 THE COST INVARIANT: the sampler must stay cheap enough not to get
     const blur = Number(/--ambient-blur:\s*([0-9.]+)px/.exec(body)[1]);
     assert.ok(blur <= 40, `${rung}: blur ${blur}px - a large-radius blur on a full-width layer is the GPU cost that got the page frozen (cap 40px)`);
   }
-  // 4. no permanently-promoted GPU surface for a show/hide transition.
-  const glowRule = /\.ambient-glow\s*\{([^}]*)\}/.exec(STYLE_CSS)[1];
-  assert.doesNotMatch(glowRule.replace(/\/\*[\s\S]*?\*\//g, ''), /will-change/, 'no will-change: it pinned a GPU surface for a transition that only runs on show/hide');
+  // 4. the paint INTERVAL is the single biggest cost lever - a 16ms interval would
+  //    repaint the blurred, scaled, masked layer at 60fps, far worse than pre-fix.
+  assert.match(fn, /const MIN_INTERVAL = isMobile \? 500 : 200;/, 'the throttle stays coarse (2fps mobile / 5fps desktop)');
+  // 5. no intermediate canvas: the old pipeline allocated a second surface per view.
+  assert.doesNotMatch(fn, /createElement\('canvas'\)/, 'no intermediate buffer canvas');
+  // 6. no permanently-promoted GPU surface for a show/hide transition - swept over
+  //    EVERY .ambient-glow rule, not just the base one (the every-writer class: a
+  //    `will-change` on `.is-on` pins the surface exactly when it is visible).
+  const everyGlowRule = [...STYLE_CSS.matchAll(/\.ambient-glow[^{]*\{([^}]*)\}/g)].map((m) => m[1]).join('\n');
+  assert.doesNotMatch(everyGlowRule.replace(/\/\*[\s\S]*?\*\//g, ''), /will-change/,
+    'NO .ambient-glow rule may pin a GPU surface (it was pinned for a transition that only runs on show/hide)');
 });
