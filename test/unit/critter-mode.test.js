@@ -1938,13 +1938,19 @@ test('tap reactions: a pool of tiny transform-only animations, each defined in C
     'the reaction pool (Dean: "a variety" + v1.191 "add a few more" then "even more... a GREAT variety")');
   assert.ok(CRITTER_REACTIONS.length >= 18, 'v1.191 grew the pool to a great variety (18)');
   assert.strictEqual(new Set(CRITTER_REACTIONS).size, CRITTER_REACTIONS.length, 'no duplicate reactions');
-  const reduced = CSS.split('@media (prefers-reduced-motion: reduce)').slice(1).join('\n');
+  // gate WARNING (adversarial): isolate the ACTUAL reduced-motion { animation:
+  // none; } block that lists the reactions - NOT everything after the first
+  // prefers-reduced-motion @media (which includes the reaction class DEFINITIONS,
+  // making the membership match vacuous). Bind membership against the block's own
+  // selector list, so dropping a reaction from it - or deleting the block - reds.
+  const rm = CSS.match(/@media \(prefers-reduced-motion: reduce\) \{\s*((?:\.critter-[a-z]+,\s*)+\.critter-[a-z]+) \{ animation: none; \}/);
+  assert.ok(rm, 'the critter-reaction reduced-motion { animation: none } block exists');
   for (const cls of CRITTER_REACTIONS) {
     assert.match(CSS, new RegExp('\\.' + cls + '\\s*\\{\\s*animation:\\s*' + cls), cls + ' has its CSS animation');
     const kf = new RegExp('@keyframes ' + cls + '\\s*\\{([\\s\\S]*?)\\n\\}').exec(CSS);
     assert.ok(kf, cls + ' keyframes exist');
     assert.doesNotMatch(kf[1], /margin|left:|top:|width|height/, cls + ' is transform-only (contained, zero layout shift)');
-    assert.match(reduced, new RegExp('\\.' + cls.replace(/-/g, '\\-')), cls + ' dies under reduced motion');
+    assert.match(rm[1], new RegExp('\\.' + cls + '\\b'), cls + ' dies under reduced motion');
   }
   // The tap handler draws from the SAME pool (a new reaction class added in CSS
   // but not the pool - or vice versa - is drift).

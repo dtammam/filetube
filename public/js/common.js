@@ -8782,9 +8782,13 @@ function scheduleCritterScatter() {
 function wireCritterListeners() {
   if (critterWired || typeof document === 'undefined') return;
   critterWired = true;
-  // Tap (v1.188, Dean: "the critter WINS its whole area"): a tap anywhere on the
-  // png chirps AND is SWALLOWED so it never clicks through to the card/control
-  // behind it. This REVERSES the old "the link always wins" posture - the
+  // Tap: a tap on the VISIBLE part of the critter (its exposed peek, and any body
+  // overhanging OTHER furniture) chirps AND is SWALLOWED so it never clicks
+  // through to the thing it OBSCURES. But a tap over the critter's OWN anchor
+  // (where the sandwich clips it away - a button it peeks from behind) is NOT a
+  // hit (critterTapHit excludes it), so that tap goes to the button - v1.191
+  // (Dean: buttons behind critters must work), walking back v1.188's whole-box
+  // swallow. This reversed the older "the link always wins" posture (v1.188) - the
   // handler now runs in the CAPTURE phase (document is the first node in the
   // dispatch path), so stopPropagation() keeps the event from ever descending
   // to the target's own handlers and preventDefault() cancels the default (a
@@ -8804,8 +8808,8 @@ function wireCritterListeners() {
     // scrollY), so a critter at the viewport origin would hit-test-match and
     // SWALLOW that activation (an a11y regression, since the capture swallow
     // replaced the old interactive-element stand-down). A genuine pointer/touch
-    // TAP always reports detail>=1, so this preserves "the critter wins its whole
-    // area" for real taps while never eating a synthesized activation. (Device
+    // TAP always reports detail>=1, so this preserves the critter's visible-region
+    // win for real taps while never eating a synthesized activation. (Device
     // probe: confirm touch taps report detail>=1 - the UI Events spec sets the
     // click count to 1 for a tap, as does iOS Safari.)
     if (!e.detail) return;
@@ -8859,8 +8863,8 @@ function wireCritterListeners() {
   // v1.183 (Dean, desktop): spam-clicking a critter was selecting the text
   // beneath it (the browser's double/triple-click gesture) - the layer is
   // pointer-events:none, so the mousedown lands on the content under the peek.
-  // Suppress the SELECTION default when the down is a REAL critter hit (now the
-  // whole box - v1.188). mousedown-only, so touch scroll + long-press are
+  // Suppress the SELECTION default when the down is a REAL critter hit (the
+  // visible region - box minus its own anchor, v1.191). mousedown-only, so touch scroll + long-press are
   // untouched; preventDefault on mousedown stops the selection (and
   // mousedown-focus). The click itself is separately swallowed by the
   // capture-phase tap listener above, so no underlying link/button ever fires.
