@@ -80,6 +80,36 @@
 
 ## Shipped
 
+### v1.189.1 - critter taps respect z-order: no chirp/click-eat under an open overlay (2026-08-25)
+
+Dean, on-device: with the notification dropdown open over a critter (peeking on a
+related file), clicking IN the dropdown made the critter chirp - and, worse, the
+v1.188 capture-phase swallow (stopPropagation + preventDefault) ate the dropdown
+item's own click. Root cause: the v1.188 whole-box tap swallow hit-tests by
+COORDINATES only, ignoring z-order. The critter layer is `z-index: 2` (correctly
+painted behind overlays, which ride the `--z-*` ladder at 900+), but a click that
+geometrically landed in a critter box was treated as a critter tap regardless of
+what was on top.
+
+Fix: a `critterOccludedAt(target)` guard walks from the click target up to
+`<body>` and stands the tap down when any positioned ancestor is stacked STRICTLY
+above the critter layer's live z-index (default 2). Wired into BOTH the capture
+click handler and the mousedown selection-guard, after the cheap geometric
+hit-test. Anchors the critters peek from are z-auto / below the layer by
+construction (the sandwich needs the critter to paint OVER its furniture), so a
+genuine peek tap never trips it; fails open in a non-DOM context.
+
+**Gate:** FULL (both seats - the QA seat caught the last swallow edge case, so
+this swallow fix earned two seats). Both APPROVE. The adversarial ran a 6-mutant
+battery and empirically disproved the dangerous over-suppression regression (that
+a critter could become un-tappable because its card sits high in the stack); the
+QA seat machine-enumerated every `z>2` context and checked all 15 anchor
+selectors. All three non-blocking SUGGESTIONs applied (bind the z default, guard
+the layer read, sweep stale `z-index:-1` comments). **Known residual:** tech-debt
+#173 - the `.main-content` ground-contract comment + some critter-mode test
+comments still narrate the pre-v1.168 z:-1 model (stale rationale, all assertions
+green); left for a follow-up sweep per gate pacing. Dual-Node green.
+
 ### v1.189.0 - modern pills extended to the books/music/podcasts/history toolbars (2026-08-25)
 
 Follow-up to v1.188.0's home-toolbar pills (Dean: "continue on with anything left

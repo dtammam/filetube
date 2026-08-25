@@ -2182,5 +2182,11 @@
     "date": "2026-08-25",
     "title": "The rounded pill buttons now cover the rest of your pages",
     "intent": "Following on from yesterday's library pills: the toolbars on your Books, Music, Podcasts and History pages now use the same rounded pill buttons, so the whole app feels consistent. Buttons that start something new - like Add or Subscribe - keep their bold accent colour so they still stand out; everything just gets the softer rounded shape. All of it follows your chosen theme's colours automatically, in light and dark."
+  },
+  {
+    "version": "1.189.1",
+    "date": "2026-08-25",
+    "title": "Tapping inside an open menu no longer sets off a critter",
+    "intent": "A small fix for the little critters. If one was peeking out from behind something and you opened a menu or dropdown on top of it, clicking inside that menu could set off the critter's sound - and sometimes even swallow your click so the menu didn't respond. Now a critter only reacts when you actually tap it out in the open, never when something else is drawn on top of it."
   }
 ]
