@@ -2015,24 +2015,62 @@ if (typeof module !== 'undefined' && module.exports) {
       check.checked = prefOn;
       syncRowVisibility();
 
-      // Tiny offscreen sample buffer (source pixels averaged down cheaply); the
-      // big canvas is painted from it scaled-up + CSS-blurred, so the glow is a
-      // handful of soft color regions, not a sharp copy.
+      // v1.187.2 (Dean, device): playback paused itself ~2-3s in and the Dynamic
+      // Island lost its artwork, on audio AND video, with Ambient ON only.
+      // ATTRIBUTION IS UNCONFIRMED (gate W5). Both symptoms match
+      // releaseAudioSession() (pause + `mediaSession.metadata = null`), but that
+      // is only reachable from a `pagehide` with `persisted === false` - a page
+      // actually UNLOADING, which Dean did not report. The equally consistent
+      // explanation is iOS killing the renderer / interrupting the audio session,
+      // which runs NO app code at all and would leave that function innocent.
+      // The decisive probe is the app's own lifecycle log (`?debugLifecycle=1`):
+      // a `pagehide persisted:false` entry at the pause confirms the function;
+      // no entry at all means the pause came from outside the app. That probe
+      // should have preceded this edit.
+      // What IS certain: Ambient ON reproduces it, OFF does not. So the effect's
+      // COST is reduced to a floor under either mechanism:
+      //  - the backing store stays 32x18 and CSS stretches it. It used to be
+      //    resized to the player's CSS-pixel box and painted through an
+      //    intermediate buffer: ~0.09 MP (~350 KB) per paint on Dean's phone -
+      //    real, but the SMALLEST of the three savings (the earlier "~1.4 MP"
+      //    figure was a desktop-theatre box, ~16x off for the affected device).
+      //  - the loop left the frame loop: rAF woke the main thread ~60x/s to
+      //    early-return for a 2fps sampler. Cheap in CPU, but it is main-thread
+      //    churn a slow sampler has no business creating.
+      //  - the DOMINANT saving is in style.css: a 64-88px blur on a full-width
+      //    composited layer (outset ~3x the radius on every side, times DPR^2)
+      //    plus `will-change` pinning that surface permanently.
       const SRC_W = 32;
       const SRC_H = 18;
-      const buf = document.createElement('canvas');
-      buf.width = SRC_W; buf.height = SRC_H;
-      const bctx = buf.getContext('2d');
       const gctx = glow.getContext('2d');
+      glow.width = SRC_W;   // backing store, NOT the display size (CSS owns that)
+      glow.height = SRC_H;
 
-      // Hard throttle: coarser on mobile (battery). rAF-gated, min-interval.
+      // Hard throttle. v1.187.2: a plain timer, NOT rAF - rAF woke this up 60x a
+      // second to early-return on all but ~3 of them, keeping the compositor hot
+      // for a 2.5fps effect. A slow sampler has no business in the frame loop.
       const isMobile = (typeof window.matchMedia === 'function') && window.matchMedia('(max-width: 768px)').matches;
-      const MIN_INTERVAL = isMobile ? 400 : 180; // ~2.5fps mobile / ~5.5fps desktop
-      let rafId = null;
+      const MIN_INTERVAL = isMobile ? 500 : 200; // 2fps mobile / 5fps desktop
       let timerId = null;
-      let lastPaint = 0;
       let coverImg = null; // lazily-loaded audio cover art (same-origin thumbnail)
       let hardFailed = false; // a drawImage throw permanently disables the loop for this view (never re-arm)
+
+      // v1.187.2 gate W4: the sampler used `video.videoWidth > 0` to decide "is
+      // this video?" - a WEBKIT-reported property. An audio file carrying embedded
+      // cover art can expose a video track and report a non-zero videoWidth, so
+      // the audio path could draw the video element after all, and the claim that
+      // it never does was an assumption about Dean's files, not a property of the
+      // code. Gate on THIS VIEW'S OWN media type instead.
+      // Delta note (gate WARNING B): the first cut read player.js's `.audio-mode`
+      // class, which is NOT "is this audio" - it is added only when the item also
+      // has extractable embedded art (artUrl -> hasThumbnail -> ffmpeg copied a
+      // picture stream). An audio file whose art extraction failed would have
+      // fallen through to videoWidth again: exactly the risk set W4 exists to
+      // close. `mediaData.type` is authoritative, needs no cross-module
+      // coincidence, and is read LAZILY here so load order cannot matter.
+      function isAudioItem() {
+        return !!(mediaData && mediaData.type === 'audio');
+      }
 
       function currentlyPlaying() {
         return !!(video && !video.paused && !video.ended && video.readyState >= 2);
@@ -2041,20 +2079,11 @@ if (typeof module !== 'undefined' && module.exports) {
         return ambientShouldRun({ prefOn: prefOn, dark: isDarkMode(document), playing: currentlyPlaying(), docVisible: !document.hidden });
       }
 
-      function paintFrom(srcEl, sw, sh) {
+      function paintFrom(srcEl) {
         try {
-          bctx.drawImage(srcEl, 0, 0, SRC_W, SRC_H); // downscale-average
-          // size the glow canvas to its own box once it has one
-          const r = glow.getBoundingClientRect();
-          if (r.width > 0 && r.height > 0) {
-            if (glow.width !== Math.round(r.width) || glow.height !== Math.round(r.height)) {
-              glow.width = Math.max(1, Math.round(r.width));
-              glow.height = Math.max(1, Math.round(r.height));
-            }
-            gctx.imageSmoothingEnabled = true;
-            gctx.clearRect(0, 0, glow.width, glow.height);
-            gctx.drawImage(buf, 0, 0, SRC_W, SRC_H, 0, 0, glow.width, glow.height);
-          }
+          // ONE downscale straight into the 32x18 backing store. CSS stretches it
+          // over the box, so there is no megapixel surface to allocate or upload.
+          gctx.drawImage(srcEl, 0, 0, SRC_W, SRC_H);
         } catch (_) {
           // A tainted/again-not-ready source must never break playback: stop
           // PERMANENTLY for this view (hardFailed skips the reschedule below, so
@@ -2073,36 +2102,33 @@ if (typeof module !== 'undefined' && module.exports) {
         im.src = '/thumbnail/' + encodeURIComponent(mediaId); // same-origin -> no canvas taint
       }
 
-      function tick(now) {
-        rafId = null;
+      function tick() {
+        timerId = null;
         if (!shouldRun()) { stop(); return; }
-        if (!now) now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-        if (now - lastPaint >= MIN_INTERVAL) {
-          lastPaint = now;
-          if (video && video.videoWidth > 0) paintFrom(video);
-          else { ensureCover(); if (coverImg) paintFrom(coverImg); }
-        }
+        if (!isAudioItem() && video && video.videoWidth > 0) paintFrom(video);
+        else { ensureCover(); if (coverImg) paintFrom(coverImg); }
         if (hardFailed) return; // paintFrom hit an unrecoverable error -> do NOT re-arm (the WARNING fix)
         schedule();
       }
       function schedule() {
-        if (typeof window.requestAnimationFrame === 'function') rafId = window.requestAnimationFrame(tick);
-        else timerId = setTimeout(function () { timerId = null; tick(); }, MIN_INTERVAL);
+        timerId = setTimeout(tick, MIN_INTERVAL);
       }
       function start() {
         if (hardFailed) return; // an unrecoverable paint error disabled ambient for this view
-        if (rafId != null || timerId != null) return; // already running
+        if (timerId != null) return; // already running
         glow.hidden = false;
         glow.classList.add('is-on');
+        if (!isAudioItem() && video && video.videoWidth > 0) paintFrom(video); // first frame immediately, then on the interval
+        else { ensureCover(); if (coverImg) paintFrom(coverImg); }
+        if (hardFailed) return; // S1: a throw in that first paint must NOT arm a timer
         schedule();
       }
       function stop() {
-        if (rafId != null && typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(rafId);
         if (timerId != null) clearTimeout(timerId);
-        rafId = null; timerId = null;
+        timerId = null;
         glow.classList.remove('is-on');
         glow.hidden = true;
-        try { if (glow.width && glow.height) gctx.clearRect(0, 0, glow.width, glow.height); } catch (_) { /* nothing painted yet */ }
+        try { gctx.clearRect(0, 0, SRC_W, SRC_H); } catch (_) { /* nothing painted yet */ }
       }
       // The one gate everything funnels through: run iff eligible, else tear down.
       function evaluate() {

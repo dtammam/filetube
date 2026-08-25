@@ -80,6 +80,66 @@
 
 ## Shipped
 
+### v1.187.2 - ambient cost fix: playback paused itself on mobile (Dean device) (2026-08-25)
+
+Dean, device: with Ambient ON, playback pauses itself ~2-3s in AND the Dynamic
+Island loses its artwork - audio and video alike, consistently, other apps
+force-closed. Ambient OFF: normal. Critters OFF: no change.
+
+ATTRIBUTION IS UNCONFIRMED, and the release says so rather than claiming a fix.
+Both symptoms match `releaseAudioSession()` (pause + `mediaSession.metadata =
+null`), but the gate traced its only reachable path: a `pagehide` with
+`persisted === false` - a page actually UNLOADING, which Dean did not report.
+The equally consistent explanation is iOS killing the renderer / interrupting
+the audio session, which runs NO app code and leaves that function innocent.
+Calling it "one function" was an INFERENCE STATED AS MEASUREMENT, corrected in
+three source comments. The decisive probe is the app's own lifecycle log
+(`?debugLifecycle=1`, armed BEFORE installing this build): a `pagehide
+persisted:false` entry at the pause confirms the function ran; no entry means the
+pause came from outside the app entirely. That probe should have preceded the fix.
+
+What IS certain is that Ambient ON reproduces it, so the effect's cost is cut to
+a floor (ranked by actual saving on the affected device):
+- DOMINANT: the CSS blur drops 64-88px -> 22-36px on a full-width composited
+  layer (a large radius outsets ~3x on every side, times DPR^2), and
+  `will-change` no longer pins that surface permanently.
+- The loop leaves the frame loop: rAF woke the main thread ~60x/s to
+  early-return for a 2fps sampler. Now a plain timer.
+- SMALLEST (corrected at the gate): the canvas backing store is a fixed 32x18
+  stretched by CSS instead of being resized to the player's box - ~0.09 MP
+  (~350 KB) per paint on a phone, not the "~1.4 MP" first claimed (that figure
+  was a desktop-theatre box, ~16x off for the affected device).
+
+KNOWN LOOK CHANGE, disclosed: the halo is deliberately ~2.4x TIGHTER. The old
+pipeline also upscaled from the same 32x18 source before blurring, so nothing new
+supplies softness - the radius cut is a real trade, not a free substitution, and
+`intense` no longer matches v1.186's 72px blur. Retuning levers are SRC_W/SRC_H
+or --ambient-scale, NOT a per-width blur (the composited layer is LARGER on
+desktop, so keeping the old radius there would preserve the heaviest cost).
+
+Slim gate (adversarial), APPROVE after THREE rounds; 21 of 22 final mutants
+killed (the survivor is correct boundary behaviour at the 40px cap). It caught:
+a real latent bug (deleting `timerId = null` from stop() passed the suite and
+would have left ambient dead after the first pause - timerId is also the
+"already running" guard); that my falsification was unsound (the sampler decided
+"is this video?" from WebKit's `videoWidth`, which an audio file with embedded
+cover art can make non-zero, so the drawImage theory was never excluded - now
+gated on this view's own `mediaData.type`); that my first replacement gate
+(`.audio-mode`) also required extractable embedded art, so an art-extraction
+failure would have fallen through anyway; that my cost figures were 16x off for
+the affected device; that a "cost invariant" test bound no cost (a 16ms interval,
+an intermediate canvas and a `will-change` on another rung all passed); and that
+a correction I REPORTED AS LANDED was never in the tree. The seat also audited
+its own prescription for what it removed, and self-corrected twice in earlier
+rounds.
+
+Tests: watch-chrome-ambient 17 -> 18 (a COST invariant: no backing-store resize,
+no per-paint layout read, no rAF, blur <= 40px at every rung, no will-change on
+ANY .ambient-glow rule, the audio gate bound as an exact expression). Full
+`npm test` 7549/0 measured on the shipping commit. Device pass PENDING - if it
+still pauses, the lifecycle log gets READ before any retreat to desktop-only
+(with a `pagehide persisted:false` entry that retreat would be the wrong move).
+
 ### v1.187.1 - ambient hotfix: the glow was masked INSIDE the player (Dean device) (2026-08-25)
 
 Dean, on device: "I see the options for ambient mode but nothing renders, at any
