@@ -75,4 +75,8 @@ test('v1.190 theatre caps the player HEIGHT to the viewport (width bound by 16:9
   assert.match(body, /width:\s*min\(100%,\s*calc\(\(100vh - var\(--header-h\)[^;]*\*\s*16\s*\/\s*9\)\);/, 'vh: width = min(100%, availableHeight*16/9)');
   assert.match(body, /width:\s*min\(100%,\s*calc\(\(100dvh - var\(--header-h\)[^;]*\*\s*16\s*\/\s*9\)\);/, 'dvh twin present (the repo viewport-height convention)');
   assert.match(body, /margin-inline:\s*auto/, 'centred when height-bound (page bg to the sides, YouTube-style)');
+  // gate WARNING (confirmed): the wrapper is aspect-ratio:auto here (rule 6369),
+  // so the 40px control-bar reserve + 2px border are ADDITIVE and MUST be
+  // subtracted from the video budget, else the bar tucks ~18px under the fold.
+  assert.match(body, /- 40px - 2px\) \* 16 \/ 9/, 'the 40px bar reserve + 2px border are subtracted so the whole wrapper (bar included) fits');
 });
