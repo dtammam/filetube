@@ -7989,11 +7989,11 @@ function buildCritterClip(p, pad) {
     // reachable half of Dean's Subscribed-button fix was the corner/band
     // branches' measured cut positions - 1306 floating cuts to 0 over a 120x44
     // button). v1.187 CORRECTION (both gate seats measured it): the size choice
-    // scales that cap, so at large/xlarge this becomes a COMMON topology (a
-    // minority on a phone feed, up to roughly half of watch-page placements at
-    // 3x - re-derive before quoting a figure; the first numbers here came from a
-    // concurrently-mutated tree and did not reproduce). A deliberate, disclosed
-    // consequence of Dean asking for 2x/3x critters. Still exact-string
+    // scales that cap, so at large/xlarge this becomes a COMMON topology - a
+    // minority on a phone feed, ~15-21% on a desktop page at 2x, and roughly
+    // half of watch-page placements at 3x. These figures move with the ENGULF
+    // guard, so re-derive at the current commit before quoting them. A
+    // deliberate, disclosed consequence of Dean asking for 2x/3x critters. Still exact-string
     // bound in all four orientations so it cannot rot silently (the v1.168 lesson).
     if (T) return pts([0, 0, x1, 0, x1, y2, x2, y2, x2, 0, W, 0, W, W, 0, W]);
     if (R) return pts([0, 0, W, 0, W, y1, x1, y1, x1, y2, W, y2, W, W, 0, W]);

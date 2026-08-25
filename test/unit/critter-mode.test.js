@@ -2097,21 +2097,24 @@ test('v1.187 SIZE: every SKIP invariant still holds at 3x - peek, engulf, exclus
   // rule), bounds TIGHTER than the reach so gate W4 can actually trip, and
   // bounds.w > viewportW so the width half is not subsumed by the screen edge.
   const anchors = Array.from({ length: 14 }, (_, i) => ({ x: 60 + (i % 3) * 260, y: 100 + i * 220, w: 300, h: 190 }));
-  // full-bleed must clear 0.85 * effW where effW = min(bounds.w, viewportW) = 1200,
-  // i.e. >= 1020px. A 960px anchor is NOT full-bleed and silently exempted the
-  // rule from the sweep (mutant H survived) - the fixture has to satisfy the
-  // planner's own predicate, not just carry the word in a comment.
+  // A full-bleed anchor must clear 0.85 * effW, where the planner's effW is
+  // min(bounds.w, viewportW) = 1000 -> 850px. (The seat corrected me here: the
+  // 960px anchor this replaced WAS full-bleed and DID exercise the rule; the
+  // real reason mutant H survives is subsumption by the screen-edge guard, not
+  // the fixture - see tech-debt #171.) Kept at 1100 so the anchor is
+  // unambiguously full-bleed under either reading.
   anchors.push({ x: 20, y: 3180, w: 1100, h: 150 });
   anchors.push({ x: 300, y: 3400, w: 96, h: 34 });    // a button
   anchors.push({ x: 500, y: 3520, w: 36, h: 36 });    // an avatar
   const player = { x: 0, y: 0, w: 900, h: 460 };
   const bounds = { w: 1200, h: 3600 };
+  const SWEEP_VIEWPORT_W = 1000; // ONE source for the planner arg AND every assertion
   // Gate O2: 300 seeds, NOT 60 - adding fixture anchors shifted the RNG stream so
   // the exclusion clause stopped binding under 60 (first violating seed: 186).
   for (let seed = 1; seed <= 300; seed += 1) {
     const out = planCritterScatter({
       anchors: anchors.map((a) => ({ ...a })), exclusions: [player], manifest: MANIFEST_8, count: 10,
-      rng: seededRng(seed), bounds, viewportW: 1000, sizeScale: 3,
+      rng: seededRng(seed), bounds, viewportW: SWEEP_VIEWPORT_W, sizeScale: 3,
     });
     for (const p of out) {
       const a = p.anchor;
@@ -2127,7 +2130,10 @@ test('v1.187 SIZE: every SKIP invariant still holds at 3x - peek, engulf, exclus
       assert.ok(buildCritterClip(p, Math.round(p.w * 0.3)) !== '' || p.roundCover, `seed ${seed}: every placement gets a real clip (no unclipped critter)`);
       assert.ok(!critterRectsIntersect({ x: p.x, y: p.y, w: p.w, h: p.h }, player), `seed ${seed}: never intersects the player exclusion`);
       assert.ok(p.x + p.w <= bounds.w && p.y + p.h <= bounds.h, `seed ${seed}: never grows the document (gate W4)`);
-      assert.ok(p.x >= 0 && p.x + p.w <= 1200, `seed ${seed}: never crosses the SCREEN edge (v1.180)`);
+      // Gate F1: assert against the viewportW the planner was actually GIVEN
+      // (1000). Asserting 1200 silently unbound the RIGHT half of v1.180 - the
+      // half Dean's right-edge amputation screenshot was about.
+      assert.ok(p.x >= 0 && p.x + p.w <= SWEEP_VIEWPORT_W, `seed ${seed}: never crosses the SCREEN edge (v1.180)`);
       // The FULL-BLEED property (v1.169/v1.180): a full-width anchor peeks TOP or
       // BOTTOM only, so both side covers are zero. HONEST SCOPE (gate O4, both
       // seats): this assertion is TRUE but cannot FAIL at 3x - disabling the rule
@@ -2135,7 +2141,7 @@ test('v1.187 SIZE: every SKIP invariant still holds at 3x - peek, engulf, exclus
       // full-width anchor is then rejected by the SCREEN-EDGE guard (which IS
       // bound). The rule's own binding lives in the scale-1 test above; the
       // 3x claim is therefore NOT in this test's title. Tech-debt #171.
-      if (a.w >= 0.85 * Math.min(bounds.w, 1200)) {
+      if (a.w >= 0.85 * Math.min(bounds.w, SWEEP_VIEWPORT_W)) {
         assert.ok(p.cover.l === 0 && p.cover.r === 0, `seed ${seed}: a full-bleed anchor must peek top/bottom ONLY (cover l=${p.cover.l} r=${p.cover.r})`);
       }
     }

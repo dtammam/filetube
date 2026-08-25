@@ -96,18 +96,23 @@ Dean, 4 asks (intake answered inline):
 - Mask spelling porosity (one spelling only -> breaks Firefox or iOS).
 - Ambient default changing behavior for an existing opted-in user (it does, by
   design: intense -> normal; disclose).
-- DISCLOSED TRADES, re-derived at the STRICT-guard commit (the earlier figures
-  came from the inclusive guard AND from a concurrently-mutated tree - both gate
-  seats flagged them as unreproducible, so these are measured fresh and the
-  fixture is named). Fixture: a 390px mobile feed, 8 rows of
-  thumbnail+card+avatar+button, density Normal (count 6), 400 seeds:
-  (a) DENSITY: tiny 6.00 / normal 5.90 / large 5.49 (-7%) / xlarge 4.81 (-18%)
-      critters actually placed. Bigger critters fit in fewer legal spots; the
-      density setting is a CEILING, not a quota.
+- DISCLOSED TRADES. These figures move with the ENGULF guard and with the anchor
+  fixture, so they are re-derived at the strict-guard commit and each names its
+  fixture. (Correction on the record: I earlier attributed the first numbers to a
+  contaminated tree; the adversarial seat re-derived its own within 1pp, so they
+  were sound - they simply belonged to the INCLUSIVE guard.)
+  (a) DENSITY - fixture-sensitive, quote the RANGE: an 8-row 390px mobile feed
+      (thumbnail+card+avatar+button, density Normal, 400 seeds) gives large -7%
+      / xlarge -18%; a denser 24-anchor feed gives large -21% / xlarge -23%, and
+      desktop -13% / -25%. Release notes should say "up to roughly 20-25% fewer"
+      rather than lead with the optimistic -7%. Bigger critters fit in fewer
+      legal spots; the density setting is a CEILING, not a quota.
   (b) MICRO-ANCHORS: the loss concentrates on the v1.169 micro-ambush anchors -
       avatar placements 398 (normal) -> 235 (large) -> 158 (xlarge), i.e. a 3x
-      critter can still ambush a 36px avatar but does so ~60% less often.
+      critter can still ambush a 36px avatar but does so ~60% less often. (Under
+      the earlier INCLUSIVE guard this collapsed to ~14; the narrowing is what
+      saved it.)
   (c) C-NOTCH: at large/xlarge a critter often sprawls past a small anchor's far
-      edges (a 3x critter behind a 44px button MUST) - common on a watch page,
-      a minority on a phone feed. Quote a figure only re-derived, never carried.
+      edges (a 3x critter behind a 44px button MUST) - ~15-21% on a desktop page
+      at 2x, ~56% of watch-page placements at 3x, a minority on a phone feed.
   All three belong in the release notes, not in a comment.
