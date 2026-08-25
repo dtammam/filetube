@@ -68,6 +68,11 @@ test('v1.189.0 the pill look extends to the books / music / podcasts / history t
   assert.ok(fill, 'the fill rule excludes .btn-primary (accent preserved)');
   assert.match(fill[1], /background-color:\s*var\(--bg-secondary\)/, 'non-primary buttons get the flat secondary fill');
   assert.match(fill[1], /border-color:\s*var\(--border-color\)/, 'hairline border');
+  // Bind the hover tint too (gate SUGGESTION: without this a future edit could
+  // silently drop it, matching the v1.188 sibling test's own hover lock).
+  const hover = /\.books-toolbar \.btn:not\(\.btn-primary\):hover,\s*\.music-toolbar-actions \.btn:not\(\.btn-primary\):hover,\s*\.history-toolbar-actions \.btn:not\(\.btn-primary\):hover \{([^}]*)\}/.exec(STYLE_CSS);
+  assert.ok(hover, 'the non-primary hover rule exists for the other toolbars');
+  assert.match(hover[1], /background-color:\s*var\(--bg-sidebar\)/, 'hover tints to the sidebar bg like the home toolbar');
   // No raw color literal sneaks in (the census enforces this globally, but bind
   // it here too since this is the theming question Dean raised).
   assert.doesNotMatch(shape[1] + fill[1], /#[0-9a-fA-F]{3,8}\b|rgb\(|hsl\(/, 'every color is a token, none raw - themes with the era system');
