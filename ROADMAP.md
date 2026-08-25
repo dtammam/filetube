@@ -80,6 +80,37 @@
 
 ## Shipped
 
+### v1.190.0 - theatre no longer clips the page bottom; toolbar pills match the feed weight (2026-08-25)
+
+Two Dean device reports.
+
+1. **Theatre height clip.** With the left bar collapsed AND theatre mode on, the
+   player expanded to ~full viewport width and its height ran past the screen,
+   clipping the bottom of the page (real YouTube caps this). `.player-container`
+   was width:100% with no desktop height cap. Fix: in theatre, bound the width by
+   the height the viewport can show, so the player switches from width-driven to
+   HEIGHT-driven once it would overflow and centres (page bg to the sides) - exactly
+   YouTube's theatre. **Gate WARNING (correct; I initially pushed back wrong):** the
+   wrapper is NOT ratio-constrained here - rule 6369 `#player-wrapper:not(.audio-
+   expanded)` overrides the base 16:9 to `aspect-ratio:auto` and reserves 40px for
+   the control bar, so the bar + 2px border are ADDITIVE; the first cut left the bar
+   ~18px under the fold. Budget corrected to subtract the 40px+2px too (~24px
+   breathing now). LESSON logged: verify the property that actually drives layout
+   against source (I checked the wrapper's padding but not its aspect-ratio, then
+   argued a plausible-but-wrong border-box theory - the reviewer named the exact
+   overriding rule). Excludes audio-expanded + both fullscreen paths; desktop-only.
+2. **Pill weight.** The toolbar pills (home + books/music/podcasts/history)
+   inherited the base `.btn` --fw-semibold, reading "bolder / different" than the
+   modern feed chips (`.modern-chip` = normal). Set them to `normal` (active chip
+   too - its inverted fill is the emphasis). Prompted a process note: when matching
+   an existing component, build from its REAL css + show a side-by-side (norm saved).
+
+**Gate:** slim (adversarial). APPROVE after the arithmetic correction + a per-line
+(vh/dvh) test-lock hardening (the recurring divergent-twin class). Dual-Node green.
+The theatre FEEL is Dean's on-device arbiter (collapse the bar + theatre, confirm no
+bottom clip). Offered-but-not-yet-done: a single shared pill class so consistency
+can't drift (Dean's call).
+
 ### v1.189.1 - critter taps respect z-order: no chirp/click-eat under an open overlay (2026-08-25)
 
 Dean, on-device: with the notification dropdown open over a critter (peeking on a

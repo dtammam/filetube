@@ -2188,5 +2188,11 @@
     "date": "2026-08-25",
     "title": "Tapping inside an open menu no longer sets off a critter",
     "intent": "A small fix for the little critters. If one was peeking out from behind something and you opened a menu or dropdown on top of it, clicking inside that menu could set off the critter's sound - and sometimes even swallow your click so the menu didn't respond. Now a critter only reacts when you actually tap it out in the open, never when something else is drawn on top of it."
+  },
+  {
+    "version": "1.190.0",
+    "date": "2026-08-25",
+    "title": "Theatre mode fits the screen, and the toolbar buttons match everywhere",
+    "intent": "Two fixes. In theatre mode on a computer, if you also collapsed the left menu the video used to grow so tall it ran off the bottom of the screen; now it sizes to fit the window and centres, just like YouTube. And the rounded pill buttons across the app now match the weight of the ones on the home feed, so they look consistent whether you're on the home page, Downloads, Books, Music, Podcasts or History."
   }
 ]
