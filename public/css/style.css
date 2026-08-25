@@ -1217,10 +1217,15 @@ html.reader-immersive .app-container { padding-top: 0; }
    hairline border, hover to the sidebar tint, and an INVERTED active state
    (replacing the red-accent) so a selected filter reads exactly like an active
    feed chip. All token-driven (census-clean); scoped to .section-actions, which
-   lives only on the home/library toolbar. DISCLOSED per-era residual: the glossy
-   [data-theme="2009"] era carries its own higher-specificity .btn background
-   gloss that still wins there (the shape still rounds); the modern eras Dean
-   uses get the full pill. */
+   lives only on the home/library toolbar.
+   DISCLOSED per-era residual (gate QA-W2): the glossy [data-theme="2009"] era
+   paints its .btn fill with `background-image` (a linear-gradient), a DIFFERENT
+   property than this rule's `background-color` - so the gloss keeps painting over
+   the pill fill there (the button still ROUNDS, it just isn't flat). That is
+   deliberate (2009 keeps its skin). But the INVERTED active state would then put
+   light `--bg-color` text on the retained light gloss = illegible, so the 2009
+   override below restores legible `--text-primary` ink on the active toggle.
+   Every OTHER era gets the full flat pill + inversion. */
 .section-actions .btn {
   border-radius: var(--radius-full);
   background-color: var(--bg-secondary);
@@ -1234,6 +1239,14 @@ html.reader-immersive .app-container { padding-top: 0; }
   background-color: var(--text-primary);
   color: var(--bg-color);
   border-color: var(--text-primary);
+}
+/* gate QA-W2: in 2009 the retained gloss (background-image) means the inverted
+   active fill never shows, so keep the active label's ink legible against it
+   (spec: this 0-4-0 selector outranks both the base active rule and the 2009
+   gloss .btn rule). Border stays --text-primary (from the rule above) as the
+   active affordance. */
+[data-theme="2009"] .section-actions .format-toggle-btn.active {
+  color: var(--text-primary);
 }
 
 .sidebar-item.drag-over-after {

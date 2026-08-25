@@ -726,6 +726,11 @@ test('SOURCE: v1.188 the tap is SWALLOWED - capture phase + stopPropagation + pr
   // cancelled). Each is a distinct mutant this locks.
   assert.match(clickHandler, /e\.stopPropagation\(\);/, 'the tap stops the click reaching the element behind');
   assert.match(clickHandler, /e\.preventDefault\(\);/, 'the tap cancels the default (link navigation)');
+  // v1.188 (gate QA-W1): keyboard Enter/Space + programmatic .click() synthesize
+  // detail===0 clicks at (scrollX, scrollY); a critter at the origin would
+  // swallow those activations. Real taps report detail>=1, so the guard stands
+  // the swallow down for synthetic clicks without touching real taps.
+  assert.match(clickHandler, /if \(!e\.detail\) return;/, 'the swallow stands down for keyboard/programmatic (detail===0) clicks');
   // The capture flag is on the click registration itself (the `}, true);` tail).
   assert.match(clickHandler, /\}, true\);/, 'the click listener is registered in the CAPTURE phase');
   // It still exempts caret-bearing fields (never fight a text cursor) and stands

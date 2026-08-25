@@ -8740,6 +8740,17 @@ function wireCritterListeners() {
   // is caught here.
   document.addEventListener('click', function (e) {
     if (!critterPlacements.length) return;
+    // v1.188 (gate QA-W1): stand down for KEYBOARD and PROGRAMMATIC clicks. A
+    // keyboard Enter/Space on a focused control - and any element.click() - fires
+    // a synthetic click with detail===0 whose coordinates default to (scrollX,
+    // scrollY), so a critter at the viewport origin would hit-test-match and
+    // SWALLOW that activation (an a11y regression, since the capture swallow
+    // replaced the old interactive-element stand-down). A genuine pointer/touch
+    // TAP always reports detail>=1, so this preserves "the critter wins its whole
+    // area" for real taps while never eating a synthesized activation. (Device
+    // probe: confirm touch taps report detail>=1 - the UI Events spec sets the
+    // click count to 1 for a tap, as does iOS Safari.)
+    if (!e.detail) return;
     if (e.target && e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
     if (e.target && e.target.closest && e.target.closest(CRITTER_EXCLUSION_SELECTORS.join(','))) return;
     var hit = critterTapHit(critterPlacements, e.pageX, e.pageY);

@@ -47,6 +47,13 @@ test('v1.188 the .section-actions toolbar buttons adopt the modern-chip pill rec
   assert.ok(active, 'the inverted active-filter rule exists');
   assert.match(active[1], /background-color:\s*var\(--text-primary\)/, 'active fills with the primary ink');
   assert.match(active[1], /color:\s*var\(--bg-color\)/, 'active text inverts to the page bg');
+  // gate QA-W2: 2009 keeps its gloss (background-image), so the inverted fill
+  // never shows there - the active label must stay legible with --text-primary
+  // ink rather than the inverted --bg-color (which would be near-invisible on the
+  // retained light gloss). This 0-4-0 selector outranks the gloss .btn rule.
+  const era2009 = /\[data-theme="2009"\] \.section-actions \.format-toggle-btn\.active \{([^}]*)\}/.exec(STYLE_CSS);
+  assert.ok(era2009, 'the 2009 legibility override exists');
+  assert.match(era2009[1], /color:\s*var\(--text-primary\)/, '2009 active label keeps legible primary ink on its retained gloss');
 });
 
 // ---- countItems / formatItemCountLabel (pure, no DOM) ----------------------
