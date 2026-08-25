@@ -16,6 +16,8 @@
 // file runs in its own node:test process, so neither shim leaks elsewhere.
 const { test } = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
   countItems, formatItemCountLabel, renderItemCountBadge,
@@ -24,6 +26,28 @@ const {
   WATCH_TOGGLE_MODES, getStoredWatchFilter, setStoredWatchFilter,
   buildWatchToggleControl, renderWatchToggle,
 } = require('../../public/js/common.js');
+
+const STYLE_CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+
+// ---- v1.188 (Dean): the library toolbar wears the modern feed-chip PILL look --
+
+test('v1.188 the .section-actions toolbar buttons adopt the modern-chip pill recipe (rounded/flat/secondary), with an inverted active filter', () => {
+  const base = /\.section-actions \.btn \{([^}]*)\}/.exec(STYLE_CSS);
+  assert.ok(base, 'the .section-actions .btn pill rule exists');
+  assert.match(base[1], /border-radius:\s*var\(--radius-full\)/, 'fully-rounded like a feed chip');
+  assert.match(base[1], /background-color:\s*var\(--bg-secondary\)/, 'flat secondary fill');
+  assert.match(base[1], /border-color:\s*var\(--border-color\)/, 'hairline border');
+  assert.match(base[1], /box-shadow:\s*none/, 'flat - the base .btn shadow is dropped');
+  const hover = /\.section-actions \.btn:hover \{([^}]*)\}/.exec(STYLE_CSS);
+  assert.ok(hover, 'the hover rule exists');
+  assert.match(hover[1], /background-color:\s*var\(--bg-sidebar\)/, 'hover tints to the sidebar bg like a chip');
+  // The selected filter reads like an ACTIVE feed chip (inverted), not the old
+  // red-accent. Higher specificity than the base .format-toggle-btn.active.
+  const active = /\.section-actions \.format-toggle-btn\.active \{([^}]*)\}/.exec(STYLE_CSS);
+  assert.ok(active, 'the inverted active-filter rule exists');
+  assert.match(active[1], /background-color:\s*var\(--text-primary\)/, 'active fills with the primary ink');
+  assert.match(active[1], /color:\s*var\(--bg-color\)/, 'active text inverts to the page bg');
+});
 
 // ---- countItems / formatItemCountLabel (pure, no DOM) ----------------------
 
