@@ -8535,9 +8535,16 @@ body.ft-audio-expanded {
   pointer-events: none;
   opacity: 0;
   transform: scale(var(--ambient-scale, 1.25));
-  filter: blur(var(--ambient-blur, 72px)) saturate(1.4);
+  filter: blur(var(--ambient-blur, 30px)) saturate(1.4);
   transition: opacity var(--dur-slow) var(--ease-ui);
-  will-change: opacity;
+  /* v1.187.2: no `will-change` - it pinned a permanent GPU surface for a
+     transition that only runs on show/hide, and the cost of this layer is what
+     made iOS freeze the page (pausing playback and dropping the now-playing
+     artwork). The canvas backing store is 32x18 and CSS stretches it, so the
+     bilinear upscale already smooths ~12-25px per source pixel; the blur radius
+     therefore drops from 64-88px to 22-36px for the SAME softness at a fraction
+     of the GPU cost. `intense` no longer matches v1.186's 72px blur - it cannot,
+     because it no longer needs to. */
   /* v1.187 (Dean: "hard cuts where it just stops on lines - it should fade out
      organically like normal light"): the glow was an unmasked rectangle, so its
      blurred edge still terminated on a straight line, and the root's overflow-x
@@ -8578,16 +8585,17 @@ body.ft-audio-expanded {
 /* v1.187 the INTENSITY ladder (Dean: v1.186's look was "almost too intense").
    `data-ambient` is set by watch.js; CSS owns the numbers so the token census
    stays clean and the level can swap live without restarting the sample loop.
-   `intense` keeps v1.186's opacity+blur+saturate+scale values (gate W3 caught that
+   `intense` keeps v1.186's opacity+saturate+scale (its BLUR necessarily differs
+   since v1.187.2 - see the cost note above; gate W3 caught that
    the first cut had quietly changed blur 72->64 and saturate 1.4->1.35, so
    picking "Intense" would NOT have given Dean his old look back); the radial
    falloff is new for every rung by design - it is the fix for the hard edges.
    `normal` is the new DEFAULT: a deliberate step down, disclosed in the notes. */
 .ambient-glow.is-on { opacity: var(--ambient-opacity, 0.5); }
-.ambient-glow[data-ambient="subtle"] { --ambient-opacity: 0.26; --ambient-blur: 88px; --ambient-scale: 1.18; }
-.ambient-glow[data-ambient="normal"] { --ambient-opacity: 0.5; --ambient-blur: 72px; --ambient-scale: 1.25; }
-.ambient-glow[data-ambient="intense"] { --ambient-opacity: 0.7; --ambient-blur: 72px; --ambient-scale: 1.3; }
-.ambient-glow[data-ambient="extreme"] { --ambient-opacity: 0.92; --ambient-blur: 64px; --ambient-scale: 1.42; }
+.ambient-glow[data-ambient="subtle"] { --ambient-opacity: 0.26; --ambient-blur: 36px; --ambient-scale: 1.18; }
+.ambient-glow[data-ambient="normal"] { --ambient-opacity: 0.5; --ambient-blur: 30px; --ambient-scale: 1.25; }
+.ambient-glow[data-ambient="intense"] { --ambient-opacity: 0.7; --ambient-blur: 28px; --ambient-scale: 1.3; }
+.ambient-glow[data-ambient="extreme"] { --ambient-opacity: 0.92; --ambient-blur: 24px; --ambient-scale: 1.42; }
 /* Belt for a dark->light flip: the JS themeObs stops the loop, but this closes
    the sub-frame gap before it fires by forcing the glow invisible in light. */
 :root:not([data-mode="dark"]) .ambient-glow {

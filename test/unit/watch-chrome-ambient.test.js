@@ -115,7 +115,12 @@ test('v1.186 ambient loop is battery-safe: gated on ambientShouldRun, torn down 
   assert.ok(fn.length > 0, 'setupAmbientMode exists');
   assert.match(fn, /ambientShouldRun\(\{/, 'the loop keys on the pure predicate');
   assert.match(fn, /if \(!shouldRun\(\)\) \{ stop\(\); return; \}/, 'a false predicate STOPS the loop (no idle cost)');
-  assert.match(fn, /cancelAnimationFrame\(rafId\)/, 'the rAF handle is cancelled on stop (no leak)');
+  // v1.187.2: the sampler is a plain timer, NOT rAF - rAF woke it 60x a second
+  // to early-return on all but ~2 of them, keeping the compositor hot for a 2fps
+  // effect (part of the cost that made iOS freeze the page and pause playback).
+  assert.match(fn, /if \(timerId != null\) clearTimeout\(timerId\);/, 'the timer handle is cancelled on stop (no leak)');
+  assert.doesNotMatch(fn, /requestAnimationFrame/, 'a slow sampler must NOT sit in the frame loop');
+  assert.match(fn, /timerId = setTimeout\(tick, MIN_INTERVAL\);/, 'it re-arms on the interval');
   // re-evaluated on every signal that flips the predicate
   assert.match(fn, /addEventListener\('visibilitychange', evaluate, \{ signal \}\)/, 'tab hide/show re-evaluates');
   assert.match(fn, /video\.addEventListener\('pause', evaluate, \{ signal \}\)/, 'pause re-evaluates');
@@ -180,11 +185,14 @@ test('v1.187 the intensity ladder is CSS-owned per level, and v1.186\'s look is 
   // Gate W3: "intense" must restore v1.186's LOOK, not just its opacity - the
   // first cut had quietly changed blur 72->64 and saturate 1.4->1.35 globally,
   // so picking Intense would NOT have given Dean his old glow back.
-  assert.strictEqual(num(lvl('intense'), 'blur'), 72, 'intense keeps v1.186\'s 72px blur');
+  // v1.187.2: intense no longer matches v1.186's 72px blur - the 32x18 backing
+  // store is CSS-upscaled, so it is soft by construction and a huge blur was pure
+  // GPU cost (the cost that made iOS freeze the page and pause playback).
+  assert.ok(num(lvl('intense'), 'blur') <= 36, 'the blur radius stays CHEAP (the v1.187.2 playback-pause fix)');
   assert.strictEqual(num(lvl('intense'), 'scale'), 1.3, 'and v1.186\'s 1.3 spread (gate O6 - the third half of "restores the old look")');
   const glowRule = /\.ambient-glow\s*\{([^}]*)\}/.exec(STYLE_CSS)[1];
   assert.match(glowRule, /saturate\(1\.4\)/, 'the global saturate is back to v1.186\'s 1.4');
-  assert.match(glowRule, /blur\(var\(--ambient-blur, 72px\)\)/, 'the blur fallback matches the NORMAL default (gate S3)');
+  assert.match(glowRule, /blur\(var\(--ambient-blur, 30px\)\)/, 'the blur fallback matches the NORMAL default (gate S3)');
   assert.match(glowRule, /scale\(var\(--ambient-scale, 1\.25\)\)/, 'the scale fallback matches the NORMAL default');
   // the level drives CSS only - the running sample loop is never restarted
   const fn = WATCH_JS.slice(WATCH_JS.indexOf('function setupAmbientMode'), WATCH_JS.indexOf('\n    // v1.22.0 FR-7 (TF): the "Loop"'));
@@ -274,4 +282,31 @@ test('v1.187.1 THE REACH INVARIANT: every rung must bleed BEYOND the player, on 
   const intense = /\.ambient-glow\[data-ambient="intense"\] \{([^}]*)\}/.exec(STYLE_CSS)[1];
   assert.strictEqual(Number(/--ambient-scale:\s*([0-9.]+)/.exec(intense)[1]) * stop, 1.3,
     'intense reaches 1.3 - the same geometric bleed v1.186 had');
+});
+
+test('v1.187.2 THE COST INVARIANT: the sampler must stay cheap enough not to get the page frozen', () => {
+  // Dean, device: playback paused itself ~2-3s in AND the Dynamic Island lost its
+  // artwork - on BOTH audio and video. Both symptoms are one function,
+  // releaseAudioSession() (pause + `mediaSession.metadata = null`), which fires
+  // when the page is going away. iOS was freezing/discarding the page because the
+  // effect cost too much: a full-size canvas repainted through an intermediate
+  // buffer, under a 64-88px CSS blur, driven by a 60Hz rAF loop for a 2fps
+  // sampler. Audio pausing too is what proved it was the COST, not the
+  // video-sampling - the audio path never draws the video element at all.
+  const fn = WATCH_JS.slice(WATCH_JS.indexOf('function setupAmbientMode'), WATCH_JS.indexOf('\n    // v1.22.0 FR-7 (TF): the "Loop"'));
+  // 1. the backing store stays TINY - never resized to the element's pixel box.
+  assert.match(fn, /glow\.width = SRC_W;/, 'the canvas backing store is the 32x18 sample, not the player box');
+  assert.doesNotMatch(fn, /glow\.width = Math\.max/, 'the canvas must never be resized to its display box (a megapixel upload per paint)');
+  assert.doesNotMatch(fn, /getBoundingClientRect\(\)/, 'no per-paint layout measurement');
+  // 2. no frame-loop residency for a 2fps effect.
+  assert.doesNotMatch(fn, /requestAnimationFrame/, 'the sampler must not sit in the frame loop');
+  // 3. the CSS blur stays cheap at EVERY rung (the upscale does the smoothing).
+  for (const rung of ['subtle', 'normal', 'intense', 'extreme']) {
+    const body = new RegExp('\\.ambient-glow\\[data-ambient="' + rung + '"\\] \\{([^}]*)\\}').exec(STYLE_CSS)[1];
+    const blur = Number(/--ambient-blur:\s*([0-9.]+)px/.exec(body)[1]);
+    assert.ok(blur <= 40, `${rung}: blur ${blur}px - a large-radius blur on a full-width layer is the GPU cost that got the page frozen (cap 40px)`);
+  }
+  // 4. no permanently-promoted GPU surface for a show/hide transition.
+  const glowRule = /\.ambient-glow\s*\{([^}]*)\}/.exec(STYLE_CSS)[1];
+  assert.doesNotMatch(glowRule.replace(/\/\*[\s\S]*?\*\//g, ''), /will-change/, 'no will-change: it pinned a GPU surface for a transition that only runs on show/hide');
 });
