@@ -8539,12 +8539,17 @@ body.ft-audio-expanded {
   transition: opacity var(--dur-slow) var(--ease-ui);
   /* v1.187.2: no `will-change` - it pinned a permanent GPU surface for a
      transition that only runs on show/hide, and the cost of this layer is what
-     made iOS freeze the page (pausing playback and dropping the now-playing
-     artwork). The canvas backing store is 32x18 and CSS stretches it, so the
-     bilinear upscale already smooths ~12-25px per source pixel; the blur radius
-     therefore drops from 64-88px to 22-36px for the SAME softness at a fraction
-     of the GPU cost. `intense` no longer matches v1.186's 72px blur - it cannot,
-     because it no longer needs to. */
+     is the DOMINANT cost of this effect (a large-radius blur on a full-width
+     composited layer outsets ~3x the radius on every side, times DPR^2), and that
+     cost is the leading suspect for iOS freezing the page - which pauses playback
+     and drops the now-playing artwork.
+     HONEST: this is a deliberate LOOK CHANGE, not a free substitution. The old
+     pipeline ALSO upscaled from the same 32x18 source and then blurred 72px, so
+     nothing new supplies softness - the halo is simply ~2.4x TIGHTER now, traded
+     for the GPU cost. `intense` therefore no longer matches v1.186's 72px blur.
+     If the halo wants retuning the levers are SRC_W/SRC_H or --ambient-scale,
+     NOT a per-width blur (the composited layer is LARGER on desktop, so keeping
+     the old radius there would preserve the heaviest version of the cost). */
   /* v1.187 (Dean: "hard cuts where it just stops on lines - it should fade out
      organically like normal light"): the glow was an unmasked rectangle, so its
      blurred edge still terminated on a straight line, and the root's overflow-x

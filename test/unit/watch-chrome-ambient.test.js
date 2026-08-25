@@ -299,10 +299,19 @@ test('v1.187.2 THE COST INVARIANT: the sampler must stay cheap enough not to get
   //    `audio-mode` signal, NOT on WebKit's videoWidth (an audio file with
   //    embedded cover art can report a non-zero videoWidth, which made the
   //    "audio never draws the video" falsification an assumption, not a fact).
-  assert.match(fn, /function isAudioItem\(\)/, 'the sampler has an app-owned audio signal');
-  assert.match(fn, /classList\.contains\('audio-mode'\)/, 'it reads player.js\'s own audio-mode class');
+  // Bound as the EXACT expression (gate WARNING B): the first cut asserted only
+  // the class spelling and the gated-site count, so `getElementById('...NOPE')`
+  // or `return false && ...` left the gate permanently FALSE, silently reverting
+  // to the pre-fix videoWidth behaviour with the suite green - the v1.185 INERT
+  // class, on the very gate that exists to keep the next device A/B clean.
+  assert.match(fn, /function isAudioItem\(\) \{\n\s*return !!\(mediaData && mediaData\.type === 'audio'\);\n\s*\}/,
+    'the audio gate reads THIS VIEW\'s own media type, exactly - not a class that also requires extractable art, and not an expression that can be neutered to a constant');
   assert.strictEqual((fn.match(/!isAudioItem\(\) && video && video\.videoWidth > 0/g) || []).length, 2,
     'BOTH paint sites (the interval tick and the first paint in start) gate the video draw on not-audio');
+  // 0b. the hard-fail guard must be in start() too (S1) - a throw in the FIRST
+  //     paint must not arm a timer. Anchored to start(), not tick().
+  assert.match(fn, /if \(hardFailed\) return; \/\/ S1: a throw in that first paint must NOT arm a timer\n\s*schedule\(\);/,
+    'start() refuses to re-arm after a hard failure');
   // 1. the backing store stays TINY - never resized to the element's pixel box.
   assert.match(fn, /glow\.width = SRC_W;/, 'the canvas backing store is the 32x18 sample, not the player box');
   assert.doesNotMatch(fn, /glow\.width = Math\.max/, 'the canvas must never be resized to its display box (a megapixel upload per paint)');

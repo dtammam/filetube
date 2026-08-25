@@ -2059,13 +2059,17 @@ if (typeof module !== 'undefined' && module.exports) {
       // this video?" - a WEBKIT-reported property. An audio file carrying embedded
       // cover art can expose a video track and report a non-zero videoWidth, so
       // the audio path could draw the video element after all, and the claim that
-      // it never does was an assumption about Dean's files rather than a property
-      // of the code. Gate on the APP's own signal (player.js sets `audio-mode` on
-      // the host) so the claim is true by construction - and so the next device
-      // pass is a clean A/B on the video-sampling theory.
+      // it never does was an assumption about Dean's files, not a property of the
+      // code. Gate on THIS VIEW'S OWN media type instead.
+      // Delta note (gate WARNING B): the first cut read player.js's `.audio-mode`
+      // class, which is NOT "is this audio" - it is added only when the item also
+      // has extractable embedded art (artUrl -> hasThumbnail -> ffmpeg copied a
+      // picture stream). An audio file whose art extraction failed would have
+      // fallen through to videoWidth again: exactly the risk set W4 exists to
+      // close. `mediaData.type` is authoritative, needs no cross-module
+      // coincidence, and is read LAZILY here so load order cannot matter.
       function isAudioItem() {
-        const host = document.getElementById('player-wrapper');
-        return !!(host && host.classList.contains('audio-mode'));
+        return !!(mediaData && mediaData.type === 'audio');
       }
 
       function currentlyPlaying() {
