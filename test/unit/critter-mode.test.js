@@ -494,6 +494,35 @@ test('critterOccludedAt: reads the LIVE layer z-index (a higher layer plane rais
   }
 });
 
+test('critterOccludedAt: with NO #critter-layer present it falls back to z-index 2 (binds the default; gate SUGGESTION)', () => {
+  const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/' });
+  const prevWin = global.window; const prevDoc = global.document;
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const doc = dom.window.document;
+    // Deliberately NO #critter-layer -> the function must use its default of 2.
+    const over = doc.createElement('div');
+    over.style.position = 'absolute';
+    over.style.zIndex = '3'; // just ABOVE the default 2
+    const overChild = doc.createElement('button');
+    over.appendChild(overChild);
+    doc.body.appendChild(over);
+    assert.strictEqual(critterOccludedAt(overChild), true, 'z:3 > default 2 -> occluded (kills the "default 999" mutant)');
+    const tie = doc.createElement('div');
+    tie.style.position = 'absolute';
+    tie.style.zIndex = '2';
+    const tieChild = doc.createElement('span');
+    tie.appendChild(tieChild);
+    doc.body.appendChild(tie);
+    assert.strictEqual(critterOccludedAt(tieChild), false, 'z:2 ties the default -> not occluded');
+  } finally {
+    global.window = prevWin; global.document = prevDoc;
+    if (global.window === undefined) delete global.window;
+    if (global.document === undefined) delete global.document;
+    dom.window.close();
+  }
+});
+
 // ---- the built-ins ----------------------------------------------------------
 
 test('the 5 built-in figurines are distinct, original, and colour-token-pure (currentColor only)', () => {

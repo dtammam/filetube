@@ -10403,12 +10403,14 @@ html[data-modern="on"] .video-uploader {
 }
 
 /* ---- v1.166 (Dean): Sneaky critter mode -----------------------------------
-   The layer sits BELOW in-flow content (z-index -1), so anything with a painted
-   background naturally covers the hidden ~55% of each critter = the "peeking
-   from behind the furniture" effect with zero per-view CSS. The layer itself is
+   The layer sits at z-index 2 (above z-auto furniture, below every --z-* rung);
+   the hidden ~55% of each critter is CLIPPED away per-critter by the v1.168
+   sandwich (buildCritterClip), not hidden by stacking = the "peeking from behind
+   the furniture" effect (see the rule's own comment below). The layer itself is
    inert (pointer-events none, aria-hidden); taps are resolved by a document
-   listener against the EXPOSED sliver geometry, so no critter ever intercepts a
-   click meant for real UI. Colour rides currentColor + a per-critter hue-rotate
+   listener against the whole critter box (v1.188), standing down when an overlay
+   is painted above the critter plane (v1.189.1 critterOccludedAt), so no critter
+   ever intercepts a click meant for real UI. Colour rides currentColor + a per-critter hue-rotate
    (set inline as --critter-hue), so the placeholders stay token-pure while
    still varied; Dean's real transparent PNGs render un-tinted (filter only
    hue-rotates the transparent-PNG pixels' own colours, subtly - acceptable, and

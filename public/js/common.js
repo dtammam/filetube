@@ -7467,8 +7467,11 @@ function playDdrNote(freq) {
 // furniture (cards, boxes, menus) at jaunty angles - never over the playback
 // surfaces. The whole subsystem is inert until the per-device setting is on.
 // Architecture (exec plan: docs/exec-plans/active/critter-mode-skeleton.md):
-//   - `#critter-layer` sits at z-index -1, so any in-flow element WITH A
-//     BACKGROUND naturally paints over the critters = "peeking" for free.
+//   - `#critter-layer` sits at z-index 2 (above z-auto furniture, below every
+//     --z-* ladder rung); the "hidden behind the anchor" half is CLIPPED away
+//     per-critter (buildCritterClip, the v1.168 sandwich) rather than hidden by
+//     stacking, so a critter peeks from behind its ONE anchor and above all
+//     other furniture. (The original skeleton used a z:-1 plane; superseded.)
 //   - The pure core (config/plan/hit) takes rects in and gives placements out,
 //     so it is node:test-able without layout; only the thin measure/render
 //     shims touch the live DOM.
@@ -7499,9 +7502,10 @@ var CRITTER_STORAGE_SIZE = 'ft-critters:size';
 var CRITTER_FLIP_MIN_COVERAGE = 0.5;
 // Anchors: page furniture worth peeking from behind. Curated, generic across
 // views; each candidate must also SURVIVE the exclusion filters below. Every
-// entry must PAINT A BACKGROUND (the z-index -1 layer hides the overlap by the
-// anchor painting over it) - `.action-bar` was dropped for exactly that reason
-// (grid + gap only, no background: the "hidden" half showed through the gutters).
+// entry must PAINT A BACKGROUND (the per-critter sandwich CLIP hides the covered
+// half only where the anchor actually paints) - `.action-bar` was dropped for
+// exactly that reason (grid + gap only, no background: the "hidden" half showed
+// through the gutters).
 // v1.166.2 (Dean's device pass: the WATCH page had none - it uses none of the
 // original four): + `.description-container` (paints --bg-sidebar) and
 // `.related-thumb` (paints letterbox black - the CARD itself is a transparent flex row, caught by the ground-contract lock). The comments section is
@@ -7583,7 +7587,7 @@ function critterRectsIntersect(a, b) {
 // Samples anchors AND critters WITHOUT replacement (the no-duplicate rule is
 // absolute: the count caps at the manifest length - 3 while only the built-ins
 // exist, growing as Dean fills the folder). Each critter straddles one edge of
-// its anchor: ~55% hidden behind it (z-index -1 does the hiding), ~45% peeking.
+// its anchor: ~55% hidden behind it (the sandwich CLIP does the hiding), ~45% peeking.
 function planCritterScatter(opts) {
   var anchors = (opts && opts.anchors) || [];
   var exclusions = (opts && opts.exclusions) || [];
@@ -7820,11 +7824,13 @@ function critterTapHit(placements, x, y) {
 function critterOccludedAt(target) {
   if (typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') return false;
   if (!target || target.nodeType !== 1 || typeof document === 'undefined') return false;
-  var layerZ = 2;
+  var layerZ = 2; // matches .critter-layer's z-index in style.css; read live below
   var layer = document.getElementById('critter-layer');
   if (layer) {
-    var lz = parseInt(window.getComputedStyle(layer).zIndex, 10);
-    if (isFinite(lz)) layerZ = lz;
+    try {
+      var lz = parseInt(window.getComputedStyle(layer).zIndex, 10);
+      if (isFinite(lz)) layerZ = lz;
+    } catch (_) { /* keep the default 2 - gate SUGGESTION: guard the layer read too */ }
   }
   var el = target;
   var body = document.body;
@@ -7953,14 +7959,16 @@ function ensureCritterLayer() {
   layer.id = 'critter-layer';
   layer.className = 'critter-layer';
   layer.setAttribute('aria-hidden', 'true'); // decorative; never in the a11y tree
-  // v1.166.1 (Dean's device pass: NOTHING was visible): the critters' z-index
-  // -1 resolves in the ROOT stacking context, so they paint above the CANVAS
-  // (body's var(--bg-color)) and below every in-flow furniture background -
-  // which works ONLY because no wrapper between them paints a background. That
-  // is the GROUND CONTRACT: .main-content deliberately paints none (its old
-  // redundant background was exactly what hid every critter; see the
-  // .main-content CSS comment for the two-CRITICAL isolation detour this
-  // replaced). The layer parents inside .main-content (sibling of #view-root:
+  // v1.166.1 (Dean's device pass: NOTHING was visible): the critters' z-index 2
+  // (see .critter-layer in style.css) resolves in the ROOT stacking context, so
+  // they paint ABOVE the in-flow furniture (the v1.168 sandwich CLIP, not
+  // stacking, hides the half behind the anchor) - which works ONLY because no
+  // wrapper between them establishes a stacking context. That is the GROUND
+  // CONTRACT: .main-content stays unpositioned and paints no background (its old
+  // redundant background hid the ORIGINAL z:-1 plane; the no-background rule is
+  // still locked by the critter-mode test - see the .main-content CSS comment
+  // for the two-CRITICAL isolation detour this replaced). The layer parents
+  // inside .main-content (sibling of #view-root:
   // survives view swaps, keeps document coordinates - no wrapper is
   // positioned); shells without one (login/welcome) fall back to body.
   var host = document.querySelector('.main-content') || document.body;
