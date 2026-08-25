@@ -28,7 +28,7 @@ const CONTRACT = {
   '--lh-tight': '1.25', '--lh-relaxed': '1.5',
   '--radius-full': '999px',
   '--shadow-modal': '0 8px 24px rgba(0, 0, 0, 0.45)',
-  '--dur-fast': '0.15s', '--dur-slow': '0.25s', '--ease-ui': 'ease',
+  '--dur-fast': '0.15s', '--dur-slow': '0.25s', '--dur-critter-arrive': '1.2s', '--ease-ui': 'ease',
   '--z-nav': '900', '--z-chip': '940', '--z-dock': '950', '--z-header': '1000',
   '--z-player-max': '1100', '--z-sheet': '1500', '--z-panel': '1600',
   '--z-modal': '2000', '--z-top': '2200',
@@ -61,7 +61,7 @@ const CONTRACT = {
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 59, 'the 38-name contract + --thumbnail-bg (Tier 4) + six --reader-* + --header-h/--sidebar-w + --on-accent (tranche F.5; --radius-lg predates the layer and lives in the era blocks) + --size-touch-watch-action (v1.96) + the ten --md-*/--tracking-caps master-detail tokens (v1.152)');
+  assert.equal(Object.keys(CONTRACT).length, 60, 'the 38-name contract + --dur-critter-arrive (v1.187 critter sneak-in beat) + --thumbnail-bg (Tier 4) + six --reader-* + --header-h/--sidebar-w + --on-accent (tranche F.5; --radius-lg predates the layer and lives in the era blocks) + --size-touch-watch-action (v1.96) + the ten --md-*/--tracking-caps master-detail tokens (v1.152)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());

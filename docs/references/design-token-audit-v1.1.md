@@ -73,7 +73,7 @@ Radius (1): `--radius-full:999px` (pills; 50% circles stay geometry)
 
 Shadow (1): `--shadow-modal:0 8px 24px rgba(0,0,0,0.45)`
 
-Motion (3): `--dur-fast:0.15s --dur-slow:0.25s --ease-ui:ease`
+Motion (4): `--dur-fast:0.15s --dur-slow:0.25s --dur-critter-arrive:1.2s --ease-ui:ease`
 
 Z-index (9) - named ladder; backdrop/content pairs are
 `calc(var(--z-X) +/- 1)`, never new raw numbers:

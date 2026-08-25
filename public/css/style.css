@@ -272,6 +272,9 @@ summary,
      transitions only. */
   --dur-fast: 0.15s;
   --dur-slow: 0.25s;
+  /* v1.187 (Dean): the critter arrival is its own, much slower beat - a
+     "sneak in" rather than a pop (the UI durations above stay snappy). */
+  --dur-critter-arrive: 1.2s;
   --ease-ui: ease;
 
   /* Z-index ladder (audit 2.8). NAMES ONLY in Phase 1 - no component is
@@ -6599,10 +6602,25 @@ body.ft-audio-expanded {
 #settings-menu .settings-menu-toggle .watch-autoplay-text {
   font-weight: normal;
 }
-/* Ambient row hides in a light theme (watch.js sets [hidden]; belt via the mode
-   attribute so a mid-session light switch also hides it even before JS runs). */
-:root:not([data-mode="dark"]) #ambient-toggle-row { display: none; }
-#ambient-toggle-row[hidden] { display: none !important; }
+/* Ambient rows hide in a light theme (watch.js sets [hidden]; belt via the mode
+   attribute so a mid-session light switch also hides them even before JS runs). */
+:root:not([data-mode="dark"]) #ambient-toggle-row,
+:root:not([data-mode="dark"]) #ambient-level-row { display: none; }
+#ambient-toggle-row[hidden],
+#ambient-level-row[hidden] { display: none !important; }
+
+/* v1.187: the ambient-amount picker in the cog menu - a compact select matching
+   the menu rows' type, era tokens only. */
+#settings-menu .settings-menu-select {
+  background: var(--btn-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  font-family: var(--font-family);
+  font-size: var(--fs-sm);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
 
 /* the cog glyph -- an inline <svg> sized like the nav chrome icons (relative to
    the button font-size, fill via currentColor). */
@@ -8516,14 +8534,39 @@ body.ft-audio-expanded {
   z-index: -1; /* token-exempt: behind the stage's in-flow content (#player-slot), above the stage backdrop */
   pointer-events: none;
   opacity: 0;
-  transform: scale(1.3);
-  filter: blur(72px) saturate(1.4);
+  transform: scale(var(--ambient-scale, 1.25));
+  filter: blur(var(--ambient-blur, 72px)) saturate(1.4);
   transition: opacity var(--dur-slow) var(--ease-ui);
   will-change: opacity;
+  /* v1.187 (Dean: "hard cuts where it just stops on lines - it should fade out
+     organically like normal light"): the glow was an unmasked rectangle, so its
+     blurred edge still terminated on a straight line, and the root's overflow-x
+     clip guillotined it at the viewport. A radial falloff makes it read as light.
+     CLOSEST-SIDE is load-bearing (gate W3): the default farthest-corner sizing
+     puts the transparent stop ~7.5% OUTSIDE the box, so ~11-45% mask alpha
+     survived to the clip line and the hard cut remained on mobile - worst at
+     `extreme`, the rung picked for MORE light. closest-side sets the radius to
+     the half-extent, so alpha reaches zero genuinely inside the element and the
+     guillotine has nothing left to cut. BOTH mask spellings - one alone breaks
+     Firefox or iOS (the v1.77 lesson).
+     NB keep literal braces out of this comment - the suite extracts rule bodies
+     with a non-brace regex, so a closing brace here truncates the match. */
+  -webkit-mask-image: radial-gradient(ellipse closest-side at center, black 28%, transparent 76%); /* token-exempt: mask ALPHA ramp, not a theme colour (black/transparent are the mask's opacity stops) */
+  mask-image: radial-gradient(ellipse closest-side at center, black 28%, transparent 76%); /* token-exempt: mask ALPHA ramp, not a theme colour (the standard spelling of the line above) */
 }
-.ambient-glow.is-on {
-  opacity: 0.7;
-}
+/* v1.187 the INTENSITY ladder (Dean: v1.186's look was "almost too intense").
+   `data-ambient` is set by watch.js; CSS owns the numbers so the token census
+   stays clean and the level can swap live without restarting the sample loop.
+   `intense` restores v1.186's OPACITY+BLUR+SATURATE exactly (gate W3 caught that
+   the first cut had quietly changed blur 72->64 and saturate 1.4->1.35, so
+   picking "Intense" would NOT have given Dean his old look back); the radial
+   falloff is new for every rung by design - it is the fix for the hard edges.
+   `normal` is the new DEFAULT: a deliberate step down, disclosed in the notes. */
+.ambient-glow.is-on { opacity: var(--ambient-opacity, 0.5); }
+.ambient-glow[data-ambient="subtle"] { --ambient-opacity: 0.26; --ambient-blur: 88px; --ambient-scale: 1.18; }
+.ambient-glow[data-ambient="normal"] { --ambient-opacity: 0.5; --ambient-blur: 72px; --ambient-scale: 1.25; }
+.ambient-glow[data-ambient="intense"] { --ambient-opacity: 0.7; --ambient-blur: 72px; --ambient-scale: 1.3; }
+.ambient-glow[data-ambient="extreme"] { --ambient-opacity: 0.92; --ambient-blur: 64px; --ambient-scale: 1.42; }
 /* Belt for a dark->light flip: the JS themeObs stops the loop, but this closes
    the sub-frame gap before it fires by forcing the glow invisible in light. */
 :root:not([data-mode="dark"]) .ambient-glow {
@@ -10274,10 +10317,14 @@ html[data-modern="on"] .video-uploader {
 .critter {
   position: absolute;
   color: var(--text-secondary);
-  /* v1.175 (Dean: no FOUC-style pop-in): every (re)arrival fades in - a pure
-     OPACITY ramp (no motion, so no reduced-motion arm needed) that also
-     softens the settle ladder's re-tuck on pages that reflow while loading. */
-  animation: critter-arrive var(--dur-slow) ease-out both;
+  /* v1.175 (Dean: no FOUC-style pop-in): every (re)arrival fades in.
+     v1.187 (Dean: "abrupt - make it smooth and seamless, like they sneak in"):
+     the ramp slows from 0.25s to 1.2s with a gentle ease. The OPACITY lives here
+     on the clipped WRAPPER; the matching RISE lives on `.critter-pose` below -
+     animating this wrapper's transform would swing the clip cut (the v1.168
+     lesson), while animating the pose makes the critter rise INTO place from
+     behind its anchor with the cut held still. */
+  animation: critter-arrive var(--dur-critter-arrive) var(--ease-ui) both;
 }
 
 @keyframes critter-arrive {
@@ -10285,11 +10332,24 @@ html[data-modern="on"] .video-uploader {
   to { opacity: 1; }
 }
 
+@keyframes critter-sneak {
+  from { transform: translateY(var(--critter-rise, 7px)) rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)); }
+  to { transform: translateY(0) rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1)); }
+}
+
+/* Reduced motion: keep the gentle fade, drop the movement entirely. The name
+   rides an INHERITED custom property (not a second `.critter-pose` rule) so the
+   pose keeps exactly one rule owning its transform - see .critter-pose below. */
+@media (prefers-reduced-motion: reduce) {
+  .critter { --critter-pose-anim: none; }
+}
+
 /* v1.176: a RE-GLUE rebuild (critters riding their moved furniture) must be
    visually inert - no arrival fade replay for a critter that barely moved. */
 .critter.critter-still {
   animation: none;
   opacity: 1;
+  --critter-pose-anim: none; /* v1.187: a re-glue is silent on BOTH axes - no fade AND no rise */
 }
 
 /* v1.171: the critter pool manager (Settings -> Sneaky critters, admin-only).
@@ -10355,6 +10415,20 @@ html[data-modern="on"] .video-uploader {
   transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1));
   filter: hue-rotate(var(--critter-hue, 0deg));
   opacity: 0.95; /* token-exempt: decorative layer softness */
+  /* v1.187 the SNEAK (Dean): the pose drifts up a few px as the wrapper fades,
+     so the critter rises INTO place from behind its anchor while the clip cut
+     stays put (animating the WRAPPER's transform would swing the cut - v1.168).
+     The keyframes recompose the angle/flip vars so the tilt/mirror survives, and
+     the 7px rise sits well inside the wrapper's 30% pad. The NAME rides an
+     inherited custom property so `.critter-still` and reduced-motion can silence
+     it without a second rule touching this element's transform. A tap reaction
+     later replaces this animation wholesale (same property, later rule).
+     The rise DISTANCE + DIRECTION are per-placement (`--critter-rise`, set by
+     renderCritterPlacements): clamped to the wrapper's pad so a `tiny` critter
+     is never clipped mid-arrival, and signed so every critter drifts AWAY from
+     its anchor (out of hiding), including the bottom-family peeks that hang
+     below their ledge. */
+  animation: var(--critter-pose-anim, critter-sneak) var(--dur-critter-arrive) var(--ease-ui) both;
 }
 
 .critter svg,

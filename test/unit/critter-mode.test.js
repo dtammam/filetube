@@ -23,6 +23,8 @@ const {
   planCritterScatter,
   critterTapHit,
   renderCritterPlacements,
+  CRITTER_SIZE_SCALES,
+  critterRectsIntersect,
 } = require('../../public/js/common.js');
 const { buildCritterListing, buildCritterVoicePool } = require('../../server.js');
 
@@ -48,10 +50,17 @@ test('density tiers are Dean\'s gentler curve: sparse 1 / normal 6 / obscene 16'
 
 test('resolveCritterConfig: OFF by default, density defaults to normal, garbage tolerated', () => {
   const from = (map) => resolveCritterConfig((k) => (k in map ? map[k] : null));
-  assert.deepStrictEqual(from({}), { enabled: false, density: 'normal', count: 6, randomSound: false }, 'fresh device: inert');
-  assert.deepStrictEqual(from({ 'ft-critters:on': '1' }), { enabled: true, density: 'normal', count: 6, randomSound: false });
+  const NORMAL_SIZE = { size: 'normal', sizeScale: 1 }; // v1.187 default
+  assert.deepStrictEqual(from({}), { enabled: false, density: 'normal', count: 6, randomSound: false, ...NORMAL_SIZE }, 'fresh device: inert');
+  assert.deepStrictEqual(from({ 'ft-critters:on': '1' }), { enabled: true, density: 'normal', count: 6, randomSound: false, ...NORMAL_SIZE });
   assert.deepStrictEqual(from({ 'ft-critters:on': '1', 'ft-critters:density': 'obscene' }),
-    { enabled: true, density: 'obscene', count: 16, randomSound: false });
+    { enabled: true, density: 'obscene', count: 16, randomSound: false, ...NORMAL_SIZE });
+  // v1.187 SIZE: the four rungs, plus the fail-safe fallback shape.
+  assert.strictEqual(from({ 'ft-critters:size': 'tiny' }).sizeScale, 0.5, 'tiny halves');
+  assert.strictEqual(from({ 'ft-critters:size': 'large' }).sizeScale, 2, 'large doubles');
+  assert.strictEqual(from({ 'ft-critters:size': 'xlarge' }).sizeScale, 3, 'extra large triples');
+  assert.strictEqual(from({ 'ft-critters:size': 'ferret' }).size, 'normal', 'a garbage size falls back to normal');
+  assert.strictEqual(from({}).sizeScale, 1, 'unset -> normal scale (v1.186 behaviour byte-for-byte)');
   assert.strictEqual(from({ 'ft-critters:randomsound': '1' }).randomSound, true, 'the pref reads through (default off; literal "1" enables)');
   assert.strictEqual(from({ 'ft-critters:randomsound': 'yes' }).randomSound, false, 'only the literal "1" enables random');
   assert.deepStrictEqual(from({ 'ft-critters:on': '1', 'ft-critters:density': 'sparse' }).count, 1);
@@ -406,9 +415,11 @@ test('v1.174 buildCritterClip (pure GEOMETRIC TRUTH): the hidden region is the M
     'polygon(0px 0px, 35px 0px, 35px 45px, 80px 45px, 80px 80px, 0px 80px)', 'anchor top-right (bl peek)');
   assert.strictEqual(buildCritterClip(P({ x: 0, y: 0, w: 130, h: 130 }), pad),
     'polygon(45px 0px, 80px 0px, 80px 80px, 0px 80px, 0px 45px, 45px 45px)', 'anchor top-left (br peek)');
-  // ONE touched side (the C-notch): unreachable from today's planner (the
-  // cross-fit caps size at 1.15x the anchor cross extent - the seat measured
-  // 0 occurrences over 92k placements), kept as defense-in-depth. Gate
+  // ONE touched side (the C-notch): unreachable at SCALE 1 (the cross-fit caps
+  // size at 1.15x the anchor cross extent - measured 0 occurrences over 92k
+  // placements). v1.187 CORRECTION: the size choice scales that cap, so at
+  // large/xlarge this is a COMMON topology - these locks are LIVE, not dead
+  // code, and must never be loosened as vestigial. Gate
   // WARNING closure: ALL FOUR orientations exact-bound - the R-only coverage
   // left T/B/L emit mutants green, the v1.168 corner class re-struck.
   assert.strictEqual(buildCritterClip(P({ x: 130, y: 110, w: 60, h: 20 }), pad),
@@ -1764,7 +1775,7 @@ test('Settings: the Sneaky critter mode controls exist and setup.js binds them t
   assert.match(body, /localStorage\.setItem\('ft-critters:on'/);
   assert.match(body, /localStorage\.setItem\('ft-critters:density'/);
   const applies = body.match(/applyCritterMode\(\);/g) || [];
-  assert.strictEqual(applies.length, 2, 'BOTH controls apply immediately (toggle + density)');
+  assert.strictEqual(applies.length, 3, 'the three PLACEMENT controls apply immediately (toggle + density + v1.187 size)');
   assert.match(SETUP_JS, /wireCritterModeControls\(controller\.signal\)/, 'wired in the settings init path');
 });
 
@@ -2036,7 +2047,7 @@ test('v1.185 Settings: the "random sound each tap" control exists and setup.js p
   // It must NOT re-scatter (pure per-tap behavior) - only the two mode/density
   // controls call applyCritterMode.
   const applies = body.match(/applyCritterMode\(\);/g) || [];
-  assert.strictEqual(applies.length, 2, 'the random-sound pref does NOT trigger a re-scatter (still 2 applyCritterMode calls)');
+  assert.strictEqual(applies.length, 3, 'the random-sound pref does NOT trigger a re-scatter (only the 3 placement controls call applyCritterMode)');
 });
 
 test('v1.185 (ANTI-INERT): an un-owned critter reaches the tap with sound=null so the pref branch actually fires', () => {
@@ -2054,4 +2065,204 @@ test('v1.185 (ANTI-INERT): an un-owned critter reaches the tap with sound=null s
   assert.strictEqual(byId.owned.sound, '/critters/owned.mp3', 'owned pairing survives to the tap (always plays its own)');
   assert.strictEqual(byId.borrow.sound, null, 'an un-owned critter carries NO owned sound -> the tap reaches the random/stable branch');
   assert.strictEqual(byId.borrow.voice, '/critters/pool1.mp3', 'its stable borrowed voice is carried for the OFF path');
+});
+
+// ---- v1.187 (Dean): sneak-in arrival + critter SIZE ------------------------
+
+test('v1.187 SIZE: the scale multiplies placements (same seed/anchors), and scale 1 is byte-identical to v1.186', () => {
+  const anchors = Array.from({ length: 8 }, (_, i) => ({ x: 200, y: 200 + i * 400, w: 300, h: 200 }));
+  const plan = (sizeScale) => planCritterScatter({
+    anchors: anchors.map((a) => ({ ...a })), exclusions: [], manifest: MANIFEST_8, count: 6,
+    rng: seededRng(11), sizeScale,
+  });
+  const base = plan(undefined); // no sizeScale passed at all (the v1.186 call shape)
+  const one = plan(1);
+  assert.deepStrictEqual(one.map((p) => p.w), base.map((p) => p.w), 'scale 1 == the pre-v1.187 sizes exactly');
+  const big = plan(2);
+  const xl = plan(3);
+  const tiny = plan(0.5);
+  assert.strictEqual(big.length, base.length, 'the same placements survive at 2x on roomy anchors');
+  for (let i = 0; i < base.length; i += 1) {
+    assert.ok(big[i].w > base[i].w, `placement ${i} is LARGER at 2x (${base[i].w} -> ${big[i].w})`);
+    assert.ok(xl[i].w > big[i].w, `placement ${i} grows again at 3x (${big[i].w} -> ${xl[i].w})`);
+    assert.ok(tiny[i].w < base[i].w, `placement ${i} is SMALLER at 0.5x (${base[i].w} -> ${tiny[i].w})`);
+    assert.strictEqual(big[i].w, big[i].h, 'placements stay square');
+  }
+});
+
+test('v1.187 SIZE: every SKIP invariant still holds at 3x - peek, engulf, exclusions, document bounds, screen edge', () => {
+  const { buildCritterClip } = require('../../public/js/common.js');
+  // Gate W2: the fixture must let EVERY clause fire. Small anchors (so a 3x
+  // critter can dwarf them), a FULL-BLEED anchor (the v1.169/v1.180 amputation
+  // rule), bounds TIGHTER than the reach so gate W4 can actually trip, and
+  // bounds.w > viewportW so the width half is not subsumed by the screen edge.
+  const anchors = Array.from({ length: 14 }, (_, i) => ({ x: 60 + (i % 3) * 260, y: 100 + i * 220, w: 300, h: 190 }));
+  // A full-bleed anchor must clear 0.85 * effW, where the planner's effW is
+  // min(bounds.w, viewportW) = 1000 -> 850px. (The seat corrected me here: the
+  // 960px anchor this replaced WAS full-bleed and DID exercise the rule; the
+  // real reason mutant H survives is subsumption by the screen-edge guard, not
+  // the fixture - see tech-debt #171.) Kept at 1100 so the anchor is
+  // unambiguously full-bleed under either reading.
+  anchors.push({ x: 20, y: 3180, w: 1100, h: 150 });
+  anchors.push({ x: 300, y: 3400, w: 96, h: 34 });    // a button
+  anchors.push({ x: 500, y: 3520, w: 36, h: 36 });    // an avatar
+  const player = { x: 0, y: 0, w: 900, h: 460 };
+  const bounds = { w: 1200, h: 3600 };
+  const SWEEP_VIEWPORT_W = 1000; // ONE source for the planner arg AND every assertion
+  // Gate O2: 300 seeds, NOT 60 - adding fixture anchors shifted the RNG stream so
+  // the exclusion clause stopped binding under 60 (first violating seed: 186).
+  for (let seed = 1; seed <= 300; seed += 1) {
+    const out = planCritterScatter({
+      anchors: anchors.map((a) => ({ ...a })), exclusions: [player], manifest: MANIFEST_8, count: 10,
+      rng: seededRng(seed), bounds, viewportW: SWEEP_VIEWPORT_W, sizeScale: 3,
+    });
+    for (const p of out) {
+      const a = p.anchor;
+      const overlaps = p.x < a.x + a.w && p.x + p.w > a.x && p.y < a.y + a.h && p.y + p.h > a.y;
+      const fullyInside = p.x >= a.x && p.x + p.w <= a.x + a.w && p.y >= a.y && p.y + p.h <= a.y + a.h;
+      assert.ok(overlaps && !fullyInside, `seed ${seed}: a 3x critter must still PEEK (overlap yet extend past)`);
+      // Gate W1/W2: the ENGULF case - a critter wholly containing its anchor is
+      // the OPPOSITE of a peek and has no honest clip (buildCritterClip returns
+      // '' -> the renderer sets no clip-path at all -> the critter paints over
+      // its own furniture). This assertion went red before the planner guard.
+      const engulfs = p.x < a.x && p.y < a.y && p.x + p.w > a.x + a.w && p.y + p.h > a.y + a.h;
+      assert.ok(!engulfs, `seed ${seed}: a critter must never ENGULF its anchor (${p.w}px over ${a.w}x${a.h})`);
+      assert.ok(buildCritterClip(p, Math.round(p.w * 0.3)) !== '' || p.roundCover, `seed ${seed}: every placement gets a real clip (no unclipped critter)`);
+      assert.ok(!critterRectsIntersect({ x: p.x, y: p.y, w: p.w, h: p.h }, player), `seed ${seed}: never intersects the player exclusion`);
+      assert.ok(p.x + p.w <= bounds.w && p.y + p.h <= bounds.h, `seed ${seed}: never grows the document (gate W4)`);
+      // Gate F1: assert against the viewportW the planner was actually GIVEN
+      // (1000). Asserting 1200 silently unbound the RIGHT half of v1.180 - the
+      // half Dean's right-edge amputation screenshot was about.
+      assert.ok(p.x >= 0 && p.x + p.w <= SWEEP_VIEWPORT_W, `seed ${seed}: never crosses the SCREEN edge (v1.180)`);
+      // The FULL-BLEED property (v1.169/v1.180): a full-width anchor peeks TOP or
+      // BOTTOM only, so both side covers are zero. HONEST SCOPE (gate O4, both
+      // seats): this assertion is TRUE but cannot FAIL at 3x - disabling the rule
+      // produces no survivor to assert against, because every side peek off a
+      // full-width anchor is then rejected by the SCREEN-EDGE guard (which IS
+      // bound). The rule's own binding lives in the scale-1 test above; the
+      // 3x claim is therefore NOT in this test's title. Tech-debt #171.
+      if (a.w >= 0.85 * Math.min(bounds.w, SWEEP_VIEWPORT_W)) {
+        assert.ok(p.cover.l === 0 && p.cover.r === 0, `seed ${seed}: a full-bleed anchor must peek top/bottom ONLY (cover l=${p.cover.l} r=${p.cover.r})`);
+      }
+    }
+  }
+});
+
+test('v1.187 SIZE: scatterCritters feeds the resolved scale into the planner (source lock)', () => {
+  const scatter = COMMON.slice(COMMON.indexOf('function scatterCritters()'), COMMON.indexOf('\nfunction armCritterSettleCheck'));
+  assert.match(scatter, /var cfgNow = resolveCritterConfig\(\);/, 'the live config is read ONCE (count + sizeScale from one snapshot)');
+  assert.match(scatter, /sizeScale: cfgNow\.sizeScale,/, 'the live pref reaches planCritterScatter');
+  assert.deepStrictEqual(CRITTER_SIZE_SCALES, { tiny: 0.5, normal: 1, large: 2, xlarge: 3 }, 'the four rungs Dean asked for');
+  // Gate S1: the Settings select must REFLECT the stored pref, or the page lies
+  // about the user's own setting (it would always read "Tiny").
+  const wire = SETUP_JS.slice(SETUP_JS.indexOf('function wireCritterModeControls'), SETUP_JS.indexOf('\nfunction ', SETUP_JS.indexOf('function wireCritterModeControls') + 10));
+  assert.match(wire, /sizeSel\.value = cfg\.size \|\| 'normal';/, 'the size select shows the SAVED size on load');
+  assert.match(wire, /localStorage\.setItem\('ft-critters:size', sizeSel\.value\)/, 'and persists a change');
+});
+
+test('v1.187 SNEAK-IN: a slow fade on the wrapper + a rise on the POSE; still/reduced-motion silence both', () => {
+  // The wrapper still owns ONLY opacity (animating its transform would swing the
+  // clip cut - v1.168); the rise rides the pose, recomposing angle/flip.
+  const critter = /(?:^|\n)\.critter\s*\{([^}]*)\}/.exec(CSS);
+  assert.match(critter[1], /animation:\s*critter-arrive var\(--dur-critter-arrive\)/, 'the arrival uses the new slow beat');
+  assert.doesNotMatch(critter[1].replace(/\/\*[\s\S]*?\*\//g, ''), /transform/, 'the WRAPPER still never transforms');
+  assert.match(CSS, /--dur-critter-arrive:\s*1\.2s;/, 'the sneak beat is 1.2s (Dean\'s pick), not the 0.25s UI duration');
+  const pose = /\.critter-pose\s*\{([^}]*)\}/.exec(CSS);
+  assert.match(pose[1], /animation:\s*var\(--critter-pose-anim, critter-sneak\) var\(--dur-critter-arrive\)/, 'the pose carries the rise, name via an inherited var');
+  assert.match(pose[1], /transform:\s*rotate\(var\(--critter-angle/, 'the pose still owns the angle/flip transform');
+  // the keyframes must RECOMPOSE angle+flip, or the tilt/mirror would be lost mid-rise
+  const sneak = /@keyframes critter-sneak\s*\{([\s\S]*?)\n\}/.exec(CSS);
+  assert.ok(sneak, 'the sneak keyframes exist');
+  assert.match(sneak[1], /translateY\(var\(--critter-rise, 7px\)\) rotate\(var\(--critter-angle, 0deg\)\) scaleX\(var\(--critter-flip, 1\)\)/, 'from: offset by the PER-PLACEMENT rise, tilt+flip preserved');
+  assert.match(sneak[1], /translateY\(0\) rotate\(var\(--critter-angle, 0deg\)\) scaleX\(var\(--critter-flip, 1\)\)/, 'to: settled, tilt+flip preserved');
+  // both silencers set the pose-anim var (no second rule owning the transform)
+  const still = /\.critter\.critter-still\s*\{([^}]*)\}/.exec(CSS);
+  assert.match(still[1], /animation:\s*none/, 'a re-glue replays no fade');
+  assert.match(still[1], /--critter-pose-anim:\s*none/, 'a re-glue replays no RISE either');
+  assert.match(CSS, /@media \(prefers-reduced-motion: reduce\) \{\s*\.critter \{ --critter-pose-anim: none; \}/, 'reduced motion keeps the fade, drops the movement');
+});
+
+test('v1.187 gate C1: the size ruling is BOUND on SMALL anchors - large > normal and xlarge > large on buttons/avatars', () => {
+  // The adversarial seat proved three mutants that gut the ruling survived the
+  // WHOLE suite, because the only size test used 300x200 anchors (the big-anchor
+  // branch, where crossAllow rarely binds). These are the anchors that actually
+  // exercise BOTH the `a.h <= 64` band AND the crossAllow scaling: a .btn and a
+  // channel avatar. Without the scaling, large == xlarge here (measured), and
+  // without the small-branch scaling both collapse toward normal.
+  const smallAnchors = () => ([
+    { x: 100, y: 200, w: 96, h: 34 }, { x: 100, y: 500, w: 120, h: 44 },
+    { x: 100, y: 800, w: 36, h: 36 }, { x: 100, y: 1100, w: 64, h: 32 },
+    { x: 100, y: 1400, w: 88, h: 40 }, { x: 100, y: 1700, w: 44, h: 44 },
+  ]);
+  const avg = (scale) => {
+    let total = 0; let n = 0;
+    for (let seed = 1; seed <= 200; seed += 1) {
+      for (const p of planCritterScatter({
+        anchors: smallAnchors(), exclusions: [], manifest: MANIFEST_8, count: 6,
+        rng: seededRng(seed), sizeScale: scale,
+      })) { total += p.w; n += 1; }
+    }
+    return total / n;
+  };
+  const normal = avg(1); const large = avg(2); const xl = avg(3); const tiny = avg(0.5);
+  assert.ok(large > normal * 1.5, `large must be VISIBLY bigger on small anchors (${normal.toFixed(1)} -> ${large.toFixed(1)})`);
+  assert.ok(xl > large * 1.2, `xlarge must be visibly bigger than large (${large.toFixed(1)} -> ${xl.toFixed(1)}) - they were IDENTICAL under the mutant`);
+  assert.ok(tiny < normal * 0.8, `tiny must be visibly smaller (${normal.toFixed(1)} -> ${tiny.toFixed(1)})`);
+});
+
+test('v1.187 gate O1: crossAllow scaling and the size FLOOR are each bound INDEPENDENTLY (they were mutually masking)', () => {
+  // The seat proved C1 only bound "at least one of {crossAllow scaling, floor
+  // scaling}": with crossAllow unscaled, the scaled 78px floor did the lifting on
+  // small anchors and C1 still passed. These two are unmaskable.
+  //
+  // (a) crossAllow: MID anchors (100x100) sit above the scaled floor (78px at 3x)
+  // but below the scaled allowance, so ONLY the crossAllow scaling can lift them.
+  // Unscaled, every placement clamps to <= 1.15*100/spread (<= 115) and large
+  // becomes IDENTICAL to xlarge - the inert-rung failure, relocated.
+  const mid = () => Array.from({ length: 6 }, (_, i) => ({ x: 120, y: 200 + i * 320, w: 100, h: 100 }));
+  const at = (scale) => planCritterScatter({
+    anchors: mid(), exclusions: [], manifest: MANIFEST_8, count: 6, rng: seededRng(5), sizeScale: scale,
+  });
+  const xl = at(3);
+  assert.ok(xl.length > 0, 'the mid-anchor fixture places');
+  assert.ok(xl.every((p) => p.w > 120), `every 3x placement on a 100x100 anchor must exceed the UNSCALED clamp of ~115px (got ${xl.map((p) => p.w).join(',')})`);
+  const lg = at(2);
+  assert.ok(Math.max(...xl.map((p) => p.w)) > Math.max(...lg.map((p) => p.w)),
+    'xlarge still out-sizes large on mid anchors (they collapsed to identical under the crossAllow mutant)');
+
+  // (b) the FLOOR: only a SCALED floor lets `tiny` go below the v1.170 26px floor.
+  // Unscaled, no placement can ever be smaller than 26px.
+  const small = Array.from({ length: 6 }, (_, i) => ({ x: 120, y: 200 + i * 320, w: 40, h: 30 }));
+  const tinyOut = planCritterScatter({
+    anchors: small, exclusions: [], manifest: MANIFEST_8, count: 6, rng: seededRng(9), sizeScale: 0.5,
+  });
+  assert.ok(tinyOut.some((p) => p.w < 26), `"tiny" must reach BELOW the unscaled 26px floor (got ${tinyOut.map((p) => p.w).join(',')})`);
+});
+
+test('v1.187 gate O3: the renderer WRITES --critter-rise - clamped to the pad and signed by the peek direction', () => {
+  // The keyframe reading `var(--critter-rise, 7px)` was source-locked, but nothing
+  // asserted the renderer ever SETS it: deleting both lines fell back to the
+  // literal 7px - i.e. exactly the pre-fix behaviour, with a green suite.
+  const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/' });
+  const origWindow = global.window; const origDocument = global.document;
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const layer = dom.window.document.createElement('div');
+    dom.window.document.body.appendChild(layer);
+    renderCritterPlacements(layer, [
+      // a TINY critter: pad = round(13*0.3) = 4, so the rise CLAMPS to 4 (an
+      // unclamped 7px start would be cropped by the wrapper mid-arrival).
+      { id: 'tiny', x: 100, y: 100, w: 13, h: 13, angle: 0, flip: 1, hue: 0, cover: { t: 0, r: 0, b: 6, l: 0 }, anchor: { x: 90, y: 106, w: 60, h: 40 }, img: null, svg: null },
+      // a BOTTOM-family critter (anchor covers its TOP): it hangs below its ledge,
+      // so it must start ABOVE and sink - a NEGATIVE rise.
+      { id: 'below', x: 200, y: 300, w: 80, h: 80, angle: 0, flip: 1, hue: 0, cover: { t: 30, r: 0, b: 0, l: 0 }, anchor: { x: 190, y: 240, w: 120, h: 90 }, img: null, svg: null },
+    ]);
+    const poses = [...layer.children].map((el) => el.firstElementChild);
+    assert.strictEqual(poses[0].style.getPropertyValue('--critter-rise'), '4px',
+      'the rise CLAMPS to the wrapper pad on a tiny critter (never a fixed 7px)');
+    assert.strictEqual(poses[1].style.getPropertyValue('--critter-rise'), '-7px',
+      'a critter hanging BELOW its ledge starts above and sinks - away from concealment');
+  } finally {
+    global.window = origWindow; global.document = origDocument; dom.window.close();
+  }
 });
