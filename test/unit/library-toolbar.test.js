@@ -56,6 +56,28 @@ test('v1.188 the .section-actions toolbar buttons adopt the modern-chip pill rec
   assert.match(era2009[1], /color:\s*var\(--text-primary\)/, '2009 active label keeps legible primary ink on its retained gloss');
 });
 
+test('v1.189.0 the pill look extends to the books / music / podcasts / history toolbars, tokens only, primary accent preserved', () => {
+  // The three other list-page toolbar containers all get the pill SHAPE.
+  const shape = /\.books-toolbar \.btn,\s*\.music-toolbar-actions \.btn,\s*\.history-toolbar-actions \.btn \{([^}]*)\}/.exec(STYLE_CSS);
+  assert.ok(shape, 'the grouped pill-shape rule for the other toolbars exists (books + music/podcasts + history)');
+  assert.match(shape[1], /border-radius:\s*var\(--radius-full\)/, 'fully rounded like the home toolbar');
+  assert.match(shape[1], /box-shadow:\s*none/, 'flat - base .btn shadow dropped');
+  // The flat secondary FILL is scoped to :not(.btn-primary) so +Add / Subscribe
+  // keep their --yt-red accent (only the shape rounds).
+  const fill = /\.books-toolbar \.btn:not\(\.btn-primary\),\s*\.music-toolbar-actions \.btn:not\(\.btn-primary\),\s*\.history-toolbar-actions \.btn:not\(\.btn-primary\) \{([^}]*)\}/.exec(STYLE_CSS);
+  assert.ok(fill, 'the fill rule excludes .btn-primary (accent preserved)');
+  assert.match(fill[1], /background-color:\s*var\(--bg-secondary\)/, 'non-primary buttons get the flat secondary fill');
+  assert.match(fill[1], /border-color:\s*var\(--border-color\)/, 'hairline border');
+  // Bind the hover tint too (gate SUGGESTION: without this a future edit could
+  // silently drop it, matching the v1.188 sibling test's own hover lock).
+  const hover = /\.books-toolbar \.btn:not\(\.btn-primary\):hover,\s*\.music-toolbar-actions \.btn:not\(\.btn-primary\):hover,\s*\.history-toolbar-actions \.btn:not\(\.btn-primary\):hover \{([^}]*)\}/.exec(STYLE_CSS);
+  assert.ok(hover, 'the non-primary hover rule exists for the other toolbars');
+  assert.match(hover[1], /background-color:\s*var\(--bg-sidebar\)/, 'hover tints to the sidebar bg like the home toolbar');
+  // No raw color literal sneaks in (the census enforces this globally, but bind
+  // it here too since this is the theming question Dean raised).
+  assert.doesNotMatch(shape[1] + fill[1], /#[0-9a-fA-F]{3,8}\b|rgb\(|hsl\(/, 'every color is a token, none raw - themes with the era system');
+});
+
 // ---- countItems / formatItemCountLabel (pure, no DOM) ----------------------
 
 test('countItems: counts a normal array', () => {

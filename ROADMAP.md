@@ -80,6 +80,29 @@
 
 ## Shipped
 
+### v1.189.0 - modern pills extended to the books/music/podcasts/history toolbars (2026-08-25)
+
+Follow-up to v1.188.0's home-toolbar pills (Dean: "continue on with anything left
+from pill perspective for other pages"). CSS-only, additive. Applies the same
+`.modern-chip` recipe + same tokens to the remaining list-page toolbar
+containers: `.books-toolbar`, `.music-toolbar-actions` (used by BOTH music and
+podcasts), and `.history-toolbar-actions`. Fully rounded, flat, hairline border,
+hover-to-sidebar - all token-driven, so they theme with every era + light/dark
+(census stays 0; this also answered Dean's "are the colors coming from the token
+system?" - yes, entirely).
+
+The one design call the home toolbar didn't need: these carry PRIMARY actions
+(+Add / Subscribe), so the flat secondary fill is scoped to `:not(.btn-primary)` -
+the primary keeps its `--yt-red` accent and only its SHAPE rounds. Left as-is on
+purpose: the `.music-tab` underline-tab strip is a tab component, not a toolbar
+button (flagged for Dean).
+
+**Gate:** slim (adversarial seat alone - a CSS-only styling batch). APPROVE;
+verified the token-only theming and the primary-accent cascade by measurement.
+One non-blocking SUGGESTION applied: the new test now also binds the hover tint
+(it was asymmetric with the v1.188 sibling test). Dual-Node green: 22.23.1 +
+24.14.0. No known gaps.
+
 ### v1.188.0 - popcorn theatre glyph, library pills, critter/ambient polish + subs diagnostics (2026-08-25)
 
 A six-item follow-up wave (Dean's list).
