@@ -2176,5 +2176,11 @@
     "date": "2026-08-25",
     "title": "Popcorn theatre button, pill-shaped library buttons, and friendlier critters",
     "intent": "A handful of polish touches. The theatre-mode button on the watch page is now a little popcorn bucket, so it's clearer what it does. The buttons across the top of your library - Sort, Shuffle, Rescan and the All/Videos/Audio filters - now use the same rounded pill shape as the home feed's filter chips. Tapping one of the little critters always makes its sound now and never accidentally taps the thing behind it, and the critters no longer look upside-down when you've made them extra large and their whole body is showing. In dark mode, the Ambient glow now spills softly across the left menu bar instead of stopping in a hard line against it. And when a subscription checks a channel but nothing new comes down, the logs now spell out exactly why each video was skipped - so if a video you expected didn't download, there's finally a trail to follow (if that's happening to you, send us the log line and the video link)."
+  },
+  {
+    "version": "1.189.0",
+    "date": "2026-08-25",
+    "title": "The rounded pill buttons now cover the rest of your pages",
+    "intent": "Following on from yesterday's library pills: the toolbars on your Books, Music, Podcasts and History pages now use the same rounded pill buttons, so the whole app feels consistent. Buttons that start something new - like Add or Subscribe - keep their bold accent colour so they still stand out; everything just gets the softer rounded shape. All of it follows your chosen theme's colours automatically, in light and dark."
   }
 ]
