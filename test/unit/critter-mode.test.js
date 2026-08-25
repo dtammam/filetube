@@ -1861,11 +1861,25 @@ test('v1.182 D (pure): critterPageLoading is true iff a feed skeleton is on the 
   assert.strictEqual(critterPageLoading(), false, 'no skeleton -> settled');
 });
 
+test('v1.186.1 (Dean, device): critterPageLoading also gates on the WATCH page related skeleton (.skeleton-shimmer), not just the feed card', async (t) => {
+  // The watch page related sidebar loads via .related-thumb.skeleton-shimmer /
+  // .skeleton-line.skeleton-shimmer - NOT .skeleton-card. Gating only on the
+  // feed card let critters reveal early on watch, then re-scatter when the
+  // related list rendered (Dean: "spawn then re-shuffle to all-new spots").
+  const ctx = mountCritterFeed('<div id="view-root"><div class="related-thumb skeleton-shimmer"></div></div>');
+  t.after(() => unmountCritterFeed(ctx));
+  const { critterPageLoading } = require('../../public/js/common.js');
+  assert.strictEqual(critterPageLoading(), true, 'a watch related-sidebar skeleton (.skeleton-shimmer) means content is still loading -> defer');
+  // watch.js strips .skeleton-shimmer when the real related cards land.
+  ctx.dom.window.document.getElementById('view-root').innerHTML = '<div class="related-thumb"></div>';
+  assert.strictEqual(critterPageLoading(), false, 'shimmer stripped -> settled -> reveal');
+});
+
 test('v1.182 E (source locks): the wait phase - cap value, doc-guarded observer, skeleton-gated reveal, cancelled on every nav', () => {
   // The cap is Dean's chosen ceiling; the quiet is the settle beat.
   assert.match(COMMON, /var CRITTER_REVEAL_CAP_MS = 2500;/, 'the reveal cap is 2.5s (Dean\'s ruling)');
   assert.match(COMMON, /var CRITTER_QUIET_MS = 300;/, 'the quiet debounce is a settled beat');
-  assert.match(COMMON, /var CRITTER_LOADING_SELECTORS = \['\.skeleton-card'\];/, 'the loading marker is the feed skeleton');
+  assert.match(COMMON, /var CRITTER_LOADING_SELECTORS = \['\.skeleton-card', '\.skeleton-shimmer'\];/, 'the loading markers cover the feed card AND the universal skeleton-shimmer (v1.186.1: the watch related sidebar)');
   const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter()'), COMMON.indexOf('\nfunction wireCritterListeners'));
   assert.match(sched, /disconnectCritterWait\(\);/, 'a navigation cancels the wait phase (observer + quiet + cap) - the unstashed-handle class');
   // gate CRITICAL: the previous view's persistent nudge observer is disconnected

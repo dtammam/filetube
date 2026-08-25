@@ -20,6 +20,8 @@ const {
 
 const WATCH_HTML = fs.readFileSync(path.join(__dirname, '../../public/watch.html'), 'utf8');
 const WATCH_JS = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
+const STYLE_CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+const COMMON_JS = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
 
 // ---- pure helpers -----------------------------------------------------------
 
@@ -122,4 +124,31 @@ test('v1.186 ambient loop is battery-safe: gated on ambientShouldRun, torn down 
   assert.match(fn, /signal\.addEventListener\('abort'[\s\S]*stop\(\)[\s\S]*themeObs[\s\S]*disconnect\(\)/, 'view teardown stops the loop + disconnects the observer');
   // same-origin source (no canvas taint that could break playback)
   assert.match(fn, /'\/thumbnail\/' \+ encodeURIComponent\(mediaId\)/, 'audio cover sampled from the same-origin thumbnail');
+});
+
+// ---- v1.186.1 hotfix (Dean, device): fullscreen trap + theatre re-scatter ----
+
+test('v1.186.1 the ambient stacking context lives on the STAGE, never on #player-slot (or it traps the fixed fullscreen overlay)', () => {
+  // The v1.166 class: #player-wrapper.css-fullscreen is position:fixed
+  // z-index:var(--z-sheet); a z-indexed ANCESTOR caps it below the chrome. So
+  // #player-slot must carry NO z-index; the stage owns the context and drops it
+  // in faux fullscreen.
+  const stage = STYLE_CSS.slice(STYLE_CSS.indexOf('.watch-player-stage {'), STYLE_CSS.indexOf('.ambient-glow {'));
+  assert.match(stage, /z-index:\s*0;/, 'the stage owns the ambient stacking context');
+  const glow = STYLE_CSS.slice(STYLE_CSS.indexOf('.ambient-glow {'), STYLE_CSS.indexOf('.ambient-glow.is-on'));
+  assert.match(glow, /z-index:\s*-1;/, 'the glow sits BEHIND #player-slot within the stage context');
+  // #player-slot must NOT get a z-index (that was the trap).
+  const slotRule = STYLE_CSS.match(/(^|\n)#player-slot\s*\{[^}]*\}/);
+  if (slotRule) assert.doesNotMatch(slotRule[0], /z-index/, '#player-slot must NOT create a stacking context (it traps the fixed fullscreen overlay)');
+  // Faux fullscreen drops the stage context so the fixed overlay escapes.
+  assert.match(STYLE_CSS, /body\.ft-css-fullscreen \.watch-player-stage \{\s*z-index:\s*auto;\s*\}/,
+    'faux fullscreen drops the stage stacking context so the fixed .css-fullscreen overlay is not trapped');
+});
+
+test('v1.186.1 theatre toggle re-scatters critters for the new layout (exposed hook + call)', () => {
+  assert.match(COMMON_JS, /window\.FileTube\.scheduleCritterScatter = scheduleCritterScatter;/,
+    'common.js exposes the scatter hook for in-view layout changes');
+  const th = WATCH_JS.slice(WATCH_JS.indexOf('function setupTheatreToggle'), WATCH_JS.indexOf('\n    // v1.186 (Dean): AMBIENT MODE'));
+  assert.match(th, /theaterBtn\.addEventListener\('click'[\s\S]*window\.FileTube\.scheduleCritterScatter\(\)/,
+    'the theatre toggle re-scatters critters after flipping the layout class');
 });
