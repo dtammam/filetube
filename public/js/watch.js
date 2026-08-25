@@ -1879,10 +1879,14 @@ if (typeof module !== 'undefined' && module.exports) {
       const cog = document.getElementById('settings-btn');
       const menu = document.getElementById('settings-menu');
       // Theatre icon, just before the cog (era-style inline SVG like the gear).
+      // v1.188 (Dean): a popcorn bucket instead of the generic box - the glyph
+      // now says WHAT theatre mode is. A cluster of popcorn puffs above a
+      // striped bucket, all one currentColor fill so it inherits the era tokens
+      // exactly like the gear. Decorative only; aria-label carries the meaning.
       if (controls && cog && !document.getElementById('theater-btn')) {
         cog.insertAdjacentHTML('beforebegin',
           '<button type="button" id="theater-btn" class="pc-btn theater-btn" aria-label="Toggle theatre mode" aria-pressed="false">'
-          + '<svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><path d="M240-160q-33 0-56.5-23.5T160-240v-480q0-33 23.5-56.5T240-800h480q33 0 56.5 23.5T800-720v480q0 33-23.5 56.5T720-160H240Zm0-80h480v-480H240v480Z"/></svg>'
+          + '<svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><path d="M345-680a55,55 0 1,0 110,0a55,55 0 1,0 -110,0ZM420-720a60,60 0 1,0 120,0a60,60 0 1,0 -120,0ZM505-680a55,55 0 1,0 110,0a55,55 0 1,0 -110,0ZM395-635a45,45 0 1,0 90,0a45,45 0 1,0 -90,0ZM480-640a45,45 0 1,0 90,0a45,45 0 1,0 -90,0ZM288-620h384l-14 70H302zM300-540h360l-58 360H358z"/></svg>'
           + '</button>');
       }
       // Autoplay + Loop + Ambient toggle rows, appended to the cog menu.
