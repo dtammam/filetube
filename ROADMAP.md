@@ -80,6 +80,37 @@
 
 ## Shipped
 
+### v1.191.0 - critters wave: buttons-behind work, hamburger re-scatter, 18 tap reactions, clearer popcorn glyph (2026-08-25)
+
+Four Dean requests, one wave.
+
+1. **Buttons behind critters work.** v1.188 made a tap on the whole critter BOX
+   win (chirp + capture-phase swallow); a button the critter peeked from behind
+   stopped working. Reverted critterTapHit to hit only the VISIBLE region (box
+   minus its own anchor): a tap over the anchor goes to the button; the exposed
+   peek + any overhang past the anchor still win + swallow (keeps the "obscuring
+   OTHER furniture" behaviour). The v1.189.1 z-order occlusion guard + the
+   keyboard `!e.detail` guard are unchanged.
+2. **Hamburger re-scatters critters.** Collapsing/expanding the left bar widens
+   the content column but fires no window resize, so critters hung in place. The
+   menu-toggle handler now calls the same scheduleCritterScatter the theatre
+   toggle uses (guarded; no-op when off).
+3. **18 tap reactions** (was 6): + nod, wobble, boing, swing, pop, headshake,
+   tada, rubberband, backflip, doublehop, peek, float. All transform-only, ride
+   the pose's angle+flip, reduced-motion-safe.
+4. **Popcorn theatre glyph** redrawn clearer + taller (evenodd striped tub +
+   puffs overflowing the top/sides) and scaled to match the settings-cog footprint.
+
+**Gate:** full two-reviewer. Functional work APPROVED clean by both seats first
+pass; each seat then caught a doc/test blocker - QA: three tap comments still
+described v1.188's whole-box model this wave reversed (a revert-the-fix trap);
+adversarial: the reaction-pool reduced-motion test lock was VACUOUS (its haystack
+swept in the class definitions, so a dropped reaction shipped a
+prefers-reduced-motion regression green). Both fixed + delta-re-confirmed.
+**Known residual:** tech-debt #174 - the visible-region hit-test uses the anchor's
+bounding RECT, so a png sliver in a round avatar's bbox corner is untappable
+(one-directional, errs safe, disclosed). Dual-Node green.
+
 ### v1.190.0 - theatre no longer clips the page bottom; toolbar pills match the feed weight (2026-08-25)
 
 Two Dean device reports.
