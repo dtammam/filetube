@@ -7492,6 +7492,11 @@ var CRITTER_STORAGE_RANDOMSOUND = 'ft-critters:randomsound';
 // unscaled and still hard-skips a placement. scale 1 == byte-identical to v1.186.
 var CRITTER_SIZE_SCALES = { tiny: 0.5, normal: 1, large: 2, xlarge: 3 };
 var CRITTER_STORAGE_SIZE = 'ft-critters:size';
+// v1.188 (Dean): an UPSCALED bottom-family critter only hangs upside-down when
+// its anchor covers at least "most" (>= half) of its box - below this, the body
+// is too visible for the flip to read as a peek and it just looks flipped over.
+// See the flip gate in planCritterScatter. Only consulted for sizeScale > 1.
+var CRITTER_FLIP_MIN_COVERAGE = 0.5;
 // Anchors: page furniture worth peeking from behind. Curated, generic across
 // views; each candidate must also SURVIVE the exclusion filters below. Every
 // entry must PAINT A BACKGROUND (the z-index -1 layer hides the overlap by the
@@ -7737,6 +7742,21 @@ function planCritterScatter(opts) {
     // 180deg so the HEAD pops out below the ledge - hanging upside-down reads
     // sneaky; dangling feet read severed. Tilt still applies around the flip.
     var bottomFamily = edge === 'bottom' || edge === 'bl' || edge === 'br';
+    // v1.188 (Dean): the 180deg bottom-flip reads as a sneaky upside-down PEEK
+    // only when the anchor actually HIDES most of the critter (a head poking
+    // down from behind a ledge). When the anchor covers little of it - the
+    // common case at `large`/`xlarge`, where the whole body is plainly visible -
+    // an upside-down critter just looks flipped-over and derpy ("if the element
+    // doesn't cover most of the thing, being upside down just looks off"). Gate
+    // the flip on measured COVERAGE: the fraction of the critter's box the
+    // anchor's rect overlaps. SCALED sizes only (sizeScale > 1) - at tiny/normal
+    // scale the cross-fit keeps the critter small relative to its anchor, so
+    // this branch never fires and scale-1 output stays BYTE-IDENTICAL to v1.187
+    // (no parity-test churn; the derp is strictly an upscaled-critter artifact).
+    var ovX = Math.max(0, Math.min(a.x + a.w, x + size) - Math.max(a.x, x));
+    var ovY = Math.max(0, Math.min(a.y + a.h, y + size) - Math.max(a.y, y));
+    var anchorCoverage = (ovX * ovY) / (size * size);
+    var hangUpsideDown = bottomFamily && !(sizeScale > 1 && anchorCoverage < CRITTER_FLIP_MIN_COVERAGE);
     placements.push({
       // v1.185: carry the OWNED pairing (`sound`, same-named file, null if none)
       // and the stable borrowed `voice` SEPARATELY - the tap path needs the
@@ -7745,7 +7765,7 @@ function planCritterScatter(opts) {
       // Builtins carry neither and keep the chirp.
       id: c.id, img: c.img || null, sound: c.sound || null, voice: c.voice || null, svg: c.svg || null,
       x: x, y: y, w: size, h: size,
-      angle: bottomFamily ? tilt + 180 : tilt,
+      angle: hangUpsideDown ? tilt + 180 : tilt,
       flip: rng() < 0.5 ? -1 : 1, // v1.168: mirrored half the time - twice the poses per PNG
       // v1.168 claim; the CLIP has derived from measured rects since v1.174, but
       // `cover` is NOT vestigial: renderCritterPlacements steers the v1.187 sneak

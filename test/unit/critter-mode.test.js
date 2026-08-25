@@ -306,6 +306,79 @@ test('v1.168 go-harder: corners join the edge pool, peek depth varies, flips spl
   assert.ok(flipSites >= 10, 'sanity: the keyframe family is covered, found ' + flipSites);
 });
 
+// ---- v1.188 (Dean): upside-down flip gated on coverage at upscaled sizes -----
+
+// A bottom-family peek is the ONLY source of a 180deg pose (cover.t > 0
+// uniquely identifies bottom/bl/br - top sets cover.b, sides set cover.l/r).
+// The recomputed anchor coverage is the fraction of the critter box the anchor
+// overlaps. "Flipped" == the pose rotated past vertical (cos(angle) < 0).
+function isBottomFamily(p) { return p.cover && p.cover.t > 0; }
+function isFlipped(p) { return Math.cos(p.angle * Math.PI / 180) < 0; }
+function anchorCoverageOf(p) {
+  const a = p.anchor;
+  const ovX = Math.max(0, Math.min(a.x + a.w, p.x + p.w) - Math.max(a.x, p.x));
+  const ovY = Math.max(0, Math.min(a.y + a.h, p.y + p.h) - Math.max(a.y, p.y));
+  return (ovX * ovY) / (p.w * p.h);
+}
+
+test('v1.188 flip gate: at upscaled sizes a bottom-family critter flips IFF its anchor covers >= half of it', () => {
+  // Mixed anchors - small buttons (low coverage at scale) and a big card (high
+  // coverage) - so both sides of the 0.5 threshold are exercised in one sweep.
+  const anchors = [
+    { x: 40, y: 60, w: 44, h: 44, round: false },
+    { x: 300, y: 90, w: 40, h: 40, round: false },
+    { x: 120, y: 500, w: 420, h: 300, round: false },
+    { x: 700, y: 520, w: 50, h: 50, round: false },
+    { x: 500, y: 200, w: 380, h: 260, round: false },
+  ];
+  const bounds = { w: 4000, h: 4000 }; // roomy: never let a bounds/edge skip mask the flip decision
+  let bottomFamilyLarge = 0; let lowCoverageUpright = 0;
+  for (let seed = 1; seed <= 120; seed += 1) {
+    for (const sizeScale of [2, 3]) {
+      const out = planCritterScatter({
+        anchors, exclusions: [], manifest: MANIFEST_8, count: 5, rng: seededRng(seed), bounds, sizeScale,
+      });
+      for (const p of out) {
+        if (!isBottomFamily(p)) continue;
+        bottomFamilyLarge += 1;
+        const cov = anchorCoverageOf(p);
+        // THE gate, byte-exact: flipped exactly when the anchor covers >= half.
+        assert.strictEqual(
+          isFlipped(p), cov >= 0.5,
+          `sizeScale ${sizeScale} seed ${seed}: coverage ${cov.toFixed(3)} -> flipped should be ${cov >= 0.5}, got ${isFlipped(p)} (angle ${p.angle})`,
+        );
+        if (cov < 0.5) { assert.ok(!isFlipped(p), 'low-coverage upscaled critter stays upright'); lowCoverageUpright += 1; }
+      }
+    }
+  }
+  assert.ok(bottomFamilyLarge > 40, 'sanity: the sweep exercised many bottom-family placements, got ' + bottomFamilyLarge);
+  assert.ok(lowCoverageUpright > 5, 'sanity: the suppression branch actually fired (low-coverage uprights), got ' + lowCoverageUpright);
+});
+
+test('v1.188 flip gate: at tiny/normal scale a bottom-family critter ALWAYS flips (scale-1 byte-parity preserved)', () => {
+  const anchors = [
+    { x: 40, y: 60, w: 44, h: 44, round: false },
+    { x: 300, y: 90, w: 40, h: 40, round: false },
+    { x: 120, y: 500, w: 420, h: 300, round: false },
+    { x: 700, y: 520, w: 50, h: 50, round: false },
+  ];
+  const bounds = { w: 4000, h: 4000 };
+  let seen = 0;
+  for (let seed = 1; seed <= 120; seed += 1) {
+    for (const sizeScale of [0.5, 1]) {
+      const out = planCritterScatter({
+        anchors, exclusions: [], manifest: MANIFEST_8, count: 4, rng: seededRng(seed), bounds, sizeScale,
+      });
+      for (const p of out) {
+        if (!isBottomFamily(p)) continue;
+        seen += 1;
+        assert.ok(isFlipped(p), `sizeScale ${sizeScale}: bottom-family must hang upside-down regardless of coverage (angle ${p.angle})`);
+      }
+    }
+  }
+  assert.ok(seen > 20, 'sanity: exercised bottom-family placements at tiny/normal scale, got ' + seen);
+});
+
 // ---- the tap hit-test -------------------------------------------------------
 
 test('critterTapHit: only the EXPOSED sliver is tappable; anchor-covered points miss', () => {
