@@ -22,6 +22,7 @@ const {
   resolveCritterConfig,
   planCritterScatter,
   critterTapHit,
+  critterOccludedAt,
   renderCritterPlacements,
   CRITTER_SIZE_SCALES,
   critterRectsIntersect,
@@ -403,6 +404,125 @@ test('critterTapHit: the visually-topmost (last-rendered) critter wins an overla
   assert.strictEqual(critterTapHit([under, over], 40, 40).id, 'over');
 });
 
+// ---- v1.189.1 (Dean): the tap stands down when an overlay is painted ABOVE the
+// critter at the click point (the notification dropdown / a menu / a sheet was
+// swallowing clicks that geometrically overlapped a critter box) ---------------
+
+test('critterOccludedAt: a target inside an overlay stacked ABOVE the critter plane reports occluded; normal furniture does not', () => {
+  const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/' });
+  const prevWin = global.window; const prevDoc = global.document;
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const doc = dom.window.document;
+    // The critter layer at its real z-index:2.
+    const layer = doc.createElement('div');
+    layer.id = 'critter-layer';
+    layer.style.position = 'absolute';
+    layer.style.zIndex = '2';
+    doc.body.appendChild(layer);
+
+    // An overlay (the notification dropdown class of thing) at z 900, with a
+    // child the user actually clicks.
+    const overlay = doc.createElement('div');
+    overlay.style.position = 'absolute';
+    overlay.style.zIndex = '900';
+    const overlayItem = doc.createElement('button');
+    overlay.appendChild(overlayItem);
+    doc.body.appendChild(overlay);
+    assert.strictEqual(critterOccludedAt(overlayItem), true, 'a click inside a z:900 overlay is occluded - the critter must not win');
+
+    // Ordinary furniture the critter peeks from: no positioned z-index above 2.
+    const card = doc.createElement('a');
+    card.className = 'video-card';
+    doc.body.appendChild(card);
+    assert.strictEqual(critterOccludedAt(card), false, 'a plain card (z-auto) is BELOW the critter - the tap still wins');
+
+    // A positioned ancestor BELOW the critter plane (e.g. the z:0 player stage)
+    // does not occlude.
+    const stage = doc.createElement('div');
+    stage.style.position = 'relative';
+    stage.style.zIndex = '0';
+    const thumb = doc.createElement('div');
+    stage.appendChild(thumb);
+    doc.body.appendChild(stage);
+    assert.strictEqual(critterOccludedAt(thumb), false, 'a z:0 positioned ancestor is below the critter (z:2) - not occluding');
+
+    // Equal z-index (2) does NOT occlude (strictly-greater test) so the critter's
+    // own plane / a tie never suppresses a real peek tap.
+    const tie = doc.createElement('div');
+    tie.style.position = 'absolute';
+    tie.style.zIndex = '2';
+    const tieChild = doc.createElement('span');
+    tie.appendChild(tieChild);
+    doc.body.appendChild(tie);
+    assert.strictEqual(critterOccludedAt(tieChild), false, 'a z equal to the critter plane is not "above" (strictly greater)');
+
+    // Null / non-element is safe.
+    assert.strictEqual(critterOccludedAt(null), false);
+    assert.strictEqual(critterOccludedAt(doc.createTextNode('x')), false);
+  } finally {
+    global.window = prevWin; global.document = prevDoc;
+    if (global.window === undefined) delete global.window;
+    if (global.document === undefined) delete global.document;
+    dom.window.close();
+  }
+});
+
+test('critterOccludedAt: reads the LIVE layer z-index (a higher layer plane raises the bar)', () => {
+  const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/' });
+  const prevWin = global.window; const prevDoc = global.document;
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const doc = dom.window.document;
+    const layer = doc.createElement('div');
+    layer.id = 'critter-layer';
+    layer.style.position = 'absolute';
+    layer.style.zIndex = '50'; // hypothetical raised plane
+    doc.body.appendChild(layer);
+    const mid = doc.createElement('div');
+    mid.style.position = 'absolute';
+    mid.style.zIndex = '20'; // below 50 now
+    const midChild = doc.createElement('button');
+    mid.appendChild(midChild);
+    doc.body.appendChild(mid);
+    assert.strictEqual(critterOccludedAt(midChild), false, 'z:20 is below a z:50 layer plane - not occluding (bar tracks the CSS)');
+  } finally {
+    global.window = prevWin; global.document = prevDoc;
+    if (global.window === undefined) delete global.window;
+    if (global.document === undefined) delete global.document;
+    dom.window.close();
+  }
+});
+
+test('critterOccludedAt: with NO #critter-layer present it falls back to z-index 2 (binds the default; gate SUGGESTION)', () => {
+  const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/' });
+  const prevWin = global.window; const prevDoc = global.document;
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const doc = dom.window.document;
+    // Deliberately NO #critter-layer -> the function must use its default of 2.
+    const over = doc.createElement('div');
+    over.style.position = 'absolute';
+    over.style.zIndex = '3'; // just ABOVE the default 2
+    const overChild = doc.createElement('button');
+    over.appendChild(overChild);
+    doc.body.appendChild(over);
+    assert.strictEqual(critterOccludedAt(overChild), true, 'z:3 > default 2 -> occluded (kills the "default 999" mutant)');
+    const tie = doc.createElement('div');
+    tie.style.position = 'absolute';
+    tie.style.zIndex = '2';
+    const tieChild = doc.createElement('span');
+    tie.appendChild(tieChild);
+    doc.body.appendChild(tie);
+    assert.strictEqual(critterOccludedAt(tieChild), false, 'z:2 ties the default -> not occluded');
+  } finally {
+    global.window = prevWin; global.document = prevDoc;
+    if (global.window === undefined) delete global.window;
+    if (global.document === undefined) delete global.document;
+    dom.window.close();
+  }
+});
+
 // ---- the built-ins ----------------------------------------------------------
 
 test('the 5 built-in figurines are distinct, original, and colour-token-pure (currentColor only)', () => {
@@ -733,6 +853,11 @@ test('SOURCE: v1.188 the tap is SWALLOWED - capture phase + stopPropagation + pr
   assert.match(clickHandler, /if \(!e\.detail\) return;/, 'the swallow stands down for keyboard/programmatic (detail===0) clicks');
   // The capture flag is on the click registration itself (the `}, true);` tail).
   assert.match(clickHandler, /\}, true\);/, 'the click listener is registered in the CAPTURE phase');
+  // v1.189.1 (Dean): the swallow stands down when the click is inside an overlay
+  // painted ABOVE the critter (a menu / the notification dropdown / a sheet). The
+  // guard runs AFTER the geometric hit-test and BEFORE the stopPropagation swallow.
+  assert.match(clickHandler, /if \(!hit\) return;\n\s*[\s\S]{0,400}?if \(critterOccludedAt\(e\.target\)\) return;\n\s*[\s\S]{0,400}?e\.stopPropagation\(\);/,
+    'occlusion guard sits between the hit-test and the swallow');
   // It still exempts caret-bearing fields (never fight a text cursor) and stands
   // down over every playback surface + modal backdrop (Dean's hard constraint).
   assert.match(clickHandler, /closest\('input, textarea, select, \[contenteditable\]'\)\) return;/,
@@ -749,8 +874,8 @@ test('SOURCE: v1.188 the tap is SWALLOWED - capture phase + stopPropagation + pr
   // fire), exempting caret-bearing fields and the exclusions.
   const mousedownHandler = body.slice(body.indexOf("addEventListener('mousedown'"), body.indexOf("addEventListener('resize'"));
   assert.ok(mousedownHandler.length > 0, 'the mousedown selection-guard was located');
-  assert.match(mousedownHandler, /if \(!critterTapHit\(critterPlacements, e\.pageX, e\.pageY\)\) return;\n\s*e\.preventDefault\(\);/,
-    'it preventDefaults ONLY when the down is a real critter hit (never a blanket selection kill)');
+  assert.match(mousedownHandler, /if \(!critterTapHit\(critterPlacements, e\.pageX, e\.pageY\)\) return;\n\s*if \(critterOccludedAt\(e\.target\)\) return;[^\n]*\n\s*e\.preventDefault\(\);/,
+    'it preventDefaults ONLY when the down is a real critter hit AND the critter is not occluded (never a blanket selection kill)');
   assert.match(mousedownHandler, /closest\('input, textarea, select, \[contenteditable\]'\)\) return;/,
     'caret-bearing fields are exempt - never fight a text cursor');
   assert.match(mousedownHandler, /closest\(CRITTER_EXCLUSION_SELECTORS\.join\(','\)\)\) return;/,
