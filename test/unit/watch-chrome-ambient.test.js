@@ -235,6 +235,27 @@ test('v1.187 the ambient intensity select is INJECTED into the cog (the parity-l
   }
 });
 
+test('v1.188 ambient bleeds over the LEFT BAR: root data-ambient-on toggled at the start/stop funnel drops the sidebar bg + border', () => {
+  // Dean: "the ambience hard-stops against the left bar - let it go over the bar
+  // like it does with Related files." The opaque .sidebar (z-index 99) painted
+  // over the glow's left bleed and its border-right drew the hard line.
+  const fn = WATCH_JS.slice(WATCH_JS.indexOf('function setupAmbientMode'), WATCH_JS.indexOf('\n    // v1.22.0 FR-7 (TF): the "Loop"'));
+  // Set in start() and cleared in stop() - the SAME funnel as the glow's is-on,
+  // so the root signal tracks ambient exactly (and clears on teardown/light).
+  const startFn = fn.slice(fn.indexOf('function start()'), fn.indexOf('function stop()'));
+  const stopFn = fn.slice(fn.indexOf('function stop()'), fn.indexOf('function evaluate()'));
+  assert.match(startFn, /glow\.classList\.add\('is-on'\)/, 'start still arms the glow');
+  assert.match(startFn, /document\.documentElement\.setAttribute\('data-ambient-on', ''\)/, 'start sets the root signal');
+  assert.match(stopFn, /glow\.classList\.remove\('is-on'\)/, 'stop still disarms the glow');
+  assert.match(stopFn, /document\.documentElement\.removeAttribute\('data-ambient-on'\)/, 'stop clears the root signal (restores the bar; also fires on teardown + light)');
+  // The CSS half: while the signal is present the sidebar goes see-through so the
+  // bloom flows across; `transparent` (a keyword) keeps it census-clean.
+  const rule = /:root\[data-ambient-on\] \.sidebar \{([^}]*)\}/.exec(STYLE_CSS);
+  assert.ok(rule, 'the ambient sidebar override rule exists');
+  assert.match(rule[1], /background-color:\s*transparent;/, 'the opaque sidebar bg is dropped so the glow shows through');
+  assert.match(rule[1], /border-right-color:\s*transparent;/, 'the hard border-right line is dropped');
+});
+
 test('v1.187.1 THE REACH INVARIANT: every rung must bleed BEYOND the player, on BOTH mask spellings', () => {
   // Dean, device: "I see the options for ambient but nothing renders, at any
   // level." Root cause was pure geometry, not wiring: the canvas is exactly the

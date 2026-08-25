@@ -80,6 +80,58 @@
 
 ## Shipped
 
+### v1.188.0 - popcorn theatre glyph, library pills, critter/ambient polish + subs diagnostics (2026-08-25)
+
+A six-item follow-up wave (Dean's list).
+
+1. **Popcorn theatre glyph** - the watch-page theatre button's inline SVG was a
+   generic box; now a popcorn bucket, so the control says what it does. Pure
+   visual (no test binds the geometry).
+2. **Library toolbar pills** - the classic home/library `.section-actions`
+   toolbar (Sort / Shuffle / Rescan / View + the All/Videos/Audio and
+   watched-state filter toggles) adopts the `.modern-chip` feed-pill recipe:
+   fully-rounded, flat secondary fill, hairline border, hover-to-sidebar,
+   inverted active state. All token-driven (census stays 0). DISCLOSED per-era
+   residual: the 2009 skin paints its `.btn` fill with `background-image`, so it
+   keeps its gloss (the button still rounds); a 2009-scoped override keeps the
+   active label legible against that gloss (a gate WARNING - the first cut
+   inverted the text to `--bg-color` and went illegible on the retained gloss).
+3. **XL critter flip** - the 180deg bottom-family flip is now gated on anchor
+   COVERAGE (flip only when the anchor hides >= half the critter), guarded on
+   `sizeScale > 1` so tiny/normal output is BYTE-IDENTICAL to v1.187 (proven:
+   28,800-case before/after diff, 0 mismatches). Kills the "derpy upside-down"
+   look at large/xlarge where the whole body shows.
+4. **Critter tap wins its whole area** - a tap anywhere on the critter png now
+   chirps AND is swallowed (capture-phase `stopPropagation` + `preventDefault`),
+   never clicking through to the card/control behind it. Reverses the old "the
+   link always wins" posture. A gate WARNING caught that this also swallowed
+   KEYBOARD/programmatic clicks (detail===0, coords at the viewport origin) - an
+   a11y regression - fixed with an `if (!e.detail) return;` stand-down that fails
+   safe on touch.
+5. **Ambient over the left bar** - in dark mode the ambient glow now bleeds
+   across the left sidebar instead of hard-stopping at it. Root cause was the
+   opaque sidebar (z-index 99) painting over a bleed that was already there; a
+   root `data-ambient-on` signal (set/cleared at the glow's own start/stop
+   funnel) drops the sidebar bg + border to `transparent` while ambient runs.
+6. **Subscription list-pass observability** (DIAGNOSTIC ONLY, no behaviour
+   change) - Dean: subscriptions "succeed" but don't download; a 5-day-old
+   normal upload was skipped and stayed skipped on re-pull (he'd switched the
+   yt-dlp engine Nightly->Stable). The survivor loop had three SILENT drop paths
+   (archive dedup, the date gate, premiere-defer); now every poll logs a
+   one-line summary ("N listed, M new to download (dropped: ...)") plus a
+   per-video line on the two rare silent paths. This is instrumentation to
+   root-cause his next re-pull, NOT a fix - the actual cause still awaits his
+   yt-dlp version + the log lines + the video URL.
+
+**Gate:** full two-reviewer. Adversarial APPROVE first pass (reproduced every
+claim by measurement, incl. the byte-parity and zero-behaviour-change proofs);
+QA seat caught two WARNINGs (the keyboard-click swallow a11y regression, and the
+2009 active-toggle illegibility WITH a mis-stated disclosure comment) - both
+fixed and delta-re-confirmed by both seats. **Known gap:** item 6 is diagnostics
+only; the subscription-download root cause is still open pending Dean's device
+data. `progress-coalescer.test.js` has a pre-existing parallel-load timing flake
+(passes 23/23 in isolation, untouched by this diff) - disclosed.
+
 ### v1.187.2 - ambient cost fix: playback paused itself on mobile (Dean device) (2026-08-25)
 
 Dean, device: with Ambient ON, playback pauses itself ~2-3s in AND the Dynamic

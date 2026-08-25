@@ -1048,6 +1048,22 @@ html.reader-immersive .app-container { padding-top: 0; }
   transform: translateX(calc(-1 * var(--sidebar-w))); /* the slide-away MUST match the width - the coupling --sidebar-w exists for */
 }
 
+/* v1.188 (Dean: "the ambience hard-stops against the left bar - let it go over
+   the left bar as well, like it does with Related files"). The glow already
+   bleeds LEFT into the sidebar region (main-content paints no background and
+   never clips, so the scaled canvas overflows past its left edge), but the
+   opaque `.sidebar` (z-index 99) painted over it and its `border-right` drew the
+   hard vertical line Dean sees. While ambient runs (root `data-ambient-on`, set
+   by watch.js at the same start/stop funnel as the glow's `is-on`, JS-guaranteed
+   dark-only), drop both so the bloom flows ACROSS the bar. The nav items paint
+   inside the sidebar's own stacking context, above the glow behind it, so
+   Home/Settings/etc. stay fully readable. `transparent` is a keyword (census-
+   exempt); the bar restores its opaque paint the instant ambient stops. */
+:root[data-ambient-on] .sidebar {
+  background-color: transparent;
+  border-right-color: transparent;
+}
+
 .sidebar-section {
   border-bottom: 1px solid var(--border-color);
   padding-bottom: var(--space-4);
@@ -1190,6 +1206,47 @@ html.reader-immersive .app-container { padding-top: 0; }
 #view-mode-btn {
   min-width: var(--size-touch);
   justify-content: center;
+}
+
+/* v1.188 (Dean): convert the classic library toolbar to the modern feed-chip
+   PILL look he loves ("the buttons for the main YouTube feed are awesome - I
+   want to start converting the other ones... the downloads page. I just love the
+   pills"). The .section-actions toolbar (Sort / Shuffle / Rescan / View + the
+   All/Videos/Audio and watched-state filter toggles - all .btn-based) is
+   reshaped to the .modern-chip recipe: fully-rounded, flat, secondary fill,
+   hairline border, hover to the sidebar tint, and an INVERTED active state
+   (replacing the red-accent) so a selected filter reads exactly like an active
+   feed chip. All token-driven (census-clean); scoped to .section-actions, which
+   lives only on the home/library toolbar.
+   DISCLOSED per-era residual (gate QA-W2): the glossy [data-theme="2009"] era
+   paints its .btn fill with `background-image` (a linear-gradient), a DIFFERENT
+   property than this rule's `background-color` - so the gloss keeps painting over
+   the pill fill there (the button still ROUNDS, it just isn't flat). That is
+   deliberate (2009 keeps its skin). But the INVERTED active state would then put
+   light `--bg-color` text on the retained light gloss = illegible, so the 2009
+   override below restores legible `--text-primary` ink on the active toggle.
+   Every OTHER era gets the full flat pill + inversion. */
+.section-actions .btn {
+  border-radius: var(--radius-full);
+  background-color: var(--bg-secondary);
+  border-color: var(--border-color);
+  box-shadow: none;
+}
+.section-actions .btn:hover {
+  background-color: var(--bg-sidebar);
+}
+.section-actions .format-toggle-btn.active {
+  background-color: var(--text-primary);
+  color: var(--bg-color);
+  border-color: var(--text-primary);
+}
+/* gate QA-W2: in 2009 the retained gloss (background-image) means the inverted
+   active fill never shows, so keep the active label's ink legible against it
+   (spec: this 0-4-0 selector outranks both the base active rule and the 2009
+   gloss .btn rule). Border stays --text-primary (from the rule above) as the
+   active affordance. */
+[data-theme="2009"] .section-actions .format-toggle-btn.active {
+  color: var(--text-primary);
 }
 
 .sidebar-item.drag-over-after {

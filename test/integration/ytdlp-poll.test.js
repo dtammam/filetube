@@ -200,6 +200,67 @@ test('D5: a video listed twice in one channel dump (duplicate id, e.g. under two
   assert.equal(persisted.lastStatus, 'ok: downloaded 1 new video(s)', 'the persisted count must reflect ONE unique survivor, not two');
 });
 
+// ---- v1.188 (Dean, diagnostic): the list-pass summary + previously-silent drop
+// logs. Dean's "subscriptions succeed but download nothing" was a black box
+// because archive dedup, the date gate, and premiere-defer removed videos with
+// no log line. This proves the summary counts every reason and the two rare
+// silent paths now log per-video. -------------------------------------------
+
+test('v1.188 the list pass logs a summary tying listed -> survivors with every drop reason, and the date gate + premiere are no longer silent', async () => {
+  const deps = makeFakeDeps();
+  // Fixed cutoff well away from today so the before-cutoff comparison can never
+  // rot on calendar rollover (video date vs cutoff are both fixed literals).
+  const sub = await addSub(deps, { cutoffDate: '20260101' });
+
+  const archivedVideo = { id: 'arch1', extractor_key: 'Youtube', availability: 'public' };
+  const oldVideo = { id: 'old1', availability: 'public', upload_date: '20251201' }; // < cutoff -> before-cutoff drop
+  const premiereVideo = { id: 'prem1', availability: 'public', live_status: 'is_upcoming' };
+  const membersVideo = { id: 'mem1', availability: 'subscriber_only' };
+  const survivorVideo = { id: 'surv1', availability: 'public', upload_date: '20260601' }; // >= cutoff -> survives
+  // survivorVideo listed a SECOND time -> one duplicate drop.
+  fs.writeFileSync(args.resolveArchivePath(baseConfig()), 'youtube arch1\n', 'utf8');
+
+  run.runList = async () => ({
+    ok: true,
+    stdout: ndjson([archivedVideo, oldVideo, premiereVideo, membersVideo, survivorVideo, survivorVideo]),
+    stderr: '',
+  });
+  let capturedTargetIds = null;
+  run.runDownload = async (_sub, _config, targetIds) => {
+    capturedTargetIds = targetIds;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...a) => { logs.push(a.join(' ')); };
+  try {
+    await ytdlp.runPoll(deps, baseConfig());
+  } finally {
+    console.log = originalLog;
+  }
+
+  // Only the true survivor is a download target (the loop's behaviour is intact).
+  assert.deepEqual(capturedTargetIds, ['surv1'], 'exactly the one survivor is targeted');
+
+  const summary = logs.find((l) => l.includes('list pass ->'));
+  assert.ok(summary, `a list-pass summary line was logged; got:\n${logs.join('\n')}`);
+  assert.match(summary, new RegExp(`subscription ${sub.id} list pass -> 6 listed, 1 new to download`), 'summary ties 6 listed -> 1 survivor');
+  assert.match(summary, /1 archived/, 'counts the archive drop');
+  assert.match(summary, /1 before-cutoff/, 'counts the date-gate drop');
+  assert.match(summary, /1 availability/, 'counts the members-only drop');
+  assert.match(summary, /1 premiere-defer/, 'counts the premiere-defer drop');
+  assert.match(summary, /1 duplicate/, 'counts the duplicate drop');
+  assert.match(summary, /0 skip-list/, 'skip-list count present (zero here)');
+  assert.match(summary, /0 shorts/, 'shorts count present (zero here)');
+
+  // The two formerly-SILENT paths now log per-video (the whole point of the change).
+  assert.ok(logs.some((l) => /skipping video old1 .* uploaded 20251201 is before the cutoff 20260101/.test(l)),
+    'the date gate logs the video, its date, and the cutoff (was silent)');
+  assert.ok(logs.some((l) => /deferring video prem1 .* premiere\/live still inside its defer window/.test(l)),
+    'the premiere defer logs the video (was silent)');
+});
+
 // ---- AC19: re-polling with nothing new means zero download attempts -------
 
 test('re-polling a subscription with no new videos (all already archived) results in zero download attempts (AC19)', async () => {

@@ -2170,5 +2170,11 @@
     "date": "2026-08-25",
     "title": "Ambient mode stops interrupting playback",
     "intent": "On phones, turning Ambient mode on could make playback pause itself a few seconds in and drop the artwork from the lock screen and Dynamic Island. The glow was simply too expensive to draw - a big blurred layer being repainted far more often than it needed to be - so it has been made dramatically cheaper. Two honest notes: the glow is now a somewhat tighter halo around the player than yesterday's version (that softness was where the cost was), and while turning Ambient off definitely stopped the pausing, the exact reason your phone reacted that way is not yet confirmed - so please tell us if it still happens."
+  },
+  {
+    "version": "1.188.0",
+    "date": "2026-08-25",
+    "title": "Popcorn theatre button, pill-shaped library buttons, and friendlier critters",
+    "intent": "A handful of polish touches. The theatre-mode button on the watch page is now a little popcorn bucket, so it's clearer what it does. The buttons across the top of your library - Sort, Shuffle, Rescan and the All/Videos/Audio filters - now use the same rounded pill shape as the home feed's filter chips. Tapping one of the little critters always makes its sound now and never accidentally taps the thing behind it, and the critters no longer look upside-down when you've made them extra large and their whole body is showing. In dark mode, the Ambient glow now spills softly across the left menu bar instead of stopping in a hard line against it. And when a subscription checks a channel but nothing new comes down, the logs now spell out exactly why each video was skipped - so if a video you expected didn't download, there's finally a trail to follow (if that's happening to you, send us the log line and the video link)."
   }
 ]

@@ -1879,10 +1879,14 @@ if (typeof module !== 'undefined' && module.exports) {
       const cog = document.getElementById('settings-btn');
       const menu = document.getElementById('settings-menu');
       // Theatre icon, just before the cog (era-style inline SVG like the gear).
+      // v1.188 (Dean): a popcorn bucket instead of the generic box - the glyph
+      // now says WHAT theatre mode is. A cluster of popcorn puffs above a
+      // striped bucket, all one currentColor fill so it inherits the era tokens
+      // exactly like the gear. Decorative only; aria-label carries the meaning.
       if (controls && cog && !document.getElementById('theater-btn')) {
         cog.insertAdjacentHTML('beforebegin',
           '<button type="button" id="theater-btn" class="pc-btn theater-btn" aria-label="Toggle theatre mode" aria-pressed="false">'
-          + '<svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><path d="M240-160q-33 0-56.5-23.5T160-240v-480q0-33 23.5-56.5T240-800h480q33 0 56.5 23.5T800-720v480q0 33-23.5 56.5T720-160H240Zm0-80h480v-480H240v480Z"/></svg>'
+          + '<svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><path d="M345-680a55,55 0 1,0 110,0a55,55 0 1,0 -110,0ZM420-720a60,60 0 1,0 120,0a60,60 0 1,0 -120,0ZM505-680a55,55 0 1,0 110,0a55,55 0 1,0 -110,0ZM395-635a45,45 0 1,0 90,0a45,45 0 1,0 -90,0ZM480-640a45,45 0 1,0 90,0a45,45 0 1,0 -90,0ZM288-620h384l-14 70H302zM300-540h360l-58 360H358z"/></svg>'
           + '</button>');
       }
       // Autoplay + Loop + Ambient toggle rows, appended to the cog menu.
@@ -2118,6 +2122,15 @@ if (typeof module !== 'undefined' && module.exports) {
         if (timerId != null) return; // already running
         glow.hidden = false;
         glow.classList.add('is-on');
+        // v1.188 (Dean: "let the ambience go over the left bar"): a ROOT-level
+        // signal so the persistent sidebar (a shell element far from this
+        // watch-view node) can drop its opaque background + border while ambient
+        // runs, letting the glow bleed across it instead of hard-stopping at the
+        // bar's edge. Set/cleared at the SAME funnel as `is-on` (start/stop), so
+        // it tracks ambient exactly and clears on teardown (stop() on abort) and
+        // on a theme flip to light (evaluate -> stop). JS gate guarantees it is
+        // only ever present in dark mode.
+        document.documentElement.setAttribute('data-ambient-on', '');
         if (!isAudioItem() && video && video.videoWidth > 0) paintFrom(video); // first frame immediately, then on the interval
         else { ensureCover(); if (coverImg) paintFrom(coverImg); }
         if (hardFailed) return; // S1: a throw in that first paint must NOT arm a timer
@@ -2128,6 +2141,7 @@ if (typeof module !== 'undefined' && module.exports) {
         timerId = null;
         glow.classList.remove('is-on');
         glow.hidden = true;
+        document.documentElement.removeAttribute('data-ambient-on'); // v1.188: restore the sidebar's opaque bar
         try { gctx.clearRect(0, 0, SRC_W, SRC_H); } catch (_) { /* nothing painted yet */ }
       }
       // The one gate everything funnels through: run iff eligible, else tear down.
