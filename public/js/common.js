@@ -7802,6 +7802,44 @@ function critterTapHit(placements, x, y) {
   return null;
 }
 
+// v1.189.1 (Dean): the whole-box tap swallow (v1.188) hit-tests by COORDINATES
+// only, so a click that geometrically lands in a critter's box but is actually
+// on an overlay PAINTED ABOVE the critter - the notification dropdown, a menu, a
+// sheet, all on the --z-* ladder (900+), far above the critter layer's own
+// z-index:2 - was wrongly treated as a critter tap: it chirped AND the
+// capture-phase stopPropagation/preventDefault ATE the overlay's own click.
+// This reports whether the click target is stacked at/above the critter plane,
+// i.e. the critter is visually BEHIND it and must not win. It walks from the
+// target up to <body>; the FIRST positioned ancestor carrying a numeric z-index
+// strictly greater than the critter layer's own z-index means "painted above."
+// Anchors the critters peek from are z-auto / below the layer by construction
+// (the sandwich needs the critter to paint OVER its furniture), so a genuine
+// peek tap never trips this. Reads the layer's LIVE z-index (default 2) so it
+// tracks the CSS. Defensive: no window/getComputedStyle (a non-DOM/test context)
+// -> reports NOT occluded, i.e. fail OPEN to the tap (unchanged behavior there).
+function critterOccludedAt(target) {
+  if (typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') return false;
+  if (!target || target.nodeType !== 1 || typeof document === 'undefined') return false;
+  var layerZ = 2;
+  var layer = document.getElementById('critter-layer');
+  if (layer) {
+    var lz = parseInt(window.getComputedStyle(layer).zIndex, 10);
+    if (isFinite(lz)) layerZ = lz;
+  }
+  var el = target;
+  var body = document.body;
+  while (el && el.nodeType === 1 && el !== body) {
+    var cs;
+    try { cs = window.getComputedStyle(el); } catch (_) { return false; }
+    if (cs && cs.position !== 'static') {
+      var z = parseInt(cs.zIndex, 10);
+      if (isFinite(z) && z > layerZ) return true; // this ancestor paints ABOVE the critter plane
+    }
+    el = el.parentElement;
+  }
+  return false;
+}
+
 // The synth fallback chirp (two quick rising notes; the ddr synth's posture:
 // guarded, a silent no-op wherever Web Audio is unavailable, never throws).
 function playCritterChirp() {
@@ -8755,6 +8793,11 @@ function wireCritterListeners() {
     if (e.target && e.target.closest && e.target.closest(CRITTER_EXCLUSION_SELECTORS.join(','))) return;
     var hit = critterTapHit(critterPlacements, e.pageX, e.pageY);
     if (!hit) return;
+    // v1.189.1 (Dean): only win when the critter is actually the TOP thing at
+    // this point - stand down if the click landed inside an overlay painted above
+    // the critter plane (a menu, the notification dropdown, a sheet). Cheap DOM
+    // walk, run only AFTER the geometric hit so it never taxes an ordinary click.
+    if (critterOccludedAt(e.target)) return;
     // The critter owns this tap: stop it reaching the furniture behind it, and
     // cancel any default (link navigation). Capture phase makes the stop total.
     e.stopPropagation();
@@ -8808,6 +8851,7 @@ function wireCritterListeners() {
     if (e.target && e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
     if (e.target && e.target.closest && e.target.closest(CRITTER_EXCLUSION_SELECTORS.join(','))) return;
     if (!critterTapHit(critterPlacements, e.pageX, e.pageY)) return;
+    if (critterOccludedAt(e.target)) return; // v1.189.1: not the top thing here - don't fight an overlay's mousedown
     e.preventDefault(); // stop the text-selection gesture; the click is swallowed above
   });
   // Reflow moves the furniture; re-scatter (debounced) so critters follow -
@@ -14560,7 +14604,7 @@ if (typeof module !== 'undefined' && module.exports) {
     DDR_ARROWS, ddrNoteForArrow, playDdrNote,
     // v1.166: Sneaky critter mode - the pure core + the jsdom-testable DOM shims.
     CRITTER_DENSITY_COUNTS, CRITTER_BUILTINS, CRITTER_ANCHOR_SELECTORS, CRITTER_EXCLUSION_SELECTORS,
-    CRITTER_REACTIONS, resolveCritterConfig, planCritterScatter, critterTapHit,
+    CRITTER_REACTIONS, resolveCritterConfig, planCritterScatter, critterTapHit, critterOccludedAt,
     renderCritterPlacements, scatterCritters, applyCritterMode, playCritterChirp,
     ensureCritterLayer,
     // v1.167: button priority + the fixed-subtree guard (+ the collector, so
