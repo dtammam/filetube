@@ -295,10 +295,10 @@ test('v1.187.2 THE COST INVARIANT: the sampler must stay cheap enough not to get
   // sampler. Audio pausing too is what proved it was the COST, not the
   // video-sampling - the audio path never draws the video element at all.
   const fn = WATCH_JS.slice(WATCH_JS.indexOf('function setupAmbientMode'), WATCH_JS.indexOf('\n    // v1.22.0 FR-7 (TF): the "Loop"'));
-  // 0. AUDIO must never draw the video element - gated on the app's own
-  //    `audio-mode` signal, NOT on WebKit's videoWidth (an audio file with
-  //    embedded cover art can report a non-zero videoWidth, which made the
-  //    "audio never draws the video" falsification an assumption, not a fact).
+  // 0. AUDIO must never draw the video element - gated on THIS VIEW's own
+  //    mediaData.type, NOT on WebKit's videoWidth (an audio file with embedded
+  //    cover art can report a non-zero videoWidth, which made the "audio never
+  //    draws the video" falsification an assumption, not a fact).
   // Bound as the EXACT expression (gate WARNING B): the first cut asserted only
   // the class spelling and the gated-site count, so `getElementById('...NOPE')`
   // or `return false && ...` left the gate permanently FALSE, silently reverting
