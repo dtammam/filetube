@@ -225,3 +225,32 @@ test('v1.187 the ambient intensity select is INJECTED into the cog (the parity-l
     assert.match(fn, new RegExp('value="' + opt + '"'), `the ${opt} option is offered`);
   }
 });
+
+test('v1.187.1 THE REACH INVARIANT: every rung must bleed BEYOND the player, or the glow is invisible by construction', () => {
+  // Dean, device: "I see the options for ambient but nothing renders, at any
+  // level." Root cause was pure geometry, not wiring: the canvas is exactly the
+  // player's box and paints BEHIND it (the player has an opaque letterbox-black
+  // background), so ONLY the part spilling outside the player is ever visible.
+  // v1.187's mask faded alpha to ZERO at 76% of the half-extent; after the
+  // 1.18-1.30 scale the glow's outer boundary landed at 0.90-0.99 of the player's
+  // own half-size - entirely inside the footprint, painted over, at three of the
+  // four rungs. This asserts the invariant that makes the feature exist at all.
+  const glow = /\.ambient-glow\s*\{([^}]*)\}/.exec(STYLE_CSS)[1];
+  const stopPct = /transparent (\d+)%\)/.exec(glow);
+  assert.ok(stopPct, 'the mask declares a transparent stop');
+  const stop = Number(stopPct[1]) / 100;
+  for (const rung of ['subtle', 'normal', 'intense', 'extreme']) {
+    const body = new RegExp('\\.ambient-glow\\[data-ambient="' + rung + '"\\] \\{([^}]*)\\}').exec(STYLE_CSS)[1];
+    const scale = Number(/--ambient-scale:\s*([0-9.]+)/.exec(body)[1]);
+    const reach = stop * scale;
+    assert.ok(reach > 1,
+      `${rung}: mask stop ${stop} x scale ${scale} = ${reach.toFixed(3)} - the glow must reach PAST the player's half-size (>1) or it is hidden behind the player entirely`);
+  }
+  // ...and the fade must still complete AT the element edge (stop <= 1), or the
+  // masked-away hard cut Dean reported in v1.186 comes back.
+  assert.ok(stop <= 1, `the fade must reach zero by the element edge (stop ${stop} > 1 would leave a hard cut)`);
+  // intense keeps v1.186's 30% bleed exactly.
+  const intense = /\.ambient-glow\[data-ambient="intense"\] \{([^}]*)\}/.exec(STYLE_CSS)[1];
+  assert.strictEqual(Number(/--ambient-scale:\s*([0-9.]+)/.exec(intense)[1]) * stop, 1.3,
+    'intense reaches 1.3 - byte-equal to v1.186\'s unmasked bleed');
+});
