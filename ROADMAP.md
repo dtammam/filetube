@@ -80,6 +80,38 @@
 
 ## Shipped
 
+### v1.186.1 - watch hotfix: fullscreen trap + theatre/watch critters (Dean device) (2026-08-25)
+
+Three on-device regressions/gaps from v1.186, caught by Dean testing:
+1. ROTATE-TO-FULLSCREEN broke - the sidebar/header painted OVER the fullscreen
+   video. Root cause: v1.186's ambient layering put `z-index:1` on #player-slot,
+   making it a stacking context that TRAPPED the faux-fullscreen overlay
+   (#player-wrapper.css-fullscreen = position:fixed z-index:var(--z-sheet)) below
+   the chrome - the v1.166 "isolation traps in-view fixed overlays" class. FIX:
+   the ambient stacking context moved onto .watch-player-stage (glow at
+   z-index:-1), #player-slot carries NO z-index, and faux fullscreen drops the
+   stage context (`body.ft-css-fullscreen .watch-player-stage { z-index:auto }`)
+   so the fixed overlay escapes to root. Restores pre-v1.186 rotate behavior.
+2. THEATRE toggle didn't re-place critters (they stayed put as the layout
+   widened). FIX: exposed window.FileTube.scheduleCritterScatter, called from the
+   theatre toggle.
+3. WATCH-PAGE critters "spawned then re-shuffled to all-new spots." Root cause: a
+   v1.182 gap - critterPageLoading() gated only on `.skeleton-card` (the feed
+   skeleton), but the watch related sidebar loads via `.skeleton-shimmer`, so
+   critters revealed early then re-scattered when it landed. FIX: gate on the
+   universal `.skeleton-shimmer` too; and strip the static #video-desc-skel's
+   shimmer on paint (it was hidden-not-stripped, which kept the gate stuck true
+   and forced the 2.5s cap) so the fast quiet-settle path works on watch.
+
+Slim gate (adversarial), APPROVE: it traced the full player ancestor chain
+(no other stacking context traps), confirmed body.ft-css-fullscreen is set on the
+ROTATE path (the actual trigger), proved the reveal cap is independent of
+critterPageLoading (a forever-shimmer page still reveals), and mutation-bound
+every new source-lock. Device-only surfaces (rotate/fullscreen stacking, live
+layout) are source-locked; the desc-skel strip is a DOM-integration behavior
+without a dedicated test (low risk, cap-backstopped). Dual-Node 7536/7536 v22 +
+v24. Device pass PENDING (Dean re-testing the three).
+
 ### v1.186.0 - watch chrome consolidation + Ambient mode (Dean) (2026-08-24)
 
 Dean's four-part watch-page wave:

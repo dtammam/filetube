@@ -2146,5 +2146,11 @@
     "date": "2026-08-24",
     "title": "A cleaner player, and Ambient mode",
     "intent": "The watch page gets tidier and more immersive. The redundant Previous/Next buttons under the video are gone - the player's own controls already do that. A Theatre button now sits as a small icon next to the gear, and Autoplay and Loop moved into that gear menu to declutter. And new: Ambient mode (in the gear menu, dark themes only) casts a soft, gently shifting glow behind the player in the colors of whatever's on screen - video or album art - for a more cinematic feel, just like YouTube. It's off by default; flip it on and enjoy. It's careful with battery, pausing itself whenever the video is paused or the tab is in the background."
+  },
+  {
+    "version": "1.186.1",
+    "date": "2026-08-25",
+    "title": "Watch-page fixes",
+    "intent": "Quick fixes to yesterday's watch-page update. Rotating your phone to landscape fills the screen properly again - the menu no longer sits on top of the video. Turning Theatre mode on now tucks the little critters into their new spots instead of leaving them stranded. And on the watch page the critters settle into place once the page has loaded, rather than popping in and then jumping around."
   }
 ]
