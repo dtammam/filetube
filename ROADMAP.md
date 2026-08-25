@@ -80,6 +80,65 @@
 
 ## Shipped
 
+### v1.187.0 - critter sneak-in + size choice, ambient intensity + organic falloff (Dean) (2026-08-25)
+
+Dean's four asks, one wave:
+1. SNEAK-IN: the critter arrival was ABRUPT. The fade slows 0.25s -> 1.2s
+   (`--dur-critter-arrive`) and gains a subtle RISE. Opacity stays on the clipped
+   WRAPPER; the rise rides the POSE (animating the wrapper would swing the clip
+   cut - v1.168), so a critter rises INTO place from behind its anchor. The rise
+   is PER-PLACEMENT: clamped to the wrapper pad (a fixed 7px cropped 52% of
+   `tiny` critters mid-arrival) and SIGNED by peek direction (one sign pushed the
+   whole bottom family TOWARD concealment). Reduced-motion keeps the fade, drops
+   the movement; a re-glue stays silent on both axes.
+2. AMBIENT INTENSITY (Dean: "almost too intense"): subtle/normal/intense/extreme
+   in the player cog under the Ambient toggle, live-tunable while watching. The
+   level rides a `data-ambient` attribute; CSS owns opacity+blur+spread per rung
+   so a swap is a pure repaint (the sample loop never restarts). `intense`
+   restores v1.186's look EXACTLY; DEFAULT steps down to `normal`.
+3. CRITTER SIZE: tiny (0.5x) / normal / large (2x) / extra large (3x) in
+   Settings -> Critters. The scale multiplies the computed size, its floor/cap
+   AND the cross-axis proportion allowance - without that last part the fit rule
+   shrinks every large critter back to its anchor and the option is INERT.
+4. ORGANIC FALLOFF (Dean: "hard cuts where it just stops on lines"): the glow was
+   an unmasked rectangle whose blurred edge still terminated on a straight line.
+   It now carries a radial alpha mask under BOTH spellings, sized `closest-side`
+   (the farthest-corner default left 11-45% alpha at the viewport clip - worst at
+   `extreme`, the rung picked for MORE light).
+
+FULL gate, BOTH seats APPROVE after THREE rounds - the most productive gate of
+this arc. Round 1: QA + adversarial both caught a REAL defect (scaling the fit
+allowance let a critter wholly ENGULF its anchor; buildCritterClip has no cut for
+that topology and returns '', so the renderer applied NO clip and the critter
+painted fully over its own furniture) AND that the wave's headline ruling had
+ZERO test binding (three mutants making large == xlarge survived the whole
+suite). Round 2: QA proved my engulf guard was too broad - inclusive containment
+discarded valid tangent T-notches (1153 divergences per 75600 scale-1 scatters,
+breaking byte-parity) and gutted the v1.169 micro-ambush anchors; narrowed to
+strict, which is island-exact. Round 3: rebound the RIGHT half of the v1.180
+screen-edge rule at 3x (my own fixture retune had unbound it). Final state: 12/12
+mutants killed, 0 invariant failures across ~800k placements, 0 unclipped
+placements, scale-1 output byte-identical to v1.186 (12000/12000).
+
+Both seats also corrected THEMSELVES on the record: the adversarial's scale-1
+parity oracle was a divergent fixture that never produced the tangent geometry,
+and QA's round-1 percentages were read off a tree the other seat was mutating
+(my scheduling error - the seats need separate trees; see the memory entry).
+
+Known gaps, DISCLOSED: (a) large/xlarge place up to ~20-25% fewer critters -
+bigger critters fit in fewer legal spots; the density setting is a ceiling, not
+a quota; (b) the loss concentrates on small anchors - a 3x critter still ambushes
+a 36px avatar, ~50-60% less often; (c) at large/xlarge a critter often sprawls
+past a small anchor's far edges (unavoidable for the rungs asked for);
+(d) tech-debt #171 - the full-bleed rule is unbound above scale 1 (subsumed by
+the screen-edge guard, which leaves no survivor to assert against), so the claim
+was removed from the test title rather than faked.
+
+Tests: critter-mode 82 -> 89, watch-chrome-ambient 12 -> 16, plus the new token
+in its three mandatory places. Dual-Node 7547/7547 on v22 + v24. Device pass
+PENDING (Dean: the sneak speed and whether `normal` is the right ambient default
+are both one-line tunes).
+
 ### v1.186.1 - watch hotfix: fullscreen trap + theatre/watch critters (Dean device) (2026-08-25)
 
 Three on-device regressions/gaps from v1.186, caught by Dean testing:

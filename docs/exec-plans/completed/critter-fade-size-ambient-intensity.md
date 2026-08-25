@@ -1,6 +1,9 @@
 # Critter sneak-in + size, Ambient intensity + organic falloff (v1.187.0)
 
-**Status:** IN PROGRESS - FULL gate (4 user-facing features across critters + ambient).
+**Status:** SHIPPED v1.187.0 (2026-08-25) - FULL two-reviewer gate, BOTH APPROVE
+after three rounds (round 1: a real unclipped-critter defect + a ruling with zero
+test binding; round 2: the guard narrowed from inclusive to strict; round 3: the
+screen-edge rebinding). Dual-Node pending at time of writing. Device pass PENDING.
 
 Dean, 4 asks (intake answered inline):
 1. Critter arrival is ABRUPT -> a smooth, seamless fade, "almost like they sneak in".
@@ -98,9 +101,15 @@ Dean, 4 asks (intake answered inline):
   design: intense -> normal; disclose).
 - DISCLOSED TRADES. These figures move with the ENGULF guard and with the anchor
   fixture, so they are re-derived at the strict-guard commit and each names its
-  fixture. (Correction on the record: I earlier attributed the first numbers to a
-  contaminated tree; the adversarial seat re-derived its own within 1pp, so they
-  were sound - they simply belonged to the INCLUSIVE guard.)
+  fixture. ON THE RECORD, twice-corrected: the QA seat's ROUND-1 figures were
+  genuinely contaminated - re-run on a clean fb0fc5d extract the same fixture and
+  seeds give 45% C-notch / 151 unclipped where the mid-mutation read had said 21%
+  / 1. The adversarial seat's OWN figures did reproduce within 1pp, but that says
+  nothing about the other seat's run (two fixtures can agree while a third
+  measurement is junk) - so my second correction, which claimed the contamination
+  attribution was wrong, was itself wrong. Both seats' current numbers are sound;
+  the lesson is the process one: never measure on a tree another agent is
+  mutating, and re-derive any figure before quoting it.
   (a) DENSITY - fixture-sensitive, quote the RANGE: an 8-row 390px mobile feed
       (thumbnail+card+avatar+button, density Normal, 400 seeds) gives large -7%
       / xlarge -18%; a denser 24-anchor feed gives large -21% / xlarge -23%, and

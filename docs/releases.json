@@ -2152,5 +2152,11 @@
     "date": "2026-08-25",
     "title": "Watch-page fixes",
     "intent": "Quick fixes to yesterday's watch-page update. Rotating your phone to landscape fills the screen properly again - the menu no longer sits on top of the video. Turning Theatre mode on now tucks the little critters into their new spots instead of leaving them stranded. And on the watch page the critters settle into place once the page has loaded, rather than popping in and then jumping around."
+  },
+  {
+    "version": "1.187.0",
+    "date": "2026-08-25",
+    "title": "Critters sneak in, ambient dials down",
+    "intent": "Four bits of polish. The critters now sneak in - a slow, soft fade with a gentle drift into place instead of popping onto the page. There's a new Size setting for them too: tiny, normal, large or extra large (note that the bigger ones need more room, so you'll see somewhat fewer of them, and they'll peek out further from behind small buttons). Ambient mode gets an amount picker in the player's gear menu - subtle, normal, intense or extreme - and it now defaults to a gentler level; pick Intense for exactly what you had before. And the ambient glow finally fades out softly at its edges like real light, instead of stopping on a hard line."
   }
 ]
