@@ -2003,7 +2003,10 @@ if (typeof module !== 'undefined' && module.exports) {
       function syncRowVisibility() {
         const dark = isDarkMode(document);
         if (row) row.hidden = !dark;
-        if (levelRow) levelRow.hidden = !dark; // v1.187: the intensity row hides with its toggle
+        // v1.187 gate (S5): the intensity row needs BOTH - a dark theme AND the
+        // effect actually on. Shown while Ambient is off it is a control with no
+        // observable result, which reads as broken.
+        if (levelRow) levelRow.hidden = !dark || !prefOn;
         return dark;
       }
 

@@ -48,16 +48,20 @@ Dean, 4 asks (intake answered inline):
   every existing direct-call test is unchanged).
 - Settings -> Critters: a "Size" select beside "How many" (same markup pattern);
   `applyCritterMode()` on change (re-scatter, like density).
-- `AMBIENT_LEVELS = { subtle, normal, intense, extreme }` -> opacity (and a
-  matching blur/scale so "extreme" reads as more light, not just more alpha),
-  `ft-ambient-intensity`, DEFAULT `normal` (Dean: today is too intense).
+- `AMBIENT_LEVELS` ships as an ARRAY of the four names + `resolveAmbientLevel`;
+  CSS owns the per-rung opacity/blur/scale numbers (keeps the token census clean
+  and lets a swap be a pure repaint). `ft-ambient-intensity`, DEFAULT `normal`
+  (Dean: today is too intense). `intense` restores v1.186's opacity+blur+saturate
+  EXACTLY (gate W3); the radial falloff is new for every rung by design.
   Applied as a `data-ambient` attribute on the canvas + CSS per level (no inline
   style -> the token census stays clean).
 - The intensity `<select>` is INJECTED into the cog menu under the Ambient row by
   `ensureCogControlsInjected` (the shared host template is parity-locked across
   nine shells - v1.186's lesson).
-- Ambient falloff: `--ambient-mask: radial-gradient(ellipse at center, black 35%,
-  transparent 78%)` applied under both mask spellings.
+- Ambient falloff: an inline `radial-gradient(ellipse CLOSEST-SIDE at center,
+  black 28%, transparent 76%)` under both mask spellings. closest-side is
+  load-bearing (gate W3): the farthest-corner default left 11-45% mask alpha at
+  the element edge, so the viewport clip still cut a hard line on mobile.
 
 ## Predictions the tests re-verify
 
@@ -65,8 +69,14 @@ Dean, 4 asks (intake answered inline):
   xlarge 3; unset + garbage -> normal(1); the existing keys are unchanged.
 - `planCritterScatter` with sizeScale=2 yields ~2x sizes vs scale=1 on the SAME
   seed and anchors, and with scale=1 is byte-identical to today.
-- Every invariant still holds at 3x: every placement PEEKS, none intersects an
-  exclusion, none exceeds bounds, none crosses the screen edge.
+- Every invariant still holds at 3x: every placement PEEKS, none ENGULFS its
+  anchor (the v1.187 gate invariant - an engulfed anchor has no honest clip, so
+  the planner skips that geometry outright), none intersects an exclusion, none
+  exceeds bounds, none crosses the screen edge, and full-bleed anchors still peek
+  top/bottom only. The sweep's fixture is built so EVERY clause can actually fail.
+- The size ruling is bound on SMALL anchors (buttons/avatars), where the three
+  mutants that gut it previously survived the whole suite: large > 1.5x normal,
+  xlarge > 1.2x large.
 - `resolveAmbientLevel` maps the four names, defaults to normal, tolerates garbage.
 - The arrival animation is ~1.2s; the RISE is on `.critter-pose` (never the
   clipped wrapper); a reduced-motion arm drops the movement; `.critter-still`
@@ -83,3 +93,9 @@ Dean, 4 asks (intake answered inline):
 - Mask spelling porosity (one spelling only -> breaks Firefox or iOS).
 - Ambient default changing behavior for an existing opted-in user (it does, by
   design: intense -> normal; disclose).
+- DISCLOSED TRADES (gate-measured, both seats): (a) at large/xlarge the C-notch
+  topology becomes common (15-21% at 2x, up to ~56% on watch at 3x) - a 3x
+  critter behind a 44px button MUST sprawl past it; that is the cost of the rung
+  Dean asked for. (b) xlarge places ~22% FEWER critters at a given density
+  (bigger critters fit in fewer legal spots; the count is a ceiling, not a
+  quota). Both belong in the release notes, not in a comment.

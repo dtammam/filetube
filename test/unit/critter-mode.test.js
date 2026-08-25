@@ -2088,10 +2088,18 @@ test('v1.187 SIZE: the scale multiplies placements (same seed/anchors), and scal
   }
 });
 
-test('v1.187 SIZE: EVERY invariant still holds at 3x - peek, exclusions, document bounds, screen edge', () => {
+test('v1.187 SIZE: EVERY invariant still holds at 3x - peek, engulf, exclusions, document bounds, screen edge, full-bleed', () => {
+  const { buildCritterClip } = require('../../public/js/common.js');
+  // Gate W2: the fixture must let EVERY clause fire. Small anchors (so a 3x
+  // critter can dwarf them), a FULL-BLEED anchor (the v1.169/v1.180 amputation
+  // rule), bounds TIGHTER than the reach so gate W4 can actually trip, and
+  // bounds.w > viewportW so the width half is not subsumed by the screen edge.
   const anchors = Array.from({ length: 14 }, (_, i) => ({ x: 60 + (i % 3) * 260, y: 100 + i * 220, w: 300, h: 190 }));
+  anchors.push({ x: 20, y: 3180, w: 960, h: 150 });   // full-bleed (>= 0.85 * effW)
+  anchors.push({ x: 300, y: 3400, w: 96, h: 34 });    // a button
+  anchors.push({ x: 500, y: 3520, w: 36, h: 36 });    // an avatar
   const player = { x: 0, y: 0, w: 900, h: 460 };
-  const bounds = { w: 1000, h: 4000 };
+  const bounds = { w: 1200, h: 3600 };
   for (let seed = 1; seed <= 60; seed += 1) {
     const out = planCritterScatter({
       anchors: anchors.map((a) => ({ ...a })), exclusions: [player], manifest: MANIFEST_8, count: 10,
@@ -2102,6 +2110,13 @@ test('v1.187 SIZE: EVERY invariant still holds at 3x - peek, exclusions, documen
       const overlaps = p.x < a.x + a.w && p.x + p.w > a.x && p.y < a.y + a.h && p.y + p.h > a.y;
       const fullyInside = p.x >= a.x && p.x + p.w <= a.x + a.w && p.y >= a.y && p.y + p.h <= a.y + a.h;
       assert.ok(overlaps && !fullyInside, `seed ${seed}: a 3x critter must still PEEK (overlap yet extend past)`);
+      // Gate W1/W2: the ENGULF case - a critter wholly containing its anchor is
+      // the OPPOSITE of a peek and has no honest clip (buildCritterClip returns
+      // '' -> the renderer sets no clip-path at all -> the critter paints over
+      // its own furniture). This assertion went red before the planner guard.
+      const engulfs = p.x <= a.x && p.y <= a.y && p.x + p.w >= a.x + a.w && p.y + p.h >= a.y + a.h;
+      assert.ok(!engulfs, `seed ${seed}: a critter must never ENGULF its anchor (${p.w}px over ${a.w}x${a.h})`);
+      assert.ok(buildCritterClip(p, Math.round(p.w * 0.3)) !== '' || p.roundCover, `seed ${seed}: every placement gets a real clip (no unclipped critter)`);
       assert.ok(!critterRectsIntersect({ x: p.x, y: p.y, w: p.w, h: p.h }, player), `seed ${seed}: never intersects the player exclusion`);
       assert.ok(p.x + p.w <= bounds.w && p.y + p.h <= bounds.h, `seed ${seed}: never grows the document (gate W4)`);
       assert.ok(p.x >= 0 && p.x + p.w <= 1000, `seed ${seed}: never crosses the SCREEN edge (v1.180)`);
@@ -2111,8 +2126,14 @@ test('v1.187 SIZE: EVERY invariant still holds at 3x - peek, exclusions, documen
 
 test('v1.187 SIZE: scatterCritters feeds the resolved scale into the planner (source lock)', () => {
   const scatter = COMMON.slice(COMMON.indexOf('function scatterCritters()'), COMMON.indexOf('\nfunction armCritterSettleCheck'));
-  assert.match(scatter, /sizeScale: resolveCritterConfig\(\)\.sizeScale,/, 'the live pref reaches planCritterScatter');
+  assert.match(scatter, /var cfgNow = resolveCritterConfig\(\);/, 'the live config is read ONCE (count + sizeScale from one snapshot)');
+  assert.match(scatter, /sizeScale: cfgNow\.sizeScale,/, 'the live pref reaches planCritterScatter');
   assert.deepStrictEqual(CRITTER_SIZE_SCALES, { tiny: 0.5, normal: 1, large: 2, xlarge: 3 }, 'the four rungs Dean asked for');
+  // Gate S1: the Settings select must REFLECT the stored pref, or the page lies
+  // about the user's own setting (it would always read "Tiny").
+  const wire = SETUP_JS.slice(SETUP_JS.indexOf('function wireCritterModeControls'), SETUP_JS.indexOf('\nfunction ', SETUP_JS.indexOf('function wireCritterModeControls') + 10));
+  assert.match(wire, /sizeSel\.value = cfg\.size \|\| 'normal';/, 'the size select shows the SAVED size on load');
+  assert.match(wire, /localStorage\.setItem\('ft-critters:size', sizeSel\.value\)/, 'and persists a change');
 });
 
 test('v1.187 SNEAK-IN: a slow fade on the wrapper + a rise on the POSE; still/reduced-motion silence both', () => {
@@ -2128,11 +2149,39 @@ test('v1.187 SNEAK-IN: a slow fade on the wrapper + a rise on the POSE; still/re
   // the keyframes must RECOMPOSE angle+flip, or the tilt/mirror would be lost mid-rise
   const sneak = /@keyframes critter-sneak\s*\{([\s\S]*?)\n\}/.exec(CSS);
   assert.ok(sneak, 'the sneak keyframes exist');
-  assert.match(sneak[1], /translateY\(7px\) rotate\(var\(--critter-angle, 0deg\)\) scaleX\(var\(--critter-flip, 1\)\)/, 'from: risen, tilt+flip preserved');
+  assert.match(sneak[1], /translateY\(var\(--critter-rise, 7px\)\) rotate\(var\(--critter-angle, 0deg\)\) scaleX\(var\(--critter-flip, 1\)\)/, 'from: offset by the PER-PLACEMENT rise, tilt+flip preserved');
   assert.match(sneak[1], /translateY\(0\) rotate\(var\(--critter-angle, 0deg\)\) scaleX\(var\(--critter-flip, 1\)\)/, 'to: settled, tilt+flip preserved');
   // both silencers set the pose-anim var (no second rule owning the transform)
   const still = /\.critter\.critter-still\s*\{([^}]*)\}/.exec(CSS);
   assert.match(still[1], /animation:\s*none/, 'a re-glue replays no fade');
   assert.match(still[1], /--critter-pose-anim:\s*none/, 'a re-glue replays no RISE either');
   assert.match(CSS, /@media \(prefers-reduced-motion: reduce\) \{\s*\.critter \{ --critter-pose-anim: none; \}/, 'reduced motion keeps the fade, drops the movement');
+});
+
+test('v1.187 gate C1: the size ruling is BOUND on SMALL anchors - large > normal and xlarge > large on buttons/avatars', () => {
+  // The adversarial seat proved three mutants that gut the ruling survived the
+  // WHOLE suite, because the only size test used 300x200 anchors (the big-anchor
+  // branch, where crossAllow rarely binds). These are the anchors that actually
+  // exercise BOTH the `a.h <= 64` band AND the crossAllow scaling: a .btn and a
+  // channel avatar. Without the scaling, large == xlarge here (measured), and
+  // without the small-branch scaling both collapse toward normal.
+  const smallAnchors = () => ([
+    { x: 100, y: 200, w: 96, h: 34 }, { x: 100, y: 500, w: 120, h: 44 },
+    { x: 100, y: 800, w: 36, h: 36 }, { x: 100, y: 1100, w: 64, h: 32 },
+    { x: 100, y: 1400, w: 88, h: 40 }, { x: 100, y: 1700, w: 44, h: 44 },
+  ]);
+  const avg = (scale) => {
+    let total = 0; let n = 0;
+    for (let seed = 1; seed <= 200; seed += 1) {
+      for (const p of planCritterScatter({
+        anchors: smallAnchors(), exclusions: [], manifest: MANIFEST_8, count: 6,
+        rng: seededRng(seed), sizeScale: scale,
+      })) { total += p.w; n += 1; }
+    }
+    return total / n;
+  };
+  const normal = avg(1); const large = avg(2); const xl = avg(3); const tiny = avg(0.5);
+  assert.ok(large > normal * 1.5, `large must be VISIBLY bigger on small anchors (${normal.toFixed(1)} -> ${large.toFixed(1)})`);
+  assert.ok(xl > large * 1.2, `xlarge must be visibly bigger than large (${large.toFixed(1)} -> ${xl.toFixed(1)}) - they were IDENTICAL under the mutant`);
+  assert.ok(tiny < normal * 0.8, `tiny must be visibly smaller (${normal.toFixed(1)} -> ${tiny.toFixed(1)})`);
 });

@@ -7703,6 +7703,16 @@ function planCritterScatter(opts) {
     // peek invariant ~1/3 of the time on full-bleed mobile cards.
     x = Math.round(x); y = Math.round(y);
     var rect = { x: x, y: y, w: size, h: size };
+    // v1.187 gate (BOTH seats) THE ENGULF INVARIANT: a critter that wholly
+    // CONTAINS its anchor is not a peek - it is the anchor wearing a costume.
+    // The sandwich clip has no answer for that topology either
+    // (buildCritterClip's `touches === 0` island branch returns '' -> the
+    // renderer sets NO clip-path -> the critter paints fully OVER its own
+    // furniture, the "floating cut-out" three waves were spent eliminating).
+    // Unreachable before v1.187 because the cross-fit capped size at 1.15x the
+    // anchor; reachable once that cap scales, so it is now an EXPLICIT skip
+    // (never a nudge) - and it is what keeps the island branch genuinely dead.
+    if (a.x >= x && a.y >= y && a.x + a.w <= x + size && a.y + a.h <= y + size) continue;
     // The placement's OWN rect must also clear every exclusion (gate W1: the
     // anchor check alone let a peek REACH INTO an adjacent player/dock - the
     // "never overlapped" half of Dean's constraint). Skip, never nudge.
@@ -7964,20 +7974,27 @@ function buildCritterClip(p, pad) {
   }
   if (touches === 1) {
     // ONE side: the anchor is cross-smaller than the critter - a C-notch.
-    // Gate correction (the seat's oracle measured it): today's planner CANNOT
-    // reach this topology - the v1.170 cross-fit caps size at 1.15x the
-    // anchor's cross extent, so a critter is never cross-smaller than its
-    // anchor on both ends. The REACHABLE half of Dean's Subscribed-button fix
-    // is the corner/band branches' MEASURED cut positions (1306 floating cuts
-    // to 0 over a 120x44 button, seat-verified). This branch is kept as
-    // defense-in-depth for future planner geometry, exact-string bound in all
-    // four orientations so it cannot rot silently (the v1.168 lesson).
+    // HISTORY: at scale 1 the v1.170 cross-fit caps size at 1.15x the anchor's
+    // cross extent, so this was unreachable and kept as defense-in-depth (the
+    // reachable half of Dean's Subscribed-button fix was the corner/band
+    // branches' measured cut positions - 1306 floating cuts to 0 over a 120x44
+    // button). v1.187 CORRECTION (both gate seats measured it): the size choice
+    // scales that cap, so at large/xlarge this is the DOMINANT topology
+    // (15-21% at 2x, up to ~56% of watch-page placements at 3x) - a deliberate,
+    // disclosed consequence of Dean asking for 2x/3x critters. Still exact-string
+    // bound in all four orientations so it cannot rot silently (the v1.168 lesson).
     if (T) return pts([0, 0, x1, 0, x1, y2, x2, y2, x2, 0, W, 0, W, W, 0, W]);
     if (R) return pts([0, 0, W, 0, W, y1, x1, y1, x1, y2, W, y2, W, W, 0, W]);
     if (B) return pts([0, 0, W, 0, W, W, x2, W, x2, y1, x1, y1, x1, W, 0, W]);
     return pts([0, 0, W, 0, W, W, 0, W, 0, y2, x2, y2, x2, y1, 0, y1]); // L
   }
-  return ''; // island (anchor strictly inside the box): unreachable for real peeks; NEVER a floating cut
+  // Island (anchor strictly inside the box). v1.187: the planner now SKIPS this
+  // geometry outright (the ENGULF invariant in planCritterScatter) precisely
+  // because there is no honest cut for it - an empty string means the renderer
+  // sets no clip-path at all, i.e. a critter painting fully over its furniture.
+  // So this stays unreachable BY CONSTRUCTION, not by arithmetic luck; if it
+  // ever fires again the planner guard has regressed.
+  return '';
 }
 
 // v1.170 SANDWICH mask for ROUND anchors (pure): the rect clip cuts straight
@@ -8075,6 +8092,16 @@ function renderCritterPlacements(layer, placements, still) {
     pose.style.height = p.h + 'px';
     pose.style.setProperty('--critter-angle', p.angle + 'deg');
     pose.style.setProperty('--critter-flip', String(p.flip === -1 ? -1 : 1)); // v1.168: mirror pose
+    // v1.187 gate (adversarial W4/S6) the SNEAK offset, per placement:
+    //  - SCALED, never a fixed 7px: pad is round(w*0.3), so a `tiny` 13px critter
+    //    has a 4px pad and a 7px start would be CLIPPED mid-arrival (52% of tiny
+    //    placements) - a jump, not a sneak. Clamp it to the pad.
+    //  - DIRECTIONAL: the critter must drift AWAY from its anchor (out of hiding),
+    //    so a critter hanging BELOW its ledge (anchor covers its top, cover.t > 0)
+    //    starts above and sinks; everything else starts below and rises. One fixed
+    //    sign moved ~37% of placements TOWARD concealment - the inverse mechanism.
+    var rise = Math.max(2, Math.min(7, pad));
+    pose.style.setProperty('--critter-rise', ((p.cover && p.cover.t > 0) ? -rise : rise) + 'px');
     // v1.179.2 (Dean's ruling): the hue spin exists so the five BUILT-IN
     // line-art figurines look varied - real uploaded art renders
     // COLOR-FAITHFUL, exactly as the file is. Unset, the filter's
@@ -8241,14 +8268,17 @@ function scatterCritters() {
   fetchCritterManifest().then(function (manifest) {
     // RE-CHECK after the await (the TOCTOU lesson): the user may have toggled
     // the mode off while the manifest fetch was in flight.
-    if (!resolveCritterConfig().enabled) return;
+    // v1.187 gate (S4): read the LIVE config ONCE - count and sizeScale must come
+    // from the SAME snapshot (two reads could disagree if a pref changed between).
+    var cfgNow = resolveCritterConfig();
+    if (!cfgNow.enabled) return;
     var docEl = document.documentElement;
     var placements = planCritterScatter({
       anchors: collectCritterRects(CRITTER_ANCHOR_SELECTORS, true),
       exclusions: collectCritterRects(CRITTER_EXCLUSION_SELECTORS, false),
       manifest: manifest,
-      count: resolveCritterConfig().count,
-      sizeScale: resolveCritterConfig().sizeScale, // v1.187 (Dean): tiny/normal/large/xlarge
+      count: cfgNow.count,
+      sizeScale: cfgNow.sizeScale, // v1.187 (Dean): tiny/normal/large/xlarge
       bounds: { w: docEl.scrollWidth, h: docEl.scrollHeight }, // never grow the page (gate W4)
       // v1.180 (Dean's right-edge amputation screenshot): the SCREEN edge is
       // its own boundary - scrollWidth can exceed it when anything overflows,

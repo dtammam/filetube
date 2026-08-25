@@ -177,11 +177,24 @@ test('v1.187 the intensity ladder is CSS-owned per level, and v1.186\'s look is 
   assert.ok(o('normal') < o('intense'), 'normal is slightly less than intense');
   assert.ok(o('intense') < o('extreme'), 'extreme is more than what we had');
   assert.strictEqual(o('intense'), 0.7, 'the "intense" rung IS v1.186\'s shipped 0.7 (Dean: "what we have")');
+  // Gate W3: "intense" must restore v1.186's LOOK, not just its opacity - the
+  // first cut had quietly changed blur 72->64 and saturate 1.4->1.35 globally,
+  // so picking Intense would NOT have given Dean his old glow back.
+  assert.strictEqual(num(lvl('intense'), 'blur'), 72, 'intense keeps v1.186\'s 72px blur');
+  const glowRule = /\.ambient-glow\s*\{([^}]*)\}/.exec(STYLE_CSS)[1];
+  assert.match(glowRule, /saturate\(1\.4\)/, 'the global saturate is back to v1.186\'s 1.4');
+  assert.match(glowRule, /blur\(var\(--ambient-blur, 72px\)\)/, 'the blur fallback matches the NORMAL default (gate S3)');
+  assert.match(glowRule, /scale\(var\(--ambient-scale, 1\.25\)\)/, 'the scale fallback matches the NORMAL default');
   // the level drives CSS only - the running sample loop is never restarted
   const fn = WATCH_JS.slice(WATCH_JS.indexOf('function setupAmbientMode'), WATCH_JS.indexOf('\n    // v1.22.0 FR-7 (TF): the "Loop"'));
   assert.match(fn, /glow\.setAttribute\('data-ambient', level\)/, 'the level rides a data attribute (CSS owns the numbers)');
   assert.match(fn, /localStorage\.setItem\('ft-ambient-intensity', level\)/, 'the choice persists');
-  assert.match(fn, /if \(levelRow\) levelRow\.hidden = !dark;/, 'the intensity row hides with its toggle in a light theme');
+  assert.match(fn, /if \(levelRow\) levelRow\.hidden = !dark \|\| !prefOn;/, 'the intensity row needs BOTH a dark theme and the effect ON (gate S5)');
+  // Gate W5: the CSS half is what actually HIDES it - `[hidden]` loses to the
+  // label's `display: inline-flex` (the repo's standing lesson), so the
+  // !important override is load-bearing and must be bound, not just the JS.
+  assert.match(STYLE_CSS, /#ambient-toggle-row\[hidden\],\s*\n#ambient-level-row\[hidden\] \{ display: none !important; \}/, 'both ambient rows carry the [hidden] !important override');
+  assert.match(STYLE_CSS, /:root:not\(\[data-mode="dark"\]\) #ambient-toggle-row,\s*\n:root:not\(\[data-mode="dark"\]\) #ambient-level-row \{ display: none; \}/, 'and the light-theme CSS belt covers both rows');
 });
 
 test('v1.187 ORGANIC FALLOFF: the glow carries a radial alpha mask under BOTH spellings (the v1.77 lesson)', () => {
@@ -190,8 +203,13 @@ test('v1.187 ORGANIC FALLOFF: the glow carries a radial alpha mask under BOTH sp
   // (and html{overflow-x:clip} guillotines it at the viewport).
   const glow = /\.ambient-glow\s*\{([^}]*)\}/.exec(STYLE_CSS);
   assert.ok(glow, '.ambient-glow rule exists');
-  assert.match(glow[1], /-webkit-mask-image:\s*radial-gradient\([^;]*transparent/, 'the -webkit- spelling (iOS)');
-  assert.match(glow[1], /\n\s*mask-image:\s*radial-gradient\([^;]*transparent/, 'AND the standard spelling (Firefox)');
+  assert.match(glow[1], /-webkit-mask-image:\s*radial-gradient\(ellipse closest-side[^;]*transparent/, 'the -webkit- spelling (iOS), CLOSEST-SIDE sized');
+  assert.match(glow[1], /\n\s*mask-image:\s*radial-gradient\(ellipse closest-side[^;]*transparent/, 'AND the standard spelling (Firefox), CLOSEST-SIDE sized');
+  // Gate W3: the default farthest-corner sizing left 11-45% mask alpha at the
+  // element edge, so the viewport clip still produced a hard line on mobile
+  // (worst at `extreme` - the rung picked for MORE light). closest-side puts the
+  // transparent stop genuinely INSIDE the box.
+  assert.doesNotMatch(glow[1], /radial-gradient\(ellipse at center/, 'the farthest-corner default must not return');
   // the blur/scale are per-level vars now, so "extreme" reads as more LIGHT
   assert.match(glow[1], /filter:\s*blur\(var\(--ambient-blur/, 'blur is per-level');
   assert.match(glow[1], /transform:\s*scale\(var\(--ambient-scale/, 'spread is per-level');
