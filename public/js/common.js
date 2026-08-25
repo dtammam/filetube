@@ -7826,7 +7826,14 @@ var critterRetryTimer = null; // stashed so a NEW navigation can cancel a stale 
 // to settle, so it is the ONLY placement, at the final layout.
 var CRITTER_QUIET_MS = 300; // reveal this long after the last content mutation (a settled beat)
 var CRITTER_REVEAL_CAP_MS = 2500; // Dean's cap: reveal no later than this even if the page never quiets
-var CRITTER_LOADING_SELECTORS = ['.skeleton-card']; // present => the feed is still loading; a reveal now would re-drift when real cards land
+// v1.186.1 (Dean, device): + `.skeleton-shimmer` - the UNIVERSAL loading marker.
+// `.skeleton-card` is the FEED's only; the WATCH page's related sidebar loads via
+// `.related-thumb.skeleton-shimmer` / `.skeleton-line.skeleton-shimmer` (stripped
+// when content lands, watch.js). Gating only on `.skeleton-card` let critters
+// reveal EARLY on the watch page, then re-scatter when the related list rendered
+// (Dean: "spawn then re-shuffle to all-new spots"). `.skeleton-shimmer` covers
+// every shimmering surface; a page that shimmers forever still reveals at the cap.
+var CRITTER_LOADING_SELECTORS = ['.skeleton-card', '.skeleton-shimmer']; // present => content still loading; a reveal now would re-drift when it lands
 var critterQuietTimer = null; // the quiet debounce (re-armed by every content mutation, and once leading)
 var critterCapTimer = null; // the hard-cap deadline from wait start
 var critterWaitObs = null; // the wait-phase observer - SEPARATE from the post-reveal nudge observer (they never coexist)
