@@ -381,14 +381,18 @@ test('v1.188 flip gate: at tiny/normal scale a bottom-family critter ALWAYS flip
 
 // ---- the tap hit-test -------------------------------------------------------
 
-test('critterTapHit: only the EXPOSED sliver is tappable; anchor-covered points miss', () => {
+test('critterTapHit: v1.188 the WHOLE box is tappable, INCLUDING the anchor-covered part (Dean: clickable in any of their area)', () => {
   // Critter at (90,80) 60x60; its anchor at (100,100) 200x120. The overlap
-  // region is hidden BEHIND the anchor; the strip above/left of it is exposed.
+  // region used to MISS (fell through to the card); now it HITS - the tap is
+  // swallowed by the capture listener instead of clicking through.
   const placements = [{
     id: 'c1', x: 90, y: 80, w: 60, h: 60, anchor: { x: 100, y: 100, w: 200, h: 120 },
   }];
-  assert.strictEqual(critterTapHit(placements, 95, 90).id, 'c1', 'exposed sliver hits');
-  assert.strictEqual(critterTapHit(placements, 120, 110), null, 'inside critter but covered by the anchor: miss');
+  assert.strictEqual(critterTapHit(placements, 95, 90).id, 'c1', 'exposed sliver still hits');
+  assert.strictEqual(critterTapHit(placements, 120, 110).id, 'c1', 'the anchor-covered part now hits too (the reversal)');
+  assert.strictEqual(critterTapHit(placements, 90, 80).id, 'c1', 'the top-left corner (box edge) hits');
+  assert.strictEqual(critterTapHit(placements, 150, 140).id, 'c1', 'the bottom-right corner (box edge) hits');
+  assert.strictEqual(critterTapHit(placements, 89, 90), null, 'one px left of the box: miss');
   assert.strictEqual(critterTapHit(placements, 400, 400), null, 'outside entirely: miss');
   assert.strictEqual(critterTapHit([], 95, 90), null);
 });
@@ -702,18 +706,10 @@ test('SOURCE: all three router completion sites schedule a scatter (swap / home-
   assert.strictEqual(probeSites.length, 3, 'co-located with the repull probe at ALL THREE router sites');
 });
 
-test('SOURCE: the tap listener stands down for real UI AND every exclusion; taps resolve by INDEX; never preventDefaults', () => {
+test('SOURCE: v1.188 the tap is SWALLOWED - capture phase + stopPropagation + preventDefault on a box hit; exempts carets + exclusions; resolves by INDEX', () => {
   const start = COMMON.indexOf('function wireCritterListeners()');
-  // Comments stripped FIRST (the comment-porous class): the prose above the
-  // listener SAYS "never preventDefault", which would trip the negative lock.
   const body = COMMON.slice(start, COMMON.indexOf('\nfunction applyCritterMode', start))
     .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-  assert.match(body, /closest\('a, button, input, select, textarea, label, \[role="button"\]'\)\) return;/,
-    'a click on real UI is never treated as a critter tap');
-  // Gate QA-W1: the tap path itself honours the exclusions (a chirp over the
-  // playing dock / under a dismissing modal backdrop is the forbidden disruption).
-  assert.match(body, /closest\(CRITTER_EXCLUSION_SELECTORS\.join\(','\)\)\) return;/,
-    'the tap handler stands down over every playback surface + modal backdrop');
   // Gate W3: NEVER a selector built from the id (a raw filename - a legal
   // double-quote name made querySelector THROW). Index into the layer instead.
   assert.match(body, /children\[critterPlacements\.indexOf\(hit\)\]/, 'reaction element resolved by index');
@@ -722,12 +718,26 @@ test('SOURCE: the tap listener stands down for real UI AND every exclusion; taps
   // into view mid-tap (the surviving mutant this line kills).
   assert.match(body, /var el = wrap \? wrap\.firstElementChild : null;/, 'reactions target the pose inside the clip');
   assert.doesNotMatch(body, /querySelector\('\.critter\[data-critter-id/, 'no id-built selector remains');
-  // The CLICK path never preventDefaults - it must never eat a click meant for a
-  // link/button under the sliver (scoped to the click handler; the v1.183
-  // mousedown selection-guard below DOES preventDefault, by design).
   const clickHandler = body.slice(body.indexOf("addEventListener('click'"), body.indexOf("addEventListener('mousedown'"));
   assert.ok(clickHandler.length > 0, 'the click handler was located');
-  assert.doesNotMatch(clickHandler, /preventDefault/, 'the click path never eats a click (the link always wins)');
+  // v1.188 THE REVERSAL: the tap now WINS its whole area. It must run in the
+  // CAPTURE phase and, on a hit, both stopPropagation (so the furniture behind
+  // never sees the click) and preventDefault (so a link's navigation is
+  // cancelled). Each is a distinct mutant this locks.
+  assert.match(clickHandler, /e\.stopPropagation\(\);/, 'the tap stops the click reaching the element behind');
+  assert.match(clickHandler, /e\.preventDefault\(\);/, 'the tap cancels the default (link navigation)');
+  // The capture flag is on the click registration itself (the `}, true);` tail).
+  assert.match(clickHandler, /\}, true\);/, 'the click listener is registered in the CAPTURE phase');
+  // It still exempts caret-bearing fields (never fight a text cursor) and stands
+  // down over every playback surface + modal backdrop (Dean's hard constraint).
+  assert.match(clickHandler, /closest\('input, textarea, select, \[contenteditable\]'\)\) return;/,
+    'caret-bearing fields are exempt from the swallow');
+  assert.match(clickHandler, /closest\(CRITTER_EXCLUSION_SELECTORS\.join\(','\)\)\) return;/,
+    'the tap handler stands down over every playback surface + modal backdrop');
+  // The OLD "link always wins" stand-down over generic UI must be GONE - a tap
+  // over a button/link is now the critter's (verify what the change REMOVES).
+  assert.doesNotMatch(clickHandler, /'a, button, input, select, textarea, label, \[role="button"\]'/,
+    'the generic-UI stand-down is removed (the critter now wins over buttons/links)');
   // v1.183 (Dean, desktop): the mousedown selection-guard stops the
   // double/triple-click text highlight when the down is a REAL critter hit -
   // preventDefault on mousedown only (the click, and any underlying link, still

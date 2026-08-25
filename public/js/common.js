@@ -7787,18 +7787,17 @@ function planCritterScatter(opts) {
   return placements;
 }
 
-// PURE tap hit-test: only the EXPOSED sliver counts (inside the critter's box
-// but OUTSIDE its anchor - the part actually visible from behind the furniture).
-// Later placements are "on top" visually, so scan last-to-first.
+// PURE tap hit-test: the WHOLE critter box counts (v1.188, Dean: "clickable in
+// any of their area"). Previously only the EXPOSED sliver (box minus anchor) was
+// tappable and a tap over the anchor fell through to the card behind; Dean's
+// ruling reverses that - a tap anywhere on the png chirps AND is swallowed by
+// the capture-phase click listener so it never activates the furniture behind
+// it. Later placements are "on top" visually, so scan last-to-first.
 function critterTapHit(placements, x, y) {
   var list = placements || [];
   for (var i = list.length - 1; i >= 0; i -= 1) {
     var p = list[i];
-    var inCritter = x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h;
-    if (!inCritter) continue;
-    var an = p.anchor;
-    var inAnchor = an && x >= an.x && x <= an.x + an.w && y >= an.y && y <= an.y + an.h;
-    if (!inAnchor) return p;
+    if (x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h) return p;
   }
   return null;
 }
@@ -8725,18 +8724,30 @@ function scheduleCritterScatter() {
 function wireCritterListeners() {
   if (critterWired || typeof document === 'undefined') return;
   critterWired = true;
-  // Tap: the CLICK path never preventDefaults (it must never eat a click meant
-  // for a link/button under the sliver - the link always wins); it stands down
-  // entirely over real interactive UI and every exclusion.
+  // Tap (v1.188, Dean: "the critter WINS its whole area"): a tap anywhere on the
+  // png chirps AND is SWALLOWED so it never clicks through to the card/control
+  // behind it. This REVERSES the old "the link always wins" posture - the
+  // handler now runs in the CAPTURE phase (document is the first node in the
+  // dispatch path), so stopPropagation() keeps the event from ever descending
+  // to the target's own handlers and preventDefault() cancels the default (a
+  // link's navigation). It still stands down over caret-bearing fields (never
+  // fight a text cursor) and over every playback surface + modal backdrop
+  // (Dean's hard constraint - a chirp/steal over the playing dock or under a
+  // dismissing modal is the forbidden disruption; critters are never PLACED
+  // there anyway, so this is defense-in-depth). SCOPE BOUNDARY: only `click` is
+  // swallowed - a pointerdown-/mousedown-driven handler on an obscured element
+  // (a drag handle) is not, but a clean tap never triggers those and its click
+  // is caught here.
   document.addEventListener('click', function (e) {
     if (!critterPlacements.length) return;
-    if (e.target && e.target.closest && e.target.closest('a, button, input, select, textarea, label, [role="button"]')) return;
-    // Stand down over EVERY playback surface and modal backdrop (gate: the tap
-    // path itself must honour the exclusions - a chirp over the playing dock or
-    // under a dismissing modal is exactly the disruption Dean forbade).
+    if (e.target && e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
     if (e.target && e.target.closest && e.target.closest(CRITTER_EXCLUSION_SELECTORS.join(','))) return;
     var hit = critterTapHit(critterPlacements, e.pageX, e.pageY);
     if (!hit) return;
+    // The critter owns this tap: stop it reaching the furniture behind it, and
+    // cancel any default (link navigation). Capture phase makes the stop total.
+    e.stopPropagation();
+    e.preventDefault();
     // By INDEX, never a selector built from the id (gate W3: an id is a raw
     // FILENAME - "names never matter" - and a legal double-quote name made a
     // built selector THROW; render order == placement order, so index is exact
@@ -8770,22 +8781,23 @@ function wireCritterListeners() {
       critterLastChirpReason = 'no critter voice and the sound pool is empty';
       playCritterChirp();
     }
-  });
-  // v1.183 (Dean, desktop): spam-clicking a critter's exposed sliver was
-  // selecting the text beneath it (the browser's double/triple-click gesture) -
-  // the layer is pointer-events:none, so the mousedown lands on the content
-  // under the peek. Suppress the SELECTION default when the down is a REAL
-  // critter hit. mousedown-only, so touch scroll + long-press are untouched;
-  // preventDefault on mousedown stops the selection (and mousedown-focus) but
-  // NOT the click, so the chirp still fires and any link under the sliver still
-  // navigates on click - "the link still wins". Caret-bearing fields are exempt
-  // (never fight a text cursor). Same stand-down over the exclusions as the tap.
+  }, true); // CAPTURE: run before the target's own handlers so the swallow is total
+  // v1.183 (Dean, desktop): spam-clicking a critter was selecting the text
+  // beneath it (the browser's double/triple-click gesture) - the layer is
+  // pointer-events:none, so the mousedown lands on the content under the peek.
+  // Suppress the SELECTION default when the down is a REAL critter hit (now the
+  // whole box - v1.188). mousedown-only, so touch scroll + long-press are
+  // untouched; preventDefault on mousedown stops the selection (and
+  // mousedown-focus). The click itself is separately swallowed by the
+  // capture-phase tap listener above, so no underlying link/button ever fires.
+  // Caret-bearing fields are exempt (never fight a text cursor); same stand-down
+  // over the exclusions as the tap.
   document.addEventListener('mousedown', function (e) {
     if (!critterPlacements.length) return;
     if (e.target && e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
     if (e.target && e.target.closest && e.target.closest(CRITTER_EXCLUSION_SELECTORS.join(','))) return;
     if (!critterTapHit(critterPlacements, e.pageX, e.pageY)) return;
-    e.preventDefault(); // stop the text-selection gesture only; the click (chirp + any underlying link) still fires
+    e.preventDefault(); // stop the text-selection gesture; the click is swallowed above
   });
   // Reflow moves the furniture; re-scatter (debounced) so critters follow -
   // but ONLY on a WIDTH change (gate W5): iOS Safari fires resize on URL-bar
