@@ -2090,14 +2090,18 @@ test('v1.187 SIZE: the scale multiplies placements (same seed/anchors), and scal
   }
 });
 
-test('v1.187 SIZE: EVERY invariant still holds at 3x - peek, engulf, exclusions, document bounds, screen edge, full-bleed', () => {
+test('v1.187 SIZE: every SKIP invariant still holds at 3x - peek, engulf, exclusions, document bounds, screen edge', () => {
   const { buildCritterClip } = require('../../public/js/common.js');
   // Gate W2: the fixture must let EVERY clause fire. Small anchors (so a 3x
   // critter can dwarf them), a FULL-BLEED anchor (the v1.169/v1.180 amputation
   // rule), bounds TIGHTER than the reach so gate W4 can actually trip, and
   // bounds.w > viewportW so the width half is not subsumed by the screen edge.
   const anchors = Array.from({ length: 14 }, (_, i) => ({ x: 60 + (i % 3) * 260, y: 100 + i * 220, w: 300, h: 190 }));
-  anchors.push({ x: 20, y: 3180, w: 960, h: 150 });   // full-bleed (>= 0.85 * effW)
+  // full-bleed must clear 0.85 * effW where effW = min(bounds.w, viewportW) = 1200,
+  // i.e. >= 1020px. A 960px anchor is NOT full-bleed and silently exempted the
+  // rule from the sweep (mutant H survived) - the fixture has to satisfy the
+  // planner's own predicate, not just carry the word in a comment.
+  anchors.push({ x: 20, y: 3180, w: 1100, h: 150 });
   anchors.push({ x: 300, y: 3400, w: 96, h: 34 });    // a button
   anchors.push({ x: 500, y: 3520, w: 36, h: 36 });    // an avatar
   const player = { x: 0, y: 0, w: 900, h: 460 };
@@ -2124,12 +2128,14 @@ test('v1.187 SIZE: EVERY invariant still holds at 3x - peek, engulf, exclusions,
       assert.ok(!critterRectsIntersect({ x: p.x, y: p.y, w: p.w, h: p.h }, player), `seed ${seed}: never intersects the player exclusion`);
       assert.ok(p.x + p.w <= bounds.w && p.y + p.h <= bounds.h, `seed ${seed}: never grows the document (gate W4)`);
       assert.ok(p.x >= 0 && p.x + p.w <= 1200, `seed ${seed}: never crosses the SCREEN edge (v1.180)`);
-      // Gate O4: the FULL-BLEED rule (v1.169/v1.180) - an anchor spanning ~the
-      // whole width may only peek TOP or BOTTOM, never off the side of the phone.
-      // No invariant assertion can catch its removal (the screen-edge guard turns
-      // the failure into pure density loss), so assert the rule DIRECTLY: a
-      // top/bottom-only peek leaves BOTH side covers at zero.
-      if (a.w >= 0.85 * 1200) {
+      // The FULL-BLEED property (v1.169/v1.180): a full-width anchor peeks TOP or
+      // BOTTOM only, so both side covers are zero. HONEST SCOPE (gate O4, both
+      // seats): this assertion is TRUE but cannot FAIL at 3x - disabling the rule
+      // produces no survivor to assert against, because every side peek off a
+      // full-width anchor is then rejected by the SCREEN-EDGE guard (which IS
+      // bound). The rule's own binding lives in the scale-1 test above; the
+      // 3x claim is therefore NOT in this test's title. Tech-debt #171.
+      if (a.w >= 0.85 * Math.min(bounds.w, 1200)) {
         assert.ok(p.cover.l === 0 && p.cover.r === 0, `seed ${seed}: a full-bleed anchor must peek top/bottom ONLY (cover l=${p.cover.l} r=${p.cover.r})`);
       }
     }

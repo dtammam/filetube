@@ -72,8 +72,11 @@ Dean, 4 asks (intake answered inline):
 - Every invariant still holds at 3x: every placement PEEKS, none ENGULFS its
   anchor (the v1.187 gate invariant - an engulfed anchor has no honest clip, so
   the planner skips that geometry outright), none intersects an exclusion, none
-  exceeds bounds, none crosses the screen edge, and full-bleed anchors still peek
-  top/bottom only. The sweep's fixture is built so EVERY clause can actually fail.
+  exceeds bounds, none crosses the screen edge. The sweep's fixture is built so
+  every one of those clauses can actually fail (verified by mutation). The
+  full-bleed rule is NOT claimed at 3x: disabling it leaves no survivor to assert
+  against (the screen-edge guard rejects every side peek off a full-width anchor),
+  so its binding stays the scale-1 test - tech-debt #171.
 - The size ruling is bound on SMALL anchors (buttons/avatars), where the three
   mutants that gut it previously survived the whole suite: large > 1.5x normal,
   xlarge > 1.2x large.
