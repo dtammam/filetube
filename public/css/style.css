@@ -8554,8 +8554,9 @@ body.ft-audio-expanded {
      HONEST SCOPE (gate W2): alpha reaches zero at the element edge in the
      element's OWN coordinates - but the page guillotine (the root's overflow-x
      clip) cuts at the VIEWPORT, which on a mobile full-bleed player sits ~1.09
-     half-widths out, INSIDE the scaled glow. So 2-25% effective alpha still
-     terminates at the screen edge there. That is unavoidable: reach > 1 (visible
+     half-widths out, INSIDE the scaled glow. So 3-36% effective alpha still
+     terminates at the screen edge there (3.3 / 10.7 / 18.9 / 35.7 across the
+     ladder - re-derived after the core widened to 40%). That is unavoidable: reach > 1 (visible
      at all) and zero-alpha-at-the-clip (1.09) cannot both hold unless every scale
      sits in (1.00, 1.09], which would cap the halo at ~16px. The wave chooses
      VISIBILITY; a run-off at the physical screen edge reads as light leaving the
@@ -8564,9 +8565,11 @@ body.ft-audio-expanded {
      narrow core rendered the whole ladder far dimmer than its opacity numbers
      imply. `intense` therefore matches v1.186's REACH (1.30), not its brightness
      - the falloff necessarily dims the edge; that is the fix for the hard cut.
-     CLOSEST-SIDE stays load-bearing: farthest-corner would put the stop ~7.5%
-     outside the box, leaving real alpha at the viewport clip on mobile. BOTH mask
-     spellings - one alone breaks Firefox or iOS (the v1.77 lesson).
+     CLOSEST-SIDE stays load-bearing: farthest-corner sizes the ending shape to
+     sqrt(2) x the half-extent, so a 100% stop lands 41% OUTSIDE the box and ~49%
+     mask alpha survives to the border-box cut - a hard rectangle, exactly what
+     the mask exists to remove. BOTH mask spellings - one alone breaks Firefox or
+     iOS (the v1.77 lesson).
      NB keep literal braces out of this comment - the suite extracts rule bodies
      with a non-brace regex, so a closing brace here truncates the match. */
   -webkit-mask-image: radial-gradient(ellipse closest-side at center, black 40%, transparent 100%); /* token-exempt: mask ALPHA ramp, not a theme colour (black/transparent are the mask's opacity stops) */
