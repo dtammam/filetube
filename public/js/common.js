@@ -7615,7 +7615,9 @@ function planCritterScatter(opts) {
   // the cross-axis proportion allowance below. Default 1 = byte-identical to
   // v1.186 (every existing direct-call test passes no sizeScale).
   var sizeScale = (opts && opts.sizeScale) || 1;
-  var sizeFloor = Math.max(8, Math.round(26 * sizeScale)); // the v1.170 26px floor, scaled (8px keeps 'tiny' non-degenerate)
+  // The v1.170 26px floor, scaled. The 8px clamp never binds for the four shipped
+  // rungs (tiny's floor is 13); it only guards a hypothetical future scale < 0.31.
+  var sizeFloor = Math.max(8, Math.round(26 * sizeScale));
   var placements = [];
   // v1.168 (Dean: "not really going as hard as we could"): four edges PLUS the
   // four corners (diagonal ambushes), and the peek DEPTH is randomized per
@@ -7712,7 +7714,12 @@ function planCritterScatter(opts) {
     // Unreachable before v1.187 because the cross-fit capped size at 1.15x the
     // anchor; reachable once that cap scales, so it is now an EXPLICIT skip
     // (never a nudge) - and it is what keeps the island branch genuinely dead.
-    if (a.x >= x && a.y >= y && a.x + a.w <= x + size && a.y + a.h <= y + size) continue;
+    // STRICT containment (gate D1): a TANGENT anchor edge still produces a
+    // touched side and therefore a real clip, so `>=` wrongly discarded valid
+    // T-notches - 4 per ~23k at scale 1 (breaking byte-parity with v1.186) and
+    // 31-66% of the large/xlarge placements this guard drops, concentrated on
+    // exactly the v1.169 micro-ambush anchors (avatars). Strict is island-exact.
+    if (a.x > x && a.y > y && a.x + a.w < x + size && a.y + a.h < y + size) continue;
     // The placement's OWN rect must also clear every exclusion (gate W1: the
     // anchor check alone let a peek REACH INTO an adjacent player/dock - the
     // "never overlapped" half of Dean's constraint). Skip, never nudge.
@@ -7740,7 +7747,10 @@ function planCritterScatter(opts) {
       x: x, y: y, w: size, h: size,
       angle: bottomFamily ? tilt + 180 : tilt,
       flip: rng() < 0.5 ? -1 : 1, // v1.168: mirrored half the time - twice the poses per PNG
-      cover: cover, // v1.168 claim, INFORMATIONAL since v1.174: the clip derives from measured rects (buildCritterClip); tests classify peek direction by it
+      // v1.168 claim; the CLIP has derived from measured rects since v1.174, but
+      // `cover` is NOT vestigial: renderCritterPlacements steers the v1.187 sneak
+      // DIRECTION off cover.t, and the tests classify peek direction by it.
+      cover: cover,
       // v1.170 (Dean's Bernard screenshot): a TRUE-CIRCLE anchor's hidden
       // region is the DISC, not the bounding square - the renderer swaps the
       // rect clip for a circular mask so the cut follows the avatar's curve.
@@ -7979,9 +7989,11 @@ function buildCritterClip(p, pad) {
     // reachable half of Dean's Subscribed-button fix was the corner/band
     // branches' measured cut positions - 1306 floating cuts to 0 over a 120x44
     // button). v1.187 CORRECTION (both gate seats measured it): the size choice
-    // scales that cap, so at large/xlarge this is the DOMINANT topology
-    // (15-21% at 2x, up to ~56% of watch-page placements at 3x) - a deliberate,
-    // disclosed consequence of Dean asking for 2x/3x critters. Still exact-string
+    // scales that cap, so at large/xlarge this becomes a COMMON topology (a
+    // minority on a phone feed, up to roughly half of watch-page placements at
+    // 3x - re-derive before quoting a figure; the first numbers here came from a
+    // concurrently-mutated tree and did not reproduce). A deliberate, disclosed
+    // consequence of Dean asking for 2x/3x critters. Still exact-string
     // bound in all four orientations so it cannot rot silently (the v1.168 lesson).
     if (T) return pts([0, 0, x1, 0, x1, y2, x2, y2, x2, 0, W, 0, W, W, 0, W]);
     if (R) return pts([0, 0, W, 0, W, y1, x1, y1, x1, y2, W, y2, W, W, 0, W]);
@@ -8096,10 +8108,12 @@ function renderCritterPlacements(layer, placements, still) {
     //  - SCALED, never a fixed 7px: pad is round(w*0.3), so a `tiny` 13px critter
     //    has a 4px pad and a 7px start would be CLIPPED mid-arrival (52% of tiny
     //    placements) - a jump, not a sneak. Clamp it to the pad.
-    //  - DIRECTIONAL: the critter must drift AWAY from its anchor (out of hiding),
-    //    so a critter hanging BELOW its ledge (anchor covers its top, cover.t > 0)
-    //    starts above and sinks; everything else starts below and rises. One fixed
-    //    sign moved ~37% of placements TOWARD concealment - the inverse mechanism.
+    //  - DIRECTIONAL: every VERTICALLY-emerging critter drifts AWAY from its
+    //    anchor (out of hiding) - one hanging BELOW its ledge (anchor covers its
+    //    top, cover.t > 0) starts above and sinks; the rest start below and rise.
+    //    One fixed sign moved the whole bottom family TOWARD concealment - the
+    //    inverse of the stated mechanism. For pure left/right peeks (~27%) the
+    //    rise is perpendicular to the emergence axis: neither toward nor away.
     var rise = Math.max(2, Math.min(7, pad));
     pose.style.setProperty('--critter-rise', ((p.cover && p.cover.t > 0) ? -rise : rise) + 'px');
     // v1.179.2 (Dean's ruling): the hue spin exists so the five BUILT-IN

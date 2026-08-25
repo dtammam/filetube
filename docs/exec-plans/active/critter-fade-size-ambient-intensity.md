@@ -93,9 +93,18 @@ Dean, 4 asks (intake answered inline):
 - Mask spelling porosity (one spelling only -> breaks Firefox or iOS).
 - Ambient default changing behavior for an existing opted-in user (it does, by
   design: intense -> normal; disclose).
-- DISCLOSED TRADES (gate-measured, both seats): (a) at large/xlarge the C-notch
-  topology becomes common (15-21% at 2x, up to ~56% on watch at 3x) - a 3x
-  critter behind a 44px button MUST sprawl past it; that is the cost of the rung
-  Dean asked for. (b) xlarge places ~22% FEWER critters at a given density
-  (bigger critters fit in fewer legal spots; the count is a ceiling, not a
-  quota). Both belong in the release notes, not in a comment.
+- DISCLOSED TRADES, re-derived at the STRICT-guard commit (the earlier figures
+  came from the inclusive guard AND from a concurrently-mutated tree - both gate
+  seats flagged them as unreproducible, so these are measured fresh and the
+  fixture is named). Fixture: a 390px mobile feed, 8 rows of
+  thumbnail+card+avatar+button, density Normal (count 6), 400 seeds:
+  (a) DENSITY: tiny 6.00 / normal 5.90 / large 5.49 (-7%) / xlarge 4.81 (-18%)
+      critters actually placed. Bigger critters fit in fewer legal spots; the
+      density setting is a CEILING, not a quota.
+  (b) MICRO-ANCHORS: the loss concentrates on the v1.169 micro-ambush anchors -
+      avatar placements 398 (normal) -> 235 (large) -> 158 (xlarge), i.e. a 3x
+      critter can still ambush a 36px avatar but does so ~60% less often.
+  (c) C-NOTCH: at large/xlarge a critter often sprawls past a small anchor's far
+      edges (a 3x critter behind a 44px button MUST) - common on a watch page,
+      a minority on a phone feed. Quote a figure only re-derived, never carried.
+  All three belong in the release notes, not in a comment.

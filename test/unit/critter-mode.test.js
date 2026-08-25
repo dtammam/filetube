@@ -415,9 +415,11 @@ test('v1.174 buildCritterClip (pure GEOMETRIC TRUTH): the hidden region is the M
     'polygon(0px 0px, 35px 0px, 35px 45px, 80px 45px, 80px 80px, 0px 80px)', 'anchor top-right (bl peek)');
   assert.strictEqual(buildCritterClip(P({ x: 0, y: 0, w: 130, h: 130 }), pad),
     'polygon(45px 0px, 80px 0px, 80px 80px, 0px 80px, 0px 45px, 45px 45px)', 'anchor top-left (br peek)');
-  // ONE touched side (the C-notch): unreachable from today's planner (the
-  // cross-fit caps size at 1.15x the anchor cross extent - the seat measured
-  // 0 occurrences over 92k placements), kept as defense-in-depth. Gate
+  // ONE touched side (the C-notch): unreachable at SCALE 1 (the cross-fit caps
+  // size at 1.15x the anchor cross extent - measured 0 occurrences over 92k
+  // placements). v1.187 CORRECTION: the size choice scales that cap, so at
+  // large/xlarge this is a COMMON topology - these locks are LIVE, not dead
+  // code, and must never be loosened as vestigial. Gate
   // WARNING closure: ALL FOUR orientations exact-bound - the R-only coverage
   // left T/B/L emit mutants green, the v1.168 corner class re-struck.
   assert.strictEqual(buildCritterClip(P({ x: 130, y: 110, w: 60, h: 20 }), pad),
@@ -2100,7 +2102,9 @@ test('v1.187 SIZE: EVERY invariant still holds at 3x - peek, engulf, exclusions,
   anchors.push({ x: 500, y: 3520, w: 36, h: 36 });    // an avatar
   const player = { x: 0, y: 0, w: 900, h: 460 };
   const bounds = { w: 1200, h: 3600 };
-  for (let seed = 1; seed <= 60; seed += 1) {
+  // Gate O2: 300 seeds, NOT 60 - adding fixture anchors shifted the RNG stream so
+  // the exclusion clause stopped binding under 60 (first violating seed: 186).
+  for (let seed = 1; seed <= 300; seed += 1) {
     const out = planCritterScatter({
       anchors: anchors.map((a) => ({ ...a })), exclusions: [player], manifest: MANIFEST_8, count: 10,
       rng: seededRng(seed), bounds, viewportW: 1000, sizeScale: 3,
@@ -2114,12 +2118,20 @@ test('v1.187 SIZE: EVERY invariant still holds at 3x - peek, engulf, exclusions,
       // the OPPOSITE of a peek and has no honest clip (buildCritterClip returns
       // '' -> the renderer sets no clip-path at all -> the critter paints over
       // its own furniture). This assertion went red before the planner guard.
-      const engulfs = p.x <= a.x && p.y <= a.y && p.x + p.w >= a.x + a.w && p.y + p.h >= a.y + a.h;
+      const engulfs = p.x < a.x && p.y < a.y && p.x + p.w > a.x + a.w && p.y + p.h > a.y + a.h;
       assert.ok(!engulfs, `seed ${seed}: a critter must never ENGULF its anchor (${p.w}px over ${a.w}x${a.h})`);
       assert.ok(buildCritterClip(p, Math.round(p.w * 0.3)) !== '' || p.roundCover, `seed ${seed}: every placement gets a real clip (no unclipped critter)`);
       assert.ok(!critterRectsIntersect({ x: p.x, y: p.y, w: p.w, h: p.h }, player), `seed ${seed}: never intersects the player exclusion`);
       assert.ok(p.x + p.w <= bounds.w && p.y + p.h <= bounds.h, `seed ${seed}: never grows the document (gate W4)`);
-      assert.ok(p.x >= 0 && p.x + p.w <= 1000, `seed ${seed}: never crosses the SCREEN edge (v1.180)`);
+      assert.ok(p.x >= 0 && p.x + p.w <= 1200, `seed ${seed}: never crosses the SCREEN edge (v1.180)`);
+      // Gate O4: the FULL-BLEED rule (v1.169/v1.180) - an anchor spanning ~the
+      // whole width may only peek TOP or BOTTOM, never off the side of the phone.
+      // No invariant assertion can catch its removal (the screen-edge guard turns
+      // the failure into pure density loss), so assert the rule DIRECTLY: a
+      // top/bottom-only peek leaves BOTH side covers at zero.
+      if (a.w >= 0.85 * 1200) {
+        assert.ok(p.cover.l === 0 && p.cover.r === 0, `seed ${seed}: a full-bleed anchor must peek top/bottom ONLY (cover l=${p.cover.l} r=${p.cover.r})`);
+      }
     }
   }
 });
@@ -2184,4 +2196,61 @@ test('v1.187 gate C1: the size ruling is BOUND on SMALL anchors - large > normal
   assert.ok(large > normal * 1.5, `large must be VISIBLY bigger on small anchors (${normal.toFixed(1)} -> ${large.toFixed(1)})`);
   assert.ok(xl > large * 1.2, `xlarge must be visibly bigger than large (${large.toFixed(1)} -> ${xl.toFixed(1)}) - they were IDENTICAL under the mutant`);
   assert.ok(tiny < normal * 0.8, `tiny must be visibly smaller (${normal.toFixed(1)} -> ${tiny.toFixed(1)})`);
+});
+
+test('v1.187 gate O1: crossAllow scaling and the size FLOOR are each bound INDEPENDENTLY (they were mutually masking)', () => {
+  // The seat proved C1 only bound "at least one of {crossAllow scaling, floor
+  // scaling}": with crossAllow unscaled, the scaled 78px floor did the lifting on
+  // small anchors and C1 still passed. These two are unmaskable.
+  //
+  // (a) crossAllow: MID anchors (100x100) sit above the scaled floor (78px at 3x)
+  // but below the scaled allowance, so ONLY the crossAllow scaling can lift them.
+  // Unscaled, every placement clamps to <= 1.15*100/spread (<= 115) and large
+  // becomes IDENTICAL to xlarge - the inert-rung failure, relocated.
+  const mid = () => Array.from({ length: 6 }, (_, i) => ({ x: 120, y: 200 + i * 320, w: 100, h: 100 }));
+  const at = (scale) => planCritterScatter({
+    anchors: mid(), exclusions: [], manifest: MANIFEST_8, count: 6, rng: seededRng(5), sizeScale: scale,
+  });
+  const xl = at(3);
+  assert.ok(xl.length > 0, 'the mid-anchor fixture places');
+  assert.ok(xl.every((p) => p.w > 120), `every 3x placement on a 100x100 anchor must exceed the UNSCALED clamp of ~115px (got ${xl.map((p) => p.w).join(',')})`);
+  const lg = at(2);
+  assert.ok(Math.max(...xl.map((p) => p.w)) > Math.max(...lg.map((p) => p.w)),
+    'xlarge still out-sizes large on mid anchors (they collapsed to identical under the crossAllow mutant)');
+
+  // (b) the FLOOR: only a SCALED floor lets `tiny` go below the v1.170 26px floor.
+  // Unscaled, no placement can ever be smaller than 26px.
+  const small = Array.from({ length: 6 }, (_, i) => ({ x: 120, y: 200 + i * 320, w: 40, h: 30 }));
+  const tinyOut = planCritterScatter({
+    anchors: small, exclusions: [], manifest: MANIFEST_8, count: 6, rng: seededRng(9), sizeScale: 0.5,
+  });
+  assert.ok(tinyOut.some((p) => p.w < 26), `"tiny" must reach BELOW the unscaled 26px floor (got ${tinyOut.map((p) => p.w).join(',')})`);
+});
+
+test('v1.187 gate O3: the renderer WRITES --critter-rise - clamped to the pad and signed by the peek direction', () => {
+  // The keyframe reading `var(--critter-rise, 7px)` was source-locked, but nothing
+  // asserted the renderer ever SETS it: deleting both lines fell back to the
+  // literal 7px - i.e. exactly the pre-fix behaviour, with a green suite.
+  const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/' });
+  const origWindow = global.window; const origDocument = global.document;
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const layer = dom.window.document.createElement('div');
+    dom.window.document.body.appendChild(layer);
+    renderCritterPlacements(layer, [
+      // a TINY critter: pad = round(13*0.3) = 4, so the rise CLAMPS to 4 (an
+      // unclamped 7px start would be cropped by the wrapper mid-arrival).
+      { id: 'tiny', x: 100, y: 100, w: 13, h: 13, angle: 0, flip: 1, hue: 0, cover: { t: 0, r: 0, b: 6, l: 0 }, anchor: { x: 90, y: 106, w: 60, h: 40 }, img: null, svg: null },
+      // a BOTTOM-family critter (anchor covers its TOP): it hangs below its ledge,
+      // so it must start ABOVE and sink - a NEGATIVE rise.
+      { id: 'below', x: 200, y: 300, w: 80, h: 80, angle: 0, flip: 1, hue: 0, cover: { t: 30, r: 0, b: 0, l: 0 }, anchor: { x: 190, y: 240, w: 120, h: 90 }, img: null, svg: null },
+    ]);
+    const poses = [...layer.children].map((el) => el.firstElementChild);
+    assert.strictEqual(poses[0].style.getPropertyValue('--critter-rise'), '4px',
+      'the rise CLAMPS to the wrapper pad on a tiny critter (never a fixed 7px)');
+    assert.strictEqual(poses[1].style.getPropertyValue('--critter-rise'), '-7px',
+      'a critter hanging BELOW its ledge starts above and sinks - away from concealment');
+  } finally {
+    global.window = origWindow; global.document = origDocument; dom.window.close();
+  }
 });

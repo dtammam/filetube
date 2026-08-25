@@ -181,6 +181,7 @@ test('v1.187 the intensity ladder is CSS-owned per level, and v1.186\'s look is 
   // first cut had quietly changed blur 72->64 and saturate 1.4->1.35 globally,
   // so picking Intense would NOT have given Dean his old glow back.
   assert.strictEqual(num(lvl('intense'), 'blur'), 72, 'intense keeps v1.186\'s 72px blur');
+  assert.strictEqual(num(lvl('intense'), 'scale'), 1.3, 'and v1.186\'s 1.3 spread (gate O6 - the third half of "restores the old look")');
   const glowRule = /\.ambient-glow\s*\{([^}]*)\}/.exec(STYLE_CSS)[1];
   assert.match(glowRule, /saturate\(1\.4\)/, 'the global saturate is back to v1.186\'s 1.4');
   assert.match(glowRule, /blur\(var\(--ambient-blur, 72px\)\)/, 'the blur fallback matches the NORMAL default (gate S3)');
