@@ -2212,5 +2212,11 @@
     "date": "2026-08-26",
     "title": "Optionally let critters overlap a little",
     "intent": "A new experimental option under Settings, Critters. Since critters stopped overlapping entirely you may see fewer of them in tight spots, especially at the busiest density on a phone. Turn on \"Let critters overlap a little\" and they'll be allowed to lightly graze each other again, so you get more of them - but they still won't pile into a heavy stack. It's off by default; flip it on if you want a fuller crowd."
+  },
+  {
+    "version": "1.194.0",
+    "date": "2026-08-26",
+    "title": "Two mobile fixes: critters stay put when you rotate, and a text-size glitch",
+    "intent": "Two small fixes for your phone. When critters are on a page and you turn your phone and turn it back, they now stay right where they were instead of scattering to new spots. And the little \"Playing on\" card no longer shows oversized text after you come out of a full-screen video - its text stays the normal size."
   }
 ]
