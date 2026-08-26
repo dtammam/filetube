@@ -1,8 +1,14 @@
 # Shows — a first-class TV media type (v1.19x candidate)
 
-Status: DRAFT for Dean's sign-off (2026-08-26). No implementation begins
-until Dean approves this plan. Big wave → this doc is the reviewers' spec
-and survives context compaction.
+Status: SHIPPED (Phases 1-4 + 6) as **v1.195.0** (2026-08-26). Full two-reviewer
+gate closed (both APPROVE after one fix round: backup carriage, live-watch
+eviction, codec-aware transcode); dual-Node 7622/0. **Phase 5 (progress /
+mark-watched / next-episode / Continue-Watching) is DEFERRED to a v1.195.1
+follow-up** - the `user_tv_*` tables + delete-carrier already ship (Phase 1); the
+progress routes/accessors + client wiring land next. Also deferred to v1.195.1:
+the mobile bottom-nav customizer "Shows" entry (Shows is reachable via the sidebar
+Library link meanwhile). This doc was the reviewers' spec and survives context
+compaction.
 
 ## Intent (Dean, 2026-08-26, verbatim core)
 

@@ -80,6 +80,63 @@
 
 ## Shipped
 
+### v1.195.0 - feat: Shows / TV as a first-class media type (browse + playback + setup) (2026-08-26)
+
+A new **Shows** library, first-class alongside Videos / Music / Books / Podcasts.
+Point FileTube at a Plex-shaped folder tree
+(`<Shows root>/<Show>/<Season N | Specials>/<Show SxxEyy - Title>.<ext>`) in
+Settings and it renders a **poster wall** -> a **show detail** (season sections,
+each a podcast-style episode list) -> **inline episode playback**. The internal
+namespace is `tv` (the UI reads "Shows"); the browse/organization layer is new,
+but playback deliberately **reuses the existing video streaming + transcode
+mechanism** (`sendRangeable`, the shared `TRANSCODE_DIR` cache, codec-aware
+`needsTranscode`). Filename + folder parsing only (no online metadata); a
+best-effort `SxxEyy` parser with a per-show "Extras" bucket for anything that
+doesn't match; show-level poster from a folder image, else a generated FFmpeg
+frame; per-episode FFmpeg thumbnails. Nav is **content-gated** - the Shows link
+only appears once a Shows folder is configured, so the partial feature exposes no
+unfinished surface.
+
+Shipped as **Phases 1-4 + 6** of the exec plan
+(`docs/exec-plans/completed/2026-08-26-shows-tv-media-type.md`): db namespace +
+pure parse/scan/store core, the scan engine, the API + RBAC surface, the client
+browse UI, and the Settings "Shows folders" builder.
+
+**The full two-reviewer gate ran (a new persisted namespace + a new stream/download
+surface -> full, never slim) and caught three blocking issues, all fixed in one
+round before release:**
+- **Data loss:** the `db.tv` namespace was omitted from the backup bundle, and
+  restore wipes the doc tables wholesale then repopulates only bundled keys - so a
+  routine backup -> restore would have **silently erased the entire Shows library
+  and config**. Now carried in the bundle, with an AC6 round-trip test (mutation
+  proves the binding).
+- **Live-watch eviction race:** episode transcode renditions were served without a
+  live-watch mark, so the shared transcode-cache LRU/age sweep could delete an
+  episode's rendition **mid-stream**. Now `markServed`-protected like the main
+  video path.
+- **Codec-blind playback:** the transcode decision keyed on file extension only,
+  so an HEVC-video or AC3/DTS-audio episode in a browser-native container
+  (`.mp4`/`.mov`) - the most common TV-rip shape - was served raw and never
+  decoded (the client retried forever). Now codec-aware (audio codec captured at
+  scan time), bound behaviourally (HEVC-in-mp4 -> transcode, clean mp4 ->
+  streams).
+
+Both seats APPROVE after the one fix round. **Dual-Node 7622/0** (Node 22.23.1 +
+24.14.0).
+
+**Known gaps (disclosed):**
+- **Phase 5 (per-episode resume + mark-watched + "next episode" + a
+  Continue-Watching row) is DEFERRED to a v1.195.1 follow-up.** The `user_tv_*`
+  tables + delete-carrier already ship (built in Phase 1); the progress
+  routes/accessors + client wiring land next. Rationale: validate the browse /
+  playback layout on-device first (the v1.194 jsdom-green-but-broke-on-iOS lesson),
+  and keep this gate focused on the high-risk namespace/RBAC/parser/transcode
+  surfaces.
+- **The mobile bottom-nav CUSTOMIZER** doesn't yet offer a "Shows" entry (Shows is
+  reachable on mobile via the sidebar Library link); deferred to v1.195.1 with the
+  progress wave, to avoid disturbing that surface's order-authority tests
+  pre-release.
+
 ### v1.194.3 - fix: mobile sideways-scroll on the inline watch page (the scaled ambient glow) (2026-08-26)
 
 Dean (device): watching content inline (non-fullscreen) on a phone allowed horizontal

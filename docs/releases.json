@@ -2236,5 +2236,11 @@
     "date": "2026-08-26",
     "title": "No more accidental sideways scrolling while watching on your phone",
     "intent": "While watching something on your phone, the page could sometimes be dragged sideways a little when the glowing background effect was on. The page now stays put horizontally. The glow above and below the player is unchanged."
+  },
+  {
+    "version": "1.195.0",
+    "date": "2026-08-26",
+    "title": "TV Shows are now a first-class library",
+    "intent": "You can now add a TV Shows folder, right alongside your Videos, Music, Books and Podcasts. Point FileTube at a folder of shows laid out the usual way - a folder per show, a folder per season, episode files named like \"House MD S02E22 - Forever\" - and it builds a wall of show posters for you. Tap a show to see its seasons and episodes, then tap an episode to play it right there. A picture placed in a show's folder becomes its poster; if there isn't one, FileTube makes a poster and per-episode thumbnails from the video itself. Episodes in a format your browser can't play - including ones that just use a codec it doesn't understand - are converted on the fly, exactly like the rest of your videos. The Shows tab only appears once you've added a Shows folder. Remembering where you left off in an episode and a \"Continue watching\" row are coming in a follow-up update."
   }
 ]
