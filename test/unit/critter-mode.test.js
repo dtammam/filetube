@@ -1932,6 +1932,19 @@ test('v1.175: every critter ARRIVES on a pure-opacity fade (no pop-in; no motion
   assert.doesNotMatch(kf[1], /transform|margin|left:|top:|width|height/, 'OPACITY ONLY - zero motion, zero layout shift');
 });
 
+test('v1.192: a critter RESTS fully opaque - the pose carries no sub-1 opacity (Dean: transparent PNGs must not read see-through)', () => {
+  // The old .critter-pose { opacity: 0.95 } made uploaded art faintly
+  // see-through. It is gone; the pose sets no opacity, so it computes to the
+  // solid 1 default. Mutant guard: re-add `opacity: 0.9` to .critter-pose and
+  // this reds. Scoped to the pose's OWN declarations (comments stripped) so the
+  // arrival fade on the wrapper is not what satisfies it.
+  const pose = /\.critter-pose\s*\{([^}]*)\}/.exec(CSS);
+  assert.ok(pose, '.critter-pose rule exists');
+  const decls = pose[1].replace(/\/\*[\s\S]*?\*\//g, '');
+  const m = /opacity:\s*([0-9.]+)/.exec(decls);
+  assert.ok(!m || parseFloat(m[1]) >= 1, `the resting pose is solid (found opacity: ${m && m[1]})`);
+});
+
 test('tap reactions: a pool of tiny transform-only animations, each defined in CSS and all reduced-motion-safe', () => {
   const { CRITTER_REACTIONS } = require('../../public/js/common.js');
   assert.deepStrictEqual(CRITTER_REACTIONS, ['critter-wiggle', 'critter-shiver', 'critter-hop', 'critter-twirl', 'critter-duck', 'critter-squish', 'critter-nod', 'critter-wobble', 'critter-boing', 'critter-swing', 'critter-pop', 'critter-headshake', 'critter-tada', 'critter-rubberband', 'critter-backflip', 'critter-doublehop', 'critter-peek', 'critter-float'],
