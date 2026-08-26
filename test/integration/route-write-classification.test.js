@@ -104,6 +104,7 @@ const CLASSIFICATION = {
   'POST /api/scan': 'library-write',
   'POST /api/books/scan': 'library-write',
   'POST /api/music/scan': 'library-write',
+  'POST /api/tv/scan': 'library-write',
   'POST /api/cache/clear': 'library-write',
   'POST /api/trash/:id/restore': 'library-write',
   'DELETE /api/trash/:id': 'library-write',
@@ -151,6 +152,7 @@ const CLASSIFICATION = {
   'POST /api/config': 'admin',
   'POST /api/books/config': 'admin',
   'POST /api/music/config': 'admin',
+  'POST /api/tv/config': 'admin',
   'POST /api/settings': 'admin',
   'POST /api/settings/logo': 'admin',
   'DELETE /api/settings/logo': 'admin',
@@ -353,6 +355,7 @@ const VISIBILITY = {
   'POST /api/scan': na('triggers a rescan of the configured roots; writes scan state, returns no per-item data'),
   'POST /api/books/scan': na('triggers the book rescan; same shape as /api/scan'),
   'POST /api/music/scan': na('triggers the music rescan; same shape as /api/scan'),
+  'POST /api/tv/scan': na('triggers the Shows rescan; writes scan state, returns no per-item data'),
   'POST /api/cache/clear': na('transcode-cache lifecycle; touches derived cache files only, never library items'),
   'POST /api/subscriptions': na('channel REGISTRY row create; the registry is shared by design (documented product shape)'),
   'DELETE /api/subscriptions/:id': na('channel registry row delete; no library item addressed'),
@@ -385,6 +388,7 @@ const VISIBILITY = {
   'POST /api/config': na('library ROOTS configuration write; admin-shaped instance config'),
   'POST /api/books/config': na('book roots configuration write; instance config'),
   'POST /api/music/config': na('music roots configuration write; instance config'),
+  'POST /api/tv/config': na('Shows roots configuration write; instance config'),
   'POST /api/settings': na('instance settings write; no item addressed'),
   // v1.146 downloader-engine: instance-wide engine configuration/update -
   // no library item is ever addressed, so per-item visibility cannot apply.

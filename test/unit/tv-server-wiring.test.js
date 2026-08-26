@@ -61,9 +61,44 @@ test('scanTv: single-walker coalescing + a deferred single-guarded re-entry', ()
   assert.match(body, /deferredTvRescanTimer\.unref\(\);/, 'the deferred re-entry is unref\'d (never holds the process open)');
 });
 
-// NOTE: the /api/tv routes (config, scan, list/detail, poster, stream) + their RBAC
-// classification + visibility land in Phase 3 (the route census forces an RBAC review
-// for every new route, so routes ship WITH their classification, never before it).
+// ---- Phase 3: config routes + RBAC + the overlap net ------------------------
+
+test('POST /api/tv/config: admin-only + rejects overlap with media/book/music/podcast (both directions via foldersOverlap)', () => {
+  const body = strip(SERVER.slice(SERVER.indexOf("app.post('/api/tv/config'"), SERVER.indexOf("app.post('/api/tv/scan'")));
+  assert.match(body, /if \(!requireAdmin\(req, res\)\) return;/, 'library config is admin-only (write-RBAC)');
+  assert.match(body, /foldersOverlap\(tvRoot, mediaRoot\)/);
+  assert.match(body, /foldersOverlap\(tvRoot, bookRoot\)/);
+  assert.match(body, /foldersOverlap\(tvRoot, musicRoot\)/);
+  assert.match(body, /foldersOverlap\(tvRoot, podcastsRoot\)/, 'a Shows root may not overlap the podcasts root');
+  assert.match(body, /tvStore\.ensureTv\(db\)\.folders = resolved;/);
+  assert.match(body, /scanTv\(\)\.catch\(console\.error\);/, 'a config save triggers a scan');
+});
+
+test('GET /api/tv/config is visibility-GATED (a restricted member sees only roots with visible episodes)', () => {
+  const body = strip(SERVER.slice(SERVER.indexOf("app.get('/api/tv/config'"), SERVER.indexOf("app.post('/api/tv/config'")));
+  assert.match(body, /visibleConfigRoots\(req, ns\.folders \|\| \[\], Object\.values\(ns\.episodes \|\| \{\}\), tvEpisodeVisibleTo\)/,
+    'the nav-gate config filters roots through the SINGLE visibility decision (tvEpisodeVisibleTo)');
+});
+
+test('the RECIPROCAL overlap clause is present in the media/book/music config routes (order-independent ownership)', () => {
+  // Adding a media/book/music root that overlaps an existing Shows root must be
+  // rejected too - not just adding a Shows root over them (the "enumerate every
+  // route" completeness lesson). Podcasts' root is module-owned (no config route),
+  // so the tv route's own check covers that direction.
+  for (const label of ['Media', 'Book', 'Music']) {
+    assert.match(SERVER, new RegExp(`overlaps a Shows folder: \\$\\{\\w+Root\\} <-> \\$\\{tvRoot\\}`),
+      'a Shows-overlap reciprocal clause exists');
+    assert.ok(SERVER.includes(`${label} folder overlaps a Shows folder`), `${label} config route rejects overlap with a Shows root`);
+  }
+});
+
+test('tvEpisodeVisibleTo routes through the single visibility decision (kind:tv), and KIND_TO_LIBRARY maps tv', () => {
+  const helper = strip(SERVER.slice(SERVER.indexOf('function tvEpisodeVisibleTo('), SERVER.indexOf('function tvEpisodeVisibleTo(') + 400));
+  assert.match(helper, /visibility\.isBlocked\(userRestrictionIndex\(req\), \{ kind: 'tv', filePath: ep\.filePath, rootFolder: ep\.rootFolder \}\)/,
+    'no route re-implements the check - it goes through isBlocked with kind:tv');
+  const VIS = fs.readFileSync(path.join(__dirname, '../../lib/auth/visibility.js'), 'utf8');
+  assert.match(VIS, /const KIND_TO_LIBRARY = \{[^}]*tv: 'tv'[^}]*\}/, 'a whole-library "tv" restriction is honoured');
+});
 
 // ---- boot hooks -------------------------------------------------------------
 

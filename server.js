@@ -960,6 +960,13 @@ function podcastEpisodeVisibleTo(req, ep) {
 function bookVisibleTo(req, book) {
   return !!book && !visibility.isBlocked(userRestrictionIndex(req), { kind: 'book', filePath: book.filePath, folderName: book.folderName });
 }
+// v1.195 TV Shows RBAC: an episode's visibility routes through the SAME single
+// decision point (kind:'tv'). Path/rootFolder restrictions bite generically; a
+// whole-library 'tv' restriction bites via KIND_TO_LIBRARY. `ep` falsy -> not
+// visible (the serve route 404s an unknown id before reaching here anyway).
+function tvEpisodeVisibleTo(req, ep) {
+  return !!ep && !visibility.isBlocked(userRestrictionIndex(req), { kind: 'tv', filePath: ep.filePath, rootFolder: ep.rootFolder });
+}
 // v1.128 Wave B: does the requester carry ANY restriction? Admins get an empty
 // index (userRestrictionIndex returns buildRestrictionIndex([]) for role
 // 'admin'), and an unrestricted member gets one too - for BOTH, every
@@ -6682,6 +6689,13 @@ app.post('/api/config', async (req, res) => {
         return res.status(400).json({ error: `Media folder overlaps a music folder: ${trimmed} <-> ${musicRoot}` });
       }
     }
+    // v1.195 TV Shows: the reciprocal of POST /api/tv/config's own net - a media
+    // folder may not equal/contain/live inside a Shows root either.
+    for (const tvRoot of tvStore.readTv(loadDatabase()).folders) {
+      if (foldersOverlap(resolved, path.resolve(tvRoot))) {
+        return res.status(400).json({ error: `Media folder overlaps a Shows folder: ${trimmed} <-> ${tvRoot}` });
+      }
+    }
     // v1.69 podcasts (D8, the FOUR-way): the podcasts download root is
     // module-owned (env/default, not a configured list), but a media folder
     // that equals/contains/lives inside it would double-own the episodes.
@@ -7027,6 +7041,16 @@ app.post('/api/books/config', async (req, res) => {
     for (const musicRoot of musicFoldersForBooks) {
       if (bookRoot === musicRoot || ytdlpArgs.isPathUnder(bookRoot, musicRoot) || ytdlpArgs.isPathUnder(musicRoot, bookRoot)) {
         return res.status(400).json({ error: `Book folder overlaps a music folder: ${bookRoot} <-> ${musicRoot}` });
+      }
+    }
+  }
+  // v1.195 TV Shows: reciprocal of the tv-config net - a book root may not overlap
+  // a Shows root either (both directions).
+  const tvFoldersForBooks = (tvStore.readTv(cachedForBooks).folders || []).map((f) => path.resolve(f));
+  for (const bookRoot of resolved) {
+    for (const tvRoot of tvFoldersForBooks) {
+      if (foldersOverlap(bookRoot, tvRoot)) {
+        return res.status(400).json({ error: `Book folder overlaps a Shows folder: ${bookRoot} <-> ${tvRoot}` });
       }
     }
   }
@@ -8033,6 +8057,12 @@ app.post('/api/music/config', async (req, res) => {
     if (musicRoot === podcastsRootForMusic || ytdlpArgs.isPathUnder(musicRoot, podcastsRootForMusic) || ytdlpArgs.isPathUnder(podcastsRootForMusic, musicRoot)) {
       return res.status(400).json({ error: `Music folder overlaps the podcasts folder: ${musicRoot} <-> ${podcastsRootForMusic}` });
     }
+    // v1.195 TV Shows: reciprocal of the tv-config net.
+    for (const tvRoot of (tvStore.readTv(cached).folders || []).map((f) => path.resolve(f))) {
+      if (foldersOverlap(musicRoot, tvRoot)) {
+        return res.status(400).json({ error: `Music folder overlaps a Shows folder: ${musicRoot} <-> ${tvRoot}` });
+      }
+    }
   }
   try {
     await updateDatabase((db) => {
@@ -8507,6 +8537,79 @@ async function scanTv() {
     }
   }
 }
+
+// v1.195: two resolved absolute roots overlap if identical or one nests the other
+// (either direction). The shared both-directions test for the library-root
+// ownership net - the tv config route AND the reciprocal clauses in the
+// media/book/music/podcast config routes all call THIS one helper.
+function foldersOverlap(a, b) {
+  return a === b || ytdlpArgs.isPathUnder(a, b) || ytdlpArgs.isPathUnder(b, a);
+}
+
+app.get('/api/tv/config', (req, res) => {
+  // GATED (route-read-classification): the nav gate reads this, so a restricted
+  // member sees only roots holding >=1 visible episode; admin + unrestricted member
+  // get the list byte-identical (visibleConfigRoots short-circuits when no restriction).
+  const ns = tvStore.readTv(getCachedDatabase());
+  res.json({ folders: visibleConfigRoots(req, ns.folders || [], Object.values(ns.episodes || {}), tvEpisodeVisibleTo) });
+});
+
+app.post('/api/tv/config', async (req, res) => {
+  if (!requireAdmin(req, res)) return; // library config is admin-only (write-RBAC)
+  const { folders } = req.body || {};
+  if (!Array.isArray(folders) || !folders.every((f) => typeof f === 'string' && f.trim() !== '')) {
+    return res.status(400).json({ error: 'folders must be an array of non-empty strings' });
+  }
+  const resolved = [];
+  const seen = new Set();
+  for (const raw of folders) {
+    const folder = path.resolve(raw.trim());
+    if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
+      return res.status(400).json({ error: `Folder does not exist: ${folder}` });
+    }
+    if (seen.has(folder)) continue;
+    seen.add(folder);
+    resolved.push(folder);
+  }
+  // HARD INVARIANT: a Shows root may never overlap a media/book/music/podcast root,
+  // in EITHER direction (one owner per file). This is the TV-side of the net; the
+  // reciprocal clauses in the media/book/music/podcast config routes close the
+  // other direction (adding one of THOSE under a Shows root).
+  const cached = getCachedDatabase();
+  const mediaFolders = (cached.folders || []).map((f) => path.resolve(f));
+  const bookFolders = (booksStore.readBooks(cached).folders || []).map((f) => path.resolve(f));
+  const musicFolders = (musicStore.readMusic(cached).folders || []).map((f) => path.resolve(f));
+  const podcastsRoot = podcasts.resolvePodcastsRoot(cached, { dataDir: DATA_DIR });
+  for (const tvRoot of resolved) {
+    for (const mediaRoot of mediaFolders) {
+      if (foldersOverlap(tvRoot, mediaRoot)) return res.status(400).json({ error: `Shows folder overlaps a media folder: ${tvRoot} <-> ${mediaRoot}` });
+    }
+    for (const bookRoot of bookFolders) {
+      if (foldersOverlap(tvRoot, bookRoot)) return res.status(400).json({ error: `Shows folder overlaps a book folder: ${tvRoot} <-> ${bookRoot}` });
+    }
+    for (const musicRoot of musicFolders) {
+      if (foldersOverlap(tvRoot, musicRoot)) return res.status(400).json({ error: `Shows folder overlaps a music folder: ${tvRoot} <-> ${musicRoot}` });
+    }
+    if (foldersOverlap(tvRoot, podcastsRoot)) return res.status(400).json({ error: `Shows folder overlaps the podcasts folder: ${tvRoot} <-> ${podcastsRoot}` });
+  }
+  try {
+    await updateDatabase((db) => { tvStore.ensureTv(db).folders = resolved; return true; });
+  } catch (err) {
+    return res.status(500).json({ error: `Could not save Shows folders: ${err.message}` });
+  }
+  res.json({ folders: resolved });
+  scanTv().catch(console.error);
+});
+
+app.post('/api/tv/scan', (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // write-RBAC (first guard)
+  const alreadyInProgress = tvScanState.scanning;
+  if (alreadyInProgress) tvScanState.rescanRequested = true;
+  else scanTv().catch(console.error);
+  res.status(202).json({ scanning: true, alreadyInProgress });
+});
+
+app.get('/api/tv/scan-status', (req, res) => { res.json(tvScanState); });
 
 // ---- v1.32: replaceable header logo ("white-label") -------------------------
 //
