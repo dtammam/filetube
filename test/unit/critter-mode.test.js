@@ -26,6 +26,8 @@ const {
   renderCritterPlacements,
   CRITTER_SIZE_SCALES,
   critterRectsIntersect,
+  CRITTER_KISS_FRACTION,
+  critterOverlapExceeds,
 } = require('../../public/js/common.js');
 const { buildCritterListing, buildCritterVoicePool } = require('../../server.js');
 
@@ -52,10 +54,11 @@ test('density tiers are Dean\'s gentler curve: sparse 1 / normal 6 / obscene 16'
 test('resolveCritterConfig: OFF by default, density defaults to normal, garbage tolerated', () => {
   const from = (map) => resolveCritterConfig((k) => (k in map ? map[k] : null));
   const NORMAL_SIZE = { size: 'normal', sizeScale: 1 }; // v1.187 default
-  assert.deepStrictEqual(from({}), { enabled: false, density: 'normal', count: 6, randomSound: false, ...NORMAL_SIZE }, 'fresh device: inert');
-  assert.deepStrictEqual(from({ 'ft-critters:on': '1' }), { enabled: true, density: 'normal', count: 6, randomSound: false, ...NORMAL_SIZE });
+  const STRICT = { allowOverlap: false, overlapAllow: 0 }; // v1.193 default (kiss OFF)
+  assert.deepStrictEqual(from({}), { enabled: false, density: 'normal', count: 6, randomSound: false, ...NORMAL_SIZE, ...STRICT }, 'fresh device: inert');
+  assert.deepStrictEqual(from({ 'ft-critters:on': '1' }), { enabled: true, density: 'normal', count: 6, randomSound: false, ...NORMAL_SIZE, ...STRICT });
   assert.deepStrictEqual(from({ 'ft-critters:on': '1', 'ft-critters:density': 'obscene' }),
-    { enabled: true, density: 'obscene', count: 16, randomSound: false, ...NORMAL_SIZE });
+    { enabled: true, density: 'obscene', count: 16, randomSound: false, ...NORMAL_SIZE, ...STRICT });
   // v1.187 SIZE: the four rungs, plus the fail-safe fallback shape.
   assert.strictEqual(from({ 'ft-critters:size': 'tiny' }).sizeScale, 0.5, 'tiny halves');
   assert.strictEqual(from({ 'ft-critters:size': 'large' }).sizeScale, 2, 'large doubles');
@@ -64,12 +67,36 @@ test('resolveCritterConfig: OFF by default, density defaults to normal, garbage 
   assert.strictEqual(from({}).sizeScale, 1, 'unset -> normal scale (v1.186 behaviour byte-for-byte)');
   assert.strictEqual(from({ 'ft-critters:randomsound': '1' }).randomSound, true, 'the pref reads through (default off; literal "1" enables)');
   assert.strictEqual(from({ 'ft-critters:randomsound': 'yes' }).randomSound, false, 'only the literal "1" enables random');
+  // v1.193 "light kiss": OFF by default (overlapAllow 0 = strict); literal "1" opts in.
+  assert.strictEqual(from({}).allowOverlap, false, 'kiss OFF by default');
+  assert.strictEqual(from({}).overlapAllow, 0, 'default budget is 0 (strict, byte-identical to v1.192)');
+  assert.strictEqual(from({ 'ft-critters:kiss': '1' }).allowOverlap, true, 'literal "1" enables the kiss');
+  assert.strictEqual(from({ 'ft-critters:kiss': '1' }).overlapAllow, CRITTER_KISS_FRACTION, 'ON -> the area budget');
+  assert.strictEqual(from({ 'ft-critters:kiss': 'yes' }).overlapAllow, 0, 'only the literal "1" enables the kiss');
   assert.deepStrictEqual(from({ 'ft-critters:on': '1', 'ft-critters:density': 'sparse' }).count, 1);
   assert.strictEqual(from({ 'ft-critters:on': '1', 'ft-critters:density': 'ferret' }).density, 'normal',
     'a garbage density falls back to normal');
   assert.strictEqual(from({ 'ft-critters:on': 'yes' }).enabled, false, 'only the literal "1" enables');
   // A throwing reader (storage off) must not throw.
   assert.strictEqual(resolveCritterConfig(() => null).enabled, false);
+});
+
+test('v1.193 critterOverlapExceeds (pure): area budget - 0 rejects any overlap, 0.25 allows a light kiss, tangent always OK, budget is the SMALLER box', () => {
+  const A = { x: 0, y: 0, w: 100, h: 100 }; // area 10000
+  const tangent = { x: 100, y: 0, w: 100, h: 100 }; // shares an edge -> 0 area
+  assert.strictEqual(critterOverlapExceeds(A, tangent, 0), false, 'tangent is not an overlap (strict, matches critterRectsIntersect)');
+  assert.strictEqual(critterOverlapExceeds(A, tangent, 0.25), false, 'tangent is not an overlap (kiss)');
+  const apart = { x: 200, y: 0, w: 50, h: 50 };
+  assert.strictEqual(critterOverlapExceeds(A, apart, 0), false, 'disjoint boxes never overlap');
+  const graze = { x: 90, y: 0, w: 100, h: 100 }; // 10x100 = 1000 = 10% of 10000
+  assert.strictEqual(critterOverlapExceeds(A, graze, 0), true, 'allow 0 rejects ANY positive-area overlap (strict == v1.192)');
+  assert.strictEqual(critterOverlapExceeds(A, graze, 0.25), false, '10% area is within the 25% kiss budget -> allowed');
+  const heavy = { x: 60, y: 0, w: 100, h: 100 }; // 40x100 = 4000 = 40%
+  assert.strictEqual(critterOverlapExceeds(A, heavy, 0.25), true, '40% area exceeds the 25% budget -> still dropped (no stacks)');
+  const small = { x: 95, y: 0, w: 10, h: 100 }; // area 1000; overlap 5x100 = 500 = 50% OF THE SMALL box
+  assert.strictEqual(critterOverlapExceeds(A, small, 0.25), true, 'the budget is the SMALLER box area (50% > 25%)');
+  assert.strictEqual(critterOverlapExceeds(A, small, 0.6), false, '...and a 60% budget would allow that same pair');
+  assert.strictEqual(CRITTER_KISS_FRACTION, 0.25, 'the shipped kiss budget is a quarter of a box');
 });
 
 // ---- the folder IS the manifest (server pure half) --------------------------
@@ -341,6 +368,28 @@ test('v1.192 NO-OVERLAP: critters never pile onto each other - a tight thumbnail
   }
   assert.ok(sawMultiple, 'the fixture actually places multiple critters (non-vacuous)');
   assert.ok(sawDrop, 'the overlap guard actively dropped stackers (delete the guard -> this tight column overlaps -> the loop reds)');
+});
+
+test('v1.193 light kiss: overlapAllow places MORE critters (grazes allowed) but never past the budget', () => {
+  // The experimental pref relaxes strict-zero to an area budget. Same tight
+  // column as the NO-OVERLAP test: with the kiss budget more critters survive
+  // (light grazes now allowed), yet no survivor pair exceeds the budget (no
+  // stacks). Non-vacuous: kissTotal > strictTotal proves the opt flows through.
+  const column = Array.from({ length: 10 }, (_, i) => ({ x: 100, y: 100 + i * 100, w: 300, h: 90 }));
+  let strictTotal = 0; let kissTotal = 0;
+  for (let seed = 1; seed <= 200; seed += 1) {
+    const anchors = () => column.map((a) => ({ ...a }));
+    const strict = planCritterScatter({ anchors: anchors(), exclusions: [], manifest: MANIFEST_8, count: 8, rng: seededRng(seed) });
+    const kiss = planCritterScatter({ anchors: anchors(), exclusions: [], manifest: MANIFEST_8, count: 8, rng: seededRng(seed), overlapAllow: CRITTER_KISS_FRACTION });
+    strictTotal += strict.length; kissTotal += kiss.length;
+    for (let i = 0; i < kiss.length; i += 1) {
+      for (let j = i + 1; j < kiss.length; j += 1) {
+        assert.ok(!critterOverlapExceeds(kiss[i], kiss[j], CRITTER_KISS_FRACTION),
+          `seed ${seed}: a kiss survivor pair exceeds the ${CRITTER_KISS_FRACTION} budget (would be a stack)`);
+      }
+    }
+  }
+  assert.ok(kissTotal > strictTotal, `the kiss places MORE critters in a tight column (${kissTotal} vs strict ${strictTotal}) - the budget flows through`);
 });
 
 test('v1.168 go-harder: corners join the edge pool, peek depth varies, flips split ~50/50, and CSS carries the flip everywhere', () => {
@@ -1702,6 +1751,57 @@ test('v1.192 reglue NO-OVERLAP: a drift that piles one critter onto another DROP
     'one critter piled onto the other -> the later drops (disable the reglue overlap guard and this reds by keeping both)');
 });
 
+test('v1.193 reglue LIGHT KISS: with the kiss pref ON, a drift that lightly grazes another critter KEEPS both', async (t) => {
+  // Bind the reglue path's config read: with ft-critters:kiss ON, reglue must
+  // apply the SAME area budget as the scatter. Drift B so its box overlaps A's by
+  // a tiny 8x8 corner (64px^2, well under the 25% budget of the smaller box) ->
+  // both survive. Mutant (reglue ignores overlapAllow / uses strict) -> the 64px
+  // positive overlap drops one and this reds.
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="view-root">'
+    + '<div class="video-card" id="a"></div><div class="video-card" id="b"></div>'
+    + '</div></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  global.MutationObserver = dom.window.MutationObserver;
+  global.localStorage = dom.window.localStorage;
+  localStorage.setItem('ft-critters:on', '1');
+  localStorage.setItem('ft-critters:kiss', '1'); // the experimental pref ON
+  global.window.Image = class { decode() { return Promise.resolve(); } };
+  const docEl = dom.window.document.documentElement;
+  Object.defineProperty(docEl, 'scrollWidth', { value: 1200, configurable: true });
+  Object.defineProperty(docEl, 'scrollHeight', { value: 2000, configurable: true });
+  const rects = { a: { x: 120, y: 150, w: 300, h: 200 }, b: { x: 120, y: 900, w: 300, h: 200 } };
+  const proto = dom.window.Element.prototype;
+  const origRect = proto.getBoundingClientRect;
+  proto.getBoundingClientRect = function () {
+    const r = rects[this.id];
+    if (r) return { left: r.x, top: r.y, width: r.w, height: r.h, right: r.x + r.w, bottom: r.y + r.h };
+    return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+  };
+  t.after(() => {
+    proto.getBoundingClientRect = origRect;
+    const { scatterCritters } = require('../../public/js/common.js');
+    localStorage.setItem('ft-critters:on', '0'); localStorage.setItem('ft-critters:kiss', '0'); scatterCritters();
+    delete global.window; delete global.document; delete global.MutationObserver; delete global.localStorage;
+    dom.window.close();
+  });
+  const { scatterCritters, reglueCritterPlacements } = require('../../public/js/common.js');
+  scatterCritters();
+  await new Promise((r) => setTimeout(r, 260));
+  const wraps = [...dom.window.document.querySelectorAll('.critter')];
+  assert.strictEqual(wraps.length, 2, 'both cards seeded (750px apart, no overlap)');
+  const boxWH = (w) => { const L = parseInt(w.style.left, 10); const T = parseInt(w.style.top, 10); const Wr = parseInt(w.style.width, 10); const p = Math.round(Wr * 0.1875); return { x: L + p, y: T + p, w: Wr - 2 * p }; };
+  const ba = boxWH(wraps.find((w) => parseInt(w.style.top, 10) < 500));
+  const bb = boxWH(wraps.find((w) => parseInt(w.style.top, 10) >= 500));
+  // Drift B so its box top-left sits 8px inside A's bottom-right corner -> an 8x8
+  // overlap (positive, so strict would drop; 64px^2 << 25% of the smaller box).
+  const K = 8;
+  rects.b.x += ((ba.x + ba.w - K) - bb.x);
+  rects.b.y += ((ba.y + ba.w - K) - bb.y);
+  reglueCritterPlacements();
+  assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 2,
+    'a light graze is within the kiss budget -> both kept (force reglue to strict/ignore overlapAllow and this reds with 1)');
+});
+
 // ---- v1.177: the rounded shave (Dean's Modern-2021 screenshots) -------------
 
 function decodeShave(mask) {
@@ -2190,8 +2290,12 @@ test('Settings: the Sneaky critter mode controls exist and setup.js binds them t
   const body = SETUP_JS.slice(start, SETUP_JS.indexOf('\nfunction ', start + 10));
   assert.match(body, /localStorage\.setItem\('ft-critters:on'/);
   assert.match(body, /localStorage\.setItem\('ft-critters:density'/);
+  // v1.193: the experimental "light kiss" overlap control - HTML + key + wiring.
+  assert.match(SETUP_HTML, /id="critter-kiss-check"/, 'the kiss checkbox exists');
+  assert.match(SETUP_HTML, /experimental/i, 'and is labelled experimental');
+  assert.match(body, /localStorage\.setItem\('ft-critters:kiss'/, 'the kiss pref persists to its key');
   const applies = body.match(/applyCritterMode\(\);/g) || [];
-  assert.strictEqual(applies.length, 3, 'the three PLACEMENT controls apply immediately (toggle + density + v1.187 size)');
+  assert.strictEqual(applies.length, 4, 'the four PLACEMENT controls apply immediately (toggle + density + v1.187 size + v1.193 kiss)');
   assert.match(SETUP_JS, /wireCritterModeControls\(controller\.signal\)/, 'wired in the settings init path');
 });
 
@@ -2460,10 +2564,10 @@ test('v1.185 Settings: the "random sound each tap" control exists and setup.js p
   assert.match(body, /getElementById\('critter-randomsound-check'\)/, 'setup.js wires the checkbox');
   assert.match(body, /randomSound\.checked = !!cfg\.randomSound;/, 'it reflects the saved pref on load');
   assert.match(body, /localStorage\.setItem\('ft-critters:randomsound', randomSound\.checked \? '1' : '0'\)/, 'it persists the pref');
-  // It must NOT re-scatter (pure per-tap behavior) - only the two mode/density
+  // It must NOT re-scatter (pure per-tap behavior) - only the PLACEMENT
   // controls call applyCritterMode.
   const applies = body.match(/applyCritterMode\(\);/g) || [];
-  assert.strictEqual(applies.length, 3, 'the random-sound pref does NOT trigger a re-scatter (only the 3 placement controls call applyCritterMode)');
+  assert.strictEqual(applies.length, 4, 'the random-sound pref does NOT trigger a re-scatter (only the 4 placement controls call applyCritterMode: toggle+density+size+kiss)');
 });
 
 test('v1.185 (ANTI-INERT): an un-owned critter reaches the tap with sound=null so the pref branch actually fires', () => {

@@ -267,6 +267,16 @@
             <option value="xlarge">Extra large (three times)</option>
           </select>
         </label>
+        <!-- v1.193 (Dean): EXPERIMENTAL "light kiss" - relax the strict
+             no-overlap rule to a small area budget, so critters may graze but
+             never stack. Placement-affecting, so it re-scatters on change. -->
+        <label class="setup-check-label" id="critter-kiss-label">
+          <input type="checkbox" id="critter-kiss-check" />
+          Let critters overlap a little (experimental)
+        </label>
+        <p>Off: critters never overlap at all (the default). On: they may graze
+           and lightly overlap each other, so you get more of them in tight
+           spots - but they still won't pile into a stack.</p>
         <!-- v1.185 (Dean): opt-in variety. A critter with its own same-named
              sound always plays that; this only affects the rest. -->
         <label class="setup-check-label" id="critter-randomsound-label">
