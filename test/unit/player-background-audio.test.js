@@ -375,10 +375,12 @@ test('setupForMedia() caches backgroundAudioForVideo ONCE via /api/settings (nev
   assert.ok(!/fetch\('\/api\/settings'\)/.test(PLAYER_JS.match(/function attemptBackgroundAudioHandoff\(trigger\) \{([\s\S]*?)\n {2}\}/)[1]), 'the handoff attempt itself must never fetch settings fresh');
 });
 
-test('setupForMedia() gates the settings fetch/pre-warm on video + mobile only (desktop/audio items never fetch)', () => {
+test('setupForMedia() gates the settings fetch/pre-warm on video + mobile only, and never for a TV source (desktop/audio/tv items never fetch)', () => {
   const match = /function setupForMedia\(id, data\) \{([\s\S]*?)\n {4}setupMediaSession\(id, data\.channelName, data\.title\);/.exec(PLAYER_JS);
   const body = match[1];
-  assert.match(body, /if \(data\.type !== 'audio' && isMobileFormFactor\(\) && bgAudioEl\) \{/);
+  // v1.196: `!data.statusUrl` excludes a TV episode (no /api/videos/:id/prepare-audio
+  // or /audio/:id route for it) from the background-audio pre-warm.
+  assert.match(body, /if \(data\.type !== 'audio' && !data\.statusUrl && isMobileFormFactor\(\) && bgAudioEl\) \{/);
 });
 
 // ---- F1 (two-reviewer gate): the bgAudioStatusKnown === 'ready' short- ----
