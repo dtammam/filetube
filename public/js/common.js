@@ -8422,12 +8422,27 @@ function collectCritterRects(selectors, requireSize) {
 function rememberCritterPlacements(placements) {
   critterPlacements = placements;
   if (typeof window !== 'undefined') {
-    // Stash the page height AT PLACEMENT TIME alongside the layout: a rotate-back
-    // restore uses it to reject a layout recorded against a since-reflowed page
-    // (the v1.173 drift-over-text class - adversarial W2).
+    // Stash the page height alongside the layout: a rotate-back restore uses it to
+    // reject a layout recorded against a since-reflowed page (the v1.173
+    // drift-over-text class - adversarial W2). This is a PRE-render placeholder;
+    // scatter/reglue immediately re-baseline it POST-render (rememberCritterLayoutDocH)
+    // so the stored height and the restore-time measure both include the critter
+    // layer's own ~26px bottom overflow - the gate-S1 symmetry (adversarial W2
+    // follow-up). Without the re-baseline a happy rotate-back could read +26px and
+    // false-trip the drift branch, re-scattering instead of restoring.
     var docH = (typeof document !== 'undefined' && document.documentElement) ? document.documentElement.scrollHeight : 0;
     critterLayoutCache[window.innerWidth || 0] = { placements: placements, docH: docH };
   }
+}
+
+// v1.194 (adversarial W2 follow-up): re-baseline the cached layout's height to the
+// POST-render measure (critterPlacedDocH), so the drift comparison at restore time
+// is symmetric - both sides include the critter layer's bottom overflow, exactly as
+// the settle ladder's own critterPlacedDocH is measured after render (gate S1).
+function rememberCritterLayoutDocH(docH) {
+  if (typeof window === 'undefined') return;
+  var entry = critterLayoutCache[window.innerWidth || 0];
+  if (entry) entry.docH = docH;
 }
 
 // v1.194: on a width change, if we've already laid this exact width out for the
@@ -8508,6 +8523,7 @@ function scatterCritters() {
     // measuring with that overflow PRESENT on both sides of the comparison
     // means only real content reflow can trip the drift branch.
     critterPlacedDocH = docEl.scrollHeight;
+    rememberCritterLayoutDocH(critterPlacedDocH); // v1.194: baseline the cache height POST-render (restore-symmetric)
     // v1.166.4 -> v1.173: the post-scatter SETTLE ladder - once at +1.5s, once
     // more at +4s, then STOP. Two things earn a re-scatter at fire time (the
     // pure critterSettleAction decides):
@@ -8665,6 +8681,7 @@ function reglueCritterPlacements() {
   rememberCritterPlacements(survivors); // v1.194: re-glue updates the remembered layout for this width
   renderCritterPlacements(ensureCritterLayer(), survivors, true);
   critterPlacedDocH = docEl.scrollHeight;
+  rememberCritterLayoutDocH(critterPlacedDocH); // v1.194: baseline the cache height POST-render (restore-symmetric)
   armCritterSettleCheck();
 }
 

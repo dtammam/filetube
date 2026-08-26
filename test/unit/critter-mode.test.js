@@ -1150,6 +1150,16 @@ test('SOURCE (adversarial W1): BOTH real placement writers FUNNEL through rememb
   const funnel = strip(COMMON.slice(COMMON.indexOf('function rememberCritterPlacements'), COMMON.indexOf('\nfunction restoreCritterLayoutForWidth')));
   assert.match(funnel, /critterLayoutCache\[window\.innerWidth \|\| 0\] = \{ placements: placements, docH: docH \};/,
     'rememberCritterPlacements records the layout under the live viewport width');
+  // adversarial W2 follow-up: BOTH writers must RE-BASELINE the cache height to the
+  // POST-render measure, so the restore-time drift comparison is symmetric (both
+  // sides carry the critter layer's ~26px overflow, gate S1). The re-baseline sits
+  // immediately after each `critterPlacedDocH = docEl.scrollHeight;`. Deleting it
+  // in either body leaves the stored height ~26px short and false-trips drift on a
+  // happy rotate-back (re-scatter instead of restore).
+  assert.match(scatter, /critterPlacedDocH = docEl\.scrollHeight;\n\s*rememberCritterLayoutDocH\(critterPlacedDocH\);/,
+    'scatterCritters re-baselines the cache height post-render');
+  assert.match(reglue, /critterPlacedDocH = docEl\.scrollHeight;\n\s*rememberCritterLayoutDocH\(critterPlacedDocH\);/,
+    're-glue re-baselines the cache height post-render');
 });
 
 test('v1.194 (adversarial W2): a restore DECLINES when the page drifted since the layout was recorded (no stale paint over reflowed text)', () => {
