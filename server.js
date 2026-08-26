@@ -91,6 +91,7 @@ const musicQuery = require('./lib/music/query');
 // v1.195 TV Shows (UI "Shows"): feature-owned db.tv namespace + pure scan/parse.
 const tvStore = require('./lib/tv/store');
 const tvScan = require('./lib/tv/scan');
+const tvParse = require('./lib/tv/parse');
 // v1.38.0 TTS "Listen from Here": pure leaf helpers (env-config parse, engine
 // argv builders, chapter chunker). Same direct-require posture as the store.
 const booksTtsConfig = require('./lib/books/tts-config');
@@ -8610,6 +8611,144 @@ app.post('/api/tv/scan', (req, res) => {
 });
 
 app.get('/api/tv/scan-status', (req, res) => { res.json(tvScanState); });
+
+// ---- TV Shows: read/browse APIs + poster/episode serving (Phase 3c) ----------
+
+// OWN-property episode lookup (prototype-pollution defense, the ownTrack posture):
+// a crafted id like '__proto__' must never resolve to an inherited object.
+function ownEpisode(episodes, id) {
+  return (episodes && Object.prototype.hasOwnProperty.call(episodes, id)) ? episodes[id] : null;
+}
+
+const TV_CONTENT_TYPES = {
+  '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm',
+  '.mkv': 'video/x-matroska', '.mov': 'video/quicktime', '.avi': 'video/x-msvideo',
+  '.flv': 'video/x-flv', '.wmv': 'video/x-ms-wmv', '.mpg': 'video/mpeg', '.mpeg': 'video/mpeg',
+};
+
+// A TV-OWNED transcode queue (never the video queue, which writes
+// db.metadata[id].transcodeStatus - a tv id would pollute the video namespace).
+// The music-transcode posture verbatim: renditions land at tvRenditionPath(id) in
+// TRANSCODE_DIR (shared cache management for free), readiness by FILE EXISTENCE
+// alone (no db write on the hot path), the video H.264+AAC+faststart args.
+function tvRenditionPath(id) { return path.join(TRANSCODE_DIR, `tv-${id}.mp4`); }
+const tvTranscodeQueue = [];
+let tvTranscodeBusy = false;
+function queueTvTranscode(id, srcPath) {
+  if (!ffmpegAvailable) return;
+  if (tvTranscodeQueue.some((job) => job.id === id)) return;
+  tvTranscodeQueue.push({ id, srcPath });
+  processTvTranscodeQueue();
+}
+function processTvTranscodeQueue() {
+  if (tvTranscodeBusy || tvTranscodeQueue.length === 0) return;
+  const { id, srcPath } = tvTranscodeQueue.shift();
+  if (!fs.existsSync(srcPath)) { processTvTranscodeQueue(); return; }
+  const outPath = tvRenditionPath(id);
+  if (fs.existsSync(outPath)) { processTvTranscodeQueue(); return; }
+  tvTranscodeBusy = true;
+  const tmpPath = `${outPath}.tmp.mp4`;
+  let proc;
+  try {
+    proc = spawn('ffmpeg', ['-i', srcPath, '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', String(TRANSCODE_CRF), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '160k', '-ac', '2', '-movflags', '+faststart', '-y', tmpPath]);
+  } catch (e) {
+    console.error(`tv: failed to start transcode for ${srcPath}:`, e.message);
+    tvTranscodeBusy = false; processTvTranscodeQueue(); return;
+  }
+  proc.stderr.on('data', () => { /* drain */ });
+  proc.on('error', (e) => {
+    console.error(`tv: transcode process error for ${srcPath}:`, e.message);
+    try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
+    tvTranscodeBusy = false; processTvTranscodeQueue();
+  });
+  proc.on('close', (code) => {
+    tvTranscodeBusy = false;
+    if (code === 0) {
+      try { fs.renameSync(tmpPath, outPath); } catch (e) { try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ } }
+    } else {
+      console.error(`tv: transcode failed (exit ${code}) for ${srcPath}`);
+      try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
+    }
+    processTvTranscodeQueue();
+  });
+}
+
+function tvPosterPlaceholderSvg(name) {
+  const title = String(name || 'Show');
+  const clip = (s, n) => (s.length > n ? `${s.substring(0, n - 2)}...` : s);
+  return `
+    <svg width="300" height="450" viewBox="0 0 300 450" xmlns="http://www.w3.org/2000/svg">
+      <rect width="300" height="450" fill="#2b3049"/>
+      <rect x="110" y="150" width="80" height="110" rx="6" fill="none" stroke="#8890b5" stroke-width="3"/>
+      <text x="150" y="330" font-family="Arial, sans-serif" font-size="18" fill="#e8e8f0" text-anchor="middle" font-weight="bold">${escapeHtml(clip(title, 22))}</text>
+    </svg>`;
+}
+
+// The visible-episode array for the requester (the SINGLE visibility decision).
+function visibleTvEpisodes(req) {
+  const ns = tvStore.readTv(getCachedDatabase());
+  return Object.values(ns.episodes || {}).filter((ep) => tvEpisodeVisibleTo(req, ep));
+}
+
+app.get('/api/tv', (req, res) => {
+  // GATED: the shows grid, over ONLY the episodes this requester may see.
+  res.json({ shows: tvParse.groupShows(visibleTvEpisodes(req)) });
+});
+
+app.get('/api/tv/:showId', (req, res) => {
+  const eps = visibleTvEpisodes(req);
+  const seasons = tvParse.groupSeasons(eps, req.params.showId);
+  if (seasons.length === 0) return res.status(404).json({ error: 'no such show' });
+  const first = eps.find((e) => e.showId === req.params.showId);
+  res.json({
+    id: req.params.showId,
+    name: (first && first.showName) || '',
+    seasons: seasons.map((s) => ({
+      seasonNum: s.seasonNum,
+      label: s.label,
+      episodes: s.episodes.map((e) => ({
+        id: e.id, seasonNum: e.seasonNum, episodeNum: e.episodeNum, title: e.title,
+        durationSec: e.durationSec || 0,
+      })),
+    })),
+  });
+});
+
+app.get('/tvposter/:showId', (req, res) => {
+  const eps = visibleTvEpisodes(req).filter((e) => e.showId === req.params.showId);
+  res.set('Cache-Control', 'private, max-age=3600'); // RBAC: keep behind the auth wall
+  if (eps.length > 0) {
+    const poster = tvScan.findShowPoster(eps[0].showPath);
+    if (poster && fs.existsSync(poster)) return res.sendFile(poster);
+    // Fallback: the earliest episode's generated thumbnail.
+    const rep = eps.slice().sort((a, b) => (a.seasonNum - b.seasonNum) || (a.episodeNum - b.episodeNum))[0];
+    if (rep) { const t = tvThumbPath(rep.id); if (fs.existsSync(t)) return res.sendFile(t); }
+  }
+  res.set('Content-Type', 'image/svg+xml');
+  res.send(tvPosterPlaceholderSvg(eps[0] && eps[0].showName));
+});
+
+app.get('/tvepisode/:id', (req, res) => {
+  const ns = tvStore.readTv(getCachedDatabase());
+  const ep = ownEpisode(ns.episodes, req.params.id);
+  if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
+  if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
+  if (!fs.existsSync(ep.filePath)) return res.status(404).json({ error: 'file missing' });
+  const contentType = TV_CONTENT_TYPES[ep.ext] || 'video/mp4';
+  // ?download=1: the app-wide save-to-device affordance -> ORIGINAL bytes.
+  if (req.query.download === '1') {
+    res.setHeader('Content-Disposition', contentDispositionAttachment(ep.title || ep.showName || 'episode', ep.ext));
+    return sendRangeable(req, res, ep.filePath, contentType);
+  }
+  // Browser-incompatible container -> the TV-owned MP4 rendition (transcode on demand).
+  if (needsTranscode(ep.ext)) {
+    const rendition = tvRenditionPath(ep.id);
+    if (fs.existsSync(rendition)) return sendRangeable(req, res, rendition, 'video/mp4');
+    queueTvTranscode(ep.id, ep.filePath);
+    return res.status(503).json({ error: 'transcoding', ext: ep.ext });
+  }
+  sendRangeable(req, res, ep.filePath, contentType);
+});
 
 // ---- v1.32: replaceable header logo ("white-label") -------------------------
 //

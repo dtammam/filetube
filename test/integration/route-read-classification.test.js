@@ -66,6 +66,10 @@ const READ = {
   '/api/liked': 'GATED',
   '/api/library-items': 'GATED', // v1.159: visibility-scoped A/V list for the Stats table (titles/sizes)
   '/api/music': 'GATED',
+  '/api/tv': 'GATED',
+  '/api/tv/:showId': 'GATED',
+  '/tvposter/:showId': 'GATED',
+  '/tvepisode/:id': 'GATED',
   '/api/music/:id': 'GATED',
   '/api/music/albums': 'GATED',
   '/api/music/artists': 'GATED',
