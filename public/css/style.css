@@ -8649,6 +8649,16 @@ body.ft-audio-expanded {
   position: relative;
   z-index: 0; /* token-exempt: local stacking context scoping the ambient glow (dropped in faux fullscreen) */
 }
+/* v1.194.3 (Dean, device): kill the mobile sideways-scroll. The .ambient-glow is
+   scale()'d 1.18-1.42x (v1.187), so its box overflows the viewport horizontally on a
+   phone; the root `html{overflow-x:clip}` is honoured WEAKLY by iOS for a scaled
+   descendant, so the page scrolls sideways while ambient runs. Clip X at the stage on
+   mobile ONLY: overflow-y stays visible so the vertical bloom above/below the player is
+   preserved, desktop keeps the intended v1.188 sidebar bleed, and `clip` (not hidden)
+   creates no containing block, so the fixed .css-fullscreen overlay still escapes. */
+@media (max-width: 768px) {
+  .watch-player-stage { overflow-x: clip; }
+}
 .ambient-glow {
   position: absolute;
   top: 0;
