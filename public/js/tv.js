@@ -40,6 +40,24 @@ function buildShowCardHtml(show) {
     '</button>';
 }
 
+// A Continue-Watching card: the show poster, a resume bar, the show name + the
+// SxxEyy · title of the in-progress episode. Opens straight into that episode.
+function buildContinueCardHtml(ep) {
+  var poster = '/tvposter/' + encodeURIComponent(ep.showId || '');
+  var dur = Number(ep.durationSec) || 0;
+  var pct = dur > 0 ? Math.max(0, Math.min(100, Math.round((Number(ep.position) || 0) / dur * 100))) : 0;
+  var label = [episodeCode(ep), ep.title].filter(Boolean).join(' ');
+  return '' +
+    '<button type="button" class="tv-continue-card" data-episode-id="' + escapeTvHtml(ep.id) + '">' +
+    '<span class="tv-continue-poster-wrap">' +
+    '<img class="tv-continue-poster art-shimmer" src="' + escapeTvHtml(poster) + '" alt="' + escapeTvHtml(ep.showName) + '" loading="lazy" />' +
+    '<span class="tv-continue-bar"><span class="tv-continue-fill" style="width: ' + pct + '%"></span></span>' +
+    '</span>' +
+    '<span class="tv-continue-show" title="' + escapeTvHtml(ep.showName) + '">' + escapeTvHtml(ep.showName || '') + '</span>' +
+    '<span class="tv-continue-ep" title="' + escapeTvHtml(label) + '">' + escapeTvHtml(label || 'Episode') + '</span>' +
+    '</button>';
+}
+
 // One episode row: SxxExx code + title + duration.
 function buildEpisodeRowHtml(ep) {
   var code = episodeCode(ep);
@@ -96,14 +114,26 @@ if (typeof document !== 'undefined') {
     function renderGrid() {
       setCrumb('');
       var heading = el('tv-heading'); if (heading) heading.textContent = 'Shows';
+      var content = el('tv-content');
       api('/api/tv').then(function (data) {
         var shows = (data && data.shows) || [];
-        var content = el('tv-content');
+        // Continue-Watching is best-effort: its failure NEVER hides the grid.
+        return api('/api/tv/continue').then(
+          function (c) { return { shows: shows, cont: (c && c.episodes) || [] }; },
+          function () { return { shows: shows, cont: [] }; }
+        );
+      }).then(function (r) {
         if (!content) return;
-        showEmpty(shows.length === 0);
-        content.innerHTML = shows.length
-          ? '<div class="show-grid">' + shows.map(buildShowCardHtml).join('') + '</div>'
-          : '';
+        showEmpty(r.shows.length === 0 && r.cont.length === 0);
+        var html = '';
+        // REVEAL axis: a Continue row when there ARE in-progress episodes; CLEAR
+        // axis: nothing rendered when the list is empty (the row is simply gone).
+        if (r.cont.length) {
+          html += '<section class="tv-continue-row"><h4 class="tv-continue-heading">Continue watching</h4>' +
+            '<div class="tv-continue-strip">' + r.cont.map(buildContinueCardHtml).join('') + '</div></section>';
+        }
+        html += r.shows.length ? '<div class="show-grid">' + r.shows.map(buildShowCardHtml).join('') + '</div>' : '';
+        content.innerHTML = html;
       }).catch(function (e) { if (e.name !== 'AbortError') setStatus('Could not load shows.'); });
     }
 
@@ -131,6 +161,8 @@ if (typeof document !== 'undefined') {
     }
 
     function onClick(e) {
+      var cont = e.target.closest && e.target.closest('.tv-continue-card');
+      if (cont && cont.getAttribute('data-episode-id')) { openEpisode(cont.getAttribute('data-episode-id')); return; }
       var card = e.target.closest && e.target.closest('.show-card');
       if (card && card.getAttribute('data-show-id')) { openShow(card.getAttribute('data-show-id')); return; }
       var row = e.target.closest && e.target.closest('.tv-episode-row');
@@ -177,6 +209,6 @@ if (typeof document !== 'undefined') {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     escapeTvHtml, pad2, episodeCode, formatEpDuration,
-    buildShowCardHtml, buildEpisodeRowHtml, buildShowDetailHtml,
+    buildShowCardHtml, buildContinueCardHtml, buildEpisodeRowHtml, buildShowDetailHtml,
   };
 }

@@ -37,6 +37,15 @@ test('A2: the transcode poll reads the descriptor URLs, so a tv poll never hits 
   assert.match(SRC, /mediaPlayer\.src = readySrc;/);
 });
 
+test('B: a tv source resumes from its descriptor progress (no extra fetch, no /api/progress) and saves via progressEndpoint', () => {
+  // resumeMode 'tv' reads the descriptor's own progress (carried from
+  // /api/tv/episode/:id) rather than fetching /api/progress/:id.
+  assert.match(SRC, /if \(currentData && currentData\.resumeMode === 'tv'\) \{[\s\S]*?savedProgress = Number\(currentData\.progress\) \|\| 0;/);
+  // the save routes through the descriptor's progressEndpoint (the tv descriptor
+  // sets it to /api/tv/progress) - the one write site, like music/podcasts.
+  assert.match(SRC, /var progressEndpoint = \(currentData && typeof currentData\.progressEndpoint === 'string' && currentData\.progressEndpoint\) \|\| '\/api\/progress';/);
+});
+
 test('A2: the /api/videos-only side effects (dimensions POST, subtitles, bg-audio) are all skipped for a tv source', () => {
   // dimensions POST guarded
   assert.match(SRC, /if \(!data\.statusUrl\) \{\s*\n\s*fetch\('\/api\/videos\/' \+ encodeURIComponent\(id\) \+ '\/dimensions'/);

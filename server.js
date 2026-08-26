@@ -8737,9 +8737,80 @@ app.get('/api/tv/episode/:id', (req, res) => {
     streamSrc: `/tvepisode/${encodeURIComponent(ep.id)}`,
     statusUrl: `/api/tv/episode/${encodeURIComponent(ep.id)}`,
     artUrl: `/tvposter/${encodeURIComponent(ep.showId)}`,
-    // Per-user resume position is wired in Phase B (user_tv_progress); 0 until then.
-    progress: 0,
+    // v1.196 (Phase B): the signed-in user's resume position + watched latch, so
+    // the player's resume overlay + the row's watched tick reflect real state.
+    progress: (userStore.getOneTvProgress(req.user.id, ep.id) || {}).position || 0,
+    watched: Object.prototype.hasOwnProperty.call(userStore.getTvPlayed(req.user.id), ep.id),
   });
+});
+
+// v1.196 (Phase B): per-user resume + watched latch + Continue-Watching. Personal
+// writes, each gated to episodes the requester may see (no cross-user oracle, no
+// writing progress for a hidden episode). Static segments, before /api/tv/:showId.
+app.post('/api/tv/progress', (req, res) => {
+  // Body shape matches the shared player's saveProgressToServer ({id, timestamp,
+  // duration}) exactly, like /api/music/progress + /api/podcasts/progress - the
+  // player is the one write site (its `progressEndpoint` descriptor field points
+  // here for a tv source).
+  const { id, timestamp, duration } = req.body || {};
+  if (typeof id !== 'string' || id === '') return res.status(400).json({ error: 'id required' });
+  const ns = tvStore.readTv(getCachedDatabase());
+  const ep = ownEpisode(ns.episodes, id);
+  if (!ep || !tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' });
+  const pos = Number(timestamp) || 0;
+  const dur = Number(duration) || ep.durationSec || 0;
+  userStore.setTvProgress(req.user.id, id, { position: pos, duration: dur, updatedAt: new Date().toISOString() });
+  // O2: auto-mark watched once the position crosses the shared threshold (90%).
+  if (dur > 0 && (pos / dur) * 100 >= videoQuery.WATCHED_PCT) {
+    userStore.setTvPlayed(req.user.id, id, new Date().toISOString());
+  }
+  res.json({ success: true });
+});
+
+app.post('/api/tv/played', (req, res) => {
+  const { episodeId } = req.body || {};
+  if (typeof episodeId !== 'string' || episodeId === '') return res.status(400).json({ error: 'episodeId required' });
+  const ns = tvStore.readTv(getCachedDatabase());
+  const ep = ownEpisode(ns.episodes, episodeId);
+  if (!ep || !tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' });
+  userStore.setTvPlayed(req.user.id, episodeId, new Date().toISOString());
+  res.json({ success: true, watched: true });
+});
+
+app.delete('/api/tv/played', (req, res) => {
+  const { episodeId } = req.body || {};
+  if (typeof episodeId !== 'string' || episodeId === '') return res.status(400).json({ error: 'episodeId required' });
+  // Un-watch deletes ONLY the requester's own row (a hidden episode simply has
+  // none), so no visibility oracle is exposed by skipping the existence gate.
+  userStore.clearTvPlayed(req.user.id, episodeId);
+  res.json({ success: true, watched: false });
+});
+
+app.get('/api/tv/continue', (req, res) => {
+  // GATED: the requester's in-progress episodes (a resume position, not finished,
+  // not watched), over ONLY episodes they may see, most-recent activity first,
+  // joined with the episode's display fields. Powers the Shows-home Continue row.
+  const ns = tvStore.readTv(getCachedDatabase());
+  const progress = userStore.getTvProgress(req.user.id);
+  const played = userStore.getTvPlayed(req.user.id);
+  const rows = [];
+  for (const id of Object.keys(progress)) {
+    const ep = ownEpisode(ns.episodes, id);
+    if (!ep || !tvEpisodeVisibleTo(req, ep)) continue;
+    if (Object.prototype.hasOwnProperty.call(played, id)) continue; // finished
+    const p = progress[id];
+    const pos = Number(p.position) || 0;
+    const dur = Number(p.duration) || ep.durationSec || 0;
+    if (pos <= 0) continue; // never really started
+    if (dur > 0 && (pos / dur) * 100 >= videoQuery.WATCHED_PCT) continue; // effectively done
+    rows.push({
+      id: ep.id, showId: ep.showId, showName: ep.showName, seasonNum: ep.seasonNum,
+      episodeNum: ep.episodeNum, title: ep.title, durationSec: dur, position: pos,
+      updatedAt: p.updatedAt || '',
+    });
+  }
+  rows.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  res.json({ episodes: rows });
 });
 
 app.get('/api/tv/:showId', (req, res) => {

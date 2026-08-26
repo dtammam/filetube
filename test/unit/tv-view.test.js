@@ -7,7 +7,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const {
   escapeTvHtml, episodeCode, formatEpDuration,
-  buildShowCardHtml, buildEpisodeRowHtml, buildShowDetailHtml,
+  buildShowCardHtml, buildContinueCardHtml, buildEpisodeRowHtml, buildShowDetailHtml,
 } = require('../../public/js/tv.js');
 
 test('episodeCode: SxxEyy, zero-padded; Extras (missing numbers) -> empty', () => {
@@ -23,6 +23,19 @@ test('formatEpDuration: m:ss under an hour, h:mm:ss over', () => {
   assert.strictEqual(formatEpDuration(65), '1:05');
   assert.strictEqual(formatEpDuration(3661), '1:01:01');
   assert.strictEqual(formatEpDuration(-5), '0:00');
+});
+
+test('buildContinueCardHtml: show poster, resume-bar width %, show name + SxxEyy·title, episode id, XSS-safe', () => {
+  const html = buildContinueCardHtml({ id: 'ep1', showId: 'sh1', showName: 'House MD', seasonNum: 2, episodeNum: 22, title: 'Forever', durationSec: 2580, position: 1290 });
+  assert.match(html, /src="\/tvposter\/sh1"/, 'the show poster');
+  assert.match(html, /data-episode-id="ep1"/, 'opens straight into the episode');
+  assert.match(html, /width: 50%/, 'the resume bar reflects position/duration (1290/2580 = 50%)');
+  assert.match(html, /House MD/);
+  assert.match(html, /S02E22 Forever/, 'the SxxEyy code + title label');
+  // a 0-duration episode never divides by zero.
+  assert.match(buildContinueCardHtml({ id: 'x', showId: 's', showName: 'S', durationSec: 0, position: 0 }), /width: 0%/);
+  // XSS: a hostile show name never becomes markup.
+  assert.doesNotMatch(buildContinueCardHtml({ id: 'i', showId: 's', showName: '<img src=x>', durationSec: 1, position: 0 }), /<img src=x>/);
 });
 
 test('buildShowCardHtml: 2:3 poster src, name, "N seasons · M episodes", data id', () => {

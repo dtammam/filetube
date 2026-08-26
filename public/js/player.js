@@ -4310,6 +4310,16 @@ if (typeof module !== 'undefined' && module.exports) {
         .catch(function () { mediaPlayer.play().catch(function () {}); });
       return;
     }
+    // v1.196 TV: an episode's resume position rode the descriptor already (from
+    // GET /api/tv/episode/:id) - so resume WITHOUT a second fetch, and never hit
+    // /api/progress. Long-form like a podcast: resume silently past 5s, else start
+    // fresh; never the video "Resume at…" overlay.
+    if (currentData && currentData.resumeMode === 'tv') {
+      savedProgress = Number(currentData.progress) || 0;
+      if (savedProgress > 5) resumeDirectly(savedProgress);
+      else { savedProgress = 0; mediaPlayer.play().catch(function () {}); }
+      return;
+    }
     fetch('/api/progress/' + id)
       .then(function (res) { return res.json(); })
       .then(function (data) {

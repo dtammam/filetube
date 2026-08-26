@@ -143,3 +143,28 @@ test('TV: GET /api/tv/episode/:id is player-shaped, tv-sourced, and visibility-g
   assert.strictEqual(h.needsTranscode, true, 'hevc-in-mp4 -> codec-aware transcode');
   assert.strictEqual(h.transcodeStatus, 'pending', 'no rendition yet -> pending (the player polls until ready)');
 });
+
+// v1.196 Phase B: per-user resume + Continue-Watching, visibility-gated. (Runs
+// last - it MUTATES the member's progress/watched state for 'ok'.)
+const postJson = (auth, p, body) => auth(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+test('TV Phase B: progress saves + reflects in the detail; continue is visibility-filtered; 90% auto-marks watched', async () => {
+  assert.strictEqual((await postJson(asMember, '/api/tv/progress', { id: 'ok', timestamp: 30, duration: 100 })).status, 200);
+  const d = await (await asMember('/api/tv/episode/ok')).json();
+  assert.strictEqual(d.progress, 30, 'the saved resume position is reflected in the detail');
+
+  let cont = await (await asMember('/api/tv/continue')).json();
+  assert.deepStrictEqual((cont.episodes || []).map((e) => e.id), ['ok'], 'the in-progress episode is in Continue');
+
+  // A member cannot write progress for a BLOCKED episode (404, no oracle).
+  assert.strictEqual((await postJson(asMember, '/api/tv/progress', { id: 'blk', timestamp: 5, duration: 100 })).status, 404);
+
+  // Crossing 90% auto-marks watched -> the episode leaves Continue.
+  await postJson(asMember, '/api/tv/progress', { id: 'ok', timestamp: 95, duration: 100 });
+  cont = await (await asMember('/api/tv/continue')).json();
+  assert.deepStrictEqual((cont.episodes || []).map((e) => e.id), [], 'a >=90% episode is finished, not "continue"');
+  assert.strictEqual((await (await asMember('/api/tv/episode/ok')).json()).watched, true, 'auto-marked watched');
+
+  // Manual un-watch clears the latch.
+  assert.strictEqual((await asMember('/api/tv/played', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ episodeId: 'ok' }) })).status, 200);
+  assert.strictEqual((await (await asMember('/api/tv/episode/ok')).json()).watched, false, 'un-watch cleared the latch');
+});

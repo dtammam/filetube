@@ -3801,7 +3801,14 @@ if (typeof module !== 'undefined' && module.exports) {
         renderTvBackLink(ep.showId, ep.showName);
         // The descriptor carries the tv source fields (streamSrc/statusUrl/artUrl);
         // channelName = the show name (drives #media metadata + the lock screen).
-        var descriptor = Object.assign({}, ep, { channelName: ep.showName });
+        // progressEndpoint routes the player's save to /api/tv/progress; resumeMode
+        // 'tv' resumes silently from the descriptor's own `progress` (long-form,
+        // like a podcast) with NO extra fetch and NO /api/progress row.
+        var descriptor = Object.assign({}, ep, {
+          channelName: ep.showName,
+          progressEndpoint: '/api/tv/progress',
+          resumeMode: 'tv',
+        });
         var mounted = window.FileTube.player.load(episodeId, descriptor, { slot: playerSlot });
         if (!mounted) { showFatalViewError(root); return; }
         setupLoopToggle();       // source-agnostic (Dean item 5: loop stays)
