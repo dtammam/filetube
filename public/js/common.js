@@ -14818,7 +14818,7 @@ if (typeof module !== 'undefined' && module.exports) {
     reglueCritterPlacements,
     // v1.194: rotate-away-then-back persistence - the width-keyed layout cache's
     // writer + restore, exported so the round-trip is driven behaviourally (PNB).
-    rememberCritterPlacements, restoreCritterLayoutForWidth,
+    rememberCritterPlacements, rememberCritterLayoutDocH, restoreCritterLayoutForWidth,
     // v1.182 settle-before-reveal: the wait phase (driven end-to-end in tests).
     scheduleCritterScatter, critterPageLoading, disconnectCritterWait, revealCritterScatter,
     setCritterTimingForTest,

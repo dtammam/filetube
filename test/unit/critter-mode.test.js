@@ -1202,6 +1202,49 @@ test('v1.194 (adversarial W2): a restore DECLINES when the page drifted since th
   }
 });
 
+test('v1.194 (adversarial MB3): rememberCritterLayoutDocH RE-BASELINES the drift baseline - the effect binds, not just the callsite', () => {
+  // The W1 source-lock binds the re-baseline CALLSITE in both writers; this binds
+  // the helper's EFFECT (adversarial MB3: no-op'ing its body would otherwise stay
+  // green). Drive it deterministically (no scatter): record a PRE-render baseline,
+  // re-baseline to a taller POST-render height, then a page height that is DRIFT vs
+  // the stale baseline but STAND-DOWN vs the re-baselined one - restore is allowed
+  // only if the re-baseline actually took effect. Gutting the helper to a no-op
+  // leaves the stale baseline and turns the final assertion red.
+  const { rememberCritterPlacements, rememberCritterLayoutDocH, restoreCritterLayoutForWidth } = require('../../public/js/common.js');
+  const dom = new JSDOM('<!DOCTYPE html><body><div class="app-container"><div class="main-content"></div></div></body>', { url: 'http://localhost/' });
+  const prevWin = global.window; const prevDoc = global.document; const prevLS = global.localStorage;
+  global.window = dom.window; global.document = dom.window.document; global.localStorage = dom.window.localStorage;
+  Object.defineProperty(dom.window, 'innerWidth', { value: 390, configurable: true });
+  const docEl = dom.window.document.documentElement;
+  let docH = 2000;
+  Object.defineProperty(docEl, 'scrollHeight', { get: () => docH, configurable: true });
+  try {
+    require('../../public/js/common.js').scheduleCritterScatter(); // cancel leaked timers (determinism)
+    dom.window.localStorage.setItem('ft-critters:on', '1');
+    const main = dom.window.document.querySelector('.main-content');
+    const anchor = dom.window.document.createElement('div'); anchor.className = 'btn'; main.appendChild(anchor);
+
+    // PRE-render baseline is 2000 (the layer is not yet in the DOM).
+    docH = 2000;
+    rememberCritterPlacements([critterPlacementFor('a', anchor, 12, 300)]);
+    // POST-render the layer adds ~26px; the writers re-baseline to that taller height.
+    rememberCritterLayoutDocH(2026);
+
+    // A rotate-back that measures 2030 is DRIFT vs the stale 2000 (30 > 24) but
+    // STAND-DOWN vs the re-baselined 2026 (4 <= 24). Restore is allowed ONLY because
+    // the re-baseline took effect - a no-op helper would compare against 2000 -> decline.
+    docH = 2030;
+    assert.strictEqual(restoreCritterLayoutForWidth(390), true,
+      'the re-baselined (post-render) height is what the drift gate compares against (kills MB3)');
+  } finally {
+    global.window = prevWin; global.document = prevDoc; global.localStorage = prevLS;
+    if (global.window === undefined) delete global.window;
+    if (global.document === undefined) delete global.document;
+    if (global.localStorage === undefined) delete global.localStorage;
+    dom.window.close();
+  }
+});
+
 test('gate QA-S7 (behavioural TOCTOU): toggling OFF while the manifest fetch is in flight renders NOTHING', async () => {
   const dom = new JSDOM('<!DOCTYPE html><body></body></html>', { url: 'http://localhost/' });
   const origWindow = global.window; const origDocument = global.document;
