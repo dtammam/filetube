@@ -80,6 +80,29 @@
 
 ## Shipped
 
+### v1.194.1 - HOTFIX: revert the critter rotation-persistence (device regression); keep the text fix (2026-08-26)
+
+v1.194.0's fix #1 (critters persist across rotation) REGRESSED on Dean's device:
+turning the phone sideways left critters mis-rendered as dark clipped shapes
+stacked down the left edge - portrait X-coordinates crammed into the left strip of
+the wider landscape viewport, with the peek-clips gone degenerate. Root cause: the
+width-keyed layout cache assumed desktop-like `window.innerWidth` semantics across
+rotation; the unit tests were jsdom (NO layout engine), so this whole class was
+invisible to them. Per the diagnosis-discipline rule (a shipped fix that fails on
+device = WRONG diagnosis; do not patch on a theory), the rotation-persistence
+feature is REVERTED to the known-good v1.193 behavior (critters simply re-scatter on
+rotate - no persistence, but no craziness).
+
+`public/js/common.js` and `test/unit/critter-mode.test.js` are restored
+BYTE-IDENTICAL to v1.193 (2801d2c); the mechanical revert carries zero new code.
+**Fix #2 (the iOS handoff-card `text-size-adjust:100%` pin) is RETAINED** -
+Dean confirmed on device that the text fix works.
+
+Rotation-persistence will be redesigned properly against the real iOS viewport
+model (visualViewport / orientationchange), tested ON-DEVICE iteratively, in a
+future wave - never shipped on a jsdom-only theory again. Tech-debt #178/#179
+(the pre-existing critter-test flake classes) remain accurate about that file.
+
 ### v1.194.0 - two mobile bug-fixes: critters persist across rotation; handoff-card text no longer balloons (2026-08-26)
 
 Two bugs Dean reported on mobile.

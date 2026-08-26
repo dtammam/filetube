@@ -840,7 +840,7 @@ test('v1.166.4/v1.173: every scatter arms a bounded settle ladder (1.5s then 4s)
   const nudge = COMMON.slice(COMMON.indexOf('function wireCritterContentNudge'), COMMON.indexOf('function unwireCritterContentNudge'));
   assert.match(nudge, /if \(action === 'rescatter-empty'\) scatterCritters\(\);\n\s*else reglueCritterPlacements\(\);/,
     'the nudge maps identically: empty scatters, drift re-glues');
-  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter('), COMMON.indexOf('\nfunction wireCritterListeners'));
+  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter()'), COMMON.indexOf('\nfunction wireCritterListeners'));
   assert.match(sched, /critterSettleChecks = 0;/, 'every scheduled scatter (a navigation) re-arms the ladder');
   assert.match(sched, /if \(critterRetryTimer\) \{ clearTimeout\(critterRetryTimer\); critterRetryTimer = null; \}/,
     'a new navigation CANCELS the previous view\'s pending check (the stale-timer race, demonstrated by the gate)');
@@ -1000,249 +1000,6 @@ test('SOURCE: v1.188 the tap is SWALLOWED - capture phase + stopPropagation + pr
 test('the exclusion list covers the WHOLE backdrop family via a suffix net (never one-of-N enumeration)', () => {
   assert.ok(CRITTER_EXCLUSION_SELECTORS.indexOf('[class*="-backdrop"]') !== -1,
     'one suffix selector covers all present AND future modal/sheet backdrops');
-});
-
-// ---- v1.194: rotate-away-then-back PERSISTENCE (Dean) -----------------------
-// The bug: a phone rotation swaps width<->height, tripping the width-gated resize
-// handler, which re-rolled from scratch (Math.random) EVERY flip - so rotating
-// away and back scrambled the critters. The fix remembers each layout under its
-// viewport width and RESTORES it on the return trip instead of re-rolling.
-//
-// TWO tests below, deliberately split (adversarial W1 - the "forgot to CALL the
-// shared helper" class): this first one drives the cache CONTRACT directly
-// (rememberCritterPlacements + restoreCritterLayoutForWidth + the clear/preserve
-// flag) where the mechanics are cleanest to exercise; the second drives the REAL
-// production writers (scatterCritters + reglueCritterPlacements) to prove they
-// actually FUNNEL through rememberCritterPlacements - reverting either callsite to
-// a bare `critterPlacements = ...` must turn the second test red.
-
-// A render-safe placement carrying an anchorEl for the isConnected restore-guard.
-function critterPlacementFor(id, anchorEl, x, y) {
-  return {
-    id: id, x: x, y: y, w: 44, h: 44, angle: 0, flip: 1, hue: 0,
-    cover: { t: 0 }, anchor: { x: 0, y: 0, w: 200, h: 12 },
-    anchorEl: anchorEl, img: null, svg: null,
-  };
-}
-
-test('v1.194 rotate-away-then-back RESTORES the same layout (never a Math.random re-roll)', () => {
-  const {
-    rememberCritterPlacements, restoreCritterLayoutForWidth, scheduleCritterScatter,
-  } = require('../../public/js/common.js');
-  const dom = new JSDOM('<!DOCTYPE html><body><div class="app-container"><div class="main-content"></div></div></body>', { url: 'http://localhost/' });
-  const prevWin = global.window; const prevDoc = global.document; const prevLS = global.localStorage;
-  global.window = dom.window; global.document = dom.window.document; global.localStorage = dom.window.localStorage;
-  const setW = (w) => Object.defineProperty(dom.window, 'innerWidth', { value: w, configurable: true });
-  try {
-    // DETERMINISM (QA W-flaky, tech-debt #FILE-WIDE): critterLayoutCache is a module
-    // global. A settle/wait timer LEAKED from an earlier test in this file can fire
-    // mid-test, run a real scatterCritters against these globals, and clobber the
-    // cache - which would flip GUARD 1 below to a false pass. Cancel every pending
-    // handle here (mode still OFF -> clears + early-returns, arms nothing).
-    scheduleCritterScatter();
-    dom.window.localStorage.setItem('ft-critters:on', '1');
-    const doc = dom.window.document;
-    const main = doc.querySelector('.main-content');
-    const anchorP = doc.createElement('div'); anchorP.className = 'btn'; main.appendChild(anchorP);
-    const anchorL = doc.createElement('div'); anchorL.className = 'btn'; main.appendChild(anchorL);
-
-    // Portrait (390): the first scatter records this layout under width 390.
-    setW(390);
-    rememberCritterPlacements([critterPlacementFor('port', anchorP, 12, 300)]);
-
-    // Rotate to landscape (844): the return trip's width is a MISS - a fresh
-    // scatter runs (here: remembered) and preserveCache keeps the portrait entry.
-    setW(844);
-    assert.strictEqual(restoreCritterLayoutForWidth(844), false, 'a never-seen orientation misses the cache -> fresh scatter');
-    rememberCritterPlacements([critterPlacementFor('land', anchorL, 500, 40)]);
-
-    // Rotate BACK to portrait (390): restore the EXACT portrait critter, not a
-    // re-roll. The bug would have re-scattered to fresh random spots here.
-    setW(390);
-    assert.strictEqual(restoreCritterLayoutForWidth(390), true, 'the returning width restores its remembered layout');
-    let layer = doc.getElementById('critter-layer');
-    let kids = layer.querySelectorAll('.critter');
-    assert.strictEqual(kids.length, 1, 'exactly the portrait layout is restored');
-    assert.strictEqual(kids[0].getAttribute('data-critter-id'), 'port',
-      'the PORTRAIT critter returns (a re-roll would place a random id, and never at these coords)');
-    assert.ok(kids[0].classList.contains('critter-still'),
-      'a restore renders STILL - no arrival fade replay for an unmoved critter');
-    const pad = Math.round(44 * 0.3);
-    assert.strictEqual(kids[0].style.left, (12 - pad) + 'px', 'restored at the ORIGINAL x (byte-identical, not re-randomized)');
-    assert.strictEqual(kids[0].style.top, (300 - pad) + 'px', 'restored at the ORIGINAL y');
-
-    // And landscape still round-trips the other way.
-    setW(844);
-    assert.strictEqual(restoreCritterLayoutForWidth(844), true, 'landscape restores too');
-    assert.strictEqual(doc.getElementById('critter-layer').querySelector('.critter').getAttribute('data-critter-id'), 'land');
-
-    // GUARD 1 (self-invalidation): a cached layout whose anchor left the DOM is
-    // NOT trusted - it falls back to a fresh scatter (a cross-view survivor).
-    main.removeChild(anchorL);
-    assert.strictEqual(restoreCritterLayoutForWidth(844), false,
-      'a detached anchor invalidates its cached layout (the stale-coords guard)');
-    main.appendChild(anchorL); // restore for the remaining assertions
-
-    // GUARD 2 (mode off): no restore when critters are disabled.
-    dom.window.localStorage.setItem('ft-critters:on', '0');
-    assert.strictEqual(restoreCritterLayoutForWidth(390), false, 'disabled mode never restores');
-    dom.window.localStorage.setItem('ft-critters:on', '1');
-
-    // GUARD 3 (preserve vs clear): the resize handler passes preserveCache -> the
-    // cache SURVIVES a rescatter of a new orientation; a navigation (no arg) WIPES
-    // it. Mode is toggled OFF around each scheduleCritterScatter purely so the
-    // enabled-gated quiet-wait never arms a timer - the clear runs BEFORE that gate.
-    assert.strictEqual(restoreCritterLayoutForWidth(390), true, 'precondition: 390 is cached');
-    dom.window.localStorage.setItem('ft-critters:on', '0');
-    scheduleCritterScatter(true); // preserveCache: a new orientation, same view
-    dom.window.localStorage.setItem('ft-critters:on', '1');
-    assert.strictEqual(restoreCritterLayoutForWidth(390), true, 'preserveCache KEEPS the remembered layouts (rotate-back still works)');
-
-    dom.window.localStorage.setItem('ft-critters:on', '0');
-    scheduleCritterScatter(); // navigation: clears the cache
-    dom.window.localStorage.setItem('ft-critters:on', '1');
-    assert.strictEqual(restoreCritterLayoutForWidth(390), false, 'a navigation CLEARS the remembered layouts (new furniture)');
-  } finally {
-    global.window = prevWin; global.document = prevDoc; global.localStorage = prevLS;
-    if (global.window === undefined) delete global.window;
-    if (global.document === undefined) delete global.document;
-    if (global.localStorage === undefined) delete global.localStorage;
-    dom.window.close();
-  }
-});
-
-test('SOURCE: the width-gated resize handler tries a RESTORE before scattering, and scatters with preserveCache', () => {
-  const start = COMMON.indexOf('function wireCritterListeners()');
-  const body = COMMON.slice(start, COMMON.indexOf('\nfunction applyCritterMode', start));
-  const resize = body.slice(body.indexOf("addEventListener('resize'"));
-  assert.match(resize, /if \(restoreCritterLayoutForWidth\(window\.innerWidth\)\) return;/,
-    'a width change restores a remembered layout before falling through to a scatter');
-  assert.match(resize, /scheduleCritterScatter\(true\);/,
-    'the resize-driven scatter PRESERVES the cache (preserveCache) so the return trip can restore');
-  // The clear is gated on !preserveCache so navigation/settings still wipe it.
-  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter'), COMMON.indexOf('\n  critterSettleChecks = 0'));
-  assert.match(sched, /if \(!preserveCache\) critterLayoutCache = \{\};/,
-    'scheduleCritterScatter wipes the cache on every call EXCEPT the preserveCache resize path');
-});
-
-test('SOURCE (adversarial W1): BOTH real placement writers FUNNEL through rememberCritterPlacements - neither does a bare assignment', () => {
-  // The direct-call test above proves the cache CONTRACT; this proves the two
-  // PRODUCTION writers actually populate it (the "forgot to CALL the shared helper"
-  // class - v1.41.4). A behavioural drive of scatterCritters/reglue is defeated by
-  // this file's pre-existing leaked-timer + shared-module-state flake class
-  // (tech-debt #178 - the QA seat reproduced it on the BASE commit too), so this is
-  // a comment-stripped SOURCE LOCK on both writer bodies - the adversarial seat's
-  // own sanctioned alternative. Reverting either callsite to `critterPlacements = ...`
-  // fails BOTH the positive (funnel present) and the negative (bare assignment gone)
-  // assertion, so M6/M7 are bound deterministically.
-  const strip = (s) => s.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-  const scatter = strip(COMMON.slice(COMMON.indexOf('function scatterCritters()'), COMMON.indexOf('\nfunction armCritterSettleCheck')));
-  assert.match(scatter, /rememberCritterPlacements\(placements\);/,
-    'scatterCritters funnels its placements through rememberCritterPlacements');
-  assert.doesNotMatch(scatter, /critterPlacements = placements;/,
-    'scatterCritters does NOT bypass the funnel with a bare assignment (kills M6)');
-  const reglue = strip(COMMON.slice(COMMON.indexOf('function reglueCritterPlacements()'), COMMON.indexOf('\n// Debounced entry point')));
-  assert.match(reglue, /rememberCritterPlacements\(survivors\);/,
-    're-glue funnels its survivors through rememberCritterPlacements (the fresh array per pass keeps the cache current)');
-  assert.doesNotMatch(reglue, /critterPlacements = survivors;/,
-    're-glue does NOT bypass the funnel with a bare assignment (kills M7)');
-  // And the funnel itself is the sole cache writer keyed by the live width.
-  const funnel = strip(COMMON.slice(COMMON.indexOf('function rememberCritterPlacements'), COMMON.indexOf('\nfunction restoreCritterLayoutForWidth')));
-  assert.match(funnel, /critterLayoutCache\[window\.innerWidth \|\| 0\] = \{ placements: placements, docH: docH \};/,
-    'rememberCritterPlacements records the layout under the live viewport width');
-  // adversarial W2 follow-up: BOTH writers must RE-BASELINE the cache height to the
-  // POST-render measure, so the restore-time drift comparison is symmetric (both
-  // sides carry the critter layer's ~26px overflow, gate S1). The re-baseline sits
-  // immediately after each `critterPlacedDocH = docEl.scrollHeight;`. Deleting it
-  // in either body leaves the stored height ~26px short and false-trips drift on a
-  // happy rotate-back (re-scatter instead of restore).
-  assert.match(scatter, /critterPlacedDocH = docEl\.scrollHeight;\n\s*rememberCritterLayoutDocH\(critterPlacedDocH\);/,
-    'scatterCritters re-baselines the cache height post-render');
-  assert.match(reglue, /critterPlacedDocH = docEl\.scrollHeight;\n\s*rememberCritterLayoutDocH\(critterPlacedDocH\);/,
-    're-glue re-baselines the cache height post-render');
-});
-
-test('v1.194 (adversarial W2): a restore DECLINES when the page drifted since the layout was recorded (no stale paint over reflowed text)', () => {
-  const { rememberCritterPlacements, restoreCritterLayoutForWidth } = require('../../public/js/common.js');
-  const dom = new JSDOM('<!DOCTYPE html><body><div class="app-container"><div class="main-content"></div></div></body>', { url: 'http://localhost/' });
-  const prevWin = global.window; const prevDoc = global.document; const prevLS = global.localStorage;
-  global.window = dom.window; global.document = dom.window.document; global.localStorage = dom.window.localStorage;
-  Object.defineProperty(dom.window, 'innerWidth', { value: 390, configurable: true });
-  const docEl = dom.window.document.documentElement;
-  let docH = 2000;
-  Object.defineProperty(docEl, 'scrollHeight', { get: () => docH, configurable: true });
-  try {
-    require('../../public/js/common.js').scheduleCritterScatter(); // cancel leaked timers (QA W-flaky determinism)
-    dom.window.localStorage.setItem('ft-critters:on', '1');
-    const main = dom.window.document.querySelector('.main-content');
-    const anchor = dom.window.document.createElement('div'); anchor.className = 'btn'; main.appendChild(anchor);
-
-    // Record a layout while the page is 2000px tall (e.g. placed against skeletons).
-    docH = 2000;
-    rememberCritterPlacements([critterPlacementFor('a', anchor, 12, 300)]);
-
-    // No drift -> the restore is allowed (the happy rotate-back).
-    assert.strictEqual(restoreCritterLayoutForWidth(390), true, 'a stable page restores its remembered layout');
-
-    // The page reflowed to 3000px (real content landed while rotated away). The
-    // cached coords are now stale; restoring them would paint critters over text.
-    docH = 3000;
-    assert.strictEqual(restoreCritterLayoutForWidth(390), false,
-      'a page that drifted past the settle threshold declines the restore -> the caller scatters fresh (v1.173 revival closed)');
-
-    // Back within the 24px jitter headroom -> allowed again.
-    docH = 2016;
-    assert.strictEqual(restoreCritterLayoutForWidth(390), true, 'sub-threshold jitter is not drift - still restores');
-  } finally {
-    global.window = prevWin; global.document = prevDoc; global.localStorage = prevLS;
-    if (global.window === undefined) delete global.window;
-    if (global.document === undefined) delete global.document;
-    if (global.localStorage === undefined) delete global.localStorage;
-    dom.window.close();
-  }
-});
-
-test('v1.194 (adversarial MB3): rememberCritterLayoutDocH RE-BASELINES the drift baseline - the effect binds, not just the callsite', () => {
-  // The W1 source-lock binds the re-baseline CALLSITE in both writers; this binds
-  // the helper's EFFECT (adversarial MB3: no-op'ing its body would otherwise stay
-  // green). Drive it deterministically (no scatter): record a PRE-render baseline,
-  // re-baseline to a taller POST-render height, then a page height that is DRIFT vs
-  // the stale baseline but STAND-DOWN vs the re-baselined one - restore is allowed
-  // only if the re-baseline actually took effect. Gutting the helper to a no-op
-  // leaves the stale baseline and turns the final assertion red.
-  const { rememberCritterPlacements, rememberCritterLayoutDocH, restoreCritterLayoutForWidth } = require('../../public/js/common.js');
-  const dom = new JSDOM('<!DOCTYPE html><body><div class="app-container"><div class="main-content"></div></div></body>', { url: 'http://localhost/' });
-  const prevWin = global.window; const prevDoc = global.document; const prevLS = global.localStorage;
-  global.window = dom.window; global.document = dom.window.document; global.localStorage = dom.window.localStorage;
-  Object.defineProperty(dom.window, 'innerWidth', { value: 390, configurable: true });
-  const docEl = dom.window.document.documentElement;
-  let docH = 2000;
-  Object.defineProperty(docEl, 'scrollHeight', { get: () => docH, configurable: true });
-  try {
-    require('../../public/js/common.js').scheduleCritterScatter(); // cancel leaked timers (determinism)
-    dom.window.localStorage.setItem('ft-critters:on', '1');
-    const main = dom.window.document.querySelector('.main-content');
-    const anchor = dom.window.document.createElement('div'); anchor.className = 'btn'; main.appendChild(anchor);
-
-    // PRE-render baseline is 2000 (the layer is not yet in the DOM).
-    docH = 2000;
-    rememberCritterPlacements([critterPlacementFor('a', anchor, 12, 300)]);
-    // POST-render the layer adds ~26px; the writers re-baseline to that taller height.
-    rememberCritterLayoutDocH(2026);
-
-    // A rotate-back that measures 2030 is DRIFT vs the stale 2000 (30 > 24) but
-    // STAND-DOWN vs the re-baselined 2026 (4 <= 24). Restore is allowed ONLY because
-    // the re-baseline took effect - a no-op helper would compare against 2000 -> decline.
-    docH = 2030;
-    assert.strictEqual(restoreCritterLayoutForWidth(390), true,
-      'the re-baselined (post-render) height is what the drift gate compares against (kills MB3)');
-  } finally {
-    global.window = prevWin; global.document = prevDoc; global.localStorage = prevLS;
-    if (global.window === undefined) delete global.window;
-    if (global.document === undefined) delete global.document;
-    if (global.localStorage === undefined) delete global.localStorage;
-    dom.window.close();
-  }
 });
 
 test('gate QA-S7 (behavioural TOCTOU): toggling OFF while the manifest fetch is in flight renders NOTHING', async () => {
@@ -1722,7 +1479,7 @@ test('v1.175 nudge discipline (source locks): shares the ladder budget, cancels 
   // Gate S2: anchored past the `un` prefix - the bare substring was vacuously
   // satisfied by unwireCritterContentNudge() in the disabled branch.
   assert.match(scatter, /\n {2}wireCritterContentNudge\(\);/, 'mode on wires it (the enabled path\'s own call)');
-  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter('), COMMON.indexOf('\nfunction wireCritterListeners'));
+  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter()'), COMMON.indexOf('\nfunction wireCritterListeners'));
   assert.match(sched, /if \(critterNudgeDebounce\) \{ clearTimeout\(critterNudgeDebounce\); critterNudgeDebounce = null; \}/,
     'gate S1: a navigation cancels the pending nudge debounce along with every other handle');
 });
@@ -2655,7 +2412,7 @@ test('v1.182 E (source locks): the wait phase - cap value, doc-guarded observer,
   assert.match(COMMON, /var CRITTER_REVEAL_CAP_MS = 2500;/, 'the reveal cap is 2.5s (Dean\'s ruling)');
   assert.match(COMMON, /var CRITTER_QUIET_MS = 300;/, 'the quiet debounce is a settled beat');
   assert.match(COMMON, /var CRITTER_LOADING_SELECTORS = \['\.skeleton-card', '\.skeleton-shimmer'\];/, 'the loading markers cover the feed card AND the universal skeleton-shimmer (v1.186.1: the watch related sidebar)');
-  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter('), COMMON.indexOf('\nfunction wireCritterListeners'));
+  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter()'), COMMON.indexOf('\nfunction wireCritterListeners'));
   assert.match(sched, /disconnectCritterWait\(\);/, 'a navigation cancels the wait phase (observer + quiet + cap) - the unstashed-handle class');
   // gate CRITICAL: the previous view's persistent nudge observer is disconnected
   // on every navigation so it cannot re-scatter onto the new view's skeletons.
