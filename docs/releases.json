@@ -2200,5 +2200,11 @@
     "date": "2026-08-25",
     "title": "Friendlier critters and a clearer popcorn button",
     "intent": "A fun little batch for the critters. Tapping a critter now has a great variety of reactions - eighteen of them, from a nod or a wobble to a backflip or a tada - picked at random each time. When a critter is peeking out from behind a button, tapping the button now works as you'd expect instead of setting off the critter. Collapsing the left menu re-tucks the critters against the new layout so they don't hang in mid-air. And the theatre-mode button is now a clearer, taller popcorn bucket that matches the size of the settings gear next to it."
+  },
+  {
+    "version": "1.192.0",
+    "date": "2026-08-26",
+    "title": "Critters: no more overlapping, fully solid, and no sideways scroll",
+    "intent": "Three fixes for the critters. They no longer pile up on top of each other - when several would land in the same spot they now keep clear of one another instead of stacking. They also render fully solid again; some had looked faintly see-through, which wasn't intended. And your phone no longer scrolls a little sideways - a critter peeking near the edge of the screen had been nudging the page just past the edge."
   }
 ]

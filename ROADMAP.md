@@ -80,6 +80,48 @@
 
 ## Shipped
 
+### v1.192.0 - critters: no overlap, fully opaque, no mobile sideways-scroll (2026-08-26)
+
+Three Dean bug reports, one wave.
+
+1. **Critters never literally overlap.** planCritterScatter sampled distinct
+   anchors but had no inter-critter check, so a vertical thumbnail column
+   (Related files) flung its peeks into one band and piled a tower of
+   overlapping critters (Dean's screenshot). Both the planner and the re-glue
+   drift pass now reject any placement whose box intersects an already-placed
+   critter's box (skip, never nudge; buttons keep ambush priority via the
+   weight-3 draw). Dean chose STRICT zero-overlap over "a light kiss".
+2. **Fully opaque.** `.critter-pose` carried `opacity: 0.95` ("decorative layer
+   softness") on every live critter, so uploaded transparent PNGs read faintly
+   see-through (the feed was legible through them). Removed it - the resting
+   state is now solid. The 0->1 arrival fade on the wrapper is untouched, and
+   the built-in placeholder SVGs keep their own per-shape fill opacities.
+3. **No mobile horizontal scroll (a regression).** renderCritterPlacements
+   inflates each wrapper by pad = round(w*0.3) rotation-headroom on every side;
+   the screen-edge invariant only clamped the BARE box, so an edge-flush
+   critter's transparent pad poked past the viewport. `html{overflow-x:clip}`
+   is the app's ONLY horizontal clamp and iOS honours root-propagated clip
+   weakly, so it surfaced as sideways scroll on Dean's phone. Both the planner
+   and re-glue guards now clamp the PADDED extent inside the viewport
+   (horizontal only; vertical pad overflow just extends the legal scroll axis).
+
+**Gate:** full two-reviewer. Both seats verified the three source fixes correct,
+exact (the guard pad matches the renderer's byte-for-byte) and well-bound in the
+PLANNER first pass; the adversarial seat then caught a real blocker - the two NEW
+re-glue guards (pad clamp + overlap drop) shipped WITHOUT binding tests (both
+mutants survived the full suite: the presence-not-binding class, on the wave's
+own bug axis since the drift path fires on every content nudge). Added two
+behavioural JSDOM reglue tests, mutation-verified (M2/M4 red) by me and both
+seats; both re-verdicted APPROVE. Also de-flaked the v1.178 adoption test whose
+a3/b3 fixture relied on Math.random seeding two non-overlapping critters on
+now-colliding (300x200, 160px-apart) anchors.
+**Known residuals:** tech-debt #175 - the no-overlap rule is bare-box exact, not
+rotated-pose exact, so ~13% of scatters can still graze at a tilted (+-38deg,
+~1.4x extent) corner, mostly transparent art (Dean's fully-overlapping tower is
+gone). #176 - the v1.178 claimed-seed mutation is now probabilistic (the new
+overlap guard can mask it in that closure). Dual-Node green (Node 22: 7565 pass;
+Node 24: 7565 pass; 0 fail both). Dean's on-device pass PENDING.
+
 ### v1.191.0 - critters wave: buttons-behind work, hamburger re-scatter, 18 tap reactions, clearer popcorn glyph (2026-08-25)
 
 Four Dean requests, one wave.
