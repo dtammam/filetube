@@ -80,6 +80,25 @@
 
 ## Shipped
 
+### v1.194.3 - fix: mobile sideways-scroll on the inline watch page (the scaled ambient glow) (2026-08-26)
+
+Dean (device): watching content inline (non-fullscreen) on a phone allowed horizontal
+scroll, which should never happen. PRE-EXISTING (since v1.186.0), not critters (Dean
+confirmed with them off), not a v1.194 regression.
+
+Root cause (independently diagnosed + git-archaeology): `.ambient-glow` is
+`transform: scale()`'d 1.18-1.42x (the v1.187 intensity ladder), so its box overflows
+the viewport horizontally on mobile. Its wrapper `.watch-player-stage` sets no overflow,
+and the site-wide `html { overflow-x: clip }` is honoured WEAKLY by iOS for a scaled
+descendant - so the page scrolls sideways while ambient runs (dark theme + opted-in +
+playing). Fix: a mobile-scoped `@media (max-width:768px){ .watch-player-stage {
+overflow-x: clip } }`. overflow-y stays visible (vertical bloom preserved); desktop
+untouched (the v1.188 sidebar bleed survives); `clip` (not hidden) creates no containing
+block, so the fixed `.css-fullscreen`/`.audio-expanded` overlays still escape on rotate.
+Tradeoff (disclosed): removes the small ~16px horizontal glow bleed on mobile only. Slim
+adversarial gate APPROVE (fullscreen escape spec-verified + the two overlays confirmed
+un-trapped; test mutation-bound on two axes); Dual-Node 7570/0. **DEVICE PASS PENDING.**
+
 ### v1.194.2 - fix: audio rotate-to-fullscreen was trapped behind the chrome (the audio twin of the v1.186.1 fix) (2026-08-26)
 
 Dean (device): on mobile, rotating to landscape on the WATCH page fullscreens a
