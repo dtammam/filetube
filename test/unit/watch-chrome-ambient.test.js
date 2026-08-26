@@ -151,9 +151,20 @@ test('v1.186.1 the ambient stacking context lives on the STAGE, never on #player
   // #player-slot must NOT get a z-index (that was the trap).
   const slotRule = STYLE_CSS.match(/(^|\n)#player-slot\s*\{[^}]*\}/);
   if (slotRule) assert.doesNotMatch(slotRule[0], /z-index/, '#player-slot must NOT create a stacking context (it traps the fixed fullscreen overlay)');
-  // Faux fullscreen drops the stage context so the fixed overlay escapes.
-  assert.match(STYLE_CSS, /body\.ft-css-fullscreen \.watch-player-stage \{\s*z-index:\s*auto;\s*\}/,
-    'faux fullscreen drops the stage stacking context so the fixed .css-fullscreen overlay is not trapped');
+  // Faux fullscreen drops the stage context so the fixed overlay escapes - for
+  // BOTH video (ft-css-fullscreen) AND audio (ft-audio-expanded). The AUDIO twin
+  // (v1.194.2, Dean device) closes the v1.186.1 gap: v1.186.1 dropped the context
+  // for video only, leaving an expanded audio overlay TRAPPED behind the chrome on
+  // the watch page (audio never rotate-fullscreened while video did). Symmetric
+  // invariant - bind BOTH axes (the presence-not-binding-on-the-sibling lesson).
+  const dropStart = STYLE_CSS.indexOf('body.ft-css-fullscreen .watch-player-stage');
+  assert.ok(dropStart !== -1, 'the faux-fullscreen stage-drop rule exists');
+  const dropBlock = STYLE_CSS.slice(dropStart, STYLE_CSS.indexOf('}', dropStart) + 1);
+  assert.match(dropBlock, /body\.ft-css-fullscreen \.watch-player-stage/,
+    'VIDEO faux fullscreen drops the stage context (the fixed .css-fullscreen overlay is not trapped)');
+  assert.match(dropBlock, /body\.ft-audio-expanded \.watch-player-stage/,
+    'AUDIO expand drops the stage context too - deleting this selector re-traps audio rotate-fullscreen behind the chrome (the v1.186.1 bug)');
+  assert.match(dropBlock, /z-index:\s*auto;/, 'both selectors drop to z-index:auto');
 });
 
 test('v1.186.1 theatre toggle re-scatters critters for the new layout (exposed hook + call)', () => {
