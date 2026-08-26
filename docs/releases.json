@@ -2218,5 +2218,11 @@
     "date": "2026-08-26",
     "title": "Two mobile fixes: critters stay put when you rotate, and a text-size glitch",
     "intent": "Two small fixes for your phone. When critters are on a page and you turn your phone and turn it back, they now stay right where they were instead of scattering to new spots. And the little \"Playing on\" card no longer shows oversized text after you come out of a full-screen video - its text stays the normal size."
+  },
+  {
+    "version": "1.194.1",
+    "date": "2026-08-26",
+    "title": "Fix critters looking broken when you rotate your phone",
+    "intent": "A quick follow-up. In the last update, turning your phone sideways could leave the little critters bunched up and looking broken down one edge of the screen. This undoes the change that caused it, so the critters behave normally again when you rotate - they simply settle into fresh spots, as they did before. The \"Playing on\" text-size fix from the last update stays."
   }
 ]
