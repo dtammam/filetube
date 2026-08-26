@@ -2293,6 +2293,7 @@ test('Settings: the Sneaky critter mode controls exist and setup.js binds them t
   // v1.193: the experimental "light kiss" overlap control - HTML + key + wiring.
   assert.match(SETUP_HTML, /id="critter-kiss-check"/, 'the kiss checkbox exists');
   assert.match(SETUP_HTML, /experimental/i, 'and is labelled experimental');
+  assert.match(body, /kiss\.checked = !!cfg\.allowOverlap;/, 'it reflects the saved kiss pref on load (delete this line -> reds)');
   assert.match(body, /localStorage\.setItem\('ft-critters:kiss'/, 'the kiss pref persists to its key');
   const applies = body.match(/applyCritterMode\(\);/g) || [];
   assert.strictEqual(applies.length, 4, 'the four PLACEMENT controls apply immediately (toggle + density + v1.187 size + v1.193 kiss)');

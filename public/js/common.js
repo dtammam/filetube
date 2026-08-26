@@ -7799,8 +7799,9 @@ function planCritterScatter(opts) {
     // Buttons are drawn first (weight 3), so the ambush spots win the overlap.
     // Checked on the UNROTATED bare boxes (the `size x size` footprint), not the
     // padded wrappers - the ~30% pad is rotation headroom and mostly transparent.
-    // `critterRectsIntersect` is strict (<, >), so merely-tangent boxes are
-    // allowed - only real bare-box overlap is dropped. SCOPE (gate, adversarial
+    // `critterOverlapExceeds` at allow 0 is strict (its tangent guard mirrors
+    // `critterRectsIntersect`'s `<,>`), so merely-tangent boxes are allowed -
+    // only real bare-box overlap is dropped. SCOPE (gate, adversarial
     // seat): this is bare-box-exact, not rendered-POSE-exact - a pose tilted up
     // to +-38deg has an axis-aligned extent ~1.4x its box, so two near-tangent
     // critters can still graze at the rotated corners (~13% of scatters, corner
