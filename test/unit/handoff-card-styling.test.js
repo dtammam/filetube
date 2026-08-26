@@ -166,3 +166,25 @@ test('the card carries no [data-theme]-scoped rules of its own (residual #103 po
   assert.deepStrictEqual(scoped, [],
     'the card must follow the eras through base tokens, not through per-era consumer rules the census cannot see');
 });
+
+// v1.194 (Dean): the handoff card's "Playing on X" text ballooned after a
+// fullscreen exit. Root cause was NOT in the card - iOS Safari font-boosts any
+// text block when a reflow (the fullscreen-exit un-hide) re-runs its autosizing
+// pass, and text-size-adjust was pinned NOWHERE. The fix pins it on the html
+// root, so it protects the whole app, not just this card. jsdom has no layout
+// engine and cannot reproduce font-boosting, so a SOURCE LOCK is the honest
+// binding (the guard-exists != guard-binds discipline: this file's mutation pass
+// showed the card had no behavioural hook for the fix). BOTH spellings are
+// required - the v1.77 prefixed-vs-standard lesson: -webkit- serves iOS, the
+// unprefixed serves the standard, and one alone leaves a browser boosting.
+test('v1.194: the html root PINS text-size-adjust:100% (both spellings) - iOS font-boost defeat', () => {
+  const rule = /(?:^|\n)html\s*\{([^}]*)\}/.exec(css);
+  assert.ok(rule, 'the html rule must exist');
+  // Strip comments first (the comment-porous class - the fix comment names the
+  // property and the mechanism, which would false-pass a naive grep).
+  const decls = rule[1].replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(decls, /-webkit-text-size-adjust:\s*100%/,
+    'the -webkit- spelling pins iOS Safari to 100% (no boost) - deleting it re-inflates the handoff text on fullscreen exit');
+  assert.match(decls, /(?<!-webkit-)text-size-adjust:\s*100%/,
+    'the unprefixed standard spelling is pinned too (one alone leaves a browser boosting - the v1.77 lesson)');
+});
