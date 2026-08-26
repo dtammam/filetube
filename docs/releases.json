@@ -2224,5 +2224,11 @@
     "date": "2026-08-26",
     "title": "Fix critters looking broken when you rotate your phone",
     "intent": "A quick follow-up. In the last update, turning your phone sideways could leave the little critters bunched up and looking broken down one edge of the screen. This undoes the change that caused it, so the critters behave normally again when you rotate - they simply settle into fresh spots, as they did before. The \"Playing on\" text-size fix from the last update stays."
+  },
+  {
+    "version": "1.194.2",
+    "date": "2026-08-26",
+    "title": "Music now goes full screen when you turn your phone sideways",
+    "intent": "On a video page, turning your phone to landscape while playing a song now expands the artwork to fill the screen, just like a video already did. Before, the music player tried to expand but stayed hidden behind the menus and header. This had been the case for a while; it's fixed now on that page."
   }
 ]

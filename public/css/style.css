@@ -8733,8 +8733,18 @@ body.ft-audio-expanded {
 /* Faux fullscreen: drop the stage's stacking context so the fixed
    #player-wrapper.css-fullscreen overlay is NOT trapped beneath the chrome
    (body.ft-css-fullscreen is set by player.js on rotate/tap fullscreen). This
-   restores the pre-v1.186 rotate-to-fullscreen behavior. */
-body.ft-css-fullscreen .watch-player-stage {
+   restores the pre-v1.186 rotate-to-fullscreen behavior.
+   v1.194.2 (Dean, on-device): the AUDIO twin. v1.186.0 introduced the
+   .watch-player-stage stacking context; v1.186.1 added the drop for VIDEO
+   (ft-css-fullscreen) but NOT for AUDIO, so on the WATCH page an expanded audio
+   overlay (position:fixed; inset:0; z-index:var(--z-player-max), set by
+   setAudioExpanded via body.ft-audio-expanded) stayed TRAPPED at the stage's
+   root z-index and painted BEHIND the header/dock/bottom-nav - audio never
+   fullscreened on rotate while video did. Symmetric fix; no JS change (the body
+   class is already toggled). Only .watch-player-stage exists (watch.html), so
+   music/podcasts shells are unaffected. */
+body.ft-css-fullscreen .watch-player-stage,
+body.ft-audio-expanded .watch-player-stage {
   z-index: auto;
 }
 @media (prefers-reduced-motion: reduce) {
