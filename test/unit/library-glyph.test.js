@@ -70,7 +70,7 @@ test('every slot fallback is the glyph that entry actually shipped with', () => 
   // for every user who never opens the picker.
   const expected = {
     glyphDownloads: 'icon-downloads', glyphMusic: 'icon-play', glyphBooks: 'icon-books',
-    glyphPodcasts: 'icon-podcast', glyphHistory: 'icon-history',
+    glyphTv: 'icon-tv', glyphPodcasts: 'icon-podcast', glyphHistory: 'icon-history',
   };
   assert.deepEqual(
     Object.fromEntries(LIBRARY_GLYPH_SLOTS.map((s) => [s.key, s.fallback])), expected);
@@ -141,11 +141,29 @@ test('LATE INJECTION: an entry injected AFTER the fetch still gets the chosen gl
 
 test('the Playlists sheet MIRRORS each entry\'s glyph off the sidebar, so the two cannot disagree', () => {
   withDom(SHELL, () => {
-    common.applyLibraryGlyphs({ glyphMusic: 'music-note', glyphHistory: 'archive' });
+    common.applyLibraryGlyphs({ glyphMusic: 'music-note', glyphHistory: 'archive', glyphTv: 'tv' });
     const html = common.libraryEntriesHtml();
     assert.match(html, /<i class="icon-music-note"><\/i> Music/, 'Music mirrors the chosen glyph');
     assert.match(html, /<i class="icon-archive"><\/i> History/, 'History mirrors the chosen glyph');
     assert.match(html, /<i class="icon-books"><\/i> Books/, 'an unchosen entry mirrors its shipped glyph');
+    // v1.195.1: Shows is a first-class sheet entry too (was mobile-unreachable before).
+    assert.match(html, /<a href="\/tv" class="sidebar-item"><i class="icon-tv"><\/i> Shows<\/a>/, 'Shows appears in the sheet, mirroring its glyph');
+  });
+});
+
+test('v1.195.1: the Playlists sheet lists Shows IFF a Shows library is configured (both axes)', () => {
+  // The mobile gap Dean hit: the sheet is the mobile library surface, and it
+  // gated every entry on the content-injected sidebar marker but had no tv arm.
+  // REVEAL axis: with the tv sidebar marker present, Shows lists at /tv.
+  withDom('<body><a data-nav-sidebar="tv" href="/tv"><i class="icon-tv"></i> Shows</a></body>', () => {
+    assert.match(common.libraryEntriesHtml(), /<a href="\/tv" class="sidebar-item">[^<]*<i[^>]*><\/i> Shows<\/a>/,
+      'a configured Shows library appears in the mobile Playlists sheet');
+  });
+  // ABSENT axis: no tv marker (no Shows folder configured) -> no Shows row.
+  withDom('<body><a data-nav-sidebar="music" href="/music"><i class="icon-play"></i> Music</a></body>', () => {
+    const html = common.libraryEntriesHtml();
+    assert.ok(!/ Shows<\/a>/.test(html), 'no Shows library -> no Shows row (content-gated, like every sheet entry)');
+    assert.ok(!html.includes('/tv'), 'and no /tv link leaks when Shows is unconfigured');
   });
 });
 

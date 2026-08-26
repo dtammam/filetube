@@ -194,7 +194,7 @@ test('LIBRARY PICKER: a change POSTs ONE key and repaints the live entry immedia
   await withDom(LIB_SHELL, async (dom, ctx) => {
     await setup.renderLibraryGlyphEditor();
     await flush();
-    const sel = dom.window.document.querySelectorAll('#library-glyph-editor select')[3]; // Podcasts
+    const sel = dom.window.document.querySelectorAll('#library-glyph-editor select')[4]; // Podcasts (Shows slots in at [3] as of v1.195.1)
     sel.value = 'radio';
     sel.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
     await flush();

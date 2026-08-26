@@ -10561,6 +10561,12 @@ function libraryEntriesHtml() {
     if (document.querySelector('[data-nav-sidebar="books"]')) {
       html += '<a href="/books" class="sidebar-item"><i class="' + mirroredGlyph('books', 'icon-books') + '"></i> Books</a>';
     }
+    // v1.195.1: Shows mirrors its content-gated sidebar marker the same way, so
+    // the mobile Playlists sheet lists it (it was reachable only from the desktop
+    // sidebar before - a real mobile gap). Slots after Books, before Podcasts.
+    if (document.querySelector('[data-nav-sidebar="tv"]')) {
+      html += '<a href="/tv" class="sidebar-item"><i class="' + mirroredGlyph('tv', 'icon-tv') + '"></i> Shows</a>';
+    }
     // v1.69: Podcasts mirrors its capability marker the same way.
     if (document.querySelector('[data-nav-sidebar="podcasts"]')) {
       html += '<a href="/podcasts" class="sidebar-item"><i class="' + mirroredGlyph('podcasts', 'icon-podcast') + '"></i> Podcasts</a>';
