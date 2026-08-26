@@ -893,6 +893,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // resolveWatchMediaId's own comment above).
     const urlParams = new URLSearchParams(window.location.search);
     const mediaId = resolveWatchMediaId(window.location.search);
+    // v1.196: a TV episode (?tv=<id>) drives the shared player via a dedicated
+    // path (initTvWatch, a hoisted sibling defined below). It MUST be checked
+    // before the !mediaId bail - a tv load has no /api/videos media id - and it
+    // runs none of the video-only hydration below (the hard invariant).
+    const tvEpisodeId = urlParams.get('tv');
+    if (tvEpisodeId) { initTvWatch(tvEpisodeId); return; }
     // v1.36.2 (Dean): the LAUNCH-CONTEXT param -- which list the user was
     // browsing when they opened this video. Only 'liked' is recognized
     // today (an unknown/absent value degrades to the folder-scoped
@@ -3727,7 +3733,86 @@ if (typeof module !== 'undefined' && module.exports) {
         .replace(/'/g, '&#039;');
     }
 
-    // Run start
+    // ---- v1.196: the TV episode path (?tv=<episodeId>) ----------------------
+    // A dedicated load that reuses the shared player host + loop/autoplay + the
+    // track-nav seam, and runs NONE of the video-only /api/videos hydration above
+    // (a tv episode id is not in db.metadata). The player streams + polls the tv
+    // routes through the descriptor's streamSrc/statusUrl (Phase A2), so a ?tv=
+    // load NEVER issues an /api/videos or /video request (the hard invariant,
+    // bound behaviourally in the integration test). All four helpers are init-level
+    // siblings, so they share this closure's consts (root/playerSlot/mediaTitle/signal).
+    function hideTvVideoChrome() {
+      // A TV episode has no channel/description/comments/related and no
+      // video-management actions - every one of those chrome blocks assumes a
+      // db.metadata id + /api/videos routes. Hide via style.display (an [hidden]
+      // attribute loses to these blocks' own display rules - the standing lesson).
+      ['.watch-action-bar', '.uploader-info-panel', '.description-container',
+        '#comments-container', '#related-header', '#related-files-container'].forEach(function (sel) {
+        var el = root.querySelector(sel);
+        if (el) el.style.display = 'none';
+      });
+    }
+    function renderTvBackLink(showId, showName) {
+      if (!mediaTitle || !mediaTitle.parentNode || root.querySelector('.tv-back-to-show')) return;
+      var back = document.createElement('a');
+      back.className = 'tv-back-to-show';
+      back.href = '/tv?show=' + encodeURIComponent(showId || '');
+      back.textContent = '← ' + (showName || 'All shows');
+      back.addEventListener('click', function (e) {
+        if (window.FileTube && typeof window.FileTube.navigate === 'function') {
+          e.preventDefault();
+          window.FileTube.navigate('/tv?show=' + encodeURIComponent(showId || ''));
+        }
+      });
+      mediaTitle.parentNode.insertBefore(back, mediaTitle);
+    }
+    async function setupTvTrackNav(episodeId, showId) {
+      // Prev/Next + autoplay-next walk the WHOLE show in (season, episode) order
+      // (Dean: binge order, crossing seasons). Registered on the SAME setTrackNav
+      // seam the video path uses, so the player buttons, media keys, the lock
+      // screen, and autoplay-at-end all navigate through one source.
+      try {
+        var res = await fetch('/api/tv/' + encodeURIComponent(showId), { signal: signal, headers: { Accept: 'application/json' } });
+        if (!res.ok || signal.aborted) return;
+        var detail = await res.json();
+        var orderedIds = [];
+        (detail.seasons || []).forEach(function (s) {
+          (s.episodes || []).forEach(function (ep) { if (ep && ep.id) orderedIds.push(ep.id); });
+        });
+        var nb = computeNeighbors(orderedIds, episodeId);
+        if (signal.aborted) return;
+        if (window.FileTube.player && typeof window.FileTube.player.setTrackNav === 'function' && (nb.prevId || nb.nextId)) {
+          window.FileTube.player.setTrackNav({
+            onPrev: nb.prevId ? function () { window.FileTube.navigate('/watch.html?tv=' + encodeURIComponent(nb.prevId)); } : undefined,
+            onNext: nb.nextId ? function () { window.FileTube.navigate('/watch.html?tv=' + encodeURIComponent(nb.nextId)); } : undefined,
+          });
+        }
+      } catch (e) { if (!signal.aborted) console.error('Error building episode prev/next:', e); }
+    }
+    async function initTvWatch(episodeId) {
+      revealActionBar();     // drop the action-row shimmer (the row itself is then hidden)
+      hideTvVideoChrome();
+      try {
+        var res = await fetch('/api/tv/episode/' + encodeURIComponent(episodeId), { signal: signal, headers: { Accept: 'application/json' } });
+        if (!res.ok) { showFatalViewError(root); return; }
+        var ep = await res.json();
+        if (signal.aborted) return;
+        if (mediaTitle) { mediaTitle.textContent = ep.title || 'Episode'; mediaTitle.classList.remove('skeleton-shimmer', 'skel-title'); }
+        renderTvBackLink(ep.showId, ep.showName);
+        // The descriptor carries the tv source fields (streamSrc/statusUrl/artUrl);
+        // channelName = the show name (drives #media metadata + the lock screen).
+        var descriptor = Object.assign({}, ep, { channelName: ep.showName });
+        var mounted = window.FileTube.player.load(episodeId, descriptor, { slot: playerSlot });
+        if (!mounted) { showFatalViewError(root); return; }
+        setupLoopToggle();       // source-agnostic (Dean item 5: loop stays)
+        setupAutoplayToggle();   // source-agnostic (autoplay stays)
+        setupTvTrackNav(episodeId, ep.showId);
+      } catch (e) {
+        if (!signal.aborted) { console.error('Error loading episode:', e); showFatalViewError(root); }
+      }
+    }
+
+    // Run start (the ?tv= branch returned early up in init; this is the video path)
     initWatch();
   }
 

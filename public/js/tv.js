@@ -118,33 +118,23 @@ if (typeof document !== 'undefined') {
       }).catch(function (e) { if (e.name !== 'AbortError') setStatus('Could not load that show.'); });
     }
 
-    function playEpisode(id) {
-      var content = el('tv-content');
-      if (!content) return;
-      var existing = document.getElementById('tv-player');
-      if (existing) existing.remove();
-      var wrap = document.createElement('div');
-      wrap.className = 'tv-player-wrap';
-      wrap.id = 'tv-player';
-      var v = document.createElement('video');
-      v.className = 'tv-player-video';
-      v.setAttribute('controls', '');
-      v.setAttribute('playsinline', '');
-      v.setAttribute('autoplay', '');
-      v.src = '/tvepisode/' + encodeURIComponent(id);
-      v.addEventListener('error', function () {
-        setStatus('This episode needs converting for the browser - try again in a moment.');
-      });
-      wrap.appendChild(v);
-      content.insertBefore(wrap, content.firstChild);
-      wrap.scrollIntoView({ block: 'start' });
+    // v1.196: an episode opens the FULL watch page (the shared player - mini-player,
+    // prev/next, autoplay, loop, resume, title) via ?tv=<id>, instead of a bespoke
+    // inline <video>. The browse/selection UI here is unchanged; only the playback
+    // leaf moved. Back from the watch page returns to this show via /tv?show=.
+    function openEpisode(id) {
+      if (window.FileTube && typeof window.FileTube.navigate === 'function') {
+        window.FileTube.navigate('/watch.html?tv=' + encodeURIComponent(id));
+      } else {
+        window.location.href = '/watch.html?tv=' + encodeURIComponent(id);
+      }
     }
 
     function onClick(e) {
       var card = e.target.closest && e.target.closest('.show-card');
       if (card && card.getAttribute('data-show-id')) { openShow(card.getAttribute('data-show-id')); return; }
       var row = e.target.closest && e.target.closest('.tv-episode-row');
-      if (row && row.getAttribute('data-episode-id')) { playEpisode(row.getAttribute('data-episode-id')); return; }
+      if (row && row.getAttribute('data-episode-id')) { openEpisode(row.getAttribute('data-episode-id')); return; }
       if (e.target.closest && e.target.closest('#tv-back')) { renderGrid(); return; }
     }
 
@@ -161,7 +151,13 @@ if (typeof document !== 'undefined') {
       if (root) root.addEventListener('click', onClick);
       var scan = el('tv-scan-btn');
       if (scan) scan.addEventListener('click', onScanClick);
-      renderGrid();
+      // v1.196: /tv?show=<showId> deep-opens a show - the destination the watch
+      // page's "← show" back link returns to, so Back from an episode lands on
+      // the show detail, not the grid.
+      var showId = null;
+      try { showId = new URLSearchParams(window.location.search).get('show'); } catch (_) { showId = null; }
+      if (showId) openShow(showId);
+      else renderGrid();
     }
 
     function destroy() {
