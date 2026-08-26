@@ -43,6 +43,19 @@ test('the server serves the tv shell (route + FOUC map + shell set)', () => {
   assert.match(SERVER, /if \(p === '\/tv' \|\| p === '\/tv\.html'\) return 'tv\.html';/, 'the shell-name map resolves /tv');
 });
 
+test('Settings has the Shows-folders builder wired to /api/tv/config (mirrors the music box)', () => {
+  const SETUP_HTML = fs.readFileSync(path.join(__dirname, '../../public/setup.html'), 'utf8');
+  const SETUP_JS = fs.readFileSync(path.join(__dirname, '../../public/js/setup.js'), 'utf8');
+  assert.match(SETUP_HTML, /data-collapse-key="tv-folders"[^>]*data-md-group="Library"/, 'a Library-group Shows box');
+  for (const id of ['tv-folders-builder-list', 'new-tv-folder-path', 'add-tv-folder-btn', 'save-tv-config-btn', 'scan-tv-btn']) {
+    assert.ok(SETUP_HTML.includes('id="' + id + '"'), id + ' present');
+  }
+  assert.match(SETUP_JS, /fetch\('\/api\/tv\/config', \{\s*method: 'POST'/, 'save posts the Shows folders');
+  assert.match(SETUP_JS, /async function loadTvConfig\(\)/);
+  assert.match(SETUP_JS, /wireTvFolderControls\(controller\.signal\);/, 'wired at init');
+  assert.match(SETUP_JS, /loadTvConfig\(\);/, 'loaded at init');
+});
+
 test('the tv shell loads tv.js under a data-view="tv" root, and the tv icon has a mask', () => {
   assert.match(TV_HTML, /data-view="tv"/);
   assert.match(TV_HTML, /<script src="\/js\/tv\.js"><\/script>/);

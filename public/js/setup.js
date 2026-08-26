@@ -30,6 +30,8 @@ let loadedDefaultView = null; // null until the /api/settings fetch resolves
 let bookFolders = [];
 // v1.44: music folders — same unordered-set shape as book folders.
 let musicFolders = [];
+// v1.195: TV Shows folders — same unordered-set shape.
+let tvFolders = [];
 let controller = null;
 // C4 remediation (v1.16.0): tracks pollScanStatus's one-shot post-scan
 // redirect timer so destroy() can clear it outright (belt-and-suspenders on
@@ -1772,6 +1774,124 @@ function wireMusicFolderControls(signal) {
   }
 }
 
+// v1.195 TV Shows: the folder-builder, mirroring the music one verbatim.
+function renderTvFolders() {
+  const container = document.getElementById('tv-folders-builder-list');
+  if (!container) return;
+  container.innerHTML = '';
+  if (tvFolders.length === 0) {
+    container.innerHTML = '<div class="empty-folders-msg">No Shows folders configured yet. Add one above.</div>';
+    return;
+  }
+  tvFolders.forEach((folder, index) => {
+    const row = document.createElement('div');
+    row.className = 'folder-item-row';
+    const pathWrap = document.createElement('div');
+    pathWrap.style.cssText = 'flex:1; min-width:0;';
+    const pathText = document.createElement('div');
+    pathText.className = 'folder-path-text';
+    pathText.title = folder;
+    pathText.textContent = folder;
+    pathWrap.appendChild(pathText);
+    row.appendChild(pathWrap);
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-folder-btn';
+    removeBtn.title = 'Remove folder';
+    removeBtn.textContent = '×';
+    removeBtn.addEventListener('click', () => {
+      tvFolders.splice(index, 1);
+      renderTvFolders();
+    }, { signal: controller.signal });
+    row.appendChild(removeBtn);
+    container.appendChild(row);
+  });
+}
+
+async function loadTvConfig() {
+  try {
+    const r = await fetch('/api/tv/config');
+    if (!r.ok) return; // Shows disabled / no folders -> leave the empty state
+    const data = await r.json();
+    tvFolders = Array.isArray(data.folders) ? data.folders.slice() : [];
+    renderTvFolders();
+  } catch (err) {
+    console.error('Failed to load Shows folders:', err);
+  }
+}
+
+function pollTvScanStatus() {
+  const status = document.getElementById('tv-scan-status');
+  fetch('/api/tv/scan-status')
+    .then((r) => r.json())
+    .then((s) => {
+      if (!status) return;
+      if (s && s.scanning) {
+        setActionStatus(status, 'Scanning Shows…', 'busy');
+        setTimeout(pollTvScanStatus, 1000);
+      } else {
+        setActionStatus(status, s && s.lastScan ? 'Shows scanned.' : 'Idle.');
+      }
+    })
+    .catch(() => {});
+}
+
+function wireTvFolderControls(signal) {
+  const addBtn = document.getElementById('add-tv-folder-btn');
+  const input = document.getElementById('new-tv-folder-path');
+  if (addBtn && input) {
+    const add = () => {
+      const v = input.value.trim();
+      if (!v) return;
+      if (tvFolders.includes(v)) { alert('This Shows folder is already added.'); return; }
+      tvFolders.push(v);
+      renderTvFolders();
+      input.value = '';
+    };
+    addBtn.addEventListener('click', add, { signal });
+    input.addEventListener('keypress', (e) => { if (e.key === 'Enter') add(); }, { signal });
+  }
+  const saveBtn = document.getElementById('save-tv-config-btn');
+  const status = document.getElementById('tv-scan-status');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      setActionStatus(status, 'Saving…', 'busy');
+      try {
+        const r = await fetch('/api/tv/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folders: tvFolders }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (r.ok) {
+          tvFolders = Array.isArray(data.folders) ? data.folders.slice() : tvFolders;
+          renderTvFolders();
+          setActionStatus(status, 'Saved — scanning Shows…', 'busy');
+          pollTvScanStatus();
+        } else {
+          setActionStatus(status, (data && data.error) || 'Could not save Shows folders.', 'error');
+        }
+      } catch (err) {
+        setActionStatus(status, 'Could not save Shows folders.', 'error');
+        console.error('Save Shows folders failed:', err);
+      }
+    }, { signal });
+  }
+  const scanBtn = document.getElementById('scan-tv-btn');
+  if (scanBtn) {
+    scanBtn.addEventListener('click', async () => {
+      setButtonBusy(scanBtn, true);
+      try {
+        await fetch('/api/tv/scan', { method: 'POST' });
+        pollTvScanStatus();
+      } catch (err) {
+        console.error('Shows scan failed to start:', err);
+      } finally {
+        setButtonBusy(scanBtn, false);
+      }
+    }, { signal });
+  }
+}
+
 function wireStaticControls(signal) {
   const addFolderBtn = document.getElementById('add-folder-btn');
   const newFolderPathInput = document.getElementById('new-folder-path');
@@ -3215,6 +3335,7 @@ function init(root) {
   wireStaticControls(controller.signal);
   wireBookFolderControls(controller.signal); // v1.38.0 Part A
   wireMusicFolderControls(controller.signal); // v1.44 music
+  wireTvFolderControls(controller.signal); // v1.195 TV Shows
   renderThemePicker();
   renderIconPicker();
   wireHideStarsControl(controller.signal); // v1.63.1: the fake-stars toggle
@@ -3251,6 +3372,7 @@ function init(root) {
   loadConfig();
   loadBookConfig(); // v1.38.0 Part A: populate the book-folders list
   loadMusicConfig(); // v1.44: populate the music-folders list
+  loadTvConfig(); // v1.195: populate the Shows-folders list
 }
 
 function destroy() {
