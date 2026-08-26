@@ -7765,10 +7765,16 @@ function planCritterScatter(opts) {
     // Reject any placement whose box intersects an ALREADY-ACCEPTED critter's
     // box (skip, never nudge - the house doctrine, same as every guard above).
     // Buttons are drawn first (weight 3), so the ambush spots win the overlap.
-    // Bare boxes, NOT the padded wrappers: the pad is transparent headroom, so
-    // two pads touching is not a visible collision. `critterRectsIntersect` is
-    // strict (<, >), so merely-tangent boxes are allowed - only real overlap is
-    // dropped. Density self-limits on dense/narrow feeds (Dean's chosen trade).
+    // Checked on the UNROTATED bare boxes (the `size x size` footprint), not the
+    // padded wrappers - the ~30% pad is rotation headroom and mostly transparent.
+    // `critterRectsIntersect` is strict (<, >), so merely-tangent boxes are
+    // allowed - only real bare-box overlap is dropped. SCOPE (gate, adversarial
+    // seat): this is bare-box-exact, not rendered-POSE-exact - a pose tilted up
+    // to +-38deg has an axis-aligned extent ~1.4x its box, so two near-tangent
+    // critters can still graze at the rotated corners (~13% of scatters, corner
+    // art usually transparent). That kills Dean's fully-overlapping tower (the
+    // reported bug) but not every last corner kiss - tracked as tech-debt #175.
+    // Density self-limits on dense/narrow feeds (Dean's chosen strict trade).
     if (placements.some(function (q) {
       return critterRectsIntersect(rect, { x: q.x, y: q.y, w: q.w, h: q.h });
     })) continue;
