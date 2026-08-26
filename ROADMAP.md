@@ -80,6 +80,36 @@
 
 ## Shipped
 
+### v1.195.1 - fix: Shows now appears in the mobile Playlists sheet + has an icon picker (2026-08-26)
+
+Dean (device): on mobile, Shows didn't appear in the Playlists sheet, and - unlike
+every other library - there was no way to change its icon.
+
+Root cause (single): the Shows sidebar nav link WAS wired in v1.195.0
+(`injectTvNavLinkIfEnabled`), but two client ROSTERS never got a `tv` arm:
+- `libraryEntriesHtml()` builds the mobile Playlists sheet (the mobile library
+  surface - the desktop sidebar is not it), gating each entry on its
+  content-injected `[data-nav-sidebar]` marker. It had no `tv` arm, so Shows was
+  effectively unreachable on mobile. **This corrects the v1.195.0 release note's
+  claim that Shows was "reachable on mobile via the sidebar" - it was not.**
+- `LIBRARY_GLYPH_SLOTS` (the roster the icon picker + glyph repainter iterate, and
+  which the server settings allowlist `MIRRORED_SETTING_KEYS` spreads from) omitted
+  `tv`, so there was no Shows row in the picker and its glyph was never assignable.
+
+Both now include Shows, slotted after Books / before Podcasts to match the sidebar
+anchor ladder. The icon SAVE works with no server change - the allowlist spreads
+from the same roster, so `glyphTv` became writable automatically. Bound with a
+both-axes test (Shows lists IFF a Shows library is configured) + the sheet-mirror
+and roster-driven picker/repaint tests. Slim adversarial gate APPROVE (three
+mutants confirm real binding; `glyphTv` round-trips 200). Dual-Node 7623/0.
+
+Known gap carried forward (disclosed, out of this fix's scope): whole-library
+Shows RESTRICTIONS are not yet creatable - `VALID_LIBRARY_VALUES` omits `'tv'` and
+the setup RBAC UI has no Shows checkbox, so in blocklist mode a restricted user
+sees all Shows unless each root is blocked by path. To be fixed in the next TV
+wave under its full gate (it is access-control). The mobile bottom-nav CUSTOMIZER
+"Shows" entry also remains deferred (Shows now reachable via the Playlists sheet).
+
 ### v1.195.0 - feat: Shows / TV as a first-class media type (browse + playback + setup) (2026-08-26)
 
 A new **Shows** library, first-class alongside Videos / Music / Books / Podcasts.

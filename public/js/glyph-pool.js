@@ -125,6 +125,10 @@ const LIBRARY_GLYPH_SLOTS = [
   { key: 'glyphDownloads', nav: 'downloads', name: 'Downloads', fallback: 'icon-downloads' },
   { key: 'glyphMusic', nav: 'music', name: 'Music', fallback: 'icon-play' },
   { key: 'glyphBooks', nav: 'books', name: 'Books', fallback: 'icon-books' },
+  // v1.195.1: Shows (the tv library) joins the assignable Library slots, in the
+  // SAME position it holds in the sidebar anchor ladder (after Books, before
+  // Podcasts) so every Library surface reads one order.
+  { key: 'glyphTv', nav: 'tv', name: 'Shows', fallback: 'icon-tv' },
   { key: 'glyphPodcasts', nav: 'podcasts', name: 'Podcasts', fallback: 'icon-podcast' },
   { key: 'glyphHistory', nav: 'history', name: 'History', fallback: 'icon-history' },
 ];
