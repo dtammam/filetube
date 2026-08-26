@@ -7495,6 +7495,16 @@ var CRITTER_STORAGE_RANDOMSOUND = 'ft-critters:randomsound';
 // unscaled and still hard-skips a placement. scale 1 == byte-identical to v1.186.
 var CRITTER_SIZE_SCALES = { tiny: 0.5, normal: 1, large: 2, xlarge: 3 };
 var CRITTER_STORAGE_SIZE = 'ft-critters:size';
+// v1.193 (Dean): EXPERIMENTAL opt-in "let critters overlap a little" (the "light
+// kiss"). Default OFF = the v1.192 STRICT no-overlap rule (a placement is dropped
+// if its box touches any accepted critter's box at all). ON relaxes that to an
+// AREA budget: a placement is dropped only if it would cover MORE than this
+// fraction of the smaller box's area, so a light graze survives but a real stack
+// (Dean's tower) still does not. 0.25 = "~1/4 of a box", the amount Dean signed
+// off on; tune here. OFF passes overlapAllow 0, which is byte-identical to strict
+// (any positive-area overlap is rejected, tangent boxes still allowed).
+var CRITTER_STORAGE_KISS = 'ft-critters:kiss';
+var CRITTER_KISS_FRACTION = 0.25;
 // v1.188 (Dean): an UPSCALED bottom-family critter only hangs upside-down when
 // its anchor covers at least "most" (>= half) of its box - below this, the body
 // is too visible for the flip to read as a peek and it just looks flipped over.
@@ -7563,6 +7573,9 @@ function resolveCritterConfig(read) {
   // shape every critter pref uses, so a corrupt value can never surprise Dean).
   var rawSize = get(CRITTER_STORAGE_SIZE);
   var size = Object.prototype.hasOwnProperty.call(CRITTER_SIZE_SCALES, rawSize) ? rawSize : 'normal';
+  // v1.193 (Dean): the "light kiss" experimental pref. Default OFF -> overlapAllow
+  // 0 -> byte-identical to the v1.192 strict rule. ON -> a small area budget.
+  var allowOverlap = get(CRITTER_STORAGE_KISS) === '1';
   return {
     enabled: enabled,
     density: density,
@@ -7570,6 +7583,8 @@ function resolveCritterConfig(read) {
     randomSound: randomSound,
     size: size,
     sizeScale: CRITTER_SIZE_SCALES[size],
+    allowOverlap: allowOverlap, // the UI checkbox state
+    overlapAllow: allowOverlap ? CRITTER_KISS_FRACTION : 0, // the engine's area budget
   };
 }
 
@@ -7586,6 +7601,20 @@ var CRITTER_BUILTINS = [
 
 function critterRectsIntersect(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+// v1.193 (Dean's "light kiss" experimental pref): the inter-critter drop test,
+// parameterised by an AREA budget. `allow` is the fraction of the SMALLER box's
+// area two critters may share; returns true when they exceed it (-> drop the
+// later one). allow 0 (the default / strict setting) rejects ANY positive-area
+// overlap - byte-identical to the old `critterRectsIntersect` gate, since a
+// tangent (zero-area) touch is not an overlap here either. Used ONLY for
+// critter-vs-critter; exclusions/anchor checks still use critterRectsIntersect.
+function critterOverlapExceeds(a, b, allow) {
+  var ix = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  var iy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  if (ix <= 0 || iy <= 0) return false; // apart or merely tangent
+  return ix * iy > (allow || 0) * Math.min(a.w * a.h, b.w * b.h);
 }
 
 // PURE: rects in -> placements out. `rng` is injectable for deterministic tests.
@@ -7629,6 +7658,9 @@ function planCritterScatter(opts) {
   // the cross-axis proportion allowance below. Default 1 = byte-identical to
   // v1.186 (every existing direct-call test passes no sizeScale).
   var sizeScale = (opts && opts.sizeScale) || 1;
+  // v1.193 (Dean): the inter-critter overlap AREA budget - 0 (default/strict) drops
+  // any positive-area overlap; the "light kiss" pref passes CRITTER_KISS_FRACTION.
+  var overlapAllow = (opts && opts.overlapAllow) || 0;
   // The v1.170 26px floor, scaled. The 8px clamp never binds for the four shipped
   // rungs (tiny's floor is 13); it only guards a hypothetical future scale < 0.31.
   var sizeFloor = Math.max(8, Math.round(26 * sizeScale));
@@ -7767,16 +7799,19 @@ function planCritterScatter(opts) {
     // Buttons are drawn first (weight 3), so the ambush spots win the overlap.
     // Checked on the UNROTATED bare boxes (the `size x size` footprint), not the
     // padded wrappers - the ~30% pad is rotation headroom and mostly transparent.
-    // `critterRectsIntersect` is strict (<, >), so merely-tangent boxes are
-    // allowed - only real bare-box overlap is dropped. SCOPE (gate, adversarial
+    // `critterOverlapExceeds` at allow 0 is strict (its tangent guard mirrors
+    // `critterRectsIntersect`'s `<,>`), so merely-tangent boxes are allowed -
+    // only real bare-box overlap is dropped. SCOPE (gate, adversarial
     // seat): this is bare-box-exact, not rendered-POSE-exact - a pose tilted up
     // to +-38deg has an axis-aligned extent ~1.4x its box, so two near-tangent
     // critters can still graze at the rotated corners (~13% of scatters, corner
     // art usually transparent). That kills Dean's fully-overlapping tower (the
     // reported bug) but not every last corner kiss - tracked as tech-debt #175.
     // Density self-limits on dense/narrow feeds (Dean's chosen strict trade).
+    // v1.193: `overlapAllow` relaxes this from strict to an AREA budget when the
+    // "light kiss" pref is on (0 = strict = byte-identical to v1.192).
     if (placements.some(function (q) {
-      return critterRectsIntersect(rect, { x: q.x, y: q.y, w: q.w, h: q.h });
+      return critterOverlapExceeds(rect, { x: q.x, y: q.y, w: q.w, h: q.h }, overlapAllow);
     })) continue;
     // v1.170 (Dean: "looks like critter feet behind an element" - his own
     // suggested fix): a BOTTOM-family peek (edge or corner) rotates the pose
@@ -8402,6 +8437,7 @@ function scatterCritters() {
       manifest: manifest,
       count: cfgNow.count,
       sizeScale: cfgNow.sizeScale, // v1.187 (Dean): tiny/normal/large/xlarge
+      overlapAllow: cfgNow.overlapAllow, // v1.193 (Dean): 0 strict, or the "light kiss" budget
       bounds: { w: docEl.scrollWidth, h: docEl.scrollHeight }, // never grow the page (gate W4)
       // v1.180 (Dean's right-edge amputation screenshot): the SCREEN edge is
       // its own boundary - scrollWidth can exceed it when anything overflows,
@@ -8506,6 +8542,9 @@ function refindCritterAnchor(p, claimed) {
 
 function reglueCritterPlacements() {
   if (typeof document === 'undefined' || !document.body) return;
+  // v1.193 (Dean): honour the "light kiss" pref on the drift path too, so a
+  // re-glue respects the SAME overlap budget the last scatter used (0 = strict).
+  var overlapAllow = resolveCritterConfig().overlapAllow;
   var exclusions = collectCritterRects(CRITTER_EXCLUSION_SELECTORS, false);
   var docEl = document.documentElement;
   var bounds = { w: docEl.scrollWidth, h: docEl.scrollHeight };
@@ -8561,7 +8600,7 @@ function reglueCritterPlacements() {
     var stacks = false;
     for (var s = 0; s < survivors.length; s += 1) {
       var q = survivors[s];
-      if (critterRectsIntersect(rect, { x: q.x, y: q.y, w: q.w, h: q.h })) { stacks = true; break; }
+      if (critterOverlapExceeds(rect, { x: q.x, y: q.y, w: q.w, h: q.h }, overlapAllow)) { stacks = true; break; }
     }
     if (stacks) continue;
     survivors.push(p);
@@ -14701,6 +14740,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.187: critter size choice + the pure rect-overlap helper (so the
     // invariant tests can assert exclusion clearance directly).
     CRITTER_SIZE_SCALES, CRITTER_STORAGE_SIZE, critterRectsIntersect,
+    // v1.193: the "light kiss" experimental overlap pref + its area-budget helper.
+    CRITTER_STORAGE_KISS, CRITTER_KISS_FRACTION, critterOverlapExceeds,
     buildCritterShaveMask,
     probeCritterVoices,
     getCritterLastChirpReason,
