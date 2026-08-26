@@ -840,7 +840,7 @@ test('v1.166.4/v1.173: every scatter arms a bounded settle ladder (1.5s then 4s)
   const nudge = COMMON.slice(COMMON.indexOf('function wireCritterContentNudge'), COMMON.indexOf('function unwireCritterContentNudge'));
   assert.match(nudge, /if \(action === 'rescatter-empty'\) scatterCritters\(\);\n\s*else reglueCritterPlacements\(\);/,
     'the nudge maps identically: empty scatters, drift re-glues');
-  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter()'), COMMON.indexOf('\nfunction wireCritterListeners'));
+  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter('), COMMON.indexOf('\nfunction wireCritterListeners'));
   assert.match(sched, /critterSettleChecks = 0;/, 'every scheduled scatter (a navigation) re-arms the ladder');
   assert.match(sched, /if \(critterRetryTimer\) \{ clearTimeout\(critterRetryTimer\); critterRetryTimer = null; \}/,
     'a new navigation CANCELS the previous view\'s pending check (the stale-timer race, demonstrated by the gate)');
@@ -1000,6 +1000,117 @@ test('SOURCE: v1.188 the tap is SWALLOWED - capture phase + stopPropagation + pr
 test('the exclusion list covers the WHOLE backdrop family via a suffix net (never one-of-N enumeration)', () => {
   assert.ok(CRITTER_EXCLUSION_SELECTORS.indexOf('[class*="-backdrop"]') !== -1,
     'one suffix selector covers all present AND future modal/sheet backdrops');
+});
+
+// ---- v1.194: rotate-away-then-back PERSISTENCE (Dean) -----------------------
+// The bug: a phone rotation swaps width<->height, tripping the width-gated resize
+// handler, which re-rolled from scratch (Math.random) EVERY flip - so rotating
+// away and back scrambled the critters. The fix remembers each layout under its
+// viewport width and RESTORES it on the return trip instead of re-rolling. Driven
+// end-to-end through the REAL width-keyed cache (rememberCritterPlacements writer +
+// restoreCritterLayoutForWidth reader + scheduleCritterScatter's clear/preserve).
+
+// A render-safe placement carrying an anchorEl for the isConnected restore-guard.
+function critterPlacementFor(id, anchorEl, x, y) {
+  return {
+    id: id, x: x, y: y, w: 44, h: 44, angle: 0, flip: 1, hue: 0,
+    cover: { t: 0 }, anchor: { x: 0, y: 0, w: 200, h: 12 },
+    anchorEl: anchorEl, img: null, svg: null,
+  };
+}
+
+test('v1.194 rotate-away-then-back RESTORES the same layout (never a Math.random re-roll)', () => {
+  const {
+    rememberCritterPlacements, restoreCritterLayoutForWidth, scheduleCritterScatter,
+  } = require('../../public/js/common.js');
+  const dom = new JSDOM('<!DOCTYPE html><body><div class="app-container"><div class="main-content"></div></div></body>', { url: 'http://localhost/' });
+  const prevWin = global.window; const prevDoc = global.document; const prevLS = global.localStorage;
+  global.window = dom.window; global.document = dom.window.document; global.localStorage = dom.window.localStorage;
+  const setW = (w) => Object.defineProperty(dom.window, 'innerWidth', { value: w, configurable: true });
+  try {
+    dom.window.localStorage.setItem('ft-critters:on', '1');
+    const doc = dom.window.document;
+    const main = doc.querySelector('.main-content');
+    const anchorP = doc.createElement('div'); anchorP.className = 'btn'; main.appendChild(anchorP);
+    const anchorL = doc.createElement('div'); anchorL.className = 'btn'; main.appendChild(anchorL);
+
+    // Portrait (390): the first scatter records this layout under width 390.
+    setW(390);
+    rememberCritterPlacements([critterPlacementFor('port', anchorP, 12, 300)]);
+
+    // Rotate to landscape (844): the return trip's width is a MISS - a fresh
+    // scatter runs (here: remembered) and preserveCache keeps the portrait entry.
+    setW(844);
+    assert.strictEqual(restoreCritterLayoutForWidth(844), false, 'a never-seen orientation misses the cache -> fresh scatter');
+    rememberCritterPlacements([critterPlacementFor('land', anchorL, 500, 40)]);
+
+    // Rotate BACK to portrait (390): restore the EXACT portrait critter, not a
+    // re-roll. The bug would have re-scattered to fresh random spots here.
+    setW(390);
+    assert.strictEqual(restoreCritterLayoutForWidth(390), true, 'the returning width restores its remembered layout');
+    let layer = doc.getElementById('critter-layer');
+    let kids = layer.querySelectorAll('.critter');
+    assert.strictEqual(kids.length, 1, 'exactly the portrait layout is restored');
+    assert.strictEqual(kids[0].getAttribute('data-critter-id'), 'port',
+      'the PORTRAIT critter returns (a re-roll would place a random id, and never at these coords)');
+    assert.ok(kids[0].classList.contains('critter-still'),
+      'a restore renders STILL - no arrival fade replay for an unmoved critter');
+    const pad = Math.round(44 * 0.3);
+    assert.strictEqual(kids[0].style.left, (12 - pad) + 'px', 'restored at the ORIGINAL x (byte-identical, not re-randomized)');
+    assert.strictEqual(kids[0].style.top, (300 - pad) + 'px', 'restored at the ORIGINAL y');
+
+    // And landscape still round-trips the other way.
+    setW(844);
+    assert.strictEqual(restoreCritterLayoutForWidth(844), true, 'landscape restores too');
+    assert.strictEqual(doc.getElementById('critter-layer').querySelector('.critter').getAttribute('data-critter-id'), 'land');
+
+    // GUARD 1 (self-invalidation): a cached layout whose anchor left the DOM is
+    // NOT trusted - it falls back to a fresh scatter (a cross-view survivor).
+    main.removeChild(anchorL);
+    assert.strictEqual(restoreCritterLayoutForWidth(844), false,
+      'a detached anchor invalidates its cached layout (the stale-coords guard)');
+    main.appendChild(anchorL); // restore for the remaining assertions
+
+    // GUARD 2 (mode off): no restore when critters are disabled.
+    dom.window.localStorage.setItem('ft-critters:on', '0');
+    assert.strictEqual(restoreCritterLayoutForWidth(390), false, 'disabled mode never restores');
+    dom.window.localStorage.setItem('ft-critters:on', '1');
+
+    // GUARD 3 (preserve vs clear): the resize handler passes preserveCache -> the
+    // cache SURVIVES a rescatter of a new orientation; a navigation (no arg) WIPES
+    // it. Mode is toggled OFF around each scheduleCritterScatter purely so the
+    // enabled-gated quiet-wait never arms a timer - the clear runs BEFORE that gate.
+    assert.strictEqual(restoreCritterLayoutForWidth(390), true, 'precondition: 390 is cached');
+    dom.window.localStorage.setItem('ft-critters:on', '0');
+    scheduleCritterScatter(true); // preserveCache: a new orientation, same view
+    dom.window.localStorage.setItem('ft-critters:on', '1');
+    assert.strictEqual(restoreCritterLayoutForWidth(390), true, 'preserveCache KEEPS the remembered layouts (rotate-back still works)');
+
+    dom.window.localStorage.setItem('ft-critters:on', '0');
+    scheduleCritterScatter(); // navigation: clears the cache
+    dom.window.localStorage.setItem('ft-critters:on', '1');
+    assert.strictEqual(restoreCritterLayoutForWidth(390), false, 'a navigation CLEARS the remembered layouts (new furniture)');
+  } finally {
+    global.window = prevWin; global.document = prevDoc; global.localStorage = prevLS;
+    if (global.window === undefined) delete global.window;
+    if (global.document === undefined) delete global.document;
+    if (global.localStorage === undefined) delete global.localStorage;
+    dom.window.close();
+  }
+});
+
+test('SOURCE: the width-gated resize handler tries a RESTORE before scattering, and scatters with preserveCache', () => {
+  const start = COMMON.indexOf('function wireCritterListeners()');
+  const body = COMMON.slice(start, COMMON.indexOf('\nfunction applyCritterMode', start));
+  const resize = body.slice(body.indexOf("addEventListener('resize'"));
+  assert.match(resize, /if \(restoreCritterLayoutForWidth\(window\.innerWidth\)\) return;/,
+    'a width change restores a remembered layout before falling through to a scatter');
+  assert.match(resize, /scheduleCritterScatter\(true\);/,
+    'the resize-driven scatter PRESERVES the cache (preserveCache) so the return trip can restore');
+  // The clear is gated on !preserveCache so navigation/settings still wipe it.
+  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter'), COMMON.indexOf('\n  critterSettleChecks = 0'));
+  assert.match(sched, /if \(!preserveCache\) critterLayoutCache = \{\};/,
+    'scheduleCritterScatter wipes the cache on every call EXCEPT the preserveCache resize path');
 });
 
 test('gate QA-S7 (behavioural TOCTOU): toggling OFF while the manifest fetch is in flight renders NOTHING', async () => {
@@ -1479,7 +1590,7 @@ test('v1.175 nudge discipline (source locks): shares the ladder budget, cancels 
   // Gate S2: anchored past the `un` prefix - the bare substring was vacuously
   // satisfied by unwireCritterContentNudge() in the disabled branch.
   assert.match(scatter, /\n {2}wireCritterContentNudge\(\);/, 'mode on wires it (the enabled path\'s own call)');
-  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter()'), COMMON.indexOf('\nfunction wireCritterListeners'));
+  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter('), COMMON.indexOf('\nfunction wireCritterListeners'));
   assert.match(sched, /if \(critterNudgeDebounce\) \{ clearTimeout\(critterNudgeDebounce\); critterNudgeDebounce = null; \}/,
     'gate S1: a navigation cancels the pending nudge debounce along with every other handle');
 });
@@ -2412,7 +2523,7 @@ test('v1.182 E (source locks): the wait phase - cap value, doc-guarded observer,
   assert.match(COMMON, /var CRITTER_REVEAL_CAP_MS = 2500;/, 'the reveal cap is 2.5s (Dean\'s ruling)');
   assert.match(COMMON, /var CRITTER_QUIET_MS = 300;/, 'the quiet debounce is a settled beat');
   assert.match(COMMON, /var CRITTER_LOADING_SELECTORS = \['\.skeleton-card', '\.skeleton-shimmer'\];/, 'the loading markers cover the feed card AND the universal skeleton-shimmer (v1.186.1: the watch related sidebar)');
-  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter()'), COMMON.indexOf('\nfunction wireCritterListeners'));
+  const sched = COMMON.slice(COMMON.indexOf('function scheduleCritterScatter('), COMMON.indexOf('\nfunction wireCritterListeners'));
   assert.match(sched, /disconnectCritterWait\(\);/, 'a navigation cancels the wait phase (observer + quiet + cap) - the unstashed-handle class');
   // gate CRITICAL: the previous view's persistent nudge observer is disconnected
   // on every navigation so it cannot re-scatter onto the new view's skeletons.

@@ -728,6 +728,14 @@ html {
   /* v1.160.1 (Dean): no horizontal rubber-band on the left-edge swipe-back drag
      (the swipe handler also preventDefaults it, this is belt-and-suspenders). */
   overscroll-behavior-x: none;
+  /* v1.194 (Dean): PIN iOS text auto-sizing to 100% (no font-boosting). Without
+     this, Safari inflates the computed px of "text blocks" whenever it re-runs its
+     autosizing pass against a changed layout width -- e.g. exiting fullscreen
+     reflows the page (header/bottom-nav un-hide, overflow restores) and iOS boosts
+     the #handoff-card "Playing on X" text until an in-app nav rebuilds the card.
+     100% = the default measure, so this only DISABLES the boost, never scales down. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {

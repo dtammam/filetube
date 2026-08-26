@@ -7999,6 +7999,17 @@ function pickCritterRandomSound(rng) {
 // DOM half. Renderer is jsdom-testable (placements injected); the measuring
 // collectors are layout-dependent (device pass + source locks - disclosed).
 var critterPlacements = [];
+// v1.194 (Dean: "rotate the phone and back, keep the critters where they were"):
+// remembered layouts keyed by VIEWPORT WIDTH for the current view. A phone
+// rotation swaps width<->height and trips the width-gated resize handler, which
+// used to re-roll from scratch (Math.random, no seed) EVERY flip - so rotating
+// away and back scrambled positions. Now each scatter/re-glue records its layout
+// under the current width; rotating BACK to a width we've laid out RESTORES that
+// exact set instead of re-rolling. Per-view: navigation and settings-change clear
+// it (scheduleCritterScatter, unless preserveCache), and a cross-view entry that
+// somehow survives self-invalidates because its anchorEls leave the DOM (the
+// restore path re-checks isConnected before trusting a cached layout).
+var critterLayoutCache = {};
 var critterManifestPromise = null;
 // v1.185 (Dean): with the "random sound each tap" pref ON, a critter WITHOUT its
 // own same-named sound plays a random pick from the whole pool per tap (variety);
@@ -8403,6 +8414,38 @@ function collectCritterRects(selectors, requireSize) {
   return rects;
 }
 
+// v1.194: the SOLE writer of critterPlacements for a REAL placement (scatter and
+// re-glue both funnel here). It also records the layout in critterLayoutCache under
+// the live viewport width so a rotate-away-then-back can restore it. Re-glue hands
+// us a NEW survivors array each pass, so keying by width (not stashing a stale
+// reference) keeps the cache pointing at the latest layout for this orientation.
+function rememberCritterPlacements(placements) {
+  critterPlacements = placements;
+  if (typeof window !== 'undefined') {
+    critterLayoutCache[window.innerWidth || 0] = placements;
+  }
+}
+
+// v1.194: on a width change, if we've already laid this exact width out for the
+// current view, restore that set verbatim instead of re-rolling. Guarded on the
+// anchors still being in the DOM (a cached layout's absolute doc-coords are only
+// valid while the furniture it measured is present - a cross-view survivor fails
+// here and falls back to a fresh scatter). Renders STILL (still=true) so a restore
+// never replays the arrival fade. Returns true when it restored.
+function restoreCritterLayoutForWidth(w) {
+  if (typeof document === 'undefined' || !document.body) return false;
+  if (!resolveCritterConfig().enabled) return false;
+  var cached = critterLayoutCache[w];
+  if (!cached || !cached.length) return false;
+  for (var i = 0; i < cached.length; i += 1) {
+    var el = cached[i].anchorEl;
+    if (el && !document.body.contains(el)) return false; // furniture gone: re-scatter
+  }
+  critterPlacements = cached;
+  renderCritterPlacements(ensureCritterLayer(), cached, true);
+  return true;
+}
+
 function scatterCritters() {
   if (typeof document === 'undefined' || !document.body) return;
   // v1.182: a direct scatter (the reveal, the settle ladder, the Settings
@@ -8444,7 +8487,7 @@ function scatterCritters() {
       // which let side peeks poke past the viewport and get guillotined.
       viewportW: window.innerWidth || 0,
     });
-    critterPlacements = placements;
+    rememberCritterPlacements(placements); // v1.194: keep this layout for a rotate-back restore
     renderCritterPlacements(ensureCritterLayer(), placements);
     // Measured AFTER render (gate S1): the pad-inflated wrappers can overflow
     // the W4-checked placement rects by up to ~26px at the page bottom, and
@@ -8605,7 +8648,7 @@ function reglueCritterPlacements() {
     if (stacks) continue;
     survivors.push(p);
   }
-  critterPlacements = survivors;
+  rememberCritterPlacements(survivors); // v1.194: re-glue updates the remembered layout for this width
   renderCritterPlacements(ensureCritterLayer(), survivors, true);
   critterPlacedDocH = docEl.scrollHeight;
   armCritterSettleCheck();
@@ -8826,8 +8869,13 @@ function setCritterSoundPoolForTest(pool) {
 // view's critters, then (mode ON) WAITS for the view to settle before the first
 // and only placement (v1.182); mode OFF clears immediately. Never re-scatters
 // mid-view otherwise (Dean: fresh per navigation, still while you read).
-function scheduleCritterScatter() {
+function scheduleCritterScatter(preserveCache) {
   if (typeof window === 'undefined') return;
+  // v1.194: a navigation or settings-change INVALIDATES every remembered layout
+  // (new furniture, or a new density/size/kiss). The lone exception is the
+  // width-gated resize handler (a new orientation of the SAME view), which passes
+  // preserveCache so a later rotate-back can still restore an earlier orientation.
+  if (!preserveCache) critterLayoutCache = {};
   critterSettleChecks = 0; // a fresh navigation re-arms the settle ladder
   // ...and CANCELS any stale pending retry from the previous view - an unstashed
   // handle is uncancellable by construction (gate WARNING; the v1.163 class).
@@ -8971,7 +9019,13 @@ function wireCritterListeners() {
   window.addEventListener('resize', function () {
     if (window.innerWidth === lastCritterViewportW) return;
     lastCritterViewportW = window.innerWidth;
-    scheduleCritterScatter();
+    // v1.194 (Dean): a rotation swaps width<->height and lands on a width we may
+    // already have laid out (the orientation you came FROM). Restore that exact
+    // layout - no re-roll - so rotating away and back keeps the critters put. A
+    // genuinely new orientation misses the cache and scatters fresh, but WITHOUT
+    // clearing the cache (preserveCache) so the return trip can still be restored.
+    if (restoreCritterLayoutForWidth(window.innerWidth)) return;
+    scheduleCritterScatter(true);
   });
 }
 
@@ -14731,6 +14785,9 @@ if (typeof module !== 'undefined' && module.exports) {
     critterSettleAction,
     warmCritterAssets,
     reglueCritterPlacements,
+    // v1.194: rotate-away-then-back persistence - the width-keyed layout cache's
+    // writer + restore, exported so the round-trip is driven behaviourally (PNB).
+    rememberCritterPlacements, restoreCritterLayoutForWidth,
     // v1.182 settle-before-reveal: the wait phase (driven end-to-end in tests).
     scheduleCritterScatter, critterPageLoading, disconnectCritterWait, revealCritterScatter,
     setCritterTimingForTest,
