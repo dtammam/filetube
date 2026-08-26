@@ -88,6 +88,9 @@ const musicStore = require('./lib/music/store');
 const homeFeed = require('./lib/home/feed'); // v1.79: pure home-feed row assembler
 const musicScan = require('./lib/music/scan');
 const musicQuery = require('./lib/music/query');
+// v1.195 TV Shows (UI "Shows"): feature-owned db.tv namespace + pure scan/parse.
+const tvStore = require('./lib/tv/store');
+const tvScan = require('./lib/tv/scan');
 // v1.38.0 TTS "Listen from Here": pure leaf helpers (env-config parse, engine
 // argv builders, chapter chunker). Same direct-require posture as the store.
 const booksTtsConfig = require('./lib/books/tts-config');
@@ -151,6 +154,10 @@ const BOOKCOVER_DIR = path.join(DATA_DIR, '.bookcovers');
 // the ONLY writer that unlinks here, and only when an album's LAST track is
 // pruned; no cross-module unlink can ever touch it.
 const ALBUMART_DIR = path.join(DATA_DIR, '.albumart');
+// v1.195 TV Shows: per-episode thumbnail cache (<episodeId>.jpg), an ffmpeg frame
+// grab like the video library's storyboard - one file per episode. The tv scan's
+// prune is the only writer that unlinks here.
+const TV_THUMB_DIR = path.join(DATA_DIR, '.tvthumbs');
 // v1.38.0 TTS: per-chapter synthesized audio cache (<key>.m4a + <key>.blocks.json),
 // a sibling of the thumbnail/cover caches. Created on demand by the worker.
 const TTS_CACHE_DIR = path.join(DATA_DIR, 'tts-cache');
@@ -5516,6 +5523,8 @@ function armScanTimer() {
       scanBooks().catch(console.error);
       // v1.44 music: same piggyback slot; a music-less install no-ops.
       scanMusic().catch(console.error);
+      // v1.195 TV Shows: same piggyback slot; a Shows-less install no-ops.
+      scanTv().catch(console.error);
       // v1.65: trash retention sweep, same piggyback slot (no second timer).
       sweepTrash().catch(console.error);
     }, ms).unref();
@@ -8344,6 +8353,160 @@ app.get('/albumart/:id', (req, res) => {
   res.set('Cache-Control', 'private, max-age=3600'); // v1.123 T4: keep the axis uniform behind the auth wall
   res.send(musicArtPlaceholderSvg(track));
 });
+
+// ---- TV Shows library (v1.195) ----------------------------------------------
+//
+// A first-class media type (UI "Shows") over a Plex-shaped folder tree
+// <root>/<Show>/<Season N|Specials>/<Show SxxEyy - Title>. The db.tv namespace is
+// feature-owned by lib/tv/store.js (the persist-gate discipline); the pure walk +
+// parse + grouping live in lib/tv/{scan,parse}.js. Episodes ARE video files and
+// stream/transcode through the EXISTING video pipeline (a later phase) - only the
+// browse/organization layer is new. Everything degrades to a no-op on a Shows-less
+// install (zero folders + zero episodes = zero scans = zero db writes).
+
+let tvScanState = { scanning: false, lastScan: null, rescanRequested: false };
+let deferredTvRescanTimer = null;
+function currentTvScanState() { return tvScanState; }
+
+// The injected ffprobe probe (server-side spawn; lib/tv/scan.js stays CI-testable
+// by never spawning itself). Yields duration (episode length + the thumbnail
+// timestamp), the video codec, and the container. Degrade-safe: null on
+// ffmpeg-unavailable or any parse error (the episode still indexes by filename).
+function probeTvEpisode(filePath) {
+  return new Promise((resolve) => {
+    if (!ffmpegAvailable) { resolve(null); return; }
+    execFile('ffprobe', buildFfprobeArgs(filePath), { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+      if (err || !stdout) { resolve(null); return; }
+      let parsed;
+      try { parsed = JSON.parse(stdout); } catch (_) { resolve(null); return; }
+      let streams = {};
+      try { streams = parseFfprobeStreams(parsed); } catch (_) { streams = {}; }
+      let durationSec = 0;
+      const d = parsed && parsed.format && Number(parsed.format.duration);
+      if (Number.isFinite(d) && d > 0) durationSec = d;
+      const container = (parsed && parsed.format && typeof parsed.format.format_name === 'string') ? parsed.format.format_name : null;
+      resolve({ durationSec, codec: streams.videoCodec || null, container });
+    });
+  });
+}
+
+function tvThumbPath(id) { return path.join(TV_THUMB_DIR, `${id}.jpg`); }
+function tvThumbExists(id) { return fs.existsSync(tvThumbPath(id)); }
+
+// One ffmpeg frame grab per episode (the video-library storyboard posture: a
+// single -vframes 1 at a modest offset, atomic tmp+rename). Best-effort - a
+// failed grab just leaves the episode with the generated-poster fallback.
+function extractTvThumb(job) {
+  return new Promise((resolve) => {
+    if (!ffmpegAvailable) { resolve(false); return; }
+    const src = job && job.filePath;
+    const id = job && job.id;
+    if (!src || !id || !fs.existsSync(src)) { resolve(false); return; }
+    const outPath = tvThumbPath(id);
+    if (fs.existsSync(outPath)) { resolve(true); return; }
+    try { fs.mkdirSync(TV_THUMB_DIR, { recursive: true }); } catch (_) { /* best-effort */ }
+    const tmpPath = `${outPath}.tmp.jpg`;
+    const ts = (Number.isFinite(job.durationSec) && job.durationSec > 20) ? Math.min(60, Math.round(job.durationSec * 0.1)) : 5;
+    execFile('ffmpeg', ['-ss', String(ts), '-i', src, '-vframes', '1', '-q:v', '2', '-y', tmpPath], (err) => {
+      if (err) { try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ } resolve(false); return; }
+      try { fs.renameSync(tmpPath, outPath); resolve(true); }
+      catch (_) { try { fs.unlinkSync(tmpPath); } catch (_2) { /* best-effort */ } resolve(false); }
+    });
+  });
+}
+
+async function runTvScan() {
+  const db = loadDatabase();
+  const ns = tvStore.ensureTv(db);
+  const folders = ns.folders.slice();
+  if (folders.length === 0 && Object.keys(ns.episodes).length === 0) return; // Shows-less: total no-op
+  const { episodes, survivingIds, missingRoots, erroredDirs } = await tvScan.collectEpisodes(
+    folders, ns.episodes, { getId: getMediaId, getShowId: getMediaId, probe: probeTvEpisode });
+  for (const root of missingRoots) {
+    console.warn(`tv: configured folder is missing/unmounted -- nothing under it will be pruned: ${root}`);
+  }
+
+  const pruneMissing = !!(db.settings && db.settings.pruneMissing);
+  const prunedIds = [];
+  let finalEpisodes = episodes;
+  await updateDatabase((fresh) => {
+    const freshNs = tvStore.ensureTv(fresh);
+    // The music/books Option-C mount-loss guard: a root that still EXISTS but
+    // yielded ZERO files this pass while the library previously had episodes under
+    // it is the unmounted-share signature -- treat as VANISHED (prune nothing).
+    const effectiveMissingRoots = new Set(missingRoots);
+    for (const root of folders) {
+      if (effectiveMissingRoots.has(root)) continue;
+      const hadEpisodes = Object.values(freshNs.episodes).some((e) => e && e.rootFolder === root);
+      const hasSurvivors = Object.values(episodes).some((e) => e && e.rootFolder === root);
+      if (hadEpisodes && !hasSurvivors) {
+        effectiveMissingRoots.add(root);
+        console.warn(`tv: root ${root} exists but scanned EMPTY while the library has episodes under it -- treating as unmounted, pruning nothing beneath it`);
+      }
+    }
+    const prunable = new Set(tvStore.selectPrunableEpisodeIds(freshNs.episodes, survivingIds, { missingRoots: effectiveMissingRoots, pruneMissing, erroredDirs }));
+    const next = {};
+    for (const [id, e] of Object.entries(episodes)) next[id] = e;
+    for (const [id, e] of Object.entries(freshNs.episodes)) {
+      if (next[id]) continue;
+      if (prunable.has(id)) { prunedIds.push(id); continue; }
+      next[id] = e; // non-surviving but protected (mount-loss / pruneMissing off)
+    }
+    freshNs.episodes = next;
+    finalEpisodes = next;
+    return true;
+  });
+
+  // Per-user episode state is episode-id-keyed -- pruned episodes shed
+  // progress/played/liked (post-commit, the removeMusicState posture).
+  if (prunedIds.length > 0) {
+    try { userStore.removeTvEpisodeState(prunedIds); }
+    catch (err) { console.error('tv: failed to prune per-user episode state (continuing):', err && err.message); }
+  }
+
+  // Per-episode thumbnails for surviving episodes that still lack one (best-effort).
+  try {
+    for (const job of tvScan.selectThumbJobs(finalEpisodes, tvThumbExists)) {
+      const ep = finalEpisodes[job.id];
+      await extractTvThumb({ id: job.id, filePath: job.filePath, durationSec: ep && ep.durationSec });
+    }
+  } catch (err) {
+    console.error('tv: thumbnail extraction pass failed (continuing):', err && err.message);
+  }
+
+  // A pruned episode's cached thumbnail is regenerable, but shed it now so a
+  // re-added same-path file doesn't serve a stale frame.
+  for (const id of prunedIds) {
+    try { fs.unlinkSync(tvThumbPath(id)); } catch (_) { /* best-effort / absent */ }
+  }
+}
+
+// Overlap/coalescing guard -- the scanMusic discipline verbatim.
+async function scanTv() {
+  if (tvScanState.scanning) { tvScanState.rescanRequested = true; return; }
+  tvScanState.scanning = true;
+  try {
+    let followups = 0;
+    do {
+      tvScanState.rescanRequested = false;
+      await runTvScan();
+      followups++;
+    } while (tvScanState.rescanRequested && followups <= MAX_RESCAN_FOLLOWUPS);
+  } catch (err) {
+    console.error('tv: scan failed:', err);
+  } finally {
+    const stillPending = tvScanState.rescanRequested;
+    tvScanState.scanning = false;
+    tvScanState.lastScan = new Date().toISOString();
+    if (stillPending && !deferredTvRescanTimer) {
+      deferredTvRescanTimer = setTimeout(() => {
+        deferredTvRescanTimer = null;
+        scanTv().catch(console.error);
+      }, 5000);
+      deferredTvRescanTimer.unref();
+    }
+  }
+}
 
 // ---- v1.32: replaceable header logo ("white-label") -------------------------
 //
@@ -17392,6 +17555,8 @@ if (require.main === module) {
         scanBooks().catch(console.error);
         // v1.44 music: same deferred boot slot; music-less = pure no-op.
         scanMusic().catch(console.error);
+        // v1.195 TV Shows: same deferred boot slot; Shows-less = pure no-op.
+        scanTv().catch(console.error);
       });
     });
   })();
@@ -17464,6 +17629,13 @@ module.exports = {
   ALBUMART_DIR,
   albumArtExists,
   musicCodecNeedsTranscode,
+  // v1.195 TV Shows: scanner + state + probe/thumb helpers (same export posture as
+  // scanMusic; probeTvEpisode/extractTvThumb are ffmpeg spawns, injected/absent in CI).
+  scanTv,
+  runTvScan,
+  currentTvScanState,
+  TV_THUMB_DIR,
+  probeTvEpisode,
   flushPendingMusicProgress,
   currentMusicProgressFlushTimer,
   effectiveMusicProgress,
