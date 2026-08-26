@@ -7745,7 +7745,18 @@ function planCritterScatter(opts) {
     // let negative-x peeks "clip off-page"): a critter may never CROSS the
     // viewport's left or right edge - horizontal off-screen always reads as
     // an amputation. Vertical crossing stays legal (pages scroll that way).
-    if (viewportW && (x < 0 || x + size > viewportW)) continue;
+    // v1.192 (Dean's mobile horizontal-scroll screenshot): the guard must clear
+    // the RENDER PAD too. renderCritterPlacements inflates the wrapper by
+    // pad = round(w*0.3) on EVERY side (rotation headroom); that pad is
+    // transparent but still counts for scrollWidth, so an edge-flush critter's
+    // padded box poked past the viewport - and because html{overflow-x:clip} is
+    // the app's ONLY horizontal clamp and iOS Safari honours root-propagated
+    // clip weakly, that surfaced as a horizontal scrollbar on Dean's phone.
+    // Clamp the PADDED extent [x-pad, x+size+pad] inside [0, viewportW]. The pad
+    // MUST match the renderer's exactly (round(size*0.3)). Horizontal only: a
+    // vertical pad overflow just extends the page's legal scroll axis.
+    var edgePad = Math.round(size * 0.3);
+    if (viewportW && (x - edgePad < 0 || x + size + edgePad > viewportW)) continue;
     // v1.170 (Dean: "looks like critter feet behind an element" - his own
     // suggested fix): a BOTTOM-family peek (edge or corner) rotates the pose
     // 180deg so the HEAD pops out below the ledge - hanging upside-down reads
@@ -8516,8 +8527,12 @@ function reglueCritterPlacements() {
     if (bounds.w && (p.x + p.w > bounds.w || p.y + p.h > bounds.h)) continue; // gate W4 still holds
     // v1.180: a drift/adoption slide may never carry a critter across the
     // screen edge either - same invariant as placement time.
+    // v1.192: pad-aware, exactly like the planner - the rendered wrapper is
+    // inflated by round(w*0.3) each side, so an edge-flush re-glued critter's
+    // transparent pad would poke past the viewport and scroll the page sideways.
     var vw = (typeof window !== 'undefined' && window.innerWidth) || 0;
-    if (vw && (p.x < 0 || p.x + p.w > vw)) continue;
+    var rpad = Math.round(p.w * 0.3);
+    if (vw && (p.x - rpad < 0 || p.x + p.w + rpad > vw)) continue;
     survivors.push(p);
   }
   critterPlacements = survivors;

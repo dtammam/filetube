@@ -283,6 +283,37 @@ test('gate W4: with document bounds, no placement grows the page (right/bottom e
   }
 });
 
+test('v1.192 screen-edge is PAD-AWARE: the rendered wrapper (round(w*0.3) each side) never crosses the viewport (Dean\'s mobile horizontal scroll)', () => {
+  // The renderer inflates the wrapper by pad = round(w*0.3) on every side; that
+  // transparent headroom still counts for scrollWidth. The OLD guard clamped
+  // only the bare box, so an edge-hugging critter's pad poked past the viewport
+  // and scrolled the page sideways on iOS (html{overflow-x:clip} is the only
+  // horizontal clamp and Safari honours root-propagated clip weakly).
+  // A right-edge anchor drives side/corner peeks toward the screen edge.
+  const VW = 400;
+  const bounds = { w: 4000, h: 5000 }; // loose - only the viewport edge binds here
+  const rightCard = { x: 285, y: 600, w: 100, h: 200 };
+  let placed = 0;
+  let nearEdge = 0; // survivors whose BARE box lands in the last `pad` px band (the old rule allowed these)
+  for (let seed = 1; seed <= 300; seed += 1) {
+    const out = planCritterScatter({
+      anchors: [rightCard], exclusions: [], manifest: MANIFEST_8, count: 1,
+      rng: seededRng(seed), bounds, viewportW: VW,
+    });
+    for (const p of out) {
+      placed += 1;
+      const pad = Math.round(p.w * 0.3);
+      // THE contract: the PADDED wrapper stays within [0, VW]. Mutant (revert to
+      // the bare-box guard) leaves survivors whose pad pokes past VW -> reds.
+      assert.ok(p.x - pad >= 0, `seed ${seed}: left pad crosses the viewport (x=${p.x}, pad=${pad})`);
+      assert.ok(p.x + p.w + pad <= VW, `seed ${seed}: right pad crosses the viewport (x+w=${p.x + p.w}, pad=${pad}, vw=${VW})`);
+      if (p.x + p.w > VW - pad) nearEdge += 1;
+    }
+  }
+  assert.ok(placed > 0, 'the fixture actually places critters near the right edge (non-vacuous)');
+  assert.strictEqual(nearEdge, 0, 'no survivor leaves its bare box inside the pad band (proves the guard is pad-aware, not the old bare check)');
+});
+
 test('v1.168 go-harder: corners join the edge pool, peek depth varies, flips split ~50/50, and CSS carries the flip everywhere', () => {
   // Distribution sweep (seeded): flips near half; exposure never outside the
   // 30-65% band on plain edges (corners expose 25-50% per axis).
