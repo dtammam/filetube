@@ -167,6 +167,22 @@ test('v1.186.1 the ambient stacking context lives on the STAGE, never on #player
   assert.match(dropBlock, /z-index:\s*auto;/, 'both selectors drop to z-index:auto');
 });
 
+test('v1.194.3: the ambient stage clips X on MOBILE (kills the scaled-glow sideways-scroll)', () => {
+  // The .ambient-glow is scale()'d >1, so its box overflows the viewport
+  // horizontally on a phone and iOS's weak root overflow-x:clip lets the page
+  // scroll sideways. A mobile-scoped `.watch-player-stage { overflow-x: clip }`
+  // clamps it (overflow-y stays visible -> vertical bloom preserved; desktop
+  // untouched -> the v1.188 sidebar bleed survives). Deleting it reds this.
+  const mq = /@media \(max-width:\s*768px\)\s*\{[\s\S]*?\.watch-player-stage\s*\{[^}]*overflow-x:\s*clip[^}]*\}/;
+  assert.match(STYLE_CSS, mq,
+    'a mobile @media block must clip the watch stage horizontally (removing it re-opens the iOS ambient sideways-scroll)');
+  // It must be X-only (never overflow:hidden / overflow-y) so the vertical glow
+  // bloom above/below the player survives on mobile.
+  const stageMobile = /@media \(max-width:\s*768px\)\s*\{\s*\.watch-player-stage\s*\{([^}]*)\}/.exec(STYLE_CSS);
+  if (stageMobile) assert.doesNotMatch(stageMobile[1], /overflow-y|overflow:\s*hidden/,
+    'the mobile clip is overflow-x ONLY - clamping Y would crop the vertical ambient bloom');
+});
+
 test('v1.186.1 theatre toggle re-scatters critters for the new layout (exposed hook + call)', () => {
   assert.match(COMMON_JS, /window\.FileTube\.scheduleCritterScatter = scheduleCritterScatter;/,
     'common.js exposes the scatter hook for in-view layout changes');
