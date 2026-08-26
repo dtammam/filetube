@@ -80,6 +80,36 @@
 
 ## Shipped
 
+### v1.193.0 - critters: experimental "let critters overlap a little" (light kiss) (2026-08-26)
+
+Dean's follow-up to v1.192: with STRICT no-overlap he noticed noticeably fewer
+critters on mobile at the Obscene density (the strict rule drops the most where
+anchors are packed tight, which he accepted) - "let's do light kiss and make
+that an experimental setting".
+
+New per-device pref `ft-critters:kiss` - a Settings -> Critters checkbox
+**"Let critters overlap a little (experimental)", default OFF**. The inter-critter
+drop test became an AREA budget via a shared `critterOverlapExceeds(a, b, allow)`
+used by BOTH the planner and the re-glue drift path. OFF passes `overlapAllow 0`,
+which is byte-identical to the v1.192 strict rule (any positive-area overlap
+dropped; tangent still allowed). ON passes `CRITTER_KISS_FRACTION` (0.25): a pair
+may share up to a quarter of the SMALLER box's area, so light grazes survive
+(more critters in tight spots) but a real stack never does. It changes placement,
+so toggling re-scatters live like density/size.
+
+**Gate:** full two-reviewer, both APPROVE after one fix round. QA proved the OFF
+path byte-identical with a 200k-pair sweep; the adversarial seat with a 5M-pair
+sweep (0 mismatches) + 0 guard violations across 19,717 kiss placements (worst
+realized overlap capped at exactly 0.25 - no tower). Adversarial WARNING (fixed):
+the checkbox's reflect-on-load was test-UNBOUND (presence-not-binding, the sibling
+randomSound had its assertion, kiss didn't) - added the source-match assertion,
+mutation-verified red. Comment/copy polish: the planner comment named the old gate
+function; the setup copy's "no stack" was pairwise not global.
+**Known residual:** tech-debt #177 - the kiss budget is PAIRWISE, so a light N-way
+corner cluster (measured depth 3, each pair <=0.25, every critter still 75%+
+visible) is reachable at Obscene; opt-in experimental, no heavy stack. Dual-Node
+green (Node 22 + 24 both 7568 pass, 0 fail). Dean's on-device pass PENDING.
+
 ### v1.192.0 - critters: no overlap, fully opaque, no mobile sideways-scroll (2026-08-26)
 
 Three Dean bug reports, one wave.

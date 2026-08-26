@@ -2206,5 +2206,11 @@
     "date": "2026-08-26",
     "title": "Critters: no more overlapping, fully solid, and no sideways scroll",
     "intent": "Three fixes for the critters. They no longer pile up on top of each other - when several would land in the same spot they now keep clear of one another instead of stacking. They also render fully solid again; some had looked faintly see-through, which wasn't intended. And your phone no longer scrolls a little sideways - a critter peeking near the edge of the screen had been nudging the page just past the edge."
+  },
+  {
+    "version": "1.193.0",
+    "date": "2026-08-26",
+    "title": "Optionally let critters overlap a little",
+    "intent": "A new experimental option under Settings, Critters. Since critters stopped overlapping entirely you may see fewer of them in tight spots, especially at the busiest density on a phone. Turn on \"Let critters overlap a little\" and they'll be allowed to lightly graze each other again, so you get more of them - but they still won't pile into a heavy stack. It's off by default; flip it on if you want a fuller crowd."
   }
 ]
