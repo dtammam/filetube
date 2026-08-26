@@ -67,6 +67,7 @@ const READ = {
   '/api/library-items': 'GATED', // v1.159: visibility-scoped A/V list for the Stats table (titles/sizes)
   '/api/music': 'GATED',
   '/api/tv': 'GATED',
+  '/api/tv/episode/:id': 'GATED', // v1.196: per-episode detail/status for the shared player; 404 on restricted
   '/api/tv/:showId': 'GATED',
   '/tvposter/:showId': 'GATED',
   '/tvepisode/:id': 'GATED',

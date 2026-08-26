@@ -8702,6 +8702,46 @@ app.get('/api/tv', (req, res) => {
   res.json({ shows: tvParse.groupShows(visibleTvEpisodes(req)) });
 });
 
+// v1.196 (player integration): the per-episode DETAIL + transcode-STATUS endpoint.
+// Shaped like GET /api/videos/:id so the shared player (public/js/player.js) can
+// drive an episode through the SAME load/poll/overlay path a video uses: `type`,
+// `needsTranscode` (the codec-aware form), `transcodeStatus` (live from rendition
+// existence so the player's poll flips to 'ready'), `duration`, plus the tv-source
+// descriptor fields (`streamSrc`/`statusUrl`/`artUrl`) that keep the player OFF the
+// /api/videos + /video routes (that id is not in db.metadata). GATED: a restricted
+// or absent episode is 404 (no title/existence oracle), same as /tvepisode/:id.
+// Static segment 'episode' registered BEFORE /api/tv/:showId (route-order scar).
+app.get('/api/tv/episode/:id', (req, res) => {
+  const ns = tvStore.readTv(getCachedDatabase());
+  const ep = ownEpisode(ns.episodes, req.params.id);
+  if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
+  if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
+  const transcodes = needsTranscode(ep.ext, ep.codec, ep.audioCodec);
+  res.json({
+    id: ep.id,
+    type: 'video',
+    title: ep.title || (ep.episodeNum != null ? `Episode ${ep.episodeNum}` : (ep.showName || 'Episode')),
+    showId: ep.showId,
+    showName: ep.showName || '',
+    seasonNum: ep.seasonNum,
+    episodeNum: ep.episodeNum,
+    duration: ep.durationSec || 0,
+    durationSec: ep.durationSec || 0,
+    needsTranscode: transcodes,
+    // Live readiness so pollTranscodeUntilReady sees 'ready' the moment the
+    // TV-owned rendition lands (only meaningful when needsTranscode is true).
+    transcodeStatus: transcodes ? (fs.existsSync(tvRenditionPath(ep.id)) ? 'ready' : 'pending') : 'ready',
+    // The tv source descriptor: the player streams + polls THESE, never /video or
+    // /api/videos. streamSrc serves the raw file or the rendition (transcode-503
+    // handled by /tvepisode itself); statusUrl re-hits THIS route for the poll.
+    streamSrc: `/tvepisode/${encodeURIComponent(ep.id)}`,
+    statusUrl: `/api/tv/episode/${encodeURIComponent(ep.id)}`,
+    artUrl: `/tvposter/${encodeURIComponent(ep.showId)}`,
+    // Per-user resume position is wired in Phase B (user_tv_progress); 0 until then.
+    progress: 0,
+  });
+});
+
 app.get('/api/tv/:showId', (req, res) => {
   const eps = visibleTvEpisodes(req);
   const seasons = tvParse.groupSeasons(eps, req.params.showId);

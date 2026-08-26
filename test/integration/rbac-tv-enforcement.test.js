@@ -122,3 +122,24 @@ test('TV: a codec-incompatible .mp4 episode transcodes (503), while a compatible
   assert.strictEqual((await asAdmin('/tvepisode/hevc')).status, 503, 'hevc-in-mp4 -> transcode branch, never served raw');
   assert.strictEqual((await asAdmin('/tvepisode/ok')).status, 200, 'a codec-clean .mp4 still streams directly');
 });
+
+// v1.196 (player integration): the per-episode detail/status endpoint that lets the
+// shared player drive an episode. Player-SHAPED + visibility-gated + carries the tv
+// source descriptor (so the player never touches /api/videos or /video).
+test('TV: GET /api/tv/episode/:id is player-shaped, tv-sourced, and visibility-gated', async () => {
+  assert.strictEqual((await asMember('/api/tv/episode/blk')).status, 404, 'restricted episode -> 404 (no detail oracle)');
+
+  const d = await (await asMember('/api/tv/episode/ok')).json();
+  assert.strictEqual(d.type, 'video', 'the player treats an episode as a video source');
+  assert.strictEqual(d.title, 'Hello');
+  assert.strictEqual(d.showId, 'sh-ok');
+  assert.strictEqual(d.streamSrc, '/tvepisode/ok', 'streams the tv route, never /video/:id');
+  assert.strictEqual(d.statusUrl, '/api/tv/episode/ok', 'polls the tv detail route, never /api/videos/:id');
+  assert.strictEqual(d.artUrl, '/tvposter/sh-ok');
+  assert.strictEqual(d.needsTranscode, false, 'a codec-clean .mp4 plays direct');
+  assert.strictEqual(d.transcodeStatus, 'ready', 'not transcoding -> ready');
+
+  const h = await (await asAdmin('/api/tv/episode/hevc')).json();
+  assert.strictEqual(h.needsTranscode, true, 'hevc-in-mp4 -> codec-aware transcode');
+  assert.strictEqual(h.transcodeStatus, 'pending', 'no rendition yet -> pending (the player polls until ready)');
+});
