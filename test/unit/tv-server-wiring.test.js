@@ -28,10 +28,23 @@ test('server requires the feature-owned tv modules + exports the scanner (scanMu
 
 // ---- probe ------------------------------------------------------------------
 
-test('probeTvEpisode: ffmpeg-guarded, returns duration + video codec + container, degrade-safe', () => {
+test('probeTvEpisode: ffmpeg-guarded, returns duration + video/audio codec + container, degrade-safe', () => {
   const body = strip(SERVER.slice(SERVER.indexOf('function probeTvEpisode('), SERVER.indexOf('function tvThumbPath(')));
   assert.match(body, /if \(!ffmpegAvailable\) \{ resolve\(null\); return; \}/, 'no ffmpeg -> null (degrade-safe)');
-  assert.match(body, /resolve\(\{ durationSec, codec: streams\.videoCodec \|\| null, container \}\);/);
+  assert.match(body, /resolve\(\{ durationSec, codec: streams\.videoCodec \|\| null, audioCodec: streams\.audioCodec \|\| null, container \}\);/,
+    'audioCodec is captured too (the codec-aware transcode decision needs it)');
+});
+
+// ---- /tvepisode: codec-aware transcode + live-watch eviction guard (gate) ----
+
+test('/tvepisode: transcode decision is CODEC-aware (not ext-only), and a served rendition is protected from mid-watch eviction', () => {
+  const body = strip(SERVER.slice(SERVER.indexOf("app.get('/tvepisode/:id'"), SERVER.indexOf("app.get('/tvepisode/:id'") + 2400));
+  assert.match(body, /needsTranscode\(ep\.ext, ep\.codec, ep\.audioCodec\)/,
+    'codec-aware, mirroring the main video path - an HEVC/AC3-in-mp4 episode is NOT served raw');
+  assert.doesNotMatch(body, /needsTranscode\(ep\.ext\)/,
+    'the ext-only form (the codec-blind bug) is gone - reverting to it turns this red');
+  assert.match(body, /sendRangeable\(req, res, rendition, 'video\/mp4', \(\) => markServed\(rendition\)\)/,
+    'a cached rendition is marked live-watched so the shared transcode-cache LRU/age sweep leaves it alone mid-stream');
 });
 
 // ---- runTvScan: prune discipline (the persist-gate lessons) -----------------

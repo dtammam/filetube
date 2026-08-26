@@ -44,9 +44,19 @@ and survives context compaction.
   Register the namespace in `lib/db/sqlite.js` in the SAME commit as the store
   (the `assertNoUnknownKeys` save-guard refuses an unregistered key). This is
   exactly what kept music/books/podcasts clear of the merge bug.
-- **Reuse the video streaming + transcode path** for episode playback — episodes
-  ARE video files (incl. browser-incompatible containers like AVI). Do NOT build
-  a second transcode queue. Only the browse/organization layer is new.
+- **Reuse the video streaming + transcode MECHANISM** for episode playback —
+  episodes ARE video files (incl. browser-incompatible containers like AVI, and
+  browser-native containers carrying incompatible codecs like HEVC/AC3). Reuse
+  `sendRangeable`, the shared `TRANSCODE_DIR` cache (eviction/age-sweep, which the
+  `tv-<id>.mp4` renditions participate in), and the codec-aware `needsTranscode`.
+  **AS-BUILT DEVIATION (v1.195, gate-reconciled):** the episode serve runs a
+  small TV-OWNED single-flight transcode queue (`tvTranscodeQueue`/`tvRenditionPath`)
+  rather than the main video queue — deliberately, because the video queue records
+  readiness in `db.metadata[id].transcodeStatus`, and a TV episode id under the
+  video-metadata namespace would violate the feature-owned-namespace discipline
+  this wave exists to protect. Readiness is by rendition FILE EXISTENCE alone (no
+  db write on the hot path), so the two queues share the cache but not the
+  namespace. Only the browse/organization layer + this thin serve glue are new.
 - **Route order:** static-segment routes before `/:id` params (the Express scar).
 - **Migrations are APPEND-ONLY** — a new `SCHEMA_VERSION` block for the
   `user_tv_*` tables; never edit an executed block.

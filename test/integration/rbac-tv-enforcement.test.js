@@ -1,10 +1,13 @@
 'use strict';
 
-// [INTEGRATION] v1.195 RBAC - TV Shows enforcement. A member restricted on a path
-// prefix is 404'd on every episode-serve/detail route and omitted from the shows
-// grid + poster; the allowed show and the admin are unaffected. Every route routes
-// its decision through the SINGLE tvEpisodeVisibleTo/isBlocked point. Isolated
-// DATA_DIR; own process; cleans up.
+// [INTEGRATION] v1.195 TV Shows serve behaviour + RBAC enforcement. A member
+// restricted on a path prefix is 404'd on every episode-serve/detail route and
+// omitted from the shows grid + poster; the allowed show and the admin are
+// unaffected. Every route routes its decision through the SINGLE
+// tvEpisodeVisibleTo/isBlocked point. Also (gate additions): the live browse
+// responses flow through the real client builders (v1.184 anti-inert
+// reachability), and a codec-incompatible episode in a browser-native container
+// transcodes rather than serving raw. Isolated DATA_DIR; own process; cleans up.
 
 const os = require('node:os');
 const fs = require('node:fs');
@@ -16,6 +19,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, saveDatabase, updateDatabase, userStore, __mintTestSession } = require('../../server');
 const tvStore = require('../../lib/tv/store');
+const tvView = require('../../public/js/tv.js');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, auth, member;
@@ -23,12 +27,14 @@ const adultShow = path.join(DATA_DIR, 'adult', 'Adult Show');
 const kidsShow = path.join(DATA_DIR, 'kids', 'Kids Show');
 const blockedFile = path.join(adultShow, 'Season 1', 'Adult Show S01E01 - Pilot.mp4');
 const allowedFile = path.join(kidsShow, 'Season 1', 'Kids Show S01E01 - Hello.mp4');
+const hevcFile = path.join(kidsShow, 'Season 1', 'Kids Show S01E02 - Codec.mp4');
 
 before(async () => {
   fs.mkdirSync(path.join(adultShow, 'Season 1'), { recursive: true });
   fs.mkdirSync(path.join(kidsShow, 'Season 1'), { recursive: true });
   fs.writeFileSync(blockedFile, 'BLOCKED');
   fs.writeFileSync(allowedFile, 'ALLOWED');
+  fs.writeFileSync(hevcFile, 'HEVCBYTES');
   fs.writeFileSync(path.join(adultShow, 'poster.jpg'), 'ADULTPOSTER');
   fs.writeFileSync(path.join(kidsShow, 'poster.jpg'), 'KIDSPOSTER');
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
@@ -41,6 +47,10 @@ before(async () => {
     ns.episodes = {
       blk: { id: 'blk', filePath: blockedFile, rootFolder: path.join(DATA_DIR, 'adult'), showId: 'sh-blk', showPath: adultShow, showName: 'Adult Show', seasonNum: 1, episodeNum: 1, title: 'Pilot', ext: '.mp4', durationSec: 100, addedAt: 1 },
       ok: { id: 'ok', filePath: allowedFile, rootFolder: path.join(DATA_DIR, 'kids'), showId: 'sh-ok', showPath: kidsShow, showName: 'Kids Show', seasonNum: 1, episodeNum: 1, title: 'Hello', ext: '.mp4', durationSec: 100, addedAt: 2 },
+      // An .mp4 (browser-native CONTAINER) that carries an incompatible VIDEO
+      // codec - the common TV-rip shape. Under the kids show so it never changes
+      // the show-grouping counts the RBAC tests above assert.
+      hevc: { id: 'hevc', filePath: hevcFile, rootFolder: path.join(DATA_DIR, 'kids'), showId: 'sh-ok', showPath: kidsShow, showName: 'Kids Show', seasonNum: 1, episodeNum: 2, title: 'Codec', ext: '.mp4', codec: 'hevc', audioCodec: 'aac', durationSec: 100, addedAt: 3 },
     };
     return true;
   });
@@ -83,4 +93,32 @@ test('TV: the poster never leaks the restricted show to a member (placeholder), 
 test('TV: POST /api/tv/config is admin-only (a member is 403)', async () => {
   const r = await asMember('/api/tv/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folders: [DATA_DIR] }) });
   assert.strictEqual(r.status, 403, 'a member cannot write library config');
+});
+
+// v1.184 lesson (anti-inert): drive the REAL /api/tv + /api/tv/:showId responses
+// through the REAL client builders, so the browse/episode-list branches are proven
+// REACHABLE with the shape the server actually emits - not just that the isolated
+// builders work on a hand-authored shape.
+test('TV reachability: the live browse responses render through the real client builders', async () => {
+  const grid = await (await asAdmin('/api/tv')).json();
+  const okShow = (grid.shows || []).find((s) => s.id === 'sh-ok');
+  assert.ok(okShow, 'the live grid response carries the show the builder consumes');
+  const card = tvView.buildShowCardHtml(okShow);
+  assert.match(card, /Kids Show/, 'the grid card renders the show name from the live response');
+  assert.match(card, /data-show-id="sh-ok"/, 'the card is clickable back to the live show id');
+
+  const detail = await (await asAdmin('/api/tv/sh-ok')).json();
+  const html = tvView.buildShowDetailHtml(detail);
+  assert.match(html, /Hello/, 'the show-detail renders an episode title from the live response');
+  assert.match(html, /S01E01/, 'the SxxEyy code is reachable from the live episode fields');
+  assert.match(html, /data-episode-id="ok"/, 'the episode row is clickable back to the live episode id');
+});
+
+// The gate's blocking codec finding, bound BEHAVIOURALLY: a browser-native
+// CONTAINER (.mp4) carrying an incompatible codec (hevc) must route to the
+// transcode branch (503), not be served raw (200) - reverting the serve route to
+// the ext-only needsTranscode() turns this red.
+test('TV: a codec-incompatible .mp4 episode transcodes (503), while a compatible one streams (200)', async () => {
+  assert.strictEqual((await asAdmin('/tvepisode/hevc')).status, 503, 'hevc-in-mp4 -> transcode branch, never served raw');
+  assert.strictEqual((await asAdmin('/tvepisode/ok')).status, 200, 'a codec-clean .mp4 still streams directly');
 });

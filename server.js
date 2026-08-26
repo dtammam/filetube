@@ -8420,7 +8420,10 @@ function probeTvEpisode(filePath) {
       const d = parsed && parsed.format && Number(parsed.format.duration);
       if (Number.isFinite(d) && d > 0) durationSec = d;
       const container = (parsed && parsed.format && typeof parsed.format.format_name === 'string') ? parsed.format.format_name : null;
-      resolve({ durationSec, codec: streams.videoCodec || null, container });
+      // v1.195 (gate): audioCodec too, so the serve route's needsTranscode() can
+      // be CODEC-aware like the main video path - an HEVC-video or AC3/DTS-audio
+      // file in a browser-native container (.mp4/.mov) must still transcode.
+      resolve({ durationSec, codec: streams.videoCodec || null, audioCodec: streams.audioCodec || null, container });
     });
   });
 }
@@ -8724,8 +8727,11 @@ app.get('/tvposter/:showId', (req, res) => {
   if (eps.length > 0) {
     const poster = tvScan.findShowPoster(eps[0].showPath);
     if (poster && fs.existsSync(poster)) return res.sendFile(poster);
-    // Fallback: the earliest episode's generated thumbnail.
-    const rep = eps.slice().sort((a, b) => (a.seasonNum - b.seasonNum) || (a.episodeNum - b.episodeNum))[0];
+    // Fallback: the earliest episode's generated thumbnail. Order via groupSeasons'
+    // null-safe season/episode keys (a raw `a.seasonNum - b.seasonNum` coerces an
+    // Extras episode's null seasonNum to NaN -> a nondeterministic representative).
+    const ordered = tvParse.groupSeasons(eps, req.params.showId);
+    const rep = ordered[0] && ordered[0].episodes[0];
     if (rep) { const t = tvThumbPath(rep.id); if (fs.existsSync(t)) return res.sendFile(t); }
   }
   res.set('Content-Type', 'image/svg+xml');
@@ -8742,16 +8748,24 @@ app.get('/tvepisode/:id', (req, res) => {
   // ?download=1: the app-wide save-to-device affordance -> ORIGINAL bytes.
   if (req.query.download === '1') {
     res.setHeader('Content-Disposition', contentDispositionAttachment(ep.title || ep.showName || 'episode', ep.ext));
-    return sendRangeable(req, res, ep.filePath, contentType);
+    return sendRangeable(req, res, ep.filePath, contentType, () => markServed(ep.filePath));
   }
-  // Browser-incompatible container -> the TV-owned MP4 rendition (transcode on demand).
-  if (needsTranscode(ep.ext)) {
+  // Browser-incompatible CONTAINER *or* CODEC -> the TV-owned MP4 rendition
+  // (transcode on demand). Codec-aware, mirroring the main video serve path: an
+  // HEVC-video or AC3/DTS-audio episode in a native container (.mp4/.mov/.m4v) is
+  // the single most common TV-rip shape and would otherwise be served raw and
+  // never decode (the client would retry forever). ep.codec is the VIDEO codec.
+  if (needsTranscode(ep.ext, ep.codec, ep.audioCodec)) {
     const rendition = tvRenditionPath(ep.id);
-    if (fs.existsSync(rendition)) return sendRangeable(req, res, rendition, 'video/mp4');
+    // Serving the cached rendition? Mark it live-watched so the SHARED transcode
+    // cache's LRU/age eviction (evictTranscodeCache/sweepAgedTranscodes, which
+    // count tv-<id>.mp4 as a completed rendition) never unlinks it mid-stream -
+    // the recentlyServed race guard the main video path relies on.
+    if (fs.existsSync(rendition)) return sendRangeable(req, res, rendition, 'video/mp4', () => markServed(rendition));
     queueTvTranscode(ep.id, ep.filePath);
     return res.status(503).json({ error: 'transcoding', ext: ep.ext });
   }
-  sendRangeable(req, res, ep.filePath, contentType);
+  sendRangeable(req, res, ep.filePath, contentType, () => markServed(ep.filePath));
 });
 
 // ---- v1.32: replaceable header logo ("white-label") -------------------------
@@ -9088,7 +9102,12 @@ const BACKUP_SCHEMA = 'filetube-backup-v1';
 // v1.69: 'podcasts' rides the bundle (subscriptions/episodes/settings) but
 // feed URLS do not - they are secrets, stored OUTSIDE the db (see
 // lib/podcasts/secrets.js), so a restored sub may need its URL re-entered.
-const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'folderDisplayNames', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'trash', 'books', 'music', 'podcasts', 'ytdlp'];
+// v1.195: 'tv' rides the bundle (Shows folders/episodes/settings) - the
+// access-control-completeness net: restore wipes the doc tables wholesale and
+// repopulates ONLY from bundle keys, so an omitted 'tv' would SILENTLY erase a
+// restoring admin's entire Shows library + config (and the content-gated nav
+// link with it), exactly the data-loss books/music/podcasts already avoid here.
+const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'folderDisplayNames', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'trash', 'books', 'music', 'podcasts', 'tv', 'ytdlp'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -9284,7 +9303,7 @@ function validateBackupBundle(bundle) {
   // Container namespaces must be objects when present (delta-round
   // residual): catching a malformed shape HERE means a 400 before the wipe
   // even starts, rather than a mid-populate rollback.
-  for (const container of ['books', 'music', 'podcasts', 'ytdlp']) {
+  for (const container of ['books', 'music', 'podcasts', 'tv', 'ytdlp']) {
     if (bundle[container] !== undefined && (typeof bundle[container] !== 'object' || bundle[container] === null || Array.isArray(bundle[container]))) {
       return `bundle key '${container}' must be an object`;
     }
