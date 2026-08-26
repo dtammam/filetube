@@ -80,6 +80,30 @@
 
 ## Shipped
 
+### v1.194.2 - fix: audio rotate-to-fullscreen was trapped behind the chrome (the audio twin of the v1.186.1 fix) (2026-08-26)
+
+Dean (device): on mobile, rotating to landscape on the WATCH page fullscreens a
+VIDEO but not an AUDIO file. A PRE-EXISTING bug (since v1.186.0 - not a v1.194
+regression; Dean saw it on v1.192).
+
+Root cause (independently diagnosed, git-archaeology): v1.186.0 introduced the
+ambient `.watch-player-stage` stacking context (z-index:0), which trapped BOTH the
+video and audio fixed fullscreen overlays beneath the app chrome. v1.186.1 rescued
+VIDEO with `body.ft-css-fullscreen .watch-player-stage { z-index: auto }` but never
+wrote the AUDIO twin. So an expanded audio overlay (position:fixed; inset:0;
+z-index:var(--z-player-max) 1100, set by setAudioExpanded via body.ft-audio-expanded)
+stayed confined to the stage's root z-index 0 and painted BEHIND the header (1000) /
+dock (950) / bottom-nav (900). Watch-page-specific: only watch.html has
+`.watch-player-stage`, so music/podcasts shells were never trapped - which is exactly
+the same-page "video works, audio doesn't" contrast Dean saw.
+
+Fix: add `body.ft-audio-expanded .watch-player-stage` to the same drop rule
+(style.css). The body class is already toggled by setAudioExpanded, so NO JS change -
+a purely symmetric CSS addition. Also fixes tap-to-expand on the watch page. Slim
+adversarial gate APPROVE (both axes + the z-index value mutation-verified, no
+regression to the z-ladder); Dual-Node 7569/0. **DEVICE PASS PENDING** - the code path
+is confirmed; the visual (art covers the chrome on rotate) is Dean's device call.
+
 ### v1.194.1 - HOTFIX: revert the critter rotation-persistence (device regression); keep the text fix (2026-08-26)
 
 v1.194.0's fix #1 (critters persist across rotation) REGRESSED on Dean's device:
