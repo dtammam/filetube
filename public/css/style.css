@@ -10566,7 +10566,13 @@ html[data-modern="on"] .video-uploader {
   position: absolute;
   transform: rotate(var(--critter-angle, 0deg)) scaleX(var(--critter-flip, 1));
   filter: hue-rotate(var(--critter-hue, 0deg));
-  opacity: 0.95; /* token-exempt: decorative layer softness */
+  /* v1.192 (Dean): critters render FULLY OPAQUE. The old 0.95 "softness" made
+     transparent-PNG uploads read as faintly see-through (Dean could read the
+     feed through them) - unexpected for art he expects painted solid. Opacity
+     is left at its 1 default here; the ARRIVAL fade still ramps 0 -> 1 on the
+     wrapper (.critter), so the sneak-in is unchanged - only the resting state
+     is now solid. Built-in placeholder SVGs keep their own per-shape fill
+     opacities (baked into that line art), unaffected by this. */
   /* v1.187 the SNEAK (Dean): the pose drifts up a few px as the wrapper fades,
      so the critter rises INTO place from behind its anchor while the clip cut
      stays put (animating the WRAPPER's transform would swing the cut - v1.168).

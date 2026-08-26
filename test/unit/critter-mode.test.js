@@ -283,6 +283,66 @@ test('gate W4: with document bounds, no placement grows the page (right/bottom e
   }
 });
 
+test('v1.192 screen-edge is PAD-AWARE: the rendered wrapper (round(w*0.3) each side) never crosses the viewport (Dean\'s mobile horizontal scroll)', () => {
+  // The renderer inflates the wrapper by pad = round(w*0.3) on every side; that
+  // transparent headroom still counts for scrollWidth. The OLD guard clamped
+  // only the bare box, so an edge-hugging critter's pad poked past the viewport
+  // and scrolled the page sideways on iOS (html{overflow-x:clip} is the only
+  // horizontal clamp and Safari honours root-propagated clip weakly).
+  // A right-edge anchor drives side/corner peeks toward the screen edge.
+  const VW = 400;
+  const bounds = { w: 4000, h: 5000 }; // loose - only the viewport edge binds here
+  const rightCard = { x: 285, y: 600, w: 100, h: 200 };
+  let placed = 0;
+  let nearEdge = 0; // survivors whose BARE box lands in the last `pad` px band (the old rule allowed these)
+  for (let seed = 1; seed <= 300; seed += 1) {
+    const out = planCritterScatter({
+      anchors: [rightCard], exclusions: [], manifest: MANIFEST_8, count: 1,
+      rng: seededRng(seed), bounds, viewportW: VW,
+    });
+    for (const p of out) {
+      placed += 1;
+      const pad = Math.round(p.w * 0.3);
+      // THE contract: the PADDED wrapper stays within [0, VW]. Mutant (revert to
+      // the bare-box guard) leaves survivors whose pad pokes past VW -> reds.
+      assert.ok(p.x - pad >= 0, `seed ${seed}: left pad crosses the viewport (x=${p.x}, pad=${pad})`);
+      assert.ok(p.x + p.w + pad <= VW, `seed ${seed}: right pad crosses the viewport (x+w=${p.x + p.w}, pad=${pad}, vw=${VW})`);
+      if (p.x + p.w > VW - pad) nearEdge += 1;
+    }
+  }
+  assert.ok(placed > 0, 'the fixture actually places critters near the right edge (non-vacuous)');
+  assert.strictEqual(nearEdge, 0, 'no survivor leaves its bare box inside the pad band (proves the guard is pad-aware, not the old bare check)');
+});
+
+test('v1.192 NO-OVERLAP: critters never pile onto each other - a tight thumbnail column no longer stacks (Dean\'s related-files tower)', () => {
+  // Dean's screenshot: a vertical thumbnail column flung its peeks into one band
+  // and stacked a tower of critters. The planner now rejects any placement whose
+  // box intersects an already-accepted critter's box. Fixture: 10 thumbnails,
+  // 90px tall, 10px gaps, one column - unchecked, adjacent peeks collide
+  // constantly. No bounds/exclusions/viewportW here, so the overlap rule is the
+  // ONLY guard that can drop a placement (anchors are 300px wide, so nothing
+  // engulfs) - which is what makes `sawDrop` a proof the guard is doing work.
+  const column = Array.from({ length: 10 }, (_, i) => ({ x: 100, y: 100 + i * 100, w: 300, h: 90 }));
+  let sawMultiple = false;
+  let sawDrop = false;
+  for (let seed = 1; seed <= 200; seed += 1) {
+    const out = planCritterScatter({
+      anchors: column.map((a) => ({ ...a })), exclusions: [], manifest: MANIFEST_8, count: 8, rng: seededRng(seed),
+    });
+    if (out.length >= 2) sawMultiple = true;
+    if (out.length < 8) sawDrop = true; // 8 = min(count, manifest, anchors); below it => the overlap guard fired
+    for (let i = 0; i < out.length; i += 1) {
+      for (let j = i + 1; j < out.length; j += 1) {
+        const a = out[i]; const b = out[j];
+        const hit = a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+        assert.ok(!hit, `seed ${seed}: critters ${i} and ${j} overlap ([${a.x},${a.y},${a.w}] vs [${b.x},${b.y},${b.w}])`);
+      }
+    }
+  }
+  assert.ok(sawMultiple, 'the fixture actually places multiple critters (non-vacuous)');
+  assert.ok(sawDrop, 'the overlap guard actively dropped stackers (delete the guard -> this tight column overlaps -> the loop reds)');
+});
+
 test('v1.168 go-harder: corners join the edge pool, peek depth varies, flips split ~50/50, and CSS carries the flip everywhere', () => {
   // Distribution sweep (seeded): flips near half; exposure never outside the
   // 30-65% band on plain edges (corners expose 25-50% per axis).
@@ -1547,6 +1607,101 @@ test('v1.176 gate W closure: the re-glue DROP predicates bind - exclusion (never
     'a width:0-at-position collapse sheds its critter - the D5 hidden drop is LOAD-BEARING here, nothing subsumes it');
 });
 
+test('v1.192 reglue PAD-AWARE edge drop: a drift that carries a critter\'s PADDED wrapper past the viewport DROPS it (bare box still fits)', async (t) => {
+  // The mobile horizontal-scroll bug lives in the drift path too (it fires on
+  // every content nudge). Bind the reglue rpad clamp behaviourally: drift the
+  // anchor RIGHT until the critter's BARE right edge sits just inside the
+  // viewport (the bare guard keeps it) but its round(w*0.3) render pad pokes
+  // past (only the pad-aware guard drops it). Mutant: revert the reglue clamp
+  // to the bare `p.x + p.w > vw` -> this reds by keeping the overflowing critter.
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="view-root"><div class="video-card" id="card"></div></div></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  global.MutationObserver = dom.window.MutationObserver;
+  global.localStorage = dom.window.localStorage;
+  localStorage.setItem('ft-critters:on', '1');
+  global.window.Image = class { decode() { return Promise.resolve(); } };
+  const V = dom.window.innerWidth; // the viewport edge the guard clamps to
+  const docEl = dom.window.document.documentElement;
+  Object.defineProperty(docEl, 'scrollWidth', { value: V * 4, configurable: true }); // loose - only the viewport edge binds, never W4
+  Object.defineProperty(docEl, 'scrollHeight', { value: 2000, configurable: true });
+  const cardRect = { left: 120, top: 400, width: 300, height: 160 };
+  const proto = dom.window.Element.prototype;
+  const origRect = proto.getBoundingClientRect;
+  proto.getBoundingClientRect = function () {
+    if (this.id === 'card') return { left: cardRect.left, top: cardRect.top, width: cardRect.width, height: cardRect.height, right: cardRect.left + cardRect.width, bottom: cardRect.top + cardRect.height };
+    return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+  };
+  t.after(() => {
+    proto.getBoundingClientRect = origRect;
+    const { scatterCritters } = require('../../public/js/common.js');
+    localStorage.setItem('ft-critters:on', '0'); scatterCritters();
+    delete global.window; delete global.document; delete global.MutationObserver; delete global.localStorage;
+    dom.window.close();
+  });
+  const { scatterCritters, reglueCritterPlacements } = require('../../public/js/common.js');
+  scatterCritters();
+  await new Promise((r) => setTimeout(r, 260));
+  const wrap = dom.window.document.querySelector('.critter');
+  assert.ok(wrap, 'a critter placed on the card');
+  const L = parseInt(wrap.style.left, 10); const Wr = parseInt(wrap.style.width, 10);
+  const pad = Math.round(Wr * 0.1875); // wrapper is w + 2*round(0.3w) ~ 1.6w, so pad ~ 0.1875*wrapper
+  const px = L + pad; const pw = Wr - 2 * pad;
+  // Land the bare right edge 4px INSIDE V (comfortably kept by the bare guard,
+  // robust to +-1px pad recovery); the real pad (>=8px) then pokes past V.
+  cardRect.left += (V - pw - px - 4);
+  reglueCritterPlacements();
+  assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 0,
+    'the padded wrapper crossed the viewport -> dropped (revert the reglue rpad clamp to the bare box and this reds by keeping it)');
+});
+
+test('v1.192 reglue NO-OVERLAP: a drift that piles one critter onto another DROPS the later one (survivors never overlap)', async (t) => {
+  // Bind the reglue survivor-overlap guard behaviourally: seed two critters on
+  // two far-apart cards (no overlap), then drift card B so its critter lands
+  // exactly on card A's critter. reglue must drop one. Mutant: `if (false &&
+  // stacks)` -> this reds by keeping both stacked.
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="view-root">'
+    + '<div class="video-card" id="a"></div><div class="video-card" id="b"></div>'
+    + '</div></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  global.MutationObserver = dom.window.MutationObserver;
+  global.localStorage = dom.window.localStorage;
+  localStorage.setItem('ft-critters:on', '1');
+  global.window.Image = class { decode() { return Promise.resolve(); } };
+  const docEl = dom.window.document.documentElement;
+  Object.defineProperty(docEl, 'scrollWidth', { value: 1200, configurable: true });
+  Object.defineProperty(docEl, 'scrollHeight', { value: 2000, configurable: true });
+  const rects = { a: { x: 120, y: 150, w: 300, h: 200 }, b: { x: 120, y: 900, w: 300, h: 200 } }; // 750px apart -> both seed, no overlap
+  const proto = dom.window.Element.prototype;
+  const origRect = proto.getBoundingClientRect;
+  proto.getBoundingClientRect = function () {
+    const r = rects[this.id];
+    if (r) return { left: r.x, top: r.y, width: r.w, height: r.h, right: r.x + r.w, bottom: r.y + r.h };
+    return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+  };
+  t.after(() => {
+    proto.getBoundingClientRect = origRect;
+    const { scatterCritters } = require('../../public/js/common.js');
+    localStorage.setItem('ft-critters:on', '0'); scatterCritters();
+    delete global.window; delete global.document; delete global.MutationObserver; delete global.localStorage;
+    dom.window.close();
+  });
+  const { scatterCritters, reglueCritterPlacements } = require('../../public/js/common.js');
+  scatterCritters();
+  await new Promise((r) => setTimeout(r, 260));
+  const wraps = [...dom.window.document.querySelectorAll('.critter')];
+  assert.strictEqual(wraps.length, 2, 'both cards seeded (750px apart, no overlap)');
+  const box = (w) => { const L = parseInt(w.style.left, 10); const T = parseInt(w.style.top, 10); const Wr = parseInt(w.style.width, 10); const p = Math.round(Wr * 0.1875); return { x: L + p, y: T + p }; };
+  const ba = box(wraps.find((w) => parseInt(w.style.top, 10) < 500)); // card A's critter (top band)
+  const bb = box(wraps.find((w) => parseInt(w.style.top, 10) >= 500)); // card B's critter (bottom band)
+  // Drift B's anchor so B's critter box origin lands on A's (full overlap,
+  // robust to +-1px). reglue translates B's critter by B's anchor delta.
+  rects.b.x += (ba.x - bb.x);
+  rects.b.y += (ba.y - bb.y);
+  reglueCritterPlacements();
+  assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 1,
+    'one critter piled onto the other -> the later drops (disable the reglue overlap guard and this reds by keeping both)');
+});
+
 // ---- v1.177: the rounded shave (Dean's Modern-2021 screenshots) -------------
 
 function decodeShave(mask) {
@@ -1783,8 +1938,15 @@ test('v1.178 adoption discipline: size-mismatched cousins refused; the true twin
   // Gate W closure #2 (claimed-SEED): a still-connected survivor's anchor may
   // not be poached by an orphan. Card A stays; card B (within 240px of A) is
   // removed - B's orphan must DROP, not stack onto A.
-  view.innerHTML = '<div class="video-card" id="a3" data-rx="100" data-ry="300"></div>'
-    + '<div class="video-card" id="b3" data-rx="100" data-ry="460"></div>';
+  // v1.192: these two anchors are deliberately SMALL (80x40) and 160px apart so
+  // their two critters cannot overlap - the new no-overlap rule would otherwise
+  // drop one of two critters on close/overlapping anchors (300x200 defaults
+  // overlap at 160px apart), making this Math.random-seeded scatter flaky. Small
+  // anchors -> ~44-60px critters that clear each other by ~40px at this gap, so
+  // "2 seeded" is now deterministic; centers (140,320) & (140,480) stay 160px
+  // apart, well inside the 240px adoption window this closure needs.
+  view.innerHTML = '<div class="video-card" id="a3" data-rx="100" data-ry="300" data-rw="80" data-rh="40"></div>'
+    + '<div class="video-card" id="b3" data-rx="100" data-ry="460" data-rw="80" data-rh="40"></div>';
   scatterCritters();
   await new Promise((resolve) => setTimeout(resolve, 260));
   assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 2, 're-seeded again');
@@ -1930,6 +2092,19 @@ test('v1.175: every critter ARRIVES on a pure-opacity fade (no pop-in; no motion
   assert.ok(kf, 'the keyframes exist');
   assert.match(kf[1], /opacity/, 'it fades');
   assert.doesNotMatch(kf[1], /transform|margin|left:|top:|width|height/, 'OPACITY ONLY - zero motion, zero layout shift');
+});
+
+test('v1.192: a critter RESTS fully opaque - the pose carries no sub-1 opacity (Dean: transparent PNGs must not read see-through)', () => {
+  // The old .critter-pose { opacity: 0.95 } made uploaded art faintly
+  // see-through. It is gone; the pose sets no opacity, so it computes to the
+  // solid 1 default. Mutant guard: re-add `opacity: 0.9` to .critter-pose and
+  // this reds. Scoped to the pose's OWN declarations (comments stripped) so the
+  // arrival fade on the wrapper is not what satisfies it.
+  const pose = /\.critter-pose\s*\{([^}]*)\}/.exec(CSS);
+  assert.ok(pose, '.critter-pose rule exists');
+  const decls = pose[1].replace(/\/\*[\s\S]*?\*\//g, '');
+  const m = /opacity:\s*([0-9.]+)/.exec(decls);
+  assert.ok(!m || parseFloat(m[1]) >= 1, `the resting pose is solid (found opacity: ${m && m[1]})`);
 });
 
 test('tap reactions: a pool of tiny transform-only animations, each defined in CSS and all reduced-motion-safe', () => {
