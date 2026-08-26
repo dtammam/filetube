@@ -8008,7 +8008,7 @@ var critterPlacements = [];
 // exact set instead of re-rolling. Per-view: navigation and settings-change clear
 // it (scheduleCritterScatter, unless preserveCache), and a cross-view entry that
 // somehow survives self-invalidates because its anchorEls leave the DOM (the
-// restore path re-checks isConnected before trusting a cached layout).
+// restore path re-checks document.body.contains on each before trusting a layout).
 var critterLayoutCache = {};
 var critterManifestPromise = null;
 // v1.185 (Dean): with the "random sound each tap" pref ON, a critter WITHOUT its
@@ -8422,25 +8422,39 @@ function collectCritterRects(selectors, requireSize) {
 function rememberCritterPlacements(placements) {
   critterPlacements = placements;
   if (typeof window !== 'undefined') {
-    critterLayoutCache[window.innerWidth || 0] = placements;
+    // Stash the page height AT PLACEMENT TIME alongside the layout: a rotate-back
+    // restore uses it to reject a layout recorded against a since-reflowed page
+    // (the v1.173 drift-over-text class - adversarial W2).
+    var docH = (typeof document !== 'undefined' && document.documentElement) ? document.documentElement.scrollHeight : 0;
+    critterLayoutCache[window.innerWidth || 0] = { placements: placements, docH: docH };
   }
 }
 
 // v1.194: on a width change, if we've already laid this exact width out for the
-// current view, restore that set verbatim instead of re-rolling. Guarded on the
-// anchors still being in the DOM (a cached layout's absolute doc-coords are only
-// valid while the furniture it measured is present - a cross-view survivor fails
-// here and falls back to a fresh scatter). Renders STILL (still=true) so a restore
-// never replays the arrival fade. Returns true when it restored.
+// current view, restore that set verbatim instead of re-rolling. Three guards make
+// the restore SAFE, else it declines (returns false) and the caller scatters fresh:
+//  - the anchors it measured must still be in the DOM (a cached layout's absolute
+//    doc-coords are only valid while its furniture is present; a cross-view
+//    survivor fails here);
+//  - the page must NOT have drifted past the settle threshold since the layout was
+//    recorded (adversarial W2: rotating during the settle window can freeze a
+//    skeleton-era layout; restoring it over the since-reflowed content is the
+//    v1.173 drift-over-text bug - critterSettleAction is the SAME drift decision the
+//    settle ladder uses);
+//  - the mode must be on.
+// Renders STILL (still=true) so a restore never replays the arrival fade.
 function restoreCritterLayoutForWidth(w) {
   if (typeof document === 'undefined' || !document.body) return false;
   if (!resolveCritterConfig().enabled) return false;
-  var cached = critterLayoutCache[w];
-  if (!cached || !cached.length) return false;
+  var entry = critterLayoutCache[w];
+  if (!entry || !entry.placements || !entry.placements.length) return false;
+  var cached = entry.placements;
   for (var i = 0; i < cached.length; i += 1) {
     var el = cached[i].anchorEl;
     if (el && !document.body.contains(el)) return false; // furniture gone: re-scatter
   }
+  var curH = document.documentElement ? document.documentElement.scrollHeight : entry.docH;
+  if (critterSettleAction(cached.length, entry.docH, curH) !== 'stand-down') return false; // drifted: scatter fresh
   critterPlacements = cached;
   renderCritterPlacements(ensureCritterLayer(), cached, true);
   return true;
