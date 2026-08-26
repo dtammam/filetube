@@ -133,11 +133,11 @@ test('inImmersiveMode covers the staged shape (fullscreen element = the host\'s 
 
 // ---- every shell carries the stage (the every-shell census pattern) ---------
 
-test('all 8 shells carry #fs-stage exactly once, outside #view-root', () => {
+test('all 9 shells carry #fs-stage exactly once, outside #view-root', () => {
   const pub = path.join(__dirname, '..', '..', 'public');
   const shells = fs.readdirSync(pub).filter((f) => f.endsWith('.html'))
     .filter((f) => fs.readFileSync(path.join(pub, f), 'utf8').includes('id="player-dock"'));
-  assert.strictEqual(shells.length, 8, 'the 8 dock-carrying shells (machine-derived in the plan)');
+  assert.strictEqual(shells.length, 9, 'the dock-carrying shells (machine-derived; +tv.html in v1.195)');
   for (const f of shells) {
     const src = fs.readFileSync(path.join(pub, f), 'utf8');
     const count = (src.match(/id="fs-stage"/g) || []).length;

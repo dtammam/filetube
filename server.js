@@ -6338,11 +6338,12 @@ function dropPendingProgressForUser(userId) {
 // this is always current, needs no bootstrap, and depends on nothing
 // client-side. Only full-page loads/refreshes hit this; in-app SPA nav keeps
 // the header, so there is no FOUC there to fix.
-const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'music.html', 'podcasts.html', 'history.html', 'login.html', 'welcome.html']);
+const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'music.html', 'tv.html', 'podcasts.html', 'history.html', 'login.html', 'welcome.html']);
 function shellHtmlForRequestPath(p) {
   if (p === '/' || p === '/index.html') return 'index.html';
   if (p === '/books' || p === '/books.html') return 'books.html';
   if (p === '/music' || p === '/music.html') return 'music.html';
+  if (p === '/tv' || p === '/tv.html') return 'tv.html';
   // v1.69 gate fix (adversarial #4): without this arm the pretty /podcasts
   // route - the one every nav link uses - fell through to a bare sendFile
   // with no custom-logo injection and the wrong cache header, while only
@@ -7570,6 +7571,9 @@ app.post('/api/books/pins/reorder', (req, res) => {
 
 // The clean /books URL (express.static already serves /books.html; this
 // mirrors the ytdlp module's own /subscriptions sendFile).
+app.get('/tv', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'tv.html'));
+});
 app.get('/music', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'music.html'));
 });

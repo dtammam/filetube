@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Shows - FileTube</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="apple-touch-icon" media="(prefers-color-scheme: dark)" href="/icons/apple-touch-icon-dark.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#cc0000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="FileTube">
+  <link rel="preload" href="/fonts/geist.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/css/style.css">
+  <script>
+    /* FOUC guard -- set era+mode+icons on <html> BEFORE first paint (mirror of
+       resolveTheme()/resolveIconSet() in /js/common.js; keep in sync). Same
+       block every shell carries. */
+    (function () {
+      var d = document.documentElement;
+      try {
+        var eras = ['2005', '2009', '2014', '2021'];
+        var modes = ['light', 'dark'];
+        var e = localStorage.getItem('ft-era');
+        var m = localStorage.getItem('ft-mode');
+        var legacy = localStorage.getItem('theme');
+        var era = eras.indexOf(e) >= 0 ? e : '2021';
+        var mode = modes.indexOf(m) >= 0 ? m
+          : (e == null && m == null && (legacy === 'dark' || legacy === 'light')) ? legacy
+          : 'light';
+        d.setAttribute('data-theme', era);
+        d.setAttribute('data-mode', mode);
+        var iconSets = ['outlined', 'rounded', 'filled', 'emoji'];
+        var iconAutoMap = { '2005': 'emoji', '2009': 'emoji', '2014': 'filled', '2021': 'rounded' };
+        var storedIcons = localStorage.getItem('ft-icons');
+        var iconSet = iconSets.indexOf(storedIcons) >= 0 ? storedIcons
+          : storedIcons === 'auto' ? iconAutoMap[era]
+          : 'outlined';
+        d.setAttribute('data-icons', iconSet);
+        if (localStorage.getItem('ft-custom-logo') === '1') d.classList.add('ft-custom-logo');
+
+        /* v1.63.1 (slim gate W2): stars FOUC guard. A hidden-pref user must
+           never see the static star markup flash before common.js runs --
+           inline mirror of bootStarRatingsPref(); keep in sync. */
+        if (localStorage.getItem('ft-star-ratings') === 'hidden') d.classList.add('ft-hide-stars');
+      } catch (_) {
+        d.setAttribute('data-theme', '2021');
+        d.setAttribute('data-mode', 'light');
+        d.setAttribute('data-icons', 'outlined');
+      }
+    })();
+  </script>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <button class="menu-toggle" id="menu-toggle" aria-label="Open menu"><svg class="chrome-icon" viewBox="0 -960 960 960" aria-hidden="true"><path d="M160-240q-17 0-28.5-11.5T120-280q0-17 11.5-28.5T160-320h640q17 0 28.5 11.5T840-280q0 17-11.5 28.5T800-240H160Zm0-200q-17 0-28.5-11.5T120-480q0-17 11.5-28.5T160-520h640q17 0 28.5 11.5T840-480q0 17-11.5 28.5T800-440H160Zm0-200q-17 0-28.5-11.5T120-680q0-17 11.5-28.5T160-720h640q17 0 28.5 11.5T840-680q0 17-11.5 28.5T800-640H160Z"/></svg></button>
+      <a href="/" class="logo">File<span class="tube">Tube</span></a>
+    </div>
+    <div class="header-search">
+      <div class="search-form">
+        <input type="text" id="search-input" class="search-input" placeholder="Search your files..." />
+        <button id="search-btn" class="search-btn">Search</button>
+      </div>
+    </div>
+    <div class="header-right">
+      <!-- v1.82: theme toggle moved into the account menu (injected here by common.js) -->
+    </div>
+  </header>
+
+  <div class="app-container">
+    <aside class="sidebar" id="sidebar">
+      <nav class="sidebar-section">
+        <a href="/" class="sidebar-item">
+          <svg class="chrome-icon" viewBox="0 -960 960 960" aria-hidden="true"><path d="M240-200h120v-200q0-17 11.5-28.5T400-440h160q17 0 28.5 11.5T600-400v200h120v-360L480-740 240-560v360Zm-80 0v-360q0-19 8.5-36t23.5-28l240-180q21-16 48-16t48 16l240 180q15 11 23.5 28t8.5 36v360q0 33-23.5 56.5T720-120H560q-17 0-28.5-11.5T520-160v-200h-80v200q0 17-11.5 28.5T400-120H240q-33 0-56.5-23.5T160-200Zm320-270Z"/></svg> Home
+        </a>
+        <a href="/setup.html" class="sidebar-item">
+          <svg class="chrome-icon" viewBox="0 -960 960 960" aria-hidden="true"><path d="M433-80q-27 0-46.5-18T363-142l-9-66q-13-5-24.5-12T307-235l-62 26q-25 11-50 2t-39-32l-47-82q-14-23-8-49t27-43l53-40q-1-7-1-13.5v-27q0-6.5 1-13.5l-53-40q-21-17-27-43t8-49l47-82q14-23 39-32t50 2l62 26q11-8 23-15t24-12l9-66q4-26 23.5-44t46.5-18h94q27 0 46.5 18t23.5 44l9 66q13 5 24.5 12t22.5 15l62-26q25-11 50-2t39 32l47 82q14 23 8 49t-27 43l-53 40q1 7 1 13.5v27q0 6.5-2 13.5l53 40q21 17 27 43t-8 49l-48 82q-14 23-39 32t-50-2l-60-26q-11 8-23 15t-24 12l-9 66q-4 26-23.5 44T527-80h-94Zm7-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z"/></svg> Settings
+        </a>
+        <a href="/stats.html" class="sidebar-item" id="sidebar-stats-link">
+          <svg class="chrome-icon" viewBox="0 -960 960 960" aria-hidden="true"><path d="m354-287 126-76 126 77-33-144 111-96-146-13-58-136-58 135-146 13 111 97-33 143Zm126 18L314-169q-11 7-23 6t-21-8q-9-7-14-17.5t-2-23.5l44-189-147-127q-10-9-12.5-20.5T140-571q4-11 12-18t22-9l194-17 75-178q5-12 15.5-18t21.5-6q11 0 21.5 6t15.5 18l75 178 194 17q14 2 22 9t12 18q4 11 1.5 22.5T809-528L662-401l44 189q3 13-2 23.5T690-171q-9 7-21 8t-23-6L480-269Zm0-201Z"/></svg> Stats
+        </a>
+        <!-- Subscriptions + Books + Music sidebar links are injected by
+             public/js/common.js's capability probes -- never hardcoded. -->
+      </nav>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Library</div>
+        <div id="sidebar-folders-list"><!-- Populated dynamically --></div>
+      </div>
+    </aside>
+
+    <main class="main-content" id="main-content">
+      <div id="view-root" data-view="tv">
+        <div class="tv-toolbar">
+          <h2 id="tv-heading">Shows</h2>
+          <div class="tv-toolbar-actions">
+            <button class="btn btn-sm" id="tv-scan-btn" type="button" title="Scan Shows folders now">
+              <i class="icon-refresh"></i> Scan
+            </button>
+          </div>
+        </div>
+        <div class="tv-crumb" id="tv-crumb" hidden></div>
+        <div id="tv-status" class="music-status" role="status" hidden></div>
+        <!-- The poster grid, a show's season/episode detail, or the Continue row render here. -->
+        <div id="tv-content"></div>
+        <div class="tv-empty" id="tv-empty" hidden>
+          No shows yet. Add a Shows folder in <a href="/setup.html">Settings</a>, organize it as
+          Show / Season / Episode (e.g. <code>House MD / Season 2 / House MD S02E22 - Forever.mp4</code>), and scan.
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <nav class="bottom-nav" id="bottom-nav" aria-label="Primary">
+    <a href="/" class="bottom-nav-item" data-nav="home">
+      <svg class="chrome-icon" viewBox="0 -960 960 960" aria-hidden="true"><path d="M240-200h120v-200q0-17 11.5-28.5T400-440h160q17 0 28.5 11.5T600-400v200h120v-360L480-740 240-560v360Zm-80 0v-360q0-19 8.5-36t23.5-28l240-180q21-16 48-16t48 16l240 180q15 11 23.5 28t8.5 36v360q0 33-23.5 56.5T720-120H560q-17 0-28.5-11.5T520-160v-200h-80v200q0 17-11.5 28.5T400-120H240q-33 0-56.5-23.5T160-200Zm320-270Z"/></svg>
+      <span class="bottom-nav-label">Home</span>
+    </a>
+    <a href="/?liked=1" class="bottom-nav-item" data-nav="liked" hidden>
+      <svg class="chrome-icon" viewBox="0 -960 960 960" aria-hidden="true"><path d="m354-287 126-76 126 77-33-144 111-96-146-13-58-136-58 135-146 13 111 97-33 143Zm126 18L314-169q-11 7-23 6t-21-8q-9-7-14-17.5t-2-23.5l44-189-147-127q-10-9-12.5-20.5T140-571q4-11 12-18t22-9l194-17 75-178q5-12 15.5-18t21.5-6q11 0 21.5 6t15.5 18l75 178 194 17q14 2 22 9t12 18q4 11 1.5 22.5T809-528L662-401l44 189q3 13-2 23.5T690-171q-9 7-21 8t-23-6L480-269Zm0-201Z"/></svg>
+      <span class="bottom-nav-label">Liked</span>
+    </a>
+    <button type="button" class="bottom-nav-item" data-nav="playlists" id="nav-playlists-btn">
+      <svg class="chrome-icon" viewBox="0 -960 960 960" aria-hidden="true"><path d="M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h207q16 0 30.5 6t25.5 17l57 57h320q33 0 56.5 23.5T880-640v400q0 33-23.5 56.5T800-160H160Zm0-80h640v-400H447l-80-80H160v480Zm0 0v-480 480Z"/></svg>
+      <span class="bottom-nav-label">Playlists</span>
+    </button>
+    <a href="/history" class="bottom-nav-item" data-nav="history">
+      <svg class="chrome-icon" viewBox="0 -960 960 960" aria-hidden="true"><path d="M480-120q-138 0-240.5-91.5T122-440h82q14 104 92.5 172T480-200q117 0 198.5-81.5T760-480q0-117-81.5-198.5T480-760q-69 0-129 32t-101 88h110v80H120v-240h80v94q51-64 124.5-99T480-840q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-480q0 75-28.5 140.5t-77 114q-48.5 48.5-114 77T480-120Zm112-192L440-464v-216h80v184l128 128-56 56Z"/></svg>
+      <span class="bottom-nav-label">History</span>
+    </a>
+    <a href="/podcasts" class="bottom-nav-item" data-nav="podcasts" hidden>
+      <svg class="chrome-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.2c.85 0 1.53.73 1.44 1.58l-.58 5.32c-.05.51-.42.9-.86.9s-.81-.39-.86-.9l-.58-5.32A1.45 1.45 0 0 1 12 14.2z"/></svg>
+      <span class="bottom-nav-label">Podcasts</span>
+    </a>
+    <a href="/music" class="bottom-nav-item" data-nav="music" hidden>
+      <svg class="chrome-icon" viewBox="0 -960 960 960" aria-hidden="true"><path d="M320-273v-414q0-17 12-28.5t28-11.5q5 0 10.5 1.5T381-721l326 207q9 6 13.5 15t4.5 19q0 10-4.5 19T707-446L381-239q-5 3-10.5 4.5T360-233q-16 0-28-11.5T320-273Zm80-207Zm0 134 210-134-210-134v268Z"/></svg>
+      <span class="bottom-nav-label">Music</span>
+    </a>
+    <a href="/books" class="bottom-nav-item" data-nav="books" hidden>
+      <svg class="chrome-icon" viewBox="0 -960 960 960" aria-hidden="true"><path d="M560-564v-68q33-14 67.5-21t72.5-7q26 0 51 4t49 10v64q-24-9-48.5-13.5T700-600q-38 0-73 9.5T560-564Zm0 220v-68q33-14 67.5-21t72.5-7q26 0 51 4t49 10v64q-24-9-48.5-13.5T700-380q-38 0-73 9t-67 27Zm0-110v-68q33-14 67.5-21t72.5-7q26 0 51 4t49 10v64q-24-9-48.5-13.5T700-490q-38 0-73 9.5T560-454ZM260-320q47 0 91.5 10.5T440-278v-394q-41-24-87-36t-93-12q-36 0-71.5 7T120-692v396q35-12 69.5-18t70.5-6Zm260 42q44-21 88.5-31.5T700-320q36 0 70.5 6t69.5 18v-396q-33-14-68.5-21t-71.5-7q-47 0-93 12t-87 36v394Zm-40 118q-48-38-104-59t-116-21q-42 0-82.5 11T100-198q-21 11-40.5-1T40-234v-482q0-11 5.5-21T62-752q46-24 96-36t102-12q58 0 113.5 15T480-740q51-30 106.5-45T700-800q52 0 102 12t96 36q11 5 16.5 15t5.5 21v482q0 23-19.5 35t-40.5 1q-37-20-77.5-31T700-240q-60 0-116 21t-104 59ZM280-494Z"/></svg>
+      <span class="bottom-nav-label">Books</span>
+    </a>
+    <a href="/" class="bottom-nav-item" data-nav="downloads" hidden>
+      <svg class="chrome-icon" viewBox="0 -960 960 960" aria-hidden="true"><path d="M380-300 660-480 380-660v360ZM140-160q-24.75 0-42.37-17.63Q80-195.25 80-220v-520q0-24.75 17.63-42.38Q115.25-800 140-800h680q24.75 0 42.38 17.62Q880-764.75 880-740v520q0 24.75-17.62 42.37Q844.75-160 820-160H140Zm0-60h680v-520H140v520Zm0 0v-520 520Z"/></svg>
+      <span class="bottom-nav-label">Downloads</span>
+    </a>
+    <button type="button" class="bottom-nav-item" data-nav="theme" id="nav-theme-toggle">
+      <svg class="chrome-icon" viewBox="0 -960 960 960" aria-hidden="true"><path d="M480-120q-151 0-255.5-104.5T120-480q0-138 90-239.5T440-838q13-2 23 3.5t16 14.5q6 9 6.5 21t-7.5 23q-17 26-25.5 55t-8.5 61q0 90 63 153t153 63q31 0 61.5-9t54.5-25q11-7 22.5-6.5T819-479q10 5 15.5 15t3.5 24q-14 138-117.5 229T480-120Zm0-80q88 0 158-48.5T740-375q-20 5-40 8t-40 3q-123 0-209.5-86.5T364-660q0-20 3-40t8-40q-78 32-126.5 102T200-480q0 116 82 198t198 82Zm-10-270Z"/></svg>
+      <span class="bottom-nav-label">Dark</span>
+    </button>
+    <a href="/setup.html" class="bottom-nav-item" data-nav="settings">
+      <svg class="chrome-icon" viewBox="0 -960 960 960" aria-hidden="true"><path d="M433-80q-27 0-46.5-18T363-142l-9-66q-13-5-24.5-12T307-235l-62 26q-25 11-50 2t-39-32l-47-82q-14-23-8-49t27-43l53-40q-1-7-1-13.5v-27q0-6.5 1-13.5l-53-40q-21-17-27-43t8-49l47-82q14-23 39-32t50 2l62 26q11-8 23-15t24-12l9-66q4-26 23.5-44t46.5-18h94q27 0 46.5 18t23.5 44l9 66q13 5 24.5 12t22.5 15l62-26q25-11 50-2t39 32l47 82q14 23 8 49t-27 43l-53 40q1 7 1 13.5v27q0 6.5-2 13.5l53 40q21 17 27 43t-8 49l-48 82q-14 23-39 32t-50-2l-60-26q-11 8-23 15t-24 12l-9 66q-4 26-23.5 44T527-80h-94Zm7-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z"/></svg>
+      <span class="bottom-nav-label">Settings</span>
+    </a>
+  </nav>
+
+  <div class="playlists-sheet-backdrop" id="playlists-backdrop" hidden></div>
+  <aside class="playlists-sheet" id="playlists-sheet" hidden aria-label="Playlists">
+    <div class="playlists-sheet-header">
+      <span>Playlists</span>
+      <button type="button" class="playlists-sheet-close" id="playlists-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="playlists-sheet-list" id="playlists-sheet-list"></div>
+  </aside>
+
+  <!-- Persistent player dock + host template (FR-1, T1/T2). Both live
+       OUTSIDE #view-root so in-app navigation never tears them down. The
+       template is cloned ONCE, ever, by the persistent player controller
+       (public/js/player.js) into a single live #player-host, reparented
+       between the watch view's #player-slot (FULL) and #player-dock (DOCKED)
+       here. #player-dock stays [hidden] (zero visible chrome, no layout
+       shift) unless a video is actively loaded AND the user has navigated
+       away from its watch page -- see player.js's dock()/expand()/close(). -->
+  <div id="player-dock" hidden></div>
+  <!-- v1.138: the desktop fullscreen STAGE - a never-moving shell-level
+       container the host reparents INTO for native fullscreen, so
+       navigation (which swaps #view-root and re-mounts the host) can never
+       force-exit fullscreen. Empty + display:none except while fullscreen
+       (style.css). -->
+  <div id="fs-stage"></div>
+  <template id="player-host-template">
+    <div class="player-container" id="player-wrapper">
+      <div id="audio-bg-art" class="audio-bg-art"></div>
+      <div id="art-play-glyph" class="art-play-glyph" aria-hidden="true"></div>
+      <div id="resume-overlay" class="resume-overlay" style="display: none;">
+        <h3>Resume playback?</h3>
+        <p>You watched this media up to <span id="resume-time-str">0:00</span>. Would you like to resume from there?</p>
+        <div class="resume-actions">
+          <button class="btn" id="resume-no-btn">Start from beginning</button>
+          <button class="btn btn-primary" id="resume-yes-btn">Resume</button>
+        </div>
+      </div>
+      <div id="transcode-overlay" class="resume-overlay" style="display: none;">
+        <div class="transcode-spinner" id="transcode-spinner"></div>
+        <h3 id="transcode-title">Preparing this video&hellip;</h3>
+        <p id="transcode-message">FileTube is converting this file to a browser-friendly format. This only happens once &mdash; it'll start playing automatically when it's ready.</p>
+      </div>
+      <video id="media-player" preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
+        <track id="cc-track" kind="captions" srclang="en" label="English">
+        Your browser does not support HTML5 video player.
+      </video>
+      <div id="speed-badge" class="speed-badge" style="display: none;">2× ▶▶</div>
+      <div id="skip-controls" class="skip-controls" style="display: none;">
+        <button type="button" class="skip-btn skip-back" id="skip-back-btn" aria-label="Rewind 15 seconds">
+          <span class="skip-arrow">«</span><span class="skip-num">15</span>
+        </button>
+        <button type="button" class="skip-btn skip-forward" id="skip-fwd-btn" aria-label="Forward 15 seconds">
+          <span class="skip-num">15</span><span class="skip-arrow">»</span>
+        </button>
+        <div class="skip-ripple skip-ripple-left" id="skip-ripple-left">« 15s</div>
+        <div class="skip-ripple skip-ripple-right" id="skip-ripple-right">15s »</div>
+      </div>
+      <div id="audio-visualizer" class="audio-player-visual" style="display: none;">
+        <div class="audio-vinyl" id="vinyl-disc"></div>
+        <div class="audio-title" id="audio-visual-title">Audio track title</div>
+        <div class="audio-subtitle" id="audio-visual-folder">Playlist folder</div>
+      </div>
+      <div id="player-controls" class="player-controls">
+        <button type="button" id="track-prev-btn" class="pc-btn track-nav-btn" aria-label="Previous track" hidden>
+          <span class="track-nav-ico" aria-hidden="true"></span>
+        </button>
+        <button type="button" id="pp-btn" class="pc-btn pp-btn" aria-label="Play" aria-pressed="false">
+          <span class="pp-icon-play" aria-hidden="true"></span>
+          <span class="pp-icon-pause" aria-hidden="true"></span>
+        </button>
+        <button type="button" id="track-next-btn" class="pc-btn track-nav-btn" aria-label="Next track" hidden>
+          <span class="track-nav-ico" aria-hidden="true"></span>
+        </button>
+        <span id="time-cur" class="pc-time">0:00</span>
+        <input type="range" id="seek-bar" class="pc-range pc-seek" min="0" max="1" step="0.001" value="0" aria-label="Seek">
+        <span id="time-dur" class="pc-time">0:00</span>
+        <button type="button" id="mute-btn" class="pc-btn mute-btn" aria-label="Mute" aria-pressed="false">
+          <span class="mute-icon-on" aria-hidden="true"></span>
+          <span class="mute-icon-off" aria-hidden="true"></span>
+        </button>
+        <input type="range" id="vol-bar" class="pc-range pc-vol" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+        <button type="button" id="settings-btn" class="pc-btn settings-btn" aria-label="Settings" aria-haspopup="true" aria-expanded="false">
+          <svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><path d="m370-80-16-128q-13-5-24.5-12T307-235l-119 50L78-375l103-78q-1-7-1-13.5v-27q0-6.5 1-13.5L78-585l110-190 119 50q11-8 23-15t24-12l16-128h220l16 128q13 5 24.5 12t22.5 15l119-50 110 190-103 78q1 7 1 13.5v27q0 6.5-2 13.5l103 78-110 190-118-50q-11 8-23 15t-24 12L590-80H370Zm112-260q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Z"/></svg>
+        </button>
+        <button type="button" id="fs-btn" class="pc-btn fs-btn" aria-label="Fullscreen">⛶</button>
+        <!-- v1.112 (Dean): settings cog centralizes Speed + CC + PiP off the bar
+             (YouTube's gear). The three controls are RELOCATED here as menu rows
+             with their ids + wired handlers intact; cc-btn/pip-btn keep their own
+             visibility gates, which now hide the ROW. -->
+        <div id="settings-menu" class="chapters-menu settings-menu" hidden>
+          <button type="button" id="speed-btn" class="pc-btn settings-menu-item speed-btn" aria-label="Playback speed">1×</button>
+          <button type="button" id="cc-btn" class="pc-btn settings-menu-item cc-btn" aria-label="Toggle captions" aria-pressed="false" style="display: none;">CC</button>
+          <button type="button" id="pip-btn" class="pc-btn settings-menu-item pip-btn" aria-label="Picture in picture">⧉</button>
+        </div>
+        <div id="chapters-menu" class="chapters-menu" hidden></div>
+        <!-- v1.50.3: the playback-speed picker (chapters-menu popup pattern) -->
+        <div id="speed-menu" class="chapters-menu speed-menu" hidden></div>
+      </div>
+    </div>
+  </template>
+
+  <script src="/js/glyph-pool.js"></script>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/main.js"></script>
+  <script src="/js/watch.js"></script>
+  <script src="/js/setup.js"></script>
+  <script src="/js/player.js"></script>
+  <script src="/js/music.js"></script>
+  <script src="/js/tv.js"></script>
+</body>
+</html>

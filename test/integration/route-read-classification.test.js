@@ -126,6 +126,7 @@ const READ = {
   '/js/subscriptions.js': 'NO_CONTENT',
   '/logo': 'NO_CONTENT',
   '/music': 'NO_CONTENT',
+  '/tv': 'NO_CONTENT',
   '/podcastart/:subId': 'GATED',
   '/podcasts': 'NO_CONTENT',
   '/preview/:id': 'GATED',
