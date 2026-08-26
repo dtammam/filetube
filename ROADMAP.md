@@ -80,6 +80,50 @@
 
 ## Shipped
 
+### v1.194.0 - two mobile bug-fixes: critters persist across rotation; handoff-card text no longer balloons (2026-08-26)
+
+Two bugs Dean reported on mobile.
+
+**1. Critters re-randomized on every phone rotation.** Root cause: the critter
+layer's width-gated `resize` handler re-rolled the whole scatter from scratch
+(`Math.random`, no seed, no persistence) whenever the viewport WIDTH changed - and
+a rotation swaps width<->height, so rotating away AND back both tripped it. Fix: a
+per-view width-keyed layout cache. Each scatter and re-glue records its layout
+under the current viewport width (`rememberCritterPlacements` - the sole real
+placement writer, so both paths funnel through it); a width we've already laid out
+RESTORES that exact set (`restoreCritterLayoutForWidth`, rendered still) instead of
+re-rolling. Navigation and settings-changes clear the cache; the resize path
+preserves it so the return trip restores. A genuinely new orientation still
+scatters fresh once.
+
+**2. The "Playing on iPhone" handoff card TEXT ballooned after exiting fullscreen.**
+Root cause: `-webkit-text-size-adjust` was pinned NOWHERE, so iOS Safari
+font-boosts the card when the fullscreen-exit reflow (header/bottom-nav un-hide,
+overflow restores) re-runs its text-autosizing pass. It only cleared on navigation
+because the card is rebuilt fresh on `<body>`. Fix: pin `text-size-adjust: 100%`
+(both spellings) on the `html` root - the standard iOS defeat; 100% only DISABLES
+the boost, never scales down. **DEVICE PASS PENDING** - iOS font-boosting is not
+reproducible off-device, so this ships disclosed and Dean's device is the arbiter.
+
+**What the FULL two-reviewer gate caught (both seats APPROVE after three fix
+rounds):** (a) the rotate-back restore could still paint a stale layout over
+content that reflowed while rotated (a narrow revival of the v1.173
+drift-over-text class) - fixed by declining the restore when the page height
+drifted past the settle threshold, reusing the same pure drift decision the settle
+ladder uses, with the baseline height measured post-render for a symmetric
+comparison; (b) the funnel binding and the CSS fix were initially test-unbound
+(presence-not-binding) - now source-locked and mutation-verified; (c) the wave's
+own new test flaked a release-qualifying run (a module-global cache + Node's real
+global `fetch`) - made deterministic (0/N under load).
+
+**Known residuals (disclosed):** the drift gate is fail-safe but can occasionally
+decline a LEGITIMATE rotate-back (the outgoing orientation's critter layer shifts
+`scrollHeight` by up to ~26px), costing the persistence optimization for that one
+rotation - worst case is the pre-v1.194 re-roll, never stale paint (tech-debt).
+A pre-existing file-wide test-flake class (leaked timers + a separate
+module-resolution race in an unrelated file) is tracked as tech-debt #178/#179;
+both dual-Node runs (Node 22.23.1 and 24.14.0, 7574/0 each) came up clean.
+
 ### v1.193.0 - critters: experimental "let critters overlap a little" (light kiss) (2026-08-26)
 
 Dean's follow-up to v1.192: with STRICT no-overlap he noticed noticeably fewer
