@@ -314,6 +314,35 @@ test('v1.192 screen-edge is PAD-AWARE: the rendered wrapper (round(w*0.3) each s
   assert.strictEqual(nearEdge, 0, 'no survivor leaves its bare box inside the pad band (proves the guard is pad-aware, not the old bare check)');
 });
 
+test('v1.192 NO-OVERLAP: critters never pile onto each other - a tight thumbnail column no longer stacks (Dean\'s related-files tower)', () => {
+  // Dean's screenshot: a vertical thumbnail column flung its peeks into one band
+  // and stacked a tower of critters. The planner now rejects any placement whose
+  // box intersects an already-accepted critter's box. Fixture: 10 thumbnails,
+  // 90px tall, 10px gaps, one column - unchecked, adjacent peeks collide
+  // constantly. No bounds/exclusions/viewportW here, so the overlap rule is the
+  // ONLY guard that can drop a placement (anchors are 300px wide, so nothing
+  // engulfs) - which is what makes `sawDrop` a proof the guard is doing work.
+  const column = Array.from({ length: 10 }, (_, i) => ({ x: 100, y: 100 + i * 100, w: 300, h: 90 }));
+  let sawMultiple = false;
+  let sawDrop = false;
+  for (let seed = 1; seed <= 200; seed += 1) {
+    const out = planCritterScatter({
+      anchors: column.map((a) => ({ ...a })), exclusions: [], manifest: MANIFEST_8, count: 8, rng: seededRng(seed),
+    });
+    if (out.length >= 2) sawMultiple = true;
+    if (out.length < 8) sawDrop = true; // 8 = min(count, manifest, anchors); below it => the overlap guard fired
+    for (let i = 0; i < out.length; i += 1) {
+      for (let j = i + 1; j < out.length; j += 1) {
+        const a = out[i]; const b = out[j];
+        const hit = a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+        assert.ok(!hit, `seed ${seed}: critters ${i} and ${j} overlap ([${a.x},${a.y},${a.w}] vs [${b.x},${b.y},${b.w}])`);
+      }
+    }
+  }
+  assert.ok(sawMultiple, 'the fixture actually places multiple critters (non-vacuous)');
+  assert.ok(sawDrop, 'the overlap guard actively dropped stackers (delete the guard -> this tight column overlaps -> the loop reds)');
+});
+
 test('v1.168 go-harder: corners join the edge pool, peek depth varies, flips split ~50/50, and CSS carries the flip everywhere', () => {
   // Distribution sweep (seeded): flips near half; exposure never outside the
   // 30-65% band on plain edges (corners expose 25-50% per axis).
@@ -1814,8 +1843,15 @@ test('v1.178 adoption discipline: size-mismatched cousins refused; the true twin
   // Gate W closure #2 (claimed-SEED): a still-connected survivor's anchor may
   // not be poached by an orphan. Card A stays; card B (within 240px of A) is
   // removed - B's orphan must DROP, not stack onto A.
-  view.innerHTML = '<div class="video-card" id="a3" data-rx="100" data-ry="300"></div>'
-    + '<div class="video-card" id="b3" data-rx="100" data-ry="460"></div>';
+  // v1.192: these two anchors are deliberately SMALL (80x40) and 160px apart so
+  // their two critters cannot overlap - the new no-overlap rule would otherwise
+  // drop one of two critters on close/overlapping anchors (300x200 defaults
+  // overlap at 160px apart), making this Math.random-seeded scatter flaky. Small
+  // anchors -> ~44-60px critters that clear each other by ~40px at this gap, so
+  // "2 seeded" is now deterministic; centers (140,320) & (140,480) stay 160px
+  // apart, well inside the 240px adoption window this closure needs.
+  view.innerHTML = '<div class="video-card" id="a3" data-rx="100" data-ry="300" data-rw="80" data-rh="40"></div>'
+    + '<div class="video-card" id="b3" data-rx="100" data-ry="460" data-rw="80" data-rh="40"></div>';
   scatterCritters();
   await new Promise((resolve) => setTimeout(resolve, 260));
   assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 2, 're-seeded again');

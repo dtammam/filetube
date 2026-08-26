@@ -7757,6 +7757,21 @@ function planCritterScatter(opts) {
     // vertical pad overflow just extends the page's legal scroll axis.
     var edgePad = Math.round(size * 0.3);
     if (viewportW && (x - edgePad < 0 || x + size + edgePad > viewportW)) continue;
+    // v1.192 (Dean: "some way to make sure they don't LITERALLY overlap - a
+    // little abrupt when they do"): critters may never overlap EACH OTHER. The
+    // without-replacement anchor draw already stops two critters SHARING an
+    // anchor, but neighbouring anchors (a vertical thumbnail column) fling their
+    // peeks into one band and pile a stack on a single spot - Dean's screenshot.
+    // Reject any placement whose box intersects an ALREADY-ACCEPTED critter's
+    // box (skip, never nudge - the house doctrine, same as every guard above).
+    // Buttons are drawn first (weight 3), so the ambush spots win the overlap.
+    // Bare boxes, NOT the padded wrappers: the pad is transparent headroom, so
+    // two pads touching is not a visible collision. `critterRectsIntersect` is
+    // strict (<, >), so merely-tangent boxes are allowed - only real overlap is
+    // dropped. Density self-limits on dense/narrow feeds (Dean's chosen trade).
+    if (placements.some(function (q) {
+      return critterRectsIntersect(rect, { x: q.x, y: q.y, w: q.w, h: q.h });
+    })) continue;
     // v1.170 (Dean: "looks like critter feet behind an element" - his own
     // suggested fix): a BOTTOM-family peek (edge or corner) rotates the pose
     // 180deg so the HEAD pops out below the ledge - hanging upside-down reads
@@ -8533,6 +8548,16 @@ function reglueCritterPlacements() {
     var vw = (typeof window !== 'undefined' && window.innerWidth) || 0;
     var rpad = Math.round(p.w * 0.3);
     if (vw && (p.x - rpad < 0 || p.x + p.w + rpad > vw)) continue;
+    // v1.192: the no-overlap invariant survives a drift too - two critters whose
+    // anchors moved independently can converge into a stack. Drop the later one
+    // (skip, never nudge), same as the planner. Checked against SURVIVORS so an
+    // already-dropped critter never blocks a slot.
+    var stacks = false;
+    for (var s = 0; s < survivors.length; s += 1) {
+      var q = survivors[s];
+      if (critterRectsIntersect(rect, { x: q.x, y: q.y, w: q.w, h: q.h })) { stacks = true; break; }
+    }
+    if (stacks) continue;
     survivors.push(p);
   }
   critterPlacements = survivors;
