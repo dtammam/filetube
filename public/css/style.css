@@ -4472,6 +4472,7 @@ a.sub-row-channel-link:focus-visible {
 .icon-podcast,
 .icon-downloads,
 .icon-books,
+.icon-tv,
 .icon-school,
 .icon-movies,
 .icon-shows,
@@ -4593,6 +4594,7 @@ a.sub-row-channel-link:focus-visible {
 /* v1.73.2 (Dean): Books gets its OWN glyph (Material menu_book) instead of
    the generic folder - same single-asset posture. */
 .icon-books { -webkit-mask-image: url(/assets/icons/books.svg); mask-image: url(/assets/icons/books.svg); }
+.icon-tv { -webkit-mask-image: url(/assets/icons/tv.svg); mask-image: url(/assets/icons/tv.svg); } /* v1.195 Shows */
 
 /* ---- v1.77: the assignable glyph pool (base/outlined masks) ---------------
    Unlike the ten single-asset glyphs above (heart/share/flame/history/queue/
@@ -4634,7 +4636,7 @@ a.sub-row-channel-link:focus-visible {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
   .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-download, .icon-shuffle,
-  .icon-flame, .icon-history, .icon-queue, .icon-podcast, .icon-downloads, .icon-books,
+  .icon-flame, .icon-history, .icon-queue, .icon-podcast, .icon-downloads, .icon-books, .icon-tv,
   .icon-school, .icon-movies, .icon-shows, .icon-documents, .icon-music-note, .icon-kids, .icon-games, .icon-camcorder, .icon-photos, .icon-travel, .icon-work, .icon-cooking, .icon-fitness, .icon-comedy, .icon-pets, .icon-cars, .icon-archive, .icon-radio, .icon-favorites, .icon-liked {
     background-color: currentColor;
   }
@@ -10148,6 +10150,28 @@ html[data-modern="on"] .video-uploader {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ===== v1.195 TV Shows ("Shows") - poster grid -> show detail -> episode list ===== */
+.tv-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); }
+.tv-crumb { margin-bottom: var(--space-4); }
+.tv-back { background: transparent; border: none; color: var(--text-link); cursor: pointer; font-size: var(--fs-base); padding: var(--space-2) 0; }
+.show-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--space-8); }
+.show-card { display: flex; flex-direction: column; min-width: 0; gap: var(--space-2); padding: 0; border: none; background: transparent; text-align: left; cursor: pointer; color: inherit; }
+.show-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-lg); background: var(--thumbnail-bg); object-fit: cover; display: block; box-shadow: var(--shadow); transition: box-shadow var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui); }
+.show-card:hover .show-poster { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+.show-card-title { font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.show-card-meta { font-size: var(--fs-sm); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-detail-title { font-size: var(--fs-xl); margin-bottom: var(--space-4); }
+.tv-season { margin-bottom: var(--space-6); }
+.tv-season-label { font-size: var(--fs-lg); color: var(--text-primary); margin-bottom: var(--space-3); }
+.tv-episode-list { display: flex; flex-direction: column; }
+.tv-episode-row { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-2); border: none; background: transparent; border-bottom: 1px solid var(--border-color); text-align: left; cursor: pointer; color: inherit; width: 100%; }
+.tv-episode-row:hover { background: var(--thumbnail-bg); }
+.tv-episode-code { font-size: var(--fs-sm); color: var(--text-secondary); font-weight: var(--fw-semibold); flex-shrink: 0; min-width: 56px; }
+.tv-episode-title { flex: 1; min-width: 0; font-size: var(--fs-base); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tv-episode-dur { font-size: var(--fs-sm); color: var(--text-secondary); flex-shrink: 0; }
+.tv-player-wrap { margin-bottom: var(--space-5); background: var(--thumbnail-bg); border-radius: var(--radius-lg); overflow: hidden; }
+.tv-player-video { width: 100%; max-height: 70vh; display: block; background: var(--thumbnail-bg); }
 
 .music-song-list { display: flex; flex-direction: column; }
 .music-song-row {

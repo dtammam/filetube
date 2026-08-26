@@ -103,6 +103,21 @@ function fullState() {
       subscriptions: [{ id: 'sub1', channelUrl: 'https://youtube.com/@x', name: 'X', paused: false }],
       downloadMeta: {}, pins: [], channelAvatars: {},
     },
+    // v1.195: the tv namespace rides the bundle - restore wipes the doc tables
+    // wholesale, so an un-bundled 'tv' would erase the entire Shows library +
+    // config on any backup/restore (the gate's data-loss finding).
+    tv: {
+      folders: ['/media/tv'],
+      episodes: {
+        tvep1: {
+          id: 'tvep1', filePath: '/media/tv/House MD/Season 2/House MD S02E22 - Forever.mp4',
+          rootFolder: '/media/tv', showId: 'sh1', showPath: '/media/tv/House MD', showName: 'House MD',
+          seasonNum: 2, episodeNum: 22, title: 'Forever', size: 123, mtimeMs: 1, addedAt: 't',
+          ext: '.mp4', durationSec: 2580, codec: 'h264', audioCodec: 'aac', container: 'mov,mp4,m4a', thumb: null,
+        },
+      },
+      settings: {},
+    },
   };
 }
 

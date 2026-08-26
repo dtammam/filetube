@@ -2897,6 +2897,7 @@ function activeNavItem(pathname, search) {
   if (pathname === '/books' || pathname === '/books.html' || pathname === '/read.html') return 'books';
   // v1.44 music: same posture (link injected only when >=1 music folder set).
   if (pathname === '/music' || pathname === '/music.html') return 'music';
+  if (pathname === '/tv' || pathname === '/tv.html') return 'tv';
   // v1.69 podcasts: same posture (link injected only when >=1 subscription).
   if (pathname === '/podcasts' || pathname === '/podcasts.html') return 'podcasts';
   // v1.64 history (count-gated entry, the Liked rule).
@@ -2927,6 +2928,7 @@ const SIDEBAR_HREF_BY_NAV_KEY = {
   subscriptions: '/subscriptions',
   books: '/books',
   music: '/music',
+  tv: '/tv',
   podcasts: '/podcasts',
   history: '/history',
 };
@@ -4471,14 +4473,16 @@ function injectLibraryNavEntry(key, href, label, iconClass) {
   // v1.73 (Dean ruling 5): Downloads sits FIRST - it anchors before every
   // other Library entry; the existing keys keep their relative ladder.
   const anchor = (key === 'downloads')
-    ? (document.querySelector('[data-nav-sidebar="music"]') || document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+    ? (document.querySelector('[data-nav-sidebar="music"]') || document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="tv"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
     : (key === 'music')
-      ? (document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+      ? (document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="tv"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
       : (key === 'books')
-        ? (document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
-        : (key === 'podcasts')
-          ? (document.querySelector('[data-nav-sidebar="history"]') || foldersList)
-          : foldersList;
+        ? (document.querySelector('[data-nav-sidebar="tv"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+        : (key === 'tv')
+          ? (document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+          : (key === 'podcasts')
+            ? (document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+            : foldersList;
   anchor.insertAdjacentElement('beforebegin', link);
   if (activeNavItem(window.location.pathname, window.location.search) === key) {
     link.classList.add('active');
@@ -4512,6 +4516,23 @@ function injectMusicNavLinkIfEnabled() {
     .then((payload) => {
       if (!shouldInjectMusicNav(payload)) return; // music-less -- inject nothing
       injectLibraryNavEntry('music', '/music', 'Music', 'icon-play');
+    })
+    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
+}
+
+// v1.195 TV Shows: same content-gated posture as Music (folders > 0 => inject a
+// Library-section entry; a Shows-less install renders byte-identical chrome).
+function shouldInjectTvNav(payload) {
+  return Boolean(payload && Array.isArray(payload.folders) && payload.folders.length > 0);
+}
+function injectTvNavLinkIfEnabled() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
+  if (document.querySelector('[data-nav-sidebar="tv"]')) return;
+  fetch('/api/tv/config')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((payload) => {
+      if (!shouldInjectTvNav(payload)) return; // Shows-less -- inject nothing
+      injectLibraryNavEntry('tv', '/tv', 'Shows', 'icon-tv');
     })
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
 }
@@ -6851,6 +6872,7 @@ function deriveRouteView(pathname) {
   // v1.44 music: same unconditional-mapping posture -- the Music nav link is
   // only injected when >=1 music folder is configured.
   if (pathname === '/music' || pathname === '/music.html') return 'music';
+  if (pathname === '/tv' || pathname === '/tv.html') return 'tv';
   // v1.69 podcasts: same posture (nav gated on >=1 subscription).
   if (pathname === '/podcasts' || pathname === '/podcasts.html') return 'podcasts';
   // v1.64 history: same posture (the entry is count-gated like Liked).
@@ -9844,6 +9866,7 @@ if (typeof window !== 'undefined') {
   // Per-view lazy-script map. Views absent here (home/watch/setup) ship in
   // the page shell and are always registered by boot time.
   const VIEW_SCRIPT_SRC = {
+    tv: '/js/tv.js',
     subscriptions: '/js/subscriptions.js',
     books: '/js/books.js',
     read: '/js/read.js',
@@ -14467,6 +14490,8 @@ document.addEventListener('DOMContentLoaded', () => {
   injectBooksNavLinkIfEnabled();
   // v1.44 music: same probe-gated Library-section injection.
   injectMusicNavLinkIfEnabled();
+  // v1.195 TV Shows: same probe-gated Library-section injection.
+  injectTvNavLinkIfEnabled();
   // v1.69 podcasts: same injection, gated on >=1 subscription.
   injectPodcastsNavLinkIfEnabled();
   injectDownloadsNavLinkIfEnabled(); // v1.73: the Downloads hard entry + bottom-item gate
@@ -14647,6 +14672,7 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldInjectSubscriptionsNav,
     shouldInjectBooksNav,
     shouldInjectMusicNav,
+    shouldInjectTvNav,
     shouldInjectPodcastsNav,
     // v1.64 (adversarial gate W1): the History count-gate is DOM-bound by
     // test/integration/history-nav-gate.test.js through these two.

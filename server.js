@@ -88,6 +88,10 @@ const musicStore = require('./lib/music/store');
 const homeFeed = require('./lib/home/feed'); // v1.79: pure home-feed row assembler
 const musicScan = require('./lib/music/scan');
 const musicQuery = require('./lib/music/query');
+// v1.195 TV Shows (UI "Shows"): feature-owned db.tv namespace + pure scan/parse.
+const tvStore = require('./lib/tv/store');
+const tvScan = require('./lib/tv/scan');
+const tvParse = require('./lib/tv/parse');
 // v1.38.0 TTS "Listen from Here": pure leaf helpers (env-config parse, engine
 // argv builders, chapter chunker). Same direct-require posture as the store.
 const booksTtsConfig = require('./lib/books/tts-config');
@@ -151,6 +155,10 @@ const BOOKCOVER_DIR = path.join(DATA_DIR, '.bookcovers');
 // the ONLY writer that unlinks here, and only when an album's LAST track is
 // pruned; no cross-module unlink can ever touch it.
 const ALBUMART_DIR = path.join(DATA_DIR, '.albumart');
+// v1.195 TV Shows: per-episode thumbnail cache (<episodeId>.jpg), an ffmpeg frame
+// grab like the video library's storyboard - one file per episode. The tv scan's
+// prune is the only writer that unlinks here.
+const TV_THUMB_DIR = path.join(DATA_DIR, '.tvthumbs');
 // v1.38.0 TTS: per-chapter synthesized audio cache (<key>.m4a + <key>.blocks.json),
 // a sibling of the thumbnail/cover caches. Created on demand by the worker.
 const TTS_CACHE_DIR = path.join(DATA_DIR, 'tts-cache');
@@ -952,6 +960,13 @@ function podcastEpisodeVisibleTo(req, ep) {
 }
 function bookVisibleTo(req, book) {
   return !!book && !visibility.isBlocked(userRestrictionIndex(req), { kind: 'book', filePath: book.filePath, folderName: book.folderName });
+}
+// v1.195 TV Shows RBAC: an episode's visibility routes through the SAME single
+// decision point (kind:'tv'). Path/rootFolder restrictions bite generically; a
+// whole-library 'tv' restriction bites via KIND_TO_LIBRARY. `ep` falsy -> not
+// visible (the serve route 404s an unknown id before reaching here anyway).
+function tvEpisodeVisibleTo(req, ep) {
+  return !!ep && !visibility.isBlocked(userRestrictionIndex(req), { kind: 'tv', filePath: ep.filePath, rootFolder: ep.rootFolder });
 }
 // v1.128 Wave B: does the requester carry ANY restriction? Admins get an empty
 // index (userRestrictionIndex returns buildRestrictionIndex([]) for role
@@ -5516,6 +5531,8 @@ function armScanTimer() {
       scanBooks().catch(console.error);
       // v1.44 music: same piggyback slot; a music-less install no-ops.
       scanMusic().catch(console.error);
+      // v1.195 TV Shows: same piggyback slot; a Shows-less install no-ops.
+      scanTv().catch(console.error);
       // v1.65: trash retention sweep, same piggyback slot (no second timer).
       sweepTrash().catch(console.error);
     }, ms).unref();
@@ -6321,11 +6338,12 @@ function dropPendingProgressForUser(userId) {
 // this is always current, needs no bootstrap, and depends on nothing
 // client-side. Only full-page loads/refreshes hit this; in-app SPA nav keeps
 // the header, so there is no FOUC there to fix.
-const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'music.html', 'podcasts.html', 'history.html', 'login.html', 'welcome.html']);
+const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'music.html', 'tv.html', 'podcasts.html', 'history.html', 'login.html', 'welcome.html']);
 function shellHtmlForRequestPath(p) {
   if (p === '/' || p === '/index.html') return 'index.html';
   if (p === '/books' || p === '/books.html') return 'books.html';
   if (p === '/music' || p === '/music.html') return 'music.html';
+  if (p === '/tv' || p === '/tv.html') return 'tv.html';
   // v1.69 gate fix (adversarial #4): without this arm the pretty /podcasts
   // route - the one every nav link uses - fell through to a bare sendFile
   // with no custom-logo injection and the wrong cache header, while only
@@ -6673,6 +6691,13 @@ app.post('/api/config', async (req, res) => {
         return res.status(400).json({ error: `Media folder overlaps a music folder: ${trimmed} <-> ${musicRoot}` });
       }
     }
+    // v1.195 TV Shows: the reciprocal of POST /api/tv/config's own net - a media
+    // folder may not equal/contain/live inside a Shows root either.
+    for (const tvRoot of tvStore.readTv(loadDatabase()).folders) {
+      if (foldersOverlap(resolved, path.resolve(tvRoot))) {
+        return res.status(400).json({ error: `Media folder overlaps a Shows folder: ${trimmed} <-> ${tvRoot}` });
+      }
+    }
     // v1.69 podcasts (D8, the FOUR-way): the podcasts download root is
     // module-owned (env/default, not a configured list), but a media folder
     // that equals/contains/lives inside it would double-own the episodes.
@@ -7018,6 +7043,16 @@ app.post('/api/books/config', async (req, res) => {
     for (const musicRoot of musicFoldersForBooks) {
       if (bookRoot === musicRoot || ytdlpArgs.isPathUnder(bookRoot, musicRoot) || ytdlpArgs.isPathUnder(musicRoot, bookRoot)) {
         return res.status(400).json({ error: `Book folder overlaps a music folder: ${bookRoot} <-> ${musicRoot}` });
+      }
+    }
+  }
+  // v1.195 TV Shows: reciprocal of the tv-config net - a book root may not overlap
+  // a Shows root either (both directions).
+  const tvFoldersForBooks = (tvStore.readTv(cachedForBooks).folders || []).map((f) => path.resolve(f));
+  for (const bookRoot of resolved) {
+    for (const tvRoot of tvFoldersForBooks) {
+      if (foldersOverlap(bookRoot, tvRoot)) {
+        return res.status(400).json({ error: `Book folder overlaps a Shows folder: ${bookRoot} <-> ${tvRoot}` });
       }
     }
   }
@@ -7536,6 +7571,9 @@ app.post('/api/books/pins/reorder', (req, res) => {
 
 // The clean /books URL (express.static already serves /books.html; this
 // mirrors the ytdlp module's own /subscriptions sendFile).
+app.get('/tv', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'tv.html'));
+});
 app.get('/music', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'music.html'));
 });
@@ -8024,6 +8062,12 @@ app.post('/api/music/config', async (req, res) => {
     if (musicRoot === podcastsRootForMusic || ytdlpArgs.isPathUnder(musicRoot, podcastsRootForMusic) || ytdlpArgs.isPathUnder(podcastsRootForMusic, musicRoot)) {
       return res.status(400).json({ error: `Music folder overlaps the podcasts folder: ${musicRoot} <-> ${podcastsRootForMusic}` });
     }
+    // v1.195 TV Shows: reciprocal of the tv-config net.
+    for (const tvRoot of (tvStore.readTv(cached).folders || []).map((f) => path.resolve(f))) {
+      if (foldersOverlap(musicRoot, tvRoot)) {
+        return res.status(400).json({ error: `Music folder overlaps a Shows folder: ${musicRoot} <-> ${tvRoot}` });
+      }
+    }
   }
   try {
     await updateDatabase((db) => {
@@ -8343,6 +8387,385 @@ app.get('/albumart/:id', (req, res) => {
   res.set('Content-Type', 'image/svg+xml');
   res.set('Cache-Control', 'private, max-age=3600'); // v1.123 T4: keep the axis uniform behind the auth wall
   res.send(musicArtPlaceholderSvg(track));
+});
+
+// ---- TV Shows library (v1.195) ----------------------------------------------
+//
+// A first-class media type (UI "Shows") over a Plex-shaped folder tree
+// <root>/<Show>/<Season N|Specials>/<Show SxxEyy - Title>. The db.tv namespace is
+// feature-owned by lib/tv/store.js (the persist-gate discipline); the pure walk +
+// parse + grouping live in lib/tv/{scan,parse}.js. Episodes ARE video files and
+// stream/transcode through the EXISTING video pipeline (a later phase) - only the
+// browse/organization layer is new. Everything degrades to a no-op on a Shows-less
+// install (zero folders + zero episodes = zero scans = zero db writes).
+
+let tvScanState = { scanning: false, lastScan: null, rescanRequested: false };
+let deferredTvRescanTimer = null;
+function currentTvScanState() { return tvScanState; }
+
+// The injected ffprobe probe (server-side spawn; lib/tv/scan.js stays CI-testable
+// by never spawning itself). Yields duration (episode length + the thumbnail
+// timestamp), the video codec, and the container. Degrade-safe: null on
+// ffmpeg-unavailable or any parse error (the episode still indexes by filename).
+function probeTvEpisode(filePath) {
+  return new Promise((resolve) => {
+    if (!ffmpegAvailable) { resolve(null); return; }
+    execFile('ffprobe', buildFfprobeArgs(filePath), { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+      if (err || !stdout) { resolve(null); return; }
+      let parsed;
+      try { parsed = JSON.parse(stdout); } catch (_) { resolve(null); return; }
+      let streams = {};
+      try { streams = parseFfprobeStreams(parsed); } catch (_) { streams = {}; }
+      let durationSec = 0;
+      const d = parsed && parsed.format && Number(parsed.format.duration);
+      if (Number.isFinite(d) && d > 0) durationSec = d;
+      const container = (parsed && parsed.format && typeof parsed.format.format_name === 'string') ? parsed.format.format_name : null;
+      // v1.195 (gate): audioCodec too, so the serve route's needsTranscode() can
+      // be CODEC-aware like the main video path - an HEVC-video or AC3/DTS-audio
+      // file in a browser-native container (.mp4/.mov) must still transcode.
+      resolve({ durationSec, codec: streams.videoCodec || null, audioCodec: streams.audioCodec || null, container });
+    });
+  });
+}
+
+function tvThumbPath(id) { return path.join(TV_THUMB_DIR, `${id}.jpg`); }
+function tvThumbExists(id) { return fs.existsSync(tvThumbPath(id)); }
+
+// One ffmpeg frame grab per episode (the video-library storyboard posture: a
+// single -vframes 1 at a modest offset, atomic tmp+rename). Best-effort - a
+// failed grab just leaves the episode with the generated-poster fallback.
+function extractTvThumb(job) {
+  return new Promise((resolve) => {
+    if (!ffmpegAvailable) { resolve(false); return; }
+    const src = job && job.filePath;
+    const id = job && job.id;
+    if (!src || !id || !fs.existsSync(src)) { resolve(false); return; }
+    const outPath = tvThumbPath(id);
+    if (fs.existsSync(outPath)) { resolve(true); return; }
+    try { fs.mkdirSync(TV_THUMB_DIR, { recursive: true }); } catch (_) { /* best-effort */ }
+    const tmpPath = `${outPath}.tmp.jpg`;
+    const ts = (Number.isFinite(job.durationSec) && job.durationSec > 20) ? Math.min(60, Math.round(job.durationSec * 0.1)) : 5;
+    execFile('ffmpeg', ['-ss', String(ts), '-i', src, '-vframes', '1', '-q:v', '2', '-y', tmpPath], (err) => {
+      if (err) { try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ } resolve(false); return; }
+      try { fs.renameSync(tmpPath, outPath); resolve(true); }
+      catch (_) { try { fs.unlinkSync(tmpPath); } catch (_2) { /* best-effort */ } resolve(false); }
+    });
+  });
+}
+
+async function runTvScan() {
+  const db = loadDatabase();
+  const ns = tvStore.ensureTv(db);
+  const folders = ns.folders.slice();
+  if (folders.length === 0 && Object.keys(ns.episodes).length === 0) return; // Shows-less: total no-op
+  const { episodes, survivingIds, missingRoots, erroredDirs } = await tvScan.collectEpisodes(
+    folders, ns.episodes, { getId: getMediaId, getShowId: getMediaId, probe: probeTvEpisode });
+  for (const root of missingRoots) {
+    console.warn(`tv: configured folder is missing/unmounted -- nothing under it will be pruned: ${root}`);
+  }
+
+  const pruneMissing = !!(db.settings && db.settings.pruneMissing);
+  const prunedIds = [];
+  let finalEpisodes = episodes;
+  await updateDatabase((fresh) => {
+    const freshNs = tvStore.ensureTv(fresh);
+    // The music/books Option-C mount-loss guard: a root that still EXISTS but
+    // yielded ZERO files this pass while the library previously had episodes under
+    // it is the unmounted-share signature -- treat as VANISHED (prune nothing).
+    const effectiveMissingRoots = new Set(missingRoots);
+    for (const root of folders) {
+      if (effectiveMissingRoots.has(root)) continue;
+      const hadEpisodes = Object.values(freshNs.episodes).some((e) => e && e.rootFolder === root);
+      const hasSurvivors = Object.values(episodes).some((e) => e && e.rootFolder === root);
+      if (hadEpisodes && !hasSurvivors) {
+        effectiveMissingRoots.add(root);
+        console.warn(`tv: root ${root} exists but scanned EMPTY while the library has episodes under it -- treating as unmounted, pruning nothing beneath it`);
+      }
+    }
+    const prunable = new Set(tvStore.selectPrunableEpisodeIds(freshNs.episodes, survivingIds, { missingRoots: effectiveMissingRoots, pruneMissing, erroredDirs }));
+    const next = {};
+    for (const [id, e] of Object.entries(episodes)) next[id] = e;
+    for (const [id, e] of Object.entries(freshNs.episodes)) {
+      if (next[id]) continue;
+      if (prunable.has(id)) { prunedIds.push(id); continue; }
+      next[id] = e; // non-surviving but protected (mount-loss / pruneMissing off)
+    }
+    freshNs.episodes = next;
+    finalEpisodes = next;
+    return true;
+  });
+
+  // Per-user episode state is episode-id-keyed -- pruned episodes shed
+  // progress/played/liked (post-commit, the removeMusicState posture).
+  if (prunedIds.length > 0) {
+    try { userStore.removeTvEpisodeState(prunedIds); }
+    catch (err) { console.error('tv: failed to prune per-user episode state (continuing):', err && err.message); }
+  }
+
+  // Per-episode thumbnails for surviving episodes that still lack one (best-effort).
+  try {
+    for (const job of tvScan.selectThumbJobs(finalEpisodes, tvThumbExists)) {
+      const ep = finalEpisodes[job.id];
+      await extractTvThumb({ id: job.id, filePath: job.filePath, durationSec: ep && ep.durationSec });
+    }
+  } catch (err) {
+    console.error('tv: thumbnail extraction pass failed (continuing):', err && err.message);
+  }
+
+  // A pruned episode's cached thumbnail is regenerable, but shed it now so a
+  // re-added same-path file doesn't serve a stale frame.
+  for (const id of prunedIds) {
+    try { fs.unlinkSync(tvThumbPath(id)); } catch (_) { /* best-effort / absent */ }
+  }
+}
+
+// Overlap/coalescing guard -- the scanMusic discipline verbatim.
+async function scanTv() {
+  if (tvScanState.scanning) { tvScanState.rescanRequested = true; return; }
+  tvScanState.scanning = true;
+  try {
+    let followups = 0;
+    do {
+      tvScanState.rescanRequested = false;
+      await runTvScan();
+      followups++;
+    } while (tvScanState.rescanRequested && followups <= MAX_RESCAN_FOLLOWUPS);
+  } catch (err) {
+    console.error('tv: scan failed:', err);
+  } finally {
+    const stillPending = tvScanState.rescanRequested;
+    tvScanState.scanning = false;
+    tvScanState.lastScan = new Date().toISOString();
+    if (stillPending && !deferredTvRescanTimer) {
+      deferredTvRescanTimer = setTimeout(() => {
+        deferredTvRescanTimer = null;
+        scanTv().catch(console.error);
+      }, 5000);
+      deferredTvRescanTimer.unref();
+    }
+  }
+}
+
+// v1.195: two resolved absolute roots overlap if identical or one nests the other
+// (either direction). The shared both-directions test for the library-root
+// ownership net - the tv config route AND the reciprocal clauses in the
+// media/book/music/podcast config routes all call THIS one helper.
+function foldersOverlap(a, b) {
+  return a === b || ytdlpArgs.isPathUnder(a, b) || ytdlpArgs.isPathUnder(b, a);
+}
+
+app.get('/api/tv/config', (req, res) => {
+  // GATED (route-read-classification): the nav gate reads this, so a restricted
+  // member sees only roots holding >=1 visible episode; admin + unrestricted member
+  // get the list byte-identical (visibleConfigRoots short-circuits when no restriction).
+  const ns = tvStore.readTv(getCachedDatabase());
+  res.json({ folders: visibleConfigRoots(req, ns.folders || [], Object.values(ns.episodes || {}), tvEpisodeVisibleTo) });
+});
+
+app.post('/api/tv/config', async (req, res) => {
+  if (!requireAdmin(req, res)) return; // library config is admin-only (write-RBAC)
+  const { folders } = req.body || {};
+  if (!Array.isArray(folders) || !folders.every((f) => typeof f === 'string' && f.trim() !== '')) {
+    return res.status(400).json({ error: 'folders must be an array of non-empty strings' });
+  }
+  const resolved = [];
+  const seen = new Set();
+  for (const raw of folders) {
+    const folder = path.resolve(raw.trim());
+    if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
+      return res.status(400).json({ error: `Folder does not exist: ${folder}` });
+    }
+    if (seen.has(folder)) continue;
+    seen.add(folder);
+    resolved.push(folder);
+  }
+  // HARD INVARIANT: a Shows root may never overlap a media/book/music/podcast root,
+  // in EITHER direction (one owner per file). This is the TV-side of the net; the
+  // reciprocal clauses in the media/book/music/podcast config routes close the
+  // other direction (adding one of THOSE under a Shows root).
+  const cached = getCachedDatabase();
+  const mediaFolders = (cached.folders || []).map((f) => path.resolve(f));
+  const bookFolders = (booksStore.readBooks(cached).folders || []).map((f) => path.resolve(f));
+  const musicFolders = (musicStore.readMusic(cached).folders || []).map((f) => path.resolve(f));
+  const podcastsRoot = podcasts.resolvePodcastsRoot(cached, { dataDir: DATA_DIR });
+  for (const tvRoot of resolved) {
+    for (const mediaRoot of mediaFolders) {
+      if (foldersOverlap(tvRoot, mediaRoot)) return res.status(400).json({ error: `Shows folder overlaps a media folder: ${tvRoot} <-> ${mediaRoot}` });
+    }
+    for (const bookRoot of bookFolders) {
+      if (foldersOverlap(tvRoot, bookRoot)) return res.status(400).json({ error: `Shows folder overlaps a book folder: ${tvRoot} <-> ${bookRoot}` });
+    }
+    for (const musicRoot of musicFolders) {
+      if (foldersOverlap(tvRoot, musicRoot)) return res.status(400).json({ error: `Shows folder overlaps a music folder: ${tvRoot} <-> ${musicRoot}` });
+    }
+    if (foldersOverlap(tvRoot, podcastsRoot)) return res.status(400).json({ error: `Shows folder overlaps the podcasts folder: ${tvRoot} <-> ${podcastsRoot}` });
+  }
+  try {
+    await updateDatabase((db) => { tvStore.ensureTv(db).folders = resolved; return true; });
+  } catch (err) {
+    return res.status(500).json({ error: `Could not save Shows folders: ${err.message}` });
+  }
+  res.json({ folders: resolved });
+  scanTv().catch(console.error);
+});
+
+app.post('/api/tv/scan', (req, res) => {
+  if (!requireModifyLibrary(req, res)) return; // write-RBAC (first guard)
+  const alreadyInProgress = tvScanState.scanning;
+  if (alreadyInProgress) tvScanState.rescanRequested = true;
+  else scanTv().catch(console.error);
+  res.status(202).json({ scanning: true, alreadyInProgress });
+});
+
+app.get('/api/tv/scan-status', (req, res) => { res.json(tvScanState); });
+
+// ---- TV Shows: read/browse APIs + poster/episode serving (Phase 3c) ----------
+
+// OWN-property episode lookup (prototype-pollution defense, the ownTrack posture):
+// a crafted id like '__proto__' must never resolve to an inherited object.
+function ownEpisode(episodes, id) {
+  return (episodes && Object.prototype.hasOwnProperty.call(episodes, id)) ? episodes[id] : null;
+}
+
+const TV_CONTENT_TYPES = {
+  '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm',
+  '.mkv': 'video/x-matroska', '.mov': 'video/quicktime', '.avi': 'video/x-msvideo',
+  '.flv': 'video/x-flv', '.wmv': 'video/x-ms-wmv', '.mpg': 'video/mpeg', '.mpeg': 'video/mpeg',
+};
+
+// A TV-OWNED transcode queue (never the video queue, which writes
+// db.metadata[id].transcodeStatus - a tv id would pollute the video namespace).
+// The music-transcode posture verbatim: renditions land at tvRenditionPath(id) in
+// TRANSCODE_DIR (shared cache management for free), readiness by FILE EXISTENCE
+// alone (no db write on the hot path), the video H.264+AAC+faststart args.
+function tvRenditionPath(id) { return path.join(TRANSCODE_DIR, `tv-${id}.mp4`); }
+const tvTranscodeQueue = [];
+let tvTranscodeBusy = false;
+function queueTvTranscode(id, srcPath) {
+  if (!ffmpegAvailable) return;
+  if (tvTranscodeQueue.some((job) => job.id === id)) return;
+  tvTranscodeQueue.push({ id, srcPath });
+  processTvTranscodeQueue();
+}
+function processTvTranscodeQueue() {
+  if (tvTranscodeBusy || tvTranscodeQueue.length === 0) return;
+  const { id, srcPath } = tvTranscodeQueue.shift();
+  if (!fs.existsSync(srcPath)) { processTvTranscodeQueue(); return; }
+  const outPath = tvRenditionPath(id);
+  if (fs.existsSync(outPath)) { processTvTranscodeQueue(); return; }
+  tvTranscodeBusy = true;
+  const tmpPath = `${outPath}.tmp.mp4`;
+  let proc;
+  try {
+    proc = spawn('ffmpeg', ['-i', srcPath, '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', String(TRANSCODE_CRF), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '160k', '-ac', '2', '-movflags', '+faststart', '-y', tmpPath]);
+  } catch (e) {
+    console.error(`tv: failed to start transcode for ${srcPath}:`, e.message);
+    tvTranscodeBusy = false; processTvTranscodeQueue(); return;
+  }
+  proc.stderr.on('data', () => { /* drain */ });
+  proc.on('error', (e) => {
+    console.error(`tv: transcode process error for ${srcPath}:`, e.message);
+    try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
+    tvTranscodeBusy = false; processTvTranscodeQueue();
+  });
+  proc.on('close', (code) => {
+    tvTranscodeBusy = false;
+    if (code === 0) {
+      try { fs.renameSync(tmpPath, outPath); } catch (e) { try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ } }
+    } else {
+      console.error(`tv: transcode failed (exit ${code}) for ${srcPath}`);
+      try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
+    }
+    processTvTranscodeQueue();
+  });
+}
+
+function tvPosterPlaceholderSvg(name) {
+  const title = String(name || 'Show');
+  const clip = (s, n) => (s.length > n ? `${s.substring(0, n - 2)}...` : s);
+  return `
+    <svg width="300" height="450" viewBox="0 0 300 450" xmlns="http://www.w3.org/2000/svg">
+      <rect width="300" height="450" fill="#2b3049"/>
+      <rect x="110" y="150" width="80" height="110" rx="6" fill="none" stroke="#8890b5" stroke-width="3"/>
+      <text x="150" y="330" font-family="Arial, sans-serif" font-size="18" fill="#e8e8f0" text-anchor="middle" font-weight="bold">${escapeHtml(clip(title, 22))}</text>
+    </svg>`;
+}
+
+// The visible-episode array for the requester (the SINGLE visibility decision).
+function visibleTvEpisodes(req) {
+  const ns = tvStore.readTv(getCachedDatabase());
+  return Object.values(ns.episodes || {}).filter((ep) => tvEpisodeVisibleTo(req, ep));
+}
+
+app.get('/api/tv', (req, res) => {
+  // GATED: the shows grid, over ONLY the episodes this requester may see.
+  res.json({ shows: tvParse.groupShows(visibleTvEpisodes(req)) });
+});
+
+app.get('/api/tv/:showId', (req, res) => {
+  const eps = visibleTvEpisodes(req);
+  const seasons = tvParse.groupSeasons(eps, req.params.showId);
+  if (seasons.length === 0) return res.status(404).json({ error: 'no such show' });
+  const first = eps.find((e) => e.showId === req.params.showId);
+  res.json({
+    id: req.params.showId,
+    name: (first && first.showName) || '',
+    seasons: seasons.map((s) => ({
+      seasonNum: s.seasonNum,
+      label: s.label,
+      episodes: s.episodes.map((e) => ({
+        id: e.id, seasonNum: e.seasonNum, episodeNum: e.episodeNum, title: e.title,
+        durationSec: e.durationSec || 0,
+      })),
+    })),
+  });
+});
+
+app.get('/tvposter/:showId', (req, res) => {
+  const eps = visibleTvEpisodes(req).filter((e) => e.showId === req.params.showId);
+  res.set('Cache-Control', 'private, max-age=3600'); // RBAC: keep behind the auth wall
+  if (eps.length > 0) {
+    const poster = tvScan.findShowPoster(eps[0].showPath);
+    if (poster && fs.existsSync(poster)) return res.sendFile(poster);
+    // Fallback: the earliest episode's generated thumbnail. Order via groupSeasons'
+    // null-safe season/episode keys (a raw `a.seasonNum - b.seasonNum` coerces an
+    // Extras episode's null seasonNum to NaN -> a nondeterministic representative).
+    const ordered = tvParse.groupSeasons(eps, req.params.showId);
+    const rep = ordered[0] && ordered[0].episodes[0];
+    if (rep) { const t = tvThumbPath(rep.id); if (fs.existsSync(t)) return res.sendFile(t); }
+  }
+  res.set('Content-Type', 'image/svg+xml');
+  res.send(tvPosterPlaceholderSvg(eps[0] && eps[0].showName));
+});
+
+app.get('/tvepisode/:id', (req, res) => {
+  const ns = tvStore.readTv(getCachedDatabase());
+  const ep = ownEpisode(ns.episodes, req.params.id);
+  if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
+  if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
+  if (!fs.existsSync(ep.filePath)) return res.status(404).json({ error: 'file missing' });
+  const contentType = TV_CONTENT_TYPES[ep.ext] || 'video/mp4';
+  // ?download=1: the app-wide save-to-device affordance -> ORIGINAL bytes.
+  if (req.query.download === '1') {
+    res.setHeader('Content-Disposition', contentDispositionAttachment(ep.title || ep.showName || 'episode', ep.ext));
+    return sendRangeable(req, res, ep.filePath, contentType, () => markServed(ep.filePath));
+  }
+  // Browser-incompatible CONTAINER *or* CODEC -> the TV-owned MP4 rendition
+  // (transcode on demand). Codec-aware, mirroring the main video serve path: an
+  // HEVC-video or AC3/DTS-audio episode in a native container (.mp4/.mov/.m4v) is
+  // the single most common TV-rip shape and would otherwise be served raw and
+  // never decode (the client would retry forever). ep.codec is the VIDEO codec.
+  if (needsTranscode(ep.ext, ep.codec, ep.audioCodec)) {
+    const rendition = tvRenditionPath(ep.id);
+    // Serving the cached rendition? Mark it live-watched so the SHARED transcode
+    // cache's LRU/age eviction (evictTranscodeCache/sweepAgedTranscodes, which
+    // count tv-<id>.mp4 as a completed rendition) never unlinks it mid-stream -
+    // the recentlyServed race guard the main video path relies on.
+    if (fs.existsSync(rendition)) return sendRangeable(req, res, rendition, 'video/mp4', () => markServed(rendition));
+    queueTvTranscode(ep.id, ep.filePath);
+    return res.status(503).json({ error: 'transcoding', ext: ep.ext });
+  }
+  sendRangeable(req, res, ep.filePath, contentType, () => markServed(ep.filePath));
 });
 
 // ---- v1.32: replaceable header logo ("white-label") -------------------------
@@ -8679,7 +9102,12 @@ const BACKUP_SCHEMA = 'filetube-backup-v1';
 // v1.69: 'podcasts' rides the bundle (subscriptions/episodes/settings) but
 // feed URLS do not - they are secrets, stored OUTSIDE the db (see
 // lib/podcasts/secrets.js), so a restored sub may need its URL re-entered.
-const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'folderDisplayNames', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'trash', 'books', 'music', 'podcasts', 'ytdlp'];
+// v1.195: 'tv' rides the bundle (Shows folders/episodes/settings) - the
+// access-control-completeness net: restore wipes the doc tables wholesale and
+// repopulates ONLY from bundle keys, so an omitted 'tv' would SILENTLY erase a
+// restoring admin's entire Shows library + config (and the content-gated nav
+// link with it), exactly the data-loss books/music/podcasts already avoid here.
+const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'folderDisplayNames', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'trash', 'books', 'music', 'podcasts', 'tv', 'ytdlp'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -8875,7 +9303,7 @@ function validateBackupBundle(bundle) {
   // Container namespaces must be objects when present (delta-round
   // residual): catching a malformed shape HERE means a 400 before the wipe
   // even starts, rather than a mid-populate rollback.
-  for (const container of ['books', 'music', 'podcasts', 'ytdlp']) {
+  for (const container of ['books', 'music', 'podcasts', 'tv', 'ytdlp']) {
     if (bundle[container] !== undefined && (typeof bundle[container] !== 'object' || bundle[container] === null || Array.isArray(bundle[container]))) {
       return `bundle key '${container}' must be an object`;
     }
@@ -17392,6 +17820,8 @@ if (require.main === module) {
         scanBooks().catch(console.error);
         // v1.44 music: same deferred boot slot; music-less = pure no-op.
         scanMusic().catch(console.error);
+        // v1.195 TV Shows: same deferred boot slot; Shows-less = pure no-op.
+        scanTv().catch(console.error);
       });
     });
   })();
@@ -17464,6 +17894,13 @@ module.exports = {
   ALBUMART_DIR,
   albumArtExists,
   musicCodecNeedsTranscode,
+  // v1.195 TV Shows: scanner + state + probe/thumb helpers (same export posture as
+  // scanMusic; probeTvEpisode/extractTvThumb are ffmpeg spawns, injected/absent in CI).
+  scanTv,
+  runTvScan,
+  currentTvScanState,
+  TV_THUMB_DIR,
+  probeTvEpisode,
   flushPendingMusicProgress,
   currentMusicProgressFlushTimer,
   effectiveMusicProgress,

@@ -91,19 +91,19 @@ One SQLite file, two buckets (see ARCHITECTURE.md "Storage"). The document
 store persists the legacy db.json object shape per row; everything
 user-scoped is relational. The namespace lists in `lib/db/sqlite.js` are a
 LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.135.0:
-12 `doc_kv` namespaces, 15 `doc_single` names, 26 relational tables,
-schema version 18.
+13 `doc_kv` namespaces, 17 `doc_single` names, 29 relational tables,
+schema version 19.
 
 ```mermaid
 flowchart LR
     subgraph DOC["Document store (the db.json shape, per-row)"]
-        KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata · progress · viewCounts · trash ·<br/>deleteTombstones · books.items · books.progress ·<br/>books.audio · music.tracks · podcasts.episodes ·<br/>ytdlp.downloadMeta · ytdlp.channelAvatars"]
-        SINGLE["doc_single (name, json)<br/>whole small objects:<br/>folders · folderSettings · folderDisplayNames ·<br/>settings · liked · books.folders · books.settings ·<br/>books.pins · music.folders · music.settings ·<br/>podcasts.subscriptions · podcasts.settings ·<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
+        KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata · progress · viewCounts · trash ·<br/>deleteTombstones · books.items · books.progress ·<br/>books.audio · music.tracks · podcasts.episodes ·<br/>tv.episodes · ytdlp.downloadMeta · ytdlp.channelAvatars"]
+        SINGLE["doc_single (name, json)<br/>whole small objects:<br/>folders · folderSettings · folderDisplayNames ·<br/>settings · liked · books.folders · books.settings ·<br/>books.pins · music.folders · music.settings ·<br/>podcasts.subscriptions · podcasts.settings ·<br/>tv.folders · tv.settings ·<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
     end
 
     subgraph REL["Relational per-user tables (accessors: lib/auth/store.js)"]
         CORE["identity + core media<br/>users · user_restrictions ·<br/>user_progress · user_liked · user_watched ·<br/>user_queue · user_queue_state ·<br/>user_search_history · user_feed_hidden ·<br/>user_channel_pins"]
-        PLACEST["per-place<br/>user_book_progress · user_book_pins ·<br/>user_book_liked · user_book_finished ·<br/>user_music_progress · user_music_liked ·<br/>user_music_state · user_podcast_progress ·<br/>user_podcast_liked · user_podcast_pins ·<br/>user_podcast_played"]
+        PLACEST["per-place<br/>user_book_progress · user_book_pins ·<br/>user_book_liked · user_book_finished ·<br/>user_music_progress · user_music_liked ·<br/>user_music_state · user_podcast_progress ·<br/>user_podcast_liked · user_podcast_pins ·<br/>user_podcast_played ·<br/>user_tv_progress · user_tv_played · user_tv_liked"]
         NOTIF["notifications + push<br/>notifications · user_notification_reads ·<br/>user_notification_dismissals ·<br/>user_notification_state · push_subscriptions"]
     end
 
