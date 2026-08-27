@@ -337,6 +337,14 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
   assert.equal(descPara.textContent, '', 'the description is empty now (the filename moved to the File Path row - no duplication)');
   assert.equal(subBtn.style.display, 'none', 'NO Subscribe on an episode (the [hidden]-loses-to-display class made it show)');
   assert.ok(commentsBox.children.length > 0, 'the fake retro comments render on episodes (same machinery as videos, episode-id-scoped)');
+  // Slim-gate WARNING 1: rendering alone is not VISIBILITY - re-adding
+  // '#comments-container' to hideTvVideoChrome's list appends children into a
+  // display:none box and stayed green. Bind the visibility axis too.
+  assert.notEqual(commentsBox.style.display, 'none', 'the comments container is not re-hidden on tv (Dean\'s exact complaint)');
+  // Slim-gate SUGGESTION 1: the episode-id scope binds via the REAL storage key -
+  // deleting `commentScopeId = episodeId` would key every episode on comments_null.
+  assert.ok(storage.has('comments_ep1'), 'comments persist under the EPISODE id bucket');
+  assert.ok(!storage.has('comments_null'), 'never the null bucket');
 });
 
 // ---- v1.197 W1 (both gate seats, BLOCKING): the tv path's cog sequence bound --
