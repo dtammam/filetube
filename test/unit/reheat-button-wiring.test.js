@@ -493,7 +493,11 @@ test('SUGGESTION 4: every player.load call site in watch.js passes browseCtx (no
     from = i + 1;
   }
   assert.ok(calls.length >= 3, `expected at least 3 player.load call sites, found ${calls.length}`);
-  calls.forEach((c, i) => {
-    assert.ok(/browseCtx/.test(c), `player.load call site #${i + 1} drops browseCtx`);
-  });
+  // v1.196: exactly ONE call site omits browseCtx by design - the TV episode load
+  // (initTvWatch), which has no /api/videos browse list and instead supplies
+  // prev/next + autoplay through setTrackNav (the show queue). Every OTHER (video)
+  // call site must still carry browseCtx (the launch-context invariant).
+  const missing = calls.filter((c) => !/browseCtx/.test(c));
+  assert.equal(missing.length, 1, `only the tv source load may omit browseCtx; found ${missing.length} without it`);
+  assert.match(missing[0], /descriptor/, 'the browseCtx-less load must be the tv source-descriptor path');
 });

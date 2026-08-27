@@ -4200,7 +4200,13 @@ if (typeof module !== 'undefined' && module.exports) {
   // (by-then-different) live host.
   function pollTranscodeUntilReady(gen, id) {
     if (gen !== loadGeneration || state === STATE_CLOSED) return;
-    fetch('/api/videos/' + id)
+    // v1.196: the status + rendition URLs come from the load's descriptor for a
+    // non-video source (a TV episode polls /api/tv/episode/:id and plays
+    // /tvepisode/:id); ordinary videos carry neither, so they keep /api/videos +
+    // /video byte-identically. A source-typed load never touches the video routes.
+    var statusUrl = (currentData && currentData.statusUrl) || ('/api/videos/' + id);
+    var readySrc = (currentData && currentData.streamSrc) || ('/video/' + id);
+    fetch(statusUrl)
       .then(function (res) { return res.json(); })
       .then(function (data) {
         if (gen !== loadGeneration || state === STATE_CLOSED) return;
@@ -4208,7 +4214,7 @@ if (typeof module !== 'undefined' && module.exports) {
           awaitingTranscode = false;
           hideTranscodeOverlay();
           mediaPlayer.style.display = 'block';
-          mediaPlayer.src = '/video/' + id;
+          mediaPlayer.src = readySrc;
           handleResumePlayback(gen, id);
           return;
         }
@@ -4302,6 +4308,16 @@ if (typeof module !== 'undefined' && module.exports) {
           else { savedProgress = 0; mediaPlayer.play().catch(function () {}); }
         })
         .catch(function () { mediaPlayer.play().catch(function () {}); });
+      return;
+    }
+    // v1.196 TV: an episode's resume position rode the descriptor already (from
+    // GET /api/tv/episode/:id) - so resume WITHOUT a second fetch, and never hit
+    // /api/progress. Long-form like a podcast: resume silently past 5s, else start
+    // fresh; never the video "Resume at…" overlay.
+    if (currentData && currentData.resumeMode === 'tv') {
+      savedProgress = Number(currentData.progress) || 0;
+      if (savedProgress > 5) resumeDirectly(savedProgress);
+      else { savedProgress = 0; mediaPlayer.play().catch(function () {}); }
       return;
     }
     fetch('/api/progress/' + id)
@@ -7604,9 +7620,11 @@ if (typeof module !== 'undefined' && module.exports) {
     var streamUrl = '/video/' + id;
     // v1.38.0 TTS "Listen from Here": an audio item may carry an explicit
     // stream URL (a book chapter's synthesized /book/:id/tts/:spineIndex)
-    // instead of the default /video/:id. Additive + audio-only -- video and
-    // ordinary audio are byte-identical to before.
-    if (data.type === 'audio' && typeof data.streamSrc === 'string' && data.streamSrc) {
+    // instead of the default /video/:id.
+    // v1.196 (TV player integration): a VIDEO source may carry one too - a TV
+    // episode streams `/tvepisode/:id`. Ordinary videos never set `streamSrc`, so
+    // this stays byte-identical for them; only an explicit descriptor opts in.
+    if (typeof data.streamSrc === 'string' && data.streamSrc) {
       streamUrl = data.streamSrc;
     }
 
@@ -7624,7 +7642,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // completely unaffected, matching the feature's video+mobile-only scope.
     bgAudioSettingCached = false;
     bgAudioStatusKnown = (data && data.audioStatus) || null;
-    if (data.type !== 'audio' && isMobileFormFactor() && bgAudioEl) {
+    // v1.196: background-audio-for-video uses /api/videos/:id/prepare-audio +
+    // /audio/:id, which a TV source (identified by `statusUrl`) has no route for.
+    // Skip the pre-warm for it - lock-screen play/pause/next/prev still work via
+    // MediaSession; only the screen-off keep-playing sidecar is unavailable (a
+    // disclosed limit). Ordinary videos are unaffected.
+    if (data.type !== 'audio' && !data.statusUrl && isMobileFormFactor() && bgAudioEl) {
       // F3b (two-reviewer follow-up): does NOT pre-set the real `/audio/:id`
       // src here anymore -- that used to mean EVERY mobile video load
       // pointed `bgAudioEl` at the real network URL regardless of the
@@ -7758,7 +7781,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // if/when the browser decides to load the track (Cue text is not
     // fetched merely because `src` is set unless the track is in a mode
     // other than 'disabled' or the user later shows it via #cc-btn).
-    if (ccTrack) ccTrack.src = '/api/subtitles/' + id;
+    // v1.196: a TV episode has no subtitles route; leave the track inert (empty
+    // src) rather than pointing it at /api/subtitles/:id for a non-video id.
+    if (ccTrack) ccTrack.src = data.statusUrl ? '' : '/api/subtitles/' + id;
     // v1.34 T3: the resolved chapter list rides GET /api/videos/:id; the
     // picker rebuilds per load (and hides on teardown).
     applyChaptersForMedia(data);
@@ -7822,11 +7847,16 @@ if (typeof module !== 'undefined' && module.exports) {
         // once this lands (setupForMedia will find data.width/height next
         // time via GET /api/videos/:id). Never blocks/affects playback
         // either way -- a failed/rejected POST is silently swallowed.
-        fetch('/api/videos/' + encodeURIComponent(id) + '/dimensions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ width: vw, height: vh }),
-        }).catch(function () {});
+        // v1.196: a TV source has no /api/videos/:id/dimensions route (its dims
+        // aren't persisted); the local applyMediaAspect above already settled the
+        // box, so skip the network call (upholds "a tv load never hits /api/videos").
+        if (!data.statusUrl) {
+          fetch('/api/videos/' + encodeURIComponent(id) + '/dimensions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ width: vw, height: vh }),
+          }).catch(function () {});
+        }
       }, { once: true });
     }
 
@@ -7877,10 +7907,20 @@ if (typeof module !== 'undefined' && module.exports) {
       // thumbnail can never bleed onto the next item.
       if (data.hasThumbnail === true) {
         mediaPlayer.poster = '/thumbnail/' + encodeURIComponent(id);
+      } else if (typeof data.artUrl === 'string' && data.artUrl) {
+        // v1.196: a source with explicit art (a TV episode's /tvposter/:showId)
+        // but no /thumbnail/:id shows the show poster instead of a black box until
+        // the first frame decodes. Ordinary videos set hasThumbnail, not artUrl.
+        mediaPlayer.poster = data.artUrl;
       }
 
       if (data.needsTranscode) {
-        if (!isMobileViewport()) {
+        // Desktop live-transcode (/video/:id?live=1) exists only for the main
+        // video library. A TV source (identified by its own `statusUrl`) has no
+        // live endpoint, so it always takes the await-poll path - fetch streamSrc
+        // (a 503 triggers the TV-owned transcode), poll statusUrl, then play the
+        // rendition. On desktop a ready rendition still plays immediately below.
+        if (!isMobileViewport() && !data.statusUrl) {
           liveMode = true;
         } else if (data.transcodeStatus === 'ready') {
           mediaPlayer.src = streamUrl;

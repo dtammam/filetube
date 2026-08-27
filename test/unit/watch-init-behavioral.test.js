@@ -71,7 +71,7 @@ const FULL_SEED_ITEM = {
 
 // Builds a fresh sandbox, evaluates the REAL watch.js in it, and returns
 // {init, els} -- els is the shared selector->element map, pre-seedable.
-function buildWatchRealm({ cacheEntry, search = '?v=vid1' } = {}) {
+function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl } = {}) {
   storage.clear();
   if (cacheEntry) storage.set('ft-cap-cache-v1', JSON.stringify(cacheEntry));
 
@@ -80,6 +80,11 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1' } = {}) {
     if (!els.has(sel)) els.set(sel, makeEl('div'));
     return els.get(sel);
   }
+  // v1.196: capture player.load descriptors + setTrackNav registrations + every
+  // fetch URL, so the TV path's "never touch /api/videos" invariant is testable.
+  const loadCalls = [];
+  const trackNavCalls = [];
+  const fetchUrls = [];
   const documentShim = {
     createElement: (t) => makeEl(t),
     createTextNode: () => makeEl('text'),
@@ -94,11 +99,17 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1' } = {}) {
   const seedCalls = [];
   const windowShim = {
     FileTube: {
-      player: new Proxy({ currentId: null, getState: () => ({ docked: false, loaded: false }), load: () => true, isLoopEnabled: () => false }, {
+      player: new Proxy({
+        currentId: null, getState: () => ({ docked: false, loaded: false }),
+        load: (id, data, opts) => { loadCalls.push({ id, data, opts }); return true; },
+        setTrackNav: (h) => { trackNavCalls.push(h); },
+        isLoopEnabled: () => false,
+      }, {
         get(t, p) { if (p in t) return t[p]; return () => undefined; },
       }),
       consumeWatchSeed: (id) => { seedCalls.push(id); return { item: FULL_SEED_ITEM, folderSettings: null }; },
       registerView: (name, handlers) => { if (name === 'watch') capturedInit = handlers.init; },
+      navigate: () => {},
     },
     location: { pathname: '/watch.html', search, origin: 'http://x', href: 'http://x/watch.html' + search },
     addEventListener() {}, removeEventListener() {},
@@ -114,7 +125,7 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1' } = {}) {
     window: windowShim, document: documentShim,
     sessionStorage: global.sessionStorage, localStorage: global.sessionStorage,
     navigator: { userAgent: 'x', clipboard: {} },
-    fetch: () => new Promise(() => {}), // hydration hangs forever: frame-one only
+    fetch: (url, opts) => { fetchUrls.push(String(url)); return fetchImpl ? fetchImpl(url, opts) : new Promise(() => {}); }, // default: hydration hangs (frame-one only)
     console, URL, URLSearchParams, AbortController, Date, Math, JSON, Promise,
     setTimeout, clearTimeout, setInterval, clearInterval,
     Node: function Node() {}, requestAnimationFrame: windowShim.requestAnimationFrame,
@@ -131,7 +142,7 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1' } = {}) {
   const src = fs.readFileSync(path.join(REPO, 'public/js/watch.js'), 'utf8');
   vm.runInContext(src, sandbox, { filename: 'watch.js' });
   assert.ok(capturedInit, 'watch.js must register its init with the router');
-  return { init: capturedInit, els, loc: windowShim.location, seedCalls };
+  return { init: capturedInit, els, loc: windowShim.location, seedCalls, loadCalls, trackNavCalls, fetchUrls };
 }
 
 const WARM_SUBSCRIBED_CACHE = {
@@ -238,4 +249,55 @@ test('cold cache: init() completes and the button simply stays as the markup lef
 
   assert.equal(btn.hidden, true, 'no cached answer -> no frame-one claim, hydration will decide');
   assert.equal(btn.isConnected, true);
+});
+
+// ---- v1.196: the TV episode path (?tv=) drives the shared player ------------
+// The HARD INVARIANT: a ?tv= load reuses the player host + track-nav but runs
+// NONE of the video-only hydration, so it NEVER issues an /api/videos or /video
+// request (that id is not in db.metadata). Behavioural, against the REAL init.
+
+test('v1.196 ?tv= load: drives the shared player with the tv descriptor and never touches /api/videos', async () => {
+  const epDetail = {
+    id: 'ep1', type: 'video', title: 'Pilot', showId: 'show1', showName: 'My Show',
+    seasonNum: 1, episodeNum: 2, duration: 100, needsTranscode: false,
+    transcodeStatus: 'ready', streamSrc: '/tvepisode/ep1', statusUrl: '/api/tv/episode/ep1',
+    artUrl: '/tvposter/show1', progress: 0,
+  };
+  const showDetail = { id: 'show1', name: 'My Show', seasons: [
+    { seasonNum: 1, label: 'Season 1', episodes: [{ id: 'ep0' }, { id: 'ep1' }, { id: 'ep2' }] },
+  ] };
+  const fetchImpl = (url) => {
+    const u = String(url);
+    if (u.indexOf('/api/tv/episode/ep1') === 0) return Promise.resolve({ ok: true, json: () => Promise.resolve(epDetail) });
+    if (u.indexOf('/api/tv/show1') === 0) return Promise.resolve({ ok: true, json: () => Promise.resolve(showDetail) });
+    return new Promise(() => {}); // anything else hangs (a stray /api/videos would be a violation, caught below)
+  };
+  const { init, els, loadCalls, trackNavCalls, fetchUrls } = buildWatchRealm({ search: '?tv=ep1', fetchImpl });
+  const title = makeEl('h1'); els.set('#media-title', title);
+  const root = makeEl('div');
+  root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
+
+  init(root);
+  for (let i = 0; i < 12; i++) await Promise.resolve(); // flush the async initTvWatch chain
+
+  // THE INVARIANT: no /api/videos and no /video/ request on a tv load.
+  assert.ok(!fetchUrls.some((u) => u.includes('/api/videos')), 'a ?tv= load must never hit /api/videos (got: ' + fetchUrls.join(', ') + ')');
+  assert.ok(!fetchUrls.some((u) => u.includes('/video/')), 'a ?tv= load must never hit /video/ (got: ' + fetchUrls.join(', ') + ')');
+  assert.ok(fetchUrls.some((u) => u.indexOf('/api/tv/episode/ep1') === 0), 'it DID fetch the tv episode detail');
+
+  // The shared player is driven with the tv source descriptor.
+  assert.equal(loadCalls.length, 1, 'the shared player.load ran exactly once');
+  assert.equal(loadCalls[0].id, 'ep1');
+  assert.equal(loadCalls[0].data.streamSrc, '/tvepisode/ep1', 'streams the tv route, not /video/:id');
+  assert.equal(loadCalls[0].data.statusUrl, '/api/tv/episode/ep1', 'polls the tv route, not /api/videos/:id');
+  assert.equal(loadCalls[0].data.channelName, 'My Show', 'the show name is the "channel" (lock-screen + uploader metadata)');
+
+  // The episode title is painted (Dean item 4).
+  assert.equal(title.textContent, 'Pilot', 'the episode name shows');
+
+  // Prev/next registered across the whole show in order (ep1 -> prev ep0, next ep2).
+  assert.ok(trackNavCalls.length >= 1, 'setTrackNav registered the show queue (prev/next/autoplay)');
+  const nav = trackNavCalls[trackNavCalls.length - 1];
+  assert.equal(typeof nav.onPrev, 'function', 'prev is armed (ep0)');
+  assert.equal(typeof nav.onNext, 'function', 'next is armed (ep2)');
 });

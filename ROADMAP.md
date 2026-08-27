@@ -80,6 +80,56 @@
 
 ## Shipped
 
+### v1.196.0 - feat: TV episodes play in the REAL player (mini-player, prev/next, resume) + set-poster upload (2026-08-27)
+
+Dean's device feedback on v1.195.0: episodes opened in a bespoke `<video controls>`
+element - no mini-player, no prev/next, plain HTML5 chrome, no title, and the top
+clipped under the header. All ONE root cause. This wave routes episode playback
+through the app's REAL shared player (`public/js/player.js`) and folds in the
+deferred resume/Continue-Watching. Exec plan:
+`docs/exec-plans/completed/2026-08-27-tv-player-integration.md`.
+
+Architecture (7a): the player was already source-agnostic - `player.load(id, data,
+{slot})` takes a generic descriptor and `setTrackNav` takes arbitrary closures - so
+this is a reuse, not a rebuild of the battle-won code. Tapping an episode navigates
+to `/watch.html?tv=<id>`; a dedicated `initTvWatch` path in the watch view builds a
+descriptor (streamSrc `/tvepisode/:id`, statusUrl `/api/tv/episode/:id`, artUrl
+`/tvposter/:showId`), drives the shared player, and runs NONE of the video-only
+`/api/videos` hydration. This fixes Dean's items 1-5 at once:
+- **mini-player/dock, custom chrome (not HTML5), lock-screen/AirPods controls** -
+  free from the shared controller;
+- **episode title** shown; the header no longer clips (the real watch surface);
+- **prev/next + autoplay + loop** across the WHOLE show in season->episode (binge)
+  order, via the same `setTrackNav` seam the video player uses;
+- **resume + a "Continue watching" row** (the folded-in Phase 5): episodes remember
+  where you left off (silently, like a podcast - long-form), 90%-auto-marks watched.
+
+Also: **an admin "set show poster" upload** (item 6) - a "Change poster" control on
+the show detail; stored in the app data dir (works on a read-only share), magic-byte
+sniffed, traversal-safe, wins over the folder image; and a **whole-library Shows
+RBAC** completeness fix (the v1.195.1 gate finding: a `{kind:library,value:tv}`
+restriction is now creatable + enforced).
+
+**The full two-reviewer gate (battle-won player + per-user state + a file upload +
+RBAC -> full, never slim) caught two blocking issues, both fixed in one round:**
+- the client "Change poster" control was shown to `canModifyLibrary` members but the
+  server route is admin-only -> a dead button + a lying comment; aligned to admin;
+- `/api/tv/continue` (an access-control aggregation surface) had a correct but
+  UNBOUND visibility filter - a mutant dropping it left the suite green; now bound by
+  a test proving a restricted episode never leaks into Continue.
+Both seats APPROVE. **Dual-Node 7642/0** (Node 22.23.1 + 24.14.0).
+
+**Known limits (disclosed):**
+- **Background audio for episodes** (keep-playing with the screen off) is not wired -
+  episodes have no `/audio/:id` extraction sidecar; lock-screen play/pause/next/prev
+  DO work. A future wave if wanted.
+- The "up next" episode panel on the watch page and the mobile bottom-nav customizer
+  "Shows" entry remain deferred (Shows is reachable via the sidebar + Playlists).
+- Custom show posters are NOT carried in the backup bundle (like avatars); the
+  player-side of the no-`/api/videos` invariant is regex-source-locked, not
+  behaviourally bound (player.js's jsdom-harness residual); an oversized poster body
+  from a member returns 413 before 403. See the tech-debt tracker.
+
 ### v1.195.1 - fix: Shows now appears in the mobile Playlists sheet + has an icon picker (2026-08-26)
 
 Dean (device): on mobile, Shows didn't appear in the Playlists sheet, and - unlike

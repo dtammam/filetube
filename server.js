@@ -159,6 +159,11 @@ const ALBUMART_DIR = path.join(DATA_DIR, '.albumart');
 // grab like the video library's storyboard - one file per episode. The tv scan's
 // prune is the only writer that unlinks here.
 const TV_THUMB_DIR = path.join(DATA_DIR, '.tvthumbs');
+// v1.196: admin-set show posters live in DATA_DIR (NOT the media folder - works
+// even when the Shows share is read-only, and never clutters the user's tree),
+// keyed by showId, checked BEFORE the folder-image probe in /tvposter. Like
+// avatars, these are NOT carried in the backup bundle (disclosed).
+const TV_POSTER_DIR = path.join(DATA_DIR, '.tvposters');
 // v1.38.0 TTS: per-chapter synthesized audio cache (<key>.m4a + <key>.blocks.json),
 // a sibling of the thumbnail/cover caches. Created on demand by the worker.
 const TTS_CACHE_DIR = path.join(DATA_DIR, 'tts-cache');
@@ -963,8 +968,10 @@ function bookVisibleTo(req, book) {
 }
 // v1.195 TV Shows RBAC: an episode's visibility routes through the SAME single
 // decision point (kind:'tv'). Path/rootFolder restrictions bite generically; a
-// whole-library 'tv' restriction bites via KIND_TO_LIBRARY. `ep` falsy -> not
-// visible (the serve route 404s an unknown id before reaching here anyway).
+// whole-library 'tv' restriction (creatable in Settings since v1.196, when 'tv'
+// joined VALID_LIBRARY_VALUES + the setup checkbox roster) bites via
+// KIND_TO_LIBRARY. `ep` falsy -> not visible (the serve route 404s an unknown id
+// before reaching here anyway).
 function tvEpisodeVisibleTo(req, ep) {
   return !!ep && !visibility.isBlocked(userRestrictionIndex(req), { kind: 'tv', filePath: ep.filePath, rootFolder: ep.rootFolder });
 }
@@ -6234,7 +6241,7 @@ app.post('/api/users/:id/modify-library-flag', (req, res) => {
 
 // v1.80 RBAC: admin management of a user's library restrictions (blocklist).
 const VALID_RESTRICTION_KINDS = new Set(['path', 'folder', 'show', 'library']);
-const VALID_LIBRARY_VALUES = new Set(['video', 'music', 'podcasts', 'books']);
+const VALID_LIBRARY_VALUES = new Set(['video', 'music', 'podcasts', 'books', 'tv']);
 const RESTRICTION_VALUE_MAX = 4096;
 
 // The stored mode is carried as a distinguished row {kind:'mode'} (no extra
@@ -8430,6 +8437,22 @@ function probeTvEpisode(filePath) {
 
 function tvThumbPath(id) { return path.join(TV_THUMB_DIR, `${id}.jpg`); }
 function tvThumbExists(id) { return fs.existsSync(tvThumbPath(id)); }
+// v1.196: a safe filename component for a showId (real ids are md5 hex; the guard
+// also admits test/fixture ids while refusing any path-separator/../ traversal).
+function tvSafeShowId(showId) {
+  return (typeof showId === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(showId)) ? showId : null;
+}
+// The admin-set custom poster file for a show, or null: the first existing
+// extension in the poster preference order. A hostile showId resolves to null.
+function tvCustomPosterPath(showId) {
+  const safe = tvSafeShowId(showId);
+  if (!safe) return null;
+  for (const ext of tvScan.POSTER_EXTS) {
+    const p = path.join(TV_POSTER_DIR, safe + ext);
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
 
 // One ffmpeg frame grab per episode (the video-library storyboard posture: a
 // single -vframes 1 at a modest offset, atomic tmp+rename). Best-effort - a
@@ -8702,6 +8725,117 @@ app.get('/api/tv', (req, res) => {
   res.json({ shows: tvParse.groupShows(visibleTvEpisodes(req)) });
 });
 
+// v1.196 (player integration): the per-episode DETAIL + transcode-STATUS endpoint.
+// Shaped like GET /api/videos/:id so the shared player (public/js/player.js) can
+// drive an episode through the SAME load/poll/overlay path a video uses: `type`,
+// `needsTranscode` (the codec-aware form), `transcodeStatus` (live from rendition
+// existence so the player's poll flips to 'ready'), `duration`, plus the tv-source
+// descriptor fields (`streamSrc`/`statusUrl`/`artUrl`) that keep the player OFF the
+// /api/videos + /video routes (that id is not in db.metadata). GATED: a restricted
+// or absent episode is 404 (no title/existence oracle), same as /tvepisode/:id.
+// Static segment 'episode' registered BEFORE /api/tv/:showId (route-order scar).
+app.get('/api/tv/episode/:id', (req, res) => {
+  const ns = tvStore.readTv(getCachedDatabase());
+  const ep = ownEpisode(ns.episodes, req.params.id);
+  if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
+  if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
+  const transcodes = needsTranscode(ep.ext, ep.codec, ep.audioCodec);
+  res.json({
+    id: ep.id,
+    type: 'video',
+    title: ep.title || (ep.episodeNum != null ? `Episode ${ep.episodeNum}` : (ep.showName || 'Episode')),
+    showId: ep.showId,
+    showName: ep.showName || '',
+    seasonNum: ep.seasonNum,
+    episodeNum: ep.episodeNum,
+    duration: ep.durationSec || 0,
+    durationSec: ep.durationSec || 0,
+    needsTranscode: transcodes,
+    // Live readiness so pollTranscodeUntilReady sees 'ready' the moment the
+    // TV-owned rendition lands (only meaningful when needsTranscode is true).
+    transcodeStatus: transcodes ? (fs.existsSync(tvRenditionPath(ep.id)) ? 'ready' : 'pending') : 'ready',
+    // The tv source descriptor: the player streams + polls THESE, never /video or
+    // /api/videos. streamSrc serves the raw file or the rendition (transcode-503
+    // handled by /tvepisode itself); statusUrl re-hits THIS route for the poll.
+    streamSrc: `/tvepisode/${encodeURIComponent(ep.id)}`,
+    statusUrl: `/api/tv/episode/${encodeURIComponent(ep.id)}`,
+    artUrl: `/tvposter/${encodeURIComponent(ep.showId)}`,
+    // v1.196 (Phase B): the signed-in user's resume position + watched latch, so
+    // the player's resume overlay + the row's watched tick reflect real state.
+    progress: (userStore.getOneTvProgress(req.user.id, ep.id) || {}).position || 0,
+    watched: Object.prototype.hasOwnProperty.call(userStore.getTvPlayed(req.user.id), ep.id),
+  });
+});
+
+// v1.196 (Phase B): per-user resume + watched latch + Continue-Watching. Personal
+// writes, each gated to episodes the requester may see (no cross-user oracle, no
+// writing progress for a hidden episode). Static segments, before /api/tv/:showId.
+app.post('/api/tv/progress', (req, res) => {
+  // Body shape matches the shared player's saveProgressToServer ({id, timestamp,
+  // duration}) exactly, like /api/music/progress + /api/podcasts/progress - the
+  // player is the one write site (its `progressEndpoint` descriptor field points
+  // here for a tv source).
+  const { id, timestamp, duration } = req.body || {};
+  if (typeof id !== 'string' || id === '') return res.status(400).json({ error: 'id required' });
+  const ns = tvStore.readTv(getCachedDatabase());
+  const ep = ownEpisode(ns.episodes, id);
+  if (!ep || !tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' });
+  const pos = Number(timestamp) || 0;
+  const dur = Number(duration) || ep.durationSec || 0;
+  userStore.setTvProgress(req.user.id, id, { position: pos, duration: dur, updatedAt: new Date().toISOString() });
+  // O2: auto-mark watched once the position crosses the shared threshold (90%).
+  if (dur > 0 && (pos / dur) * 100 >= videoQuery.WATCHED_PCT) {
+    userStore.setTvPlayed(req.user.id, id, new Date().toISOString());
+  }
+  res.json({ success: true });
+});
+
+app.post('/api/tv/played', (req, res) => {
+  const { episodeId } = req.body || {};
+  if (typeof episodeId !== 'string' || episodeId === '') return res.status(400).json({ error: 'episodeId required' });
+  const ns = tvStore.readTv(getCachedDatabase());
+  const ep = ownEpisode(ns.episodes, episodeId);
+  if (!ep || !tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' });
+  userStore.setTvPlayed(req.user.id, episodeId, new Date().toISOString());
+  res.json({ success: true, watched: true });
+});
+
+app.delete('/api/tv/played', (req, res) => {
+  const { episodeId } = req.body || {};
+  if (typeof episodeId !== 'string' || episodeId === '') return res.status(400).json({ error: 'episodeId required' });
+  // Un-watch deletes ONLY the requester's own row (a hidden episode simply has
+  // none), so no visibility oracle is exposed by skipping the existence gate.
+  userStore.clearTvPlayed(req.user.id, episodeId);
+  res.json({ success: true, watched: false });
+});
+
+app.get('/api/tv/continue', (req, res) => {
+  // GATED: the requester's in-progress episodes (a resume position, not finished,
+  // not watched), over ONLY episodes they may see, most-recent activity first,
+  // joined with the episode's display fields. Powers the Shows-home Continue row.
+  const ns = tvStore.readTv(getCachedDatabase());
+  const progress = userStore.getTvProgress(req.user.id);
+  const played = userStore.getTvPlayed(req.user.id);
+  const rows = [];
+  for (const id of Object.keys(progress)) {
+    const ep = ownEpisode(ns.episodes, id);
+    if (!ep || !tvEpisodeVisibleTo(req, ep)) continue;
+    if (Object.prototype.hasOwnProperty.call(played, id)) continue; // finished
+    const p = progress[id];
+    const pos = Number(p.position) || 0;
+    const dur = Number(p.duration) || ep.durationSec || 0;
+    if (pos <= 0) continue; // never really started
+    if (dur > 0 && (pos / dur) * 100 >= videoQuery.WATCHED_PCT) continue; // effectively done
+    rows.push({
+      id: ep.id, showId: ep.showId, showName: ep.showName, seasonNum: ep.seasonNum,
+      episodeNum: ep.episodeNum, title: ep.title, durationSec: dur, position: pos,
+      updatedAt: p.updatedAt || '',
+    });
+  }
+  rows.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  res.json({ episodes: rows });
+});
+
 app.get('/api/tv/:showId', (req, res) => {
   const eps = visibleTvEpisodes(req);
   const seasons = tvParse.groupSeasons(eps, req.params.showId);
@@ -8725,6 +8859,11 @@ app.get('/tvposter/:showId', (req, res) => {
   const eps = visibleTvEpisodes(req).filter((e) => e.showId === req.params.showId);
   res.set('Cache-Control', 'private, max-age=3600'); // RBAC: keep behind the auth wall
   if (eps.length > 0) {
+    // v1.196: an admin-set custom poster (DATA_DIR) wins over the folder image -
+    // but only AFTER visibility confirmed the requester may see this show (this
+    // block only runs for a visible show), so a restricted user never gets it.
+    const custom = tvCustomPosterPath(req.params.showId);
+    if (custom) return res.sendFile(custom);
     const poster = tvScan.findShowPoster(eps[0].showPath);
     if (poster && fs.existsSync(poster)) return res.sendFile(poster);
     // Fallback: the earliest episode's generated thumbnail. Order via groupSeasons'
@@ -8973,6 +9112,61 @@ app.delete('/api/settings/logo', async (req, res) => {
     console.error('Error removing custom logo:', err);
     return res.status(500).json({ error: `Could not remove logo: ${err.message}` });
   }
+  return res.json({ ok: true });
+});
+
+// ---- v1.196: admin-set show poster (DATA_DIR, mirrors the custom-logo upload) -
+// A raw image body (allowlisted Content-Type + magic bytes, 1 MB cap) written to
+// TV_POSTER_DIR keyed by showId; /tvposter serves it before the folder image. The
+// showId must be a REAL show (an episode carries it) AND a safe filename token
+// (tvSafeShowId), so a crafted id can never escape the store dir.
+const TV_POSTER_MIME_EXT = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' };
+app.post(
+  '/api/tv/:showId/poster',
+  express.raw({ type: Object.keys(CUSTOM_LOGO_TYPES), limit: CUSTOM_LOGO_MAX_BYTES }),
+  async (req, res) => {
+    if (!requireAdmin(req, res)) return; // library art is admin config (write-RBAC)
+    const safe = tvSafeShowId(req.params.showId);
+    if (!safe) return res.status(400).json({ error: 'invalid show id' });
+    const ns = tvStore.readTv(getCachedDatabase());
+    if (!Object.values(ns.episodes || {}).some((e) => e && e.showId === safe)) {
+      return res.status(404).json({ error: 'no such show' });
+    }
+    const mime = (req.headers['content-type'] || '').split(';')[0].trim();
+    if (!Object.prototype.hasOwnProperty.call(CUSTOM_LOGO_TYPES, mime)) {
+      return res.status(400).json({ error: 'Poster must be image/png, image/jpeg, or image/webp' });
+    }
+    const bytes = req.body;
+    if (!Buffer.isBuffer(bytes) || bytes.length === 0) return res.status(400).json({ error: 'Empty upload' });
+    if (!CUSTOM_LOGO_TYPES[mime](bytes)) return res.status(400).json({ error: 'File content does not match its image type' });
+    try {
+      fs.mkdirSync(TV_POSTER_DIR, { recursive: true });
+      // Drop any prior poster for this show (possibly a different extension) so
+      // exactly one file wins the /tvposter probe.
+      for (const ext of tvScan.POSTER_EXTS) { try { fs.unlinkSync(path.join(TV_POSTER_DIR, safe + ext)); } catch (_) { /* absent */ } }
+      const target = path.join(TV_POSTER_DIR, safe + (TV_POSTER_MIME_EXT[mime] || '.jpg'));
+      const tmp = `${target}.${process.pid}.${Date.now()}.tmp`; // atomic tmp+rename
+      fs.writeFileSync(tmp, bytes);
+      fs.renameSync(tmp, target);
+    } catch (err) {
+      console.error('Error saving show poster:', err);
+      return res.status(500).json({ error: `Could not save poster: ${err.message}` });
+    }
+    return res.json({ ok: true });
+  },
+  (err, req, res, next) => {
+    if (err && (err.type === 'entity.too.large' || err.status === 413)) {
+      return res.status(413).json({ error: 'Poster too large (max 1 MB)' });
+    }
+    return next(err);
+  }
+);
+
+app.delete('/api/tv/:showId/poster', (req, res) => {
+  if (!requireAdmin(req, res)) return; // write-RBAC (the upload's sibling)
+  const safe = tvSafeShowId(req.params.showId);
+  if (!safe) return res.status(400).json({ error: 'invalid show id' });
+  for (const ext of tvScan.POSTER_EXTS) { try { fs.unlinkSync(path.join(TV_POSTER_DIR, safe + ext)); } catch (_) { /* absent */ } }
   return res.json({ ok: true });
 });
 

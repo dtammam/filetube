@@ -7,7 +7,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const {
   escapeTvHtml, episodeCode, formatEpDuration,
-  buildShowCardHtml, buildEpisodeRowHtml, buildShowDetailHtml,
+  buildShowCardHtml, buildContinueCardHtml, buildEpisodeRowHtml, buildShowDetailHtml,
 } = require('../../public/js/tv.js');
 
 test('episodeCode: SxxEyy, zero-padded; Extras (missing numbers) -> empty', () => {
@@ -23,6 +23,19 @@ test('formatEpDuration: m:ss under an hour, h:mm:ss over', () => {
   assert.strictEqual(formatEpDuration(65), '1:05');
   assert.strictEqual(formatEpDuration(3661), '1:01:01');
   assert.strictEqual(formatEpDuration(-5), '0:00');
+});
+
+test('buildContinueCardHtml: show poster, resume-bar width %, show name + SxxEyy·title, episode id, XSS-safe', () => {
+  const html = buildContinueCardHtml({ id: 'ep1', showId: 'sh1', showName: 'House MD', seasonNum: 2, episodeNum: 22, title: 'Forever', durationSec: 2580, position: 1290 });
+  assert.match(html, /src="\/tvposter\/sh1"/, 'the show poster');
+  assert.match(html, /data-episode-id="ep1"/, 'opens straight into the episode');
+  assert.match(html, /width: 50%/, 'the resume bar reflects position/duration (1290/2580 = 50%)');
+  assert.match(html, /House MD/);
+  assert.match(html, /S02E22 Forever/, 'the SxxEyy code + title label');
+  // a 0-duration episode never divides by zero.
+  assert.match(buildContinueCardHtml({ id: 'x', showId: 's', showName: 'S', durationSec: 0, position: 0 }), /width: 0%/);
+  // XSS: a hostile show name never becomes markup.
+  assert.doesNotMatch(buildContinueCardHtml({ id: 'i', showId: 's', showName: '<img src=x>', durationSec: 1, position: 0 }), /<img src=x>/);
 });
 
 test('buildShowCardHtml: 2:3 poster src, name, "N seasons · M episodes", data id', () => {
@@ -48,6 +61,7 @@ test('buildEpisodeRowHtml: code + title + duration + data id; Extras hides the c
 
 test('buildShowDetailHtml: a section per season; O3 hides the header of a single implicit season', () => {
   const detail = {
+    id: 'sh1',
     name: 'House MD',
     seasons: [
       { seasonNum: 1, label: 'Season 1', episodes: [{ id: 'a', seasonNum: 1, episodeNum: 1, title: 'Pilot' }] },
@@ -58,6 +72,9 @@ test('buildShowDetailHtml: a section per season; O3 hides the header of a single
   assert.match(html, /Season 1/);
   assert.match(html, /Specials/);
   assert.match(html, /data-episode-id="a"/);
+  // v1.196: the hero poster + the admin poster-control slot (keyed by show id).
+  assert.match(html, /<img class="tv-detail-poster[^"]*" src="\/tvposter\/sh1"/, 'the hero poster');
+  assert.match(html, /<div class="tv-detail-actions" data-show-id="sh1">/, 'the admin poster-control slot');
 
   const flat = buildShowDetailHtml({ name: 'Flat', seasons: [{ seasonNum: null, label: 'Episodes', episodes: [{ id: 'z', seasonNum: null, episodeNum: 1, title: 'One' }] }] });
   assert.doesNotMatch(flat, /tv-season-label/, 'O3: a single implicit season hides its header');

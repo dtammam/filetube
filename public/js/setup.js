@@ -2603,7 +2603,9 @@ async function openAccessEditor(user, row, signal) {
   panel.appendChild(modeWrap);
 
   section('Whole libraries');
-  for (const lib of ['video', 'music', 'podcasts', 'books']) checkbox('library', lib, lib.charAt(0).toUpperCase() + lib.slice(1));
+  // v1.196: Shows (the tv library) is restrictable as a whole library too - its
+  // UI label is "Shows" though the value is `tv` (VALID_LIBRARY_VALUES).
+  for (const [lib, label] of [['video', 'Video'], ['music', 'Music'], ['podcasts', 'Podcasts'], ['books', 'Books'], ['tv', 'Shows']]) checkbox('library', lib, label);
 
   if ((channelsRes.channels || []).length) {
     section('Video channels');

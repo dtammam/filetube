@@ -60,8 +60,11 @@ test('library restriction blocks an entire kind', () => {
   assert.ok(isBlocked(idxOf([{ kind: 'library', value: 'music' }]), { kind: 'track', filePath: '/music/a.mp3' }));
   assert.ok(isBlocked(idxOf([{ kind: 'library', value: 'books' }]), { kind: 'book', filePath: '/b/a.epub' }));
   assert.ok(isBlocked(idxOf([{ kind: 'library', value: 'video' }]), { kind: 'media', filePath: '/m/a.mp4' }));
+  assert.ok(isBlocked(idxOf([{ kind: 'library', value: 'tv' }]), { kind: 'tv', filePath: '/tv/Show/S01E01.mp4' })); // v1.196
   // a music-library block does NOT block video
   assert.ok(!isBlocked(idxOf([{ kind: 'library', value: 'music' }]), { kind: 'media', filePath: '/m/a.mp4' }));
+  // a tv-library block does NOT block video
+  assert.ok(!isBlocked(idxOf([{ kind: 'library', value: 'tv' }]), { kind: 'media', filePath: '/m/a.mp4' }));
 });
 
 // ---- admin (empty index) ----------------------------------------------------

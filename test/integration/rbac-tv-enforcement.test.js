@@ -122,3 +122,109 @@ test('TV: a codec-incompatible .mp4 episode transcodes (503), while a compatible
   assert.strictEqual((await asAdmin('/tvepisode/hevc')).status, 503, 'hevc-in-mp4 -> transcode branch, never served raw');
   assert.strictEqual((await asAdmin('/tvepisode/ok')).status, 200, 'a codec-clean .mp4 still streams directly');
 });
+
+// v1.196 (player integration): the per-episode detail/status endpoint that lets the
+// shared player drive an episode. Player-SHAPED + visibility-gated + carries the tv
+// source descriptor (so the player never touches /api/videos or /video).
+test('TV: GET /api/tv/episode/:id is player-shaped, tv-sourced, and visibility-gated', async () => {
+  assert.strictEqual((await asMember('/api/tv/episode/blk')).status, 404, 'restricted episode -> 404 (no detail oracle)');
+
+  const d = await (await asMember('/api/tv/episode/ok')).json();
+  assert.strictEqual(d.type, 'video', 'the player treats an episode as a video source');
+  assert.strictEqual(d.title, 'Hello');
+  assert.strictEqual(d.showId, 'sh-ok');
+  assert.strictEqual(d.streamSrc, '/tvepisode/ok', 'streams the tv route, never /video/:id');
+  assert.strictEqual(d.statusUrl, '/api/tv/episode/ok', 'polls the tv detail route, never /api/videos/:id');
+  assert.strictEqual(d.artUrl, '/tvposter/sh-ok');
+  assert.strictEqual(d.needsTranscode, false, 'a codec-clean .mp4 plays direct');
+  assert.strictEqual(d.transcodeStatus, 'ready', 'not transcoding -> ready');
+
+  const h = await (await asAdmin('/api/tv/episode/hevc')).json();
+  assert.strictEqual(h.needsTranscode, true, 'hevc-in-mp4 -> codec-aware transcode');
+  assert.strictEqual(h.transcodeStatus, 'pending', 'no rendition yet -> pending (the player polls until ready)');
+});
+
+// v1.196 Phase B: per-user resume + Continue-Watching, visibility-gated. (Runs
+// last - it MUTATES the member's progress/watched state for 'ok'.)
+const postJson = (auth, p, body) => auth(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+test('TV Phase B: progress saves + reflects in the detail; continue is visibility-filtered; 90% auto-marks watched', async () => {
+  assert.strictEqual((await postJson(asMember, '/api/tv/progress', { id: 'ok', timestamp: 30, duration: 100 })).status, 200);
+  const d = await (await asMember('/api/tv/episode/ok')).json();
+  assert.strictEqual(d.progress, 30, 'the saved resume position is reflected in the detail');
+
+  let cont = await (await asMember('/api/tv/continue')).json();
+  assert.deepStrictEqual((cont.episodes || []).map((e) => e.id), ['ok'], 'the in-progress episode is in Continue');
+
+  // A member cannot write progress for a BLOCKED episode (404, no oracle).
+  assert.strictEqual((await postJson(asMember, '/api/tv/progress', { id: 'blk', timestamp: 5, duration: 100 })).status, 404);
+
+  // Crossing 90% auto-marks watched -> the episode leaves Continue.
+  await postJson(asMember, '/api/tv/progress', { id: 'ok', timestamp: 95, duration: 100 });
+  cont = await (await asMember('/api/tv/continue')).json();
+  assert.deepStrictEqual((cont.episodes || []).map((e) => e.id), [], 'a >=90% episode is finished, not "continue"');
+  assert.strictEqual((await (await asMember('/api/tv/episode/ok')).json()).watched, true, 'auto-marked watched');
+
+  // Manual un-watch clears the latch.
+  assert.strictEqual((await asMember('/api/tv/played', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ episodeId: 'ok' }) })).status, 200);
+  assert.strictEqual((await (await asMember('/api/tv/episode/ok')).json()).watched, false, 'un-watch cleared the latch');
+});
+
+// v1.196 Phase D (the v1.195.1 gate finding): a WHOLE-LIBRARY Shows restriction is
+// now creatable (VALID_LIBRARY_VALUES + the setup checkbox) AND enforced via
+// KIND_TO_LIBRARY - before, `{kind:'library',value:'tv'}` 400'd, so Shows could
+// only be gated per-path and a blocklist member saw every show.
+test('TV: a whole-library tv restriction is CREATABLE and blocks every Shows surface', async () => {
+  const noTv = __mintTestSession({ username: 'notv', role: 'member' });
+  const asNoTv = (p, opts) => fetch(`${base}${p}`, { ...opts, headers: { Cookie: noTv.cookie, ...(opts && opts.headers) } });
+  // CREATABLE: the restriction route now accepts a library:'tv' row (was 400).
+  const put = await asAdmin(`/api/users/${noTv.user.id}/restrictions`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'blocklist', restrictions: [{ kind: 'library', value: 'tv' }] }),
+  });
+  assert.strictEqual(put.status, 200, 'a whole-library Shows restriction is creatable');
+  // ENFORCED: the member sees no shows and is 404 on every serve/detail route.
+  assert.deepStrictEqual(((await (await asNoTv('/api/tv')).json()).shows || []), [], 'the grid is empty for a tv-library-blocked member');
+  assert.strictEqual((await asNoTv('/api/tv/episode/ok')).status, 404, 'episode detail 404s');
+  assert.strictEqual((await asNoTv('/tvepisode/ok')).status, 404, 'episode serve 404s');
+  assert.strictEqual((await asNoTv('/api/tv/sh-ok')).status, 404, 'show detail 404s');
+  assert.match((await asNoTv('/tvposter/sh-ok')).headers.get('content-type') || '', /image\/svg\+xml/, 'placeholder poster, not the real file');
+});
+
+// v1.196 Phase C: admin-set show poster. DATA_DIR store, magic-byte sniffed, wins
+// over the folder image, admin-only, showId path-traversal refused.
+test('TV Phase C: admin poster upload - magic-byte checked, overrides the folder image, admin-only, traversal-safe', async () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 1, 2, 3, 4]);
+  const postPoster = (auth, showId, body, ct) => auth(`/api/tv/${showId}/poster`, { method: 'POST', headers: { 'Content-Type': ct || 'image/png' }, body });
+
+  assert.strictEqual((await postPoster(asMember, 'sh-ok', png)).status, 403, 'a member cannot set library art');
+  assert.strictEqual((await postPoster(asAdmin, 'sh-nope', png)).status, 404, 'a bogus (but safe) show id -> 404');
+  assert.strictEqual((await postPoster(asAdmin, 's.h', png)).status, 400, 'a bad-char show id is refused before any fs touch (no traversal)');
+  assert.strictEqual((await postPoster(asAdmin, 'sh-ok', Buffer.from('not a png'))).status, 400, 'a mislabeled non-image fails the magic-byte sniff');
+
+  assert.strictEqual((await postPoster(asAdmin, 'sh-ok', png)).status, 200, 'admin sets a valid PNG');
+  const served = Buffer.from(await (await asAdmin('/tvposter/sh-ok')).arrayBuffer());
+  assert.ok(served.equals(png), 'the custom poster wins over the folder image (KIDSPOSTER)');
+
+  assert.strictEqual((await asAdmin('/api/tv/sh-ok/poster', { method: 'DELETE' })).status, 200);
+  assert.strictEqual(await (await asAdmin('/tvposter/sh-ok')).text(), 'KIDSPOSTER', 'after delete, the folder image returns');
+});
+
+// v1.196 gate (adversarial WARNING-1): /api/tv/continue is an access-control
+// AGGREGATION surface (leaks title/show/SxxEyy). Its visibility filter must be
+// BOUND, not merely present. "Restrict-after-watch": a member has a resume
+// position on an episode that is NOW blocked for them (written directly here, as
+// if before the restriction) - Continue must exclude it and never leak its title.
+// Removing the filter makes this test go red.
+test('TV: /api/tv/continue never leaks a now-restricted episode the user has progress on', async () => {
+  // Direct write bypasses the progress route's own gate (as a restrict-AFTER-watch
+  // row would have): only the /api/tv/continue visibility filter can exclude it.
+  userStore.setTvProgress(member.user.id, 'blk', { position: 20, duration: 100, updatedAt: '2026-08-27T00:00:00.000Z' });
+  const cont = await (await asMember('/api/tv/continue')).json();
+  assert.ok(!(cont.episodes || []).some((e) => e.id === 'blk'), 'the restricted episode is absent from Continue (drop the filter -> it appears -> red)');
+  assert.ok(!JSON.stringify(cont).includes('Pilot') && !JSON.stringify(cont).includes('Adult Show'), 'its title/show name never leak into the payload');
+  // Control: admin (unrestricted) with the SAME direct row DOES surface it, so the
+  // member exclusion above is the filter at work, not an always-empty list.
+  userStore.setTvProgress(auth.user.id, 'blk', { position: 20, duration: 100, updatedAt: '2026-08-27T00:00:01.000Z' });
+  const adminCont = await (await asAdmin('/api/tv/continue')).json();
+  assert.ok((adminCont.episodes || []).some((e) => e.id === 'blk'), 'admin sees the row - proves the exclusion is visibility, not emptiness');
+});
