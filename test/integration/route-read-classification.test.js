@@ -72,6 +72,7 @@ const READ = {
   '/api/tv/:showId': 'GATED',
   '/tvposter/:showId': 'GATED',
   '/tvepisode/:id': 'GATED',
+  '/tvaudio/:id': 'GATED', // v1.197: the episode's extracted-audio sidecar; restricted -> 404 like /tvepisode
   '/api/music/:id': 'GATED',
   '/api/music/albums': 'GATED',
   '/api/music/artists': 'GATED',

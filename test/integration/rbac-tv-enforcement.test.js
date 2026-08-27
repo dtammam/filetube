@@ -138,6 +138,13 @@ test('TV: GET /api/tv/episode/:id is player-shaped, tv-sourced, and visibility-g
   assert.strictEqual(d.artUrl, '/tvposter/sh-ok');
   assert.strictEqual(d.needsTranscode, false, 'a codec-clean .mp4 plays direct');
   assert.strictEqual(d.transcodeStatus, 'ready', 'not transcoding -> ready');
+  // v1.197 (W2): the description-panel display fields - fileName is the BASENAME
+  // only (the full filesystem path never rides the payload).
+  assert.strictEqual(d.fileName, 'Kids Show S01E01 - Hello.mp4', 'the file NAME (basename)');
+  assert.ok(!JSON.stringify(d).includes(DATA_DIR), 'the full filesystem path never leaks');
+  assert.strictEqual(typeof d.sizeBytes, 'number');
+  assert.strictEqual(typeof d.addedAtMs, 'number');
+  assert.strictEqual(d.ext, '.mp4', 'ext rides the payload (both gate seats: omitting it made Type always paint the fallback)');
 
   const h = await (await asAdmin('/api/tv/episode/hevc')).json();
   assert.strictEqual(h.needsTranscode, true, 'hevc-in-mp4 -> codec-aware transcode');
@@ -227,4 +234,28 @@ test('TV: /api/tv/continue never leaks a now-restricted episode the user has pro
   userStore.setTvProgress(auth.user.id, 'blk', { position: 20, duration: 100, updatedAt: '2026-08-27T00:00:01.000Z' });
   const adminCont = await (await asAdmin('/api/tv/continue')).json();
   assert.ok((adminCont.episodes || []).some((e) => e.id === 'blk'), 'admin sees the row - proves the exclusion is visibility, not emptiness');
+});
+
+// v1.197 (W3): the background-audio sidecar pair - the video /audio +
+// prepare-audio posture: GATED (restricted -> 404, no oracle/CPU sink), the
+// detail endpoint carries the descriptor trio the player's handoff reads.
+test('TV W3: the audio sidecar pair is gated and the detail carries the bg-audio descriptor trio', async () => {
+  // Restricted member: both routes 404 (no existence oracle, no CPU sink).
+  assert.strictEqual((await asMember('/tvaudio/blk')).status, 404, 'sidecar bytes: restricted -> 404');
+  assert.strictEqual((await asMember('/api/tv/episode/blk/prepare-audio', { method: 'POST' })).status, 404, 'pre-warm: restricted -> 404');
+
+  // Allowed, sidecar absent: with ffmpeg the pre-warm enqueues and answers 200
+  // 'pending'; without it (this CI) it 503s like the video pair (a 200 would
+  // send the client's bounded repoll on a futile ~60s chain). Either way the
+  // bytes route 503s while the sidecar is absent - never 200s garbage.
+  const prep = await asMember('/api/tv/episode/ok/prepare-audio', { method: 'POST' });
+  if (prep.status === 200) assert.strictEqual((await prep.json()).audioStatus, 'pending');
+  else assert.strictEqual(prep.status, 503, 'ffmpeg-less -> 503 (the video pair parity), never a misleading 200');
+  assert.strictEqual((await asMember('/tvaudio/ok')).status, 503, 'sidecar absent -> 503 (extracting/unavailable), never raw bytes');
+
+  // The detail endpoint carries the descriptor trio the player's handoff reads.
+  const d = await (await asMember('/api/tv/episode/ok')).json();
+  assert.strictEqual(d.audioSrc, '/tvaudio/ok');
+  assert.strictEqual(d.prepareAudioUrl, '/api/tv/episode/ok/prepare-audio');
+  assert.strictEqual(d.audioStatus, 'pending', 'live file-existence readiness');
 });

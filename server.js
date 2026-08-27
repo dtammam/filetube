@@ -8703,6 +8703,67 @@ function processTvTranscodeQueue() {
   });
 }
 
+// v1.197 (W3): the TV episode AUDIO-EXTRACTION sidecar - the background-audio
+// handoff's `/tvaudio/:id` bytes. Mirrors the music ALAC queue verbatim (its own
+// single-flight lane; an episode's sidecar must not queue behind a long video
+// transcode), REUSING buildAudioExtractArgs unchanged (pure (srcPath, tmpPath) -
+// the same reuse the music queue already proved). Readiness is FILE EXISTENCE
+// only - never db.metadata's audioStatus machinery (setAudioStatus/
+// healStaleAudioReady are metadata-bound; skipping them eliminates the
+// stale-'ready' class by construction, the tv/music queue posture). The
+// `tv-<id>.m4a` name rides the shared TRANSCODE_DIR cache: isCompletedTranscode/
+// isInFlightTranscode pick it up for free (LRU eviction, age sweep, orphan
+// cleanup, markServed protection); the eviction paths' clearAudioStatus no-ops
+// on a tv key (not in db.metadata) and the preExtractAudio pin correctly skips
+// it (metadata-membership test) - both the music posture.
+function tvAudioPath(id) { return path.join(TRANSCODE_DIR, `tv-${id}.m4a`); }
+const tvAudioQueue = [];
+let tvAudioBusy = false;
+function queueTvAudioExtract(id, srcPath) {
+  if (!ffmpegAvailable) return;
+  if (tvAudioQueue.some((job) => job.id === id)) return; // already queued
+  tvAudioQueue.push({ id, srcPath });
+  processTvAudioExtractQueue();
+}
+function processTvAudioExtractQueue() {
+  if (tvAudioBusy || tvAudioQueue.length === 0) return;
+  const { id, srcPath } = tvAudioQueue.shift();
+  if (!fs.existsSync(srcPath)) { processTvAudioExtractQueue(); return; }
+  const outPath = tvAudioPath(id);
+  if (fs.existsSync(outPath)) { processTvAudioExtractQueue(); return; }
+  tvAudioBusy = true;
+  const tmpPath = `${outPath}.tmp.m4a`;
+  let proc;
+  try {
+    proc = spawn('ffmpeg', buildAudioExtractArgs(srcPath, tmpPath));
+  } catch (e) {
+    console.error(`tv: failed to start audio extract for ${srcPath}:`, e.message);
+    tvAudioBusy = false;
+    processTvAudioExtractQueue();
+    return;
+  }
+  proc.stderr.on('data', () => { /* drain */ });
+  proc.on('error', (e) => {
+    console.error(`tv: audio extract process error for ${srcPath}:`, e.message);
+    try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
+    tvAudioBusy = false;
+    processTvAudioExtractQueue();
+  });
+  proc.on('close', (code) => {
+    tvAudioBusy = false;
+    if (code === 0) {
+      try { fs.renameSync(tmpPath, outPath); } catch (e) {
+        console.error(`tv: could not finalize audio sidecar for ${srcPath}:`, e.message);
+        try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
+      }
+    } else {
+      console.error(`tv: audio extract failed (exit ${code}) for ${srcPath}`);
+      try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
+    }
+    processTvAudioExtractQueue();
+  });
+}
+
 function tvPosterPlaceholderSvg(name) {
   const title = String(name || 'Show');
   const clip = (s, n) => (s.length > n ? `${s.substring(0, n - 2)}...` : s);
@@ -8760,11 +8821,45 @@ app.get('/api/tv/episode/:id', (req, res) => {
     streamSrc: `/tvepisode/${encodeURIComponent(ep.id)}`,
     statusUrl: `/api/tv/episode/${encodeURIComponent(ep.id)}`,
     artUrl: `/tvposter/${encodeURIComponent(ep.showId)}`,
+    // v1.197 (W3): the background-audio descriptor trio. audioStatus is LIVE
+    // sidecar file-existence (the transcodeStatus trick above); the player's
+    // handoff machinery reads audioSrc/prepareAudioUrl instead of the video
+    // routes (/audio/:id + /api/videos/:id/prepare-audio).
+    audioStatus: fs.existsSync(tvAudioPath(ep.id)) ? 'ready' : 'pending',
+    audioSrc: `/tvaudio/${encodeURIComponent(ep.id)}`,
+    prepareAudioUrl: `/api/tv/episode/${encodeURIComponent(ep.id)}/prepare-audio`,
+    // v1.197 (W2): the watch-page description panel's display fields. fileName is
+    // the BASENAME only - the full filesystem path is never sent (tighter than
+    // the video payload); addedAtMs normalized to epoch ms for the shared
+    // formatRelativeTime formatter (records persist addedAt as an ISO string).
+    sizeBytes: typeof ep.size === 'number' ? ep.size : 0,
+    addedAtMs: typeof ep.addedAt === 'number' ? ep.addedAt : (Date.parse(ep.addedAt) || 0),
+    fileName: path.basename(ep.filePath),
+    ext: ep.ext, // the Type field (both gate seats: it was consumed internally but never sent - Type always painted the fallback)
     // v1.196 (Phase B): the signed-in user's resume position + watched latch, so
     // the player's resume overlay + the row's watched tick reflect real state.
     progress: (userStore.getOneTvProgress(req.user.id, ep.id) || {}).position || 0,
     watched: Object.prototype.hasOwnProperty.call(userStore.getTvPlayed(req.user.id), ep.id),
   });
+});
+
+// v1.197 (W3): the background-audio pre-warm - the /api/videos/:id/prepare-audio
+// posture verbatim: GATED (a restricted episode must not be an existence oracle
+// or a CPU sink), never serves bytes, idempotent (sidecar on disk -> 'ready';
+// else enqueue -> 'pending'; ffmpeg absent -> the queue no-ops and the client's
+// repoll simply never resolves to ready - fail-safe, feature stays off).
+// Registered BEFORE /api/tv/:showId (the route-order scar).
+app.post('/api/tv/episode/:id/prepare-audio', (req, res) => {
+  const ns = tvStore.readTv(getCachedDatabase());
+  const ep = ownEpisode(ns.episodes, req.params.id);
+  if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
+  if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
+  if (fs.existsSync(tvAudioPath(ep.id))) return res.json({ audioStatus: 'ready' });
+  // ffmpeg-less install: 503 like the video pair (a 200 'pending' would send the
+  // client's bounded repoll on a futile ~60s chain; a non-ok ends it immediately).
+  if (!ffmpegAvailable) return res.status(503).json({ error: 'ffmpeg unavailable' });
+  queueTvAudioExtract(ep.id, ep.filePath);
+  res.json({ audioStatus: 'pending' });
 });
 
 // v1.196 (Phase B): per-user resume + watched latch + Continue-Watching. Personal
@@ -8905,6 +9000,26 @@ app.get('/tvepisode/:id', (req, res) => {
     return res.status(503).json({ error: 'transcoding', ext: ep.ext });
   }
   sendRangeable(req, res, ep.filePath, contentType, () => markServed(ep.filePath));
+});
+
+// v1.197 (W3): the episode's extracted-audio sidecar bytes - the /audio/:id
+// posture with tv-owned mechanics: same gate as /tvepisode (restricted -> 404),
+// range-served with mid-stream eviction protection (markServed on the sidecar
+// AND the source, the video route's exact shape); absent -> enqueue the extract
+// and 503 {error:'extracting'} (the client's repoll converges on 'ready').
+app.get('/tvaudio/:id', (req, res) => {
+  const ns = tvStore.readTv(getCachedDatabase());
+  const ep = ownEpisode(ns.episodes, req.params.id);
+  if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
+  if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
+  const sidecar = tvAudioPath(ep.id);
+  if (fs.existsSync(sidecar)) {
+    return sendRangeable(req, res, sidecar, 'audio/mp4', () => { markServed(sidecar); markServed(ep.filePath); });
+  }
+  if (!fs.existsSync(ep.filePath)) return res.status(404).json({ error: 'file missing' });
+  if (!ffmpegAvailable) return res.status(503).json({ error: 'ffmpeg unavailable' });
+  queueTvAudioExtract(ep.id, ep.filePath);
+  res.status(503).json({ error: 'extracting' });
 });
 
 // ---- v1.32: replaceable header logo ("white-label") -------------------------

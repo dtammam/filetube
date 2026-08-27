@@ -51,19 +51,42 @@ test('v1.196.1: a mobile tv source resolves the mobileCustomPlayer setting + re-
   // (!data.statusUrl) also skipped the mobileCustomPlayer settings read + the
   // applyControlsMode re-run that live in it - so a mobile-fullscreen episode fell
   // to the native iOS strip. A tv-source standalone read restores the custom bar.
-  assert.match(SRC, /if \(data\.type !== 'audio' && data\.statusUrl && isMobileFormFactor\(\)\) \{[\s\S]*?if \(gen !== loadGeneration\) return;[\s\S]*?mobileCustomPlayerCached = !!\(settings && settings\.mobileCustomPlayer\);\s*\n\s*applyControlsMode\(\);/,
-    'a tv source reads mobileCustomPlayer and re-derives the controls surface, guarded by the load-generation staleness check');
+  // v1.197: the standalone read is narrowed to a statusUrl source WITHOUT
+  // prepareAudioUrl (a tv episode with the audio pair enters the full bg-audio
+  // block, which resolves the setting itself) - the two gates are mutually
+  // exclusive, so exactly one /api/settings read runs per load.
+  assert.match(SRC, /if \(data\.type !== 'audio' && data\.statusUrl && !data\.prepareAudioUrl && isMobileFormFactor\(\)\) \{[\s\S]*?if \(gen !== loadGeneration\) return;[\s\S]*?mobileCustomPlayerCached = !!\(settings && settings\.mobileCustomPlayer\);\s*\n\s*applyControlsMode\(\);/,
+    'the standalone mobileCustomPlayer read covers only a statusUrl-without-prepareAudioUrl source, staleness-guarded');
 });
 
 test('A2: a source with artUrl but no hasThumbnail (a tv episode) uses the show poster as the frame-one video poster', () => {
   assert.match(SRC, /else if \(typeof data\.artUrl === 'string' && data\.artUrl\) \{\s*\n\s*mediaPlayer\.poster = data\.artUrl;/);
 });
 
-test('A2: the /api/videos-only side effects (dimensions POST, subtitles, bg-audio) are all skipped for a tv source', () => {
+test('A2: the /api/videos-only side effects (dimensions POST, subtitles) are skipped for a tv source', () => {
   // dimensions POST guarded
   assert.match(SRC, /if \(!data\.statusUrl\) \{\s*\n\s*fetch\('\/api\/videos\/' \+ encodeURIComponent\(id\) \+ '\/dimensions'/);
   // subtitle track left inert (no /api/subtitles/:id for a tv id)
   assert.match(SRC, /ccTrack\.src = data\.statusUrl \? '' : '\/api\/subtitles\/' \+ id;/);
-  // background-audio pre-warm excludes a tv source
-  assert.match(SRC, /if \(data\.type !== 'audio' && !data\.statusUrl && isMobileFormFactor\(\) && bgAudioEl\)/);
+});
+
+// ---- v1.197 (W3): seamless background audio for episodes ---------------------
+// The handoff machinery is source-agnostic beyond three URL couplings; each is
+// descriptor-driven for a tv source and byte-identical for ordinary videos
+// (which carry no audioSrc/prepareAudioUrl). A silent revert of any override
+// would leak a tv id onto /audio/:id or /api/videos/:id/prepare-audio.
+
+test('W3: armBackgroundAudioSrc points the sidecar at the descriptor audioSrc (a tv episode -> /tvaudio/:id)', () => {
+  assert.match(SRC, /var audioUrl = \(currentData && typeof currentData\.audioSrc === 'string' && currentData\.audioSrc\) \|\| \('\/audio\/' \+ currentId\);/);
+});
+
+test('W3: the prepare-audio pre-warm + repoll both use the descriptor prepareAudioUrl', () => {
+  assert.match(SRC, /return fetch\(\(typeof data\.prepareAudioUrl === 'string' && data\.prepareAudioUrl\) \|\| \('\/api\/videos\/' \+ encodeURIComponent\(id\) \+ '\/prepare-audio'\), \{ method: 'POST' \}\)/,
+    'the initial pre-warm');
+  assert.match(SRC, /var repollUrl = \(currentData && typeof currentData\.prepareAudioUrl === 'string' && currentData\.prepareAudioUrl\)\s*\n\s*\|\| \('\/api\/videos\/' \+ encodeURIComponent\(id\) \+ '\/prepare-audio'\);\s*\n\s*fetch\(repollUrl, \{ method: 'POST' \}\)/,
+    'the repoll, read under the gen guard (identity-safe)');
+});
+
+test('W3: a tv source WITH the audio pair enters the bg-audio block (the seamless handoff)', () => {
+  assert.match(SRC, /if \(data\.type !== 'audio' && \(!data\.statusUrl \|\| data\.prepareAudioUrl\) && isMobileFormFactor\(\) && bgAudioEl\)/);
 });

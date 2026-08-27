@@ -45,6 +45,11 @@ function makeEl(tag) {
     classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
     setAttribute() {}, removeAttribute() {}, getAttribute() { return null; },
     addEventListener() {}, removeEventListener() {},
+    // v1.197: the tv path now runs the cog-injection + ambient setup, which use
+    // insertAdjacentHTML and a canvas 2d context - permissive stubs (the ambient
+    // paint loop never starts in the harness; ambientShouldRun gates it off).
+    insertAdjacentHTML() {},
+    getContext() { return { drawImage() {}, getImageData() { return { data: [] }; }, clearRect() {}, fillRect() {} }; },
     appendChild(c) { if (c) { try { c.parentNode = el; c.isConnected = true; } catch (_) { /* shim */ } el.children.push(c); } return c; },
     insertBefore(c) { if (c) { try { c.parentNode = el; c.isConnected = true; } catch (_) { /* shim */ } el.children.unshift(c); } return c; },
     removeChild() {}, remove() { el.isConnected = false; },
@@ -262,6 +267,8 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
     seasonNum: 1, episodeNum: 2, duration: 100, needsTranscode: false,
     transcodeStatus: 'ready', streamSrc: '/tvepisode/ep1', statusUrl: '/api/tv/episode/ep1',
     artUrl: '/tvposter/show1', progress: 0,
+    // v1.197 (W2): the description-panel display fields.
+    sizeBytes: 123456, addedAtMs: Date.now() - 86400000, fileName: 'My Show S01E02 - Pilot.mp4', ext: '.mp4',
   };
   const showDetail = { id: 'show1', name: 'My Show', seasons: [
     { seasonNum: 1, label: 'Season 1', episodes: [{ id: 'ep0' }, { id: 'ep1' }, { id: 'ep2' }] },
@@ -270,10 +277,15 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
     const u = String(url);
     if (u.indexOf('/api/tv/episode/ep1') === 0) return Promise.resolve({ ok: true, json: () => Promise.resolve(epDetail) });
     if (u.indexOf('/api/tv/show1') === 0) return Promise.resolve({ ok: true, json: () => Promise.resolve(showDetail) });
+    if (u.indexOf('/api/settings') === 0) return Promise.resolve({ ok: true, json: () => Promise.resolve({}) }); // cog toggles read it (source-agnostic)
     return new Promise(() => {}); // anything else hangs (a stray /api/videos would be a violation, caught below)
   };
   const { init, els, loadCalls, trackNavCalls, fetchUrls } = buildWatchRealm({ search: '?tv=ep1', fetchImpl });
   const title = makeEl('h1'); els.set('#media-title', title);
+  const channelName = makeEl('a'); els.set('#uploader-channel-name', channelName);
+  const subsCount = makeEl('div'); els.set('#uploader-subs-count', subsCount);
+  const descPara = makeEl('div'); els.set('#video-description', descPara);
+  const typeText = makeEl('span'); els.set('#file-type-text', typeText);
   const root = makeEl('div');
   root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
 
@@ -300,4 +312,34 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
   const nav = trackNavCalls[trackNavCalls.length - 1];
   assert.equal(typeof nav.onPrev, 'function', 'prev is armed (ep0)');
   assert.equal(typeof nav.onNext, 'function', 'next is armed (ep2)');
+
+  // v1.197 W1: the dock-return href is the TV watch URL (the readerHref seam) -
+  // without it the mini-player tap-return built /watch.html?v=<episodeId> and the
+  // video path errored "Failed to Load Media" (Dean's device report).
+  assert.equal(loadCalls[0].data.readerHref, '/watch.html?tv=ep1', 'the dock returns to the ?tv= watch URL');
+
+  // v1.197 W2: the show-as-channel + file-metadata panel painted from the live shapes.
+  assert.equal(channelName.textContent, 'My Show', 'the "channel" is the show');
+  assert.equal(channelName.href, '/tv?show=show1', 'tapping the channel returns to the show');
+  assert.equal(subsCount.textContent, '1 season · 3 episodes', 'the subs line is the show\'s season/episode counts (from the track-nav fetch)');
+  assert.equal(descPara.textContent, 'My Show S01E02 - Pilot.mp4', 'the description shows the episode FILE NAME');
+  // Gate fix (both seats, the divergent-fixture class): the fixture's `ext`
+  // matches what the REAL server now sends (bound in rbac-tv-enforcement), and
+  // the PAINTED type is asserted - omitting ext from the payload turns this red.
+  assert.equal(typeText.textContent, 'MP4', 'the Type field paints the real extension, not the fallback');
+});
+
+// ---- v1.197 W1 (both gate seats, BLOCKING): the tv path's cog sequence bound --
+// The "video-path setup the TV branch skips" class has struck twice (v1.196.1
+// controls, v1.196 ambient). This comment-stripped source-lock binds initTvWatch's
+// five-call cog sequence - the adversarial seat proved removing the whole block
+// left the suite green (the exact v1.196 ambient bug reverting silently).
+test('v1.197 W1: initTvWatch runs the FULL cog sequence (inject + autoplay + loop + theatre + ambient)', () => {
+  const watchSrc = fs.readFileSync(require('node:path').join(REPO, 'public/js/watch.js'), 'utf8');
+  const start = watchSrc.indexOf('async function initTvWatch(');
+  assert.ok(start > 0, 'initTvWatch exists');
+  const body = watchSrc.slice(start, watchSrc.indexOf('\n    }', start));
+  const stripped = body.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.match(stripped, /ensureCogControlsInjected\(\);\s*\n\s*setupAutoplayToggle\(\);\s*\n\s*setupLoopToggle\(\);\s*\n\s*setupTheatreToggle\(\);\s*\n\s*setupAmbientMode\(\);/,
+    'the five-call sequence, in order, after the player mounts - deleting any call (the v1.196 ambient bug) turns this red');
 });

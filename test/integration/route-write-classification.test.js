@@ -43,6 +43,7 @@ const CLASSIFICATION = {
   'POST /api/videos/:id/view': 'personal',
   'POST /api/videos/:id/dimensions': 'personal',
   'POST /api/videos/:id/prepare-audio': 'personal',
+  'POST /api/tv/episode/:id/prepare-audio': 'personal', // v1.197: the tv sidecar pre-warm (the video prepare-audio's exact classification)
   'POST /api/liked/:id': 'personal',
   'DELETE /api/liked/:id': 'personal',
   // v1.97 "Hide from feed" - the member's OWN modern-feed prune (never gated).
@@ -241,6 +242,7 @@ const VISIBILITY = {
   'POST /api/videos/:id/view': 'enforced',
   'POST /api/videos/:id/dimensions': 'enforced',
   'POST /api/videos/:id/prepare-audio': 'enforced',
+  'POST /api/tv/episode/:id/prepare-audio': 'enforced', // v1.197: gated on tvEpisodeVisibleTo (restricted -> 404, no oracle/CPU sink)
   'POST /api/liked/:id': 'enforced',
   'POST /api/watched/:id': 'enforced',
   'POST /api/feed-hidden/:id': 'enforced',

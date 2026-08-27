@@ -1,5 +1,10 @@
 # TV episodes through the real player + resume + poster upload + RBAC (v1.196 candidate)
 
+> HISTORICAL NOTE (2026-08-27): this plan's "NO background-audio for tv /
+> no /audio route" statements were true OF v1.196 and are SUPERSEDED by
+> v1.197.0, which shipped the tv sidecar pair (/tvaudio/:id +
+> /api/tv/episode/:id/prepare-audio) - see docs/exec-plans/*/tv-wrap-wave.md.
+
 Status: SHIPPED as **v1.196.0** (2026-08-27). All phases (A1-A4, B, C, D) landed;
 full two-reviewer gate closed (both APPROVE after one fix round: poster-control
 gate alignment + a binding test for the /api/tv/continue visibility filter);
