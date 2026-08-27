@@ -897,6 +897,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // path (initTvWatch, a hoisted sibling defined below). It MUST be checked
     // before the !mediaId bail - a tv load has no /api/videos media id - and it
     // runs none of the video-only hydration below (the hard invariant).
+    // v1.197.1 (Dean device: "ambient doesn't work" persisted; TDZ - the v1.54
+    // class): `mediaData` MUST be declared BEFORE the ?tv= early return below.
+    // The tv branch returns out of init(), so any `let` further down NEVER
+    // executes and stays in the temporal dead zone for the whole page - every
+    // later read THROWS. setupAmbientMode's isAudioItem() reads mediaData on the
+    // FIRST paint, so the ambient loop died on a ReferenceError before painting
+    // a single frame (glow armed but empty - "seemingly not working"). Proven by
+    // a live-Chromium probe; initTvWatch assigns the episode descriptor here.
+    let mediaData = null;
     const tvEpisodeId = urlParams.get('tv');
     if (tvEpisodeId) { initTvWatch(tvEpisodeId); return; }
     // v1.36.2 (Dean): the LAUNCH-CONTEXT param -- which list the user was
@@ -918,7 +927,7 @@ if (typeof module !== 'undefined' && module.exports) {
       return;
     }
 
-    let mediaData = null;
+    // (mediaData is declared ABOVE the ?tv= branch - the v1.197.1 TDZ fix.)
     // C2 (v1.24 UX Round, Wave 3, T10 follow-up): one-shot guard so
     // pingView() below fires AT MOST ONCE per view instance -- fresh
     // (`false`) on every init(), like `currentSubState`/`moveBtn` above.
@@ -3859,6 +3868,11 @@ if (typeof module !== 'undefined' && module.exports) {
           // Load Media" while the adopted player kept playing (Dean's report).
           readerHref: '/watch.html?tv=' + encodeURIComponent(episodeId),
         });
+        // v1.197.1 (the TDZ fix's other half): the descriptor IS this view's
+        // media data - assigning it makes every shared helper the tv path
+        // reaches (isAudioItem's type check, the loop toggle's format field)
+        // read real truth instead of throwing/nulling.
+        mediaData = descriptor;
         var mounted = window.FileTube.player.load(episodeId, descriptor, { slot: playerSlot });
         if (!mounted) { showFatalViewError(root); return; }
         // v1.197 (W1): the FULL cog sequence initWatch runs. ensureCogControls-
