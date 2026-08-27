@@ -2272,5 +2272,11 @@
     "date": "2026-08-27",
     "title": "Ambient mode now really works on TV episodes",
     "intent": "A quick follow-up to yesterday's TV update. Ambient mode on an episode looked like it turned on but never actually glowed - a behind-the-scenes error stopped it right as it started. That's fixed: turn on Ambient in the player's gear menu while watching an episode in a dark theme and the soft glow now appears around the player, just like it does for videos."
+  },
+  {
+    "version": "1.198.0",
+    "date": "2026-08-27",
+    "title": "TV episode pages, tidied up",
+    "intent": "A round of polish for episode pages. The Subscribe button no longer appears next to a show's name (shows aren't channels), and the \"File Path\" line - which used to sit there loading forever - now shows the episode's file name. Episodes also get the same nostalgic fake comments as everything else, and you can add your own. And the \"Change poster\" button is gone: to set a show's poster, just drop an image named poster.jpg (or folder/cover/show .jpg/.png/.webp) into the show's folder - FileTube picks it up automatically."
   }
 ]
