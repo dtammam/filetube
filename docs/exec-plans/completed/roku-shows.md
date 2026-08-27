@@ -1,6 +1,8 @@
 # Shows in the Roku channel (v1.199 candidate)
 
-Status: ACTIVE (2026-08-27). This doc is the reviewers' spec. Dean: "Can we get
+Status: SHIPPED as v1.199.0 (2026-08-27; slim gate APPROVE round 2, dual-Node
+7653/0; Dean's Roku device pass pending). This doc was the reviewers' spec.
+Dean: "Can we get
 shows to show up in the Roku app". Designed from a full subsystem map (subagent,
 2026-08-27) - the channel is in-repo BrightScript (`roku/`) consuming the
 ORDINARY web API with the `ft_session_*` cookie; there are no `/api/roku/*`

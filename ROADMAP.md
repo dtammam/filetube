@@ -80,6 +80,37 @@
 
 ## Shipped
 
+### v1.199.0 - feat: TV shows in the Roku channel (poster wall -> seasons -> episodes -> play, resume synced) (2026-08-27)
+
+Dean: "Can we get shows to show up in the Roku app :)". The in-repo BrightScript
+channel grows a Shows section riding the v1.47 Channels recipe: a kind-tagged
+Libraries-picker row -> a 2:3 poster wall (ShowsTask + ShowItem, per-mode grid
+geometry) -> seasons rendered from the cached ShowDetailTask result (single-
+season shows auto-skip; Back skips symmetrically) -> episodes (GridItem tiles,
+/tvthumb art) -> playback of `/tvepisode/:id` (no ?compat=roku - the tv
+rendition already lands the Roku-safe profile). The season's episode list IS the
+playback queue, so Next/Previous/Autoplay/Loop ride the existing machinery
+untouched. Server: the `/api/tv/:showId` episode rows gain `ext`, codec strings,
+codec-aware `needsTranscode`, and the REQUESTER's own `progress` (no new routes;
+census stays 228). Completion contract MEASURED, not assumed: the web's 'ended'
+cascade writes progress-0 through progressEndpoint for tv too, so Roku completion
+posts BOTH the web-parity progress-0 AND an explicit `/api/tv/played` latch (the
+channel's 30s ping cadence can miss the 90% auto-watch on short episodes).
+
+Slim adversarial gate: round-1 REQUEST CHANGES - a stale ShowDetailTask fire
+could teleport a re-entered shows wall (unobserved at the one resetAndLoad choke
+point), and the audio axis of "codec-aware" was correct-but-unbound (an
+ac3-in-mp4 fixture now binds BOTH call sites; five mutants re-run red). Also
+applied: codec strings ride to the TV's playback-error line; the defensive
+zero-seasons arm no longer strands "Loading…". APPROVE round 2. Disclosed
+(tech-debt #183): the tv transcode lane has no terminal-'failed' contract, so a
+permanently-failing episode shows "Preparing…" for the full poll (Back cancels)
+while each probe re-queues the job - pre-existing server behaviour newly polled
+at 1 Hz; README says so plainly. Also no episode captions/chapters/prewarm (no
+server surface). BrightScript remains test-less (the repo's standing posture) -
+**Dean's Roku is the arbiter** (sideload via roku/scripts/deploy.sh; manifest
+1.3.0). **Dual-Node 7653/0** (Node 22.23.1 + 24.14.0).
+
 ### v1.198.2 - feat: a Settings toggle to hide "Continue watching" on the Shows page (2026-08-27)
 
 Dean: the home page's "Show Continue watching" checkbox didn't govern the Shows
