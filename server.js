@@ -963,8 +963,10 @@ function bookVisibleTo(req, book) {
 }
 // v1.195 TV Shows RBAC: an episode's visibility routes through the SAME single
 // decision point (kind:'tv'). Path/rootFolder restrictions bite generically; a
-// whole-library 'tv' restriction bites via KIND_TO_LIBRARY. `ep` falsy -> not
-// visible (the serve route 404s an unknown id before reaching here anyway).
+// whole-library 'tv' restriction (creatable in Settings since v1.196, when 'tv'
+// joined VALID_LIBRARY_VALUES + the setup checkbox roster) bites via
+// KIND_TO_LIBRARY. `ep` falsy -> not visible (the serve route 404s an unknown id
+// before reaching here anyway).
 function tvEpisodeVisibleTo(req, ep) {
   return !!ep && !visibility.isBlocked(userRestrictionIndex(req), { kind: 'tv', filePath: ep.filePath, rootFolder: ep.rootFolder });
 }
@@ -6234,7 +6236,7 @@ app.post('/api/users/:id/modify-library-flag', (req, res) => {
 
 // v1.80 RBAC: admin management of a user's library restrictions (blocklist).
 const VALID_RESTRICTION_KINDS = new Set(['path', 'folder', 'show', 'library']);
-const VALID_LIBRARY_VALUES = new Set(['video', 'music', 'podcasts', 'books']);
+const VALID_LIBRARY_VALUES = new Set(['video', 'music', 'podcasts', 'books', 'tv']);
 const RESTRICTION_VALUE_MAX = 4096;
 
 // The stored mode is carried as a distinguished row {kind:'mode'} (no extra

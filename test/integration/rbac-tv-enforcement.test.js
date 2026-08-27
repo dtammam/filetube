@@ -168,3 +168,24 @@ test('TV Phase B: progress saves + reflects in the detail; continue is visibilit
   assert.strictEqual((await asMember('/api/tv/played', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ episodeId: 'ok' }) })).status, 200);
   assert.strictEqual((await (await asMember('/api/tv/episode/ok')).json()).watched, false, 'un-watch cleared the latch');
 });
+
+// v1.196 Phase D (the v1.195.1 gate finding): a WHOLE-LIBRARY Shows restriction is
+// now creatable (VALID_LIBRARY_VALUES + the setup checkbox) AND enforced via
+// KIND_TO_LIBRARY - before, `{kind:'library',value:'tv'}` 400'd, so Shows could
+// only be gated per-path and a blocklist member saw every show.
+test('TV: a whole-library tv restriction is CREATABLE and blocks every Shows surface', async () => {
+  const noTv = __mintTestSession({ username: 'notv', role: 'member' });
+  const asNoTv = (p, opts) => fetch(`${base}${p}`, { ...opts, headers: { Cookie: noTv.cookie, ...(opts && opts.headers) } });
+  // CREATABLE: the restriction route now accepts a library:'tv' row (was 400).
+  const put = await asAdmin(`/api/users/${noTv.user.id}/restrictions`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'blocklist', restrictions: [{ kind: 'library', value: 'tv' }] }),
+  });
+  assert.strictEqual(put.status, 200, 'a whole-library Shows restriction is creatable');
+  // ENFORCED: the member sees no shows and is 404 on every serve/detail route.
+  assert.deepStrictEqual(((await (await asNoTv('/api/tv')).json()).shows || []), [], 'the grid is empty for a tv-library-blocked member');
+  assert.strictEqual((await asNoTv('/api/tv/episode/ok')).status, 404, 'episode detail 404s');
+  assert.strictEqual((await asNoTv('/tvepisode/ok')).status, 404, 'episode serve 404s');
+  assert.strictEqual((await asNoTv('/api/tv/sh-ok')).status, 404, 'show detail 404s');
+  assert.match((await asNoTv('/tvposter/sh-ok')).headers.get('content-type') || '', /image\/svg\+xml/, 'placeholder poster, not the real file');
+});
