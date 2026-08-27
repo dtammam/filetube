@@ -250,3 +250,31 @@ test('TV: /tvthumb/:id is gated (restricted -> 404) and falls back to the folder
   assert.strictEqual(t.status, 200);
   assert.strictEqual(await t.text(), 'KIDSPOSTER', 'no generated frame -> the show folder poster serves');
 });
+
+// v1.199 (Roku W1): /api/tv/:showId's per-episode rows now carry what the Roku
+// channel's playback queue needs - ext, the CODEC-AWARE needsTranscode, and the
+// REQUESTER's own resume position. progress must be requester-scoped (member vs
+// admin rows differ on the same episode - a shared read would be a cross-user
+// resume leak straight onto the TV grid).
+test('TV Roku W1: show-detail episodes carry ext + codec-aware needsTranscode + requester-scoped progress', async () => {
+  // Fresh, explicit progress for THIS test (never rides earlier tests' state).
+  assert.strictEqual((await postJson(asMember, '/api/tv/progress', { id: 'hevc', timestamp: 41, duration: 100 })).status, 200);
+
+  const flatten = (detail) => (detail.seasons || []).flatMap((s) => s.episodes || []);
+  const memberEps = flatten(await (await asMember('/api/tv/sh-ok')).json());
+  const byId = Object.fromEntries(memberEps.map((e) => [e.id, e]));
+
+  assert.strictEqual(byId.ok.ext, '.mp4', 'ext rides each episode row (the channel picks its demuxer from it)');
+  assert.strictEqual(byId.ok.needsTranscode, false, 'a codec-clean .mp4 plays direct');
+  assert.strictEqual(byId.hevc.needsTranscode, true, 'hevc-in-mp4 -> transcode (codec-AWARE: reverting to ext-only turns this red)');
+  assert.strictEqual(byId.hevc.progress, 41, "the MEMBER's own resume position rides the member's rows");
+
+  // Requester scoping: the ADMIN's rows carry the admin's (absent) position for
+  // the same episode, never the member's 41.
+  const adminEps = flatten(await (await asAdmin('/api/tv/sh-ok')).json());
+  const adminHevc = adminEps.find((e) => e.id === 'hevc');
+  assert.strictEqual(adminHevc.progress, 0, "progress is REQUESTER-scoped - the admin never sees the member's position");
+
+  // The tightened-payload invariant holds: no full filesystem path leaks.
+  assert.ok(!JSON.stringify(memberEps).includes(DATA_DIR), 'no full-path leak on the extended rows');
+});

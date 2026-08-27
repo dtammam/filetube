@@ -8926,6 +8926,14 @@ app.get('/api/tv/:showId', (req, res) => {
       episodes: s.episodes.map((e) => ({
         id: e.id, seasonNum: e.seasonNum, episodeNum: e.episodeNum, title: e.title,
         durationSec: e.durationSec || 0,
+        // v1.199 (Roku): the channel builds its playback queue from THIS payload,
+        // so each row carries what startPlaybackFlow needs - the codec-aware
+        // transcode flag (rendition -> mp4 demuxer), the extension (mkv streams
+        // as mkv), and the REQUESTER's own resume position (same per-user read
+        // as /api/tv/episode/:id - no cross-user leak).
+        ext: e.ext,
+        needsTranscode: needsTranscode(e.ext, e.codec, e.audioCodec),
+        progress: (userStore.getOneTvProgress(req.user.id, e.id) || {}).position || 0,
       })),
     })),
   });
