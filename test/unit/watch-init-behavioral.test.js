@@ -271,7 +271,9 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
     sizeBytes: 123456, addedAtMs: Date.now() - 86400000, fileName: 'My Show S01E02 - Pilot.mp4', ext: '.mp4',
   };
   const showDetail = { id: 'show1', name: 'My Show', seasons: [
-    { seasonNum: 1, label: 'Season 1', episodes: [{ id: 'ep0' }, { id: 'ep1' }, { id: 'ep2' }] },
+    // ep2 carries the full display fields (gate S1: bare {id} fixtures left the
+    // whole card-title path - SxxEyy padding, title fallback, escaping - untested).
+    { seasonNum: 1, label: 'Season 1', episodes: [{ id: 'ep0' }, { id: 'ep1' }, { id: 'ep2', seasonNum: 1, episodeNum: 3, title: 'End', durationSec: 60 }] },
   ] };
   const fetchImpl = (url) => {
     const u = String(url);
@@ -289,6 +291,8 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
   const filePathEl = makeEl('span'); els.set('#file-path-text', filePathEl);
   const subBtn = makeEl('button'); els.set('#subscribe-btn-mock', subBtn);
   const commentsBox = makeEl('div'); els.set('#comments-container', commentsBox);
+  const relatedHeader = makeEl('div'); relatedHeader.hidden = true; els.set('#related-header', relatedHeader);
+  const relatedBox = makeEl('div'); els.set('#related-files-container', relatedBox);
   const root = makeEl('div');
   root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
 
@@ -345,6 +349,54 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
   // deleting `commentScopeId = episodeId` would key every episode on comments_null.
   assert.ok(storage.has('comments_ep1'), 'comments persist under the EPISODE id bucket');
   assert.ok(!storage.has('comments_null'), 'never the null bucket');
+
+  // v1.198.1 (Dean): the Up-next rail = the show's OTHER episodes ROTATED around
+  // the current one - after it in order, then WRAP to the start (current ep1 of
+  // [ep0, ep1, ep2] -> [ep2, ep0]; the ep0-after-ep2 ordering IS the wrap bind).
+  assert.equal(relatedHeader.hidden, false, 'the Up-next header is revealed on tv');
+  assert.equal(relatedHeader.textContent, 'Up next', 'labelled Up next, not Related files');
+  const ep2At = relatedBox.innerHTML.indexOf('?tv=ep2');
+  const ep0At = relatedBox.innerHTML.indexOf('?tv=ep0');
+  assert.ok(ep2At !== -1 && ep0At !== -1, 'both other episodes render as ?tv= cards');
+  assert.ok(ep2At < ep0At, 'ep2 (next in order) precedes ep0 (the wrap-around)');
+  assert.ok(!relatedBox.innerHTML.includes('?tv=ep1'), 'the CURRENT episode is excluded');
+  assert.ok(relatedBox.innerHTML.includes('/tvthumb/ep2'), 'cards use the per-episode art route');
+  // Gate W1 (presence-not-binding): the hide mechanism is style.display, which
+  // the .hidden asserts above cannot see - re-adding the rail selectors to the
+  // hide list rendered everything into an invisible container, suite green.
+  assert.notEqual(relatedHeader.style.display, 'none', 'the header is not display-hidden (the tv hide-list must not cover it)');
+  assert.notEqual(relatedBox.style.display, 'none', 'the container is not display-hidden');
+  // Gate S1: the enriched fixture drives the real card-title path.
+  assert.ok(relatedBox.innerHTML.includes('S01E03 - End'), 'the SxxEyy code + title render (padding + escape path exercised)');
+});
+
+// Gate W2's empty axis: a single-episode show has NO "up next" - the header must
+// HIDE and the seeded skeleton must be cleared (deleting the empty-branch clear,
+// or the header.hidden line, turns this red - both survived round 1).
+test('v1.198.1 Up-next rail: a single-episode show hides the header and clears the seeded skeleton', async () => {
+  const epDetail = {
+    id: 'solo', type: 'video', title: 'Only One', showId: 'show1', showName: 'Solo Show',
+    duration: 100, needsTranscode: false, transcodeStatus: 'ready',
+    streamSrc: '/tvepisode/solo', statusUrl: '/api/tv/episode/solo', artUrl: '/tvposter/show1',
+    progress: 0, sizeBytes: 1, addedAtMs: Date.now(), fileName: 'Solo.mp4', ext: '.mp4',
+  };
+  const showDetail = { id: 'show1', name: 'Solo Show', seasons: [{ seasonNum: 1, label: 'Season 1', episodes: [{ id: 'solo' }] }] };
+  const fetchImpl = (url) => {
+    const u = String(url);
+    if (u.indexOf('/api/tv/episode/solo') === 0) return Promise.resolve({ ok: true, json: () => Promise.resolve(epDetail) });
+    if (u.indexOf('/api/tv/show1') === 0) return Promise.resolve({ ok: true, json: () => Promise.resolve(showDetail) });
+    if (u.indexOf('/api/settings') === 0) return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    return new Promise(() => {});
+  };
+  const { init, els } = buildWatchRealm({ search: '?tv=solo', fetchImpl });
+  const relatedHeader = makeEl('div'); relatedHeader.hidden = true; els.set('#related-header', relatedHeader);
+  const relatedBox = makeEl('div'); els.set('#related-files-container', relatedBox);
+  const root = makeEl('div');
+  root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
+  init(root);
+  for (let i = 0; i < 12; i++) await Promise.resolve();
+  assert.equal(relatedHeader.hidden, true, 'no other episodes -> the Up-next header stays hidden');
+  assert.equal(relatedBox.innerHTML, '', 'the seeded skeleton is CLEARED, never stranded');
 });
 
 // ---- v1.197 W1 (both gate seats, BLOCKING): the tv path's cog sequence bound --

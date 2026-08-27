@@ -2278,5 +2278,11 @@
     "date": "2026-08-27",
     "title": "TV episode pages, tidied up",
     "intent": "A round of polish for episode pages. The Subscribe button no longer appears next to a show's name (shows aren't channels), and the \"File Path\" line - which used to sit there loading forever - now shows the episode's file name. Episodes also get the same nostalgic fake comments as everything else, and you can add your own. And the \"Change poster\" button is gone: to set a show's poster, just drop an image named poster.jpg (or folder/cover/show .jpg/.png/.webp) into the show's folder - FileTube picks it up automatically."
+  },
+  {
+    "version": "1.198.1",
+    "date": "2026-08-27",
+    "title": "Episode pages now show what's up next",
+    "intent": "The sidebar on an episode page now lists the rest of the show, in order - the episodes that come after the one you're watching, and once those run out it wraps back around to episode 1, so there's always something to tap next. Each card shows the episode's thumbnail, its number and title, and its length. The episode you're currently watching isn't listed."
   }
 ]

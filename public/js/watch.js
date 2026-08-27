@@ -3772,7 +3772,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // file name + metadata, painted by paintTvEpisodePanel below.
       // v1.198 (Dean): comments STAY - episodes get the same fake retro comments
       // as every other media type (loadComments, keyed by the episode id).
-      ['.watch-action-bar', '#related-header', '#related-files-container'].forEach(function (sel) {
+      // v1.198.1 (Dean): the related rail STAYS too - renderTvUpNextRail fills it
+      // with the show's next episodes in order, wrapping to episode 1.
+      ['.watch-action-bar'].forEach(function (sel) {
         var el = root.querySelector(sel);
         if (el) el.style.display = 'none';
       });
@@ -3840,12 +3842,19 @@ if (typeof module !== 'undefined' && module.exports) {
       // screen, and autoplay-at-end all navigate through one source.
       try {
         var res = await fetch('/api/tv/' + encodeURIComponent(showId), { signal: signal, headers: { Accept: 'application/json' } });
-        if (!res.ok || signal.aborted) return;
+        // Gate W2 (the never-strand invariant, from the video rail's own contract):
+        // EVERY exit clears the seeded skeleton cards - a failed/aborted show
+        // fetch must not leave the rail shimmering forever. An empty render
+        // hides the header and empties the container.
+        if (!res.ok || signal.aborted) { renderTvUpNextRail([], episodeId, ''); return; }
         var detail = await res.json();
-        var orderedIds = [];
+        // v1.198.1: keep the flattened EPISODE OBJECTS (id/SxxEyy/title/duration)
+        // - the Up-next rail below needs them; the ids derive from the same list.
+        var orderedEps = [];
         (detail.seasons || []).forEach(function (s) {
-          (s.episodes || []).forEach(function (ep) { if (ep && ep.id) orderedIds.push(ep.id); });
+          (s.episodes || []).forEach(function (ep) { if (ep && ep.id) orderedEps.push(ep); });
         });
+        var orderedIds = orderedEps.map(function (ep) { return ep.id; });
         // v1.197 (W2): the show's "subscriber line" = its season/episode counts,
         // from THIS fetch (zero extra round-trips). Painted here because the
         // counts only exist once the show detail resolves.
@@ -3863,11 +3872,59 @@ if (typeof module !== 'undefined' && module.exports) {
             onNext: nb.nextId ? function () { window.FileTube.navigate('/watch.html?tv=' + encodeURIComponent(nb.nextId)); } : undefined,
           });
         }
-      } catch (e) { if (!signal.aborted) console.error('Error building episode prev/next:', e); }
+        renderTvUpNextRail(orderedEps, episodeId, detail.name || '');
+      } catch (e) {
+        if (!signal.aborted) {
+          console.error('Error building episode prev/next:', e);
+          renderTvUpNextRail([], episodeId, ''); // W2: the catch clears the seed too
+        }
+      }
+    }
+    // v1.198.1 (Dean: "related files = the next episodes of the show in order,
+    // and if no more, loop back to episode 1"): the related rail on an episode
+    // page lists the show's OTHER episodes ROTATED around the current one -
+    // everything after it in (season, episode) order, then wrap from the start;
+    // the current episode itself is excluded. Mirrors the video rail's card
+    // markup byte-for-byte (classes/structure) with tv art + ?tv= hrefs; every
+    // interpolated string goes through escapeHtml (the video rail's posture).
+    function renderTvUpNextRail(orderedEps, currentId, showName) {
+      var relatedHeader = root.querySelector('#related-header');
+      var relatedContainer = root.querySelector('#related-files-container');
+      if (!relatedContainer) return;
+      var idx = -1;
+      for (var i = 0; i < orderedEps.length; i++) { if (orderedEps[i].id === currentId) { idx = i; break; } }
+      var rotated = idx === -1
+        ? orderedEps.slice()
+        : orderedEps.slice(idx + 1).concat(orderedEps.slice(0, idx));
+      if (relatedHeader) { relatedHeader.textContent = 'Up next'; relatedHeader.hidden = rotated.length === 0; }
+      if (rotated.length === 0) { relatedContainer.innerHTML = ''; return; }
+      relatedContainer.innerHTML = rotated.map(function (ep) {
+        var code = (ep.seasonNum != null && ep.episodeNum != null)
+          ? 'S' + (ep.seasonNum < 10 ? '0' : '') + ep.seasonNum + 'E' + (ep.episodeNum < 10 ? '0' : '') + ep.episodeNum
+          : '';
+        var title = (code ? code + ' - ' : '') + (ep.title || (ep.episodeNum != null ? 'Episode ' + ep.episodeNum : 'Episode'));
+        var durationBadge = (ep.durationSec > 0 && typeof formatDuration === 'function')
+          ? '<div class="duration-badge">' + escapeHtml(formatDuration(ep.durationSec)) + '</div>' : '';
+        return ''
+          + '<a href="/watch.html?tv=' + encodeURIComponent(ep.id) + '" class="related-card">'
+          + '<div class="related-thumb">'
+          + '<img src="/tvthumb/' + encodeURIComponent(ep.id) + '" style="width:100%; height:100%; object-fit:cover;" loading="lazy" />'
+          + durationBadge
+          + '</div>'
+          + '<div class="related-info">'
+          + '<div class="related-title" title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</div>'
+          + '<div class="related-uploader">' + escapeHtml(showName) + '</div>'
+          + '</div>'
+          + '</a>';
+      }).join('');
     }
     async function initTvWatch(episodeId) {
       revealActionBar();     // drop the action-row shimmer (the row itself is then hidden)
       hideTvVideoChrome();
+      // v1.198.1: the Up-next rail wears shimmer cards until the show detail
+      // resolves (the instant-paint discipline the video rail follows).
+      var upNextSeed = root.querySelector('#related-files-container');
+      if (upNextSeed) upNextSeed.innerHTML = buildRelatedSkeletonCards(4);
       try {
         var res = await fetch('/api/tv/episode/' + encodeURIComponent(episodeId), { signal: signal, headers: { Accept: 'application/json' } });
         if (!res.ok) { showFatalViewError(root); return; }

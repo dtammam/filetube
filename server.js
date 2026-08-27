@@ -8931,6 +8931,24 @@ app.get('/api/tv/:showId', (req, res) => {
   });
 });
 
+// v1.198.1 (Dean: the episode "Up next" rail): per-EPISODE art. The generated
+// ffmpeg frame when it exists, else the show's folder poster, else the SVG
+// placeholder - never a broken img. Gated exactly like /tvepisode (restricted or
+// absent -> 404, no oracle); private-cached like /tvposter.
+app.get('/tvthumb/:id', (req, res) => {
+  const ns = tvStore.readTv(getCachedDatabase());
+  const ep = ownEpisode(ns.episodes, req.params.id);
+  if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
+  if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
+  res.set('Cache-Control', 'private, max-age=3600');
+  const t = tvThumbPath(ep.id);
+  if (fs.existsSync(t)) return res.sendFile(t);
+  const poster = tvScan.findShowPoster(ep.showPath);
+  if (poster && fs.existsSync(poster)) return res.sendFile(poster);
+  res.set('Content-Type', 'image/svg+xml');
+  res.send(tvPosterPlaceholderSvg(ep.showName));
+});
+
 app.get('/tvposter/:showId', (req, res) => {
   const eps = visibleTvEpisodes(req).filter((e) => e.showId === req.params.showId);
   res.set('Cache-Control', 'private, max-age=3600'); // RBAC: keep behind the auth wall

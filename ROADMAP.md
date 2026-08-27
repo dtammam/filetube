@@ -80,6 +80,30 @@
 
 ## Shipped
 
+### v1.198.1 - feat: the "Up next" rail on episode pages (next episodes in order, wrapping to E1) (2026-08-27)
+
+Dean's closer for the TV arc: the related rail on an episode page now lists the
+show's OTHER episodes rotated around the current one - everything after it in
+(season, episode) order, then wrapping from episode 1; the current episode
+excluded; header reads "Up next". Zero extra round-trips (rendered from the same
+show-detail fetch the prev/next queue already makes). Cards mirror the video
+rail's markup with per-episode art via the NEW `GET /tvthumb/:id` (the generated
+ffmpeg frame, else the show's folder poster, else the SVG placeholder - never a
+broken image; gated exactly like `/tvepisode`, census 227->228). Shimmer cards
+seed the rail until the detail resolves, and EVERY exit clears them (the video
+rail's never-strand contract).
+
+Slim adversarial gate: round-1 REQUEST CHANGES (the un-hide was unbound - the
+hide mechanism is style.display, which the .hidden asserts could not see; and
+the failure path stranded the shimmer, with the empty-show axis unbound). All
+closed with mutation-verified binds + a single-episode scenario; APPROVE round
+2. Verified end-to-end with the live-Chromium probe (2 cards on a 3-episode
+show's middle episode, real art loading, computed display block/flex).
+Disclosed residuals in tech-debt #182 (the failure-arm calls are correct-by-
+reading into a bound function but themselves unbound; the escape path is
+exercised, not escape-bound - parity with the video rail). **Dual-Node 7650/0**
+(Node 22.23.1 + 24.14.0).
+
 ### v1.198.0 - feat: the episode-page polish round (no Subscribe, File Path fixed, fake comments; poster-upload removed) (2026-08-27)
 
 Dean's device list, every item diagnosed + verified with the live-Chromium probe

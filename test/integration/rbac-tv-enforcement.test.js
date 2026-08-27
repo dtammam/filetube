@@ -241,3 +241,12 @@ test('TV W3: the audio sidecar pair is gated and the detail carries the bg-audio
   assert.strictEqual(d.prepareAudioUrl, '/api/tv/episode/ok/prepare-audio');
   assert.strictEqual(d.audioStatus, 'pending', 'live file-existence readiness');
 });
+
+// v1.198.1: /tvthumb/:id (the Up-next rail's per-episode art) - gated like
+// /tvepisode; with no generated frame it falls back to the show's folder poster.
+test('TV: /tvthumb/:id is gated (restricted -> 404) and falls back to the folder poster', async () => {
+  assert.strictEqual((await asMember('/tvthumb/blk')).status, 404, 'restricted episode art -> 404 (no oracle)');
+  const t = await asMember('/tvthumb/ok');
+  assert.strictEqual(t.status, 200);
+  assert.strictEqual(await t.text(), 'KIDSPOSTER', 'no generated frame -> the show folder poster serves');
+});

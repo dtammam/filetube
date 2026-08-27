@@ -72,6 +72,7 @@ const READ = {
   '/api/tv/:showId': 'GATED',
   '/tvposter/:showId': 'GATED',
   '/tvepisode/:id': 'GATED',
+  '/tvthumb/:id': 'GATED', // v1.198.1: per-episode art for the Up-next rail; restricted -> 404 like /tvepisode
   '/tvaudio/:id': 'GATED', // v1.197: the episode's extracted-audio sidecar; restricted -> 404 like /tvepisode
   '/api/music/:id': 'GATED',
   '/api/music/albums': 'GATED',
