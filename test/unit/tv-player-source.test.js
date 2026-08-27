@@ -51,8 +51,8 @@ test('v1.196.1: a mobile tv source resolves the mobileCustomPlayer setting + re-
   // (!data.statusUrl) also skipped the mobileCustomPlayer settings read + the
   // applyControlsMode re-run that live in it - so a mobile-fullscreen episode fell
   // to the native iOS strip. A tv-source standalone read restores the custom bar.
-  assert.match(SRC, /if \(data\.type !== 'audio' && data\.statusUrl && isMobileFormFactor\(\)\) \{[\s\S]*?mobileCustomPlayerCached = !!\(settings && settings\.mobileCustomPlayer\);\s*\n\s*applyControlsMode\(\);/,
-    'a tv source reads mobileCustomPlayer and re-derives the controls surface');
+  assert.match(SRC, /if \(data\.type !== 'audio' && data\.statusUrl && isMobileFormFactor\(\)\) \{[\s\S]*?if \(gen !== loadGeneration\) return;[\s\S]*?mobileCustomPlayerCached = !!\(settings && settings\.mobileCustomPlayer\);\s*\n\s*applyControlsMode\(\);/,
+    'a tv source reads mobileCustomPlayer and re-derives the controls surface, guarded by the load-generation staleness check');
 });
 
 test('A2: a source with artUrl but no hasThumbnail (a tv episode) uses the show poster as the frame-one video poster', () => {
