@@ -104,6 +104,11 @@ test('tvContinueRowEnabled: homeRowEnabled semantics (absent=on, "0"=off, junk=o
     assert.equal(tvContinueRowEnabled(), true, 'any other value -> on');
     global.localStorage = { getItem: () => { throw new Error('blocked'); } };
     assert.equal(tvContinueRowEnabled(), true, 'storage disabled -> on (fail-open like homeRowEnabled)');
+    // Gate WARNING: the KEY identity - a key-aware mock (argument-sensitive, not
+    // a divergent any-key fixture) so a wrong-key refactor (reading the HOME key)
+    // goes red instead of silently handing the Shows row to the home checkbox.
+    global.localStorage = { getItem: (k) => (k === 'ft-tv-continue-watching' ? '0' : null) };
+    assert.equal(tvContinueRowEnabled(), false, 'reads THE ft-tv-continue-watching key, not another');
   } finally {
     if (prior === undefined) delete global.localStorage; else global.localStorage = prior;
   }
