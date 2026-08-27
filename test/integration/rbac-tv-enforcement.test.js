@@ -138,6 +138,12 @@ test('TV: GET /api/tv/episode/:id is player-shaped, tv-sourced, and visibility-g
   assert.strictEqual(d.artUrl, '/tvposter/sh-ok');
   assert.strictEqual(d.needsTranscode, false, 'a codec-clean .mp4 plays direct');
   assert.strictEqual(d.transcodeStatus, 'ready', 'not transcoding -> ready');
+  // v1.197 (W2): the description-panel display fields - fileName is the BASENAME
+  // only (the full filesystem path never rides the payload).
+  assert.strictEqual(d.fileName, 'Kids Show S01E01 - Hello.mp4', 'the file NAME (basename)');
+  assert.ok(!JSON.stringify(d).includes(DATA_DIR), 'the full filesystem path never leaks');
+  assert.strictEqual(typeof d.sizeBytes, 'number');
+  assert.strictEqual(typeof d.addedAtMs, 'number');
 
   const h = await (await asAdmin('/api/tv/episode/hevc')).json();
   assert.strictEqual(h.needsTranscode, true, 'hevc-in-mp4 -> codec-aware transcode');

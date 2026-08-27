@@ -3742,15 +3742,50 @@ if (typeof module !== 'undefined' && module.exports) {
     // bound behaviourally in the integration test). All four helpers are init-level
     // siblings, so they share this closure's consts (root/playerSlot/mediaTitle/signal).
     function hideTvVideoChrome() {
-      // A TV episode has no channel/description/comments/related and no
-      // video-management actions - every one of those chrome blocks assumes a
-      // db.metadata id + /api/videos routes. Hide via style.display (an [hidden]
-      // attribute loses to these blocks' own display rules - the standing lesson).
-      ['.watch-action-bar', '.uploader-info-panel', '.description-container',
-        '#comments-container', '#related-header', '#related-files-container'].forEach(function (sel) {
+      // A TV episode has no comments/related and no video-management actions -
+      // those chrome blocks assume a db.metadata id + /api/videos routes. Hide
+      // via style.display (an [hidden] attribute loses to these blocks' own
+      // display rules - the standing lesson). v1.197 (W2, Dean): the uploader
+      // panel + description container now STAY - the uploader row becomes the
+      // SHOW (poster icon, tap -> back) and the description shows the episode's
+      // file name + metadata, painted by paintTvEpisodePanel below.
+      ['.watch-action-bar', '#comments-container', '#related-header', '#related-files-container'].forEach(function (sel) {
         var el = root.querySelector(sel);
         if (el) el.style.display = 'none';
       });
+    }
+    // v1.197 (W2): the episode's "channel = the show" row + file metadata, in the
+    // same panels videos use (same formatters -> same look). All text lands via
+    // textContent (a filename/show name is attacker-influenced text).
+    function paintTvEpisodePanel(ep) {
+      if (uploaderAvatar) {
+        applyAvatarToElement(uploaderAvatar, ep.showName, '/tvposter/' + encodeURIComponent(ep.showId || ''));
+        uploaderAvatar.classList.remove('skeleton-shimmer');
+      }
+      if (uploaderChannelName) {
+        uploaderChannelName.textContent = ep.showName || 'Show';
+        uploaderChannelName.classList.remove('skeleton-shimmer', 'skel-w140');
+        uploaderChannelName.href = '/tv?show=' + encodeURIComponent(ep.showId || '');
+        uploaderChannelName.addEventListener('click', function (e) {
+          if (window.FileTube && typeof window.FileTube.navigate === 'function') {
+            e.preventDefault();
+            window.FileTube.navigate('/tv?show=' + encodeURIComponent(ep.showId || ''));
+          }
+        }, { signal });
+      }
+      // typeof-guarded (the shared-global scar): the formatters are common.js
+      // page globals, absent in a minimal harness - degrade to blank, not throw.
+      if (addedDateText) { addedDateText.textContent = (ep.addedAtMs && typeof formatRelativeTime === 'function') ? formatRelativeTime(ep.addedAtMs) : ''; addedDateText.classList.remove('skeleton-shimmer', 'skel-w60'); }
+      if (fileSizeText) { fileSizeText.textContent = (ep.sizeBytes && typeof formatFileSize === 'function') ? formatFileSize(ep.sizeBytes) : ''; fileSizeText.classList.remove('skeleton-shimmer', 'skel-w60'); }
+      if (fileTypeText) { fileTypeText.textContent = (ep.ext || '').replace('.', '').toUpperCase() || 'Video'; fileTypeText.classList.remove('skeleton-shimmer', 'skel-w60'); }
+      // The "description" for an episode = its file name (Dean's ask), via the
+      // SAME element + skeleton-strip discipline renderVideoDescription uses.
+      if (descriptionParagraph) descriptionParagraph.textContent = ep.fileName || '';
+      var descSkel = root.querySelector('#video-desc-skel');
+      if (descSkel) {
+        descSkel.hidden = true;
+        descSkel.querySelectorAll('.skeleton-shimmer').forEach(function (el) { el.classList.remove('skeleton-shimmer'); });
+      }
     }
     function renderTvBackLink(showId, showName) {
       if (!mediaTitle || !mediaTitle.parentNode || root.querySelector('.tv-back-to-show')) return;
@@ -3779,6 +3814,15 @@ if (typeof module !== 'undefined' && module.exports) {
         (detail.seasons || []).forEach(function (s) {
           (s.episodes || []).forEach(function (ep) { if (ep && ep.id) orderedIds.push(ep.id); });
         });
+        // v1.197 (W2): the show's "subscriber line" = its season/episode counts,
+        // from THIS fetch (zero extra round-trips). Painted here because the
+        // counts only exist once the show detail resolves.
+        if (uploaderSubsCount) {
+          var seasonCount = (detail.seasons || []).length;
+          uploaderSubsCount.textContent =
+            seasonCount + (seasonCount === 1 ? ' season' : ' seasons')
+            + ' · ' + orderedIds.length + (orderedIds.length === 1 ? ' episode' : ' episodes');
+        }
         var nb = computeNeighbors(orderedIds, episodeId);
         if (signal.aborted) return;
         if (window.FileTube.player && typeof window.FileTube.player.setTrackNav === 'function' && (nb.prevId || nb.nextId)) {
@@ -3808,11 +3852,26 @@ if (typeof module !== 'undefined' && module.exports) {
           channelName: ep.showName,
           progressEndpoint: '/api/tv/progress',
           resumeMode: 'tv',
+          // v1.197 (W1): where tapping the docked mini-player returns. The
+          // readerHref seam exists for exactly this class (books/music ids
+          // "would 404 on the video route") - without it the dock-return built
+          // /watch.html?v=<episodeId> and the video path errored "Failed to
+          // Load Media" while the adopted player kept playing (Dean's report).
+          readerHref: '/watch.html?tv=' + encodeURIComponent(episodeId),
         });
         var mounted = window.FileTube.player.load(episodeId, descriptor, { slot: playerSlot });
         if (!mounted) { showFatalViewError(root); return; }
-        setupLoopToggle();       // source-agnostic (Dean item 5: loop stays)
-        setupAutoplayToggle();   // source-agnostic (autoplay stays)
+        // v1.197 (W1): the FULL cog sequence initWatch runs. ensureCogControls-
+        // Injected is what INJECTS the autoplay/loop/theatre/ambient rows into
+        // the mounted host's cog menu - without it every setup below bailed on a
+        // missing checkbox, so episodes had NO cog rows and (Dean's report)
+        // ambient mode never armed. All five are source-agnostic siblings.
+        ensureCogControlsInjected();
+        setupAutoplayToggle();
+        setupLoopToggle();
+        setupTheatreToggle();
+        setupAmbientMode();
+        paintTvEpisodePanel(ep); // v1.197 (W2): show-as-channel + file metadata
         setupTvTrackNav(episodeId, ep.showId);
       } catch (e) {
         if (!signal.aborted) { console.error('Error loading episode:', e); showFatalViewError(root); }

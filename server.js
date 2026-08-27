@@ -8760,6 +8760,13 @@ app.get('/api/tv/episode/:id', (req, res) => {
     streamSrc: `/tvepisode/${encodeURIComponent(ep.id)}`,
     statusUrl: `/api/tv/episode/${encodeURIComponent(ep.id)}`,
     artUrl: `/tvposter/${encodeURIComponent(ep.showId)}`,
+    // v1.197 (W2): the watch-page description panel's display fields. fileName is
+    // the BASENAME only - the full filesystem path is never sent (tighter than
+    // the video payload); addedAtMs normalized to epoch ms for the shared
+    // formatRelativeTime formatter (records persist addedAt as an ISO string).
+    sizeBytes: typeof ep.size === 'number' ? ep.size : 0,
+    addedAtMs: typeof ep.addedAt === 'number' ? ep.addedAt : (Date.parse(ep.addedAt) || 0),
+    fileName: path.basename(ep.filePath),
     // v1.196 (Phase B): the signed-in user's resume position + watched latch, so
     // the player's resume overlay + the row's watched tick reflect real state.
     progress: (userStore.getOneTvProgress(req.user.id, ep.id) || {}).position || 0,
