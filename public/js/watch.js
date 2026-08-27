@@ -3842,7 +3842,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // screen, and autoplay-at-end all navigate through one source.
       try {
         var res = await fetch('/api/tv/' + encodeURIComponent(showId), { signal: signal, headers: { Accept: 'application/json' } });
-        if (!res.ok || signal.aborted) return;
+        // Gate W2 (the never-strand invariant, from the video rail's own contract):
+        // EVERY exit clears the seeded skeleton cards - a failed/aborted show
+        // fetch must not leave the rail shimmering forever. An empty render
+        // hides the header and empties the container.
+        if (!res.ok || signal.aborted) { renderTvUpNextRail([], episodeId, ''); return; }
         var detail = await res.json();
         // v1.198.1: keep the flattened EPISODE OBJECTS (id/SxxEyy/title/duration)
         // - the Up-next rail below needs them; the ids derive from the same list.
@@ -3869,7 +3873,12 @@ if (typeof module !== 'undefined' && module.exports) {
           });
         }
         renderTvUpNextRail(orderedEps, episodeId, detail.name || '');
-      } catch (e) { if (!signal.aborted) console.error('Error building episode prev/next:', e); }
+      } catch (e) {
+        if (!signal.aborted) {
+          console.error('Error building episode prev/next:', e);
+          renderTvUpNextRail([], episodeId, ''); // W2: the catch clears the seed too
+        }
+      }
     }
     // v1.198.1 (Dean: "related files = the next episodes of the show in order,
     // and if no more, loop back to episode 1"): the related rail on an episode
