@@ -80,6 +80,32 @@
 
 ## Shipped
 
+### v1.196.1 - fix: episodes get the era-themed custom player on mobile (not the native strip) (2026-08-27)
+
+Dean (device): a TV episode on his phone played in iOS's bland native controls
+strip instead of the era-themed custom control bar his videos use.
+
+Root cause = a v1.196.0 (Phase A2) over-reach I introduced. On mobile, fullscreen
+video defaults to iOS native controls (v1.25.2, for chapters/CC/AirPlay); the
+"custom player on mobile" Setting is the opt-in that swaps in the era-themed bar,
+resolved by an `/api/settings` read in `setupForMedia`. That read lives INSIDE the
+mobile background-audio block - which v1.196.0 gated off for a tv source
+(`!data.statusUrl`, because episodes have no `/audio` route). So a tv episode never
+resolved the setting -> `mobileCustomPlayerCached` stayed false -> `applyControlsMode`
+picked the native strip. Regular videos read the setting fine, hence the mismatch.
+
+FIX: for a tv source on mobile video, a STANDALONE `/api/settings` read resolves
+just `mobileCustomPlayer` and re-runs `applyControlsMode()` - no background-audio
+machinery, no `/api/videos` (uses `/api/settings`, a general route the video path
+also reads, so the "a tv load never hits /api/videos" invariant is intact),
+load-generation-staleness-guarded, fail-safe. Episodes now honour the setting
+exactly like videos. Slim adversarial gate APPROVE (no regression to video/audio;
+the fix mutation-binds; invariant intact). Dual-Node 7643/0.
+
+Note for the device pass: the era-themed bar on mobile requires Settings ->
+"custom player on mobile" ON (it's the opt-in for BOTH videos and episodes; with it
+off, both use iOS's native strip by design).
+
 ### v1.196.0 - feat: TV episodes play in the REAL player (mini-player, prev/next, resume) + set-poster upload (2026-08-27)
 
 Dean's device feedback on v1.195.0: episodes opened in a bespoke `<video controls>`
