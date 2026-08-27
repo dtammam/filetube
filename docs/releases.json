@@ -2290,5 +2290,11 @@
     "date": "2026-08-27",
     "title": "Choose whether the Shows page shows Continue watching",
     "intent": "A small option that was missing: Settings now has a checkbox called Show Continue watching on the Shows page, right next to the one for the home page. Untick it and the Shows page goes straight to your poster wall with no Continue row. The two checkboxes are independent, so you can keep the row on one page and not the other. Like the other row toggles, this is a per-browser preference."
+  },
+  {
+    "version": "1.199.0",
+    "date": "2026-08-27",
+    "title": "Your TV shows are on the Roku now",
+    "intent": "The Roku channel's Libraries picker (press Left on the grid) has a new Shows entry: a poster wall of your shows. Pick a show, then a season - a show with only one season jumps straight to its episodes - then an episode, and it plays like any video, with Next, Previous, autoplay, and loop moving through the season in order. Resume stays in sync across your screens: stop an episode on the TV and your phone or browser offers to pick up where you left off, and finishing one on the TV marks it watched everywhere. To get it, redeploy the channel to your Roku from this version."
   }
 ]

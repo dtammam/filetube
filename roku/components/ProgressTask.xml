@@ -6,6 +6,12 @@
         <field id="itemId" type="string" />
         <field id="position" type="float" />
         <field id="duration" type="float" />
+        <!-- v1.199: "" (default) posts /api/progress; an episode ping sets
+             "/api/tv/progress" (identical body, the tv keyspace). -->
+        <field id="endpoint" type="string" />
+        <!-- v1.199: "" (default) = the progress body; "tvplayed" posts the
+             episode watched-latch instead: POST /api/tv/played {episodeId}. -->
+        <field id="mode" type="string" />
     </interface>
     <script type="text/brightscript" uri="pkg:/components/ProgressTask.brs" />
 </component>

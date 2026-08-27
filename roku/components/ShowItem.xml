@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="ShowItem" extends="Group">
+    <interface>
+        <field id="itemContent" type="node" onChange="onContentChange" />
+    </interface>
+    <script type="text/brightscript" uri="pkg:/components/ShowItem.brs" />
+    <children>
+        <!-- A 2:3 poster tile (the web Shows page's poster wall). /tvposter and
+             /tvthumb are FIRST-PARTY, so HDPosterUrl + the inherited scene
+             HttpAgent is correct here (the ChannelItem roHttpAgent split is for
+             REMOTE avatar hosts only — gate W6). -->
+        <Rectangle id="posterBg" width="216" height="324" color="0x2A2A2AFF" />
+        <Poster id="poster" width="216" height="324" loadWidth="216" loadHeight="324" loadDisplayMode="scaleToZoom" />
+        <Label id="titleLabel" translation="[0,330]" width="216" font="font:SmallestSystemFont" color="0xF1F1F1FF" />
+        <Label id="metaLabel" translation="[0,356]" width="216" font="font:SmallestSystemFont" color="0x9A9A9AFF" />
+    </children>
+</component>
