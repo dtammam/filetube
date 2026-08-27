@@ -7642,6 +7642,25 @@ if (typeof module !== 'undefined' && module.exports) {
     // completely unaffected, matching the feature's video+mobile-only scope.
     bgAudioSettingCached = false;
     bgAudioStatusKnown = (data && data.audioStatus) || null;
+    // v1.196.1 (Dean device report): a TV source skips the mobile bg-audio block
+    // below (no /audio route) - but that block ALSO resolves the `mobileCustomPlayer`
+    // setting and re-runs applyControlsMode(). Without this, a mobile-fullscreen
+    // episode never learns the user opted into the era-themed custom control bar,
+    // so `mobileCustomPlayerCached` stays false and applyControlsMode picks the
+    // native iOS strip (the "bland HTML5" player). Resolve JUST that setting for a
+    // tv source with a standalone /api/settings read (NOT /api/videos - the tv
+    // no-video-routes invariant is intact), then re-derive the controls surface.
+    // Fail-safe: a slow/failed fetch leaves the native default.
+    if (data.type !== 'audio' && data.statusUrl && isMobileFormFactor()) {
+      fetch('/api/settings')
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (settings) {
+          if (gen !== loadGeneration) return; // a newer load has since started
+          mobileCustomPlayerCached = !!(settings && settings.mobileCustomPlayer);
+          applyControlsMode();
+        })
+        .catch(function () { /* leave the native default (fail-safe) */ });
+    }
     // v1.196: background-audio-for-video uses /api/videos/:id/prepare-audio +
     // /audio/:id, which a TV source (identified by `statusUrl`) has no route for.
     // Skip the pre-warm for it - lock-screen play/pause/next/prev still work via
