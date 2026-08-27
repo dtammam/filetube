@@ -74,7 +74,7 @@ test('buildShowDetailHtml: a section per season; O3 hides the header of a single
   assert.match(html, /data-episode-id="a"/);
   // v1.196: the hero poster + the admin poster-control slot (keyed by show id).
   assert.match(html, /<img class="tv-detail-poster[^"]*" src="\/tvposter\/sh1"/, 'the hero poster');
-  assert.match(html, /<div class="tv-detail-actions" data-show-id="sh1">/, 'the admin poster-control slot');
+  assert.ok(!html.includes('tv-detail-actions'), 'v1.198: no poster-control slot renders (the upload feature was removed)');
 
   const flat = buildShowDetailHtml({ name: 'Flat', seasons: [{ seasonNum: null, label: 'Episodes', episodes: [{ id: 'z', seasonNum: null, episodeNum: 1, title: 'One' }] }] });
   assert.doesNotMatch(flat, /tv-season-label/, 'O3: a single implicit season hides its header');

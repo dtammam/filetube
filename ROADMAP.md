@@ -80,6 +80,40 @@
 
 ## Shipped
 
+### v1.198.0 - feat: the episode-page polish round (no Subscribe, File Path fixed, fake comments; poster-upload removed) (2026-08-27)
+
+Dean's device list, every item diagnosed + verified with the live-Chromium probe
+before and after (subscribeVisible/filePathShimmer/commentsCount/ambient pixels):
+
+1. **No Subscribe button on episodes.** v1.197 un-hid the uploader panel, and the
+   button's default `hidden` attribute LOSES to `.btn`'s display rule (the
+   standing `[hidden]` lesson) - it showed as a dead control. Now style-hidden.
+2. **The "File Path:" row shimmered forever on episodes** (a v1.197 regression -
+   the un-hidden description container carries `#file-path-text`, which the tv
+   path never painted). Now painted with the file's BASENAME (the full path stays
+   unexposed by design); the description text is empty (the filename lived there
+   and would duplicate).
+3. **The v1.196 "Change poster" upload feature REMOVED end-to-end** per Dean: the
+   UI control, both routes, the DATA_DIR store + override, classifications, and
+   its test. Posters = the folder image (poster.jpg etc.) or the generated
+   episode frame - the convention actually in use. Census 229->227.
+4. **Fake retro comments on episodes**, the same machinery as every other media
+   type: episode-id-scoped localStorage bucket + the deterministic mock
+   selection + the posting form (which had never been wired on the tv path -
+   the inline registration sat after the `?tv=` early return).
+
+**Theatre (Dean's item 5) intentionally NOT changed:** the probe shows the
+theatre button already present and visible on episode pages on DESKTOP; on
+mobile it is hidden by the deliberate v1.186 rule that applies to videos too
+(theatre widens the desktop layout; it has no mobile effect - fullscreen is the
+mobile analog). Awaiting Dean's call on whether a mobile theatre behaviour
+should be designed (for all media) before anything ships.
+
+Slim adversarial gate: REQUEST CHANGES round 1 (two surviving mutants - the
+comments un-hide bound RENDERING not VISIBILITY, and the episode-id comment
+scope was unbound), both closed with mutation-verified asserts; APPROVE round 2.
+**Dual-Node 7648/0** (Node 22.23.1 + 24.14.0).
+
 ### v1.197.1 - fix: ambient mode actually PAINTS on episodes (the ?tv= early-return TDZ) (2026-08-27)
 
 Dean (device): ambient on episodes still "seemingly not working" after v1.197.0.
