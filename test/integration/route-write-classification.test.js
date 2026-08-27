@@ -159,6 +159,8 @@ const CLASSIFICATION = {
   'POST /api/settings': 'admin',
   'POST /api/settings/logo': 'admin',
   'DELETE /api/settings/logo': 'admin',
+  'POST /api/tv/:showId/poster': 'admin',
+  'DELETE /api/tv/:showId/poster': 'admin',
   // v1.171 critter pool management (the logo-upload posture: server-wide
   // decorative assets are instance config; Dean's intake ruling = admin only).
   'POST /api/critters/upload': 'admin',
@@ -402,6 +404,8 @@ const VISIBILITY = {
   'POST /api/ytdlp/engine/update': na('downloader-engine manual update trigger; instance-wide, no item addressed'),
   'POST /api/settings/logo': na('custom logo upload; instance branding asset'),
   'DELETE /api/settings/logo': na('custom logo removal; instance branding asset'),
+  'POST /api/tv/:showId/poster': na('admin show-art upload; writes a DATA_DIR poster file, addresses no per-user or per-item content'),
+  'DELETE /api/tv/:showId/poster': na('admin show-art removal; deletes a DATA_DIR poster file, addresses no per-user or per-item content'),
   'POST /api/critters/upload': na('critter pool image/sound upload; instance decorative asset, no library item addressed'),
   'DELETE /api/critters/item': na('critter pool per-critter delete (image + paired sound); instance decorative asset'),
   'DELETE /api/critters/all': na('critter pool delete-all; instance decorative assets, scoped to public/critters/'),

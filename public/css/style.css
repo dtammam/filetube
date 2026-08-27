@@ -10175,6 +10175,13 @@ html[data-modern="on"] .video-uploader {
 .tv-continue-show { font-size: var(--fs-sm); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tv-continue-ep { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tv-detail-title { font-size: var(--fs-xl); margin-bottom: var(--space-4); }
+/* v1.196: the show-detail hero (poster + name + admin poster control). The poster
+   column uses the grid minmax idiom so no bare width is needed (census-safe). */
+.tv-detail-hero { display: grid; grid-template-columns: minmax(0, 120px) 1fr; gap: var(--space-4); align-items: start; margin-bottom: var(--space-4); }
+.tv-detail-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-lg); object-fit: cover; background: var(--thumbnail-bg); display: block; }
+.tv-detail-hero-main { min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.tv-detail-hero-main .tv-detail-title { margin-bottom: 0; }
+.tv-detail-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .tv-season { margin-bottom: var(--space-6); }
 .tv-season-label { font-size: var(--fs-lg); color: var(--text-primary); margin-bottom: var(--space-3); }
 .tv-episode-list { display: flex; flex-direction: column; }

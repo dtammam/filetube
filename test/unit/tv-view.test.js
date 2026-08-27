@@ -61,6 +61,7 @@ test('buildEpisodeRowHtml: code + title + duration + data id; Extras hides the c
 
 test('buildShowDetailHtml: a section per season; O3 hides the header of a single implicit season', () => {
   const detail = {
+    id: 'sh1',
     name: 'House MD',
     seasons: [
       { seasonNum: 1, label: 'Season 1', episodes: [{ id: 'a', seasonNum: 1, episodeNum: 1, title: 'Pilot' }] },
@@ -71,6 +72,9 @@ test('buildShowDetailHtml: a section per season; O3 hides the header of a single
   assert.match(html, /Season 1/);
   assert.match(html, /Specials/);
   assert.match(html, /data-episode-id="a"/);
+  // v1.196: the hero poster + the admin poster-control slot (keyed by show id).
+  assert.match(html, /<img class="tv-detail-poster[^"]*" src="\/tvposter\/sh1"/, 'the hero poster');
+  assert.match(html, /<div class="tv-detail-actions" data-show-id="sh1">/, 'the admin poster-control slot');
 
   const flat = buildShowDetailHtml({ name: 'Flat', seasons: [{ seasonNum: null, label: 'Episodes', episodes: [{ id: 'z', seasonNum: null, episodeNum: 1, title: 'One' }] }] });
   assert.doesNotMatch(flat, /tv-season-label/, 'O3: a single implicit season hides its header');

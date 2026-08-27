@@ -70,10 +70,17 @@ function buildEpisodeRowHtml(ep) {
     '</button>';
 }
 
-// A show-detail document: the hero name + a section per season, each an episode list.
+// A show-detail document: a hero (poster + name), then a section per season, each
+// an episode list. The .tv-detail-actions slot is where openShow injects the
+// admin "Change poster" control (empty for non-admins).
 function buildShowDetailHtml(detail) {
   var out = '<div class="tv-detail">';
-  out += '<h3 class="tv-detail-title">' + escapeTvHtml(detail.name || 'Show') + '</h3>';
+  out += '<div class="tv-detail-hero">' +
+    '<img class="tv-detail-poster art-shimmer" src="/tvposter/' + encodeURIComponent(detail.id || '') + '" alt="' + escapeTvHtml(detail.name) + '" />' +
+    '<div class="tv-detail-hero-main">' +
+    '<h3 class="tv-detail-title">' + escapeTvHtml(detail.name || 'Show') + '</h3>' +
+    '<div class="tv-detail-actions" data-show-id="' + escapeTvHtml(detail.id || '') + '"></div>' +
+    '</div></div>';
   var seasons = Array.isArray(detail.seasons) ? detail.seasons : [];
   // O3: a single implicit season (label "Episodes") hides its header.
   var hideHeader = seasons.length === 1 && seasons[0] && seasons[0].seasonNum == null;
@@ -145,7 +152,54 @@ if (typeof document !== 'undefined') {
         setCrumb('<button type="button" class="tv-back" id="tv-back">← All shows</button>');
         var heading = el('tv-heading'); if (heading) heading.textContent = detail.name || 'Shows';
         content.innerHTML = buildShowDetailHtml(detail);
+        maybeInjectPosterControl(showId);
       }).catch(function (e) { if (e.name !== 'AbortError') setStatus('Could not load that show.'); });
+    }
+
+    // Cache-bust every <img> pointing at this show's poster so a just-set poster
+    // shows immediately (the server serves it with a private 1h cache).
+    function reloadShowPoster(showId) {
+      var base = '/tvposter/' + encodeURIComponent(showId);
+      var imgs = document.querySelectorAll('img[src^="' + base + '"]');
+      for (var i = 0; i < imgs.length; i++) imgs[i].src = base + '?t=' + Date.now();
+    }
+
+    // Admin-only "Change poster" control in the show-detail hero. Gated on the
+    // user's admin/library-modify capability (the server enforces it too, 403 for
+    // a member - this just hides a dead button). Fail-closed on any auth hiccup.
+    function maybeInjectPosterControl(showId) {
+      if (typeof fetchCurrentUser !== 'function' || !showId) return;
+      fetchCurrentUser().then(function (me) {
+        var canEdit = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
+        if (!canEdit) return;
+        var slot = document.querySelector('.tv-detail-actions');
+        if (!slot || slot.querySelector('.tv-poster-change')) return;
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn tv-poster-change';
+        btn.textContent = 'Change poster';
+        var input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/png,image/jpeg,image/webp';
+        input.className = 'tv-poster-input';
+        input.hidden = true;
+        btn.addEventListener('click', function () { input.click(); });
+        input.addEventListener('change', function () {
+          var file = input.files && input.files[0];
+          input.value = '';
+          if (!file) return;
+          setStatus('Uploading poster…');
+          fetch('/api/tv/' + encodeURIComponent(showId) + '/poster', {
+            method: 'POST', headers: { 'Content-Type': file.type }, body: file, signal: controller && controller.signal,
+          }).then(function (res) {
+            if (!res.ok) throw new Error('http ' + res.status);
+            setStatus('');
+            reloadShowPoster(showId);
+          }).catch(function (e) { if (e.name !== 'AbortError') setStatus('Could not set the poster (PNG/JPEG/WebP, up to 1 MB).'); });
+        });
+        slot.appendChild(btn);
+        slot.appendChild(input);
+      }).catch(function () { /* auth probe failed -> no control (fail closed) */ });
     }
 
     // v1.196: an episode opens the FULL watch page (the shared player - mini-player,
