@@ -87,3 +87,35 @@ test('escapeTvHtml: a hostile show/episode name never becomes markup (XSS)', () 
   assert.doesNotMatch(buildEpisodeRowHtml({ id: 'i', title: evil }), /<img src=x/);
   assert.strictEqual(escapeTvHtml(evil), '&lt;img src=x onerror=alert(1)&gt;');
 });
+
+// ---- v1.198.2 (Dean): the Shows-page Continue-row toggle ---------------------
+const { tvContinueRowEnabled } = require('../../public/js/tv.js');
+const fsTv = require('node:fs');
+const pathTv = require('node:path');
+
+test('tvContinueRowEnabled: homeRowEnabled semantics (absent=on, "0"=off, junk=on, broken storage=on)', () => {
+  const prior = global.localStorage;
+  try {
+    global.localStorage = { getItem: () => null };
+    assert.equal(tvContinueRowEnabled(), true, 'absent -> on (the default)');
+    global.localStorage = { getItem: () => '0' };
+    assert.equal(tvContinueRowEnabled(), false, '"0" -> off');
+    global.localStorage = { getItem: () => '1' };
+    assert.equal(tvContinueRowEnabled(), true, 'any other value -> on');
+    global.localStorage = { getItem: () => { throw new Error('blocked'); } };
+    assert.equal(tvContinueRowEnabled(), true, 'storage disabled -> on (fail-open like homeRowEnabled)');
+  } finally {
+    if (prior === undefined) delete global.localStorage; else global.localStorage = prior;
+  }
+});
+
+test('v1.198.2: the toggle is wired BOTH ways in Settings (persist + reflect-on-load - the v1.193 lesson) and gates the fetch', () => {
+  const strip = (s) => s.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const setupJs = strip(fsTv.readFileSync(pathTv.join(__dirname, '../../public/js/setup.js'), 'utf8'));
+  assert.match(setupJs, /wireHomeRowToggle\('tv-continue-watching-check', 'ft-tv-continue-watching', signal\);/, 'the PERSIST half');
+  assert.match(setupJs, /loadHomeRowControl\('tv-continue-watching-check', 'ft-tv-continue-watching'\);/, 'the REFLECT-ON-LOAD half');
+  const setupHtml = fsTv.readFileSync(pathTv.join(__dirname, '../../public/setup.html'), 'utf8');
+  assert.match(setupHtml, /id="tv-continue-watching-check"/, 'the checkbox exists');
+  const tvJs = strip(fsTv.readFileSync(pathTv.join(__dirname, '../../public/js/tv.js'), 'utf8'));
+  assert.match(tvJs, /if \(!tvContinueRowEnabled\(\)\) return \{ shows: shows, cont: \[\] \};/, 'OFF skips the /api/tv/continue fetch entirely');
+});
