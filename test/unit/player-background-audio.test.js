@@ -378,9 +378,10 @@ test('setupForMedia() caches backgroundAudioForVideo ONCE via /api/settings (nev
 test('setupForMedia() gates the settings fetch/pre-warm on video + mobile only, and never for a TV source (desktop/audio/tv items never fetch)', () => {
   const match = /function setupForMedia\(id, data\) \{([\s\S]*?)\n {4}setupMediaSession\(id, data\.channelName, data\.title\);/.exec(PLAYER_JS);
   const body = match[1];
-  // v1.196: `!data.statusUrl` excludes a TV episode (no /api/videos/:id/prepare-audio
-  // or /audio/:id route for it) from the background-audio pre-warm.
-  assert.match(body, /if \(data\.type !== 'audio' && !data\.statusUrl && isMobileFormFactor\(\) && bgAudioEl\) \{/);
+  // v1.196 excluded every TV source; v1.197 re-admits a tv source that carries
+  // its OWN audio pair (prepareAudioUrl/audioSrc -> the /api/tv + /tvaudio
+  // routes) - only a statusUrl source WITHOUT prepareAudioUrl still skips.
+  assert.match(body, /if \(data\.type !== 'audio' && \(!data\.statusUrl \|\| data\.prepareAudioUrl\) && isMobileFormFactor\(\) && bgAudioEl\) \{/);
 });
 
 // ---- F1 (two-reviewer gate): the bgAudioStatusKnown === 'ready' short- ----
@@ -587,7 +588,9 @@ test('F3b source-lock (v1.35 evolution): the ONLY real /audio/:id src assignment
   const armBody = armMatch[1];
   assert.match(armBody, /if \(!bgAudioSettingCached\) return false;/, 'the F3b lesson survives: a disabled install never touches the real URL');
   assert.match(armBody, /if \(bgAudioStatusKnown !== 'ready'\) return false;/, 'never arm an unconfirmed sidecar');
-  assert.match(armBody, /var audioUrl = '\/audio\/' \+ currentId;/, 'the real URL is built here and only here');
+  // v1.197: the real URL is still built here and ONLY here - now descriptor-
+  // driven (a tv episode's audioSrc -> /tvaudio/:id; videos keep /audio/:id).
+  assert.match(armBody, /var audioUrl = \(currentData && typeof currentData\.audioSrc === 'string' && currentData\.audioSrc\) \|\| \('\/audio\/' \+ currentId\);/, 'the real URL is built here and only here');
   assert.match(armBody, /bgAudioEl\.preload = 'auto';/, 'pre-arm buffers eagerly (the whole point)');
   // The handoff routes through the same single site.
   const handoffMatch = /function attemptBackgroundAudioHandoff\(trigger\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
@@ -751,7 +754,9 @@ test("setupForMedia() (v1.27.2 arm-both-ways): a setting-OFF load records 'bgAud
   assert.match(offBlock[1], /recordLifecycleEvent\('bgAudio:arm', \{ detail: 'setting-off' \}\);/);
   assert.match(offBlock[1], /return;/, 'the block must still return before the prepare-audio POST');
   const offBlockIdx = body.indexOf('if (!bgAudioSettingCached) {');
-  const prepareIdx = body.indexOf("/prepare-audio', { method: 'POST' }");
+  // v1.197: the POST is descriptor-driven (data.prepareAudioUrl || the /api/videos
+  // default) - anchor on the shared '/prepare-audio' path segment, same intent.
+  const prepareIdx = body.indexOf("/prepare-audio'");
   assert.ok(offBlockIdx !== -1 && prepareIdx !== -1 && offBlockIdx < prepareIdx, 'the setting-off return must still textually precede (and guard) the prepare-audio POST call itself');
 });
 
@@ -797,7 +802,11 @@ test('scheduleAudioStatusRepoll() is generation-guarded (both before scheduling 
 test('scheduleAudioStatusRepoll() fetches the SAME idempotent POST prepare-audio endpoint used by the initial (load-time) call', () => {
   const match = /function scheduleAudioStatusRepoll\(id, gen, attemptsLeft\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   const body = match[1];
-  assert.match(body, /fetch\('\/api\/videos\/' \+ encodeURIComponent\(id\) \+ '\/prepare-audio', \{ method: 'POST' \}\)/);
+  // v1.197: descriptor-driven like the initial call - a tv episode repolls its
+  // own prepareAudioUrl (read under the gen guard, identity-safe); videos keep
+  // the identical /api/videos default the load-time call uses.
+  assert.match(body, /var repollUrl = \(currentData && typeof currentData\.prepareAudioUrl === 'string' && currentData\.prepareAudioUrl\)\s*\n\s*\|\| \('\/api\/videos\/' \+ encodeURIComponent\(id\) \+ '\/prepare-audio'\);/);
+  assert.match(body, /fetch\(repollUrl, \{ method: 'POST' \}\)/);
 });
 
 test("scheduleAudioStatusRepoll() stops re-scheduling once the status is TERMINAL ('ready' or 'failed'), but keeps going (attemptsLeft - 1) for any other status (pending/processing)", () => {

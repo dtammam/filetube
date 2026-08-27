@@ -234,3 +234,25 @@ test('TV: /api/tv/continue never leaks a now-restricted episode the user has pro
   const adminCont = await (await asAdmin('/api/tv/continue')).json();
   assert.ok((adminCont.episodes || []).some((e) => e.id === 'blk'), 'admin sees the row - proves the exclusion is visibility, not emptiness');
 });
+
+// v1.197 (W3): the background-audio sidecar pair - the video /audio +
+// prepare-audio posture: GATED (restricted -> 404, no oracle/CPU sink), the
+// detail endpoint carries the descriptor trio the player's handoff reads.
+test('TV W3: the audio sidecar pair is gated and the detail carries the bg-audio descriptor trio', async () => {
+  // Restricted member: both routes 404 (no existence oracle, no CPU sink).
+  assert.strictEqual((await asMember('/tvaudio/blk')).status, 404, 'sidecar bytes: restricted -> 404');
+  assert.strictEqual((await asMember('/api/tv/episode/blk/prepare-audio', { method: 'POST' })).status, 404, 'pre-warm: restricted -> 404');
+
+  // Allowed: pre-warm answers pending (no sidecar yet; the queue no-ops without
+  // ffmpeg - fail-safe), the bytes route 503s while absent (never 200s garbage).
+  const prep = await asMember('/api/tv/episode/ok/prepare-audio', { method: 'POST' });
+  assert.strictEqual(prep.status, 200);
+  assert.strictEqual((await prep.json()).audioStatus, 'pending');
+  assert.strictEqual((await asMember('/tvaudio/ok')).status, 503, 'sidecar absent -> 503 (extracting/unavailable), never raw bytes');
+
+  // The detail endpoint carries the descriptor trio the player's handoff reads.
+  const d = await (await asMember('/api/tv/episode/ok')).json();
+  assert.strictEqual(d.audioSrc, '/tvaudio/ok');
+  assert.strictEqual(d.prepareAudioUrl, '/api/tv/episode/ok/prepare-audio');
+  assert.strictEqual(d.audioStatus, 'pending', 'live file-existence readiness');
+});

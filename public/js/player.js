@@ -3031,7 +3031,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // HANDING_OFF is deliberately allowed: the handoff itself routes
     // through here as the single assignment site.
     if (bgAudioState === BG_AUDIO_STATES.BACKGROUND_AUDIO) return false;
-    var audioUrl = '/audio/' + currentId;
+    // v1.197 (W3): a tv episode's sidecar lives at /tvaudio/:id - the descriptor
+    // carries it (like streamSrc/artUrl); ordinary videos carry no audioSrc and
+    // keep /audio/:id byte-identically.
+    var audioUrl = (currentData && typeof currentData.audioSrc === 'string' && currentData.audioSrc) || ('/audio/' + currentId);
     if (bgAudioEl.getAttribute('src') !== audioUrl) {
       bgAudioEl.src = audioUrl;
       // Gate fix (adversarial): the src ASSIGNMENT is free (preload stays
@@ -7594,7 +7597,12 @@ if (typeof module !== 'undefined' && module.exports) {
     audioStatusRepollTimer = setTimeout(function () {
       audioStatusRepollTimer = null;
       if (gen !== loadGeneration) return; // a newer load has since started -- stop silently
-      fetch('/api/videos/' + encodeURIComponent(id) + '/prepare-audio', { method: 'POST' })
+      // v1.197 (W3): the gen guard just confirmed currentData belongs to THIS
+      // load, so the descriptor's prepareAudioUrl (a tv episode's own route) is
+      // identity-safe to read here; videos carry none and keep /api/videos.
+      var repollUrl = (currentData && typeof currentData.prepareAudioUrl === 'string' && currentData.prepareAudioUrl)
+        || ('/api/videos/' + encodeURIComponent(id) + '/prepare-audio');
+      fetch(repollUrl, { method: 'POST' })
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (body) {
           if (gen !== loadGeneration || !body) return;
@@ -7642,16 +7650,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // completely unaffected, matching the feature's video+mobile-only scope.
     bgAudioSettingCached = false;
     bgAudioStatusKnown = (data && data.audioStatus) || null;
-    // v1.196.1 (Dean device report): a TV source skips the mobile bg-audio block
-    // below (no /audio route) - but that block ALSO resolves the `mobileCustomPlayer`
-    // setting and re-runs applyControlsMode(). Without this, a mobile-fullscreen
-    // episode never learns the user opted into the era-themed custom control bar,
-    // so `mobileCustomPlayerCached` stays false and applyControlsMode picks the
-    // native iOS strip (the "bland HTML5" player). Resolve JUST that setting for a
-    // tv source with a standalone /api/settings read (NOT /api/videos - the tv
-    // no-video-routes invariant is intact), then re-derive the controls surface.
-    // Fail-safe: a slow/failed fetch leaves the native default.
-    if (data.type !== 'audio' && data.statusUrl && isMobileFormFactor()) {
+    // v1.196.1 (Dean device report): a TV source that skips the mobile bg-audio
+    // block below must STILL resolve the `mobileCustomPlayer` setting (that block
+    // bundles the read + the applyControlsMode re-run). v1.197: a tv source WITH
+    // a prepareAudioUrl now enters the full block below (which resolves the
+    // setting itself), so this standalone read remains ONLY for a hypothetical
+    // statusUrl-without-prepareAudioUrl source - the two gates are MUTUALLY
+    // EXCLUSIVE (both write mobileCustomPlayerCached and both fetch
+    // /api/settings; two concurrent reads would race). Fail-safe either way.
+    if (data.type !== 'audio' && data.statusUrl && !data.prepareAudioUrl && isMobileFormFactor()) {
       fetch('/api/settings')
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (settings) {
@@ -7661,12 +7668,15 @@ if (typeof module !== 'undefined' && module.exports) {
         })
         .catch(function () { /* leave the native default (fail-safe) */ });
     }
-    // v1.196: background-audio-for-video uses /api/videos/:id/prepare-audio +
-    // /audio/:id, which a TV source (identified by `statusUrl`) has no route for.
-    // Skip the pre-warm for it - lock-screen play/pause/next/prev still work via
-    // MediaSession; only the screen-off keep-playing sidecar is unavailable (a
-    // disclosed limit). Ordinary videos are unaffected.
-    if (data.type !== 'audio' && !data.statusUrl && isMobileFormFactor() && bgAudioEl) {
+    // v1.196: background-audio used to be video-only (a TV source had no /audio
+    // route). v1.197 (W3): a tv episode now carries its OWN pair on the
+    // descriptor (prepareAudioUrl -> /api/tv/episode/:id/prepare-audio, audioSrc
+    // -> /tvaudio/:id), so a source with prepareAudioUrl ENTERS this block - the
+    // whole handoff machinery (prime, presync, keep-alive, swap-back) is
+    // source-agnostic beyond these URLs. A statusUrl source WITHOUT
+    // prepareAudioUrl still skips it (and the standalone mobileCustomPlayer read
+    // above covers it) - the two gates stay mutually exclusive.
+    if (data.type !== 'audio' && (!data.statusUrl || data.prepareAudioUrl) && isMobileFormFactor() && bgAudioEl) {
       // F3b (two-reviewer follow-up): does NOT pre-set the real `/audio/:id`
       // src here anymore -- that used to mean EVERY mobile video load
       // pointed `bgAudioEl` at the real network URL regardless of the
@@ -7727,7 +7737,10 @@ if (typeof module !== 'undefined' && module.exports) {
           // controller ever trusts as `bgAudioStatusKnown` from this point
           // on (never left at the load-time snapshot on a successful
           // response, even if the response omits the field).
-          return fetch('/api/videos/' + encodeURIComponent(id) + '/prepare-audio', { method: 'POST' })
+          // v1.197 (W3): a tv episode pre-warms its OWN route (the descriptor's
+          // prepareAudioUrl -> /api/tv/episode/:id/prepare-audio); ordinary
+          // videos carry none and keep the /api/videos route byte-identically.
+          return fetch((data.prepareAudioUrl) || ('/api/videos/' + encodeURIComponent(id) + '/prepare-audio'), { method: 'POST' })
             .then(function (res) { return res.ok ? res.json() : null; })
             .then(function (body) {
               if (gen !== loadGeneration) return;
