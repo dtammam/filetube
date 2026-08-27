@@ -80,6 +80,27 @@
 
 ## Shipped
 
+### v1.198.2 - feat: a Settings toggle to hide "Continue watching" on the Shows page (2026-08-27)
+
+Dean: the home page's "Show Continue watching" checkbox didn't govern the Shows
+page's row - and it shouldn't have: it is labelled and scoped home-only
+(`ft-home-continue-watching`). Widening it silently would make its label lie, so
+Shows gets a SIBLING checkbox ("Show 'Continue watching' on the Shows page",
+`ft-tv-continue-watching`) through the same wireHomeRowToggle/loadHomeRowControl
+machinery - BOTH halves, persist + reflect-on-load (the v1.193 lesson). tv.js's
+pure `tvContinueRowEnabled()` mirrors homeRowEnabled's semantics exactly
+(absent = on, '0' = off, broken storage = on), and an OFF toggle skips the
+`/api/tv/continue` fetch entirely - a disabled row costs nothing.
+
+Slim adversarial gate: round-1 REQUEST CHANGES (the KEY identity was unbound -
+the semantics mocks ignored getItem's argument, so a wrong-key refactor would
+silently hand the Shows row back to the home checkbox, Dean's exact reported
+confusion resurrected green); closed with a key-aware mock state, mutation-
+verified; APPROVE round 2. Disclosed residual: the fetch-skip source-lock binds
+presence, not reachability (the standing source-lock limit). Record correction:
+the feature commit's message said "7651/0"; the measured count there was 7652/0.
+**Dual-Node 7652/0** (Node 22.23.1 + 24.14.0).
+
 ### v1.198.1 - feat: the "Up next" rail on episode pages (next episodes in order, wrapping to E1) (2026-08-27)
 
 Dean's closer for the TV arc: the related rail on an episode page now lists the
