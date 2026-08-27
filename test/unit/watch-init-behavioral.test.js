@@ -289,6 +289,8 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
   const filePathEl = makeEl('span'); els.set('#file-path-text', filePathEl);
   const subBtn = makeEl('button'); els.set('#subscribe-btn-mock', subBtn);
   const commentsBox = makeEl('div'); els.set('#comments-container', commentsBox);
+  const relatedHeader = makeEl('div'); relatedHeader.hidden = true; els.set('#related-header', relatedHeader);
+  const relatedBox = makeEl('div'); els.set('#related-files-container', relatedBox);
   const root = makeEl('div');
   root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
 
@@ -345,6 +347,18 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
   // deleting `commentScopeId = episodeId` would key every episode on comments_null.
   assert.ok(storage.has('comments_ep1'), 'comments persist under the EPISODE id bucket');
   assert.ok(!storage.has('comments_null'), 'never the null bucket');
+
+  // v1.198.1 (Dean): the Up-next rail = the show's OTHER episodes ROTATED around
+  // the current one - after it in order, then WRAP to the start (current ep1 of
+  // [ep0, ep1, ep2] -> [ep2, ep0]; the ep0-after-ep2 ordering IS the wrap bind).
+  assert.equal(relatedHeader.hidden, false, 'the Up-next header is revealed on tv');
+  assert.equal(relatedHeader.textContent, 'Up next', 'labelled Up next, not Related files');
+  const ep2At = relatedBox.innerHTML.indexOf('?tv=ep2');
+  const ep0At = relatedBox.innerHTML.indexOf('?tv=ep0');
+  assert.ok(ep2At !== -1 && ep0At !== -1, 'both other episodes render as ?tv= cards');
+  assert.ok(ep2At < ep0At, 'ep2 (next in order) precedes ep0 (the wrap-around)');
+  assert.ok(!relatedBox.innerHTML.includes('?tv=ep1'), 'the CURRENT episode is excluded');
+  assert.ok(relatedBox.innerHTML.includes('/tvthumb/ep2'), 'cards use the per-episode art route');
 });
 
 // ---- v1.197 W1 (both gate seats, BLOCKING): the tv path's cog sequence bound --
