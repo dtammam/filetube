@@ -80,6 +80,51 @@
 
 ## Shipped
 
+### v1.197.0 - feat: the TV wrap wave - episode info panel, show-as-channel, seamless background audio, ambient + dock-return fixes (2026-08-27)
+
+Dean's four closers for the TV arc, each root-caused from code before a line was
+written. Exec plan: `docs/exec-plans/completed/2026-08-27-tv-wrap-wave.md`.
+
+1. **Episode description + the show as the "channel."** The watch page now shows
+   an episode's file name and Added/Size/Type metadata (the video look, shared
+   formatters), and the uploader row is the SHOW: its poster in the avatar disc,
+   the name, "N seasons · M episodes" as the subscriber line (counted from the
+   fetch the prev/next queue already makes - zero extra round-trips), tap ->
+   back to the show. The full filesystem path never rides the payload (basename
+   only, leak-asserted).
+2. **Seamless background audio for episodes.** iOS suspends an inline episode on
+   lock; videos have the battle-won video->hidden-audio sidecar handoff -
+   episodes now run the SAME machinery. Mapped end-to-end first: the server
+   grew a TV-owned extraction lane (`tv-<id>.m4a`, file-existence readiness,
+   `buildAudioExtractArgs` reused verbatim) + `GET /tvaudio/:id` and
+   `POST /api/tv/episode/:id/prepare-audio` (gated exactly like the video pair);
+   the client needed exactly FOUR descriptor-driven URL couplings in player.js -
+   the state machine, prime, keep-alive, presync, and teardown were TV-correct
+   as written. Same experimental "Background audio for video" setting governs
+   both.
+3. **Ambient mode for episodes** - the root cause was bigger than reported: the
+   TV watch path never ran `ensureCogControlsInjected`, so episodes were missing
+   the ENTIRE cog set (ambient + autoplay + loop + theatre rows). All restored,
+   and the five-call sequence is now source-locked (the class had struck twice).
+4. **"Failed to Load Media" on mini-player return** - the dock-return built
+   `/watch.html?v=<episodeId>` (a video URL); the tv descriptor now uses the
+   `readerHref` seam books/music already use for this exact bug class.
+
+**Full two-reviewer gate (the battle-won bg-audio machinery re-opened -> full,
+never slim). Both seats REQUEST CHANGES with CONVERGENT blockers, fixed in one
+round:** the payload omitted `ext` so the Type field always painted its fallback
+(masked by a divergent test fixture - the v1.185 class); and the cog fix itself
+was presence-not-binding (the adversarial seat proved reverting the exact
+ambient bug left the suite green). Both now mutation-verified red. Both seats
+APPROVE. **Dual-Node 7648/0** (Node 22.23.1 + 24.14.0).
+
+**Known residuals (disclosed, tech-debt #180):** the ffmpeg-less 503 guard on
+both prepare-audio routes (video + tv) is test-unbound (fail-safe; worst case a
+futile repoll chain); the three ffmpeg queues' guards are read-verified only;
+episodes hand off unprimed when the "custom player on mobile" setting is off
+(same as ordinary videos with native controls). A fourth single-flight ffmpeg
+lane joins the existing three (the shape music already added).
+
 ### v1.196.1 - fix: episodes get the era-themed custom player on mobile (not the native strip) (2026-08-27)
 
 Dean (device): a TV episode on his phone played in iOS's bland native controls

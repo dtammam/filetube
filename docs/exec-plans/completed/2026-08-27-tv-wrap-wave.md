@@ -1,6 +1,6 @@
 # TV wrap wave: episode description/show-channel + seamless bg audio + ambient + dock-return (v1.197 candidate)
 
-Status: ACTIVE (2026-08-27). This doc is the reviewers' spec and survives context
+Status: SHIPPED as **v1.197.0** (2026-08-27). Full two-reviewer gate closed (both APPROVE after one fix round: ext-in-payload + the cog-sequence source-lock + comment/title accuracy); dual-Node 7648/0. Residuals in tech-debt #180 (d)-(f). This doc is the reviewers' spec and survives context
 compaction. Dean's four closers for the TV arc, all diagnosed from code (not
 theory) before this plan was written.
 

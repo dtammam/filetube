@@ -2260,5 +2260,11 @@
     "date": "2026-08-27",
     "title": "TV episodes now use your themed player on the phone",
     "intent": "A quick follow-up. On your phone, TV episodes were showing the plain built-in player controls instead of the themed player your videos use. Now episodes use the same themed player as everything else. If you don't see the themed controls, check Settings and turn on \"custom player on mobile\" - that's the switch for both videos and episodes."
+  },
+  {
+    "version": "1.197.0",
+    "date": "2026-08-27",
+    "title": "TV episodes get the full treatment: show info, background audio, ambient, and fixes",
+    "intent": "Four finishing touches for TV Shows. An episode's page now shows its details like a video does - the file name, when it was added, its size and type - and the show itself sits where the channel would be, with its poster as the little round icon; tap it to jump back to that show. Episode audio can now keep playing when you lock your phone, just like videos (it uses the same \"Background audio for video\" setting - flip it on in Settings if you haven't). Ambient mode - and the autoplay, loop, and theatre controls in the player's gear menu - now work on episodes too; they'd been missing there. And tapping the mini-player to get back to an episode no longer flashes a \"Failed to Load Media\" error."
   }
 ]
