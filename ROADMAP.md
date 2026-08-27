@@ -80,6 +80,33 @@
 
 ## Shipped
 
+### v1.197.1 - fix: ambient mode actually PAINTS on episodes (the ?tv= early-return TDZ) (2026-08-27)
+
+Dean (device): ambient on episodes still "seemingly not working" after v1.197.0.
+The v1.197.0 fix restored the cog rows and the glow ARMED - but the paint loop
+died on its FIRST frame. Root cause (the v1.54 TDZ class re-striking): init()'s
+`?tv=` branch returns early, so `let mediaData` - declared further down - never
+executed and stayed in the temporal dead zone for the whole page; every read
+throws. `setupAmbientMode`'s `isAudioItem()` reads it per paint (in a timer, out
+of any try/catch) -> ReferenceError -> no reschedule -> an armed-but-EMPTY canvas.
+Invisible to jsdom (real timers + real video events are stubbed there).
+
+**Diagnosis discipline honoured: proven empirically BEFORE the fix** - a
+live-Chromium Playwright probe against the real app (real server + real `?tv=`
+page, a canvas captureStream fed into the persistent `<video>` so it genuinely
+plays, the ambient canvas PIXELS sampled): pre-fix = the ReferenceError + an
+unpainted canvas behind an is-on glow; post-fix = zero page errors + the exact
+streamed test color in the canvas.
+
+FIX: the declaration hoisted above the `?tv=` branch (it always executes now) +
+initTvWatch assigns its episode descriptor (isAudioItem - the sole tv-reachable
+reader - gets real truth). Bound by a comment-stripped ordering lock + a
+one-live-declaration assert + an assignment lock; the slim gate's own surviving
+comment-out mutant re-run RED. Slim adversarial gate APPROVE (round 2; one
+disclosed residual: the standing trailing-comment source-lock porosity, no
+constructible failure today; a residual pre-return-callback TDZ seam recorded as
+tech-debt #181). Dual-Node 7649/0.
+
 ### v1.197.0 - feat: the TV wrap wave - episode info panel, show-as-channel, seamless background audio, ambient + dock-return fixes (2026-08-27)
 
 Dean's four closers for the TV arc, each root-caused from code before a line was

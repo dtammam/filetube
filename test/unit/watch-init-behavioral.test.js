@@ -343,3 +343,26 @@ test('v1.197 W1: initTvWatch runs the FULL cog sequence (inject + autoplay + loo
   assert.match(stripped, /ensureCogControlsInjected\(\);\s*\n\s*setupAutoplayToggle\(\);\s*\n\s*setupLoopToggle\(\);\s*\n\s*setupTheatreToggle\(\);\s*\n\s*setupAmbientMode\(\);/,
     'the five-call sequence, in order, after the player mounts - deleting any call (the v1.196 ambient bug) turns this red');
 });
+
+// ---- v1.197.1 (Dean device, the v1.54 TDZ class RE-STRIKE on the tv path) ----
+// The ?tv= branch RETURNS out of init(), so any `let` declared after it never
+// executes and stays in the temporal dead zone for the whole page - every later
+// read THROWS. setupAmbientMode's isAudioItem() read mediaData on the first
+// paint, so ambient armed but painted nothing (proven by a live-Chromium probe:
+// ReferenceError + an empty canvas; post-fix, frames paint). These bind BOTH
+// halves: the declaration precedes the branch, and initTvWatch assigns it.
+test('v1.197.1 TDZ: mediaData is declared BEFORE the ?tv= early return, and initTvWatch assigns the descriptor to it', () => {
+  // COMMENT-STRIPPED first (the slim-gate finding: a raw indexOf lock is
+  // comment-porous - commenting the declaration out and re-adding it below the
+  // branch satisfied the un-stripped lock while fully reverting the fix).
+  const watchSrc = fs.readFileSync(require('node:path').join(REPO, 'public/js/watch.js'), 'utf8')
+    .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const decl = watchSrc.indexOf('let mediaData = null;');
+  const branch = watchSrc.indexOf("const tvEpisodeId = urlParams.get('tv');");
+  assert.ok(decl > 0 && branch > 0, 'both sites exist (uncommented)');
+  assert.ok(decl < branch, 'the declaration EXECUTES before the tv branch can return (moving it back below re-opens the TDZ)');
+  assert.strictEqual(watchSrc.indexOf('let mediaData = null;', decl + 1), -1, 'exactly ONE live declaration (a second one below the branch would shadow the fix)');
+  const tvStart = watchSrc.indexOf('async function initTvWatch(');
+  const tvBody = watchSrc.slice(tvStart, watchSrc.indexOf('\n    }', tvStart));
+  assert.match(tvBody, /mediaData = descriptor;/, 'the tv path assigns its descriptor - isAudioItem (the SOLE tv-reachable mediaData reader today) reads real truth');
+});
