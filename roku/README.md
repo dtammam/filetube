@@ -64,9 +64,11 @@ Press `Ctrl+]` then `quit` to leave. SceneGraph warnings appear on port 8089.
 - **Episodes stream without the `?compat=roku` demuxer fixes** (embedded-art
   strip / rotation bake) — TV rips essentially never carry those shapes, and
   codec-incompatible episodes already play via the server's tv rendition
-  (H.264/AAC MP4, same 503-then-ready "being converted" flow as videos). No
-  episode captions or chapters yet (no server surface for them), and no
-  next-episode prewarm.
+  (H.264/AAC MP4, the same 503 "being converted" flow as videos — though
+  unlike videos, an episode conversion that permanently FAILS server-side
+  isn't reported to the TV yet: "Preparing…" runs its ~10-minute course
+  unless you press Back). No episode captions or chapters yet (no server
+  surface for them), and no next-episode prewarm.
 - **Codec support is the Roku's own**: H.264/H.265 MP4 and MKV play natively.
   Files FileTube marks for transcoding (AVI etc.) are served as MP4, but the
   server builds that rendition lazily — the first attempt can fail with a

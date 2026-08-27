@@ -82,6 +82,11 @@ sub resetAndLoad()
         m.grid.content = m.contentRoot
         fetchChannels()
     else if m.viewMode = "shows"
+        ' Gate (v1.199 round 1, W1): a detail fetch left pending by a PREVIOUS
+        ' visit must never fire into a re-entered wall (its viewMode guard
+        ' passes again here) - this is the one choke point every entry to the
+        ' shows view passes through, so unobserve it before the wall loads.
+        if m.showDetailTask <> invalid then m.showDetailTask.UnobserveField("result")
         applyGridGeometry("portrait")
         m.grid.itemComponentName = "ShowItem"
         m.grid.content = m.contentRoot
@@ -322,6 +327,9 @@ sub onShowDetailResult()
         return
     end if
     if result.seasons.Count() = 0
+        ' Defensive only (the real route 404s a season-less show) - but never
+        ' strand the header on "Loading…" if it ever fires.
+        m.countLabel.text = "Shows · " + m.shows.Count().ToStr()
         m.emptyLabel.text = "No episodes found."
         m.emptyLabel.visible = true
         return
@@ -391,6 +399,7 @@ function buildEpisodeContentNode(ep as object) as object
     end if
     node.title = title
     node.ftExt = ep.ext
+    node.ftCodecs = ep.codecs ' playback-error diagnostics, the video-tile parity
     node.ftDuration = ep.durationSec
     node.ftDurationText = FT_FormatDuration(ep.durationSec)
     node.ftProgress = ep.progress

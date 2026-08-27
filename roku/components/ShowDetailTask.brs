@@ -57,9 +57,18 @@ sub taskMain()
             if GetInterface(s.label, "ifString") <> invalid and s.label <> "" then season.label = s.label
             for each e in s.episodes
                 if type(e) = "roAssociativeArray" and GetInterface(e.id, "ifString") <> invalid and e.id <> ""
-                    ep = { id: e.id, seasonNum: -1, episodeNum: -1, title: "", durationSec: 0.0, ext: "", needsTranscode: false, progress: 0.0 }
+                    ep = { id: e.id, seasonNum: -1, episodeNum: -1, title: "", durationSec: 0.0, ext: "", codecs: "", needsTranscode: false, progress: 0.0 }
                     if GetInterface(e.title, "ifString") <> invalid then ep.title = e.title
                     if GetInterface(e.ext, "ifString") <> invalid then ep.ext = LCase(e.ext)
+                    ' Codec strings ride the rows so a playback error can name
+                    ' them (the GridScreen buildContentNode diagnostic parity).
+                    codecs = ""
+                    if GetInterface(e.codec, "ifString") <> invalid then codecs = e.codec
+                    if GetInterface(e.audioCodec, "ifString") <> invalid
+                        if codecs <> "" then codecs = codecs + "/"
+                        codecs = codecs + e.audioCodec
+                    end if
+                    ep.codecs = codecs
                     ' seasonNum/episodeNum can be JSON null (an Extras file with no
                     ' SxxEyy) — keep -1 so the tile builder knows to hide the code.
                     if type(e.seasonNum) = "roInteger" or type(e.seasonNum) = "roFloat" or type(e.seasonNum) = "Double" then ep.seasonNum = Int(e.seasonNum)

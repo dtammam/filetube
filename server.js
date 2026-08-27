@@ -8932,6 +8932,9 @@ app.get('/api/tv/:showId', (req, res) => {
         // as mkv), and the REQUESTER's own resume position (same per-user read
         // as /api/tv/episode/:id - no cross-user leak).
         ext: e.ext,
+        // Codec strings (absent when never probed) so the channel's playback-
+        // error line can name them instead of claiming "codecs unrecorded".
+        codec: e.codec, audioCodec: e.audioCodec,
         needsTranscode: needsTranscode(e.ext, e.codec, e.audioCodec),
         progress: (userStore.getOneTvProgress(req.user.id, e.id) || {}).position || 0,
       })),

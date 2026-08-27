@@ -28,6 +28,7 @@ const kidsShow = path.join(DATA_DIR, 'kids', 'Kids Show');
 const blockedFile = path.join(adultShow, 'Season 1', 'Adult Show S01E01 - Pilot.mp4');
 const allowedFile = path.join(kidsShow, 'Season 1', 'Kids Show S01E01 - Hello.mp4');
 const hevcFile = path.join(kidsShow, 'Season 1', 'Kids Show S01E02 - Codec.mp4');
+const ac3File = path.join(kidsShow, 'Season 1', 'Kids Show S01E03 - Sound.mp4');
 
 before(async () => {
   fs.mkdirSync(path.join(adultShow, 'Season 1'), { recursive: true });
@@ -35,6 +36,7 @@ before(async () => {
   fs.writeFileSync(blockedFile, 'BLOCKED');
   fs.writeFileSync(allowedFile, 'ALLOWED');
   fs.writeFileSync(hevcFile, 'HEVCBYTES');
+  fs.writeFileSync(ac3File, 'AC3BYTES');
   fs.writeFileSync(path.join(adultShow, 'poster.jpg'), 'ADULTPOSTER');
   fs.writeFileSync(path.join(kidsShow, 'poster.jpg'), 'KIDSPOSTER');
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
@@ -51,6 +53,11 @@ before(async () => {
       // codec - the common TV-rip shape. Under the kids show so it never changes
       // the show-grouping counts the RBAC tests above assert.
       hevc: { id: 'hevc', filePath: hevcFile, rootFolder: path.join(DATA_DIR, 'kids'), showId: 'sh-ok', showPath: kidsShow, showName: 'Kids Show', seasonNum: 1, episodeNum: 2, title: 'Codec', ext: '.mp4', codec: 'hevc', audioCodec: 'aac', durationSec: 100, addedAt: 3 },
+      // Gate round-1 SUGGESTION (audio axis): a CLEAN video codec with an
+      // incompatible AUDIO codec (ac3-in-mp4, the route comment's "most common
+      // TV-rip shape") - binds the audioCodec ARGUMENT of the needsTranscode
+      // calls, which the hevc fixture alone cannot (dropping it stayed green).
+      ac3: { id: 'ac3', filePath: ac3File, rootFolder: path.join(DATA_DIR, 'kids'), showId: 'sh-ok', showPath: kidsShow, showName: 'Kids Show', seasonNum: 1, episodeNum: 3, title: 'Sound', ext: '.mp4', codec: 'h264', audioCodec: 'ac3', durationSec: 100, addedAt: 4 },
     };
     return true;
   });
@@ -120,6 +127,7 @@ test('TV reachability: the live browse responses render through the real client 
 // the ext-only needsTranscode() turns this red.
 test('TV: a codec-incompatible .mp4 episode transcodes (503), while a compatible one streams (200)', async () => {
   assert.strictEqual((await asAdmin('/tvepisode/hevc')).status, 503, 'hevc-in-mp4 -> transcode branch, never served raw');
+  assert.strictEqual((await asAdmin('/tvepisode/ac3')).status, 503, 'ac3-AUDIO-in-mp4 -> transcode branch too (the serve route binds its audio argument)');
   assert.strictEqual((await asAdmin('/tvepisode/ok')).status, 200, 'a codec-clean .mp4 still streams directly');
 });
 
@@ -267,6 +275,11 @@ test('TV Roku W1: show-detail episodes carry ext + codec-aware needsTranscode + 
   assert.strictEqual(byId.ok.ext, '.mp4', 'ext rides each episode row (the channel picks its demuxer from it)');
   assert.strictEqual(byId.ok.needsTranscode, false, 'a codec-clean .mp4 plays direct');
   assert.strictEqual(byId.hevc.needsTranscode, true, 'hevc-in-mp4 -> transcode (codec-AWARE: reverting to ext-only turns this red)');
+  // The AUDIO axis, separately bound (gate round 1: dropping the audioCodec
+  // argument from the route's needsTranscode call survived the hevc-only net).
+  assert.strictEqual(byId.ac3.needsTranscode, true, 'ac3-audio-in-mp4 -> transcode (the AUDIO argument binds: dropping it turns this red)');
+  assert.strictEqual(byId.ac3.codec, 'h264', 'the video codec string rides the row (playback-error diagnostics)');
+  assert.strictEqual(byId.ac3.audioCodec, 'ac3', 'the audio codec string rides the row');
   assert.strictEqual(byId.hevc.progress, 41, "the MEMBER's own resume position rides the member's rows");
 
   // Requester scoping: the ADMIN's rows carry the admin's (absent) position for
