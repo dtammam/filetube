@@ -2254,5 +2254,11 @@
     "date": "2026-08-27",
     "title": "TV episodes now play in the full player, and remember where you left off",
     "intent": "A big upgrade for TV Shows. Tapping an episode now opens it in the same full player your videos use - so you get the mini-player, the episode title, and Previous/Next buttons that move through the whole show in order, plus autoplay and loop. It also remembers where you left off in each episode and picks up right there next time, and a new \"Continue watching\" row on the Shows home puts your half-finished episodes one tap away. Admins can now set a show's poster right from the app - open a show and tap \"Change poster\" to upload your own image. One thing to know: keeping an episode's audio playing with the screen off isn't available yet (video already had this), though the lock-screen play/pause/skip controls do work."
+  },
+  {
+    "version": "1.196.1",
+    "date": "2026-08-27",
+    "title": "TV episodes now use your themed player on the phone",
+    "intent": "A quick follow-up. On your phone, TV episodes were showing the plain built-in player controls instead of the themed player your videos use. Now episodes use the same themed player as everything else. If you don't see the themed controls, check Settings and turn on \"custom player on mobile\" - that's the switch for both videos and episodes."
   }
 ]

@@ -46,6 +46,15 @@ test('B: a tv source resumes from its descriptor progress (no extra fetch, no /a
   assert.match(SRC, /var progressEndpoint = \(currentData && typeof currentData\.progressEndpoint === 'string' && currentData\.progressEndpoint\) \|\| '\/api\/progress';/);
 });
 
+test('v1.196.1: a mobile tv source resolves the mobileCustomPlayer setting + re-applies controls (era-themed bar, not the native strip)', () => {
+  // The v1.196 regression: gating the mobile bg-audio block off for a tv source
+  // (!data.statusUrl) also skipped the mobileCustomPlayer settings read + the
+  // applyControlsMode re-run that live in it - so a mobile-fullscreen episode fell
+  // to the native iOS strip. A tv-source standalone read restores the custom bar.
+  assert.match(SRC, /if \(data\.type !== 'audio' && data\.statusUrl && isMobileFormFactor\(\)\) \{[\s\S]*?if \(gen !== loadGeneration\) return;[\s\S]*?mobileCustomPlayerCached = !!\(settings && settings\.mobileCustomPlayer\);\s*\n\s*applyControlsMode\(\);/,
+    'a tv source reads mobileCustomPlayer and re-derives the controls surface, guarded by the load-generation staleness check');
+});
+
 test('A2: a source with artUrl but no hasThumbnail (a tv episode) uses the show poster as the frame-one video poster', () => {
   assert.match(SRC, /else if \(typeof data\.artUrl === 'string' && data\.artUrl\) \{\s*\n\s*mediaPlayer\.poster = data\.artUrl;/);
 });
