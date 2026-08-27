@@ -1,6 +1,11 @@
 # TV episodes through the real player + resume + poster upload + RBAC (v1.196 candidate)
 
-Status: ACTIVE (2026-08-26). Big wave -> this doc is the reviewers' spec and
+Status: SHIPPED as **v1.196.0** (2026-08-27). All phases (A1-A4, B, C, D) landed;
+full two-reviewer gate closed (both APPROVE after one fix round: poster-control
+gate alignment + a binding test for the /api/tv/continue visibility filter);
+dual-Node 7642/0. Disclosed limits: background-audio-for-episodes not wired; the
+"up next" watch-page panel + the mobile bottom-nav customizer entry deferred; custom
+posters not in the backup bundle. Big wave -> this doc was the reviewers' spec and
 survives context compaction. Dean approved the 4 design decisions (his recs); this
 follows v1.195.0 (browse+playback+setup) and v1.195.1 (mobile Playlists + icon).
 

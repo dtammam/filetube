@@ -2248,5 +2248,11 @@
     "date": "2026-08-26",
     "title": "Find Shows in Playlists on your phone, and pick its icon",
     "intent": "A quick follow-up to the new TV Shows library. On your phone, Shows now shows up in the Playlists list alongside Music, Books and Podcasts - before, it was hard to reach there. And you can now choose the icon for Shows from Settings, just like you can for your other libraries."
+  },
+  {
+    "version": "1.196.0",
+    "date": "2026-08-27",
+    "title": "TV episodes now play in the full player, and remember where you left off",
+    "intent": "A big upgrade for TV Shows. Tapping an episode now opens it in the same full player your videos use - so you get the mini-player, the episode title, and Previous/Next buttons that move through the whole show in order, plus autoplay and loop. It also remembers where you left off in each episode and picks up right there next time, and a new \"Continue watching\" row on the Shows home puts your half-finished episodes one tap away. Admins can now set a show's poster right from the app - open a show and tap \"Change poster\" to upload your own image. One thing to know: keeping an episode's audio playing with the screen off isn't available yet (video already had this), though the lock-screen play/pause/skip controls do work."
   }
 ]
