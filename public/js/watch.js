@@ -906,6 +906,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // a single frame (glow armed but empty - "seemingly not working"). Proven by
     // a live-Chromium probe; initTvWatch assigns the episode descriptor here.
     let mediaData = null;
+    // v1.198 (Dean: fake comments on episodes too): the comments machinery keys
+    // its localStorage bucket + deterministic mock selection off ONE scope id -
+    // the video id normally, the episode id on the tv path (set in initTvWatch).
+    // Hoisted above the ?tv= branch for the same TDZ reason as mediaData.
+    let commentScopeId = mediaId;
     const tvEpisodeId = urlParams.get('tv');
     if (tvEpisodeId) { initTvWatch(tvEpisodeId); return; }
     // v1.36.2 (Dean): the LAUNCH-CONTEXT param -- which list the user was
@@ -2627,7 +2632,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // Load comments
     function loadComments() {
-      const savedCommentsKey = `comments_${mediaId}`;
+      const savedCommentsKey = `comments_${commentScopeId}`; // v1.198: episode-id-scoped on the tv path
       let comments = [];
 
       try {
@@ -2725,27 +2730,34 @@ if (typeof module !== 'undefined' && module.exports) {
       });
     }
 
-    postCommentBtn.addEventListener('click', () => {
-      const text = newCommentText.value.trim();
-      if (!text) return;
+    // v1.198: wrapped so the tv path can wire the SAME form (the inline
+    // registration sits after the ?tv= early return and never ran there -
+    // episodes would have shown a dead Post button). Video path calls it at
+    // the exact spot the inline registration lived; behaviour unchanged.
+    function wireCommentForm() {
+      postCommentBtn.addEventListener('click', () => {
+        const text = newCommentText.value.trim();
+        if (!text) return;
 
-      const savedCommentsKey = `comments_${mediaId}`;
-      let comments = [];
-      try {
-        comments = JSON.parse(localStorage.getItem(savedCommentsKey)) || [];
-      } catch (e) {}
+        const savedCommentsKey = `comments_${commentScopeId}`; // v1.198: episode-id-scoped on the tv path
+        let comments = [];
+        try {
+          comments = JSON.parse(localStorage.getItem(savedCommentsKey)) || [];
+        } catch (e) {}
 
-      const newComment = {
-        author: 'You',
-        timeStr: 'just now',
-        text: text
-      };
+        const newComment = {
+          author: 'You',
+          timeStr: 'just now',
+          text: text
+        };
 
-      comments.unshift(newComment);
-      localStorage.setItem(savedCommentsKey, JSON.stringify(comments));
-      renderComments(comments);
-      newCommentText.value = '';
-    }, { signal });
+        comments.unshift(newComment);
+        localStorage.setItem(savedCommentsKey, JSON.stringify(comments));
+        renderComments(comments);
+        newCommentText.value = '';
+      }, { signal });
+    }
+    wireCommentForm();
 
     // Prepopulated mock retro comments. G1 (v1.24.0, T4): now layers in
     // exactly one weighted "Polite and Unhinged" persona comment per video (87%
@@ -2756,9 +2768,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // unit-testable via node:test without a DOM. This closure only supplies
     // the two DOM-derived inputs: mediaId and the current video's title.
     function getMockInitialComments() {
-      const count = getCommentCount(mediaId, MOCK_COMMENT_BANK.length);
+      const count = getCommentCount(commentScopeId, MOCK_COMMENT_BANK.length);
       const videoTitle = mediaData && typeof mediaData.title === 'string' ? mediaData.title : '';
-      return buildMockComments(mediaId, MOCK_COMMENT_BANK, count, videoTitle);
+      return buildMockComments(commentScopeId, MOCK_COMMENT_BANK, count, videoTitle);
     }
 
     // C1 follow-up (v1.24 UX Round, Wave 3): "Move to..." trigger. Mirrors
@@ -3758,7 +3770,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // panel + description container now STAY - the uploader row becomes the
       // SHOW (poster icon, tap -> back) and the description shows the episode's
       // file name + metadata, painted by paintTvEpisodePanel below.
-      ['.watch-action-bar', '#comments-container', '#related-header', '#related-files-container'].forEach(function (sel) {
+      // v1.198 (Dean): comments STAY - episodes get the same fake retro comments
+      // as every other media type (loadComments, keyed by the episode id).
+      ['.watch-action-bar', '#related-header', '#related-files-container'].forEach(function (sel) {
         var el = root.querySelector(sel);
         if (el) el.style.display = 'none';
       });
@@ -3787,14 +3801,23 @@ if (typeof module !== 'undefined' && module.exports) {
       if (addedDateText) { addedDateText.textContent = (ep.addedAtMs && typeof formatRelativeTime === 'function') ? formatRelativeTime(ep.addedAtMs) : ''; addedDateText.classList.remove('skeleton-shimmer', 'skel-w60'); }
       if (fileSizeText) { fileSizeText.textContent = (ep.sizeBytes && typeof formatFileSize === 'function') ? formatFileSize(ep.sizeBytes) : ''; fileSizeText.classList.remove('skeleton-shimmer', 'skel-w60'); }
       if (fileTypeText) { fileTypeText.textContent = (ep.ext || '').replace('.', '').toUpperCase() || 'Video'; fileTypeText.classList.remove('skeleton-shimmer', 'skel-w60'); }
-      // The "description" for an episode = its file name (Dean's ask), via the
-      // SAME element + skeleton-strip discipline renderVideoDescription uses.
-      if (descriptionParagraph) descriptionParagraph.textContent = ep.fileName || '';
+      // v1.198 (Dean): the file NAME lands in the "File Path:" row (the basename
+      // only - the full path is never exposed for episodes, by design), which the
+      // v1.197 panel left as a forever-shimmering skeleton (device-confirmed via
+      // the live probe). The description text is now EMPTY (the :empty rule
+      // collapses it) - the filename lived there in v1.197 and would duplicate.
+      if (filePathText) { filePathText.textContent = ep.fileName || ''; filePathText.classList.remove('skeleton-shimmer', 'skel-w200'); }
+      if (descriptionParagraph) descriptionParagraph.textContent = '';
       var descSkel = root.querySelector('#video-desc-skel');
       if (descSkel) {
         descSkel.hidden = true;
         descSkel.querySelectorAll('.skeleton-shimmer').forEach(function (el) { el.classList.remove('skeleton-shimmer'); });
       }
+      // v1.198 (Dean): NO Subscribe on an episode - the show is not a
+      // subscribable channel. The default `hidden` attribute LOSES to .btn's
+      // display rule (the standing [hidden] lesson), so once v1.197 un-hid the
+      // uploader panel the button showed; hide it via style (device-confirmed).
+      if (subscribeBtn) subscribeBtn.style.display = 'none';
     }
     function renderTvBackLink(showId, showName) {
       if (!mediaTitle || !mediaTitle.parentNode || root.querySelector('.tv-back-to-show')) return;
@@ -3875,8 +3898,11 @@ if (typeof module !== 'undefined' && module.exports) {
         // tv-reachable) - assigning real truth here also future-proofs any
         // shared helper the tv path grows into.
         mediaData = descriptor;
+        commentScopeId = episodeId; // v1.198: the comments bucket + mock seed
         var mounted = window.FileTube.player.load(episodeId, descriptor, { slot: playerSlot });
         if (!mounted) { showFatalViewError(root); return; }
+        loadComments();      // v1.198 (Dean): the same fake retro comments as videos
+        wireCommentForm();   // and the same posting form (episode-id-scoped bucket)
         // v1.197 (W1): the FULL cog sequence initWatch runs. ensureCogControls-
         // Injected is what INJECTS the autoplay/loop/theatre/ambient rows into
         // the mounted host's cog menu - without it every setup below bailed on a

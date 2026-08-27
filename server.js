@@ -159,11 +159,8 @@ const ALBUMART_DIR = path.join(DATA_DIR, '.albumart');
 // grab like the video library's storyboard - one file per episode. The tv scan's
 // prune is the only writer that unlinks here.
 const TV_THUMB_DIR = path.join(DATA_DIR, '.tvthumbs');
-// v1.196: admin-set show posters live in DATA_DIR (NOT the media folder - works
-// even when the Shows share is read-only, and never clutters the user's tree),
-// keyed by showId, checked BEFORE the folder-image probe in /tvposter. Like
-// avatars, these are NOT carried in the backup bundle (disclosed).
-const TV_POSTER_DIR = path.join(DATA_DIR, '.tvposters');
+// (v1.198: the v1.196 admin-set custom-poster store + upload routes were REMOVED
+// per Dean - posters come from the folder image / generated frame only.)
 // v1.38.0 TTS: per-chapter synthesized audio cache (<key>.m4a + <key>.blocks.json),
 // a sibling of the thumbnail/cover caches. Created on demand by the worker.
 const TTS_CACHE_DIR = path.join(DATA_DIR, 'tts-cache');
@@ -8437,22 +8434,6 @@ function probeTvEpisode(filePath) {
 
 function tvThumbPath(id) { return path.join(TV_THUMB_DIR, `${id}.jpg`); }
 function tvThumbExists(id) { return fs.existsSync(tvThumbPath(id)); }
-// v1.196: a safe filename component for a showId (real ids are md5 hex; the guard
-// also admits test/fixture ids while refusing any path-separator/../ traversal).
-function tvSafeShowId(showId) {
-  return (typeof showId === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(showId)) ? showId : null;
-}
-// The admin-set custom poster file for a show, or null: the first existing
-// extension in the poster preference order. A hostile showId resolves to null.
-function tvCustomPosterPath(showId) {
-  const safe = tvSafeShowId(showId);
-  if (!safe) return null;
-  for (const ext of tvScan.POSTER_EXTS) {
-    const p = path.join(TV_POSTER_DIR, safe + ext);
-    if (fs.existsSync(p)) return p;
-  }
-  return null;
-}
 
 // One ffmpeg frame grab per episode (the video-library storyboard posture: a
 // single -vframes 1 at a modest offset, atomic tmp+rename). Best-effort - a
@@ -8954,11 +8935,6 @@ app.get('/tvposter/:showId', (req, res) => {
   const eps = visibleTvEpisodes(req).filter((e) => e.showId === req.params.showId);
   res.set('Cache-Control', 'private, max-age=3600'); // RBAC: keep behind the auth wall
   if (eps.length > 0) {
-    // v1.196: an admin-set custom poster (DATA_DIR) wins over the folder image -
-    // but only AFTER visibility confirmed the requester may see this show (this
-    // block only runs for a visible show), so a restricted user never gets it.
-    const custom = tvCustomPosterPath(req.params.showId);
-    if (custom) return res.sendFile(custom);
     const poster = tvScan.findShowPoster(eps[0].showPath);
     if (poster && fs.existsSync(poster)) return res.sendFile(poster);
     // Fallback: the earliest episode's generated thumbnail. Order via groupSeasons'
@@ -9227,61 +9203,6 @@ app.delete('/api/settings/logo', async (req, res) => {
     console.error('Error removing custom logo:', err);
     return res.status(500).json({ error: `Could not remove logo: ${err.message}` });
   }
-  return res.json({ ok: true });
-});
-
-// ---- v1.196: admin-set show poster (DATA_DIR, mirrors the custom-logo upload) -
-// A raw image body (allowlisted Content-Type + magic bytes, 1 MB cap) written to
-// TV_POSTER_DIR keyed by showId; /tvposter serves it before the folder image. The
-// showId must be a REAL show (an episode carries it) AND a safe filename token
-// (tvSafeShowId), so a crafted id can never escape the store dir.
-const TV_POSTER_MIME_EXT = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' };
-app.post(
-  '/api/tv/:showId/poster',
-  express.raw({ type: Object.keys(CUSTOM_LOGO_TYPES), limit: CUSTOM_LOGO_MAX_BYTES }),
-  async (req, res) => {
-    if (!requireAdmin(req, res)) return; // library art is admin config (write-RBAC)
-    const safe = tvSafeShowId(req.params.showId);
-    if (!safe) return res.status(400).json({ error: 'invalid show id' });
-    const ns = tvStore.readTv(getCachedDatabase());
-    if (!Object.values(ns.episodes || {}).some((e) => e && e.showId === safe)) {
-      return res.status(404).json({ error: 'no such show' });
-    }
-    const mime = (req.headers['content-type'] || '').split(';')[0].trim();
-    if (!Object.prototype.hasOwnProperty.call(CUSTOM_LOGO_TYPES, mime)) {
-      return res.status(400).json({ error: 'Poster must be image/png, image/jpeg, or image/webp' });
-    }
-    const bytes = req.body;
-    if (!Buffer.isBuffer(bytes) || bytes.length === 0) return res.status(400).json({ error: 'Empty upload' });
-    if (!CUSTOM_LOGO_TYPES[mime](bytes)) return res.status(400).json({ error: 'File content does not match its image type' });
-    try {
-      fs.mkdirSync(TV_POSTER_DIR, { recursive: true });
-      // Drop any prior poster for this show (possibly a different extension) so
-      // exactly one file wins the /tvposter probe.
-      for (const ext of tvScan.POSTER_EXTS) { try { fs.unlinkSync(path.join(TV_POSTER_DIR, safe + ext)); } catch (_) { /* absent */ } }
-      const target = path.join(TV_POSTER_DIR, safe + (TV_POSTER_MIME_EXT[mime] || '.jpg'));
-      const tmp = `${target}.${process.pid}.${Date.now()}.tmp`; // atomic tmp+rename
-      fs.writeFileSync(tmp, bytes);
-      fs.renameSync(tmp, target);
-    } catch (err) {
-      console.error('Error saving show poster:', err);
-      return res.status(500).json({ error: `Could not save poster: ${err.message}` });
-    }
-    return res.json({ ok: true });
-  },
-  (err, req, res, next) => {
-    if (err && (err.type === 'entity.too.large' || err.status === 413)) {
-      return res.status(413).json({ error: 'Poster too large (max 1 MB)' });
-    }
-    return next(err);
-  }
-);
-
-app.delete('/api/tv/:showId/poster', (req, res) => {
-  if (!requireAdmin(req, res)) return; // write-RBAC (the upload's sibling)
-  const safe = tvSafeShowId(req.params.showId);
-  if (!safe) return res.status(400).json({ error: 'invalid show id' });
-  for (const ext of tvScan.POSTER_EXTS) { try { fs.unlinkSync(path.join(TV_POSTER_DIR, safe + ext)); } catch (_) { /* absent */ } }
   return res.json({ ok: true });
 });
 

@@ -197,24 +197,6 @@ test('TV: a whole-library tv restriction is CREATABLE and blocks every Shows sur
   assert.match((await asNoTv('/tvposter/sh-ok')).headers.get('content-type') || '', /image\/svg\+xml/, 'placeholder poster, not the real file');
 });
 
-// v1.196 Phase C: admin-set show poster. DATA_DIR store, magic-byte sniffed, wins
-// over the folder image, admin-only, showId path-traversal refused.
-test('TV Phase C: admin poster upload - magic-byte checked, overrides the folder image, admin-only, traversal-safe', async () => {
-  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 1, 2, 3, 4]);
-  const postPoster = (auth, showId, body, ct) => auth(`/api/tv/${showId}/poster`, { method: 'POST', headers: { 'Content-Type': ct || 'image/png' }, body });
-
-  assert.strictEqual((await postPoster(asMember, 'sh-ok', png)).status, 403, 'a member cannot set library art');
-  assert.strictEqual((await postPoster(asAdmin, 'sh-nope', png)).status, 404, 'a bogus (but safe) show id -> 404');
-  assert.strictEqual((await postPoster(asAdmin, 's.h', png)).status, 400, 'a bad-char show id is refused before any fs touch (no traversal)');
-  assert.strictEqual((await postPoster(asAdmin, 'sh-ok', Buffer.from('not a png'))).status, 400, 'a mislabeled non-image fails the magic-byte sniff');
-
-  assert.strictEqual((await postPoster(asAdmin, 'sh-ok', png)).status, 200, 'admin sets a valid PNG');
-  const served = Buffer.from(await (await asAdmin('/tvposter/sh-ok')).arrayBuffer());
-  assert.ok(served.equals(png), 'the custom poster wins over the folder image (KIDSPOSTER)');
-
-  assert.strictEqual((await asAdmin('/api/tv/sh-ok/poster', { method: 'DELETE' })).status, 200);
-  assert.strictEqual(await (await asAdmin('/tvposter/sh-ok')).text(), 'KIDSPOSTER', 'after delete, the folder image returns');
-});
 
 // v1.196 gate (adversarial WARNING-1): /api/tv/continue is an access-control
 // AGGREGATION surface (leaks title/show/SxxEyy). Its visibility filter must be
