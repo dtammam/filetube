@@ -2204,6 +2204,7 @@ function wireStaticControls(signal) {
   // main.js's homeRowEnabled (`!== '0'` = on): checked -> clear (default on),
   // unchecked -> '0'.
   wireHomeRowToggle('home-continue-watching-check', 'ft-home-continue-watching', signal);
+  wireHomeRowToggle('tv-continue-watching-check', 'ft-tv-continue-watching', signal); // v1.198.2 (Dean): the Shows-page row
   wireHomeRowToggle('home-continue-listening-check', 'ft-home-continue-listening', signal);
   wireHomeRowToggle('home-continue-reading-check', 'ft-home-continue-reading', signal);
 
@@ -3346,6 +3347,7 @@ function init(root) {
   loadResumeThresholdControl();
   loadDebugLifecycleControl();
   loadHomeRowControl('home-continue-watching-check', 'ft-home-continue-watching');
+  loadHomeRowControl('tv-continue-watching-check', 'ft-tv-continue-watching'); // v1.198.2: reflect-on-load (the v1.193 lesson)
   loadHomeRowControl('home-continue-listening-check', 'ft-home-continue-listening');
   loadHomeRowControl('home-continue-reading-check', 'ft-home-continue-reading');
   renderBottomBarEditor(controller.signal); // v1.44 T12 bottom-bar editor

@@ -12,6 +12,18 @@ function escapeTvHtml(text) {
 
 function pad2(n) { return (n != null && n < 10 ? '0' : '') + n; }
 
+// v1.198.2 (Dean): the Settings toggle for the Shows-page Continue row -
+// homeRowEnabled's exact semantics (absent/anything-but-'0' = on; '0' = off;
+// storage-disabled = on). Pure + exported for node:test.
+function tvContinueRowEnabled() {
+  try {
+    var v = localStorage.getItem('ft-tv-continue-watching');
+    return v === null ? true : v !== '0';
+  } catch (_) {
+    return true;
+  }
+}
+
 // "S02E22" from an episode; degrades gracefully when a number is missing (an
 // Extras/unsorted episode shows no code).
 function episodeCode(ep) {
@@ -123,6 +135,11 @@ if (typeof document !== 'undefined') {
       var content = el('tv-content');
       api('/api/tv').then(function (data) {
         var shows = (data && data.shows) || [];
+        // v1.198.2 (Dean): the Settings "Show Continue watching on the Shows
+        // page" toggle (ft-tv-continue-watching, the home-row semantics: absent
+        // = on, '0' = off). OFF skips the /api/tv/continue fetch entirely - not
+        // just the render - so a disabled row costs nothing.
+        if (!tvContinueRowEnabled()) return { shows: shows, cont: [] };
         // Continue-Watching is best-effort: its failure NEVER hides the grid.
         return api('/api/tv/continue').then(
           function (c) { return { shows: shows, cont: (c && c.episodes) || [] }; },
@@ -219,5 +236,6 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     escapeTvHtml, pad2, episodeCode, formatEpDuration,
     buildShowCardHtml, buildContinueCardHtml, buildEpisodeRowHtml, buildShowDetailHtml,
+    tvContinueRowEnabled,
   };
 }

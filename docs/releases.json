@@ -2284,5 +2284,11 @@
     "date": "2026-08-27",
     "title": "Episode pages now show what's up next",
     "intent": "The sidebar on an episode page now lists the rest of the show, in order - the episodes that come after the one you're watching, and once those run out it wraps back around to episode 1, so there's always something to tap next. Each card shows the episode's thumbnail, its number and title, and its length. The episode you're currently watching isn't listed."
+  },
+  {
+    "version": "1.198.2",
+    "date": "2026-08-27",
+    "title": "Choose whether the Shows page shows Continue watching",
+    "intent": "A small option that was missing: Settings now has a checkbox called Show Continue watching on the Shows page, right next to the one for the home page. Untick it and the Shows page goes straight to your poster wall with no Continue row. The two checkboxes are independent, so you can keep the row on one page and not the other. Like the other row toggles, this is a per-browser preference."
   }
 ]

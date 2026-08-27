@@ -672,6 +672,12 @@
             <input type="checkbox" id="home-continue-watching-check" checked />
             Show "Continue watching" on the home page
           </label>
+          <!-- v1.198.2 (Dean): the Shows page's own row toggle - the home checkbox
+               is labelled (and scoped) home-only, so Shows gets a sibling. -->
+          <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:8px;">
+            <input type="checkbox" id="tv-continue-watching-check" checked />
+            Show "Continue watching" on the Shows page
+          </label>
           <!-- v1.73 (Dean ruling 1): ONE merged listening row - the separate
                Podcasts toggle retired; the old key is still read so a device
                where either was on keeps the row. -->
