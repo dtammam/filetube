@@ -46,6 +46,10 @@ test('B: a tv source resumes from its descriptor progress (no extra fetch, no /a
   assert.match(SRC, /var progressEndpoint = \(currentData && typeof currentData\.progressEndpoint === 'string' && currentData\.progressEndpoint\) \|\| '\/api\/progress';/);
 });
 
+test('A2: a source with artUrl but no hasThumbnail (a tv episode) uses the show poster as the frame-one video poster', () => {
+  assert.match(SRC, /else if \(typeof data\.artUrl === 'string' && data\.artUrl\) \{\s*\n\s*mediaPlayer\.poster = data\.artUrl;/);
+});
+
 test('A2: the /api/videos-only side effects (dimensions POST, subtitles, bg-audio) are all skipped for a tv source', () => {
   // dimensions POST guarded
   assert.match(SRC, /if \(!data\.statusUrl\) \{\s*\n\s*fetch\('\/api\/videos\/' \+ encodeURIComponent\(id\) \+ '\/dimensions'/);

@@ -164,13 +164,15 @@ if (typeof document !== 'undefined') {
       for (var i = 0; i < imgs.length; i++) imgs[i].src = base + '?t=' + Date.now();
     }
 
-    // Admin-only "Change poster" control in the show-detail hero. Gated on the
-    // user's admin/library-modify capability (the server enforces it too, 403 for
-    // a member - this just hides a dead button). Fail-closed on any auth hiccup.
+    // Admin-only "Change poster" control in the show-detail hero. Gated on
+    // role === 'admin' to EXACTLY match the server's requireAdmin gate on POST
+    // /api/tv/:showId/poster (library art is admin-only, like /api/tv/config -
+    // a canModifyLibrary member is NOT allowed and would only see a dead button).
+    // Fail-closed on any auth hiccup.
     function maybeInjectPosterControl(showId) {
       if (typeof fetchCurrentUser !== 'function' || !showId) return;
       fetchCurrentUser().then(function (me) {
-        var canEdit = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
+        var canEdit = !!(me && me.user && me.user.role === 'admin');
         if (!canEdit) return;
         var slot = document.querySelector('.tv-detail-actions');
         if (!slot || slot.querySelector('.tv-poster-change')) return;

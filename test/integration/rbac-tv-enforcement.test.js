@@ -208,3 +208,23 @@ test('TV Phase C: admin poster upload - magic-byte checked, overrides the folder
   assert.strictEqual((await asAdmin('/api/tv/sh-ok/poster', { method: 'DELETE' })).status, 200);
   assert.strictEqual(await (await asAdmin('/tvposter/sh-ok')).text(), 'KIDSPOSTER', 'after delete, the folder image returns');
 });
+
+// v1.196 gate (adversarial WARNING-1): /api/tv/continue is an access-control
+// AGGREGATION surface (leaks title/show/SxxEyy). Its visibility filter must be
+// BOUND, not merely present. "Restrict-after-watch": a member has a resume
+// position on an episode that is NOW blocked for them (written directly here, as
+// if before the restriction) - Continue must exclude it and never leak its title.
+// Removing the filter makes this test go red.
+test('TV: /api/tv/continue never leaks a now-restricted episode the user has progress on', async () => {
+  // Direct write bypasses the progress route's own gate (as a restrict-AFTER-watch
+  // row would have): only the /api/tv/continue visibility filter can exclude it.
+  userStore.setTvProgress(member.user.id, 'blk', { position: 20, duration: 100, updatedAt: '2026-08-27T00:00:00.000Z' });
+  const cont = await (await asMember('/api/tv/continue')).json();
+  assert.ok(!(cont.episodes || []).some((e) => e.id === 'blk'), 'the restricted episode is absent from Continue (drop the filter -> it appears -> red)');
+  assert.ok(!JSON.stringify(cont).includes('Pilot') && !JSON.stringify(cont).includes('Adult Show'), 'its title/show name never leak into the payload');
+  // Control: admin (unrestricted) with the SAME direct row DOES surface it, so the
+  // member exclusion above is the filter at work, not an always-empty list.
+  userStore.setTvProgress(auth.user.id, 'blk', { position: 20, duration: 100, updatedAt: '2026-08-27T00:00:01.000Z' });
+  const adminCont = await (await asAdmin('/api/tv/continue')).json();
+  assert.ok((adminCont.episodes || []).some((e) => e.id === 'blk'), 'admin sees the row - proves the exclusion is visibility, not emptiness');
+});

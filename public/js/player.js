@@ -7907,6 +7907,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // thumbnail can never bleed onto the next item.
       if (data.hasThumbnail === true) {
         mediaPlayer.poster = '/thumbnail/' + encodeURIComponent(id);
+      } else if (typeof data.artUrl === 'string' && data.artUrl) {
+        // v1.196: a source with explicit art (a TV episode's /tvposter/:showId)
+        // but no /thumbnail/:id shows the show poster instead of a black box until
+        // the first frame decodes. Ordinary videos set hasThumbnail, not artUrl.
+        mediaPlayer.poster = data.artUrl;
       }
 
       if (data.needsTranscode) {
