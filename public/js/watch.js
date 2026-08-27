@@ -3869,9 +3869,11 @@ if (typeof module !== 'undefined' && module.exports) {
           readerHref: '/watch.html?tv=' + encodeURIComponent(episodeId),
         });
         // v1.197.1 (the TDZ fix's other half): the descriptor IS this view's
-        // media data - assigning it makes every shared helper the tv path
-        // reaches (isAudioItem's type check, the loop toggle's format field)
-        // read real truth instead of throwing/nulling.
+        // media data. The SOLE tv-reachable mediaData reader today is
+        // setupAmbientMode's isAudioItem() (slim-gate measured: the loop
+        // toggle reads none; openSubscribeModal's format field is not
+        // tv-reachable) - assigning real truth here also future-proofs any
+        // shared helper the tv path grows into.
         mediaData = descriptor;
         var mounted = window.FileTube.player.load(episodeId, descriptor, { slot: playerSlot });
         if (!mounted) { showFatalViewError(root); return; }
