@@ -257,12 +257,21 @@ sub startPlaybackFlow(item as object)
     if m.video.visible then stopPlaybackSurface()
 
     content = CreateObject("roSGNode", "ContentNode")
-    content.url = m.state.serverUrl + "/video/" + item.ftId
-    ' v1.46: ask the server for the Roku-safe rendition of video items --
-    ' cover-art-stripped remux / rotation-baked re-encode when needed,
-    ' the original bytes otherwise. Audio items skip it (server would too).
-    if item.ftMediaType <> "audio"
-        content.url = content.url + "?compat=roku"
+    if itemSource(item) = "tv"
+        ' v1.199: an episode streams from the tv route. No ?compat=roku -- a
+        ' codec-incompatible episode already lands the tv rendition
+        ' (H.264/AAC/faststart, the same profile compat would produce), and
+        ' compat's demuxer fixes (embedded-art strip / rotation bake) target
+        ' shapes TV rips essentially never carry (disclosed residual).
+        content.url = m.state.serverUrl + "/tvepisode/" + item.ftId
+    else
+        content.url = m.state.serverUrl + "/video/" + item.ftId
+        ' v1.46: ask the server for the Roku-safe rendition of video items --
+        ' cover-art-stripped remux / rotation-baked re-encode when needed,
+        ' the original bytes otherwise. Audio items skip it (server would too).
+        if item.ftMediaType <> "audio"
+            content.url = content.url + "?compat=roku"
+        end if
     end if
     content.title = item.title
     ' Items flagged needsTranscode are served as a cached MP4 rendition
@@ -363,9 +372,17 @@ end sub
 ' Gate W1: the web's completion contract is a one-shot progress-0 write --
 ' without it, a video finished on the TV would offer "Resume at 59:58" on
 ' the phone. Mirrors public/js/player.js's 'ended' cascade.
+'
+' v1.199 (episodes): the progress-0 stays (the web reads an episode's resume
+' position from this keyspace, so a finish here must clear it there too), PLUS
+' an explicit POST /api/tv/played. The web relies on its frequent ticking pings
+' to cross the 90% auto-watch latch; this channel pings every 30s, so a short
+' episode could finish without a ping ever landing past 90% -- the explicit
+' latch closes that gap. (/api/tv/progress at 0 never touches the latch.)
 sub sendProgressComplete()
     if m.playingItem = invalid or m.playingItem.ftId = "" then return
     postProgress(m.playingItem, 0)
+    if itemSource(m.playingItem) = "tv" then postTvPlayed(m.playingItem)
     m.sessionProgress[m.playingItem.ftId] = 0.0
     m.playingFinished = true
 end sub
@@ -374,6 +391,9 @@ sub postProgress(item as object, position as float)
     task = CreateObject("roSGNode", "ProgressTask")
     task.serverUrl = m.state.serverUrl
     task.cookie = m.state.cookie
+    ' v1.199: an episode's position rides the tv progress route (identical
+    ' {id, timestamp, duration} body, different keyspace).
+    if itemSource(item) = "tv" then task.endpoint = "/api/tv/progress"
     task.itemId = item.ftId
     task.position = position
     task.duration = item.ftDuration
@@ -381,12 +401,36 @@ sub postProgress(item as object, position as float)
     m.progressTask = task ' hold a ref so the task isn't collected mid-run
 end sub
 
+sub postTvPlayed(item as object)
+    task = CreateObject("roSGNode", "ProgressTask")
+    task.serverUrl = m.state.serverUrl
+    task.cookie = m.state.cookie
+    task.mode = "tvplayed"
+    task.itemId = item.ftId
+    task.control = "RUN"
+    m.playedTask = task ' a SEPARATE ref: completion fires this AND a progress-0
+end sub
+
+' A ContentNode built before v1.199 (or by a component that never added the
+' field) answers invalid for ftSource -- normalize to "" so every caller can
+' compare strings safely.
+function itemSource(item as object) as string
+    if item = invalid then return ""
+    src = item.ftSource
+    if GetInterface(src, "ifString") = invalid then return ""
+    return src
+end function
+
 ' Pre-warm EXACTLY the next queue item (video only) with one silent request:
 ' its ?compat=roku rendition builds while this one plays, so autoplay/Next
 ' is usually instant. Guarded to once per played item -- item N+2 is never
 ' touched until N+1 actually plays (Dean's no-cascade constraint).
 sub prewarmNext()
     if m.currentItem = invalid or m.prewarmedForId = m.currentItem.ftId then return
+    ' v1.199: no prewarm for episodes -- the tv transcode lane is single-flight
+    ' and a probe would enqueue a full transcode uninvited (the W2 principle).
+    ' Episode queues are homogeneous, so guarding the CURRENT item covers them.
+    if itemSource(m.currentItem) = "tv" then return
     if m.queue = invalid then return
     nextIndex = m.queueIndex + 1
     if nextIndex >= m.queue.GetChildCount() then return
@@ -560,7 +604,10 @@ sub openPlaybackMenu()
     m.playbackMenuGroup.visible = true
     m.playbackMenu.SetFocus(true)
     ' Chapters are only on the details endpoint; fetch once per item, lazily.
-    if m.currentItem <> invalid and m.chaptersItemId <> m.currentItem.ftId
+    ' v1.199: never for an episode -- there is no tv details/chapters surface,
+    ' and m.chaptersItemId (a video id) can never match an episode's ftId, so
+    ' the Chapters row stays absent for tv by construction.
+    if m.currentItem <> invalid and itemSource(m.currentItem) <> "tv" and m.chaptersItemId <> m.currentItem.ftId
         ' Gate W1: unobserve-before-replace, same discipline as the gate task
         ' -- a superseded fetch must never fire into the new one's callback.
         if m.detailsTask <> invalid then m.detailsTask.UnobserveField("result")

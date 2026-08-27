@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="ShowDetailTask" extends="Task">
+    <interface>
+        <field id="serverUrl" type="string" />
+        <field id="cookie" type="string" />
+        <field id="showId" type="string" />
+        <!-- { ok, showId, name, seasons: [{label, episodes: [{id, seasonNum,
+             episodeNum, title, durationSec, ext, needsTranscode, progress}]}],
+             code, error } -->
+        <field id="result" type="assocarray" />
+    </interface>
+    <script type="text/brightscript" uri="pkg:/components/ShowDetailTask.brs" />
+</component>

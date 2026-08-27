@@ -33,8 +33,19 @@ routes and this wave adds NONE.
 The channel signals video COMPLETION with a progress-0 write (`sendProgressComplete`,
 the v1.47.1 gate-C1 contract). `/api/tv/progress` has NO progress-0 convention -
 position 0 just means "at the start" - and it auto-latches watched at >=90%. TV
-completion must instead POST `/api/tv/played {episodeId}`. Getting this wrong
-would silently reset episode resume points on every finish.
+completion must POST `/api/tv/played {episodeId}`.
+
+REFINED during implementation (measured against player.js's 'ended' cascade,
+line ~4925): the WEB writes progress-0 through `progressEndpoint`
+(= /api/tv/progress for tv) on ended too, and relies on its FREQUENT ticking
+pings to cross the 90% auto-watch latch. So tv completion on Roku = BOTH:
+- the progress-0 write (web parity - without it, the web's silent tv resume
+  would reopen a Roku-finished episode at ~97%), AND
+- the explicit POST /api/tv/played (the Roku pings every 30s, so a short
+  episode can finish without a ping ever landing past 90% - the explicit latch
+  closes that gap; /api/tv/progress at 0 never touches the latch).
+Two fire-and-forget tasks, two SEPARATE refs (m.progressTask + m.playedTask -
+one ref would drop the other task mid-run).
 
 ## W1 - server (tiny; NO new routes, census unchanged at 228)
 
@@ -74,8 +85,13 @@ GridScreen.brs/.xml:
   ftNeedsTranscode (from W1), ftProgress (from W1), ftHasSubtitles=false,
   HDPosterUrl=/tvthumb/<id>; the videos-only affordances (filter cycle,
   pagination/ensure-loaded, search) guard on the new modes (the gate-S7 posture);
-  header/count/empty labels per mode. The Shows menu row hides when /api/tv/config
-  returns no folders (the visibility-filtered signal ConfigTask already models).
+  header/count/empty labels per mode. DEVIATION from the first draft: the Shows
+  menu row is UNCONDITIONAL (the Channels-row posture) - the draft said hide it
+  when /api/tv/config has no folders, but that route is admin-gated (a member's
+  device could never ask) and ConfigTask models the VIDEO roots, not tv. An
+  empty/fully-restricted library answers with an honest empty grid instead.
+  Single-season shows auto-skip the seasons view (the web's single-season
+  posture), and Back skips it symmetrically (m.seasonAutoSkip).
 - 404s = "gone" (empty grid), never an error dialog; 401 keeps the authExpired
   mapping.
 

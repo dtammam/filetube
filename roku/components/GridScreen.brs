@@ -23,8 +23,14 @@ sub init()
     if saved.filtermode = "video" or saved.filtermode = "audio" then m.filterMode = saved.filtermode
     m.currentFolder = ""
     m.currentFolderName = ""
-    m.viewMode = "videos" ' "videos" | "channels"
+    ' v1.199 adds the Shows drill-down: shows -> seasons -> episodes.
+    m.viewMode = "videos" ' "videos" | "channels" | "shows" | "seasons" | "episodes"
     m.channels = []
+    m.shows = []
+    m.showDetail = invalid
+    m.currentSeasonIndex = -1
+    m.seasonAutoSkip = false
+    m.menuRows = []
 end sub
 
 sub onTakeFocus()
@@ -56,6 +62,9 @@ sub onBegin()
     m.currentFolder = ""
     m.currentFolderName = ""
     m.viewMode = "videos"
+    m.showDetail = invalid
+    m.currentSeasonIndex = -1
+    m.seasonAutoSkip = false
     updateHint()
     resetAndLoad()
     m.grid.SetFocus(true)
@@ -68,14 +77,47 @@ sub resetAndLoad()
     m.countLabel.text = "Loading…"
     m.contentRoot = CreateObject("roSGNode", "ContentNode")
     if m.viewMode = "channels"
+        applyGridGeometry("landscape")
         m.grid.itemComponentName = "ChannelItem"
         m.grid.content = m.contentRoot
         fetchChannels()
+    else if m.viewMode = "shows"
+        applyGridGeometry("portrait")
+        m.grid.itemComponentName = "ShowItem"
+        m.grid.content = m.contentRoot
+        fetchShows()
+    else if m.viewMode = "seasons"
+        ' Rendered from the cached ShowDetail result -- no second fetch.
+        applyGridGeometry("portrait")
+        m.grid.itemComponentName = "ShowItem"
+        m.grid.content = m.contentRoot
+        buildSeasonNodes()
+    else if m.viewMode = "episodes"
+        applyGridGeometry("landscape")
+        m.grid.itemComponentName = "GridItem"
+        m.grid.content = m.contentRoot
+        buildEpisodeNodes()
     else
+        applyGridGeometry("landscape")
         m.grid.itemComponentName = "GridItem"
         m.grid.content = m.contentRoot
         m.top.queue = m.contentRoot
         fetchPage(0)
+    end if
+end sub
+
+' The Shows wall + season tiles are 2:3 posters (the web page's poster wall);
+' everything else keeps the 16:9 thumb cells. Applied per resetAndLoad so
+' every mode change re-asserts its own geometry.
+sub applyGridGeometry(mode as string)
+    if mode = "portrait"
+        m.grid.itemSize = [216, 384]
+        m.grid.numColumns = 7
+        m.grid.numRows = 2
+    else
+        m.grid.itemSize = [336, 252]
+        m.grid.numColumns = 5
+        m.grid.numRows = 3
     end if
 end sub
 
@@ -99,13 +141,23 @@ end sub
 
 sub openFolderMenu()
     content = CreateObject("roSGNode", "ContentNode")
+    ' v1.199: KIND-tagged rows (m.menuRows mirrors the list positionally), so
+    ' dispatch never does index math against a list that can grow.
+    m.menuRows = []
     for each entry in m.roots
         row = content.CreateChild("ContentNode")
         row.title = entry.name
+        m.menuRows.Push({ kind: "root", root: entry.root, name: entry.name })
     end for
-    ' v1.47: the Channels drill-down rides the same picker, always last.
+    ' v1.47: the Channels drill-down rides the same picker; v1.199 adds Shows.
+    ' Both unconditional (an empty Shows library answers with an honest empty
+    ' grid, the Channels posture).
     row = content.CreateChild("ContentNode")
     row.title = "Channels"
+    m.menuRows.Push({ kind: "channels" })
+    row = content.CreateChild("ContentNode")
+    row.title = "Shows"
+    m.menuRows.Push({ kind: "shows" })
     m.folderMenu.content = content
     m.folderScrim.visible = true
     m.folderTitle.visible = true
@@ -122,17 +174,26 @@ end sub
 
 sub onFolderSelected()
     index = m.folderMenu.itemSelected
-    if index < 0 then return
+    if index < 0 or index >= m.menuRows.Count() then return
     closeFolderMenu()
-    if index >= m.roots.Count()
-        ' The trailing "Channels" row.
+    row = m.menuRows[index]
+    if row.kind = "channels"
         m.viewMode = "channels"
         m.currentSearch = ""
         resetAndLoad()
         return
     end if
-    m.currentRoot = m.roots[index].root
-    m.currentRootName = m.roots[index].name
+    if row.kind = "shows"
+        m.viewMode = "shows"
+        m.currentSearch = ""
+        m.showDetail = invalid
+        m.currentSeasonIndex = -1
+        m.seasonAutoSkip = false
+        resetAndLoad()
+        return
+    end if
+    m.currentRoot = row.root
+    m.currentRootName = row.name
     m.currentSearch = ""
     m.currentFolder = ""
     m.currentFolderName = ""
@@ -187,6 +248,166 @@ sub onChannelsResult()
     m.emptyLabel.text = "No channels found."
     m.emptyLabel.visible = (m.channels.Count() = 0)
 end sub
+
+' ---- shows view (v1.199) ---------------------------------------------------
+
+sub fetchShows()
+    ' Unobserve-before-replace (the v1.46 task discipline), same as channels.
+    if m.showsTask <> invalid then m.showsTask.UnobserveField("result")
+    m.showsTask = CreateObject("roSGNode", "ShowsTask")
+    m.showsTask.serverUrl = m.top.serverUrl
+    m.showsTask.cookie = m.top.cookie
+    m.showsTask.ObserveField("result", "onShowsResult")
+    m.showsTask.control = "RUN"
+end sub
+
+sub onShowsResult()
+    result = m.showsTask.result
+    if result = invalid or not result.DoesExist("ok") then return
+    if m.viewMode <> "shows" then return ' user navigated away mid-fetch
+    if result.ok <> true
+        if result.code <> invalid and result.code = 401
+            m.top.authExpired = true
+        else
+            m.top.loadError = result.error
+        end if
+        return
+    end if
+    ' Stale late fire: the shows contentRoot is built fresh per resetAndLoad,
+    ' so any existing children mean this result is superseded.
+    if m.contentRoot.GetChildCount() > 0 then return
+    m.shows = result.shows
+    for each sh in m.shows
+        node = CreateObject("roSGNode", "ContentNode")
+        node.AddFields({ ftShowId: "", ftDurationText: "" })
+        node.title = sh.name
+        node.ftShowId = sh.id
+        node.ftDurationText = pluralCount(sh.seasonCount, "season") + " · " + pluralCount(sh.episodeCount, "episode")
+        ' First-party poster: HDPosterUrl + the inherited scene agent is correct
+        ' (ids are md5 hex, URL-safe by construction -- the /thumbnail/ pattern).
+        node.HDPosterUrl = m.top.serverUrl + "/tvposter/" + sh.id
+        m.contentRoot.AppendChild(node)
+    end for
+    m.countLabel.text = "Shows · " + m.shows.Count().ToStr()
+    m.emptyLabel.text = "No shows found."
+    m.emptyLabel.visible = (m.shows.Count() = 0)
+end sub
+
+sub fetchShowDetail(showId as string)
+    m.countLabel.text = "Loading…"
+    if m.showDetailTask <> invalid then m.showDetailTask.UnobserveField("result")
+    m.showDetailTask = CreateObject("roSGNode", "ShowDetailTask")
+    m.showDetailTask.serverUrl = m.top.serverUrl
+    m.showDetailTask.cookie = m.top.cookie
+    m.showDetailTask.showId = showId
+    m.showDetailTask.ObserveField("result", "onShowDetailResult")
+    m.showDetailTask.control = "RUN"
+end sub
+
+sub onShowDetailResult()
+    result = m.showDetailTask.result
+    if result = invalid or not result.DoesExist("ok") then return
+    if m.viewMode <> "shows" then return ' user navigated away mid-fetch
+    if result.ok <> true
+        if result.code <> invalid and result.code = 401
+            m.top.authExpired = true
+        else if result.code <> invalid and result.code = 404
+            ' Gone (or restricted since the wall loaded): refresh the wall so
+            ' the stale tile disappears -- an empty answer that self-heals,
+            ' never an error dialog (the no-oracle posture).
+            resetAndLoad()
+        else
+            m.top.loadError = result.error
+        end if
+        return
+    end if
+    if result.seasons.Count() = 0
+        m.emptyLabel.text = "No episodes found."
+        m.emptyLabel.visible = true
+        return
+    end if
+    m.showDetail = result
+    if result.seasons.Count() = 1
+        ' A single-season show goes straight to its episodes (the web page's
+        ' single-season posture); Back knows to skip seasons on the way out.
+        m.seasonAutoSkip = true
+        m.currentSeasonIndex = 0
+        m.viewMode = "episodes"
+    else
+        m.seasonAutoSkip = false
+        m.currentSeasonIndex = -1
+        m.viewMode = "seasons"
+    end if
+    resetAndLoad()
+end sub
+
+sub buildSeasonNodes()
+    if m.showDetail = invalid then return
+    for each s in m.showDetail.seasons
+        node = CreateObject("roSGNode", "ContentNode")
+        node.AddFields({ ftDurationText: "" })
+        node.title = s.label
+        node.ftDurationText = pluralCount(s.episodes.Count(), "episode")
+        node.HDPosterUrl = m.top.serverUrl + "/tvposter/" + m.showDetail.showId
+        m.contentRoot.AppendChild(node)
+    end for
+    m.countLabel.text = m.showDetail.name + " · " + pluralCount(m.showDetail.seasons.Count(), "season")
+end sub
+
+sub buildEpisodeNodes()
+    if m.showDetail = invalid or m.currentSeasonIndex < 0 then return
+    if m.currentSeasonIndex >= m.showDetail.seasons.Count() then return
+    season = m.showDetail.seasons[m.currentSeasonIndex]
+    for each ep in season.episodes
+        m.contentRoot.AppendChild(buildEpisodeContentNode(ep))
+    end for
+    scope = m.showDetail.name
+    if m.showDetail.seasons.Count() > 1 then scope = scope + " · " + season.label
+    m.countLabel.text = scope + " · " + pluralCount(season.episodes.Count(), "episode")
+end sub
+
+' An episode node carries the SAME playback fields buildContentNode gives a
+' video (AppScene reads them identically), plus ftSource="tv" so the playback
+' flow streams /tvepisode and writes the tv progress keyspace.
+function buildEpisodeContentNode(ep as object) as object
+    node = CreateObject("roSGNode", "ContentNode")
+    node.AddFields({
+        ftId: "",
+        ftSource: "tv",
+        ftDurationText: "",
+        ftDuration: 0.0,
+        ftProgress: 0.0,
+        ftNeedsTranscode: false,
+        ftHasSubtitles: false,
+        ftMediaType: "video",
+        ftExt: "",
+        ftCodecs: ""
+    })
+    node.ftId = ep.id
+    title = ep.title
+    code = epCode(ep.seasonNum, ep.episodeNum)
+    if code <> ""
+        if title <> "" then title = code + "  " + title else title = code
+    end if
+    node.title = title
+    node.ftExt = ep.ext
+    node.ftDuration = ep.durationSec
+    node.ftDurationText = FT_FormatDuration(ep.durationSec)
+    node.ftProgress = ep.progress
+    node.ftNeedsTranscode = ep.needsTranscode
+    node.HDPosterUrl = m.top.serverUrl + "/tvthumb/" + ep.id
+    return node
+end function
+
+function epCode(seasonNum as integer, episodeNum as integer) as string
+    if seasonNum < 0 or episodeNum < 0 then return "" ' an Extras file: no SxxEyy
+    return "S" + FT_Pad2(seasonNum) + "E" + FT_Pad2(episodeNum)
+end function
+
+function pluralCount(n as integer, word as string) as string
+    if n = 1 then return "1 " + word
+    return n.ToStr() + " " + word + "s"
+end function
 
 ' ---- search ---------------------------------------------------------------
 
@@ -263,6 +484,27 @@ function onKeyEvent(key as string, press as boolean) as boolean
         return true
     end if
     if key = "back"
+        ' v1.199 TV back-stack: episodes -> seasons -> shows -> plain grid (a
+        ' single-season show skipped seasons on the way in, so Back skips it too).
+        if m.viewMode = "episodes"
+            if m.seasonAutoSkip
+                m.viewMode = "shows"
+            else
+                m.viewMode = "seasons"
+            end if
+            resetAndLoad()
+            return true
+        end if
+        if m.viewMode = "seasons"
+            m.viewMode = "shows"
+            resetAndLoad()
+            return true
+        end if
+        if m.viewMode = "shows"
+            m.viewMode = "videos"
+            resetAndLoad()
+            return true
+        end if
         ' Drill-down back-stack: channel videos -> channels list -> plain grid.
         if m.viewMode = "videos" and m.currentFolder <> ""
             m.currentFolder = ""
@@ -345,6 +587,7 @@ function buildContentNode(item as object) as object
     node = CreateObject("roSGNode", "ContentNode")
     node.AddFields({
         ftId: "",
+        ftSource: "", ' v1.199: "" = the video library; "tv" = an episode node
         ftDurationText: "",
         ftDuration: 0.0,
         ftProgress: 0.0,
@@ -397,6 +640,19 @@ sub onItemSelected()
         resetAndLoad()
         return
     end if
+    if m.viewMode = "shows"
+        picked = m.contentRoot.GetChild(index)
+        fetchShowDetail(picked.ftShowId)
+        return
+    end if
+    if m.viewMode = "seasons"
+        m.currentSeasonIndex = index
+        m.viewMode = "episodes"
+        resetAndLoad()
+        return
+    end if
+    ' "episodes" falls through to the trio below: the SEASON's episode list is
+    ' the playback queue, so next/prev/autoplay ride the existing machinery.
     ' Set index + queue BEFORE selectedItem: AppScene's observer reads all
     ' three, and field-set order is its coherence guarantee.
     m.top.selectedIndex = index
