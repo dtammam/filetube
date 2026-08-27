@@ -81,7 +81,7 @@ test('W3: armBackgroundAudioSrc points the sidecar at the descriptor audioSrc (a
 });
 
 test('W3: the prepare-audio pre-warm + repoll both use the descriptor prepareAudioUrl', () => {
-  assert.match(SRC, /return fetch\(\(data\.prepareAudioUrl\) \|\| \('\/api\/videos\/' \+ encodeURIComponent\(id\) \+ '\/prepare-audio'\), \{ method: 'POST' \}\)/,
+  assert.match(SRC, /return fetch\(\(typeof data\.prepareAudioUrl === 'string' && data\.prepareAudioUrl\) \|\| \('\/api\/videos\/' \+ encodeURIComponent\(id\) \+ '\/prepare-audio'\), \{ method: 'POST' \}\)/,
     'the initial pre-warm');
   assert.match(SRC, /var repollUrl = \(currentData && typeof currentData\.prepareAudioUrl === 'string' && currentData\.prepareAudioUrl\)\s*\n\s*\|\| \('\/api\/videos\/' \+ encodeURIComponent\(id\) \+ '\/prepare-audio'\);\s*\n\s*fetch\(repollUrl, \{ method: 'POST' \}\)/,
     'the repoll, read under the gen guard (identity-safe)');

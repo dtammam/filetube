@@ -144,6 +144,7 @@ test('TV: GET /api/tv/episode/:id is player-shaped, tv-sourced, and visibility-g
   assert.ok(!JSON.stringify(d).includes(DATA_DIR), 'the full filesystem path never leaks');
   assert.strictEqual(typeof d.sizeBytes, 'number');
   assert.strictEqual(typeof d.addedAtMs, 'number');
+  assert.strictEqual(d.ext, '.mp4', 'ext rides the payload (both gate seats: omitting it made Type always paint the fallback)');
 
   const h = await (await asAdmin('/api/tv/episode/hevc')).json();
   assert.strictEqual(h.needsTranscode, true, 'hevc-in-mp4 -> codec-aware transcode');
@@ -243,11 +244,13 @@ test('TV W3: the audio sidecar pair is gated and the detail carries the bg-audio
   assert.strictEqual((await asMember('/tvaudio/blk')).status, 404, 'sidecar bytes: restricted -> 404');
   assert.strictEqual((await asMember('/api/tv/episode/blk/prepare-audio', { method: 'POST' })).status, 404, 'pre-warm: restricted -> 404');
 
-  // Allowed: pre-warm answers pending (no sidecar yet; the queue no-ops without
-  // ffmpeg - fail-safe), the bytes route 503s while absent (never 200s garbage).
+  // Allowed, sidecar absent: with ffmpeg the pre-warm enqueues and answers 200
+  // 'pending'; without it (this CI) it 503s like the video pair (a 200 would
+  // send the client's bounded repoll on a futile ~60s chain). Either way the
+  // bytes route 503s while the sidecar is absent - never 200s garbage.
   const prep = await asMember('/api/tv/episode/ok/prepare-audio', { method: 'POST' });
-  assert.strictEqual(prep.status, 200);
-  assert.strictEqual((await prep.json()).audioStatus, 'pending');
+  if (prep.status === 200) assert.strictEqual((await prep.json()).audioStatus, 'pending');
+  else assert.strictEqual(prep.status, 503, 'ffmpeg-less -> 503 (the video pair parity), never a misleading 200');
   assert.strictEqual((await asMember('/tvaudio/ok')).status, 503, 'sidecar absent -> 503 (extracting/unavailable), never raw bytes');
 
   // The detail endpoint carries the descriptor trio the player's handoff reads.

@@ -285,6 +285,7 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
   const channelName = makeEl('a'); els.set('#uploader-channel-name', channelName);
   const subsCount = makeEl('div'); els.set('#uploader-subs-count', subsCount);
   const descPara = makeEl('div'); els.set('#video-description', descPara);
+  const typeText = makeEl('span'); els.set('#file-type-text', typeText);
   const root = makeEl('div');
   root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
 
@@ -322,4 +323,23 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
   assert.equal(channelName.href, '/tv?show=show1', 'tapping the channel returns to the show');
   assert.equal(subsCount.textContent, '1 season · 3 episodes', 'the subs line is the show\'s season/episode counts (from the track-nav fetch)');
   assert.equal(descPara.textContent, 'My Show S01E02 - Pilot.mp4', 'the description shows the episode FILE NAME');
+  // Gate fix (both seats, the divergent-fixture class): the fixture's `ext`
+  // matches what the REAL server now sends (bound in rbac-tv-enforcement), and
+  // the PAINTED type is asserted - omitting ext from the payload turns this red.
+  assert.equal(typeText.textContent, 'MP4', 'the Type field paints the real extension, not the fallback');
+});
+
+// ---- v1.197 W1 (both gate seats, BLOCKING): the tv path's cog sequence bound --
+// The "video-path setup the TV branch skips" class has struck twice (v1.196.1
+// controls, v1.196 ambient). This comment-stripped source-lock binds initTvWatch's
+// five-call cog sequence - the adversarial seat proved removing the whole block
+// left the suite green (the exact v1.196 ambient bug reverting silently).
+test('v1.197 W1: initTvWatch runs the FULL cog sequence (inject + autoplay + loop + theatre + ambient)', () => {
+  const watchSrc = fs.readFileSync(require('node:path').join(REPO, 'public/js/watch.js'), 'utf8');
+  const start = watchSrc.indexOf('async function initTvWatch(');
+  assert.ok(start > 0, 'initTvWatch exists');
+  const body = watchSrc.slice(start, watchSrc.indexOf('\n    }', start));
+  const stripped = body.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.match(stripped, /ensureCogControlsInjected\(\);\s*\n\s*setupAutoplayToggle\(\);\s*\n\s*setupLoopToggle\(\);\s*\n\s*setupTheatreToggle\(\);\s*\n\s*setupAmbientMode\(\);/,
+    'the five-call sequence, in order, after the player mounts - deleting any call (the v1.196 ambient bug) turns this red');
 });

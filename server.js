@@ -8835,6 +8835,7 @@ app.get('/api/tv/episode/:id', (req, res) => {
     sizeBytes: typeof ep.size === 'number' ? ep.size : 0,
     addedAtMs: typeof ep.addedAt === 'number' ? ep.addedAt : (Date.parse(ep.addedAt) || 0),
     fileName: path.basename(ep.filePath),
+    ext: ep.ext, // the Type field (both gate seats: it was consumed internally but never sent - Type always painted the fallback)
     // v1.196 (Phase B): the signed-in user's resume position + watched latch, so
     // the player's resume overlay + the row's watched tick reflect real state.
     progress: (userStore.getOneTvProgress(req.user.id, ep.id) || {}).position || 0,
@@ -8854,6 +8855,9 @@ app.post('/api/tv/episode/:id/prepare-audio', (req, res) => {
   if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
   if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
   if (fs.existsSync(tvAudioPath(ep.id))) return res.json({ audioStatus: 'ready' });
+  // ffmpeg-less install: 503 like the video pair (a 200 'pending' would send the
+  // client's bounded repoll on a futile ~60s chain; a non-ok ends it immediately).
+  if (!ffmpegAvailable) return res.status(503).json({ error: 'ffmpeg unavailable' });
   queueTvAudioExtract(ep.id, ep.filePath);
   res.json({ audioStatus: 'pending' });
 });

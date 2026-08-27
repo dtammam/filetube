@@ -7563,8 +7563,9 @@ if (typeof module !== 'undefined' && module.exports) {
     }
   }
 
-  // F-C (v1.27.1, first-watch handoff fix): bounded re-poll of POST
-  // /api/videos/:id/prepare-audio, called ONLY from `setupForMedia` (below)
+  // F-C (v1.27.1, first-watch handoff fix): bounded re-poll of the prepare-audio
+  // POST (the descriptor's prepareAudioUrl - a tv episode's own route - else the
+  // /api/videos/:id default, v1.197), called ONLY from `setupForMedia` (below)
   // when the setting is ON but the FIRST prepare-audio response came back
   // non-terminal (pending/processing) -- i.e. the sidecar wasn't already
   // extracted before this watch session started. Without this, `setupForMedia`
@@ -7740,7 +7741,7 @@ if (typeof module !== 'undefined' && module.exports) {
           // v1.197 (W3): a tv episode pre-warms its OWN route (the descriptor's
           // prepareAudioUrl -> /api/tv/episode/:id/prepare-audio); ordinary
           // videos carry none and keep the /api/videos route byte-identically.
-          return fetch((data.prepareAudioUrl) || ('/api/videos/' + encodeURIComponent(id) + '/prepare-audio'), { method: 'POST' })
+          return fetch((typeof data.prepareAudioUrl === 'string' && data.prepareAudioUrl) || ('/api/videos/' + encodeURIComponent(id) + '/prepare-audio'), { method: 'POST' })
             .then(function (res) { return res.ok ? res.json() : null; })
             .then(function (body) {
               if (gen !== loadGeneration) return;
@@ -8058,8 +8059,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.52 gate C1 (both seats): seed the watch metadata from the
       // player's own in-memory data -- the video adopts instantly on this
       // path, and pre-fix the TEXT below it sat in skeletons for two round
-      // trips while the media audibly played. Watch route only (a
-      // readerHref return goes to the reader/music surfaces, not watch).
+      // trips while the media audibly played. VIDEO watch route only: a
+      // readerHref carrier skips the seed - reader/music return to their own
+      // surfaces, and (v1.197) a TV episode's readerHref returns to
+      // /watch.html?tv=, whose initTvWatch fetches its own detail and never
+      // consumes the watch seed.
       if (!(currentData && currentData.readerHref) && currentData
         && window.FileTube && typeof window.FileTube.stashWatchSeed === 'function') {
         window.FileTube.stashWatchSeed(Object.assign({}, currentData, { id: currentId }));

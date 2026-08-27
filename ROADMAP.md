@@ -146,7 +146,7 @@ RBAC -> full, never slim) caught two blocking issues, both fixed in one round:**
 Both seats APPROVE. **Dual-Node 7642/0** (Node 22.23.1 + 24.14.0).
 
 **Known limits (disclosed):**
-- **Background audio for episodes** (keep-playing with the screen off) is not wired -
+- **Background audio for episodes** (keep-playing with the screen off) is not wired *(shipped later in v1.197.0)* -
   episodes have no `/audio/:id` extraction sidecar; lock-screen play/pause/next/prev
   DO work. A future wave if wanted.
 - The "up next" episode panel on the watch page and the mobile bottom-nav customizer

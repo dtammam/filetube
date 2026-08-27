@@ -375,7 +375,7 @@ test('setupForMedia() caches backgroundAudioForVideo ONCE via /api/settings (nev
   assert.ok(!/fetch\('\/api\/settings'\)/.test(PLAYER_JS.match(/function attemptBackgroundAudioHandoff\(trigger\) \{([\s\S]*?)\n {2}\}/)[1]), 'the handoff attempt itself must never fetch settings fresh');
 });
 
-test('setupForMedia() gates the settings fetch/pre-warm on video + mobile only, and never for a TV source (desktop/audio/tv items never fetch)', () => {
+test('setupForMedia() gates the settings fetch/pre-warm on video + mobile; a TV source enters IFF it carries its own audio pair (v1.197)', () => {
   const match = /function setupForMedia\(id, data\) \{([\s\S]*?)\n {4}setupMediaSession\(id, data\.channelName, data\.title\);/.exec(PLAYER_JS);
   const body = match[1];
   // v1.196 excluded every TV source; v1.197 re-admits a tv source that carries
