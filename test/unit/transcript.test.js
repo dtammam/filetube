@@ -44,7 +44,7 @@ const ROLLING_VTT = [
 
 test('transcript: rolling auto-captions collapse to each spoken line ONCE, timestamped at its FIRST cue', () => {
   const lines = buildTranscriptLines(parseVttCues(ROLLING_VTT));
-  assert.deepEqual(lines, [
+  assert.deepEqual(lines.map((l) => ({ startMs: l.startMs, text: l.text })), [
     { startMs: 240, text: 'Ladies and gentlemen, welcome' },
     { startMs: 2159, text: 'Dylan show. It is' },
     { startMs: 4720, text: 'the summer' },
@@ -180,12 +180,34 @@ test('transcript: garbage / empty / non-string input yields an empty transcript,
   }
 });
 
-test('transcript: renderTranscriptBody prefixes [m:ss] / [h:mm:ss] only when timestamps are requested', () => {
-  const lines = [{ startMs: 5000, text: 'a' }, { startMs: 65000, text: 'b' }, { startMs: 3600000 + 61000, text: 'c' }];
-  assert.equal(renderTranscriptBody(lines), 'a\nb\nc');
+test('transcript: renderTranscriptBody with timestamps = one [m:ss] row per line (v1.200 shape, unchanged)', () => {
+  const lines = [{ startMs: 5000, endMs: 6000, text: 'a' }, { startMs: 65000, endMs: 66000, text: 'b' }, { startMs: 3600000 + 61000, endMs: 3600000 + 62000, text: 'c' }];
   assert.equal(renderTranscriptBody(lines, { timestamps: true }), '[0:05] a\n[1:05] b\n[1:01:01] c');
-  assert.equal(renderTranscriptBody(lines, { timestamps: false }), 'a\nb\nc');
   assert.equal(formatTranscriptTime(-5), '0:00');
+});
+
+// v1.201 (Dean): "if you don't want [timestamps] it would be good if it was a
+// flat text block without all of those new lines".
+test('transcript: PROSE mode (timestamps off) joins lines with spaces and breaks a paragraph only at a pause >= 2000ms', () => {
+  const lines = [
+    { startMs: 0, endMs: 1000, text: 'Ladies and gentlemen,' },
+    { startMs: 1000, endMs: 2000, text: 'welcome to the show.' },
+    { startMs: 3999, endMs: 5000, text: 'Still the same paragraph (1999ms gap).' },
+    { startMs: 7000, endMs: 8000, text: 'New paragraph (2000ms gap, inclusive).' },
+    { startMs: 8000, endMs: 9000, text: 'Continues.' },
+  ];
+  assert.equal(renderTranscriptBody(lines), 'Ladies and gentlemen, welcome to the show. Still the same paragraph (1999ms gap).\n\nNew paragraph (2000ms gap, inclusive). Continues.');
+  assert.equal(renderTranscriptBody(lines, { timestamps: false }), renderTranscriptBody(lines));
+});
+
+test('transcript: prose mode - lines without endMs never break paragraphs (older callers), and an empty list renders empty', () => {
+  assert.equal(renderTranscriptBody([{ startMs: 0, text: 'a' }, { startMs: 90000, text: 'b' }]), 'a b');
+  assert.equal(renderTranscriptBody([]), '');
+});
+
+test('transcript: buildTranscriptLines carries each line\'s cue endMs (the prose paragraph rule depends on it)', () => {
+  const vtt = ['WEBVTT', '', '00:00:01.000 --> 00:00:02.500', 'A', '', '00:00:05.000 --> 00:00:06.000', 'B', ''].join('\n');
+  assert.deepEqual(buildTranscriptLines(parseVttCues(vtt)), [{ startMs: 1000, endMs: 2500, text: 'A' }, { startMs: 5000, endMs: 6000, text: 'B' }]);
 });
 
 test('transcript: the document header is title / Published <date> / channel, then a blank line, then the body', () => {

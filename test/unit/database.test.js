@@ -63,6 +63,10 @@ const DEFAULT_SETTINGS = {
   // kill switch. ON by default (the bell is the feature; the toggle is
   // Dean's explicit off-lever). See server.js DEFAULT_SETTINGS.
   notificationsEnabled: true,
+  // v1.201 DELIBERATE key-set change: the "Share with AI" prompt list, ONE
+  // default prompt so the action works on day one; an empty list hides it.
+  // See server.js DEFAULT_SETTINGS.
+  transcriptAiPrompts: [{ id: 'summarize', name: 'Summarize', text: "I'm sharing a video transcript below. Summarize the narrative and key points, then note anything notable or questionable." }],
 };
 
 test('loadDatabase: yields a fully-defaulted db when the store is empty (no eager write needed)', () => {

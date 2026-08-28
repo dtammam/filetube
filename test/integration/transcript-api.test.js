@@ -69,19 +69,21 @@ test('GET /api/transcript/:id serves text/plain with the title / Published / cha
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type'), /^text\/plain/);
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
-  assert.equal(await res.text(), 'The Talk\nPublished January 5, 2024\nTim Dylan\n\nLadies and gentlemen\nwelcome back\n');
+  // v1.201: prose mode - the two lines abut (no 2s pause), so ONE paragraph.
+  assert.equal(await res.text(), 'The Talk\nPublished January 5, 2024\nTim Dylan\n\nLadies and gentlemen welcome back\n');
 });
 
 test('GET /api/transcript/:id?timestamps=1 prefixes [m:ss]; other values do not', async () => {
   seedItem('ts', 'talk.en.vtt', ROLLING_VTT, { channelName: 'Tim Dylan' });
   assert.equal(await (await fetch(`${base}/api/transcript/ts?timestamps=1`)).text(), 'The Talk\nAdded August 1, 2026\nTim Dylan\n\n[0:00] Ladies and gentlemen\n[0:02] welcome back\n');
-  assert.equal(await (await fetch(`${base}/api/transcript/ts?timestamps=0`)).text(), 'The Talk\nAdded August 1, 2026\nTim Dylan\n\nLadies and gentlemen\nwelcome back\n');
+  assert.equal(await (await fetch(`${base}/api/transcript/ts?timestamps=0`)).text(), 'The Talk\nAdded August 1, 2026\nTim Dylan\n\nLadies and gentlemen welcome back\n');
 });
 
 test('GET /api/transcript/:id converts a local .srt sidecar and falls back to the folder name as the channel line', async () => {
   const srt = ['1', '00:00:01,000 --> 00:00:02,000', 'Hello <i>there</i>', '', '2', '00:00:05,000 --> 00:00:06,000', 'Bye', ''].join('\n');
   seedItem('srt', 'talk.srt', srt);
-  assert.equal(await (await fetch(`${base}/api/transcript/srt`)).text(), 'The Talk\nAdded August 1, 2026\nSome Folder\n\nHello there\nBye\n');
+  // v1.201 prose mode: the 3s silence between the two cues is a paragraph break.
+  assert.equal(await (await fetch(`${base}/api/transcript/srt`)).text(), 'The Talk\nAdded August 1, 2026\nSome Folder\n\nHello there\n\nBye\n');
 });
 
 test('GET /api/transcript/:id 404s (not 500) when the sidecar vanishes between scan and request', async () => {
