@@ -8,10 +8,23 @@
         <!-- A 2:3 poster tile (the web Shows page's poster wall). /tvposter and
              /tvthumb are FIRST-PARTY, so HDPosterUrl + the inherited scene
              HttpAgent is correct here (the ChannelItem roHttpAgent split is for
-             REMOTE avatar hosts only — gate W6). -->
-        <Rectangle id="posterBg" width="216" height="324" color="0x2A2A2AFF" />
-        <Poster id="poster" width="216" height="324" loadWidth="216" loadHeight="324" loadDisplayMode="scaleToZoom" />
-        <Label id="titleLabel" translation="[0,330]" width="216" font="font:SmallestSystemFont" color="0xF1F1F1FF" />
-        <Label id="metaLabel" translation="[0,356]" width="216" font="font:SmallestSystemFont" color="0x9A9A9AFF" />
+             REMOTE avatar hosts only — gate W6). scaleToZoom = cover (fills the
+             box, crops the excess); a show with no 2:3 poster art falls back to a
+             16:9 episode thumbnail, and cover keeps the tile full-bleed (the web
+             page's object-fit:cover parity). Tile widened v1.199.1 (216 -> 256)
+             so posters read from the couch; title wraps 2 lines with an ellipsis
+             so a long name can never paint over the meta, and the season/episode
+             counts are split onto their own lines. -->
+        <Rectangle id="posterBg" width="256" height="384" color="0x2A2A2AFF" />
+        <Poster id="poster" width="256" height="384" loadWidth="256" loadHeight="384" loadDisplayMode="scaleToZoom" />
+        <Label id="titleLabel" translation="[0,394]" width="256" wrap="true" maxLines="2" font="font:SmallestSystemFont" color="0xF1F1F1FF" />
+        <!-- metaTop is always shown; metaBottom is shown only for the shows wall
+             (seasons wall leaves it empty -> hidden). 28px line pitch is the
+             app's proven-safe SmallestSystemFont spacing (GridItem/ChannelItem
+             both ship title->meta at 28; the old 26 is what overlapped). metaTop
+             sits at 452 = 394 + a full 2-line title (2*28=56) + 2px, so even a
+             wrapped title clears it. -->
+        <Label id="metaTop" translation="[0,452]" width="256" font="font:SmallestSystemFont" color="0x9A9A9AFF" />
+        <Label id="metaBottom" translation="[0,480]" width="256" font="font:SmallestSystemFont" color="0x9A9A9AFF" />
     </children>
 </component>

@@ -80,6 +80,39 @@
 
 ## Shipped
 
+### v1.199.1 - fix: Roku Shows poster wall - bigger tiles, wrapped title, split counts (2026-08-28)
+
+Dean on-device (v1.199.0): the Shows poster wall (the first screen of the Roku
+drill-down) rendered posters too small, the title truncated and overlapped the
+meta line, and "N seasons . M episodes" ran together. Three fixes to the shared
+ShowItem tile + the portrait grid geometry (GridScreen.applyGridGeometry):
+
+- Poster tile widened 216x384 -> 256x384, grid 7 columns -> 6
+  (6*256 + 5*24 spacing + 64 left = 1720 < 1920 FHD). Reads as a poster from
+  the couch; one full row with row 2 peeking ~78% as the scroll cue.
+- titleLabel now wrap=true maxLines=2: a long name wraps to two lines and
+  ellipsizes instead of painting one unclipped line over the meta.
+- The single "N seasons . M episodes" label is split into two stacked lines
+  (metaTop/metaBottom, new ftMetaTop/ftMetaBottom content fields). ShowItem is
+  shared with the seasons wall, which sets only metaTop ("M episodes") and
+  leaves metaBottom "" -> hidden (no stray blank line).
+
+scaleToZoom stays the cover mode (confirmed against the Roku Poster docs), so a
+poster-less show's 16:9 thumbnail stays full-bleed, matching the web page's
+object-fit:cover. Roku channel build bumped 1.3.0 -> 1.3.1.
+
+Slim adversarial gate: round-1 REQUEST CHANGES - the first cut cured the
+horizontal overflow but reused a 26px SmallestSystemFont line pitch between the
+two count lines (and a 54px title->meta budget), and the app's own shipped
+GridItem/ChannelItem prove 28px is the safe pitch and 26px is exactly what
+overlapped. Fixed to a 28px pitch (metaTop 452, metaBottom 480, cell 504 ->
+512); APPROVE round 2. BrightScript remains test-less (the repo's standing
+posture) - **Dean's Roku is the arbiter** (sideload via roku/scripts/deploy.sh).
+On-device probe: a long, 2-line show title's second line vs the count lines (a
+2px clearance that assumes SmallestSystemFont line height <= 28px, at parity
+with the shipped GridItem/ChannelItem layout). **Dual-Node 7653/0** (Node
+22.23.1 + 24.14.0).
+
 ### v1.199.0 - feat: TV shows in the Roku channel (poster wall -> seasons -> episodes -> play, resume synced) (2026-08-27)
 
 Dean: "Can we get shows to show up in the Roku app :)". The in-repo BrightScript
