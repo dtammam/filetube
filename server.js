@@ -131,6 +131,10 @@ const REPO_URL = 'https://github.com/dtammam/filetube';
 // shared by the scan's additive `hasSubtitles` detection below and
 // `GET /api/subtitles/:id` -- see lib/subtitles.js's header comment.
 const subtitles = require('./lib/subtitles');
+// Transcript export (Dean): the sidecar as readable plain text, served by
+// `GET /api/transcript/:id` below -- same sidecar resolver as the subtitles
+// route, so "has captions" and "has a transcript" can never disagree.
+const transcript = require('./lib/transcript');
 // v1.30 A5 (T6): pure sort comparators + format/search predicates +
 // pagination-parameter normalizers shared with the client's own
 // sortItems/filterByMediaType -- see lib/videoQuery.js's header comment and
@@ -17008,6 +17012,45 @@ app.get('/api/subtitles/:id', (req, res) => {
   // response as something else (e.g. HTML) purely from its bytes.
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.send(vttText);
+});
+
+// API: the item's captions as a plain-text TRANSCRIPT (Dean: "allow me to see
+// and then copy/paste the full transcript from the video"). Header = title /
+// Published|Added <date> / channel, blank line, then one spoken line per row
+// (rolling auto-captions de-duplicated -- lib/transcript.js). `?timestamps=1`
+// prefixes each row with `[m:ss]`. Trust posture, RBAC 404 shape, and sidecar
+// resolution are IDENTICAL to `GET /api/subtitles/:id` above (a restricted or
+// unknown item is indistinguishable from one with no captions). Served as
+// text/plain so it is directly useful outside the app (curl, a script, an
+// analysis tool) -- the watch page's Transcript button fetches this same text.
+app.get('/api/transcript/:id', (req, res) => {
+  const db = getCachedDatabase();
+  const item = db.metadata[req.params.id];
+  if (!item || !mediaVisibleTo(req, item)) {
+    return res.status(404).json({ error: 'Media file not found' });
+  }
+  const sidecar = subtitles.findSubtitleSidecar(item.filePath);
+  if (!sidecar) {
+    return res.status(404).json({ error: 'No subtitle track available for this item' });
+  }
+  let vttText;
+  try {
+    const raw = fs.readFileSync(sidecar.path, 'utf8');
+    vttText = sidecar.format === 'srt' ? subtitles.srtToVtt(raw) : raw;
+  } catch (err) {
+    console.error(`Error reading subtitle sidecar for transcript ${req.params.id}:`, err);
+    return res.status(404).json({ error: 'Subtitle file could not be read' });
+  }
+  const timestamps = req.query.timestamps === '1' || req.query.timestamps === 'true';
+  // Channel line: the item's captured channelName, else its folder -- the same
+  // rule the attribute-channel target list uses for an item's display name.
+  const channelName = (typeof item.channelName === 'string' && item.channelName !== '') ? item.channelName : (item.folderName || '');
+  const doc = transcript.vttToTranscriptDocument(vttText, {
+    title: item.title, releaseDate: item.releaseDate, addedAt: item.addedAt, channelName,
+  }, { timestamps });
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.send(doc);
 });
 
 // Serve extracted thumbnail or fallback placeholder

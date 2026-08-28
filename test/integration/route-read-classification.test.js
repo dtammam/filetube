@@ -113,6 +113,7 @@ const READ = {
   '/api/subscriptions/settings': 'NO_CONTENT',
   '/api/subscriptions/status': 'TRACKED', // #150: in-flight download title
   '/api/subtitles/:id': 'GATED',
+  '/api/transcript/:id': 'GATED',
   '/api/trash': 'GATED',
   '/api/users': 'ADMIN',
   '/api/users/:id/avatar': 'NO_CONTENT',

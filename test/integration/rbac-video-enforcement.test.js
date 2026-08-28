@@ -83,6 +83,7 @@ test('SERVE: restricted member gets 404 on every video byte route; unrestricted 
   assert.strictEqual((await asMember('/audio/blocked')).status, 404, '/audio restricted -> 404');
   assert.strictEqual((await asMember('/thumbnail/blocked')).status, 404, '/thumbnail restricted -> 404');
   assert.strictEqual((await asMember('/api/subtitles/blocked')).status, 404, '/api/subtitles restricted -> 404');
+  assert.strictEqual((await asMember('/api/transcript/blocked')).status, 404, '/api/transcript restricted -> 404');
   assert.strictEqual((await asMember('/api/videos/blocked')).status, 404, '/api/videos/:id restricted -> 404');
   assert.strictEqual((await asMember('/api/videos/allowed')).status, 200, '/api/videos/:id unrestricted -> 200');
   // ...and download-intent is not an escape hatch
