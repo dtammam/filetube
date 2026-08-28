@@ -80,6 +80,32 @@
 
 ## Shipped
 
+### v1.199.2 - fix: Roku Shows wall title/counts overlap - revert to the proven single-line tile (2026-08-28)
+
+Dean on-device (v1.199.1): the title and the two count lines STILL overlapped.
+Root cause: v1.199.1's `wrap="true" maxLines="2"` title - a wrapped title's real
+on-device SmallestSystemFont line height exceeds the 28px budget I hand-computed,
+so its second line spills onto the count lines. Hardcoded pixel positions can't
+accommodate a variable-height wrapped label (the "measure, don't guess" lesson).
+
+Fix: mirror the app's OWN shipped GridItem/ChannelItem tiles exactly - three
+single-line, non-wrapping labels at a 28px pitch. A long show name CLIPS with an
+ellipsis at the 256px tile edge (the video grid's own behaviour, confirmed by
+authoritative Roku Label semantics AND 170+ releases of GridItem never bleeding),
+which can never overlap the counts - and a single-line title has no second line
+to spill. titleLabel drops wrap/maxLines (@392); metaTop @420, metaBottom @448;
+portrait itemSize height 512 -> 480 (row 2 now peeks ~90%). Channel build
+1.3.1 -> 1.3.2.
+
+Trade disclosed: a very long name truncates rather than wraps (app-consistent; a
+clean ellipsis beats an overlap). A 2-line wrapped title is possible via a
+LayoutGroup (auto-stacks variable-height children) but needs on-device iteration
+- deferred, Dean's call. Slim adversarial gate APPROVE, no findings (the
+clip-vs-overflow assumption was the load-bearing surface; confirmed). Resume
+report investigated and CLEARED - a transient dev-deploy state, Dean confirmed
+resume works. BrightScript is test-less - **Dean's Roku is the arbiter** (sideload
+roku/scripts/deploy.sh). **Dual-Node 7653/0** (Node 22.23.1 + 24.14.0).
+
 ### v1.199.1 - fix: Roku Shows poster wall - bigger tiles, wrapped title, split counts (2026-08-28)
 
 Dean on-device (v1.199.0): the Shows poster wall (the first screen of the Roku

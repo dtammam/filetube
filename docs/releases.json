@@ -2302,5 +2302,11 @@
     "date": "2026-08-28",
     "title": "The Roku Shows wall looks right now",
     "intent": "The first screen of Shows on the Roku - the wall of posters - got a cleanup. The posters are bigger, so they actually look like posters from across the room. A long show name now wraps onto a second line instead of getting cut off or running over the text beneath it. And the season and episode counts sit on their own separate lines instead of crowding together. Redeploy the channel to your Roku from this version to get it."
+  },
+  {
+    "version": "1.199.2",
+    "date": "2026-08-28",
+    "title": "Roku Shows wall: text no longer overlaps",
+    "intent": "A follow-up to the last Roku change: the show name and the season/episode counts were still overlapping each other on the poster wall. Now each show's name sits on its own line and the two count lines sit cleanly below it, the same tidy way the video grid already looks. A really long show name is trimmed with an ellipsis at the edge of its poster instead of running over the text beneath it. Redeploy the channel to your Roku from this version to get it."
   }
 ]
