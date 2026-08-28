@@ -1,8 +1,9 @@
 'use strict';
 
 // [UNIT] v1.201 (Dean: "on desktop the button moves over to a 2nd row if not
-// in theatre mode"): the labelled action row fits only a column wider than
-// ~1095px, so the WORDS are dropped (glyphs kept) via a CSS container query
+// in theatre mode"): the ten labelled buttons are 953px (the stars wrap
+// onto their own line), so below a 960px column the WORDS are dropped
+// (glyphs kept) via a CSS container query
 // on `.watch-action-bar` - driven by the COLUMN, not the viewport, which is
 // what lets theatre (wide column) keep the words at the same viewport width
 // where the non-theatre column (sidebar beside it) shows glyphs. Locks the

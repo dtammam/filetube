@@ -200,9 +200,25 @@ test('transcript: PROSE mode (timestamps off) joins lines with spaces and breaks
   assert.equal(renderTranscriptBody(lines, { timestamps: false }), renderTranscriptBody(lines));
 });
 
-test('transcript: prose mode - lines without endMs never break paragraphs (older callers), and an empty list renders empty', () => {
-  assert.equal(renderTranscriptBody([{ startMs: 0, text: 'a' }, { startMs: 90000, text: 'b' }]), 'a b');
+test('transcript: prose mode - a line without endMs measures the pause from its start; an empty list renders empty', () => {
+  assert.equal(renderTranscriptBody([{ startMs: 0, text: 'a' }, { startMs: 90000, text: 'b' }]), 'a\n\nb');
+  assert.equal(renderTranscriptBody([{ startMs: 0, text: 'a' }, { startMs: 1000, text: 'b' }]), 'a b');
   assert.equal(renderTranscriptBody([]), '');
+});
+
+// GATE (QA S6): a line first shown in a SHORT cue and then rolled through a
+// LONG one stays on screen the whole time - the pause clock must run from
+// the rolled cue's end, or a false paragraph opens after continuous speech.
+test('transcript: a rolled line\'s endMs extends through every cue it rolls into (no false paragraph)', () => {
+  const vtt = [
+    'WEBVTT', '',
+    '00:00:00.000 --> 00:00:00.100', 'A', '',
+    '00:00:00.100 --> 00:00:03.000', 'A', '',
+    '00:00:03.000 --> 00:00:04.000', 'B', '',
+  ].join('\n');
+  const lines = buildTranscriptLines(parseVttCues(vtt));
+  assert.deepEqual(lines, [{ startMs: 0, endMs: 3000, text: 'A' }, { startMs: 3000, endMs: 4000, text: 'B' }]);
+  assert.equal(renderTranscriptBody(lines), 'A B');
 });
 
 test('transcript: buildTranscriptLines carries each line\'s cue endMs (the prose paragraph rule depends on it)', () => {

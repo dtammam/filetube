@@ -19,9 +19,12 @@ function contentTypeFor(p) { return p.endsWith('.js') ? 'text/javascript' : p.en
 
 const TWO = [{ id: 'summarize', name: 'Summarize', text: 'Sum it up.' }, { id: 'analyze', name: 'Analyze', text: 'Analyze it.' }];
 
-function loadSetup({ prompts, postStatus }) {
+// `holdPosts`: when true every POST response is parked in `released` until the
+// test resolves it (for the in-flight-response race).
+function loadSetup({ prompts, postStatus, holdPosts }) {
   const html = fs.readFileSync(path.join(PUBLIC_DIR, 'setup.html'), 'utf8');
   const posts = [];
+  const released = [];
   return new Promise((resolve) => {
     const dom = new JSDOM(html, {
       url: 'https://filetube.example/setup.html',
@@ -47,16 +50,21 @@ function loadSetup({ prompts, postStatus }) {
             posts.push(body);
             if (postStatus === 400) return Promise.resolve({ ok: false, status: 400, json: () => Promise.resolve({ error: 'transcriptAiPrompts[0].name must be 1-60 characters' }) });
             // Echo the server's normalization: ids from names.
+            // The REAL server rule for a blank row: 400 on the whole list.
+            const bad = body.transcriptAiPrompts.findIndex((p) => !p.name || !p.name.trim() || !p.text || !p.text.trim());
+            if (bad !== -1) return Promise.resolve({ ok: false, status: 400, json: () => Promise.resolve({ error: `transcriptAiPrompts[${bad}].name must be 1-60 characters` }) });
             current = body.transcriptAiPrompts.map((p) => ({ id: p.id || p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: p.name.trim(), text: p.text.trim() }));
-            return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ transcriptAiPrompts: current }) });
+            const answer = { ok: true, status: 200, json: () => Promise.resolve({ transcriptAiPrompts: current }) };
+            if (holdPosts) return new Promise((resolve) => released.push(() => resolve(answer)));
+            return Promise.resolve(answer);
           }
           if (url.indexOf('/api/auth/me') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ user: { username: 'dean', role: 'admin' }, settings: {} }) });
           return new Promise(() => {}); // everything else hangs
         };
       },
     });
-    dom.window.addEventListener('load', () => setTimeout(() => resolve({ dom, posts }), 60));
-    setTimeout(() => resolve({ dom, posts }), 5000);
+    dom.window.addEventListener('load', () => setTimeout(() => resolve({ dom, posts, released }), 60));
+    setTimeout(() => resolve({ dom, posts, released }), 5000);
   });
 }
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -137,4 +145,97 @@ test('setup.html: the section is registered like its siblings (setup-box, collap
   const section = html.slice(html.indexOf('data-collapse-key="transcript-ai"'));
   const end = section.indexOf('</details>');
   assert.ok(!section.slice(0, end).includes('reveal-toggle'), 'the editor is fed by its own fetch, not the automation-settings barrier (the v1.96 rule)');
+});
+
+// ---- GATE fix round 1 (both seats): the blank Add row must never poison a save ----
+function typeInto(dom, el, value) { el.value = value; el.dispatchEvent(new dom.window.Event('input', { bubbles: true })); }
+
+test('setup: Add -> type only a NAME: nothing is POSTed and no error shows until the row is whole; completing it saves it', async () => {
+  const { dom, posts } = await loadSetup({ prompts: TWO });
+  try {
+    await wait(100);
+    const d = dom.window.document;
+    d.getElementById('transcript-ai-add-btn').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+    await wait(50);
+    typeInto(dom, rows(d)[2].querySelector('.transcript-ai-prompt-name'), 'Analyze');
+    await wait(600);
+    assert.strictEqual(posts.length, 0, 'a half-filled NEW row is not part of the list yet');
+    assert.strictEqual(d.getElementById('transcript-ai-error').textContent, '', 'no red error while still authoring');
+    typeInto(dom, rows(d)[2].querySelector('.transcript-ai-prompt-text'), 'Analyze this.');
+    await wait(600);
+    assert.strictEqual(posts.length, 1);
+    assert.deepStrictEqual(posts[0].transcriptAiPrompts.map((p) => p.name), ['Summarize', 'Analyze', 'Analyze']);
+  } finally { dom.window.close(); }
+});
+
+test('setup: with a blank Add row present, Remove of another row and an edit of an existing row both PERSIST (the blank row is left out of the POST)', async () => {
+  const { dom, posts } = await loadSetup({ prompts: TWO });
+  try {
+    await wait(100);
+    const d = dom.window.document;
+    d.getElementById('transcript-ai-add-btn').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+    await wait(50);
+    typeInto(dom, rows(d)[1].querySelector('.transcript-ai-prompt-text'), 'Analyze it thoroughly.');
+    await wait(600);
+    assert.strictEqual(posts.length, 1);
+    assert.deepStrictEqual(posts[0].transcriptAiPrompts.map((p) => p.text), ['Sum it up.', 'Analyze it thoroughly.'], 'the edit went, the blank row did not');
+    rows(d)[0].querySelector('button.btn').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+    await wait(100);
+    assert.strictEqual(posts.length, 2);
+    assert.deepStrictEqual(posts[1].transcriptAiPrompts.map((p) => p.id), ['analyze'], 'the remove persisted; no blank row');
+    assert.strictEqual(d.getElementById('transcript-ai-error').textContent, '');
+  } finally { dom.window.close(); }
+});
+
+test('setup: blanking an EXISTING prompt (it has an id) still reaches the server and shows its 400', async () => {
+  const { dom, posts } = await loadSetup({ prompts: TWO });
+  try {
+    await wait(100);
+    const d = dom.window.document;
+    typeInto(dom, rows(d)[0].querySelector('.transcript-ai-prompt-name'), '');
+    await wait(600);
+    assert.strictEqual(posts.length, 1, 'a row WITH an id always goes');
+    assert.match(d.getElementById('transcript-ai-error').textContent, /transcriptAiPrompts\[0\]/);
+  } finally { dom.window.close(); }
+});
+
+test('setup: a save response never re-renders while a field is focused (the caret and typed text survive)', async () => {
+  const { dom, posts } = await loadSetup({ prompts: TWO });
+  try {
+    await wait(100);
+    const d = dom.window.document;
+    const ta = rows(d)[1].querySelector('.transcript-ai-prompt-text');
+    ta.focus();
+    typeInto(dom, ta, 'Analyze it more');
+    await wait(600);
+    assert.strictEqual(posts.length, 1);
+    assert.strictEqual(d.activeElement, ta, 'the SAME node is still focused - no re-render swapped it');
+    assert.strictEqual(ta.value, 'Analyze it more');
+  } finally { dom.window.close(); }
+});
+
+test('setup: an in-flight save response is IGNORED when a newer burst is pending or superseded it (no clobber)', async () => {
+  const { dom, posts, released } = await loadSetup({ prompts: TWO, holdPosts: true });
+  try {
+    await wait(100);
+    const d = dom.window.document;
+    const a = rows(d)[0].querySelector('.transcript-ai-prompt-text');
+    typeInto(dom, a, 'First edit.');
+    await wait(600); // POST 1 fires and is HELD
+    assert.strictEqual(posts.length, 1);
+    const b = rows(d)[1].querySelector('.transcript-ai-prompt-text');
+    b.focus();
+    typeInto(dom, b, 'Second edit, still typing');
+    b.blur();
+    await wait(100); // POST 2's debounce is pending; nothing focused
+    released[0](); // POST 1's answer lands NOW (carries the OLD row B)
+    await wait(50);
+    assert.strictEqual(rows(d)[1].querySelector('.transcript-ai-prompt-text').value, 'Second edit, still typing', 'the stale answer did not revert B');
+    await wait(500); // POST 2 fires
+    assert.strictEqual(posts.length, 2);
+    assert.strictEqual(posts[1].transcriptAiPrompts[1].text, 'Second edit, still typing', 'POST 2 carries the NEW B, not a re-rendered old one');
+    released[1]();
+    await wait(50);
+    assert.strictEqual(rows(d)[1].querySelector('.transcript-ai-prompt-text').value, 'Second edit, still typing');
+  } finally { dom.window.close(); }
 });

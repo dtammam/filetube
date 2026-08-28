@@ -100,3 +100,14 @@ test('POST /api/settings: a non-admin member gets 403 on the prompts (existing w
   const seen = await (await fetch(`${base}/api/settings`, { headers: { Cookie: member.cookie } })).json();
   assert.deepEqual(seen.transcriptAiPrompts, [DEFAULT_PROMPT]);
 });
+
+// GATE (adversarial W2): the id rules were present but UNBOUND.
+test('POST /api/settings: a KNOWN id claimed twice in one request is kept once (the second re-mints); an UNKNOWN client id is never trusted', async () => {
+  await post({ transcriptAiPrompts: [{ name: 'Summarize', text: 'a' }] });
+  let res = await post({ transcriptAiPrompts: [{ id: 'summarize', name: 'A', text: 'x' }, { id: 'summarize', name: 'B', text: 'y' }] });
+  assert.equal(res.status, 200);
+  assert.deepEqual((await getPrompts()).map((p) => p.id), ['summarize', 'b']);
+  res = await post({ transcriptAiPrompts: [{ id: '<script>evil</script>', name: 'A', text: 'x' }, { id: 'not-in-the-list', name: 'B', text: 'y' }] });
+  assert.equal(res.status, 200);
+  assert.deepEqual((await getPrompts()).map((p) => p.id), ['a', 'b'], 'ids are re-minted from the names - a client id is honoured only when it already exists');
+});

@@ -1260,9 +1260,6 @@ function moveBottomBarItem(items, from, to, signal) {
   renderBottomBarEditor(signal);
 }
 
-// GET /api/settings on load: populate all four controls, plus the
-// size-cap placeholder from effectiveCacheMaxBytes (the env-var/5GB
-// default that applies whenever no UI override is persisted).
 // ---- v1.201 (Dean): "Share with AI" prompt editor ----------------------------
 //
 // Renders `settings.transcriptAiPrompts` (GET /api/settings) as one row per
@@ -1281,12 +1278,20 @@ function renderTranscriptAiPromptsEditor(signal) {
   let prompts = [];
   let saveTimer = null;
 
+  // Every row as typed. A NEW row (no server id yet) is part of the list
+  // only once it is WHOLE - name and text both non-blank. Gate finding
+  // (both seats): the blank "Add prompt" row used to ride along in every
+  // POST and 400 the whole list, so a fresh prompt tripped an error on its
+  // first keystroke, a Remove of another row did not persist, and edits to
+  // existing prompts were silently lost while the blank row existed. A row
+  // that HAS an id always goes, so blanking an existing prompt still
+  // surfaces the server's 400 as designed.
   function readRows() {
     return Array.from(host.querySelectorAll('.transcript-ai-prompt-row')).map((row) => ({
       id: row.dataset.promptId || undefined,
       name: row.querySelector('.transcript-ai-prompt-name').value,
       text: row.querySelector('.transcript-ai-prompt-text').value,
-    }));
+    })).filter((r) => r.id || (r.name.trim() !== '' && r.text.trim() !== ''));
   }
 
   function scheduleSave() {
@@ -1294,15 +1299,23 @@ function renderTranscriptAiPromptsEditor(signal) {
     saveTimer = setTimeout(saveNow, 400);
   }
 
+  let saveSeq = 0; // gate finding: an in-flight response must never clobber a newer burst
+  let lastSaved = null; // JSON of the list the server last confirmed - an unchanged list is not re-POSTed
   async function saveNow() {
     saveTimer = null;
-    const data = await saveAutomationSetting('transcriptAiPrompts', readRows(), errorEl);
+    const rowsNow = readRows();
+    const key = JSON.stringify(rowsNow.map((r) => [r.id || '', r.name.trim(), r.text.trim()]));
+    if (key === lastSaved) return; // e.g. typing into a still-incomplete new row
+    const seq = ++saveSeq;
+    const data = await saveAutomationSetting('transcriptAiPrompts', rowsNow, errorEl);
+    if (seq !== saveSeq) return; // a newer save superseded this one - its answer wins
     if (!data || !Array.isArray(data.transcriptAiPrompts)) return; // 400: rows stay as typed, error shown
     prompts = data.transcriptAiPrompts;
-    // Re-render ONLY when the canonical shape differs from what is typed
-    // (ids assigned / trimming) and no field is focused, so a save never
-    // yanks the caret mid-word.
-    if (!host.contains(document.activeElement)) render();
+    lastSaved = JSON.stringify(prompts.map((r) => [r.id || '', r.name, r.text]));
+    // Re-render (ids assigned / trimming applied) ONLY when nothing newer is
+    // pending and no field is focused, so a save never yanks the caret or
+    // reverts keystrokes typed while the request was in flight.
+    if (saveTimer === null && !host.contains(document.activeElement)) render();
   }
 
   function render() {
@@ -1359,11 +1372,15 @@ function renderTranscriptAiPromptsEditor(signal) {
     .then((s) => {
       if (signal.aborted) return;
       prompts = (s && Array.isArray(s.transcriptAiPrompts)) ? s.transcriptAiPrompts : [];
+      lastSaved = JSON.stringify(prompts.map((r) => [r.id || '', r.name, r.text]));
       render();
     })
     .catch(() => { if (!signal.aborted) setFieldError(errorEl, 'Could not load the prompts.'); });
 }
 
+// GET /api/settings on load: populate all four controls, plus the
+// size-cap placeholder from effectiveCacheMaxBytes (the env-var/5GB
+// default that applies whenever no UI override is persisted).
 async function loadAutomationSettings() {
   try {
     const r = await fetch('/api/settings');
