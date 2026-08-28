@@ -1263,6 +1263,107 @@ function moveBottomBarItem(items, from, to, signal) {
 // GET /api/settings on load: populate all four controls, plus the
 // size-cap placeholder from effectiveCacheMaxBytes (the env-var/5GB
 // default that applies whenever no UI override is persisted).
+// ---- v1.201 (Dean): "Share with AI" prompt editor ----------------------------
+//
+// Renders `settings.transcriptAiPrompts` (GET /api/settings) as one row per
+// prompt - a name input, a prompt textarea, Remove - plus "Add prompt". Every
+// edit saves the WHOLE list (the server validates + normalizes and returns
+// the canonical rows with ids), debounced per keystroke so typing a prompt
+// is one POST, not forty. createElement/textContent only (prompt text is
+// user-authored). A 400 (empty name/text, duplicate name, too long) lands in
+// the section's field-error line and the rows stay as typed so the user can
+// fix them; a successful save re-renders from the server's answer.
+function renderTranscriptAiPromptsEditor(signal) {
+  const host = document.getElementById('transcript-ai-prompts');
+  const addBtn = document.getElementById('transcript-ai-add-btn');
+  const errorEl = document.getElementById('transcript-ai-error');
+  if (!host || !addBtn) return;
+  let prompts = [];
+  let saveTimer = null;
+
+  function readRows() {
+    return Array.from(host.querySelectorAll('.transcript-ai-prompt-row')).map((row) => ({
+      id: row.dataset.promptId || undefined,
+      name: row.querySelector('.transcript-ai-prompt-name').value,
+      text: row.querySelector('.transcript-ai-prompt-text').value,
+    }));
+  }
+
+  function scheduleSave() {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveNow, 400);
+  }
+
+  async function saveNow() {
+    saveTimer = null;
+    const data = await saveAutomationSetting('transcriptAiPrompts', readRows(), errorEl);
+    if (!data || !Array.isArray(data.transcriptAiPrompts)) return; // 400: rows stay as typed, error shown
+    prompts = data.transcriptAiPrompts;
+    // Re-render ONLY when the canonical shape differs from what is typed
+    // (ids assigned / trimming) and no field is focused, so a save never
+    // yanks the caret mid-word.
+    if (!host.contains(document.activeElement)) render();
+  }
+
+  function render() {
+    host.replaceChildren();
+    prompts.forEach((prompt) => {
+      const row = document.createElement('div');
+      row.className = 'transcript-ai-prompt-row';
+      if (prompt.id) row.dataset.promptId = prompt.id;
+      const head = document.createElement('div');
+      head.className = 'transcript-ai-prompt-head';
+      const name = document.createElement('input');
+      name.type = 'text';
+      name.className = 'transcript-ai-prompt-name';
+      name.placeholder = 'Prompt name (e.g. Summarize)';
+      name.maxLength = 60;
+      name.value = prompt.name || '';
+      name.setAttribute('aria-label', 'Prompt name');
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'btn';
+      removeBtn.textContent = 'Remove';
+      head.appendChild(name);
+      head.appendChild(removeBtn);
+      const text = document.createElement('textarea');
+      text.className = 'transcript-ai-prompt-text';
+      text.placeholder = 'What to ask the AI - it goes in front of the transcript.';
+      text.maxLength = 4000;
+      text.value = prompt.text || '';
+      text.setAttribute('aria-label', 'Prompt text');
+      row.appendChild(head);
+      row.appendChild(text);
+      host.appendChild(row);
+      name.addEventListener('input', scheduleSave, { signal });
+      text.addEventListener('input', scheduleSave, { signal });
+      removeBtn.addEventListener('click', () => {
+        row.remove();
+        if (saveTimer) clearTimeout(saveTimer);
+        saveNow();
+      }, { signal });
+    });
+  }
+
+  addBtn.addEventListener('click', () => {
+    // A blank row is NOT saved until it has a name and text (the server
+    // would 400 it) - it just appears for editing.
+    prompts = readRows().concat([{ name: '', text: '' }]);
+    render();
+    const rows = host.querySelectorAll('.transcript-ai-prompt-name');
+    if (rows.length) rows[rows.length - 1].focus();
+  }, { signal });
+
+  fetch('/api/settings')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((s) => {
+      if (signal.aborted) return;
+      prompts = (s && Array.isArray(s.transcriptAiPrompts)) ? s.transcriptAiPrompts : [];
+      render();
+    })
+    .catch(() => { if (!signal.aborted) setFieldError(errorEl, 'Could not load the prompts.'); });
+}
+
 async function loadAutomationSettings() {
   try {
     const r = await fetch('/api/settings');
@@ -3355,6 +3456,7 @@ function init(root) {
   renderLibraryGlyphEditor(controller.signal); // v1.77 Library-icon pickers (Appearance box)
   renderTrashSection(controller.signal); // v1.65 trash list + actions
   renderFeedHiddenSection(controller.signal); // v1.97.1 Hidden (feed-hide restore) list
+  renderTranscriptAiPromptsEditor(controller.signal); // v1.201 "Share with AI" prompts
 
   loadAutomationSettings();
   loadCacheSize();

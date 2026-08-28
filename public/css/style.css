@@ -3985,6 +3985,52 @@ a.sub-row-channel-link:focus-visible {
   margin: 0;
 }
 
+/* v1.201 (Dean): the Settings-page "Share with AI" prompt editor - one row
+   per prompt (name input, prompt textarea, Remove), saved on change.
+   Tokens only; the textarea reuses the chapters-editor field vocabulary. */
+.transcript-ai-prompts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  margin: var(--space-6) 0;
+}
+.transcript-ai-prompt-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+}
+.transcript-ai-prompt-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.transcript-ai-prompt-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-base);
+  padding: var(--space-3) var(--space-4);
+  background: var(--input-bg, var(--header-bg));
+  color: var(--text-primary);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+}
+.transcript-ai-prompt-text {
+  width: 100%;
+  min-height: 96px; /* token-exempt: layout geometry (four-line prompt field) */
+  font-family: inherit;
+  font-size: var(--fs-base);
+  line-height: var(--lh-relaxed);
+  padding: var(--space-4);
+  background: var(--input-bg, var(--header-bg));
+  color: var(--text-primary);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  resize: vertical;
+}
+
 /* v1.97.1 "Hidden" settings-page section (setup.js renderFeedHiddenSection) -
    the feed-hide restore list, mirroring the Trash section's row layout. The
    settings page scrolls naturally, so no internal max-height/overflow (the
