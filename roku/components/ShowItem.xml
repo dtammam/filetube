@@ -19,9 +19,12 @@
         <Poster id="poster" width="256" height="384" loadWidth="256" loadHeight="384" loadDisplayMode="scaleToZoom" />
         <Label id="titleLabel" translation="[0,394]" width="256" wrap="true" maxLines="2" font="font:SmallestSystemFont" color="0xF1F1F1FF" />
         <!-- metaTop is always shown; metaBottom is shown only for the shows wall
-             (seasons wall leaves it empty -> hidden). Positioned below the title's
-             2-line max so a wrapped title never collides with the counts. -->
-        <Label id="metaTop" translation="[0,448]" width="256" font="font:SmallestSystemFont" color="0x9A9A9AFF" />
-        <Label id="metaBottom" translation="[0,474]" width="256" font="font:SmallestSystemFont" color="0x9A9A9AFF" />
+             (seasons wall leaves it empty -> hidden). 28px line pitch is the
+             app's proven-safe SmallestSystemFont spacing (GridItem/ChannelItem
+             both ship title->meta at 28; the old 26 is what overlapped). metaTop
+             sits at 452 = 394 + a full 2-line title (2*28=56) + 2px, so even a
+             wrapped title clears it. -->
+        <Label id="metaTop" translation="[0,452]" width="256" font="font:SmallestSystemFont" color="0x9A9A9AFF" />
+        <Label id="metaBottom" translation="[0,480]" width="256" font="font:SmallestSystemFont" color="0x9A9A9AFF" />
     </children>
 </component>

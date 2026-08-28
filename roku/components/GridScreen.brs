@@ -117,10 +117,11 @@ end sub
 sub applyGridGeometry(mode as string)
     if mode = "portrait"
         ' Bigger poster tiles (v1.199.1): 256x384 poster + a wrapped 2-line title
-        ' and two count lines below (itemSize height 504). 6 columns:
-        ' 6*256 + 5*24 spacing + 64 left = 1720 < 1920. Row 2 peeks (~73% at
-        ' 1080) which is the poster-wall scroll cue, not a clip bug.
-        m.grid.itemSize = [256, 504]
+        ' and two count lines below at the proven 28px pitch (metaBottom bottom
+        ' 480+28=508 < 512 cell). 6 columns: 6*256 + 5*24 spacing + 64 left =
+        ' 1720 < 1920. Row 2 peeks (~78% at 1080: 1080-(140+512+28)=400, 400/512)
+        ' which is the poster-wall scroll cue, not a clip bug.
+        m.grid.itemSize = [256, 512]
         m.grid.numColumns = 6
         m.grid.numRows = 2
     else
