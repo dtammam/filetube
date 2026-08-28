@@ -116,8 +116,12 @@ end sub
 ' every mode change re-asserts its own geometry.
 sub applyGridGeometry(mode as string)
     if mode = "portrait"
-        m.grid.itemSize = [216, 384]
-        m.grid.numColumns = 7
+        ' Bigger poster tiles (v1.199.1): 256x384 poster + a wrapped 2-line title
+        ' and two count lines below (itemSize height 504). 6 columns:
+        ' 6*256 + 5*24 spacing + 64 left = 1720 < 1920. Row 2 peeks (~73% at
+        ' 1080) which is the poster-wall scroll cue, not a clip bug.
+        m.grid.itemSize = [256, 504]
+        m.grid.numColumns = 6
         m.grid.numRows = 2
     else
         m.grid.itemSize = [336, 252]
@@ -284,10 +288,14 @@ sub onShowsResult()
     m.shows = result.shows
     for each sh in m.shows
         node = CreateObject("roSGNode", "ContentNode")
-        node.AddFields({ ftShowId: "", ftDurationText: "" })
+        node.AddFields({ ftShowId: "", ftDurationText: "", ftMetaTop: "", ftMetaBottom: "" })
         node.title = sh.name
         node.ftShowId = sh.id
-        node.ftDurationText = pluralCount(sh.seasonCount, "season") + " · " + pluralCount(sh.episodeCount, "episode")
+        ' Season/episode counts split onto their own lines (ShowItem stacks them);
+        ' ftDurationText kept as the single-line join for parity/diagnostics.
+        node.ftMetaTop = pluralCount(sh.seasonCount, "season")
+        node.ftMetaBottom = pluralCount(sh.episodeCount, "episode")
+        node.ftDurationText = node.ftMetaTop + " · " + node.ftMetaBottom
         ' First-party poster: HDPosterUrl + the inherited scene agent is correct
         ' (ids are md5 hex, URL-safe by construction -- the /thumbnail/ pattern).
         node.HDPosterUrl = m.top.serverUrl + "/tvposter/" + sh.id
@@ -353,9 +361,12 @@ sub buildSeasonNodes()
     if m.showDetail = invalid then return
     for each s in m.showDetail.seasons
         node = CreateObject("roSGNode", "ContentNode")
-        node.AddFields({ ftDurationText: "" })
+        node.AddFields({ ftDurationText: "", ftMetaTop: "", ftMetaBottom: "" })
         node.title = s.label
-        node.ftDurationText = pluralCount(s.episodes.Count(), "episode")
+        ' Season tile: one count line ("M episodes"); ftMetaBottom stays "" so
+        ' ShowItem hides its second line.
+        node.ftMetaTop = pluralCount(s.episodes.Count(), "episode")
+        node.ftDurationText = node.ftMetaTop
         node.HDPosterUrl = m.top.serverUrl + "/tvposter/" + m.showDetail.showId
         m.contentRoot.AppendChild(node)
     end for
