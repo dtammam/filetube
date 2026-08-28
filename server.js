@@ -408,8 +408,58 @@ const DEFAULT_SETTINGS = {
   // decision 8). NOTE: `notificationsSeededAt` (the one-shot seeding stamp)
   // also lives in db.settings but is deliberately NOT here or in KNOWN_KEYS
   // -- it is internal bookkeeping, never a user-settable value.
-  notificationsEnabled: true
+  notificationsEnabled: true,
+  // v1.201 (Dean): the "Share with AI" prompts - named preambles sent in
+  // front of a transcript through the share sheet. Instance-wide (admin
+  // edits, everyone reads), several allowed (a summary prompt, an analysis
+  // prompt...). An EMPTY list hides the AI action. Validated by
+  // validateTranscriptAiPrompts below; ids are server-assigned.
+  transcriptAiPrompts: [
+    { id: 'summarize', name: 'Summarize', text: "I'm sharing a video transcript below. Summarize the narrative and key points, then note anything notable or questionable." }
+  ]
 };
+
+// v1.201: shape rules for `transcriptAiPrompts` (see DEFAULT_SETTINGS).
+const TRANSCRIPT_AI_PROMPTS_MAX = 12;
+const TRANSCRIPT_AI_PROMPT_NAME_MAX = 60;
+const TRANSCRIPT_AI_PROMPT_TEXT_MAX = 4000;
+/**
+ * Validate + normalize a client-supplied prompt list. Returns
+ * `{ ok: true, value }` (ids assigned/preserved, strings trimmed) or
+ * `{ ok: false, error }` (a human-readable 400 body). Pure.
+ * @param {*} raw the POSTed value
+ * @param {Array<{id:string,name:string,text:string}>} [existing] current list, so a
+ *   client that omits/keeps an id keeps it stable across edits
+ */
+function validateTranscriptAiPrompts(raw, existing) {
+  if (!Array.isArray(raw)) return { ok: false, error: 'transcriptAiPrompts must be an array' };
+  if (raw.length > TRANSCRIPT_AI_PROMPTS_MAX) return { ok: false, error: `transcriptAiPrompts: at most ${TRANSCRIPT_AI_PROMPTS_MAX} prompts` };
+  const existingIds = new Set((Array.isArray(existing) ? existing : []).map((e) => e && e.id).filter((x) => typeof x === 'string'));
+  const seenNames = new Set();
+  const seenIds = new Set();
+  const out = [];
+  for (let i = 0; i < raw.length; i++) {
+    const item = raw[i];
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return { ok: false, error: `transcriptAiPrompts[${i}] must be an object` };
+    const name = typeof item.name === 'string' ? item.name.trim() : '';
+    const text = typeof item.text === 'string' ? item.text.trim() : '';
+    if (name === '' || name.length > TRANSCRIPT_AI_PROMPT_NAME_MAX) return { ok: false, error: `transcriptAiPrompts[${i}].name must be 1-${TRANSCRIPT_AI_PROMPT_NAME_MAX} characters` };
+    if (text === '' || text.length > TRANSCRIPT_AI_PROMPT_TEXT_MAX) return { ok: false, error: `transcriptAiPrompts[${i}].text must be 1-${TRANSCRIPT_AI_PROMPT_TEXT_MAX} characters` };
+    const nameKey = name.toLowerCase();
+    if (seenNames.has(nameKey)) return { ok: false, error: `transcriptAiPrompts: duplicate name "${name}"` };
+    seenNames.add(nameKey);
+    // Keep a known id; otherwise mint one from the name (unique within the list).
+    let id = (typeof item.id === 'string' && existingIds.has(item.id) && !seenIds.has(item.id)) ? item.id : '';
+    if (id === '') {
+      const base = nameKey.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'prompt';
+      id = base;
+      for (let n = 2; seenIds.has(id) || (existingIds.has(id) && raw.some((r, j) => j !== i && r && r.id === id)); n++) id = `${base}-${n}`;
+    }
+    seenIds.add(id);
+    out.push({ id, name, text });
+  }
+  return { ok: true, value: out };
+}
 
 // Per-key merge so a partial/older `settings` object keeps whatever keys it
 // already has and only gets the missing ones defaulted (mirrors the
@@ -7722,6 +7772,9 @@ function settingsResponse(settings) {
     relocateHydratedImports: settings.relocateHydratedImports,
     // v1.51: the notification bell's instance-wide toggle (see DEFAULT_SETTINGS).
     notificationsEnabled: settings.notificationsEnabled,
+    // v1.201: the "Share with AI" prompt list (see DEFAULT_SETTINGS). Always
+    // an array - a pre-v1.201 db without the key falls back to the default.
+    transcriptAiPrompts: Array.isArray(settings.transcriptAiPrompts) ? settings.transcriptAiPrompts : DEFAULT_SETTINGS.transcriptAiPrompts,
     effectiveCacheMaxBytes: effectiveCacheCap(settings),
     // v1.32 (custom logo): READ-ONLY here -- managed exclusively by the
     // dedicated POST/DELETE /api/settings/logo routes below (never via the
@@ -9773,7 +9826,7 @@ app.post('/api/settings', async (req, res) => {
   // test/integration/settings-cache-api.test.js's full-shape assertion, both
   // updated in the same commit): `relocateHydratedImports` joins the set --
   // the reheat's "move a hydrated import into its channel folder" lever.
-  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'trashRetentionDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer', 'preExtractAudio', 'bgAudioSyncPosition', 'relocateHydratedImports', 'notificationsEnabled'];
+  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'trashRetentionDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer', 'preExtractAudio', 'bgAudioSyncPosition', 'relocateHydratedImports', 'notificationsEnabled', 'transcriptAiPrompts'];
   for (const key of Object.keys(body)) {
     if (!KNOWN_KEYS.includes(key)) {
       return res.status(400).json({ error: `unknown settings key: ${key}` });
@@ -9843,6 +9896,14 @@ app.post('/api/settings', async (req, res) => {
   // v1.51: notificationsEnabled -- boolean, mirrors pruneMissing exactly.
   if ('notificationsEnabled' in body && typeof body.notificationsEnabled !== 'boolean') {
     return res.status(400).json({ error: 'notificationsEnabled must be a boolean' });
+  }
+  // v1.201: transcriptAiPrompts -- validated + NORMALIZED (trimmed, ids
+  // assigned) before the merge, so what persists is always the canonical
+  // shape; a bad list rejects the WHOLE request (nothing partially persists).
+  if ('transcriptAiPrompts' in body) {
+    const checked = validateTranscriptAiPrompts(body.transcriptAiPrompts, getCachedDatabase().settings.transcriptAiPrompts);
+    if (!checked.ok) return res.status(400).json({ error: checked.error });
+    body.transcriptAiPrompts = checked.value;
   }
 
   // All provided keys validated -- safe to merge and persist. `prevInterval`

@@ -13,18 +13,22 @@
 // Diff the BEFORE and AFTER lines: a pre-existing button whose w/h changed
 // is a deformation; a y change is a wrap (intended or not).
 //
-//   node scripts/action-row-probe.js <out-dir> [width ...]
+//   node scripts/action-row-probe.js <out-dir> [width ...] [--theatre]
 //   FT_ROOT=/path/to/main-worktree node scripts/action-row-probe.js <out-dir-main>
 //
 // Defaults: widths 390 375 1280 1366 1600 1920.
 //
-// Known instrument residual: a load occasionally stalls with the shell
-// painted but the media details never arriving (no JS errors - the seeded
-// 1-byte "video" and the page's other requests race the connection pool
-// under software GL). The probe reloads up to twice (15s per attempt, wall
-// clock) and says so on stderr; a line that still carries "WARNING - never
-// finished mounting" is NOT evidence - rerun that width alone (`node
-// scripts/action-row-probe.js <out> 1600`), which has never stalled. CHROME=<binary> overrides the
+// Known instrument residual (MEASURED, v1.201): in a multi-width run the
+// THIRD-or-later Chromium launch sometimes stalls - the shell paints (auth
+// is fine) but the page never reaches its first POST (the server's audit
+// log shows NO request from that load for 30s; zero JS errors), so the
+// media-load lane inside that browser instance never completes. Reloading
+// recovers it about half the time; the run then continues. A width run
+// ALONE has never stalled (dozens of runs). So: the probe reloads up to
+// twice (15s per attempt, wall clock) and says so on stderr; a line that
+// still carries "WARNING - never finished mounting", or a run that dies on
+// a CDP timeout, is NOT evidence - rerun that width alone (`node
+// scripts/action-row-probe.js <out> 1600`). Tech-debt row 184. CHROME=<binary> overrides the
 // auto-detected ~/.cache/ms-playwright chromium. Exits non-zero on any CDP
 // failure EXCEPT the illustrative screenshot (a failed PNG is logged and the
 // run continues - the JSON line is the evidence); always kills the Chromium
@@ -40,7 +44,12 @@ if (!OUT) {
   console.error('usage: node scripts/action-row-probe.js <out-dir> [width ...]');
   process.exit(2);
 }
-const WIDTHS = process.argv.slice(3).map(Number).filter((n) => Number.isFinite(n) && n > 0);
+const ARGS = process.argv.slice(3);
+// `--theatre`: add `.theater-mode` to `.watch-container` before measuring
+// (the desktop Theatre toggle's exact class flip) so both column widths at
+// one viewport are measured.
+const THEATRE = ARGS.includes('--theatre');
+const WIDTHS = ARGS.filter((a) => a !== '--theatre').map(Number).filter((n) => Number.isFinite(n) && n > 0);
 if (WIDTHS.length === 0) WIDTHS.push(390, 375, 1280, 1366, 1600, 1920);
 const ROOT = process.env.FT_ROOT ? path.resolve(process.env.FT_ROOT) : path.join(__dirname, '..');
 const DEBUG_PORT = 9333 + Math.floor(Math.random() * 400);
@@ -73,6 +82,10 @@ const GEOMETRY_JS = `(function () {
   var tops = {};
   var col = document.querySelector('.watch-main');
   out.column = col ? Math.round(col.getBoundingClientRect().width) : null;
+  var wc = document.querySelector('.watch-container');
+  out.theatre = !!(wc && wc.classList.contains('theater-mode'));
+  var firstLabel = document.querySelector('.watch-action-btns .btn .btn-label');
+  out.labelsShown = firstLabel ? getComputedStyle(firstLabel).display !== 'none' : null;
   out.docScrollWidth = document.documentElement.scrollWidth;
   document.querySelectorAll('.watch-action-btns .btn').forEach(function (b) {
     var r = b.getBoundingClientRect();
@@ -194,6 +207,9 @@ async function main() {
           console.error(`${w}: page state ${diag}`);
         } catch (_) { /* best effort */ }
       }
+      if (THEATRE) {
+        await send('Runtime.evaluate', { expression: "(function(){var c=document.querySelector('.watch-container'); if (c) c.classList.add('theater-mode'); return !!c;})()", returnByValue: true });
+      }
       await new Promise((r) => setTimeout(r, 300)); // let the last paint settle
       const geo = (await send('Runtime.evaluate', { expression: GEOMETRY_JS, returnByValue: true })).result.value;
       const clipJson = (await send('Runtime.evaluate', {
@@ -206,7 +222,7 @@ async function main() {
       // software-GL capture can fail transiently - log it, keep measuring.
       try {
         const shot = await send('Page.captureScreenshot', { format: 'png', ...(clipJson ? { clip: JSON.parse(clipJson) } : {}) });
-        fs.writeFileSync(path.join(OUT, `action-bar-${w}.png`), Buffer.from(shot.data, 'base64'));
+        fs.writeFileSync(path.join(OUT, `action-bar-${w}${THEATRE ? '-theatre' : ''}.png`), Buffer.from(shot.data, 'base64'));
       } catch (err) {
         console.error(`${w}: screenshot skipped (${err.message})`);
       if (process.env.PROBE_DEBUG) console.error(`${w}: clip was ${clipJson}`);

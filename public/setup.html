@@ -1077,6 +1077,26 @@
           <small id="mobile-custom-player-error" class="field-error"></small>
         </div>
       </details>
+
+      <!-- v1.201 (Dean): "Share transcript with AI" - named preamble prompts
+           sent in front of a transcript through the share sheet, so any AI
+           app (Claude, Gemini, ChatGPT...) gets the analysis request AND the
+           text in one share. Instance-wide (admin edits, everyone uses);
+           several prompts allowed, picked by name at share time; an EMPTY
+           list hides the action on the watch page. Saved on change via
+           POST /api/settings `transcriptAiPrompts` (setup.js
+           renderTranscriptAiPromptsEditor). -->
+      <details class="setup-box sub-collapsible" data-collapse-key="transcript-ai" data-md-icon="copy" data-md-group="Advanced" open>
+        <summary>Transcript sharing</summary>
+        <p>Prompts for the <strong>Share with AI</strong> action on a video's
+           transcript. The prompt you pick is placed in front of the transcript
+           in the share sheet, so the AI app you send it to gets your request
+           and the text together. Add one per kind of analysis you ask for;
+           remove them all to hide the action.</p>
+        <div id="transcript-ai-prompts" class="transcript-ai-prompts" aria-live="polite"></div>
+        <button type="button" class="btn" id="transcript-ai-add-btn">Add prompt</button>
+        <small id="transcript-ai-error" class="field-error"></small>
+      </details>
       </div><!-- /.md-root -->
       </div>
     </main>

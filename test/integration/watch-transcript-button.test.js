@@ -44,11 +44,22 @@ function makeMediaResponse(hasSubtitles) {
 
 // `transcriptStatus` lets a test make the route fail. Records every
 // transcript URL requested so the timestamps toggle is bound by URL.
-function makeWatchFetchStub(hasSubtitles, transcriptStatus) {
+const ONE_PROMPT = [{ id: 'summarize', name: 'Summarize', text: 'Summarize this.' }];
+const TWO_PROMPTS = [{ id: 'summarize', name: 'Summarize', text: 'Summarize this.' }, { id: 'analyze', name: 'Analyze', text: 'Analyze this deeply.' }];
+
+// `aiPrompts`: the /api/settings answer's transcriptAiPrompts (default ONE);
+// [] = none configured; 'fail' = the settings route 500s.
+function makeWatchFetchStub(hasSubtitles, transcriptStatus, aiPrompts) {
   const transcriptUrls = [];
+  const prompts = aiPrompts === undefined ? ONE_PROMPT : aiPrompts;
   const fetchImpl = (input, init) => {
     const url = typeof input === 'string' ? input : (input && input.url);
     const method = (init && init.method) || 'GET';
+    if (url === '/api/settings' && method === 'GET') {
+      if (prompts === 'fail') return Promise.resolve({ ok: false, status: 500, json: async () => ({ error: 'boom' }) });
+      if (prompts === 'reject') return Promise.reject(new TypeError('network down'));
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ mobileCustomPlayer: false, transcriptAiPrompts: prompts }) });
+    }
     if (url === '/api/config' && method === 'GET') {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({ folders: [], folderSettings: {} }) });
     }
@@ -255,7 +266,8 @@ test('watch page (phone width): click opens the share/copy picker; "Share transc
     await settle();
     assert.strictEqual(document.querySelector('.transcript-modal'), null, 'phones never get the textarea modal');
     const choices = Array.from(document.querySelectorAll('.choice-modal-btn')).map((b) => b.textContent);
-    assert.deepStrictEqual(choices, ['Share transcript', 'Copy transcript']);
+    // v1.201: the stub serves ONE default prompt, so the AI pick is third.
+    assert.deepStrictEqual(choices, ['Share transcript', 'Copy transcript', 'Share with AI']);
     click(dom, document.querySelectorAll('.choice-modal-btn')[0]);
     await settle();
     assert.strictEqual(shareCalls.length, 1);
@@ -319,4 +331,177 @@ test('watch page: SPA navigation away tears down the open transcript modal (desk
       assert.strictEqual(document.querySelector(sel), null, 'torn down on view abort: ' + sel);
     } finally { dom.window.close(); }
   }
+});
+
+// ---- v1.201 (Dean): "Share with AI" ------------------------------------------
+// Payload contract: `<prompt>\n\n<the same document Share/Copy send>`.
+
+function choiceLabels(document) { return Array.from(document.querySelectorAll('.choice-modal-btn')).map((b) => b.textContent); }
+
+test('watch page (phone): "Share with AI" is the THIRD pick when one prompt exists, and shares prompt + blank line + transcript', async () => {
+  const shareCalls = [];
+  const { fetchImpl } = makeWatchFetchStub(true, 200, ONE_PROMPT);
+  const { dom } = await loadWatchWithFetchStub(fetchImpl, (w) => { w.navigator.share = (p) => { shareCalls.push(p); return Promise.resolve(); }; }, true);
+  try {
+    await settle();
+    const { document } = dom.window;
+    click(dom, document.getElementById('transcript-media-btn'));
+    await settle();
+    assert.deepStrictEqual(choiceLabels(document), ['Share transcript', 'Copy transcript', 'Share with AI']);
+    click(dom, document.querySelectorAll('.choice-modal-btn')[2]);
+    await settle();
+    assert.strictEqual(shareCalls.length, 1, 'ONE prompt shares immediately - no second pick');
+    assert.strictEqual(shareCalls[0].text, 'Summarize this.\n\n' + PLAIN_TEXT);
+    assert.strictEqual(shareCalls[0].title, 'A Captioned Video');
+    assert.strictEqual(Object.keys(shareCalls[0]).length, 2);
+  } finally { dom.window.close(); }
+});
+
+test('watch page (phone): with SEVERAL prompts, "Share with AI" opens a pick-one of their names; the pick decides the preamble', async () => {
+  const shareCalls = [];
+  const { fetchImpl } = makeWatchFetchStub(true, 200, TWO_PROMPTS);
+  const { dom } = await loadWatchWithFetchStub(fetchImpl, (w) => { w.navigator.share = (p) => { shareCalls.push(p); return Promise.resolve(); }; }, true);
+  try {
+    await settle();
+    const { document } = dom.window;
+    click(dom, document.getElementById('transcript-media-btn'));
+    await settle();
+    click(dom, document.querySelectorAll('.choice-modal-btn')[2]);
+    await new Promise((r) => setTimeout(r, 400)); // the first picker closes (300ms fallback), the second opens
+    assert.deepStrictEqual(choiceLabels(document), ['Summarize', 'Analyze'], 'the prompt names, in settings order');
+    assert.strictEqual(shareCalls.length, 0, 'nothing shared until a prompt is picked');
+    click(dom, document.querySelectorAll('.choice-modal-btn')[1]);
+    await settle();
+    assert.strictEqual(shareCalls[0].text, 'Analyze this deeply.\n\n' + PLAIN_TEXT);
+  } finally { dom.window.close(); }
+});
+
+test('watch page (phone): NO prompts configured -> no AI pick; a FAILING or REJECTING settings fetch -> no AI pick but Share/Copy still work', async () => {
+  for (const prompts of [[], 'fail', 'reject']) {
+    const { fetchImpl } = makeWatchFetchStub(true, 200, prompts);
+    const { dom } = await loadWatchWithFetchStub(fetchImpl, null, true);
+    try {
+      await settle();
+      const { document } = dom.window;
+      click(dom, document.getElementById('transcript-media-btn'));
+      await settle();
+      assert.deepStrictEqual(choiceLabels(document), ['Share transcript', 'Copy transcript'], JSON.stringify(prompts));
+    } finally { dom.window.close(); }
+  }
+});
+
+test('watch page (desktop): the modal gets "Copy for AI" without a share sheet; it copies prompt + blank line + the CURRENT text (timestamps follow the box)', async () => {
+  const writes = [];
+  const { fetchImpl } = makeWatchFetchStub(true, 200, ONE_PROMPT);
+  const { dom } = await loadWatchWithFetchStub(fetchImpl, (w) => installClipboard(w, writes));
+  try {
+    await settle();
+    const { document } = dom.window;
+    click(dom, document.getElementById('transcript-media-btn'));
+    await settle();
+    const aiBtn = document.getElementById('transcript-ai-btn');
+    assert.ok(aiBtn, 'the third button exists');
+    assert.strictEqual(aiBtn.textContent, 'Copy for AI', 'no navigator.share in this jsdom -> the copy label');
+    click(dom, aiBtn);
+    await settle();
+    assert.deepStrictEqual(writes, ['Summarize this.\n\n' + PLAIN_TEXT]);
+    const box = document.getElementById('transcript-timestamps');
+    box.checked = true;
+    box.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    await settle();
+    click(dom, aiBtn);
+    await settle();
+    assert.deepStrictEqual(writes[1], 'Summarize this.\n\n' + TS_TEXT, 'follows the Show timestamps box');
+  } finally { dom.window.close(); }
+});
+
+test('watch page (desktop): with a share sheet the button reads "Share with AI"; several prompts -> a pick-one first; no prompts -> no button', async () => {
+  const shareCalls = [];
+  let { fetchImpl } = makeWatchFetchStub(true, 200, TWO_PROMPTS);
+  let { dom } = await loadWatchWithFetchStub(fetchImpl, (w) => { w.navigator.share = (p) => { shareCalls.push(p); return Promise.resolve(); }; });
+  try {
+    await settle();
+    const { document } = dom.window;
+    click(dom, document.getElementById('transcript-media-btn'));
+    await settle();
+    const aiBtn = document.getElementById('transcript-ai-btn');
+    assert.strictEqual(aiBtn.textContent, 'Share with AI');
+    click(dom, aiBtn);
+    await settle();
+    assert.deepStrictEqual(choiceLabels(document), ['Summarize', 'Analyze']);
+    click(dom, document.querySelectorAll('.choice-modal-btn')[0]);
+    await settle();
+    assert.strictEqual(shareCalls[0].text, 'Summarize this.\n\n' + PLAIN_TEXT);
+  } finally { dom.window.close(); }
+  ({ fetchImpl } = makeWatchFetchStub(true, 200, []));
+  ({ dom } = await loadWatchWithFetchStub(fetchImpl));
+  try {
+    await settle();
+    click(dom, dom.window.document.getElementById('transcript-media-btn'));
+    await settle();
+    assert.ok(dom.window.document.querySelector('.transcript-modal'), 'modal still opens');
+    assert.strictEqual(dom.window.document.getElementById('transcript-ai-btn'), null, 'no prompts -> no AI button');
+  } finally { dom.window.close(); }
+});
+
+test('watch page (desktop): SPA navigation away with the prompt pick-one open tears BOTH modals down', async () => {
+  const { fetchImpl } = makeWatchFetchStub(true, 200, TWO_PROMPTS);
+  const { dom } = await loadWatchWithFetchStub(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    click(dom, document.getElementById('transcript-media-btn'));
+    await settle();
+    click(dom, document.getElementById('transcript-ai-btn'));
+    await settle();
+    assert.ok(document.querySelector('.choice-modal-list'), 'the pick-one is open over the modal');
+    dom.window.FileTube.navigate('/');
+    await new Promise((r) => setTimeout(r, 500));
+    assert.strictEqual(document.querySelector('.transcript-modal'), null);
+    assert.strictEqual(document.querySelector('.choice-modal-list'), null);
+  } finally { dom.window.close(); }
+});
+
+// ---- GATE fix round 1: the unbound-but-correct branches ----
+test('watch page (phone): SPA navigation away with the AI prompt pick-one open tears it down', async () => {
+  const { fetchImpl } = makeWatchFetchStub(true, 200, TWO_PROMPTS);
+  const { dom } = await loadWatchWithFetchStub(fetchImpl, null, true);
+  try {
+    await settle();
+    const { document } = dom.window;
+    click(dom, document.getElementById('transcript-media-btn'));
+    await settle();
+    click(dom, document.querySelectorAll('.choice-modal-btn')[2]);
+    await new Promise((r) => setTimeout(r, 400));
+    assert.deepStrictEqual(choiceLabels(document), ['Summarize', 'Analyze'], 'the pick-one is open');
+    dom.window.FileTube.navigate('/');
+    await new Promise((r) => setTimeout(r, 500));
+    assert.strictEqual(document.querySelector('.choice-modal-list'), null, 'torn down on view abort');
+  } finally { dom.window.close(); }
+});
+
+test('watch page (phone): a COMPLETED share-sheet share shows no toast; the clipboard fallback does', async () => {
+  const { fetchImpl } = makeWatchFetchStub(true, 200, ONE_PROMPT);
+  let { dom } = await loadWatchWithFetchStub(fetchImpl, (w) => { w.navigator.share = () => Promise.resolve(); }, true);
+  try {
+    await settle();
+    const { document } = dom.window;
+    click(dom, document.getElementById('transcript-media-btn'));
+    await settle();
+    click(dom, document.querySelectorAll('.choice-modal-btn')[2]);
+    await settle();
+    assert.strictEqual(document.querySelector('.toast'), null, 'the user saw the sheet - no toast on success');
+  } finally { dom.window.close(); }
+  const writes = [];
+  ({ dom } = await loadWatchWithFetchStub(fetchImpl, (w) => installClipboard(w, writes), true));
+  try {
+    await settle();
+    const { document } = dom.window;
+    click(dom, document.getElementById('transcript-media-btn'));
+    await settle();
+    click(dom, document.querySelectorAll('.choice-modal-btn')[2]);
+    await settle();
+    assert.deepStrictEqual(writes, ['Summarize this.\n\n' + PLAIN_TEXT]);
+    assert.match(document.querySelector('.toast').textContent, /Copied with your prompt/);
+  } finally { dom.window.close(); }
 });

@@ -1260,6 +1260,124 @@ function moveBottomBarItem(items, from, to, signal) {
   renderBottomBarEditor(signal);
 }
 
+// ---- v1.201 (Dean): "Share with AI" prompt editor ----------------------------
+//
+// Renders `settings.transcriptAiPrompts` (GET /api/settings) as one row per
+// prompt - a name input, a prompt textarea, Remove - plus "Add prompt". Every
+// edit saves the WHOLE list (the server validates + normalizes and returns
+// the canonical rows with ids), debounced per keystroke so typing a prompt
+// is one POST, not forty. createElement/textContent only (prompt text is
+// user-authored). A 400 (empty name/text, duplicate name, too long) lands in
+// the section's field-error line and the rows stay as typed so the user can
+// fix them; a successful save re-renders from the server's answer.
+function renderTranscriptAiPromptsEditor(signal) {
+  const host = document.getElementById('transcript-ai-prompts');
+  const addBtn = document.getElementById('transcript-ai-add-btn');
+  const errorEl = document.getElementById('transcript-ai-error');
+  if (!host || !addBtn) return;
+  let prompts = [];
+  let saveTimer = null;
+
+  // Every row as typed. A NEW row (no server id yet) is part of the list
+  // only once it is WHOLE - name and text both non-blank. Gate finding
+  // (both seats): the blank "Add prompt" row used to ride along in every
+  // POST and 400 the whole list, so a fresh prompt tripped an error on its
+  // first keystroke, a Remove of another row did not persist, and edits to
+  // existing prompts were lost (a 400 in the error line was the only trace) while the blank row existed. A row
+  // that HAS an id always goes, so blanking an existing prompt still
+  // surfaces the server's 400 as designed.
+  function readRows() {
+    return Array.from(host.querySelectorAll('.transcript-ai-prompt-row')).map((row) => ({
+      id: row.dataset.promptId || undefined,
+      name: row.querySelector('.transcript-ai-prompt-name').value,
+      text: row.querySelector('.transcript-ai-prompt-text').value,
+    })).filter((r) => r.id || (r.name.trim() !== '' && r.text.trim() !== ''));
+  }
+
+  function scheduleSave() {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveNow, 400);
+  }
+
+  let saveSeq = 0; // gate finding: an in-flight response must never clobber a newer burst
+  let lastSaved = null; // JSON of the list the server last confirmed - an unchanged list is not re-POSTed
+  async function saveNow() {
+    saveTimer = null;
+    const rowsNow = readRows();
+    const key = JSON.stringify(rowsNow.map((r) => [r.id || '', r.name.trim(), r.text.trim()]));
+    if (key === lastSaved) { setFieldError(errorEl, null); return; } // e.g. typing into a still-incomplete new row, or reverting a 400'd edit to the saved value
+    const seq = ++saveSeq;
+    const data = await saveAutomationSetting('transcriptAiPrompts', rowsNow, errorEl);
+    if (seq !== saveSeq) return; // a newer save superseded this one - its answer wins
+    if (!data || !Array.isArray(data.transcriptAiPrompts)) return; // 400: rows stay as typed, error shown
+    prompts = data.transcriptAiPrompts;
+    lastSaved = JSON.stringify(prompts.map((r) => [r.id || '', r.name, r.text]));
+    // Re-render (ids assigned / trimming applied) ONLY when nothing newer is
+    // pending and no field is focused, so a save never yanks the caret or
+    // reverts keystrokes typed while the request was in flight.
+    if (saveTimer === null && !host.contains(document.activeElement)) render();
+  }
+
+  function render() {
+    host.replaceChildren();
+    prompts.forEach((prompt) => {
+      const row = document.createElement('div');
+      row.className = 'transcript-ai-prompt-row';
+      if (prompt.id) row.dataset.promptId = prompt.id;
+      const head = document.createElement('div');
+      head.className = 'transcript-ai-prompt-head';
+      const name = document.createElement('input');
+      name.type = 'text';
+      name.className = 'transcript-ai-prompt-name';
+      name.placeholder = 'Prompt name (e.g. Summarize)';
+      name.maxLength = 60;
+      name.value = prompt.name || '';
+      name.setAttribute('aria-label', 'Prompt name');
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'btn';
+      removeBtn.textContent = 'Remove';
+      head.appendChild(name);
+      head.appendChild(removeBtn);
+      const text = document.createElement('textarea');
+      text.className = 'transcript-ai-prompt-text';
+      text.placeholder = 'What to ask the AI - it goes in front of the transcript.';
+      text.maxLength = 4000;
+      text.value = prompt.text || '';
+      text.setAttribute('aria-label', 'Prompt text');
+      row.appendChild(head);
+      row.appendChild(text);
+      host.appendChild(row);
+      name.addEventListener('input', scheduleSave, { signal });
+      text.addEventListener('input', scheduleSave, { signal });
+      removeBtn.addEventListener('click', () => {
+        row.remove();
+        if (saveTimer) clearTimeout(saveTimer);
+        saveNow();
+      }, { signal });
+    });
+  }
+
+  addBtn.addEventListener('click', () => {
+    // A blank row is NOT saved until it has a name and text (the server
+    // would 400 it) - it just appears for editing.
+    prompts = readRows().concat([{ name: '', text: '' }]);
+    render();
+    const rows = host.querySelectorAll('.transcript-ai-prompt-name');
+    if (rows.length) rows[rows.length - 1].focus();
+  }, { signal });
+
+  fetch('/api/settings')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((s) => {
+      if (signal.aborted) return;
+      prompts = (s && Array.isArray(s.transcriptAiPrompts)) ? s.transcriptAiPrompts : [];
+      lastSaved = JSON.stringify(prompts.map((r) => [r.id || '', r.name, r.text]));
+      render();
+    })
+    .catch(() => { if (!signal.aborted) setFieldError(errorEl, 'Could not load the prompts.'); });
+}
+
 // GET /api/settings on load: populate all four controls, plus the
 // size-cap placeholder from effectiveCacheMaxBytes (the env-var/5GB
 // default that applies whenever no UI override is persisted).
@@ -3355,6 +3473,7 @@ function init(root) {
   renderLibraryGlyphEditor(controller.signal); // v1.77 Library-icon pickers (Appearance box)
   renderTrashSection(controller.signal); // v1.65 trash list + actions
   renderFeedHiddenSection(controller.signal); // v1.97.1 Hidden (feed-hide restore) list
+  renderTranscriptAiPromptsEditor(controller.signal); // v1.201 "Share with AI" prompts
 
   loadAutomationSettings();
   loadCacheSize();

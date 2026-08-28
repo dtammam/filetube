@@ -11572,7 +11572,13 @@ function showChoiceModal(title, choices) {
 // it with `[m:ss]` prefixes when the "Show timestamps" box is toggled
 // (default OFF - Dean's ruling). Read-only textarea (select-all + copy works
 // natively), a Copy button with the same "Copied!" label feedback the Share
-// button uses, and Close. Same `.modal-backdrop`/`.modal-content` infra and
+// button uses, and Close.
+// v1.201 (Dean): `opts.aiPrompts` ([{id, name, text}], may be empty) adds a
+// third button - "Share with AI" where the browser has a share sheet, else
+// "Copy for AI" - that hands `<prompt>\n\n<the CURRENT textarea value>` to
+// `opts.shareAi(promptText, currentText, label)`. One prompt acts directly;
+// several open a pick-one modal of names first (its dismiss rides on this
+// modal's). An empty list adds nothing (never a do-nothing button). Same `.modal-backdrop`/`.modal-content` infra and
 // createElement/textContent discipline as showChoiceModal; returns a
 // `dismiss()` for the view's abort teardown (body-level modals outlive SPA
 // nav on their own - the v1.49 lesson).
@@ -11619,6 +11625,17 @@ function showTranscriptModal(opts) {
   closeBtn.type = 'button';
   closeBtn.className = 'btn';
   closeBtn.textContent = 'Close';
+  const aiPrompts = Array.isArray(o.aiPrompts) ? o.aiPrompts.filter((p) => p && typeof p.text === 'string' && p.text !== '') : [];
+  const hasShareSheet = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+  let aiBtn = null;
+  if (aiPrompts.length > 0 && typeof o.shareAi === 'function') {
+    aiBtn = document.createElement('button');
+    aiBtn.type = 'button';
+    aiBtn.id = 'transcript-ai-btn';
+    aiBtn.className = 'btn';
+    aiBtn.textContent = hasShareSheet ? 'Share with AI' : 'Copy for AI';
+    actions.appendChild(aiBtn);
+  }
   actions.appendChild(copyBtn);
   actions.appendChild(closeBtn);
   content.appendChild(actions);
@@ -11626,10 +11643,12 @@ function showTranscriptModal(opts) {
   let settled = false;
   let copyResetTimer = null;
   let loadSeq = 0; // supersession guard for a fast double-toggle
+  let aiPickDismiss = null; // the prompt pick-one modal, torn down with this one
   function dismiss() {
     if (settled) return;
     settled = true;
     if (copyResetTimer) clearTimeout(copyResetTimer);
+    if (aiPickDismiss) { aiPickDismiss(); aiPickDismiss = null; }
     backdrop.classList.add('modal-closing');
     closeOverlayThen(backdrop, 'modal-open', () => {
       if (backdrop.parentNode) document.body.removeChild(backdrop);
@@ -11664,6 +11683,15 @@ function showTranscriptModal(opts) {
       copyResetTimer = setTimeout(() => { copyBtn.textContent = 'Copy'; copyResetTimer = null; }, 1500);
     });
   });
+  if (aiBtn) {
+    aiBtn.addEventListener('click', () => {
+      const label = aiBtn.textContent;
+      const run = (prompt) => o.shareAi(prompt.text, textarea.value, label);
+      if (aiPrompts.length === 1) { run(aiPrompts[0]); return; }
+      if (aiPickDismiss) aiPickDismiss();
+      aiPickDismiss = showChoiceModal(label, aiPrompts.map((prompt) => ({ label: prompt.name, onPick: () => { aiPickDismiss = null; run(prompt); } })));
+    });
+  }
   closeBtn.addEventListener('click', dismiss);
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) dismiss(); });
 

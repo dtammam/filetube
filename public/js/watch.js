@@ -3223,6 +3223,32 @@ if (typeof module !== 'undefined' && module.exports) {
       return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches;
     }
 
+    // v1.201 (Dean): the "Share with AI" prompts (settings.transcriptAiPrompts,
+    // readable by every signed-in user). Fetched alongside the transcript so
+    // the pick is ready inside the tap; ANY failure resolves to [] - the AI
+    // pick simply disappears and Share/Copy still work (fail-safe).
+    function fetchAiPrompts() {
+      return fetch('/api/settings')
+        .then((res) => (res && res.ok ? res.json() : null))
+        .then((s) => ((s && Array.isArray(s.transcriptAiPrompts)) ? s.transcriptAiPrompts.filter((p) => p && typeof p.text === 'string' && p.text.trim() !== '' && typeof p.name === 'string') : []))
+        .catch(() => []);
+    }
+
+    // Payload contract (Dean: "exactly"): the prompt, a blank line, then the
+    // same document Share/Copy send (title / date / channel / transcript).
+    function composeAiShare(promptText, transcriptText) {
+      return String(promptText).trim() + '\n\n' + transcriptText;
+    }
+
+    // Runs the AI share: native sheet where present, else the clipboard,
+    // with a toast either way except a completed sheet (the user saw it).
+    function runAiShare(promptText, transcriptText, title) {
+      shareTextContent(composeAiShare(promptText, transcriptText), title).then((outcome) => {
+        if (outcome === 'shared' || typeof window.showToast !== 'function') return;
+        window.showToast(outcome === 'copied' ? 'Copied with your prompt - paste it into your AI app' : 'Could not share the transcript.');
+      });
+    }
+
     function handleTranscriptClick() {
       if (!mediaData || transcriptLoading) return;
       transcriptLoading = true;
@@ -3230,10 +3256,18 @@ if (typeof module !== 'undefined' && module.exports) {
       // Captured BEFORE the await: the fetched text belongs to the item at
       // click time, so its title must too (gate suggestion).
       const title = (mediaData && mediaData.title) || 'Transcript';
-      fetchTranscriptText(false).then((text) => {
+      Promise.all([fetchTranscriptText(false), fetchAiPrompts()]).then(([text, aiPrompts]) => {
         if (signal.aborted) return;
         if (transcriptDismiss) { signal.removeEventListener('abort', transcriptDismiss); transcriptDismiss(); transcriptDismiss = null; }
         if (isPhoneWidth()) {
+          // v1.201: "Share with AI" is the third pick when prompts exist. One
+          // prompt shares at once; several open a pick-one of their names.
+          const aiPick = aiPrompts.length === 0 ? [] : [{ label: 'Share with AI', onPick: () => {
+            if (aiPrompts.length === 1) { runAiShare(aiPrompts[0].text, text, title); return; }
+            if (transcriptDismiss) { signal.removeEventListener('abort', transcriptDismiss); transcriptDismiss = null; }
+            transcriptDismiss = showChoiceModal('Share with AI', aiPrompts.map((prompt) => ({ label: prompt.name, onPick: () => runAiShare(prompt.text, text, title) })));
+            signal.addEventListener('abort', transcriptDismiss, { once: true });
+          } }];
           transcriptDismiss = showChoiceModal('Transcript', [
             { label: 'Share transcript', onPick: () => {
               // A phone-width browser WITHOUT a share sheet (Firefox Android,
@@ -3251,9 +3285,14 @@ if (typeof module !== 'undefined' && module.exports) {
                 window.showToast(outcome === 'copied' ? 'Transcript copied' : 'Could not copy the transcript.');
               });
             } },
-          ]);
+          ].concat(aiPick));
         } else {
-          transcriptDismiss = showTranscriptModal({ text, loadText: fetchTranscriptText });
+          transcriptDismiss = showTranscriptModal({
+            text,
+            loadText: fetchTranscriptText,
+            aiPrompts,
+            shareAi: (promptText, currentText) => runAiShare(promptText, currentText, title),
+          });
         }
         signal.addEventListener('abort', transcriptDismiss, { once: true });
       }).catch((err) => {
