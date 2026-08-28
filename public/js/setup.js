@@ -1283,7 +1283,7 @@ function renderTranscriptAiPromptsEditor(signal) {
   // (both seats): the blank "Add prompt" row used to ride along in every
   // POST and 400 the whole list, so a fresh prompt tripped an error on its
   // first keystroke, a Remove of another row did not persist, and edits to
-  // existing prompts were silently lost while the blank row existed. A row
+  // existing prompts were lost (a 400 in the error line was the only trace) while the blank row existed. A row
   // that HAS an id always goes, so blanking an existing prompt still
   // surfaces the server's 400 as designed.
   function readRows() {
@@ -1305,7 +1305,7 @@ function renderTranscriptAiPromptsEditor(signal) {
     saveTimer = null;
     const rowsNow = readRows();
     const key = JSON.stringify(rowsNow.map((r) => [r.id || '', r.name.trim(), r.text.trim()]));
-    if (key === lastSaved) return; // e.g. typing into a still-incomplete new row
+    if (key === lastSaved) { setFieldError(errorEl, null); return; } // e.g. typing into a still-incomplete new row, or reverting a 400'd edit to the saved value
     const seq = ++saveSeq;
     const data = await saveAutomationSetting('transcriptAiPrompts', rowsNow, errorEl);
     if (seq !== saveSeq) return; // a newer save superseded this one - its answer wins

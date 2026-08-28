@@ -51,10 +51,14 @@ function loadSetup({ prompts, postStatus, holdPosts }) {
             if (postStatus === 400) return Promise.resolve({ ok: false, status: 400, json: () => Promise.resolve({ error: 'transcriptAiPrompts[0].name must be 1-60 characters' }) });
             // Echo the server's normalization: ids from names.
             // The REAL server rule for a blank row: 400 on the whole list.
+            // Per-request SNAPSHOT (gate: a lazily-read `current` made every
+            // held answer carry the latest list, so a stale answer could never
+            // clobber and the sequence counter was unbound).
             const bad = body.transcriptAiPrompts.findIndex((p) => !p.name || !p.name.trim() || !p.text || !p.text.trim());
             if (bad !== -1) return Promise.resolve({ ok: false, status: 400, json: () => Promise.resolve({ error: `transcriptAiPrompts[${bad}].name must be 1-60 characters` }) });
             current = body.transcriptAiPrompts.map((p) => ({ id: p.id || p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: p.name.trim(), text: p.text.trim() }));
-            const answer = { ok: true, status: 200, json: () => Promise.resolve({ transcriptAiPrompts: current }) };
+            const snapshot = current.map((p) => ({ ...p }));
+            const answer = { ok: true, status: 200, json: () => Promise.resolve({ transcriptAiPrompts: snapshot }) };
             if (holdPosts) return new Promise((resolve) => released.push(() => resolve(answer)));
             return Promise.resolve(answer);
           }
@@ -237,5 +241,44 @@ test('setup: an in-flight save response is IGNORED when a newer burst is pending
     released[1]();
     await wait(50);
     assert.strictEqual(rows(d)[1].querySelector('.transcript-ai-prompt-text').value, 'Second edit, still typing');
+  } finally { dom.window.close(); }
+});
+
+test('setup: a NEW row with a name and whitespace-only text is not posted (the filter trims); reverting a 400\'d edit to the saved value clears the error line', async () => {
+  const { dom, posts } = await loadSetup({ prompts: TWO });
+  try {
+    await wait(100);
+    const d = dom.window.document;
+    d.getElementById('transcript-ai-add-btn').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+    await wait(50);
+    typeInto(dom, rows(d)[2].querySelector('.transcript-ai-prompt-name'), 'Analyze');
+    typeInto(dom, rows(d)[2].querySelector('.transcript-ai-prompt-text'), '   \n ');
+    await wait(600);
+    assert.strictEqual(posts.length, 0, 'whitespace-only text is blank');
+    const name = rows(d)[0].querySelector('.transcript-ai-prompt-name');
+    typeInto(dom, name, '');
+    await wait(600);
+    assert.strictEqual(posts.length, 1);
+    assert.match(d.getElementById('transcript-ai-error').textContent, /name must be/);
+    typeInto(dom, name, 'Summarize');
+    await wait(600);
+    assert.strictEqual(posts.length, 1, 'back to the saved value: nothing to POST');
+    assert.strictEqual(d.getElementById('transcript-ai-error').textContent, '', 'and the stale error is cleared');
+  } finally { dom.window.close(); }
+});
+
+test('setup: two held POSTs released in REVERSE order - the newer list wins on screen (the sequence counter, now bound)', async () => {
+  const { dom, posts, released } = await loadSetup({ prompts: TWO, holdPosts: true });
+  try {
+    await wait(100);
+    const d = dom.window.document;
+    typeInto(dom, rows(d)[0].querySelector('.transcript-ai-prompt-text'), 'One.');
+    await wait(600);
+    typeInto(dom, rows(d)[0].querySelector('.transcript-ai-prompt-text'), 'Two.');
+    await wait(600);
+    assert.strictEqual(posts.length, 2);
+    released[1](); await wait(50); // the NEWER answer lands first
+    released[0](); await wait(50); // then the STALE one - must be ignored
+    assert.strictEqual(rows(d)[0].querySelector('.transcript-ai-prompt-text').value, 'Two.');
   } finally { dom.window.close(); }
 });
