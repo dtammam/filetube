@@ -21,12 +21,14 @@
 // Known instrument residual: a load occasionally stalls with the shell
 // painted but the media details never arriving (no JS errors - the seeded
 // 1-byte "video" and the page's other requests race the connection pool
-// under software GL). The probe reloads up to twice and says so on stderr;
-// a line that still carries "WARNING - never finished mounting" is NOT
-// evidence - rerun that width alone (`node scripts/action-row-probe.js
-// <out> 1600`), which has never stalled. CHROME=<binary> overrides the
+// under software GL). The probe reloads up to twice (15s per attempt, wall
+// clock) and says so on stderr; a line that still carries "WARNING - never
+// finished mounting" is NOT evidence - rerun that width alone (`node
+// scripts/action-row-probe.js <out> 1600`), which has never stalled. CHROME=<binary> overrides the
 // auto-detected ~/.cache/ms-playwright chromium. Exits non-zero on any CDP
-// failure; always kills the Chromium it spawned.
+// failure EXCEPT the illustrative screenshot (a failed PNG is logged and the
+// run continues - the JSON line is the evidence); always kills the Chromium
+// it spawned.
 
 const os = require('node:os');
 const fs = require('node:fs');
@@ -152,33 +154,34 @@ async function main() {
 
     for (const w of WIDTHS) {
       const h = w < 500 ? 844 : 900;
-      // Geometry is DPR-independent. Phones render at DPR 2 for a crisp PNG;
+    // Geometry is DPR-independent. Phones render at DPR 2 for a crisp PNG;
     // desktop widths at DPR 1 - under software GL a 2560x1800 surface made
     // every CDP round-trip crawl and the readiness poll time out.
     const dpr = w < 500 ? 2 : 1;
     await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: dpr, mobile: w < 500 });
       await send('Page.navigate', { url: `${base}/watch.html?v=vid1` });
       // Readiness, not a fixed sleep: the JS-mounted buttons (Move/Like/
-      // Watched/Share/...) appear only after the media fetch resolves, and a
-      // device-emulation switch reloads layout - poll for the LAST mounted
-      // control before measuring (a fixed 2.5s measured a half-built row).
-      // Readiness, not a fixed sleep: the JS-mounted buttons (Move/Like/
       // Watched/Share/...) appear only after the media fetch resolves - poll
-      // for the LAST mounted control before measuring. A stalled first load
-      // (seen intermittently under software GL) gets ONE reload.
+      // for the LAST mounted control before measuring (a fixed 2.5s measured
+      // a half-built row). A stalled load (intermittent under software GL)
+      // gets up to TWO reloads. The poll is capped on WALL CLOCK, and a CDP
+      // rejection is FATAL: a dead renderer used to be swallowed by the
+      // catch and turned 30 polls x 20s x 3 attempts into a silent
+      // ~30-minute hang (gate finding).
       const READY_JS = "!!document.getElementById('share-media-btn') && !document.querySelector('.watch-actions[data-loading]')";
+      const ATTEMPT_MS = 15000;
       let ready = false;
       const t0 = Date.now();
       for (let attempt = 0; attempt < 3 && !ready; attempt++) {
         if (attempt > 0) {
-          console.error(`${w}: row not mounted after ${Date.now() - t0}ms - reloading once`);
+          console.error(`${w}: row not mounted after ${Date.now() - t0}ms - reload ${attempt} of 2`);
           await send('Page.reload');
         }
-        for (let i = 0; i < 30 && !ready; i++) {
+        const deadline = Date.now() + ATTEMPT_MS;
+        while (!ready && Date.now() < deadline) {
           await new Promise((r) => setTimeout(r, 500));
-          try {
-            ready = (await send('Runtime.evaluate', { expression: READY_JS, returnByValue: true })).result.value === true;
-          } catch (_) { /* renderer mid-navigation */ }
+          const res = await send('Runtime.evaluate', { expression: READY_JS, returnByValue: true }); // rejects -> fatal, by design
+          ready = !!(res && res.result && res.result.value === true);
         }
       }
       if (!ready) {

@@ -116,6 +116,19 @@ test('transcript: a text-less hold cue between rolling cues does not reset the o
   assert.deepEqual(buildTranscriptLines(parseVttCues(vtt)).map((l) => l.text), ['A', 'B', 'C']);
 });
 
+test('transcript: a LONG text-less hold cue (> the 500ms slack) still carries the overlap - contiguity is measured from the hold cue\'s end', () => {
+  // Binds the `endMs: Math.max(prev.endMs, cue.endMs)` extension in the carry
+  // (gate survivor): with prev.endMs left at the TEXT cue's end, the 2s hold
+  // makes the next cue non-contiguous and B is emitted twice.
+  const vtt = [
+    'WEBVTT', '',
+    '00:00:01.000 --> 00:00:02.000', 'A', 'B', '',
+    '00:00:02.000 --> 00:00:04.000', ' ', '',
+    '00:00:04.000 --> 00:00:05.000', 'B', 'C', '',
+  ].join('\n');
+  assert.deepEqual(buildTranscriptLines(parseVttCues(vtt)).map((l) => l.text), ['A', 'B', 'C']);
+});
+
 test('transcript: the contiguity slack is INCLUSIVE at exactly 500ms; CRLF documents parse identically to LF', () => {
   const lf = ['WEBVTT', '', '00:00:01.000 --> 00:00:02.000', 'Same', '', '00:00:02.500 --> 00:00:03.000', 'Same', 'Next', ''].join('\n');
   assert.deepEqual(buildTranscriptLines(parseVttCues(lf)).map((l) => l.text), ['Same', 'Next']);

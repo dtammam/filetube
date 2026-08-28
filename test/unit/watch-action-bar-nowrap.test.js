@@ -41,7 +41,9 @@ const path = require('node:path');
 const CSS_PATH = path.join(__dirname, '..', '..', 'public', 'css', 'style.css');
 const HTML_PATH = path.join(__dirname, '..', '..', 'public', 'watch.html');
 const WATCH_JS_PATH = path.join(__dirname, '..', '..', 'public', 'js', 'watch.js');
-const css = fs.readFileSync(CSS_PATH, 'utf8');
+// Comments stripped once at read (the v1.50.3 lock lesson): a commented copy
+// of a rule must never satisfy these locks.
+const css = fs.readFileSync(CSS_PATH, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 const html = fs.readFileSync(HTML_PATH, 'utf8');
 const watchJs = fs.readFileSync(WATCH_JS_PATH, 'utf8');
 

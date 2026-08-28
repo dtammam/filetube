@@ -194,8 +194,11 @@
               
               <!-- v1.25.6 hotfix: Download/Delete (and the JS-appended Move
                    button -- see watch.js's setupMoveButton) live in their own
-                   nowrap sub-group, `.watch-action-btns`, so they never split
-                   across two rows while `.watch-actions` itself (this
+                   sub-group, `.watch-action-btns`. It was nowrap until the
+                   transcript wave (2026-08-28): a nowrap row wider than its
+                   column SHRANK its buttons, so the group now wraps and the
+                   buttons themselves never shrink or line-break (style.css,
+                   docs/CONTRIBUTING.md "Action rows"), while `.watch-actions` itself (this
                    element's parent) is free to wrap as a whole against its
                    OTHER sibling, `.star-rating` above. See style.css's
                    `.watch-actions`/`.watch-action-btns` rules for the full

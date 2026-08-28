@@ -30,7 +30,10 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+// Comments stripped ONCE at read (the v1.50.3 lock lesson, re-struck by the
+// transcript-wave gate): a comment quoting `.watch-action-btns .btn { ... }`
+// must never satisfy - or defeat - these locks.
+const CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 
 const ERAS = ['2005', '2009', '2014', '2021'];
 

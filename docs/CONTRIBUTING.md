@@ -331,9 +331,16 @@ action row, section actions, modal actions, settings rows):
    acceptance evidence is: every PRE-EXISTING button has the same `w/h` (and
    the same `y` unless a wrap is the intended outcome), and the row count is
    what you intended, at 390 and 375 (phones) and 1280 / 1366 / 1600 / 1920
-   (desktop). Quote the numbers in the commit message. A glyph must be
+   (desktop). Quote the numbers in the commit message - and quote what the
+   probe PRINTED, never what you expected: the wave that wrote this rule
+   mis-quoted 1600 as "one row" from a line where only four buttons had
+   mounted (it is two rows of 32px; the gate caught it). A glyph must be
    listed in ALL THREE icon lists (size block, mask line, `@supports` fill -
    the v1.47.6 blank-box scar) and measure `1em` like its siblings.
+   Audit status: only the watch action row (`.watch-action-btns`) has been
+   measured and converted under this rule so far; the other rows named
+   above are governed by it but UNAUDITED (tech-debt row 184 carries the
+   revisit trigger - the next change to any of them).
 3. **A new button joins an existing group's markup shape exactly** (`.btn`,
    `<i class="icon-*">` + `<span class="btn-label">`, `title` + `aria-label`)
    so every rule above applies to it for free. No bespoke sizing.
