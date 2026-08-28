@@ -154,11 +154,11 @@ async function main() {
 
     for (const w of WIDTHS) {
       const h = w < 500 ? 844 : 900;
-    // Geometry is DPR-independent. Phones render at DPR 2 for a crisp PNG;
-    // desktop widths at DPR 1 - under software GL a 2560x1800 surface made
-    // every CDP round-trip crawl and the readiness poll time out.
-    const dpr = w < 500 ? 2 : 1;
-    await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: dpr, mobile: w < 500 });
+      // Geometry is DPR-independent. Phones render at DPR 2 for a crisp PNG;
+      // desktop widths at DPR 1 - under software GL a 2560x1800 surface made
+      // every CDP round-trip crawl and the readiness poll time out.
+      const dpr = w < 500 ? 2 : 1;
+      await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: dpr, mobile: w < 500 });
       await send('Page.navigate', { url: `${base}/watch.html?v=vid1` });
       // Readiness, not a fixed sleep: the JS-mounted buttons (Move/Like/
       // Watched/Share/...) appear only after the media fetch resolves - poll

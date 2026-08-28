@@ -2308,5 +2308,11 @@
     "date": "2026-08-28",
     "title": "Roku Shows wall: text no longer overlaps",
     "intent": "A follow-up to the last Roku change: the show name and the season/episode counts were still overlapping each other on the poster wall. Now each show's name sits on its own line and the two count lines sit cleanly below it, the same tidy way the video grid already looks. A really long show name is trimmed with an ellipsis at the edge of its poster instead of running over the text beneath it. Redeploy the channel to your Roku from this version to get it."
+  },
+  {
+    "version": "1.200.0",
+    "date": "2026-08-28",
+    "title": "Transcript: read, copy or share a video's captions as text",
+    "intent": "Any video that has captions now has a Transcript button next to Share. On a computer it opens the full transcript in a text box - the video's title, the date it was published and the channel at the top, then everything that was said, one line at a time - with a Copy button and an optional toggle to show a time next to each line. On a phone the same button opens the share sheet so you can send the transcript straight to Notes, Messages or an AI app, or copy it to the clipboard. YouTube's auto-generated captions repeat every line two or three times as they scroll; the transcript shows each line once. Videos without captions do not get the button, and TV episodes are not covered yet."
   }
 ]
