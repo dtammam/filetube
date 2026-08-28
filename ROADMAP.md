@@ -80,6 +80,77 @@
 
 ## Shipped
 
+### v1.201.0 - Transcript: "Share with AI" prompts, prose mode, one-row desktop action bar (2026-08-28)
+
+Dean, after the v1.200.0 device pass ("goddamn amazing"): (1) a "Share
+Transcript with AI" action with a customizable prompt in front - "I could
+just choose the Claude app ... and I wouldn't be locked into Claude",
+several prompts "for different types of prompts"; (2) with timestamps off,
+"a flat text block without all of those new lines"; (3) on desktop "the
+button moves over to a 2nd row if not in theatre mode".
+
+**What shipped.**
+- `settings.transcriptAiPrompts` - named preamble prompts (`[{id, name,
+  text}]`, max 12, name 1-60, text 1-4000, trimmed, unique names, server-
+  assigned ids kept stable across edits). Instance-wide: admin edits (the
+  existing write-RBAC), everyone reads. One default "Summarize" prompt so
+  the action works on day one; an empty list hides it everywhere.
+- Watch page: **Share with AI** - the third pick in the phone picker and a
+  third button in the desktop modal ("Share with AI" where the browser has
+  a share sheet, else "Copy for AI"). One prompt acts at once; several
+  offer a pick-one of names. Payload: the prompt, a blank line, then the
+  same document Share/Copy send (desktop follows the timestamps box).
+  Prompts are fetched with the transcript; any failure just hides the pick.
+- Settings -> Transcript sharing (Advanced): one row per prompt (name +
+  text + Remove), Add prompt, saved on change (debounced, whole list),
+  server errors shown inline with the typed rows kept.
+- Prose mode: timestamps off -> lines joined into paragraphs, a new one
+  only at a pause of 2s or more between captions. Timestamps on is
+  byte-identical to v1.200.
+- One-row desktop action bar: a CSS container query on `.watch-action-bar`
+  drops the button words when the COLUMN is under 960px (the ten labelled
+  buttons are 953px) - so the non-theatre column shows glyphs on one row
+  while theatre's wide column keeps the words at the same viewport width.
+  Measured against the v1.200.0 baseline with the probe (new `--theatre`
+  flag): non-theatre 1280/1366/1600: 2 rows -> 1 glyph row, all 32px;
+  1920 and every theatre width: unchanged (words, one row, 32px); phones
+  unchanged.
+
+**What the gate caught (round 1, both seats independently).** The blank
+"Add prompt" row rode along in every save and 400'd the WHOLE list - a new
+prompt tripped a red error on its first keystroke, a Remove of another row
+did not persist (gone on screen, back on reload), and edits to existing
+prompts were silently lost while the blank row existed; the commit's "a
+blank row is not saved until typed" was literally true and functionally
+wrong. Fixed: a new row joins the list only once it is whole; no-op saves
+are skipped. Also: an in-flight save response could re-render over a newer
+keystroke burst (sequence counter + no render while a burst is pending);
+the server's id-uniqueness guards were correct but UNBOUND (a duplicate
+known id and an arbitrary client id are now asserted); a rolled caption
+line first shown in a 100ms cue then rolled through a 3s one opened a
+false paragraph (its endMs now extends through every cue it rolls into);
+plus five correct-but-unbound branches (phone pick-one teardown, focus
+guard, no-toast-after-share, fetch rejection) and two stale comments. During
+T3's own measurement: a first-draft 1100px threshold stripped theatre's
+words at 1280/1366 where the baseline showed them fitting (960 is the
+measured line), and glyph-only buttons measured 30px not 32 (the hidden
+label carried the line box - fixed).
+
+**Known gaps (disclosed).**
+- The probe's stall residual is now MEASURED (tech-debt 184): in a
+  multi-width run the third-or-later Chromium launch sometimes stalls -
+  shell painted, no first POST for 30s, server log empty, no JS errors; a
+  width alone never stalls. Reload-twice + rerun-alone rule stands.
+- Prompts are instance-wide, not per user (Dean's ruling: it is his
+  install); a member sees the admin's prompts and cannot edit them.
+- A save answer that is superseded still paints its error line before the
+  sequence check discards it (a stale 400 can flash until the next
+  keystroke) - tech-debt 185.
+- Attribute's blank glyph on phones and its move behind a flag: the next
+  wave (v1.202.0).
+
+Dual-Node: 7723/0 on v22.23.1 and 7723/0 on v24.14.0 (sequential, reviewers idle). Round-2 APPROVE from both seats; their four tech-debt-able one-liners were applied in a post-approval commit (e1f4493, tested). Device pass PENDING (Dean).
+
 ### v1.200.0 - Transcript export + the action row never deforms (2026-08-28)
 
 Dean: "Transcript export of the closed caption. Allow me to see and then

@@ -2314,5 +2314,11 @@
     "date": "2026-08-28",
     "title": "Transcript: read, copy or share a video's captions as text",
     "intent": "Any video that has captions now has a Transcript button next to Share. On a computer it opens the full transcript in a text box - the video's title, the date it was published and the channel at the top, then everything that was said, one line at a time - with a Copy button and an optional toggle to show a time next to each line. On a phone the same button opens the share sheet so you can send the transcript straight to Notes, Messages or an AI app, or copy it to the clipboard. YouTube's auto-generated captions repeat every line two or three times as they scroll; the transcript shows each line once. Videos without captions do not get the button, and TV episodes are not covered yet."
+  },
+  {
+    "version": "1.201.0",
+    "date": "2026-08-28",
+    "title": "Share a transcript with your AI app, plus a tidier transcript and action bar",
+    "intent": "The Transcript button gains a Share with AI option. Under Settings, Transcript sharing, you write one or more prompts (a summary request, an analysis request, whatever you usually ask) and give each a name; when you share a transcript with AI, your prompt is placed in front of the transcript in the share sheet, so you can pick Claude, Gemini, ChatGPT or any other app and it gets your request and the text together. If you have several prompts you choose one by name; with none set up the option simply does not appear. On a computer without a share sheet the button copies the prompt and transcript for pasting. Also: with timestamps off the transcript now reads as flowing paragraphs instead of one line per caption, and on a desktop the row of buttons under a video stays on one line (showing icons only when the column is narrow) instead of spilling onto a second row outside theatre mode."
   }
 ]

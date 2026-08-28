@@ -1,7 +1,9 @@
 # Transcript: "Share with AI" + prose mode + one-row desktop action bar
 
-Dean, 2026-08-28 (after v1.200.0 device pass: "goddamn amazing"). Ships as
-v1.201.0 on `feat/transcript-ai-share`. Full gate.
+Status: SHIPPED v1.201.0 (2026-08-28). Was: ACTIVE (started 2026-08-28).
+
+Dean, 2026-08-28 (after v1.200.0 device pass: "goddamn amazing"). SHIPPED as
+v1.201.0 (gate: two rounds, both seats APPROVE; dual-Node 7723/0).
 
 ## Rulings (intake, all agreed)
 
