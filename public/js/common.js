@@ -11566,6 +11566,112 @@ function showChoiceModal(title, choices) {
   return function dismiss() { settle(); };
 }
 
+// Transcript export (Dean: "primarily a text field on desktop"): the desktop
+// Transcript modal. `opts.text` is the already-fetched document (title / date
+// / channel, blank line, transcript); `opts.loadText(timestamps)` re-fetches
+// it with `[m:ss]` prefixes when the "Show timestamps" box is toggled
+// (default OFF - Dean's ruling). Read-only textarea (select-all + copy works
+// natively), a Copy button with the same "Copied!" label feedback the Share
+// button uses, and Close. Same `.modal-backdrop`/`.modal-content` infra and
+// createElement/textContent discipline as showChoiceModal; returns a
+// `dismiss()` for the view's abort teardown (body-level modals outlive SPA
+// nav on their own - the v1.49 lesson).
+function showTranscriptModal(opts) {
+  const o = opts || {};
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  const content = document.createElement('div');
+  content.className = 'modal-content transcript-modal';
+  backdrop.appendChild(content);
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'modal-title';
+  titleEl.textContent = 'Transcript';
+  content.appendChild(titleEl);
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'transcript-textarea';
+  textarea.id = 'transcript-text';
+  textarea.readOnly = true;
+  textarea.spellcheck = false;
+  textarea.setAttribute('aria-label', 'Transcript');
+  textarea.value = typeof o.text === 'string' ? o.text : '';
+  content.appendChild(textarea);
+
+  const options = document.createElement('label');
+  options.className = 'transcript-options';
+  const tsBox = document.createElement('input');
+  tsBox.type = 'checkbox';
+  tsBox.id = 'transcript-timestamps';
+  tsBox.checked = false;
+  options.appendChild(tsBox);
+  options.appendChild(document.createTextNode('Show timestamps'));
+  content.appendChild(options);
+
+  const actions = document.createElement('div');
+  actions.className = 'modal-actions';
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.id = 'transcript-copy-btn';
+  copyBtn.className = 'btn btn-primary';
+  copyBtn.textContent = 'Copy';
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'btn';
+  closeBtn.textContent = 'Close';
+  actions.appendChild(copyBtn);
+  actions.appendChild(closeBtn);
+  content.appendChild(actions);
+
+  let settled = false;
+  let copyResetTimer = null;
+  let loadSeq = 0; // supersession guard for a fast double-toggle
+  function dismiss() {
+    if (settled) return;
+    settled = true;
+    if (copyResetTimer) clearTimeout(copyResetTimer);
+    backdrop.classList.add('modal-closing');
+    closeOverlayThen(backdrop, 'modal-open', () => {
+      if (backdrop.parentNode) document.body.removeChild(backdrop);
+    });
+  }
+
+  tsBox.addEventListener('change', () => {
+    if (typeof o.loadText !== 'function') return;
+    const seq = ++loadSeq;
+    const wanted = tsBox.checked;
+    tsBox.disabled = true;
+    Promise.resolve(o.loadText(wanted)).then((text) => {
+      if (settled || seq !== loadSeq) return;
+      if (typeof text === 'string') textarea.value = text;
+    }).catch(() => {
+      if (settled || seq !== loadSeq) return;
+      if (typeof showToast === 'function') showToast('Could not load the transcript.');
+      tsBox.checked = !wanted; // reflect the state that is actually shown
+    }).then(() => { if (seq === loadSeq) tsBox.disabled = false; });
+  });
+
+  copyBtn.addEventListener('click', () => {
+    copyTextToClipboard(textarea.value).then((outcome) => {
+      if (settled) return;
+      if (outcome !== 'copied') {
+        if (typeof showToast === 'function') showToast('Could not copy - select the text and copy it manually.');
+        return;
+      }
+      copyBtn.textContent = 'Copied!';
+      if (typeof showToast === 'function') showToast('Transcript copied');
+      if (copyResetTimer) clearTimeout(copyResetTimer);
+      copyResetTimer = setTimeout(() => { copyBtn.textContent = 'Copy'; copyResetTimer = null; }, 1500);
+    });
+  });
+  closeBtn.addEventListener('click', dismiss);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) dismiss(); });
+
+  document.body.appendChild(backdrop);
+  openOverlay(backdrop, 'modal-open');
+  return dismiss;
+}
+
 // ---- FR-7 (v1.21.0, T6): extra-deliberate delete for local files ----------
 // See docs/exec-plans/completed/2026-07-08-v1.21-polish-release.md ("FR-7 --
 // extra-deliberate delete for local (non-yt-dlp) files") for the full
@@ -12305,6 +12411,36 @@ function shareExternalUrl(url, title) {
     );
   }
   console.error('Share: no navigator.share or clipboard API available');
+  return Promise.resolve('unavailable');
+}
+
+// Transcript export (Dean): share a block of TEXT (not a URL) - the native
+// sheet where one exists (iOS/Android `navigator.share({title, text})`;
+// Notes/Messages/Mail/AI apps all accept text), else the clipboard. Same
+// outcome vocabulary as shareExternalUrl ('shared' | 'copied' | 'copy-failed'
+// | 'unavailable') so callers give identical feedback. A dismissed sheet is
+// 'shared' (the user's choice), never an error - exactly the URL helper's rule.
+function shareTextContent(text, title) {
+  const body = typeof text === 'string' ? text : '';
+  if (typeof navigator.share === 'function') {
+    return navigator.share({ title: title || 'FileTube', text: body })
+      .catch(() => { /* sheet dismissed / share failed -- no-op */ })
+      .then(() => 'shared');
+  }
+  return copyTextToClipboard(body);
+}
+
+// Clipboard write with the shared outcome vocabulary ('copied' | 'copy-failed'
+// | 'unavailable'). Must be called synchronously inside a user gesture on
+// iOS - callers PREFETCH the text and copy from memory on the tap.
+function copyTextToClipboard(text) {
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    return navigator.clipboard.writeText(typeof text === 'string' ? text : '').then(
+      () => 'copied',
+      (err) => { console.error('Copy: clipboard write failed:', err); return 'copy-failed'; }
+    );
+  }
+  console.error('Copy: no clipboard API available');
   return Promise.resolve('unavailable');
 }
 

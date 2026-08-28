@@ -80,6 +80,85 @@
 
 ## Shipped
 
+### v1.200.0 - Transcript export + the action row never deforms (2026-08-28)
+
+Dean: "Transcript export of the closed caption. Allow me to see and then
+copy/paste the full transcript from the video ... title - date published -
+channel - and then the transcript. Text field on desktop, copy/share sheet
+on mobile. Clean and native feeling like all else."
+
+**What shipped.**
+- `lib/transcript.js` (new, pure): WebVTT -> plain text. The load-bearing
+  logic is the ROLLING-CAPTION de-dup: yt-dlp auto-subs repeat every spoken
+  line across 2-3 contiguous cues (the first with per-word timing tags), so
+  a naive join doubles every line. The rule is the largest SUFFIX/PREFIX
+  overlap between contiguous cues (see "what the gate caught" - it started
+  as set membership, which lost real lines). Header = title / `Published
+  <date>` (falls back to `Added <date>`, UTC day precision) / channel.
+- `GET /api/transcript/:id` (`text/plain`, nosniff): same sidecar resolver,
+  RBAC 404 shape and trust posture as `/api/subtitles/:id`; `?timestamps=1`
+  prefixes `[m:ss]`. In all three completeness nets (route count 228->229).
+- Watch page: a **Transcript** button beside Share (only when the item has
+  captions; Material `chat` glyph following the `.icon-share` one-base-mask
+  precedent, in all three CSS lists). Desktop: read-only text-field modal +
+  Copy + "Show timestamps" (default OFF). Phone width (768px): the
+  share-sheet / clipboard picker; the text is PREFETCHED so Copy runs inside
+  the tap (iOS). Torn down on SPA navigation.
+- **The action row never deforms (Dean's ruling, reverses v1.25.4/6's
+  desktop nowrap).** Measured in headless Chromium against main: the
+  10-11 button row was ALREADY squeezed at 1280/1366 (every button 42px
+  tall, "Mark watched" on two lines) and the new button tipped 1600 too. Now
+  the group wraps at every width and a button never shrinks/line-breaks
+  (`white-space: nowrap; flex-shrink: 0`) with a uniform `line-height`
+  (Download is an `<a>`, buttons are `<button>`s - their natural heights
+  differed by 3px, hidden by one stretched row, exposed by two). Result:
+  every button 32px on desktop at every width (one row at 1920, two clean
+  rows at 1280/1366/1600 - ten labelled buttons are 953px), 39px on phones,
+  no button WIDTH changed on desktop; phones get a uniform 10->8px side
+  padding so ten glyphs fit one row at 390 and 375. Codified as a MANDATORY norm in
+  docs/CONTRIBUTING.md with a new instrument, `scripts/action-row-probe.js`
+  (before/after geometry per width; FT_ROOT=<worktree> for a baseline).
+
+**What the gate caught (two rounds).** Adversarial CRITICAL-class: the
+membership de-dup DROPPED genuine repeated utterances - a second speaker
+saying the same words - 4 lines lost in Dean's own sample file, invisible
+because "0 adjacent duplicates" also describes over-dropping; fixed to the
+overlap rule with five new fixture classes. QA + adversarial: the phone
+padding comment cited a 12px base that was never in the cascade (10px) and
+a 336px figure that was never measured (325px); the modal's SPA-abort
+teardown was implemented but UNBOUND (now bound; deleting it is red). Also:
+long title lines forced a horizontal scrollbar (`pre-wrap`), the phone
+"Share transcript" pick swallowed its clipboard-fallback outcome, an icon
+lock anchored after the first selector. The pre-commit hook then REFUSED
+the fix-round commit on two source locks that encoded the old nowrap
+ruling (5822/2) - rewritten to lock the new rule. Round 2 (adversarial):
+those rewritten locks were COMMENT-POROUS (a commented copy of the rule
+kept them green while every button deformed - the recurring class; now
+comment-stripped at read, mutant red); the fix-round commit mis-quoted
+1600 as "one row" from a half-mounted probe line (it is two rows - the
+norm's own cautionary example now); the probe could hang ~30 min on a
+dead renderer (wall-clock capped, CDP rejections fatal).
+
+**Known gaps (disclosed).**
+- TV episodes have no caption route, so no Transcript button there (Dean:
+  out of scope; a separate "captions for Shows" feature).
+- The Attribute button's `icon-user` mask does not exist in style.css, so
+  at phone widths it renders as a narrower blank box (pre-existing since
+  v1.53). Dean's ruling: NOT fixed here - a follow-up wave removes Attribute
+  from the default UI behind an opt-in experimental flag and gives it a
+  real glyph. A broader "critical re-evaluation of all the action buttons,
+  mobile first" is also planned.
+- The no-deform norm is MEASURED only on the watch action row; the other
+  `.btn` rows it names are governed but unaudited (tech-debt row 184,
+  revisit on the next change to any of them).
+- Probe residual: under software GL a page load occasionally stalls (the
+  seeded stub media races the connection pool); the probe reloads up to
+  twice and says so; a width that still warns is rerun alone.
+- A reheat that newly writes a sidecar does not mount the button until the
+  page reloads (`reloadMediaAfterReheat` refreshes data only).
+
+Dual-Node: 7690/0 on v22.23.1 and 7690/0 on v24.14.0 (sequential, reviewers idle). Device pass PENDING (Dean).
+
 ### v1.199.2 - fix: Roku Shows wall title/counts overlap - revert to the proven single-line tile (2026-08-28)
 
 Dean on-device (v1.199.1): the title and the two count lines STILL overlapped.

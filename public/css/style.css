@@ -2743,14 +2743,39 @@ img.art-shimmer {
    keeps the row's min-content width from ever exceeding the viewport (the
    actual cause of the v1.25.5 iOS shrink-to-fit/zoom regression: forcing
    `.watch-actions` itself to `nowrap` ignored the star-rating sibling and
-   pushed the row's min-content past phone widths). This inner group keeps
-   the three ACTION BUTTONS themselves nowrap -- they must never split
-   across two rows -- independent of viewport width, which also preserves
-   the v1.25.4 fix for Move landing on an orphaned row. */
+   pushed the row's min-content past phone widths). This inner group
+   USED to keep the action buttons themselves nowrap ("they must never split
+   across two rows").
+
+   Transcript wave (Dean's ruling, 2026-08-28: "do it once, do it right"):
+   that nowrap had a hidden cost. The group had grown to 10-11 buttons, and
+   when the row is wider than its column a nowrap flex row does not overflow
+   cleanly - it SHRINKS the items: "Mark watched" broke onto two lines and
+   every button in the row grew from 31px to 42px tall. Measured in headless
+   Chromium against main (a85fc58): already deformed at 1280 and 1366
+   (row 809px in a 598/684px column), and the Transcript button tipped 1600
+   over too (921px in 918px). The rule is now the one docs/CONTRIBUTING.md
+   codifies for every action row: a button NEVER shrinks or line-breaks
+   (the `.btn` rule below), and the GROUP wraps, so an overflow becomes a
+   second row of natural-size buttons at every width. The v1.25.4 "Move on
+   an orphaned row" case is unchanged in spirit - it was a squeeze fix - and
+   phone widths already wrapped (the 768px block below). */
 .watch-action-btns {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: var(--space-4);
+}
+.watch-action-btns .btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+  /* MEASURED (the probe, 1920px, align-items:flex-start): the buttons'
+     NATURAL heights differed - Download is an <a class="btn"> and inherits
+     the body line-height (16.8px -> 31px tall), <button>s get the UA's
+     `line-height: normal` (14px -> 28px), Queue/Next carry a 16px inline
+     svg (30px). One stretched row hid the difference; a wrapped second row
+     exposed it (28px under a 31px first row). An explicit line-height that
+     exceeds the svg makes every button 32px whatever element it is. */
+  line-height: var(--lh-relaxed);
 }
 
 /* Star Rating (read-only display) */
@@ -3922,6 +3947,44 @@ a.sub-row-channel-link:focus-visible {
   justify-content: center;
 }
 
+/* Transcript export (Dean): the desktop "Transcript" modal - a read-only
+   text field holding the full caption transcript (title / date / channel
+   header, then one spoken line per row), a "Show timestamps" toggle, and
+   Copy/Close. Wider than the 400px confirm/choice modals because prose
+   wants room; the shared .modal-content height cap + internal scroll still
+   apply, and the textarea takes the modal's own scroll budget so the
+   actions row stays reachable. Phone widths never open this modal (they
+   get the share/copy picker instead), so no phone rules are needed here. */
+.transcript-modal {
+  max-width: 720px; /* token-exempt: layout geometry (modal width cap) */
+}
+.transcript-textarea {
+  width: 100%;
+  min-height: 40vh; /* token-exempt: layout geometry (viewport-relative height) */
+  font-family: var(--mono-font);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-relaxed);
+  background: var(--input-bg, var(--header-bg));
+  color: var(--text-primary);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  resize: vertical;
+  white-space: pre-wrap; /* one row per spoken line; only a long TITLE line (90-120 chars is routine) wraps instead of forcing a horizontal scrollbar */
+  overflow: auto;
+}
+.transcript-options {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-4) 0 var(--space-6);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.transcript-options input[type="checkbox"] {
+  margin: 0;
+}
+
 /* v1.97.1 "Hidden" settings-page section (setup.js renderFeedHiddenSection) -
    the feed-hide restore list, mirroring the Trash section's row layout. The
    settings page scrolls naturally, so no internal max-height/overflow (the
@@ -4464,6 +4527,7 @@ a.sub-row-channel-link:focus-visible {
 .icon-list,
 .icon-heart,
 .icon-share,
+.icon-transcript,
 .icon-download,
 .icon-shuffle,
 .icon-flame,
@@ -4551,6 +4615,13 @@ a.sub-row-channel-link:focus-visible {
    without a set-specific variant simply falls back to this one in every set
    (that is already how the heart behaves, and it is deliberate, not a gap). */
 .icon-share { -webkit-mask-image: url(/assets/icons/share.svg); mask-image: url(/assets/icons/share.svg); }
+/* Transcript export (Dean: "a little chat bubble icon"): Material Symbols
+   `chat` (a speech bubble with text lines). Follows the .icon-share precedent
+   EXACTLY - ONE base mask, every other set (rounded/filled/emoji) falls back
+   to it (the deliberate tech-debt-113 minority pattern), and it sits in the
+   SAME three lists the share glyph does (size block above, this mask line,
+   the @supports fill below) - the v1.47.6 "blank box" scar. */
+.icon-transcript { -webkit-mask-image: url(/assets/icons/chat.svg); mask-image: url(/assets/icons/chat.svg); }
 /* "Shuffle again" (v1.15.1) originally shipped as a fixed ::before unicode
    glyph outside the icon-set system, which meant it rendered as a raw emoji
    (U+1F500) even in non-emoji/modern themes -- unlike every other .icon-*
@@ -4635,7 +4706,7 @@ a.sub-row-channel-link:focus-visible {
 @supports (mask-image: url("#")) or (-webkit-mask-image: url("#")) {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
-  .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-download, .icon-shuffle,
+  .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-transcript, .icon-download, .icon-shuffle,
   .icon-flame, .icon-history, .icon-queue, .icon-podcast, .icon-downloads, .icon-books, .icon-tv,
   .icon-school, .icon-movies, .icon-shows, .icon-documents, .icon-music-note, .icon-kids, .icon-games, .icon-camcorder, .icon-photos, .icon-travel, .icon-work, .icon-cooking, .icon-fitness, .icon-comedy, .icon-pets, .icon-cars, .icon-archive, .icon-radio, .icon-favorites, .icon-liked {
     background-color: currentColor;
@@ -5372,6 +5443,24 @@ a.sub-row-channel-link:focus-visible {
      overflow unlikely, `flex-wrap` makes it impossible. */
   .watch-action-btns .btn .btn-label {
     display: none;
+  }
+
+  /* Transcript export (Dean): the row is now TEN glyph buttons on a captioned,
+     yt-dlp-sourced video (Queue/Next/Download/Delete/Move/Like/Watched/Share/
+     Reheat/Transcript). MEASURED in headless Chromium at 390px (DPR 2): at
+     the side padding this block's `.watch-actions .btn` rule above gave them
+     (`--space-5`, 10px) ten buttons measured 366px against a 358px content
+     box, so the tenth wrapped to a second row - the v1.50 "shifted the whole
+     row down" scar again. With the words already hidden above, a glyph-only
+     button does not need word padding: at `--space-4` (8px) sides ten
+     measure 325px, one row at 390 AND 375; eleven (the rare unattributed +
+     captioned + reheatable case) measure 358px - exactly the 390 box, and
+     they wrap at 375 as the safety net intends. (Gate correction: an earlier
+     draft of this comment said "12px base" and "336px" - neither was ever
+     in effect or measured.) Desktop is untouched (labels + room). */
+  .watch-action-btns .btn {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
   }
 
   /* v1.50 (Dean: "Reheat shifted the whole row down on mobile. Makes me

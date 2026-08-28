@@ -41,7 +41,9 @@ const path = require('node:path');
 const CSS_PATH = path.join(__dirname, '..', '..', 'public', 'css', 'style.css');
 const HTML_PATH = path.join(__dirname, '..', '..', 'public', 'watch.html');
 const WATCH_JS_PATH = path.join(__dirname, '..', '..', 'public', 'js', 'watch.js');
-const css = fs.readFileSync(CSS_PATH, 'utf8');
+// Comments stripped once at read (the v1.50.3 lock lesson): a commented copy
+// of a rule must never satisfy these locks.
+const css = fs.readFileSync(CSS_PATH, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 const html = fs.readFileSync(HTML_PATH, 'utf8');
 const watchJs = fs.readFileSync(WATCH_JS_PATH, 'utf8');
 
@@ -163,11 +165,22 @@ test('style.css: the mobile .watch-actions rule (inside the watch-action-bar 768
   assert.doesNotMatch(rule[1], /flex-wrap:\s*nowrap;/, 'the outer .watch-actions row must not be forced nowrap at this breakpoint -- that ignores the .star-rating sibling and can overflow the viewport');
 });
 
-test('style.css: a .watch-action-btns nowrap flex sub-group exists (base rule, viewport-independent) so Download/Delete/Move never split across rows', () => {
+test('style.css: the .watch-action-btns flex sub-group exists (base rule) - it WRAPS and its buttons never deform (transcript wave, Dean 2026-08-28)', () => {
+  // Was: "must stay nowrap so the three buttons are never split across two
+  // rows". Measured once the row held 10-11 buttons, nowrap did not keep
+  // them on one row - it SQUEEZED them (two-line labels, 31->42px tall) at
+  // 1280-1600. Dean's ruling: a second row of natural-size buttons at every
+  // width; a button never shrinks or line-breaks (docs/CONTRIBUTING.md,
+  // "Action rows: a button NEVER deforms"). test/unit/era-row-overflow
+  // .test.js locks the same rule from the phone side.
   const rule = /\.watch-action-btns\s*\{([^}]*)\}/.exec(css);
   assert.ok(rule, 'expected a .watch-action-btns rule in style.css');
   assert.match(rule[1], /display:\s*flex;/);
-  assert.match(rule[1], /flex-wrap:\s*nowrap;/, 'the button sub-group itself must stay nowrap so the three buttons are never split across two rows');
+  assert.match(rule[1], /flex-wrap:\s*wrap;/, 'the button sub-group wraps - a nowrap row deforms its buttons when it overflows the column');
+  const btn = /\.watch-action-btns \.btn\s*\{([^}]*)\}/.exec(css);
+  assert.ok(btn, 'expected the no-deform .watch-action-btns .btn rule');
+  assert.match(btn[1], /white-space:\s*nowrap;/);
+  assert.match(btn[1], /flex-shrink:\s*0;/);
 });
 
 test('watch.html: Download and Delete buttons are wrapped in a .watch-action-btns sub-group inside .watch-actions', () => {

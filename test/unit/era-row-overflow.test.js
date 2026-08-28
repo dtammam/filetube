@@ -30,7 +30,10 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+// Comments stripped ONCE at read (the v1.50.3 lock lesson, re-struck by the
+// transcript-wave gate): a comment quoting `.watch-action-btns .btn { ... }`
+// must never satisfy - or defeat - these locks.
+const CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 
 const ERAS = ['2005', '2009', '2014', '2021'];
 
@@ -112,17 +115,29 @@ test('CONTAINMENT: the watch action group wraps at the phone breakpoint', () => 
   assert.match(body, /min-width: 0/, 'and must be allowed to shrink below intrinsic width');
 });
 
-test('desktop keeps nowrap; the phone breakpoint DELIBERATELY REVERSES v1.25.4', () => {
-  // Correction from the gate: v1.25.4's "Move must not orphan" rule lives INSIDE
-  // the max-width:768px block, so it was exclusively a PHONE fix. This change
-  // therefore reverses that guarantee on phones rather than preserving it -- the
-  // right trade (unreachable off-screen content beats a second line), but it is
-  // a reversal and must be disclosed as one, not framed as preserved.
+test('the base (desktop) rule WRAPS too since the transcript wave, and the buttons themselves NEVER deform (Dean 2026-08-28)', () => {
+  // History: v1.25.4's "Move must not orphan" rule lived INSIDE the
+  // max-width:768px block (a PHONE fix); v1.47.5 reversed it on phones
+  // (wrap beats unreachable off-screen content) while the desktop base rule
+  // stayed nowrap. The transcript wave (2026-08-28) MEASURED what desktop
+  // nowrap really did once the row grew to 10-11 buttons: a row wider than
+  // its column SHRINKS its items - "Mark watched" broke onto two lines and
+  // every button grew 31->42px at 1280/1366/1600. Dean's ruling ("do it
+  // once, do it right", codified in docs/CONTRIBUTING.md): the GROUP wraps
+  // at every width and a BUTTON never shrinks or line-breaks. This test
+  // would FAIL against the old `flex-wrap: nowrap` base rule.
   const base = CSS.slice(CSS.indexOf('.watch-action-btns {'));
-  assert.match(base.slice(0, base.indexOf('}')), /flex-wrap: nowrap/,
-    'the base (desktop) rule must still prefer a single row');
-  // And the v1.25.4 button rule really is phone-scoped, which is what makes the
-  // above a reversal rather than a preservation.
+  assert.match(base.slice(0, base.indexOf('}')), /flex-wrap: wrap/,
+    'the base (desktop) rule must let the group wrap - a nowrap row deforms its buttons instead');
+  const btn = /\.watch-action-btns \.btn \{([^}]*)\}/.exec(CSS);
+  assert.ok(btn, 'a base .watch-action-btns .btn rule (the no-deform rule) must exist');
+  assert.match(btn[1], /white-space: nowrap;/, 'a button label never line-breaks');
+  assert.match(btn[1], /flex-shrink: 0;/, 'a button never shrinks below its natural width');
+  assert.match(btn[1], /line-height: var\(--lh-relaxed\);/,
+    'uniform line-height: <a class="btn"> (Download) and <button>s had different natural heights (31 vs 28), exposed by a wrapped second row');
+  // The v1.25.4 button rule really is phone-scoped (its sizing lives in the
+  // phone breakpoint) - still true, still the reason the phone story is a
+  // reversal rather than a preservation.
   const mobileBlock = CSS.slice(CSS.indexOf('@media (max-width: 768px)'));
   assert.ok(mobileBlock.includes('.watch-actions .btn {'),
     'v1.25.4\'s button sizing is inside the phone breakpoint -- it was never a desktop rule');
