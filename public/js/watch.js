@@ -3227,13 +3227,24 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!mediaData || transcriptLoading) return;
       transcriptLoading = true;
       if (transcriptBtn) transcriptBtn.disabled = true;
+      // Captured BEFORE the await: the fetched text belongs to the item at
+      // click time, so its title must too (gate suggestion).
+      const title = (mediaData && mediaData.title) || 'Transcript';
       fetchTranscriptText(false).then((text) => {
         if (signal.aborted) return;
         if (transcriptDismiss) { signal.removeEventListener('abort', transcriptDismiss); transcriptDismiss(); transcriptDismiss = null; }
-        const title = mediaData.title || 'Transcript';
         if (isPhoneWidth()) {
           transcriptDismiss = showChoiceModal('Transcript', [
-            { label: 'Share transcript', onPick: () => { shareTextContent(text, title); } },
+            { label: 'Share transcript', onPick: () => {
+              // A phone-width browser WITHOUT a share sheet (Firefox Android,
+              // a narrow desktop window) falls back to the clipboard inside
+              // shareTextContent - toast that outcome exactly like Copy does,
+              // so the pick never looks like it did nothing (gate suggestion).
+              shareTextContent(text, title).then((outcome) => {
+                if (outcome === 'shared' || typeof window.showToast !== 'function') return;
+                window.showToast(outcome === 'copied' ? 'Transcript copied' : 'Could not share the transcript.');
+              });
+            } },
             { label: 'Copy transcript', onPick: () => {
               copyTextToClipboard(text).then((outcome) => {
                 if (typeof window.showToast !== 'function') return;
@@ -3257,7 +3268,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // Mounts the "Transcript" button as a sibling of Share inside
     // `.watch-action-btns` - setupShareButton's exact shape (same `.btn`,
     // same icon + hideable `.btn-label`, CONDITIONAL on the item having a
-    // caption sidecar, stale button removed when the current item has none).
+    // caption sidecar). The remove-if-present arm below mirrors Share's for
+    // symmetry only: `transcriptBtn` is per view instance and initWatch runs
+    // once per view, so it cannot fire today (gate note).
     function setupTranscriptButton() {
       const watchActions = root.querySelector('.watch-actions');
       if (!watchActions || !mediaData) return;

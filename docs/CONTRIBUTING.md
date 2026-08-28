@@ -299,6 +299,45 @@ Standing rules that ride this list:
   moment; every new per-user route family gets second-session
   wrong-user assertions the day it is born.
 
+## Action rows: a button NEVER deforms - measure every button change (MANDATORY, Dean's ruling 2026-08-28)
+
+Dean: "I've burned so much time adding a button and all of a sudden
+everything's offset or it's not the right size." The transcript wave found
+the mechanism: a `flex-wrap: nowrap` action row that is wider than its
+column does not overflow cleanly, it SHRINKS its items - a label breaks onto
+two lines and every button in the row grows taller (31px -> 42px on the
+watch page at 1280-1600). The rules, for EVERY row of `.btn`s (the watch
+action row, section actions, modal actions, settings rows):
+
+1. **A button keeps its natural size at every width.** Inside a flex row:
+   `white-space: nowrap; flex-shrink: 0` on the button, `flex-wrap: wrap`
+   on the group. Overflow becomes a second row of correctly-sized buttons,
+   never a squeeze. (Phone widths may additionally hide `.btn-label` words
+   and tighten padding - the watch row's 768px block - but the same
+   no-deform rule holds for the glyph-only buttons.)
+2. **Adding, removing, relabelling or re-iconing a button is a MEASURED
+   change, never an eyeballed one.** Run the headless-Chromium probe BEFORE
+   and AFTER against the same seeded page and diff the geometry:
+
+   ```
+   node scripts/action-row-probe.js <out-dir> [widths...]      # this tree
+   FT_ROOT=<path to a main worktree> node scripts/action-row-probe.js <out-dir-main>
+   ```
+
+   It boots the real app on a scratch `DATA_DIR` with a seeded captioned
+   video, drives the Playwright-cached Chromium over CDP, and prints one JSON
+   line per width (`x/y/w/h` of every `.watch-action-btns .btn`, the stars,
+   the title, the description box) plus a PNG clip of the action bar. The
+   acceptance evidence is: every PRE-EXISTING button has the same `w/h` (and
+   the same `y` unless a wrap is the intended outcome), and the row count is
+   what you intended, at 390 and 375 (phones) and 1280 / 1366 / 1600 / 1920
+   (desktop). Quote the numbers in the commit message. A glyph must be
+   listed in ALL THREE icon lists (size block, mask line, `@supports` fill -
+   the v1.47.6 blank-box scar) and measure `1em` like its siblings.
+3. **A new button joins an existing group's markup shape exactly** (`.btn`,
+   `<i class="icon-*">` + `<span class="btn-label">`, `title` + `aria-label`)
+   so every rule above applies to it for free. No bespoke sizing.
+
 ## Reordering: ONE gesture layer (MANDATORY, Dean's ruling 2026-08-04)
 
 > "I think that should be our standard for these sortable things. We should

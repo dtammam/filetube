@@ -2743,14 +2743,39 @@ img.art-shimmer {
    keeps the row's min-content width from ever exceeding the viewport (the
    actual cause of the v1.25.5 iOS shrink-to-fit/zoom regression: forcing
    `.watch-actions` itself to `nowrap` ignored the star-rating sibling and
-   pushed the row's min-content past phone widths). This inner group keeps
-   the three ACTION BUTTONS themselves nowrap -- they must never split
-   across two rows -- independent of viewport width, which also preserves
-   the v1.25.4 fix for Move landing on an orphaned row. */
+   pushed the row's min-content past phone widths). This inner group
+   USED to keep the action buttons themselves nowrap ("they must never split
+   across two rows").
+
+   Transcript wave (Dean's ruling, 2026-08-28: "do it once, do it right"):
+   that nowrap had a hidden cost. The group had grown to 10-11 buttons, and
+   when the row is wider than its column a nowrap flex row does not overflow
+   cleanly - it SHRINKS the items: "Mark watched" broke onto two lines and
+   every button in the row grew from 31px to 42px tall. Measured in headless
+   Chromium against main (a85fc58): already deformed at 1280 and 1366
+   (row 809px in a 598/684px column), and the Transcript button tipped 1600
+   over too (921px in 918px). The rule is now the one docs/CONTRIBUTING.md
+   codifies for every action row: a button NEVER shrinks or line-breaks
+   (the `.btn` rule below), and the GROUP wraps, so an overflow becomes a
+   second row of natural-size buttons at every width. The v1.25.4 "Move on
+   an orphaned row" case is unchanged in spirit - it was a squeeze fix - and
+   phone widths already wrapped (the 768px block below). */
 .watch-action-btns {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: var(--space-4);
+}
+.watch-action-btns .btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+  /* MEASURED (the probe, 1920px, align-items:flex-start): the buttons'
+     NATURAL heights differed - Download is an <a class="btn"> and inherits
+     the body line-height (16.8px -> 31px tall), <button>s get the UA's
+     `line-height: normal` (14px -> 28px), Queue/Next carry a 16px inline
+     svg (30px). One stretched row hid the difference; a wrapped second row
+     exposed it (28px under a 31px first row). An explicit line-height that
+     exceeds the svg makes every button 32px whatever element it is. */
+  line-height: var(--lh-relaxed);
 }
 
 /* Star Rating (read-only display) */
@@ -3945,7 +3970,7 @@ a.sub-row-channel-link:focus-visible {
   border-radius: var(--radius);
   padding: var(--space-4);
   resize: vertical;
-  white-space: pre;
+  white-space: pre-wrap; /* one row per spoken line; only a long TITLE line (90-120 chars is routine) wraps instead of forcing a horizontal scrollbar */
   overflow: auto;
 }
 .transcript-options {
@@ -5422,13 +5447,17 @@ a.sub-row-channel-link:focus-visible {
 
   /* Transcript export (Dean): the row is now TEN glyph buttons on a captioned,
      yt-dlp-sourced video (Queue/Next/Download/Delete/Move/Like/Watched/Share/
-     Reheat/Transcript). Measured in headless Chromium at 390px: ten buttons at
-     the base 12px side padding = 366px against a ~358px content box, so the
-     tenth wrapped to a second row - the v1.50 "shifted the whole row down"
-     scar again. With the words already hidden above, a glyph-only button does
-     not need word padding: 8px sides puts ten at 336px (fits 375px phones
-     too), eleven at ~366px (the rare unattributed+captioned case still wraps,
-     as the safety net intends). Desktop is untouched (labels + room). */
+     Reheat/Transcript). MEASURED in headless Chromium at 390px (DPR 2): at
+     the side padding this block's `.watch-actions .btn` rule above gave them
+     (`--space-5`, 10px) ten buttons measured 366px against a 358px content
+     box, so the tenth wrapped to a second row - the v1.50 "shifted the whole
+     row down" scar again. With the words already hidden above, a glyph-only
+     button does not need word padding: at `--space-4` (8px) sides ten
+     measure 325px, one row at 390 AND 375; eleven (the rare unattributed +
+     captioned + reheatable case) measure 358px - exactly the 390 box, and
+     they wrap at 375 as the safety net intends. (Gate correction: an earlier
+     draft of this comment said "12px base" and "336px" - neither was ever
+     in effect or measured.) Desktop is untouched (labels + room). */
   .watch-action-btns .btn {
     padding-left: var(--space-4);
     padding-right: var(--space-4);

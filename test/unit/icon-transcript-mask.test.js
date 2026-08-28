@@ -34,9 +34,12 @@ test('icon-transcript: style.css carries the mask, the 1em size-block membership
   const supportsBlock = css.slice(supportsIdx, css.indexOf('background-color: currentColor', supportsIdx));
   assert.ok(supportsBlock.includes('.icon-transcript,'), 'must be in the @supports fill list (else a mask with no colour = blank box)');
   // Never in the emoji-set neutraliser (falls back to the mask there, like share).
-  const emojiIdx = css.indexOf('[data-icons="emoji"] .icon-home,');
-  const emojiBlock = css.slice(emojiIdx, css.indexOf('{', emojiIdx));
-  assert.ok(!emojiBlock.includes('.icon-transcript'), 'share-precedent: the emoji set falls back to the mask');
+  // The WHOLE selector list of the emoji neutraliser (not a slice anchored
+  // after its first member - a prepended entry survived that; gate note).
+  const emojiRule = /((?:\[data-icons="emoji"\] \.icon-[a-z-]+,\s*)+\[data-icons="emoji"\] \.icon-[a-z-]+)\s*\{[^}]*mask-image: none/.exec(css);
+  assert.ok(emojiRule, 'the emoji neutraliser rule exists');
+  assert.ok(!emojiRule[1].includes('.icon-transcript'), 'share-precedent: the emoji set falls back to the mask');
+  assert.ok(!/\[data-icons="emoji"\] \.icon-transcript/.test(css), 'no emoji-set entry anywhere');
 });
 
 test('icon-transcript: watch.js is the renderer - the Transcript button emits <i class="icon-transcript"> with a .btn-label', () => {

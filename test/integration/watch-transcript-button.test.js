@@ -61,6 +61,13 @@ function makeWatchFetchStub(hasSubtitles, transcriptStatus) {
       if (status !== 200) return Promise.resolve({ ok: false, status, text: async () => '' });
       return Promise.resolve({ ok: true, status: 200, text: async () => (url.includes('timestamps=1') ? TS_TEXT : PLAIN_TEXT) });
     }
+    // The SPA router fetches the NEXT view's shell BEFORE calling this
+    // view's destroy() - the abort-teardown test below needs that fetch to
+    // resolve, so any non-API URL answers with the real index.html.
+    if (typeof url === 'string' && !url.startsWith('/api/')) {
+      const html = fs.readFileSync(path.join(PUBLIC_DIR, 'index.html'), 'utf8');
+      return Promise.resolve({ ok: true, status: 200, url: 'http://localhost/', redirected: false, headers: { get: (h) => (/content-type/i.test(h) ? 'text/html' : null) }, text: async () => html });
+    }
     return new Promise(() => {}); // everything else -- irrelevant here
   };
   return { fetchImpl, transcriptUrls };
@@ -289,4 +296,27 @@ test('watch page: a failing transcript route toasts and opens nothing; the butto
     assert.ok(document.querySelector('.toast'), 'a toast explains the failure');
     assert.strictEqual(btn.disabled, false);
   } finally { dom.window.close(); }
+});
+
+// GATE (QA W2 / adversarial W3): the abort teardown was implemented but
+// UNBOUND - deleting the `signal.addEventListener('abort', ...)` line left
+// 9/9 green. A body-level modal outlives SPA navigation on its own (the
+// v1.49 lesson), so navigating away must close BOTH shapes.
+test('watch page: SPA navigation away tears down the open transcript modal (desktop) and the picker (phone)', async () => {
+  for (const phone of [false, true]) {
+    const { fetchImpl } = makeWatchFetchStub(true);
+    const { dom } = await loadWatchWithFetchStub(fetchImpl, null, phone);
+    try {
+      await settle();
+      const { document } = dom.window;
+      click(dom, document.getElementById('transcript-media-btn'));
+      await settle();
+      const sel = phone ? '.choice-modal-list' : '.transcript-modal';
+      assert.ok(document.querySelector(sel), 'opened: ' + sel);
+      assert.equal(typeof dom.window.FileTube.navigate, 'function', 'the real router is up');
+      dom.window.FileTube.navigate('/');
+      await new Promise((r) => setTimeout(r, 500)); // shell fetch + destroy() + the 300ms close fallback
+      assert.strictEqual(document.querySelector(sel), null, 'torn down on view abort: ' + sel);
+    } finally { dom.window.close(); }
+  }
 });
