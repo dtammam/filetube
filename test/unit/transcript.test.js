@@ -82,6 +82,53 @@ test('transcript: a CONTIGUOUS repeated line is dropped, a gapped one (beyond th
   assert.deepEqual(buildTranscriptLines(parseVttCues(mk(1000))).map((l) => l.text), ['Same line', 'Same line', 'Next line']);
 });
 
+// GATE (adversarial W1, the content-loss class): the rolled repeat is a
+// SUFFIX/PREFIX overlap, never set membership. On Dean's real file a second
+// speaker answering with the SAME words ("&gt;&gt; I'm in." back) was dropped
+// because the membership rule saw it in the previous cue. Each of these was
+// red under the membership implementation.
+test('transcript: a NEW utterance equal to the rolled line (second speaker) is KEPT - overlap, not membership', () => {
+  const vtt = [
+    'WEBVTT', '',
+    '00:22:05.000 --> 00:22:07.280', ">> I'm<00:22:05.100><c> in.</c>", '',
+    "00:22:07.280 --> 00:22:08.549", ">> I'm in.", ">> I'm<00:22:07.440><c> in.</c>", '',
+    "00:22:08.549 --> 00:22:10.000", ">> I'm in.", 'Not like we do.', '',
+  ].join('\n');
+  assert.deepEqual(buildTranscriptLines(parseVttCues(vtt)).map((l) => l.text), [">> I'm in.", ">> I'm in.", 'Not like we do.']);
+});
+
+test('transcript: [A,B] -> [C,B]: B is a NEW line (no suffix/prefix overlap), both emitted', () => {
+  const vtt = [
+    'WEBVTT', '',
+    '00:00:01.000 --> 00:00:02.000', 'A', 'B', '',
+    '00:00:02.000 --> 00:00:03.000', 'C', 'B', '',
+  ].join('\n');
+  assert.deepEqual(buildTranscriptLines(parseVttCues(vtt)).map((l) => l.text), ['A', 'B', 'C', 'B']);
+});
+
+test('transcript: a text-less hold cue between rolling cues does not reset the overlap ([A,B] -> [] -> [B,C] emits C only)', () => {
+  const vtt = [
+    'WEBVTT', '',
+    '00:00:01.000 --> 00:00:02.000', 'A', 'B', '',
+    '00:00:02.000 --> 00:00:02.010', ' ', '',
+    '00:00:02.010 --> 00:00:03.000', 'B', 'C', '',
+  ].join('\n');
+  assert.deepEqual(buildTranscriptLines(parseVttCues(vtt)).map((l) => l.text), ['A', 'B', 'C']);
+});
+
+test('transcript: the contiguity slack is INCLUSIVE at exactly 500ms; CRLF documents parse identically to LF', () => {
+  const lf = ['WEBVTT', '', '00:00:01.000 --> 00:00:02.000', 'Same', '', '00:00:02.500 --> 00:00:03.000', 'Same', 'Next', ''].join('\n');
+  assert.deepEqual(buildTranscriptLines(parseVttCues(lf)).map((l) => l.text), ['Same', 'Next']);
+  assert.deepEqual(parseVttCues(lf.replace(/\n/g, '\r\n')), parseVttCues(lf));
+});
+
+test('transcript: a STYLE block containing an arrow is skipped, never parsed as a cue', () => {
+  const vtt = ['WEBVTT', '', 'STYLE', '::cue { content: "-->" }', '00:00:09.000 --> 00:00:10.000', '', '00:00:01.000 --> 00:00:02.000', 'Real', ''].join('\n');
+  const cues = parseVttCues(vtt);
+  assert.equal(cues.length, 1);
+  assert.deepEqual(cues[0].lines, ['Real']);
+});
+
 test('transcript: a two-line cue repeated verbatim by the next cue emits neither line twice', () => {
   const vtt = [
     'WEBVTT', '',
