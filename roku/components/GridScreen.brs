@@ -116,12 +116,12 @@ end sub
 ' every mode change re-asserts its own geometry.
 sub applyGridGeometry(mode as string)
     if mode = "portrait"
-        ' Bigger poster tiles (v1.199.1): 256x384 poster + a wrapped 2-line title
-        ' and two count lines below at the proven 28px pitch (metaBottom bottom
-        ' 480+28=508 < 512 cell). 6 columns: 6*256 + 5*24 spacing + 64 left =
-        ' 1720 < 1920. Row 2 peeks (~78% at 1080: 1080-(140+512+28)=400, 400/512)
-        ' which is the poster-wall scroll cue, not a clip bug.
-        m.grid.itemSize = [256, 512]
+        ' Bigger poster tiles (v1.199.2): 256x384 poster + three single-line
+        ' labels (title, seasons, episodes) at the GridItem-proven 28px pitch
+        ' (title 392, metaTop 420, metaBottom 448; bottom 448+28=476 < 480 cell).
+        ' 6 columns: 6*256 + 5*24 spacing + 64 left = 1720 < 1920. Row 2 peeks
+        ' (~90% at 1080: 1080-(140+480+28)=432, 432/480) - nearly two full rows.
+        m.grid.itemSize = [256, 480]
         m.grid.numColumns = 6
         m.grid.numRows = 2
     else
