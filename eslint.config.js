@@ -193,6 +193,11 @@ module.exports = [
         // (watch.js + player.js) and the pick-one action modal (watch.js).
         withShareStartTime: 'readonly',
         showChoiceModal: 'readonly',
+        // Transcript export (Dean): text share/copy helpers + the desktop
+        // transcript modal (common.js), called by watch.js's Transcript button.
+        shareTextContent: 'readonly',
+        copyTextToClipboard: 'readonly',
+        showTranscriptModal: 'readonly',
         // v1.68 (ruling 4): close a played video's delivered push banner
         // (common.js), called by watch.js's pingView.
         closeDeliveredPushBanners: 'readonly',

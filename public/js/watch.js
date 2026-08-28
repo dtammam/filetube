@@ -998,6 +998,13 @@ if (typeof module !== 'undefined' && module.exports) {
     // modal, torn down on view abort like relocationDismiss (a body-level modal
     // survives SPA nav on its own -- the v1.49 lesson).
     let shareChoiceDismiss = null;
+    // Transcript export (Dean): the "Transcript" control (fresh per view
+    // instance, like shareBtn above), the dismiss handle of whichever modal it
+    // opened (desktop text-field modal or the phone share/copy picker), and
+    // an in-flight guard so a double-tap never opens two.
+    let transcriptBtn = null;
+    let transcriptDismiss = null;
+    let transcriptLoading = false;
     // One abort registration per view instance (see pollReheat's own comment).
     let reheatAbortHooked = false;
     // FIX C (two-reviewer-gate follow-up): the FR-2-derived display name,
@@ -1216,6 +1223,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // 3d. v1.33 T2: mount the "Share" button when the server derived an
         // original YouTube link for this item (`mediaData.watchUrl`).
         setupShareButton();
+
+        // 3d'. Transcript export (Dean): mount the "Transcript" button when
+        // the item has a caption sidecar (`mediaData.hasSubtitles`).
+        setupTranscriptButton();
 
         // 3e. v1.49 (Dean): mount the per-video "Reheat" button. Gated on a
         // latched yt-dlp health probe, so this is at most one extra request
@@ -3186,6 +3197,94 @@ if (typeof module !== 'undefined' && module.exports) {
       shareBtn.appendChild(shareIcon);
       shareBtn.appendChild(document.createTextNode(' '));
       shareBtn.appendChild(shareLabel);
+    }
+
+    // ---- Transcript export (Dean) --------------------------------------------
+    //
+    // "Allow me to see and then copy/paste the full transcript from the video."
+    // The server renders the document (`GET /api/transcript/:id`, header +
+    // de-duplicated caption lines); this control only decides HOW to hand it
+    // over. Desktop: a read-only text-field modal with a Copy button and a
+    // "Show timestamps" toggle. Phone widths (the page's own 768px query):
+    // the share sheet / clipboard picker, because a phone wants to SEND the
+    // text somewhere, not read it in a textarea. The text is fetched BEFORE
+    // either opens, so the picker's Copy runs synchronously inside its tap
+    // (iOS clipboard writes need the user gesture).
+    function fetchTranscriptText(timestamps) {
+      if (!mediaData) return Promise.reject(new Error('no media'));
+      const url = '/api/transcript/' + encodeURIComponent(mediaData.id) + (timestamps ? '?timestamps=1' : '');
+      return fetch(url).then((res) => {
+        if (!res || !res.ok) throw new Error('transcript ' + (res && res.status));
+        return res.text();
+      });
+    }
+
+    function isPhoneWidth() {
+      return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches;
+    }
+
+    function handleTranscriptClick() {
+      if (!mediaData || transcriptLoading) return;
+      transcriptLoading = true;
+      if (transcriptBtn) transcriptBtn.disabled = true;
+      fetchTranscriptText(false).then((text) => {
+        if (signal.aborted) return;
+        if (transcriptDismiss) { signal.removeEventListener('abort', transcriptDismiss); transcriptDismiss(); transcriptDismiss = null; }
+        const title = mediaData.title || 'Transcript';
+        if (isPhoneWidth()) {
+          transcriptDismiss = showChoiceModal('Transcript', [
+            { label: 'Share transcript', onPick: () => { shareTextContent(text, title); } },
+            { label: 'Copy transcript', onPick: () => {
+              copyTextToClipboard(text).then((outcome) => {
+                if (typeof window.showToast !== 'function') return;
+                window.showToast(outcome === 'copied' ? 'Transcript copied' : 'Could not copy the transcript.');
+              });
+            } },
+          ]);
+        } else {
+          transcriptDismiss = showTranscriptModal({ text, loadText: fetchTranscriptText });
+        }
+        signal.addEventListener('abort', transcriptDismiss, { once: true });
+      }).catch((err) => {
+        console.error('Transcript load failed:', err);
+        if (!signal.aborted && typeof window.showToast === 'function') window.showToast('Could not load the transcript.');
+      }).finally(() => {
+        transcriptLoading = false;
+        if (transcriptBtn) transcriptBtn.disabled = false;
+      });
+    }
+
+    // Mounts the "Transcript" button as a sibling of Share inside
+    // `.watch-action-btns` - setupShareButton's exact shape (same `.btn`,
+    // same icon + hideable `.btn-label`, CONDITIONAL on the item having a
+    // caption sidecar, stale button removed when the current item has none).
+    function setupTranscriptButton() {
+      const watchActions = root.querySelector('.watch-actions');
+      if (!watchActions || !mediaData) return;
+      if (mediaData.hasSubtitles !== true) {
+        if (transcriptBtn) { transcriptBtn.remove(); transcriptBtn = null; }
+        return;
+      }
+      if (!transcriptBtn) {
+        transcriptBtn = document.createElement('button');
+        transcriptBtn.type = 'button';
+        transcriptBtn.id = 'transcript-media-btn';
+        transcriptBtn.className = 'btn';
+        transcriptBtn.title = 'Transcript: read, copy or share the captions as text';
+        transcriptBtn.setAttribute('aria-label', 'Transcript: read, copy or share the captions as text');
+        const btnGroup = watchActions.querySelector('.watch-action-btns');
+        (btnGroup || watchActions).appendChild(transcriptBtn);
+        transcriptBtn.addEventListener('click', handleTranscriptClick, { signal });
+      }
+      transcriptBtn.replaceChildren();
+      const icon = document.createElement('i');
+      icon.className = 'icon-transcript';
+      const label = document.createElement('span');
+      label.className = 'btn-label';
+      label.textContent = 'Transcript';
+      transcriptBtn.appendChild(icon);
+      transcriptBtn.appendChild(document.createTextNode(' '));
+      transcriptBtn.appendChild(label);
     }
 
     // ---- v1.49 (Dean): per-video reheat --------------------------------------
