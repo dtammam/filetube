@@ -2718,6 +2718,39 @@ img.art-shimmer {
   margin-bottom: var(--space-8);
   flex-wrap: wrap;
   gap: var(--space-6);
+  /* v1.201 (Dean: "on desktop the button moves over to a 2nd row if not in
+     theatre mode"): this bar is the CONTAINER the label rule below queries.
+     It is a block child of `.watch-main`, so its inline size IS the column
+     width and its contents cannot influence it - never put the container
+     on the flex item (`.watch-actions`) itself, inline-size containment
+     would collapse it. */
+  container-type: inline-size;
+  container-name: watch-action-bar;
+}
+
+/* v1.201: when the COLUMN is too narrow for the labelled action row, drop
+   the words and keep the glyphs - the exact treatment phones get in the
+   768px block, now driven by the column rather than the viewport, so the
+   non-theatre column (sidebar beside it) gets glyphs while theatre's wide
+   column keeps the words at the same viewport width. MEASURED (the probe,
+   v1.200.0 baseline): the ten labelled buttons are 953px and `.watch-actions`
+   wraps the stars onto their own line, so the words fit ONE row in any
+   column of 960px or more (theatre at 1280 = 1002px, at 1366 = 1088px: one
+   labelled row; a first draft at 1100px wrongly stripped those). Below 960
+   the words go: ten glyph buttons at the desktop padding are 452px, one row
+   with the stars beside them down to a 598px column (1280px viewport,
+   sidebar shown). Below that the v1.200 wrap remains the safety net.
+   The glyph keeps the label's line box (`min-height` = the row's
+   line-height) so a glyph-only button measures the SAME 32px as a
+   labelled one - without it the row dropped to 30px (measured). */
+@container watch-action-bar (max-width: 959px) {
+  .watch-action-btns .btn .btn-label {
+    display: none;
+  }
+}
+.watch-action-btns .btn > i,
+.watch-action-btns .btn > svg {
+  min-height: calc(var(--lh-relaxed) * 1em);
 }
 
 .views-count {
