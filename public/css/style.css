@@ -1576,6 +1576,18 @@ html.reader-immersive .app-container { padding-top: 0; }
   right: 36px; /* token-exempt: positional geometry (clears the .card-corner-br button) */
 }
 
+/* v1.204 (gate, adversarial): the ONE corner control that expands is delete -
+   its .armed state reveals the inline "Sure?" and the button (right-anchored
+   in .card-corner-br) grows LEFTWARD, back over the shifted badge. Hide the
+   badge while a BR delete is armed so the destructive confirm reads cleanly;
+   the armed state is transient and the badge returns on disarm/timeout. Scoped
+   to .card-corner-br.armed, so an armed delete in any OTHER corner (where it
+   never meets the badge) leaves the duration alone. :has() is already used for
+   card layout (.video-info:has(> .card-feedhide-btn)). */
+.card-media:has(.card-corner-br.armed) .duration-badge {
+  visibility: hidden;
+}
+
 .progress-bar-container {
   position: absolute;
   bottom: 0;
@@ -1713,8 +1725,10 @@ html.reader-immersive .app-container { padding-top: 0; }
 /* v1.40.0 (Dean): home/library card "Like" affordance. A SIBLING of
    `.thumbnail-container` (like the download/delete overlays -- never nested in
    the watch-link `<a>`), positioned via the .card-corner-* classes (v1.67;
-   the C5 default keeps it bottom-left; bottom-right stays reserved for the
-   duration badge). Mirrors `.card-download-btn`'s look/size/opacity. When
+   the C5 default keeps it bottom-left. v1.204: bottom-right became a
+   selectable slot too - a control there shares the corner with the duration
+   badge, which slides left beside it). Mirrors `.card-download-btn`'s
+   look/size/opacity. When
    liked, the heart fills red (via currentColor on the mask) and stays fully
    opaque so the state is legible at a glance. Era tokens only. */
 /* v1.67: .card-share-btn / .card-reheat-btn are the two NEW corner controls
@@ -13266,7 +13280,11 @@ a.queue-upnext-next:hover {
   }
   /* v1.204: the bottom-right slot's button is wider on mobile (18px glyph ->
      ~30px pill), so the beside-corner duration badge clears a bit further:
-     right anchor (6px) + 30px + 4px gap = 40px. */
+     right anchor (6px) + 30px + 4px gap = 40px. (Gate SUGGESTION, disclosed:
+     the button's invisible tap-zone ::after still extends ~7px past its pill,
+     so its left edge grazes the badge's rightmost ~3px - the same accepted
+     v1.147 tap-zone-overlaps-a-sliver tradeoff every corner control carries,
+     non-interactive badge pixels only.) */
   .duration-badge--beside-corner {
     right: 40px; /* token-exempt: positional geometry (clears the mobile .card-corner-br button) */
   }

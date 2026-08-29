@@ -73,6 +73,12 @@ test('.duration-badge--beside-corner has a WIDER mobile offset inside the 768px 
   assert.match(body, /right:\s*40px/, 'mobile offset clears the wider 30px button');
 });
 
+test('an ARMED bottom-right delete hides the badge (v1.204 gate fix: the one expanding control never paints over the duration)', () => {
+  const body = ruleBody(OUTSIDE, '.card-media:has(.card-corner-br.armed) .duration-badge');
+  assert.ok(body, 'the armed-suppression rule exists');
+  assert.match(body, /visibility:\s*hidden/, 'the badge is hidden while a BR control is armed');
+});
+
 test('the base duration badge keeps its 4px home (the shift is opt-in, not the default)', () => {
   const body = ruleBody(OUTSIDE, '.duration-badge');
   assert.ok(body, '.duration-badge base rule exists');
