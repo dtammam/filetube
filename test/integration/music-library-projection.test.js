@@ -155,3 +155,42 @@ test('MEDIA RBAC: a restricted member never sees a blocked projected track', asy
   assert.ok(!music.items.some((i) => i.id === 'blk1'), 'the restricted subtree audio is gated OUT for the member');
   assert.ok(music.items.some((i) => i.id === 'tonzak1'), 'an unrestricted projected track is still visible');
 });
+
+// ---- T5: the per-folder mark read/write routes ----
+
+const postJson = (p, body, cookie) => fetch(`${base}${p}`, {
+  method: 'POST',
+  headers: Object.assign({ 'Content-Type': 'application/json' }, cookie ? { Cookie: cookie } : {}),
+  body: JSON.stringify(body),
+});
+
+test('GET /api/folders/music-flag reflects the override, the genre default, and hasAudio', async () => {
+  const nest = await (await get('/api/folders/music-flag?folderName=nestalgiamusic')).json();
+  assert.deepStrictEqual({ hasAudio: nest.hasAudio, override: nest.override, effective: nest.effective },
+    { hasAudio: true, override: 'on', effective: true }, 'NESTALGIA: marked on');
+  const tonzak = await (await get('/api/folders/music-flag?folderName=Tonzak')).json();
+  assert.deepStrictEqual({ override: tonzak.override, effective: tonzak.effective },
+    { override: null, effective: true }, 'Tonzak: unset, genre Music -> effective on');
+  const zarch = await (await get('/api/folders/music-flag?folderName=zarchivo')).json();
+  assert.deepStrictEqual({ override: zarch.override, effective: zarch.effective },
+    { override: null, effective: false }, 'Zarchivo: unset, genre Comedy -> effective off');
+  const none = await (await get('/api/folders/music-flag?folderName=native')).json();
+  assert.strictEqual(none.hasAudio, false, 'a folder with no library audio -> hasAudio:false (toggle not shown)');
+});
+
+test('POST /api/folders/music-flag toggles a channel (admin); a plain member is 403; then restores', async () => {
+  setToggle(actingUser.id, 'on');
+  // Member without can_modify_library cannot write the shared mark.
+  assert.strictEqual((await postJson('/api/folders/music-flag', { folderName: 'Tonzak', music: 'off' }, member.cookie)).status, 403);
+  // Admin turns Tonzak OFF -> it leaves Music; GET reflects the override.
+  assert.strictEqual((await postJson('/api/folders/music-flag', { folderName: 'Tonzak', music: 'off' })).status, 200);
+  const afterOff = await (await get('/api/folders/music-flag?folderName=Tonzak')).json();
+  assert.strictEqual(afterOff.override, 'off');
+  assert.ok(!(await (await get('/api/music')).json()).items.some((i) => i.id === 'tonzak1'), 'Tonzak audio left Music when marked off');
+  // Bad value is rejected; a nonexistent folder is a neutral 404.
+  assert.strictEqual((await postJson('/api/folders/music-flag', { folderName: 'Tonzak', music: 'maybe' })).status, 400);
+  assert.strictEqual((await postJson('/api/folders/music-flag', { folderName: 'nope', music: 'on' })).status, 404);
+  // Clear -> back to the genre default (restore state for any later run).
+  assert.strictEqual((await postJson('/api/folders/music-flag', { folderName: 'Tonzak', music: null })).status, 200);
+  assert.strictEqual((await (await get('/api/folders/music-flag?folderName=Tonzak')).json()).override, null, 'cleared back to default');
+});

@@ -2028,6 +2028,51 @@ const PreviewCards = (function () {
         });
         videosHeader.insertAdjacentElement('afterend', btn);
       }
+      // Wave G: the "Show in Music library" toggle - a SIBLING next to the rename
+      // pencil (same idempotent-remove + canModifyLibrary gate). Only on a folder
+      // view that actually HAS audio (the mark is meaningless otherwise). Marks
+      // the channel (folder) so its downloaded music projects into the Music
+      // library; each user still opts into the projection via the master toggle.
+      const staleMusicBtn = document.getElementById('folder-music-toggle');
+      if (staleMusicBtn && staleMusicBtn.parentNode) staleMusicBtn.parentNode.removeChild(staleMusicBtn);
+      const folderHasAudio = Array.isArray(currentItems) && currentItems.some((it) => it && it.type === 'audio');
+      if (folderFilter && videosHeader && folderHasAudio && cardCornerCaps && cardCornerCaps.canModifyLibrary === true) {
+        const mbtn = document.createElement('button');
+        mbtn.id = 'folder-music-toggle';
+        mbtn.type = 'button';
+        mbtn.className = 'folder-music-toggle';
+        mbtn.textContent = '♪';
+        let effectiveNow = false;
+        const paint = (effective) => {
+          mbtn.classList.toggle('is-on', !!effective);
+          const t = effective ? 'In your Music library — click to remove' : 'Show this channel in your Music library';
+          mbtn.title = t;
+          mbtn.setAttribute('aria-label', t);
+          mbtn.setAttribute('aria-pressed', effective ? 'true' : 'false');
+        };
+        paint(false);
+        fetch(`/api/folders/music-flag?folderName=${encodeURIComponent(folderFilter)}`)
+          .then((r) => r.json())
+          .then((s) => { effectiveNow = !!(s && s.effective); paint(effectiveNow); })
+          .catch(() => {});
+        mbtn.addEventListener('click', async () => {
+          const next = effectiveNow ? 'off' : 'on';
+          try {
+            const res = await fetch('/api/folders/music-flag', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ folderName: folderFilter, music: next }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            effectiveNow = (next === 'on');
+            paint(effectiveNow);
+          } catch (err) {
+            window.alert('Could not update the Music setting. ' + (err && err.message ? err.message : ''));
+          }
+        });
+        const anchor = document.getElementById('folder-rename-btn') || videosHeader;
+        anchor.insertAdjacentElement('afterend', mbtn);
+      }
       // v1.100: the format + watch-state toggles now render synchronously at the
       // top of loadLibrary (before the fetch) so the toolbar is complete from
       // first paint - no longer injected here post-fetch. A guarded re-render

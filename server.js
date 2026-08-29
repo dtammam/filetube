@@ -6646,6 +6646,64 @@ app.post('/api/folders/display-name', async (req, res) => {
   res.json({ success: true, folderName, name: name === '' ? null : name });
 });
 
+// Wave G: read the per-folder "show in Music" state for the folder header
+// toggle. Returns the stored override (or null), the effective state (override,
+// else the genre-seeded default over this folder's VISIBLE audio), and whether
+// the folder even has audio (the toggle only renders when it does). Visibility-
+// scoped like the write route (never reveals a folder the user can't see).
+app.get('/api/folders/music-flag', (req, res) => {
+  const folderName = typeof req.query.folderName === 'string' ? req.query.folderName.trim() : '';
+  if (folderName === '') return res.status(400).json({ error: 'folderName is required' });
+  const db = getCachedDatabase();
+  const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
+  const audioItems = Object.values(db.metadata || {}).filter(
+    (it) => it && it.type === 'audio' && it.folderName === folderName && mediaVisibleTo(req, it));
+  if (audioItems.length === 0) return res.json({ folderName, hasAudio: false, override: null, effective: false });
+  const override = Object.prototype.hasOwnProperty.call(marks, folderName) ? marks[folderName] : null;
+  const genreDefault = audioItems.some((it) => it.tags && it.tags.genre === 'Music');
+  const effective = override === 'on' ? true : override === 'off' ? false : genreDefault;
+  return res.json({ folderName, hasAudio: true, override, effective });
+});
+
+// Wave G: the per-folder "show in Music library" mark. `music` is 'on'/'off'
+// (an explicit override) or null (clear -> back to the genre-seeded default).
+// Same dual-axis gate as the rename route (requireModifyLibrary - shared library
+// metadata - AND visibility), but the existence probe requires a visible AUDIO
+// item: the mark is meaningless on a folder with no library audio, and this
+// blocks junk-key writes for video-only or unseen folders. Writes
+// db.music.channels[folderName]; the projection reads it in /api/music*.
+app.post('/api/folders/music-flag', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return;
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const folderName = typeof body.folderName === 'string' ? body.folderName.trim() : '';
+  if (folderName === '') return res.status(400).json({ error: 'folderName is required' });
+  const music = body.music;
+  if (!(music === 'on' || music === 'off' || music === null)) {
+    return res.status(400).json({ error: "music must be 'on', 'off', or null" });
+  }
+  const db = getCachedDatabase();
+  // Existence AND visibility in ONE pass through the canonical decision (the
+  // v1.41.4 scar): renamable/markable iff the folder has >=1 AUDIO item visible
+  // to this user. A wholly-hidden or non-existent folder -> the same neutral 404.
+  const visibleAudioExists = Object.values(db.metadata || {}).some(
+    (it) => it && it.type === 'audio' && it.folderName === folderName && mediaVisibleTo(req, it));
+  if (!visibleAudioExists) return res.status(404).json({ error: 'No such folder' });
+  await updateDatabase((mdb) => {
+    if (!mdb.music || typeof mdb.music !== 'object') mdb.music = {};
+    if (!mdb.music.channels || typeof mdb.music.channels !== 'object') mdb.music.channels = {};
+    const current = mdb.music.channels[folderName];
+    if (music === null) {
+      if (current === undefined) return false; // nothing to clear
+      delete mdb.music.channels[folderName];
+      return true;
+    }
+    if (current === music) return false; // unchanged
+    mdb.music.channels[folderName] = music;
+    return true;
+  });
+  res.json({ success: true, folderName, music });
+});
+
 // API: Save folder configuration
 app.post('/api/config', async (req, res) => {
   // v1.81 write-RBAC (gate CRITICAL): library-folder configuration is an
