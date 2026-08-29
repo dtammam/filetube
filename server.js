@@ -88,6 +88,9 @@ const musicStore = require('./lib/music/store');
 const homeFeed = require('./lib/home/feed'); // v1.79: pure home-feed row assembler
 const musicScan = require('./lib/music/scan');
 const musicQuery = require('./lib/music/query');
+// Wave G: the pure projection of library audio (db.metadata type 'audio') into
+// the Music library - eligibility + track shaping, no I/O.
+const libraryAudio = require('./lib/music/libraryAudio');
 // v1.195 TV Shows (UI "Shows"): feature-owned db.tv namespace + pure scan/parse.
 const tvStore = require('./lib/tv/store');
 const tvScan = require('./lib/tv/scan');
@@ -6065,6 +6068,10 @@ const MIRRORED_SETTING_KEYS = new Set([
   // v1.84: Modern YouTube Mode - a third home layout (flat big-tile grid +
   // chips + mobile avatar bar). Same bounded 'on'/'off' string; absent => off.
   'modernMode',
+  // Wave G: the OPT-IN master toggle for projecting downloaded music channels
+  // (library audio) into the Music library. Bounded 'on'/'off'; absent => OFF
+  // (the default for everyone - Music is untouched until a user opts in).
+  'musicIncludesLibrary',
   ...glyphPool.LIBRARY_GLYPH_SLOTS.map((s) => s.key),
 ]);
 
@@ -8245,6 +8252,12 @@ function ownTrack(tracks, id) {
 function publicTrackListItem(track, userId, likedSet, progressMap) {
   const liked = likedSet ? likedSet.has(track.id) : false;
   const prog = progressMap ? progressMap[track.id] : null;
+  // Wave G: a PROJECTED library-audio track (source 'library') streams the mp3
+  // from the media byte route, arts from its YouTube thumbnail, and saves
+  // progress to the MEDIA store - so it carries its own routes + a source marker
+  // for the client's loadTrack to branch on, and its art/transcode flags come
+  // from the media item, NOT the music-namespace albumart/codec paths.
+  const isLib = track.source === 'library';
   return {
     id: track.id,
     title: track.title,
@@ -8263,19 +8276,56 @@ function publicTrackListItem(track, userId, likedSet, progressMap) {
     // <Album>" line (the album/artist drill filters on this exact key).
     albumKey: musicStore.albumKeyFor(track),
     albumArtKey: track.albumArtKey,
-    hasArt: !!(track.albumArtKey && albumArtExists(track.albumArtKey)),
+    // A library track's art is its media thumbnail (served via /albumart/:id ->
+    // thumbnail fallback); a native track's is the extracted album-art file.
+    hasArt: isLib ? !!track.hasEmbeddedArt : !!(track.albumArtKey && albumArtExists(track.albumArtKey)),
     // Gate QA-CRITICAL: the client keys its transcode-prewarm poll off this,
     // so an ALAC track's first play waits for the rendition instead of
-    // silently failing on the /track/:id 503.
-    needsTranscode: musicCodecNeedsTranscode(track.codec),
+    // silently failing on the /track/:id 503. A library track never uses the
+    // /track prewarm path (it streams from /video), so it never prewarms.
+    needsTranscode: isLib ? false : musicCodecNeedsTranscode(track.codec),
     liked,
     progress: prog ? { position: prog.position, duration: prog.duration, updatedAt: prog.updatedAt } : null,
+    // The projection markers (absent on native tracks): the client's loadTrack
+    // prefers these routes over the /track,/albumart,/api/music/progress
+    // defaults.
+    ...(isLib ? {
+      source: 'library',
+      streamSrc: track.streamSrc,
+      artUrl: track.artUrl,
+      progressEndpoint: track.progressEndpoint,
+    } : {}),
   };
+}
+
+// Wave G: the projected library-audio tracks this user sees in Music, or [] when
+// the opt-in master toggle is off. Each db.metadata audio item that is eligible
+// (per-folder mark, else genre default), passes the MEDIA visibility gate (NOT
+// trackVisibleTo - these are media items, a distinct restriction kind), and does
+// not collide with a native music-track id (dedup: the real track wins), is
+// shaped into a music-track record. `nativeTracks` is the already-RBAC-filtered
+// native list, so the dedup set only holds ids this user may already see.
+function projectedLibraryTracks(req, nativeTracks) {
+  const settings = parseUserSettings(req.user);
+  if (settings.musicIncludesLibrary !== 'on') return []; // opt-in, default OFF
+  const db = getCachedDatabase();
+  const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
+  const nativeIds = new Set(nativeTracks.map((t) => t.id));
+  const out = [];
+  for (const item of Object.values(db.metadata)) {
+    if (!item || item.type !== 'audio') continue;
+    if (!libraryAudio.isEligibleAudio(item, marks)) continue;
+    if (!mediaVisibleTo(req, item)) continue; // the MEDIA gate
+    if (nativeIds.has(item.id)) continue; // a file in both roots: the native track wins
+    out.push(libraryAudio.projectAudioItem(item));
+  }
+  return out;
 }
 
 app.get('/api/music', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
+  list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (opt-in)
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   const album = typeof req.query.album === 'string' ? req.query.album : '';
   const artist = typeof req.query.artist === 'string' ? req.query.artist : '';
@@ -8312,6 +8362,7 @@ app.get('/api/music', (req, res) => {
 app.get('/api/music/albums', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
+  list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (opt-in)
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
   // Gate QA-WARNING/ADV-SUGGESTION: paginate (the design-for-scale target) and
@@ -8329,6 +8380,7 @@ app.get('/api/music/albums', (req, res) => {
 app.get('/api/music/artists', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
+  list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (opt-in)
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
   const sortKey = typeof req.query.sort === 'string' ? req.query.sort : '';
