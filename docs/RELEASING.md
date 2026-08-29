@@ -171,11 +171,15 @@ gate) merges itself; a high-risk one waits for Dean.
   in the image); the **Docker base image**; and **jsdom** (test-infra the
   whole suite rides). No workflow step runs for these - the PR just sits.
 
-**Repo settings Dean must enable ONCE** (until then `--auto` is a no-op and
-every PR sits exactly as before - the workflow author-side is inert without
-these):
+**Repo settings Dean must enable ONCE.** Until they are set, an AUTO-tier PR's
+merge step ERRORS ("Auto-merge is not allowed for this repository") - so that
+PR shows a failed "Dependabot auto-merge" check and nothing merges; it waits
+for Dean and self-heals the moment the settings are on. (It is NOT a silent
+no-op, and the workflow does no harm - it just cannot complete the merge yet.)
 
-1. Settings -> General -> Pull Requests -> tick **Allow auto-merge**.
+1. Settings -> General -> Pull Requests -> tick **Allow auto-merge** AND
+   **Allow squash merging** (the workflow uses `gh pr merge --auto --squash`,
+   which needs squash enabled).
 2. Settings -> Branches -> add a **branch protection rule** for `main`:
    "Require status checks to pass before merging", and select the CI checks
    (the `ci` matrix jobs, `secret-scan`, `audit`). This is what makes

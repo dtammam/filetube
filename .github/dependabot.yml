@@ -16,9 +16,11 @@
 #     this split; a lock test (ci-pipeline-locks.test.js) binds it, replacing
 #     the old no-auto-merge lock.
 #   IMPORTANT: the merge itself only happens once GitHub repo settings are set
-#   (Allow auto-merge + a branch-protection rule on `main` requiring the CI
-#   checks) - those are Dean's to enable; see docs/RELEASING.md. Until then the
-#   workflow arms auto-merge and the PR sits exactly as before.
+#   (Allow auto-merge + Allow squash merging + a branch-protection rule on
+#   `main` requiring the CI checks) - those are Dean's to enable; see
+#   docs/RELEASING.md. Until then an AUTO-tier PR's merge step ERRORS (a failed
+#   check on that PR); nothing merges and it waits for Dean, self-healing once
+#   the settings are on.
 # - The docker ecosystem watches the FROM line (node:22-alpine) ONLY. The
 #   yt-dlp pin is an ARG, invisible to Dependabot BY DESIGN - the runtime
 #   engine selector (v1.146) and the pin-bump cadence in the Dockerfile

@@ -19,9 +19,12 @@ name: Dependabot auto-merge
 # The npm-minor-patch group in dependabot.yml is dev-only, so a grouped PR is
 # all-development and the direct:development gate below is airtight.
 #
-# REPO SETTINGS (Dean's, one-time - until then `--auto` is a no-op and the PR
-# sits exactly as before): enable "Allow auto-merge" for the repo, and add a
-# branch-protection rule on `main` requiring the CI status checks. See
+# REPO SETTINGS (Dean's, one-time): enable "Allow auto-merge" AND "Allow squash
+# merging" for the repo, and add a branch-protection rule on `main` requiring
+# the CI status checks. Until those are set, an AUTO-tier PR's merge step ERRORS
+# ("Auto-merge is not allowed for this repository") - so that PR shows a failed
+# "Dependabot auto-merge" check and nothing merges (it waits for Dean, and
+# self-heals the moment the settings are on). It is NOT a silent no-op. See
 # docs/RELEASING.md.
 
 on: pull_request
@@ -44,7 +47,10 @@ jobs:
         if: >
           (
             steps.meta.outputs.package-ecosystem == 'github_actions' &&
-            steps.meta.outputs.update-type != 'version-update:semver-major'
+            (
+              steps.meta.outputs.update-type == 'version-update:semver-minor' ||
+              steps.meta.outputs.update-type == 'version-update:semver-patch'
+            )
           )
           ||
           (
