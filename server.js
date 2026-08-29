@@ -8500,7 +8500,8 @@ app.get('/track/:id', (req, res) => {
 // Album art by TRACK id -> its album's art file, else an escaped SVG
 // placeholder (mirrors /bookcover/:id).
 app.get('/albumart/:id', (req, res) => {
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const db = getCachedDatabase();
+  const ns = musicStore.readMusic(db);
   const track = ownTrack(ns.tracks, req.params.id);
   if (track && !trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC
   const key = track && typeof track.albumArtKey === 'string' ? track.albumArtKey : null;
@@ -8512,6 +8513,21 @@ app.get('/albumart/:id', (req, res) => {
         // trackVisibleTo, so a shared cache must not store/replay it cross-user.
         res.set('Cache-Control', 'private, max-age=86400');
         return res.sendFile(p);
+      }
+    }
+  }
+  // Wave G: a PROJECTED library-audio track's album/artist tile carries the
+  // MEDIA id as its artId (it has no album-art file), so fall back to that
+  // item's YouTube thumbnail - real imagery instead of the placeholder. Only a
+  // VISIBLE audio item, and only when there is no native track (never overrides
+  // a real track's own art resolved above). Mirrors /thumbnail's own gate.
+  if (!track) {
+    const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, req.params.id) ? db.metadata[req.params.id] : null;
+    if (item && item.type === 'audio' && mediaVisibleTo(req, item) && item.hasThumbnail) {
+      const thumbPath = path.join(THUMBNAIL_DIR, `${req.params.id}.jpg`);
+      if (fs.existsSync(thumbPath)) {
+        res.set('Cache-Control', 'private, max-age=86400');
+        return res.sendFile(thumbPath);
       }
     }
   }

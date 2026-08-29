@@ -68,6 +68,12 @@ before(async () => {
   });
   member = __mintTestSession({ username: 'kidproj', role: 'member' });
   userStore.setRestrictions(member.user.id, [{ kind: 'path', value: blockedRoot }]);
+
+  // Seed real thumbnail sidecars (THUMBNAIL_DIR is created at server boot) so
+  // the /albumart fallback has bytes to serve for a projected track.
+  const thumbDir = path.join(DATA_DIR, '.thumbnails');
+  fs.writeFileSync(path.join(thumbDir, 'nest1.jpg'), 'JPEGBYTES-NEST');
+  fs.writeFileSync(path.join(thumbDir, 'blk1.jpg'), 'JPEGBYTES-BLK');
 });
 
 after(async () => {
@@ -125,6 +131,21 @@ test('dedup: a projected id colliding with a native track appears ONCE (native w
   assert.strictEqual(dups.length, 1, 'dup1 appears exactly once');
   assert.strictEqual(dups[0].title, 'NATIVE dup', 'the native music track wins the collision, not the projection');
   assert.notStrictEqual(dups[0].source, 'library', 'the surviving row is the native track');
+});
+
+test('grid art: /albumart/:id falls back to the media thumbnail for a projected track', async () => {
+  // A projected album/artist tile requests /albumart/<mediaId>; there is no
+  // album-art file, so it must serve the media thumbnail (real imagery).
+  const res = await get('/albumart/nest1');
+  assert.strictEqual(res.status, 200);
+  assert.match(res.headers.get('content-type') || '', /image\/jpeg/, 'serves the jpg thumbnail, not the SVG placeholder');
+  assert.strictEqual(await res.text(), 'JPEGBYTES-NEST');
+});
+
+test('grid art RBAC: a restricted member gets the placeholder, never the blocked thumbnail', async () => {
+  const res = await get('/albumart/blk1', member.cookie);
+  assert.match(res.headers.get('content-type') || '', /image\/svg\+xml/, 'restricted -> placeholder SVG, no thumbnail leak');
+  assert.notStrictEqual(await res.text(), 'JPEGBYTES-BLK', 'the blocked thumbnail bytes never reach the member');
 });
 
 test('MEDIA RBAC: a restricted member never sees a blocked projected track', async () => {
