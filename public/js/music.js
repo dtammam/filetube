@@ -652,8 +652,10 @@ if (typeof module !== 'undefined' && module.exports) {
       return '/api/music?' + q.toString();
     }
 
+    var loadSongsGen = 0; // v1.207: serializes concurrent loads so a superseded (stale) one never clobbers the winner's queue/ctx
     async function loadSongs(opts) {
       opts = opts || {};
+      var myLoad = ++loadSongsGen; // claim this load BEFORE the fetch
       var scope = opts.scope || drill;
       // v1.103: the flat Songs tab honours its OWN persisted sort; a drill
       // (album/artist detail) defaults to album-order - disc/track sequence, the
@@ -665,10 +667,17 @@ if (typeof module !== 'undefined' && module.exports) {
       if (search) ctx.search = search;
       if (scope && scope.type === 'album') ctx.album = scope.key;
       if (scope && scope.type === 'artist') ctx.artist = scope.key;
-      queueCtx = ctx;
-      queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(ctx) : '');
       var params = { sort: ctx.sort, seed: ctx.seed, search: ctx.search, album: ctx.album, artist: ctx.artist, filter: ctx.filter, limit: 1000 };
       var data = await fetchJson(musicUrl(params));
+      // v1.207 (gate): a NEWER loadSongs (a fast second album-select) superseded
+      // this one - do NOT clobber the winner's module queue/ctx with our stale
+      // result. Before this guard, the loser's late load re-scoped the queue
+      // under the winner's already-registered nav -> Prev/Next played a
+      // wrong-ALBUM track (the v1.104 desync/wrong-track class). The ctx write
+      // moves AFTER the guard for the same reason.
+      if (myLoad !== loadSongsGen) return queue;
+      queueCtx = ctx;
+      queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(ctx) : '');
       queue = Array.isArray(data.items) ? data.items : [];
       return queue;
     }
@@ -864,7 +873,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var row = e.target.closest('.music-song-row');
       if (row) {
         var idx = parseInt(row.getAttribute('data-index'), 10);
-        if (!isNaN(idx)) playAt(idx);
+        if (!isNaN(idx)) playRowAt(idx); // v1.207: a fresh select drills into the album
       }
     }, { signal });
 
@@ -895,6 +904,7 @@ if (typeof module !== 'undefined' && module.exports) {
       else { statusEl.textContent = ''; statusEl.hidden = true; }
     }
     var playGen = 0; // guards against a stale prewarm poll clobbering a newer tap
+    var playSelectGen = 0; // v1.207: guards the album-drill select against a newer fast tap (the wrong-track race)
 
     function loadTrack(item, i, opts) {
       opts = opts || {};
@@ -1058,6 +1068,51 @@ if (typeof module !== 'undefined' && module.exports) {
       loadTrack(item, i, opts);
     }
 
+    // v1.207 (Dean): drill into a track's ALBUM, then play it there - so the
+    // album is the browse view AND the up-next queue (via loadSongs' browseCtx),
+    // and next/prev walk the album. This is the SAME path as clicking the album
+    // card (drill = album -> render()), just triggered by playing a track;
+    // reusing render() keeps the queue/browseCtx/sort/observer machinery intact.
+    async function playTrackInAlbum(item) {
+      var myGen = ++playSelectGen; // claim this select BEFORE the async album load
+      drill = { type: 'album', key: item.albumKey, label: item.album || 'Album' };
+      await render(); // loads the album into `queue` + renders the drill (render never throws)
+      // Race guard (gate WARNING): a NEWER select - a fast second tap on a
+      // DIFFERENT album - supersedes this one and owns the view + play. Bail
+      // before playAt so a stale track never plays into the newer album's queue
+      // (the v1.104 wrong-track class, now reachable because row taps auto-play).
+      if (myGen !== playSelectGen) return;
+      var ai = -1;
+      for (var k = 0; k < queue.length; k++) { if (queue[k].id === item.id) { ai = k; break; } }
+      if (ai < 0) {
+        // The album fetch did not include the track (an edge - stale key,
+        // filtered). Play it solo so the RIGHT song still starts. renderSongList
+        // REPLACES the drill header with a flat list (it reassigns
+        // content.innerHTML); `drill` stays set until the next render/tab clears
+        // it.
+        queue = [item];
+        renderSongList();
+        playAt(0);
+        return;
+      }
+      playAt(ai);
+    }
+
+    // A fresh user SELECT of a song row. Unless the track has no album, or we
+    // are already inside that album's drill, it drills into the album first
+    // (Dean: every new song starts in its album). A no-album track (or an
+    // in-album re-tap) plays in place, unchanged.
+    function playRowAt(i) {
+      if (i < 0 || i >= queue.length) return;
+      var item = queue[i];
+      var alreadyInAlbum = drill && drill.type === 'album' && item && drill.key === item.albumKey;
+      if (item && item.albumKey && !alreadyInAlbum) {
+        playTrackInAlbum(item);
+        return;
+      }
+      playAt(i);
+    }
+
     // A "Continue listening" card lands here as /music?play=<trackId> and must
     // play THAT specific track (the earlier bug: it deferred to the resume
     // POINTER's last-played queue, so tapping any card but the single most-
@@ -1080,12 +1135,22 @@ if (typeof module !== 'undefined' && module.exports) {
       if (crumb) { crumb.hidden = false; crumb.textContent = 'Recently played'; }
       renderSongList();
       let idx = queue.findIndex((t) => t.id === trackId);
-      if (idx >= 0) { playAt(idx); return; }
-      // Edge: the tapped track isn't in the recent list — play it solo so the
-      // right song still plays.
+      if (idx >= 0) {
+        // v1.207 (Dean): a song opened from search / a card lands in its ALBUM
+        // view (the friction this wave fixes), unless it has no album tag.
+        var t0 = queue[idx];
+        if (t0 && t0.albumKey) { await playTrackInAlbum(t0); return; }
+        playAt(idx);
+        return;
+      }
+      // Edge: the tapped track isn't in the recent list — fetch it and play it
+      // (in its album if it has one, else solo) so the right song still plays.
       try {
         const t = await fetchJson('/api/music/' + encodeURIComponent(trackId));
-        if (t && t.id) { queue = [t]; renderSongList(); playAt(0); return; }
+        if (t && t.id) {
+          if (t.albumKey) { await playTrackInAlbum(t); return; }
+          queue = [t]; renderSongList(); playAt(0); return;
+        }
       } catch (_) { /* fall through to a normal render */ }
       await render();
     }
@@ -1097,10 +1162,29 @@ if (typeof module !== 'undefined' && module.exports) {
     seedNowPlayingFromPlayer();
 
     const playParam = urlParams.get('play');
+    var wantNowPlaying = urlParams.get('nowplaying') === '1';
     if (playParam) {
       playTrackFromContinue(playParam).catch((err) => {
         console.error('Music: continue-listening play failed', err);
         render().catch(() => {});
+      });
+    } else if (wantNowPlaying && nowPlaying && nowPlaying.albumKey) {
+      // v1.207 (Dean): returning to a playing music track via the mini-player
+      // restores that track's ALBUM as the browse view - it persists across the
+      // dock round-trip, matching the album a fresh play now lands on. Set drill
+      // BEFORE render() so the ONE render path draws it (no race with
+      // rebuildPlayingQueue, which early-returns on `drill` - the v1.104
+      // divergent-sort dock-return scar); register the lock-screen Prev/Next
+      // around the playing track once the album queue has loaded.
+      drill = { type: 'album', key: nowPlaying.albumKey, label: nowPlaying.album || 'Album' };
+      render().then(function () {
+        var ci = -1;
+        for (var k = 0; k < queue.length; k++) { if (queue[k].id === playingId) { ci = k; break; } }
+        registerTrackNav(ci);
+        updateNowPlayingPanel();
+      }).catch(function (err) {
+        console.error('Music: now-playing album restore failed', err);
+        if (emptyNote) emptyNote.hidden = false;
       });
     } else {
       render().catch(function (err) {
@@ -1116,7 +1200,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // Gate W2 (v1.71, inherited): a music->music swap discards the old
     // view's slot with a FULL player inside it - re-adopt on EVERY init,
     // ?nowplaying or not. MUST match podcasts.js's copy.
-    var wantNowPlaying = urlParams.get('nowplaying') === '1';
+    // (`wantNowPlaying` is read once, above, before the render branch.)
     // v1.103 (dock-return determinism): `?nowplaying=1` is a TRANSIENT expand
     // TRIGGER, not durable state. `wantNowPlaying` has captured it, so strip it
     // from the bar NOW - BEFORE the expand call below, so a throwing expand() can

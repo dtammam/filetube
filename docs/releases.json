@@ -2362,5 +2362,11 @@
     "date": "2026-08-29",
     "title": "Quieter behind-the-scenes upkeep",
     "intent": "Housekeeping you won't see: small, low-risk updates to the pieces the app is built from now apply themselves automatically once everything still passes, so the app stays current and secure with less manual fuss. Bigger or riskier updates still wait for a human to look them over. Nothing changes in how the app looks or works."
+  },
+  {
+    "version": "1.207.0",
+    "date": "2026-08-29",
+    "title": "Play a song, see its album",
+    "intent": "When you play a song - from search, a card, or the song list - the music view now opens that song's album, so the rest of the album is right there to keep listening (and next/previous walk the album). Even better, it sticks: pop out to the mini-player and tap back into the song, and you land on the album again instead of the default view. Songs with no album just play as before."
   }
 ]
