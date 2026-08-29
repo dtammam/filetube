@@ -13323,6 +13323,14 @@ a.queue-upnext-next:hover {
   .duration-badge {
     font-size: var(--fs-2xl); /* 18px - matches the mobile corner glyph */
   }
+  /* v1.205.1 (gate WARNING): LIST view pins the thumb to ~120px, which cannot
+     hold a bottom-left control + the wider 18px pill + a bottom-right control.
+     So in list view the duration stays small (fs-xs) - a big pill on a tiny
+     thumb reads wrong anyway, and this keeps its left edge clear of the
+     bottom-left corner button (the grid tiles Dean sized keep the 18px match). */
+  .video-grid.list-view .duration-badge {
+    font-size: var(--fs-xs); /* 11px - the compact list thumb can't fit the 18px pill beside two corners */
+  }
   .card-download-btn::after,
   .card-delete-btn::after,
   .card-like-btn::after,

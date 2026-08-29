@@ -79,13 +79,24 @@ test('an ARMED bottom-right delete hides the badge (v1.204 gate fix: the one exp
   assert.match(body, /visibility:\s*hidden/, 'the badge is hidden while a BR control is armed');
 });
 
-test('v1.205.1: the duration badge sits ABOVE the hover preview (z-index) so the time stays visible while the clip plays', () => {
+test('v1.205.1: the duration badge sits ABOVE the hover preview (z RELATION) so the time stays visible while the clip plays', () => {
+  // Assert the RELATION, not two literals, so a future edit that raised both
+  // to the same value cannot pass (gate SUGGESTION). NB: an elementFromPoint
+  // hit-test is USELESS here - .card-preview has pointer-events:none - so the
+  // real guard is this z-order plus the manual pixel check (in the wave notes).
   const badge = ruleBody(OUTSIDE, '.duration-badge');
-  assert.ok(badge, '.duration-badge base rule exists');
-  assert.match(badge, /z-index:\s*2/, 'badge z-index 2 - above .card-preview');
   const prev = ruleBody(OUTSIDE, '.card-preview');
-  assert.ok(prev, '.card-preview rule exists');
-  assert.match(prev, /z-index:\s*1/, '.card-preview stays z:1 (below the z:2 badge)');
+  assert.ok(badge && prev, 'both rules exist');
+  const badgeZ = Number((badge.match(/z-index:\s*(\d+)/) || [])[1]);
+  const prevZ = Number((prev.match(/z-index:\s*(\d+)/) || [])[1]);
+  assert.ok(Number.isFinite(badgeZ) && Number.isFinite(prevZ), 'both carry a numeric z-index');
+  assert.ok(badgeZ > prevZ, `badge z (${badgeZ}) must be ABOVE preview z (${prevZ})`);
+});
+
+test('v1.205.1 (gate WARNING): list view keeps the duration small (fs-xs) so the wider pill cannot overlap a corner on the compact ~120px thumb', () => {
+  const body = ruleBody(MOBILE, '.video-grid.list-view .duration-badge');
+  assert.ok(body, 'the list-view cap rule exists in the mobile block');
+  assert.match(body, /font-size:\s*var\(--fs-xs\)/, 'list-view badge stays fs-xs (grid tiles keep the 18px match)');
 });
 
 test('v1.205.1: the duration pill matches the corner glyph size (14px base, 18px mobile) so it equals the corner-control height', () => {
