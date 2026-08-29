@@ -1053,11 +1053,11 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     // Transcript export (Dean): the "Transcript" control (fresh per view
-    // instance, like shareBtn above), the dismiss handle of whichever modal it
-    // opened (desktop text-field modal or the phone share/copy picker), and
-    // an in-flight guard so a double-tap never opens two.
+    // instance, like shareBtn above) and an in-flight guard so a double-tap
+    // never opens two. v1.203: the modal/picker and its abort teardown are
+    // owned by the shared flow (common.js openTranscriptFor, given this
+    // view's signal) - no dismiss handle is kept here any more.
     let transcriptBtn = null;
-    let transcriptDismiss = null;
     let transcriptLoading = false;
     // One abort registration per view instance (see pollReheat's own comment).
     let reheatAbortHooked = false;
@@ -3289,7 +3289,7 @@ if (typeof module !== 'undefined' && module.exports) {
           transcriptLoading = busy;
           if (transcriptBtn) transcriptBtn.disabled = busy;
         },
-      }).then((dismiss) => { transcriptDismiss = dismiss; });
+      });
     }
 
     // Mounts the "Transcript" button as a sibling of Share inside
