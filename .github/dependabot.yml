@@ -3,10 +3,22 @@
 #
 # - Dependabot over Renovate: native to GitHub (no third-party app on this
 #   repo), one file, and its limits don't bite at three runtime deps.
-# - NO AUTO-MERGE, EVER: PRs sit until Dean says merge; each runs full CI
-#   (both Node legs + the audit gate). Merging one is a normal slim wave.
-#   There is deliberately no auto-merge configuration anywhere in this
-#   repo - a lock test binds that absence.
+# - TIERED AUTO-MERGE (Dean, 2026-08-29, REVERSING the v1.148 no-auto-merge
+#   decision): a low-risk dependency PR that passes full CI (both Node legs +
+#   the audit gate) merges itself; a high-risk one waits for Dean.
+#   * AUTO (self-merges once CI is green): a patch/minor bump of a DEV
+#     dependency, and any non-major github-actions bump. These are the
+#     dependencies that cannot reach the running container.
+#   * MANUAL (Dean reviews a short digest, always): every MAJOR (any
+#     ecosystem); every RUNTIME dependency (dotenv/express/mime-types - they
+#     ship in the image); the Docker base image; and jsdom (a test-infra dep
+#     whose behaviour the whole suite rides). The auto-merge WORKFLOW encodes
+#     this split; a lock test (ci-pipeline-locks.test.js) binds it, replacing
+#     the old no-auto-merge lock.
+#   IMPORTANT: the merge itself only happens once GitHub repo settings are set
+#   (Allow auto-merge + a branch-protection rule on `main` requiring the CI
+#   checks) - those are Dean's to enable; see docs/RELEASING.md. Until then the
+#   workflow arms auto-merge and the PR sits exactly as before.
 # - The docker ecosystem watches the FROM line (node:22-alpine) ONLY. The
 #   yt-dlp pin is an ARG, invisible to Dependabot BY DESIGN - the runtime
 #   engine selector (v1.146) and the pin-bump cadence in the Dockerfile
@@ -24,8 +36,13 @@ updates:
       day: "monday"
     open-pull-requests-limit: 5
     groups:
+      # Dev-only so a grouped PR can NEVER contain a runtime dependency
+      # (dotenv/express/mime-types) - those are the manual tier, so their
+      # minor/patch bumps arrive as INDIVIDUAL PRs and the auto-merge workflow's
+      # direct:development gate keeps them out of the auto lane.
       npm-minor-patch:
         applies-to: version-updates
+        dependency-type: "development"
         update-types:
           - "minor"
           - "patch"

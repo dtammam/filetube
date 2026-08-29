@@ -1,0 +1,62 @@
+name: Dependabot auto-merge
+
+# TIERED auto-merge (Dean, 2026-08-29, reversing the v1.148 no-auto-merge
+# decision). A Dependabot PR arms auto-merge ONLY when it is low-risk; GitHub
+# then holds the merge until the required status checks (the CI workflow) pass,
+# so a red CI never merges. Everything else waits for Dean.
+#
+#   AUTO (self-merges once CI is green):
+#     * a github-actions bump that is NOT a major, OR
+#     * an npm DEV dependency (direct:development) patch/minor bump that does
+#       not touch jsdom.
+#   MANUAL (no step runs -> the PR just sits for Dean):
+#     * every MAJOR (any ecosystem),
+#     * every RUNTIME dep (direct:production - dotenv/express/mime-types ship
+#       in the image),
+#     * the Docker base image (the docker ecosystem never reaches the auto arm),
+#     * jsdom (test-infra dep the whole suite rides).
+#
+# The npm-minor-patch group in dependabot.yml is dev-only, so a grouped PR is
+# all-development and the direct:development gate below is airtight.
+#
+# REPO SETTINGS (Dean's, one-time - until then `--auto` is a no-op and the PR
+# sits exactly as before): enable "Allow auto-merge" for the repo, and add a
+# branch-protection rule on `main` requiring the CI status checks. See
+# docs/RELEASING.md.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    # Only ever act on Dependabot's own PRs.
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+
+      - name: Arm auto-merge for the low-risk tier only
+        if: >
+          (
+            steps.meta.outputs.package-ecosystem == 'github_actions' &&
+            steps.meta.outputs.update-type != 'version-update:semver-major'
+          )
+          ||
+          (
+            steps.meta.outputs.package-ecosystem == 'npm_and_yarn' &&
+            steps.meta.outputs.dependency-type == 'direct:development' &&
+            !contains(steps.meta.outputs.dependency-names, 'jsdom') &&
+            (
+              steps.meta.outputs.update-type == 'version-update:semver-minor' ||
+              steps.meta.outputs.update-type == 'version-update:semver-patch'
+            )
+          )
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
