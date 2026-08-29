@@ -85,7 +85,7 @@ function postAttribute(id, body) {
 test('attribute: identity lands as a UNIT with the sticky flag; validation refuses garbage; clear is manual-only', async () => {
   const filePath = seedFile(mediaDir, 'Orphan Vïdeo.mp4');
   const item = baseItem(filePath);
-  saveDatabase({ folders: [mediaDir], folderSettings: {}, progress: {}, metadata: { [item.id]: item }, settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 0, defaultView: '' } });
+  saveDatabase({ folders: [mediaDir], folderSettings: {}, progress: {}, metadata: { [item.id]: item }, settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 0, defaultView: '', attributeControlEnabled: true /* v1.202: the feature is OPT-IN; this suite exercises it ON */ } });
 
   // Garbage refused at the boundary.
   assert.equal((await postAttribute(item.id, { target: { channelUrl: 'javascript:alert(1)', channelName: 'X' } })).status, 400);

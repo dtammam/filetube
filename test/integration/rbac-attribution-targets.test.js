@@ -46,7 +46,7 @@ before(async () => {
     folders: [pubRoot, hidRoot], folderSettings: {},
     progress: {}, metadata: { [open.id]: open, [hidden.id]: hidden },
     viewCounts: {}, liked: [],
-    settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
+    settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30, attributeControlEnabled: true }, // v1.202: OPT-IN feature, exercised ON here (the OFF answers live in attribute-flag-api.test.js)
   });
 
   kid = __mintTestSession({ username: 'kidattr', role: 'member' });
