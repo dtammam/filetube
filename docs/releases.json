@@ -2350,5 +2350,11 @@
     "date": "2026-08-29",
     "title": "The video length matches its buttons - and stays put",
     "intent": "A small polish on the video tiles: the little running-time label (like 11:10) is now the same size as the buttons in the corners, instead of looking a bit smaller, so the row lines up evenly. And when a tile plays its short hover preview, the running time no longer disappears behind it - you can still see how long something is while the preview plays."
+  },
+  {
+    "version": "1.205.2",
+    "date": "2026-08-29",
+    "title": "A softer, tidier running-time label",
+    "intent": "Following up on the last tweak: the running-time label on a video tile is no longer bold, so it sits more quietly, and its little background is now the exact same shade as the buttons in the corners - so the whole row of pills looks like one matching set."
   }
 ]

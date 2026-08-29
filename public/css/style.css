@@ -249,6 +249,7 @@ summary,
      spellings of ONE rendered weight (x55 combined) - --fw-bold is the
      single spelling. `normal`/400 stays literal (the default needs no
      token). line-height: 1 stays literal (glyph centering, not prose). */
+  --fw-normal: 400; /* v1.205.2: the base body weight, as a token (the census governs font-weight) */
   --fw-semibold: 600;
   --fw-bold: 700;
   --fw-black: 900;
@@ -1559,7 +1560,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   bottom: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
   right: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 2; /* token-exempt: local stacking - above .card-preview (z:1) so the time stays visible while the hover clip plays (Dean device report) */
-  background-color: var(--scrim-heavy);
+  background-color: var(--scrim); /* v1.205.2 (Dean): match the corner glyph buttons' background (was the darker --scrim-heavy) so the row's pills are one look */
   color: var(--on-overlay);
   /* v1.205.1 (Dean device report): size the pill to MATCH the corner controls -
      same glyph-size font (14px, the .card-*-btn icon size) + line-height 1 +
@@ -1569,7 +1570,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: var(--space-2) var(--space-3);
   font-size: var(--fs-md); /* 14px - matches the .card-*-btn corner glyph so the pill height equals the corner controls */
   line-height: 1; /* token-exempt: glyph centering, like the corner buttons */
-  font-weight: var(--fw-bold);
+  font-weight: var(--fw-normal); /* v1.205.2 (Dean): non-bold - the bigger pill read too heavy in bold */
   border-radius: var(--radius);
 }
 
