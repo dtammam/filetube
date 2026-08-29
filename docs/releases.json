@@ -2344,5 +2344,11 @@
     "date": "2026-08-29",
     "title": "One search box for everything",
     "intent": "The search box at the top now looks across your whole library at once - not just videos, but music, podcasts (both shows and individual episodes), your TV shows and episodes, and books - all in one list of results, each with a little label telling you what kind of thing it is. A row of filters (All, Videos, Audio, Music, Podcasts, Shows, Books) lets you narrow to one kind with a tap. The best matches come first: an exact title beats a partial one, whatever kind it is. Type a name and everything you have that matches shows up together."
+  },
+  {
+    "version": "1.205.1",
+    "date": "2026-08-29",
+    "title": "The video length matches its buttons - and stays put",
+    "intent": "A small polish on the video tiles: the little running-time label (like 11:10) is now the same size as the buttons in the corners, instead of looking a bit smaller, so the row lines up evenly. And when a tile plays its short hover preview, the running time no longer disappears behind it - you can still see how long something is while the preview plays."
   }
 ]

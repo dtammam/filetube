@@ -80,6 +80,35 @@
 
 ## Shipped
 
+### v1.205.1 - Card duration polish: matches the buttons, stays visible in preview (2026-08-29)
+
+Dean's v1.204/v1.205 device pass ("everything is working amazingly") with two
+card-tile visual nits.
+
+**What shipped.**
+- The duration pill ("11:10") now MATCHES the corner controls' height - it read
+  3px shorter on desktop and 7px shorter on mobile (the corner glyphs grow
+  14px->18px on mobile, the badge didn't). The pill now tracks the corner glyph
+  size (var(--fs-md)=14px, var(--fs-2xl)=18px mobile) + line-height 1 + the
+  buttons' padding. MEASURED in headless Chromium: 22px==22px desktop,
+  26px==26px mobile.
+- The duration STAYED VISIBLE while the hover-preview clip plays (it was being
+  painted over): .card-preview is z-index:1 with a comment claiming "below
+  badges", but the badge had NO z-index, so the opaque preview covered it (the
+  corner buttons at z:2 stayed visible; the badge was forgotten). Gave the badge
+  z-index:2; corrected the lying comment. Verified by a pixel sample: removing
+  z:2 reproduces the disappearing-duration bug exactly.
+
+**What the gate caught.** The wider mobile badge overlapped the bottom-left
+corner button in the compact LIST view (a ~120px thumb can't hold a BL control
++ the 18px pill + a BR control) when the bottom-right corner is customized.
+Fixed by capping the list-view duration to v1.204's exact size + padding: the
+list-view HORIZONTAL geometry is now identical to v1.204 (the pill is 4px more
+COMPACT vertically from the new line-height:1 - non-colliding, benign).
+
+Slim gate (adversarial), 2 delta rounds, APPROVE. Dual-Node 7812/0 (Node 22 +
+24). **Dean's device pass PENDING.**
+
 ### v1.205.0 - Universal search: one search box for everything (2026-08-29)
 
 Dean: the global header search should return not just library videos/audio but
