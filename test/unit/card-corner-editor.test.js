@@ -33,7 +33,8 @@ const CONTROLS = mainExports.CARD_CORNER_CONTROLS;
 // ---- roster drift bind ------------------------------------------------------
 
 test('every canonical control (main.js CARD_CORNER_CONTROLS) has an editor label, plus none - no hand-copied roster', () => {
-  assert.ok(Array.isArray(CONTROLS) && CONTROLS.length === 6, 'the canonical roster is the six controls');
+  // v1.203 DELIBERATE roster change: + 'transcript' (Dean). Six -> seven.
+  assert.ok(Array.isArray(CONTROLS) && CONTROLS.length === 7, 'the canonical roster is the seven controls');
   for (const control of CONTROLS) {
     assert.strictEqual(typeof CARD_CORNER_LABELS[control], 'string', `missing label for '${control}'`);
   }
@@ -50,7 +51,7 @@ test('C2: a corner\'s options EXCLUDE controls chosen in the other corners, keep
   const values = opts.map((o) => o.value);
   assert.ok(!values.includes('delete'), 'delete is taken by TR');
   assert.ok(!values.includes('like'), 'like is taken by BL');
-  for (const v of ['download', 'queue', 'share', 'reheat', 'none']) {
+  for (const v of ['download', 'queue', 'share', 'reheat', 'transcript', 'none']) { // v1.203: + transcript
     assert.ok(values.includes(v), `expected option '${v}'`);
   }
   const selected = opts.filter((o) => o.selected);

@@ -571,7 +571,7 @@ const CARD_CORNER_KEYS = [
 // duration badge.
 const CARD_CORNER_DEFAULTS = { cornerTL: 'download', cornerTR: 'delete', cornerBL: 'like' };
 
-const CARD_CORNER_CONTROLS = ['download', 'delete', 'like', 'queue', 'share', 'reheat'];
+const CARD_CORNER_CONTROLS = ['download', 'delete', 'like', 'queue', 'share', 'reheat', 'transcript']; // v1.203: + transcript (Dean)
 
 // Settings object (from GET /api/auth/me, or nothing) -> the resolved
 // three-corner layout. The server lane is SHAPE-only (plan D1), so THIS is
@@ -682,6 +682,19 @@ function buildCardCornerControlHtml(control, cornerClass, item, caps) {
       if (typeof item.watchUrl !== 'string' || item.watchUrl === '') return '';
       return `<button type="button" class="card-share-btn ${cornerClass}" data-id="${id}" data-share-url="${escapeBookRowHtml(item.watchUrl)}" aria-label="Share the original YouTube link" title="Share">
               <i class="icon-share"></i>
+            </button>`;
+    case 'transcript':
+      // v1.203 (Dean: "add the transcript button as a selectable option for
+      // a given card ... from a card view maybe send a video along to an
+      // AI"). Applies only when the item HAS captions (`hasSubtitles`, the
+      // scan's sidecar detection) - exactly Share's only-when-it-applies
+      // posture. The click runs the SAME flow as the watch page's button
+      // (common.js openTranscriptFor): desktop modal, phone picker with
+      // Share / Copy / Share with AI.
+      if (kp) return '';
+      if (item.hasSubtitles !== true) return '';
+      return `<button type="button" class="card-transcript-btn ${cornerClass}" data-id="${id}" aria-label="Transcript: read, copy or share the captions as text" title="Transcript">
+              <i class="icon-transcript"></i>
             </button>`;
     case 'reheat':
       // Applies only when the yt-dlp module capability is affirmatively
@@ -3083,6 +3096,27 @@ const PreviewCards = (function () {
       }
       const cardReheatBtn = e.target.closest('.card-reheat-btn');
       if (cardReheatBtn) { e.preventDefault(); triggerCardReheat(cardReheatBtn); return; }
+      // v1.203: the Transcript corner - the shared flow, keyed by the item's
+      // id + title from the fetched list (never from DOM text). Busy state
+      // disables the corner while the text loads; the view's signal tears
+      // down whichever modal it opened.
+      const cardTranscriptBtn = e.target.closest('.card-transcript-btn');
+      if (cardTranscriptBtn) {
+        e.preventDefault();
+        const item = currentItems.find((it) => it.id === cardTranscriptBtn.dataset.id);
+        if (!item || cardTranscriptBtn.disabled) return;
+        openTranscriptFor({
+          id: item.id,
+          title: item.title,
+          signal,
+          onBusy: (busy) => { cardTranscriptBtn.disabled = busy; },
+          // This view is CACHED on nav-away (its signal never fires), so the
+          // corner itself answers "am I still on screen" when the text lands
+          // - a detached grid opens nothing (gate finding).
+          stillWanted: () => cardTranscriptBtn.isConnected,
+        });
+        return;
+      }
     }, { signal });
 
     videoGrid.addEventListener('click', (e) => {

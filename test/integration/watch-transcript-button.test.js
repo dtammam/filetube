@@ -49,6 +49,9 @@ const TWO_PROMPTS = [{ id: 'summarize', name: 'Summarize', text: 'Summarize this
 
 // `aiPrompts`: the /api/settings answer's transcriptAiPrompts (default ONE);
 // [] = none configured; 'fail' = the settings route 500s.
+// `transcriptStatus`: 200 (default), an error code, or 'defer' (answers park in
+// `deferredTranscript` until released).
+const deferredTranscript = [];
 function makeWatchFetchStub(hasSubtitles, transcriptStatus, aiPrompts) {
   const transcriptUrls = [];
   const prompts = aiPrompts === undefined ? ONE_PROMPT : aiPrompts;
@@ -68,9 +71,11 @@ function makeWatchFetchStub(hasSubtitles, transcriptStatus, aiPrompts) {
     }
     if (typeof url === 'string' && url.startsWith(`/api/transcript/${MEDIA_ID}`)) {
       transcriptUrls.push(url);
-      const status = transcriptStatus || 200;
+      const status = (transcriptStatus === 'defer' ? 200 : transcriptStatus) || 200;
       if (status !== 200) return Promise.resolve({ ok: false, status, text: async () => '' });
-      return Promise.resolve({ ok: true, status: 200, text: async () => (url.includes('timestamps=1') ? TS_TEXT : PLAIN_TEXT) });
+      const ans = { ok: true, status: 200, text: async () => (url.includes('timestamps=1') ? TS_TEXT : PLAIN_TEXT) };
+      if (transcriptStatus === 'defer') return new Promise((r) => deferredTranscript.push(() => r(ans)));
+      return Promise.resolve(ans);
     }
     // The SPA router fetches the NEXT view's shell BEFORE calling this
     // view's destroy() - the abort-teardown test below needs that fetch to
@@ -646,5 +651,58 @@ test('watch page: More lists Attribute for admin + flag, and OMITS a disabled se
     click(dom, d.getElementById('more-actions-btn'));
     await settle();
     assert.deepStrictEqual(choiceLabels(d), ['Next', 'Download', 'Delete', 'Mark watched', 'Attribute'], 'Move (disabled) omitted; Attribute (flag on, admin, unattributed) listed');
+  } finally { dom.window.close(); }
+});
+
+// ---- GATE (adversarial): one transcript surface at a time - the move had dropped the dismiss-before-open ----
+test('watch page: activating Transcript again while its modal (desktop) or picker (phone) is open leaves exactly ONE', async () => {
+  for (const phone of [false, true]) {
+    const { fetchImpl } = makeWatchFetchStub(true, 200, []);
+    const { dom } = await loadWatchWithFetchStub(fetchImpl, null, phone);
+    try {
+      await settle();
+      const { document } = dom.window;
+      const btn = document.getElementById('transcript-media-btn');
+      click(dom, btn);
+      await settle();
+      click(dom, btn); // a keyboard user can reach the button behind the backdrop (no focus trap)
+      await new Promise((r) => setTimeout(r, 500));
+      const sel = phone ? '.choice-modal-list' : '.transcript-modal';
+      assert.strictEqual(document.querySelectorAll(sel).length, 1, `one ${sel} (phone=${phone})`);
+    } finally { dom.window.close(); }
+  }
+});
+
+test('openTranscriptFor: a missing id resolves null and fetches nothing', async () => {
+  const calls = [];
+  const { fetchImpl } = makeWatchFetchStub(true, 200, []);
+  const { dom } = await loadWatchWithFetchStub((i, init) => { calls.push(typeof i === 'string' ? i : i.url); return fetchImpl(i, init); });
+  try {
+    await settle();
+    const before = calls.filter((u) => u.startsWith('/api/transcript/')).length;
+    const out = await dom.window.openTranscriptFor({ id: undefined, title: 'x' });
+    assert.strictEqual(out, null);
+    assert.strictEqual(calls.filter((u) => u.startsWith('/api/transcript/')).length, before, 'no fetch');
+  } finally { dom.window.close(); }
+});
+
+// GATE: the `signal.aborted` pre-open check is the WATCH page's only guard
+// (no stillWanted there - the view is destroyed, not cached): navigate away
+// before the text lands -> nothing opens over the next page.
+test('watch page: click Transcript, navigate away BEFORE the text lands, release it -> no modal opens over the next page', async () => {
+  deferredTranscript.length = 0;
+  const { fetchImpl } = makeWatchFetchStub(true, 'defer', []);
+  const { dom } = await loadWatchWithFetchStub(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    click(dom, document.getElementById('transcript-media-btn'));
+    await settle();
+    assert.strictEqual(deferredTranscript.length, 1, 'the fetch is parked');
+    dom.window.FileTube.navigate('/');
+    await new Promise((r) => setTimeout(r, 400));
+    deferredTranscript.splice(0).forEach((r) => r());
+    await new Promise((r) => setTimeout(r, 300));
+    assert.strictEqual(document.querySelector('.transcript-modal'), null, 'the aborted view opens nothing');
   } finally { dom.window.close(); }
 });

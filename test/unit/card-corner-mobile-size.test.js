@@ -19,7 +19,7 @@ const RAW = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 's
 // Strip comments ONCE at read; every lock below runs on comment-free text.
 const CSS = RAW.replace(/\/\*[^]*?\*\//g, '');
 
-// The six corner controls and their icon classes (main.js's corner-control
+// The seven corner controls (v1.203: + transcript) and their icon classes (main.js's corner-control
 // set; the feedhide button is deliberately NOT here - it has no scrim pill
 // and its mobile growth uses min-width, the v1.102 approach).
 const CORNER_ICONS = [
@@ -29,6 +29,7 @@ const CORNER_ICONS = [
   ['card-share-btn', 'icon-share'],
   ['card-reheat-btn', 'icon-flame'],
   ['card-queue-btn', 'icon-queue'],
+  ['card-transcript-btn', 'icon-transcript'], // v1.203
 ];
 
 // Locate every `@media (max-width: 768px)` block by BRACE-WALKING the

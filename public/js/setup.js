@@ -950,7 +950,7 @@ const BOTTOMBAR_LABELS = { home: 'Home', liked: 'Liked', playlists: 'Playlists',
 
 const CARD_CORNER_LABELS = {
   download: 'Download', delete: 'Delete', like: 'Like',
-  queue: 'Queue', share: 'Share', reheat: 'Reheat', none: 'None',
+  queue: 'Queue', share: 'Share', reheat: 'Reheat', transcript: 'Transcript', none: 'None',
 };
 
 const CORNER_EDITOR_SLOTS = [

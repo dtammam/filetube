@@ -165,10 +165,15 @@ test('the fix is font-independent -- no era-scoped override was used to paper ov
 // five glyphs fit any font with room to spare. Same treatment `.section-actions`
 // already uses (v1.45.3), so this is the established pattern here.
 
-test('the five action labels are hidden at the phone breakpoint (glyphs remain)', () => {
+test('v1.203: at the phone breakpoint only the More button drops its word - the primary words STAY (Dean: "display with the full text")', () => {
+  // History: v1.47.6 hid all five words on phones (five WORDED buttons could
+  // not fit ~328px). v1.202 folded the secondary tier into "More", so the row
+  // is four words + one glyph (~333px: one row at 390 and 375, measured);
+  // v1.203 reversed the hide accordingly. This test would FAIL against the
+  // old hide-all rule.
   const mobile = CSS.slice(CSS.indexOf('@media (max-width: 768px)'));
-  assert.match(mobile, /\.watch-action-btns \.btn \.btn-label \{\s*display: none;\s*\}/,
-    'the words must be dropped at phone widths -- padding tuning cannot recover ~60px');
+  assert.match(mobile, /#more-actions-btn \.btn-label \{\s*display: none;\s*\}/, 'More is glyph-only on phones');
+  assert.ok(!/\.watch-action-btns \.btn \.btn-label \{\s*display: none;/.test(mobile), 'the hide-all-words rule is gone');
 });
 
 test('wrapping is RETAINED as the safety net, not replaced by the label hiding', () => {

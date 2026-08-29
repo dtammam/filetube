@@ -198,6 +198,8 @@ module.exports = [
         shareTextContent: 'readonly',
         copyTextToClipboard: 'readonly',
         showTranscriptModal: 'readonly',
+        // v1.203: the shared transcript flow (common.js), called by watch.js and main.js's card corner.
+        openTranscriptFor: 'readonly',
         // v1.68 (ruling 4): close a played video's delivered push banner
         // (common.js), called by watch.js's pingView.
         closeDeliveredPushBanners: 'readonly',

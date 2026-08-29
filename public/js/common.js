@@ -11566,6 +11566,126 @@ function showChoiceModal(title, choices) {
   return function dismiss() { settle(); };
 }
 
+// ---- Transcript flow (v1.203: SHARED by the watch page and the card corner) ----
+//
+// `openTranscriptFor({ id, title, signal, onBusy })` runs the whole
+// transcript hand-off for one video: fetches the plain-text document
+// (GET /api/transcript/:id) and the "Share with AI" prompts together (so
+// every pick is ready inside the tap - the iOS clipboard rule), then on a
+// PHONE width opens the pick-one (Share transcript / Copy transcript /
+// Share with AI), and elsewhere the read-only text-field modal
+// (showTranscriptModal). Any prompts failure resolves to [] - the AI pick
+// simply disappears. `signal` (the caller's view abort) tears whichever
+// modal is open down; `onBusy(bool)` lets a caller disable its button while
+// the fetch runs. Returns a promise resolving to the modal's dismiss (or
+// null when nothing opened). Moved here from watch.js so a card can call
+// it with just an id + title - identical flow, no card-specific variant
+// (Dean's ruling).
+function transcriptIsPhoneWidth() {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches;
+}
+
+function fetchTranscriptTextFor(id, timestamps) {
+  const url = '/api/transcript/' + encodeURIComponent(id) + (timestamps ? '?timestamps=1' : '');
+  return fetch(url).then((res) => {
+    if (!res || !res.ok) throw new Error('transcript ' + (res && res.status));
+    return res.text();
+  });
+}
+
+// settings.transcriptAiPrompts, readable by every signed-in user.
+function fetchTranscriptAiPrompts() {
+  return fetch('/api/settings')
+    .then((res) => (res && res.ok ? res.json() : null))
+    .then((s) => ((s && Array.isArray(s.transcriptAiPrompts)) ? s.transcriptAiPrompts.filter((p) => p && typeof p.text === 'string' && p.text.trim() !== '' && typeof p.name === 'string') : []))
+    .catch(() => []);
+}
+
+// Payload contract (Dean: "exactly"): the prompt, a blank line, then the
+// same document Share/Copy send (title / date / channel / transcript).
+function composeTranscriptAiShare(promptText, transcriptText) {
+  return String(promptText).trim() + '\n\n' + transcriptText;
+}
+
+// Native sheet where present, else the clipboard, with a toast either way
+// except a completed sheet (the user saw it).
+function runTranscriptAiShare(promptText, transcriptText, title) {
+  return shareTextContent(composeTranscriptAiShare(promptText, transcriptText), title).then((outcome) => {
+    if (outcome === 'shared' || typeof showToast !== 'function') return;
+    showToast(outcome === 'copied' ? 'Copied with your prompt - paste it into your AI app' : 'Could not share the transcript.');
+  });
+}
+
+// ONE transcript surface at a time across BOTH callers (gate: the move had
+// dropped the watch page's dismiss-before-open, so a keyboard user Tabbing
+// behind the backdrop could stack two modals). dismiss() is idempotent.
+let transcriptActiveDismiss = null;
+
+function openTranscriptFor(opts) {
+  const o = opts || {};
+  const id = o.id;
+  const title = (typeof o.title === 'string' && o.title !== '') ? o.title : 'Transcript';
+  const signal = o.signal || null;
+  const onBusy = typeof o.onBusy === 'function' ? o.onBusy : () => {};
+  // `stillWanted()` (optional): a caller whose view is CACHED on nav-away
+  // (the home grid - its AbortController never fires, the v1.160 lesson)
+  // says whether the surface that asked is still on screen when the text
+  // lands; false = open nothing (gate: a late text used to open the modal
+  // over a different page).
+  const stillWanted = typeof o.stillWanted === 'function' ? o.stillWanted : () => true;
+  if (!id) return Promise.resolve(null);
+  onBusy(true);
+  let dismiss = null;
+  const setDismiss = (fn) => {
+    if (dismiss && signal) signal.removeEventListener('abort', dismiss);
+    dismiss = fn;
+    transcriptActiveDismiss = fn;
+    if (dismiss && signal) signal.addEventListener('abort', dismiss, { once: true });
+  };
+  return Promise.all([fetchTranscriptTextFor(id, false), fetchTranscriptAiPrompts()]).then(([text, aiPrompts]) => {
+    if (signal && signal.aborted) return null;
+    if (!stillWanted()) return null;
+    if (transcriptActiveDismiss) { transcriptActiveDismiss(); transcriptActiveDismiss = null; }
+    if (transcriptIsPhoneWidth()) {
+      // "Share with AI" is the third pick when prompts exist. One prompt
+      // shares at once; several open a pick-one of their names.
+      const aiPick = aiPrompts.length === 0 ? [] : [{ label: 'Share with AI', onPick: () => {
+        if (aiPrompts.length === 1) { runTranscriptAiShare(aiPrompts[0].text, text, title); return; }
+        setDismiss(showChoiceModal('Share with AI', aiPrompts.map((prompt) => ({ label: prompt.name, onPick: () => runTranscriptAiShare(prompt.text, text, title) }))));
+      } }];
+      setDismiss(showChoiceModal('Transcript', [
+        { label: 'Share transcript', onPick: () => {
+          // A phone-width browser WITHOUT a share sheet falls back to the
+          // clipboard inside shareTextContent - toast that outcome like Copy
+          // does, so the pick never looks like it did nothing.
+          shareTextContent(text, title).then((outcome) => {
+            if (outcome === 'shared' || typeof showToast !== 'function') return;
+            showToast(outcome === 'copied' ? 'Transcript copied' : 'Could not share the transcript.');
+          });
+        } },
+        { label: 'Copy transcript', onPick: () => {
+          copyTextToClipboard(text).then((outcome) => {
+            if (typeof showToast !== 'function') return;
+            showToast(outcome === 'copied' ? 'Transcript copied' : 'Could not copy the transcript.');
+          });
+        } },
+      ].concat(aiPick)));
+    } else {
+      setDismiss(showTranscriptModal({
+        text,
+        loadText: (timestamps) => fetchTranscriptTextFor(id, timestamps),
+        aiPrompts,
+        shareAi: (promptText, currentText) => runTranscriptAiShare(promptText, currentText, title),
+      }));
+    }
+    return dismiss;
+  }).catch((err) => {
+    console.error('Transcript load failed:', err);
+    if (!(signal && signal.aborted) && typeof showToast === 'function') showToast('Could not load the transcript.');
+    return null;
+  }).finally(() => onBusy(false));
+}
+
 // Transcript export (Dean: "primarily a text field on desktop"): the desktop
 // Transcript modal. `opts.text` is the already-fetched document (title / date
 // / channel, blank line, transcript); `opts.loadText(timestamps)` re-fetches

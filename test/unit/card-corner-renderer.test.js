@@ -244,3 +244,20 @@ test('v1.72 (adversarial W1): cardKindPresentation - the BOOK arm is bound (read
   assert.ok(!html.includes('card-delete-btn'), 'the media delete verb never renders on a book card');
   assert.ok(!html.includes('card-queue-btn'), 'no queue button for a non-queueable kind');
 });
+
+// ---- v1.203 (Dean): the Transcript corner ------------------------------------
+test('v1.203: transcript renders ONLY for an item with captions (hasSubtitles === true), with the icon-transcript glyph, in its corner', () => {
+  const withCaptions = buildCardCornerButtonsHtml({ ...ITEM, hasSubtitles: true }, { cornerTL: 'transcript', cornerTR: 'none', cornerBL: 'none' }, {});
+  assert.match(withCaptions, /card-transcript-btn card-corner-tl/);
+  assert.match(withCaptions, /<i class="icon-transcript"><\/i>/);
+  assert.match(withCaptions, /data-id="/, 'keyed by id for the delegation');
+  for (const item of [ITEM, { ...ITEM, hasSubtitles: false }, { ...ITEM, hasSubtitles: 'yes' }]) {
+    assert.ok(!buildCardCornerButtonsHtml(item, { cornerTL: 'transcript', cornerTR: 'none', cornerBL: 'none' }, {}).includes('card-transcript-btn'), 'no captions -> no corner');
+  }
+});
+
+test('v1.203: transcript is a canonical control (resolves) and dedupes across corners like the others', () => {
+  assert.deepStrictEqual(resolveCardCornerPrefs({ cornerTL: 'transcript', cornerTR: 'transcript', cornerBL: 'none' }), { cornerTL: 'transcript', cornerTR: 'transcript', cornerBL: 'none' });
+  const html = buildCardCornerButtonsHtml({ ...ITEM, hasSubtitles: true }, { cornerTL: 'transcript', cornerTR: 'transcript', cornerBL: 'none' }, {});
+  assert.strictEqual((html.match(/card-transcript-btn/g) || []).length, 1, 'rendered once (the dedupe rule)');
+});
