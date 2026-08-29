@@ -10047,6 +10047,7 @@ app.get('/api/notifications', (req, res) => {
         hasThumbnail: false,
         artUrl: `/podcastart/${encodeURIComponent(ep.subId)}`,
         type: 'audio',
+        durationSec: Number(ep.durationSec) > 0 ? Number(ep.durationSec) : 0, // v1.208: the episode length for the panel badge
       });
       continue;
     }
@@ -10102,6 +10103,9 @@ app.get('/api/notifications', (req, res) => {
       channelAvatarUrl,
       hasThumbnail: item.hasThumbnail === true,
       type: item.type === 'audio' ? 'audio' : 'video',
+      // v1.208 (Dean): the watch length, so the panel can show a small duration
+      // badge (triage before deleting). Seconds; 0 when unknown -> no badge.
+      durationSec: Number(item.duration) > 0 ? Number(item.duration) : 0,
     });
   }
   if (phantomMediaIds.length > 0) {

@@ -66,7 +66,7 @@ async function armFeature() {
     db.metadata['mediä-1'] = {
       id: 'mediä-1', name: 'Clïp One.mp4', title: 'Clïp One', type: 'video', ext: '.mp4',
       filePath: '/lib/Clïp One.mp4', size: 10, addedAt: ITEM_ADDED_AT,
-      folderName: 'Söme Channel', channelName: 'Söme Channel', hasThumbnail: true,
+      folderName: 'Söme Channel', channelName: 'Söme Channel', hasThumbnail: true, duration: 754, // v1.208: 12:34
     };
     db.metadata['mediä-2'] = {
       id: 'mediä-2', name: 'Söng Two.m4a', title: 'Söng Two', type: 'audio', ext: '.m4a',
@@ -129,10 +129,12 @@ test('panel payload: rows join the CURRENT item (title/channel/type/thumbnail), 
   assert.equal(video.hasThumbnail, true);
   assert.equal(video.unread, true);
   assert.equal(video.createdAt, T0);
+  assert.equal(video.durationSec, 754, 'v1.208: the watch length joins the payload from db.metadata.duration (for the panel badge)');
   const audio = items.find((i) => i.mediaId === 'mediä-2');
   assert.equal(audio.type, 'audio');
   assert.equal(audio.channelName, '', 'no captured channel -> empty string, the client derives from folderName');
   assert.equal(audio.folderName, 'Söme Channel');
+  assert.equal(audio.durationSec, 0, 'v1.208: an item with no duration -> 0 (no badge)');
 });
 
 test('two-tier semantics over HTTP: seen zeroes the badge but keeps dots; read drops a dot; clear empties the panel', async () => {

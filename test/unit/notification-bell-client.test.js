@@ -51,6 +51,7 @@ const FULL_ROW = {
   channelAvatarUrl: 'https://yt3.example/avatar.jpg',
   hasThumbnail: true,
   type: 'video',
+  durationSec: 754, // 12:34
 };
 
 test('buildNotificationRowModel: full row maps to href/labels/thumb verbatim', () => {
@@ -64,6 +65,44 @@ test('buildNotificationRowModel: full row maps to href/labels/thumb verbatim', (
   assert.equal(m.id, 41);
   assert.ok(typeof m.timeLabel === 'string' && m.timeLabel.length > 0, 'relative time label rendered');
   assert.notEqual(m.timeLabel, 'unknown date');
+  assert.equal(m.durationSec, 754, 'v1.208: the watch length rides the model (for the panel duration badge)');
+});
+
+test('v1.208: durationSec is a positive number or 0 - the badge renders only when > 0', () => {
+  assert.equal(buildNotificationRowModel({ ...FULL_ROW, durationSec: 0 }).durationSec, 0, 'no length -> 0 (no badge)');
+  assert.equal(buildNotificationRowModel({ ...FULL_ROW, durationSec: undefined }).durationSec, 0, 'absent -> 0');
+  assert.equal(buildNotificationRowModel({ ...FULL_ROW, durationSec: -5 }).durationSec, 0, 'garbage negative -> 0');
+  assert.equal(buildNotificationRowModel({ ...FULL_ROW, durationSec: '90' }).durationSec, 90, 'numeric string coerced');
+  assert.equal(buildNotificationRowModel({ ...FULL_ROW, durationSec: 62.4 }).durationSec, 62.4, 'a float length is kept (formatDuration rounds)');
+});
+
+test('v1.208 SOURCE-LOCK: renderRows wraps the thumb and appends a duration badge ONLY when durationSec > 0', () => {
+  // renderRows is an internal panel closure (not exported); bind its shape on
+  // the source so the wrap + the guarded .duration-badge append cannot silently
+  // regress. The data path (model + server payload) is bound behaviourally
+  // elsewhere; the visual fit is measured against the 72x40 thumb.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'common.js'), 'utf8');
+  assert.match(src, /notif-row-thumb-wrap/, 'the positioned thumb wrapper exists');
+  assert.match(src, /m\.durationSec > 0 && typeof formatDuration === 'function'/, 'the badge is guarded on a positive duration');
+  assert.match(src, /badge\.className = 'duration-badge'/, 'it reuses the .duration-badge system');
+  assert.match(src, /badge\.textContent = formatDuration\(m\.durationSec\)/, 'formatted via the shared formatDuration');
+});
+
+test('v1.208 CSS: the thumb wrapper is positioned and the panel badge is SCALED DOWN (fs-xs), winning over the mobile fs-2xl bump', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8')
+    .replace(/\/\*[^]*?\*\//g, ''); // strip comments once
+  const wrap = /\.notif-row-thumb-wrap\s*\{([^}]*)\}/.exec(css);
+  assert.ok(wrap, '.notif-row-thumb-wrap rule exists');
+  assert.match(wrap[1], /position:\s*relative/, 'the wrapper hosts the absolute badge');
+  const badge = /\.notif-row-thumb-wrap\s+\.duration-badge\s*\{([^}]*)\}/.exec(css);
+  assert.ok(badge, 'the scoped panel-badge rule exists');
+  assert.match(badge[1], /font-size:\s*var\(--fs-xs\)/, 'scaled to fs-xs (the list-view small-pill language) so it fits a 72x40 thumb');
+  // 0-2-0 specificity beats the mobile `.duration-badge { font-size: --fs-2xl }`
+  // (0-1-0), so the panel badge stays small at every width - measured 33x15.
 });
 
 test('buildNotificationRowModel: channel label falls back channelName -> folderName -> Library', () => {
