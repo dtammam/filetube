@@ -2374,5 +2374,11 @@
     "date": "2026-08-29",
     "title": "See how long it is, right in notifications",
     "intent": "The little thumbnail on each notification now shows the length in its corner - the same small time tag you see on the video tiles. So when a channel posts something new, you can tell at a glance whether it's a quick one-minute clip or a full-length video (or podcast episode) before you even open it - handy for deciding what to keep and what to clear."
+  },
+  {
+    "version": "1.209.0",
+    "date": "2026-08-29",
+    "title": "Tap away to close search",
+    "intent": "A little less fuss: if you open the search bar and then change your mind, just tap anywhere outside it (like the home button) and it closes on its own - no need to press the search button again. If you've already typed something, it stays put so you don't lose your search."
   }
 ]

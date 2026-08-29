@@ -80,6 +80,24 @@
 
 ## Shipped
 
+### v1.209.0 - Tap outside the open search to dismiss it (2026-08-29)
+
+Dean (mobile + desktop): open search, change your mind, tap the home logo top-
+left - search stayed open; you had to press the search button again.
+
+**What shipped.** A document pointerdown listener (wireSearchAffordances,
+common.js) closes the open search when the box is EMPTY and the tap lands
+OUTSIDE the search area (input / toggle / history panel / .header-search host).
+pointerdown (not click - the iOS tap-outside rule) fires BEFORE the target's own
+click, so the outside control (the home logo) still activates on the same tap. A
+TYPED query is preserved - an accidental tap-away never discards it. Bound once
+(the idempotency guard), bubble-phase (no scroll tax, unlike a non-passive
+touchmove). wireSearchAffordances is now exported so the behaviour is jsdom-
+bound, not source-locked.
+
+Slim gate (adversarial), APPROVE. Dual-Node 7831/0 (Node 22 + 24).
+**Dean's device pass PENDING.**
+
 ### v1.208.0 - Watch length on the notification thumbnails (2026-08-29)
 
 Dean: show the watch length on each notification's little content-preview thumb
