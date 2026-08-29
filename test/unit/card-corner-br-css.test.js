@@ -111,6 +111,12 @@ test('v1.205.1: the duration pill matches the corner glyph size (14px base, 18px
   assert.match(mob, /font-size:\s*var\(--fs-2xl\)/, 'mobile font --fs-2xl (18px, the mobile corner glyph size)');
 });
 
+test('v1.205.2 (Dean): the duration pill uses the corner-button background (--scrim) and non-bold weight (--fw-normal)', () => {
+  const base = ruleBody(OUTSIDE, '.duration-badge');
+  assert.match(base, /background-color:\s*var\(--scrim\)/, 'matches the corner glyph button background (not the darker --scrim-heavy)');
+  assert.match(base, /font-weight:\s*var\(--fw-normal\)/, 'non-bold (the bigger pill read too heavy in bold)');
+});
+
 test('the base duration badge keeps its 4px home (the shift is opt-in, not the default)', () => {
   const body = ruleBody(OUTSIDE, '.duration-badge');
   assert.ok(body, '.duration-badge base rule exists');

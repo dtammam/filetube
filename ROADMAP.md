@@ -80,6 +80,21 @@
 
 ## Shipped
 
+### v1.205.2 - Card duration pill: non-bold + matches the corner-button background (2026-08-29)
+
+Dean's v1.205.1 device pass ("the time is great ... it's excellent") with two
+style tweaks on the duration pill: (1) it read too BOLD at the new larger size
+- switched to a new --fw-normal (400) token; (2) its background was the darker
+--scrim-heavy while the corner glyph buttons use --scrim - standardized the
+pill to var(--scrim) so the row's pills are one look. CSS-only, no geometry
+change. Slim gate (adversarial), APPROVE. Dual-Node 7813/0.
+
+**Known (disclosed, device call):** the corner buttons carry opacity:0.85 at
+rest and the pill does not, so the pill's --scrim background composites ~0.08
+darker than a neighbouring button despite the identical token - subtle;
+matching it exactly would fade the number text (element opacity), so left as
+the token match Dean asked for. On his probe list.
+
 ### v1.205.1 - Card duration polish: matches the buttons, stays visible in preview (2026-08-29)
 
 Dean's v1.204/v1.205 device pass ("everything is working amazingly") with two
