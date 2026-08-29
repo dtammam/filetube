@@ -73,6 +73,21 @@ test('v1.209: a tap outside does NOT discard a TYPED query (stays open)', () => 
   assert.ok(isOpen(doc), 'a non-empty box is preserved - only an EMPTY search dismisses on tap-away');
 });
 
+test('v1.209 (gate): tapping the TOGGLE button to close ends CLOSED, not reopened', () => {
+  // The toggle lives in .header-right (OUTSIDE .header-search), so its own token
+  // in the closest-guard is load-bearing: without it, pointerdown would
+  // closeSearch, then the toggle's click (now not-open) would REOPEN. Binds the
+  // #search-toggle-btn token specifically (the other tokens nest in
+  // .header-search and are redundant under this fixture).
+  const doc = boot();
+  open(doc);
+  assert.ok(isOpen(doc), 'opened');
+  const toggle = doc.getElementById('search-toggle-btn');
+  down(toggle);                                   // pointerdown must NOT close (inside the guard)
+  toggle.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // click toggles closed
+  assert.ok(!isOpen(doc), 'the toggle closes it and it STAYS closed (no reopen flicker)');
+});
+
 test('v1.209: an outside tap while search is CLOSED is a no-op (no throw, stays closed)', () => {
   const doc = boot();
   assert.ok(!isOpen(doc), 'starts closed');
