@@ -282,3 +282,20 @@ test('setup: two held POSTs released in REVERSE order - the newer list wins on s
     assert.strictEqual(rows(d)[0].querySelector('.transcript-ai-prompt-text').value, 'Two.');
   } finally { dom.window.close(); }
 });
+
+// ---- v1.202 (Dean): draggable prompt rows - the ONE gesture layer ----
+test('setup: each prompt row has a drag handle (the keyboard control too); ArrowDown on the first handle swaps the rows and POSTs the new order at once', async () => {
+  const { dom, posts } = await loadSetup({ prompts: TWO });
+  try {
+    await wait(100);
+    const d = dom.window.document;
+    const handles = Array.from(d.querySelectorAll('.transcript-ai-prompt-row .drag-handle'));
+    assert.strictEqual(handles.length, 2, 'one handle per row');
+    assert.strictEqual(handles[0].getAttribute('tabindex'), '0', 'focusable - the helper made it the keyboard affordance');
+    handles[0].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    await wait(100);
+    assert.deepStrictEqual(rows(d).map((r) => r.dataset.promptId), ['analyze', 'summarize'], 'DOM order swapped');
+    assert.strictEqual(posts.length, 1, 'saved immediately (no debounce for a deliberate drop)');
+    assert.deepStrictEqual(posts[0].transcriptAiPrompts.map((p) => p.id), ['analyze', 'summarize'], 'the POST carries the new order');
+  } finally { dom.window.close(); }
+});

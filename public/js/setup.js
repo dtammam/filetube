@@ -1326,6 +1326,14 @@ function renderTranscriptAiPromptsEditor(signal) {
       if (prompt.id) row.dataset.promptId = prompt.id;
       const head = document.createElement('div');
       head.className = 'transcript-ai-prompt-head';
+      // v1.202 (Dean: "draggable/sortable, no sort buttons"): the ONE
+      // gesture layer - wireReorderable below, with this handle as both the
+      // pointer grip and the keyboard control (arrow keys), exactly the
+      // bottom-bar editor's shape. The list order IS the saved order.
+      const handle = document.createElement('span');
+      handle.className = 'drag-handle';
+      handle.title = 'Drag to reorder';
+      head.appendChild(handle);
       const name = document.createElement('input');
       name.type = 'text';
       name.className = 'transcript-ai-prompt-name';
@@ -1355,6 +1363,27 @@ function renderTranscriptAiPromptsEditor(signal) {
         if (saveTimer) clearTimeout(saveTimer);
         saveNow();
       }, { signal });
+    });
+    // Re-wired after EVERY render (fresh rows need fresh listeners - the
+    // helper's contract). The helper hands us (from, to); we move the DOM
+    // row (readRows() reads DOM order) and save at once - a drop is a
+    // deliberate act, not a keystroke, so no debounce.
+    wireReorderable(host, {
+      rowSelector: '.transcript-ai-prompt-row',
+      handleSelector: '.drag-handle',
+      labelOf: (index) => (prompts[index] && prompts[index].name) || 'prompt',
+      focusKey: 'transcript-ai-prompts',
+      onReorder: (fromIndex, toIndex) => {
+        const rows = Array.from(host.querySelectorAll('.transcript-ai-prompt-row'));
+        const row = rows[fromIndex];
+        const target = rows[toIndex];
+        if (!row || !target || row === target) return;
+        if (toIndex > fromIndex) target.after(row); else target.before(row);
+        prompts = readRows();
+        if (saveTimer) clearTimeout(saveTimer);
+        saveNow();
+      },
+      signal,
     });
   }
 

@@ -4040,6 +4040,18 @@ a.sub-row-channel-link:focus-visible {
   align-items: center;
   gap: var(--space-4);
 }
+/* v1.202: the reorder drag family - UNSCOPED selectors, exactly the rule
+   the reorder census locks (a container-scoped rule for one surface would
+   stand in for another that shares the class). */
+.transcript-ai-prompt-row.dragging {
+  opacity: 0.5;
+}
+.transcript-ai-prompt-row.drag-over-before {
+  box-shadow: inset 0 2px 0 0 var(--yt-red);
+}
+.transcript-ai-prompt-row.drag-over-after {
+  box-shadow: inset 0 -2px 0 0 var(--yt-red);
+}
 .transcript-ai-prompt-name {
   flex: 1;
   min-width: 0;
