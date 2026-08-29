@@ -258,6 +258,7 @@ test('v1.73: a podcast feed row lists kind-aware (show name, art, audio type); m
   assert.equal(ep.channelName, 'Notif Show');
   assert.equal(ep.artUrl, `/podcastart/${subId}`);
   assert.equal(ep.type, 'audio');
+  assert.equal(ep.durationSec, 60, 'v1.208: the episode length rides the podcast row (from ep.durationSec) for the panel badge');
   assert.equal(med.kind, 'media', 'kind carried on media rows too');
 });
 

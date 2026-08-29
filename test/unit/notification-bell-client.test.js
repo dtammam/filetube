@@ -102,7 +102,9 @@ test('v1.208 CSS: the thumb wrapper is positioned and the panel badge is SCALED 
   assert.ok(badge, 'the scoped panel-badge rule exists');
   assert.match(badge[1], /font-size:\s*var\(--fs-xs\)/, 'scaled to fs-xs (the list-view small-pill language) so it fits a 72x40 thumb');
   // 0-2-0 specificity beats the mobile `.duration-badge { font-size: --fs-2xl }`
-  // (0-1-0), so the panel badge stays small at every width - measured 33x15.
+  // (0-1-0), so the panel badge stays small at every width - measured ~15px
+  // tall in the 72x40 corner (width tracks the label: ~33px for "1:23",
+  // ~40px for "12:34"), identical desktop + mobile.
 });
 
 test('buildNotificationRowModel: channel label falls back channelName -> folderName -> Library', () => {
