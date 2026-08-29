@@ -149,11 +149,45 @@ advisory can red all CI overnight with zero local changes: that is the
 gate working - fix with `npm audit fix` (preferred) or add the reviewed
 exception. Dependabot (`.github/dependabot.yml`, weekly: npm grouped
 minor+patch, the docker base image, github-actions) surfaces the fixes
-as PRs; they are NEVER auto-merged.
+as PRs; see the tiered auto-merge below.
 
 **Reverting any of this** is one commit: delete `.github/dependabot.yml`
 (bot stops; close open PRs), drop the `audit` job from ci.yml, or
 `git revert` the docker-publish.yml change - all pure config, no data.
+
+## Tiered Dependabot auto-merge (v1.206, reverses v1.148's no-auto-merge)
+
+A low-risk Dependabot PR that passes full CI (both Node legs + the audit
+gate) merges itself; a high-risk one waits for Dean.
+`.github/workflows/dependabot-auto-merge.yml` arms `gh pr merge --auto`
+(which GitHub holds until the required checks pass) only for the AUTO tier:
+
+- **AUTO** (self-merges once CI is green): a github-actions bump that is not
+  a major, and an npm **dev** dependency (`direct:development`) patch/minor
+  bump that does not touch **jsdom**. The `npm-minor-patch` group is dev-only,
+  so a grouped PR is all-development.
+- **MANUAL** (Dean reviews a short digest): every **major** (any ecosystem);
+  every **runtime** dep (`direct:production` - dotenv/express/mime-types ship
+  in the image); the **Docker base image**; and **jsdom** (test-infra the
+  whole suite rides). No workflow step runs for these - the PR just sits.
+
+**Repo settings Dean must enable ONCE.** Until they are set, an AUTO-tier PR's
+merge step ERRORS ("Auto-merge is not allowed for this repository") - so that
+PR shows a failed "Dependabot auto-merge" check and nothing merges; it waits
+for Dean and self-heals the moment the settings are on. (It is NOT a silent
+no-op, and the workflow does no harm - it just cannot complete the merge yet.)
+
+1. Settings -> General -> Pull Requests -> tick **Allow auto-merge** AND
+   **Allow squash merging** (the workflow uses `gh pr merge --auto --squash`,
+   which needs squash enabled).
+2. Settings -> Branches -> add a **branch protection rule** for `main`:
+   "Require status checks to pass before merging", and select the CI checks
+   (the `ci` matrix jobs, `secret-scan`, `audit`). This is what makes
+   auto-merge WAIT for green CI rather than merge immediately; it also
+   protects `main` for human PRs.
+
+Reverting the auto-merge: delete `.github/workflows/dependabot-auto-merge.yml`
+(and, if desired, the two repo settings) - pure config, no data.
 
 ## Notes
 

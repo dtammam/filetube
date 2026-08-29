@@ -32,6 +32,7 @@ const PIPELINE_FILES = [
   '.github/workflows/ci.yml',
   '.github/workflows/docker-publish.yml',
   '.github/workflows/release-notes.yml',
+  '.github/workflows/dependabot-auto-merge.yml', // v1.206: the tiered auto-merge workflow
 ];
 
 test('every pipeline YAML parses (an invalid dependabot.yml = the bot silently does nothing FOREVER)', () => {
@@ -144,12 +145,49 @@ test('docker-publish: single-arch by decision - no QEMU, no platforms key (intak
   assert.doesNotMatch(PUBLISH, /platforms:/);
 });
 
-test('NO auto-merge, ever: neither dependabot.yml nor any workflow contains auto-merge machinery', () => {
-  // Dean's intake decision 3. Auto-merge for dependency PRs arrives via a
-  // dependabot key or a workflow calling the merge API on dependabot PRs -
-  // bind the absence in every pipeline file, comment-stripped.
-  const files = ['.github/dependabot.yml', '.github/workflows/ci.yml', '.github/workflows/docker-publish.yml', '.github/workflows/release-notes.yml'];
-  for (const f of files) {
-    assert.doesNotMatch(stripped(f), /auto-?merge/i, `${f} must carry no auto-merge`);
+// ---- T5: TIERED auto-merge (v1.206, Dean 2026-08-29 - REVERSES v1.148's
+// no-auto-merge). Replaces the old "NO auto-merge, ever" lock. Binds the tier
+// split in the workflow + that the machinery is CONTAINED to that one file.
+const AUTOMERGE = stripped('.github/workflows/dependabot-auto-merge.yml');
+
+test('auto-merge: the machinery is CONTAINED to the dependabot-auto-merge workflow (never in ci/docker-publish/release-notes/dependabot.yml)', () => {
+  // The other pipeline files must carry no auto-merge - the surface stays one
+  // reviewable file (comment-stripped, so a mention in prose cannot satisfy it).
+  // v1.206 fix round (adversarial): the net catches the COMMAND spelling
+  // `gh pr merge --auto` too, not only the hyphenated noun (the porous-net
+  // class - the old regex missed the command word-order).
+  const AUTOMERGE_NET = /auto-?merge|merge\s+--auto|enablePullRequestAutoMerge/i;
+  for (const f of ['.github/dependabot.yml', '.github/workflows/ci.yml', '.github/workflows/docker-publish.yml', '.github/workflows/release-notes.yml']) {
+    assert.doesNotMatch(stripped(f), AUTOMERGE_NET, `${f} must carry no auto-merge machinery`);
   }
+  assert.match(AUTOMERGE, AUTOMERGE_NET, 'the auto-merge workflow is where it lives');
+});
+
+test('auto-merge: acts ONLY on dependabot PRs, via fetch-metadata + gh pr merge --auto', () => {
+  assert.match(AUTOMERGE, /if:\s*github\.actor == 'dependabot\[bot\]'/, 'gated to dependabot as the actor');
+  assert.match(AUTOMERGE, /uses:\s*dependabot\/fetch-metadata@/, 'reads the PR metadata');
+  assert.match(AUTOMERGE, /gh pr merge --auto/, 'arms GitHub auto-merge (held until required checks pass)');
+});
+
+test('auto-merge: the AUTO tier EXCLUDES majors, runtime deps, docker, and jsdom (Dean tiers)', () => {
+  // The load-bearing gates in the `if:` condition. Removing any one widens the
+  // auto lane past Dean's tiering. v1.206 fix round (both seats): BOTH arms
+  // gate POSITIVELY on minor/patch - the actions arm was `!= semver-major`,
+  // which fails OPEN on an empty/unknown update-type. No `!= major` gate
+  // survives, and minor/patch each appear once per arm (twice total), so an
+  // unknown update-type fails CLOSED on both arms.
+  assert.doesNotMatch(AUTOMERGE, /!=\s*'version-update:semver-major'/, 'no negative != major gate (fail-open removed)');
+  assert.strictEqual((AUTOMERGE.match(/version-update:semver-minor/g) || []).length, 2, 'both arms positively require minor');
+  assert.strictEqual((AUTOMERGE.match(/version-update:semver-patch/g) || []).length, 2, 'both arms positively require patch');
+  assert.match(AUTOMERGE, /dependency-type == 'direct:development'/, 'npm arm: DEV deps only (runtime = production = manual)');
+  assert.match(AUTOMERGE, /!contains\(steps\.meta\.outputs\.dependency-names, 'jsdom'\)/, 'npm arm: never jsdom');
+  // The docker ecosystem never appears in the auto condition -> base-image
+  // bumps (and any docker update) always fall through to manual.
+  const cond = AUTOMERGE.slice(AUTOMERGE.indexOf('if: >'), AUTOMERGE.indexOf('run:'));
+  assert.doesNotMatch(cond, /package-ecosystem == 'docker'/, 'the Docker ecosystem is never auto-merged');
+});
+
+test('auto-merge: the npm group is DEV-ONLY so a grouped PR can never carry a runtime dep past the direct:development gate', () => {
+  assert.match(DEPENDABOT, /npm-minor-patch:\s+applies-to: version-updates\s+dependency-type: "development"/,
+    'the npm-minor-patch group restricts to dependency-type development');
 });

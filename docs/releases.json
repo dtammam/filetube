@@ -2356,5 +2356,11 @@
     "date": "2026-08-29",
     "title": "A softer, tidier running-time label",
     "intent": "Following up on the last tweak: the running-time label on a video tile is no longer bold, so it sits more quietly, and its little background is now the exact same shade as the buttons in the corners - so the whole row of pills looks like one matching set."
+  },
+  {
+    "version": "1.206.0",
+    "date": "2026-08-29",
+    "title": "Quieter behind-the-scenes upkeep",
+    "intent": "Housekeeping you won't see: small, low-risk updates to the pieces the app is built from now apply themselves automatically once everything still passes, so the app stays current and secure with less manual fuss. Bigger or riskier updates still wait for a human to look them over. Nothing changes in how the app looks or works."
   }
 ]

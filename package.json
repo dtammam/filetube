@@ -1,6 +1,6 @@
 {
   "name": "filetube",
-  "version": "1.205.2",
+  "version": "1.206.0",
   "description": "A self-hosted media server resembling old-school YouTube",
   "main": "server.js",
   "scripts": {
@@ -26,7 +26,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "eslint": "^9.39.4",
-    "globals": "^17.7.0",
+    "globals": "^17.11.0",
     "js-yaml": "^4.3.1",
     "jsdom": "^29.1.1"
   }
