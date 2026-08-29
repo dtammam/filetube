@@ -56,6 +56,7 @@ Apache-2.0 permits redistribution; these files are included unmodified.
 | `books.svg` | `menu_book` | Books library entry + bottom-nav item (v1.73.2; emoji set uses U+1F4DA) |
 | `shuffle.svg` | `shuffle` | `.icon-shuffle` |
 | `chat.svg` | `chat` | `.icon-transcript` (the watch-page Transcript button; base set only, other sets fall back like `share`) |
+| `drive_file_move.svg` | `drive_file_move` | `.icon-attribute` (the opt-in Attribute button; base set only, other sets fall back like `share`) |
 
 ## FileTube original — `flame.svg`
 

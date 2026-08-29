@@ -1963,7 +1963,7 @@ const PreviewCards = (function () {
       btn.title = 'Attribute unattributed videos in this folder to a channel';
       btn.setAttribute('aria-label', 'Attribute unattributed videos in this folder to a channel');
       const icon = document.createElement('i');
-      icon.className = 'icon-user';
+      icon.className = 'icon-attribute'; // v1.202: the same real mask as the watch-page control
       btn.appendChild(icon);
       const label = document.createElement('span');
       label.className = 'btn-label';

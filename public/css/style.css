@@ -4607,6 +4607,7 @@ a.sub-row-channel-link:focus-visible {
 .icon-heart,
 .icon-share,
 .icon-transcript,
+.icon-attribute,
 .icon-download,
 .icon-shuffle,
 .icon-flame,
@@ -4701,6 +4702,13 @@ a.sub-row-channel-link:focus-visible {
    SAME three lists the share glyph does (size block above, this mask line,
    the @supports fill below) - the v1.47.6 "blank box" scar. */
 .icon-transcript { -webkit-mask-image: url(/assets/icons/chat.svg); mask-image: url(/assets/icons/chat.svg); }
+/* v1.202 (Dean: "a little move-folder icon, visually distinct" from Move's
+   bare folder): Material `drive_file_move` (a folder with an arrow into it)
+   for the Attribute control - which files a video under a channel. Replaces
+   the `icon-user` class that had NO mask anywhere in this file (a blank box
+   on phones since v1.53). Same share/transcript precedent: one base mask,
+   other sets fall back, present in all three lists. */
+.icon-attribute { -webkit-mask-image: url(/assets/icons/drive_file_move.svg); mask-image: url(/assets/icons/drive_file_move.svg); }
 /* "Shuffle again" (v1.15.1) originally shipped as a fixed ::before unicode
    glyph outside the icon-set system, which meant it rendered as a raw emoji
    (U+1F500) even in non-emoji/modern themes -- unlike every other .icon-*
@@ -4785,7 +4793,7 @@ a.sub-row-channel-link:focus-visible {
 @supports (mask-image: url("#")) or (-webkit-mask-image: url("#")) {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
-  .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-transcript, .icon-download, .icon-shuffle,
+  .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-transcript, .icon-attribute, .icon-download, .icon-shuffle,
   .icon-flame, .icon-history, .icon-queue, .icon-podcast, .icon-downloads, .icon-books, .icon-tv,
   .icon-school, .icon-movies, .icon-shows, .icon-documents, .icon-music-note, .icon-kids, .icon-games, .icon-camcorder, .icon-photos, .icon-travel, .icon-work, .icon-cooking, .icon-fitness, .icon-comedy, .icon-pets, .icon-cars, .icon-archive, .icon-radio, .icon-favorites, .icon-liked {
     background-color: currentColor;

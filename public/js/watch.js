@@ -2847,7 +2847,7 @@ if (typeof module !== 'undefined' && module.exports) {
       attributeBtn.title = 'Attribute to a channel';
       attributeBtn.setAttribute('aria-label', 'Attribute to a channel');
       const icon = document.createElement('i');
-      icon.className = 'icon-user';
+      icon.className = 'icon-attribute'; // v1.202: a real mask (the old class had none)
       attributeBtn.appendChild(icon);
       const label = document.createElement('span');
       label.className = 'btn-label';
