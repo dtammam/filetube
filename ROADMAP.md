@@ -80,6 +80,34 @@
 
 ## Shipped
 
+### v1.208.0 - Watch length on the notification thumbnails (2026-08-29)
+
+Dean: show the watch length on each notification's little content-preview thumb
+so a short "preview" clip (or a long one) can be triaged before deleting -
+without opening it. Some channels post ~1-minute previews he knows he won't
+watch; the length badge makes that a glance.
+
+**What shipped.**
+- The notification panel's thumbnail now carries a small DURATION badge in its
+  bottom-right corner, for anything with a real length - library videos AND
+  podcast episodes. Nothing on lengthless items.
+- It REUSES the existing card .duration-badge system (same --scrim background,
+  radius, formatDuration - the v1.205.2 look) scaled to the 72x40 notif thumb
+  using the app's own small-pill language (the list-view precedent: --fs-xs +
+  tight 2/4 padding). MEASURED in Chromium: ~15px tall in the corner (width
+  tracks the label), identical desktop + mobile - the 0-2-0 scope beats the
+  mobile card-badge --fs-2xl bump, so it stays small everywhere.
+- Server: GET /api/notifications carries durationSec per row (media from
+  db.metadata.duration AFTER the visibility gate; podcast from ep.durationSec),
+  0 when unknown. No new data exposure - the same item the row already shows.
+
+**What the gate caught.** The podcast-row durationSec was unbound by any test
+(a future rename would ship a podcast-badge regression silently) - bound on the
+already-seeded episode.
+
+Slim gate (adversarial), APPROVE. Dual-Node 7826/0 (Node 22 + 24).
+**Dean's device pass PENDING.**
+
 ### v1.207.0 - Pick a song, land in its album (and keep it) (2026-08-29)
 
 Dean's friction: searched a song, loved it, wanted the next track on the album -

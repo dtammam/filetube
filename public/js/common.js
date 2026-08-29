@@ -3569,6 +3569,8 @@ function buildNotificationRowModel(row) {
     thumbnailUrl: isPodcast
       ? (typeof row.artUrl === 'string' ? row.artUrl : null)
       : (row.hasThumbnail === true ? `/thumbnail/${row.mediaId}` : null),
+    // v1.208 (Dean): the watch length -> a small duration badge on the thumb.
+    durationSec: Number(row.durationSec) > 0 ? Number(row.durationSec) : 0,
     timeLabel: formatRelativeTime(row.createdAt),
     unread: row.unread === true,
   };
@@ -3771,12 +3773,25 @@ function injectNotificationBellIfEnabled() {
           text.appendChild(time);
           a.appendChild(text);
           if (m.thumbnailUrl) {
+            // v1.208 (Dean): wrap the thumb so a small duration badge can sit in
+            // its bottom-right corner (the .duration-badge system, scaled down),
+            // to triage length before deleting. The wrapper owns the flex sizing;
+            // the img keeps its 72x40 box.
+            const wrap = document.createElement('div');
+            wrap.className = 'notif-row-thumb-wrap';
             const thumb = document.createElement('img');
             thumb.className = 'notif-row-thumb';
             thumb.src = m.thumbnailUrl;
             thumb.alt = '';
             thumb.loading = 'lazy';
-            a.appendChild(thumb);
+            wrap.appendChild(thumb);
+            if (m.durationSec > 0 && typeof formatDuration === 'function') {
+              const badge = document.createElement('div');
+              badge.className = 'duration-badge';
+              badge.textContent = formatDuration(m.durationSec);
+              wrap.appendChild(badge);
+            }
+            a.appendChild(wrap);
           }
           const dot = document.createElement('span');
           dot.className = 'notif-row-dot';

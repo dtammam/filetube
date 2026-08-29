@@ -2368,5 +2368,11 @@
     "date": "2026-08-29",
     "title": "Play a song, see its album",
     "intent": "When you play a song - from search, a card, or the song list - the music view now opens that song's album, so the rest of the album is right there to keep listening (and next/previous walk the album). Even better, it sticks: pop out to the mini-player and tap back into the song, and you land on the album again instead of the default view. Songs with no album just play as before."
+  },
+  {
+    "version": "1.208.0",
+    "date": "2026-08-29",
+    "title": "See how long it is, right in notifications",
+    "intent": "The little thumbnail on each notification now shows the length in its corner - the same small time tag you see on the video tiles. So when a channel posts something new, you can tell at a glance whether it's a quick one-minute clip or a full-length video (or podcast episode) before you even open it - handy for deciding what to keep and what to clear."
   }
 ]

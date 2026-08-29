@@ -11755,6 +11755,26 @@ html[data-modern="on"] .video-uploader {
   flex-shrink: 0;
 }
 
+/* v1.208 (Dean): the thumb wrapper hosts a small duration badge in its corner
+   (triage length before deleting). It takes over the flex sizing from the img;
+   line-height:0 kills the inline-image baseline gap so it hugs the 72x40 box. */
+.notif-row-thumb-wrap {
+  position: relative;
+  flex-shrink: 0;
+  line-height: 0; /* token-exempt: kill the inline-image baseline gap */
+}
+
+/* The SAME .duration-badge system as the cards, scaled to the 72x40 notif thumb
+   using the app's existing small-pill language (the list-view precedent:
+   fs-xs + tight 2/4 padding). Scoped so it wins over the mobile .duration-badge
+   fs-2xl bump (0-2-0 > 0-1-0) - the panel badge stays small at every width. */
+.notif-row-thumb-wrap .duration-badge {
+  bottom: 2px; /* token-exempt: positional geometry (tight to the small thumb) */
+  right: 2px; /* token-exempt: positional geometry */
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-xs);
+}
+
 .notif-row-dot {
   width: 8px;
   height: 8px;
