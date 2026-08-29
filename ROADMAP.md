@@ -80,6 +80,49 @@
 
 ## Shipped
 
+### v1.206.0 - Tiered Dependabot auto-merge (reverses v1.148's no-auto-merge) (2026-08-29)
+
+Dean (2026-08-29) REVERSES the v1.148 "NO AUTO-MERGE, EVER" decision in favour
+of a TIERED policy: a low-risk dependency PR that passes full CI merges itself;
+a high-risk one waits for Dean.
+
+**What shipped.**
+- **The auto-merge workflow** (`.github/workflows/dependabot-auto-merge.yml`):
+  reads dependabot/fetch-metadata and arms `gh pr merge --auto` (GitHub holds
+  it until the required checks pass) ONLY for the AUTO tier - a non-major
+  github-actions bump, or an npm DEV dependency (direct:development) minor/patch
+  that does not touch jsdom. Both arms gate POSITIVELY on minor/patch, so an
+  unknown update-type fails CLOSED. MANUAL (no step runs, PR sits): every major,
+  every runtime dep (direct:production), the Docker base image, jsdom.
+- **The npm group is dev-only** (`dependency-type: "development"`), so a grouped
+  PR can never carry a runtime dep past the direct:development gate.
+- **The lock test** (`ci-pipeline-locks.test.js`): the old "NO auto-merge, ever"
+  lock is REPLACED by tiered locks - the machinery is CONTAINED to the one
+  workflow (the net now catches the `gh pr merge --auto` command spelling, not
+  just the hyphenated noun), acts only on dependabot PRs, and the AUTO condition
+  excludes majors/runtime/docker/jsdom. Every gate is mutation-bound.
+- **The one safe branch merged:** globals 17.7.0 -> 17.11.0 (a dev-only minor,
+  the AUTO-tier example). The 7 MAJOR Dependabot branches (node 26, checkout 7,
+  metadata-action 6, dotenv 17, @eslint/js 10, jsdom 30, mime-types 3) stay for
+  Dean's per-item review - all correctly held by the policy.
+
+**What the gate caught.** The github-actions arm gated NEGATIVELY (fails open on
+an unknown update-type) - switched to positive/fail-closed; the containment
+regex missed the command spelling - broadened; the "no-op / sits exactly as
+before" pre-enablement wording was wrong (an AUTO-tier PR's merge step ERRORS
+with a failed check until the settings are on) - corrected in all three sites;
+the squash-merge repo setting was undocumented - added.
+
+Full gate, 2 rounds, both seats APPROVE. Dual-Node 7816/0 (Node 22 + 24).
+
+**Dean's ONE-TIME repo settings** (until enabled, an AUTO-tier PR errors with a
+failed check and waits - nothing merges): enable "Allow auto-merge" + "Allow
+squash merging", and a branch-protection rule on `main` requiring the CI checks
+(`ci`, `secret-scan`, `audit`). See docs/RELEASING.md. **HONEST CAVEAT:** the
+workflow cannot run on the dev box, so the locks are drift tripwires, not
+behavioural proof - the merge behaviour + fetch-metadata output strings are
+confirmed by the first real Dependabot PR once Dean flips the settings.
+
 ### v1.205.2 - Card duration pill: non-bold + matches the corner-button background (2026-08-29)
 
 Dean's v1.205.1 device pass ("the time is great ... it's excellent") with two
