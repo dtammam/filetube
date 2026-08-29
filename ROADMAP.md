@@ -80,6 +80,78 @@
 
 ## Shipped
 
+### v1.202.0 - Attribute behind an opt-in flag, draggable AI prompts, the two-tier action row (2026-08-29)
+
+Dean, after the v1.201.0 device pass: Attribute "was valuable for me
+because I was dealing with a lot of previously downloaded content that was
+not attributed correctly ... if they just go super clean from the start
+it's kind of an unnecessary function"; "make the boxes draggable/sortable.
+No sort buttons"; and the action-row re-evaluation: his real taps are
+Like, Share, Transcript, Queue - "Delete in More", a "More" in the app's own
+pick-one style, fixed order for v1.
+
+**What shipped.**
+- **Manual channel attribution is opt-in.** `settings.attributeControlEnabled`
+  (default off; Settings -> Experimental "Manual channel attribution"). Off
+  hides the watch-page Attribute button and the folder-view bulk tool, and
+  the target list, per-video and bulk attribution routes answer 404 -
+  after each route's RBAC guard, so a member's 403 is unchanged and an
+  admin gets a plain 404. The bulk CANCEL stays reachable (a job started
+  while on must remain abortable). Attribute finally has a real glyph
+  (Material `drive_file_move`, replacing `icon-user`, which had no mask
+  anywhere - the blank box on phones since v1.53).
+- **Draggable prompt rows** in Settings -> Transcript sharing, through the
+  one mandated gesture layer (`wireReorderable`): a handle per row is the
+  pointer grip AND the keyboard control (arrow keys / Home / End); a drop
+  moves the row and saves the whole list at once.
+- **The two-tier action row.** Primary = Like, Share, Transcript, Queue,
+  then More; secondary = Next, Download, Delete, Move, Mark watched,
+  Reheat, Attribute. One list (`SECONDARY_ACTION_IDS` in watch.js) mirrored
+  by CSS and locked equal. CSS `order` fixes the row everywhere. By COLUMN
+  width (the v1.201 container): wide (960px+) shows everything as words
+  with More hidden; compact (under 960) hides the secondary tier and shows
+  More with words; under 640 the words drop. More opens the pick-one
+  listing every mounted secondary button by its current label and clicks
+  the real button (its own handler/confirm/state). Measured against
+  v1.201.0 with the probe, both modes: phones and the 598px column -> five
+  glyphs on ONE row (the stars now share that row); 684/918px columns ->
+  five with words; 1920 and every theatre width -> nine words, More
+  hidden; every button 32px (39 on phones). Attribute is absent by default
+  (the flag), so the wide row is nine, not ten.
+
+**What the gate caught (round 1).** Adversarial CRITICAL: the draggable
+prompt rows kept STALE wiring after a move - `wireReorderable` closes over
+the row list and each handle's index at wire time, and the editor only
+re-wired on a re-render (which the focus rule skips), so a second gesture
+scrambled the order or left the DOM and the server disagreeing; the
+committed test had dispatched the key with focus on body (a divergent
+fixture - a keyboard user has the handle focused). Fixed by re-wiring
+right after every DOM move (per-wiring AbortController), bound by two
+focused-handle scenarios. Both seats: neither client-side flag gate (the
+watch button, the folder bulk tool) was bound by any test - deleting
+either left every suite green; now bound, the folder view through a new
+index.html jsdom harness. The action-bar reveal barrier did not wait for
+the flag (Attribute popped in after the reveal) - a third input added,
+its source lock updated deliberately. Also: the plan still said the
+cancel route 404s (the code deliberately exempts it - written back), the
+server comment overstated "after each route's RBAC guard" (the target-list
+GET has none), a "rulings B7-B12" reference that did not exist, a wasted
+settings fetch on non-folder views, and the probe counting hidden buttons
+as a row. Earlier, the pre-commit hook refused three commits on
+deliberate locks (the Settings menu list, the docs-status census, the
+reveal barrier's exact form) - each updated consciously.
+
+**Known gaps (disclosed).**
+- The flag is read once per watch/folder view; a toggle in another tab
+  takes effect on the next navigation.
+- A bulk attribution job started while the flag was on runs to completion
+  if the flag is turned off mid-job (cancel remains reachable).
+- Primary/secondary order is fixed (v1); customization only if Dean misses
+  it.
+- Probe stall residual unchanged (tech-debt 184).
+
+Dual-Node: 7746/0 on v22.23.1 and 7746/0 on v24.14.0 (sequential, reviewers idle). Round-2 APPROVE from both seats; their two residual one-liners applied in e422153. The prompt rows' POINTER drag path is tested at the shared helper's own layer; this wave binds the keyboard path (disclosed). Device pass PENDING (Dean).
+
 ### v1.201.0 - Transcript: "Share with AI" prompts, prose mode, one-row desktop action bar (2026-08-28)
 
 Dean, after the v1.200.0 device pass ("goddamn amazing"): (1) a "Share

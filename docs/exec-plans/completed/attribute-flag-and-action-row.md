@@ -1,7 +1,7 @@
 # Attribute behind a flag + draggable AI prompts + the action row re-evaluation
 
-Status: ACTIVE (started 2026-08-29). Ships as v1.202.0 on
-`feat/attribute-flag-and-action-row`. Full gate (access-control change).
+Status: SHIPPED v1.202.0 (2026-08-29). Was: ACTIVE (started 2026-08-29).
+Full gate (access-control change): two rounds, both seats APPROVE; dual-Node 7746/0.
 
 ## Rulings (Dean, 2026-08-29 intake - all agreed)
 
