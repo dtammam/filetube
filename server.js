@@ -140,6 +140,7 @@ const transcript = require('./lib/transcript');
 // sortItems/filterByMediaType -- see lib/videoQuery.js's header comment and
 // `GET /api/videos` below for the paginated, server-authoritative pipeline.
 const videoQuery = require('./lib/videoQuery');
+const searchRegistry = require('./lib/search/registry'); // v1.205 Wave B: universal-search provider registry
 const rokuCompatLib = require('./lib/rokuCompat'); // v1.46: pure verdict/args logic
 
 const app = express();
@@ -10538,6 +10539,45 @@ app.post('/api/cache/clear', (req, res) => {
     return true;
   }).catch((err) => console.error('Failed to reset book audio status on cache clear:', err && err.message));
   res.json({ success: true, removed, freedBytes });
+});
+
+// API: universal search across every browsable media type (v1.205 Wave B).
+//
+// The header search box drives THIS, not /api/videos (which stays the library
+// grid's own list route). Blends videos + audio + music + podcasts (shows AND
+// episodes) + TV (shows AND episodes) + books into ONE ranked flat stream, a
+// resultType per item for the client's type badge. Providers live in
+// lib/search/registry.js; each owns its match predicate and its EXISTING
+// per-kind visibility gate, wired here via `deps` - so RBAC is the SAME single
+// decision as every list/serve route (never a divergent second gate; the
+// leaks-titles/counts class). Ranking (lib/search/rank.js): relevance tier ->
+// type priority -> recency. Pagination mirrors /api/videos: total = the full
+// ranked length, page = slice(offset, offset+limit). STATIC segment, declared
+// before /api/videos - no /:id sibling shadows it (the route-order scar).
+// Behind the same session gate as every /api route; req.user drives RBAC.
+app.get('/api/search', (req, res) => {
+  const db = getCachedDatabase();
+  const query = typeof req.query.q === 'string' ? req.query.q : '';
+  const chip = searchRegistry.normalizeChip(req.query.type);
+  const limit = videoQuery.normalizeLimit(req.query.limit);
+  const offset = videoQuery.normalizeOffset(req.query.offset);
+  const deps = {
+    db,
+    gates: {
+      mediaVisibleTo,
+      trackVisibleTo,
+      podcastVisibleTo: podcastEpisodeVisibleTo, // accepts a bare {subId} for a show
+      tvVisibleEpisodes: visibleTvEpisodes,      // already RBAC-filtered
+      bookVisibleTo,
+    },
+    // buildWatchUrl re-validates the id (null on anything unsafe); the key is
+    // absent when there is nothing safe to share (C4, the /api/videos posture).
+    buildWatchUrl: (item) => (typeof item.youtubeId === 'string' ? (buildWatchUrl(item.youtubeId) || undefined) : undefined),
+  };
+  const ranked = searchRegistry.runSearch(query, chip, req, deps);
+  const total = ranked.length;
+  const page = ranked.slice(offset, offset + limit);
+  res.json({ items: page, total, offset, limit, query, type: chip });
 });
 
 // API: Get list of videos/audio
