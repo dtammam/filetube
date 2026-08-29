@@ -1705,7 +1705,8 @@ html.reader-immersive .app-container { padding-top: 0; }
    recipe as Like. Anchor geometry lives on the .card-corner-* classes. */
 .card-like-btn,
 .card-share-btn,
-.card-reheat-btn {
+.card-reheat-btn,
+.card-transcript-btn {
   position: absolute;
   z-index: 2; /* token-exempt: local stacking */
   display: flex;
@@ -1726,7 +1727,9 @@ html.reader-immersive .app-container { padding-top: 0; }
 .card-share-btn:hover,
 .card-share-btn:focus-visible,
 .card-reheat-btn:hover,
-.card-reheat-btn:focus-visible {
+.card-reheat-btn:focus-visible,
+.card-transcript-btn:hover,
+.card-transcript-btn:focus-visible {
   opacity: 1;
 }
 
@@ -1737,7 +1740,8 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .card-like-btn .icon-heart,
 .card-share-btn .icon-share,
-.card-reheat-btn .icon-flame {
+.card-reheat-btn .icon-flame,
+.card-transcript-btn .icon-transcript {
   width: 14px;
   height: 14px;
 }
@@ -2777,8 +2781,15 @@ img.art-shimmer {
     display: inline-flex;
   }
 }
-@container watch-action-bar (max-width: 639px) {
-  .watch-action-btns .btn .btn-label {
+/* v1.203 (Dean: "we can actually have them display with the full text ...
+   we have space, it's very centralized in the middle"): in compact mode the
+   four PRIMARY buttons keep their WORDS at every width; only "More" is a
+   glyph ("..."). MEASURED: four words + a glyph More = ~333px at the phone
+   padding, one row at 390 AND 375 (the stars return to their own line
+   above, as before v1.202); a 360px phone wraps by the safety net. The
+   v1.202 639px glyph threshold is gone with it. */
+@container watch-action-bar (max-width: 959px) {
+  #more-actions-btn .btn-label {
     display: none;
   }
 }
@@ -5577,7 +5588,11 @@ a.sub-row-channel-link:focus-visible {
 
      Wrapping above is retained deliberately as the SAFETY NET: this rule makes
      overflow unlikely, `flex-wrap` makes it impossible. */
-  .watch-action-btns .btn .btn-label {
+  /* v1.203: only "More" drops its word on phones - the four primary
+     buttons keep theirs (Dean). The v1.47.6 rationale (five WORDED buttons
+     cannot fit a ~328px box) no longer applies: the secondary tier folds
+     into More (v1.202), so the row is four words + one glyph. */
+  #more-actions-btn .btn-label {
     display: none;
   }
 
@@ -13229,7 +13244,8 @@ a.queue-upnext-next:hover {
   .card-like-btn .icon-heart,
   .card-share-btn .icon-share,
   .card-reheat-btn .icon-flame,
-  .card-queue-btn .icon-queue {
+  .card-queue-btn .icon-queue,
+  .card-transcript-btn .icon-transcript {
     width: 18px;
     height: 18px;
   }
@@ -13238,7 +13254,8 @@ a.queue-upnext-next:hover {
   .card-like-btn::after,
   .card-share-btn::after,
   .card-reheat-btn::after,
-  .card-queue-btn::after {
+  .card-queue-btn::after,
+  .card-transcript-btn::after {
     content: '';
     position: absolute;
     inset: -9px -7px; /* token-exempt: positional geometry (invisible tap-zone extension to the 44px touch guideline) */
@@ -13255,7 +13272,8 @@ a.queue-upnext-next:hover {
   .video-grid.list-view .card-like-btn::after,
   .video-grid.list-view .card-share-btn::after,
   .video-grid.list-view .card-reheat-btn::after,
-  .video-grid.list-view .card-queue-btn::after {
+  .video-grid.list-view .card-queue-btn::after,
+  .video-grid.list-view .card-transcript-btn::after {
     inset: -2px -7px; /* token-exempt: positional geometry (list-view corner zones must not shadow sibling pills) */
   }
   /* v1.147 gate S1: the emoji icon set sizes .icon-delete/.icon-download

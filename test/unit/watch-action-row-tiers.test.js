@@ -48,14 +48,20 @@ test('tiers: fixed order - primary 1-4, More 5, secondary 10+; More is display:n
   assert.match(css, /#more-actions-btn\s*\{\s*order:\s*5;\s*display:\s*none;\s*\}/, 'hidden by default');
 });
 
-test('tiers: the glyph threshold (639px) hides only the label span; the bar is still the container; the phone rule stands', () => {
-  const glyph = /@container watch-action-bar \(max-width: 639px\)\s*\{([\s\S]*?)\n\}/.exec(css);
-  assert.ok(glyph);
-  assert.match(glyph[1], /\.watch-action-btns \.btn \.btn-label\s*\{\s*display:\s*none;\s*\}/);
+test('tiers (v1.203): only More drops its word - the primary buttons keep theirs at every width; the bar is still the container', () => {
+  // Dean: "we can actually have them display with the full text". The v1.202
+  // 639px glyph threshold is GONE; compact mode and the phone block hide
+  // exactly `#more-actions-btn .btn-label` and nothing else.
+  assert.ok(!/max-width: 639px/.test(css), 'no glyph-only threshold any more');
+  const compactBlocks = Array.from(css.matchAll(/@container watch-action-bar \(max-width: 959px\)\s*\{([\s\S]*?)\n\}/g)).map((m) => m[1]).join('\n');
+  assert.match(compactBlocks, /#more-actions-btn \.btn-label\s*\{\s*display:\s*none;\s*\}/, 'More is glyph-only in compact mode');
+  assert.ok(!/\.watch-action-btns \.btn \.btn-label\s*\{\s*display:\s*none/.test(compactBlocks), 'the primary words are never hidden by the container');
+  const phone = css.slice(css.indexOf('@media (max-width: 768px)'));
+  assert.match(phone, /#more-actions-btn \.btn-label\s*\{\s*display:\s*none;\s*\}/, 'the phone block hides only More\'s word');
+  assert.ok(!/\.watch-action-btns \.btn \.btn-label\s*\{\s*display:\s*none/.test(phone), 'the v1.47.6 hide-all-words rule is gone');
   const bar = /\.watch-action-bar\s*\{([^}]*)\}/.exec(css);
   assert.match(bar[1], /container-type:\s*inline-size;/);
   assert.match(bar[1], /container-name:\s*watch-action-bar;/);
-  assert.match(css.slice(css.indexOf('@media (max-width: 768px)')), /\.watch-action-btns \.btn \.btn-label\s*\{\s*display:\s*none;\s*\}/);
 });
 
 test('tiers: watch.html ships the More button inside .watch-action-btns with the shared markup shape, and watch.js wires it once', () => {

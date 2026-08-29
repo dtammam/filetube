@@ -3273,98 +3273,23 @@ if (typeof module !== 'undefined' && module.exports) {
     // text somewhere, not read it in a textarea. The text is fetched BEFORE
     // either opens, so the picker's Copy runs synchronously inside its tap
     // (iOS clipboard writes need the user gesture).
-    function fetchTranscriptText(timestamps) {
-      if (!mediaData) return Promise.reject(new Error('no media'));
-      const url = '/api/transcript/' + encodeURIComponent(mediaData.id) + (timestamps ? '?timestamps=1' : '');
-      return fetch(url).then((res) => {
-        if (!res || !res.ok) throw new Error('transcript ' + (res && res.status));
-        return res.text();
-      });
-    }
-
-    function isPhoneWidth() {
-      return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches;
-    }
-
-    // v1.201 (Dean): the "Share with AI" prompts (settings.transcriptAiPrompts,
-    // readable by every signed-in user). Fetched alongside the transcript so
-    // the pick is ready inside the tap; ANY failure resolves to [] - the AI
-    // pick simply disappears and Share/Copy still work (fail-safe).
-    function fetchAiPrompts() {
-      return fetch('/api/settings')
-        .then((res) => (res && res.ok ? res.json() : null))
-        .then((s) => ((s && Array.isArray(s.transcriptAiPrompts)) ? s.transcriptAiPrompts.filter((p) => p && typeof p.text === 'string' && p.text.trim() !== '' && typeof p.name === 'string') : []))
-        .catch(() => []);
-    }
-
-    // Payload contract (Dean: "exactly"): the prompt, a blank line, then the
-    // same document Share/Copy send (title / date / channel / transcript).
-    function composeAiShare(promptText, transcriptText) {
-      return String(promptText).trim() + '\n\n' + transcriptText;
-    }
-
-    // Runs the AI share: native sheet where present, else the clipboard,
-    // with a toast either way except a completed sheet (the user saw it).
-    function runAiShare(promptText, transcriptText, title) {
-      shareTextContent(composeAiShare(promptText, transcriptText), title).then((outcome) => {
-        if (outcome === 'shared' || typeof window.showToast !== 'function') return;
-        window.showToast(outcome === 'copied' ? 'Copied with your prompt - paste it into your AI app' : 'Could not share the transcript.');
-      });
-    }
-
+    // v1.203: the whole flow lives in common.js (openTranscriptFor) so the
+    // card corner runs the identical hand-off; this page just calls it with
+    // the item at click time, the view's abort signal, and a busy hook for
+    // the button. The title is captured BEFORE the await (the fetched text
+    // belongs to the item at click time).
     function handleTranscriptClick() {
       if (!mediaData || transcriptLoading) return;
-      transcriptLoading = true;
-      if (transcriptBtn) transcriptBtn.disabled = true;
-      // Captured BEFORE the await: the fetched text belongs to the item at
-      // click time, so its title must too (gate suggestion).
       const title = (mediaData && mediaData.title) || 'Transcript';
-      Promise.all([fetchTranscriptText(false), fetchAiPrompts()]).then(([text, aiPrompts]) => {
-        if (signal.aborted) return;
-        if (transcriptDismiss) { signal.removeEventListener('abort', transcriptDismiss); transcriptDismiss(); transcriptDismiss = null; }
-        if (isPhoneWidth()) {
-          // v1.201: "Share with AI" is the third pick when prompts exist. One
-          // prompt shares at once; several open a pick-one of their names.
-          const aiPick = aiPrompts.length === 0 ? [] : [{ label: 'Share with AI', onPick: () => {
-            if (aiPrompts.length === 1) { runAiShare(aiPrompts[0].text, text, title); return; }
-            if (transcriptDismiss) { signal.removeEventListener('abort', transcriptDismiss); transcriptDismiss = null; }
-            transcriptDismiss = showChoiceModal('Share with AI', aiPrompts.map((prompt) => ({ label: prompt.name, onPick: () => runAiShare(prompt.text, text, title) })));
-            signal.addEventListener('abort', transcriptDismiss, { once: true });
-          } }];
-          transcriptDismiss = showChoiceModal('Transcript', [
-            { label: 'Share transcript', onPick: () => {
-              // A phone-width browser WITHOUT a share sheet (Firefox Android,
-              // a narrow desktop window) falls back to the clipboard inside
-              // shareTextContent - toast that outcome exactly like Copy does,
-              // so the pick never looks like it did nothing (gate suggestion).
-              shareTextContent(text, title).then((outcome) => {
-                if (outcome === 'shared' || typeof window.showToast !== 'function') return;
-                window.showToast(outcome === 'copied' ? 'Transcript copied' : 'Could not share the transcript.');
-              });
-            } },
-            { label: 'Copy transcript', onPick: () => {
-              copyTextToClipboard(text).then((outcome) => {
-                if (typeof window.showToast !== 'function') return;
-                window.showToast(outcome === 'copied' ? 'Transcript copied' : 'Could not copy the transcript.');
-              });
-            } },
-          ].concat(aiPick));
-        } else {
-          transcriptDismiss = showTranscriptModal({
-            text,
-            loadText: fetchTranscriptText,
-            aiPrompts,
-            shareAi: (promptText, currentText) => runAiShare(promptText, currentText, title),
-          });
-        }
-        signal.addEventListener('abort', transcriptDismiss, { once: true });
-      }).catch((err) => {
-        console.error('Transcript load failed:', err);
-        if (!signal.aborted && typeof window.showToast === 'function') window.showToast('Could not load the transcript.');
-      }).finally(() => {
-        transcriptLoading = false;
-        if (transcriptBtn) transcriptBtn.disabled = false;
-      });
+      openTranscriptFor({
+        id: mediaData.id,
+        title,
+        signal,
+        onBusy: (busy) => {
+          transcriptLoading = busy;
+          if (transcriptBtn) transcriptBtn.disabled = busy;
+        },
+      }).then((dismiss) => { transcriptDismiss = dismiss; });
     }
 
     // Mounts the "Transcript" button as a sibling of Share inside

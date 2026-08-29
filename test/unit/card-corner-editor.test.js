@@ -33,7 +33,8 @@ const CONTROLS = mainExports.CARD_CORNER_CONTROLS;
 // ---- roster drift bind ------------------------------------------------------
 
 test('every canonical control (main.js CARD_CORNER_CONTROLS) has an editor label, plus none - no hand-copied roster', () => {
-  assert.ok(Array.isArray(CONTROLS) && CONTROLS.length === 6, 'the canonical roster is the six controls');
+  // v1.203 DELIBERATE roster change: + 'transcript' (Dean). Six -> seven.
+  assert.ok(Array.isArray(CONTROLS) && CONTROLS.length === 7, 'the canonical roster is the seven controls');
   for (const control of CONTROLS) {
     assert.strictEqual(typeof CARD_CORNER_LABELS[control], 'string', `missing label for '${control}'`);
   }
