@@ -652,8 +652,10 @@ if (typeof module !== 'undefined' && module.exports) {
       return '/api/music?' + q.toString();
     }
 
+    var loadSongsGen = 0; // v1.207: serializes concurrent loads so a superseded (stale) one never clobbers the winner's queue/ctx
     async function loadSongs(opts) {
       opts = opts || {};
+      var myLoad = ++loadSongsGen; // claim this load BEFORE the fetch
       var scope = opts.scope || drill;
       // v1.103: the flat Songs tab honours its OWN persisted sort; a drill
       // (album/artist detail) defaults to album-order - disc/track sequence, the
@@ -665,10 +667,17 @@ if (typeof module !== 'undefined' && module.exports) {
       if (search) ctx.search = search;
       if (scope && scope.type === 'album') ctx.album = scope.key;
       if (scope && scope.type === 'artist') ctx.artist = scope.key;
-      queueCtx = ctx;
-      queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(ctx) : '');
       var params = { sort: ctx.sort, seed: ctx.seed, search: ctx.search, album: ctx.album, artist: ctx.artist, filter: ctx.filter, limit: 1000 };
       var data = await fetchJson(musicUrl(params));
+      // v1.207 (gate): a NEWER loadSongs (a fast second album-select) superseded
+      // this one - do NOT clobber the winner's module queue/ctx with our stale
+      // result. Before this guard, the loser's late load re-scoped the queue
+      // under the winner's already-registered nav -> Prev/Next played a
+      // wrong-ALBUM track (the v1.104 desync/wrong-track class). The ctx write
+      // moves AFTER the guard for the same reason.
+      if (myLoad !== loadSongsGen) return queue;
+      queueCtx = ctx;
+      queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(ctx) : '');
       queue = Array.isArray(data.items) ? data.items : [];
       return queue;
     }

@@ -203,6 +203,19 @@ test('v1.207 (gate WARNING 1): a rapid cross-album double-tap plays ONLY the las
     const played = calls.load.map((c) => c.id);
     assert.ok(played.includes('b1'), 'the LAST tapped track (album B) plays');
     assert.ok(!played.includes('a1'), 'the FIRST tapped track (album A) is superseded and NEVER plays (no wrong-track)');
+    // gate delta (WARNING 1 residual): the loser's late load must NOT clobber
+    // the queue back to album A - the rendered list AND the registered Prev/Next
+    // must stay inside the winner's album B.
+    const html = content(dom).innerHTML;
+    assert.ok(html.includes('B-one') && html.includes('B-two'), 'the list shows album B (the winner)');
+    assert.ok(!html.includes('A-one'), 'the list is NOT clobbered back to album A');
+    const nav = calls.setTrackNav[calls.setTrackNav.length - 1];
+    assert.ok(nav && typeof nav.onNext === 'function', 'b1 has a next track in album B');
+    nav.onNext();
+    for (let i = 0; i < 4; i++) await settle();
+    const afterNav = calls.load.map((c) => c.id);
+    assert.equal(afterNav[afterNav.length - 1], 'b2', 'pressing Next plays album B track 2 - NOT a wrong-album track');
+    assert.ok(!afterNav.includes('a1') && !afterNav.includes('a2'), 'no album-A track ever plays on nav');
   });
 });
 
