@@ -551,30 +551,38 @@ async function renderHomeFeed(host, signal) {
 
 // ---- v1.67: the card-corner renderer (plan D3) ------------------------------
 //
-// ONE module-scope, exported, pure renderer for the three assignable card
-// corners (bottom-right is RESERVED for the duration badge and has no pref).
-// Position comes from the `.card-corner-tl/tr/bl` classes; identity/look/
-// behavior stay on the control classes (`.card-delete-btn` etc.), so the
-// delete arm state machine and every delegated click handler keep keying off
-// the control class unchanged wherever the control lands. Never copy this
-// renderer (the v1.41.4 every-writer scar) - buildCardHtml is its one caller.
+// ONE module-scope, exported, pure renderer for the FOUR assignable card
+// corners. Position comes from the `.card-corner-tl/tr/bl/br` classes;
+// identity/look/behavior stay on the control classes (`.card-delete-btn`
+// etc.), so the delete arm state machine and every delegated click handler
+// keep keying off the control class unchanged wherever the control lands.
+// Never copy this renderer (the v1.41.4 every-writer scar) - buildCardHtml is
+// its one caller.
+//
+// v1.204 (Dean): the bottom-right corner became SELECTABLE too. It SHARES the
+// bottom-right with the duration badge: when the BR slot renders a real button
+// the badge shifts LEFT to sit beside it (buildCardCorners returns brOccupied,
+// which buildCardHtml turns into `.duration-badge--beside-corner`); when BR is
+// unassigned or its control does not apply, the badge stays pinned in its home
+// and nothing changes. BR defaults to 'none', so no existing card moves.
 
 const CARD_CORNER_KEYS = [
   ['cornerTL', 'card-corner-tl'],
   ['cornerTR', 'card-corner-tr'],
   ['cornerBL', 'card-corner-bl'],
+  ['cornerBR', 'card-corner-br'], // v1.204: shares bottom-right with the duration badge
 ];
 
 // C5: the defaults reproduce today's layout so nobody's muscle memory breaks.
-// Queue is deliberately UNASSIGNED by default - assigning it is how a user
-// opts back in, and its old fixed spot (bottom-right) collided with the
-// duration badge.
-const CARD_CORNER_DEFAULTS = { cornerTL: 'download', cornerTR: 'delete', cornerBL: 'like' };
+// Queue is deliberately UNASSIGNED by default; the bottom-right slot (v1.204)
+// is 'none' by default too, so the duration badge keeps its home until a user
+// opts a control into that corner.
+const CARD_CORNER_DEFAULTS = { cornerTL: 'download', cornerTR: 'delete', cornerBL: 'like', cornerBR: 'none' };
 
 const CARD_CORNER_CONTROLS = ['download', 'delete', 'like', 'queue', 'share', 'reheat', 'transcript']; // v1.203: + transcript (Dean)
 
 // Settings object (from GET /api/auth/me, or nothing) -> the resolved
-// three-corner layout. The server lane is SHAPE-only (plan D1), so THIS is
+// four-corner layout. The server lane is SHAPE-only (plan D1), so THIS is
 // where garbage defends: an unknown value falls back to that corner's C5
 // default (the starRatings garbage-tolerance precedent); `none` is an
 // explicit empty corner and survives as-is.
@@ -710,24 +718,39 @@ function buildCardCornerControlHtml(control, cornerClass, item, caps) {
   }
 }
 
-// The three corners' combined markup. Dedupe (plan D5): the editor enforces
-// C2, but a direct POST /api/me/settings can assign one control to two
-// corners - the FIRST assignment (TL > TR > BL) wins and later duplicates
-// render nothing. Deduped by ASSIGNMENT, not render outcome: applicability
-// is uniform per item, so an inapplicable duplicate is empty either way and
-// assignment-order keeps the rule deterministic.
-function buildCardCornerButtonsHtml(item, prefs, caps) {
+// The four corners' combined markup PLUS whether the bottom-right slot
+// actually rendered a button (brOccupied) - the one signal buildCardHtml
+// needs to shift the duration badge left. Dedupe (plan D5): the editor
+// enforces C2, but a direct POST /api/me/settings can assign one control to
+// two corners - the FIRST assignment (TL > TR > BL > BR) wins and later
+// duplicates render nothing. Deduped by ASSIGNMENT, not render outcome:
+// applicability is uniform per item, so an inapplicable duplicate is empty
+// either way and assignment-order keeps the rule deterministic. brOccupied is
+// the RENDER outcome for BR specifically: a BR control that does not apply to
+// this card (no captions, no watchUrl, deduped away) leaves the badge home.
+function buildCardCorners(item, prefs, caps) {
   const resolved = prefs && typeof prefs === 'object' ? prefs : resolveCardCornerPrefs(null);
   const seen = new Set();
   let html = '';
+  let brOccupied = false;
   for (const [key, cornerClass] of CARD_CORNER_KEYS) {
     const control = resolved[key];
     if (!control || control === 'none' || seen.has(control)) continue;
     seen.add(control);
     const markup = buildCardCornerControlHtml(control, cornerClass, item, caps);
-    if (markup) html += `\n            ${markup}`;
+    if (markup) {
+      html += `\n            ${markup}`;
+      if (key === 'cornerBR') brOccupied = true;
+    }
   }
-  return html;
+  return { html, brOccupied };
+}
+
+// Back-compat thin wrapper: the corner markup alone (every pre-v1.204 caller
+// and test reads just the string). buildCardCorners is the single source of
+// truth for the dedupe - never re-derive the corner set anywhere else.
+function buildCardCornerButtonsHtml(item, prefs, caps) {
+  return buildCardCorners(item, prefs, caps).html;
 }
 
 // Home-row visibility toggles (device-local display prefs, like the sort/
@@ -791,6 +814,7 @@ if (typeof module !== 'undefined' && module.exports) {
     homeRowEnabled,
     migrateListeningRowPref,
     resolveCardCornerPrefs,
+    buildCardCorners,
     buildCardCornerButtonsHtml,
     cardKindPresentation,
     CARD_CORNER_CONTROLS,
@@ -2282,9 +2306,16 @@ const PreviewCards = (function () {
         channelAvatarHtml = `<span class="card-channel-avatar card-channel-avatar-mono" style="--ch-av:${chAv.color}">${escapeHtml(chAv.glyph)}</span>`;
       }
 
+      // v1.204: build the corners first - the bottom-right slot shares its
+      // space with the duration badge, so the badge's home depends on whether
+      // BR actually rendered a button for THIS card.
+      const cardCorners = buildCardCorners(item, cardCornerPrefs, cardCornerCaps);
+
       // Calculate duration format
       const durationStr = item.duration > 0 ? formatDuration(item.duration) : (item.type === 'audio' ? 'Audio' : '');
-      const durationBadge = durationStr ? `<div class="duration-badge">${durationStr}</div>` : '';
+      const durationBadge = durationStr
+        ? `<div class="duration-badge${cardCorners.brOccupied ? ' duration-badge--beside-corner' : ''}">${durationStr}</div>`
+        : '';
 
       // Playback progress indicator
       let progressBar = '';
@@ -2308,7 +2339,7 @@ const PreviewCards = (function () {
               ${durationBadge}
               ${progressBar}
             </a>
-            ${buildCardCornerButtonsHtml(item, cardCornerPrefs, cardCornerCaps)}
+            ${cardCorners.html}
           </div>
           <div class="video-info">
             ${feedHideable

@@ -939,14 +939,16 @@ function wireHomeRowToggle(id, key, signal) {
 const BOTTOMBAR_LABELS = { home: 'Home', liked: 'Liked', playlists: 'Playlists', history: 'History', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark', podcasts: 'Podcasts', music: 'Music', books: 'Books', downloads: 'Downloads', settings: 'Settings' };
 // ---- v1.67: the card-corner editor (plan D9) --------------------------------
 //
-// Three pickers (Top left / Top right / Bottom left) in the Appearance box.
-// The corner VOCABULARY (control roster, defaults, resolver) is main.js's -
-// consumed here as browser globals (script order: common -> main -> setup),
-// never hand-copied (the v1.64 roster-rot lesson; the unit suite binds the
-// label map against main.js's exported roster). Per-user SERVER-persisted
-// (C1): seeds from GET /api/auth/me, writes one key per change via
-// POST /api/me/settings, and deliberately touches NO localStorage.
-// Bottom-right has no picker - it is reserved for the duration badge.
+// Four pickers (Top left / Top right / Bottom left / Bottom right) in the
+// Appearance box. The corner VOCABULARY (control roster, defaults, resolver)
+// is main.js's - consumed here as browser globals (script order: common ->
+// main -> setup), never hand-copied (the v1.64 roster-rot lesson; the unit
+// suite binds the label map against main.js's exported roster). Per-user
+// SERVER-persisted (C1): seeds from GET /api/auth/me, writes one key per
+// change via POST /api/me/settings, and deliberately touches NO localStorage.
+// v1.204: the bottom-right picker joined the other three - that corner shares
+// its space with the duration badge (the card render nudges the badge left
+// when the slot is occupied), so it defaults to None and the badge stays put.
 
 const CARD_CORNER_LABELS = {
   download: 'Download', delete: 'Delete', like: 'Like',
@@ -957,6 +959,7 @@ const CORNER_EDITOR_SLOTS = [
   ['cornerTL', 'Top left'],
   ['cornerTR', 'Top right'],
   ['cornerBL', 'Bottom left'],
+  ['cornerBR', 'Bottom right'], // v1.204: shares bottom-right with the duration badge
 ];
 
 // Pure (C2): one corner's <option> list - every canonical control MINUS the

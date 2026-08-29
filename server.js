@@ -6036,8 +6036,9 @@ function parseUserSettings(user) {
 // 'off' (lib/push/deliver.js pushOptedOut); absent = on.
 // v1.67: cornerTL/TR/BL are the card-corner controls (Dean's ruling C1:
 // per-user SERVER-persisted; the server is the truth, not a device seed).
-// There is deliberately NO cornerBR - bottom-right is reserved for the
-// duration badge. Values are enum-ish control names; the lane stays
+// v1.204: cornerBR joined them - the bottom-right corner became selectable
+// too (it shares its space with the duration badge, which slides left when
+// the slot is occupied). Values are enum-ish control names; the lane stays
 // SHAPE-only like its siblings and the card renderer defends against
 // unknown values (plan D1).
 // v1.77: the Library-entry glyph keys (glyphDownloads/Music/Books/Podcasts/
@@ -6049,7 +6050,7 @@ function parseUserSettings(user) {
 // these to registry-id shape) and the client resolver defends against unknown
 // values, exactly as the card renderer does.
 const MIRRORED_SETTING_KEYS = new Set([
-  'theme', 'era', 'icons', 'starRatings', 'pushEnabled', 'cornerTL', 'cornerTR', 'cornerBL',
+  'theme', 'era', 'icons', 'starRatings', 'pushEnabled', 'cornerTL', 'cornerTR', 'cornerBL', 'cornerBR',
   // v1.79: the home-feed vs classic-grid toggle. Stored as the bounded string
   // 'on'/'off' like pushEnabled/starRatings (the value regex below bounds it).
   'homeFeed',

@@ -169,16 +169,18 @@
         <!-- v1.171: the Sneaky critter controls MOVED to their own section
              below (Dean's ruling: sub-page via the master-detail) - every
              control is wired by id from setup.js, never by document order. -->
-        <!-- v1.67 (Dean): per-corner card controls. Three pickers rendered
+        <!-- v1.67 (Dean): per-corner card controls. Four pickers rendered
              by setup.js renderCardCornerEditor; per-user SERVER-persisted
              (ruling C1), one POST /api/me/settings key per change.
-             Bottom-right is reserved for the duration badge and gets no
-             picker. -->
+             v1.204: the bottom-right picker joined the other three - that
+             corner shares its space with the duration badge, which slides
+             left to sit beside a chosen bottom-right control. -->
         <h3 class="setup-subhead">Card corners</h3>
         <p>Pick which control sits in each corner of the video tiles &mdash;
-           Download, Delete, Like, Queue, Share, Reheat, or None for a clean
-           corner. Bottom-right always shows the duration. Saved to your
-           account, so it follows you across devices.</p>
+           Download, Delete, Like, Queue, Share, Reheat, Transcript, or None
+           for a clean corner. The duration still shows in the bottom-right; if
+           you put a control there, it slides left to sit beside it. Saved to
+           your account, so it follows you across devices.</p>
         <div id="card-corner-editor" class="card-corner-editor"><!-- rendered by JS --></div>
         <!-- v1.77 (Dean): the Library entries' glyphs. Same posture as the
              corner pickers directly above - rendered by setup.js

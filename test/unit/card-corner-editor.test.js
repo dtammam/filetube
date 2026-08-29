@@ -39,8 +39,11 @@ test('every canonical control (main.js CARD_CORNER_CONTROLS) has an editor label
     assert.strictEqual(typeof CARD_CORNER_LABELS[control], 'string', `missing label for '${control}'`);
   }
   assert.strictEqual(typeof CARD_CORNER_LABELS.none, 'string', 'None needs a label too');
-  assert.deepStrictEqual(CORNER_EDITOR_SLOTS.map((s) => s[0]), ['cornerTL', 'cornerTR', 'cornerBL'],
-    'exactly the three assignable corners - bottom-right is reserved and must never grow a slot');
+  // v1.204: the bottom-right picker joined the other three - four assignable
+  // corners now, and the editor's slot list must match main.js's key order.
+  assert.deepStrictEqual(CORNER_EDITOR_SLOTS.map((s) => s[0]), ['cornerTL', 'cornerTR', 'cornerBL', 'cornerBR'],
+    'exactly the four assignable corners in main.js key order');
+  assert.strictEqual(CORNER_EDITOR_SLOTS.find((s) => s[0] === 'cornerBR')[1], 'Bottom right', 'the BR picker is labelled');
 });
 
 // ---- buildCornerEditorOptions (C2) ------------------------------------------
@@ -111,15 +114,25 @@ function withEditorDom(meSettings, fn) {
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
-test('renderCardCornerEditor: seeds three selects from /api/auth/me and shows the EFFECTIVE layout', () =>
+test('renderCardCornerEditor: seeds four selects from /api/auth/me and shows the EFFECTIVE layout (BR defaults to none)', () =>
   withEditorDom({ cornerTL: 'queue' }, async (dom) => {
     await renderCardCornerEditor(new dom.window.AbortController().signal);
     await settle();
     const selects = dom.window.document.querySelectorAll('#card-corner-editor select');
-    assert.strictEqual(selects.length, 3, 'one picker per assignable corner');
+    assert.strictEqual(selects.length, 4, 'one picker per assignable corner (v1.204: +bottom-right)');
     assert.strictEqual(selects[0].value, 'queue', 'stored pick seeds TL');
     assert.strictEqual(selects[1].value, 'delete', 'absent key shows the C5 default');
     assert.strictEqual(selects[2].value, 'like');
+    assert.strictEqual(selects[3].value, 'none', 'the bottom-right slot seeds None by default');
+  }));
+
+test('renderCardCornerEditor: a stored bottom-right pick seeds the fourth select (v1.204)', () =>
+  withEditorDom({ cornerBR: 'transcript' }, async (dom) => {
+    await renderCardCornerEditor(new dom.window.AbortController().signal);
+    await settle();
+    const selects = dom.window.document.querySelectorAll('#card-corner-editor select');
+    assert.strictEqual(selects.length, 4);
+    assert.strictEqual(selects[3].value, 'transcript', 'the stored BR pick reflects on load');
   }));
 
 test('renderCardCornerEditor: a change POSTs exactly {cornerKey: value} and re-filters the sibling pickers (C2 live)', () =>

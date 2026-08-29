@@ -2332,5 +2332,11 @@
     "date": "2026-08-29",
     "title": "Button names on your phone, and Transcript on the cards",
     "intent": "The row of buttons under a video on your phone now shows the words - Queue, Like, Share, Transcript - with a small ... button for the rest, all on one line. And Transcript can now sit on the video cards themselves: under Settings, Card corners, pick Transcript for any corner and every video that has captions gets the button right on its card, opening the same transcript view - read it, copy it, share it, or send it to your AI app with your prompt - without opening the video first."
+  },
+  {
+    "version": "1.204.0",
+    "date": "2026-08-29",
+    "title": "A fourth spot for controls on your video cards",
+    "intent": "The little controls in the corners of your video tiles can now use the bottom-right corner too. Under Settings, Card corners, you'll find a fourth picker - Bottom right - next to the other three; put Like, Share, Transcript or any control there, or leave it empty. The running time still lives in that corner, and when you place a control beside it the time simply slides over to make room. It's off by default, so nothing on your cards changes until you choose to use it."
   }
 ]

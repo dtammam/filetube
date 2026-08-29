@@ -80,6 +80,54 @@
 
 ## Shipped
 
+### v1.204.0 - A fourth, selectable card corner (bottom-right) (2026-08-29)
+
+Dean: make the bottom-right corner a fourth selectable slot; when a control
+is assigned there the duration badge shifts slightly left to sit beside it,
+and the badge stays in its home when the slot is empty.
+
+**What shipped.**
+- **The bottom-right corner is now selectable.** Settings -> Card corners
+  grew a fourth "Bottom right" picker alongside Top left / Top right /
+  Bottom left. Any of the seven controls (Download, Delete, Like, Queue,
+  Share, Reheat, Transcript) can sit there, or None. It defaults to None,
+  so no existing card changes until a user opts in.
+- **The duration badge yields, PER CARD.** When a control actually renders
+  in the bottom-right of a given card, that card's duration badge slides
+  left to sit beside it (desktop right:36px, mobile right:40px - MEASURED
+  in headless Chromium against the real stylesheet: 5px clear gap at both
+  widths, no overlap). When the slot is empty - or its control does not
+  apply to that card (Share needs the original link, Transcript needs
+  captions, Delete needs the modify-library capability, a duplicate is
+  deduped away under TL>TR>BL>BR) - the badge keeps its home. The shift
+  keys off the RENDERED corner (buildCardCorners returns brOccupied), never
+  the bare preference, so it is exactly right per card.
+- **End-to-end persist.** cornerBR joined the server settings allowlist and
+  rides the same per-user, cross-device mirror (POST /api/me/settings) as
+  its three siblings; the client resolver defaults it to 'none'.
+
+**What the gate caught.**
+- The server settings allowlist deliberately EXCLUDED cornerBR ("bottom-
+  right reserved") - without adding it the new picker's save would have
+  silently 400'd (the end-to-end persist-gate class this repo keeps paying
+  for). Added, bound by a test that goes red if the key is removed.
+- A SECOND stale "bottom-right stays reserved for the duration badge"
+  comment survived on the .card-like-btn CSS block - corrected (the first
+  commit fixed five such comments and missed this one).
+- Delete is the one corner control that EXPANDS: arming it reveals "Sure?"
+  and the right-anchored button grows back over the shifted badge (measured
+  31px overlap). Fixed for real, not disclosed: the badge is hidden while a
+  bottom-right delete is armed (`:has(.card-corner-br.armed)`) so the
+  confirm reads cleanly, returning on disarm; re-measured hidden in Chromium.
+
+Full gate, 2 rounds, both seats APPROVE. Dual-Node 7768/0 (Node 22 + 24).
+**Dean's device pass PENDING.**
+
+**Known minor (disclosed).** On mobile a corner button's invisible 44px
+tap-zone still grazes the badge's rightmost ~3px - the same accepted v1.147
+tap-zone tradeoff every corner control already carries; the badge is
+non-interactive, so nothing is stolen.
+
 ### v1.203.0 - Words on the phone action row + Transcript as a card corner (2026-08-29)
 
 Dean, after the v1.202.0 device pass: "we can actually have them display
