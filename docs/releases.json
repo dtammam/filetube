@@ -2338,5 +2338,11 @@
     "date": "2026-08-29",
     "title": "A fourth spot for controls on your video cards",
     "intent": "The little controls in the corners of your video tiles can now use the bottom-right corner too. Under Settings, Card corners, you'll find a fourth picker - Bottom right - next to the other three; put Like, Share, Transcript or any control there, or leave it empty. The running time still lives in that corner, and when you place a control beside it the time simply slides over to make room. It's off by default, so nothing on your cards changes until you choose to use it."
+  },
+  {
+    "version": "1.205.0",
+    "date": "2026-08-29",
+    "title": "One search box for everything",
+    "intent": "The search box at the top now looks across your whole library at once - not just videos, but music, podcasts (both shows and individual episodes), your TV shows and episodes, and books - all in one list of results, each with a little label telling you what kind of thing it is. A row of filters (All, Videos, Audio, Music, Podcasts, Shows, Books) lets you narrow to one kind with a tap. The best matches come first: an exact title beats a partial one, whatever kind it is. Type a name and everything you have that matches shows up together."
   }
 ]
