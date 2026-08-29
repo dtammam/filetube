@@ -102,8 +102,11 @@ test('card template: the corner-renderer injection point sits AFTER the thumbnai
   const thumbCloseIdx = cardBody.indexOf('</a>', thumbOpenIdx);
   assert.ok(thumbCloseIdx !== -1, 'expected the thumbnail anchor to close');
 
-  const injectIdx = cardBody.indexOf('buildCardCornerButtonsHtml');
-  assert.ok(injectIdx !== -1, 'expected the card template to inject the corner renderer');
+  // v1.204: the template injects the pre-built corner markup (cardCorners.html
+  // from buildCardCorners, which also yields brOccupied for the duration
+  // shift), not a bare buildCardCornerButtonsHtml call - the marker moved with it.
+  const injectIdx = cardBody.indexOf('cardCorners.html');
+  assert.ok(injectIdx !== -1, 'expected the card template to inject the corner renderer output');
   assert.ok(
     injectIdx > thumbCloseIdx,
     'the corner buttons must be injected AFTER the thumbnail anchor closes (siblings under .card-media), never between its open/close tags'

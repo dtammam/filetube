@@ -162,8 +162,54 @@ test('DEFAULTS: today\'s layout renders on every card - download TL, delete TR, 
       assert.strictEqual(card.querySelector('.card-queue-btn'), null, 'queue unassigned by default (the collision fix)');
       assert.strictEqual(card.querySelector('.card-share-btn'), null);
       assert.strictEqual(card.querySelector('.card-reheat-btn'), null);
-      assert.ok(card.querySelector('.duration-badge'), 'the duration badge owns bottom-right');
+      const badge = card.querySelector('.duration-badge');
+      assert.ok(badge, 'the duration badge owns bottom-right');
+      // v1.204: BR defaults to none, so the badge keeps its home - never shifted.
+      assert.strictEqual(card.querySelector('.card-corner-br'), null, 'no bottom-right control by default');
+      assert.ok(!badge.classList.contains('duration-badge--beside-corner'), 'and the badge is not shifted');
     }
+  } finally { dom.window.close(); }
+});
+
+test('v1.204: a bottom-right corner control renders in .card-corner-br AND shifts the duration badge left', async () => {
+  // 'queue' is unassigned by default, so it lands in BR without a dedupe
+  // clash against the default like/download/delete.
+  const { fetchImpl } = makeFetchStub({ meSettings: { cornerBR: 'queue' } });
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    const cards = document.querySelectorAll('#video-grid .video-card');
+    assert.strictEqual(cards.length, 2, 'both fixture items render');
+    for (const card of cards) {
+      assert.ok(card.querySelector('button.card-queue-btn.card-corner-br'), 'queue sits in the bottom-right slot');
+      const badge = card.querySelector('.duration-badge');
+      assert.ok(badge, 'the duration badge still renders');
+      assert.ok(badge.classList.contains('duration-badge--beside-corner'), 'and shifts left beside the BR button');
+    }
+  } finally { dom.window.close(); }
+});
+
+test('v1.204: the badge shift is PER-CARD - it follows the button that actually renders (kills the shift-on-pref mutant)', async () => {
+  // BR = share. yt1 carries the server watchUrl (BR renders); local1 does not
+  // (BR renders NOTHING). The badge must shift on yt1's card and stay home on
+  // local1's - proving buildCardHtml keys the shift on the RENDERED corner, not
+  // the bare pref (the applicability/both-axes bind, per-card).
+  const { fetchImpl } = makeFetchStub({ meSettings: { cornerBR: 'share' } });
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    const cards = Array.from(document.querySelectorAll('#video-grid .video-card'));
+    const withBR = cards.filter((c) => c.querySelector('.card-corner-br'));
+    const withoutBR = cards.filter((c) => !c.querySelector('.card-corner-br'));
+    assert.strictEqual(withBR.length, 1, 'exactly one card (yt1) renders the BR share button');
+    assert.strictEqual(withoutBR.length, 1, 'exactly one card (local1) renders nothing in BR');
+    assert.ok(withBR[0].querySelector('.card-share-btn.card-corner-br'), 'and it IS the share control');
+    assert.ok(withBR[0].querySelector('.duration-badge').classList.contains('duration-badge--beside-corner'),
+      'the card with a BR button shifts its badge');
+    assert.ok(!withoutBR[0].querySelector('.duration-badge').classList.contains('duration-badge--beside-corner'),
+      'the card with an empty BR keeps its badge home');
   } finally { dom.window.close(); }
 });
 

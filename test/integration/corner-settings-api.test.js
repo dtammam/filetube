@@ -3,16 +3,17 @@
 // [INTEGRATION] v1.67 T2 - the two server lanes the card-corner wave rides,
 // against the real app:
 //
-//  (a) `cornerTL`/`cornerTR`/`cornerBL` join MIRRORED_SETTING_KEYS
+//  (a) `cornerTL`/`cornerTR`/`cornerBL`/`cornerBR` join MIRRORED_SETTING_KEYS
 //      (per-user SERVER-persisted, Dean's ruling C1): accepted + read back
-//      via GET /api/auth/me, bounded like their siblings, null clears, and
-//      `cornerBR` stays a 400 - bottom-right is RESERVED for the duration
-//      badge (the ruling made mechanical: the reserved corner must never
-//      quietly become storable). The lane is SHAPE-only by design (the
-//      pushEnabled precedent) - a charset-valid garbage value is accepted
-//      server-side and the RENDERER defends (plan D1, the starRatings
-//      garbage-tolerance precedent), locked here so nobody "hardens" the
-//      lane into a divergent second validator without meaning to.
+//      via GET /api/auth/me, bounded like their siblings, null clears. v1.204:
+//      `cornerBR` became a mirrored key too (the bottom-right corner is now
+//      selectable, sharing its space with the duration badge) - the persist
+//      lane must accept it or the editor's save silently 400s (the end-to-end
+//      persist-gate class). The lane is SHAPE-only by design (the pushEnabled
+//      precedent) - a charset-valid garbage value is accepted server-side and
+//      the RENDERER defends (plan D1, the starRatings garbage-tolerance
+//      precedent), locked here so nobody "hardens" the lane into a divergent
+//      second validator without meaning to.
 //
 //  (b) the `/api/videos` page projection carries the server-derived
 //      `watchUrl` (same buildWatchUrl gate as the single-item route) so the
@@ -58,13 +59,15 @@ after(async () => {
 
 // ---- (a) the corner mirror keys --------------------------------------------
 
-test('corner keys ride the /api/me/settings mirror: all three accepted, read back via /api/auth/me', async () => {
-  const res = await json('POST', '/api/me/settings', { cornerTL: 'queue', cornerTR: 'delete', cornerBL: 'none' });
+test('corner keys ride the /api/me/settings mirror: all four accepted, read back via /api/auth/me', async () => {
+  const res = await json('POST', '/api/me/settings', { cornerTL: 'queue', cornerTR: 'delete', cornerBL: 'none', cornerBR: 'transcript' });
   assert.equal(res.status, 200);
   const me = await (await json('GET', '/api/auth/me')).json();
   assert.equal(me.settings.cornerTL, 'queue');
   assert.equal(me.settings.cornerTR, 'delete');
   assert.equal(me.settings.cornerBL, 'none');
+  assert.equal(me.settings.cornerBR, 'transcript');
+  await json('POST', '/api/me/settings', { cornerBR: null }); // leave no residue for later cases
 });
 
 test('corner values are bounded like their siblings; null clears back to default-absent', async () => {
@@ -82,8 +85,16 @@ test('the lane stays SHAPE-only: a charset-valid unknown control value is stored
   assert.equal((await json('POST', '/api/me/settings', { cornerBL: null })).status, 200); // leave no residue
 });
 
-test('cornerBR is NOT a mirrored key - bottom-right is reserved for the duration badge (400 like any unknown key)', async () => {
-  assert.equal((await json('POST', '/api/me/settings', { cornerBR: 'queue' })).status, 400);
+test('v1.204: cornerBR IS a mirrored key now (the bottom-right slot persists) - accepted, bounded, null clears', async () => {
+  assert.equal((await json('POST', '/api/me/settings', { cornerBR: 'queue' })).status, 200, 'the new slot persists');
+  let me = await (await json('GET', '/api/auth/me')).json();
+  assert.equal(me.settings.cornerBR, 'queue', 'read back via /api/auth/me');
+  assert.equal((await json('POST', '/api/me/settings', { cornerBR: 'has space' })).status, 400, 'still charset-bounded like its siblings');
+  assert.equal((await json('POST', '/api/me/settings', { cornerBR: null })).status, 200, 'null clears');
+  me = await (await json('GET', '/api/auth/me')).json();
+  assert.equal(me.settings.cornerBR, undefined, 'cleared key is absent (C5 default none applies client-side)');
+  // and a truly unknown key is still rejected - the allowlist did not widen.
+  assert.equal((await json('POST', '/api/me/settings', { cornerZZ: 'queue' })).status, 400, 'a bogus corner key is still 400');
 });
 
 // ---- (b) watchUrl on the list projection -----------------------------------

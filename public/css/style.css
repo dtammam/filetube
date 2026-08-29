@@ -1566,6 +1566,16 @@ html.reader-immersive .app-container { padding-top: 0; }
   border-radius: var(--radius);
 }
 
+/* v1.204: when the bottom-right corner slot renders a button (main.js sets
+   .duration-badge--beside-corner via buildCardCorners.brOccupied), the badge
+   shifts LEFT to sit beside it - never under it. The offset clears the resting
+   corner button: its right anchor (6px) + width (14px icon + 2x --space-3
+   padding = 26px) + a 4px gap = 36px. The mobile bump (icon 18px -> 30px wide)
+   is in the @media (max-width: 768px) twin below. */
+.duration-badge--beside-corner {
+  right: 36px; /* token-exempt: positional geometry (clears the .card-corner-br button) */
+}
+
 .progress-bar-container {
   position: absolute;
   bottom: 0;
@@ -1593,11 +1603,12 @@ html.reader-immersive .app-container { padding-top: 0; }
    deletes. Era tokens only. */
 /* ---- v1.67: card-corner position classes ----------------------------------
    Position split from identity (plan D3): which corner a control occupies is
-   a per-user pref, so the anchor geometry lives on these three corner
-   classes and the control classes below keep ONLY look + behavior. The
-   renderer (main.js buildCardCornerButtonsHtml) appends exactly one corner
-   class per control. Bottom-right is RESERVED for .duration-badge - there is
-   deliberately no .card-corner-br. */
+   a per-user pref, so the anchor geometry lives on these four corner classes
+   and the control classes below keep ONLY look + behavior. The renderer
+   (main.js buildCardCorners) appends exactly one corner class per control.
+   v1.204: bottom-right became a SELECTABLE slot (.card-corner-br) that SHARES
+   its space with .duration-badge - when occupied, the badge moves left (see
+   .duration-badge--beside-corner) rather than sitting under the button. */
 .card-corner-tl {
   top: 6px; /* token-exempt: positional geometry (the card-corner convention, Stop A Batch A) */
   left: 6px; /* token-exempt: positional geometry */
@@ -1611,6 +1622,11 @@ html.reader-immersive .app-container { padding-top: 0; }
 .card-corner-bl {
   bottom: 6px; /* token-exempt: positional geometry */
   left: 6px; /* token-exempt: positional geometry */
+}
+
+.card-corner-br {
+  bottom: 6px; /* token-exempt: positional geometry */
+  right: 6px; /* token-exempt: positional geometry */
 }
 
 .card-delete-btn {
@@ -13247,6 +13263,12 @@ a.queue-upnext-next:hover {
   .card-transcript-btn .icon-transcript {
     width: 18px;
     height: 18px;
+  }
+  /* v1.204: the bottom-right slot's button is wider on mobile (18px glyph ->
+     ~30px pill), so the beside-corner duration badge clears a bit further:
+     right anchor (6px) + 30px + 4px gap = 40px. */
+  .duration-badge--beside-corner {
+    right: 40px; /* token-exempt: positional geometry (clears the mobile .card-corner-br button) */
   }
   .card-download-btn::after,
   .card-delete-btn::after,

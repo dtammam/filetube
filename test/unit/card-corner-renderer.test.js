@@ -20,6 +20,7 @@ const assert = require('node:assert');
 
 const {
   resolveCardCornerPrefs,
+  buildCardCorners,
   buildCardCornerButtonsHtml,
 } = require('../../public/js/main.js');
 
@@ -31,29 +32,41 @@ function defaults() {
 
 // ---- resolveCardCornerPrefs -------------------------------------------------
 
-test('resolve: absent settings -> the C5 defaults (TL download, TR delete, BL like)', () => {
+test('resolve: absent settings -> the C5 defaults (TL download, TR delete, BL like, BR none)', () => {
   for (const empty of [null, undefined, {}, 'junk', 42]) {
     assert.deepStrictEqual(resolveCardCornerPrefs(empty), {
-      cornerTL: 'download', cornerTR: 'delete', cornerBL: 'like',
+      cornerTL: 'download', cornerTR: 'delete', cornerBL: 'like', cornerBR: 'none',
     }, `input: ${String(empty)}`);
   }
+});
+
+test('resolve: the bottom-right slot (v1.204) defaults to none - no existing card moves', () => {
+  // A settings object that predates the BR slot (only the three old keys)
+  // must resolve BR to 'none', never to a control - the duration badge keeps
+  // its home for every user who never touched the new picker.
+  assert.strictEqual(resolveCardCornerPrefs({ cornerTL: 'download', cornerTR: 'delete', cornerBL: 'like' }).cornerBR, 'none');
+  assert.strictEqual(resolveCardCornerPrefs({}).cornerBR, 'none');
+  // A garbage BR value also falls back to the BR default ('none').
+  assert.strictEqual(resolveCardCornerPrefs({ cornerBR: 'not_a_control' }).cornerBR, 'none');
+  // And a real pick passes through.
+  assert.strictEqual(resolveCardCornerPrefs({ cornerBR: 'queue' }).cornerBR, 'queue');
 });
 
 test('resolve: valid picks pass through, including none', () => {
   assert.deepStrictEqual(
     resolveCardCornerPrefs({ cornerTL: 'queue', cornerTR: 'none', cornerBL: 'share' }),
-    { cornerTL: 'queue', cornerTR: 'none', cornerBL: 'share' }
+    { cornerTL: 'queue', cornerTR: 'none', cornerBL: 'share', cornerBR: 'none' }
   );
   assert.deepStrictEqual(
-    resolveCardCornerPrefs({ cornerTL: 'reheat', cornerTR: 'like', cornerBL: 'download' }),
-    { cornerTL: 'reheat', cornerTR: 'like', cornerBL: 'download' }
+    resolveCardCornerPrefs({ cornerTL: 'reheat', cornerTR: 'like', cornerBL: 'download', cornerBR: 'transcript' }),
+    { cornerTL: 'reheat', cornerTR: 'like', cornerBL: 'download', cornerBR: 'transcript' }
   );
 });
 
 test('resolve: a garbage value falls back to THAT corner\'s default only (starRatings precedent)', () => {
   assert.deepStrictEqual(
     resolveCardCornerPrefs({ cornerTL: 'not_a_control', cornerTR: 'queue' }),
-    { cornerTL: 'download', cornerTR: 'queue', cornerBL: 'like' }
+    { cornerTL: 'download', cornerTR: 'queue', cornerBL: 'like', cornerBR: 'none' }
   );
 });
 
@@ -257,7 +270,40 @@ test('v1.203: transcript renders ONLY for an item with captions (hasSubtitles ==
 });
 
 test('v1.203: transcript is a canonical control (resolves) and dedupes across corners like the others', () => {
-  assert.deepStrictEqual(resolveCardCornerPrefs({ cornerTL: 'transcript', cornerTR: 'transcript', cornerBL: 'none' }), { cornerTL: 'transcript', cornerTR: 'transcript', cornerBL: 'none' });
+  assert.deepStrictEqual(resolveCardCornerPrefs({ cornerTL: 'transcript', cornerTR: 'transcript', cornerBL: 'none' }), { cornerTL: 'transcript', cornerTR: 'transcript', cornerBL: 'none', cornerBR: 'none' });
   const html = buildCardCornerButtonsHtml({ ...ITEM, hasSubtitles: true }, { cornerTL: 'transcript', cornerTR: 'transcript', cornerBL: 'none' }, {});
   assert.strictEqual((html.match(/card-transcript-btn/g) || []).length, 1, 'rendered once (the dedupe rule)');
+});
+
+// ---- v1.204: the fourth (bottom-right) slot ---------------------------------
+
+test('v1.204: a control assigned to cornerBR renders with the .card-corner-br position class', () => {
+  for (const control of ['download', 'like', 'queue']) {
+    const prefs = { cornerTL: 'none', cornerTR: 'none', cornerBL: 'none', cornerBR: control };
+    const html = buildCardCornerButtonsHtml(ITEM, prefs, { canModifyLibrary: true });
+    assert.match(html, new RegExp(`card-${control}-btn card-corner-br`), `${control} in the bottom-right slot`);
+  }
+});
+
+test('v1.204: buildCardCorners.brOccupied is TRUE only when the BR slot actually renders a button', () => {
+  // Occupied: a plain control that always applies.
+  const occ = buildCardCorners(ITEM, { cornerTL: 'none', cornerTR: 'none', cornerBL: 'none', cornerBR: 'like' }, {});
+  assert.strictEqual(occ.brOccupied, true, 'like in BR -> occupied');
+  assert.match(occ.html, /card-like-btn card-corner-br/);
+
+  // BR = none -> never occupied.
+  assert.strictEqual(buildCardCorners(ITEM, { cornerBR: 'none' }, {}).brOccupied, false, 'none -> home');
+
+  // BR assigned but INAPPLICABLE to this item (share needs watchUrl,
+  // transcript needs captions) -> the badge keeps its home.
+  assert.strictEqual(buildCardCorners(ITEM, { cornerTL: 'none', cornerTR: 'none', cornerBL: 'none', cornerBR: 'share' }, {}).brOccupied, false, 'no watchUrl -> BR empty -> home');
+  assert.strictEqual(buildCardCorners(ITEM, { cornerTL: 'none', cornerTR: 'none', cornerBL: 'none', cornerBR: 'transcript' }, {}).brOccupied, false, 'no captions -> BR empty -> home');
+  assert.strictEqual(buildCardCorners({ ...ITEM, hasSubtitles: true }, { cornerTL: 'none', cornerTR: 'none', cornerBL: 'none', cornerBR: 'transcript' }, {}).brOccupied, true, 'captions -> BR transcript renders -> beside');
+});
+
+test('v1.204: a control duplicated into BR is deduped away (TL wins) and does NOT occupy BR', () => {
+  const res = buildCardCorners(ITEM, { cornerTL: 'like', cornerTR: 'none', cornerBL: 'none', cornerBR: 'like' }, {});
+  assert.strictEqual((res.html.match(/card-like-btn/g) || []).length, 1, 'like renders once');
+  assert.match(res.html, /card-like-btn card-corner-tl/, 'in the FIRST assigned corner (TL > ... > BR)');
+  assert.strictEqual(res.brOccupied, false, 'the deduped BR duplicate rendered nothing -> badge stays home');
 });
