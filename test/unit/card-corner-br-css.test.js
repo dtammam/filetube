@@ -79,6 +79,24 @@ test('an ARMED bottom-right delete hides the badge (v1.204 gate fix: the one exp
   assert.match(body, /visibility:\s*hidden/, 'the badge is hidden while a BR control is armed');
 });
 
+test('v1.205.1: the duration badge sits ABOVE the hover preview (z-index) so the time stays visible while the clip plays', () => {
+  const badge = ruleBody(OUTSIDE, '.duration-badge');
+  assert.ok(badge, '.duration-badge base rule exists');
+  assert.match(badge, /z-index:\s*2/, 'badge z-index 2 - above .card-preview');
+  const prev = ruleBody(OUTSIDE, '.card-preview');
+  assert.ok(prev, '.card-preview rule exists');
+  assert.match(prev, /z-index:\s*1/, '.card-preview stays z:1 (below the z:2 badge)');
+});
+
+test('v1.205.1: the duration pill matches the corner glyph size (14px base, 18px mobile) so it equals the corner-control height', () => {
+  const base = ruleBody(OUTSIDE, '.duration-badge');
+  assert.match(base, /font-size:\s*var\(--fs-md\)/, 'base font --fs-md (14px, the corner glyph size)');
+  assert.match(base, /line-height:\s*1/, 'line-height 1 -> height = font + padding, like the buttons');
+  const mob = ruleBody(MOBILE, '.duration-badge');
+  assert.ok(mob, '.duration-badge has a mobile rule');
+  assert.match(mob, /font-size:\s*var\(--fs-2xl\)/, 'mobile font --fs-2xl (18px, the mobile corner glyph size)');
+});
+
 test('the base duration badge keeps its 4px home (the shift is opt-in, not the default)', () => {
   const body = ruleBody(OUTSIDE, '.duration-badge');
   assert.ok(body, '.duration-badge base rule exists');

@@ -1531,7 +1531,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .card-preview {
   position: absolute;
   inset: 0;
-  z-index: 1; /* token-exempt: local stacking, above .thumbnail-img, below badges */
+  z-index: 1; /* token-exempt: local stacking - above .thumbnail-img, below the overlay badges (corner buttons z:2, and v1.205.1 the .duration-badge z:2) so the time + controls stay visible while the clip plays */
   background-color: #000; /* token-exempt: letterbox black, matches .thumbnail-container */
   opacity: 0;
   transition: opacity var(--dur-fast) var(--ease-ui);
@@ -1558,10 +1558,17 @@ html.reader-immersive .app-container { padding-top: 0; }
   position: absolute;
   bottom: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
   right: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
+  z-index: 2; /* token-exempt: local stacking - above .card-preview (z:1) so the time stays visible while the hover clip plays (Dean device report) */
   background-color: var(--scrim-heavy);
   color: var(--on-overlay);
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--fs-xs);
+  /* v1.205.1 (Dean device report): size the pill to MATCH the corner controls -
+     same glyph-size font (14px, the .card-*-btn icon size) + line-height 1 +
+     the buttons' own padding, so the duration and a neighbouring corner button
+     are the same height (they were 3px/7px off on desktop/mobile). The mobile
+     18px twin is in the @media block below, tracking the 18px mobile glyph. */
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-md); /* 14px - matches the .card-*-btn corner glyph so the pill height equals the corner controls */
+  line-height: 1; /* token-exempt: glyph centering, like the corner buttons */
   font-weight: var(--fw-bold);
   border-radius: var(--radius);
 }
@@ -13309,6 +13316,12 @@ a.queue-upnext-next:hover {
      non-interactive badge pixels only.) */
   .duration-badge--beside-corner {
     right: 40px; /* token-exempt: positional geometry (clears the mobile .card-corner-br button) */
+  }
+  /* v1.205.1 (Dean device report): the corner glyphs grow 14px -> 18px on
+     mobile, so the duration pill grows with them to stay the same height as a
+     neighbouring corner button (was 7px shorter). */
+  .duration-badge {
+    font-size: var(--fs-2xl); /* 18px - matches the mobile corner glyph */
   }
   .card-download-btn::after,
   .card-delete-btn::after,
