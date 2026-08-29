@@ -62,3 +62,15 @@ test('folder view: flag ON + an unattributed item -> the bulk Attribute tool mou
     assert.strictEqual(dom.window.document.getElementById('attribute-folder-btn'), null, 'absent with the opt-in off');
   } finally { dom.window.close(); }
 });
+
+test('home (non-root) view: the flag is never fetched - one fewer /api/settings call than a folder view (the bulk tool cannot mount there)', async () => {
+  let { dom, settingsCalls } = await loadHome({ flag: true, root: true });
+  let rootCalls;
+  try { await wait(400); rootCalls = settingsCalls.length; } finally { dom.window.close(); }
+  ({ dom, settingsCalls } = await loadHome({ flag: true, root: false }));
+  try {
+    await wait(400);
+    assert.strictEqual(dom.window.document.getElementById('attribute-folder-btn'), null);
+    assert.strictEqual(settingsCalls.length, rootCalls - 1, 'exactly the flag fetch is skipped on a non-root view');
+  } finally { dom.window.close(); }
+});

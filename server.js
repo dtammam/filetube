@@ -16678,7 +16678,7 @@ app.post('/api/videos/:id/chapters', async (req, res) => {
 // library (covers dead channels whose earlier downloads were attributed at
 // capture time). Deduped by channelId when both sides know one, else by
 // channelUrl. Read-only over the cache.
-// v1.202: the four attribution routes are OFF unless
+// v1.202: the attribution routes (three of the four; cancel is exempt, below) are OFF unless
 // settings.attributeControlEnabled (the Experimental opt-in). On the two
 // MUTATING routes the check sits AFTER the RBAC guard so a member still gets
 // the 403 the nets expect and an admin with the flag off gets a plain 404 -
