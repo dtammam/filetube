@@ -124,14 +124,18 @@ test('podcast episodes: ONLY downloaded ones surface (pending/trashed/tombstone 
 });
 
 test('recency uses toRecency: ISO-string addedAt orders newest-first within a tier (gate WARNING 2)', () => {
-  // two exact-title music hits, ISO-string addedAt (the real music store shape)
+  // Two exact-title music hits with ISO-string addedAt (the real store shape).
+  // IDs are chosen so lexical order OPPOSES recency (the gate's presence-not-
+  // binding note): 'trkAA' is OLDER, 'trkZZ' is NEWER. Recency-desc must give
+  // [trkZZ, trkAA]; the OLD Number(ISO)->0 code zeroes both -> id-asc ->
+  // [trkAA, trkZZ], the opposite, so this test genuinely reds without the fix.
   const d = deps();
   d.db.music.tracks = {
-    older: { id: 'older', title: 'Zephyr', artist: 'A', filePath: '/mu/o', addedAt: '2024-01-01T00:00:00Z' },
-    newer: { id: 'newer', title: 'Zephyr', artist: 'B', filePath: '/mu/n', addedAt: '2026-08-01T00:00:00Z' },
+    trkAA: { id: 'trkAA', title: 'Zephyr', artist: 'A', filePath: '/mu/o', addedAt: '2024-01-01T00:00:00Z' },
+    trkZZ: { id: 'trkZZ', title: 'Zephyr', artist: 'B', filePath: '/mu/n', addedAt: '2026-08-01T00:00:00Z' },
   };
   const ids = runSearch('zephyr', 'music', req, d).map((r) => r.id);
-  assert.deepStrictEqual(ids, ['newer', 'older'], 'newer ISO addedAt first (Number(ISO) would have zeroed both -> id order)');
+  assert.deepStrictEqual(ids, ['trkZZ', 'trkAA'], 'newer ISO addedAt first, opposing the id-tiebreak that the zeroed-recency bug fell through to');
 });
 
 test('empty/whitespace query -> [] (no full-library dump)', () => {
