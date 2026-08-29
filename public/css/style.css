@@ -5603,8 +5603,9 @@ a.sub-row-channel-link:focus-visible {
      buttons at 366px vs a 358px box (wrapped) and 325px at 8px (one row).
      v1.202 folded the secondary tier into More; v1.203 (Dean) brought the
      words back on the four primary buttons. MEASURED now (the probe, v1.203):
-     Queue 73 + Like 56 + Share 65 + Transcript 88 + More 29 = a 326px row
-     span in a 328px column at 360, one row at 360/375/390 - the 8px sides
+     Queue 73 + Like 56 + Share 65 + Transcript 88 + More 29 = 311px of
+     buttons + four 4px gaps = a ~327px row span (probe: 326, subpixel) in a
+     328px column at 360, one row at 360/375/390 - the 8px sides
      are what make the 360 fit (2px of slack; a wrap there is allowed by the
      v1.200 norm, a deformation is not). Desktop is untouched. */
   .watch-action-btns .btn {
