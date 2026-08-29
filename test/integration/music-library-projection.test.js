@@ -194,3 +194,17 @@ test('POST /api/folders/music-flag toggles a channel (admin); a plain member is 
   assert.strictEqual((await postJson('/api/folders/music-flag', { folderName: 'Tonzak', music: null })).status, 200);
   assert.strictEqual((await (await get('/api/folders/music-flag?folderName=Tonzak')).json()).override, null, 'cleared back to default');
 });
+
+// ---- T6: the master toggle through the REAL settings endpoint ----
+
+test('T6: musicIncludesLibrary round-trips via POST /api/me/settings and drives the projection', async () => {
+  // Through the actual mirrored-settings endpoint (not the store shortcut) -
+  // binds that the key is registered in MIRRORED_SETTING_KEYS end to end.
+  assert.strictEqual((await postJson('/api/me/settings', { musicIncludesLibrary: 'on' })).status, 200);
+  const me = await (await get('/api/auth/me')).json();
+  assert.strictEqual(me.settings.musicIncludesLibrary, 'on', 'reflected in the account settings');
+  assert.ok((await (await get('/api/music')).json()).items.some((i) => i.id === 'tonzak1'), 'projection ON via the settings API');
+  // Clearing the key returns to OFF (the default) - zero projection.
+  assert.strictEqual((await postJson('/api/me/settings', { musicIncludesLibrary: null })).status, 200);
+  assert.ok(!(await (await get('/api/music')).json()).items.some((i) => i.source === 'library'), 'projection OFF after clearing the key');
+});

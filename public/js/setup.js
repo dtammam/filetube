@@ -2411,6 +2411,26 @@ function wireStaticControls(signal) {
     }, { signal });
   }
 
+  // Wave G: the opt-in master toggle for surfacing library audio in Music.
+  // Mirror-only (per-user, POST /api/me/settings, no localStorage - like the
+  // card-corner editor), seeded from the account. Absent => off.
+  const musicLibraryCheck = document.getElementById('music-library-check');
+  if (musicLibraryCheck) {
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((me) => { musicLibraryCheck.checked = !!(me && me.settings && me.settings.musicIncludesLibrary === 'on'); })
+      .catch(() => { /* signed-out/offline: leave unchecked (the default) */ });
+    musicLibraryCheck.addEventListener('change', () => {
+      fetch('/api/me/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ musicIncludesLibrary: musicLibraryCheck.checked ? 'on' : 'off' }),
+      })
+        .then((res) => { if (!res.ok) throw new Error(`save failed: ${res.status}`); })
+        .catch(() => { showToast('Could not save the Music library setting.'); });
+    }, { signal });
+  }
+
   // Size-cap input: 'change' (fires on blur/Enter, not per keystroke) is a
   // natural debounce for a free-typed number field. Blank -> null ("use the
   // default"); a non-empty value that isn't a valid positive number is
