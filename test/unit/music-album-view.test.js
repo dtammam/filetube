@@ -44,8 +44,9 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
-function fetchMapFor(opts) {
+function fetchMapFor(opts, calls) {
   return (url, init) => {
+    if (calls) calls.fetches.push(url);
     const method = (init && init.method) || 'GET';
     if (method === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) }); // resume etc.
     if (url.indexOf('/api/music/albums') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
@@ -62,7 +63,7 @@ function fetchMapFor(opts) {
 async function boot(url, playerState, opts, run) {
   const dom = new JSDOM(VIEW_HTML, { url });
   const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController };
-  const calls = { load: [], setTrackNav: [], expand: [] };
+  const calls = { load: [], setTrackNav: [], expand: [], fetches: [] };
   global.window = dom.window;
   global.document = dom.window.document;
   global.localStorage = dom.window.localStorage;
@@ -83,7 +84,7 @@ async function boot(url, playerState, opts, run) {
     },
   };
   global.window.addToQueue = () => {};
-  global.fetch = fetchMapFor(opts);
+  global.fetch = (opts && opts.fetch) ? opts.fetch(calls) : fetchMapFor(opts, calls);
   if (opts && opts.tabPref) { try { dom.window.localStorage.setItem('filetube_music_tab', opts.tabPref); } catch (_) { /* ignore */ } }
   try {
     delete require.cache[musicPath];
@@ -128,8 +129,17 @@ test('v1.207: returning via the mini-player (?nowplaying=1) restores the now-pla
     assert.match(html, /music-drill/, 'the browse view is restored to the album drill (persists across the round-trip)');
     assert.ok(html.includes('The Thin Ice') && html.includes('Another Brick'), 'the album tracks are the list');
     assert.equal(calls.expand.length, 1, 'the docked player still expanded into #player-slot (unchanged)');
-    // Prev/Next were registered around the playing track inside the restored album queue
-    assert.ok(calls.setTrackNav.length >= 1, 'lock-screen nav registered for the restored album queue');
+    // gate WARNING 2: Prev/Next registered around the ACTUAL playing index - t2
+    // is #1 in the album [t1,t2,t3], so BOTH neighbours exist (not registered at
+    // -1 / not-found).
+    const nav = calls.setTrackNav[calls.setTrackNav.length - 1];
+    assert.ok(nav && typeof nav.onPrev === 'function', 'onPrev bound (t2 has a previous album track)');
+    assert.ok(nav && typeof nav.onNext === 'function', 'onNext bound (t2 has a next album track)');
+    // gate WARNING 3 (the v1.104 scar guard): the album is loaded EXACTLY ONCE
+    // (render's drill load). If rebuildPlayingQueue did not early-return on
+    // `drill`, a SECOND album=... load would race render's and desync the queue.
+    const albumFetches = calls.fetches.filter((u) => u.indexOf('album=') !== -1);
+    assert.equal(albumFetches.length, 1, 'exactly one album load on return - no double load (rebuildPlayingQueue early-returned on drill)');
   });
 });
 
@@ -149,6 +159,65 @@ test('v1.207: tapping a song ROW in the flat Songs list drills into its album (e
     assert.match(content(dom).innerHTML, /music-drill/, 'the row tap drilled into the album');
     assert.ok(content(dom).innerHTML.includes('Another Brick'), 'the album (not just the tapped song) is now the list');
     assert.ok(calls.load.some((c) => c.id === 't2'), 'the tapped song is playing, from the album');
+  });
+});
+
+test('v1.207 (gate WARNING 1): a rapid cross-album double-tap plays ONLY the last tap, never the first (the wrong-track race)', async () => {
+  // Two albums; the Songs list holds one track from each. Tap A then B before
+  // either album fetch returns, then resolve B FIRST, A LAST (the inversion the
+  // adversarial repro used). With the select-generation guard, only B plays.
+  const KA = 'ArtistA␟Album A';
+  const KB = 'ArtistB␟Album B';
+  const ALBUMS = {
+    [KA]: [{ id: 'a1', title: 'A-one', artist: 'ArtistA', album: 'Album A', albumKey: KA, durationSec: 100 }, { id: 'a2', title: 'A-two', artist: 'ArtistA', album: 'Album A', albumKey: KA, durationSec: 100 }],
+    [KB]: [{ id: 'b1', title: 'B-one', artist: 'ArtistB', album: 'Album B', albumKey: KB, durationSec: 100 }, { id: 'b2', title: 'B-two', artist: 'ArtistB', album: 'Album B', albumKey: KB, durationSec: 100 }],
+  };
+  const SONGS = [
+    { id: 'a1', title: 'A-one', artist: 'ArtistA', album: 'Album A', albumKey: KA, durationSec: 100 },
+    { id: 'b1', title: 'B-one', artist: 'ArtistB', album: 'Album B', albumKey: KB, durationSec: 100 },
+  ];
+  const pend = {};
+  const customFetch = (calls) => (url, init) => {
+    calls.fetches.push(url);
+    const method = (init && init.method) || 'GET';
+    if (method === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    if (url.indexOf('/api/music/albums') === 0 || url.indexOf('/api/music/artists') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    const m = url.match(/album=([^&]+)/);
+    if (m) { const key = decodeURIComponent(m[1]).replace(/\+/g, ' '); return new Promise((res) => { pend[key] = () => res({ ok: true, json: async () => ({ items: ALBUMS[key] }) }); }); }
+    if (url.indexOf('/api/music') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: SONGS }) }); // the Songs-tab list
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot('http://localhost/music', { state: 'docked', currentId: null }, { tabPref: 'songs', fetch: customFetch }, async (dom, calls) => {
+    const doc = dom.window.document;
+    const rowA = doc.querySelector('.music-song-row[data-id="a1"]');
+    const rowB = doc.querySelector('.music-song-row[data-id="b1"]');
+    assert.ok(rowA && rowB, 'both cross-album song rows exist');
+    rowA.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    rowB.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 4; i++) await settle();
+    // Resolve album B (the LAST tap) first, then album A (the first tap) last.
+    if (pend[KB]) pend[KB]();
+    for (let i = 0; i < 6; i++) await settle();
+    if (pend[KA]) pend[KA]();
+    for (let i = 0; i < 6; i++) await settle();
+    const played = calls.load.map((c) => c.id);
+    assert.ok(played.includes('b1'), 'the LAST tapped track (album B) plays');
+    assert.ok(!played.includes('a1'), 'the FIRST tapped track (album A) is superseded and NEVER plays (no wrong-track)');
+  });
+});
+
+test('v1.207 (gate SUGGESTION): tapping a second song INSIDE the same album does not re-fetch/re-drill (just plays)', async () => {
+  await boot('http://localhost/music?play=t2', { state: 'docked', currentId: null }, {}, async (dom, calls) => {
+    // ?play=t2 has drilled into The Wall; now tap another track in that album.
+    const before = calls.fetches.filter((u) => u.indexOf('album=') !== -1).length;
+    const doc = dom.window.document;
+    const row = doc.querySelector('.music-song-row[data-id="t3"]');
+    assert.ok(row, 'another album track row exists (we are in the album drill)');
+    row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 6; i++) await settle();
+    const after = calls.fetches.filter((u) => u.indexOf('album=') !== -1).length;
+    assert.equal(after, before, 'a same-album re-tap issues NO new album fetch (alreadyInAlbum -> playAt directly)');
+    assert.ok(calls.load.some((c) => c.id === 't3'), 'and the tapped track plays');
   });
 });
 

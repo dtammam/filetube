@@ -895,6 +895,7 @@ if (typeof module !== 'undefined' && module.exports) {
       else { statusEl.textContent = ''; statusEl.hidden = true; }
     }
     var playGen = 0; // guards against a stale prewarm poll clobbering a newer tap
+    var playSelectGen = 0; // v1.207: guards the album-drill select against a newer fast tap (the wrong-track race)
 
     function loadTrack(item, i, opts) {
       opts = opts || {};
@@ -1064,14 +1065,22 @@ if (typeof module !== 'undefined' && module.exports) {
     // card (drill = album -> render()), just triggered by playing a track;
     // reusing render() keeps the queue/browseCtx/sort/observer machinery intact.
     async function playTrackInAlbum(item) {
+      var myGen = ++playSelectGen; // claim this select BEFORE the async album load
       drill = { type: 'album', key: item.albumKey, label: item.album || 'Album' };
       await render(); // loads the album into `queue` + renders the drill (render never throws)
+      // Race guard (gate WARNING): a NEWER select - a fast second tap on a
+      // DIFFERENT album - supersedes this one and owns the view + play. Bail
+      // before playAt so a stale track never plays into the newer album's queue
+      // (the v1.104 wrong-track class, now reachable because row taps auto-play).
+      if (myGen !== playSelectGen) return;
       var ai = -1;
       for (var k = 0; k < queue.length; k++) { if (queue[k].id === item.id) { ai = k; break; } }
       if (ai < 0) {
         // The album fetch did not include the track (an edge - stale key,
-        // filtered). Play it solo so the RIGHT song still starts; the drill
-        // header stays but the list is the solo track.
+        // filtered). Play it solo so the RIGHT song still starts. renderSongList
+        // REPLACES the drill header with a flat list (it reassigns
+        // content.innerHTML); `drill` stays set until the next render/tab clears
+        // it.
         queue = [item];
         renderSongList();
         playAt(0);
