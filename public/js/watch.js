@@ -1012,6 +1012,36 @@ if (typeof module !== 'undefined' && module.exports) {
     // modal, torn down on view abort like relocationDismiss (a body-level modal
     // survives SPA nav on its own -- the v1.49 lesson).
     let shareChoiceDismiss = null;
+    // v1.202 (Dean's action-row re-evaluation): the SECONDARY tier - hidden in
+    // compact mode (style.css mirrors this list; the tiers lock keeps them
+    // equal) and offered through the "More" pick-one instead. Order here is
+    // the pick order. PRIMARY (never here): Like, Share, Transcript, Queue.
+    const SECONDARY_ACTION_IDS = ['queue-next-btn', 'download-media-btn', 'delete-media-btn', 'move-media-btn', 'watched-media-btn', 'reheat-media-btn', 'attribute-media-btn'];
+    let moreActionsDismiss = null;
+
+    // The accessible name of a button as it reads RIGHT NOW (its label span
+    // mutates: Like/Liked, Mark watched/Watched) - the pick must say what the
+    // button says.
+    function actionLabelOf(btn) {
+      const span = btn.querySelector('.btn-label');
+      const text = span ? span.textContent.trim() : '';
+      return text || btn.getAttribute('aria-label') || btn.title || btn.id;
+    }
+
+    // Opens the pick-one of every MOUNTED, non-hidden secondary button and
+    // clicks the real one - its own handler, confirm flow and state run
+    // untouched (Delete still confirms; Download is the same <a download>).
+    function handleMoreActionsClick() {
+      const items = SECONDARY_ACTION_IDS
+        .map((id) => root.querySelector('#' + id))
+        .filter((btn) => btn && !btn.hidden && btn.style.display !== 'none' && !btn.disabled)
+        .map((btn) => ({ label: actionLabelOf(btn), onPick: () => btn.click() }));
+      if (items.length === 0) return;
+      if (moreActionsDismiss) { signal.removeEventListener('abort', moreActionsDismiss); moreActionsDismiss(); }
+      moreActionsDismiss = showChoiceModal('More', items);
+      signal.addEventListener('abort', moreActionsDismiss, { once: true });
+    }
+
     // Transcript export (Dean): the "Transcript" control (fresh per view
     // instance, like shareBtn above), the dismiss handle of whichever modal it
     // opened (desktop text-field modal or the phone share/copy picker), and
@@ -1241,6 +1271,14 @@ if (typeof module !== 'undefined' && module.exports) {
         // 3d'. Transcript export (Dean): mount the "Transcript" button when
         // the item has a caption sidecar (`mediaData.hasSubtitles`).
         setupTranscriptButton();
+
+        // 3d''. v1.202: the compact-mode "More" pick-one (static button in
+        // watch.html; shown by the container query). Wired once per view.
+        const moreBtn = root.querySelector('#more-actions-btn');
+        if (moreBtn && !moreBtn.dataset.wired) {
+          moreBtn.dataset.wired = '1';
+          moreBtn.addEventListener('click', handleMoreActionsClick, { signal });
+        }
 
         // 3e. v1.49 (Dean): mount the per-video "Reheat" button. Gated on a
         // latched yt-dlp health probe, so this is at most one extra request

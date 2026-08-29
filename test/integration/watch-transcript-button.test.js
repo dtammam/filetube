@@ -505,3 +505,49 @@ test('watch page (phone): a COMPLETED share-sheet share shows no toast; the clip
     assert.match(document.querySelector('.toast').textContent, /Copied with your prompt/);
   } finally { dom.window.close(); }
 });
+
+// ---- v1.202 (Dean's action-row re-evaluation): the compact-mode "More" pick-one ----
+test('watch page: More lists exactly the MOUNTED secondary buttons, in tier order, with their CURRENT labels; a pick clicks the real button', async () => {
+  const watchedPosts = [];
+  const { fetchImpl } = makeWatchFetchStub(true, 200, []);
+  const wrapped = (input, init) => {
+    const url = typeof input === 'string' ? input : (input && input.url);
+    if (url === `/api/watched/${MEDIA_ID}` && init && init.method === 'POST') { watchedPosts.push(url); return Promise.resolve({ ok: true, status: 200, json: async () => ({}) }); }
+    return fetchImpl(input, init);
+  };
+  const { dom } = await loadWatchWithFetchStub(wrapped);
+  try {
+    await settle();
+    const { document } = dom.window;
+    const more = document.getElementById('more-actions-btn');
+    assert.ok(more, 'the More button ships in the markup');
+    assert.ok(document.querySelector('.watch-action-btns').contains(more));
+    click(dom, more);
+    await settle();
+    // NOT listed, by the mechanism: Delete is `hidden` and Move never mounts
+    // because this stub's user probe never resolves (no canModifyLibrary);
+    // Reheat's yt-dlp health probe never resolves; Attribute is behind the
+    // v1.202 flag. The label is the button's CURRENT .btn-label text.
+    assert.deepStrictEqual(choiceLabels(document), ['Next', 'Download', 'Mark watched'], 'mounted, non-hidden secondary buttons only, in SECONDARY_ACTION_IDS order');
+    click(dom, document.querySelectorAll('.choice-modal-btn')[2]);
+    await settle();
+    assert.deepStrictEqual(watchedPosts, [`/api/watched/${MEDIA_ID}`], 'the pick ran the REAL Mark-watched handler');
+  } finally { dom.window.close(); }
+});
+
+test('watch page: the More pick-one reflects a mutated label and is torn down on SPA navigation', async () => {
+  const { fetchImpl } = makeWatchFetchStub(true, 200, []);
+  const { dom } = await loadWatchWithFetchStub(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    const watched = document.getElementById('watched-media-btn');
+    watched.querySelector('.btn-label').textContent = 'Watched';
+    click(dom, document.getElementById('more-actions-btn'));
+    await settle();
+    assert.ok(choiceLabels(document).includes('Watched'), 'says what the button says now');
+    dom.window.FileTube.navigate('/');
+    await new Promise((r) => setTimeout(r, 500));
+    assert.strictEqual(document.querySelector('.choice-modal-list'), null, 'torn down on view abort');
+  } finally { dom.window.close(); }
+});

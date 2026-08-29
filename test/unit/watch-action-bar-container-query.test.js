@@ -29,11 +29,12 @@ test('style.css: .watch-action-bar is the named inline-size container (not .watc
   }
 });
 
-test('style.css: the container query hides ONLY the label span below 960px of column width, and the phone block keeps its own label hide', () => {
-  const q = /@container watch-action-bar \(max-width: 959px\)\s*\{([\s\S]*?)\n\}/.exec(css);
-  assert.ok(q, 'the @container block exists with the measured threshold (labelled buttons 953px -> words fit from 960px up)');
-  assert.match(q[1], /\.watch-action-btns \.btn \.btn-label\s*\{\s*display:\s*none;\s*\}/);
-  assert.ok(!/\.btn\s*\{/.test(q[1]), 'it must not restyle the buttons themselves (no deformation by another route)');
+test('style.css: the compact (959px) and glyph (639px) container queries exist; the phone block keeps its own label hide (v1.202 tiers lock covers the rest)', () => {
+  assert.match(css, /@container watch-action-bar \(max-width: 959px\)/, 'compact threshold: the ten labelled buttons are 953px - words fit from 960 up; below it the secondary tier folds into More');
+  const glyph = /@container watch-action-bar \(max-width: 639px\)\s*\{([\s\S]*?)\n\}/.exec(css);
+  assert.ok(glyph, 'the glyph threshold');
+  assert.match(glyph[1], /\.watch-action-btns \.btn \.btn-label\s*\{\s*display:\s*none;\s*\}/);
+  assert.ok(!/\.btn\s*\{/.test(glyph[1]), 'it must not restyle the buttons themselves (no deformation by another route)');
   assert.match(css, /\.watch-action-btns \.btn > i,\s*\.watch-action-btns \.btn > svg\s*\{\s*min-height: calc\(var\(--lh-relaxed\) \* 1em\);\s*\}/, 'the glyph keeps the label\'s line box so glyph-only buttons stay 32px (measured 30px without it)');
   const phone = css.slice(css.indexOf('@media (max-width: 768px)'));
   assert.match(phone, /\.watch-action-btns \.btn \.btn-label\s*\{\s*display:\s*none;\s*\}/, 'the v1.47.6 phone rule is still there');
