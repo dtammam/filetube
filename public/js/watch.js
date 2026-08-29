@@ -794,8 +794,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // longer; the v1.53 capability cache mounts it pre-reveal on warm cache.)
     let actionMediaSettled = false;
     let actionCapabilitySettled = false;
+    // v1.202 (gate): the attribution opt-in is a THIRD input to the final
+    // button set - a late settings answer used to pop Attribute in after the
+    // reveal. Settled on answer OR failure.
+    let actionFlagSettled = false;
     function maybeRevealActionBar() {
-      if (actionMediaSettled && actionCapabilitySettled) revealActionBar();
+      if (actionMediaSettled && actionCapabilitySettled && actionFlagSettled) revealActionBar();
     }
     // typeof-guarded: a minimal harness (or a page that loads watch.js without
     // common.js) leaves fetchCurrentUser undefined - the affordances then simply
@@ -807,8 +811,14 @@ if (typeof module !== 'undefined' && module.exports) {
         attributeControlEnabled = !!(settings && settings.attributeControlEnabled === true);
         // Mount now in case the user probe AND the media already resolved.
         if (attributeControlEnabled && canModifyLibrary) setupAttributeButton();
+        actionFlagSettled = true;
+        maybeRevealActionBar();
       })
-      .catch(() => { /* stays hidden */ });
+      .catch(() => {
+        // stays hidden - but the answer is SETTLED (no Attribute will mount)
+        actionFlagSettled = true;
+        maybeRevealActionBar();
+      });
     if (typeof fetchCurrentUser === 'function') {
       fetchCurrentUser().then(function (me) {
         canModifyLibrary = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));

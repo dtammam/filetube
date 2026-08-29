@@ -2743,7 +2743,7 @@ img.art-shimmer {
    The glyph keeps the label's line box (`min-height` = the row's
    line-height) so a glyph-only button measures the SAME 32px as a
    labelled one - without it the row dropped to 30px (measured). */
-/* v1.202 (Dean's action-row re-evaluation, rulings B7-B12). Two tiers:
+/* v1.202 (Dean's action-row re-evaluation, ruling B of the v1.202 plan). Two tiers:
    PRIMARY = Like, Share, Transcript, Queue (his real taps), SECONDARY =
    everything else (Next, Download, Delete, Move, Mark watched, Reheat,
    Attribute). The tier list lives ONCE in watch.js (SECONDARY_ACTION_IDS);

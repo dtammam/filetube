@@ -90,7 +90,7 @@ const GEOMETRY_JS = `(function () {
   document.querySelectorAll('.watch-action-btns .btn').forEach(function (b) {
     var r = b.getBoundingClientRect();
     out.buttons[b.id || b.className] = { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
-    tops[Math.round(r.top)] = true;
+    if (r.width > 0) tops[Math.round(r.top)] = true; // a display:none button (0x0 at top 0) is not a row
   });
   out.rows = Object.keys(tops).length;
   ['.star-rating', '.watch-title', '.description-container', '.watch-action-bar'].forEach(function (sel) {

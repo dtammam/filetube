@@ -1364,14 +1364,29 @@ function renderTranscriptAiPromptsEditor(signal) {
         saveNow();
       }, { signal });
     });
-    // Re-wired after EVERY render (fresh rows need fresh listeners - the
-    // helper's contract). The helper hands us (from, to); we move the DOM
-    // row (readRows() reads DOM order) and save at once - a drop is a
-    // deliberate act, not a keystroke, so no debounce.
+    wireRows();
+  }
+
+  // Re-wired after EVERY render AND after every DOM move (the helper closes
+  // over the row list and each handle's index at wire time - gate CRITICAL:
+  // without the re-wire a second gesture before a re-render scrambled the
+  // order or left the DOM disagreeing with the server). Each wiring gets its
+  // own AbortController so the previous listeners die with it; the view's
+  // signal aborts whichever wiring is current.
+  let wireCtl = null;
+  function wireRows() {
+    if (wireCtl) wireCtl.abort();
+    wireCtl = new AbortController();
+    const wireSignal = wireCtl.signal;
+    if (signal) signal.addEventListener('abort', () => wireCtl.abort(), { once: true, signal: wireSignal });
     wireReorderable(host, {
       rowSelector: '.transcript-ai-prompt-row',
       handleSelector: '.drag-handle',
-      labelOf: (index) => (prompts[index] && prompts[index].name) || 'prompt',
+      labelOf: (index) => {
+        const row = host.querySelectorAll('.transcript-ai-prompt-row')[index];
+        const typed = row ? row.querySelector('.transcript-ai-prompt-name').value.trim() : '';
+        return typed || 'prompt';
+      },
       focusKey: 'transcript-ai-prompts',
       onReorder: (fromIndex, toIndex) => {
         const rows = Array.from(host.querySelectorAll('.transcript-ai-prompt-row'));
@@ -1380,10 +1395,11 @@ function renderTranscriptAiPromptsEditor(signal) {
         if (!row || !target || row === target) return;
         if (toIndex > fromIndex) target.after(row); else target.before(row);
         prompts = readRows();
+        wireRows();
         if (saveTimer) clearTimeout(saveTimer);
-        saveNow();
+        saveNow(); // a drop is a deliberate act, not a keystroke - no debounce
       },
-      signal,
+      signal: wireSignal,
     });
   }
 

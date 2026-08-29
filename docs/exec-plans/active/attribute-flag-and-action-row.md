@@ -8,11 +8,15 @@ Status: ACTIVE (started 2026-08-29). Ships as v1.202.0 on
 A1. **Flag:** instance setting `attributeControlEnabled`, default OFF, in
     Settings -> Experimental ("Manual channel attribution"). Off hides the
     watch-page Attribute button AND the folder-view bulk tool.
-A2. **Server when off:** the four attribution routes
+A2. **Server when off:** three attribution routes
     (`GET /api/attribution-targets`, `POST /api/videos/:id/attribute-channel`,
-    `POST /api/videos/attribute-channel-bulk`, `.../cancel`) answer 404 -
-    AFTER the existing admin check, so a member still gets the RBAC 403 the
-    nets expect and an admin with the flag off gets 404.
+    `POST /api/videos/attribute-channel-bulk`) answer 404 - AFTER the
+    existing admin check on the two POSTs, so a member still gets the RBAC
+    403 the nets expect and an admin with the flag off gets 404 (the target
+    list never had an admin guard: members go 200 -> 404 when off).
+    DECIDED at implementation (gate-confirmed): `.../cancel` is NOT gated -
+    a bulk job started while the flag was on must stay abortable after it
+    is turned off (the job itself runs to completion; disclosed).
 A3. **Bulk tool** (main.js `#attribute-folder-btn`) behind the same flag.
 A4. **Glyph:** `.icon-attribute` = Material `drive_file_move` (one base
     mask, three CSS lists, comment-proof lock), replacing the non-existent

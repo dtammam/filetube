@@ -551,3 +551,100 @@ test('watch page: the More pick-one reflects a mutated label and is torn down on
     assert.strictEqual(document.querySelector('.choice-modal-list'), null, 'torn down on view abort');
   } finally { dom.window.close(); }
 });
+
+// ---- v1.202: the manual-attribution opt-in on the watch page (gate: the client gate was unbound) ----
+// An ADMIN user probe plus a controllable /api/settings answer. `holdSettings`
+// / `holdMe` park the answer until the test releases it (resolution order).
+function adminStub(flag, opts) {
+  const o = opts || {};
+  const { fetchImpl } = makeWatchFetchStub(true, 200, []);
+  const held = { settings: [], me: null, release() { held.settings.splice(0).forEach((r) => r()); } };
+  const wrapped = (input, init) => {
+    const url = typeof input === 'string' ? input : (input && input.url);
+    const method = (init && init.method) || 'GET';
+    if (url === '/api/auth/me') {
+      const ans = { ok: true, status: 200, json: async () => ({ user: { username: 'dean', role: 'admin' }, settings: {} }) };
+      if (o.holdMe) return new Promise((r) => { held.me = () => r(ans); });
+      return Promise.resolve(ans);
+    }
+    if (url === '/api/settings' && method === 'GET') {
+      if (flag === 'reject') return Promise.reject(new TypeError('network down'));
+      const ans = { ok: true, status: 200, json: async () => ({ mobileCustomPlayer: false, transcriptAiPrompts: [], attributeControlEnabled: flag }) };
+      if (o.holdSettings) return new Promise((r) => { held.settings.push(() => r(ans)); });
+      return Promise.resolve(ans);
+    }
+    return fetchImpl(input, init);
+  };
+  return { wrapped, held };
+}
+const attrBtn = (d) => d.getElementById('attribute-media-btn');
+const barRevealed = (d) => !d.querySelector('.watch-actions').hasAttribute('data-loading');
+
+test('watch page: admin + flag ON -> the Attribute button mounts (with the icon-attribute glyph); admin + flag OFF -> absent', async () => {
+  let { wrapped } = adminStub(true);
+  let { dom } = await loadWatchWithFetchStub(wrapped);
+  try {
+    await settle(20);
+    const btn = attrBtn(dom.window.document);
+    assert.ok(btn, 'mounted for an admin with the opt-in on');
+    assert.strictEqual(btn.querySelector('i').className, 'icon-attribute');
+  } finally { dom.window.close(); }
+  ({ wrapped } = adminStub(false));
+  ({ dom } = await loadWatchWithFetchStub(wrapped));
+  try {
+    await settle(20);
+    assert.strictEqual(attrBtn(dom.window.document), null, 'absent with the opt-in off, even for an admin');
+  } finally { dom.window.close(); }
+});
+
+test('watch page: the flag gate holds in BOTH resolution orders (settings last / user probe last), and a rejected settings fetch leaves it absent', async () => {
+  let { wrapped, held } = adminStub(true, { holdSettings: true });
+  let { dom } = await loadWatchWithFetchStub(wrapped);
+  try {
+    await settle(20);
+    assert.strictEqual(attrBtn(dom.window.document), null, 'not before the flag is known');
+    held.release(); await settle(20);
+    assert.ok(attrBtn(dom.window.document), 'mounts when the flag arrives last');
+  } finally { dom.window.close(); }
+  ({ wrapped, held } = adminStub(true, { holdMe: true }));
+  ({ dom } = await loadWatchWithFetchStub(wrapped));
+  try {
+    await settle(20);
+    assert.strictEqual(attrBtn(dom.window.document), null);
+    held.me(); await settle(20);
+    assert.ok(attrBtn(dom.window.document), 'mounts when the user probe arrives last');
+  } finally { dom.window.close(); }
+  ({ wrapped } = adminStub('reject'));
+  ({ dom } = await loadWatchWithFetchStub(wrapped));
+  try {
+    await settle(20);
+    assert.strictEqual(attrBtn(dom.window.document), null, 'a failed settings fetch = opt-in unknown = absent');
+    assert.ok(barRevealed(dom.window.document), 'the bar still reveals (the flag SETTLED on failure)');
+  } finally { dom.window.close(); }
+});
+
+test('watch page: the action-bar reveal barrier WAITS for the flag answer (no late Attribute pop-in) - gate finding', async () => {
+  const { wrapped, held } = adminStub(true, { holdSettings: true });
+  const { dom } = await loadWatchWithFetchStub(wrapped);
+  try {
+    await settle(20);
+    const d = dom.window.document;
+    assert.strictEqual(barRevealed(d), false, 'media + capability settled, but the flag has not - still barriered');
+    held.release(); await settle(20);
+    assert.ok(barRevealed(d), 'revealed once the flag answered');
+    assert.ok(attrBtn(d), 'and Attribute is already in the row at reveal time');
+  } finally { dom.window.close(); }
+});
+
+test('watch page: More lists Attribute for admin + flag, and OMITS a disabled secondary button', async () => {
+  const { wrapped } = adminStub(true);
+  const { dom } = await loadWatchWithFetchStub(wrapped);
+  try {
+    await settle(20);
+    const d = dom.window.document;
+    d.getElementById('move-media-btn').disabled = true;
+    click(dom, d.getElementById('more-actions-btn'));
+    await settle();
+    assert.deepStrictEqual(choiceLabels(d), ['Next', 'Download', 'Delete', 'Mark watched', 'Attribute'], 'Move (disabled) omitted; Attribute (flag on, admin, unattributed) listed');
+  } finally { dom.window.close(); }
+});

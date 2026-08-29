@@ -16679,10 +16679,11 @@ app.post('/api/videos/:id/chapters', async (req, res) => {
 // capture time). Deduped by channelId when both sides know one, else by
 // channelUrl. Read-only over the cache.
 // v1.202: the four attribution routes are OFF unless
-// settings.attributeControlEnabled (the Experimental opt-in). The check sits
-// AFTER each route's RBAC guard so a member still gets the 403/404 the nets
-// expect and an admin with the flag off gets a plain 404 - "off" is real,
-// not a hidden button. The bulk CANCEL route is deliberately NOT gated: a
+// settings.attributeControlEnabled (the Experimental opt-in). On the two
+// MUTATING routes the check sits AFTER the RBAC guard so a member still gets
+// the 403 the nets expect and an admin with the flag off gets a plain 404 -
+// "off" is real, not a hidden button. The target-list GET never had an admin
+// guard (a restriction-filtered read): everyone gets 404 while off. The bulk CANCEL route is deliberately NOT gated: a
 // job started while the flag was on must stay abortable after it is
 // turned off.
 function attributionFeatureOff(res) {
