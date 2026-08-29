@@ -6,8 +6,9 @@ every list uses is touched).
 
 ## Rulings (Dean, 2026-08-29 - all agreed)
 
-1. **Words on the phone row:** the four PRIMARY buttons (Like, Share,
-   Transcript, Queue) show their words at every width; "More" stays a
+1. **Words on the phone row:** the four PRIMARY buttons show their words at
+   every width, in Dean's order **Queue, Like, Share, Transcript** (mid-wave
+   ruling); "More" stays a
    glyph-only "..." (the five words are ~395px, four + a glyph ~333px: one
    row at 390 AND 375, wrapping only on 360px phones by the safety net).
    The stars return to their own line above. Desktop compact mode already

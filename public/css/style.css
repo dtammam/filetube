@@ -2753,18 +2753,19 @@ img.art-shimmer {
    Attribute). The tier list lives ONCE in watch.js (SECONDARY_ACTION_IDS);
    the selector below mirrors it and test/unit/watch-action-row-tiers
    .test.js locks the two lists equal.
-   - `order` fixes the row order everywhere (primary first, then More, then
-     the secondary set in their old order) - v1 is fixed, not customizable.
+   - `order` fixes the row order everywhere (primary first - Queue, Like,
+     Share, Transcript (Dean, v1.203) - then More, then the secondary set in
+     their old order) - v1 is fixed, not customizable.
    - COMPACT (column under 960px): secondary buttons hide, "More" shows and
      opens the pick-one listing them. Primary buttons keep their words.
    - GLYPH (column under 640px, and the 768px phone block below): the words
      drop too - four glyphs + More on one row.
    - WIDE (960px+: theatre, 1920 non-theatre): everything visible as words,
      More hidden. Buttons never deform in any mode (v1.200 norm). */
-#like-media-btn { order: 1; }
-#share-media-btn { order: 2; }
-#transcript-media-btn { order: 3; }
-#queue-add-btn { order: 4; }
+#queue-add-btn { order: 1; } /* v1.203 (Dean): Queue, Like, Share, Transcript, More */
+#like-media-btn { order: 2; }
+#share-media-btn { order: 3; }
+#transcript-media-btn { order: 4; }
 #more-actions-btn { order: 5; display: none; }
 #queue-next-btn { order: 10; }
 #download-media-btn { order: 11; }

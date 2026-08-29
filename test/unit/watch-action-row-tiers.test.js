@@ -18,7 +18,8 @@ const css = fs.readFileSync(path.join(PUB, 'css', 'style.css'), 'utf8').replace(
 const js = fs.readFileSync(path.join(PUB, 'js', 'watch.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
 const html = fs.readFileSync(path.join(PUB, 'watch.html'), 'utf8');
 
-const PRIMARY = ['like-media-btn', 'share-media-btn', 'transcript-media-btn', 'queue-add-btn'];
+// v1.203 (Dean): Queue, Like, Share, Transcript - in that order.
+const PRIMARY = ['queue-add-btn', 'like-media-btn', 'share-media-btn', 'transcript-media-btn'];
 
 function jsSecondaryIds() {
   const m = /const SECONDARY_ACTION_IDS = \[([^\]]*)\];/.exec(js);
@@ -40,7 +41,7 @@ test('tiers: the CSS compact selector lists EXACTLY watch.js\'s SECONDARY_ACTION
   assert.ok(!/\.btn-label/.test(compact[1]), 'compact mode keeps the words (the glyph threshold is separate)');
 });
 
-test('tiers: fixed order - primary 1-4, More 5, secondary 10+; More is display:none outside compact mode', () => {
+test('tiers: fixed order - Queue, Like, Share, Transcript = 1-4 (v1.203), More 5, secondary 10+; More is display:none outside compact mode', () => {
   const order = (id) => { const m = new RegExp('#' + id + '\\s*\\{[^}]*order:\\s*(\\d+);').exec(css); assert.ok(m, `order for ${id}`); return Number(m[1]); };
   assert.deepEqual(PRIMARY.map(order), [1, 2, 3, 4]);
   assert.equal(order('more-actions-btn'), 5);
