@@ -97,6 +97,9 @@ test('v1.205.1 (gate WARNING): list view keeps the duration small (fs-xs) so the
   const body = ruleBody(MOBILE, '.video-grid.list-view .duration-badge');
   assert.ok(body, 'the list-view cap rule exists in the mobile block');
   assert.match(body, /font-size:\s*var\(--fs-xs\)/, 'list-view badge stays fs-xs (grid tiles keep the 18px match)');
+  // AND the narrower v1.204 padding, so the list-view pill is byte-identical to
+  // v1.204 (no width worsening at all - measured to exact parity).
+  assert.match(body, /padding:\s*var\(--space-1\)\s+var\(--space-2\)/, 'list-view reverts to the v1.204 padding');
 });
 
 test('v1.205.1: the duration pill matches the corner glyph size (14px base, 18px mobile) so it equals the corner-control height', () => {

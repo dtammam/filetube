@@ -13330,6 +13330,7 @@ a.queue-upnext-next:hover {
      bottom-left corner button (the grid tiles Dean sized keep the 18px match). */
   .video-grid.list-view .duration-badge {
     font-size: var(--fs-xs); /* 11px - the compact list thumb can't fit the 18px pill beside two corners */
+    padding: var(--space-1) var(--space-2); /* revert the wider grid padding too, so the list-view pill is byte-identical to v1.204 (no width worsening at all) */
   }
   .card-download-btn::after,
   .card-delete-btn::after,
