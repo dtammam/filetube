@@ -6351,6 +6351,24 @@ function wireSearchAffordances() {
   });
   searchInput.addEventListener('focus', loadHistory);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSearch(); });
+  // v1.209 (Dean): tapping OUTSIDE the open search - and having typed nothing -
+  // dismisses it, so changing your mind (e.g. tapping the home logo top-left)
+  // no longer needs a second press of the search button. pointerdown (not
+  // click), the iOS tap-outside rule (a click can be swallowed/delayed), and it
+  // fires BEFORE the target's own click, so the outside control (the home logo)
+  // still activates. A NON-empty box is left open - a typed query is never
+  // discarded by an accidental tap-away. Bound once (the idempotency guard above
+  // returns before here on a re-call), like the Escape handler; a bubble-phase
+  // pointerdown taxes no scroll (unlike a non-passive touchmove, v1.160.1).
+  document.addEventListener('pointerdown', (e) => {
+    if (!document.documentElement.classList.contains('search-open')) return;
+    if (searchInput.value.trim() !== '') return; // typed -> keep it open
+    const t = e.target;
+    // duck-type on closest() (robust without the Element global); a tap inside
+    // the input / toggle / history panel / search host is NOT "outside".
+    if (t && typeof t.closest === 'function' && t.closest('#search-input, #search-toggle-btn, #search-history-panel, .header-search')) return;
+    closeSearch();
+  });
 }
 
 // ---- v1.85 #2: the mobile "You" bottom-nav tab -----------------------------
@@ -14988,6 +15006,8 @@ if (typeof module !== 'undefined' && module.exports) {
     modernCardAvatar,
     // v1.85 #1: the search-history record + panel render (jsdom-bound).
     recordSearchTerm, renderSearchHistoryPanel,
+    // v1.209: the search affordances (toggle + history panel + tap-outside close), jsdom-bound.
+    wireSearchAffordances,
     // v1.85 #2: the "You" bottom-nav tab injector (jsdom-bound).
     injectYouNavItem,
     // v1.31 P5 (FR5): repull-ack formatter.
