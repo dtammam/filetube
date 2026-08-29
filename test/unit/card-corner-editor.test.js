@@ -51,7 +51,7 @@ test('C2: a corner\'s options EXCLUDE controls chosen in the other corners, keep
   const values = opts.map((o) => o.value);
   assert.ok(!values.includes('delete'), 'delete is taken by TR');
   assert.ok(!values.includes('like'), 'like is taken by BL');
-  for (const v of ['download', 'queue', 'share', 'reheat', 'none']) {
+  for (const v of ['download', 'queue', 'share', 'reheat', 'transcript', 'none']) { // v1.203: + transcript
     assert.ok(values.includes(v), `expected option '${v}'`);
   }
   const selected = opts.filter((o) => o.selected);

@@ -11616,22 +11616,36 @@ function runTranscriptAiShare(promptText, transcriptText, title) {
   });
 }
 
+// ONE transcript surface at a time across BOTH callers (gate: the move had
+// dropped the watch page's dismiss-before-open, so a keyboard user Tabbing
+// behind the backdrop could stack two modals). dismiss() is idempotent.
+let transcriptActiveDismiss = null;
+
 function openTranscriptFor(opts) {
   const o = opts || {};
   const id = o.id;
   const title = (typeof o.title === 'string' && o.title !== '') ? o.title : 'Transcript';
   const signal = o.signal || null;
   const onBusy = typeof o.onBusy === 'function' ? o.onBusy : () => {};
+  // `stillWanted()` (optional): a caller whose view is CACHED on nav-away
+  // (the home grid - its AbortController never fires, the v1.160 lesson)
+  // says whether the surface that asked is still on screen when the text
+  // lands; false = open nothing (gate: a late text used to open the modal
+  // over a different page).
+  const stillWanted = typeof o.stillWanted === 'function' ? o.stillWanted : () => true;
   if (!id) return Promise.resolve(null);
   onBusy(true);
   let dismiss = null;
   const setDismiss = (fn) => {
     if (dismiss && signal) signal.removeEventListener('abort', dismiss);
     dismiss = fn;
+    transcriptActiveDismiss = fn;
     if (dismiss && signal) signal.addEventListener('abort', dismiss, { once: true });
   };
   return Promise.all([fetchTranscriptTextFor(id, false), fetchTranscriptAiPrompts()]).then(([text, aiPrompts]) => {
     if (signal && signal.aborted) return null;
+    if (!stillWanted()) return null;
+    if (transcriptActiveDismiss) { transcriptActiveDismiss(); transcriptActiveDismiss = null; }
     if (transcriptIsPhoneWidth()) {
       // "Share with AI" is the third pick when prompts exist. One prompt
       // shares at once; several open a pick-one of their names.

@@ -27,7 +27,8 @@ summary,
 .card-like-btn,
 .card-queue-btn,
 .card-share-btn,
-.card-reheat-btn {
+.card-reheat-btn,
+.card-transcript-btn {
   touch-action: manipulation;
 }
 
@@ -2758,8 +2759,8 @@ img.art-shimmer {
      their old order) - v1 is fixed, not customizable.
    - COMPACT (column under 960px): secondary buttons hide, "More" shows and
      opens the pick-one listing them. Primary buttons keep their words.
-   - GLYPH (column under 640px, and the 768px phone block below): the words
-     drop too - four glyphs + More on one row.
+   - v1.203 (Dean): the primary buttons keep their WORDS at every width;
+     only More is a glyph. (v1.202 had a 640px glyph tier - gone.)
    - WIDE (960px+: theatre, 1920 non-theatre): everything visible as words,
      More hidden. Buttons never deform in any mode (v1.200 norm). */
 #queue-add-btn { order: 1; } /* v1.203 (Dean): Queue, Like, Share, Transcript, More */
@@ -5597,19 +5598,15 @@ a.sub-row-channel-link:focus-visible {
     display: none;
   }
 
-  /* Transcript export (Dean): the row is now TEN glyph buttons on a captioned,
-     yt-dlp-sourced video (Queue/Next/Download/Delete/Move/Like/Watched/Share/
-     Reheat/Transcript). MEASURED in headless Chromium at 390px (DPR 2): at
-     the side padding this block's `.watch-actions .btn` rule above gave them
-     (`--space-5`, 10px) ten buttons measured 366px against a 358px content
-     box, so the tenth wrapped to a second row - the v1.50 "shifted the whole
-     row down" scar again. With the words already hidden above, a glyph-only
-     button does not need word padding: at `--space-4` (8px) sides ten
-     measure 325px, one row at 390 AND 375; eleven (the rare unattributed +
-     captioned + reheatable case) measure 358px - exactly the 390 box, and
-     they wrap at 375 as the safety net intends. (Gate correction: an earlier
-     draft of this comment said "12px base" and "336px" - neither was ever
-     in effect or measured.) Desktop is untouched (labels + room). */
+  /* Phone side padding for the action-row buttons: --space-4 (8px), down
+     from this block's --space-5 (10px). HISTORY: v1.200 measured ten glyph
+     buttons at 366px vs a 358px box (wrapped) and 325px at 8px (one row).
+     v1.202 folded the secondary tier into More; v1.203 (Dean) brought the
+     words back on the four primary buttons. MEASURED now (the probe, v1.203):
+     Queue 73 + Like 56 + Share 65 + Transcript 88 + More 29 = a 326px row
+     span in a 328px column at 360, one row at 360/375/390 - the 8px sides
+     are what make the 360 fit (2px of slack; a wrap there is allowed by the
+     v1.200 norm, a deformation is not). Desktop is untouched. */
   .watch-action-btns .btn {
     padding-left: var(--space-4);
     padding-right: var(--space-4);

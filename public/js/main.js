@@ -3110,6 +3110,10 @@ const PreviewCards = (function () {
           title: item.title,
           signal,
           onBusy: (busy) => { cardTranscriptBtn.disabled = busy; },
+          // This view is CACHED on nav-away (its signal never fires), so the
+          // corner itself answers "am I still on screen" when the text lands
+          // - a detached grid opens nothing (gate finding).
+          stillWanted: () => cardTranscriptBtn.isConnected,
         });
         return;
       }

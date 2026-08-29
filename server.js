@@ -10799,7 +10799,7 @@ function resolveModernGridItem(db, rec) {
   // v1.85 (#4): field-COMPLETE for every card corner. The classic /api/videos
   // item carries `ext` (download filename) and `watchUrl` (the Share corner);
   // the grid item omitted them, so a bottom-left corner set to Share (or any
-  // control needing watchUrl/ext) rendered EMPTY in modern mode while
+  // control needing watchUrl/ext - and, v1.203, hasSubtitles) rendered EMPTY in modern mode while
   // download/delete - which need only id - showed. Match the /api/videos
   // projection: derive watchUrl the same way, include ext.
   const watchUrl = typeof item.youtubeId === 'string' ? buildWatchUrl(item.youtubeId) : null;
@@ -10820,6 +10820,10 @@ function resolveModernGridItem(db, rec) {
     // harmless (poster stays until the file is generated).
     storyboard: storyboardDescriptor(item) || undefined,
     hasPreview: previewClipEligible(item) || undefined, // v1.94: card hover clip eligibility
+    // v1.203: the Transcript corner renders only with captions - the same
+    // field-COMPLETE rule as watchUrl/ext above (a corner needing a field
+    // the projection drops renders EMPTY in modern mode - the v1.85 #4 class).
+    ...(item.hasSubtitles === true ? { hasSubtitles: true } : {}),
   };
 }
 

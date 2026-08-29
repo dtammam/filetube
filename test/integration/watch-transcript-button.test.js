@@ -648,3 +648,35 @@ test('watch page: More lists Attribute for admin + flag, and OMITS a disabled se
     assert.deepStrictEqual(choiceLabels(d), ['Next', 'Download', 'Delete', 'Mark watched', 'Attribute'], 'Move (disabled) omitted; Attribute (flag on, admin, unattributed) listed');
   } finally { dom.window.close(); }
 });
+
+// ---- GATE (adversarial): one transcript surface at a time - the move had dropped the dismiss-before-open ----
+test('watch page: activating Transcript again while its modal (desktop) or picker (phone) is open leaves exactly ONE', async () => {
+  for (const phone of [false, true]) {
+    const { fetchImpl } = makeWatchFetchStub(true, 200, []);
+    const { dom } = await loadWatchWithFetchStub(fetchImpl, null, phone);
+    try {
+      await settle();
+      const { document } = dom.window;
+      const btn = document.getElementById('transcript-media-btn');
+      click(dom, btn);
+      await settle();
+      click(dom, btn); // a keyboard user can reach the button behind the backdrop (no focus trap)
+      await new Promise((r) => setTimeout(r, 500));
+      const sel = phone ? '.choice-modal-list' : '.transcript-modal';
+      assert.strictEqual(document.querySelectorAll(sel).length, 1, `one ${sel} (phone=${phone})`);
+    } finally { dom.window.close(); }
+  }
+});
+
+test('openTranscriptFor: a missing id resolves null and fetches nothing', async () => {
+  const calls = [];
+  const { fetchImpl } = makeWatchFetchStub(true, 200, []);
+  const { dom } = await loadWatchWithFetchStub((i, init) => { calls.push(typeof i === 'string' ? i : i.url); return fetchImpl(i, init); });
+  try {
+    await settle();
+    const before = calls.filter((u) => u.startsWith('/api/transcript/')).length;
+    const out = await dom.window.openTranscriptFor({ id: undefined, title: 'x' });
+    assert.strictEqual(out, null);
+    assert.strictEqual(calls.filter((u) => u.startsWith('/api/transcript/')).length, before, 'no fetch');
+  } finally { dom.window.close(); }
+});

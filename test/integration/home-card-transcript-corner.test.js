@@ -18,9 +18,11 @@ const ROOT = '/media/Some Channel';
 const TEXT = 'A Captioned Clip\nPublished January 5, 2024\nSome Channel\n\nhello there\n';
 function contentTypeFor(p) { return p.endsWith('.js') ? 'text/javascript' : p.endsWith('.css') ? 'text/css' : 'application/octet-stream'; }
 
-function loadFolder({ phone, prompts }) {
+// `defer`: park every /api/transcript answer in `deferred` until the test releases it.
+function loadFolder({ phone, prompts, defer }) {
   const html = fs.readFileSync(path.join(PUBLIC_DIR, 'index.html'), 'utf8');
   const transcriptUrls = [];
+  const deferred = [];
   const items = [
     { id: 'cap', title: 'A Captioned Clip', filePath: `${ROOT}/a.mp4`, folderName: 'Some Channel', rootFolder: ROOT, type: 'video', ext: '.mp4', duration: 10, size: 1, addedAt: 2, hasSubtitles: true, channelUrl: 'https://youtube.com/@x' },
     { id: 'plain', title: 'No Captions', filePath: `${ROOT}/b.mp4`, folderName: 'Some Channel', rootFolder: ROOT, type: 'video', ext: '.mp4', duration: 10, size: 1, addedAt: 1, channelUrl: 'https://youtube.com/@x' },
@@ -43,15 +45,18 @@ function loadFolder({ phone, prompts }) {
           if (url === '/api/settings' && method === 'GET') return json({ defaultView: '', defaultSort: 'release-date', attributeControlEnabled: false, transcriptAiPrompts: prompts || [] });
           if (url === '/api/auth/me') return json({ user: { username: 'dean', role: 'admin' }, settings: { cornerTL: 'transcript', cornerTR: 'none', cornerBL: 'none' } });
           if (url === '/api/config') return json({ folders: [ROOT], folderSettings: {} });
-          if (url.startsWith('/api/transcript/')) { transcriptUrls.push(url); return Promise.resolve({ ok: true, status: 200, text: async () => TEXT }); }
+          if (url.startsWith('/api/transcript/')) { transcriptUrls.push(url); const ans = { ok: true, status: 200, text: async () => TEXT }; if (defer) return new Promise((r) => deferred.push(() => r(ans))); return Promise.resolve(ans); }
           if (url.startsWith('/api/videos')) return json({ items, total: items.length, offset: 0, limit: 50 });
           if (url.startsWith('/api/')) return json({ items: [], folders: [], rows: [] });
-          return new Promise(() => {});
+          // The SPA router fetches the next view's SHELL on navigation - answer
+          // with the real index.html (a hanging shell would keep the old view
+          // mounted and make the navigate-away scenario vacuous).
+          return Promise.resolve({ ok: true, status: 200, url: 'http://localhost' + url, redirected: false, headers: { get: (h) => (/content-type/i.test(h) ? 'text/html' : null) }, text: async () => html });
         };
       },
     });
-    dom.window.addEventListener('load', () => setTimeout(() => resolve({ dom, transcriptUrls }), 60));
-    setTimeout(() => resolve({ dom, transcriptUrls }), 5000);
+    dom.window.addEventListener('load', () => setTimeout(() => resolve({ dom, transcriptUrls, deferred }), 60));
+    setTimeout(() => resolve({ dom, transcriptUrls, deferred }), 5000);
   });
 }
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -88,5 +93,41 @@ test('card corner (phone width): the click opens the SAME picker - Share / Copy 
     assert.strictEqual(shares.length, 1);
     assert.strictEqual(shares[0].title, 'A Captioned Clip', 'the item title from the fetched list');
     assert.strictEqual(shares[0].text, TEXT);
+  } finally { dom.window.close(); }
+});
+
+// ---- GATE (adversarial): a late text must never open over ANOTHER page ----
+test('card corner: click, then navigate away before the text lands -> nothing opens (cached-away view via stillWanted AND a real abort)', async () => {
+  for (const target of ['/history', '/?liked=1']) {
+    const { dom, deferred } = await loadFolder({ phone: false, defer: true });
+    try {
+      await wait(400);
+      const d = dom.window.document;
+      click(dom, d.querySelector('.card-transcript-btn'));
+      await wait(50);
+      dom.window.FileTube.navigate(target);
+      await wait(400);
+      deferred.splice(0).forEach((r) => r());
+      await wait(300);
+      assert.strictEqual(d.querySelector('.transcript-modal'), null, `no modal over ${target}`);
+      assert.strictEqual(d.querySelector('.choice-modal-list'), null);
+    } finally { dom.window.close(); }
+  }
+});
+
+test('card corner: three rapid clicks while the text is loading -> ONE fetch and ONE modal (the corner disables itself)', async () => {
+  const { dom, transcriptUrls, deferred } = await loadFolder({ phone: false, defer: true });
+  try {
+    await wait(400);
+    const d = dom.window.document;
+    const corner = d.querySelector('.card-transcript-btn');
+    click(dom, corner); click(dom, corner); click(dom, corner);
+    await wait(50);
+    assert.strictEqual(transcriptUrls.length, 1, 'one fetch');
+    assert.strictEqual(corner.disabled, true, 'disabled while loading');
+    deferred.splice(0).forEach((r) => r());
+    await wait(300);
+    assert.strictEqual(d.querySelectorAll('.transcript-modal').length, 1);
+    assert.strictEqual(corner.disabled, false, 're-enabled after');
   } finally { dom.window.close(); }
 });
