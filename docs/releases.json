@@ -2326,5 +2326,11 @@
     "date": "2026-08-29",
     "title": "A tidier row of buttons under every video, draggable AI prompts, and channel attribution as an opt-in",
     "intent": "The buttons under a video are now two tiers: Like, Share, Transcript and Queue stay in the row, and a More button opens the rest (Play next, Download, Delete, Move, Mark watched and any others) in the same pick-one style the app already uses. On a phone that is five icons on one line instead of ten; on a wide screen every button still shows with its name. In Settings, your Share with AI prompts can now be dragged into whatever order you like (grab the handle; arrow keys work too). And the Attribute button, which helps re-file older downloads that were saved under the wrong channel, is now off by default - turn it on under Settings, Experimental if your library needs it; it also has a proper icon at last."
+  },
+  {
+    "version": "1.203.0",
+    "date": "2026-08-29",
+    "title": "Button names on your phone, and Transcript on the cards",
+    "intent": "The row of buttons under a video on your phone now shows the words - Queue, Like, Share, Transcript - with a small ... button for the rest, all on one line. And Transcript can now sit on the video cards themselves: under Settings, Card corners, pick Transcript for any corner and every video that has captions gets the button right on its card, opening the same transcript view - read it, copy it, share it, or send it to your AI app with your prompt - without opening the video first."
   }
 ]

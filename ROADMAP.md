@@ -80,6 +80,68 @@
 
 ## Shipped
 
+### v1.203.0 - Words on the phone action row + Transcript as a card corner (2026-08-29)
+
+Dean, after the v1.202.0 device pass: "we can actually have them display
+with the full text ... we have space, it's very centralized in the
+middle"; "add the transcript button as a selectable option for a given
+card ... from a card view maybe send a video along to an AI"; and, mid-
+wave, the row order: "Queue Like Share Transcript More".
+
+**What shipped.**
+- **Words on the phone row.** The four primary buttons keep their words
+  at every width; only More is a glyph ("..."). Order: Queue, Like, Share,
+  Transcript, More (CSS `order`). Measured vs v1.202.0: Queue 73 + Like 56
+  + Share 65 + Transcript 88 + More 29 = ONE row at 390, 375 and 360
+  (311px in a 328px column), 39px, the stars back on their own line;
+  narrow desktop (598px column) the same with words at 32px; wide desktop
+  byte-identical. The v1.202 639px glyph threshold and the v1.47.6
+  hide-all-words phone rule are gone (locks rewritten deliberately).
+- **The transcript flow is shared.** `openTranscriptFor({ id, title,
+  signal, onBusy })` in common.js - fetch text + prompts together, phone
+  picker (Share / Copy / Share with AI) or desktop modal, abort teardown
+  via the caller's signal. The watch page is a thin caller; every
+  watch-page transcript test unchanged.
+- **Transcript is a card corner.** Pickable per corner in Settings like
+  Download / Delete / Like / Queue / Share / Reheat (roster six -> seven);
+  renders only on cards whose video has captions; a click runs the
+  identical flow with the card's id and title. New real-page harness test
+  (index.html folder view): renders on the captioned card only, desktop
+  opens the same modal, phone opens the same picker and Share hands the
+  document to the sheet.
+
+**What the gate caught (round 1).** Adversarial: a card-corner click
+followed by navigation before the text landed opened the transcript modal
+over the NEXT page - the home grid is cached on nav-away, so its abort
+signal never fires (the v1.160 class); fixed with a `stillWanted` hook the
+corner answers with "am I still on screen", bound for both the cached-away
+and the real-abort paths (the harness had to serve HTML shells first, or
+the old view never left and the scenario was vacuous). The move of the
+flow into common.js had dropped the watch page's dismiss-before-open, so a
+keyboard user could stack two modals - now one transcript surface at a
+time across both callers, bound on both. QA: the Modern home grid's item
+projection dropped `hasSubtitles`, so the corner would have rendered EMPTY
+on every home card in modern mode (the projection's own "field-complete
+for every corner" comment turned false) - projected and bound by a route
+test. Plus two stale CSS comments from the row rework, the corner missing
+from the touch-action list, and five correct-but-unbound branches (corner
+busy, missing id, the aborted-view pre-open check, the editor option, the
+disabled-corner arm). Commit-message corrections: the phone row SPAN is
+326px in a 328px column at 360 (button widths alone sum to 311), and two
+suite counts were off (17 not 21; 41 not 40).
+
+**Known gaps (disclosed).**
+- A 360px phone fits the words with 2px of slack; a device rendering any
+  button 1px wider wraps More to a second line (a wrap, never a
+  deformation - the v1.200 norm). Era fonts never reach the row (it is
+  Arial 11px under every era - measured).
+- The card harness cannot discriminate "title from the item" vs "title from
+  the card's DOM text" (they render identically); the delegation reads the
+  item and the code comment says so.
+- Fixed row order (v1); the earlier v1.202 order lasted one release.
+
+Dual-Node: 7756/0 on v22.23.1 and 7756/0 on v24.14.0 (sequential, reviewers idle). Round-2 APPROVE from both seats; QA's last arithmetic nit fixed in a90bbae. The prompt rows' POINTER drag and the card corner's pointer path are tested at the shared helper's layer; this wave binds the keyboard/click paths (disclosed). Device pass PENDING (Dean).
+
 ### v1.202.0 - Attribute behind an opt-in flag, draggable AI prompts, the two-tier action row (2026-08-29)
 
 Dean, after the v1.201.0 device pass: Attribute "was valuable for me

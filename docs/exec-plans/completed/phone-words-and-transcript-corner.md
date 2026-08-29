@@ -1,8 +1,8 @@
 # Words on the phone row + Transcript as a card corner
 
-Status: ACTIVE (started 2026-08-29). Ships as v1.203.0 on
-`feat/phone-words-and-transcript-corner`. Full gate (the card renderer
-every list uses is touched).
+Status: SHIPPED v1.203.0 (2026-08-29). Was: ACTIVE (started 2026-08-29).
+Full gate (the card renderer every list uses is touched): two rounds, both
+seats APPROVE; dual-Node 7756/0.
 
 ## Rulings (Dean, 2026-08-29 - all agreed)
 
