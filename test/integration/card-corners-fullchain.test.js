@@ -167,6 +167,8 @@ test('DEFAULTS: today\'s layout renders on every card - download TL, delete TR, 
       // v1.204: BR defaults to none, so the badge keeps its home - never shifted.
       assert.strictEqual(card.querySelector('.card-corner-br'), null, 'no bottom-right control by default');
       assert.ok(!badge.classList.contains('duration-badge--beside-corner'), 'and the badge is not shifted');
+      // v1.205: a plain /api/videos card (no resultType) renders NO type badge.
+      assert.strictEqual(card.querySelector('.card-type-badge'), null, 'no unified-search type badge on a plain library card');
     }
   } finally { dom.window.close(); }
 });

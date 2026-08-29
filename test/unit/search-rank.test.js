@@ -7,7 +7,18 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { matchTier, TYPE_PRIORITY, rankResults } = require('../../lib/search/rank.js');
+const { matchTier, TYPE_PRIORITY, rankResults, toRecency } = require('../../lib/search/rank.js');
+
+// ---- toRecency (gate WARNING 2: ISO-string addedAt must not zero) -----------
+
+test('toRecency: epoch-ms numbers pass through; ISO-8601 strings parse; junk -> 0', () => {
+  assert.strictEqual(toRecency(1700000000000), 1700000000000, 'numeric ms unchanged');
+  assert.strictEqual(toRecency('2026-08-01T00:00:00Z'), Date.parse('2026-08-01T00:00:00Z'), 'ISO string -> ms');
+  assert.ok(toRecency('2026-08-01T00:00:00Z') > toRecency('2024-01-01T00:00:00Z'), 'ISO ordering preserved');
+  for (const junk of ['', 'not-a-date', null, undefined, NaN, {}]) {
+    assert.strictEqual(toRecency(junk), 0, `junk ${JSON.stringify(junk)} -> 0`);
+  }
+});
 
 // ---- matchTier --------------------------------------------------------------
 

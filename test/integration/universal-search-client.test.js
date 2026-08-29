@@ -121,6 +121,18 @@ test('mixed cards carry a type badge and route correctly (tv-show -> /tv?show=, 
     const showLink = Array.from(document.querySelectorAll('#video-grid a.thumbnail-container')).map((a) => a.getAttribute('href'));
     assert.ok(showLink.some((h) => h === '/tv?show=shZ'), `tv-show routes to /tv?show=shZ (saw ${JSON.stringify(showLink)})`);
     assert.ok(showLink.some((h) => h === '/watch.html?tv=tve'), 'tv-episode routes to the shared watch page');
+    // v1.205 gate (adversarial): a TV card must render NO download/like corner
+    // (default corners are download TL + like BL) - no route backs them.
+    const tvCards = Array.from(document.querySelectorAll('#video-grid .video-card')).filter((c) => {
+      const a = c.querySelector('a.thumbnail-container');
+      const href = a && a.getAttribute('href');
+      return href === '/tv?show=shZ' || href === '/watch.html?tv=tve';
+    });
+    assert.strictEqual(tvCards.length, 2, 'both TV cards present');
+    for (const c of tvCards) {
+      assert.strictEqual(c.querySelector('.card-download-btn'), null, 'TV card: no download corner');
+      assert.strictEqual(c.querySelector('.card-like-btn'), null, 'TV card: no like corner');
+    }
   } finally { dom.window.close(); }
 });
 

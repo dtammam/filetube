@@ -47,12 +47,19 @@ before(async () => {
   });
   await updateDatabase((db) => {
     musicStore.ensureMusic(db).tracks = {
-      tz: { id: 'tz', title: 'Zephyr', artist: 'Band', album: 'Al', filePath: path.join(DATA_DIR, 'zt.flac'), rootFolder: DATA_DIR, folderName: 'F', ext: '.flac', codec: 'flac', durationSec: 3, albumArtKey: null, addedAt: '2026-01-01T00:00:00Z' },
+      // two exact-title 'Zephyr' hits with ISO-string addedAt (the real store
+      // shape) - the NEWER must rank first (gate WARNING 2 e2e bind).
+      tz: { id: 'tz', title: 'Zephyr', artist: 'Band', album: 'Al', filePath: path.join(DATA_DIR, 'zt.flac'), rootFolder: DATA_DIR, folderName: 'F', ext: '.flac', codec: 'flac', durationSec: 3, albumArtKey: null, addedAt: '2024-01-01T00:00:00Z' },
+      tzNew: { id: 'tzNew', title: 'Zephyr', artist: 'Band2', album: 'Al2', filePath: path.join(DATA_DIR, 'za.mp3'), rootFolder: DATA_DIR, folderName: 'F', ext: '.mp3', codec: 'mp3', durationSec: 3, albumArtKey: null, addedAt: '2026-08-01T00:00:00Z' },
     };
     const p = podcastStore.ensurePodcasts(db); p.subscriptions = []; p.episodes = {};
     podcastStore.reduceAddSubscription(p, { id: subId, name: 'Zephyr Cast', feedUrl: 'https://e.com/f.xml' });
     const epId = podcastStore.episodeIdFor(subId, 'g1');
-    podcastStore.reduceUpsertEpisodes(p, subId, [{ guid: 'g1', title: 'Zephyr Episode One', pubDateMs: 500, durationSec: 1 }], 'pending', 5000);
+    // g1 downloaded (surfaces); g2 stays pending (must NOT surface - WARNING 1).
+    podcastStore.reduceUpsertEpisodes(p, subId, [
+      { guid: 'g1', title: 'Zephyr Episode One', pubDateMs: 500, durationSec: 1 },
+      { guid: 'g2', title: 'Zephyr Pending Ep', pubDateMs: 400, durationSec: 1 },
+    ], 'pending', 5000);
     podcastStore.reduceEpisodeDownloaded(p, epId, { fileName: 'ep.mp3', filePath: path.join(DATA_DIR, 'podcasts', 'ZCast', 'ep.mp3'), bytes: 1, nowMs: 6000 });
     tvStore.ensureTv(db).episodes = {
       tve: { id: 'tve', showId: 'shZ', showName: 'Zephyr Chronicles', title: 'The Storm', seasonNum: 1, episodeNum: 1, filePath: path.join(DATA_DIR, 'zt.flac'), rootFolder: DATA_DIR, ext: '.mp4', codec: 'h264', durationSec: 20, addedAt: 200 },
@@ -123,6 +130,23 @@ test('pagination: total is the full ranked length; page = slice(offset, offset+l
   // the two pages together equal the head of the full ranked list
   assert.deepStrictEqual([...p1.items, ...p2.items].map((i) => i.id), full.items.slice(0, 6).map((i) => i.id),
     'paged order == the full ranked order sliced');
+});
+
+test('recency (gate WARNING 2): two exact-title music hits with ISO addedAt order newest-first', async () => {
+  const music = await json('/api/search?q=zephyr&type=music&limit=50');
+  const ids = music.items.filter((i) => i.resultType === 'music').map((i) => i.id);
+  const iNew = ids.indexOf('tzNew');
+  const iOld = ids.indexOf('tz');
+  assert.ok(iNew >= 0 && iOld >= 0 && iNew < iOld, `newer 2026 track before older 2024 (got ${JSON.stringify(ids)})`);
+});
+
+test('podcast episodes (gate WARNING 1): only DOWNLOADED episodes surface, never a pending one', async () => {
+  const res = await json('/api/search?q=zephyr&type=podcasts&limit=50');
+  const ids = res.items.map((i) => i.id);
+  const pendingId = podcastStore.episodeIdFor(subId, 'g2');
+  const downloadedId = podcastStore.episodeIdFor(subId, 'g1');
+  assert.ok(ids.includes(downloadedId), 'the downloaded episode surfaces');
+  assert.ok(!ids.includes(pendingId), 'the pending episode never surfaces (would 404 on click)');
 });
 
 test('empty query -> [] with total 0 (no full-library dump)', async () => {

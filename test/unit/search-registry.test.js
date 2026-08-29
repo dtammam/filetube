@@ -31,8 +31,10 @@ function fakeDb() {
         { id: 'sBlocked', name: 'Dune Blocked Show', author: 'H2' },
       ],
       episodes: {
-        e1: { id: 'e1', subId: 's1', title: 'Dune Deep Dive', pubDateMs: 100, filePath: '/pod/e1' },
-        eBlocked: { id: 'eBlocked', subId: 'sBlocked', title: 'Dune Hidden Ep', pubDateMs: 90, filePath: '/blocked/e' },
+        e1: { id: 'e1', subId: 's1', title: 'Dune Deep Dive', pubDateMs: 100, filePath: '/pod/e1', status: 'downloaded' },
+        eBlocked: { id: 'eBlocked', subId: 'sBlocked', title: 'Dune Hidden Ep', pubDateMs: 90, filePath: '/blocked/e', status: 'downloaded' },
+        ePending: { id: 'ePending', subId: 's1', title: 'Dune Pending Ep', pubDateMs: 80, filePath: '', status: 'pending' },
+        eTrashed: { id: 'eTrashed', subId: 's1', title: 'Dune Trashed Ep', pubDateMs: 70, filePath: '/pod/etr', status: 'trashed' },
       },
     },
     books: { items: {
@@ -112,6 +114,24 @@ test('chip filter narrows to one chip; all blends every provider', () => {
   const all = runSearch('dune', 'all', req, deps());
   const kinds = new Set(all.map((r) => r.resultType));
   assert.ok(kinds.size >= 5, `all blends many types, saw ${[...kinds]}`);
+});
+
+test('podcast episodes: ONLY downloaded ones surface (pending/trashed/tombstone never - gate WARNING 1)', () => {
+  const ids = runSearch('dune', 'podcasts', req, deps()).map((r) => r.id);
+  assert.ok(ids.includes('e1'), 'a downloaded episode surfaces');
+  assert.ok(!ids.includes('ePending'), 'a pending episode (never on disk) is excluded');
+  assert.ok(!ids.includes('eTrashed'), 'a user-deleted (trashed) episode never resurfaces its title');
+});
+
+test('recency uses toRecency: ISO-string addedAt orders newest-first within a tier (gate WARNING 2)', () => {
+  // two exact-title music hits, ISO-string addedAt (the real music store shape)
+  const d = deps();
+  d.db.music.tracks = {
+    older: { id: 'older', title: 'Zephyr', artist: 'A', filePath: '/mu/o', addedAt: '2024-01-01T00:00:00Z' },
+    newer: { id: 'newer', title: 'Zephyr', artist: 'B', filePath: '/mu/n', addedAt: '2026-08-01T00:00:00Z' },
+  };
+  const ids = runSearch('zephyr', 'music', req, d).map((r) => r.id);
+  assert.deepStrictEqual(ids, ['newer', 'older'], 'newer ISO addedAt first (Number(ISO) would have zeroed both -> id order)');
 });
 
 test('empty/whitespace query -> [] (no full-library dump)', () => {
