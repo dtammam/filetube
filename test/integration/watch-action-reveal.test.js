@@ -77,6 +77,12 @@ function makeStub({ mediaOk = true, authRole = 'admin' } = {}) {
         ? { ok: true, status: 200, json: async () => mediaResponse() }
         : { ok: false, status: 404, json: async () => ({ error: 'not found' }) }));
     }
+    // v1.202: the reveal barrier's THIRD input - the attribution opt-in. The
+    // real server always answers; this suite is about the media/capability
+    // race, so the flag answers at once (OFF).
+    if (url === '/api/settings' && method === 'GET') {
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ attributeControlEnabled: false, transcriptAiPrompts: [] }) });
+    }
     if (url === '/api/auth/me' && method === 'GET') {
       return authGate.promise.then(() => ({ ok: true, status: 200, json: async () => meResponse(authRole) }));
     }

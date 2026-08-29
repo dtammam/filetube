@@ -416,7 +416,14 @@ const DEFAULT_SETTINGS = {
   // validateTranscriptAiPrompts below; ids are server-assigned.
   transcriptAiPrompts: [
     { id: 'summarize', name: 'Summarize', text: "I'm sharing a video transcript below. Summarize the narrative and key points, then note anything notable or questionable." }
-  ]
+  ],
+  // v1.202 (Dean): manual channel attribution is now OPT-IN. It earned its
+  // keep once - mass re-attributing a backlog of mis-attributed older
+  // downloads - and a clean-from-the-start library never needs it. OFF hides
+  // the watch-page Attribute button and the folder-view bulk tool, and the
+  // attribution routes answer 404 (after the admin check). Settings ->
+  // Experimental.
+  attributeControlEnabled: false
 };
 
 // v1.201: shape rules for `transcriptAiPrompts` (see DEFAULT_SETTINGS).
@@ -7775,6 +7782,8 @@ function settingsResponse(settings) {
     // v1.201: the "Share with AI" prompt list (see DEFAULT_SETTINGS). Always
     // an array - a pre-v1.201 db without the key falls back to the default.
     transcriptAiPrompts: Array.isArray(settings.transcriptAiPrompts) ? settings.transcriptAiPrompts : DEFAULT_SETTINGS.transcriptAiPrompts,
+    // v1.202: the manual-attribution opt-in (see DEFAULT_SETTINGS).
+    attributeControlEnabled: settings.attributeControlEnabled === true,
     effectiveCacheMaxBytes: effectiveCacheCap(settings),
     // v1.32 (custom logo): READ-ONLY here -- managed exclusively by the
     // dedicated POST/DELETE /api/settings/logo routes below (never via the
@@ -9826,7 +9835,7 @@ app.post('/api/settings', async (req, res) => {
   // test/integration/settings-cache-api.test.js's full-shape assertion, both
   // updated in the same commit): `relocateHydratedImports` joins the set --
   // the reheat's "move a hydrated import into its channel folder" lever.
-  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'trashRetentionDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer', 'preExtractAudio', 'bgAudioSyncPosition', 'relocateHydratedImports', 'notificationsEnabled', 'transcriptAiPrompts'];
+  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'trashRetentionDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer', 'preExtractAudio', 'bgAudioSyncPosition', 'relocateHydratedImports', 'notificationsEnabled', 'transcriptAiPrompts', 'attributeControlEnabled'];
   for (const key of Object.keys(body)) {
     if (!KNOWN_KEYS.includes(key)) {
       return res.status(400).json({ error: `unknown settings key: ${key}` });
@@ -9896,6 +9905,10 @@ app.post('/api/settings', async (req, res) => {
   // v1.51: notificationsEnabled -- boolean, mirrors pruneMissing exactly.
   if ('notificationsEnabled' in body && typeof body.notificationsEnabled !== 'boolean') {
     return res.status(400).json({ error: 'notificationsEnabled must be a boolean' });
+  }
+  // v1.202: attributeControlEnabled -- boolean, mirrors pruneMissing exactly.
+  if ('attributeControlEnabled' in body && typeof body.attributeControlEnabled !== 'boolean') {
+    return res.status(400).json({ error: 'attributeControlEnabled must be a boolean' });
   }
   // v1.201: transcriptAiPrompts -- validated + NORMALIZED (trimmed, ids
   // assigned) before the merge, so what persists is always the canonical
@@ -16665,7 +16678,22 @@ app.post('/api/videos/:id/chapters', async (req, res) => {
 // library (covers dead channels whose earlier downloads were attributed at
 // capture time). Deduped by channelId when both sides know one, else by
 // channelUrl. Read-only over the cache.
+// v1.202: the attribution routes (three of the four; cancel is exempt, below) are OFF unless
+// settings.attributeControlEnabled (the Experimental opt-in). On the two
+// MUTATING routes the check sits AFTER the RBAC guard so a member still gets
+// the 403 the nets expect and an admin with the flag off gets a plain 404 -
+// "off" is real, not a hidden button. The target-list GET never had an admin
+// guard (a restriction-filtered read): everyone gets 404 while off. The bulk CANCEL route is deliberately NOT gated: a
+// job started while the flag was on must stay abortable after it is
+// turned off.
+function attributionFeatureOff(res) {
+  if (getCachedDatabase().settings.attributeControlEnabled === true) return false;
+  res.status(404).json({ error: 'Not found' });
+  return true;
+}
+
 app.get('/api/attribution-targets', (req, res) => {
+  if (attributionFeatureOff(res)) return; // v1.202 (a read-only target list, but part of the same opt-in surface)
   const db = getCachedDatabase();
   const byUrl = new Map();
   const seenChannelIds = new Set();
@@ -16786,6 +16814,7 @@ function proposeAttributionMove(db, item, identity) {
 
 app.post('/api/videos/:id/attribute-channel', async (req, res) => {
   if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
+  if (attributionFeatureOff(res)) return; // v1.202 opt-in (after the RBAC guard)
   if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
   const body = req.body || {};
   const clearing = body.clear === true;
@@ -16850,6 +16879,7 @@ app.post('/api/videos/attribute-channel-bulk', async (req, res) => {
   // is not enough). First guard, incl. the preview dry-run (no reason to preview
   // a bulk op you cannot perform).
   if (!requireModifyLibrary(req, res)) return;
+  if (attributionFeatureOff(res)) return; // v1.202 opt-in (after the RBAC guard)
   const body = req.body || {};
   const preview = body.preview === true;
   const relocate = body.relocate === true;

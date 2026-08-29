@@ -2320,5 +2320,11 @@
     "date": "2026-08-28",
     "title": "Share a transcript with your AI app, plus a tidier transcript and action bar",
     "intent": "The Transcript button gains a Share with AI option. Under Settings, Transcript sharing, you write one or more prompts (a summary request, an analysis request, whatever you usually ask) and give each a name; when you share a transcript with AI, your prompt is placed in front of the transcript in the share sheet, so you can pick Claude, Gemini, ChatGPT or any other app and it gets your request and the text together. If you have several prompts you choose one by name; with none set up the option simply does not appear. On a computer without a share sheet the button copies the prompt and transcript for pasting. Also: with timestamps off the transcript now reads as flowing paragraphs instead of one line per caption, and on a desktop the row of buttons under a video stays on one line (showing icons only when the column is narrow) instead of spilling onto a second row outside theatre mode."
+  },
+  {
+    "version": "1.202.0",
+    "date": "2026-08-29",
+    "title": "A tidier row of buttons under every video, draggable AI prompts, and channel attribution as an opt-in",
+    "intent": "The buttons under a video are now two tiers: Like, Share, Transcript and Queue stay in the row, and a More button opens the rest (Play next, Download, Delete, Move, Mark watched and any others) in the same pick-one style the app already uses. On a phone that is five icons on one line instead of ten; on a wide screen every button still shows with its name. In Settings, your Share with AI prompts can now be dragged into whatever order you like (grab the handle; arrow keys work too). And the Attribute button, which helps re-file older downloads that were saved under the wrong channel, is now off by default - turn it on under Settings, Experimental if your library needs it; it also has a proper icon at last."
   }
 ]

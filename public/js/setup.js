@@ -1326,6 +1326,14 @@ function renderTranscriptAiPromptsEditor(signal) {
       if (prompt.id) row.dataset.promptId = prompt.id;
       const head = document.createElement('div');
       head.className = 'transcript-ai-prompt-head';
+      // v1.202 (Dean: "draggable/sortable, no sort buttons"): the ONE
+      // gesture layer - wireReorderable below, with this handle as both the
+      // pointer grip and the keyboard control (arrow keys), exactly the
+      // bottom-bar editor's shape. The list order IS the saved order.
+      const handle = document.createElement('span');
+      handle.className = 'drag-handle';
+      handle.title = 'Drag to reorder';
+      head.appendChild(handle);
       const name = document.createElement('input');
       name.type = 'text';
       name.className = 'transcript-ai-prompt-name';
@@ -1355,6 +1363,43 @@ function renderTranscriptAiPromptsEditor(signal) {
         if (saveTimer) clearTimeout(saveTimer);
         saveNow();
       }, { signal });
+    });
+    wireRows();
+  }
+
+  // Re-wired after EVERY render AND after every DOM move (the helper closes
+  // over the row list and each handle's index at wire time - gate CRITICAL:
+  // without the re-wire a second gesture before a re-render scrambled the
+  // order or left the DOM disagreeing with the server). Each wiring gets its
+  // own AbortController so the previous listeners die with it; the view's
+  // signal aborts whichever wiring is current.
+  let wireCtl = null;
+  function wireRows() {
+    if (wireCtl) wireCtl.abort();
+    wireCtl = new AbortController();
+    const wireSignal = wireCtl.signal;
+    if (signal) signal.addEventListener('abort', () => wireCtl.abort(), { once: true, signal: wireSignal });
+    wireReorderable(host, {
+      rowSelector: '.transcript-ai-prompt-row',
+      handleSelector: '.drag-handle',
+      labelOf: (index) => {
+        const row = host.querySelectorAll('.transcript-ai-prompt-row')[index];
+        const typed = row ? row.querySelector('.transcript-ai-prompt-name').value.trim() : '';
+        return typed || 'prompt';
+      },
+      focusKey: 'transcript-ai-prompts',
+      onReorder: (fromIndex, toIndex) => {
+        const rows = Array.from(host.querySelectorAll('.transcript-ai-prompt-row'));
+        const row = rows[fromIndex];
+        const target = rows[toIndex];
+        if (!row || !target || row === target) return;
+        if (toIndex > fromIndex) target.after(row); else target.before(row);
+        prompts = readRows();
+        wireRows();
+        if (saveTimer) clearTimeout(saveTimer);
+        saveNow(); // a drop is a deliberate act, not a keystroke - no debounce
+      },
+      signal: wireSignal,
     });
   }
 
@@ -1396,6 +1441,9 @@ async function loadAutomationSettings() {
     // default -- mirrors autoplayNext's own prefill exactly.
     const backgroundAudioCheck = document.getElementById('background-audio-check');
     if (backgroundAudioCheck) backgroundAudioCheck.checked = !!s.backgroundAudioForVideo;
+    // v1.202: manual-attribution opt-in, OFF by default (same prefill shape).
+    const attributeControlCheck = document.getElementById('attribute-control-check');
+    if (attributeControlCheck) attributeControlCheck.checked = !!s.attributeControlEnabled;
     // v1.35: deterministic background audio, OFF by default.
     const preExtractAudioCheck = document.getElementById('pre-extract-audio-check');
     if (preExtractAudioCheck) preExtractAudioCheck.checked = !!s.preExtractAudio;
@@ -2161,6 +2209,15 @@ function wireStaticControls(signal) {
     backgroundAudioCheck.addEventListener('change', (e) => {
       saveAutomationSetting('backgroundAudioForVideo', e.target.checked,
         document.getElementById('background-audio-error'));
+    }, { signal });
+  }
+
+  // v1.202: manual-attribution opt-in - saves immediately on toggle.
+  const attributeControlCheck = document.getElementById('attribute-control-check');
+  if (attributeControlCheck) {
+    attributeControlCheck.addEventListener('change', (e) => {
+      saveAutomationSetting('attributeControlEnabled', e.target.checked,
+        document.getElementById('attribute-control-error'));
     }, { signal });
   }
 

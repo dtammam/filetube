@@ -73,7 +73,7 @@ before(async () => {
     folders: [mediaDir], folderSettings: {}, progress: {},
     metadata: { [pub.id]: pub, [hid.id]: hid },
     viewCounts: {}, liked: [],
-    settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
+    settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30, attributeControlEnabled: true }, // v1.202: OPT-IN feature, exercised ON here
   });
 
   // Three capable-but-restricted members - all HAVE the write capability, all

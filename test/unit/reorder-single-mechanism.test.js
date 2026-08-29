@@ -149,7 +149,7 @@ const ROW_SELECTORS = FILES.flatMap((f) =>
   Array.from(stripComments(f.source).matchAll(/rowSelector:\s*'([^']+)'/g)).map((m) => ({ file: f.rel, selector: m[1] }))
 );
 
-test('v1.155: exactly the five known reorder surfaces are wired, each through the shared layer', () => {
+test('v1.155/v1.202: exactly the six known reorder surfaces are wired, each through the shared layer', () => {
   // If a sixth appears, this fails and the author has to say what it is -
   // which is the point. If one DISAPPEARS, a surface silently lost its
   // reordering, which is the failure this wave could most easily have caused.
@@ -162,6 +162,9 @@ test('v1.155: exactly the five known reorder surfaces are wired, each through th
     { file: 'public/js/setup.js', selector: '.bottombar-editor-row' },
     { file: 'public/js/setup.js', selector: '.folder-item-row' },
     { file: 'public/js/setup.js', selector: '.sidebar-item[data-index]' },
+    // v1.202 (Dean: "draggable/sortable, no sort buttons"): the Transcript-
+    // sharing prompt rows. Five -> six, deliberately, through the same layer.
+    { file: 'public/js/setup.js', selector: '.transcript-ai-prompt-row' },
   ]);
 });
 
@@ -317,13 +320,13 @@ test('v1.76 (QA delta N1): prose never satisfies the lock, and never hides a rea
   assert.ok(!STYLESHEETS.includes('/*'), 'and the real sheets are stripped before matching');
 });
 
-test('v1.76: only the two Settings lists opt into keyboard reorder', () => {
+test('v1.76/v1.202: only the three Settings lists opt into keyboard reorder', () => {
   // `handleSelector` is what wires arrow keys. The sidebar surfaces are <a>
   // links where that would hijack focus scrolling, so they must NOT pass one -
   // and the two lists whose up/down buttons were deleted MUST.
   const withHandles = FILES
     .flatMap((f) => Array.from(stripComments(f.source).matchAll(/handleSelector:\s*'([^']+)'/g)).map(() => f.rel))
     .sort();
-  assert.deepEqual(withHandles, ['public/js/setup.js', 'public/js/setup.js'],
-    'exactly the bottom-bar editor and the configured-directories list');
+  assert.deepEqual(withHandles, ['public/js/setup.js', 'public/js/setup.js', 'public/js/setup.js'],
+    'exactly the bottom-bar editor, the configured-directories list and (v1.202) the transcript-prompt rows');
 });

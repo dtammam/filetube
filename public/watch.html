@@ -235,6 +235,20 @@
                 <button class="btn" id="delete-media-btn" style="color: var(--yt-red); border-color: var(--yt-red);" title="Delete video" aria-label="Delete video">
                   <i class="icon-delete"></i> <span class="btn-label">Delete</span>
                 </button>
+                <!-- v1.202 (Dean's action-row re-evaluation): in COMPACT mode
+                     (the column under 960px - phones, and desktop with the
+                     sidebar beside it) only the PRIMARY buttons stay in the row
+                     (Like, Share, Transcript, Queue - his real taps) and this
+                     "More" opens the app's pick-one modal listing every
+                     mounted SECONDARY button (Next, Download, Delete, Move,
+                     Mark watched, Reheat, Attribute) - a pick clicks the real
+                     button, so every existing handler/confirm/state is reused.
+                     Hidden in wide mode (style.css shows it via the container
+                     query); the tier list lives ONCE in watch.js
+                     (SECONDARY_ACTION_IDS) and style.css mirrors it (locked). -->
+                <button type="button" class="btn" id="more-actions-btn" title="More actions" aria-label="More actions" aria-haspopup="dialog">
+                  <i class="icon-more"></i> <span class="btn-label">More</span>
+                </button>
               </div>
             </div>
           </div>

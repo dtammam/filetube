@@ -775,6 +775,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // setupAttributeButton are ALSO called in the media-load flow (guarded), so
     // whichever of {capability, mediaData} resolves last mounts them.
     let canModifyLibrary = false;
+    // v1.202: the manual-attribution opt-in (settings.attributeControlEnabled),
+    // read once per view load alongside the current-user probe. Until it
+    // resolves (or if it fails) the control stays hidden - opt-in means the
+    // default is "not there".
+    let attributeControlEnabled = false;
     if (deleteBtn) deleteBtn.hidden = true; // hidden until the capability confirms
     // v1.96 A2 reveal-once barrier: the action row's FINAL button set depends
     // on BOTH async inputs -- the media record (Move/Like/.../Attribute) AND
@@ -789,12 +794,31 @@ if (typeof module !== 'undefined' && module.exports) {
     // longer; the v1.53 capability cache mounts it pre-reveal on warm cache.)
     let actionMediaSettled = false;
     let actionCapabilitySettled = false;
+    // v1.202 (gate): the attribution opt-in is a THIRD input to the final
+    // button set - a late settings answer used to pop Attribute in after the
+    // reveal. Settled on answer OR failure.
+    let actionFlagSettled = false;
     function maybeRevealActionBar() {
-      if (actionMediaSettled && actionCapabilitySettled) revealActionBar();
+      if (actionMediaSettled && actionCapabilitySettled && actionFlagSettled) revealActionBar();
     }
     // typeof-guarded: a minimal harness (or a page that loads watch.js without
     // common.js) leaves fetchCurrentUser undefined - the affordances then simply
     // stay hidden rather than throwing during init (the shared-global scar).
+    fetch('/api/settings')
+      .then((res) => (res && res.ok ? res.json() : null))
+      .then((settings) => {
+        if (signal.aborted) return;
+        attributeControlEnabled = !!(settings && settings.attributeControlEnabled === true);
+        // Mount now in case the user probe AND the media already resolved.
+        if (attributeControlEnabled && canModifyLibrary) setupAttributeButton();
+        actionFlagSettled = true;
+        maybeRevealActionBar();
+      })
+      .catch(() => {
+        // stays hidden - but the answer is SETTLED (no Attribute will mount)
+        actionFlagSettled = true;
+        maybeRevealActionBar();
+      });
     if (typeof fetchCurrentUser === 'function') {
       fetchCurrentUser().then(function (me) {
         canModifyLibrary = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
@@ -998,6 +1022,36 @@ if (typeof module !== 'undefined' && module.exports) {
     // modal, torn down on view abort like relocationDismiss (a body-level modal
     // survives SPA nav on its own -- the v1.49 lesson).
     let shareChoiceDismiss = null;
+    // v1.202 (Dean's action-row re-evaluation): the SECONDARY tier - hidden in
+    // compact mode (style.css mirrors this list; the tiers lock keeps them
+    // equal) and offered through the "More" pick-one instead. Order here is
+    // the pick order. PRIMARY (never here): Like, Share, Transcript, Queue.
+    const SECONDARY_ACTION_IDS = ['queue-next-btn', 'download-media-btn', 'delete-media-btn', 'move-media-btn', 'watched-media-btn', 'reheat-media-btn', 'attribute-media-btn'];
+    let moreActionsDismiss = null;
+
+    // The accessible name of a button as it reads RIGHT NOW (its label span
+    // mutates: Like/Liked, Mark watched/Watched) - the pick must say what the
+    // button says.
+    function actionLabelOf(btn) {
+      const span = btn.querySelector('.btn-label');
+      const text = span ? span.textContent.trim() : '';
+      return text || btn.getAttribute('aria-label') || btn.title || btn.id;
+    }
+
+    // Opens the pick-one of every MOUNTED, non-hidden secondary button and
+    // clicks the real one - its own handler, confirm flow and state run
+    // untouched (Delete still confirms; Download is the same <a download>).
+    function handleMoreActionsClick() {
+      const items = SECONDARY_ACTION_IDS
+        .map((id) => root.querySelector('#' + id))
+        .filter((btn) => btn && !btn.hidden && btn.style.display !== 'none' && !btn.disabled)
+        .map((btn) => ({ label: actionLabelOf(btn), onPick: () => btn.click() }));
+      if (items.length === 0) return;
+      if (moreActionsDismiss) { signal.removeEventListener('abort', moreActionsDismiss); moreActionsDismiss(); }
+      moreActionsDismiss = showChoiceModal('More', items);
+      signal.addEventListener('abort', moreActionsDismiss, { once: true });
+    }
+
     // Transcript export (Dean): the "Transcript" control (fresh per view
     // instance, like shareBtn above), the dismiss handle of whichever modal it
     // opened (desktop text-field modal or the phone share/copy picker), and
@@ -1227,6 +1281,14 @@ if (typeof module !== 'undefined' && module.exports) {
         // 3d'. Transcript export (Dean): mount the "Transcript" button when
         // the item has a caption sidecar (`mediaData.hasSubtitles`).
         setupTranscriptButton();
+
+        // 3d''. v1.202: the compact-mode "More" pick-one (static button in
+        // watch.html; shown by the container query). Wired once per view.
+        const moreBtn = root.querySelector('#more-actions-btn');
+        if (moreBtn && !moreBtn.dataset.wired) {
+          moreBtn.dataset.wired = '1';
+          moreBtn.addEventListener('click', handleMoreActionsClick, { signal });
+        }
 
         // 3e. v1.49 (Dean): mount the per-video "Reheat" button. Gated on a
         // latched yt-dlp health probe, so this is at most one extra request
@@ -2819,6 +2881,7 @@ if (typeof module !== 'undefined' && module.exports) {
       const watchActions = root.querySelector('.watch-actions');
       if (!watchActions || !mediaData) return;
       if (!canModifyLibrary) return; // v1.81 write-RBAC: attribution is a content edit
+      if (!attributeControlEnabled) return; // v1.202: opt-in (Settings -> Experimental)
       const attributed = resolveFileChannelIdentity(mediaData) !== null;
       if (attributed) {
         if (attributeBtn) { attributeBtn.remove(); attributeBtn = null; }
@@ -2832,7 +2895,7 @@ if (typeof module !== 'undefined' && module.exports) {
       attributeBtn.title = 'Attribute to a channel';
       attributeBtn.setAttribute('aria-label', 'Attribute to a channel');
       const icon = document.createElement('i');
-      icon.className = 'icon-user';
+      icon.className = 'icon-attribute'; // v1.202: a real mask (the old class had none)
       attributeBtn.appendChild(icon);
       const label = document.createElement('span');
       label.className = 'btn-label';

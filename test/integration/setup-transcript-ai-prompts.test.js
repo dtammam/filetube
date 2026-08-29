@@ -282,3 +282,52 @@ test('setup: two held POSTs released in REVERSE order - the newer list wins on s
     assert.strictEqual(rows(d)[0].querySelector('.transcript-ai-prompt-text').value, 'Two.');
   } finally { dom.window.close(); }
 });
+
+// ---- v1.202 (Dean): draggable prompt rows - the ONE gesture layer ----
+test('setup: each prompt row has a drag handle (the keyboard control too); ArrowDown on the first handle swaps the rows and POSTs the new order at once', async () => {
+  const { dom, posts } = await loadSetup({ prompts: TWO });
+  try {
+    await wait(100);
+    const d = dom.window.document;
+    const handles = Array.from(d.querySelectorAll('.transcript-ai-prompt-row .drag-handle'));
+    assert.strictEqual(handles.length, 2, 'one handle per row');
+    assert.strictEqual(handles[0].getAttribute('tabindex'), '0', 'focusable - the helper made it the keyboard affordance');
+    handles[0].focus(); // a keyboard user HAS the handle focused (gate: the unfocused dispatch was a divergent fixture)
+    handles[0].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    await wait(100);
+    assert.deepStrictEqual(rows(d).map((r) => r.dataset.promptId), ['analyze', 'summarize'], 'DOM order swapped');
+    assert.strictEqual(posts.length, 1, 'saved immediately (no debounce for a deliberate drop)');
+    assert.deepStrictEqual(posts[0].transcriptAiPrompts.map((p) => p.id), ['analyze', 'summarize'], 'the POST carries the new order');
+  } finally { dom.window.close(); }
+});
+
+// GATE (adversarial CRITICAL): the helper closes over the row list and each
+// handle's index at wire time - without a re-wire after the DOM move, the
+// SECOND gesture scrambled the order or left the DOM and server disagreeing.
+const THREE = [{ id: 'a', name: 'A', text: 'a.' }, { id: 'b', name: 'B', text: 'b.' }, { id: 'c', name: 'C', text: 'c.' }];
+const arrowDown = (dom, el) => { el.focus(); el.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })); };
+const handleOfRow = (d, i) => rows(d)[i].querySelector('.drag-handle');
+
+test('setup: two consecutive ArrowDowns on the SAME row (focused handle) end [b, c, a] even while the list is in a 400 state (no re-render to hide behind)', async () => {
+  const { dom } = await loadSetup({ prompts: THREE, postStatus: 400 });
+  try {
+    await wait(100);
+    const d = dom.window.document;
+    arrowDown(dom, handleOfRow(d, 0)); await wait(150); // a -> index 1
+    arrowDown(dom, handleOfRow(d, 1)); await wait(150); // a -> index 2 (needs the fresh wiring)
+    assert.deepStrictEqual(rows(d).map((r) => r.dataset.promptId), ['b', 'c', 'a']);
+  } finally { dom.window.close(); }
+});
+
+test('setup: a second gesture BEFORE the first POST answers is still applied, and the server ends holding the same order as the DOM', async () => {
+  const { dom, posts, released } = await loadSetup({ prompts: THREE, holdPosts: true });
+  try {
+    await wait(100);
+    const d = dom.window.document;
+    arrowDown(dom, handleOfRow(d, 0)); await wait(50);
+    arrowDown(dom, handleOfRow(d, 1)); await wait(50);
+    released.splice(0).forEach((r) => r()); await wait(150);
+    assert.deepStrictEqual(rows(d).map((r) => r.dataset.promptId), ['b', 'c', 'a'], 'DOM order');
+    assert.deepStrictEqual(posts[posts.length - 1].transcriptAiPrompts.map((p) => p.id), ['b', 'c', 'a'], 'the LAST POST carries the final order - DOM and server agree');
+  } finally { dom.window.close(); }
+});

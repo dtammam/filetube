@@ -109,7 +109,7 @@ test('A2: watch.js defines revealActionBar(), which removes data-loading', () =>
     'revealActionBar must remove the data-loading attribute (the reveal-once effect)');
 });
 
-test('A2: the reveal is BARRIERED on both async inputs (media AND capability), never one alone', () => {
+test('A2: the reveal is BARRIERED on all async inputs (media AND capability AND the v1.202 flag), never one alone', () => {
   // The row's final button set depends on BOTH the media record AND the write
   // capability (Move/Attribute mount from whichever resolves last), so the
   // reveal is gated on `actionMediaSettled && actionCapabilitySettled`. This is
@@ -118,8 +118,14 @@ test('A2: the reveal is BARRIERED on both async inputs (media AND capability), n
   // test/integration/watch-action-reveal.test.js. A bare `revealActionBar()`
   // that ignores the barrier is exactly the QA-CRITICAL-1 / adversarial-W2
   // capability-race pop-in, so assert the guarded form is present.
-  assert.match(watchJs, /function maybeRevealActionBar\(\)\s*\{\s*if \(actionMediaSettled && actionCapabilitySettled\) revealActionBar\(\);/,
-    'reveal must be gated on BOTH media and capability having settled');
+  // v1.202 DELIBERATE lock update: a THIRD input - the manual-attribution
+  // opt-in (settings.attributeControlEnabled) - joins the barrier, because
+  // Attribute mounts only once the flag is known and a late settings answer
+  // popped it in after the reveal (gate finding). Settled on answer OR
+  // failure, so a hung/failed settings fetch can never strand the reveal.
+  assert.match(watchJs, /function maybeRevealActionBar\(\)\s*\{\s*if \(actionMediaSettled && actionCapabilitySettled && actionFlagSettled\) revealActionBar\(\);/,
+    'reveal must be gated on media AND capability AND the attribution flag having settled');
+  assert.strictEqual((watchJs.match(/actionFlagSettled = true;/g) || []).length, 2, 'the flag side releases on answer AND on failure');
   // Both async paths must release their side of the barrier: the media side
   // twice (success + catch), the capability side thrice (then + catch + the
   // no-fetchCurrentUser else). Deleting any release strands the reveal --

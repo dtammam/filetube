@@ -63,7 +63,7 @@ before(async () => {
   authenticateFetch(server, base);
   saveDatabase({
     folders: [mediaDir], folderSettings: {}, progress: {}, metadata: md,
-    settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 0, defaultView: '' },
+    settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 0, defaultView: '', attributeControlEnabled: true }, // v1.202: OPT-IN feature, exercised ON here
   });
   victim = getMediaId(path.join(mediaDir, 'v0.mp4'));
 });

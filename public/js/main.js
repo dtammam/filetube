@@ -1932,10 +1932,27 @@ const PreviewCards = (function () {
     // which always fabricates a label). Container-scoped de-dupe (the
     // doubled-toggle-row lesson); explicit order: 12 in the phone block
     // (the v1.50.4 orphan-row lesson -- repull owns 11).
+    // v1.202: the bulk tool is behind the manual-attribution opt-in. This
+    // `let` is INSIDE init(root) - one per view instance - so a toggle in
+    // Settings takes effect on the next navigation, and a transient fetch
+    // failure pins only that one view OFF. Fetched only on a `?root=` view
+    // (the button cannot mount anywhere else), so no other view pays the
+    // request. null = unknown -> the button stays absent.
+    let attributeControlEnabled = null;
     function ensureAttributeFolderButton(actionsEl) {
       if (!actionsEl) return;
       const existing = actionsEl.querySelector('#attribute-folder-btn');
-      const eligible = Boolean(rootFilter) &&
+      if (attributeControlEnabled === null && rootFilter) {
+        attributeControlEnabled = false; // in flight
+        fetch('/api/settings')
+          .then((r) => (r && r.ok ? r.json() : null))
+          .then((settings) => {
+            attributeControlEnabled = !!(settings && settings.attributeControlEnabled === true);
+            if (attributeControlEnabled) ensureAttributeFolderButton(actionsEl);
+          })
+          .catch(() => { /* stays absent */ });
+      }
+      const eligible = attributeControlEnabled === true && Boolean(rootFilter) &&
         currentItems.some((it) => it && (typeof it.channelUrl !== 'string' || it.channelUrl === ''));
       if (!eligible) {
         if (existing) existing.remove();
@@ -1949,7 +1966,7 @@ const PreviewCards = (function () {
       btn.title = 'Attribute unattributed videos in this folder to a channel';
       btn.setAttribute('aria-label', 'Attribute unattributed videos in this folder to a channel');
       const icon = document.createElement('i');
-      icon.className = 'icon-user';
+      icon.className = 'icon-attribute'; // v1.202: the same real mask as the watch-page control
       btn.appendChild(icon);
       const label = document.createElement('span');
       label.className = 'btn-label';
