@@ -1396,6 +1396,9 @@ async function loadAutomationSettings() {
     // default -- mirrors autoplayNext's own prefill exactly.
     const backgroundAudioCheck = document.getElementById('background-audio-check');
     if (backgroundAudioCheck) backgroundAudioCheck.checked = !!s.backgroundAudioForVideo;
+    // v1.202: manual-attribution opt-in, OFF by default (same prefill shape).
+    const attributeControlCheck = document.getElementById('attribute-control-check');
+    if (attributeControlCheck) attributeControlCheck.checked = !!s.attributeControlEnabled;
     // v1.35: deterministic background audio, OFF by default.
     const preExtractAudioCheck = document.getElementById('pre-extract-audio-check');
     if (preExtractAudioCheck) preExtractAudioCheck.checked = !!s.preExtractAudio;
@@ -2161,6 +2164,15 @@ function wireStaticControls(signal) {
     backgroundAudioCheck.addEventListener('change', (e) => {
       saveAutomationSetting('backgroundAudioForVideo', e.target.checked,
         document.getElementById('background-audio-error'));
+    }, { signal });
+  }
+
+  // v1.202: manual-attribution opt-in - saves immediately on toggle.
+  const attributeControlCheck = document.getElementById('attribute-control-check');
+  if (attributeControlCheck) {
+    attributeControlCheck.addEventListener('change', (e) => {
+      saveAutomationSetting('attributeControlEnabled', e.target.checked,
+        document.getElementById('attribute-control-error'));
     }, { signal });
   }
 

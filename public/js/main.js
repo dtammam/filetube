@@ -1932,10 +1932,24 @@ const PreviewCards = (function () {
     // which always fabricates a label). Container-scoped de-dupe (the
     // doubled-toggle-row lesson); explicit order: 12 in the phone block
     // (the v1.50.4 orphan-row lesson -- repull owns 11).
+    // v1.202: the bulk tool is behind the manual-attribution opt-in. The flag
+    // is fetched once per view (null = unknown -> the button stays absent) and
+    // the mount re-runs when it resolves.
+    let attributeControlEnabled = null;
     function ensureAttributeFolderButton(actionsEl) {
       if (!actionsEl) return;
       const existing = actionsEl.querySelector('#attribute-folder-btn');
-      const eligible = Boolean(rootFilter) &&
+      if (attributeControlEnabled === null) {
+        attributeControlEnabled = false; // in flight
+        fetch('/api/settings')
+          .then((r) => (r && r.ok ? r.json() : null))
+          .then((settings) => {
+            attributeControlEnabled = !!(settings && settings.attributeControlEnabled === true);
+            if (attributeControlEnabled) ensureAttributeFolderButton(actionsEl);
+          })
+          .catch(() => { /* stays absent */ });
+      }
+      const eligible = attributeControlEnabled === true && Boolean(rootFilter) &&
         currentItems.some((it) => it && (typeof it.channelUrl !== 'string' || it.channelUrl === ''));
       if (!eligible) {
         if (existing) existing.remove();

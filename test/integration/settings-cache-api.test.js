@@ -121,6 +121,9 @@ test('GET /api/settings returns the full-shape settings projection with backfill
     // default prompt so the action works on day one; an empty list hides it.
     // See server.js DEFAULT_SETTINGS.
     transcriptAiPrompts: [{ id: 'summarize', name: 'Summarize', text: "I'm sharing a video transcript below. Summarize the narrative and key points, then note anything notable or questionable." }],
+    // v1.202 DELIBERATE key-set change: manual channel attribution is OPT-IN,
+    // OFF by default (Dean: a clean-from-the-start library never needs it).
+    attributeControlEnabled: false,
   });
 });
 

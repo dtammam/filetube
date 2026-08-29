@@ -26,7 +26,7 @@ const CSS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 's
 // controls that may carry the barrier (foreign-fetch controls must not, or they
 // would reveal early with stale content - the v1.96 partial-render lesson).
 const SETTINGS_FED = [
-  'autoplay-next-check', 'background-audio-check', 'pre-extract-audio-check',
+  'autoplay-next-check', 'background-audio-check', 'pre-extract-audio-check', 'attribute-control-check', // v1.202
   'bg-audio-sync-check', // v1.121: the position pre-sync toggle joins the fed set
   'relocate-hydrated-check', 'notifications-enabled-check', 'mobile-custom-player-check',
   'prune-missing-check',
@@ -55,9 +55,10 @@ test('setup.html: NO foreign-fetch control carries the barrier (no early-reveal 
   }
 });
 
-test('setup.html: exactly 8 reveal-toggle barriers exist (matches the /api/settings-fed set)', () => {
+test('setup.html: exactly 9 reveal-toggle barriers exist (matches the /api/settings-fed set)', () => {
   // v1.121 DELIBERATE count bump (7 -> 8): the bg-audio-sync-check toggle.
-  assert.strictEqual((SETUP_HTML.match(/class="reveal-toggle" data-loading/g) || []).length, 8);
+  // v1.202 DELIBERATE count bump (8 -> 9): the attribute-control-check opt-in.
+  assert.strictEqual((SETUP_HTML.match(/class="reveal-toggle" data-loading/g) || []).length, 9);
 });
 
 test('style.css: .reveal-toggle[data-loading] reuses the shared v1.96 sweep barrier', () => {
@@ -86,7 +87,7 @@ const barrierCount = (doc) => doc.querySelectorAll('.reveal-toggle[data-loading]
 
 test('loadAutomationSettings: reveals every toggle AND applies the server values (success)', async () => {
   const { mod, dom } = loadSetupInDom();
-  assert.strictEqual(barrierCount(dom.window.document), 8, 'all 8 shimmer before the fetch'); // v1.121: +bg-audio-sync-check
+  assert.strictEqual(barrierCount(dom.window.document), 9, 'all 8 shimmer before the fetch'); // v1.121: +bg-audio-sync-check
 
   global.fetch = async () => ({
     json: async () => ({
@@ -98,6 +99,7 @@ test('loadAutomationSettings: reveals every toggle AND applies the server values
       // v1.121 gate W2: sent ON (flips from the static unchecked default) --
       // proves the populate line actually applies the server value.
       bgAudioSyncPosition: true,
+      attributeControlEnabled: true, // v1.202: sent ON (flips from the static unchecked default)
     }),
   });
   await mod.loadAutomationSettings();
@@ -109,6 +111,7 @@ test('loadAutomationSettings: reveals every toggle AND applies the server values
   assert.strictEqual(g('autoplay-next-check'), true, 'flipped ON from the static default');
   assert.strictEqual(g('prune-missing-check'), false, 'flipped OFF from the static `checked`');
   assert.strictEqual(g('bg-audio-sync-check'), true, 'v1.121: presync toggle flipped ON from the static default (populate line bound)');
+  assert.strictEqual(g('attribute-control-check'), true, 'v1.202: the attribution opt-in flipped ON from the static default (populate line bound)');
   dom.window.close();
 });
 

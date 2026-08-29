@@ -775,6 +775,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // setupAttributeButton are ALSO called in the media-load flow (guarded), so
     // whichever of {capability, mediaData} resolves last mounts them.
     let canModifyLibrary = false;
+    // v1.202: the manual-attribution opt-in (settings.attributeControlEnabled),
+    // read once per view load alongside the current-user probe. Until it
+    // resolves (or if it fails) the control stays hidden - opt-in means the
+    // default is "not there".
+    let attributeControlEnabled = false;
     if (deleteBtn) deleteBtn.hidden = true; // hidden until the capability confirms
     // v1.96 A2 reveal-once barrier: the action row's FINAL button set depends
     // on BOTH async inputs -- the media record (Move/Like/.../Attribute) AND
@@ -795,6 +800,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // typeof-guarded: a minimal harness (or a page that loads watch.js without
     // common.js) leaves fetchCurrentUser undefined - the affordances then simply
     // stay hidden rather than throwing during init (the shared-global scar).
+    fetch('/api/settings')
+      .then((res) => (res && res.ok ? res.json() : null))
+      .then((settings) => {
+        if (signal.aborted) return;
+        attributeControlEnabled = !!(settings && settings.attributeControlEnabled === true);
+        // Mount now in case the user probe AND the media already resolved.
+        if (attributeControlEnabled && canModifyLibrary) setupAttributeButton();
+      })
+      .catch(() => { /* stays hidden */ });
     if (typeof fetchCurrentUser === 'function') {
       fetchCurrentUser().then(function (me) {
         canModifyLibrary = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
@@ -2819,6 +2833,7 @@ if (typeof module !== 'undefined' && module.exports) {
       const watchActions = root.querySelector('.watch-actions');
       if (!watchActions || !mediaData) return;
       if (!canModifyLibrary) return; // v1.81 write-RBAC: attribution is a content edit
+      if (!attributeControlEnabled) return; // v1.202: opt-in (Settings -> Experimental)
       const attributed = resolveFileChannelIdentity(mediaData) !== null;
       if (attributed) {
         if (attributeBtn) { attributeBtn.remove(); attributeBtn = null; }
