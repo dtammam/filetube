@@ -80,6 +80,47 @@
 
 ## Shipped
 
+### v1.207.0 - Pick a song, land in its album (and keep it) (2026-08-29)
+
+Dean's friction: searched a song, loved it, wanted the next track on the album -
+but playing a song left him in the flat list; he had to go Music -> Albums ->
+scroll -> find it -> pick, and the mini-player round-trip reset to the default
+view. Intake: every new song -> its album view; an album-less track stays put.
+
+**What shipped.**
+- **Pick a song -> its ALBUM view.** playTrackInAlbum drills into the track's
+  album (drill -> render()), so the album is the browse view AND the up-next
+  queue (next/prev walk the album). Reuses the proven album-card path; never
+  rebuilds the battle-won queue engine. Applies to a song-row tap and to
+  ?play= (search / card deep-links); an album-less track plays in place.
+- **The album persists across the mini-player.** A dock-tap return
+  (?nowplaying=1) restores the now-playing track's album drill as the browse
+  view - drill is set BEFORE the single render() so it never races
+  rebuildPlayingQueue (the v1.104 desync scar); lock-screen Prev/Next are
+  registered around the playing track in the album.
+
+**What the gate caught (3 rounds).**
+- A rapid cross-album double-tap could play the WRONG track (auto-play racing
+  two album loads) - fixed with a select-generation guard (bail before playAt
+  if superseded).
+- A RESIDUAL of that: the loser's late album load clobbered the queue back
+  under the winner's already-registered nav, so Prev/Next then played a
+  wrong-ALBUM track - fixed at the shared side-effect (loadSongs claims a
+  generation and a superseded load never writes the module queue/ctx). Both
+  mutation-bound.
+- Three unbound test claims (nav index, the scar guard, the same-album re-tap)
+  tightened to real binds.
+
+Full gate, 3 rounds, both seats APPROVE. Dual-Node 7823/0 (Node 22 + 24).
+**Dean's device pass PENDING.**
+
+**Disclosed behaviour changes (Dean's "every new song -> album" call).** Playing
+a song now scopes next/prev to that one album: the flat Songs tab's "play all"
+and an artist page's "play the whole artist" both end at the first tap (the tap
+hands off to the track's album). A rapid cross-album double-tap can leave a
+transient, self-healing header/list cosmetic mismatch (pre-existing
+unserialized-render artifact; no wrong audio). On Dean's probe list.
+
 ### v1.206.0 - Tiered Dependabot auto-merge (reverses v1.148's no-auto-merge) (2026-08-29)
 
 Dean (2026-08-29) REVERSES the v1.148 "NO AUTO-MERGE, EVER" decision in favour
