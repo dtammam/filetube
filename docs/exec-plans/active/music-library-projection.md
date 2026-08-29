@@ -93,9 +93,11 @@ Because `BACKUP_NAMESPACE_KEYS` (`server.js:9437`) already lists the whole
 `'music'` container, `db.music.channels` **rides the backup export AND restore
 for free** - no edit to that list, so the "restore erases an unregistered
 namespace" scar (v1.198 `db.tv`) is structurally avoided. Registration sites
-(Task T1) - a `doc_kv` namespace `music.channels`:
-- `lib/db/sqlite.js:59` `DOC_KV_NAMESPACES` (+ `KNOWN_SUBKEYS` so `save()` does
-  NOT throw on the new sub-key; the unknown-subkey guard is `sqlite.js:1027`).
+(Task T1) - a `doc_single` (SINGLETON) namespace `music.channels` (same
+singleton shape + folderName keying as `folderDisplayNames`):
+- `lib/db/sqlite.js` `SINGLETON_NAMES` (+ `KNOWN_SUBKEYS` derives from it so
+  `save()` does NOT throw on the new sub-key; the unknown-subkey guard is
+  `sqlite.js:1027`).
 - `server.js` `loadDatabase()` (~530): backfill `db.music = db.music||{}`,
   `db.music.channels = db.music.channels||{}` (there is NO music container
   backfill loop today - only books/ytdlp - so add one).

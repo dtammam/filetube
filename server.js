@@ -537,6 +537,13 @@ function loadDatabase() {
       if (!db.ytdlp[k] || typeof db.ytdlp[k] !== 'object' || Array.isArray(db.ytdlp[k])) db.ytdlp[k] = {};
     }
   }
+  // Wave G: when the music container exists, backfill `channels` (the per-folder
+  // "show in Music" marks) the same way books.progress/ytdlp.downloadMeta are
+  // backfilled - so the eligibility predicate and the write route never touch an
+  // undefined. music.tracks/folders/settings stay musicStore-owned (lazy ensure).
+  if (db.music && typeof db.music === 'object') {
+    if (!db.music.channels || typeof db.music.channels !== 'object' || Array.isArray(db.music.channels)) db.music.channels = {};
+  }
   db.settings = withDefaultSettings(db.settings); // backfill for older databases
   return db;
 }
