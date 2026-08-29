@@ -676,8 +676,13 @@ test('v1.149 main.js source locks: the scope rides the query only under a search
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
   assert.match(src, /if \(searchQuery && activeSearchScope !== 'all'\) queryParams\.push\(`searchIn=\$\{encodeURIComponent\(activeSearchScope\)\}`\)/,
     'buildVideosApiUrl sends searchIn only for a non-default scope during a search');
-  assert.strictEqual((src.match(/searchQuery && !likedFilter && sectionActions && !sectionActions\.querySelector\('#library-search-scope-toggle'\)/g) || []).length, 2,
-    'both toolbar render sites exist, search-gated and liked-excluded (gate S2 tightened the original search-only guard)');
+  // v1.205 Wave B: the two toolbar sites are still search-gated + liked-
+  // excluded, but each now BRANCHES: a global search mounts the type-chip row,
+  // a folder/root search keeps the video-only scope toggle.
+  assert.strictEqual((src.match(/searchQuery && !likedFilter && sectionActions/g) || []).length, 2,
+    'both toolbar render sites exist, search-gated and liked-excluded');
+  assert.strictEqual((src.match(/!isUnifiedSearch && !sectionActions\.querySelector\('#library-search-scope-toggle'\)/g) || []).length, 2,
+    'the video-only searchIn scope toggle mounts ONLY for a non-unified (folder/root) search, at both sites');
 });
 
 test('v1.149 gate round 1: main.js source locks - deep-link init, ctx threading, and the liked-view mount exclusion', () => {
@@ -691,6 +696,9 @@ test('v1.149 gate round 1: main.js source locks - deep-link init, ctx threading,
   // W1: the scope rides the watch-page list context.
   assert.match(src, /searchIn: activeSearchScope/, 'encodeListContext receives the live scope');
   // S2: no scope toggle over a Liked view (its endpoint ignores search).
-  assert.strictEqual((src.match(/searchQuery && !likedFilter && sectionActions && !sectionActions\.querySelector\('#library-search-scope-toggle'\)/g) || []).length, 2,
+  // v1.205: the scope-toggle mount is now the else-branch of the type-chip row.
+  assert.strictEqual((src.match(/searchQuery && !likedFilter && sectionActions/g) || []).length, 2,
     'both mount sites are search-gated AND liked-excluded');
+  assert.strictEqual((src.match(/!isUnifiedSearch && !sectionActions\.querySelector\('#library-search-scope-toggle'\)/g) || []).length, 2,
+    'the scope toggle is gated to a non-unified search at both sites');
 });

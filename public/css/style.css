@@ -1602,6 +1602,28 @@ html.reader-immersive .app-container { padding-top: 0; }
   background-color: var(--yt-red);
 }
 
+/* v1.205 Wave B: the unified-search content-type chip row - the .format-toggle
+   recipe, but seven chips overflow one row on a phone, so let it wrap. */
+.search-type-chips {
+  flex-wrap: wrap;
+}
+
+/* v1.205: the small TYPE badge on a unified-search result card (Video / Music /
+   Show / ...). A quiet pill at the top of the info row - deliberately NOT an
+   overlay, so it never collides with the four configurable corner controls. */
+.card-type-badge {
+  display: inline-block;
+  align-self: flex-start;
+  margin-bottom: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  line-height: 1.2; /* token-exempt: pill text metrics */
+}
+
 /* v1.17.0 FR-3(b), T2: home/library card trash-can affordance. A sibling of
    .thumbnail-container (not a child -- a <button> can't nest inside the
    card's <a>), positioned via .video-card's own `position: relative` over

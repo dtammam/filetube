@@ -646,7 +646,50 @@ function cardKindPresentation(item) {
       canQueue: false // books do not queue (Dean's ruling 7)
     };
   }
+  // v1.205 Wave B: TV shows/episodes as unified-search result cards. An
+  // episode opens the shared watch page (?tv=, tv.js's own openEpisode); a
+  // show opens the Shows page scrolled to it (/tv?show=, tv.js reads it on
+  // load). TV cards are NOT card-downloadable/likeable/queueable (no such
+  // routes), so downloadHref is '' (the download arm skips an empty href) and
+  // likeable:false suppresses the like corner.
+  if (kind === 'tv-episode') {
+    return {
+      kind,
+      href: '/watch.html?tv=' + encId,
+      thumbSrc: '/tvthumb/' + encId,
+      uploaderLabel: item.showName || 'Shows',
+      uploaderHref: item.showId ? '/tv?show=' + encodeURIComponent(String(item.showId)) : '/tv',
+      downloadHref: '',
+      canQueue: false,
+      likeable: false,
+    };
+  }
+  if (kind === 'tv-show') {
+    return {
+      kind,
+      href: '/tv?show=' + encId,
+      thumbSrc: item.posterEpisodeId ? '/tvthumb/' + encodeURIComponent(String(item.posterEpisodeId)) : '/tvposter/' + encId,
+      uploaderLabel: 'Shows',
+      uploaderHref: '/tv',
+      downloadHref: '',
+      canQueue: false,
+      likeable: false,
+    };
+  }
   return null;
+}
+
+// v1.205 Wave B: the small TYPE badge shown on a unified-search result card
+// (only when the server tagged the item with a resultType). Maps the eight
+// provider resultTypes to a short human label; '' for a plain library item
+// (no resultType) so a normal /api/videos card renders no badge.
+const SEARCH_RESULT_BADGE = {
+  video: 'Video', audio: 'Audio', music: 'Music',
+  'podcast-show': 'Podcast', 'podcast-episode': 'Episode',
+  'tv-show': 'Show', 'tv-episode': 'Episode', book: 'Book',
+};
+function searchResultBadgeLabel(resultType) {
+  return (typeof resultType === 'string' && SEARCH_RESULT_BADGE[resultType]) || '';
 }
 
 function buildCardCornerControlHtml(control, cornerClass, item, caps) {
@@ -658,6 +701,8 @@ function buildCardCornerControlHtml(control, cornerClass, item, caps) {
       // A non-media save rides its kind's ?download=1 route; the server's
       // Content-Disposition names the file, so the download attr is bare.
       if (kp) {
+        // v1.205: a kind with no card-download route (TV) renders nothing here.
+        if (!kp.downloadHref) return '';
         return `<a class="card-download-btn ${cornerClass}" href="${escapeBookRowHtml(kp.downloadHref)}" download aria-label="Save to device" title="Save to device">
               <i class="icon-download"></i>
             </a>`;
@@ -675,6 +720,8 @@ function buildCardCornerControlHtml(control, cornerClass, item, caps) {
               <i class="icon-delete"></i><span class="card-delete-confirm">Sure?</span>
             </button>`;
     case 'like':
+      // v1.205: a kind with no like route (TV) renders nothing here.
+      if (kp && kp.likeable === false) return '';
       return `<button type="button" class="card-like-btn${item.liked ? ' liked' : ''} ${cornerClass}" data-id="${id}"${kindAttr} aria-label="${item.liked ? 'Unlike' : 'Like'}" aria-pressed="${item.liked ? 'true' : 'false'}" title="Like">
               <i class="icon-heart"></i>
             </button>`;
@@ -817,6 +864,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildCardCorners,
     buildCardCornerButtonsHtml,
     cardKindPresentation,
+    searchResultBadgeLabel,
     CARD_CORNER_CONTROLS,
   };
 }
@@ -1190,6 +1238,14 @@ const PreviewCards = (function () {
     let activeSearchScope = (typeof normalizeSearchScopeMode === 'function')
       ? normalizeSearchScopeMode(urlParams.get('searchIn'))
       : 'all';
+    // v1.205 Wave B: the unified-search content-TYPE chip (All | Videos | Audio
+    // | Music | Podcasts | Shows | Books). Deep-linkable via ?type= (whitelist
+    // -> 'all'); unpersisted, like the searchIn scope. Used ONLY for a global
+    // header search (isUnifiedSearch below); a folder/root search keeps the
+    // video-only searchIn toggle.
+    let activeSearchType = (typeof normalizeSearchTypeChip === 'function')
+      ? normalizeSearchTypeChip(urlParams.get('type'))
+      : 'all';
     const folderFilter = urlParams.get('folder') || '';
     // mapped folder (recursive) -- `let` because a bare home load (no query
     // param at all) may apply the configured item-4 defaultView in its place
@@ -1219,6 +1275,12 @@ const PreviewCards = (function () {
     const subsFilter = urlParams.get('subs') === '1';
     const forceGrid = urlParams.get('browse') === '1';
     const isBareHome = !searchQuery && !folderFilter && !rootFilter && !likedFilter && !subsFilter;
+    // v1.205 Wave B: a GLOBAL header search (a query with no folder/root/liked/
+    // subs scope) is the UNIFIED cross-content search - it hits /api/search and
+    // shows the content-type chip row. A search WITHIN a folder/root/liked scope
+    // keeps the classic video-only /api/videos path + its searchIn toggle, so
+    // nothing about the existing scoped-search behaviour changes.
+    const isUnifiedSearch = !!searchQuery && !folderFilter && !rootFilter && !likedFilter && !subsFilter;
     // v1.84 Modern Mode wins the bare-home layout race: precedence modern > feed
     // > classic (resolveHomeLayout is the pure, unit-bound decision). Modern
     // renders a FLAT chip-filtered grid of rich cards into the SAME #video-grid
@@ -1390,6 +1452,10 @@ const PreviewCards = (function () {
       if (!searchQuery && sectionActions) {
         const staleScope = sectionActions.querySelector('#library-search-scope-toggle');
         if (staleScope && staleScope.parentNode) staleScope.parentNode.removeChild(staleScope);
+        // v1.205: also drop a prior unified-search TYPE chip row (same cached-
+        // view cleanup posture) so a non-search render never inherits it.
+        const staleTypeChips = sectionActions.querySelector('#library-search-type-chips');
+        if (staleTypeChips && staleTypeChips.parentNode) staleTypeChips.parentNode.removeChild(staleTypeChips);
         sectionActions.classList.remove('search-scoped-toolbar');
       }
       // v1.149: the search-scope toggle - SEARCH VIEWS ONLY (the guard is the
@@ -1399,22 +1465,39 @@ const PreviewCards = (function () {
       // is known synchronously from the URL). On change: state + URL
       // (replaceState keeps the deep link shareable without a history spam
       // entry per click) + the same resetAndReload the siblings use.
-      if (!modernMode && searchQuery && !likedFilter && sectionActions && !sectionActions.querySelector('#library-search-scope-toggle')) {
+      if (!modernMode && searchQuery && !likedFilter && sectionActions) {
         // v1.150 (Dean's device report): mark the toolbar as search-scoped so
         // mobile CSS collapses it into ONE scrollable strip instead of the
         // v1.50 two-row layout (whose zero-slack budget orphaned this toggle
         // onto a third row). Removed by the non-search cleanup below.
         sectionActions.classList.add('search-scoped-toolbar');
-        renderSearchScopeToggle(sectionActions, activeSearchScope, (mode) => {
-          activeSearchScope = mode;
-          try {
-            const u = new URL(window.location.href);
-            if (mode === 'all') u.searchParams.delete('searchIn');
-            else u.searchParams.set('searchIn', mode);
-            history.replaceState(null, '', u);
-          } catch (_) { /* URL/history quirk - the in-view state still drives the fetch */ }
-          resetAndReload();
-        });
+        // v1.205 Wave B: a GLOBAL search shows the content-TYPE chip row;
+        // a folder/root-scoped search keeps the video-only searchIn toggle.
+        if (isUnifiedSearch && typeof renderSearchTypeChips === 'function') {
+          if (!sectionActions.querySelector('#library-search-type-chips')) {
+            renderSearchTypeChips(sectionActions, activeSearchType, (chip) => {
+              activeSearchType = chip;
+              try {
+                const u = new URL(window.location.href);
+                if (chip === 'all') u.searchParams.delete('type');
+                else u.searchParams.set('type', chip);
+                history.replaceState(null, '', u);
+              } catch (_) { /* URL/history quirk - the in-view state still drives the fetch */ }
+              resetAndReload();
+            });
+          }
+        } else if (!isUnifiedSearch && !sectionActions.querySelector('#library-search-scope-toggle')) {
+          renderSearchScopeToggle(sectionActions, activeSearchScope, (mode) => {
+            activeSearchScope = mode;
+            try {
+              const u = new URL(window.location.href);
+              if (mode === 'all') u.searchParams.delete('searchIn');
+              else u.searchParams.set('searchIn', mode);
+              history.replaceState(null, '', u);
+            } catch (_) { /* URL/history quirk - the in-view state still drives the fetch */ }
+            resetAndReload();
+          });
+        }
       }
       // v1.102 (tranche 4 shimmer): the Library folder list built after
       // /api/config with no placeholder - a blank rail until the fetch landed.
@@ -1815,6 +1898,18 @@ const PreviewCards = (function () {
     // explicit `limit` (never relies on the server's own default), and the
     // CURRENT reset's `seed`.
     function buildVideosApiUrl(offset) {
+      // v1.205 Wave B: a global header search rides the UNIFIED endpoint,
+      // blended across every media type. Same {items,total,offset,limit}
+      // contract as /api/videos, so the render + infinite scroll + total
+      // handling below are unchanged. sort/format/watch/seed do not apply to a
+      // cross-type ranked stream (ranking is server-authoritative).
+      if (isUnifiedSearch) {
+        const p = [`q=${encodeURIComponent(searchQuery)}`];
+        if (activeSearchType !== 'all') p.push(`type=${encodeURIComponent(activeSearchType)}`);
+        p.push(`limit=${HOME_PAGE_LIMIT}`);
+        p.push(`offset=${offset}`);
+        return `/api/search?${p.join('&')}`;
+      }
       const queryParams = [];
       if (searchQuery) queryParams.push(`search=${encodeURIComponent(searchQuery)}`);
       // v1.149: the scope narrows server-side (pagination must stay honest
@@ -1943,19 +2038,35 @@ const PreviewCards = (function () {
         renderWatchToggle(sectionActions, getStoredWatchFilter(), () => resetAndReload());
       }
       // v1.149: the guarded re-render twin of the search-scope toggle (same
-      // rare-path rationale as the siblings directly above).
-      if (searchQuery && !likedFilter && sectionActions && !sectionActions.querySelector('#library-search-scope-toggle')) {
+      // rare-path rationale as the siblings directly above). v1.205 Wave B: the
+      // twin branch to the type-chip row for a global search (site 2).
+      if (searchQuery && !likedFilter && sectionActions) {
         sectionActions.classList.add('search-scoped-toolbar'); // v1.150: the mobile strip marker (twin of site 1)
-        renderSearchScopeToggle(sectionActions, activeSearchScope, (mode) => {
-          activeSearchScope = mode;
-          try {
-            const u = new URL(window.location.href);
-            if (mode === 'all') u.searchParams.delete('searchIn');
-            else u.searchParams.set('searchIn', mode);
-            history.replaceState(null, '', u);
-          } catch (_) { /* URL/history quirk - the in-view state still drives the fetch */ }
-          resetAndReload();
-        });
+        if (isUnifiedSearch && typeof renderSearchTypeChips === 'function') {
+          if (!sectionActions.querySelector('#library-search-type-chips')) {
+            renderSearchTypeChips(sectionActions, activeSearchType, (chip) => {
+              activeSearchType = chip;
+              try {
+                const u = new URL(window.location.href);
+                if (chip === 'all') u.searchParams.delete('type');
+                else u.searchParams.set('type', chip);
+                history.replaceState(null, '', u);
+              } catch (_) { /* URL/history quirk - the in-view state still drives the fetch */ }
+              resetAndReload();
+            });
+          }
+        } else if (!isUnifiedSearch && !sectionActions.querySelector('#library-search-scope-toggle')) {
+          renderSearchScopeToggle(sectionActions, activeSearchScope, (mode) => {
+            activeSearchScope = mode;
+            try {
+              const u = new URL(window.location.href);
+              if (mode === 'all') u.searchParams.delete('searchIn');
+              else u.searchParams.set('searchIn', mode);
+              history.replaceState(null, '', u);
+            } catch (_) { /* URL/history quirk - the in-view state still drives the fetch */ }
+            resetAndReload();
+          });
+        }
       }
       // v1.53 (Dean): the bulk-attribution control for folder views (data-
       // dependent - it needs the fetched items to know eligibility, so it stays
@@ -2342,6 +2453,7 @@ const PreviewCards = (function () {
             ${cardCorners.html}
           </div>
           <div class="video-info">
+            ${item.resultType ? `<span class="card-type-badge">${escapeHtml(searchResultBadgeLabel(item.resultType))}</span>` : ''}
             ${feedHideable
               ? `<button type="button" class="card-feedhide-btn" data-id="${escapeHtml(item.id)}" aria-label="Hide from feed" title="Hide from feed"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2c1.85 0 3.55.63 4.9 1.69L5.69 16.9A7.95 7.95 0 0 1 4 12a8 8 0 0 1 8-8zm0 16a7.96 7.96 0 0 1-4.9-1.69L18.31 7.1A7.95 7.95 0 0 1 20 12a8 8 0 0 1-8 8z" fill="currentColor"/></svg></button>`
               : ''}
