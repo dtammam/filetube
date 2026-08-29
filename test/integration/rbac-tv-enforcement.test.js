@@ -90,6 +90,18 @@ test('TV: the shows grid + show detail omit the restricted show for a member; ad
   assert.deepStrictEqual(adminShows, ['sh-blk', 'sh-ok'], 'admin sees both shows');
 });
 
+test('TV: /api/search hides the restricted show AND episode from a member; admin sees both (v1.205 Wave B leak proof for the tv providers)', async () => {
+  const ids = (r) => ((r.items) || []).map((i) => i.id);
+  const memberShow = ids(await (await asMember('/api/search?q=Adult&type=shows&limit=50')).json());
+  assert.ok(!memberShow.includes('sh-blk'), '/api/search tv-show provider hides the restricted show');
+  const memberEp = ids(await (await asMember('/api/search?q=Pilot&type=shows&limit=50')).json());
+  assert.ok(!memberEp.includes('blk'), '/api/search tv-episode provider hides the restricted episode');
+  const adminShow = ids(await (await asAdmin('/api/search?q=Adult&type=shows&limit=50')).json());
+  assert.ok(adminShow.includes('sh-blk'), 'admin /api/search finds the tv-show (discrimination)');
+  const adminEp = ids(await (await asAdmin('/api/search?q=Pilot&type=shows&limit=50')).json());
+  assert.ok(adminEp.includes('blk'), 'admin /api/search finds the tv-episode');
+});
+
 test('TV: the poster never leaks the restricted show to a member (placeholder), but serves it to admin', async () => {
   const memberPoster = await asMember('/tvposter/sh-blk');
   assert.match(memberPoster.headers.get('content-type') || '', /image\/svg\+xml/, 'member gets the SVG placeholder, not the real poster');

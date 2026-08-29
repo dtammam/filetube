@@ -275,6 +275,32 @@ test('v1.203: transcript is a canonical control (resolves) and dedupes across co
   assert.strictEqual((html.match(/card-transcript-btn/g) || []).length, 1, 'rendered once (the dedupe rule)');
 });
 
+// ---- v1.205 Wave B: TV kinds route + suppress N/A corner controls ----------
+
+test('v1.205: cardKindPresentation - tv-episode (watch ?tv=) and tv-show (/tv?show=) arms', () => {
+  const ep = cardKindPresentation({ id: 'tve', kind: 'tv-episode', showId: 'shZ', showName: 'Zephyr Chronicles' });
+  assert.strictEqual(ep.href, '/watch.html?tv=tve', 'episode opens the shared watch page');
+  assert.strictEqual(ep.thumbSrc, '/tvthumb/tve');
+  assert.strictEqual(ep.uploaderHref, '/tv?show=shZ', 'byline links to the show');
+  assert.strictEqual(ep.downloadHref, '', 'no card download route');
+  assert.strictEqual(ep.canQueue, false);
+  assert.strictEqual(ep.likeable, false);
+  const show = cardKindPresentation({ id: 'shZ', kind: 'tv-show', posterEpisodeId: 'tve' });
+  assert.strictEqual(show.href, '/tv?show=shZ', 'show opens the Shows page scrolled to it');
+  assert.strictEqual(show.thumbSrc, '/tvthumb/tve', 'poster from the representative episode');
+});
+
+test('v1.205: a TV card suppresses the download AND like corners (no such routes) even when assigned', () => {
+  for (const kind of ['tv-episode', 'tv-show']) {
+    const item = { id: 'x', kind, title: 'T', showId: 'shZ', liked: false };
+    // assign download TL, like BL, delete TR - all should render nothing on TV
+    const html = buildCardCornerButtonsHtml(item, { cornerTL: 'download', cornerTR: 'delete', cornerBL: 'like', cornerBR: 'none' }, { canModifyLibrary: true });
+    assert.ok(!html.includes('card-download-btn'), `${kind}: no download button (empty href would be broken)`);
+    assert.ok(!html.includes('card-like-btn'), `${kind}: no like button (no like route)`);
+    assert.ok(!html.includes('card-delete-btn'), `${kind}: no delete (kp suppresses it)`);
+  }
+});
+
 // ---- v1.204: the fourth (bottom-right) slot ---------------------------------
 
 test('v1.204: a control assigned to cornerBR renders with the .card-corner-br position class', () => {

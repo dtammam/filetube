@@ -165,8 +165,11 @@ test('v1.161 lock: fetchLibraryPage0 clears the box on a search that returned re
 test('v1.150 locks: the mobile strip - both mounts stamp the class, the non-search belt removes toggle AND class', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
   assert.strictEqual((src.match(/classList\.add\('search-scoped-toolbar'\)/g) || []).length, 2, 'both mount sites stamp the strip class');
-  assert.match(src, /!searchQuery && sectionActions[\s\S]{0,400}removeChild\(staleScope\)[\s\S]{0,200}classList\.remove\('search-scoped-toolbar'\)/,
-    'the belt ACTUALLY removes the stale toggle (gate S1: the old lock was satisfied by the querySelector string alone) and the class');
+  // v1.205 Wave B: the non-search belt now removes the stale scope toggle AND
+  // the stale unified-search type-chip row AND the strip class (a cached view
+  // must inherit neither search control).
+  assert.match(src, /!searchQuery && sectionActions[\s\S]{0,400}removeChild\(staleScope\)[\s\S]{0,400}removeChild\(staleTypeChips\)[\s\S]{0,200}classList\.remove\('search-scoped-toolbar'\)/,
+    'the belt removes the stale scope toggle, the stale type-chip row, and the strip class');
 });
 
 test('v1.150 locks: the CSS carries the strip and the X with their load-bearing declarations', () => {

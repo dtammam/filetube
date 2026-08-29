@@ -1964,6 +1964,65 @@ function renderSearchScopeToggle(actionsEl, currentMode, onChange) {
   actionsEl.insertBefore(control, anchor ? anchor.nextSibling : actionsEl.firstChild);
 }
 
+// v1.205 Wave B: the unified-search content-TYPE chip row (All | Videos |
+// Audio | Music | Podcasts | Shows | Books). Same .format-toggle recipe as the
+// searchIn scope toggle (zero new CSS beyond a wrap rule), but a DIFFERENT
+// vocabulary (?type=) and SEVEN chips. The header's GLOBAL search uses this in
+// place of the video-only Titles/Channels toggle (Dean: drop the sub-scope in
+// unified search); a folder/root search keeps that toggle. State lives in the
+// view closure; the mount below and buildVideosApiUrl read/write it.
+const SEARCH_TYPE_CHIPS = ['all', 'videos', 'audio', 'music', 'podcasts', 'shows', 'books'];
+
+function normalizeSearchTypeChip(raw) {
+  return SEARCH_TYPE_CHIPS.includes(raw) ? raw : 'all';
+}
+
+const SEARCH_TYPE_OPTIONS = [
+  { chip: 'all', label: 'All' },
+  { chip: 'videos', label: 'Videos' },
+  { chip: 'audio', label: 'Audio' },
+  { chip: 'music', label: 'Music' },
+  { chip: 'podcasts', label: 'Podcasts' },
+  { chip: 'shows', label: 'Shows' },
+  { chip: 'books', label: 'Books' },
+];
+
+function buildSearchTypeChipsControl(currentChip, onChange) {
+  const active = normalizeSearchTypeChip(currentChip);
+  const container = document.createElement('div');
+  container.className = 'format-toggle search-type-chips';
+  container.id = 'library-search-type-chips';
+  SEARCH_TYPE_OPTIONS.forEach((opt) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm format-toggle-btn' + (opt.chip === active ? ' active' : '');
+    btn.dataset.searchType = opt.chip;
+    btn.setAttribute('aria-pressed', opt.chip === active ? 'true' : 'false');
+    btn.appendChild(document.createTextNode(opt.label));
+    btn.addEventListener('click', () => {
+      Array.prototype.forEach.call(container.querySelectorAll('.format-toggle-btn'), (b) => {
+        const isActive = b.dataset.searchType === opt.chip;
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+      if (typeof onChange === 'function') onChange(opt.chip);
+    });
+    container.appendChild(btn);
+  });
+  return container;
+}
+
+// Idempotent mount as the FIRST control in the action row (the chip row is the
+// primary filter for a unified search). Same container-scoped de-dupe as the
+// scope/format toggles.
+function renderSearchTypeChips(actionsEl, currentChip, onChange) {
+  if (!actionsEl) return;
+  const existing = actionsEl.querySelector('#library-search-type-chips');
+  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+  const control = buildSearchTypeChipsControl(currentChip, onChange);
+  actionsEl.insertBefore(control, actionsEl.firstChild);
+}
+
 // ---- Prev/next derived-order helpers (FR-2, T3) ----------------------------
 //
 // The watch page's Prev/Next controls (public/js/watch.js) and the persistent
@@ -15131,6 +15190,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildWatchToggleControl, renderWatchToggle,
     // v1.149: the search-scope toggle family (no storage - caller-owned state).
     SEARCH_SCOPE_MODES, normalizeSearchScopeMode, buildSearchScopeToggleControl, renderSearchScopeToggle,
+    SEARCH_TYPE_CHIPS, normalizeSearchTypeChip, buildSearchTypeChipsControl, renderSearchTypeChips,
     // v1.150: the search-box clear X (pure predicate + injector).
     shouldShowSearchClear, injectSearchClearButton, shouldClearSearchInputAfterResults,
     deriveAvatar, resolveAvatarSource, AVATAR_PALETTE,

@@ -80,6 +80,60 @@
 
 ## Shipped
 
+### v1.205.0 - Universal search: one search box for everything (2026-08-29)
+
+Dean: the global header search should return not just library videos/audio but
+music, podcasts (shows AND episodes), TV (shows AND episodes), and books -
+everything browsable - in one stream. Confirmed intake: blended-by-relevance
+ranking; drop the video Titles/Channels sub-scope in unified search; header box
+only (per-view boxes unchanged); titles + identity fields only for v1.
+
+**What shipped.**
+- **One blended stream.** A global header search now hits a new GET /api/search
+  that blends eight providers (video, audio, music, podcast-show, podcast-
+  episode, tv-show, tv-episode, book) into one ranked flat list with a type
+  badge per card. Ranking (lib/search/rank.js): relevance tier (exact > prefix
+  > substring-title > identity field) -> a fixed type priority -> recency.
+  Pagination mirrors /api/videos (total = full ranked length, page = slice).
+- **A content-type chip row** (All / Videos / Audio / Music / Podcasts / Shows /
+  Books) replaces the video-only Titles/Channels toggle for a global search;
+  ?type= deep-links it. A folder/root-scoped search is UNCHANGED (still
+  /api/videos + its searchIn toggle) - `isUnifiedSearch` gates the new path.
+- **The durability model (the headline).** A search-provider REGISTRY
+  (lib/search/registry.js): each media module's provider owns its match
+  predicate AND its EXISTING per-kind visibility gate (the same single RBAC
+  decision as every list/serve route - never a divergent second gate). PLUS a
+  provider-coverage census bound to KIND_TO_LIBRARY: a future media type with
+  no registered provider fails CI. "Automatic" = enforced-by-test (the honest
+  version Dean approved).
+- **Mixed cards.** cardKindPresentation gained tv-show (-> /tv?show=) and
+  tv-episode (-> /watch.html?tv=) arms; TV cards suppress the download/like
+  corners (no such routes). The type badge sits in the info row, never colliding
+  with the four configurable corners.
+
+**What the gate caught.**
+- Access control (the headline attack surface): the adversarial seat
+  mutation-proved ALL EIGHT provider RBAC gates (removing any one turns the
+  /api/search leak census red), that pagination cannot page into a blocked set,
+  and that an unauthenticated caller gets 401. No leak.
+- The podcast-episode provider surfaced NON-downloaded episodes
+  (pending/failed/trashed/tombstone) - a card that 404s on click AND resurfaces
+  a title the user had DELETED. Fixed: downloaded-only, mirroring the play gate.
+- The recency tiebreak was INERT for music/books/TV: their addedAt is an ISO
+  string and Number(ISO) is NaN -> 0. Fixed with rank.toRecency (numeric ms
+  pass through; ISO -> Date.parse); tv-show recency derived from the visible
+  episodes (parse.js's twin bug left out of scope, disclosed).
+- Three client render guards were presence-not-binding (bound this round).
+
+Full gate, 2 rounds, both seats APPROVE. Dual-Node 7809/0 (Node 22 + 24).
+**Dean's device pass PENDING.**
+
+**Known scope (disclosed).** Descriptions are NOT matched in v1 (generic
+episode titles like "Episode 42" are harder to find) - a documented deferral.
+The per-view search boxes are unchanged. The pre-existing tv/parse.js
+latestAddedAt Number(ISO) bug (an inert Continue-row recency) is left for a
+later TV pass.
+
 ### v1.204.0 - A fourth, selectable card corner (bottom-right) (2026-08-29)
 
 Dean: make the bottom-right corner a fourth selectable slot; when a control
