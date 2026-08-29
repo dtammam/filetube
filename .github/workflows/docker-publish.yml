@@ -140,7 +140,7 @@ jobs:
       # is deliberately single-arch amd64 (intake decision 6) because
       # build-once/load/run/push depends on the runner executing the image.
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
