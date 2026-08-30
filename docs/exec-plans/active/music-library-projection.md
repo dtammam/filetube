@@ -230,10 +230,16 @@ manager is a LATER convenience (tech-debt), not this wave.
   **default `'off'`** + Settings reflect + the fully-inert test (off -> zero
   projection on all three endpoints + search). Land this EARLY-ish so every
   later merge is guarded by it.
-- **T7 - (optional) universal-search projection:** searchMusic includes eligible
-  library audio (behind the same toggle), or explicitly deferred with a note.
-- **T8 - README:** document the optional, default-off "downloaded music channels
-  in the Music library" capability (Dean's ask - it's proposed as optional).
+- **T7 - universal-search projection: DEFERRED (disclosed).** Library audio is
+  ALREADY searchable in universal search via the `audio` provider
+  (lib/search/registry.js searchMetadata for type 'audio'). Also projecting it
+  into the `music` provider would surface the SAME item twice (an "Audio" result
+  AND a "Music" result) - a worse experience, not a better one. So search is left
+  as-is; a downloaded MP3 is found as Audio and plays. (If we later want the
+  music-player affordance FROM search for eligible items, the right fix is to
+  RE-KIND the audio result when eligible, not to add a duplicate - a follow-up.)
+- **T8 - README:** DONE - documented the optional, default-off "downloaded music
+  channels in the Music library" capability under Features > Listen & read.
 
 Each commit: green pre-commit unit hook, MEASURED counts in the message.
 
@@ -256,7 +262,10 @@ Each commit: green pre-commit unit hook, MEASURED counts in the message.
 - `tags.date` is often the UPLOAD year (mostly `2026`), not a music year -
   `year` may be noisy; do not sort on it.
 - Chapters-as-in-player-tracklist for single-file mixes: deferred follow-up.
-- Universal-search projection (T7) ships or is explicitly deferred.
+- Universal-search projection: DEFERRED (library audio is already searchable via
+  the audio provider; a music-provider projection would duplicate the result).
+- The per-folder mark is keyed by folderName, so a folder RENAME re-keys the mark
+  (accepted v1 limitation; channelId-keying is the follow-up).
 
 ## 14. Device probe list (Dean, after release)
 
