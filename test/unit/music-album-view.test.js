@@ -30,6 +30,7 @@ const RECENT = [
 ];
 
 const VIEW_HTML = `<body><div id="view-root" data-view="music">
+  <select id="music-sort-select"></select>
   <div id="player-slot"></div>
   <div id="media-player"></div>
   <div id="music-nowplaying-panel"></div>
@@ -312,6 +313,9 @@ test('redesign: Music opens on the HOME shelves by default; a shelf "See all" op
     const doc = dom.window.document;
     const home = doc.querySelector('.music-home');
     assert.ok(home, 'the default landing is the HOME shelves, not a flat grid');
+    // The sort control is inert on Home (fixed recently-added shelves), so it's
+    // hidden there - never a mislabeled dropdown on the landing (QA gate).
+    assert.ok(doc.getElementById('music-sort-select').hidden, 'the sort control is hidden on Home');
     const shelves = home.querySelectorAll('.music-shelf');
     assert.strictEqual(shelves.length, 2, 'Your artists + Recently added shelves');
     assert.match(home.innerHTML, /Your artists/, 'the artists shelf');
@@ -323,8 +327,16 @@ test('redesign: Music opens on the HOME shelves by default; a shelf "See all" op
     seeAll.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     for (let i = 0; i < 8; i++) await settle();
     const content = doc.getElementById('music-content');
-    assert.ok(content.querySelector('.music-card-grid'), 'See all opened the full Artists grid');
+    assert.ok(content.querySelector('.music-card-grid'), 'See all opened a full grid');
     assert.ok(!content.querySelector('.music-home'), 'the home shelves are gone (now on the full tab)');
+    // Bind the DESTINATION specifically - both Albums and Artists render a
+    // .music-card-grid, so a wrong-but-valid target would otherwise be invisible
+    // (the divergent-fixture class). The artists shelf's See-all must land on
+    // ARTISTS: the tab strip highlights it, and the grid holds artist cards.
+    const active = doc.querySelector('.music-tab.active');
+    assert.strictEqual(active.getAttribute('data-tab'), 'artists', 'See all landed on the ARTISTS tab specifically');
+    assert.ok(content.querySelector('.music-artist-card'), 'the full grid is the Artists grid (artist cards)');
+    assert.ok(!doc.getElementById('music-sort-select').hidden, 'the sort control returns on a sortable full tab');
   });
 });
 

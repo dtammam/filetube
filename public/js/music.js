@@ -384,6 +384,25 @@ function buildMusicArtistSkeletonCards(n) {
   return '<div class="music-card-grid">' + cards + '</div>';
 }
 
+// Redesign: the HOME cold-landing skeleton - the SAME .music-home > .music-shelf
+// > .music-shelf-row shape renderHome reveals (two titled horizontal rows of
+// cards), so the swap is zero-shift on the default surface (the reveal-once
+// seed-the-shape-you-reveal contract; home is the cold landing off a page load).
+function buildMusicHomeSkeleton() {
+  function shelf(cardsHtml) {
+    return '<section class="music-shelf">' +
+      '<div class="music-shelf-head"><div class="skeleton-line skeleton-line-title skeleton-shimmer"></div></div>' +
+      '<div class="music-shelf-row">' + cardsHtml + '</div></section>';
+  }
+  var artistCards = '';
+  var albumCards = '';
+  for (var i = 0; i < 6; i++) {
+    artistCards += '<div class="music-artist-card" aria-hidden="true"><span class="music-artist-mosaic skeleton-shimmer"></span><div class="skeleton-line skeleton-line-title skeleton-shimmer"></div><div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div></div>';
+    albumCards += '<div class="music-album-card" aria-hidden="true"><span class="music-album-art skeleton-shimmer"></span><div class="skeleton-line skeleton-line-title skeleton-shimmer"></div><div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div></div>';
+  }
+  return '<div class="music-home">' + shelf(artistCards) + shelf(albumCards) + '</div>';
+}
+
 function buildMusicSkeletonRows(n) {
   var count = Number.isInteger(n) && n > 0 ? n : 0;
   if (count === 0) return '';
@@ -623,7 +642,11 @@ if (typeof module !== 'undefined' && module.exports) {
     function rebuildSortMenu() {
       if (!sortSelect) return;
       var wrap = sortSelect;
-      if (drill) { wrap.hidden = true; return; }
+      // A drill carries its own order; the HOME shelves are a fixed
+      // recently-added composition - neither exposes a sortable list, so the top
+      // sort control is hidden on both (gate: an inert/mislabeled dropdown on the
+      // default landing otherwise).
+      if (drill || tab === 'home') { wrap.hidden = true; return; }
       wrap.hidden = false;
       var opts = MUSIC_SORTS[tab] || MUSIC_SORTS.songs;
       var current = sortForTab(tab);
@@ -783,11 +806,12 @@ if (typeof module !== 'undefined' && module.exports) {
       revealMusicArt();
     }
 
-    // Redesign: the HOME shelves - "Your artists" (circles) + "Albums" (recently
-    // added), each a horizontal-scroll row with a "See all". Cards are the SAME
+    // Redesign: the HOME shelves - "Your artists" (circles) + "Recently added"
+    // (albums), each a horizontal-scroll row with a "See all". Cards are the SAME
     // builders as the full grids, so a tile tap drills through the shared content
     // click delegation. Fetches both shelves in parallel; a shelf is omitted when
-    // empty (a fresh library with only songs shows the empty note).
+    // empty, and an entirely empty library (no artists AND no albums) shows the
+    // empty note.
     async function renderHome() {
       var artists = [];
       var albums = [];
@@ -872,18 +896,21 @@ if (typeof module !== 'undefined' && module.exports) {
       // change (tab switch, drill in/out) routes through one place.
       rebuildSortMenu();
       // v1.98 shimmer sweep: seed the EXACT shape the branch below reveals, so
-      // the swap is zero-shift - a song list (songs), an artist mosaic grid
-      // (artists, v1.103), or an album grid (albums). A DRILL is deliberately NOT seeded
-      // (gate WARNING 2): renderDrillView prepends a large .music-drill-header a
-      // bare song-row skeleton can't reserve, so keep the prior content on screen
-      // (the album grid you clicked) until the drill paints - no header jump.
-      // Each branch reveals by replacing content.innerHTML; the catch clears it.
+      // the swap is zero-shift - the HOME shelves (home, the default landing), a
+      // song list (songs), an artist mosaic grid (artists, v1.103), or an album
+      // grid (albums). A DRILL is deliberately NOT seeded (gate WARNING 2):
+      // renderDrillView prepends a large .music-drill-header a bare song-row
+      // skeleton can't reserve, so keep the prior content on screen (the album
+      // grid you clicked) until the drill paints - no header jump. Each branch
+      // reveals by replacing content.innerHTML; the catch clears it.
       if (content && !drill) {
-        content.innerHTML = tab === 'songs'
-          ? buildMusicSkeletonRows(8)
-          : tab === 'artists'
-            ? buildMusicArtistSkeletonCards(12)
-            : buildMusicSkeletonCards(8);
+        content.innerHTML = tab === 'home'
+          ? buildMusicHomeSkeleton()
+          : tab === 'songs'
+            ? buildMusicSkeletonRows(8)
+            : tab === 'artists'
+              ? buildMusicArtistSkeletonCards(12)
+              : buildMusicSkeletonCards(8);
       }
       try {
         if (drill) {
