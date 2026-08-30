@@ -7670,6 +7670,9 @@ var CRITTER_PRIORITY_WEIGHT = 3;
 // Shuffle screenshot). As an exclusion, its buttons are no longer anchors AND
 // no placement rect may overlap it (the planner clears every exclusion for both
 // the anchor and the critter's own box), so the control strip stays clean.
+// NOTE: `.music-toolbar` is shared markup - the Podcasts page uses the same
+// class (podcasts.html), so this keeps critters off that control strip too
+// (harmless/beneficial - the same "don't obscure controls" intent).
 var CRITTER_EXCLUSION_SELECTORS = ['#player-wrapper', '.player-container', '#player-dock', '#fs-stage', '.music-toolbar', '[class*="-backdrop"]'];
 // Tap reactions (Dean): tiny, transform-only, contained to the critter's own
 // box; one is picked at random per tap. All die under prefers-reduced-motion.

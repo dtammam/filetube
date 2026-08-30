@@ -8415,7 +8415,10 @@ function musicListProgressMap(userId, tracks) {
   for (const [, e] of pendingMusicProgress) { if (e.userId === userId) music[e.trackId] = e.value; }
   const media = userStore.getProgress(userId); // fresh object; safe to mutate
   for (const [, e] of pendingProgress) { if (e.userId === userId) media[e.mediaId] = e.value; }
-  const out = {};
+  // Null-proto merge target, matching the source maps' own contract (store.js):
+  // a hostile track/media id of literally '__proto__' (smuggled via a crafted
+  // restore bundle) assigns an OWN key here instead of reparenting `out`.
+  const out = Object.create(null);
   for (const t of tracks) {
     if (t.source === 'library') {
       const m = media[t.id];
