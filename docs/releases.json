@@ -2416,5 +2416,11 @@
     "date": "2026-08-30",
     "title": "Music fixes: your downloads now show in Recently played",
     "intent": "Three fixes for Music. Artists you downloaded from YouTube now show up in the 'Recently played' and 'Jump back in' rows after you listen to them - before, only your ripped albums did, and your downloads were quietly left out. A little critter that was sitting on top of the Shuffle button and getting in the way is gone - the critters now stay off the toolbar controls. And a stray view-switch button that showed up on an album's song list (where it did nothing) no longer appears there."
+  },
+  {
+    "version": "1.216.0",
+    "date": "2026-08-30",
+    "title": "Critters stay off the now-playing screen",
+    "intent": "A quick fix following the last one: a critter could sit over the title and the Up-next list on the expanded now-playing screen in Music. Now the whole now-playing panel is off-limits to the critters, so nothing drapes over your song title or the queue. (Same fix covers the Podcasts now-playing screen.) The critters still pop up from your artwork and cards as before - just never on top of the controls."
   }
 ]

@@ -80,6 +80,31 @@
 
 ## Shipped
 
+### v1.216.0 - Critters off the Music now-playing panel (2026-08-30)
+
+Dean's v1.215 device pass: "Love it" - with a critter draped over the expanded
+now-playing title + UP NEXT (screenshot). The big-art player was already a
+critter no-go zone (`#player-wrapper`/`.player-container`), but the now-playing
+metadata + up-next PANEL below it was not - and its up-next rows aren't critter
+anchors, so the culprit was a critter anchored to nearby BROWSE furniture whose
+placement box overhung the un-excluded panel. Added `.music-nowplaying-panel`
+(the shared class, so the Podcasts now-playing panel is covered too) to
+`CRITTER_EXCLUSION_SELECTORS` - the planner now drops any placement box over it.
+
+**What the slim gate caught (adversarial seat).** My first pass excluded
+`#player-slot` + `#music-nowplaying-panel` with a root-cause narrative and test
+that were FICTION - the big art was already excluded and the up-next thumbs were
+never anchors (a divergent-fixture, the class this repo keeps paying for). Round
+1 corrected it: dropped the redundant `#player-slot` (it emitted a stray
+full-width zero-height exclusion band while docked), switched to the shared class
+(covering podcasts), rewrote the comment to the true mechanism, and rebound the
+test to the real protection (both panels emit exclusion rects; the planner drops
+an overhanging box). A residual non-vacuous-loop nit was closed too.
+
+Slim gate (adversarial seat, APPROVE after one fix round). Dual-Node 7890/0
+(Node 22.23.1 + 24.14.0). **Dean's device pass PENDING.** (The in-Music
+back-swipe history work Dean also asked for is a separate wave, in design.)
+
 ### v1.215.0 - v1.214 device-pass fixes: recent-listening for downloads, critter + toggle glitches (2026-08-30)
 
 Dean's device pass on v1.214: "Actually a lot better" - with three bugs.

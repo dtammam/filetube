@@ -7673,7 +7673,21 @@ var CRITTER_PRIORITY_WEIGHT = 3;
 // NOTE: `.music-toolbar` is shared markup - the Podcasts page uses the same
 // class (podcasts.html), so this keeps critters off that control strip too
 // (harmless/beneficial - the same "don't obscure controls" intent).
-var CRITTER_EXCLUSION_SELECTORS = ['#player-wrapper', '.player-container', '#player-dock', '#fs-stage', '.music-toolbar', '[class*="-backdrop"]'];
+// v1.216 (Dean's v1.215 device pass): the now-playing METADATA + UP-NEXT panel
+// joins the list. The big-art player itself was ALREADY a no-go zone - the
+// expanded audio view is `#audio-bg-art` inside `.player-container#player-wrapper`
+// (index.html), already excluded above. What was NOT covered is the panel BELOW
+// it, `.music-nowplaying-panel` (the title/artist + the Up-next queue). Its
+// up-next rows (`.mnp-queue-*`) are not critter anchors, so the critter Dean saw
+// draped over the title was anchored to NEARBY BROWSE furniture (an artist
+// circle / card / button) with its placement BOX overhanging the panel - and
+// nothing dropped a box that overlapped the panel, because the panel was not an
+// exclusion (Dean's squirrel-over-now-playing screenshot). As an exclusion rect,
+// the planner now drops any placement box that overlaps it. Uses the CLASS, not
+// the `#music-nowplaying-panel` id: the Podcasts now-playing panel
+// (`#podcast-nowplaying-panel`) carries the SAME class, so this covers both
+// consistently (the `.music-toolbar` shared-class precedent one block up).
+var CRITTER_EXCLUSION_SELECTORS = ['#player-wrapper', '.player-container', '#player-dock', '#fs-stage', '.music-nowplaying-panel', '.music-toolbar', '[class*="-backdrop"]'];
 // Tap reactions (Dean): tiny, transform-only, contained to the critter's own
 // box; one is picked at random per tap. All die under prefers-reduced-motion.
 // v1.176 (Dean: "what other small cute animations can we add? I like that to

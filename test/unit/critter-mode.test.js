@@ -564,6 +564,58 @@ test('v1.215 (Dean device): the .music-toolbar is a no-critter zone - its button
   }
 });
 
+test('v1.216 (Dean device): the now-playing panel (.music-nowplaying-panel) is an exclusion rect for BOTH music + podcasts, and the planner drops a browse critter draping over it', () => {
+  // The v1.215 device pass: a critter draped over the now-playing title + UP NEXT
+  // (squirrel screenshot). The big-art PLAYER was already excluded (#player-wrapper);
+  // the gap was the metadata/up-next PANEL below it. Its up-next rows (.mnp-queue-*)
+  // are NOT critter anchors, so the culprit critter was anchored to BROWSE furniture
+  // with its placement BOX overhanging the panel - and nothing dropped a box over
+  // the panel because it was not an exclusion. Bind the REAL protection: the panel
+  // (by its shared CLASS, so music AND podcasts both) emits an exclusion rect, and
+  // a browse anchor whose peek reaches into it yields NO placement box over it.
+  assert.ok(CRITTER_EXCLUSION_SELECTORS.includes('.music-nowplaying-panel'), 'the now-playing panel class is a no-critter zone');
+  const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/' });
+  const prevWin = global.window; const prevDoc = global.document;
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const doc = dom.window.document;
+    const rect = (el, x, y, w, h) => { el.getBoundingClientRect = () => ({ left: x, top: y, right: x + w, bottom: y + h, width: w, height: h, x, y }); };
+    // The music now-playing panel AND the podcast one - both carry the shared class.
+    const musicPanel = doc.createElement('div'); musicPanel.id = 'music-nowplaying-panel'; musicPanel.className = 'music-nowplaying-panel';
+    const podPanel = doc.createElement('div'); podPanel.id = 'podcast-nowplaying-panel'; podPanel.className = 'music-nowplaying-panel';
+    doc.body.appendChild(musicPanel); doc.body.appendChild(podPanel);
+    rect(musicPanel, 0, 380, 380, 240);
+    rect(podPanel, 0, 640, 380, 240);
+
+    const exclusions = collectCritterRects(CRITTER_EXCLUSION_SELECTORS, false);
+    assert.ok(exclusions.some((e) => e.el === musicPanel), 'the MUSIC now-playing panel emits an exclusion rect');
+    assert.ok(exclusions.some((e) => e.el === podPanel), 'the PODCAST now-playing panel (same class) emits an exclusion rect too');
+
+    // The real protection: a browse anchor just below the panel, whose top peek
+    // would drape up into it, must never yield a placement box overlapping the
+    // panel exclusion (planCritterScatter clears every exclusion for the box). A
+    // second anchor FAR from the panel guarantees the planner produces at least
+    // one placement, so the "none overlap" loop is not vacuously true (the near
+    // anchor's only over-the-panel box is dropped; the clear anchor's survives).
+    const panelRect = { x: 0, y: 380, w: 380, h: 240 };
+    const anchorNearPanel = { x: 40, y: 630, w: 120, h: 120 }; // sits right under the panel
+    const anchorClear = { x: 40, y: 1400, w: 120, h: 120 }; // far below, no exclusion near it
+    const placements = planCritterScatter({
+      anchors: [anchorNearPanel, anchorClear], exclusions: [panelRect], manifest: MANIFEST_8, count: 4, rng: seededRng(9),
+    });
+    assert.ok(placements.length > 0, 'the planner produced at least one placement (the loop below is not vacuous)');
+    for (const p of placements) {
+      assert.ok(!critterRectsIntersect({ x: p.x, y: p.y, w: p.w, h: p.h }, panelRect),
+        'no placement box overlaps the now-playing panel exclusion');
+    }
+  } finally {
+    global.window = prevWin; global.document = prevDoc;
+    if (global.window === undefined) delete global.window;
+    if (global.document === undefined) delete global.document;
+    dom.window.close();
+  }
+});
+
 test('critterOccludedAt: a target inside an overlay stacked ABOVE the critter plane reports occluded; normal furniture does not', () => {
   const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/' });
   const prevWin = global.window; const prevDoc = global.document;
