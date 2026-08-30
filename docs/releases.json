@@ -2404,5 +2404,11 @@
     "date": "2026-08-30",
     "title": "A redesigned Music page: a home of shelves, every artist a circle",
     "intent": "Music gets a real redesign. It now opens on a Home of scrollable shelves - your artists and your recently-added albums, each with a 'See all' to open the full list - instead of a flat grid. And every artist is now a round tile: channels use their picture, and your own ripped albums use their cover art, so the whole artist wall is circular and consistent. Albums, Artists, and Songs are still there as full lists. Same colours as the rest of the app - just a cleaner, more browsable layout."
+  },
+  {
+    "version": "1.214.0",
+    "date": "2026-08-30",
+    "title": "Less friction in Music: a list view, sortable songs, recent artists",
+    "intent": "Making Music quicker to get around. The artist tiles are smaller now, and there's a new button to flip the Artists view between round pictures and a compact list - so you can scan down and tap the artist you want instead of swiping past big circles. When you open an artist, their songs can now be sorted, and default to release date for anything you downloaded from YouTube (instead of a random order). And a 'Recently played' row up top on Home puts whoever you've been listening to one tap away."
   }
 ]

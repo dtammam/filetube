@@ -80,6 +80,31 @@
 
 ## Shipped
 
+### v1.214.0 - Music friction pass: view toggle, release-date sort, recent artists (2026-08-30)
+
+Dean, on v1.213: "much better rewrite ... but it's very friction heavy" - huge
+circles, hard to find an artist, artist songs in arbitrary order, too many taps.
+Three fixes he prioritized (search-surfaces-artists parked):
+
+**What shipped.** (1) Smaller, denser circles + a grid/list VIEW TOGGLE on the
+Artists tab - circles for browsing, a compact scannable list (avatar + name +
+count) to find a known artist fast; persisted per device. (2) An artist's song
+list is now SORTABLE, defaulting to RELEASE DATE for yt-dlp downloads (was
+arbitrary/album-order): `sortTracks` gained release-newest/oldest, projected
+tracks carry `releaseDate`; an album drill keeps album order. (3) A "Recently
+played" artists row on Home (distinct artists from recent plays, one tap to their
+page). Client + lib only.
+
+**What the gate caught.** QA: two comments still described the OLD drill-sort
+mechanism this wave inverted (drills were "hidden/album-order") - de-rotted; and a
+`__proto__` dedup edge (null-proto map). Adversarial: three test-binding gaps -
+the release-newest 0-bucket tiebreak (a stable-sort coincidence), the list-row
+drill (never actually clicked), the drill sort-change write-key - all bound +
+mutation-verified.
+
+Full gate (both seats APPROVE after one fix round). Dual-Node 7887/0
+(Node 22.23.1 + 24.14.0). **Dean's device pass PENDING.**
+
 ### v1.213.0 - Music redesign: Spotify-style shelf Home + all-circular artists (2026-08-30)
 
 Dean: Slice 1 (v1.212) "wasn't really a radically redesigned page" and the
