@@ -751,6 +751,11 @@ if (typeof module !== 'undefined' && module.exports) {
       for (var i = 0; i < avatars.length; i++) {
         (function (img) {
           if (img.complete && img.naturalWidth > 0) { img.classList.add('is-loaded'); return; }
+          // Already-FAILED synchronously (complete + zero natural size): drop now,
+          // so the listener-that-never-fires can't leave a broken img over the
+          // monogram (QA parity with buildAccountAvatarEl). Not reachable for a
+          // freshly-parsed img today, but structurally closes the gap.
+          if (img.complete) { if (img.parentNode) img.parentNode.removeChild(img); return; }
           img.addEventListener('load', function () { img.classList.add('is-loaded'); }, { once: true });
           img.addEventListener('error', function () { if (img.parentNode) img.parentNode.removeChild(img); }, { once: true });
         })(avatars[i]);

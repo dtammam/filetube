@@ -121,6 +121,21 @@ test('redesign S1: the artist avatar is order-INVARIANT (lowest-id track wins, s
   assert.strictEqual(rev, A1, 'a shuffled re-scan yields the identical avatar (deterministic)');
 });
 
+test('redesign S1: a REAL avatar wins over a lower-id track carrying "" (binds the empty-string guard)', () => {
+  // The reachable case: two tracks share an artist name; the LOWER-id one is a
+  // projected library item whose channel has no avatar (''), the higher-id one
+  // has a real avatar. The `&& t.avatarUrl` guard must skip the '' so the real
+  // avatar wins - dropping it lets the lower id claim the slot with '' (mosaic
+  // fallback) and the circle silently vanishes.
+  const REAL = 'https://yt3.example/real.jpg';
+  const tracks = [
+    trk({ id: 'aaa', artist: 'Shared', albumArtist: 'Shared', avatarUrl: '' }),
+    trk({ id: 'zzz', artist: 'Shared', albumArtist: 'Shared', avatarUrl: REAL }),
+  ];
+  assert.strictEqual(q.groupArtists(tracks).find((a) => a.artist === 'Shared').avatarUrl, REAL,
+    'the real avatar wins even though the LOWER id carries "" (drop the && t.avatarUrl guard -> this reds)');
+});
+
 test('v1.103 (gate ADV-W1): artIds are order-INVARIANT - a re-scan (shuffled tracks) yields identical ids, incl. the within-album representative', () => {
   // Album "One" has TWO embedded-art tracks (t2, t5) at different disc/track
   // positions; the representative must be stable (earliest disc/track -> t2),
