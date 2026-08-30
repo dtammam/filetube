@@ -157,8 +157,11 @@ test('v1.217 (gate): tapping a SONG row (the common path) drills into its album 
 });
 
 test('v1.217 (gate SUGGESTION): re-selecting a song ALREADY in the open album does NOT push a duplicate level', async () => {
-  // pushDrillLevel dedups on drillKey, and playRowAt short-circuits when already
-  // in the album - so a second tap inside the same drill adds no dead back level.
+  // Binds playRowAt's `alreadyInAlbum` short-circuit: a second tap on a song in
+  // the open album never reaches pushDrillLevel, so no dead back level is added.
+  // (pushDrillLevel ALSO carries a drillKey dedup as a belt for the now-playing
+  // "Playing from" line re-tap - that path needs a live-player nowPlaying setup
+  // and is not separately exercised here; disclosed at the gate.)
   await boot(async (dom, ctx) => {
     content(dom).querySelector('.music-song-row').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     for (let i = 0; i < 8; i++) await settle();
