@@ -31,6 +31,7 @@ const RECENT = [
 
 const VIEW_HTML = `<body><div id="view-root" data-view="music">
   <select id="music-sort-select"></select>
+  <button id="music-view-toggle" hidden><i></i></button>
   <div id="player-slot"></div>
   <div id="media-player"></div>
   <div id="music-nowplaying-panel"></div>
@@ -337,6 +338,41 @@ test('redesign: Music opens on the HOME shelves by default; a shelf "See all" op
     assert.strictEqual(active.getAttribute('data-tab'), 'artists', 'See all landed on the ARTISTS tab specifically');
     assert.ok(content.querySelector('.music-artist-card'), 'the full grid is the Artists grid (artist cards)');
     assert.ok(!doc.getElementById('music-sort-select').hidden, 'the sort control returns on a sortable full tab');
+  });
+});
+
+test('friction: the Artists view toggle flips circles <-> compact list', async () => {
+  const artistsFetch = () => (url) => {
+    if (url.indexOf('/api/music/artists') === 0) {
+      return Promise.resolve({ ok: true, json: async () => ({ items: [
+        { artist: 'NESTALGIA', avatarUrl: '', albumCount: 1, trackCount: 5, artIds: ['x'] },
+      ] }) });
+    }
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot('http://localhost/music', { state: 'docked', currentId: null }, { tabPref: 'artists', fetch: artistsFetch }, async (dom) => {
+    const doc = dom.window.document;
+    const toggle = doc.getElementById('music-view-toggle');
+    assert.ok(toggle && !toggle.hidden, 'the view toggle shows on the Artists tab');
+    const content = doc.getElementById('music-content');
+    assert.ok(content.querySelector('.music-card-grid'), 'default is the circle grid');
+    // Toggle -> compact list.
+    toggle.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 8; i++) await settle();
+    assert.ok(content.querySelector('.music-artist-list'), 'toggled to the compact list');
+    assert.ok(content.querySelector('.music-artist-row[data-artist="NESTALGIA"]'), 'a list row per artist (drillable)');
+    // Toggle back -> circles.
+    toggle.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 8; i++) await settle();
+    assert.ok(content.querySelector('.music-card-grid'), 'toggled back to the circle grid');
+    assert.ok(!content.querySelector('.music-artist-list'), 'the list is gone');
+  });
+});
+
+test('friction: the view toggle is HIDDEN off the Artists tab (Home)', async () => {
+  await boot('http://localhost/music', { state: 'docked', currentId: null }, {}, async (dom) => {
+    // default landing is Home -> the artists-only toggle is hidden.
+    assert.ok(dom.window.document.getElementById('music-view-toggle').hidden, 'no view toggle on Home');
   });
 });
 

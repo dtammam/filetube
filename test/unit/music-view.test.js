@@ -9,7 +9,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildSongRowHtml,
+  escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildSongRowHtml,
   drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
   buildNowPlayingPanelHtml,
   MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
@@ -150,6 +150,18 @@ test('redesign S1: an artist WITHOUT an avatar still falls back to the mosaic (n
   const html = buildArtistCardHtml({ artist: 'Pink Floyd', albumCount: 2, trackCount: 20, avatarUrl: '', artIds: ['a', 'b'] });
   assert.match(html, /class="music-artist-mosaic" data-tiles="2"/, 'no avatar -> the album-art mosaic');
   assert.doesNotMatch(html, /music-artist-avatar/, 'no round circle without an avatar');
+});
+
+test('friction: buildArtistListRowHtml renders a compact drillable row (avatar circle, name, count)', () => {
+  const withAvatar = buildArtistListRowHtml({ artist: 'NESTALGIA', trackCount: 352, avatarUrl: 'https://yt3.example/n.jpg', artIds: ['x'] });
+  assert.match(withAvatar, /class="music-artist-row" data-artist="NESTALGIA"/, 'a drillable row (same data-artist the card uses)');
+  assert.match(withAvatar, /class="maa-img" src="https:\/\/yt3\.example\/n\.jpg"/, 'the channel avatar in the row circle');
+  assert.match(withAvatar, />NESTALGIA</, 'the name');
+  assert.match(withAvatar, />352 songs</, 'the song count');
+  // A native/ripped artist (no avatar) uses its album art in the circle.
+  const native = buildArtistListRowHtml({ artist: 'Pink Floyd', trackCount: 1, avatarUrl: '', artIds: ['a1'] });
+  assert.match(native, /class="art-shimmer" src="\/albumart\/a1"/, 'no avatar -> album art fills the row circle');
+  assert.match(native, />1 song</, 'singular count');
 });
 
 test('redesign: buildMusicShelfHtml renders a titled shelf with a See-all + a horizontal row', () => {

@@ -10438,7 +10438,7 @@ html[data-modern="on"] .video-uploader {
 .music-shelf-row > .music-album-card,
 .music-shelf-row > .music-artist-card {
   flex: 0 0 auto;
-  width: 132px;
+  width: 108px;
   scroll-snap-align: start;
 }
 .music-status[hidden] { display: none !important; }
@@ -10501,9 +10501,53 @@ html[data-modern="on"] .video-uploader {
 
 .music-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: var(--space-8);
+  /* Friction pass (Dean: "circles are huge"): smaller, denser tiles -> more per
+     screen, far less scrolling to reach an artist. */
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: var(--space-5);
 }
+/* Friction pass: the compact Artists LIST - a fast index (name + count) to find
+   a known artist without swiping past big circles. */
+.music-artist-list { display: flex; flex-direction: column; }
+.music-artist-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-2);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  text-align: left;
+}
+.music-artist-row:hover { background: var(--btn-hover); }
+.music-artist-row-circle {
+  position: relative;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--thumbnail-bg);
+  display: grid;
+  place-items: center;
+}
+.music-artist-row-circle .maa-mono { font-size: var(--fs-md); font-weight: var(--fw-bold); color: var(--text-secondary); }
+.music-artist-row-circle img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.music-artist-row-circle .maa-img { opacity: 0; transition: opacity var(--dur-fast) var(--ease-ui); }
+.music-artist-row-circle .maa-img.is-loaded { opacity: 1; }
+.music-artist-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.music-artist-row-count { flex: 0 0 auto; font-size: var(--fs-sm); color: var(--text-secondary); }
 /* v1.103: album + artist cards share ONE art-forward chassis (was two divergent
    looks - borderless album vs bordered text-only artist). Both are a square art
    block over a title + secondary line; only the art block differs (single cover

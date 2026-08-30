@@ -96,6 +96,30 @@ function buildJumpBackTileHtml(item) {
     '</button>';
 }
 
+// Friction pass: the COMPACT LIST row for the Artists view (a fast index vs the
+// big circles). A small round avatar/mono + name + count, one per line - the
+// quickest way to eyeball and tap a known artist. Drills via the same
+// data-artist the content delegation reads (a .music-artist-row arm).
+function buildArtistListRowHtml(artist) {
+  var name = artist.artist || 'Unknown artist';
+  var initial = (String(name).trim().charAt(0) || '?').toUpperCase();
+  var count = (artist.trackCount || 0) + (artist.trackCount === 1 ? ' song' : ' songs');
+  var circle;
+  if (typeof artist.avatarUrl === 'string' && artist.avatarUrl) {
+    circle = '<span class="music-artist-row-circle"><span class="maa-mono">' + escapeMusicHtml(initial) + '</span>' +
+      '<img class="maa-img" src="' + escapeMusicHtml(artist.avatarUrl) + '" alt="" loading="lazy" /></span>';
+  } else {
+    var artId = (Array.isArray(artist.artIds) && artist.artIds[0]) || '';
+    circle = '<span class="music-artist-row-circle"><img class="art-shimmer" src="/albumart/' + encodeURIComponent(artId) + '" alt="" loading="lazy" /></span>';
+  }
+  return '' +
+    '<button type="button" class="music-artist-row" data-artist="' + escapeMusicHtml(artist.artist) + '">' +
+    circle +
+    '<span class="music-artist-row-name" title="' + escapeMusicHtml(name) + '">' + escapeMusicHtml(name) + '</span>' +
+    '<span class="music-artist-row-count">' + escapeMusicHtml(count) + '</span>' +
+    '</button>';
+}
+
 // Redesign: a HOME shelf - a titled section with an optional "See all" (switches
 // to that tab) over a horizontal-scroll row of tiles (album/artist cards reused
 // verbatim, so a tile tap drills exactly as it does in the full grid).
@@ -422,7 +446,7 @@ function buildMusicSkeletonRows(n) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildSongRowHtml,
+    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
@@ -451,6 +475,9 @@ if (typeof module !== 'undefined' && module.exports) {
   var nowPlaying = null;
   var SORT_KEY = 'filetube_music_sort';
   var TAB_KEY = 'filetube_music_tab';
+  // Friction pass: the Artists view mode - 'grid' (circles) or 'list' (compact
+  // index). Persisted per device; a toggle button flips it.
+  var ARTIST_VIEW_KEY = 'filetube_music_artist_view';
 
   function readPref(key, fallback) {
     try { return localStorage.getItem(key) || fallback; } catch (_) { return fallback; }
@@ -476,6 +503,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var sortSelect = root.querySelector('#music-sort-select');
     var shuffleBtn = root.querySelector('#music-shuffle-btn');
     var scanBtn = root.querySelector('#music-scan-btn');
+    var viewToggleBtn = root.querySelector('#music-view-toggle');
     var nowPlayingEl = root.querySelector('#music-nowplaying');
     var nowPlayingPanel = root.querySelector('#music-nowplaying-panel');
     var jumpbackHost = root.querySelector('#music-jumpback');
@@ -711,6 +739,30 @@ if (typeof module !== 'undefined' && module.exports) {
       }, { signal });
     }
 
+    // Friction pass: the Artists grid/list view toggle. Shown ONLY on the Artists
+    // tab (the find-an-artist surface); the icon shows the mode a click switches
+    // TO (list-icon while in grid, grid-icon while in list).
+    function getArtistView() { return readPref(ARTIST_VIEW_KEY, 'grid') === 'list' ? 'list' : 'grid'; }
+    function syncViewToggle() {
+      if (!viewToggleBtn) return;
+      var showable = (tab === 'artists' && !drill);
+      viewToggleBtn.hidden = !showable;
+      if (!showable) return;
+      var isList = getArtistView() === 'list';
+      var icon = viewToggleBtn.querySelector('i');
+      if (icon) icon.className = isList ? 'icon-grid' : 'icon-list';
+      var label = isList ? 'Switch to circle view' : 'Switch to list view';
+      viewToggleBtn.title = label;
+      viewToggleBtn.setAttribute('aria-label', label);
+    }
+    if (viewToggleBtn) {
+      viewToggleBtn.addEventListener('click', function () {
+        writePref(ARTIST_VIEW_KEY, getArtistView() === 'list' ? 'grid' : 'list');
+        syncViewToggle();
+        render().catch(function () {});
+      }, { signal });
+    }
+
     // v1.45.0 T3: the drill sticky-header offset (--music-sticky-top) + collapse
     // threshold are measured ONCE per render from the fixed header's height —
     // but that height differs between orientations (mobile ~96px vs 56px), so a
@@ -895,6 +947,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // value) and hidden inside a drill - centralised here so every state
       // change (tab switch, drill in/out) routes through one place.
       rebuildSortMenu();
+      syncViewToggle(); // grid/list toggle: only on the Artists tab
       // v1.98 shimmer sweep: seed the EXACT shape the branch below reveals, so
       // the swap is zero-shift - the HOME shelves (home, the default landing), a
       // song list (songs), an artist mosaic grid (artists, v1.103), or an album
@@ -933,7 +986,10 @@ if (typeof module !== 'undefined' && module.exports) {
         } else if (tab === 'artists') {
           var ar = await fetchJson('/api/music/artists?limit=10000&sort=' + encodeURIComponent(sortForTab('artists')) + (search ? '&search=' + encodeURIComponent(search) : ''));
           var artists = Array.isArray(ar.items) ? ar.items : [];
-          content.innerHTML = '<div class="music-card-grid">' + artists.map(buildArtistCardHtml).join('') + '</div>';
+          // Friction pass: circles (browse) OR a compact list (find fast).
+          content.innerHTML = getArtistView() === 'list'
+            ? '<div class="music-artist-list">' + artists.map(buildArtistListRowHtml).join('') + '</div>'
+            : '<div class="music-card-grid">' + artists.map(buildArtistCardHtml).join('') + '</div>';
           if (emptyNote) emptyNote.hidden = artists.length > 0;
         }
       } catch (err) {
@@ -990,7 +1046,7 @@ if (typeof module !== 'undefined' && module.exports) {
         render().catch(function () {});
         return;
       }
-      var artistCard = e.target.closest('.music-artist-card');
+      var artistCard = e.target.closest('.music-artist-card') || e.target.closest('.music-artist-row');
       if (artistCard) {
         var name = artistCard.getAttribute('data-artist');
         drill = { type: 'artist', key: name, label: name || 'Artist' };
