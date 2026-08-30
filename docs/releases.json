@@ -2380,5 +2380,11 @@
     "date": "2026-08-29",
     "title": "Tap away to close search",
     "intent": "A little less fuss: if you open the search bar and then change your mind, just tap anywhere outside it (like the home button) and it closes on its own - no need to press the search button again. If you've already typed something, it stays put so you don't lose your search."
+  },
+  {
+    "version": "1.210.0",
+    "date": "2026-08-30",
+    "title": "Your downloaded music, in the Music library",
+    "intent": "If you download MP3s from music channels - game-music remixes, album mixes, that kind of thing - you can now have them show up in the Music library too, grouped by channel and played through the music player, without duplicating anything or taking them out of your feed. It's off by default: turn it on in Settings, and channels whose uploads are tagged as music appear on their own. For the ones YouTube files under something else (a game-music channel it labels 'Gaming', say), just tap the little music note on that channel's page to include it. Great for a nostalgia library of full albums you've downloaded."
   }
 ]

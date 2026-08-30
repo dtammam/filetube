@@ -1,6 +1,8 @@
 # Wave G - Virtual projection of library audio into the Music library
 
-**Status:** ACTIVE (design). Branch `feat/music-library-projection`.
+**Status:** SHIPPED v1.210.0 (2026-08-30) - full gate both seats APPROVE (one
+fix round: the adversarial-caught RBAC gate-KIND gap), dual-Node 7857/0. Dean's
+device pass PENDING. Branch `release/v1.210.0`.
 **Author:** main session, 2026-08-29. Intake with Dean CONFIRMED (below).
 **Gate:** FULL two-reviewer gate (touches RBAC + a new db namespace + the
 music query/player). Not slim.

@@ -80,6 +80,51 @@
 
 ## Shipped
 
+### v1.210.0 - Downloaded music channels in the Music library (2026-08-30)
+
+Dean: he downloads MP3s from music channels (game-music remixes, album mixes)
+that sit in the media feed as normal downloads; he wanted the ones that are
+really music to ALSO appear in the Music library for the music-player
+experience - WITHOUT duplicating data (a virtual mapping), and while they stay
+in the feed.
+
+**Framing reversed by the live data.** We inspected the real instance
+(`GET /api/videos?format=audio`) BEFORE designing: yt-dlp embeds only
+`{title, artist, date, genre, ...}` - NO album/track/disc tags at all, and the
+artist tag IS the channel. So the planned "surface audio with an album tag" gate
+would have matched ZERO files; the only clean music/not-music line is the
+CHANNEL (NESTALGIA game-music, genre "Gaming", vs an Opie & Anthony archive,
+genre "Comedy", side by side). The design pivoted to a per-channel flag.
+
+**What shipped (opt-in, default OFF).** A per-user master toggle (Settings) and
+a per-folder "show in Music" mark (`db.music.channels` - a feature-OWNED
+namespace that rides the backup bundle for free) with a genre-seeded default
+(`genre === 'Music'` -> on). When on, library audio (`db.metadata` type audio)
+is VIRTUALLY projected into the Music album/artist/song views - nothing copied -
+each track keeping its OWN routes (`/video` stream, `/thumbnail` art,
+`/api/progress`, which unifies its resume with the feed). A "♪" toggle on a
+channel's folder page includes the ones YouTube tags differently (a game-music
+channel tagged "Gaming"). No album sub-shelves (there is no album data) - each
+channel is one artist.
+
+**What the gate caught.** The adversarial seat found the projection's RBAC
+gate-KIND was unbound: the tests used a PATH restriction, which the media and
+track visibility gates enforce identically, so a `mediaVisibleTo`->`trackVisibleTo`
+mutant survived on BOTH the projection and the `/albumart` fallback. Closed with
+a gate-kind test using folder-kind + video-library-kind restrictions (media-only
+in visibility.js), each mutation-verified red. Also bound the client source-gate
+(not mere field presence) and a `db.metadata` null-guard; QA caught an em dash in
+a new UI string. The route-classification net correctly forced an RBAC review of
+the two new `/api/folders/music-flag` routes.
+
+Full gate (both seats APPROVE after one fix round). Dual-Node 7857/0
+(Node 22.23.1 + 24.14.0). **Dean's device pass PENDING.**
+
+Known gaps (disclosed): no album sub-shelves; the per-folder mark is keyed by
+`folderName`, so a folder rename re-keys it; universal-search projection deferred
+(library audio is already searchable via the audio provider - a music-provider
+projection would duplicate the result).
+
 ### v1.209.0 - Tap outside the open search to dismiss it (2026-08-29)
 
 Dean (mobile + desktop): open search, change your mind, tap the home logo top-
