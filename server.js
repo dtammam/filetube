@@ -8370,7 +8370,7 @@ function projectedLibraryTracks(req, nativeTracks) {
   const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
   const nativeIds = new Set(nativeTracks.map((t) => t.id));
   const out = [];
-  for (const item of Object.values(db.metadata)) {
+  for (const item of Object.values(db.metadata || {})) {
     if (!item || item.type !== 'audio') continue;
     if (!libraryAudio.isEligibleAudio(item, marks)) continue;
     if (!mediaVisibleTo(req, item)) continue; // the MEDIA gate

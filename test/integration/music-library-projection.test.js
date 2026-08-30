@@ -156,6 +156,31 @@ test('MEDIA RBAC: a restricted member never sees a blocked projected track', asy
   assert.ok(music.items.some((i) => i.id === 'tonzak1'), 'an unrestricted projected track is still visible');
 });
 
+test('MEDIA gate KIND: a FOLDER and a video-LIBRARY restriction gate projected audio out (bind media vs track)', async () => {
+  // The projection MUST use mediaVisibleTo (kind 'media'), NOT trackVisibleTo
+  // (kind 'track'). A path restriction (the test above) is enforced identically
+  // for BOTH kinds, so it does NOT distinguish them. folder-kind (visibility.js:
+  // 68, media-only) and library:'video'-kind (via KIND_TO_LIBRARY: media->video,
+  // track->music) ARE media-only - so these bind the gate KIND: under a
+  // trackVisibleTo mutant the folder/video-library restriction would not apply and
+  // the channel would LEAK into Music. (Adversarial gate WARNING 1.)
+  const fm = __mintTestSession({ username: 'gatekind', role: 'member' });
+  userStore.setSettingsJson(fm.user.id, { musicIncludesLibrary: 'on' });
+
+  // (a) folder-kind restriction on the projected channel folder (nest1 is marked on).
+  userStore.setRestrictions(fm.user.id, [{ kind: 'folder', value: 'nestalgiamusic' }]);
+  let music = await (await get('/api/music', fm.cookie)).json();
+  assert.ok(!music.items.some((i) => i.id === 'nest1'), 'a FOLDER-restricted channel is gated OUT of Music (proves the media gate, not track)');
+  assert.ok(music.items.some((i) => i.id === 'tonzak1'), 'an unrestricted projected channel is still visible under a folder restriction');
+
+  // (b) whole video-LIBRARY restriction: ALL projected audio (kind media -> video)
+  // vanishes; native music tracks (kind track -> music) remain.
+  userStore.setRestrictions(fm.user.id, [{ kind: 'library', value: 'video' }]);
+  music = await (await get('/api/music', fm.cookie)).json();
+  assert.ok(!music.items.some((i) => i.source === 'library'), 'a video-library restriction removes ALL projected audio from Music');
+  assert.ok(music.items.some((i) => i.id === 'dup1'), 'native music tracks are unaffected (kind track -> music library)');
+});
+
 // ---- T5: the per-folder mark read/write routes ----
 
 const postJson = (p, body, cookie) => fetch(`${base}${p}`, {

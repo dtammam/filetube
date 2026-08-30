@@ -2045,7 +2045,7 @@ const PreviewCards = (function () {
         let effectiveNow = false;
         const paint = (effective) => {
           mbtn.classList.toggle('is-on', !!effective);
-          const t = effective ? 'In your Music library — click to remove' : 'Show this channel in your Music library';
+          const t = effective ? 'In your Music library - click to remove' : 'Show this channel in your Music library';
           mbtn.title = t;
           mbtn.setAttribute('aria-label', t);
           mbtn.setAttribute('aria-pressed', effective ? 'true' : 'false');

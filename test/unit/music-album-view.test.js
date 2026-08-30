@@ -272,9 +272,15 @@ test('Wave G: tapping a projected library song loads it with /video + /thumbnail
 });
 
 test('Wave G: a NATIVE track still uses the /track music routes (the override is source-gated)', async () => {
-  // Mutation guard: a native track (no source) must NOT pick up media routes -
-  // proving the override is behind `source === 'library'`, not unconditional.
-  const songs = [{ id: 'nat1', title: 'Real Song', artist: 'A', album: '', albumKey: '', durationSec: 200 }];
+  // Mutation guard: the override must be behind `source === 'library'`, not merely
+  // "has a streamSrc field". So the native fixture DELIBERATELY carries media
+  // routes but NO source - the /track defaults must still win (removing the
+  // `isLib &&` from the ternary would then red this, binding the source gate
+  // itself, per the adversarial gate's MUTANT L).
+  const songs = [{
+    id: 'nat1', title: 'Real Song', artist: 'A', album: '', albumKey: '', durationSec: 200,
+    streamSrc: '/video/nat1', artUrl: '/thumbnail/nat1', progressEndpoint: '/api/progress', // present, but NO source
+  }];
   await boot('http://localhost/music', { state: 'docked', currentId: null }, { songs, tabPref: 'songs' }, async (dom, calls) => {
     const doc = dom.window.document;
     doc.querySelector('.music-song-row[data-id="nat1"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
