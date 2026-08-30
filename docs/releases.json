@@ -2428,5 +2428,11 @@
     "date": "2026-08-30",
     "title": "Back button keeps you inside Music",
     "intent": "Opening an album or artist in Music, or tapping a song to play it, used to be a one-way trip: pressing Back (or swiping back from the edge on your phone) jumped you all the way out of Music. Now Back steps you back where you'd expect - out of the album to your list, and back through an artist to where you started - and only leaves Music once you're at the top. Your music keeps playing the whole time. (Podcasts, Shows and Books will get the same treatment in upcoming updates.)"
+  },
+  {
+    "version": "1.218.0",
+    "date": "2026-08-30",
+    "title": "The same smart Back arrives in Podcasts and Shows",
+    "intent": "Following last update's Music change: Podcasts and Shows now do the same thing. Open a podcast or a show and press Back (or swipe back from the edge) and you step back to your list instead of jumping out of the section - and it only leaves once you're back at the grid. Books already worked this way. So Back now behaves consistently wherever you are in your library."
   }
 ]

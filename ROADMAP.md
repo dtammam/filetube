@@ -80,6 +80,42 @@
 
 ## Shipped
 
+### v1.218.0 - Consistent back: Podcasts + TV adopt the in-view back-stack (2026-08-30)
+
+Dean device-confirmed v1.217 ("enjoyed it quite a bit") and asked to extend the
+pattern to the other media types for a consistent page-follow. This wave adopts
+the v1.217 router primitive (unchanged) in Podcasts and TV, each of which has one
+in-view drill level (a grid -> a show):
+
+- **Podcasts** mirrors Music: opening a show (card descent) stamps a `{t:'show'}`
+  history level via `pushShowLevel`; `onShowPop` reconciles grid <-> show in
+  place; the "All podcasts" back button consumes the entry via `history.back()`.
+  A module-scoped live-handler ref delegates the stable `module.onPopState` to the
+  mounted init (currentShow is init-closure-scoped, like Music).
+- **TV** has the same one drill level. Its view functions are IIFE-level and
+  stable across mount, so `onShowPop` registers DIRECTLY (no live-handler
+  indirection); `currentShowId` tracks the open show. Episodes already navigate to
+  the watch page (a real history entry), so only the show drill needed a level.
+- **Books** was already consistent - opening a book is a page navigation to the
+  reader, so Back already returns to the library. No change (verified).
+
+So Back now steps within Podcasts/TV like it does in Music, and only leaves the
+section at the grid. No player reparent on an in-view back (delegation happens
+before the router's fetch/swap). Podcasts' now-playing collapse-on-back rides
+Music's deferred slice (tech-debt #186).
+
+**What the slim gate caught (adversarial seat).** APPROVE, no CRITICAL/WARNING.
+It proved TV's direct-register can't act on stale state (every mount overwrites
+`currentShowId` before use; the router only calls `onPopState` while the view is
+mounted), no player reparent, no history spam (only the card click pushes), and
+the Music tab-switch wart doesn't apply (neither view has a tab strip inside a
+show). One non-blocking note: the same-id push guard is a defensive belt, not a
+live dedup (the card only exists at the grid) - reworded honestly.
+
+Slim gate (adversarial seat, APPROVE, no fix round needed). Dual-Node 7914/0
+(Node 22.23.1 + 24.14.0). **Dean's device pass PENDING.** The media-nav arc
+continues (the deferred now-playing slice; the exec plan stays ACTIVE).
+
 ### v1.217.0 - Back steps within Music: an in-view back-stack (drills) (2026-08-30)
 
 Dean's device pass: the OS/Android back gesture (and the iOS left-edge swipe)
