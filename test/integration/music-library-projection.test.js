@@ -172,6 +172,12 @@ test('MEDIA gate KIND: a FOLDER and a video-LIBRARY restriction gate projected a
   let music = await (await get('/api/music', fm.cookie)).json();
   assert.ok(!music.items.some((i) => i.id === 'nest1'), 'a FOLDER-restricted channel is gated OUT of Music (proves the media gate, not track)');
   assert.ok(music.items.some((i) => i.id === 'tonzak1'), 'an unrestricted projected channel is still visible under a folder restriction');
+  // (a2) the /albumart grid-art fallback uses the SAME media gate KIND: a
+  // folder-restricted member gets the placeholder, never nest1's thumbnail bytes
+  // (binds the fallback's gate kind - adversarial MUTANT J).
+  const art = await get('/albumart/nest1', fm.cookie);
+  assert.match(art.headers.get('content-type') || '', /image\/svg\+xml/, 'folder-restricted -> placeholder SVG, not the thumbnail');
+  assert.notStrictEqual(await art.text(), 'JPEGBYTES-NEST', 'the folder-restricted thumbnail bytes never leak via /albumart');
 
   // (b) whole video-LIBRARY restriction: ALL projected audio (kind media -> video)
   // vanishes; native music tracks (kind track -> music) remain.
