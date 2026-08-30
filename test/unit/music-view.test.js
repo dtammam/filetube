@@ -138,6 +138,20 @@ test('v1.103: an artist with NO art still renders one placeholder tile (never a 
   assert.match(buildArtistCardHtml({ artist: 'Bare' }), /data-tiles="1"/);
 });
 
+test('redesign S1: an artist WITH a channel avatar renders a round circle (avatar over a monogram), not the mosaic', () => {
+  const html = buildArtistCardHtml({ artist: 'NESTALGIA', albumCount: 1, trackCount: 352, avatarUrl: 'https://yt3.example/n.jpg', artIds: ['x'] });
+  assert.match(html, /class="music-artist-avatar"/, 'the round avatar circle');
+  assert.match(html, /class="maa-img" src="https:\/\/yt3\.example\/n\.jpg"/, 'the channel avatar image');
+  assert.match(html, /class="maa-mono">N</, 'the uppercased first-letter monogram behind it');
+  assert.doesNotMatch(html, /music-artist-mosaic/, 'the mosaic is NOT rendered when there is an avatar');
+});
+
+test('redesign S1: an artist WITHOUT an avatar still falls back to the mosaic (native-album artist)', () => {
+  const html = buildArtistCardHtml({ artist: 'Pink Floyd', albumCount: 2, trackCount: 20, avatarUrl: '', artIds: ['a', 'b'] });
+  assert.match(html, /class="music-artist-mosaic" data-tiles="2"/, 'no avatar -> the album-art mosaic');
+  assert.doesNotMatch(html, /music-artist-avatar/, 'no round circle without an avatar');
+});
+
 test('v1.103: mosaic tile art ids are URL-encoded (a slash/space id cannot break the src attribute)', () => {
   const html = buildArtistCardHtml({ artist: 'Z', artIds: ['a b/c'] });
   assert.match(html, /src="\/albumart\/a%20b%2Fc"/);

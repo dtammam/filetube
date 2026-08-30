@@ -292,3 +292,32 @@ test('Wave G: a NATIVE track still uses the /track music routes (the override is
     assert.strictEqual(loaded.data.progressEndpoint, '/api/music/progress', 'native track uses the music coalescer');
   });
 });
+
+test('redesign S1: an artist avatar circle reveals on LOAD and DROPS on ERROR (both axes, to the monogram)', async () => {
+  // Default tab = artists; serve two channel artists with avatars. revealMusicArt
+  // wires each .maa-img: load -> .is-loaded (reveal), error -> removed (the
+  // monogram behind shows). Binds BOTH axes (the reveal-once recurring class).
+  const artistsFetch = () => (url) => {
+    if (url.indexOf('/api/music/artists') === 0) {
+      return Promise.resolve({ ok: true, json: async () => ({ items: [
+        { artist: 'NESTALGIA', avatarUrl: 'https://yt3.example/n.jpg', albumCount: 1, trackCount: 5, artIds: ['x'] },
+        { artist: 'Koopa Keys', avatarUrl: 'https://yt3.example/k.jpg', albumCount: 1, trackCount: 3, artIds: ['y'] },
+      ] }) });
+    }
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot('http://localhost/music', { state: 'docked', currentId: null }, { fetch: artistsFetch }, async (dom) => {
+    const doc = dom.window.document;
+    const imgs = doc.querySelectorAll('.maa-img');
+    assert.strictEqual(imgs.length, 2, 'two avatar circles rendered');
+    // ERROR axis: the first avatar fails -> its img is removed, the monogram remains.
+    imgs[0].dispatchEvent(new dom.window.Event('error'));
+    const nest = doc.querySelector('.music-artist-card[data-artist="NESTALGIA"]');
+    assert.ok(!nest.querySelector('.maa-img'), 'a broken avatar is DROPPED (monogram shows), never a broken-image glyph');
+    assert.ok(nest.querySelector('.maa-mono'), 'the monogram is still there');
+    // LOAD axis: the second avatar loads -> .is-loaded (revealed).
+    imgs[1].dispatchEvent(new dom.window.Event('load'));
+    assert.ok(doc.querySelector('.music-artist-card[data-artist="Koopa Keys"] .maa-img').classList.contains('is-loaded'),
+      'a loaded avatar reveals (.is-loaded)');
+  });
+});
