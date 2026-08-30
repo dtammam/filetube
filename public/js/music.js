@@ -96,6 +96,20 @@ function buildJumpBackTileHtml(item) {
     '</button>';
 }
 
+// Redesign: a HOME shelf - a titled section with an optional "See all" (switches
+// to that tab) over a horizontal-scroll row of tiles (album/artist cards reused
+// verbatim, so a tile tap drills exactly as it does in the full grid).
+function buildMusicShelfHtml(title, seeallTab, tilesHtml) {
+  return '' +
+    '<section class="music-shelf">' +
+    '<div class="music-shelf-head">' +
+    '<h3 class="music-shelf-title">' + escapeMusicHtml(title) + '</h3>' +
+    (seeallTab ? '<button type="button" class="music-shelf-seeall" data-seeall="' + escapeMusicHtml(seeallTab) + '">See all</button>' : '') +
+    '</div>' +
+    '<div class="music-shelf-row">' + tilesHtml + '</div>' +
+    '</section>';
+}
+
 // v1.102 (tranche 4): the song-row action glyphs (queue/download/like) are inline
 // chrome-icon SVGs, not `.icon-*` masks - a mask paints NOTHING until it decodes,
 // so on an iOS cold start it popped in a beat after the row (the v1.87 class). The
@@ -278,12 +292,12 @@ function deriveNowPlayingLabel(np, currentId) {
 // had it selected: `render()` dispatches on the tab name and has no else-arm,
 // so a stale 'liked' would render a blank page that survives every reload.
 // A remembered tab that is no longer in the roster falls back to the default.
-var MUSIC_TABS = ['albums', 'artists', 'songs'];
-// v1.103: Artists is the default landing (Dean: browse-by-artist is the primary
-// path, and the artist mosaic is the richest surface). Also the sanitiser
-// fallback for a stale/absent stored tab. A device with a prior stored tab keeps
-// it until the user taps Artists once.
-var MUSIC_DEFAULT_TAB = 'artists';
+var MUSIC_TABS = ['home', 'albums', 'artists', 'songs'];
+// Redesign: HOME is the default landing - a Spotify-style scroll of shelves
+// (Your artists as circles, Albums, Recently added). Albums/Artists/Songs remain
+// full-list tabs, reachable directly or via a shelf's "See all". Also the
+// sanitiser fallback for a stale/absent stored tab.
+var MUSIC_DEFAULT_TAB = 'home';
 
 function normalizeMusicTab(value) {
   return MUSIC_TABS.indexOf(value) >= 0 ? value : MUSIC_DEFAULT_TAB;
@@ -370,6 +384,25 @@ function buildMusicArtistSkeletonCards(n) {
   return '<div class="music-card-grid">' + cards + '</div>';
 }
 
+// Redesign: the HOME cold-landing skeleton - the SAME .music-home > .music-shelf
+// > .music-shelf-row shape renderHome reveals (two titled horizontal rows of
+// cards), so the swap is zero-shift on the default surface (the reveal-once
+// seed-the-shape-you-reveal contract; home is the cold landing off a page load).
+function buildMusicHomeSkeleton() {
+  function shelf(cardsHtml) {
+    return '<section class="music-shelf">' +
+      '<div class="music-shelf-head"><div class="skeleton-line skeleton-line-title skeleton-shimmer"></div></div>' +
+      '<div class="music-shelf-row">' + cardsHtml + '</div></section>';
+  }
+  var artistCards = '';
+  var albumCards = '';
+  for (var i = 0; i < 6; i++) {
+    artistCards += '<div class="music-artist-card" aria-hidden="true"><span class="music-artist-mosaic skeleton-shimmer"></span><div class="skeleton-line skeleton-line-title skeleton-shimmer"></div><div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div></div>';
+    albumCards += '<div class="music-album-card" aria-hidden="true"><span class="music-album-art skeleton-shimmer"></span><div class="skeleton-line skeleton-line-title skeleton-shimmer"></div><div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div></div>';
+  }
+  return '<div class="music-home">' + shelf(artistCards) + shelf(albumCards) + '</div>';
+}
+
 function buildMusicSkeletonRows(n) {
   var count = Number.isInteger(n) && n > 0 ? n : 0;
   if (count === 0) return '';
@@ -389,7 +422,7 @@ function buildMusicSkeletonRows(n) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildJumpBackTileHtml, buildSongRowHtml,
+    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
@@ -609,7 +642,11 @@ if (typeof module !== 'undefined' && module.exports) {
     function rebuildSortMenu() {
       if (!sortSelect) return;
       var wrap = sortSelect;
-      if (drill) { wrap.hidden = true; return; }
+      // A drill carries its own order; the HOME shelves are a fixed
+      // recently-added composition - neither exposes a sortable list, so the top
+      // sort control is hidden on both (gate: an inert/mislabeled dropdown on the
+      // default landing otherwise).
+      if (drill || tab === 'home') { wrap.hidden = true; return; }
       wrap.hidden = false;
       var opts = MUSIC_SORTS[tab] || MUSIC_SORTS.songs;
       var current = sortForTab(tab);
@@ -769,6 +806,31 @@ if (typeof module !== 'undefined' && module.exports) {
       revealMusicArt();
     }
 
+    // Redesign: the HOME shelves - "Your artists" (circles) + "Recently added"
+    // (albums), each a horizontal-scroll row with a "See all". Cards are the SAME
+    // builders as the full grids, so a tile tap drills through the shared content
+    // click delegation. Fetches both shelves in parallel; a shelf is omitted when
+    // empty, and an entirely empty library (no artists AND no albums) shows the
+    // empty note.
+    async function renderHome() {
+      var artists = [];
+      var albums = [];
+      try {
+        var res = await Promise.all([
+          fetchJson('/api/music/artists?limit=12&sort=newest'),
+          fetchJson('/api/music/albums?limit=12&sort=newest'),
+        ]);
+        artists = Array.isArray(res[0].items) ? res[0].items : [];
+        albums = Array.isArray(res[1].items) ? res[1].items : [];
+      } catch (_) { artists = []; albums = []; }
+      var html = '';
+      if (artists.length) html += buildMusicShelfHtml('Your artists', 'artists', artists.map(buildArtistCardHtml).join(''));
+      if (albums.length) html += buildMusicShelfHtml('Recently added', 'albums', albums.map(buildAlbumCardHtml).join(''));
+      content.innerHTML = '<div class="music-home">' + html + '</div>';
+      if (emptyNote) emptyNote.hidden = (artists.length + albums.length) > 0;
+      revealMusicArt();
+    }
+
     // Toggle `.playing` (accent + equalizer glyph) on the row whose track id
     // matches the currently-playing track. A pure DOM pass, NOT a re-render, so
     // it can run cheaply on every advance and after every list build. Called
@@ -834,23 +896,28 @@ if (typeof module !== 'undefined' && module.exports) {
       // change (tab switch, drill in/out) routes through one place.
       rebuildSortMenu();
       // v1.98 shimmer sweep: seed the EXACT shape the branch below reveals, so
-      // the swap is zero-shift - a song list (songs), an artist mosaic grid
-      // (artists, v1.103), or an album grid (albums). A DRILL is deliberately NOT seeded
-      // (gate WARNING 2): renderDrillView prepends a large .music-drill-header a
-      // bare song-row skeleton can't reserve, so keep the prior content on screen
-      // (the album grid you clicked) until the drill paints - no header jump.
-      // Each branch reveals by replacing content.innerHTML; the catch clears it.
+      // the swap is zero-shift - the HOME shelves (home, the default landing), a
+      // song list (songs), an artist mosaic grid (artists, v1.103), or an album
+      // grid (albums). A DRILL is deliberately NOT seeded (gate WARNING 2):
+      // renderDrillView prepends a large .music-drill-header a bare song-row
+      // skeleton can't reserve, so keep the prior content on screen (the album
+      // grid you clicked) until the drill paints - no header jump. Each branch
+      // reveals by replacing content.innerHTML; the catch clears it.
       if (content && !drill) {
-        content.innerHTML = tab === 'songs'
-          ? buildMusicSkeletonRows(8)
-          : tab === 'artists'
-            ? buildMusicArtistSkeletonCards(12)
-            : buildMusicSkeletonCards(8);
+        content.innerHTML = tab === 'home'
+          ? buildMusicHomeSkeleton()
+          : tab === 'songs'
+            ? buildMusicSkeletonRows(8)
+            : tab === 'artists'
+              ? buildMusicArtistSkeletonCards(12)
+              : buildMusicSkeletonCards(8);
       }
       try {
         if (drill) {
           await loadSongs({});
           renderDrillView();
+        } else if (tab === 'home') {
+          await renderHome();
         } else if (tab === 'songs') {
           await loadSongs({});
           renderSongList();
@@ -903,6 +970,16 @@ if (typeof module !== 'undefined' && module.exports) {
           renderDrillView();
           if (queue.length) playAt(0);
         }).catch(function () {});
+        return;
+      }
+      // Redesign: a HOME shelf's "See all" switches to that full-list tab.
+      var seeAll = e.target.closest('.music-shelf-seeall');
+      if (seeAll) {
+        var dest = normalizeMusicTab(seeAll.getAttribute('data-seeall'));
+        tab = dest;
+        writePref(TAB_KEY, tab);
+        setActiveTab();
+        render().catch(function () {});
         return;
       }
       var albumCard = e.target.closest('.music-album-card');

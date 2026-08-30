@@ -10410,6 +10410,37 @@ html[data-modern="on"] .video-uploader {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Redesign: the HOME shelves - titled sections over horizontal-scroll rows
+   (Spotify-style), reusing the album/artist cards at a fixed shelf width. */
+.music-home { display: flex; flex-direction: column; gap: var(--space-6); }
+.music-shelf { display: flex; flex-direction: column; gap: var(--space-3); }
+.music-shelf-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.music-shelf-title { font-size: var(--fs-lg); font-weight: var(--fw-bold); margin: 0; }
+.music-shelf-seeall {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-1) var(--space-2);
+}
+.music-shelf-seeall:hover { color: var(--text-primary); }
+.music-shelf-row {
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+.music-shelf-row > .music-album-card,
+.music-shelf-row > .music-artist-card {
+  flex: 0 0 auto;
+  width: 132px;
+  scroll-snap-align: start;
+}
 .music-status[hidden] { display: none !important; }
 
 .music-crumb { display: flex; align-items: center; gap: var(--space-5); margin-bottom: var(--space-6); }
@@ -10494,7 +10525,10 @@ html[data-modern="on"] .video-uploader {
 .music-artist-mosaic {
   width: 100%;
   aspect-ratio: 1 / 1;
-  border-radius: var(--radius-lg);
+  /* Redesign: artist tiles are ROUND across the whole page - a channel gets its
+     avatar circle, a native/ripped artist (no avatar) gets its album art clipped
+     to the same circle, so the Artists wall is uniformly circular. */
+  border-radius: 50%;
   background: var(--thumbnail-bg);
   display: block;
   overflow: hidden;
@@ -10514,7 +10548,7 @@ html[data-modern="on"] .video-uploader {
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
-  gap: var(--space-1);
+  gap: 0; /* seamless quad inside the circle (no cross-gap) */
 }
 .music-artist-mosaic img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .music-artist-mosaic[data-tiles="1"] { grid-template-columns: 1fr; grid-template-rows: 1fr; }

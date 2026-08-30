@@ -9,7 +9,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildJumpBackTileHtml, buildSongRowHtml,
+  escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildSongRowHtml,
   drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
   buildNowPlayingPanelHtml,
   MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
@@ -150,6 +150,19 @@ test('redesign S1: an artist WITHOUT an avatar still falls back to the mosaic (n
   const html = buildArtistCardHtml({ artist: 'Pink Floyd', albumCount: 2, trackCount: 20, avatarUrl: '', artIds: ['a', 'b'] });
   assert.match(html, /class="music-artist-mosaic" data-tiles="2"/, 'no avatar -> the album-art mosaic');
   assert.doesNotMatch(html, /music-artist-avatar/, 'no round circle without an avatar');
+});
+
+test('redesign: buildMusicShelfHtml renders a titled shelf with a See-all + a horizontal row', () => {
+  const html = buildMusicShelfHtml('Your artists', 'artists', '<button class="music-artist-card">x</button>');
+  assert.match(html, /class="music-shelf"/, 'a shelf section');
+  assert.match(html, /class="music-shelf-title">Your artists</, 'the title');
+  assert.match(html, /class="music-shelf-seeall" data-seeall="artists">See all</, 'a See-all that targets the tab');
+  assert.match(html, /class="music-shelf-row"><button class="music-artist-card">x<\/button>/, 'the tiles inside a scroll row');
+});
+
+test('redesign: a shelf with no See-all target omits the See-all button', () => {
+  const html = buildMusicShelfHtml('Jump back in', '', '<span>t</span>');
+  assert.doesNotMatch(html, /music-shelf-seeall/, 'no See-all when there is no destination tab');
 });
 
 test('redesign S1: buildJumpBackTileHtml renders a resume tile (data-id, /albumart art, title, artist)', () => {

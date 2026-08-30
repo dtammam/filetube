@@ -28,17 +28,17 @@ const { MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab } = require('../../publ
 
 // ---- the pure decision -------------------------------------------------------
 
-test('v1.75: the tab roster is the three surviving tabs - Liked is not one of them', () => {
-  assert.deepEqual(MUSIC_TABS, ['albums', 'artists', 'songs']);
-  assert.equal(MUSIC_DEFAULT_TAB, 'artists', 'v1.103: Artists is the default landing');
+test('the tab roster (redesign: Home leads) - Liked is not one of them', () => {
+  assert.deepEqual(MUSIC_TABS, ['home', 'albums', 'artists', 'songs']);
+  assert.equal(MUSIC_DEFAULT_TAB, 'home', 'redesign: Home (the shelves) is the default landing');
   assert.ok(MUSIC_TABS.indexOf('liked') === -1);
 });
 
 test('v1.75: a remembered tab that no longer exists falls back to the default; real ones pass through', () => {
-  assert.equal(normalizeMusicTab('liked'), 'artists', 'the retired tab is the case this exists for');
+  assert.equal(normalizeMusicTab('liked'), 'home', 'the retired tab degrades to the default (now Home)');
   for (const t of MUSIC_TABS) assert.equal(normalizeMusicTab(t), t, `${t} passes through untouched`);
   for (const junk of [null, undefined, '', 'nonsense', 0, {}, 'Albums']) {
-    assert.equal(normalizeMusicTab(junk), 'artists', `${JSON.stringify(junk)} degrades to the default`);
+    assert.equal(normalizeMusicTab(junk), 'home', `${JSON.stringify(junk)} degrades to the default`);
   }
 });
 
@@ -66,8 +66,10 @@ test('v1.75 REMOVAL OVERREACH GUARD: the song-row heart still writes both direct
 // ---- the USE: a real init() on a device that had the Liked tab selected -----
 
 const VIEW_HTML = `<body><div id="view-root" data-view="music">
+  <section id="music-jumpback" hidden></section>
   <div class="music-tabs" id="music-tabs" role="tablist">
-    <button type="button" class="music-tab active" data-tab="albums" role="tab">Albums</button>
+    <button type="button" class="music-tab active" data-tab="home" role="tab">Home</button>
+    <button type="button" class="music-tab" data-tab="albums" role="tab">Albums</button>
     <button type="button" class="music-tab" data-tab="artists" role="tab">Artists</button>
     <button type="button" class="music-tab" data-tab="songs" role="tab">Songs</button>
   </div>
@@ -112,8 +114,7 @@ async function bootMusicView(storedTab, fn) {
     require(musicPath);
     assert.ok(registered && typeof registered.init === 'function', 'music.js registered its view module');
     registered.init(dom.window.document.getElementById('view-root'));
-    await settle();
-    await settle();
+    for (let i = 0; i < 8; i++) await settle(); // the HOME shelves fetch artists+albums in parallel
     await fn(dom);
     registered.destroy();
   } finally {
@@ -134,9 +135,9 @@ test('v1.75 USE: a device whose stored tab is the RETIRED one still renders - it
       !content.innerHTML.includes('SENTINEL-NOT-RENDERED'),
       'nothing rendered: the stale tab hit no branch and /music is a blank page (the bug this guards)',
     );
-    assert.match(content.innerHTML, /music-card-grid/, 'the default (v1.103: Artists) grid rendered instead');
+    assert.match(content.innerHTML, /music-home/, 'the default (redesign: Home shelves) rendered instead');
     const active = dom.window.document.querySelector('.music-tab.active');
-    assert.equal(active.getAttribute('data-tab'), 'artists', 'and the strip highlights the tab that actually rendered');
+    assert.equal(active.getAttribute('data-tab'), 'home', 'and the strip highlights the tab that actually rendered');
   });
 });
 
@@ -151,6 +152,6 @@ test('v1.75 USE: a stored tab that is still real is honoured (the fallback is no
 test('v1.75 USE: no stored tab at all renders the default', async () => {
   await bootMusicView(null, (dom) => {
     const active = dom.window.document.querySelector('.music-tab.active');
-    assert.equal(active.getAttribute('data-tab'), 'artists', 'v1.103: Artists is the default landing');
+    assert.equal(active.getAttribute('data-tab'), 'home', 'redesign: Home is the default landing');
   });
 });
