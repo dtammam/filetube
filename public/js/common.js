@@ -9549,6 +9549,21 @@ function nextHistoryDepth(currentState, isReplace) {
   return isReplace ? cur : cur + 1;
 }
 
+// v1.217 (in-view back-stack): the PURE decision for handlePopState - given the
+// popped history state, the currently-mounted view name, and that view's
+// registered module, return the module's onPopState function to delegate to, or
+// null to fall through to the router's normal fetch+swap. Delegation happens
+// ONLY when the popped entry belongs to the SAME view that is already mounted
+// (a within-view step, e.g. music-drill -> music-browse) AND that view opted in
+// with an onPopState hook. A cross-view pop (leaving the section) has a different
+// `view` and never delegates - it swaps as it always has. Exported for node:test.
+function popStateDelegate(poppedState, currentViewName, viewMod) {
+  if (!poppedState || poppedState.view == null) return null;
+  if (!currentViewName || poppedState.view !== currentViewName) return null;
+  if (!viewMod || typeof viewMod.onPopState !== 'function') return null;
+  return viewMod.onPopState;
+}
+
 // v1.45.0 (T2): what the Home control should do, given the CURRENT entry's
 // in-app `depth` and where we are now. Dean's model: Home walks UP one in-app
 // level per tap, restoring the scroll/view left at each level; "home" is simply
@@ -9893,6 +9908,35 @@ if (typeof window !== 'undefined') {
       window.history.state.view, window.history.state.url, window.scrollY, window.history.state.depth,
       window.history.state.viewState);
     window.history.replaceState(updated, '');
+  }
+
+  // v1.217 (in-view back-stack): the two verbs a view uses to give itself an
+  // in-app back level. Both keep the CURRENT view + URL (no navigation, no URL
+  // change - deep links are untouched); they only add or amend a history entry
+  // carrying the view's own `viewState` payload, which the router hands back to
+  // the view's `onPopState` on the way back.
+  //
+  //  - pushViewState: a real DESCENT (open a drill, expand now-playing). Records
+  //    the current entry's scroll first (so back restores it), then PUSHES a new
+  //    entry at depth+1. `history.back()` from here fires a popstate the router
+  //    delegates to the view (see handlePopState) - it collapses one level in
+  //    place, no re-fetch, no player reparent.
+  //  - replaceViewState: a LATERAL move at the same level (switch a browse tab).
+  //    Amends the current entry's payload in place; adds no back level.
+  function pushViewState(viewState) {
+    if (!currentViewName) return;
+    recordScrollForCurrentState();
+    const url = window.location.pathname + window.location.search;
+    const depth = nextHistoryDepth(window.history.state, false);
+    window.history.pushState(buildHistoryState(currentViewName, url, 0, depth, viewState), '', url);
+  }
+  function replaceViewState(viewState) {
+    if (!currentViewName) return;
+    const s = window.history.state;
+    const url = (s && s.url) || (window.location.pathname + window.location.search);
+    const depth = nextHistoryDepth(s, true); // replace keeps the level
+    const scrollY = (s && typeof s.scrollY === 'number') ? s.scrollY : window.scrollY;
+    window.history.replaceState(buildHistoryState(currentViewName, url, scrollY, depth, viewState), '');
   }
 
   // Extracts `#view-root` (+ `<title>`) from a fetched HTML document string.
@@ -10510,6 +10554,21 @@ if (typeof window !== 'undefined') {
     const state = parseHistoryState(event.state, window.location);
     if (!state.view) return; // an unknown route — the browser has already navigated there natively
 
+    // v1.217 (in-view back-stack): if this pop stays WITHIN the currently-mounted
+    // view and that view opted into same-view pops, let it resolve the pop IN
+    // PLACE (collapse a drill / now-playing) - no generation bump, no fetch, no
+    // swapToView, no player reparent. `onPopState` returns truthy when it handled
+    // the pop; a falsy return (e.g. it's already at its root, so this pop leaves
+    // the view) FALLS THROUGH to the normal fetch+swap below, exactly as before.
+    // A cross-view pop has a different `state.view` and never reaches this branch.
+    const delegate = popStateDelegate(state, currentViewName, viewRegistry[currentViewName]);
+    if (delegate) {
+      let handled = false;
+      try { handled = delegate(state); }
+      catch (err) { console.error('View onPopState() failed for', currentViewName, err); }
+      if (handled) return;
+    }
+
     // FR-4 (T4): back/forward INTO the exact cached home URL reattaches the
     // node directly, restoring its scroll -- no fetch, no re-render, no
     // image-height race. Only a byte-identical match counts (see the
@@ -10601,6 +10660,8 @@ if (typeof window !== 'undefined') {
   window.FileTube = window.FileTube || {};
   window.FileTube.registerView = registerView;
   window.FileTube.navigate = navigate;
+  window.FileTube.pushViewState = pushViewState; // v1.217 in-view back-stack
+  window.FileTube.replaceViewState = replaceViewState;
   window.FileTube.queueEntryHref = queueEntryHref;
   window.FileTube.bootRouter = bootRouter;
   // v1.52 instant watch: click surfaces stash, watch's init consumes.
@@ -15149,7 +15210,7 @@ if (typeof module !== 'undefined' && module.exports) {
     decideOneOffTerminalAction, applyOneOffTerminalAction, triggerLibraryRescanAndRefresh,
     injectOneOffDownloadButtonIfEnabled,
     showToast, nextArmState, deleteResultToast,
-    deriveRouteView, shouldInterceptLinkClick, buildHistoryState, parseHistoryState,
+    deriveRouteView, shouldInterceptLinkClick, buildHistoryState, parseHistoryState, popStateDelegate,
     // v1.47.4 item 2: the pure zoom-policy decision + the viewport contents it
     // selects between, exported so tests assert the reader carve-out against the
     // real values rather than hardcoded duplicates.
