@@ -294,6 +294,40 @@ test('Wave G: a NATIVE track still uses the /track music routes (the override is
   });
 });
 
+test('redesign: Music opens on the HOME shelves by default; a shelf "See all" opens the full tab', async () => {
+  const homeFetch = () => (url) => {
+    if (url.indexOf('/api/music/artists') === 0) {
+      return Promise.resolve({ ok: true, json: async () => ({ items: [
+        { artist: 'NESTALGIA', avatarUrl: 'https://yt3.example/n.jpg', albumCount: 1, trackCount: 5, artIds: ['x'] },
+      ] }) });
+    }
+    if (url.indexOf('/api/music/albums') === 0) {
+      return Promise.resolve({ ok: true, json: async () => ({ items: [
+        { albumKey: 'k1', album: 'DK64 Jazz', artist: 'Phantasia Records', trackCount: 15, artId: 'a1' },
+      ] }) });
+    }
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot('http://localhost/music', { state: 'docked', currentId: null }, { fetch: homeFetch }, async (dom) => {
+    const doc = dom.window.document;
+    const home = doc.querySelector('.music-home');
+    assert.ok(home, 'the default landing is the HOME shelves, not a flat grid');
+    const shelves = home.querySelectorAll('.music-shelf');
+    assert.strictEqual(shelves.length, 2, 'Your artists + Recently added shelves');
+    assert.match(home.innerHTML, /Your artists/, 'the artists shelf');
+    assert.match(home.innerHTML, /Recently added/, 'the albums shelf');
+    assert.ok(home.querySelector('.music-artist-card'), 'the artist shelf reuses the artist card');
+    // "See all" on the artists shelf -> the full Artists tab (a flat grid).
+    const seeAll = home.querySelector('.music-shelf-seeall[data-seeall="artists"]');
+    assert.ok(seeAll, 'the artists shelf has a See all');
+    seeAll.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 8; i++) await settle();
+    const content = doc.getElementById('music-content');
+    assert.ok(content.querySelector('.music-card-grid'), 'See all opened the full Artists grid');
+    assert.ok(!content.querySelector('.music-home'), 'the home shelves are gone (now on the full tab)');
+  });
+});
+
 test('redesign S1: the "Jump back in" strip renders recent tracks and a tile resumes on tap', async () => {
   // The harness fetchMap serves filter=recent-listening -> RECENT (t2 + a loose
   // album-less track). renderJumpBackIn populates #music-jumpback on init.
