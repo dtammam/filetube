@@ -82,11 +82,21 @@ scroll-restore semantics intact for the fall-through path.
     that is what "collapse now-playing" already does today - reuse, never
     rebuild; the background-audio + mini-player machinery is battle-won).
 
-### Adoption path (documented, built later, one small wave each)
-Podcasts: identical now-playing shape -> `pushViewState({t:'np'})` + `onPopState`.
-TV: show/season/episode drills -> push per drill level. Books/reader:
-book/chapter -> push per level. Each reuses primitive #1-3 unchanged; only the
-view's own `onPopState` + push sites are new. Record here as each ships.
+### Adoption path (across the media views - reuses the primitive unchanged)
+- **Podcasts (SHIPPED v1.218):** one drill level (grid -> a show). `pushShowLevel`
+  on the card descent (dedup on show id), `onShowPop` reconciles to grid/show, the
+  "All podcasts" back button consumes the entry via history.back(). Module-scoped
+  live-handler ref (currentShow is init-closure-scoped, like Music). Now-playing
+  collapse deferred with Music's (same shape).
+- **TV (SHIPPED v1.218):** one drill level (grid -> a show). Its view functions are
+  IIFE-level + stable across mount, so `onShowPop` registers DIRECTLY (no live-handler
+  indirection); `currentShowId` tracks the open show. Episodes already NAVIGATE to
+  /watch (a real history entry), so only the show drill needed a level.
+- **Books (ALREADY CONSISTENT - no work):** opening a book is an `<a href="/read.html?b=">`
+  page navigation (a real history entry via the router), so back already returns to
+  the library. The reader's chapter nav is in-page and separate.
+- **Deferred here too:** Podcasts now-playing collapse-on-back rides Music's slice 1
+  (same ?nowplaying navigate + player expand/dock entanglement).
 
 ## Task commits (each green before the next)
 
