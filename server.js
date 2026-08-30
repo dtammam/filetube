@@ -88,6 +88,9 @@ const musicStore = require('./lib/music/store');
 const homeFeed = require('./lib/home/feed'); // v1.79: pure home-feed row assembler
 const musicScan = require('./lib/music/scan');
 const musicQuery = require('./lib/music/query');
+// Wave G: the pure projection of library audio (db.metadata type 'audio') into
+// the Music library - eligibility + track shaping, no I/O.
+const libraryAudio = require('./lib/music/libraryAudio');
 // v1.195 TV Shows (UI "Shows"): feature-owned db.tv namespace + pure scan/parse.
 const tvStore = require('./lib/tv/store');
 const tvScan = require('./lib/tv/scan');
@@ -536,6 +539,13 @@ function loadDatabase() {
     for (const k of ['downloadMeta', 'channelAvatars']) {
       if (!db.ytdlp[k] || typeof db.ytdlp[k] !== 'object' || Array.isArray(db.ytdlp[k])) db.ytdlp[k] = {};
     }
+  }
+  // Wave G: when the music container exists, backfill `channels` (the per-folder
+  // "show in Music" marks) the same way books.progress/ytdlp.downloadMeta are
+  // backfilled - so the eligibility predicate and the write route never touch an
+  // undefined. music.tracks/folders/settings stay musicStore-owned (lazy ensure).
+  if (db.music && typeof db.music === 'object') {
+    if (!db.music.channels || typeof db.music.channels !== 'object' || Array.isArray(db.music.channels)) db.music.channels = {};
   }
   db.settings = withDefaultSettings(db.settings); // backfill for older databases
   return db;
@@ -6058,6 +6068,10 @@ const MIRRORED_SETTING_KEYS = new Set([
   // v1.84: Modern YouTube Mode - a third home layout (flat big-tile grid +
   // chips + mobile avatar bar). Same bounded 'on'/'off' string; absent => off.
   'modernMode',
+  // Wave G: the OPT-IN master toggle for projecting downloaded music channels
+  // (library audio) into the Music library. Bounded 'on'/'off'; absent => OFF
+  // (the default for everyone - Music is untouched until a user opts in).
+  'musicIncludesLibrary',
   ...glyphPool.LIBRARY_GLYPH_SLOTS.map((s) => s.key),
 ]);
 
@@ -6630,6 +6644,64 @@ app.post('/api/folders/display-name', async (req, res) => {
     return true;
   });
   res.json({ success: true, folderName, name: name === '' ? null : name });
+});
+
+// Wave G: read the per-folder "show in Music" state for the folder header
+// toggle. Returns the stored override (or null), the effective state (override,
+// else the genre-seeded default over this folder's VISIBLE audio), and whether
+// the folder even has audio (the toggle only renders when it does). Visibility-
+// scoped like the write route (never reveals a folder the user can't see).
+app.get('/api/folders/music-flag', (req, res) => {
+  const folderName = typeof req.query.folderName === 'string' ? req.query.folderName.trim() : '';
+  if (folderName === '') return res.status(400).json({ error: 'folderName is required' });
+  const db = getCachedDatabase();
+  const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
+  const audioItems = Object.values(db.metadata || {}).filter(
+    (it) => it && it.type === 'audio' && it.folderName === folderName && mediaVisibleTo(req, it));
+  if (audioItems.length === 0) return res.json({ folderName, hasAudio: false, override: null, effective: false });
+  const override = Object.prototype.hasOwnProperty.call(marks, folderName) ? marks[folderName] : null;
+  const genreDefault = audioItems.some((it) => it.tags && it.tags.genre === 'Music');
+  const effective = override === 'on' ? true : override === 'off' ? false : genreDefault;
+  return res.json({ folderName, hasAudio: true, override, effective });
+});
+
+// Wave G: the per-folder "show in Music library" mark. `music` is 'on'/'off'
+// (an explicit override) or null (clear -> back to the genre-seeded default).
+// Same dual-axis gate as the rename route (requireModifyLibrary - shared library
+// metadata - AND visibility), but the existence probe requires a visible AUDIO
+// item: the mark is meaningless on a folder with no library audio, and this
+// blocks junk-key writes for video-only or unseen folders. Writes
+// db.music.channels[folderName]; the projection reads it in /api/music*.
+app.post('/api/folders/music-flag', async (req, res) => {
+  if (!requireModifyLibrary(req, res)) return;
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const folderName = typeof body.folderName === 'string' ? body.folderName.trim() : '';
+  if (folderName === '') return res.status(400).json({ error: 'folderName is required' });
+  const music = body.music;
+  if (!(music === 'on' || music === 'off' || music === null)) {
+    return res.status(400).json({ error: "music must be 'on', 'off', or null" });
+  }
+  const db = getCachedDatabase();
+  // Existence AND visibility in ONE pass through the canonical decision (the
+  // v1.41.4 scar): renamable/markable iff the folder has >=1 AUDIO item visible
+  // to this user. A wholly-hidden or non-existent folder -> the same neutral 404.
+  const visibleAudioExists = Object.values(db.metadata || {}).some(
+    (it) => it && it.type === 'audio' && it.folderName === folderName && mediaVisibleTo(req, it));
+  if (!visibleAudioExists) return res.status(404).json({ error: 'No such folder' });
+  await updateDatabase((mdb) => {
+    if (!mdb.music || typeof mdb.music !== 'object') mdb.music = {};
+    if (!mdb.music.channels || typeof mdb.music.channels !== 'object') mdb.music.channels = {};
+    const current = mdb.music.channels[folderName];
+    if (music === null) {
+      if (current === undefined) return false; // nothing to clear
+      delete mdb.music.channels[folderName];
+      return true;
+    }
+    if (current === music) return false; // unchanged
+    mdb.music.channels[folderName] = music;
+    return true;
+  });
+  res.json({ success: true, folderName, music });
 });
 
 // API: Save folder configuration
@@ -8238,6 +8310,12 @@ function ownTrack(tracks, id) {
 function publicTrackListItem(track, userId, likedSet, progressMap) {
   const liked = likedSet ? likedSet.has(track.id) : false;
   const prog = progressMap ? progressMap[track.id] : null;
+  // Wave G: a PROJECTED library-audio track (source 'library') streams the mp3
+  // from the media byte route, arts from its YouTube thumbnail, and saves
+  // progress to the MEDIA store - so it carries its own routes + a source marker
+  // for the client's loadTrack to branch on, and its art/transcode flags come
+  // from the media item, NOT the music-namespace albumart/codec paths.
+  const isLib = track.source === 'library';
   return {
     id: track.id,
     title: track.title,
@@ -8256,19 +8334,56 @@ function publicTrackListItem(track, userId, likedSet, progressMap) {
     // <Album>" line (the album/artist drill filters on this exact key).
     albumKey: musicStore.albumKeyFor(track),
     albumArtKey: track.albumArtKey,
-    hasArt: !!(track.albumArtKey && albumArtExists(track.albumArtKey)),
+    // A library track's art is its media thumbnail (served via /albumart/:id ->
+    // thumbnail fallback); a native track's is the extracted album-art file.
+    hasArt: isLib ? !!track.hasEmbeddedArt : !!(track.albumArtKey && albumArtExists(track.albumArtKey)),
     // Gate QA-CRITICAL: the client keys its transcode-prewarm poll off this,
     // so an ALAC track's first play waits for the rendition instead of
-    // silently failing on the /track/:id 503.
-    needsTranscode: musicCodecNeedsTranscode(track.codec),
+    // silently failing on the /track/:id 503. A library track never uses the
+    // /track prewarm path (it streams from /video), so it never prewarms.
+    needsTranscode: isLib ? false : musicCodecNeedsTranscode(track.codec),
     liked,
     progress: prog ? { position: prog.position, duration: prog.duration, updatedAt: prog.updatedAt } : null,
+    // The projection markers (absent on native tracks): the client's loadTrack
+    // prefers these routes over the /track,/albumart,/api/music/progress
+    // defaults.
+    ...(isLib ? {
+      source: 'library',
+      streamSrc: track.streamSrc,
+      artUrl: track.artUrl,
+      progressEndpoint: track.progressEndpoint,
+    } : {}),
   };
+}
+
+// Wave G: the projected library-audio tracks this user sees in Music, or [] when
+// the opt-in master toggle is off. Each db.metadata audio item that is eligible
+// (per-folder mark, else genre default), passes the MEDIA visibility gate (NOT
+// trackVisibleTo - these are media items, a distinct restriction kind), and does
+// not collide with a native music-track id (dedup: the real track wins), is
+// shaped into a music-track record. `nativeTracks` is the already-RBAC-filtered
+// native list, so the dedup set only holds ids this user may already see.
+function projectedLibraryTracks(req, nativeTracks) {
+  const settings = parseUserSettings(req.user);
+  if (settings.musicIncludesLibrary !== 'on') return []; // opt-in, default OFF
+  const db = getCachedDatabase();
+  const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
+  const nativeIds = new Set(nativeTracks.map((t) => t.id));
+  const out = [];
+  for (const item of Object.values(db.metadata || {})) {
+    if (!item || item.type !== 'audio') continue;
+    if (!libraryAudio.isEligibleAudio(item, marks)) continue;
+    if (!mediaVisibleTo(req, item)) continue; // the MEDIA gate
+    if (nativeIds.has(item.id)) continue; // a file in both roots: the native track wins
+    out.push(libraryAudio.projectAudioItem(item));
+  }
+  return out;
 }
 
 app.get('/api/music', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
+  list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (opt-in)
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   const album = typeof req.query.album === 'string' ? req.query.album : '';
   const artist = typeof req.query.artist === 'string' ? req.query.artist : '';
@@ -8305,6 +8420,7 @@ app.get('/api/music', (req, res) => {
 app.get('/api/music/albums', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
+  list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (opt-in)
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
   // Gate QA-WARNING/ADV-SUGGESTION: paginate (the design-for-scale target) and
@@ -8322,6 +8438,7 @@ app.get('/api/music/albums', (req, res) => {
 app.get('/api/music/artists', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
+  list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (opt-in)
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
   const sortKey = typeof req.query.sort === 'string' ? req.query.sort : '';
@@ -8441,7 +8558,8 @@ app.get('/track/:id', (req, res) => {
 // Album art by TRACK id -> its album's art file, else an escaped SVG
 // placeholder (mirrors /bookcover/:id).
 app.get('/albumart/:id', (req, res) => {
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const db = getCachedDatabase();
+  const ns = musicStore.readMusic(db);
   const track = ownTrack(ns.tracks, req.params.id);
   if (track && !trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC
   const key = track && typeof track.albumArtKey === 'string' ? track.albumArtKey : null;
@@ -8453,6 +8571,21 @@ app.get('/albumart/:id', (req, res) => {
         // trackVisibleTo, so a shared cache must not store/replay it cross-user.
         res.set('Cache-Control', 'private, max-age=86400');
         return res.sendFile(p);
+      }
+    }
+  }
+  // Wave G: a PROJECTED library-audio track's album/artist tile carries the
+  // MEDIA id as its artId (it has no album-art file), so fall back to that
+  // item's YouTube thumbnail - real imagery instead of the placeholder. Only a
+  // VISIBLE audio item, and only when there is no native track (never overrides
+  // a real track's own art resolved above). Mirrors /thumbnail's own gate.
+  if (!track) {
+    const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, req.params.id) ? db.metadata[req.params.id] : null;
+    if (item && item.type === 'audio' && mediaVisibleTo(req, item) && item.hasThumbnail) {
+      const thumbPath = path.join(THUMBNAIL_DIR, `${req.params.id}.jpg`);
+      if (fs.existsSync(thumbPath)) {
+        res.set('Cache-Control', 'private, max-age=86400');
+        return res.sendFile(thumbPath);
       }
     }
   }

@@ -97,6 +97,10 @@ function fullState() {
       folders: ['/media/music'],
       tracks: { trk1: { id: 'trk1', title: 'Song', artist: 'A', album: 'Debut', filePath: '/media/music/A/Debut/01 Song.flac', rootFolder: '/media/music', ext: '.flac', albumArtKey: 'a'.repeat(32) } },
       settings: {},
+      // Wave G: the per-folder "show in Music" marks ride the bundle inside the
+      // music container (a non-empty value so the deep-equal proves carriage -
+      // an un-bundled channels map would silently RESET every mark on restore).
+      channels: { NESTALGIA: 'on' },
     },
     ytdlp: {
       allowMembersOnly: false,

@@ -908,6 +908,14 @@ if (typeof module !== 'undefined' && module.exports) {
 
     function loadTrack(item, i, opts) {
       opts = opts || {};
+      // Wave G: a PROJECTED library-audio track (source 'library') streams the
+      // mp3 from the media byte route, arts from its YouTube thumbnail, and saves
+      // progress to the MEDIA store - so it carries its OWN routes, which we
+      // prefer over the /track,/albumart,/api/music/progress music defaults.
+      // resumeMode stays 'music' (the smart-resume, no "Resume at..." prompt, and
+      // the music now-playing panel) - the read then hits progressEndpoint
+      // (/api/progress), unifying the resume position with the feed side.
+      var isLib = item.source === 'library';
       var data = {
         type: 'audio',
         title: item.title,
@@ -916,9 +924,9 @@ if (typeof module !== 'undefined' && module.exports) {
         album: item.album || '',
         albumKey: item.albumKey || '', // v1.104: so the player can re-seed the now-playing panel's album drill after a re-init
         duration: item.durationSec || 0,
-        artUrl: '/albumart/' + item.id,
-        streamSrc: '/track/' + item.id,
-        progressEndpoint: '/api/music/progress',
+        artUrl: (isLib && item.artUrl) ? item.artUrl : ('/albumart/' + item.id),
+        streamSrc: (isLib && item.streamSrc) ? item.streamSrc : ('/track/' + item.id),
+        progressEndpoint: (isLib && item.progressEndpoint) ? item.progressEndpoint : '/api/music/progress',
         resumeMode: 'music',
         autoAdvanceViaTrackNav: true,
         browseCtx: queueCtxEncoded,

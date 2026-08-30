@@ -91,14 +91,14 @@ One SQLite file, two buckets (see ARCHITECTURE.md "Storage"). The document
 store persists the legacy db.json object shape per row; everything
 user-scoped is relational. The namespace lists in `lib/db/sqlite.js` are a
 LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.135.0:
-13 `doc_kv` namespaces, 17 `doc_single` names, 29 relational tables,
+13 `doc_kv` namespaces, 18 `doc_single` names, 29 relational tables,
 schema version 19.
 
 ```mermaid
 flowchart LR
     subgraph DOC["Document store (the db.json shape, per-row)"]
         KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata · progress · viewCounts · trash ·<br/>deleteTombstones · books.items · books.progress ·<br/>books.audio · music.tracks · podcasts.episodes ·<br/>tv.episodes · ytdlp.downloadMeta · ytdlp.channelAvatars"]
-        SINGLE["doc_single (name, json)<br/>whole small objects:<br/>folders · folderSettings · folderDisplayNames ·<br/>settings · liked · books.folders · books.settings ·<br/>books.pins · music.folders · music.settings ·<br/>podcasts.subscriptions · podcasts.settings ·<br/>tv.folders · tv.settings ·<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
+        SINGLE["doc_single (name, json)<br/>whole small objects:<br/>folders · folderSettings · folderDisplayNames ·<br/>settings · liked · books.folders · books.settings ·<br/>books.pins · music.folders · music.settings · music.channels ·<br/>podcasts.subscriptions · podcasts.settings ·<br/>tv.folders · tv.settings ·<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
     end
 
     subgraph REL["Relational per-user tables (accessors: lib/auth/store.js)"]

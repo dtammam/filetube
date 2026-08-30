@@ -242,3 +242,53 @@ test('v1.207: a plain /music visit (no nowplaying, no play) is UNCHANGED - defau
     assert.doesNotMatch(content(dom).innerHTML, /music-drill/, 'a plain visit does not force the album drill');
   });
 });
+
+// ---- Wave G: a PROJECTED library-audio song plays via its OWN media routes ----
+
+test('Wave G: tapping a projected library song loads it with /video + /thumbnail + /api/progress (not the /track music routes)', async () => {
+  // A projected library track carries source:'library' + its media routes and an
+  // empty album (untitled), so it plays directly from the flat Songs list (the
+  // album-less path) - which routes through loadTrack, the seam that must PREFER
+  // the item's own routes over the /track,/albumart,/api/music/progress defaults.
+  const songs = [{
+    id: 'lib1', title: 'A NESTALGIA Mix', artist: 'NESTALGIA', album: '', albumKey: '', durationSec: 1800,
+    source: 'library', streamSrc: '/video/lib1', artUrl: '/thumbnail/lib1', progressEndpoint: '/api/progress',
+  }];
+  await boot('http://localhost/music', { state: 'docked', currentId: null }, { songs, tabPref: 'songs' }, async (dom, calls) => {
+    const doc = dom.window.document;
+    const row = doc.querySelector('.music-song-row[data-id="lib1"]');
+    assert.ok(row, 'the projected song row exists in the flat list');
+    row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    for (let i = 0; i < 8; i++) await settle();
+    const loaded = calls.load.find((c) => c.id === 'lib1');
+    assert.ok(loaded, 'the projected track loaded into the player');
+    assert.strictEqual(loaded.data.streamSrc, '/video/lib1', 'streams the mp3 from the media byte route');
+    assert.strictEqual(loaded.data.artUrl, '/thumbnail/lib1', 'art is the media thumbnail');
+    assert.strictEqual(loaded.data.progressEndpoint, '/api/progress', 'progress unified with the feed (media store)');
+    // resumeMode stays 'music' so the read hits progressEndpoint with the music
+    // smart-resume / no-prompt feel (a native track would use the SAME field).
+    assert.strictEqual(loaded.data.resumeMode, 'music', 'keeps the music now-playing + no-prompt resume');
+  });
+});
+
+test('Wave G: a NATIVE track still uses the /track music routes (the override is source-gated)', async () => {
+  // Mutation guard: the override must be behind `source === 'library'`, not merely
+  // "has a streamSrc field". So the native fixture DELIBERATELY carries media
+  // routes but NO source - the /track defaults must still win (removing the
+  // `isLib &&` from the ternary would then red this, binding the source gate
+  // itself, per the adversarial gate's MUTANT L).
+  const songs = [{
+    id: 'nat1', title: 'Real Song', artist: 'A', album: '', albumKey: '', durationSec: 200,
+    streamSrc: '/video/nat1', artUrl: '/thumbnail/nat1', progressEndpoint: '/api/progress', // present, but NO source
+  }];
+  await boot('http://localhost/music', { state: 'docked', currentId: null }, { songs, tabPref: 'songs' }, async (dom, calls) => {
+    const doc = dom.window.document;
+    doc.querySelector('.music-song-row[data-id="nat1"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    for (let i = 0; i < 8; i++) await settle();
+    const loaded = calls.load.find((c) => c.id === 'nat1');
+    assert.ok(loaded, 'the native track loaded');
+    assert.strictEqual(loaded.data.streamSrc, '/track/nat1', 'native track streams from /track');
+    assert.strictEqual(loaded.data.artUrl, '/albumart/nat1', 'native track art from /albumart');
+    assert.strictEqual(loaded.data.progressEndpoint, '/api/music/progress', 'native track uses the music coalescer');
+  });
+});

@@ -1173,6 +1173,25 @@ html.reader-immersive .app-container { padding-top: 0; }
   color: var(--text-primary);
 }
 
+/* Wave G: the per-folder "show in Music library" toggle - a sibling of the
+   rename pencil, same understated treatment; the on-state reads in the link
+   accent so an included channel is glanceable. */
+.folder-music-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--fs-md);
+  padding: 0 var(--space-2);
+  vertical-align: baseline;
+}
+.folder-music-toggle:hover {
+  color: var(--text-primary);
+}
+.folder-music-toggle.is-on {
+  color: var(--text-link);
+}
+
 .library-item-count {
   font-size: var(--fs-sm);
   color: var(--text-secondary);

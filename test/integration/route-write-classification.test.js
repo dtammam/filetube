@@ -114,6 +114,7 @@ const CLASSIFICATION = {
   'DELETE /api/trash/:id': 'library-write',
   'POST /api/trash/purge-all': 'library-write', // v1.158: bulk "Empty trash"
   'POST /api/folders/display-name': 'library-write', // v1.126: shared display metadata
+  'POST /api/folders/music-flag': 'library-write', // Wave G: the per-folder "show in Music" mark (requireModifyLibrary)
 
   'DELETE /api/podcasts/episodes/:id': 'library-write',
   'POST /api/podcasts/episodes/:id/restore': 'library-write',
@@ -274,6 +275,11 @@ const VISIBILITY = {
   // not URL-carried - still content-addressed); the handler 404s a member
   // restricted from the folder. Behavioral proof: folder-display-names.test.js.
   'POST /api/folders/display-name': 'enforced',
+  // Wave G: the "show in Music" mark addresses a restrictable FOLDER; the handler
+  // requires a VISIBLE audio item (mediaVisibleTo) or 404s, so a member restricted
+  // from the folder cannot mark it. Behavioral proof:
+  // music-library-projection.test.js (member 403 + the visibility probe).
+  'POST /api/folders/music-flag': 'enforced',
 
   // --- the caller's OWN per-user state (oracle at worst, non-blocking) ---
   'POST /api/progress': 'personal',

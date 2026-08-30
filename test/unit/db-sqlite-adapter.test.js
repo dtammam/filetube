@@ -77,6 +77,11 @@ function fullFixture() {
       folders: ['/media/tunes'],
       tracks: { trk1: { id: 'trk1', title: 'Song One', artist: 'A', album: 'Debut', filePath: '/media/tunes/A/Debut/01 Song One.flac', rootFolder: '/media/tunes' } },
       settings: {},
+      // Wave G: per-folder "show in Music" marks (singleton, folderName-keyed,
+      // like folderDisplayNames). Exercised through the round-trip + every
+      // upgrade test (both consume this fixture) - proving the namespace is
+      // registered and save()/load() preserve it byte-equal.
+      channels: { NESTALGIA: 'on', Zarchivo: 'off' },
     },
     ytdlp: {
       allowMembersOnly: false,
