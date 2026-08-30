@@ -504,6 +504,11 @@ if (typeof module !== 'undefined' && module.exports) {
   // in lockstep with the player; the render/updateNowPlaying guard cross-checks
   // player.currentId so a video/book-now-playing (or a closed player) hides it.
   var nowPlaying = null;
+  // v1.217 (in-view back-stack): the LIVE onPopState handler for the mounted
+  // init() closure (it needs init's `drill`/render/setActiveTab). Module-scoped
+  // so the stable module.onPopState the router calls can delegate to whichever
+  // init is current; nulled by destroy() so a pop after teardown is a no-op.
+  var activePopStateHandler = null;
   var SORT_KEY = 'filetube_music_sort';
   var TAB_KEY = 'filetube_music_tab';
   // Friction pass: the Artists view mode - 'grid' (circles) or 'list' (compact
@@ -628,9 +633,7 @@ if (typeof module !== 'undefined' && module.exports) {
       nowPlayingEl.addEventListener('click', function () {
         var key = nowPlayingEl.getAttribute('data-album-key');
         if (!key || !nowPlaying) return;
-        drill = { type: 'album', key: key, label: nowPlaying.album || 'Album' };
-        setActiveTab();
-        render().catch(function () {});
+        openDrill({ type: 'album', key: key, label: nowPlaying.album || 'Album' }).catch(function () {});
       }, { signal });
     }
 
@@ -1059,13 +1062,54 @@ if (typeof module !== 'undefined' && module.exports) {
       updateNowPlaying();
     }
 
+    // ---- v1.217 in-view back-stack: drill descents get a history level -------
+    // Descending into a drill (open an album/artist from the browse view) stamps
+    // a history entry carrying the drill descriptor, so the OS/browser back
+    // gesture steps back to the browse list instead of leaving Music. onDrillPop
+    // reconciles the in-memory `drill` to the entry the router hands back. No URL
+    // change (deep links untouched); no player reparent (a drill is browse-only).
+    function drillKey(d) { return d ? (d.type + ' ' + d.key) : ''; }
+    function openDrill(next) {
+      drill = next;
+      var ft = window.FileTube;
+      if (ft && typeof ft.pushViewState === 'function') {
+        ft.pushViewState({ t: 'drill', drill: { type: next.type, key: next.key, label: next.label } });
+      }
+      return render();
+    }
+    function onDrillPop(state) {
+      // Called ONLY for a within-Music pop (the router's popStateDelegate gate),
+      // so Music owns it: reconcile `drill` to the popped entry's payload and
+      // render in place. A drill-level pop collapses to browse; a forward re-pop
+      // into a drill re-opens it. Return true always - a cross-view pop (leaving
+      // Music) never reaches here.
+      var vs = state && state.viewState;
+      var target = (vs && vs.t === 'drill' && vs.drill) ? vs.drill : null;
+      if (drillKey(drill) !== drillKey(target)) {
+        drill = target;
+        if (!drill) setActiveTab();
+        render().catch(function () {});
+      }
+      return true;
+    }
+    activePopStateHandler = onDrillPop;
+
     // ---- interaction: drill-in + play + like --------------------------------
 
     content.addEventListener('click', function (e) {
       // v1.44.2: the drill header + sticky bar controls (shared classes across
       // both surfaces, handled by delegation).
       if (e.target.closest('.music-drill-back')) {
-        drill = null; setActiveTab(); render().catch(function () {});
+        // v1.217: if this drill has its own pushed history level, go back through
+        // history so the entry is CONSUMED and the OS-back gesture stays in sync
+        // (popstate -> onDrillPop collapses); else collapse directly (a drill with
+        // no pushed level, e.g. a now-playing restore).
+        var st = window.history.state;
+        if (st && st.viewState && st.viewState.t === 'drill' && window.FileTube && typeof window.FileTube.pushViewState === 'function') {
+          window.history.back();
+        } else {
+          drill = null; setActiveTab(); render().catch(function () {});
+        }
         return;
       }
       if (e.target.closest('.music-drill-play')) {
@@ -1096,15 +1140,13 @@ if (typeof module !== 'undefined' && module.exports) {
       if (albumCard) {
         var key = albumCard.getAttribute('data-album-key');
         var title = albumCard.querySelector('.music-album-title');
-        drill = { type: 'album', key: key, label: (title && title.textContent) || 'Album' };
-        render().catch(function () {});
+        openDrill({ type: 'album', key: key, label: (title && title.textContent) || 'Album' }).catch(function () {});
         return;
       }
       var artistCard = e.target.closest('.music-artist-card') || e.target.closest('.music-artist-row');
       if (artistCard) {
         var name = artistCard.getAttribute('data-artist');
-        drill = { type: 'artist', key: name, label: name || 'Artist' };
-        render().catch(function () {});
+        openDrill({ type: 'artist', key: name, label: name || 'Artist' }).catch(function () {});
         return;
       }
       // v1.72: the save anchor rides the like button's chassis class - let
@@ -1516,9 +1558,20 @@ if (typeof module !== 'undefined' && module.exports) {
     controller = null;
     // v1.44.2: never leak the drill-collapse observer across the #view-root swap.
     disconnectStickyObserver();
+    // v1.217: drop the torn-down init's pop handler so a stray popstate after
+    // destroy() (a cross-view swap in flight) is a no-op, not a call into dead
+    // closure state.
+    activePopStateHandler = null;
   }
 
   if (window.FileTube && typeof window.FileTube.registerView === 'function') {
-    window.FileTube.registerView('music', { init, destroy });
+    window.FileTube.registerView('music', {
+      init: init,
+      destroy: destroy,
+      // v1.217 in-view back-stack: the router calls this for a within-Music pop
+      // (its popStateDelegate gate). Delegate to the live init's handler; return
+      // false when there is none (torn down) so the router falls through.
+      onPopState: function (state) { return activePopStateHandler ? activePopStateHandler(state) : false; },
+    });
   }
 })();
