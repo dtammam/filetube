@@ -1069,12 +1069,19 @@ if (typeof module !== 'undefined' && module.exports) {
     // reconciles the in-memory `drill` to the entry the router hands back. No URL
     // change (deep links untouched); no player reparent (a drill is browse-only).
     function drillKey(d) { return d ? (d.type + ' ' + d.key) : ''; }
-    function openDrill(next) {
-      drill = next;
+    // Stamp a back level for a drill DESCENT, unless it is the SAME drill already
+    // showing (gate SUGGESTION: a re-tap of the "Playing from <Album>" line while
+    // in that album must not push a duplicate level that eats a later back press).
+    // Reused by openDrill (card/artist descents) and playRowAt (song-tap descent).
+    function pushDrillLevel(next) {
       var ft = window.FileTube;
-      if (ft && typeof ft.pushViewState === 'function') {
+      if (ft && typeof ft.pushViewState === 'function' && drillKey(drill) !== drillKey(next)) {
         ft.pushViewState({ t: 'drill', drill: { type: next.type, key: next.key, label: next.label } });
       }
+    }
+    function openDrill(next) {
+      pushDrillLevel(next);
+      drill = next;
       return render();
     }
     function onDrillPop(state) {
@@ -1415,6 +1422,13 @@ if (typeof module !== 'undefined' && module.exports) {
       var item = queue[i];
       var alreadyInAlbum = drill && drill.type === 'album' && item && drill.key === item.albumKey;
       if (item && item.albumKey && !alreadyInAlbum) {
+        // v1.217 (gate): a row-tap descent into the album is the MOST common way
+        // to land in an album view (v1.207) - stamp a back level so OS-back steps
+        // back to the list/parent, and so the top history entry stays in sync
+        // with the NEW album (avoids the artist-drill -> tap-song desync). This is
+        // the INTERACTIVE path only; the ?play= init path calls playTrackInAlbum
+        // directly (no push -> no per-load history spam).
+        pushDrillLevel({ type: 'album', key: item.albumKey, label: item.album || 'Album' });
         playTrackInAlbum(item);
         return;
       }

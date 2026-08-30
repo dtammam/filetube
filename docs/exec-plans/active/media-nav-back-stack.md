@@ -120,12 +120,34 @@ view's own `onPopState` + push sites are new. Record here as each ships.
 
 ## Predictions (machine-derived, re-verified each commit)
 
-- `buildHistoryState` callers today: `grep -c` in common.js — every one must keep
-  passing 4 args (viewState defaults null) after commit 1. [fill at impl]
-- Music push sites added: drill-open (N delegation arms) + now-playing-expand (1).
-- New tests: >= 3 router (commit 2) + >= 3 music (commit 3), each mutation-bound.
+- `buildHistoryState` callers today: 4 pass only 4 args (navigate x2 + bootRouter
+  seed + none-other) -> viewState null; 4 pass a 5th (parse + scroll carry-forward,
+  push/replace stamp). Swept + bound.
+- Music push sites SHIPPED: card/artist descents (openDrill) + song-tap descent
+  (playRowAt, gate) + the now-playing "Playing from" line. Dedup: pushDrillLevel
+  skips a same-drill re-push.
+- New tests: 8 router (commit 2) + 5 music (commit 3) + gate additions, mutation-bound.
 
-## Out of scope (this wave)
-Podcasts/TV/Books adoption; making drills URL-shareable deep links (state-object
-only for now); the bottom-nav Home button (leaving Music via it is by design -
-app home != Music's Home tab; revisit only if Dean's device pass flags it).
+## SHIPPED scope vs deferred (v1.217, after the gate)
+SHIPPED - a back level for a DRILL descent from the browse view: an album card,
+an artist card/row, a song-tap (playRowAt), and the "Playing from <Album>" line;
+onPopState reconciles the drill (parent -> browse) in place.
+
+DEFERRED (disclosed; tech-debt-tracker) - the NEXT slices:
+1. now-playing collapse-on-back (entangled with the ?nowplaying navigate + the
+   player expand/dock lifecycle; do NOT reparent the player).
+2. the dock-return-restored album drill (music.js ~1488) has no pushed level -
+   it arrives via the ?nowplaying navigate, so it belongs with slice 1.
+3. leaving a drill by TAB-SWITCH (or See-all) clears `drill` without consuming the
+   pushed level, so the first OS-back after that is swallowed (one dead press).
+   Fix candidate: hide the tab strip inside a drill (a drill is a level) OR
+   consume/reconcile the orphan level on tab-switch. Minor (one extra press).
+4. cross-view re-entry does not restore the drill: leaving Music from a drill then
+   OS-back re-inits Music at the browse root (init does not read
+   history.state.viewState). Consistent with "drills not URL-shareable" below.
+
+## Out of scope (the whole arc)
+Podcasts/TV/Books adoption (later small waves, same primitive); making drills
+URL-shareable deep links (state-object only); the bottom-nav Home button (leaving
+Music via it is by design - app home != Music's Home tab; revisit only if Dean's
+device pass flags it).

@@ -9449,10 +9449,11 @@ function buildHistoryState(view, url, scrollY, depth, viewState) {
     // owning view stamps via pushViewState/replaceViewState (a drill descriptor,
     // a now-playing marker) and reads back in its onPopState hook. null for every
     // entry a view has not opted in on - i.e. byte-identical for every caller
-    // that passes only four args, which is all of them except the two that must
-    // CARRY an existing entry's payload forward (parseHistoryState + the
-    // scroll-rewrite). Must be structured-cloneable (plain data only) since the
-    // browser structured-clones history state.
+    // that passes only four args (navigate's two builds + bootRouter's seed).
+    // Four callers pass a 5th arg: the two that CARRY an existing entry's payload
+    // forward (parseHistoryState + the scroll-rewrite) and the two that STAMP a
+    // new one (pushViewState/replaceViewState). Must be structured-cloneable
+    // (plain data only) since the browser structured-clones history state.
     viewState: (viewState === undefined || viewState === null) ? null : viewState,
   };
 }

@@ -69,7 +69,7 @@ async function boot(run, opts) {
       dom.window.history.pushState({ view: 'music', url: '/music', scrollY: 0, depth: pushes.length, viewState: vs }, '', '/music');
     },
     replaceViewState: () => {},
-    player: { currentId: null, getState: () => 'closed', expand: () => {} },
+    player: { currentId: null, getState: () => 'closed', expand: () => {}, load: () => {}, setTrackNav: () => {} },
     shimmerArt: () => {},
   };
   try { dom.window.localStorage.setItem('filetube_music_tab', opts.tab || 'albums'); } catch (_) { /* ignore */ }
@@ -137,6 +137,38 @@ test('v1.217: the in-app Back button CONSUMES the pushed history entry via histo
     for (let i = 0; i < 8; i++) await settle();
     assert.strictEqual(ctx.backs.length, 1, 'the Back button went through history.back(), not a bare in-place collapse');
   });
+});
+
+test('v1.217 (gate): tapping a SONG row (the common path) drills into its album AND pushes a back level for THAT album', async () => {
+  // Both gate seats blocked on this: playRowAt's descent was unpushed, so OS-back
+  // left Music from the most common way to enter an album (v1.207 song-tap). The
+  // pushed key is the SONG'S album (not a stale drill) - which is also the fix for
+  // the artist-drill -> tap-song-in-another-album history/live-drill desync.
+  await boot(async (dom, ctx) => {
+    const row = content(dom).querySelector('.music-song-row');
+    assert.ok(row, 'a song row rendered on the Songs tab');
+    row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 8; i++) await settle();
+    assert.match(content(dom).innerHTML, /music-drill/, 'the song-tap drilled into the album');
+    assert.strictEqual(ctx.pushes.length, 1, 'the song-tap descent pushed exactly one back level');
+    assert.strictEqual(ctx.pushes[0].t, 'drill');
+    assert.strictEqual(ctx.pushes[0].drill.key, 'Floyd␟Wall', 'the pushed level names the SONG\'s album (in sync, no desync)');
+  }, { tab: 'songs' });
+});
+
+test('v1.217 (gate SUGGESTION): re-selecting a song ALREADY in the open album does NOT push a duplicate level', async () => {
+  // pushDrillLevel dedups on drillKey, and playRowAt short-circuits when already
+  // in the album - so a second tap inside the same drill adds no dead back level.
+  await boot(async (dom, ctx) => {
+    content(dom).querySelector('.music-song-row').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 8; i++) await settle();
+    assert.strictEqual(ctx.pushes.length, 1, 'first descent pushed one level');
+    const inDrillRow = content(dom).querySelector('.music-song-row');
+    assert.ok(inDrillRow, 'the drill lists the album songs');
+    inDrillRow.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 8; i++) await settle();
+    assert.strictEqual(ctx.pushes.length, 1, 'tapping another song in the SAME album pushes no second level');
+  }, { tab: 'songs' });
 });
 
 test('v1.217: destroy() disarms onPopState (a stray pop after teardown is a no-op, returns false)', async () => {
