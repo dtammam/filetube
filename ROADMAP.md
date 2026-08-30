@@ -80,6 +80,33 @@
 
 ## Shipped
 
+### v1.213.0 - Music redesign: Spotify-style shelf Home + all-circular artists (2026-08-30)
+
+Dean: Slice 1 (v1.212) "wasn't really a radically redesigned page" and the
+circles only hit the yt-dlp artists. He pivoted the direction: radically
+restructure the WHOLE Music page in the app's EXISTING theme (function over form,
+no new palette), circles for ALL artists including the ripped "old" music.
+
+**What shipped.** (1) A new HOME tab (the default landing): a scroll of shelves -
+"Your artists" (round circles) + "Recently added" (albums) - each a horizontal
+row with a "See all" that opens the full tab; the "Jump back in" resume strip
+still sits up top. (2) Artist tiles are ROUND across the WHOLE page: a channel
+gets its avatar circle, a native/ripped artist gets its album art clipped to the
+same circle. Albums/Artists/Songs remain full-list tabs. Client-only (no
+server/RBAC/data change); reuses the existing endpoints; all on the app's
+existing tokens (census 0).
+
+**What the gate caught.** QA: the Sort dropdown was live but INERT on Home (fixed
+- hidden there), and the Home skeleton seeded a wrong-shape grid (fixed - a
+shelf-shaped skeleton, zero-shift). Adversarial: the See-all test didn't bind the
+DESTINATION tab (both tabs render a grid, so a wrong target was invisible) - bound
++ mutation-verified. All fixed round 1.
+
+Full gate (both seats APPROVE after one fix round). Dual-Node 7879/0
+(Node 22.23.1 + 24.14.0). **Dean's device pass PENDING** - a subjective UI, his
+reaction is the arbiter; more (album header + chapters-as-tracklist, now-playing
+re-skin) can follow.
+
 ### v1.212.0 - Music redesign, Slice 1: artist circles + "Jump back in" (2026-08-30)
 
 Dean: "Love love love go go go" on the redesign mockup. First slice of the arc

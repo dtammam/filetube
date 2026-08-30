@@ -2398,5 +2398,11 @@
     "date": "2026-08-30",
     "title": "A fresh look for Music: artist circles + Jump back in",
     "intent": "The Music library gets the first piece of a bigger redesign. Your artists now show as round picture tiles using each channel's own avatar, so you can spot who you're after at a glance (ripped albums with no channel keep their cover art). And a new 'Jump back in' row sits across the top with whatever you were last playing, so you're one tap from picking up where you left off. More of the redesign - a proper album page and a nicer now-playing screen - is on the way."
+  },
+  {
+    "version": "1.213.0",
+    "date": "2026-08-30",
+    "title": "A redesigned Music page: a home of shelves, every artist a circle",
+    "intent": "Music gets a real redesign. It now opens on a Home of scrollable shelves - your artists and your recently-added albums, each with a 'See all' to open the full list - instead of a flat grid. And every artist is now a round tile: channels use their picture, and your own ripped albums use their cover art, so the whole artist wall is circular and consistent. Albums, Artists, and Songs are still there as full lists. Same colours as the rest of the app - just a cleaner, more browsable layout."
   }
 ]
