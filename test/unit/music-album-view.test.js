@@ -341,6 +341,30 @@ test('redesign: Music opens on the HOME shelves by default; a shelf "See all" op
   });
 });
 
+test('friction: Home shows a "Recently played" shelf of DISTINCT artists, drillable', async () => {
+  const recentFetch = () => (url) => {
+    if (url.indexOf('filter=recent-listening') !== -1) {
+      return Promise.resolve({ ok: true, json: async () => ({ items: [
+        { id: 'r1', artist: 'NESTALGIA', albumKey: 'k', durationSec: 100 },
+        { id: 'r2', artist: 'NESTALGIA', albumKey: 'k', durationSec: 100 }, // dup artist -> collapsed
+        { id: 'r3', artist: 'Koopa Keys', albumKey: 'k2', durationSec: 100 },
+      ] }) });
+    }
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) }); // no artists/albums shelves
+  };
+  await boot('http://localhost/music', { state: 'docked', currentId: null }, { fetch: recentFetch }, async (dom) => {
+    const doc = dom.window.document;
+    const home = doc.querySelector('.music-home');
+    assert.match(home.innerHTML, /Recently played/, 'the Recently played shelf');
+    assert.strictEqual(home.querySelectorAll('.music-artist-card[data-artist="NESTALGIA"]').length, 1, 'NESTALGIA appears ONCE (deduped)');
+    assert.ok(home.querySelector('.music-artist-card[data-artist="Koopa Keys"]'), 'and Koopa Keys');
+    // Tapping a recent artist drills into that artist.
+    home.querySelector('.music-artist-card[data-artist="NESTALGIA"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 8; i++) await settle();
+    assert.match(doc.getElementById('music-content').innerHTML, /music-drill/, 'tapping a recently-played artist opens their page');
+  });
+});
+
 test('friction: the Artists view toggle flips circles <-> compact list', async () => {
   const artistsFetch = () => (url) => {
     if (url.indexOf('/api/music/artists') === 0) {

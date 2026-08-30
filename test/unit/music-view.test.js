@@ -9,7 +9,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildSongRowHtml,
+  escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
   drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
   buildNowPlayingPanelHtml,
   MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
@@ -158,6 +158,14 @@ test('redesign S1: an artist WITHOUT an avatar still falls back to the mosaic (n
   const html = buildArtistCardHtml({ artist: 'Pink Floyd', albumCount: 2, trackCount: 20, avatarUrl: '', artIds: ['a', 'b'] });
   assert.match(html, /class="music-artist-mosaic" data-tiles="2"/, 'no avatar -> the album-art mosaic');
   assert.doesNotMatch(html, /music-artist-avatar/, 'no round circle without an avatar');
+});
+
+test('friction: buildRecentArtistTileHtml renders a round drillable artist tile (art + name, no meta)', () => {
+  const html = buildRecentArtistTileHtml({ id: 'trk7', artist: 'NESTALGIA' });
+  assert.match(html, /class="music-artist-card" data-artist="NESTALGIA"/, 'drills into the artist (same delegation)');
+  assert.match(html, /class="music-artist-mosaic" data-tiles="1"><img class="art-shimmer" src="\/albumart\/trk7"/, 'a full-bleed round album-art circle from the track');
+  assert.match(html, />NESTALGIA</, 'the artist name');
+  assert.doesNotMatch(html, /music-artist-meta/, 'no album/track meta on a recently-played tile');
 });
 
 test('friction: buildArtistListRowHtml renders a compact drillable row (avatar circle, name, count)', () => {

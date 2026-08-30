@@ -120,6 +120,19 @@ function buildArtistListRowHtml(artist) {
     '</button>';
 }
 
+// Friction pass: a "Recently played" HOME tile - a round album-art circle over
+// the artist name (no meta), drilling into that artist via the same data-artist
+// the delegation reads. Built from a recent-listening track (art = the track's
+// /albumart; the artist name is what matters for the tap).
+function buildRecentArtistTileHtml(item) {
+  var name = item.artist || 'Unknown artist';
+  return '' +
+    '<button type="button" class="music-artist-card" data-artist="' + escapeMusicHtml(name) + '">' +
+    '<span class="music-artist-mosaic" data-tiles="1"><img class="art-shimmer" src="/albumart/' + encodeURIComponent(item.id) + '" alt="" loading="lazy" /></span>' +
+    '<span class="music-artist-name" title="' + escapeMusicHtml(name) + '">' + escapeMusicHtml(name) + '</span>' +
+    '</button>';
+}
+
 // Redesign: a HOME shelf - a titled section with an optional "See all" (switches
 // to that tab) over a horizontal-scroll row of tiles (album/artist cards reused
 // verbatim, so a tile tap drills exactly as it does in the full grid).
@@ -464,7 +477,7 @@ function buildMusicSkeletonRows(n) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildSongRowHtml,
+    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
@@ -893,15 +906,30 @@ if (typeof module !== 'undefined' && module.exports) {
     async function renderHome() {
       var artists = [];
       var albums = [];
+      var recent = [];
       try {
         var res = await Promise.all([
           fetchJson('/api/music/artists?limit=12&sort=newest'),
           fetchJson('/api/music/albums?limit=12&sort=newest'),
+          fetchJson('/api/music?filter=recent-listening&limit=60'),
         ]);
         artists = Array.isArray(res[0].items) ? res[0].items : [];
         albums = Array.isArray(res[1].items) ? res[1].items : [];
-      } catch (_) { artists = []; albums = []; }
+        recent = Array.isArray(res[2].items) ? res[2].items : [];
+      } catch (_) { artists = []; albums = []; recent = []; }
+      // Friction pass: "Recently played" ARTISTS - distinct artists from recent
+      // plays, most-recent first (one tile each), so who you reach for is one tap
+      // from the top instead of a scroll-and-hunt.
+      var recentArtists = [];
+      var seenArtist = {};
+      for (var i = 0; i < recent.length && recentArtists.length < 12; i++) {
+        var nm = recent[i] && recent[i].artist;
+        if (typeof nm !== 'string' || nm === '' || Object.prototype.hasOwnProperty.call(seenArtist, nm)) continue;
+        seenArtist[nm] = true;
+        recentArtists.push(recent[i]);
+      }
       var html = '';
+      if (recentArtists.length) html += buildMusicShelfHtml('Recently played', '', recentArtists.map(buildRecentArtistTileHtml).join(''));
       if (artists.length) html += buildMusicShelfHtml('Your artists', 'artists', artists.map(buildArtistCardHtml).join(''));
       if (albums.length) html += buildMusicShelfHtml('Recently added', 'albums', albums.map(buildAlbumCardHtml).join(''));
       content.innerHTML = '<div class="music-home">' + html + '</div>';
