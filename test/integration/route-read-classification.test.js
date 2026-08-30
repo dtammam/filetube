@@ -79,6 +79,7 @@ const READ = {
   '/api/music/:id': 'GATED',
   '/api/music/albums': 'GATED',
   '/api/music/artists': 'GATED',
+  '/api/music/channels': 'GATED', // v1.211: the "Channels in Music" manager list - visibility-scoped (only channels with visible audio; count is the visible count)
   '/api/music/config': 'GATED',
   '/api/tv/config': 'GATED',
   '/api/music/liked': 'GATED',

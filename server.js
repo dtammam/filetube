@@ -6646,27 +6646,38 @@ app.post('/api/folders/display-name', async (req, res) => {
   res.json({ success: true, folderName, name: name === '' ? null : name });
 });
 
-// Wave G: read the per-folder "show in Music" state for the folder header
-// toggle. Returns the stored override (or null), the effective state (override,
-// else the genre-seeded default over this folder's VISIBLE audio), and whether
-// the folder even has audio (the toggle only renders when it does). Visibility-
-// scoped like the write route (never reveals a folder the user can't see).
+// Read the per-folder "show in Music" state for the folder header toggle.
+// Returns the stored override (or null); `auto` (the channel-level majority-music
+// default) and `effective` (override, else auto) computed the SAME way as the
+// projection - over ALL of the folder's audio, deliberately NOT visibility-scoped,
+// so the toggle can never disagree with what actually projects (v1.211); and
+// whether the folder has any VISIBLE audio (the toggle renders only when it does,
+// so a folder the user cannot see is never revealed). `auto`/`effective` are one
+// aggregate bit; the item-level payloads stay per-user visibility-gated.
 app.get('/api/folders/music-flag', (req, res) => {
   const folderName = typeof req.query.folderName === 'string' ? req.query.folderName.trim() : '';
   if (folderName === '') return res.status(400).json({ error: 'folderName is required' });
   const db = getCachedDatabase();
   const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
-  const audioItems = Object.values(db.metadata || {}).filter(
+  // Visibility-scoped: the toggle only renders for a channel the user can see.
+  const hasVisibleAudio = Object.values(db.metadata || {}).some(
     (it) => it && it.type === 'audio' && it.folderName === folderName && mediaVisibleTo(req, it));
-  if (audioItems.length === 0) return res.json({ folderName, hasAudio: false, override: null, effective: false });
+  if (!hasVisibleAudio) return res.json({ folderName, hasAudio: false, override: null, effective: false, auto: false });
+  // v1.211: `auto` (the majority-music default) and `effective` are CHANNEL-level
+  // and computed the SAME way as the projection (autoMusicChannels over the
+  // channel's audio) - so the toggle can never disagree with what actually
+  // shows in Music (the "blue but 1 song" mismatch is gone).
+  const folderAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio' && it.folderName === folderName);
+  const autoSet = libraryAudio.autoMusicChannels(folderAudio);
+  const auto = autoSet.has(folderName);
   const override = Object.prototype.hasOwnProperty.call(marks, folderName) ? marks[folderName] : null;
-  const genreDefault = audioItems.some((it) => it.tags && it.tags.genre === 'Music');
-  const effective = override === 'on' ? true : override === 'off' ? false : genreDefault;
-  return res.json({ folderName, hasAudio: true, override, effective });
+  const effective = libraryAudio.channelEffectiveOn(folderName, marks, autoSet);
+  return res.json({ folderName, hasAudio: true, override, effective, auto });
 });
 
 // Wave G: the per-folder "show in Music library" mark. `music` is 'on'/'off'
-// (an explicit override) or null (clear -> back to the genre-seeded default).
+// (an explicit override) or null (clear -> back to the channel-level default,
+// v1.211: auto-on iff a strict majority of the channel's audio is genre 'Music').
 // Same dual-axis gate as the rename route (requireModifyLibrary - shared library
 // metadata - AND visibility), but the existence probe requires a visible AUDIO
 // item: the mark is meaningless on a folder with no library audio, and this
@@ -8358,7 +8369,7 @@ function publicTrackListItem(track, userId, likedSet, progressMap) {
 
 // Wave G: the projected library-audio tracks this user sees in Music, or [] when
 // the opt-in master toggle is off. Each db.metadata audio item that is eligible
-// (per-folder mark, else genre default), passes the MEDIA visibility gate (NOT
+// (per-folder mark, else the channel-level majority-music default), passes the MEDIA visibility gate (NOT
 // trackVisibleTo - these are media items, a distinct restriction kind), and does
 // not collide with a native music-track id (dedup: the real track wins), is
 // shaped into a music-track record. `nativeTracks` is the already-RBAC-filtered
@@ -8368,11 +8379,14 @@ function projectedLibraryTracks(req, nativeTracks) {
   if (settings.musicIncludesLibrary !== 'on') return []; // opt-in, default OFF
   const db = getCachedDatabase();
   const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
+  const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
+  // v1.211: the auto default is CHANNEL-level (majority-music), computed once
+  // over the full audio set so a channel is all-in or all-out (no partial).
+  const autoSet = libraryAudio.autoMusicChannels(allAudio);
   const nativeIds = new Set(nativeTracks.map((t) => t.id));
   const out = [];
-  for (const item of Object.values(db.metadata || {})) {
-    if (!item || item.type !== 'audio') continue;
-    if (!libraryAudio.isEligibleAudio(item, marks)) continue;
+  for (const item of allAudio) {
+    if (!libraryAudio.isEligibleAudio(item, marks, autoSet)) continue;
     if (!mediaVisibleTo(req, item)) continue; // the MEDIA gate
     if (nativeIds.has(item.id)) continue; // a file in both roots: the native track wins
     out.push(libraryAudio.projectAudioItem(item));
@@ -8447,6 +8461,37 @@ app.get('/api/music/artists', (req, res) => {
   const offset = videoQuery.normalizeOffset(req.query.offset);
   const limit = videoQuery.normalizeLimit(req.query.limit);
   res.json({ items: artists.slice(offset, offset + limit), total, offset, limit });
+});
+
+// v1.211: the "Channels in Music" manager list - every audio-bearing channel the
+// user can SEE, with its current state, so Settings has ONE discoverable place to
+// pick channels (the per-page ♪ was only reachable via one nav path). Static
+// segment - declared BEFORE /api/music/:id (Express route order). Visibility-
+// scoped: only channels with >=1 VISIBLE audio item, and the audioCount is the
+// VISIBLE count (never a restricted-item oracle); `auto`/`effective` are the
+// channel-level booleans the projection uses (single source of truth).
+app.get('/api/music/channels', (req, res) => {
+  const db = getCachedDatabase();
+  const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
+  const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
+  const autoSet = libraryAudio.autoMusicChannels(allAudio);
+  const displayNames = (db.folderDisplayNames && typeof db.folderDisplayNames === 'object') ? db.folderDisplayNames : {};
+  const visibleCount = new Map(); // folderName -> visible audio count
+  for (const it of allAudio) {
+    if (typeof it.folderName !== 'string' || it.folderName === '') continue;
+    if (!mediaVisibleTo(req, it)) continue;
+    visibleCount.set(it.folderName, (visibleCount.get(it.folderName) || 0) + 1);
+  }
+  const channels = [...visibleCount.entries()].map(([folderName, audioCount]) => ({
+    folderName,
+    displayName: (typeof displayNames[folderName] === 'string' && displayNames[folderName]) || folderName,
+    audioCount,
+    override: Object.prototype.hasOwnProperty.call(marks, folderName) ? marks[folderName] : null,
+    auto: autoSet.has(folderName),
+    effective: libraryAudio.channelEffectiveOn(folderName, marks, autoSet),
+  }));
+  channels.sort((a, b) => a.displayName.localeCompare(b.displayName));
+  res.json({ channels });
 });
 
 // Per-user liked songs (static segment -- declared BEFORE /api/music/:id).

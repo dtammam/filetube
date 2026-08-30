@@ -2386,5 +2386,11 @@
     "date": "2026-08-30",
     "title": "Your downloaded music, in the Music library",
     "intent": "If you download MP3s from music channels - game-music remixes, album mixes, that kind of thing - you can now have them show up in the Music library too, grouped by channel and played through the music player, without duplicating anything or taking them out of your feed. It's off by default: turn it on in Settings, and channels whose uploads are tagged as music appear on their own. For the ones YouTube files under something else (a game-music channel it labels 'Gaming', say), just tap the little music note on that channel's page to include it. Great for a nostalgia library of full albums you've downloaded."
+  },
+  {
+    "version": "1.211.0",
+    "date": "2026-08-30",
+    "title": "Pick your music channels in one place",
+    "intent": "A cleaner take on downloaded music in your library. A channel is now either fully in your Music library or not - no more a single stray song showing up while the rest of the channel stays hidden. Channels that are mostly music switch on by themselves; for everything else there's a new 'Channels in Music' list in Settings where you flip a channel on and get all of its songs, future downloads included. One obvious place to manage it, instead of hunting for a control on each channel's page."
   }
 ]

@@ -2431,6 +2431,78 @@ function wireStaticControls(signal) {
     }, { signal });
   }
 
+  // v1.211: the "Channels in Music" manager - one discoverable place to pick
+  // which downloaded channels appear in Music (library-write users only; the
+  // group stays hidden otherwise). Reads GET /api/music/channels, writes one
+  // POST /api/folders/music-flag per toggle.
+  const musicChannelsGroup = document.getElementById('music-channels-group');
+  const musicChannelsList = document.getElementById('music-channels-list');
+  if (musicChannelsGroup && musicChannelsList) {
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((me) => {
+        const canModify = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
+        if (!canModify) return null; // stays hidden for non-library-write users
+        return fetch('/api/music/channels').then((r) => (r.ok ? r.json() : { channels: [] }));
+      })
+      .then((data) => {
+        if (!data) return;
+        const channels = Array.isArray(data.channels) ? data.channels : [];
+        musicChannelsList.textContent = '';
+        if (channels.length === 0) {
+          const empty = document.createElement('small');
+          empty.className = 'music-channels-empty';
+          empty.textContent = 'No downloaded audio channels yet.';
+          musicChannelsList.appendChild(empty);
+        } else {
+          for (const ch of channels) {
+            const row = document.createElement('label');
+            row.className = 'music-channels-row';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.checked = !!ch.effective;
+            // A channel that is on only because it's mostly-music (no explicit
+            // choice) is tagged "(auto)" so the on-state is never a mystery.
+            let autoTag = null;
+            const paintAutoTag = () => {
+              const isAuto = ch.auto && ch.override == null;
+              if (isAuto && !autoTag) {
+                autoTag = document.createElement('span');
+                autoTag.className = 'auto-tag';
+                autoTag.textContent = '(auto)';
+                row.appendChild(autoTag);
+              } else if (!isAuto && autoTag) {
+                autoTag.remove();
+                autoTag = null;
+              }
+            };
+            cb.addEventListener('change', () => {
+              const next = cb.checked ? 'on' : 'off';
+              fetch('/api/folders/music-flag', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ folderName: ch.folderName, music: next }),
+              })
+                .then((res) => {
+                  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                  ch.override = next; // now an explicit choice - the "(auto)" tag drops
+                  paintAutoTag();
+                })
+                .catch(() => { showToast('Could not update that channel.'); cb.checked = !cb.checked; });
+            }, { signal });
+            const name = document.createElement('span');
+            name.textContent = `${ch.displayName} (${ch.audioCount})`;
+            row.appendChild(cb);
+            row.appendChild(name);
+            paintAutoTag();
+            musicChannelsList.appendChild(row);
+          }
+        }
+        musicChannelsGroup.hidden = false;
+      })
+      .catch(() => { /* leave the group hidden on any error */ });
+  }
+
   // Size-cap input: 'change' (fires on blur/Enter, not per keystroke) is a
   // natural debounce for a free-typed number field. Blank -> null ("use the
   // default"); a non-empty value that isn't a valid positive number is

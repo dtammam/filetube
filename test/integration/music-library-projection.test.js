@@ -56,6 +56,19 @@ before(async () => {
       zarch1: audioItem('zarch1', 'zarchivo', 'Comedy', 'Zarchivo'),
       blk1: Object.assign(audioItem('blk1', 'blockedchan', 'Music', 'Blocked'), { filePath: path.join(blockedRoot, 'blk1.mp3') }),
       dup1: audioItem('dup1', 'Tonzak', 'Music', 'Tonzak'), // same id as a native track below
+      // A MIXED channel (the real NESTALGIA scenario): 1 Music + 2 Gaming in ONE
+      // folder -> minority music -> NOT auto; unmarked shows NOTHING (not the 1
+      // Music track); a mark brings ALL 3. v1.211 all-or-nothing.
+      mx1: audioItem('mx1', 'mixedchan', 'Music', 'MixedChan'),
+      mx2: audioItem('mx2', 'mixedchan', 'Gaming', 'MixedChan'),
+      mx3: audioItem('mx3', 'mixedchan', 'Gaming', 'MixedChan'),
+      // A PARTIALLY-visible channel: 2 items visible to everyone + 1 under the
+      // member-restricted blocked subtree. The channels list's audioCount must be
+      // the VISIBLE count per user (2 for the member, 3 for admin) - never an
+      // oracle for the restricted item.
+      pc1: audioItem('pc1', 'partialchan', 'Gaming', 'PartialChan'),
+      pc2: audioItem('pc2', 'partialchan', 'Gaming', 'PartialChan'),
+      pc3: Object.assign(audioItem('pc3', 'partialchan', 'Gaming', 'PartialChan'), { filePath: path.join(blockedRoot, 'pc3.mp3') }),
     };
     const ns = musicStore.ensureMusic(db);
     ns.folders = [ROOT];
@@ -187,6 +200,53 @@ test('MEDIA gate KIND: a FOLDER and a video-LIBRARY restriction gate projected a
   assert.ok(music.items.some((i) => i.id === 'dup1'), 'native music tracks are unaffected (kind track -> music library)');
 });
 
+test('v1.211 all-or-nothing: a MIXED channel shows NOTHING by default (not 1 of 3), ALL when marked', async () => {
+  setToggle(actingUser.id, 'on');
+  // Default (unmarked, minority-music) -> none of mixedchan shows, not even mx1.
+  let music = await (await get('/api/music')).json();
+  assert.ok(!music.items.some((i) => ['mx1', 'mx2', 'mx3'].includes(i.id)),
+    'the lone Music track does NOT leak in by default (the "blue but 1 song" bug is gone)');
+  // The toggle state is HONEST: effective + auto both false.
+  const flag = await (await get('/api/folders/music-flag?folderName=mixedchan')).json();
+  assert.deepStrictEqual({ effective: flag.effective, auto: flag.auto }, { effective: false, auto: false },
+    'the toggle reads off/not-auto - matching what actually shows');
+  // Mark it on -> ALL 3 project (a Gaming track too), then restore.
+  assert.strictEqual((await postJson('/api/folders/music-flag', { folderName: 'mixedchan', music: 'on' })).status, 200);
+  music = await (await get('/api/music')).json();
+  const mixIds = music.items.filter((i) => ['mx1', 'mx2', 'mx3'].includes(i.id)).map((i) => i.id).sort();
+  assert.deepStrictEqual(mixIds, ['mx1', 'mx2', 'mx3'], 'a mark brings the WHOLE channel, Gaming tracks included');
+  await postJson('/api/folders/music-flag', { folderName: 'mixedchan', music: null });
+});
+
+test('GET /api/music/channels lists visible audio channels with honest all-or-nothing state', async () => {
+  const data = await (await get('/api/music/channels')).json();
+  const byFolder = new Map(data.channels.map((c) => [c.folderName, c]));
+  // Tonzak: all-Music -> auto + effective on, no override.
+  assert.deepStrictEqual({ auto: byFolder.get('Tonzak').auto, override: byFolder.get('Tonzak').override, effective: byFolder.get('Tonzak').effective },
+    { auto: true, override: null, effective: true }, 'Tonzak: auto-on');
+  // nestalgiamusic: Gaming, but explicitly marked on -> auto false, effective on.
+  assert.deepStrictEqual({ auto: byFolder.get('nestalgiamusic').auto, override: byFolder.get('nestalgiamusic').override, effective: byFolder.get('nestalgiamusic').effective },
+    { auto: false, override: 'on', effective: true }, 'NESTALGIA: not auto, but marked on');
+  // mixedchan: minority-music -> auto false, effective false; count is honest.
+  assert.deepStrictEqual({ auto: byFolder.get('mixedchan').auto, effective: byFolder.get('mixedchan').effective, audioCount: byFolder.get('mixedchan').audioCount },
+    { auto: false, effective: false, audioCount: 3 }, 'mixedchan: not auto, off, 3 tracks');
+  assert.strictEqual(byFolder.get('zarchivo').effective, false, 'Comedy channel: off');
+});
+
+test('GET /api/music/channels is visibility-scoped: a restricted member never sees the blocked channel', async () => {
+  const adminList = await (await get('/api/music/channels')).json();
+  assert.ok(adminList.channels.some((c) => c.folderName === 'blockedchan'), 'admin sees the blocked channel');
+  const memberList = await (await get('/api/music/channels', member.cookie)).json();
+  assert.ok(!memberList.channels.some((c) => c.folderName === 'blockedchan'), 'a channel with no VISIBLE audio is not listed for the restricted member');
+  assert.ok(memberList.channels.some((c) => c.folderName === 'Tonzak'), 'an unrestricted channel is still listed');
+  // audioCount is the VISIBLE count, per user - a PARTIALLY-restricted channel
+  // reports only what each viewer can see (never an oracle for the hidden item).
+  const adminPartial = adminList.channels.find((c) => c.folderName === 'partialchan');
+  const memberPartial = memberList.channels.find((c) => c.folderName === 'partialchan');
+  assert.strictEqual(adminPartial.audioCount, 3, 'admin sees all 3 of the partial channel');
+  assert.strictEqual(memberPartial.audioCount, 2, 'the member sees only the 2 visible items, not the blocked one');
+});
+
 // ---- T5: the per-folder mark read/write routes ----
 
 const postJson = (p, body, cookie) => fetch(`${base}${p}`, {
@@ -195,16 +255,16 @@ const postJson = (p, body, cookie) => fetch(`${base}${p}`, {
   body: JSON.stringify(body),
 });
 
-test('GET /api/folders/music-flag reflects the override, the genre default, and hasAudio', async () => {
+test('GET /api/folders/music-flag reflects the override, the channel-majority default, and hasAudio', async () => {
   const nest = await (await get('/api/folders/music-flag?folderName=nestalgiamusic')).json();
   assert.deepStrictEqual({ hasAudio: nest.hasAudio, override: nest.override, effective: nest.effective },
     { hasAudio: true, override: 'on', effective: true }, 'NESTALGIA: marked on');
   const tonzak = await (await get('/api/folders/music-flag?folderName=Tonzak')).json();
   assert.deepStrictEqual({ override: tonzak.override, effective: tonzak.effective },
-    { override: null, effective: true }, 'Tonzak: unset, genre Music -> effective on');
+    { override: null, effective: true }, 'Tonzak: unset, all-Music channel -> auto -> effective on');
   const zarch = await (await get('/api/folders/music-flag?folderName=zarchivo')).json();
   assert.deepStrictEqual({ override: zarch.override, effective: zarch.effective },
-    { override: null, effective: false }, 'Zarchivo: unset, genre Comedy -> effective off');
+    { override: null, effective: false }, 'Zarchivo: unset, Comedy channel -> not auto -> effective off');
   const none = await (await get('/api/folders/music-flag?folderName=native')).json();
   assert.strictEqual(none.hasAudio, false, 'a folder with no library audio -> hasAudio:false (toggle not shown)');
 });
@@ -221,7 +281,7 @@ test('POST /api/folders/music-flag toggles a channel (admin); a plain member is 
   // Bad value is rejected; a nonexistent folder is a neutral 404.
   assert.strictEqual((await postJson('/api/folders/music-flag', { folderName: 'Tonzak', music: 'maybe' })).status, 400);
   assert.strictEqual((await postJson('/api/folders/music-flag', { folderName: 'nope', music: 'on' })).status, 404);
-  // Clear -> back to the genre default (restore state for any later run).
+  // Clear -> back to the channel-majority default (restore state for any later run).
   assert.strictEqual((await postJson('/api/folders/music-flag', { folderName: 'Tonzak', music: null })).status, 200);
   assert.strictEqual((await (await get('/api/folders/music-flag?folderName=Tonzak')).json()).override, null, 'cleared back to default');
 });

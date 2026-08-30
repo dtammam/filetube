@@ -10,7 +10,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const { isEligibleAudio, projectAudioItem } = require('../../lib/music/libraryAudio');
+const { autoMusicChannels, channelEffectiveOn, isEligibleAudio, projectAudioItem } = require('../../lib/music/libraryAudio');
 const store = require('../../lib/music/store');
 const query = require('../../lib/music/query');
 
@@ -47,42 +47,80 @@ const A_VIDEO = {
   tags: { genre: 'Music' }, // even a Music-genre VIDEO is never a "song"
 };
 
-// ---- eligibility: the genre-seeded default ----------------------------------
+// The corpus + its channel-level auto-music set (majority-music channels).
+// nestalgiamusic = 2 Gaming (NOT auto); Tonzak = 1 Music (auto); zarchivo =
+// 1 Comedy (NOT auto).
+const CORPUS = [TONZAK, NESTALGIA_1, NESTALGIA_2, ZARCHIVO];
+const AUTO = autoMusicChannels(CORPUS);
 
-test('genre-seeded default: a Music-genre channel is IN, Comedy/Gaming are OUT (no marks)', () => {
-  assert.strictEqual(isEligibleAudio(TONZAK, {}), true, 'genre Music -> in by default');
-  assert.strictEqual(isEligibleAudio(ZARCHIVO, {}), false, 'genre Comedy -> out by default');
-  assert.strictEqual(isEligibleAudio(NESTALGIA_1, {}), false, 'genre Gaming -> out by default (the headline case needs a mark)');
+// ---- eligibility: CHANNEL-LEVEL auto default (majority-music) ----------------
+
+test('auto default is CHANNEL-level: an all-music channel is IN, Comedy/Gaming channels are OUT (no marks)', () => {
+  assert.strictEqual(isEligibleAudio(TONZAK, {}, AUTO), true, 'Tonzak (all Music) -> auto in');
+  assert.strictEqual(isEligibleAudio(ZARCHIVO, {}, AUTO), false, 'Zarchivo (Comedy) -> out');
+  assert.strictEqual(isEligibleAudio(NESTALGIA_1, {}, AUTO), false, 'NESTALGIA (all Gaming) -> out; needs a mark');
+});
+
+test('a MIXED channel does NOT auto-qualify on a single Music track (the Nestalgia 1-of-352 bug is gone)', () => {
+  // 3 Gaming + 1 Music in ONE folder -> minority music -> NOT auto (all-or-
+  // nothing). The OLD per-item default would have leaked just the 1 Music track
+  // (the "blue but 1 song" mismatch). A mark then brings ALL of it.
+  const mk = (id, genre) => ({ id, type: 'audio', folderName: 'mixed', tags: { genre } });
+  const mixed = [mk('m1', 'Music'), mk('g1', 'Gaming'), mk('g2', 'Gaming'), mk('g3', 'Gaming')];
+  const auto = autoMusicChannels(mixed);
+  assert.strictEqual(auto.has('mixed'), false, 'minority-music channel is NOT auto');
+  assert.strictEqual(isEligibleAudio(mixed[0], {}, auto), false, 'not even the lone Music track shows by default (no partial)');
+  const on = new Set(); // marks the channel on
+  assert.strictEqual(isEligibleAudio(mixed[1], { mixed: 'on' }, on), true, 'a mark brings the WHOLE channel (a Gaming track too)');
+});
+
+test('a MAJORITY-music channel DOES auto-qualify (all of it, not a partial)', () => {
+  const mk = (id, genre) => ({ id, type: 'audio', folderName: 'mostly', tags: { genre } });
+  const mostly = [mk('a', 'Music'), mk('b', 'Music'), mk('c', 'Gaming')]; // 2 of 3 Music
+  const auto = autoMusicChannels(mostly);
+  assert.strictEqual(auto.has('mostly'), true, 'strict majority music -> auto');
+  assert.strictEqual(isEligibleAudio(mostly[2], {}, auto), true, 'the Gaming track rides in too (all-or-nothing)');
+});
+
+test('the boundary is STRICT majority: an even 50/50 split does NOT auto-qualify', () => {
+  // Binds `music * 2 > total` (not >=): a 2-Music/2-Gaming channel is a TIE, not
+  // a majority -> stays off. The `>=` mutant would flip every even split into
+  // Music silently (adversarial gate). A single-Music channel (2 > 1) still auto.
+  const mk = (id, genre) => ({ id, type: 'audio', folderName: 'tie', tags: { genre } });
+  const tie = [mk('a', 'Music'), mk('b', 'Music'), mk('c', 'Gaming'), mk('d', 'Gaming')];
+  assert.strictEqual(autoMusicChannels(tie).has('tie'), false, '2 of 4 Music is a TIE, not a majority -> not auto (the >= mutant flips this)');
+  assert.strictEqual(autoMusicChannels([{ id: 's', type: 'audio', folderName: 'solo', tags: { genre: 'Music' } }]).has('solo'), true,
+    'a single all-Music channel (2 > 1) still auto-qualifies - the strict test is not "> half rounded up"');
 });
 
 test('a VIDEO item is NEVER eligible, even genre Music', () => {
-  assert.strictEqual(isEligibleAudio(A_VIDEO, {}), false);
-  assert.strictEqual(isEligibleAudio(A_VIDEO, { Chan: 'on' }), false, 'an explicit on cannot promote a non-audio item');
-});
-
-test('audio with no tags / no genre is out by default', () => {
-  assert.strictEqual(isEligibleAudio({ id: 'x', type: 'audio', folderName: 'F' }, {}), false);
-  assert.strictEqual(isEligibleAudio({ id: 'x', type: 'audio', folderName: 'F', tags: {} }, {}), false);
-  assert.strictEqual(isEligibleAudio({ id: 'x', type: 'audio', folderName: 'F', tags: { genre: 'Rock' } }, {}), false,
-    'only the literal category "Music" seeds on');
+  assert.strictEqual(isEligibleAudio(A_VIDEO, {}, autoMusicChannels([A_VIDEO])), false, 'a video never counts, never projects');
+  assert.strictEqual(isEligibleAudio(A_VIDEO, { Chan: 'on' }, AUTO), false, 'an explicit on cannot promote a non-audio item');
 });
 
 // ---- eligibility: BOTH override arms, bound behaviourally --------------------
 
-test("override 'on' FORCES a Gaming/Comedy channel IN (the NESTALGIA fix + the on-arm)", () => {
-  assert.strictEqual(isEligibleAudio(NESTALGIA_1, { nestalgiamusic: 'on' }), true,
-    'Dean flips the Gaming-tagged music channel on');
-  assert.strictEqual(isEligibleAudio(ZARCHIVO, { zarchivoopieanthonyepisode1889: 'on' }), true,
-    'the on-arm overrides the genre default even for Comedy (delete it -> this reds)');
+test("override 'on' FORCES a non-auto (Gaming/Comedy) channel fully IN (the on-arm)", () => {
+  assert.strictEqual(isEligibleAudio(NESTALGIA_1, { nestalgiamusic: 'on' }, AUTO), true,
+    'Dean flips the Gaming channel on -> its tracks project');
+  assert.strictEqual(isEligibleAudio(ZARCHIVO, { zarchivoopieanthonyepisode1889: 'on' }, AUTO), true,
+    'the on-arm overrides the auto default even for Comedy (delete it -> this reds)');
 });
 
-test("override 'off' FORCES a Music-genre channel OUT (the off-arm)", () => {
-  assert.strictEqual(isEligibleAudio(TONZAK, { Tonzak: 'off' }), false,
-    'off suppresses a would-be-default-on channel (delete the off-arm -> this reds)');
+test("override 'off' FORCES an auto-music channel OUT (the off-arm)", () => {
+  assert.strictEqual(isEligibleAudio(TONZAK, { Tonzak: 'off' }, AUTO), false,
+    'off suppresses a would-be-auto channel (delete the off-arm -> this reds)');
+});
+
+test('channelEffectiveOn mirrors the predicate (single source of truth for the toggle)', () => {
+  assert.strictEqual(channelEffectiveOn('Tonzak', {}, AUTO), true, 'auto channel -> on');
+  assert.strictEqual(channelEffectiveOn('nestalgiamusic', {}, AUTO), false, 'non-auto channel -> off');
+  assert.strictEqual(channelEffectiveOn('nestalgiamusic', { nestalgiamusic: 'on' }, AUTO), true, 'override on wins');
+  assert.strictEqual(channelEffectiveOn('Tonzak', { Tonzak: 'off' }, AUTO), false, 'override off wins');
 });
 
 test('an unrelated mark on another folder does not leak across channels', () => {
-  assert.strictEqual(isEligibleAudio(NESTALGIA_1, { Tonzak: 'on' }), false,
+  assert.strictEqual(isEligibleAudio(NESTALGIA_1, { Tonzak: 'on' }, AUTO), false,
     "a mark keyed to a different folder must not make NESTALGIA eligible");
 });
 
