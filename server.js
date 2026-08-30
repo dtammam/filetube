@@ -8459,6 +8459,37 @@ app.get('/api/music/artists', (req, res) => {
   res.json({ items: artists.slice(offset, offset + limit), total, offset, limit });
 });
 
+// v1.211: the "Channels in Music" manager list - every audio-bearing channel the
+// user can SEE, with its current state, so Settings has ONE discoverable place to
+// pick channels (the per-page ♪ was only reachable via one nav path). Static
+// segment - declared BEFORE /api/music/:id (Express route order). Visibility-
+// scoped: only channels with >=1 VISIBLE audio item, and the audioCount is the
+// VISIBLE count (never a restricted-item oracle); `auto`/`effective` are the
+// channel-level booleans the projection uses (single source of truth).
+app.get('/api/music/channels', (req, res) => {
+  const db = getCachedDatabase();
+  const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
+  const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
+  const autoSet = libraryAudio.autoMusicChannels(allAudio);
+  const displayNames = (db.folderDisplayNames && typeof db.folderDisplayNames === 'object') ? db.folderDisplayNames : {};
+  const visibleCount = new Map(); // folderName -> visible audio count
+  for (const it of allAudio) {
+    if (typeof it.folderName !== 'string' || it.folderName === '') continue;
+    if (!mediaVisibleTo(req, it)) continue;
+    visibleCount.set(it.folderName, (visibleCount.get(it.folderName) || 0) + 1);
+  }
+  const channels = [...visibleCount.entries()].map(([folderName, audioCount]) => ({
+    folderName,
+    displayName: (typeof displayNames[folderName] === 'string' && displayNames[folderName]) || folderName,
+    audioCount,
+    override: Object.prototype.hasOwnProperty.call(marks, folderName) ? marks[folderName] : null,
+    auto: autoSet.has(folderName),
+    effective: libraryAudio.channelEffectiveOn(folderName, marks, autoSet),
+  }));
+  channels.sort((a, b) => a.displayName.localeCompare(b.displayName));
+  res.json({ channels });
+});
+
 // Per-user liked songs (static segment -- declared BEFORE /api/music/:id).
 app.get('/api/music/liked', (req, res) => {
   // v1.80 RBAC: a restricted track's id must not leak into the liked set.

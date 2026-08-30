@@ -211,6 +211,29 @@ test('v1.211 all-or-nothing: a MIXED channel shows NOTHING by default (not 1 of 
   await postJson('/api/folders/music-flag', { folderName: 'mixedchan', music: null });
 });
 
+test('GET /api/music/channels lists visible audio channels with honest all-or-nothing state', async () => {
+  const data = await (await get('/api/music/channels')).json();
+  const byFolder = new Map(data.channels.map((c) => [c.folderName, c]));
+  // Tonzak: all-Music -> auto + effective on, no override.
+  assert.deepStrictEqual({ auto: byFolder.get('Tonzak').auto, override: byFolder.get('Tonzak').override, effective: byFolder.get('Tonzak').effective },
+    { auto: true, override: null, effective: true }, 'Tonzak: auto-on');
+  // nestalgiamusic: Gaming, but explicitly marked on -> auto false, effective on.
+  assert.deepStrictEqual({ auto: byFolder.get('nestalgiamusic').auto, override: byFolder.get('nestalgiamusic').override, effective: byFolder.get('nestalgiamusic').effective },
+    { auto: false, override: 'on', effective: true }, 'NESTALGIA: not auto, but marked on');
+  // mixedchan: minority-music -> auto false, effective false; count is honest.
+  assert.deepStrictEqual({ auto: byFolder.get('mixedchan').auto, effective: byFolder.get('mixedchan').effective, audioCount: byFolder.get('mixedchan').audioCount },
+    { auto: false, effective: false, audioCount: 3 }, 'mixedchan: not auto, off, 3 tracks');
+  assert.strictEqual(byFolder.get('zarchivo').effective, false, 'Comedy channel: off');
+});
+
+test('GET /api/music/channels is visibility-scoped: a restricted member never sees the blocked channel', async () => {
+  const adminList = await (await get('/api/music/channels')).json();
+  assert.ok(adminList.channels.some((c) => c.folderName === 'blockedchan'), 'admin sees the blocked channel');
+  const memberList = await (await get('/api/music/channels', member.cookie)).json();
+  assert.ok(!memberList.channels.some((c) => c.folderName === 'blockedchan'), 'a channel with no VISIBLE audio is not listed for the restricted member');
+  assert.ok(memberList.channels.some((c) => c.folderName === 'Tonzak'), 'an unrestricted channel is still listed');
+});
+
 // ---- T5: the per-folder mark read/write routes ----
 
 const postJson = (p, body, cookie) => fetch(`${base}${p}`, {
