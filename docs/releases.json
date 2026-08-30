@@ -2392,5 +2392,11 @@
     "date": "2026-08-30",
     "title": "Pick your music channels in one place",
     "intent": "A cleaner take on downloaded music in your library. A channel is now either fully in your Music library or not - no more a single stray song showing up while the rest of the channel stays hidden. Channels that are mostly music switch on by themselves; for everything else there's a new 'Channels in Music' list in Settings where you flip a channel on and get all of its songs, future downloads included. One obvious place to manage it, instead of hunting for a control on each channel's page."
+  },
+  {
+    "version": "1.212.0",
+    "date": "2026-08-30",
+    "title": "A fresh look for Music: artist circles + Jump back in",
+    "intent": "The Music library gets the first piece of a bigger redesign. Your artists now show as round picture tiles using each channel's own avatar, so you can spot who you're after at a glance (ripped albums with no channel keep their cover art). And a new 'Jump back in' row sits across the top with whatever you were last playing, so you're one tap from picking up where you left off. More of the redesign - a proper album page and a nicer now-playing screen - is on the way."
   }
 ]

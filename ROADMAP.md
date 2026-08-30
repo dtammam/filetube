@@ -80,6 +80,30 @@
 
 ## Shipped
 
+### v1.212.0 - Music redesign, Slice 1: artist circles + "Jump back in" (2026-08-30)
+
+Dean: "Love love love go go go" on the redesign mockup. First slice of the arc
+(spec = the mockup; plan `docs/exec-plans/active/music-redesign.md`, which stays
+ACTIVE for slices 2-4).
+
+**What shipped.** (1) The Artists tab renders round CHANNEL-AVATAR circles
+(Spotify-style). The avatar already existed (`resolveItemChannelAvatarUrl`) but
+the projection dropped it; now threaded through `groupArtists` (order-invariant,
+lowest-id pick). A native-album artist with no channel falls back to the
+album-art mosaic; a broken avatar degrades to a monogram (both reveal axes
+bound). (2) A "Jump back in" resume strip above the tabs - what you were last
+playing, one tap to resume; hidden when empty. Player engine untouched (a
+re-skin). CSS fully tokenised (census 0), mobile-first horizontal scroll.
+
+**What the gate caught.** Adversarial: the `&& t.avatarUrl` empty-avatar guard
+was load-bearing but unbound (a lower-id ''-avatar track must not claim the slot
+over a higher-id real avatar) - bound + mutation-verified. QA: reveal fast-path
+parity with `buildAccountAvatarEl`. Both non-blocking, folded in round 1.
+
+Full gate (both seats APPROVE). Dual-Node 7876/0 (Node 22.23.1 + 24.14.0).
+**Dean's device pass PENDING.** Slices 2-4 (album header + chapters-as-tracklist,
+artist page, now-playing) follow as their own releases - his reactions shape them.
+
 ### v1.211.0 - Honest all-or-nothing music channels + a Settings manager (2026-08-30)
 
 Dean device report on v1.210: the ♪ toggle painted ON (blue) for NESTALGIA but
