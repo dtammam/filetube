@@ -209,6 +209,27 @@ test('MEDIA gate KIND: a FOLDER and a video-LIBRARY restriction gate projected a
   assert.ok(music.items.some((i) => i.id === 'dup1'), 'native music tracks are unaffected (kind track -> music library)');
 });
 
+test('v1.215 (Dean device): a played LIBRARY track shows in recent-listening via its MEDIA-store position; a native track via the music store', async () => {
+  setToggle(actingUser.id, 'on');
+  // A projected library track saves progress to the MEDIA store (/api/progress);
+  // a native track to the music store (/api/music/progress). recent-listening
+  // must merge BOTH, or a downloaded artist you just played (Dean's NESTALGIA)
+  // never appears. nest1's progressEndpoint is '/api/progress' (asserted above),
+  // so this is the real wire path the music player uses for a library track.
+  await postJson('/api/progress', { id: 'nest1', timestamp: 42, duration: 200 });
+  await postJson('/api/music/progress', { id: 'dup1', position: 30, duration: 300 });
+  const recent = await (await get('/api/music?filter=recent-listening')).json();
+  const ids = recent.items.map((i) => i.id);
+  assert.ok(ids.includes('nest1'), 'the PLAYED library track appears in recent-listening (media-store position merged in)');
+  assert.ok(ids.includes('dup1'), 'the played native track still appears (music store, unbroken)');
+  const nest = recent.items.find((i) => i.id === 'nest1');
+  // Normalized to the music {position} shape (the media store keys it `timestamp`).
+  assert.ok(nest.progress && nest.progress.position === 42, 'the library track carries its media-store resume position (42), normalized to {position}');
+  // A library track the user has NOT played is absent (proves the filter still
+  // gates on a real saved position, not "every projected track").
+  assert.ok(!ids.includes('tonzak1'), 'an unplayed projected track is NOT in recent-listening');
+});
+
 test('v1.211 all-or-nothing: a MIXED channel shows NOTHING by default (not 1 of 3), ALL when marked', async () => {
   setToggle(actingUser.id, 'on');
   // Default (unmarked, minority-music) -> none of mixedchan shows, not even mx1.

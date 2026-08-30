@@ -8399,6 +8399,35 @@ function projectedLibraryTracks(req, nativeTracks) {
   return out;
 }
 
+// v1.215 (Dean's device pass on v1.214): a PROJECTED library track saves its
+// position to the MEDIA store - its progressEndpoint is '/api/progress', not
+// '/api/music/progress' (v1.210 unified its resume with the feed). So its resume
+// position AND its "recent-listening" membership have to be read from getProgress
+// (the media store) and normalized to the music {position,duration,updatedAt}
+// shape; native tracks stay on getMusicProgress. Both stores get their pending
+// in-memory writes overlaid (read-your-writes, mirroring the /api/videos
+// recent readers) so a track the user JUST played is present before the periodic
+// flush. Before this, a played library artist (Dean's NESTALGIA) never showed up
+// in "Recently played" / "Jump back in" - those tracks' positions were in the
+// media store, invisible to the music-store-only recent filter.
+function musicListProgressMap(userId, tracks) {
+  const music = userStore.getMusicProgress(userId); // fresh object; safe to mutate
+  for (const [, e] of pendingMusicProgress) { if (e.userId === userId) music[e.trackId] = e.value; }
+  const media = userStore.getProgress(userId); // fresh object; safe to mutate
+  for (const [, e] of pendingProgress) { if (e.userId === userId) media[e.mediaId] = e.value; }
+  const out = {};
+  for (const t of tracks) {
+    if (t.source === 'library') {
+      const m = media[t.id];
+      if (m) out[t.id] = { position: m.timestamp, duration: m.duration, updatedAt: m.updatedAt };
+    } else {
+      const p = music[t.id];
+      if (p) out[t.id] = p;
+    }
+  }
+  return out;
+}
+
 app.get('/api/music', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
@@ -8414,7 +8443,8 @@ app.get('/api/music', (req, res) => {
 
   const likedSet = new Set(userStore.getMusicLiked(req.user.id));
   if (req.query.filter === 'liked') list = list.filter((t) => likedSet.has(t.id));
-  const progressMap = userStore.getMusicProgress(req.user.id);
+  // v1.215: merge the media store for projected library tracks (see the helper).
+  const progressMap = musicListProgressMap(req.user.id, list);
   if (req.query.filter === 'recent-listening') {
     // The "Continue listening" surface: tracks with a saved position, most
     // recently updated first.
