@@ -80,6 +80,33 @@
 
 ## Shipped
 
+### v1.211.0 - Honest all-or-nothing music channels + a Settings manager (2026-08-30)
+
+Dean device report on v1.210: the ♪ toggle painted ON (blue) for NESTALGIA but
+only 1 of 352 songs showed - and he couldn't find the per-channel control (it
+lived only on one nav path to the channel's page).
+
+**What shipped.** (1) The projection default is now CHANNEL-level all-or-nothing:
+a channel auto-includes iff a STRICT MAJORITY of its audio is tagged genre
+'Music' (Dean's call), and marking a channel includes ALL of its audio - killing
+the "blue but 1 song" mismatch (a mixed channel like NESTALGIA, mostly "Gaming",
+now shows NOTHING until marked, then all of it). `autoMusicChannels()` +
+`channelEffectiveOn()` are the single source of truth shared by the projection,
+the ♪ toggle, and the new list - so the toggle can never disagree with what
+shows. (2) A "Channels in Music" manager in Settings (GET /api/music/channels) -
+one discoverable, nav-path-independent place to pick channels, visibility-scoped
+(audioCount is the per-user visible count; write stays library-write only).
+
+**What the gate caught.** Adversarial: the strict-majority 50/50 boundary was
+unbound (the `>` -> `>=` mutant survived with zero test signal) - closed with an
+even-split test + mutation-verified. QA: a comment on the music-flag GET had
+rotted (claimed the default was "the genre-seeded default over VISIBLE audio" -
+both halves false under the channel model) - rewritten. Both fixed in one round;
+also added a partial-visibility audioCount bind and de-rotted several comments.
+
+Full gate (both seats APPROVE after one fix round). Dual-Node 7866/0
+(Node 22.23.1 + 24.14.0). **Dean's device pass PENDING.**
+
 ### v1.210.0 - Downloaded music channels in the Music library (2026-08-30)
 
 Dean: he downloads MP3s from music channels (game-music remixes, album mixes)
