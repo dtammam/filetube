@@ -84,7 +84,8 @@ scroll-restore semantics intact for the fall-through path.
 
 ### Adoption path (across the media views - reuses the primitive unchanged)
 - **Podcasts (SHIPPED v1.218):** one drill level (grid -> a show). `pushShowLevel`
-  on the card descent (dedup on show id), `onShowPop` reconciles to grid/show, the
+  on the card descent (with a DEFENSIVE same-id guard - currently unreachable, the
+  card only exists at the grid), `onShowPop` reconciles to grid/show, the
   "All podcasts" back button consumes the entry via history.back(). Module-scoped
   live-handler ref (currentShow is init-closure-scoped, like Music). Now-playing
   collapse deferred with Music's (same shape).

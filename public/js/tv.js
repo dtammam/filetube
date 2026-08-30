@@ -168,12 +168,16 @@ if (typeof document !== 'undefined') {
       }).catch(function (e) { if (e.name !== 'AbortError') setStatus('Could not load shows.'); });
     }
 
-    // v1.218 in-view back-stack: a show descent stamps a history level (dedup on
-    // the open show id) so OS/browser back steps back to the grid instead of
-    // leaving TV. INTERACTIVE descents only (the card click); the ?show= init deep
-    // link opens via openShow directly, no push.
+    // v1.218 in-view back-stack: a show descent stamps a history level so
+    // OS/browser back steps back to the grid instead of leaving TV. INTERACTIVE
+    // descents only (the card click); the ?show= init deep link opens via
+    // openShow directly, no push.
     function pushTvShowLevel(showId) {
       var ft = window.FileTube;
+      // Same-id check = a DEFENSIVE guard, not a live dedup: the only caller is
+      // the grid card (present only while currentShowId is null), so the ids
+      // always differ. Cheap future-proofing against a non-grid descent (gate
+      // SUGGESTION: currently unreachable, kept as insurance).
       if (ft && typeof ft.pushViewState === 'function' && String(currentShowId || '') !== String(showId || '')) {
         ft.pushViewState({ t: 'show', id: showId });
       }

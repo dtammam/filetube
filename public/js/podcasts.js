@@ -230,12 +230,16 @@
 
     // v1.218 in-view back-stack: opening a show from the grid stamps a history
     // level so OS/browser back steps back to the grid instead of leaving
-    // Podcasts. Dedup on the show id (no duplicate level for a re-open of the
-    // same show). INTERACTIVE descents only (the card click); the ?show= init
-    // deep link and refreshCurrentView re-open via openShow directly, no push.
+    // Podcasts. INTERACTIVE descents only (the card click); the ?show= init deep
+    // link and refreshCurrentView re-open via openShow directly, no push.
     function showKey(s) { return (s && s.id) ? String(s.id) : ''; }
     function pushShowLevel(show) {
       var ft = window.FileTube;
+      // The same-id check is a DEFENSIVE guard, not a live dedup: today the only
+      // caller is the grid card, which only exists while currentShow is null, so
+      // the keys always differ. It future-proofs a non-grid descent (e.g. a
+      // "related show" link) against a duplicate level. (gate SUGGESTION: this is
+      // currently unreachable, kept as cheap insurance rather than dropped.)
       if (ft && typeof ft.pushViewState === 'function' && showKey(currentShow) !== showKey(show)) {
         ft.pushViewState({ t: 'show', id: show.id, name: show.name });
       }
