@@ -10,6 +10,8 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
 const musicPath = require.resolve('../../public/js/music.js');
@@ -391,6 +393,9 @@ test('friction: the Artists view toggle flips circles <-> compact list', async (
     row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     for (let i = 0; i < 8; i++) await settle();
     assert.match(content.innerHTML, /music-drill/, 'tapping a list row opens the artist page');
+    // v1.215 (Dean device): the toggle HIDES inside a drill (it only sorts the
+    // Artists grid/list; on a song list it does nothing). Binds the !drill axis.
+    assert.ok(toggle.hidden, 'the view toggle is hidden inside an artist drill');
     // Back out of the drill, return to the list.
     const back = content.querySelector('.music-drill-back');
     if (back) { back.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); for (let i = 0; i < 8; i++) await settle(); }
@@ -407,6 +412,20 @@ test('friction: the view toggle is HIDDEN off the Artists tab (Home)', async () 
     // default landing is Home -> the artists-only toggle is hidden.
     assert.ok(dom.window.document.getElementById('music-view-toggle').hidden, 'no view toggle on Home');
   });
+});
+
+test('v1.215 (Dean device): the [hidden] guard on #music-view-toggle beats the .btn display base (else it LEAKS onto drills)', () => {
+  // syncViewToggle sets .hidden = true on every surface but the Artists grid, but
+  // jsdom cannot measure the cascade so those tests pass even when CSS ignores the
+  // attribute. The real v1.214 bug: `.btn { display: inline-flex }` beat the UA
+  // [hidden] rule, so the 4-cube toggle stayed painted on album/song drills -
+  // visible + inert (Dean's screenshot). Bind the guard by source, mirroring
+  // #music-sort-select: it must exist AND out-specify the .btn display base.
+  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+  assert.match(css, /\.btn\s*\{[^}]*display:\s*inline-flex/,
+    'the .btn display:inline-flex base must exist (what the guard has to beat)');
+  assert.match(css, /#music-view-toggle\[hidden\]\s*\{[^}]*display:\s*none/,
+    'the #music-view-toggle[hidden] { display:none } guard must exist -- else the toggle leaks onto drills');
 });
 
 test('redesign S1: the "Jump back in" strip renders recent tracks and a tile resumes on tap', async () => {

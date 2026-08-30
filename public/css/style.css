@@ -10328,6 +10328,12 @@ html[data-modern="on"] .video-uploader {
    UA [hidden] rule (the repo's [hidden]-loses-to-author-display class), so
    enforce the hide explicitly. */
 #music-sort-select[hidden] { display: none !important; }
+/* v1.215 (Dean's v1.214 device pass): the SAME class for the Artists grid/list
+   view toggle. syncViewToggle sets .hidden = true on every surface but the
+   Artists grid, yet `.btn { display: inline-flex }` beat the UA [hidden] rule,
+   so the 4-cube toggle LEAKED onto album/song drills (visible + inert there).
+   The explicit guard restores the hide. */
+#music-view-toggle[hidden] { display: none !important; }
 
 .music-tabs {
   display: flex;
