@@ -2422,5 +2422,11 @@
     "date": "2026-08-30",
     "title": "Critters stay off the now-playing screen",
     "intent": "A quick fix following the last one: a critter could sit over the title and the Up-next list on the expanded now-playing screen in Music. Now the whole now-playing panel is off-limits to the critters, so nothing drapes over your song title or the queue. (Same fix covers the Podcasts now-playing screen.) The critters still pop up from your artwork and cards as before - just never on top of the controls."
+  },
+  {
+    "version": "1.217.0",
+    "date": "2026-08-30",
+    "title": "Back button keeps you inside Music",
+    "intent": "Opening an album or artist in Music, or tapping a song to play it, used to be a one-way trip: pressing Back (or swiping back from the edge on your phone) jumped you all the way out of Music. Now Back steps you back where you'd expect - out of the album to your list, and back through an artist to where you started - and only leaves Music once you're at the top. Your music keeps playing the whole time. (Podcasts, Shows and Books will get the same treatment in upcoming updates.)"
   }
 ]

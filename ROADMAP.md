@@ -80,6 +80,49 @@
 
 ## Shipped
 
+### v1.217.0 - Back steps within Music: an in-view back-stack (drills) (2026-08-30)
+
+Dean's device pass: the OS/Android back gesture (and the iOS left-edge swipe)
+left Music entirely instead of stepping back out of an album/artist. Root cause:
+the Music view had a zero-depth in-app back-stack - drills were in-memory only,
+now-playing is player-driven, so back popped the single `/music` entry and left
+the section. Dean chose "step back within Music first, then adopt the other views
+incrementally with the same pattern."
+
+**What shipped - a view-agnostic router primitive + Music as first adopter.**
+(1) A history entry can carry an opt-in per-view `viewState` payload
+(`buildHistoryState` 5th arg, threaded through parse + scroll-rewrite; inert for
+every existing caller). (2) `pushViewState`/`replaceViewState` let a view add a
+back level WITHOUT changing the URL (deep links untouched). (3) A per-view
+`onPopState` hook (`popStateDelegate`): when a pop stays within the mounted view
+and it opted in, the router hands the pop to the view to resolve IN PLACE -
+before the fetch/swap, so no re-fetch, no view swap, and crucially NO player
+reparent (background audio is never touched). (4) Music adopts it for DRILLS:
+opening an album card, an artist card/row, tapping a SONG, or the "Playing from"
+line stamps a level; OS-back reconciles the drill (parent -> browse) in place.
+A cross-view back (leaving Music from the browse root) behaves exactly as before.
+
+**Scoped to drills this wave** (the primitive is generic and reused unchanged by
+the next adopters). Deferred + disclosed (tech-debt #186): now-playing
+collapse-on-back and the dock-return drill (entangled with the `?nowplaying`
+navigate + the player expand/dock lifecycle - the next slice); a one-extra-press
+wart if you leave a drill by tapping a TAB instead of Back; and cross-view
+re-entry not restoring the drill. Podcasts/TV/Books adopt the primitive in later
+small waves.
+
+**What the gate caught.** FULL gate, both seats. They independently caught that
+the first pass wired the back-stack to album/artist CARDS but not to tapping a
+SONG - the most common way into an album (v1.207) - which also caused a
+history/live-drill desync (open an artist, tap a song from another album, and the
+top entry still named the old parent). Fixed at one site (`playRowAt` stamps the
+new album's level), interactive-only so the `?play=` init path adds no history
+spam. Plus a same-drill dedup, comment/tally corrections, and an em-dash. A stray
+NUL byte that slipped into one edit was caught before commit. Both APPROVE after
+one fix round.
+
+Full gate (both seats APPROVE, one fix round). Dual-Node 7907/0
+(Node 22.23.1 + 24.14.0). **Dean's device pass PENDING.**
+
 ### v1.216.0 - Critters off the Music now-playing panel (2026-08-30)
 
 Dean's v1.215 device pass: "Love it" - with a critter draped over the expanded
