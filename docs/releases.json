@@ -2410,5 +2410,11 @@
     "date": "2026-08-30",
     "title": "Less friction in Music: a list view, sortable songs, recent artists",
     "intent": "Making Music quicker to get around. The artist tiles are smaller now, and there's a new button to flip the Artists view between round pictures and a compact list - so you can scan down and tap the artist you want instead of swiping past big circles. When you open an artist, their songs can now be sorted, and default to release date for anything you downloaded from YouTube (instead of a random order). And a 'Recently played' row up top on Home puts whoever you've been listening to one tap away."
+  },
+  {
+    "version": "1.215.0",
+    "date": "2026-08-30",
+    "title": "Music fixes: your downloads now show in Recently played",
+    "intent": "Three fixes for Music. Artists you downloaded from YouTube now show up in the 'Recently played' and 'Jump back in' rows after you listen to them - before, only your ripped albums did, and your downloads were quietly left out. A little critter that was sitting on top of the Shuffle button and getting in the way is gone - the critters now stay off the toolbar controls. And a stray view-switch button that showed up on an album's song list (where it did nothing) no longer appears there."
   }
 ]

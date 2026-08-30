@@ -7662,7 +7662,18 @@ var CRITTER_PRIORITY_WEIGHT = 3;
 // modal/sheet backdrop family (11 classes today) and any future sibling - the
 // gate's QA seat caught the previous single-class spelling as the recurring
 // one-of-N enumeration hole.
-var CRITTER_EXCLUSION_SELECTORS = ['#player-wrapper', '.player-container', '#player-dock', '#fs-stage', '[class*="-backdrop"]'];
+// v1.215 (Dean's v1.214 device pass): `.music-toolbar` joins the no-critter
+// zones. Its Shuffle/Scan buttons are `.btn`s (a PRIORITY anchor), so a critter
+// anchored to Shuffle sat right ON the control - and because the toolbar is
+// z-auto while the critter plane is z:2, a critter peeking up from the artwork
+// below could also paint over the whole dense control strip (Dean's fox-over-
+// Shuffle screenshot). As an exclusion, its buttons are no longer anchors AND
+// no placement rect may overlap it (the planner clears every exclusion for both
+// the anchor and the critter's own box), so the control strip stays clean.
+// NOTE: `.music-toolbar` is shared markup - the Podcasts page uses the same
+// class (podcasts.html), so this keeps critters off that control strip too
+// (harmless/beneficial - the same "don't obscure controls" intent).
+var CRITTER_EXCLUSION_SELECTORS = ['#player-wrapper', '.player-container', '#player-dock', '#fs-stage', '.music-toolbar', '[class*="-backdrop"]'];
 // Tap reactions (Dean): tiny, transform-only, contained to the critter's own
 // box; one is picked at random per tap. All die under prefers-reduced-motion.
 // v1.176 (Dean: "what other small cute animations can we add? I like that to

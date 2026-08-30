@@ -28,6 +28,7 @@ const {
   critterRectsIntersect,
   CRITTER_KISS_FRACTION,
   critterOverlapExceeds,
+  collectCritterRects,
 } = require('../../public/js/common.js');
 const { buildCritterListing, buildCritterVoicePool } = require('../../server.js');
 
@@ -518,6 +519,50 @@ test('critterTapHit: the visually-topmost (last-rendered) critter wins an overla
 // ---- v1.189.1 (Dean): the tap stands down when an overlay is painted ABOVE the
 // critter at the click point (the notification dropdown / a menu / a sheet was
 // swallowing clicks that geometrically overlapped a critter box) ---------------
+
+test('v1.215 (Dean device): the .music-toolbar is a no-critter zone - its buttons are not anchors, and it is an exclusion rect', () => {
+  // The v1.214 device pass: a critter anchored to the Shuffle .btn sat ON the
+  // control (fox-over-Shuffle screenshot). Bind the wiring end-to-end: a .btn
+  // INSIDE .music-toolbar is skipped as an anchor (collectCritterRects' .closest
+  // exclusion check), a .video-card OUTSIDE it is still collected, and the
+  // toolbar's own rect is emitted as an exclusion (which the planner then honors
+  // for both the anchor filter and the placement box - tested separately).
+  assert.ok(CRITTER_EXCLUSION_SELECTORS.includes('.music-toolbar'), 'the toolbar is registered as a no-critter zone');
+  const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/' });
+  const prevWin = global.window; const prevDoc = global.document;
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const doc = dom.window.document;
+    const rect = (el, x, y, w, h) => { el.getBoundingClientRect = () => ({ left: x, top: y, right: x + w, bottom: y + h, width: w, height: h, x, y }); };
+    // A music toolbar with a Shuffle button (a priority .btn anchor).
+    const toolbar = doc.createElement('div');
+    toolbar.className = 'music-toolbar';
+    const shuffle = doc.createElement('button');
+    shuffle.className = 'btn';
+    shuffle.id = 'music-shuffle-btn';
+    toolbar.appendChild(shuffle);
+    doc.body.appendChild(toolbar);
+    // A content card WELL below the toolbar (a normal anchor that must survive).
+    const card = doc.createElement('a');
+    card.className = 'video-card';
+    doc.body.appendChild(card);
+    rect(toolbar, 20, 20, 300, 56);
+    rect(shuffle, 220, 30, 80, 36);
+    rect(card, 20, 400, 200, 150);
+
+    const anchors = collectCritterRects(CRITTER_ANCHOR_SELECTORS, true);
+    assert.ok(!anchors.some((a) => a.el === shuffle), 'the Shuffle .btn inside .music-toolbar is NOT an anchor');
+    assert.ok(anchors.some((a) => a.el === card), 'a .video-card outside the toolbar IS still an anchor');
+
+    const exclusions = collectCritterRects(CRITTER_EXCLUSION_SELECTORS, false);
+    assert.ok(exclusions.some((e) => e.el === toolbar), 'the .music-toolbar rect is emitted as an exclusion');
+  } finally {
+    global.window = prevWin; global.document = prevDoc;
+    if (global.window === undefined) delete global.window;
+    if (global.document === undefined) delete global.document;
+    dom.window.close();
+  }
+});
 
 test('critterOccludedAt: a target inside an overlay stacked ABOVE the critter plane reports occluded; normal furniture does not', () => {
   const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/' });
