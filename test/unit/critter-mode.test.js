@@ -564,6 +564,52 @@ test('v1.215 (Dean device): the .music-toolbar is a no-critter zone - its button
   }
 });
 
+test('v1.216 (Dean device): the MUSIC now-playing surfaces are no-critter zones - an art anchor inside them is not collected, and they are exclusion rects', () => {
+  // The v1.215 device pass: a critter draped over the expanded now-playing (big
+  // art) + UP NEXT (squirrel-over-now-playing screenshot). The big-art view mounts
+  // into #player-slot and the metadata/up-next into #music-nowplaying-panel -
+  // neither was excluded (only the VIDEO player was). Bind end-to-end: an art
+  // anchor (.thumbnail-container) inside each is skipped, one OUTSIDE survives,
+  // and both containers emit exclusion rects.
+  assert.ok(CRITTER_EXCLUSION_SELECTORS.includes('#player-slot'), '#player-slot (expanded big-art) is a no-critter zone');
+  assert.ok(CRITTER_EXCLUSION_SELECTORS.includes('#music-nowplaying-panel'), '#music-nowplaying-panel (metadata + up-next) is a no-critter zone');
+  const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/' });
+  const prevWin = global.window; const prevDoc = global.document;
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const doc = dom.window.document;
+    const rect = (el, x, y, w, h) => { el.getBoundingClientRect = () => ({ left: x, top: y, right: x + w, bottom: y + h, width: w, height: h, x, y }); };
+    // The expanded now-playing big art (a .thumbnail-container anchor) inside #player-slot.
+    const slot = doc.createElement('div'); slot.id = 'player-slot';
+    const bigArt = doc.createElement('div'); bigArt.className = 'thumbnail-container';
+    slot.appendChild(bigArt); doc.body.appendChild(slot);
+    // An up-next row thumb (a .thumbnail-container anchor) inside #music-nowplaying-panel.
+    const panel = doc.createElement('div'); panel.id = 'music-nowplaying-panel';
+    const upNextThumb = doc.createElement('div'); upNextThumb.className = 'thumbnail-container';
+    panel.appendChild(upNextThumb); doc.body.appendChild(panel);
+    // A browse-content thumb OUTSIDE both (must still be an anchor).
+    const browseThumb = doc.createElement('div'); browseThumb.className = 'thumbnail-container';
+    doc.body.appendChild(browseThumb);
+    rect(slot, 0, 60, 380, 300); rect(bigArt, 10, 70, 360, 260);
+    rect(panel, 0, 380, 380, 240); rect(upNextThumb, 10, 390, 56, 56);
+    rect(browseThumb, 10, 700, 120, 90);
+
+    const anchors = collectCritterRects(CRITTER_ANCHOR_SELECTORS, true);
+    assert.ok(!anchors.some((a) => a.el === bigArt), 'the big-art thumb inside #player-slot is NOT an anchor');
+    assert.ok(!anchors.some((a) => a.el === upNextThumb), 'the up-next thumb inside #music-nowplaying-panel is NOT an anchor');
+    assert.ok(anchors.some((a) => a.el === browseThumb), 'a browse thumb OUTSIDE the now-playing surfaces IS still an anchor');
+
+    const exclusions = collectCritterRects(CRITTER_EXCLUSION_SELECTORS, false);
+    assert.ok(exclusions.some((e) => e.el === slot), '#player-slot emits an exclusion rect');
+    assert.ok(exclusions.some((e) => e.el === panel), '#music-nowplaying-panel emits an exclusion rect');
+  } finally {
+    global.window = prevWin; global.document = prevDoc;
+    if (global.window === undefined) delete global.window;
+    if (global.document === undefined) delete global.document;
+    dom.window.close();
+  }
+});
+
 test('critterOccludedAt: a target inside an overlay stacked ABOVE the critter plane reports occluded; normal furniture does not', () => {
   const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/' });
   const prevWin = global.window; const prevDoc = global.document;

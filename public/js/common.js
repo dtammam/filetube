@@ -7673,7 +7673,16 @@ var CRITTER_PRIORITY_WEIGHT = 3;
 // NOTE: `.music-toolbar` is shared markup - the Podcasts page uses the same
 // class (podcasts.html), so this keeps critters off that control strip too
 // (harmless/beneficial - the same "don't obscure controls" intent).
-var CRITTER_EXCLUSION_SELECTORS = ['#player-wrapper', '.player-container', '#player-dock', '#fs-stage', '.music-toolbar', '[class*="-backdrop"]'];
+// v1.216 (Dean's v1.215 device pass): the MUSIC now-playing surfaces join the
+// list. The video player's own playback surface was already excluded
+// (#player-wrapper/.player-container), but the EXPANDED audio now-playing view
+// mounts into `#player-slot` (the big-art view) and its metadata + up-next queue
+// live in `#music-nowplaying-panel` - neither was covered, so a critter anchored
+// to the big art or an up-next thumb draped over the title + UP NEXT (Dean's
+// squirrel-over-now-playing screenshot). Both are playback surfaces by Dean's
+// hard constraint. `#player-slot` is empty (zero-size, skipped) when the player
+// is docked, so the exclusion only bites while the big-art view is actually up.
+var CRITTER_EXCLUSION_SELECTORS = ['#player-wrapper', '.player-container', '#player-dock', '#fs-stage', '#player-slot', '#music-nowplaying-panel', '.music-toolbar', '[class*="-backdrop"]'];
 // Tap reactions (Dean): tiny, transform-only, contained to the critter's own
 // box; one is picked at random per tap. All die under prefers-reduced-motion.
 // v1.176 (Dean: "what other small cute animations can we add? I like that to
