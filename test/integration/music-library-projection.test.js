@@ -56,6 +56,12 @@ before(async () => {
       zarch1: audioItem('zarch1', 'zarchivo', 'Comedy', 'Zarchivo'),
       blk1: Object.assign(audioItem('blk1', 'blockedchan', 'Music', 'Blocked'), { filePath: path.join(blockedRoot, 'blk1.mp3') }),
       dup1: audioItem('dup1', 'Tonzak', 'Music', 'Tonzak'), // same id as a native track below
+      // A MIXED channel (the real NESTALGIA scenario): 1 Music + 2 Gaming in ONE
+      // folder -> minority music -> NOT auto; unmarked shows NOTHING (not the 1
+      // Music track); a mark brings ALL 3. v1.211 all-or-nothing.
+      mx1: audioItem('mx1', 'mixedchan', 'Music', 'MixedChan'),
+      mx2: audioItem('mx2', 'mixedchan', 'Gaming', 'MixedChan'),
+      mx3: audioItem('mx3', 'mixedchan', 'Gaming', 'MixedChan'),
     };
     const ns = musicStore.ensureMusic(db);
     ns.folders = [ROOT];
@@ -185,6 +191,24 @@ test('MEDIA gate KIND: a FOLDER and a video-LIBRARY restriction gate projected a
   music = await (await get('/api/music', fm.cookie)).json();
   assert.ok(!music.items.some((i) => i.source === 'library'), 'a video-library restriction removes ALL projected audio from Music');
   assert.ok(music.items.some((i) => i.id === 'dup1'), 'native music tracks are unaffected (kind track -> music library)');
+});
+
+test('v1.211 all-or-nothing: a MIXED channel shows NOTHING by default (not 1 of 3), ALL when marked', async () => {
+  setToggle(actingUser.id, 'on');
+  // Default (unmarked, minority-music) -> none of mixedchan shows, not even mx1.
+  let music = await (await get('/api/music')).json();
+  assert.ok(!music.items.some((i) => ['mx1', 'mx2', 'mx3'].includes(i.id)),
+    'the lone Music track does NOT leak in by default (the "blue but 1 song" bug is gone)');
+  // The toggle state is HONEST: effective + auto both false.
+  const flag = await (await get('/api/folders/music-flag?folderName=mixedchan')).json();
+  assert.deepStrictEqual({ effective: flag.effective, auto: flag.auto }, { effective: false, auto: false },
+    'the toggle reads off/not-auto - matching what actually shows');
+  // Mark it on -> ALL 3 project (a Gaming track too), then restore.
+  assert.strictEqual((await postJson('/api/folders/music-flag', { folderName: 'mixedchan', music: 'on' })).status, 200);
+  music = await (await get('/api/music')).json();
+  const mixIds = music.items.filter((i) => ['mx1', 'mx2', 'mx3'].includes(i.id)).map((i) => i.id).sort();
+  assert.deepStrictEqual(mixIds, ['mx1', 'mx2', 'mx3'], 'a mark brings the WHOLE channel, Gaming tracks included');
+  await postJson('/api/folders/music-flag', { folderName: 'mixedchan', music: null });
 });
 
 // ---- T5: the per-folder mark read/write routes ----

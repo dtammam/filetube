@@ -6656,13 +6656,20 @@ app.get('/api/folders/music-flag', (req, res) => {
   if (folderName === '') return res.status(400).json({ error: 'folderName is required' });
   const db = getCachedDatabase();
   const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
-  const audioItems = Object.values(db.metadata || {}).filter(
+  // Visibility-scoped: the toggle only renders for a channel the user can see.
+  const hasVisibleAudio = Object.values(db.metadata || {}).some(
     (it) => it && it.type === 'audio' && it.folderName === folderName && mediaVisibleTo(req, it));
-  if (audioItems.length === 0) return res.json({ folderName, hasAudio: false, override: null, effective: false });
+  if (!hasVisibleAudio) return res.json({ folderName, hasAudio: false, override: null, effective: false, auto: false });
+  // v1.211: `auto` (the majority-music default) and `effective` are CHANNEL-level
+  // and computed the SAME way as the projection (autoMusicChannels over the
+  // channel's audio) - so the toggle can never disagree with what actually
+  // shows in Music (the "blue but 1 song" mismatch is gone).
+  const folderAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio' && it.folderName === folderName);
+  const autoSet = libraryAudio.autoMusicChannels(folderAudio);
+  const auto = autoSet.has(folderName);
   const override = Object.prototype.hasOwnProperty.call(marks, folderName) ? marks[folderName] : null;
-  const genreDefault = audioItems.some((it) => it.tags && it.tags.genre === 'Music');
-  const effective = override === 'on' ? true : override === 'off' ? false : genreDefault;
-  return res.json({ folderName, hasAudio: true, override, effective });
+  const effective = libraryAudio.channelEffectiveOn(folderName, marks, autoSet);
+  return res.json({ folderName, hasAudio: true, override, effective, auto });
 });
 
 // Wave G: the per-folder "show in Music library" mark. `music` is 'on'/'off'
@@ -8368,11 +8375,14 @@ function projectedLibraryTracks(req, nativeTracks) {
   if (settings.musicIncludesLibrary !== 'on') return []; // opt-in, default OFF
   const db = getCachedDatabase();
   const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
+  const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
+  // v1.211: the auto default is CHANNEL-level (majority-music), computed once
+  // over the full audio set so a channel is all-in or all-out (no partial).
+  const autoSet = libraryAudio.autoMusicChannels(allAudio);
   const nativeIds = new Set(nativeTracks.map((t) => t.id));
   const out = [];
-  for (const item of Object.values(db.metadata || {})) {
-    if (!item || item.type !== 'audio') continue;
-    if (!libraryAudio.isEligibleAudio(item, marks)) continue;
+  for (const item of allAudio) {
+    if (!libraryAudio.isEligibleAudio(item, marks, autoSet)) continue;
     if (!mediaVisibleTo(req, item)) continue; // the MEDIA gate
     if (nativeIds.has(item.id)) continue; // a file in both roots: the native track wins
     out.push(libraryAudio.projectAudioItem(item));
