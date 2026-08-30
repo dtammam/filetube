@@ -6646,11 +6646,14 @@ app.post('/api/folders/display-name', async (req, res) => {
   res.json({ success: true, folderName, name: name === '' ? null : name });
 });
 
-// Wave G: read the per-folder "show in Music" state for the folder header
-// toggle. Returns the stored override (or null), the effective state (override,
-// else the genre-seeded default over this folder's VISIBLE audio), and whether
-// the folder even has audio (the toggle only renders when it does). Visibility-
-// scoped like the write route (never reveals a folder the user can't see).
+// Read the per-folder "show in Music" state for the folder header toggle.
+// Returns the stored override (or null); `auto` (the channel-level majority-music
+// default) and `effective` (override, else auto) computed the SAME way as the
+// projection - over ALL of the folder's audio, deliberately NOT visibility-scoped,
+// so the toggle can never disagree with what actually projects (v1.211); and
+// whether the folder has any VISIBLE audio (the toggle renders only when it does,
+// so a folder the user cannot see is never revealed). `auto`/`effective` are one
+// aggregate bit; the item-level payloads stay per-user visibility-gated.
 app.get('/api/folders/music-flag', (req, res) => {
   const folderName = typeof req.query.folderName === 'string' ? req.query.folderName.trim() : '';
   if (folderName === '') return res.status(400).json({ error: 'folderName is required' });
@@ -6673,7 +6676,8 @@ app.get('/api/folders/music-flag', (req, res) => {
 });
 
 // Wave G: the per-folder "show in Music library" mark. `music` is 'on'/'off'
-// (an explicit override) or null (clear -> back to the genre-seeded default).
+// (an explicit override) or null (clear -> back to the channel-level default,
+// v1.211: auto-on iff a strict majority of the channel's audio is genre 'Music').
 // Same dual-axis gate as the rename route (requireModifyLibrary - shared library
 // metadata - AND visibility), but the existence probe requires a visible AUDIO
 // item: the mark is meaningless on a folder with no library audio, and this
@@ -8365,7 +8369,7 @@ function publicTrackListItem(track, userId, likedSet, progressMap) {
 
 // Wave G: the projected library-audio tracks this user sees in Music, or [] when
 // the opt-in master toggle is off. Each db.metadata audio item that is eligible
-// (per-folder mark, else genre default), passes the MEDIA visibility gate (NOT
+// (per-folder mark, else the channel-level majority-music default), passes the MEDIA visibility gate (NOT
 // trackVisibleTo - these are media items, a distinct restriction kind), and does
 // not collide with a native music-track id (dedup: the real track wins), is
 // shaped into a music-track record. `nativeTracks` is the already-RBAC-filtered

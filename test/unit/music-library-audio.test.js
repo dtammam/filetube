@@ -82,6 +82,17 @@ test('a MAJORITY-music channel DOES auto-qualify (all of it, not a partial)', ()
   assert.strictEqual(isEligibleAudio(mostly[2], {}, auto), true, 'the Gaming track rides in too (all-or-nothing)');
 });
 
+test('the boundary is STRICT majority: an even 50/50 split does NOT auto-qualify', () => {
+  // Binds `music * 2 > total` (not >=): a 2-Music/2-Gaming channel is a TIE, not
+  // a majority -> stays off. The `>=` mutant would flip every even split into
+  // Music silently (adversarial gate). A single-Music channel (2 > 1) still auto.
+  const mk = (id, genre) => ({ id, type: 'audio', folderName: 'tie', tags: { genre } });
+  const tie = [mk('a', 'Music'), mk('b', 'Music'), mk('c', 'Gaming'), mk('d', 'Gaming')];
+  assert.strictEqual(autoMusicChannels(tie).has('tie'), false, '2 of 4 Music is a TIE, not a majority -> not auto (the >= mutant flips this)');
+  assert.strictEqual(autoMusicChannels([{ id: 's', type: 'audio', folderName: 'solo', tags: { genre: 'Music' } }]).has('solo'), true,
+    'a single all-Music channel (2 > 1) still auto-qualifies - the strict test is not "> half rounded up"');
+});
+
 test('a VIDEO item is NEVER eligible, even genre Music', () => {
   assert.strictEqual(isEligibleAudio(A_VIDEO, {}, autoMusicChannels([A_VIDEO])), false, 'a video never counts, never projects');
   assert.strictEqual(isEligibleAudio(A_VIDEO, { Chan: 'on' }, AUTO), false, 'an explicit on cannot promote a non-audio item');

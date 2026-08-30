@@ -2461,27 +2461,40 @@ function wireStaticControls(signal) {
             const cb = document.createElement('input');
             cb.type = 'checkbox';
             cb.checked = !!ch.effective;
+            // A channel that is on only because it's mostly-music (no explicit
+            // choice) is tagged "(auto)" so the on-state is never a mystery.
+            let autoTag = null;
+            const paintAutoTag = () => {
+              const isAuto = ch.auto && ch.override == null;
+              if (isAuto && !autoTag) {
+                autoTag = document.createElement('span');
+                autoTag.className = 'auto-tag';
+                autoTag.textContent = '(auto)';
+                row.appendChild(autoTag);
+              } else if (!isAuto && autoTag) {
+                autoTag.remove();
+                autoTag = null;
+              }
+            };
             cb.addEventListener('change', () => {
+              const next = cb.checked ? 'on' : 'off';
               fetch('/api/folders/music-flag', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ folderName: ch.folderName, music: cb.checked ? 'on' : 'off' }),
+                body: JSON.stringify({ folderName: ch.folderName, music: next }),
               })
-                .then((res) => { if (!res.ok) throw new Error(`HTTP ${res.status}`); })
+                .then((res) => {
+                  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                  ch.override = next; // now an explicit choice - the "(auto)" tag drops
+                  paintAutoTag();
+                })
                 .catch(() => { showToast('Could not update that channel.'); cb.checked = !cb.checked; });
             }, { signal });
             const name = document.createElement('span');
             name.textContent = `${ch.displayName} (${ch.audioCount})`;
             row.appendChild(cb);
             row.appendChild(name);
-            // A channel that is on only because it's mostly-music (no explicit
-            // choice) is tagged "(auto)" so the on-state is never a mystery.
-            if (ch.auto && ch.override == null) {
-              const tag = document.createElement('span');
-              tag.className = 'auto-tag';
-              tag.textContent = '(auto)';
-              row.appendChild(tag);
-            }
+            paintAutoTag();
             musicChannelsList.appendChild(row);
           }
         }
