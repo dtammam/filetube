@@ -81,6 +81,11 @@
   // ---- the view ------------------------------------------------------------
 
   var controller = null;
+  // v1.218 (in-view back-stack, media-nav arc): the LIVE onPopState handler for
+  // the mounted init closure (it needs init's `currentShow`/openShow/backToGrid).
+  // Module-scoped so the stable module.onPopState delegates to the current init;
+  // nulled by destroy() so a pop after teardown is a no-op. Mirrors music.js.
+  var activePodcastPopHandler = null;
 
   function init(root) {
     controller = new AbortController();
@@ -192,7 +197,7 @@
         warn.textContent = 'Feed URL needs re-entry';
         card.appendChild(warn);
       }
-      card.addEventListener('click', function () { openShow(show); }, { signal: signal });
+      card.addEventListener('click', function () { pushShowLevel(show); openShow(show); }, { signal: signal });
       return card;
     }
 
@@ -223,6 +228,37 @@
       loadShows();
     }
 
+    // v1.218 in-view back-stack: opening a show from the grid stamps a history
+    // level so OS/browser back steps back to the grid instead of leaving
+    // Podcasts. INTERACTIVE descents only (the card click); the ?show= init deep
+    // link and refreshCurrentView re-open via openShow directly, no push.
+    function showKey(s) { return (s && s.id) ? String(s.id) : ''; }
+    function pushShowLevel(show) {
+      var ft = window.FileTube;
+      // The same-id check is a DEFENSIVE guard, not a live dedup: today the only
+      // caller is the grid card, which only exists while currentShow is null, so
+      // the keys always differ. It future-proofs a non-grid descent (e.g. a
+      // "related show" link) against a duplicate level. (gate SUGGESTION: this is
+      // currently unreachable, kept as cheap insurance rather than dropped.)
+      if (ft && typeof ft.pushViewState === 'function' && showKey(currentShow) !== showKey(show)) {
+        ft.pushViewState({ t: 'show', id: show.id, name: show.name });
+      }
+    }
+    // The router hands this back for a within-Podcasts pop (popStateDelegate gate):
+    // reconcile the open show to the popped entry's payload, in place. A show-level
+    // pop collapses to the grid; a forward re-pop re-opens the show. Return true -
+    // a cross-view pop (leaving Podcasts) never reaches here.
+    function onShowPop(state) {
+      var vs = state && state.viewState;
+      var target = (vs && vs.t === 'show' && vs.id) ? vs : null;
+      if (showKey(currentShow) !== showKey(target)) {
+        if (target) openShow({ id: target.id, name: target.name || 'Podcast' });
+        else backToGrid();
+      }
+      return true;
+    }
+    activePodcastPopHandler = onShowPop;
+
     function renderEpisodes() {
       if (!content) return;
       content.textContent = '';
@@ -234,7 +270,17 @@
         back.type = 'button';
         back.className = 'btn btn-sm';
         back.textContent = '‹ All podcasts';
-        back.addEventListener('click', backToGrid, { signal: signal });
+        // v1.218: consume the pushed show level via history.back() when one exists
+        // (keeps OS-back in sync); else collapse directly (a show reached without a
+        // pushed level, e.g. a ?show= deep-link restore).
+        back.addEventListener('click', function () {
+          var st = window.history.state;
+          if (st && st.viewState && st.viewState.t === 'show' && window.FileTube && typeof window.FileTube.pushViewState === 'function') {
+            window.history.back();
+          } else {
+            backToGrid();
+          }
+        }, { signal: signal });
         crumb.appendChild(back);
         var name = document.createElement('span');
         name.className = 'podcast-crumb-name';
@@ -1100,6 +1146,9 @@
       controller.abort();
     }
     controller = null;
+    // v1.218: drop the torn-down init's pop handler (a stray popstate after
+    // destroy() is a no-op, not a call into dead closure state).
+    activePodcastPopHandler = null;
   }
 
   // v1.105 (mirror music v1.103): strip the transient `?nowplaying` marker via
@@ -1121,7 +1170,14 @@
   }
 
   if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.registerView === 'function') {
-    window.FileTube.registerView('podcasts', { init: init, destroy: destroy });
+    window.FileTube.registerView('podcasts', {
+      init: init,
+      destroy: destroy,
+      // v1.218 in-view back-stack: the router calls this for a within-Podcasts pop
+      // (its popStateDelegate gate). Delegate to the live init's handler; false
+      // when torn down so the router falls through to its normal swap.
+      onPopState: function (state) { return activePodcastPopHandler ? activePodcastPopHandler(state) : false; },
+    });
   }
 
   // v1.98 shimmer sweep: a `.podcast-grid` of n `.podcast-card`-shaped shimmer

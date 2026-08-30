@@ -113,6 +113,13 @@ function buildShowDetailHtml(detail) {
 if (typeof document !== 'undefined') {
   (function () {
     var controller = null;
+    // v1.218 (in-view back-stack, media-nav arc): the open show id (null = the
+    // grid). TV's view functions are IIFE-level and stable across mount, so this
+    // + onShowPop can register directly (no live-handler indirection needed, unlike
+    // music/podcasts whose drill state is init-closure-scoped). onEpisode already
+    // NAVIGATES to /watch (a real history entry), so only the browse->show drill
+    // needs a level here.
+    var currentShowId = null;
 
     function el(id) { return document.getElementById(id); }
     function setStatus(msg) {
@@ -130,6 +137,7 @@ if (typeof document !== 'undefined') {
     }
 
     function renderGrid() {
+      currentShowId = null; // v1.218: back at the grid level
       setCrumb('');
       var heading = el('tv-heading'); if (heading) heading.textContent = 'Shows';
       var content = el('tv-content');
@@ -160,7 +168,36 @@ if (typeof document !== 'undefined') {
       }).catch(function (e) { if (e.name !== 'AbortError') setStatus('Could not load shows.'); });
     }
 
+    // v1.218 in-view back-stack: a show descent stamps a history level so
+    // OS/browser back steps back to the grid instead of leaving TV. INTERACTIVE
+    // descents only (the card click); the ?show= init deep link opens via
+    // openShow directly, no push.
+    function pushTvShowLevel(showId) {
+      var ft = window.FileTube;
+      // Same-id check = a DEFENSIVE guard, not a live dedup: the only caller is
+      // the grid card (present only while currentShowId is null), so the ids
+      // always differ. Cheap future-proofing against a non-grid descent (gate
+      // SUGGESTION: currently unreachable, kept as insurance).
+      if (ft && typeof ft.pushViewState === 'function' && String(currentShowId || '') !== String(showId || '')) {
+        ft.pushViewState({ t: 'show', id: showId });
+      }
+    }
+    // The router hands this back for a within-TV pop (popStateDelegate gate; only
+    // ever while TV is the mounted view): reconcile the open show to the popped
+    // entry, in place. A show-level pop collapses to the grid; a forward re-pop
+    // re-opens the show. Return true - a cross-view pop never reaches here.
+    function onShowPop(state) {
+      var vs = state && state.viewState;
+      var targetId = (vs && vs.t === 'show' && vs.id) ? vs.id : null;
+      if (String(currentShowId || '') !== String(targetId || '')) {
+        if (targetId) openShow(targetId);
+        else renderGrid();
+      }
+      return true;
+    }
+
     function openShow(showId) {
+      currentShowId = showId; // v1.218: track the open show for back reconciliation
       api('/api/tv/' + encodeURIComponent(showId)).then(function (detail) {
         var content = el('tv-content');
         if (!content) return;
@@ -190,10 +227,25 @@ if (typeof document !== 'undefined') {
       var cont = e.target.closest && e.target.closest('.tv-continue-card');
       if (cont && cont.getAttribute('data-episode-id')) { openEpisode(cont.getAttribute('data-episode-id')); return; }
       var card = e.target.closest && e.target.closest('.show-card');
-      if (card && card.getAttribute('data-show-id')) { openShow(card.getAttribute('data-show-id')); return; }
+      if (card && card.getAttribute('data-show-id')) {
+        var sid = card.getAttribute('data-show-id');
+        pushTvShowLevel(sid); // v1.218: a back level for the show descent
+        openShow(sid);
+        return;
+      }
       var row = e.target.closest && e.target.closest('.tv-episode-row');
       if (row && row.getAttribute('data-episode-id')) { openEpisode(row.getAttribute('data-episode-id')); return; }
-      if (e.target.closest && e.target.closest('#tv-back')) { renderGrid(); return; }
+      if (e.target.closest && e.target.closest('#tv-back')) {
+        // v1.218: consume the pushed show level via history.back() when one exists
+        // (keeps OS-back in sync); else collapse directly (a ?show= deep-link show).
+        var st = window.history.state;
+        if (st && st.viewState && st.viewState.t === 'show' && window.FileTube && typeof window.FileTube.pushViewState === 'function') {
+          window.history.back();
+        } else {
+          renderGrid();
+        }
+        return;
+      }
     }
 
     function onScanClick() {
@@ -227,7 +279,14 @@ if (typeof document !== 'undefined') {
     }
 
     if (window.FileTube && typeof window.FileTube.registerView === 'function') {
-      window.FileTube.registerView('tv', { init: init, destroy: destroy });
+      window.FileTube.registerView('tv', {
+        init: init,
+        destroy: destroy,
+        // v1.218 in-view back-stack: the router calls this only for a within-TV pop
+        // (its popStateDelegate gate fires only while TV is the mounted view), so
+        // onShowPop can register directly - its IIFE-level state is always valid here.
+        onPopState: onShowPop,
+      });
     }
   })();
 }
