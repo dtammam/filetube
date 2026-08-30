@@ -356,14 +356,32 @@ var MUSIC_SORTS = {
     { value: 'newest', label: 'Recently added' },
     { value: 'tracks-desc', label: 'Most songs' },
   ],
+  // Friction pass (Dean): a drill's song list is sortable. Release date leads -
+  // the natural order for yt-dlp downloads (their arbitrary order was the pain).
+  drill: [
+    { value: 'release-newest', label: 'Release date (newest)' },
+    { value: 'release-oldest', label: 'Release date (oldest)' },
+    { value: 'album-order', label: 'Album order' },
+    { value: 'title-asc', label: 'Title A-Z' },
+    { value: 'title-desc', label: 'Title Z-A' },
+    { value: 'duration-desc', label: 'Longest' },
+    { value: 'newest', label: 'Recently added' },
+  ],
 };
-var MUSIC_SORT_DEFAULTS = { songs: 'newest', albums: 'title-asc', artists: 'title-asc' };
+// An ARTIST drill defaults to release date (Dean); an ALBUM drill keeps album
+// order (disc/track sequence - the intended listen).
+var MUSIC_SORT_DEFAULTS = { songs: 'newest', albums: 'title-asc', artists: 'title-asc', 'drill-artist': 'release-newest', 'drill-album': 'album-order' };
+// The drill sort keys map to the shared `drill` option list.
+function musicSortOptionsFor(key) {
+  if (key === 'drill-artist' || key === 'drill-album') return MUSIC_SORTS.drill;
+  return MUSIC_SORTS[key] || MUSIC_SORTS.songs;
+}
 
 // The persisted sort for `tab`, validated against that tab's option list (an
 // unknown/stale key falls back to the tab default, so a renamed key never
 // strands the menu on an invalid value).
 function normalizeMusicSort(tab, value) {
-  var opts = MUSIC_SORTS[tab] || MUSIC_SORTS.songs;
+  var opts = musicSortOptionsFor(tab);
   return opts.some(function (o) { return o.value === value; }) ? value : (MUSIC_SORT_DEFAULTS[tab] || 'newest');
 }
 
@@ -667,17 +685,24 @@ if (typeof module !== 'undefined' && module.exports) {
     // Rebuild the select's options for the active tab and select that tab's
     // persisted sort. A drill (album/artist detail) is inherently album-order
     // and carries its own Play/Shuffle, so the top sort control is hidden there.
+    // The sort key currently in effect: a drill uses its type-specific key
+    // (drill-artist / drill-album), else the tab's own key.
+    function activeSortKey() {
+      if (drill) return drill.type === 'album' ? 'drill-album' : 'drill-artist';
+      return tab;
+    }
     function rebuildSortMenu() {
       if (!sortSelect) return;
       var wrap = sortSelect;
-      // A drill carries its own order; the HOME shelves are a fixed
-      // recently-added composition - neither exposes a sortable list, so the top
-      // sort control is hidden on both (gate: an inert/mislabeled dropdown on the
-      // default landing otherwise).
-      if (drill || tab === 'home') { wrap.hidden = true; return; }
+      // The HOME shelves are a fixed recently-added composition - no sortable
+      // list, so the sort control is hidden there (gate: no inert/mislabeled
+      // dropdown on the default landing). A drill IS sortable (friction pass:
+      // Dean wanted release-date order for an artist's songs).
+      if (tab === 'home') { wrap.hidden = true; return; }
       wrap.hidden = false;
-      var opts = MUSIC_SORTS[tab] || MUSIC_SORTS.songs;
-      var current = sortForTab(tab);
+      var key = activeSortKey();
+      var opts = musicSortOptionsFor(key);
+      var current = sortForTab(key);
       sortSelect.innerHTML = opts.map(function (o) {
         return '<option value="' + escapeMusicHtml(o.value) + '"' + (o.value === current ? ' selected' : '') + '>' + escapeMusicHtml(o.label) + '</option>';
       }).join('');
@@ -685,7 +710,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (sortSelect) {
       sortSelect.addEventListener('change', function () {
-        writeSortForTab(tab, sortSelect.value);
+        writeSortForTab(activeSortKey(), sortSelect.value);
         render().catch(function () {});
       }, { signal });
     }
@@ -801,11 +826,12 @@ if (typeof module !== 'undefined' && module.exports) {
       opts = opts || {};
       var myLoad = ++loadSongsGen; // claim this load BEFORE the fetch
       var scope = opts.scope || drill;
-      // v1.103: the flat Songs tab honours its OWN persisted sort; a drill
-      // (album/artist detail) defaults to album-order - disc/track sequence, the
-      // natural way to hear an album - unless a caller overrides (Shuffle passes
-      // 'random'). The top sort control is hidden inside a drill (rebuildSortMenu).
-      var defaultSort = scope ? 'album-order' : sortForTab('songs');
+      // Friction pass: a drill honours its OWN persisted sort (drill-artist ->
+      // release date by default, drill-album -> album order); the flat Songs tab
+      // honours its own. A caller can still override (Shuffle passes 'random').
+      var defaultSort = scope
+        ? sortForTab(scope.type === 'album' ? 'drill-album' : 'drill-artist')
+        : sortForTab('songs');
       var ctx = { src: 'music', sort: opts.sort || defaultSort };
       if (opts.seed) ctx.seed = opts.seed;
       if (search) ctx.search = search;

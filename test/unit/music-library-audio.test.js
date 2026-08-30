@@ -141,6 +141,13 @@ test('projectAudioItem: real music-track shape + per-item media routes', () => {
   assert.strictEqual(t.progressEndpoint, '/api/progress', 'progress unified with the feed side');
 });
 
+test('projectAudioItem: carries releaseDate for the release-date sort (Dean)', () => {
+  const withDate = projectAudioItem(Object.assign({}, NESTALGIA_1, { releaseDate: 1787875200000 }));
+  assert.strictEqual(withDate.releaseDate, 1787875200000, 'the captured release/upload epoch rides the projected track');
+  const noDate = projectAudioItem(NESTALGIA_1); // no releaseDate on the fixture
+  assert.strictEqual(noDate.releaseDate, 0, '0 when unknown (sorts to the addedAt bucket)');
+});
+
 test('projectAudioItem: artist falls back to channelName when no tag/path artist', () => {
   const bare = {
     id: 'b1', type: 'audio', title: 'Bare', name: 'bare.mp3',

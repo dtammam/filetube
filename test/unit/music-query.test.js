@@ -96,6 +96,15 @@ test('v1.103: groupArtists artIds — one per album, art-carrying first, title t
   assert.deepEqual(m.artIds, ['a6', 'a5', 'a3', 'a4']);
 });
 
+test('friction: sortTracks release-newest/oldest orders by releaseDate (addedAt tiebreak in the 0 bucket)', () => {
+  const t = (id, releaseDate, addedAt) => trk({ id, releaseDate, addedAt });
+  const list = [t('a', 1000, '2026-01-01'), t('b', 3000, '2026-01-01'), t('c', 0, '2026-05-01'), t('d', 0, '2026-02-01')];
+  assert.deepStrictEqual(q.sortTracks(list, 'release-newest').map((x) => x.id), ['b', 'a', 'c', 'd'],
+    'newest release first; the 0-releaseDate tracks fall to addedAt DESC (c before d)');
+  assert.deepStrictEqual(q.sortTracks(list, 'release-oldest').map((x) => x.id), ['d', 'c', 'a', 'b'],
+    'oldest release first; the 0-bucket by addedAt ASC (d before c)');
+});
+
 test('redesign S1: groupArtists emits the channel avatar for a channel-artist, "" for a native-only artist', () => {
   const AV = 'https://yt3.example/nestalgia.jpg';
   const chan = [

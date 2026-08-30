@@ -55,14 +55,22 @@ test('v1.103 (no dead option): each client sort binds to the RIGHT server fn - s
   const casesIn = (body) => new Set([...body.matchAll(/case '([a-z-]+)':/g)].map((m) => m[1]));
   const trackKeys = casesIn(fnBody('sortTracks'));
   const gridKeys = casesIn(fnBody('sortGroups'));
-  const handlerFor = { songs: trackKeys, albums: gridKeys, artists: gridKeys };
+  // songs + drill are served by sortTracks (a drill loads its song list via
+  // loadSongs); albums/artists grids by sortGroups.
+  const handlerFor = { songs: trackKeys, drill: trackKeys, albums: gridKeys, artists: gridKeys };
   for (const tab of Object.keys(MUSIC_SORTS)) {
     for (const opt of MUSIC_SORTS[tab]) {
-      assert.ok(handlerFor[tab].has(opt.value), `client sort "${opt.value}" (${tab} tab) has no case in ${tab === 'songs' ? 'sortTracks' : 'sortGroups'}`);
+      assert.ok(handlerFor[tab].has(opt.value), `client sort "${opt.value}" (${tab}) has no case in ${handlerFor[tab] === trackKeys ? 'sortTracks' : 'sortGroups'}`);
       assert.ok(opt.label && opt.label.length, `sort "${opt.value}" needs a label`);
     }
-    // Each tab's default must itself be one of that tab's offered values.
+  }
+  // Each per-tab default must be one of that tab's offered values.
+  for (const tab of ['songs', 'albums', 'artists']) {
     assert.ok(MUSIC_SORTS[tab].some((o) => o.value === MUSIC_SORT_DEFAULTS[tab]), `${tab} default is an offered value`);
+  }
+  // The drill defaults (artist -> release date, album -> album order) are drill options.
+  for (const k of ['drill-artist', 'drill-album']) {
+    assert.ok(MUSIC_SORTS.drill.some((o) => o.value === MUSIC_SORT_DEFAULTS[k]), `${k} default is an offered drill value`);
   }
 });
 
