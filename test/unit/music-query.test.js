@@ -98,11 +98,18 @@ test('v1.103: groupArtists artIds — one per album, art-carrying first, title t
 
 test('friction: sortTracks release-newest/oldest orders by releaseDate (addedAt tiebreak in the 0 bucket)', () => {
   const t = (id, releaseDate, addedAt) => trk({ id, releaseDate, addedAt });
-  const list = [t('a', 1000, '2026-01-01'), t('b', 3000, '2026-01-01'), t('c', 0, '2026-05-01'), t('d', 0, '2026-02-01')];
-  assert.deepStrictEqual(q.sortTracks(list, 'release-newest').map((x) => x.id), ['b', 'a', 'c', 'd'],
-    'newest release first; the 0-releaseDate tracks fall to addedAt DESC (c before d)');
-  assert.deepStrictEqual(q.sortTracks(list, 'release-oldest').map((x) => x.id), ['d', 'c', 'a', 'b'],
-    'oldest release first; the 0-bucket by addedAt ASC (d before c)');
+  // THREE 0-releaseDate tracks whose INPUT order (e,f,g) matches NEITHER the DESC
+  // nor the ASC addedAt tiebreak - so a dropped tiebreak (a stable sort keeps
+  // input order) reds BOTH directions, not just one (adversarial: two 0-items
+  // let one direction pass on stable-sort coincidence).
+  const list = [
+    t('a', 1000, '2026-01-01'), t('b', 3000, '2026-01-01'),
+    t('e', 0, '2026-03-01'), t('f', 0, '2026-01-01'), t('g', 0, '2026-02-01'),
+  ];
+  assert.deepStrictEqual(q.sortTracks(list, 'release-newest').map((x) => x.id), ['b', 'a', 'e', 'g', 'f'],
+    'newest release first; the 0-bucket by addedAt DESC (e, g, f) - NOT input order');
+  assert.deepStrictEqual(q.sortTracks(list, 'release-oldest').map((x) => x.id), ['f', 'g', 'e', 'a', 'b'],
+    'oldest release first; the 0-bucket by addedAt ASC (f, g, e) - NOT input order');
 });
 
 test('redesign S1: groupArtists emits the channel avatar for a channel-artist, "" for a native-only artist', () => {

@@ -384,7 +384,16 @@ test('friction: the Artists view toggle flips circles <-> compact list', async (
     toggle.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     for (let i = 0; i < 8; i++) await settle();
     assert.ok(content.querySelector('.music-artist-list'), 'toggled to the compact list');
-    assert.ok(content.querySelector('.music-artist-row[data-artist="NESTALGIA"]'), 'a list row per artist (drillable)');
+    const row = content.querySelector('.music-artist-row[data-artist="NESTALGIA"]');
+    assert.ok(row, 'a list row per artist');
+    // Tapping a LIST ROW drills into that artist (binds the .music-artist-row
+    // delegation arm - the list view's whole point).
+    row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 8; i++) await settle();
+    assert.match(content.innerHTML, /music-drill/, 'tapping a list row opens the artist page');
+    // Back out of the drill, return to the list.
+    const back = content.querySelector('.music-drill-back');
+    if (back) { back.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); for (let i = 0; i < 8; i++) await settle(); }
     // Toggle back -> circles.
     toggle.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     for (let i = 0; i < 8; i++) await settle();

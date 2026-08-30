@@ -168,5 +168,15 @@ test('friction: an ARTIST drill defaults to RELEASE DATE (Dean: not arbitrary or
     assert.equal(sel(dom).value, 'release-newest', 'an artist drill defaults to release date (newest)');
     const songUrl = [...fetches].reverse().find((u) => /\/api\/music\?/.test(u));
     assert.ok(/[?&]sort=release-newest\b/.test(songUrl), 'drill songs fetched release-newest, got: ' + songUrl);
+    // Changing the drill sort must persist under the DRILL key (drill-artist),
+    // not the parent tab: pick Title A-Z -> the drill re-fetches with it. If the
+    // handler wrote to the 'artists' tab key, the drill would keep defaulting to
+    // release-newest and this url would not carry title-asc (binds the write-key).
+    const before = fetches.length;
+    sel(dom).value = 'title-asc';
+    sel(dom).dispatchEvent(new dom.window.Event('change'));
+    await settle(); await settle();
+    const after = [...fetches].slice(before).reverse().find((u) => /\/api\/music\?/.test(u));
+    assert.ok(after && /[?&]sort=title-asc\b/.test(after), 'the changed drill sort re-fetched title-asc (persisted under the drill key), got: ' + after);
   });
 });

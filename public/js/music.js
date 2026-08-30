@@ -695,9 +695,9 @@ if (typeof module !== 'undefined' && module.exports) {
       m[t] = value;
       writePref(SORT_KEY, JSON.stringify(m));
     }
-    // Rebuild the select's options for the active tab and select that tab's
-    // persisted sort. A drill (album/artist detail) is inherently album-order
-    // and carries its own Play/Shuffle, so the top sort control is hidden there.
+    // Rebuild the select's options + selected value for whatever is active
+    // (a tab, OR a drill - friction pass: drills are now sortable, defaulting to
+    // release date for an artist and album order for an album).
     // The sort key currently in effect: a drill uses its type-specific key
     // (drill-artist / drill-album), else the tab's own key.
     function activeSortKey() {
@@ -921,10 +921,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // plays, most-recent first (one tile each), so who you reach for is one tap
       // from the top instead of a scroll-and-hunt.
       var recentArtists = [];
-      var seenArtist = {};
+      var seenArtist = Object.create(null); // null-proto: a "__proto__"-named artist dedups too
       for (var i = 0; i < recent.length && recentArtists.length < 12; i++) {
         var nm = recent[i] && recent[i].artist;
-        if (typeof nm !== 'string' || nm === '' || Object.prototype.hasOwnProperty.call(seenArtist, nm)) continue;
+        if (typeof nm !== 'string' || nm === '' || seenArtist[nm]) continue;
         seenArtist[nm] = true;
         recentArtists.push(recent[i]);
       }
@@ -997,9 +997,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // sentinel is about to be replaced) — the SPA-swap leak guard.
       disconnectStickyObserver();
       setActiveTab();
-      // Keep the sort control in sync with the active tab (options + persisted
-      // value) and hidden inside a drill - centralised here so every state
-      // change (tab switch, drill in/out) routes through one place.
+      // Keep the sort control in sync with the active surface (tab OR drill) -
+      // its options + persisted value, and hidden only on Home - centralised here
+      // so every state change (tab switch, drill in/out) routes through one place.
       rebuildSortMenu();
       syncViewToggle(); // grid/list toggle: only on the Artists tab
       // v1.98 shimmer sweep: seed the EXACT shape the branch below reveals, so
