@@ -593,12 +593,17 @@ test('v1.216 (Dean device): the now-playing panel (.music-nowplaying-panel) is a
 
     // The real protection: a browse anchor just below the panel, whose top peek
     // would drape up into it, must never yield a placement box overlapping the
-    // panel exclusion (planCritterScatter clears every exclusion for the box).
+    // panel exclusion (planCritterScatter clears every exclusion for the box). A
+    // second anchor FAR from the panel guarantees the planner produces at least
+    // one placement, so the "none overlap" loop is not vacuously true (the near
+    // anchor's only over-the-panel box is dropped; the clear anchor's survives).
     const panelRect = { x: 0, y: 380, w: 380, h: 240 };
-    const anchorBelow = { x: 40, y: 630, w: 120, h: 120 }; // sits right under the panel
+    const anchorNearPanel = { x: 40, y: 630, w: 120, h: 120 }; // sits right under the panel
+    const anchorClear = { x: 40, y: 1400, w: 120, h: 120 }; // far below, no exclusion near it
     const placements = planCritterScatter({
-      anchors: [anchorBelow], exclusions: [panelRect], manifest: MANIFEST_8, count: 4, rng: seededRng(9),
+      anchors: [anchorNearPanel, anchorClear], exclusions: [panelRect], manifest: MANIFEST_8, count: 4, rng: seededRng(9),
     });
+    assert.ok(placements.length > 0, 'the planner produced at least one placement (the loop below is not vacuous)');
     for (const p of placements) {
       assert.ok(!critterRectsIntersect({ x: p.x, y: p.y, w: p.w, h: p.h }, panelRect),
         'no placement box overlaps the now-playing panel exclusion');
