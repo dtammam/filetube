@@ -83,6 +83,19 @@ function buildArtistCardHtml(artist) {
     '</button>';
 }
 
+// Redesign S1: a "Jump back in" tile - a small art square over title + artist.
+// Art is /albumart/<id> (which falls back to the media thumbnail for a projected
+// library track), art-shimmer'd like every other music art. Tapping resumes the
+// track (playTrackFromContinue) with its saved position.
+function buildJumpBackTileHtml(item) {
+  return '' +
+    '<button type="button" class="music-jump-tile" data-id="' + escapeMusicHtml(item.id) + '">' +
+    '<img class="music-jump-art art-shimmer" src="/albumart/' + encodeURIComponent(item.id) + '" alt="" loading="lazy" />' +
+    '<span class="music-jump-title" title="' + escapeMusicHtml(item.title) + '">' + escapeMusicHtml(item.title || 'Unknown track') + '</span>' +
+    '<span class="music-jump-sub" title="' + escapeMusicHtml(item.artist || '') + '">' + escapeMusicHtml(item.artist || '') + '</span>' +
+    '</button>';
+}
+
 // v1.102 (tranche 4): the song-row action glyphs (queue/download/like) are inline
 // chrome-icon SVGs, not `.icon-*` masks - a mask paints NOTHING until it decodes,
 // so on an iOS cold start it popped in a beat after the row (the v1.87 class). The
@@ -376,7 +389,7 @@ function buildMusicSkeletonRows(n) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildSongRowHtml,
+    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildJumpBackTileHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
@@ -432,7 +445,35 @@ if (typeof module !== 'undefined' && module.exports) {
     var scanBtn = root.querySelector('#music-scan-btn');
     var nowPlayingEl = root.querySelector('#music-nowplaying');
     var nowPlayingPanel = root.querySelector('#music-nowplaying-panel');
+    var jumpbackHost = root.querySelector('#music-jumpback');
     if (!content) return;
+
+    // Redesign S1: the "Jump back in" strip above the tabs - what you were last
+    // playing, one tap to resume (playTrackFromContinue applies the saved
+    // position). Populated ONCE on init from the recently-played list; hidden
+    // when empty so it never leaves a bare header. Its own art-reveal (the strip
+    // lives outside #music-content, so revealMusicArt doesn't reach it).
+    async function renderJumpBackIn() {
+      if (!jumpbackHost) return;
+      var items = [];
+      try {
+        var data = await fetchJson('/api/music?filter=recent-listening&limit=12');
+        items = Array.isArray(data.items) ? data.items : [];
+      } catch (_) { items = []; }
+      if (!items.length) { jumpbackHost.hidden = true; jumpbackHost.innerHTML = ''; return; }
+      jumpbackHost.innerHTML = '<h2 class="music-jump-head">Jump back in</h2>' +
+        '<div class="music-jump-row">' + items.map(buildJumpBackTileHtml).join('') + '</div>';
+      jumpbackHost.hidden = false;
+      if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(jumpbackHost);
+    }
+    if (jumpbackHost) {
+      jumpbackHost.addEventListener('click', function (e) {
+        var tile = e.target && typeof e.target.closest === 'function' ? e.target.closest('.music-jump-tile') : null;
+        if (!tile) return;
+        var id = tile.getAttribute('data-id');
+        if (id) playTrackFromContinue(id).catch(function () {});
+      }, { signal: signal });
+    }
 
     // v1.44.2: reflect the "Playing from <Album>" line for the currently-playing
     // music track. Re-checks player.currentId each call so it hides when a
@@ -1193,6 +1234,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // render()'s updateNowPlaying would otherwise show a blank panel for a track
     // that is audibly playing.
     seedNowPlayingFromPlayer();
+    renderJumpBackIn().catch(function () {}); // redesign S1: the "Jump back in" strip (independent of the tab render)
 
     const playParam = urlParams.get('play');
     var wantNowPlaying = urlParams.get('nowplaying') === '1';

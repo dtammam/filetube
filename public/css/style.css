@@ -10357,6 +10357,59 @@ html[data-modern="on"] .video-uploader {
    (a pre-existing bare class music.html applied and podcasts.html then
    copied). Bound now - a transient status line in the secondary voice. */
 .music-status { color: var(--text-secondary); font-size: var(--fs-sm); margin-bottom: var(--space-5); }
+
+/* Redesign S1: the "Jump back in" strip - a horizontal scroll of resume tiles
+   above the tabs (hidden via [hidden] when empty). */
+.music-jumpback { margin: var(--space-2) 0 var(--space-4); }
+.music-jump-head { font-size: var(--fs-lg); font-weight: var(--fw-bold); margin: 0 0 var(--space-2); }
+.music-jump-row {
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+.music-jump-tile {
+  flex: 0 0 auto;
+  width: 116px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  scroll-snap-align: start;
+}
+.music-jump-art {
+  width: 116px;
+  height: 116px;
+  border-radius: var(--radius-lg);
+  object-fit: cover;
+  background: var(--thumbnail-bg);
+  box-shadow: var(--shadow);
+  transition: box-shadow var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
+}
+.music-jump-tile:hover .music-jump-art { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+.music-jump-title {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  max-width: 116px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.music-jump-sub {
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  max-width: 116px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .music-status[hidden] { display: none !important; }
 
 .music-crumb { display: flex; align-items: center; gap: var(--space-5); margin-bottom: var(--space-6); }

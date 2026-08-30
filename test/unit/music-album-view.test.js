@@ -33,6 +33,7 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
   <div id="player-slot"></div>
   <div id="media-player"></div>
   <div id="music-nowplaying-panel"></div>
+  <section id="music-jumpback" hidden></section>
   <div class="music-tabs" id="music-tabs" role="tablist">
     <button type="button" class="music-tab active" data-tab="albums" role="tab">Albums</button>
     <button type="button" class="music-tab" data-tab="artists" role="tab">Artists</button>
@@ -290,6 +291,36 @@ test('Wave G: a NATIVE track still uses the /track music routes (the override is
     assert.strictEqual(loaded.data.streamSrc, '/track/nat1', 'native track streams from /track');
     assert.strictEqual(loaded.data.artUrl, '/albumart/nat1', 'native track art from /albumart');
     assert.strictEqual(loaded.data.progressEndpoint, '/api/music/progress', 'native track uses the music coalescer');
+  });
+});
+
+test('redesign S1: the "Jump back in" strip renders recent tracks and a tile resumes on tap', async () => {
+  // The harness fetchMap serves filter=recent-listening -> RECENT (t2 + a loose
+  // album-less track). renderJumpBackIn populates #music-jumpback on init.
+  await boot('http://localhost/music', { state: 'docked', currentId: null }, {}, async (dom, calls) => {
+    const doc = dom.window.document;
+    const strip = doc.getElementById('music-jumpback');
+    assert.ok(strip && !strip.hidden, 'the strip is shown when there are recent tracks');
+    const tiles = strip.querySelectorAll('.music-jump-tile');
+    assert.ok(tiles.length >= 2, 'a tile per recent track');
+    assert.match(strip.innerHTML, /Jump back in/, 'the heading');
+    // Tap the loose (album-less) tile -> it plays directly (resume path).
+    const loose = strip.querySelector('.music-jump-tile[data-id="loose"]');
+    assert.ok(loose, 'the loose recent track has a tile');
+    loose.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 8; i++) await settle();
+    assert.ok(calls.load.some((c) => c.id === 'loose'), 'tapping a Jump-back tile resumes that track');
+  });
+});
+
+test('redesign S1: the "Jump back in" strip stays HIDDEN when there is no recent history', async () => {
+  const noRecent = () => (url) => {
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot('http://localhost/music', { state: 'docked', currentId: null }, { fetch: noRecent }, async (dom) => {
+    const strip = dom.window.document.getElementById('music-jumpback');
+    assert.ok(strip && strip.hidden, 'no recent history -> the strip is hidden (never a bare "Jump back in" header)');
   });
 });
 
