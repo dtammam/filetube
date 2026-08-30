@@ -144,14 +144,39 @@ test('v1.103 (gate ADV-W2, reveal-once BOTH axes): a rejected artists fetch CLEA
   }, { rejectArtists: true });
 });
 
-test('v1.103: drilling into an album hides the top sort control (drills are album-order + own Play/Shuffle)', async () => {
+test('friction: an ALBUM drill shows a sortable control, defaulting to album order', async () => {
   await bootMusicView({ filetube_music_tab: 'albums' }, async (dom, fetches) => {
     assert.equal(sel(dom).hidden, false, 'visible on the grid');
     dom.window.document.querySelector('.music-album-card').click();
     await settle(); await settle();
-    assert.equal(sel(dom).hidden, true, 'hidden inside the drill');
-    // The drilled song list requests album-order, not the album grid sort.
+    // The drill is now SORTABLE (Dean): the control stays visible, defaulting to
+    // album order (disc/track sequence - the intended listen) with the drill
+    // option list (release date included).
+    assert.equal(sel(dom).hidden, false, 'the sort control is shown inside the drill');
+    assert.equal(sel(dom).value, 'album-order', 'an album drill defaults to album order');
+    assert.ok(sel(dom).innerHTML.includes('Release date (newest)'), 'the drill sort offers release date');
     const songUrl = [...fetches].reverse().find((u) => /\/api\/music\?/.test(u));
     assert.ok(/[?&]sort=album-order\b/.test(songUrl), 'drill songs fetched album-order, got: ' + songUrl);
+  });
+});
+
+test('friction: an ARTIST drill defaults to RELEASE DATE (Dean: not arbitrary order)', async () => {
+  await bootMusicView({ filetube_music_tab: 'artists' }, async (dom, fetches) => {
+    dom.window.document.querySelector('.music-artist-card').click();
+    await settle(); await settle();
+    assert.equal(sel(dom).hidden, false, 'the sort control is shown on an artist drill');
+    assert.equal(sel(dom).value, 'release-newest', 'an artist drill defaults to release date (newest)');
+    const songUrl = [...fetches].reverse().find((u) => /\/api\/music\?/.test(u));
+    assert.ok(/[?&]sort=release-newest\b/.test(songUrl), 'drill songs fetched release-newest, got: ' + songUrl);
+    // Changing the drill sort must persist under the DRILL key (drill-artist),
+    // not the parent tab: pick Title A-Z -> the drill re-fetches with it. If the
+    // handler wrote to the 'artists' tab key, the drill would keep defaulting to
+    // release-newest and this url would not carry title-asc (binds the write-key).
+    const before = fetches.length;
+    sel(dom).value = 'title-asc';
+    sel(dom).dispatchEvent(new dom.window.Event('change'));
+    await settle(); await settle();
+    const after = [...fetches].slice(before).reverse().find((u) => /\/api\/music\?/.test(u));
+    assert.ok(after && /[?&]sort=title-asc\b/.test(after), 'the changed drill sort re-fetched title-asc (persisted under the drill key), got: ' + after);
   });
 });

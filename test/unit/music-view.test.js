@@ -9,7 +9,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildSongRowHtml,
+  escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
   drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
   buildNowPlayingPanelHtml,
   MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
@@ -55,14 +55,22 @@ test('v1.103 (no dead option): each client sort binds to the RIGHT server fn - s
   const casesIn = (body) => new Set([...body.matchAll(/case '([a-z-]+)':/g)].map((m) => m[1]));
   const trackKeys = casesIn(fnBody('sortTracks'));
   const gridKeys = casesIn(fnBody('sortGroups'));
-  const handlerFor = { songs: trackKeys, albums: gridKeys, artists: gridKeys };
+  // songs + drill are served by sortTracks (a drill loads its song list via
+  // loadSongs); albums/artists grids by sortGroups.
+  const handlerFor = { songs: trackKeys, drill: trackKeys, albums: gridKeys, artists: gridKeys };
   for (const tab of Object.keys(MUSIC_SORTS)) {
     for (const opt of MUSIC_SORTS[tab]) {
-      assert.ok(handlerFor[tab].has(opt.value), `client sort "${opt.value}" (${tab} tab) has no case in ${tab === 'songs' ? 'sortTracks' : 'sortGroups'}`);
+      assert.ok(handlerFor[tab].has(opt.value), `client sort "${opt.value}" (${tab}) has no case in ${handlerFor[tab] === trackKeys ? 'sortTracks' : 'sortGroups'}`);
       assert.ok(opt.label && opt.label.length, `sort "${opt.value}" needs a label`);
     }
-    // Each tab's default must itself be one of that tab's offered values.
+  }
+  // Each per-tab default must be one of that tab's offered values.
+  for (const tab of ['songs', 'albums', 'artists']) {
     assert.ok(MUSIC_SORTS[tab].some((o) => o.value === MUSIC_SORT_DEFAULTS[tab]), `${tab} default is an offered value`);
+  }
+  // The drill defaults (artist -> release date, album -> album order) are drill options.
+  for (const k of ['drill-artist', 'drill-album']) {
+    assert.ok(MUSIC_SORTS.drill.some((o) => o.value === MUSIC_SORT_DEFAULTS[k]), `${k} default is an offered drill value`);
   }
 });
 
@@ -150,6 +158,26 @@ test('redesign S1: an artist WITHOUT an avatar still falls back to the mosaic (n
   const html = buildArtistCardHtml({ artist: 'Pink Floyd', albumCount: 2, trackCount: 20, avatarUrl: '', artIds: ['a', 'b'] });
   assert.match(html, /class="music-artist-mosaic" data-tiles="2"/, 'no avatar -> the album-art mosaic');
   assert.doesNotMatch(html, /music-artist-avatar/, 'no round circle without an avatar');
+});
+
+test('friction: buildRecentArtistTileHtml renders a round drillable artist tile (art + name, no meta)', () => {
+  const html = buildRecentArtistTileHtml({ id: 'trk7', artist: 'NESTALGIA' });
+  assert.match(html, /class="music-artist-card" data-artist="NESTALGIA"/, 'drills into the artist (same delegation)');
+  assert.match(html, /class="music-artist-mosaic" data-tiles="1"><img class="art-shimmer" src="\/albumart\/trk7"/, 'a full-bleed round album-art circle from the track');
+  assert.match(html, />NESTALGIA</, 'the artist name');
+  assert.doesNotMatch(html, /music-artist-meta/, 'no album/track meta on a recently-played tile');
+});
+
+test('friction: buildArtistListRowHtml renders a compact drillable row (avatar circle, name, count)', () => {
+  const withAvatar = buildArtistListRowHtml({ artist: 'NESTALGIA', trackCount: 352, avatarUrl: 'https://yt3.example/n.jpg', artIds: ['x'] });
+  assert.match(withAvatar, /class="music-artist-row" data-artist="NESTALGIA"/, 'a drillable row (same data-artist the card uses)');
+  assert.match(withAvatar, /class="maa-img" src="https:\/\/yt3\.example\/n\.jpg"/, 'the channel avatar in the row circle');
+  assert.match(withAvatar, />NESTALGIA</, 'the name');
+  assert.match(withAvatar, />352 songs</, 'the song count');
+  // A native/ripped artist (no avatar) uses its album art in the circle.
+  const native = buildArtistListRowHtml({ artist: 'Pink Floyd', trackCount: 1, avatarUrl: '', artIds: ['a1'] });
+  assert.match(native, /class="art-shimmer" src="\/albumart\/a1"/, 'no avatar -> album art fills the row circle');
+  assert.match(native, />1 song</, 'singular count');
 });
 
 test('redesign: buildMusicShelfHtml renders a titled shelf with a See-all + a horizontal row', () => {

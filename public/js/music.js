@@ -96,6 +96,43 @@ function buildJumpBackTileHtml(item) {
     '</button>';
 }
 
+// Friction pass: the COMPACT LIST row for the Artists view (a fast index vs the
+// big circles). A small round avatar/mono + name + count, one per line - the
+// quickest way to eyeball and tap a known artist. Drills via the same
+// data-artist the content delegation reads (a .music-artist-row arm).
+function buildArtistListRowHtml(artist) {
+  var name = artist.artist || 'Unknown artist';
+  var initial = (String(name).trim().charAt(0) || '?').toUpperCase();
+  var count = (artist.trackCount || 0) + (artist.trackCount === 1 ? ' song' : ' songs');
+  var circle;
+  if (typeof artist.avatarUrl === 'string' && artist.avatarUrl) {
+    circle = '<span class="music-artist-row-circle"><span class="maa-mono">' + escapeMusicHtml(initial) + '</span>' +
+      '<img class="maa-img" src="' + escapeMusicHtml(artist.avatarUrl) + '" alt="" loading="lazy" /></span>';
+  } else {
+    var artId = (Array.isArray(artist.artIds) && artist.artIds[0]) || '';
+    circle = '<span class="music-artist-row-circle"><img class="art-shimmer" src="/albumart/' + encodeURIComponent(artId) + '" alt="" loading="lazy" /></span>';
+  }
+  return '' +
+    '<button type="button" class="music-artist-row" data-artist="' + escapeMusicHtml(artist.artist) + '">' +
+    circle +
+    '<span class="music-artist-row-name" title="' + escapeMusicHtml(name) + '">' + escapeMusicHtml(name) + '</span>' +
+    '<span class="music-artist-row-count">' + escapeMusicHtml(count) + '</span>' +
+    '</button>';
+}
+
+// Friction pass: a "Recently played" HOME tile - a round album-art circle over
+// the artist name (no meta), drilling into that artist via the same data-artist
+// the delegation reads. Built from a recent-listening track (art = the track's
+// /albumart; the artist name is what matters for the tap).
+function buildRecentArtistTileHtml(item) {
+  var name = item.artist || 'Unknown artist';
+  return '' +
+    '<button type="button" class="music-artist-card" data-artist="' + escapeMusicHtml(name) + '">' +
+    '<span class="music-artist-mosaic" data-tiles="1"><img class="art-shimmer" src="/albumart/' + encodeURIComponent(item.id) + '" alt="" loading="lazy" /></span>' +
+    '<span class="music-artist-name" title="' + escapeMusicHtml(name) + '">' + escapeMusicHtml(name) + '</span>' +
+    '</button>';
+}
+
 // Redesign: a HOME shelf - a titled section with an optional "See all" (switches
 // to that tab) over a horizontal-scroll row of tiles (album/artist cards reused
 // verbatim, so a tile tap drills exactly as it does in the full grid).
@@ -332,14 +369,32 @@ var MUSIC_SORTS = {
     { value: 'newest', label: 'Recently added' },
     { value: 'tracks-desc', label: 'Most songs' },
   ],
+  // Friction pass (Dean): a drill's song list is sortable. Release date leads -
+  // the natural order for yt-dlp downloads (their arbitrary order was the pain).
+  drill: [
+    { value: 'release-newest', label: 'Release date (newest)' },
+    { value: 'release-oldest', label: 'Release date (oldest)' },
+    { value: 'album-order', label: 'Album order' },
+    { value: 'title-asc', label: 'Title A-Z' },
+    { value: 'title-desc', label: 'Title Z-A' },
+    { value: 'duration-desc', label: 'Longest' },
+    { value: 'newest', label: 'Recently added' },
+  ],
 };
-var MUSIC_SORT_DEFAULTS = { songs: 'newest', albums: 'title-asc', artists: 'title-asc' };
+// An ARTIST drill defaults to release date (Dean); an ALBUM drill keeps album
+// order (disc/track sequence - the intended listen).
+var MUSIC_SORT_DEFAULTS = { songs: 'newest', albums: 'title-asc', artists: 'title-asc', 'drill-artist': 'release-newest', 'drill-album': 'album-order' };
+// The drill sort keys map to the shared `drill` option list.
+function musicSortOptionsFor(key) {
+  if (key === 'drill-artist' || key === 'drill-album') return MUSIC_SORTS.drill;
+  return MUSIC_SORTS[key] || MUSIC_SORTS.songs;
+}
 
 // The persisted sort for `tab`, validated against that tab's option list (an
 // unknown/stale key falls back to the tab default, so a renamed key never
 // strands the menu on an invalid value).
 function normalizeMusicSort(tab, value) {
-  var opts = MUSIC_SORTS[tab] || MUSIC_SORTS.songs;
+  var opts = musicSortOptionsFor(tab);
   return opts.some(function (o) { return o.value === value; }) ? value : (MUSIC_SORT_DEFAULTS[tab] || 'newest');
 }
 
@@ -422,7 +477,7 @@ function buildMusicSkeletonRows(n) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildSongRowHtml,
+    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
@@ -451,6 +506,9 @@ if (typeof module !== 'undefined' && module.exports) {
   var nowPlaying = null;
   var SORT_KEY = 'filetube_music_sort';
   var TAB_KEY = 'filetube_music_tab';
+  // Friction pass: the Artists view mode - 'grid' (circles) or 'list' (compact
+  // index). Persisted per device; a toggle button flips it.
+  var ARTIST_VIEW_KEY = 'filetube_music_artist_view';
 
   function readPref(key, fallback) {
     try { return localStorage.getItem(key) || fallback; } catch (_) { return fallback; }
@@ -476,6 +534,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var sortSelect = root.querySelector('#music-sort-select');
     var shuffleBtn = root.querySelector('#music-shuffle-btn');
     var scanBtn = root.querySelector('#music-scan-btn');
+    var viewToggleBtn = root.querySelector('#music-view-toggle');
     var nowPlayingEl = root.querySelector('#music-nowplaying');
     var nowPlayingPanel = root.querySelector('#music-nowplaying-panel');
     var jumpbackHost = root.querySelector('#music-jumpback');
@@ -636,20 +695,27 @@ if (typeof module !== 'undefined' && module.exports) {
       m[t] = value;
       writePref(SORT_KEY, JSON.stringify(m));
     }
-    // Rebuild the select's options for the active tab and select that tab's
-    // persisted sort. A drill (album/artist detail) is inherently album-order
-    // and carries its own Play/Shuffle, so the top sort control is hidden there.
+    // Rebuild the select's options + selected value for whatever is active
+    // (a tab, OR a drill - friction pass: drills are now sortable, defaulting to
+    // release date for an artist and album order for an album).
+    // The sort key currently in effect: a drill uses its type-specific key
+    // (drill-artist / drill-album), else the tab's own key.
+    function activeSortKey() {
+      if (drill) return drill.type === 'album' ? 'drill-album' : 'drill-artist';
+      return tab;
+    }
     function rebuildSortMenu() {
       if (!sortSelect) return;
       var wrap = sortSelect;
-      // A drill carries its own order; the HOME shelves are a fixed
-      // recently-added composition - neither exposes a sortable list, so the top
-      // sort control is hidden on both (gate: an inert/mislabeled dropdown on the
-      // default landing otherwise).
-      if (drill || tab === 'home') { wrap.hidden = true; return; }
+      // The HOME shelves are a fixed recently-added composition - no sortable
+      // list, so the sort control is hidden there (gate: no inert/mislabeled
+      // dropdown on the default landing). A drill IS sortable (friction pass:
+      // Dean wanted release-date order for an artist's songs).
+      if (tab === 'home') { wrap.hidden = true; return; }
       wrap.hidden = false;
-      var opts = MUSIC_SORTS[tab] || MUSIC_SORTS.songs;
-      var current = sortForTab(tab);
+      var key = activeSortKey();
+      var opts = musicSortOptionsFor(key);
+      var current = sortForTab(key);
       sortSelect.innerHTML = opts.map(function (o) {
         return '<option value="' + escapeMusicHtml(o.value) + '"' + (o.value === current ? ' selected' : '') + '>' + escapeMusicHtml(o.label) + '</option>';
       }).join('');
@@ -657,7 +723,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (sortSelect) {
       sortSelect.addEventListener('change', function () {
-        writeSortForTab(tab, sortSelect.value);
+        writeSortForTab(activeSortKey(), sortSelect.value);
         render().catch(function () {});
       }, { signal });
     }
@@ -711,6 +777,30 @@ if (typeof module !== 'undefined' && module.exports) {
       }, { signal });
     }
 
+    // Friction pass: the Artists grid/list view toggle. Shown ONLY on the Artists
+    // tab (the find-an-artist surface); the icon shows the mode a click switches
+    // TO (list-icon while in grid, grid-icon while in list).
+    function getArtistView() { return readPref(ARTIST_VIEW_KEY, 'grid') === 'list' ? 'list' : 'grid'; }
+    function syncViewToggle() {
+      if (!viewToggleBtn) return;
+      var showable = (tab === 'artists' && !drill);
+      viewToggleBtn.hidden = !showable;
+      if (!showable) return;
+      var isList = getArtistView() === 'list';
+      var icon = viewToggleBtn.querySelector('i');
+      if (icon) icon.className = isList ? 'icon-grid' : 'icon-list';
+      var label = isList ? 'Switch to circle view' : 'Switch to list view';
+      viewToggleBtn.title = label;
+      viewToggleBtn.setAttribute('aria-label', label);
+    }
+    if (viewToggleBtn) {
+      viewToggleBtn.addEventListener('click', function () {
+        writePref(ARTIST_VIEW_KEY, getArtistView() === 'list' ? 'grid' : 'list');
+        syncViewToggle();
+        render().catch(function () {});
+      }, { signal });
+    }
+
     // v1.45.0 T3: the drill sticky-header offset (--music-sticky-top) + collapse
     // threshold are measured ONCE per render from the fixed header's height —
     // but that height differs between orientations (mobile ~96px vs 56px), so a
@@ -749,11 +839,12 @@ if (typeof module !== 'undefined' && module.exports) {
       opts = opts || {};
       var myLoad = ++loadSongsGen; // claim this load BEFORE the fetch
       var scope = opts.scope || drill;
-      // v1.103: the flat Songs tab honours its OWN persisted sort; a drill
-      // (album/artist detail) defaults to album-order - disc/track sequence, the
-      // natural way to hear an album - unless a caller overrides (Shuffle passes
-      // 'random'). The top sort control is hidden inside a drill (rebuildSortMenu).
-      var defaultSort = scope ? 'album-order' : sortForTab('songs');
+      // Friction pass: a drill honours its OWN persisted sort (drill-artist ->
+      // release date by default, drill-album -> album order); the flat Songs tab
+      // honours its own. A caller can still override (Shuffle passes 'random').
+      var defaultSort = scope
+        ? sortForTab(scope.type === 'album' ? 'drill-album' : 'drill-artist')
+        : sortForTab('songs');
       var ctx = { src: 'music', sort: opts.sort || defaultSort };
       if (opts.seed) ctx.seed = opts.seed;
       if (search) ctx.search = search;
@@ -815,15 +906,30 @@ if (typeof module !== 'undefined' && module.exports) {
     async function renderHome() {
       var artists = [];
       var albums = [];
+      var recent = [];
       try {
         var res = await Promise.all([
           fetchJson('/api/music/artists?limit=12&sort=newest'),
           fetchJson('/api/music/albums?limit=12&sort=newest'),
+          fetchJson('/api/music?filter=recent-listening&limit=60'),
         ]);
         artists = Array.isArray(res[0].items) ? res[0].items : [];
         albums = Array.isArray(res[1].items) ? res[1].items : [];
-      } catch (_) { artists = []; albums = []; }
+        recent = Array.isArray(res[2].items) ? res[2].items : [];
+      } catch (_) { artists = []; albums = []; recent = []; }
+      // Friction pass: "Recently played" ARTISTS - distinct artists from recent
+      // plays, most-recent first (one tile each), so who you reach for is one tap
+      // from the top instead of a scroll-and-hunt.
+      var recentArtists = [];
+      var seenArtist = Object.create(null); // null-proto: a "__proto__"-named artist dedups too
+      for (var i = 0; i < recent.length && recentArtists.length < 12; i++) {
+        var nm = recent[i] && recent[i].artist;
+        if (typeof nm !== 'string' || nm === '' || seenArtist[nm]) continue;
+        seenArtist[nm] = true;
+        recentArtists.push(recent[i]);
+      }
       var html = '';
+      if (recentArtists.length) html += buildMusicShelfHtml('Recently played', '', recentArtists.map(buildRecentArtistTileHtml).join(''));
       if (artists.length) html += buildMusicShelfHtml('Your artists', 'artists', artists.map(buildArtistCardHtml).join(''));
       if (albums.length) html += buildMusicShelfHtml('Recently added', 'albums', albums.map(buildAlbumCardHtml).join(''));
       content.innerHTML = '<div class="music-home">' + html + '</div>';
@@ -891,10 +997,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // sentinel is about to be replaced) — the SPA-swap leak guard.
       disconnectStickyObserver();
       setActiveTab();
-      // Keep the sort control in sync with the active tab (options + persisted
-      // value) and hidden inside a drill - centralised here so every state
-      // change (tab switch, drill in/out) routes through one place.
+      // Keep the sort control in sync with the active surface (tab OR drill) -
+      // its options + persisted value, and hidden only on Home - centralised here
+      // so every state change (tab switch, drill in/out) routes through one place.
       rebuildSortMenu();
+      syncViewToggle(); // grid/list toggle: only on the Artists tab
       // v1.98 shimmer sweep: seed the EXACT shape the branch below reveals, so
       // the swap is zero-shift - the HOME shelves (home, the default landing), a
       // song list (songs), an artist mosaic grid (artists, v1.103), or an album
@@ -933,7 +1040,10 @@ if (typeof module !== 'undefined' && module.exports) {
         } else if (tab === 'artists') {
           var ar = await fetchJson('/api/music/artists?limit=10000&sort=' + encodeURIComponent(sortForTab('artists')) + (search ? '&search=' + encodeURIComponent(search) : ''));
           var artists = Array.isArray(ar.items) ? ar.items : [];
-          content.innerHTML = '<div class="music-card-grid">' + artists.map(buildArtistCardHtml).join('') + '</div>';
+          // Friction pass: circles (browse) OR a compact list (find fast).
+          content.innerHTML = getArtistView() === 'list'
+            ? '<div class="music-artist-list">' + artists.map(buildArtistListRowHtml).join('') + '</div>'
+            : '<div class="music-card-grid">' + artists.map(buildArtistCardHtml).join('') + '</div>';
           if (emptyNote) emptyNote.hidden = artists.length > 0;
         }
       } catch (err) {
@@ -990,7 +1100,7 @@ if (typeof module !== 'undefined' && module.exports) {
         render().catch(function () {});
         return;
       }
-      var artistCard = e.target.closest('.music-artist-card');
+      var artistCard = e.target.closest('.music-artist-card') || e.target.closest('.music-artist-row');
       if (artistCard) {
         var name = artistCard.getAttribute('data-artist');
         drill = { type: 'artist', key: name, label: name || 'Artist' };
