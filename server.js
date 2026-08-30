@@ -8389,7 +8389,12 @@ function projectedLibraryTracks(req, nativeTracks) {
     if (!libraryAudio.isEligibleAudio(item, marks, autoSet)) continue;
     if (!mediaVisibleTo(req, item)) continue; // the MEDIA gate
     if (nativeIds.has(item.id)) continue; // a file in both roots: the native track wins
-    out.push(libraryAudio.projectAudioItem(item));
+    const track = libraryAudio.projectAudioItem(item);
+    // Music redesign Slice 1: carry the channel avatar so the artist circle has a
+    // real picture (the resolver is READ-ONLY: item -> channelId registry ->
+    // subscription). Native music tracks have no channel, so no avatar.
+    track.avatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item) || '';
+    out.push(track);
   }
   return out;
 }
