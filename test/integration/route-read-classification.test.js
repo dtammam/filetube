@@ -60,6 +60,7 @@ const READ = {
   '/api/critters': 'NO_CONTENT', // v1.166: decorative critter-folder listing (asset filenames only, no library/user data)
   '/api/critters/archive': 'ADMIN', // v1.171 (QA S1): requireAdmin-gated zip of the decorative asset pool; behavioral member-403 probe in critter-admin-gate.test.js
   '/api/feed-hidden': 'GATED',
+  '/api/folders/music-flag': 'GATED', // Wave G: per-folder "show in Music" state, scoped to the user's VISIBLE audio (mediaVisibleTo)
   '/api/handoff': 'GATED',
   '/api/history': 'GATED',
   '/api/home': 'GATED',
