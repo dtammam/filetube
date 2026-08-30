@@ -80,6 +80,44 @@
 
 ## Shipped
 
+### v1.215.0 - v1.214 device-pass fixes: recent-listening for downloads, critter + toggle glitches (2026-08-30)
+
+Dean's device pass on v1.214: "Actually a lot better" - with three bugs.
+
+**What shipped.** (1) A played DOWNLOADED artist (his NESTALGIA) never appeared
+in Home's "Recently played" / "Jump back in". Root cause: v1.210 projected
+library tracks save resume to the MEDIA store (`/api/progress`, unifying resume
+with the feed), but `/api/music?filter=recent-listening` read ONLY the music
+store - so a library track's position was invisible to it. New
+`musicListProgressMap` merges both stores (native from `getMusicProgress`,
+library from `getProgress`, normalizing the media `{timestamp}` key to the music
+`{position}` shape), with pending-write overlay on both. Drives recent-listening
+AND resume bars. (2) A critter (a fox) rendered ON the Shuffle button - its
+Shuffle/Scan buttons are `.btn`s (a PRIORITY critter anchor) and the toolbar is
+z-auto under the z:2 critter plane. Added `.music-toolbar` to
+`CRITTER_EXCLUSION_SELECTORS` - critters still peek from the artwork below, never
+over the controls. (3) The grid/list view toggle leaked onto album/song drills
+(visible + inert): `.btn { display: inline-flex }` beat the UA `[hidden]` rule
+(the repo's [hidden]-loses-to-display class), so the JS `.hidden = true` didn't
+paint. Added `#music-view-toggle[hidden] { display: none !important }`, matching
+the sort-select guard beside it.
+
+**Behavior note (not a fix).** Native-track recent-listening now carries the
+user's own pending-write overlay it did not before (read-your-writes, from the
+user's own pings only) - a just-played native track surfaces before the flush.
+
+**What the gate caught.** Both seats APPROVE, no CRITICAL/WARNING. Adversarial:
+built a live two-user repro proving no cross-user progress leak through the merge
++ pending overlays, and confirmed RBAC gating holds (the map only covers the
+already-filtered list); flagged the shared `.music-toolbar` class (Podcasts uses
+it too - the exclusion helps that strip as well). QA: the merge target should be
+`Object.create(null)` to match the source maps' null-proto contract (a hostile
+`__proto__` id lands as an own key) - applied. All three fixes bound by
+mutation-verified tests.
+
+Full gate (both seats APPROVE after one fix round). Dual-Node 7890/0
+(Node 22.23.1 + 24.14.0). **Dean's device pass PENDING.**
+
 ### v1.214.0 - Music friction pass: view toggle, release-date sort, recent artists (2026-08-30)
 
 Dean, on v1.213: "much better rewrite ... but it's very friction heavy" - huge
