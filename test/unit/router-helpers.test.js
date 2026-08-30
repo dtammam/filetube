@@ -103,42 +103,64 @@ test('shouldInterceptLinkClick: a same-origin link to an unknown route (view=nul
 
 // ---- buildHistoryState / parseHistoryState ---------------------------------
 
-test('buildHistoryState: builds the {view, url, scrollY, depth} shape, defaulting scrollY + depth to 0', () => {
-  assert.deepStrictEqual(buildHistoryState('watch', '/watch.html?v=abc', undefined), { view: 'watch', url: '/watch.html?v=abc', scrollY: 0, depth: 0 });
+test('buildHistoryState: builds the {view, url, scrollY, depth, viewState} shape, defaulting scrollY + depth to 0 and viewState to null', () => {
+  assert.deepStrictEqual(buildHistoryState('watch', '/watch.html?v=abc', undefined), { view: 'watch', url: '/watch.html?v=abc', scrollY: 0, depth: 0, viewState: null });
 });
 
 test('buildHistoryState: preserves a valid non-negative scrollY', () => {
-  assert.deepStrictEqual(buildHistoryState('home', '/', 240), { view: 'home', url: '/', scrollY: 240, depth: 0 });
+  assert.deepStrictEqual(buildHistoryState('home', '/', 240), { view: 'home', url: '/', scrollY: 240, depth: 0, viewState: null });
 });
 
 test('buildHistoryState: a negative scrollY falls back to 0', () => {
-  assert.deepStrictEqual(buildHistoryState('home', '/', -5), { view: 'home', url: '/', scrollY: 0, depth: 0 });
+  assert.deepStrictEqual(buildHistoryState('home', '/', -5), { view: 'home', url: '/', scrollY: 0, depth: 0, viewState: null });
 });
 
 test('buildHistoryState: preserves a valid depth (v1.45.0 T2) and floors/guards a bad one', () => {
-  assert.deepStrictEqual(buildHistoryState('home', '/?root=Movies', 0, 3), { view: 'home', url: '/?root=Movies', scrollY: 0, depth: 3 });
+  assert.deepStrictEqual(buildHistoryState('home', '/?root=Movies', 0, 3), { view: 'home', url: '/?root=Movies', scrollY: 0, depth: 3, viewState: null });
   assert.strictEqual(buildHistoryState('home', '/', 0, -2).depth, 0, 'a negative depth falls back to 0');
   assert.strictEqual(buildHistoryState('home', '/', 0, 2.7).depth, 2, 'a fractional depth is floored');
 });
 
-test('parseHistoryState: a well-formed state round-trips (depth included, defaulting to 0)', () => {
+test('v1.217 SWEEP: every existing 4-arg (or fewer) buildHistoryState call yields viewState:null - byte-identical but for the new null field', () => {
+  // The router primitive adds an OPT-IN per-view payload; no existing caller
+  // passes it, so the change must be inert for all of them. Guard against a
+  // future default that leaks a non-null payload into an un-opted entry.
+  for (const args of [['home', '/'], ['watch', '/watch.html?v=a', 5], ['music', '/music', 0, 2]]) {
+    assert.strictEqual(buildHistoryState(...args).viewState, null, 'a call without a viewState arg is null: ' + JSON.stringify(args));
+  }
+});
+
+test('v1.217: buildHistoryState carries an opaque viewState payload when one is passed (drill/now-playing descriptor)', () => {
+  const vs = { t: 'drill', drill: { type: 'album', key: 'Pink Floyd␟The Wall' } };
+  assert.deepStrictEqual(buildHistoryState('music', '/music', 0, 3, vs), { view: 'music', url: '/music', scrollY: 0, depth: 3, viewState: vs });
+  // Explicit null stays null (not coerced to some object).
+  assert.strictEqual(buildHistoryState('music', '/music', 0, 3, null).viewState, null);
+});
+
+test('parseHistoryState: a well-formed state round-trips (depth included, defaulting to 0; viewState null)', () => {
   const state = { view: 'setup', url: '/setup.html', scrollY: 120 };
-  assert.deepStrictEqual(parseHistoryState(state, { pathname: '/setup.html', search: '' }), { ...state, depth: 0 });
+  assert.deepStrictEqual(parseHistoryState(state, { pathname: '/setup.html', search: '' }), { ...state, depth: 0, viewState: null });
 });
 
 test('parseHistoryState: carries a non-zero depth through (v1.45.0 T2)', () => {
   const state = { view: 'watch', url: '/watch.html?v=abc', scrollY: 0, depth: 2 };
-  assert.deepStrictEqual(parseHistoryState(state, { pathname: '/watch.html', search: '?v=abc' }), state);
+  assert.deepStrictEqual(parseHistoryState(state, { pathname: '/watch.html', search: '?v=abc' }), { ...state, viewState: null });
+});
+
+test('v1.217: parseHistoryState carries an existing entry\'s viewState payload through (so a re-parse / scroll-rewrite never wipes it)', () => {
+  const vs = { t: 'np' };
+  const state = { view: 'music', url: '/music', scrollY: 0, depth: 1, viewState: vs };
+  assert.deepStrictEqual(parseHistoryState(state, { pathname: '/music', search: '' }), state);
 });
 
 test('parseHistoryState: a null state (first entry, before any pushState) derives fresh state from the current location', () => {
   const result = parseHistoryState(null, { pathname: '/watch.html', search: '?v=xyz' });
-  assert.deepStrictEqual(result, { view: 'watch', url: '/watch.html?v=xyz', scrollY: 0, depth: 0 });
+  assert.deepStrictEqual(result, { view: 'watch', url: '/watch.html?v=xyz', scrollY: 0, depth: 0, viewState: null });
 });
 
 test('parseHistoryState: a state with no "view" string falls back to deriving from location', () => {
   const result = parseHistoryState({ some: 'garbage' }, { pathname: '/', search: '' });
-  assert.deepStrictEqual(result, { view: 'home', url: '/', scrollY: 0, depth: 0 });
+  assert.deepStrictEqual(result, { view: 'home', url: '/', scrollY: 0, depth: 0, viewState: null });
 });
 
 test('parseHistoryState: an unknown-route fallback location yields a null view', () => {
@@ -369,9 +391,11 @@ test('SOURCE-LOCK (T2): recordScrollForCurrentState PRESERVES depth when it rewr
   const fnBody = COMMON_JS.slice(COMMON_JS.indexOf('function recordScrollForCurrentState'), COMMON_JS.indexOf('function extractViewFragment'));
   // The 4th arg to buildHistoryState here must be the entry's own depth, not a
   // literal 0 (a replace-in-place keeps the level — dropping it would let a
-  // scrolled-then-returned-to entry lose its pop level).
-  assert.match(fnBody, /buildHistoryState\(\s*window\.history\.state\.view,\s*window\.history\.state\.url,\s*window\.scrollY,\s*window\.history\.state\.depth\)/,
-    'scroll-record carries depth through');
+  // scrolled-then-returned-to entry lose its pop level). v1.217: the 5th arg
+  // must likewise be the entry's own viewState (a scroll-rewrite on a drill /
+  // now-playing sub-state entry must not wipe the payload its onPopState needs).
+  assert.match(fnBody, /buildHistoryState\(\s*window\.history\.state\.view,\s*window\.history\.state\.url,\s*window\.scrollY,\s*window\.history\.state\.depth,\s*window\.history\.state\.viewState\)/,
+    'scroll-record carries depth AND viewState through');
 });
 
 test('SOURCE-LOCK (T2 + C1): navigate() computes one desiredDepth that resets a home-root PUSH to 0, and both state builds use it', () => {

@@ -9433,7 +9433,7 @@ function shouldInterceptLinkClick({ button, metaKey, ctrlKey, shiftKey, altKey, 
 // The `history.pushState`/`history.state` shape, in one place so the router
 // and its `popstate` handler always agree on the fields. `scrollY` defaults
 // to 0 (a fresh in-app navigation starts at the top, like a real page load).
-function buildHistoryState(view, url, scrollY, depth) {
+function buildHistoryState(view, url, scrollY, depth, viewState) {
   return {
     view,
     url: String(url),
@@ -9445,6 +9445,15 @@ function buildHistoryState(view, url, scrollY, depth) {
     // back past the session's first stamped entry to an external referrer,
     // because depth only ever rises on this router's OWN pushState calls.
     depth: (typeof depth === 'number' && depth >= 0) ? Math.floor(depth) : 0,
+    // v1.217 (in-view back-stack): an OPAQUE per-view sub-state payload the
+    // owning view stamps via pushViewState/replaceViewState (a drill descriptor,
+    // a now-playing marker) and reads back in its onPopState hook. null for every
+    // entry a view has not opted in on - i.e. byte-identical for every caller
+    // that passes only four args, which is all of them except the two that must
+    // CARRY an existing entry's payload forward (parseHistoryState + the
+    // scroll-rewrite). Must be structured-cloneable (plain data only) since the
+    // browser structured-clones history state.
+    viewState: (viewState === undefined || viewState === null) ? null : viewState,
   };
 }
 
@@ -9457,7 +9466,7 @@ function parseHistoryState(state, fallbackLocation) {
     // v1.45.0 (T2): carry `depth` through so a popstate back to this entry
     // (and any later replaceState that rebuilds it — recordScrollForCurrentState)
     // preserves the in-app depth the Home control reads.
-    return buildHistoryState(state.view, state.url, state.scrollY, state.depth);
+    return buildHistoryState(state.view, state.url, state.scrollY, state.depth, state.viewState);
   }
   const loc = (fallbackLocation && typeof fallbackLocation === 'object') ? fallbackLocation : {};
   const view = deriveRouteView(loc.pathname || '');
@@ -9877,8 +9886,12 @@ if (typeof window !== 'undefined') {
     if (!window.history.state) return;
     // v1.45.0 (T2): preserve `depth` when rewriting this entry for scroll —
     // it's a replace-in-place, so the entry keeps its own in-app depth.
+    // v1.217: likewise carry the entry's `viewState` forward - a scroll rewrite
+    // on a sub-state entry (a drill / now-playing level) must NOT wipe the
+    // payload its onPopState hook will need.
     const updated = buildHistoryState(
-      window.history.state.view, window.history.state.url, window.scrollY, window.history.state.depth);
+      window.history.state.view, window.history.state.url, window.scrollY, window.history.state.depth,
+      window.history.state.viewState);
     window.history.replaceState(updated, '');
   }
 
