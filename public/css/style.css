@@ -1192,6 +1192,23 @@ html.reader-immersive .app-container { padding-top: 0; }
   color: var(--text-link);
 }
 
+/* v1.211: the Settings "Channels in Music" manager rows (class-based so the
+   JS never sets a raw literal on a governed style surface). */
+.music-channels-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: normal;
+  padding: var(--space-1) 0;
+}
+.music-channels-row .auto-tag {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.music-channels-empty {
+  color: var(--text-secondary);
+}
+
 .library-item-count {
   font-size: var(--fs-sm);
   color: var(--text-secondary);
