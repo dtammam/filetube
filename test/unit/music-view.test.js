@@ -9,7 +9,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildSongRowHtml,
+  escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildJumpBackTileHtml, buildSongRowHtml,
   drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
   buildNowPlayingPanelHtml,
   MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
@@ -136,6 +136,28 @@ test('v1.103: an artist with NO art still renders one placeholder tile (never a 
   assert.match(none, /src="\/albumart\/"/, 'empty id -> /albumart/ (404s, but the img error still clears the shimmer - never a blank card)');
   // Missing artIds entirely (older cached payload) behaves the same.
   assert.match(buildArtistCardHtml({ artist: 'Bare' }), /data-tiles="1"/);
+});
+
+test('redesign S1: an artist WITH a channel avatar renders a round circle (avatar over a monogram), not the mosaic', () => {
+  const html = buildArtistCardHtml({ artist: 'NESTALGIA', albumCount: 1, trackCount: 352, avatarUrl: 'https://yt3.example/n.jpg', artIds: ['x'] });
+  assert.match(html, /class="music-artist-avatar"/, 'the round avatar circle');
+  assert.match(html, /class="maa-img" src="https:\/\/yt3\.example\/n\.jpg"/, 'the channel avatar image');
+  assert.match(html, /class="maa-mono">N</, 'the uppercased first-letter monogram behind it');
+  assert.doesNotMatch(html, /music-artist-mosaic/, 'the mosaic is NOT rendered when there is an avatar');
+});
+
+test('redesign S1: an artist WITHOUT an avatar still falls back to the mosaic (native-album artist)', () => {
+  const html = buildArtistCardHtml({ artist: 'Pink Floyd', albumCount: 2, trackCount: 20, avatarUrl: '', artIds: ['a', 'b'] });
+  assert.match(html, /class="music-artist-mosaic" data-tiles="2"/, 'no avatar -> the album-art mosaic');
+  assert.doesNotMatch(html, /music-artist-avatar/, 'no round circle without an avatar');
+});
+
+test('redesign S1: buildJumpBackTileHtml renders a resume tile (data-id, /albumart art, title, artist)', () => {
+  const html = buildJumpBackTileHtml({ id: 'trk9', title: 'Sonic 2 Coding', artist: 'NESTALGIA' });
+  assert.match(html, /class="music-jump-tile" data-id="trk9"/, 'the tile carries the track id for the resume tap');
+  assert.match(html, /class="music-jump-art art-shimmer" src="\/albumart\/trk9"/, 'art via /albumart (falls back to the thumbnail for a library track), art-shimmer');
+  assert.match(html, />Sonic 2 Coding</, 'the title');
+  assert.match(html, />NESTALGIA</, 'the artist');
 });
 
 test('v1.103: mosaic tile art ids are URL-encoded (a slash/space id cannot break the src attribute)', () => {

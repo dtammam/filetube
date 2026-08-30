@@ -57,15 +57,42 @@ function buildAlbumCardHtml(album) {
 function buildArtistCardHtml(artist) {
   var meta = (artist.albumCount || 0) + (artist.albumCount === 1 ? ' album' : ' albums') +
     ' · ' + (artist.trackCount || 0) + (artist.trackCount === 1 ? ' track' : ' tracks');
-  var ids = (Array.isArray(artist.artIds) && artist.artIds.length) ? artist.artIds.slice(0, 4) : [''];
-  var tiles = ids.map(function (id) {
-    return '<img class="art-shimmer" src="/albumart/' + encodeURIComponent(id || '') + '" alt="" loading="lazy" />';
-  }).join('');
+  var name = artist.artist || 'Unknown artist';
+  var visual;
+  if (typeof artist.avatarUrl === 'string' && artist.avatarUrl) {
+    // Redesign S1: a round CHANNEL-avatar circle (Spotify-style). A monogram sits
+    // behind; the avatar reveals on load and is DROPPED on error (revealMusicArt),
+    // so a broken URL degrades to the monogram - never a broken-image glyph.
+    var initial = (String(name).trim().charAt(0) || '?').toUpperCase();
+    visual = '<span class="music-artist-avatar">' +
+      '<span class="maa-mono">' + escapeMusicHtml(initial) + '</span>' +
+      '<img class="maa-img" src="' + escapeMusicHtml(artist.avatarUrl) + '" alt="" loading="lazy" />' +
+      '</span>';
+  } else {
+    var ids = (Array.isArray(artist.artIds) && artist.artIds.length) ? artist.artIds.slice(0, 4) : [''];
+    var tiles = ids.map(function (id) {
+      return '<img class="art-shimmer" src="/albumart/' + encodeURIComponent(id || '') + '" alt="" loading="lazy" />';
+    }).join('');
+    visual = '<span class="music-artist-mosaic" data-tiles="' + ids.length + '">' + tiles + '</span>';
+  }
   return '' +
     '<button type="button" class="music-artist-card" data-artist="' + escapeMusicHtml(artist.artist) + '">' +
-    '<span class="music-artist-mosaic" data-tiles="' + ids.length + '">' + tiles + '</span>' +
+    visual +
     '<span class="music-artist-name" title="' + escapeMusicHtml(artist.artist) + '">' + escapeMusicHtml(artist.artist || 'Unknown artist') + '</span>' +
     '<span class="music-artist-meta">' + escapeMusicHtml(meta) + '</span>' +
+    '</button>';
+}
+
+// Redesign S1: a "Jump back in" tile - a small art square over title + artist.
+// Art is /albumart/<id> (which falls back to the media thumbnail for a projected
+// library track), art-shimmer'd like every other music art. Tapping resumes the
+// track (playTrackFromContinue) with its saved position.
+function buildJumpBackTileHtml(item) {
+  return '' +
+    '<button type="button" class="music-jump-tile" data-id="' + escapeMusicHtml(item.id) + '">' +
+    '<img class="music-jump-art art-shimmer" src="/albumart/' + encodeURIComponent(item.id) + '" alt="" loading="lazy" />' +
+    '<span class="music-jump-title" title="' + escapeMusicHtml(item.title) + '">' + escapeMusicHtml(item.title || 'Unknown track') + '</span>' +
+    '<span class="music-jump-sub" title="' + escapeMusicHtml(item.artist || '') + '">' + escapeMusicHtml(item.artist || '') + '</span>' +
     '</button>';
 }
 
@@ -362,7 +389,7 @@ function buildMusicSkeletonRows(n) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildSongRowHtml,
+    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildJumpBackTileHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
@@ -418,7 +445,35 @@ if (typeof module !== 'undefined' && module.exports) {
     var scanBtn = root.querySelector('#music-scan-btn');
     var nowPlayingEl = root.querySelector('#music-nowplaying');
     var nowPlayingPanel = root.querySelector('#music-nowplaying-panel');
+    var jumpbackHost = root.querySelector('#music-jumpback');
     if (!content) return;
+
+    // Redesign S1: the "Jump back in" strip above the tabs - what you were last
+    // playing, one tap to resume (playTrackFromContinue applies the saved
+    // position). Populated ONCE on init from the recently-played list; hidden
+    // when empty so it never leaves a bare header. Its own art-reveal (the strip
+    // lives outside #music-content, so revealMusicArt doesn't reach it).
+    async function renderJumpBackIn() {
+      if (!jumpbackHost) return;
+      var items = [];
+      try {
+        var data = await fetchJson('/api/music?filter=recent-listening&limit=12');
+        items = Array.isArray(data.items) ? data.items : [];
+      } catch (_) { items = []; }
+      if (!items.length) { jumpbackHost.hidden = true; jumpbackHost.innerHTML = ''; return; }
+      jumpbackHost.innerHTML = '<h2 class="music-jump-head">Jump back in</h2>' +
+        '<div class="music-jump-row">' + items.map(buildJumpBackTileHtml).join('') + '</div>';
+      jumpbackHost.hidden = false;
+      if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(jumpbackHost);
+    }
+    if (jumpbackHost) {
+      jumpbackHost.addEventListener('click', function (e) {
+        var tile = e.target && typeof e.target.closest === 'function' ? e.target.closest('.music-jump-tile') : null;
+        if (!tile) return;
+        var id = tile.getAttribute('data-id');
+        if (id) playTrackFromContinue(id).catch(function () {});
+      }, { signal: signal });
+    }
 
     // v1.44.2: reflect the "Playing from <Album>" line for the currently-playing
     // music track. Re-checks player.currentId each call so it hides when a
@@ -688,6 +743,22 @@ if (typeof module !== 'undefined' && module.exports) {
     function revealMusicArt() {
       if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.shimmerArt === 'function') {
         window.FileTube.shimmerArt(content);
+      }
+      // Redesign S1: wire the artist-avatar circles - reveal on load, DROP on
+      // error so a broken avatar degrades to the monogram behind it (the
+      // buildAccountAvatarEl reveal-once contract, both axes).
+      var avatars = content ? content.querySelectorAll('.maa-img') : [];
+      for (var i = 0; i < avatars.length; i++) {
+        (function (img) {
+          if (img.complete && img.naturalWidth > 0) { img.classList.add('is-loaded'); return; }
+          // Already-FAILED synchronously (complete + zero natural size): drop now,
+          // so the listener-that-never-fires can't leave a broken img over the
+          // monogram (QA parity with buildAccountAvatarEl). Not reachable for a
+          // freshly-parsed img today, but structurally closes the gap.
+          if (img.complete) { if (img.parentNode) img.parentNode.removeChild(img); return; }
+          img.addEventListener('load', function () { img.classList.add('is-loaded'); }, { once: true });
+          img.addEventListener('error', function () { if (img.parentNode) img.parentNode.removeChild(img); }, { once: true });
+        })(avatars[i]);
       }
     }
 
@@ -1168,6 +1239,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // render()'s updateNowPlaying would otherwise show a blank panel for a track
     // that is audibly playing.
     seedNowPlayingFromPlayer();
+    renderJumpBackIn().catch(function () {}); // redesign S1: the "Jump back in" strip (independent of the tab render)
 
     const playParam = urlParams.get('play');
     var wantNowPlaying = urlParams.get('nowplaying') === '1';

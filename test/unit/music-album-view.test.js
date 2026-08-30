@@ -33,6 +33,7 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
   <div id="player-slot"></div>
   <div id="media-player"></div>
   <div id="music-nowplaying-panel"></div>
+  <section id="music-jumpback" hidden></section>
   <div class="music-tabs" id="music-tabs" role="tablist">
     <button type="button" class="music-tab active" data-tab="albums" role="tab">Albums</button>
     <button type="button" class="music-tab" data-tab="artists" role="tab">Artists</button>
@@ -290,5 +291,64 @@ test('Wave G: a NATIVE track still uses the /track music routes (the override is
     assert.strictEqual(loaded.data.streamSrc, '/track/nat1', 'native track streams from /track');
     assert.strictEqual(loaded.data.artUrl, '/albumart/nat1', 'native track art from /albumart');
     assert.strictEqual(loaded.data.progressEndpoint, '/api/music/progress', 'native track uses the music coalescer');
+  });
+});
+
+test('redesign S1: the "Jump back in" strip renders recent tracks and a tile resumes on tap', async () => {
+  // The harness fetchMap serves filter=recent-listening -> RECENT (t2 + a loose
+  // album-less track). renderJumpBackIn populates #music-jumpback on init.
+  await boot('http://localhost/music', { state: 'docked', currentId: null }, {}, async (dom, calls) => {
+    const doc = dom.window.document;
+    const strip = doc.getElementById('music-jumpback');
+    assert.ok(strip && !strip.hidden, 'the strip is shown when there are recent tracks');
+    const tiles = strip.querySelectorAll('.music-jump-tile');
+    assert.ok(tiles.length >= 2, 'a tile per recent track');
+    assert.match(strip.innerHTML, /Jump back in/, 'the heading');
+    // Tap the loose (album-less) tile -> it plays directly (resume path).
+    const loose = strip.querySelector('.music-jump-tile[data-id="loose"]');
+    assert.ok(loose, 'the loose recent track has a tile');
+    loose.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 8; i++) await settle();
+    assert.ok(calls.load.some((c) => c.id === 'loose'), 'tapping a Jump-back tile resumes that track');
+  });
+});
+
+test('redesign S1: the "Jump back in" strip stays HIDDEN when there is no recent history', async () => {
+  const noRecent = () => (url) => {
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot('http://localhost/music', { state: 'docked', currentId: null }, { fetch: noRecent }, async (dom) => {
+    const strip = dom.window.document.getElementById('music-jumpback');
+    assert.ok(strip && strip.hidden, 'no recent history -> the strip is hidden (never a bare "Jump back in" header)');
+  });
+});
+
+test('redesign S1: an artist avatar circle reveals on LOAD and DROPS on ERROR (both axes, to the monogram)', async () => {
+  // Default tab = artists; serve two channel artists with avatars. revealMusicArt
+  // wires each .maa-img: load -> .is-loaded (reveal), error -> removed (the
+  // monogram behind shows). Binds BOTH axes (the reveal-once recurring class).
+  const artistsFetch = () => (url) => {
+    if (url.indexOf('/api/music/artists') === 0) {
+      return Promise.resolve({ ok: true, json: async () => ({ items: [
+        { artist: 'NESTALGIA', avatarUrl: 'https://yt3.example/n.jpg', albumCount: 1, trackCount: 5, artIds: ['x'] },
+        { artist: 'Koopa Keys', avatarUrl: 'https://yt3.example/k.jpg', albumCount: 1, trackCount: 3, artIds: ['y'] },
+      ] }) });
+    }
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot('http://localhost/music', { state: 'docked', currentId: null }, { fetch: artistsFetch }, async (dom) => {
+    const doc = dom.window.document;
+    const imgs = doc.querySelectorAll('.maa-img');
+    assert.strictEqual(imgs.length, 2, 'two avatar circles rendered');
+    // ERROR axis: the first avatar fails -> its img is removed, the monogram remains.
+    imgs[0].dispatchEvent(new dom.window.Event('error'));
+    const nest = doc.querySelector('.music-artist-card[data-artist="NESTALGIA"]');
+    assert.ok(!nest.querySelector('.maa-img'), 'a broken avatar is DROPPED (monogram shows), never a broken-image glyph');
+    assert.ok(nest.querySelector('.maa-mono'), 'the monogram is still there');
+    // LOAD axis: the second avatar loads -> .is-loaded (revealed).
+    imgs[1].dispatchEvent(new dom.window.Event('load'));
+    assert.ok(doc.querySelector('.music-artist-card[data-artist="Koopa Keys"] .maa-img').classList.contains('is-loaded'),
+      'a loaded avatar reveals (.is-loaded)');
   });
 });

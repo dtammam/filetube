@@ -51,7 +51,7 @@ before(async () => {
     // Music - default on), Zarchivo (genre Comedy - default off), a blocked-
     // subtree Music item for the RBAC test, and a dedup collision.
     db.metadata = {
-      nest1: audioItem('nest1', 'nestalgiamusic', 'Gaming', 'NESTALGIA'),
+      nest1: audioItem('nest1', 'nestalgiamusic', 'Gaming', 'NESTALGIA', { channelAvatarUrl: 'https://yt3.googleusercontent.com/nestalgia-avatar.jpg' }),
       tonzak1: audioItem('tonzak1', 'Tonzak', 'Music', 'Tonzak'),
       zarch1: audioItem('zarch1', 'zarchivo', 'Comedy', 'Zarchivo'),
       blk1: Object.assign(audioItem('blk1', 'blockedchan', 'Music', 'Blocked'), { filePath: path.join(blockedRoot, 'blk1.mp3') }),
@@ -135,6 +135,15 @@ test('ON: the artist grid gains the projected channels as artists', async () => 
   assert.ok(names.includes('Tonzak'), 'Tonzak channel is an artist');
   assert.ok(names.includes('Real Artist'), 'the native track artist is still there');
   assert.ok(!names.includes('Zarchivo'), 'Comedy channel is not an artist');
+});
+
+test('redesign S1: the artist grid carries the CHANNEL avatar for circles ("" for a native artist)', async () => {
+  setToggle(actingUser.id, 'on');
+  const artists = (await (await get('/api/music/artists')).json()).items;
+  const nest = artists.find((a) => a.artist === 'NESTALGIA');
+  assert.strictEqual(nest.avatarUrl, 'https://yt3.googleusercontent.com/nestalgia-avatar.jpg', 'NESTALGIA carries its channel avatar for the round tile');
+  const native = artists.find((a) => a.artist === 'Real Artist');
+  assert.strictEqual(native.avatarUrl, '', 'a native-only artist has no channel avatar -> "" (client falls back to the mosaic)');
 });
 
 test('dedup: a projected id colliding with a native track appears ONCE (native wins)', async () => {
