@@ -2470,5 +2470,11 @@
     "date": "2026-08-31",
     "title": "Music now-playing polish: jump to the song you picked, tidier Up next, and the Music toggle on channels",
     "intent": "A few small Music fixes. When you pick a song, the Up next list now scrolls straight to it so you can see what's playing without hunting. The Up next list is now a neat scrollable panel that always shows full rows instead of getting cut off at the bottom. And the little music-note button that adds a channel to your Music library now appears when you open a channel from the home, not only from the Downloads folder view."
+  },
+  {
+    "version": "1.225.0",
+    "date": "2026-08-31",
+    "title": "Up next settles on the playing song, and the Music toggle works on pinned channels",
+    "intent": "Two follow-up fixes. When you pick a song, the Up next list now stays put on the playing track instead of scrolling to it and then jumping away as the rest of the list fills in. And the little music-note button that adds a channel to your Music library now shows up when you click one of your pinned channels in the sidebar, not just when you reach a channel from the home."
   }
 ]

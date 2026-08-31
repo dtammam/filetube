@@ -80,6 +80,31 @@
 
 ## Shipped
 
+### v1.225.0 - Up-next scroll settles after the list grows + ♪ on pinned channels (2026-08-31)
+
+Two follow-ups from Dean's v1.224 device pass (item 1 scroll-to-song and the
+channel-view ♪ both confirmed working).
+
+**1. Up-next scroll settles.** v1.224's scroll-to-playing-song "worked for a second,
+then the list grew taller and pushed the song out." Dean confirmed the LIST itself
+grows: the panel can render compact then re-render with the fuller queue, and the
+synchronous scroll landed on the pre-growth layout. Fix: defer the scroll to
+`requestAnimationFrame` so `offsetTop` is read after the final layout (the last
+render's frame wins); synchronous fallback where rAF is absent.
+
+**2. ♪ on a pinned channel.** The ♪ "Show in Music library" now appears when a
+PINNED sidebar channel is clicked, not only the home->channel path. Root cause: a
+pinned channel navigates via `?root=<dir>` (renderPinnedSidebar), not `?folder=`,
+and the ♪ gated on `folderFilter` only. Fix: derive the channel folder as
+`folderFilter` else - on a `?root=` view - the single `folderName` the loaded items
+share (correct by construction; a multi-channel root gets no single mark). Write
+stays server-gated by `requireModifyLibrary`.
+
+Slim gate (adversarial seat, APPROVE, combined wave; RBAC airtight, stale-closure
+safe). Dual-Node 7951/0 (Node 22.23.1 + 24.14.0). **Dean's device pass PENDING.**
+Disclosed nuance: the Downloads aggregate `?root=` view can show the ♪ for one
+channel if page 0 is a single channel (a UX-precision eyeball, not a defect).
+
 ### v1.224.0 - Music now-playing nits: scroll-to-song, bounded Up next, ♪ on the channel view (2026-08-31)
 
 Three Dean device nits after v1.223 (a fourth - the Jump-back-to-video-watch
