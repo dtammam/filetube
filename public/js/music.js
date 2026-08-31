@@ -792,11 +792,16 @@ if (typeof module !== 'undefined' && module.exports) {
         if (e.target.closest('[data-skin-collapse]')) { var pl = window.FileTube && window.FileTube.player; if (pl && typeof pl.dock === 'function') { pl.dock(); updateNowPlayingPanel(); } return; }
         var seek = e.target.closest('[data-skin-seek]');
         if (seek) {
-          var mp = hostCtl('media-player');
-          if (mp && isFinite(mp.duration) && mp.duration > 0) {
+          // Proxy to the host #seek-bar (a 0..1 ratio input): its 'change' handler
+          // owns the WHOLE seek pipeline - seekCommitTarget, chapter-loop disarm,
+          // currentTime, AND saveProgressToServer. So a skin scrub persists like a
+          // real one, not just on the next periodic save.
+          var sb = hostCtl('seek-bar');
+          if (sb) {
             var rct = seek.getBoundingClientRect();
             var frac = Math.min(1, Math.max(0, (e.clientX - rct.left) / (rct.width || 1)));
-            mp.currentTime = mp.duration * frac; // foreground element; timeupdate -> reflectSkin
+            sb.value = String(frac);
+            sb.dispatchEvent(new Event('change', { bubbles: true }));
           }
           return;
         }
@@ -1762,6 +1767,11 @@ if (typeof module !== 'undefined' && module.exports) {
   function destroy() {
     if (controller) controller.abort();
     controller = null;
+    // v1.227 (gate CRITICAL): the mobile-skin body class must NOT survive the
+    // #view-root swap - the router preserves arbitrary body classes, and the
+    // skin's `#player-slot { height:0 }` takeover would otherwise collapse the
+    // NEXT view's player (watch/podcasts/read share #player-slot) on a phone.
+    try { if (typeof document !== 'undefined' && document.body) document.body.classList.remove('mms-on'); } catch (_) { /* no document */ }
     // v1.44.2: never leak the drill-collapse observer across the #view-root swap.
     disconnectStickyObserver();
     // v1.217: drop the torn-down init's pop handler so a stray popstate after

@@ -41,31 +41,36 @@ const settle = () => new Promise((r) => setImmediate(r));
 
 async function boot({ mobile, isMusic, run }) {
   const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music' });
-  const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController, requestAnimationFrame: global.requestAnimationFrame };
+  const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController, requestAnimationFrame: global.requestAnimationFrame, Event: global.Event };
   global.window = dom.window; global.document = dom.window.document;
   global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
+  global.Event = dom.window.Event; // so music.js's `new Event('change')` is same-realm as the jsdom element (browser: === window.Event)
   global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
   dom.window.matchMedia = (q) => ({ matches: !!mobile && /max-width:\s*768px/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   dom.window.scrollTo = function () {};
   global.fetch = () => Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
-  const ppClicks = { n: 0 };
+  const spy = { pp: 0, prev: 0, next: 0, seek: 0, dock: 0 };
   const meta = isMusic ? { isMusic: true, id: 't1', title: 'Track A', artist: 'NESTALGIA', album: 'Retro Mix', albumKey: 'k' } : { isMusic: false, id: 'v1', title: 'A Video' };
   let mod = null;
   dom.window.FileTube = {
     registerView: (n, m) => { mod = m; }, encodeListContext: () => '', decodeListContext: () => null, shimmerArt: () => {},
-    player: { currentId: meta.id, getState: () => 'full', getCurrentMeta: () => meta, expand() {}, setTrackNav() {}, load() {}, dock() {} },
+    player: { currentId: meta.id, getState: () => 'full', getCurrentMeta: () => meta, expand() {}, setTrackNav() {}, load() {}, dock() { spy.dock += 1; } },
   };
   // load the skins module into this window (sets window.FileTubeMusicSkins)
   delete require.cache[skinsPath]; global.module = undefined;
   require(skinsPath);
   dom.window.FileTubeMusicSkins = require(skinsPath);
-  dom.window.document.getElementById('pp-btn').addEventListener('click', () => { ppClicks.n += 1; });
+  const D = dom.window.document;
+  D.getElementById('pp-btn').addEventListener('click', () => { spy.pp += 1; });
+  D.getElementById('track-prev-btn').addEventListener('click', () => { spy.prev += 1; });
+  D.getElementById('track-next-btn').addEventListener('click', () => { spy.next += 1; });
+  D.getElementById('seek-bar').addEventListener('change', () => { spy.seek += 1; });
   try {
     delete require.cache[musicPath];
     require(musicPath);
     mod.init(dom.window.document.getElementById('view-root'));
     for (let i = 0; i < 10; i++) await settle();
-    await run(dom, ppClicks);
+    await run(dom, spy, mod);
   } finally { delete require.cache[musicPath]; delete require.cache[skinsPath]; Object.assign(global, saved); }
 }
 
@@ -82,10 +87,23 @@ test('mobile + music: the now-playing panel becomes the skin, body.mms-on set, d
   } });
 });
 
-test('the skin play button PROXIES to the hidden #pp-btn (engine untouched)', async () => {
-  await boot({ mobile: true, isMusic: true, run: async (dom, ppClicks) => {
-    panel(dom).querySelector('[data-skin-play]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-    assert.strictEqual(ppClicks.n, 1, 'tapping the skin play clicked the real #pp-btn (which primes bg-audio + toggles)');
+test('every transport button PROXIES to the real hidden control (engine untouched)', async () => {
+  await boot({ mobile: true, isMusic: true, run: async (dom, spy) => {
+    const p = panel(dom);
+    const click = (sel) => p.querySelector(sel).dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 10 }));
+    click('[data-skin-play]'); assert.strictEqual(spy.pp, 1, 'play -> #pp-btn (primes bg-audio + toggles)');
+    click('[data-skin-prev]'); assert.strictEqual(spy.prev, 1, 'prev -> #track-prev-btn (setTrackNav path)');
+    click('[data-skin-next]'); assert.strictEqual(spy.next, 1, 'next -> #track-next-btn');
+    click('[data-skin-seek]'); assert.strictEqual(spy.seek, 1, 'seek -> #seek-bar change (full pipeline: commit + saveProgress)');
+    click('[data-skin-collapse]'); assert.strictEqual(spy.dock, 1, 'collapse -> player.dock() (the mini returns you)');
+  } });
+});
+
+test('gate CRITICAL: destroy() CLEARS body.mms-on (else it collapses the next view\'s player)', async () => {
+  await boot({ mobile: true, isMusic: true, run: async (dom, spy, mod) => {
+    assert.ok(dom.window.document.body.classList.contains('mms-on'), 'active while the music view lives');
+    mod.destroy(); // the router's teardown on nav-away
+    assert.ok(!dom.window.document.body.classList.contains('mms-on'), 'cleared on destroy - watch/podcasts/read never inherit the 0-height takeover');
   } });
 });
 

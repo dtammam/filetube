@@ -20,6 +20,7 @@
 //   data-skin-seek      -> a bar; click maps x -> #seek-bar value (existing seek)
 //   data-skin-go="<i>"  -> jump to queue index i (the view's playAt)
 //   data-skin-collapse  -> dock the player (browse-away; the mini returns you)
+//   data-skin-set="<id>" -> pick a skin (the switcher); the view persists + re-renders
 
 (function () {
   var SKIN_KEY = 'ft-music-skin';

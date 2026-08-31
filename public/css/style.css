@@ -10922,10 +10922,13 @@ html[data-modern="on"] .video-uploader {
   /* hide the default host chrome (control bar + big art) and collapse the slot to
      zero so it just hosts the (still-playing) audio element; the skin panel is the
      visible now-playing. Audio is unaffected by the 0 box. */
-  body.mms-on #player-slot { height:0; min-height:0; overflow:hidden; padding:0; margin:0; }
-  body.mms-on #player-slot .player-controls,
-  body.mms-on #player-slot #audio-bg-art,
-  body.mms-on #player-slot #audio-visualizer { display:none !important; }
+  /* SCOPED to the music view's own #player-slot (gate CRITICAL): watch/podcasts/
+     read share #player-slot, so a leaked body.mms-on must never collapse THEIR
+     player. #view-root's data-view is 'music' only on this view. */
+  body.mms-on #view-root[data-view="music"] #player-slot { height:0; min-height:0; overflow:hidden; padding:0; margin:0; }
+  body.mms-on #view-root[data-view="music"] #player-slot .player-controls,
+  body.mms-on #view-root[data-view="music"] #player-slot #audio-bg-art,
+  body.mms-on #view-root[data-view="music"] #player-slot #audio-visualizer { display:none !important; }
 
   /* the skin panel takes the full screen */
   .mms-full{ position:fixed; inset:0; z-index:var(--z-dock); margin:0; display:flex; flex-direction:column;
