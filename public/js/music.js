@@ -576,6 +576,79 @@ if (typeof module !== 'undefined' && module.exports) {
       }, { signal });
     }
 
+    // ---- mobile music SKINS: a new PRESENTATION over the shared engine --------
+    // On a mobile viewport + a music item, the now-playing panel becomes the
+    // user's chosen full-screen skin (music-skins.js). The skin is pure chrome: it
+    // PROXIES its buttons to the player's EXISTING hidden controls (#pp-btn /
+    // #track-prev-btn / #track-next-btn) and REFLECTS the shared #media-player's
+    // state - it never touches audio / MediaSession / background-audio. Desktop and
+    // all non-music render the default panel/chrome unchanged.
+    var SKINS = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
+    function mmssMusic(s) { s = Math.max(0, Math.floor(Number(s) || 0)); var m = Math.floor(s / 60), r = s % 60; return m + ':' + (r < 10 ? '0' : '') + r; }
+    function hostCtl(id) { return document.getElementById(id); }
+    function skinIsActive() {
+      if (!SKINS) return false;
+      var pl = window.FileTube && window.FileTube.player;
+      var meta = (pl && typeof pl.getCurrentMeta === 'function') ? pl.getCurrentMeta() : null;
+      return SKINS.skinActiveFor(meta);
+    }
+    function buildSkinCtx(ci) {
+      var mp = hostCtl('media-player');
+      var dur = (mp && isFinite(mp.duration) && mp.duration > 0) ? mp.duration : ((queue[ci] && Number(queue[ci].durationSec)) || 0);
+      var pos = mp ? (Number(mp.currentTime) || 0) : 0;
+      var up = [];
+      var start = Math.max(0, ci - 3); // a little history above the current, then up-next
+      for (var j = start; j < queue.length && up.length < 200; j++) {
+        up.push({ index: j, title: queue[j].title, artist: queue[j].artist,
+          durLabel: mmssMusic(queue[j].durationSec), state: j < ci ? 'played' : (j === ci ? 'current' : 'next') });
+      }
+      return {
+        track: { title: nowPlaying && nowPlaying.title, artist: nowPlaying && nowPlaying.artist, album: nowPlaying && nowPlaying.album,
+          artUrl: playingId ? ('/albumart/' + encodeURIComponent(playingId)) : '' },
+        upNext: up, playing: mp ? !mp.paused : false, posSec: pos, durSec: dur,
+        posLabel: mmssMusic(pos), remLabel: dur > 0 ? ('-' + mmssMusic(dur - pos)) : '',
+      };
+    }
+    // Reflect the live element into the rendered skin without a full re-render
+    // (cheap; keeps the up-next scroll position). Bound once to #media-player.
+    function reflectSkin() {
+      if (!nowPlayingPanel || !nowPlayingPanel.classList.contains('mms-full')) return;
+      var mp = hostCtl('media-player'); if (!mp) return;
+      var playBtn = nowPlayingPanel.querySelector('.mms-play');
+      if (playBtn) {
+        playBtn.setAttribute('aria-label', mp.paused ? 'Play' : 'Pause');
+        playBtn.innerHTML = mp.paused
+          ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>'
+          : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
+      }
+      var dur = (isFinite(mp.duration) && mp.duration > 0) ? mp.duration : 0;
+      var pos = Number(mp.currentTime) || 0;
+      var fill = nowPlayingPanel.querySelector('.mms-fill'); if (fill && dur > 0) fill.style.width = Math.min(100, pos / dur * 100) + '%';
+      var pEl = nowPlayingPanel.querySelector('.mms-pos'); if (pEl) pEl.textContent = mmssMusic(pos);
+      var rEl = nowPlayingPanel.querySelector('.mms-rem'); if (rEl && dur > 0) rEl.textContent = '-' + mmssMusic(dur - pos);
+    }
+    var skinReflectBound = false;
+    function ensureSkinReflect() {
+      if (skinReflectBound) return;
+      var mp = hostCtl('media-player'); if (!mp) return;
+      skinReflectBound = true;
+      ['play', 'pause', 'timeupdate', 'seeked', 'loadedmetadata'].forEach(function (ev) {
+        mp.addEventListener(ev, reflectSkin, { signal: signal });
+      });
+    }
+    // Render the active skin into the panel (returns true if it took over).
+    function renderNowPlayingSkin(ci) {
+      if (!SKINS || !skinIsActive()) { document.body.classList.remove('mms-on'); return false; }
+      var id = SKINS.activeSkinId();
+      document.body.classList.add('mms-on'); // CSS hides the default host chrome on mobile+music
+      nowPlayingPanel.className = 'music-nowplaying-panel mms mms-full mms-' + id;
+      nowPlayingPanel.innerHTML = SKINS.renderFull(id, buildSkinCtx(ci));
+      nowPlayingPanel.hidden = false;
+      ensureSkinReflect();
+      if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(nowPlayingPanel);
+      return true;
+    }
+
     // Redesign S1: the "Jump back in" strip above the tabs - what you were last
     // playing, one tap to resume (playTrackFromContinue applies the saved
     // position). Populated ONCE on init from the recently-played list; hidden
@@ -636,12 +709,18 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!expanded || !nowPlaying || !curId || nowPlaying.id !== curId) {
         nowPlayingPanel.hidden = true;
         nowPlayingPanel.innerHTML = '';
+        nowPlayingPanel.className = 'music-nowplaying-panel'; // drop any skin classes
+        document.body.classList.remove('mms-on'); // restore the default host chrome
         if (theaterBtn) theaterBtn.hidden = true; // no expanded track -> no theatre toggle
         return;
       }
-      if (theaterBtn) theaterBtn.hidden = false; // a track is expanded -> the toggle is available (desktop-gated by CSS)
       var ci = -1;
       for (var k = 0; k < queue.length; k++) { if (queue[k].id === curId) { ci = k; break; } }
+      // v1.227 mobile skins: on mobile + music, the panel becomes the chosen
+      // full-screen skin (which owns its own transport, art + up-next). Takes over
+      // completely; the desktop theatre toggle + default panel are skipped.
+      if (renderNowPlayingSkin(ci)) { if (theaterBtn) theaterBtn.hidden = true; return; }
+      if (theaterBtn) theaterBtn.hidden = false; // a track is expanded -> the toggle is available (desktop-gated by CSS)
       // v1.223 (Dean): the panel lists the WHOLE queue - played tracks (before the
       // current) greyed but clickable, the current one marked, the rest up next -
       // so the list never shrinks. The 200-row cap is a WINDOW anchored near the
@@ -700,8 +779,27 @@ if (typeof module !== 'undefined' && module.exports) {
       else settleNowPlaying();
     }
     // Tapping an up-next row jumps to that queue index (stays expanded via T1).
+    // v1.227: the skin's data-skin-* hooks PROXY to the player's existing hidden
+    // controls (play/prev/next), so the battle-won engine (gesture-prime, bg-audio,
+    // MediaSession, setTrackNav) runs unchanged - the skin never calls audio itself.
     if (nowPlayingPanel) {
       nowPlayingPanel.addEventListener('click', function (e) {
+        if (e.target.closest('[data-skin-play]')) { var pb = hostCtl('pp-btn'); if (pb) pb.click(); return; }
+        if (e.target.closest('[data-skin-prev]')) { var pv = hostCtl('track-prev-btn'); if (pv) pv.click(); return; }
+        if (e.target.closest('[data-skin-next]')) { var nx = hostCtl('track-next-btn'); if (nx) nx.click(); return; }
+        if (e.target.closest('[data-skin-collapse]')) { var pl = window.FileTube && window.FileTube.player; if (pl && typeof pl.dock === 'function') { pl.dock(); updateNowPlayingPanel(); } return; }
+        var seek = e.target.closest('[data-skin-seek]');
+        if (seek) {
+          var mp = hostCtl('media-player');
+          if (mp && isFinite(mp.duration) && mp.duration > 0) {
+            var rct = seek.getBoundingClientRect();
+            var frac = Math.min(1, Math.max(0, (e.clientX - rct.left) / (rct.width || 1)));
+            mp.currentTime = mp.duration * frac; // foreground element; timeupdate -> reflectSkin
+          }
+          return;
+        }
+        var sgo = e.target.closest('[data-skin-go]');
+        if (sgo) { var gi = parseInt(sgo.getAttribute('data-skin-go'), 10); if (!isNaN(gi)) playAt(gi); return; }
         var row = e.target.closest('.mnp-queue-row');
         if (!row) return;
         var idx = parseInt(row.getAttribute('data-index'), 10);
