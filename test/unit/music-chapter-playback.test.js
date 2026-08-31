@@ -158,6 +158,49 @@ test('v1.222 (slice 4 behavioural): a chapter-track load carries baseMediaId + c
   }
 });
 
+test('v1.222 (slice 4, gate coverage): a chapter with NO saved resume carries chapterResumeSec undefined -> the player uses the chapter head, not a stale offset', async () => {
+  // The divergent axis of the resume rule: only the chapter you were LAST in
+  // carries progress.resumeSec (musicListProgressMap emits it on that one). Any
+  // other chapter has no progress, so its load must NOT inherit a resume offset -
+  // it plays from its own start.
+  const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music' });
+  const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController };
+  global.window = dom.window; global.document = dom.window.document;
+  global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
+  const loads = [];
+  // Chapter c2 (Track B, start 900) with NO progress - the user taps it directly.
+  const otherChapter = Object.assign({}, CHAPTER_TRACK, { id: 'djmix1::c2', title: 'Track B', chapterStartSec: 900 });
+  delete otherChapter.progress;
+  global.fetch = (url, init) => {
+    const method = (init && init.method) || 'GET';
+    if (method === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    if (String(url).indexOf('/api/music/albums') === 0 || String(url).indexOf('/api/music/artists') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    if (String(url).indexOf('/api/music') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [otherChapter] }) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  let mod = null;
+  dom.window.FileTube = {
+    registerView: (name, m) => { mod = m; }, encodeListContext: () => '', decodeListContext: () => null, shimmerArt: () => {},
+    player: { currentId: null, getState: () => 'docked', expand: () => {}, setTrackNav: () => {}, load: (id, data) => { loads.push({ id, data }); } },
+  };
+  try { dom.window.localStorage.setItem('filetube_music_tab', 'songs'); } catch (_) { /* ignore */ }
+  try {
+    delete require.cache[musicPath];
+    require(musicPath);
+    mod.init(dom.window.document.getElementById('view-root'));
+    for (let i = 0; i < 10; i++) await settle();
+    dom.window.document.querySelector('.music-song-row').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 10; i++) await settle();
+    const load = loads.find((l) => l.id === 'djmix1::c2');
+    assert.ok(load, 'the directly-tapped chapter played');
+    assert.strictEqual(load.data.chapterResumeSec, undefined, 'no saved resume -> no offset (the player falls back to chapterStartSec)');
+    assert.strictEqual(load.data.chapterStartSec, 900, 'it starts at this chapter head');
+  } finally {
+    delete require.cache[musicPath];
+    Object.assign(global, saved);
+  }
+});
+
 test('v1.222 (slice 4 SOURCE-LOCK): the player seeks a chapter-track to chapterResumeSec-else-chapterStartSec, BEFORE the music resume branch', () => {
   const fn = PLAYER_JS.slice(PLAYER_JS.indexOf('function handleResumePlayback'), PLAYER_JS.indexOf('function saveProgressToServer'));
   // resume seek prefers chapterResumeSec (the saved file position) and falls back

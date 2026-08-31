@@ -53,10 +53,16 @@ position (we seek to chapterStartSec and play the whole file). So:
   contains the saved file position (the "chapter you were in") - so the home row
   shows one tile (title = that chapter, artist, album), not N. `recentArtists`
   (music.js renderHome) then shows the artist (dedup already there).
-- **Resume:** the collapsed recent entry carries a resume offset; tapping it (or
-  the file's album) seeks to the saved FILE position, not the chapter head. A
-  DIRECT tap on a specific chapter still seeks to that chapter's start (explicit
-  play beats resume - the v1.207 precedent).
+- **Resume:** the collapsed recent entry carries a resume offset; tapping it seeks
+  to the saved FILE position, not the chapter head. Tapping a DIFFERENT chapter
+  (one with no saved progress) plays from that chapter's start. GATE NOTE (QA
+  WARNING 2, shipped disclosed): because /api/music?album= also runs
+  musicListProgressMap, the ONE chapter you were last in carries resumeSec in the
+  album view too - so tapping THAT chapter in the album resumes mid-chapter rather
+  than restarting it (consistent with how a long single already resumes on any
+  tap). Device-pending: Dean's call on whether an explicit tap of the last-played
+  chapter should restart it instead; the fix would carry resumeSec only down the
+  continue/recent path.
 
 RISK / named attack surfaces for the gate:
 - RBAC: /albumart base-id strip must re-gate the BASE item (a chapter id must not

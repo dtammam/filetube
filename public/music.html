@@ -114,7 +114,8 @@
                  up-next beside the expanded player (the watch page's Related-files
                  space), instead of the panel stacked below. CSS hides it on
                  mobile; JS persists the choice (ft-music-theater). Shown only when
-                 a track is expanded (body[data-music-expanded]). -->
+                 a track is expanded - music.js's updateNowPlayingPanel sets
+                 theaterBtn.hidden in lockstep with the panel. -->
             <button class="btn btn-sm music-theater-btn" id="music-theater-btn" type="button" hidden title="Theatre mode: album beside the player" aria-label="Toggle theatre mode" aria-pressed="false">
               <svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><g transform="matrix(1.2 0 0 1.2 -98 54)"><path fill-rule="evenodd" d="M256-556 704-556 652-116 308-116ZM394-544 452-544 452-128 394-128ZM508-544 566-544 566-128 508-128Z"/><path d="M242-596 718-596 704-556 256-556ZM254-648a58,58 0 1,0 116,0a58,58 0 1,0 -116,0ZM328-704a70,70 0 1,0 140,0a70,70 0 1,0 -140,0ZM428-684a64,64 0 1,0 128,0a64,64 0 1,0 -128,0ZM518-706a68,68 0 1,0 136,0a68,68 0 1,0 -136,0ZM606-646a58,58 0 1,0 116,0a58,58 0 1,0 -116,0ZM398-636a46,46 0 1,0 92,0a46,46 0 1,0 -92,0ZM494-634a46,46 0 1,0 92,0a46,46 0 1,0 -92,0Z"/></g></svg>
             </button>
