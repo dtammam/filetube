@@ -8150,6 +8150,14 @@ var critterWired = false;
 var critterSettleChecks = 0; // v1.166.4/v1.173: the post-scatter settle ladder's count (re-armed per schedule)
 var critterPlacedDocH = 0; // v1.173: document height at placement time - the settle checks judge DRIFT against it
 var critterRetryTimer = null; // stashed so a NEW navigation can cancel a stale pending retry (the v1.163 stash-and-unbind class)
+// v1.219 (Dean, device): a critter anchored to a tile INSIDE a horizontal strip
+// (the Music shelves' "Recently played" etc.) is pinned to the DOCUMENT, so it
+// stayed put while the strip scrolled under it - detached and looked broken. A
+// PASSIVE capture-phase inner-scroll listener re-glues those critters to their
+// anchors' new positions so they ride along. The rAF handle coalesces a scroll
+// fling to one reposition per frame; nulled/removed by unwireCritterContentNudge.
+var critterScrollRaf = null;
+var critterScrollBound = null; // the bound listener, kept so unwire can remove the exact ref
 // v1.182 SETTLE-BEFORE-REVEAL: the wait phase's handles (all cancelled per
 // navigation - the unstashed-handle class). The engine no longer places at a
 // fixed +200ms against loading skeletons and corrects in view (the visible
@@ -8812,7 +8820,63 @@ function probeCritterVoices() {
 var critterContentObs = null;
 var critterContentObsDoc = null; // the document the observer was wired against - a swapped document (tests) re-wires
 var critterNudgeDebounce = null;
+// v1.219 (Dean, device): the lightweight INNER-SCROLL re-glue. Shift each critter
+// by its anchor's DOCUMENT-position delta so it rides a scrolling strip instead of
+// staying pinned while the strip scrolls under it. Unlike reglueCritterPlacements
+// this NEVER drops a critter and never re-arms the settle ladder (a scroll is
+// continuous, not a settle event): the critter and its anchor move together, so
+// the sandwich clip/mask geometry stays valid - only left/top shift. A PAGE scroll
+// leaves document coords fixed (delta 0), so every placement no-ops there.
+function repositionCrittersForScroll() {
+  if (typeof document === 'undefined') return;
+  var layer = document.getElementById('critter-layer');
+  if (!layer || !critterPlacements.length) return;
+  for (var i = 0; i < critterPlacements.length; i += 1) {
+    var p = critterPlacements[i];
+    var el = p.anchorEl;
+    if (!el || !el.isConnected || typeof el.getBoundingClientRect !== 'function') continue;
+    var r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) continue;
+    var ax = r.left + window.scrollX;
+    var ay = r.top + window.scrollY;
+    var dx = Math.round(ax - p.anchor.x);
+    var dy = Math.round(ay - p.anchor.y);
+    if (!dx && !dy) continue; // unmoved (a page scroll leaves document coords fixed)
+    p.x += dx; p.y += dy;
+    p.anchor = { x: ax, y: ay, w: r.width, h: r.height };
+    var wrap = null;
+    for (var k = 0; k < layer.children.length; k += 1) {
+      if (layer.children[k].getAttribute && layer.children[k].getAttribute('data-critter-id') === p.id) { wrap = layer.children[k]; break; }
+    }
+    if (!wrap) continue;
+    var pad = Math.round(p.w * 0.3);
+    wrap.style.left = (p.x - pad) + 'px';
+    wrap.style.top = (p.y - pad) + 'px';
+  }
+}
+
+// v1.219: a PASSIVE, CAPTURE-phase scroll handler (scroll doesn't bubble, so
+// capture at document catches an inner element's scroll). Page scroll (target is
+// the document/root) is skipped - only an inner scroller can move an anchor
+// relative to the document. rAF-coalesced so a fling re-glues once per frame.
+// Passive so it never blocks the compositor (the v1.160.1 scroll-perf lesson).
+function onCritterInnerScroll(e) {
+  var t = e && e.target;
+  if (!t || t === document || t === window
+    || (typeof document !== 'undefined' && (t === document.documentElement || t === document.body))) return;
+  if (critterScrollRaf) return; // already scheduled for this frame
+  var raf = (typeof window !== 'undefined' && window.requestAnimationFrame)
+    ? window.requestAnimationFrame.bind(window) : function (fn) { return setTimeout(fn, 16); };
+  critterScrollRaf = raf(function () { critterScrollRaf = null; repositionCrittersForScroll(); });
+}
+
 function wireCritterContentNudge() {
+  // v1.219: the inner-scroll re-glue listener (added ONCE, before the observer
+  // early-return below). Passive + capture; removed by unwireCritterContentNudge.
+  if (typeof document !== 'undefined' && !critterScrollBound) {
+    critterScrollBound = onCritterInnerScroll;
+    try { document.addEventListener('scroll', critterScrollBound, { capture: true, passive: true }); } catch (_) { critterScrollBound = null; }
+  }
   if (typeof MutationObserver === 'undefined') return;
   if (critterContentObs && critterContentObsDoc === document) return;
   unwireCritterContentNudge(); // a different document (jsdom test contexts) gets a fresh observer
@@ -8852,6 +8916,16 @@ function unwireCritterContentNudge() {
   if (critterContentObs) { try { critterContentObs.disconnect(); } catch (_) { /* already dead */ } critterContentObs = null; }
   critterContentObsDoc = null;
   if (critterNudgeDebounce) { clearTimeout(critterNudgeDebounce); critterNudgeDebounce = null; }
+  // v1.219: tear down the inner-scroll re-glue listener + any pending frame (the
+  // v1.160 attach-only-when-needed / state-nuller-as-sole-remover discipline).
+  if (critterScrollBound && typeof document !== 'undefined') {
+    try { document.removeEventListener('scroll', critterScrollBound, { capture: true }); } catch (_) { /* already gone */ }
+  }
+  critterScrollBound = null;
+  if (critterScrollRaf) {
+    if (typeof window !== 'undefined' && window.cancelAnimationFrame) { try { window.cancelAnimationFrame(critterScrollRaf); } catch (_) { /* ignore */ } }
+    critterScrollRaf = null;
+  }
 }
 
 // v1.173 PURE fire-time decision for the settle ladder. Empty placements
@@ -8957,6 +9031,12 @@ function setCritterTimingForTest(quietMs, capMs) {
 // picker is stateless/random since v1.185.)
 function setCritterSoundPoolForTest(pool) {
   critterSoundPool = Array.isArray(pool) ? pool.slice() : [];
+}
+
+// v1.219: inject placements so the inner-scroll re-glue can be driven behaviourally
+// (jsdom has no layout, so getBoundingClientRect is stubbed per anchor in the test).
+function setCritterPlacementsForTest(placements) {
+  critterPlacements = Array.isArray(placements) ? placements : [];
 }
 
 // The entry point - the ONLY way anything asks for a scatter (router hooks,
@@ -15235,6 +15315,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.167: button priority + the fixed-subtree guard (+ the collector, so
     // the WIRING of both is behaviourally bound, not just the helper - gate PNB).
     CRITTER_PRIORITY_SELECTORS, CRITTER_PRIORITY_WEIGHT, critterInsideFixed, collectCritterRects,
+    repositionCrittersForScroll, onCritterInnerScroll,
     // v1.168: the sandwich clip (behind ONE anchor, above everything else).
     buildCritterClip,
     buildCritterRoundMask,
@@ -15243,9 +15324,10 @@ if (typeof module !== 'undefined' && module.exports) {
     reglueCritterPlacements,
     // v1.182 settle-before-reveal: the wait phase (driven end-to-end in tests).
     scheduleCritterScatter, critterPageLoading, disconnectCritterWait, revealCritterScatter,
+    wireCritterContentNudge, unwireCritterContentNudge,
     setCritterTimingForTest,
     // v1.184/v1.185 sound pool + the random-each-tap pick.
-    buildCritterSoundPool, pickCritterRandomSound, playCritterSound, setCritterSoundPoolForTest,
+    buildCritterSoundPool, pickCritterRandomSound, playCritterSound, setCritterSoundPoolForTest, setCritterPlacementsForTest,
     CRITTER_STORAGE_RANDOMSOUND,
     // v1.187: critter size choice + the pure rect-overlap helper (so the
     // invariant tests can assert exclusion clearance directly).
