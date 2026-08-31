@@ -298,3 +298,14 @@ test('v1.104 (reveal-once CLEAR): closing the player (emptied) clears a shown pa
     assert.equal(panel(dom).innerHTML, '', 'cleared, not stranded');
   });
 });
+
+// v1.224 (Dean) SOURCE-LOCK: the up-next now includes played history above the
+// current row, so the panel scrolls the (bounded) list to the PLAYING song when
+// it renders - jsdom has no layout to measure, so lock the glue behaviourally-
+// adjacent: it targets the is-current row and scrolls the queue box (scrollTop),
+// never the page.
+test('v1.224: updateNowPlayingPanel scrolls the queue to the current row (not the page)', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/js/music.js'), 'utf8');
+  assert.match(src, /nowPlayingPanel\.querySelector\('\.mnp-queue-row\.is-current'\)/, 'it targets the current row');
+  assert.match(src, /mnpQueue\.scrollTop = Math\.max\(0, \(curRow\.offsetTop - mnpQueue\.offsetTop\) - 8\)/, 'it scrolls the queue box by scrollTop, not scrollIntoView/window');
+});

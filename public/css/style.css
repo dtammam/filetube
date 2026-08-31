@@ -10843,6 +10843,11 @@ html[data-modern="on"] .video-uploader {
   white-space: pre-wrap;
 }
 .mnp-queue { display: flex; flex-direction: column; gap: var(--space-1); }
+/* v1.224 (Dean): bound the MUSIC Up next height so it's a self-contained scroll
+   area that always shows full rows - non-theatre it used to flow past the fold and
+   clip the last row. Scoped to #music-nowplaying-panel (NOT the shared podcast
+   panel); theatre overrides with more room (68vh, below). */
+#music-nowplaying-panel .mnp-queue { max-height: 44vh; overflow-y: auto; } /* token-exempt: viewport-relative up-next cap */
 .mnp-queue-head {
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);

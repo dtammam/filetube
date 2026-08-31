@@ -661,6 +661,15 @@ if (typeof module !== 'undefined' && module.exports) {
       nowPlayingPanel.innerHTML = buildNowPlayingPanelHtml(nowPlaying, rows);
       nowPlayingPanel.hidden = false;
       if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(nowPlayingPanel);
+      // v1.224 (Dean): the up-next now includes played history above the current
+      // row, so scroll the (bounded, scrollable) list to the PLAYING song - it's
+      // always visible when you pick a track, no hunting. Scroll only WITHIN the
+      // queue box (scrollTop), never the page. Layout math is a no-op in jsdom.
+      var mnpQueue = nowPlayingPanel.querySelector('.mnp-queue');
+      var curRow = nowPlayingPanel.querySelector('.mnp-queue-row.is-current');
+      if (mnpQueue && curRow) {
+        try { mnpQueue.scrollTop = Math.max(0, (curRow.offsetTop - mnpQueue.offsetTop) - 8); } catch (_) { /* no layout */ }
+      }
     }
     // Tapping an up-next row jumps to that queue index (stays expanded via T1).
     if (nowPlayingPanel) {

@@ -80,6 +80,35 @@
 
 ## Shipped
 
+### v1.224.0 - Music now-playing nits: scroll-to-song, bounded Up next, ♪ on the channel view (2026-08-31)
+
+Three Dean device nits after v1.223 (a fourth - the Jump-back-to-video-watch
+routing - is a separate cross-cutting decision, deferred pending Dean's call on
+route-to-Music vs keep-music-out-of-the-video-continue).
+
+**1. Scroll to the playing song.** The whole-queue Up next (v1.223) puts played
+history above the current row, so the song you just picked could be off-screen.
+The panel now scrolls the (bounded) queue box to the `.is-current` row on render -
+scrollTop only, never the page.
+
+**2. Bounded Up next.** `#music-nowplaying-panel .mnp-queue` gets a `44vh` cap +
+overflow (scoped to music, not the shared podcast panel), so in non-theatre it's a
+self-contained scroll area instead of flowing past the fold and clipping the last
+row. Theatre keeps its larger 68vh.
+
+**3. ♪ toggle on the channel view.** The "Show in Music library" ♪ appeared only on
+the Downloads folder view, not the home->channel view. Root cause: it gated its
+render on an audio file being in the LOADED page, so a channel whose first page is
+videos hid it. Now it renders on any `?folder=` view for a library-write user and
+uses the server's `hasAudio` (from the music-flag call it already makes) as the
+authority - revealed when the folder has audio, removed when it does not. The write
+route stays server-gated by `requireModifyLibrary` (no RBAC change).
+
+Slim gate (adversarial seat, APPROVE, one round of its own SUGGESTIONs applied:
+scoped the Up-next cap off the shared podcast panel; hardened the toggle
+source-lock). Dual-Node 7950/0 (Node 22.23.1 + 24.14.0). **Dean's device pass
+PENDING** (the three nits + a check that the podcast now-playing panel is unchanged).
+
 ### v1.223.0 - New albums surface in Recently added + Next Up shows the whole queue (2026-08-31)
 
 Two Dean asks after v1.222.

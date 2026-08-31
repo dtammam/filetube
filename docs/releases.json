@@ -2464,5 +2464,11 @@
     "date": "2026-08-31",
     "title": "New downloads show up in Recently added, and Next Up keeps the whole list",
     "intent": "Two Music tweaks. New albums you download now show up at the top of 'Recently added' where you'd expect them, instead of getting buried - so freshly grabbed mixes and albums are easy to find and play. And the 'Next Up' list no longer shrinks as a song plays: it now shows the whole queue, with the tracks you've already played dimmed but still tappable, so you can jump back to one anytime."
+  },
+  {
+    "version": "1.224.0",
+    "date": "2026-08-31",
+    "title": "Music now-playing polish: jump to the song you picked, tidier Up next, and the Music toggle on channels",
+    "intent": "A few small Music fixes. When you pick a song, the Up next list now scrolls straight to it so you can see what's playing without hunting. The Up next list is now a neat scrollable panel that always shows full rows instead of getting cut off at the bottom. And the little music-note button that adds a channel to your Music library now appears when you open a channel from the home, not only from the Downloads folder view."
   }
 ]
