@@ -77,9 +77,16 @@
     return '<div class="mms-upnext"><div class="mms-upnext-h">' + esc('Up next · ' + ((ctx.track && ctx.track.album) || 'Queue')) + '</div>' +
       '<div class="mms-upnext-list">' + rows + '</div></div>';
   }
-  function topBar(label) {
+  function topBar(label, ctx) {
+    var active = (ctx && ctx.skinId) || DEFAULT_ID;
+    // the SKIN SWITCHER (the "themes" picker) - a segmented control; each button
+    // sets the skin via data-skin-set (the view persists + re-renders).
+    var sw = '<div class="mms-skinsw" role="tablist" aria-label="Player skin">' + SKINS.map(function (s) {
+      return '<button type="button" class="mms-sw' + (s.id === active ? ' is-on' : '') + '" data-skin-set="' + s.id + '"' +
+        ' aria-pressed="' + (s.id === active ? 'true' : 'false') + '">' + esc(s.label) + '</button>';
+    }).join('') + '</div>';
     return '<div class="mms-top"><button type="button" class="mms-chev" data-skin-collapse aria-label="Collapse">▾</button>' +
-      '<span class="mms-ctx">' + esc(label) + '</span><span class="mms-chev mms-chev-ghost" aria-hidden="true">⋯</span></div>';
+      '<span class="mms-ctx">' + esc(label) + '</span><span class="mms-chev mms-chev-ghost" aria-hidden="true">⋯</span></div>' + sw;
   }
   function metaLine(ctx) {
     var t = ctx.track || {};
@@ -90,7 +97,7 @@
   // ---- the three skins (full-screen now-playing) --------------------------------
   // Each returns the INNER html for a `.mms.<skin>` container the view creates.
   function renderApple(ctx) {
-    return topBar('From ' + ((ctx.track && ctx.track.album) || 'Music')) +
+    return topBar('From ' + ((ctx.track && ctx.track.album) || 'Music'), ctx) +
       art(ctx, 'mms-art') + metaLine(ctx) +
       '<div class="mms-scrub">' + scrubber(ctx) + '</div>' +
       '<div class="mms-transport">' + transport(ctx) + '</div>' +
@@ -98,14 +105,14 @@
   }
   function renderSpotify(ctx) {
     // same structure, skin-specific chrome via CSS (.mms.spotify)
-    return topBar((ctx.track && ctx.track.album) || 'Music') +
+    return topBar((ctx.track && ctx.track.album) || 'Music', ctx) +
       art(ctx, 'mms-art') + metaLine(ctx) +
       '<div class="mms-scrub">' + scrubber(ctx) + '</div>' +
       '<div class="mms-transport">' + transport(ctx) + '</div>' +
       upNextList(ctx);
   }
   function renderIpod(ctx) {
-    return topBar('Now Playing') +
+    return topBar('Now Playing', ctx) +
       art(ctx, 'mms-art') + metaLine(ctx) +
       '<div class="mms-scrub">' + scrubber(ctx) + '</div>' +
       '<div class="mms-transport">' + transport(ctx) + '</div>' +
@@ -146,7 +153,8 @@
   var api = {
     SKIN_KEY: SKIN_KEY, IDS: IDS, DEFAULT_ID: DEFAULT_ID, SKINS: SKINS,
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
-    skinById: skinById, renderFull: function (id, ctx) { return skinById(id).renderFull(ctx || {}); },
+    skinById: skinById,
+    renderFull: function (id, ctx) { ctx = ctx || {}; ctx.skinId = normalizeSkinId(id); return skinById(id).renderFull(ctx); },
     skinActiveFor: skinActiveFor, isMobileViewport: isMobileViewport,
     _esc: esc, _pct: pct,
   };

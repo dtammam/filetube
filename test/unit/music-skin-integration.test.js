@@ -89,6 +89,16 @@ test('the skin play button PROXIES to the hidden #pp-btn (engine untouched)', as
   } });
 });
 
+test('the skin switcher picks a skin - persists + re-renders (the "themes" picker)', async () => {
+  await boot({ mobile: true, isMusic: true, run: async (dom) => {
+    assert.match(panel(dom).className, /\bmms-apple\b/, 'starts on the default (apple)');
+    panel(dom).querySelector('[data-skin-set="ipod"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 4; i++) await settle();
+    assert.match(panel(dom).className, /\bmms-ipod\b/, 'switched to iPod');
+    assert.strictEqual(dom.window.localStorage.getItem('ft-music-skin'), 'ipod', 'choice persisted per-device');
+  } });
+});
+
 test('DESKTOP + music: NO skin - the default panel renders, no mms-on', async () => {
   await boot({ mobile: false, isMusic: true, run: async (dom) => {
     const el = panel(dom);

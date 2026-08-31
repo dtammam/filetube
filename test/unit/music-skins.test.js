@@ -61,6 +61,13 @@ test('every skin renderFull emits the proxy hooks + reflects the ctx (not vacuou
   }
 });
 
+test('every render includes the skin SWITCHER - all three options, the active one marked', () => {
+  const html = skins.renderFull('spotify', CTX);
+  for (const id of skins.IDS) assert.match(html, new RegExp('data-skin-set="' + id + '"'), 'switcher offers ' + id);
+  assert.match(html, /data-skin-set="spotify"[^>]*aria-pressed="true"/, 'the active skin (spotify) is marked pressed');
+  assert.match(html, /data-skin-set="apple"[^>]*aria-pressed="false"/, 'an inactive skin is not pressed');
+});
+
 test('the pause glyph shows only when playing; play glyph when paused', () => {
   const playing = skins.renderFull('apple', Object.assign({}, CTX, { playing: true }));
   const paused = skins.renderFull('apple', Object.assign({}, CTX, { playing: false }));

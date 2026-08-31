@@ -784,6 +784,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // MediaSession, setTrackNav) runs unchanged - the skin never calls audio itself.
     if (nowPlayingPanel) {
       nowPlayingPanel.addEventListener('click', function (e) {
+        var setBtn = e.target.closest('[data-skin-set]');
+        if (setBtn) { if (SKINS) { SKINS.setActiveSkin(setBtn.getAttribute('data-skin-set')); updateNowPlayingPanel(); } return; }
         if (e.target.closest('[data-skin-play]')) { var pb = hostCtl('pp-btn'); if (pb) pb.click(); return; }
         if (e.target.closest('[data-skin-prev]')) { var pv = hostCtl('track-prev-btn'); if (pv) pv.click(); return; }
         if (e.target.closest('[data-skin-next]')) { var nx = hostCtl('track-next-btn'); if (nx) nx.click(); return; }
