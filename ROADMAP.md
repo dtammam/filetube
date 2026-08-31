@@ -80,6 +80,29 @@
 
 ## Shipped
 
+### v1.226.0 - Theatre now-playing no longer shoves "Jump back in" down on return (2026-08-31)
+
+Dean device pass on v1.225: in THEATRE (up-next beside the player), returning via
+the mini-player, the layout was right for ~1/4s then "Jump back in" (and the tabs/
+content) got shoved down. Root cause: the up-next panel, filling with a 10-chapter
+album, grew TALLER than the player art and grew the whole side-by-side flex stage,
+pushing everything below it down.
+
+Fix (measure the container, per the norm - never guess a CSS-var height):
+`updateNowPlayingPanel` MEASURES the `#player-slot` height (in the same rAF as the
+current-row scroll) and caps the now-playing panel to it in theatre; the panel is
+`min-height:0; overflow:hidden` and its `.mnp-queue` flex-fills + scrolls, so
+filling the up-next scrolls INSIDE the capped panel instead of growing the stage -
+the stage stays the player's height and nothing below shifts. Cleared off-theatre;
+recomputed on the theatre toggle. The v1.224 non-theatre 44vh cap is untouched, and
+the shared podcast panel is unaffected (all rules id-scoped to
+`#music-nowplaying-panel`).
+
+Slim gate (adversarial seat, APPROVE; off-theatre + podcast untouched, mechanism
+sound, all source-locks mutation-bound; its one SUGGESTION - a stale 68vh comment -
+fixed). Dual-Node 7952/0 (Node 22.23.1 + 24.14.0). **Dean's device pass PENDING**
+(the pixel behavior is device-only verifiable).
+
 ### v1.225.0 - Up-next scroll settles after the list grows + ♪ on pinned channels (2026-08-31)
 
 Two follow-ups from Dean's v1.224 device pass (item 1 scroll-to-song and the
