@@ -2440,5 +2440,11 @@
     "date": "2026-08-31",
     "title": "The little critters stay put on scrolling rows",
     "intent": "A small visual fix: if you have the critters turned on, one sitting on a scrolling row (like Music's 'Recently played') used to stay stuck in place while the row slid underneath it, which looked off. Now it rides along with the card it's perched on, so it stays where it belongs as you scroll."
+  },
+  {
+    "version": "1.220.0",
+    "date": "2026-08-31",
+    "title": "Critters stay off the sliding rows entirely",
+    "intent": "A follow-up to last update: making the critters ride the scrolling rows still looked a bit off, so now they simply don't appear on those horizontal sliding rows at all (like Music's 'Recently played' or the books shelf). They still pop up everywhere else - on your cards, tiles and artwork - just not on the rows that slide."
   }
 ]
