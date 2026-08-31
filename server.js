@@ -8687,10 +8687,16 @@ app.get('/albumart/:id', (req, res) => {
   // item's YouTube thumbnail - real imagery instead of the placeholder. Only a
   // VISIBLE audio item, and only when there is no native track (never overrides
   // a real track's own art resolved above). Mirrors /thumbnail's own gate.
+  // v1.222: a virtual chapter-track's id is `<mediaId>::c<idx>` (v1.221) with no
+  // file of its own - strip the chapter suffix so its tile/card/recent-tile
+  // resolves to the ONE shared file's thumbnail (was the grey placeholder). A
+  // plain library-single id has no suffix, so the strip is a no-op. RBAC re-gates
+  // the BASE item, so a chapter of a blocked file still 404s to the placeholder.
   if (!track) {
-    const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, req.params.id) ? db.metadata[req.params.id] : null;
+    const baseId = req.params.id.replace(/::c\d+$/, '');
+    const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, baseId) ? db.metadata[baseId] : null;
     if (item && item.type === 'audio' && mediaVisibleTo(req, item) && item.hasThumbnail) {
-      const thumbPath = path.join(THUMBNAIL_DIR, `${req.params.id}.jpg`);
+      const thumbPath = path.join(THUMBNAIL_DIR, `${baseId}.jpg`);
       if (fs.existsSync(thumbPath)) {
         res.set('Cache-Control', 'private, max-age=86400');
         return res.sendFile(thumbPath);

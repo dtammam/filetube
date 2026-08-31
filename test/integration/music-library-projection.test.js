@@ -89,6 +89,7 @@ before(async () => {
   const thumbDir = path.join(DATA_DIR, '.thumbnails');
   fs.writeFileSync(path.join(thumbDir, 'nest1.jpg'), 'JPEGBYTES-NEST');
   fs.writeFileSync(path.join(thumbDir, 'blk1.jpg'), 'JPEGBYTES-BLK');
+  fs.writeFileSync(path.join(thumbDir, 'djmix1.jpg'), 'JPEGBYTES-DJMIX'); // v1.222: the chaptered file's thumbnail
 });
 
 after(async () => {
@@ -170,6 +171,22 @@ test('grid art RBAC: a restricted member gets the placeholder, never the blocked
   const res = await get('/albumart/blk1', member.cookie);
   assert.match(res.headers.get('content-type') || '', /image\/svg\+xml/, 'restricted -> placeholder SVG, no thumbnail leak');
   assert.notStrictEqual(await res.text(), 'JPEGBYTES-BLK', 'the blocked thumbnail bytes never reach the member');
+});
+
+// v1.222 slice 1: a VIRTUAL chapter-track (id `<mediaId>::c<idx>`) has no file of
+// its own; /albumart strips the suffix so its tile/card/recent-tile shows the ONE
+// shared file's thumbnail instead of the grey placeholder.
+test('v1.222 slice 1: /albumart/<chapterId> resolves to the shared file thumbnail (was the grey placeholder)', async () => {
+  const res = await get('/albumart/' + encodeURIComponent('djmix1::c1'));
+  assert.strictEqual(res.status, 200);
+  assert.match(res.headers.get('content-type') || '', /image\/jpeg/, 'serves the file jpg, not the SVG placeholder');
+  assert.strictEqual(await res.text(), 'JPEGBYTES-DJMIX', 'the chapter tile shows the shared file picture');
+});
+
+test('v1.222 slice 1 RBAC: a chapter-shaped id of a BLOCKED file still 404s to the placeholder (no strip-around-RBAC)', async () => {
+  const res = await get('/albumart/' + encodeURIComponent('blk1::c2'), member.cookie);
+  assert.match(res.headers.get('content-type') || '', /image\/svg\+xml/, 'the base item is re-gated after the strip - no blocked thumbnail leak');
+  assert.notStrictEqual(await res.text(), 'JPEGBYTES-BLK', 'the blocked bytes never reach the member via a chapter id');
 });
 
 test('MEDIA RBAC: a restricted member never sees a blocked projected track', async () => {
