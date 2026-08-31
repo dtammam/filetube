@@ -665,10 +665,18 @@ if (typeof module !== 'undefined' && module.exports) {
       // row, so scroll the (bounded, scrollable) list to the PLAYING song - it's
       // always visible when you pick a track, no hunting. Scroll only WITHIN the
       // queue box (scrollTop), never the page. Layout math is a no-op in jsdom.
+      // v1.225 (Dean device): DEFER to the next frame - the panel can render compact
+      // then grow to the full queue on a follow-up render, and a synchronous scroll
+      // landed on the pre-growth layout (the song scrolled right for a frame, then
+      // the taller list pushed it out). rAF reads offsetTop AFTER the final layout.
       var mnpQueue = nowPlayingPanel.querySelector('.mnp-queue');
       var curRow = nowPlayingPanel.querySelector('.mnp-queue-row.is-current');
       if (mnpQueue && curRow) {
-        try { mnpQueue.scrollTop = Math.max(0, (curRow.offsetTop - mnpQueue.offsetTop) - 8); } catch (_) { /* no layout */ }
+        var scrollCurrentIntoQueue = function () {
+          try { mnpQueue.scrollTop = Math.max(0, (curRow.offsetTop - mnpQueue.offsetTop) - 8); } catch (_) { /* no layout */ }
+        };
+        if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(scrollCurrentIntoQueue);
+        else scrollCurrentIntoQueue();
       }
     }
     // Tapping an up-next row jumps to that queue index (stays expanded via T1).

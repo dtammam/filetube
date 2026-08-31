@@ -22,10 +22,9 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'ma
 test('the toggle renders for a library-write user on a folder view, gated authoritatively on the server hasAudio', () => {
   // Anchor on the music block's own id ('folder-music-toggle') right after the
   // gate so this can never latch onto the byte-identical rename-button gate.
-  const m = SRC.match(/if \(folderFilter && videosHeader && cardCornerCaps && cardCornerCaps\.canModifyLibrary === true\)[\s\S]{0,200}?folder-music-toggle[\s\S]{0,2800}?insertAdjacentElement\('afterend', mbtn\)/);
+  const m = SRC.match(/if \(musicFolderName && videosHeader && cardCornerCaps && cardCornerCaps\.canModifyLibrary === true\)[\s\S]{0,200}?folder-music-toggle[\s\S]{0,2800}?insertAdjacentElement\('afterend', mbtn\)/);
   assert.ok(m, 'the folder-music-toggle render block is present');
   const block = m[0];
-  assert.match(block, /folderFilter/, 'folder views only');
   assert.match(block, /cardCornerCaps\s*&&\s*cardCornerCaps\.canModifyLibrary === true/, 'gated on the library-write capability');
   // v1.224: hasAudio (server truth) is the authority, NOT the loaded-page
   // folderHasAudio - a folder with no audio removes the button, one WITH audio
@@ -40,9 +39,18 @@ test('folderHasAudio (loaded-page) drives only the OPTIMISTIC initial visibility
   assert.match(SRC, /mbtn\.hidden = !folderHasAudio/, 'the loaded-page check only sets the initial hidden state (no flash), the fetch confirms');
 });
 
-test('the toggle reads the mark (GET) and writes the mark (POST) via the music-flag route', () => {
-  assert.match(SRC, /fetch\(`\/api\/folders\/music-flag\?folderName=\$\{encodeURIComponent\(folderFilter\)\}`\)/, 'reads the effective state');
-  assert.match(SRC, /fetch\('\/api\/folders\/music-flag',[\s\S]{0,140}?method: 'POST'[\s\S]{0,140}?folderName: folderFilter, music: next/, 'writes an explicit on/off override');
+test('v1.225: the channel folder is the ?folder= value, else (a pinned ?root= view) the SINGLE folderName the items share', () => {
+  // A pinned sidebar channel navigates via ?root= (not ?folder=), so derive the
+  // channel from the loaded items' OWN folderName - correct by construction, and a
+  // MULTI-channel root gets no single mark (skip).
+  assert.match(SRC, /let musicFolderName = folderFilter;/, 'prefers an explicit ?folder=');
+  assert.match(SRC, /if \(!musicFolderName && rootFilter\)[\s\S]{0,320}?if \(itemFolders\.length === 1\) musicFolderName = itemFolders\[0\]/,
+    'on a ?root= view, uses the single shared folderName (a multi-folder root -> no mark)');
+});
+
+test('the toggle reads the mark (GET) and writes the mark (POST) via the music-flag route (keyed by the derived channel folder)', () => {
+  assert.match(SRC, /fetch\(`\/api\/folders\/music-flag\?folderName=\$\{encodeURIComponent\(musicFolderName\)\}`\)/, 'reads the effective state for the derived channel folder');
+  assert.match(SRC, /fetch\('\/api\/folders\/music-flag',[\s\S]{0,140}?method: 'POST'[\s\S]{0,140}?folderName: musicFolderName, music: next/, 'writes an explicit on/off override for the derived channel folder');
   assert.match(SRC, /const next = effectiveNow \? 'off' : 'on'/, 'the click flips the current effective state');
 });
 
