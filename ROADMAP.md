@@ -80,6 +80,36 @@
 
 ## Shipped
 
+### v1.219.0 - Critters ride a scrolling strip instead of detaching (2026-08-31)
+
+Dean's device pics: a critter anchored to a tile inside the Music "Recently
+played" horizontal strip stayed pinned to the page while the strip scrolled under
+it, so it detached and looked broken. He chose "make them stick."
+
+**What shipped.** A passive, capture-phase inner-scroll listener
+(`onCritterInnerScroll`, wired in `wireCritterContentNudge` / removed in
+`unwireCritterContentNudge`) rAF-coalesces to `repositionCrittersForScroll`,
+which shifts each critter by its anchor's document-position delta so it rides the
+strip. The critter and its anchor move together, so the sandwich clip/mask
+geometry stays valid (only left/top shift) - no drop, no settle-ladder churn. A
+page scroll leaves document coords fixed (delta 0) and is skipped outright, so
+there is no scroll-perf cost.
+
+**What the slim gate caught (adversarial seat).** A CRITICAL: the first pass added
+the scroll listener at the top of `wireCritterContentNudge`, which then calls
+`unwireCritterContentNudge` to refresh its observer - stripping the just-added
+listener, so it was inert in a real browser (the tests passed only because the
+fixture omitted `MutationObserver` and checked "addEventListener was called", not
+"stays attached" - a dead-code + vacuous-binding pair). Fixed by re-attaching
+after the observer refresh, with a browser-path net-attached regression test. Plus
+a WARNING: match the wrapper by index, not the sprite id (which repeats).
+Disclosed residuals (tech-debt #187): a non-full-width strip float and a
+resize-mid-scroll stale mask - both non-blocking, and Dean's shelves are
+full-width.
+
+Slim gate (adversarial seat, APPROVE after one fix round). Dual-Node 7919/0
+(Node 22.23.1 + 24.14.0). **Dean's device pass PENDING.**
+
 ### v1.218.0 - Consistent back: Podcasts + TV adopt the in-view back-stack (2026-08-30)
 
 Dean device-confirmed v1.217 ("enjoyed it quite a bit") and asked to extend the

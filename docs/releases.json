@@ -2434,5 +2434,11 @@
     "date": "2026-08-30",
     "title": "The same smart Back arrives in Podcasts and Shows",
     "intent": "Following last update's Music change: Podcasts and Shows now do the same thing. Open a podcast or a show and press Back (or swipe back from the edge) and you step back to your list instead of jumping out of the section - and it only leaves once you're back at the grid. Books already worked this way. So Back now behaves consistently wherever you are in your library."
+  },
+  {
+    "version": "1.219.0",
+    "date": "2026-08-31",
+    "title": "The little critters stay put on scrolling rows",
+    "intent": "A small visual fix: if you have the critters turned on, one sitting on a scrolling row (like Music's 'Recently played') used to stay stuck in place while the row slid underneath it, which looked off. Now it rides along with the card it's perched on, so it stays where it belongs as you scroll."
   }
 ]
