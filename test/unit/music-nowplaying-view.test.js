@@ -88,7 +88,8 @@ async function boot(storage, initialState, run, opts) {
   global.fetch = (url, init) => {
     const u = String(url);
     fetches.push(u);
-    if (/\/api\/music\?/.test(u) || /\/api\/music$/.test(u)) return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: SONGS, total: SONGS.length, offset: 0, limit: 1000 }) });
+    const songs = opts.songs || SONGS;
+    if (/\/api\/music\?/.test(u) || /\/api\/music$/.test(u)) return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: songs, total: songs.length, offset: 0, limit: 1000 }) });
     return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: [] }) });
   };
   Object.keys(storage || {}).forEach((k) => dom.window.localStorage.setItem(k, storage[k]));
@@ -195,6 +196,21 @@ test('v1.223 (Dean): the panel shows the WHOLE queue - already-played tracks gre
     await settle(); await settle();
     assert.strictEqual(lastLoad(mock).id, 't1', 'tapping a played (greyed) row jumps back to it');
   });
+});
+
+test('v1.223 (gate WARNING fix): a DEEP current index still shows the current + up-next, not a cap full of only played rows', async () => {
+  // The Songs tab loads up to 1000. If the 200-row cap were anchored at the queue
+  // START, a current index past ~200 would fill the panel with only played rows
+  // (no current, no up-next). The window is anchored near the current instead.
+  const many = [];
+  for (let i = 0; i < 300; i++) many.push({ id: 'm' + i, title: 'Song ' + i, artist: 'Boards', album: '', albumKey: '', durationSec: 100 });
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom) => {
+    await clickRow(dom, 250); // play a deep track (album-less -> flat queue, ci=250)
+    const el = panel(dom);
+    assert.match(el.innerHTML, /class="mnp-queue-row is-current" aria-current="true" data-index="250"/, 'the current row is present at depth 250');
+    assert.match(el.innerHTML, /class="mnp-queue-row" data-index="251"/, 'up-next rows follow the current (not silently dropped)');
+    assert.doesNotMatch(el.innerHTML, /data-index="0"/, 'the window is anchored near the current track, not the queue start');
+  }, { songs: many });
 });
 
 test('v1.104/v1.106 (panel): DOCKED playback keeps the panel HIDDEN (reached via a nav while docked)', async () => {

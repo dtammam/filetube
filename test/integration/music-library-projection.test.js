@@ -275,6 +275,11 @@ test('v1.223: a projected library album carries a real (ISO) addedAt via /api/mu
   assert.ok(nest, 'a projected NESTALGIA album is present');
   assert.ok(typeof nest.addedAt === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(nest.addedAt),
     'its addedAt is a real ISO timestamp (not the empty string that buried it in newest)');
+  // The same normalized field drives artist "newest" too (gate SUGGESTION).
+  const artists = (await (await get('/api/music/artists?sort=newest')).json()).items;
+  const na = artists.find((a) => a.artist === 'NESTALGIA');
+  assert.ok(na && typeof na.addedAt === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(na.addedAt),
+    'a projected artist carries a real ISO addedAt for "newest" artists too');
 });
 
 test('v1.221 search: each chapter TITLE surfaces as a playable music result via /api/search (chapters as song names)', async () => {

@@ -643,10 +643,15 @@ if (typeof module !== 'undefined' && module.exports) {
       for (var k = 0; k < queue.length; k++) { if (queue[k].id === curId) { ci = k; break; } }
       // v1.223 (Dean): the panel lists the WHOLE queue - played tracks (before the
       // current) greyed but clickable, the current one marked, the rest up next -
-      // so the list never shrinks. (Cap large queues to keep the DOM sane.)
+      // so the list never shrinks. The 200-row cap is a WINDOW anchored near the
+      // current track (a little jump-back history + the current + up next), NOT the
+      // queue start - else a deep current index (the Songs tab loads up to 1000)
+      // would fill the cap with only played rows, hiding the current + up-next
+      // (gate WARNING).
       var rows = [];
       if (ci >= 0) {
-        for (var j = 0; j < queue.length && rows.length < 200; j++) {
+        var start = Math.max(0, ci - 20); // keep a little history for jump-back
+        for (var j = start; j < queue.length && rows.length < 200; j++) {
           rows.push({
             id: queue[j].id, title: queue[j].title, artist: queue[j].artist, index: j,
             state: j < ci ? 'played' : (j === ci ? 'current' : 'next'),
