@@ -1238,9 +1238,14 @@ if (typeof module !== 'undefined' && module.exports) {
         artUrl: (isLib && item.artUrl) ? item.artUrl : ('/albumart/' + item.id),
         streamSrc: (isLib && item.streamSrc) ? item.streamSrc : ('/track/' + item.id),
         progressEndpoint: (isLib && item.progressEndpoint) ? item.progressEndpoint : '/api/music/progress',
-        // v1.221: seek to the chapter start on load; also marks a chapter-track so
-        // the player skips per-file progress save (its id isn't a media id).
+        // v1.221: seek to the chapter start on load. v1.222: a chapter play now
+        // RECORDS to the MEDIA store under the BASE file id (a real media id) so it
+        // lands in Recently played + resumes. baseMediaId is the save id;
+        // chapterResumeSec (the saved absolute file position, if any) is where a
+        // resume-tap seeks instead of the chapter head.
         chapterStartSec: isChapter ? (Number(item.chapterStartSec) || 0) : undefined,
+        baseMediaId: isChapter ? String(item.id).replace(/::c\d+$/, '') : undefined,
+        chapterResumeSec: (isChapter && item.progress && typeof item.progress.resumeSec === 'number') ? item.progress.resumeSec : undefined,
         resumeMode: 'music',
         autoAdvanceViaTrackNav: true,
         browseCtx: queueCtxEncoded,

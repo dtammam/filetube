@@ -325,6 +325,26 @@ test('v1.221 GATE FIX: the resolve is RBAC-gated - a member restricted from the 
   assert.strictEqual((await get('/api/music/' + encodeURIComponent('djmix1::c1'), fm.cookie)).status, 404, 'the restricted member cannot resolve the blocked file\'s chapter');
 });
 
+// v1.222 slice 4: a chapter play records to the MEDIA store under the BASE file id
+// (the client saves currentTime, already file-absolute). Recently-played then
+// collapses the file's N chapters to ONE entry - the chapter you were in - so the
+// artist reaches the home row and the entry resumes at the saved file position.
+test('v1.222 slice 4: a chapter play collapses to ONE Recently-played entry (the chapter you were in) with resume', async () => {
+  setToggle(actingUser.id, 'on');
+  // Played to file-absolute 450s, inside chapter "Track A" [300, 900).
+  const save = await postJson('/api/progress', { id: 'djmix1', timestamp: 450, duration: 1800 });
+  assert.strictEqual(save.status, 200, 'the base file id is a real media id -> the save is accepted (never the synthetic ::c id that 404s)');
+  const recent = await (await get('/api/music?filter=recent-listening&limit=60')).json();
+  const chapters = recent.items.filter((i) => typeof i.id === 'string' && i.id.indexOf('djmix1::c') === 0);
+  assert.strictEqual(chapters.length, 1, 'the file collapses to ONE recent entry, not all 3 chapters');
+  const hit = chapters[0];
+  assert.strictEqual(hit.title, 'Track A', 'the entry is the chapter CONTAINING the saved position');
+  assert.strictEqual(hit.artist, 'NESTALGIA', 'so the artist reaches the home Recently-played row');
+  assert.strictEqual(hit.progress.resumeSec, 450, 'carries the absolute file position for a resume-tap');
+  assert.strictEqual(hit.progress.position, 150, 'the bar shows the within-chapter offset (450 - 300)');
+  assert.strictEqual(hit.progress.duration, 600, 'over the chapter span, not the whole file');
+});
+
 test('v1.211 all-or-nothing: a MIXED channel shows NOTHING by default (not 1 of 3), ALL when marked', async () => {
   setToggle(actingUser.id, 'on');
   // Default (unmarked, minority-music) -> none of mixedchan shows, not even mx1.
