@@ -52,6 +52,8 @@ before(async () => {
     // subtree Music item for the RBAC test, and a dedup collision.
     db.metadata = {
       nest1: audioItem('nest1', 'nestalgiamusic', 'Gaming', 'NESTALGIA', { channelAvatarUrl: 'https://yt3.googleusercontent.com/nestalgia-avatar.jpg' }),
+      // v1.221: a chaptered "full album" mix in the (marked-on) NESTALGIA channel.
+      djmix1: audioItem('djmix1', 'nestalgiamusic', 'Music', 'NESTALGIA', { duration: 1800, chapters: [{ startTime: 0, title: 'Intro' }, { startTime: 300, title: 'Track A' }, { startTime: 900, title: 'Track B' }] }),
       tonzak1: audioItem('tonzak1', 'Tonzak', 'Music', 'Tonzak'),
       zarch1: audioItem('zarch1', 'zarchivo', 'Comedy', 'Zarchivo'),
       blk1: Object.assign(audioItem('blk1', 'blockedchan', 'Music', 'Blocked'), { filePath: path.join(blockedRoot, 'blk1.mp3') }),
@@ -228,6 +230,82 @@ test('v1.215 (Dean device): a played LIBRARY track shows in recent-listening via
   // A library track the user has NOT played is absent (proves the filter still
   // gates on a real saved position, not "every projected track").
   assert.ok(!ids.includes('tonzak1'), 'an unplayed projected track is NOT in recent-listening');
+});
+
+test('v1.221 chapter-albums: a chaptered download projects as N chapter-tracks (one Album, seek offsets), via /api/music', async () => {
+  setToggle(actingUser.id, 'on');
+  const music = await (await get('/api/music')).json();
+  const chapters = music.items.filter((i) => typeof i.id === 'string' && i.id.indexOf('djmix1::c') === 0);
+  assert.strictEqual(chapters.length, 3, 'the 3-chapter mix expands into 3 virtual tracks');
+  assert.deepStrictEqual(chapters.map((c) => c.title).sort(), ['Intro', 'Track A', 'Track B']);
+  const intro = chapters.find((c) => c.title === 'Intro');
+  assert.strictEqual(intro.source, 'library-chapter', 'carries the chapter marker');
+  assert.strictEqual(intro.streamSrc, '/video/djmix1', 'every chapter streams the ONE file');
+  assert.strictEqual(intro.chapterStartSec, 0, 'and its seek offset');
+  assert.strictEqual(chapters.find((c) => c.title === 'Track B').chapterStartSec, 900, 'chapter B seeks to 900s');
+  assert.ok(music.items.some((i) => i.id === 'nest1'), 'a non-chaptered download (nest1) stays a single track');
+  // The chapters group into ONE album (they share the file title).
+  const albums = (await (await get('/api/music/albums')).json()).items;
+  assert.ok(albums.some((a) => a.trackCount === 3), 'the mix is one album with its 3 chapters as tracks');
+});
+
+test('v1.221 search: each chapter TITLE surfaces as a playable music result via /api/search (chapters as song names)', async () => {
+  setToggle(actingUser.id, 'on');
+  const res = await (await get('/api/search?q=' + encodeURIComponent('Track A') + '&type=music')).json();
+  const hit = res.items.find((i) => i.title === 'Track A');
+  assert.ok(hit, 'the chapter title "Track A" is a findable music result');
+  assert.strictEqual(hit.resultType, 'music');
+  assert.strictEqual(hit.source, 'library-chapter', 'plays via the music player');
+  assert.strictEqual(hit.id, 'djmix1::c1');
+  assert.strictEqual(hit.chapterStartSec, 300, 'carries the seek offset so a search-tap plays that chapter');
+  assert.strictEqual(hit.streamSrc, '/video/djmix1', 'streams the one file');
+});
+
+test('v1.221 search: with the toggle OFF, library/chapter tracks never appear in music search', async () => {
+  setToggle(actingUser.id, null); // off
+  const res = await (await get('/api/search?q=' + encodeURIComponent('Track A') + '&type=music')).json();
+  assert.ok(!res.items.some((i) => i.id === 'djmix1::c1'), 'no chapter results when opted out');
+});
+
+// GATE CRITICAL (both seats): a search-tap / deep-link resolves the tapped id via
+// GET /api/music/:id BEFORE playing (the client re-resolves when the track is not
+// in recent-listening - and a chapter, whose progress is never saved, is NEVER in
+// recent-listening). The route only read the NATIVE store, so every chapter (and
+// never-played library single) search-tap 404'd and played nothing. It must now
+// resolve a projected id from the same opt-in projection - RBAC + toggle gated.
+test('v1.221 GATE FIX: GET /api/music/:id resolves a projected CHAPTER id (the search-tap/deep-link play entry)', async () => {
+  setToggle(actingUser.id, 'on');
+  const res = await get('/api/music/' + encodeURIComponent('djmix1::c1'));
+  assert.strictEqual(res.status, 200, 'the chapter id resolves (was 404 = a dead search-tap)');
+  const t = await res.json();
+  assert.strictEqual(t.id, 'djmix1::c1');
+  assert.strictEqual(t.source, 'library-chapter');
+  assert.strictEqual(t.chapterStartSec, 300, 'carries the seek so the tap plays THAT chapter');
+  assert.strictEqual(t.streamSrc, '/video/djmix1', 'plays the shared file');
+  assert.ok(t.albumKey, 'and an albumKey so the tap drills into its album');
+});
+
+test('v1.221 GATE FIX: GET /api/music/:id resolves a projected library SINGLE (never-played download) too', async () => {
+  setToggle(actingUser.id, 'on');
+  const res = await get('/api/music/nest1'); // a non-chaptered projected download
+  assert.strictEqual(res.status, 200, 'a downloaded single resolves for the search-tap');
+  assert.strictEqual((await res.json()).source, 'library', 'the library marker rides so it streams from /video');
+});
+
+test('v1.221 GATE FIX: the resolve is toggle-gated - OFF => 404 (never resolvable when opted out)', async () => {
+  setToggle(actingUser.id, null); // off
+  assert.strictEqual((await get('/api/music/' + encodeURIComponent('djmix1::c1'))).status, 404, 'no chapter resolve when opted out');
+  assert.strictEqual((await get('/api/music/nest1')).status, 404, 'no library single resolve when opted out');
+});
+
+test('v1.221 GATE FIX: the resolve is RBAC-gated - a member restricted from the file cannot resolve its chapters', async () => {
+  const fm = __mintTestSession({ username: 'chapgate', role: 'member' });
+  userStore.setSettingsJson(fm.user.id, { musicIncludesLibrary: 'on' });
+  userStore.setRestrictions(fm.user.id, [{ kind: 'folder', value: 'nestalgiamusic' }]); // djmix1 lives here
+  // Admin (toggle on) CAN resolve it - proves the 404 below is RBAC, not absence.
+  setToggle(actingUser.id, 'on');
+  assert.strictEqual((await get('/api/music/' + encodeURIComponent('djmix1::c1'))).status, 200, 'admin resolves the chapter');
+  assert.strictEqual((await get('/api/music/' + encodeURIComponent('djmix1::c1'), fm.cookie)).status, 404, 'the restricted member cannot resolve the blocked file\'s chapter');
 });
 
 test('v1.211 all-or-nothing: a MIXED channel shows NOTHING by default (not 1 of 3), ALL when marked', async () => {

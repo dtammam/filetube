@@ -486,3 +486,77 @@ test('redesign S1: an artist avatar circle reveals on LOAD and DROPS on ERROR (b
       'a loaded avatar reveals (.is-loaded)');
   });
 });
+
+// v1.221 (slice 3): a chapter-album - one downloaded file whose 2+ embedded
+// chapters are projected as per-chapter tracks (source 'library-chapter', all
+// sharing the file's title as their album) - drills into the SAME album view
+// as any album: the chapter titles are the ordered tracklist, and tapping one
+// plays the shared file (loads via the media route) from that chapter's offset.
+// No new drill code: this binds that the projected chapter-tracks flow through
+// the existing album grouping (albumKeyFor -> artist␟fileTitle) intact.
+const CH_KEY = 'NESTALGIA␟DJ Mix 2024';
+const CH_ALBUM = [
+  { id: 'djmix1::c0', title: 'Intro', artist: 'NESTALGIA', album: 'DJ Mix 2024', albumKey: CH_KEY, trackNo: 1, durationSec: 300, source: 'library-chapter', streamSrc: '/video/djmix1', progressEndpoint: '/api/progress', chapterStartSec: 0 },
+  { id: 'djmix1::c1', title: 'Track A', artist: 'NESTALGIA', album: 'DJ Mix 2024', albumKey: CH_KEY, trackNo: 2, durationSec: 600, source: 'library-chapter', streamSrc: '/video/djmix1', progressEndpoint: '/api/progress', chapterStartSec: 300 },
+  { id: 'djmix1::c2', title: 'Track B', artist: 'NESTALGIA', album: 'DJ Mix 2024', albumKey: CH_KEY, trackNo: 3, durationSec: 400, source: 'library-chapter', streamSrc: '/video/djmix1', progressEndpoint: '/api/progress', chapterStartSec: 900 },
+];
+
+test('v1.221 (slice 3): a chapter-album drills into an ordered chapters-as-tracklist, and a tapped chapter plays the shared file from its offset', async () => {
+  const chFetch = (calls) => (url, init) => {
+    calls.fetches.push(url);
+    const method = (init && init.method) || 'GET';
+    if (method === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    if (url.indexOf('/api/music/albums') === 0 || url.indexOf('/api/music/artists') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    if (url.indexOf('album=') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: CH_ALBUM }) });
+    const idMatch = url.match(/\/api\/music\/([^?]+)$/);
+    if (idMatch) { const t = CH_ALBUM.find((x) => x.id === decodeURIComponent(idMatch[1])); return Promise.resolve({ ok: true, json: async () => (t || {}) }); }
+    if (url.indexOf('/api/music') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: CH_ALBUM }) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot('http://localhost/music?play=djmix1::c1', { state: 'docked', currentId: null }, { fetch: chFetch }, async (dom, calls) => {
+    const html = content(dom).innerHTML;
+    assert.match(html, /music-drill/, 'the chapter-album opened as an album drill');
+    // the chapters ARE the tracklist, and IN chapter order (Intro, Track A, Track B)
+    const order = ['Intro', 'Track A', 'Track B'].map((t) => html.indexOf(t));
+    assert.ok(order.every((i) => i >= 0), 'every chapter title is a track row');
+    assert.ok(order[0] < order[1] && order[1] < order[2], 'the tracklist is in chapter (trackNo) order');
+    // the tapped chapter is playing, and it loaded the SHARED file with its seek
+    const load = calls.load.find((c) => c.id === 'djmix1::c1');
+    assert.ok(load, 'the picked chapter loaded into the player');
+    assert.strictEqual(load.data.streamSrc, '/video/djmix1', 'plays the shared downloaded file (media route)');
+    assert.strictEqual(load.data.chapterStartSec, 300, 'seeks to the chapter offset');
+  });
+});
+
+// v1.221 GATE CRITICAL fix (both seats): the SEARCH-TAP / deep-link path. A search
+// result navigates to /music?play=<id>; playTrackFromContinue looks the track up in
+// recent-listening and, when absent (a chapter is NEVER in recent-listening - its
+// progress is never saved), FALLS BACK to GET /api/music/<id>. This binds that real
+// fallback: recent-listening does NOT contain the chapter, so the tap must re-resolve
+// via /api/music/<id> and STILL play (seeked). The original slice-3 fixture returned
+// the album for recent-listening too, so idx>=0 and this fallback never ran - the
+// divergent fixture that let the inert search-tap ship green.
+test('v1.221 (GATE FIX): a search-tap of a chapter NOT in recent-listening re-resolves via /api/music/:id and plays it seeked', async () => {
+  const resolveFetch = (calls) => (url, init) => {
+    calls.fetches.push(url);
+    const method = (init && init.method) || 'GET';
+    if (method === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    if (url.indexOf('/api/music/albums') === 0 || url.indexOf('/api/music/artists') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    // recent-listening deliberately does NOT contain djmix1::c1 -> forces the fallback.
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    if (url.indexOf('album=') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: CH_ALBUM }) });
+    // the single-track resolve the fallback hits (the endpoint the gate fix made work):
+    const idMatch = url.match(/\/api\/music\/([^?]+)$/);
+    if (idMatch) { const t = CH_ALBUM.find((x) => x.id === decodeURIComponent(idMatch[1])); return Promise.resolve({ ok: true, json: async () => (t || {}) }); }
+    if (url.indexOf('/api/music') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot('http://localhost/music?play=djmix1::c1', { state: 'docked', currentId: null }, { fetch: resolveFetch }, async (dom, calls) => {
+    // it took the fallback (not the recent-listening queue)
+    assert.ok(calls.fetches.some((u) => /\/api\/music\/[^?]+$/.test(u) && decodeURIComponent(u).endsWith('/api/music/djmix1::c1')), 'the tap re-resolved the id via /api/music/:id');
+    const load = calls.load.find((c) => c.id === 'djmix1::c1');
+    assert.ok(load, 'the re-resolved chapter actually played (was a dead 404 tap before the fix)');
+    assert.strictEqual(load.data.chapterStartSec, 300, 'and it plays seeked to the chapter');
+    assert.strictEqual(load.data.streamSrc, '/video/djmix1', 'streaming the shared file');
+  });
+});

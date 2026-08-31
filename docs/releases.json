@@ -2446,5 +2446,11 @@
     "date": "2026-08-31",
     "title": "Critters stay off the sliding rows entirely",
     "intent": "A follow-up to last update: making the critters ride the scrolling rows still looked a bit off, so now they simply don't appear on those horizontal sliding rows at all (like Music's 'Recently played' or the books shelf). They still pop up everywhere else - on your cards, tiles and artwork - just not on the rows that slide."
+  },
+  {
+    "version": "1.221.0",
+    "date": "2026-08-31",
+    "title": "Downloaded mixes and full-album files become albums in Music",
+    "intent": "If you download a long audio file that has chapters - a DJ mix, a full album, a live set - Music now treats it as an album: each chapter shows up as its own track you can tap, and you can search for a chapter by name and jump straight to it. Tapping a chapter starts playing right at that spot in the file. This only applies to downloaded audio you've chosen to include in Music. One thing to know for now: once a chapter starts it keeps playing into the next one rather than stopping at the chapter's end, and it always starts a chapter from the beginning."
   }
 ]

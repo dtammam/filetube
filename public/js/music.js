@@ -1222,7 +1222,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // resumeMode stays 'music' (the smart-resume, no "Resume at..." prompt, and
       // the music now-playing panel) - the read then hits progressEndpoint
       // (/api/progress), unifying the resume position with the feed side.
-      var isLib = item.source === 'library';
+      // v1.221: a CHAPTER-track (source 'library-chapter') is a library track too
+      // - it uses the same media routes (streamSrc /video/<file>), plus a
+      // chapterStartSec seek offset the player honours on load.
+      var isChapter = item.source === 'library-chapter';
+      var isLib = item.source === 'library' || isChapter;
       var data = {
         type: 'audio',
         title: item.title,
@@ -1234,6 +1238,9 @@ if (typeof module !== 'undefined' && module.exports) {
         artUrl: (isLib && item.artUrl) ? item.artUrl : ('/albumart/' + item.id),
         streamSrc: (isLib && item.streamSrc) ? item.streamSrc : ('/track/' + item.id),
         progressEndpoint: (isLib && item.progressEndpoint) ? item.progressEndpoint : '/api/music/progress',
+        // v1.221: seek to the chapter start on load; also marks a chapter-track so
+        // the player skips per-file progress save (its id isn't a media id).
+        chapterStartSec: isChapter ? (Number(item.chapterStartSec) || 0) : undefined,
         resumeMode: 'music',
         autoAdvanceViaTrackNav: true,
         browseCtx: queueCtxEncoded,

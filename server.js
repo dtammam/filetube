@@ -8326,7 +8326,10 @@ function publicTrackListItem(track, userId, likedSet, progressMap) {
   // progress to the MEDIA store - so it carries its own routes + a source marker
   // for the client's loadTrack to branch on, and its art/transcode flags come
   // from the media item, NOT the music-namespace albumart/codec paths.
-  const isLib = track.source === 'library';
+  // v1.221: a chapter-track (source 'library-chapter') is a library track too - it
+  // needs the same media-route markers, plus its chapterStartSec seek offset.
+  const isLib = track.source === 'library' || track.source === 'library-chapter';
+  const isChapter = track.source === 'library-chapter';
   return {
     id: track.id,
     title: track.title,
@@ -8359,11 +8362,14 @@ function publicTrackListItem(track, userId, likedSet, progressMap) {
     // prefers these routes over the /track,/albumart,/api/music/progress
     // defaults.
     ...(isLib ? {
-      source: 'library',
+      source: track.source, // 'library' or 'library-chapter'
       streamSrc: track.streamSrc,
       artUrl: track.artUrl,
       progressEndpoint: track.progressEndpoint,
     } : {}),
+    // v1.221: the seek offset for a virtual chapter-track (the client seeks the
+    // one file here on play; absent on a plain track).
+    ...(isChapter ? { chapterStartSec: track.chapterStartSec } : {}),
   };
 }
 
@@ -8389,12 +8395,16 @@ function projectedLibraryTracks(req, nativeTracks) {
     if (!libraryAudio.isEligibleAudio(item, marks, autoSet)) continue;
     if (!mediaVisibleTo(req, item)) continue; // the MEDIA gate
     if (nativeIds.has(item.id)) continue; // a file in both roots: the native track wins
-    const track = libraryAudio.projectAudioItem(item);
+    // v1.221 chapter-albums: a chaptered file expands into one virtual track per
+    // chapter (else a single track). resolveChapters is server.js's own resolver
+    // (embedded|manual|description); the chapter-tracks share the file's title as
+    // their album, so groupAlbums folds them into one Album.
+    const tracks = libraryAudio.expandAudioToTracks(item, (it) => resolveItemChapters(it).chapters);
     // Music redesign Slice 1: carry the channel avatar so the artist circle has a
     // real picture (the resolver is READ-ONLY: item -> channelId registry ->
     // subscription). Native music tracks have no channel, so no avatar.
-    track.avatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item) || '';
-    out.push(track);
+    const avatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item) || '';
+    for (const track of tracks) { track.avatarUrl = avatarUrl; out.push(track); }
   }
   return out;
 }
@@ -8420,7 +8430,7 @@ function musicListProgressMap(userId, tracks) {
   // restore bundle) assigns an OWN key here instead of reparenting `out`.
   const out = Object.create(null);
   for (const t of tracks) {
-    if (t.source === 'library') {
+    if (t.source === 'library' || t.source === 'library-chapter') {
       const m = media[t.id];
       if (m) out[t.id] = { position: m.timestamp, duration: m.duration, updatedAt: m.updatedAt };
     } else {
@@ -8597,11 +8607,26 @@ app.get('/api/music/progress/:id', (req, res) => {
 app.get('/api/music/:id', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   const track = ownTrack(ns.tracks, req.params.id);
-  if (!track) return res.status(404).json({ error: 'no such track' });
-  if (!trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC
+  if (track) {
+    if (!trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC
+    const likedSet = new Set(userStore.getMusicLiked(req.user.id));
+    const progressMap = userStore.getMusicProgress(req.user.id);
+    return res.json(publicTrackListItem(track, req.user.id, likedSet, progressMap));
+  }
+  // v1.221: a PROJECTED library/chapter id has no native record. Resolve it from
+  // the SAME opt-in projection the list + search build (RBAC via mediaVisibleTo,
+  // eligibility, and the toggle all live INSIDE projectedLibraryTracks) and match
+  // by full id - so a search-tap / deep-link (?play=<id>) of a downloaded track or
+  // a chapter plays instead of 404ing. Reusing the projection (not a bespoke id
+  // decode) keeps "resolvable" == "appears in the list/search": no second gate to
+  // drift out of sync (the two-reader-seam class). A restricted file, or the
+  // toggle off, yields no match -> 404, exactly as it is absent from the list.
+  const native = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t));
+  const projected = projectedLibraryTracks(req, native).find((t) => t.id === req.params.id);
+  if (!projected) return res.status(404).json({ error: 'no such track' });
   const likedSet = new Set(userStore.getMusicLiked(req.user.id));
-  const progressMap = userStore.getMusicProgress(req.user.id);
-  res.json(publicTrackListItem(track, req.user.id, likedSet, progressMap));
+  const progressMap = musicListProgressMap(req.user.id, [projected]); // media-store merge (v1.215)
+  res.json(publicTrackListItem(projected, req.user.id, likedSet, progressMap));
 });
 
 // Range-streamed audio. Native containers stream directly; a probed-ALAC
@@ -10793,6 +10818,16 @@ app.get('/api/search', (req, res) => {
     // buildWatchUrl re-validates the id (null on anything unsafe); the key is
     // absent when there is nothing safe to share (C4, the /api/videos posture).
     buildWatchUrl: (item) => (typeof item.youtubeId === 'string' ? (buildWatchUrl(item.youtubeId) || undefined) : undefined),
+    // v1.221: the projected library-audio tracks (downloaded audio the user opted
+    // into, chaptered files expanded into per-chapter tracks) so searchMusic can
+    // surface them as MUSIC results - a downloaded track (and each CHAPTER TITLE)
+    // is findable + plays via the music player. Lazy (only the music arm calls it);
+    // gated by the same opt-in + RBAC as /api/music.
+    musicLibraryTracks: () => {
+      const ns = musicStore.readMusic(db);
+      const native = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t));
+      return projectedLibraryTracks(req, native);
+    },
   };
   const ranked = searchRegistry.runSearch(query, chip, req, deps);
   const total = ranked.length;
