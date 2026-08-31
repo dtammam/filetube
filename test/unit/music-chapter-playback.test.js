@@ -83,6 +83,42 @@ test('v1.221 (slice 4): playing a chapter-track loads the SHARED file with the m
   }
 });
 
+test('v1.221 (slice 4, gate SUGGESTION): the FIRST chapter (chapterStartSec 0) carries 0 into the player data - never dropped as falsy', async () => {
+  const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music' });
+  const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController };
+  global.window = dom.window; global.document = dom.window.document;
+  global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
+  const loads = [];
+  const intro = Object.assign({}, CHAPTER_TRACK, { id: 'djmix1::c0', title: 'Intro', chapterStartSec: 0 });
+  global.fetch = (url, init) => {
+    const method = (init && init.method) || 'GET';
+    if (method === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    if (String(url).indexOf('/api/music/albums') === 0 || String(url).indexOf('/api/music/artists') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    if (String(url).indexOf('/api/music') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [intro] }) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  let mod = null;
+  dom.window.FileTube = {
+    registerView: (name, m) => { mod = m; }, encodeListContext: () => '', decodeListContext: () => null, shimmerArt: () => {},
+    player: { currentId: null, getState: () => 'docked', expand: () => {}, setTrackNav: () => {}, load: (id, data) => { loads.push({ id, data }); } },
+  };
+  try { dom.window.localStorage.setItem('filetube_music_tab', 'songs'); } catch (_) { /* ignore */ }
+  try {
+    delete require.cache[musicPath];
+    require(musicPath);
+    mod.init(dom.window.document.getElementById('view-root'));
+    for (let i = 0; i < 10; i++) await settle();
+    dom.window.document.querySelector('.music-song-row').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 10; i++) await settle();
+    const load = loads.find((l) => l.id === 'djmix1::c0');
+    assert.ok(load, 'the first chapter played');
+    assert.strictEqual(load.data.chapterStartSec, 0, 'chapterStartSec 0 is carried as 0 (a number), not undefined - the seek to file start still fires');
+  } finally {
+    delete require.cache[musicPath];
+    Object.assign(global, saved);
+  }
+});
+
 test('v1.221 (slice 4 SOURCE-LOCK): the player seeks a chapter-track to chapterStartSec BEFORE the music resume branch', () => {
   const fn = PLAYER_JS.slice(PLAYER_JS.indexOf('function handleResumePlayback'), PLAYER_JS.indexOf('function saveProgressToServer'));
   assert.match(fn, /if \(currentData && typeof currentData\.chapterStartSec === 'number'\) \{[\s\S]*?resumeDirectly\(currentData\.chapterStartSec\);[\s\S]*?return;/,

@@ -10,7 +10,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const { autoMusicChannels, channelEffectiveOn, isEligibleAudio, projectAudioItem, expandAudioToTracks, chapterTrackId, parseChapterTrackId } = require('../../lib/music/libraryAudio');
+const { autoMusicChannels, channelEffectiveOn, isEligibleAudio, projectAudioItem, expandAudioToTracks, chapterTrackId } = require('../../lib/music/libraryAudio');
 const store = require('../../lib/music/store');
 const query = require('../../lib/music/query');
 
@@ -229,12 +229,10 @@ test('v1.221: a 0-1 chapter file (or malformed) stays a SINGLE track, never a bo
   assert.strictEqual(expandAudioToTracks(DJ_MIX, () => [])[0].id, 'djmix1', 'the single track keeps the real file id');
 });
 
-test('v1.221: chapter-track id round-trips and rejects junk (RBAC decode safety)', () => {
+test('v1.221: a chapter-track id carries the file id + a `::c<idx>` suffix that cannot collide with a real media id', () => {
   assert.strictEqual(chapterTrackId('abc', 4), 'abc::c4');
-  assert.deepStrictEqual(parseChapterTrackId('abc::c4'), { itemId: 'abc', index: 4 });
-  assert.deepStrictEqual(parseChapterTrackId('a::b::c::c12'), { itemId: 'a::b::c', index: 12 }, 'greedy itemId, last ::cN wins');
-  assert.strictEqual(parseChapterTrackId('plainmediaid'), null, 'a real media id (no ::c) is not a chapter id');
-  assert.strictEqual(parseChapterTrackId('abc::cx'), null, 'non-numeric index rejected');
-  assert.strictEqual(parseChapterTrackId('abc::c-1'), null, 'negative index rejected');
-  assert.strictEqual(parseChapterTrackId(null), null);
+  // The id is opaque (nothing decodes it - it is matched whole against the
+  // projection). Its only structural guarantee: `::` never appears in a real
+  // md5/sha/yt-dlp media id, so a chapter id can never masquerade as a native one.
+  assert.ok(chapterTrackId('djmix1', 0).indexOf('::c') !== -1, 'the suffix marks it apart from a bare media id');
 });

@@ -8607,11 +8607,26 @@ app.get('/api/music/progress/:id', (req, res) => {
 app.get('/api/music/:id', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   const track = ownTrack(ns.tracks, req.params.id);
-  if (!track) return res.status(404).json({ error: 'no such track' });
-  if (!trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC
+  if (track) {
+    if (!trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC
+    const likedSet = new Set(userStore.getMusicLiked(req.user.id));
+    const progressMap = userStore.getMusicProgress(req.user.id);
+    return res.json(publicTrackListItem(track, req.user.id, likedSet, progressMap));
+  }
+  // v1.221: a PROJECTED library/chapter id has no native record. Resolve it from
+  // the SAME opt-in projection the list + search build (RBAC via mediaVisibleTo,
+  // eligibility, and the toggle all live INSIDE projectedLibraryTracks) and match
+  // by full id - so a search-tap / deep-link (?play=<id>) of a downloaded track or
+  // a chapter plays instead of 404ing. Reusing the projection (not a bespoke id
+  // decode) keeps "resolvable" == "appears in the list/search": no second gate to
+  // drift out of sync (the two-reader-seam class). A restricted file, or the
+  // toggle off, yields no match -> 404, exactly as it is absent from the list.
+  const native = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t));
+  const projected = projectedLibraryTracks(req, native).find((t) => t.id === req.params.id);
+  if (!projected) return res.status(404).json({ error: 'no such track' });
   const likedSet = new Set(userStore.getMusicLiked(req.user.id));
-  const progressMap = userStore.getMusicProgress(req.user.id);
-  res.json(publicTrackListItem(track, req.user.id, likedSet, progressMap));
+  const progressMap = musicListProgressMap(req.user.id, [projected]); // media-store merge (v1.215)
+  res.json(publicTrackListItem(projected, req.user.id, likedSet, progressMap));
 });
 
 // Range-streamed audio. Native containers stream directly; a probed-ALAC

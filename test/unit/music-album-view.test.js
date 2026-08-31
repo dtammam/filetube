@@ -527,3 +527,36 @@ test('v1.221 (slice 3): a chapter-album drills into an ordered chapters-as-track
     assert.strictEqual(load.data.chapterStartSec, 300, 'seeks to the chapter offset');
   });
 });
+
+// v1.221 GATE CRITICAL fix (both seats): the SEARCH-TAP / deep-link path. A search
+// result navigates to /music?play=<id>; playTrackFromContinue looks the track up in
+// recent-listening and, when absent (a chapter is NEVER in recent-listening - its
+// progress is never saved), FALLS BACK to GET /api/music/<id>. This binds that real
+// fallback: recent-listening does NOT contain the chapter, so the tap must re-resolve
+// via /api/music/<id> and STILL play (seeked). The original slice-3 fixture returned
+// the album for recent-listening too, so idx>=0 and this fallback never ran - the
+// divergent fixture that let the inert search-tap ship green.
+test('v1.221 (GATE FIX): a search-tap of a chapter NOT in recent-listening re-resolves via /api/music/:id and plays it seeked', async () => {
+  const resolveFetch = (calls) => (url, init) => {
+    calls.fetches.push(url);
+    const method = (init && init.method) || 'GET';
+    if (method === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    if (url.indexOf('/api/music/albums') === 0 || url.indexOf('/api/music/artists') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    // recent-listening deliberately does NOT contain djmix1::c1 -> forces the fallback.
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    if (url.indexOf('album=') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: CH_ALBUM }) });
+    // the single-track resolve the fallback hits (the endpoint the gate fix made work):
+    const idMatch = url.match(/\/api\/music\/([^?]+)$/);
+    if (idMatch) { const t = CH_ALBUM.find((x) => x.id === decodeURIComponent(idMatch[1])); return Promise.resolve({ ok: true, json: async () => (t || {}) }); }
+    if (url.indexOf('/api/music') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot('http://localhost/music?play=djmix1::c1', { state: 'docked', currentId: null }, { fetch: resolveFetch }, async (dom, calls) => {
+    // it took the fallback (not the recent-listening queue)
+    assert.ok(calls.fetches.some((u) => /\/api\/music\/[^?]+$/.test(u) && decodeURIComponent(u).endsWith('/api/music/djmix1::c1')), 'the tap re-resolved the id via /api/music/:id');
+    const load = calls.load.find((c) => c.id === 'djmix1::c1');
+    assert.ok(load, 'the re-resolved chapter actually played (was a dead 404 tap before the fix)');
+    assert.strictEqual(load.data.chapterStartSec, 300, 'and it plays seeked to the chapter');
+    assert.strictEqual(load.data.streamSrc, '/video/djmix1', 'streaming the shared file');
+  });
+});
