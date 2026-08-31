@@ -80,6 +80,44 @@
 
 ## Shipped
 
+### v1.227.0 - Mobile music player: three pickable skins over one engine (2026-08-31)
+
+Dean's big wave. The mobile-only music now-playing is now a user-pickable SKIN -
+**Apple Music** (big art on near-black, pink accent), **Spotify** (purple->black
+wash, green now-playing accent), or **iPod** (warm cream/aluminum, framed cover,
+classic blue tracklist) - switchable from a segmented control in the now-playing.
+Mockup approved (https://claude.ai/code/artifact/033b8ee3-bc04-4f27-9a87-3df589a6b204).
+
+**The one architectural rule that made it safe:** KEEP the battle-won audio engine,
+build a new PRESENTATION on top. The skin is pure chrome that PROXIES to the
+player's existing hidden controls (play->#pp-btn, prev/next->#track-prev/next-btn,
+seek->#seek-bar's full commit+save pipeline) and REFLECTS #media-player state - it
+never calls audio / MediaSession / background-audio. **player.js is byte-unchanged**
+(both gate seats verified), so background play + the lock screen are unreachable
+from this diff. Gated strictly on mobile (matchMedia 768px) + music
+(resumeMode==='music'); desktop and all non-music (video/podcast/book) are
+untouched - double-gated (a body class AND @media, AND scoped to the music view).
+
+**What the full gate caught (both seats APPROVE after one fix round).** The
+adversarial seat found a real CRITICAL: `body.mms-on` leaked across an in-app
+navigation, so after the skinned music page a video/podcast/book would render in a
+collapsed 0-height player (they share #player-slot) - fixed by clearing the class on
+view teardown AND scoping the takeover CSS to the music view. QA caught the 43 new
+skin-palette tokens skipping the value-lock contract (now locked byte-exact) and a
+seek comment that lied (fixed by routing seek through the real seek-bar pipeline -
+so a skin scrub now saves position properly).
+
+**Known gaps (disclosed).**
+- The **skinned dock mini-bar** is deferred to a fast follow - the existing mini
+  already returns you to the full skin; this ships the three full-screen skins +
+  picker (Dean's core ask).
+- The scrubber has no keyboard-seek handler yet (minor a11y follow-up).
+- The **skins' pixel feel is device-pending** - the mockup was static; this is the
+  first cut on the live engine and will want Dean's on-device tweak pass.
+
+Full two-reviewer gate (QA + adversarial, both APPROVE, one fix round). Dual-Node
+7966/0 (Node 22.23.1 + 24.14.0). **Dean's device pass PENDING.**
+
 ### v1.226.0 - Theatre now-playing no longer shoves "Jump back in" down on return (2026-08-31)
 
 Dean device pass on v1.225: in THEATRE (up-next beside the player), returning via

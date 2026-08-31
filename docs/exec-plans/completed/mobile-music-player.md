@@ -1,6 +1,9 @@
 # Exec plan: mobile music player — skins over one engine (mobile-only)
 
-Status: ACTIVE. Owner: main session. Gate: FULL (touches the battle-won shared
+Status: SHIPPED v1.227.0 (2026-08-31; full gate, both seats APPROVE after one fix
+round - the adversarial CRITICAL mms-on leak + QA's token-lock/seek findings;
+player.js byte-unchanged. Dock mini + seek a11y deferred; DEVICE PENDING). Owner:
+main session. Gate: FULL (touches the battle-won shared
 player's presentation + gating; the reviewer's whole job is to try to break
 background play / lock-screen / desktop). Dean (2026-08-31): make the MOBILE music
 experience excellent (Spotify / YouTube Music / iTunes-iPod inspiration), as a set

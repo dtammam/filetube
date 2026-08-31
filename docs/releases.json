@@ -2482,5 +2482,11 @@
     "date": "2026-08-31",
     "title": "No more layout jump in the wide Music player when you come back to a song",
     "intent": "A polish fix for the wide (theatre) Music player on desktop. When you tapped the mini-player to come back to what's playing, the page looked right for a moment and then the 'Jump back in' row jumped downward as the track list filled in. Now the track list scrolls inside its own panel instead of pushing the rest of the page around, so everything stays where it lands - no jump."
+  },
+  {
+    "version": "1.227.0",
+    "date": "2026-08-31",
+    "title": "Pick how the Music player looks on your phone: Apple Music, Spotify, or iPod",
+    "intent": "The full-screen Music player on your phone now comes in three looks you can switch between right from the now-playing screen: an Apple-Music-style big-art view, a Spotify-style dark view, and a warm retro iPod view. Pick whichever feels right - it's remembered on your device. It's phone-only; the desktop player is unchanged. Under the hood it's the same player as before, so background play and your lock-screen controls keep working exactly as they did. This is a first cut of the look, so expect some polishing to come."
   }
 ]
