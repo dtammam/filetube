@@ -80,6 +80,32 @@
 
 ## Shipped
 
+### v1.220.0 - Critters stay out of scrolling strips (reverses v1.219's approach) (2026-08-31)
+
+Dean tested v1.219's "make critters ride the scroll" on device and it was still
+glitchy. His ruling: just don't place critters in scrollable areas at all.
+
+**What shipped.** `critterInsideScroller(el)` (mirrors `critterInsideFixed`)
+walks an anchor's ancestors for a genuinely-scrollable container (computed
+overflow-x/y scroll|auto AND that axis actually overflows), and
+`collectCritterRects` skips such anchors - so critters never land inside the
+Music shelves (`.music-shelf-row`) or the books row (both `overflow-x: auto`),
+while the page-scrolled grid/list views keep theirs. The entire v1.219
+scroll-stick (the inner-scroll listener + `repositionCrittersForScroll` + its
+test) was REVERTED - with the exclusion it would be unreachable dead code, the
+class this repo has learned to stop shipping.
+
+**Process note (honest).** The git-add-abort scar re-struck: a `git rm`'d path in
+a `git add` list aborted the whole add, so the first commit landed with only the
+deletion; caught before push and amended with the real changes. The slim gate
+(adversarial) confirmed the revert is complete (zero dangling refs, wire/unwire
+byte-identical to pre-v1.219) and - unlike the v1.219 miss - the fixture drives
+the real overflow mechanism (jsdom reflects `overflow-x: auto`), so the exclusion
+genuinely fires on the strips Dean flagged.
+
+Slim gate (adversarial seat, APPROVE, no fix round). Dual-Node 7916/0
+(Node 22.23.1 + 24.14.0). **Dean's device pass PENDING.**
+
 ### v1.219.0 - Critters ride a scrolling strip instead of detaching (2026-08-31)
 
 Dean's device pics: a critter anchored to a tile inside the Music "Recently

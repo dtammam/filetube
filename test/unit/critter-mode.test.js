@@ -1262,6 +1262,47 @@ test('v1.167: an anchor inside a FIXED subtree is skipped (its rect is viewport-
   }
 });
 
+test('v1.220 (Dean device): critterInsideScroller - true inside a genuinely scrollable strip, false otherwise', () => {
+  const dom = new JSDOM('<!DOCTYPE html><body>'
+    + '<div id="strip" style="overflow-x: auto;"><a class="video-card" id="in">In</a></div>'
+    + '<div id="faux" style="overflow-x: auto;"><a class="video-card" id="nof">No overflow</a></div>'
+    + '<a class="video-card" id="free">Free</a></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const { critterInsideScroller } = require('../../public/js/common.js');
+    const strip = dom.window.document.getElementById('strip');
+    Object.defineProperty(strip, 'scrollWidth', { value: 800, configurable: true });
+    Object.defineProperty(strip, 'clientWidth', { value: 300, configurable: true });
+    const faux = dom.window.document.getElementById('faux'); // overflow-auto but NOT overflowing
+    Object.defineProperty(faux, 'scrollWidth', { value: 300, configurable: true });
+    Object.defineProperty(faux, 'clientWidth', { value: 300, configurable: true });
+    assert.strictEqual(critterInsideScroller(dom.window.document.getElementById('in')), true,
+      'inside an overflow-auto strip that ACTUALLY overflows -> skipped (Dean: not in scrollers)');
+    assert.strictEqual(critterInsideScroller(dom.window.document.getElementById('nof')), false,
+      'overflow-auto but NOT overflowing (scrollWidth==clientWidth) -> still an anchor, no false-positive');
+    assert.strictEqual(critterInsideScroller(dom.window.document.getElementById('free')), false,
+      'no scrollable ancestor -> anchors normally');
+  } finally { delete global.window; delete global.document; dom.window.close(); }
+});
+
+test('v1.220: collectCritterRects SKIPS an anchor inside a scrollable strip (wires critterInsideScroller)', () => {
+  const dom = new JSDOM('<!DOCTYPE html><body>'
+    + '<div id="strip" style="overflow-x: auto;"><a class="video-card" id="in">In</a></div>'
+    + '<a class="video-card" id="out">Out</a></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  const proto = dom.window.Element.prototype;
+  const orig = proto.getBoundingClientRect;
+  proto.getBoundingClientRect = function () { return { left: 10, top: 10, right: 110, bottom: 60, width: 100, height: 50, x: 10, y: 10 }; };
+  try {
+    const strip = dom.window.document.getElementById('strip');
+    Object.defineProperty(strip, 'scrollWidth', { value: 800, configurable: true });
+    Object.defineProperty(strip, 'clientWidth', { value: 300, configurable: true });
+    const rects = collectCritterRects(['.video-card'], true);
+    assert.ok(!rects.some((r) => r.el && r.el.id === 'in'), 'the card inside the scrollable strip is NOT collected');
+    assert.ok(rects.some((r) => r.el && r.el.id === 'out'), 'the card outside the strip IS still collected');
+  } finally { proto.getBoundingClientRect = orig; delete global.window; delete global.document; dom.window.close(); }
+});
+
 // ---- v1.170 peek-fit polish (Dean's three screenshots) ----------------------
 
 test('v1.170 CROSS-AXIS FIT: no critter towers over a small button - rotated extent capped at 1.15x the anchor cross axis', () => {
