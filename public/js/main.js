@@ -2043,12 +2043,19 @@ const PreviewCards = (function () {
       const staleMusicBtn = document.getElementById('folder-music-toggle');
       if (staleMusicBtn && staleMusicBtn.parentNode) staleMusicBtn.parentNode.removeChild(staleMusicBtn);
       const folderHasAudio = Array.isArray(currentItems) && currentItems.some((it) => it && it.type === 'audio');
-      if (folderFilter && videosHeader && folderHasAudio && cardCornerCaps && cardCornerCaps.canModifyLibrary === true) {
+      // v1.224 (Dean): the ♪ shows whenever the FOLDER has audio (server truth),
+      // not just when an audio file is on the loaded page - so it appears on the
+      // "home -> click channel" view too (that's a ?folder= view whose first page
+      // may be all videos). Gate only on the folder view + permission here; start
+      // hidden unless the loaded page already shows audio (no flash), then the
+      // music-flag fetch's hasAudio is authoritative (reveal, or remove).
+      if (folderFilter && videosHeader && cardCornerCaps && cardCornerCaps.canModifyLibrary === true) {
         const mbtn = document.createElement('button');
         mbtn.id = 'folder-music-toggle';
         mbtn.type = 'button';
         mbtn.className = 'folder-music-toggle';
         mbtn.textContent = '♪';
+        mbtn.hidden = !folderHasAudio; // optimistic show if the page has audio; the fetch confirms
         let effectiveNow = false;
         const paint = (effective) => {
           mbtn.classList.toggle('is-on', !!effective);
@@ -2060,8 +2067,16 @@ const PreviewCards = (function () {
         paint(false);
         fetch(`/api/folders/music-flag?folderName=${encodeURIComponent(folderFilter)}`)
           .then((r) => r.json())
-          .then((s) => { effectiveNow = !!(s && s.effective); paint(effectiveNow); })
-          .catch(() => {});
+          .then((s) => {
+            // hasAudio is the authority: a folder with NO audio never gets the mark
+            // (the toggle would be meaningless); one WITH audio shows it even if the
+            // loaded page happened to be all videos (the channel-view gap Dean hit).
+            if (!s || s.hasAudio !== true) { if (mbtn.parentNode) mbtn.parentNode.removeChild(mbtn); return; }
+            mbtn.hidden = false;
+            effectiveNow = !!s.effective;
+            paint(effectiveNow);
+          })
+          .catch(() => { if (!folderHasAudio && mbtn.parentNode) mbtn.parentNode.removeChild(mbtn); });
         mbtn.addEventListener('click', async () => {
           const next = effectiveNow ? 'off' : 'on';
           try {

@@ -19,18 +19,23 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'ma
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 
-test('the toggle renders only for a library-write user on an audio-bearing folder', () => {
-  const m = SRC.match(/if \(folderFilter && videosHeader && folderHasAudio[\s\S]{0,2000}?insertAdjacentElement\('afterend', mbtn\)/);
+test('the toggle renders for a library-write user on a folder view, gated authoritatively on the server hasAudio', () => {
+  const m = SRC.match(/if \(folderFilter && videosHeader && cardCornerCaps[\s\S]{0,3000}?insertAdjacentElement\('afterend', mbtn\)/);
   assert.ok(m, 'the folder-music-toggle render block is present');
   const block = m[0];
   assert.match(block, /folderFilter/, 'folder views only');
-  assert.match(block, /folderHasAudio/, 'gated on the folder having audio');
   assert.match(block, /cardCornerCaps\s*&&\s*cardCornerCaps\.canModifyLibrary === true/, 'gated on the library-write capability');
+  // v1.224: hasAudio (server truth) is the authority, NOT the loaded-page
+  // folderHasAudio - a folder with no audio removes the button, one WITH audio
+  // reveals it even if the loaded page was all videos (the channel-view fix).
+  assert.match(block, /s\.hasAudio !== true[\s\S]{0,140}?removeChild\(mbtn\)/, 'server hasAudio false -> the toggle is removed');
+  assert.match(block, /mbtn\.hidden = false/, 'server hasAudio true -> revealed even if the loaded page had no audio');
 });
 
-test('folderHasAudio derives from an actual audio item in the current folder', () => {
+test('folderHasAudio (loaded-page) drives only the OPTIMISTIC initial visibility, not the authority', () => {
   assert.match(SRC, /const folderHasAudio = Array\.isArray\(currentItems\) && currentItems\.some\(\(it\) => it && it\.type === 'audio'\)/,
     'hasAudio is computed from a real type:audio item, not assumed');
+  assert.match(SRC, /mbtn\.hidden = !folderHasAudio/, 'the loaded-page check only sets the initial hidden state (no flash), the fetch confirms');
 });
 
 test('the toggle reads the mark (GET) and writes the mark (POST) via the music-flag route', () => {
