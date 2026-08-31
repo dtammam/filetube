@@ -1,7 +1,8 @@
 # Exec plan: chaptered downloads as Music albums (chapters = virtual tracks)
 
-Status: ACTIVE. Owner: main session. Gate: FULL (touches the projection, search,
-the music view, AND the battle-won player). Dean (2026-08-31, hyped): a downloaded
+Status: SHIPPED v1.221.0 (2026-08-31; full gate, both seats APPROVE after one fix
+round; Dean's device pass PENDING). Owner: main session. Gate: FULL (touches the
+projection, search, the music view, AND the battle-won player). Dean (2026-08-31, hyped): a downloaded
 "full album" audio file with YouTube chapter markers should show in Music as an
 ALBUM, each CHAPTER a tapable track, searchable, tap-to-seek. Auto-detect (2+
 chapters), virtual tracks (no re-encode). Data CONFIRMED real (chapters render in

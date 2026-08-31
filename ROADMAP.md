@@ -80,6 +80,46 @@
 
 ## Shipped
 
+### v1.221.0 - Downloaded chaptered files become albums in Music (2026-08-31)
+
+A downloaded audio file (yt-dlp, audio-only) that carries 2+ embedded YouTube
+chapters now shows in Music as an **album**, each chapter a tapable track;
+chapter titles are searchable as song names, and tapping a chapter plays the one
+shared file seeked to that chapter (no re-encode). Auto-detected (any file with
+2+ chapters). Applies only to downloaded library audio already opted into Music
+(the v1.210/v1.211 `musicIncludesLibrary` toggle, default OFF).
+
+**What shipped.** `expandAudioToTracks` (lib/music/libraryAudio.js) derives one
+VIRTUAL track per chapter - id `<itemId>::c<idx>`, shared `streamSrc /video/<itemId>`,
+per-chapter `durationSec` (span to the next chapter; last = file duration), and a
+`chapterStartSec` seek offset. The chapters share the file's title as their album,
+so the existing album grouping (`albumKeyFor`) folds them into one album drill with
+no new drill code. Search surfaces the opted-in downloads and each chapter title as
+music results. The player seeks a chapter on load and skips saving progress for the
+synthetic id. A <2-chapter file stays a single track (never a bogus album).
+
+**What the gate caught (both seats, independently).** The headline
+"chapters-as-song-names in search" shipped **inert** in the first cut: a chapter
+result rendered, but tapping it played nothing. The client re-resolves a tapped
+track via `GET /api/music/:id` whenever it is not already in the recent-listening
+list - and a chapter (whose progress is never saved) is never in that list - but
+the route read only the native music store, so every chapter tap 404'd silently.
+A divergent test fixture (the album served for recent-listening too) had hidden
+it. Fix: `/api/music/:id` now falls back to the SAME opt-in projection the list
+and search build - resolving by full-id match, so RBAC + eligibility + the opt-in
+toggle stay in one gate ("resolvable == appears in the list"). The gate also
+retired a dead helper with a lying comment and pinned the first-chapter
+(`chapterStartSec 0`) seek behaviorally.
+
+**Known gap (disclosed, tech-debt #188).** A chapter plays from its start but runs
+to the END of the file - no auto-advance at the next chapter boundary, and no
+resume WITHIN a chapter (re-tapping restarts at the chapter head). The transport
+shows the chapter's own duration while the underlying media is the full file. The
+minimal cut is seek-on-load only.
+
+Full two-reviewer gate (QA + adversarial, both APPROVE after one fix round).
+Dual-Node 7935/0 (Node 22.23.1 + 24.14.0). **Dean's device pass PENDING.**
+
 ### v1.220.0 - Critters stay out of scrolling strips (reverses v1.219's approach) (2026-08-31)
 
 Dean tested v1.219's "make critters ride the scroll" on device and it was still
