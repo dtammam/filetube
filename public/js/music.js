@@ -572,6 +572,7 @@ if (typeof module !== 'undefined' && module.exports) {
         var next = !theaterOn();
         try { localStorage.setItem(THEATER_KEY, next ? '1' : '0'); } catch (_) { /* ignore */ }
         applyTheater(next);
+        updateNowPlayingPanel(); // v1.226: recompute (or clear) the theatre panel height cap
       }, { signal });
     }
 
@@ -671,13 +672,32 @@ if (typeof module !== 'undefined' && module.exports) {
       // the taller list pushed it out). rAF reads offsetTop AFTER the final layout.
       var mnpQueue = nowPlayingPanel.querySelector('.mnp-queue');
       var curRow = nowPlayingPanel.querySelector('.mnp-queue-row.is-current');
-      if (mnpQueue && curRow) {
-        var scrollCurrentIntoQueue = function () {
+      var isTheater = !!(musicStage && musicStage.classList.contains('is-theater'));
+      var settleNowPlaying = function () {
+        // v1.226 (Dean device): in THEATRE the up-next sits BESIDE the player; when
+        // the queue fills it can grow TALLER than the player and grow the whole
+        // stage, shoving "Jump back in" + the tabs/content down (the return flash).
+        // MEASURE the player and cap THIS panel to its height so the up-next scrolls
+        // INSIDE instead - the stage stays put, nothing below shifts. Cleared
+        // off-theatre so the panel flows normally. (Measure the container, per the
+        // norm - never guess a CSS-var height.)
+        try {
+          if (isTheater) {
+            var slotEl = root.querySelector('#player-slot');
+            var ph = slotEl ? slotEl.getBoundingClientRect().height : 0;
+            nowPlayingPanel.style.maxHeight = ph > 120 ? (ph + 'px') : '';
+          } else {
+            nowPlayingPanel.style.maxHeight = '';
+          }
+        } catch (_) { /* no layout */ }
+        // then scroll the current row into the (now-bounded) queue - scrollTop only,
+        // never the page. offsetTop is read AFTER the cap so the position is final.
+        if (mnpQueue && curRow) {
           try { mnpQueue.scrollTop = Math.max(0, (curRow.offsetTop - mnpQueue.offsetTop) - 8); } catch (_) { /* no layout */ }
-        };
-        if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(scrollCurrentIntoQueue);
-        else scrollCurrentIntoQueue();
-      }
+        }
+      };
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(settleNowPlaying);
+      else settleNowPlaying();
     }
     // Tapping an up-next row jumps to that queue index (stays expanded via T1).
     if (nowPlayingPanel) {

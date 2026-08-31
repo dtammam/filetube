@@ -308,8 +308,21 @@ test('v1.224: updateNowPlayingPanel scrolls the queue to the current row (not th
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/js/music.js'), 'utf8');
   assert.match(src, /nowPlayingPanel\.querySelector\('\.mnp-queue-row\.is-current'\)/, 'it targets the current row');
   assert.match(src, /mnpQueue\.scrollTop = Math\.max\(0, \(curRow\.offsetTop - mnpQueue\.offsetTop\) - 8\)/, 'it scrolls the queue box by scrollTop, not scrollIntoView/window');
-  // v1.225: deferred to the next frame so offsetTop is read AFTER the list's final
-  // (post-growth) layout - a synchronous scroll landed on the compact pre-growth
-  // list and the song got pushed out when the queue grew.
-  assert.match(src, /requestAnimationFrame\(scrollCurrentIntoQueue\)/, 'the scroll is rAF-deferred past the layout/growth');
+  // v1.225/v1.226: deferred to the next frame (settleNowPlaying) so offsetTop is
+  // read AFTER the list's final (post-growth) layout - a synchronous scroll landed
+  // on the compact pre-growth list and the song got pushed out when the queue grew.
+  assert.match(src, /requestAnimationFrame\(settleNowPlaying\)/, 'the scroll is rAF-deferred past the layout/growth');
+});
+
+// v1.226 (Dean device) SOURCE-LOCK: in THEATRE the up-next sits beside the player;
+// filling it can grow the panel TALLER than the player and grow the whole stage,
+// shoving "Jump back in" + tabs/content down (the return-from-miniplayer flash).
+// The panel is capped to the MEASURED player height so the up-next scrolls inside
+// instead of growing the stage. jsdom has no layout, so lock the glue.
+test('v1.226: the theatre now-playing panel is capped to the MEASURED player height (no stage-growth flash)', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/js/music.js'), 'utf8');
+  assert.match(src, /musicStage\.classList\.contains\('is-theater'\)/, 'gated on theatre mode');
+  assert.match(src, /root\.querySelector\('#player-slot'\)[\s\S]{0,120}?getBoundingClientRect\(\)\.height/, 'it MEASURES the player-slot height (measure the container)');
+  assert.match(src, /nowPlayingPanel\.style\.maxHeight = ph > 120 \? \(ph \+ 'px'\) : ''/, 'caps the panel to the player height in theatre');
+  assert.match(src, /else \{\s*nowPlayingPanel\.style\.maxHeight = '';/, 'clears the cap off-theatre so the panel flows normally');
 });
