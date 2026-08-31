@@ -2049,7 +2049,19 @@ const PreviewCards = (function () {
       // may be all videos). Gate only on the folder view + permission here; start
       // hidden unless the loaded page already shows audio (no flash), then the
       // music-flag fetch's hasAudio is authoritative (reveal, or remove).
-      if (folderFilter && videosHeader && cardCornerCaps && cardCornerCaps.canModifyLibrary === true) {
+      // v1.225 (Dean): a PINNED sidebar channel navigates via ?root= (not ?folder=),
+      // so the ♪ was absent there. Derive the channel folder from the loaded items'
+      // OWN folderName (correct by construction - it IS their channel, and the
+      // music-flag is keyed by folderName) when the whole view is ONE channel; a
+      // multi-channel root gets no single mark (skip). Prefer an explicit ?folder=.
+      let musicFolderName = folderFilter;
+      if (!musicFolderName && rootFilter) {
+        const itemFolders = Array.from(new Set((Array.isArray(currentItems) ? currentItems : [])
+          .map((it) => (it && typeof it.folderName === 'string' ? it.folderName.trim() : ''))
+          .filter(Boolean)));
+        if (itemFolders.length === 1) musicFolderName = itemFolders[0];
+      }
+      if (musicFolderName && videosHeader && cardCornerCaps && cardCornerCaps.canModifyLibrary === true) {
         const mbtn = document.createElement('button');
         mbtn.id = 'folder-music-toggle';
         mbtn.type = 'button';
@@ -2065,7 +2077,7 @@ const PreviewCards = (function () {
           mbtn.setAttribute('aria-pressed', effective ? 'true' : 'false');
         };
         paint(false);
-        fetch(`/api/folders/music-flag?folderName=${encodeURIComponent(folderFilter)}`)
+        fetch(`/api/folders/music-flag?folderName=${encodeURIComponent(musicFolderName)}`)
           .then((r) => r.json())
           .then((s) => {
             // hasAudio is the authority: a folder with NO audio never gets the mark
@@ -2083,7 +2095,7 @@ const PreviewCards = (function () {
             const res = await fetch('/api/folders/music-flag', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ folderName: folderFilter, music: next }),
+              body: JSON.stringify({ folderName: musicFolderName, music: next }),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             effectiveNow = (next === 'on');
