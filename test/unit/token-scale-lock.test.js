@@ -58,10 +58,30 @@ const CONTRACT = {
   '--md-tile-glyph': '#ffffff', '--md-tile-radius': '8px',
   '--md-nav-width': '250px', '--md-divider-inset': '56px',
   '--tracking-caps': '0.05em',
+  // v1.227 mobile music skins (Dean): the 3 pickable skin palettes + their bespoke
+  // geometry/shadows/type - a new user-choosable presentation axis (like the
+  // --reader-*/--md-* themes), mobile-only. The value authority for the skins' look.
+  '--mms-white': '#ffffff', '--mms-black': '#000000', '--mms-track-lt': 'rgba(255,255,255,.27)',
+  '--mms-apple-fg': '#ffffff', '--mms-apple-accent': '#fa2b56', '--mms-apple-bg': '#0c0c10',
+  '--mms-sp-fg': '#ffffff', '--mms-sp-accent': '#1db954',
+  '--mms-sp-g1': '#3a2a5a', '--mms-sp-g2': '#1b1727', '--mms-sp-g3': '#0c0c0f',
+  '--mms-ipod-fg': '#2c2822', '--mms-ipod-accent': '#3f79c9', '--mms-ipod-accent2': '#2f6fce',
+  '--mms-ipod-warm': '#8a6d3b', '--mms-ipod-line': 'rgba(120,95,50,.16)',
+  '--mms-ipod-g1': '#f4efe4', '--mms-ipod-g2': '#e9e1d2', '--mms-ipod-frame': '#cbb48f',
+  '--mms-ipod-track': '#cdbfa4', '--mms-ipod-btn1': '#fdfdfd', '--mms-ipod-btn2': '#d7d2c7',
+  '--mms-art-shadow': '0 20px 46px -16px rgba(0,0,0,.6)',
+  '--mms-ipod-art-shadow': '0 8px 22px -8px rgba(90,70,40,.55)',
+  '--mms-ipod-play-shadow': '0 2px 4px rgba(90,70,40,.4)',
+  '--mms-r-art': '14px', '--mms-r-art-ipod': '8px', '--mms-r-row-ipod': '6px',
+  '--mms-chev': '36px', '--mms-play': '66px', '--mms-play-svg': '28px', '--mms-skip-svg': '34px',
+  '--mms-rn-w': '18px', '--mms-transport-gap': '30px', '--mms-scrub-mt': '18px',
+  '--mms-transport-mt': '14px', '--mms-row-py': '9px',
+  '--mms-ls-caps': '.14em', '--mms-ls-caps2': '.1em', '--mms-ls-tight': '-.02em', '--mms-lh-ttl': '1.15',
+  '--mms-sw-on': 'rgba(255,255,255,.16)', '--mms-sw-on-ipod': 'rgba(60,45,20,.16)',
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 60, 'the 38-name contract + --dur-critter-arrive (v1.187 critter sneak-in beat) + --thumbnail-bg (Tier 4) + six --reader-* + --header-h/--sidebar-w + --on-accent (tranche F.5; --radius-lg predates the layer and lives in the era blocks) + --size-touch-watch-action (v1.96) + the ten --md-*/--tracking-caps master-detail tokens (v1.152)');
+  assert.equal(Object.keys(CONTRACT).length, 103, 'the 60-name contract (see history) + the 43 --mms-* mobile-music-skin tokens (v1.227): 3 skin palettes, their shadows/radii/geometry, caps tracking + title leading, and the switcher chip tints');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());

@@ -10896,6 +10896,103 @@ html[data-modern="on"] .video-uploader {
 .mnp-queue-title { font-size: var(--fs-base); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mnp-queue-sub { font-size: var(--fs-sm); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ===================== MOBILE MUSIC SKINS (Dean's wave) =====================
+   A new full-screen PRESENTATION for a music item on a phone, in the user's chosen
+   skin. Pure chrome over the shared engine (music-skins.js + music.js proxy the
+   controls). Double-gated: music.js adds body.mms-on only on mobile+music, AND the
+   whole takeover is inside @media (max-width:768px) - so desktop can never engage.
+   Per-skin palettes live as --mms-* DEFS (census-exempt) and are used via var(). */
+:root{
+  /* bespoke skin palettes + geometry (token DEFS are census-exempt; used via var). */
+  --mms-white:#ffffff; --mms-black:#000000; --mms-track-lt:rgba(255,255,255,.27);
+  --mms-apple-fg:#ffffff; --mms-apple-accent:#fa2b56; --mms-apple-bg:#0c0c10;
+  --mms-sp-fg:#ffffff; --mms-sp-accent:#1db954; --mms-sp-g1:#3a2a5a; --mms-sp-g2:#1b1727; --mms-sp-g3:#0c0c0f;
+  --mms-ipod-fg:#2c2822; --mms-ipod-accent:#3f79c9; --mms-ipod-accent2:#2f6fce; --mms-ipod-warm:#8a6d3b;
+  --mms-ipod-line:rgba(120,95,50,.16); --mms-ipod-g1:#f4efe4; --mms-ipod-g2:#e9e1d2; --mms-ipod-frame:#cbb48f;
+  --mms-ipod-track:#cdbfa4; --mms-ipod-btn1:#fdfdfd; --mms-ipod-btn2:#d7d2c7;
+  --mms-art-shadow:0 20px 46px -16px rgba(0,0,0,.6);
+  --mms-ipod-art-shadow:0 8px 22px -8px rgba(90,70,40,.55); --mms-ipod-play-shadow:0 2px 4px rgba(90,70,40,.4);
+  --mms-r-art:14px; --mms-r-art-ipod:8px; --mms-r-row-ipod:6px;
+  --mms-chev:36px; --mms-play:66px; --mms-play-svg:28px; --mms-skip-svg:34px; --mms-rn-w:18px;
+  --mms-transport-gap:30px; --mms-scrub-mt:18px; --mms-transport-mt:14px; --mms-row-py:9px;
+  --mms-ls-caps:.14em; --mms-ls-caps2:.1em; --mms-ls-tight:-.02em; --mms-lh-ttl:1.15;
+  --mms-sw-on:rgba(255,255,255,.16); --mms-sw-on-ipod:rgba(60,45,20,.16);
+}
+@media (max-width: 768px){
+  /* hide the default host chrome (control bar + big art) and collapse the slot to
+     zero so it just hosts the (still-playing) audio element; the skin panel is the
+     visible now-playing. Audio is unaffected by the 0 box. */
+  /* SCOPED to the music view's own #player-slot (gate CRITICAL): watch/podcasts/
+     read share #player-slot, so a leaked body.mms-on must never collapse THEIR
+     player. #view-root's data-view is 'music' only on this view. */
+  body.mms-on #view-root[data-view="music"] #player-slot { height:0; min-height:0; overflow:hidden; padding:0; margin:0; }
+  body.mms-on #view-root[data-view="music"] #player-slot .player-controls,
+  body.mms-on #view-root[data-view="music"] #player-slot #audio-bg-art,
+  body.mms-on #view-root[data-view="music"] #player-slot #audio-visualizer { display:none !important; }
+
+  /* the skin panel takes the full screen */
+  .mms-full{ position:fixed; inset:0; z-index:var(--z-dock); margin:0; display:flex; flex-direction:column;
+    padding:calc(env(safe-area-inset-top,0px) + var(--space-10)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-10)); overflow:hidden; }
+  .mms-full .mms-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--space-3); }
+  .mms-full .mms-chev{ width:var(--mms-chev); height:var(--mms-chev); border:0; background:transparent; color:inherit; font-size:var(--fs-3xl); cursor:pointer; display:grid; place-items:center; opacity:.9; }
+  .mms-full .mms-chev-ghost{ opacity:.55; }
+  /* the skin switcher ("themes" picker) - a small segmented control */
+  .mms-full .mms-skinsw{ display:flex; gap:var(--space-1); justify-content:center; margin-top:var(--space-3); }
+  .mms-full .mms-sw{ border:0; background:transparent; color:inherit; opacity:.55; font-size:var(--fs-xs); font-weight:var(--fw-semibold); padding:var(--space-2) var(--space-6); border-radius:var(--radius-full); cursor:pointer; }
+  .mms-full .mms-sw.is-on{ opacity:1; background:var(--mms-sw-on); }
+  .mms-ipod .mms-sw.is-on{ background:var(--mms-sw-on-ipod); }
+  .mms-full .mms-ctx{ flex:1; text-align:center; font-size:var(--fs-xs); letter-spacing:var(--mms-ls-caps); text-transform:uppercase; opacity:.72; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mms-full .mms-art{ width:100%; aspect-ratio:1; border-radius:var(--mms-r-art); overflow:hidden; flex:none; box-shadow:var(--mms-art-shadow); }
+  .mms-full .mms-art img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .mms-full .mms-meta{ margin-top:var(--space-10); }
+  .mms-full .mms-ttl{ font-size:var(--fs-4xl); font-weight:var(--fw-bold); letter-spacing:var(--mms-ls-tight); line-height:var(--mms-lh-ttl); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mms-full .mms-sub{ font-size:var(--fs-lg); margin-top:var(--space-2); opacity:.85; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mms-full .mms-scrub{ margin-top:var(--mms-scrub-mt); }
+  .mms-full .mms-bar{ height:var(--space-3); border-radius:var(--radius-full); position:relative; cursor:pointer; }
+  .mms-full .mms-fill{ position:absolute; inset:0 auto 0 0; border-radius:var(--radius-full); }
+  .mms-full .mms-times{ display:flex; justify-content:space-between; font-size:var(--fs-xs); margin-top:var(--space-4); font-variant-numeric:tabular-nums; opacity:.7; }
+  .mms-full .mms-transport{ display:flex; align-items:center; justify-content:center; gap:var(--mms-transport-gap); margin-top:var(--mms-transport-mt); }
+  .mms-full .mms-skip{ border:0; background:transparent; color:inherit; cursor:pointer; display:grid; place-items:center; }
+  .mms-full .mms-skip svg{ width:var(--mms-skip-svg); height:var(--mms-skip-svg); fill:currentColor; }
+  .mms-full .mms-play{ width:var(--mms-play); height:var(--mms-play); border-radius:var(--radius-full); border:0; cursor:pointer; display:grid; place-items:center; }
+  .mms-full .mms-play svg{ width:var(--mms-play-svg); height:var(--mms-play-svg); }
+  .mms-full .mms-upnext{ margin-top:var(--space-10); flex:1; min-height:0; display:flex; flex-direction:column; }
+  .mms-full .mms-upnext-h{ font-size:var(--fs-sm); letter-spacing:var(--mms-ls-caps2); text-transform:uppercase; opacity:.6; margin-bottom:var(--space-4); }
+  .mms-full .mms-upnext-list{ overflow-y:auto; flex:1; min-height:0; margin:0 calc(-1 * var(--space-3)); }
+  .mms-full .mms-row{ display:flex; align-items:center; gap:var(--space-6); width:100%; padding:var(--mms-row-py) var(--space-3); border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; border-radius:var(--radius-lg); }
+  .mms-full .mms-rn{ width:var(--mms-rn-w); text-align:center; font-size:var(--fs-sm); opacity:.5; flex:none; font-variant-numeric:tabular-nums; }
+  .mms-full .mms-rt{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-md); }
+  .mms-full .mms-rd{ font-size:var(--fs-sm); opacity:.5; flex:none; font-variant-numeric:tabular-nums; }
+  .mms-full .mms-row.is-played{ opacity:.5; } .mms-full .mms-row.is-current .mms-rt{ font-weight:var(--fw-bold); }
+
+  /* --- Apple Music: big art on near-black, pink accent, minimal chrome --- */
+  .mms-apple{ background:var(--mms-apple-bg); color:var(--mms-apple-fg); }
+  .mms-apple .mms-bar{ background:var(--mms-track-lt); } .mms-apple .mms-fill{ background:var(--mms-white); }
+  .mms-apple .mms-play{ background:var(--mms-white); } .mms-apple .mms-play svg{ fill:var(--mms-black); }
+  .mms-apple .mms-sub{ color:var(--mms-apple-accent); opacity:1; }
+  .mms-apple .mms-row.is-current .mms-rt{ color:var(--mms-apple-accent); }
+
+  /* --- Spotify: purple->black wash, white transport, green now-playing accent --- */
+  .mms-spotify{ background:linear-gradient(var(--mms-sp-g1) 0%, var(--mms-sp-g2) 46%, var(--mms-sp-g3) 100%); color:var(--mms-sp-fg); }
+  .mms-spotify .mms-bar{ background:var(--mms-track-lt); } .mms-spotify .mms-fill{ background:var(--mms-white); }
+  .mms-spotify .mms-play{ background:var(--mms-white); } .mms-spotify .mms-play svg{ fill:var(--mms-black); }
+  .mms-spotify .mms-row.is-current .mms-rt{ color:var(--mms-sp-accent); } .mms-spotify .mms-row.is-current .mms-rn{ color:var(--mms-sp-accent); opacity:1; }
+
+  /* --- iPod: warm cream/aluminum, framed cover, classic blue tracklist --- */
+  .mms-ipod{ background:linear-gradient(180deg, var(--mms-ipod-g1) 0%, var(--mms-ipod-g2) 100%); color:var(--mms-ipod-fg); }
+  .mms-ipod .mms-ctx, .mms-ipod .mms-meta{ text-align:center; }
+  .mms-ipod .mms-art{ border-radius:var(--mms-r-art-ipod); box-shadow:var(--mms-ipod-art-shadow), 0 0 0 5px var(--mms-white), 0 0 0 6px var(--mms-ipod-frame); }
+  .mms-ipod .mms-sub{ color:var(--mms-ipod-warm); }
+  .mms-ipod .mms-bar{ background:var(--mms-ipod-track); height:var(--space-4); }
+  .mms-ipod .mms-fill{ background:var(--mms-ipod-accent); }
+  .mms-ipod .mms-play{ background:linear-gradient(var(--mms-ipod-btn1),var(--mms-ipod-btn2)); color:var(--mms-ipod-fg); box-shadow:var(--mms-ipod-play-shadow); }
+  .mms-ipod .mms-play svg{ fill:var(--mms-ipod-fg); }
+  .mms-ipod .mms-upnext-h{ color:var(--mms-ipod-warm); }
+  .mms-ipod .mms-row{ border-bottom:1px solid var(--mms-ipod-line); border-radius:0; }
+  .mms-ipod .mms-row.is-current{ background:linear-gradient(var(--mms-ipod-accent), var(--mms-ipod-accent2)); color:var(--mms-white); border-radius:var(--mms-r-row-ipod); border-bottom-color:transparent; }
+  .mms-ipod .mms-row.is-current .mms-rn, .mms-ipod .mms-row.is-current .mms-rd{ color:var(--mms-white); opacity:.85; }
+}
+
 .music-empty { color: var(--text-secondary); padding: var(--space-12) 0; }
 .music-empty[hidden] { display: none !important; }
 

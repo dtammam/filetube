@@ -202,3 +202,31 @@ authority) and defined exactly once in the base `:root`:
 - Layout constants (the narrow "layout geometry" amendment, like
   `--header-h`/`--sidebar-w`): `--md-nav-width` 250px, `--md-divider-inset` 56px.
 - `--tracking-caps` 0.05em (uppercase group titles / badges).
+
+## Addendum v1.227 (2026-08-31): mobile music skin tokens
+
+A new user-choosable presentation AXIS - the mobile-only music player SKINS
+(Apple Music / Spotify / iPod), like the `--reader-*` reading themes. 43 bespoke
+tokens (the value authority is `test/unit/token-scale-lock.test.js`); all scoped to
+the `.mms-*` mobile-music rules and used only via `var()` (census-exempt DEFS).
+
+- Shared: `--mms-white` #ffffff, `--mms-black` #000000, `--mms-track-lt`
+  rgba(255,255,255,.27).
+- Apple Music: `--mms-apple-fg` #ffffff, `--mms-apple-accent` #fa2b56,
+  `--mms-apple-bg` #0c0c10.
+- Spotify: `--mms-sp-fg` #ffffff, `--mms-sp-accent` #1db954, wash gradient
+  `--mms-sp-g1` #3a2a5a / `--mms-sp-g2` #1b1727 / `--mms-sp-g3` #0c0c0f.
+- iPod: `--mms-ipod-fg` #2c2822, `--mms-ipod-accent` #3f79c9 / `--mms-ipod-accent2`
+  #2f6fce (tracklist gradient), `--mms-ipod-warm` #8a6d3b, `--mms-ipod-line`
+  rgba(120,95,50,.16), cream `--mms-ipod-g1` #f4efe4 / `--mms-ipod-g2` #e9e1d2,
+  `--mms-ipod-frame` #cbb48f, `--mms-ipod-track` #cdbfa4, chrome button
+  `--mms-ipod-btn1` #fdfdfd / `--mms-ipod-btn2` #d7d2c7.
+- Shadows: `--mms-art-shadow`, `--mms-ipod-art-shadow`, `--mms-ipod-play-shadow`.
+- Geometry: `--mms-r-art` 14px, `--mms-r-art-ipod` 8px, `--mms-r-row-ipod` 6px,
+  `--mms-chev` 36px, `--mms-play` 66px, `--mms-play-svg` 28px, `--mms-skip-svg`
+  34px, `--mms-rn-w` 18px, `--mms-transport-gap` 30px, `--mms-scrub-mt` 18px,
+  `--mms-transport-mt` 14px, `--mms-row-py` 9px.
+- Type: `--mms-ls-caps` .14em, `--mms-ls-caps2` .1em, `--mms-ls-tight` -.02em,
+  `--mms-lh-ttl` 1.15.
+- Switcher chip tints: `--mms-sw-on` rgba(255,255,255,.16), `--mms-sw-on-ipod`
+  rgba(60,45,20,.16).
