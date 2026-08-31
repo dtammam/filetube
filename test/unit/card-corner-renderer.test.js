@@ -203,6 +203,14 @@ test('v1.72: cardKindPresentation - the track arm (music deep link, album art, s
   assert.strictEqual(kp.canQueue, true, 'tracks ride the one queue (v1.72 cap 3)');
 });
 
+test('v1.222: a track result byline shows "Artist . Album" when the album is present (Dean: no album indication before)', () => {
+  const withAlbum = cardKindPresentation({ id: 't1', kind: 'track', artist: 'NESTALGIA', album: 'DJ Mix 2024' });
+  assert.strictEqual(withAlbum.uploaderLabel, 'NESTALGIA · DJ Mix 2024', 'the album rides the byline after the artist');
+  // an album-less track (native single, or a loose file) is the artist alone - unchanged
+  const noAlbum = cardKindPresentation({ id: 't2', kind: 'track', artist: 'Solo', album: '' });
+  assert.strictEqual(noAlbum.uploaderLabel, 'Solo', 'no album tag -> artist alone (byline unchanged)');
+});
+
 test('v1.72: corner buttons on a PODCAST item - kind-routed download, NO delete, data-kind on like+queue', () => {
   const ep = { id: 'ep99', kind: 'podcast', subId: 'sub42', title: 'Ep', liked: true };
   const html = buildCardCornerButtonsHtml(ep, { cornerTL: 'download', cornerTR: 'delete', cornerBL: 'like' }, {});

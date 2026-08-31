@@ -625,11 +625,18 @@ function cardKindPresentation(item) {
     };
   }
   if (kind === 'track') {
+    // v1.222 (Dean): show the ALBUM in a music result byline - "Artist . Album"
+    // (the album is on the result; appended only when present, so a track with no
+    // album tag reads as the artist alone, unchanged).
+    var trackArtist = item.artist || 'Music';
+    var trackByline = (typeof item.album === 'string' && item.album)
+      ? (trackArtist + ' · ' + item.album)
+      : trackArtist;
     return {
       kind,
       href: '/music?play=' + encId,
       thumbSrc: '/albumart/' + encId,
-      uploaderLabel: item.artist || 'Music',
+      uploaderLabel: trackByline,
       uploaderHref: '/music',
       downloadHref: '/track/' + encId + '?download=1',
       canQueue: true // v1.72: tracks ride the one queue (entry kind 'track')
