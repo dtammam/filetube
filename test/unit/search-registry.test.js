@@ -157,3 +157,30 @@ test('blended ranking: an exact-title book outranks a substring-title video (cro
   const vidIdx = out.findIndex((r) => r.id === 'v1');
   assert.ok(bookIdx >= 0 && vidIdx >= 0 && bookIdx < vidIdx, `exact book (b1@${bookIdx}) before prefix video (v1@${vidIdx})`);
 });
+
+// ---- v1.221 chapter-albums: library audio + chapter titles in music search ----
+
+test('v1.221: searchMusic surfaces opted-in library audio AND each CHAPTER title as a playable music result', () => {
+  const d = deps();
+  d.musicLibraryTracks = () => [
+    { id: 'lib1', title: 'Dune Single Download', artist: 'NESTALGIA', album: 'Dune Single Download', albumArtist: 'NESTALGIA', addedAt: 100, source: 'library', streamSrc: '/video/lib1', artUrl: '/thumbnail/lib1', progressEndpoint: '/api/progress' },
+    { id: 'djmix1::c2', title: 'Dune Chapter Track', artist: 'NESTALGIA', album: 'The Mix', albumArtist: 'NESTALGIA', addedAt: 90, source: 'library-chapter', streamSrc: '/video/djmix1', artUrl: '/thumbnail/djmix1', progressEndpoint: '/api/progress', chapterStartSec: 300 },
+  ];
+  const byId = new Map(runSearch('dune', 'music', req, d).map((r) => [r.id, r]));
+  const single = byId.get('lib1');
+  assert.ok(single, 'a downloaded single is a music result');
+  assert.strictEqual(single.resultType, 'music');
+  assert.strictEqual(single.source, 'library');
+  assert.strictEqual(single.streamSrc, '/video/lib1', 'plays via the media route, not /track');
+  const ch = byId.get('djmix1::c2');
+  assert.ok(ch, 'a CHAPTER title is a findable song (Dean: chapters as song names in search)');
+  assert.strictEqual(ch.source, 'library-chapter');
+  assert.strictEqual(ch.chapterStartSec, 300, 'the chapter seek offset rides the result so a search-tap plays that chapter');
+  assert.ok(byId.has('t1'), 'native tracks still search alongside');
+});
+
+test('v1.221: absent musicLibraryTracks dep (toggle off) -> only native music results, no library leak', () => {
+  const ids = runSearch('dune', 'music', req, deps()).map((r) => r.id); // deps() has no musicLibraryTracks
+  assert.ok(ids.includes('t1'), 'native tracks still search');
+  assert.ok(!ids.some((id) => String(id).indexOf('::c') !== -1 || id === 'lib1'), 'no library/chapter tracks without the dep');
+});

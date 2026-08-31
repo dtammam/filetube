@@ -249,6 +249,24 @@ test('v1.221 chapter-albums: a chaptered download projects as N chapter-tracks (
   assert.ok(albums.some((a) => a.trackCount === 3), 'the mix is one album with its 3 chapters as tracks');
 });
 
+test('v1.221 search: each chapter TITLE surfaces as a playable music result via /api/search (chapters as song names)', async () => {
+  setToggle(actingUser.id, 'on');
+  const res = await (await get('/api/search?q=' + encodeURIComponent('Track A') + '&type=music')).json();
+  const hit = res.items.find((i) => i.title === 'Track A');
+  assert.ok(hit, 'the chapter title "Track A" is a findable music result');
+  assert.strictEqual(hit.resultType, 'music');
+  assert.strictEqual(hit.source, 'library-chapter', 'plays via the music player');
+  assert.strictEqual(hit.id, 'djmix1::c1');
+  assert.strictEqual(hit.chapterStartSec, 300, 'carries the seek offset so a search-tap plays that chapter');
+  assert.strictEqual(hit.streamSrc, '/video/djmix1', 'streams the one file');
+});
+
+test('v1.221 search: with the toggle OFF, library/chapter tracks never appear in music search', async () => {
+  setToggle(actingUser.id, null); // off
+  const res = await (await get('/api/search?q=' + encodeURIComponent('Track A') + '&type=music')).json();
+  assert.ok(!res.items.some((i) => i.id === 'djmix1::c1'), 'no chapter results when opted out');
+});
+
 test('v1.211 all-or-nothing: a MIXED channel shows NOTHING by default (not 1 of 3), ALL when marked', async () => {
   setToggle(actingUser.id, 'on');
   // Default (unmarked, minority-music) -> none of mixedchan shows, not even mx1.

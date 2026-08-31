@@ -10803,6 +10803,16 @@ app.get('/api/search', (req, res) => {
     // buildWatchUrl re-validates the id (null on anything unsafe); the key is
     // absent when there is nothing safe to share (C4, the /api/videos posture).
     buildWatchUrl: (item) => (typeof item.youtubeId === 'string' ? (buildWatchUrl(item.youtubeId) || undefined) : undefined),
+    // v1.221: the projected library-audio tracks (downloaded audio the user opted
+    // into, chaptered files expanded into per-chapter tracks) so searchMusic can
+    // surface them as MUSIC results - a downloaded track (and each CHAPTER TITLE)
+    // is findable + plays via the music player. Lazy (only the music arm calls it);
+    // gated by the same opt-in + RBAC as /api/music.
+    musicLibraryTracks: () => {
+      const ns = musicStore.readMusic(db);
+      const native = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t));
+      return projectedLibraryTracks(req, native);
+    },
   };
   const ranked = searchRegistry.runSearch(query, chip, req, deps);
   const total = ranked.length;
