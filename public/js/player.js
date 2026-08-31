@@ -4280,6 +4280,16 @@ if (typeof module !== 'undefined' && module.exports) {
       else mediaPlayer.play().catch(function () {});
       return;
     }
+    // v1.221 chapter-albums: a VIRTUAL chapter-track streams the shared file and
+    // must START at its chapter offset. Its id is not a real media id (no
+    // /api/progress row), so there is no per-chapter resume yet - play from the
+    // chapter start each time (resume-within-chapter is a later refinement). Seek
+    // via resumeDirectly (currentTime + play), the same path resume uses.
+    if (currentData && typeof currentData.chapterStartSec === 'number') {
+      savedProgress = 0;
+      resumeDirectly(currentData.chapterStartSec);
+      return;
+    }
     // v1.44 music: read from the music coalescer and apply the SMART-RESUME
     // rule instead of the video resume-overlay -- a song restarts from the top,
     // a >10-min track resumes mid-track. No "Resume at…" prompt for music.
@@ -4450,6 +4460,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // synthetic and its progress is the reader's own (/api/books/:id/progress).
     // Never write /api/progress rows for it.
     if (currentData && currentData.suppressProgress) return;
+    // v1.221: a virtual chapter-track's id (`<file>::c<idx>`) is not a media id,
+    // so a POST /api/progress for it 404s. Skip the save (no per-chapter resume
+    // yet); the file's own resume is not this virtual track's concern.
+    if (currentData && typeof currentData.chapterStartSec === 'number') return;
     var body = {
       id: currentId,
       timestamp: time,
