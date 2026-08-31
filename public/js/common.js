@@ -8844,11 +8844,13 @@ function repositionCrittersForScroll() {
     if (!dx && !dy) continue; // unmoved (a page scroll leaves document coords fixed)
     p.x += dx; p.y += dy;
     p.anchor = { x: ax, y: ay, w: r.width, h: r.height };
-    var wrap = null;
-    for (var k = 0; k < layer.children.length; k += 1) {
-      if (layer.children[k].getAttribute && layer.children[k].getAttribute('data-critter-id') === p.id) { wrap = layer.children[k]; break; }
-    }
-    if (!wrap) continue;
+    // renderCritterPlacements appends one wrapper per placement, in order, from
+    // this SAME array - so wrapper i belongs to placement i. Match by INDEX, never
+    // by data-critter-id: p.id is the SPRITE id and repeats when the same figurine
+    // is placed twice (a small library / count > manifest), which would resolve two
+    // placements to the first matching wrapper (slim-gate WARNING 2).
+    var wrap = layer.children[i];
+    if (!wrap || !wrap.style) continue;
     var pad = Math.round(p.w * 0.3);
     wrap.style.left = (p.x - pad) + 'px';
     wrap.style.top = (p.y - pad) + 'px';
@@ -8870,15 +8872,20 @@ function onCritterInnerScroll(e) {
   critterScrollRaf = raf(function () { critterScrollRaf = null; repositionCrittersForScroll(); });
 }
 
+// v1.219: attach the inner-scroll re-glue listener, idempotently. MUST be called
+// AFTER any observer-refresh unwireCritterContentNudge() inside wire (that unwire
+// removes this listener), or the listener is added-then-stripped and rides
+// NOTHING - the dead-code class the slim gate caught. Passive so it never blocks
+// the compositor; capture so it catches a non-bubbling inner-element scroll.
+function attachCritterScrollListener() {
+  if (typeof document === 'undefined' || critterScrollBound) return;
+  critterScrollBound = onCritterInnerScroll;
+  try { document.addEventListener('scroll', critterScrollBound, { capture: true, passive: true }); } catch (_) { critterScrollBound = null; }
+}
+
 function wireCritterContentNudge() {
-  // v1.219: the inner-scroll re-glue listener (added ONCE, before the observer
-  // early-return below). Passive + capture; removed by unwireCritterContentNudge.
-  if (typeof document !== 'undefined' && !critterScrollBound) {
-    critterScrollBound = onCritterInnerScroll;
-    try { document.addEventListener('scroll', critterScrollBound, { capture: true, passive: true }); } catch (_) { critterScrollBound = null; }
-  }
-  if (typeof MutationObserver === 'undefined') return;
-  if (critterContentObs && critterContentObsDoc === document) return;
+  if (typeof MutationObserver === 'undefined') { attachCritterScrollListener(); return; }
+  if (critterContentObs && critterContentObsDoc === document) { attachCritterScrollListener(); return; }
   unwireCritterContentNudge(); // a different document (jsdom test contexts) gets a fresh observer
   critterContentObsDoc = document;
   critterContentObs = new MutationObserver(function (muts) {
@@ -8911,6 +8918,7 @@ function wireCritterContentNudge() {
   } catch (_) {
     critterContentObs = null; // observing is an accelerator only; the fallback timers stand
   }
+  attachCritterScrollListener(); // AFTER the observer-refresh unwire above, so it survives
 }
 function unwireCritterContentNudge() {
   if (critterContentObs) { try { critterContentObs.disconnect(); } catch (_) { /* already dead */ } critterContentObs = null; }
