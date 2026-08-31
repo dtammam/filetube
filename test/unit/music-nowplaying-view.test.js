@@ -88,7 +88,8 @@ async function boot(storage, initialState, run, opts) {
   global.fetch = (url, init) => {
     const u = String(url);
     fetches.push(u);
-    if (/\/api\/music\?/.test(u) || /\/api\/music$/.test(u)) return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: SONGS, total: SONGS.length, offset: 0, limit: 1000 }) });
+    const songs = opts.songs || SONGS;
+    if (/\/api\/music\?/.test(u) || /\/api\/music$/.test(u)) return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: songs, total: songs.length, offset: 0, limit: 1000 }) });
     return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: [] }) });
   };
   Object.keys(storage || {}).forEach((k) => dom.window.localStorage.setItem(k, storage[k]));
@@ -174,10 +175,42 @@ test('v1.104 (panel): playing while EXPANDED shows track metadata + up-next queu
     assert.equal(el.hidden, false, 'panel visible when expanded + playing');
     assert.match(el.innerHTML, /class="mnp-title"[^>]*>Alpha</, 'shows the playing track title');
     assert.match(el.innerHTML, /class="mnp-sub">Boards · One</, 'artist · album');
-    // Up next = the queue AFTER t1: t2 (index 1), t3 (index 2).
-    assert.match(el.innerHTML, /class="mnp-queue-row" data-index="1"[\s\S]*>Bravo</);
-    assert.match(el.innerHTML, /data-index="2"[\s\S]*>Charlie</);
+    // v1.223: the panel lists the WHOLE queue. Playing t1 (first): t1 is the current
+    // row (marked), t2 (index 1) + t3 (index 2) are up next (plain rows).
+    assert.match(el.innerHTML, /class="mnp-queue-row is-current" aria-current="true" data-index="0"[\s\S]*>Alpha</, 'the current track is in the list, marked');
+    assert.match(el.innerHTML, /class="mnp-queue-row" data-index="1"[\s\S]*>Bravo</, 't2 up next (plain)');
+    assert.match(el.innerHTML, /class="mnp-queue-row" data-index="2"[\s\S]*>Charlie</, 't3 up next (plain)');
   });
+});
+
+test('v1.223 (Dean): the panel shows the WHOLE queue - already-played tracks grey out (is-played) but stay clickable', async () => {
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom, mock) => {
+    await clickRow(dom, 1); // play t2 (the MIDDLE track) -> t1 is now behind us
+    const el = panel(dom);
+    // t1 (index 0) is BEHIND the current -> greyed, but still a clickable row.
+    assert.match(el.innerHTML, /class="mnp-queue-row is-played" data-index="0"[\s\S]*>Alpha</, 'the played track stays in the list, greyed');
+    assert.match(el.innerHTML, /class="mnp-queue-row is-current" aria-current="true" data-index="1"[\s\S]*>Bravo</, 't2 is the current row');
+    assert.match(el.innerHTML, /class="mnp-queue-row" data-index="2"[\s\S]*>Charlie</, 't3 still up next');
+    // the played row is clickable -> jumps back to it (loads t1)
+    dom.window.document.querySelector('.mnp-queue-row[data-index="0"]').click();
+    await settle(); await settle();
+    assert.strictEqual(lastLoad(mock).id, 't1', 'tapping a played (greyed) row jumps back to it');
+  });
+});
+
+test('v1.223 (gate WARNING fix): a DEEP current index still shows the current + up-next, not a cap full of only played rows', async () => {
+  // The Songs tab loads up to 1000. If the 200-row cap were anchored at the queue
+  // START, a current index past ~200 would fill the panel with only played rows
+  // (no current, no up-next). The window is anchored near the current instead.
+  const many = [];
+  for (let i = 0; i < 300; i++) many.push({ id: 'm' + i, title: 'Song ' + i, artist: 'Boards', album: '', albumKey: '', durationSec: 100 });
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom) => {
+    await clickRow(dom, 250); // play a deep track (album-less -> flat queue, ci=250)
+    const el = panel(dom);
+    assert.match(el.innerHTML, /class="mnp-queue-row is-current" aria-current="true" data-index="250"/, 'the current row is present at depth 250');
+    assert.match(el.innerHTML, /class="mnp-queue-row" data-index="251"/, 'up-next rows follow the current (not silently dropped)');
+    assert.doesNotMatch(el.innerHTML, /data-index="0"/, 'the window is anchored near the current track, not the queue start');
+  }, { songs: many });
 });
 
 test('v1.104/v1.106 (panel): DOCKED playback keeps the panel HIDDEN (reached via a nav while docked)', async () => {

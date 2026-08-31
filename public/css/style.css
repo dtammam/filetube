@@ -10864,6 +10864,12 @@ html[data-modern="on"] .video-uploader {
   cursor: pointer;
 }
 .mnp-queue-row:hover { background: var(--bg-secondary); }
+/* v1.223 (Dean): the panel lists the whole queue - already-played rows grey out
+   but stay clickable (hover restores them), the current row is marked. */
+.mnp-queue-row.is-played { opacity: 0.55; }
+.mnp-queue-row.is-played:hover { opacity: 1; }
+.mnp-queue-row.is-current { background: var(--bg-secondary); }
+.mnp-queue-row.is-current .mnp-queue-title { font-weight: var(--fw-semibold); }
 .mnp-queue-thumb {
   width: 40px;
   height: 40px;
