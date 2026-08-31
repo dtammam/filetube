@@ -10802,6 +10802,19 @@ html[data-modern="on"] .video-uploader {
   margin: var(--space-6) 0 var(--space-8);
 }
 .music-nowplaying-panel[hidden] { display: none !important; }
+/* v1.222 (Dean): desktop THEATRE - the album / up-next beside the expanded player
+   (the watch page's Related-files space) instead of the panel stacked below. The
+   stage is a plain block by default; theatre ON + a wide viewport makes it a
+   two-column row (player left, panel right). Mobile / theatre-off is untouched. */
+.music-stage { display: block; }
+.music-theater-btn[aria-pressed="true"] { background: var(--bg-secondary); }
+@media (max-width: 1023px) { #music-theater-btn { display: none !important; } }
+@media (min-width: 1024px) {
+  .music-stage.is-theater { display: flex; align-items: flex-start; gap: var(--space-8); }
+  .music-stage.is-theater #player-slot { flex: 2 1 0; min-width: 0; }
+  .music-stage.is-theater #music-nowplaying-panel { flex: 1 1 0; min-width: 0; margin-top: 0; }
+  .music-stage.is-theater #music-nowplaying-panel .mnp-queue { max-height: 68vh; overflow-y: auto; } /* token-exempt: viewport-relative up-next cap so it scrolls instead of pushing the browse list */
+}
 .mnp-meta { display: flex; flex-direction: column; gap: var(--space-2); }
 .mnp-title {
   font-size: var(--fs-lg);

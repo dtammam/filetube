@@ -4281,13 +4281,17 @@ if (typeof module !== 'undefined' && module.exports) {
       return;
     }
     // v1.221 chapter-albums: a VIRTUAL chapter-track streams the shared file and
-    // must START at its chapter offset. Its id is not a real media id (no
-    // /api/progress row), so there is no per-chapter resume yet - play from the
-    // chapter start each time (resume-within-chapter is a later refinement). Seek
-    // via resumeDirectly (currentTime + play), the same path resume uses.
+    // seeks on load. v1.222: it RESUMES where you left off - if the recent entry
+    // carried chapterResumeSec (the saved absolute file position, set only on the
+    // chapter you were in), seek there; otherwise start at the chapter head (a
+    // direct tap on any other chapter, or a never-played file). Seek via
+    // resumeDirectly (currentTime + play), the same path resume uses.
     if (currentData && typeof currentData.chapterStartSec === 'number') {
       savedProgress = 0;
-      resumeDirectly(currentData.chapterStartSec);
+      var chapterSeek = (typeof currentData.chapterResumeSec === 'number')
+        ? currentData.chapterResumeSec
+        : currentData.chapterStartSec;
+      resumeDirectly(chapterSeek);
       return;
     }
     // v1.44 music: read from the music coalescer and apply the SMART-RESUME
@@ -4460,12 +4464,18 @@ if (typeof module !== 'undefined' && module.exports) {
     // synthetic and its progress is the reader's own (/api/books/:id/progress).
     // Never write /api/progress rows for it.
     if (currentData && currentData.suppressProgress) return;
-    // v1.221: a virtual chapter-track's id (`<file>::c<idx>`) is not a media id,
-    // so a POST /api/progress for it 404s. Skip the save (no per-chapter resume
-    // yet); the file's own resume is not this virtual track's concern.
-    if (currentData && typeof currentData.chapterStartSec === 'number') return;
+    // v1.222: a virtual chapter-track's id (`<file>::c<idx>`) is not a media id, so
+    // it saves under the BASE FILE id (currentData.baseMediaId) instead - a real
+    // media id, and `time` is ALREADY the file-absolute position (we seek to the
+    // chapter and play the whole file), so the file records its true position:
+    // the chapter-album lands in Recently played and resumes. A chapter track
+    // always carries baseMediaId; only if it were somehow missing do we skip
+    // (never POST the synthetic id, which would 404).
+    var isChapterSave = currentData && typeof currentData.chapterStartSec === 'number';
+    if (isChapterSave && !(currentData && currentData.baseMediaId)) return;
+    var saveId = isChapterSave ? currentData.baseMediaId : currentId;
     var body = {
-      id: currentId,
+      id: saveId,
       timestamp: time,
       duration: (mediaPlayer && isFinite(mediaPlayer.duration) ? mediaPlayer.duration : 0) || (currentData && currentData.duration) || 0,
     };

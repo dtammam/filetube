@@ -2452,5 +2452,11 @@
     "date": "2026-08-31",
     "title": "Downloaded mixes and full-album files become albums in Music",
     "intent": "If you download a long audio file that has chapters - a DJ mix, a full album, a live set - Music now treats it as an album: each chapter shows up as its own track you can tap, and you can search for a chapter by name and jump straight to it. Tapping a chapter starts playing right at that spot in the file. This only applies to downloaded audio you've chosen to include in Music. One thing to know for now: once a chapter starts it keeps playing into the next one rather than stopping at the chapter's end, and it always starts a chapter from the beginning."
+  },
+  {
+    "version": "1.222.0",
+    "date": "2026-08-31",
+    "title": "Polish for the new Music albums: artwork, album in search, and picking up where you left off",
+    "intent": "A round of polish for the chaptered-album feature. Those albums now show the real artwork from the file instead of a grey square. Music search now shows the album name next to each song, not just the artist. When you play one of these albums it shows up in 'Recently played' and picks up where you left off, so the artists you listen to are one tap away on the Music home. And on a desktop screen there's a new theatre button that puts the album's track list beside the player, filling the empty space to the right."
   }
 ]

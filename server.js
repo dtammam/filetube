@@ -8357,7 +8357,9 @@ function publicTrackListItem(track, userId, likedSet, progressMap) {
     // /track prewarm path (it streams from /video), so it never prewarms.
     needsTranscode: isLib ? false : musicCodecNeedsTranscode(track.codec),
     liked,
-    progress: prog ? { position: prog.position, duration: prog.duration, updatedAt: prog.updatedAt } : null,
+    // v1.222: resumeSec (absolute file position) rides a chapter's progress so a
+    // resume-tap seeks there, not to the chapter head.
+    progress: prog ? Object.assign({ position: prog.position, duration: prog.duration, updatedAt: prog.updatedAt }, typeof prog.resumeSec === 'number' ? { resumeSec: prog.resumeSec } : {}) : null,
     // The projection markers (absent on native tracks): the client's loadTrack
     // prefers these routes over the /track,/albumart,/api/music/progress
     // defaults.
@@ -8430,7 +8432,25 @@ function musicListProgressMap(userId, tracks) {
   // restore bundle) assigns an OWN key here instead of reparenting `out`.
   const out = Object.create(null);
   for (const t of tracks) {
-    if (t.source === 'library' || t.source === 'library-chapter') {
+    if (t.source === 'library-chapter') {
+      // v1.222: a CHAPTER play saves to the MEDIA store under the BASE file id at
+      // the file-absolute position (the whole file plays, seeked to the chapter).
+      // Surface progress on ONLY the chapter whose [start, start+span) CONTAINS
+      // that position - so a file's N chapters collapse to ONE recent-listening
+      // entry (the "chapter you were in"), its bar shows the WITHIN-chapter offset,
+      // and resumeSec carries the absolute file position for a resume-tap.
+      const baseId = String(t.id).replace(/::c\d+$/, '');
+      const m = media[baseId];
+      if (m) {
+        const abs = Number(m.timestamp) || 0;
+        const start = Number(t.chapterStartSec) || 0;
+        const span = Number(t.durationSec) || 0;
+        const end = span > 0 ? start + span : Infinity;
+        if (abs >= start && abs < end) {
+          out[t.id] = { position: abs - start, duration: span, updatedAt: m.updatedAt, resumeSec: abs };
+        }
+      }
+    } else if (t.source === 'library') {
       const m = media[t.id];
       if (m) out[t.id] = { position: m.timestamp, duration: m.duration, updatedAt: m.updatedAt };
     } else {
@@ -8687,10 +8707,16 @@ app.get('/albumart/:id', (req, res) => {
   // item's YouTube thumbnail - real imagery instead of the placeholder. Only a
   // VISIBLE audio item, and only when there is no native track (never overrides
   // a real track's own art resolved above). Mirrors /thumbnail's own gate.
+  // v1.222: a virtual chapter-track's id is `<mediaId>::c<idx>` (v1.221) with no
+  // file of its own - strip the chapter suffix so its tile/card/recent-tile
+  // resolves to the ONE shared file's thumbnail (was the grey placeholder). A
+  // plain library-single id has no suffix, so the strip is a no-op. RBAC re-gates
+  // the BASE item, so a chapter of a blocked file still 404s to the placeholder.
   if (!track) {
-    const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, req.params.id) ? db.metadata[req.params.id] : null;
+    const baseId = req.params.id.replace(/::c\d+$/, '');
+    const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, baseId) ? db.metadata[baseId] : null;
     if (item && item.type === 'audio' && mediaVisibleTo(req, item) && item.hasThumbnail) {
-      const thumbPath = path.join(THUMBNAIL_DIR, `${req.params.id}.jpg`);
+      const thumbPath = path.join(THUMBNAIL_DIR, `${baseId}.jpg`);
       if (fs.existsSync(thumbPath)) {
         res.set('Cache-Control', 'private, max-age=86400');
         return res.sendFile(thumbPath);

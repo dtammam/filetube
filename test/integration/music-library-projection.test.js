@@ -89,6 +89,7 @@ before(async () => {
   const thumbDir = path.join(DATA_DIR, '.thumbnails');
   fs.writeFileSync(path.join(thumbDir, 'nest1.jpg'), 'JPEGBYTES-NEST');
   fs.writeFileSync(path.join(thumbDir, 'blk1.jpg'), 'JPEGBYTES-BLK');
+  fs.writeFileSync(path.join(thumbDir, 'djmix1.jpg'), 'JPEGBYTES-DJMIX'); // v1.222: the chaptered file's thumbnail
 });
 
 after(async () => {
@@ -170,6 +171,22 @@ test('grid art RBAC: a restricted member gets the placeholder, never the blocked
   const res = await get('/albumart/blk1', member.cookie);
   assert.match(res.headers.get('content-type') || '', /image\/svg\+xml/, 'restricted -> placeholder SVG, no thumbnail leak');
   assert.notStrictEqual(await res.text(), 'JPEGBYTES-BLK', 'the blocked thumbnail bytes never reach the member');
+});
+
+// v1.222 slice 1: a VIRTUAL chapter-track (id `<mediaId>::c<idx>`) has no file of
+// its own; /albumart strips the suffix so its tile/card/recent-tile shows the ONE
+// shared file's thumbnail instead of the grey placeholder.
+test('v1.222 slice 1: /albumart/<chapterId> resolves to the shared file thumbnail (was the grey placeholder)', async () => {
+  const res = await get('/albumart/' + encodeURIComponent('djmix1::c1'));
+  assert.strictEqual(res.status, 200);
+  assert.match(res.headers.get('content-type') || '', /image\/jpeg/, 'serves the file jpg, not the SVG placeholder');
+  assert.strictEqual(await res.text(), 'JPEGBYTES-DJMIX', 'the chapter tile shows the shared file picture');
+});
+
+test('v1.222 slice 1 RBAC: a chapter-shaped id of a BLOCKED file still 404s to the placeholder (no strip-around-RBAC)', async () => {
+  const res = await get('/albumart/' + encodeURIComponent('blk1::c2'), member.cookie);
+  assert.match(res.headers.get('content-type') || '', /image\/svg\+xml/, 'the base item is re-gated after the strip - no blocked thumbnail leak');
+  assert.notStrictEqual(await res.text(), 'JPEGBYTES-BLK', 'the blocked bytes never reach the member via a chapter id');
 });
 
 test('MEDIA RBAC: a restricted member never sees a blocked projected track', async () => {
@@ -306,6 +323,26 @@ test('v1.221 GATE FIX: the resolve is RBAC-gated - a member restricted from the 
   setToggle(actingUser.id, 'on');
   assert.strictEqual((await get('/api/music/' + encodeURIComponent('djmix1::c1'))).status, 200, 'admin resolves the chapter');
   assert.strictEqual((await get('/api/music/' + encodeURIComponent('djmix1::c1'), fm.cookie)).status, 404, 'the restricted member cannot resolve the blocked file\'s chapter');
+});
+
+// v1.222 slice 4: a chapter play records to the MEDIA store under the BASE file id
+// (the client saves currentTime, already file-absolute). Recently-played then
+// collapses the file's N chapters to ONE entry - the chapter you were in - so the
+// artist reaches the home row and the entry resumes at the saved file position.
+test('v1.222 slice 4: a chapter play collapses to ONE Recently-played entry (the chapter you were in) with resume', async () => {
+  setToggle(actingUser.id, 'on');
+  // Played to file-absolute 450s, inside chapter "Track A" [300, 900).
+  const save = await postJson('/api/progress', { id: 'djmix1', timestamp: 450, duration: 1800 });
+  assert.strictEqual(save.status, 200, 'the base file id is a real media id -> the save is accepted (never the synthetic ::c id that 404s)');
+  const recent = await (await get('/api/music?filter=recent-listening&limit=60')).json();
+  const chapters = recent.items.filter((i) => typeof i.id === 'string' && i.id.indexOf('djmix1::c') === 0);
+  assert.strictEqual(chapters.length, 1, 'the file collapses to ONE recent entry, not all 3 chapters');
+  const hit = chapters[0];
+  assert.strictEqual(hit.title, 'Track A', 'the entry is the chapter CONTAINING the saved position');
+  assert.strictEqual(hit.artist, 'NESTALGIA', 'so the artist reaches the home Recently-played row');
+  assert.strictEqual(hit.progress.resumeSec, 450, 'carries the absolute file position for a resume-tap');
+  assert.strictEqual(hit.progress.position, 150, 'the bar shows the within-chapter offset (450 - 300)');
+  assert.strictEqual(hit.progress.duration, 600, 'over the chapter span, not the whole file');
 });
 
 test('v1.211 all-or-nothing: a MIXED channel shows NOTHING by default (not 1 of 3), ALL when marked', async () => {

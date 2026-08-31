@@ -119,18 +119,106 @@ test('v1.221 (slice 4, gate SUGGESTION): the FIRST chapter (chapterStartSec 0) c
   }
 });
 
-test('v1.221 (slice 4 SOURCE-LOCK): the player seeks a chapter-track to chapterStartSec BEFORE the music resume branch', () => {
+test('v1.222 (slice 4 behavioural): a chapter-track load carries baseMediaId + chapterResumeSec from its saved progress', async () => {
+  const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music' });
+  const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController };
+  global.window = dom.window; global.document = dom.window.document;
+  global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
+  const loads = [];
+  // The recent entry: chapter c1 of djmix1, resuming at file position 450 (the
+  // server put resumeSec on the chapter's progress).
+  const resumeTrack = Object.assign({}, CHAPTER_TRACK, { id: 'djmix1::c1', progress: { position: 150, duration: 600, updatedAt: 'x', resumeSec: 450 } });
+  global.fetch = (url, init) => {
+    const method = (init && init.method) || 'GET';
+    if (method === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    if (String(url).indexOf('/api/music/albums') === 0 || String(url).indexOf('/api/music/artists') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    if (String(url).indexOf('/api/music') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [resumeTrack] }) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  let mod = null;
+  dom.window.FileTube = {
+    registerView: (name, m) => { mod = m; }, encodeListContext: () => '', decodeListContext: () => null, shimmerArt: () => {},
+    player: { currentId: null, getState: () => 'docked', expand: () => {}, setTrackNav: () => {}, load: (id, data) => { loads.push({ id, data }); } },
+  };
+  try { dom.window.localStorage.setItem('filetube_music_tab', 'songs'); } catch (_) { /* ignore */ }
+  try {
+    delete require.cache[musicPath];
+    require(musicPath);
+    mod.init(dom.window.document.getElementById('view-root'));
+    for (let i = 0; i < 10; i++) await settle();
+    dom.window.document.querySelector('.music-song-row').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 10; i++) await settle();
+    const load = loads.find((l) => l.id === 'djmix1::c1');
+    assert.ok(load, 'the chapter played');
+    assert.strictEqual(load.data.baseMediaId, 'djmix1', 'the save id is the BASE file id (a real media id), not the ::c chapter id');
+    assert.strictEqual(load.data.chapterResumeSec, 450, 'the resume seek is the saved absolute file position');
+  } finally {
+    delete require.cache[musicPath];
+    Object.assign(global, saved);
+  }
+});
+
+test('v1.222 (slice 4, gate coverage): a chapter with NO saved resume carries chapterResumeSec undefined -> the player uses the chapter head, not a stale offset', async () => {
+  // The divergent axis of the resume rule: only the chapter you were LAST in
+  // carries progress.resumeSec (musicListProgressMap emits it on that one). Any
+  // other chapter has no progress, so its load must NOT inherit a resume offset -
+  // it plays from its own start.
+  const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music' });
+  const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController };
+  global.window = dom.window; global.document = dom.window.document;
+  global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
+  const loads = [];
+  // Chapter c2 (Track B, start 900) with NO progress - the user taps it directly.
+  const otherChapter = Object.assign({}, CHAPTER_TRACK, { id: 'djmix1::c2', title: 'Track B', chapterStartSec: 900 });
+  delete otherChapter.progress;
+  global.fetch = (url, init) => {
+    const method = (init && init.method) || 'GET';
+    if (method === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    if (String(url).indexOf('/api/music/albums') === 0 || String(url).indexOf('/api/music/artists') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    if (String(url).indexOf('/api/music') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [otherChapter] }) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  let mod = null;
+  dom.window.FileTube = {
+    registerView: (name, m) => { mod = m; }, encodeListContext: () => '', decodeListContext: () => null, shimmerArt: () => {},
+    player: { currentId: null, getState: () => 'docked', expand: () => {}, setTrackNav: () => {}, load: (id, data) => { loads.push({ id, data }); } },
+  };
+  try { dom.window.localStorage.setItem('filetube_music_tab', 'songs'); } catch (_) { /* ignore */ }
+  try {
+    delete require.cache[musicPath];
+    require(musicPath);
+    mod.init(dom.window.document.getElementById('view-root'));
+    for (let i = 0; i < 10; i++) await settle();
+    dom.window.document.querySelector('.music-song-row').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 10; i++) await settle();
+    const load = loads.find((l) => l.id === 'djmix1::c2');
+    assert.ok(load, 'the directly-tapped chapter played');
+    assert.strictEqual(load.data.chapterResumeSec, undefined, 'no saved resume -> no offset (the player falls back to chapterStartSec)');
+    assert.strictEqual(load.data.chapterStartSec, 900, 'it starts at this chapter head');
+  } finally {
+    delete require.cache[musicPath];
+    Object.assign(global, saved);
+  }
+});
+
+test('v1.222 (slice 4 SOURCE-LOCK): the player seeks a chapter-track to chapterResumeSec-else-chapterStartSec, BEFORE the music resume branch', () => {
   const fn = PLAYER_JS.slice(PLAYER_JS.indexOf('function handleResumePlayback'), PLAYER_JS.indexOf('function saveProgressToServer'));
-  assert.match(fn, /if \(currentData && typeof currentData\.chapterStartSec === 'number'\) \{[\s\S]*?resumeDirectly\(currentData\.chapterStartSec\);[\s\S]*?return;/,
-    'a chapter-track seeks to its offset via resumeDirectly');
-  // It must sit BEFORE the resumeMode==='music' branch (else the music branch
-  // fetches /api/progress/<chapterId> and plays from 0, ignoring the seek).
+  // resume seek prefers chapterResumeSec (the saved file position) and falls back
+  // to the chapter head, then seeks via resumeDirectly.
+  assert.match(fn, /typeof currentData\.chapterResumeSec === 'number'[\s\S]*?currentData\.chapterResumeSec[\s\S]*?currentData\.chapterStartSec/,
+    'the chapter seek prefers the saved resume position, else the chapter head');
+  assert.match(fn, /resumeDirectly\(chapterSeek\)/, 'and seeks there via resumeDirectly');
+  // Still decided BEFORE the music resume branch (else it fetches /api/progress/<chapterId> and plays from 0).
   assert.ok(fn.indexOf("chapterStartSec === 'number'") < fn.indexOf("resumeMode === 'music'"),
     'the chapter seek is decided before the music resume branch');
 });
 
-test('v1.221 (slice 4 SOURCE-LOCK): saveProgressToServer SKIPS a chapter-track (its id is not a media id -> would 404)', () => {
-  const fn = PLAYER_JS.slice(PLAYER_JS.indexOf('function saveProgressToServer'), PLAYER_JS.indexOf('function saveProgressToServer') + 900);
-  assert.match(fn, /if \(currentData && typeof currentData\.chapterStartSec === 'number'\) return;/,
-    'a chapter-track never POSTs /api/progress');
+test('v1.222 (slice 4 SOURCE-LOCK): saveProgressToServer records a chapter under baseMediaId (a real media id), never the synthetic ::c id', () => {
+  const fn = PLAYER_JS.slice(PLAYER_JS.indexOf('function saveProgressToServer'), PLAYER_JS.indexOf('function saveProgressToServer') + 1400);
+  // The save id is the base file id for a chapter, else the current id.
+  assert.match(fn, /var saveId = isChapterSave \? currentData\.baseMediaId : currentId;/, 'a chapter saves under its base file id');
+  assert.match(fn, /id: saveId,/, 'the POST body carries that id, not the ::c chapter id');
+  // Guard: never POST a synthetic id if baseMediaId is somehow missing.
+  assert.match(fn, /if \(isChapterSave && !\(currentData && currentData\.baseMediaId\)\) return;/,
+    'a chapter with no baseMediaId skips (never 404s the synthetic id)');
 });
