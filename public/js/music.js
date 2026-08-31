@@ -216,9 +216,16 @@ function buildNowPlayingPanelHtml(np, upNext) {
     '</div>';
   var queue = '';
   if (Array.isArray(upNext) && upNext.length) {
+    // v1.223 (Dean): show the WHOLE queue, not just what's next - the list no longer
+    // shrinks as you play. Each row carries a state ('played' before the current,
+    // 'current', or 'next'); played rows grey out but stay clickable (jump back),
+    // the current row is marked. Rows without a state (legacy callers) render plain.
     queue = '<div class="mnp-queue"><div class="mnp-queue-head">Up next</div>' +
       upNext.map(function (it) {
-        return '<button type="button" class="mnp-queue-row" data-index="' + it.index + '">' +
+        var cls = 'mnp-queue-row'
+          + (it.state === 'played' ? ' is-played' : '')
+          + (it.state === 'current' ? ' is-current' : '');
+        return '<button type="button" class="' + cls + '"' + (it.state === 'current' ? ' aria-current="true"' : '') + ' data-index="' + it.index + '">' +
           '<img class="mnp-queue-thumb art-shimmer" src="/albumart/' + encodeURIComponent(it.id) + '" alt="" loading="lazy" />' +
           '<span class="mnp-queue-main">' +
           '<span class="mnp-queue-title">' + escapeMusicHtml(it.title || 'Track') + '</span>' +
@@ -634,13 +641,19 @@ if (typeof module !== 'undefined' && module.exports) {
       if (theaterBtn) theaterBtn.hidden = false; // a track is expanded -> the toggle is available (desktop-gated by CSS)
       var ci = -1;
       for (var k = 0; k < queue.length; k++) { if (queue[k].id === curId) { ci = k; break; } }
-      var upNext = [];
+      // v1.223 (Dean): the panel lists the WHOLE queue - played tracks (before the
+      // current) greyed but clickable, the current one marked, the rest up next -
+      // so the list never shrinks. (Cap large queues to keep the DOM sane.)
+      var rows = [];
       if (ci >= 0) {
-        for (var j = ci + 1; j < queue.length && upNext.length < 50; j++) {
-          upNext.push({ id: queue[j].id, title: queue[j].title, artist: queue[j].artist, index: j });
+        for (var j = 0; j < queue.length && rows.length < 200; j++) {
+          rows.push({
+            id: queue[j].id, title: queue[j].title, artist: queue[j].artist, index: j,
+            state: j < ci ? 'played' : (j === ci ? 'current' : 'next'),
+          });
         }
       }
-      nowPlayingPanel.innerHTML = buildNowPlayingPanelHtml(nowPlaying, upNext);
+      nowPlayingPanel.innerHTML = buildNowPlayingPanelHtml(nowPlaying, rows);
       nowPlayingPanel.hidden = false;
       if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(nowPlayingPanel);
     }

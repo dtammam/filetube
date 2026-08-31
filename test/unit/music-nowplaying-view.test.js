@@ -174,9 +174,26 @@ test('v1.104 (panel): playing while EXPANDED shows track metadata + up-next queu
     assert.equal(el.hidden, false, 'panel visible when expanded + playing');
     assert.match(el.innerHTML, /class="mnp-title"[^>]*>Alpha</, 'shows the playing track title');
     assert.match(el.innerHTML, /class="mnp-sub">Boards · One</, 'artist · album');
-    // Up next = the queue AFTER t1: t2 (index 1), t3 (index 2).
-    assert.match(el.innerHTML, /class="mnp-queue-row" data-index="1"[\s\S]*>Bravo</);
-    assert.match(el.innerHTML, /data-index="2"[\s\S]*>Charlie</);
+    // v1.223: the panel lists the WHOLE queue. Playing t1 (first): t1 is the current
+    // row (marked), t2 (index 1) + t3 (index 2) are up next (plain rows).
+    assert.match(el.innerHTML, /class="mnp-queue-row is-current" aria-current="true" data-index="0"[\s\S]*>Alpha</, 'the current track is in the list, marked');
+    assert.match(el.innerHTML, /class="mnp-queue-row" data-index="1"[\s\S]*>Bravo</, 't2 up next (plain)');
+    assert.match(el.innerHTML, /class="mnp-queue-row" data-index="2"[\s\S]*>Charlie</, 't3 up next (plain)');
+  });
+});
+
+test('v1.223 (Dean): the panel shows the WHOLE queue - already-played tracks grey out (is-played) but stay clickable', async () => {
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom, mock) => {
+    await clickRow(dom, 1); // play t2 (the MIDDLE track) -> t1 is now behind us
+    const el = panel(dom);
+    // t1 (index 0) is BEHIND the current -> greyed, but still a clickable row.
+    assert.match(el.innerHTML, /class="mnp-queue-row is-played" data-index="0"[\s\S]*>Alpha</, 'the played track stays in the list, greyed');
+    assert.match(el.innerHTML, /class="mnp-queue-row is-current" aria-current="true" data-index="1"[\s\S]*>Bravo</, 't2 is the current row');
+    assert.match(el.innerHTML, /class="mnp-queue-row" data-index="2"[\s\S]*>Charlie</, 't3 still up next');
+    // the played row is clickable -> jumps back to it (loads t1)
+    dom.window.document.querySelector('.mnp-queue-row[data-index="0"]').click();
+    await settle(); await settle();
+    assert.strictEqual(lastLoad(mock).id, 't1', 'tapping a played (greyed) row jumps back to it');
   });
 });
 
