@@ -10,7 +10,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const { autoMusicChannels, channelEffectiveOn, isEligibleAudio, projectAudioItem, expandAudioToTracks, chapterTrackId } = require('../../lib/music/libraryAudio');
+const { autoMusicChannels, channelEffectiveOn, isEligibleAudio, projectAudioItem, expandAudioToTracks, chapterTrackId, addedAtToIso } = require('../../lib/music/libraryAudio');
 const store = require('../../lib/music/store');
 const query = require('../../lib/music/query');
 
@@ -235,4 +235,24 @@ test('v1.221: a chapter-track id carries the file id + a `::c<idx>` suffix that 
   // projection). Its only structural guarantee: `::` never appears in a real
   // md5/sha/yt-dlp media id, so a chapter id can never masquerade as a native one.
   assert.ok(chapterTrackId('djmix1', 0).indexOf('::c') !== -1, 'the suffix marks it apart from a bare media id');
+});
+
+test('v1.223: addedAtToIso normalizes a numeric media epoch to ISO, passes ISO through, and empties the rest', () => {
+  assert.strictEqual(addedAtToIso(1788000000000), new Date(1788000000000).toISOString(), 'numeric epoch -> ISO');
+  assert.strictEqual(addedAtToIso('1788000000000'), new Date(1788000000000).toISOString(), 'numeric STRING -> ISO');
+  assert.strictEqual(addedAtToIso('2026-01-01T00:00:00.000Z'), '2026-01-01T00:00:00.000Z', 'ISO string passes through');
+  assert.strictEqual(addedAtToIso(''), '', 'empty -> empty');
+  assert.strictEqual(addedAtToIso(null), '', 'null -> empty');
+  assert.strictEqual(addedAtToIso(undefined), '', 'undefined -> empty');
+});
+
+test('v1.223: a freshly-downloaded (numeric addedAt) projected album sorts to the TOP of "Recently added", above an older native album', () => {
+  // The bug: groupAlbums/sortGroups compare addedAt as STRINGS, so a projected
+  // track's numeric addedAt aggregated to '' and sank to the bottom of newest.
+  const fresh = projectAudioItem({ id: 'djfresh', addedAt: Date.parse('2026-08-30T00:00:00.000Z'), tags: { artist: 'NESTALGIA', album: 'Fresh Mix' }, channelName: 'NESTALGIA' });
+  assert.strictEqual(fresh.addedAt, '2026-08-30T00:00:00.000Z', 'the projected track carries an ISO addedAt now (was a raw number)');
+  const older = { id: 'nat1', title: 'Old', artist: 'A', album: 'Old Album', albumArtist: 'A', addedAt: '2026-01-01T00:00:00.000Z' };
+  const albums = query.groupAlbums([older, fresh], 'newest');
+  assert.strictEqual(albums[0].album, 'Fresh Mix', 'the fresh download is newest-first (was buried at the bottom with addedAt "")');
+  assert.ok(albums[0].addedAt, 'the album carries a real addedAt (not the empty string the string-only guard produced)');
 });

@@ -266,6 +266,17 @@ test('v1.221 chapter-albums: a chaptered download projects as N chapter-tracks (
   assert.ok(albums.some((a) => a.trackCount === 3), 'the mix is one album with its 3 chapters as tracks');
 });
 
+test('v1.223: a projected library album carries a real (ISO) addedAt via /api/music/albums - so "newest" surfaces new downloads', async () => {
+  setToggle(actingUser.id, 'on');
+  const albums = (await (await get('/api/music/albums?sort=newest')).json()).items;
+  // Every projected album (chaptered or single) must have a non-empty addedAt -
+  // the numeric-media-epoch was dropped to '' before v1.223, sinking new downloads.
+  const nest = albums.find((a) => a.artist === 'NESTALGIA');
+  assert.ok(nest, 'a projected NESTALGIA album is present');
+  assert.ok(typeof nest.addedAt === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(nest.addedAt),
+    'its addedAt is a real ISO timestamp (not the empty string that buried it in newest)');
+});
+
 test('v1.221 search: each chapter TITLE surfaces as a playable music result via /api/search (chapters as song names)', async () => {
   setToggle(actingUser.id, 'on');
   const res = await (await get('/api/search?q=' + encodeURIComponent('Track A') + '&type=music')).json();
