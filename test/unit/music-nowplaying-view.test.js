@@ -308,4 +308,8 @@ test('v1.224: updateNowPlayingPanel scrolls the queue to the current row (not th
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/js/music.js'), 'utf8');
   assert.match(src, /nowPlayingPanel\.querySelector\('\.mnp-queue-row\.is-current'\)/, 'it targets the current row');
   assert.match(src, /mnpQueue\.scrollTop = Math\.max\(0, \(curRow\.offsetTop - mnpQueue\.offsetTop\) - 8\)/, 'it scrolls the queue box by scrollTop, not scrollIntoView/window');
+  // v1.225: deferred to the next frame so offsetTop is read AFTER the list's final
+  // (post-growth) layout - a synchronous scroll landed on the compact pre-growth
+  // list and the song got pushed out when the queue grew.
+  assert.match(src, /requestAnimationFrame\(scrollCurrentIntoQueue\)/, 'the scroll is rAF-deferred past the layout/growth');
 });
