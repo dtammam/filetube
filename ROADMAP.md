@@ -80,6 +80,37 @@
 
 ## Shipped
 
+### v1.223.0 - New albums surface in Recently added + Next Up shows the whole queue (2026-08-31)
+
+Two Dean asks after v1.222.
+
+**1. New YouTube downloads surface in "Recently added."** Root cause was a real
+data seam: media items store `addedAt` as a NUMERIC epoch (birthtime/mtime), but
+native music tracks store an ISO STRING, and every music "newest" sort
+(`sortTracks` / `groupAlbums` / `groupArtists` via `sortGroups`) compares `addedAt`
+as a STRING - so a projected download's numeric `addedAt` aggregated to `''` and
+sank to the BOTTOM of newest (repro: a fresh mix landed below a Jan-2026 native
+album). Fixed at the seam source: `projectAudioItem` normalizes `addedAt` to ISO
+(`addedAtToIso`), range-guarded so an out-of-range epoch degrades to `''` instead
+of throwing. One change fixes the album, artist, AND song newest sorts.
+
+**2. "Next Up" shows the whole queue.** The panel listed only tracks AFTER the
+current, so it shrank as you played. It now lists the whole queue - already-played
+tracks greyed (`.is-played`, 0.55 opacity, restored on hover) but still clickable
+to jump back, the current one marked, the rest up next.
+
+**What the slim gate caught (adversarial, APPROVE after one fix round).** The
+whole-queue list capped at 200 rows anchored at the queue START, so a deep current
+index (the Songs tab loads up to 1000) would fill the panel with only played rows -
+no current marker, no up-next. Fixed: the 200-row window is anchored near the
+current track (`ci-20` history + current + up-next). Also verified: `addedAtToIso`
+is throw-safe on garbage, native ISO ordering is unregressed, titles are escaped,
+and the shared panel builder leaves the podcast panel unchanged.
+
+Slim gate (adversarial seat, APPROVE, one fix round). Dual-Node 7949/0 (Node
+22.23.1 + 24.14.0). **Dean's device pass PENDING** (Recently-added ordering + the
+Next Up look).
+
 ### v1.222.0 - Chapter-album polish: art, album-in-search, desktop theatre, recently-played (2026-08-31)
 
 Four Dean asks after v1.221's chapter-albums landed and he loved them.

@@ -2458,5 +2458,11 @@
     "date": "2026-08-31",
     "title": "Polish for the new Music albums: artwork, album in search, and picking up where you left off",
     "intent": "A round of polish for the chaptered-album feature. Those albums now show the real artwork from the file instead of a grey square. Music search now shows the album name next to each song, not just the artist. When you play one of these albums it shows up in 'Recently played' and picks up where you left off, so the artists you listen to are one tap away on the Music home. And on a desktop screen there's a new theatre button that puts the album's track list beside the player, filling the empty space to the right."
+  },
+  {
+    "version": "1.223.0",
+    "date": "2026-08-31",
+    "title": "New downloads show up in Recently added, and Next Up keeps the whole list",
+    "intent": "Two Music tweaks. New albums you download now show up at the top of 'Recently added' where you'd expect them, instead of getting buried - so freshly grabbed mixes and albums are easy to find and play. And the 'Next Up' list no longer shrinks as a song plays: it now shows the whole queue, with the tracks you've already played dimmed but still tappable, so you can jump back to one anytime."
   }
 ]
