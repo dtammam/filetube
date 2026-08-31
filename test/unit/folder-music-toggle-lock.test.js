@@ -20,7 +20,9 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'ma
   .split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 
 test('the toggle renders for a library-write user on a folder view, gated authoritatively on the server hasAudio', () => {
-  const m = SRC.match(/if \(folderFilter && videosHeader && cardCornerCaps[\s\S]{0,3000}?insertAdjacentElement\('afterend', mbtn\)/);
+  // Anchor on the music block's own id ('folder-music-toggle') right after the
+  // gate so this can never latch onto the byte-identical rename-button gate.
+  const m = SRC.match(/if \(folderFilter && videosHeader && cardCornerCaps && cardCornerCaps\.canModifyLibrary === true\)[\s\S]{0,200}?folder-music-toggle[\s\S]{0,2800}?insertAdjacentElement\('afterend', mbtn\)/);
   assert.ok(m, 'the folder-music-toggle render block is present');
   const block = m[0];
   assert.match(block, /folderFilter/, 'folder views only');
