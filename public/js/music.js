@@ -542,8 +542,31 @@ if (typeof module !== 'undefined' && module.exports) {
     var viewToggleBtn = root.querySelector('#music-view-toggle');
     var nowPlayingEl = root.querySelector('#music-nowplaying');
     var nowPlayingPanel = root.querySelector('#music-nowplaying-panel');
+    var musicStage = root.querySelector('#music-stage');
+    var theaterBtn = root.querySelector('#music-theater-btn');
     var jumpbackHost = root.querySelector('#music-jumpback');
     if (!content) return;
+
+    // v1.222 (Dean): desktop THEATRE toggle - lay the album / up-next panel BESIDE
+    // the expanded player (the watch page's Related-files space) instead of below.
+    // Persisted (ft-music-theater); the button is desktop-only (CSS) and shows
+    // only while a track is expanded (toggled in updateNowPlayingPanel). The class
+    // rides #music-stage; a wide-viewport media query does the actual two-column
+    // layout, so on mobile the class is inert (panel stays below).
+    var THEATER_KEY = 'ft-music-theater';
+    function theaterOn() { try { return localStorage.getItem(THEATER_KEY) === '1'; } catch (_) { return false; } }
+    function applyTheater(on) {
+      if (musicStage) musicStage.classList.toggle('is-theater', !!on);
+      if (theaterBtn) theaterBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    applyTheater(theaterOn());
+    if (theaterBtn) {
+      theaterBtn.addEventListener('click', function () {
+        var next = !theaterOn();
+        try { localStorage.setItem(THEATER_KEY, next ? '1' : '0'); } catch (_) { /* ignore */ }
+        applyTheater(next);
+      }, { signal });
+    }
 
     // Redesign S1: the "Jump back in" strip above the tabs - what you were last
     // playing, one tap to resume (playTrackFromContinue applies the saved
@@ -605,8 +628,10 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!expanded || !nowPlaying || !curId || nowPlaying.id !== curId) {
         nowPlayingPanel.hidden = true;
         nowPlayingPanel.innerHTML = '';
+        if (theaterBtn) theaterBtn.hidden = true; // no expanded track -> no theatre toggle
         return;
       }
+      if (theaterBtn) theaterBtn.hidden = false; // a track is expanded -> the toggle is available (desktop-gated by CSS)
       var ci = -1;
       for (var k = 0; k < queue.length; k++) { if (queue[k].id === curId) { ci = k; break; } }
       var upNext = [];
