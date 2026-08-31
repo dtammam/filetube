@@ -80,6 +80,53 @@
 
 ## Shipped
 
+### v1.222.0 - Chapter-album polish: art, album-in-search, desktop theatre, recently-played (2026-08-31)
+
+Four Dean asks after v1.221's chapter-albums landed and he loved them.
+
+**1. Chapter-album art.** A virtual chapter-track's id is `<mediaId>::c<idx>` with no
+file of its own, so `/albumart/<chapterId>` fell to the grey placeholder. It now
+strips the `::c<idx>` suffix and serves the shared file's thumbnail, re-gated by the
+same `mediaVisibleTo(baseItem)` + `hasThumbnail` check (a chapter of a blocked file
+still 404s to the placeholder). One fix covers the album tile, the search card, and
+the recent-artist tile.
+
+**2. Album in search.** A music result's byline was the artist alone; it now reads
+"Artist . Album" (appended only when an album is present; the album is escaped).
+
+**3. Desktop theatre.** A music-owned Theatre toggle (the watch page's button is
+watch-only) lays the album / up-next panel BESIDE the expanded player on desktop
+(>=1024px), filling the dead space where the watch page shows Related files, instead
+of stacked below. Persisted (`ft-music-theater`), shown only while a track is
+expanded, inert on mobile.
+
+**4. Recently-played + resume.** v1.221 skipped saving a chapter's progress, so a
+chapter-album never reached "Recently played" and never resumed. A chapter play now
+records to the MEDIA store under the BASE file id at the file-absolute position;
+"Recently played" collapses a file's many chapters to ONE entry - the chapter you
+were in - so the artist shows once, and a resume-tap continues where you left off.
+
+**What the gate caught (both seats APPROVE after one fix round).** A lying comment
+(referenced a `data-music-expanded` attribute that never existed) - fixed. The
+divergent resume axis (tapping a DIFFERENT chapter must play its head, not a stale
+offset) was correct but only implied - now behaviourally bound. RBAC on the new
+album-art id-strip, cross-user progress isolation, the collapse math, and album
+escaping were all mutation-verified sound.
+
+**Known gaps (disclosed).**
+- *Resume feel (device-pending, Dean's call):* because the album view also computes
+  progress, tapping the EXACT chapter you last played resumes it mid-chapter rather
+  than restarting it (any other chapter starts fresh). This mirrors how a long single
+  already resumes on a tap; if Dean wants an explicit tap to always restart, the fix
+  is to carry the resume offset only down the continue/recent path.
+- *Boundary edge (tech-debt):* a saved position exactly on a chapter boundary, or at/
+  beyond the file end, is contained by no chapter window, so a just-finished chaptered
+  file can drop out of "Recently played." Minor and non-destructive.
+- *Slice 3 layout is device-pending* - the desktop two-column feel needs Dean's eye.
+
+Full two-reviewer gate (QA + adversarial, both APPROVE, one fix round). Dual-Node
+7944/0 (Node 22.23.1 + 24.14.0). **Dean's device pass PENDING.**
+
 ### v1.221.0 - Downloaded chaptered files become albums in Music (2026-08-31)
 
 A downloaded audio file (yt-dlp, audio-only) that carries 2+ embedded YouTube

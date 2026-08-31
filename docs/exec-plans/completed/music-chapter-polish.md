@@ -1,6 +1,8 @@
 # Exec plan: v1.222 - chapter-album polish (art, theatre tracklist, search album, recent recording)
 
-Status: ACTIVE. Owner: main session. Gate: FULL (item 1 touches the RBAC-gated
+Status: SHIPPED v1.222.0 (2026-08-31; full gate, both seats APPROVE after one fix
+round; Dean's device pass PENDING - slice 3 layout + slice 4 resume feel). Owner:
+main session. Gate: FULL (item 1 touches the RBAC-gated
 /albumart thumbnail route; item 4 touches the progress/resume path - data). Dean
 (2026-08-31), four asks after v1.221's chapter-albums shipped and delighted him:
 
