@@ -11,7 +11,7 @@ the video view; scan captures them, download embeds them).
 - `--embed-chapters` is passed on every yt-dlp download (lib/ytdlp/args.js:1191),
   incl. audio (`-x --audio-format`); the scan runs `-show_chapters` on every file
   (buildFfprobeArgs, server.js:3521); `parseFfprobeChapters` (server.js:3205)
-  yields `[{ startTime(sec), title }, ...]`; `resolveChapters(item)` (server.js
+  yields `[{ startTime(sec), title }, ...]`; `resolveItemChapters(item)` (server.js
   ~3266) returns embedded|manual|description chapters, [] when none. Dean confirmed
   the majority of NESTALGIA downloads carry readable chapters.
 - A chapter = `{ startTime: seconds(float), title: string }`, ascending.
@@ -43,7 +43,7 @@ Consumers:
 2. `searchMusic` (lib/search/registry.js): emit each chapter-track as a
    `resultType:'music', kind:'track'` result with the library+chapter markers, so
    a chapter TITLE is searchable as a song (Dean: "chapters as song names in
-   search"). Needs the projection deps (the master toggle + resolveChapters)
+   search"). Needs the projection deps (the master toggle + resolveItemChapters)
    threaded into the registry, mirroring the v1.220-planned searchMusic change.
 3. `groupAlbums`/`groupArtists` (lib/music/query.js): unchanged - the chapter-tracks'
    shared albumKey makes them one album automatically.
@@ -97,7 +97,7 @@ queue is the file's chapters, so Next/Prev walk chapters WITHIN one file.
   in yt-dlp ids; bind it).
 - Playback: no reparent/rebuild of the player; background-audio unaffected; a
   same-file seek does not re-fire progress/handoff wrongly.
-- resolveChapters source precedence (manual > embedded > description) - a
+- resolveItemChapters source precedence (manual > embedded > description) - a
   chaptered file whose chapters come from the DESCRIPTION still works.
 - A 1-chapter or malformed-chapter file never becomes a bogus album.
 - Search: chapter results carry the seek info so a search-tap plays the chapter.

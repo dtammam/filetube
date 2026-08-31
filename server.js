@@ -8326,7 +8326,10 @@ function publicTrackListItem(track, userId, likedSet, progressMap) {
   // progress to the MEDIA store - so it carries its own routes + a source marker
   // for the client's loadTrack to branch on, and its art/transcode flags come
   // from the media item, NOT the music-namespace albumart/codec paths.
-  const isLib = track.source === 'library';
+  // v1.221: a chapter-track (source 'library-chapter') is a library track too - it
+  // needs the same media-route markers, plus its chapterStartSec seek offset.
+  const isLib = track.source === 'library' || track.source === 'library-chapter';
+  const isChapter = track.source === 'library-chapter';
   return {
     id: track.id,
     title: track.title,
@@ -8359,11 +8362,14 @@ function publicTrackListItem(track, userId, likedSet, progressMap) {
     // prefers these routes over the /track,/albumart,/api/music/progress
     // defaults.
     ...(isLib ? {
-      source: 'library',
+      source: track.source, // 'library' or 'library-chapter'
       streamSrc: track.streamSrc,
       artUrl: track.artUrl,
       progressEndpoint: track.progressEndpoint,
     } : {}),
+    // v1.221: the seek offset for a virtual chapter-track (the client seeks the
+    // one file here on play; absent on a plain track).
+    ...(isChapter ? { chapterStartSec: track.chapterStartSec } : {}),
   };
 }
 
@@ -8389,12 +8395,16 @@ function projectedLibraryTracks(req, nativeTracks) {
     if (!libraryAudio.isEligibleAudio(item, marks, autoSet)) continue;
     if (!mediaVisibleTo(req, item)) continue; // the MEDIA gate
     if (nativeIds.has(item.id)) continue; // a file in both roots: the native track wins
-    const track = libraryAudio.projectAudioItem(item);
+    // v1.221 chapter-albums: a chaptered file expands into one virtual track per
+    // chapter (else a single track). resolveChapters is server.js's own resolver
+    // (embedded|manual|description); the chapter-tracks share the file's title as
+    // their album, so groupAlbums folds them into one Album.
+    const tracks = libraryAudio.expandAudioToTracks(item, (it) => resolveItemChapters(it).chapters);
     // Music redesign Slice 1: carry the channel avatar so the artist circle has a
     // real picture (the resolver is READ-ONLY: item -> channelId registry ->
     // subscription). Native music tracks have no channel, so no avatar.
-    track.avatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item) || '';
-    out.push(track);
+    const avatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item) || '';
+    for (const track of tracks) { track.avatarUrl = avatarUrl; out.push(track); }
   }
   return out;
 }
@@ -8420,7 +8430,7 @@ function musicListProgressMap(userId, tracks) {
   // restore bundle) assigns an OWN key here instead of reparenting `out`.
   const out = Object.create(null);
   for (const t of tracks) {
-    if (t.source === 'library') {
+    if (t.source === 'library' || t.source === 'library-chapter') {
       const m = media[t.id];
       if (m) out[t.id] = { position: m.timestamp, duration: m.duration, updatedAt: m.updatedAt };
     } else {

@@ -52,6 +52,8 @@ before(async () => {
     // subtree Music item for the RBAC test, and a dedup collision.
     db.metadata = {
       nest1: audioItem('nest1', 'nestalgiamusic', 'Gaming', 'NESTALGIA', { channelAvatarUrl: 'https://yt3.googleusercontent.com/nestalgia-avatar.jpg' }),
+      // v1.221: a chaptered "full album" mix in the (marked-on) NESTALGIA channel.
+      djmix1: audioItem('djmix1', 'nestalgiamusic', 'Music', 'NESTALGIA', { duration: 1800, chapters: [{ startTime: 0, title: 'Intro' }, { startTime: 300, title: 'Track A' }, { startTime: 900, title: 'Track B' }] }),
       tonzak1: audioItem('tonzak1', 'Tonzak', 'Music', 'Tonzak'),
       zarch1: audioItem('zarch1', 'zarchivo', 'Comedy', 'Zarchivo'),
       blk1: Object.assign(audioItem('blk1', 'blockedchan', 'Music', 'Blocked'), { filePath: path.join(blockedRoot, 'blk1.mp3') }),
@@ -228,6 +230,23 @@ test('v1.215 (Dean device): a played LIBRARY track shows in recent-listening via
   // A library track the user has NOT played is absent (proves the filter still
   // gates on a real saved position, not "every projected track").
   assert.ok(!ids.includes('tonzak1'), 'an unplayed projected track is NOT in recent-listening');
+});
+
+test('v1.221 chapter-albums: a chaptered download projects as N chapter-tracks (one Album, seek offsets), via /api/music', async () => {
+  setToggle(actingUser.id, 'on');
+  const music = await (await get('/api/music')).json();
+  const chapters = music.items.filter((i) => typeof i.id === 'string' && i.id.indexOf('djmix1::c') === 0);
+  assert.strictEqual(chapters.length, 3, 'the 3-chapter mix expands into 3 virtual tracks');
+  assert.deepStrictEqual(chapters.map((c) => c.title).sort(), ['Intro', 'Track A', 'Track B']);
+  const intro = chapters.find((c) => c.title === 'Intro');
+  assert.strictEqual(intro.source, 'library-chapter', 'carries the chapter marker');
+  assert.strictEqual(intro.streamSrc, '/video/djmix1', 'every chapter streams the ONE file');
+  assert.strictEqual(intro.chapterStartSec, 0, 'and its seek offset');
+  assert.strictEqual(chapters.find((c) => c.title === 'Track B').chapterStartSec, 900, 'chapter B seeks to 900s');
+  assert.ok(music.items.some((i) => i.id === 'nest1'), 'a non-chaptered download (nest1) stays a single track');
+  // The chapters group into ONE album (they share the file title).
+  const albums = (await (await get('/api/music/albums')).json()).items;
+  assert.ok(albums.some((a) => a.trackCount === 3), 'the mix is one album with its 3 chapters as tracks');
 });
 
 test('v1.211 all-or-nothing: a MIXED channel shows NOTHING by default (not 1 of 3), ALL when marked', async () => {

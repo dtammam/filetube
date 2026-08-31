@@ -10,7 +10,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const { autoMusicChannels, channelEffectiveOn, isEligibleAudio, projectAudioItem } = require('../../lib/music/libraryAudio');
+const { autoMusicChannels, channelEffectiveOn, isEligibleAudio, projectAudioItem, expandAudioToTracks, chapterTrackId, parseChapterTrackId } = require('../../lib/music/libraryAudio');
 const store = require('../../lib/music/store');
 const query = require('../../lib/music/query');
 
@@ -177,4 +177,64 @@ test('projected library tracks group into ONE untitled album per channel (real q
   assert.strictEqual(nest.trackCount, 2, 'both its mixes count under it');
   assert.strictEqual(nest.albumCount, 1, 'one untitled album');
   assert.ok(artists.some((a) => a.artist === 'Tonzak'), 'Tonzak is its own artist');
+});
+
+// ---- v1.221 chapter-albums: virtual chapter-tracks ------------------------
+
+// A real-shaped "full album" mix download (one mp3) with embedded chapters.
+const DJ_MIX = {
+  id: 'djmix1', type: 'audio', title: 'The Ultimate Sega Dreamcast DJ Mix',
+  name: 'The Ultimate Sega Dreamcast DJ Mix [x].mp3',
+  filePath: '/media/ytdlp/nestalgiamusic/mix [x].mp3', rootFolder: '/media/ytdlp',
+  folderName: 'nestalgiamusic', channelName: 'NESTALGIA', duration: 1800, hasThumbnail: true,
+  tags: { title: 'The Ultimate Sega Dreamcast DJ Mix', artist: 'NESTALGIA', date: '2026', genre: 'Music' },
+};
+const threeChapters = () => [
+  { startTime: 0, title: 'Intro' },
+  { startTime: 300, title: 'Ikaruga Theme' },
+  { startTime: 900, title: 'Sonic Adventure' },
+];
+
+test('v1.221: a 2+ chapter file expands into one virtual track PER chapter (titles, spans, ids, seek offset)', () => {
+  const tracks = expandAudioToTracks(DJ_MIX, threeChapters);
+  assert.strictEqual(tracks.length, 3, 'three chapters -> three tracks');
+  assert.deepStrictEqual(tracks.map((t) => t.title), ['Intro', 'Ikaruga Theme', 'Sonic Adventure']);
+  assert.deepStrictEqual(tracks.map((t) => t.id), ['djmix1::c0', 'djmix1::c1', 'djmix1::c2'], 'ids encode file + chapter index');
+  assert.deepStrictEqual(tracks.map((t) => t.chapterStartSec), [0, 300, 900], 'each carries its seek offset');
+  assert.deepStrictEqual(tracks.map((t) => t.durationSec), [300, 600, 900], 'span = next start - this (last = fileDur - start)');
+  assert.deepStrictEqual(tracks.map((t) => t.trackNo), [1, 2, 3], 'track order = chapter order (album-order sort)');
+  for (const t of tracks) {
+    assert.strictEqual(t.album, 'The Ultimate Sega Dreamcast DJ Mix', 'the FILE title is the album');
+    assert.strictEqual(t.artist, 'NESTALGIA');
+    assert.strictEqual(t.source, 'library-chapter');
+    assert.strictEqual(t.streamSrc, '/video/djmix1', 'every chapter streams the ONE file');
+  }
+});
+
+test('v1.221: the chapter-tracks group into ONE album through the real query pipeline', () => {
+  const tracks = expandAudioToTracks(DJ_MIX, threeChapters);
+  const keys = new Set(tracks.map((t) => store.albumKeyFor(t)));
+  assert.strictEqual(keys.size, 1, 'all chapters share one albumKey');
+  const albums = query.groupAlbums(tracks, '');
+  assert.strictEqual(albums.length, 1, 'one Album (the mix)');
+  assert.strictEqual(albums[0].trackCount, 3, 'with three tracks (the chapters)');
+});
+
+test('v1.221: a 0-1 chapter file (or malformed) stays a SINGLE track, never a bogus album', () => {
+  assert.strictEqual(expandAudioToTracks(DJ_MIX, () => []).length, 1, 'no chapters -> single track');
+  assert.strictEqual(expandAudioToTracks(DJ_MIX, () => [{ startTime: 0, title: 'Whole' }]).length, 1, 'one chapter -> single track');
+  assert.strictEqual(expandAudioToTracks(DJ_MIX, () => { throw new Error('boom'); }).length, 1, 'a throwing resolver degrades to the single track');
+  // Two chapters but both invalid start -> degrade to single.
+  assert.strictEqual(expandAudioToTracks(DJ_MIX, () => [{ startTime: -1, title: 'a' }, { startTime: NaN, title: 'b' }]).length, 1, 'no valid chapter survives -> single track');
+  assert.strictEqual(expandAudioToTracks(DJ_MIX, () => [])[0].id, 'djmix1', 'the single track keeps the real file id');
+});
+
+test('v1.221: chapter-track id round-trips and rejects junk (RBAC decode safety)', () => {
+  assert.strictEqual(chapterTrackId('abc', 4), 'abc::c4');
+  assert.deepStrictEqual(parseChapterTrackId('abc::c4'), { itemId: 'abc', index: 4 });
+  assert.deepStrictEqual(parseChapterTrackId('a::b::c::c12'), { itemId: 'a::b::c', index: 12 }, 'greedy itemId, last ::cN wins');
+  assert.strictEqual(parseChapterTrackId('plainmediaid'), null, 'a real media id (no ::c) is not a chapter id');
+  assert.strictEqual(parseChapterTrackId('abc::cx'), null, 'non-numeric index rejected');
+  assert.strictEqual(parseChapterTrackId('abc::c-1'), null, 'negative index rejected');
+  assert.strictEqual(parseChapterTrackId(null), null);
 });
