@@ -244,6 +244,12 @@ test('v1.223: addedAtToIso normalizes a numeric media epoch to ISO, passes ISO t
   assert.strictEqual(addedAtToIso(''), '', 'empty -> empty');
   assert.strictEqual(addedAtToIso(null), '', 'null -> empty');
   assert.strictEqual(addedAtToIso(undefined), '', 'undefined -> empty');
+  // Throw-safety: new Date(n).toISOString() throws for an epoch outside +-8.64e15;
+  // a garbage numeric addedAt must degrade to '' (not 500 the projection).
+  assert.doesNotThrow(() => addedAtToIso(1e20));
+  assert.strictEqual(addedAtToIso(1e20), '', 'an out-of-range epoch -> empty, never a throw');
+  assert.strictEqual(addedAtToIso(Infinity), '', 'Infinity -> empty');
+  assert.strictEqual(addedAtToIso(NaN), '', 'NaN -> empty');
 });
 
 test('v1.223: a freshly-downloaded (numeric addedAt) projected album sorts to the TOP of "Recently added", above an older native album', () => {
