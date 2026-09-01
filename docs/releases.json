@@ -2590,5 +2590,11 @@
     "date": "2026-09-01",
     "title": "A sticker on the player for speed, loop, and skin",
     "intent": "There's a new little sticker in the corner of the music player (and the pop-out window). Tap it and you get quick controls for playback speed, loop, and switching between the Apple, Spotify, and iPod skins - all in one place, without leaving the player. You can also change the sticker itself in Settings > Appearance: keep the FileTube logo, pick an emoji, or upload your own small image."
+  },
+  {
+    "version": "1.239.0",
+    "date": "2026-09-01",
+    "title": "A bigger iPod wheel you can spin to scrub",
+    "intent": "The iPod skin's click wheel is now bigger, sized like a real iPod Classic's. And on your phone, you can spin the wheel while a song is playing to scrub through it - turn clockwise to jump forward, counter-clockwise to go back, and let go to land there. (On a computer the pop-out wheel still controls volume, which phones can't do.)"
   }
 ]

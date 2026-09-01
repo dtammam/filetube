@@ -317,12 +317,84 @@ test('v1.233 iPod: spinning COUNTER-clockwise moves the cursor UP, clamped at th
   } });
 });
 
-test('v1.233 iPod: a spin in Now Playing (list CLOSED) does nothing (Dean: list-only)', async () => {
+// ---- v1.239 (Dean): mobile Now-Playing wheel spin SCRUBS the timeline -----------------
+// iOS makes media.volume read-only, so on the in-tab iPhone skin a Now-Playing spin (which
+// used to be a no-op) now scrubs the playhead - the mobile analog of the pop-out's
+// wheel-volume. jsdom stubs media, so make the shared element scrubbable: a backing
+// currentTime + a fixed duration, so a spin moves the playhead and a release commits.
+function makeScrubbable(dom, cur, dur) {
+  const mp = dom.window.document.getElementById('media-player');
+  let ct = cur;
+  Object.defineProperty(mp, 'duration', { configurable: true, get: () => dur });
+  Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => ct, set: (v) => { ct = Number(v); } });
+  return mp;
+}
+
+test('v1.239 iPod: a Now-Playing spin SCRUBS the playhead forward, COMMITS on release, and does NOT engage the cursor', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
+    const p = panel(dom); const mp = makeScrubbable(dom, 150, 300); // mid-track
+    seedList(p, dom, 6, 2); // rows present but the list is CLOSED - a scrub must not touch them
+    assert.ok(!p.classList.contains('mms-listmode'), 'Now Playing (list closed)');
+    spin(p.querySelector('.ip-wheel'), dom, [40, 80, 120, 160]); // firm clockwise
+    assert.ok(mp.currentTime > 150, 'clockwise scrubbed the playhead FORWARD (live)');
+    assert.strictEqual(spy.seek, 1, 'release committed via #seek-bar change (real pipeline: seekCommitTarget + saveProgress)');
+    // "scrub, NOT cursor": a cursor-mode spin would have marked an .is-cursor row; scrub must not.
+    assert.strictEqual(cursorIdx(p), -1, 'no list row became the cursor - this was a scrub, not a cursor move');
+  } });
+});
+
+test('v1.239 iPod: a big BACKWARD Now-Playing spin clamps EXACTLY at 0 (never negative)', async () => {
   await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
-    const p = panel(dom); seedList(p, dom, 6, 2);
-    assert.ok(!p.classList.contains('mms-listmode'), 'list is closed (Now Playing)');
+    const p = panel(dom); const mp = makeScrubbable(dom, 30, 300); // near the start (ratio 0.1)
+    // ~ -320deg total (~0.89 of the track) from ratio 0.1 => drives well below 0, so the
+    // lower clamp is genuinely EXERCISED (the adversarial's surviving mutant-C fixture gap).
+    spin(p.querySelector('.ip-wheel'), dom, [-40, -80, -120, -160, -200, -240, -280, -320]);
+    assert.strictEqual(mp.currentTime, 0, 'clamped exactly at 0 (deleting the Math.max(0,...) reds this)');
+  } });
+});
+
+test('v1.239 iPod: a big FORWARD Now-Playing spin clamps EXACTLY at the duration (never past the end)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const p = panel(dom); const mp = makeScrubbable(dom, 270, 300); // near the end (ratio 0.9)
+    spin(p.querySelector('.ip-wheel'), dom, [40, 80, 120, 160, 200, 240, 280, 320]); // ~ +320deg
+    assert.strictEqual(mp.currentTime, 300, 'clamped exactly at the duration (deleting the Math.min(1,...) reds this)');
+  } });
+});
+
+test('v1.239 iPod: a pointercancel mid-scrub does NOT commit (no lost seek; next save carries it)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
+    const p = panel(dom); const mp = makeScrubbable(dom, 150, 300);
+    const wheel = p.querySelector('.ip-wheel');
+    const at = (deg) => { const rad = deg * Math.PI / 180; return { clientX: 100 * Math.cos(rad), clientY: 100 * Math.sin(rad) }; };
+    wheel.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    [40, 80, 120].forEach((deg) => { const q = at(deg); wheel.dispatchEvent(new dom.window.MouseEvent('pointermove', { bubbles: true, clientX: q.clientX, clientY: q.clientY })); });
+    wheel.dispatchEvent(new dom.window.MouseEvent('pointercancel', { bubbles: true }));
+    assert.ok(mp.currentTime > 150, 'the live scrub still moved the playhead');
+    assert.strictEqual(spy.seek, 0, 'but a CANCEL never dispatched the seek-bar commit');
+  } });
+});
+
+test('v1.239 iPod: a Now-Playing spin with NO known duration is a safe no-op (loading track)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
+    const p = panel(dom); // duration left at the jsdom default (NaN) - no makeScrubbable
     spin(p.querySelector('.ip-wheel'), dom, [40, 80, 120]);
-    assert.strictEqual(cursorIdx(p), -1, 'no cursor engaged while the list is closed');
+    assert.strictEqual(spy.seek, 0, 'no commit when there is no duration to scrub against');
+  } });
+});
+
+test('v1.239 iPod: removing the early-return did NOT break tap-through - a Now-Playing wheel TAP still fires its zone', async () => {
+  // The old `if (!listMode && !allowVolume) return;` used to short-circuit Now-Playing here;
+  // now the handler proceeds to build the scrub gesture, so a pure TAP (no rotation) must
+  // still leave its zone button click intact (moved=false -> no suppress). Bind it.
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
+    const p = panel(dom); makeScrubbable(dom, 150, 300);
+    const prev = p.querySelector('[data-skin-prev]');
+    // a real tap: pointerdown + pointerup with NO movement, then the synthetic click.
+    prev.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    prev.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true }));
+    prev.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(spy.prev, 1, 'the rewind zone tap still proxies to #track-prev-btn');
+    assert.strictEqual(spy.seek, 0, 'a no-move tap never commits a scrub');
   } });
 });
 
