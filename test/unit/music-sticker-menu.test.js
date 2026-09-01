@@ -216,6 +216,12 @@ test('v1.240: an IMAGE sticker (logo default / custom) marks the button mms-stic
     assert.ok(!sticker(dom).classList.contains('mms-sticker--img'), 'emoji keeps the circular chip (no un-circle marker)');
     assert.ok(sticker(dom).querySelector('.mms-sticker-emoji'), 'renders the emoji');
   }, { sticker: { kind: 'emoji', value: '🎵' } });
+  // a PARTIAL emoji pref with no value falls through to the logo image -> must be marked img
+  // (both gate seats: the marker keys off what's rendered, not off kind alone).
+  await boot(async (dom) => {
+    assert.ok(sticker(dom).querySelector('img.mms-sticker-ic'), 'no-value emoji renders the logo image');
+    assert.ok(sticker(dom).classList.contains('mms-sticker--img'), 'and is un-circled (not a chip around a logo)');
+  }, { sticker: { kind: 'emoji' } });
 });
 
 test('v1.240 source-lock (CSS): the sticker tilts, and an image sticker drops the circle/clip', () => {

@@ -878,7 +878,14 @@ if (typeof module !== 'undefined' && module.exports) {
       try { if (!pl || typeof pl.isLoopEnabled !== 'function' || !pl.isLoopEnabled()) return; } catch (_) { return; }
       var mp = hostCtl('media-player'); if (!mp) return;
       var b = currentChapterBounds(); if (!b) return;
-      if (mp.currentTime >= b.end - 0.25 && mp.currentTime > b.start) {
+      // Fire only in a TIGHT band around the boundary: [end-0.25, end+1). The scrub-skip guard
+      // above only covers a live drag; the FINAL scrub position's timeupdate can land AFTER
+      // pointerup (async media events), when wheelSpin is already null but chapterViewId is
+      // still the pre-scrub chapter (reflectChapter runs after this). Without the upper cap
+      // that stale tick would yank a deliberate forward-scrub-to-a-far-chapter back to the old
+      // chapter's start (QA gate WARNING). end+1 clears every normal-playback tick (~119.9)
+      // yet rejects a far stale position (250 vs a {0,120} chapter).
+      if (mp.currentTime >= b.end - 0.25 && mp.currentTime < b.end + 1 && mp.currentTime > b.start) {
         try { mp.currentTime = b.start; } catch (_) { /* ignore a bad set */ }
       }
     }
@@ -966,7 +973,11 @@ if (typeof module !== 'undefined' && module.exports) {
       wrap.className = 'mms-sticker-wrap';
       // v1.240 (Dean): an IMAGE sticker (logo or custom upload) shows SQUARE at the spot with
       // no circular ring/clip; only an emoji keeps the round chip (legibility on any skin).
-      var imgCls = (readStickerPref().kind === 'emoji') ? '' : ' mms-sticker--img';
+      // Key the marker off what stickerIconHtml ACTUALLY renders: an emoji chip needs a
+      // truthy value, else it falls through to the logo <img> (a partial {kind:'emoji'} pref
+      // with no value would otherwise wrongly circle a logo image - both gate seats).
+      var pref = readStickerPref();
+      var imgCls = (pref.kind === 'emoji' && pref.value) ? '' : ' mms-sticker--img';
       wrap.innerHTML =
         '<button type="button" class="mms-sticker' + imgCls + '" data-skin-sticker aria-haspopup="true" aria-expanded="false" aria-label="Player options">' + stickerIconHtml() + '</button>' +
         '<div class="mms-sticker-menu" data-skin-sticker-menu role="menu" hidden>' + buildStickerMenuHtml() + '</div>';

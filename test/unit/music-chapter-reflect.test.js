@@ -162,6 +162,21 @@ test('v1.240: with Loop OFF, crossing a boundary ADVANCES normally (no seek-back
   });
 });
 
+test('v1.240 (QA WARNING): a far position past the boundary is NOT yanked back - the loop trigger is upper-capped', async () => {
+  // Simulates the post-scrub stale tick: Loop ON, displayed chapter is still c0 (reflect
+  // has not run yet), but currentTime is already deep in chapter 3 (a forward scrub landed).
+  // enforceChapterLoop runs FIRST with stale bounds {0,120}; without the end+1 cap it would
+  // seek back to 0 (yank). With the cap, it must NOT seek, and reflect then advances to c2.
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom) => {
+    const { mp, set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => true;
+    assert.strictEqual(playingId(dom), 'film::c0', 'displayed chapter one before the tick');
+    set(250); await settle(); // far into chapter three, in ONE tick (stale chapterViewId=c0)
+    assert.strictEqual(mp.currentTime, 250, 'NOT yanked back to 0 - a deliberate far scrub survives');
+    assert.strictEqual(playingId(dom), 'film::c2', 'reflect then advanced the displayed chapter to three');
+  });
+});
+
 test('v1.240 source-lock: enforceChapterLoop is bound BEFORE reflectChapter and SKIPS during a scrub', () => {
   const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
   // bound first so a loop seek-back lands before the reflect can advance the displayed chapter
