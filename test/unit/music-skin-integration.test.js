@@ -200,6 +200,19 @@ test('v1.232 iPod: a SMALL overflow floors the marquee duration at 4s (constant 
   } });
 });
 
+test('v1.232.4: the seek fill RESETS to 0 on a track swap (loadstart), not the old track fill', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'apple', run: async (dom) => {
+    const fill = panel(dom).querySelector('.mms-fill');
+    assert.ok(fill, 'apple has a scrubber fill');
+    fill.style.width = '52%'; // simulate the previous track's position still showing
+    const mp = dom.window.document.getElementById('media-player');
+    // loadstart fires on a prev/next swap before playback; with no duration yet, the
+    // fill must drop to 0 (not keep the stale 52%) - that was the "fill then refresh" flash.
+    mp.dispatchEvent(new dom.window.Event('loadstart', { bubbles: true }));
+    assert.strictEqual(fill.style.width, '0%', 'fill drops to 0 while the new track loads (no stale-fill flash)');
+  } });
+});
+
 test('v1.232.1: the marquee also applies to Apple/Spotify titles (.mms-ttl), not just iPod', async () => {
   await boot({ mobile: true, isMusic: true, skin: 'apple', mockOverflow: true, run: async (dom) => {
     const ttl = panel(dom).querySelector('.mms-ttl');

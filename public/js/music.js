@@ -626,12 +626,16 @@ if (typeof module !== 'undefined' && module.exports) {
       var dur = (isFinite(mp.duration) && mp.duration > 0) ? mp.duration : 0;
       var pos = Number(mp.currentTime) || 0;
       var frac = dur > 0 ? Math.min(100, pos / dur * 100) : 0;
-      var fill = nowPlayingPanel.querySelector('.mms-fill'); if (fill && dur > 0) fill.style.width = frac + '%';
+      // v1.232.4 (Dean): while a track is LOADING (dur==0 on prev/next), RESET the bar to
+      // 0 instead of leaving the previous track's fill up - that stale fill was the
+      // "fills then abruptly refreshes" flash on skip. Now it drops to 0 and fills as
+      // the new track plays (bound to loadstart/emptied/durationchange below so it's prompt).
+      var fill = nowPlayingPanel.querySelector('.mms-fill'); if (fill) fill.style.width = (dur > 0 ? frac : 0) + '%';
       // iPod status-bar play indicator (▶ playing / ❚❚ paused) - the authentic Classic
       // shows state up top; the wheel's bottom play button keeps its static ▶❚❚ label.
       var pind = nowPlayingPanel.querySelector('.mms-playind'); if (pind) pind.textContent = mp.paused ? '❚❚' : '▶';
       var pEl = nowPlayingPanel.querySelector('.mms-pos'); if (pEl) pEl.textContent = mmssMusic(pos);
-      var rEl = nowPlayingPanel.querySelector('.mms-rem'); if (rEl && dur > 0) rEl.textContent = '-' + mmssMusic(dur - pos);
+      var rEl = nowPlayingPanel.querySelector('.mms-rem'); if (rEl) rEl.textContent = dur > 0 ? '-' + mmssMusic(dur - pos) : '';
     }
     // iPod Now-Playing <-> song-list toggle (a transient class on the panel; a full
     // re-render resets it, so a track change returns you to Now Playing).
@@ -670,7 +674,9 @@ if (typeof module !== 'undefined' && module.exports) {
       if (skinReflectBound) return;
       var mp = hostCtl('media-player'); if (!mp) return;
       skinReflectBound = true;
-      ['play', 'pause', 'timeupdate', 'seeked', 'loadedmetadata'].forEach(function (ev) {
+      // v1.232.4: loadstart/emptied/durationchange fire on a prev/next track swap BEFORE
+      // playback, so the bar resets to 0 promptly (no lingering old-track fill).
+      ['play', 'pause', 'timeupdate', 'seeked', 'loadedmetadata', 'loadstart', 'emptied', 'durationchange'].forEach(function (ev) {
         mp.addEventListener(ev, reflectSkin, { signal: signal });
       });
     }
