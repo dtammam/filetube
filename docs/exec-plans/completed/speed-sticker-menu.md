@@ -1,6 +1,6 @@
 # Exec plan: the speed-modifier "sticker" menu
 
-Status: ACTIVE (targeting v1.238.0)
+Status: SHIPPED v1.238.0
 Branch: `feat/speed-sticker`
 Owner: main session (lean mode)
 Gate: FULL two-reviewer gate. **Data-touching** (a per-user uploaded image is

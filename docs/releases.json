@@ -2584,5 +2584,11 @@
     "date": "2026-09-01",
     "title": "The song title keeps up as an album plays",
     "intent": "When an album plays straight through from one chapter to the next on its own, the now-playing title, the artwork, and the highlighted track in the list now update to the song that's actually playing - before, they'd stay stuck on the previous track unless you tapped ahead by hand. It works the same in the music view and the pop-out player. The iPod's click wheel is also a bit bigger now."
+  },
+  {
+    "version": "1.238.0",
+    "date": "2026-09-01",
+    "title": "A sticker on the player for speed, loop, and skin",
+    "intent": "There's a new little sticker in the corner of the music player (and the pop-out window). Tap it and you get quick controls for playback speed, loop, and switching between the Apple, Spotify, and iPod skins - all in one place, without leaving the player. You can also change the sticker itself in Settings > Appearance: keep the FileTube logo, pick an emoji, or upload your own small image."
   }
 ]
