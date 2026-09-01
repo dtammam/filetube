@@ -120,3 +120,14 @@ A Settings/Appearance (or Playback) checkbox mirroring `loadHomeRowControl`/`wir
 FULL two-reviewer gate (cross-surface routing net - the access-control-completeness lesson's
 sibling: enumerate EVERY tap surface). Dual-Node before release. Device-pending: Dean confirms
 his home-feed music taps open in the player and chaptered opens the album.
+
+## Gate fix-round + server-fold (v1.236, both seats + Dean)
+
+Both gate seats reviewed the client-only commit; applied:
+- **C1 (QA CRITICAL):** `musicHrefForItem` now gates on `kind` too (`kind && kind !== 'media' -> null`). `type:'audio'` is not unique to downloads - a downloaded PODCAST is `kind:'podcast', type:'audio'` in the modern grid and was being hijacked to /music -> 404 -> bounce. Fixed + bound (podcast/book/tv -> null; media/kind-absent -> music).
+- **W1 (QA WARNING):** the /watch bounce regressed the LEGACY continue-listening card path for native music-store ids (which /watch 404s). Introduced a reroute-ORIGIN marker `&ao=1` on `musicHrefForItem`'s href; `playTrackFromContinue(trackId, bounceOnMiss)` bounces ONLY when the marker is present (a bare ?play= continue card keeps the old `render()` on a miss). Comment corrected.
+- **M10 (adversarial WARNING):** added the missing "resolvable-but-not-recently-played -> plays, no bounce" behavioral test (the common reroute case; mutation-verified: dropping the success-branch `return` reds it).
+- **Server-fold (Dean, reversing decision 4's "no server change"):** the home ROW feed (`resolveHomeItem`) + modern grid (`resolveModernGridItem`) now carry `type` + (for audio) `chapterCount` - additive, read-only. The client `buildFeedCardHtml` reroutes via `musicHrefForItem`, so Dean's PRIMARY case (a chaptered audio download tapped from the home feed on mobile) now opens the music player + its album everywhere, not just the /api/videos surfaces. Still device-flag-gated + library-bound (a miss bounces to /watch). This is a payload ENRICHMENT, NOT the player/API extension Dean declined.
+
+### W2 - deliberately-out-of-scope surfaces (disclosed, not wired)
+`queueEntryHref` (common.js, up-next/autoplay), the History list, and the notification-bell rows render audio items but are OUTSIDE the locked scope (home feed / search / channel / continue-watching). `queueEntryHref` already routes `kind:'track'` -> /music and governs a video-context autoplay continuation (rerouting mid-session is undesirable); it lacks per-item `type` anyway. Left as-is by design; recorded here so the code and the spec agree.

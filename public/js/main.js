@@ -282,8 +282,11 @@ function buildFeedCardHtml(item) {
   const bar = pct > 0.5
     ? `<div class="book-row-progress"><div class="book-row-progress-fill" style="width: ${pct}%"></div></div>`
     : '';
+  // v1.236: the home ROW feed now carries `type`/`chapterCount` (server-fold), so an audio
+  // download reroutes to the music player here too when the flag is on; else the server href.
+  const feedHref = musicHrefForItem(item) || item.href;
   return `
-    <a class="book-row-card music-row-card video-row-card" href="${escapeBookRowHtml(item.href)}" title="${escapeBookRowHtml(item.title)}">
+    <a class="book-row-card music-row-card video-row-card" href="${escapeBookRowHtml(feedHref)}" title="${escapeBookRowHtml(item.title)}">
       <span class="book-row-cover video-row-cover"><img src="${escapeBookRowHtml(item.thumbnailUrl)}" alt="" loading="lazy" />${bar}</span>
       <span class="book-row-title">${escapeBookRowHtml(item.title)}</span>
       <span class="music-row-artist">${escapeBookRowHtml(item.subtitle || '')}</span>
@@ -834,13 +837,22 @@ function homeRowEnabled(key) {
 const OPEN_AUDIO_IN_MUSIC_KEY = 'ft-open-audio-in-music';
 function musicHrefForItem(item) {
   if (!item || item.type !== 'audio') return null;
+  // gate C1 (QA): reroute ONLY media-kind downloads (kind absent or 'media'). type:'audio' is
+  // NOT unique to downloads - podcast episodes (kind 'podcast'), and tracks/books/tv carry it
+  // on some feeds too; never hijack their own destinations (a podcast must open /podcasts).
+  if (item.kind && item.kind !== 'media') return null;
   if (!homeRowEnabled(OPEN_AUDIO_IN_MUSIC_KEY)) return null;
   const id = item.id != null ? String(item.id) : '';
   if (!id) return null;
-  // chaptered (>= 2 embedded chapters, present on /api/videos surfaces) -> open the album via
-  // its first chapter track; else the track id IS the media id for a single projected track.
-  const playId = (Array.isArray(item.chapters) && item.chapters.length >= 2) ? (id + '::c0') : id;
-  return '/music?play=' + encodeURIComponent(playId);
+  // chaptered (>= 2) -> the album via its FIRST chapter track (::c0). `chapters` (array) rides
+  // the /api/videos surfaces; the home-feed + modern-grid carry `chapterCount` instead (the
+  // v1.236 server-fold), so accept either signal.
+  const chaptered = (Array.isArray(item.chapters) && item.chapters.length >= 2) || (Number(item.chapterCount) >= 2);
+  const playId = chaptered ? (id + '::c0') : id;
+  // &ao=1 marks a reroute-ORIGIN navigation: the music view bounces a MISS to /watch (a
+  // video-side download plays there) ONLY for this origin, leaving the legacy continue-
+  // listening card's miss behaviour (a native-track id that must NOT bounce to /watch) unchanged.
+  return '/music?play=' + encodeURIComponent(playId) + '&ao=1';
 }
 
 // v1.73 gate C1 (BOTH seats): ruling 1's either-was-on clause is an

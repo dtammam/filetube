@@ -785,8 +785,29 @@ test('v1.236: /music?play=<id> for a NON-resolvable id BOUNCES (attempts a navig
   // attempt. Proves reachability; the exact /watch URL + ::c strip are source-locked.
   const navLog = [];
   const fetchImpl = () => Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
-  await boot({ mobile: false, isMusic: true, query: '?play=ghost123', fetchImpl, navLog, run: async () => {
+  // &ao=1 = the reroute origin -> a miss bounces to /watch. (A bare ?play= would NOT bounce; see below.)
+  await boot({ mobile: false, isMusic: true, query: '?play=ghost123&ao=1', fetchImpl, navLog, run: async () => {
     for (let i = 0; i < 12; i++) await settle();
-    assert.ok(navLog.some((m) => /navigation/i.test(m)), 'the miss path reached location.replace (a /watch bounce), not the browse-view dead-end');
+    assert.ok(navLog.some((m) => /navigation/i.test(m)), 'the reroute miss reached location.replace (a /watch bounce), not the browse-view dead-end');
+  } });
+});
+
+test('v1.236 (W1): a BARE ?play= miss (a legacy continue-listening card, no ao) does NOT bounce to /watch', async () => {
+  const navLog = [];
+  const fetchImpl = () => Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  await boot({ mobile: false, isMusic: true, query: '?play=native5', fetchImpl, navLog, run: async () => {
+    for (let i = 0; i < 12; i++) await settle();
+    assert.strictEqual(navLog.length, 0, 'a native continue-card miss stays in the music view (render()), never /watch (no regression)');
+  } });
+});
+
+test('v1.236 (M10): a rerouted id NOT in recent but RESOLVABLE plays in music - no bounce (the common reroute case)', async () => {
+  const navLog = [];
+  // recent-listening empty (idx<0) BUT /api/music/song7 resolves to a real track (no albumKey)
+  // -> queue=[t]; playAt(0); return. Must NOT fall through to the /watch bounce.
+  const fetchImpl = (url) => Promise.resolve({ ok: true, json: async () => (/\/api\/music\/song7(\?|$)/.test(String(url)) ? { id: 'song7', title: 'Song 7' } : { items: [] }) });
+  await boot({ mobile: false, isMusic: true, query: '?play=song7&ao=1', fetchImpl, navLog, run: async () => {
+    for (let i = 0; i < 12; i++) await settle();
+    assert.strictEqual(navLog.length, 0, 'a resolvable rerouted track plays in the music player and is NOT bounced to /watch');
   } });
 });

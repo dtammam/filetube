@@ -23,16 +23,16 @@ function withLocalStorage(map, fn) {
 }
 
 test('musicHrefForItem: an audio item -> /music?play=<id> (flag default ON, no localStorage)', () => {
-  assert.strictEqual(main.musicHrefForItem({ id: 'a1', type: 'audio' }), '/music?play=a1');
+  assert.strictEqual(main.musicHrefForItem({ id: 'a1', type: 'audio' }), '/music?play=a1&ao=1');
 });
 
 test('musicHrefForItem: a CHAPTERED audio item -> /music?play=<id>::c0 (opens the album)', () => {
   const href = main.musicHrefForItem({ id: 'a2', type: 'audio', chapters: [{ startTime: 0 }, { startTime: 60 }] });
-  assert.strictEqual(href, '/music?play=' + encodeURIComponent('a2::c0'));
+  assert.strictEqual(href, '/music?play=' + encodeURIComponent('a2::c0') + '&ao=1');
 });
 
 test('musicHrefForItem: a 0/1-chapter audio item is NOT treated as chaptered (base id)', () => {
-  assert.strictEqual(main.musicHrefForItem({ id: 'a3', type: 'audio', chapters: [{ startTime: 0 }] }), '/music?play=a3');
+  assert.strictEqual(main.musicHrefForItem({ id: 'a3', type: 'audio', chapters: [{ startTime: 0 }] }), '/music?play=a3&ao=1');
 });
 
 test('musicHrefForItem: a VIDEO item -> null (never rerouted; video stays /watch)', () => {
@@ -49,13 +49,13 @@ test('musicHrefForItem: flag OFF -> null everywhere (restores /watch)', () => {
 
 test('musicHrefForItem: flag explicitly ON (localStorage absent/1) -> reroutes', () => {
   withLocalStorage({ 'ft-open-audio-in-music': '1' }, () => {
-    assert.strictEqual(main.musicHrefForItem({ id: 'a1', type: 'audio' }), '/music?play=a1');
+    assert.strictEqual(main.musicHrefForItem({ id: 'a1', type: 'audio' }), '/music?play=a1&ao=1');
   });
 });
 
 test('buildVideoRowCardHtml (continue-watching / video-home rows): an AUDIO row taps into the music player', () => {
   const audio = main.buildVideoRowCardHtml({ id: 'a9', type: 'audio', title: 'Song', progressPercent: 20 });
-  assert.match(audio, /href="\/music\?play=a9"/, 'audio row -> /music?play=');
+  assert.match(audio, /href="\/music\?play=a9&ao=1"/, 'audio row -> /music?play=');
   const video = main.buildVideoRowCardHtml({ id: 'v9', type: 'video', title: 'Clip', progressPercent: 20 });
   assert.match(video, /href="\/watch\.html\?v=v9"/, 'video row -> /watch (unchanged)');
 });
@@ -75,11 +75,12 @@ test('the grid card (buildCardHtml) routes an audio tile through musicHrefForIte
 
 test('the music view BOUNCES a non-resolvable ?play= id to /watch (no dead end) with the ::c suffix stripped', () => {
   const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
-  const m = /async function playTrackFromContinue\(trackId\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  const m = /async function playTrackFromContinue\(trackId, bounceOnMiss\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(m, 'playTrackFromContinue exists');
   const body = m[1];
   assert.match(body, /replace\(\/::c\\d\+\$\/, ''\)/, 'strips the ::c chapter suffix to the base media id');
   assert.match(body, /location\.replace\('\/watch\.html\?v=' \+ encodeURIComponent\(bounceId\)\)/, 'bounces a resolve-miss to /watch');
+  assert.match(body, /if \(bounceOnMiss\)/, 'the bounce is gated on the reroute-origin flag (W1: a legacy continue card keeps render() on a miss)');
 });
 
 test('the Settings toggle is present AND wired (not an inert checkbox) to the ft-open-audio-in-music key', () => {
@@ -88,4 +89,18 @@ test('the Settings toggle is present AND wired (not an inert checkbox) to the ft
   const setup = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'setup.js'), 'utf8');
   assert.match(setup, /loadHomeRowControl\('open-audio-in-music-check', 'ft-open-audio-in-music'\)/, 'reflect-on-load (default ON)');
   assert.match(setup, /wireHomeRowToggle\('open-audio-in-music-check', 'ft-open-audio-in-music'/, 'persists the toggle to the key musicHrefForItem reads');
+});
+
+test('gate C1: a non-media kind that carries type:audio is NOT hijacked (podcast/book/tv keep their own destination)', () => {
+  assert.strictEqual(main.musicHrefForItem({ id: 'ep1', kind: 'podcast', type: 'audio' }), null, 'a downloaded podcast episode is never rerouted to /music');
+  assert.strictEqual(main.musicHrefForItem({ id: 'b1', kind: 'book', type: 'audio' }), null);
+  assert.strictEqual(main.musicHrefForItem({ id: 'tv1', kind: 'tv', type: 'audio' }), null);
+  // media-kind (and kind-absent, the /api/videos shape) audio DO reroute:
+  assert.strictEqual(main.musicHrefForItem({ id: 'm1', kind: 'media', type: 'audio' }), '/music?play=m1&ao=1');
+  assert.strictEqual(main.musicHrefForItem({ id: 'm2', type: 'audio' }), '/music?play=m2&ao=1', 'kind absent (older payloads) still routes');
+});
+
+test('gate C1/fold: the home-feed chapterCount signal routes a chaptered download to ::c0 (no chapters array needed)', () => {
+  assert.strictEqual(main.musicHrefForItem({ id: 'f1', kind: 'media', type: 'audio', chapterCount: 5 }), '/music?play=' + encodeURIComponent('f1::c0') + '&ao=1');
+  assert.strictEqual(main.musicHrefForItem({ id: 'f2', kind: 'media', type: 'audio', chapterCount: 1 }), '/music?play=f2&ao=1', '1 chapter is not an album');
 });

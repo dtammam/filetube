@@ -73,10 +73,25 @@ test('AC1: rows envelope; items carry only server-resolved fields', async () => 
   const ra = rowOf(body, 'recently-added');
   assert.ok(ra, 'a non-empty library always has recently-added');
   const it = ra.items[0];
-  assert.deepStrictEqual(Object.keys(it).sort(), ['href', 'id', 'kind', 'progressPercent', 'subtitle', 'thumbnailUrl', 'title'].sort());
+  // v1.236: `type` now rides the row-feed media card (server-fold) so the client can reroute
+  // audio downloads to the music player; `chapterCount` is added only for audio (this seed is a video).
+  assert.deepStrictEqual(Object.keys(it).sort(), ['href', 'id', 'kind', 'progressPercent', 'subtitle', 'thumbnailUrl', 'title', 'type'].sort());
+  assert.strictEqual(it.type, 'video', 'a video carries type:video and NO chapterCount');
   assert.strictEqual(it.title, 'Title a');
   assert.strictEqual(it.thumbnailUrl, '/thumbnail/a');
   assert.strictEqual(it.href, '/watch.html?v=a');
+});
+
+test('v1.236: an AUDIO row-feed card carries type:audio + chapterCount (server-fold for the music-player reroute)', async () => {
+  seed({ s: item('s', { type: 'audio', ext: '.mp3', chapters: [{ startTime: 0, title: 'One' }, { startTime: 60, title: 'Two' }] }) });
+  const { status, body } = await getHome();
+  assert.strictEqual(status, 200);
+  const ra = rowOf(body, 'recently-added');
+  const it = ra.items.find((x) => x.id === 's');
+  assert.ok(it, 'the audio download is in recently-added');
+  assert.strictEqual(it.type, 'audio', 'type:audio rides the card so the client can reroute it');
+  assert.strictEqual(it.chapterCount, 2, 'chapterCount rides an audio card (>=2 -> the client routes ::c0 to the album)');
+  assert.strictEqual(it.href, '/watch.html?v=s', 'the server href stays /watch; the CLIENT (flag-gated) does the reroute');
 });
 
 // ---------------------------------------------------------------------------
