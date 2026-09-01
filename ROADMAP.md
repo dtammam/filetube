@@ -80,6 +80,15 @@
 
 ## Shipped
 
+### v1.232.4 - Seek bar resets cleanly on prev/next (2026-09-01)
+
+Dean device: skipping tracks made the seek bar fill then abruptly refresh. Cause - the
+fill kept the previous track's width during the load gap (it was only written when a
+duration was known), then snapped. Now it drops to 0 and fills as the new track plays
+(bound to loadstart/emptied/durationchange for a prompt reset); the remaining-time
+label clears the same way. All four skins. player.js byte-unchanged. Slim gate: APPROVE,
+one non-blocking suggestion applied (bind the label-reset axis too). Dual-Node 7988/0.
+
 ### v1.232.3 - Lock the page behind the player; calm the black iPod shine (2026-09-01)
 
 Two device fixes:
