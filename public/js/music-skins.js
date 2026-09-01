@@ -52,6 +52,8 @@
   function ipRwdGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h1.8v12H4zM13 6v12l-6-6zM21 6v12l-6-6z"/></svg>'; }
   function ipFfwdGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6v12l6-6zM11 6v12l6-6zM18.2 6H20v12h-1.8z"/></svg>'; }
   function ipPlayPauseGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5v14l10-7zM15 5h2.2v14H15zM19.8 5H22v14h-2.2z"/></svg>'; }
+  // speaker glyph for the desktop pop-out's wheel-VOLUME bar (v1.235; SVG not emoji).
+  function ipVolGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4 4 0 0 0-2.2-3.6v7.2A4 4 0 0 0 16.5 12zM14.3 4.3v1.9a6 6 0 0 1 0 11.6v1.9a8 8 0 0 0 0-15.4z"/></svg>'; }
 
   // ---- shared building blocks (hooks + REFLECT classes are identical everywhere
   // so music.js's one proxy handler + reflectSkin work for every skin) ----------
@@ -124,8 +126,10 @@
   // The wheel has TAP zones AND a real rotary SCROLL (v1.233, music.js): MENU=back/exit,
   // prev/next skip tracks, bottom=play/pause; center opens the list from Now Playing and,
   // in the list, PLAYS the highlighted song. Spinning the wheel with the list open moves
-  // the selection cursor song-by-song (fast flicks accelerate); in Now Playing the spin
-  // does nothing. Play STATE shows in the status bar.
+  // the selection cursor song-by-song (fast flicks accelerate). In Now Playing the spin
+  // sets VOLUME in the desktop pop-out (v1.235, where media.volume is settable - a volume
+  // bar swaps in for the scrubber); on iPhone (the in-tab skin) it does nothing, since iOS
+  // makes media.volume read-only. Play STATE shows in the status bar.
   function renderIpod(ctx) {
     var a = ctx.track || {}; var u = artUrl(ctx);
     var nof = (Number(ctx.curNum) || 0) > 0 ? (ctx.curNum + ' of ' + (ctx.total || ctx.curNum)) : '';
@@ -144,7 +148,12 @@
       '<div class="ip-nof">' + esc(nof) + '</div></div></div>' +
       '<div class="ip-scrub"><span class="mms-pos">' + esc(ctx.posLabel || '0:00') + '</span>' +
       '<div class="ip-track"><div class="mms-fill" ' + fillW(ctx) + '></div></div>' +
-      '<span class="mms-rem">' + esc(ctx.remLabel || '') + '</span></div></div>' +
+      '<span class="mms-rem">' + esc(ctx.remLabel || '') + '</span></div>' +
+      // v1.235: the wheel-VOLUME bar (desktop pop-out only). Hidden until you spin the wheel
+      // in Now Playing; CSS swaps it in for the scrubber while adjusting (.mms-voladj), the
+      // authentic iPod behavior. music.js drives .ip-vol-fill + the show/fade.
+      '<div class="ip-vol" aria-hidden="true"><span class="ip-vol-ico">' + ipVolGlyph() + '</span>' +
+      '<div class="ip-vol-track"><div class="ip-vol-fill"></div></div></div></div>' +
       // --- List view (Select flips to it) ---
       '<div class="ip-listview">' + goRows(ctx, false, ctx.fullList) + '</div>' +
       '</div></div>' +

@@ -594,3 +594,87 @@ test('v1.234: a Document-PiP grant that resolves after a wide->narrow resize is 
     assert.ok(pip._closeCalls >= 1 && pip.closed, 'mountPopout re-gates on popoutSupported() and closes the late grant on a narrow viewport (never both live)');
   } });
 });
+
+// ---- v1.235: the iPod wheel sets VOLUME in Now Playing (desktop pop-out only) -----------
+function ptrOn(win, type, x, y, id) {
+  const ev = new win.MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
+  Object.defineProperty(ev, 'pointerId', { value: id, configurable: true });
+  return ev;
+}
+// spin the pop-out wheel through `angles` (deg) about the pop-out's zeroed rect origin.
+function spinPip(pip, angles, id) {
+  const wheel = pipPanelOf(pip).querySelector('.ip-wheel');
+  const at = (deg) => { const r = deg * Math.PI / 180; return { x: 100 * Math.cos(r), y: 100 * Math.sin(r) }; };
+  wheel.dispatchEvent(ptrOn(pip, 'pointerdown', 100, 0, id));
+  angles.forEach((d) => { const q = at(d); wheel.dispatchEvent(ptrOn(pip, 'pointermove', q.x, q.y, id)); });
+  wheel.dispatchEvent(ptrOn(pip, 'pointerup', 0, 0, id));
+}
+async function openPip(dom, skin) {
+  const pip = makePipWindow();
+  dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+  clickPopout(dom); await settle(); await settle();
+  return pip;
+}
+
+test('v1.235 pop-out: spinning the wheel in Now Playing CLOCKWISE raises the volume + shows the volume bar', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const pip = await openPip(dom, 'ipod');
+    const panel = pipPanelOf(pip);
+    assert.ok(!panel.classList.contains('mms-listmode'), 'pop-out opens in Now Playing');
+    const mp = dom.window.document.getElementById('media-player');
+    mp.volume = 0.5;
+    spinPip(pip, [45, 90, 135, 180], 1); // a clockwise sweep
+    assert.ok(mp.volume > 0.5, 'clockwise spin raised the live volume');
+    assert.ok(panel.classList.contains('mms-voladj'), 'the volume bar is shown while adjusting');
+    assert.match(panel.querySelector('.ip-vol-fill').style.width, /^\d+%$/, 'the volume-bar fill reflects the level');
+  } });
+});
+
+test('v1.235 pop-out: spinning COUNTER-clockwise lowers the volume; it clamps to 0..1', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const pip = await openPip(dom, 'ipod');
+    const mp = dom.window.document.getElementById('media-player');
+    mp.volume = 0.5;
+    spinPip(pip, [-45, -90, -135, -180], 1); // counter-clockwise
+    assert.ok(mp.volume < 0.5, 'counter-clockwise lowered the volume');
+    assert.ok(mp.volume >= 0, 'never below 0');
+    // now drive it hard clockwise past the top and confirm the clamp
+    spinPip(pip, [90, 180, 270, 360, 90, 180], 2);
+    assert.ok(mp.volume <= 1, 'never above 1 (clamped)');
+  } });
+});
+
+test('v1.235: the IN-TAB skin (mobile / iOS) does NOT change volume on a Now-Playing spin (media.volume is read-only there)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const p = panel(dom); // the in-tab skin panel (mobile)
+    assert.ok(!p.classList.contains('mms-listmode'), 'in-tab starts on Now Playing');
+    const mp = dom.window.document.getElementById('media-player');
+    mp.volume = 0.5;
+    // spin the in-tab wheel (its rect is zeroed too); allowVolume is false here
+    const wheel = p.querySelector('.ip-wheel');
+    wheel.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    [45, 90, 135].forEach((deg) => { const r = deg * Math.PI / 180; wheel.dispatchEvent(new dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 100 * Math.cos(r), clientY: 100 * Math.sin(r) })); });
+    wheel.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true }));
+    assert.strictEqual(mp.volume, 0.5, 'volume untouched on iPhone (no inert gesture shipped)');
+    assert.ok(!p.classList.contains('mms-voladj'), 'no volume bar on the in-tab skin');
+  } });
+});
+
+test('v1.235 pop-out: in LIST mode the spin still scrolls the cursor, NOT volume', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const pip = await openPip(dom, 'ipod');
+    const panel = pipPanelOf(pip);
+    // seed rows + open the list in the pop-out
+    const lv = panel.querySelector('.ip-listview');
+    for (let i = 0; i < 6; i++) { const b = pip.document.createElement('button'); b.className = 'mms-row' + (i === 0 ? ' is-current' : ''); b.setAttribute('data-skin-go', String(i)); lv.appendChild(b); }
+    panel.querySelector('[data-skin-select]').dispatchEvent(new pip.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert.ok(panel.classList.contains('mms-listmode'), 'list open in the pop-out');
+    const mp = dom.window.document.getElementById('media-player');
+    mp.volume = 0.5;
+    spinPip(pip, [45, 90, 135, 180], 1);
+    assert.strictEqual(mp.volume, 0.5, 'list-mode spin does not touch volume (it is cursor scroll)');
+    const cur = panel.querySelector('.ip-listview .mms-row.is-cursor');
+    assert.ok(cur && parseInt(cur.getAttribute('data-skin-go'), 10) > 0, 'the cursor moved instead');
+  } });
+});
