@@ -103,23 +103,24 @@ const get = (p, cookie) => fetch(`${base}${p}`, cookie ? { headers: { Cookie: co
 // null => clear the mirror (absent === off); 'on'/'off' => set it.
 const setToggle = (userId, val) => userStore.setSettingsJson(userId, val === null ? {} : { musicIncludesLibrary: val });
 
-test('master toggle OFF (default): Music shows ONLY native tracks - zero projection', async () => {
-  setToggle(actingUser.id, null); // absent => off
+test('v1.242 UNCONDITIONAL projection: with NO setting, EVERY audio item projects into Music (Dean: "anything audio-only")', async () => {
+  setToggle(actingUser.id, null); // no opt-in setting at all - the old default-OFF gate is retired
   const music = await (await get('/api/music')).json();
-  const ids = music.items.map((i) => i.id).sort();
-  assert.deepStrictEqual(ids, ['dup1'], 'only the native track; no projected audio');
+  const ids = music.items.map((i) => i.id);
+  assert.ok(ids.includes('dup1'), 'the native track');
+  assert.ok(ids.includes('nest1'), 'NESTALGIA audio projects - no opt-in needed');
+  assert.ok(ids.includes('tonzak1'), 'Tonzak (genre Music) projects');
+  assert.ok(ids.includes('zarch1'), 'Zarchivo (genre Comedy) ALSO projects now - genre no longer gates');
   const artists = await (await get('/api/music/artists')).json();
-  assert.deepStrictEqual(artists.items.map((a) => a.artist).sort(), ['Real Artist'], 'no projected artists when off');
+  const names = artists.items.map((a) => a.artist);
+  assert.ok(names.includes('Real Artist'), 'native artist present');
+  assert.ok(names.includes('NESTALGIA'), 'projected channels are artists without any toggle');
 });
 
-test('master toggle ON: eligible library audio appears with its own media routes', async () => {
-  setToggle(actingUser.id, 'on');
+test('v1.242: every projected library audio item carries its own media routes', async () => {
   const music = await (await get('/api/music')).json();
   const byId = new Map(music.items.map((i) => [i.id, i]));
-  assert.ok(byId.has('nest1'), 'NESTALGIA (marked on) is projected in');
-  assert.ok(byId.has('tonzak1'), 'Tonzak (genre Music) is projected in by default');
-  assert.ok(!byId.has('zarch1'), 'Zarchivo (genre Comedy, no mark) stays OUT');
-
+  assert.ok(byId.has('nest1') && byId.has('tonzak1') && byId.has('zarch1'), 'all audio present unconditionally');
   const nest = byId.get('nest1');
   assert.strictEqual(nest.source, 'library', 'the client branches on this');
   assert.strictEqual(nest.streamSrc, '/video/nest1', 'streams the mp3 from the media byte route');
@@ -130,14 +131,13 @@ test('master toggle ON: eligible library audio appears with its own media routes
   assert.ok(!('filePath' in nest), 'path scrub still holds for projected items');
 });
 
-test('ON: the artist grid gains the projected channels as artists', async () => {
-  setToggle(actingUser.id, 'on');
+test('v1.242: the artist grid gains EVERY audio channel as an artist (genre no longer gates)', async () => {
   const artists = await (await get('/api/music/artists')).json();
   const names = artists.items.map((a) => a.artist);
   assert.ok(names.includes('NESTALGIA'), 'NESTALGIA is an artist');
   assert.ok(names.includes('Tonzak'), 'Tonzak channel is an artist');
   assert.ok(names.includes('Real Artist'), 'the native track artist is still there');
-  assert.ok(!names.includes('Zarchivo'), 'Comedy channel is not an artist');
+  assert.ok(names.includes('Zarchivo'), 'the Comedy channel is now an artist too - all audio projects');
 });
 
 test('redesign S1: the artist grid carries the CHANNEL avatar for circles ("" for a native artist)', async () => {
@@ -294,10 +294,10 @@ test('v1.221 search: each chapter TITLE surfaces as a playable music result via 
   assert.strictEqual(hit.streamSrc, '/video/djmix1', 'streams the one file');
 });
 
-test('v1.221 search: with the toggle OFF, library/chapter tracks never appear in music search', async () => {
-  setToggle(actingUser.id, null); // off
+test('v1.242 search: chapter tracks appear in music search with NO setting (projection is unconditional)', async () => {
+  setToggle(actingUser.id, null); // no opt-in setting
   const res = await (await get('/api/search?q=' + encodeURIComponent('Track A') + '&type=music')).json();
-  assert.ok(!res.items.some((i) => i.id === 'djmix1::c1'), 'no chapter results when opted out');
+  assert.ok(res.items.some((i) => i.id === 'djmix1::c1'), 'the chapter surfaces in search without any toggle');
 });
 
 // GATE CRITICAL (both seats): a search-tap / deep-link resolves the tapped id via
@@ -325,10 +325,10 @@ test('v1.221 GATE FIX: GET /api/music/:id resolves a projected library SINGLE (n
   assert.strictEqual((await res.json()).source, 'library', 'the library marker rides so it streams from /video');
 });
 
-test('v1.221 GATE FIX: the resolve is toggle-gated - OFF => 404 (never resolvable when opted out)', async () => {
-  setToggle(actingUser.id, null); // off
-  assert.strictEqual((await get('/api/music/' + encodeURIComponent('djmix1::c1'))).status, 404, 'no chapter resolve when opted out');
-  assert.strictEqual((await get('/api/music/nest1')).status, 404, 'no library single resolve when opted out');
+test('v1.242: the resolve is UNCONDITIONAL - a projected id resolves with NO setting (RBAC still applies, next test)', async () => {
+  setToggle(actingUser.id, null); // no opt-in setting
+  assert.strictEqual((await get('/api/music/' + encodeURIComponent('djmix1::c1'))).status, 200, 'chapter resolves without any toggle');
+  assert.strictEqual((await get('/api/music/nest1')).status, 200, 'library single resolves without any toggle');
 });
 
 test('v1.221 GATE FIX: the resolve is RBAC-gated - a member restricted from the file cannot resolve its chapters', async () => {
@@ -361,37 +361,38 @@ test('v1.222 slice 4: a chapter play collapses to ONE Recently-played entry (the
   assert.strictEqual(hit.progress.duration, 600, 'over the chapter span, not the whole file');
 });
 
-test('v1.211 all-or-nothing: a MIXED channel shows NOTHING by default (not 1 of 3), ALL when marked', async () => {
-  setToggle(actingUser.id, 'on');
-  // Default (unmarked, minority-music) -> none of mixedchan shows, not even mx1.
+test('v1.242 opt-OUT: a MIXED channel shows ALL its audio by default; an explicit OFF mark hides the whole channel', async () => {
+  // Default (no mark) -> ALL of mixedchan projects now (genre/majority no longer gates).
   let music = await (await get('/api/music')).json();
-  assert.ok(!music.items.some((i) => ['mx1', 'mx2', 'mx3'].includes(i.id)),
-    'the lone Music track does NOT leak in by default (the "blue but 1 song" bug is gone)');
-  // The toggle state is HONEST: effective + auto both false.
-  const flag = await (await get('/api/folders/music-flag?folderName=mixedchan')).json();
-  assert.deepStrictEqual({ effective: flag.effective, auto: flag.auto }, { effective: false, auto: false },
-    'the toggle reads off/not-auto - matching what actually shows');
-  // Mark it on -> ALL 3 project (a Gaming track too), then restore.
-  assert.strictEqual((await postJson('/api/folders/music-flag', { folderName: 'mixedchan', music: 'on' })).status, 200);
+  let mixIds = music.items.filter((i) => ['mx1', 'mx2', 'mx3'].includes(i.id)).map((i) => i.id).sort();
+  assert.deepStrictEqual(mixIds, ['mx1', 'mx2', 'mx3'], 'the whole channel projects by default (all audio is in)');
+  // The explicit OFF mark is the surviving opt-out -> the whole channel disappears, then restore.
+  assert.strictEqual((await postJson('/api/folders/music-flag', { folderName: 'mixedchan', music: 'off' })).status, 200);
   music = await (await get('/api/music')).json();
-  const mixIds = music.items.filter((i) => ['mx1', 'mx2', 'mx3'].includes(i.id)).map((i) => i.id).sort();
-  assert.deepStrictEqual(mixIds, ['mx1', 'mx2', 'mx3'], 'a mark brings the WHOLE channel, Gaming tracks included');
+  assert.ok(!music.items.some((i) => ['mx1', 'mx2', 'mx3'].includes(i.id)), 'an OFF mark hides the whole channel (the opt-out)');
+  // AND the manager MUST report effective:false for the off channel (adversarial: this binds
+  // channelEffectiveOnUniversal - a `return true` mutant would leave the manager lying that the
+  // hidden channel is still ON). Both manager surfaces.
+  const flagOff = await (await get('/api/folders/music-flag?folderName=mixedchan')).json();
+  assert.strictEqual(flagOff.effective, false, '/music-flag reports effective:false for the off channel');
+  const chanOff = (await (await get('/api/music/channels')).json()).channels.find((c) => c.folderName === 'mixedchan');
+  assert.strictEqual(chanOff.effective, false, '/music/channels reports effective:false for the off channel');
   await postJson('/api/folders/music-flag', { folderName: 'mixedchan', music: null });
 });
 
-test('GET /api/music/channels lists visible audio channels with honest all-or-nothing state', async () => {
+test('v1.242 GET /api/music/channels: every channel is IN by default (opt-out); auto:true, effective on-unless-off', async () => {
   const data = await (await get('/api/music/channels')).json();
   const byFolder = new Map(data.channels.map((c) => [c.folderName, c]));
-  // Tonzak: all-Music -> auto + effective on, no override.
+  // Tonzak: unset -> in by default.
   assert.deepStrictEqual({ auto: byFolder.get('Tonzak').auto, override: byFolder.get('Tonzak').override, effective: byFolder.get('Tonzak').effective },
-    { auto: true, override: null, effective: true }, 'Tonzak: auto-on');
-  // nestalgiamusic: Gaming, but explicitly marked on -> auto false, effective on.
-  assert.deepStrictEqual({ auto: byFolder.get('nestalgiamusic').auto, override: byFolder.get('nestalgiamusic').override, effective: byFolder.get('nestalgiamusic').effective },
-    { auto: false, override: 'on', effective: true }, 'NESTALGIA: not auto, but marked on');
-  // mixedchan: minority-music -> auto false, effective false; count is honest.
-  assert.deepStrictEqual({ auto: byFolder.get('mixedchan').auto, effective: byFolder.get('mixedchan').effective, audioCount: byFolder.get('mixedchan').audioCount },
-    { auto: false, effective: false, audioCount: 3 }, 'mixedchan: not auto, off, 3 tracks');
-  assert.strictEqual(byFolder.get('zarchivo').effective, false, 'Comedy channel: off');
+    { auto: true, override: null, effective: true }, 'Tonzak: in by default');
+  // NESTALGIA: explicitly marked on -> in.
+  assert.strictEqual(byFolder.get('nestalgiamusic').effective, true, 'NESTALGIA (marked on): in');
+  // mixedchan: unset -> now IN (genre/majority no longer gates); count honest.
+  assert.deepStrictEqual({ effective: byFolder.get('mixedchan').effective, audioCount: byFolder.get('mixedchan').audioCount },
+    { effective: true, audioCount: 3 }, 'mixedchan: in by default now, 3 tracks');
+  // Zarchivo (Comedy, unset): now IN too - all audio projects unless opted out.
+  assert.strictEqual(byFolder.get('zarchivo').effective, true, 'Comedy channel: in by default (opt-out model)');
 });
 
 test('GET /api/music/channels is visibility-scoped: a restricted member never sees the blocked channel', async () => {
@@ -416,16 +417,16 @@ const postJson = (p, body, cookie) => fetch(`${base}${p}`, {
   body: JSON.stringify(body),
 });
 
-test('GET /api/folders/music-flag reflects the override, the channel-majority default, and hasAudio', async () => {
+test('v1.242 GET /api/folders/music-flag: in-unless-off (opt-out), the override, and hasAudio', async () => {
   const nest = await (await get('/api/folders/music-flag?folderName=nestalgiamusic')).json();
   assert.deepStrictEqual({ hasAudio: nest.hasAudio, override: nest.override, effective: nest.effective },
-    { hasAudio: true, override: 'on', effective: true }, 'NESTALGIA: marked on');
+    { hasAudio: true, override: 'on', effective: true }, 'NESTALGIA: marked on -> in');
   const tonzak = await (await get('/api/folders/music-flag?folderName=Tonzak')).json();
   assert.deepStrictEqual({ override: tonzak.override, effective: tonzak.effective },
-    { override: null, effective: true }, 'Tonzak: unset, all-Music channel -> auto -> effective on');
+    { override: null, effective: true }, 'Tonzak: unset -> in by default');
   const zarch = await (await get('/api/folders/music-flag?folderName=zarchivo')).json();
   assert.deepStrictEqual({ override: zarch.override, effective: zarch.effective },
-    { override: null, effective: false }, 'Zarchivo: unset, Comedy channel -> not auto -> effective off');
+    { override: null, effective: true }, 'Zarchivo: unset -> now IN (opt-out model, no genre gate)');
   const none = await (await get('/api/folders/music-flag?folderName=native')).json();
   assert.strictEqual(none.hasAudio, false, 'a folder with no library audio -> hasAudio:false (toggle not shown)');
 });
@@ -449,14 +450,10 @@ test('POST /api/folders/music-flag toggles a channel (admin); a plain member is 
 
 // ---- T6: the master toggle through the REAL settings endpoint ----
 
-test('T6: musicIncludesLibrary round-trips via POST /api/me/settings and drives the projection', async () => {
-  // Through the actual mirrored-settings endpoint (not the store shortcut) -
-  // binds that the key is registered in MIRRORED_SETTING_KEYS end to end.
-  assert.strictEqual((await postJson('/api/me/settings', { musicIncludesLibrary: 'on' })).status, 200);
-  const me = await (await get('/api/auth/me')).json();
-  assert.strictEqual(me.settings.musicIncludesLibrary, 'on', 'reflected in the account settings');
-  assert.ok((await (await get('/api/music')).json()).items.some((i) => i.id === 'tonzak1'), 'projection ON via the settings API');
-  // Clearing the key returns to OFF (the default) - zero projection.
+test('v1.242: projection is INDEPENDENT of the retired musicIncludesLibrary setting (unconditional both ways)', async () => {
+  // The old opt-in no longer gates projection. Whatever the setting says, all audio projects.
   assert.strictEqual((await postJson('/api/me/settings', { musicIncludesLibrary: null })).status, 200);
-  assert.ok(!(await (await get('/api/music')).json()).items.some((i) => i.source === 'library'), 'projection OFF after clearing the key');
+  assert.ok((await (await get('/api/music')).json()).items.some((i) => i.id === 'tonzak1'), 'audio projects with the setting absent');
+  assert.strictEqual((await postJson('/api/me/settings', { musicIncludesLibrary: 'on' })).status, 200);
+  assert.ok((await (await get('/api/music')).json()).items.some((i) => i.id === 'tonzak1'), 'and with it on - the setting no longer drives projection');
 });

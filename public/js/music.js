@@ -1327,6 +1327,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // still IS this st.
       function endWheel(st, suppress) {
         var w = st.wheel;
+        // v1.242: tear down any fast-scan hold-timer / interval on EVERY end arm (the v1.163
+        // dual-arm teardown discipline) so a pointerup OR pointercancel stops the scan clean.
+        if (st.scanTimer) { try { st.win.clearTimeout(st.scanTimer); } catch (_) { /* ignore */ } st.scanTimer = null; }
+        if (st.scanInterval) { try { st.win.clearInterval(st.scanInterval); } catch (_) { /* ignore */ } st.scanInterval = null; }
         try { if (st.captured) w.releasePointerCapture(st.id); } catch (_) { /* not captured */ }
         w.removeEventListener('pointermove', st.onMove);
         w.removeEventListener('pointerup', st.onUp);
@@ -1356,8 +1360,36 @@ if (typeof module !== 'undefined' && module.exports) {
           mode: listMode ? 'cursor' : (allowVolume ? 'volume' : 'scrub'), scrubRatio: null,
           lastAngle: Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI,
           lastT: now0, accum: 0, x0: e.clientX, y0: e.clientY, onMove: null, onUp: null };
+        // v1.242 (#2, Dean): HOLD the rewind/ffwd zone to FAST-SCAN the timeline (~2x, audio
+        // keeps playing); release resumes where it landed. Independent of st.mode - keyed off
+        // the pressed ZONE. A quick TAP still skips a track (the hold never fires); a ROTATE
+        // becomes a scrub/cursor (cancels the hold-timer). Steps currentTime on the PANEL's own
+        // window timer so a Document-PiP pop-out (which throttles the opener) still scans.
+        var win = (panel.ownerDocument && panel.ownerDocument.defaultView) || window;
+        st.win = win; st.scanDir = e.target.closest('[data-skin-next]') ? 1 : (e.target.closest('[data-skin-prev]') ? -1 : 0);
+        st.scanTimer = null; st.scanInterval = null; st.scanning = false;
+        function startScan() {
+          var mp0 = hostCtl('media-player');
+          var d0 = (mp0 && isFinite(mp0.duration) && mp0.duration > 0) ? mp0.duration : 0;
+          if (!d0) return; // nothing to scan (still loading) - leave it a plain tap/skip
+          st.scanning = true; st.moved = true; // moved => the release's skip click is suppressed
+          try { st.wheel.setPointerCapture(st.id); st.captured = true; } catch (_) { /* best effort */ }
+          var step = function () {
+            var m = hostCtl('media-player');
+            var d = (m && isFinite(m.duration) && m.duration > 0) ? m.duration : 0;
+            if (!d) return;
+            m.currentTime = Math.min(d, Math.max(0, (Number(m.currentTime) || 0) + st.scanDir * 0.4)); // ~2x realtime
+          };
+          step();                                   // react immediately on the hold, then keep going
+          st.scanInterval = win.setInterval(step, 200);
+        }
+        if (st.scanDir) st.scanTimer = win.setTimeout(function () { st.scanTimer = null; if (!st.moved) startScan(); }, 400);
         st.onMove = function (ev) {
           if (ev.pointerId !== st.id) return;   // ignore a SECOND finger's moves (adversarial S1: else its coords difference against finger A's angle -> a jumpy jump)
+          // v1.242 (gate WARNING): once a HOLD has engaged the fast-scan, the scan OWNS the
+          // gesture until release - a subsequent rotation must NOT also scrub (else the scan
+          // interval and the scrub branch fight over currentTime AND both commit on release).
+          if (st.scanning) return;
           var ang = Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180 / Math.PI;
           var d = wheelShortAngle(ang - st.lastAngle); st.lastAngle = ang;
           var now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
@@ -1368,6 +1400,8 @@ if (typeof module !== 'undefined' && module.exports) {
           // feeding moves). A pure tap never crosses this, so its click stays intact.
           if (!st.moved && Math.hypot(ev.clientX - st.x0, ev.clientY - st.y0) > 8) {
             st.moved = true;
+            // a ROTATE is a scrub/cursor, not a scan: cancel the pending hold so it never scans.
+            if (st.scanTimer) { try { st.win.clearTimeout(st.scanTimer); } catch (_) { /* ignore */ } st.scanTimer = null; }
             try { st.wheel.setPointerCapture(st.id); st.captured = true; } catch (_) { /* best effort */ }
           }
           if (st.mode === 'volume') {
@@ -1412,6 +1446,13 @@ if (typeof module !== 'undefined' && module.exports) {
           if (st.mode === 'scrub' && st.moved && ev && ev.type === 'pointerup' && st.scrubRatio != null) {
             var sb = hostCtl('seek-bar');
             if (sb) { sb.value = String(st.scrubRatio); sb.dispatchEvent(new Event('change', { bubbles: true })); }
+          }
+          // v1.242 fast-scan: a real pointerUP after a scan COMMITS the landed position through
+          // the same seek pipeline (a pointercancel aborts with no commit, like scrub).
+          if (st.scanning && ev && ev.type === 'pointerup') {
+            var mpu = hostCtl('media-player');
+            var du = (mpu && isFinite(mpu.duration) && mpu.duration > 0) ? mpu.duration : 0;
+            if (du) { var sbu = hostCtl('seek-bar'); if (sbu) { sbu.value = String(Math.min(1, Math.max(0, (Number(mpu.currentTime) || 0) / du))); sbu.dispatchEvent(new Event('change', { bubbles: true })); } }
           }
           endWheel(st, st.moved);
         };

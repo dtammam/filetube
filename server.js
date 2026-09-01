@@ -6068,9 +6068,9 @@ const MIRRORED_SETTING_KEYS = new Set([
   // v1.84: Modern YouTube Mode - a third home layout (flat big-tile grid +
   // chips + mobile avatar bar). Same bounded 'on'/'off' string; absent => off.
   'modernMode',
-  // Wave G: the OPT-IN master toggle for projecting downloaded music channels
-  // (library audio) into the Music library. Bounded 'on'/'off'; absent => OFF
-  // (the default for everyone - Music is untouched until a user opts in).
+  // Wave G master toggle - RETIRED in v1.242 (audio now projects unconditionally).
+  // Intentionally RETAINED in the allowlist so a stale client's POST still 200s;
+  // NOTHING reads it any more (inert - do not gate behavior on it).
   'musicIncludesLibrary',
   ...glyphPool.LIBRARY_GLYPH_SLOTS.map((s) => s.key),
 ]);
@@ -6648,13 +6648,12 @@ app.post('/api/folders/display-name', async (req, res) => {
 });
 
 // Read the per-folder "show in Music" state for the folder header toggle.
-// Returns the stored override (or null); `auto` (the channel-level majority-music
-// default) and `effective` (override, else auto) computed the SAME way as the
-// projection - over ALL of the folder's audio, deliberately NOT visibility-scoped,
-// so the toggle can never disagree with what actually projects (v1.211); and
-// whether the folder has any VISIBLE audio (the toggle renders only when it does,
-// so a folder the user cannot see is never revealed). `auto`/`effective` are one
-// aggregate bit; the item-level payloads stay per-user visibility-gated.
+// Returns the stored override (or null); v1.242: `auto` is always true (every channel
+// is in Music by default) and `effective` is on-unless-'off' (channelEffectiveOnUniversal)
+// - the SAME predicate the projection uses, so the toggle can never disagree with what
+// actually projects; and whether the folder has any VISIBLE audio (the toggle renders only
+// when it does, so a folder the user cannot see is never revealed). The item-level payloads
+// stay per-user visibility-gated.
 app.get('/api/folders/music-flag', (req, res) => {
   const folderName = typeof req.query.folderName === 'string' ? req.query.folderName.trim() : '';
   if (folderName === '') return res.status(400).json({ error: 'folderName is required' });
@@ -6664,21 +6663,16 @@ app.get('/api/folders/music-flag', (req, res) => {
   const hasVisibleAudio = Object.values(db.metadata || {}).some(
     (it) => it && it.type === 'audio' && it.folderName === folderName && mediaVisibleTo(req, it));
   if (!hasVisibleAudio) return res.json({ folderName, hasAudio: false, override: null, effective: false, auto: false });
-  // v1.211: `auto` (the majority-music default) and `effective` are CHANNEL-level
-  // and computed the SAME way as the projection (autoMusicChannels over the
-  // channel's audio) - so the toggle can never disagree with what actually
-  // shows in Music (the "blue but 1 song" mismatch is gone).
-  const folderAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio' && it.folderName === folderName);
-  const autoSet = libraryAudio.autoMusicChannels(folderAudio);
-  const auto = autoSet.has(folderName);
+  // v1.242: universal projection - a channel is in Music unless explicitly marked 'off'.
+  // `auto` (the default, ignoring an override) is now always true; `effective` is on-unless-off.
   const override = Object.prototype.hasOwnProperty.call(marks, folderName) ? marks[folderName] : null;
-  const effective = libraryAudio.channelEffectiveOn(folderName, marks, autoSet);
-  return res.json({ folderName, hasAudio: true, override, effective, auto });
+  const effective = libraryAudio.channelEffectiveOnUniversal(folderName, marks);
+  return res.json({ folderName, hasAudio: true, override, effective, auto: true });
 });
 
 // Wave G: the per-folder "show in Music library" mark. `music` is 'on'/'off'
-// (an explicit override) or null (clear -> back to the channel-level default,
-// v1.211: auto-on iff a strict majority of the channel's audio is genre 'Music').
+// (an explicit override) or null (clear -> back to the v1.242 default, which is ON:
+// every channel is in Music unless explicitly marked 'off').
 // Same dual-axis gate as the rename route (requireModifyLibrary - shared library
 // metadata - AND visibility), but the existence probe requires a visible AUDIO
 // item: the mark is meaningless on a folder with no library audio, and this
@@ -8376,27 +8370,27 @@ function publicTrackListItem(track, userId, likedSet, progressMap) {
   };
 }
 
-// Wave G: the projected library-audio tracks this user sees in Music, or [] when
-// the opt-in master toggle is off. Each db.metadata audio item that is eligible
-// (per-folder mark, else the channel-level majority-music default), passes the MEDIA visibility gate (NOT
-// trackVisibleTo - these are media items, a distinct restriction kind), and does
-// not collide with a native music-track id (dedup: the real track wins), is
+// Wave G / v1.242: the projected library-audio tracks this user sees in Music.
+// UNCONDITIONAL now (the opt-in master toggle is retired): every db.metadata audio
+// item is eligible UNLESS its channel is explicitly marked 'off', passes the MEDIA
+// visibility gate (NOT trackVisibleTo - these are media items, a distinct restriction
+// kind), and does not collide with a native music-track id (dedup: the real track wins), is
 // shaped into a music-track record. `nativeTracks` is the already-RBAC-filtered
 // native list, so the dedup set only holds ids this user may already see.
 function projectedLibraryTracks(req, nativeTracks) {
-  const settings = parseUserSettings(req.user);
-  if (settings.musicIncludesLibrary !== 'on') return []; // opt-in, default OFF
+  // v1.242 (Dean): audio-only items project into Music UNCONDITIONALLY - no per-user
+  // opt-in (the old default-OFF `musicIncludesLibrary` gate is retired), no genre/majority
+  // heuristic. Every `type:'audio'` item is in Music unless its channel is explicitly
+  // marked 'off'. Instant + library-wide (this reads db.metadata live). RBAC (mediaVisibleTo)
+  // below is UNCHANGED, so a restricted user still cannot see hidden audio.
   const db = getCachedDatabase();
   const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
   const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
-  // v1.211: the auto default is CHANNEL-level (majority-music), computed once
-  // over the full audio set so a channel is all-in or all-out (no partial).
-  const autoSet = libraryAudio.autoMusicChannels(allAudio);
   const nativeIds = new Set(nativeTracks.map((t) => t.id));
   const out = [];
   for (const item of allAudio) {
-    if (!libraryAudio.isEligibleAudio(item, marks, autoSet)) continue;
-    if (!mediaVisibleTo(req, item)) continue; // the MEDIA gate
+    if (!libraryAudio.isEligibleAudioUniversal(item, marks)) continue; // audio, unless channel opted-out
+    if (!mediaVisibleTo(req, item)) continue; // the MEDIA gate (RBAC) - unchanged
     if (nativeIds.has(item.id)) continue; // a file in both roots: the native track wins
     // v1.221 chapter-albums: a chaptered file expands into one virtual track per
     // chapter (else a single track). resolveChapters is server.js's own resolver
@@ -8465,7 +8459,7 @@ function musicListProgressMap(userId, tracks) {
 app.get('/api/music', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
-  list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (opt-in)
+  list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (v1.242: unconditional - all audio unless channel opted-out)
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   const album = typeof req.query.album === 'string' ? req.query.album : '';
   const artist = typeof req.query.artist === 'string' ? req.query.artist : '';
@@ -8503,7 +8497,7 @@ app.get('/api/music', (req, res) => {
 app.get('/api/music/albums', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
-  list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (opt-in)
+  list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (v1.242: unconditional - all audio unless channel opted-out)
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
   // Gate QA-WARNING/ADV-SUGGESTION: paginate (the design-for-scale target) and
@@ -8521,7 +8515,7 @@ app.get('/api/music/albums', (req, res) => {
 app.get('/api/music/artists', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
-  list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (opt-in)
+  list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (v1.242: unconditional - all audio unless channel opted-out)
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
   const sortKey = typeof req.query.sort === 'string' ? req.query.sort : '';
@@ -8543,7 +8537,6 @@ app.get('/api/music/channels', (req, res) => {
   const db = getCachedDatabase();
   const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
   const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
-  const autoSet = libraryAudio.autoMusicChannels(allAudio);
   const displayNames = (db.folderDisplayNames && typeof db.folderDisplayNames === 'object') ? db.folderDisplayNames : {};
   const visibleCount = new Map(); // folderName -> visible audio count
   for (const it of allAudio) {
@@ -8551,13 +8544,15 @@ app.get('/api/music/channels', (req, res) => {
     if (!mediaVisibleTo(req, it)) continue;
     visibleCount.set(it.folderName, (visibleCount.get(it.folderName) || 0) + 1);
   }
+  // v1.242: universal projection - every channel is in Music (auto:true) unless explicitly
+  // 'off'. The manager is now an OPT-OUT list; `effective` is on-unless-off.
   const channels = [...visibleCount.entries()].map(([folderName, audioCount]) => ({
     folderName,
     displayName: (typeof displayNames[folderName] === 'string' && displayNames[folderName]) || folderName,
     audioCount,
     override: Object.prototype.hasOwnProperty.call(marks, folderName) ? marks[folderName] : null,
-    auto: autoSet.has(folderName),
-    effective: libraryAudio.channelEffectiveOn(folderName, marks, autoSet),
+    auto: true,
+    effective: libraryAudio.channelEffectiveOnUniversal(folderName, marks),
   }));
   channels.sort((a, b) => a.displayName.localeCompare(b.displayName));
   res.json({ channels });
@@ -8635,8 +8630,8 @@ app.get('/api/music/:id', (req, res) => {
     return res.json(publicTrackListItem(track, req.user.id, likedSet, progressMap));
   }
   // v1.221: a PROJECTED library/chapter id has no native record. Resolve it from
-  // the SAME opt-in projection the list + search build (RBAC via mediaVisibleTo,
-  // eligibility, and the toggle all live INSIDE projectedLibraryTracks) and match
+  // the SAME projection the list + search build (RBAC via mediaVisibleTo and the
+  // v1.242 unconditional eligibility both live INSIDE projectedLibraryTracks) and match
   // by full id - so a search-tap / deep-link (?play=<id>) of a downloaded track or
   // a chapter plays instead of 404ing. Reusing the projection (not a bespoke id
   // decode) keeps "resolvable" == "appears in the list/search": no second gate to
@@ -10948,11 +10943,11 @@ app.get('/api/search', (req, res) => {
     // buildWatchUrl re-validates the id (null on anything unsafe); the key is
     // absent when there is nothing safe to share (C4, the /api/videos posture).
     buildWatchUrl: (item) => (typeof item.youtubeId === 'string' ? (buildWatchUrl(item.youtubeId) || undefined) : undefined),
-    // v1.221: the projected library-audio tracks (downloaded audio the user opted
-    // into, chaptered files expanded into per-chapter tracks) so searchMusic can
-    // surface them as MUSIC results - a downloaded track (and each CHAPTER TITLE)
-    // is findable + plays via the music player. Lazy (only the music arm calls it);
-    // gated by the same opt-in + RBAC as /api/music.
+    // v1.221: the projected library-audio tracks (downloaded audio, chaptered files
+    // expanded into per-chapter tracks) so searchMusic can surface them as MUSIC
+    // results - a downloaded track (and each CHAPTER TITLE) is findable + plays via
+    // the music player. Lazy (only the music arm calls it); v1.242: the same
+    // unconditional eligibility + RBAC as /api/music (no opt-in).
     musicLibraryTracks: () => {
       const ns = musicStore.readMusic(db);
       const native = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t));
