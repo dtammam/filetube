@@ -4010,6 +4010,11 @@ a.sub-row-channel-link:focus-visible {
 .sticker-emoji-row { display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-6); }
 .sticker-emoji-input { width: 120px; padding: var(--space-3) var(--space-4); border: 1px solid var(--border-dark); border-radius: var(--radius); background: var(--card-bg); color: var(--text-primary); font-size: var(--fs-lg); }
 .sticker-actions { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-top: var(--space-6); }
+/* v1.241: the Size + Tilt option rows (reuse .theme-card for the chips). */
+.sticker-opt-row { display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-6); }
+.sticker-opt-label { font-size: var(--fs-sm); color: var(--text-secondary); min-width: 44px; }
+.sticker-opts { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.sticker-opt { flex-direction: row; padding: var(--space-2) var(--space-4); font-size: var(--fs-sm); }
 /* Tokens Phase 1 Tier 1: the stats glance-tile value, moved out of
    JS-applied styles (buildStatTile). 22px == var(--fs-4xl). */
 .stat-tile-value { font-size: var(--fs-4xl); }
@@ -11011,9 +11016,23 @@ html[data-modern="on"] .video-uploader {
   .mms-sticker-wrap{ position:absolute; left:calc(env(safe-area-inset-left,0px) + var(--space-6)); bottom:calc(env(safe-area-inset-bottom,0px) + var(--space-6)); z-index:40; /* token-exempt: local stacking (above the skin chrome, below nothing else here) */ }
   /* v1.240 (Dean): a slight counter-clockwise tilt so it reads like a literal peel-and-stick
      sticker. On the BUTTON only - the pop-up menu (a sibling) stays upright. */
-  .mms-sticker{ width:44px; height:44px; padding:var(--space-2); border:0; border-radius:var(--radius-full); background:var(--scrim); box-shadow:var(--shadow-lg); cursor:pointer; display:grid; place-items:center; -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); transform:rotate(-12deg); }
+  /* v1.240/1.241 (Dean): a placed-sticker feel. --mms-sticker-px drives the size (bumped base
+     52px; the size classes below scale it); the tilt classes rotate the BUTTON only, so the
+     pop-up menu (a sibling) stays upright. Bottom-left over the safe-area inset. */
+  .mms-sticker{ --mms-sticker-px:52px; width:var(--mms-sticker-px); height:var(--mms-sticker-px); padding:var(--space-2); border:0; border-radius:var(--radius-full); background:var(--scrim); box-shadow:var(--shadow-lg); cursor:pointer; display:grid; place-items:center; -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
   .mms-sticker .mms-sticker-ic{ width:100%; height:100%; object-fit:contain; border-radius:var(--radius-full); display:block; }
   .mms-sticker .mms-sticker-emoji{ font-size:var(--fs-2xl); }
+  /* v1.241: per-user SIZE (default = the 52px base) + TILT settings on ft-sticker. Image
+     stickers scale via the .mms-sticker-ic width:100%; the emoji steps up the type scale so it
+     fills the bigger spot too (font-size must be a bare --fs-* token, type-scale census). */
+  .mms-sticker-sz-2x{ --mms-sticker-px:104px; }
+  .mms-sticker-sz-3x{ --mms-sticker-px:156px; }
+  .mms-sticker-sz-5x{ --mms-sticker-px:260px; }
+  .mms-sticker-sz-2x .mms-sticker-emoji{ font-size:var(--fs-4xl); }
+  .mms-sticker-sz-3x .mms-sticker-emoji, .mms-sticker-sz-5x .mms-sticker-emoji{ font-size:var(--fs-5xl); }
+  .mms-sticker-tilt-straight{ transform:rotate(0deg); }
+  .mms-sticker-tilt-left{ transform:rotate(-14deg); }
+  .mms-sticker-tilt-right{ transform:rotate(14deg); }
   /* v1.240 (Dean): an IMAGE sticker fills the spot SQUARE with no ring/clip - drop the
      circular chrome + the round image crop (emoji keeps the chip). */
   .mms-sticker--img{ background:transparent; border-radius:0; box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none; padding:0; }

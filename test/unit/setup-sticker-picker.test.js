@@ -50,21 +50,33 @@ test('setup.js: the custom upload POSTs to /api/me/sticker and stores kind:custo
   const m = /async function renderStickerPicker\(\) \{([\s\S]*?)\n\}/.exec(SETUP_JS);
   const body = m[1];
   assert.match(body, /fetch\('\/api\/me\/sticker', \{ method: 'POST'/, 'uploads to the T1 POST endpoint');
-  assert.match(body, /writeStickerPref\(\{ kind: 'custom', v: \(body\.sticker && body\.sticker\.version\)/, 'stores kind:custom + the cache-bust version from the response');
+  assert.match(body, /mergeStickerPref\(\{ kind: 'custom', value: undefined, v: \(body\.sticker && body\.sticker\.version\)/, 'stores kind:custom + the cache-bust version from the response (merge keeps size/tilt)');
   assert.match(body, /fetch\('\/api\/me\/sticker', \{ method: 'DELETE' \}\)/, 'remove hits the DELETE endpoint');
-  assert.match(body, /if \(readStickerPref\(\)\.kind === 'custom'\) writeStickerPref\(\{ kind: 'logo' \}\)/, 'removing a custom image in use reverts to the logo');
+  assert.match(body, /if \(readStickerPref\(\)\.kind === 'custom'\) mergeStickerPref\(\{ kind: 'logo'/, 'removing a custom image in use reverts to the logo');
 });
 
 test('setup.js: a typed emoji writes kind:emoji with the trimmed value; presets escape their emoji', () => {
   const m = /async function renderStickerPicker\(\) \{([\s\S]*?)\n\}/.exec(SETUP_JS);
   const body = m[1];
-  assert.match(body, /writeStickerPref\(\{ kind: 'emoji', value: v \}\)/, 'the typed-emoji "Use emoji" path stores kind:emoji');
+  assert.match(body, /mergeStickerPref\(\{ kind: 'emoji', value: v, v: undefined \}\)/, 'the typed-emoji "Use emoji" path stores kind:emoji (merge keeps size/tilt)');
   assert.match(body, /escStickerHtml\(em\)/, 'preset emoji are HTML-escaped when rendered (user-facing input class)');
 });
 
 test('setup.js: renderStickerPicker is CALLED in init (beside renderMusicSkinPicker) - not dead code', () => {
   assert.match(SETUP_JS, /renderMusicSkinPicker\(\);[^\n]*\n\s*renderStickerPicker\(\);/,
     'init calls renderStickerPicker right after renderMusicSkinPicker');
+});
+
+test('v1.241: the Size + Tilt pickers exist, MERGE (preserve other fields), and offer the right options', () => {
+  assert.match(SETUP_JS, /const STICKER_SIZES = \[\['default'[\s\S]*?\['5x'/, 'the size options include default..5x');
+  assert.match(SETUP_JS, /const STICKER_TILTS = \[\['straight'[\s\S]*?\['right'/, 'the tilt options straight/left/right');
+  assert.match(SETUP_JS, /function mergeStickerPref\(patch\) \{ writeStickerPref\(Object\.assign\(\{\}, readStickerPref\(\), patch\)\)/, 'mergeStickerPref keeps existing fields (size/tilt survive a kind change and vice-versa)');
+  assert.match(SETUP_JS, /data-sticker-size=/, 'renders size chips');
+  assert.match(SETUP_JS, /data-sticker-tilt=/, 'renders tilt chips');
+  assert.match(SETUP_JS, /mergeStickerPref\(\{ size: b\.dataset\.stickerSize \}\)/, 'a size click merges just the size');
+  assert.match(SETUP_JS, /mergeStickerPref\(\{ tilt: b\.dataset\.stickerTilt \}\)/, 'a tilt click merges just the tilt');
+  // the kind-change writes now MERGE (so size/tilt persist across a kind change)
+  assert.match(SETUP_JS, /mergeStickerPref\(\{ kind: 'emoji'[^)]*value: btn\.dataset\.stickerEmoji/, 'picking an emoji preset merges (keeps size/tilt)');
 });
 
 // ---- the shared shell-coverage guard already binds music-skins.js on every setup shell;

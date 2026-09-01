@@ -928,6 +928,13 @@ if (typeof module !== 'undefined' && module.exports) {
       } catch (_) { /* private mode / bad json -> default */ }
       return { kind: 'logo' };
     }
+    // v1.241 (Dean): a placed-sticker feel - a SIZE (default/2x/3x/5x) and a TILT
+    // (straight/left/right) are per-user settings on ft-sticker; injectSticker maps them to
+    // CSS classes on the button. Both fall back to the defaults on an unknown/absent value.
+    var STICKER_SIZES = ['default', '2x', '3x', '5x'];
+    var STICKER_TILTS = ['straight', 'left', 'right'];
+    function stickerSize() { var s = readStickerPref().size; return STICKER_SIZES.indexOf(s) >= 0 ? s : 'default'; }
+    function stickerTilt() { var t = readStickerPref().tilt; return STICKER_TILTS.indexOf(t) >= 0 ? t : 'left'; }
     function stickerIconHtml() {
       var p = readStickerPref();
       if (p.kind === 'emoji' && p.value) return '<span class="mms-sticker-emoji" aria-hidden="true">' + escapeMusicHtml(p.value) + '</span>';
@@ -978,8 +985,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // with no value would otherwise wrongly circle a logo image - both gate seats).
       var pref = readStickerPref();
       var imgCls = (pref.kind === 'emoji' && pref.value) ? '' : ' mms-sticker--img';
+      var szCls = ' mms-sticker-sz-' + stickerSize();     // default | 2x | 3x | 5x
+      var tiltCls = ' mms-sticker-tilt-' + stickerTilt();  // straight | left | right
       wrap.innerHTML =
-        '<button type="button" class="mms-sticker' + imgCls + '" data-skin-sticker aria-haspopup="true" aria-expanded="false" aria-label="Player options">' + stickerIconHtml() + '</button>' +
+        '<button type="button" class="mms-sticker' + imgCls + szCls + tiltCls + '" data-skin-sticker aria-haspopup="true" aria-expanded="false" aria-label="Player options">' + stickerIconHtml() + '</button>' +
         '<div class="mms-sticker-menu" data-skin-sticker-menu role="menu" hidden>' + buildStickerMenuHtml() + '</div>';
       panel.appendChild(wrap);
     }
