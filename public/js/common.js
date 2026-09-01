@@ -5999,6 +5999,59 @@ function accountMenuDivider() {
   return hr;
 }
 
+// v1.229 (Dean): the "Music skin" picker for the account menu - a per-device
+// APPEARANCE control like Theme, but a 3-way segmented pick (Apple/Spotify/iPod)
+// since the mobile-music now-playing has three skins. MOBILE-ONLY (the skins only
+// engage on a phone), so on desktop this returns null and nothing is added. Picking
+// persists via FileTubeMusicSkins.setActiveSkin (key ft-music-skin) and fires
+// 'ft-music-skin-changed' so a currently-open now-playing re-skins live (music.js
+// listens). Its own class (.account-menu-skinpicker), NOT .account-menu-item, so it
+// stays out of the quick-link censuses. Returns the row element, or null when it
+// should not show (desktop, or the skins module absent).
+function buildAccountMusicSkinRow() {
+  const skins = (typeof window !== 'undefined') && window.FileTubeMusicSkins;
+  if (!skins || typeof skins.isMobileViewport !== 'function' || !skins.isMobileViewport()) return null;
+  const wrap = document.createElement('div');
+  wrap.className = 'account-menu-skinpicker';
+  const label = document.createElement('span');
+  label.className = 'account-menu-skinpicker-label';
+  label.textContent = 'Music skin';
+  wrap.appendChild(label);
+  const seg = document.createElement('div');
+  seg.className = 'account-menu-skinseg';
+  seg.setAttribute('role', 'radiogroup');
+  seg.setAttribute('aria-label', 'Music skin');
+  const active = skins.activeSkinId();
+  (skins.IDS || []).forEach((id) => {
+    const s = skins.skinById(id);
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'account-menu-skinchip' + (id === active ? ' is-on' : '');
+    chip.setAttribute('role', 'radio');
+    chip.setAttribute('aria-checked', id === active ? 'true' : 'false');
+    chip.setAttribute('data-skin-pref', id);
+    // short chip labels so three fit the dropdown width ("Apple Music" -> "Apple").
+    chip.textContent = id === 'apple' ? 'Apple' : ((s && s.label) || id);
+    chip.addEventListener('click', () => {
+      skins.setActiveSkin(id);
+      seg.querySelectorAll('.account-menu-skinchip').forEach((c) => {
+        const on = c.getAttribute('data-skin-pref') === id;
+        c.classList.toggle('is-on', on);
+        c.setAttribute('aria-checked', on ? 'true' : 'false');
+      });
+      // live re-render a currently-open now-playing (music.js re-reads the skin).
+      // Use window's own CustomEvent so the event is same-realm as the listener.
+      try {
+        const Ev = (typeof window !== 'undefined' && window.CustomEvent) || (typeof CustomEvent !== 'undefined' && CustomEvent);
+        if (Ev) window.dispatchEvent(new Ev('ft-music-skin-changed'));
+      } catch (_) { /* no-op */ }
+    });
+    seg.appendChild(chip);
+  });
+  wrap.appendChild(seg);
+  return wrap;
+}
+
 // ---- v1.83: avatar crop geometry (pure, DOM-free, unit-tested) --------------
 //
 // The crop viewport is W x H display px with a centred circle of diameter D. The
@@ -6570,6 +6623,10 @@ function injectAccountMenu() {
     theme.addEventListener('click', () => { toggleTheme(); });
     menu.appendChild(theme);
     updateAccountMenuThemeItem(); // initial glyph from the current data-mode
+    // v1.229: the mobile-only "Music skin" picker sits with Theme (both per-device
+    // appearance). Returns null on desktop, so this is a no-op there.
+    const skinRow = buildAccountMusicSkinRow();
+    if (skinRow) menu.appendChild(skinRow);
 
     menu.appendChild(accountMenuDivider());
 

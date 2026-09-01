@@ -107,12 +107,17 @@ test('gate CRITICAL: destroy() CLEARS body.mms-on (else it collapses the next vi
   } });
 });
 
-test('the skin switcher picks a skin - persists + re-renders (the "themes" picker)', async () => {
+test('v1.229: the account-menu picker re-skins live - ft-music-skin-changed re-renders', async () => {
+  // Skin picking moved to the account menu (no in-player switcher). The menu sets the
+  // skin (ft-music-skin) then fires window 'ft-music-skin-changed'; music.js listens
+  // and re-renders the open now-playing. Simulate exactly that hand-off.
   await boot({ mobile: true, isMusic: true, run: async (dom) => {
     assert.match(panel(dom).className, /\bmms-apple\b/, 'starts on the default (apple)');
-    panel(dom).querySelector('[data-skin-set="ipod"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.ok(!panel(dom).querySelector('[data-skin-set]'), 'the in-player switcher is gone');
+    dom.window.FileTubeMusicSkins.setActiveSkin('ipod');
+    dom.window.dispatchEvent(new dom.window.CustomEvent('ft-music-skin-changed'));
     for (let i = 0; i < 4; i++) await settle();
-    assert.match(panel(dom).className, /\bmms-ipod\b/, 'switched to iPod');
+    assert.match(panel(dom).className, /\bmms-ipod\b/, 'the open now-playing re-skinned to iPod live');
     assert.strictEqual(dom.window.localStorage.getItem('ft-music-skin'), 'ipod', 'choice persisted per-device');
   } });
 });

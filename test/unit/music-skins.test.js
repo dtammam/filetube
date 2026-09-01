@@ -81,11 +81,19 @@ test('the iPod skin adds a scrubber KNOB (its own reflect target) + an "N of M" 
   assert.match(html, /2 of 3/, 'the "N of M" footer');
 });
 
-test('every render includes the skin SWITCHER - all three options, the active one marked', () => {
-  const html = skins.renderFull('spotify', CTX);
-  for (const id of skins.IDS) assert.match(html, new RegExp('data-skin-set="' + id + '"'), 'switcher offers ' + id);
-  assert.match(html, /data-skin-set="spotify"[^>]*aria-pressed="true"/, 'the active skin (spotify) is marked pressed');
-  assert.match(html, /data-skin-set="apple"[^>]*aria-pressed="false"/, 'an inactive skin is not pressed');
+test('v1.229: NO in-player skin switcher - picking lives in the account menu now', () => {
+  // The in-player chips were unreliable on-device (they vanished against some skins),
+  // so skin picking moved to the account-menu segmented control. No render may emit
+  // the old data-skin-set hook (else the dead in-panel handler would be reachable).
+  for (const id of skins.IDS) {
+    const html = skins.renderFull(id, CTX);
+    assert.ok(!/data-skin-set/.test(html), id + ': no in-player switcher hook');
+    assert.ok(!/mms-skinsw|mms-sw\b/.test(html), id + ': no switcher markup');
+  }
+  // The registry the MENU picker reads is still exported.
+  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod']);
+  assert.strictEqual(typeof skins.setActiveSkin, 'function');
+  assert.strictEqual(skins.skinById('ipod').label, 'iPod', 'labels for the menu chips');
 });
 
 test('the pause glyph shows only when playing; play glyph when paused', () => {

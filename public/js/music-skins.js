@@ -20,7 +20,8 @@
 //   data-skin-seek      -> a bar; click maps x -> #seek-bar value (existing seek)
 //   data-skin-go="<i>"  -> jump to queue index i (the view's playAt)
 //   data-skin-collapse  -> dock the player (browse-away; the mini returns you)
-//   data-skin-set="<id>" -> pick a skin (the switcher); the view persists + re-renders
+// Skin PICKING is NOT an in-player hook (v1.229): it lives in the account menu,
+// which calls setActiveSkin() + fires 'ft-music-skin-changed' for a live re-render.
 
 (function () {
   var SKIN_KEY = 'ft-music-skin';
@@ -55,13 +56,10 @@
   function prevBtn() { return '<button type="button" class="mms-skip mms-prev" data-skin-prev aria-label="Previous">' + prevGlyph() + '</button>'; }
   function nextBtn() { return '<button type="button" class="mms-skip mms-next" data-skin-next aria-label="Next">' + nextGlyph() + '</button>'; }
   function collapseBtn() { return '<button type="button" class="mms-chev" data-skin-collapse aria-label="Collapse">▾</button>'; }
-  // The skin SWITCHER (the "themes" picker) - one active id per render.
-  function switcher(active) {
-    return '<div class="mms-skinsw" role="tablist" aria-label="Player skin">' + SKINS.map(function (s) {
-      return '<button type="button" class="mms-sw' + (s.id === active ? ' is-on' : '') + '" data-skin-set="' + s.id + '"' +
-        ' aria-pressed="' + (s.id === active ? 'true' : 'false') + '">' + esc(s.label) + '</button>';
-    }).join('') + '</div>';
-  }
+  // NOTE (v1.229): skin PICKING lives in the account menu now (see common.js's
+  // buildAccountMusicSkinRow), not an in-player switcher - the in-player chips were
+  // unreliable on-device (they visually vanished against some skins). This module
+  // still owns the registry + the per-device setting the menu reads/writes.
   // withThumb=Spotify (album-art thumb + stacked title/artist); else=iPod (track
   // number + title + duration + a chevron, the classic list row).
   function goRows(ctx, withThumb) {
@@ -89,7 +87,7 @@
     var a = ctx.track || {}; var u = artUrl(ctx);
     return (u ? '<div class="mms-bleed" style="background-image:url(&quot;' + esc(u) + '&quot;)"></div>' : '') +
       '<div class="mms-z">' +
-      '<div class="mms-top">' + collapseBtn() + switcher(ctx.skinId) + '<span class="mms-chev mms-chev-ghost" aria-hidden="true">⋯</span></div>' +
+      '<div class="mms-top">' + collapseBtn() + '<span class="mms-chev mms-chev-ghost" aria-hidden="true">⋯</span></div>' +
       '<div class="mms-art">' + artImg(ctx) + '</div>' +
       '<div class="mms-head"><div class="mms-htext"><div class="mms-ttl" title="' + esc(a.title) + '">' + esc(a.title || 'Unknown track') + '</div><div class="mms-sub">' + esc(a.artist || '') + '</div></div><span class="mms-dots" aria-hidden="true">⋯</span></div>' +
       '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
@@ -102,7 +100,6 @@
   function renderSpotify(ctx) {
     var a = ctx.track || {};
     return '<div class="mms-top">' + collapseBtn() + '<span class="mms-ctx">' + esc('Playing from ' + (a.album || 'album')) + '</span><span class="mms-chev mms-chev-ghost" aria-hidden="true">⋯</span></div>' +
-      switcher(ctx.skinId) +
       '<div class="mms-art">' + artImg(ctx) + '</div>' +
       '<div class="mms-meta"><div class="mms-htext"><div class="mms-ttl">' + esc(a.title || 'Unknown track') + '</div><div class="mms-sub">' + esc(a.artist || '') + '</div></div><span class="mms-heart" aria-hidden="true">✚</span></div>' +
       '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
@@ -115,7 +112,7 @@
   function renderIpod(ctx) {
     var a = ctx.track || {};
     return '<div class="mms-albar"><button type="button" class="mms-albar-b" data-skin-collapse aria-label="Collapse">‹</button><span class="mms-albar-t">Now Playing</span><span class="mms-albar-b" aria-hidden="true">▭</span></div>' +
-      '<div class="mms-body">' + switcher(ctx.skinId) +
+      '<div class="mms-body">' +
       '<div class="mms-art">' + artImg(ctx) + '</div>' +
       '<div class="mms-ttl">' + esc(a.title || 'Unknown track') + '</div>' +
       '<div class="mms-sub">' + esc([a.artist, a.album].filter(Boolean).join(' — ')) + '</div>' +
@@ -163,7 +160,7 @@
     SKIN_KEY: SKIN_KEY, IDS: IDS, DEFAULT_ID: DEFAULT_ID, SKINS: SKINS,
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
     skinById: skinById,
-    renderFull: function (id, ctx) { ctx = ctx || {}; ctx.skinId = normalizeSkinId(id); return skinById(id).renderFull(ctx); },
+    renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
     skinActiveFor: skinActiveFor, isMobileViewport: isMobileViewport,
     _esc: esc, _pct: pct,
   };
