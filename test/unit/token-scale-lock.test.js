@@ -94,6 +94,9 @@ const CONTRACT = {
   '--mms-ipod-sheen-a': 'rgba(255,255,255,.5)', '--mms-ipod-sheen-b': 'rgba(255,255,255,.14)',
   '--mms-ipod-sheen-c': 'rgba(255,255,255,.35)', '--mms-ipod-sheen-d': 'rgba(255,255,255,.6)',
   '--mms-ipod-sheen-0': 'rgba(255,255,255,0)',
+  // v1.232 iPod BLACK variant - body + wheel palette only (screen unchanged).
+  '--mms-ipodk-body1': '#343436', '--mms-ipodk-body2': '#161618', '--mms-ipodk-edge': '#0a0a0b',
+  '--mms-ipodk-wheel1': '#3d3d3f', '--mms-ipodk-wheel2': '#232325', '--mms-ipodk-wheel-lbl': '#b9babd',
   '--mms-ipod-art-shadow': '0 2px 5px rgba(0,0,0,.3)',
   '--mms-ipod-lcd-shadow': '0 2px 6px rgba(0,0,0,.35)',
   '--mms-ipod-fill-shadow': 'inset 0 1px 0 rgba(255,255,255,.6)',
@@ -105,7 +108,7 @@ const CONTRACT = {
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 119, 'the 60-name contract (see history) + the 59 --mms-* mobile-music-skin tokens: v1.231 replaced the iPod palette wholesale + Apple grab handle (54), then v1.231.1 added 5 iPod gloss-sheen white-alpha stops. Apple/Spotify palettes unchanged. Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
+  assert.equal(Object.keys(CONTRACT).length, 125, 'the 60-name contract (see history) + the 65 --mms-* mobile-music-skin tokens: v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());
@@ -139,7 +142,9 @@ test('v1.70: every fallback-less var() names a token the stylesheet defines (the
   // v1.132: --resume-countdown-duration is set inline by startResumeCountdown
   // (player.js, single-sourced from RESUME_COUNTDOWN_SECONDS) - deliberately
   // never declared in CSS so the timer and the drain can't drift.
-  const jsSet = new Set(['--history-pct', '--media-aspect', '--music-sticky-top', '--ptr-pull', '--resume-countdown-duration', '--seek-fill', '--vol-fill']);
+  // v1.232: the iPod title marquee's shift distance + constant-speed duration are set
+  // inline by music.js applyIpodMarquee (measured per track), never declared in CSS.
+  const jsSet = new Set(['--history-pct', '--media-aspect', '--music-sticky-top', '--ptr-pull', '--resume-countdown-duration', '--seek-fill', '--vol-fill', '--mms-mq-shift', '--mms-mq-dur']);
   const missing = new Set();
   // Usages: allow the whitespace shapes ordinary wrapped formatting produces
   // (`var(\n  --token\n)`, tabs, spaces) and the full custom-property

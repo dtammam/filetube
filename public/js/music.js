@@ -641,6 +641,29 @@ if (typeof module !== 'undefined' && module.exports) {
       var npEl = nowPlayingPanel.querySelector('.ip-np');
       if (npEl) npEl.textContent = on ? 'Songs' : 'Now Playing';
     }
+    // v1.232 (Dean): iPod title/artist/album that overflow SCROLL like a real iPod.
+    // Only when motion is allowed (else the line keeps its ellipsis). Wraps the text in
+    // a .mms-mq span and sets the shift distance + a constant-speed duration as CSS
+    // vars; the .mms-marquee keyframe animates it. No-op for non-iPod skins (no .ip-*).
+    function applyIpodMarquee() {
+      if (!nowPlayingPanel) return;
+      try { if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (_) { /* keep going */ }
+      var els = nowPlayingPanel.querySelectorAll('.ip-ttl, .ip-artist, .ip-album');
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        var over = el.scrollWidth - el.clientWidth;
+        if (over > 2 && !el.querySelector('.mms-mq')) {
+          var span = document.createElement('span');
+          span.className = 'mms-mq';
+          span.textContent = el.textContent; // textContent both ways -> no injection
+          el.textContent = '';
+          el.appendChild(span);
+          el.classList.add('mms-mq-on');
+          el.style.setProperty('--mms-mq-shift', (-over) + 'px');
+          el.style.setProperty('--mms-mq-dur', Math.max(4, over / 24).toFixed(1) + 's');
+        }
+      }
+    }
     var skinReflectBound = false;
     function ensureSkinReflect() {
       if (skinReflectBound) return;
@@ -655,11 +678,17 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!SKINS || !skinIsActive()) { document.body.classList.remove('mms-on'); return false; }
       var id = SKINS.activeSkinId();
       document.body.classList.add('mms-on'); // CSS hides the default host chrome on mobile+music
-      nowPlayingPanel.className = 'music-nowplaying-panel mms mms-full mms-' + id;
+      // v1.232: a skin may declare a `base` (e.g. iPod Black -> base 'ipod'), so the panel
+      // ALSO gets the base class + all its shared CSS; the id class overrides the palette.
+      var base = (typeof SKINS.skinById === 'function' && (SKINS.skinById(id) || {}).base) || '';
+      nowPlayingPanel.className = 'music-nowplaying-panel mms mms-full mms-' + id + (base ? ' mms-' + base : '');
       nowPlayingPanel.innerHTML = SKINS.renderFull(id, buildSkinCtx(ci));
       nowPlayingPanel.hidden = false;
       ensureSkinReflect();
       if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(nowPlayingPanel);
+      // measure + start the iPod title marquee AFTER layout (rAF), so scrollWidth is real.
+      var raf = (typeof window !== 'undefined' && window.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); };
+      raf(applyIpodMarquee);
       return true;
     }
 
