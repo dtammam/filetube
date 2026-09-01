@@ -2488,5 +2488,11 @@
     "date": "2026-08-31",
     "title": "Pick how the Music player looks on your phone: Apple Music, Spotify, or iPod",
     "intent": "The full-screen Music player on your phone now comes in three looks you can switch between right from the now-playing screen: an Apple-Music-style big-art view, a Spotify-style dark view, and a warm retro iPod view. Pick whichever feels right - it's remembered on your device. It's phone-only; the desktop player is unchanged. Under the hood it's the same player as before, so background play and your lock-screen controls keep working exactly as they did. This is a first cut of the look, so expect some polishing to come."
+  },
+  {
+    "version": "1.228.0",
+    "date": "2026-09-01",
+    "title": "The three phone Music skins now really look different from each other",
+    "intent": "The first cut of the phone Music skins felt like the same player in three colours. Now each one has its own layout: Apple is all about the cover art, with a big blurred backdrop and one large play button; Spotify is a bold dark screen with a green play button and your up-next queue right there with little cover thumbnails; and iPod is a proper throwback, with a brushed-metal top bar, a framed cover, a chunky metal button cluster, and a classic blue track list. Also fixed a small annoyance: the page no longer scrolls behind the full-screen player. It's still phone-only and still the same player underneath, so background play and lock-screen controls are unchanged."
   }
 ]
