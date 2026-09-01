@@ -61,6 +61,7 @@ async function boot(run, opts) {
   global.window = dom.window; global.document = dom.window.document;
   global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
   if (opts.skin) { try { dom.window.localStorage.setItem('ft-music-skin', opts.skin); } catch (_) { /* ignore */ } }
+  if (opts.sticker) { try { dom.window.localStorage.setItem('ft-sticker', JSON.stringify(opts.sticker)); } catch (_) { /* ignore */ } }
   const metaById = (id) => { const t = TRACKS.find((x) => x.id === id); return t ? { isMusic: true, id: t.id, title: t.title, artist: t.artist, album: t.album, albumKey: t.albumKey } : null; };
   const state = { s: 'full', loop: false, setLoopCalls: [] };
   let registered = null;
@@ -198,6 +199,37 @@ test('T3 (anti-INERT): picking a skin chip calls SKINS.setActiveSkin and re-rend
     // the freshly re-rendered iPod panel still carries its sticker
     assert.ok(sticker(dom), 'sticker survives the skin re-render');
   });
+});
+
+test('v1.240: an IMAGE sticker (logo default / custom) marks the button mms-sticker--img (un-circled); an emoji does NOT', async () => {
+  // default (logo) -> image
+  await boot(async (dom) => {
+    assert.ok(sticker(dom).classList.contains('mms-sticker--img'), 'default logo is an image -> un-circled marker present');
+  });
+  // custom upload -> image
+  await boot(async (dom) => {
+    assert.ok(sticker(dom).classList.contains('mms-sticker--img'), 'custom image -> un-circled marker present');
+    assert.ok(sticker(dom).querySelector('img.mms-sticker-ic'), 'renders the uploaded image');
+  }, { sticker: { kind: 'custom', v: 123 } });
+  // emoji -> NOT an image (keeps the round chip)
+  await boot(async (dom) => {
+    assert.ok(!sticker(dom).classList.contains('mms-sticker--img'), 'emoji keeps the circular chip (no un-circle marker)');
+    assert.ok(sticker(dom).querySelector('.mms-sticker-emoji'), 'renders the emoji');
+  }, { sticker: { kind: 'emoji', value: '🎵' } });
+  // a PARTIAL emoji pref with no value falls through to the logo image -> must be marked img
+  // (both gate seats: the marker keys off what's rendered, not off kind alone).
+  await boot(async (dom) => {
+    assert.ok(sticker(dom).querySelector('img.mms-sticker-ic'), 'no-value emoji renders the logo image');
+    assert.ok(sticker(dom).classList.contains('mms-sticker--img'), 'and is un-circled (not a chip around a logo)');
+  }, { sticker: { kind: 'emoji' } });
+});
+
+test('v1.240 source-lock (CSS): the sticker tilts, and an image sticker drops the circle/clip', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.mms-sticker\{[^}]*transform:rotate\(-12deg\)/, 'the sticker button is tilted -12deg (literal-sticker feel)');
+  assert.match(css, /\.mms-sticker--img\{[^}]*background:transparent[^}]*border-radius:0/, 'an image sticker drops the circular background + radius');
+  assert.match(css, /\.mms-sticker--img \.mms-sticker-ic\{[^}]*border-radius:0/, 'the image itself is not round-clipped');
 });
 
 test('T3: a click elsewhere on the panel closes an open menu', async () => {

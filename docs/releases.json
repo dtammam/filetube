@@ -2596,5 +2596,11 @@
     "date": "2026-09-01",
     "title": "A bigger iPod wheel you can spin to scrub",
     "intent": "The iPod skin's click wheel is now bigger, sized like a real iPod Classic's. And on your phone, you can spin the wheel while a song is playing to scrub through it - turn clockwise to jump forward, counter-clockwise to go back, and let go to land there. (On a computer the pop-out wheel still controls volume, which phones can't do.)"
+  },
+  {
+    "version": "1.240.0",
+    "date": "2026-09-01",
+    "title": "Loop a single track in an album, and a stick-on sticker",
+    "intent": "Turning on Loop for one song inside a downloaded album now repeats just that song, instead of playing on through the rest of the album. And the player sticker got two touches: if you use your own image (or the logo) it's no longer squeezed into a circle - it shows as-is - and it sits at a slight, playful tilt like a real peel-and-stick sticker. Emoji stickers keep their round badge."
   }
 ]

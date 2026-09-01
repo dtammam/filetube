@@ -11009,9 +11009,15 @@ html[data-modern="on"] .video-uploader {
      popover = speed + loop + skin picker. Self-contained dark overlay surface so
      it reads on any skin's palette; positioned over the safe-area inset. */
   .mms-sticker-wrap{ position:absolute; left:calc(env(safe-area-inset-left,0px) + var(--space-6)); bottom:calc(env(safe-area-inset-bottom,0px) + var(--space-6)); z-index:40; /* token-exempt: local stacking (above the skin chrome, below nothing else here) */ }
-  .mms-sticker{ width:44px; height:44px; padding:var(--space-2); border:0; border-radius:var(--radius-full); background:var(--scrim); box-shadow:var(--shadow-lg); cursor:pointer; display:grid; place-items:center; -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
+  /* v1.240 (Dean): a slight counter-clockwise tilt so it reads like a literal peel-and-stick
+     sticker. On the BUTTON only - the pop-up menu (a sibling) stays upright. */
+  .mms-sticker{ width:44px; height:44px; padding:var(--space-2); border:0; border-radius:var(--radius-full); background:var(--scrim); box-shadow:var(--shadow-lg); cursor:pointer; display:grid; place-items:center; -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); transform:rotate(-12deg); }
   .mms-sticker .mms-sticker-ic{ width:100%; height:100%; object-fit:contain; border-radius:var(--radius-full); display:block; }
   .mms-sticker .mms-sticker-emoji{ font-size:var(--fs-2xl); }
+  /* v1.240 (Dean): an IMAGE sticker fills the spot SQUARE with no ring/clip - drop the
+     circular chrome + the round image crop (emoji keeps the chip). */
+  .mms-sticker--img{ background:transparent; border-radius:0; box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none; padding:0; }
+  .mms-sticker--img .mms-sticker-ic{ border-radius:0; }
   .mms-sticker-menu[hidden]{ display:none !important; } /* the [hidden] lesson: a flex/grid menu's own display beats [hidden] */
   .mms-sticker-menu{ position:absolute; left:0; bottom:calc(100% + var(--space-3)); /* token-exempt: positional geometry */
     min-width:200px; max-width:78vw; max-height:60vh; overflow-y:auto; display:flex; flex-direction:column; gap:var(--space-4);

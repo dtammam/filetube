@@ -116,6 +116,80 @@ test('v1.237: a within-chapter timeupdate does NOT churn the identity (only a bo
   });
 });
 
+// ---- v1.240 (Dean's loop bug): a ::c chapter loops its SEGMENT when Loop is on ----------
+// The file-level loop only fires at the WHOLE file's end, so a chaptered `::c` "song" (a
+// slice of the shared file) never looped. enforceChapterLoop seeks back to the chapter's
+// start at its end boundary. Make currentTime SETTABLE (the seek-back writes it) + duration
+// known, and turn the fake player's Loop on.
+function loopable(dom, dur) {
+  const mp = dom.window.document.getElementById('media-player');
+  let ct = 0;
+  Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => ct, set: (v) => { ct = Number(v); } });
+  Object.defineProperty(mp, 'duration', { configurable: true, get: () => dur });
+  return { mp, set: (v) => { ct = v; mp.dispatchEvent(new dom.window.Event('timeupdate')); } };
+}
+
+test('v1.240: with Loop ON, a ::c chapter loops its SEGMENT - seeks back at the end boundary, never advances', async () => {
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom) => {
+    const { mp, set } = loopable(dom, 360); // 3 x 120s chapters
+    dom.window.FileTube.player.isLoopEnabled = () => true;
+    set(119.9); await settle(); // approach chapter one's end (boundary 120)
+    assert.strictEqual(mp.currentTime, 0, 'looped back to chapter one start');
+    assert.strictEqual(playingId(dom), 'film::c0', 'stayed on chapter one (did NOT advance to two)');
+  });
+});
+
+test('v1.240: Loop ON loops the PICKED middle chapter (back to its own start, not the file start)', async () => {
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c1'), async (dom) => {
+    const { mp, set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => true;
+    // seed the playhead inside chapter two so its identity is established, then hit its end (240)
+    set(130); await settle();
+    assert.strictEqual(playingId(dom), 'film::c1', 'on chapter two');
+    set(239.9); await settle();
+    assert.strictEqual(mp.currentTime, 120, 'looped back to chapter TWO start (120), not the file start');
+    assert.strictEqual(playingId(dom), 'film::c1', 'stayed on chapter two');
+  });
+});
+
+test('v1.240: with Loop OFF, crossing a boundary ADVANCES normally (no seek-back)', async () => {
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom) => {
+    const { mp, set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    // 119.9 sits WITHIN the loop's [end-0.25, end+1) band (adversarial SUGGESTION A): so with
+    // Loop OFF this behaviourally kills a "remove the isLoopEnabled() gate" mutant (which would
+    // otherwise seek back to 0 here), not just the source-lock. Clean code leaves it untouched.
+    set(119.9); await settle();
+    assert.strictEqual(mp.currentTime, 119.9, 'no seek-back when Loop is off (even inside the band)');
+    assert.strictEqual(playingId(dom), 'film::c1', 'advanced to chapter two as usual');
+  });
+});
+
+test('v1.240 (QA WARNING): a far position past the boundary is NOT yanked back - the loop trigger is upper-capped', async () => {
+  // Simulates the post-scrub stale tick: Loop ON, displayed chapter is still c0 (reflect
+  // has not run yet), but currentTime is already deep in chapter 3 (a forward scrub landed).
+  // enforceChapterLoop runs FIRST with stale bounds {0,120}; without the end+1 cap it would
+  // seek back to 0 (yank). With the cap, it must NOT seek, and reflect then advances to c2.
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom) => {
+    const { mp, set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => true;
+    assert.strictEqual(playingId(dom), 'film::c0', 'displayed chapter one before the tick');
+    set(250); await settle(); // far into chapter three, in ONE tick (stale chapterViewId=c0)
+    assert.strictEqual(mp.currentTime, 250, 'NOT yanked back to 0 - a deliberate far scrub survives');
+    assert.strictEqual(playingId(dom), 'film::c2', 'reflect then advanced the displayed chapter to three');
+  });
+});
+
+test('v1.240 source-lock: enforceChapterLoop is bound BEFORE reflectChapter and SKIPS during a scrub', () => {
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  // bound first so a loop seek-back lands before the reflect can advance the displayed chapter
+  assert.match(js, /addEventListener\('timeupdate', enforceChapterLoop[\s\S]*?addEventListener\('timeupdate', reflectChapter/, 'enforceChapterLoop is bound before reflectChapter');
+  const m = /function enforceChapterLoop\(\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.ok(m, 'enforceChapterLoop exists');
+  assert.match(m[1], /wheelSpin && wheelSpin\.mode === 'scrub'/, 'skips during a wheel scrub (the v1.239 carried interaction)');
+  assert.match(m[1], /isLoopEnabled\(\)/, 'gated on the loop flag');
+});
+
 // ---- source locks ----------------------------------------------------------------------
 test('v1.237: the chapter watcher is wired (timeupdate -> reflectChapter) and the renders prefer chapterViewId', () => {
   const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');

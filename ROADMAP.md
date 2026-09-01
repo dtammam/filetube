@@ -80,6 +80,33 @@
 
 ## Shipped
 
+### v1.240.0 - Loop a single album chapter + a tilted, un-circled sticker (2026-09-01)
+
+Three Dean follow-ups. (1) **Chapter-segment loop (bug fix):** the Loop toggle drives the
+file-level loop, which replays only at the WHOLE file's `ended` - so for a chaptered album
+(one file, `::c` slices) a picked chapter never looped (Dean confirmed a standalone song DOES
+loop). New `enforceChapterLoop` on `#media-player` 'timeupdate' (bound before the v1.237
+reflect) seeks back to the current chapter's `chapterStartSec` at its end boundary when Loop
+is on and a `::c` chapter is playing, so it repeats that chapter; skipped during a wheel
+scrub. (2) **Un-circled image sticker:** a logo/custom-image sticker now shows square at the
+spot with no round ring/clip (emoji keeps the chip). (3) **Sticker tilt:** a 12deg
+counter-clockwise lean for a literal peel-and-stick feel (the pop-up menu stays upright).
+player.js BYTE-UNCHANGED.
+
+FULL two-reviewer gate. Both APPROVE after one fix round: QA caught a post-scrub yank (a
+forward wheel-scrub to a far chapter, then the first async `timeupdate` ran the loop with a
+stale chapter and snapped you back) - fixed with a tight trigger band `[end-0.25, end+1)`;
+also tightened a Loop-OFF test fixture to bind the loop gate behaviorally (the adversarial's
+divergent-fixture catch). Dual-Node 8099/0 (Node 22 + 24).
+
+**Known residuals (disclosed, non-blocking):** (a) looping the LAST chapter relies on a
+`timeupdate` landing in the final ~0.25s before true end; a heavily-throttled/backgrounded
+tab can miss it, letting the file's `ended` handler replay from the FILE start instead of the
+last chapter. (b) The tightened trigger band means a `timeupdate` gap wider than ~1.25s that
+straddles a boundary skips the loop for that one iteration (auto-advances instead);
+self-corrects. Both are rare and far less jarring than the yank the cap replaced. **Device
+pending** - Dean confirms a picked album chapter loops, the sticker tilt/un-circle look right.
+
 ### v1.239.0 - A bigger iPod wheel + spin the wheel to scrub on mobile (2026-09-01)
 
 Two wheel asks from Dean. (1) The iPod click wheel is now sized proportional to the real
