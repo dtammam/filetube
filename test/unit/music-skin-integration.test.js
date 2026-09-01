@@ -39,7 +39,7 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
 
 const settle = () => new Promise((r) => setImmediate(r));
 
-async function boot({ mobile, isMusic, run }) {
+async function boot({ mobile, isMusic, run, skin }) {
   const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music' });
   const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController, requestAnimationFrame: global.requestAnimationFrame, Event: global.Event };
   global.window = dom.window; global.document = dom.window.document;
@@ -60,6 +60,9 @@ async function boot({ mobile, isMusic, run }) {
   delete require.cache[skinsPath]; global.module = undefined;
   require(skinsPath);
   dom.window.FileTubeMusicSkins = require(skinsPath);
+  // v1.230: the Settings-page picker persists ft-music-skin; the music view reads it
+  // on render. Preset it to simulate "picked in Settings, then opened the player".
+  if (skin) dom.window.localStorage.setItem('ft-music-skin', skin);
   const D = dom.window.document;
   D.getElementById('pp-btn').addEventListener('click', () => { spy.pp += 1; });
   D.getElementById('track-prev-btn').addEventListener('click', () => { spy.prev += 1; });
@@ -107,18 +110,13 @@ test('gate CRITICAL: destroy() CLEARS body.mms-on (else it collapses the next vi
   } });
 });
 
-test('v1.229: the account-menu picker re-skins live - ft-music-skin-changed re-renders', async () => {
-  // Skin picking moved to the account menu (no in-player switcher). The menu sets the
-  // skin (ft-music-skin) then fires window 'ft-music-skin-changed'; music.js listens
-  // and re-renders the open now-playing. Simulate exactly that hand-off.
-  await boot({ mobile: true, isMusic: true, run: async (dom) => {
-    assert.match(panel(dom).className, /\bmms-apple\b/, 'starts on the default (apple)');
-    assert.ok(!panel(dom).querySelector('[data-skin-set]'), 'the in-player switcher is gone');
-    dom.window.FileTubeMusicSkins.setActiveSkin('ipod');
-    dom.window.dispatchEvent(new dom.window.CustomEvent('ft-music-skin-changed'));
-    for (let i = 0; i < 4; i++) await settle();
-    assert.match(panel(dom).className, /\bmms-ipod\b/, 'the open now-playing re-skinned to iPod live');
-    assert.strictEqual(dom.window.localStorage.getItem('ft-music-skin'), 'ipod', 'choice persisted per-device');
+test('v1.230: the music view HONORS the skin persisted by the Settings picker (ft-music-skin)', async () => {
+  // Skin picking lives on the Settings page now (no in-player switcher, no event).
+  // It writes ft-music-skin; the music view reads that on render. Preset iPod and
+  // confirm the now-playing renders the iPod skin, not the apple default.
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
+    assert.match(panel(dom).className, /\bmms-ipod\b/, 'renders the persisted skin (iPod)');
+    assert.ok(!panel(dom).querySelector('[data-skin-set]'), 'no in-player switcher');
   } });
 });
 

@@ -12,15 +12,6 @@ const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
 
 const COMMON = require.resolve('../../public/js/common.js');
-const SKINS = require.resolve('../../public/js/music-skins.js');
-
-// v1.229: attach the mobile-music skins module + a mobile matchMedia so the
-// account menu's mobile-only "Music skin" picker builds. Call AFTER fresh().
-function enableMobileSkins() {
-  dom.window.matchMedia = (q) => ({ matches: /max-width:\s*768px/.test(q), media: q, addEventListener() {}, removeEventListener() {} });
-  delete require.cache[SKINS];
-  dom.window.FileTubeMusicSkins = require(SKINS); // self-attaches to window too
-}
 let dom, savedFetch;
 
 function fresh(mePayload) {
@@ -370,38 +361,18 @@ test('fetchCurrentUser stamps ft-is-admin for an admin and CLEARS it for a membe
   delete global.localStorage;
 });
 
-// ---- v1.229 (Dean): the mobile-only "Music skin" picker in the account menu -----
+// ---- v1.230 (Dean): the "Music skin" picker moved OUT of the account menu to the
+// Settings page (Appearance). The account menu must carry no skin-picker remnant. ---
 
-test('v1.229: the account menu shows a mobile Music skin picker that persists + fires the live re-render event', async () => {
+test('v1.230: the account menu has NO music-skin picker (it moved to the Settings page)', async () => {
   const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', role: 'admin', avatar: { present: false } } });
-  enableMobileSkins();
+  // even with the skins module + a mobile viewport present, the menu adds no picker
+  dom.window.matchMedia = (q) => ({ matches: /max-width:\s*768px/.test(q), media: q, addEventListener() {}, removeEventListener() {} });
+  dom.window.FileTubeMusicSkins = require('../../public/js/music-skins.js');
   injectAccountMenu();
   await tick();
   const root = global.document.getElementById('account-menu-root');
-  const picker = root.querySelector('.account-menu-skinpicker');
-  assert.ok(picker, 'the Music skin picker is present on a mobile viewport');
-  assert.ok(!picker.classList.contains('account-menu-item'), 'its own class - stays out of the quick-link censuses');
-  const chips = [...picker.querySelectorAll('.account-menu-skinchip')];
-  assert.deepStrictEqual(chips.map((c) => c.getAttribute('data-skin-pref')), ['apple', 'spotify', 'ipod'], 'all three skins offered, in order');
-  assert.strictEqual(chips.find((c) => c.classList.contains('is-on')).getAttribute('data-skin-pref'), 'apple', 'default (apple) marked active');
-
-  let fired = 0;
-  global.window.addEventListener('ft-music-skin-changed', () => { fired += 1; });
-  chips.find((c) => c.getAttribute('data-skin-pref') === 'ipod').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  assert.strictEqual(dom.window.localStorage.getItem('ft-music-skin'), 'ipod', 'the pick persisted per-device (ft-music-skin)');
-  assert.strictEqual(fired, 1, 'fired ft-music-skin-changed so an open now-playing re-skins live');
-  assert.strictEqual(picker.querySelector('.account-menu-skinchip.is-on').getAttribute('data-skin-pref'), 'ipod', 're-highlighted to iPod');
-});
-
-test('v1.229: NO Music skin picker on desktop (skins are phone-only) - never pollutes the item labels', async () => {
-  const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', role: 'admin', avatar: { present: false } } });
-  dom.window.matchMedia = (q) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} });
-  delete require.cache[SKINS];
-  dom.window.FileTubeMusicSkins = require(SKINS);
-  injectAccountMenu();
-  await tick();
-  const root = global.document.getElementById('account-menu-root');
-  assert.ok(!root.querySelector('.account-menu-skinpicker'), 'no skin picker on desktop');
+  assert.ok(!root.querySelector('.account-menu-skinpicker'), 'no in-menu skin picker anymore');
   const labels = [...root.querySelectorAll('.account-menu-item span')].map((s) => s.textContent);
-  assert.ok(!labels.includes('Music skin'), 'the picker is not an item, so labels are unchanged');
+  assert.ok(!labels.includes('Music skin'), 'and the item-label net is unchanged');
 });

@@ -20,8 +20,9 @@
 //   data-skin-seek      -> a bar; click maps x -> #seek-bar value (existing seek)
 //   data-skin-go="<i>"  -> jump to queue index i (the view's playAt)
 //   data-skin-collapse  -> dock the player (browse-away; the mini returns you)
-// Skin PICKING is NOT an in-player hook (v1.229): it lives in the account menu,
-// which calls setActiveSkin() + fires 'ft-music-skin-changed' for a live re-render.
+// Skin PICKING is NOT an in-player hook: it lives on the Settings page (v1.230,
+// setup.js renderMusicSkinPicker), which calls setActiveSkin(). The music view
+// re-reads activeSkinId() on its next render, so the choice applies when you return.
 
 (function () {
   var SKIN_KEY = 'ft-music-skin';
@@ -56,10 +57,11 @@
   function prevBtn() { return '<button type="button" class="mms-skip mms-prev" data-skin-prev aria-label="Previous">' + prevGlyph() + '</button>'; }
   function nextBtn() { return '<button type="button" class="mms-skip mms-next" data-skin-next aria-label="Next">' + nextGlyph() + '</button>'; }
   function collapseBtn() { return '<button type="button" class="mms-chev" data-skin-collapse aria-label="Collapse">▾</button>'; }
-  // NOTE (v1.229): skin PICKING lives in the account menu now (see common.js's
-  // buildAccountMusicSkinRow), not an in-player switcher - the in-player chips were
-  // unreliable on-device (they visually vanished against some skins). This module
-  // still owns the registry + the per-device setting the menu reads/writes.
+  // NOTE (v1.230): skin PICKING lives on the Settings page now (setup.js
+  // renderMusicSkinPicker), not an in-player switcher (the in-player chips were
+  // unreliable on-device, and a v1.229 account-menu picker often never appeared
+  // because the menu builds once and not every shell loaded this module - now it's
+  // loaded on every app shell). This module owns the registry + the per-device setting.
   // withThumb=Spotify (album-art thumb + stacked title/artist); else=iPod (track
   // number + title + duration + a chevron, the classic list row).
   function goRows(ctx, withThumb) {

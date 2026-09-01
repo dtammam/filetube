@@ -519,6 +519,41 @@ function renderIconPicker() {
   });
 }
 
+// v1.230 (Dean): the mobile Music-player SKIN picker - the per-device appearance
+// control moved here from the account menu (it was unreliable there: the menu
+// builds once, and only some shells loaded the skins module). Mirrors
+// renderIconPicker (no Save, re-highlight on click). Source of truth is
+// FileTubeMusicSkins (now loaded on every app shell); the skin labels are static
+// registry strings (no user input, so no escaping needed, like the icon cards).
+// Bails cleanly if the module is somehow absent, leaving the section empty.
+const MUSIC_SKIN_BLURB = {
+  apple: 'Big cover art on a blurred backdrop, minimal controls.',
+  spotify: 'Dark, with a green play button and your up-next queue.',
+  ipod: 'Retro brushed-metal, framed cover, classic track list.',
+};
+function renderMusicSkinPicker() {
+  const container = document.getElementById('music-skin-picker');
+  if (!container || !controller) return; // same premature-call guard as renderIconPicker
+  const skins = (typeof window !== 'undefined') && window.FileTubeMusicSkins;
+  if (!skins || typeof skins.activeSkinId !== 'function') { container.innerHTML = ''; return; }
+  const active = skins.activeSkinId();
+  container.innerHTML = (skins.IDS || []).map((id) => {
+    const s = skins.skinById(id);
+    return `
+    <button type="button" class="theme-card${id === active ? ' active' : ''}"
+            data-skin-pref="${id}">
+      <span class="theme-card-name">${s && s.label ? s.label : id}</span>
+      <span class="theme-card-blurb">${MUSIC_SKIN_BLURB[id] || ''}</span>
+    </button>`;
+  }).join('');
+  container.querySelectorAll('.theme-card').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      skins.setActiveSkin(btn.dataset.skinPref); // persists ft-music-skin (per-device)
+      renderMusicSkinPicker();                   // re-highlight the active card
+    }, { signal: controller.signal });
+  });
+}
+
 // ---- Automation & Storage --------------------------------------------
 // Persisted server-side (db.settings via /api/settings), NOT localStorage
 // like the theme/icon prefs above — these govern server automation
@@ -3611,6 +3646,7 @@ function init(root) {
   wireTvFolderControls(controller.signal); // v1.195 TV Shows
   renderThemePicker();
   renderIconPicker();
+  renderMusicSkinPicker(); // v1.230: the mobile Music-player skin (per-device)
   wireHideStarsControl(controller.signal); // v1.63.1: the fake-stars toggle
   wireCritterModeControls(controller.signal); // v1.166: Sneaky critter mode
   wireVoiceCheck(controller.signal); // v1.181: the Troubleshooting page's critter sound diagnostic
