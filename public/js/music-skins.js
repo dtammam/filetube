@@ -59,6 +59,10 @@
   // so music.js's one proxy handler + reflectSkin work for every skin) ----------
   function artUrl(ctx) { return (ctx.track && ctx.track.artUrl) || ''; }
   function artImg(ctx) { var u = artUrl(ctx); return u ? '<img class="mms-art-img art-shimmer" src="' + esc(u) + '" alt="" loading="lazy" />' : ''; }
+  // v1.244 (Dean): the art SLOT carries `--art` = the same image, so its CSS ::before can paint
+  // a blurred self-bleed behind the whole (object-fit:contain) art - filling a non-square
+  // cover's letterbox with an accent from its own colors. '' when there's no art.
+  function artVar(ctx) { var u = artUrl(ctx); return u ? ' style="--art:url(&quot;' + esc(u) + '&quot;)"' : ''; }
   function fillW(ctx) { return 'style="width:' + pct(ctx.posSec, ctx.durSec) + '%"'; }
   function times(ctx) { return '<span class="mms-pos">' + esc(ctx.posLabel || '0:00') + '</span><span class="mms-rem">' + esc(ctx.remLabel || '') + '</span>'; }
   function playBtn(ctx) { return '<button type="button" class="mms-play" data-skin-play aria-label="' + (ctx.playing ? 'Pause' : 'Play') + '">' + playGlyph(ctx.playing) + '</button>'; }
@@ -103,7 +107,7 @@
     return (u ? '<div class="mms-bleed" style="background-image:url(&quot;' + esc(u) + '&quot;)"></div>' : '') +
       '<div class="mms-z">' +
       '<div class="mms-top"><button type="button" class="mms-grab" data-skin-collapse aria-label="Close player"></button></div>' +
-      '<div class="mms-art">' + artImg(ctx) + '</div>' +
+      '<div class="mms-art"' + artVar(ctx) + '>' + artImg(ctx) + '</div>' +
       '<div class="mms-head"><div class="mms-ttl" title="' + esc(a.title) + '">' + esc(a.title || 'Unknown track') + '</div><div class="mms-sub">' + esc(a.artist || '') + '</div></div>' +
       '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
       '<div class="mms-transport">' + prevBtn() + playBtn(ctx) + nextBtn() + '</div>' +
@@ -114,7 +118,7 @@
   function renderSpotify(ctx) {
     var a = ctx.track || {};
     return '<div class="mms-top">' + collapseBtn() + '<span class="mms-ctx">' + esc('Playing from ' + (a.album || 'album')) + '</span><span class="mms-top-spacer" aria-hidden="true"></span></div>' +
-      '<div class="mms-art">' + artImg(ctx) + '</div>' +
+      '<div class="mms-art"' + artVar(ctx) + '>' + artImg(ctx) + '</div>' +
       '<div class="mms-meta"><div class="mms-ttl">' + esc(a.title || 'Unknown track') + '</div><div class="mms-sub">' + esc(a.artist || '') + '</div></div>' +
       '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
       '<div class="mms-transport"><button type="button" class="mms-ic mms-shuffle" data-skin-shuffle aria-label="Shuffle">' + shuffleGlyph() + '</button>' + prevBtn() + playBtn(ctx) + nextBtn() + '<span class="mms-tr-spacer" aria-hidden="true"></span></div>' +
@@ -138,7 +142,7 @@
       '<span class="ip-status-rt"><span class="mms-playind" aria-hidden="true">▶</span><span class="ip-batt" aria-hidden="true"><i></i></span></span></div>' +
       // --- Now Playing view ---
       '<div class="ip-npview">' +
-      '<div class="ip-npmain"><div class="ip-cover">' +
+      '<div class="ip-npmain"><div class="ip-cover"' + artVar(ctx) + '>' +
       (u ? '<img class="art-shimmer" src="' + esc(u) + '" alt="" loading="lazy" />' : '') + '</div>' +
       '<div class="ip-meta">' +
       '<div class="ip-ttl">' + esc(a.title || 'Unknown track') + '</div>' +

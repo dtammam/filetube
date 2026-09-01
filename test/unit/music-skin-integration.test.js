@@ -382,15 +382,16 @@ test('v1.239 iPod: a Now-Playing spin with NO known duration is a safe no-op (lo
   } });
 });
 
-test('v1.243 source-lock: a ?play open covers the page early on a mobile skin surface, cleared only on the miss->list fallback', () => {
+test('v1.244 source-lock: a ?play open MOUNTS a full-screen skin cover immediately (covers #music-content), torn down only on the miss->list fallback', () => {
   const js = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
   const m = /async function playTrackFromContinue\(trackId, bounceOnMiss\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(m, 'playTrackFromContinue exists');
-  // covers early (hides host chrome) ONLY when a mobile skin surface would take over
   assert.match(m[1], /coverEarly = !!\(SKINS && typeof SKINS\.skinActiveFor === 'function' && SKINS\.skinActiveFor\(\{ isMusic: true \}\)\)/, 'coverEarly gated on the mobile skin surface');
-  assert.match(m[1], /if \(coverEarly\) document\.body\.classList\.add\('mms-on'\)/, 'sets mms-on up front so the tap goes straight to the player');
-  // the ONLY path that shows the list (a non-bounce miss -> render) undoes the cover first
-  assert.match(m[1], /if \(coverEarly\) document\.body\.classList\.remove\('mms-on'\);\s*\n\s*await render\(\);/, 'the miss->list fallback clears the early cover before render()');
+  // v1.244: it MOUNTS the mms-full skin frame (not just mms-on) so the LIST (#music-content) is
+  // covered from the first frame - the v1.243 mms-on-only fix flashed the list on device.
+  assert.match(m[1], /if \(coverEarly && nowPlayingPanel\) \{[\s\S]*?classList\.add\('mms-on'\);[\s\S]*?nowPlayingPanel\.className = 'music-nowplaying-panel mms mms-full mms-'[\s\S]*?nowPlayingPanel\.hidden = false;/, 'mounts a full-screen skin cover immediately');
+  // the ONLY path that shows the list (a non-bounce miss -> render) tears the cover down first
+  assert.match(m[1], /if \(coverEarly && nowPlayingPanel\) \{\s*\n\s*document\.body\.classList\.remove\('mms-on'\);[\s\S]*?nowPlayingPanel\.hidden = true;[\s\S]*?\}\s*\n\s*await render\(\);/, 'the miss->list fallback tears the cover down before render()');
 });
 
 // ---- v1.242 (#2, Dean): HOLD rewind/ffwd = FAST-SCAN the timeline -----------------------

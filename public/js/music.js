@@ -2465,13 +2465,23 @@ if (typeof module !== 'undefined' && module.exports) {
     // list (an edge — e.g. it aged out).
     async function playTrackFromContinue(trackId, bounceOnMiss) {
       // v1.243 (Dean): opening a song from the home feed used to FLASH the /music list before
-      // the skin launched ("awkward gap"). On a mobile skin surface, cover the page IMMEDIATELY
-      // (hide the host chrome) so the tap goes STRAIGHT to the player - the recent-listening
-      // list still builds behind the full-screen skin (invisible) for the dock-return, and the
-      // ONLY path that actually shows the list (a non-bounce MISS -> render()) clears it first.
+      // the skin launched ("awkward gap"). v1.243 set body.mms-on early - but that only hid the
+      // header/tabs, NOT #music-content, so renderSongList still FLASHED the list before the skin
+      // covered it (Dean, on-device: "still shows the music page"). v1.244 re-fix: MOUNT the
+      // full-screen skin frame (empty) into #music-nowplaying-panel IMMEDIATELY, so the page is
+      // covered from the first frame; the list still builds behind it for the dock-return, and
+      // paintSkin fills the frame with the real skin once the track loads. The only path that
+      // shows the list (a non-bounce MISS -> render()) tears the cover down first.
       var coverEarly = false;
       try { coverEarly = !!(SKINS && typeof SKINS.skinActiveFor === 'function' && SKINS.skinActiveFor({ isMusic: true })); } catch (_) { coverEarly = false; }
-      if (coverEarly) document.body.classList.add('mms-on');
+      if (coverEarly && nowPlayingPanel) {
+        document.body.classList.add('mms-on');
+        var _sid = (SKINS.activeSkinId && SKINS.activeSkinId()) || 'apple';
+        var _base = (SKINS.skinById && (SKINS.skinById(_sid) || {}).base) || '';
+        nowPlayingPanel.className = 'music-nowplaying-panel mms mms-full mms-' + _sid + (_base ? ' mms-' + _base : '');
+        nowPlayingPanel.innerHTML = '';   // an empty skin frame = an instant cover over #music-content; paintSkin fills it on load
+        nowPlayingPanel.hidden = false;
+      }
       tab = 'songs';
       drill = null;
       search = '';
@@ -2512,9 +2522,14 @@ if (typeof module !== 'undefined' && module.exports) {
         var bounceId = String(trackId).replace(/::c\d+$/, '');
         try { if (window.location && typeof window.location.replace === 'function') { window.location.replace('/watch.html?v=' + encodeURIComponent(bounceId)); return; } } catch (_) { /* no navigable location */ }
       }
-      // The ONLY path that actually SHOWS the list: undo the early cover so the chrome + list
-      // are visible (this miss never mounts a skin).
-      if (coverEarly) document.body.classList.remove('mms-on');
+      // The ONLY path that actually SHOWS the list: tear the early cover down so the chrome +
+      // list are visible (this miss never mounts a skin).
+      if (coverEarly && nowPlayingPanel) {
+        document.body.classList.remove('mms-on');
+        nowPlayingPanel.hidden = true;
+        nowPlayingPanel.innerHTML = '';
+        nowPlayingPanel.className = 'music-nowplaying-panel';
+      }
       await render();
     }
 
