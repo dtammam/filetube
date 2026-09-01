@@ -156,8 +156,11 @@ test('v1.240: with Loop OFF, crossing a boundary ADVANCES normally (no seek-back
   await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom) => {
     const { mp, set } = loopable(dom, 360);
     dom.window.FileTube.player.isLoopEnabled = () => false;
-    set(130); await settle(); // past chapter one's end
-    assert.strictEqual(mp.currentTime, 130, 'no seek-back when Loop is off');
+    // 119.9 sits WITHIN the loop's [end-0.25, end+1) band (adversarial SUGGESTION A): so with
+    // Loop OFF this behaviourally kills a "remove the isLoopEnabled() gate" mutant (which would
+    // otherwise seek back to 0 here), not just the source-lock. Clean code leaves it untouched.
+    set(119.9); await settle();
+    assert.strictEqual(mp.currentTime, 119.9, 'no seek-back when Loop is off (even inside the band)');
     assert.strictEqual(playingId(dom), 'film::c1', 'advanced to chapter two as usual');
   });
 });
