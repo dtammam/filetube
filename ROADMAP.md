@@ -80,6 +80,37 @@
 
 ## Shipped
 
+### v1.231.0 - A real click-wheel iPod; every button works; full-screen player (2026-09-01)
+
+Dean's device pass on the skins: they work, but the decorative buttons felt broken,
+the iPod wasn't bold/authentic enough ("beige tan not pure white"), and the app
+header showing over the player was awkward. He approved a click-wheel iPod mockup and
+these fixes (mockup: https://claude.ai/code/artifact/374aaf6c-8c92-4448-8a89-1316f98373de).
+
+- **iPod rebuilt to the real Classic** (his reference photo): a warm-white glossy body,
+  a black-bezelled LCD showing the authentic Now Playing screen (cover left; title /
+  artist / album / ★★★★★ / "N of M" right; the glossy blue Aqua scrubber) OR the song
+  list, and a flat **gray click wheel**. The wheel is tap-zones (not a scroll gesture,
+  by design): MENU steps back (list -> Now Playing; Now Playing -> exits the player -
+  the way out, no header needed), prev / next, bottom = play/pause; the center Select
+  opens the list (tap a row to play). Play state shows in the status bar (▶/❚❚).
+- **Every visible control is real** (Dean's rule). Removed Apple's fake ⋯ and bottom
+  icon row (a grab handle dismisses) and Spotify's fake repeat + ♡. Spotify's shuffle
+  now actually shuffles (it drives the real Shuffle-all).
+- **True full-screen.** All three skins now cover the FileTube header for an immersive
+  player; the grab handle / MENU is the way back.
+
+Same engine - player.js byte-unchanged; the new controls proxy to the hidden ones.
+The iPod palette was replaced wholesale (48 -> 54 skin tokens, all value-locked).
+Slim gate (adversarial): APPROVE, no findings, two non-blocking suggestions applied +
+re-confirmed (a killed mutant + a dropped dead marker class). Dual-Node 7979/0
+(Node 22.23.1 + 24.14.0).
+
+**Deferred (Dean's OK for now):** dragging the scrubber to scrub; a real rotational
+click-wheel gesture (a candidate follow-up - it's a non-passive touch gesture that
+deserves its own careful wave). **Dean's device pass PENDING** (the wheel geometry +
+full-screen feel are on-device items).
+
 ### v1.230.0 - The Music-skin picker moves to the Settings page (and actually shows up) (2026-09-01)
 
 Dean rebuilt v1.229 and couldn't find the skin picker anywhere - "I don't see it in

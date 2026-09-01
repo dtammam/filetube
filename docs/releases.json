@@ -2506,5 +2506,11 @@
     "date": "2026-09-01",
     "title": "The Music-skin picker is now on the Settings page",
     "intent": "Picking your phone Music skin now lives on the Settings page, under Appearance, right next to the Theme and Icons options - Apple Music, Spotify, or iPod, with the current one highlighted. This replaces the version that briefly lived in the account menu, which often didn't show up depending on which page you'd opened first. It's a per-device choice and it applies to the Music player on your phone; you can set it from your computer or your phone. Nothing else about playback changes."
+  },
+  {
+    "version": "1.231.0",
+    "date": "2026-09-01",
+    "title": "The iPod skin is now a real iPod - with a working click wheel",
+    "intent": "The iPod Music skin got a big glow-up to look and feel like a real iPod Classic: a glossy white body, the classic Now Playing screen with your cover art, song details and star rating, the shiny blue progress bar, and a gray click wheel underneath. The wheel's buttons actually work - the center is play/pause, the sides skip tracks, and MENU steps back (and backs you all the way out of the player). Tap MENU or the center to bring up your song list and tap any song to play it. Across all three skins, the buttons that didn't do anything are gone, Shuffle now really shuffles, and the player fills the whole screen instead of leaving the app's top bar showing. It's still phone-only and the same player underneath, so background play and lock-screen controls are unchanged."
   }
 ]
