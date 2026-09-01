@@ -139,10 +139,11 @@ test('v1.232.5: setIpodListMode scrolls the current song into view via the list 
   const m = /function setIpodListMode\(on\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(m, 'setIpodListMode exists');
   const body = m[1];
-  assert.match(body, /requestAnimationFrame|setTimeout/, 'scroll is rAF-deferred (measure after the list is visible)');
   assert.match(body, /\.ip-listview/, 'targets the list container');
   assert.match(body, /\.mms-row\.is-current/, 'centers the CURRENT row');
-  assert.match(body, /\.scrollTop\s*=/, 'scrolls the container via scrollTop');
+  // the scroll write must be INSIDE the rAF callback (deferred past the display:none->block
+  // layout) - not merely that a raf helper is declared (that would be vacuous).
+  assert.match(body, /raf\(function[\s\S]*?\.scrollTop\s*=/, 'the scrollTop write runs inside the rAF callback (deferred)');
   assert.match(body, /cur\.offsetTop\s*-\s*lv\.offsetTop/, 'normalizes by the container offsetTop (static list)');
   assert.ok(!/scrollIntoView/.test(body), 'NOT scrollIntoView (that would scroll the page behind)');
 });
