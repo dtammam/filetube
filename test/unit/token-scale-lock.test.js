@@ -58,30 +58,42 @@ const CONTRACT = {
   '--md-tile-glyph': '#ffffff', '--md-tile-radius': '8px',
   '--md-nav-width': '250px', '--md-divider-inset': '56px',
   '--tracking-caps': '0.05em',
-  // v1.227 mobile music skins (Dean): the 3 pickable skin palettes + their bespoke
-  // geometry/shadows/type - a new user-choosable presentation axis (like the
-  // --reader-*/--md-* themes), mobile-only. The value authority for the skins' look.
-  '--mms-white': '#ffffff', '--mms-black': '#000000', '--mms-track-lt': 'rgba(255,255,255,.27)',
-  '--mms-apple-fg': '#ffffff', '--mms-apple-accent': '#fa2b56', '--mms-apple-bg': '#0c0c10',
-  '--mms-sp-fg': '#ffffff', '--mms-sp-accent': '#1db954',
-  '--mms-sp-g1': '#3a2a5a', '--mms-sp-g2': '#1b1727', '--mms-sp-g3': '#0c0c0f',
-  '--mms-ipod-fg': '#2c2822', '--mms-ipod-accent': '#3f79c9', '--mms-ipod-accent2': '#2f6fce',
-  '--mms-ipod-warm': '#8a6d3b', '--mms-ipod-line': 'rgba(120,95,50,.16)',
-  '--mms-ipod-g1': '#f4efe4', '--mms-ipod-g2': '#e9e1d2', '--mms-ipod-frame': '#cbb48f',
-  '--mms-ipod-track': '#cdbfa4', '--mms-ipod-btn1': '#fdfdfd', '--mms-ipod-btn2': '#d7d2c7',
-  '--mms-art-shadow': '0 20px 46px -16px rgba(0,0,0,.6)',
-  '--mms-ipod-art-shadow': '0 8px 22px -8px rgba(90,70,40,.55)',
-  '--mms-ipod-play-shadow': '0 2px 4px rgba(90,70,40,.4)',
-  '--mms-r-art': '14px', '--mms-r-art-ipod': '8px', '--mms-r-row-ipod': '6px',
-  '--mms-chev': '36px', '--mms-play': '66px', '--mms-play-svg': '28px', '--mms-skip-svg': '34px',
-  '--mms-rn-w': '18px', '--mms-transport-gap': '30px', '--mms-scrub-mt': '18px',
-  '--mms-transport-mt': '14px', '--mms-row-py': '9px',
-  '--mms-ls-caps': '.14em', '--mms-ls-caps2': '.1em', '--mms-ls-tight': '-.02em', '--mms-lh-ttl': '1.15',
-  '--mms-sw-on': 'rgba(255,255,255,.16)', '--mms-sw-on-ipod': 'rgba(60,45,20,.16)',
+  // v1.228 mobile music skins (Dean, BOLD rebuild): the 3 pickable skin palettes +
+  // their bespoke type/shadows/radii - a user-choosable presentation axis (like the
+  // --reader-*/--md-* themes), mobile-only. v1.227's cut was "the same theme with
+  // three colors"; the bold rebuild made them structurally distinct, so the palette
+  // grew (per-skin backgrounds/tracks/switcher tints, oversized title sizes, the
+  // iPod aluminum bar + chrome cluster + knob shadows). The value authority.
+  '--mms-white': '#ffffff', '--mms-black': '#000000',
+  // Apple - art-dominant near-black + hot pink.
+  '--mms-apple-bg': '#0b0b10', '--mms-apple-fg': '#ffffff', '--mms-apple-accent': '#ff4f7b',
+  '--mms-apple-veil': 'rgba(8,8,12,.5)', '--mms-apple-dim': 'rgba(255,255,255,.66)',
+  '--mms-apple-track': 'rgba(255,255,255,.24)', '--mms-apple-sw': 'rgba(255,255,255,.15)',
+  '--mms-art-shadow': '0 26px 60px -18px rgba(0,0,0,.72)',
+  // Spotify - purple->black canvas, green.
+  '--mms-sp-fg': '#ffffff', '--mms-sp-accent': '#1ed760', '--mms-sp-on-accent': '#062b14',
+  '--mms-sp-dim': 'rgba(255,255,255,.6)', '--mms-sp-ic': 'rgba(255,255,255,.82)',
+  '--mms-sp-g1': '#5a3a86', '--mms-sp-g2': '#241a33', '--mms-sp-g3': '#0b0b0d',
+  '--mms-sp-track': 'rgba(255,255,255,.24)', '--mms-sp-sw': 'rgba(255,255,255,.14)',
+  '--mms-sp-queue-bg': 'rgba(0,0,0,.26)', '--mms-sp-qline': 'rgba(255,255,255,.08)',
+  '--mms-sp-play-shadow': '0 10px 26px -6px rgba(30,215,96,.55)',
+  // iPod - aluminum + framed cover + blue list.
+  '--mms-ipod-fg': '#2b2620', '--mms-ipod-warm': '#7c6636', '--mms-ipod-accent': '#3f79c9', '--mms-ipod-accent2': '#2f6fce',
+  '--mms-ipod-line': 'rgba(120,95,50,.18)', '--mms-ipod-g1': '#f6f1e6', '--mms-ipod-g2': '#e6ddca',
+  '--mms-ipod-bar1': '#fbfbfc', '--mms-ipod-bar2': '#d8d3c8', '--mms-ipod-frame': '#c9b389',
+  '--mms-ipod-track': '#cabb9f', '--mms-ipod-btn1': '#ffffff', '--mms-ipod-btn2': '#d6d1c6',
+  '--mms-ipod-cluster-line': 'rgba(120,95,50,.3)', '--mms-ipod-sw': 'rgba(60,45,20,.14)',
+  '--mms-ipod-art-shadow': '0 10px 24px -8px rgba(80,60,30,.5)',
+  '--mms-ipod-cluster-shadow': 'inset 0 1px 0 rgba(255,255,255,.85), 0 2px 4px rgba(80,60,30,.4)',
+  '--mms-ipod-bar-shadow': 'inset 0 -1px 0 rgba(120,95,50,.28)',
+  '--mms-ipod-knob-shadow': '0 1px 3px rgba(80,60,30,.5)',
+  // shared metrics.
+  '--mms-r-art': '16px', '--mms-r-art-ipod': '6px', '--mms-r-queue': '16px', '--mms-r-th': '6px', '--mms-r-row-ipod': '6px',
+  '--mms-ls-caps': '.14em', '--mms-ls-caps2': '.1em', '--mms-ls-tight': '-.02em', '--mms-lh-ttl': '1.1',
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 103, 'the 60-name contract (see history) + the 43 --mms-* mobile-music-skin tokens (v1.227): 3 skin palettes, their shadows/radii/geometry, caps tracking + title leading, and the switcher chip tints');
+  assert.equal(Object.keys(CONTRACT).length, 111, 'the 60-name contract (see history) + the 51 --mms-* mobile-music-skin tokens (v1.228 bold rebuild): 3 structurally-distinct skin palettes, their shadows/radii, caps tracking + title leading, and the per-skin switcher chip tints (oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*))');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());

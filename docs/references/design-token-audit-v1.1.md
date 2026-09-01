@@ -230,3 +230,46 @@ the `.mms-*` mobile-music rules and used only via `var()` (census-exempt DEFS).
   `--mms-lh-ttl` 1.15.
 - Switcher chip tints: `--mms-sw-on` rgba(255,255,255,.16), `--mms-sw-on-ipod`
   rgba(60,45,20,.16).
+
+## Addendum v1.228 (2026-09-01): bold skin rebuild - SUPERSEDES the v1.227 set
+
+Dean's device read on v1.227 was "the same theme with three colors" - the skins
+shared one structure. The v1.228 rebuild made them structurally distinct (Apple:
+blurred cover bleed + oversized art + hot-pink accent; Spotify: purple->black
+canvas + green circle play + a live queue panel; iPod: aluminum bar + framed cover
++ chrome transport cluster + blue tracklist), so the palette changed and grew:
+**43 tokens -> 51 tokens**. The whole `--mms-*` set below REPLACES the v1.227 list
+above; the byte-exact value authority is `test/unit/token-scale-lock.test.js`
+(contract count 103 -> 111 = 60 base + 51 `--mms-*`). All are census-exempt DEFS
+used only via `var()`, scoped to the `.mms-*` mobile-music rules. Geometry the
+census does NOT govern (widths/heights/aspect/filter/transform - play sizes, art
+sizes, aluminum-bar height, knob) is intentionally literal and NOT tokenized. The
+oversized titles reuse the global `--fs-*` type scale (Apple `--fs-5xl` 32px, Spotify
+`--fs-4xl` 22px, iPod `--fs-3xl` 20px) - the type-scale lock (AC7.1) requires every
+`font-size:` to read `var(--fs-*)`, so bespoke `--mms-fs-*` sizes are NOT allowed.
+
+- Shared: `--mms-white` #ffffff, `--mms-black` #000000.
+- Apple: `--mms-apple-bg` #0b0b10, `--mms-apple-fg` #ffffff, `--mms-apple-accent`
+  #ff4f7b, `--mms-apple-veil` rgba(8,8,12,.5) (bleed darkener), `--mms-apple-dim`
+  rgba(255,255,255,.66), `--mms-apple-track` rgba(255,255,255,.24),
+  `--mms-apple-sw` rgba(255,255,255,.15); `--mms-art-shadow`
+  0 26px 60px -18px rgba(0,0,0,.72).
+- Spotify: `--mms-sp-fg` #ffffff, `--mms-sp-accent` #1ed760, `--mms-sp-on-accent`
+  #062b14 (glyph on the green play), `--mms-sp-dim` rgba(255,255,255,.6),
+  `--mms-sp-ic` rgba(255,255,255,.82), wash `--mms-sp-g1` #5a3a86 / `--mms-sp-g2`
+  #241a33 / `--mms-sp-g3` #0b0b0d, `--mms-sp-track` rgba(255,255,255,.24),
+  `--mms-sp-sw` rgba(255,255,255,.14), queue panel `--mms-sp-queue-bg`
+  rgba(0,0,0,.26) / `--mms-sp-qline` rgba(255,255,255,.08); `--mms-sp-play-shadow`
+  0 10px 26px -6px rgba(30,215,96,.55).
+- iPod: `--mms-ipod-fg` #2b2620, `--mms-ipod-warm` #7c6636, `--mms-ipod-accent`
+  #3f79c9 / `--mms-ipod-accent2` #2f6fce (list gradient), `--mms-ipod-line`
+  rgba(120,95,50,.18), body cream `--mms-ipod-g1` #f6f1e6 / `--mms-ipod-g2`
+  #e6ddca, aluminum bar `--mms-ipod-bar1` #fbfbfc / `--mms-ipod-bar2` #d8d3c8,
+  `--mms-ipod-frame` #c9b389, `--mms-ipod-track` #cabb9f, chrome cluster
+  `--mms-ipod-btn1` #ffffff / `--mms-ipod-btn2` #d6d1c6, `--mms-ipod-cluster-line`
+  rgba(120,95,50,.3), `--mms-ipod-sw` rgba(60,45,20,.14); shadows
+  `--mms-ipod-art-shadow`, `--mms-ipod-cluster-shadow`, `--mms-ipod-bar-shadow`,
+  `--mms-ipod-knob-shadow`.
+- Shared metrics: radii `--mms-r-art` 16px, `--mms-r-art-ipod` 6px, `--mms-r-queue`
+  16px, `--mms-r-th` 6px, `--mms-r-row-ipod` 6px; type `--mms-ls-caps` .14em,
+  `--mms-ls-caps2` .1em, `--mms-ls-tight` -.02em, `--mms-lh-ttl` 1.1.

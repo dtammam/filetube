@@ -45,79 +45,87 @@
   function prevGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>'; }
   function nextGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg>'; }
 
-  // Shared transport (play/pause proxies to #pp-btn; prev/next to the track btns).
-  // A skin passes its own classes; the hooks + glyphs are identical everywhere so
-  // the single proxy handler works for all skins.
-  function transport(ctx) {
-    return '' +
-      '<button type="button" class="mms-skip" data-skin-prev aria-label="Previous">' + prevGlyph() + '</button>' +
-      '<button type="button" class="mms-play" data-skin-play aria-label="' + (ctx.playing ? 'Pause' : 'Play') + '">' + playGlyph(ctx.playing) + '</button>' +
-      '<button type="button" class="mms-skip" data-skin-next aria-label="Next">' + nextGlyph() + '</button>';
-  }
-  function scrubber(ctx) {
-    return '' +
-      '<div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0">' +
-      '<div class="mms-fill" style="width:' + pct(ctx.posSec, ctx.durSec) + '%"></div></div>' +
-      '<div class="mms-times"><span class="mms-pos">' + esc(ctx.posLabel || '0:00') + '</span>' +
-      '<span class="mms-rem">' + esc(ctx.remLabel || '') + '</span></div>';
-  }
-  function art(ctx, cls) {
-    var url = ctx.track && ctx.track.artUrl;
-    return '<div class="' + cls + '">' + (url
-      ? '<img src="' + esc(url) + '" alt="" class="art-shimmer" loading="lazy" />'
-      : '') + '</div>';
-  }
-  function upNextList(ctx) {
-    var rows = (ctx.upNext || []).map(function (it) {
-      var c = 'mms-row' + (it.state === 'current' ? ' is-current' : (it.state === 'played' ? ' is-played' : ''));
-      return '<button type="button" class="' + c + '" data-skin-go="' + it.index + '">' +
-        '<span class="mms-rn">' + (it.state === 'current' ? '▶' : (it.index + 1)) + '</span>' +
-        '<span class="mms-rt">' + esc(it.title || 'Track') + '</span>' +
-        '<span class="mms-rd">' + esc(it.durLabel || '') + '</span></button>';
-    }).join('');
-    return '<div class="mms-upnext"><div class="mms-upnext-h">' + esc('Up next · ' + ((ctx.track && ctx.track.album) || 'Queue')) + '</div>' +
-      '<div class="mms-upnext-list">' + rows + '</div></div>';
-  }
-  function topBar(label, ctx) {
-    var active = (ctx && ctx.skinId) || DEFAULT_ID;
-    // the SKIN SWITCHER (the "themes" picker) - a segmented control; each button
-    // sets the skin via data-skin-set (the view persists + re-renders).
-    var sw = '<div class="mms-skinsw" role="tablist" aria-label="Player skin">' + SKINS.map(function (s) {
+  // ---- shared building blocks (hooks + REFLECT classes are identical everywhere
+  // so music.js's one proxy handler + reflectSkin work for every skin) ----------
+  function artUrl(ctx) { return (ctx.track && ctx.track.artUrl) || ''; }
+  function artImg(ctx) { var u = artUrl(ctx); return u ? '<img class="mms-art-img art-shimmer" src="' + esc(u) + '" alt="" loading="lazy" />' : ''; }
+  function fillW(ctx) { return 'style="width:' + pct(ctx.posSec, ctx.durSec) + '%"'; }
+  function times(ctx) { return '<span class="mms-pos">' + esc(ctx.posLabel || '0:00') + '</span><span class="mms-rem">' + esc(ctx.remLabel || '') + '</span>'; }
+  function playBtn(ctx) { return '<button type="button" class="mms-play" data-skin-play aria-label="' + (ctx.playing ? 'Pause' : 'Play') + '">' + playGlyph(ctx.playing) + '</button>'; }
+  function prevBtn() { return '<button type="button" class="mms-skip mms-prev" data-skin-prev aria-label="Previous">' + prevGlyph() + '</button>'; }
+  function nextBtn() { return '<button type="button" class="mms-skip mms-next" data-skin-next aria-label="Next">' + nextGlyph() + '</button>'; }
+  function collapseBtn() { return '<button type="button" class="mms-chev" data-skin-collapse aria-label="Collapse">▾</button>'; }
+  // The skin SWITCHER (the "themes" picker) - one active id per render.
+  function switcher(active) {
+    return '<div class="mms-skinsw" role="tablist" aria-label="Player skin">' + SKINS.map(function (s) {
       return '<button type="button" class="mms-sw' + (s.id === active ? ' is-on' : '') + '" data-skin-set="' + s.id + '"' +
         ' aria-pressed="' + (s.id === active ? 'true' : 'false') + '">' + esc(s.label) + '</button>';
     }).join('') + '</div>';
-    return '<div class="mms-top"><button type="button" class="mms-chev" data-skin-collapse aria-label="Collapse">▾</button>' +
-      '<span class="mms-ctx">' + esc(label) + '</span><span class="mms-chev mms-chev-ghost" aria-hidden="true">⋯</span></div>' + sw;
   }
-  function metaLine(ctx) {
-    var t = ctx.track || {};
-    return '<div class="mms-meta"><div class="mms-ttl" title="' + esc(t.title) + '">' + esc(t.title || 'Unknown track') + '</div>' +
-      '<div class="mms-sub">' + esc([t.artist, t.album].filter(Boolean).join(' — ')) + '</div></div>';
+  // withThumb=Spotify (album-art thumb + stacked title/artist); else=iPod (track
+  // number + title + duration + a chevron, the classic list row).
+  function goRows(ctx, withThumb) {
+    var u = artUrl(ctx);
+    return (ctx.upNext || []).map(function (it) {
+      var c = 'mms-row' + (it.state === 'current' ? ' is-current' : (it.state === 'played' ? ' is-played' : ''));
+      if (withThumb) {
+        return '<button type="button" class="' + c + '" data-skin-go="' + it.index + '">' +
+          '<span class="mms-th">' + (u ? '<img class="art-shimmer" src="' + esc(u) + '" alt="" loading="lazy" />' : '') + '</span>' +
+          '<span class="mms-rtext"><span class="mms-rt">' + esc(it.title || 'Track') + '</span>' +
+          '<span class="mms-ra">' + esc(it.artist || '') + '</span></span></button>';
+      }
+      return '<button type="button" class="' + c + '" data-skin-go="' + it.index + '">' +
+        '<span class="mms-rn">' + (it.state === 'current' ? '▶' : (it.index + 1)) + '</span>' +
+        '<span class="mms-rt">' + esc(it.title || 'Track') + '</span>' +
+        '<span class="mms-rd">' + esc(it.durLabel || '') + '</span>' +
+        '<span class="mms-chev-r" aria-hidden="true">›</span></button>';
+    }).join('');
   }
 
-  // ---- the three skins (full-screen now-playing) --------------------------------
-  // Each returns the INNER html for a `.mms.<skin>` container the view creates.
+  // ---- the three skins: genuinely distinct structure, one engine ----------------
+  // APPLE MUSIC - art-dominant, a blurred color-bleed of the cover fills the screen,
+  // oversized title, airy minimal chrome (no visible queue - swipe-for-queue idiom).
   function renderApple(ctx) {
-    return topBar('From ' + ((ctx.track && ctx.track.album) || 'Music'), ctx) +
-      art(ctx, 'mms-art') + metaLine(ctx) +
-      '<div class="mms-scrub">' + scrubber(ctx) + '</div>' +
-      '<div class="mms-transport">' + transport(ctx) + '</div>' +
-      upNextList(ctx);
+    var a = ctx.track || {}; var u = artUrl(ctx);
+    return (u ? '<div class="mms-bleed" style="background-image:url(&quot;' + esc(u) + '&quot;)"></div>' : '') +
+      '<div class="mms-z">' +
+      '<div class="mms-top">' + collapseBtn() + switcher(ctx.skinId) + '<span class="mms-chev mms-chev-ghost" aria-hidden="true">⋯</span></div>' +
+      '<div class="mms-art">' + artImg(ctx) + '</div>' +
+      '<div class="mms-head"><div class="mms-htext"><div class="mms-ttl" title="' + esc(a.title) + '">' + esc(a.title || 'Unknown track') + '</div><div class="mms-sub">' + esc(a.artist || '') + '</div></div><span class="mms-dots" aria-hidden="true">⋯</span></div>' +
+      '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
+      '<div class="mms-transport">' + prevBtn() + playBtn(ctx) + nextBtn() + '</div>' +
+      '<div class="mms-foot" aria-hidden="true"><span>🔀</span><span>◎</span><span>≡</span></div>' +
+      '</div>';
   }
+  // SPOTIFY - dark, a tall color canvas, a fat black title, a full control row
+  // (green circular play flanked by shuffle/repeat), and the QUEUE right there.
   function renderSpotify(ctx) {
-    // same structure, skin-specific chrome via CSS (.mms.spotify)
-    return topBar((ctx.track && ctx.track.album) || 'Music', ctx) +
-      art(ctx, 'mms-art') + metaLine(ctx) +
-      '<div class="mms-scrub">' + scrubber(ctx) + '</div>' +
-      '<div class="mms-transport">' + transport(ctx) + '</div>' +
-      upNextList(ctx);
+    var a = ctx.track || {};
+    return '<div class="mms-top">' + collapseBtn() + '<span class="mms-ctx">' + esc('Playing from ' + (a.album || 'album')) + '</span><span class="mms-chev mms-chev-ghost" aria-hidden="true">⋯</span></div>' +
+      switcher(ctx.skinId) +
+      '<div class="mms-art">' + artImg(ctx) + '</div>' +
+      '<div class="mms-meta"><div class="mms-htext"><div class="mms-ttl">' + esc(a.title || 'Unknown track') + '</div><div class="mms-sub">' + esc(a.artist || '') + '</div></div><span class="mms-heart" aria-hidden="true">✚</span></div>' +
+      '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
+      '<div class="mms-transport"><button type="button" class="mms-ic is-on" aria-label="Shuffle">🔀</button>' + prevBtn() + playBtn(ctx) + nextBtn() + '<button type="button" class="mms-ic" aria-label="Repeat">🔁</button></div>' +
+      '<div class="mms-queue"><h4 class="mms-qh">Next in queue</h4><div class="mms-qlist">' + goRows(ctx, true) + '</div></div>';
   }
+  // IPOD - a real departure: brushed-aluminum bar, a framed cover, centered classic
+  // type, a retro transport CLUSTER, a scrubber with a chrome KNOB, the classic
+  // blue-highlight tracklist + an "N of M" footer.
   function renderIpod(ctx) {
-    return topBar('Now Playing', ctx) +
-      art(ctx, 'mms-art') + metaLine(ctx) +
-      '<div class="mms-scrub">' + scrubber(ctx) + '</div>' +
-      '<div class="mms-transport">' + transport(ctx) + '</div>' +
-      upNextList(ctx);
+    var a = ctx.track || {};
+    return '<div class="mms-albar"><button type="button" class="mms-albar-b" data-skin-collapse aria-label="Collapse">‹</button><span class="mms-albar-t">Now Playing</span><span class="mms-albar-b" aria-hidden="true">▭</span></div>' +
+      '<div class="mms-body">' + switcher(ctx.skinId) +
+      '<div class="mms-art">' + artImg(ctx) + '</div>' +
+      '<div class="mms-ttl">' + esc(a.title || 'Unknown track') + '</div>' +
+      '<div class="mms-sub">' + esc([a.artist, a.album].filter(Boolean).join(' — ')) + '</div>' +
+      '<div class="mms-scrub"><span class="mms-pos">' + esc(ctx.posLabel || '0:00') + '</span>' +
+      '<div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div><div class="mms-knob" style="left:' + pct(ctx.posSec, ctx.durSec) + '%"></div></div>' +
+      '<span class="mms-rem">' + esc(ctx.remLabel || '') + '</span></div>' +
+      '<div class="mms-cluster">' + prevBtn() + playBtn(ctx) + nextBtn() + '</div>' +
+      '<div class="mms-list">' + goRows(ctx, false) + '</div>' +
+      '<div class="mms-foot">' + ((Number(ctx.curNum) || 0) > 0 ? (ctx.curNum + ' of ' + (ctx.total || ctx.curNum)) : '') + '</div>' +
+      '</div>';
   }
 
   var SKINS = [

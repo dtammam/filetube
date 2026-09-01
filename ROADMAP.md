@@ -80,6 +80,46 @@
 
 ## Shipped
 
+### v1.228.0 - Bolder mobile music skins: three that actually look different (2026-09-01)
+
+Dean's device read on v1.227: "it doesn't really feel like much of a difference
+between the three... the same theme with three colors. Buttons same, text same."
+He was right - the three skins shared one render structure and diverged only in CSS
+colour, so they read as one player. This wave rebuilt each skin's LAYOUT, not just
+its palette, so they're now genuinely distinct:
+
+- **Apple** - art-first. A blurred, scaled-up wash of the cover fills the whole
+  screen behind a large framed cover; an oversized heavy title with a hot-pink
+  artist line; one big round white play. No track list - it's about the art.
+- **Spotify** - dense and green. A bold purple-to-black canvas, a fat title, a full
+  control row (a green circular play flanked by shuffle / prev / next / repeat), and
+  a raised dark "Next in queue" panel with album-art thumbnails right on the screen.
+- **iPod** - a real throwback. A brushed-aluminum title bar, a framed cover with a
+  white mat, centred classic type, a chunky segmented aluminum transport cluster, a
+  scrubber with a chrome knob, a classic blue-highlight track list with chevrons,
+  and an "N of M" footer.
+
+Also fixed the small thing Dean flagged - "there's scroll behind this... I see the
+scroll bar on the page move": the full-screen skin now locks the page behind it, so
+scrolling only moves the player's own list.
+
+**Still the same engine.** As in v1.227, the skins are pure presentation over the
+existing player - player.js is byte-unchanged across the whole wave, so background
+play and lock-screen controls keep working exactly as they did. Phone-only; desktop
+is untouched.
+
+**Gate.** Slim gate (adversarial seat, presentation-only, engine untouched) - APPROVE
+with two non-blocking suggestions, both applied and re-confirmed: a resilience note
+on the new page-scroll lock (it can't be view-scoped, so it leans on the same
+class-clear v1.227 hardened), and making the iPod collapse control a real keyboard
+button. The bespoke skin palette grew 43->51 tokens, all held to the byte-exact
+value-lock contract. Dual-Node 7968/0 (Node 22.23.1 + 24.14.0).
+
+**Known gaps (disclosed, unchanged from v1.227).** The dock mini-bar still isn't
+skinned (the mini returns you to the full skin); the scrubber still has no
+keyboard-seek handler. **Dean's device pass PENDING** - the pixel feel of the bold
+rebuild is the point, so expect an on-device tweak pass.
+
 ### v1.227.0 - Mobile music player: three pickable skins over one engine (2026-08-31)
 
 Dean's big wave. The mobile-only music now-playing is now a user-pickable SKIN -

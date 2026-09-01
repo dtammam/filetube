@@ -46,7 +46,7 @@ test('the GATE is true ONLY for mobile + a music item (desktop / non-music are d
   assert.strictEqual(skins.skinActiveFor(null, true), false, 'nothing playing -> default');
 });
 
-test('every skin renderFull emits the proxy hooks + reflects the ctx (not vacuous)', () => {
+test('every skin renderFull emits the transport hooks + reflects the ctx (not vacuous)', () => {
   for (const id of skins.IDS) {
     const html = skins.renderFull(id, CTX);
     assert.match(html, /data-skin-play/, id + ': play hook (proxies to #pp-btn)');
@@ -54,11 +54,31 @@ test('every skin renderFull emits the proxy hooks + reflects the ctx (not vacuou
     assert.match(html, /data-skin-next/, id + ': next hook');
     assert.match(html, /data-skin-seek/, id + ': seek hook');
     assert.match(html, /data-skin-collapse/, id + ': collapse hook (dock/return)');
-    assert.match(html, /data-skin-go="2"/, id + ': up-next rows jump by queue index');
     assert.ok(html.includes('Track A'), id + ': shows the current title');
     assert.match(html, /width:\s*[\d.]+%/, id + ': scrubber fill reflects position');
-    assert.match(html, /is-current/, id + ': the current up-next row is marked');
+    // the REFLECT targets music.js queries every timeupdate - must be present.
+    assert.match(html, /class="mms-play"/, id + ': .mms-play reflect target');
+    assert.match(html, /class="mms-fill"/, id + ': .mms-fill reflect target');
+    assert.match(html, /class="mms-pos"/, id + ': .mms-pos reflect target');
+    assert.match(html, /class="mms-rem"/, id + ': .mms-rem reflect target');
   }
+});
+
+test('the skins with a visible queue (spotify, ipod) render jump-by-index rows; apple is art-only', () => {
+  for (const id of ['spotify', 'ipod']) {
+    const html = skins.renderFull(id, CTX);
+    assert.match(html, /data-skin-go="2"/, id + ': up-next rows jump by queue index');
+    assert.match(html, /is-current/, id + ': the current row is marked');
+  }
+  // Apple is deliberately art-dominant with NO queue list (Dean's bold direction).
+  const apple = skins.renderFull('apple', CTX);
+  assert.ok(!/data-skin-go=/.test(apple), 'apple renders no queue rows');
+});
+
+test('the iPod skin adds a scrubber KNOB (its own reflect target) + an "N of M" footer', () => {
+  const html = skins.renderFull('ipod', Object.assign({}, CTX, { curNum: 2, total: 3 }));
+  assert.match(html, /class="mms-knob"/, 'iPod scrubber knob (music.js moves it on timeupdate)');
+  assert.match(html, /2 of 3/, 'the "N of M" footer');
 });
 
 test('every render includes the skin SWITCHER - all three options, the active one marked', () => {
