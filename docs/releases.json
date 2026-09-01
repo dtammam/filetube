@@ -2518,5 +2518,11 @@
     "date": "2026-09-01",
     "title": "iPod skin polish: right-sized screen, crisp buttons, glossy finish",
     "intent": "A few finishing touches on the iPod Music skin. The screen is now the right, compact size instead of stretching down the page, so the proportions match a real iPod. The rewind, forward and play icons on the click wheel are now crisp gray icons instead of the blue emoji they were showing as. And the body and wheel got the classic glossy iPod sheen. Just polish - it works the same as before."
+  },
+  {
+    "version": "1.232.0",
+    "date": "2026-09-01",
+    "title": "A black iPod skin, scrolling song titles, and a smoother wheel",
+    "intent": "Three additions to the phone Music player. There's now a black iPod to choose in Settings alongside the silver one - same classic look, space-black body and wheel. Long song, artist and album names on the iPod now gently scroll so you can read the whole thing, just like a real iPod (and they hold still if you've turned on Reduce Motion). And the little grey flash that showed when you tapped the click wheel is gone, so the wheel feels smooth. Phone-only, same player underneath - background play and lock-screen controls are unchanged."
   }
 ]

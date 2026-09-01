@@ -19,14 +19,18 @@ const CTX = {
   playing: true, posSec: 96, durSec: 337, posLabel: '1:36', remLabel: '-4:01',
 };
 
-test('registry exposes exactly the three skins with render funcs', () => {
-  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod']);
+test('registry exposes the four skins with render funcs (incl. the v1.232 black iPod)', () => {
+  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black']);
   assert.strictEqual(skins.DEFAULT_ID, 'apple');
   for (const id of skins.IDS) {
     const s = skins.skinById(id);
     assert.ok(s && typeof s.renderFull === 'function', id + ' has renderFull');
     assert.ok(typeof s.label === 'string' && s.label, id + ' has a label');
   }
+  // the black iPod shares the silver iPod's render + declares a `base` so the panel
+  // also carries the shared .mms-ipod CSS class (music.js reads it).
+  assert.strictEqual(skins.skinById('ipod-black').base, 'ipod', 'black iPod bases on the silver iPod CSS');
+  assert.strictEqual(skins.skinById('ipod-black').renderFull, skins.skinById('ipod').renderFull, 'same render, different palette');
 });
 
 test('the per-device setting round-trips and normalizes junk to the default', () => {
@@ -116,8 +120,8 @@ test('v1.229: NO in-player skin switcher - picking lives in the account menu now
     assert.ok(!/data-skin-set/.test(html), id + ': no in-player switcher hook');
     assert.ok(!/mms-skinsw|mms-sw\b/.test(html), id + ': no switcher markup');
   }
-  // The registry the MENU picker reads is still exported.
-  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod']);
+  // The registry the Settings picker reads is still exported.
+  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black']);
   assert.strictEqual(typeof skins.setActiveSkin, 'function');
   assert.strictEqual(skins.skinById('ipod').label, 'iPod', 'labels for the menu chips');
 });

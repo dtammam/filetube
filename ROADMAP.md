@@ -80,6 +80,22 @@
 
 ## Shipped
 
+### v1.232.0 - Black iPod skin, scrolling titles, no wheel tap-flash (2026-09-01)
+
+Dean's three next-branch asks (built overnight, pre-authorized):
+- **A black iPod** - a 4th pickable skin ("iPod (Black)") in the Settings picker: the
+  space-black body + dark click wheel, same white screen and classic layout. It reuses
+  the silver iPod's structure and only re-paints the body/wheel, so both stay in sync.
+- **Scrolling titles** - long song / artist / album names now slowly scroll to reveal
+  the full text, like a real iPod (constant speed; respects "reduce motion", where they
+  keep their ellipsis instead).
+- **No wheel tap-flash** - the grey highlight that appeared when you tapped a wheel
+  button is gone, so the click wheel feels seamless.
+
+player.js byte-unchanged. Slim gate (adversarial): APPROVE, two non-blocking suggestions
+applied + re-confirmed (a bound duration-floor test + the black skin's picker blurb).
+Dual-Node 7983/0. **Device pending.**
+
 ### v1.231.1 - iPod polish: compact screen, real glyphs, glossy sheen (2026-09-01)
 
 Dean's device pass on v1.231.0 ("85% there"): the iPod screen was too tall (a big

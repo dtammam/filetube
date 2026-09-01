@@ -10935,6 +10935,9 @@ html[data-modern="on"] .video-uploader {
   --mms-ipod-sheen-a:rgba(255,255,255,.5); --mms-ipod-sheen-b:rgba(255,255,255,.14);
   --mms-ipod-sheen-c:rgba(255,255,255,.35); --mms-ipod-sheen-d:rgba(255,255,255,.6);
   --mms-ipod-sheen-0:rgba(255,255,255,0);
+  /* v1.232 iPod BLACK variant - body + wheel palette only (screen unchanged). */
+  --mms-ipodk-body1:#343436; --mms-ipodk-body2:#161618; --mms-ipodk-edge:#0a0a0b;
+  --mms-ipodk-wheel1:#3d3d3f; --mms-ipodk-wheel2:#232325; --mms-ipodk-wheel-lbl:#b9babd;
   --mms-ipod-art-shadow:0 2px 5px rgba(0,0,0,.3);
   --mms-ipod-lcd-shadow:0 2px 6px rgba(0,0,0,.35);
   --mms-ipod-fill-shadow:inset 0 1px 0 rgba(255,255,255,.6);
@@ -10968,6 +10971,11 @@ html[data-modern="on"] .video-uploader {
   /* z-index: cover the app header (--z-header 1000) for a true full-screen player -
      the grab handle / MENU (data-skin-collapse / -menu) is the way back out. */
   .mms-full{ position:fixed; inset:0; z-index:var(--z-player-max); margin:0; display:flex; flex-direction:column; overflow:hidden; }
+  /* v1.232 (Dean): kill the mobile tap-highlight flash on skin buttons - the grey
+     "area showing" on tap broke the iPod immersion. (-webkit-tap-highlight-color is
+     inherited; transparent is census-exempt.) Also stop text-selection on the wheel. */
+  .mms-full{ -webkit-tap-highlight-color:transparent; }
+  .mms-full button, .mms-ipod .ip-zone, .mms-ipod .ip-center{ -webkit-tap-highlight-color:transparent; user-select:none; }
   /* shared control primitives - identical hooks + reflect targets across skins */
   .mms-full .mms-top{ display:flex; align-items:center; justify-content:space-between; }
   .mms-full .mms-chev{ width:36px; height:36px; border:0; background:transparent; color:inherit; font-size:var(--fs-3xl); cursor:pointer; display:grid; place-items:center; opacity:.9; }
@@ -11106,7 +11114,32 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .ip-z-down{ bottom:0; left:26%; width:48%; height:30%; align-content:end; padding-bottom:var(--space-3); font-size:var(--fs-base); }
   .mms-ipod .ip-center{ width:74px; height:74px; border-radius:var(--radius-full); border:0; cursor:pointer;
     background:radial-gradient(circle at 50% 40%, var(--mms-ipod-body1), var(--mms-ipod-body2)); box-shadow:var(--mms-ipod-center-shadow); }
+
+  /* --- iPod BLACK (v1.232, Dean): shares all iPod structure via the base `mms-ipod`
+     class; overrides ONLY the body + wheel palette to the space-black variant. The
+     white LCD screen (status/meta/Aqua/list) is unchanged. Rules sit AFTER the silver
+     iPod block so they win at equal specificity. --- */
+  .mms-ipod-black{ background:
+      linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
+      radial-gradient(120% 60% at 85% 108%, var(--mms-ipod-sheen-c) 0%, var(--mms-ipod-sheen-0) 55%),
+      linear-gradient(158deg, var(--mms-ipodk-body1), var(--mms-ipodk-body2));
+    box-shadow:inset 0 0 0 1px var(--mms-ipodk-edge); }
+  .mms-ipod-black .ip-wheel{ background:
+      radial-gradient(90% 55% at 50% -8%, var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
+      radial-gradient(circle at 50% 40%, var(--mms-ipodk-wheel1), var(--mms-ipodk-wheel2) 100%); }
+  .mms-ipod-black .ip-zone{ color:var(--mms-ipodk-wheel-lbl); }
+  .mms-ipod-black .ip-center{ background:radial-gradient(circle at 50% 40%, var(--mms-ipodk-body1), var(--mms-ipodk-body2)); }
+
+  /* v1.232 (Dean): iPod MARQUEE - long song/album/artist names slowly scroll to reveal
+     the full text, like a real iPod. music.js wraps an overflowing line in .mms-mq and
+     sets --mms-mq-shift (the overflow distance) + --mms-mq-dur (constant-speed); it only
+     does so when motion is allowed (else the line keeps its ellipsis). */
+  .mms-ipod .mms-mq-on{ text-overflow:clip; }
+  .mms-ipod .mms-mq-on .mms-mq{ display:inline-block; animation:mms-marquee var(--mms-mq-dur) linear infinite alternate; will-change:transform; }
 }
+/* the marquee keyframe (global; @keyframes are census-exempt) + a reduced-motion stop */
+@keyframes mms-marquee{ 0%, 12% { transform:translateX(0); } 88%, 100% { transform:translateX(var(--mms-mq-shift)); } }
+@media (prefers-reduced-motion: reduce){ .mms-ipod .mms-mq-on .mms-mq{ animation:none; } }
 
 .music-empty { color: var(--text-secondary); padding: var(--space-12) 0; }
 .music-empty[hidden] { display: none !important; }

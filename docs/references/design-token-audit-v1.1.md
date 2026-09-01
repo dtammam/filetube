@@ -334,3 +334,19 @@ Five white-alpha stop tokens were added (contract 114 -> 119 = 60 base + 59 `--m
 and `--mms-ipod-sheen-0` rgba(255,255,255,0) (the shared transparent-white stop -
 used instead of the `transparent` keyword, which is black-transparent and greys a
 white fade). Apple/Spotify unchanged.
+
+## Addendum v1.232 (2026-09-01): black iPod variant (+6 --mms tokens -> 65)
+
+Dean's next-branch asks: a black iPod, marquee-scrolling long titles, and no wheel
+tap-highlight. The black iPod is a 4th pickable skin ('ipod-black') that REUSES the
+silver iPod's render + all its structural CSS (via a `base:'ipod'` -> the panel carries
+both `.mms-ipod` and `.mms-ipod-black`); `.mms-ipod-black` overrides ONLY the body +
+wheel palette (the white LCD screen - status/meta/Aqua/list - is unchanged, reusing the
+silver tokens). 6 new tokens (contract 119 -> 125 = 60 base + 65 `--mms-*`):
+`--mms-ipodk-body1` #343436, `--mms-ipodk-body2` #161618, `--mms-ipodk-edge` #0a0a0b,
+`--mms-ipodk-wheel1` #3d3d3f, `--mms-ipodk-wheel2` #232325, `--mms-ipodk-wheel-lbl`
+#b9babd. The sheen reuses the silver `--mms-ipod-sheen-*` white-alpha stops (they gloss
+a dark body too). The marquee (title/artist/album scroll) uses a census-exempt
+`@keyframes mms-marquee` + two JS-set custom props (`--mms-mq-shift`/`--mms-mq-dur`, in
+the v1.70 jsSet allowlist), no new palette tokens. The tap-highlight fix is
+`-webkit-tap-highlight-color:transparent` (the `transparent` keyword is census-exempt).

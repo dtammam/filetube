@@ -39,14 +39,22 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
 
 const settle = () => new Promise((r) => setImmediate(r));
 
-async function boot({ mobile, isMusic, run, skin }) {
+async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion }) {
   const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music' });
+  if (mockOverflow) {
+    // jsdom has no layout (scrollWidth=0), so fake an overflowing .ip-ttl to exercise
+    // the marquee measurement path (the real scroll is device-verified). smallOverflow
+    // gives a 24px overrun (raw dur 1.0s) to bind the 4s constant-speed floor.
+    const scroll = smallOverflow ? 124 : 300;
+    Object.defineProperty(dom.window.Element.prototype, 'scrollWidth', { configurable: true, get() { return this.classList && this.classList.contains('ip-ttl') ? scroll : 0; } });
+    Object.defineProperty(dom.window.Element.prototype, 'clientWidth', { configurable: true, get() { return this.classList && this.classList.contains('ip-ttl') ? 100 : 0; } });
+  }
   const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController, requestAnimationFrame: global.requestAnimationFrame, Event: global.Event };
   global.window = dom.window; global.document = dom.window.document;
   global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
   global.Event = dom.window.Event; // so music.js's `new Event('change')` is same-realm as the jsdom element (browser: === window.Event)
   global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
-  dom.window.matchMedia = (q) => ({ matches: !!mobile && /max-width:\s*768px/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+  dom.window.matchMedia = (q) => ({ matches: (/max-width:\s*768px/.test(q) ? !!mobile : (/prefers-reduced-motion/.test(q) ? !!reducedMotion : false)), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   dom.window.scrollTo = function () {};
   global.fetch = () => Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
   const spy = { pp: 0, prev: 0, next: 0, seek: 0, dock: 0, shuffle: 0 };
@@ -158,6 +166,43 @@ test('v1.231 Spotify: the shuffle button PROXIES to the real #music-shuffle-btn'
     assert.ok(btn, 'spotify renders a shuffle control');
     btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     assert.strictEqual(spy.shuffle, 1, 'shuffle -> #music-shuffle-btn (the real reshuffle)');
+  } });
+});
+
+test('v1.232: the black iPod carries BOTH mms-ipod-black AND the base mms-ipod class', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod-black', run: async (dom) => {
+    const cn = panel(dom).className;
+    assert.match(cn, /\bmms-ipod-black\b/, 'the black id class (palette override)');
+    assert.match(cn, /(^|\s)mms-ipod(\s|$)/, 'AND the base class, so all shared iPod CSS applies');
+    assert.ok(panel(dom).querySelector('.ip-wheel'), 'renders the same iPod structure');
+  } });
+});
+
+test('v1.232 iPod: a long title MARQUEES - wraps in .mms-mq + sets the shift/duration vars', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', mockOverflow: true, run: async (dom) => {
+    const ttl = panel(dom).querySelector('.ip-ttl');
+    assert.ok(ttl, 'has a title');
+    assert.ok(ttl.classList.contains('mms-mq-on'), 'an overflowing title marquees');
+    assert.ok(ttl.querySelector('.mms-mq'), 'the text is wrapped in a marquee span');
+    assert.match(ttl.style.getPropertyValue('--mms-mq-shift'), /^-\d+px$/, 'shift = the negative overflow px');
+    assert.ok(parseFloat(ttl.style.getPropertyValue('--mms-mq-dur')) >= 4, 'a constant-speed duration (>= the 4s floor)');
+  } });
+});
+
+test('v1.232 iPod: a SMALL overflow floors the marquee duration at 4s (constant speed, not a fast twitch)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', mockOverflow: true, smallOverflow: true, run: async (dom) => {
+    const ttl = panel(dom).querySelector('.ip-ttl');
+    assert.ok(ttl.classList.contains('mms-mq-on'), 'still marquees a small overflow');
+    // over=24px -> raw 24/24=1.0s -> Math.max(4, 1.0) = 4.0s (the floor).
+    assert.strictEqual(ttl.style.getPropertyValue('--mms-mq-dur'), '4.0s', 'duration floored at 4s');
+  } });
+});
+
+test('v1.232 iPod: reduced-motion keeps the ellipsis (no marquee wrap)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', mockOverflow: true, reducedMotion: true, run: async (dom) => {
+    const ttl = panel(dom).querySelector('.ip-ttl');
+    assert.ok(!ttl.classList.contains('mms-mq-on'), 'no marquee under prefers-reduced-motion');
+    assert.ok(!ttl.querySelector('.mms-mq'), 'text left as-is (keeps its ellipsis)');
   } });
 });
 

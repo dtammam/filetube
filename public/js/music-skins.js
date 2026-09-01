@@ -26,7 +26,7 @@
 
 (function () {
   var SKIN_KEY = 'ft-music-skin';
-  var IDS = ['apple', 'spotify', 'ipod'];
+  var IDS = ['apple', 'spotify', 'ipod', 'ipod-black'];
   var DEFAULT_ID = 'apple';
 
   function esc(s) {
@@ -159,6 +159,10 @@
     { id: 'apple', label: 'Apple Music', renderFull: renderApple },
     { id: 'spotify', label: 'Spotify', renderFull: renderSpotify },
     { id: 'ipod', label: 'iPod', renderFull: renderIpod },
+    // v1.232 (Dean): the black iPod - identical structure (renderIpod), a `base` so the
+    // panel also carries `.mms-ipod` (all the shared iPod CSS) while `.mms-ipod-black`
+    // overrides only the body/wheel palette. One render, two looks.
+    { id: 'ipod-black', label: 'iPod (Black)', base: 'ipod', renderFull: renderIpod },
   ];
   var BY_ID = SKINS.reduce(function (m, s) { m[s.id] = s; return m; }, Object.create(null));
 

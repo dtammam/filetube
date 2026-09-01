@@ -530,6 +530,7 @@ const MUSIC_SKIN_BLURB = {
   apple: 'Big cover art on a blurred backdrop, minimal controls.',
   spotify: 'Dark, with a green play button and your up-next queue.',
   ipod: 'Retro brushed-metal, framed cover, classic track list.',
+  'ipod-black': 'The iPod, in space-black - same classic click wheel.',
 };
 function renderMusicSkinPicker() {
   const container = document.getElementById('music-skin-picker');
