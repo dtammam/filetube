@@ -1,6 +1,6 @@
 # Exec plan: Downloaded audio opens in the Music player (flag, client-only)
 
-Status: ACTIVE. Branch `feat/audio-opens-in-music` off main (post v1.235.0).
+Status: SHIPPED v1.236.0 (2026-09-01). Branch `feat/audio-opens-in-music` off main (post v1.235.0).
 Owner: main session (lean mode). Target: v1.236.0.
 
 ## Intent (Dean)

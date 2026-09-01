@@ -80,6 +80,33 @@
 
 ## Shipped
 
+### v1.236.0 - Downloaded music opens in the music player (2026-09-01)
+
+Dean: "tap a music thing (chapters, etc.) in the home feed - I'd love it to open in the
+music player natively." A new default-ON setting, **"Open downloaded music in the music
+player."** When on, tapping an AUDIO download (a song, or a chaptered album) - in the home
+feed, search, a channel page, or continue-watching - opens it in the **music player**
+instead of the video `/watch` page. Regular videos and music videos are untouched. A
+chaptered download opens as an **album** (routes to its first chapter track `::c0`), so the
+iPod MENU/list browses the chapter tracks. Also closes the old v1.224 "Continue watching
+opens /watch for my music" gap.
+
+Bound to the Music library (Dean's scoping): items already in the library play instantly;
+anything the player can't resolve gracefully bounces to `/watch` so a tap never dead-ends
+(marked via an `&ao=1` reroute-origin flag so the legacy continue-listening cards keep their
+own miss behaviour). Mostly client-side, plus a small additive server-fold: the home-feed +
+modern-grid cards now carry the item's `type` + (for audio) a `chapterCount`, so the reroute
+works from the YouTube-style home feed too - Dean's primary surface - not just the
+`/api/videos` grids. player.js BYTE-UNCHANGED.
+
+FULL two-reviewer gate, both APPROVE after a fix round: caught a default-on regression that
+hijacked downloaded PODCASTS to the music player (a `type:'audio'` item that isn't a
+music-kind download), a `/watch`-bounce regression for native-track continue cards, and two
+missing regression guards (the common resolvable-reroute play path, and the home-feed
+consumer) - all fixed and mutation-bound. Dual-Node 8054/0 (Node 22 + 24). **Device pending**
+- Dean confirms a chaptered audio tapped from the home feed on mobile opens the music player
+and its album.
+
 ### v1.235.0 - Spin the pop-out iPod wheel to change volume + fix the frozen clock (2026-09-01)
 
 Two things for the desktop pop-out (which Dean device-loved on v1.234):

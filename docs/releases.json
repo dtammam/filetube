@@ -2572,5 +2572,11 @@
     "date": "2026-09-01",
     "title": "Spin the pop-out iPod wheel to change the volume",
     "intent": "In the floating iPod player on your computer, you can now spin the click wheel to change the volume - clockwise for louder - with a volume bar that pops up just like the real thing. Also fixed: the time in the floating window used to freeze; now it keeps ticking smoothly while a song plays."
+  },
+  {
+    "version": "1.236.0",
+    "date": "2026-09-01",
+    "title": "Downloaded music opens in the music player",
+    "intent": "Tap a downloaded song or album anywhere - your home feed, search, a channel, or continue-watching - and it now opens in the music player instead of the video page. Albums with chapters open as an album, so you can browse the tracks. There's a new setting, 'Open downloaded music in the music player' (on by default), if you ever want to turn it off. Regular videos are unaffected."
   }
 ]
