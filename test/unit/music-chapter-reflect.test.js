@@ -205,3 +205,26 @@ test('v1.237 (W1 neg): a non-music video on the shared host HIDES stale music (b
       'the now-playing panel HIDES stale music while a non-music video plays (effectiveCurrentId falls to the live id)');
   });
 });
+
+test('v1.237 (W2 residual): the SAME file played as a raw (non-::c) video HIDES stale music', async () => {
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    const mp = dom.window.document.getElementById('media-player');
+    ctx.playerState.state = 'full';
+    Object.defineProperty(mp, 'currentTime', { configurable: true, value: 130 });
+    mp.dispatchEvent(new dom.window.Event('timeupdate'));
+    await settle();
+    assert.strictEqual(playingId(dom), 'film::c1', 'rolled into chapter two');
+    // the base video of the SAME file becomes live (id 'film' - shares the base, but NO `::c`).
+    // effectiveCurrentId's `::c`-on-live conjunct must reject the stale chapterViewId (film::c1)
+    // and fall to the live id, so the music panel HIDES over the raw video (binds the conjunct
+    // itself - the different-base W1-neg test above cannot, since base-only would also hide it).
+    ctx.playerState.currentId = 'film';
+    dom.window.FileTube.player.currentId = 'film';
+    ctx.playerState.meta = { isMusic: false, id: 'film', title: 'The Film' };
+    ctx.playerState.state = 'full';
+    dom.reconfigure({ url: 'http://localhost/music' });
+    await ctx.reinit();
+    const panel = dom.window.document.getElementById('music-nowplaying-panel');
+    assert.strictEqual(panel.hidden, true, 'panel HIDES stale music while the raw (non-::c) video of the same file plays (::c-on-live gate)');
+  });
+});
