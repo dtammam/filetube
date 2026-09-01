@@ -80,6 +80,32 @@
 
 ## Shipped
 
+### v1.230.0 - The Music-skin picker moves to the Settings page (and actually shows up) (2026-09-01)
+
+Dean rebuilt v1.229 and couldn't find the skin picker anywhere - "I don't see it in
+the You menu at all." Two problems: (1) the account menu builds ONCE at load and the
+skins module (music-skins.js) was only loaded on two pages (Home + Music), so if the
+first page loaded was anything else, `window.FileTubeMusicSkins` was absent when the
+menu built and the row never appeared - and never rebuilt; (2) he expected the
+control on the Settings page, where Theme and Icons live.
+
+- **A "Music skin" picker on the Settings page** (Appearance, beside Theme/Icons),
+  reusing the same card style: Apple Music / Spotify / iPod, the current one
+  highlighted, applied and remembered per-device on click (no Save). The copy notes
+  it applies to the phone Music player. Visible on desktop and phone.
+- **Root cause fixed:** music-skins.js now loads on EVERY app shell that runs
+  setup.js (books/history/podcasts/read/setup/stats/tv/watch added to the existing
+  home/music), so the registry is always present when the picker renders. A test
+  enforces the invariant (any shell with setup.js must also load music-skins.js), so
+  this class of "picker silently empty" can't come back.
+- **Removed** the v1.229 account-menu picker entirely, plus the live-re-render event
+  it used (the Music view re-reads the chosen skin the next time it renders, so no
+  event is needed).
+
+Same engine - player.js byte-unchanged. No token change (the Settings picker reuses
+existing appearance tokens). Slim gate (adversarial): APPROVE, no findings, 8 mutants
+verified. Dual-Node 7975/0 (Node 22.23.1 + 24.14.0). **Dean's device pass PENDING.**
+
 ### v1.229.0 - Switch music skins from the account menu; drop the buggy in-player switcher (2026-09-01)
 
 Dean's on-device report on v1.228: "So it works but I can't switch themes... once I
