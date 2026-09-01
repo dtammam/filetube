@@ -2542,5 +2542,11 @@
     "date": "2026-09-01",
     "title": "The page stays put behind the full-screen Music player",
     "intent": "Fixed an annoyance in the full-screen phone Music player: dragging on the body of the player (anywhere that isn't the screen or the wheel) used to make the page behind it scroll. Now the player holds the page still, while the song list and the Spotify-style queue still scroll normally. Also toned down the shine on the black iPod skin so it's a little more subtle. Just polish - nothing about playback changes."
+  },
+  {
+    "version": "1.232.4",
+    "date": "2026-09-01",
+    "title": "Smoother seek bar when you skip tracks",
+    "intent": "When you skipped to the previous or next track on a phone Music skin, the progress bar would briefly show the old track's position and then jump - a little jarring. Now it resets cleanly to the start the moment you skip and fills up as the new track plays, the way you'd expect."
   }
 ]
