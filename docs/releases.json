@@ -2566,5 +2566,11 @@
     "date": "2026-09-01",
     "title": "Pop the music player out into a floating window",
     "intent": "On a computer, you can now pop the music player out into its own little window - your chosen skin, like the iPod, floating on its own. In Chrome and Edge it stays on top of everything so you can keep it in the corner while you work in other windows; in other browsers it opens as a normal movable window you can park anywhere. Look for the new 'Pop out' button while music is playing. (On phones, tapping a track already gives you the full-screen skin, so the button is desktop-only.)"
+  },
+  {
+    "version": "1.235.0",
+    "date": "2026-09-01",
+    "title": "Spin the pop-out iPod wheel to change the volume",
+    "intent": "In the floating iPod player on your computer, you can now spin the click wheel to change the volume - clockwise for louder - with a volume bar that pops up just like the real thing. Also fixed: the time in the floating window used to freeze; now it keeps ticking smoothly while a song plays."
   }
 ]

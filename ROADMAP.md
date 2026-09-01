@@ -80,6 +80,35 @@
 
 ## Shipped
 
+### v1.235.0 - Spin the pop-out iPod wheel to change volume + fix the frozen clock (2026-09-01)
+
+Two things for the desktop pop-out (which Dean device-loved on v1.234):
+
+- **Wheel volume.** In the iPod skin's Now Playing screen, in the desktop pop-out,
+  spinning the click wheel now sets the volume (clockwise = louder), with an authentic
+  iPod volume bar that swaps in for the scrubber while you spin and fades after. Enabled
+  ONLY where `media.volume` is actually settable - the desktop pop-out - so on iPhone (the
+  in-tab skin, where iOS makes volume read-only) a Now-Playing spin stays a no-op rather
+  than shipping an inert gesture. List mode is still cursor scrolling; only the iPod skin
+  has a wheel. Continuous mapping (a full turn = the whole range), clamped, unmutes on the
+  way up. Volume bar reuses the iPod palette - no new design tokens.
+
+- **The frozen-clock fix.** Dean device-reported the pop-out clock froze in true Document
+  PiP (song length then a stuck 0:00; a Menu tap unfroze it for one frame). Root cause: the
+  pop-out rode the MAIN tab's `timeupdate`, which the browser throttles/pauses once that tab
+  is backgrounded under the always-on-top PiP window. Fix: the pop-out now runs its own
+  250ms clock in the focused (unthrottled) PiP window, reading the live, still-advancing
+  playback time. The in-tab mobile skin keeps the main-tab timeupdate.
+
+player.js BYTE-UNCHANGED. FULL two-reviewer gate, both APPROVE after a fix round: caught a
+fade-timer cleared on the wrong window realm (debounce never cancelled), an over-sensitive
+tap-suppress threshold that could swallow a pop-out zone tap, and a double-open race the new
+interval rode along - all fixed and mutation-bound, plus a `pipPending` guard. Known gap
+disclosed (tech-debt #190): a sub-millisecond teardown+reopen microtask race could still
+double-mount (pre-existing, effectively unreachable). Dual-Node 8036/0 (Node 22 + 24).
+**Device pending** - the volume feel + confirming pop-out zone taps aren't swallowed, and the
+unfrozen clock, are Dean's on-device call.
+
 ### v1.234.0 - Pop the music player out into a floating window (desktop) (2026-09-01)
 
 Dean's ask right after the wheel-scroll: let a desktop listener do "Picture in Picture" -

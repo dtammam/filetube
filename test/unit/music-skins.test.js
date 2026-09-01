@@ -335,3 +335,50 @@ test('v1.233: the wheel CURSOR bar is a distinct highlight - is-cursor gets the 
   // source order: is-cursor after is-current so a coincident row resolves white text.
   assert.ok(css.indexOf('.mms-row.is-cursor{') > css.indexOf('.mms-row.is-current .mms-rn'), 'is-cursor is declared AFTER is-current (wins at equal specificity)');
 });
+
+// ---- v1.235: wheel-VOLUME in Now Playing (desktop pop-out) - source locks ---------------
+test('v1.235: the Now-Playing wheel sets VOLUME only where allowVolume (pop-out), never inert on iOS', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  // the gate: LIST mode always spins; NOW PLAYING only when allowVolume (else bail - iOS).
+  assert.match(js, /var listMode = panel\.classList\.contains\('mms-listmode'\);\s*\n\s*if \(!listMode && !allowVolume\) return;/, 'Now-Playing spin bails unless allowVolume (no inert iOS gesture)');
+  // allowVolume comes from bindSkinSurface opts; only the pop-out passes it.
+  assert.match(js, /var allowVolume = !!\(opts && opts\.allowVolume\)/, 'allowVolume is an opt-in bind option');
+  assert.match(js, /bindSkinSurface\(panel, pipAbort\.signal, \{ allowVolume: true \}\)/, 'the POP-OUT enables volume');
+  assert.match(js, /bindSkinSurface\(nowPlayingPanel, signal\)(?!, \{)/, 'the in-tab skin does NOT (mobile/iOS)');
+});
+
+test('v1.235: the volume branch is continuous + clockwise-louder, clamped, unmutes, and shows the bar', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  // in onMove, mode 'volume' -> adjustVolume(panel, d/360) (a full turn = the whole range, + = louder).
+  assert.match(js, /if \(st\.mode === 'volume'\) \{[\s\S]*?adjustVolume\(panel, d \/ 360\);/, 'volume mode nudges by the raw angle delta / 360 (clockwise louder)');
+  const m = /function adjustVolume\(panel, frac\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.ok(m, 'adjustVolume exists');
+  assert.match(m[1], /Math\.max\(0, Math\.min\(1,/, 'clamps to 0..1');
+  assert.match(m[1], /mp\.muted[\s\S]*mp\.muted = false/, 'spinning up unmutes');
+  assert.match(m[1], /showVolume\(panel, v\)/, 'shows the volume bar');
+  const s = /function showVolume\(panel, v\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.ok(s, 'showVolume exists');
+  assert.match(s[1], /\.ip-vol-fill[\s\S]*width/, 'sets the fill width to the level');
+  assert.match(s[1], /classList\.add\('mms-voladj'\)/, 'shows the bar (mms-voladj)');
+  assert.match(s[1], /setTimeout[\s\S]*remove\('mms-voladj'\)/, 'fades the bar after the last movement');
+});
+
+test('v1.235: CSS swaps the scrubber out for the volume bar while adjusting (authentic iPod)', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.mms-ipod \.ip-vol\{[^}]*display:\s*none/, 'the volume bar is hidden by default');
+  assert.match(css, /\.mms-ipod\.mms-voladj \.ip-scrub\{[^}]*display:\s*none/, 'adjusting hides the scrubber');
+  assert.match(css, /\.mms-ipod\.mms-voladj \.ip-vol\{[^}]*display:\s*flex/, 'adjusting shows the volume bar');
+});
+
+test('v1.235.x: the pop-out runs its OWN reflect clock (fixes the true-PiP freeze) and clears it on teardown', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  // the clock is started on the POP-OUT window (win.setInterval), reflecting the pop-out panel,
+  // NOT the main tab (whose timeupdate throttles when the tab is backgrounded under a PiP window).
+  assert.match(js, /pipClock = win\.setInterval\(function \(\) \{ reflectSkin\(panel\); \}, \d+\)/, 'the pop-out clock is an interval on the pop-out window that reflects the panel');
+  // teardown clears it on the window that created it.
+  assert.match(js, /clearInterval\(pipClock\)/, 'teardown clears the pop-out clock');
+});

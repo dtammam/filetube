@@ -681,6 +681,32 @@ if (typeof module !== 'undefined' && module.exports) {
     // mutually exclusive, see the reflectAllSkins comment), so a single live-gesture handle
     // is unambiguous; paintSkin nulls it on a re-render (QA guard).
     var wheelSpin = null;
+    // v1.235: wheel-VOLUME (desktop pop-out Now Playing). adjustVolume nudges the live
+    // element's volume by `frac` (clamped 0..1; a full turn = the whole range), unmutes on
+    // the way up, and shows the iPod volume bar (swapped in for the scrubber via .mms-voladj),
+    // which fades ~1s after the last movement. Setting media.volume is a no-op on iOS, hence
+    // this is gated to the pop-out (allowVolume) - never shipped where it would be inert.
+    var volFadeTimer = null;
+    function adjustVolume(panel, frac) {
+      var mp = hostCtl('media-player'); if (!mp) return;
+      var v = Math.max(0, Math.min(1, (Number(mp.volume) || 0) + frac));
+      mp.volume = v;
+      if (mp.muted && frac > 0 && v > 0) { try { mp.muted = false; } catch (_) { /* ignore */ } } // unmute only on an UP nudge
+      showVolume(panel, v);
+    }
+    function showVolume(panel, v) {
+      if (!panel) return;
+      var fill = panel.querySelector('.ip-vol-fill'); if (fill) fill.style.width = Math.round(v * 100) + '%';
+      panel.classList.add('mms-voladj');
+      var win = (panel.ownerDocument && panel.ownerDocument.defaultView) || window;
+      // clear on the SAME window the timer was armed on (adversarial: a bare clearTimeout is a
+      // DIFFERENT realm than win.setTimeout below - the debounce would never cancel, so the bar
+      // could hide mid-spin, and a pop-out timer id could collide with an unrelated main-tab one).
+      if (volFadeTimer != null) { try { (win.clearTimeout || clearTimeout)(volFadeTimer); } catch (_) { /* ignore */ } }
+      volFadeTimer = (win.setTimeout || setTimeout)(function () {
+        panel.classList.remove('mms-voladj'); volFadeTimer = null;
+      }, 1000);
+    }
     // Move the selection cursor to list POSITION `pos` (clamped): paint .is-cursor (the
     // blue bar) on that row alone and keep it visible. `center` (list-open) centers it;
     // otherwise (a spin step) it edge-follows - only scrolls when the row would leave the
@@ -938,8 +964,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // (the view's `signal` for the in-tab panel; a pop-out session's own controller for the
     // pop-out). All the transport hooks proxy to the MAIN document's controls (hostCtl uses
     // the main document), so a click in the pop-out still drives the real player.
-    function bindSkinSurface(panel, sig) {
+    function bindSkinSurface(panel, sig, opts) {
       if (!panel) return;
+      // v1.235: allowVolume => in Now Playing, a wheel spin sets VOLUME (the desktop pop-out,
+      // where media.volume is settable). Off for the in-tab skin (iPhone: volume is read-only,
+      // so a Now-Playing spin stays a no-op rather than shipping inert).
+      var allowVolume = !!(opts && opts.allowVolume);
       skinSurfaces.push(panel);   // reflectAllSkins fans live-element updates to every surface
       panel.addEventListener('click', function (e) {
         // v1.233: a wheel SPIN that ended over a zone button would fire a synthetic click
@@ -1033,14 +1063,18 @@ if (typeof module !== 'undefined' && module.exports) {
         // any fresh touch starts clean, so a stale suppress can never eat a real tap.
         wheelSuppressClick = false;
         if (wheelSpin) return;                                    // one gesture at a time
-        if (!panel.classList.contains('mms-listmode')) return;    // list-only (Dean)
+        // v1.235: LIST mode -> cursor scroll; NOW PLAYING -> volume, but only where volume is
+        // settable (allowVolume = desktop pop-out). On the in-tab skin in Now Playing (iPhone,
+        // read-only volume) the spin still does nothing.
+        var listMode = panel.classList.contains('mms-listmode');
+        if (!listMode && !allowVolume) return;
         var wheel = e.target.closest('.ip-wheel'); if (!wheel) return;
         var r = wheel.getBoundingClientRect();
         var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
         // ignore a press on the dead center (the Select button): no capture, tap passes through.
         if (Math.hypot(e.clientX - cx, e.clientY - cy) < r.width * 0.2) return;
         var now0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-        var st = { wheel: wheel, id: e.pointerId, captured: false, moved: false,
+        var st = { wheel: wheel, id: e.pointerId, captured: false, moved: false, mode: listMode ? 'cursor' : 'volume',
           lastAngle: Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI,
           lastT: now0, accum: 0, x0: e.clientX, y0: e.clientY, onMove: null, onUp: null };
         st.onMove = function (ev) {
@@ -1056,6 +1090,14 @@ if (typeof module !== 'undefined' && module.exports) {
           if (!st.moved && Math.hypot(ev.clientX - st.x0, ev.clientY - st.y0) > 8) {
             st.moved = true;
             try { st.wheel.setPointerCapture(st.id); st.captured = true; } catch (_) { /* best effort */ }
+          }
+          if (st.mode === 'volume') {
+            // continuous: a full 360deg turn sweeps the whole 0..1 range; clockwise (+) louder.
+            // NOTE: click-suppression uses the SAME 8px travel threshold as cursor mode (the
+            // shared moved/capture block above) - a jittery TAP on a wheel zone (< 8px) must
+            // NOT be swallowed (both gate seats); only a real spin suppresses the release click.
+            adjustVolume(panel, d / 360);
+            return;
           }
           // acceleration: songs-per-step scales with angular speed (deg/ms) so a slow turn
           // is one-at-a-time and a fast flick jumps several.
@@ -1087,7 +1129,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // renders at its phone layout with no re-styling. Pointer events => the click wheel
     // spins with a MOUSE click-drag here.
     var POPOUT_W = 380, POPOUT_H = 700;
-    var pipWin = null, pipPanel = null, pipAbort = null;
+    var pipWin = null, pipPanel = null, pipAbort = null, pipClock = null, pipPending = false;
     function popoutSupported() {
       try { if (SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()) return false; } catch (_) { /* treat as desktop */ }
       return !!(typeof window !== 'undefined' && (window.documentPictureInPicture || typeof window.open === 'function'));
@@ -1120,6 +1162,7 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
     function mountPopout(win) {
+      pipPending = false; // the async grant resolved (or the sync fallback) - clear the open-in-flight guard
       if (!win) return;
       // Gate finding (both seats): requestWindow() is async, so between the click and the
       // grant the view can be DESTROYED (controller.abort()) OR the viewport can shrink into
@@ -1139,9 +1182,17 @@ if (typeof module !== 'undefined' && module.exports) {
       try { doc.body.classList.add('mms-on'); doc.body.appendChild(panel); } catch (_) { teardownPopout(); return; }
       pipPanel = panel;
       pipAbort = new AbortController();
-      bindSkinSurface(panel, pipAbort.signal); // registers the surface for reflectAllSkins
+      bindSkinSurface(panel, pipAbort.signal, { allowVolume: true }); // desktop -> Now-Playing wheel sets volume; registers the surface for reflectAllSkins
       ensureSkinReflect(); // arm the media-element -> reflectAllSkins listeners (the in-tab render, which normally arms them, is skipped on desktop)
       paintSkin(panel, (SKINS && SKINS.activeSkinId()) || 'apple', currentSkinIndex());
+      // v1.235.x (Dean device): the pop-out clock FROZE in true Document PiP - it rode the
+      // MAIN tab's `timeupdate`, but once the PiP window takes focus the opener tab is
+      // backgrounded and the browser throttles/pauses those events (a Menu tap re-rendered it
+      // once, then it froze again). Fix: drive the pop-out's reflect from the POP-OUT window's
+      // OWN timer - it's the focused, unthrottled window - reading the live (still-advancing,
+      // audio keeps playing) mp.currentTime. ~4Hz, like timeupdate. Cleared on teardown (and
+      // the interval dies with the window anyway). The in-tab skin keeps the main timeupdate.
+      try { pipClock = win.setInterval(function () { reflectSkin(panel); }, 250); } catch (_) { pipClock = null; }
       // the pop-out closing (user, or the tab navigating away) tears the surface down.
       var onClose = function () { teardownPopout(); };
       try { win.addEventListener('pagehide', onClose); win.addEventListener('unload', onClose); } catch (_) { /* ignore */ }
@@ -1150,14 +1201,20 @@ if (typeof module !== 'undefined' && module.exports) {
     function openPopout() {
       if (!popoutSupported()) return; // gate finding: re-check at CLICK time, not just button visibility - a wide->narrow resize must not leave an openable button
       if (pipWin) { try { pipWin.focus(); } catch (_) { /* ignore */ } return; }
+      // adversarial finding: pipWin is only set async inside mountPopout, so a double-click
+      // DURING the requestWindow() grant would mount TWO always-on-top windows (each with its
+      // own leaked clock). pipPending guards the async gap; it's cleared in mountPopout (every
+      // arm) and the catch.
+      if (pipPending) return;
       // Document PiP (Chrome/Edge desktop) = always-on-top; else a plain independent window.
       if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
         try {
+          pipPending = true;
           window.documentPictureInPicture.requestWindow({ width: POPOUT_W, height: POPOUT_H })
             .then(function (w) { mountPopout(w); })
-            .catch(function () { openPlainPopout(); });
+            .catch(function () { pipPending = false; openPlainPopout(); });
           return;
-        } catch (_) { /* fall through to the plain window */ }
+        } catch (_) { pipPending = false; /* fall through to the plain window */ }
       }
       openPlainPopout();
     }
@@ -1171,7 +1228,11 @@ if (typeof module !== 'undefined' && module.exports) {
       mountPopout(w);
     }
     function teardownPopout() {
+      pipPending = false;
       if (pipAbort) { try { pipAbort.abort(); } catch (_) { /* ignore */ } pipAbort = null; }
+      // clear the pop-out clock on the window that CREATED it, before closing that window
+      // (a closed window's timers die anyway - this is belt-and-suspenders).
+      if (pipClock != null) { try { (pipWin && pipWin.clearInterval ? pipWin : window).clearInterval(pipClock); } catch (_) { /* ignore */ } pipClock = null; }
       if (pipPanel) { var idx = skinSurfaces.indexOf(pipPanel); if (idx >= 0) skinSurfaces.splice(idx, 1); pipPanel = null; }
       if (pipWin) { try { if (pipWin.close && !pipWin.closed) pipWin.close(); } catch (_) { /* ignore */ } pipWin = null; }
       updatePopoutBtn();
