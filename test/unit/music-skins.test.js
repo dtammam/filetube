@@ -53,6 +53,20 @@ test('v1.232.1: the iPod LCD is height-capped so a long song list scrolls INSIDE
   assert.match(m[1], /contain:\s*size/, 'contain:size -> content can NEVER resize the LCD (Dean: never resize)');
 });
 
+test('v1.232.3: the full-screen skin LOCKS page scroll (touch-action) - only the list/queue pan', () => {
+  // Device bug (Dean): dragging the skin body scrolled the page behind it - body
+  // overflow:hidden does not stop iOS touch-scroll. touch-action:none on the fixed
+  // panel does; the scrollable regions re-enable vertical panning with pan-y.
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const full = /\.mms-full\{([^}]*)\}/.exec(css);
+  assert.ok(full && /touch-action:\s*none/.test(full[1]), '.mms-full has touch-action:none (page cannot scroll behind the overlay)');
+  const list = /\.mms-ipod \.ip-listview\{([^}]*)\}/.exec(css);
+  assert.ok(list && /touch-action:\s*pan-y/.test(list[1]), 'the iPod song list re-enables vertical pan');
+  const q = /\.mms-spotify \.mms-qlist\{([^}]*)\}/.exec(css);
+  assert.ok(q && /touch-action:\s*pan-y/.test(q[1]), 'the Spotify queue re-enables vertical pan');
+});
+
 test('the per-device setting round-trips and normalizes junk to the default', () => {
   const bag = {}; const store = { getItem: (k) => (k in bag ? bag[k] : null), setItem: (k, v) => { bag[k] = v; } };
   assert.strictEqual(skins.activeSkinId(store), 'apple', 'unset -> default');
