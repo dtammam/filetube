@@ -580,3 +580,17 @@ test('v1.234: teardown explicitly DROPS the surface from the reflect set (splice
     assert.strictEqual(panel.querySelector('.mms-fill').style.width, '77%', 'a torn-down surface is not reflected even while connected (explicit splice bound)');
   } });
 });
+
+test('v1.234: a Document-PiP grant that resolves after a wide->narrow resize is closed, not mounted (both-live async seal)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const pip = makePipWindow();
+    let resolveWin = null;
+    dom.window.documentPictureInPicture = { requestWindow: () => new Promise((r) => { resolveWin = r; }) };
+    clickPopout(dom); await settle();                 // grant pending, pipWin still null
+    // window shrinks below 768px DURING the grant - the resize can't teardown (pipWin null)
+    dom.window.matchMedia = (q) => ({ matches: /max-width:\s*768px/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    resolveWin(pip); await settle(); await settle();  // grant resolves onto the now-narrow viewport
+    assert.ok(pip._closeCalls >= 1 && pip.closed, 'mountPopout re-gates on popoutSupported() and closes the late grant on a narrow viewport (never both live)');
+  } });
+});

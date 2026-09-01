@@ -1121,13 +1121,15 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     function mountPopout(win) {
       if (!win) return;
-      // Gate finding (QA W1 / adversarial S3): requestWindow() is async, so the view can be
-      // destroyed (controller.abort()) DURING the grant. mountPopout would then run on a dead
-      // closure - binding to an aborted signal (frozen, never reflects) and leaking an
-      // always-on-top window the in-app button can no longer close (activePopoutTeardown was
-      // already consumed). A post-await guard closes it. (The repo's "pre-await guard is not a
-      // post-await guard" TOCTOU class, v1.104/v1.105.)
-      if (signal.aborted) { try { win.close(); } catch (_) { /* ignore */ } return; }
+      // Gate finding (both seats): requestWindow() is async, so between the click and the
+      // grant the view can be DESTROYED (controller.abort()) OR the viewport can shrink into
+      // the narrow (in-tab-skin) range. Either way mounting now is wrong - a destroyed closure
+      // leaks a frozen, uncloseable always-on-top window (the "pre-await guard is not a
+      // post-await guard" TOCTOU class, v1.104/v1.105), and a narrow viewport puts BOTH skin
+      // surfaces live (shared wheel-state corruption). mountPopout is the single async funnel,
+      // so re-check BOTH here and close the just-granted window if either holds. This is what
+      // makes "never both live" (the reflect/wheel comments) an actual invariant.
+      if (signal.aborted || !popoutSupported()) { try { win.close(); } catch (_) { /* ignore */ } return; }
       pipWin = win;
       var doc = win.document;
       try { copyPopoutStyles(doc); doc.title = 'FileTube'; } catch (_) { /* best effort */ }
