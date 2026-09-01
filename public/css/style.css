@@ -11064,7 +11064,11 @@ html[data-modern="on"] .video-uploader {
     padding:calc(env(safe-area-inset-top,0px) + var(--space-8)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-10)); }
   /* the LCD - a COMPACT ~4:3 screen at the top (not fill), the real iPod proportion;
      the body + wheel take the space below. */
-  .mms-ipod .ip-lcd{ flex:none; aspect-ratio:4/3; display:flex; background:var(--mms-black); border-radius:var(--mms-r-art-ipod); padding:var(--space-1); box-shadow:var(--mms-ipod-lcd-shadow); }
+  /* min-height:0 + overflow:hidden: a flex item defaults to min-height:auto, which lets
+     tall content (the song list) force the LCD to GROW past its 4:3 box instead of the
+     list scrolling inside it (v1.232.1, Dean device: "screen goes out of bounds" on
+     Select). min-height:0 caps it at the aspect ratio; the list scrolls in .ip-listview. */
+  .mms-ipod .ip-lcd{ flex:none; aspect-ratio:4/3; min-height:0; overflow:hidden; display:flex; background:var(--mms-black); border-radius:var(--mms-r-art-ipod); padding:var(--space-1); box-shadow:var(--mms-ipod-lcd-shadow); }
   .mms-ipod .ip-lcd-in{ flex:1; min-height:0; display:flex; flex-direction:column; background:var(--mms-white); border-radius:var(--mms-ipod-r-sm); overflow:hidden; }
   .mms-ipod .ip-status{ display:flex; align-items:center; justify-content:space-between; flex:none; padding:var(--space-3) var(--space-4);
     background:linear-gradient(var(--mms-ipod-bar1), var(--mms-ipod-bar2)); border-bottom:1px solid var(--mms-ipod-hair); }
