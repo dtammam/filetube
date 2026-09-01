@@ -662,7 +662,11 @@ if (typeof module !== 'undefined' && module.exports) {
         raf(function () {
           var lv = nowPlayingPanel.querySelector('.ip-listview');
           var cur = lv && lv.querySelector('.mms-row.is-current');
-          if (lv && cur) lv.scrollTop = Math.max(0, cur.offsetTop - (lv.clientHeight / 2) + (cur.offsetHeight / 2));
+          // subtract lv.offsetTop: .ip-listview is position:static, so cur.offsetTop is
+          // measured from the nearest positioned ancestor (.mms-full), not the list -
+          // it includes the status bar + LCD offset. Mirrors the default panel's
+          // scroll-to-current (mnpQueue.scrollTop = curRow.offsetTop - mnpQueue.offsetTop).
+          if (lv && cur) lv.scrollTop = Math.max(0, (cur.offsetTop - lv.offsetTop) - (lv.clientHeight / 2) + (cur.offsetHeight / 2));
         });
       }
     }

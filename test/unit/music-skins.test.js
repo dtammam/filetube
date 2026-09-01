@@ -129,6 +129,24 @@ test('the skins with a list (spotify queue, ipod song list) render jump-by-index
   assert.ok(!/data-skin-go=/.test(apple), 'apple renders no list');
 });
 
+test('v1.232.5: setIpodListMode scrolls the current song into view via the list container (source lock)', () => {
+  // jsdom has no layout, so lock the scroll GLUE in source (mirrors the default panel's
+  // scroll-to-current lock): rAF-deferred, targets .mms-row.is-current, scrolls the
+  // .ip-listview container via scrollTop (never scrollIntoView -> would scroll the page),
+  // and normalizes by the container offsetTop (the list is position:static).
+  const fs = require('node:fs'); const path = require('node:path');
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  const m = /function setIpodListMode\(on\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.ok(m, 'setIpodListMode exists');
+  const body = m[1];
+  assert.match(body, /requestAnimationFrame|setTimeout/, 'scroll is rAF-deferred (measure after the list is visible)');
+  assert.match(body, /\.ip-listview/, 'targets the list container');
+  assert.match(body, /\.mms-row\.is-current/, 'centers the CURRENT row');
+  assert.match(body, /\.scrollTop\s*=/, 'scrolls the container via scrollTop');
+  assert.match(body, /cur\.offsetTop\s*-\s*lv\.offsetTop/, 'normalizes by the container offsetTop (static list)');
+  assert.ok(!/scrollIntoView/.test(body), 'NOT scrollIntoView (that would scroll the page behind)');
+});
+
 test('v1.232.5: the iPod list renders ctx.fullList (whole album, reach earlier songs); Spotify uses upNext', () => {
   const ctx = Object.assign({}, CTX, {
     upNext: [{ index: 5, title: 'Up A', durLabel: '1:00', state: 'current' }, { index: 6, title: 'Up B', durLabel: '2:00', state: 'next' }],
