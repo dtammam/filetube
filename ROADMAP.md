@@ -80,6 +80,17 @@
 
 ## Shipped
 
+### v1.232.5 - iPod list shows the whole album, opens on the current song (2026-09-01)
+
+Dean device: in the iPod list you could only scroll up to earlier songs when the
+current track was song 1 - otherwise the list started near the current, so nothing was
+above. Now the iPod list is the whole album (from track 1; a wide current-centered
+window if the queue is huge) and opens scrolled to the current song, so earlier tracks
+are above (scroll up) and later below. Spotify's "Next in queue" stays upcoming-only.
+player.js byte-unchanged. Slim gate (adversarial): APPROVE - a scroll-centering math
+fix (subtract the container offset, mirroring the default panel) + source-locks applied,
+all mutation-confirmed. Dual-Node 7990/0. **Device pending.**
+
 ### v1.232.4 - Seek bar resets cleanly on prev/next (2026-09-01)
 
 Dean device: skipping tracks made the seek bar fill then abruptly refresh. Cause - the

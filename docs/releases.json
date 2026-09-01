@@ -2548,5 +2548,11 @@
     "date": "2026-09-01",
     "title": "Smoother seek bar when you skip tracks",
     "intent": "When you skipped to the previous or next track on a phone Music skin, the progress bar would briefly show the old track's position and then jump - a little jarring. Now it resets cleanly to the start the moment you skip and fills up as the new track plays, the way you'd expect."
+  },
+  {
+    "version": "1.232.5",
+    "date": "2026-09-01",
+    "title": "The iPod song list shows the whole album and jumps to your current song",
+    "intent": "On the iPod Music skin, opening the song list (the center button) now shows the whole album and lands on the song you're playing, so you can scroll up to earlier tracks and down to later ones. Before, the list started near your current song, so you could only browse earlier tracks if you were on the very first one. Tap any song to play it, same as before."
   }
 ]
