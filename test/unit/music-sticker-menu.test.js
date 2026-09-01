@@ -70,7 +70,11 @@ async function boot(run, opts) {
     player: {
       currentId: 's1', getState: () => state.s, expand: () => { state.s = 'full'; }, dock: () => { state.s = 'docked'; },
       getCurrentMeta: () => metaById(dom.window.FileTube.player.currentId),
-      load: (id) => { dom.window.FileTube.player.currentId = id; }, setTrackNav: () => {},
+      // load() mirrors the browser's HTML resource-load reset: playbackRate snaps back to
+      // defaultPlaybackRate (the ONLY mid-session carry - player.js reads ft-rate once at
+      // init). So a sticker-set rate survives an advance ONLY if defaultPlaybackRate was set.
+      load: (id) => { dom.window.FileTube.player.currentId = id; const mp = dom.window.document.getElementById('media-player'); if (mp) mp.playbackRate = mp.defaultPlaybackRate; },
+      setTrackNav: () => {},
       isLoopEnabled: () => state.loop,
       setLoop: (on) => { state.loop = !!on; state.setLoopCalls.push(!!on); },
     },
@@ -141,7 +145,7 @@ test('T3 (source-lock): the speed rows are EXACTLY player.js PLAYBACK_RATES', as
   });
 });
 
-test('T3 (anti-INERT): picking a speed sets #media-player.playbackRate AND persists ft-rate', async () => {
+test('T3 (anti-INERT): picking a speed sets playbackRate AND defaultPlaybackRate AND persists ft-rate', async () => {
   await boot(async (dom) => {
     const mp = dom.window.document.getElementById('media-player');
     click(dom, sticker(dom));
@@ -149,9 +153,24 @@ test('T3 (anti-INERT): picking a speed sets #media-player.playbackRate AND persi
     assert.ok(opt, 'a 1.5x row exists');
     click(dom, opt);
     assert.strictEqual(mp.playbackRate, 1.5, 'the real media element rate changed');
-    assert.strictEqual(dom.window.localStorage.getItem('ft-rate'), '1.5', 'persisted to the key player.js re-reads');
-    // the active highlight reflects the new rate
+    // v1.238 gate CRITICAL: defaultPlaybackRate MUST be set too, else the rate reverts on
+    // the next load(). This is the axis that both seats found unbound.
+    assert.strictEqual(mp.defaultPlaybackRate, 1.5, 'defaultPlaybackRate set (the survives-a-load carry)');
+    assert.strictEqual(dom.window.localStorage.getItem('ft-rate'), '1.5', 'persisted for a page-reload re-apply');
     assert.ok(menu(dom).querySelector('[data-skin-speed="1.5"].is-on'), 'the 1.5x row is now marked active');
+  });
+});
+
+test('T3 (gate CRITICAL): a sticker-set speed SURVIVES a track-change load() (the v1.22.1 revert class)', async () => {
+  await boot(async (dom) => {
+    const mp = dom.window.document.getElementById('media-player');
+    click(dom, sticker(dom));
+    click(dom, menu(dom).querySelector('[data-skin-speed="2"]'));
+    assert.strictEqual(mp.playbackRate, 2, 'plays at 2x on the current track');
+    // Simulate the player auto-advancing to a separate-file track: load() snaps playbackRate
+    // back to defaultPlaybackRate (the browser's real behaviour, mirrored in the fake load).
+    dom.window.FileTube.player.load('s2');
+    assert.strictEqual(mp.playbackRate, 2, 'the chosen 2x SURVIVES the load() (would be 1 if defaultPlaybackRate were unset)');
   });
 });
 

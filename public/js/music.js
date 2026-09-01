@@ -860,8 +860,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // FileTube mark (default), an emoji, or a custom uploaded image (/api/me/sticker,
     // the T1 endpoint). The menu items PROXY the existing controls so player.js stays
     // BYTE-UNCHANGED:
-    //   speed -> #media-player.playbackRate + persist 'ft-rate' (the SAME key player.js
-    //            re-reads on every track load, so the rate STICKS across auto-advance),
+    //   speed -> #media-player.playbackRate AND defaultPlaybackRate (the latter is what
+    //            survives the next load(); player.js reads 'ft-rate' only once at init) +
+    //            persist 'ft-rate' for a page-reload re-apply,
     //   loop  -> window.FileTube.player.setLoop / isLoopEnabled (FR-7, v1.22.0),
     //   skin  -> SKINS.setActiveSkin (the same call the Settings picker makes).
     // injectSticker runs inside paintSkin so the sticker lands on every skin AND the
@@ -941,10 +942,19 @@ if (typeof module !== 'undefined' && module.exports) {
     function applyStickerSpeed(rate) {
       var r = Number(rate);
       if (MMS_SPEED_RATES.indexOf(r) === -1) return;
-      var mp = hostCtl('media-player'); if (mp) mp.playbackRate = r;
-      // Persist to the key player.js re-reads on every load, so the rate survives track
-      // changes AND the #speed-btn picker stays coherent - functionally identical to
-      // player.js's own applyPlaybackRate, without touching player.js.
+      var mp = hostCtl('media-player');
+      if (mp) {
+        mp.playbackRate = r;
+        // v1.238 gate CRITICAL (both seats): set defaultPlaybackRate TOO. The HTML load()
+        // algorithm resets playbackRate to defaultPlaybackRate on every new resource, and
+        // player.js reads ft-rate only ONCE at page init (no per-load reapply) - so WITHOUT
+        // this the chosen rate silently reverts to 1x on the next track's load() (the
+        // v1.22.1 bug class). This mirrors player.js applyPlaybackRate (5363-5368), which
+        // sets BOTH properties for exactly this reason.
+        mp.defaultPlaybackRate = r;
+      }
+      // Persist ft-rate as well so a full page reload re-applies the rate via player.js's
+      // one-shot initPlaybackRate (the mid-session carry is defaultPlaybackRate above).
       try { window.localStorage.setItem(RATE_KEY, String(r)); } catch (_) { /* best-effort */ }
     }
     function toggleStickerLoop() {
