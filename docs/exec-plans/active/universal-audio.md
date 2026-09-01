@@ -2,6 +2,12 @@
 
 Status: ACTIVE (targeting v1.242.0)
 Branch: `feat/universal-audio`
+
+> **SCOPE UPDATE (Dean, this session):** #3 (podcasts on the skin surface) is SPLIT
+> to its own wave **v1.243** - it's a skin-engine extraction that deserves a focused
+> wave + gate, and splitting gets #2/#4 to Dean's device sooner. So **v1.242 ships
+> T1 (#4) + T3 (#2) + T5 (settings)**; T2 folded into the device pass; **T4 (#3) is
+> deferred to v1.243** (its recon anchors are preserved below for that wave).
 Owner: main session (lean mode)
 Gate: FULL two-reviewer gate. The #4 projection change alters a **library-wide,
 RBAC-gated read surface** (what appears in Music, for whom) - the
