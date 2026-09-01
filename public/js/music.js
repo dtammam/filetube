@@ -2132,7 +2132,14 @@ if (typeof module !== 'undefined' && module.exports) {
           if (t.albumKey) { await playTrackInAlbum(t); return; }
           queue = [t]; renderSongList(); playAt(0); return;
         }
-      } catch (_) { /* fall through to a normal render */ }
+      } catch (_) { /* not a resolvable music track - fall through to the /watch bounce */ }
+      // v1.236 (Dean, "open downloaded music in the music player" is BOUND to the library):
+      // a rerouted audio tile whose id the music API can't resolve (a NON-projected download)
+      // must not dead-end on the browse view - send it where it actually plays: /watch. Strip
+      // any ::c chapter suffix to the base media id. For a genuine music track this path is
+      // only reached on a real miss (aged-out + 404), so the bounce is the safe outcome there too.
+      var bounceId = String(trackId).replace(/::c\d+$/, '');
+      try { if (window.location && typeof window.location.replace === 'function') { window.location.replace('/watch.html?v=' + encodeURIComponent(bounceId)); return; } } catch (_) { /* no navigable location */ }
       await render();
     }
 
