@@ -382,6 +382,85 @@ test('v1.239 iPod: a Now-Playing spin with NO known duration is a safe no-op (lo
   } });
 });
 
+// ---- v1.242 (#2, Dean): HOLD rewind/ffwd = FAST-SCAN the timeline -----------------------
+// Deterministic: intercept the ~400ms hold setTimeout and fire it by hand (no real wait).
+// startScan steps currentTime immediately on the hold; the 200ms interval is left real (it
+// never ticks within the synchronous test, and endWheel clears it on release).
+function armHold(dom) {
+  const real = dom.window.setTimeout;
+  const holds = [];
+  dom.window.setTimeout = (fn, ms) => { if (ms === 400) { holds.push(fn); return 987654; } return real(fn, ms); };
+  return { fire: () => { const f = holds.shift(); if (f) f(); }, restore: () => { dom.window.setTimeout = real; } };
+}
+const zone = (p, sel) => p.querySelector(sel);
+
+test('v1.242: HOLDING the ffwd zone fast-scans FORWARD, commits on release, and does NOT skip a track', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
+    const p = panel(dom); const mp = makeScrubbable(dom, 100, 300);
+    const h = armHold(dom);
+    const next = zone(p, '[data-skin-next]');
+    next.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 90, clientY: 10 }));
+    h.fire(); // the hold elapses -> startScan steps immediately
+    assert.ok(mp.currentTime > 100, 'held ffwd scanned the playhead FORWARD');
+    next.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true }));
+    assert.strictEqual(spy.seek, 1, 'release committed the landed position via #seek-bar change');
+    next.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(spy.next, 0, 'a HELD ffwd did NOT also skip to the next track (click suppressed)');
+    h.restore();
+  } });
+});
+
+test('v1.242: HOLDING the rewind zone scans BACKWARD (clamped at 0)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const p = panel(dom); const mp = makeScrubbable(dom, 50, 300);
+    const h = armHold(dom);
+    const prev = zone(p, '[data-skin-prev]');
+    prev.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 10, clientY: 10 }));
+    h.fire();
+    assert.ok(mp.currentTime < 50, 'held rewind scanned BACKWARD');
+    assert.ok(mp.currentTime >= 0, 'never negative');
+    prev.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true }));
+    h.restore();
+  } });
+});
+
+test('v1.242: a QUICK tap on ffwd (hold never fires) still SKIPS a track', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
+    const p = panel(dom); makeScrubbable(dom, 100, 300);
+    const h = armHold(dom); // captured but NOT fired = a quick release before the hold elapsed
+    const next = zone(p, '[data-skin-next]');
+    next.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 90, clientY: 10 }));
+    next.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true }));
+    next.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(spy.next, 1, 'a quick tap proxies to #track-next-btn (skip)');
+    assert.strictEqual(spy.seek, 0, 'and never commits a scan');
+    h.restore();
+  } });
+});
+
+test('v1.242: a pointercancel mid-scan does NOT commit (no lost seek)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
+    const p = panel(dom); const mp = makeScrubbable(dom, 100, 300);
+    const h = armHold(dom);
+    const next = zone(p, '[data-skin-next]');
+    next.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 90, clientY: 10 }));
+    h.fire();
+    assert.ok(mp.currentTime > 100, 'scanned');
+    next.dispatchEvent(new dom.window.MouseEvent('pointercancel', { bubbles: true }));
+    assert.strictEqual(spy.seek, 0, 'a cancel never dispatches the seek-bar commit');
+    h.restore();
+  } });
+});
+
+test('v1.242 source-lock: a rotate cancels the pending hold; endWheel clears the scan timer + interval', () => {
+  const js = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  assert.match(js, /if \(st\.scanTimer\) \{ try \{ st\.win\.clearTimeout\(st\.scanTimer\)[\s\S]*?\}\s*\n\s*try \{ st\.wheel\.setPointerCapture/, 'the moved (rotate) branch clears the pending hold-timer before capturing');
+  const ew = /function endWheel\(st, suppress\) \{([\s\S]*?)\n {6}\}/.exec(js);
+  assert.ok(ew, 'endWheel exists');
+  assert.match(ew[1], /clearTimeout\(st\.scanTimer\)/, 'endWheel clears the hold-timer (both end arms)');
+  assert.match(ew[1], /clearInterval\(st\.scanInterval\)/, 'endWheel clears the scan interval (both end arms)');
+});
+
 test('v1.239 iPod: removing the early-return did NOT break tap-through - a Now-Playing wheel TAP still fires its zone', async () => {
   // The old `if (!listMode && !allowVolume) return;` used to short-circuit Now-Playing here;
   // now the handler proceeds to build the scrub gesture, so a pure TAP (no rotation) must
