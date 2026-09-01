@@ -12311,41 +12311,8 @@ html[data-modern="on"] .video-uploader {
 .account-menu-signout {
   color: var(--yt-red);
 }
-/* v1.229 (Dean): the mobile-only "Music skin" picker - a per-device appearance
-   control beside Theme. A small segmented set of the three skin names; the active
-   one uses the app accent. Its own classes (not .account-menu-item) so it stays out
-   of the quick-link censuses. Built + gated to mobile in buildAccountMusicSkinRow. */
-.account-menu-skinpicker {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4) var(--space-6);
-}
-.account-menu-skinpicker-label {
-  font-size: var(--fs-sm);
-  color: var(--text-secondary);
-}
-.account-menu-skinseg {
-  display: flex;
-  gap: var(--space-2);
-}
-.account-menu-skinchip {
-  flex: 1;
-  border: 1px solid var(--border-color);
-  background: none;
-  color: var(--text-primary);
-  font-family: var(--font-family);
-  font-size: var(--fs-sm);
-  padding: var(--space-3) var(--space-2);
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.account-menu-skinchip.is-on {
-  background: var(--yt-red);
-  color: var(--on-accent);
-  border-color: var(--yt-red);
-}
+/* v1.230: the "Music skin" picker moved to the Settings page (Appearance), where it
+   reuses the shared .theme-card picker styles - no account-menu-specific CSS needed. */
 /* v1.90 / v1.91.1 (Dean): the subtle version footer at the bottom of the account
    menu. LEFT-aligned at the SAME horizontal inset as the rows (--space-6), so it
    reads as a quiet footer that belongs to the left-aligned list rather than a

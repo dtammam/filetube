@@ -2500,5 +2500,11 @@
     "date": "2026-09-01",
     "title": "Switch your phone Music skin from the account menu",
     "intent": "Changing your phone Music skin is now done from the account menu (the avatar menu at the top): there's a 'Music skin' row with Apple, Spotify, and iPod to pick from, and the player updates right away. The little skin buttons that used to sit inside the player have been removed - they were hard to see against some of the skins, so switching now has one clear home. It's a per-device choice on your phone, and it only appears in the menu on the Music page and the home screen (where the skins live). Nothing else about playback changes."
+  },
+  {
+    "version": "1.230.0",
+    "date": "2026-09-01",
+    "title": "The Music-skin picker is now on the Settings page",
+    "intent": "Picking your phone Music skin now lives on the Settings page, under Appearance, right next to the Theme and Icons options - Apple Music, Spotify, or iPod, with the current one highlighted. This replaces the version that briefly lived in the account menu, which often didn't show up depending on which page you'd opened first. It's a per-device choice and it applies to the Music player on your phone; you can set it from your computer or your phone. Nothing else about playback changes."
   }
 ]

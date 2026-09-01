@@ -153,6 +153,14 @@
         <p>Pick the icon style for FileTube's chrome. <strong>Auto</strong>
            matches it to the era above.</p>
         <div class="theme-picker" id="icon-picker"><!-- rendered by JS --></div>
+        <!-- v1.230 (Dean): the mobile Music-player skin, per-device (localStorage
+             ft-music-skin, via FileTubeMusicSkins). Rendered by setup.js
+             renderMusicSkinPicker; the skins only apply to the phone Music player. -->
+        <h3 style="margin-top:20px;">Music skin</h3>
+        <p>Pick how the full-screen Music player looks <strong>on your phone</strong>:
+           Apple Music, Spotify, or iPod. Remembered on this device; the desktop
+           player is unchanged.</p>
+        <div class="theme-picker" id="music-skin-picker"><!-- rendered by JS --></div>
         <!-- v1.63.1 (Dean): the stars are decorative - a deterministic mock,
              not real ratings - and now optional. common.js owns the pref
              (localStorage truth + per-user mirror); ONE root class hides
@@ -1280,6 +1288,7 @@
 
   <script src="/js/glyph-pool.js"></script>
 
+  <script src="/js/music-skins.js"></script>
   <script src="/js/common.js"></script>
   <!-- FR-1, T1: every shell loads all core view scripts -- see
        index.html's matching comment. This inline script was extracted to
