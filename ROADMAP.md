@@ -80,6 +80,22 @@
 
 ## Shipped
 
+### v1.241.0 - Sticker size + tilt settings (2026-09-01)
+
+Dean: the sticker should read like a real placed sticker - bigger, and adjustable. Two new
+per-user settings on `ft-sticker` (Settings > Appearance > Player sticker): **Size**
+(Default / 2x / 3x / 5x) and **Tilt** (Straight / Left / Right). `injectSticker` maps them to
+button classes; the base bumped 44->52px (`--mms-sticker-px` drives the scale: 2x=104,
+3x=156, 5x=260), the default tilt is now a slightly stronger -14deg, and the tilt sits on the
+button so the pop-up menu stays upright. The emoji steps the type scale so it fills the bigger
+spot; image stickers scale via width. `mergeStickerPref` means changing the size keeps your
+icon and changing the icon keeps your size/tilt. player.js BYTE-UNCHANGED.
+
+Slim gate (adversarial seat; UI-only, not data-touching): APPROVE, no findings - the four
+bindings (size/tilt class map, size-var scale, merge-preservation) all mutation-bite, and the
+merge/clear semantics were live-verified. Dual-Node 8102/0 (Node 22 + 24). **Device pending**
+- Dean confirms the bigger/tilted sticker feels right and the size/tilt pickers work.
+
 ### v1.240.0 - Loop a single album chapter + a tilted, un-circled sticker (2026-09-01)
 
 Three Dean follow-ups. (1) **Chapter-segment loop (bug fix):** the Loop toggle drives the

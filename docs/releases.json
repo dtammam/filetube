@@ -2602,5 +2602,11 @@
     "date": "2026-09-01",
     "title": "Loop a single track in an album, and a stick-on sticker",
     "intent": "Turning on Loop for one song inside a downloaded album now repeats just that song, instead of playing on through the rest of the album. And the player sticker got two touches: if you use your own image (or the logo) it's no longer squeezed into a circle - it shows as-is - and it sits at a slight, playful tilt like a real peel-and-stick sticker. Emoji stickers keep their round badge."
+  },
+  {
+    "version": "1.241.0",
+    "date": "2026-09-01",
+    "title": "Resize and angle your player sticker",
+    "intent": "The player sticker is a bit bigger now, and you can make it your own: in Settings > Appearance > Player sticker, pick a size (default, 2x, 3x, or a big 5x) and a tilt (straight, or leaning left or right). Changing the size keeps your chosen image or emoji, and vice versa."
   }
 ]
