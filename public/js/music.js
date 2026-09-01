@@ -516,6 +516,10 @@ if (typeof module !== 'undefined' && module.exports) {
   // so the stable module.onPopState the router calls can delegate to whichever
   // init is current; nulled by destroy() so a pop after teardown is a no-op.
   var activePopStateHandler = null;
+  // v1.234: the current init's pop-out teardown, so the module-level destroy() can close a
+  // floating pop-out window on a cross-view swap (its listeners live on the pop-out's own
+  // AbortController, not the view signal). Nulled by destroy().
+  var activePopoutTeardown = null;
   var SORT_KEY = 'filetube_music_sort';
   var TAB_KEY = 'filetube_music_tab';
   // Friction pass: the Artists view mode - 'grid' (circles) or 'list' (compact
@@ -551,6 +555,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var nowPlayingPanel = root.querySelector('#music-nowplaying-panel');
     var musicStage = root.querySelector('#music-stage');
     var theaterBtn = root.querySelector('#music-theater-btn');
+    var popoutBtn = root.querySelector('#music-popout-btn');
     var jumpbackHost = root.querySelector('#music-jumpback');
     if (!content) return;
 
@@ -621,12 +626,21 @@ if (typeof module !== 'undefined' && module.exports) {
         curNum: ci + 1, total: queue.length,
       };
     }
-    // Reflect the live element into the rendered skin without a full re-render
-    // (cheap; keeps the up-next scroll position). Bound once to #media-player.
-    function reflectSkin() {
-      if (!nowPlayingPanel || !nowPlayingPanel.classList.contains('mms-full')) return;
+    // v1.234: a skin can render on MORE THAN ONE surface - the in-tab mobile panel AND the
+    // desktop pop-out window (Document PiP / independent window). The two are kept mutually
+    // exclusive by the viewport split (pop-out only on wide/desktop, the in-tab skin only on
+    // narrow/mobile), ENFORCED so it can't drift: open re-gates on popoutSupported(), and a
+    // resize into the narrow range tears the pop-out down (see updatePopoutBtn's resize
+    // listener). So only one surface is ever live and the shared wheel state below is
+    // unambiguous. skinSurfaces holds every panel bound via bindSkinSurface; reflectAllSkins
+    // fans the live-element reflect out to each connected one.
+    var skinSurfaces = [];
+    // Reflect the live element into ONE rendered skin panel without a full re-render
+    // (cheap; keeps the up-next scroll position).
+    function reflectSkin(panel) {
+      if (!panel || !panel.classList.contains('mms-full')) return;
       var mp = hostCtl('media-player'); if (!mp) return;
-      var playBtn = nowPlayingPanel.querySelector('.mms-play');
+      var playBtn = panel.querySelector('.mms-play');
       if (playBtn) {
         playBtn.setAttribute('aria-label', mp.paused ? 'Play' : 'Pause');
         playBtn.innerHTML = mp.paused
@@ -640,12 +654,21 @@ if (typeof module !== 'undefined' && module.exports) {
       // 0 instead of leaving the previous track's fill up - that stale fill was the
       // "fills then abruptly refreshes" flash on skip. Now it drops to 0 and fills as
       // the new track plays (bound to loadstart/emptied/durationchange below so it's prompt).
-      var fill = nowPlayingPanel.querySelector('.mms-fill'); if (fill) fill.style.width = (dur > 0 ? frac : 0) + '%';
+      var fill = panel.querySelector('.mms-fill'); if (fill) fill.style.width = (dur > 0 ? frac : 0) + '%';
       // iPod status-bar play indicator (▶ playing / ❚❚ paused) - the authentic Classic
       // shows state up top; the wheel's bottom play button keeps its static ▶❚❚ label.
-      var pind = nowPlayingPanel.querySelector('.mms-playind'); if (pind) pind.textContent = mp.paused ? '❚❚' : '▶';
-      var pEl = nowPlayingPanel.querySelector('.mms-pos'); if (pEl) pEl.textContent = mmssMusic(pos);
-      var rEl = nowPlayingPanel.querySelector('.mms-rem'); if (rEl) rEl.textContent = dur > 0 ? '-' + mmssMusic(dur - pos) : '';
+      var pind = panel.querySelector('.mms-playind'); if (pind) pind.textContent = mp.paused ? '❚❚' : '▶';
+      var pEl = panel.querySelector('.mms-pos'); if (pEl) pEl.textContent = mmssMusic(pos);
+      var rEl = panel.querySelector('.mms-rem'); if (rEl) rEl.textContent = dur > 0 ? '-' + mmssMusic(dur - pos) : '';
+    }
+    // Reflect into every currently-live skin surface (drops any disconnected panel, e.g. a
+    // closed pop-out window, so we never query a dead document).
+    function reflectAllSkins() {
+      for (var i = skinSurfaces.length - 1; i >= 0; i--) {
+        var p = skinSurfaces[i];
+        if (!p || !p.isConnected) { skinSurfaces.splice(i, 1); continue; }
+        reflectSkin(p);
+      }
     }
     // v1.233 iPod wheel-scroll state: wheelCursorRow is the CURRENT list POSITION the
     // wheel cursor sits on (an index into the rendered .ip-listview rows, NOT a queue
@@ -654,12 +677,16 @@ if (typeof module !== 'undefined' && module.exports) {
     // pointerup would otherwise fire on a wheel zone (see the pointerdown gesture below).
     var wheelCursorRow = -1;
     var wheelSuppressClick = false;
+    // v1.234: shared across surfaces (in-tab XOR pop-out - the viewport split is ENFORCED
+    // mutually exclusive, see the reflectAllSkins comment), so a single live-gesture handle
+    // is unambiguous; paintSkin nulls it on a re-render (QA guard).
+    var wheelSpin = null;
     // Move the selection cursor to list POSITION `pos` (clamped): paint .is-cursor (the
     // blue bar) on that row alone and keep it visible. `center` (list-open) centers it;
     // otherwise (a spin step) it edge-follows - only scrolls when the row would leave the
     // viewport, like a real iPod. Scroll ONLY the list container, never the page.
-    function setWheelCursor(pos, center) {
-      var lv = nowPlayingPanel && nowPlayingPanel.querySelector('.ip-listview'); if (!lv) return;
+    function setWheelCursor(panel, pos, center) {
+      var lv = panel && panel.querySelector('.ip-listview'); if (!lv) return;
       var rows = lv.querySelectorAll('.mms-row'); if (!rows.length) return;
       pos = Math.max(0, Math.min(rows.length - 1, pos));
       wheelCursorRow = pos;
@@ -679,22 +706,22 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     // iPod Now-Playing <-> song-list toggle (a transient class on the panel; a full
     // re-render resets it, so a track change returns you to Now Playing).
-    function setIpodListMode(on) {
-      if (!nowPlayingPanel) return;
-      nowPlayingPanel.classList.toggle('mms-listmode', !!on);
-      var npEl = nowPlayingPanel.querySelector('.ip-np');
+    function setIpodListMode(panel, on) {
+      if (!panel) return;
+      panel.classList.toggle('mms-listmode', !!on);
+      var npEl = panel.querySelector('.ip-np');
       if (npEl) npEl.textContent = on ? 'Songs' : 'Now Playing';
       if (on) {
         // v1.232.5 (Dean): the list is the WHOLE album; on open, seed the cursor on the
         // current song and CENTER it so earlier tracks are above (scroll up) and later
         // below. From here the wheel spin moves the cursor (v1.233).
-        var lv = nowPlayingPanel.querySelector('.ip-listview');
+        var lv = panel.querySelector('.ip-listview');
         var rows = lv ? lv.querySelectorAll('.mms-row') : [];
         var startPos = 0;
         for (var i = 0; i < rows.length; i++) { if (rows[i].classList.contains('is-current')) { startPos = i; break; } }
-        setWheelCursor(startPos, true);
+        setWheelCursor(panel, startPos, true);
       } else {
-        var cr = nowPlayingPanel.querySelector('.ip-listview .mms-row.is-cursor');
+        var cr = panel.querySelector('.ip-listview .mms-row.is-cursor');
         if (cr) cr.classList.remove('is-cursor');
         wheelCursorRow = -1;
       }
@@ -704,15 +731,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // alongside iPod's .ip-*). Only when motion is allowed (else the line keeps its
     // ellipsis). Wraps the text in a .mms-mq span + sets the shift distance + a
     // constant-speed duration as CSS vars; the .mms-marquee keyframe animates it.
-    function applySkinMarquee() {
-      if (!nowPlayingPanel) return;
+    function applySkinMarquee(panel) {
+      if (!panel) return;
       try { if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (_) { /* keep going */ }
-      var els = nowPlayingPanel.querySelectorAll('.ip-ttl, .ip-artist, .ip-album, .mms-ttl, .mms-sub, .mms-ctx');
+      var els = panel.querySelectorAll('.ip-ttl, .ip-artist, .ip-album, .mms-ttl, .mms-sub, .mms-ctx');
       for (var i = 0; i < els.length; i++) {
         var el = els[i];
         var over = el.scrollWidth - el.clientWidth;
         if (over > 2 && !el.querySelector('.mms-mq')) {
-          var span = document.createElement('span');
+          var span = (el.ownerDocument || document).createElement('span'); // pop-out uses its own document
           span.className = 'mms-mq';
           span.textContent = el.textContent; // textContent both ways -> no injection
           el.textContent = '';
@@ -731,31 +758,39 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.232.4: loadstart/emptied/durationchange fire on a prev/next track swap BEFORE
       // playback, so the bar resets to 0 promptly (no lingering old-track fill).
       ['play', 'pause', 'timeupdate', 'seeked', 'loadedmetadata', 'loadstart', 'emptied', 'durationchange'].forEach(function (ev) {
-        mp.addEventListener(ev, reflectSkin, { signal: signal });
+        mp.addEventListener(ev, reflectAllSkins, { signal: signal });
       });
     }
-    // Render the active skin into the panel (returns true if it took over).
-    function renderNowPlayingSkin(ci) {
-      if (!SKINS || !skinIsActive()) { document.body.classList.remove('mms-on'); return false; }
-      var id = SKINS.activeSkinId();
-      document.body.classList.add('mms-on'); // CSS hides the default host chrome on mobile+music
+    // Paint the chosen skin `id` into ANY panel (the in-tab mobile surface OR the desktop
+    // pop-out window) - the shared render used by both. Sets the class chain, renders the
+    // ctx, shimmers the art, and starts the marquee. `doc` is the panel's document (pop-out
+    // has its own) for the rAF/shimmer.
+    function paintSkin(panel, id, ci) {
       // v1.232: a skin may declare a `base` (e.g. iPod Black -> base 'ipod'), so the panel
       // ALSO gets the base class + all its shared CSS; the id class overrides the palette.
       var base = (typeof SKINS.skinById === 'function' && (SKINS.skinById(id) || {}).base) || '';
-      nowPlayingPanel.className = 'music-nowplaying-panel mms mms-full mms-' + id + (base ? ' mms-' + base : '');
+      panel.className = 'music-nowplaying-panel mms mms-full mms-' + id + (base ? ' mms-' + base : '');
       // v1.233 (QA finding): a re-render (e.g. a track auto-advance) detaches the wheel
       // element, so a live gesture's pointerup would never reach its onUp -> endWheel and
       // wheelSpin would stick non-null, wedging every later spin ("one gesture at a time").
       // Drop the mid-gesture state here; the detached wheel's element-local listeners GC
       // with it, and wheelCursorRow is re-seeded when the list is next opened.
       wheelSpin = null;
-      nowPlayingPanel.innerHTML = SKINS.renderFull(id, buildSkinCtx(ci));
-      nowPlayingPanel.hidden = false;
+      panel.innerHTML = SKINS.renderFull(id, buildSkinCtx(ci));
+      panel.hidden = false;
+      if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(panel);
+      // measure + start the marquee AFTER layout (rAF), so scrollWidth is real.
+      var win = (panel.ownerDocument && panel.ownerDocument.defaultView) || window;
+      var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); };
+      raf(function () { applySkinMarquee(panel); });
+    }
+    // Render the active skin into the in-tab panel (returns true if it took over).
+    function renderNowPlayingSkin(ci) {
+      if (!SKINS || !skinIsActive()) { document.body.classList.remove('mms-on'); return false; }
+      var id = SKINS.activeSkinId();
+      document.body.classList.add('mms-on'); // CSS hides the default host chrome on mobile+music
+      paintSkin(nowPlayingPanel, id, ci);
       ensureSkinReflect();
-      if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(nowPlayingPanel);
-      // measure + start the iPod title marquee AFTER layout (rAF), so scrollWidth is real.
-      var raf = (typeof window !== 'undefined' && window.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); };
-      raf(applySkinMarquee);
       return true;
     }
 
@@ -813,6 +848,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // both-axes contract: reveal when expanded+playing, CLEAR otherwise.
     function updateNowPlayingPanel() {
       if (!nowPlayingPanel) return;
+      // v1.234: keep the desktop pop-out in step with the track/skin (this is the seam every
+      // track change routes through, via playAt) and refresh the pop-out button's visibility.
+      // Independent of the in-tab expanded/docked branch below, so a docked pop-out still updates.
+      repaintPopout();
+      updatePopoutBtn();
       var p = window.FileTube && window.FileTube.player;
       var expanded = !!(p && typeof p.getState === 'function' && p.getState() === 'full');
       var curId = (p && p.currentId) || null;
@@ -892,8 +932,16 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.227: the skin's data-skin-* hooks PROXY to the player's existing hidden
     // controls (play/prev/next), so the battle-won engine (gesture-prime, bg-audio,
     // MediaSession, setTrackNav) runs unchanged - the skin never calls audio itself.
-    if (nowPlayingPanel) {
-      nowPlayingPanel.addEventListener('click', function (e) {
+    // v1.234: bind the skin's action hooks + wheel gesture to a panel, so BOTH the in-tab
+    // mobile surface AND the desktop pop-out window (Document PiP / independent window) share
+    // ONE implementation. `panel` is the surface; `sig` is the AbortSignal that unbinds it
+    // (the view's `signal` for the in-tab panel; a pop-out session's own controller for the
+    // pop-out). All the transport hooks proxy to the MAIN document's controls (hostCtl uses
+    // the main document), so a click in the pop-out still drives the real player.
+    function bindSkinSurface(panel, sig) {
+      if (!panel) return;
+      skinSurfaces.push(panel);   // reflectAllSkins fans live-element updates to every surface
+      panel.addEventListener('click', function (e) {
         // v1.233: a wheel SPIN that ended over a zone button would fire a synthetic click
         // on release - swallow exactly that one (the flag is set on a moved pointerup and
         // cleared here or on the next pointerdown, so it never eats a later real tap).
@@ -911,7 +959,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // iPod MENU = back one level: from the song LIST -> Now Playing; from Now
         // Playing -> dock/exit the full-screen player (the way out, no header needed).
         if (e.target.closest('[data-skin-menu]')) {
-          if (nowPlayingPanel.classList.contains('mms-listmode')) { setIpodListMode(false); }
+          if (panel.classList.contains('mms-listmode')) { setIpodListMode(panel, false); }
           else { var plm = window.FileTube && window.FileTube.player; if (plm && typeof plm.dock === 'function') { plm.dock(); updateNowPlayingPanel(); } }
           return;
         }
@@ -919,12 +967,12 @@ if (typeof module !== 'undefined' && module.exports) {
         // PLAYS the cursor-highlighted song (v1.233, the authentic iPod center-select),
         // then returns to Now Playing. MENU (above) is the way back out without playing.
         if (e.target.closest('[data-skin-select]')) {
-          if (nowPlayingPanel.classList.contains('mms-listmode')) {
-            var cur = nowPlayingPanel.querySelector('.ip-listview .mms-row.is-cursor');
+          if (panel.classList.contains('mms-listmode')) {
+            var cur = panel.querySelector('.ip-listview .mms-row.is-cursor');
             var cgi = cur && parseInt(cur.getAttribute('data-skin-go'), 10);
-            setIpodListMode(false);
+            setIpodListMode(panel, false);
             if (cur && !isNaN(cgi)) playAt(cgi);
-          } else { setIpodListMode(true); }
+          } else { setIpodListMode(panel, true); }
           return;
         }
         var seek = e.target.closest('[data-skin-seek]');
@@ -943,17 +991,18 @@ if (typeof module !== 'undefined' && module.exports) {
           return;
         }
         var sgo = e.target.closest('[data-skin-go]');
-        if (sgo) { var gi = parseInt(sgo.getAttribute('data-skin-go'), 10); if (!isNaN(gi)) { setIpodListMode(false); playAt(gi); } return; }
+        if (sgo) { var gi = parseInt(sgo.getAttribute('data-skin-go'), 10); if (!isNaN(gi)) { setIpodListMode(panel, false); playAt(gi); } return; }
         var row = e.target.closest('.mnp-queue-row');
         if (!row) return;
         var idx = parseInt(row.getAttribute('data-index'), 10);
         if (!isNaN(idx)) playAt(idx);
-      }, { signal });
+      }, { signal: sig });
 
       // v1.233: the iPod click wheel is a real ROTARY SCROLL. Spinning it with the song
       // list open moves the selection cursor song-by-song; a fast flick ACCELERATES;
       // center then plays the highlighted song. Only in list mode (Dean: Now-Playing spin
-      // does nothing) and only the iPod skin renders a wheel.
+      // does nothing) and only the iPod skin renders a wheel. (Pointer events => a desktop
+      // pop-out spins the wheel with a MOUSE click-drag too.)
       //
       // Why POINTER events, not touch: a document-level non-passive touchmove is a
       // scroll-perf regression (the v1.160.1 scar) - passivity is static to the
@@ -963,13 +1012,12 @@ if (typeof module !== 'undefined' && module.exports) {
       // (endWheel), and capture is taken LAZILY - only once the gesture is confirmed a spin
       // - so a plain TAP on a zone/center button still fires its click untouched.
       var WHEEL_STEP_DEG = 22;   // wheel degrees per one-song cursor step
-      var wheelSpin = null;      // live gesture state, null when idle
       function wheelShortAngle(a) { while (a > 180) a -= 360; while (a < -180) a += 360; return a; }
       // End the gesture `st`: unbind ITS listeners + release ITS capture. Takes the st
       // explicitly (not the live wheelSpin) so a stale end-arm - e.g. a detached wheel's
-      // late pointerup after renderNowPlayingSkin already dropped the gesture (QA finding)
-      // - tears down only its own element and never a newer gesture. wheelSpin is nulled
-      // only if it still IS this st.
+      // late pointerup after paintSkin already dropped the gesture (QA finding) - tears down
+      // only its own element and never a newer gesture. wheelSpin is nulled only if it
+      // still IS this st.
       function endWheel(st, suppress) {
         var w = st.wheel;
         try { if (st.captured) w.releasePointerCapture(st.id); } catch (_) { /* not captured */ }
@@ -981,11 +1029,11 @@ if (typeof module !== 'undefined' && module.exports) {
         if (suppress) wheelSuppressClick = true;
         if (wheelSpin === st) wheelSpin = null;
       }
-      nowPlayingPanel.addEventListener('pointerdown', function (e) {
+      panel.addEventListener('pointerdown', function (e) {
         // any fresh touch starts clean, so a stale suppress can never eat a real tap.
         wheelSuppressClick = false;
-        if (wheelSpin) return;                                             // one gesture at a time
-        if (!nowPlayingPanel.classList.contains('mms-listmode')) return;   // list-only (Dean)
+        if (wheelSpin) return;                                    // one gesture at a time
+        if (!panel.classList.contains('mms-listmode')) return;    // list-only (Dean)
         var wheel = e.target.closest('.ip-wheel'); if (!wheel) return;
         var r = wheel.getBoundingClientRect();
         var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
@@ -1016,7 +1064,7 @@ if (typeof module !== 'undefined' && module.exports) {
           while (Math.abs(st.accum) >= WHEEL_STEP_DEG) {
             var sign = st.accum > 0 ? 1 : -1;      // clockwise (+) => down the list, iPod-true
             st.moved = true;
-            setWheelCursor(wheelCursorRow + sign * mult, false);
+            setWheelCursor(panel, wheelCursorRow + sign * mult, false);
             st.accum -= sign * WHEEL_STEP_DEG;
           }
         };
@@ -1025,8 +1073,147 @@ if (typeof module !== 'undefined' && module.exports) {
         wheel.addEventListener('pointerup', st.onUp);
         wheel.addEventListener('pointercancel', st.onUp);
         wheelSpin = st;
+      }, { signal: sig });
+    }
+    if (nowPlayingPanel) bindSkinSurface(nowPlayingPanel, signal);
+
+    // ---- v1.234: DESKTOP pop-out player (Document PiP + independent-window fallback) ----
+    // Float the player into a small window showing the picked skin. It is a SECOND skin
+    // surface: the same bindSkinSurface proxy + paintSkin render + reflectAllSkins updates,
+    // so the audio engine is untouched (player.js byte-unchanged). Desktop-only: the button
+    // shows only where the pop-out is supported AND the viewport is NOT the narrow one that
+    // already gets the in-tab skin - a coherent split (narrow -> in-tab skin; wide desktop
+    // -> pop-out). Window size ~380px so the < 768px skin media query engages and every skin
+    // renders at its phone layout with no re-styling. Pointer events => the click wheel
+    // spins with a MOUSE click-drag here.
+    var POPOUT_W = 380, POPOUT_H = 700;
+    var pipWin = null, pipPanel = null, pipAbort = null;
+    function popoutSupported() {
+      try { if (SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()) return false; } catch (_) { /* treat as desktop */ }
+      return !!(typeof window !== 'undefined' && (window.documentPictureInPicture || typeof window.open === 'function'));
+    }
+    // the current music track's queue index (buildSkinCtx's ci), or -1.
+    function currentSkinIndex() {
+      var p = window.FileTube && window.FileTube.player;
+      var curId = (p && p.currentId) || null;
+      if (!curId) return -1;
+      for (var k = 0; k < queue.length; k++) { if (queue[k].id === curId) return k; }
+      return -1;
+    }
+    // Is a MUSIC track the current one? (gate SUGGESTION: the button gates on THIS, not queue
+    // membership - the queue is [] while browsing the album/artist grids with a track docked,
+    // and that browsing state is exactly when a floating player is most useful.)
+    function hasCurrentMusicTrack() {
+      var p = window.FileTube && window.FileTube.player;
+      if (!p || !p.currentId) return false;
+      try { var m = typeof p.getCurrentMeta === 'function' ? p.getCurrentMeta() : null; return !!(m && m.isMusic); } catch (_) { return true; }
+    }
+    function copyPopoutStyles(doc) {
+      // link every same-origin stylesheet + copy inline <style> blocks so the skin is styled.
+      var links = document.querySelectorAll('link[rel="stylesheet"]');
+      for (var i = 0; i < links.length; i++) {
+        var l = doc.createElement('link'); l.rel = 'stylesheet'; l.href = links[i].href; doc.head.appendChild(l);
+      }
+      var styles = document.querySelectorAll('style');
+      for (var j = 0; j < styles.length; j++) {
+        var s = doc.createElement('style'); s.textContent = styles[j].textContent; doc.head.appendChild(s);
+      }
+    }
+    function mountPopout(win) {
+      if (!win) return;
+      // Gate finding (both seats): requestWindow() is async, so between the click and the
+      // grant the view can be DESTROYED (controller.abort()) OR the viewport can shrink into
+      // the narrow (in-tab-skin) range. Either way mounting now is wrong - a destroyed closure
+      // leaks a frozen, uncloseable always-on-top window (the "pre-await guard is not a
+      // post-await guard" TOCTOU class, v1.104/v1.105), and a narrow viewport puts BOTH skin
+      // surfaces live (shared wheel-state corruption). mountPopout is the single async funnel,
+      // so re-check BOTH here and close the just-granted window if either holds. This is what
+      // makes "never both live" (the reflect/wheel comments) an actual invariant.
+      if (signal.aborted || !popoutSupported()) { try { win.close(); } catch (_) { /* ignore */ } return; }
+      pipWin = win;
+      var doc = win.document;
+      try { copyPopoutStyles(doc); doc.title = 'FileTube'; } catch (_) { /* best effort */ }
+      var panel = doc.createElement('div');
+      panel.id = 'music-nowplaying-panel'; // same id the skin CSS/JS expect
+      panel.className = 'music-nowplaying-panel';
+      try { doc.body.classList.add('mms-on'); doc.body.appendChild(panel); } catch (_) { teardownPopout(); return; }
+      pipPanel = panel;
+      pipAbort = new AbortController();
+      bindSkinSurface(panel, pipAbort.signal); // registers the surface for reflectAllSkins
+      ensureSkinReflect(); // arm the media-element -> reflectAllSkins listeners (the in-tab render, which normally arms them, is skipped on desktop)
+      paintSkin(panel, (SKINS && SKINS.activeSkinId()) || 'apple', currentSkinIndex());
+      // the pop-out closing (user, or the tab navigating away) tears the surface down.
+      var onClose = function () { teardownPopout(); };
+      try { win.addEventListener('pagehide', onClose); win.addEventListener('unload', onClose); } catch (_) { /* ignore */ }
+      updatePopoutBtn();
+    }
+    function openPopout() {
+      if (!popoutSupported()) return; // gate finding: re-check at CLICK time, not just button visibility - a wide->narrow resize must not leave an openable button
+      if (pipWin) { try { pipWin.focus(); } catch (_) { /* ignore */ } return; }
+      // Document PiP (Chrome/Edge desktop) = always-on-top; else a plain independent window.
+      if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
+        try {
+          window.documentPictureInPicture.requestWindow({ width: POPOUT_W, height: POPOUT_H })
+            .then(function (w) { mountPopout(w); })
+            .catch(function () { openPlainPopout(); });
+          return;
+        } catch (_) { /* fall through to the plain window */ }
+      }
+      openPlainPopout();
+    }
+    function openPlainPopout() {
+      var w = null;
+      try {
+        w = window.open('', 'ft-music-pip', 'width=' + POPOUT_W + ',height=' + POPOUT_H + ',menubar=no,toolbar=no,location=no,status=no');
+      } catch (_) { w = null; }
+      if (!w) return; // popup blocked - nothing we can do without a gesture
+      try { w.document.body.innerHTML = ''; } catch (_) { /* cross-origin? never, same-origin blank */ }
+      mountPopout(w);
+    }
+    function teardownPopout() {
+      if (pipAbort) { try { pipAbort.abort(); } catch (_) { /* ignore */ } pipAbort = null; }
+      if (pipPanel) { var idx = skinSurfaces.indexOf(pipPanel); if (idx >= 0) skinSurfaces.splice(idx, 1); pipPanel = null; }
+      if (pipWin) { try { if (pipWin.close && !pipWin.closed) pipWin.close(); } catch (_) { /* ignore */ } pipWin = null; }
+      updatePopoutBtn();
+    }
+    function togglePopout() {
+      if (pipWin) { teardownPopout(); return; } // close -> its pagehide also calls teardown (idempotent)
+      openPopout();
+    }
+    // Re-render the OPEN pop-out to the current track/skin (called from updateNowPlayingPanel,
+    // which every track change routes through via playAt). Progress/play-state stay live via
+    // reflectAllSkins; this handles the parts that need a repaint (title/art/list/skin).
+    function repaintPopout() {
+      if (!pipPanel || !pipPanel.isConnected) return;
+      var ci = currentSkinIndex();
+      if (ci < 0) return; // nothing playing - leave the last frame up
+      paintSkin(pipPanel, (SKINS && SKINS.activeSkinId()) || 'apple', ci);
+    }
+    // Button: shown only on desktop-supported viewports while a music track is current
+    // (expanded OR docked - popping out is most useful while browsing). Mirrors the theatre
+    // button's lockstep hide, but its own support gate (not CSS).
+    function updatePopoutBtn() {
+      if (!popoutBtn) return;
+      popoutBtn.hidden = !(popoutSupported() && hasCurrentMusicTrack());
+      popoutBtn.setAttribute('aria-pressed', pipWin ? 'true' : 'false');
+    }
+    if (popoutBtn) popoutBtn.addEventListener('click', togglePopout, { signal });
+    // Gate finding (both seats): the ONLY thing keeping the in-tab and pop-out skins from
+    // being live at once is the viewport split, and nothing re-checked it on a RESIZE - so a
+    // wide->narrow shrink with the pop-out open left the button visible AND let the in-tab
+    // skin activate too, both sharing the wheel state. ENFORCE the split on resize: refresh
+    // the button, and if the viewport crossed into the narrow (in-tab-skin) range, close the
+    // pop-out. This makes "never both live" (the reflect/wheel comments) an actual invariant.
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('resize', function () {
+        var narrow = false;
+        try { narrow = !!(SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()); } catch (_) { /* desktop */ }
+        if (narrow && pipWin) teardownPopout(); // -> in-tab skin owns the surface; teardown is idempotent with the pagehide arm
+        else updatePopoutBtn();
       }, { signal });
     }
+    activePopoutTeardown = teardownPopout; // destroy() closes the pop-out on a cross-view swap
+
     // Tapping the line drills into the playing track's album.
     if (nowPlayingEl) {
       nowPlayingEl.addEventListener('click', function () {
@@ -1986,6 +2173,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // skin's `#player-slot { height:0 }` takeover would otherwise collapse the
     // NEXT view's player (watch/podcasts/read share #player-slot) on a phone.
     try { if (typeof document !== 'undefined' && document.body) document.body.classList.remove('mms-on'); } catch (_) { /* no document */ }
+    // v1.234: close any floating pop-out player - its listeners live on the pop-out's own
+    // AbortController (not the view signal that controller.abort() just cleared), and its
+    // proxy targets this now-dead view closure, so it must not outlive the view.
+    if (activePopoutTeardown) { try { activePopoutTeardown(); } catch (_) { /* ignore */ } activePopoutTeardown = null; }
     // v1.44.2: never leak the drill-collapse observer across the #view-root swap.
     disconnectStickyObserver();
     // v1.217: drop the torn-down init's pop handler so a stray popstate after

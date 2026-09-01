@@ -18,7 +18,7 @@ const skinsPath = require.resolve('../../public/js/music-skins.js');
 const VIEW_HTML = `<body><div id="view-root" data-view="music">
   <div class="music-toolbar"><div class="music-toolbar-actions">
     <select id="music-sort-select"></select><button id="music-view-toggle" hidden></button>
-    <button id="music-theater-btn" hidden></button><button id="music-shuffle-btn"></button><button id="music-scan-btn"></button>
+    <button id="music-theater-btn" hidden></button><button id="music-popout-btn" hidden></button><button id="music-shuffle-btn"></button><button id="music-scan-btn"></button>
   </div></div>
   <div id="music-stage">
     <div id="player-slot">
@@ -395,5 +395,202 @@ test('v1.233 iPod: a press on the dead-center (Select) never starts a spin; the 
     [-45, 0, 45, 90].forEach((deg) => { const q = at(100, 100, deg, 90); wheel.dispatchEvent(ptr(dom, 'pointermove', q.x, q.y, 2)); });
     assert.ok(cursorIdx(p) > 0, 'a press on the wheel ring DOES scroll');
     wheel.dispatchEvent(ptr(dom, 'pointerup', 0, 0, 2));
+  } });
+});
+
+// ---- v1.234: DESKTOP pop-out player (Document PiP + independent-window fallback) --------
+// The pop-out is a SECOND skin surface rendered into a separate window/document. jsdom has
+// no real Document PiP, so we stub documentPictureInPicture.requestWindow / window.open to
+// return a fresh JSDOM window and assert the manager mounts the skin, proxies back to the
+// MAIN controls, reflects live, and tears down. The pop-out button is desktop-only, so these
+// boot with mobile:false; we click the (harmlessly hidden - empty test queue) button directly.
+function makePipWindow() {
+  const d = new JSDOM('<!doctype html><html><head></head><body></body></html>', { url: 'http://localhost/music' });
+  const w = d.window;
+  w.closed = false;
+  w._closeCalls = 0;
+  const orig = typeof w.close === 'function' ? w.close.bind(w) : function () {};
+  w.close = function () { w._closeCalls += 1; w.closed = true; try { orig(); } catch (_) { /* jsdom */ } };
+  return w;
+}
+const pipPanelOf = (w) => w.document.getElementById('music-nowplaying-panel');
+const clickPopout = (dom) => dom.window.document.getElementById('music-popout-btn').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+
+test('v1.234 desktop: Document PiP renders the PICKED skin into the pop-out window', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const pip = makePipWindow();
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    const panel = pipPanelOf(pip);
+    assert.ok(panel, 'a skin panel is mounted in the pop-out document');
+    assert.match(panel.className, /\bmms-full\b/, 'it is the full skin');
+    assert.match(panel.className, /\bmms-ipod\b/, 'it HONORS the picked skin (iPod)');
+    assert.ok(pip.document.body.classList.contains('mms-on'), 'the pop-out body carries mms-on');
+  } });
+});
+
+test('v1.234 desktop: window.open FALLBACK when Document PiP is unavailable', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'spotify', run: async (dom) => {
+    const pip = makePipWindow();
+    delete dom.window.documentPictureInPicture;
+    dom.window.open = () => pip;
+    clickPopout(dom); await settle(); await settle();
+    const panel = pipPanelOf(pip);
+    assert.ok(panel, 'mounts into the plain independent window');
+    assert.match(panel.className, /\bmms-spotify\b/, 'honors the picked skin (Nordic/spotify) in the fallback too');
+  } });
+});
+
+test('v1.234: the pop-out gets the app stylesheet(s) linked (skin is styled, not naked)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const link = dom.window.document.createElement('link'); link.rel = 'stylesheet'; link.href = '/css/style.css';
+    dom.window.document.head.appendChild(link);
+    const pip = makePipWindow();
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    const links = pip.document.querySelectorAll('link[rel="stylesheet"]');
+    assert.ok(links.length >= 1, 'a stylesheet link is injected into the pop-out');
+    assert.ok(Array.prototype.some.call(links, (l) => /style\.css/.test(l.href)), 'the app stylesheet is the one linked');
+  } });
+});
+
+test('v1.234: a pop-out transport click PROXIES to the MAIN document controls (reachability, not a dead handler)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'apple', run: async (dom, spy) => {
+    const pip = makePipWindow();
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    const play = pipPanelOf(pip).querySelector('[data-skin-play]');
+    assert.ok(play, 'the pop-out skin has a play control');
+    play.dispatchEvent(new pip.MouseEvent('click', { bubbles: true })); // an event from the POP-OUT realm
+    assert.strictEqual(spy.pp, 1, 'the pop-out play reaches the MAIN #pp-btn (engine untouched)');
+  } });
+});
+
+test('v1.234: the live element REFLECTS into the open pop-out (fill resets on a track swap)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'apple', run: async (dom) => {
+    const pip = makePipWindow();
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    const fill = pipPanelOf(pip).querySelector('.mms-fill');
+    assert.ok(fill, 'the pop-out skin has a scrubber fill');
+    fill.style.width = '52%'; // simulate a stale position
+    dom.window.document.getElementById('media-player').dispatchEvent(new dom.window.Event('loadstart', { bubbles: true }));
+    assert.strictEqual(fill.style.width, '0%', 'a media event on the MAIN element reflects into the POP-OUT surface');
+  } });
+});
+
+test('v1.234: closing the pop-out DROPS the surface (reflect stops touching it) - no dead-document query', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'apple', run: async (dom) => {
+    const pip = makePipWindow();
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    const mp = dom.window.document.getElementById('media-player');
+    const fill = pipPanelOf(pip).querySelector('.mms-fill');
+    // live before close: a reflect resets it
+    fill.style.width = '52%'; mp.dispatchEvent(new dom.window.Event('loadstart', { bubbles: true }));
+    assert.strictEqual(fill.style.width, '0%', 'reflected while open');
+    // close the pop-out (the window's pagehide fires the teardown)
+    pip.dispatchEvent(new pip.Event('pagehide'));
+    // after close, a reflect must NOT touch the dropped surface
+    fill.style.width = '77%'; mp.dispatchEvent(new dom.window.Event('loadstart', { bubbles: true }));
+    assert.strictEqual(fill.style.width, '77%', 'a CLOSED pop-out is no longer reflected (surface dropped)');
+  } });
+});
+
+test('v1.234: destroy() (cross-view swap) CLOSES the pop-out window (it must not outlive the view)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'apple', run: async (dom, spy, mod) => {
+    const pip = makePipWindow();
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    assert.ok(!pip.closed, 'open before destroy');
+    mod.destroy();
+    assert.ok(pip._closeCalls >= 1 && pip.closed, 'the pop-out window is closed on view destroy');
+  } });
+});
+
+test('v1.234: the pop-out button is HIDDEN on mobile (the in-tab full-screen skin is used instead)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
+    assert.ok(dom.window.document.getElementById('music-popout-btn').hidden, 'no pop-out button on a mobile viewport');
+  } });
+});
+
+// ---- v1.234 gate fix-round binds -------------------------------------------------------
+test('v1.234: on desktop with a music track current, the pop-out button IS shown (gate S3: gates on the track, not the queue)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    // the harness queue is empty (browsing-grid shape), but a music track is current -
+    // the button must still show (popping out is most useful while browsing).
+    assert.strictEqual(dom.window.document.getElementById('music-popout-btn').hidden, false, 'button shown on desktop with a current music track even when the queue is empty');
+  } });
+});
+
+test('v1.234: a wide->narrow resize TEARS DOWN an open pop-out and hides the button (enforces never-both-live)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const pip = makePipWindow();
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    assert.ok(!pip.closed, 'pop-out open on the wide viewport');
+    // now the window becomes narrow (mobile breakpoint) - the in-tab skin would take over
+    dom.window.matchMedia = (q) => ({ matches: /max-width:\s*768px/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    assert.ok(pip._closeCalls >= 1 && pip.closed, 'the pop-out is closed when the viewport crosses into narrow');
+    assert.ok(dom.window.document.getElementById('music-popout-btn').hidden, 'the button hides on the narrow viewport');
+  } });
+});
+
+test('v1.234: a Document-PiP grant that resolves AFTER destroy() is closed, never mounted (async TOCTOU)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom, spy, mod) => {
+    const pip = makePipWindow();
+    let resolveWin = null;
+    dom.window.documentPictureInPicture = { requestWindow: () => new Promise((r) => { resolveWin = r; }) };
+    clickPopout(dom); await settle(); // requestWindow pending
+    mod.destroy();                    // view torn down while the grant is in flight (signal aborts)
+    resolveWin(pip);                  // the window is granted AFTER destroy
+    await settle(); await settle();
+    // the abort guard closes the late-granted window and returns BEFORE mounting - the mount
+    // path never calls close(), so `closed` here proves it was aborted, not mounted+frozen.
+    assert.ok(pip._closeCalls >= 1 && pip.closed, 'the late-granted pop-out is closed, not left frozen/open (never mounted)');
+  } });
+});
+
+test('v1.234: a double pagehide (close then re-entrant teardown) is idempotent - no throw, no double close', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const pip = makePipWindow();
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    pip.dispatchEvent(new pip.Event('pagehide'));
+    pip.dispatchEvent(new pip.Event('pagehide')); // must be a clean no-op (state already nulled)
+    assert.strictEqual(pip._closeCalls, 1, 'the window is closed exactly once across re-entrant teardowns');
+  } });
+});
+
+test('v1.234: teardown explicitly DROPS the surface from the reflect set (splice bound, not just the isConnected backstop)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'apple', run: async (dom) => {
+    const pip = makePipWindow();
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    const panel = pipPanelOf(pip);
+    const mp = dom.window.document.getElementById('media-player');
+    pip.dispatchEvent(new pip.Event('pagehide')); // teardown: splice + close
+    // keep the panel CONNECTED (adopt into the main doc) so the isConnected backstop can't be
+    // what drops it - only the explicit splice can. If the splice were gone, reflect would run.
+    dom.window.document.body.appendChild(panel);
+    assert.ok(panel.isConnected, 'panel kept connected for the test');
+    panel.querySelector('.mms-fill').style.width = '77%';
+    mp.dispatchEvent(new dom.window.Event('loadstart', { bubbles: true }));
+    assert.strictEqual(panel.querySelector('.mms-fill').style.width, '77%', 'a torn-down surface is not reflected even while connected (explicit splice bound)');
+  } });
+});
+
+test('v1.234: a Document-PiP grant that resolves after a wide->narrow resize is closed, not mounted (both-live async seal)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const pip = makePipWindow();
+    let resolveWin = null;
+    dom.window.documentPictureInPicture = { requestWindow: () => new Promise((r) => { resolveWin = r; }) };
+    clickPopout(dom); await settle();                 // grant pending, pipWin still null
+    // window shrinks below 768px DURING the grant - the resize can't teardown (pipWin null)
+    dom.window.matchMedia = (q) => ({ matches: /max-width:\s*768px/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    resolveWin(pip); await settle(); await settle();  // grant resolves onto the now-narrow viewport
+    assert.ok(pip._closeCalls >= 1 && pip.closed, 'mountPopout re-gates on popoutSupported() and closes the late grant on a narrow viewport (never both live)');
   } });
 });

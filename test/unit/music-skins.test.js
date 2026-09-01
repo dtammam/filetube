@@ -137,15 +137,15 @@ test('v1.232.5/v1.233: opening the iPod list seeds the cursor on the CURRENT son
   // scrollIntoView -> that would scroll the page behind the fixed skin).
   const fs = require('node:fs'); const path = require('node:path');
   const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
-  const lm = /function setIpodListMode\(on\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  const lm = /function setIpodListMode\(panel, on\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(lm, 'setIpodListMode exists');
   const lmBody = lm[1];
   assert.match(lmBody, /\.ip-listview/, 'reads the list container');
   assert.match(lmBody, /is-current/, 'seeds the cursor from the CURRENT row');
-  assert.match(lmBody, /setWheelCursor\([^,]+,\s*true\)/, 'centers the seeded cursor on open (setWheelCursor(..., true))');
+  assert.match(lmBody, /setWheelCursor\(panel,\s*[^,]+,\s*true\)/, 'centers the seeded cursor on open (setWheelCursor(panel, ..., true))');
   assert.match(lmBody, /is-cursor[\s\S]*remove|remove[\s\S]*is-cursor/, 'clears the cursor highlight on close');
 
-  const wc = /function setWheelCursor\(pos, center\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  const wc = /function setWheelCursor\(panel, pos, center\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(wc, 'setWheelCursor exists');
   const wcBody = wc[1];
   assert.match(wcBody, /\.ip-listview/, 'scrolls the list container');
@@ -232,7 +232,7 @@ function wheelHandlerSrc() {
   const fs = require('node:fs'); const path = require('node:path');
   const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
   // from the pointerdown registration through the end of the gesture block.
-  const m = /addEventListener\('pointerdown', function \(e\) \{([\s\S]*?)\n {6}\}, \{ signal \}\);/.exec(js);
+  const m = /addEventListener\('pointerdown', function \(e\) \{([\s\S]*?)\n {6}\}, \{ signal: sig \}\);/.exec(js);
   assert.ok(m, 'the wheel pointerdown handler exists');
   return { js, body: m[1] };
 }
@@ -273,14 +273,15 @@ test('v1.233: every gesture end arm REMOVES the move/up/cancel listeners + relea
   assert.match(body, /addEventListener\('pointercancel', st\.onUp\)/, 'pointercancel also ends the gesture (no leak on an interrupted spin)');
 });
 
-test('v1.233: a re-render (track auto-advance) drops any mid-gesture wheelSpin (QA leak guard)', () => {
+test('v1.233/v1.234: a re-render (track auto-advance) drops any mid-gesture wheelSpin (QA leak guard)', () => {
   // If the panel re-renders while a finger is down but before capture, the detached wheel's
   // pointerup never reaches endWheel; without this reset wheelSpin sticks and every later
-  // spin bails on "one gesture at a time". renderNowPlayingSkin nulls it on every render.
+  // spin bails on "one gesture at a time". paintSkin (the shared render for BOTH the in-tab
+  // and the desktop pop-out surface, v1.234) nulls it on every render.
   const fs = require('node:fs'); const path = require('node:path');
   const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
-  const m = /function renderNowPlayingSkin\(ci\) \{([\s\S]*?)\n {4}\}/.exec(js);
-  assert.ok(m, 'renderNowPlayingSkin exists');
+  const m = /function paintSkin\(panel, id, ci\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.ok(m, 'paintSkin exists');
   assert.match(m[1], /wheelSpin = null/, 'a render clears any stale mid-gesture state');
 });
 
@@ -300,7 +301,7 @@ test('v1.233: a fast flick ACCELERATES (songs-per-step scales with angular speed
   const { body } = wheelHandlerSrc();
   assert.match(body, /var speed = Math\.abs\(d\) \/ dt/, 'computes angular speed (deg/ms)');
   assert.match(body, /var mult = speed > [\d.]+ \? \d/, 'a speed-scaled multiplier (fast flick jumps several songs)');
-  assert.match(body, /setWheelCursor\(wheelCursorRow \+ sign \* mult/, 'the multiplier drives how many songs the cursor jumps');
+  assert.match(body, /setWheelCursor\(panel, wheelCursorRow \+ sign \* mult/, 'the multiplier drives how many songs the cursor jumps');
 });
 
 test('v1.233: the spin is LIST-ONLY and ignores the dead-center Select button (Dean spec)', () => {
@@ -317,8 +318,8 @@ test('v1.233: center-select in the list PLAYS the cursor row (not the current), 
   const b = m[1];
   assert.match(b, /mms-listmode/, 'branches on list vs Now Playing');
   assert.match(b, /is-cursor[\s\S]*data-skin-go/, 'in the list it reads the CURSOR row (is-cursor) and its queue index');
-  assert.match(b, /setIpodListMode\(false\)[\s\S]*playAt/, 'closes the list then plays that song');
-  assert.match(b, /setIpodListMode\(true\)/, 'from Now Playing it opens the list');
+  assert.match(b, /setIpodListMode\(panel, false\)[\s\S]*playAt/, 'closes the list then plays that song');
+  assert.match(b, /setIpodListMode\(panel, true\)/, 'from Now Playing it opens the list');
 });
 
 test('v1.233: the wheel CURSOR bar is a distinct highlight - is-cursor gets the blue bar, is-current keeps only its ▶ marker', () => {
