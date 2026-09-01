@@ -46,8 +46,10 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
     // the marquee measurement path (the real scroll is device-verified). smallOverflow
     // gives a 24px overrun (raw dur 1.0s) to bind the 4s constant-speed floor.
     const scroll = smallOverflow ? 124 : 300;
-    Object.defineProperty(dom.window.Element.prototype, 'scrollWidth', { configurable: true, get() { return this.classList && this.classList.contains('ip-ttl') ? scroll : 0; } });
-    Object.defineProperty(dom.window.Element.prototype, 'clientWidth', { configurable: true, get() { return this.classList && this.classList.contains('ip-ttl') ? 100 : 0; } });
+    // any skin's title line: iPod .ip-ttl, Apple/Spotify .mms-ttl (v1.232.1 marquee-all).
+    const isTitle = (el) => el.classList && (el.classList.contains('ip-ttl') || el.classList.contains('mms-ttl'));
+    Object.defineProperty(dom.window.Element.prototype, 'scrollWidth', { configurable: true, get() { return isTitle(this) ? scroll : 0; } });
+    Object.defineProperty(dom.window.Element.prototype, 'clientWidth', { configurable: true, get() { return isTitle(this) ? 100 : 0; } });
   }
   const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController, requestAnimationFrame: global.requestAnimationFrame, Event: global.Event };
   global.window = dom.window; global.document = dom.window.document;
@@ -195,6 +197,15 @@ test('v1.232 iPod: a SMALL overflow floors the marquee duration at 4s (constant 
     assert.ok(ttl.classList.contains('mms-mq-on'), 'still marquees a small overflow');
     // over=24px -> raw 24/24=1.0s -> Math.max(4, 1.0) = 4.0s (the floor).
     assert.strictEqual(ttl.style.getPropertyValue('--mms-mq-dur'), '4.0s', 'duration floored at 4s');
+  } });
+});
+
+test('v1.232.1: the marquee also applies to Apple/Spotify titles (.mms-ttl), not just iPod', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'apple', mockOverflow: true, run: async (dom) => {
+    const ttl = panel(dom).querySelector('.mms-ttl');
+    assert.ok(ttl, 'the Apple skin has a .mms-ttl');
+    assert.ok(ttl.classList.contains('mms-mq-on'), 'an overflowing Apple title marquees too');
+    assert.ok(ttl.querySelector('.mms-mq'), 'text wrapped in a marquee span');
   } });
 });
 

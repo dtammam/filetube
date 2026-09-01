@@ -142,8 +142,8 @@ test('v1.70: every fallback-less var() names a token the stylesheet defines (the
   // v1.132: --resume-countdown-duration is set inline by startResumeCountdown
   // (player.js, single-sourced from RESUME_COUNTDOWN_SECONDS) - deliberately
   // never declared in CSS so the timer and the drain can't drift.
-  // v1.232: the iPod title marquee's shift distance + constant-speed duration are set
-  // inline by music.js applyIpodMarquee (measured per track), never declared in CSS.
+  // v1.232: the skin title marquee's shift distance + constant-speed duration are set
+  // inline by music.js applySkinMarquee (all skins, measured per track), never in CSS.
   const jsSet = new Set(['--history-pct', '--media-aspect', '--music-sticky-top', '--ptr-pull', '--resume-countdown-duration', '--seek-fill', '--vol-fill', '--mms-mq-shift', '--mms-mq-dur']);
   const missing = new Set();
   // Usages: allow the whitespace shapes ordinary wrapped formatting produces

@@ -31,6 +31,26 @@ test('registry exposes the four skins with render funcs (incl. the v1.232 black 
   // also carries the shared .mms-ipod CSS class (music.js reads it).
   assert.strictEqual(skins.skinById('ipod-black').base, 'ipod', 'black iPod bases on the silver iPod CSS');
   assert.strictEqual(skins.skinById('ipod-black').renderFull, skins.skinById('ipod').renderFull, 'same render, different palette');
+  // v1.232.1 (Dean): the labels are CHEEKY riffs, deliberately NOT the real product /
+  // company names (the IDS stay literal for CSS/storage).
+  const labels = skins.IDS.map((id) => skins.skinById(id).label);
+  assert.deepStrictEqual(labels, ['Cider', 'Nordic', 'Pocket Classic', 'Pocket Classic (Black)']);
+  for (const l of labels) {
+    assert.ok(!/apple|spotify|ipod/i.test(l), 'label "' + l + '" avoids the real product/company names');
+  }
+});
+
+test('v1.232.1: the iPod LCD is height-capped so a long song list scrolls INSIDE it (not out of bounds)', () => {
+  // Device bug (Dean): pressing Select opened the list and the LCD grew past its 4:3
+  // box. A flex item's default min-height:auto lets tall content force growth; the cap
+  // is min-height:0 + overflow:hidden on .ip-lcd (the list scrolls in .ip-listview).
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const m = /\.mms-ipod \.ip-lcd\{([^}]*)\}/.exec(css);
+  assert.ok(m, 'the .ip-lcd rule exists');
+  assert.match(m[1], /min-height:\s*0/, 'min-height:0 caps the flex item at its 4:3 aspect');
+  assert.match(m[1], /overflow:\s*hidden/, 'overflow:hidden clips at the LCD box');
+  assert.match(m[1], /contain:\s*size/, 'contain:size -> content can NEVER resize the LCD (Dean: never resize)');
 });
 
 test('the per-device setting round-trips and normalizes junk to the default', () => {
@@ -123,7 +143,7 @@ test('v1.229: NO in-player skin switcher - picking lives in the account menu now
   // The registry the Settings picker reads is still exported.
   assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black']);
   assert.strictEqual(typeof skins.setActiveSkin, 'function');
-  assert.strictEqual(skins.skinById('ipod').label, 'iPod', 'labels for the menu chips');
+  assert.strictEqual(skins.skinById('ipod').label, 'Pocket Classic', 'cheeky label (not the real product name) for the picker');
 });
 
 test('the pause glyph shows only when playing; play glyph when paused', () => {

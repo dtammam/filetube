@@ -48,6 +48,15 @@ test('setup.js: renderMusicSkinPicker builds cards from FileTubeMusicSkins and p
   assert.match(body, /\{ signal: controller\.signal \}/, 'the click listener is torn down with the view');
 });
 
+test('v1.232.1: the skin blurbs avoid the real product names (Dean: cheeky, not the companies)', () => {
+  const m = /const MUSIC_SKIN_BLURB = \{([\s\S]*?)\n\};/.exec(SETUP_JS);
+  assert.ok(m, 'the MUSIC_SKIN_BLURB map exists');
+  // the VALUES (quoted descriptions), not the id keys (which are literally apple/spotify/ipod).
+  const values = [...m[1].matchAll(/:\s*'([^']*)'/g)].map((x) => x[1]);
+  assert.strictEqual(values.length, 4, 'one blurb per skin');
+  for (const v of values) assert.ok(!/apple|spotify|ipod/i.test(v), 'blurb avoids the real product name: "' + v + '"');
+});
+
 test('setup.js: renderMusicSkinPicker is CALLED in init (beside renderIconPicker) - not dead code', () => {
   assert.match(SETUP_JS, /renderIconPicker\(\);\s*\n\s*renderMusicSkinPicker\(\);/,
     'init calls renderMusicSkinPicker right after renderIconPicker');
