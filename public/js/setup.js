@@ -579,7 +579,7 @@ function writeStickerPref(obj) {
 // kind change preserves size/tilt (JSON drops any explicit `undefined`). Mirrors music.js's
 // ft-sticker shape {kind,value?,v?,size?,tilt?}.
 function mergeStickerPref(patch) { writeStickerPref(Object.assign({}, readStickerPref(), patch)); }
-const STICKER_SIZES = [['default', 'Default'], ['2x', '2×'], ['3x', '3×'], ['5x', '5×']];
+const STICKER_SIZES = [['default', 'Default'], ['2x', '2×'], ['3x', '3×']]; // v1.243: 5x removed (overlapped the wheel)
 const STICKER_TILTS = [['straight', 'Straight'], ['left', 'Left'], ['right', 'Right']];
 function escStickerHtml(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

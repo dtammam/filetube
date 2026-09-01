@@ -68,7 +68,8 @@ test('setup.js: renderStickerPicker is CALLED in init (beside renderMusicSkinPic
 });
 
 test('v1.241: the Size + Tilt pickers exist, MERGE (preserve other fields), and offer the right options', () => {
-  assert.match(SETUP_JS, /const STICKER_SIZES = \[\['default'[\s\S]*?\['5x'/, 'the size options include default..5x');
+  assert.match(SETUP_JS, /const STICKER_SIZES = \[\['default'[\s\S]*?\['3x'/, 'the size options are default/2x/3x');
+  assert.doesNotMatch(SETUP_JS, /\['5x'/, 'v1.243: 5x size removed (overlapped the wheel)');
   assert.match(SETUP_JS, /const STICKER_TILTS = \[\['straight'[\s\S]*?\['right'/, 'the tilt options straight/left/right');
   assert.match(SETUP_JS, /function mergeStickerPref\(patch\) \{ writeStickerPref\(Object\.assign\(\{\}, readStickerPref\(\), patch\)\)/, 'mergeStickerPref keeps existing fields (size/tilt survive a kind change and vice-versa)');
   assert.match(SETUP_JS, /data-sticker-size=/, 'renders size chips');

@@ -257,7 +257,8 @@ test('v1.241 source-lock (CSS): size classes scale via --mms-sticker-px; tilt cl
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
   assert.match(css, /\.mms-sticker\{[^}]*--mms-sticker-px:52px/, 'base size var is 52px (bumped from 44)');
   assert.match(css, /\.mms-sticker-sz-2x\{[^}]*--mms-sticker-px:104px/, '2x doubles the size var');
-  assert.match(css, /\.mms-sticker-sz-5x\{[^}]*--mms-sticker-px:260px/, '5x = 5 x base');
+  assert.match(css, /\.mms-sticker-sz-3x\{[^}]*--mms-sticker-px:156px/, '3x = 3 x base');
+  assert.doesNotMatch(css, /\.mms-sticker-sz-5x/, 'v1.243: 5x removed (overlapped the wheel)');
   assert.match(css, /\.mms-sticker-tilt-straight\{[^}]*transform:rotate\(0deg\)/, 'straight = no rotation');
   assert.match(css, /\.mms-sticker-tilt-left\{[^}]*transform:rotate\(-14deg\)/, 'left tilt');
   assert.match(css, /\.mms-sticker-tilt-right\{[^}]*transform:rotate\(14deg\)/, 'right tilt');
