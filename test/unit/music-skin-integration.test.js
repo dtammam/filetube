@@ -39,12 +39,14 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
 
 const settle = () => new Promise((r) => setImmediate(r));
 
-async function boot({ mobile, isMusic, run, skin, mockOverflow, reducedMotion }) {
+async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion }) {
   const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music' });
   if (mockOverflow) {
     // jsdom has no layout (scrollWidth=0), so fake an overflowing .ip-ttl to exercise
-    // the marquee measurement path (the real scroll is device-verified).
-    Object.defineProperty(dom.window.Element.prototype, 'scrollWidth', { configurable: true, get() { return this.classList && this.classList.contains('ip-ttl') ? 300 : 0; } });
+    // the marquee measurement path (the real scroll is device-verified). smallOverflow
+    // gives a 24px overrun (raw dur 1.0s) to bind the 4s constant-speed floor.
+    const scroll = smallOverflow ? 124 : 300;
+    Object.defineProperty(dom.window.Element.prototype, 'scrollWidth', { configurable: true, get() { return this.classList && this.classList.contains('ip-ttl') ? scroll : 0; } });
     Object.defineProperty(dom.window.Element.prototype, 'clientWidth', { configurable: true, get() { return this.classList && this.classList.contains('ip-ttl') ? 100 : 0; } });
   }
   const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController, requestAnimationFrame: global.requestAnimationFrame, Event: global.Event };
@@ -184,6 +186,15 @@ test('v1.232 iPod: a long title MARQUEES - wraps in .mms-mq + sets the shift/dur
     assert.ok(ttl.querySelector('.mms-mq'), 'the text is wrapped in a marquee span');
     assert.match(ttl.style.getPropertyValue('--mms-mq-shift'), /^-\d+px$/, 'shift = the negative overflow px');
     assert.ok(parseFloat(ttl.style.getPropertyValue('--mms-mq-dur')) >= 4, 'a constant-speed duration (>= the 4s floor)');
+  } });
+});
+
+test('v1.232 iPod: a SMALL overflow floors the marquee duration at 4s (constant speed, not a fast twitch)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', mockOverflow: true, smallOverflow: true, run: async (dom) => {
+    const ttl = panel(dom).querySelector('.ip-ttl');
+    assert.ok(ttl.classList.contains('mms-mq-on'), 'still marquees a small overflow');
+    // over=24px -> raw 24/24=1.0s -> Math.max(4, 1.0) = 4.0s (the floor).
+    assert.strictEqual(ttl.style.getPropertyValue('--mms-mq-dur'), '4.0s', 'duration floored at 4s');
   } });
 });
 
