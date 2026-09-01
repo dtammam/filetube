@@ -98,6 +98,12 @@ test('the iPod skin renders the Classic Now Playing (artist/album/N-of-M + wheel
   assert.match(html, /2 of 3/, 'the "N of M" position');
   assert.match(html, /ip-wheel/, 'the click wheel');
   assert.ok(!/mms-knob/.test(html), 'the old chrome knob is gone (display-only scrubber)');
+  // v1.231.1 (Dean): the wheel prev/next/play use SVG line-glyphs, NOT the unicode
+  // skip chars (which iOS renders as blue emoji). Guard against a regression to emoji.
+  const zones = html.slice(html.indexOf('ip-wheel'));
+  assert.match(zones, /data-skin-prev[^>]*><svg/, 'rewind is an SVG glyph');
+  assert.match(zones, /data-skin-next[^>]*><svg/, 'fast-forward is an SVG glyph');
+  assert.ok(!/[⏮⏭]/.test(zones), 'no unicode skip chars (⏮/⏭) that iOS emoji-fies');
 });
 
 test('v1.229: NO in-player skin switcher - picking lives in the account menu now', () => {

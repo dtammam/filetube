@@ -90,6 +90,10 @@ const CONTRACT = {
   '--mms-ipod-blue-hi': '#7fc0ff', '--mms-ipod-blue1': '#3d97f2', '--mms-ipod-blue2': '#1667d6',
   '--mms-ipod-line': 'rgba(60,70,90,.14)',
   '--mms-ipod-wheel1': '#d3d3d2', '--mms-ipod-wheel2': '#c4c4c2', '--mms-ipod-wheel-lbl': '#7c7d80',
+  // v1.231.1 gloss sheen: white-alpha stops for the body + wheel highlights.
+  '--mms-ipod-sheen-a': 'rgba(255,255,255,.5)', '--mms-ipod-sheen-b': 'rgba(255,255,255,.14)',
+  '--mms-ipod-sheen-c': 'rgba(255,255,255,.35)', '--mms-ipod-sheen-d': 'rgba(255,255,255,.6)',
+  '--mms-ipod-sheen-0': 'rgba(255,255,255,0)',
   '--mms-ipod-art-shadow': '0 2px 5px rgba(0,0,0,.3)',
   '--mms-ipod-lcd-shadow': '0 2px 6px rgba(0,0,0,.35)',
   '--mms-ipod-fill-shadow': 'inset 0 1px 0 rgba(255,255,255,.6)',
@@ -101,7 +105,7 @@ const CONTRACT = {
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 114, 'the 60-name contract (see history) + the 54 --mms-* mobile-music-skin tokens: after v1.231 replaced the iPod palette wholesale (Dean\'s reference photo - warm-white body, LCD Now-Playing screen, gray click wheel, Aqua scrubber) and added the Apple grab handle; Apple/Spotify palettes unchanged. Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
+  assert.equal(Object.keys(CONTRACT).length, 119, 'the 60-name contract (see history) + the 59 --mms-* mobile-music-skin tokens: v1.231 replaced the iPod palette wholesale + Apple grab handle (54), then v1.231.1 added 5 iPod gloss-sheen white-alpha stops. Apple/Spotify palettes unchanged. Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());

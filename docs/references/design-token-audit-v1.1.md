@@ -320,3 +320,17 @@ sizes, blur, transforms) is literal.
   `--mms-ipod-center-shadow`.
 - iPod radius: `--mms-ipod-r-sm` 2px (LCD inner + battery); LCD outer reuses
   `--mms-r-art-ipod` 6px.
+
+## Addendum v1.231.1 (2026-09-01): iPod gloss sheen (+5 --mms tokens -> 59)
+
+Dean's device polish on the v1.231 iPod: the LCD was too tall, the wheel skip-icons
+rendered as blue iOS emoji, and the body/wheel lacked the classic Apple gloss. Fixes:
+the LCD is now a compact ~4:3 screen (not fill); the wheel uses SVG line-glyphs
+(|<< / >>| / >||); and a glossy SHEEN was layered into the body + wheel backgrounds
+(no z-index - the census governs it - so the gloss lives in the `background` stack).
+Five white-alpha stop tokens were added (contract 114 -> 119 = 60 base + 59 `--mms-*`):
+`--mms-ipod-sheen-a` rgba(255,255,255,.5), `--mms-ipod-sheen-b` rgba(255,255,255,.14),
+`--mms-ipod-sheen-c` rgba(255,255,255,.35), `--mms-ipod-sheen-d` rgba(255,255,255,.6),
+and `--mms-ipod-sheen-0` rgba(255,255,255,0) (the shared transparent-white stop -
+used instead of the `transparent` keyword, which is black-transparent and greys a
+white fade). Apple/Spotify unchanged.
