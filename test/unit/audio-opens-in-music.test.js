@@ -104,3 +104,19 @@ test('gate C1/fold: the home-feed chapterCount signal routes a chaptered downloa
   assert.strictEqual(main.musicHrefForItem({ id: 'f1', kind: 'media', type: 'audio', chapterCount: 5 }), '/music?play=' + encodeURIComponent('f1::c0') + '&ao=1');
   assert.strictEqual(main.musicHrefForItem({ id: 'f2', kind: 'media', type: 'audio', chapterCount: 1 }), '/music?play=f2&ao=1', '1 chapter is not an album');
 });
+
+test('the HOME-FEED card (buildFeedCardHtml) reroutes an audio download too (server-fold consumer, not inert)', () => {
+  // audio (media) -> music; escapeBookRowHtml turns &ao=1 into &amp;ao=1 (browser decodes it back).
+  const audio = main.buildFeedCardHtml({ id: 'x1', kind: 'media', type: 'audio', href: '/watch.html?v=x1', thumbnailUrl: '/thumbnail/x1', title: 'Song', subtitle: 'Chan' });
+  assert.match(audio, /href="\/music\?play=x1&amp;ao=1"/, 'a home-feed audio card taps into the music player');
+  // chaptered via the server-fold chapterCount signal -> the album's ::c0 track
+  const chap = main.buildFeedCardHtml({ id: 'x1', kind: 'media', type: 'audio', chapterCount: 3, href: '/watch.html?v=x1', thumbnailUrl: '/thumbnail/x1', title: 'Album', subtitle: 'Chan' });
+  assert.match(chap, /href="\/music\?play=x1%3A%3Ac0&amp;ao=1"/, 'a chaptered home-feed card opens the album (::c0)');
+  // a video keeps the server /watch href; a podcast keeps its own destination (C1 at the feed surface)
+  assert.match(main.buildFeedCardHtml({ id: 'v1', kind: 'media', type: 'video', href: '/watch.html?v=v1', thumbnailUrl: '/thumbnail/v1', title: 'Clip' }), /href="\/watch\.html\?v=v1"/);
+  assert.match(main.buildFeedCardHtml({ id: 'p1', kind: 'podcast', type: 'audio', href: '/podcasts?play=p1', thumbnailUrl: '/podcastart/s1', title: 'Ep' }), /href="\/podcasts\?play=p1"/, 'a podcast in the feed is not hijacked');
+  // flag OFF -> even an audio feed card stays on its server /watch href
+  withLocalStorage({ 'ft-open-audio-in-music': '0' }, () => {
+    assert.match(main.buildFeedCardHtml({ id: 'x1', kind: 'media', type: 'audio', href: '/watch.html?v=x1', thumbnailUrl: '/thumbnail/x1', title: 'Song' }), /href="\/watch\.html\?v=x1"/);
+  });
+});
