@@ -80,6 +80,35 @@
 
 ## Shipped
 
+### v1.233.0 - The iPod click wheel really scrolls (2026-09-01)
+
+Dean's ask after the v1.232 polish arc: "as soon as it's released let's do the wheel
+scroll!!!!!" The iPod skin's click wheel is now a real ROTARY gesture. With the song
+list open, spinning the wheel moves a selection CURSOR song-by-song; the center button
+plays the highlighted song; a fast flick ACCELERATES (jumps several). In Now Playing the
+spin does nothing (list-only, Dean's spec). Tapping a row still plays it, and the wheel's
+tap zones (MENU/prev/next/play) are unchanged. Authentic touch: the blue selection bar
+now follows the cursor (the row you're scrolling to) while the playing track keeps just
+its ▶ marker, so you still see what's playing as you scroll.
+
+Built against this repo's most expensive bug class (the v1.160/v1.163 gesture scars):
+Pointer events, not touch, so there is NO global non-passive listener (the v1.160.1
+scroll-perf scar); listeners are added on pointerdown and torn down on both pointerup and
+pointercancel with capture taken lazily (v1.163); direction is re-evaluated every move,
+never latched (v1.160.3); and the release's stray click is swallowed once by a
+self-clearing flag that never eats a later tap. **player.js byte-unchanged** (the skin
+only proxies to the hidden controls / plays via playAt).
+
+FULL two-reviewer gate (both seats, given the gesture risk): both APPROVED. QA caught a
+rare wheelSpin leak if the panel re-renders mid-gesture (fixed: render-time reset + an
+identity-guarded teardown). Adversarial caught a two-finger jitter (fixed: pointerId
+filter, behaviorally bound) and that the dead-center radius was untested (now bound with a
+real-rect stub); every fix-round mutant went red. Known gap (disclosed, tech-debt #189):
+the acceleration MULTIPLIER VALUES are source-locked only, not behaviorally bound (jsdom's
+synchronous dispatch pins the clock so speed can't be varied) - a wrong value would only
+over/under-shoot and clamp to a valid row. Dual-Node 8009/0 (Node 22 + 24). **Device
+pending** - the feel (sensitivity/accel) is Dean's on-device call to tune.
+
 ### v1.232.5 - iPod list shows the whole album, opens on the current song (2026-09-01)
 
 Dean device: in the iPod list you could only scroll up to earlier songs when the
