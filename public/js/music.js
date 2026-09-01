@@ -607,6 +607,8 @@ if (typeof module !== 'undefined' && module.exports) {
           artUrl: playingId ? ('/albumart/' + encodeURIComponent(playingId)) : '' },
         upNext: up, playing: mp ? !mp.paused : false, posSec: pos, durSec: dur,
         posLabel: mmssMusic(pos), remLabel: dur > 0 ? ('-' + mmssMusic(dur - pos)) : '',
+        // iPod footer "N of M": the current track's 1-based place in the whole queue.
+        curNum: ci + 1, total: queue.length,
       };
     }
     // Reflect the live element into the rendered skin without a full re-render
@@ -623,7 +625,9 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       var dur = (isFinite(mp.duration) && mp.duration > 0) ? mp.duration : 0;
       var pos = Number(mp.currentTime) || 0;
-      var fill = nowPlayingPanel.querySelector('.mms-fill'); if (fill && dur > 0) fill.style.width = Math.min(100, pos / dur * 100) + '%';
+      var frac = dur > 0 ? Math.min(100, pos / dur * 100) : 0;
+      var fill = nowPlayingPanel.querySelector('.mms-fill'); if (fill && dur > 0) fill.style.width = frac + '%';
+      var knob = nowPlayingPanel.querySelector('.mms-knob'); if (knob && dur > 0) knob.style.left = frac + '%'; // iPod scrubber knob
       var pEl = nowPlayingPanel.querySelector('.mms-pos'); if (pEl) pEl.textContent = mmssMusic(pos);
       var rEl = nowPlayingPanel.querySelector('.mms-rem'); if (rEl && dur > 0) rEl.textContent = '-' + mmssMusic(dur - pos);
     }

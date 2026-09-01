@@ -10903,20 +10903,36 @@ html[data-modern="on"] .video-uploader {
    whole takeover is inside @media (max-width:768px) - so desktop can never engage.
    Per-skin palettes live as --mms-* DEFS (census-exempt) and are used via var(). */
 :root{
-  /* bespoke skin palettes + geometry (token DEFS are census-exempt; used via var). */
-  --mms-white:#ffffff; --mms-black:#000000; --mms-track-lt:rgba(255,255,255,.27);
-  --mms-apple-fg:#ffffff; --mms-apple-accent:#fa2b56; --mms-apple-bg:#0c0c10;
-  --mms-sp-fg:#ffffff; --mms-sp-accent:#1db954; --mms-sp-g1:#3a2a5a; --mms-sp-g2:#1b1727; --mms-sp-g3:#0c0c0f;
-  --mms-ipod-fg:#2c2822; --mms-ipod-accent:#3f79c9; --mms-ipod-accent2:#2f6fce; --mms-ipod-warm:#8a6d3b;
-  --mms-ipod-line:rgba(120,95,50,.16); --mms-ipod-g1:#f4efe4; --mms-ipod-g2:#e9e1d2; --mms-ipod-frame:#cbb48f;
-  --mms-ipod-track:#cdbfa4; --mms-ipod-btn1:#fdfdfd; --mms-ipod-btn2:#d7d2c7;
-  --mms-art-shadow:0 20px 46px -16px rgba(0,0,0,.6);
-  --mms-ipod-art-shadow:0 8px 22px -8px rgba(90,70,40,.55); --mms-ipod-play-shadow:0 2px 4px rgba(90,70,40,.4);
-  --mms-r-art:14px; --mms-r-art-ipod:8px; --mms-r-row-ipod:6px;
-  --mms-chev:36px; --mms-play:66px; --mms-play-svg:28px; --mms-skip-svg:34px; --mms-rn-w:18px;
-  --mms-transport-gap:30px; --mms-scrub-mt:18px; --mms-transport-mt:14px; --mms-row-py:9px;
-  --mms-ls-caps:.14em; --mms-ls-caps2:.1em; --mms-ls-tight:-.02em; --mms-lh-ttl:1.15;
-  --mms-sw-on:rgba(255,255,255,.16); --mms-sw-on-ipod:rgba(60,45,20,.16);
+  /* v1.228 BOLD skins (Dean: the v1.227 cut was "the same theme with three colors" -
+     make them structurally + visually distinct). Bespoke palettes/type/shadows as
+     --mms-* DEFS (census-exempt; used via var()). Geometry that the census does NOT
+     govern (width/height/aspect/filter/transform) stays literal. */
+  --mms-white:#ffffff; --mms-black:#000000;
+  /* Apple: art-dominant on near-black, hot-pink accent, big white play. */
+  --mms-apple-bg:#0b0b10; --mms-apple-fg:#ffffff; --mms-apple-accent:#ff4f7b;
+  --mms-apple-veil:rgba(8,8,12,.5); --mms-apple-dim:rgba(255,255,255,.66);
+  --mms-apple-track:rgba(255,255,255,.24); --mms-apple-sw:rgba(255,255,255,.15);
+  --mms-art-shadow:0 26px 60px -18px rgba(0,0,0,.72);
+  /* Spotify: bold purple->black canvas, fat title, green circle play, live queue. */
+  --mms-sp-fg:#ffffff; --mms-sp-accent:#1ed760; --mms-sp-on-accent:#062b14;
+  --mms-sp-dim:rgba(255,255,255,.6); --mms-sp-ic:rgba(255,255,255,.82);
+  --mms-sp-g1:#5a3a86; --mms-sp-g2:#241a33; --mms-sp-g3:#0b0b0d;
+  --mms-sp-track:rgba(255,255,255,.24); --mms-sp-sw:rgba(255,255,255,.14);
+  --mms-sp-queue-bg:rgba(0,0,0,.26); --mms-sp-qline:rgba(255,255,255,.08);
+  --mms-sp-play-shadow:0 10px 26px -6px rgba(30,215,96,.55);
+  /* iPod: brushed-aluminum bar, framed cover, chrome cluster, classic blue list. */
+  --mms-ipod-fg:#2b2620; --mms-ipod-warm:#7c6636; --mms-ipod-accent:#3f79c9; --mms-ipod-accent2:#2f6fce;
+  --mms-ipod-line:rgba(120,95,50,.18); --mms-ipod-g1:#f6f1e6; --mms-ipod-g2:#e6ddca;
+  --mms-ipod-bar1:#fbfbfc; --mms-ipod-bar2:#d8d3c8; --mms-ipod-frame:#c9b389;
+  --mms-ipod-track:#cabb9f; --mms-ipod-btn1:#ffffff; --mms-ipod-btn2:#d6d1c6;
+  --mms-ipod-cluster-line:rgba(120,95,50,.3); --mms-ipod-sw:rgba(60,45,20,.14);
+  --mms-ipod-art-shadow:0 10px 24px -8px rgba(80,60,30,.5);
+  --mms-ipod-cluster-shadow:inset 0 1px 0 rgba(255,255,255,.85), 0 2px 4px rgba(80,60,30,.4);
+  --mms-ipod-bar-shadow:inset 0 -1px 0 rgba(120,95,50,.28);
+  --mms-ipod-knob-shadow:0 1px 3px rgba(80,60,30,.5);
+  /* shared type/shape metrics (governed props) */
+  --mms-r-art:16px; --mms-r-art-ipod:6px; --mms-r-queue:16px; --mms-r-th:6px; --mms-r-row-ipod:6px;
+  --mms-ls-caps:.14em; --mms-ls-caps2:.1em; --mms-ls-tight:-.02em; --mms-lh-ttl:1.1;
 }
 @media (max-width: 768px){
   /* hide the default host chrome (control bar + big art) and collapse the slot to
@@ -10929,68 +10945,131 @@ html[data-modern="on"] .video-uploader {
   body.mms-on #view-root[data-view="music"] #player-slot .player-controls,
   body.mms-on #view-root[data-view="music"] #player-slot #audio-bg-art,
   body.mms-on #view-root[data-view="music"] #player-slot #audio-visualizer { display:none !important; }
+  /* v1.228 (Dean: "there's scroll behind this"): the skin is a fixed full-screen
+     takeover; lock the page body so the underlying list can't scroll behind it. */
+  body.mms-on{ overflow:hidden; }
 
-  /* the skin panel takes the full screen */
-  .mms-full{ position:fixed; inset:0; z-index:var(--z-dock); margin:0; display:flex; flex-direction:column;
-    padding:calc(env(safe-area-inset-top,0px) + var(--space-10)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-10)); overflow:hidden; }
-  .mms-full .mms-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--space-3); }
-  .mms-full .mms-chev{ width:var(--mms-chev); height:var(--mms-chev); border:0; background:transparent; color:inherit; font-size:var(--fs-3xl); cursor:pointer; display:grid; place-items:center; opacity:.9; }
-  .mms-full .mms-chev-ghost{ opacity:.55; }
-  /* the skin switcher ("themes" picker) - a small segmented control */
-  .mms-full .mms-skinsw{ display:flex; gap:var(--space-1); justify-content:center; margin-top:var(--space-3); }
-  .mms-full .mms-sw{ border:0; background:transparent; color:inherit; opacity:.55; font-size:var(--fs-xs); font-weight:var(--fw-semibold); padding:var(--space-2) var(--space-6); border-radius:var(--radius-full); cursor:pointer; }
-  .mms-full .mms-sw.is-on{ opacity:1; background:var(--mms-sw-on); }
-  .mms-ipod .mms-sw.is-on{ background:var(--mms-sw-on-ipod); }
-  .mms-full .mms-ctx{ flex:1; text-align:center; font-size:var(--fs-xs); letter-spacing:var(--mms-ls-caps); text-transform:uppercase; opacity:.72; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mms-full .mms-art{ width:100%; aspect-ratio:1; border-radius:var(--mms-r-art); overflow:hidden; flex:none; box-shadow:var(--mms-art-shadow); }
+  /* ---------- the full-screen shell (shared frame; each skin fills it) ---------- */
+  .mms-full{ position:fixed; inset:0; z-index:var(--z-dock); margin:0; display:flex; flex-direction:column; overflow:hidden; }
+  /* shared control primitives - identical hooks + reflect targets across skins */
+  .mms-full .mms-top{ display:flex; align-items:center; justify-content:space-between; }
+  .mms-full .mms-chev{ width:36px; height:36px; border:0; background:transparent; color:inherit; font-size:var(--fs-3xl); cursor:pointer; display:grid; place-items:center; opacity:.9; }
+  .mms-full .mms-chev-ghost{ opacity:.5; }
+  .mms-full .mms-skinsw{ display:flex; gap:var(--space-1); justify-content:center; }
+  .mms-full .mms-sw{ border:0; background:transparent; color:inherit; opacity:.5; font-size:var(--fs-2xs); font-weight:var(--fw-bold); text-transform:uppercase; letter-spacing:var(--mms-ls-caps2); padding:var(--space-2) var(--space-6); border-radius:var(--radius-full); cursor:pointer; }
   .mms-full .mms-art img{ width:100%; height:100%; object-fit:cover; display:block; }
-  .mms-full .mms-meta{ margin-top:var(--space-10); }
-  .mms-full .mms-ttl{ font-size:var(--fs-4xl); font-weight:var(--fw-bold); letter-spacing:var(--mms-ls-tight); line-height:var(--mms-lh-ttl); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mms-full .mms-sub{ font-size:var(--fs-lg); margin-top:var(--space-2); opacity:.85; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mms-full .mms-scrub{ margin-top:var(--mms-scrub-mt); }
-  .mms-full .mms-bar{ height:var(--space-3); border-radius:var(--radius-full); position:relative; cursor:pointer; }
   .mms-full .mms-fill{ position:absolute; inset:0 auto 0 0; border-radius:var(--radius-full); }
-  .mms-full .mms-times{ display:flex; justify-content:space-between; font-size:var(--fs-xs); margin-top:var(--space-4); font-variant-numeric:tabular-nums; opacity:.7; }
-  .mms-full .mms-transport{ display:flex; align-items:center; justify-content:center; gap:var(--mms-transport-gap); margin-top:var(--mms-transport-mt); }
+  .mms-full .mms-times{ display:flex; justify-content:space-between; font-size:var(--fs-2xs); font-variant-numeric:tabular-nums; }
+  .mms-full .mms-pos, .mms-full .mms-rem{ font-variant-numeric:tabular-nums; }
   .mms-full .mms-skip{ border:0; background:transparent; color:inherit; cursor:pointer; display:grid; place-items:center; }
-  .mms-full .mms-skip svg{ width:var(--mms-skip-svg); height:var(--mms-skip-svg); fill:currentColor; }
-  .mms-full .mms-play{ width:var(--mms-play); height:var(--mms-play); border-radius:var(--radius-full); border:0; cursor:pointer; display:grid; place-items:center; }
-  .mms-full .mms-play svg{ width:var(--mms-play-svg); height:var(--mms-play-svg); }
-  .mms-full .mms-upnext{ margin-top:var(--space-10); flex:1; min-height:0; display:flex; flex-direction:column; }
-  .mms-full .mms-upnext-h{ font-size:var(--fs-sm); letter-spacing:var(--mms-ls-caps2); text-transform:uppercase; opacity:.6; margin-bottom:var(--space-4); }
-  .mms-full .mms-upnext-list{ overflow-y:auto; flex:1; min-height:0; margin:0 calc(-1 * var(--space-3)); }
-  .mms-full .mms-row{ display:flex; align-items:center; gap:var(--space-6); width:100%; padding:var(--mms-row-py) var(--space-3); border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; border-radius:var(--radius-lg); }
-  .mms-full .mms-rn{ width:var(--mms-rn-w); text-align:center; font-size:var(--fs-sm); opacity:.5; flex:none; font-variant-numeric:tabular-nums; }
-  .mms-full .mms-rt{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-md); }
-  .mms-full .mms-rd{ font-size:var(--fs-sm); opacity:.5; flex:none; font-variant-numeric:tabular-nums; }
-  .mms-full .mms-row.is-played{ opacity:.5; } .mms-full .mms-row.is-current .mms-rt{ font-weight:var(--fw-bold); }
+  .mms-full .mms-play{ border:0; cursor:pointer; display:grid; place-items:center; padding:0; }
 
-  /* --- Apple Music: big art on near-black, pink accent, minimal chrome --- */
+  /* ============================ APPLE MUSIC ============================
+     A blurred, scaled-up bleed of the cover fills the screen; a large framed
+     cover sits high, oversized black-weight title + hot-pink artist, then a
+     thin scrubber and one big white play. Airy, art-first, no visible queue. */
   .mms-apple{ background:var(--mms-apple-bg); color:var(--mms-apple-fg); }
-  .mms-apple .mms-bar{ background:var(--mms-track-lt); } .mms-apple .mms-fill{ background:var(--mms-white); }
-  .mms-apple .mms-play{ background:var(--mms-white); } .mms-apple .mms-play svg{ fill:var(--mms-black); }
-  .mms-apple .mms-sub{ color:var(--mms-apple-accent); opacity:1; }
-  .mms-apple .mms-row.is-current .mms-rt{ color:var(--mms-apple-accent); }
+  .mms-apple .mms-bleed{ position:absolute; inset:0; background-size:cover; background-position:center; filter:blur(60px) saturate(1.7) brightness(.6); transform:scale(1.4); }
+  .mms-apple .mms-bleed::after{ content:""; position:absolute; inset:0; background:var(--mms-apple-veil); }
+  /* .mms-z is position:relative and LATER in the DOM than the absolute .mms-bleed,
+     so it paints above without a z-index (the census governs z-index; no local rung). */
+  .mms-apple .mms-z{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column;
+    padding:calc(env(safe-area-inset-top,0px) + var(--space-10)) var(--space-12) calc(env(safe-area-inset-bottom,0px) + var(--space-12)); }
+  .mms-apple .mms-sw{ opacity:.6; } .mms-apple .mms-sw.is-on{ opacity:1; background:var(--mms-apple-sw); }
+  .mms-apple .mms-dots{ font-size:var(--fs-3xl); opacity:.7; }
+  .mms-apple .mms-art{ width:82%; max-width:340px; aspect-ratio:1; margin:var(--space-16) auto var(--space-12); border-radius:var(--mms-r-art); overflow:hidden; box-shadow:var(--mms-art-shadow); }
+  .mms-apple .mms-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-6); margin-top:auto; }
+  .mms-apple .mms-htext{ min-width:0; }
+  .mms-apple .mms-ttl{ font-size:var(--fs-5xl); font-weight:var(--fw-black); letter-spacing:var(--mms-ls-tight); line-height:var(--mms-lh-ttl); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mms-apple .mms-sub{ font-size:var(--fs-xl); font-weight:var(--fw-semibold); color:var(--mms-apple-accent); margin-top:var(--space-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mms-apple .mms-scrub{ margin-top:var(--space-10); }
+  .mms-apple .mms-bar{ height:6px; border-radius:var(--radius-full); position:relative; cursor:pointer; background:var(--mms-apple-track); }
+  .mms-apple .mms-fill{ background:var(--mms-white); }
+  .mms-apple .mms-times{ margin-top:var(--space-4); color:var(--mms-apple-dim); }
+  .mms-apple .mms-transport{ display:flex; align-items:center; justify-content:center; gap:var(--space-16); margin-top:var(--space-8); }
+  .mms-apple .mms-skip svg{ width:34px; height:34px; fill:currentColor; }
+  .mms-apple .mms-play{ width:76px; height:76px; border-radius:var(--radius-full); background:var(--mms-white); }
+  .mms-apple .mms-play svg{ width:32px; height:32px; fill:var(--mms-black); }
+  .mms-apple .mms-foot{ display:flex; align-items:center; justify-content:space-between; margin-top:var(--space-12); padding:0 var(--space-8); font-size:var(--fs-3xl); color:var(--mms-apple-dim); opacity:.55; }
 
-  /* --- Spotify: purple->black wash, white transport, green now-playing accent --- */
-  .mms-spotify{ background:linear-gradient(var(--mms-sp-g1) 0%, var(--mms-sp-g2) 46%, var(--mms-sp-g3) 100%); color:var(--mms-sp-fg); }
-  .mms-spotify .mms-bar{ background:var(--mms-track-lt); } .mms-spotify .mms-fill{ background:var(--mms-white); }
-  .mms-spotify .mms-play{ background:var(--mms-white); } .mms-spotify .mms-play svg{ fill:var(--mms-black); }
-  .mms-spotify .mms-row.is-current .mms-rt{ color:var(--mms-sp-accent); } .mms-spotify .mms-row.is-current .mms-rn{ color:var(--mms-sp-accent); opacity:1; }
+  /* ============================== SPOTIFY ==============================
+     Bold purple-to-black canvas, medium cover, a fat 900-weight title with a
+     grey artist, a full control row (green circular play flanked by shuffle /
+     prev / next / repeat), and a raised dark "Next in queue" panel with
+     album-art thumbs - the queue is part of the surface, not hidden. */
+  .mms-spotify{ background:linear-gradient(var(--mms-sp-g1) 0%, var(--mms-sp-g2) 48%, var(--mms-sp-g3) 100%); color:var(--mms-sp-fg);
+    padding:calc(env(safe-area-inset-top,0px) + var(--space-8)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-8)); }
+  .mms-spotify .mms-ctx{ flex:1; text-align:center; font-size:var(--fs-2xs); letter-spacing:var(--mms-ls-caps); text-transform:uppercase; opacity:.7; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mms-spotify .mms-skinsw{ margin-top:var(--space-3); }
+  .mms-spotify .mms-sw{ opacity:.5; } .mms-spotify .mms-sw.is-on{ opacity:1; background:var(--mms-sp-sw); }
+  .mms-spotify .mms-art{ width:74%; max-width:300px; aspect-ratio:1; margin:var(--space-10) auto var(--space-8); border-radius:var(--mms-r-art); overflow:hidden; box-shadow:var(--mms-art-shadow); }
+  .mms-spotify .mms-meta{ display:flex; align-items:center; justify-content:space-between; gap:var(--space-6); }
+  .mms-spotify .mms-htext{ min-width:0; }
+  .mms-spotify .mms-ttl{ font-size:var(--fs-4xl); font-weight:var(--fw-black); letter-spacing:var(--mms-ls-tight); line-height:var(--mms-lh-ttl); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mms-spotify .mms-sub{ font-size:var(--fs-lg); color:var(--mms-sp-dim); margin-top:var(--space-1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mms-spotify .mms-heart{ font-size:var(--fs-2xl); color:var(--mms-sp-accent); flex:none; }
+  .mms-spotify .mms-scrub{ margin-top:var(--space-6); }
+  .mms-spotify .mms-bar{ height:4px; border-radius:var(--radius-full); position:relative; cursor:pointer; background:var(--mms-sp-track); }
+  .mms-spotify .mms-fill{ background:var(--mms-white); }
+  .mms-spotify .mms-times{ margin-top:var(--space-3); color:var(--mms-sp-dim); }
+  .mms-spotify .mms-transport{ display:flex; align-items:center; justify-content:space-between; margin-top:var(--space-6); }
+  .mms-spotify .mms-ic{ border:0; background:transparent; color:var(--mms-sp-ic); font-size:var(--fs-xl); cursor:pointer; }
+  .mms-spotify .mms-ic.is-on{ color:var(--mms-sp-accent); }
+  .mms-spotify .mms-skip svg{ width:36px; height:36px; fill:currentColor; }
+  .mms-spotify .mms-play{ width:64px; height:64px; border-radius:var(--radius-full); background:var(--mms-sp-accent); box-shadow:var(--mms-sp-play-shadow); }
+  .mms-spotify .mms-play svg{ width:28px; height:28px; fill:var(--mms-sp-on-accent); }
+  .mms-spotify .mms-queue{ margin-top:var(--space-8); flex:1; min-height:0; display:flex; flex-direction:column; background:var(--mms-sp-queue-bg); border-top:1px solid var(--mms-sp-qline); border-radius:var(--mms-r-queue) var(--mms-r-queue) 0 0; padding:var(--space-6) var(--space-6) 0; }
+  .mms-spotify .mms-qh{ margin:0 0 var(--space-4); font-size:var(--fs-sm); font-weight:var(--fw-bold); }
+  .mms-spotify .mms-qlist{ overflow-y:auto; flex:1; min-height:0; margin:0 calc(-1 * var(--space-3)); padding-bottom:var(--space-6); }
+  .mms-spotify .mms-row{ display:flex; align-items:center; gap:var(--space-6); width:100%; padding:var(--space-4) var(--space-3); border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; border-radius:var(--radius-lg); }
+  .mms-spotify .mms-th{ width:44px; height:44px; border-radius:var(--mms-r-th); overflow:hidden; flex:none; background:var(--mms-sp-queue-bg); }
+  .mms-spotify .mms-th img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .mms-spotify .mms-rtext{ display:flex; flex-direction:column; min-width:0; flex:1; }
+  .mms-spotify .mms-rt{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-md); }
+  .mms-spotify .mms-ra{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-sm); color:var(--mms-sp-dim); margin-top:var(--space-1); }
+  .mms-spotify .mms-row.is-played .mms-rt{ color:var(--mms-sp-dim); }
+  .mms-spotify .mms-row.is-current .mms-rt{ color:var(--mms-sp-accent); font-weight:var(--fw-bold); }
 
-  /* --- iPod: warm cream/aluminum, framed cover, classic blue tracklist --- */
+  /* =============================== iPod ===============================
+     A real departure: a brushed-aluminum title bar, a framed cover (white mat +
+     warm frame), centered classic type, a segmented aluminum transport CLUSTER,
+     a scrubber with a chrome knob, a classic blue-highlight tracklist with
+     chevrons, and an "N of M" footer. */
   .mms-ipod{ background:linear-gradient(180deg, var(--mms-ipod-g1) 0%, var(--mms-ipod-g2) 100%); color:var(--mms-ipod-fg); }
-  .mms-ipod .mms-ctx, .mms-ipod .mms-meta{ text-align:center; }
-  .mms-ipod .mms-art{ border-radius:var(--mms-r-art-ipod); box-shadow:var(--mms-ipod-art-shadow), 0 0 0 5px var(--mms-white), 0 0 0 6px var(--mms-ipod-frame); }
-  .mms-ipod .mms-sub{ color:var(--mms-ipod-warm); }
-  .mms-ipod .mms-bar{ background:var(--mms-ipod-track); height:var(--space-4); }
+  .mms-ipod .mms-albar{ display:flex; align-items:center; justify-content:space-between; flex:none;
+    padding:calc(env(safe-area-inset-top,0px) + var(--space-3)) var(--space-8) var(--space-3);
+    background:linear-gradient(180deg, var(--mms-ipod-bar1), var(--mms-ipod-bar2)); box-shadow:var(--mms-ipod-bar-shadow); }
+  .mms-ipod .mms-albar-b{ width:28px; height:28px; display:grid; place-items:center; font-size:var(--fs-2xl); color:var(--mms-ipod-warm); cursor:pointer; }
+  .mms-ipod .mms-albar-t{ font-size:var(--fs-md); font-weight:var(--fw-bold); letter-spacing:var(--mms-ls-caps2); }
+  .mms-ipod .mms-body{ flex:1; min-height:0; display:flex; flex-direction:column; text-align:center;
+    padding:var(--space-6) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-8)); }
+  .mms-ipod .mms-skinsw{ margin-bottom:var(--space-6); }
+  .mms-ipod .mms-sw{ opacity:.55; } .mms-ipod .mms-sw.is-on{ opacity:1; background:var(--mms-ipod-sw); }
+  .mms-ipod .mms-art{ width:56%; max-width:230px; aspect-ratio:1; margin:0 auto var(--space-6); border-radius:var(--mms-r-art-ipod); overflow:hidden;
+    box-shadow:var(--mms-ipod-art-shadow), 0 0 0 5px var(--mms-white), 0 0 0 6px var(--mms-ipod-frame); }
+  .mms-ipod .mms-ttl{ font-size:var(--fs-3xl); font-weight:var(--fw-bold); line-height:var(--mms-lh-ttl); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mms-ipod .mms-sub{ font-size:var(--fs-md); color:var(--mms-ipod-warm); margin-top:var(--space-1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mms-ipod .mms-scrub{ display:flex; align-items:center; gap:var(--space-4); margin-top:var(--space-6); }
+  .mms-ipod .mms-bar{ flex:1; height:8px; border-radius:var(--radius-full); position:relative; cursor:pointer; background:var(--mms-ipod-track); }
   .mms-ipod .mms-fill{ background:var(--mms-ipod-accent); }
-  .mms-ipod .mms-play{ background:linear-gradient(var(--mms-ipod-btn1),var(--mms-ipod-btn2)); color:var(--mms-ipod-fg); box-shadow:var(--mms-ipod-play-shadow); }
-  .mms-ipod .mms-play svg{ fill:var(--mms-ipod-fg); }
-  .mms-ipod .mms-upnext-h{ color:var(--mms-ipod-warm); }
-  .mms-ipod .mms-row{ border-bottom:1px solid var(--mms-ipod-line); border-radius:0; }
-  .mms-ipod .mms-row.is-current{ background:linear-gradient(var(--mms-ipod-accent), var(--mms-ipod-accent2)); color:var(--mms-white); border-radius:var(--mms-r-row-ipod); border-bottom-color:transparent; }
-  .mms-ipod .mms-row.is-current .mms-rn, .mms-ipod .mms-row.is-current .mms-rd{ color:var(--mms-white); opacity:.85; }
+  .mms-ipod .mms-knob{ position:absolute; top:50%; width:16px; height:16px; border-radius:var(--radius-full); background:linear-gradient(var(--mms-ipod-btn1), var(--mms-ipod-btn2)); box-shadow:var(--mms-ipod-knob-shadow); transform:translate(-50%,-50%); }
+  .mms-ipod .mms-pos, .mms-ipod .mms-rem{ font-size:var(--fs-2xs); color:var(--mms-ipod-warm); flex:none; }
+  .mms-ipod .mms-cluster{ display:flex; align-items:stretch; justify-content:center; margin:var(--space-8) auto 0; border-radius:var(--radius-full); overflow:hidden;
+    background:linear-gradient(var(--mms-ipod-btn1), var(--mms-ipod-btn2)); box-shadow:var(--mms-ipod-cluster-shadow); }
+  .mms-ipod .mms-cluster .mms-skip, .mms-ipod .mms-cluster .mms-play{ width:74px; height:46px; border-radius:0; color:var(--mms-ipod-fg); background:transparent; box-shadow:none; }
+  .mms-ipod .mms-cluster .mms-play{ border-left:1px solid var(--mms-ipod-cluster-line); border-right:1px solid var(--mms-ipod-cluster-line); }
+  .mms-ipod .mms-cluster .mms-skip svg{ width:26px; height:26px; fill:currentColor; }
+  .mms-ipod .mms-cluster .mms-play svg{ width:24px; height:24px; fill:currentColor; }
+  .mms-ipod .mms-list{ overflow-y:auto; flex:1; min-height:0; text-align:left; margin:var(--space-8) calc(-1 * var(--space-4)) 0; }
+  .mms-ipod .mms-row{ display:flex; align-items:center; gap:var(--space-6); width:100%; padding:var(--space-4); border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; border-bottom:1px solid var(--mms-ipod-line); border-radius:0; }
+  .mms-ipod .mms-rn{ width:20px; text-align:center; font-size:var(--fs-sm); color:var(--mms-ipod-warm); flex:none; font-variant-numeric:tabular-nums; }
+  .mms-ipod .mms-rt{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-md); }
+  .mms-ipod .mms-rd{ font-size:var(--fs-sm); color:var(--mms-ipod-warm); flex:none; font-variant-numeric:tabular-nums; }
+  .mms-ipod .mms-chev-r{ font-size:var(--fs-xl); color:var(--mms-ipod-warm); flex:none; opacity:.6; }
+  .mms-ipod .mms-row.is-played{ opacity:.6; }
+  .mms-ipod .mms-row.is-current{ background:linear-gradient(var(--mms-ipod-accent), var(--mms-ipod-accent2)); color:var(--mms-white); border-bottom-color:transparent; border-radius:var(--mms-r-row-ipod); }
+  .mms-ipod .mms-row.is-current .mms-rn, .mms-ipod .mms-row.is-current .mms-rd, .mms-ipod .mms-row.is-current .mms-chev-r{ color:var(--mms-white); opacity:.9; }
+  .mms-ipod .mms-foot{ flex:none; text-align:center; margin-top:var(--space-4); font-size:var(--fs-2xs); color:var(--mms-ipod-warm); font-variant-numeric:tabular-nums; }
 }
 
 .music-empty { color: var(--text-secondary); padding: var(--space-12) 0; }
