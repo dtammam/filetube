@@ -516,6 +516,10 @@ if (typeof module !== 'undefined' && module.exports) {
   // so the stable module.onPopState the router calls can delegate to whichever
   // init is current; nulled by destroy() so a pop after teardown is a no-op.
   var activePopStateHandler = null;
+  // v1.234: the current init's pop-out teardown, so the module-level destroy() can close a
+  // floating pop-out window on a cross-view swap (its listeners live on the pop-out's own
+  // AbortController, not the view signal). Nulled by destroy().
+  var activePopoutTeardown = null;
   var SORT_KEY = 'filetube_music_sort';
   var TAB_KEY = 'filetube_music_tab';
   // Friction pass: the Artists view mode - 'grid' (circles) or 'list' (compact
@@ -551,6 +555,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var nowPlayingPanel = root.querySelector('#music-nowplaying-panel');
     var musicStage = root.querySelector('#music-stage');
     var theaterBtn = root.querySelector('#music-theater-btn');
+    var popoutBtn = root.querySelector('#music-popout-btn');
     var jumpbackHost = root.querySelector('#music-jumpback');
     if (!content) return;
 
@@ -839,6 +844,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // both-axes contract: reveal when expanded+playing, CLEAR otherwise.
     function updateNowPlayingPanel() {
       if (!nowPlayingPanel) return;
+      // v1.234: keep the desktop pop-out in step with the track/skin (this is the seam every
+      // track change routes through, via playAt) and refresh the pop-out button's visibility.
+      // Independent of the in-tab expanded/docked branch below, so a docked pop-out still updates.
+      repaintPopout();
+      updatePopoutBtn();
       var p = window.FileTube && window.FileTube.player;
       var expanded = !!(p && typeof p.getState === 'function' && p.getState() === 'full');
       var curId = (p && p.currentId) || null;
@@ -1062,6 +1072,112 @@ if (typeof module !== 'undefined' && module.exports) {
       }, { signal: sig });
     }
     if (nowPlayingPanel) bindSkinSurface(nowPlayingPanel, signal);
+
+    // ---- v1.234: DESKTOP pop-out player (Document PiP + independent-window fallback) ----
+    // Float the player into a small window showing the picked skin. It is a SECOND skin
+    // surface: the same bindSkinSurface proxy + paintSkin render + reflectAllSkins updates,
+    // so the audio engine is untouched (player.js byte-unchanged). Desktop-only: the button
+    // shows only where the pop-out is supported AND the viewport is NOT the narrow one that
+    // already gets the in-tab skin - a coherent split (narrow -> in-tab skin; wide desktop
+    // -> pop-out). Window size ~380px so the < 768px skin media query engages and every skin
+    // renders at its phone layout with no re-styling. Pointer events => the click wheel
+    // spins with a MOUSE click-drag here.
+    var POPOUT_W = 380, POPOUT_H = 700;
+    var pipWin = null, pipPanel = null, pipAbort = null;
+    function popoutSupported() {
+      try { if (SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()) return false; } catch (_) { /* treat as desktop */ }
+      return !!(typeof window !== 'undefined' && (window.documentPictureInPicture || typeof window.open === 'function'));
+    }
+    // the current music track's queue index (buildSkinCtx's ci), or -1.
+    function currentSkinIndex() {
+      var p = window.FileTube && window.FileTube.player;
+      var curId = (p && p.currentId) || null;
+      if (!curId) return -1;
+      for (var k = 0; k < queue.length; k++) { if (queue[k].id === curId) return k; }
+      return -1;
+    }
+    function copyPopoutStyles(doc) {
+      // link every same-origin stylesheet + copy inline <style> blocks so the skin is styled.
+      var links = document.querySelectorAll('link[rel="stylesheet"]');
+      for (var i = 0; i < links.length; i++) {
+        var l = doc.createElement('link'); l.rel = 'stylesheet'; l.href = links[i].href; doc.head.appendChild(l);
+      }
+      var styles = document.querySelectorAll('style');
+      for (var j = 0; j < styles.length; j++) {
+        var s = doc.createElement('style'); s.textContent = styles[j].textContent; doc.head.appendChild(s);
+      }
+    }
+    function mountPopout(win) {
+      if (!win) return;
+      pipWin = win;
+      var doc = win.document;
+      try { copyPopoutStyles(doc); doc.title = 'FileTube'; } catch (_) { /* best effort */ }
+      var panel = doc.createElement('div');
+      panel.id = 'music-nowplaying-panel'; // same id the skin CSS/JS expect
+      panel.className = 'music-nowplaying-panel';
+      try { doc.body.classList.add('mms-on'); doc.body.appendChild(panel); } catch (_) { teardownPopout(); return; }
+      pipPanel = panel;
+      pipAbort = new AbortController();
+      bindSkinSurface(panel, pipAbort.signal); // registers the surface for reflectAllSkins
+      ensureSkinReflect(); // arm the media-element -> reflectAllSkins listeners (the in-tab render, which normally arms them, is skipped on desktop)
+      paintSkin(panel, (SKINS && SKINS.activeSkinId()) || 'apple', currentSkinIndex());
+      // the pop-out closing (user, or the tab navigating away) tears the surface down.
+      var onClose = function () { teardownPopout(); };
+      try { win.addEventListener('pagehide', onClose); win.addEventListener('unload', onClose); } catch (_) { /* ignore */ }
+      updatePopoutBtn();
+    }
+    function openPopout() {
+      if (pipWin) { try { pipWin.focus(); } catch (_) { /* ignore */ } return; }
+      // Document PiP (Chrome/Edge desktop) = always-on-top; else a plain independent window.
+      if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
+        try {
+          window.documentPictureInPicture.requestWindow({ width: POPOUT_W, height: POPOUT_H })
+            .then(function (w) { mountPopout(w); })
+            .catch(function () { openPlainPopout(); });
+          return;
+        } catch (_) { /* fall through to the plain window */ }
+      }
+      openPlainPopout();
+    }
+    function openPlainPopout() {
+      var w = null;
+      try {
+        w = window.open('', 'ft-music-pip', 'width=' + POPOUT_W + ',height=' + POPOUT_H + ',menubar=no,toolbar=no,location=no,status=no');
+      } catch (_) { w = null; }
+      if (!w) return; // popup blocked - nothing we can do without a gesture
+      try { w.document.body.innerHTML = ''; } catch (_) { /* cross-origin? never, same-origin blank */ }
+      mountPopout(w);
+    }
+    function teardownPopout() {
+      if (pipAbort) { try { pipAbort.abort(); } catch (_) { /* ignore */ } pipAbort = null; }
+      if (pipPanel) { var idx = skinSurfaces.indexOf(pipPanel); if (idx >= 0) skinSurfaces.splice(idx, 1); pipPanel = null; }
+      if (pipWin) { try { if (pipWin.close && !pipWin.closed) pipWin.close(); } catch (_) { /* ignore */ } pipWin = null; }
+      updatePopoutBtn();
+    }
+    function togglePopout() {
+      if (pipWin) { teardownPopout(); return; } // close -> its pagehide also calls teardown (idempotent)
+      openPopout();
+    }
+    // Re-render the OPEN pop-out to the current track/skin (called from updateNowPlayingPanel,
+    // which every track change routes through via playAt). Progress/play-state stay live via
+    // reflectAllSkins; this handles the parts that need a repaint (title/art/list/skin).
+    function repaintPopout() {
+      if (!pipPanel || !pipPanel.isConnected) return;
+      var ci = currentSkinIndex();
+      if (ci < 0) return; // nothing playing - leave the last frame up
+      paintSkin(pipPanel, (SKINS && SKINS.activeSkinId()) || 'apple', ci);
+    }
+    // Button: shown only on desktop-supported viewports while a music track is current
+    // (expanded OR docked - popping out is most useful while browsing). Mirrors the theatre
+    // button's lockstep hide, but its own support gate (not CSS).
+    function updatePopoutBtn() {
+      if (!popoutBtn) return;
+      popoutBtn.hidden = !(popoutSupported() && currentSkinIndex() >= 0);
+      popoutBtn.setAttribute('aria-pressed', pipWin ? 'true' : 'false');
+    }
+    if (popoutBtn) popoutBtn.addEventListener('click', togglePopout, { signal });
+    activePopoutTeardown = teardownPopout; // destroy() closes the pop-out on a cross-view swap
+
     // Tapping the line drills into the playing track's album.
     if (nowPlayingEl) {
       nowPlayingEl.addEventListener('click', function () {
@@ -2021,6 +2137,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // skin's `#player-slot { height:0 }` takeover would otherwise collapse the
     // NEXT view's player (watch/podcasts/read share #player-slot) on a phone.
     try { if (typeof document !== 'undefined' && document.body) document.body.classList.remove('mms-on'); } catch (_) { /* no document */ }
+    // v1.234: close any floating pop-out player - its listeners live on the pop-out's own
+    // AbortController (not the view signal that controller.abort() just cleared), and its
+    // proxy targets this now-dead view closure, so it must not outlive the view.
+    if (activePopoutTeardown) { try { activePopoutTeardown(); } catch (_) { /* ignore */ } activePopoutTeardown = null; }
     // v1.44.2: never leak the drill-collapse observer across the #view-root swap.
     disconnectStickyObserver();
     // v1.217: drop the torn-down init's pop handler so a stray popstate after
