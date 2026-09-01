@@ -1243,9 +1243,10 @@ if (typeof module !== 'undefined' && module.exports) {
 
       // v1.233: the iPod click wheel is a real ROTARY SCROLL. Spinning it with the song
       // list open moves the selection cursor song-by-song; a fast flick ACCELERATES;
-      // center then plays the highlighted song. Only in list mode (Dean: Now-Playing spin
-      // does nothing) and only the iPod skin renders a wheel. (Pointer events => a desktop
-      // pop-out spins the wheel with a MOUSE click-drag too.)
+      // center then plays the highlighted song. In NOW PLAYING the spin is not idle
+      // (v1.239): it sets VOLUME on the desktop pop-out (allowVolume) and SCRUBS the
+      // timeline on the in-tab mobile skin (iOS volume is read-only). Only the iPod skin
+      // renders a wheel. (Pointer events => a desktop pop-out spins it with a MOUSE drag.)
       //
       // Why POINTER events, not touch: a document-level non-passive touchmove is a
       // scroll-perf regression (the v1.160.1 scar) - passivity is static to the

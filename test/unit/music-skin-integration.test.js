@@ -330,23 +330,34 @@ function makeScrubbable(dom, cur, dur) {
   return mp;
 }
 
-test('v1.239 iPod: a Now-Playing spin SCRUBS the playhead forward and COMMITS on release (mobile)', async () => {
+test('v1.239 iPod: a Now-Playing spin SCRUBS the playhead forward, COMMITS on release, and does NOT engage the cursor', async () => {
   await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
     const p = panel(dom); const mp = makeScrubbable(dom, 150, 300); // mid-track
+    seedList(p, dom, 6, 2); // rows present but the list is CLOSED - a scrub must not touch them
     assert.ok(!p.classList.contains('mms-listmode'), 'Now Playing (list closed)');
-    assert.strictEqual(cursorIdx(p), -1, 'no list cursor engaged (this is scrub, not cursor)');
     spin(p.querySelector('.ip-wheel'), dom, [40, 80, 120, 160]); // firm clockwise
     assert.ok(mp.currentTime > 150, 'clockwise scrubbed the playhead FORWARD (live)');
     assert.strictEqual(spy.seek, 1, 'release committed via #seek-bar change (real pipeline: seekCommitTarget + saveProgress)');
+    // "scrub, NOT cursor": a cursor-mode spin would have marked an .is-cursor row; scrub must not.
+    assert.strictEqual(cursorIdx(p), -1, 'no list row became the cursor - this was a scrub, not a cursor move');
   } });
 });
 
-test('v1.239 iPod: a counter-clockwise Now-Playing spin scrubs BACKWARD, clamped at 0', async () => {
+test('v1.239 iPod: a big BACKWARD Now-Playing spin clamps EXACTLY at 0 (never negative)', async () => {
   await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
-    const p = panel(dom); const mp = makeScrubbable(dom, 150, 300);
-    spin(p.querySelector('.ip-wheel'), dom, [-40, -80, -120, -160]);
-    assert.ok(mp.currentTime < 150, 'counter-clockwise scrubbed BACKWARD');
-    assert.ok(mp.currentTime >= 0, 'clamped at 0 (never negative)');
+    const p = panel(dom); const mp = makeScrubbable(dom, 30, 300); // near the start (ratio 0.1)
+    // ~ -320deg total (~0.89 of the track) from ratio 0.1 => drives well below 0, so the
+    // lower clamp is genuinely EXERCISED (the adversarial's surviving mutant-C fixture gap).
+    spin(p.querySelector('.ip-wheel'), dom, [-40, -80, -120, -160, -200, -240, -280, -320]);
+    assert.strictEqual(mp.currentTime, 0, 'clamped exactly at 0 (deleting the Math.max(0,...) reds this)');
+  } });
+});
+
+test('v1.239 iPod: a big FORWARD Now-Playing spin clamps EXACTLY at the duration (never past the end)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const p = panel(dom); const mp = makeScrubbable(dom, 270, 300); // near the end (ratio 0.9)
+    spin(p.querySelector('.ip-wheel'), dom, [40, 80, 120, 160, 200, 240, 280, 320]); // ~ +320deg
+    assert.strictEqual(mp.currentTime, 300, 'clamped exactly at the duration (deleting the Math.min(1,...) reds this)');
   } });
 });
 
@@ -368,6 +379,22 @@ test('v1.239 iPod: a Now-Playing spin with NO known duration is a safe no-op (lo
     const p = panel(dom); // duration left at the jsdom default (NaN) - no makeScrubbable
     spin(p.querySelector('.ip-wheel'), dom, [40, 80, 120]);
     assert.strictEqual(spy.seek, 0, 'no commit when there is no duration to scrub against');
+  } });
+});
+
+test('v1.239 iPod: removing the early-return did NOT break tap-through - a Now-Playing wheel TAP still fires its zone', async () => {
+  // The old `if (!listMode && !allowVolume) return;` used to short-circuit Now-Playing here;
+  // now the handler proceeds to build the scrub gesture, so a pure TAP (no rotation) must
+  // still leave its zone button click intact (moved=false -> no suppress). Bind it.
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
+    const p = panel(dom); makeScrubbable(dom, 150, 300);
+    const prev = p.querySelector('[data-skin-prev]');
+    // a real tap: pointerdown + pointerup with NO movement, then the synthetic click.
+    prev.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    prev.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true }));
+    prev.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(spy.prev, 1, 'the rewind zone tap still proxies to #track-prev-btn');
+    assert.strictEqual(spy.seek, 0, 'a no-move tap never commits a scrub');
   } });
 });
 
