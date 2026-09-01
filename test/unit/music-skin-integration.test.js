@@ -205,11 +205,15 @@ test('v1.232.4: the seek fill RESETS to 0 on a track swap (loadstart), not the o
     const fill = panel(dom).querySelector('.mms-fill');
     assert.ok(fill, 'apple has a scrubber fill');
     fill.style.width = '52%'; // simulate the previous track's position still showing
+    const rem = panel(dom).querySelector('.mms-rem');
+    if (rem) rem.textContent = '-1:23'; // stale remaining from the previous track
     const mp = dom.window.document.getElementById('media-player');
     // loadstart fires on a prev/next swap before playback; with no duration yet, the
     // fill must drop to 0 (not keep the stale 52%) - that was the "fill then refresh" flash.
     mp.dispatchEvent(new dom.window.Event('loadstart', { bubbles: true }));
     assert.strictEqual(fill.style.width, '0%', 'fill drops to 0 while the new track loads (no stale-fill flash)');
+    // bind BOTH axes (the repo's reveal-once lesson): the remaining-time label clears too.
+    if (rem) assert.strictEqual(rem.textContent, '', 'the remaining-time label clears while loading (not the stale value)');
   } });
 });
 
