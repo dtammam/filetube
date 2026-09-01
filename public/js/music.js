@@ -931,7 +931,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.241 (Dean): a placed-sticker feel - a SIZE (default/2x/3x/5x) and a TILT
     // (straight/left/right) are per-user settings on ft-sticker; injectSticker maps them to
     // CSS classes on the button. Both fall back to the defaults on an unknown/absent value.
-    var STICKER_SIZES = ['default', '2x', '3x', '5x'];
+    var STICKER_SIZES = ['default', '2x', '3x']; // v1.243 (Dean): 5x dropped - it overlapped the wheel + couldn't be tapped
     var STICKER_TILTS = ['straight', 'left', 'right'];
     function stickerSize() { var s = readStickerPref().size; return STICKER_SIZES.indexOf(s) >= 0 ? s : 'default'; }
     function stickerTilt() { var t = readStickerPref().tilt; return STICKER_TILTS.indexOf(t) >= 0 ? t : 'left'; }
@@ -985,7 +985,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // with no value would otherwise wrongly circle a logo image - both gate seats).
       var pref = readStickerPref();
       var imgCls = (pref.kind === 'emoji' && pref.value) ? '' : ' mms-sticker--img';
-      var szCls = ' mms-sticker-sz-' + stickerSize();     // default | 2x | 3x | 5x
+      var szCls = ' mms-sticker-sz-' + stickerSize();     // default | 2x | 3x
       var tiltCls = ' mms-sticker-tilt-' + stickerTilt();  // straight | left | right
       wrap.innerHTML =
         '<button type="button" class="mms-sticker' + imgCls + szCls + tiltCls + '" data-skin-sticker aria-haspopup="true" aria-expanded="false" aria-label="Player options">' + stickerIconHtml() + '</button>' +
@@ -1082,7 +1082,11 @@ if (typeof module !== 'undefined' && module.exports) {
         var tile = e.target && typeof e.target.closest === 'function' ? e.target.closest('.music-jump-tile') : null;
         if (!tile) return;
         var id = tile.getAttribute('data-id');
-        if (id) playTrackFromContinue(id).catch(function () {});
+        // v1.243 defense-in-depth (adversarial): playTrackFromContinue now sets mms-on UP FRONT
+        // (the straight-to-player cover). If it ever rejected before the skin mounted, that
+        // cover would leak -> frozen body scroll on the next view (the v1.227 scar). Reconcile
+        // mms-on on a rejection (updateNowPlayingPanel clears it when no skin is expanded).
+        if (id) playTrackFromContinue(id).catch(function () { try { updateNowPlayingPanel(); } catch (_) { /* ignore */ } });
       }, { signal: signal });
     }
 
@@ -1413,17 +1417,21 @@ if (typeof module !== 'undefined' && module.exports) {
             return;
           }
           if (st.mode === 'scrub') {
-            // v1.239 (Dean): continuous timeline scrub on mobile Now Playing. A full 360deg
-            // turn sweeps the WHOLE track; clockwise (+) = forward. Music is non-live, so
-            // currentTime IS the exact target - move it LIVE (audible; the skin fill + the
-            // v1.237 chapter watcher reflect via 'seeked'/'timeupdate'), and persist through
-            // the real seek pipeline on RELEASE (onUp dispatches #seek-bar 'change').
+            // v1.243 (Dean): continuous timeline scrub, retuned to be FINE-grained. Now
+            // TIME-based (not a fraction of the whole track), so a slow careful turn nudges a
+            // second or two regardless of track length, while a fast flick ACCELERATES up to
+            // ~5x. ~0.05s per degree at base -> a slow full turn is ~18s. Music is non-live so
+            // currentTime IS the exact target; set it LIVE and repaint the skin fill IMMEDIATELY
+            // (don't wait for the throttled 'seeked' - that was the "chunky/low-poll" feel).
             var mps = hostCtl('media-player');
             var durS = (mps && isFinite(mps.duration) && mps.duration > 0) ? mps.duration : 0;
             if (durS > 0) {
-              if (st.scrubRatio == null) st.scrubRatio = Math.min(1, Math.max(0, (Number(mps.currentTime) || 0) / durS));
-              st.scrubRatio = Math.min(1, Math.max(0, st.scrubRatio + d / 360));
-              try { mps.currentTime = st.scrubRatio * durS; } catch (_) { /* ignore a bad set */ }
+              var sp = Math.abs(d) / dt;                                        // deg per ms
+              var accel = sp > 2.4 ? 5 : (sp > 1.2 ? 2.5 : (sp > 0.5 ? 1.5 : 1)); // fine when slow, flies when flicked
+              var t2 = Math.min(durS, Math.max(0, (Number(mps.currentTime) || 0) + d * 0.05 * accel));
+              try { mps.currentTime = t2; } catch (_) { /* ignore a bad set */ }
+              st.scrubRatio = durS > 0 ? (t2 / durS) : 0;                       // for the release commit
+              reflectSkin(panel);                                              // immediate visual - smooth, not chunky
             }
             return;
           }
@@ -2456,6 +2464,14 @@ if (typeof module !== 'undefined' && module.exports) {
     // position). Falls back to a solo queue if the track isn't in the recent
     // list (an edge — e.g. it aged out).
     async function playTrackFromContinue(trackId, bounceOnMiss) {
+      // v1.243 (Dean): opening a song from the home feed used to FLASH the /music list before
+      // the skin launched ("awkward gap"). On a mobile skin surface, cover the page IMMEDIATELY
+      // (hide the host chrome) so the tap goes STRAIGHT to the player - the recent-listening
+      // list still builds behind the full-screen skin (invisible) for the dock-return, and the
+      // ONLY path that actually shows the list (a non-bounce MISS -> render()) clears it first.
+      var coverEarly = false;
+      try { coverEarly = !!(SKINS && typeof SKINS.skinActiveFor === 'function' && SKINS.skinActiveFor({ isMusic: true })); } catch (_) { coverEarly = false; }
+      if (coverEarly) document.body.classList.add('mms-on');
       tab = 'songs';
       drill = null;
       search = '';
@@ -2496,6 +2512,9 @@ if (typeof module !== 'undefined' && module.exports) {
         var bounceId = String(trackId).replace(/::c\d+$/, '');
         try { if (window.location && typeof window.location.replace === 'function') { window.location.replace('/watch.html?v=' + encodeURIComponent(bounceId)); return; } } catch (_) { /* no navigable location */ }
       }
+      // The ONLY path that actually SHOWS the list: undo the early cover so the chrome + list
+      // are visible (this miss never mounts a skin).
+      if (coverEarly) document.body.classList.remove('mms-on');
       await render();
     }
 

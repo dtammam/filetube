@@ -2614,5 +2614,11 @@
     "date": "2026-09-01",
     "title": "All your audio, right in the music player",
     "intent": "Anything you've downloaded that's audio-only now shows up in the music player automatically - no setting to flip, it's just there. Tap a song anywhere and it opens in the player, no detour through the video page. If you'd rather keep a particular channel out of Music, you can switch it off in Settings. Also new: on the iPod skin, press and hold the rewind or fast-forward button to scan through a track - hold to sweep, let go to land where you want."
+  },
+  {
+    "version": "1.243.0",
+    "date": "2026-09-01",
+    "title": "Music player polish",
+    "intent": "A few nice touches to the phone music player: holding the wheel no longer accidentally highlights text like it's a web page, and spinning to scrub is now much finer and smoother so you can land exactly where you want. Tapping a song from the home feed now drops you straight into the player instead of flashing the music list on the way. The extra-large (5x) sticker size is gone since it covered the wheel - the other sizes and tilts stay."
   }
 ]

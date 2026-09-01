@@ -10992,7 +10992,9 @@ html[data-modern="on"] .video-uploader {
      body still scrolled the page - body{overflow:hidden} does NOT stop iOS touch-scroll;
      touches starting on this fixed panel now pan nothing). Scrollable regions inside
      (the iPod list, the Spotify queue) re-enable vertical panning via touch-action:pan-y. */
-  .mms-full{ position:fixed; inset:0; z-index:var(--z-player-max); margin:0; display:flex; flex-direction:column; overflow:hidden; touch-action:none; }
+  /* v1.243 (Dean): a HOLD (fast-scan / spin) must never select the skin's glyph/label text -
+     the blue highlight looked derpy. No-select the whole shell (+ iOS touch-callout). */
+  .mms-full{ position:fixed; inset:0; z-index:var(--z-player-max); margin:0; display:flex; flex-direction:column; overflow:hidden; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
   /* v1.232 (Dean): kill the mobile tap-highlight flash on skin buttons - the grey
      "area showing" on tap broke the iPod immersion. (-webkit-tap-highlight-color is
      inherited; transparent is census-exempt.) Also stop text-selection on the wheel. */
@@ -11027,9 +11029,8 @@ html[data-modern="on"] .video-uploader {
      fills the bigger spot too (font-size must be a bare --fs-* token, type-scale census). */
   .mms-sticker-sz-2x{ --mms-sticker-px:104px; }
   .mms-sticker-sz-3x{ --mms-sticker-px:156px; }
-  .mms-sticker-sz-5x{ --mms-sticker-px:260px; }
   .mms-sticker-sz-2x .mms-sticker-emoji{ font-size:var(--fs-4xl); }
-  .mms-sticker-sz-3x .mms-sticker-emoji, .mms-sticker-sz-5x .mms-sticker-emoji{ font-size:var(--fs-5xl); }
+  .mms-sticker-sz-3x .mms-sticker-emoji{ font-size:var(--fs-5xl); }
   .mms-sticker-tilt-straight{ transform:rotate(0deg); }
   .mms-sticker-tilt-left{ transform:rotate(-14deg); }
   .mms-sticker-tilt-right{ transform:rotate(14deg); }
