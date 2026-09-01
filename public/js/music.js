@@ -691,15 +691,18 @@ if (typeof module !== 'undefined' && module.exports) {
       var mp = hostCtl('media-player'); if (!mp) return;
       var v = Math.max(0, Math.min(1, (Number(mp.volume) || 0) + frac));
       mp.volume = v;
-      if (mp.muted && v > 0) { try { mp.muted = false; } catch (_) { /* ignore */ } }
+      if (mp.muted && frac > 0 && v > 0) { try { mp.muted = false; } catch (_) { /* ignore */ } } // unmute only on an UP nudge
       showVolume(panel, v);
     }
     function showVolume(panel, v) {
       if (!panel) return;
       var fill = panel.querySelector('.ip-vol-fill'); if (fill) fill.style.width = Math.round(v * 100) + '%';
       panel.classList.add('mms-voladj');
-      if (volFadeTimer) { try { clearTimeout(volFadeTimer); } catch (_) { /* ignore */ } }
       var win = (panel.ownerDocument && panel.ownerDocument.defaultView) || window;
+      // clear on the SAME window the timer was armed on (adversarial: a bare clearTimeout is a
+      // DIFFERENT realm than win.setTimeout below - the debounce would never cancel, so the bar
+      // could hide mid-spin, and a pop-out timer id could collide with an unrelated main-tab one).
+      if (volFadeTimer != null) { try { (win.clearTimeout || clearTimeout)(volFadeTimer); } catch (_) { /* ignore */ } }
       volFadeTimer = (win.setTimeout || setTimeout)(function () {
         panel.classList.remove('mms-voladj'); volFadeTimer = null;
       }, 1000);
@@ -1090,7 +1093,9 @@ if (typeof module !== 'undefined' && module.exports) {
           }
           if (st.mode === 'volume') {
             // continuous: a full 360deg turn sweeps the whole 0..1 range; clockwise (+) louder.
-            st.moved = st.moved || Math.abs(d) > 0.5;
+            // NOTE: click-suppression uses the SAME 8px travel threshold as cursor mode (the
+            // shared moved/capture block above) - a jittery TAP on a wheel zone (< 8px) must
+            // NOT be swallowed (both gate seats); only a real spin suppresses the release click.
             adjustVolume(panel, d / 360);
             return;
           }
@@ -1124,7 +1129,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // renders at its phone layout with no re-styling. Pointer events => the click wheel
     // spins with a MOUSE click-drag here.
     var POPOUT_W = 380, POPOUT_H = 700;
-    var pipWin = null, pipPanel = null, pipAbort = null, pipClock = null;
+    var pipWin = null, pipPanel = null, pipAbort = null, pipClock = null, pipPending = false;
     function popoutSupported() {
       try { if (SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()) return false; } catch (_) { /* treat as desktop */ }
       return !!(typeof window !== 'undefined' && (window.documentPictureInPicture || typeof window.open === 'function'));
@@ -1157,6 +1162,7 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
     function mountPopout(win) {
+      pipPending = false; // the async grant resolved (or the sync fallback) - clear the open-in-flight guard
       if (!win) return;
       // Gate finding (both seats): requestWindow() is async, so between the click and the
       // grant the view can be DESTROYED (controller.abort()) OR the viewport can shrink into
@@ -1195,14 +1201,20 @@ if (typeof module !== 'undefined' && module.exports) {
     function openPopout() {
       if (!popoutSupported()) return; // gate finding: re-check at CLICK time, not just button visibility - a wide->narrow resize must not leave an openable button
       if (pipWin) { try { pipWin.focus(); } catch (_) { /* ignore */ } return; }
+      // adversarial finding: pipWin is only set async inside mountPopout, so a double-click
+      // DURING the requestWindow() grant would mount TWO always-on-top windows (each with its
+      // own leaked clock). pipPending guards the async gap; it's cleared in mountPopout (every
+      // arm) and the catch.
+      if (pipPending) return;
       // Document PiP (Chrome/Edge desktop) = always-on-top; else a plain independent window.
       if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
         try {
+          pipPending = true;
           window.documentPictureInPicture.requestWindow({ width: POPOUT_W, height: POPOUT_H })
             .then(function (w) { mountPopout(w); })
-            .catch(function () { openPlainPopout(); });
+            .catch(function () { pipPending = false; openPlainPopout(); });
           return;
-        } catch (_) { /* fall through to the plain window */ }
+        } catch (_) { pipPending = false; /* fall through to the plain window */ }
       }
       openPlainPopout();
     }
@@ -1216,10 +1228,10 @@ if (typeof module !== 'undefined' && module.exports) {
       mountPopout(w);
     }
     function teardownPopout() {
+      pipPending = false;
       if (pipAbort) { try { pipAbort.abort(); } catch (_) { /* ignore */ } pipAbort = null; }
-      // clear the pop-out clock on its OWN window (it created it) before closing; belt +
-      // suspenders (a closed window's timers die anyway, but a resize/toggle teardown leaves
-      // the window open in the plain-window case... no - teardown always closes it; still, clear).
+      // clear the pop-out clock on the window that CREATED it, before closing that window
+      // (a closed window's timers die anyway - this is belt-and-suspenders).
       if (pipClock != null) { try { (pipWin && pipWin.clearInterval ? pipWin : window).clearInterval(pipClock); } catch (_) { /* ignore */ } pipClock = null; }
       if (pipPanel) { var idx = skinSurfaces.indexOf(pipPanel); if (idx >= 0) skinSurfaces.splice(idx, 1); pipPanel = null; }
       if (pipWin) { try { if (pipWin.close && !pipWin.closed) pipWin.close(); } catch (_) { /* ignore */ } pipWin = null; }

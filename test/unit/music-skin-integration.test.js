@@ -705,3 +705,66 @@ test('v1.235.x pop-out: an OWN-window timer drives the clock (unfrozen when the 
     assert.strictEqual(clearedId, 777, 'teardown clears the pop-out clock on its own window');
   } });
 });
+
+// ---- v1.235 gate fix-round binds -------------------------------------------------------
+test('v1.235 fix: the volume-bar fade timer is armed AND cleared on the POP-OUT window (not a foreign realm)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const pip = makePipWindow();
+    let setCalls = 0, clrCalls = 0;
+    pip.setTimeout = (fn, ms) => { setCalls += 1; return 900 + setCalls; };
+    pip.clearTimeout = (id) => { clrCalls += 1; assert.ok(id >= 900, 'clears a POP-OUT timer id, not a foreign one'); };
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    spinPip(pip, [30, 60], 1); // >=2 moves -> showVolume re-arms, clearing the prior on this window
+    assert.ok(setCalls >= 2, 'fade timer armed on the pop-out window each move');
+    assert.ok(clrCalls >= 1, 'the prior fade timer was CLEARED on the pop-out window (debounce works; wrong-realm clear would be 0)');
+  } });
+});
+
+test('v1.235 fix: a tiny volume nudge (< 8px travel) does NOT suppress a following wheel-zone tap', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
+    const pip = await openPip(dom, 'ipod');
+    const panel = pipPanelOf(pip);
+    const wheel = panel.querySelector('.ip-wheel');
+    wheel.dispatchEvent(ptrOn(pip, 'pointerdown', 100, 0, 1));
+    wheel.dispatchEvent(ptrOn(pip, 'pointermove', 100, 2, 1)); // ~2px travel (a jittery tap), > 0.5deg though
+    wheel.dispatchEvent(ptrOn(pip, 'pointerup', 100, 2, 1));
+    panel.querySelector('[data-skin-play]').dispatchEvent(new pip.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(spy.pp, 1, 'the small-nudge release did not swallow the next zone tap (8px threshold, not 0.5deg)');
+  } });
+});
+
+test('v1.235 fix: a double-click during the async grant opens only ONE pop-out window (pipPending)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const wins = []; const resolvers = [];
+    dom.window.documentPictureInPicture = { requestWindow: () => new Promise((r) => { const w = makePipWindow(); wins.push(w); resolvers.push(function () { r(w); }); }) };
+    clickPopout(dom);   // first - starts the grant, sets pipPending
+    clickPopout(dom);   // second - during the pending grant, must be ignored
+    await settle();
+    assert.strictEqual(wins.length, 1, 'only ONE requestWindow issued during the pending grant (no double always-on-top window)');
+    resolvers[0](); await settle(); await settle();
+    pipPanelOf(wins[0]).ownerDocument.defaultView.dispatchEvent(new wins[0].Event('pagehide')); // tidy
+  } });
+});
+
+test('v1.235: closing then re-opening the pop-out re-arms the clock (no stale/duplicate timer)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const intervals = [];
+    function mk() {
+      const w = makePipWindow();
+      w.setInterval = (fn, ms) => { intervals.push({ fn: fn, ms: ms, cleared: false }); return intervals.length; };
+      w.clearInterval = (id) => { if (intervals[id - 1]) intervals[id - 1].cleared = true; };
+      return w;
+    }
+    let pip = mk();
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    assert.strictEqual(intervals.length, 1, 'clock armed on open');
+    pip.dispatchEvent(new pip.Event('pagehide'));
+    assert.ok(intervals[0].cleared, 'clock cleared on close');
+    pip = mk();
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    assert.strictEqual(intervals.length, 2, 're-open arms a fresh clock (no duplicate/stale timer)');
+  } });
+});
