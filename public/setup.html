@@ -161,6 +161,18 @@
            Apple Music, Spotify, or iPod. Remembered on this device; the desktop
            player is unchanged.</p>
         <div class="theme-picker" id="music-skin-picker"><!-- rendered by JS --></div>
+        <!-- v1.238 (Dean): the player "sticker" - the little logo bottom-left of the
+             Music skins (+ desktop pop-out) that opens the speed / loop / skin menu.
+             The ICON is a per-user setting: the FileTube logo (default), an emoji, or a
+             custom uploaded image. The emoji/logo choice is per-device (localStorage
+             ft-sticker); a custom image is per-user (POST /api/me/sticker). Rendered +
+             wired by setup.js renderStickerPicker. -->
+        <h3 style="margin-top:20px;">Player sticker</h3>
+        <p>Pick the little sticker in the corner of the Music player that opens the
+           speed / loop / skin menu. Use the <strong>FileTube logo</strong>, an emoji,
+           or upload your own small image.</p>
+        <div id="sticker-picker" class="sticker-picker"><!-- rendered by JS --></div>
+        <input type="file" id="sticker-file-input" accept="image/png,image/jpeg,image/webp" hidden />
         <!-- v1.63.1 (Dean): the stars are decorative - a deterministic mock,
              not real ratings - and now optional. common.js owns the pref
              (localStorage truth + per-user mirror); ONE root class hides

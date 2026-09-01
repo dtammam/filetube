@@ -555,6 +555,107 @@ function renderMusicSkinPicker() {
   });
 }
 
+// v1.238 (Dean): the player "sticker" icon picker - the little logo in the corner of the
+// Music skins that opens the speed/loop/skin menu (music.js). Three kinds, mirroring the
+// music.js resolver: 'logo' (the FileTube favicon, the default), 'emoji' (a curated gallery
+// OR any typed emoji), and 'custom' (an uploaded image, per-USER via /api/me/sticker, T1).
+// The logo/emoji choice is per-DEVICE (localStorage ft-sticker, same class as the skin
+// choice); a custom image lives server-side. Escapes every emoji it renders (user input).
+const STICKER_PREF_KEY = 'ft-sticker';
+const STICKER_EMOJI_PRESETS = ['🎵', '🎧', '💿', '🎸', '🎹', '🎤', '📻', '🔊'];
+function readStickerPref() {
+  try {
+    const raw = localStorage.getItem(STICKER_PREF_KEY);
+    if (!raw) return { kind: 'logo' };
+    const o = JSON.parse(raw);
+    if (o && (o.kind === 'logo' || o.kind === 'emoji' || o.kind === 'custom')) return o;
+  } catch (_) { /* private mode / bad json -> default */ }
+  return { kind: 'logo' };
+}
+function writeStickerPref(obj) {
+  try { localStorage.setItem(STICKER_PREF_KEY, JSON.stringify(obj)); } catch (_) { /* storage off */ }
+}
+function escStickerHtml(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+async function renderStickerPicker() {
+  const container = document.getElementById('sticker-picker');
+  if (!container || !controller) return;
+  const pref = readStickerPref();
+  // Probe whether a custom image is on the server (independent of the current choice).
+  let hasCustom = false;
+  try { hasCustom = (await fetch('/api/me/sticker', { method: 'GET' })).ok; } catch (_) { hasCustom = false; }
+  const isActive = (kind, value) => pref.kind === kind && (kind !== 'emoji' || pref.value === value);
+  const cards = [];
+  cards.push(`<button type="button" class="theme-card sticker-card${isActive('logo') ? ' active' : ''}" data-sticker-kind="logo">
+      <span class="sticker-card-ic"><img src="/favicon.svg" alt="" /></span>
+      <span class="theme-card-name">FileTube logo</span></button>`);
+  STICKER_EMOJI_PRESETS.forEach((em) => {
+    cards.push(`<button type="button" class="theme-card sticker-card${isActive('emoji', em) ? ' active' : ''}" data-sticker-kind="emoji" data-sticker-emoji="${escStickerHtml(em)}">
+      <span class="sticker-card-ic sticker-card-emoji">${escStickerHtml(em)}</span></button>`);
+  });
+  if (hasCustom) {
+    cards.push(`<button type="button" class="theme-card sticker-card${isActive('custom') ? ' active' : ''}" data-sticker-kind="custom">
+      <span class="sticker-card-ic"><img src="/api/me/sticker?v=${encodeURIComponent(pref.v || Date.now())}" alt="" /></span>
+      <span class="theme-card-name">Your image</span></button>`);
+  }
+  container.innerHTML = `<div class="sticker-cards">${cards.join('')}</div>
+    <div class="sticker-emoji-row">
+      <input type="text" id="sticker-emoji-input" class="sticker-emoji-input" maxlength="8" placeholder="Any emoji" aria-label="Custom emoji" />
+      <button type="button" class="btn btn-sm" id="sticker-emoji-set">Use emoji</button>
+    </div>
+    <div class="sticker-actions">
+      <button type="button" class="btn btn-sm" id="sticker-upload-btn">Upload image…</button>
+      <button type="button" class="btn btn-sm" id="sticker-remove-custom"${hasCustom ? '' : ' hidden'}>Remove your image</button>
+    </div>`;
+  const sig = { signal: controller.signal };
+  container.querySelectorAll('.sticker-card').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const kind = btn.dataset.stickerKind;
+      if (kind === 'emoji') writeStickerPref({ kind: 'emoji', value: btn.dataset.stickerEmoji });
+      else if (kind === 'custom') writeStickerPref({ kind: 'custom', v: Date.now() });
+      else writeStickerPref({ kind: 'logo' });
+      renderStickerPicker();
+    }, sig);
+  });
+  const emojiSet = document.getElementById('sticker-emoji-set');
+  const emojiInput = document.getElementById('sticker-emoji-input');
+  if (emojiSet && emojiInput) emojiSet.addEventListener('click', () => {
+    const v = (emojiInput.value || '').trim();
+    if (!v) return;
+    writeStickerPref({ kind: 'emoji', value: v });
+    renderStickerPicker();
+  }, sig);
+  const uploadBtn = document.getElementById('sticker-upload-btn');
+  const fileInput = document.getElementById('sticker-file-input');
+  if (uploadBtn && fileInput) {
+    uploadBtn.addEventListener('click', () => fileInput.click(), sig);
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files && fileInput.files[0];
+      fileInput.value = ''; // allow re-picking the same file
+      if (!file) return;
+      try {
+        const res = await fetch('/api/me/sticker', { method: 'POST', headers: { 'Content-Type': file.type || 'image/png' }, body: file });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(body.error || 'Could not upload your sticker.'); return; }
+        writeStickerPref({ kind: 'custom', v: (body.sticker && body.sticker.version) || Date.now() });
+        showToast('Sticker updated.');
+        renderStickerPicker();
+      } catch (_) { showToast('Could not upload your sticker (network error).'); }
+    }, sig);
+  }
+  const removeBtn = document.getElementById('sticker-remove-custom');
+  if (removeBtn) removeBtn.addEventListener('click', async () => {
+    try {
+      const res = await fetch('/api/me/sticker', { method: 'DELETE' });
+      if (!res.ok) { showToast('Could not remove your sticker.'); return; }
+      if (readStickerPref().kind === 'custom') writeStickerPref({ kind: 'logo' });
+      showToast('Sticker removed.');
+      renderStickerPicker();
+    } catch (_) { showToast('Could not remove your sticker (network error).'); }
+  }, sig);
+}
+
 // ---- Automation & Storage --------------------------------------------
 // Persisted server-side (db.settings via /api/settings), NOT localStorage
 // like the theme/icon prefs above — these govern server automation
@@ -3649,6 +3750,7 @@ function init(root) {
   renderThemePicker();
   renderIconPicker();
   renderMusicSkinPicker(); // v1.230: the mobile Music-player skin (per-device)
+  renderStickerPicker();   // v1.238: the player-sticker icon picker (logo / emoji / custom upload)
   wireHideStarsControl(controller.signal); // v1.63.1: the fake-stars toggle
   wireCritterModeControls(controller.signal); // v1.166: Sneaky critter mode
   wireVoiceCheck(controller.signal); // v1.181: the Troubleshooting page's critter sound diagnostic
