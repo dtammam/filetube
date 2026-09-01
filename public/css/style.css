@@ -10935,6 +10935,9 @@ html[data-modern="on"] .video-uploader {
   --mms-ipod-sheen-a:rgba(255,255,255,.5); --mms-ipod-sheen-b:rgba(255,255,255,.14);
   --mms-ipod-sheen-c:rgba(255,255,255,.35); --mms-ipod-sheen-d:rgba(255,255,255,.6);
   --mms-ipod-sheen-0:rgba(255,255,255,0);
+  /* v1.232.2 silver Pocket Classic gloss (reads on the WHITE body): a crisp top
+     highlight + a soft bottom-edge shadow for the domed, reflective look. */
+  --mms-ipod-gloss-hi:rgba(255,255,255,.9); --mms-ipod-gloss-shadow:rgba(0,0,0,.08);
   /* v1.232 iPod BLACK variant - body + wheel palette only (screen unchanged). */
   --mms-ipodk-body1:#343436; --mms-ipodk-body2:#161618; --mms-ipodk-edge:#0a0a0b;
   --mms-ipodk-wheel1:#3d3d3f; --mms-ipodk-wheel2:#232325; --mms-ipodk-wheel-lbl:#b9babd;
@@ -11059,10 +11062,15 @@ html[data-modern="on"] .video-uploader {
      right, Aqua scrubber) OR the song list (Select flips, tap a row to play);
      below, the flat gray CLICK WHEEL - tap zones (MENU/prev/next/play) + a Select
      center. The play STATE reflects in the status bar (▶/❚❚). */
-  /* the warm-white body carries the glossy Apple SHEEN, layered over the body gradient
-     (in the background so it needs no z-index) - a diagonal top-left highlight + a soft
-     reflected sweep low-right; visible on the plastic around the screen + wheel. */
+  /* the warm-white body carries the glossy SHEEN (in the background so it needs no
+     z-index). v1.232.2 (Dean: give the silver Pocket Classic gloss like the black one):
+     on a WHITE body a white-on-white sheen is invisible, so the gloss reads from a
+     crisp top HIGHLIGHT band + a soft bottom-edge SHADOW (the domed, reflective look),
+     over the soft diagonal sheen + body gradient. (The black variant overrides this
+     whole background in .mms-ipod-black, so this tuning is silver-only.) */
   .mms-ipod{ background:
+      linear-gradient(180deg, var(--mms-ipod-gloss-hi) 0%, var(--mms-ipod-sheen-0) 15%),
+      radial-gradient(135% 90% at 50% 122%, var(--mms-ipod-gloss-shadow) 0%, transparent 55%),
       linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
       radial-gradient(120% 60% at 85% 108%, var(--mms-ipod-sheen-c) 0%, var(--mms-ipod-sheen-0) 55%),
       linear-gradient(158deg, var(--mms-ipod-body1), var(--mms-ipod-body2));

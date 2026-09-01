@@ -350,3 +350,14 @@ a dark body too). The marquee (title/artist/album scroll) uses a census-exempt
 `@keyframes mms-marquee` + two JS-set custom props (`--mms-mq-shift`/`--mms-mq-dur`, in
 the v1.70 jsSet allowlist), no new palette tokens. The tap-highlight fix is
 `-webkit-tap-highlight-color:transparent` (the `transparent` keyword is census-exempt).
+
+## Addendum v1.232.2 (2026-09-01): silver Pocket Classic gloss (+2 --mms tokens -> 67)
+
+Dean: give the silver iPod (Pocket Classic) a sheen like the black variant's. On a
+WHITE body the white-alpha sheen used for black is invisible, so the silver gloss is
+built from a crisp top HIGHLIGHT + a soft bottom-edge SHADOW (the domed reflective
+look), layered into the `.mms-ipod` background (silver-only; the black variant
+overrides that whole background). +2 tokens (contract 125 -> 127 = 60 base + 67
+`--mms-*`): `--mms-ipod-gloss-hi` rgba(255,255,255,.9), `--mms-ipod-gloss-shadow`
+rgba(0,0,0,.08). The shadow gradient fades to the `transparent` keyword (dark->transparent,
+no grey fringe); the highlight fades to the existing `--mms-ipod-sheen-0`.
