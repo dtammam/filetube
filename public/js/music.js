@@ -647,6 +647,36 @@ if (typeof module !== 'undefined' && module.exports) {
       var pEl = nowPlayingPanel.querySelector('.mms-pos'); if (pEl) pEl.textContent = mmssMusic(pos);
       var rEl = nowPlayingPanel.querySelector('.mms-rem'); if (rEl) rEl.textContent = dur > 0 ? '-' + mmssMusic(dur - pos) : '';
     }
+    // v1.233 iPod wheel-scroll state: wheelCursorRow is the CURRENT list POSITION the
+    // wheel cursor sits on (an index into the rendered .ip-listview rows, NOT a queue
+    // index - fullList may be a window, so a position is robust to that). -1 when the
+    // list is closed. wheelSuppressClick swallows the synthetic click a spin-ending
+    // pointerup would otherwise fire on a wheel zone (see the pointerdown gesture below).
+    var wheelCursorRow = -1;
+    var wheelSuppressClick = false;
+    // Move the selection cursor to list POSITION `pos` (clamped): paint .is-cursor (the
+    // blue bar) on that row alone and keep it visible. `center` (list-open) centers it;
+    // otherwise (a spin step) it edge-follows - only scrolls when the row would leave the
+    // viewport, like a real iPod. Scroll ONLY the list container, never the page.
+    function setWheelCursor(pos, center) {
+      var lv = nowPlayingPanel && nowPlayingPanel.querySelector('.ip-listview'); if (!lv) return;
+      var rows = lv.querySelectorAll('.mms-row'); if (!rows.length) return;
+      pos = Math.max(0, Math.min(rows.length - 1, pos));
+      wheelCursorRow = pos;
+      for (var i = 0; i < rows.length; i++) rows[i].classList.toggle('is-cursor', i === pos);
+      var el = rows[pos];
+      var raf = (typeof window !== 'undefined' && window.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); };
+      raf(function () {
+        // subtract lv.offsetTop: .ip-listview is position:static, so el.offsetTop is
+        // measured from the nearest positioned ancestor (.mms-full), not the list -
+        // it includes the status bar + LCD offset (mirrors the default panel's
+        // scroll-to-current: mnpQueue.scrollTop = curRow.offsetTop - mnpQueue.offsetTop).
+        var top = el.offsetTop - lv.offsetTop;
+        if (center) lv.scrollTop = Math.max(0, top - (lv.clientHeight / 2) + (el.offsetHeight / 2));
+        else if (top < lv.scrollTop) lv.scrollTop = top;
+        else if (top + el.offsetHeight > lv.scrollTop + lv.clientHeight) lv.scrollTop = top + el.offsetHeight - lv.clientHeight;
+      });
+    }
     // iPod Now-Playing <-> song-list toggle (a transient class on the panel; a full
     // re-render resets it, so a track change returns you to Now Playing).
     function setIpodListMode(on) {
@@ -654,20 +684,19 @@ if (typeof module !== 'undefined' && module.exports) {
       nowPlayingPanel.classList.toggle('mms-listmode', !!on);
       var npEl = nowPlayingPanel.querySelector('.ip-np');
       if (npEl) npEl.textContent = on ? 'Songs' : 'Now Playing';
-      // v1.232.5 (Dean): the list is the WHOLE album; on open, center the current song so
-      // earlier tracks are above (scroll up) and later below. Scroll ONLY the list
-      // container (never the page). rAF: the list just became visible - measure post-layout.
       if (on) {
-        var raf = (typeof window !== 'undefined' && window.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); };
-        raf(function () {
-          var lv = nowPlayingPanel.querySelector('.ip-listview');
-          var cur = lv && lv.querySelector('.mms-row.is-current');
-          // subtract lv.offsetTop: .ip-listview is position:static, so cur.offsetTop is
-          // measured from the nearest positioned ancestor (.mms-full), not the list -
-          // it includes the status bar + LCD offset. Mirrors the default panel's
-          // scroll-to-current (mnpQueue.scrollTop = curRow.offsetTop - mnpQueue.offsetTop).
-          if (lv && cur) lv.scrollTop = Math.max(0, (cur.offsetTop - lv.offsetTop) - (lv.clientHeight / 2) + (cur.offsetHeight / 2));
-        });
+        // v1.232.5 (Dean): the list is the WHOLE album; on open, seed the cursor on the
+        // current song and CENTER it so earlier tracks are above (scroll up) and later
+        // below. From here the wheel spin moves the cursor (v1.233).
+        var lv = nowPlayingPanel.querySelector('.ip-listview');
+        var rows = lv ? lv.querySelectorAll('.mms-row') : [];
+        var startPos = 0;
+        for (var i = 0; i < rows.length; i++) { if (rows[i].classList.contains('is-current')) { startPos = i; break; } }
+        setWheelCursor(startPos, true);
+      } else {
+        var cr = nowPlayingPanel.querySelector('.ip-listview .mms-row.is-cursor');
+        if (cr) cr.classList.remove('is-cursor');
+        wheelCursorRow = -1;
       }
     }
     // v1.232 (Dean): overflowing title/artist/album lines SCROLL like a real iPod - on
@@ -714,6 +743,12 @@ if (typeof module !== 'undefined' && module.exports) {
       // ALSO gets the base class + all its shared CSS; the id class overrides the palette.
       var base = (typeof SKINS.skinById === 'function' && (SKINS.skinById(id) || {}).base) || '';
       nowPlayingPanel.className = 'music-nowplaying-panel mms mms-full mms-' + id + (base ? ' mms-' + base : '');
+      // v1.233 (QA finding): a re-render (e.g. a track auto-advance) detaches the wheel
+      // element, so a live gesture's pointerup would never reach its onUp -> endWheel and
+      // wheelSpin would stick non-null, wedging every later spin ("one gesture at a time").
+      // Drop the mid-gesture state here; the detached wheel's element-local listeners GC
+      // with it, and wheelCursorRow is re-seeded when the list is next opened.
+      wheelSpin = null;
       nowPlayingPanel.innerHTML = SKINS.renderFull(id, buildSkinCtx(ci));
       nowPlayingPanel.hidden = false;
       ensureSkinReflect();
@@ -859,6 +894,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // MediaSession, setTrackNav) runs unchanged - the skin never calls audio itself.
     if (nowPlayingPanel) {
       nowPlayingPanel.addEventListener('click', function (e) {
+        // v1.233: a wheel SPIN that ended over a zone button would fire a synthetic click
+        // on release - swallow exactly that one (the flag is set on a moved pointerup and
+        // cleared here or on the next pointerdown, so it never eats a later real tap).
+        if (wheelSuppressClick) { wheelSuppressClick = false; e.preventDefault(); e.stopPropagation(); return; }
         // Skin PICKING lives on the Settings page (v1.230); this panel only carries
         // the transport/seek/queue hooks. A skin change persists to ft-music-skin and
         // is picked up when this view next renders (renderNowPlayingSkin re-reads it).
@@ -876,9 +915,18 @@ if (typeof module !== 'undefined' && module.exports) {
           else { var plm = window.FileTube && window.FileTube.player; if (plm && typeof plm.dock === 'function') { plm.dock(); updateNowPlayingPanel(); } }
           return;
         }
-        // iPod Select = enter/leave the song list (a transient panel class; reset on
-        // any re-render, e.g. a track change, so a new song lands back on Now Playing).
-        if (e.target.closest('[data-skin-select]')) { setIpodListMode(!nowPlayingPanel.classList.contains('mms-listmode')); return; }
+        // iPod Select (center): from Now Playing it OPENS the song list; in the list it
+        // PLAYS the cursor-highlighted song (v1.233, the authentic iPod center-select),
+        // then returns to Now Playing. MENU (above) is the way back out without playing.
+        if (e.target.closest('[data-skin-select]')) {
+          if (nowPlayingPanel.classList.contains('mms-listmode')) {
+            var cur = nowPlayingPanel.querySelector('.ip-listview .mms-row.is-cursor');
+            var cgi = cur && parseInt(cur.getAttribute('data-skin-go'), 10);
+            setIpodListMode(false);
+            if (cur && !isNaN(cgi)) playAt(cgi);
+          } else { setIpodListMode(true); }
+          return;
+        }
         var seek = e.target.closest('[data-skin-seek]');
         if (seek) {
           // Proxy to the host #seek-bar (a 0..1 ratio input): its 'change' handler
@@ -900,6 +948,83 @@ if (typeof module !== 'undefined' && module.exports) {
         if (!row) return;
         var idx = parseInt(row.getAttribute('data-index'), 10);
         if (!isNaN(idx)) playAt(idx);
+      }, { signal });
+
+      // v1.233: the iPod click wheel is a real ROTARY SCROLL. Spinning it with the song
+      // list open moves the selection cursor song-by-song; a fast flick ACCELERATES;
+      // center then plays the highlighted song. Only in list mode (Dean: Now-Playing spin
+      // does nothing) and only the iPod skin renders a wheel.
+      //
+      // Why POINTER events, not touch: a document-level non-passive touchmove is a
+      // scroll-perf regression (the v1.160.1 scar) - passivity is static to the
+      // registration. Pointer events carry no such penalty AND setPointerCapture keeps the
+      // stream on the wheel with no global listener at all. Teardown discipline (the v1.163
+      // scar): move/up/cancel are added on pointerdown and REMOVED on every end arm
+      // (endWheel), and capture is taken LAZILY - only once the gesture is confirmed a spin
+      // - so a plain TAP on a zone/center button still fires its click untouched.
+      var WHEEL_STEP_DEG = 22;   // wheel degrees per one-song cursor step
+      var wheelSpin = null;      // live gesture state, null when idle
+      function wheelShortAngle(a) { while (a > 180) a -= 360; while (a < -180) a += 360; return a; }
+      // End the gesture `st`: unbind ITS listeners + release ITS capture. Takes the st
+      // explicitly (not the live wheelSpin) so a stale end-arm - e.g. a detached wheel's
+      // late pointerup after renderNowPlayingSkin already dropped the gesture (QA finding)
+      // - tears down only its own element and never a newer gesture. wheelSpin is nulled
+      // only if it still IS this st.
+      function endWheel(st, suppress) {
+        var w = st.wheel;
+        try { if (st.captured) w.releasePointerCapture(st.id); } catch (_) { /* not captured */ }
+        w.removeEventListener('pointermove', st.onMove);
+        w.removeEventListener('pointerup', st.onUp);
+        w.removeEventListener('pointercancel', st.onUp);
+        // a spin that actually moved swallows the release's synthetic click (below);
+        // a pure tap (no move) leaves the flag false so the zone's click proceeds.
+        if (suppress) wheelSuppressClick = true;
+        if (wheelSpin === st) wheelSpin = null;
+      }
+      nowPlayingPanel.addEventListener('pointerdown', function (e) {
+        // any fresh touch starts clean, so a stale suppress can never eat a real tap.
+        wheelSuppressClick = false;
+        if (wheelSpin) return;                                             // one gesture at a time
+        if (!nowPlayingPanel.classList.contains('mms-listmode')) return;   // list-only (Dean)
+        var wheel = e.target.closest('.ip-wheel'); if (!wheel) return;
+        var r = wheel.getBoundingClientRect();
+        var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        // ignore a press on the dead center (the Select button): no capture, tap passes through.
+        if (Math.hypot(e.clientX - cx, e.clientY - cy) < r.width * 0.2) return;
+        var now0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        var st = { wheel: wheel, id: e.pointerId, captured: false, moved: false,
+          lastAngle: Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI,
+          lastT: now0, accum: 0, x0: e.clientX, y0: e.clientY, onMove: null, onUp: null };
+        st.onMove = function (ev) {
+          if (ev.pointerId !== st.id) return;   // ignore a SECOND finger's moves (adversarial S1: else its coords difference against finger A's angle -> a jumpy jump)
+          var ang = Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180 / Math.PI;
+          var d = wheelShortAngle(ang - st.lastAngle); st.lastAngle = ang;
+          var now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+          var dt = Math.max(1, now - st.lastT); st.lastT = now;
+          st.accum += d;
+          // confirm it's a spin once travel passes a small threshold: mark moved (so the
+          // click is suppressed) and take pointer capture (so drift off the ring keeps
+          // feeding moves). A pure tap never crosses this, so its click stays intact.
+          if (!st.moved && Math.hypot(ev.clientX - st.x0, ev.clientY - st.y0) > 8) {
+            st.moved = true;
+            try { st.wheel.setPointerCapture(st.id); st.captured = true; } catch (_) { /* best effort */ }
+          }
+          // acceleration: songs-per-step scales with angular speed (deg/ms) so a slow turn
+          // is one-at-a-time and a fast flick jumps several.
+          var speed = Math.abs(d) / dt;
+          var mult = speed > 2.4 ? 4 : (speed > 1.5 ? 3 : (speed > 0.8 ? 2 : 1));
+          while (Math.abs(st.accum) >= WHEEL_STEP_DEG) {
+            var sign = st.accum > 0 ? 1 : -1;      // clockwise (+) => down the list, iPod-true
+            st.moved = true;
+            setWheelCursor(wheelCursorRow + sign * mult, false);
+            st.accum -= sign * WHEEL_STEP_DEG;
+          }
+        };
+        st.onUp = function () { endWheel(st, st.moved); };
+        wheel.addEventListener('pointermove', st.onMove);
+        wheel.addEventListener('pointerup', st.onUp);
+        wheel.addEventListener('pointercancel', st.onUp);
+        wheelSpin = st;
       }, { signal });
     }
     // Tapping the line drills into the playing track's album.

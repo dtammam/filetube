@@ -2554,5 +2554,11 @@
     "date": "2026-09-01",
     "title": "The iPod song list shows the whole album and jumps to your current song",
     "intent": "On the iPod Music skin, opening the song list (the center button) now shows the whole album and lands on the song you're playing, so you can scroll up to earlier tracks and down to later ones. Before, the list started near your current song, so you could only browse earlier tracks if you were on the very first one. Tap any song to play it, same as before."
+  },
+  {
+    "version": "1.233.0",
+    "date": "2026-09-01",
+    "title": "The iPod click wheel really spins",
+    "intent": "The iPod Music skin's click wheel now works like the real thing. Open the song list and spin your thumb around the wheel to scroll through your songs - a highlight moves song to song, and a quick flick jumps further. Press the center button to play the highlighted song. It's a much more fun, hands-on way to pick a track on your phone."
   }
 ]

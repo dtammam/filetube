@@ -129,23 +129,32 @@ test('the skins with a list (spotify queue, ipod song list) render jump-by-index
   assert.ok(!/data-skin-go=/.test(apple), 'apple renders no list');
 });
 
-test('v1.232.5: setIpodListMode scrolls the current song into view via the list container (source lock)', () => {
+test('v1.232.5/v1.233: opening the iPod list seeds the cursor on the CURRENT song and scrolls it into view (source lock)', () => {
   // jsdom has no layout, so lock the scroll GLUE in source (mirrors the default panel's
-  // scroll-to-current lock): rAF-deferred, targets .mms-row.is-current, scrolls the
-  // .ip-listview container via scrollTop (never scrollIntoView -> would scroll the page),
-  // and normalizes by the container offsetTop (the list is position:static).
+  // scroll-to-current lock). v1.233 refactor: setIpodListMode SEEDS the cursor on the
+  // current row (and clears it on close), delegating the actual scroll to setWheelCursor,
+  // which holds the rAF-deferred, container-offsetTop-normalized scrollTop write (never
+  // scrollIntoView -> that would scroll the page behind the fixed skin).
   const fs = require('node:fs'); const path = require('node:path');
   const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
-  const m = /function setIpodListMode\(on\) \{([\s\S]*?)\n {4}\}/.exec(js);
-  assert.ok(m, 'setIpodListMode exists');
-  const body = m[1];
-  assert.match(body, /\.ip-listview/, 'targets the list container');
-  assert.match(body, /\.mms-row\.is-current/, 'centers the CURRENT row');
+  const lm = /function setIpodListMode\(on\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.ok(lm, 'setIpodListMode exists');
+  const lmBody = lm[1];
+  assert.match(lmBody, /\.ip-listview/, 'reads the list container');
+  assert.match(lmBody, /is-current/, 'seeds the cursor from the CURRENT row');
+  assert.match(lmBody, /setWheelCursor\([^,]+,\s*true\)/, 'centers the seeded cursor on open (setWheelCursor(..., true))');
+  assert.match(lmBody, /is-cursor[\s\S]*remove|remove[\s\S]*is-cursor/, 'clears the cursor highlight on close');
+
+  const wc = /function setWheelCursor\(pos, center\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.ok(wc, 'setWheelCursor exists');
+  const wcBody = wc[1];
+  assert.match(wcBody, /\.ip-listview/, 'scrolls the list container');
+  assert.match(wcBody, /classList\.toggle\('is-cursor'/, 'paints .is-cursor on exactly the cursor row');
   // the scroll write must be INSIDE the rAF callback (deferred past the display:none->block
   // layout) - not merely that a raf helper is declared (that would be vacuous).
-  assert.match(body, /raf\(function[\s\S]*?\.scrollTop\s*=/, 'the scrollTop write runs inside the rAF callback (deferred)');
-  assert.match(body, /cur\.offsetTop\s*-\s*lv\.offsetTop/, 'normalizes by the container offsetTop (static list)');
-  assert.ok(!/scrollIntoView/.test(body), 'NOT scrollIntoView (that would scroll the page behind)');
+  assert.match(wcBody, /raf\(function[\s\S]*?\.scrollTop\s*=/, 'the scrollTop write runs inside the rAF callback (deferred)');
+  assert.match(wcBody, /el\.offsetTop\s*-\s*lv\.offsetTop/, 'normalizes by the container offsetTop (static list)');
+  assert.ok(!/scrollIntoView/.test(wcBody), 'NOT scrollIntoView (that would scroll the page behind)');
 });
 
 test('v1.232.5: the iPod list renders ctx.fullList (whole album, reach earlier songs); Spotify uses upNext', () => {
@@ -213,4 +222,115 @@ test('pct clamps position into 0..100 and guards a zero/absent duration', () => 
   assert.strictEqual(skins._pct(50, 100), 50);
   assert.strictEqual(skins._pct(999, 100), 100, 'over-run clamps to 100');
   assert.strictEqual(skins._pct(10, 0), 0, 'zero duration -> 0, no NaN');
+});
+
+// ---- v1.233: the click-wheel ROTARY SCROLL gesture (safety source-locks) -------------
+// The gesture is the v1.160/v1.163 scar class (non-passive touch listeners, latched
+// direction, leaked capture). These lock the safe SHAPE in source (jsdom can't measure
+// pointer-capture / passivity); the behavioral cursor moves are in music-skin-integration.
+function wheelHandlerSrc() {
+  const fs = require('node:fs'); const path = require('node:path');
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  // from the pointerdown registration through the end of the gesture block.
+  const m = /addEventListener\('pointerdown', function \(e\) \{([\s\S]*?)\n {6}\}, \{ signal \}\);/.exec(js);
+  assert.ok(m, 'the wheel pointerdown handler exists');
+  return { js, body: m[1] };
+}
+
+test('v1.233: the wheel gesture uses POINTER events, never a global non-passive touch listener (v1.160.1 scar)', () => {
+  const { js, body } = wheelHandlerSrc();
+  assert.match(body, /pointermove/, 'tracks with pointermove');
+  // no touchmove listener anywhere near the wheel gesture (the scroll-perf regression).
+  assert.ok(!/addEventListener\('touchmove'/.test(js), 'no touchmove listener at all (pointer events carry no passivity penalty)');
+  // move/up/cancel are bound on the WHEEL element (not document/window) - no global listener.
+  assert.match(body, /wheel\.addEventListener\('pointermove'/, 'pointermove is bound to the wheel element, not document/window');
+});
+
+test('v1.233: pointer capture is taken LAZILY (only once confirmed a spin) so a plain tap keeps its click', () => {
+  const { body } = wheelHandlerSrc();
+  // the moved-flag flip and setPointerCapture live together inside the travel-threshold
+  // guard - NOT unconditionally at pointerdown (which some browsers turn into a lost click).
+  assert.match(body, /Math\.hypot\(ev\.clientX[\s\S]*?setPointerCapture/, 'capture is inside the "it moved" branch, not on bare pointerdown');
+  // and the moved-flag flips in the same guard, so a tap (never crossing 8px) stays uncaptured.
+  assert.match(body, /Math\.hypot\(ev\.clientX[^)]*\)[^>]*> 8[\s\S]*?st\.moved = true/, 'the moved flag flips only past the 8px travel threshold');
+});
+
+test('v1.233: every gesture end arm REMOVES the move/up/cancel listeners + releases capture (v1.163 teardown)', () => {
+  const { js } = wheelHandlerSrc();
+  const m = /function endWheel\(st, suppress\) \{([\s\S]*?)\n {6}\}/.exec(js);
+  assert.ok(m, 'endWheel exists');
+  const end = m[1];
+  assert.match(end, /removeEventListener\('pointermove'/, 'removes pointermove');
+  assert.match(end, /removeEventListener\('pointerup'/, 'removes pointerup');
+  assert.match(end, /removeEventListener\('pointercancel'/, 'removes pointercancel');
+  assert.match(end, /releasePointerCapture/, 'releases the pointer capture');
+  // endWheel acts on the passed `st` and nulls wheelSpin ONLY if it still IS that st, so a
+  // stale end-arm (a detached wheel's late pointerup after a re-render) can't tear down a
+  // newer gesture (QA + the re-render guard below).
+  assert.match(end, /if \(wheelSpin === st\) wheelSpin = null/, 'wheelSpin is nulled only when the ending gesture is still the live one');
+  // pointerup AND pointercancel both route to the same end arm (a cancelled gesture leaks nothing).
+  const { body } = wheelHandlerSrc();
+  assert.match(body, /addEventListener\('pointercancel', st\.onUp\)/, 'pointercancel also ends the gesture (no leak on an interrupted spin)');
+});
+
+test('v1.233: a re-render (track auto-advance) drops any mid-gesture wheelSpin (QA leak guard)', () => {
+  // If the panel re-renders while a finger is down but before capture, the detached wheel's
+  // pointerup never reaches endWheel; without this reset wheelSpin sticks and every later
+  // spin bails on "one gesture at a time". renderNowPlayingSkin nulls it on every render.
+  const fs = require('node:fs'); const path = require('node:path');
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  const m = /function renderNowPlayingSkin\(ci\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.ok(m, 'renderNowPlayingSkin exists');
+  assert.match(m[1], /wheelSpin = null/, 'a render clears any stale mid-gesture state');
+});
+
+test('v1.233: onMove ignores a SECOND finger (pointerId filter - adversarial S1 device jitter)', () => {
+  const { body } = wheelHandlerSrc();
+  assert.match(body, /st\.onMove = function \(ev\) \{\s*if \(ev\.pointerId !== st\.id\) return;/, 'onMove bails on a pointerId that is not this gesture\'s');
+});
+
+test('v1.233: direction is re-evaluated every move (accum + sign per move), never latched (v1.160.3 scar)', () => {
+  const { body } = wheelHandlerSrc();
+  // the sign is computed from the LIVE accumulator each step, inside the while loop.
+  assert.match(body, /var sign = st\.accum > 0 \? 1 : -1/, 'sign derives from the current accumulator, not a stored initial direction');
+  assert.match(body, /st\.accum -= sign \* WHEEL_STEP_DEG/, 'the accumulator is drained per step (re-evaluated, not latched)');
+});
+
+test('v1.233: a fast flick ACCELERATES (songs-per-step scales with angular speed)', () => {
+  const { body } = wheelHandlerSrc();
+  assert.match(body, /var speed = Math\.abs\(d\) \/ dt/, 'computes angular speed (deg/ms)');
+  assert.match(body, /var mult = speed > [\d.]+ \? \d/, 'a speed-scaled multiplier (fast flick jumps several songs)');
+  assert.match(body, /setWheelCursor\(wheelCursorRow \+ sign \* mult/, 'the multiplier drives how many songs the cursor jumps');
+});
+
+test('v1.233: the spin is LIST-ONLY and ignores the dead-center Select button (Dean spec)', () => {
+  const { body } = wheelHandlerSrc();
+  assert.match(body, /mms-listmode[\s\S]*?return/, 'bails unless the list is open (Now Playing spin does nothing)');
+  assert.match(body, /r\.width \* 0\.2[\s\S]*?return/, 'a press on the dead center (Select) is ignored so its tap passes through');
+});
+
+test('v1.233: center-select in the list PLAYS the cursor row (not the current), then returns to Now Playing', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  const m = /data-skin-select\]'\)\) \{([\s\S]*?)\n {8}\}/.exec(js);
+  assert.ok(m, 'the data-skin-select handler exists');
+  const b = m[1];
+  assert.match(b, /mms-listmode/, 'branches on list vs Now Playing');
+  assert.match(b, /is-cursor[\s\S]*data-skin-go/, 'in the list it reads the CURSOR row (is-cursor) and its queue index');
+  assert.match(b, /setIpodListMode\(false\)[\s\S]*playAt/, 'closes the list then plays that song');
+  assert.match(b, /setIpodListMode\(true\)/, 'from Now Playing it opens the list');
+});
+
+test('v1.233: the wheel CURSOR bar is a distinct highlight - is-cursor gets the blue bar, is-current keeps only its ▶ marker', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const cursor = /\.mms-ipod \.mms-row\.is-cursor\{([^}]*)\}/.exec(css);
+  assert.ok(cursor, 'the is-cursor rule exists');
+  assert.match(cursor[1], /background:\s*linear-gradient\(var\(--mms-ipod-blue1\)/, 'the cursor wears the blue selection bar');
+  // is-current no longer paints the full blue bar (that follows the cursor now) - it keeps
+  // just the marker so you still see what is playing while the cursor roams.
+  const cur = /\.mms-ipod \.mms-row\.is-current\{([^}]*)\}/.exec(css);
+  assert.ok(!cur || !/linear-gradient/.test(cur[1]), 'is-current does NOT paint the blue bar anymore (the cursor owns it)');
+  // source order: is-cursor after is-current so a coincident row resolves white text.
+  assert.ok(css.indexOf('.mms-row.is-cursor{') > css.indexOf('.mms-row.is-current .mms-rn'), 'is-cursor is declared AFTER is-current (wins at equal specificity)');
 });

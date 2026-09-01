@@ -121,8 +121,11 @@
   // IPOD - the real Classic. A black-bezelled LCD with the authentic Now Playing
   // screen (cover left, title/artist/album/stars/N-of-M right, Aqua scrubber) OR the
   // song list (Select flips to it, tap a row to play); below, the gray click wheel.
-  // Wheel is TAP-zones, not a scroll wheel: MENU=back/exit, prev/next, bottom=play,
-  // center=Select (open list / from list back). Play STATE shows in the status bar.
+  // The wheel has TAP zones AND a real rotary SCROLL (v1.233, music.js): MENU=back/exit,
+  // prev/next skip tracks, bottom=play/pause; center opens the list from Now Playing and,
+  // in the list, PLAYS the highlighted song. Spinning the wheel with the list open moves
+  // the selection cursor song-by-song (fast flicks accelerate); in Now Playing the spin
+  // does nothing. Play STATE shows in the status bar.
   function renderIpod(ctx) {
     var a = ctx.track || {}; var u = artUrl(ctx);
     var nof = (Number(ctx.curNum) || 0) > 0 ? (ctx.curNum + ' of ' + (ctx.total || ctx.curNum)) : '';
