@@ -794,9 +794,21 @@ if (typeof module !== 'undefined' && module.exports) {
         mp.addEventListener(ev, reflectAllSkins, { signal: signal });
       });
     }
-    // v1.237 chapter watcher: which chapter of the loaded chaptered file `currentTime` is IN
-    // (the queue's `::c` tracks for the same base file, ascending chapterStartSec). Returns the
-    // ::c id, or null when not playing a chaptered file. A small tolerance avoids boundary flicker.
+    // v1.237: the id the now-playing surfaces should treat as CURRENT. Prefer the
+    // watcher-advanced chapter (chapterViewId) ONLY while the loaded chaptered file is STILL the
+    // live track (same base id) - otherwise the override is stale (a different / non-music track
+    // became live without loadTrack resetting us) and we must fall back to player.currentId so the
+    // video/book cross-check in updateNowPlayingPanel keeps working (gate W1, both seats).
+    function effectiveCurrentId() {
+      var p = window.FileTube && window.FileTube.player;
+      var live = (p && p.currentId) || null;
+      if (chapterViewId && live && String(chapterViewId).replace(/::c\d+$/, '') === String(live).replace(/::c\d+$/, '')) return chapterViewId;
+      return live;
+    }
+    // v1.237 chapter watcher: which chapter of the loaded chaptered file `currentTime` is IN.
+    // Sorts the file's `::c` tracks by chapterStartSec FIRST (the album drill can be sorted/
+    // shuffled, so queue order is not necessarily ascending - gate W2), then takes the greatest
+    // start <= t. A small tolerance avoids boundary flicker. null when not on a chaptered file.
     function currentChapterId() {
       if (!chapterViewId) return null;
       var mp = hostCtl('media-player'); if (!mp) return chapterViewId;
@@ -804,6 +816,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var base = String(chapterViewId).replace(/::c\d+$/, '');
       var chaps = queue.filter(function (x) { return x && x.source === 'library-chapter' && String(x.id).replace(/::c\d+$/, '') === base; });
       if (!chaps.length) return chapterViewId;
+      chaps = chaps.slice().sort(function (a, b) { return (Number(a.chapterStartSec) || 0) - (Number(b.chapterStartSec) || 0); });
       var cur = chaps[0].id;
       for (var i = 0; i < chaps.length; i++) {
         if (t >= (Number(chaps[i].chapterStartSec) || 0) - 0.25) cur = chaps[i].id; else break;
@@ -825,6 +838,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (t) nowPlaying = { id: id, title: t.title || '', artist: t.artist || '', album: t.album || '', albumKey: t.albumKey || '' };
       applyPlayingHighlight();
       updateNowPlayingPanel();
+      updateNowPlaying(); // v1.237: keep the "Playing from <Album>" line in step (it keys off the current id too)
     }
     var chapterReflectBound = false;
     function ensureChapterReflect() {
@@ -901,7 +915,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // video/book is what's playing, or the player was closed.
     function updateNowPlaying() {
       if (!nowPlayingEl) return;
-      var currentId = (window.FileTube && window.FileTube.player && window.FileTube.player.currentId) || null;
+      // v1.237: the effective current id (a watcher-advanced chapter while its file is live, else
+      // the live player id) so the label matches the panel after a chapter roll (gate W2) and
+      // still blanks for a video/book on the shared host.
+      var currentId = effectiveCurrentId();
       var label = deriveNowPlayingLabel(nowPlaying, currentId);
       if (label) {
         nowPlayingEl.textContent = label;
@@ -934,7 +951,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.237: prefer the chapter the VIEW displays (which the watcher advances as playback
       // rolls) over the loaded ::c id, so the guard + `ci` below track the CURRENT chapter, not
       // the one that was loaded. null for a non-chaptered track (chapterViewId stays null).
-      var curId = chapterViewId || (p && p.currentId) || null;
+      var curId = effectiveCurrentId();
       if (!expanded || !nowPlaying || !curId || nowPlaying.id !== curId) {
         nowPlayingPanel.hidden = true;
         nowPlayingPanel.innerHTML = '';
@@ -1189,10 +1206,9 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     // the current music track's queue index (buildSkinCtx's ci), or -1.
     function currentSkinIndex() {
-      var p = window.FileTube && window.FileTube.player;
       // v1.237: prefer the displayed chapter (watcher-advanced) over the loaded ::c id, so the
       // pop-out repaints to the CURRENT chapter as an album rolls across boundaries.
-      var curId = chapterViewId || (p && p.currentId) || null;
+      var curId = effectiveCurrentId();
       if (!curId) return -1;
       for (var k = 0; k < queue.length; k++) { if (queue[k].id === curId) return k; }
       return -1;
@@ -1362,7 +1378,7 @@ if (typeof module !== 'undefined' && module.exports) {
       mediaEl.addEventListener('emptied', function () {
         requestAnimationFrame(function () {
           var cur = (window.FileTube && window.FileTube.player && window.FileTube.player.currentId) || null;
-          if (!cur) { playingId = null; nowPlaying = null; applyPlayingHighlight(); updateNowPlaying(); }
+          if (!cur) { playingId = null; nowPlaying = null; chapterViewId = null; applyPlayingHighlight(); updateNowPlaying(); }
         });
       }, { signal });
     }
@@ -2020,6 +2036,10 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!meta || !meta.isMusic || !meta.id) return;
       playingId = meta.id;
       nowPlaying = { id: meta.id, title: meta.title, artist: meta.artist, album: meta.album, albumKey: meta.albumKey || '' };
+      // v1.237 (gate W1): re-seed the chapter-view baseline to the LOADED id on a re-init (a
+      // dock-return mid-album) so a survived chapterViewId from a prior session can't blank the
+      // panel (curId != nowPlaying.id); the next timeupdate re-advances it from currentTime.
+      chapterViewId = /::c\d+$/.test(String(meta.id)) ? meta.id : null;
       applyPlayingHighlight();
       updateNowPlaying();
     }
