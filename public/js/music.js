@@ -1124,7 +1124,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // renders at its phone layout with no re-styling. Pointer events => the click wheel
     // spins with a MOUSE click-drag here.
     var POPOUT_W = 380, POPOUT_H = 700;
-    var pipWin = null, pipPanel = null, pipAbort = null;
+    var pipWin = null, pipPanel = null, pipAbort = null, pipClock = null;
     function popoutSupported() {
       try { if (SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()) return false; } catch (_) { /* treat as desktop */ }
       return !!(typeof window !== 'undefined' && (window.documentPictureInPicture || typeof window.open === 'function'));
@@ -1179,6 +1179,14 @@ if (typeof module !== 'undefined' && module.exports) {
       bindSkinSurface(panel, pipAbort.signal, { allowVolume: true }); // desktop -> Now-Playing wheel sets volume; registers the surface for reflectAllSkins
       ensureSkinReflect(); // arm the media-element -> reflectAllSkins listeners (the in-tab render, which normally arms them, is skipped on desktop)
       paintSkin(panel, (SKINS && SKINS.activeSkinId()) || 'apple', currentSkinIndex());
+      // v1.235.x (Dean device): the pop-out clock FROZE in true Document PiP - it rode the
+      // MAIN tab's `timeupdate`, but once the PiP window takes focus the opener tab is
+      // backgrounded and the browser throttles/pauses those events (a Menu tap re-rendered it
+      // once, then it froze again). Fix: drive the pop-out's reflect from the POP-OUT window's
+      // OWN timer - it's the focused, unthrottled window - reading the live (still-advancing,
+      // audio keeps playing) mp.currentTime. ~4Hz, like timeupdate. Cleared on teardown (and
+      // the interval dies with the window anyway). The in-tab skin keeps the main timeupdate.
+      try { pipClock = win.setInterval(function () { reflectSkin(panel); }, 250); } catch (_) { pipClock = null; }
       // the pop-out closing (user, or the tab navigating away) tears the surface down.
       var onClose = function () { teardownPopout(); };
       try { win.addEventListener('pagehide', onClose); win.addEventListener('unload', onClose); } catch (_) { /* ignore */ }
@@ -1209,6 +1217,10 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     function teardownPopout() {
       if (pipAbort) { try { pipAbort.abort(); } catch (_) { /* ignore */ } pipAbort = null; }
+      // clear the pop-out clock on its OWN window (it created it) before closing; belt +
+      // suspenders (a closed window's timers die anyway, but a resize/toggle teardown leaves
+      // the window open in the plain-window case... no - teardown always closes it; still, clear).
+      if (pipClock != null) { try { (pipWin && pipWin.clearInterval ? pipWin : window).clearInterval(pipClock); } catch (_) { /* ignore */ } pipClock = null; }
       if (pipPanel) { var idx = skinSurfaces.indexOf(pipPanel); if (idx >= 0) skinSurfaces.splice(idx, 1); pipPanel = null; }
       if (pipWin) { try { if (pipWin.close && !pipWin.closed) pipWin.close(); } catch (_) { /* ignore */ } pipWin = null; }
       updatePopoutBtn();

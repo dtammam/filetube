@@ -411,6 +411,12 @@ function makePipWindow() {
   w._closeCalls = 0;
   const orig = typeof w.close === 'function' ? w.close.bind(w) : function () {};
   w.close = function () { w._closeCalls += 1; w.closed = true; try { orig(); } catch (_) { /* jsdom */ } };
+  // v1.235.x: the pop-out clock is a real 250ms setInterval on this window; left running it
+  // keeps the test event loop alive (every pop-out test would hang). Make it INERT by default
+  // - the dedicated clock test re-stubs these to capture/assert. Marquee/fade one-shots are
+  // harmless (they resolve), only the repeating interval needs neutering.
+  w.setInterval = function () { return 0; };
+  w.clearInterval = function () {};
   return w;
 }
 const pipPanelOf = (w) => w.document.getElementById('music-nowplaying-panel');
@@ -676,5 +682,26 @@ test('v1.235 pop-out: in LIST mode the spin still scrolls the cursor, NOT volume
     assert.strictEqual(mp.volume, 0.5, 'list-mode spin does not touch volume (it is cursor scroll)');
     const cur = panel.querySelector('.ip-listview .mms-row.is-cursor');
     assert.ok(cur && parseInt(cur.getAttribute('data-skin-go'), 10) > 0, 'the cursor moved instead');
+  } });
+});
+
+test('v1.235.x pop-out: an OWN-window timer drives the clock (unfrozen when the main tab is throttled in PiP)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const pip = makePipWindow();
+    let clockFn = null, clockMs = null, clearedId = null;
+    pip.setInterval = (fn, ms) => { clockFn = fn; clockMs = ms; return 777; };
+    pip.clearInterval = (id) => { clearedId = id; };
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    assert.strictEqual(typeof clockFn, 'function', 'a clock timer is started on the POP-OUT window (not the throttled main tab)');
+    assert.ok(clockMs > 0 && clockMs <= 500, 'at a live-clock cadence (~4Hz)');
+    // the own-window tick reflects the live element with NO main-tab timeupdate fired:
+    const fill = pipPanelOf(pip).querySelector('.mms-fill');
+    fill.style.width = '99%';
+    clockFn();
+    assert.strictEqual(fill.style.width, '0%', 'the tick reflects the live element (dur=0 in jsdom -> 0%), so the clock is not frozen');
+    // teardown clears the timer on the pop-out window
+    pip.dispatchEvent(new pip.Event('pagehide'));
+    assert.strictEqual(clearedId, 777, 'teardown clears the pop-out clock on its own window');
   } });
 });

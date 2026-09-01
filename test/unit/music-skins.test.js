@@ -372,3 +372,13 @@ test('v1.235: CSS swaps the scrubber out for the volume bar while adjusting (aut
   assert.match(css, /\.mms-ipod\.mms-voladj \.ip-scrub\{[^}]*display:\s*none/, 'adjusting hides the scrubber');
   assert.match(css, /\.mms-ipod\.mms-voladj \.ip-vol\{[^}]*display:\s*flex/, 'adjusting shows the volume bar');
 });
+
+test('v1.235.x: the pop-out runs its OWN reflect clock (fixes the true-PiP freeze) and clears it on teardown', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  // the clock is started on the POP-OUT window (win.setInterval), reflecting the pop-out panel,
+  // NOT the main tab (whose timeupdate throttles when the tab is backgrounded under a PiP window).
+  assert.match(js, /pipClock = win\.setInterval\(function \(\) \{ reflectSkin\(panel\); \}, \d+\)/, 'the pop-out clock is an interval on the pop-out window that reflects the panel');
+  // teardown clears it on the window that created it.
+  assert.match(js, /clearInterval\(pipClock\)/, 'teardown clears the pop-out clock');
+});
