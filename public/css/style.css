@@ -11125,8 +11125,15 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .mms-rd{ font-size:var(--fs-sm); color:var(--mms-ipod-scr-sub); flex:none; font-variant-numeric:tabular-nums; }
   .mms-ipod .mms-chev-r{ color:var(--mms-ipod-scr-sub); flex:none; }
   .mms-ipod .mms-row.is-played{ opacity:.55; }
-  .mms-ipod .mms-row.is-current{ background:linear-gradient(var(--mms-ipod-blue1), var(--mms-ipod-blue2)); color:var(--mms-white); border-bottom-color:transparent; }
-  .mms-ipod .mms-row.is-current .mms-rn, .mms-ipod .mms-row.is-current .mms-rd, .mms-ipod .mms-row.is-current .mms-chev-r{ color:var(--mms-white); }
+  /* v1.233: authentic iPod - the blue selection BAR follows the wheel CURSOR (the row
+     you're scrolling to), not the playing track. The playing track keeps only its ▶
+     marker (a blue mms-rn glyph) so you can still see what's playing while the cursor
+     roams. On list-open the cursor starts on the current, so they coincide (blue bar +
+     ▶). is-cursor is listed AFTER is-current so, when both land on one row, its white
+     text wins at equal specificity. */
+  .mms-ipod .mms-row.is-current .mms-rn{ color:var(--mms-ipod-blue1); }
+  .mms-ipod .mms-row.is-cursor{ background:linear-gradient(var(--mms-ipod-blue1), var(--mms-ipod-blue2)); color:var(--mms-white); border-bottom-color:transparent; }
+  .mms-ipod .mms-row.is-cursor .mms-rn, .mms-ipod .mms-row.is-cursor .mms-rd, .mms-ipod .mms-row.is-cursor .mms-chev-r{ color:var(--mms-white); }
   /* the click wheel - centered in the body space below the LCD (flex:1 wrap) */
   .mms-ipod .ip-wheelwrap{ flex:1; display:flex; align-items:center; justify-content:center; }
   .mms-ipod .ip-wheel{ width:196px; height:196px; border-radius:var(--radius-full); position:relative; display:grid; place-items:center;

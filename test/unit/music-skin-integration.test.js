@@ -248,3 +248,110 @@ test('mobile + NON-music (video/podcast/book): NO skin', async () => {
     assert.ok(!dom.window.document.body.classList.contains('mms-on'));
   } });
 });
+
+// ---- v1.233: the iPod click wheel ROTARY SCROLL (list-only cursor + accel) ----------
+// The gesture uses Pointer events on .ip-wheel; jsdom has no layout (getBoundingClientRect
+// is all-zero, so the wheel center is 0,0) but the angle math + cursor bookkeeping are
+// fully exercisable. We inject list rows (the harness queue is empty) exactly as the
+// v1.231 row test does, mark one .is-current, open the list, then dispatch a synthetic
+// spin and assert the .is-cursor highlight moves. A big/fast sweep clamps at an end, which
+// makes the direction assertions deterministic despite the accel timing.
+function seedList(p, dom, n, currentIdx) {
+  const lv = p.querySelector('.ip-listview');
+  for (let i = 0; i < n; i++) {
+    const row = dom.window.document.createElement('button');
+    row.className = 'mms-row' + (i === currentIdx ? ' is-current' : '');
+    row.setAttribute('data-skin-go', String(i));
+    lv.appendChild(row);
+  }
+  return lv;
+}
+const openList = (p, dom) => p.querySelector('[data-skin-select]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+const cursorIdx = (p) => { const c = p.querySelector('.ip-listview .mms-row.is-cursor'); return c ? parseInt(c.getAttribute('data-skin-go'), 10) : -1; };
+function spin(wheel, dom, angles) {
+  // pointerdown at 0deg (point on +x axis), then sweep through `angles` (degrees).
+  const at = (deg) => { const rad = deg * Math.PI / 180; return { clientX: 100 * Math.cos(rad), clientY: 100 * Math.sin(rad) }; };
+  const start = at(0);
+  wheel.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: start.clientX, clientY: start.clientY }));
+  angles.forEach((deg) => { const q = at(deg); wheel.dispatchEvent(new dom.window.MouseEvent('pointermove', { bubbles: true, clientX: q.clientX, clientY: q.clientY })); });
+  wheel.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true }));
+}
+
+test('v1.233 iPod: the cursor seeds on the CURRENT song when the list opens', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const p = panel(dom);
+    seedList(p, dom, 6, 2);
+    openList(p, dom);
+    await settle();
+    assert.ok(p.classList.contains('mms-listmode'), 'list open');
+    assert.strictEqual(cursorIdx(p), 2, 'cursor starts on the current (is-current) row');
+  } });
+});
+
+test('v1.233 iPod: spinning the wheel CLOCKWISE moves the cursor DOWN the list', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const p = panel(dom); seedList(p, dom, 6, 0); openList(p, dom); await settle();
+    assert.strictEqual(cursorIdx(p), 0, 'cursor starts at row 0');
+    spin(p.querySelector('.ip-wheel'), dom, [40, 80, 120, 160]); // a firm clockwise sweep
+    assert.ok(cursorIdx(p) > 0, 'clockwise moved the cursor forward (down the list)');
+    assert.strictEqual(cursorIdx(p), 5, 'a firm sweep clamps at the last row (never runs off the end)');
+  } });
+});
+
+test('v1.233 iPod: spinning COUNTER-clockwise moves the cursor UP, clamped at the first row', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const p = panel(dom); seedList(p, dom, 6, 5); openList(p, dom); await settle();
+    assert.strictEqual(cursorIdx(p), 5, 'cursor starts at the last row');
+    spin(p.querySelector('.ip-wheel'), dom, [-40, -80, -120, -160]);
+    assert.ok(cursorIdx(p) < 5, 'counter-clockwise moved the cursor back (up the list)');
+    assert.strictEqual(cursorIdx(p), 0, 'clamped at the first row (never negative)');
+  } });
+});
+
+test('v1.233 iPod: a spin in Now Playing (list CLOSED) does nothing (Dean: list-only)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const p = panel(dom); seedList(p, dom, 6, 2);
+    assert.ok(!p.classList.contains('mms-listmode'), 'list is closed (Now Playing)');
+    spin(p.querySelector('.ip-wheel'), dom, [40, 80, 120]);
+    assert.strictEqual(cursorIdx(p), -1, 'no cursor engaged while the list is closed');
+  } });
+});
+
+test('v1.233 iPod: a pure TAP on the wheel (no rotation) does NOT move the cursor', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const p = panel(dom); seedList(p, dom, 6, 3); openList(p, dom); await settle();
+    const wheel = p.querySelector('.ip-wheel');
+    wheel.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    wheel.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true }));
+    assert.strictEqual(cursorIdx(p), 3, 'a tap leaves the cursor put (only a rotation moves it)');
+  } });
+});
+
+test('v1.233 iPod: a moved spin SWALLOWS exactly its release click, then never eats a later tap', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
+    const p = panel(dom); seedList(p, dom, 6, 0); openList(p, dom); await settle();
+    spin(p.querySelector('.ip-wheel'), dom, [40, 80, 120]); // a real rotation => suppress armed
+    // the synthetic click a real wheel would fire on release is swallowed:
+    p.querySelector('[data-skin-play]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(spy.pp, 0, 'the spin-ending click did NOT trigger play');
+    // ...but the very next real tap proceeds (the flag is one-shot / self-clearing):
+    p.querySelector('[data-skin-play]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(spy.pp, 1, 'a later real tap is NOT eaten');
+  } });
+});
+
+test('v1.233 iPod: center-select in the list PLAYS the cursor row and closes the list', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const p = panel(dom); seedList(p, dom, 6, 1); openList(p, dom); await settle();
+    spin(p.querySelector('.ip-wheel'), dom, [40, 80]); // move the cursor off the current
+    const target = cursorIdx(p);
+    assert.ok(target > 1, 'cursor advanced past the current');
+    // center-select: reads the cursor row's data-skin-go and plays it (empty queue -> no-op
+    // playAt is fine; the observable contract is the list closing after a cursor select).
+    // A real follow-up tap carries its own pointerdown (which clears the spin's one-shot
+    // click-suppress) before its click - simulate that fresh touch on a non-wheel target.
+    p.querySelector('.ip-listview').dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 5, clientY: 5 }));
+    p.querySelector('[data-skin-select]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.ok(!p.classList.contains('mms-listmode'), 'center-select from the list returns to Now Playing');
+  } });
+});
