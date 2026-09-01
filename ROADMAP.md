@@ -80,6 +80,36 @@
 
 ## Shipped
 
+### v1.229.0 - Switch music skins from the account menu; drop the buggy in-player switcher (2026-09-01)
+
+Dean's on-device report on v1.228: "So it works but I can't switch themes... once I
+get to one of the themes the controls disappear." He identified the vanishing
+"controls" as the in-player theme-switcher chips (they rendered faint/near-invisible
+against some skins), and asked for switching to live in the menu.
+
+- **A "Music skin" picker in the account menu.** The avatar dropdown now carries a
+  three-way segmented control (Apple / Spotify / iPod) right beside Theme, with the
+  current skin highlighted. Tap one and an open now-playing re-skins live. It's a
+  per-device appearance choice (like Theme), remembered on the device, and **shows
+  only on a phone** (the skins are phone-only) - it's absent on desktop.
+- **Removed the in-player switcher chips** - the unreliable control Dean saw vanish.
+  Switching now has one reliable home (the menu), so the disappearing-chips bug is
+  gone at the source. The play / prev / next / scrubber controls are untouched.
+
+Mechanism: the menu picker persists the choice and fires a `ft-music-skin-changed`
+event; the music view listens (torn down with the view) and re-renders instantly.
+The picker reuses the app's existing design tokens (no new ones); removing the chips
+dropped 3 skin tokens (51 -> 48). Same engine - player.js byte-unchanged.
+
+**Disclosure.** The "Music skin" row appears in the account menu only on pages that
+load the music module - the Music page and the home feed - not on, e.g., the
+Podcasts or Read pages (where the skin never shows anyway). Switch it from Music or
+Home.
+
+Slim gate (adversarial, presentation + a per-device pref): APPROVE, no findings
+(one disclosure-only note, above); every binding mutation-verified. Dual-Node 7970/0
+(Node 22.23.1 + 24.14.0). **Dean's device pass PENDING.**
+
 ### v1.228.0 - Bolder mobile music skins: three that actually look different (2026-09-01)
 
 Dean's device read on v1.227: "it doesn't really feel like much of a difference

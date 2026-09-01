@@ -2494,5 +2494,11 @@
     "date": "2026-09-01",
     "title": "The three phone Music skins now really look different from each other",
     "intent": "The first cut of the phone Music skins felt like the same player in three colours. Now each one has its own layout: Apple is all about the cover art, with a big blurred backdrop and one large play button; Spotify is a bold dark screen with a green play button and your up-next queue right there with little cover thumbnails; and iPod is a proper throwback, with a brushed-metal top bar, a framed cover, a chunky metal button cluster, and a classic blue track list. Also fixed a small annoyance: the page no longer scrolls behind the full-screen player. It's still phone-only and still the same player underneath, so background play and lock-screen controls are unchanged."
+  },
+  {
+    "version": "1.229.0",
+    "date": "2026-09-01",
+    "title": "Switch your phone Music skin from the account menu",
+    "intent": "Changing your phone Music skin is now done from the account menu (the avatar menu at the top): there's a 'Music skin' row with Apple, Spotify, and iPod to pick from, and the player updates right away. The little skin buttons that used to sit inside the player have been removed - they were hard to see against some of the skins, so switching now has one clear home. It's a per-device choice on your phone, and it only appears in the menu on the Music page and the home screen (where the skins live). Nothing else about playback changes."
   }
 ]
