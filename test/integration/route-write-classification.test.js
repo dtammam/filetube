@@ -65,6 +65,8 @@ const CLASSIFICATION = {
   'POST /api/me/settings': 'personal',
   'POST /api/me/avatar': 'personal', // v1.82: self-service profile photo (own state)
   'DELETE /api/me/avatar': 'personal',
+  'POST /api/me/sticker': 'personal', // v1.238: self-service custom player sticker (own state, no by-id write)
+  'DELETE /api/me/sticker': 'personal',
   'POST /api/notifications/clear': 'personal',
   'POST /api/notifications/dismiss': 'personal',
   'POST /api/notifications/read': 'personal',
@@ -299,6 +301,8 @@ const VISIBILITY = {
   'POST /api/me/settings': 'personal',
   'POST /api/me/avatar': 'personal',
   'DELETE /api/me/avatar': 'personal',
+  'POST /api/me/sticker': 'personal', // v1.238: own decoration; no per-item visibility decision applies
+  'DELETE /api/me/sticker': 'personal',
   'POST /api/notifications/clear': 'personal',
   'POST /api/notifications/dismiss': 'personal',
   'POST /api/notifications/read': 'personal',

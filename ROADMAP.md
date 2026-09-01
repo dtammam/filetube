@@ -80,6 +80,36 @@
 
 ## Shipped
 
+### v1.238.0 - The player "sticker" quick-menu (speed + loop + skin), changeable icon (2026-09-01)
+
+Dean: "a 'sticker' of the FileTube logo on the bottom-left of the virtual iPod /
+interfaces that opens a menu that would show speed etc." ... "make the sticker an
+optional setting that defaults on the logo but can be updated." A small sticker in the
+bottom-left corner of EVERY music skin (and the desktop pop-out) opens a compact menu:
+**Speed** (0.25x-2x), **Loop**, and a **Skin picker** (all four skins). The menu items
+only PROXY controls that already exist (speed sets the media element's playbackRate +
+defaultPlaybackRate and persists it; loop uses the player's loop primitive; the skin
+chips reuse the Settings skin picker), so **player.js stays byte-for-byte unchanged**.
+
+The sticker ICON is a per-user setting (Settings > Appearance > "Player sticker"): the
+FileTube logo (default), an emoji (a preset gallery or any emoji you type), or a **custom
+uploaded image**. The custom image is per-user and self-service, built on the exact v1.82
+avatar pattern - magic-byte validation (PNG/JPEG/WebP, SVG rejected), a 1 MB cap, an
+atomic write, no by-id route, reaped when an account is deleted, and deliberately not in
+the backup bundle. Three new `/api/me/sticker` routes (POST/GET/DELETE); the RBAC
+completeness net forced the review (route count 233->236, all classified).
+
+FULL two-reviewer gate (data-touching -> never slim; the adversarial seat was briefed to
+destroy the stored sticker data and attack the upload endpoint). Both seats independently
+caught ONE CRITICAL: the speed proxy set playbackRate but not defaultPlaybackRate, so a
+sticker-set speed silently reverted to 1x on the next track's load() (the v1.22.1
+regression class) - fixed in one line and bound with a new "survives a track-change
+load()" test, mutation-verified. Every data-destruction, traversal, magic-byte, backup
+and cascade surface measured sound. Dual-Node 8087/0 (Node 22 + 24). player.js 0-diff.
+**Device pending** - Dean confirms the sticker + menu on each skin and the pop-out, the
+custom-image upload, and (a disclosed device-pass item) whether the bottom-left sticker
+crowds the iPod click wheel.
+
 ### v1.237.0 - Album titles keep up as chapters advance + a bigger iPod wheel (2026-09-01)
 
 Dean: "let's handle the fix for the browser/chapters." When a chaptered album played
