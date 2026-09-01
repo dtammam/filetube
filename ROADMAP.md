@@ -80,6 +80,28 @@
 
 ## Shipped
 
+### v1.239.0 - A bigger iPod wheel + spin the wheel to scrub on mobile (2026-09-01)
+
+Two wheel asks from Dean. (1) The iPod click wheel is now sized proportional to the real
+iPod Classic (~70% of the body width, `min(70vw,288px)`) instead of a fixed 224px, capped
+for the ~380px desktop pop-out; the %-based zone buttons scale with it. (2) On the in-tab
+mobile skin, spinning the wheel in Now Playing now SCRUBS the timeline - it used to be inert
+there (iOS makes `media.volume` read-only, so the pop-out's wheel-volume can't apply). A
+full turn sweeps the whole track, clockwise = forward; music is non-live so `currentTime`
+moves LIVE as you spin (audible; the skin fill + the v1.237 chapter watcher reflect via
+seeked/timeupdate) and a real release COMMITS through the existing `#seek-bar` pipeline
+(seekCommitTarget + saveProgress); a pointercancel aborts with no commit. player.js
+BYTE-UNCHANGED.
+
+FULL two-reviewer gate (it touches the battle-won wheel gesture). Both APPROVE after one fix
+round: caught a lying comment (the v1.233 header still said "Now-Playing spin does nothing")
+and two vacuous test binds (the clamp assertions never drove the value out of range; the
+"scrub not cursor" assertion trivially passed on an empty list) - all fixed and
+mutation-verified (floor `=== 0`, ceiling `=== duration`, a tap-through test for the removed
+early-return). Dual-Node 8092/0 (Node 22 + 24). **Device pending** - Dean confirms the wheel
+size doesn't crowd the LCD/sticker, and the Now-Playing spin scrubs cleanly. Carried to the
+next wave (with Dean's chapter-loop item): the scrub-vs-armed-`::c`-chapter-loop interaction.
+
 ### v1.238.0 - The player "sticker" quick-menu (speed + loop + skin), changeable icon (2026-09-01)
 
 Dean: "a 'sticker' of the FileTube logo on the bottom-left of the virtual iPod /
