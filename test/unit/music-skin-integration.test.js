@@ -9,7 +9,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { JSDOM } = require('jsdom');
+const { JSDOM, VirtualConsole } = require('jsdom');
 
 const musicPath = require.resolve('../../public/js/music.js');
 const skinsPath = require.resolve('../../public/js/music-skins.js');
@@ -39,8 +39,17 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
 
 const settle = () => new Promise((r) => setImmediate(r));
 
-async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion }) {
-  const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music' });
+async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog }) {
+  // jsdom won't let location.replace be overridden - it hard-navigates and emits a jsdomError.
+  // Capture that so a test can assert a /watch bounce was ATTEMPTED (reachability); the exact
+  // URL + ::c strip are source-locked in audio-opens-in-music.test.js.
+  let vcOpt = {};
+  if (navLog) {
+    const vc = new VirtualConsole();
+    vc.on('jsdomError', (e) => { navLog.push(e && e.message ? e.message : String(e)); });
+    vcOpt = { virtualConsole: vc };
+  }
+  const dom = new JSDOM(VIEW_HTML, Object.assign({ url: 'http://localhost/music' + (query || '') }, vcOpt));
   if (mockOverflow) {
     // jsdom has no layout (scrollWidth=0), so fake an overflowing .ip-ttl to exercise
     // the marquee measurement path (the real scroll is device-verified). smallOverflow
@@ -58,7 +67,7 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
   global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
   dom.window.matchMedia = (q) => ({ matches: (/max-width:\s*768px/.test(q) ? !!mobile : (/prefers-reduced-motion/.test(q) ? !!reducedMotion : false)), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   dom.window.scrollTo = function () {};
-  global.fetch = () => Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  global.fetch = fetchImpl || (() => Promise.resolve({ ok: true, json: async () => ({ items: [] }) }));
   const spy = { pp: 0, prev: 0, next: 0, seek: 0, dock: 0, shuffle: 0 };
   const meta = isMusic ? { isMusic: true, id: 't1', title: 'Track A', artist: 'NESTALGIA', album: 'Retro Mix', albumKey: 'k' } : { isMusic: false, id: 'v1', title: 'A Video' };
   let mod = null;
@@ -766,5 +775,39 @@ test('v1.235: closing then re-opening the pop-out re-arms the clock (no stale/du
     dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
     clickPopout(dom); await settle(); await settle();
     assert.strictEqual(intervals.length, 2, 're-open arms a fresh clock (no duplicate/stale timer)');
+  } });
+});
+
+// ---- v1.236: rerouted-but-unresolvable audio BOUNCES to /watch (no dead end) -----------
+test('v1.236: /music?play=<id> for a NON-resolvable id BOUNCES (attempts a navigation, not a dead-end browse view)', async () => {
+  // recent-listening empty + /api/music/:id has no .id -> a miss. playTrackFromContinue must
+  // REACH its final /watch bounce (not throw earlier), which jsdom surfaces as a navigation
+  // attempt. Proves reachability; the exact /watch URL + ::c strip are source-locked.
+  const navLog = [];
+  const fetchImpl = () => Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  // &ao=1 = the reroute origin -> a miss bounces to /watch. (A bare ?play= would NOT bounce; see below.)
+  await boot({ mobile: false, isMusic: true, query: '?play=ghost123&ao=1', fetchImpl, navLog, run: async () => {
+    for (let i = 0; i < 12; i++) await settle();
+    assert.ok(navLog.some((m) => /navigation/i.test(m)), 'the reroute miss reached location.replace (a /watch bounce), not the browse-view dead-end');
+  } });
+});
+
+test('v1.236 (W1): a BARE ?play= miss (a legacy continue-listening card, no ao) does NOT bounce to /watch', async () => {
+  const navLog = [];
+  const fetchImpl = () => Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  await boot({ mobile: false, isMusic: true, query: '?play=native5', fetchImpl, navLog, run: async () => {
+    for (let i = 0; i < 12; i++) await settle();
+    assert.strictEqual(navLog.length, 0, 'a native continue-card miss stays in the music view (render()), never /watch (no regression)');
+  } });
+});
+
+test('v1.236 (M10): a rerouted id NOT in recent but RESOLVABLE plays in music - no bounce (the common reroute case)', async () => {
+  const navLog = [];
+  // recent-listening empty (idx<0) BUT /api/music/song7 resolves to a real track (no albumKey)
+  // -> queue=[t]; playAt(0); return. Must NOT fall through to the /watch bounce.
+  const fetchImpl = (url) => Promise.resolve({ ok: true, json: async () => (/\/api\/music\/song7(\?|$)/.test(String(url)) ? { id: 'song7', title: 'Song 7' } : { items: [] }) });
+  await boot({ mobile: false, isMusic: true, query: '?play=song7&ao=1', fetchImpl, navLog, run: async () => {
+    for (let i = 0; i < 12; i++) await settle();
+    assert.strictEqual(navLog.length, 0, 'a resolvable rerouted track plays in the music player and is NOT bounced to /watch');
   } });
 });

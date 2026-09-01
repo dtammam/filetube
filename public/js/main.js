@@ -249,8 +249,10 @@ function buildVideoRowCardHtml(item) {
   const bar = percent > 0.5
     ? `<div class="book-row-progress"><div class="book-row-progress-fill" style="width: ${percent}%"></div></div>`
     : '';
+  // v1.236: continue-watching / video-home rows honor the "open audio in music" flag too.
+  const rowHref = musicHrefForItem(item) || `/watch.html?v=${encodeURIComponent(item.id)}`;
   return `
-    <a class="book-row-card music-row-card video-row-card" href="/watch.html?v=${encodeURIComponent(item.id)}" title="${escapeBookRowHtml(item.title)}">
+    <a class="book-row-card music-row-card video-row-card" href="${rowHref}" title="${escapeBookRowHtml(item.title)}">
       <span class="book-row-cover video-row-cover"><img src="/thumbnail/${encodeURIComponent(item.id)}" alt="" loading="lazy" />${bar}</span>
       <span class="book-row-title">${escapeBookRowHtml(item.title)}</span>
       <span class="music-row-artist">${escapeBookRowHtml(resolveChannelName(item))}</span>
@@ -280,8 +282,11 @@ function buildFeedCardHtml(item) {
   const bar = pct > 0.5
     ? `<div class="book-row-progress"><div class="book-row-progress-fill" style="width: ${pct}%"></div></div>`
     : '';
+  // v1.236: the home ROW feed now carries `type`/`chapterCount` (server-fold), so an audio
+  // download reroutes to the music player here too when the flag is on; else the server href.
+  const feedHref = musicHrefForItem(item) || item.href;
   return `
-    <a class="book-row-card music-row-card video-row-card" href="${escapeBookRowHtml(item.href)}" title="${escapeBookRowHtml(item.title)}">
+    <a class="book-row-card music-row-card video-row-card" href="${escapeBookRowHtml(feedHref)}" title="${escapeBookRowHtml(item.title)}">
       <span class="book-row-cover video-row-cover"><img src="${escapeBookRowHtml(item.thumbnailUrl)}" alt="" loading="lazy" />${bar}</span>
       <span class="book-row-title">${escapeBookRowHtml(item.title)}</span>
       <span class="music-row-artist">${escapeBookRowHtml(item.subtitle || '')}</span>
@@ -819,6 +824,37 @@ function homeRowEnabled(key) {
   }
 }
 
+// v1.236 (Dean): "Open downloaded music in the music player" - a device-local toggle
+// (default ON, same idiom as the home-row toggles). When on, an AUDIO-only tile taps into
+// the native music player (/music?play=) instead of the video /watch page - EVERYWHERE
+// (grid / channel / search / continue-watching). Music VIDEOS and regular videos are
+// untouched (type !== 'audio'). `musicHrefForItem` returns that href or null (caller keeps
+// its /watch href). Chaptered audio routes to the album's FIRST chapter track (`::c0`) so the
+// item opens IN ITS ALBUM and the iPod MENU/list browses the chapters (base id isn't a track
+// for a chaptered file). Bound to the Music library, client-only: an id the music API can't
+// resolve (a non-projected download) bounces to /watch (music.js's playTrackFromContinue miss
+// path) - no dead end, no server change.
+const OPEN_AUDIO_IN_MUSIC_KEY = 'ft-open-audio-in-music';
+function musicHrefForItem(item) {
+  if (!item || item.type !== 'audio') return null;
+  // gate C1 (QA): reroute ONLY media-kind downloads (kind absent or 'media'). type:'audio' is
+  // NOT unique to downloads - podcast episodes (kind 'podcast'), and tracks/books/tv carry it
+  // on some feeds too; never hijack their own destinations (a podcast must open /podcasts).
+  if (item.kind && item.kind !== 'media') return null;
+  if (!homeRowEnabled(OPEN_AUDIO_IN_MUSIC_KEY)) return null;
+  const id = item.id != null ? String(item.id) : '';
+  if (!id) return null;
+  // chaptered (>= 2) -> the album via its FIRST chapter track (::c0). `chapters` (array) rides
+  // the /api/videos surfaces; the home-feed + modern-grid carry `chapterCount` instead (the
+  // v1.236 server-fold), so accept either signal.
+  const chaptered = (Array.isArray(item.chapters) && item.chapters.length >= 2) || (Number(item.chapterCount) >= 2);
+  const playId = chaptered ? (id + '::c0') : id;
+  // &ao=1 marks a reroute-ORIGIN navigation: the music view bounces a MISS to /watch (a
+  // video-side download plays there) ONLY for this origin, leaving the legacy continue-
+  // listening card's miss behaviour (a native-track id that must NOT bounce to /watch) unchanged.
+  return '/music?play=' + encodeURIComponent(playId) + '&ao=1';
+}
+
 // v1.73 gate C1 (BOTH seats): ruling 1's either-was-on clause is an
 // UPGRADE MIGRATION, not a permanent read. The first cut gated the merged
 // row on a permanent OR of both keys - homeRowEnabled treats an ABSENT key
@@ -866,6 +902,7 @@ if (typeof module !== 'undefined' && module.exports) {
     hydrateHomeRow,
     renderHomeFeed,
     homeRowEnabled,
+    musicHrefForItem,
     migrateListeningRowPref,
     resolveCardCornerPrefs,
     buildCardCorners,
@@ -2477,7 +2514,9 @@ const PreviewCards = (function () {
       const ctxParam = currentBrowseContextParam();
       // A non-media card's destination is its kind's own surface (the ctx
       // contract is a watch-page/media concept and never rides along).
-      const watchHref = kp ? kp.href : `/watch.html?v=${item.id}${ctxParam ? '&ctx=' + encodeURIComponent(ctxParam) : ''}`;
+      // v1.236: an audio-only tile taps into the music player when the flag is on (override
+      // ONLY the destination - the card keeps its video-side thumbnail/byline).
+      const watchHref = musicHrefForItem(item) || (kp ? kp.href : `/watch.html?v=${item.id}${ctxParam ? '&ctx=' + encodeURIComponent(ctxParam) : ''}`);
       // Author/channel resolved the same way as the watch page (see common.js).
       const channelName = resolveChannelName(item, folderSettings);
       // Deterministic 3–5 star rating — the same value shows on this item's watch page.

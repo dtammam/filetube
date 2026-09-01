@@ -2102,7 +2102,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // play it there (the player's music smart-resume applies the saved
     // position). Falls back to a solo queue if the track isn't in the recent
     // list (an edge — e.g. it aged out).
-    async function playTrackFromContinue(trackId) {
+    async function playTrackFromContinue(trackId, bounceOnMiss) {
       tab = 'songs';
       drill = null;
       search = '';
@@ -2132,7 +2132,17 @@ if (typeof module !== 'undefined' && module.exports) {
           if (t.albumKey) { await playTrackInAlbum(t); return; }
           queue = [t]; renderSongList(); playAt(0); return;
         }
-      } catch (_) { /* fall through to a normal render */ }
+      } catch (_) { /* not a resolvable music track - see the bounce vs render decision below */ }
+      // v1.236 (Dean, "open downloaded music in the music player" is BOUND to the library):
+      // a rerouted audio tile (bounceOnMiss - the &ao=1 origin marker) whose id the music API
+      // can't resolve (a NON-projected download) must not dead-end - send it where it plays:
+      // /watch (its base media id, ::c chapter suffix stripped). But a LEGACY continue-listening
+      // card (no ao marker) carries a NATIVE music-store id that /watch would 404, so on its
+      // (rare) miss keep the old behaviour: the music browse view (gate W1 - no /watch regression).
+      if (bounceOnMiss) {
+        var bounceId = String(trackId).replace(/::c\d+$/, '');
+        try { if (window.location && typeof window.location.replace === 'function') { window.location.replace('/watch.html?v=' + encodeURIComponent(bounceId)); return; } } catch (_) { /* no navigable location */ }
+      }
       await render();
     }
 
@@ -2146,7 +2156,9 @@ if (typeof module !== 'undefined' && module.exports) {
     const playParam = urlParams.get('play');
     var wantNowPlaying = urlParams.get('nowplaying') === '1';
     if (playParam) {
-      playTrackFromContinue(playParam).catch((err) => {
+      // &ao=1 = the v1.236 reroute origin (an audio download tapped from a video-side tile) -
+      // bounce a miss to /watch. A bare ?play= (a continue-listening card) keeps render() on a miss.
+      playTrackFromContinue(playParam, urlParams.get('ao') === '1').catch((err) => {
         console.error('Music: continue-listening play failed', err);
         render().catch(() => {});
       });

@@ -11092,7 +11092,17 @@ function resolveHomeItem(db, id, kind, progressPercent) {
   // does NOT render a .card-preview overlay, so no storyboard descriptor is sent
   // here - the preview lives on the main + modern GRID cards (buildCardHtml),
   // fed by /api/videos (spreads ...item) and resolveModernGridItem.
-  return { id, kind: 'media', title: item.title || item.name || 'Video', subtitle: item.folderName || '', thumbnailUrl: `/thumbnail/${enc}`, href: `/watch.html?v=${enc}`, progressPercent };
+  // v1.236 (Dean): carry `type` + `chapterCount` so the client can reroute an AUDIO download
+  // to the music player from the ROW feed too (the card otherwise has no audio/chapter signal).
+  // Additive + read-only; chapterCount only for audio (video never reroutes). The client
+  // (buildFeedCardHtml -> musicHrefForItem) makes the flag-gated, library-bound decision.
+  const isAudio = item.type === 'audio';
+  return {
+    id, kind: 'media', title: item.title || item.name || 'Video', subtitle: item.folderName || '',
+    thumbnailUrl: `/thumbnail/${enc}`, href: `/watch.html?v=${enc}`, progressPercent,
+    ...(item.type ? { type: item.type } : {}),
+    ...(isAudio ? { chapterCount: (resolveItemChapters(item).chapters || []).length } : {}),
+  };
 }
 
 // v1.84 Modern Mode: resolve a grid candidate into the RICH card shape the
@@ -11133,6 +11143,9 @@ function resolveModernGridItem(db, rec) {
     sourceViewCountCapturedAt: item.sourceViewCountCapturedAt,
     addedAt: rec.addedAt, progressPercent: rec.progressPercent, liked: rec.liked,
     duration: typeof item.duration === 'number' ? item.duration : 0, type: rec.type,
+    // v1.236: chapterCount for audio so the client can route a chaptered download to its album
+    // (::c0) from the modern grid (which, unlike /api/videos, carries no `chapters` array).
+    ...(rec.type === 'audio' ? { chapterCount: (resolveItemChapters(item).chapters || []).length } : {}),
     ext: typeof item.ext === 'string' ? item.ext : '',
     ...(watchUrl ? { watchUrl } : {}),
     // v1.93.2: DERIVED storyboard descriptor for the modern-grid card's

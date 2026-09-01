@@ -2417,6 +2417,7 @@ function wireStaticControls(signal) {
   // v1.44: home-page resume-row toggles (device-local, default ON). Keys match
   // main.js's homeRowEnabled (`!== '0'` = on): checked -> clear (default on),
   // unchecked -> '0'.
+  wireHomeRowToggle('open-audio-in-music-check', 'ft-open-audio-in-music', signal); // v1.236: audio taps -> music player
   wireHomeRowToggle('home-continue-watching-check', 'ft-home-continue-watching', signal);
   wireHomeRowToggle('tv-continue-watching-check', 'ft-tv-continue-watching', signal); // v1.198.2 (Dean): the Shows-page row
   wireHomeRowToggle('home-continue-listening-check', 'ft-home-continue-listening', signal);
@@ -3653,6 +3654,7 @@ function init(root) {
   wireVoiceCheck(controller.signal); // v1.181: the Troubleshooting page's critter sound diagnostic
   loadResumeThresholdControl();
   loadDebugLifecycleControl();
+  loadHomeRowControl('open-audio-in-music-check', 'ft-open-audio-in-music'); // v1.236: reflect-on-load (default ON)
   loadHomeRowControl('home-continue-watching-check', 'ft-home-continue-watching');
   loadHomeRowControl('tv-continue-watching-check', 'ft-tv-continue-watching'); // v1.198.2: reflect-on-load (the v1.193 lesson)
   loadHomeRowControl('home-continue-listening-check', 'ft-home-continue-listening');
