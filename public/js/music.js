@@ -511,6 +511,13 @@ if (typeof module !== 'undefined' && module.exports) {
   // in lockstep with the player; the render/updateNowPlaying guard cross-checks
   // player.currentId so a video/book-now-playing (or a closed player) hides it.
   var nowPlaying = null;
+  // v1.237 (Dean): a chaptered album is ONE file streamed by all its `::c` chapter tracks
+  // (chapterStartSec offsets), so when playback ROLLS across a chapter boundary the player's
+  // currentId stays the loaded `::c` id and the now-playing title never updates. chapterViewId
+  // is the chapter the VIEW currently DISPLAYS (a timeupdate watcher re-derives it from
+  // currentTime and repaints); it can run ahead of the loaded id WITHOUT reloading. null when
+  // not playing a chaptered file. The now-playing/skin renders prefer it over player.currentId.
+  var chapterViewId = null;
   // v1.217 (in-view back-stack): the LIVE onPopState handler for the mounted
   // init() closure (it needs init's `drill`/render/setActiveTab). Module-scoped
   // so the stable module.onPopState the router calls can delegate to whichever
@@ -787,6 +794,66 @@ if (typeof module !== 'undefined' && module.exports) {
         mp.addEventListener(ev, reflectAllSkins, { signal: signal });
       });
     }
+    // v1.237: the id the now-playing surfaces should treat as CURRENT. Prefer the
+    // watcher-advanced chapter (chapterViewId) ONLY while the loaded chaptered file is STILL the
+    // live track (same base id) - otherwise the override is stale (a different / non-music track
+    // became live without loadTrack resetting us) and we must fall back to player.currentId so the
+    // video/book cross-check in updateNowPlayingPanel keeps working (gate W1, both seats).
+    function effectiveCurrentId() {
+      var p = window.FileTube && window.FileTube.player;
+      var live = (p && p.currentId) || null;
+      // prefer the watcher-advanced chapter ONLY when the live track is itself a chapter track
+      // (`::c` id) of the SAME file. A genuinely-loaded chapter always has a `::c` currentId, so
+      // requiring it rejects the same file played as a RAW (non-music) video (live='film', no
+      // `::c`) - which shares the base id but must NOT show stale music over it (adversarial W2).
+      if (chapterViewId && live && /::c\d+$/.test(String(live)) && String(chapterViewId).replace(/::c\d+$/, '') === String(live).replace(/::c\d+$/, '')) return chapterViewId;
+      return live;
+    }
+    // v1.237 chapter watcher: which chapter of the loaded chaptered file `currentTime` is IN.
+    // Sorts the file's `::c` tracks by chapterStartSec FIRST (the album drill can be sorted/
+    // shuffled, so queue order is not necessarily ascending - gate W2), then takes the greatest
+    // start <= t. A small tolerance avoids boundary flicker. null when not on a chaptered file.
+    function currentChapterId() {
+      if (!chapterViewId) return null;
+      var mp = hostCtl('media-player'); if (!mp) return chapterViewId;
+      var t = Number(mp.currentTime) || 0;
+      var base = String(chapterViewId).replace(/::c\d+$/, '');
+      var chaps = queue.filter(function (x) { return x && x.source === 'library-chapter' && String(x.id).replace(/::c\d+$/, '') === base; });
+      if (!chaps.length) return chapterViewId;
+      chaps = chaps.slice().sort(function (a, b) { return (Number(a.chapterStartSec) || 0) - (Number(b.chapterStartSec) || 0); });
+      var cur = chaps[0].id;
+      for (var i = 0; i < chaps.length; i++) {
+        if (t >= (Number(chaps[i].chapterStartSec) || 0) - 0.25) cur = chaps[i].id; else break;
+      }
+      return cur;
+    }
+    // On a boundary CROSS (the file rolled into the next chapter), update the DISPLAYED identity
+    // (nowPlaying + playingId + highlight) and repaint the now-playing (web panel + skins +
+    // pop-out) WITHOUT reloading - the same file keeps playing. Cheap: only acts when the derived
+    // chapter actually changed (once per boundary), never on every timeupdate tick.
+    function reflectChapter() {
+      if (!chapterViewId) return;
+      var id = currentChapterId();
+      if (!id || id === chapterViewId) return;
+      chapterViewId = id;
+      playingId = id;
+      var t = null;
+      for (var i = 0; i < queue.length; i++) { if (queue[i] && queue[i].id === id) { t = queue[i]; break; } }
+      if (t) nowPlaying = { id: id, title: t.title || '', artist: t.artist || '', album: t.album || '', albumKey: t.albumKey || '' };
+      applyPlayingHighlight();
+      updateNowPlayingPanel();
+      updateNowPlaying(); // v1.237: keep the "Playing from <Album>" line in step (it keys off the current id too)
+    }
+    var chapterReflectBound = false;
+    function ensureChapterReflect() {
+      if (chapterReflectBound) return;
+      var mp = hostCtl('media-player'); if (!mp) return;
+      chapterReflectBound = true;
+      // bound independently of the skin reflect so it runs on the DESKTOP web now-playing too
+      // (where the skin, hence ensureSkinReflect, never engages). timeupdate is enough - the
+      // chapter boundary is a position threshold.
+      mp.addEventListener('timeupdate', reflectChapter, { signal: signal });
+    }
     // Paint the chosen skin `id` into ANY panel (the in-tab mobile surface OR the desktop
     // pop-out window) - the shared render used by both. Sets the class chain, renders the
     // ctx, shimmers the art, and starts the marquee. `doc` is the panel's document (pop-out
@@ -852,7 +919,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // video/book is what's playing, or the player was closed.
     function updateNowPlaying() {
       if (!nowPlayingEl) return;
-      var currentId = (window.FileTube && window.FileTube.player && window.FileTube.player.currentId) || null;
+      // v1.237: the effective current id (a watcher-advanced chapter while its file is live, else
+      // the live player id) so the label matches the panel after a chapter roll (gate W2) and
+      // still blanks for a video/book on the shared host.
+      var currentId = effectiveCurrentId();
       var label = deriveNowPlayingLabel(nowPlaying, currentId);
       if (label) {
         nowPlayingEl.textContent = label;
@@ -879,9 +949,13 @@ if (typeof module !== 'undefined' && module.exports) {
       // Independent of the in-tab expanded/docked branch below, so a docked pop-out still updates.
       repaintPopout();
       updatePopoutBtn();
+      ensureChapterReflect(); // arm the chapter-boundary watcher once the player element is live (idempotent)
       var p = window.FileTube && window.FileTube.player;
       var expanded = !!(p && typeof p.getState === 'function' && p.getState() === 'full');
-      var curId = (p && p.currentId) || null;
+      // v1.237: prefer the chapter the VIEW displays (which the watcher advances as playback
+      // rolls) over the loaded ::c id, so the guard + `ci` below track the CURRENT chapter, not
+      // the one that was loaded. null for a non-chaptered track (chapterViewId stays null).
+      var curId = effectiveCurrentId();
       if (!expanded || !nowPlaying || !curId || nowPlaying.id !== curId) {
         nowPlayingPanel.hidden = true;
         nowPlayingPanel.innerHTML = '';
@@ -1136,8 +1210,9 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     // the current music track's queue index (buildSkinCtx's ci), or -1.
     function currentSkinIndex() {
-      var p = window.FileTube && window.FileTube.player;
-      var curId = (p && p.currentId) || null;
+      // v1.237: prefer the displayed chapter (watcher-advanced) over the loaded ::c id, so the
+      // pop-out repaints to the CURRENT chapter as an album rolls across boundaries.
+      var curId = effectiveCurrentId();
       if (!curId) return -1;
       for (var k = 0; k < queue.length; k++) { if (queue[k].id === curId) return k; }
       return -1;
@@ -1307,7 +1382,7 @@ if (typeof module !== 'undefined' && module.exports) {
       mediaEl.addEventListener('emptied', function () {
         requestAnimationFrame(function () {
           var cur = (window.FileTube && window.FileTube.player && window.FileTube.player.currentId) || null;
-          if (!cur) { playingId = null; nowPlaying = null; applyPlayingHighlight(); updateNowPlaying(); }
+          if (!cur) { playingId = null; nowPlaying = null; chapterViewId = null; applyPlayingHighlight(); updateNowPlaying(); }
         });
       }, { signal });
     }
@@ -1907,6 +1982,9 @@ if (typeof module !== 'undefined' && module.exports) {
       };
       playingId = item.id;
       nowPlaying = { id: item.id, title: item.title || '', artist: item.artist || '', album: item.album || '', albumKey: item.albumKey || '' };
+      // v1.237: a real load resets the chapter-view baseline - to the loaded chapter for a
+      // chaptered file (the watcher advances it as playback rolls), else null (not chaptered).
+      chapterViewId = isChapter ? item.id : null;
       applyPlayingHighlight();
       // v1.106 (Dean): SELECTING a track opens the EXPANDED now-playing view
       // (mount FULL into #player-slot) instead of the docked mini-player - the
@@ -1962,6 +2040,10 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!meta || !meta.isMusic || !meta.id) return;
       playingId = meta.id;
       nowPlaying = { id: meta.id, title: meta.title, artist: meta.artist, album: meta.album, albumKey: meta.albumKey || '' };
+      // v1.237 (gate W1): re-seed the chapter-view baseline to the LOADED id on a re-init (a
+      // dock-return mid-album) so a survived chapterViewId from a prior session can't blank the
+      // panel (curId != nowPlaying.id); the next timeupdate re-advances it from currentTime.
+      chapterViewId = /::c\d+$/.test(String(meta.id)) ? meta.id : null;
       applyPlayingHighlight();
       updateNowPlaying();
     }
