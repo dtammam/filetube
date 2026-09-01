@@ -180,3 +180,28 @@ test('v1.237 (tolerance): the -0.25 anti-flicker band advances JUST before the e
     assert.strictEqual(playingId(dom), 'film::c1', 'crossed into chapter two within the tolerance band (-0.25), not at the exact 120');
   });
 });
+
+test('v1.237 (W1 neg): a non-music video on the shared host HIDES stale music (base-gate falls to live)', async () => {
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    const mp = dom.window.document.getElementById('media-player');
+    ctx.playerState.state = 'full';                 // expanded, so the panel show/hide branch is reached
+    Object.defineProperty(mp, 'currentTime', { configurable: true, value: 130 });
+    mp.dispatchEvent(new dom.window.Event('timeupdate'));
+    await settle();
+    assert.strictEqual(playingId(dom), 'film::c1', 'rolled into chapter two (chapterViewId advanced to film::c1)');
+
+    // A NON-MUSIC video becomes the live track WITHOUT a music loadTrack; its id shares no base
+    // with the chaptered file. isMusic:false makes seedNowPlayingFromPlayer early-return, so
+    // nowPlaying STAYS the stale film::c1 (== the stale chapterViewId) - the exact poison setup.
+    ctx.playerState.currentId = 'clip-xyz';
+    dom.window.FileTube.player.currentId = 'clip-xyz';
+    ctx.playerState.meta = { isMusic: false, id: 'clip-xyz', title: 'Home Movie' };
+    ctx.playerState.state = 'full';
+    dom.reconfigure({ url: 'http://localhost/music' });  // plain nav back, no ?play=
+    await ctx.reinit();
+
+    const panel = dom.window.document.getElementById('music-nowplaying-panel');
+    assert.strictEqual(panel.hidden, true,
+      'the now-playing panel HIDES stale music while a non-music video plays (effectiveCurrentId falls to the live id)');
+  });
+});

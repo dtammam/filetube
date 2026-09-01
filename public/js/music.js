@@ -802,7 +802,11 @@ if (typeof module !== 'undefined' && module.exports) {
     function effectiveCurrentId() {
       var p = window.FileTube && window.FileTube.player;
       var live = (p && p.currentId) || null;
-      if (chapterViewId && live && String(chapterViewId).replace(/::c\d+$/, '') === String(live).replace(/::c\d+$/, '')) return chapterViewId;
+      // prefer the watcher-advanced chapter ONLY when the live track is itself a chapter track
+      // (`::c` id) of the SAME file. A genuinely-loaded chapter always has a `::c` currentId, so
+      // requiring it rejects the same file played as a RAW (non-music) video (live='film', no
+      // `::c`) - which shares the base id but must NOT show stale music over it (adversarial W2).
+      if (chapterViewId && live && /::c\d+$/.test(String(live)) && String(chapterViewId).replace(/::c\d+$/, '') === String(live).replace(/::c\d+$/, '')) return chapterViewId;
       return live;
     }
     // v1.237 chapter watcher: which chapter of the loaded chaptered file `currentTime` is IN.
