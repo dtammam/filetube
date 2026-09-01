@@ -80,6 +80,24 @@
 
 ## Shipped
 
+### v1.231.1 - iPod polish: compact screen, real glyphs, glossy sheen (2026-09-01)
+
+Dean's device pass on v1.231.0 ("85% there"): the iPod screen was too tall (a big
+empty white area), the wheel's skip icons rendered as blue iOS emoji, and the body /
+wheel lacked the classic Apple gloss. Fixes (flat, no tilt, per his call):
+- The LCD is now a compact ~4:3 screen at the top (the empty area was a bug - the
+  screen was stretching to fill instead of holding the iPod's screen ratio); the body
+  and wheel take the space below, matching the real proportions.
+- The wheel's rewind / forward / play use clean gray SVG line-glyphs instead of the
+  unicode characters iOS was turning into blue emoji (a test guards against regressing).
+- Added the glossy Apple sheen to the body and the click wheel.
+
+player.js byte-unchanged. Slim gate (adversarial): APPROVE, one non-blocking WARNING
+(a test-completeness gap on the play glyph) applied + re-confirmed. Dual-Node 7979/0.
+**Device pending:** on a small phone the compact screen could clip the tail of the
+lower meta line - eyeball note. **Queued next (Dean):** a black iPod skin, marquee-
+scrolling long titles, and removing the wheel's tap-highlight.
+
 ### v1.231.0 - A real click-wheel iPod; every button works; full-screen player (2026-09-01)
 
 Dean's device pass on the skins: they work, but the decorative buttons felt broken,
