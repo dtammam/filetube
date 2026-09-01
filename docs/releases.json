@@ -2560,5 +2560,11 @@
     "date": "2026-09-01",
     "title": "The iPod click wheel really spins",
     "intent": "The iPod Music skin's click wheel now works like the real thing. Open the song list and spin your thumb around the wheel to scroll through your songs - a highlight moves song to song, and a quick flick jumps further. Press the center button to play the highlighted song. It's a much more fun, hands-on way to pick a track on your phone."
+  },
+  {
+    "version": "1.234.0",
+    "date": "2026-09-01",
+    "title": "Pop the music player out into a floating window",
+    "intent": "On a computer, you can now pop the music player out into its own little window - your chosen skin, like the iPod, floating on its own. In Chrome and Edge it stays on top of everything so you can keep it in the corner while you work in other windows; in other browsers it opens as a normal movable window you can park anywhere. Look for the new 'Pop out' button while music is playing. (On phones, tapping a track already gives you the full-screen skin, so the button is desktop-only.)"
   }
 ]

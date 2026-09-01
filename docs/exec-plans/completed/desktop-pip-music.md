@@ -1,7 +1,7 @@
 # Exec plan: Desktop pop-out music player (Document PiP + window fallback)
 
-Status: ACTIVE. Branch `feat/desktop-pip-music` off main (post v1.233.0).
-Owner: main session (lean mode). Target: v1.234.0.
+Status: SHIPPED v1.234.0 (2026-09-01). Branch `feat/desktop-pip-music` off main (post v1.233.0).
+Owner: main session (lean mode). FULL two-reviewer gate, both APPROVE (two fix rounds).
 
 ## Intent (Dean)
 

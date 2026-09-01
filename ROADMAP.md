@@ -80,6 +80,36 @@
 
 ## Shipped
 
+### v1.234.0 - Pop the music player out into a floating window (desktop) (2026-09-01)
+
+Dean's ask right after the wheel-scroll: let a desktop listener do "Picture in Picture" -
+the iPod (or any) skin floating, appropriately sized, in the browser. A "Pop out" button
+on the desktop music toolbar floats the player into a small window showing the user's
+PICKED skin (Cider/Nordic/Pocket Classic/Black). Best-available: the Document
+Picture-in-Picture API where supported (Chrome/Edge = always-on-top, over everything);
+a plain independent `window.open` window elsewhere (Safari/Firefox = movable, not
+always-on-top). Hidden on mobile (the phone already gets the in-tab full-screen skin) and
+where neither mechanism exists.
+
+The pop-out is a SECOND skin surface reusing the existing engine: the same button-proxy
+(`bindSkinSurface`), render (`paintSkin`), and live-reflect (`reflectAllSkins`) drive it,
+so **player.js is byte-unchanged** (audio/MediaSession/background all stay in the main
+tab). The key trick: the skin CSS is gated behind `@media (max-width: 768px)`, so a
+~380px pop-out window makes every skin render at its phone layout with zero re-styling -
+and because the wheel gesture is Pointer events, the iPod wheel spins with a MOUSE
+click-drag in the pop-out.
+
+FULL two-reviewer gate, both seats APPROVE after a two-round fix cycle. QA caught an
+async-open TOCTOU (a Document-PiP grant resolving after the view is destroyed would leak
+a frozen, uncloseable always-on-top window); both seats caught a both-surfaces-live edge
+where resizing the window narrow while the pop-out is open shared the wheel state. Fixed
+by making `mountPopout` the single async funnel that re-gates on BOTH the view-alive and
+the desktop-viewport checks, plus a resize listener that tears the pop-out down when the
+window goes narrow - so "only one skin surface is ever live" is now an enforced invariant,
+every arm mutation-bound. Known gap disclosed (tech-debt): T1's refactor of the shared
+skin wiring. Dual-Node 8023/0 (Node 22 + 24). **Device pending** - the narrow-window
+skin-render and the real Chrome/Edge always-on-top behavior are Dean's on-device call.
+
 ### v1.233.0 - The iPod click wheel really scrolls (2026-09-01)
 
 Dean's ask after the v1.232 polish arc: "as soon as it's released let's do the wheel
