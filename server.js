@@ -8384,19 +8384,19 @@ function publicTrackListItem(track, userId, likedSet, progressMap) {
 // shaped into a music-track record. `nativeTracks` is the already-RBAC-filtered
 // native list, so the dedup set only holds ids this user may already see.
 function projectedLibraryTracks(req, nativeTracks) {
-  const settings = parseUserSettings(req.user);
-  if (settings.musicIncludesLibrary !== 'on') return []; // opt-in, default OFF
+  // v1.242 (Dean): audio-only items project into Music UNCONDITIONALLY - no per-user
+  // opt-in (the old default-OFF `musicIncludesLibrary` gate is retired), no genre/majority
+  // heuristic. Every `type:'audio'` item is in Music unless its channel is explicitly
+  // marked 'off'. Instant + library-wide (this reads db.metadata live). RBAC (mediaVisibleTo)
+  // below is UNCHANGED, so a restricted user still cannot see hidden audio.
   const db = getCachedDatabase();
   const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
   const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
-  // v1.211: the auto default is CHANNEL-level (majority-music), computed once
-  // over the full audio set so a channel is all-in or all-out (no partial).
-  const autoSet = libraryAudio.autoMusicChannels(allAudio);
   const nativeIds = new Set(nativeTracks.map((t) => t.id));
   const out = [];
   for (const item of allAudio) {
-    if (!libraryAudio.isEligibleAudio(item, marks, autoSet)) continue;
-    if (!mediaVisibleTo(req, item)) continue; // the MEDIA gate
+    if (!libraryAudio.isEligibleAudioUniversal(item, marks)) continue; // audio, unless channel opted-out
+    if (!mediaVisibleTo(req, item)) continue; // the MEDIA gate (RBAC) - unchanged
     if (nativeIds.has(item.id)) continue; // a file in both roots: the native track wins
     // v1.221 chapter-albums: a chaptered file expands into one virtual track per
     // chapter (else a single track). resolveChapters is server.js's own resolver
