@@ -46,6 +46,7 @@
   }
   function prevGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>'; }
   function nextGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg>'; }
+  function shuffleGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 4l4 4-4 4V9h-2.2l-2.3 2.9-1.3-1.6L14.4 7H18V4zM2 7h4.2l8.6 10H18v-3l4 4-4 4v-3h-4.4L5 9H2V7zm0 10h4.2l1.9-2.3 1.3 1.6L7.1 19H2v-2z"/></svg>'; }
 
   // ---- shared building blocks (hooks + REFLECT classes are identical everywhere
   // so music.js's one proxy handler + reflectSkin work for every skin) ----------
@@ -83,48 +84,70 @@
   }
 
   // ---- the three skins: genuinely distinct structure, one engine ----------------
+  // Every visible control is REAL (Dean's device rule): a grab-handle / MENU collapses
+  // (data-skin-collapse / -menu), prev/play/next proxy to the hidden controls, and
+  // Spotify's shuffle proxies to the music view's own #music-shuffle-btn. No decorative
+  // stubs. All three cover the app header (CSS z-index) for a true full-screen player.
+
   // APPLE MUSIC - art-dominant, a blurred color-bleed of the cover fills the screen,
-  // oversized title, airy minimal chrome (no visible queue - swipe-for-queue idiom).
+  // oversized title, a grab handle to dismiss, one big white play.
   function renderApple(ctx) {
     var a = ctx.track || {}; var u = artUrl(ctx);
     return (u ? '<div class="mms-bleed" style="background-image:url(&quot;' + esc(u) + '&quot;)"></div>' : '') +
       '<div class="mms-z">' +
-      '<div class="mms-top">' + collapseBtn() + '<span class="mms-chev mms-chev-ghost" aria-hidden="true">⋯</span></div>' +
+      '<div class="mms-top"><button type="button" class="mms-grab" data-skin-collapse aria-label="Close player"></button></div>' +
       '<div class="mms-art">' + artImg(ctx) + '</div>' +
-      '<div class="mms-head"><div class="mms-htext"><div class="mms-ttl" title="' + esc(a.title) + '">' + esc(a.title || 'Unknown track') + '</div><div class="mms-sub">' + esc(a.artist || '') + '</div></div><span class="mms-dots" aria-hidden="true">⋯</span></div>' +
+      '<div class="mms-head"><div class="mms-ttl" title="' + esc(a.title) + '">' + esc(a.title || 'Unknown track') + '</div><div class="mms-sub">' + esc(a.artist || '') + '</div></div>' +
       '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
       '<div class="mms-transport">' + prevBtn() + playBtn(ctx) + nextBtn() + '</div>' +
-      '<div class="mms-foot" aria-hidden="true"><span>🔀</span><span>◎</span><span>≡</span></div>' +
       '</div>';
   }
-  // SPOTIFY - dark, a tall color canvas, a fat black title, a full control row
-  // (green circular play flanked by shuffle/repeat), and the QUEUE right there.
+  // SPOTIFY - dark canvas, fat title, a control row of REAL shuffle + prev/play/next,
+  // and the QUEUE right there. (No fake repeat/heart.)
   function renderSpotify(ctx) {
     var a = ctx.track || {};
-    return '<div class="mms-top">' + collapseBtn() + '<span class="mms-ctx">' + esc('Playing from ' + (a.album || 'album')) + '</span><span class="mms-chev mms-chev-ghost" aria-hidden="true">⋯</span></div>' +
+    return '<div class="mms-top">' + collapseBtn() + '<span class="mms-ctx">' + esc('Playing from ' + (a.album || 'album')) + '</span><span class="mms-top-spacer" aria-hidden="true"></span></div>' +
       '<div class="mms-art">' + artImg(ctx) + '</div>' +
-      '<div class="mms-meta"><div class="mms-htext"><div class="mms-ttl">' + esc(a.title || 'Unknown track') + '</div><div class="mms-sub">' + esc(a.artist || '') + '</div></div><span class="mms-heart" aria-hidden="true">✚</span></div>' +
+      '<div class="mms-meta"><div class="mms-ttl">' + esc(a.title || 'Unknown track') + '</div><div class="mms-sub">' + esc(a.artist || '') + '</div></div>' +
       '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
-      '<div class="mms-transport"><button type="button" class="mms-ic is-on" aria-label="Shuffle">🔀</button>' + prevBtn() + playBtn(ctx) + nextBtn() + '<button type="button" class="mms-ic" aria-label="Repeat">🔁</button></div>' +
+      '<div class="mms-transport"><button type="button" class="mms-ic mms-shuffle" data-skin-shuffle aria-label="Shuffle">' + shuffleGlyph() + '</button>' + prevBtn() + playBtn(ctx) + nextBtn() + '</div>' +
       '<div class="mms-queue"><h4 class="mms-qh">Next in queue</h4><div class="mms-qlist">' + goRows(ctx, true) + '</div></div>';
   }
-  // IPOD - a real departure: brushed-aluminum bar, a framed cover, centered classic
-  // type, a retro transport CLUSTER, a scrubber with a chrome KNOB, the classic
-  // blue-highlight tracklist + an "N of M" footer.
+  // IPOD - the real Classic. A black-bezelled LCD with the authentic Now Playing
+  // screen (cover left, title/artist/album/stars/N-of-M right, Aqua scrubber) OR the
+  // song list (Select flips to it, tap a row to play); below, the gray click wheel.
+  // Wheel is TAP-zones, not a scroll wheel: MENU=back/exit, prev/next, bottom=play,
+  // center=Select (open list / from list back). Play STATE shows in the status bar.
   function renderIpod(ctx) {
-    var a = ctx.track || {};
-    return '<div class="mms-albar"><button type="button" class="mms-albar-b" data-skin-collapse aria-label="Collapse">‹</button><span class="mms-albar-t">Now Playing</span><span class="mms-albar-b" aria-hidden="true">▭</span></div>' +
-      '<div class="mms-body">' +
-      '<div class="mms-art">' + artImg(ctx) + '</div>' +
-      '<div class="mms-ttl">' + esc(a.title || 'Unknown track') + '</div>' +
-      '<div class="mms-sub">' + esc([a.artist, a.album].filter(Boolean).join(' — ')) + '</div>' +
-      '<div class="mms-scrub"><span class="mms-pos">' + esc(ctx.posLabel || '0:00') + '</span>' +
-      '<div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div><div class="mms-knob" style="left:' + pct(ctx.posSec, ctx.durSec) + '%"></div></div>' +
-      '<span class="mms-rem">' + esc(ctx.remLabel || '') + '</span></div>' +
-      '<div class="mms-cluster">' + prevBtn() + playBtn(ctx) + nextBtn() + '</div>' +
-      '<div class="mms-list">' + goRows(ctx, false) + '</div>' +
-      '<div class="mms-foot">' + ((Number(ctx.curNum) || 0) > 0 ? (ctx.curNum + ' of ' + (ctx.total || ctx.curNum)) : '') + '</div>' +
-      '</div>';
+    var a = ctx.track || {}; var u = artUrl(ctx);
+    var nof = (Number(ctx.curNum) || 0) > 0 ? (ctx.curNum + ' of ' + (ctx.total || ctx.curNum)) : '';
+    return '<div class="ip-lcd"><div class="ip-lcd-in">' +
+      '<div class="ip-status"><span class="ip-np">Now Playing</span>' +
+      '<span class="ip-status-rt"><span class="mms-playind" aria-hidden="true">▶</span><span class="ip-batt" aria-hidden="true"><i></i></span></span></div>' +
+      // --- Now Playing view ---
+      '<div class="ip-npview">' +
+      '<div class="ip-npmain"><div class="ip-cover">' +
+      (u ? '<img class="art-shimmer" src="' + esc(u) + '" alt="" loading="lazy" />' : '') + '</div>' +
+      '<div class="ip-meta">' +
+      '<div class="ip-ttl">' + esc(a.title || 'Unknown track') + '</div>' +
+      '<div class="ip-artist">' + esc(a.artist || '') + '</div>' +
+      '<div class="ip-album">' + esc(a.album || '') + '</div>' +
+      '<div class="ip-stars" aria-hidden="true">★★★★★</div>' +
+      '<div class="ip-nof">' + esc(nof) + '</div></div></div>' +
+      '<div class="ip-scrub"><span class="mms-pos">' + esc(ctx.posLabel || '0:00') + '</span>' +
+      '<div class="ip-track"><div class="mms-fill" ' + fillW(ctx) + '></div></div>' +
+      '<span class="mms-rem">' + esc(ctx.remLabel || '') + '</span></div></div>' +
+      // --- List view (Select flips to it) ---
+      '<div class="ip-listview">' + goRows(ctx, false) + '</div>' +
+      '</div></div>' +
+      // --- the click wheel (tap zones) ---
+      '<div class="ip-wheelwrap"><div class="ip-wheel">' +
+      '<button type="button" class="ip-zone ip-z-menu" data-skin-menu aria-label="Menu / back">MENU</button>' +
+      '<button type="button" class="ip-zone ip-z-left" data-skin-prev aria-label="Previous">⏮</button>' +
+      '<button type="button" class="ip-zone ip-z-right" data-skin-next aria-label="Next">⏭</button>' +
+      '<button type="button" class="ip-zone ip-z-down mms-wplay" data-skin-play aria-label="Play or pause">▶❚❚</button>' +
+      '<button type="button" class="ip-center" data-skin-select aria-label="Select"></button>' +
+      '</div></div>';
   }
 
   var SKINS = [

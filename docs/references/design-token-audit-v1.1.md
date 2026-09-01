@@ -286,3 +286,37 @@ chips dropped their three switcher-tint tokens - **`--mms-apple-sw`, `--mms-sp-s
 The menu picker reuses the app's existing design tokens (`--yt-red` accent,
 `--on-accent`, `--text-primary/-secondary`, `--border-color`, `--space-*`, `--fs-*`,
 `--radius-lg`) - no new bespoke tokens.
+
+## Addendum v1.231 (2026-09-01): iPod palette REPLACED wholesale (-> 54 --mms tokens)
+
+Dean's device pass on the v1.228 iPod ("not bold enough... beige tan not pure white")
+plus his reference photo of a real iPod Classic drove a full iPod redesign: a
+warm-white glossy body, a black-bezelled LCD showing the authentic **Now Playing**
+screen (cover left; title/artist/album/stars/N-of-M right; glossy Aqua scrubber) or
+the song list, and a flat **gray click wheel** (tap zones: MENU / prev / next / play +
+a Select center). The whole v1.228 iPod palette (aluminum bar / framed cover / chrome
+cluster / knob - `--mms-ipod-fg/-warm/-accent/-accent2/-g1/-g2/-frame/-track/-btn1/
+-btn2/-cluster-line` + the cluster/bar/knob shadows + `--mms-r-row-ipod`) was REMOVED
+and replaced by the Classic set below; a new `--mms-apple-grab` was added for Apple's
+dismiss handle. Apple + Spotify palettes are unchanged. Net **48 -> 54** `--mms-*`
+tokens (contract count 108 -> 114 = 60 base + 54); value authority stays
+`test/unit/token-scale-lock.test.js`. Geometry the census does not govern (wheel/LCD
+sizes, blur, transforms) is literal.
+
+- Apple: `--mms-apple-grab` rgba(255,255,255,.4).
+- iPod body/screen: `--mms-ipod-body1` #fdfdfb / `--mms-ipod-body2` #efeee9 (body +
+  wheel center), `--mms-ipod-edge` #c9c8c2, `--mms-ipod-scr-sub` #5c5f66 (LCD sub-text),
+  status bar `--mms-ipod-bar1` #ededf0 / `--mms-ipod-bar2` #cbccd0, `--mms-ipod-hair`
+  #a9abb0 (LCD hairlines), battery `--mms-ipod-batt-line` #4a4b4d / `--mms-ipod-batt1`
+  #8fe06a / `--mms-ipod-batt2` #4fb62e, `--mms-ipod-groove` #eceef2 (scrubber track +
+  empty cover).
+- iPod Aqua + blue: `--mms-ipod-blue-hi` #7fc0ff / `--mms-ipod-blue1` #3d97f2 /
+  `--mms-ipod-blue2` #1667d6 (scrubber fill + list selection), `--mms-ipod-line`
+  rgba(60,70,90,.14) (row divider).
+- iPod wheel: `--mms-ipod-wheel1` #d3d3d2 / `--mms-ipod-wheel2` #c4c4c2 (matte gray),
+  `--mms-ipod-wheel-lbl` #7c7d80 (labels).
+- iPod shadows: `--mms-ipod-art-shadow` (cover), `--mms-ipod-lcd-shadow` (LCD),
+  `--mms-ipod-fill-shadow` (Aqua highlight), `--mms-ipod-wheel-shadow`,
+  `--mms-ipod-center-shadow`.
+- iPod radius: `--mms-ipod-r-sm` 2px (LCD inner + battery); LCD outer reuses
+  `--mms-r-art-ipod` 6px.

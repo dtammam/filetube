@@ -49,7 +49,7 @@ async function boot({ mobile, isMusic, run, skin }) {
   dom.window.matchMedia = (q) => ({ matches: !!mobile && /max-width:\s*768px/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   dom.window.scrollTo = function () {};
   global.fetch = () => Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
-  const spy = { pp: 0, prev: 0, next: 0, seek: 0, dock: 0 };
+  const spy = { pp: 0, prev: 0, next: 0, seek: 0, dock: 0, shuffle: 0 };
   const meta = isMusic ? { isMusic: true, id: 't1', title: 'Track A', artist: 'NESTALGIA', album: 'Retro Mix', albumKey: 'k' } : { isMusic: false, id: 'v1', title: 'A Video' };
   let mod = null;
   dom.window.FileTube = {
@@ -68,6 +68,7 @@ async function boot({ mobile, isMusic, run, skin }) {
   D.getElementById('track-prev-btn').addEventListener('click', () => { spy.prev += 1; });
   D.getElementById('track-next-btn').addEventListener('click', () => { spy.next += 1; });
   D.getElementById('seek-bar').addEventListener('change', () => { spy.seek += 1; });
+  D.getElementById('music-shuffle-btn').addEventListener('click', () => { spy.shuffle += 1; });
   try {
     delete require.cache[musicPath];
     require(musicPath);
@@ -117,6 +118,31 @@ test('v1.230: the music view HONORS the skin persisted by the Settings picker (f
   await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
     assert.match(panel(dom).className, /\bmms-ipod\b/, 'renders the persisted skin (iPod)');
     assert.ok(!panel(dom).querySelector('[data-skin-set]'), 'no in-player switcher');
+  } });
+});
+
+test('v1.231 iPod: Select toggles the song list; MENU steps back (list->now-playing->dock)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
+    const p = panel(dom);
+    const click = (sel) => p.querySelector(sel).dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.ok(!p.classList.contains('mms-listmode'), 'starts on Now Playing');
+    click('[data-skin-select]');
+    assert.ok(p.classList.contains('mms-listmode'), 'Select opens the song list');
+    assert.strictEqual(p.querySelector('.ip-np').textContent, 'Songs', 'status bar follows the level');
+    click('[data-skin-menu]');
+    assert.ok(!p.classList.contains('mms-listmode'), 'MENU from the list returns to Now Playing');
+    assert.strictEqual(spy.dock, 0, 'MENU on the list did NOT exit the player');
+    click('[data-skin-menu]');
+    assert.strictEqual(spy.dock, 1, 'MENU from Now Playing docks/exits the player (the way out)');
+  } });
+});
+
+test('v1.231 Spotify: the shuffle button PROXIES to the real #music-shuffle-btn', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'spotify', run: async (dom, spy) => {
+    const btn = panel(dom).querySelector('[data-skin-shuffle]');
+    assert.ok(btn, 'spotify renders a shuffle control');
+    btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(spy.shuffle, 1, 'shuffle -> #music-shuffle-btn (the real reshuffle)');
   } });
 });
 
