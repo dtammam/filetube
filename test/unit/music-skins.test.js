@@ -129,6 +129,38 @@ test('the skins with a list (spotify queue, ipod song list) render jump-by-index
   assert.ok(!/data-skin-go=/.test(apple), 'apple renders no list');
 });
 
+test('v1.232.5: setIpodListMode scrolls the current song into view via the list container (source lock)', () => {
+  // jsdom has no layout, so lock the scroll GLUE in source (mirrors the default panel's
+  // scroll-to-current lock): rAF-deferred, targets .mms-row.is-current, scrolls the
+  // .ip-listview container via scrollTop (never scrollIntoView -> would scroll the page),
+  // and normalizes by the container offsetTop (the list is position:static).
+  const fs = require('node:fs'); const path = require('node:path');
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  const m = /function setIpodListMode\(on\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.ok(m, 'setIpodListMode exists');
+  const body = m[1];
+  assert.match(body, /\.ip-listview/, 'targets the list container');
+  assert.match(body, /\.mms-row\.is-current/, 'centers the CURRENT row');
+  // the scroll write must be INSIDE the rAF callback (deferred past the display:none->block
+  // layout) - not merely that a raf helper is declared (that would be vacuous).
+  assert.match(body, /raf\(function[\s\S]*?\.scrollTop\s*=/, 'the scrollTop write runs inside the rAF callback (deferred)');
+  assert.match(body, /cur\.offsetTop\s*-\s*lv\.offsetTop/, 'normalizes by the container offsetTop (static list)');
+  assert.ok(!/scrollIntoView/.test(body), 'NOT scrollIntoView (that would scroll the page behind)');
+});
+
+test('v1.232.5: the iPod list renders ctx.fullList (whole album, reach earlier songs); Spotify uses upNext', () => {
+  const ctx = Object.assign({}, CTX, {
+    upNext: [{ index: 5, title: 'Up A', durLabel: '1:00', state: 'current' }, { index: 6, title: 'Up B', durLabel: '2:00', state: 'next' }],
+    fullList: [{ index: 0, title: 'Album First', durLabel: '0:30', state: 'played' }, { index: 5, title: 'Up A', durLabel: '1:00', state: 'current' }],
+  });
+  const ipod = skins.renderFull('ipod', ctx);
+  assert.match(ipod, /Album First/, 'iPod list includes the album-start song (from fullList)');
+  assert.match(ipod, /data-skin-go="0"/, 'iPod list has song index 0 - scroll-up can reach the start');
+  const spotify = skins.renderFull('spotify', ctx);
+  assert.ok(!/Album First/.test(spotify), 'Spotify "Next in queue" uses upNext (upcoming), not the whole album');
+  assert.match(spotify, /Up A/, 'Spotify shows the upNext rows');
+});
+
 test('the iPod skin renders the Classic Now Playing (artist/album/N-of-M + wheel), no chrome knob', () => {
   const html = skins.renderFull('ipod', Object.assign({}, CTX, { curNum: 2, total: 3 }));
   assert.match(html, /NESTALGIA/, 'artist shown (Now Playing meta)');

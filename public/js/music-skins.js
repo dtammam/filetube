@@ -70,9 +70,9 @@
   // loaded on every app shell). This module owns the registry + the per-device setting.
   // withThumb=Spotify (album-art thumb + stacked title/artist); else=iPod (track
   // number + title + duration + a chevron, the classic list row).
-  function goRows(ctx, withThumb) {
+  function goRows(ctx, withThumb, list) {
     var u = artUrl(ctx);
-    return (ctx.upNext || []).map(function (it) {
+    return (list || ctx.upNext || []).map(function (it) {
       var c = 'mms-row' + (it.state === 'current' ? ' is-current' : (it.state === 'played' ? ' is-played' : ''));
       if (withThumb) {
         return '<button type="button" class="' + c + '" data-skin-go="' + it.index + '">' +
@@ -143,7 +143,7 @@
       '<div class="ip-track"><div class="mms-fill" ' + fillW(ctx) + '></div></div>' +
       '<span class="mms-rem">' + esc(ctx.remLabel || '') + '</span></div></div>' +
       // --- List view (Select flips to it) ---
-      '<div class="ip-listview">' + goRows(ctx, false) + '</div>' +
+      '<div class="ip-listview">' + goRows(ctx, false, ctx.fullList) + '</div>' +
       '</div></div>' +
       // --- the click wheel (tap zones) ---
       '<div class="ip-wheelwrap"><div class="ip-wheel">' +
