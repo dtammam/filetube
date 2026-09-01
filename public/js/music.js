@@ -596,16 +596,26 @@ if (typeof module !== 'undefined' && module.exports) {
       var mp = hostCtl('media-player');
       var dur = (mp && isFinite(mp.duration) && mp.duration > 0) ? mp.duration : ((queue[ci] && Number(queue[ci].durationSec)) || 0);
       var pos = mp ? (Number(mp.currentTime) || 0) : 0;
-      var up = [];
-      var start = Math.max(0, ci - 3); // a little history above the current, then up-next
-      for (var j = start; j < queue.length && up.length < 200; j++) {
-        up.push({ index: j, title: queue[j].title, artist: queue[j].artist,
-          durLabel: mmssMusic(queue[j].durationSec), state: j < ci ? 'played' : (j === ci ? 'current' : 'next') });
+      function rowOf(j) {
+        return { index: j, title: queue[j].title, artist: queue[j].artist,
+          durLabel: mmssMusic(queue[j].durationSec), state: j < ci ? 'played' : (j === ci ? 'current' : 'next') };
       }
+      // upNext = Spotify's "Next in queue" (a little history + upcoming).
+      var up = [];
+      var start = Math.max(0, ci - 3);
+      for (var j = start; j < queue.length && up.length < 200; j++) up.push(rowOf(j));
+      // fullList = the iPod's whole-album list (v1.232.5, Dean: you could only scroll up
+      // when the current was song 1, because upNext started near the current). From index
+      // 0 for a normal album so EVERY earlier song is reachable; for a huge queue, a wide
+      // window centered on the current (still lets you scroll far up). renderIpod opens it
+      // scrolled to the current song (setIpodListMode).
+      var full = [];
+      var fstart = queue.length <= 400 ? 0 : Math.max(0, ci - 200);
+      for (var k = fstart; k < queue.length && full.length < 400; k++) full.push(rowOf(k));
       return {
         track: { title: nowPlaying && nowPlaying.title, artist: nowPlaying && nowPlaying.artist, album: nowPlaying && nowPlaying.album,
           artUrl: playingId ? ('/albumart/' + encodeURIComponent(playingId)) : '' },
-        upNext: up, playing: mp ? !mp.paused : false, posSec: pos, durSec: dur,
+        upNext: up, fullList: full, playing: mp ? !mp.paused : false, posSec: pos, durSec: dur,
         posLabel: mmssMusic(pos), remLabel: dur > 0 ? ('-' + mmssMusic(dur - pos)) : '',
         // iPod footer "N of M": the current track's 1-based place in the whole queue.
         curNum: ci + 1, total: queue.length,
@@ -644,6 +654,17 @@ if (typeof module !== 'undefined' && module.exports) {
       nowPlayingPanel.classList.toggle('mms-listmode', !!on);
       var npEl = nowPlayingPanel.querySelector('.ip-np');
       if (npEl) npEl.textContent = on ? 'Songs' : 'Now Playing';
+      // v1.232.5 (Dean): the list is the WHOLE album; on open, center the current song so
+      // earlier tracks are above (scroll up) and later below. Scroll ONLY the list
+      // container (never the page). rAF: the list just became visible - measure post-layout.
+      if (on) {
+        var raf = (typeof window !== 'undefined' && window.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); };
+        raf(function () {
+          var lv = nowPlayingPanel.querySelector('.ip-listview');
+          var cur = lv && lv.querySelector('.mms-row.is-current');
+          if (lv && cur) lv.scrollTop = Math.max(0, cur.offsetTop - (lv.clientHeight / 2) + (cur.offsetHeight / 2));
+        });
+      }
     }
     // v1.232 (Dean): overflowing title/artist/album lines SCROLL like a real iPod - on
     // ALL skins (v1.232.1 broadened to Apple/Spotify: .mms-ttl/.mms-sub/.mms-ctx too,

@@ -129,6 +129,19 @@ test('the skins with a list (spotify queue, ipod song list) render jump-by-index
   assert.ok(!/data-skin-go=/.test(apple), 'apple renders no list');
 });
 
+test('v1.232.5: the iPod list renders ctx.fullList (whole album, reach earlier songs); Spotify uses upNext', () => {
+  const ctx = Object.assign({}, CTX, {
+    upNext: [{ index: 5, title: 'Up A', durLabel: '1:00', state: 'current' }, { index: 6, title: 'Up B', durLabel: '2:00', state: 'next' }],
+    fullList: [{ index: 0, title: 'Album First', durLabel: '0:30', state: 'played' }, { index: 5, title: 'Up A', durLabel: '1:00', state: 'current' }],
+  });
+  const ipod = skins.renderFull('ipod', ctx);
+  assert.match(ipod, /Album First/, 'iPod list includes the album-start song (from fullList)');
+  assert.match(ipod, /data-skin-go="0"/, 'iPod list has song index 0 - scroll-up can reach the start');
+  const spotify = skins.renderFull('spotify', ctx);
+  assert.ok(!/Album First/.test(spotify), 'Spotify "Next in queue" uses upNext (upcoming), not the whole album');
+  assert.match(spotify, /Up A/, 'Spotify shows the upNext rows');
+});
+
 test('the iPod skin renders the Classic Now Playing (artist/album/N-of-M + wheel), no chrome knob', () => {
   const html = skins.renderFull('ipod', Object.assign({}, CTX, { curNum: 2, total: 3 }));
   assert.match(html, /NESTALGIA/, 'artist shown (Now Playing meta)');
