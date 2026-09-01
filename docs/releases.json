@@ -2578,5 +2578,11 @@
     "date": "2026-09-01",
     "title": "Downloaded music opens in the music player",
     "intent": "Tap a downloaded song or album anywhere - your home feed, search, a channel, or continue-watching - and it now opens in the music player instead of the video page. Albums with chapters open as an album, so you can browse the tracks. There's a new setting, 'Open downloaded music in the music player' (on by default), if you ever want to turn it off. Regular videos are unaffected."
+  },
+  {
+    "version": "1.237.0",
+    "date": "2026-09-01",
+    "title": "The song title keeps up as an album plays",
+    "intent": "When an album plays straight through from one chapter to the next on its own, the now-playing title, the artwork, and the highlighted track in the list now update to the song that's actually playing - before, they'd stay stuck on the previous track unless you tapped ahead by hand. It works the same in the music view and the pop-out player. The iPod's click wheel is also a bit bigger now."
   }
 ]

@@ -80,6 +80,33 @@
 
 ## Shipped
 
+### v1.237.0 - Album titles keep up as chapters advance + a bigger iPod wheel (2026-09-01)
+
+Dean: "let's handle the fix for the browser/chapters." When a chaptered album played
+straight THROUGH a chapter boundary on its own (rather than a manual chapter tap), the
+now-playing title/art and the highlighted list row stayed stuck on the previous chapter -
+only manual chapter taps reflected correctly. Root cause: the reflect path updated
+time/progress but never re-derived the current chapter's IDENTITY as `currentTime` crossed
+each `chapterStartSec`. Fix: a `timeupdate` watcher (`ensureChapterReflect` ->
+`reflectChapter`) re-derives the current chapter on every boundary cross and repaints the
+title, art, list highlight, and now-playing panel in both the web music view and the desktop
+pop-out. No reload, no engine change - player.js BYTE-UNCHANGED. Also folded in Dean's
+"make the iPod wheel a little larger" - the `.mms-ipod` click wheel grows 196->224px (center
+74->84px).
+
+Correctness seams the fix threads (all mutation-bound): the current-chapter derivation is
+order-independent (sorts the queue's chapter tracks by `chapterStartSec`, never assumes queue
+order); dock-return reseeds `chapterViewId` from the live id so it doesn't blank; and
+`effectiveCurrentId` is base-gated AND requires the live id to actually be a `::c` chapter id,
+so a same-file RAW VIDEO playing can never inherit a stale chapter's highlight.
+
+FULL two-reviewer gate, both APPROVE after three delta rounds: caught a queue-order
+assumption, a dock-return blank, a same-file raw-video collision, and two non-binding
+(vacuous/divergent-fixture) tests - every one closed with a mutation-verified behavioral bind
+(a same-base raw-video case now reds the base-only mutant). Dual-Node 8062/0 (Node 22 + 24).
+**Device pending** - Dean confirms a chaptered album played through a boundary updates the
+title on both the iPod skin and the desktop pop-out.
+
 ### v1.236.0 - Downloaded music opens in the music player (2026-09-01)
 
 Dean: "tap a music thing (chapters, etc.) in the home feed - I'd love it to open in the
