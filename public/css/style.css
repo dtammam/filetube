@@ -10973,7 +10973,11 @@ html[data-modern="on"] .video-uploader {
   /* ---------- the full-screen shell (shared frame; each skin fills it) ---------- */
   /* z-index: cover the app header (--z-header 1000) for a true full-screen player -
      the grab handle / MENU (data-skin-collapse / -menu) is the way back out. */
-  .mms-full{ position:fixed; inset:0; z-index:var(--z-player-max); margin:0; display:flex; flex-direction:column; overflow:hidden; }
+  /* touch-action:none locks the page behind the full-screen skin (Dean: dragging the
+     body still scrolled the page - body{overflow:hidden} does NOT stop iOS touch-scroll;
+     touches starting on this fixed panel now pan nothing). Scrollable regions inside
+     (the iPod list, the Spotify queue) re-enable vertical panning via touch-action:pan-y. */
+  .mms-full{ position:fixed; inset:0; z-index:var(--z-player-max); margin:0; display:flex; flex-direction:column; overflow:hidden; touch-action:none; }
   /* v1.232 (Dean): kill the mobile tap-highlight flash on skin buttons - the grey
      "area showing" on tap broke the iPod immersion. (-webkit-tap-highlight-color is
      inherited; transparent is census-exempt.) Also stop text-selection on the wheel. */
@@ -11046,7 +11050,7 @@ html[data-modern="on"] .video-uploader {
   .mms-spotify .mms-play svg{ width:28px; height:28px; fill:var(--mms-sp-on-accent); }
   .mms-spotify .mms-queue{ margin-top:var(--space-8); flex:1; min-height:0; display:flex; flex-direction:column; background:var(--mms-sp-queue-bg); border-top:1px solid var(--mms-sp-qline); border-radius:var(--mms-r-queue) var(--mms-r-queue) 0 0; padding:var(--space-6) var(--space-6) 0; }
   .mms-spotify .mms-qh{ margin:0 0 var(--space-4); font-size:var(--fs-sm); font-weight:var(--fw-bold); }
-  .mms-spotify .mms-qlist{ overflow-y:auto; flex:1; min-height:0; margin:0 calc(-1 * var(--space-3)); padding-bottom:var(--space-6); }
+  .mms-spotify .mms-qlist{ overflow-y:auto; flex:1; min-height:0; margin:0 calc(-1 * var(--space-3)); padding-bottom:var(--space-6); touch-action:pan-y; overscroll-behavior:contain; }
   .mms-spotify .mms-row{ display:flex; align-items:center; gap:var(--space-6); width:100%; padding:var(--space-4) var(--space-3); border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; border-radius:var(--radius-lg); }
   .mms-spotify .mms-th{ width:44px; height:44px; border-radius:var(--mms-r-th); overflow:hidden; flex:none; background:var(--mms-sp-queue-bg); }
   .mms-spotify .mms-th img{ width:100%; height:100%; object-fit:cover; display:block; }
@@ -11112,7 +11116,7 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .ip-track{ flex:1; height:12px; border-radius:var(--radius-full); position:relative; overflow:hidden; background:linear-gradient(var(--mms-ipod-groove), var(--mms-white)); box-shadow:inset 0 0 0 1px var(--mms-ipod-hair); }
   .mms-ipod .mms-fill{ background:linear-gradient(var(--mms-ipod-blue-hi), var(--mms-ipod-blue1) 45%, var(--mms-ipod-blue2)); box-shadow:var(--mms-ipod-fill-shadow); }
   /* List view (Select flips to it) */
-  .mms-ipod .ip-listview{ display:none; flex:1; min-height:0; overflow-y:auto; }
+  .mms-ipod .ip-listview{ display:none; flex:1; min-height:0; overflow-y:auto; touch-action:pan-y; overscroll-behavior:contain; }
   .mms-ipod.mms-listmode .ip-npview{ display:none; }
   .mms-ipod.mms-listmode .ip-listview{ display:block; }
   .mms-ipod .mms-row{ display:flex; align-items:center; gap:var(--space-4); width:100%; padding:var(--space-4) var(--space-6); border:0; background:transparent; color:var(--mms-black); text-align:left; cursor:pointer; border-bottom:1px solid var(--mms-ipod-line); font-size:var(--fs-md); font-weight:var(--fw-semibold); }
@@ -11141,9 +11145,10 @@ html[data-modern="on"] .video-uploader {
      class; overrides ONLY the body + wheel palette to the space-black variant. The
      white LCD screen (status/meta/Aqua/list) is unchanged. Rules sit AFTER the silver
      iPod block so they win at equal specificity. --- */
+  /* v1.232.3 (Dean): the black body's sheen was too aggressive - dropped the
+     bottom-right radial sweep, keeping just the soft top-left highlight. */
   .mms-ipod-black{ background:
       linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
-      radial-gradient(120% 60% at 85% 108%, var(--mms-ipod-sheen-c) 0%, var(--mms-ipod-sheen-0) 55%),
       linear-gradient(158deg, var(--mms-ipodk-body1), var(--mms-ipodk-body2));
     box-shadow:inset 0 0 0 1px var(--mms-ipodk-edge); }
   .mms-ipod-black .ip-wheel{ background:
