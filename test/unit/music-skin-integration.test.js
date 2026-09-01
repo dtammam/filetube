@@ -355,3 +355,45 @@ test('v1.233 iPod: center-select in the list PLAYS the cursor row and closes the
     assert.ok(!p.classList.contains('mms-listmode'), 'center-select from the list returns to Now Playing');
   } });
 });
+
+// ---- v1.233 gate fix-round binds (adversarial S1 pointerId + S2 dead-center) ---------
+function ptr(dom, type, x, y, id) {
+  const ev = new dom.window.MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
+  Object.defineProperty(ev, 'pointerId', { value: id, configurable: true });
+  return ev;
+}
+
+test('v1.233 iPod: a SECOND finger\'s moves are ignored (pointerId filter, no jitter jump)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const p = panel(dom); seedList(p, dom, 6, 0); openList(p, dom); await settle();
+    const wheel = p.querySelector('.ip-wheel');
+    wheel.dispatchEvent(ptr(dom, 'pointerdown', 100, 0, 1));   // finger 1 owns the gesture
+    // finger 2 rotates hard - must NOT move the cursor (its coords aren't finger 1's)
+    [40, 80, 120, 160].forEach((deg) => { const r = deg * Math.PI / 180; wheel.dispatchEvent(ptr(dom, 'pointermove', 100 * Math.cos(r), 100 * Math.sin(r), 2)); });
+    assert.strictEqual(cursorIdx(p), 0, 'a second finger does not move the cursor');
+    // finger 1 rotates - now it moves
+    [40, 80, 120, 160].forEach((deg) => { const r = deg * Math.PI / 180; wheel.dispatchEvent(ptr(dom, 'pointermove', 100 * Math.cos(r), 100 * Math.sin(r), 1)); });
+    assert.ok(cursorIdx(p) > 0, 'the gesture\'s own finger moves the cursor');
+    wheel.dispatchEvent(ptr(dom, 'pointerup', 0, 0, 1));
+  } });
+});
+
+test('v1.233 iPod: a press on the dead-center (Select) never starts a spin; the ring does', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const p = panel(dom); seedList(p, dom, 6, 0); openList(p, dom); await settle();
+    const wheel = p.querySelector('.ip-wheel');
+    // give the wheel a REAL rect (jsdom is all-zero): 200x200 at origin, center (100,100),
+    // so the dead-center radius (r.width*0.2 = 40) is exercisable.
+    wheel.getBoundingClientRect = () => ({ left: 0, top: 0, right: 200, bottom: 200, width: 200, height: 200, x: 0, y: 0 });
+    const at = (cx, cy, deg, rad) => ({ x: cx + rad * Math.cos(deg * Math.PI / 180), y: cy + rad * Math.sin(deg * Math.PI / 180) });
+    // press dead center (100,100): dist 0 < 40 -> ignored, no gesture; rotating does nothing.
+    wheel.dispatchEvent(ptr(dom, 'pointerdown', 100, 100, 1));
+    [0, 45, 90, 135].forEach((deg) => { const q = at(100, 100, deg, 20); wheel.dispatchEvent(ptr(dom, 'pointermove', q.x, q.y, 1)); });
+    assert.strictEqual(cursorIdx(p), 0, 'a dead-center press does not scroll the list (Select tap passes through)');
+    // press on the ring (radius 90): engages, and a sweep moves the cursor.
+    wheel.dispatchEvent(ptr(dom, 'pointerdown', 100, 10, 2));
+    [-45, 0, 45, 90].forEach((deg) => { const q = at(100, 100, deg, 90); wheel.dispatchEvent(ptr(dom, 'pointermove', q.x, q.y, 2)); });
+    assert.ok(cursorIdx(p) > 0, 'a press on the wheel ring DOES scroll');
+    wheel.dispatchEvent(ptr(dom, 'pointerup', 0, 0, 2));
+  } });
+});

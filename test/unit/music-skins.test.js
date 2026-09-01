@@ -257,16 +257,36 @@ test('v1.233: pointer capture is taken LAZILY (only once confirmed a spin) so a 
 
 test('v1.233: every gesture end arm REMOVES the move/up/cancel listeners + releases capture (v1.163 teardown)', () => {
   const { js } = wheelHandlerSrc();
-  const m = /function endWheel\(suppress\) \{([\s\S]*?)\n {6}\}/.exec(js);
+  const m = /function endWheel\(st, suppress\) \{([\s\S]*?)\n {6}\}/.exec(js);
   assert.ok(m, 'endWheel exists');
   const end = m[1];
   assert.match(end, /removeEventListener\('pointermove'/, 'removes pointermove');
   assert.match(end, /removeEventListener\('pointerup'/, 'removes pointerup');
   assert.match(end, /removeEventListener\('pointercancel'/, 'removes pointercancel');
   assert.match(end, /releasePointerCapture/, 'releases the pointer capture');
+  // endWheel acts on the passed `st` and nulls wheelSpin ONLY if it still IS that st, so a
+  // stale end-arm (a detached wheel's late pointerup after a re-render) can't tear down a
+  // newer gesture (QA + the re-render guard below).
+  assert.match(end, /if \(wheelSpin === st\) wheelSpin = null/, 'wheelSpin is nulled only when the ending gesture is still the live one');
   // pointerup AND pointercancel both route to the same end arm (a cancelled gesture leaks nothing).
   const { body } = wheelHandlerSrc();
   assert.match(body, /addEventListener\('pointercancel', st\.onUp\)/, 'pointercancel also ends the gesture (no leak on an interrupted spin)');
+});
+
+test('v1.233: a re-render (track auto-advance) drops any mid-gesture wheelSpin (QA leak guard)', () => {
+  // If the panel re-renders while a finger is down but before capture, the detached wheel's
+  // pointerup never reaches endWheel; without this reset wheelSpin sticks and every later
+  // spin bails on "one gesture at a time". renderNowPlayingSkin nulls it on every render.
+  const fs = require('node:fs'); const path = require('node:path');
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  const m = /function renderNowPlayingSkin\(ci\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.ok(m, 'renderNowPlayingSkin exists');
+  assert.match(m[1], /wheelSpin = null/, 'a render clears any stale mid-gesture state');
+});
+
+test('v1.233: onMove ignores a SECOND finger (pointerId filter - adversarial S1 device jitter)', () => {
+  const { body } = wheelHandlerSrc();
+  assert.match(body, /st\.onMove = function \(ev\) \{\s*if \(ev\.pointerId !== st\.id\) return;/, 'onMove bails on a pointerId that is not this gesture\'s');
 });
 
 test('v1.233: direction is re-evaluated every move (accum + sign per move), never latched (v1.160.3 scar)', () => {

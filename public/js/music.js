@@ -743,6 +743,12 @@ if (typeof module !== 'undefined' && module.exports) {
       // ALSO gets the base class + all its shared CSS; the id class overrides the palette.
       var base = (typeof SKINS.skinById === 'function' && (SKINS.skinById(id) || {}).base) || '';
       nowPlayingPanel.className = 'music-nowplaying-panel mms mms-full mms-' + id + (base ? ' mms-' + base : '');
+      // v1.233 (QA finding): a re-render (e.g. a track auto-advance) detaches the wheel
+      // element, so a live gesture's pointerup would never reach its onUp -> endWheel and
+      // wheelSpin would stick non-null, wedging every later spin ("one gesture at a time").
+      // Drop the mid-gesture state here; the detached wheel's element-local listeners GC
+      // with it, and wheelCursorRow is re-seeded when the list is next opened.
+      wheelSpin = null;
       nowPlayingPanel.innerHTML = SKINS.renderFull(id, buildSkinCtx(ci));
       nowPlayingPanel.hidden = false;
       ensureSkinReflect();
@@ -959,17 +965,21 @@ if (typeof module !== 'undefined' && module.exports) {
       var WHEEL_STEP_DEG = 22;   // wheel degrees per one-song cursor step
       var wheelSpin = null;      // live gesture state, null when idle
       function wheelShortAngle(a) { while (a > 180) a -= 360; while (a < -180) a += 360; return a; }
-      function endWheel(suppress) {
-        if (!wheelSpin) return;
-        var w = wheelSpin.wheel;
-        try { if (wheelSpin.captured) w.releasePointerCapture(wheelSpin.id); } catch (_) { /* not captured */ }
-        w.removeEventListener('pointermove', wheelSpin.onMove);
-        w.removeEventListener('pointerup', wheelSpin.onUp);
-        w.removeEventListener('pointercancel', wheelSpin.onUp);
+      // End the gesture `st`: unbind ITS listeners + release ITS capture. Takes the st
+      // explicitly (not the live wheelSpin) so a stale end-arm - e.g. a detached wheel's
+      // late pointerup after renderNowPlayingSkin already dropped the gesture (QA finding)
+      // - tears down only its own element and never a newer gesture. wheelSpin is nulled
+      // only if it still IS this st.
+      function endWheel(st, suppress) {
+        var w = st.wheel;
+        try { if (st.captured) w.releasePointerCapture(st.id); } catch (_) { /* not captured */ }
+        w.removeEventListener('pointermove', st.onMove);
+        w.removeEventListener('pointerup', st.onUp);
+        w.removeEventListener('pointercancel', st.onUp);
         // a spin that actually moved swallows the release's synthetic click (below);
         // a pure tap (no move) leaves the flag false so the zone's click proceeds.
         if (suppress) wheelSuppressClick = true;
-        wheelSpin = null;
+        if (wheelSpin === st) wheelSpin = null;
       }
       nowPlayingPanel.addEventListener('pointerdown', function (e) {
         // any fresh touch starts clean, so a stale suppress can never eat a real tap.
@@ -986,6 +996,7 @@ if (typeof module !== 'undefined' && module.exports) {
           lastAngle: Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI,
           lastT: now0, accum: 0, x0: e.clientX, y0: e.clientY, onMove: null, onUp: null };
         st.onMove = function (ev) {
+          if (ev.pointerId !== st.id) return;   // ignore a SECOND finger's moves (adversarial S1: else its coords difference against finger A's angle -> a jumpy jump)
           var ang = Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180 / Math.PI;
           var d = wheelShortAngle(ang - st.lastAngle); st.lastAngle = ang;
           var now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
@@ -1009,7 +1020,7 @@ if (typeof module !== 'undefined' && module.exports) {
             st.accum -= sign * WHEEL_STEP_DEG;
           }
         };
-        st.onUp = function () { endWheel(st.moved); };
+        st.onUp = function () { endWheel(st, st.moved); };
         wheel.addEventListener('pointermove', st.onMove);
         wheel.addEventListener('pointerup', st.onUp);
         wheel.addEventListener('pointercancel', st.onUp);
