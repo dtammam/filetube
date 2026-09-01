@@ -6390,6 +6390,7 @@ app.delete('/api/users/:id', (req, res) => {
   // never inherit a future account (design-delta SUGGESTION-6).
   userStore.deleteUser(target.id);
   unlinkAvatar(target.id); // v1.82: no orphaned profile image for a reaped id
+  unlinkSticker(target.id); // v1.238: same, for the custom player sticker
   return res.json({ success: true });
 });
 
@@ -9674,6 +9675,109 @@ app.post(
 app.delete('/api/me/avatar', (req, res) => {
   unlinkAvatar(req.user.id);
   return res.json({ ok: true, avatar: { present: false, version: 0 } });
+});
+
+// ---- v1.238: per-user custom PLAYER STICKER (the speed-menu sticker icon) ----
+// A deliberate second copy of the avatar machinery above, not a shared helper:
+// the sticker and the profile photo are unrelated features that happen to share
+// an upload shape, and the avatar header (~9573) already documents WHY these
+// diverge rather than fold. Same properties: PER USER, self-service (no by-id
+// write route -> a member can only set THEIR OWN), disk-only (presence IS the
+// state, mtime is the cache-bust version, no persisted db metadata -> no schema
+// bump and, like avatars, NOT carried in the backup bundle), mime sniffed from
+// magic bytes on serve. The device-local `ft-sticker` choice decides logo vs
+// preset vs emoji vs THIS custom image; an unset/deleted file -> the client
+// falls back to whatever `ft-sticker` names (default: the FileTube logo).
+const STICKER_MAX_BYTES = 1024 * 1024;
+const STICKERS_DIR = path.join(DATA_DIR, 'stickers');
+// Own allowlist + magic-byte sniffers (SVG is deliberately excluded - an inline
+// SVG is a script-injection vector, and the sticker is rendered as an <img>).
+const STICKER_TYPES = {
+  'image/png': (buf) => buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47,
+  'image/jpeg': (buf) => buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff,
+  'image/webp': (buf) => buf.length > 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP',
+};
+function stickerPath(userId) {
+  // userId is always a validated positive integer at every call site, so the
+  // join can never traverse out of STICKERS_DIR.
+  return path.join(STICKERS_DIR, `${userId}.bin`);
+}
+function stickerInfo(userId) {
+  try {
+    const st = fs.statSync(stickerPath(userId));
+    return { present: true, version: Math.floor(st.mtimeMs) };
+  } catch {
+    return { present: false, version: 0 };
+  }
+}
+function sniffStickerMime(buf) {
+  for (const mime of Object.keys(STICKER_TYPES)) {
+    if (STICKER_TYPES[mime](buf)) return mime;
+  }
+  return null;
+}
+// Reaped on the user-delete cascade so a never-reused id leaves no orphan.
+function unlinkSticker(userId) {
+  try { fs.unlinkSync(stickerPath(userId)); } catch { /* absent -- fine */ }
+}
+
+// Serve the CURRENT user's sticker only (self-only: a sticker is a personal
+// player decoration with no cross-user display surface, so unlike the avatar
+// there is NO by-id read route to widen the surface). 404 when unset OR corrupt.
+app.get('/api/me/sticker', (req, res) => {
+  let bytes;
+  try { bytes = fs.readFileSync(stickerPath(req.user.id)); }
+  catch { return res.status(404).json({ error: 'No sticker' }); }
+  const mime = sniffStickerMime(bytes);
+  if (!mime) return res.status(404).json({ error: 'No sticker' });
+  res.setHeader('Content-Type', mime);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'no-cache'); // the client cache-busts via ?v=<mtime>
+  return res.send(bytes);
+});
+
+// Upload the CURRENT user's sticker. Self-service by design: no by-id write route.
+app.post(
+  '/api/me/sticker',
+  express.raw({ type: Object.keys(STICKER_TYPES), limit: STICKER_MAX_BYTES }),
+  (req, res) => {
+    const mime = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    if (!Object.prototype.hasOwnProperty.call(STICKER_TYPES, mime)) {
+      return res.status(400).json({ error: 'Sticker must be a PNG, JPEG, or WebP image' });
+    }
+    const bytes = req.body;
+    if (!Buffer.isBuffer(bytes) || bytes.length === 0) {
+      return res.status(400).json({ error: 'Empty upload' });
+    }
+    if (!STICKER_TYPES[mime](bytes)) {
+      return res.status(400).json({ error: 'File content does not match its image type' });
+    }
+    const target = stickerPath(req.user.id);
+    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+    try {
+      fs.mkdirSync(STICKERS_DIR, { recursive: true });
+      fs.writeFileSync(tmp, bytes);
+      fs.renameSync(tmp, target); // atomic replace
+    } catch (err) {
+      try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* best-effort */ }
+      console.error('Error saving sticker:', err);
+      return res.status(500).json({ error: `Could not save sticker: ${err.message}` });
+    }
+    return res.json({ ok: true, sticker: stickerInfo(req.user.id) });
+  },
+  // Oversized body -> clean JSON 413 (mirrors the avatar/logo route mapping).
+  (err, req, res, next) => {
+    if (err && (err.type === 'entity.too.large' || err.status === 413)) {
+      return res.status(413).json({ error: 'Sticker too large (max 1 MB)' });
+    }
+    return next(err);
+  }
+);
+
+// Remove the current user's custom sticker -> back to the chosen preset/logo.
+app.delete('/api/me/sticker', (req, res) => {
+  unlinkSticker(req.user.id);
+  return res.json({ ok: true, sticker: { present: false, version: 0 } });
 });
 
 // ---- v1.42: instance backup / restore ---------------------------------------
