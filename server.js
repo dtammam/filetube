@@ -6671,8 +6671,8 @@ app.get('/api/folders/music-flag', (req, res) => {
 });
 
 // Wave G: the per-folder "show in Music library" mark. `music` is 'on'/'off'
-// (an explicit override) or null (clear -> back to the channel-level default,
-// v1.211: auto-on iff a strict majority of the channel's audio is genre 'Music').
+// (an explicit override) or null (clear -> back to the v1.242 default, which is ON:
+// every channel is in Music unless explicitly marked 'off').
 // Same dual-axis gate as the rename route (requireModifyLibrary - shared library
 // metadata - AND visibility), but the existence probe requires a visible AUDIO
 // item: the mark is meaningless on a folder with no library audio, and this
