@@ -2530,5 +2530,11 @@
     "date": "2026-09-01",
     "title": "Music-skin polish and playful new names",
     "intent": "A round of polish for the phone Music skins. The iPod screen now stays a fixed size no matter how long your song list is (it used to stretch when you opened the list). The scrolling song titles now work on the Apple- and Spotify-style skins too, not just the iPod. The Apple skin's little bar for closing the player is easier to tap, and the Spotify skin's play button is now properly centered. And the four skins got fun names instead of the brand names: Cider, Nordic, Pocket Classic, and Pocket Classic (Black). Nothing about playback changes."
+  },
+  {
+    "version": "1.232.2",
+    "date": "2026-09-01",
+    "title": "The silver iPod skin gets its glossy shine",
+    "intent": "The silver Pocket Classic Music skin now has the glossy iPod shine the black one already had - a bright highlight across the top and a soft shadow along the bottom edge give it that classic reflective, polished look. Just a visual touch-up on that one skin."
   }
 ]

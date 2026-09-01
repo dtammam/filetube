@@ -80,6 +80,15 @@
 
 ## Shipped
 
+### v1.232.2 - Silver Pocket Classic gets its gloss (2026-09-01)
+
+Dean wanted the silver iPod (Pocket Classic) to have a sheen like the black one. A
+white-on-white sheen is invisible, so the silver gloss is built from a crisp top
+highlight + a soft bottom-edge shadow (the domed, reflective look). Silver-only (the
+black variant keeps its own finish). +2 gloss tokens. player.js byte-unchanged. Slim
+gate (adversarial): APPROVE, no findings (one pre-existing test-hygiene note logged as
+tech-debt). Dual-Node 7986/0. **Device pending** (final legibility on the white body).
+
 ### v1.232.1 - Skin polish: rock-solid iPod screen, scroll on all skins, cheeky names (2026-09-01)
 
 A batch of live device fixes + tweaks (Dean, same session):
