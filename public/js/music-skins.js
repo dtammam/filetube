@@ -114,7 +114,7 @@
   // blue-highlight tracklist + an "N of M" footer.
   function renderIpod(ctx) {
     var a = ctx.track || {};
-    return '<div class="mms-albar"><span class="mms-albar-b" data-skin-collapse role="button" tabindex="0" aria-label="Collapse">‹</span><span class="mms-albar-t">Now Playing</span><span class="mms-albar-b" aria-hidden="true">▭</span></div>' +
+    return '<div class="mms-albar"><button type="button" class="mms-albar-b" data-skin-collapse aria-label="Collapse">‹</button><span class="mms-albar-t">Now Playing</span><span class="mms-albar-b" aria-hidden="true">▭</span></div>' +
       '<div class="mms-body">' + switcher(ctx.skinId) +
       '<div class="mms-art">' + artImg(ctx) + '</div>' +
       '<div class="mms-ttl">' + esc(a.title || 'Unknown track') + '</div>' +
