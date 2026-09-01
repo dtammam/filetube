@@ -641,14 +641,15 @@ if (typeof module !== 'undefined' && module.exports) {
       var npEl = nowPlayingPanel.querySelector('.ip-np');
       if (npEl) npEl.textContent = on ? 'Songs' : 'Now Playing';
     }
-    // v1.232 (Dean): iPod title/artist/album that overflow SCROLL like a real iPod.
-    // Only when motion is allowed (else the line keeps its ellipsis). Wraps the text in
-    // a .mms-mq span and sets the shift distance + a constant-speed duration as CSS
-    // vars; the .mms-marquee keyframe animates it. No-op for non-iPod skins (no .ip-*).
-    function applyIpodMarquee() {
+    // v1.232 (Dean): overflowing title/artist/album lines SCROLL like a real iPod - on
+    // ALL skins (v1.232.1 broadened to Apple/Spotify: .mms-ttl/.mms-sub/.mms-ctx too,
+    // alongside iPod's .ip-*). Only when motion is allowed (else the line keeps its
+    // ellipsis). Wraps the text in a .mms-mq span + sets the shift distance + a
+    // constant-speed duration as CSS vars; the .mms-marquee keyframe animates it.
+    function applySkinMarquee() {
       if (!nowPlayingPanel) return;
       try { if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (_) { /* keep going */ }
-      var els = nowPlayingPanel.querySelectorAll('.ip-ttl, .ip-artist, .ip-album');
+      var els = nowPlayingPanel.querySelectorAll('.ip-ttl, .ip-artist, .ip-album, .mms-ttl, .mms-sub, .mms-ctx');
       for (var i = 0; i < els.length; i++) {
         var el = els[i];
         var over = el.scrollWidth - el.clientWidth;
@@ -688,7 +689,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(nowPlayingPanel);
       // measure + start the iPod title marquee AFTER layout (rAF), so scrollWidth is real.
       var raf = (typeof window !== 'undefined' && window.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); };
-      raf(applyIpodMarquee);
+      raf(applySkinMarquee);
       return true;
     }
 

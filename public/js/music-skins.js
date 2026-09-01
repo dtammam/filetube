@@ -115,7 +115,7 @@
       '<div class="mms-art">' + artImg(ctx) + '</div>' +
       '<div class="mms-meta"><div class="mms-ttl">' + esc(a.title || 'Unknown track') + '</div><div class="mms-sub">' + esc(a.artist || '') + '</div></div>' +
       '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
-      '<div class="mms-transport"><button type="button" class="mms-ic mms-shuffle" data-skin-shuffle aria-label="Shuffle">' + shuffleGlyph() + '</button>' + prevBtn() + playBtn(ctx) + nextBtn() + '</div>' +
+      '<div class="mms-transport"><button type="button" class="mms-ic mms-shuffle" data-skin-shuffle aria-label="Shuffle">' + shuffleGlyph() + '</button>' + prevBtn() + playBtn(ctx) + nextBtn() + '<span class="mms-tr-spacer" aria-hidden="true"></span></div>' +
       '<div class="mms-queue"><h4 class="mms-qh">Next in queue</h4><div class="mms-qlist">' + goRows(ctx, true) + '</div></div>';
   }
   // IPOD - the real Classic. A black-bezelled LCD with the authentic Now Playing
@@ -155,14 +155,17 @@
       '</div></div>';
   }
 
+  // Labels are CHEEKY riffs, deliberately NOT the real product/company names (Dean):
+  // Cider (Apple Music - apple->cider), Nordic (Spotify - its Swedish roots),
+  // Pocket Classic (iPod - "1,000 songs in your pocket"). The ids stay literal for CSS.
   var SKINS = [
-    { id: 'apple', label: 'Apple Music', renderFull: renderApple },
-    { id: 'spotify', label: 'Spotify', renderFull: renderSpotify },
-    { id: 'ipod', label: 'iPod', renderFull: renderIpod },
+    { id: 'apple', label: 'Cider', renderFull: renderApple },
+    { id: 'spotify', label: 'Nordic', renderFull: renderSpotify },
+    { id: 'ipod', label: 'Pocket Classic', renderFull: renderIpod },
     // v1.232 (Dean): the black iPod - identical structure (renderIpod), a `base` so the
     // panel also carries `.mms-ipod` (all the shared iPod CSS) while `.mms-ipod-black`
     // overrides only the body/wheel palette. One render, two looks.
-    { id: 'ipod-black', label: 'iPod (Black)', base: 'ipod', renderFull: renderIpod },
+    { id: 'ipod-black', label: 'Pocket Classic (Black)', base: 'ipod', renderFull: renderIpod },
   ];
   var BY_ID = SKINS.reduce(function (m, s) { m[s.id] = s; return m; }, Object.create(null));
 

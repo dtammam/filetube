@@ -10998,7 +10998,10 @@ html[data-modern="on"] .video-uploader {
   .mms-apple .mms-z{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column;
     padding:calc(env(safe-area-inset-top,0px) + var(--space-8)) var(--space-12) calc(env(safe-area-inset-bottom,0px) + var(--space-12)); }
   .mms-apple .mms-top{ justify-content:center; }
-  .mms-apple .mms-grab{ width:38px; height:5px; border:0; padding:0; cursor:pointer; border-radius:var(--radius-full); background:var(--mms-apple-grab); }
+  /* the dismiss grab handle - a big transparent TAP TARGET (Dean couldn't find the exit)
+     with the visible 38x5 pill centered inside via ::before. */
+  .mms-apple .mms-grab{ width:64px; height:26px; border:0; padding:0; cursor:pointer; background:transparent; position:relative; }
+  .mms-apple .mms-grab::before{ content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:38px; height:5px; border-radius:var(--radius-full); background:var(--mms-apple-grab); }
   .mms-apple .mms-art{ width:82%; max-width:340px; aspect-ratio:1; margin:var(--space-16) auto var(--space-12); border-radius:var(--mms-r-art); overflow:hidden; box-shadow:var(--mms-art-shadow); }
   .mms-apple .mms-head{ margin-top:auto; }
   .mms-apple .mms-ttl{ font-size:var(--fs-5xl); font-weight:var(--fw-black); letter-spacing:var(--mms-ls-tight); line-height:var(--mms-lh-ttl); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -11031,6 +11034,9 @@ html[data-modern="on"] .video-uploader {
   .mms-spotify .mms-transport{ display:flex; align-items:center; justify-content:space-between; margin-top:var(--space-6); }
   .mms-spotify .mms-ic{ border:0; background:transparent; cursor:pointer; display:grid; place-items:center; color:var(--mms-sp-ic); }
   .mms-spotify .mms-ic svg{ width:24px; height:24px; fill:currentColor; }
+  /* an invisible right-hand spacer the width of the shuffle button, so prev/play/next
+     stay symmetric and the play lands DEAD CENTER (v1.232.1, Dean: buttons offset). */
+  .mms-spotify .mms-tr-spacer{ width:24px; flex:none; }
   .mms-spotify .mms-shuffle{ color:var(--mms-sp-accent); }
   .mms-spotify .mms-skip svg{ width:36px; height:36px; fill:currentColor; }
   .mms-spotify .mms-play{ width:64px; height:64px; border-radius:var(--radius-full); background:var(--mms-sp-accent); box-shadow:var(--mms-sp-play-shadow); }
@@ -11064,11 +11070,15 @@ html[data-modern="on"] .video-uploader {
     padding:calc(env(safe-area-inset-top,0px) + var(--space-8)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-10)); }
   /* the LCD - a COMPACT ~4:3 screen at the top (not fill), the real iPod proportion;
      the body + wheel take the space below. */
-  /* min-height:0 + overflow:hidden: a flex item defaults to min-height:auto, which lets
-     tall content (the song list) force the LCD to GROW past its 4:3 box instead of the
-     list scrolling inside it (v1.232.1, Dean device: "screen goes out of bounds" on
-     Select). min-height:0 caps it at the aspect ratio; the list scrolls in .ip-listview. */
-  .mms-ipod .ip-lcd{ flex:none; aspect-ratio:4/3; min-height:0; overflow:hidden; display:flex; background:var(--mms-black); border-radius:var(--mms-r-art-ipod); padding:var(--space-1); box-shadow:var(--mms-ipod-lcd-shadow); }
+  /* The LCD must NEVER resize from its content (Dean, v1.232.1: the song list made it
+     grow "out of bounds"). Three guarantees, belt-and-suspenders:
+       - contain:size -> content contributes ZERO to this element's size, so the height
+         is locked to the 4:3 ratio of its (stable, flex-stretched) width, always;
+       - min-height:0 -> removes the flex item's default min-content floor (the actual
+         cause of the growth) even if contain were unsupported;
+       - overflow:hidden -> anything larger is clipped, and the list scrolls in .ip-listview.
+     The only thing that changes the LCD size is the viewport width (correct + responsive). */
+  .mms-ipod .ip-lcd{ flex:none; aspect-ratio:4/3; min-height:0; contain:size; overflow:hidden; display:flex; background:var(--mms-black); border-radius:var(--mms-r-art-ipod); padding:var(--space-1); box-shadow:var(--mms-ipod-lcd-shadow); }
   .mms-ipod .ip-lcd-in{ flex:1; min-height:0; display:flex; flex-direction:column; background:var(--mms-white); border-radius:var(--mms-ipod-r-sm); overflow:hidden; }
   .mms-ipod .ip-status{ display:flex; align-items:center; justify-content:space-between; flex:none; padding:var(--space-3) var(--space-4);
     background:linear-gradient(var(--mms-ipod-bar1), var(--mms-ipod-bar2)); border-bottom:1px solid var(--mms-ipod-hair); }
@@ -11138,12 +11148,13 @@ html[data-modern="on"] .video-uploader {
      the full text, like a real iPod. music.js wraps an overflowing line in .mms-mq and
      sets --mms-mq-shift (the overflow distance) + --mms-mq-dur (constant-speed); it only
      does so when motion is allowed (else the line keeps its ellipsis). */
-  .mms-ipod .mms-mq-on{ text-overflow:clip; }
-  .mms-ipod .mms-mq-on .mms-mq{ display:inline-block; animation:mms-marquee var(--mms-mq-dur) linear infinite alternate; will-change:transform; }
+  /* marquee for a long title/artist/album on ANY skin (v1.232.1: was iPod-only). */
+  .mms-full .mms-mq-on{ text-overflow:clip; }
+  .mms-full .mms-mq-on .mms-mq{ display:inline-block; animation:mms-marquee var(--mms-mq-dur) linear infinite alternate; will-change:transform; }
 }
 /* the marquee keyframe (global; @keyframes are census-exempt) + a reduced-motion stop */
 @keyframes mms-marquee{ 0%, 12% { transform:translateX(0); } 88%, 100% { transform:translateX(var(--mms-mq-shift)); } }
-@media (prefers-reduced-motion: reduce){ .mms-ipod .mms-mq-on .mms-mq{ animation:none; } }
+@media (prefers-reduced-motion: reduce){ .mms-full .mms-mq-on .mms-mq{ animation:none; } }
 
 .music-empty { color: var(--text-secondary); padding: var(--space-12) 0; }
 .music-empty[hidden] { display: none !important; }
