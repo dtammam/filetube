@@ -80,6 +80,28 @@
 
 ## Shipped
 
+### v1.243.0 - Player polish: no-select holds, finer scrub, straight-to-player (2026-09-01)
+
+Four on-device fixes from Dean's pass over the mobile/custom music player (the skins). (1) A
+HOLD (fast-scan / spin) no longer selects the skin's glyph/label text - the derpy blue
+highlight is gone (`user-select:none` + iOS touch-callout on the full-screen shell). (2) The
+spin-scrub is retuned fine-grained: it's now TIME-based with light acceleration (was a
+fraction of the whole track, so huge jumps on long songs) and repaints the fill immediately on
+each move instead of waiting on the throttled `seeked` event - a slow turn nudges a second or
+two, a fast flick still flies. (3) The 5x sticker size is removed - it overlapped the wheel and
+couldn't be tapped; default/2x/3x + the tilts stay. (4) Tapping a song in the home feed now
+goes STRAIGHT to the player instead of flashing the /music list first (the list builds behind
+the full-screen skin; a dock/back still returns to it). player.js BYTE-UNCHANGED.
+
+Slim gate (adversarial seat; UI polish, not data-touching): APPROVE, no CRITICAL/WARNING - the
+scrub retune is mutation-bound, and the new straight-to-player cover (`body.mms-on` set up
+front) was traced to reconcile on every exit so it can't leak and freeze the next view (the
+v1.227 scar); two non-blocking suggestions folded in (a stale comment + a defensive mms-on
+reconcile on the jumpback catch). Dual-Node 8109/0 (Node 22 + 24). **Device pending** - Dean
+confirms the hold no longer selects text, the scrub feels fine + smooth, and the home-feed tap
+goes straight in. NEXT: album-art fit for the skins (non-square art shown whole with a blurred
+self-bleed accent), then podcasts-on-the-skin (v1.244+).
+
 ### v1.242.0 - All audio in the music player + hold-to-scan on the wheel (2026-09-01)
 
 Two of Dean's three "one branch" asks (podcasts-on-the-skin split to v1.243). (#4) Any
