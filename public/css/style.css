@@ -10993,6 +10993,31 @@ html[data-modern="on"] .video-uploader {
   .mms-full .mms-skip{ border:0; background:transparent; color:inherit; cursor:pointer; display:grid; place-items:center; }
   .mms-full .mms-play{ border:0; cursor:pointer; display:grid; place-items:center; padding:0; }
 
+  /* ===================== v1.238: the STICKER quick-menu =====================
+     A small FileTube-logo (or emoji / custom image) sticker in the bottom-left
+     corner of EVERY skin + the desktop pop-out; tapping it opens a compact
+     popover = speed + loop + skin picker. Self-contained dark overlay surface so
+     it reads on any skin's palette; positioned over the safe-area inset. */
+  .mms-sticker-wrap{ position:absolute; left:calc(env(safe-area-inset-left,0px) + var(--space-6)); bottom:calc(env(safe-area-inset-bottom,0px) + var(--space-6)); z-index:40; /* token-exempt: local stacking (above the skin chrome, below nothing else here) */ }
+  .mms-sticker{ width:44px; height:44px; padding:var(--space-2); border:0; border-radius:var(--radius-full); background:var(--scrim); box-shadow:var(--shadow-lg); cursor:pointer; display:grid; place-items:center; -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
+  .mms-sticker .mms-sticker-ic{ width:100%; height:100%; object-fit:contain; border-radius:var(--radius-full); display:block; }
+  .mms-sticker .mms-sticker-emoji{ font-size:var(--fs-2xl); }
+  .mms-sticker-menu[hidden]{ display:none !important; } /* the [hidden] lesson: a flex/grid menu's own display beats [hidden] */
+  .mms-sticker-menu{ position:absolute; left:0; bottom:calc(100% + var(--space-3)); /* token-exempt: positional geometry */
+    min-width:200px; max-width:78vw; max-height:60vh; overflow-y:auto; display:flex; flex-direction:column; gap:var(--space-4);
+    background:var(--overlay-surface); color:var(--mms-white); border:1px solid var(--overlay-border); border-radius:var(--radius-lg); box-shadow:var(--shadow-modal); padding:var(--space-6); }
+  .mms-sticker-menu .mms-sm-sec{ display:flex; flex-direction:column; gap:var(--space-3); }
+  .mms-sticker-menu .mms-sm-h{ font-size:var(--fs-2xs); letter-spacing:var(--mms-ls-caps); text-transform:uppercase; opacity:.6; }
+  .mms-sticker-menu .mms-sm-speed{ display:flex; flex-wrap:wrap; gap:var(--space-2); }
+  .mms-sticker-menu .mms-sm-opt{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-2) var(--space-4); font-size:var(--fs-sm); cursor:pointer; font-variant-numeric:tabular-nums; }
+  .mms-sticker-menu .mms-sm-opt.is-on{ background:var(--mms-white); color:var(--mms-black); border-color:var(--mms-white); }
+  .mms-sticker-menu .mms-sm-loop{ display:flex; align-items:center; justify-content:space-between; gap:var(--space-6); width:100%; border:0; background:transparent; color:inherit; cursor:pointer; padding:0; }
+  .mms-sticker-menu .mms-sm-loop .mms-sm-state{ font-size:var(--fs-sm); opacity:.7; }
+  .mms-sticker-menu .mms-sm-loop.is-on .mms-sm-state{ color:var(--yt-red); opacity:1; }
+  .mms-sticker-menu .mms-sm-skins{ display:flex; flex-wrap:wrap; gap:var(--space-2); }
+  .mms-sticker-menu .mms-sm-chip{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-2) var(--space-4); font-size:var(--fs-sm); cursor:pointer; }
+  .mms-sticker-menu .mms-sm-chip.is-on{ background:var(--mms-white); color:var(--mms-black); border-color:var(--mms-white); }
+
   /* ============================ APPLE MUSIC ============================
      A blurred cover bleed fills the screen; a large framed cover, oversized
      black-weight title + hot-pink artist, a thin scrubber, one big white play.

@@ -854,6 +854,104 @@ if (typeof module !== 'undefined' && module.exports) {
       // chapter boundary is a position threshold.
       mp.addEventListener('timeupdate', reflectChapter, { signal: signal });
     }
+    // ---- v1.238: the "sticker" quick-menu (speed + loop + skin picker) ----------
+    // A FileTube-logo sticker in the bottom-left corner of EVERY skin (and the desktop
+    // pop-out) opens a compact menu. The icon is a PER-USER setting (ft-sticker): the
+    // FileTube mark (default), an emoji, or a custom uploaded image (/api/me/sticker,
+    // the T1 endpoint). The menu items PROXY the existing controls so player.js stays
+    // BYTE-UNCHANGED:
+    //   speed -> #media-player.playbackRate + persist 'ft-rate' (the SAME key player.js
+    //            re-reads on every track load, so the rate STICKS across auto-advance),
+    //   loop  -> window.FileTube.player.setLoop / isLoopEnabled (FR-7, v1.22.0),
+    //   skin  -> SKINS.setActiveSkin (the same call the Settings picker makes).
+    // injectSticker runs inside paintSkin so the sticker lands on every skin AND the
+    // pop-out uniformly, never as per-skin markup.
+    var STICKER_KEY = 'ft-sticker';
+    var RATE_KEY = 'ft-rate'; // MUST match player.js RATE_STORAGE_KEY (player.js re-reads it on every load)
+    // MUST mirror player.js PLAYBACK_RATES - source-locked behaviorally in music-sticker-menu.test.js.
+    var MMS_SPEED_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+
+    function readStickerPref() {
+      try {
+        var raw = window.localStorage.getItem(STICKER_KEY);
+        if (!raw) return { kind: 'logo' };
+        var o = JSON.parse(raw);
+        if (o && (o.kind === 'logo' || o.kind === 'emoji' || o.kind === 'custom')) return o;
+      } catch (_) { /* private mode / bad json -> default */ }
+      return { kind: 'logo' };
+    }
+    function stickerIconHtml() {
+      var p = readStickerPref();
+      if (p.kind === 'emoji' && p.value) return '<span class="mms-sticker-emoji" aria-hidden="true">' + escapeMusicHtml(p.value) + '</span>';
+      if (p.kind === 'custom') return '<img class="mms-sticker-ic" src="/api/me/sticker' + (p.v ? '?v=' + encodeURIComponent(p.v) : '') + '" alt="" />';
+      return '<img class="mms-sticker-ic" src="/favicon.svg" alt="" />';
+    }
+    function liveRate() {
+      var mp = hostCtl('media-player');
+      var r = mp && Number(mp.playbackRate);
+      return (r && MMS_SPEED_RATES.indexOf(r) !== -1) ? r : 1;
+    }
+    function liveLoop() {
+      var pl = window.FileTube && window.FileTube.player;
+      try { return !!(pl && typeof pl.isLoopEnabled === 'function' && pl.isLoopEnabled()); } catch (_) { return false; }
+    }
+    function buildStickerMenuHtml() {
+      var rate = liveRate();
+      var speed = MMS_SPEED_RATES.map(function (r) {
+        var on = r === rate;
+        return '<button type="button" role="menuitemradio" class="mms-sm-opt' + (on ? ' is-on' : '') +
+          '" data-skin-speed="' + r + '" aria-checked="' + (on ? 'true' : 'false') + '">' +
+          (r === 1 ? 'Normal' : r + '×') + '</button>';
+      }).join('');
+      var loopOn = liveLoop();
+      var skins = (SKINS && SKINS.SKINS) ? SKINS.SKINS : [];
+      var active = (SKINS && SKINS.activeSkinId) ? SKINS.activeSkinId() : '';
+      var chips = skins.map(function (s) {
+        var on = s.id === active;
+        return '<button type="button" role="menuitemradio" class="mms-sm-chip' + (on ? ' is-on' : '') +
+          '" data-skin-pick="' + escapeMusicHtml(s.id) + '" aria-checked="' + (on ? 'true' : 'false') + '">' +
+          escapeMusicHtml(s.label) + '</button>';
+      }).join('');
+      return '<div class="mms-sm-sec"><div class="mms-sm-h">Speed</div><div class="mms-sm-speed">' + speed + '</div></div>' +
+        '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (loopOn ? ' is-on' : '') +
+        '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-h">Loop</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
+        '<div class="mms-sm-sec"><div class="mms-sm-h">Skin</div><div class="mms-sm-skins">' + chips + '</div></div>';
+    }
+    // Inject the sticker + its (initially hidden) menu into a freshly-painted panel.
+    function injectSticker(panel) {
+      if (!panel) return;
+      var doc = panel.ownerDocument || document;
+      var wrap = doc.createElement('div');
+      wrap.className = 'mms-sticker-wrap';
+      wrap.innerHTML =
+        '<button type="button" class="mms-sticker" data-skin-sticker aria-haspopup="true" aria-expanded="false" aria-label="Player options">' + stickerIconHtml() + '</button>' +
+        '<div class="mms-sticker-menu" data-skin-sticker-menu role="menu" hidden>' + buildStickerMenuHtml() + '</div>';
+      panel.appendChild(wrap);
+    }
+    function refreshStickerMenu(panel) {
+      var menu = panel && panel.querySelector('[data-skin-sticker-menu]');
+      if (menu) menu.innerHTML = buildStickerMenuHtml();
+    }
+    function closeStickerMenu(panel) {
+      var menu = panel && panel.querySelector('[data-skin-sticker-menu]');
+      var btn = panel && panel.querySelector('[data-skin-sticker]');
+      if (menu) menu.hidden = true;
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+    function applyStickerSpeed(rate) {
+      var r = Number(rate);
+      if (MMS_SPEED_RATES.indexOf(r) === -1) return;
+      var mp = hostCtl('media-player'); if (mp) mp.playbackRate = r;
+      // Persist to the key player.js re-reads on every load, so the rate survives track
+      // changes AND the #speed-btn picker stays coherent - functionally identical to
+      // player.js's own applyPlaybackRate, without touching player.js.
+      try { window.localStorage.setItem(RATE_KEY, String(r)); } catch (_) { /* best-effort */ }
+    }
+    function toggleStickerLoop() {
+      var pl = window.FileTube && window.FileTube.player;
+      if (pl && typeof pl.setLoop === 'function') pl.setLoop(!liveLoop());
+    }
+
     // Paint the chosen skin `id` into ANY panel (the in-tab mobile surface OR the desktop
     // pop-out window) - the shared render used by both. Sets the class chain, renders the
     // ctx, shimmers the art, and starts the marquee. `doc` is the panel's document (pop-out
@@ -870,6 +968,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // with it, and wheelCursorRow is re-seeded when the list is next opened.
       wheelSpin = null;
       panel.innerHTML = SKINS.renderFull(id, buildSkinCtx(ci));
+      injectSticker(panel); // v1.238: the speed/loop/skin quick-menu, on every skin + the pop-out
       panel.hidden = false;
       if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(panel);
       // measure + start the marquee AFTER layout (rAF), so scrollWidth is real.
@@ -1050,9 +1149,39 @@ if (typeof module !== 'undefined' && module.exports) {
         // on release - swallow exactly that one (the flag is set on a moved pointerup and
         // cleared here or on the next pointerdown, so it never eats a later real tap).
         if (wheelSuppressClick) { wheelSuppressClick = false; e.preventDefault(); e.stopPropagation(); return; }
-        // Skin PICKING lives on the Settings page (v1.230); this panel only carries
-        // the transport/seek/queue hooks. A skin change persists to ft-music-skin and
-        // is picked up when this view next renders (renderNowPlayingSkin re-reads it).
+        // v1.238: the sticker quick-menu. The sticker button toggles it; the menu items
+        // proxy speed/loop/skin. Handle these FIRST and return so they never fall through
+        // to the transport/seek/queue hooks below.
+        if (e.target.closest('[data-skin-sticker]')) {
+          var mn = panel.querySelector('[data-skin-sticker-menu]');
+          var sbtn = panel.querySelector('[data-skin-sticker]');
+          if (mn) {
+            var willOpen = mn.hidden;
+            if (willOpen) refreshStickerMenu(panel); // reflect the live rate/loop/skin on open
+            mn.hidden = !willOpen;
+            if (sbtn) sbtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+          }
+          e.stopPropagation();
+          return;
+        }
+        var spOpt = e.target.closest('[data-skin-speed]');
+        if (spOpt) { applyStickerSpeed(spOpt.getAttribute('data-skin-speed')); refreshStickerMenu(panel); return; }
+        if (e.target.closest('[data-skin-loop]')) { toggleStickerLoop(); refreshStickerMenu(panel); return; }
+        var pick = e.target.closest('[data-skin-pick]');
+        if (pick) {
+          var sid = pick.getAttribute('data-skin-pick');
+          if (SKINS && typeof SKINS.setActiveSkin === 'function') SKINS.setActiveSkin(sid);
+          closeStickerMenu(panel);
+          updateNowPlayingPanel(); // re-render both surfaces with the newly-picked skin
+          return;
+        }
+        // A click anywhere that is NOT inside the sticker wrap closes an open menu (then
+        // falls through to normal handling so the tapped control still acts).
+        var openSm = panel.querySelector('[data-skin-sticker-menu]:not([hidden])');
+        if (openSm && !e.target.closest('.mms-sticker-wrap')) closeStickerMenu(panel);
+        // Skin PICKING also lives on the Settings page (v1.230); this panel carries the
+        // transport/seek/queue hooks. A skin change persists to ft-music-skin and is
+        // picked up when this view next renders (renderNowPlayingSkin re-reads it).
         if (e.target.closest('[data-skin-play]')) { var pb = hostCtl('pp-btn'); if (pb) pb.click(); return; }
         if (e.target.closest('[data-skin-prev]')) { var pv = hostCtl('track-prev-btn'); if (pv) pv.click(); return; }
         if (e.target.closest('[data-skin-next]')) { var nx = hostCtl('track-next-btn'); if (nx) nx.click(); return; }
