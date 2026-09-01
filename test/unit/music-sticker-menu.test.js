@@ -224,12 +224,43 @@ test('v1.240: an IMAGE sticker (logo default / custom) marks the button mms-stic
   }, { sticker: { kind: 'emoji' } });
 });
 
-test('v1.240 source-lock (CSS): the sticker tilts, and an image sticker drops the circle/clip', () => {
+test('v1.240 source-lock (CSS): an image sticker drops the circle/clip', () => {
   const fs = require('node:fs'); const path = require('node:path');
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /\.mms-sticker\{[^}]*transform:rotate\(-12deg\)/, 'the sticker button is tilted -12deg (literal-sticker feel)');
   assert.match(css, /\.mms-sticker--img\{[^}]*background:transparent[^}]*border-radius:0/, 'an image sticker drops the circular background + radius');
   assert.match(css, /\.mms-sticker--img \.mms-sticker-ic\{[^}]*border-radius:0/, 'the image itself is not round-clipped');
+});
+
+test('v1.241: injectSticker applies the SIZE and TILT classes (defaults, and an explicit pref)', async () => {
+  // default pref -> default size + left tilt
+  await boot(async (dom) => {
+    const cl = sticker(dom).classList;
+    assert.ok(cl.contains('mms-sticker-sz-default'), 'default size class');
+    assert.ok(cl.contains('mms-sticker-tilt-left'), 'default tilt = left');
+  });
+  // explicit size + tilt (preserved alongside kind)
+  await boot(async (dom) => {
+    const cl = sticker(dom).classList;
+    assert.ok(cl.contains('mms-sticker-sz-3x'), 'size 3x class applied');
+    assert.ok(cl.contains('mms-sticker-tilt-right'), 'tilt right class applied');
+  }, { sticker: { kind: 'logo', size: '3x', tilt: 'right' } });
+  // an unknown size/tilt falls back to the defaults
+  await boot(async (dom) => {
+    const cl = sticker(dom).classList;
+    assert.ok(cl.contains('mms-sticker-sz-default'), 'unknown size -> default');
+    assert.ok(cl.contains('mms-sticker-tilt-left'), 'unknown tilt -> left');
+  }, { sticker: { kind: 'logo', size: 'huge', tilt: 'sideways' } });
+});
+
+test('v1.241 source-lock (CSS): size classes scale via --mms-sticker-px; tilt classes rotate; base bumped to 52px', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.mms-sticker\{[^}]*--mms-sticker-px:52px/, 'base size var is 52px (bumped from 44)');
+  assert.match(css, /\.mms-sticker-sz-2x\{[^}]*--mms-sticker-px:104px/, '2x doubles the size var');
+  assert.match(css, /\.mms-sticker-sz-5x\{[^}]*--mms-sticker-px:260px/, '5x = 5 x base');
+  assert.match(css, /\.mms-sticker-tilt-straight\{[^}]*transform:rotate\(0deg\)/, 'straight = no rotation');
+  assert.match(css, /\.mms-sticker-tilt-left\{[^}]*transform:rotate\(-14deg\)/, 'left tilt');
+  assert.match(css, /\.mms-sticker-tilt-right\{[^}]*transform:rotate\(14deg\)/, 'right tilt');
 });
 
 test('T3: a click elsewhere on the panel closes an open menu', async () => {

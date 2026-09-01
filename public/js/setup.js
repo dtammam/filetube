@@ -575,6 +575,12 @@ function readStickerPref() {
 function writeStickerPref(obj) {
   try { localStorage.setItem(STICKER_PREF_KEY, JSON.stringify(obj)); } catch (_) { /* storage off */ }
 }
+// v1.241: MERGE a patch into the stored pref so a size/tilt change preserves kind/value and a
+// kind change preserves size/tilt (JSON drops any explicit `undefined`). Mirrors music.js's
+// ft-sticker shape {kind,value?,v?,size?,tilt?}.
+function mergeStickerPref(patch) { writeStickerPref(Object.assign({}, readStickerPref(), patch)); }
+const STICKER_SIZES = [['default', 'Default'], ['2x', '2×'], ['3x', '3×'], ['5x', '5×']];
+const STICKER_TILTS = [['straight', 'Straight'], ['left', 'Left'], ['right', 'Right']];
 function escStickerHtml(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -607,23 +613,33 @@ async function renderStickerPicker() {
     <div class="sticker-actions">
       <button type="button" class="btn btn-sm" id="sticker-upload-btn">Upload image…</button>
       <button type="button" class="btn btn-sm" id="sticker-remove-custom"${hasCustom ? '' : ' hidden'}>Remove your image</button>
-    </div>`;
+    </div>
+    <div class="sticker-opt-row"><span class="sticker-opt-label">Size</span><div class="sticker-opts">${
+      STICKER_SIZES.map(([v, l]) => `<button type="button" class="theme-card sticker-opt${(pref.size || 'default') === v ? ' active' : ''}" data-sticker-size="${v}">${l}</button>`).join('')
+    }</div></div>
+    <div class="sticker-opt-row"><span class="sticker-opt-label">Tilt</span><div class="sticker-opts">${
+      STICKER_TILTS.map(([v, l]) => `<button type="button" class="theme-card sticker-opt${(pref.tilt || 'left') === v ? ' active' : ''}" data-sticker-tilt="${v}">${l}</button>`).join('')
+    }</div></div>`;
   const sig = { signal: controller.signal };
   container.querySelectorAll('.sticker-card').forEach((btn) => {
     btn.addEventListener('click', () => {
       const kind = btn.dataset.stickerKind;
-      if (kind === 'emoji') writeStickerPref({ kind: 'emoji', value: btn.dataset.stickerEmoji });
-      else if (kind === 'custom') writeStickerPref({ kind: 'custom', v: Date.now() });
-      else writeStickerPref({ kind: 'logo' });
+      // merge so the chosen size/tilt survive a kind change (explicit undefined clears the
+      // fields that don't apply to the new kind).
+      if (kind === 'emoji') mergeStickerPref({ kind: 'emoji', value: btn.dataset.stickerEmoji, v: undefined });
+      else if (kind === 'custom') mergeStickerPref({ kind: 'custom', value: undefined, v: Date.now() });
+      else mergeStickerPref({ kind: 'logo', value: undefined, v: undefined });
       renderStickerPicker();
     }, sig);
   });
+  container.querySelectorAll('[data-sticker-size]').forEach((b) => b.addEventListener('click', () => { mergeStickerPref({ size: b.dataset.stickerSize }); renderStickerPicker(); }, sig));
+  container.querySelectorAll('[data-sticker-tilt]').forEach((b) => b.addEventListener('click', () => { mergeStickerPref({ tilt: b.dataset.stickerTilt }); renderStickerPicker(); }, sig));
   const emojiSet = document.getElementById('sticker-emoji-set');
   const emojiInput = document.getElementById('sticker-emoji-input');
   if (emojiSet && emojiInput) emojiSet.addEventListener('click', () => {
     const v = (emojiInput.value || '').trim();
     if (!v) return;
-    writeStickerPref({ kind: 'emoji', value: v });
+    mergeStickerPref({ kind: 'emoji', value: v, v: undefined });
     renderStickerPicker();
   }, sig);
   const uploadBtn = document.getElementById('sticker-upload-btn');
@@ -638,7 +654,7 @@ async function renderStickerPicker() {
         const res = await fetch('/api/me/sticker', { method: 'POST', headers: { 'Content-Type': file.type || 'image/png' }, body: file });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) { showToast(body.error || 'Could not upload your sticker.'); return; }
-        writeStickerPref({ kind: 'custom', v: (body.sticker && body.sticker.version) || Date.now() });
+        mergeStickerPref({ kind: 'custom', value: undefined, v: (body.sticker && body.sticker.version) || Date.now() });
         showToast('Sticker updated.');
         renderStickerPicker();
       } catch (_) { showToast('Could not upload your sticker (network error).'); }
@@ -649,7 +665,7 @@ async function renderStickerPicker() {
     try {
       const res = await fetch('/api/me/sticker', { method: 'DELETE' });
       if (!res.ok) { showToast('Could not remove your sticker.'); return; }
-      if (readStickerPref().kind === 'custom') writeStickerPref({ kind: 'logo' });
+      if (readStickerPref().kind === 'custom') mergeStickerPref({ kind: 'logo', value: undefined, v: undefined });
       showToast('Sticker removed.');
       renderStickerPicker();
     } catch (_) { showToast('Could not remove your sticker (network error).'); }
