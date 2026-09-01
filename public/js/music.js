@@ -985,7 +985,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // with no value would otherwise wrongly circle a logo image - both gate seats).
       var pref = readStickerPref();
       var imgCls = (pref.kind === 'emoji' && pref.value) ? '' : ' mms-sticker--img';
-      var szCls = ' mms-sticker-sz-' + stickerSize();     // default | 2x | 3x | 5x
+      var szCls = ' mms-sticker-sz-' + stickerSize();     // default | 2x | 3x
       var tiltCls = ' mms-sticker-tilt-' + stickerTilt();  // straight | left | right
       wrap.innerHTML =
         '<button type="button" class="mms-sticker' + imgCls + szCls + tiltCls + '" data-skin-sticker aria-haspopup="true" aria-expanded="false" aria-label="Player options">' + stickerIconHtml() + '</button>' +
@@ -1082,7 +1082,11 @@ if (typeof module !== 'undefined' && module.exports) {
         var tile = e.target && typeof e.target.closest === 'function' ? e.target.closest('.music-jump-tile') : null;
         if (!tile) return;
         var id = tile.getAttribute('data-id');
-        if (id) playTrackFromContinue(id).catch(function () {});
+        // v1.243 defense-in-depth (adversarial): playTrackFromContinue now sets mms-on UP FRONT
+        // (the straight-to-player cover). If it ever rejected before the skin mounted, that
+        // cover would leak -> frozen body scroll on the next view (the v1.227 scar). Reconcile
+        // mms-on on a rejection (updateNowPlayingPanel clears it when no skin is expanded).
+        if (id) playTrackFromContinue(id).catch(function () { try { updateNowPlayingPanel(); } catch (_) { /* ignore */ } });
       }, { signal: signal });
     }
 
