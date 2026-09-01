@@ -1276,18 +1276,20 @@ if (typeof module !== 'undefined' && module.exports) {
         // any fresh touch starts clean, so a stale suppress can never eat a real tap.
         wheelSuppressClick = false;
         if (wheelSpin) return;                                    // one gesture at a time
-        // v1.235: LIST mode -> cursor scroll; NOW PLAYING -> volume, but only where volume is
-        // settable (allowVolume = desktop pop-out). On the in-tab skin in Now Playing (iPhone,
-        // read-only volume) the spin still does nothing.
+        // LIST mode -> cursor scroll. NOW PLAYING -> VOLUME on the desktop pop-out
+        // (allowVolume; media.volume is settable there), else SCRUB the timeline (v1.239,
+        // Dean): on the in-tab iPhone skin iOS makes media.volume read-only, so a Now-Playing
+        // spin scrubs the playhead instead - the useful mobile analog of the pop-out's
+        // wheel-volume. Every Now-Playing spin now does something (no early return).
         var listMode = panel.classList.contains('mms-listmode');
-        if (!listMode && !allowVolume) return;
         var wheel = e.target.closest('.ip-wheel'); if (!wheel) return;
         var r = wheel.getBoundingClientRect();
         var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
         // ignore a press on the dead center (the Select button): no capture, tap passes through.
         if (Math.hypot(e.clientX - cx, e.clientY - cy) < r.width * 0.2) return;
         var now0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-        var st = { wheel: wheel, id: e.pointerId, captured: false, moved: false, mode: listMode ? 'cursor' : 'volume',
+        var st = { wheel: wheel, id: e.pointerId, captured: false, moved: false,
+          mode: listMode ? 'cursor' : (allowVolume ? 'volume' : 'scrub'), scrubRatio: null,
           lastAngle: Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI,
           lastT: now0, accum: 0, x0: e.clientX, y0: e.clientY, onMove: null, onUp: null };
         st.onMove = function (ev) {
@@ -1312,6 +1314,21 @@ if (typeof module !== 'undefined' && module.exports) {
             adjustVolume(panel, d / 360);
             return;
           }
+          if (st.mode === 'scrub') {
+            // v1.239 (Dean): continuous timeline scrub on mobile Now Playing. A full 360deg
+            // turn sweeps the WHOLE track; clockwise (+) = forward. Music is non-live, so
+            // currentTime IS the exact target - move it LIVE (audible; the skin fill + the
+            // v1.237 chapter watcher reflect via 'seeked'/'timeupdate'), and persist through
+            // the real seek pipeline on RELEASE (onUp dispatches #seek-bar 'change').
+            var mps = hostCtl('media-player');
+            var durS = (mps && isFinite(mps.duration) && mps.duration > 0) ? mps.duration : 0;
+            if (durS > 0) {
+              if (st.scrubRatio == null) st.scrubRatio = Math.min(1, Math.max(0, (Number(mps.currentTime) || 0) / durS));
+              st.scrubRatio = Math.min(1, Math.max(0, st.scrubRatio + d / 360));
+              try { mps.currentTime = st.scrubRatio * durS; } catch (_) { /* ignore a bad set */ }
+            }
+            return;
+          }
           // acceleration: songs-per-step scales with angular speed (deg/ms) so a slow turn
           // is one-at-a-time and a fast flick jumps several.
           var speed = Math.abs(d) / dt;
@@ -1323,7 +1340,17 @@ if (typeof module !== 'undefined' && module.exports) {
             st.accum -= sign * WHEEL_STEP_DEG;
           }
         };
-        st.onUp = function () { endWheel(st, st.moved); };
+        st.onUp = function (ev) {
+          // v1.239: a real pointerUP that actually scrubbed COMMITS through the seek pipeline
+          // (#seek-bar 'change' -> seekCommitTarget + saveProgressToServer, the same path the
+          // tap-seek proxy uses). A pointerCANCEL aborts with no commit - the live currentTime
+          // stays where it landed and the next periodic save carries it, never a lost seek.
+          if (st.mode === 'scrub' && st.moved && ev && ev.type === 'pointerup' && st.scrubRatio != null) {
+            var sb = hostCtl('seek-bar');
+            if (sb) { sb.value = String(st.scrubRatio); sb.dispatchEvent(new Event('change', { bubbles: true })); }
+          }
+          endWheel(st, st.moved);
+        };
         wheel.addEventListener('pointermove', st.onMove);
         wheel.addEventListener('pointerup', st.onUp);
         wheel.addEventListener('pointercancel', st.onUp);

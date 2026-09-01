@@ -317,12 +317,57 @@ test('v1.233 iPod: spinning COUNTER-clockwise moves the cursor UP, clamped at th
   } });
 });
 
-test('v1.233 iPod: a spin in Now Playing (list CLOSED) does nothing (Dean: list-only)', async () => {
+// ---- v1.239 (Dean): mobile Now-Playing wheel spin SCRUBS the timeline -----------------
+// iOS makes media.volume read-only, so on the in-tab iPhone skin a Now-Playing spin (which
+// used to be a no-op) now scrubs the playhead - the mobile analog of the pop-out's
+// wheel-volume. jsdom stubs media, so make the shared element scrubbable: a backing
+// currentTime + a fixed duration, so a spin moves the playhead and a release commits.
+function makeScrubbable(dom, cur, dur) {
+  const mp = dom.window.document.getElementById('media-player');
+  let ct = cur;
+  Object.defineProperty(mp, 'duration', { configurable: true, get: () => dur });
+  Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => ct, set: (v) => { ct = Number(v); } });
+  return mp;
+}
+
+test('v1.239 iPod: a Now-Playing spin SCRUBS the playhead forward and COMMITS on release (mobile)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
+    const p = panel(dom); const mp = makeScrubbable(dom, 150, 300); // mid-track
+    assert.ok(!p.classList.contains('mms-listmode'), 'Now Playing (list closed)');
+    assert.strictEqual(cursorIdx(p), -1, 'no list cursor engaged (this is scrub, not cursor)');
+    spin(p.querySelector('.ip-wheel'), dom, [40, 80, 120, 160]); // firm clockwise
+    assert.ok(mp.currentTime > 150, 'clockwise scrubbed the playhead FORWARD (live)');
+    assert.strictEqual(spy.seek, 1, 'release committed via #seek-bar change (real pipeline: seekCommitTarget + saveProgress)');
+  } });
+});
+
+test('v1.239 iPod: a counter-clockwise Now-Playing spin scrubs BACKWARD, clamped at 0', async () => {
   await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
-    const p = panel(dom); seedList(p, dom, 6, 2);
-    assert.ok(!p.classList.contains('mms-listmode'), 'list is closed (Now Playing)');
+    const p = panel(dom); const mp = makeScrubbable(dom, 150, 300);
+    spin(p.querySelector('.ip-wheel'), dom, [-40, -80, -120, -160]);
+    assert.ok(mp.currentTime < 150, 'counter-clockwise scrubbed BACKWARD');
+    assert.ok(mp.currentTime >= 0, 'clamped at 0 (never negative)');
+  } });
+});
+
+test('v1.239 iPod: a pointercancel mid-scrub does NOT commit (no lost seek; next save carries it)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
+    const p = panel(dom); const mp = makeScrubbable(dom, 150, 300);
+    const wheel = p.querySelector('.ip-wheel');
+    const at = (deg) => { const rad = deg * Math.PI / 180; return { clientX: 100 * Math.cos(rad), clientY: 100 * Math.sin(rad) }; };
+    wheel.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    [40, 80, 120].forEach((deg) => { const q = at(deg); wheel.dispatchEvent(new dom.window.MouseEvent('pointermove', { bubbles: true, clientX: q.clientX, clientY: q.clientY })); });
+    wheel.dispatchEvent(new dom.window.MouseEvent('pointercancel', { bubbles: true }));
+    assert.ok(mp.currentTime > 150, 'the live scrub still moved the playhead');
+    assert.strictEqual(spy.seek, 0, 'but a CANCEL never dispatched the seek-bar commit');
+  } });
+});
+
+test('v1.239 iPod: a Now-Playing spin with NO known duration is a safe no-op (loading track)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
+    const p = panel(dom); // duration left at the jsdom default (NaN) - no makeScrubbable
     spin(p.querySelector('.ip-wheel'), dom, [40, 80, 120]);
-    assert.strictEqual(cursorIdx(p), -1, 'no cursor engaged while the list is closed');
+    assert.strictEqual(spy.seek, 0, 'no commit when there is no duration to scrub against');
   } });
 });
 

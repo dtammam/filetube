@@ -340,8 +340,10 @@ test('v1.233: the wheel CURSOR bar is a distinct highlight - is-cursor gets the 
 test('v1.235: the Now-Playing wheel sets VOLUME only where allowVolume (pop-out), never inert on iOS', () => {
   const fs = require('node:fs'); const path = require('node:path');
   const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
-  // the gate: LIST mode always spins; NOW PLAYING only when allowVolume (else bail - iOS).
-  assert.match(js, /var listMode = panel\.classList\.contains\('mms-listmode'\);\s*\n\s*if \(!listMode && !allowVolume\) return;/, 'Now-Playing spin bails unless allowVolume (no inert iOS gesture)');
+  // v1.239: LIST mode -> cursor; NOW PLAYING -> volume where allowVolume (pop-out), else
+  // SCRUB (mobile iOS - volume is read-only there, so the spin scrubs the timeline instead
+  // of being inert). No early return: every Now-Playing spin now does something.
+  assert.match(js, /mode: listMode \? 'cursor' : \(allowVolume \? 'volume' : 'scrub'\)/, 'Now-Playing spin is volume (pop-out) else scrub (mobile) - never inert');
   // allowVolume comes from bindSkinSurface opts; only the pop-out passes it.
   assert.match(js, /var allowVolume = !!\(opts && opts\.allowVolume\)/, 'allowVolume is an opt-in bind option');
   assert.match(js, /bindSkinSurface\(panel, pipAbort\.signal, \{ allowVolume: true \}\)/, 'the POP-OUT enables volume');

@@ -11181,7 +11181,10 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .mms-row.is-cursor .mms-rn, .mms-ipod .mms-row.is-cursor .mms-rd, .mms-ipod .mms-row.is-cursor .mms-chev-r{ color:var(--mms-white); }
   /* the click wheel - centered in the body space below the LCD (flex:1 wrap) */
   .mms-ipod .ip-wheelwrap{ flex:1; display:flex; align-items:center; justify-content:center; }
-  .mms-ipod .ip-wheel{ width:224px; height:224px; border-radius:var(--radius-full); position:relative; display:grid; place-items:center;
+  /* v1.239 (Dean): sized proportional to the REAL iPod Classic wheel (~70% of the body
+     width) instead of a fixed 224px, capped so the desktop pop-out (~380px) stays sane.
+     The zone buttons are all %-based so they scale with this automatically. */
+  .mms-ipod .ip-wheel{ width:min(70vw,288px); height:min(70vw,288px); border-radius:var(--radius-full); position:relative; display:grid; place-items:center;
     background:radial-gradient(90% 55% at 50% -8%, var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
       radial-gradient(circle at 50% 40%, var(--mms-ipod-wheel1), var(--mms-ipod-wheel2) 100%); box-shadow:var(--mms-ipod-wheel-shadow); }
   .mms-ipod .ip-zone{ position:absolute; border:0; background:transparent; color:var(--mms-ipod-wheel-lbl); cursor:pointer; display:grid; place-items:center; font-weight:var(--fw-bold); font-family:inherit; }
@@ -11190,7 +11193,7 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .ip-z-left{ top:26%; left:0; width:30%; height:48%; justify-content:start; padding-left:var(--space-4); font-size:var(--fs-xl); }
   .mms-ipod .ip-z-right{ top:26%; right:0; width:30%; height:48%; justify-content:end; padding-right:var(--space-4); font-size:var(--fs-xl); }
   .mms-ipod .ip-z-down{ bottom:0; left:26%; width:48%; height:30%; align-content:end; padding-bottom:var(--space-3); font-size:var(--fs-base); }
-  .mms-ipod .ip-center{ width:84px; height:84px; border-radius:var(--radius-full); border:0; cursor:pointer;
+  .mms-ipod .ip-center{ width:min(26vw,108px); height:min(26vw,108px); border-radius:var(--radius-full); border:0; cursor:pointer;
     background:radial-gradient(circle at 50% 40%, var(--mms-ipod-body1), var(--mms-ipod-body2)); box-shadow:var(--mms-ipod-center-shadow); }
 
   /* --- iPod BLACK (v1.232, Dean): shares all iPod structure via the base `mms-ipod`
