@@ -2608,5 +2608,11 @@
     "date": "2026-09-01",
     "title": "Resize and angle your player sticker",
     "intent": "The player sticker is a bit bigger now, and you can make it your own: in Settings > Appearance > Player sticker, pick a size (default, 2x, 3x, or a big 5x) and a tilt (straight, or leaning left or right). Changing the size keeps your chosen image or emoji, and vice versa."
+  },
+  {
+    "version": "1.242.0",
+    "date": "2026-09-01",
+    "title": "All your audio, right in the music player",
+    "intent": "Anything you've downloaded that's audio-only now shows up in the music player automatically - no setting to flip, it's just there. Tap a song anywhere and it opens in the player, no detour through the video page. If you'd rather keep a particular channel out of Music, you can switch it off in Settings. Also new: on the iPod skin, press and hold the rewind or fast-forward button to scan through a track - hold to sweep, let go to land where you want."
   }
 ]

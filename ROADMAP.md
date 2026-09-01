@@ -80,6 +80,30 @@
 
 ## Shipped
 
+### v1.242.0 - All audio in the music player + hold-to-scan on the wheel (2026-09-01)
+
+Two of Dean's three "one branch" asks (podcasts-on-the-skin split to v1.243). (#4) Any
+audio-only item (`type==='audio'`) now projects into the Music library UNCONDITIONALLY - for
+everyone, instantly - instead of behind a per-user, default-OFF opt-in with a genre-majority
+guess. It reads `db.metadata` live (no `db.music` writes, no backfill pass, no
+music-scan-prune data-loss risk - the recon-chosen safe path over native ingest). RBAC is
+unchanged (`mediaVisibleTo`) so a restricted user still can't see hidden audio. The old master
+toggle is retired; the "Channels in Music" manager is reframed as an OPT-OUT list (a channel
+is in unless explicitly marked off). This removes the tap->brief-video-view->skin friction
+Dean reported. (#2) HOLD a rewind/ffwd wheel zone to FAST-SCAN the timeline (~2x, audio plays,
+release lands you there); a tap still skips, a rotate becomes a scrub/cursor. player.js
+BYTE-UNCHANGED.
+
+FULL two-reviewer gate (the #4 projection is a library-wide RBAC-gated read surface). Both
+APPROVE after one fix round: caught a hold-then-rotate double-commit (the scan now owns the
+gesture once engaged), an unbound manager opt-out state (now asserted on both manager
+endpoints, mutation-killed), and ~8 stale comments describing the retired opt-in gate. RBAC
+proven intact across all six Music read surfaces with divergent-kind restrictions. Dual-Node
+8108/0 (Node 22 + 24). **Device pending** - Dean confirms all his downloaded audio shows in
+the music player, the opt-out hides a channel, and hold-to-scan feels right. Device-probe
+(disclosed): a fast-scan that sweeps past a v1.240 chapter-loop boundary (cross-feature
+timeupdate timing, unreproducible in jsdom). #3 podcasts-on-the-skin ships next as v1.243.
+
 ### v1.241.0 - Sticker size + tilt settings (2026-09-01)
 
 Dean: the sticker should read like a real placed sticker - bigger, and adjustable. Two new
