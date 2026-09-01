@@ -370,6 +370,13 @@ test('v1.242 opt-OUT: a MIXED channel shows ALL its audio by default; an explici
   assert.strictEqual((await postJson('/api/folders/music-flag', { folderName: 'mixedchan', music: 'off' })).status, 200);
   music = await (await get('/api/music')).json();
   assert.ok(!music.items.some((i) => ['mx1', 'mx2', 'mx3'].includes(i.id)), 'an OFF mark hides the whole channel (the opt-out)');
+  // AND the manager MUST report effective:false for the off channel (adversarial: this binds
+  // channelEffectiveOnUniversal - a `return true` mutant would leave the manager lying that the
+  // hidden channel is still ON). Both manager surfaces.
+  const flagOff = await (await get('/api/folders/music-flag?folderName=mixedchan')).json();
+  assert.strictEqual(flagOff.effective, false, '/music-flag reports effective:false for the off channel');
+  const chanOff = (await (await get('/api/music/channels')).json()).channels.find((c) => c.folderName === 'mixedchan');
+  assert.strictEqual(chanOff.effective, false, '/music/channels reports effective:false for the off channel');
   await postJson('/api/folders/music-flag', { folderName: 'mixedchan', music: null });
 });
 

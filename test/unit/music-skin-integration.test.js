@@ -438,6 +438,24 @@ test('v1.242: a QUICK tap on ffwd (hold never fires) still SKIPS a track', async
   } });
 });
 
+test('v1.242 (gate WARNING): a ROTATE during an active scan does NOT also scrub, and commits ONCE', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
+    const p = panel(dom); const mp = makeScrubbable(dom, 100, 300);
+    const h = armHold(dom);
+    const next = zone(p, '[data-skin-next]');
+    next.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 90, clientY: 10 }));
+    h.fire(); // scan engaged (st.moved = true)
+    const afterScan = mp.currentTime;
+    assert.ok(afterScan > 100, 'scan advanced the playhead');
+    // now curve the thumb around the ring WITHOUT lifting - a rotation mid-scan
+    const wheel = p.querySelector('.ip-wheel');
+    [40, 80, 120].forEach((deg) => { const r = deg * Math.PI / 180; wheel.dispatchEvent(new dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 100 * Math.cos(r), clientY: 100 * Math.sin(r) })); });
+    next.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true }));
+    assert.strictEqual(spy.seek, 1, 'exactly ONE seek commit (the scan owns the gesture - no second scrub commit)');
+    h.restore();
+  } });
+});
+
 test('v1.242: a pointercancel mid-scan does NOT commit (no lost seek)', async () => {
   await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
     const p = panel(dom); const mp = makeScrubbable(dom, 100, 300);

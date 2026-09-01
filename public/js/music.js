@@ -1386,6 +1386,10 @@ if (typeof module !== 'undefined' && module.exports) {
         if (st.scanDir) st.scanTimer = win.setTimeout(function () { st.scanTimer = null; if (!st.moved) startScan(); }, 400);
         st.onMove = function (ev) {
           if (ev.pointerId !== st.id) return;   // ignore a SECOND finger's moves (adversarial S1: else its coords difference against finger A's angle -> a jumpy jump)
+          // v1.242 (gate WARNING): once a HOLD has engaged the fast-scan, the scan OWNS the
+          // gesture until release - a subsequent rotation must NOT also scrub (else the scan
+          // interval and the scrub branch fight over currentTime AND both commit on release).
+          if (st.scanning) return;
           var ang = Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180 / Math.PI;
           var d = wheelShortAngle(ang - st.lastAngle); st.lastAngle = ang;
           var now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
