@@ -513,3 +513,70 @@ test('v1.234: the pop-out button is HIDDEN on mobile (the in-tab full-screen ski
     assert.ok(dom.window.document.getElementById('music-popout-btn').hidden, 'no pop-out button on a mobile viewport');
   } });
 });
+
+// ---- v1.234 gate fix-round binds -------------------------------------------------------
+test('v1.234: on desktop with a music track current, the pop-out button IS shown (gate S3: gates on the track, not the queue)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    // the harness queue is empty (browsing-grid shape), but a music track is current -
+    // the button must still show (popping out is most useful while browsing).
+    assert.strictEqual(dom.window.document.getElementById('music-popout-btn').hidden, false, 'button shown on desktop with a current music track even when the queue is empty');
+  } });
+});
+
+test('v1.234: a wide->narrow resize TEARS DOWN an open pop-out and hides the button (enforces never-both-live)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const pip = makePipWindow();
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    assert.ok(!pip.closed, 'pop-out open on the wide viewport');
+    // now the window becomes narrow (mobile breakpoint) - the in-tab skin would take over
+    dom.window.matchMedia = (q) => ({ matches: /max-width:\s*768px/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    assert.ok(pip._closeCalls >= 1 && pip.closed, 'the pop-out is closed when the viewport crosses into narrow');
+    assert.ok(dom.window.document.getElementById('music-popout-btn').hidden, 'the button hides on the narrow viewport');
+  } });
+});
+
+test('v1.234: a Document-PiP grant that resolves AFTER destroy() is closed, never mounted (async TOCTOU)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom, spy, mod) => {
+    const pip = makePipWindow();
+    let resolveWin = null;
+    dom.window.documentPictureInPicture = { requestWindow: () => new Promise((r) => { resolveWin = r; }) };
+    clickPopout(dom); await settle(); // requestWindow pending
+    mod.destroy();                    // view torn down while the grant is in flight (signal aborts)
+    resolveWin(pip);                  // the window is granted AFTER destroy
+    await settle(); await settle();
+    // the abort guard closes the late-granted window and returns BEFORE mounting - the mount
+    // path never calls close(), so `closed` here proves it was aborted, not mounted+frozen.
+    assert.ok(pip._closeCalls >= 1 && pip.closed, 'the late-granted pop-out is closed, not left frozen/open (never mounted)');
+  } });
+});
+
+test('v1.234: a double pagehide (close then re-entrant teardown) is idempotent - no throw, no double close', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const pip = makePipWindow();
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    pip.dispatchEvent(new pip.Event('pagehide'));
+    pip.dispatchEvent(new pip.Event('pagehide')); // must be a clean no-op (state already nulled)
+    assert.strictEqual(pip._closeCalls, 1, 'the window is closed exactly once across re-entrant teardowns');
+  } });
+});
+
+test('v1.234: teardown explicitly DROPS the surface from the reflect set (splice bound, not just the isConnected backstop)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'apple', run: async (dom) => {
+    const pip = makePipWindow();
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    const panel = pipPanelOf(pip);
+    const mp = dom.window.document.getElementById('media-player');
+    pip.dispatchEvent(new pip.Event('pagehide')); // teardown: splice + close
+    // keep the panel CONNECTED (adopt into the main doc) so the isConnected backstop can't be
+    // what drops it - only the explicit splice can. If the splice were gone, reflect would run.
+    dom.window.document.body.appendChild(panel);
+    assert.ok(panel.isConnected, 'panel kept connected for the test');
+    panel.querySelector('.mms-fill').style.width = '77%';
+    mp.dispatchEvent(new dom.window.Event('loadstart', { bubbles: true }));
+    assert.strictEqual(panel.querySelector('.mms-fill').style.width, '77%', 'a torn-down surface is not reflected even while connected (explicit splice bound)');
+  } });
+});

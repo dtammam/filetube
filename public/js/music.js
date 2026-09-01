@@ -627,10 +627,13 @@ if (typeof module !== 'undefined' && module.exports) {
       };
     }
     // v1.234: a skin can render on MORE THAN ONE surface - the in-tab mobile panel AND the
-    // desktop pop-out window (Document PiP / independent window). They are never live at the
-    // SAME time (pop-out is desktop-only, the in-tab skin is mobile-only), so the shared
-    // wheel state below is unambiguous. skinSurfaces holds every panel bound via
-    // bindSkinSurface; reflectAllSkins fans the live-element reflect out to each connected one.
+    // desktop pop-out window (Document PiP / independent window). The two are kept mutually
+    // exclusive by the viewport split (pop-out only on wide/desktop, the in-tab skin only on
+    // narrow/mobile), ENFORCED so it can't drift: open re-gates on popoutSupported(), and a
+    // resize into the narrow range tears the pop-out down (see updatePopoutBtn's resize
+    // listener). So only one surface is ever live and the shared wheel state below is
+    // unambiguous. skinSurfaces holds every panel bound via bindSkinSurface; reflectAllSkins
+    // fans the live-element reflect out to each connected one.
     var skinSurfaces = [];
     // Reflect the live element into ONE rendered skin panel without a full re-render
     // (cheap; keeps the up-next scroll position).
@@ -674,8 +677,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // pointerup would otherwise fire on a wheel zone (see the pointerdown gesture below).
     var wheelCursorRow = -1;
     var wheelSuppressClick = false;
-    // v1.234: shared across surfaces (in-tab XOR pop-out - never both live), so a single
-    // live-gesture handle is unambiguous; paintSkin nulls it on a re-render (QA guard).
+    // v1.234: shared across surfaces (in-tab XOR pop-out - the viewport split is ENFORCED
+    // mutually exclusive, see the reflectAllSkins comment), so a single live-gesture handle
+    // is unambiguous; paintSkin nulls it on a re-render (QA guard).
     var wheelSpin = null;
     // Move the selection cursor to list POSITION `pos` (clamped): paint .is-cursor (the
     // blue bar) on that row alone and keep it visible. `center` (list-open) centers it;
@@ -1096,6 +1100,14 @@ if (typeof module !== 'undefined' && module.exports) {
       for (var k = 0; k < queue.length; k++) { if (queue[k].id === curId) return k; }
       return -1;
     }
+    // Is a MUSIC track the current one? (gate SUGGESTION: the button gates on THIS, not queue
+    // membership - the queue is [] while browsing the album/artist grids with a track docked,
+    // and that browsing state is exactly when a floating player is most useful.)
+    function hasCurrentMusicTrack() {
+      var p = window.FileTube && window.FileTube.player;
+      if (!p || !p.currentId) return false;
+      try { var m = typeof p.getCurrentMeta === 'function' ? p.getCurrentMeta() : null; return !!(m && m.isMusic); } catch (_) { return true; }
+    }
     function copyPopoutStyles(doc) {
       // link every same-origin stylesheet + copy inline <style> blocks so the skin is styled.
       var links = document.querySelectorAll('link[rel="stylesheet"]');
@@ -1109,6 +1121,13 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     function mountPopout(win) {
       if (!win) return;
+      // Gate finding (QA W1 / adversarial S3): requestWindow() is async, so the view can be
+      // destroyed (controller.abort()) DURING the grant. mountPopout would then run on a dead
+      // closure - binding to an aborted signal (frozen, never reflects) and leaking an
+      // always-on-top window the in-app button can no longer close (activePopoutTeardown was
+      // already consumed). A post-await guard closes it. (The repo's "pre-await guard is not a
+      // post-await guard" TOCTOU class, v1.104/v1.105.)
+      if (signal.aborted) { try { win.close(); } catch (_) { /* ignore */ } return; }
       pipWin = win;
       var doc = win.document;
       try { copyPopoutStyles(doc); doc.title = 'FileTube'; } catch (_) { /* best effort */ }
@@ -1127,6 +1146,7 @@ if (typeof module !== 'undefined' && module.exports) {
       updatePopoutBtn();
     }
     function openPopout() {
+      if (!popoutSupported()) return; // gate finding: re-check at CLICK time, not just button visibility - a wide->narrow resize must not leave an openable button
       if (pipWin) { try { pipWin.focus(); } catch (_) { /* ignore */ } return; }
       // Document PiP (Chrome/Edge desktop) = always-on-top; else a plain independent window.
       if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
@@ -1172,10 +1192,24 @@ if (typeof module !== 'undefined' && module.exports) {
     // button's lockstep hide, but its own support gate (not CSS).
     function updatePopoutBtn() {
       if (!popoutBtn) return;
-      popoutBtn.hidden = !(popoutSupported() && currentSkinIndex() >= 0);
+      popoutBtn.hidden = !(popoutSupported() && hasCurrentMusicTrack());
       popoutBtn.setAttribute('aria-pressed', pipWin ? 'true' : 'false');
     }
     if (popoutBtn) popoutBtn.addEventListener('click', togglePopout, { signal });
+    // Gate finding (both seats): the ONLY thing keeping the in-tab and pop-out skins from
+    // being live at once is the viewport split, and nothing re-checked it on a RESIZE - so a
+    // wide->narrow shrink with the pop-out open left the button visible AND let the in-tab
+    // skin activate too, both sharing the wheel state. ENFORCE the split on resize: refresh
+    // the button, and if the viewport crossed into the narrow (in-tab-skin) range, close the
+    // pop-out. This makes "never both live" (the reflect/wheel comments) an actual invariant.
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('resize', function () {
+        var narrow = false;
+        try { narrow = !!(SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()); } catch (_) { /* desktop */ }
+        if (narrow && pipWin) teardownPopout(); // -> in-tab skin owns the surface; teardown is idempotent with the pagehide arm
+        else updatePopoutBtn();
+      }, { signal });
+    }
     activePopoutTeardown = teardownPopout; // destroy() closes the pop-out on a cross-view swap
 
     // Tapping the line drills into the playing track's album.
