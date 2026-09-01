@@ -827,6 +827,26 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       return cur;
     }
+    // v1.240: [start, end) of the currently-DISPLAYED chapter (chapterViewId) within the shared
+    // file - start = its chapterStartSec, end = the NEXT chapter's start (sorted ascending) or
+    // the file duration for the last chapter. null when not on a chaptered file or the duration
+    // is unknown. Feeds the chapter-loop (enforceChapterLoop).
+    function currentChapterBounds() {
+      if (!chapterViewId) return null;
+      var mp = hostCtl('media-player'); if (!mp) return null;
+      var base = String(chapterViewId).replace(/::c\d+$/, '');
+      var chaps = queue.filter(function (x) { return x && x.source === 'library-chapter' && String(x.id).replace(/::c\d+$/, '') === base; });
+      if (!chaps.length) return null;
+      chaps = chaps.slice().sort(function (a, b) { return (Number(a.chapterStartSec) || 0) - (Number(b.chapterStartSec) || 0); });
+      var idx = -1;
+      for (var i = 0; i < chaps.length; i++) { if (chaps[i].id === chapterViewId) { idx = i; break; } }
+      if (idx === -1) return null;
+      var start = Number(chaps[idx].chapterStartSec) || 0;
+      var dur = (isFinite(mp.duration) && mp.duration > 0) ? mp.duration : 0;
+      var end = (idx + 1 < chaps.length) ? (Number(chaps[idx + 1].chapterStartSec) || dur) : dur;
+      if (!(end > start)) return null; // unknown/zero duration on the last chapter -> can't bound
+      return { start: start, end: end };
+    }
     // On a boundary CROSS (the file rolled into the next chapter), update the DISPLAYED identity
     // (nowPlaying + playingId + highlight) and repaint the now-playing (web panel + skins +
     // pop-out) WITHOUT reloading - the same file keeps playing. Cheap: only acts when the derived
@@ -844,6 +864,24 @@ if (typeof module !== 'undefined' && module.exports) {
       updateNowPlayingPanel();
       updateNowPlaying(); // v1.237: keep the "Playing from <Album>" line in step (it keys off the current id too)
     }
+    // v1.240 (Dean's loop bug): loop the CURRENT chapter's segment when Loop is on and a
+    // chaptered `::c` track is playing. The file-level loop (player 'ended' -> replay from 0)
+    // only fires at the WHOLE file's end, so it never loops a single chapter (a slice of the
+    // shared file - Dean confirmed a standalone song DOES loop). This seeks back to the
+    // chapter's start when the playhead reaches its end boundary, keeping playback - and so the
+    // reflected identity - inside the chapter. Skipped during a wheel SCRUB so a deliberate
+    // scrub past the boundary is not yanked back mid-drag (the v1.239 carried interaction).
+    function enforceChapterLoop() {
+      if (!chapterViewId) return;
+      if (wheelSpin && wheelSpin.mode === 'scrub') return;
+      var pl = window.FileTube && window.FileTube.player;
+      try { if (!pl || typeof pl.isLoopEnabled !== 'function' || !pl.isLoopEnabled()) return; } catch (_) { return; }
+      var mp = hostCtl('media-player'); if (!mp) return;
+      var b = currentChapterBounds(); if (!b) return;
+      if (mp.currentTime >= b.end - 0.25 && mp.currentTime > b.start) {
+        try { mp.currentTime = b.start; } catch (_) { /* ignore a bad set */ }
+      }
+    }
     var chapterReflectBound = false;
     function ensureChapterReflect() {
       if (chapterReflectBound) return;
@@ -851,7 +889,9 @@ if (typeof module !== 'undefined' && module.exports) {
       chapterReflectBound = true;
       // bound independently of the skin reflect so it runs on the DESKTOP web now-playing too
       // (where the skin, hence ensureSkinReflect, never engages). timeupdate is enough - the
-      // chapter boundary is a position threshold.
+      // chapter boundary is a position threshold. enforceChapterLoop is bound FIRST so a loop
+      // seek-back lands before reflectChapter can advance the displayed chapter past the boundary.
+      mp.addEventListener('timeupdate', enforceChapterLoop, { signal: signal });
       mp.addEventListener('timeupdate', reflectChapter, { signal: signal });
     }
     // ---- v1.238: the "sticker" quick-menu (speed + loop + skin picker) ----------
@@ -924,8 +964,11 @@ if (typeof module !== 'undefined' && module.exports) {
       var doc = panel.ownerDocument || document;
       var wrap = doc.createElement('div');
       wrap.className = 'mms-sticker-wrap';
+      // v1.240 (Dean): an IMAGE sticker (logo or custom upload) shows SQUARE at the spot with
+      // no circular ring/clip; only an emoji keeps the round chip (legibility on any skin).
+      var imgCls = (readStickerPref().kind === 'emoji') ? '' : ' mms-sticker--img';
       wrap.innerHTML =
-        '<button type="button" class="mms-sticker" data-skin-sticker aria-haspopup="true" aria-expanded="false" aria-label="Player options">' + stickerIconHtml() + '</button>' +
+        '<button type="button" class="mms-sticker' + imgCls + '" data-skin-sticker aria-haspopup="true" aria-expanded="false" aria-label="Player options">' + stickerIconHtml() + '</button>' +
         '<div class="mms-sticker-menu" data-skin-sticker-menu role="menu" hidden>' + buildStickerMenuHtml() + '</div>';
       panel.appendChild(wrap);
     }
