@@ -627,9 +627,19 @@ if (typeof module !== 'undefined' && module.exports) {
       var pos = Number(mp.currentTime) || 0;
       var frac = dur > 0 ? Math.min(100, pos / dur * 100) : 0;
       var fill = nowPlayingPanel.querySelector('.mms-fill'); if (fill && dur > 0) fill.style.width = frac + '%';
-      var knob = nowPlayingPanel.querySelector('.mms-knob'); if (knob && dur > 0) knob.style.left = frac + '%'; // iPod scrubber knob
+      // iPod status-bar play indicator (▶ playing / ❚❚ paused) - the authentic Classic
+      // shows state up top; the wheel's bottom play button keeps its static ▶❚❚ label.
+      var pind = nowPlayingPanel.querySelector('.mms-playind'); if (pind) pind.textContent = mp.paused ? '❚❚' : '▶';
       var pEl = nowPlayingPanel.querySelector('.mms-pos'); if (pEl) pEl.textContent = mmssMusic(pos);
       var rEl = nowPlayingPanel.querySelector('.mms-rem'); if (rEl && dur > 0) rEl.textContent = '-' + mmssMusic(dur - pos);
+    }
+    // iPod Now-Playing <-> song-list toggle (a transient class on the panel; a full
+    // re-render resets it, so a track change returns you to Now Playing).
+    function setIpodListMode(on) {
+      if (!nowPlayingPanel) return;
+      nowPlayingPanel.classList.toggle('mms-listmode', !!on);
+      var npEl = nowPlayingPanel.querySelector('.ip-np');
+      if (npEl) npEl.textContent = on ? 'Songs' : 'Now Playing';
     }
     var skinReflectBound = false;
     function ensureSkinReflect() {
@@ -795,6 +805,19 @@ if (typeof module !== 'undefined' && module.exports) {
         if (e.target.closest('[data-skin-prev]')) { var pv = hostCtl('track-prev-btn'); if (pv) pv.click(); return; }
         if (e.target.closest('[data-skin-next]')) { var nx = hostCtl('track-next-btn'); if (nx) nx.click(); return; }
         if (e.target.closest('[data-skin-collapse]')) { var pl = window.FileTube && window.FileTube.player; if (pl && typeof pl.dock === 'function') { pl.dock(); updateNowPlayingPanel(); } return; }
+        // v1.231 iPod: Shuffle proxies to the music view's own #music-shuffle-btn (the
+        // skin only renders inside this view, so the button is always co-present).
+        if (e.target.closest('[data-skin-shuffle]')) { var sh = hostCtl('music-shuffle-btn'); if (sh) sh.click(); return; }
+        // iPod MENU = back one level: from the song LIST -> Now Playing; from Now
+        // Playing -> dock/exit the full-screen player (the way out, no header needed).
+        if (e.target.closest('[data-skin-menu]')) {
+          if (nowPlayingPanel.classList.contains('mms-listmode')) { setIpodListMode(false); }
+          else { var plm = window.FileTube && window.FileTube.player; if (plm && typeof plm.dock === 'function') { plm.dock(); updateNowPlayingPanel(); } }
+          return;
+        }
+        // iPod Select = enter/leave the song list (a transient panel class; reset on
+        // any re-render, e.g. a track change, so a new song lands back on Now Playing).
+        if (e.target.closest('[data-skin-select]')) { setIpodListMode(!nowPlayingPanel.classList.contains('mms-listmode')); return; }
         var seek = e.target.closest('[data-skin-seek]');
         if (seek) {
           // Proxy to the host #seek-bar (a 0..1 ratio input): its 'change' handler
@@ -811,7 +834,7 @@ if (typeof module !== 'undefined' && module.exports) {
           return;
         }
         var sgo = e.target.closest('[data-skin-go]');
-        if (sgo) { var gi = parseInt(sgo.getAttribute('data-skin-go'), 10); if (!isNaN(gi)) playAt(gi); return; }
+        if (sgo) { var gi = parseInt(sgo.getAttribute('data-skin-go'), 10); if (!isNaN(gi)) { setIpodListMode(false); playAt(gi); } return; }
         var row = e.target.closest('.mnp-queue-row');
         if (!row) return;
         var idx = parseInt(row.getAttribute('data-index'), 10);

@@ -77,23 +77,31 @@ const CONTRACT = {
   '--mms-sp-track': 'rgba(255,255,255,.24)',
   '--mms-sp-queue-bg': 'rgba(0,0,0,.26)', '--mms-sp-qline': 'rgba(255,255,255,.08)',
   '--mms-sp-play-shadow': '0 10px 26px -6px rgba(30,215,96,.55)',
-  // iPod - aluminum + framed cover + blue list.
-  '--mms-ipod-fg': '#2b2620', '--mms-ipod-warm': '#7c6636', '--mms-ipod-accent': '#3f79c9', '--mms-ipod-accent2': '#2f6fce',
-  '--mms-ipod-line': 'rgba(120,95,50,.18)', '--mms-ipod-g1': '#f6f1e6', '--mms-ipod-g2': '#e6ddca',
-  '--mms-ipod-bar1': '#fbfbfc', '--mms-ipod-bar2': '#d8d3c8', '--mms-ipod-frame': '#c9b389',
-  '--mms-ipod-track': '#cabb9f', '--mms-ipod-btn1': '#ffffff', '--mms-ipod-btn2': '#d6d1c6',
-  '--mms-ipod-cluster-line': 'rgba(120,95,50,.3)',
-  '--mms-ipod-art-shadow': '0 10px 24px -8px rgba(80,60,30,.5)',
-  '--mms-ipod-cluster-shadow': 'inset 0 1px 0 rgba(255,255,255,.85), 0 2px 4px rgba(80,60,30,.4)',
-  '--mms-ipod-bar-shadow': 'inset 0 -1px 0 rgba(120,95,50,.28)',
-  '--mms-ipod-knob-shadow': '0 1px 3px rgba(80,60,30,.5)',
+  // Apple grab handle (v1.231).
+  '--mms-apple-grab': 'rgba(255,255,255,.4)',
+  // iPod (v1.231, Dean's reference photo): the real Classic - warm-white body,
+  // black-bezelled LCD Now-Playing screen, flat gray click wheel, Aqua scrubber +
+  // blue list selection. REPLACES the v1.228 aluminum/cluster/knob palette wholesale.
+  '--mms-ipod-body1': '#fdfdfb', '--mms-ipod-body2': '#efeee9', '--mms-ipod-edge': '#c9c8c2',
+  '--mms-ipod-scr-sub': '#5c5f66',
+  '--mms-ipod-bar1': '#ededf0', '--mms-ipod-bar2': '#cbccd0', '--mms-ipod-hair': '#a9abb0',
+  '--mms-ipod-batt-line': '#4a4b4d', '--mms-ipod-batt1': '#8fe06a', '--mms-ipod-batt2': '#4fb62e',
+  '--mms-ipod-groove': '#eceef2',
+  '--mms-ipod-blue-hi': '#7fc0ff', '--mms-ipod-blue1': '#3d97f2', '--mms-ipod-blue2': '#1667d6',
+  '--mms-ipod-line': 'rgba(60,70,90,.14)',
+  '--mms-ipod-wheel1': '#d3d3d2', '--mms-ipod-wheel2': '#c4c4c2', '--mms-ipod-wheel-lbl': '#7c7d80',
+  '--mms-ipod-art-shadow': '0 2px 5px rgba(0,0,0,.3)',
+  '--mms-ipod-lcd-shadow': '0 2px 6px rgba(0,0,0,.35)',
+  '--mms-ipod-fill-shadow': 'inset 0 1px 0 rgba(255,255,255,.6)',
+  '--mms-ipod-wheel-shadow': '0 1px 2px rgba(0,0,0,.25), inset 0 1px 1px rgba(255,255,255,.7), inset 0 -2px 4px rgba(0,0,0,.1)',
+  '--mms-ipod-center-shadow': 'inset 0 1px 2px rgba(255,255,255,.9), 0 1px 2px rgba(0,0,0,.14)',
   // shared metrics.
-  '--mms-r-art': '16px', '--mms-r-art-ipod': '6px', '--mms-r-queue': '16px', '--mms-r-th': '6px', '--mms-r-row-ipod': '6px',
+  '--mms-r-art': '16px', '--mms-r-art-ipod': '6px', '--mms-r-queue': '16px', '--mms-r-th': '6px', '--mms-ipod-r-sm': '2px',
   '--mms-ls-caps': '.14em', '--mms-ls-caps2': '.1em', '--mms-ls-tight': '-.02em', '--mms-lh-ttl': '1.1',
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 108, 'the 60-name contract (see history) + the 48 --mms-* mobile-music-skin tokens: v1.228 bold rebuild (3 structurally-distinct skin palettes, shadows/radii, caps tracking + title leading) MINUS the 3 in-player switcher-chip tints removed in v1.229 (skin picking moved to the account menu). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
+  assert.equal(Object.keys(CONTRACT).length, 114, 'the 60-name contract (see history) + the 54 --mms-* mobile-music-skin tokens: after v1.231 replaced the iPod palette wholesale (Dean\'s reference photo - warm-white body, LCD Now-Playing screen, gray click wheel, Aqua scrubber) and added the Apple grab handle; Apple/Spotify palettes unchanged. Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());

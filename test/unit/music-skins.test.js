@@ -46,39 +46,58 @@ test('the GATE is true ONLY for mobile + a music item (desktop / non-music are d
   assert.strictEqual(skins.skinActiveFor(null, true), false, 'nothing playing -> default');
 });
 
-test('every skin renderFull emits the transport hooks + reflects the ctx (not vacuous)', () => {
+test('every skin renderFull emits the core transport hooks + shared reflect targets (not vacuous)', () => {
   for (const id of skins.IDS) {
     const html = skins.renderFull(id, CTX);
     assert.match(html, /data-skin-play/, id + ': play hook (proxies to #pp-btn)');
     assert.match(html, /data-skin-prev/, id + ': prev hook');
     assert.match(html, /data-skin-next/, id + ': next hook');
-    assert.match(html, /data-skin-seek/, id + ': seek hook');
-    assert.match(html, /data-skin-collapse/, id + ': collapse hook (dock/return)');
     assert.ok(html.includes('Track A'), id + ': shows the current title');
     assert.match(html, /width:\s*[\d.]+%/, id + ': scrubber fill reflects position');
-    // the REFLECT targets music.js queries every timeupdate - must be present.
-    assert.match(html, /class="mms-play"/, id + ': .mms-play reflect target');
+    // reflect targets music.js queries every timeupdate, shared by all skins.
     assert.match(html, /class="mms-fill"/, id + ': .mms-fill reflect target');
     assert.match(html, /class="mms-pos"/, id + ': .mms-pos reflect target');
     assert.match(html, /class="mms-rem"/, id + ': .mms-rem reflect target');
   }
 });
 
-test('the skins with a visible queue (spotify, ipod) render jump-by-index rows; apple is art-only', () => {
-  for (const id of ['spotify', 'ipod']) {
-    const html = skins.renderFull(id, CTX);
-    assert.match(html, /data-skin-go="2"/, id + ': up-next rows jump by queue index');
-    assert.match(html, /is-current/, id + ': the current row is marked');
-  }
-  // Apple is deliberately art-dominant with NO queue list (Dean's bold direction).
+test('per-skin controls: Apple/Spotify have a swap-glyph play + collapse + tap-seek; iPod is the click wheel', () => {
   const apple = skins.renderFull('apple', CTX);
-  assert.ok(!/data-skin-go=/.test(apple), 'apple renders no queue rows');
+  const spotify = skins.renderFull('spotify', CTX);
+  const ipod = skins.renderFull('ipod', CTX);
+  for (const [id, html] of [['apple', apple], ['spotify', spotify]]) {
+    assert.match(html, /class="mms-play"/, id + ': the big play (reflectSkin swaps its glyph)');
+    assert.match(html, /data-skin-collapse/, id + ': grab/chevron dismiss');
+    assert.match(html, /data-skin-seek/, id + ': tap-to-seek bar');
+  }
+  assert.match(spotify, /data-skin-shuffle/, 'spotify wires the REAL shuffle (-> #music-shuffle-btn)');
+  // iPod click wheel: MENU (back/exit) + Select (list), a status-bar play indicator,
+  // NO tap-seek (scrubbing deferred), NO collapse chevron, NO swap-glyph .mms-play.
+  assert.match(ipod, /data-skin-menu/, 'iPod: MENU zone (back / exit)');
+  assert.match(ipod, /data-skin-select/, 'iPod: Select zone (list toggle)');
+  assert.match(ipod, /class="mms-playind"/, 'iPod: status-bar play indicator (reflect target)');
+  assert.ok(!/data-skin-seek/.test(ipod), 'iPod scrubber is display-only (no seek hook)');
+  assert.ok(!/data-skin-collapse/.test(ipod), 'iPod exits via MENU, not the collapse chevron');
+  assert.ok(!/class="mms-play"/.test(ipod), 'iPod has no swap-glyph play (the wheel bottom keeps its ▶❚❚)');
 });
 
-test('the iPod skin adds a scrubber KNOB (its own reflect target) + an "N of M" footer', () => {
+test('the skins with a list (spotify queue, ipod song list) render jump-by-index rows; apple is art-only', () => {
+  for (const id of ['spotify', 'ipod']) {
+    const html = skins.renderFull(id, CTX);
+    assert.match(html, /data-skin-go="2"/, id + ': list rows jump by queue index');
+    assert.match(html, /is-current/, id + ': the current row is marked');
+  }
+  const apple = skins.renderFull('apple', CTX);
+  assert.ok(!/data-skin-go=/.test(apple), 'apple renders no list');
+});
+
+test('the iPod skin renders the Classic Now Playing (artist/album/N-of-M + wheel), no chrome knob', () => {
   const html = skins.renderFull('ipod', Object.assign({}, CTX, { curNum: 2, total: 3 }));
-  assert.match(html, /class="mms-knob"/, 'iPod scrubber knob (music.js moves it on timeupdate)');
-  assert.match(html, /2 of 3/, 'the "N of M" footer');
+  assert.match(html, /NESTALGIA/, 'artist shown (Now Playing meta)');
+  assert.match(html, /Retro Mix/, 'album shown');
+  assert.match(html, /2 of 3/, 'the "N of M" position');
+  assert.match(html, /ip-wheel/, 'the click wheel');
+  assert.ok(!/mms-knob/.test(html), 'the old chrome knob is gone (display-only scrubber)');
 });
 
 test('v1.229: NO in-player skin switcher - picking lives in the account menu now', () => {
