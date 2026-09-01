@@ -103,6 +103,7 @@ test('the iPod skin renders the Classic Now Playing (artist/album/N-of-M + wheel
   const zones = html.slice(html.indexOf('ip-wheel'));
   assert.match(zones, /data-skin-prev[^>]*><svg/, 'rewind is an SVG glyph');
   assert.match(zones, /data-skin-next[^>]*><svg/, 'fast-forward is an SVG glyph');
+  assert.match(zones, /data-skin-play[^>]*><svg/, 'play/pause is an SVG glyph (not the emoji-prone ▶❚❚)');
   assert.ok(!/[⏮⏭]/.test(zones), 'no unicode skip chars (⏮/⏭) that iOS emoji-fies');
 });
 
