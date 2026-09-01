@@ -10931,6 +10931,10 @@ html[data-modern="on"] .video-uploader {
   --mms-ipod-blue-hi:#7fc0ff; --mms-ipod-blue1:#3d97f2; --mms-ipod-blue2:#1667d6;
   --mms-ipod-line:rgba(60,70,90,.14);
   --mms-ipod-wheel1:#d3d3d2; --mms-ipod-wheel2:#c4c4c2; --mms-ipod-wheel-lbl:#7c7d80;
+  /* v1.231.1 gloss sheen (Dean): white-alpha stops for the body + wheel highlights. */
+  --mms-ipod-sheen-a:rgba(255,255,255,.5); --mms-ipod-sheen-b:rgba(255,255,255,.14);
+  --mms-ipod-sheen-c:rgba(255,255,255,.35); --mms-ipod-sheen-d:rgba(255,255,255,.6);
+  --mms-ipod-sheen-0:rgba(255,255,255,0);
   --mms-ipod-art-shadow:0 2px 5px rgba(0,0,0,.3);
   --mms-ipod-lcd-shadow:0 2px 6px rgba(0,0,0,.35);
   --mms-ipod-fill-shadow:inset 0 1px 0 rgba(255,255,255,.6);
@@ -11041,10 +11045,18 @@ html[data-modern="on"] .video-uploader {
      right, Aqua scrubber) OR the song list (Select flips, tap a row to play);
      below, the flat gray CLICK WHEEL - tap zones (MENU/prev/next/play) + a Select
      center. The play STATE reflects in the status bar (▶/❚❚). */
-  .mms-ipod{ background:linear-gradient(158deg, var(--mms-ipod-body1), var(--mms-ipod-body2)); color:var(--mms-black); box-shadow:inset 0 0 0 1px var(--mms-ipod-edge);
+  /* the warm-white body carries the glossy Apple SHEEN, layered over the body gradient
+     (in the background so it needs no z-index) - a diagonal top-left highlight + a soft
+     reflected sweep low-right; visible on the plastic around the screen + wheel. */
+  .mms-ipod{ background:
+      linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
+      radial-gradient(120% 60% at 85% 108%, var(--mms-ipod-sheen-c) 0%, var(--mms-ipod-sheen-0) 55%),
+      linear-gradient(158deg, var(--mms-ipod-body1), var(--mms-ipod-body2));
+    color:var(--mms-black); box-shadow:inset 0 0 0 1px var(--mms-ipod-edge);
     padding:calc(env(safe-area-inset-top,0px) + var(--space-8)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-10)); }
-  /* the LCD */
-  .mms-ipod .ip-lcd{ flex:1; min-height:0; display:flex; background:var(--mms-black); border-radius:var(--mms-r-art-ipod); padding:var(--space-1); box-shadow:var(--mms-ipod-lcd-shadow); }
+  /* the LCD - a COMPACT ~4:3 screen at the top (not fill), the real iPod proportion;
+     the body + wheel take the space below. */
+  .mms-ipod .ip-lcd{ flex:none; aspect-ratio:4/3; display:flex; background:var(--mms-black); border-radius:var(--mms-r-art-ipod); padding:var(--space-1); box-shadow:var(--mms-ipod-lcd-shadow); }
   .mms-ipod .ip-lcd-in{ flex:1; min-height:0; display:flex; flex-direction:column; background:var(--mms-white); border-radius:var(--mms-ipod-r-sm); overflow:hidden; }
   .mms-ipod .ip-status{ display:flex; align-items:center; justify-content:space-between; flex:none; padding:var(--space-3) var(--space-4);
     background:linear-gradient(var(--mms-ipod-bar1), var(--mms-ipod-bar2)); border-bottom:1px solid var(--mms-ipod-hair); }
@@ -11081,11 +11093,13 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .mms-row.is-played{ opacity:.55; }
   .mms-ipod .mms-row.is-current{ background:linear-gradient(var(--mms-ipod-blue1), var(--mms-ipod-blue2)); color:var(--mms-white); border-bottom-color:transparent; }
   .mms-ipod .mms-row.is-current .mms-rn, .mms-ipod .mms-row.is-current .mms-rd, .mms-ipod .mms-row.is-current .mms-chev-r{ color:var(--mms-white); }
-  /* the click wheel */
-  .mms-ipod .ip-wheelwrap{ flex:none; display:flex; align-items:center; justify-content:center; padding-top:var(--space-8); }
+  /* the click wheel - centered in the body space below the LCD (flex:1 wrap) */
+  .mms-ipod .ip-wheelwrap{ flex:1; display:flex; align-items:center; justify-content:center; }
   .mms-ipod .ip-wheel{ width:196px; height:196px; border-radius:var(--radius-full); position:relative; display:grid; place-items:center;
-    background:radial-gradient(circle at 50% 40%, var(--mms-ipod-wheel1), var(--mms-ipod-wheel2) 100%); box-shadow:var(--mms-ipod-wheel-shadow); }
+    background:radial-gradient(90% 55% at 50% -8%, var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
+      radial-gradient(circle at 50% 40%, var(--mms-ipod-wheel1), var(--mms-ipod-wheel2) 100%); box-shadow:var(--mms-ipod-wheel-shadow); }
   .mms-ipod .ip-zone{ position:absolute; border:0; background:transparent; color:var(--mms-ipod-wheel-lbl); cursor:pointer; display:grid; place-items:center; font-weight:var(--fw-bold); font-family:inherit; }
+  .mms-ipod .ip-zone svg{ width:25px; height:25px; fill:currentColor; display:block; }
   .mms-ipod .ip-z-menu{ top:0; left:26%; width:48%; height:30%; align-content:start; padding-top:var(--space-3); font-size:var(--fs-sm); letter-spacing:var(--mms-ls-caps2); }
   .mms-ipod .ip-z-left{ top:26%; left:0; width:30%; height:48%; justify-content:start; padding-left:var(--space-4); font-size:var(--fs-xl); }
   .mms-ipod .ip-z-right{ top:26%; right:0; width:30%; height:48%; justify-content:end; padding-right:var(--space-4); font-size:var(--fs-xl); }

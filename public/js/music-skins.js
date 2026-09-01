@@ -47,6 +47,11 @@
   function prevGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>'; }
   function nextGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg>'; }
   function shuffleGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 4l4 4-4 4V9h-2.2l-2.3 2.9-1.3-1.6L14.4 7H18V4zM2 7h4.2l8.6 10H18v-3l4 4-4 4v-3h-4.4L5 9H2V7zm0 10h4.2l1.9-2.3 1.3 1.6L7.1 19H2v-2z"/></svg>'; }
+  // iPod click-wheel glyphs (clean gray line-icons, NOT unicode - which iOS renders as
+  // blue emoji): |<< rewind, >>| fast-forward, and the classic >|| play/pause.
+  function ipRwdGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h1.8v12H4zM13 6v12l-6-6zM21 6v12l-6-6z"/></svg>'; }
+  function ipFfwdGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6v12l6-6zM11 6v12l6-6zM18.2 6H20v12h-1.8z"/></svg>'; }
+  function ipPlayPauseGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5v14l10-7zM15 5h2.2v14H15zM19.8 5H22v14h-2.2z"/></svg>'; }
 
   // ---- shared building blocks (hooks + REFLECT classes are identical everywhere
   // so music.js's one proxy handler + reflectSkin work for every skin) ----------
@@ -143,9 +148,9 @@
       // --- the click wheel (tap zones) ---
       '<div class="ip-wheelwrap"><div class="ip-wheel">' +
       '<button type="button" class="ip-zone ip-z-menu" data-skin-menu aria-label="Menu / back">MENU</button>' +
-      '<button type="button" class="ip-zone ip-z-left" data-skin-prev aria-label="Previous">⏮</button>' +
-      '<button type="button" class="ip-zone ip-z-right" data-skin-next aria-label="Next">⏭</button>' +
-      '<button type="button" class="ip-zone ip-z-down" data-skin-play aria-label="Play or pause">▶❚❚</button>' +
+      '<button type="button" class="ip-zone ip-z-left" data-skin-prev aria-label="Previous">' + ipRwdGlyph() + '</button>' +
+      '<button type="button" class="ip-zone ip-z-right" data-skin-next aria-label="Next">' + ipFfwdGlyph() + '</button>' +
+      '<button type="button" class="ip-zone ip-z-down" data-skin-play aria-label="Play or pause">' + ipPlayPauseGlyph() + '</button>' +
       '<button type="button" class="ip-center" data-skin-select aria-label="Select"></button>' +
       '</div></div>';
   }
