@@ -10911,13 +10911,13 @@ html[data-modern="on"] .video-uploader {
   /* Apple: art-dominant on near-black, hot-pink accent, big white play. */
   --mms-apple-bg:#0b0b10; --mms-apple-fg:#ffffff; --mms-apple-accent:#ff4f7b;
   --mms-apple-veil:rgba(8,8,12,.5); --mms-apple-dim:rgba(255,255,255,.66);
-  --mms-apple-track:rgba(255,255,255,.24); --mms-apple-sw:rgba(255,255,255,.15);
+  --mms-apple-track:rgba(255,255,255,.24);
   --mms-art-shadow:0 26px 60px -18px rgba(0,0,0,.72);
   /* Spotify: bold purple->black canvas, fat title, green circle play, live queue. */
   --mms-sp-fg:#ffffff; --mms-sp-accent:#1ed760; --mms-sp-on-accent:#062b14;
   --mms-sp-dim:rgba(255,255,255,.6); --mms-sp-ic:rgba(255,255,255,.82);
   --mms-sp-g1:#5a3a86; --mms-sp-g2:#241a33; --mms-sp-g3:#0b0b0d;
-  --mms-sp-track:rgba(255,255,255,.24); --mms-sp-sw:rgba(255,255,255,.14);
+  --mms-sp-track:rgba(255,255,255,.24);
   --mms-sp-queue-bg:rgba(0,0,0,.26); --mms-sp-qline:rgba(255,255,255,.08);
   --mms-sp-play-shadow:0 10px 26px -6px rgba(30,215,96,.55);
   /* iPod: brushed-aluminum bar, framed cover, chrome cluster, classic blue list. */
@@ -10925,7 +10925,7 @@ html[data-modern="on"] .video-uploader {
   --mms-ipod-line:rgba(120,95,50,.18); --mms-ipod-g1:#f6f1e6; --mms-ipod-g2:#e6ddca;
   --mms-ipod-bar1:#fbfbfc; --mms-ipod-bar2:#d8d3c8; --mms-ipod-frame:#c9b389;
   --mms-ipod-track:#cabb9f; --mms-ipod-btn1:#ffffff; --mms-ipod-btn2:#d6d1c6;
-  --mms-ipod-cluster-line:rgba(120,95,50,.3); --mms-ipod-sw:rgba(60,45,20,.14);
+  --mms-ipod-cluster-line:rgba(120,95,50,.3);
   --mms-ipod-art-shadow:0 10px 24px -8px rgba(80,60,30,.5);
   --mms-ipod-cluster-shadow:inset 0 1px 0 rgba(255,255,255,.85), 0 2px 4px rgba(80,60,30,.4);
   --mms-ipod-bar-shadow:inset 0 -1px 0 rgba(120,95,50,.28);
@@ -10960,8 +10960,6 @@ html[data-modern="on"] .video-uploader {
   .mms-full .mms-top{ display:flex; align-items:center; justify-content:space-between; }
   .mms-full .mms-chev{ width:36px; height:36px; border:0; background:transparent; color:inherit; font-size:var(--fs-3xl); cursor:pointer; display:grid; place-items:center; opacity:.9; }
   .mms-full .mms-chev-ghost{ opacity:.5; }
-  .mms-full .mms-skinsw{ display:flex; gap:var(--space-1); justify-content:center; }
-  .mms-full .mms-sw{ border:0; background:transparent; color:inherit; opacity:.5; font-size:var(--fs-2xs); font-weight:var(--fw-bold); text-transform:uppercase; letter-spacing:var(--mms-ls-caps2); padding:var(--space-2) var(--space-6); border-radius:var(--radius-full); cursor:pointer; }
   .mms-full .mms-art img{ width:100%; height:100%; object-fit:cover; display:block; }
   .mms-full .mms-fill{ position:absolute; inset:0 auto 0 0; border-radius:var(--radius-full); }
   .mms-full .mms-times{ display:flex; justify-content:space-between; font-size:var(--fs-2xs); font-variant-numeric:tabular-nums; }
@@ -10980,7 +10978,6 @@ html[data-modern="on"] .video-uploader {
      so it paints above without a z-index (the census governs z-index; no local rung). */
   .mms-apple .mms-z{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column;
     padding:calc(env(safe-area-inset-top,0px) + var(--space-10)) var(--space-12) calc(env(safe-area-inset-bottom,0px) + var(--space-12)); }
-  .mms-apple .mms-sw{ opacity:.6; } .mms-apple .mms-sw.is-on{ opacity:1; background:var(--mms-apple-sw); }
   .mms-apple .mms-dots{ font-size:var(--fs-3xl); opacity:.7; }
   .mms-apple .mms-art{ width:82%; max-width:340px; aspect-ratio:1; margin:var(--space-16) auto var(--space-12); border-radius:var(--mms-r-art); overflow:hidden; box-shadow:var(--mms-art-shadow); }
   .mms-apple .mms-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-6); margin-top:auto; }
@@ -11005,8 +11002,6 @@ html[data-modern="on"] .video-uploader {
   .mms-spotify{ background:linear-gradient(var(--mms-sp-g1) 0%, var(--mms-sp-g2) 48%, var(--mms-sp-g3) 100%); color:var(--mms-sp-fg);
     padding:calc(env(safe-area-inset-top,0px) + var(--space-8)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-8)); }
   .mms-spotify .mms-ctx{ flex:1; text-align:center; font-size:var(--fs-2xs); letter-spacing:var(--mms-ls-caps); text-transform:uppercase; opacity:.7; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mms-spotify .mms-skinsw{ margin-top:var(--space-3); }
-  .mms-spotify .mms-sw{ opacity:.5; } .mms-spotify .mms-sw.is-on{ opacity:1; background:var(--mms-sp-sw); }
   .mms-spotify .mms-art{ width:74%; max-width:300px; aspect-ratio:1; margin:var(--space-10) auto var(--space-8); border-radius:var(--mms-r-art); overflow:hidden; box-shadow:var(--mms-art-shadow); }
   .mms-spotify .mms-meta{ display:flex; align-items:center; justify-content:space-between; gap:var(--space-6); }
   .mms-spotify .mms-htext{ min-width:0; }
@@ -11048,8 +11043,6 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .mms-albar-t{ font-size:var(--fs-md); font-weight:var(--fw-bold); letter-spacing:var(--mms-ls-caps2); }
   .mms-ipod .mms-body{ flex:1; min-height:0; display:flex; flex-direction:column; text-align:center;
     padding:var(--space-6) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-8)); }
-  .mms-ipod .mms-skinsw{ margin-bottom:var(--space-6); }
-  .mms-ipod .mms-sw{ opacity:.55; } .mms-ipod .mms-sw.is-on{ opacity:1; background:var(--mms-ipod-sw); }
   .mms-ipod .mms-art{ width:56%; max-width:230px; aspect-ratio:1; margin:0 auto var(--space-6); border-radius:var(--mms-r-art-ipod); overflow:hidden;
     box-shadow:var(--mms-ipod-art-shadow), 0 0 0 5px var(--mms-white), 0 0 0 6px var(--mms-ipod-frame); }
   .mms-ipod .mms-ttl{ font-size:var(--fs-3xl); font-weight:var(--fw-bold); line-height:var(--mms-lh-ttl); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -12317,6 +12310,41 @@ html[data-modern="on"] .video-uploader {
 }
 .account-menu-signout {
   color: var(--yt-red);
+}
+/* v1.229 (Dean): the mobile-only "Music skin" picker - a per-device appearance
+   control beside Theme. A small segmented set of the three skin names; the active
+   one uses the app accent. Its own classes (not .account-menu-item) so it stays out
+   of the quick-link censuses. Built + gated to mobile in buildAccountMusicSkinRow. */
+.account-menu-skinpicker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-6);
+}
+.account-menu-skinpicker-label {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.account-menu-skinseg {
+  display: flex;
+  gap: var(--space-2);
+}
+.account-menu-skinchip {
+  flex: 1;
+  border: 1px solid var(--border-color);
+  background: none;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: var(--fs-sm);
+  padding: var(--space-3) var(--space-2);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.account-menu-skinchip.is-on {
+  background: var(--yt-red);
+  color: var(--on-accent);
+  border-color: var(--yt-red);
 }
 /* v1.90 / v1.91.1 (Dean): the subtle version footer at the bottom of the account
    menu. LEFT-aligned at the SAME horizontal inset as the rows (--space-6), so it

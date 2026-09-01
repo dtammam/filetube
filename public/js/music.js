@@ -788,8 +788,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // MediaSession, setTrackNav) runs unchanged - the skin never calls audio itself.
     if (nowPlayingPanel) {
       nowPlayingPanel.addEventListener('click', function (e) {
-        var setBtn = e.target.closest('[data-skin-set]');
-        if (setBtn) { if (SKINS) { SKINS.setActiveSkin(setBtn.getAttribute('data-skin-set')); updateNowPlayingPanel(); } return; }
+        // v1.229: skin PICKING moved to the account menu (a reliable, always-present
+        // home - the in-player switcher chips were unreliable on-device). The menu
+        // sets the skin + fires 'ft-music-skin-changed', which we re-render on below.
         if (e.target.closest('[data-skin-play]')) { var pb = hostCtl('pp-btn'); if (pb) pb.click(); return; }
         if (e.target.closest('[data-skin-prev]')) { var pv = hostCtl('track-prev-btn'); if (pv) pv.click(); return; }
         if (e.target.closest('[data-skin-next]')) { var nx = hostCtl('track-next-btn'); if (nx) nx.click(); return; }
@@ -1012,6 +1013,10 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     window.addEventListener('resize', scheduleStickyRemeasure, { signal });
     window.addEventListener('orientationchange', scheduleStickyRemeasure, { signal });
+    // v1.229: the account-menu "Music skin" picker persists the choice (ft-music-skin)
+    // and fires this event; re-render the now-playing so a live skin swap is instant.
+    // updateNowPlayingPanel re-reads the active skin, so it picks up the new choice.
+    window.addEventListener('ft-music-skin-changed', updateNowPlayingPanel, { signal });
     // gate-fix (S2): also cancel any pending debounce timer when the view is torn
     // down (SPA #view-root swap -> controller.abort()), so nothing lingers past
     // destroy(). (The isConnected guard already makes a stray fire harmless; this
