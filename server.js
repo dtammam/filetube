@@ -6668,12 +6668,11 @@ app.get('/api/folders/music-flag', (req, res) => {
   // and computed the SAME way as the projection (autoMusicChannels over the
   // channel's audio) - so the toggle can never disagree with what actually
   // shows in Music (the "blue but 1 song" mismatch is gone).
-  const folderAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio' && it.folderName === folderName);
-  const autoSet = libraryAudio.autoMusicChannels(folderAudio);
-  const auto = autoSet.has(folderName);
+  // v1.242: universal projection - a channel is in Music unless explicitly marked 'off'.
+  // `auto` (the default, ignoring an override) is now always true; `effective` is on-unless-off.
   const override = Object.prototype.hasOwnProperty.call(marks, folderName) ? marks[folderName] : null;
-  const effective = libraryAudio.channelEffectiveOn(folderName, marks, autoSet);
-  return res.json({ folderName, hasAudio: true, override, effective, auto });
+  const effective = libraryAudio.channelEffectiveOnUniversal(folderName, marks);
+  return res.json({ folderName, hasAudio: true, override, effective, auto: true });
 });
 
 // Wave G: the per-folder "show in Music library" mark. `music` is 'on'/'off'
@@ -8543,7 +8542,6 @@ app.get('/api/music/channels', (req, res) => {
   const db = getCachedDatabase();
   const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
   const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
-  const autoSet = libraryAudio.autoMusicChannels(allAudio);
   const displayNames = (db.folderDisplayNames && typeof db.folderDisplayNames === 'object') ? db.folderDisplayNames : {};
   const visibleCount = new Map(); // folderName -> visible audio count
   for (const it of allAudio) {
@@ -8551,13 +8549,15 @@ app.get('/api/music/channels', (req, res) => {
     if (!mediaVisibleTo(req, it)) continue;
     visibleCount.set(it.folderName, (visibleCount.get(it.folderName) || 0) + 1);
   }
+  // v1.242: universal projection - every channel is in Music (auto:true) unless explicitly
+  // 'off'. The manager is now an OPT-OUT list; `effective` is on-unless-off.
   const channels = [...visibleCount.entries()].map(([folderName, audioCount]) => ({
     folderName,
     displayName: (typeof displayNames[folderName] === 'string' && displayNames[folderName]) || folderName,
     audioCount,
     override: Object.prototype.hasOwnProperty.call(marks, folderName) ? marks[folderName] : null,
-    auto: autoSet.has(folderName),
-    effective: libraryAudio.channelEffectiveOn(folderName, marks, autoSet),
+    auto: true,
+    effective: libraryAudio.channelEffectiveOnUniversal(folderName, marks),
   }));
   channels.sort((a, b) => a.displayName.localeCompare(b.displayName));
   res.json({ channels });

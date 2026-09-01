@@ -373,19 +373,19 @@ test('v1.242 opt-OUT: a MIXED channel shows ALL its audio by default; an explici
   await postJson('/api/folders/music-flag', { folderName: 'mixedchan', music: null });
 });
 
-test('GET /api/music/channels lists visible audio channels with honest all-or-nothing state', async () => {
+test('v1.242 GET /api/music/channels: every channel is IN by default (opt-out); auto:true, effective on-unless-off', async () => {
   const data = await (await get('/api/music/channels')).json();
   const byFolder = new Map(data.channels.map((c) => [c.folderName, c]));
-  // Tonzak: all-Music -> auto + effective on, no override.
+  // Tonzak: unset -> in by default.
   assert.deepStrictEqual({ auto: byFolder.get('Tonzak').auto, override: byFolder.get('Tonzak').override, effective: byFolder.get('Tonzak').effective },
-    { auto: true, override: null, effective: true }, 'Tonzak: auto-on');
-  // nestalgiamusic: Gaming, but explicitly marked on -> auto false, effective on.
-  assert.deepStrictEqual({ auto: byFolder.get('nestalgiamusic').auto, override: byFolder.get('nestalgiamusic').override, effective: byFolder.get('nestalgiamusic').effective },
-    { auto: false, override: 'on', effective: true }, 'NESTALGIA: not auto, but marked on');
-  // mixedchan: minority-music -> auto false, effective false; count is honest.
-  assert.deepStrictEqual({ auto: byFolder.get('mixedchan').auto, effective: byFolder.get('mixedchan').effective, audioCount: byFolder.get('mixedchan').audioCount },
-    { auto: false, effective: false, audioCount: 3 }, 'mixedchan: not auto, off, 3 tracks');
-  assert.strictEqual(byFolder.get('zarchivo').effective, false, 'Comedy channel: off');
+    { auto: true, override: null, effective: true }, 'Tonzak: in by default');
+  // NESTALGIA: explicitly marked on -> in.
+  assert.strictEqual(byFolder.get('nestalgiamusic').effective, true, 'NESTALGIA (marked on): in');
+  // mixedchan: unset -> now IN (genre/majority no longer gates); count honest.
+  assert.deepStrictEqual({ effective: byFolder.get('mixedchan').effective, audioCount: byFolder.get('mixedchan').audioCount },
+    { effective: true, audioCount: 3 }, 'mixedchan: in by default now, 3 tracks');
+  // Zarchivo (Comedy, unset): now IN too - all audio projects unless opted out.
+  assert.strictEqual(byFolder.get('zarchivo').effective, true, 'Comedy channel: in by default (opt-out model)');
 });
 
 test('GET /api/music/channels is visibility-scoped: a restricted member never sees the blocked channel', async () => {
@@ -410,16 +410,16 @@ const postJson = (p, body, cookie) => fetch(`${base}${p}`, {
   body: JSON.stringify(body),
 });
 
-test('GET /api/folders/music-flag reflects the override, the channel-majority default, and hasAudio', async () => {
+test('v1.242 GET /api/folders/music-flag: in-unless-off (opt-out), the override, and hasAudio', async () => {
   const nest = await (await get('/api/folders/music-flag?folderName=nestalgiamusic')).json();
   assert.deepStrictEqual({ hasAudio: nest.hasAudio, override: nest.override, effective: nest.effective },
-    { hasAudio: true, override: 'on', effective: true }, 'NESTALGIA: marked on');
+    { hasAudio: true, override: 'on', effective: true }, 'NESTALGIA: marked on -> in');
   const tonzak = await (await get('/api/folders/music-flag?folderName=Tonzak')).json();
   assert.deepStrictEqual({ override: tonzak.override, effective: tonzak.effective },
-    { override: null, effective: true }, 'Tonzak: unset, all-Music channel -> auto -> effective on');
+    { override: null, effective: true }, 'Tonzak: unset -> in by default');
   const zarch = await (await get('/api/folders/music-flag?folderName=zarchivo')).json();
   assert.deepStrictEqual({ override: zarch.override, effective: zarch.effective },
-    { override: null, effective: false }, 'Zarchivo: unset, Comedy channel -> not auto -> effective off');
+    { override: null, effective: true }, 'Zarchivo: unset -> now IN (opt-out model, no genre gate)');
   const none = await (await get('/api/folders/music-flag?folderName=native')).json();
   assert.strictEqual(none.hasAudio, false, 'a folder with no library audio -> hasAudio:false (toggle not shown)');
 });

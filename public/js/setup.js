@@ -2565,25 +2565,8 @@ function wireStaticControls(signal) {
     }, { signal });
   }
 
-  // Wave G: the opt-in master toggle for surfacing library audio in Music.
-  // Mirror-only (per-user, POST /api/me/settings, no localStorage - like the
-  // card-corner editor), seeded from the account. Absent => off.
-  const musicLibraryCheck = document.getElementById('music-library-check');
-  if (musicLibraryCheck) {
-    fetch('/api/auth/me')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((me) => { musicLibraryCheck.checked = !!(me && me.settings && me.settings.musicIncludesLibrary === 'on'); })
-      .catch(() => { /* signed-out/offline: leave unchecked (the default) */ });
-    musicLibraryCheck.addEventListener('change', () => {
-      fetch('/api/me/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ musicIncludesLibrary: musicLibraryCheck.checked ? 'on' : 'off' }),
-      })
-        .then((res) => { if (!res.ok) throw new Error(`save failed: ${res.status}`); })
-        .catch(() => { showToast('Could not save the Music library setting.'); });
-    }, { signal });
-  }
+  // v1.242 (Dean): the opt-in master toggle is RETIRED - downloaded audio is always in the
+  // Music library. The "Channels in Music" manager below is now the only control (opt-OUT).
 
   // v1.211: the "Channels in Music" manager - one discoverable place to pick
   // which downloaded channels appear in Music (library-write users only; the
