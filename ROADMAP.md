@@ -80,6 +80,19 @@
 
 ## Shipped
 
+### v1.232.3 - Lock the page behind the player; calm the black iPod shine (2026-09-01)
+
+Two device fixes:
+- **The page no longer scrolls behind the full-screen player.** Dragging the skin body
+  used to move the page behind it (body overflow:hidden doesn't stop iOS touch-scroll);
+  now `touch-action:none` on the panel locks it, while the iPod song list and Spotify
+  queue still scroll (pan-y). Verified in a real headless browser during the gate.
+- **The black iPod's shine is calmer** - dropped the bright bottom-right glow, kept the
+  soft top-left highlight.
+
+CSS-only; player.js byte-unchanged. Slim gate (adversarial): APPROVE, no findings (the
+reviewer measured the touch behavior in Chromium). Dual-Node 7987/0. **Device pending.**
+
 ### v1.232.2 - Silver Pocket Classic gets its gloss (2026-09-01)
 
 Dean wanted the silver iPod (Pocket Classic) to have a sheen like the black one. A

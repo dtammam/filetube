@@ -2536,5 +2536,11 @@
     "date": "2026-09-01",
     "title": "The silver iPod skin gets its glossy shine",
     "intent": "The silver Pocket Classic Music skin now has the glossy iPod shine the black one already had - a bright highlight across the top and a soft shadow along the bottom edge give it that classic reflective, polished look. Just a visual touch-up on that one skin."
+  },
+  {
+    "version": "1.232.3",
+    "date": "2026-09-01",
+    "title": "The page stays put behind the full-screen Music player",
+    "intent": "Fixed an annoyance in the full-screen phone Music player: dragging on the body of the player (anywhere that isn't the screen or the wheel) used to make the page behind it scroll. Now the player holds the page still, while the song list and the Spotify-style queue still scroll normally. Also toned down the shine on the black iPod skin so it's a little more subtle. Just polish - nothing about playback changes."
   }
 ]
