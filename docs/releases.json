@@ -2524,5 +2524,11 @@
     "date": "2026-09-01",
     "title": "A black iPod skin, scrolling song titles, and a smoother wheel",
     "intent": "Three additions to the phone Music player. There's now a black iPod to choose in Settings alongside the silver one - same classic look, space-black body and wheel. Long song, artist and album names on the iPod now gently scroll so you can read the whole thing, just like a real iPod (and they hold still if you've turned on Reduce Motion). And the little grey flash that showed when you tapped the click wheel is gone, so the wheel feels smooth. Phone-only, same player underneath - background play and lock-screen controls are unchanged."
+  },
+  {
+    "version": "1.232.1",
+    "date": "2026-09-01",
+    "title": "Music-skin polish and playful new names",
+    "intent": "A round of polish for the phone Music skins. The iPod screen now stays a fixed size no matter how long your song list is (it used to stretch when you opened the list). The scrolling song titles now work on the Apple- and Spotify-style skins too, not just the iPod. The Apple skin's little bar for closing the player is easier to tap, and the Spotify skin's play button is now properly centered. And the four skins got fun names instead of the brand names: Cider, Nordic, Pocket Classic, and Pocket Classic (Black). Nothing about playback changes."
   }
 ]

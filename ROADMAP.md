@@ -80,6 +80,22 @@
 
 ## Shipped
 
+### v1.232.1 - Skin polish: rock-solid iPod screen, scroll on all skins, cheeky names (2026-09-01)
+
+A batch of live device fixes + tweaks (Dean, same session):
+- **The iPod screen can no longer resize** - the song list used to push it "out of
+  bounds"; it's now locked to its shape (contain:size + min-height:0 + overflow), and
+  the list scrolls inside.
+- **Scrolling titles on every skin** - long song / artist / album names now scroll on
+  Apple and Spotify too, not just iPod (reduced-motion still keeps them still).
+- **Apple's dismiss handle** is a bigger tap target (the little pill was hard to find).
+- **Spotify's play button is centered** now (it sat slightly left of center).
+- **Cheeky skin names** instead of the real brands: **Cider** (the Apple-style skin),
+  **Nordic** (Spotify-style), **Pocket Classic** and **Pocket Classic (Black)** (iPod).
+
+player.js byte-unchanged. Slim gate (adversarial): APPROVE, two non-blocking comment/
+copy suggestions applied + re-confirmed. Dual-Node 7986/0. **Device pending.**
+
 ### v1.232.0 - Black iPod skin, scrolling titles, no wheel tap-flash (2026-09-01)
 
 Dean's three next-branch asks (built overnight, pre-authorized):
