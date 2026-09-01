@@ -145,7 +145,7 @@
       '<button type="button" class="ip-zone ip-z-menu" data-skin-menu aria-label="Menu / back">MENU</button>' +
       '<button type="button" class="ip-zone ip-z-left" data-skin-prev aria-label="Previous">⏮</button>' +
       '<button type="button" class="ip-zone ip-z-right" data-skin-next aria-label="Next">⏭</button>' +
-      '<button type="button" class="ip-zone ip-z-down mms-wplay" data-skin-play aria-label="Play or pause">▶❚❚</button>' +
+      '<button type="button" class="ip-zone ip-z-down" data-skin-play aria-label="Play or pause">▶❚❚</button>' +
       '<button type="button" class="ip-center" data-skin-select aria-label="Select"></button>' +
       '</div></div>';
   }

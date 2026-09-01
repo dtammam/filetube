@@ -137,6 +137,21 @@ test('v1.231 iPod: Select toggles the song list; MENU steps back (list->now-play
   } });
 });
 
+test('v1.231 iPod: tapping a song row (data-skin-go) leaves list mode', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const p = panel(dom);
+    p.querySelector('[data-skin-select]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.ok(p.classList.contains('mms-listmode'), 'in the list');
+    // the live harness has an empty queue, so inject a row to exercise the hook -
+    // playAt(0) safely no-ops on the empty queue; the list-mode clear is the point.
+    const row = dom.window.document.createElement('button');
+    row.className = 'mms-row'; row.setAttribute('data-skin-go', '0');
+    p.querySelector('.ip-listview').appendChild(row);
+    row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.ok(!p.classList.contains('mms-listmode'), 'tapping a row returns to Now Playing');
+  } });
+});
+
 test('v1.231 Spotify: the shuffle button PROXIES to the real #music-shuffle-btn', async () => {
   await boot({ mobile: true, isMusic: true, skin: 'spotify', run: async (dom, spy) => {
     const btn = panel(dom).querySelector('[data-skin-shuffle]');
