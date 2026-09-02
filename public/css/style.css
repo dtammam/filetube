@@ -11199,9 +11199,9 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .mms-pos, .mms-ipod .mms-rem{ font-size:var(--fs-sm); font-weight:var(--fw-bold); flex:none; }
   .mms-ipod .ip-track{ flex:1; height:12px; border-radius:var(--radius-full); position:relative; overflow:hidden; background:linear-gradient(var(--mms-ipod-groove), var(--mms-white)); box-shadow:inset 0 0 0 1px var(--mms-ipod-hair); }
   .mms-ipod .mms-fill{ background:linear-gradient(var(--mms-ipod-blue-hi), var(--mms-ipod-blue1) 45%, var(--mms-ipod-blue2)); box-shadow:var(--mms-ipod-fill-shadow); }
-  /* v1.235: wheel-VOLUME bar (desktop pop-out). Hidden by default; while adjusting the panel
-     gets .mms-voladj, which swaps the scrubber out for the volume bar (authentic iPod). Reuses
-     the iPod scrubber palette - no new tokens. */
+  /* v1.235's wheel-VOLUME bar, DORMANT since v1.250 (Dean retired wheel-volume - the wheel
+     scrubs everywhere; nothing writes .mms-voladj/.ip-vol-fill any more). Rules kept
+     unchurned this wave; removable with the markup whenever the skins are next edited. */
   .mms-ipod .ip-vol{ display:none; align-items:center; gap:var(--space-4); margin-top:var(--space-4); flex:none; }
   .mms-ipod .ip-vol-ico{ flex:none; display:grid; place-items:center; }
   .mms-ipod .ip-vol-ico svg{ width:16px; height:16px; fill:var(--mms-ipod-scr-sub); }

@@ -88,7 +88,7 @@ async function boot(run, opts) {
   const queued = []; // addToQueue calls
   const requestedMoves = []; // requestMoveItem calls
   const state = { closed: false };
-  let releaseVideo = null;
+  const videoWaiters = [];
   let statusIdx = 0;
 
   function fetchMap(url, init) {
@@ -104,7 +104,9 @@ async function boot(run, opts) {
       const respond = () => (body
         ? { ok: true, json: async () => body }
         : { ok: false, status: 404, json: async () => ({ error: 'Media file not found' }) });
-      if (opts.deferVideo) return new Promise((resolve) => { releaseVideo = () => resolve(respond()); });
+      // deferVideo: QUEUE the resolvers FIFO so a test can hold several opens in flight at
+      // once and release them out of order (the token-guard binding needs exactly that).
+      if (opts.deferVideo) return new Promise((resolve) => { videoWaiters.push(() => resolve(respond())); });
       return Promise.resolve(respond());
     }
     if (u === '/api/config') return Promise.resolve({ ok: true, json: async () => ({ folders: ['Music', 'Podcasts'] }) });
@@ -171,7 +173,7 @@ async function boot(run, opts) {
   delete require.cache[require.resolve('../../public/js/skin-surface.js')];
   require('../../public/js/skin-surface.js');
   const root = () => dom.window.document.getElementById('view-root');
-  const ctx = { calls, toasts, shares, choiceModals, moveModals, confirmModals, hardDeletes, transcripts, queued, requestedMoves, state, likedTotalCalls, nav: () => navHolder.nav, releaseVideo: () => releaseVideo && releaseVideo() };
+  const ctx = { calls, toasts, shares, choiceModals, moveModals, confirmModals, hardDeletes, transcripts, queued, requestedMoves, state, likedTotalCalls, nav: () => navHolder.nav, releaseVideo: () => { const w = videoWaiters.shift(); if (w) w(); } };
   try {
     delete require.cache[musicPath];
     require(musicPath);
@@ -579,6 +581,25 @@ test('RBAC probe failure fails CLOSED: a rejected fetchCurrentUser hides Move/De
     assert.strictEqual(act(dom, 'delete'), null, 'no Delete on a failed capability probe');
     assert.ok(act(dom, 'download') && act(dom, 'like'), 'the ungated core still rendered');
   }, { meReject: true });
+});
+
+test('the TOCTOU TOKEN alone rejects a superseded open: Back + reopen while the FIRST fetch is in flight (adversarial S1)', async () => {
+  // Constructed so every OTHER post-await guard passes for the stale response: after Back +
+  // a fresh Extras tap the menu is connected, open, on the extras page, and the SAME base id
+  // is playing - only the bumped token distinguishes fetch #1 from fetch #2. Binds the token
+  // check distinctly (its removal mutant survived every v1.249 test - a carried vacuity).
+  await boot(async (dom, ctx) => {
+    await openExtras(dom);                                    // fetch #1 in flight
+    click(dom, menu(dom).querySelector('[data-skin-extras-back]')); // token bump, page 1
+    click(dom, menu(dom).querySelector('[data-skin-extras]'));      // fetch #2 in flight, page 'extras'
+    ctx.releaseVideo();                                       // resolve fetch #1 (STALE)
+    for (let i = 0; i < 6; i++) await settle();
+    assert.strictEqual(menu(dom).querySelectorAll('[data-skin-x]').length, 0, 'the superseded response rendered nothing (only the token could reject it)');
+    assert.ok(menu(dom).querySelector('.mms-sm-note'), 'still the loading note');
+    ctx.releaseVideo();                                       // resolve fetch #2 (CURRENT)
+    for (let i = 0; i < 6; i++) await settle();
+    assert.ok(act(dom, 'like'), 'the current open rendered normally');
+  }, { deferVideo: true });
 });
 
 test('stale-fetch guard (TOCTOU): closing the menu while the open fetch is in flight renders NO extras', async () => {

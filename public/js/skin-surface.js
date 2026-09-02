@@ -625,7 +625,11 @@
       wheelSpin = null; // a re-render detaches the wheel; drop any mid-gesture state (music parity)
       panel.innerHTML = SKINS.renderFull(id, getCtx());
       panel.hidden = false;
-      if (win.FileTube && typeof win.FileTube.shimmerArt === 'function') win.FileTube.shimmerArt(panel);
+      // Adversarial gate W1 (v1.250): shimmerArt lives on the MAIN window - a pop-out is a
+      // blank scriptless window, so win.FileTube is undefined there and the art-shimmer would
+      // never clear (a permanent sweep on a slow/404 cover). shimmerArt works cross-document
+      // (panel.querySelectorAll), exactly how the old music.js paintSkin called it.
+      if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(panel);
       if (stickerCfg) injectSticker(); // v1.238: the quick-menu sticker on every skin paint
       if (marqueeOn) {
         // measure + start the marquee AFTER layout (rAF), so scrollWidth is real (music parity).

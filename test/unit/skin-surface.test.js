@@ -244,6 +244,31 @@ test('podcasts.js WIRES the engine (reachable): creates it with a podcast ctx, f
   assert.match(html, /music-skins\.js"><\/script>\s*<script src="\/js\/skin-surface\.js"/, 'skin-surface.js loads after music-skins.js on podcasts.html');
 });
 
+test('adversarial W1 (v1.250): a FOREIGN-window surface still shimmers its art via the MAIN window FileTube', () => {
+  // The pop-out is a blank scriptless window - win.FileTube is undefined there. shimmerArt
+  // works cross-document (panel.querySelectorAll), so paint must call the MAIN window's, the
+  // way music.js's deleted paintSkin always did; the port briefly read win.FileTube and a
+  // slow/404 cover would shimmer forever in an always-on-top window.
+  const pipDom = new JSDOM('<body><div id="panel" class="music-nowplaying-panel"></div></body>', { url: 'http://localhost/pip' });
+  const { dom, engine, restore } = bootEngine(); // establishes global.window/document = the MAIN dom
+  try {
+    const shimmered = [];
+    dom.window.FileTube = { shimmerArt: (p) => { shimmered.push(p); } };
+    assert.strictEqual(pipDom.window.FileTube, undefined, 'the foreign window really has no FileTube (non-vacuous)');
+    const eng2 = dom.window.FileTubeSkinSurface.create({
+      panel: pipDom.window.document.getElementById('panel'),
+      getSkinId: () => 'ipod', getCtx: () => ({ track: {}, upNext: [], fullList: [] }),
+      hostCtl: (id) => dom.window.document.getElementById(id),
+      win: pipDom.window,
+    });
+    eng2.paint();
+    assert.strictEqual(shimmered.length, 1, 'the MAIN window shimmerArt ran for the foreign panel');
+    assert.strictEqual(shimmered[0], pipDom.window.document.getElementById('panel'), 'with the pop-out panel (cross-document reveal)');
+    eng2.destroy();
+    engine.destroy();
+  } finally { restore(); }
+});
+
 test('SHELL PARITY (v1.250 gate CRITICAL): every shell that ships music-skins.js ships skin-surface.js right after it', () => {
   // The SPA soft-nav lazy-loads music.js/podcasts.js into WHATEVER shell the user cold-loaded
   // (common.js VIEW_SCRIPT_SRC), so the engine must be present wherever the skin registry is -
