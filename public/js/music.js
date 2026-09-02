@@ -1276,7 +1276,7 @@ if (typeof module !== 'undefined' && module.exports) {
         if (e.target.closest('[data-skin-play]')) { var pb = hostCtl('pp-btn'); if (pb) pb.click(); return; }
         if (e.target.closest('[data-skin-prev]')) { var pv = hostCtl('track-prev-btn'); if (pv) pv.click(); return; }
         if (e.target.closest('[data-skin-next]')) { var nx = hostCtl('track-next-btn'); if (nx) nx.click(); return; }
-        if (e.target.closest('[data-skin-collapse]')) { var pl = window.FileTube && window.FileTube.player; if (pl && typeof pl.dock === 'function') { pl.dock(); updateNowPlayingPanel(); } return; }
+        if (e.target.closest('[data-skin-collapse]')) { var pl = window.FileTube && window.FileTube.player; if (pl && typeof pl.dock === 'function') { pl.dock(); updateNowPlayingPanel(); if (window.FileTube.returnToPlayerOrigin) window.FileTube.returnToPlayerOrigin(); } return; } // v1.247 (F2): dock to the mini on the ORIGIN tab
         // v1.231 iPod: Shuffle proxies to the music view's own #music-shuffle-btn (the
         // skin only renders inside this view, so the button is always co-present).
         if (e.target.closest('[data-skin-shuffle]')) { var sh = hostCtl('music-shuffle-btn'); if (sh) sh.click(); return; }
@@ -1284,7 +1284,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // Playing -> dock/exit the full-screen player (the way out, no header needed).
         if (e.target.closest('[data-skin-menu]')) {
           if (panel.classList.contains('mms-listmode')) { setIpodListMode(panel, false); }
-          else { var plm = window.FileTube && window.FileTube.player; if (plm && typeof plm.dock === 'function') { plm.dock(); updateNowPlayingPanel(); } }
+          else { var plm = window.FileTube && window.FileTube.player; if (plm && typeof plm.dock === 'function') { plm.dock(); updateNowPlayingPanel(); if (window.FileTube.returnToPlayerOrigin) window.FileTube.returnToPlayerOrigin(); } } // v1.247 (F2): MENU docks to the mini on the ORIGIN tab
           return;
         }
         // iPod Select (center): from Now Playing it OPENS the song list; in the list it

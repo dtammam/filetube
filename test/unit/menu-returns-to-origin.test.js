@@ -1,0 +1,74 @@
+'use strict';
+
+// [UNIT] v1.247 (Dean, F2): the mobile skin's MENU/collapse docks the mini-player back on the
+// tab you LAUNCHED the player from (dock-to-mini, not close). The core decision is a pure reducer
+// (nextPlayerLaunchOrigin) set at the router's navigate() choke: a launch nav (/music|/podcasts +
+// ?play=) records the FROM tab; ANY other nav clears it -> an in-view session / notification
+// cold-start docks in place. The router isn't boot-testable in jsdom here (bootRouter needs a
+// full shell + fetch), so the reducer is bound BEHAVIORALLY and the wiring by source lock -
+// the same posture as router-helpers.test.js.
+const fs = require('node:fs');
+const path = require('node:path');
+const { test } = require('node:test');
+const assert = require('node:assert');
+
+const { isPlayerLaunchUrl, nextPlayerLaunchOrigin } = require('../../public/js/common.js');
+const readSrc = (rel) => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
+
+// ---- behavioral: the pure decision -----------------------------------------
+
+test('isPlayerLaunchUrl: only /music and /podcasts carrying ?play= are skin launches', () => {
+  assert.equal(isPlayerLaunchUrl('/music', '?play=abc'), true);
+  assert.equal(isPlayerLaunchUrl('/podcasts', '?season=1&play=ep9'), true, 'play= anywhere in the query');
+  assert.equal(isPlayerLaunchUrl('/music', ''), false, 'the plain music tab is NOT a launch');
+  assert.equal(isPlayerLaunchUrl('/music', '?folder=jazz'), false, 'browsing music is not a launch');
+  assert.equal(isPlayerLaunchUrl('/', '?play=abc'), false, 'home is never a skin launch');
+  assert.equal(isPlayerLaunchUrl('/watch.html', '?v=x&play=y'), false, 'the video page is never the skin');
+  assert.equal(isPlayerLaunchUrl('/books', '?play=x'), false, 'books keep their reader');
+});
+
+test('nextPlayerLaunchOrigin: a launch records the FROM tab; any other nav clears it to null', () => {
+  // cross-view launch: MENU should return to the FROM tab (currentViewUrl)
+  assert.equal(nextPlayerLaunchOrigin('/music', '?play=t1', '/', 'x'), '/', 'launched from home -> origin home');
+  assert.equal(nextPlayerLaunchOrigin('/music', '?play=t1', '/?search=lofi', 'x'), '/?search=lofi', 'launched from a search -> that tab');
+  assert.equal(nextPlayerLaunchOrigin('/podcasts', '?play=ep', '/', 'x'), '/', 'a podcast launched from home -> home');
+  // no currentViewUrl (early boot) -> the live-location fallback
+  assert.equal(nextPlayerLaunchOrigin('/music', '?play=t1', null, '/?root=NES'), '/?root=NES', 'fallback when the router has no from-url yet');
+  // any NON-launch navigation clears the origin (in-view session / cold-start docks in place)
+  assert.equal(nextPlayerLaunchOrigin('/music', '', '/podcasts', 'x'), null, 'navigating to the plain music tab clears it');
+  assert.equal(nextPlayerLaunchOrigin('/', '', '/music', 'x'), null, 'navigating home clears it');
+  assert.equal(nextPlayerLaunchOrigin('/podcasts', '?season=1', '/', 'x'), null, 'a non-play podcasts nav clears it');
+});
+
+// ---- source locks: the choke, the return, and the three dock call sites -----
+
+test('the router navigate() choke sets the origin via the pure reducer, AFTER the same-URL no-op', () => {
+  const src = readSrc('public/js/common.js');
+  const nav = src.slice(src.indexOf('function navigate('), src.indexOf('function navigate(') + 2600);
+  assert.match(nav, /isSameLocationNav\([\s\S]*?return Promise\.resolve\(\);[\s\S]*?playerLaunchOrigin = nextPlayerLaunchOrigin\(parsed\.pathname, parsed\.search, currentViewUrl,/,
+    'the origin is computed by the reducer, and only after the same-URL early-return (a same-tab re-nav never clears it)');
+});
+
+test('returnToPlayerOrigin navigates to the stored origin (and is a no-op / dock-in-place when null); both are exposed', () => {
+  const src = readSrc('public/js/common.js');
+  assert.match(src, /function returnToPlayerOrigin\(\)\s*\{[\s\S]{0,400}if \(playerLaunchOrigin\) navigate\(playerLaunchOrigin\);/,
+    'returns to the origin tab only when one was captured');
+  assert.match(src, /window\.FileTube\.returnToPlayerOrigin = returnToPlayerOrigin;/, 'exposed for the skin views');
+  assert.match(src, /window\.FileTube\.playerLaunchOrigin = getPlayerLaunchOrigin;/, 'the getter is exposed');
+});
+
+test('the MUSIC skin docks to the origin on BOTH the collapse handle and the iPod MENU', () => {
+  const src = readSrc('public/js/music.js');
+  // collapse handle
+  assert.match(src, /data-skin-collapse[\s\S]{0,220}pl\.dock\(\); updateNowPlayingPanel\(\); if \(window\.FileTube\.returnToPlayerOrigin\) window\.FileTube\.returnToPlayerOrigin\(\);/,
+    'the grab-handle docks then returns to origin');
+  // iPod MENU (from Now Playing, not list mode)
+  assert.match(src, /data-skin-menu[\s\S]{0,320}plm\.dock\(\); updateNowPlayingPanel\(\); if \(window\.FileTube\.returnToPlayerOrigin\) window\.FileTube\.returnToPlayerOrigin\(\);/,
+    'MENU from Now Playing docks then returns to origin');
+});
+
+test('the PODCAST skin docks to the origin on its onDock hook', () => {
+  const src = readSrc('public/js/podcasts.js');
+  assert.match(src, /onDock: function \(\)[\s\S]{0,220}pp\.dock\(\)[\s\S]{0,120}updateNowPlayingPanel\(\); if \(window\.FileTube && window\.FileTube\.returnToPlayerOrigin\) window\.FileTube\.returnToPlayerOrigin\(\);/,
+    'the podcast skin dock returns to origin');
+});

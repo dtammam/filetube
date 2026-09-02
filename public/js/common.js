@@ -9872,6 +9872,25 @@ if (typeof window !== 'undefined') {
   // (navigate()'s pushState) or a relative one (bootRouter's initial
   // replaceState / parseHistoryState's fallback) -- see toPathAndQuery.
   let currentViewUrl = null;
+  // v1.247 (Dean, F2 MENU-returns-to-origin): the URL the mobile skin player was launched FROM,
+  // so the skin's MENU/collapse docks the mini-player back on THAT origin tab (dock-to-mini, not
+  // close). The model is deliberately simple and set ONLY at the navigate() choke below:
+  //   - a CROSS-VIEW launch (a card/search/deep-link on another tab navigating into /music?play=
+  //     or /podcasts?play=) records the FROM url -> MENU returns THERE (home, search, whatever);
+  //   - ANY OTHER navigation resets it to null -> so an IN-VIEW session (you were already on the
+  //     music/podcasts tab, last nav was to that tab, you tapped a track) has no origin and MENU
+  //     just docks IN PLACE on that tab; likewise a notification COLD-START onto /music?play=
+  //     (no navigate() at all -> origin stays null -> dock in place = the content tab).
+  // Because it is set only by navigation, prev/next/autoplay (which never navigate) can't corrupt
+  // a launched session's origin - MENU still returns where you launched from after skipping tracks.
+  let playerLaunchOrigin = null;
+  function getPlayerLaunchOrigin() { return playerLaunchOrigin; }
+  function returnToPlayerOrigin() {
+    // no origin (in-view session / cold-start) -> do nothing, the dock stays on the current tab;
+    // a cross-view origin -> navigate back to it (the mini-player, reparented into the persistent
+    // #player-dock by the dock, survives the #view-root swap and rides along to the origin tab).
+    if (playerLaunchOrigin) navigate(playerLaunchOrigin);
+  }
   // FR-4 (T4) -- single-entry cache of the last home #view-root NODE (not a
   // re-render) retained across an in-app round trip, so returning to the
   // EXACT SAME home URL reattaches it instantly instead of re-fetching and
@@ -10331,6 +10350,13 @@ if (typeof window !== 'undefined') {
       && isSameLocationNav(window.location.pathname + window.location.search, parsed.pathname + parsed.search)) {
       return Promise.resolve();
     }
+    // v1.247 (F2): a navigation INTO the skin player from ANOTHER tab (a card / search result /
+    // deep-link that targets /music?play= or /podcasts?play=) records where we came FROM, so the
+    // skin's MENU/back docks the mini-player on that origin tab. currentViewUrl is still the FROM
+    // here (swapToView sets it after the swap). Any OTHER navigation clears the origin, so a
+    // later in-view play (or the next launch) starts clean and MENU docks in place. (This runs
+    // AFTER the same-URL no-op above, so a genuine same-tab re-nav never spuriously clears it.)
+    playerLaunchOrigin = nextPlayerLaunchOrigin(parsed.pathname, parsed.search, currentViewUrl, window.location.pathname + window.location.search);
     recordScrollForCurrentState();
 
     // W2 remediation: this navigation attempt's own generation -- bumped
@@ -10693,6 +10719,10 @@ if (typeof window !== 'undefined') {
   window.FileTube.navigate = navigate;
   window.FileTube.pushViewState = pushViewState; // v1.217 in-view back-stack
   window.FileTube.replaceViewState = replaceViewState;
+  // v1.247 (F2): the skin's MENU/collapse asks to dock back on the launch-origin tab. The getter
+  // is exposed for tests + any surface that wants to read where the player was launched from.
+  window.FileTube.playerLaunchOrigin = getPlayerLaunchOrigin;
+  window.FileTube.returnToPlayerOrigin = returnToPlayerOrigin;
   window.FileTube.queueEntryHref = queueEntryHref;
   window.FileTube.bootRouter = bootRouter;
   // v1.52 instant watch: click surfaces stash, watch's init consumes.
@@ -14647,6 +14677,20 @@ function shouldShowSearchClear(value) {
   return typeof value === 'string' && value.length > 0;
 }
 
+// v1.247 (Dean, F2 MENU-returns-to-origin). Top-level + exported so the core logic is unit-
+// testable without a full router boot (the router closure's navigate() calls nextPlayerLaunchOrigin).
+// A "player launch" is a navigation INTO the mobile skin - /music or /podcasts carrying ?play=.
+function isPlayerLaunchUrl(pathname, search) {
+  return (pathname === '/music' || pathname === '/podcasts') && /[?&]play=/.test(search || '');
+}
+// The pure origin reducer: a launch nav records the FROM tab (currentViewUrl, or the live location
+// as a fallback) so the skin's MENU can dock back there; ANY other nav clears it to null, so an
+// in-view session or a cold-start docks in place on the current tab. prev/next/autoplay never
+// navigate, so they never change a launched session's origin.
+function nextPlayerLaunchOrigin(pathname, search, currentViewUrl, fallbackUrl) {
+  return isPlayerLaunchUrl(pathname, search) ? (currentViewUrl || fallbackUrl || null) : null;
+}
+
 // v1.161 (Dean): after a search that FINDS something, clear the box so the next
 // search needs no X-press first. On ZERO results, KEEP the text (the X still
 // resets it - "the X is useful when it didn't find what you wanted"). The results
@@ -15122,6 +15166,8 @@ if (typeof module !== 'undefined' && module.exports) {
     CHROME_ICON_SVG, chromeIconMarkup, chromeIconEl,
     // v1.102 (tranche 4 shimmer): the art-decode reveal helper (jsdom-tested).
     shimmerArt,
+    // v1.247 (F2): the pure MENU-returns-to-origin decision (launch nav -> FROM tab, else null).
+    isPlayerLaunchUrl, nextPlayerLaunchOrigin,
     // v1.63 playback queue: the chrome's pure decisions.
     shouldShowQueueButton, formatQueueBadge, buildQueueRowModel, buildQueueRowModels, queueEntryHref,
     formatQueuePosition,
