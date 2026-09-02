@@ -198,15 +198,18 @@
   }
   function skinById(id) { return BY_ID[normalizeSkinId(id)]; }
 
-  // The GATE: the mobile-music skin is active only on a mobile viewport AND a music
-  // item. `meta` is player.getCurrentMeta() (or a {isMusic} stand-in); `mql` lets a
-  // test inject the matchMedia result. Desktop + video/podcast/book stay default.
+  // The GATE: the mobile-music skin is active on a mobile viewport AND an audio item
+  // the skin can drive - a MUSIC item (meta.isMusic) or, since v1.246, a PODCAST episode
+  // (meta.resumeMode==='podcast'; player.js exposes resumeMode via getCurrentMeta, so no
+  // player.js change is needed here). `meta` is player.getCurrentMeta() (or an {isMusic}/
+  // {resumeMode} stand-in); `mql` lets a test inject the matchMedia result. Desktop +
+  // video/book stay default.
   function isMobileViewport(mql) {
     if (typeof mql === 'boolean') return mql;
     try { return !!(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 768px)').matches); } catch (_) { return false; }
   }
   function skinActiveFor(meta, mql) {
-    return !!(meta && meta.isMusic) && isMobileViewport(mql);
+    return !!(meta && (meta.isMusic || meta.resumeMode === 'podcast')) && isMobileViewport(mql);
   }
 
   var api = {

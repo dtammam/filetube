@@ -824,24 +824,22 @@ function homeRowEnabled(key) {
   }
 }
 
-// v1.236 (Dean): "Open downloaded music in the music player" - a device-local toggle
-// (default ON, same idiom as the home-row toggles). When on, an AUDIO-only tile taps into
-// the native music player (/music?play=) instead of the video /watch page - EVERYWHERE
-// (grid / channel / search / continue-watching). Music VIDEOS and regular videos are
-// untouched (type !== 'audio'). `musicHrefForItem` returns that href or null (caller keeps
-// its /watch href). Chaptered audio routes to the album's FIRST chapter track (`::c0`) so the
-// item opens IN ITS ALBUM and the iPod MENU/list browses the chapters (base id isn't a track
-// for a chaptered file). Bound to the Music library, client-only: an id the music API can't
-// resolve (a non-projected download) bounces to /watch (music.js's playTrackFromContinue miss
-// path) - no dead end, no server change.
-const OPEN_AUDIO_IN_MUSIC_KEY = 'ft-open-audio-in-music';
+// v1.246 (Dean): audio-only items ALWAYS open in the mobile music player/skin, never the
+// video /watch page - EVERYWHERE (grid / channel / search / continue-watching; the server
+// mirrors this for notifications). The v1.236 opt-out toggle is RETIRED: Dean's directive is
+// "all non-video audio + podcasts open in the skin" (v1.242 already projected every audio-only
+// item into Music - this makes the DESTINATION match, unconditionally). Music VIDEOS and
+// regular videos are untouched (type !== 'audio'); a non-media kind (podcast / track / book /
+// tv) keeps its own destination. `musicHrefForItem` returns the /music href or null (caller
+// keeps its /watch href). Chaptered audio routes to the album's FIRST chapter track (`::c0`) so
+// it opens IN ITS ALBUM and the iPod MENU/list browses the chapters. Client-only: an id the
+// music API can't resolve (a non-projected download) bounces to /watch (music.js's miss path).
 function musicHrefForItem(item) {
   if (!item || item.type !== 'audio') return null;
-  // gate C1 (QA): reroute ONLY media-kind downloads (kind absent or 'media'). type:'audio' is
-  // NOT unique to downloads - podcast episodes (kind 'podcast'), and tracks/books/tv carry it
-  // on some feeds too; never hijack their own destinations (a podcast must open /podcasts).
+  // reroute ONLY media-kind items (kind absent or 'media'). type:'audio' is NOT unique to
+  // downloads - a podcast episode (kind 'podcast'), track/book/tv carry it on some feeds too;
+  // never hijack their own destinations (a podcast must open /podcasts).
   if (item.kind && item.kind !== 'media') return null;
-  if (!homeRowEnabled(OPEN_AUDIO_IN_MUSIC_KEY)) return null;
   const id = item.id != null ? String(item.id) : '';
   if (!id) return null;
   // chaptered (>= 2) -> the album via its FIRST chapter track (::c0). `chapters` (array) rides

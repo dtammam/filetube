@@ -2632,5 +2632,11 @@
     "date": "2026-09-02",
     "title": "Search with the keyboard's Return key",
     "intent": "On an iPhone you can now just press Return on the keyboard to run a search - no more reaching over to tap the Search button. The keyboard's return key even says \"Search\" now."
+  },
+  {
+    "version": "1.246.0",
+    "date": "2026-09-02",
+    "title": "Podcasts get the iPod player, and audio opens there from everywhere",
+    "intent": "Podcasts now play in the same slick mobile player that music uses - the click-wheel scrolls the episode list and scrubs the timeline, with the show's art full-screen. And any audio, whether you tap it in search or from a notification, now opens straight in that player instead of the plain video page."
   }
 ]

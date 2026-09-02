@@ -279,7 +279,11 @@ function resolvePushMeta(db, row) {
   }
   const item = db.metadata && db.metadata[mediaId];
   if (!item) return null;
-  return { title: item.title || item.name, channel: item.folderName, kind: 'media' };
+  // v1.246 (Dean): carry the media TYPE (+ chaptered) so payloadForRow deep-links an AUDIO
+  // download's notification into the music skin (pushMusicUrl -> /music?play=), a video into
+  // the watch page - the server mirror of musicHrefForItem's client routing.
+  const chaptered = (Array.isArray(item.chapters) && item.chapters.length >= 2) || (Number(item.chapterCount) >= 2);
+  return { title: item.title || item.name, channel: item.folderName, kind: 'media', type: item.type, chaptered };
 }
 
 const pushDelivery = pushDeliverLib.createPushDelivery({
