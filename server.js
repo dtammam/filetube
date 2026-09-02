@@ -4555,6 +4555,17 @@ async function runScanDirectories() {
           existing.tags && typeof existing.tags.comment === 'string' ? existing.tags.comment : null);
         dbChanged = true;
       }
+      // v1.251 (Dean's pinned-channel bug): SCHEMA-ONLY `type` backfill for an item that
+      // predates the field. The scan has always known the answer - the extension is already
+      // in hand (isAudio above; no I/O, the thumbnail-backfill lesson). Without it a
+      // pre-type-era item renders as a VIDEO card on every list surface (musicHrefForItem
+      // gates on type==='audio') and never projects into Music - the exact "audio from the
+      // pinned channel opens the video player" symptom. An item that already carries `type`
+      // is left completely untouched.
+      if (!Object.prototype.hasOwnProperty.call(existing, 'type')) {
+        existing.type = isAudio ? 'audio' : 'video';
+        dbChanged = true;
+      }
       if (applyHasSubtitlesDetection(existing, filePath, perScanReaddirCache)) dbChanged = true;
       newMetadata[id] = existing;
     } else if (legacyVideoCodecBackfillOnly) {
@@ -4603,6 +4614,12 @@ async function runScanDirectories() {
         existing.youtubeId = deriveScanYoutubeId(filePath, info, ytdlpDownloadRoots,
           existing.tags && typeof existing.tags.comment === 'string' ? existing.tags.comment : null);
         dbChanged = true;
+      }
+      // v1.251: same schema-only `type` backfill as the plain reuse fast-path above
+      // (this arm is video-only by construction, but the shared expression keeps the
+      // two sites byte-symmetric).
+      if (!Object.prototype.hasOwnProperty.call(existing, 'type')) {
+        existing.type = isAudio ? 'audio' : 'video';
       }
       applyHasSubtitlesDetection(existing, filePath, perScanReaddirCache);
 
@@ -10473,6 +10490,10 @@ app.get('/api/notifications', (req, res) => {
       channelAvatarUrl,
       hasThumbnail: item.hasThumbnail === true,
       type: item.type === 'audio' ? 'audio' : 'video',
+      // v1.251: chapterCount for audio (the v1.236 fold, /api/videos parity) so the bell
+      // row's audio reroute opens a chaptered download AS ITS ALBUM (::c0), like every
+      // other surface. Audio-only - video rows never reroute.
+      ...(item.type === 'audio' ? { chapterCount: (resolveItemChapters(item).chapters || []).length } : {}),
       // v1.208 (Dean): the watch length, so the panel can show a small duration
       // badge (triage before deleting). Seconds; 0 when unknown -> no badge.
       durationSec: Number(item.duration) > 0 ? Number(item.duration) : 0,

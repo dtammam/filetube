@@ -835,22 +835,14 @@ function homeRowEnabled(key) {
 // it opens IN ITS ALBUM and the iPod MENU/list browses the chapters. Client-only: an id the
 // music API can't resolve (a non-projected download) bounces to /watch (music.js's miss path).
 function musicHrefForItem(item) {
-  if (!item || item.type !== 'audio') return null;
-  // reroute ONLY media-kind items (kind absent or 'media'). type:'audio' is NOT unique to
-  // downloads - a podcast episode (kind 'podcast'), track/book/tv carry it on some feeds too;
-  // never hijack their own destinations (a podcast must open /podcasts).
-  if (item.kind && item.kind !== 'media') return null;
-  const id = item.id != null ? String(item.id) : '';
-  if (!id) return null;
-  // chaptered (>= 2) -> the album via its FIRST chapter track (::c0). `chapters` (array) rides
-  // the /api/videos surfaces; the home-feed + modern-grid carry `chapterCount` instead (the
-  // v1.236 server-fold), so accept either signal.
-  const chaptered = (Array.isArray(item.chapters) && item.chapters.length >= 2) || (Number(item.chapterCount) >= 2);
-  const playId = chaptered ? (id + '::c0') : id;
-  // &ao=1 marks a reroute-ORIGIN navigation: the music view bounces a MISS to /watch (a
-  // video-side download plays there) ONLY for this origin, leaving the legacy continue-
-  // listening card's miss behaviour (a native-track id that must NOT bounce to /watch) unchanged.
-  return '/music?play=' + encodeURIComponent(playId) + '&ao=1';
+  // v1.251: THE rule moved VERBATIM to common.js's audioOpenHref - ONE authority for every
+  // tap surface (this file's grid/rows/feed, the bell rows, the queue chrome, history, the
+  // watch page's related rail). This delegate keeps main.js's three callers and its CJS test
+  // export stable; in the browser the bare identifier resolves to common.js's declaration
+  // (loaded first on every shell), in node:test the harness supplies the global.
+  const rule = (typeof audioOpenHref === 'function' && audioOpenHref)
+    || (typeof window !== 'undefined' && window.audioOpenHref) || null;
+  return rule ? rule(item) : null;
 }
 
 // v1.73 gate C1 (BOTH seats): ruling 1's either-was-on clause is an

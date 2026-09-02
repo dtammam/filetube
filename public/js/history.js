@@ -82,7 +82,10 @@ function buildHistoryRowHtml(item, nowMs) {
   // the raw folderName (mirrors resolveChannelName's fallback order).
   if (!chName && typeof folderDisplayName === 'function') { var mapped = folderDisplayName(item.folderName); if (mapped) chName = mapped; }
   var channel = escapeHistoryHtml(chName || item.folderName || '');
-  var watchHref = '/watch.html?v=' + encodeURIComponent(item.id || '');
+  // v1.251 (Dean's consistency rule): an AUDIO history row re-opens in Music like every
+  // other tap surface - the ONE rule (common.js audioOpenHref) decides; video keeps /watch.
+  var watchHref = (typeof audioOpenHref === 'function' && audioOpenHref(item))
+    || '/watch.html?v=' + encodeURIComponent(item.id || '');
   var durationStr = item.duration > 0 ? formatHistoryDuration(item.duration) : (item.type === 'audio' ? 'Audio' : '');
   var when = formatHistoryWhen(item.lastWatchedAt, nowMs);
   var barPct = historyBarPercent(item);

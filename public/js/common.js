@@ -3558,11 +3558,16 @@ function buildNotificationRowModel(row) {
   // (The bell row TAP's watch-seed stash is guarded media-positive at the
   // click site - adversarial W5, the fourth strike of the seed class.)
   const isPodcast = row.kind === 'podcast';
+  // v1.251 (Dean's consistency rule): an AUDIO media bell row opens Music - the
+  // /api/notifications row carries `type` (+ chapterCount for albums), so the ONE
+  // rule (audioOpenHref) decides; a video row keeps /watch, a podcast its place.
+  const mediaHref = (!isPodcast && audioOpenHref({ id: row.mediaId, type: row.type, chapterCount: row.chapterCount }))
+    || `/watch.html?v=${row.mediaId}`;
   return {
     id: row.id,
     mediaId: row.mediaId,
     kind: isPodcast ? 'podcast' : 'media',
-    href: isPodcast ? `/podcasts?play=${encodeURIComponent(row.mediaId)}` : `/watch.html?v=${row.mediaId}`,
+    href: isPodcast ? `/podcasts?play=${encodeURIComponent(row.mediaId)}` : mediaHref,
     title: typeof row.title === 'string' ? row.title : '',
     channelLabel: channelName || folderName || 'Library',
     channelAvatarUrl: typeof row.channelAvatarUrl === 'string' ? row.channelAvatarUrl : '',
@@ -4112,7 +4117,29 @@ function queueEntryHref(entry) {
   // ?play= deep link resumes the specific track, the podcasts pattern.
   if (entry.kind === 'podcast') return `/podcasts?play=${encodeURIComponent(entry.mediaId)}`;
   if (entry.kind === 'track') return `/music?play=${encodeURIComponent(entry.mediaId)}`;
+  // v1.251 (Dean's consistency rule): an AUDIO media entry opens Music like every other tap
+  // surface - the shaped queue's media entries carry the raw item, so the ONE rule decides.
+  const audioHref = entry.item ? audioOpenHref({ id: entry.mediaId, kind: entry.kind, type: entry.item.type, chapters: entry.item.chapters, chapterCount: entry.item.chapterCount }) : null;
+  if (audioHref) return audioHref;
   return `/watch.html?v=${encodeURIComponent(entry.mediaId)}`;
+}
+
+// v1.251 (Dean): THE audio-destination rule, ONE authority for every tap surface (grid/rows/
+// feed via main.js's delegate, the bell rows, the queue chrome, history, the watch page's
+// related rail). Moved VERBATIM from main.js's v1.246 musicHrefForItem: an AUDIO media item
+// (type 'audio', kind absent-or-'media') opens Music - chaptered (>= 2, via the `chapters`
+// array OR the folded `chapterCount`) at its album's first `::c0` track - else null and the
+// caller keeps its own destination (video -> /watch; podcast/track/book/tv their own places).
+// `&ao=1` marks the reroute origin so music.js's miss path can bounce a non-projected id back
+// to /watch. Exported for node:test; a browser global for every classic-script surface.
+function audioOpenHref(item) {
+  if (!item || item.type !== 'audio') return null;
+  if (item.kind && item.kind !== 'media') return null;
+  const id = item.id != null ? String(item.id) : '';
+  if (!id) return null;
+  const chaptered = (Array.isArray(item.chapters) && item.chapters.length >= 2) || (Number(item.chapterCount) >= 2);
+  const playId = chaptered ? (id + '::c0') : id;
+  return '/music?play=' + encodeURIComponent(playId) + '&ao=1';
 }
 
 function buildQueueRowModel(entry, pointerUid) {
@@ -15198,7 +15225,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.247 (F2): the pure MENU-returns-to-origin decision (launch nav -> FROM tab, else null).
     isPlayerLaunchUrl, nextPlayerLaunchOrigin,
     // v1.63 playback queue: the chrome's pure decisions.
-    shouldShowQueueButton, formatQueueBadge, buildQueueRowModel, buildQueueRowModels, queueEntryHref,
+    shouldShowQueueButton, formatQueueBadge, buildQueueRowModel, buildQueueRowModels, queueEntryHref, audioOpenHref,
     formatQueuePosition,
     // v1.63.1: the stars pref's pure decision.
     shouldShowStarRatings,
