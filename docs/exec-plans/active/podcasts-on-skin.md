@@ -5,16 +5,29 @@ Dean's two nav asks folded in. Intake LOCKED (2026-09-02). player.js is BYTE-UNC
 across the whole wave (machine-derived prediction: `git diff main -- public/js/player.js`
 = 0 lines, re-verified at every commit).
 
-## The three Dean asks
+## The Dean asks (scope LOCKED 2026-09-02, ONE big wave, ONE release)
 
 1. **F1 - Podcasts on the SKIN.** Podcast episodes play through the same iPod/Apple/
    Spotify skin + wheel the music player uses. Podcasts KEEP their own section + data
-   (show notes, per-episode resume, seasons). NO merge into the Music library.
-2. **F2 - MENU returns to ORIGIN.** Track where the player was launched from
-   (Home / Music / Podcasts). The skin MENU/back DOCKS to the mini-player on that
-   ORIGIN tab (dock-to-mini, NOT close). Applies to BOTH music and podcast.
-3. **F3 - Notification deep-link.** A tapped web-PUSH notification AND the lock-screen
-   MediaSession tile open the skin player for the item.
+   (show notes, per-episode resume, seasons). NO merge into the Music library. Podcast
+   art in the skin is the SHOW's art (no per-episode image; Dean OK'd).
+2. **F2 - MENU returns to ORIGIN = where you launched from.** Track the launch origin
+   (the tab you were on). Skin MENU/back DOCKS to the mini-player on that ORIGIN tab
+   (dock-to-mini, NOT close), for BOTH music and podcast. Fallbacks: launched from
+   SEARCH -> the tab under the search; a NOTIFICATION cold-start -> the content's home
+   tab (audio->Music, podcast->Podcasts).
+3. **F3 - Open the skin from ANYWHERE, for ALL non-video audio + podcasts.** A tapped
+   web-PUSH notification, the lock-screen MediaSession tile, a SEARCH result, and the
+   home feed all open the mobile skin for any non-video audio item (music OR any
+   audio-only file) and any podcast episode. Books keep their own reader.
+4. **F4 - iOS search Enter key.** Pressing return/Search on the iOS keyboard in the
+   header search triggers the search (same as tapping the Search button). Tiny.
+5. **F5 - Search-launched audio/podcast opens the SKIN.** Playing an audio-only or
+   podcast search result currently opens the plain /watch player; it must open the
+   mobile skin instead (a subset of F3, called out because Dean hit it directly).
+
+Locked scope answers: MENU=where-you-launched-from; skin scope=ALL non-video audio +
+podcasts (books excluded); ONE wave / ONE release; podcast art=show art.
 
 ## Architecture (from the 2026-09-02 recon; anchors verified)
 
