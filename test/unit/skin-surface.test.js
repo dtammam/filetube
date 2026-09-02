@@ -230,6 +230,15 @@ test('podcasts.js WIRES the engine (reachable): creates it with a podcast ctx, f
   assert.match(src, /skinEngine.*document\.body\.classList\.remove\('mms-on'\)/, 'the teardown branch clears the full-screen body class (v1.227 leak guard)');
   // destroy tears the skin down (module-scoped handle) so a view swap never strands mms-on
   assert.match(src, /activeSkinEngine\.destroy\(\)/, 'destroy() tears the skin engine down');
+  // v1.250 (F-UNIFY ride-along): the deferred v1.246 polish is ON for podcasts - the sticker
+  // quick-menu (speed/loop/skin) and hold-to-fast-scan - but NEVER the Extras page (podcasts
+  // keep their own episode actions, the locked v1.249 intake). The engine behaviors are bound
+  // above/in U1-U2; this locks the podcast WIRING that makes them reachable.
+  assert.match(src, /fastScan: true/, 'podcasts enable hold-to-fast-scan');
+  assert.match(src, /sticker: \{[\s\S]{0,400}onSkinChange: function \(\) \{ updateNowPlayingPanel\(\); \}/, 'podcasts enable the sticker quick-menu with the repaint hook');
+  const stickerBlock = /sticker: \{([\s\S]*?)\n {8}\},/.exec(src);
+  assert.ok(stickerBlock, 'the podcast sticker config block parses');
+  assert.ok(!/extras/.test(stickerBlock[1]), 'NO extras hooks - podcasts keep their own actions');
   // and skin-surface.js is loaded on the podcasts shell (before podcasts.js, after music-skins.js)
   const html = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'podcasts.html'), 'utf8');
   assert.match(html, /music-skins\.js"><\/script>\s*<script src="\/js\/skin-surface\.js"/, 'skin-surface.js loads after music-skins.js on podcasts.html');

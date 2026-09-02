@@ -164,6 +164,15 @@
         hostCtl: function (id) { return document.getElementById(id); },
         onSelectIndex: function (i) { playAt(i); },
         onDock: function () { var pp = window.FileTube && window.FileTube.player; if (pp && typeof pp.dock === 'function') pp.dock(); updateNowPlayingPanel(); if (window.FileTube && window.FileTube.returnToPlayerOrigin) window.FileTube.returnToPlayerOrigin(); }, // v1.247 (F2): dock to the mini on the ORIGIN tab
+        // v1.250 (F-UNIFY ride-along): the two DEFERRED v1.246 polish items arrive with the
+        // shared engine - hold-to-fast-scan on the wheel's rewind/ffwd zones, and the sticker
+        // quick-menu (speed/loop/skin). NO extras key: podcasts keep their own episode
+        // actions (the locked v1.249 intake), so the engine renders no Extras entry here.
+        fastScan: true,
+        sticker: {
+          getPlayer: function () { return (window.FileTube && window.FileTube.player) || null; },
+          onSkinChange: function () { updateNowPlayingPanel(); }, // repaint with the newly-picked skin
+        },
       });
       activeSkinEngine = skinEngine; // module-scoped handle for destroy()'s teardown
       // reflect the live element into the skin (music.js ensureSkinReflect parity); the engine's
