@@ -808,7 +808,14 @@
       try { doc.body.classList.remove('mms-on'); } catch (_) { /* ignore */ }
     }
 
-    return { paint: paint, reflect: reflect, setListMode: setListMode, destroy: destroy, isListMode: function () { return panel.classList.contains('mms-listmode'); } };
+    return {
+      paint: paint, reflect: reflect, setListMode: setListMode, destroy: destroy,
+      isListMode: function () { return panel.classList.contains('mms-listmode'); },
+      // v1.250 (F-UNIFY): is a wheel SCRUB gesture live on this surface right now? The view's
+      // chapter-loop enforcement reads this so a deliberate scrub past a chapter boundary is
+      // not yanked back mid-drag (music.js's v1.240 carried interaction).
+      isScrubbing: function () { return !!(wheelSpin && wheelSpin.mode === 'scrub'); },
+    };
   }
 
   var api = { create: create };

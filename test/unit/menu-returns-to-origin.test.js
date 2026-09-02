@@ -61,13 +61,16 @@ test('returnToPlayerOrigin navigates to the stored origin (and is a no-op / dock
 });
 
 test('the MUSIC skin docks to the origin on BOTH the collapse handle and the iPod MENU', () => {
+  // v1.250 (F-UNIFY): both zones route through the ONE dockToOrigin hook - music.js supplies
+  // it as the shared engine's onDock, and the engine dispatches [data-skin-collapse] AND the
+  // non-list [data-skin-menu] to onDock. Lock BOTH halves of that chain.
   const src = readSrc('public/js/music.js');
-  // collapse handle
-  assert.match(src, /data-skin-collapse[\s\S]{0,220}pl\.dock\(\); updateNowPlayingPanel\(\); if \(window\.FileTube\.returnToPlayerOrigin\) window\.FileTube\.returnToPlayerOrigin\(\);/,
-    'the grab-handle docks then returns to origin');
-  // iPod MENU (from Now Playing, not list mode)
-  assert.match(src, /data-skin-menu[\s\S]{0,320}plm\.dock\(\); updateNowPlayingPanel\(\); if \(window\.FileTube\.returnToPlayerOrigin\) window\.FileTube\.returnToPlayerOrigin\(\);/,
-    'MENU from Now Playing docks then returns to origin');
+  assert.match(src, /function dockToOrigin\(\) \{[\s\S]{0,420}pl\.dock\(\);[\s\S]{0,120}updateNowPlayingPanel\(\);[\s\S]{0,160}if \(window\.FileTube\.returnToPlayerOrigin\) window\.FileTube\.returnToPlayerOrigin\(\);/,
+    'dockToOrigin docks, re-renders, then returns to the origin tab');
+  assert.match(src, /onDock: dockToOrigin/, 'music supplies dockToOrigin as the engine onDock hook');
+  const engine = readSrc('public/js/skin-surface.js');
+  assert.match(engine, /data-skin-collapse[\s\S]{0,80}onDock\(\); return;/, 'the engine routes the grab-handle to onDock');
+  assert.match(engine, /data-skin-menu[\s\S]{0,220}else \{ onDock\(\); \}/, 'the engine routes MENU (from Now Playing, not list mode) to onDock');
 });
 
 test('the PODCAST skin docks to the origin on its onDock hook', () => {

@@ -159,16 +159,17 @@ test('v1.232.5/v1.233: opening the iPod list seeds the cursor on the CURRENT son
   // which holds the rAF-deferred, container-offsetTop-normalized scrollTop write (never
   // scrollIntoView -> that would scroll the page behind the fixed skin).
   const fs = require('node:fs'); const path = require('node:path');
-  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
-  const lm = /function setIpodListMode\(panel, on\) \{([\s\S]*?)\n {4}\}/.exec(js);
-  assert.ok(lm, 'setIpodListMode exists');
+  // v1.250 (F-UNIFY): list-mode/cursor moved to the shared engine (same discipline, new home).
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
+  const lm = /function setListMode\(on\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.ok(lm, 'setListMode exists');
   const lmBody = lm[1];
   assert.match(lmBody, /\.ip-listview/, 'reads the list container');
   assert.match(lmBody, /is-current/, 'seeds the cursor from the CURRENT row');
-  assert.match(lmBody, /setWheelCursor\(panel,\s*[^,]+,\s*true\)/, 'centers the seeded cursor on open (setWheelCursor(panel, ..., true))');
+  assert.match(lmBody, /setWheelCursor\([^,]+,\s*true\)/, 'centers the seeded cursor on open (setWheelCursor(..., true))');
   assert.match(lmBody, /is-cursor[\s\S]*remove|remove[\s\S]*is-cursor/, 'clears the cursor highlight on close');
 
-  const wc = /function setWheelCursor\(panel, pos, center\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  const wc = /function setWheelCursor\(pos, center\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(wc, 'setWheelCursor exists');
   const wcBody = wc[1];
   assert.match(wcBody, /\.ip-listview/, 'scrolls the list container');
@@ -252,11 +253,12 @@ test('pct clamps position into 0..100 and guards a zero/absent duration', () => 
 // direction, leaked capture). These lock the safe SHAPE in source (jsdom can't measure
 // pointer-capture / passivity); the behavioral cursor moves are in music-skin-integration.
 function wheelHandlerSrc() {
+  // v1.250 (F-UNIFY): the gesture lives in the SHARED engine now (skin-surface.js - the one
+  // implementation music AND podcasts run); these locks follow the code.
   const fs = require('node:fs'); const path = require('node:path');
-  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
-  // from the pointerdown registration through the end of the gesture block.
-  const m = /addEventListener\('pointerdown', function \(e\) \{([\s\S]*?)\n {6}\}, \{ signal: sig \}\);/.exec(js);
-  assert.ok(m, 'the wheel pointerdown handler exists');
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
+  const m = /function onDown\(e\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.ok(m, 'the wheel pointerdown handler (onDown) exists');
   return { js, body: m[1] };
 }
 
@@ -280,7 +282,7 @@ test('v1.233: pointer capture is taken LAZILY (only once confirmed a spin) so a 
 
 test('v1.233: every gesture end arm REMOVES the move/up/cancel listeners + releases capture (v1.163 teardown)', () => {
   const { js } = wheelHandlerSrc();
-  const m = /function endWheel\(st, suppress\) \{([\s\S]*?)\n {6}\}/.exec(js);
+  const m = /function endWheel\(st, suppress\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(m, 'endWheel exists');
   const end = m[1];
   assert.match(end, /removeEventListener\('pointermove'/, 'removes pointermove');
@@ -299,12 +301,12 @@ test('v1.233: every gesture end arm REMOVES the move/up/cancel listeners + relea
 test('v1.233/v1.234: a re-render (track auto-advance) drops any mid-gesture wheelSpin (QA leak guard)', () => {
   // If the panel re-renders while a finger is down but before capture, the detached wheel's
   // pointerup never reaches endWheel; without this reset wheelSpin sticks and every later
-  // spin bails on "one gesture at a time". paintSkin (the shared render for BOTH the in-tab
-  // and the desktop pop-out surface, v1.234) nulls it on every render.
+  // spin bails on "one gesture at a time". The shared engine's paint() (v1.250: the ONE
+  // render both surfaces and podcasts run) nulls it on every render.
   const fs = require('node:fs'); const path = require('node:path');
-  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
-  const m = /function paintSkin\(panel, id, ci\) \{([\s\S]*?)\n {4}\}/.exec(js);
-  assert.ok(m, 'paintSkin exists');
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
+  const m = /function paint\(\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.ok(m, 'the engine paint() exists');
   assert.match(m[1], /wheelSpin = null/, 'a render clears any stale mid-gesture state');
 });
 
@@ -324,25 +326,28 @@ test('v1.233: a fast flick ACCELERATES (songs-per-step scales with angular speed
   const { body } = wheelHandlerSrc();
   assert.match(body, /var speed = Math\.abs\(d\) \/ dt/, 'computes angular speed (deg/ms)');
   assert.match(body, /var mult = speed > [\d.]+ \? \d/, 'a speed-scaled multiplier (fast flick jumps several songs)');
-  assert.match(body, /setWheelCursor\(panel, wheelCursorRow \+ sign \* mult/, 'the multiplier drives how many songs the cursor jumps');
+  assert.match(body, /setWheelCursor\(wheelCursorRow \+ sign \* mult/, 'the multiplier drives how many songs the cursor jumps');
 });
 
-test('v1.233: the spin is LIST-ONLY and ignores the dead-center Select button (Dean spec)', () => {
+test('v1.250 (Dean): ONE Now-Playing wheel behavior - SCRUB - on every surface; dead-center Select still passes through', () => {
+  // Dean 2026-09-02 retired v1.235's pop-out wheel-volume ("make the classic wheel scrub
+  // like it does on mobile - consistent UI and useful"): the mode line has exactly two
+  // arms, cursor (list) and scrub (Now Playing) - no volume, nowhere.
   const { body } = wheelHandlerSrc();
-  assert.match(body, /mms-listmode[\s\S]*?return/, 'bails unless the list is open (Now Playing spin does nothing)');
+  assert.match(body, /mode: listMode \? 'cursor' : 'scrub'/, 'list -> cursor, Now Playing -> scrub; no third mode');
   assert.match(body, /r\.width \* 0\.2[\s\S]*?return/, 'a press on the dead center (Select) is ignored so its tap passes through');
 });
 
 test('v1.233: center-select in the list PLAYS the cursor row (not the current), then returns to Now Playing', () => {
   const fs = require('node:fs'); const path = require('node:path');
-  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
-  const m = /data-skin-select\]'\)\) \{([\s\S]*?)\n {8}\}/.exec(js);
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
+  const m = /data-skin-select\]'\)\) \{([\s\S]*?)\n {6}\}/.exec(js);
   assert.ok(m, 'the data-skin-select handler exists');
   const b = m[1];
   assert.match(b, /mms-listmode/, 'branches on list vs Now Playing');
   assert.match(b, /is-cursor[\s\S]*data-skin-go/, 'in the list it reads the CURSOR row (is-cursor) and its queue index');
-  assert.match(b, /setIpodListMode\(panel, false\)[\s\S]*playAt/, 'closes the list then plays that song');
-  assert.match(b, /setIpodListMode\(panel, true\)/, 'from Now Playing it opens the list');
+  assert.match(b, /setListMode\(false\)[\s\S]*onSelectIndex/, 'closes the list then plays that song (via the view onSelectIndex hook)');
+  assert.match(b, /setListMode\(true\)/, 'from Now Playing it opens the list');
 });
 
 test('v1.233: the wheel CURSOR bar is a distinct highlight - is-cursor gets the blue bar, is-current keeps only its ▶ marker', () => {
@@ -360,34 +365,17 @@ test('v1.233: the wheel CURSOR bar is a distinct highlight - is-cursor gets the 
 });
 
 // ---- v1.235: wheel-VOLUME in Now Playing (desktop pop-out) - source locks ---------------
-test('v1.235: the Now-Playing wheel sets VOLUME only where allowVolume (pop-out), never inert on iOS', () => {
+test('v1.250 (Dean): wheel-volume is RETIRED - no volume mode, no adjustVolume, in either file', () => {
+  // Dean 2026-09-02: "make the classic wheel scrub like it does on mobile instead of
+  // volume, consistent UI and useful." The v1.235 pop-out wheel-volume is gone; the shared
+  // engine carries the ONE gesture implementation and it has no volume arm. (The dormant
+  // .ip-vol-fill markup/CSS stay in music-skins.js/style.css - unused, zero-risk.)
   const fs = require('node:fs'); const path = require('node:path');
-  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
-  // v1.239: LIST mode -> cursor; NOW PLAYING -> volume where allowVolume (pop-out), else
-  // SCRUB (mobile iOS - volume is read-only there, so the spin scrubs the timeline instead
-  // of being inert). No early return: every Now-Playing spin now does something.
-  assert.match(js, /mode: listMode \? 'cursor' : \(allowVolume \? 'volume' : 'scrub'\)/, 'Now-Playing spin is volume (pop-out) else scrub (mobile) - never inert');
-  // allowVolume comes from bindSkinSurface opts; only the pop-out passes it.
-  assert.match(js, /var allowVolume = !!\(opts && opts\.allowVolume\)/, 'allowVolume is an opt-in bind option');
-  assert.match(js, /bindSkinSurface\(panel, pipAbort\.signal, \{ allowVolume: true \}\)/, 'the POP-OUT enables volume');
-  assert.match(js, /bindSkinSurface\(nowPlayingPanel, signal\)(?!, \{)/, 'the in-tab skin does NOT (mobile/iOS)');
-});
-
-test('v1.235: the volume branch is continuous + clockwise-louder, clamped, unmutes, and shows the bar', () => {
-  const fs = require('node:fs'); const path = require('node:path');
-  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
-  // in onMove, mode 'volume' -> adjustVolume(panel, d/360) (a full turn = the whole range, + = louder).
-  assert.match(js, /if \(st\.mode === 'volume'\) \{[\s\S]*?adjustVolume\(panel, d \/ 360\);/, 'volume mode nudges by the raw angle delta / 360 (clockwise louder)');
-  const m = /function adjustVolume\(panel, frac\) \{([\s\S]*?)\n {4}\}/.exec(js);
-  assert.ok(m, 'adjustVolume exists');
-  assert.match(m[1], /Math\.max\(0, Math\.min\(1,/, 'clamps to 0..1');
-  assert.match(m[1], /mp\.muted[\s\S]*mp\.muted = false/, 'spinning up unmutes');
-  assert.match(m[1], /showVolume\(panel, v\)/, 'shows the volume bar');
-  const s = /function showVolume\(panel, v\) \{([\s\S]*?)\n {4}\}/.exec(js);
-  assert.ok(s, 'showVolume exists');
-  assert.match(s[1], /\.ip-vol-fill[\s\S]*width/, 'sets the fill width to the level');
-  assert.match(s[1], /classList\.add\('mms-voladj'\)/, 'shows the bar (mms-voladj)');
-  assert.match(s[1], /setTimeout[\s\S]*remove\('mms-voladj'\)/, 'fades the bar after the last movement');
+  const engine = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
+  const music = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  assert.ok(!/'volume'/.test(engine), 'no volume gesture mode in the engine');
+  assert.ok(!/function adjustVolume/.test(engine) && !/function adjustVolume/.test(music), 'adjustVolume is gone from both files');
+  assert.ok(!/allowVolume/.test(engine) && !/allowVolume/.test(music), 'no allowVolume flag survives anywhere');
 });
 
 test('v1.235: CSS swaps the scrubber out for the volume bar while adjusting (authentic iPod)', () => {
@@ -403,7 +391,7 @@ test('v1.235.x: the pop-out runs its OWN reflect clock (fixes the true-PiP freez
   const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
   // the clock is started on the POP-OUT window (win.setInterval), reflecting the pop-out panel,
   // NOT the main tab (whose timeupdate throttles when the tab is backgrounded under a PiP window).
-  assert.match(js, /pipClock = win\.setInterval\(function \(\) \{ reflectSkin\(panel\); \}, \d+\)/, 'the pop-out clock is an interval on the pop-out window that reflects the panel');
+  assert.match(js, /pipClock = win\.setInterval\(function \(\) \{ if \(pipEngine\) pipEngine\.reflect\(\); \}, \d+\)/, 'the pop-out clock is an interval on the pop-out window that reflects its engine surface');
   // teardown clears it on the window that created it.
   assert.match(js, /clearInterval\(pipClock\)/, 'teardown clears the pop-out clock');
 });

@@ -166,6 +166,10 @@ async function boot(run, opts) {
   global.fetch = (u, init) => fetchMap(u, init);
   delete require.cache[require.resolve('../../public/js/music-skins.js')];
   require('../../public/js/music-skins.js');
+  // v1.250 (F-UNIFY): the Extras page renders through the shared engine now - load it into
+  // this window exactly as music.html does (after music-skins.js, before music.js).
+  delete require.cache[require.resolve('../../public/js/skin-surface.js')];
+  require('../../public/js/skin-surface.js');
   const root = () => dom.window.document.getElementById('view-root');
   const ctx = { calls, toasts, shares, choiceModals, moveModals, confirmModals, hardDeletes, transcripts, queued, requestedMoves, state, likedTotalCalls, nav: () => navHolder.nav, releaseVideo: () => releaseVideo && releaseVideo() };
   try {

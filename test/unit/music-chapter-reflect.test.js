@@ -186,7 +186,10 @@ test('v1.240 source-lock: enforceChapterLoop is bound BEFORE reflectChapter and 
   assert.match(js, /addEventListener\('timeupdate', enforceChapterLoop[\s\S]*?addEventListener\('timeupdate', reflectChapter/, 'enforceChapterLoop is bound before reflectChapter');
   const m = /function enforceChapterLoop\(\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(m, 'enforceChapterLoop exists');
-  assert.match(m[1], /wheelSpin && wheelSpin\.mode === 'scrub'/, 'skips during a wheel scrub (the v1.239 carried interaction)');
+  // v1.250 (F-UNIFY): the live-scrub state lives in the shared engine; the loop enforcement
+  // asks whichever surface exists via the engine's isScrubbing() accessor.
+  assert.match(m[1], /inTabEngine && inTabEngine\.isScrubbing\(\)/, 'skips during an in-tab wheel scrub (the v1.239 carried interaction)');
+  assert.match(m[1], /pipEngine && pipEngine\.isScrubbing\(\)/, 'and during a pop-out wheel scrub');
   assert.match(m[1], /isLoopEnabled\(\)/, 'gated on the loop flag');
 });
 

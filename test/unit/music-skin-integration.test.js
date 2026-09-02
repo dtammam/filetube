@@ -13,6 +13,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 const musicPath = require.resolve('../../public/js/music.js');
 const skinsPath = require.resolve('../../public/js/music-skins.js');
+const surfacePath = require.resolve('../../public/js/skin-surface.js');
 
 // The music view + a player host carrying the hidden controls the skin proxies to.
 const VIEW_HTML = `<body><div id="view-root" data-view="music">
@@ -79,6 +80,10 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
   delete require.cache[skinsPath]; global.module = undefined;
   require(skinsPath);
   dom.window.FileTubeMusicSkins = require(skinsPath);
+  // v1.250 (F-UNIFY): music.js renders through the shared engine now - load it into this
+  // window exactly as music.html does (after music-skins.js, before music.js).
+  delete require.cache[surfacePath];
+  require(surfacePath);
   // v1.230: the Settings-page picker persists ft-music-skin; the music view reads it
   // on render. Preset it to simulate "picked in Settings, then opened the player".
   if (skin) dom.window.localStorage.setItem('ft-music-skin', skin);
@@ -514,9 +519,10 @@ test('v1.242: a pointercancel mid-scan does NOT commit (no lost seek)', async ()
 });
 
 test('v1.242 source-lock: a rotate cancels the pending hold; endWheel clears the scan timer + interval', () => {
-  const js = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  // v1.250 (F-UNIFY): the fast-scan gesture lives in the shared engine now.
+  const js = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
   assert.match(js, /if \(st\.scanTimer\) \{ try \{ st\.win\.clearTimeout\(st\.scanTimer\)[\s\S]*?\}\s*\n\s*try \{ st\.wheel\.setPointerCapture/, 'the moved (rotate) branch clears the pending hold-timer before capturing');
-  const ew = /function endWheel\(st, suppress\) \{([\s\S]*?)\n {6}\}/.exec(js);
+  const ew = /function endWheel\(st, suppress\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(ew, 'endWheel exists');
   assert.match(ew[1], /clearTimeout\(st\.scanTimer\)/, 'endWheel clears the hold-timer (both end arms)');
   assert.match(ew[1], /clearInterval\(st\.scanInterval\)/, 'endWheel clears the scan interval (both end arms)');
@@ -843,31 +849,32 @@ async function openPip(dom, skin) {
   return pip;
 }
 
-test('v1.235 pop-out: spinning the wheel in Now Playing CLOCKWISE raises the volume + shows the volume bar', async () => {
+test('v1.250 pop-out (Dean): a Now-Playing CLOCKWISE spin SCRUBS the playhead forward - volume untouched (wheel-volume retired)', async () => {
   await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
     const pip = await openPip(dom, 'ipod');
     const panel = pipPanelOf(pip);
     assert.ok(!panel.classList.contains('mms-listmode'), 'pop-out opens in Now Playing');
     const mp = dom.window.document.getElementById('media-player');
+    makeScrubbable(dom, 150, 300);
     mp.volume = 0.5;
     spinPip(pip, [45, 90, 135, 180], 1); // a clockwise sweep
-    assert.ok(mp.volume > 0.5, 'clockwise spin raised the live volume');
-    assert.ok(panel.classList.contains('mms-voladj'), 'the volume bar is shown while adjusting');
-    assert.match(panel.querySelector('.ip-vol-fill').style.width, /^\d+%$/, 'the volume-bar fill reflects the level');
+    assert.ok(mp.currentTime > 150, 'clockwise spin scrubbed the playhead forward ("like it does on mobile")');
+    assert.strictEqual(mp.volume, 0.5, 'volume untouched - the v1.235 wheel-volume is retired');
+    assert.ok(!panel.classList.contains('mms-voladj'), 'the volume bar never engages');
   } });
 });
 
-test('v1.235 pop-out: spinning COUNTER-clockwise lowers the volume; it clamps to 0..1', async () => {
+test('v1.250 pop-out: a COUNTER-clockwise spin scrubs backward and a pointerup COMMITS through the seek pipeline', async () => {
   await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
     const pip = await openPip(dom, 'ipod');
     const mp = dom.window.document.getElementById('media-player');
-    mp.volume = 0.5;
+    makeScrubbable(dom, 150, 300);
+    let committed = 0;
+    dom.window.document.getElementById('seek-bar').addEventListener('change', () => { committed += 1; });
     spinPip(pip, [-45, -90, -135, -180], 1); // counter-clockwise
-    assert.ok(mp.volume < 0.5, 'counter-clockwise lowered the volume');
-    assert.ok(mp.volume >= 0, 'never below 0');
-    // now drive it hard clockwise past the top and confirm the clamp
-    spinPip(pip, [90, 180, 270, 360, 90, 180], 2);
-    assert.ok(mp.volume <= 1, 'never above 1 (clamped)');
+    assert.ok(mp.currentTime < 150, 'counter-clockwise scrubbed backward');
+    assert.ok(mp.currentTime >= 0, 'never below 0');
+    assert.strictEqual(committed, 1, 'the release committed once via #seek-bar (persists like a real seek)');
   } });
 });
 
@@ -928,17 +935,17 @@ test('v1.235.x pop-out: an OWN-window timer drives the clock (unfrozen when the 
 });
 
 // ---- v1.235 gate fix-round binds -------------------------------------------------------
-test('v1.235 fix: the volume-bar fade timer is armed AND cleared on the POP-OUT window (not a foreign realm)', async () => {
+test('v1.250: a pop-out spin arms NO volume fade timer (the v1.235 fade machinery retired with wheel-volume)', async () => {
   await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
     const pip = makePipWindow();
-    let setCalls = 0, clrCalls = 0;
-    pip.setTimeout = (fn, ms) => { setCalls += 1; return 900 + setCalls; };
-    pip.clearTimeout = (id) => { clrCalls += 1; assert.ok(id >= 900, 'clears a POP-OUT timer id, not a foreign one'); };
+    let setCalls = 0;
+    const realSetTimeout = pip.setTimeout;
+    pip.setTimeout = (fn, ms) => { if (ms === 1000) setCalls += 1; return realSetTimeout ? realSetTimeout(fn, ms) : 0; };
     dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
     clickPopout(dom); await settle(); await settle();
-    spinPip(pip, [30, 60], 1); // >=2 moves -> showVolume re-arms, clearing the prior on this window
-    assert.ok(setCalls >= 2, 'fade timer armed on the pop-out window each move');
-    assert.ok(clrCalls >= 1, 'the prior fade timer was CLEARED on the pop-out window (debounce works; wrong-realm clear would be 0)');
+    makeScrubbable(dom, 150, 300);
+    spinPip(pip, [30, 60], 1);
+    assert.strictEqual(setCalls, 0, 'no 1s fade timer armed - the volume bar machinery is gone');
   } });
 });
 

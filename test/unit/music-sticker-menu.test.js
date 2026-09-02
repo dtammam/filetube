@@ -86,6 +86,10 @@ async function boot(run, opts) {
   // mirroring music.html loading it before music.js - music.js reads it at init time.
   delete require.cache[require.resolve('../../public/js/music-skins.js')];
   require('../../public/js/music-skins.js');
+  // v1.250 (F-UNIFY): the sticker menu renders through the shared engine now - load it into
+  // this window exactly as music.html does (after music-skins.js, before music.js).
+  delete require.cache[require.resolve('../../public/js/skin-surface.js')];
+  require('../../public/js/skin-surface.js');
   const root = () => dom.window.document.getElementById('view-root');
   const ctx = { state, reinit: async () => { registered.destroy(); registered.init(root()); for (let i = 0; i < 12; i++) await settle(); } };
   try {
