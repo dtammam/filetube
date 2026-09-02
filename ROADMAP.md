@@ -93,6 +93,32 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.250.0 - One skin engine for music and podcasts (2026-09-02)
+
+F-UNIFY: music.js's duplicated mobile-skin engine (render/reflect/wheel gesture/cursor/list
+mode/marquee/sticker menu/the v1.249 Extras) merged onto the ONE shared engine podcasts run
+(skin-surface.js). music.js shrank 3027 -> 2247 lines and keeps only view state and hooks
+(chapters, the straight-to-player cover, the pop-out shell, the mms-on body class). Two
+Dean-ruled behavior changes rode along: the pop-out's classic wheel now SCRUBS like mobile
+(v1.235's wheel-volume retired outright rather than ported-then-deleted - one consistent
+Now-Playing gesture everywhere), and podcasts gained the deferred v1.246 polish (the
+speed/loop/skin sticker quick-menu + hold-to-fast-scan; never the Extras page - podcasts keep
+their own actions). FULL two-reviewer gate, SERIALIZED seats (the v1.249 lesson), two fix
+rounds; what it caught: a CRITICAL shell-parity hole (the engine script missing from 8 of the
+10 shells the SPA can soft-nav music into - the phone's home->Music path would have silently
+lost the skin; also closed the same pre-existing podcasts hole from v1.246, now guarded by a
+dynamic shell-enumeration test), a real port infidelity (the pop-out lost its art-shimmer
+clearing), the wave's one new seam (engine.isScrubbing) unbound on its skip axis, a TOCTOU
+token guard that had been vacuous SINCE v1.249 (now distinctly bound), a third strike of the
+divergent-fixture class (#music-nowplaying missing from the chapter suite's fixture, deadening
+its panel-repaint path), and a stack of stale comments naming deleted internals. Disclosed
+residuals: destroy()'s engine teardown is unbound defense-in-depth (adversarial-analyzed
+safe); the dormant wheel-volume markup/CSS stay in music-skins.js/style.css until those files
+are next edited. Dual-Node green: 8174/8174 on v22.23.1 AND v24.14.0. DEVICE-PENDING Dean's
+pass (with the v1.245+ arc; v1.249 got his "It's PERFECT"). Next per the plan queue:
+LISTEN-MODE (videos play-as-audio, intake locked), then chapter-rename + pop-out Extras, the
+pinned-channel audio routing bug, cross-device sync (intake needed).
+
 ### v1.249.0 - The watch page's full action set on the music skin (2026-09-02)
 
 F-EXTRAS (the player-extras-and-unify plan's main ask): the mobile music skin's sticker menu

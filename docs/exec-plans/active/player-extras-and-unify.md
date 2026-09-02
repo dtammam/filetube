@@ -1,13 +1,14 @@
 # Player Extras (watch-page action fidelity on the music skin) + engine Unify
 
-Status: ACTIVE - F-EXTRAS SHIPPED as v1.249.0 (2026-09-02, full gate, both seats APPROVE,
-dual-Node 8160/8160, DEVICE-PENDING); F-CRITTERS shipped earlier as v1.248.0. REMAINING in
-this plan: F-UNIFY (the music.js -> skin-surface.js engine merge; the sticker menu it absorbs
-now INCLUDES the v1.249 Extras page). v1.249 notes: queue uses the MEDIA kind (a projected id
+Status: ALL THREE ASKS SHIPPED - F-CRITTERS v1.248.0, F-EXTRAS v1.249.0 (Dean device-passed:
+"It's PERFECT"), F-UNIFY v1.250.0 (2026-09-02, full gate SERIALIZED seats, both APPROVE,
+dual-Node 8174/8174, DEVICE-PENDING). This plan moves to completed/ once v1.250 gets Dean's
+device pass; the QUEUE section below carries the follow-on waves (LISTEN-MODE next, its
+intake locked). v1.249 notes kept for the record: queue uses the MEDIA kind (a projected id
 is not in ns.tracks - kind 'track' would 404); Extras is in-tab + library-backed tracks only;
 the record correction for commit 804b238f's message - Move closes the player AFTER
 requestMoveItem succeeds (watch.js parity), not before; gate residuals in tech-debt #191/#192.
-Intake LOCKED. player.js stays BYTE-UNCHANGED throughout.
+player.js stayed BYTE-UNCHANGED through all three waves.
 
 ## THE QUEUE AFTER F-UNIFY (Dean, rolling adds 2026-09-02)
 1. LISTEN-MODE (locked intake below).
