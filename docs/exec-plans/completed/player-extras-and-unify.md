@@ -1,6 +1,6 @@
 # Player Extras (watch-page action fidelity on the music skin) + engine Unify
 
-Status: ALL THREE ASKS SHIPPED - F-CRITTERS v1.248.0, F-EXTRAS v1.249.0 (Dean device-passed:
+Status: SHIPPED (all three asks) - F-CRITTERS v1.248.0, F-EXTRAS v1.249.0 (Dean device-passed:
 "It's PERFECT"), F-UNIFY v1.250.0 (2026-09-02, full gate SERIALIZED seats, both APPROVE,
 dual-Node 8174/8174, DEVICE-PENDING). This plan moves to completed/ once v1.250 gets Dean's
 device pass; the QUEUE section below carries the follow-on waves (LISTEN-MODE next, its
