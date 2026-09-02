@@ -29,6 +29,26 @@ across the whole wave (machine-derived prediction: `git diff main -- public/js/p
 Locked scope answers: MENU=where-you-launched-from; skin scope=ALL non-video audio +
 podcasts (books excluded); ONE wave / ONE release; podcast art=show art.
 
+## WAVE STATUS (v1.246 target)
+
+- **F4 - iOS search Enter key: SHIPPED v1.245.0** (standalone, Dean's "pop it out today").
+- **F5 - audio-only ALWAYS opens in the skin: DONE** (retired the open-audio-in-music opt-out;
+  audio -> /music?play= unconditionally, everywhere; the Settings toggle removed).
+- **F3 - audio notifications deep-link the skin: DONE** (pushMusicUrl; podcast push already ->
+  /podcasts?play= which the widened gate opens in the skin).
+- **F1 - podcasts on the skin: DONE** via a NEW shared engine `public/js/skin-surface.js`
+  (faithful port of music.js's proven skin/gesture code; music.js BYTE-UNTOUCHED). Podcast art =
+  show art. Deferred podcast-skin follow-ups: the speed/loop sticker menu + hold-to-fast-scan.
+- **F2 - MENU returns to origin: DEFERRED to a focused follow-up.** It spans common.js (expose
+  the current view), music.js, podcasts.js, and skin-surface.js, and the exact "dock to the
+  origin tab" behaviour genuinely needs on-device UX validation (cross-section nav is an SPA
+  swap via ensureScriptLoaded, so the player persists - the mechanism is feasible, but the UX is
+  a device call). Not rushed un-device-tested at the tail of the wave. Tracked next.
+- **tech-debt:** unify music.js onto the shared `skin-surface.js` engine (after Dean device-
+  validates the shared engine via podcasts) to retire the temporary two-copies-of-the-engine.
+
+Shipped this wave (one release, v1.246): T1 (gate) + F5 + F3 + F1. player.js 0-byte across all.
+
 ## Architecture (from the 2026-09-02 recon; anchors verified)
 
 - **Skin gate.** `music-skins.js:208` `skinActiveFor(meta,mql) = !!(meta && meta.isMusic) && isMobileViewport`. `getCurrentMeta()` (player.js:8413-8429) ALREADY exposes `resumeMode`
