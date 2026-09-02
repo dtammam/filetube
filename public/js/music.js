@@ -511,6 +511,12 @@ if (typeof module !== 'undefined' && module.exports) {
   // in lockstep with the player; the render/updateNowPlaying guard cross-checks
   // player.currentId so a video/book-now-playing (or a closed player) hides it.
   var nowPlaying = null;
+  // v1.244 (Dean, on-device re-fix): while a ?play straight-to-player load is in flight, the
+  // full-screen skin COVER is mounted but nothing is playing yet - so updateNowPlayingPanel's
+  // teardown branch would rip the cover down (init's synchronous epilogue does exactly this,
+  // defeating v1.243). This flag holds the cover UP until the real skin paints
+  // (renderNowPlayingSkin clears it) or the load misses (the miss-teardown clears it).
+  var straightToPlayerPending = false;
   // v1.237 (Dean): a chaptered album is ONE file streamed by all its `::c` chapter tracks
   // (chapterStartSec offsets), so when playback ROLLS across a chapter boundary the player's
   // currentId stays the loaded `::c` id and the now-playing title never updates. chapterViewId
@@ -1051,11 +1057,12 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     // Render the active skin into the in-tab panel (returns true if it took over).
     function renderNowPlayingSkin(ci) {
-      if (!SKINS || !skinIsActive()) { document.body.classList.remove('mms-on'); return false; }
+      if (!SKINS || !skinIsActive()) { straightToPlayerPending = false; document.body.classList.remove('mms-on'); return false; }
       var id = SKINS.activeSkinId();
       document.body.classList.add('mms-on'); // CSS hides the default host chrome on mobile+music
       paintSkin(nowPlayingPanel, id, ci);
       ensureSkinReflect();
+      straightToPlayerPending = false; // the REAL skin is painted - the cover has served its purpose
       return true;
     }
 
@@ -1086,7 +1093,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // (the straight-to-player cover). If it ever rejected before the skin mounted, that
         // cover would leak -> frozen body scroll on the next view (the v1.227 scar). Reconcile
         // mms-on on a rejection (updateNowPlayingPanel clears it when no skin is expanded).
-        if (id) playTrackFromContinue(id).catch(function () { try { updateNowPlayingPanel(); } catch (_) { /* ignore */ } });
+        if (id) playTrackFromContinue(id).catch(function () { straightToPlayerPending = false; try { updateNowPlayingPanel(); } catch (_) { /* ignore */ } });
       }, { signal: signal });
     }
 
@@ -1133,6 +1140,12 @@ if (typeof module !== 'undefined' && module.exports) {
       // the one that was loaded. null for a non-chaptered track (chapterViewId stays null).
       var curId = effectiveCurrentId();
       if (!expanded || !nowPlaying || !curId || nowPlaying.id !== curId) {
+        // v1.244: hold the straight-to-player COVER up while its load is still in flight - else
+        // init's synchronous epilogue (this very call, fired right after playTrackFromContinue
+        // suspends at its first await) would tear the cover down before the first paint (the
+        // bug Dean hit on v1.243/the first v1.244 attempt). Cleared when the skin paints or the
+        // load misses, so this can never strand the cover.
+        if (straightToPlayerPending) return;
         nowPlayingPanel.hidden = true;
         nowPlayingPanel.innerHTML = '';
         nowPlayingPanel.className = 'music-nowplaying-panel'; // drop any skin classes
@@ -2475,6 +2488,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var coverEarly = false;
       try { coverEarly = !!(SKINS && typeof SKINS.skinActiveFor === 'function' && SKINS.skinActiveFor({ isMusic: true })); } catch (_) { coverEarly = false; }
       if (coverEarly && nowPlayingPanel) {
+        straightToPlayerPending = true; // hold the cover up through init's synchronous epilogue
         document.body.classList.add('mms-on');
         var _sid = (SKINS.activeSkinId && SKINS.activeSkinId()) || 'apple';
         var _base = (SKINS.skinById && (SKINS.skinById(_sid) || {}).base) || '';
@@ -2525,6 +2539,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // The ONLY path that actually SHOWS the list: tear the early cover down so the chrome +
       // list are visible (this miss never mounts a skin).
       if (coverEarly && nowPlayingPanel) {
+        straightToPlayerPending = false; // load missed - stop holding the cover; show the list
         document.body.classList.remove('mms-on');
         nowPlayingPanel.hidden = true;
         nowPlayingPanel.innerHTML = '';
@@ -2547,6 +2562,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // bounce a miss to /watch. A bare ?play= (a continue-listening card) keeps render() on a miss.
       playTrackFromContinue(playParam, urlParams.get('ao') === '1').catch((err) => {
         console.error('Music: continue-listening play failed', err);
+        straightToPlayerPending = false; // a rejected load must not strand the cover
         render().catch(() => {});
       });
     } else if (wantNowPlaying && nowPlaying && nowPlaying.albumKey) {

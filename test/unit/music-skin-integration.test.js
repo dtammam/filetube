@@ -39,7 +39,7 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
 
 const settle = () => new Promise((r) => setImmediate(r));
 
-async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog }) {
+async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog, playerOverride, runSync }) {
   // jsdom won't let location.replace be overridden - it hard-navigates and emits a jsdomError.
   // Capture that so a test can assert a /watch bounce was ATTEMPTED (reachability); the exact
   // URL + ::c strip are source-locked in audio-opens-in-music.test.js.
@@ -73,7 +73,7 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
   let mod = null;
   dom.window.FileTube = {
     registerView: (n, m) => { mod = m; }, encodeListContext: () => '', decodeListContext: () => null, shimmerArt: () => {},
-    player: { currentId: meta.id, getState: () => 'full', getCurrentMeta: () => meta, expand() {}, setTrackNav() {}, load() {}, dock() { spy.dock += 1; } },
+    player: playerOverride || { currentId: meta.id, getState: () => 'full', getCurrentMeta: () => meta, expand() {}, setTrackNav() {}, load() {}, dock() { spy.dock += 1; } },
   };
   // load the skins module into this window (sets window.FileTubeMusicSkins)
   delete require.cache[skinsPath]; global.module = undefined;
@@ -92,8 +92,9 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
     delete require.cache[musicPath];
     require(musicPath);
     mod.init(dom.window.document.getElementById('view-root'));
+    if (runSync) await runSync(dom, spy, mod);   // inspect the SYNCHRONOUS post-init state (fetch still pending)
     for (let i = 0; i < 10; i++) await settle();
-    await run(dom, spy, mod);
+    if (run) await run(dom, spy, mod);
   } finally { delete require.cache[musicPath]; delete require.cache[skinsPath]; Object.assign(global, saved); }
 }
 
@@ -391,7 +392,26 @@ test('v1.244 source-lock: a ?play open MOUNTS a full-screen skin cover immediate
   // covered from the first frame - the v1.243 mms-on-only fix flashed the list on device.
   assert.match(m[1], /if \(coverEarly && nowPlayingPanel\) \{[\s\S]*?classList\.add\('mms-on'\);[\s\S]*?nowPlayingPanel\.className = 'music-nowplaying-panel mms mms-full mms-'[\s\S]*?nowPlayingPanel\.hidden = false;/, 'mounts a full-screen skin cover immediately');
   // the ONLY path that shows the list (a non-bounce miss -> render) tears the cover down first
-  assert.match(m[1], /if \(coverEarly && nowPlayingPanel\) \{\s*\n\s*document\.body\.classList\.remove\('mms-on'\);[\s\S]*?nowPlayingPanel\.hidden = true;[\s\S]*?\}\s*\n\s*await render\(\);/, 'the miss->list fallback tears the cover down before render()');
+  assert.match(m[1], /straightToPlayerPending = false;[\s\S]*?document\.body\.classList\.remove\('mms-on'\);[\s\S]*?nowPlayingPanel\.hidden = true;[\s\S]*?\}\s*\n\s*await render\(\);/, 'the miss->list fallback clears the pending flag + tears the cover down before render()');
+});
+
+test('v1.244 (adversarial CRITICAL): the ?play cover SURVIVES init\'s synchronous epilogue (not torn down before paint)', async () => {
+  // The REAL straight-to-player state: docked, nothing playing yet, ?play=, mobile skin.
+  // playTrackFromContinue mounts the cover then suspends at its fetch; init then synchronously
+  // runs its epilogue updateNowPlayingPanel() - which must NOT tear the cover down (the
+  // straightToPlayerPending guard). Inspect SYNCHRONOUSLY right after init(), fetch still pending.
+  const pending = new Promise(() => {}); // recent-listening never resolves -> stays suspended
+  await boot({
+    mobile: true, isMusic: true, skin: 'ipod', query: '?play=t1',
+    playerOverride: { currentId: null, getState: () => 'docked', getCurrentMeta: () => null, expand() {}, setTrackNav() {}, load() {}, dock() {} },
+    fetchImpl: () => Promise.resolve({ ok: true, json: () => pending }),
+    runSync: async (dom) => {
+      const p = dom.window.document.getElementById('music-nowplaying-panel');
+      assert.ok(dom.window.document.body.classList.contains('mms-on'), 'body.mms-on stays set through init\'s epilogue');
+      assert.match(p.className, /\bmms-full\b/, 'the full-screen skin cover is STILL mounted (not torn down before the skin paints)');
+      assert.strictEqual(p.hidden, false, 'the cover is visible');
+    },
+  });
 });
 
 // ---- v1.242 (#2, Dean): HOLD rewind/ffwd = FAST-SCAN the timeline -----------------------
