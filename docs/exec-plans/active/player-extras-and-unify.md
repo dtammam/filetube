@@ -9,6 +9,24 @@ the record correction for commit 804b238f's message - Move closes the player AFT
 requestMoveItem succeeds (watch.js parity), not before; gate residuals in tech-debt #191/#192.
 Intake LOCKED. player.js stays BYTE-UNCHANGED throughout.
 
+## THE QUEUE AFTER F-UNIFY (Dean, rolling adds 2026-09-02)
+1. LISTEN-MODE (locked intake below).
+2. PLAYER-MENU COMPLETION (proposed bundle, both are sticker-menu work on the unified engine):
+   (a) CHAPTER RENAME from the music player view - the video watch view has the chapters
+   editor (common.js showChaptersEditor); the player view needs a way into it for the playing
+   file's base id. (b) EXTRAS IN THE DESKTOP POP-OUT - Dean expects the Extras menu there
+   (2026-09-02). v1.249 deliberately excluded it because every shared dialog (move/confirm/
+   hard-delete/choice/transcript/toast) renders in the MAIN document, i.e. BEHIND the
+   always-on-top pop-out. The real fix is doc-aware shared dialogs (showMoveModal/
+   showHardDeleteModal already take a `doc` param; showConfirmModal/showChoiceModal/
+   openTranscriptFor/showToast need one), then lift the engine's inMainDoc gate.
+3. PINNED-CHANNEL AUDIO ROUTING BUG (Dean: bottom of the list, low): on desktop, opening an
+   audio item from a PINNED CHANNEL in the left sidebar does not open as Music, while the
+   main feed path does - almost certainly a card-click call site that bypasses the v1.246
+   open-audio-in-music routing. Likely tiny; could ride the Listen-mode wave (same routing
+   surface) if convenient, else stays at the bottom per Dean.
+4. CROSS-DEVICE NOW-PLAYING SYNC (the big one - needs its own intake).
+
 ## QUEUED AFTER F-UNIFY: LISTEN-MODE (intake LOCKED 2026-09-02, Dean inline)
 "Play as audio" for videos. Locked: (1) the itch is mostly PRESENTATION (the skin experience
 while listening) - the bg-audio machinery is reused untouched; (2) a "Listen" button on the

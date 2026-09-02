@@ -402,6 +402,214 @@ test('U1 onShuffle: the [data-skin-shuffle] zone fires the hook; without the hoo
   }
 });
 
+// ---- U2 (F-UNIFY v1.250): the sticker quick-menu + Extras, now ENGINE capabilities ----
+
+// bootEngine + the sticker's collaborators: a recorded fetch map, the shared common.js flow
+// stubs on the window, and a player facade with loop/close/getCurrentTime.
+function bootSticker({ extras, eligible, video, skin } = {}) {
+  const calls = []; const toasts = []; const spy = { skinChange: 0, mutated: 0, setLoop: [], closed: 0 };
+  const state = { loop: false };
+  const savedFetch = global.fetch;
+  const boot = bootEngine({
+    skin,
+    engineCfg: {
+      sticker: {
+        onSkinChange: () => { spy.skinChange += 1; },
+        getPlayer: () => ({
+          isLoopEnabled: () => state.loop,
+          setLoop: (on) => { state.loop = !!on; spy.setLoop.push(!!on); },
+          close: () => { spy.closed += 1; },
+        }),
+        extras: extras === false ? undefined : {
+          getBaseId: () => 's1',
+          isEligible: () => (eligible !== false),
+          onMutated: () => { spy.mutated += 1; },
+          signal: new AbortController().signal,
+        },
+      },
+    },
+  });
+  const { dom } = boot;
+  dom.window.showToast = (m) => toasts.push(String(m));
+  dom.window.fetchCurrentUser = () => Promise.resolve({ user: { role: 'admin' } });
+  dom.window.fetchLikedTotal = () => Promise.resolve(0);
+  dom.window.isYtdlpManagedItem = (it) => !!(it && it.channelName);
+  dom.window.showConfirmModal = (t, b, onConfirm) => { spy.confirm = { t, b, onConfirm }; };
+  dom.window.showHardDeleteModal = (it, onConfirm) => { spy.hard = { it, onConfirm }; };
+  dom.window.deleteResultToast = () => 'deleted-toast';
+  global.fetch = (url, init) => {
+    const u = String(url); const method = (init && init.method) || 'GET';
+    calls.push({ url: u, method });
+    if (/^\/api\/videos\/s1$/.test(u) && method === 'GET') {
+      const body = video === null ? null : Object.assign({
+        id: 's1', title: 'Song One', filePath: '/m/s1.mp3', watchUrl: 'https://www.youtube.com/watch?v=x', hasSubtitles: true,
+        liked: false, watchState: 'unwatched', channelName: 'The Band',
+      }, video || {});
+      return Promise.resolve(body ? { ok: true, json: async () => body } : { ok: false, status: 404, json: async () => ({}) });
+    }
+    if (method === 'DELETE' && u.indexOf('/api/videos/') === 0) return Promise.resolve({ status: 200, json: async () => ({ success: true }) });
+    if (u.indexOf('/api/ytdlp/repull-metadata/item/') === 0) return Promise.resolve({ status: 202, json: async () => ({}) });
+    if (u === '/api/subscriptions/status') return Promise.resolve({ ok: true, json: async () => ({ oneShots: { 'repull-metadata-item': { state: 'running', mediaId: 's1' } } }) });
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+  };
+  const settle2 = () => new Promise((r) => setImmediate(r));
+  return Object.assign(boot, {
+    calls, toasts, spy, state, settle: settle2,
+    restoreAll: () => { global.fetch = savedFetch; boot.restore(); },
+  });
+}
+const sClick = (dom, el) => el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+const sMenu = (dom) => panel(dom).querySelector('[data-skin-sticker-menu]');
+
+test('U2 sticker: absent without config (podcasts today); with config it paints, toggles, and drives speed/loop/skin', async () => {
+  // default engine (no sticker config) -> no sticker markup at all
+  {
+    const { dom, engine, restore } = bootEngine();
+    try {
+      engine.paint();
+      assert.strictEqual(panel(dom).querySelector('[data-skin-sticker]'), null, 'no config -> no sticker');
+    } finally { restore(); }
+  }
+  const b = bootSticker({ extras: false });
+  try {
+    b.engine.paint();
+    const st = panel(b.dom).querySelector('[data-skin-sticker]');
+    assert.ok(st, 'sticker painted');
+    assert.strictEqual(sMenu(b.dom).hidden, true, 'menu starts hidden');
+    sClick(b.dom, st);
+    assert.strictEqual(sMenu(b.dom).hidden, false, 'sticker tap opened the menu');
+    // speed drives the REAL element (both rate properties + persisted ft-rate)
+    const mp = b.dom.window.document.getElementById('media-player');
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-speed="1.5"]'));
+    assert.strictEqual(mp.playbackRate, 1.5, 'playbackRate set');
+    assert.strictEqual(mp.defaultPlaybackRate, 1.5, 'defaultPlaybackRate set (the survives-a-load carry, v1.238 CRITICAL)');
+    assert.strictEqual(b.dom.window.localStorage.getItem('ft-rate'), '1.5', 'ft-rate persisted');
+    // loop proxies the player facade
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-loop]'));
+    assert.deepStrictEqual(b.spy.setLoop, [true], 'loop toggle drove player.setLoop(true)');
+    // skin pick: setActiveSkin persists + the view re-render hook fires
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-pick="apple"]'));
+    assert.strictEqual(b.dom.window.localStorage.getItem('ft-music-skin'), 'apple', 'SKINS.setActiveSkin persisted the pick');
+    assert.strictEqual(b.spy.skinChange, 1, 'onSkinChange fired (the view repaints its surfaces)');
+  } finally { b.restoreAll(); }
+});
+
+test('U2 extras entry: requires the hooks AND eligibility AND the main document', () => {
+  // sticker without extras hooks (the podcasts shape) -> no Extras entry
+  {
+    const b = bootSticker({ extras: false });
+    try {
+      b.engine.paint();
+      sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+      assert.ok(sMenu(b.dom).querySelector('[data-skin-speed]'), 'quick controls render');
+      assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-extras]'), null, 'no extras hooks -> no entry');
+    } finally { b.restoreAll(); }
+  }
+  // hooks + eligible -> entry present; hooks + NOT eligible -> absent
+  {
+    const b = bootSticker({});
+    try {
+      b.engine.paint();
+      sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+      assert.ok(sMenu(b.dom).querySelector('[data-skin-extras]'), 'eligible -> the Extras entry shows');
+    } finally { b.restoreAll(); }
+  }
+  {
+    const b = bootSticker({ eligible: false });
+    try {
+      b.engine.paint();
+      sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+      assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-extras]'), null, 'view says ineligible -> no entry');
+    } finally { b.restoreAll(); }
+  }
+});
+
+test('U2 extras page: opens with the /api/videos fetch, renders the gated action set, Like fires the real endpoint', async () => {
+  const b = bootSticker({});
+  try {
+    b.engine.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
+    for (let i = 0; i < 6; i++) await b.settle();
+    assert.ok(b.calls.some((c) => c.url === '/api/videos/s1' && c.method === 'GET'), 'the open fetched the item');
+    for (const name of ['share', 'download', 'like', 'watched', 'queue', 'queue-next', 'transcript', 'reheat', 'move', 'delete']) {
+      assert.ok(sMenu(b.dom).querySelector('[data-skin-x="' + name + '"]'), 'action rendered: ' + name);
+    }
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-speed]'), null, 'page 2 replaced the quick controls');
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="like"]'));
+    for (let i = 0; i < 4; i++) await b.settle();
+    assert.ok(b.calls.some((c) => c.url === '/api/liked/s1' && c.method === 'POST'), 'Like POSTed the media-store endpoint');
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-x="like"]').textContent, 'Liked', 'flipped on 2xx');
+    // Back returns to page 1
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras-back]'));
+    assert.ok(sMenu(b.dom).querySelector('[data-skin-speed]'), 'Back lands on the quick controls');
+  } finally { b.restoreAll(); }
+});
+
+test('U2 extras delete: the trash confirm -> real DELETE -> player.close + onMutated (the view refresh hook)', async () => {
+  const b = bootSticker({});
+  try {
+    b.engine.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
+    for (let i = 0; i < 6; i++) await b.settle();
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="delete"]'));
+    assert.ok(b.spy.confirm, 'yt-dlp item -> the trash confirm opened');
+    assert.ok(b.spy.confirm.b.indexOf('Song One') !== -1, 'the confirm names the item');
+    b.spy.confirm.onConfirm();
+    for (let i = 0; i < 6; i++) await b.settle();
+    assert.ok(b.calls.some((c) => c.url === '/api/videos/s1' && c.method === 'DELETE'), 'the real DELETE fired');
+    assert.strictEqual(b.spy.closed, 1, 'the player was closed before the DELETE');
+    assert.strictEqual(b.spy.mutated, 1, 'onMutated fired - the view clears state and refreshes');
+    assert.ok(b.toasts.includes('deleted-toast'), 'outcome via the shared mapper');
+  } finally { b.restoreAll(); }
+});
+
+test('U2 pop-out exclusion at the ENGINE level: a non-main-document surface never offers Extras even when eligible', () => {
+  const pipDom = new JSDOM('<body><div id="panel" class="music-nowplaying-panel"></div></body>', { url: 'http://localhost/pip' });
+  const mainBoot = bootSticker({ extras: false }); // establishes global.document = the MAIN dom
+  try {
+    const eng2 = mainBoot.dom.window.FileTubeSkinSurface.create({
+      panel: pipDom.window.document.getElementById('panel'),
+      getSkinId: () => 'ipod', getCtx: () => ({ track: {}, upNext: [], fullList: [] }),
+      hostCtl: (id) => mainBoot.dom.window.document.getElementById(id),
+      win: pipDom.window,
+      sticker: {
+        onSkinChange: () => {},
+        extras: { getBaseId: () => 's1', isEligible: () => true, onMutated: () => {}, signal: new AbortController().signal },
+      },
+    });
+    eng2.paint();
+    const pipPanel = pipDom.window.document.getElementById('panel');
+    const st = pipPanel.querySelector('[data-skin-sticker]');
+    assert.ok(st, 'the pop-out surface still gets the sticker (quick controls)');
+    st.dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true }));
+    const m = pipPanel.querySelector('[data-skin-sticker-menu]');
+    assert.ok(m.querySelector('[data-skin-speed]'), 'quick controls render there (non-vacuous)');
+    assert.strictEqual(m.querySelector('[data-skin-extras]'), null, 'but never the Extras entry (main-document only)');
+    eng2.destroy();
+  } finally { mainBoot.restoreAll(); }
+});
+
+test('U2 destroy(): stops a live reheat poll and invalidates an in-flight extras fetch (nothing outlives the surface)', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const b = bootSticker({});
+  try {
+    b.engine.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
+    for (let i = 0; i < 6; i++) await b.settle();
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="reheat"]'));
+    for (let i = 0; i < 4; i++) await b.settle();
+    assert.ok(b.toasts.includes('Reheating…'), 'the 202 armed the poll');
+    const before = b.calls.filter((c) => c.url === '/api/subscriptions/status').length;
+    b.engine.destroy();
+    t.mock.timers.tick(3000);
+    for (let i = 0; i < 4; i++) await b.settle();
+    assert.strictEqual(b.calls.filter((c) => c.url === '/api/subscriptions/status').length, before, 'destroy stopped the poll (no post-destroy status fetches)');
+  } finally { b.restoreAll(); }
+});
+
 test('destroy() clears body.mms-on and unbinds (the v1.227 swap-leak guard)', () => {
   const { dom, engine, restore } = bootEngine();
   try {
