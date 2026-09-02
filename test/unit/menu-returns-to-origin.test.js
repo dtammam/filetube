@@ -51,8 +51,11 @@ test('the router navigate() choke sets the origin via the pure reducer, AFTER th
 
 test('returnToPlayerOrigin navigates to the stored origin (and is a no-op / dock-in-place when null); both are exposed', () => {
   const src = readSrc('public/js/common.js');
-  assert.match(src, /function returnToPlayerOrigin\(\)\s*\{[\s\S]{0,400}if \(playerLaunchOrigin\) navigate\(playerLaunchOrigin\);/,
-    'returns to the origin tab only when one was captured');
+  const body = src.slice(src.indexOf('function returnToPlayerOrigin()'), src.indexOf('function returnToPlayerOrigin()') + 1400);
+  assert.match(body, /if \(!playerLaunchOrigin\) return;/, 'no origin -> no-op (dock in place)');
+  assert.match(body, /new URL\(playerLaunchOrigin, window\.location\.href\)\.pathname === window\.location\.pathname\) return;/,
+    'same-tab origin -> dock in place, not a redundant re-init nav (adversarial SUGGESTION)');
+  assert.match(body, /navigate\(playerLaunchOrigin\);/, 'a different-tab origin navigates back to it');
   assert.match(src, /window\.FileTube\.returnToPlayerOrigin = returnToPlayerOrigin;/, 'exposed for the skin views');
   assert.match(src, /window\.FileTube\.playerLaunchOrigin = getPlayerLaunchOrigin;/, 'the getter is exposed');
 });

@@ -9889,7 +9889,15 @@ if (typeof window !== 'undefined') {
     // no origin (in-view session / cold-start) -> do nothing, the dock stays on the current tab;
     // a cross-view origin -> navigate back to it (the mini-player, reparented into the persistent
     // #player-dock by the dock, survives the #view-root swap and rides along to the origin tab).
-    if (playerLaunchOrigin) navigate(playerLaunchOrigin);
+    if (!playerLaunchOrigin) return;
+    // v1.247 (adversarial SUGGESTION): if the origin is the SAME tab we're already on (e.g. a
+    // /music?play= card tapped while already on /music -> origin '/music'), just dock in place -
+    // don't navigate('/music'), which differs from the live '/music?play=x' by strict string
+    // equality and would pointlessly re-init the view. A different tab still navigates.
+    try {
+      if (new URL(playerLaunchOrigin, window.location.href).pathname === window.location.pathname) return;
+    } catch (_) { /* unparseable -> fall through to navigate */ }
+    navigate(playerLaunchOrigin);
   }
   // FR-4 (T4) -- single-entry cache of the last home #view-root NODE (not a
   // re-render) retained across an in-app round trip, so returning to the
