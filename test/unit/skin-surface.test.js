@@ -24,7 +24,7 @@ const HTML = `<body>
   <div id="panel" class="music-nowplaying-panel" hidden></div>
 </body>`;
 
-function bootEngine({ onSelect, onDock, skin } = {}) {
+function bootEngine({ onSelect, onDock, skin, engineCfg } = {}) {
   const dom = new JSDOM(HTML, { url: 'http://localhost/podcasts' });
   const saved = { window: global.window, document: global.document, performance: global.performance, Event: global.Event };
   global.window = dom.window; global.document = dom.window.document;
@@ -41,7 +41,7 @@ function bootEngine({ onSelect, onDock, skin } = {}) {
     upNext: rows(), fullList: rows(), playing: false, posSec: 0, durSec: 300,
     posLabel: '0:00', remLabel: '-5:00', curNum: 3, total: 5,
   };
-  const engine = dom.window.FileTubeSkinSurface.create({
+  const engine = dom.window.FileTubeSkinSurface.create(Object.assign({
     panel: dom.window.document.getElementById('panel'),
     getSkinId: () => skin || 'ipod',
     getCtx: () => ctx,
@@ -49,7 +49,7 @@ function bootEngine({ onSelect, onDock, skin } = {}) {
     onSelectIndex: (i) => { spy.select.push(i); if (onSelect) onSelect(i); },
     onDock: () => { spy.dock += 1; if (onDock) onDock(); },
     win: dom.window,
-  });
+  }, engineCfg || {}));
   return { dom, engine, spy, ctx, restore: () => Object.assign(global, saved) };
 }
 function rows() {
@@ -233,6 +233,173 @@ test('podcasts.js WIRES the engine (reachable): creates it with a podcast ctx, f
   // and skin-surface.js is loaded on the podcasts shell (before podcasts.js, after music-skins.js)
   const html = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'podcasts.html'), 'utf8');
   assert.match(html, /music-skins\.js"><\/script>\s*<script src="\/js\/skin-surface\.js"/, 'skin-surface.js loads after music-skins.js on podcasts.html');
+});
+
+// ---- U1 (F-UNIFY v1.250): the engine capabilities ported from music.js ----
+
+test('U1 marquee: an overflowing title gets the .mms-mq span + CSS vars after paint; marquee:false stays inert', async () => {
+  const tick = () => new Promise((r) => setTimeout(r, 1));
+  // default (marquee on)
+  {
+    const { dom, engine, restore } = bootEngine();
+    try {
+      engine.paint();
+      const ttl = panel(dom).querySelector('.ip-ttl');
+      assert.ok(ttl, 'the iPod title line rendered');
+      // jsdom has no layout: fake the overflow the rAF measurement reads
+      Object.defineProperty(ttl, 'scrollWidth', { value: 300, configurable: true });
+      Object.defineProperty(ttl, 'clientWidth', { value: 100, configurable: true });
+      await tick(); // the harness maps rAF -> setTimeout(0)
+      const mq = ttl.querySelector('.mms-mq');
+      assert.ok(mq, 'overflow -> the marquee span wrapped the text');
+      assert.strictEqual(mq.textContent, 'Ep 3', 'textContent both ways (no injection)');
+      assert.ok(ttl.classList.contains('mms-mq-on'));
+      assert.strictEqual(ttl.style.getPropertyValue('--mms-mq-shift'), '-200px', 'shift = -(overflow)');
+      assert.ok(parseFloat(ttl.style.getPropertyValue('--mms-mq-dur')) >= 4, 'constant-speed duration set');
+    } finally { restore(); }
+  }
+  // marquee: false -> no wrap even with overflow
+  {
+    const { dom, engine, restore } = bootEngine({ engineCfg: { marquee: false } });
+    try {
+      engine.paint();
+      const ttl = panel(dom).querySelector('.ip-ttl');
+      Object.defineProperty(ttl, 'scrollWidth', { value: 300, configurable: true });
+      Object.defineProperty(ttl, 'clientWidth', { value: 100, configurable: true });
+      await tick();
+      assert.strictEqual(ttl.querySelector('.mms-mq'), null, 'marquee:false is inert');
+    } finally { restore(); }
+  }
+  // a NON-overflowing line is never wrapped (the ellipsis stays)
+  {
+    const { dom, engine, restore } = bootEngine();
+    try {
+      engine.paint();
+      const ttl = panel(dom).querySelector('.ip-ttl');
+      Object.defineProperty(ttl, 'scrollWidth', { value: 100, configurable: true });
+      Object.defineProperty(ttl, 'clientWidth', { value: 100, configurable: true });
+      await tick();
+      assert.strictEqual(ttl.querySelector('.mms-mq'), null, 'no overflow -> no marquee');
+    } finally { restore(); }
+  }
+});
+
+test('U1 wheel-volume is GONE (Dean 2026-09-02): a Now-Playing spin SCRUBS on every surface and never touches volume', () => {
+  // Binds the ruling that retired music.js's v1.235 pop-out wheel-volume: there is no
+  // allowVolume config, the spin scrubs, and media.volume stays put.
+  const { dom, engine, restore } = bootEngine({ engineCfg: { allowVolume: true } }); // even a stale flag is inert
+  try {
+    engine.paint();
+    const mp = dom.window.document.getElementById('media-player');
+    mp.volume = 0.5;
+    Object.defineProperty(mp, 'duration', { value: 300, configurable: true });
+    let ct = 150; Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => ct, set: (v) => { ct = v; } });
+    spin(panel(dom).querySelector('.ip-wheel'), dom, [40, 80, 120]);
+    assert.ok(ct > 150, 'the spin scrubbed the playhead');
+    assert.strictEqual(mp.volume, 0.5, 'volume untouched (wheel-volume retired)');
+    assert.ok(!panel(dom).classList.contains('mms-voladj'), 'the volume bar never engages');
+  } finally { restore(); }
+});
+
+// drive the fastScan hold deterministically: the engine arms timers on the PANEL's window,
+// so the test replaces that window's timer fns with manual-fire fakes BEFORE the press.
+function fakeWinTimers(dom) {
+  const t = { timeouts: [], intervals: [] };
+  dom.window.setTimeout = (fn) => { t.timeouts.push(fn); return t.timeouts.length; };
+  dom.window.clearTimeout = (id) => { t.timeouts[id - 1] = null; };
+  dom.window.setInterval = (fn) => { t.intervals.push(fn); return t.intervals.length; };
+  dom.window.clearInterval = (id) => { t.intervals[id - 1] = null; };
+  return t;
+}
+
+test('U1 fastScan: HOLDING the ffwd zone scans ~2x, release commits via #seek-bar and swallows the skip click', () => {
+  const { dom, engine, restore } = bootEngine({ engineCfg: { fastScan: true } });
+  try {
+    engine.paint();
+    const timers = fakeWinTimers(dom);
+    const mp = dom.window.document.getElementById('media-player');
+    Object.defineProperty(mp, 'duration', { value: 300, configurable: true });
+    let ct = 100; Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => ct, set: (v) => { ct = v; } });
+    let committed = []; let nextClicks = 0;
+    dom.window.document.getElementById('seek-bar').addEventListener('change', (e) => { committed.push(e.target.value); });
+    dom.window.document.getElementById('track-next-btn').addEventListener('click', () => { nextClicks += 1; });
+    const zone = panel(dom).querySelector('.ip-wheel [data-skin-next]') || panel(dom).querySelector('[data-skin-next]');
+    zone.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 50, clientY: 0 }));
+    assert.strictEqual(timers.timeouts.length, 1, 'the hold timer armed on the panel window');
+    timers.timeouts[0](); // the 400ms hold fires -> scan engages
+    assert.ok(Math.abs(ct - 100.4) < 1e-9, 'the hold stepped immediately (+0.4s)');
+    assert.strictEqual(timers.intervals.length, 1, 'the scan interval armed');
+    timers.intervals[0](); timers.intervals[0]();
+    assert.ok(Math.abs(ct - 101.2) < 1e-9, 'each tick steps +0.4s (~2x realtime at 200ms)');
+    zone.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true }));
+    assert.strictEqual(committed.length, 1, 'pointerup committed exactly once through the seek pipeline');
+    assert.ok(Math.abs(parseFloat(committed[0]) - (101.2 / 300)) < 1e-6, 'the committed ratio is the landed position (101.2/300)');
+    // the release's synthetic click on the zone must NOT also skip the track
+    zone.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(nextClicks, 0, 'the post-scan click was suppressed (no phantom skip)');
+  } finally { restore(); }
+});
+
+test('U1 fastScan: a quick TAP still skips (hold never fires), and a ROTATE cancels the pending hold', () => {
+  const { dom, engine, restore } = bootEngine({ engineCfg: { fastScan: true } });
+  try {
+    engine.paint();
+    const timers = fakeWinTimers(dom);
+    const mp = dom.window.document.getElementById('media-player');
+    Object.defineProperty(mp, 'duration', { value: 300, configurable: true });
+    let ct = 100; Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => ct, set: (v) => { ct = v; } });
+    let nextClicks = 0;
+    dom.window.document.getElementById('track-next-btn').addEventListener('click', () => { nextClicks += 1; });
+    const zone = panel(dom).querySelector('.ip-wheel [data-skin-next]') || panel(dom).querySelector('[data-skin-next]');
+    // quick tap: down -> up before the hold timer fires -> the zone's click skips normally
+    zone.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 50, clientY: 0 }));
+    zone.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true }));
+    zone.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(nextClicks, 1, 'a quick tap still skips the track');
+    // rotate after pressing the zone: the hold is cancelled, the gesture is a scrub, never a scan
+    zone.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    const wheel = panel(dom).querySelector('.ip-wheel');
+    wheel.dispatchEvent(new dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 70, clientY: 70 }));
+    const held = timers.timeouts.filter(Boolean);
+    if (held.length) held.forEach((fn) => fn()); // firing a survived hold must NOT scan (moved guard)
+    assert.strictEqual(timers.intervals.length, 0, 'no scan interval after a rotate (the hold was cancelled/inert)');
+    wheel.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true }));
+  } finally { restore(); }
+});
+
+test('U1 onShuffle: the [data-skin-shuffle] zone fires the hook; without the hook it falls through harmlessly', () => {
+  // with the hook
+  {
+    const { dom, engine, restore } = bootEngine({ engineCfg: { onShuffle: null } });
+    try {
+      let shuffles = 0;
+      const eng2 = dom.window.FileTubeSkinSurface.create({
+        panel: panel(dom), getSkinId: () => 'ipod', getCtx: () => ({ track: {}, upNext: [], fullList: [] }),
+        hostCtl: (id) => dom.window.document.getElementById(id), win: dom.window,
+        onShuffle: () => { shuffles += 1; },
+      });
+      eng2.paint();
+      const btn = dom.window.document.createElement('button');
+      btn.setAttribute('data-skin-shuffle', '');
+      panel(dom).appendChild(btn);
+      btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.strictEqual(shuffles, 1, 'the shuffle zone drove the view hook');
+      eng2.destroy();
+      engine.destroy();
+    } finally { restore(); }
+  }
+  // without the hook: no crash, no proxy
+  {
+    const { dom, engine, restore } = bootEngine();
+    try {
+      engine.paint();
+      const btn = dom.window.document.createElement('button');
+      btn.setAttribute('data-skin-shuffle', '');
+      panel(dom).appendChild(btn);
+      btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // must not throw
+      assert.ok(true);
+    } finally { restore(); }
+  }
 });
 
 test('destroy() clears body.mms-on and unbinds (the v1.227 swap-leak guard)', () => {

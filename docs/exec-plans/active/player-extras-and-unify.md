@@ -89,8 +89,12 @@ TARGET SHAPE: skin-surface.js `create(config)` stays the ONE per-panel engine; i
 capabilities, each inert unless configured, so podcasts' current usage is untouched by default:
 - marquee: paint() gains the rAF applySkinMarquee epilogue (default ON - CSS-driven, inert
   without overflow; delivers marquee to podcasts as a ride-along).
-- `allowVolume`: wheel-volume in Now Playing + the .ip-vol-fill overlay (adjustVolume/showVolume
-  ported verbatim incl. the same-window timer-realm guard).
+- WHEEL-VOLUME RETIRED (Dean, 2026-09-02, mid-wave ruling): "make the classic wheel scrub like
+  it does on mobile instead of volume, consistent UI and useful." So v1.235's pop-out
+  wheel-volume is NOT ported - the engine has exactly ONE Now-Playing wheel behavior (scrub),
+  and U3 DELETES music.js's adjustVolume/showVolume/volume-mode with the rest. The iPod skin's
+  .ip-vol-fill markup + .mms-voladj CSS stay DORMANT (music-skins.js/style.css untouched -
+  zero-risk; removable whenever those files are next edited).
 - `fastScan`: the v1.242 hold-prev/next scan (scanTimer/scanInterval on the PANEL's window,
   scan-owns-the-gesture, pointerup-commits-via-seek-bar, dual-arm teardown).
 - `onShuffle` hook: [data-skin-shuffle] -> the view's control (music: #music-shuffle-btn).
@@ -113,15 +117,17 @@ own win) and the registry collapses to "call both instances' reflect()". Extract
 LISTEN-MODE wave if that needs the shell.
 
 TASK COMMITS (each with its tests, each green before the next):
-- U1: engine capabilities - marquee epilogue, allowVolume+overlay, fastScan, onShuffle. Behavioral
-  tests in skin-surface.test.js (ported from the music suites' harness patterns). podcasts.js
-  untouched; music.js untouched.
+- U1: engine capabilities - marquee epilogue, fastScan, onShuffle (wheel-volume retired per the
+  ruling above, bound by a scrub-never-volume test). Behavioral tests in skin-surface.test.js
+  (ported from the music suites' harness patterns). podcasts.js untouched; music.js untouched.
 - U2: the sticker menu + Extras move INTO the engine behind config (code ported verbatim where
   possible, closure deps -> the hooks above). Engine-level tests with a fake view. music.js still
   on its own copy (both implementations coexist one commit - the engine's is the tested target).
-- U3: THE SWAP - music.js creates two engine instances (in-tab; pop-out with allowVolume) and
+- U3: THE SWAP - music.js creates two engine instances (in-tab; pop-out, both scrub) and
   DELETES its duplicated block (reflect/wheel/cursor/listmode/marquee/volume/sticker/extras/
-  gesture dispatch). PREDICTION: music.js shrinks >= 600 lines; all 207 net tests green UNCHANGED.
+  gesture dispatch; the pop-out's wheel-volume goes per the ruling). PREDICTION: music.js
+  shrinks >= 600 lines; the 207-test net green with the ONLY allowed edits being the wheel-
+  volume tests that bound the retired behavior (each edit DISCLOSED).
 - U4: podcasts ride-along polish (the DEFERRED v1.246 items, delivered by the shared engine):
   podcasts.js enables `sticker` (speed/loop/skin, NO extras) + fastScan. Tests bind both on the
   podcast surface.
