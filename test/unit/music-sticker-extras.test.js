@@ -108,7 +108,13 @@ async function boot(run, opts) {
       return Promise.resolve(respond());
     }
     if (u === '/api/config') return Promise.resolve({ ok: true, json: async () => ({ folders: ['Music', 'Podcasts'] }) });
-    if (u.indexOf('/api/ytdlp/repull-metadata/item/') === 0) return Promise.resolve({ status: 202, json: async () => ({}) });
+    if (u.indexOf('/api/ytdlp/repull-metadata/item/') === 0) {
+      // repull404: 'plain' = a module-off install (no route -> Express HTML 404,
+      // json() rejects); 'body' = the real route's error-bodied 404 (no source).
+      if (opts.repull404 === 'plain') return Promise.resolve({ status: 404, json: async () => { throw new Error('not json'); } });
+      if (opts.repull404 === 'body') return Promise.resolve({ status: 404, json: async () => ({ error: 'That video is not eligible for a metadata re-pull.' }) });
+      return Promise.resolve({ status: 202, json: async () => ({}) });
+    }
     if (u === '/api/subscriptions/status') {
       const entries = opts.statusEntries || [];
       const oneShots = entries[Math.min(statusIdx++, entries.length - 1)] || {};
@@ -168,8 +174,18 @@ async function boot(run, opts) {
     registered.init(root());
     for (let i = 0; i < 12; i++) await settle();
     await run(dom, ctx);
-    registered.destroy();
-  } finally { delete require.cache[musicPath]; Object.assign(global, saved); }
+  } finally {
+    // QA delta CRITICAL: destroy() must run on a RED assertion too - it sat
+    // after run() inside the try, so a failing test skipped it and the pop-out
+    // window's perpetual 250ms pipClock survived the global restore, throwing
+    // forever and WEDGING the whole node:test runner (measured: a 17-minute
+    // hang before a manual kill). destroy() tears the pop-out down
+    // (activePopoutTeardown -> clearInterval + win.close), so it belongs in
+    // the finally, before the globals are restored.
+    try { if (registered) registered.destroy(); } catch (_) { /* best-effort teardown */ }
+    delete require.cache[musicPath];
+    Object.assign(global, saved);
+  }
 }
 
 const panel = (dom) => dom.window.document.getElementById('music-nowplaying-panel');
@@ -515,18 +531,41 @@ test('a second Reheat tap replaces the first poll - no orphaned interval keeps h
 
 test('the desktop POP-OUT sticker menu never offers Extras (its modals would open in the main window behind it)', async () => {
   const pipDom = new JSDOM('<body></body>', { url: 'http://localhost/pip' });
-  await boot(async (dom) => {
-    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pipDom.window) };
-    const btn = dom.window.document.getElementById('music-popout-btn');
-    click(dom, btn);
-    for (let i = 0; i < 8; i++) await settle();
-    const pipPanel = pipDom.window.document.getElementById('music-nowplaying-panel');
-    assert.ok(pipPanel, 'the pop-out surface mounted');
-    const pipMenu = pipPanel.querySelector('[data-skin-sticker-menu]');
-    assert.ok(pipMenu, 'the pop-out has the sticker menu');
-    assert.ok(pipMenu.querySelector('[data-skin-speed]'), 'quick controls render there (this test is not passing on a blank menu)');
-    assert.strictEqual(pipMenu.querySelector('[data-skin-extras]'), null, 'but no Extras entry - main-document surface only');
-  }, { desktop: true });
+  try {
+    await boot(async (dom) => {
+      dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pipDom.window) };
+      const btn = dom.window.document.getElementById('music-popout-btn');
+      click(dom, btn);
+      for (let i = 0; i < 8; i++) await settle();
+      const pipPanel = pipDom.window.document.getElementById('music-nowplaying-panel');
+      assert.ok(pipPanel, 'the pop-out surface mounted');
+      const pipMenu = pipPanel.querySelector('[data-skin-sticker-menu]');
+      assert.ok(pipMenu, 'the pop-out has the sticker menu');
+      assert.ok(pipMenu.querySelector('[data-skin-speed]'), 'quick controls render there (this test is not passing on a blank menu)');
+      assert.strictEqual(pipMenu.querySelector('[data-skin-extras]'), null, 'but no Extras entry - main-document surface only');
+    }, { desktop: true });
+  } finally {
+    // QA delta CRITICAL (belt to boot()'s braces): even if teardown regresses,
+    // no perpetual pip timer may outlive a red run of THIS test.
+    try { pipDom.window.close(); } catch (_) { /* already closed by teardownPopout */ }
+  }
+});
+
+test('Reheat 404 honesty: an error-bodied 404 (real route) says "no source"; a bodyless 404 (module off) never lies', async () => {
+  // Adversarial delta residual (N2): both arms of the module-off branch bound.
+  await boot(async (dom, ctx) => {
+    await openExtras(dom);
+    click(dom, act(dom, 'reheat'));
+    for (let i = 0; i < 4; i++) await settle();
+    assert.ok(ctx.toasts.includes('This track has no source to reheat from.'), 'the real route 404 keeps the no-source copy');
+  }, { repull404: 'body' });
+  await boot(async (dom, ctx) => {
+    await openExtras(dom);
+    click(dom, act(dom, 'reheat'));
+    for (let i = 0; i < 4; i++) await settle();
+    assert.ok(ctx.toasts.includes('Reheat isn’t available on this server.'), 'a bodyless Express 404 = module off, said honestly');
+    assert.ok(!ctx.toasts.some((m) => m.indexOf('no source') !== -1), 'and never the no-source lie');
+  }, { repull404: 'plain' });
 });
 
 test('RBAC probe failure fails CLOSED: a rejected fetchCurrentUser hides Move/Delete', async () => {
