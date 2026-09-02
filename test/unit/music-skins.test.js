@@ -77,11 +77,18 @@ test('the per-device setting round-trips and normalizes junk to the default', ()
   assert.strictEqual(skins.activeSkinId(store), 'apple', 'junk id normalizes to default');
 });
 
-test('the GATE is true ONLY for mobile + a music item (desktop / non-music are default chrome)', () => {
+test('the GATE is true for mobile + a music item (desktop / non-audio are default chrome)', () => {
   assert.strictEqual(skins.skinActiveFor({ isMusic: true }, true), true, 'mobile + music -> skin');
   assert.strictEqual(skins.skinActiveFor({ isMusic: true }, false), false, 'desktop + music -> default');
-  assert.strictEqual(skins.skinActiveFor({ isMusic: false }, true), false, 'mobile + NON-music (video/podcast/book) -> default');
+  assert.strictEqual(skins.skinActiveFor({ isMusic: false }, true), false, 'mobile + NON-audio (video/book) -> default');
   assert.strictEqual(skins.skinActiveFor(null, true), false, 'nothing playing -> default');
+});
+
+test('v1.245: the GATE also engages for a PODCAST episode (resumeMode==="podcast"), mobile only', () => {
+  assert.strictEqual(skins.skinActiveFor({ isMusic: false, resumeMode: 'podcast' }, true), true, 'mobile + podcast -> skin');
+  assert.strictEqual(skins.skinActiveFor({ isMusic: false, resumeMode: 'podcast' }, false), false, 'desktop + podcast -> default');
+  assert.strictEqual(skins.skinActiveFor({ isMusic: false, resumeMode: 'tv' }, true), false, 'mobile + tv (a non-audio resumeMode) -> default');
+  assert.strictEqual(skins.skinActiveFor({ isMusic: false, resumeMode: '' }, true), false, 'mobile + a plain non-audio item -> default');
 });
 
 test('v1.244: the art SLOT carries --art (blurred self-bleed) when there is art, none without', () => {
