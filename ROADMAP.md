@@ -93,6 +93,18 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.247.0 - MENU returns you to where you launched the player from (2026-09-02)
+
+In the mobile skin player, pressing MENU/back (or the collapse handle) now docks the mini-player
+back on the tab you LAUNCHED from: open a song from Home and it takes you back to Home; from a
+search result, back to that search; from the Music or Podcasts tab, it docks right there. Skipping
+tracks with prev/next never changes where "back" takes you. Built on a one-line rule at the router
+(a launch into the skin records the tab you came from; any other navigation clears it) with a pure,
+unit-tested reducer - so it's predictable and player.js stays byte-unchanged. Completes the podcast
+mega-wave's last piece (F2). Slim adversarial gate APPROVE (routing-regression + the origin
+lifecycle broken by measurement; a same-tab dock-in-place polish applied); dual-Node green.
+DEVICE-PENDING.
+
 ### v1.246.0 - Podcasts on the mobile skin + audio opens in the player everywhere (2026-09-02)
 
 Podcast episodes now play through the same iPod/Apple/Spotify skin (and click-wheel) the music
