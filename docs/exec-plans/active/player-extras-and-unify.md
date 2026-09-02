@@ -22,8 +22,10 @@ straight-to-player cover are tightly coupled to music.js's private queue/nowPlay
 F-EXTRAS is the user-facing value and is mostly REUSE of already-shared helpers. Bundling the risky
 internal refactor with the value delivery would risk the beloved music player for a release whose
 visible payload is the Extras. So:
-- **THIS WAVE = F-EXTRAS + F-CRITTERS** (user value + the annoyance fix; device-testable, lower risk).
-- **NEXT WAVE = F-UNIFY** (its own dedicated, carefully-gated refactor; recon captured below).
+- **v1.248 (SHIPPED) = F-CRITTERS** - shipped STANDALONE (Dean called it "split"; complete + gated,
+  don't hold it behind the big Extras build).
+- **NEXT WAVE = F-EXTRAS** (the sticker-menu two-page Extras; FULL gate - it touches delete/move).
+- **AFTER = F-UNIFY** (its own dedicated, carefully-gated engine merge; recon captured below).
 
 ## Recon anchors (2026-09-02)
 

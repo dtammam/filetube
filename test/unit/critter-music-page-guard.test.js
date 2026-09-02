@@ -17,10 +17,13 @@ const {
   critterSuppressedByPlayer, scatterCritters, reglueCritterPlacements,
 } = require('../../public/js/common.js');
 
-function withBody(html, fn) {
+function withBody(html, fn, { crittersOn = false } = {}) {
   const dom = new JSDOM('<!DOCTYPE html><body>' + html + '</body>', { url: 'http://localhost/music' });
-  const saved = { document: global.document, window: global.window };
+  const saved = { document: global.document, window: global.window, localStorage: global.localStorage };
   global.document = dom.window.document; global.window = dom.window;
+  // scatterCritters reads the GLOBAL localStorage via resolveCritterConfig(); enable critters so
+  // the mms-on GUARD (not the disabled-config branch) is what clears the layer - a real bind.
+  global.localStorage = { getItem: (k) => (crittersOn && k === 'ft-critters:on' ? '1' : null), setItem() {}, removeItem() {} };
   try { return fn(dom); } finally { Object.assign(global, saved); }
 }
 
@@ -34,14 +37,15 @@ test('critterSuppressedByPlayer: true only while body.mms-on (the full-screen sk
   });
 });
 
-test('scatterCritters CLEARS the layer and SKIPS placement while the skin cover is up', () => {
-  // a pre-existing critter layer + the mms-on cover: scatter must remove the layer and NOT place.
+test('scatterCritters CLEARS the layer and SKIPS placement while the skin cover is up (critters ENABLED)', () => {
+  // critters ENABLED (so absent the guard, scatter would keep/rebuild a layer, not clear it) +
+  // the mms-on cover: the GUARD must remove the layer and NOT place. This distinguishes the guard
+  // from the disabled-config branch (adversarial SUGGESTION: the prior version was vacuous).
   withBody('<div id="critter-layer"><span class="critter">x</span></div>', () => {
     global.document.body.classList.add('mms-on');
     scatterCritters();
-    assert.strictEqual(global.document.getElementById('critter-layer'), null, 'the stale layer was cleared under the cover');
-    // guard runs BEFORE config/anchor work, so nothing is placed regardless of settings.
-  });
+    assert.strictEqual(global.document.getElementById('critter-layer'), null, 'the guard cleared the layer under the cover, even with critters enabled');
+  }, { crittersOn: true });
 });
 
 test('reglueCritterPlacements also clears + skips under the skin cover (the drift path)', () => {
