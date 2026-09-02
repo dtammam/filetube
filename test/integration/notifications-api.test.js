@@ -315,9 +315,12 @@ test('v1.73 gate (adversarial W1/S4): resolvePushMeta arms bound - podcast/media
   // Podcast arm: title + show channel + kind echoed.
   assert.deepEqual(resolvePushMeta(db, { mediaId: epId, kind: 'podcast' }),
     { title: 'Ep g-meta', channel: 'Notif Show', kind: 'podcast' });
-  // Media arm + the legacy bare-id call shape.
+  // Media arm + the legacy bare-id call shape. v1.246: carries type + chaptered so an audio
+  // download's push deep-links the music skin (pushMusicUrl) while a video keeps /watch.
   assert.deepEqual(resolvePushMeta(db, { mediaId: 'mediä-1', kind: 'media' }),
-    { title: 'Clïp One', channel: 'Söme Channel', kind: 'media' });
+    { title: 'Clïp One', channel: 'Söme Channel', kind: 'media', type: 'video', chaptered: false });
+  assert.equal(resolvePushMeta(db, { mediaId: 'mediä-2', kind: 'media' }).type, 'audio',
+    'v1.246: an audio download carries type:audio so payloadForRow routes its notification to the music skin');
   assert.equal(resolvePushMeta(db, 'mediä-1').kind, 'media', 'bare-id legacy shape tolerated');
   // TRASHED episode -> null (the S4 mutant's named killer: a push must
   // never deep-link a non-playable episode).

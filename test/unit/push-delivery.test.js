@@ -579,15 +579,24 @@ test('pushWatchUrl uses the SAME query param the watch page reads (?v=), encoded
 
 // ---- v1.73 (Dean ruling 7): podcast rows deep-link the podcasts place ------
 
-test('v1.73: a podcast-kind row builds the /podcasts?play= deep link; media rows keep /watch.html?v= (both URL builders bound)', () => {
-  const { pushWatchUrl, pushPodcastUrl } = require('../../lib/push/deliver.js');
+test('v1.73/v1.246: a podcast row -> /podcasts?play=, an AUDIO row -> /music?play= (skin), a VIDEO row -> /watch.html?v= (all three URL builders bound)', () => {
+  const { pushWatchUrl, pushPodcastUrl, pushMusicUrl } = require('../../lib/push/deliver.js');
   assert.equal(pushPodcastUrl('ep"9'), '/podcasts?play=ep%229', 'encoded, the ?play= contract every surface uses');
   assert.equal(pushWatchUrl('vid1'), '/watch.html?v=vid1');
-  // The USE: payloadForRow picks by meta.kind. Source-bound (the URL rides
-  // the encrypted body - the v1.67.4 lesson).
+  // v1.246 (Dean): audio notifications deep-link the music skin, mirroring musicHrefForItem.
+  assert.equal(pushMusicUrl('trk1', false), '/music?play=trk1&ao=1', 'a plain audio download opens the music skin');
+  assert.equal(pushMusicUrl('alb1', true), '/music?play=' + encodeURIComponent('alb1::c0') + '&ao=1', 'a chaptered download opens its album (::c0)');
+  assert.equal(pushMusicUrl('a b/c&d', false), `/music?play=${encodeURIComponent('a b/c&d')}&ao=1`, 'weird ids are percent-encoded');
+  // The USE: payloadForRow picks by meta.kind THEN meta.type. Source-bound (the URL rides the
+  // encrypted body - the v1.67.4 lesson), and resolvePushMeta must carry `type`/`chaptered`.
   const fs = require('node:fs');
   const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '../../lib/push/deliver.js'), 'utf8');
-  assert.ok(src.includes("url: meta.kind === 'podcast' ? pushPodcastUrl(row.mediaId) : pushWatchUrl(row.mediaId)"), 'the payload url dispatches on the resolved kind');
+  assert.match(src, /meta\.kind === 'podcast' \? pushPodcastUrl\(row\.mediaId\)/, 'podcast -> podcasts place');
+  assert.match(src, /meta\.type === 'audio' \? pushMusicUrl\(row\.mediaId, meta\.chaptered\)/, 'a non-video audio download -> the music skin');
+  assert.match(src, /: pushWatchUrl\(row\.mediaId\)/, 'a video falls through to the watch page');
   assert.ok(src.includes('deps.resolveMeta(row)'), 'resolveMeta receives the ROW (kind carried), not a bare id');
+  // the server-side meta resolver must surface type + chaptered for the audio branch to fire.
+  const server = fs.readFileSync(path.join(__dirname, '../../server.js'), 'utf8');
+  assert.match(server, /kind: 'media', type: item\.type, chaptered/, 'resolvePushMeta carries the media type + chaptered flag');
 });
