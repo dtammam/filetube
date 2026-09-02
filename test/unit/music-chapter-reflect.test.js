@@ -31,6 +31,7 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
   <div id="player-slot"></div>
   <video id="media-player"></video>
   <div id="music-nowplaying-panel" class="music-nowplaying-panel"></div>
+  <button type="button" class="music-nowplaying" id="music-nowplaying" hidden></button>
   <section id="music-jumpback" hidden></section>
   <div class="music-tabs" id="music-tabs" role="tablist">
     <button type="button" class="music-tab active" data-tab="albums" role="tab">Albums</button>
@@ -59,6 +60,12 @@ async function boot(url, run, opts) {
   const albumOrder = opts.chapters || CHAPTERS; // the /api/music?album= ordering (may be non-ascending)
   const dom = new JSDOM(VIEW_HTML, { url });
   const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController };
+  // opts.mobile (v1.250): boot with the SKIN active (mobile viewport + the engine + iPod skin)
+  // so a REAL wheel gesture can be live - the chapter-loop scrub-skip seam needs one.
+  if (opts.mobile) {
+    dom.window.matchMedia = () => ({ matches: true, media: '(max-width: 768px)', addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent() { return false; } });
+    try { dom.window.localStorage.setItem('ft-music-skin', 'ipod'); } catch (_) { /* ignore */ }
+  }
   const metaById = (id) => { const t = CHAPTERS.find((x) => x.id === id); return t ? { isMusic: true, id: t.id, title: t.title, artist: t.artist, album: t.album, albumKey: t.albumKey } : null; };
   const playerState = { state: 'docked', currentId: null, meta: null };
   global.window = dom.window; global.document = dom.window.document;
@@ -70,7 +77,9 @@ async function boot(url, run, opts) {
     player: {
       currentId: null, getState: () => playerState.state, expand: () => { playerState.state = 'full'; },
       getCurrentMeta: () => playerState.meta,
-      load: (id) => { playerState.currentId = id; dom.window.FileTube.player.currentId = id; playerState.meta = metaById(id); }, setTrackNav: () => {},
+      // opts.mobile: the REAL player expands itself on a fresh play (straight-to-player);
+      // this stub mirrors that so the skin (which needs state 'full') actually paints.
+      load: (id) => { playerState.currentId = id; dom.window.FileTube.player.currentId = id; playerState.meta = metaById(id); if (opts.mobile) playerState.state = 'full'; }, setTrackNav: () => {},
     },
   };
   global.window.addToQueue = () => {};
@@ -78,6 +87,13 @@ async function boot(url, run, opts) {
   const root = () => dom.window.document.getElementById('view-root');
   const ctx = { playerState, dom, reinit: async () => { registered.destroy(); registered.init(root()); for (let i = 0; i < 10; i++) await settle(); } };
   try {
+    if (opts.mobile) {
+      // production script order: music-skins.js -> skin-surface.js -> music.js
+      delete require.cache[require.resolve('../../public/js/music-skins.js')];
+      require('../../public/js/music-skins.js');
+      delete require.cache[require.resolve('../../public/js/skin-surface.js')];
+      require('../../public/js/skin-surface.js');
+    }
     delete require.cache[musicPath];
     require(musicPath);
     registered.init(root());
@@ -139,6 +155,43 @@ test('v1.240: with Loop ON, a ::c chapter loops its SEGMENT - seeks back at the 
   });
 });
 
+test('v1.250 (adversarial W2): a LIVE wheel scrub in the boundary band is NOT yanked back; releasing re-arms the loop (both axes)', async () => {
+  // The one new cross-module seam this refactor created: enforceChapterLoop now reads the
+  // ENGINE's isScrubbing() instead of music.js's own wheelSpin. Drive a REAL gesture
+  // (pointerdown + a confirmed-move, NO pointerup) on the painted iPod wheel, then fire a
+  // timeupdate inside the loop band - the deliberate scrub must not be yanked back to the
+  // chapter start (the v1.239/v1.240 carried interaction). Then release and prove the loop
+  // enforcement is ALIVE again (the axis pair - kills the isScrubbing():false mutant one
+  // way and the always-true mutant the other).
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c1'), async (dom) => {
+    const { mp, set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => true;
+    set(130); await settle();
+    const panel = dom.window.document.getElementById('music-nowplaying-panel');
+    assert.ok(panel.classList.contains('mms-full') && panel.classList.contains('mms-ipod'), 'the iPod skin painted (mobile boot)');
+    const wheel = panel.querySelector('.ip-wheel');
+    assert.ok(wheel, 'the wheel rendered');
+    // start a live scrub: down off-center, one confirmed move (>8px travel, rotation)
+    wheel.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    wheel.dispatchEvent(new dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 86.6, clientY: 50 }));
+    // the playhead lands in chapter two's loop band (end 240) while the finger is still down.
+    // Without the isScrubbing skip, enforceChapterLoop (bound FIRST) would yank to 120 before
+    // reflectChapter ever saw the tick - the mutant turns the next assert red.
+    set(239.9);
+    assert.ok(Math.abs(mp.currentTime - 239.9) < 0.5, 'mid-scrub: the band tick did NOT yank back to 120 (isScrubbing skip)');
+    // with the yank skipped, that same tick sits in the chapter-advance tolerance too, so the
+    // DISPLAY rolls to chapter three and the repaint drops the gesture (production behavior -
+    // paint() clears mid-gesture state; pre-U3 paintSkin did the same).
+    await settle();
+    wheel.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true }));
+    // the enforcement axis: with the gesture over, the (now chapter-three) band loops again -
+    // the always-true mutant leaves 359.9 untouched and reds this.
+    dom.window.FileTube.player.isLoopEnabled = () => true;
+    set(359.9); await settle();
+    assert.strictEqual(mp.currentTime, 240, 'after release the loop enforcement is live again (yanked to chapter three start)');
+  }, { mobile: true });
+});
+
 test('v1.240: Loop ON loops the PICKED middle chapter (back to its own start, not the file start)', async () => {
   await boot('http://localhost/music?play=' + encodeURIComponent('film::c1'), async (dom) => {
     const { mp, set } = loopable(dom, 360);
@@ -186,7 +239,10 @@ test('v1.240 source-lock: enforceChapterLoop is bound BEFORE reflectChapter and 
   assert.match(js, /addEventListener\('timeupdate', enforceChapterLoop[\s\S]*?addEventListener\('timeupdate', reflectChapter/, 'enforceChapterLoop is bound before reflectChapter');
   const m = /function enforceChapterLoop\(\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(m, 'enforceChapterLoop exists');
-  assert.match(m[1], /wheelSpin && wheelSpin\.mode === 'scrub'/, 'skips during a wheel scrub (the v1.239 carried interaction)');
+  // v1.250 (F-UNIFY): the live-scrub state lives in the shared engine; the loop enforcement
+  // asks whichever surface exists via the engine's isScrubbing() accessor.
+  assert.match(m[1], /inTabEngine && inTabEngine\.isScrubbing\(\)/, 'skips during an in-tab wheel scrub (the v1.239 carried interaction)');
+  assert.match(m[1], /pipEngine && pipEngine\.isScrubbing\(\)/, 'and during a pop-out wheel scrub');
   assert.match(m[1], /isLoopEnabled\(\)/, 'gated on the loop flag');
 });
 

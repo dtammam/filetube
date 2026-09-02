@@ -533,6 +533,10 @@ if (typeof module !== 'undefined' && module.exports) {
   // floating pop-out window on a cross-view swap (its listeners live on the pop-out's own
   // AbortController, not the view signal). Nulled by destroy().
   var activePopoutTeardown = null;
+  // v1.250 (F-UNIFY): the current init's IN-TAB shared-engine instance. Module-scoped so
+  // destroy() can unbind it on the #view-root swap - the engine binds its own listeners
+  // (not view-signal-scoped), so controller.abort() alone would leak them on the panel.
+  var activeInTabEngine = null;
   var SORT_KEY = 'filetube_music_sort';
   var TAB_KEY = 'filetube_music_tab';
   // Friction pass: the Artists view mode - 'grid' (circles) or 'list' (compact
@@ -627,7 +631,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // when the current was song 1, because upNext started near the current). From index
       // 0 for a normal album so EVERY earlier song is reachable; for a huge queue, a wide
       // window centered on the current (still lets you scroll far up). renderIpod opens it
-      // scrolled to the current song (setIpodListMode).
+      // scrolled to the current song (the engine's setListMode).
       var full = [];
       var fstart = queue.length <= 400 ? 0 : Math.max(0, ci - 200);
       for (var k = fstart; k < queue.length && full.length < 400; k++) full.push(rowOf(k));
@@ -640,155 +644,54 @@ if (typeof module !== 'undefined' && module.exports) {
         curNum: ci + 1, total: queue.length,
       };
     }
-    // v1.234: a skin can render on MORE THAN ONE surface - the in-tab mobile panel AND the
-    // desktop pop-out window (Document PiP / independent window). The two are kept mutually
-    // exclusive by the viewport split (pop-out only on wide/desktop, the in-tab skin only on
-    // narrow/mobile), ENFORCED so it can't drift: open re-gates on popoutSupported(), and a
-    // resize into the narrow range tears the pop-out down (see updatePopoutBtn's resize
-    // listener). So only one surface is ever live and the shared wheel state below is
-    // unambiguous. skinSurfaces holds every panel bound via bindSkinSurface; reflectAllSkins
-    // fans the live-element reflect out to each connected one.
-    var skinSurfaces = [];
-    // Reflect the live element into ONE rendered skin panel without a full re-render
-    // (cheap; keeps the up-next scroll position).
-    function reflectSkin(panel) {
-      if (!panel || !panel.classList.contains('mms-full')) return;
-      var mp = hostCtl('media-player'); if (!mp) return;
-      var playBtn = panel.querySelector('.mms-play');
-      if (playBtn) {
-        playBtn.setAttribute('aria-label', mp.paused ? 'Play' : 'Pause');
-        playBtn.innerHTML = mp.paused
-          ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>'
-          : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
-      }
-      var dur = (isFinite(mp.duration) && mp.duration > 0) ? mp.duration : 0;
-      var pos = Number(mp.currentTime) || 0;
-      var frac = dur > 0 ? Math.min(100, pos / dur * 100) : 0;
-      // v1.232.4 (Dean): while a track is LOADING (dur==0 on prev/next), RESET the bar to
-      // 0 instead of leaving the previous track's fill up - that stale fill was the
-      // "fills then abruptly refreshes" flash on skip. Now it drops to 0 and fills as
-      // the new track plays (bound to loadstart/emptied/durationchange below so it's prompt).
-      var fill = panel.querySelector('.mms-fill'); if (fill) fill.style.width = (dur > 0 ? frac : 0) + '%';
-      // iPod status-bar play indicator (▶ playing / ❚❚ paused) - the authentic Classic
-      // shows state up top; the wheel's bottom play button keeps its static ▶❚❚ label.
-      var pind = panel.querySelector('.mms-playind'); if (pind) pind.textContent = mp.paused ? '❚❚' : '▶';
-      var pEl = panel.querySelector('.mms-pos'); if (pEl) pEl.textContent = mmssMusic(pos);
-      var rEl = panel.querySelector('.mms-rem'); if (rEl) rEl.textContent = dur > 0 ? '-' + mmssMusic(dur - pos) : '';
-    }
-    // Reflect into every currently-live skin surface (drops any disconnected panel, e.g. a
-    // closed pop-out window, so we never query a dead document).
-    function reflectAllSkins() {
-      for (var i = skinSurfaces.length - 1; i >= 0; i--) {
-        var p = skinSurfaces[i];
-        if (!p || !p.isConnected) { skinSurfaces.splice(i, 1); continue; }
-        reflectSkin(p);
+    // v1.250 (F-UNIFY): the skin render/gesture/sticker ENGINE lives in the shared
+    // skin-surface.js now (the same engine podcasts run). music.js keeps only the VIEW:
+    // ctx/queue/chapters/cover/pop-out lifecycle, supplied to the engine as hooks. A skin
+    // can render on TWO surfaces - the in-tab mobile panel AND the desktop pop-out window -
+    // kept mutually exclusive by the viewport split (ENFORCED: open re-gates on
+    // popoutSupported(), a resize into the narrow range tears the pop-out down). Each
+    // surface is its OWN engine instance; reflectEngines() fans a live-element update to
+    // whichever exists (the engine no-ops unless its panel wears mms-full).
+    var SkinSurface = (typeof window !== 'undefined' && window.FileTubeSkinSurface) || null;
+    var inTabEngine = null;  // created lazily at first skin render (mobile); pipEngine lives with the pop-out below
+    function dockToOrigin() {
+      // v1.247 (F2): dock to the mini on the ORIGIN tab - the engine's MENU/collapse hook.
+      var pl = window.FileTube && window.FileTube.player;
+      if (pl && typeof pl.dock === 'function') {
+        pl.dock();
+        updateNowPlayingPanel();
+        if (window.FileTube.returnToPlayerOrigin) window.FileTube.returnToPlayerOrigin();
       }
     }
-    // v1.233 iPod wheel-scroll state: wheelCursorRow is the CURRENT list POSITION the
-    // wheel cursor sits on (an index into the rendered .ip-listview rows, NOT a queue
-    // index - fullList may be a window, so a position is robust to that). -1 when the
-    // list is closed. wheelSuppressClick swallows the synthetic click a spin-ending
-    // pointerup would otherwise fire on a wheel zone (see the pointerdown gesture below).
-    var wheelCursorRow = -1;
-    var wheelSuppressClick = false;
-    // v1.234: shared across surfaces (in-tab XOR pop-out - the viewport split is ENFORCED
-    // mutually exclusive, see the reflectAllSkins comment), so a single live-gesture handle
-    // is unambiguous; paintSkin nulls it on a re-render (QA guard).
-    var wheelSpin = null;
-    // v1.235: wheel-VOLUME (desktop pop-out Now Playing). adjustVolume nudges the live
-    // element's volume by `frac` (clamped 0..1; a full turn = the whole range), unmutes on
-    // the way up, and shows the iPod volume bar (swapped in for the scrubber via .mms-voladj),
-    // which fades ~1s after the last movement. Setting media.volume is a no-op on iOS, hence
-    // this is gated to the pop-out (allowVolume) - never shipped where it would be inert.
-    var volFadeTimer = null;
-    function adjustVolume(panel, frac) {
-      var mp = hostCtl('media-player'); if (!mp) return;
-      var v = Math.max(0, Math.min(1, (Number(mp.volume) || 0) + frac));
-      mp.volume = v;
-      if (mp.muted && frac > 0 && v > 0) { try { mp.muted = false; } catch (_) { /* ignore */ } } // unmute only on an UP nudge
-      showVolume(panel, v);
+    // The shared per-surface engine config: ctx from the view, transport via the GLOBAL
+    // hidden controls, sticker quick-menu + the v1.249 Extras (hooks below), hold-to-fast-
+    // scan on, shuffle proxied to this view's button. `panel`/`win` differ per surface.
+    function skinEngineConfig(panel, winRef) {
+      return {
+        panel: panel,
+        win: winRef,
+        getSkinId: function () { return SKINS.activeSkinId(); },
+        getCtx: function () { return buildSkinCtx(currentSkinIndex()); },
+        hostCtl: hostCtl, // MAIN-document controls - a pop-out click still drives the real player
+        onSelectIndex: function (i) { playAt(i); },
+        onDock: dockToOrigin,
+        onShuffle: function () { var sh = hostCtl('music-shuffle-btn'); if (sh) sh.click(); },
+        fastScan: true,
+        sticker: {
+          getPlayer: function () { return (window.FileTube && window.FileTube.player) || null; },
+          onSkinChange: function () { updateNowPlayingPanel(); }, // re-render both surfaces with the new skin
+          extras: {
+            getBaseId: extrasBaseId,
+            isEligible: extrasEligibleView,
+            onMutated: afterExtrasMutation,
+            signal: signal,
+          },
+        },
+      };
     }
-    function showVolume(panel, v) {
-      if (!panel) return;
-      var fill = panel.querySelector('.ip-vol-fill'); if (fill) fill.style.width = Math.round(v * 100) + '%';
-      panel.classList.add('mms-voladj');
-      var win = (panel.ownerDocument && panel.ownerDocument.defaultView) || window;
-      // clear on the SAME window the timer was armed on (adversarial: a bare clearTimeout is a
-      // DIFFERENT realm than win.setTimeout below - the debounce would never cancel, so the bar
-      // could hide mid-spin, and a pop-out timer id could collide with an unrelated main-tab one).
-      if (volFadeTimer != null) { try { (win.clearTimeout || clearTimeout)(volFadeTimer); } catch (_) { /* ignore */ } }
-      volFadeTimer = (win.setTimeout || setTimeout)(function () {
-        panel.classList.remove('mms-voladj'); volFadeTimer = null;
-      }, 1000);
-    }
-    // Move the selection cursor to list POSITION `pos` (clamped): paint .is-cursor (the
-    // blue bar) on that row alone and keep it visible. `center` (list-open) centers it;
-    // otherwise (a spin step) it edge-follows - only scrolls when the row would leave the
-    // viewport, like a real iPod. Scroll ONLY the list container, never the page.
-    function setWheelCursor(panel, pos, center) {
-      var lv = panel && panel.querySelector('.ip-listview'); if (!lv) return;
-      var rows = lv.querySelectorAll('.mms-row'); if (!rows.length) return;
-      pos = Math.max(0, Math.min(rows.length - 1, pos));
-      wheelCursorRow = pos;
-      for (var i = 0; i < rows.length; i++) rows[i].classList.toggle('is-cursor', i === pos);
-      var el = rows[pos];
-      var raf = (typeof window !== 'undefined' && window.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); };
-      raf(function () {
-        // subtract lv.offsetTop: .ip-listview is position:static, so el.offsetTop is
-        // measured from the nearest positioned ancestor (.mms-full), not the list -
-        // it includes the status bar + LCD offset (mirrors the default panel's
-        // scroll-to-current: mnpQueue.scrollTop = curRow.offsetTop - mnpQueue.offsetTop).
-        var top = el.offsetTop - lv.offsetTop;
-        if (center) lv.scrollTop = Math.max(0, top - (lv.clientHeight / 2) + (el.offsetHeight / 2));
-        else if (top < lv.scrollTop) lv.scrollTop = top;
-        else if (top + el.offsetHeight > lv.scrollTop + lv.clientHeight) lv.scrollTop = top + el.offsetHeight - lv.clientHeight;
-      });
-    }
-    // iPod Now-Playing <-> song-list toggle (a transient class on the panel; a full
-    // re-render resets it, so a track change returns you to Now Playing).
-    function setIpodListMode(panel, on) {
-      if (!panel) return;
-      panel.classList.toggle('mms-listmode', !!on);
-      var npEl = panel.querySelector('.ip-np');
-      if (npEl) npEl.textContent = on ? 'Songs' : 'Now Playing';
-      if (on) {
-        // v1.232.5 (Dean): the list is the WHOLE album; on open, seed the cursor on the
-        // current song and CENTER it so earlier tracks are above (scroll up) and later
-        // below. From here the wheel spin moves the cursor (v1.233).
-        var lv = panel.querySelector('.ip-listview');
-        var rows = lv ? lv.querySelectorAll('.mms-row') : [];
-        var startPos = 0;
-        for (var i = 0; i < rows.length; i++) { if (rows[i].classList.contains('is-current')) { startPos = i; break; } }
-        setWheelCursor(panel, startPos, true);
-      } else {
-        var cr = panel.querySelector('.ip-listview .mms-row.is-cursor');
-        if (cr) cr.classList.remove('is-cursor');
-        wheelCursorRow = -1;
-      }
-    }
-    // v1.232 (Dean): overflowing title/artist/album lines SCROLL like a real iPod - on
-    // ALL skins (v1.232.1 broadened to Apple/Spotify: .mms-ttl/.mms-sub/.mms-ctx too,
-    // alongside iPod's .ip-*). Only when motion is allowed (else the line keeps its
-    // ellipsis). Wraps the text in a .mms-mq span + sets the shift distance + a
-    // constant-speed duration as CSS vars; the .mms-marquee keyframe animates it.
-    function applySkinMarquee(panel) {
-      if (!panel) return;
-      try { if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (_) { /* keep going */ }
-      var els = panel.querySelectorAll('.ip-ttl, .ip-artist, .ip-album, .mms-ttl, .mms-sub, .mms-ctx');
-      for (var i = 0; i < els.length; i++) {
-        var el = els[i];
-        var over = el.scrollWidth - el.clientWidth;
-        if (over > 2 && !el.querySelector('.mms-mq')) {
-          var span = (el.ownerDocument || document).createElement('span'); // pop-out uses its own document
-          span.className = 'mms-mq';
-          span.textContent = el.textContent; // textContent both ways -> no injection
-          el.textContent = '';
-          el.appendChild(span);
-          el.classList.add('mms-mq-on');
-          el.style.setProperty('--mms-mq-shift', (-over) + 'px');
-          el.style.setProperty('--mms-mq-dur', Math.max(4, over / 24).toFixed(1) + 's');
-        }
-      }
+    function reflectEngines() {
+      if (inTabEngine) inTabEngine.reflect();
+      if (pipEngine && pipPanel && pipPanel.isConnected) pipEngine.reflect();
     }
     var skinReflectBound = false;
     function ensureSkinReflect() {
@@ -798,7 +701,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.232.4: loadstart/emptied/durationchange fire on a prev/next track swap BEFORE
       // playback, so the bar resets to 0 promptly (no lingering old-track fill).
       ['play', 'pause', 'timeupdate', 'seeked', 'loadedmetadata', 'loadstart', 'emptied', 'durationchange'].forEach(function (ev) {
-        mp.addEventListener(ev, reflectAllSkins, { signal: signal });
+        mp.addEventListener(ev, reflectEngines, { signal: signal });
       });
     }
     // v1.237: the id the now-playing surfaces should treat as CURRENT. Prefer the
@@ -880,14 +783,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // scrub past the boundary is not yanked back mid-drag (the v1.239 carried interaction).
     function enforceChapterLoop() {
       if (!chapterViewId) return;
-      if (wheelSpin && wheelSpin.mode === 'scrub') return;
+      // v1.250: the live-scrub state lives in the shared engine now - ask whichever surface exists.
+      if ((inTabEngine && inTabEngine.isScrubbing()) || (pipEngine && pipEngine.isScrubbing())) return;
       var pl = window.FileTube && window.FileTube.player;
       try { if (!pl || typeof pl.isLoopEnabled !== 'function' || !pl.isLoopEnabled()) return; } catch (_) { return; }
       var mp = hostCtl('media-player'); if (!mp) return;
       var b = currentChapterBounds(); if (!b) return;
       // Fire only in a TIGHT band around the boundary: [end-0.25, end+1). The scrub-skip guard
       // above only covers a live drag; the FINAL scrub position's timeupdate can land AFTER
-      // pointerup (async media events), when wheelSpin is already null but chapterViewId is
+      // pointerup (async media events), when isScrubbing() is already false but chapterViewId is
       // still the pre-scrub chapter (reflectChapter runs after this). Without the upper cap
       // that stale tick would yank a deliberate forward-scrub-to-a-far-chapter back to the old
       // chapter's start (QA gate WARNING). end+1 clears every normal-playback tick (~119.9)
@@ -908,168 +812,19 @@ if (typeof module !== 'undefined' && module.exports) {
       mp.addEventListener('timeupdate', enforceChapterLoop, { signal: signal });
       mp.addEventListener('timeupdate', reflectChapter, { signal: signal });
     }
-    // ---- v1.238: the "sticker" quick-menu (speed + loop + skin picker) ----------
-    // A FileTube-logo sticker in the bottom-left corner of EVERY skin (and the desktop
-    // pop-out) opens a compact menu. The icon is a PER-USER setting (ft-sticker): the
-    // FileTube mark (default), an emoji, or a custom uploaded image (/api/me/sticker,
-    // the T1 endpoint). The menu items PROXY the existing controls so player.js stays
-    // BYTE-UNCHANGED:
-    //   speed -> #media-player.playbackRate AND defaultPlaybackRate (the latter is what
-    //            survives the next load(); player.js reads 'ft-rate' only once at init) +
-    //            persist 'ft-rate' for a page-reload re-apply,
-    //   loop  -> window.FileTube.player.setLoop / isLoopEnabled (FR-7, v1.22.0),
-    //   skin  -> SKINS.setActiveSkin (the same call the Settings picker makes).
-    // injectSticker runs inside paintSkin so the sticker lands on every skin AND the
-    // pop-out uniformly, never as per-skin markup.
-    var STICKER_KEY = 'ft-sticker';
-    var RATE_KEY = 'ft-rate'; // MUST match player.js RATE_STORAGE_KEY (player.js re-reads it on every load)
-    // MUST mirror player.js PLAYBACK_RATES - source-locked behaviorally in music-sticker-menu.test.js.
-    var MMS_SPEED_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
-
-    function readStickerPref() {
-      try {
-        var raw = window.localStorage.getItem(STICKER_KEY);
-        if (!raw) return { kind: 'logo' };
-        var o = JSON.parse(raw);
-        if (o && (o.kind === 'logo' || o.kind === 'emoji' || o.kind === 'custom')) return o;
-      } catch (_) { /* private mode / bad json -> default */ }
-      return { kind: 'logo' };
-    }
-    // v1.241 (Dean): a placed-sticker feel - a SIZE (default/2x/3x/5x) and a TILT
-    // (straight/left/right) are per-user settings on ft-sticker; injectSticker maps them to
-    // CSS classes on the button. Both fall back to the defaults on an unknown/absent value.
-    var STICKER_SIZES = ['default', '2x', '3x']; // v1.243 (Dean): 5x dropped - it overlapped the wheel + couldn't be tapped
-    var STICKER_TILTS = ['straight', 'left', 'right'];
-    function stickerSize() { var s = readStickerPref().size; return STICKER_SIZES.indexOf(s) >= 0 ? s : 'default'; }
-    function stickerTilt() { var t = readStickerPref().tilt; return STICKER_TILTS.indexOf(t) >= 0 ? t : 'left'; }
-    function stickerIconHtml() {
-      var p = readStickerPref();
-      if (p.kind === 'emoji' && p.value) return '<span class="mms-sticker-emoji" aria-hidden="true">' + escapeMusicHtml(p.value) + '</span>';
-      if (p.kind === 'custom') return '<img class="mms-sticker-ic" src="/api/me/sticker' + (p.v ? '?v=' + encodeURIComponent(p.v) : '') + '" alt="" />';
-      return '<img class="mms-sticker-ic" src="/favicon.svg" alt="" />';
-    }
-    function liveRate() {
-      var mp = hostCtl('media-player');
-      var r = mp && Number(mp.playbackRate);
-      return (r && MMS_SPEED_RATES.indexOf(r) !== -1) ? r : 1;
-    }
-    function liveLoop() {
-      var pl = window.FileTube && window.FileTube.player;
-      try { return !!(pl && typeof pl.isLoopEnabled === 'function' && pl.isLoopEnabled()); } catch (_) { return false; }
-    }
-    function buildStickerMenuHtml(panel) {
-      var rate = liveRate();
-      var speed = MMS_SPEED_RATES.map(function (r) {
-        var on = r === rate;
-        return '<button type="button" role="menuitemradio" class="mms-sm-opt' + (on ? ' is-on' : '') +
-          '" data-skin-speed="' + r + '" aria-checked="' + (on ? 'true' : 'false') + '">' +
-          (r === 1 ? 'Normal' : r + '×') + '</button>';
-      }).join('');
-      var loopOn = liveLoop();
-      var skins = (SKINS && SKINS.SKINS) ? SKINS.SKINS : [];
-      var active = (SKINS && SKINS.activeSkinId) ? SKINS.activeSkinId() : '';
-      var chips = skins.map(function (s) {
-        var on = s.id === active;
-        return '<button type="button" role="menuitemradio" class="mms-sm-chip' + (on ? ' is-on' : '') +
-          '" data-skin-pick="' + escapeMusicHtml(s.id) + '" aria-checked="' + (on ? 'true' : 'false') + '">' +
-          escapeMusicHtml(s.label) + '</button>';
-      }).join('');
-      // v1.249 (F-EXTRAS): the second-page entry - library-backed tracks on the
-      // in-tab surface only (see the extras block below for the scope rationale).
-      var extras = extrasEligible(panel)
-        ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-extras><span class="mms-sm-h">Extras</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
-        : '';
-      return '<div class="mms-sm-sec"><div class="mms-sm-h">Speed</div><div class="mms-sm-speed">' + speed + '</div></div>' +
-        '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (loopOn ? ' is-on' : '') +
-        '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-h">Loop</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
-        '<div class="mms-sm-sec"><div class="mms-sm-h">Skin</div><div class="mms-sm-skins">' + chips + '</div></div>' +
-        extras;
-    }
-    // Inject the sticker + its (initially hidden) menu into a freshly-painted panel.
-    function injectSticker(panel) {
-      if (!panel) return;
-      var doc = panel.ownerDocument || document;
-      var wrap = doc.createElement('div');
-      wrap.className = 'mms-sticker-wrap';
-      // v1.240 (Dean): an IMAGE sticker (logo or custom upload) shows SQUARE at the spot with
-      // no circular ring/clip; only an emoji keeps the round chip (legibility on any skin).
-      // Key the marker off what stickerIconHtml ACTUALLY renders: an emoji chip needs a
-      // truthy value, else it falls through to the logo <img> (a partial {kind:'emoji'} pref
-      // with no value would otherwise wrongly circle a logo image - both gate seats).
-      var pref = readStickerPref();
-      var imgCls = (pref.kind === 'emoji' && pref.value) ? '' : ' mms-sticker--img';
-      var szCls = ' mms-sticker-sz-' + stickerSize();     // default | 2x | 3x
-      var tiltCls = ' mms-sticker-tilt-' + stickerTilt();  // straight | left | right
-      wrap.innerHTML =
-        '<button type="button" class="mms-sticker' + imgCls + szCls + tiltCls + '" data-skin-sticker aria-haspopup="true" aria-expanded="false" aria-label="Player options">' + stickerIconHtml() + '</button>' +
-        '<div class="mms-sticker-menu" data-skin-sticker-menu role="menu" hidden>' + buildStickerMenuHtml(panel) + '</div>';
-      panel.appendChild(wrap);
-    }
-    function refreshStickerMenu(panel) {
-      var menu = panel && panel.querySelector('[data-skin-sticker-menu]');
-      if (!menu) return;
-      // Always lands on page 1: a reopen/back never resumes a stale Extras page,
-      // and bumping the token invalidates any in-flight Extras fetch (v1.249).
-      extrasReqToken++;
-      menu.removeAttribute('data-sm-page');
-      menu.innerHTML = buildStickerMenuHtml(panel);
-    }
-    function closeStickerMenu(panel) {
-      var menu = panel && panel.querySelector('[data-skin-sticker-menu]');
-      var btn = panel && panel.querySelector('[data-skin-sticker]');
-      if (menu) menu.hidden = true;
-      if (btn) btn.setAttribute('aria-expanded', 'false');
-    }
-    function applyStickerSpeed(rate) {
-      var r = Number(rate);
-      if (MMS_SPEED_RATES.indexOf(r) === -1) return;
-      var mp = hostCtl('media-player');
-      if (mp) {
-        mp.playbackRate = r;
-        // v1.238 gate CRITICAL (both seats): set defaultPlaybackRate TOO. The HTML load()
-        // algorithm resets playbackRate to defaultPlaybackRate on every new resource, and
-        // player.js reads ft-rate only ONCE at page init (no per-load reapply) - so WITHOUT
-        // this the chosen rate silently reverts to 1x on the next track's load() (the
-        // v1.22.1 bug class). This mirrors player.js applyPlaybackRate (5363-5368), which
-        // sets BOTH properties for exactly this reason.
-        mp.defaultPlaybackRate = r;
-      }
-      // Persist ft-rate as well so a full page reload re-applies the rate via player.js's
-      // one-shot initPlaybackRate (the mid-session carry is defaultPlaybackRate above).
-      try { window.localStorage.setItem(RATE_KEY, String(r)); } catch (_) { /* best-effort */ }
-    }
-    function toggleStickerLoop() {
-      var pl = window.FileTube && window.FileTube.player;
-      if (pl && typeof pl.setLoop === 'function') pl.setLoop(!liveLoop());
-    }
-
-    // ---- v1.249 (F-EXTRAS): the sticker menu's second page - the watch-page
-    // action set for the PLAYING music/YouTube-audio track. Page 1 keeps the
-    // quick controls (speed/loop/skin) and gains an "Extras >" entry; page 2
-    // holds Share/Download/Like/Watched/Queue/Transcript/Reheat/Move/Delete,
-    // all REUSING the shared common.js flows + the id-parametric media
-    // endpoints the watch page fires - never a parallel implementation.
-    //
-    // Scope: LIBRARY-BACKED tracks only (source 'library'/'library-chapter' -
-    // the Wave G projection shares the db.metadata id, so every endpoint
-    // takes it directly). A NATIVE music-library track has no watch-page item
-    // behind these endpoints, so it gets no Extras entry; when the source is
-    // unknowable (a nav-back reseed leaves the queue empty) the entry shows
-    // and the open-time fetch settles it honestly. In-tab surface only: the
-    // shared modals/toasts render in the MAIN document, so offering Extras in
-    // the desktop pop-out window would open UI behind it.
-    var extrasItem = null;     // the /api/videos/:id payload the OPEN page renders (action handlers act on it)
-    var extrasReqToken = 0;    // TOCTOU guard: only the newest open's fetch may render (v1.104 pre/post-await scar)
-    var extrasReheatTimer = null;
-    var extrasReheatAbortHooked = false;
-
+    // ---- v1.250 (F-UNIFY): the sticker quick-menu + Extras page are ENGINE capabilities
+    // now (skin-surface.js, config.sticker) - music.js supplies only the VIEW hooks below.
     function extrasBaseId() {
       // A `::c<idx>` chapter track acts on its WHOLE backing file (the library item).
       var id = effectiveCurrentId();
       return id ? String(id).replace(/::c\d+$/, '') : null;
     }
-    function extrasEligible(panel) {
-      if (((panel && panel.ownerDocument) || document) !== document) return false; // pop-out: no Extras
+    function extrasEligibleView() {
+      // LIBRARY-BACKED tracks only (the Wave G projection shares the db.metadata id). A
+      // NATIVE music-library track has no watch-page item behind the media endpoints; when
+      // the source is unknowable (a nav-back reseed leaves the queue empty) say yes and let
+      // the engine's open-time fetch settle it honestly. (The engine itself adds the
+      // in-MAIN-document check - the pop-out never offers Extras.)
       var id = effectiveCurrentId();
       if (!id) return false;
       for (var i = 0; i < queue.length; i++) {
@@ -1077,204 +832,12 @@ if (typeof module !== 'undefined' && module.exports) {
           return queue[i].source === 'library' || queue[i].source === 'library-chapter';
         }
       }
-      return true; // not in the live queue (reseed) - unknown, let the open fetch decide
+      return true;
     }
-    function extrasCanModifyLibrary() {
-      // The same capability derivation watch.js uses, via the cached shared
-      // fetchCurrentUser (one /api/auth/me per page). Fail CLOSED: no probe /
-      // signed-out -> no Move/Delete (the server enforces regardless).
-      if (typeof window.fetchCurrentUser !== 'function') return Promise.resolve(false);
-      return window.fetchCurrentUser()
-        .then(function (me) { return !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true)); })
-        .catch(function () { return false; });
-    }
-    function extrasBackHtml() {
-      return '<div class="mms-sm-sec"><button type="button" class="mms-sm-back" data-skin-extras-back>&lsaquo; Back</button></div>';
-    }
-    function buildExtrasNoteHtml(msg) {
-      return extrasBackHtml() + '<div class="mms-sm-sec"><div class="mms-sm-note">' + escapeMusicHtml(msg) + '</div></div>';
-    }
-    function buildExtrasHtml(item, canModify) {
-      var hasWatchUrl = typeof item.watchUrl === 'string' && item.watchUrl !== '';
-      var liked = item.liked === true;
-      var watched = item.watchState === 'watched';
-      var acts = [];
-      if (hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="share">Share</button>');
-      acts.push('<a class="mms-sm-act" data-skin-x="download" href="/video/' + encodeURIComponent(item.id) + '?download=1" download>Download</a>');
-      acts.push('<button type="button" class="mms-sm-act' + (liked ? ' is-on' : '') + '" data-skin-x="like" aria-pressed="' + (liked ? 'true' : 'false') + '">' + (liked ? 'Liked' : 'Like') + '</button>');
-      acts.push('<button type="button" class="mms-sm-act' + (watched ? ' is-on' : '') + '" data-skin-x="watched" aria-pressed="' + (watched ? 'true' : 'false') + '">' + (watched ? 'Watched' : 'Mark watched') + '</button>');
-      acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue">Add to queue</button>');
-      acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue-next">Play next</button>');
-      if (item.hasSubtitles === true) acts.push('<button type="button" class="mms-sm-act" data-skin-x="transcript">Transcript</button>');
-      if (hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="reheat">Reheat</button>');
-      if (canModify) {
-        acts.push('<button type="button" class="mms-sm-act" data-skin-x="move">Move to...</button>');
-        acts.push('<button type="button" class="mms-sm-act mms-sm-danger" data-skin-x="delete">Delete</button>');
-      }
-      return extrasBackHtml() +
-        '<div class="mms-sm-sec"><div class="mms-sm-h">' + escapeMusicHtml(item.title || '') + '</div>' +
-        '<div class="mms-sm-acts">' + acts.join('') + '</div></div>';
-    }
-    function openStickerExtras(panel) {
-      var menu = panel.querySelector('[data-skin-sticker-menu]');
-      var baseId = extrasBaseId();
-      if (!menu || !baseId) return;
-      var token = ++extrasReqToken;
-      menu.setAttribute('data-sm-page', 'extras');
-      menu.innerHTML = buildExtrasNoteHtml('Loading…');
-      Promise.all([
-        fetch('/api/videos/' + encodeURIComponent(baseId))
-          .then(function (r) { return r.ok ? r.json() : null; })
-          .catch(function () { return null; }),
-        extrasCanModifyLibrary(),
-      ]).then(function (rs) {
-        // Post-await re-checks (the TOCTOU scar): the newest open only, the
-        // menu still mounted+open+on this page, and the SAME track still live
-        // (an auto-advance repaints the panel, detaching this menu node).
-        if (token !== extrasReqToken) return;
-        if (!menu.isConnected || menu.hidden || menu.getAttribute('data-sm-page') !== 'extras') return;
-        if (extrasBaseId() !== baseId) return;
-        var item = rs[0];
-        if (!item || item.id !== baseId) { menu.innerHTML = buildExtrasNoteHtml('Extras aren’t available for this track.'); return; }
-        extrasItem = item;
-        menu.innerHTML = buildExtrasHtml(item, rs[1]);
-      });
-    }
-    function extrasToast(msg) {
-      if (typeof window.showToast === 'function') window.showToast(msg);
-    }
-    function extrasShare(item) {
-      var base = item.watchUrl;
-      var run = function (u) {
-        if (typeof window.shareExternalUrl !== 'function') return;
-        window.shareExternalUrl(u, item.title).then(function (outcome) {
-          // No persistent button to relabel here - the desktop-fallback
-          // clipboard write gets its feedback as a toast (watch.js parity).
-          if (outcome === 'copied') extrasToast('Link copied');
-        });
-      };
-      var pl = window.FileTube && window.FileTube.player;
-      var t = (pl && typeof pl.getCurrentTime === 'function') ? pl.getCurrentTime() : null;
-      if (typeof t === 'number' && isFinite(t) && t >= 1 &&
-        typeof window.showChoiceModal === 'function' && typeof window.withShareStartTime === 'function') {
-        var dismiss = window.showChoiceModal('Share', [
-          { label: 'Share song', onPick: function () { run(base); } },
-          { label: 'Share at current time (' + mmssMusic(t) + ')', onPick: function () { run(window.withShareStartTime(base, t)); } },
-        ]);
-        if (typeof dismiss === 'function') signal.addEventListener('abort', dismiss, { once: true });
-        return;
-      }
-      run(base);
-    }
-    // Like/Watched share one toggle shape: POST adds, DELETE removes, the
-    // rendered button flips ONLY on a 2xx (the server is the truth; a 403/
-    // failure leaves the shown state alone and says so).
-    function extrasToggleFlag(el, item, kind) {
-      var on = kind === 'like' ? item.liked === true : item.watchState === 'watched';
-      var url = (kind === 'like' ? '/api/liked/' : '/api/watched/') + encodeURIComponent(item.id);
-      fetch(url, { method: on ? 'DELETE' : 'POST' })
-        .then(function (res) {
-          if (!res.ok) { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update Watched.'); return; }
-          if (kind === 'like') {
-            item.liked = !on;
-            // QA gate (the v1.33.1 class): the count-gated Liked sidebar entry
-            // caches its total per session - liking the FIRST track (or unliking
-            // the last) here would leave home's sidebar stale until a reload.
-            // force=true re-primes the cache from the server.
-            if (typeof window.fetchLikedTotal === 'function') window.fetchLikedTotal(true);
-          } else {
-            item.watchState = on ? 'unwatched' : 'watched';
-          }
-          if (!el || !el.isConnected) return;
-          var nowOn = !on;
-          el.classList.toggle('is-on', nowOn);
-          el.setAttribute('aria-pressed', nowOn ? 'true' : 'false');
-          el.textContent = kind === 'like' ? (nowOn ? 'Liked' : 'Like') : (nowOn ? 'Watched' : 'Mark watched');
-        })
-        .catch(function () { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update Watched.'); });
-    }
-    function extrasTranscript(item, el) {
-      if (typeof window.openTranscriptFor !== 'function') return;
-      window.openTranscriptFor({
-        id: item.id,
-        title: item.title || 'Transcript',
-        signal: signal,
-        onBusy: function (busy) { if (el && el.isConnected) el.disabled = busy; },
-      });
-    }
-    function stopExtrasReheatPoll() {
-      if (extrasReheatTimer) { clearInterval(extrasReheatTimer); extrasReheatTimer = null; }
-    }
-    // Compact, honest outcome line (watch.js describeReheat says WHAT changed;
-    // this surface has no page to re-render, so it reports only the verdict -
-    // never claiming a refresh that may not have happened).
-    function extrasReheatToastFor(entry) {
-      if (entry.outcome === 'failed') return 'Reheat did not complete. Some metadata may have been saved; try again.';
-      if (entry.networkRan === false) return 'No YouTube source found for this track, so there was nothing to refresh.';
-      return 'Reheat finished.';
-    }
-    function extrasReheat(item) {
-      var id = item.id;
-      fetch('/api/ytdlp/repull-metadata/item/' + encodeURIComponent(id), { method: 'POST' })
-        .then(function (res) { return res.json().catch(function () { return {}; }).then(function (body) { return { status: res.status, body: body }; }); })
-        .then(function (r) {
-          if (r.status === 202) { extrasToast('Reheating…'); pollExtrasReheat(id); return; }
-          if (r.status === 409) { extrasToast('A reheat is already running.'); return; }
-          // QA gate: the REAL route's 404 carries an error body; on an install
-          // with the yt-dlp module OFF the route doesn't exist at all, so
-          // Express's HTML 404 parses to {} - saying "no source" there would be
-          // a lie (the source exists; the module is off).
-          if (r.status === 404) { extrasToast((r.body && r.body.error) ? 'This track has no source to reheat from.' : 'Reheat isn’t available on this server.'); return; }
-          if (r.status === 403) { extrasToast('Read-only mode: reheat is disabled on this instance.'); return; }
-          extrasToast((r.body && r.body.error) || 'Reheat could not be started.');
-        })
-        .catch(function () { extrasToast('Reheat could not be started.'); });
-    }
-    function pollExtrasReheat(id) {
-      stopExtrasReheatPoll();
-      var elapsed = 0;
-      var everyMs = 1000;
-      // Same ceiling rationale as watch.js: under activity.js's one-shot TTL,
-      // and giving up stops only the POLL - the job still lands server-side.
-      var ceilingMs = 4 * 60 * 1000;
-      extrasReheatTimer = setInterval(function () {
-        elapsed += everyMs;
-        if (elapsed >= ceilingMs) {
-          stopExtrasReheatPoll();
-          extrasToast('Reheat is taking a while; check the activity chip.');
-          return;
-        }
-        fetch('/api/subscriptions/status')
-          .then(function (res) { return res.ok ? res.json() : null; })
-          .then(function (snapshot) {
-            if (signal.aborted) { stopExtrasReheatPoll(); return; }
-            var entry = snapshot && snapshot.oneShots && snapshot.oneShots['repull-metadata-item'];
-            if (!entry || entry.state === 'running' || entry.state === 'queued') return;
-            // A stale terminal entry from a PREVIOUS item's reheat is reachable
-            // (fixed one-shot key, minutes-long TTL) - never report someone
-            // else's result as ours, and keep polling for ours (watch.js parity).
-            if (entry.mediaId && entry.mediaId !== id) return;
-            stopExtrasReheatPoll();
-            if (entry.state === 'error') { extrasToast('Reheat failed.'); return; }
-            extrasToast(extrasReheatToastFor(entry));
-          })
-          .catch(function () { /* transient poll failure - try again next tick */ });
-      }, everyMs);
-      if (!extrasReheatAbortHooked) {
-        extrasReheatAbortHooked = true;
-        signal.addEventListener('abort', stopExtrasReheatPoll, { once: true });
-      }
-    }
-    // A successful Move/Delete removes (or re-keys) the item the player holds:
-    // playback was already close()d, so clear the view's playing state, let the
-    // panel teardown run (drops the full-screen skin), and re-render the lists
-    // so the row is gone. The watch page navigates home here; music IS the
-    // sensible destination already, so it refreshes in place instead.
+    // A successful Move/Delete removed (or re-keyed) the playing item: the engine already
+    // closed the player and re-primed the liked cache; the VIEW clears its playing state,
+    // lets the panel teardown run (drops the full-screen skin), and re-renders the lists.
     function afterExtrasMutation() {
-      extrasItem = null;
-      // QA gate (v1.33.1 class, watch.js delete parity): deleting a LIKED item
-      // changes the count the sidebar's session cache gates on - re-prime it.
-      if (typeof window.fetchLikedTotal === 'function') window.fetchLikedTotal(true);
       playingId = null;
       nowPlaying = null;
       chapterViewId = null;
@@ -1283,114 +846,21 @@ if (typeof module !== 'undefined' && module.exports) {
       updateNowPlayingPanel();
       render().catch(function () { /* the fetch-level catch already showed the empty/error state */ });
     }
-    function extrasMove(item) {
-      if (typeof window.showMoveModal !== 'function' || typeof window.requestMoveItem !== 'function') return;
-      fetch('/api/config')
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (cfg) {
-          if (signal.aborted) return;
-          var folders = (cfg && cfg.folders) || [];
-          window.showMoveModal(item, folders, function (targetFolder, ctl) {
-            ctl.statusEl.textContent = 'Moving...';
-            window.requestMoveItem(item.id, targetFolder)
-              .then(function () {
-                ctl.teardown();
-                extrasToast('File moved.');
-                // The move RE-KEYS the item (server C1): the player still holds
-                // the OLD id and would 404 mid-playback - stop it now that the
-                // move SUCCEEDED (a failed move keeps the modal open and the
-                // track playing; closing before the request would kill playback
-                // on every retry - watch.js ordering, QA-confirmed).
-                if (window.FileTube && window.FileTube.player) window.FileTube.player.close();
-                afterExtrasMutation();
-              })
-              .catch(function (err) {
-                ctl.statusEl.textContent = (err && err.message) || 'Move failed.';
-                if (typeof ctl.reenable === 'function') ctl.reenable();
-              });
-          });
-        })
-        .catch(function () { extrasToast('Could not load the folder list.'); });
-    }
-    function extrasDelete(item) {
-      var doDelete = function () {
-        // Release the about-to-be-deleted resource before the DELETE (watch.js parity).
-        if (window.FileTube && window.FileTube.player) window.FileTube.player.close();
-        fetch('/api/videos/' + encodeURIComponent(item.id), { method: 'DELETE' })
-          .then(function (res) {
-            if (res.status === 403) { extrasToast("You don't have permission to delete library files."); return null; }
-            return res.json();
-          })
-          .then(function (data) {
-            if (!data) return;
-            if (data.success) {
-              extrasToast(typeof window.deleteResultToast === 'function' ? window.deleteResultToast(data) : 'Deleted.');
-              afterExtrasMutation();
-            } else {
-              extrasToast('Error deleting file: ' + (data.error || 'unknown error'));
-            }
-          })
-          .catch(function () { extrasToast('Network error occurred while trying to delete file.'); });
-      };
-      // The same two-flow split as the watch page: a yt-dlp-managed item is
-      // re-downloadable -> the trash confirm; a local file is irreplaceable ->
-      // the escalated checkbox-gated hard-delete modal.
-      if (typeof window.isYtdlpManagedItem === 'function' && window.isYtdlpManagedItem(item)) {
-        if (typeof window.showConfirmModal !== 'function') return;
-        window.showConfirmModal(
-          'Move to Trash?',
-          'Move <strong>' + escapeMusicHtml(item.title || '') + '</strong> to Trash?<br><br><span style="color:var(--yt-red); font-weight:bold;">The file leaves your library now and is permanently removed when the Trash retention window empties it:</span><br><code style="word-break:break-all; font-size:11px;">' + escapeMusicHtml(item.filePath || '') + '</code>',
-          doDelete
-        );
-      } else if (typeof window.showHardDeleteModal === 'function') {
-        window.showHardDeleteModal(item, doDelete);
-      }
-    }
-    function handleExtrasAction(panel, act, el) {
-      var item = extrasItem;
-      if (!item || !item.id) return;
-      if (act === 'download') { closeStickerMenu(panel); return; } // the anchor's own navigation does the work
-      if (act === 'share') { closeStickerMenu(panel); extrasShare(item); return; }
-      if (act === 'like') { extrasToggleFlag(el, item, 'like'); return; }
-      if (act === 'watched') { extrasToggleFlag(el, item, 'watched'); return; }
-      if (act === 'queue') { closeStickerMenu(panel); if (typeof window.addToQueue === 'function') window.addToQueue(item.id, 'end'); return; }
-      if (act === 'queue-next') { closeStickerMenu(panel); if (typeof window.addToQueue === 'function') window.addToQueue(item.id, 'next'); return; }
-      if (act === 'transcript') { closeStickerMenu(panel); extrasTranscript(item, el); return; }
-      if (act === 'reheat') { closeStickerMenu(panel); extrasReheat(item); return; }
-      if (act === 'move') { closeStickerMenu(panel); extrasMove(item); return; }
-      if (act === 'delete') { closeStickerMenu(panel); extrasDelete(item); }
-    }
 
-    // Paint the chosen skin `id` into ANY panel (the in-tab mobile surface OR the desktop
-    // pop-out window) - the shared render used by both. Sets the class chain, renders the
-    // ctx, shimmers the art, and starts the marquee. `doc` is the panel's document (pop-out
-    // has its own) for the rAF/shimmer.
-    function paintSkin(panel, id, ci) {
-      // v1.232: a skin may declare a `base` (e.g. iPod Black -> base 'ipod'), so the panel
-      // ALSO gets the base class + all its shared CSS; the id class overrides the palette.
-      var base = (typeof SKINS.skinById === 'function' && (SKINS.skinById(id) || {}).base) || '';
-      panel.className = 'music-nowplaying-panel mms mms-full mms-' + id + (base ? ' mms-' + base : '');
-      // v1.233 (QA finding): a re-render (e.g. a track auto-advance) detaches the wheel
-      // element, so a live gesture's pointerup would never reach its onUp -> endWheel and
-      // wheelSpin would stick non-null, wedging every later spin ("one gesture at a time").
-      // Drop the mid-gesture state here; the detached wheel's element-local listeners GC
-      // with it, and wheelCursorRow is re-seeded when the list is next opened.
-      wheelSpin = null;
-      panel.innerHTML = SKINS.renderFull(id, buildSkinCtx(ci));
-      injectSticker(panel); // v1.238: the speed/loop/skin quick-menu, on every skin + the pop-out
-      panel.hidden = false;
-      if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(panel);
-      // measure + start the marquee AFTER layout (rAF), so scrollWidth is real.
-      var win = (panel.ownerDocument && panel.ownerDocument.defaultView) || window;
-      var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); };
-      raf(function () { applySkinMarquee(panel); });
-    }
     // Render the active skin into the in-tab panel (returns true if it took over).
-    function renderNowPlayingSkin(ci) {
+    // v1.250 (F-UNIFY): the render/class-chain/sticker/marquee/gesture all live in the
+    // shared engine's paint() now (skin-surface.js - the same code path podcasts run);
+    // this view supplies the ctx/hooks via skinEngineConfig and keeps the mms-on body
+    // class + the straight-to-player cover, which are VIEW state.
+    function renderNowPlayingSkin() {
       if (!SKINS || !skinIsActive()) { straightToPlayerPending = false; document.body.classList.remove('mms-on'); return false; }
-      var id = SKINS.activeSkinId();
+      if (!inTabEngine && SkinSurface && nowPlayingPanel) {
+        inTabEngine = SkinSurface.create(skinEngineConfig(nowPlayingPanel, window));
+        activeInTabEngine = inTabEngine; // module-scoped: destroy() tears it down on a view swap
+      }
+      if (!inTabEngine) { straightToPlayerPending = false; document.body.classList.remove('mms-on'); return false; }
       document.body.classList.add('mms-on'); // CSS hides the default host chrome on mobile+music
-      paintSkin(nowPlayingPanel, id, ci);
+      inTabEngine.paint();
       ensureSkinReflect();
       straightToPlayerPending = false; // the REAL skin is painted - the cover has served its purpose
       return true;
@@ -1493,7 +963,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.227 mobile skins: on mobile + music, the panel becomes the chosen
       // full-screen skin (which owns its own transport, art + up-next). Takes over
       // completely; the desktop theatre toggle + default panel are skipped.
-      if (renderNowPlayingSkin(ci)) { if (theaterBtn) theaterBtn.hidden = true; return; }
+      if (renderNowPlayingSkin()) { if (theaterBtn) theaterBtn.hidden = true; return; }
       if (theaterBtn) theaterBtn.hidden = false; // a track is expanded -> the toggle is available (desktop-gated by CSS)
       // v1.223 (Dean): the panel lists the WHOLE queue - played tracks (before the
       // current) greyed but clickable, the current one marked, the rest up next -
@@ -1552,284 +1022,23 @@ if (typeof module !== 'undefined' && module.exports) {
       if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(settleNowPlaying);
       else settleNowPlaying();
     }
-    // Tapping an up-next row jumps to that queue index (stays expanded via T1).
-    // v1.227: the skin's data-skin-* hooks PROXY to the player's existing hidden
-    // controls (play/prev/next), so the battle-won engine (gesture-prime, bg-audio,
-    // MediaSession, setTrackNav) runs unchanged - the skin never calls audio itself.
-    // v1.234: bind the skin's action hooks + wheel gesture to a panel, so BOTH the in-tab
-    // mobile surface AND the desktop pop-out window (Document PiP / independent window) share
-    // ONE implementation. `panel` is the surface; `sig` is the AbortSignal that unbinds it
-    // (the view's `signal` for the in-tab panel; a pop-out session's own controller for the
-    // pop-out). All the transport hooks proxy to the MAIN document's controls (hostCtl uses
-    // the main document), so a click in the pop-out still drives the real player.
-    function bindSkinSurface(panel, sig, opts) {
-      if (!panel) return;
-      // v1.235: allowVolume => in Now Playing, a wheel spin sets VOLUME (the desktop pop-out,
-      // where media.volume is settable). Off for the in-tab skin (iPhone: volume is read-only,
-      // so a Now-Playing spin stays a no-op rather than shipping inert).
-      var allowVolume = !!(opts && opts.allowVolume);
-      skinSurfaces.push(panel);   // reflectAllSkins fans live-element updates to every surface
-      panel.addEventListener('click', function (e) {
-        // v1.233: a wheel SPIN that ended over a zone button would fire a synthetic click
-        // on release - swallow exactly that one (the flag is set on a moved pointerup and
-        // cleared here or on the next pointerdown, so it never eats a later real tap).
-        if (wheelSuppressClick) { wheelSuppressClick = false; e.preventDefault(); e.stopPropagation(); return; }
-        // v1.238: the sticker quick-menu. The sticker button toggles it; the menu items
-        // proxy speed/loop/skin. Handle these FIRST and return so they never fall through
-        // to the transport/seek/queue hooks below.
-        if (e.target.closest('[data-skin-sticker]')) {
-          var mn = panel.querySelector('[data-skin-sticker-menu]');
-          var sbtn = panel.querySelector('[data-skin-sticker]');
-          if (mn) {
-            var willOpen = mn.hidden;
-            if (willOpen) refreshStickerMenu(panel); // reflect the live rate/loop/skin on open
-            mn.hidden = !willOpen;
-            if (sbtn) sbtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
-          }
-          e.stopPropagation();
-          return;
-        }
-        // v1.249 (F-EXTRAS): the two-page nav + the action set. Dispatched before
-        // the quick controls for the same reason those precede the transport
-        // hooks: a menu tap must never fall through to a surface behind it.
-        if (e.target.closest('[data-skin-extras]')) { openStickerExtras(panel); return; }
-        if (e.target.closest('[data-skin-extras-back]')) { refreshStickerMenu(panel); return; }
-        var xact = e.target.closest('[data-skin-x]');
-        if (xact) { handleExtrasAction(panel, xact.getAttribute('data-skin-x'), xact); return; }
-        var spOpt = e.target.closest('[data-skin-speed]');
-        if (spOpt) { applyStickerSpeed(spOpt.getAttribute('data-skin-speed')); refreshStickerMenu(panel); return; }
-        if (e.target.closest('[data-skin-loop]')) { toggleStickerLoop(); refreshStickerMenu(panel); return; }
-        var pick = e.target.closest('[data-skin-pick]');
-        if (pick) {
-          var sid = pick.getAttribute('data-skin-pick');
-          if (SKINS && typeof SKINS.setActiveSkin === 'function') SKINS.setActiveSkin(sid);
-          closeStickerMenu(panel);
-          updateNowPlayingPanel(); // re-render both surfaces with the newly-picked skin
-          return;
-        }
-        // A click anywhere that is NOT inside the sticker wrap closes an open menu (then
-        // falls through to normal handling so the tapped control still acts).
-        var openSm = panel.querySelector('[data-skin-sticker-menu]:not([hidden])');
-        if (openSm && !e.target.closest('.mms-sticker-wrap')) closeStickerMenu(panel);
-        // Skin PICKING also lives on the Settings page (v1.230); this panel carries the
-        // transport/seek/queue hooks. A skin change persists to ft-music-skin and is
-        // picked up when this view next renders (renderNowPlayingSkin re-reads it).
-        if (e.target.closest('[data-skin-play]')) { var pb = hostCtl('pp-btn'); if (pb) pb.click(); return; }
-        if (e.target.closest('[data-skin-prev]')) { var pv = hostCtl('track-prev-btn'); if (pv) pv.click(); return; }
-        if (e.target.closest('[data-skin-next]')) { var nx = hostCtl('track-next-btn'); if (nx) nx.click(); return; }
-        if (e.target.closest('[data-skin-collapse]')) { var pl = window.FileTube && window.FileTube.player; if (pl && typeof pl.dock === 'function') { pl.dock(); updateNowPlayingPanel(); if (window.FileTube.returnToPlayerOrigin) window.FileTube.returnToPlayerOrigin(); } return; } // v1.247 (F2): dock to the mini on the ORIGIN tab
-        // v1.231 iPod: Shuffle proxies to the music view's own #music-shuffle-btn (the
-        // skin only renders inside this view, so the button is always co-present).
-        if (e.target.closest('[data-skin-shuffle]')) { var sh = hostCtl('music-shuffle-btn'); if (sh) sh.click(); return; }
-        // iPod MENU = back one level: from the song LIST -> Now Playing; from Now
-        // Playing -> dock/exit the full-screen player (the way out, no header needed).
-        if (e.target.closest('[data-skin-menu]')) {
-          if (panel.classList.contains('mms-listmode')) { setIpodListMode(panel, false); }
-          else { var plm = window.FileTube && window.FileTube.player; if (plm && typeof plm.dock === 'function') { plm.dock(); updateNowPlayingPanel(); if (window.FileTube.returnToPlayerOrigin) window.FileTube.returnToPlayerOrigin(); } } // v1.247 (F2): MENU docks to the mini on the ORIGIN tab
-          return;
-        }
-        // iPod Select (center): from Now Playing it OPENS the song list; in the list it
-        // PLAYS the cursor-highlighted song (v1.233, the authentic iPod center-select),
-        // then returns to Now Playing. MENU (above) is the way back out without playing.
-        if (e.target.closest('[data-skin-select]')) {
-          if (panel.classList.contains('mms-listmode')) {
-            var cur = panel.querySelector('.ip-listview .mms-row.is-cursor');
-            var cgi = cur && parseInt(cur.getAttribute('data-skin-go'), 10);
-            setIpodListMode(panel, false);
-            if (cur && !isNaN(cgi)) playAt(cgi);
-          } else { setIpodListMode(panel, true); }
-          return;
-        }
-        var seek = e.target.closest('[data-skin-seek]');
-        if (seek) {
-          // Proxy to the host #seek-bar (a 0..1 ratio input): its 'change' handler
-          // owns the WHOLE seek pipeline - seekCommitTarget, chapter-loop disarm,
-          // currentTime, AND saveProgressToServer. So a skin scrub persists like a
-          // real one, not just on the next periodic save.
-          var sb = hostCtl('seek-bar');
-          if (sb) {
-            var rct = seek.getBoundingClientRect();
-            var frac = Math.min(1, Math.max(0, (e.clientX - rct.left) / (rct.width || 1)));
-            sb.value = String(frac);
-            sb.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-          return;
-        }
-        var sgo = e.target.closest('[data-skin-go]');
-        if (sgo) { var gi = parseInt(sgo.getAttribute('data-skin-go'), 10); if (!isNaN(gi)) { setIpodListMode(panel, false); playAt(gi); } return; }
+    // Tapping an up-next row jumps to that queue index (stays expanded via T1). The
+    // DEFAULT (desktop web) now-playing panel's rows are VIEW furniture, not skin chrome,
+    // so their tap handling stays here - the shared engine binds its own delegated click
+    // proxy only when a skin actually paints (mobile), and a skin renders no .mnp-queue-row,
+    // so the two listeners never both act on one tap.
+    if (nowPlayingPanel) {
+      nowPlayingPanel.addEventListener('click', function (e) {
         var row = e.target.closest('.mnp-queue-row');
         if (!row) return;
         var idx = parseInt(row.getAttribute('data-index'), 10);
         if (!isNaN(idx)) playAt(idx);
-      }, { signal: sig });
-
-      // v1.233: the iPod click wheel is a real ROTARY SCROLL. Spinning it with the song
-      // list open moves the selection cursor song-by-song; a fast flick ACCELERATES;
-      // center then plays the highlighted song. In NOW PLAYING the spin is not idle
-      // (v1.239): it sets VOLUME on the desktop pop-out (allowVolume) and SCRUBS the
-      // timeline on the in-tab mobile skin (iOS volume is read-only). Only the iPod skin
-      // renders a wheel. (Pointer events => a desktop pop-out spins it with a MOUSE drag.)
-      //
-      // Why POINTER events, not touch: a document-level non-passive touchmove is a
-      // scroll-perf regression (the v1.160.1 scar) - passivity is static to the
-      // registration. Pointer events carry no such penalty AND setPointerCapture keeps the
-      // stream on the wheel with no global listener at all. Teardown discipline (the v1.163
-      // scar): move/up/cancel are added on pointerdown and REMOVED on every end arm
-      // (endWheel), and capture is taken LAZILY - only once the gesture is confirmed a spin
-      // - so a plain TAP on a zone/center button still fires its click untouched.
-      var WHEEL_STEP_DEG = 22;   // wheel degrees per one-song cursor step
-      function wheelShortAngle(a) { while (a > 180) a -= 360; while (a < -180) a += 360; return a; }
-      // End the gesture `st`: unbind ITS listeners + release ITS capture. Takes the st
-      // explicitly (not the live wheelSpin) so a stale end-arm - e.g. a detached wheel's
-      // late pointerup after paintSkin already dropped the gesture (QA finding) - tears down
-      // only its own element and never a newer gesture. wheelSpin is nulled only if it
-      // still IS this st.
-      function endWheel(st, suppress) {
-        var w = st.wheel;
-        // v1.242: tear down any fast-scan hold-timer / interval on EVERY end arm (the v1.163
-        // dual-arm teardown discipline) so a pointerup OR pointercancel stops the scan clean.
-        if (st.scanTimer) { try { st.win.clearTimeout(st.scanTimer); } catch (_) { /* ignore */ } st.scanTimer = null; }
-        if (st.scanInterval) { try { st.win.clearInterval(st.scanInterval); } catch (_) { /* ignore */ } st.scanInterval = null; }
-        try { if (st.captured) w.releasePointerCapture(st.id); } catch (_) { /* not captured */ }
-        w.removeEventListener('pointermove', st.onMove);
-        w.removeEventListener('pointerup', st.onUp);
-        w.removeEventListener('pointercancel', st.onUp);
-        // a spin that actually moved swallows the release's synthetic click (below);
-        // a pure tap (no move) leaves the flag false so the zone's click proceeds.
-        if (suppress) wheelSuppressClick = true;
-        if (wheelSpin === st) wheelSpin = null;
-      }
-      panel.addEventListener('pointerdown', function (e) {
-        // any fresh touch starts clean, so a stale suppress can never eat a real tap.
-        wheelSuppressClick = false;
-        if (wheelSpin) return;                                    // one gesture at a time
-        // LIST mode -> cursor scroll. NOW PLAYING -> VOLUME on the desktop pop-out
-        // (allowVolume; media.volume is settable there), else SCRUB the timeline (v1.239,
-        // Dean): on the in-tab iPhone skin iOS makes media.volume read-only, so a Now-Playing
-        // spin scrubs the playhead instead - the useful mobile analog of the pop-out's
-        // wheel-volume. Every Now-Playing spin now does something (no early return).
-        var listMode = panel.classList.contains('mms-listmode');
-        var wheel = e.target.closest('.ip-wheel'); if (!wheel) return;
-        var r = wheel.getBoundingClientRect();
-        var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-        // ignore a press on the dead center (the Select button): no capture, tap passes through.
-        if (Math.hypot(e.clientX - cx, e.clientY - cy) < r.width * 0.2) return;
-        var now0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-        var st = { wheel: wheel, id: e.pointerId, captured: false, moved: false,
-          mode: listMode ? 'cursor' : (allowVolume ? 'volume' : 'scrub'), scrubRatio: null,
-          lastAngle: Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI,
-          lastT: now0, accum: 0, x0: e.clientX, y0: e.clientY, onMove: null, onUp: null };
-        // v1.242 (#2, Dean): HOLD the rewind/ffwd zone to FAST-SCAN the timeline (~2x, audio
-        // keeps playing); release resumes where it landed. Independent of st.mode - keyed off
-        // the pressed ZONE. A quick TAP still skips a track (the hold never fires); a ROTATE
-        // becomes a scrub/cursor (cancels the hold-timer). Steps currentTime on the PANEL's own
-        // window timer so a Document-PiP pop-out (which throttles the opener) still scans.
-        var win = (panel.ownerDocument && panel.ownerDocument.defaultView) || window;
-        st.win = win; st.scanDir = e.target.closest('[data-skin-next]') ? 1 : (e.target.closest('[data-skin-prev]') ? -1 : 0);
-        st.scanTimer = null; st.scanInterval = null; st.scanning = false;
-        function startScan() {
-          var mp0 = hostCtl('media-player');
-          var d0 = (mp0 && isFinite(mp0.duration) && mp0.duration > 0) ? mp0.duration : 0;
-          if (!d0) return; // nothing to scan (still loading) - leave it a plain tap/skip
-          st.scanning = true; st.moved = true; // moved => the release's skip click is suppressed
-          try { st.wheel.setPointerCapture(st.id); st.captured = true; } catch (_) { /* best effort */ }
-          var step = function () {
-            var m = hostCtl('media-player');
-            var d = (m && isFinite(m.duration) && m.duration > 0) ? m.duration : 0;
-            if (!d) return;
-            m.currentTime = Math.min(d, Math.max(0, (Number(m.currentTime) || 0) + st.scanDir * 0.4)); // ~2x realtime
-          };
-          step();                                   // react immediately on the hold, then keep going
-          st.scanInterval = win.setInterval(step, 200);
-        }
-        if (st.scanDir) st.scanTimer = win.setTimeout(function () { st.scanTimer = null; if (!st.moved) startScan(); }, 400);
-        st.onMove = function (ev) {
-          if (ev.pointerId !== st.id) return;   // ignore a SECOND finger's moves (adversarial S1: else its coords difference against finger A's angle -> a jumpy jump)
-          // v1.242 (gate WARNING): once a HOLD has engaged the fast-scan, the scan OWNS the
-          // gesture until release - a subsequent rotation must NOT also scrub (else the scan
-          // interval and the scrub branch fight over currentTime AND both commit on release).
-          if (st.scanning) return;
-          var ang = Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180 / Math.PI;
-          var d = wheelShortAngle(ang - st.lastAngle); st.lastAngle = ang;
-          var now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-          var dt = Math.max(1, now - st.lastT); st.lastT = now;
-          st.accum += d;
-          // confirm it's a spin once travel passes a small threshold: mark moved (so the
-          // click is suppressed) and take pointer capture (so drift off the ring keeps
-          // feeding moves). A pure tap never crosses this, so its click stays intact.
-          if (!st.moved && Math.hypot(ev.clientX - st.x0, ev.clientY - st.y0) > 8) {
-            st.moved = true;
-            // a ROTATE is a scrub/cursor, not a scan: cancel the pending hold so it never scans.
-            if (st.scanTimer) { try { st.win.clearTimeout(st.scanTimer); } catch (_) { /* ignore */ } st.scanTimer = null; }
-            try { st.wheel.setPointerCapture(st.id); st.captured = true; } catch (_) { /* best effort */ }
-          }
-          if (st.mode === 'volume') {
-            // continuous: a full 360deg turn sweeps the whole 0..1 range; clockwise (+) louder.
-            // NOTE: click-suppression uses the SAME 8px travel threshold as cursor mode (the
-            // shared moved/capture block above) - a jittery TAP on a wheel zone (< 8px) must
-            // NOT be swallowed (both gate seats); only a real spin suppresses the release click.
-            adjustVolume(panel, d / 360);
-            return;
-          }
-          if (st.mode === 'scrub') {
-            // v1.243 (Dean): continuous timeline scrub, retuned to be FINE-grained. Now
-            // TIME-based (not a fraction of the whole track), so a slow careful turn nudges a
-            // second or two regardless of track length, while a fast flick ACCELERATES up to
-            // ~5x. ~0.05s per degree at base -> a slow full turn is ~18s. Music is non-live so
-            // currentTime IS the exact target; set it LIVE and repaint the skin fill IMMEDIATELY
-            // (don't wait for the throttled 'seeked' - that was the "chunky/low-poll" feel).
-            var mps = hostCtl('media-player');
-            var durS = (mps && isFinite(mps.duration) && mps.duration > 0) ? mps.duration : 0;
-            if (durS > 0) {
-              var sp = Math.abs(d) / dt;                                        // deg per ms
-              var accel = sp > 2.4 ? 5 : (sp > 1.2 ? 2.5 : (sp > 0.5 ? 1.5 : 1)); // fine when slow, flies when flicked
-              var t2 = Math.min(durS, Math.max(0, (Number(mps.currentTime) || 0) + d * 0.05 * accel));
-              try { mps.currentTime = t2; } catch (_) { /* ignore a bad set */ }
-              st.scrubRatio = durS > 0 ? (t2 / durS) : 0;                       // for the release commit
-              reflectSkin(panel);                                              // immediate visual - smooth, not chunky
-            }
-            return;
-          }
-          // acceleration: songs-per-step scales with angular speed (deg/ms) so a slow turn
-          // is one-at-a-time and a fast flick jumps several.
-          var speed = Math.abs(d) / dt;
-          var mult = speed > 2.4 ? 4 : (speed > 1.5 ? 3 : (speed > 0.8 ? 2 : 1));
-          while (Math.abs(st.accum) >= WHEEL_STEP_DEG) {
-            var sign = st.accum > 0 ? 1 : -1;      // clockwise (+) => down the list, iPod-true
-            st.moved = true;
-            setWheelCursor(panel, wheelCursorRow + sign * mult, false);
-            st.accum -= sign * WHEEL_STEP_DEG;
-          }
-        };
-        st.onUp = function (ev) {
-          // v1.239: a real pointerUP that actually scrubbed COMMITS through the seek pipeline
-          // (#seek-bar 'change' -> seekCommitTarget + saveProgressToServer, the same path the
-          // tap-seek proxy uses). A pointerCANCEL aborts with no commit - the live currentTime
-          // stays where it landed and the next periodic save carries it, never a lost seek.
-          if (st.mode === 'scrub' && st.moved && ev && ev.type === 'pointerup' && st.scrubRatio != null) {
-            var sb = hostCtl('seek-bar');
-            if (sb) { sb.value = String(st.scrubRatio); sb.dispatchEvent(new Event('change', { bubbles: true })); }
-          }
-          // v1.242 fast-scan: a real pointerUP after a scan COMMITS the landed position through
-          // the same seek pipeline (a pointercancel aborts with no commit, like scrub).
-          if (st.scanning && ev && ev.type === 'pointerup') {
-            var mpu = hostCtl('media-player');
-            var du = (mpu && isFinite(mpu.duration) && mpu.duration > 0) ? mpu.duration : 0;
-            if (du) { var sbu = hostCtl('seek-bar'); if (sbu) { sbu.value = String(Math.min(1, Math.max(0, (Number(mpu.currentTime) || 0) / du))); sbu.dispatchEvent(new Event('change', { bubbles: true })); } }
-          }
-          endWheel(st, st.moved);
-        };
-        wheel.addEventListener('pointermove', st.onMove);
-        wheel.addEventListener('pointerup', st.onUp);
-        wheel.addEventListener('pointercancel', st.onUp);
-        wheelSpin = st;
-      }, { signal: sig });
+      }, { signal: signal });
     }
-    if (nowPlayingPanel) bindSkinSurface(nowPlayingPanel, signal);
 
     // ---- v1.234: DESKTOP pop-out player (Document PiP + independent-window fallback) ----
     // Float the player into a small window showing the picked skin. It is a SECOND skin
-    // surface: the same bindSkinSurface proxy + paintSkin render + reflectAllSkins updates,
+    // surface: its OWN shared-engine instance (paint/reflect/gesture, v1.250) over this view's ctx,
     // so the audio engine is untouched (player.js byte-unchanged). Desktop-only: the button
     // shows only where the pop-out is supported AND the viewport is NOT the narrow one that
     // already gets the in-tab skin - a coherent split (narrow -> in-tab skin; wide desktop
@@ -1838,6 +1047,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // spins with a MOUSE click-drag here.
     var POPOUT_W = 380, POPOUT_H = 700;
     var pipWin = null, pipPanel = null, pipAbort = null, pipClock = null, pipPending = false;
+    var pipEngine = null; // v1.250: the pop-out surface's own shared-engine instance
     function popoutSupported() {
       try { if (SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()) return false; } catch (_) { /* treat as desktop */ }
       return !!(typeof window !== 'undefined' && (window.documentPictureInPicture || typeof window.open === 'function'));
@@ -1891,9 +1101,14 @@ if (typeof module !== 'undefined' && module.exports) {
       try { doc.body.classList.add('mms-on'); doc.body.appendChild(panel); } catch (_) { teardownPopout(); return; }
       pipPanel = panel;
       pipAbort = new AbortController();
-      bindSkinSurface(panel, pipAbort.signal, { allowVolume: true }); // desktop -> Now-Playing wheel sets volume; registers the surface for reflectAllSkins
-      ensureSkinReflect(); // arm the media-element -> reflectAllSkins listeners (the in-tab render, which normally arms them, is skipped on desktop)
-      paintSkin(panel, (SKINS && SKINS.activeSkinId()) || 'apple', currentSkinIndex());
+      // v1.250 (F-UNIFY): the pop-out is a SECOND shared-engine instance (its own win/panel,
+      // the same MAIN-document controls). The wheel SCRUBS here now - Dean's 2026-09-02
+      // ruling retired v1.235's pop-out wheel-volume for one consistent Now-Playing gesture.
+      // The engine's own in-main-document gate keeps Extras off this surface (v1.249 rule).
+      pipEngine = SkinSurface ? SkinSurface.create(skinEngineConfig(panel, win)) : null;
+      if (!pipEngine) { teardownPopout(); return; }
+      ensureSkinReflect(); // arm the media-element -> reflectEngines listeners (the in-tab render, which normally arms them, is skipped on desktop)
+      pipEngine.paint();
       // v1.235.x (Dean device): the pop-out clock FROZE in true Document PiP - it rode the
       // MAIN tab's `timeupdate`, but once the PiP window takes focus the opener tab is
       // backgrounded and the browser throttles/pauses those events (a Menu tap re-rendered it
@@ -1901,7 +1116,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // OWN timer - it's the focused, unthrottled window - reading the live (still-advancing,
       // audio keeps playing) mp.currentTime. ~4Hz, like timeupdate. Cleared on teardown (and
       // the interval dies with the window anyway). The in-tab skin keeps the main timeupdate.
-      try { pipClock = win.setInterval(function () { reflectSkin(panel); }, 250); } catch (_) { pipClock = null; }
+      try { pipClock = win.setInterval(function () { if (pipEngine) pipEngine.reflect(); }, 250); } catch (_) { pipClock = null; }
       // the pop-out closing (user, or the tab navigating away) tears the surface down.
       var onClose = function () { teardownPopout(); };
       try { win.addEventListener('pagehide', onClose); win.addEventListener('unload', onClose); } catch (_) { /* ignore */ }
@@ -1942,7 +1157,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // clear the pop-out clock on the window that CREATED it, before closing that window
       // (a closed window's timers die anyway - this is belt-and-suspenders).
       if (pipClock != null) { try { (pipWin && pipWin.clearInterval ? pipWin : window).clearInterval(pipClock); } catch (_) { /* ignore */ } pipClock = null; }
-      if (pipPanel) { var idx = skinSurfaces.indexOf(pipPanel); if (idx >= 0) skinSurfaces.splice(idx, 1); pipPanel = null; }
+      // v1.250: destroy the pop-out's engine instance (unbinds its listeners, stops any
+      // extras poll, clears the PIP document's mms-on) BEFORE dropping the panel/window refs.
+      if (pipEngine) { try { pipEngine.destroy(); } catch (_) { /* ignore */ } pipEngine = null; }
+      pipPanel = null;
       if (pipWin) { try { if (pipWin.close && !pipWin.closed) pipWin.close(); } catch (_) { /* ignore */ } pipWin = null; }
       updatePopoutBtn();
     }
@@ -1952,12 +1170,11 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     // Re-render the OPEN pop-out to the current track/skin (called from updateNowPlayingPanel,
     // which every track change routes through via playAt). Progress/play-state stay live via
-    // reflectAllSkins; this handles the parts that need a repaint (title/art/list/skin).
+    // reflectEngines + the pop-out clock; this handles the parts that need a repaint (title/art/list/skin).
     function repaintPopout() {
-      if (!pipPanel || !pipPanel.isConnected) return;
-      var ci = currentSkinIndex();
-      if (ci < 0) return; // nothing playing - leave the last frame up
-      paintSkin(pipPanel, (SKINS && SKINS.activeSkinId()) || 'apple', ci);
+      if (!pipEngine || !pipPanel || !pipPanel.isConnected) return;
+      if (currentSkinIndex() < 0) return; // nothing playing - leave the last frame up
+      pipEngine.paint();
     }
     // Button: shown only on desktop-supported viewports while a music track is current
     // (expanded OR docked - popping out is most useful while browsing). Mirrors the theatre
@@ -2831,7 +2048,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // covered it (Dean, on-device: "still shows the music page"). v1.244 re-fix: MOUNT the
       // full-screen skin frame (empty) into #music-nowplaying-panel IMMEDIATELY, so the page is
       // covered from the first frame; the list still builds behind it for the dock-return, and
-      // paintSkin fills the frame with the real skin once the track loads. The only path that
+      // the engine's paint() fills the frame with the real skin once the track loads. The only path that
       // shows the list (a non-bounce MISS -> render()) tears the cover down first.
       var coverEarly = false;
       try { coverEarly = !!(SKINS && typeof SKINS.skinActiveFor === 'function' && SKINS.skinActiveFor({ isMusic: true })); } catch (_) { coverEarly = false; }
@@ -2841,7 +2058,7 @@ if (typeof module !== 'undefined' && module.exports) {
         var _sid = (SKINS.activeSkinId && SKINS.activeSkinId()) || 'apple';
         var _base = (SKINS.skinById && (SKINS.skinById(_sid) || {}).base) || '';
         nowPlayingPanel.className = 'music-nowplaying-panel mms mms-full mms-' + _sid + (_base ? ' mms-' + _base : '');
-        nowPlayingPanel.innerHTML = '';   // an empty skin frame = an instant cover over #music-content; paintSkin fills it on load
+        nowPlayingPanel.innerHTML = '';   // an empty skin frame = an instant cover over #music-content; the engine's paint() fills it on load
         nowPlayingPanel.hidden = false;
       }
       tab = 'songs';
@@ -3006,6 +2223,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // AbortController (not the view signal that controller.abort() just cleared), and its
     // proxy targets this now-dead view closure, so it must not outlive the view.
     if (activePopoutTeardown) { try { activePopoutTeardown(); } catch (_) { /* ignore */ } activePopoutTeardown = null; }
+    // v1.250: unbind the in-tab shared-engine instance (its click/pointer listeners are
+    // engine-bound, not view-signal-scoped; its destroy also stops any live extras poll).
+    if (activeInTabEngine) { try { activeInTabEngine.destroy(); } catch (_) { /* ignore */ } activeInTabEngine = null; }
     // v1.44.2: never leak the drill-collapse observer across the #view-root swap.
     disconnectStickyObserver();
     // v1.217: drop the torn-down init's pop handler so a stray popstate after

@@ -2656,5 +2656,11 @@
     "date": "2026-09-02",
     "title": "Every video action, right on the music player",
     "intent": "The full-screen music player's sticker menu now has an Extras page with everything the video watch page offers: share the original YouTube link (including at the current moment), download the file, like it, mark it watched, add it to the queue or play it next, read the transcript, refresh its details from YouTube, move it to another folder, or delete it - all without leaving the player. It appears for music that came from YouTube, and each option only shows when it actually applies to the playing track."
+  },
+  {
+    "version": "1.250.0",
+    "date": "2026-09-02",
+    "title": "One player engine everywhere, and the classic wheel now scrubs on desktop",
+    "intent": "Under the hood, the music player and the podcast player now share one engine, so they look and behave the same and future player features arrive in both at once. Two things you can feel right away: spinning the classic wheel in the desktop pop-out now scrubs through the song exactly like it does on your phone (instead of changing the volume), and the podcast player picked up the quick menu (speed, loop, skin) plus hold-to-fast-forward/rewind on the wheel. This also fixes a case where opening Music from certain pages on a phone could show the plain player instead of your chosen skin."
   }
 ]
