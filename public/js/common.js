@@ -8572,12 +8572,30 @@ function collectCritterRects(selectors, requireSize) {
   return rects;
 }
 
+// v1.248 (Dean): true while the full-screen mobile skin player is mounted (music.js /
+// skin-surface.js add body.mms-on when the skin cover paints). Critters must not scatter over it.
+function critterSuppressedByPlayer() {
+  return typeof document !== 'undefined' && !!document.body && document.body.classList.contains('mms-on');
+}
+function clearCritterLayer() {
+  if (typeof document === 'undefined' || !document.getElementById) return;
+  var lyr = document.getElementById('critter-layer');
+  if (lyr) lyr.remove();
+  critterPlacements = [];
+}
+
 function scatterCritters() {
   if (typeof document === 'undefined' || !document.body) return;
   // v1.182: a direct scatter (the reveal, the settle ladder, the Settings
   // toggle, tests) supersedes any wait phase still pending - tear it down so
   // its observer + timers never fire a second placement behind this one.
   disconnectCritterWait();
+  // v1.248 (Dean): never scatter while the full-screen mobile skin player is up (body.mms-on).
+  // The `.mms-full` cover fills the viewport (and is a critter exclusion zone), so the planner
+  // would measure a viewport-sized exclusion and drop/overlay placements - the music-page
+  // "weird spots / don't save" bug. Clear + skip; the dock-return re-render re-scatters onto the
+  // browse grid once the cover is down.
+  if (critterSuppressedByPlayer()) { clearCritterLayer(); return; }
   var cfg = resolveCritterConfig();
   if (!cfg.enabled) {
     var existing = document.getElementById('critter-layer');
@@ -8711,6 +8729,9 @@ function refindCritterAnchor(p, claimed) {
 
 function reglueCritterPlacements() {
   if (typeof document === 'undefined' || !document.body) return;
+  // v1.248 (Dean): same full-screen-skin guard as scatterCritters - a re-glue while the
+  // mms-full cover is up would drop placements against the viewport-sized exclusion.
+  if (critterSuppressedByPlayer()) { clearCritterLayer(); return; }
   // v1.193 (Dean): honour the "light kiss" pref on the drift path too, so a
   // re-glue respects the SAME overlap budget the last scatter used (0 = strict).
   var overlapAllow = resolveCritterConfig().overlapAllow;
@@ -15330,7 +15351,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildCritterRoundMask,
     critterSettleAction,
     warmCritterAssets,
-    reglueCritterPlacements,
+    reglueCritterPlacements, critterSuppressedByPlayer,
     // v1.182 settle-before-reveal: the wait phase (driven end-to-end in tests).
     scheduleCritterScatter, critterPageLoading, disconnectCritterWait, revealCritterScatter,
     setCritterTimingForTest,
