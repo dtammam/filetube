@@ -2644,5 +2644,11 @@
     "date": "2026-09-02",
     "title": "The player's back button returns you where you started",
     "intent": "Open the mobile player from Home, a search, or a tab, then press back - it now tucks the player into the corner and takes you right back to where you launched it from, instead of leaving you on some other page. Skipping tracks doesn't change where back takes you."
+  },
+  {
+    "version": "1.248.0",
+    "date": "2026-09-02",
+    "title": "Critters stop misbehaving on the music page",
+    "intent": "The little decorative critters no longer show up in odd spots, pile on top of each other, or disappear on the music page. They now stay out of the way while the full-screen player is open and settle back into place properly as you move around the music page."
   }
 ]

@@ -93,6 +93,17 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.248.0 - Critters behave on the music page (2026-09-02)
+
+The decorative critters no longer land in weird spots, overlay, or vanish on the music page.
+Root cause: they only re-placed on a full page/section change, but the music page swaps its
+content in place (song/album/artist tabs, drills, search) - so they stayed stuck to furniture
+that had moved - and the full-screen skin player counts as a no-critters zone the size of the
+screen, so placing while it was up dropped them. Now critters skip entirely while the full-screen
+player is up (and come back when you dock it), and re-place themselves whenever the music page
+changes what it's showing. Everywhere else is unchanged. Slim adversarial gate APPROVE; player.js
+untouched; dual-Node green.
+
 ### v1.247.0 - MENU returns you to where you launched the player from (2026-09-02)
 
 In the mobile skin player, pressing MENU/back (or the collapse handle) now docks the mini-player

@@ -1147,11 +1147,16 @@ if (typeof module !== 'undefined' && module.exports) {
         // bug Dean hit on v1.243/the first v1.244 attempt). Cleared when the skin paints or the
         // load misses, so this can never strand the cover.
         if (straightToPlayerPending) return;
+        var wasSkin = document.body.classList.contains('mms-on'); // v1.248: skin -> docked transition?
         nowPlayingPanel.hidden = true;
         nowPlayingPanel.innerHTML = '';
         nowPlayingPanel.className = 'music-nowplaying-panel'; // drop any skin classes
         document.body.classList.remove('mms-on'); // restore the default host chrome
         if (theaterBtn) theaterBtn.hidden = true; // no expanded track -> no theatre toggle
+        // v1.248 (Dean): when the full-screen skin DOCKS/closes, the browse view is revealed - the
+        // critter scatter was skipped/cleared while mms-on was up, so re-scatter now (only on the
+        // actual transition out of the skin, not on every teardown call).
+        if (wasSkin && window.FileTube && typeof window.FileTube.scheduleCritterScatter === 'function') window.FileTube.scheduleCritterScatter();
         return;
       }
       var ci = -1;
@@ -2075,6 +2080,12 @@ if (typeof module !== 'undefined' && module.exports) {
       // Re-evaluate the "Playing from" line on every render (a tab switch may
       // reveal that the player was closed, or that a non-music item is playing).
       updateNowPlaying();
+      // v1.248 (Dean): re-anchor critters to the freshly-rendered browse furniture. Music swaps
+      // #music-content IN-VIEW (tab/drill/search) with no router navigation, so the router's own
+      // scatter never re-fires and critters would stay glued to stale/removed furniture (the
+      // "weird spots" bug) - the watch.js precedent for a furniture change. The scatter self-skips
+      // while the full-screen skin cover is up (body.mms-on), so this never fights the player.
+      if (window.FileTube && typeof window.FileTube.scheduleCritterScatter === 'function') window.FileTube.scheduleCritterScatter();
     }
 
     // ---- v1.217 in-view back-stack: drill descents get a history level -------
