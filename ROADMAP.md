@@ -80,6 +80,26 @@
 
 ## Shipped
 
+### v1.244.0 - Fit non-square album art + straight-to-player (finally) (2026-09-02)
+
+Two things. (1) ALBUM-ART FIT (Dean, skin-only): most YouTube covers aren't square, so the
+old crop looked bad. The skin art now shows WHOLE (object-fit:contain) with a blurred, scaled
+self-bleed of the same image behind it filling the letterbox - an accent drawn from the art's
+own colors (reuses the Apple bleed technique via a `--art` CSS var set by the render; no
+color-extraction). Square art fills as before; queue thumbs unchanged. (2) STRAIGHT-TO-PLAYER,
+finally fixed: v1.243 (hide chrome) and the first v1.244 attempt (mount a cover) both still
+flashed the /music list on Dean's device. The adversarial seat found the real cause - init's
+own synchronous epilogue `updateNowPlayingPanel()` tore the cover down before the first paint.
+Fixed with a `straightToPlayerPending` flag that holds the cover up until the real skin paints
+(cleared on paint / miss / rejection, and reset on the view swap). player.js BYTE-UNCHANGED.
+
+Slim gate (adversarial). One CRITICAL (the inert cover) - fixed and bound with a BEHAVIORAL
+test (the reviewer's own repro: inspect synchronously post-init while the fetch is pending),
+mutation-verified. One WARNING (the flag could strand across a mid-fetch view swap - the
+v1.227 class) closed for free with a destroy()/init() reset, mutation-verified. Dual-Node
+8113/0 (Node 22 + 24). **Device pending** - Dean confirms the home-feed tap now drops straight
+into the player (no list flash) and non-square art looks elegant.
+
 ### v1.243.0 - Player polish: no-select holds, finer scrub, straight-to-player (2026-09-01)
 
 Four on-device fixes from Dean's pass over the mobile/custom music player (the skins). (1) A

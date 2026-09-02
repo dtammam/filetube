@@ -2620,5 +2620,11 @@
     "date": "2026-09-01",
     "title": "Music player polish",
     "intent": "A few nice touches to the phone music player: holding the wheel no longer accidentally highlights text like it's a web page, and spinning to scrub is now much finer and smoother so you can land exactly where you want. Tapping a song from the home feed now drops you straight into the player instead of flashing the music list on the way. The extra-large (5x) sticker size is gone since it covered the wheel - the other sizes and tilts stay."
+  },
+  {
+    "version": "1.244.0",
+    "date": "2026-09-02",
+    "title": "Album art that fits, and a smoother open",
+    "intent": "Album covers that aren't square (a lot of YouTube ones) now show in full in the music skins, with a soft blurred version of the same art filling the space around them instead of being cropped - it looks a lot more polished. And tapping a song from the home feed now really does open straight into the player, with no flash of the music list on the way in."
   }
 ]

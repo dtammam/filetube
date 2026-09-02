@@ -84,6 +84,22 @@ test('the GATE is true ONLY for mobile + a music item (desktop / non-music are d
   assert.strictEqual(skins.skinActiveFor(null, true), false, 'nothing playing -> default');
 });
 
+test('v1.244: the art SLOT carries --art (blurred self-bleed) when there is art, none without', () => {
+  assert.match(skins.renderFull('apple', CTX), /class="mms-art" style="--art:url\(/, 'apple art slot carries --art');
+  assert.match(skins.renderFull('spotify', CTX), /class="mms-art" style="--art:url\(/, 'spotify art slot carries --art');
+  assert.match(skins.renderFull('ipod', CTX), /class="ip-cover" style="--art:url\(/, 'ipod ip-cover carries --art');
+  assert.doesNotMatch(skins.renderFull('apple', { track: { title: 'X' } }), /--art:/, 'no --art when there is no artUrl');
+});
+
+test('v1.244 source-lock (CSS): the skin art is object-fit:contain with a blurred ::before self-bleed from --art', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.mms-full \.mms-art img\{[^}]*object-fit:contain/, 'shared art img shows the WHOLE art (contain)');
+  assert.match(css, /\.mms-full \.mms-art::before\{[^}]*background-image:var\(--art, none\)[^}]*filter:blur/, 'a blurred self-bleed backdrop from --art');
+  assert.match(css, /\.mms-ipod \.ip-cover img\{[^}]*object-fit:contain/, 'ipod cover is contain too');
+  assert.match(css, /\.mms-ipod \.ip-cover::before\{[^}]*background-image:var\(--art, none\)/, 'ipod cover has the backdrop');
+});
+
 test('every skin renderFull emits the core transport hooks + shared reflect targets (not vacuous)', () => {
   for (const id of skins.IDS) {
     const html = skins.renderFull(id, CTX);

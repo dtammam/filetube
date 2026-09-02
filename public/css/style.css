@@ -11003,7 +11003,15 @@ html[data-modern="on"] .video-uploader {
   /* shared control primitives - identical hooks + reflect targets across skins */
   .mms-full .mms-top{ display:flex; align-items:center; justify-content:space-between; }
   .mms-full .mms-chev{ width:36px; height:36px; border:0; background:transparent; color:inherit; font-size:var(--fs-3xl); cursor:pointer; display:grid; place-items:center; opacity:.9; }
-  .mms-full .mms-art img{ width:100%; height:100%; object-fit:cover; display:block; }
+  /* v1.244 (Dean): non-square art (most YouTube covers) is shown WHOLE (object-fit:contain)
+     with a blurred, scaled self-bleed of the same image filling the letterbox (the "accent
+     from its own colors" - the --art var is set on the slot by the skin render; reuses the
+     Apple bleed technique, no color-extraction). Square art fills the frame as before. */
+  /* the ::before is source-ordered BEFORE the positioned img, so it paints behind with no
+     z-index (the same no-z-ladder trick the .mms-bleed / .mms-z pair uses). */
+  .mms-full .mms-art{ position:relative; }
+  .mms-full .mms-art::before{ content:""; position:absolute; inset:0; background-image:var(--art, none); background-size:cover; background-position:center; filter:blur(24px) brightness(.72); transform:scale(1.35); }
+  .mms-full .mms-art img{ position:relative; width:100%; height:100%; object-fit:contain; display:block; }
   .mms-full .mms-fill{ position:absolute; inset:0 auto 0 0; border-radius:var(--radius-full); }
   .mms-full .mms-times{ display:flex; justify-content:space-between; font-size:var(--fs-2xs); font-variant-numeric:tabular-nums; }
   .mms-full .mms-pos, .mms-full .mms-rem{ font-variant-numeric:tabular-nums; }
@@ -11163,8 +11171,10 @@ html[data-modern="on"] .video-uploader {
   /* Now Playing view */
   .mms-ipod .ip-npview{ flex:1; min-height:0; display:flex; flex-direction:column; padding:var(--space-6) var(--space-6) var(--space-4); }
   .mms-ipod .ip-npmain{ display:flex; gap:var(--space-6); flex:1; min-height:0; }
-  .mms-ipod .ip-cover{ width:44%; align-self:flex-start; aspect-ratio:1; overflow:hidden; border-radius:var(--mms-ipod-r-sm); background:var(--mms-ipod-groove); box-shadow:var(--mms-ipod-art-shadow); }
-  .mms-ipod .ip-cover img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .mms-ipod .ip-cover{ position:relative; width:44%; align-self:flex-start; aspect-ratio:1; overflow:hidden; border-radius:var(--mms-ipod-r-sm); background:var(--mms-ipod-groove); box-shadow:var(--mms-ipod-art-shadow); }
+  /* v1.244: same whole-art + blurred self-bleed as the other skins (the --art var is set by the render). */
+  .mms-ipod .ip-cover::before{ content:""; position:absolute; inset:0; background-image:var(--art, none); background-size:cover; background-position:center; filter:blur(18px) brightness(.72); transform:scale(1.35); }
+  .mms-ipod .ip-cover img{ position:relative; width:100%; height:100%; object-fit:contain; display:block; }
   .mms-ipod .ip-meta{ flex:1; min-width:0; }
   .mms-ipod .ip-ttl{ font-size:var(--fs-2xl); font-weight:var(--fw-bold); line-height:var(--mms-lh-ttl); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .mms-ipod .ip-artist{ font-size:var(--fs-md); margin-top:var(--space-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
