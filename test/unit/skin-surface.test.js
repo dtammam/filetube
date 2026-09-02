@@ -24,7 +24,7 @@ const HTML = `<body>
   <div id="panel" class="music-nowplaying-panel" hidden></div>
 </body>`;
 
-function bootEngine({ onSelect, onDock } = {}) {
+function bootEngine({ onSelect, onDock, skin } = {}) {
   const dom = new JSDOM(HTML, { url: 'http://localhost/podcasts' });
   const saved = { window: global.window, document: global.document, performance: global.performance, Event: global.Event };
   global.window = dom.window; global.document = dom.window.document;
@@ -43,7 +43,7 @@ function bootEngine({ onSelect, onDock } = {}) {
   };
   const engine = dom.window.FileTubeSkinSurface.create({
     panel: dom.window.document.getElementById('panel'),
-    getSkinId: () => 'ipod',
+    getSkinId: () => skin || 'ipod',
     getCtx: () => ctx,
     hostCtl: (id) => dom.window.document.getElementById(id),
     onSelectIndex: (i) => { spy.select.push(i); if (onSelect) onSelect(i); },
@@ -146,18 +146,57 @@ test('the iPod MENU from Now Playing DOCKS (never closes) - onDock fires', () =>
   } finally { restore(); }
 });
 
-test('reflect() syncs the progress fill + play glyph from the LIVE element', () => {
-  const { dom, engine, restore } = bootEngine();
+test('reflect() syncs the fill AND FLIPS the iPod play indicator from the LIVE element', () => {
+  const { dom, engine, restore } = bootEngine({ skin: 'ipod' });
   try {
     engine.paint();
     const mp = dom.window.document.getElementById('media-player');
     Object.defineProperty(mp, 'duration', { value: 200, configurable: true });
-    Object.defineProperty(mp, 'currentTime', { value: 100, configurable: true, writable: true });
-    Object.defineProperty(mp, 'paused', { value: false, configurable: true });
+    Object.defineProperty(mp, 'currentTime', { value: 100, configurable: true });
+    let paused = false; Object.defineProperty(mp, 'paused', { configurable: true, get: () => paused });
     engine.reflect();
-    const fill = panel(dom).querySelector('.mms-fill');
-    assert.ok(fill, 'the skin has a progress fill');
-    assert.strictEqual(fill.style.width, '50%', 'reflect set the fill to 100/200 = 50%');
+    const p = panel(dom);
+    assert.strictEqual(p.querySelector('.mms-fill').style.width, '50%', 'reflect set the fill to 100/200 = 50%');
+    const pind = p.querySelector('.mms-playind');
+    assert.ok(pind, 'the iPod status-bar play indicator exists');
+    assert.strictEqual(pind.textContent, '▶', 'playing -> play triangle');
+    paused = true; engine.reflect();
+    assert.strictEqual(pind.textContent, '❚❚', 'paused -> pause bars (non-vacuous: the indicator actually flipped)');
+  } finally { restore(); }
+});
+
+test('reflect() SWAPS the play-button GLYPH on the default Apple skin (adversarial W1: icon, not just a class)', () => {
+  const { dom, engine, restore } = bootEngine({ skin: 'apple' });
+  try {
+    engine.paint();
+    const mp = dom.window.document.getElementById('media-player');
+    let paused = true; Object.defineProperty(mp, 'paused', { configurable: true, get: () => paused });
+    engine.reflect();
+    const btn = panel(dom).querySelector('.mms-play');
+    assert.ok(btn, 'the Apple skin renders a real .mms-play glyph button');
+    assert.match(btn.innerHTML, /M8 5v14/, 'paused -> the PLAY triangle glyph shows');
+    assert.strictEqual(btn.getAttribute('aria-label'), 'Play');
+    paused = false; engine.reflect();
+    assert.match(btn.innerHTML, /M6 5h4v14/, 'playing -> the PAUSE bars glyph shows (the icon ACTUALLY changed, not just a class)');
+    assert.strictEqual(btn.getAttribute('aria-label'), 'Pause');
+  } finally { restore(); }
+});
+
+test('a moved spin SWALLOWS exactly its release click (the v1.233 suppress guard, now bound)', () => {
+  const { dom, engine, restore } = bootEngine({ skin: 'ipod' });
+  try {
+    engine.paint();
+    engine.setListMode(true); // a spin here is a cursor move -> moved=true -> arms the suppress flag
+    let pp = 0;
+    dom.window.document.getElementById('pp-btn').addEventListener('click', () => { pp += 1; });
+    spin(panel(dom).querySelector('.ip-wheel'), dom, [40, 80, 120]);
+    // the synthetic release click on a transport zone must be swallowed (no phantom play/pause)
+    panel(dom).querySelector('[data-skin-play]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(pp, 0, 'the spin-ending click was suppressed');
+    // a FRESH tap (its own pointerdown clears the one-shot flag) proceeds normally
+    panel(dom).dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }));
+    panel(dom).querySelector('[data-skin-play]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(pp, 1, 'a fresh tap after the spin proceeds (the flag was one-shot)');
   } finally { restore(); }
 });
 

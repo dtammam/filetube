@@ -1,7 +1,7 @@
 'use strict';
 
 // Shared mobile-skin ENGINE (v1.246, Dean's podcasts-on-skin wave). The music view (music.js)
-// grew a battle-won iPod/Apple/Spotify skin surface over v1.227-245 - render + reflect + the
+// grew a battle-won iPod/Apple/Spotify skin surface over v1.227-246 - render + reflect + the
 // click-wheel gesture (list cursor + timeline scrub) + transport proxying to the player's
 // hidden controls. Podcasts want the SAME surface, but music.js and podcasts.js are separate
 // page-scoped scripts, so the reusable engine lives HERE (loaded globally like music-skins.js)
@@ -54,16 +54,23 @@
     function reflect() {
       if (!panel || !panel.classList.contains('mms-full')) return;
       var mp = hostCtl('media-player'); if (!mp) return;
-      var playing = !mp.paused && !mp.ended;
-      var pb = panel.querySelector('[data-skin-play]');
-      if (pb) {
-        pb.setAttribute('aria-label', playing ? 'Pause' : 'Play');
-        pb.classList.toggle('is-playing', playing);
+      // SWAP the play-button GLYPH (not just a class) - byte-for-behaviour with music.js
+      // reflectSkin: the default Apple/Spotify skins render a real .mms-play SVG button, so a
+      // class toggle alone would leave the wrong icon after an in-place pause (adversarial W1).
+      var playBtn = panel.querySelector('.mms-play');
+      if (playBtn) {
+        playBtn.setAttribute('aria-label', mp.paused ? 'Play' : 'Pause');
+        playBtn.innerHTML = mp.paused
+          ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>'
+          : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
       }
       var dur = (isFinite(mp.duration) && mp.duration > 0) ? mp.duration : 0;
       var pos = Number(mp.currentTime) || 0;
       var frac = dur > 0 ? Math.min(100, Math.max(0, pos / dur * 100)) : 0;
-      var fill = panel.querySelector('.mms-fill'); if (fill) fill.style.width = frac + '%';
+      // reset to 0 while a track is LOADING (dur==0) instead of leaving the old fill (music parity).
+      var fill = panel.querySelector('.mms-fill'); if (fill) fill.style.width = (dur > 0 ? frac : 0) + '%';
+      // the iPod status-bar play indicator (music parity).
+      var pind = panel.querySelector('.mms-playind'); if (pind) pind.textContent = mp.paused ? '❚❚' : '▶';
       var posEl = panel.querySelector('.mms-pos'); if (posEl) posEl.textContent = fmtTime(pos);
       var remEl = panel.querySelector('.mms-rem'); if (remEl) remEl.textContent = dur > 0 ? ('-' + fmtTime(Math.max(0, dur - pos))) : '';
     }

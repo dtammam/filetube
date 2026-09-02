@@ -199,7 +199,7 @@
   function skinById(id) { return BY_ID[normalizeSkinId(id)]; }
 
   // The GATE: the mobile-music skin is active on a mobile viewport AND an audio item
-  // the skin can drive - a MUSIC item (meta.isMusic) or, since v1.245, a PODCAST episode
+  // the skin can drive - a MUSIC item (meta.isMusic) or, since v1.246, a PODCAST episode
   // (meta.resumeMode==='podcast'; player.js exposes resumeMode via getCurrentMeta, so no
   // player.js change is needed here). `meta` is player.getCurrentMeta() (or an {isMusic}/
   // {resumeMode} stand-in); `mql` lets a test inject the matchMedia result. Desktop +
