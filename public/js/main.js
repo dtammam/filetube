@@ -2887,7 +2887,7 @@ const PreviewCards = (function () {
     }
 
     // Event Listeners
-    // NOTE: the header search box's click/keypress listeners are shell-owned
+    // NOTE: the header search box's click/keydown listeners are shell-owned
     // (bound once at boot by common.js — see the C1 remediation comment
     // there), not wired per-view here.
 

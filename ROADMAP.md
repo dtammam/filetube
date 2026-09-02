@@ -93,6 +93,18 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.245.0 - iOS search Return key (2026-09-02)
+
+The header search now runs when you press Return (or "Search") on the iOS keyboard, not
+only when you tap the Search button. The old handler listened for the deprecated `keypress`
+event, which iOS Safari does not reliably fire for the on-screen keyboard's Return key; it
+now listens for `keydown` (reliable on iOS) and sets `enterkeyhint="search"` so the keyboard
+even labels the key "Search". Desktop Enter-to-search is unchanged, and the binding stays
+shell-owned (bound once for every page). A standalone same-day fix, split out of the
+in-progress podcasts-on-skin wave at Dean's request. Adversarial slim gate APPROVE (three
+mutants killed; no desktop regression, no double-fire); two stale "keypress" comments in
+main.js/watch.js corrected in the same commit.
+
 ### v1.244.0 - Fit non-square album art + straight-to-player (finally) (2026-09-02)
 
 Two things. (1) ALBUM-ART FIT (Dean, skin-only): most YouTube covers aren't square, so the

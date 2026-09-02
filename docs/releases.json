@@ -2626,5 +2626,11 @@
     "date": "2026-09-02",
     "title": "Album art that fits, and a smoother open",
     "intent": "Album covers that aren't square (a lot of YouTube ones) now show in full in the music skins, with a soft blurred version of the same art filling the space around them instead of being cropped - it looks a lot more polished. And tapping a song from the home feed now really does open straight into the player, with no flash of the music list on the way in."
+  },
+  {
+    "version": "1.245.0",
+    "date": "2026-09-02",
+    "title": "Search with the keyboard's Return key",
+    "intent": "On an iPhone you can now just press Return on the keyboard to run a search - no more reaching over to tap the Search button. The keyboard's return key even says \"Search\" now."
   }
 ]
