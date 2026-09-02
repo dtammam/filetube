@@ -106,6 +106,13 @@
             <button class="btn btn-sm" id="podcasts-settings-btn" type="button" title="Podcast settings">
               <svg class="chrome-icon" viewBox="0 -960 960 960" aria-hidden="true"><path d="M433-80q-27 0-46.5-18T363-142l-9-66q-13-5-24.5-12T307-235l-62 26q-25 11-50 2t-39-32l-47-82q-14-23-8-49t27-43l53-40q-1-7-1-13.5v-27q0-6.5 1-13.5l-53-40q-21-17-27-43t8-49l47-82q14-23 39-32t50 2l62 26q11-8 23-15t24-12l9-66q4-26 23.5-44t46.5-18h94q27 0 46.5 18t23.5 44l9 66q13 5 24.5 12t22.5 15l62-26q25-11 50-2t39 32l47 82q14 23 8 49t-27 43l-53 40q1 7 1 13.5v27q0 6.5-2 13.5l53 40q21 17 27 43t-8 49l-48 82q-14 23-39 32t-50-2l-60-26q-11 8-23 15t-24 12l-9 66q-4 26-23.5 44T527-80h-94Zm7-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z"/></svg> Settings
             </button>
+            <!-- v1.251 (R2): the same desktop-only THEATRE toggle music has (v1.222) - the
+                 up-next episode panel beside the expanded player. Hidden until an episode
+                 is expanded (podcasts.js updateNowPlayingPanel toggles it in lockstep);
+                 persisted per device (ft-podcast-theater). -->
+            <button class="btn btn-sm music-theater-btn" id="podcast-theater-btn" type="button" hidden title="Theatre mode: up next beside the player" aria-label="Toggle theatre mode" aria-pressed="false">
+              <svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><g transform="matrix(1.2 0 0 1.2 -98 54)"><path fill-rule="evenodd" d="M256-556 704-556 652-116 308-116ZM394-544 452-544 452-128 394-128ZM508-544 566-544 566-128 508-128Z"/><path d="M242-596 718-596 704-556 256-556ZM254-648a58,58 0 1,0 116,0a58,58 0 1,0 -116,0ZM328-704a70,70 0 1,0 140,0a70,70 0 1,0 -140,0ZM428-684a64,64 0 1,0 128,0a64,64 0 1,0 -128,0ZM518-706a68,68 0 1,0 136,0a68,68 0 1,0 -136,0ZM606-646a58,58 0 1,0 116,0a58,58 0 1,0 -116,0ZM398-636a46,46 0 1,0 92,0a46,46 0 1,0 -92,0ZM494-634a46,46 0 1,0 92,0a46,46 0 1,0 -92,0Z"/></g></svg>
+            </button>
             <button class="btn btn-sm btn-primary" id="podcasts-add-btn" type="button" title="Subscribe to a podcast RSS feed">
               + Add podcast
             </button>
@@ -122,12 +129,17 @@
              leaving for a DIFFERENT view docks it; a podcasts->podcasts
              swap does NOT dock, so init re-adopts a FULL player into the
              fresh slot every time (gate W2). Empty until then. -->
+        <!-- v1.251 (R2): the STAGE wraps slot + panel (the music.html v1.222 pattern) so
+             desktop THEATRE (.is-theater) can lay them side by side; block on mobile. -->
+        <div id="podcast-stage" class="music-stage">
         <div id="player-slot"></div>
         <!-- v1.105: the expanded now-playing panel - episode title, show + date,
-             show-notes, and an "Up next" list of the show's remaining episodes.
-             Shown only while the player is expanded (state 'full') with a podcast
-             episode playing (public/js/podcasts.js updateNowPlayingPanel). -->
+             show-notes, and (v1.251) the SHARED whole-queue "Up next" treatment
+             (skin-surface.js buildPanelHtml - music's v1.223 semantics). Shown only
+             while the player is expanded (state 'full') with a podcast episode
+             playing (public/js/podcasts.js updateNowPlayingPanel). -->
         <div id="podcast-nowplaying-panel" class="music-nowplaying-panel" hidden></div>
+        </div>
 
         <!-- Drill-in breadcrumb (show -> episode list); hidden on the grid. -->
         <div class="music-crumb" id="podcasts-crumb" hidden></div>

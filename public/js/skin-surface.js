@@ -822,7 +822,45 @@
     };
   }
 
-  var api = { create: create };
+  // ---- v1.251 (R2): the SHARED desktop now-playing panel builder --------------------------
+  // Music's v1.223 whole-queue panel (meta + windowed rows with played/current/next states,
+  // played greyed but clickable for jump-back), extracted VERBATIM so podcasts renders the
+  // SAME desktop treatment instead of its legacy forward-only fragment. `np` = { title,
+  // subline }; each row = { id, artUrl, title, artist, index, state } - the view precomputes
+  // its own subline/artUrl (music: artist·album + /albumart; podcasts: show·meta +
+  // /podcastart). Escaped here - podcast titles/notes are FEED PROSE. Row taps are the
+  // VIEW's delegated .mnp-queue-row listener (data-index), exactly music's contract.
+  function panelEscape(text) {
+    return String(text == null ? '' : text)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+  function buildPanelHtml(np, rows) {
+    np = np || {};
+    var meta = '<div class="mnp-meta">' +
+      '<div class="mnp-title" title="' + panelEscape(np.title) + '">' + panelEscape(np.title || 'Unknown track') + '</div>' +
+      (np.subline ? '<div class="mnp-sub">' + panelEscape(np.subline) + '</div>' : '') +
+      '</div>';
+    var queue = '';
+    if (Array.isArray(rows) && rows.length) {
+      queue = '<div class="mnp-queue"><div class="mnp-queue-head">Up next</div>' +
+        rows.map(function (it) {
+          var cls = 'mnp-queue-row'
+            + (it.state === 'played' ? ' is-played' : '')
+            + (it.state === 'current' ? ' is-current' : '');
+          return '<button type="button" class="' + cls + '"' + (it.state === 'current' ? ' aria-current="true"' : '') + ' data-index="' + it.index + '">' +
+            '<img class="mnp-queue-thumb art-shimmer" src="' + panelEscape(it.artUrl) + '" alt="" loading="lazy" />' +
+            '<span class="mnp-queue-main">' +
+            '<span class="mnp-queue-title">' + panelEscape(it.title || 'Track') + '</span>' +
+            (it.artist ? '<span class="mnp-queue-sub">' + panelEscape(it.artist) + '</span>' : '') +
+            '</span></button>';
+        }).join('') +
+        '</div>';
+    }
+    return meta + queue;
+  }
+
+  var api = { create: create, buildPanelHtml: buildPanelHtml };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.FileTubeSkinSurface = api;
 })();

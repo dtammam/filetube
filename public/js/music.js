@@ -208,33 +208,19 @@ function buildSongRowHtml(item, index) {
 // queue index, so a tap can `playAt(index)`). Queue thumbs ship `art-shimmer`
 // (reveal-once, cleared by the shared shimmerArt).
 function buildNowPlayingPanelHtml(np, upNext) {
+  // v1.251 (R2): the v1.223 whole-queue panel moved VERBATIM into the shared engine
+  // (skin-surface.js buildPanelHtml) so podcasts' desktop panel is the SAME treatment.
+  // This wrapper keeps music's callers/tests stable: it precomputes music's subline
+  // (artist · album) and per-row album art, then delegates to the ONE builder.
   np = np || {};
-  var sub = [np.artist, np.album].filter(function (x) { return typeof x === 'string' && x; }).join(' · ');
-  var meta = '<div class="mnp-meta">' +
-    '<div class="mnp-title" title="' + escapeMusicHtml(np.title) + '">' + escapeMusicHtml(np.title || 'Unknown track') + '</div>' +
-    (sub ? '<div class="mnp-sub">' + escapeMusicHtml(sub) + '</div>' : '') +
-    '</div>';
-  var queue = '';
-  if (Array.isArray(upNext) && upNext.length) {
-    // v1.223 (Dean): show the WHOLE queue, not just what's next - the list no longer
-    // shrinks as you play. Each row carries a state ('played' before the current,
-    // 'current', or 'next'); played rows grey out but stay clickable (jump back),
-    // the current row is marked. Rows without a state (legacy callers) render plain.
-    queue = '<div class="mnp-queue"><div class="mnp-queue-head">Up next</div>' +
-      upNext.map(function (it) {
-        var cls = 'mnp-queue-row'
-          + (it.state === 'played' ? ' is-played' : '')
-          + (it.state === 'current' ? ' is-current' : '');
-        return '<button type="button" class="' + cls + '"' + (it.state === 'current' ? ' aria-current="true"' : '') + ' data-index="' + it.index + '">' +
-          '<img class="mnp-queue-thumb art-shimmer" src="/albumart/' + encodeURIComponent(it.id) + '" alt="" loading="lazy" />' +
-          '<span class="mnp-queue-main">' +
-          '<span class="mnp-queue-title">' + escapeMusicHtml(it.title || 'Track') + '</span>' +
-          (it.artist ? '<span class="mnp-queue-sub">' + escapeMusicHtml(it.artist) + '</span>' : '') +
-          '</span></button>';
-      }).join('') +
-      '</div>';
-  }
-  return meta + queue;
+  var S = (typeof window !== 'undefined' && window.FileTubeSkinSurface)
+    || (typeof globalThis !== 'undefined' && globalThis.FileTubeSkinSurface) || null; // CJS tests supply the global (DOM-free harness)
+  if (!S || typeof S.buildPanelHtml !== 'function') return '';
+  var subline = [np.artist, np.album].filter(function (x) { return typeof x === 'string' && x; }).join(' · ');
+  var rows = (Array.isArray(upNext) ? upNext : []).map(function (it) {
+    return { id: it.id, artUrl: '/albumart/' + encodeURIComponent(it.id), title: it.title, artist: it.artist, index: it.index, state: it.state };
+  });
+  return S.buildPanelHtml({ title: np.title, subline: subline }, rows);
 }
 
 // The display year for an album drill: the min non-null Integer year across

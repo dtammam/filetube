@@ -15,8 +15,11 @@ const podcastsPath = require.resolve('../../public/js/podcasts.js');
 
 const VIEW_HTML = `<body><div id="view-root" data-view="podcasts">
   <video id="media-player"></video>
+  <button id="podcast-theater-btn" class="music-theater-btn" type="button" hidden aria-pressed="false"></button>
+  <div id="podcast-stage" class="music-stage">
   <div id="player-slot"></div>
   <div id="podcast-nowplaying-panel" hidden></div>
+  </div>
   <div class="music-crumb" id="podcasts-crumb" hidden></div>
   <div id="podcasts-status" role="status" hidden></div>
   <div id="podcasts-content"></div>
@@ -97,6 +100,10 @@ async function boot(url, initialState, run, opts) {
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   };
   try {
+    // v1.251 (R2): the desktop panel renders through the shared engine builder now -
+    // load skin-surface.js into this window exactly as the shell does (production order).
+    delete require.cache[require.resolve('../../public/js/skin-surface.js')];
+    require('../../public/js/skin-surface.js');
     delete require.cache[podcastsPath];
     require(podcastsPath);
     assert.ok(registered && typeof registered.init === 'function', 'podcasts view registered');
@@ -159,9 +166,13 @@ test('v1.105 (T2 panel): playing expanded shows title + "show · date" + show-no
     assert.match(el.querySelector('.mnp-title').textContent, /Ep One/);
     assert.match(el.querySelector('.mnp-sub').textContent, /The Show/, 'show name in the sub-line');
     assert.match(el.querySelector('.mnp-desc').textContent, /Notes for episode one\./, 'show-notes rendered');
-    // Up next = Ep Two, Ep Three.
+    // v1.251 (R2): the SHARED whole-queue treatment (music's v1.223 semantics) - the list
+    // shows every episode windowed around the current one, the playing row marked.
     const upTitles = [...el.querySelectorAll('.mnp-queue-title')].map((n) => n.textContent);
-    assert.deepEqual(upTitles, ['Ep Two', 'Ep Three']);
+    assert.deepEqual(upTitles, ['Ep One', 'Ep Two', 'Ep Three']);
+    const cur = el.querySelector('.mnp-queue-row.is-current');
+    assert.ok(cur, 'the playing episode row is marked current');
+    assert.match(cur.textContent, /Ep One/, 'and it is the playing episode');
   });
 });
 
@@ -179,10 +190,17 @@ test('v1.105 (T2): the show-notes are set via textContent, never innerHTML (no i
 
 test('v1.105 (T2 tap): tapping an up-next row jumps to that episode', async () => {
   await boot('http://localhost/podcasts?show=s1', 'full', async (dom, mock) => {
-    await playEp(dom, 0);
-    panel(dom).querySelectorAll('.mnp-queue-row')[1].click(); // Ep Three
+    await playEp(dom, 1); // play Ep Two so BOTH directions exist (v1.251 whole-queue rows)
+    const rows = [...panel(dom).querySelectorAll('.mnp-queue-row')];
+    const rowByTitle = (t) => rows.find((r) => r.textContent.indexOf(t) !== -1);
+    assert.ok(rowByTitle('Ep One').classList.contains('is-played'), 'the earlier episode is greyed (is-played) but present');
+    rowByTitle('Ep Three').click(); // forward jump
     await settle(); await settle();
     assert.equal(lastLoad(mock).id, 'e3');
+    // v1.251: played rows stay CLICKABLE - the jump-BACK axis (music v1.223 parity).
+    [...panel(dom).querySelectorAll('.mnp-queue-row')].find((r) => r.textContent.indexOf('Ep One') !== -1).click();
+    await settle(); await settle();
+    assert.equal(lastLoad(mock).id, 'e1', 'tapping a played row jumps back');
   });
 });
 
@@ -226,7 +244,10 @@ test('v1.105 (T4 reseed): a dock-tap expand on the GRID re-seeds metadata + rebu
     assert.match(el.querySelector('.mnp-title').textContent, /Ep One/, 're-seeded title');
     // rebuildPlayable refetched the show -> full record -> description + up-next.
     assert.match(el.querySelector('.mnp-desc').textContent, /episode one/, 'description filled from the refetched episode');
-    assert.deepEqual([...el.querySelectorAll('.mnp-queue-title')].map((n) => n.textContent), ['Ep Two', 'Ep Three']);
+    // v1.251 (R2): whole-queue rows - the reseeded panel shows every episode with
+    // the current one marked (music parity), not just the forward slice.
+    assert.deepEqual([...el.querySelectorAll('.mnp-queue-title')].map((n) => n.textContent), ['Ep One', 'Ep Two', 'Ep Three']);
+    assert.match(el.querySelector('.mnp-queue-row.is-current').textContent, /Ep One/, 'the reseeded current row is marked');
   }, { meta });
 });
 
@@ -281,4 +302,37 @@ test('v1.105 (T4 reseed): a NON-podcast item on the shared host does not show th
   await boot('http://localhost/podcasts?nowplaying=1', 'full', async (dom) => {
     assert.equal(panel(dom).hidden, true, 'a music/video item never shows the podcast panel');
   }, { meta });
+});
+
+// ---- v1.251 (R2): the desktop THEATRE toggle, music v1.222 parity ----------------------
+
+test('v1.251 theatre: the button reveals with an expanded episode, toggles is-theater on the stage, and persists ft-podcast-theater', async () => {
+  await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
+    const btn = dom.window.document.getElementById('podcast-theater-btn');
+    const stage = dom.window.document.getElementById('podcast-stage');
+    await playEp(dom, 0);
+    assert.equal(btn.hidden, false, 'an expanded episode reveals the toggle');
+    assert.ok(!stage.classList.contains('is-theater'), 'off by default');
+    btn.click();
+    await settle();
+    assert.ok(stage.classList.contains('is-theater'), 'toggle lays the panel beside the player');
+    assert.equal(btn.getAttribute('aria-pressed'), 'true');
+    assert.equal(dom.window.localStorage.getItem('ft-podcast-theater'), '1', 'persisted per device');
+    btn.click();
+    await settle();
+    assert.ok(!stage.classList.contains('is-theater'), 'a second tap turns it off');
+    assert.equal(dom.window.localStorage.getItem('ft-podcast-theater'), '0');
+  });
+});
+
+test('v1.251 theatre (reveal-once CLEAR): docking hides the toggle again (populated first, both axes)', async () => {
+  await boot('http://localhost/podcasts?show=s1', 'full', async (dom, mock) => {
+    const btn = dom.window.document.getElementById('podcast-theater-btn');
+    await playEp(dom, 0);
+    assert.equal(btn.hidden, false, 'populated first (non-vacuous)');
+    mock.setState('docked');
+    mock.s.trackNav.onNext();
+    await settle(); await settle();
+    assert.equal(btn.hidden, true, 'no expanded episode -> the toggle hides');
+  });
 });

@@ -114,6 +114,38 @@
     var nowPlaying = null; // v1.105: the playing episode's display metadata (now-playing panel)
     var statusPollTimer = null;
     var nowPlayingPanel = root.querySelector('#podcast-nowplaying-panel');
+    var podcastStage = root.querySelector('#podcast-stage');
+    var theaterBtn = root.querySelector('#podcast-theater-btn');
+
+    // v1.251 (R2): desktop THEATRE for podcasts - the same music v1.222 toggle (panel beside
+    // the expanded player), its own persisted key. The button is desktop-only (CSS) and shows
+    // only while an episode is expanded (updateNowPlayingPanel toggles it in lockstep).
+    var THEATER_KEY = 'ft-podcast-theater';
+    function theaterOn() { try { return localStorage.getItem(THEATER_KEY) === '1'; } catch (_) { return false; } }
+    function applyTheater(on) {
+      if (podcastStage) podcastStage.classList.toggle('is-theater', !!on);
+      if (theaterBtn) theaterBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    applyTheater(theaterOn());
+    if (theaterBtn) {
+      theaterBtn.addEventListener('click', function () {
+        var next = !theaterOn();
+        try { localStorage.setItem(THEATER_KEY, next ? '1' : '0'); } catch (_) { /* ignore */ }
+        applyTheater(next);
+        updateNowPlayingPanel(); // recompute (or clear) the theatre panel height cap
+      }, { signal: signal });
+    }
+    // v1.251 (R2): the shared panel's rows are innerHTML now - ONE delegated tap listener
+    // (music's exact contract: .mnp-queue-row data-index -> playAt) replaces the retired
+    // per-row listeners. The mobile SKIN renders no .mnp-queue-row, so no double-handling.
+    if (nowPlayingPanel) {
+      nowPlayingPanel.addEventListener('click', function (e) {
+        var row = e.target.closest('.mnp-queue-row');
+        if (!row) return;
+        var idx = parseInt(row.getAttribute('data-index'), 10);
+        if (!isNaN(idx)) playAt(idx);
+      }, { signal: signal });
+    }
 
     // v1.246 (Dean): podcasts on the SKIN. On mobile, the now-playing panel becomes the same
     // iPod/Apple/Spotify skin the music player uses, driven by the shared engine (skin-surface.js).
@@ -763,6 +795,7 @@
         if (skinEngine) { try { document.body.classList.remove('mms-on'); } catch (_) { /* ignore */ } nowPlayingPanel.className = 'music-nowplaying-panel'; }
         nowPlayingPanel.hidden = true;
         nowPlayingPanel.textContent = '';
+        if (theaterBtn) theaterBtn.hidden = true; // no expanded episode -> no theatre toggle (music parity)
         return;
       }
       // v1.246: on mobile, the panel BECOMES the chosen skin (owns its own art/transport/wheel +
@@ -775,74 +808,65 @@
       }
       var ci = -1;
       for (var k = 0; k < playable.length; k++) { if (playable[k].id === curId) { ci = k; break; } }
-      var frag = document.createDocumentFragment();
-
-      var meta = document.createElement('div');
-      meta.className = 'mnp-meta';
-      var title = document.createElement('div');
-      title.className = 'mnp-title';
-      title.textContent = nowPlaying.title || 'Untitled episode';
-      meta.appendChild(title);
-      var subText = [nowPlaying.showName, formatEpisodeMeta(nowPlaying)].filter(function (x) { return typeof x === 'string' && x; }).join(' · ');
-      if (subText) {
-        var sub = document.createElement('div');
-        sub.className = 'mnp-sub';
-        sub.textContent = subText;
-        meta.appendChild(sub);
+      // v1.251 (R2, Dean: "use the same music player from desktop"): the legacy forward-only
+      // fragment is retired - the desktop panel is now the SHARED whole-queue treatment
+      // (skin-surface.js buildPanelHtml, music's v1.223 semantics): a window of the episode
+      // list around the current one, played rows greyed but clickable (jump back), the
+      // current row marked and scrolled into view, the theatre height-cap on wide screens.
+      var rows = [];
+      if (ci >= 0) {
+        var start = Math.max(0, ci - 20); // a little history for jump-back (music parity)
+        for (var j = start; j < playable.length && rows.length < 200; j++) {
+          var ep = playable[j];
+          rows.push({
+            id: ep.id,
+            artUrl: '/podcastart/' + encodeURIComponent(ep.subId || (nowPlaying && nowPlaying.subId) || ''),
+            title: ep.title || 'Untitled episode',
+            artist: formatEpisodeMeta(ep),
+            index: j,
+            state: j < ci ? 'played' : (j === ci ? 'current' : 'next'),
+          });
+        }
       }
-      frag.appendChild(meta);
-
+      var S = window.FileTubeSkinSurface;
+      var subline = [nowPlaying.showName, formatEpisodeMeta(nowPlaying)].filter(function (x) { return typeof x === 'string' && x; }).join(' · ');
+      nowPlayingPanel.innerHTML = (S && typeof S.buildPanelHtml === 'function')
+        ? S.buildPanelHtml({ title: nowPlaying.title || 'Untitled episode', subline: subline }, rows)
+        : '';
+      // The show-notes stay a PODCAST feature (music has none): inserted between the shared
+      // meta and queue. textContent - never innerHTML (feed prose).
       if (nowPlaying.description) {
         var desc = document.createElement('div');
         desc.className = 'mnp-desc';
-        desc.textContent = nowPlaying.description; // textContent - never innerHTML (feed prose)
-        frag.appendChild(desc);
+        desc.textContent = nowPlaying.description;
+        nowPlayingPanel.insertBefore(desc, nowPlayingPanel.querySelector('.mnp-queue'));
       }
-
-      if (ci >= 0 && ci < playable.length - 1) {
-        var queue = document.createElement('div');
-        queue.className = 'mnp-queue';
-        var head = document.createElement('div');
-        head.className = 'mnp-queue-head';
-        head.textContent = 'Up next';
-        queue.appendChild(head);
-        for (var j = ci + 1; j < playable.length && (j - ci) <= 50; j++) {
-          queue.appendChild(buildUpNextRow(playable[j]));
-        }
-        frag.appendChild(queue);
-      }
-
-      nowPlayingPanel.textContent = '';
-      nowPlayingPanel.appendChild(frag);
       nowPlayingPanel.hidden = false;
       if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(nowPlayingPanel);
-    }
-    function buildUpNextRow(ep) {
-      var rowBtn = document.createElement('button');
-      rowBtn.type = 'button';
-      rowBtn.className = 'mnp-queue-row';
-      var thumb = document.createElement('img');
-      thumb.className = 'mnp-queue-thumb art-shimmer';
-      thumb.src = '/podcastart/' + encodeURIComponent(ep.subId || (nowPlaying && nowPlaying.subId) || '');
-      thumb.alt = '';
-      thumb.loading = 'lazy';
-      rowBtn.appendChild(thumb);
-      var main = document.createElement('span');
-      main.className = 'mnp-queue-main';
-      var t = document.createElement('span');
-      t.className = 'mnp-queue-title';
-      t.textContent = ep.title || 'Untitled episode';
-      main.appendChild(t);
-      var s = document.createElement('span');
-      s.className = 'mnp-queue-sub';
-      s.textContent = formatEpisodeMeta(ep);
-      main.appendChild(s);
-      rowBtn.appendChild(main);
-      rowBtn.addEventListener('click', function () {
-        var idx = playable.indexOf(ep);
-        if (idx !== -1) playAt(idx);
-      }, { signal: signal });
-      return rowBtn;
+      if (theaterBtn) theaterBtn.hidden = false; // an episode is expanded -> the toggle is available (desktop-gated by CSS)
+      // Music's v1.224-226 settle, ported: cap the panel to the player's measured height in
+      // THEATRE (the up-next scrolls inside, the stage never grows), then scroll the current
+      // row into the bounded queue - scrollTop only, never the page; rAF-deferred so the
+      // offsetTop read lands after the final layout.
+      var mnpQueue = nowPlayingPanel.querySelector('.mnp-queue');
+      var curRow = nowPlayingPanel.querySelector('.mnp-queue-row.is-current');
+      var isTheater = !!(podcastStage && podcastStage.classList.contains('is-theater'));
+      var settleNowPlaying = function () {
+        try {
+          if (isTheater) {
+            var slotEl = root.querySelector('#player-slot');
+            var ph = slotEl ? slotEl.getBoundingClientRect().height : 0;
+            nowPlayingPanel.style.maxHeight = ph > 120 ? (ph + 'px') : '';
+          } else {
+            nowPlayingPanel.style.maxHeight = '';
+          }
+        } catch (_) { /* no layout */ }
+        if (mnpQueue && curRow) {
+          try { mnpQueue.scrollTop = Math.max(0, (curRow.offsetTop - mnpQueue.offsetTop) - 8); } catch (_) { /* no layout */ }
+        }
+      };
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(settleNowPlaying);
+      else settleNowPlaying();
     }
 
     // v1.105: a dock-tap expand RE-INITS this view (playAt's `nowPlaying`/

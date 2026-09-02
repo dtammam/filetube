@@ -94,6 +94,10 @@ async function boot(storage, initialState, run, opts) {
   };
   Object.keys(storage || {}).forEach((k) => dom.window.localStorage.setItem(k, storage[k]));
   try {
+    // v1.251 (R2): the desktop panel renders through the shared engine builder now -
+    // load skin-surface.js into this window exactly as the shell does (production order).
+    delete require.cache[require.resolve('../../public/js/skin-surface.js')];
+    require('../../public/js/skin-surface.js');
     delete require.cache[musicPath];
     require(musicPath);
     assert.ok(registered && typeof registered.init === 'function', 'view registered');
