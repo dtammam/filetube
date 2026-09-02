@@ -555,6 +555,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function init(root) {
     controller = new AbortController();
     var signal = controller.signal;
+    straightToPlayerPending = false; // v1.244: a fresh view never inherits a prior init's cover flag
 
     var content = root.querySelector('#music-content');
     var emptyNote = root.querySelector('#music-empty');
@@ -2649,6 +2650,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // skin's `#player-slot { height:0 }` takeover would otherwise collapse the
     // NEXT view's player (watch/podcasts/read share #player-slot) on a phone.
     try { if (typeof document !== 'undefined' && document.body) document.body.classList.remove('mms-on'); } catch (_) { /* no document */ }
+    // v1.244 (adversarial): reset the module-level straight-to-player flag on the #view-root
+    // swap so an abandon-mid-fetch (fetchJson has no abort signal, so an in-flight
+    // recent-listening load outlives destroy()) can never leave the flag true and suppress the
+    // NEXT music view's teardown (the v1.227 mms-on-across-swap class, closed for free here).
+    straightToPlayerPending = false;
     // v1.234: close any floating pop-out player - its listeners live on the pop-out's own
     // AbortController (not the view signal that controller.abort() just cleared), and its
     // proxy targets this now-dead view closure, so it must not outlive the view.

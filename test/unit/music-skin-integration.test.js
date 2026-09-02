@@ -414,6 +414,17 @@ test('v1.244 (adversarial CRITICAL): the ?play cover SURVIVES init\'s synchronou
   });
 });
 
+test('v1.244 source-lock: the straightToPlayerPending flag is RESET on destroy() and init() (no strand across the view swap)', () => {
+  const js = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  // destroy() must clear the flag next to its mms-on removal (the v1.227 across-swap class)
+  const d = /function destroy\(\) \{([\s\S]*?)\n {2}\}/.exec(js);
+  assert.ok(d, 'destroy() exists');
+  assert.match(d[1], /straightToPlayerPending = false;/, 'destroy() resets the cover flag');
+  // init() starts it false so a fresh view never inherits a prior init's flag
+  const i = /function init\(root\) \{([\s\S]{0,200})/.exec(js);
+  assert.match(i[1], /straightToPlayerPending = false;/, 'init() resets the cover flag up front');
+});
+
 // ---- v1.242 (#2, Dean): HOLD rewind/ffwd = FAST-SCAN the timeline -----------------------
 // Deterministic: intercept the ~400ms hold setTimeout and fire it by hand (no real wait).
 // startScan steps currentTime immediately on the hold; the 200ms interval is left real (it
