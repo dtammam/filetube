@@ -2650,5 +2650,11 @@
     "date": "2026-09-02",
     "title": "Critters stop misbehaving on the music page",
     "intent": "The little decorative critters no longer show up in odd spots, pile on top of each other, or disappear on the music page. They now stay out of the way while the full-screen player is open and settle back into place properly as you move around the music page."
+  },
+  {
+    "version": "1.249.0",
+    "date": "2026-09-02",
+    "title": "Every video action, right on the music player",
+    "intent": "The full-screen music player's sticker menu now has an Extras page with everything the video watch page offers: share the original YouTube link (including at the current moment), download the file, like it, mark it watched, add it to the queue or play it next, read the transcript, refresh its details from YouTube, move it to another folder, or delete it - all without leaving the player. It appears for music that came from YouTube, and each option only shows when it actually applies to the playing track."
   }
 ]

@@ -93,6 +93,29 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.249.0 - The watch page's full action set on the music skin (2026-09-02)
+
+F-EXTRAS (the player-extras-and-unify plan's main ask): the mobile music skin's sticker menu
+gained a second page - "Extras" - carrying the complete watch-page action set for the playing
+music/YouTube-audio track: Share (the original YouTube link, with share-at-current-time),
+Download, Like, Mark watched, Add to queue / Play next, Transcript, Reheat, Move and Delete.
+Everything is REUSE: the shared common.js flows and the same id-parametric media endpoints the
+watch page fires; the page opens with a live /api/videos/:id fetch (a ::c chapter id strips to
+its backing file) and gates each action on that truth (watchUrl, hasSubtitles, canModifyLibrary -
+fail closed). Library-backed tracks on the in-tab surface only; native music-library tracks and
+the desktop pop-out don't get the entry. player.js stayed byte-unchanged (verified 0-line diff
+every commit). FULL two-reviewer gate (delete/move = data-adjacent), two fix rounds: the gate
+caught a real liked-sidebar-cache staleness bug (the v1.33.1 class), a module-off reheat toast
+that lied about the cause, a divergent test fixture that silently disabled the track-advance
+staleness axis, five unbound guard mutants (all now test-locked), and an exception-unsafe test
+teardown that could wedge the whole suite runner. One gate-process lesson learned the hard way:
+a QA full-suite run went red against the ADVERSARIAL seat's in-flight mutant on the shared tree
+(both seats were resumed concurrently); root-caused with a byte-identical mutant repro, and delta
+rounds are now serialized whenever a seat mutation-tests the tree. Disclosed residuals: tech-debt
+#191 (watch.js still carries the module-off reheat wording this release fixed in music) and #192
+(a ~2-test nondeterministic full-suite registration drift). Dual-Node green: 8160/8160 on
+v22.23.1 AND v24.14.0. DEVICE-PENDING Dean's iPhone pass, like the whole v1.245+ arc.
+
 ### v1.248.0 - Critters behave on the music page (2026-09-02)
 
 The decorative critters no longer land in weird spots, overlay, or vanish on the music page.
