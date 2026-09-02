@@ -957,7 +957,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var pl = window.FileTube && window.FileTube.player;
       try { return !!(pl && typeof pl.isLoopEnabled === 'function' && pl.isLoopEnabled()); } catch (_) { return false; }
     }
-    function buildStickerMenuHtml() {
+    function buildStickerMenuHtml(panel) {
       var rate = liveRate();
       var speed = MMS_SPEED_RATES.map(function (r) {
         var on = r === rate;
@@ -974,10 +974,16 @@ if (typeof module !== 'undefined' && module.exports) {
           '" data-skin-pick="' + escapeMusicHtml(s.id) + '" aria-checked="' + (on ? 'true' : 'false') + '">' +
           escapeMusicHtml(s.label) + '</button>';
       }).join('');
+      // v1.249 (F-EXTRAS): the second-page entry - library-backed tracks on the
+      // in-tab surface only (see the extras block below for the scope rationale).
+      var extras = extrasEligible(panel)
+        ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-extras><span class="mms-sm-h">Extras</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
+        : '';
       return '<div class="mms-sm-sec"><div class="mms-sm-h">Speed</div><div class="mms-sm-speed">' + speed + '</div></div>' +
         '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (loopOn ? ' is-on' : '') +
         '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-h">Loop</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
-        '<div class="mms-sm-sec"><div class="mms-sm-h">Skin</div><div class="mms-sm-skins">' + chips + '</div></div>';
+        '<div class="mms-sm-sec"><div class="mms-sm-h">Skin</div><div class="mms-sm-skins">' + chips + '</div></div>' +
+        extras;
     }
     // Inject the sticker + its (initially hidden) menu into a freshly-painted panel.
     function injectSticker(panel) {
@@ -996,12 +1002,17 @@ if (typeof module !== 'undefined' && module.exports) {
       var tiltCls = ' mms-sticker-tilt-' + stickerTilt();  // straight | left | right
       wrap.innerHTML =
         '<button type="button" class="mms-sticker' + imgCls + szCls + tiltCls + '" data-skin-sticker aria-haspopup="true" aria-expanded="false" aria-label="Player options">' + stickerIconHtml() + '</button>' +
-        '<div class="mms-sticker-menu" data-skin-sticker-menu role="menu" hidden>' + buildStickerMenuHtml() + '</div>';
+        '<div class="mms-sticker-menu" data-skin-sticker-menu role="menu" hidden>' + buildStickerMenuHtml(panel) + '</div>';
       panel.appendChild(wrap);
     }
     function refreshStickerMenu(panel) {
       var menu = panel && panel.querySelector('[data-skin-sticker-menu]');
-      if (menu) menu.innerHTML = buildStickerMenuHtml();
+      if (!menu) return;
+      // Always lands on page 1: a reopen/back never resumes a stale Extras page,
+      // and bumping the token invalidates any in-flight Extras fetch (v1.249).
+      extrasReqToken++;
+      menu.removeAttribute('data-sm-page');
+      menu.innerHTML = buildStickerMenuHtml(panel);
     }
     function closeStickerMenu(panel) {
       var menu = panel && panel.querySelector('[data-skin-sticker-menu]');
@@ -1030,6 +1041,324 @@ if (typeof module !== 'undefined' && module.exports) {
     function toggleStickerLoop() {
       var pl = window.FileTube && window.FileTube.player;
       if (pl && typeof pl.setLoop === 'function') pl.setLoop(!liveLoop());
+    }
+
+    // ---- v1.249 (F-EXTRAS): the sticker menu's second page - the watch-page
+    // action set for the PLAYING music/YouTube-audio track. Page 1 keeps the
+    // quick controls (speed/loop/skin) and gains an "Extras >" entry; page 2
+    // holds Share/Download/Like/Watched/Queue/Transcript/Reheat/Move/Delete,
+    // all REUSING the shared common.js flows + the id-parametric media
+    // endpoints the watch page fires - never a parallel implementation.
+    //
+    // Scope: LIBRARY-BACKED tracks only (source 'library'/'library-chapter' -
+    // the Wave G projection shares the db.metadata id, so every endpoint
+    // takes it directly). A NATIVE music-library track has no watch-page item
+    // behind these endpoints, so it gets no Extras entry; when the source is
+    // unknowable (a nav-back reseed leaves the queue empty) the entry shows
+    // and the open-time fetch settles it honestly. In-tab surface only: the
+    // shared modals/toasts render in the MAIN document, so offering Extras in
+    // the desktop pop-out window would open UI behind it.
+    var extrasItem = null;     // the /api/videos/:id payload the OPEN page renders (action handlers act on it)
+    var extrasReqToken = 0;    // TOCTOU guard: only the newest open's fetch may render (v1.104 pre/post-await scar)
+    var extrasReheatTimer = null;
+    var extrasReheatAbortHooked = false;
+
+    function extrasBaseId() {
+      // A `::c<idx>` chapter track acts on its WHOLE backing file (the library item).
+      var id = effectiveCurrentId();
+      return id ? String(id).replace(/::c\d+$/, '') : null;
+    }
+    function extrasEligible(panel) {
+      if (((panel && panel.ownerDocument) || document) !== document) return false; // pop-out: no Extras
+      var id = effectiveCurrentId();
+      if (!id) return false;
+      for (var i = 0; i < queue.length; i++) {
+        if (queue[i] && queue[i].id === id) {
+          return queue[i].source === 'library' || queue[i].source === 'library-chapter';
+        }
+      }
+      return true; // not in the live queue (reseed) - unknown, let the open fetch decide
+    }
+    function extrasCanModifyLibrary() {
+      // The same capability derivation watch.js uses, via the cached shared
+      // fetchCurrentUser (one /api/auth/me per page). Fail CLOSED: no probe /
+      // signed-out -> no Move/Delete (the server enforces regardless).
+      if (typeof window.fetchCurrentUser !== 'function') return Promise.resolve(false);
+      return window.fetchCurrentUser()
+        .then(function (me) { return !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true)); })
+        .catch(function () { return false; });
+    }
+    function extrasBackHtml() {
+      return '<div class="mms-sm-sec"><button type="button" class="mms-sm-back" data-skin-extras-back>&lsaquo; Back</button></div>';
+    }
+    function buildExtrasNoteHtml(msg) {
+      return extrasBackHtml() + '<div class="mms-sm-sec"><div class="mms-sm-note">' + escapeMusicHtml(msg) + '</div></div>';
+    }
+    function buildExtrasHtml(item, canModify) {
+      var hasWatchUrl = typeof item.watchUrl === 'string' && item.watchUrl !== '';
+      var liked = item.liked === true;
+      var watched = item.watchState === 'watched';
+      var acts = [];
+      if (hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="share">Share</button>');
+      acts.push('<a class="mms-sm-act" data-skin-x="download" href="/video/' + encodeURIComponent(item.id) + '?download=1" download>Download</a>');
+      acts.push('<button type="button" class="mms-sm-act' + (liked ? ' is-on' : '') + '" data-skin-x="like" aria-pressed="' + (liked ? 'true' : 'false') + '">' + (liked ? 'Liked' : 'Like') + '</button>');
+      acts.push('<button type="button" class="mms-sm-act' + (watched ? ' is-on' : '') + '" data-skin-x="watched" aria-pressed="' + (watched ? 'true' : 'false') + '">' + (watched ? 'Watched' : 'Mark watched') + '</button>');
+      acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue">Add to queue</button>');
+      acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue-next">Play next</button>');
+      if (item.hasSubtitles === true) acts.push('<button type="button" class="mms-sm-act" data-skin-x="transcript">Transcript</button>');
+      if (hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="reheat">Reheat</button>');
+      if (canModify) {
+        acts.push('<button type="button" class="mms-sm-act" data-skin-x="move">Move to...</button>');
+        acts.push('<button type="button" class="mms-sm-act mms-sm-danger" data-skin-x="delete">Delete</button>');
+      }
+      return extrasBackHtml() +
+        '<div class="mms-sm-sec"><div class="mms-sm-h">' + escapeMusicHtml(item.title || '') + '</div>' +
+        '<div class="mms-sm-acts">' + acts.join('') + '</div></div>';
+    }
+    function openStickerExtras(panel) {
+      var menu = panel.querySelector('[data-skin-sticker-menu]');
+      var baseId = extrasBaseId();
+      if (!menu || !baseId) return;
+      var token = ++extrasReqToken;
+      menu.setAttribute('data-sm-page', 'extras');
+      menu.innerHTML = buildExtrasNoteHtml('Loading…');
+      Promise.all([
+        fetch('/api/videos/' + encodeURIComponent(baseId))
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .catch(function () { return null; }),
+        extrasCanModifyLibrary(),
+      ]).then(function (rs) {
+        // Post-await re-checks (the TOCTOU scar): the newest open only, the
+        // menu still mounted+open+on this page, and the SAME track still live
+        // (an auto-advance repaints the panel, detaching this menu node).
+        if (token !== extrasReqToken) return;
+        if (!menu.isConnected || menu.hidden || menu.getAttribute('data-sm-page') !== 'extras') return;
+        if (extrasBaseId() !== baseId) return;
+        var item = rs[0];
+        if (!item || item.id !== baseId) { menu.innerHTML = buildExtrasNoteHtml('Extras aren’t available for this track.'); return; }
+        extrasItem = item;
+        menu.innerHTML = buildExtrasHtml(item, rs[1]);
+      });
+    }
+    function extrasToast(msg) {
+      if (typeof window.showToast === 'function') window.showToast(msg);
+    }
+    function extrasShare(item) {
+      var base = item.watchUrl;
+      var run = function (u) {
+        if (typeof window.shareExternalUrl !== 'function') return;
+        window.shareExternalUrl(u, item.title).then(function (outcome) {
+          // No persistent button to relabel here - the desktop-fallback
+          // clipboard write gets its feedback as a toast (watch.js parity).
+          if (outcome === 'copied') extrasToast('Link copied');
+        });
+      };
+      var pl = window.FileTube && window.FileTube.player;
+      var t = (pl && typeof pl.getCurrentTime === 'function') ? pl.getCurrentTime() : null;
+      if (typeof t === 'number' && isFinite(t) && t >= 1 &&
+        typeof window.showChoiceModal === 'function' && typeof window.withShareStartTime === 'function') {
+        var dismiss = window.showChoiceModal('Share', [
+          { label: 'Share song', onPick: function () { run(base); } },
+          { label: 'Share at current time (' + mmssMusic(t) + ')', onPick: function () { run(window.withShareStartTime(base, t)); } },
+        ]);
+        if (typeof dismiss === 'function') signal.addEventListener('abort', dismiss, { once: true });
+        return;
+      }
+      run(base);
+    }
+    // Like/Watched share one toggle shape: POST adds, DELETE removes, the
+    // rendered button flips ONLY on a 2xx (the server is the truth; a 403/
+    // failure leaves the shown state alone and says so).
+    function extrasToggleFlag(el, item, kind) {
+      var on = kind === 'like' ? item.liked === true : item.watchState === 'watched';
+      var url = (kind === 'like' ? '/api/liked/' : '/api/watched/') + encodeURIComponent(item.id);
+      fetch(url, { method: on ? 'DELETE' : 'POST' })
+        .then(function (res) {
+          if (!res.ok) { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update Watched.'); return; }
+          if (kind === 'like') {
+            item.liked = !on;
+            // QA gate (the v1.33.1 class): the count-gated Liked sidebar entry
+            // caches its total per session - liking the FIRST track (or unliking
+            // the last) here would leave home's sidebar stale until a reload.
+            // force=true re-primes the cache from the server.
+            if (typeof window.fetchLikedTotal === 'function') window.fetchLikedTotal(true);
+          } else {
+            item.watchState = on ? 'unwatched' : 'watched';
+          }
+          if (!el || !el.isConnected) return;
+          var nowOn = !on;
+          el.classList.toggle('is-on', nowOn);
+          el.setAttribute('aria-pressed', nowOn ? 'true' : 'false');
+          el.textContent = kind === 'like' ? (nowOn ? 'Liked' : 'Like') : (nowOn ? 'Watched' : 'Mark watched');
+        })
+        .catch(function () { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update Watched.'); });
+    }
+    function extrasTranscript(item, el) {
+      if (typeof window.openTranscriptFor !== 'function') return;
+      window.openTranscriptFor({
+        id: item.id,
+        title: item.title || 'Transcript',
+        signal: signal,
+        onBusy: function (busy) { if (el && el.isConnected) el.disabled = busy; },
+      });
+    }
+    function stopExtrasReheatPoll() {
+      if (extrasReheatTimer) { clearInterval(extrasReheatTimer); extrasReheatTimer = null; }
+    }
+    // Compact, honest outcome line (watch.js describeReheat says WHAT changed;
+    // this surface has no page to re-render, so it reports only the verdict -
+    // never claiming a refresh that may not have happened).
+    function extrasReheatToastFor(entry) {
+      if (entry.outcome === 'failed') return 'Reheat did not complete. Some metadata may have been saved; try again.';
+      if (entry.networkRan === false) return 'No YouTube source found for this track, so there was nothing to refresh.';
+      return 'Reheat finished.';
+    }
+    function extrasReheat(item) {
+      var id = item.id;
+      fetch('/api/ytdlp/repull-metadata/item/' + encodeURIComponent(id), { method: 'POST' })
+        .then(function (res) { return res.json().catch(function () { return {}; }).then(function (body) { return { status: res.status, body: body }; }); })
+        .then(function (r) {
+          if (r.status === 202) { extrasToast('Reheating…'); pollExtrasReheat(id); return; }
+          if (r.status === 409) { extrasToast('A reheat is already running.'); return; }
+          // QA gate: the REAL route's 404 carries an error body; on an install
+          // with the yt-dlp module OFF the route doesn't exist at all, so
+          // Express's HTML 404 parses to {} - saying "no source" there would be
+          // a lie (the source exists; the module is off).
+          if (r.status === 404) { extrasToast((r.body && r.body.error) ? 'This track has no source to reheat from.' : 'Reheat isn’t available on this server.'); return; }
+          if (r.status === 403) { extrasToast('Read-only mode: reheat is disabled on this instance.'); return; }
+          extrasToast((r.body && r.body.error) || 'Reheat could not be started.');
+        })
+        .catch(function () { extrasToast('Reheat could not be started.'); });
+    }
+    function pollExtrasReheat(id) {
+      stopExtrasReheatPoll();
+      var elapsed = 0;
+      var everyMs = 1000;
+      // Same ceiling rationale as watch.js: under activity.js's one-shot TTL,
+      // and giving up stops only the POLL - the job still lands server-side.
+      var ceilingMs = 4 * 60 * 1000;
+      extrasReheatTimer = setInterval(function () {
+        elapsed += everyMs;
+        if (elapsed >= ceilingMs) {
+          stopExtrasReheatPoll();
+          extrasToast('Reheat is taking a while; check the activity chip.');
+          return;
+        }
+        fetch('/api/subscriptions/status')
+          .then(function (res) { return res.ok ? res.json() : null; })
+          .then(function (snapshot) {
+            if (signal.aborted) { stopExtrasReheatPoll(); return; }
+            var entry = snapshot && snapshot.oneShots && snapshot.oneShots['repull-metadata-item'];
+            if (!entry || entry.state === 'running' || entry.state === 'queued') return;
+            // A stale terminal entry from a PREVIOUS item's reheat is reachable
+            // (fixed one-shot key, minutes-long TTL) - never report someone
+            // else's result as ours, and keep polling for ours (watch.js parity).
+            if (entry.mediaId && entry.mediaId !== id) return;
+            stopExtrasReheatPoll();
+            if (entry.state === 'error') { extrasToast('Reheat failed.'); return; }
+            extrasToast(extrasReheatToastFor(entry));
+          })
+          .catch(function () { /* transient poll failure - try again next tick */ });
+      }, everyMs);
+      if (!extrasReheatAbortHooked) {
+        extrasReheatAbortHooked = true;
+        signal.addEventListener('abort', stopExtrasReheatPoll, { once: true });
+      }
+    }
+    // A successful Move/Delete removes (or re-keys) the item the player holds:
+    // playback was already close()d, so clear the view's playing state, let the
+    // panel teardown run (drops the full-screen skin), and re-render the lists
+    // so the row is gone. The watch page navigates home here; music IS the
+    // sensible destination already, so it refreshes in place instead.
+    function afterExtrasMutation() {
+      extrasItem = null;
+      // QA gate (v1.33.1 class, watch.js delete parity): deleting a LIKED item
+      // changes the count the sidebar's session cache gates on - re-prime it.
+      if (typeof window.fetchLikedTotal === 'function') window.fetchLikedTotal(true);
+      playingId = null;
+      nowPlaying = null;
+      chapterViewId = null;
+      applyPlayingHighlight();
+      updateNowPlaying();
+      updateNowPlayingPanel();
+      render().catch(function () { /* the fetch-level catch already showed the empty/error state */ });
+    }
+    function extrasMove(item) {
+      if (typeof window.showMoveModal !== 'function' || typeof window.requestMoveItem !== 'function') return;
+      fetch('/api/config')
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (cfg) {
+          if (signal.aborted) return;
+          var folders = (cfg && cfg.folders) || [];
+          window.showMoveModal(item, folders, function (targetFolder, ctl) {
+            ctl.statusEl.textContent = 'Moving...';
+            window.requestMoveItem(item.id, targetFolder)
+              .then(function () {
+                ctl.teardown();
+                extrasToast('File moved.');
+                // The move RE-KEYS the item (server C1): the player still holds
+                // the OLD id and would 404 mid-playback - stop it now that the
+                // move SUCCEEDED (a failed move keeps the modal open and the
+                // track playing; closing before the request would kill playback
+                // on every retry - watch.js ordering, QA-confirmed).
+                if (window.FileTube && window.FileTube.player) window.FileTube.player.close();
+                afterExtrasMutation();
+              })
+              .catch(function (err) {
+                ctl.statusEl.textContent = (err && err.message) || 'Move failed.';
+                if (typeof ctl.reenable === 'function') ctl.reenable();
+              });
+          });
+        })
+        .catch(function () { extrasToast('Could not load the folder list.'); });
+    }
+    function extrasDelete(item) {
+      var doDelete = function () {
+        // Release the about-to-be-deleted resource before the DELETE (watch.js parity).
+        if (window.FileTube && window.FileTube.player) window.FileTube.player.close();
+        fetch('/api/videos/' + encodeURIComponent(item.id), { method: 'DELETE' })
+          .then(function (res) {
+            if (res.status === 403) { extrasToast("You don't have permission to delete library files."); return null; }
+            return res.json();
+          })
+          .then(function (data) {
+            if (!data) return;
+            if (data.success) {
+              extrasToast(typeof window.deleteResultToast === 'function' ? window.deleteResultToast(data) : 'Deleted.');
+              afterExtrasMutation();
+            } else {
+              extrasToast('Error deleting file: ' + (data.error || 'unknown error'));
+            }
+          })
+          .catch(function () { extrasToast('Network error occurred while trying to delete file.'); });
+      };
+      // The same two-flow split as the watch page: a yt-dlp-managed item is
+      // re-downloadable -> the trash confirm; a local file is irreplaceable ->
+      // the escalated checkbox-gated hard-delete modal.
+      if (typeof window.isYtdlpManagedItem === 'function' && window.isYtdlpManagedItem(item)) {
+        if (typeof window.showConfirmModal !== 'function') return;
+        window.showConfirmModal(
+          'Move to Trash?',
+          'Move <strong>' + escapeMusicHtml(item.title || '') + '</strong> to Trash?<br><br><span style="color:var(--yt-red); font-weight:bold;">The file leaves your library now and is permanently removed when the Trash retention window empties it:</span><br><code style="word-break:break-all; font-size:11px;">' + escapeMusicHtml(item.filePath || '') + '</code>',
+          doDelete
+        );
+      } else if (typeof window.showHardDeleteModal === 'function') {
+        window.showHardDeleteModal(item, doDelete);
+      }
+    }
+    function handleExtrasAction(panel, act, el) {
+      var item = extrasItem;
+      if (!item || !item.id) return;
+      if (act === 'download') { closeStickerMenu(panel); return; } // the anchor's own navigation does the work
+      if (act === 'share') { closeStickerMenu(panel); extrasShare(item); return; }
+      if (act === 'like') { extrasToggleFlag(el, item, 'like'); return; }
+      if (act === 'watched') { extrasToggleFlag(el, item, 'watched'); return; }
+      if (act === 'queue') { closeStickerMenu(panel); if (typeof window.addToQueue === 'function') window.addToQueue(item.id, 'end'); return; }
+      if (act === 'queue-next') { closeStickerMenu(panel); if (typeof window.addToQueue === 'function') window.addToQueue(item.id, 'next'); return; }
+      if (act === 'transcript') { closeStickerMenu(panel); extrasTranscript(item, el); return; }
+      if (act === 'reheat') { closeStickerMenu(panel); extrasReheat(item); return; }
+      if (act === 'move') { closeStickerMenu(panel); extrasMove(item); return; }
+      if (act === 'delete') { closeStickerMenu(panel); extrasDelete(item); }
     }
 
     // Paint the chosen skin `id` into ANY panel (the in-tab mobile surface OR the desktop
@@ -1260,6 +1589,13 @@ if (typeof module !== 'undefined' && module.exports) {
           e.stopPropagation();
           return;
         }
+        // v1.249 (F-EXTRAS): the two-page nav + the action set. Dispatched before
+        // the quick controls for the same reason those precede the transport
+        // hooks: a menu tap must never fall through to a surface behind it.
+        if (e.target.closest('[data-skin-extras]')) { openStickerExtras(panel); return; }
+        if (e.target.closest('[data-skin-extras-back]')) { refreshStickerMenu(panel); return; }
+        var xact = e.target.closest('[data-skin-x]');
+        if (xact) { handleExtrasAction(panel, xact.getAttribute('data-skin-x'), xact); return; }
         var spOpt = e.target.closest('[data-skin-speed]');
         if (spOpt) { applyStickerSpeed(spOpt.getAttribute('data-skin-speed')); refreshStickerMenu(panel); return; }
         if (e.target.closest('[data-skin-loop]')) { toggleStickerLoop(); refreshStickerMenu(panel); return; }
