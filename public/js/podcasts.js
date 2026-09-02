@@ -163,7 +163,7 @@
         getCtx: podcastSkinCtx,
         hostCtl: function (id) { return document.getElementById(id); },
         onSelectIndex: function (i) { playAt(i); },
-        onDock: function () { var pp = window.FileTube && window.FileTube.player; if (pp && typeof pp.dock === 'function') pp.dock(); updateNowPlayingPanel(); },
+        onDock: function () { var pp = window.FileTube && window.FileTube.player; if (pp && typeof pp.dock === 'function') pp.dock(); updateNowPlayingPanel(); if (window.FileTube && window.FileTube.returnToPlayerOrigin) window.FileTube.returnToPlayerOrigin(); }, // v1.247 (F2): dock to the mini on the ORIGIN tab
       });
       activeSkinEngine = skinEngine; // module-scoped handle for destroy()'s teardown
       // reflect the live element into the skin (music.js ensureSkinReflect parity); the engine's
