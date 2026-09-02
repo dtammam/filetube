@@ -36,12 +36,19 @@ const VIDEO_DEFAULT = {
   liked: false, watchState: 'unwatched', channelName: 'The Band',
 };
 
+// Adversarial gate (divergent-fixture scar): #music-nowplaying and
+// #music-popout-btn are PRODUCTION elements (music.html 184/127). Omitting the
+// former made updateNowPlaying() early-return, silently disabling the whole
+// track-advance repaint pathway - the staleness axis the extras guards exist
+// for was structurally unreachable in this suite.
 const VIEW_HTML = `<body><div id="view-root" data-view="music">
   <select id="music-sort-select"></select>
   <button id="music-view-toggle" hidden><i></i></button>
+  <button id="music-popout-btn" type="button" hidden aria-pressed="false"></button>
   <div id="player-slot"></div>
   <video id="media-player"></video>
   <div id="music-nowplaying-panel" class="music-nowplaying-panel"></div>
+  <button type="button" class="music-nowplaying" id="music-nowplaying" hidden></button>
   <section id="music-jumpback" hidden></section>
   <div class="music-tabs" id="music-tabs" role="tablist">
     <button type="button" class="music-tab active" data-tab="albums" role="tab">Albums</button>
@@ -54,16 +61,19 @@ const settle = () => new Promise((r) => setImmediate(r));
 
 // boot real music.js: mobile viewport + ?play=<first track> so the skin panel
 // (and its sticker) renders. `opts`: tracks, video (the /api/videos payload;
-// null => 404), me (the /api/auth/me shape), deferVideo (hold the /api/videos
-// response until opts.releaseVideo() is called), statusEntries (successive
-// /api/subscriptions/status oneShots payloads).
+// null => 404), me (the /api/auth/me shape), meReject (fetchCurrentUser
+// rejects), deferVideo (hold the /api/videos response until opts.releaseVideo()
+// is called), statusEntries (successive /api/subscriptions/status oneShots
+// payloads), failLike (like/watched writes answer 500), desktop (wide viewport
+// - the in-tab skin stays off, the pop-out becomes available).
 async function boot(run, opts) {
   opts = opts || {};
   const tracks = opts.tracks || LIB_TRACKS;
   const playId = tracks[0].id;
   const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music?play=' + encodeURIComponent(playId) });
   const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController };
-  dom.window.matchMedia = () => ({ matches: true, media: '(max-width: 768px)', addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent() { return false; } });
+  const mobile = !opts.desktop;
+  dom.window.matchMedia = () => ({ matches: mobile, media: '(max-width: 768px)', addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent() { return false; } });
   global.window = dom.window; global.document = dom.window.document;
   global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
 
@@ -85,6 +95,9 @@ async function boot(run, opts) {
     const u = String(url);
     const method = (init && init.method) || 'GET';
     calls.push({ url: u, method });
+    if (opts.failLike && (u.indexOf('/api/liked/') === 0 || u.indexOf('/api/watched/') === 0)) {
+      return Promise.resolve({ ok: false, status: 500, json: async () => ({}) });
+    }
     const vm = u.match(/^\/api\/videos\/([^/?]+)$/);
     if (vm && method === 'GET') {
       const body = opts.video === null ? null : { ...VIDEO_DEFAULT, ...(opts.video || {}), id: decodeURIComponent(vm[1]) };
@@ -112,6 +125,8 @@ async function boot(run, opts) {
 
   const metaById = (id) => { const t = tracks.find((x) => x.id === id); return t ? { isMusic: true, id: t.id, title: t.title, artist: t.artist, album: t.album, albumKey: t.albumKey } : null; };
   let registered = null;
+  const navHolder = { nav: null }; // the {onPrev,onNext} music.js registers - drives a REAL track advance
+  const likedTotalCalls = [];
   dom.window.FileTube = {
     registerView: (n, m) => { registered = m; },
     encodeListContext: (c) => JSON.stringify(c), decodeListContext: (s) => { try { return JSON.parse(s); } catch (_) { return null; } }, shimmerArt: () => {},
@@ -119,14 +134,17 @@ async function boot(run, opts) {
       currentId: playId, getState: () => 'full', expand: () => {}, dock: () => {},
       getCurrentMeta: () => metaById(dom.window.FileTube.player.currentId),
       load: (id) => { dom.window.FileTube.player.currentId = id; },
-      setTrackNav: () => {},
+      setTrackNav: (nav) => { navHolder.nav = nav; },
       isLoopEnabled: () => false, setLoop: () => {},
       close: () => { state.closed = true; dom.window.FileTube.player.currentId = null; },
     },
   };
   // The shared common.js flows the Extras page reuses - recorded stubs on the
   // jsdom window (music.js references every one as window.<name>).
-  dom.window.fetchCurrentUser = () => Promise.resolve(opts.me !== undefined ? opts.me : { user: { role: 'admin' } });
+  dom.window.fetchCurrentUser = () => (opts.meReject
+    ? Promise.reject(new Error('auth probe down'))
+    : Promise.resolve(opts.me !== undefined ? opts.me : { user: { role: 'admin' } }));
+  dom.window.fetchLikedTotal = (force) => { likedTotalCalls.push(force); return Promise.resolve(0); };
   dom.window.showToast = (msg) => { toasts.push(String(msg)); };
   dom.window.shareExternalUrl = (url, title) => { shares.push({ url, title }); return Promise.resolve('shared'); };
   dom.window.withShareStartTime = (url, s) => url + '&t=' + Math.floor(s) + 's';
@@ -143,7 +161,7 @@ async function boot(run, opts) {
   delete require.cache[require.resolve('../../public/js/music-skins.js')];
   require('../../public/js/music-skins.js');
   const root = () => dom.window.document.getElementById('view-root');
-  const ctx = { calls, toasts, shares, choiceModals, moveModals, confirmModals, hardDeletes, transcripts, queued, requestedMoves, state, releaseVideo: () => releaseVideo && releaseVideo() };
+  const ctx = { calls, toasts, shares, choiceModals, moveModals, confirmModals, hardDeletes, transcripts, queued, requestedMoves, state, likedTotalCalls, nav: () => navHolder.nav, releaseVideo: () => releaseVideo && releaseVideo() };
   try {
     delete require.cache[musicPath];
     require(musicPath);
@@ -245,6 +263,8 @@ test('anti-INERT Like/Watched: each tap fires the REAL media-store endpoint and 
     assert.ok(ctx.calls.some((c) => c.url === '/api/liked/s1' && c.method === 'POST'), 'Like POSTs /api/liked/:id');
     assert.strictEqual(act(dom, 'like').textContent, 'Liked', 'button reflects the new state');
     assert.ok(act(dom, 'like').classList.contains('is-on'));
+    // QA gate (v1.33.1 class): the count-gated Liked sidebar cache is re-primed
+    assert.deepStrictEqual(ctx.likedTotalCalls, [true], 'fetchLikedTotal(force) busts the session cache');
     click(dom, act(dom, 'like'));
     await settle(); await settle();
     assert.ok(ctx.calls.some((c) => c.url === '/api/liked/s1' && c.method === 'DELETE'), 'second tap DELETEs (unlike)');
@@ -376,6 +396,7 @@ test('Delete routes a yt-dlp item through the TRASH confirm and a local item thr
     assert.ok(ctx.state.closed, 'player closed before the DELETE');
     assert.ok(ctx.toasts.includes('deleted-toast'), 'outcome reported via the shared deleteResultToast mapper');
     assert.ok(!dom.window.document.body.classList.contains('mms-on'), 'the full-screen skin tore down after the delete');
+    assert.ok(ctx.likedTotalCalls.includes(true), 'the Liked sidebar cache is re-primed (a liked item may just have vanished)');
   });
   // local/irreplaceable (no channel identity) -> escalated hard-delete modal
   await boot(async (dom, ctx) => {
@@ -401,6 +422,120 @@ test('two-page nav: Back returns to the quick controls; closing and reopening th
     click(dom, sticker(dom)); // reopen
     assert.ok(menu(dom).querySelector('[data-skin-speed]'), 'reopen lands on page 1');
   });
+});
+
+test('a REAL track advance (setTrackNav.onNext) repaints the panel and destroys an open Extras page', async () => {
+  await boot(async (dom, ctx) => {
+    await openExtras(dom);
+    const staleDelete = act(dom, 'delete');
+    assert.ok(staleDelete, 'page 2 is up with a live Delete for s1');
+    assert.ok(typeof ctx.nav().onNext === 'function', 'music.js registered a real onNext');
+    ctx.nav().onNext(); // the production advance path: playAt -> loadTrack -> repaint
+    for (let i = 0; i < 12; i++) await settle();
+    assert.strictEqual(dom.window.FileTube.player.currentId, 's2', 'the player advanced');
+    assert.ok(!staleDelete.isConnected, 'the old Delete button is DETACHED - a late tap cannot delete the wrong track');
+    assert.strictEqual(panel(dom).querySelectorAll('[data-skin-x]').length, 0, 'no extras action survives the repaint');
+    const m = menu(dom);
+    assert.ok(m && m.hidden, 'the fresh panel carries a closed page-1 menu');
+  });
+});
+
+test('a late open-fetch response after Back never repaints page 2 over page 1 (token/page guard)', async () => {
+  await boot(async (dom, ctx) => {
+    await openExtras(dom); // deferred - Loading note up
+    click(dom, menu(dom).querySelector('[data-skin-extras-back]'));
+    assert.ok(menu(dom).querySelector('[data-skin-speed]'), 'Back landed on page 1 with the fetch still in flight');
+    ctx.releaseVideo();
+    for (let i = 0; i < 6; i++) await settle();
+    assert.ok(menu(dom).querySelector('[data-skin-speed]'), 'still page 1 after the late response');
+    assert.strictEqual(menu(dom).querySelectorAll('[data-skin-x]').length, 0, 'the late response rendered nothing');
+  }, { deferVideo: true });
+});
+
+test('a SILENT track change mid-fetch (no repaint event) is caught by the same-id guard', async () => {
+  await boot(async (dom, ctx) => {
+    await openExtras(dom); // deferred
+    // direct assignment fires no media event - nothing repaints the panel, so
+    // only the post-await same-id re-check stands between the s1 payload and a
+    // menu claiming to act on what is now s2.
+    dom.window.FileTube.player.currentId = 's2';
+    ctx.releaseVideo();
+    for (let i = 0; i < 6; i++) await settle();
+    assert.strictEqual(menu(dom).querySelectorAll('[data-skin-x]').length, 0, 'the stale s1 payload did not render');
+    assert.ok(menu(dom).querySelector('.mms-sm-note'), 'the page stays on its note');
+  }, { deferVideo: true });
+});
+
+test('a FAILED like/watched write flips NOTHING and says so (the flips-only-on-2xx contract)', async () => {
+  await boot(async (dom, ctx) => {
+    await openExtras(dom);
+    click(dom, act(dom, 'like'));
+    await settle(); await settle();
+    assert.strictEqual(act(dom, 'like').textContent, 'Like', 'a 500 leaves the shown state alone');
+    assert.ok(!act(dom, 'like').classList.contains('is-on'));
+    assert.ok(ctx.toasts.includes('Could not update Like.'), 'the failure is reported');
+    assert.deepStrictEqual(ctx.likedTotalCalls, [], 'no cache bust on failure');
+    click(dom, act(dom, 'like'));
+    await settle(); await settle();
+    const likeCalls = ctx.calls.filter((c) => c.url === '/api/liked/s1');
+    assert.deepStrictEqual(likeCalls.map((c) => c.method), ['POST', 'POST'], 'internal state did not flip either - the retry is still an ADD');
+    click(dom, act(dom, 'watched'));
+    await settle(); await settle();
+    assert.strictEqual(act(dom, 'watched').textContent, 'Mark watched', 'watched failure leaves state alone too');
+  }, { failLike: true });
+});
+
+test('a second Reheat tap replaces the first poll - no orphaned interval keeps hitting the status route', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  await boot(async (dom, ctx) => {
+    const statusCalls = () => ctx.calls.filter((c) => c.url === '/api/subscriptions/status').length;
+    await openExtras(dom);
+    click(dom, act(dom, 'reheat')); // 202 -> poll 1 armed (menu closes)
+    for (let i = 0; i < 4; i++) await settle();
+    await openExtras(dom);
+    click(dom, act(dom, 'reheat')); // 202 -> poll 1 must be STOPPED, poll 2 armed
+    for (let i = 0; i < 4; i++) await settle();
+    t.mock.timers.tick(1000); // running
+    for (let i = 0; i < 4; i++) await settle();
+    t.mock.timers.tick(1000); // terminal for s1 -> toast + stop
+    for (let i = 0; i < 4; i++) await settle();
+    assert.ok(ctx.toasts.includes('Reheat finished.'), 'the poll reached the terminal entry');
+    const quiescent = statusCalls();
+    assert.strictEqual(quiescent, 2, 'exactly ONE poll ran (one status fetch per tick)');
+    t.mock.timers.tick(3000);
+    for (let i = 0; i < 4; i++) await settle();
+    assert.strictEqual(statusCalls(), quiescent, 'nothing polls after the terminal entry - no leaked interval');
+  }, {
+    statusEntries: [
+      { 'repull-metadata-item': { state: 'running', mediaId: 's1' } },
+      { 'repull-metadata-item': { state: 'done', mediaId: 's1', networkRan: true } },
+    ],
+  });
+});
+
+test('the desktop POP-OUT sticker menu never offers Extras (its modals would open in the main window behind it)', async () => {
+  const pipDom = new JSDOM('<body></body>', { url: 'http://localhost/pip' });
+  await boot(async (dom) => {
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pipDom.window) };
+    const btn = dom.window.document.getElementById('music-popout-btn');
+    click(dom, btn);
+    for (let i = 0; i < 8; i++) await settle();
+    const pipPanel = pipDom.window.document.getElementById('music-nowplaying-panel');
+    assert.ok(pipPanel, 'the pop-out surface mounted');
+    const pipMenu = pipPanel.querySelector('[data-skin-sticker-menu]');
+    assert.ok(pipMenu, 'the pop-out has the sticker menu');
+    assert.ok(pipMenu.querySelector('[data-skin-speed]'), 'quick controls render there (this test is not passing on a blank menu)');
+    assert.strictEqual(pipMenu.querySelector('[data-skin-extras]'), null, 'but no Extras entry - main-document surface only');
+  }, { desktop: true });
+});
+
+test('RBAC probe failure fails CLOSED: a rejected fetchCurrentUser hides Move/Delete', async () => {
+  await boot(async (dom) => {
+    await openExtras(dom);
+    assert.strictEqual(act(dom, 'move'), null, 'no Move on a failed capability probe');
+    assert.strictEqual(act(dom, 'delete'), null, 'no Delete on a failed capability probe');
+    assert.ok(act(dom, 'download') && act(dom, 'like'), 'the ungated core still rendered');
+  }, { meReject: true });
 });
 
 test('stale-fetch guard (TOCTOU): closing the menu while the open fetch is in flight renders NO extras', async () => {

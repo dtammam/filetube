@@ -1175,8 +1175,16 @@ if (typeof module !== 'undefined' && module.exports) {
       fetch(url, { method: on ? 'DELETE' : 'POST' })
         .then(function (res) {
           if (!res.ok) { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update Watched.'); return; }
-          if (kind === 'like') item.liked = !on;
-          else item.watchState = on ? 'unwatched' : 'watched';
+          if (kind === 'like') {
+            item.liked = !on;
+            // QA gate (the v1.33.1 class): the count-gated Liked sidebar entry
+            // caches its total per session - liking the FIRST track (or unliking
+            // the last) here would leave home's sidebar stale until a reload.
+            // force=true re-primes the cache from the server.
+            if (typeof window.fetchLikedTotal === 'function') window.fetchLikedTotal(true);
+          } else {
+            item.watchState = on ? 'unwatched' : 'watched';
+          }
           if (!el || !el.isConnected) return;
           var nowOn = !on;
           el.classList.toggle('is-on', nowOn);
@@ -1212,7 +1220,11 @@ if (typeof module !== 'undefined' && module.exports) {
         .then(function (r) {
           if (r.status === 202) { extrasToast('Reheating…'); pollExtrasReheat(id); return; }
           if (r.status === 409) { extrasToast('A reheat is already running.'); return; }
-          if (r.status === 404) { extrasToast('This track has no source to reheat from.'); return; }
+          // QA gate: the REAL route's 404 carries an error body; on an install
+          // with the yt-dlp module OFF the route doesn't exist at all, so
+          // Express's HTML 404 parses to {} - saying "no source" there would be
+          // a lie (the source exists; the module is off).
+          if (r.status === 404) { extrasToast((r.body && r.body.error) ? 'This track has no source to reheat from.' : 'Reheat isn’t available on this server.'); return; }
           if (r.status === 403) { extrasToast('Read-only mode: reheat is disabled on this instance.'); return; }
           extrasToast((r.body && r.body.error) || 'Reheat could not be started.');
         })
@@ -1260,6 +1272,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // sensible destination already, so it refreshes in place instead.
     function afterExtrasMutation() {
       extrasItem = null;
+      // QA gate (v1.33.1 class, watch.js delete parity): deleting a LIKED item
+      // changes the count the sidebar's session cache gates on - re-prime it.
+      if (typeof window.fetchLikedTotal === 'function') window.fetchLikedTotal(true);
       playingId = null;
       nowPlaying = null;
       chapterViewId = null;
@@ -1282,7 +1297,10 @@ if (typeof module !== 'undefined' && module.exports) {
                 ctl.teardown();
                 extrasToast('File moved.');
                 // The move RE-KEYS the item (server C1): the player still holds
-                // the OLD id and would 404 mid-playback - stop it first.
+                // the OLD id and would 404 mid-playback - stop it now that the
+                // move SUCCEEDED (a failed move keeps the modal open and the
+                // track playing; closing before the request would kill playback
+                // on every retry - watch.js ordering, QA-confirmed).
                 if (window.FileTube && window.FileTube.player) window.FileTube.player.close();
                 afterExtrasMutation();
               })
