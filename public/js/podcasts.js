@@ -86,6 +86,7 @@
   // Module-scoped so the stable module.onPopState delegates to the current init;
   // nulled by destroy() so a pop after teardown is a no-op. Mirrors music.js.
   var activePodcastPopHandler = null;
+  var activeSkinEngine = null; // v1.246: module-scoped so destroy() can tear the skin down (clears body.mms-on)
 
   function init(root) {
     controller = new AbortController();
@@ -113,6 +114,68 @@
     var nowPlaying = null; // v1.105: the playing episode's display metadata (now-playing panel)
     var statusPollTimer = null;
     var nowPlayingPanel = root.querySelector('#podcast-nowplaying-panel');
+
+    // v1.246 (Dean): podcasts on the SKIN. On mobile, the now-playing panel becomes the same
+    // iPod/Apple/Spotify skin the music player uses, driven by the shared engine (skin-surface.js).
+    // The gate (music-skins.js skinActiveFor) is true for a podcast episode via getCurrentMeta's
+    // resumeMode==='podcast' (player.js unchanged). We feed the engine a PODCAST ctx (episode list
+    // on the wheel, /podcastart show art, showName in the album slot) and its playAt as the select
+    // hook. Desktop keeps the hand-built panel below (skinActive() is false off-mobile).
+    var SKINS = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
+    var skinEngine = null;
+    function skinActive() {
+      if (!SKINS || typeof SKINS.skinActiveFor !== 'function') return false;
+      var p = window.FileTube && window.FileTube.player;
+      var meta = (p && typeof p.getCurrentMeta === 'function') ? p.getCurrentMeta() : null;
+      return SKINS.skinActiveFor(meta);
+    }
+    function skinDur(s) { s = Math.max(0, Math.floor(Number(s) || 0)); var mm = Math.floor(s / 60), ss = s % 60; return mm + ':' + (ss < 10 ? '0' : '') + ss; }
+    function podcastSkinCtx() {
+      var p = window.FileTube && window.FileTube.player;
+      var mp = document.getElementById('media-player');
+      var curId = (p && p.currentId) || (nowPlaying && nowPlaying.id) || null;
+      var ci = -1;
+      for (var k = 0; k < playable.length; k++) { if (playable[k].id === curId) { ci = k; break; } }
+      var showName = (nowPlaying && nowPlaying.showName) || '';
+      var artSub = (nowPlaying && nowPlaying.subId) || (currentShow && currentShow.id) || '';
+      function rowOf(j) {
+        var ep = playable[j];
+        return { index: j, title: ep.title || 'Episode', artist: showName, durLabel: skinDur(ep.durationSec),
+          state: j < ci ? 'played' : (j === ci ? 'current' : 'next') };
+      }
+      var up = [], full = [];
+      for (var a = Math.max(0, ci - 3); a < playable.length && up.length < 200; a++) up.push(rowOf(a));
+      var fstart = playable.length <= 400 ? 0 : Math.max(0, ci - 200);
+      for (var b = fstart; b < playable.length && full.length < 400; b++) full.push(rowOf(b));
+      var dur = (mp && isFinite(mp.duration) && mp.duration > 0) ? mp.duration : ((nowPlaying && Number(nowPlaying.durationSec)) || 0);
+      var pos = mp ? (Number(mp.currentTime) || 0) : 0;
+      return {
+        track: { title: nowPlaying && nowPlaying.title, artist: showName, album: showName,
+          artUrl: artSub ? ('/podcastart/' + encodeURIComponent(artSub)) : '' },
+        upNext: up, fullList: full, playing: mp ? !mp.paused : false, posSec: pos, durSec: dur,
+        posLabel: skinDur(pos), remLabel: dur > 0 ? ('-' + skinDur(dur - pos)) : '', curNum: ci + 1, total: playable.length,
+      };
+    }
+    if (nowPlayingPanel && window.FileTubeSkinSurface) {
+      skinEngine = window.FileTubeSkinSurface.create({
+        panel: nowPlayingPanel,
+        getSkinId: function () { return SKINS ? SKINS.activeSkinId() : 'ipod'; },
+        getCtx: podcastSkinCtx,
+        hostCtl: function (id) { return document.getElementById(id); },
+        onSelectIndex: function (i) { playAt(i); },
+        onDock: function () { var pp = window.FileTube && window.FileTube.player; if (pp && typeof pp.dock === 'function') pp.dock(); updateNowPlayingPanel(); },
+      });
+      activeSkinEngine = skinEngine; // module-scoped handle for destroy()'s teardown
+      // reflect the live element into the skin (music.js ensureSkinReflect parity); the engine's
+      // reflect() early-returns unless the skin is actually mounted, so this is a cheap no-op the
+      // rest of the time. Bound with the view's signal so destroy() drops them.
+      var mpEl = document.getElementById('media-player');
+      if (mpEl && skinEngine) {
+        ['play', 'pause', 'timeupdate', 'seeked', 'loadedmetadata', 'loadstart', 'emptied', 'durationchange'].forEach(function (ev) {
+          mpEl.addEventListener(ev, function () { if (skinEngine) skinEngine.reflect(); }, { signal: signal });
+        });
+      }
+    }
 
     function setStatus(msg) {
       if (!statusEl) return;
@@ -686,8 +749,19 @@
       var expanded = !!(p && typeof p.getState === 'function' && p.getState() === 'full');
       var curId = (p && p.currentId) || null;
       if (!expanded || !nowPlaying || !curId || nowPlaying.id !== curId) {
+        // reveal-both-axes: clear the skin (+ its full-screen body class) when nothing is
+        // expanded/playing, so a podcasts<->music view swap never strands the cover (v1.227).
+        if (skinEngine) { try { document.body.classList.remove('mms-on'); } catch (_) { /* ignore */ } nowPlayingPanel.className = 'music-nowplaying-panel'; }
         nowPlayingPanel.hidden = true;
         nowPlayingPanel.textContent = '';
+        return;
+      }
+      // v1.246: on mobile, the panel BECOMES the chosen skin (owns its own art/transport/wheel +
+      // the episode list); it covers the app (position:fixed inset:0). Desktop keeps the hand
+      // panel below.
+      if (skinActive() && skinEngine) {
+        document.body.classList.add('mms-on');
+        skinEngine.paint();
         return;
       }
       var ci = -1;
@@ -1141,6 +1215,9 @@
   }
 
   function destroy() {
+    // v1.246: tear the skin down FIRST - unbinds its panel listeners AND clears body.mms-on so
+    // a swap to another view never leaves the full-screen cover (frozen scroll) behind (v1.227).
+    if (activeSkinEngine) { try { activeSkinEngine.destroy(); } catch (_) { /* ignore */ } activeSkinEngine = null; }
     if (controller) {
       if (controller.__podcastsCleanup) controller.__podcastsCleanup();
       controller.abort();
