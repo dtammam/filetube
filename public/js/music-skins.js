@@ -153,9 +153,9 @@
       '<div class="ip-scrub"><span class="mms-pos">' + esc(ctx.posLabel || '0:00') + '</span>' +
       '<div class="ip-track"><div class="mms-fill" ' + fillW(ctx) + '></div></div>' +
       '<span class="mms-rem">' + esc(ctx.remLabel || '') + '</span></div>' +
-      // v1.235: the wheel-VOLUME bar (desktop pop-out only). Hidden until you spin the wheel
-      // in Now Playing; CSS swaps it in for the scrubber while adjusting (.mms-voladj), the
-      // authentic iPod behavior. music.js drives .ip-vol-fill + the show/fade.
+      // v1.235's wheel-VOLUME bar, DORMANT since v1.250 (Dean retired wheel-volume - the
+      // Now-Playing wheel scrubs everywhere). Nothing writes .ip-vol-fill or .mms-voladj
+      // any more; the markup stays only to avoid churning every skin render this wave.
       '<div class="ip-vol" aria-hidden="true"><span class="ip-vol-ico">' + ipVolGlyph() + '</span>' +
       '<div class="ip-vol-track"><div class="ip-vol-fill"></div></div></div></div>' +
       // --- List view (Select flips to it) ---

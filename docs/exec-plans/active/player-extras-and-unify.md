@@ -130,8 +130,9 @@ engine instances' reflect()).
 DEVIATION from the earlier absorb sketch (disclosed): the desktop POP-OUT SHELL (window
 open/mount/teardown/clock, ~170 lines) and the multi-surface REGISTRY are NOT absorbed this wave.
 The shell is single-consumer (music only; podcasts has no pop-out) - moving it adds risk with zero
-dedup payoff; instead the pop-out panel becomes a SECOND engine instance (allowVolume:true, its
-own win) and the registry collapses to "call both instances' reflect()". Extraction can ride the
+dedup payoff; instead the pop-out panel becomes a SECOND engine instance (its own win; it
+SCRUBS like every surface - wheel-volume is retired per the ruling above) and the registry
+collapses to "call both instances' reflect()". Extraction can ride the
 LISTEN-MODE wave if that needs the shell.
 
 TASK COMMITS (each with its tests, each green before the next):

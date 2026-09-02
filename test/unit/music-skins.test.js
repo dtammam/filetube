@@ -378,7 +378,7 @@ test('v1.250 (Dean): wheel-volume is RETIRED - no volume mode, no adjustVolume, 
   assert.ok(!/allowVolume/.test(engine) && !/allowVolume/.test(music), 'no allowVolume flag survives anywhere');
 });
 
-test('v1.235: CSS swaps the scrubber out for the volume bar while adjusting (authentic iPod)', () => {
+test('v1.235 CSS is DORMANT since v1.250 (wheel-volume retired; .mms-voladj has no writer) - rules kept unchurned this wave', () => {
   const fs = require('node:fs'); const path = require('node:path');
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
   assert.match(css, /\.mms-ipod \.ip-vol\{[^}]*display:\s*none/, 'the volume bar is hidden by default');

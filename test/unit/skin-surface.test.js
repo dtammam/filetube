@@ -244,6 +244,28 @@ test('podcasts.js WIRES the engine (reachable): creates it with a podcast ctx, f
   assert.match(html, /music-skins\.js"><\/script>\s*<script src="\/js\/skin-surface\.js"/, 'skin-surface.js loads after music-skins.js on podcasts.html');
 });
 
+test('SHELL PARITY (v1.250 gate CRITICAL): every shell that ships music-skins.js ships skin-surface.js right after it', () => {
+  // The SPA soft-nav lazy-loads music.js/podcasts.js into WHATEVER shell the user cold-loaded
+  // (common.js VIEW_SCRIPT_SRC), so the engine must be present wherever the skin registry is -
+  // else the mobile skin silently regresses to the default panel on the most common phone path
+  // (home shell -> Music). The QA seat caught exactly that: eight shells carried music-skins.js
+  // without the engine. Enumerate the REAL shell set every run, never a hardcoded list.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const pub = path.join(__dirname, '..', '..', 'public');
+  const shells = fs.readdirSync(pub).filter((f) => f.endsWith('.html'));
+  assert.ok(shells.length >= 10, 'the shell enumeration found the real set (not an empty dir)');
+  let checked = 0;
+  for (const f of shells) {
+    const html = fs.readFileSync(path.join(pub, f), 'utf8');
+    if (!/music-skins\.js/.test(html)) continue;
+    checked += 1;
+    assert.match(html, /music-skins\.js"><\/script>\s*<script src="\/js\/skin-surface\.js"><\/script>/,
+      f + ': skin-surface.js must load immediately after music-skins.js');
+  }
+  assert.ok(checked >= 10, 'the parity check actually covered the shells that ship the registry (found ' + checked + ')');
+});
+
 // ---- U1 (F-UNIFY v1.250): the engine capabilities ported from music.js ----
 
 test('U1 marquee: an overflowing title gets the .mms-mq span + CSS vars after paint; marquee:false stays inert', async () => {

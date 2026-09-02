@@ -9,8 +9,8 @@
 // (play index i, dock). This module NEVER touches player.js - it only draws the skin registry's
 // chrome and PROXIES clicks/gestures to the EXISTING hidden controls (#pp-btn / #track-prev-btn
 // / #track-next-btn / #seek-bar), reflecting the live #media-player. player.js stays BYTE-
-// UNCHANGED. (music.js keeps its own in-view copy for now; unifying it onto this engine is
-// tracked tech-debt - deferred until Dean device-validates the shared engine via podcasts.)
+// UNCHANGED. v1.250 (F-UNIFY): music.js runs on this engine too now - its in-view copy is
+// gone; this file is the ONE skin implementation for music (both surfaces) and podcasts.
 //
 // The gesture code is a FAITHFUL PORT of music.js's (the v1.233/v1.239 gesture-scar playbook:
 // Pointer events not touch, capture taken LAZILY once a spin is confirmed, per-move sign, a

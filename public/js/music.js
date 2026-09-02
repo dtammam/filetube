@@ -631,7 +631,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // when the current was song 1, because upNext started near the current). From index
       // 0 for a normal album so EVERY earlier song is reachable; for a huge queue, a wide
       // window centered on the current (still lets you scroll far up). renderIpod opens it
-      // scrolled to the current song (setIpodListMode).
+      // scrolled to the current song (the engine's setListMode).
       var full = [];
       var fstart = queue.length <= 400 ? 0 : Math.max(0, ci - 200);
       for (var k = fstart; k < queue.length && full.length < 400; k++) full.push(rowOf(k));
@@ -791,7 +791,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var b = currentChapterBounds(); if (!b) return;
       // Fire only in a TIGHT band around the boundary: [end-0.25, end+1). The scrub-skip guard
       // above only covers a live drag; the FINAL scrub position's timeupdate can land AFTER
-      // pointerup (async media events), when wheelSpin is already null but chapterViewId is
+      // pointerup (async media events), when isScrubbing() is already false but chapterViewId is
       // still the pre-scrub chapter (reflectChapter runs after this). Without the upper cap
       // that stale tick would yank a deliberate forward-scrub-to-a-far-chapter back to the old
       // chapter's start (QA gate WARNING). end+1 clears every normal-playback tick (~119.9)
@@ -963,7 +963,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.227 mobile skins: on mobile + music, the panel becomes the chosen
       // full-screen skin (which owns its own transport, art + up-next). Takes over
       // completely; the desktop theatre toggle + default panel are skipped.
-      if (renderNowPlayingSkin(ci)) { if (theaterBtn) theaterBtn.hidden = true; return; }
+      if (renderNowPlayingSkin()) { if (theaterBtn) theaterBtn.hidden = true; return; }
       if (theaterBtn) theaterBtn.hidden = false; // a track is expanded -> the toggle is available (desktop-gated by CSS)
       // v1.223 (Dean): the panel lists the WHOLE queue - played tracks (before the
       // current) greyed but clickable, the current one marked, the rest up next -
@@ -1038,7 +1038,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // ---- v1.234: DESKTOP pop-out player (Document PiP + independent-window fallback) ----
     // Float the player into a small window showing the picked skin. It is a SECOND skin
-    // surface: the same bindSkinSurface proxy + paintSkin render + reflectAllSkins updates,
+    // surface: its OWN shared-engine instance (paint/reflect/gesture, v1.250) over this view's ctx,
     // so the audio engine is untouched (player.js byte-unchanged). Desktop-only: the button
     // shows only where the pop-out is supported AND the viewport is NOT the narrow one that
     // already gets the in-tab skin - a coherent split (narrow -> in-tab skin; wide desktop
@@ -1170,7 +1170,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     // Re-render the OPEN pop-out to the current track/skin (called from updateNowPlayingPanel,
     // which every track change routes through via playAt). Progress/play-state stay live via
-    // reflectAllSkins; this handles the parts that need a repaint (title/art/list/skin).
+    // reflectEngines + the pop-out clock; this handles the parts that need a repaint (title/art/list/skin).
     function repaintPopout() {
       if (!pipEngine || !pipPanel || !pipPanel.isConnected) return;
       if (currentSkinIndex() < 0) return; // nothing playing - leave the last frame up
@@ -2048,7 +2048,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // covered it (Dean, on-device: "still shows the music page"). v1.244 re-fix: MOUNT the
       // full-screen skin frame (empty) into #music-nowplaying-panel IMMEDIATELY, so the page is
       // covered from the first frame; the list still builds behind it for the dock-return, and
-      // paintSkin fills the frame with the real skin once the track loads. The only path that
+      // the engine's paint() fills the frame with the real skin once the track loads. The only path that
       // shows the list (a non-bounce MISS -> render()) tears the cover down first.
       var coverEarly = false;
       try { coverEarly = !!(SKINS && typeof SKINS.skinActiveFor === 'function' && SKINS.skinActiveFor({ isMusic: true })); } catch (_) { coverEarly = false; }
@@ -2058,7 +2058,7 @@ if (typeof module !== 'undefined' && module.exports) {
         var _sid = (SKINS.activeSkinId && SKINS.activeSkinId()) || 'apple';
         var _base = (SKINS.skinById && (SKINS.skinById(_sid) || {}).base) || '';
         nowPlayingPanel.className = 'music-nowplaying-panel mms mms-full mms-' + _sid + (_base ? ' mms-' + _base : '');
-        nowPlayingPanel.innerHTML = '';   // an empty skin frame = an instant cover over #music-content; paintSkin fills it on load
+        nowPlayingPanel.innerHTML = '';   // an empty skin frame = an instant cover over #music-content; the engine's paint() fills it on load
         nowPlayingPanel.hidden = false;
       }
       tab = 'songs';
