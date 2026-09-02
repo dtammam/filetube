@@ -146,6 +146,17 @@ test('injectSearchClearButton: idempotent per page, and no-ops without the form 
 
 // ---- source + CSS locks for the wave's two halves ---------------------------
 
+test('v1.245 (Dean): the header search Enter is bound via keydown (iOS-reliable) + enterkeyhint, not the flaky keypress', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'common.js'), 'utf8');
+  const i = src.indexOf("if (searchBtn) searchBtn.addEventListener('click', performGlobalSearch);");
+  assert.ok(i > 0, 'the shell-owned search binding exists');
+  const block = src.slice(i, i + 800);
+  assert.match(block, /searchInput\.addEventListener\('keydown'/, 'Enter is bound via keydown (fires for the iOS virtual return key; keypress did not)');
+  assert.match(block, /e\.key === 'Enter'[\s\S]{0,80}performGlobalSearch\(\)/, 'Enter runs the SAME performGlobalSearch as the Search button');
+  assert.match(block, /setAttribute\('enterkeyhint', 'search'\)/, 'the input hints iOS to label the return key "Search"');
+  assert.doesNotMatch(block, /addEventListener\('keypress'/, 'the deprecated keypress (unreliable for the iOS return key) is gone');
+});
+
 test('v1.150 locks: main.js dispatches the synthetic input event after its programmatic set', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
   assert.match(src, /searchInput\.value = searchQuery;[\s\S]{0,400}dispatchEvent\(new Event\('input'\)\)/,

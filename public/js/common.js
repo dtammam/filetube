@@ -14958,8 +14958,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   if (searchBtn) searchBtn.addEventListener('click', performGlobalSearch);
   if (searchInput) {
-    searchInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') performGlobalSearch();
+    // v1.245 (Dean): iOS Safari does NOT reliably fire the deprecated `keypress` for the
+    // virtual keyboard's return key, so pressing Return did nothing and you had to tap the
+    // Search button. `keydown` fires reliably for Return on iOS; `enterkeyhint="search"`
+    // also relabels the keyboard's return key to "Search". Bound once (shell-owned), so it
+    // covers every shell. preventDefault stops any stray implicit submit / newline.
+    searchInput.setAttribute('enterkeyhint', 'search');
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); performGlobalSearch(); }
     });
   }
   // v1.150 (Dean): the search-box clear X (top-level helper above; injected
