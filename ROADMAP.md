@@ -93,6 +93,21 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.246.0 - Podcasts on the mobile skin + audio opens in the player everywhere (2026-09-02)
+
+Podcast episodes now play through the same iPod/Apple/Spotify skin (and click-wheel) the music
+player uses on mobile: the episode list scrolls under the wheel, a spin scrubs the timeline, and
+the show's art fills the screen. Built on a new SHARED skin engine (`public/js/skin-surface.js`)
+that podcasts drive - a faithful port of the music player's battle-won skin/gesture code - while
+`player.js` and `music.js` stay byte-unchanged (music keeps its own engine for now; unifying the
+two is tracked tech-debt). And any audio-only item now opens in that player from EVERYWHERE it
+didn't before: a SEARCH result and a tapped NOTIFICATION both open the skin instead of the old
+video page, and the old "open audio in music" opt-out is retired (audio just goes to the player).
+Videos are unchanged. Full two-reviewer gate (QA + adversarial APPROVE; the adversarial caught a
+stale play-icon on the default skin and an unbound gesture guard, both fixed + mutation-locked);
+dual-Node green; player.js 0-byte. DEVICE-PENDING (Dean's iPhone is the arbiter). Deferred to a
+focused follow-up: MENU-returns-to-where-you-launched-from, and the podcast-skin speed/loop menu.
+
 ### v1.245.0 - iOS search Return key (2026-09-02)
 
 The header search now runs when you press Return (or "Search") on the iOS keyboard, not
