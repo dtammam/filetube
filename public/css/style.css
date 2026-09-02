@@ -11061,6 +11061,19 @@ html[data-modern="on"] .video-uploader {
   .mms-sticker-menu .mms-sm-skins{ display:flex; flex-wrap:wrap; gap:var(--space-2); }
   .mms-sticker-menu .mms-sm-chip{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-2) var(--space-4); font-size:var(--fs-sm); cursor:pointer; }
   .mms-sticker-menu .mms-sm-chip.is-on{ background:var(--mms-white); color:var(--mms-black); border-color:var(--mms-white); }
+  /* v1.249 (F-EXTRAS): the two-page menu. "Extras >" / "< Back" ride the loop
+     row's full-width chassis; the action list is a single column of the same
+     bordered rows as the speed/skin options, left-aligned for scanability. */
+  .mms-sticker-menu .mms-sm-extras,
+  .mms-sticker-menu .mms-sm-back{ display:flex; align-items:center; justify-content:space-between; gap:var(--space-6); width:100%; border:0; background:transparent; color:inherit; cursor:pointer; padding:0; }
+  .mms-sticker-menu .mms-sm-back{ justify-content:flex-start; gap:var(--space-2); font-size:var(--fs-sm); opacity:.8; }
+  .mms-sticker-menu .mms-sm-extras .mms-sm-state{ font-size:var(--fs-lg); line-height:var(--lh-tight); opacity:.7; }
+  .mms-sticker-menu .mms-sm-acts{ display:flex; flex-direction:column; gap:var(--space-2); }
+  .mms-sticker-menu .mms-sm-act{ display:block; width:100%; text-align:left; text-decoration:none; border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-2) var(--space-4); font-size:var(--fs-sm); cursor:pointer; }
+  .mms-sticker-menu .mms-sm-act.is-on{ background:var(--mms-white); color:var(--mms-black); border-color:var(--mms-white); }
+  .mms-sticker-menu .mms-sm-act[disabled]{ opacity:.5; cursor:default; }
+  .mms-sticker-menu .mms-sm-danger{ color:var(--yt-red); border-color:var(--yt-red); }
+  .mms-sticker-menu .mms-sm-note{ font-size:var(--fs-sm); opacity:.7; }
 
   /* ============================ APPLE MUSIC ============================
      A blurred cover bleed fills the screen; a large framed cover, oversized
