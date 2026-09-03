@@ -952,7 +952,7 @@ test('v1.256 (adversarial W1+W2): the FEEL constants are pinned at their boundar
     assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a detent 30ms after the last FLIP ticks (the floor is 30, not more)');
     // DROP vs QUEUE: a multi-detent burst consumes its backlog even where the throttle
     // drops the flips - a following sub-detent drift must NOT flip (kills while->if).
-    q = mv(36, 100);  // ~22deg burst = 4 detents, one flip allowed -> bias back to -18
+    q = mv(36, 100);  // ~22deg burst (+0.4 carry) = 5 detents, one flip allowed -> bias back to -18
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a burst saturates to one flip');
     q = mv(37, 100);  // +1deg sub-detent drift, long after the throttle window
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'no phantom tick after the finger slows: the backlog was CONSUMED, not queued');

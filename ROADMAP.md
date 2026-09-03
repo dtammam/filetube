@@ -93,6 +93,39 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.256.0 - The click wheel actually clicks (2026-09-03)
+
+Dean's "dig deep and be creative" haptics mandate, closed the same day it was issued.
+The research agent found a path nobody in the web-haptics ecosystem uses: Apple's iOS
+26.5 patch gated only the CLICK-triggered switch haptic - the POINTER-TRACKING path
+(the thumb-drag) is exempt by the patch's own words, fires a real Taptic tick per track-
+midline crossing on every touchmove, and evaluates THROUGH CSS transforms. Dean's thumb
+confirmed it end-to-end on the Taptic Probe artifact (three probe iterations; v1's
+failure taught the load-bearing rule: touch-action ANYWHERE on the ancestor chain kills
+tracking). The build: an invisible switch covers the wheel to arm tracking at touchstart,
+shrinks to ride under the finger, and counter-translates a +-18px bias every 4.5 degrees
+(Dean's "iPod Classic aggressive" - 80 detents/rev vs the Classic's ~96) with the Taptic
+engine's 30ms floor supplying the saturation buzz; the mms-haptic class lifts the skin's
+touch-action:none and a MutationObserver-released body lock takes over scroll
+suppression. Zones/center/fast-scan survive the overlay via a route-through. Non-capable
+devices are byte-identical. player.js, music.js, and server.js untouched.
+
+THE GATE CAUGHT (full gate, serialized, 3 rounds + final confirms, both APPROVE): QA - a
+P0-feel CRITICAL where pause-then-dock stranded the body scroll lock (the browse view
+pinned unscrollable; closed with the observer release, which QA rated stronger than its
+own prescription). Adversarial - the FEEL CONSTANTS were unbound (step 1/6, throttle
+100, and the queueing mutant all shipped green), then caught my fix's own arithmetic
+(the +30ms probe landed at flip+59ms) with a verified one-character pin; 21 mutants
+cumulative, all dead.
+
+KNOWN GAPS (disclosed for Dean's device pass, the plan's risk list): the scaled arming
+cover misses the outer ~24px at 12/6 o'clock (a spin started exactly there is silent)
+and overhangs ~50px sideways; setPointerCapture-vs-tracking and WebKit's fixed ~200ms
+arm delay are only measurable on-device; a zone tap can carry one stray tick.
+
+Dual-Node: v22.23.1 8232/8232 pass, 0 fail, 0 skipped; v24.14.0 8232/8232, 0 fail, 0
+skipped. DEVICE-PENDING Dean's pass - the feel is the verdict.
+
 ### v1.255.0 - The sticker menu joins the family, and the wheel goes Aqua (2026-09-03)
 
 Dean's design-parity ask ("the font, the vibe... doesn't match... should feel akin"),
