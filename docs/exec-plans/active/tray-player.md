@@ -20,19 +20,21 @@ the pop-out dragged flush above the Windows taskbar, clock untouched, over apps.
 
 ## Design
 
-**Tray mode = the APPLE skin's own DOM, reshaped by CSS.** renderApple already carries
-everything the strip needs (mms-art, mms-head ttl/sub, mms-scrub bar+fill, mms-transport
-prev/play/next); a `.mms-tray` class on the pop-out panel reshapes it to a horizontal
-strip (~380x110 content): art left (64px), title/artist middle (marquee), transport
-right, the seek bar as a slim full-width sliver (the Aqua fill rides along), bleed/grab/
-times hidden. The ENGINE is untouched by the reshape - paint/reflect/marquee/click
-proxies/aqua all keep working; the tray forces getSkinId -> 'apple' (the donor DOM)
-via a SHELL-side config wrap, so the user's chosen skin still governs the full pop-out
-and the phone.
+**Tray mode = the IPOD skin's LCD without the wheel (Dean's Nano pivot, 2026-09-03,
+two reference images: the 5g's now-playing screen - art, "Let It Be", "The Beatles",
+status bar - and the square 6g).** The chosen read: the 5g screen, because it is
+literally the ask ("Now Playing, Name, author") and the ipod donor ALREADY renders it -
+ip-lcd status bar (Now Playing + play glyph + battery), ip-npmain art + title/artist/
+album, and the Aqua ip-scrub. A `.mms-tray` marker on the PIP BODY reshapes: wheelwrap/
+listview hidden, the LCD fills a ~340x210 window, art 88px beside the meta, stars
+hidden, marquee ellipsis on the text. The ENGINE is untouched; the shell forces
+getSkinId -> 'ipod' in tray mode; the user's chosen skin still governs the full
+pop-out and the phone. (The square 6g layout is a dims+layout flip if Dean prefers
+it on device.)
 
 **Mechanics (all in createPopoutShell + engine sticker + CSS):**
 - `ft-tray-mode` in localStorage (device-global). open() picks dims by mode (380x700
-  full vs 380x110 tray); mount() adds `.mms-tray` + wraps getSkinId when tray.
+  full vs 340x210 tray); mount() adds `.mms-tray` + wraps getSkinId when tray.
 - The sticker gains a `tray` hook rendered ONLY on the pop-out surface (the first
   !inMainDoc-gated row - the inverse of watchBack/Extras): "Tray" On/Off on page 1.
   Toggling persists the mode, tears the pip down, and reopens at the new dims (the

@@ -1114,7 +1114,7 @@
     // pip window is always-on-top over apps, the taskbar outranks it, and Chrome
     // remembers where the user drags it (the plan's platform facts).
     var TRAY_KEY = 'ft-tray-mode';
-    var TRAY_W = 380, TRAY_H = 110;
+    var TRAY_W = 340, TRAY_H = 210; // the Nano-5g screen ratio (Dean's reference images)
     function trayOn() { try { return window.localStorage.getItem(TRAY_KEY) === '1'; } catch (_) { return false; } }
     function setTrayStored(on) { try { window.localStorage.setItem(TRAY_KEY, on ? '1' : '0'); } catch (_) { /* best-effort */ } }
     function dims() { return trayOn() ? { width: TRAY_W, height: TRAY_H } : { width: W, height: H }; }
@@ -1162,10 +1162,12 @@
       var tray = trayOn();
       if (tray) { try { doc.body.classList.add('mms-tray'); } catch (_) { /* best-effort */ } }
       var ec = cfg.engineConfigFor(panel, win);
-      // v1.257: tray borrows the APPLE skin's DOM as the strip donor (the user's chosen
-      // skin still governs the full pop-out and the phone); the sticker gains the
-      // pop-out-only Tray row - injected HERE so music.js/podcasts.js stay untouched.
-      if (tray) ec.getSkinId = function () { return 'apple'; };
+      // v1.257: tray borrows the IPOD skin's DOM (Dean's Nano-5g reference: the tray IS
+      // a Classic LCD without the wheel - status bar, art, title/artist, the Aqua scrub
+      // all come from the donor); the user's chosen skin still governs the full pop-out
+      // and the phone. The sticker gains the pop-out-only Tray row - injected HERE so
+      // music.js/podcasts.js stay untouched.
+      if (tray) ec.getSkinId = function () { return 'ipod'; };
       if (ec.sticker) ec.sticker = Object.assign({}, ec.sticker, { tray: { enabled: trayOn, onToggle: toggleTray } });
       pipEngine = create(ec);
       if (!pipEngine) { teardown(); return; }

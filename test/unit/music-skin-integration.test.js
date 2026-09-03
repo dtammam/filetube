@@ -1686,7 +1686,7 @@ test('v1.254 (adversarial W3): a register SUPPRESSED by an in-flight picker is R
 // ---- v1.257 TRAY PLAYER --------------------------------------------------------------
 
 test('v1.257 TRAY: dims by mode, the body marker + apple donor, the toggle round-trip, and mode memory on a fresh open', async () => {
-  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+  await boot({ mobile: false, isMusic: true, skin: 'apple', run: async (dom) => {
     const dimsLog = [];
     const holder = { pip: makePipWindow() };
     dom.window.documentPictureInPicture = { requestWindow: (opts) => { dimsLog.push(opts); return Promise.resolve(holder.pip); } };
@@ -1695,7 +1695,7 @@ test('v1.257 TRAY: dims by mode, the body marker + apple donor, the toggle round
     assert.deepStrictEqual(dimsLog[0], { width: 380, height: 700 }, 'full pop-out dims unchanged');
     const pip1 = holder.pip;
     assert.ok(!pip1.document.body.classList.contains('mms-tray'), 'no tray marker in full mode');
-    assert.match(pipPanelOf(pip1).className, /mms-ipod/, 'the user\'s chosen skin governs the full pop-out');
+    assert.match(pipPanelOf(pip1).className, /mms-apple/, 'the user\'s chosen skin governs the full pop-out');
     pipPanelOf(pip1).querySelector('[data-skin-sticker]').dispatchEvent(new pip1.MouseEvent('click', { bubbles: true }));
     const menu1 = pipPanelOf(pip1).querySelector('[data-skin-sticker-menu]');
     const row1 = menu1.querySelector('[data-skin-tray]');
@@ -1706,11 +1706,11 @@ test('v1.257 TRAY: dims by mode, the body marker + apple donor, the toggle round
     row1.dispatchEvent(new pip1.MouseEvent('click', { bubbles: true }));
     await settle(); await settle();
     assert.strictEqual(dimsLog.length, 2, 'the toggle reopened the window');
-    assert.deepStrictEqual(dimsLog[1], { width: 380, height: 110 }, 'tray dims');
+    assert.deepStrictEqual(dimsLog[1], { width: 340, height: 210 }, 'the Nano-screen tray dims');
     const pip2 = holder.pip;
     assert.ok(pip2.document.body.classList.contains('mms-tray'), 'the BODY marker (survives engine paint)');
-    assert.match(pipPanelOf(pip2).className, /mms-apple/, 'tray borrows the APPLE donor DOM');
-    assert.ok(!/mms-ipod/.test(pipPanelOf(pip2).className), 'the ipod pick does not leak into the strip');
+    assert.match(pipPanelOf(pip2).className, /mms-ipod/, 'tray borrows the IPOD donor (the Nano is a Classic LCD sans wheel)');
+    assert.ok(!/mms-apple\b/.test(pipPanelOf(pip2).className), 'the apple pick does not leak into the tray');
     assert.strictEqual(dom.window.localStorage.getItem('ft-tray-mode'), '1', 'the mode persisted');
     // the strip's row reads On; toggling BACK restores full mode
     pipPanelOf(pip2).querySelector('[data-skin-sticker]').dispatchEvent(new pip2.MouseEvent('click', { bubbles: true }));
@@ -1729,7 +1729,7 @@ test('v1.257 TRAY: dims by mode, the body marker + apple donor, the toggle round
     await settle();
     holder.pip = makePipWindow();
     clickPopout(dom); await settle(); await settle();
-    assert.deepStrictEqual(dimsLog[3], { width: 380, height: 110 }, 'a fresh pop-out honors the stored tray mode');
+    assert.deepStrictEqual(dimsLog[3], { width: 340, height: 210 }, 'a fresh pop-out honors the stored tray mode');
     assert.ok(holder.pip.document.body.classList.contains('mms-tray'), 'straight to the strip');
   } });
 });
