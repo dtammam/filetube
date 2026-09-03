@@ -93,6 +93,34 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.251.0 - Audio routes right from everywhere; the desktop podcast player grows up (2026-09-03)
+
+Dean's post-v1.250 wave, both asks. ROUTING: his pinned-channel bug ROOT-CAUSED (the
+diagnosis discipline - proven, not theorized): items scanned before the `type` field existed
+were never backfilled, so old audio downloads rendered as video cards on every surface and
+never projected into Music. Fixed with a SCHEMA-ONLY scan backfill in both reuse arms
+(presence-wins, hard-gated zero-spawn - the thumbnail-backfill class), DEPLOYMENT NOTE: the
+heal lands on the FIRST post-deploy scan. The destination rule centralized as common.js
+audioOpenHref (one authority) and newly consulted by the bell rows (server now emits
+chapterCount on audio rows), the queue chrome, history rows, and the watch related rail -
+with an ENUMERATION NET that disposition-locks every /watch.html?v= producer so the class
+cannot silently return (out of scope, documented: the byte-frozen player.js navigations and
+watch's prev/next chain steps). DESKTOP PODCASTS: the legacy panel replaced by the SHARED
+whole-queue treatment (music's builder moved into the engine; music's HTML byte-identical),
+plus the theatre toggle and the desktop POP-OUT via the newly-extracted shared shell (the
+F-UNIFY deferral cashed in; music's 64 pop-out tests green with zero assertion edits). What
+the gate caught (full gate, serialized seats, 3 rounds): QA - the podcast queue was uncapped
+off-theatre (the class-scoped 44vh cap now reaches it) and the plan misdescribed the shipped
+fix-shape (corrected on the record); adversarial - five unbound test seams (the backfill's
+persist gate masked by divergent fixtures TWICE over incl. a rootFolder reconcile masker, the
+bell chapterCount emission, all three podcast pop-out guard closures, the chapterCount >=2
+boundary, the moved builder's row escaping) - all bound with mutants self-verified red; plus
+one honesty correction on my side: a W3c kill-check count was a timeout artifact (the mutant
+wedged rather than redded - now it reds fast, and the record says so verbatim). Residuals
+disclosed: tech-debt #191-193. Dual-Node green: 8194/8194 on v22.23.1 AND v24.14.0.
+DEVICE-PENDING Dean's pass - NOTE the pinned-channel probe needs a scan to have run first.
+Next: LISTEN-MODE (intake locked).
+
 ### v1.250.0 - One skin engine for music and podcasts (2026-09-02)
 
 F-UNIFY: music.js's duplicated mobile-skin engine (render/reflect/wheel gesture/cursor/list

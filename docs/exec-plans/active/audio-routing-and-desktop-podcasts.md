@@ -1,7 +1,10 @@
 # Audio-routing consistency + the desktop podcast player (v1.251 wave)
 
-Status: ACTIVE. Dean's post-v1.250 wave (device-passed v1.250 same day: "fantastic"). Intake
-LOCKED 2026-09-02, Dean "Agree" to both recommendations:
+Status: SHIPPED as v1.251.0 (2026-09-03; full gate SERIALIZED seats, 3 rounds, both APPROVE;
+dual-Node 8194/8194; DEVICE-PENDING Dean's pass - the pinned-channel probe needs a scan to
+have run first). Move to completed/ on Dean's device pass; LISTEN-MODE (locked intake in
+completed/player-extras-and-unify.md) is next. Original intake below.
+Intake LOCKED 2026-09-02, Dean "Agree" to both recommendations:
 1. THE RULE: anything PURELY AUDIO (YouTube-audio / library audio, chaptered albums), tapped
    from ANY surface on desktop, opens in MUSIC; podcast episodes always open the podcast
    player; video stays video. Confirmed on-device bug: the pinned-left-sidebar channel view
