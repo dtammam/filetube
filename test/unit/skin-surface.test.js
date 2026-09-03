@@ -828,7 +828,7 @@ test('v1.256 haptics: the tick engine - one bias flip per detent (3.75deg Classi
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a throttled detent follows without flipping');
     q = mv(14, 5);      // crosses a detent but only 10ms since the flip -> THROTTLED (dropped, not queued)
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'the Taptic floor drops the tick, never queues it');
-    q = mv(24, 100);    // two detents accumulate; one flip allowed per throttle window -> back to +18
+    q = mv(24, 100);    // three detents accumulate at 3.75 (carry 2.75+10); one flip allowed -> back to +18
     assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a fast burst saturates to one tick per 30ms');
     wheel.dispatchEvent(new b.dom.window.MouseEvent('pointercancel', { bubbles: true }));
     assert.strictEqual(g.style.transform, 'scale(7.5)', 'cancel restores the arming cover (the dual-arm teardown discipline)');
