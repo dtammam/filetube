@@ -3,7 +3,9 @@
 Status: ACTIVE. Dean 2026-09-03: "I need to make haptic vibration work with the scroll
 wheel... dig deep and be creative. It will be hugely impactful." Device-confirmed the
 same day via the Taptic Probe artifact: "WHOA NEW THINF WORKED... a0 a and c all work."
-Feel ruling: "as aggressive as the iPod Classic" = ~96 detents/revolution.
+Feel ruling: "as aggressive as the iPod Classic" (the real Classic ~96/rev) -
+implemented as HAPTIC_STEP_DEG=4.5 = 80 detents/rev, inside the Classic ballpark;
+the 30ms Taptic floor supplies the saturation buzz on fast flicks.
 
 ## The mechanism (device-confirmed on Dean's iPhone, iOS 26.6.1)
 

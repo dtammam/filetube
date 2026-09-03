@@ -865,3 +865,58 @@ test('v1.256 haptics: the body lock NEVER outlives the ghost - reflect() self-he
     assert.strictEqual(b.dom.window.document.body.style.position, '', 'destroy() unlocks unconditionally');
   } finally { b.restore(); }
 });
+
+test('v1.256 (QA CRITICAL binding): a VIEW-side teardown with NO media event and NO click still unlocks the body (the observer release)', async () => {
+  // The paused-dock strand: updateNowPlayingPanel clears the panel synchronously without
+  // destroy(); paused audio means reflect() never fires and the panel's click handler is
+  // unreachable - the event-driven heals cannot run, and the browse view stays pinned.
+  // The MutationObserver releases the lock the moment the ghost leaves the DOM.
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    assert.strictEqual(b.dom.window.document.body.style.position, 'fixed', 'locked while the skin is up (populated first)');
+    // the exact view teardown shape: innerHTML cleared + skin classes dropped, nothing else
+    panel(b.dom).innerHTML = '';
+    panel(b.dom).className = 'music-nowplaying-panel';
+    await new Promise((r) => setImmediate(r)); // MutationObserver callbacks are microtasks
+    assert.strictEqual(b.dom.window.document.body.style.position, '', 'the observer unlocked with no reflect/click/destroy involved');
+  } finally { b.restore(); }
+});
+
+test('v1.256 (QA S1 binding): a scan-engaged move ticks NOTHING - the ghost holds still through a fast-scan wobble', () => {
+  const b = bootHaptic({ engineCfg: { fastScan: true } });
+  try {
+    b.engine.paint();
+    const timers = fakeWinTimers(b.dom);
+    const mp = b.dom.window.document.getElementById('media-player');
+    Object.defineProperty(mp, 'duration', { value: 300, configurable: true });
+    let ct = 100; Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => ct, set: (v) => { ct = v; } });
+    const g = ghostOf(b.dom);
+    const zone = panel(b.dom).querySelector('.ip-wheel [data-skin-next]') || panel(b.dom).querySelector('[data-skin-next]');
+    b.dom.window.document.elementsFromPoint = () => [g, zone]; // the press lands on the ghost, routed to the zone
+    g.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 50, clientY: 0 }));
+    timers.timeouts[0](); // the 400ms hold fires -> scan engages
+    const held = g.style.transform;
+    // a wobble during the scan: rotation coords that would cross several detents
+    g.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 30, clientY: 40 }));
+    assert.strictEqual(g.style.transform, held, 'the scanning early-return precedes the haptic engine - no tick, no follow (the plan claim, bound)');
+  } finally { b.restore(); }
+});
+
+test('v1.256 (QA S2 binding): a rotate-then-release on the ghost suppresses the click BEFORE the zone route - no phantom zone action', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    const play = panel(b.dom).querySelector('[data-skin-play]');
+    let routed = 0;
+    play.addEventListener('click', () => { routed += 1; });
+    b.dom.window.document.elementsFromPoint = () => [g, play];
+    // a real rotation on the ghost (>8px movement sets st.moved -> suppress arms on release)
+    g.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    g.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 70, clientY: 70 }));
+    g.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 70, clientY: 70 }));
+    g.dispatchEvent(new b.dom.window.MouseEvent('click', { bubbles: true, clientX: 70, clientY: 70 }));
+    assert.strictEqual(routed, 0, 'the suppress check runs before the ghost route - a spin release never fires a zone');
+  } finally { b.restore(); }
+});

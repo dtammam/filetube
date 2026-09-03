@@ -784,7 +784,7 @@
       wheelGhost = null;
       if (!hapticCapable()) return;
       var wheel = panel.querySelector('.ip-wheel');
-      if (!wheel) { unlockBodyScroll(); panel.classList.remove('mms-haptic'); return; }
+      if (!wheel) { unlockBodyScroll(); unwatchGhost(); panel.classList.remove('mms-haptic'); return; }
       var g = doc.createElement('input');
       g.type = 'checkbox';
       g.setAttribute('switch', '');
@@ -796,6 +796,7 @@
       wheelGhost = g;
       panel.classList.add('mms-haptic'); // CSS lifts .mms-full's touch-action:none (rule 1)
       lockBodyScroll();                  // ...and the body lock takes over scroll suppression
+      watchGhost();                      // QA W1: the lock's structural release (see above)
     }
     function healGhostLock() {
       // The engine gets no callback when the VIEW tears the skin down without destroy()
@@ -803,7 +804,27 @@
       if (bodyScrollLock && (!wheelGhost || !wheelGhost.isConnected)) {
         unlockBodyScroll();
         wheelGhost = null;
+        unwatchGhost();
       }
+    }
+    // QA gate CRITICAL (v1.256 round 1): a PAUSED dock strands the lock - the view's
+    // updateNowPlayingPanel clears the panel synchronously without destroy(), and with
+    // the media paused NO reflect/click/endWheel ever runs again: the browse view is
+    // pinned unscrollable. The event-driven heals cannot cover that path, so the lock's
+    // PRIMARY release is structural: a MutationObserver on the panel unlocks the moment
+    // the ghost leaves the DOM, whatever removed it (click-dock, OS-back, a future
+    // teardown nobody has written yet). The reflect/click heals stay as belt-and-braces
+    // for engines without MutationObserver (no capable device lacks it).
+    var ghostObserver = null;
+    function watchGhost() {
+      if (ghostObserver) return;
+      var MO = win.MutationObserver || (typeof MutationObserver !== 'undefined' ? MutationObserver : null);
+      if (!MO) return;
+      ghostObserver = new MO(function () { healGhostLock(); });
+      try { ghostObserver.observe(panel, { childList: true, subtree: true }); } catch (_) { ghostObserver = null; }
+    }
+    function unwatchGhost() {
+      if (ghostObserver) { try { ghostObserver.disconnect(); } catch (_) { /* gone */ } ghostObserver = null; }
     }
     // Route a click/press whose target is the invisible ghost to the REAL control under
     // it (zones/center are covered by the scaled ghost; their semantics must survive).
@@ -974,6 +995,7 @@
       if (wheelSpin) { try { endWheel(wheelSpin, false); } catch (_) { /* ignore */ } }
       stopExtrasReheatPoll(); // a live poll must never outlive the surface (the pipClock lesson)
       unlockBodyScroll();     // v1.256: the haptic body lock dies with the surface
+      unwatchGhost();
       wheelGhost = null;
       extrasReqToken++;       // and a late extras fetch must never render into a dead panel
       bound = false;
