@@ -11408,6 +11408,16 @@ html[data-modern="on"] .video-uploader {
   .mms-zune-classic .mms-row{ color:var(--mms-white); }
   .mms-zune-classic .mms-row .mms-rt{ text-transform:lowercase; font-weight:var(--fw-light); }
   .mms-zune-classic .mms-row .mms-rn, .mms-zune-classic .mms-row .mms-rd, .mms-zune-classic .mms-chev-r{ color:var(--mms-zn-dim); }
+  /* v1.263 (Dean: "should we fill in more of the screen?"): the ART-FORWARD Now
+     Playing - the Zune 30's actual view: album art dominating the top, nearly
+     edge-to-edge, meta in the thin type beneath, the progress line at the bottom.
+     The iPod's 44%-cover-beside-meta row becomes a column with the art filling. */
+  .mms-zune-classic .ip-npview{ padding:0; }
+  .mms-zune-classic .ip-npmain{ flex-direction:column; gap:var(--space-4); }
+  .mms-zune-classic .ip-cover{ width:100%; align-self:stretch; aspect-ratio:auto; flex:1; min-height:0; border-radius:0; box-shadow:none; }
+  .mms-zune-classic .ip-cover img{ object-fit:cover; }
+  .mms-zune-classic .ip-meta{ flex:none; padding:0 var(--space-6); }
+  .mms-zune-classic .ip-scrub{ padding:0 var(--space-6) var(--space-4); }
   .mms-zune-classic .mms-row.is-current .mms-rt{ color:var(--mms-zn-pink); }
   .mms-zune-classic .mms-row.is-current .mms-rn{ color:var(--mms-zn-pink); }
   /* the Metro cursor (slim W2): the magenta bar replaces the iPod blue; listed AFTER
