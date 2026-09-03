@@ -426,18 +426,25 @@ test('W3c resize enforcement: shrinking into the narrow range TEARS DOWN an open
   const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
   const mm = { narrow: false };
   const pipDom = new JSDOM('<body></body>', { url: 'http://localhost/pip' });
-  await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
-    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pipDom.window) };
-    await playEp(dom, 0);
-    const btn = dom.window.document.getElementById('podcast-popout-btn');
-    btn.click();
-    await settle(); await settle(); await settle();
-    assert.equal(btn.getAttribute('aria-pressed'), 'true', 'pop-out open (populated first - non-vacuous)');
-    const pipBody = pipDom.window.document.body;
-    mm.narrow = true; // the viewport crosses into the in-tab-skin range
-    dom.window.dispatchEvent(new dom.window.Event('resize'));
-    await settle(); await settle();
-    assert.equal(btn.getAttribute('aria-pressed'), 'false', 'the resize arm tore the pop-out down');
-    assert.ok(!pipBody.classList.contains('mms-on'), 'the pop-out surface was destroyed (mms-on cleared before close)');
-  }, { meta, mm });
+  try {
+    await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
+      dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pipDom.window) };
+      await playEp(dom, 0);
+      const btn = dom.window.document.getElementById('podcast-popout-btn');
+      btn.click();
+      await settle(); await settle(); await settle();
+      assert.equal(btn.getAttribute('aria-pressed'), 'true', 'pop-out open (populated first - non-vacuous)');
+      const pipBody = pipDom.window.document.body;
+      mm.narrow = true; // the viewport crosses into the in-tab-skin range
+      dom.window.dispatchEvent(new dom.window.Event('resize'));
+      await settle(); await settle();
+      assert.equal(btn.getAttribute('aria-pressed'), 'false', 'the resize arm tore the pop-out down');
+      assert.ok(!pipBody.classList.contains('mms-on'), 'the pop-out surface was destroyed (mms-on cleared before close)');
+    }, { meta, mm });
+  } finally {
+    // Runner hygiene (adversarial delta S2, the v1.250 wedge class): under the D7
+    // arm-deletion mutant the pop-out never tears down and its clock keeps the loop alive -
+    // close the window so a red run FAILS fast instead of wedging node:test.
+    try { pipDom.window.close(); } catch (_) { /* already closed by the resize arm */ }
+  }
 });
