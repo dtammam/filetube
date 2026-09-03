@@ -483,7 +483,11 @@ test('v1.262 Seattle Classic: the METRO screen rides the shared machinery (sourc
   const zuneCoverAt = css.indexOf('.mms-zune-classic .ip-cover{ width:100%');
   assert.ok(baseCoverAt > -1 && zuneCoverAt > baseCoverAt, 'the zune-classic cover override sits AFTER the iPod base rule - reorder and the 44% row silently returns');
   assert.match(css, /\.mms-zune-classic \.ip-npview\{ padding:0; \}/, 'the art bleeds to the bezel (meta/scrub re-pad themselves)');
-  assert.match(css, /\.mms-zune-classic \.ip-cover img\{ object-fit:cover; \}/, 'the art crops to fill, no letterbox');
+  // v1.264: the FULL picture + the blurred self-bleed filling the letterbox (Dean's
+  // gradient ask). The binding is an ABSENCE plus its two load-bearing partners.
+  assert.ok(!/\.mms-zune-classic \.ip-cover img\{/.test(css), 'NO zune-classic img override - the base object-fit:contain governs (re-add a crop and this reds)');
+  assert.match(css, /\.mms-ipod \.ip-cover img\{ position:relative; width:100%; height:100%; object-fit:contain;/, 'the base shows the WHOLE art');
+  assert.match(css, /\.mms-ipod \.ip-cover::before\{ content:""; position:absolute; inset:0; background-image:var\(--art, none\);[^}]*filter:blur\(18px\)/, 'the v1.244 blurred self-bleed fills the letterbox behind it');
   const isCurrentAt = css.indexOf('.mms-zune-classic .mms-row.is-current .mms-rt{');
   const coincideAt = css.indexOf('.mms-zune-classic .mms-row.is-cursor .mms-rt,');
   assert.ok(isCurrentAt > -1 && coincideAt > isCurrentAt, 'the cursor .mms-rt rule sits AFTER is-current - equal specificity, later wins; reorder and list-open paints pink-on-magenta');
