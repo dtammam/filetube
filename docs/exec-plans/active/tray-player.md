@@ -80,6 +80,7 @@ dark pip body. COLORWAYS: the tray donor is VARIANT-AWARE (an ipod-family pick k
 variant - the family's silver/black body palettes are the black/white ask; else base
 silver), and the tray's sticker chips return FILTERED to the two family picks under a
 "Color" heading. DISCLOSED: a tray Color pick writes the GLOBAL skin pref (the colorway
-IS the skin choice - splitting them is Dean's future call). A future ipod-base variant
-auto-joins the colorways by design; the chips test pins the two current ids so it forces
-a conscious update.
+IS the skin choice - splitting them is Dean's future call). v1.260 INVERTED the auto-join
+design: the colorway family is now the EXPLICIT iPod pair (donor + chips) - Seattle
+Classic shares base 'ipod' for the wheel CSS but is deliberately not a Nano colorway
+(bound by the base-silver-fallback test); a future variant JOINS only by conscious edit.

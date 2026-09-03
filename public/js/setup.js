@@ -532,6 +532,7 @@ const MUSIC_SKIN_BLURB = {
   ipod: 'Retro brushed-metal, framed cover, classic track list.',
   'ipod-black': 'Space-black brushed metal, same classic click wheel.',
   zune: 'Big lowercase type on black with a flash of magenta. It said hello from Seattle.',
+  'zune-classic': 'The brown original with the circle pad, green rim and all.',
 };
 function renderMusicSkinPicker() {
   const container = document.getElementById('music-skin-picker');

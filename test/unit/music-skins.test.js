@@ -19,8 +19,8 @@ const CTX = {
   playing: true, posSec: 96, durSec: 337, posLabel: '1:36', remLabel: '-4:01',
 };
 
-test('registry exposes the five skins with render funcs (incl. the v1.232 black iPod and the v1.259 Seattle/zune)', () => {
-  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'zune']);
+test('registry exposes the six skins with render funcs (incl. the v1.260 Seattle Classic on the wheel chassis)', () => {
+  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'zune', 'zune-classic']);
   assert.strictEqual(skins.DEFAULT_ID, 'apple');
   for (const id of skins.IDS) {
     const s = skins.skinById(id);
@@ -30,11 +30,13 @@ test('registry exposes the five skins with render funcs (incl. the v1.232 black 
   // the black iPod shares the silver iPod's render + declares a `base` so the panel
   // also carries the shared .mms-ipod CSS class (music.js reads it).
   assert.strictEqual(skins.skinById('ipod-black').base, 'ipod', 'black iPod bases on the silver iPod CSS');
+  assert.strictEqual(skins.skinById('zune-classic').base, 'ipod', 'Seattle Classic rides the wheel chassis the same way (v1.260)');
+  assert.strictEqual(skins.skinById('zune-classic').renderFull, skins.skinById('ipod').renderFull, 'Seattle Classic IS the wheel renderer - the inherited engine/haptics/tap-seek claim rests on this identity (slim W1)');
   assert.strictEqual(skins.skinById('ipod-black').renderFull, skins.skinById('ipod').renderFull, 'same render, different palette');
   // v1.232.1 (Dean): the labels are CHEEKY riffs, deliberately NOT the real product /
   // company names (the IDS stay literal for CSS/storage).
   const labels = skins.IDS.map((id) => skins.skinById(id).label);
-  assert.deepStrictEqual(labels, ['Cider', 'Nordic', 'Pocket Classic', 'Pocket Classic (Black)', 'Seattle']);
+  assert.deepStrictEqual(labels, ['Cider', 'Nordic', 'Pocket Classic', 'Pocket Classic (Black)', 'Seattle', 'Seattle Classic']);
   for (const l of labels) {
     assert.ok(!/apple|spotify|ipod|zune|microsoft/i.test(l), 'label "' + l + '" avoids the real product/company names');
   }
@@ -228,7 +230,7 @@ test('v1.229: NO in-player skin switcher - picking lives in the account menu now
     assert.ok(!/mms-skinsw|mms-sw\b/.test(html), id + ': no switcher markup');
   }
   // The registry the Settings picker reads is still exported.
-  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'zune']);
+  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'zune', 'zune-classic']);
   assert.strictEqual(typeof skins.setActiveSkin, 'function');
   assert.strictEqual(skins.skinById('ipod').label, 'Pocket Classic', 'cheeky label (not the real product name) for the picker');
 });

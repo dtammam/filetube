@@ -1793,7 +1793,7 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
     const full = holder.pip;
     pipPanelOf(full).querySelector('[data-skin-sticker]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
     const fullChips = [...pipPanelOf(full).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick')).sort();
-    assert.deepStrictEqual(fullChips, ['apple', 'ipod', 'ipod-black', 'spotify', 'zune'], 'the FULL pop-out keeps ALL skin chips incl. the v1.259 Seattle (adversarial W1: in-pip must not mean in-tray)');
+    assert.deepStrictEqual(fullChips, ['apple', 'ipod', 'ipod-black', 'spotify', 'zune', 'zune-classic'], 'the FULL pop-out keeps ALL skin chips incl. both Seattles (adversarial W1: in-pip must not mean in-tray)');
     assert.match(pipPanelOf(full).querySelector('[data-skin-sticker-menu]').textContent, /Skin/, 'the full pop-out heading says Skin');
     // toggle to tray: the chips vanish (the donor is forced - a pick would visibly no-op)
     holder.pip = makePipWindow();
@@ -1857,5 +1857,20 @@ test('v1.258 colorways: a Pocket Classic (Black) pick keeps its BLACK body in th
     const pip = holder.pip;
     assert.ok(pip.document.body.classList.contains('mms-tray'), 'straight to the tray (populated first)');
     assert.match(pipPanelOf(pip).className, /mms-ipod-black/, 'the BLACK colorway rides the family pick (force the base donor and this reds)');
+  } });
+});
+
+test('v1.260: a Seattle Classic pick does NOT become the tray donor - the Nano stays a Pocket Classic (base silver fallback)', async () => {
+  // zune-classic shares base 'ipod' for the wheel CSS, but the tray colorway family is
+  // the explicit iPod pair - loosen the donor back to base-family and this reds.
+  await boot({ mobile: false, isMusic: true, skin: 'zune-classic', run: async (dom) => {
+    dom.window.localStorage.setItem('ft-tray-mode', '1');
+    const holder = { pip: makePipWindow() };
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(holder.pip) };
+    clickPopout(dom); await settle(); await settle();
+    const pip = holder.pip;
+    assert.ok(pip.document.body.classList.contains('mms-tray'), 'straight to the tray (populated first)');
+    assert.match(pipPanelOf(pip).className, /mms-ipod\b/, 'the donor fell to base silver');
+    assert.ok(!/mms-zune-classic/.test(pipPanelOf(pip).className), 'the brown Zune body never leaks into the Nano tray');
   } });
 });

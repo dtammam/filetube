@@ -53,7 +53,7 @@ test('v1.232.1: the skin blurbs avoid the real product names (Dean: cheeky, not 
   assert.ok(m, 'the MUSIC_SKIN_BLURB map exists');
   // the VALUES (quoted descriptions), not the id keys (which are literally apple/spotify/ipod).
   const values = [...m[1].matchAll(/:\s*'([^']*)'/g)].map((x) => x[1]);
-  assert.strictEqual(values.length, 5, 'one blurb per skin (v1.259: + Seattle)');
+  assert.strictEqual(values.length, 6, 'one blurb per skin (v1.260: + Seattle Classic)');
   for (const v of values) assert.ok(!/apple|spotify|ipod|zune|microsoft/i.test(v), 'blurb avoids the real product name: "' + v + '"');
 });
 

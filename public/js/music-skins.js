@@ -26,7 +26,7 @@
 
 (function () {
   var SKIN_KEY = 'ft-music-skin';
-  var IDS = ['apple', 'spotify', 'ipod', 'ipod-black', 'zune'];
+  var IDS = ['apple', 'spotify', 'ipod', 'ipod-black', 'zune', 'zune-classic'];
   var DEFAULT_ID = 'apple';
 
   function esc(s) {
@@ -201,6 +201,10 @@
     { id: 'ipod-black', label: 'Pocket Classic (Black)', base: 'ipod', renderFull: renderIpod },
     // v1.259 (Dean): the Zune - Metro, in memoriam. Label per the cheeky-riff rule.
     { id: 'zune', label: 'Seattle', renderFull: renderZune },
+    // v1.260 (Dean: "the original zune with the circle wheel"): the brown Zune 30 -
+    // the ipod-black pattern exactly: one render (the wheel engine, haptics and all),
+    // a base for the shared .mms-ipod CSS, and a palette-only override block.
+    { id: 'zune-classic', label: 'Seattle Classic', base: 'ipod', renderFull: renderIpod },
   ];
   var BY_ID = SKINS.reduce(function (m, s) { m[s.id] = s; return m; }, Object.create(null));
 
