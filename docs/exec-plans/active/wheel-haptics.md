@@ -83,6 +83,10 @@ public/js/skin-surface.js, public/css/style.css, and tests.
 - **The 200ms arm delay**: the first ~200ms of a fast spin won't tick (WebKit constant,
   not ours). Expected feel: ticks "catch up" as the spin continues.
 - Zone-tap stray tick (T2) and VoiceOver behavior of the aria-hidden ghost.
+- Theoretical lock strand (QA delta, on record): a FUTURE teardown that swaps the panel
+  NODE itself, destroy-less, while PAUSED would orphan observer+ghost together. No live
+  path does it (both views mutate the captured panel in place; the #view-root swap runs
+  destroy()); playing heals via the media-event belt.
 
 ## Tests (jsdom = wiring; the FEEL is Dean's device)
 

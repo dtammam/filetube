@@ -796,7 +796,7 @@
       wheelGhost = g;
       panel.classList.add('mms-haptic'); // CSS lifts .mms-full's touch-action:none (rule 1)
       lockBodyScroll();                  // ...and the body lock takes over scroll suppression
-      watchGhost();                      // QA W1: the lock's structural release (see above)
+      watchGhost();                      // QA gate CRITICAL (v1.256): the lock's structural release - see watchGhost's header
     }
     function healGhostLock() {
       // The engine gets no callback when the VIEW tears the skin down without destroy()
