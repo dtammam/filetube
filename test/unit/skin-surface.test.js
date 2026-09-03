@@ -653,6 +653,10 @@ test('U2 pop-out exclusion at the ENGINE level: a non-main-document surface neve
       win: pipDom.window,
       sticker: {
         onSkinChange: () => {},
+        // v1.252 (adversarial W1): a watchBack hook that SAYS VISIBLE - only the engine's
+        // in-main-document gate can reject it here, so the assert below binds that gate
+        // distinctly (a normal-track fixture would pass vacuously via visible() false).
+        watchBack: { visible: () => true, onTap: () => {} },
         extras: { getBaseId: () => 's1', isEligible: () => true, onMutated: () => {}, signal: new AbortController().signal },
       },
     });
@@ -664,6 +668,7 @@ test('U2 pop-out exclusion at the ENGINE level: a non-main-document surface neve
     const m = pipPanel.querySelector('[data-skin-sticker-menu]');
     assert.ok(m.querySelector('[data-skin-speed]'), 'quick controls render there (non-vacuous)');
     assert.strictEqual(m.querySelector('[data-skin-extras]'), null, 'but never the Extras entry (main-document only)');
+    assert.strictEqual(m.querySelector('[data-skin-watchback]'), null, 'and never the Watch row either - a pop-out row must not navigate the window BEHIND it (v1.252 W1)');
     eng2.destroy();
   } finally { mainBoot.restoreAll(); }
 });

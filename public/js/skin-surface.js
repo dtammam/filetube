@@ -35,6 +35,9 @@
 //     onSkinChange()  re-render after a skin pick (the view repaints its surfaces)
 //     getPlayer()     -> the FileTube player facade for loop get/set
 //                        (default: window.FileTube && window.FileTube.player)
+//     watchBack       OPTIONAL (v1.252 Listen-mode) - { visible(), onTap() }: page 1 gains a
+//                     "Watch" row when visible() (music: the playing item is a listen track);
+//                     onTap navigates back to the item's watch page.
 //     extras          OPTIONAL - the v1.249 watch-page Extras second page. Omitted (e.g.
 //                     podcasts - they keep their own actions) = quick menu only. Hooks:
 //       getBaseId()   -> the playing item's base media id (::c chapter suffix stripped), or null
@@ -180,6 +183,17 @@
           '" data-skin-pick="' + escapeHtml(s.id) + '" aria-checked="' + (on ? 'true' : 'false') + '">' +
           escapeHtml(s.label) + '</button>';
       }).join('');
+      // v1.252 (Listen-mode): the "Watch" way back - rendered ONLY when the view supplies
+      // the watchBack hook AND says it applies to the playing item (music: a listen track).
+      // Rides the Extras row chassis (44px full-width) with its own dispatch hook.
+      var watchBack = '';
+      // QA gate S4: main-document only, the extras posture - a pop-out row navigating the
+      // window BEHIND the always-on-top pop-out would be the exact confusion extras avoids.
+      if (inMainDoc && stickerCfg.watchBack && typeof stickerCfg.watchBack.visible === 'function') {
+        var wbOn = false;
+        try { wbOn = !!stickerCfg.watchBack.visible(); } catch (_) { wbOn = false; }
+        if (wbOn) watchBack = '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-watchback><span class="mms-sm-h">Watch</span><span class="mms-sm-state">&rsaquo;</span></button></div>';
+      }
       // v1.249: the second-page entry - library-backed tracks on the in-tab surface only.
       var extras = extrasEligible()
         ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-extras><span class="mms-sm-h">Extras</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
@@ -188,7 +202,7 @@
         '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (loopOn ? ' is-on' : '') +
         '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-h">Loop</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
         '<div class="mms-sm-sec"><div class="mms-sm-h">Skin</div><div class="mms-sm-skins">' + chips + '</div></div>' +
-        extras;
+        watchBack + extras;
     }
     // Inject the sticker + its (initially hidden) menu into a freshly-painted panel. The
     // v1.240 marker keys off what stickerIconHtml ACTUALLY renders (a partial emoji pref
@@ -535,6 +549,11 @@
           if (sbtn) sbtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
         }
         e.stopPropagation();
+        return true;
+      }
+      if (e.target.closest('[data-skin-watchback]')) {
+        closeStickerMenu();
+        if (stickerCfg.watchBack && typeof stickerCfg.watchBack.onTap === 'function') { try { stickerCfg.watchBack.onTap(); } catch (_) { /* view nav best-effort */ } }
         return true;
       }
       if (e.target.closest('[data-skin-extras]')) { openStickerExtras(); return true; }

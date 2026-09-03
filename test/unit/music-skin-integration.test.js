@@ -390,12 +390,16 @@ test('v1.239 iPod: a Now-Playing spin with NO known duration is a safe no-op (lo
 
 test('v1.244 source-lock: a ?play open MOUNTS a full-screen skin cover immediately (covers #music-content), torn down only on the miss->list fallback', () => {
   const js = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  // v1.252 (QA gate W3): the cover is the SHARED mountEarlyCover now - one implementation
+  // for BOTH ?play= arms; lock the helper's mechanics and that both arms call it.
+  const h = /function mountEarlyCover\(\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.ok(h, 'mountEarlyCover exists');
+  assert.match(h[1], /coverEarly = !!\(SKINS && typeof SKINS\.skinActiveFor === 'function' && SKINS\.skinActiveFor\(\{ isMusic: true \}\)\)/, 'coverEarly gated on the mobile skin surface');
+  assert.match(h[1], /if \(coverEarly && nowPlayingPanel\) \{[\s\S]*?classList\.add\('mms-on'\);[\s\S]*?nowPlayingPanel\.className = 'music-nowplaying-panel mms mms-full mms-'[\s\S]*?nowPlayingPanel\.hidden = false;/, 'mounts a full-screen skin cover immediately');
   const m = /async function playTrackFromContinue\(trackId, bounceOnMiss\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(m, 'playTrackFromContinue exists');
-  assert.match(m[1], /coverEarly = !!\(SKINS && typeof SKINS\.skinActiveFor === 'function' && SKINS\.skinActiveFor\(\{ isMusic: true \}\)\)/, 'coverEarly gated on the mobile skin surface');
-  // v1.244: it MOUNTS the mms-full skin frame (not just mms-on) so the LIST (#music-content) is
-  // covered from the first frame - the v1.243 mms-on-only fix flashed the list on device.
-  assert.match(m[1], /if \(coverEarly && nowPlayingPanel\) \{[\s\S]*?classList\.add\('mms-on'\);[\s\S]*?nowPlayingPanel\.className = 'music-nowplaying-panel mms mms-full mms-'[\s\S]*?nowPlayingPanel\.hidden = false;/, 'mounts a full-screen skin cover immediately');
+  assert.match(m[1], /var coverEarly = mountEarlyCover\(\);/, 'the continue arm rides the shared cover');
+  assert.match(js, /async function playListenItem\(mediaId\) \{\s*\n\s*mountEarlyCover\(\);/, 'the listen arm rides the shared cover too');
   // the ONLY path that shows the list (a non-bounce miss -> render) tears the cover down first
   assert.match(m[1], /straightToPlayerPending = false;[\s\S]*?document\.body\.classList\.remove\('mms-on'\);[\s\S]*?nowPlayingPanel\.hidden = true;[\s\S]*?\}\s*\n\s*await render\(\);/, 'the miss->list fallback clears the pending flag + tears the cover down before render()');
 });
@@ -1029,4 +1033,232 @@ test('v1.236 (M10): a rerouted id NOT in recent but RESOLVABLE plays in music - 
     for (let i = 0; i < 12; i++) await settle();
     assert.strictEqual(navLog.length, 0, 'a resolvable rerouted track plays in the music player and is NOT bounced to /watch');
   } });
+});
+
+// ---- v1.252 (Dean): LISTEN-MODE - a video played as audio in this presentation ----------
+
+function listenPlayer(calls) {
+  const p = {
+    currentId: null,
+    _meta: null,
+    getState: () => 'full',
+    getCurrentMeta: () => p._meta,
+    expand() {}, dock() {},
+    setTrackNav: (nav) => { calls.navs.push(nav || {}); },
+    load: (id, data, opts) => {
+      calls.loads.push({ id, data, opts: opts || {} });
+      p.currentId = id;
+      p._meta = { isMusic: true, id, title: data.title, artist: data.channelName, album: data.album, albumKey: data.albumKey };
+    },
+  };
+  return p;
+}
+function listenFetch(log, videoBody) {
+  return (u, init) => {
+    const url = String(u);
+    log.push({ url, method: (init && init.method) || 'GET' });
+    if (/^\/api\/videos\//.test(url)) {
+      return Promise.resolve(videoBody
+        ? { ok: true, json: async () => videoBody }
+        : { ok: false, status: 404, json: async () => ({ error: 'Media file not found' }) });
+    }
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+}
+const LISTEN_VIDEO = { id: 'vid1', title: 'A Long Video', channelName: 'The Channel', folderName: 'The Channel', duration: 903, type: 'video', filePath: '/lib/a.mp4' };
+
+test('v1.252 listen=1: the video plays as a SINGLE listen track through the media routes - skin up, no prev/next, no music-API touch', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, LISTEN_VIDEO), playerOverride: listenPlayer(calls),
+    run: async (dom) => {
+      assert.strictEqual(calls.loads.length, 1, 'exactly one load');
+      const { id, data } = calls.loads[0];
+      assert.strictEqual(id, 'vid1');
+      assert.strictEqual(data.type, 'audio', 'presented as audio (the skin/lock-screen posture)');
+      assert.strictEqual(data.streamSrc, '/video/vid1', 'streams the MEDIA byte route (the whole trick)');
+      assert.strictEqual(data.artUrl, '/thumbnail/vid1', 'the video thumbnail is the art');
+      assert.strictEqual(data.progressEndpoint, '/api/progress', 'the MEDIA progress store - the position carries watch<->listen');
+      assert.strictEqual(data.channelName, 'The Channel', 'the channel is the artist line');
+      // the skin took over (the full music presentation)
+      assert.match(panel(dom).className, /\bmms-full\b/, 'the skin painted for the listen track');
+      // single track: the nav registration carries NEITHER prev NOR next (the v1 intake)
+      assert.ok(calls.navs.length >= 1, 'setTrackNav ran');
+      const lastNav = calls.navs[calls.navs.length - 1];
+      assert.strictEqual(lastNav.onPrev, undefined, 'no prev on a single-track listen');
+      assert.strictEqual(lastNav.onNext, undefined, 'no next on a single-track listen');
+      // no Music membership and no music-surface resolution:
+      assert.ok(log.some((c) => c.url === '/api/videos/vid1'), 'resolved via /api/videos');
+      assert.ok(!log.some((c) => c.url.indexOf('/api/music/resume') === 0), 'the music resume pointer is NEVER written for a listen track');
+      assert.ok(!log.some((c) => c.url === '/api/music/vid1'), 'the listen id never resolves through the music track API');
+      assert.ok(log.some((c) => c.url.indexOf('/api/music/albums') === 0), 'the S5 background browse rendered (the dock lands on real content)');
+    },
+  });
+});
+
+test('v1.252 both-axes: a NORMAL music track still writes the music resume pointer (the listen skip did not over-reach)', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  const track = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100, source: 'library', streamSrc: '/video/t9' };
+  const fetchImpl = (u, init) => {
+    const url = String(u);
+    log.push({ url, method: (init && init.method) || 'GET' });
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [track] }) });
+    if (/^\/api\/music\/t9$/.test(url)) return Promise.resolve({ ok: true, json: async () => track });
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=t9',
+    fetchImpl, playerOverride: listenPlayer(calls),
+    run: async () => {
+      assert.strictEqual(calls.loads.length >= 1, true, 'the track loaded');
+      assert.ok(log.some((c) => c.url === '/api/music/resume' && c.method === 'POST'), 'a normal play still records the Continue-listening pointer');
+    },
+  });
+});
+
+test('v1.252 listen miss: an unresolvable id returns to the watch surface (never a dead music list)', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  const navLog = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=ghost&listen=1',
+    fetchImpl: listenFetch(log, null), playerOverride: listenPlayer(calls), navLog,
+    run: async () => {
+      assert.strictEqual(calls.loads.length, 0, 'nothing loaded on a miss');
+      assert.ok(navLog.some((m) => /navigation/i.test(m)), 'the miss reached location.replace (a /watch return), not a blank list');
+    },
+  });
+});
+
+test('v1.252 Extras interop: the listen track (library-backed by construction) gets the sticker Extras entry', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, LISTEN_VIDEO), playerOverride: listenPlayer(calls),
+    run: async (dom) => {
+      const st = panel(dom).querySelector('[data-skin-sticker]');
+      assert.ok(st, 'the sticker painted');
+      st.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
+      assert.ok(menu.querySelector('[data-skin-extras]'), 'the v1.249 Extras entry shows for the listen track');
+    },
+  });
+});
+
+test('v1.252 the Watch way back: page 1 offers "Watch" for a LISTEN track, taps navigate to the watch page; a NORMAL track never shows it', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, LISTEN_VIDEO), playerOverride: listenPlayer(calls),
+    run: async (dom) => {
+      const navs = [];
+      dom.window.FileTube.navigate = (u) => { navs.push(u); };
+      const st = panel(dom).querySelector('[data-skin-sticker]');
+      st.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
+      const wb = menu.querySelector('[data-skin-watchback]');
+      assert.ok(wb, 'the "Watch" row renders on page 1 for a listen track');
+      assert.match(wb.textContent, /Watch/, 'labeled Watch');
+      wb.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.deepStrictEqual(navs, ['/watch.html?v=vid1'], 'the tap navigates back to THIS video\'s watch page');
+      assert.strictEqual(menu.hidden, true, 'the menu closed on the way out');
+    },
+  });
+});
+
+test('v1.252 the Watch way back (negative axis): a NORMAL music track\'s page 1 has no Watch row', async () => {
+  const calls = { loads: [], navs: [] };
+  const track = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100, source: 'library', streamSrc: '/video/t9' };
+  const fetchImpl = (u, init) => {
+    const url = String(u);
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [track] }) });
+    if (/^\/api\/music\/t9$/.test(url)) return Promise.resolve({ ok: true, json: async () => track });
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=t9',
+    fetchImpl, playerOverride: listenPlayer(calls),
+    run: async (dom) => {
+      panel(dom).querySelector('[data-skin-sticker]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
+      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      assert.strictEqual(menu.querySelector('[data-skin-watchback]'), null, 'no Watch row for a normal track');
+    },
+  });
+});
+
+test('v1.252 (QA gate W1): the Watch way back SURVIVES a dock round-trip re-init (the module-scoped listen marker)', async () => {
+  // The scenario QA proved: dock (MENU) -> tap the mini -> /music?nowplaying=1 re-inits the
+  // view; render() rebuilds `queue` from the audio-only projection (the listen VIDEO is never
+  // in it), so a queue-only lookup lost the Watch row for the rest of the session. The
+  // module-scoped activeListenId (set by playListenItem, surviving the re-init like
+  // nowPlaying does) is the fix - bind the full round trip.
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, LISTEN_VIDEO), playerOverride: listenPlayer(calls),
+    run: async (dom, spy, mod) => {
+      assert.strictEqual(calls.loads.length, 1, 'the listen track loaded (populated first)');
+      // the dock round trip: the view re-inits at /music?nowplaying=1 with the SAME module
+      // instance (no re-require - exactly the SPA dock-return), the player still holding vid1.
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?nowplaying=1');
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const st = panel(dom).querySelector('[data-skin-sticker]');
+      assert.ok(st, 'the skin re-painted on the dock-return');
+      st.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
+      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      assert.ok(menu.querySelector('[data-skin-watchback]'), 'the Watch row SURVIVES the re-init (the queue lookup misses; the marker carries)');
+      // adversarial W2 - the END-OF-SESSION axis: a NORMAL play on the SAME module instance
+      // (a third re-init through the continue arm) must CLEAR the marker; the Watch row is
+      // gone while the quick menu still renders (non-vacuous both ways). This kills the
+      // never-cleared mutant the survive-axis test alone let live.
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?play=t9');
+      global.fetch = (u, init) => {
+        const url = String(u);
+        const track = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100, source: 'library', streamSrc: '/video/t9' };
+        if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [track] }) });
+        if (/^\/api\/music\/t9$/.test(url)) return Promise.resolve({ ok: true, json: async () => track });
+        if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+        return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+      };
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const st2 = panel(dom).querySelector('[data-skin-sticker]');
+      assert.ok(st2, 'the skin painted for the normal track');
+      st2.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      const menu2 = panel(dom).querySelector('[data-skin-sticker-menu]');
+      assert.ok(menu2.querySelector('[data-skin-speed]'), 'quick menu up (non-vacuous)');
+      assert.strictEqual(menu2.querySelector('[data-skin-watchback]'), null, 'the normal play ENDED the listen session - no stale Watch row');
+      // ...and the DISTINCT stale-marker kill (adversarial W2's constructed harm): the OLD
+      // listen id plays again through a NON-listen path while the queue cannot resolve it -
+      // the queue lookup MISSES and only the (must-be-cleared) marker could answer. With the
+      // never-cleared mutant the stale marker resurrects a Watch row here; committed code
+      // says no. (Phase 3 alone could not kill it - t9 HITS the queue and short-circuits.)
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?nowplaying=1');
+      global.fetch = () => Promise.resolve({ ok: true, json: async () => ({ items: [] }) }); // nothing resolvable - queue stays empty
+      dom.window.FileTube.player.currentId = 'vid1';
+      dom.window.FileTube.player._meta = { isMusic: true, id: 'vid1', title: 'A Long Video', artist: 'The Channel', album: '', albumKey: '' };
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const st3 = panel(dom).querySelector('[data-skin-sticker]');
+      assert.ok(st3, 'the skin painted (populated first)');
+      st3.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      const menu3 = panel(dom).querySelector('[data-skin-sticker-menu]');
+      assert.ok(menu3.querySelector('[data-skin-speed]'), 'quick menu up (non-vacuous)');
+      assert.strictEqual(menu3.querySelector('[data-skin-watchback]'), null, 'the CLEARED marker cannot resurrect a Watch row on a queue miss (the stale-marker axis)');
+    },
+  });
 });

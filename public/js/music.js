@@ -310,6 +310,11 @@ function buildStickyBarHtml(drill, tracks) {
 // without a DOM. Shows a label ONLY when a MUSIC track is the currently-loaded
 // item (np.id === the player's currentId — guards against a video/book being
 // what's actually playing) and it has a non-empty album; otherwise '' (hidden).
+// v1.252 note (adversarial): LISTEN-MODE is the first feature where a music
+// nowPlaying.id can EQUAL a watchable video id (Listen -> Watch back -> the same
+// id plays as raw video). Today the album gate saves this (listen tracks carry
+// album: '') - if listen tracks ever gain an album string, this id-equality
+// guard alone no longer distinguishes them.
 function deriveNowPlayingLabel(np, currentId) {
   if (!np || !currentId || np.id !== currentId) return '';
   var album = np.album && String(np.album).trim();
@@ -519,6 +524,12 @@ if (typeof module !== 'undefined' && module.exports) {
   // floating pop-out window on a cross-view swap (its listeners live on the pop-out's own
   // AbortController, not the view signal). Nulled by destroy().
   var activePopoutTeardown = null;
+  // v1.252 QA gate W1: the LISTEN marker lives at MODULE scope (like nowPlaying) because the
+  // dock-return re-init rebuilds `queue` from the audio-only projection - the listen VIDEO is
+  // never in it, so a queue-only lookup lost the "Watch" way back after one dock round-trip.
+  // Set by playListenItem, cleared by any non-listen loadTrack; consulted as the fallback
+  // when the queue lookup misses (the extrasEligibleView fallback posture, same seam).
+  var activeListenId = null;
   // v1.250 (F-UNIFY): the current init's IN-TAB shared-engine instance. Module-scoped so
   // destroy() can unbind it on the #view-root swap - the engine binds its own listeners
   // (not view-signal-scoped), so controller.abort() alone would leak them on the panel.
@@ -666,6 +677,28 @@ if (typeof module !== 'undefined' && module.exports) {
         sticker: {
           getPlayer: function () { return (window.FileTube && window.FileTube.player) || null; },
           onSkinChange: function () { updateNowPlayingPanel(); }, // re-render both surfaces with the new skin
+          // v1.252 (Listen-mode): the "Watch" way back - page 1 offers it ONLY while the
+          // playing queue item is a listen track (the client-only flag playListenItem set).
+          // The tap navigates to the item's watch page; the MEDIA progress store (written
+          // continuously by the periodic save + seek pipeline) is what makes the watch
+          // page's resume ladder land at the live position - one truth, both directions.
+          watchBack: {
+            visible: function () {
+              var id = effectiveCurrentId();
+              if (!id) return false;
+              for (var i = 0; i < queue.length; i++) { if (queue[i] && queue[i].id === id) return !!queue[i].listen; }
+              // W1: the dock-return re-init rebuilds `queue` WITHOUT the listen video - the
+              // module-scoped marker keeps the way back alive for the whole session.
+              return id === activeListenId;
+            },
+            onTap: function () {
+              var id = effectiveCurrentId();
+              if (!id) return;
+              var target = '/watch.html?v=' + encodeURIComponent(id);
+              if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(target);
+              else window.location.href = target;
+            },
+          },
           extras: {
             getBaseId: extrasBaseId,
             isEligible: extrasEligibleView,
@@ -1742,6 +1775,7 @@ if (typeof module !== 'undefined' && module.exports) {
         readerHref: '/music?nowplaying=1',
       };
       playingId = item.id;
+      activeListenId = item.listen ? item.id : null; // W1: a normal play ends the listen session's marker
       nowPlaying = { id: item.id, title: item.title || '', artist: item.artist || '', album: item.album || '', albumKey: item.albumKey || '' };
       // v1.237: a real load resets the chapter-view baseline - to the loaded chapter for a
       // chaptered file (the watcher advances it as playback rolls), else null (not chaptered).
@@ -1770,11 +1804,18 @@ if (typeof module !== 'undefined' && module.exports) {
       // np.id === player.currentId, reflect THIS track, not the previous one.
       updateNowPlaying();
       // Remember the resume pointer (Continue-listening / app relaunch).
-      fetch('/api/music/resume', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lastTrackId: item.id, queueCtx: queueCtx, position: 0 }),
-      }).catch(function () {});
+      // v1.252 (LISTEN-MODE, the locked no-Music-membership intake): a listen track never
+      // writes the music resume pointer - the pointer IS Music membership (it seeds
+      // Continue-listening / relaunch-resume). Its position still persists continuously to
+      // the MEDIA store (progressEndpoint '/api/progress' via the periodic save + the seek
+      // pipeline), which is the ONE truth that carries watch->listen->watch.
+      if (!item.listen) {
+        fetch('/api/music/resume', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lastTrackId: item.id, queueCtx: queueCtx, position: 0 }),
+        }).catch(function () {});
+      }
     }
 
     // The lock-screen / expanded-view Prev/Next handlers for queue index `i`.
@@ -1937,6 +1978,69 @@ if (typeof module !== 'undefined' && module.exports) {
       playAt(i);
     }
 
+    // v1.252 (Dean, LISTEN-MODE): play a VIDEO as audio in the full music presentation.
+    // THE TRICK: a listen track is exactly the projected library-track shape this view
+    // already plays - source 'library' (loadTrack's isLib arm honors the routes), the media
+    // byte route as streamSrc, the video thumbnail as art, the MEDIA progress store (the ONE
+    // store - the position carries watch->listen->watch) - plus a CLIENT-ONLY `listen` flag
+    // with exactly two effects: loadTrack skips the music-resume write (NO Music membership,
+    // the locked intake) and the sticker menu's page 1 offers the "Watch" way back. A
+    // single-track queue registers neither prev nor next (the v1 intake) for free.
+    async function playListenItem(mediaId) {
+      mountEarlyCover();
+      try {
+        const v = await fetchJson('/api/videos/' + encodeURIComponent(mediaId));
+        if (v && v.id) {
+          const t = {
+            id: v.id,
+            title: v.title || v.name || 'Untitled',
+            artist: (typeof v.channelName === 'string' && v.channelName) || v.folderName || '',
+            album: '', albumKey: '',
+            durationSec: Number(v.duration) || 0,
+            source: 'library',
+            listen: true,
+            streamSrc: '/video/' + encodeURIComponent(v.id),
+            artUrl: '/thumbnail/' + encodeURIComponent(v.id),
+            progressEndpoint: '/api/progress',
+          };
+          tab = 'albums'; // S5: a GRID tab - its render leaves `queue` untouched (the single listen track stays)
+          drill = null;
+          search = '';
+          queueCtx = null;
+          queueCtxEncoded = '';
+          queue = [t];
+          activeListenId = t.id; // W1: survives the dock-return re-init (module scope)
+          playAt(0);
+          // S5 (QA): build the ALBUMS grid behind the skin (a grid tab - render() leaves
+          // `queue` untouched, per rebuildPlayingQueue's contract) so a refresh/deep-link
+          // dock lands on real content, never an empty #music-content.
+          render().catch(function () {});
+          return;
+        }
+      } catch (_) { /* unresolvable - fall through to the bounce */ }
+      // The id came FROM a watch page, so a miss means it vanished mid-navigation -
+      // return to the watch surface (its own 404 view explains better than a blank list).
+      try { if (window.location && typeof window.location.replace === 'function') { window.location.replace('/watch.html?v=' + encodeURIComponent(mediaId)); return; } } catch (_) { /* no navigable location */ }
+    }
+    // The v1.244 early cover, ONE implementation for BOTH ?play= arms (QA gate W3: the
+    // first cut left playTrackFromContinue on its own inline copy - now it calls this too,
+    // so the arms genuinely cannot drift). Returns whether the cover mounted (the
+    // continue-arm's miss path tears it down conditionally).
+    function mountEarlyCover() {
+      var coverEarly = false;
+      try { coverEarly = !!(SKINS && typeof SKINS.skinActiveFor === 'function' && SKINS.skinActiveFor({ isMusic: true })); } catch (_) { coverEarly = false; }
+      if (coverEarly && nowPlayingPanel) {
+        straightToPlayerPending = true; // hold the cover up through init's synchronous epilogue
+        document.body.classList.add('mms-on');
+        var _sid = (SKINS.activeSkinId && SKINS.activeSkinId()) || 'apple';
+        var _base = (SKINS.skinById && (SKINS.skinById(_sid) || {}).base) || '';
+        nowPlayingPanel.className = 'music-nowplaying-panel mms mms-full mms-' + _sid + (_base ? ' mms-' + _base : '');
+        nowPlayingPanel.innerHTML = '';
+        nowPlayingPanel.hidden = false;
+      }
+      return coverEarly;
+    }
+
     // A "Continue listening" card lands here as /music?play=<trackId> and must
     // play THAT specific track (the earlier bug: it deferred to the resume
     // POINTER's last-played queue, so tapping any card but the single most-
@@ -1954,17 +2058,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // covered from the first frame; the list still builds behind it for the dock-return, and
       // the engine's paint() fills the frame with the real skin once the track loads. The only path that
       // shows the list (a non-bounce MISS -> render()) tears the cover down first.
-      var coverEarly = false;
-      try { coverEarly = !!(SKINS && typeof SKINS.skinActiveFor === 'function' && SKINS.skinActiveFor({ isMusic: true })); } catch (_) { coverEarly = false; }
-      if (coverEarly && nowPlayingPanel) {
-        straightToPlayerPending = true; // hold the cover up through init's synchronous epilogue
-        document.body.classList.add('mms-on');
-        var _sid = (SKINS.activeSkinId && SKINS.activeSkinId()) || 'apple';
-        var _base = (SKINS.skinById && (SKINS.skinById(_sid) || {}).base) || '';
-        nowPlayingPanel.className = 'music-nowplaying-panel mms mms-full mms-' + _sid + (_base ? ' mms-' + _base : '');
-        nowPlayingPanel.innerHTML = '';   // an empty skin frame = an instant cover over #music-content; the engine's paint() fills it on load
-        nowPlayingPanel.hidden = false;
-      }
+      // v1.252 (QA gate W3): the cover is the SHARED mountEarlyCover now - one implementation
+      // for both ?play= arms, so they genuinely cannot drift.
+      var coverEarly = mountEarlyCover();
       tab = 'songs';
       drill = null;
       search = '';
@@ -2026,7 +2122,17 @@ if (typeof module !== 'undefined' && module.exports) {
 
     const playParam = urlParams.get('play');
     var wantNowPlaying = urlParams.get('nowplaying') === '1';
-    if (playParam) {
+    if (playParam && urlParams.get('listen') === '1') {
+      // v1.252 (Dean, LISTEN-MODE): a VIDEO played as audio in this presentation. The id is a
+      // media id (never a music-surface id) - resolve it against /api/videos and play it as a
+      // single listen track; the listen id is never RESOLVED through the music API and the ao
+      // bounce never applies (the S5 background ALBUMS browse is the only music-API touch).
+      playListenItem(playParam).catch((err) => {
+        console.error('Music: listen-mode play failed', err);
+        straightToPlayerPending = false; // a rejected load must not strand the cover
+        render().catch(() => {});
+      });
+    } else if (playParam) {
       // &ao=1 = the v1.236 reroute origin (an audio download tapped from a video-side tile) -
       // bounce a miss to /watch. A bare ?play= (a continue-listening card) keeps render() on a miss.
       playTrackFromContinue(playParam, urlParams.get('ao') === '1').catch((err) => {

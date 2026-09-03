@@ -35,9 +35,13 @@ const DISPOSITIONS = {
       + 'COMMENT naming the deep-link shape (main.js ~243).',
   },
   'music.js': {
-    count: 1,
-    why: 'the deliberate ao=1 MISS-BOUNCE: a non-projected id tapped via the reroute returns '
-      + 'to /watch (the v1.236 contract).',
+    count: 3,
+    why: 'the deliberate ao=1 MISS-BOUNCE (a non-projected id tapped via the reroute returns '
+      + 'to /watch, the v1.236 contract), the v1.252 LISTEN miss-return (an unresolvable '
+      + 'listen id goes back to its watch page - the id CAME from a watch page, and the '
+      + 'watch 404 view explains better than a blank music list), and the v1.252 sticker '
+      + '"Watch" way-back (the Listen-mode toggle pair - a DELIBERATE video destination for '
+      + 'a video-backed listen track, the locked intake).',
   },
   'player.js': {
     count: 4,
@@ -46,11 +50,12 @@ const DISPOSITIONS = {
       + 'ruling; a future player.js wave owns any change here.',
   },
   'watch.js': {
-    count: 8,
+    count: 9,
     why: 'related-rail FALLBACK after audioOpenHref (audio related cards route), the '
       + 'queueEntryHref fallbacks (the helper carries the rule), prev/next CHAIN navigation '
       + '(keeps the browse context - dispositioned out of scope with the player advances), '
-      + 'the post-move same-item re-key navigate, and href-reading selectors/comments.',
+      + 'the post-move same-item re-key navigate, href-reading selectors/comments, and the '
+      + 'v1.252 setupListenButton COMMENT naming the deep-linked-audio edge (produces nothing).',
   },
 };
 
