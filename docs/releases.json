@@ -2698,5 +2698,11 @@
     "date": "2026-09-03",
     "title": "The click wheel actually clicks",
     "intent": "Spin the Pocket Classic's wheel on your iPhone and you now feel it: a real physical tick under your thumb about every four and a half degrees, just like the old iPod's click wheel - denser and buzzier the faster you flick. It works while browsing songs and while scrubbing through a track. This was long thought impossible for a web app on modern iPhones; a deep dive into the browser's own machinery found the one path that still works, and it was confirmed on-device before being built in. Everything else about the wheel - the buttons, hold-to-fast-forward, taps - behaves exactly as before, and phones or computers without the capability are completely unaffected."
+  },
+  {
+    "version": "1.256.1",
+    "date": "2026-09-03",
+    "title": "The wheel's buttons are back, and the ticks got hotter",
+    "intent": "Two quick follow-ups from the first hands-on with the clicking wheel. The Menu, back, forward, and play buttons work again - a quirk in how iPhones report taps on the invisible tick-maker was sending every button press to the center Select, and taps are now tracked by where your finger actually landed. And the ticking itself is more aggressive: a third denser than before, past even the original iPod's click rate, so a fast flick really buzzes."
   }
 ]

@@ -93,6 +93,20 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.256.1 - The wheel's buttons are back, and the ticks got hotter (2026-09-03)
+
+Dean's first hands-on ("it's amazing... but the menu, forward, back, and play button
+don't work anymore - they all act like the middle button"): iOS synthesizes a CHECKBOX's
+click at the CONTROL'S CENTER, and the ghost is wheel-centered - so the tap route found
+Select every time. Fixed by routing with the POINTERDOWN's stashed coordinates (the
+truthful finger) resolved upward to the real control (also closing WebKit's
+SVGElement-has-no-click swallow). Plus his re-tune: 4.5deg -> 3deg per tick (120/rev,
+past the Classic's ~96). THE SLIM GATE CAUGHT the fix's own relocation of the disease:
+the stash write sat below the dead-center guard, so after a zone tap a CENTER tap would
+have replayed the stale zone (Select unreachable) - invisible to the zero-rect jsdom
+fixtures (the divergent-fixture class); closed with a real-rect harness. Dual-Node:
+both v22.23.1 and v24.14.0 = 8235/8235 pass, 0 fail, 0 skipped. DEVICE-PENDING.
+
 ### v1.256.0 - The click wheel actually clicks (2026-09-03)
 
 Dean's "dig deep and be creative" haptics mandate, closed the same day it was issued.
