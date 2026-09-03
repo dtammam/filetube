@@ -31,7 +31,7 @@ test('registry exposes the six skins with render funcs (incl. the v1.260 Seattle
   // also carries the shared .mms-ipod CSS class (music.js reads it).
   assert.strictEqual(skins.skinById('ipod-black').base, 'ipod', 'black iPod bases on the silver iPod CSS');
   assert.strictEqual(skins.skinById('zune-classic').base, 'ipod', 'Seattle Classic rides the wheel chassis the same way (v1.260)');
-  assert.strictEqual(skins.skinById('zune-classic').renderFull, skins.skinById('ipod').renderFull, 'Seattle Classic IS the wheel renderer - the inherited engine/haptics/tap-seek claim rests on this identity (slim W1)');
+  assert.notStrictEqual(skins.skinById('zune-classic').renderFull, skins.skinById('ipod').renderFull, 'v1.261: Seattle Classic is now its OWN renderer (the Zune pad + flanks), no longer the iPod wheel verbatim');
   assert.strictEqual(skins.skinById('ipod-black').renderFull, skins.skinById('ipod').renderFull, 'same render, different palette');
   // v1.232.1 (Dean): the labels are CHEEKY riffs, deliberately NOT the real product /
   // company names (the IDS stay literal for CSS/storage).
@@ -422,4 +422,35 @@ test('v1.259 source-lock: the zune queue CAN scroll - the flex chain and row lay
   assert.match(css, /\.mms-zune \.mms-qlist\{ overflow-y:auto; flex:1; min-height:0;/, 'the list scrolls within the chain');
   assert.match(css, /\.mms-zune \.mms-row\{ display:flex; align-items:center; width:100%;/, 'rows have real layout, not UA-default buttons');
   assert.match(css, /\.mms-zune \.mms-row\{[^}]*text-transform:lowercase/, 'the lowercase rows claim is CSS-true');
+});
+
+
+test('v1.261 Seattle Classic: the REAL Zune control - a clean pad flanked by Back + Play, on the shared screen (not a brown iPod)', () => {
+  const html = skins.renderFull('zune-classic', CTX);
+  // it reuses the iPod SCREEN machinery (list/scrub/reflect all bind)
+  assert.match(html, /class="ip-lcd"/, 'the shared iPod screen (list-view + scrub keep working)');
+  assert.match(html, /class="ip-listview"/, 'Select still flips to the list');
+  assert.match(html, /data-skin-seek/, 'the scrub bar seeks');
+  // but the CONTROL is the Zune pad + flanks, NOT the labeled iPod wheel
+  assert.match(html, /class="ip-wheel znc-pad"/, 'the circular Zune pad (the .ip-wheel gesture + haptics bind by class)');
+  assert.ok(!/ip-wheelwrap/.test(html), 'NOT the iPod wheel wrapper');
+  assert.ok(!/>MENU</.test(html), 'no printed MENU label on the pad (that read as brown iPod)');
+  assert.match(html, /class="znc-flank znc-back" data-skin-menu/, 'the Back flank (left) is the exit');
+  assert.match(html, /class="znc-flank znc-pp mms-play" data-skin-play/, 'the Play/Pause flank (right) reflects via .mms-play');
+  // every engine hook present: menu(back)/prev/next/play/select
+  for (const hook of ['data-skin-menu', 'data-skin-prev', 'data-skin-next', 'data-skin-play', 'data-skin-select']) {
+    assert.match(html, new RegExp(hook), 'the ' + hook + ' hook exists (the wheel engine + tap fallbacks all bind)');
+  }
+});
+
+
+test('v1.261 Seattle Classic: the Zune layout CSS is real (layout is jsdom-invisible - source-locked)', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.mms-zune-classic \.ip-lcd\{ flex:1; aspect-ratio:auto;/, 'the screen FILLS (the Zune proportion, not the iPod 4:3 strip)');
+  assert.match(css, /\.mms-zune-classic \.znc-controls\{ display:flex; align-items:center; justify-content:center;/, 'the flank|pad|flank row lays out');
+  assert.match(css, /\.mms-zune-classic \.ip-wheel\.znc-pad\{ width:min\(38vw,132px\);/, 'the pad is the small clean circle, not the full iPod wheel');
+  assert.match(css, /\.mms-zune-classic \.ip-zone\{ color:transparent; \}/, 'no printed labels on the pad');
+  assert.match(css, /\.mms-zune-classic \.znc-flank\{/, 'the round flank buttons are styled');
+  assert.match(css, /\.mms-zune-classic \.ip-stars\{ display:none; \}/, 'the skeuomorphic star row is gone on the Zune screen');
 });
