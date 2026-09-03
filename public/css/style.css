@@ -2845,34 +2845,36 @@ img.art-shimmer {
    line-height) so a glyph-only button measures the SAME 32px as a
    labelled one - without it the row dropped to 30px (measured). */
 /* v1.202 (Dean's action-row re-evaluation, ruling B of the v1.202 plan). Two tiers:
-   PRIMARY = Like, Share, Transcript, Queue (his real taps), SECONDARY =
-   everything else (Next, Download, Delete, Move, Mark watched, Reheat,
-   Attribute). The tier list lives ONCE in watch.js (SECONDARY_ACTION_IDS);
-   the selector below mirrors it and test/unit/watch-action-row-tiers
-   .test.js locks the two lists equal.
-   - `order` fixes the row order everywhere (primary first - Queue, Like,
-     Share, Transcript (Dean, v1.203) - then More, then the secondary set in
-     their old order) - v1 is fixed, not customizable.
+   PRIMARY = Listen, Like, Share, Transcript (v1.253 - Queue moved to
+   SECONDARY when the Listen chip made a fifth word overflow the phone row),
+   SECONDARY = everything else (Queue, Next, Download, Delete, Move, Mark
+   watched, Reheat, Attribute). The tier list lives ONCE in watch.js
+   (SECONDARY_ACTION_IDS); the selector below mirrors it and
+   test/unit/watch-action-row-tiers.test.js locks the two lists equal.
+   - `order` fixes the row order everywhere (primary first - Listen, Like,
+     Share, Transcript (Dean, v1.203/v1.253) - then More, then the secondary
+     set in their old order) - v1 is fixed, not customizable.
    - COMPACT (column under 960px): secondary buttons hide, "More" shows and
      opens the pick-one listing them. Primary buttons keep their words.
    - v1.203 (Dean): the primary buttons keep their WORDS at every width;
      only More is a glyph. (v1.202 had a 640px glyph tier - gone.)
    - WIDE (960px+: theatre, 1920 non-theatre): everything visible as words,
      More hidden. Buttons never deform in any mode (v1.200 norm). */
-#queue-add-btn { order: 1; } /* v1.203 (Dean): Queue, Like, Share, Transcript, More */
+#listen-media-btn { order: 1; } /* v1.253 (Dean): Listen, Like, Share, Transcript, More - Queue moved under More (the Listen chip made five words overflow the phone row) */
 #like-media-btn { order: 2; }
 #share-media-btn { order: 3; }
 #transcript-media-btn { order: 4; }
 #more-actions-btn { order: 5; display: none; }
-#queue-next-btn { order: 10; }
-#download-media-btn { order: 11; }
-#delete-media-btn { order: 12; }
-#move-media-btn { order: 13; }
-#watched-media-btn { order: 14; }
-#reheat-media-btn { order: 15; }
-#attribute-media-btn { order: 16; }
+#queue-add-btn { order: 10; }
+#queue-next-btn { order: 11; }
+#download-media-btn { order: 12; }
+#delete-media-btn { order: 13; }
+#move-media-btn { order: 14; }
+#watched-media-btn { order: 15; }
+#reheat-media-btn { order: 16; }
+#attribute-media-btn { order: 17; }
 @container watch-action-bar (max-width: 959px) {
-  #queue-next-btn, #download-media-btn, #delete-media-btn, #move-media-btn, #watched-media-btn, #reheat-media-btn, #attribute-media-btn {
+  #queue-add-btn, #queue-next-btn, #download-media-btn, #delete-media-btn, #move-media-btn, #watched-media-btn, #reheat-media-btn, #attribute-media-btn {
     display: none;
   }
   #more-actions-btn {

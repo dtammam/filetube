@@ -45,9 +45,9 @@ const DISPOSITIONS = {
   },
   'player.js': {
     count: 4,
-    why: 'BYTE-FROZEN FILE (the standing contract): the player\'s own queue-advance / '
-      + 'mini-bar-return navigations are chain steps, not browse taps - out of scope by '
-      + 'ruling; a future player.js wave owns any change here.',
+    why: 'the player\'s own queue-advance / mini-bar-return navigations are chain steps, '
+      + 'not browse taps - out of scope by ruling. (The v1.221-v1.252 byte-freeze ended '
+      + 'with v1.253\'s surgical adopt-flavor fix; these four sites are unchanged by it.)',
   },
   'watch.js': {
     count: 9,

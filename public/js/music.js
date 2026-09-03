@@ -207,6 +207,17 @@ function buildSongRowHtml(item, index) {
 // remaining queue items, each `{id,title,artist,index}` (`index` is the real
 // queue index, so a tap can `playAt(index)`). Queue thumbs ship `art-shimmer`
 // (reveal-once, cleared by the shared shimmerArt).
+// v1.253 (Dean, listen-art fix): the ONE art-URL rule for a music-side row/cover. A
+// PROJECTED track carries its own artUrl (the media thumbnail, Wave G) - honour it. A
+// LISTEN track's id is a VIDEO id, and /albumart's thumbnail fallback serves type
+// 'audio' only (server.js), so hardcoding /albumart here rendered Dean the placeholder
+// SVG. Everything artUrl-less keeps the /albumart route (native art file, else the
+// server's audio-thumbnail fallback).
+function musicArtUrl(id, explicitArtUrl) {
+  if (typeof explicitArtUrl === 'string' && explicitArtUrl) return explicitArtUrl;
+  return '/albumart/' + encodeURIComponent(id);
+}
+
 function buildNowPlayingPanelHtml(np, upNext) {
   // v1.251 (R2): the v1.223 whole-queue panel moved VERBATIM into the shared engine
   // (skin-surface.js buildPanelHtml) so podcasts' desktop panel is the SAME treatment.
@@ -218,7 +229,7 @@ function buildNowPlayingPanelHtml(np, upNext) {
   if (!S || typeof S.buildPanelHtml !== 'function') return '';
   var subline = [np.artist, np.album].filter(function (x) { return typeof x === 'string' && x; }).join(' · ');
   var rows = (Array.isArray(upNext) ? upNext : []).map(function (it) {
-    return { id: it.id, artUrl: '/albumart/' + encodeURIComponent(it.id), title: it.title, artist: it.artist, index: it.index, state: it.state };
+    return { id: it.id, artUrl: musicArtUrl(it.id, it.artUrl), title: it.title, artist: it.artist, index: it.index, state: it.state };
   });
   return S.buildPanelHtml({ title: np.title, subline: subline }, rows);
 }
@@ -632,9 +643,16 @@ if (typeof module !== 'undefined' && module.exports) {
       var full = [];
       var fstart = queue.length <= 400 ? 0 : Math.max(0, ci - 200);
       for (var k = fstart; k < queue.length && full.length < 400; k++) full.push(rowOf(k));
+      // v1.253 (Dean, listen-art fix): prefer the playing item's OWN artUrl (a projected/
+      // listen track's media thumbnail); the /albumart hardcode served a listen track (a
+      // VIDEO id) the placeholder SVG. On the dock-return re-init the rebuilt queue misses
+      // the listen track (the W1 seam), so the activeListenId marker supplies the same
+      // thumbnail route the original load used.
+      var curArt = (ci >= 0 && queue[ci] && queue[ci].id === playingId && queue[ci].artUrl)
+        || (activeListenId === playingId && playingId ? ('/thumbnail/' + encodeURIComponent(playingId)) : '');
       return {
         track: { title: nowPlaying && nowPlaying.title, artist: nowPlaying && nowPlaying.artist, album: nowPlaying && nowPlaying.album,
-          artUrl: playingId ? ('/albumart/' + encodeURIComponent(playingId)) : '' },
+          artUrl: playingId ? musicArtUrl(playingId, curArt) : '' },
         upNext: up, fullList: full, playing: mp ? !mp.paused : false, posSec: pos, durSec: dur,
         posLabel: mmssMusic(pos), remLabel: dur > 0 ? ('-' + mmssMusic(dur - pos)) : '',
         // iPod footer "N of M": the current track's 1-based place in the whole queue.
@@ -996,7 +1014,7 @@ if (typeof module !== 'undefined' && module.exports) {
         var start = Math.max(0, ci - 20); // keep a little history for jump-back
         for (var j = start; j < queue.length && rows.length < 200; j++) {
           rows.push({
-            id: queue[j].id, title: queue[j].title, artist: queue[j].artist, index: j,
+            id: queue[j].id, artUrl: queue[j].artUrl, title: queue[j].title, artist: queue[j].artist, index: j,
             state: j < ci ? 'played' : (j === ci ? 'current' : 'next'),
           });
         }

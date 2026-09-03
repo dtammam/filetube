@@ -533,8 +533,8 @@ test('watch page: More lists exactly the MOUNTED secondary buttons, in tier orde
     // because this stub's user probe never resolves (no canModifyLibrary);
     // Reheat's yt-dlp health probe never resolves; Attribute is behind the
     // v1.202 flag. The label is the button's CURRENT .btn-label text.
-    assert.deepStrictEqual(choiceLabels(document), ['Next', 'Download', 'Mark watched'], 'mounted, non-hidden secondary buttons only, in SECONDARY_ACTION_IDS order');
-    click(dom, document.querySelectorAll('.choice-modal-btn')[2]);
+    assert.deepStrictEqual(choiceLabels(document), ['Queue', 'Next', 'Download', 'Mark watched'], 'mounted, non-hidden secondary buttons only, in SECONDARY_ACTION_IDS order (v1.253: Queue leads - Dean moved it under More)');
+    click(dom, document.querySelectorAll('.choice-modal-btn')[3]);
     await settle();
     assert.deepStrictEqual(watchedPosts, [`/api/watched/${MEDIA_ID}`], 'the pick ran the REAL Mark-watched handler');
   } finally { dom.window.close(); }
@@ -650,7 +650,7 @@ test('watch page: More lists Attribute for admin + flag, and OMITS a disabled se
     d.getElementById('move-media-btn').disabled = true;
     click(dom, d.getElementById('more-actions-btn'));
     await settle();
-    assert.deepStrictEqual(choiceLabels(d), ['Next', 'Download', 'Delete', 'Mark watched', 'Attribute'], 'Move (disabled) omitted; Attribute (flag on, admin, unattributed) listed');
+    assert.deepStrictEqual(choiceLabels(d), ['Queue', 'Next', 'Download', 'Delete', 'Mark watched', 'Attribute'], 'Move (disabled) omitted; Attribute (flag on, admin, unattributed) listed; Queue leads since v1.253');
   } finally { dom.window.close(); }
 });
 

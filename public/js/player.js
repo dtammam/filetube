@@ -117,6 +117,30 @@ function isAdoptLoad(currentId, requestedId, state) {
   return currentId != null && currentId === requestedId && state !== 'closed';
 }
 
+// v1.253 (Dean's listen<->watch mapping): an adopt reuses the loaded media
+// untouched, but the SURFACE FLAVOR legitimately changes when the SAME media
+// re-opens on a different surface - a Listen play stamps readerHref
+// '/music?nowplaying=1' + resumeMode 'music'; tapping "Watch" then ADOPTS
+// (same id), the stale readerHref survived, and the mini-bar tap returned to
+// the iPod view (the return target always belonged to whichever surface last
+// did a GENUINE load - Dean's "not fully mapped" device repro). Same
+// carried-field contract as the adopt branch's browseCtx refresh: a caller
+// that DECLARES a field owns it (music/podcasts/tv/read data carry real
+// values; watch.js stamps null to claim the plain-video flavor); a caller
+// that omits both (any legacy partial adopt call) changes nothing. Mutates
+// and returns currentData - the shape the adopt branch consumes; pure over
+// its inputs (no player state), so the binding is unit-testable.
+function applyAdoptFlavor(currentData, data) {
+  if (!currentData || !data) return currentData;
+  if (Object.prototype.hasOwnProperty.call(data, 'readerHref')) {
+    currentData.readerHref = (typeof data.readerHref === 'string' && data.readerHref) ? data.readerHref : undefined;
+  }
+  if (Object.prototype.hasOwnProperty.call(data, 'resumeMode')) {
+    currentData.resumeMode = (typeof data.resumeMode === 'string' && data.resumeMode) ? data.resumeMode : undefined;
+  }
+  return currentData;
+}
+
 // Should leaving `fromView` for `toView` dock the persistent player? This is
 // the pure half of `applyPlayerTransition` (public/js/common.js) -- only
 // ever true when actually leaving the watch view for a DIFFERENT known view.
@@ -1496,6 +1520,7 @@ if (typeof module !== 'undefined' && module.exports) {
     computeQueueNext,
     computeQueuePrev,
     isAdoptLoad,
+    applyAdoptFlavor,
     shouldDockOnTransition,
     nextPlayerState,
     shouldPauseForLifecycleEvent,
@@ -8322,6 +8347,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // current navigation: a context-less re-open clears it to the folder
       // fallback. Skipped only when data carries no browseCtx field at all.
       if (data && typeof data.browseCtx === 'string' && currentData) currentData.browseCtx = data.browseCtx;
+      // v1.253: the same carried-field refresh for the surface-flavor fields
+      // (readerHref/resumeMode) - see applyAdoptFlavor's header. Without it the
+      // mini-bar's return target stayed with the PREVIOUS surface across a
+      // same-id Listen<->Watch switch.
+      applyAdoptFlavor(currentData, data);
       // Gate S2 (v1.130 fix round): an adopt returns before the capture below,
       // so an armed immersive carry would otherwise survive it and wrongly
       // apply to a LATER unrelated load. Consume it here too - an adopt never
