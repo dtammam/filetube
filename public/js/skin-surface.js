@@ -196,7 +196,7 @@
       if (inMainDoc && stickerCfg.watchBack && typeof stickerCfg.watchBack.visible === 'function') {
         var wbOn = false;
         try { wbOn = !!stickerCfg.watchBack.visible(); } catch (_) { wbOn = false; }
-        if (wbOn) watchBack = '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-watchback><span class="mms-sm-h">Watch</span><span class="mms-sm-state">&rsaquo;</span></button></div>';
+        if (wbOn) watchBack = '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-watchback><span class="mms-sm-lbl"><i class="icon-tv"></i>Watch</span><span class="mms-sm-state">&rsaquo;</span></button></div>';
       }
       // v1.254 (ENDLESS AUTOPLAY): the toggle rides page 1 like Loop - rendered only when
       // the view supplies the autoplay hook (music does; podcasts deliberately not). On
@@ -207,15 +207,15 @@
         var apOn = false;
         try { apOn = !!stickerCfg.autoplay.enabled(); } catch (_) { apOn = false; }
         autoplay = '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (apOn ? ' is-on' : '') +
-          '" data-skin-autoplay aria-checked="' + (apOn ? 'true' : 'false') + '"><span class="mms-sm-h">Autoplay</span><span class="mms-sm-state">' + (apOn ? 'On' : 'Off') + '</span></button></div>';
+          '" data-skin-autoplay aria-checked="' + (apOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-play"></i>Autoplay</span><span class="mms-sm-state">' + (apOn ? 'On' : 'Off') + '</span></button></div>';
       }
       // v1.249: the second-page entry - library-backed tracks on the in-tab surface only.
       var extras = extrasEligible()
-        ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-extras><span class="mms-sm-h">Extras</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
+        ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-extras><span class="mms-sm-lbl"><i class="icon-more"></i>Extras</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
         : '';
       return '<div class="mms-sm-sec"><div class="mms-sm-h">Speed</div><div class="mms-sm-speed">' + speed + '</div></div>' +
         '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (loopOn ? ' is-on' : '') +
-        '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-h">Loop</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
+        '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-refresh"></i>Loop</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
         autoplay +
         '<div class="mms-sm-sec"><div class="mms-sm-h">Skin</div><div class="mms-sm-skins">' + chips + '</div></div>' +
         watchBack + extras;
@@ -299,20 +299,20 @@
       var liked = item.liked === true;
       var watched = item.watchState === 'watched';
       var acts = [];
-      if (hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="share">Share</button>');
-      acts.push('<a class="mms-sm-act" data-skin-x="download" href="/video/' + encodeURIComponent(item.id) + '?download=1" download>Download</a>');
-      acts.push('<button type="button" class="mms-sm-act' + (liked ? ' is-on' : '') + '" data-skin-x="like" aria-pressed="' + (liked ? 'true' : 'false') + '">' + (liked ? 'Liked' : 'Like') + '</button>');
-      acts.push('<button type="button" class="mms-sm-act' + (watched ? ' is-on' : '') + '" data-skin-x="watched" aria-pressed="' + (watched ? 'true' : 'false') + '">' + (watched ? 'Watched' : 'Mark watched') + '</button>');
-      acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue">Add to queue</button>');
-      acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue-next">Play next</button>');
-      if (item.hasSubtitles === true) acts.push('<button type="button" class="mms-sm-act" data-skin-x="transcript">Transcript</button>');
-      if (hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="reheat">Reheat</button>');
+      if (hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="share"><i class="icon-share"></i>Share</button>');
+      acts.push('<a class="mms-sm-act" data-skin-x="download" href="/video/' + encodeURIComponent(item.id) + '?download=1" download><i class="icon-download"></i>Download</a>');
+      acts.push('<button type="button" class="mms-sm-act' + (liked ? ' is-on' : '') + '" data-skin-x="like" aria-pressed="' + (liked ? 'true' : 'false') + '"><i class="icon-heart"></i>' + (liked ? 'Liked' : 'Like') + '</button>');
+      acts.push('<button type="button" class="mms-sm-act' + (watched ? ' is-on' : '') + '" data-skin-x="watched" aria-pressed="' + (watched ? 'true' : 'false') + '"><i class="icon-history"></i>' + (watched ? 'Watched' : 'Mark watched') + '</button>');
+      acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue"><i class="icon-queue"></i>Add to queue</button>');
+      acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue-next"><i class="icon-play"></i>Play next</button>');
+      if (item.hasSubtitles === true) acts.push('<button type="button" class="mms-sm-act" data-skin-x="transcript"><i class="icon-transcript"></i>Transcript</button>');
+      if (hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="reheat"><i class="icon-flame"></i>Reheat</button>');
       if (canModify) {
-        acts.push('<button type="button" class="mms-sm-act" data-skin-x="move">Move to...</button>');
-        acts.push('<button type="button" class="mms-sm-act mms-sm-danger" data-skin-x="delete">Delete</button>');
+        acts.push('<button type="button" class="mms-sm-act" data-skin-x="move"><i class="icon-folder"></i>Move to...</button>');
+        acts.push('<button type="button" class="mms-sm-act mms-sm-danger" data-skin-x="delete"><i class="icon-delete"></i>Delete</button>');
       }
       return extrasBackHtml() +
-        '<div class="mms-sm-sec"><div class="mms-sm-h">' + escapeHtml(item.title || '') + '</div>' +
+        '<div class="mms-sm-sec"><div class="mms-sm-title">' + escapeHtml(item.title || '') + '</div>' +
         '<div class="mms-sm-acts">' + acts.join('') + '</div></div>';
     }
     function openStickerExtras() {
