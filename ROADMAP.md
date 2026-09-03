@@ -93,6 +93,30 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.262.0 - The brown one thinks in magenta (2026-09-03)
+
+Dean on v1.261 ("WHOA this is EPIC"): "move the rest style and overall menu of the
+original Seattle into the new brown Seattle Classic... maintaining the wheel and
+buttons." A presentation-ONLY CSS layer under .mms-zune-classic reskins the shared
+screen to Metro - black ground, hairline lowercase fs-4xl title, pink lowercase artist,
+flat 3px magenta bar, lowercase queue rows with the magenta cursor - zero markup change,
+the wheel/flank wiring untouched by construction. The magenta-vs-aqua fill is decided
+by FILE ORDER alone (equal specificity), so the source-lock binds the ORDER, not just
+presence.
+
+THE GATE CAUGHT (slim, 2 rounds, APPROVE): W1 the iPod's glossy gray status strip
+survived on the "black" screen (dim text at ~2:1 on it); W2 the list cursor stayed
+iPod aqua-blue and list-open painted magenta-on-blue (the v1.233 coincide-wins
+invariant broken on this skin) - both fixed and mutation-bound, incl. a coincide ORDER
+assert. S2 closed a phantom-token class: --fw-light existed only as a var() fallback at
+TEN sites (the seat counted 7; the fix corrected the count) - now a real :root token.
+DISCLOSED residual (seat, non-blocking): the coincide group's color VALUE is unpinned
+(selector position only) - a white-coincide mutant would survive; white-on-magenta is
+the iPod's own coincide treatment, so lock softness, not a bug path.
+
+Dual-Node: v22.23.1 8251/8251 pass, 0 fail, 0 skipped; v24.14.0 8251/8251, 0 fail,
+0 skipped. Frozen files 0-diff. DEVICE-PENDING Dean's pass.
+
 ### v1.261.0 - Seattle Classic, actually classic (2026-09-03)
 
 Dean device-judged v1.260's Classic - "just looks like a brown ipod? it doesn't really

@@ -2746,5 +2746,11 @@
     "date": "2026-09-03",
     "title": "Seattle Classic, actually classic",
     "intent": "The brown skin stopped being a repainted iPod and became the thing itself: a big chrome-framed screen up top, and below it the clean circular pad with its two round neighbors - back on the left, play and pause on the right - just like the original brown player. Circling the pad still scrubs with the little haptic ticks, the center button still selects, and tapping the progress bar still jumps right where you tapped."
+  },
+  {
+    "version": "1.262.0",
+    "date": "2026-09-03",
+    "title": "The brown one thinks in magenta",
+    "intent": "Seattle Classic's screen now speaks the same language as Seattle: black background, thin lowercase titles, the artist in that unmistakable magenta, a slim magenta progress line, and a song list in quiet lowercase with a bright magenta bar marking where you are. The brown body, the circular pad, the two buttons, and the little haptic ticks all stay exactly as they were - only the screen changed its accent."
   }
 ]
