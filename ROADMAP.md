@@ -93,6 +93,29 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.260.0 - Seattle Classic, and the Aqua stripes (2026-09-03)
+
+Dean's Seattle round ("not bad at all, it literally works"): (1) "the original zune
+with the circle wheel" - Seattle Classic, the ipod-black pattern exactly (base 'ipod',
+the SAME renderer, palette-only override: brown Zune 30 body, the original's green rim,
+warm pad) - the whole wheel engine, haptics, and tap-seek inherited free. The v1.259
+sibling-list lesson applied UP FRONT (IDS, pins, labels, blurb, chip pin, value
+authority all in the first commit). DELIBERATE: the tray colorway family tightened to
+the explicit iPod pair - Seattle Classic shares the wheel chassis but the Nano tray
+stays a Pocket Classic (bound: a Classic pick falls to base silver there; the plan's
+old "auto-joins by design" prose inverted honestly). (2) "make the aqua bar texture
+more of the iconic one" - the candy-stripe diagonal RIBBING layered over the glass ramp
+on the shared fill (phone wheel + tray), tokenized, lock-bound to the layered form.
+
+THE GATE CAUGHT (slim, two rounds, APPROVE): the wave's CENTRAL claim unbound - nothing
+asserted Seattle Classic actually points at the wheel RENDERER (the renderer-swap
+mutant survived 6272 tests; the one-line identity assert ipod-black already carried was
+the fix) - plus the stale auto-join plan prose. Known non-binding (on the ipod-black
+precedent, disclosed): the palette override blocks themselves are not source-locked.
+
+Dual-Node: v22.23.1 8246/8246 pass, 0 fail, 0 skipped; v24.14.0 8246/8246, 0 fail, 0
+skipped. Frozen files 0-diff. DEVICE-PENDING Dean's pass.
+
 ### v1.259.0 - Seattle (2026-09-03)
 
 Dean's Zune ask, shipped as the fifth skin (id 'zune', label "Seattle" per the

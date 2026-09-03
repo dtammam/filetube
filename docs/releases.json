@@ -2734,5 +2734,11 @@
     "date": "2026-09-03",
     "title": "Seattle",
     "intent": "A fifth skin for the music player, and a love letter to the other player of that era: Seattle. Giant thin lowercase type on a pure black canvas, a flat square of album art, one flash of magenta, and your queue in bare lowercase rows. Pick it wherever you pick skins - Settings or the player's sticker menu. The real one said hello from Seattle; this one says it back."
+  },
+  {
+    "version": "1.260.0",
+    "date": "2026-09-03",
+    "title": "Seattle Classic, and the Aqua stripes",
+    "intent": "The other Seattle: the brown original with the circular pad, green rim and all - a sixth skin that plays exactly like the Pocket Classic, click wheel, haptic ticks and clickable progress bar included, just wearing the famous brown. And on both Pocket Classics and the corner tray, the glossy blue progress bar picked up its missing signature: the diagonal candy-stripe ribbing that made the original gel bars instantly recognizable."
   }
 ]
