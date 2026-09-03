@@ -472,6 +472,11 @@ test('v1.262 Seattle Classic: the METRO screen rides the shared machinery (sourc
   assert.match(css, /\.mms-zune-classic \.ip-track\{ height:3px; border-radius:0;/, 'the flat Metro groove (slim S1 coverage)');
   assert.match(css, /\.mms-zune-classic \.mms-row\.is-cursor\{ background:var\(--mms-zn-pink\); color:var\(--mms-black\);/, 'the magenta Metro cursor (slim W2 - the iPod blue leaked)');
   // the v1.233 coincide invariant on THIS skin: cursor treatment beats is-current pink
+  // v1.263 art-forward Now Playing (the Zune 30's actual view - layout jsdom-invisible)
+  assert.match(css, /\.mms-zune-classic \.ip-npmain\{ flex-direction:column;/, 'cover-over-meta column, not the iPod side-by-side row');
+  assert.match(css, /\.mms-zune-classic \.ip-cover\{ width:100%; align-self:stretch; aspect-ratio:auto; flex:1;/, 'the art FILLS the screen top');
+  assert.match(css, /\.mms-zune-classic \.ip-npview\{ padding:0; \}/, 'the art bleeds to the bezel (meta/scrub re-pad themselves)');
+  assert.match(css, /\.mms-zune-classic \.ip-cover img\{ object-fit:cover; \}/, 'the art crops to fill, no letterbox');
   const isCurrentAt = css.indexOf('.mms-zune-classic .mms-row.is-current .mms-rt{');
   const coincideAt = css.indexOf('.mms-zune-classic .mms-row.is-cursor .mms-rt,');
   assert.ok(isCurrentAt > -1 && coincideAt > isCurrentAt, 'the cursor .mms-rt rule sits AFTER is-current - equal specificity, later wins; reorder and list-open paints pink-on-magenta');
