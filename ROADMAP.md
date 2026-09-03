@@ -93,6 +93,34 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.252.0 - Listen mode, and a sticker menu you can actually tap (2026-09-03)
+
+Dean's "start immediately" wave off the locked Listen-mode intake, plus his sticker-menu
+friction fix. LISTEN: a "Listen" button on the watch action row plays any video AS AUDIO in
+the full music presentation (skin/wheel/sticker/Extras) - the trick being that a listen
+track is exactly the projected library-track shape music already plays (media byte route,
+media progress store) plus a client-only flag with two deltas: no music-resume write (no
+Music membership) and a "Watch" way back on the sticker menu's page 1 landing at the live
+position (one progress store both directions). Single track, no prev/next (v1). ERGONOMICS:
+the sticker menu went thumb-sized (44/48px floors, fs-md text, wider box - source-locked;
+the disclosed call was enlarge-in-place, Dean's feel-pass arbitrates vs the action-row
+chassis). What the gate caught (full gate, serialized seats, 3 rounds + prose round, both
+APPROVE): QA - the dock round-trip LOST the Watch row (fixed with a module-scoped listen
+marker, all three lifecycle axes now mutation-bound), a factoring comment claiming a share
+that didn't exist (fixed by making it true), and post-fix stale prose; adversarial - two
+vacuous bindings (the pop-out watchBack gate, the marker's clear axis - my own first
+kill-check attempt was itself vacuous, caught and corrected on the record). DISCLOSED
+LIMITATION (the smart-resume 600s threshold, player.js byte-frozen): tapping Listen on a
+video of 10 MINUTES OR LESS - or one the scan never sized - restarts it at 0:00;
+listen->watch carries at any duration; a future player.js wave can thread the threshold.
+Also disclosed: chapters stay a music feature (a chaptered video listens as one file); a
+deep-linked audio item's Listen skips its Continue-listening write (per-play,
+self-healing). The v1.251 enumeration net fired THREE times on this wave's own changes
+(two real producers + a comment literal) - dispositioned each time; that is the net
+working. Zero server changes in the whole wave. Dual-Node green: 8203/8203 on v22.23.1 AND
+v24.14.0. DEVICE-PENDING Dean's pass. Next: the AUTOPLAY intake conversation (his queued
+idea), then chapter-rename + pop-out-Extras, cross-device sync.
+
 ### v1.251.0 - Audio routes right from everywhere; the desktop podcast player grows up (2026-09-03)
 
 Dean's post-v1.250 wave, both asks. ROUTING: his pinned-channel bug ROOT-CAUSED (the

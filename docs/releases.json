@@ -2668,5 +2668,11 @@
     "date": "2026-09-03",
     "title": "Audio opens the right player from everywhere, and the desktop podcast player catches up",
     "intent": "Tapping anything that is purely audio - from a pinned channel, your history, the notification bell, the queue, or a watch page's related list - now opens the music player instead of sometimes landing in the video player. Older audio downloads that were misbehaving this way heal automatically after your next library scan, so give it one scan before judging. The desktop podcast player also caught up with the music player: the full up-next episode list with your place marked (and earlier episodes one tap away), the theatre layout beside the player, and the pop-out floating window."
+  },
+  {
+    "version": "1.252.0",
+    "date": "2026-09-03",
+    "title": "Listen to any video like a song, and a menu built for thumbs",
+    "intent": "Every video's watch page now has a Listen button: it plays the video as audio in the full music player - skins, wheel, the whole experience - perfect for talks and long videos you just want to hear. The menu's first page has a Watch button to jump back to the video exactly where you are; your place is shared both ways. One honest caveat: videos of ten minutes or less start from the beginning when you switch to Listen. Also, the music player's sticker menu got much bigger buttons - everything is now sized for a thumb, so picking speed, loop, a skin, or an Extra no longer takes surgical precision."
   }
 ]
