@@ -2752,5 +2752,11 @@
     "date": "2026-09-03",
     "title": "The brown one thinks in magenta",
     "intent": "Seattle Classic's screen now speaks the same language as Seattle: black background, thin lowercase titles, the artist in that unmistakable magenta, a slim magenta progress line, and a song list in quiet lowercase with a bright magenta bar marking where you are. The brown body, the circular pad, the two buttons, and the little haptic ticks all stay exactly as they were - only the screen changed its accent."
+  },
+  {
+    "version": "1.263.0",
+    "date": "2026-09-03",
+    "title": "Wall-to-wall album art",
+    "intent": "The brown player's Now Playing screen now works like the original actually did: the album art fills the screen almost edge to edge, with the song and artist in thin type tucked beneath it and the slim magenta progress line at the bottom. No more small picture floating in empty black - the music's face takes the whole window."
   }
 ]

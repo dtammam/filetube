@@ -93,6 +93,28 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.263.0 - Wall-to-wall album art (2026-09-03)
+
+Dean on v1.262 ("It's amazing"): the Now Playing wastes the big screen - "is there a
+view that the Zune had that represents it?" There is: the Zune 30's art-dominant Now
+Playing. Six CSS rules under .mms-zune-classic flip the iPod's 44%-cover-beside-meta
+row into a column - the art fills and bleeds to the bezel (object-fit:cover), meta and
+scrub re-pad themselves beneath. Zero markup change; the wiring untouched by
+construction.
+
+THE GATE (slim, 2 rounds, APPROVE): W1 the lock's prose promised bindings it lacked -
+the meta/scrub re-pad rules and the cover's min-height:0 were deletable green (text
+flush on the bezel / a big image overflowing the LCD would ship silently); closed with
+exact-rule pins + the S1 cover-pair ORDER assert, all mutation-killed both sides.
+
+Dual-Node: the FIRST Node 22 run was RED - 8236 tests, 8235 pass, 1 fail:
+critter-manager.test.js crashed at startup on a transient SQLite "database is locked"
+(errcode 5) when its test server opened the shared db, swallowing that file's
+remaining 15 tests; no process held the db on inspection and the re-run was clean.
+Reported verbatim per the contract: Node v22.23.1 rerun 8251/8251 pass, 0 fail, 0
+skipped; v24.14.0 8251/8251, 0 fail, 0 skipped. The transient-lock class is noted in
+the tech-debt tracker (#202). Frozen files 0-diff. DEVICE-PENDING Dean's pass.
+
 ### v1.262.0 - The brown one thinks in magenta (2026-09-03)
 
 Dean on v1.261 ("WHOA this is EPIC"): "move the rest style and overall menu of the
