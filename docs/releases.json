@@ -2710,5 +2710,11 @@
     "date": "2026-09-03",
     "title": "Click wheel, Classic calibration",
     "intent": "The wheel's ticking is dialed to match the original iPod Classic exactly: 96 clicks per full turn - between the first version's gentler feel and the last one's too-hot buzz. This is the real hardware's own number, so a spin should now feel like the genuine article."
+  },
+  {
+    "version": "1.257.0",
+    "date": "2026-09-03",
+    "title": "The Tray Player",
+    "intent": "A new optional desktop mode: pop the player out, open its sticker menu, and flip on Tray - the window becomes a little iPod-Nano-style now-playing screen, sized to park in the corner just above your taskbar. Album art, song and artist, the status bar with its battery, and the glossy progress bar, all in a glanceable strip that floats over your apps but never covers the taskbar or the clock. Drag it to your corner once and the browser remembers the spot; the player reopens in whichever mode you last used. Works in Chrome and Edge on Windows and macOS."
   }
 ]
