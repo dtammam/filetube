@@ -1754,8 +1754,11 @@ test('v1.257 (QA W1): the OLD window\'s queued pagehide cannot kill the freshly-
     dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(holder.pip) };
     clickPopout(dom); await settle(); await settle();
     const oldPip = holder.pip;
-    oldPip.querySelectorAllStickerOpen = pipPanelOf(oldPip).querySelector('[data-skin-sticker]');
-    oldPip.querySelectorAllStickerOpen.dispatchEvent(new oldPip.MouseEvent('click', { bubbles: true }));
+    // the browser reality jsdom hides: a CLOSED window still delivers its queued pagehide.
+    // jsdom's real close() neuters dispatch (QA's vacuous-repro warning), so this window's
+    // close only MARKS - keeping the late pagehide deliverable, as in every real browser.
+    oldPip.close = function () { oldPip._closeCalls += 1; oldPip.closed = true; };
+    pipPanelOf(oldPip).querySelector('[data-skin-sticker]').dispatchEvent(new oldPip.MouseEvent('click', { bubbles: true }));
     holder.pip = makePipWindow();
     pipPanelOf(oldPip).querySelector('[data-skin-tray]').dispatchEvent(new oldPip.MouseEvent('click', { bubbles: true }));
     await settle(); await settle();
