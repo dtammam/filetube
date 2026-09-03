@@ -93,6 +93,29 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.261.0 - Seattle Classic, actually classic (2026-09-03)
+
+Dean device-judged v1.260's Classic - "just looks like a brown ipod? it doesn't really
+look zune-like" - and it did, because it WAS renderIpod recolored. His reference photo
++ ruling ("big change to look zune like but leverage the wiring for the wheel/haptics"):
+renderIpod SPLIT (ipScreen extracted, iPod output byte-identical - seat-verified across
+5 ctx shapes on all skins); NEW renderZuneClassic = the shared screen + the Zune control
+row - an .ip-wheel pad (the class binds rotation/haptics/Select/tap zones) flanked by
+round Back (the exit) and reflecting Play/Pause buttons, no printed labels; the screen
+FILLS (flex:1 vs the iPod 4:3 strip) behind a chrome bezel; brown body + green rim kept.
+
+THE GATE CAUGHT (slim, 3 rounds - round 3 test-only per the seat's own scoping - all
+closed, APPROVE): W1 a REAL regression - the fixed scale(7.5) haptic arming cover,
+sized for the 288px iPod wheel, spilled over the Zune pad's scrub bar and routed
+covered seek taps to 0:00 (runnable repro; fixed by deriving the cover from the wheel's
+measured height, capped at 7.5, zero-rect fallback); W2 the render-time play glyph
+unbound; W3/W4 the restore call site and the cap present-not-bound (the v1.254
+per-call-site class - both mutation-killed). DISCLOSED on the probe list: the
+dead-center guard is now slightly smaller than the Zune center button (S2).
+
+Dual-Node: v22.23.1 8250/8250 pass, 0 fail, 0 skipped; v24.14.0 8250/8250, 0 fail,
+0 skipped. Frozen files 0-diff. DEVICE-PENDING Dean's pass.
+
 ### v1.260.0 - Seattle Classic, and the Aqua stripes (2026-09-03)
 
 Dean's Seattle round ("not bad at all, it literally works"): (1) "the original zune

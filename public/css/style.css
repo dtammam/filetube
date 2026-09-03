@@ -10973,6 +10973,7 @@ html[data-modern="on"] .video-uploader {
      the edge carries the original's green translucent rim. */
   --mms-znc-body1:#5a4a3a; --mms-znc-body2:#2e2620; --mms-znc-edge:#8aa544;
   --mms-znc-wheel1:#6b5844; --mms-znc-wheel2:#41352a; --mms-znc-wheel-lbl:#d8cfc2;
+  --mms-znc-chrome1:#e8e8ea; --mms-znc-chrome2:#a9abb0; --mms-znc-ring:#c9cbd0;
   --mms-ipod-art-shadow:0 2px 5px rgba(0,0,0,.3);
   --mms-ipod-lcd-shadow:0 2px 6px rgba(0,0,0,.35);
   --mms-ipod-fill-shadow:inset 0 1px 0 rgba(255,255,255,.6);
@@ -11360,15 +11361,30 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod-black .ip-center{ background:radial-gradient(circle at 50% 40%, var(--mms-ipodk-body1), var(--mms-ipodk-body2)); }
   /* v1.260: SEATTLE CLASSIC - the brown Zune 30 on the same wheel chassis (Dean: "the
      original zune with the circle wheel"). Palette-only, the ipod-black pattern. */
+  /* v1.261 (Dean's reference photo): the REAL Zune 30, not a brown iPod. Brown body +
+     green rim; a big chrome-bezel screen; and the signature - a clean chrome PAD flanked
+     by a Back and a Play/Pause button (no printed wheel labels). The screen reuses the
+     shared iPod LCD machinery (list/scrub/reflect) but reads flat + bold + chrome. */
   .mms-zune-classic{ background:
       linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
       linear-gradient(158deg, var(--mms-znc-body1), var(--mms-znc-body2));
-    box-shadow:inset 0 0 0 1px var(--mms-znc-edge); }
-  .mms-zune-classic .ip-wheel{ background:
-      radial-gradient(90% 55% at 50% -8%, var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at 50% 40%, var(--mms-znc-wheel1), var(--mms-znc-wheel2) 100%); }
-  .mms-zune-classic .ip-zone{ color:var(--mms-znc-wheel-lbl); }
-  .mms-zune-classic .ip-center{ background:radial-gradient(circle at 50% 40%, var(--mms-znc-body1), var(--mms-znc-body2)); }
+    box-shadow:inset 0 0 0 2px var(--mms-znc-edge); }
+  /* the chrome-framed screen (the photo's silver bezel): BIG - it fills above the pad,
+     the defining Zune-vs-iPod proportion (the iPod LCD is a fixed 4:3 strip). */
+  .mms-zune-classic .ip-lcd{ flex:1; aspect-ratio:auto; border:3px solid var(--mms-znc-chrome2); /* token-exempt: Zune chrome bezel width */ border-radius:var(--radius); box-shadow:0 0 0 1px var(--mms-znc-chrome1), var(--mms-ipod-lcd-shadow); }
+  .mms-zune-classic .ip-stars{ display:none; }
+  /* the control row: Back flank | chrome pad | Play flank. */
+  .mms-zune-classic .znc-controls{ display:flex; align-items:center; justify-content:center; gap:var(--space-6); flex:none; padding:var(--space-5) 0 var(--space-4); }
+  .mms-zune-classic .znc-flank{ width:52px; height:52px; /* token-exempt: Zune flank button */ border-radius:var(--radius-full); border:0; cursor:pointer; display:grid; place-items:center;
+    color:var(--mms-znc-body2); background:radial-gradient(circle at 50% 35%, var(--mms-znc-chrome1), var(--mms-znc-chrome2)); box-shadow:var(--mms-ipod-wheel-shadow); }
+  .mms-zune-classic .znc-flank svg{ width:22px; height:22px; /* token-exempt: flank glyph */ fill:currentColor; }
+  .mms-zune-classic .znc-flank.mms-play svg{ width:24px; height:24px; /* token-exempt: flank glyph */ }
+  /* the pad: a chrome ring (not the labeled iPod wheel) - smaller, clean, brown center. */
+  .mms-zune-classic .ip-wheel.znc-pad{ width:min(38vw,132px); height:min(38vw,132px); /* token-exempt: Zune pad diameter */
+    background:radial-gradient(90% 55% at 50% -8%, var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%), radial-gradient(circle at 50% 40%, var(--mms-znc-ring), var(--mms-znc-chrome2) 100%); }
+  .mms-zune-classic .ip-zone{ color:transparent; }
+  .mms-zune-classic .ip-center.znc-center{ width:min(20vw,64px); height:min(20vw,64px); /* token-exempt: Zune pad center */
+    background:radial-gradient(circle at 50% 40%, var(--mms-znc-wheel1), var(--mms-znc-wheel2) 100%); }
 
   /* v1.232 (Dean): iPod MARQUEE - long song/album/artist names slowly scroll to reveal
      the full text, like a real iPod. music.js wraps an overflowing line in .mms-mq and

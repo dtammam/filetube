@@ -799,7 +799,17 @@
         return ('switch' in probe) && ('ontouchstart' in win);
       } catch (_) { return false; }
     }
-    function ghostRestTransform() { return 'scale(7.5)'; } // covers the whole wheel for touchstart arming
+    // The arming cover scales to the WHEEL IT COVERS (slim W1, v1.261): the fixed 7.5
+    // sized for the 288px iPod wheel spilled over the Zune pad's scrub bar - a routed
+    // seek click carries clientX=0, so covered taps sought 0:00. The 52x32 ghost box
+    // scales to the wheel's measured height, capped at the iPod's 7.5 (288/32 = 9 caps;
+    // 132/32 = 4.125 keeps the cover on the pad). Zero/absent rect (jsdom, display:none)
+    // falls back to 7.5 - the cover must never collapse on a measurement miss.
+    function ghostRestTransform(wheel) {
+      var h = 0;
+      try { h = wheel ? wheel.getBoundingClientRect().height : 0; } catch (_) { /* fall back */ }
+      return 'scale(' + (h > 0 ? Math.min(7.5, h / 32) : 7.5) + ')';
+    }
     function lockBodyScroll() {
       if (bodyScrollLock) return;
       try {
@@ -829,7 +839,7 @@
       g.className = 'mms-haptic-ghost';
       g.setAttribute('aria-hidden', 'true');
       g.tabIndex = -1;
-      g.style.transform = ghostRestTransform();
+      g.style.transform = ghostRestTransform(wheel);
       wheel.appendChild(g);
       wheelGhost = g;
       panel.classList.add('mms-haptic'); // CSS lifts .mms-full's touch-action:none (rule 1)
@@ -917,7 +927,7 @@
       hapticPlaceGhost(st, e.clientX, e.clientY, flip);
     }
     function hapticGestureEnd() {
-      if (wheelGhost && wheelGhost.isConnected) wheelGhost.style.transform = ghostRestTransform();
+      if (wheelGhost && wheelGhost.isConnected) wheelGhost.style.transform = ghostRestTransform(wheelGhost.parentElement);
       healGhostLock();
     }
 

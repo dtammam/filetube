@@ -151,7 +151,10 @@
   // sets VOLUME in the desktop pop-out (v1.235, where media.volume is settable - a volume
   // bar swaps in for the scrubber); on iPhone (the in-tab skin) it does nothing, since iOS
   // makes media.volume read-only. Play STATE shows in the status bar.
-  function renderIpod(ctx) {
+  // The shared iPod SCREEN (LCD + list) - both the Pocket Classic and Seattle Classic
+  // render it, so the list-view flip, scrub, reflect and marquee machinery is identical;
+  // only the CONTROL below it differs (click wheel vs the Zune pad + flanks).
+  function ipScreen(ctx) {
     var a = ctx.track || {}; var u = artUrl(ctx);
     var nof = (Number(ctx.curNum) || 0) > 0 ? (ctx.curNum + ' of ' + (ctx.total || ctx.curNum)) : '';
     return '<div class="ip-lcd"><div class="ip-lcd-in">' +
@@ -177,7 +180,11 @@
       '<div class="ip-vol-track"><div class="ip-vol-fill"></div></div></div></div>' +
       // --- List view (Select flips to it) ---
       '<div class="ip-listview">' + goRows(ctx, false, ctx.fullList) + '</div>' +
-      '</div></div>' +
+      '</div></div>';
+  }
+
+  function renderIpod(ctx) {
+    return ipScreen(ctx) +
       // --- the click wheel (tap zones) ---
       '<div class="ip-wheelwrap"><div class="ip-wheel">' +
       '<button type="button" class="ip-zone ip-z-menu" data-skin-menu aria-label="Menu / back">MENU</button>' +
@@ -186,6 +193,25 @@
       '<button type="button" class="ip-zone ip-z-down" data-skin-play aria-label="Play or pause">' + ipPlayPauseGlyph() + '</button>' +
       '<button type="button" class="ip-center" data-skin-select aria-label="Select"></button>' +
       '</div></div>';
+  }
+
+  // ZUNE 30 control (Dean's reference photo): a clean chrome circle PAD - center Select
+  // + invisible prev/next tap zones + the rotation gesture (the whole .ip-wheel engine
+  // and its haptics bind by the class) - FLANKED by two round buttons: Back (left,
+  // data-skin-menu = the exit, as the iPod's MENU) and Play/Pause (right, the shared
+  // reflecting .mms-play). No printed wheel labels - that's what read as "brown iPod".
+  function zncBackGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7z"/></svg>'; }
+  function renderZuneClassic(ctx) {
+    return ipScreen(ctx) +
+      '<div class="znc-controls">' +
+      '<button type="button" class="znc-flank znc-back" data-skin-menu aria-label="Back">' + zncBackGlyph() + '</button>' +
+      '<div class="ip-wheel znc-pad">' +
+      '<button type="button" class="ip-zone ip-z-left" data-skin-prev aria-label="Previous"></button>' +
+      '<button type="button" class="ip-zone ip-z-right" data-skin-next aria-label="Next"></button>' +
+      '<button type="button" class="ip-center znc-center" data-skin-select aria-label="Select"></button>' +
+      '</div>' +
+      '<button type="button" class="znc-flank znc-pp mms-play" data-skin-play aria-label="' + (ctx.playing ? 'Pause' : 'Play') + '">' + playGlyph(ctx.playing) + '</button>' +
+      '</div>';
   }
 
   // Labels are CHEEKY riffs, deliberately NOT the real product/company names (Dean):
@@ -204,7 +230,7 @@
     // v1.260 (Dean: "the original zune with the circle wheel"): the brown Zune 30 -
     // the ipod-black pattern exactly: one render (the wheel engine, haptics and all),
     // a base for the shared .mms-ipod CSS, and a palette-only override block.
-    { id: 'zune-classic', label: 'Seattle Classic', base: 'ipod', renderFull: renderIpod },
+    { id: 'zune-classic', label: 'Seattle Classic', base: 'ipod', renderFull: renderZuneClassic },
   ];
   var BY_ID = SKINS.reduce(function (m, s) { m[s.id] = s; return m; }, Object.create(null));
 
