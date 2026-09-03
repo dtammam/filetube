@@ -2722,5 +2722,11 @@
     "date": "2026-09-03",
     "title": "Tray Player, Nano edition",
     "intent": "The corner player now really looks like a little iPod Nano. Its screen sits inset in the player's aluminum body, the whole thing is rounded like the real shell, and it comes in two colorways - silver and black. Open the tray's sticker menu and a new Color section switches between them on the spot (your pick doubles as your player skin everywhere). It's also a touch smaller overall, per the first hands-on."
+  },
+  {
+    "version": "1.258.1",
+    "date": "2026-09-03",
+    "title": "Tray touches",
+    "intent": "Two touches from the first hands-on with the Nano tray. The progress bar now responds to a mouse click - click anywhere on it to jump there, in the tray and on the phone's Pocket Classic screen alike. And the tray's sticker menu, which was getting squeezed into an unusable sliver by the tiny window, now opens across the whole tray - with a new nicety everywhere: tapping any empty space in the menu closes it."
   }
 ]
