@@ -942,11 +942,13 @@ test('v1.256 (adversarial W1+W2): the FEEL constants are pinned at their boundar
     assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, '4.4deg accumulated: below the 4.5 step, no flip (kills step->1)');
     q = mv(4.6, 100);
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, '4.6deg crosses the 4.5 boundary: flip (kills step->6)');
-    // THROTTLE boundary: a detent 29ms after the flip DROPS; the next full detent at
-    // +30ms flips. (kills min->100 and min->10 both)
+    // THROTTLE boundary: a detent 29ms after the flip DROPS (a drop does not stamp
+    // hapLast); the next detent lands 1ms later = exactly 30ms after the FLIP, and
+    // ticks. (adversarial round 2: dt=30 here would land at flip+59ms and leave
+    // MIN unpinned across 30-59 - the 1ms landing pins it to exactly (29, 30].)
     q = mv(9.2, 29);
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a detent 29ms after a flip is dropped (the 30ms floor holds exactly)');
-    q = mv(13.9, 30);
+    q = mv(13.9, 1);
     assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a detent 30ms after the last FLIP ticks (the floor is 30, not more)');
     // DROP vs QUEUE: a multi-detent burst consumes its backlog even where the throttle
     // drops the flips - a following sub-detent drift must NOT flip (kills while->if).
