@@ -64,8 +64,9 @@ touched files = skin-surface.js, style.css, tests.
 
 Tray hook renders on the pop-out sticker only (main-doc surface shows NO tray row -
 both axes); toggle calls the shell's mode switch (persist + teardown + reopen dims
-asserted via a requestWindow spy); mount in tray mode adds .mms-tray + forces the apple
-DOM (getSkinId wrap bound); the .mms-tray CSS reshape source-locked (strip geometry,
-sliver, hidden bleed/grab); mode memory: a fresh open() honors the stored mode; OFF
+asserted via a requestWindow spy); mount in tray mode adds the body marker + forces the
+IPOD donor (both bound); the Nano reshape CSS source-locked (wheel/list hidden, LCD
+fill, art box, title ellipsis, button-only sticker scale - adversarial W-A: the first
+cut promised this lock and had not written it); mode memory: a fresh open() honors the stored mode; OFF
 path (no localStorage flag) = today's pop-out byte-identical. Gate: full (a new
 lifecycle seam in the pip shell), dual-Node, v1.257.0.

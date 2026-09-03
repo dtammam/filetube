@@ -1804,3 +1804,19 @@ test('v1.257 (QA S3+W1b): the tray menu hides the inert Skin chips, and the plai
     assert.strictEqual(pipPanelOf(plain).querySelector('[data-skin-tray]'), null, 'no Tray row without Document PiP');
   } });
 });
+
+test('v1.257 (adversarial W-A) source-lock: the Nano reshape rules exist - without them the tray is the full iPod crammed into 340x210', () => {
+  // Measured gap: deleting the whole tray CSS block left the suite green (jsdom has no
+  // layout), and the plan CLAIMED a lock that was never written after the Nano pivot.
+  // Lock the load-bearing reshapes; the selectors deliberately omit the skin-base class
+  // (the v1.232 first-occurrence locks - see the block's own comment).
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /body\.mms-tray \.ip-wheelwrap, body\.mms-tray \.ip-listview\{ display:none; \}/, 'the wheel and list are hidden - the tray is the LCD alone');
+  assert.match(css, /body\.mms-tray \.ip-lcd\{[^}]*height:100%/, 'the LCD fills the tray window');
+  assert.match(css, /body\.mms-tray \.ip-npmain\{ display:flex; align-items:center/, 'art sits beside the meta (the Nano-5g row)');
+  assert.match(css, /body\.mms-tray \.ip-cover\{ width:88px; height:88px/, 'the Nano art box');
+  assert.match(css, /body\.mms-tray \.ip-ttl\{[^}]*text-overflow:ellipsis/, 'the title ellipsizes in the strip');
+  assert.match(css, /body\.mms-tray \.mms-sticker\{ transform:scale\(\.55\)/, 'only the sticker BUTTON shrinks (the menu keeps thumb sizes - QA S4)');
+  assert.match(css, /body\.mms-tray \.music-nowplaying-panel\{ position:fixed; inset:0; \}/, 'the panel fills the pip viewport');
+});
