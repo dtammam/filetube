@@ -2845,14 +2845,15 @@ img.art-shimmer {
    line-height) so a glyph-only button measures the SAME 32px as a
    labelled one - without it the row dropped to 30px (measured). */
 /* v1.202 (Dean's action-row re-evaluation, ruling B of the v1.202 plan). Two tiers:
-   PRIMARY = Like, Share, Transcript, Queue (his real taps), SECONDARY =
-   everything else (Next, Download, Delete, Move, Mark watched, Reheat,
-   Attribute). The tier list lives ONCE in watch.js (SECONDARY_ACTION_IDS);
-   the selector below mirrors it and test/unit/watch-action-row-tiers
-   .test.js locks the two lists equal.
-   - `order` fixes the row order everywhere (primary first - Queue, Like,
-     Share, Transcript (Dean, v1.203) - then More, then the secondary set in
-     their old order) - v1 is fixed, not customizable.
+   PRIMARY = Listen, Like, Share, Transcript (v1.253 - Queue moved to
+   SECONDARY when the Listen chip made a fifth word overflow the phone row),
+   SECONDARY = everything else (Queue, Next, Download, Delete, Move, Mark
+   watched, Reheat, Attribute). The tier list lives ONCE in watch.js
+   (SECONDARY_ACTION_IDS); the selector below mirrors it and
+   test/unit/watch-action-row-tiers.test.js locks the two lists equal.
+   - `order` fixes the row order everywhere (primary first - Listen, Like,
+     Share, Transcript (Dean, v1.203/v1.253) - then More, then the secondary
+     set in their old order) - v1 is fixed, not customizable.
    - COMPACT (column under 960px): secondary buttons hide, "More" shows and
      opens the pick-one listing them. Primary buttons keep their words.
    - v1.203 (Dean): the primary buttons keep their WORDS at every width;
