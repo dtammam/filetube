@@ -920,3 +920,40 @@ test('v1.256 (QA S2 binding): a rotate-then-release on the ghost suppresses the 
     assert.strictEqual(routed, 0, 'the suppress check runs before the ghost route - a spin release never fires a zone');
   } finally { b.restore(); }
 });
+
+test('v1.256 (adversarial W1+W2): the FEEL constants are pinned at their boundaries, and a throttled detent DROPS - never queues', () => {
+  // The seat proved step=1/6 and min=100 (and while->if queueing) all survived the
+  // cadence test - Dean's iPod-Classic ruling was unbound. Pin both axes at their
+  // exact boundaries, and distinguish drop from queue with a sub-detent follow-up.
+  const b = bootHaptic({});
+  const savedPerf = global.performance;
+  let t = 5000;
+  global.performance = { now: () => t };
+  try {
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    const wheel = panel(b.dom).querySelector('.ip-wheel');
+    const at = (deg) => { const rad = deg * Math.PI / 180; return { clientX: 100 * Math.cos(rad), clientY: 100 * Math.sin(rad) }; };
+    const mv = (deg, dt) => { t += dt; const q = at(deg); wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: q.clientX, clientY: q.clientY })); return q; };
+    const s = at(0);
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: s.clientX, clientY: s.clientY }));
+    // STEP boundary: 4.4deg accumulated = NO flip; +0.2deg more crosses 4.5 = FLIP.
+    let q = mv(4.4, 100);
+    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, '4.4deg accumulated: below the 4.5 step, no flip (kills step->1)');
+    q = mv(4.6, 100);
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, '4.6deg crosses the 4.5 boundary: flip (kills step->6)');
+    // THROTTLE boundary: a detent 29ms after the flip DROPS; the next full detent at
+    // +30ms flips. (kills min->100 and min->10 both)
+    q = mv(9.2, 29);
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a detent 29ms after a flip is dropped (the 30ms floor holds exactly)');
+    q = mv(13.9, 30);
+    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a detent 30ms after the last FLIP ticks (the floor is 30, not more)');
+    // DROP vs QUEUE: a multi-detent burst consumes its backlog even where the throttle
+    // drops the flips - a following sub-detent drift must NOT flip (kills while->if).
+    q = mv(36, 100);  // ~22deg burst = 4 detents, one flip allowed -> bias back to -18
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a burst saturates to one flip');
+    q = mv(37, 100);  // +1deg sub-detent drift, long after the throttle window
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'no phantom tick after the finger slows: the backlog was CONSUMED, not queued');
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true }));
+  } finally { global.performance = savedPerf; b.restore(); }
+});

@@ -823,6 +823,8 @@
       ghostObserver = new MO(function () { healGhostLock(); });
       try { ghostObserver.observe(panel, { childList: true, subtree: true }); } catch (_) { ghostObserver = null; }
     }
+    // Belt-and-braces only: the once-armed observer on the SAME panel node serves every
+    // later ghost too (adversarial S2) - disconnect/re-arm sequencing is NOT load-bearing.
     function unwatchGhost() {
       if (ghostObserver) { try { ghostObserver.disconnect(); } catch (_) { /* gone */ } ghostObserver = null; }
     }
