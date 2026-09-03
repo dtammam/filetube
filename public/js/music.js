@@ -723,6 +723,14 @@ if (typeof module !== 'undefined' && module.exports) {
             onMutated: afterExtrasMutation,
             signal: signal,
           },
+          // v1.254 (ENDLESS AUTOPLAY): the page-1 toggle. Lives HERE (not the Extras
+          // page) deliberately: Extras exists only for library-backed items, and the
+          // toggle must be reachable for native music tracks too. Device-global
+          // (localStorage), default ON, music view only (podcasts omit the hook).
+          autoplay: {
+            enabled: autoplayEnabled,
+            onToggle: function () { setAutoplayEnabled(!autoplayEnabled()); },
+          },
         },
       };
     }
@@ -1793,6 +1801,7 @@ if (typeof module !== 'undefined' && module.exports) {
         readerHref: '/music?nowplaying=1',
       };
       playingId = item.id;
+      autoplayNotePlayed(item.id); // v1.254: the autoplay picker's session no-repeat memory
       activeListenId = item.listen ? item.id : null; // W1: a normal play ends the listen session's marker
       nowPlaying = { id: item.id, title: item.title || '', artist: item.artist || '', album: item.album || '', albumKey: item.albumKey || '' };
       // v1.237: a real load resets the chapter-view baseline - to the loaded chapter for a
@@ -1847,6 +1856,89 @@ if (typeof module !== 'undefined' && module.exports) {
         onPrev: i > 0 ? function () { playAt(i - 1, { keepPosition: true }); } : undefined,
         onNext: (i >= 0 && i < queue.length - 1) ? function () { playAt(i + 1, { keepPosition: true }); } : undefined,
       });
+      // v1.254 (Dean, ENDLESS AUTOPLAY): the last-track register is THE exhaustion
+      // seam - every path that arms nav (fresh load, dock-return reseed, continue
+      // arm) funnels here, so one eager call covers them all. Appending EARLY (when
+      // the last track STARTS, not at 'ended') keeps the extension VISIBLE in the
+      // up-next (Dean's ruling: a queue you can see and skip, never an invisible
+      // station) and means onNext exists by the time the ended-advance asks.
+      maybeExtendQueueForAutoplay(i);
+    }
+
+    // ---- v1.254 ENDLESS AUTOPLAY (Dean's locked intake, all four points) ---------
+    // When the queue is about to run out - ANY exhaustion: a single song, an album's
+    // last track, the end of a shuffle - pick a few related tracks and append them to
+    // the visible queue instead of letting playback die. Same-artist first, then
+    // library neighbors, shuffled server-side, never repeating what this session
+    // already played. MUSIC ONLY: podcasts never enter this view's queue, and a
+    // LISTEN track (the v1.252 projected video) is excluded by flag - autoplaying a
+    // random song after a listened video is not the contract. Client-only v1.
+    var AUTOPLAY_STORAGE_KEY = 'ft-music-autoplay';
+    function autoplayEnabled() {
+      // Default ON (Dean's ruling 4): only an explicit '0' disables.
+      try { return window.localStorage.getItem(AUTOPLAY_STORAGE_KEY) !== '0'; } catch (_) { return true; }
+    }
+    function setAutoplayEnabled(on) {
+      try { window.localStorage.setItem(AUTOPLAY_STORAGE_KEY, on ? '1' : '0'); } catch (_) { /* best-effort */ }
+    }
+    // The session's no-repeat memory: every id loadTrack has played (module scope, so
+    // it survives the dock-return re-init like activeListenId does). Bounded: a
+    // session that somehow plays >2000 tracks starts forgetting the oldest - fine,
+    // "no repeats" is a taste rule, not an invariant.
+    var autoplayPlayedIds = [];
+    function autoplayNotePlayed(id) {
+      if (autoplayPlayedIds.indexOf(id) === -1) autoplayPlayedIds.push(id);
+      if (autoplayPlayedIds.length > 2000) autoplayPlayedIds.shift();
+    }
+    var AUTOPLAY_APPEND_COUNT = 5;   // tracks appended per exhaustion
+    var AUTOPLAY_ARTIST_MAX = 3;     // of which at most this many same-artist
+    var autoplayFetchInFlight = false;
+    async function maybeExtendQueueForAutoplay(i) {
+      if (i < 0 || i !== queue.length - 1) return;   // only the LAST track arms it
+      if (!autoplayEnabled()) return;
+      var cur = queue[i];
+      if (!cur || cur.listen) return;                // listen-mode excluded (locked intake)
+      if (autoplayFetchInFlight) return;
+      autoplayFetchInFlight = true;
+      try {
+        var exclude = {};
+        for (var q = 0; q < queue.length; q++) exclude[queue[q].id] = true;
+        for (var s = 0; s < autoplayPlayedIds.length; s++) exclude[autoplayPlayedIds[s]] = true;
+        var seed = String(Date.now() % 100000);
+        var picks = [];
+        function takeFrom(items, cap) {
+          for (var k = 0; k < items.length && picks.length < cap; k++) {
+            var t = items[k];
+            if (!t || !t.id || exclude[t.id]) continue;
+            exclude[t.id] = true;
+            picks.push(t);
+          }
+        }
+        if (cur.artist) {
+          try {
+            var a = await fetchJson('/api/music?artist=' + encodeURIComponent(cur.artist) + '&sort=random&seed=' + seed + '&limit=30');
+            takeFrom((a && a.items) || [], AUTOPLAY_ARTIST_MAX);
+          } catch (_) { /* artist arm is best-effort */ }
+        }
+        if (picks.length < AUTOPLAY_APPEND_COUNT) {
+          try {
+            var lib = await fetchJson('/api/music?sort=random&seed=' + seed + '&limit=60');
+            takeFrom((lib && lib.items) || [], AUTOPLAY_APPEND_COUNT);
+          } catch (_) { /* library arm is best-effort */ }
+        }
+        // TOCTOU (the v1.104/v1.105 class): re-check the REAL precondition after the
+        // awaits - the user may have played a different queue, toggled autoplay off,
+        // or a listen track may have taken over while we fetched. A stale append
+        // onto the wrong queue is the harm; dropping the picks is always safe.
+        if (!autoplayEnabled()) return;
+        if (queue[queue.length - 1] !== cur) return;
+        if (picks.length === 0) return;
+        queue = queue.concat(picks);
+        registerTrackNav(i);        // i now has a next; re-arm (recurses, but i !== length-1 any more)
+        updateNowPlayingPanel();    // the append is VISIBLE immediately (panel or skin)
+      } finally {
+        autoplayFetchInFlight = false;
+      }
     }
 
     // v1.104: a dock-tap expand RE-INITS this view, wiping its in-memory

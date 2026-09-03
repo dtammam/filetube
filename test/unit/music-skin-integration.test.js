@@ -1344,3 +1344,97 @@ test('v1.253 (adversarial W2): the DESKTOP now-playing panel rows carry the trac
     },
   });
 });
+
+// ---- v1.254 ENDLESS AUTOPLAY (Dean's locked intake) --------------------------------
+
+test('v1.254 autoplay: the LAST track VISIBLY extends the queue (same-artist first, no session/queue repeats, nav re-armed); toggled OFF = dead', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  const t9 = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100 };
+  const t8 = { id: 't8', title: 'Other', artist: 'Band', album: '', albumKey: '', durationSec: 90 };
+  // the artist arm returns the CURRENT track too (the server would) - the picker must skip it;
+  // the library arm repeats b1 - the picker must not double-append it.
+  const artistItems = [t9, { id: 'b1', title: 'B One', artist: 'Band', durationSec: 80 }, { id: 'b2', title: 'B Two', artist: 'Band', durationSec: 81 }];
+  const libItems = [t9, { id: 'b1', title: 'B One', artist: 'Band', durationSec: 80 },
+    { id: 'l1', title: 'Lib One', artist: 'Other Band', durationSec: 70 },
+    { id: 'l2', title: 'Lib Two', artist: 'Other Band', durationSec: 71 },
+    { id: 'l3', title: 'Lib Three', artist: 'Third', durationSec: 72 },
+    { id: 'l4', title: 'Lib Four', artist: 'Third', durationSec: 73 }];
+  const fetchImpl = (u, init) => {
+    const url = String(u);
+    log.push({ url, method: (init && init.method) || 'GET' });
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [t9] }) });
+    if (/^\/api\/music\/t9$/.test(url)) return Promise.resolve({ ok: true, json: async () => t9 });
+    if (/^\/api\/music\/t8$/.test(url)) return Promise.resolve({ ok: true, json: async () => t8 });
+    if (url.indexOf('/api/music?artist=') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: artistItems }) });
+    if (url.indexOf('/api/music?sort=random') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: libItems }) });
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot({
+    mobile: false, isMusic: true, query: '?play=t9',
+    fetchImpl, playerOverride: listenPlayer(calls),
+    run: async (dom, spy, mod) => {
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      // DEFAULT ON (ruling 4): no stored setting, yet the append happened.
+      const rows = [...panel(dom).querySelectorAll('.mnp-queue-row')];
+      assert.strictEqual(rows.length, 6, 'the single-song queue grew to 6 VISIBLE rows (1 playing + 5 appended - ruling 3, a queue you can see)');
+      const titles = rows.map((r) => r.textContent);
+      assert.match(titles[1], /B One/, 'same-artist picks lead (ruling 2)');
+      assert.match(titles[2], /B Two/, 'both artist picks before library neighbors');
+      assert.match(titles[3], /Lib One/, 'library fill follows');
+      assert.strictEqual(titles.filter((t) => /Song/.test(t)).length, 1, 'the playing track is never re-picked (no repeats)');
+      assert.strictEqual(titles.filter((t) => /B One/.test(t)).length, 1, 'the library arm cannot double-append an artist pick');
+      const lastNav = calls.navs[calls.navs.length - 1];
+      assert.strictEqual(typeof lastNav.onNext, 'function', 'the exhaustion is gone - Next exists for the ended-advance');
+      // ---- the OFF axis (both axes: same flow, toggle off, nothing appends) ----
+      dom.window.localStorage.setItem('ft-music-autoplay', '0');
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?play=t8');
+      global.fetch = (u, init) => {
+        const url = String(u);
+        log.push({ url, method: (init && init.method) || 'GET' });
+        if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [t8] }) });
+        if (/^\/api\/music\/t8$/.test(url)) return Promise.resolve({ ok: true, json: async () => t8 });
+        if (url.indexOf('/api/music?artist=') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: artistItems }) });
+        if (url.indexOf('/api/music?sort=random') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: libItems }) });
+        if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+        return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+      };
+      const offMark = log.length;
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const rows2 = [...panel(dom).querySelectorAll('.mnp-queue-row')];
+      assert.strictEqual(rows2.length, 1, 'OFF: the single track stays a single row');
+      assert.ok(!log.slice(offMark).some((c) => c.url.indexOf('/api/music?artist=') === 0 || c.url.indexOf('/api/music?sort=random') === 0),
+        'OFF: the picker never even fetches');
+      const lastNav2 = calls.navs[calls.navs.length - 1];
+      assert.strictEqual(lastNav2.onNext, undefined, 'OFF: exhaustion stays exhausted (the pre-wave behavior)');
+    },
+  });
+});
+
+test('v1.254 autoplay: a LISTEN track never autoplays into random songs (the locked-intake exclusion)', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: (u, init) => {
+      const url = String(u);
+      log.push({ url, method: (init && init.method) || 'GET' });
+      if (/^\/api\/videos\//.test(url)) return Promise.resolve({ ok: true, json: async () => LISTEN_VIDEO });
+      // library content EXISTS - only the listen exclusion can explain a no-append
+      if (url.indexOf('/api/music?sort=random') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [{ id: 'l1', title: 'Lib One', artist: 'X', durationSec: 70 }] }) });
+      return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    },
+    playerOverride: listenPlayer(calls),
+    run: async () => {
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      assert.ok(calls.loads.length >= 1, 'the listen track loaded (populated first)');
+      assert.ok(!log.some((c) => c.url.indexOf('/api/music?artist=') === 0 || c.url.indexOf('/api/music?sort=random') === 0),
+        'the picker never fires for a listen track');
+      const lastNav = calls.navs[calls.navs.length - 1];
+      assert.strictEqual(lastNav.onNext, undefined, 'a listened video ends where it ends');
+    },
+  });
+});
