@@ -639,7 +639,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // surface is its OWN engine instance; reflectEngines() fans a live-element update to
     // whichever exists (the engine no-ops unless its panel wears mms-full).
     var SkinSurface = (typeof window !== 'undefined' && window.FileTubeSkinSurface) || null;
-    var inTabEngine = null;  // created lazily at first skin render (mobile); pipEngine lives with the pop-out below
+    var inTabEngine = null;  // created lazily at first skin render (mobile); the pop-out rides the shared shell below
     function dockToOrigin() {
       // v1.247 (F2): dock to the mini on the ORIGIN tab - the engine's MENU/collapse hook.
       var pl = window.FileTube && window.FileTube.player;
@@ -677,7 +677,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     function reflectEngines() {
       if (inTabEngine) inTabEngine.reflect();
-      if (pipEngine && pipPanel && pipPanel.isConnected) pipEngine.reflect();
+      if (popoutShell) popoutShell.reflect(); // no-ops unless the pop-out surface is live
     }
     var skinReflectBound = false;
     function ensureSkinReflect() {
@@ -770,7 +770,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function enforceChapterLoop() {
       if (!chapterViewId) return;
       // v1.250: the live-scrub state lives in the shared engine now - ask whichever surface exists.
-      if ((inTabEngine && inTabEngine.isScrubbing()) || (pipEngine && pipEngine.isScrubbing())) return;
+      if ((inTabEngine && inTabEngine.isScrubbing()) || (popoutShell && popoutShell.isScrubbing())) return;
       var pl = window.FileTube && window.FileTube.player;
       try { if (!pl || typeof pl.isLoopEnabled !== 'function' || !pl.isLoopEnabled()) return; } catch (_) { return; }
       var mp = hostCtl('media-player'); if (!mp) return;
@@ -1031,9 +1031,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // -> pop-out). Window size ~380px so the < 768px skin media query engages and every skin
     // renders at its phone layout with no re-styling. Pointer events => the click wheel
     // spins with a MOUSE click-drag here.
-    var POPOUT_W = 380, POPOUT_H = 700;
-    var pipWin = null, pipPanel = null, pipAbort = null, pipClock = null, pipPending = false;
-    var pipEngine = null; // v1.250: the pop-out surface's own shared-engine instance
+    // v1.251 (R3): the window LIFECYCLE lives in the shared shell now (skin-surface.js
+    // createPopoutShell - the same grant/mount/teardown/clock/guards, one implementation for
+    // music AND podcasts). This view keeps its GATE (viewport + a music track current), its
+    // button wiring, the resize enforcement of the never-both-live split, and the repaint
+    // trigger with the nothing-playing guard.
     function popoutSupported() {
       try { if (SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()) return false; } catch (_) { /* treat as desktop */ }
       return !!(typeof window !== 'undefined' && (window.documentPictureInPicture || typeof window.open === 'function'));
@@ -1055,112 +1057,28 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!p || !p.currentId) return false;
       try { var m = typeof p.getCurrentMeta === 'function' ? p.getCurrentMeta() : null; return !!(m && m.isMusic); } catch (_) { return true; }
     }
-    function copyPopoutStyles(doc) {
-      // link every same-origin stylesheet + copy inline <style> blocks so the skin is styled.
-      var links = document.querySelectorAll('link[rel="stylesheet"]');
-      for (var i = 0; i < links.length; i++) {
-        var l = doc.createElement('link'); l.rel = 'stylesheet'; l.href = links[i].href; doc.head.appendChild(l);
-      }
-      var styles = document.querySelectorAll('style');
-      for (var j = 0; j < styles.length; j++) {
-        var s = doc.createElement('style'); s.textContent = styles[j].textContent; doc.head.appendChild(s);
-      }
-    }
-    function mountPopout(win) {
-      pipPending = false; // the async grant resolved (or the sync fallback) - clear the open-in-flight guard
-      if (!win) return;
-      // Gate finding (both seats): requestWindow() is async, so between the click and the
-      // grant the view can be DESTROYED (controller.abort()) OR the viewport can shrink into
-      // the narrow (in-tab-skin) range. Either way mounting now is wrong - a destroyed closure
-      // leaks a frozen, uncloseable always-on-top window (the "pre-await guard is not a
-      // post-await guard" TOCTOU class, v1.104/v1.105), and a narrow viewport puts BOTH skin
-      // surfaces live (shared wheel-state corruption). mountPopout is the single async funnel,
-      // so re-check BOTH here and close the just-granted window if either holds. This is what
-      // makes "never both live" (the reflect/wheel comments) an actual invariant.
-      if (signal.aborted || !popoutSupported()) { try { win.close(); } catch (_) { /* ignore */ } return; }
-      pipWin = win;
-      var doc = win.document;
-      try { copyPopoutStyles(doc); doc.title = 'FileTube'; } catch (_) { /* best effort */ }
-      var panel = doc.createElement('div');
-      panel.id = 'music-nowplaying-panel'; // same id the skin CSS/JS expect
-      panel.className = 'music-nowplaying-panel';
-      try { doc.body.classList.add('mms-on'); doc.body.appendChild(panel); } catch (_) { teardownPopout(); return; }
-      pipPanel = panel;
-      pipAbort = new AbortController();
-      // v1.250 (F-UNIFY): the pop-out is a SECOND shared-engine instance (its own win/panel,
-      // the same MAIN-document controls). The wheel SCRUBS here now - Dean's 2026-09-02
-      // ruling retired v1.235's pop-out wheel-volume for one consistent Now-Playing gesture.
-      // The engine's own in-main-document gate keeps Extras off this surface (v1.249 rule).
-      pipEngine = SkinSurface ? SkinSurface.create(skinEngineConfig(panel, win)) : null;
-      if (!pipEngine) { teardownPopout(); return; }
-      ensureSkinReflect(); // arm the media-element -> reflectEngines listeners (the in-tab render, which normally arms them, is skipped on desktop)
-      pipEngine.paint();
-      // v1.235.x (Dean device): the pop-out clock FROZE in true Document PiP - it rode the
-      // MAIN tab's `timeupdate`, but once the PiP window takes focus the opener tab is
-      // backgrounded and the browser throttles/pauses those events (a Menu tap re-rendered it
-      // once, then it froze again). Fix: drive the pop-out's reflect from the POP-OUT window's
-      // OWN timer - it's the focused, unthrottled window - reading the live (still-advancing,
-      // audio keeps playing) mp.currentTime. ~4Hz, like timeupdate. Cleared on teardown (and
-      // the interval dies with the window anyway). The in-tab skin keeps the main timeupdate.
-      try { pipClock = win.setInterval(function () { if (pipEngine) pipEngine.reflect(); }, 250); } catch (_) { pipClock = null; }
-      // the pop-out closing (user, or the tab navigating away) tears the surface down.
-      var onClose = function () { teardownPopout(); };
-      try { win.addEventListener('pagehide', onClose); win.addEventListener('unload', onClose); } catch (_) { /* ignore */ }
-      updatePopoutBtn();
-    }
-    function openPopout() {
-      if (!popoutSupported()) return; // gate finding: re-check at CLICK time, not just button visibility - a wide->narrow resize must not leave an openable button
-      if (pipWin) { try { pipWin.focus(); } catch (_) { /* ignore */ } return; }
-      // adversarial finding: pipWin is only set async inside mountPopout, so a double-click
-      // DURING the requestWindow() grant would mount TWO always-on-top windows (each with its
-      // own leaked clock). pipPending guards the async gap; it's cleared in mountPopout (every
-      // arm) and the catch.
-      if (pipPending) return;
-      // Document PiP (Chrome/Edge desktop) = always-on-top; else a plain independent window.
-      if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
-        try {
-          pipPending = true;
-          window.documentPictureInPicture.requestWindow({ width: POPOUT_W, height: POPOUT_H })
-            .then(function (w) { mountPopout(w); })
-            .catch(function () { pipPending = false; openPlainPopout(); });
-          return;
-        } catch (_) { pipPending = false; /* fall through to the plain window */ }
-      }
-      openPlainPopout();
-    }
-    function openPlainPopout() {
-      var w = null;
-      try {
-        w = window.open('', 'ft-music-pip', 'width=' + POPOUT_W + ',height=' + POPOUT_H + ',menubar=no,toolbar=no,location=no,status=no');
-      } catch (_) { w = null; }
-      if (!w) return; // popup blocked - nothing we can do without a gesture
-      try { w.document.body.innerHTML = ''; } catch (_) { /* cross-origin? never, same-origin blank */ }
-      mountPopout(w);
-    }
-    function teardownPopout() {
-      pipPending = false;
-      if (pipAbort) { try { pipAbort.abort(); } catch (_) { /* ignore */ } pipAbort = null; }
-      // clear the pop-out clock on the window that CREATED it, before closing that window
-      // (a closed window's timers die anyway - this is belt-and-suspenders).
-      if (pipClock != null) { try { (pipWin && pipWin.clearInterval ? pipWin : window).clearInterval(pipClock); } catch (_) { /* ignore */ } pipClock = null; }
-      // v1.250: destroy the pop-out's engine instance (unbinds its listeners, stops any
-      // extras poll, clears the PIP document's mms-on) BEFORE dropping the panel/window refs.
-      if (pipEngine) { try { pipEngine.destroy(); } catch (_) { /* ignore */ } pipEngine = null; }
-      pipPanel = null;
-      if (pipWin) { try { if (pipWin.close && !pipWin.closed) pipWin.close(); } catch (_) { /* ignore */ } pipWin = null; }
-      updatePopoutBtn();
-    }
+    var popoutShell = SkinSurface ? SkinSurface.createPopoutShell({
+      engineConfigFor: function (panel, win) { return skinEngineConfig(panel, win); },
+      supported: popoutSupported,
+      aborted: function () { return signal.aborted; },
+      onStateChange: function () { updatePopoutBtn(); },
+      windowName: 'ft-music-pip',
+      panelId: 'music-nowplaying-panel',
+    }) : null;
+    // On mount the shell paints before ensureSkinReflect can arm (desktop skips the in-tab
+    // render that normally arms it) - arm on every open toggle instead; idempotent.
     function togglePopout() {
-      if (pipWin) { teardownPopout(); return; } // close -> its pagehide also calls teardown (idempotent)
-      openPopout();
+      if (!popoutShell) return;
+      ensureSkinReflect();
+      popoutShell.toggle();
     }
+    function teardownPopout() { if (popoutShell) popoutShell.teardown(); }
     // Re-render the OPEN pop-out to the current track/skin (called from updateNowPlayingPanel,
     // which every track change routes through via playAt). Progress/play-state stay live via
     // reflectEngines + the pop-out clock; this handles the parts that need a repaint (title/art/list/skin).
     function repaintPopout() {
-      if (!pipEngine || !pipPanel || !pipPanel.isConnected) return;
-      if (currentSkinIndex() < 0) return; // nothing playing - leave the last frame up
-      pipEngine.paint();
+      if (!popoutShell || currentSkinIndex() < 0) return; // nothing playing - leave the last frame up
+      popoutShell.repaint();
     }
     // Button: shown only on desktop-supported viewports while a music track is current
     // (expanded OR docked - popping out is most useful while browsing). Mirrors the theatre
@@ -1168,7 +1086,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function updatePopoutBtn() {
       if (!popoutBtn) return;
       popoutBtn.hidden = !(popoutSupported() && hasCurrentMusicTrack());
-      popoutBtn.setAttribute('aria-pressed', pipWin ? 'true' : 'false');
+      popoutBtn.setAttribute('aria-pressed', (popoutShell && popoutShell.isOpen()) ? 'true' : 'false');
     }
     if (popoutBtn) popoutBtn.addEventListener('click', togglePopout, { signal });
     // Gate finding (both seats): the ONLY thing keeping the in-tab and pop-out skins from
@@ -1181,7 +1099,7 @@ if (typeof module !== 'undefined' && module.exports) {
       window.addEventListener('resize', function () {
         var narrow = false;
         try { narrow = !!(SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()); } catch (_) { /* desktop */ }
-        if (narrow && pipWin) teardownPopout(); // -> in-tab skin owns the surface; teardown is idempotent with the pagehide arm
+        if (narrow && popoutShell && popoutShell.isOpen()) teardownPopout(); // -> in-tab skin owns the surface; teardown is idempotent with the pagehide arm
         else updatePopoutBtn();
       }, { signal });
     }

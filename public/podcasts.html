@@ -110,6 +110,13 @@
                  up-next episode panel beside the expanded player. Hidden until an episode
                  is expanded (podcasts.js updateNowPlayingPanel toggles it in lockstep);
                  persisted per device (ft-podcast-theater). -->
+            <!-- v1.251 (R3): the same DESKTOP pop-out music has (v1.234, via the shared
+                 shell) - float the playing episode into a small always-on-top window
+                 wearing the picked skin. Hidden until a podcast episode is playing AND
+                 the pop-out is supported (podcasts.js updatePopoutBtn). -->
+            <button class="btn btn-sm" id="podcast-popout-btn" type="button" hidden title="Pop the player out into a floating window" aria-label="Pop out player" aria-pressed="false">
+              <svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><path d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-800h280v80H200v560h560v-280h80v280q0 33-23.5 56.5T760-120H200Zm188-212-56-56 372-372H560v-80h240v240h-80v-104L388-332Z"/></svg> Pop out
+            </button>
             <button class="btn btn-sm music-theater-btn" id="podcast-theater-btn" type="button" hidden title="Theatre mode: up next beside the player" aria-label="Toggle theatre mode" aria-pressed="false">
               <svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><g transform="matrix(1.2 0 0 1.2 -98 54)"><path fill-rule="evenodd" d="M256-556 704-556 652-116 308-116ZM394-544 452-544 452-128 394-128ZM508-544 566-544 566-128 508-128Z"/><path d="M242-596 718-596 704-556 256-556ZM254-648a58,58 0 1,0 116,0a58,58 0 1,0 -116,0ZM328-704a70,70 0 1,0 140,0a70,70 0 1,0 -140,0ZM428-684a64,64 0 1,0 128,0a64,64 0 1,0 -128,0ZM518-706a68,68 0 1,0 136,0a68,68 0 1,0 -136,0ZM606-646a58,58 0 1,0 116,0a58,58 0 1,0 -116,0ZM398-636a46,46 0 1,0 92,0a46,46 0 1,0 -92,0ZM494-634a46,46 0 1,0 92,0a46,46 0 1,0 -92,0Z"/></g></svg>
             </button>

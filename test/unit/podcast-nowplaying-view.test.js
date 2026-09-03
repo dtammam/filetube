@@ -16,6 +16,7 @@ const podcastsPath = require.resolve('../../public/js/podcasts.js');
 const VIEW_HTML = `<body><div id="view-root" data-view="podcasts">
   <video id="media-player"></video>
   <button id="podcast-theater-btn" class="music-theater-btn" type="button" hidden aria-pressed="false"></button>
+  <button id="podcast-popout-btn" type="button" hidden aria-pressed="false"></button>
   <div id="podcast-stage" class="music-stage">
   <div id="player-slot"></div>
   <div id="podcast-nowplaying-panel" hidden></div>
@@ -100,8 +101,11 @@ async function boot(url, initialState, run, opts) {
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   };
   try {
-    // v1.251 (R2): the desktop panel renders through the shared engine builder now -
-    // load skin-surface.js into this window exactly as the shell does (production order).
+    // v1.251 (R2/R3): the desktop panel renders through the shared engine builder and the
+    // pop-out mounts a real engine instance - load the registry + engine into this window
+    // exactly as podcasts.html does (music-skins.js then skin-surface.js, before podcasts.js).
+    delete require.cache[require.resolve('../../public/js/music-skins.js')];
+    require('../../public/js/music-skins.js');
     delete require.cache[require.resolve('../../public/js/skin-surface.js')];
     require('../../public/js/skin-surface.js');
     delete require.cache[podcastsPath];
@@ -335,4 +339,36 @@ test('v1.251 theatre (reveal-once CLEAR): docking hides the toggle again (popula
     await settle(); await settle();
     assert.equal(btn.hidden, true, 'no expanded episode -> the toggle hides');
   });
+});
+
+// ---- v1.251 (R3): the desktop POP-OUT for podcasts (the shared shell music runs) --------
+
+test('v1.251 pop-out: the button reveals with a playing episode; toggling mounts the skin in the pop-out window and closes it again', async () => {
+  const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
+  const pipDom = new JSDOM('<body></body>', { url: 'http://localhost/pip' });
+  await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pipDom.window) };
+    const btn = dom.window.document.getElementById('podcast-popout-btn');
+    await playEp(dom, 0);
+    assert.equal(btn.hidden, false, 'a playing episode on desktop reveals the pop-out button');
+    btn.click();
+    await settle(); await settle(); await settle();
+    const pipPanel = pipDom.window.document.getElementById('podcast-nowplaying-panel');
+    assert.ok(pipPanel, 'the pop-out surface mounted in the pop-out window');
+    assert.ok(pipPanel.classList.contains('mms-full'), 'and the skin painted there');
+    assert.ok(pipDom.window.document.body.classList.contains('mms-on'), 'the pop-out body wears the skin cover class');
+    assert.equal(btn.getAttribute('aria-pressed'), 'true', 'the button reflects the open pop-out');
+    const pipBody = pipDom.window.document.body; // captured ref - jsdom close() tears the window down
+    btn.click(); // toggle closes
+    await settle(); await settle();
+    assert.ok(!pipBody.classList.contains('mms-on'), 'teardown cleared the pop-out mms-on (engine destroy ran before the window closed)');
+    assert.equal(btn.getAttribute('aria-pressed'), 'false');
+  }, { meta });
+});
+
+test('v1.251 pop-out: a NON-podcast item never reveals the button (the gate is resumeMode, not mere playback)', async () => {
+  const meta = { id: 'v9', title: 'A Song', artist: 'An Artist', resumeMode: 'music', subId: '' };
+  await boot('http://localhost/podcasts?nowplaying=1', 'full', async (dom) => {
+    assert.equal(dom.window.document.getElementById('podcast-popout-btn').hidden, true, 'music/video current -> no podcast pop-out');
+  }, { meta });
 });

@@ -388,7 +388,8 @@ test('v1.235 CSS is DORMANT since v1.250 (wheel-volume retired; .mms-voladj has 
 
 test('v1.235.x: the pop-out runs its OWN reflect clock (fixes the true-PiP freeze) and clears it on teardown', () => {
   const fs = require('node:fs'); const path = require('node:path');
-  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  // v1.251 (R3): the shell lives in the shared engine now - the lock follows the code.
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
   // the clock is started on the POP-OUT window (win.setInterval), reflecting the pop-out panel,
   // NOT the main tab (whose timeupdate throttles when the tab is backgrounded under a PiP window).
   assert.match(js, /pipClock = win\.setInterval\(function \(\) \{ if \(pipEngine\) pipEngine\.reflect\(\); \}, \d+\)/, 'the pop-out clock is an interval on the pop-out window that reflects its engine surface');

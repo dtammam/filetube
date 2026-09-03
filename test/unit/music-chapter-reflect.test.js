@@ -242,7 +242,8 @@ test('v1.240 source-lock: enforceChapterLoop is bound BEFORE reflectChapter and 
   // v1.250 (F-UNIFY): the live-scrub state lives in the shared engine; the loop enforcement
   // asks whichever surface exists via the engine's isScrubbing() accessor.
   assert.match(m[1], /inTabEngine && inTabEngine\.isScrubbing\(\)/, 'skips during an in-tab wheel scrub (the v1.239 carried interaction)');
-  assert.match(m[1], /pipEngine && pipEngine\.isScrubbing\(\)/, 'and during a pop-out wheel scrub');
+  // v1.251 (R3): the pop-out lives behind the shared shell now - same seam, new address.
+  assert.match(m[1], /popoutShell && popoutShell\.isScrubbing\(\)/, 'and during a pop-out wheel scrub (via the shared shell)');
   assert.match(m[1], /isLoopEnabled\(\)/, 'gated on the loop flag');
 });
 

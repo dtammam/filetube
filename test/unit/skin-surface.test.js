@@ -221,8 +221,10 @@ test('podcasts.js WIRES the engine (reachable): creates it with a podcast ctx, f
   const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'podcasts.js'), 'utf8');
   // creates the shared engine, driven by the podcast ctx + playAt select hook
-  assert.match(src, /window\.FileTubeSkinSurface\.create\(\{/, 'podcasts creates the shared skin engine');
+  // v1.251 (R3): the config is a BUILDER shared by the in-tab panel and the pop-out shell.
+  assert.match(src, /window\.FileTubeSkinSurface\.create\(podcastEngineConfig\(nowPlayingPanel, window\)\)/, 'podcasts creates the shared skin engine via its config builder');
   assert.match(src, /getCtx: podcastSkinCtx/, 'driven by the PODCAST ctx (episode list, /podcastart art)');
+  assert.match(src, /createPopoutShell\(\{[\s\S]{0,400}engineConfigFor: function \(panel, winRef\) \{ return podcastEngineConfig\(panel, winRef\); \}/, 'and the pop-out shell rides the SAME builder (v1.251 R3)');
   assert.match(src, /onSelectIndex: function \(i\) \{ playAt\(i\); \}/, 'the wheel/select play hook is the podcasts playAt');
   assert.match(src, /artUrl: artSub \? \('\/podcastart\/'/, 'the ctx art is the show art (/podcastart)');
   // the updateNowPlayingPanel fork: mount the skin on the gate, and teardown clears mms-on

@@ -87,6 +87,7 @@
   // nulled by destroy() so a pop after teardown is a no-op. Mirrors music.js.
   var activePodcastPopHandler = null;
   var activeSkinEngine = null; // v1.246: module-scoped so destroy() can tear the skin down (clears body.mms-on)
+  var activePodcastPopoutTeardown = null; // v1.251 (R3): destroy() closes a floating pop-out on a cross-view swap
 
   function init(root) {
     controller = new AbortController();
@@ -188,12 +189,15 @@
         posLabel: skinDur(pos), remLabel: dur > 0 ? ('-' + skinDur(dur - pos)) : '', curNum: ci + 1, total: playable.length,
       };
     }
-    if (nowPlayingPanel && window.FileTubeSkinSurface) {
-      skinEngine = window.FileTubeSkinSurface.create({
-        panel: nowPlayingPanel,
+    // v1.251 (R3): the per-surface config is a BUILDER now - the in-tab panel and the desktop
+    // pop-out (below) are two instances of the same engine over the same podcast ctx.
+    function podcastEngineConfig(panel, winRef) {
+      return {
+        panel: panel,
+        win: winRef,
         getSkinId: function () { return SKINS ? SKINS.activeSkinId() : 'ipod'; },
         getCtx: podcastSkinCtx,
-        hostCtl: function (id) { return document.getElementById(id); },
+        hostCtl: function (id) { return document.getElementById(id); }, // MAIN-document controls - a pop-out click still drives the real player
         onSelectIndex: function (i) { playAt(i); },
         onDock: function () { var pp = window.FileTube && window.FileTube.player; if (pp && typeof pp.dock === 'function') pp.dock(); updateNowPlayingPanel(); if (window.FileTube && window.FileTube.returnToPlayerOrigin) window.FileTube.returnToPlayerOrigin(); }, // v1.247 (F2): dock to the mini on the ORIGIN tab
         // v1.250 (F-UNIFY ride-along): the two DEFERRED v1.246 polish items arrive with the
@@ -205,7 +209,10 @@
           getPlayer: function () { return (window.FileTube && window.FileTube.player) || null; },
           onSkinChange: function () { updateNowPlayingPanel(); }, // repaint with the newly-picked skin
         },
-      });
+      };
+    }
+    if (nowPlayingPanel && window.FileTubeSkinSurface) {
+      skinEngine = window.FileTubeSkinSurface.create(podcastEngineConfig(nowPlayingPanel, window));
       activeSkinEngine = skinEngine; // module-scoped handle for destroy()'s teardown
       // reflect the live element into the skin (music.js ensureSkinReflect parity); the engine's
       // reflect() early-returns unless the skin is actually mounted, so this is a cheap no-op the
@@ -213,10 +220,52 @@
       var mpEl = document.getElementById('media-player');
       if (mpEl && skinEngine) {
         ['play', 'pause', 'timeupdate', 'seeked', 'loadedmetadata', 'loadstart', 'emptied', 'durationchange'].forEach(function (ev) {
-          mpEl.addEventListener(ev, function () { if (skinEngine) skinEngine.reflect(); }, { signal: signal });
+          mpEl.addEventListener(ev, function () {
+            if (skinEngine) skinEngine.reflect();
+            if (popoutShell) popoutShell.reflect(); // the pop-out surface too (its own clock covers throttled tabs)
+          }, { signal: signal });
         });
       }
     }
+    // v1.251 (R3): the DESKTOP pop-out for podcasts - the same shared shell music runs
+    // (Document PiP + plain-window fallback, all the v1.234-235 guards). Same gate shape:
+    // desktop viewport + a podcast episode current.
+    var popoutBtn = root.querySelector('#podcast-popout-btn');
+    function podcastPopoutSupported() {
+      try { if (SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()) return false; } catch (_) { /* treat as desktop */ }
+      return !!(typeof window !== 'undefined' && (window.documentPictureInPicture || typeof window.open === 'function'));
+    }
+    function hasCurrentPodcastEpisode() {
+      var p = window.FileTube && window.FileTube.player;
+      if (!p || !p.currentId) return false;
+      try { var m = typeof p.getCurrentMeta === 'function' ? p.getCurrentMeta() : null; return !!(m && m.resumeMode === 'podcast'); } catch (_) { return false; }
+    }
+    var popoutShell = (window.FileTubeSkinSurface && typeof window.FileTubeSkinSurface.createPopoutShell === 'function')
+      ? window.FileTubeSkinSurface.createPopoutShell({
+        engineConfigFor: function (panel, winRef) { return podcastEngineConfig(panel, winRef); },
+        supported: podcastPopoutSupported,
+        aborted: function () { return signal.aborted; },
+        onStateChange: function () { updatePopoutBtn(); },
+        windowName: 'ft-podcast-pip',
+        panelId: 'podcast-nowplaying-panel',
+      })
+      : null;
+    function updatePopoutBtn() {
+      if (!popoutBtn) return;
+      popoutBtn.hidden = !(podcastPopoutSupported() && hasCurrentPodcastEpisode());
+      popoutBtn.setAttribute('aria-pressed', (popoutShell && popoutShell.isOpen()) ? 'true' : 'false');
+    }
+    if (popoutBtn && popoutShell) popoutBtn.addEventListener('click', function () { popoutShell.toggle(); }, { signal });
+    // the never-both-live split, enforced on resize (the music v1.235 gate finding, same shape).
+    if (popoutShell && typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('resize', function () {
+        var narrow = false;
+        try { narrow = !!(SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()); } catch (_) { /* desktop */ }
+        if (narrow && popoutShell.isOpen()) popoutShell.teardown();
+        else updatePopoutBtn();
+      }, { signal });
+    }
+    activePodcastPopoutTeardown = popoutShell ? function () { popoutShell.teardown(); } : null; // destroy() closes it on a cross-view swap
 
     function setStatus(msg) {
       if (!statusEl) return;
@@ -786,6 +835,10 @@
     // here, double protection).
     function updateNowPlayingPanel() {
       if (!nowPlayingPanel) return;
+      // v1.251 (R3): keep the pop-out surface + its button in step (this is the choke every
+      // episode change routes through - music's repaintPopout/updatePopoutBtn parity).
+      if (popoutShell && hasCurrentPodcastEpisode()) popoutShell.repaint();
+      updatePopoutBtn();
       var p = window.FileTube && window.FileTube.player;
       var expanded = !!(p && typeof p.getState === 'function' && p.getState() === 'full');
       var curId = (p && p.currentId) || null;
@@ -1251,6 +1304,7 @@
     // v1.246: tear the skin down FIRST - unbinds its panel listeners AND clears body.mms-on so
     // a swap to another view never leaves the full-screen cover (frozen scroll) behind (v1.227).
     if (activeSkinEngine) { try { activeSkinEngine.destroy(); } catch (_) { /* ignore */ } activeSkinEngine = null; }
+    if (activePodcastPopoutTeardown) { try { activePodcastPopoutTeardown(); } catch (_) { /* ignore */ } activePodcastPopoutTeardown = null; } // v1.251 (R3)
     if (controller) {
       if (controller.__podcastsCleanup) controller.__podcastsCleanup();
       controller.abort();
