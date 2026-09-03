@@ -93,6 +93,48 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.253.0 - Listen polish: real art, one-row actions, and honest mini-bar returns (2026-09-03)
+
+Dean's same-day v1.252 device round ("the feature is amazing") surfaced three fixes, all
+root-caused from code before editing. (1) LISTEN ART: the skin cover hardcoded
+/albumart/<id>, whose thumbnail fallback serves audio-type items only - a listen (video)
+id rendered the placeholder SVG; the ONE art rule (musicArtUrl) now prefers a track's own
+artUrl, with the activeListenId marker covering the dock-return re-init, on the mobile
+skin, the desktop panel rows, and the pop-out (shared ctx). (2) ACTION ROW: the Listen
+chip made a fifth word overflow the phone row; per Dean's ruling Queue moved under More
+(probe-MEASURED: 390/375px rows 2 -> 1, zero button deformation; at 1280 the bar is 598px
+wide - already compact - so Queue sits under More there too, returning to the row at
+1920/theatre). (3) THE "NOT FULLY MAPPED" GLITCH: deterministic - the player's same-id
+ADOPT path (the no-restart reparent that makes Listen<->Watch seamless) deliberately
+ignores new data, so the mini-bar return target stayed with whichever surface last did a
+GENUINE load. This wave ENDED the v1.221-v1.252 player.js byte-freeze with a surgical
+applyAdoptFlavor (the adopt branch's existing browseCtx carried-field precedent, extended
+to readerHref/resumeMode; watch.js stamps null to claim the video flavor; all eight load
+call sites enumerated).
+
+THE GATE CAUGHT (full gate, serialized seats, both APPROVE + delta re-confirms): QA - a
+RED FULL SUITE the unit-only pre-commit hook hid (two integration tests bound the old
+More-menu list; the v1.79 recurring class, my norm miss - full npm test now precedes the
+gate) and a stale CSS tier comment. Adversarial - 16 mutants, 13 killed outright, 2
+survivors closed with a new desktop-panel binding test (the desktop art arms were
+revert-survivable with a green suite), and the type/autoAdvanceViaTrackNav finding below.
+QA also disclosed its own uncaptured 8194-registration drift run verbatim (tech-debt #192
+grew; gate runs now tee to a file).
+
+KNOWN GAPS (disclosed, tracker rows): #196 - a same-id Listen<->Watch adopt keeps stale
+`type`/`autoAdvanceViaTrackNav` (pre-existing since v1.252): after Listen -> "Watch",
+phone ROTATE takes the audio expand arm, and a finished video AUTO-ADVANCES even with
+autoplay-next OFF; the reverse direction can rotate into the wrong arm over the skin.
+Degrades, never breaks; a naive type refresh would desync the live presentation, so the
+real fix belongs to a future player.js wave. Also #195 (read.js declares no resumeMode -
+effectively unreachable contract wart) and the unbound encodeURIComponent in musicArtUrl
+(adversarial M9, no action demanded). The v1.252 smart-resume gap stands: <=10-minute or
+unsized videos restart at 0:00 on Listen.
+
+Dual-Node: v22.23.1 8210/8210 pass, 0 fail, 0 skipped; v24.14.0 8210/8210, 0 fail, 0
+skipped. player.js diff = applyAdoptFlavor + one call + one export, nothing else.
+DEVICE-PENDING Dean's pass. Next: the endless-autoplay wave (intake locked).
+
 ### v1.252.0 - Listen mode, and a sticker menu you can actually tap (2026-09-03)
 
 Dean's "start immediately" wave off the locked Listen-mode intake, plus his sticker-menu

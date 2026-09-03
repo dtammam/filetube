@@ -2674,5 +2674,11 @@
     "date": "2026-09-03",
     "title": "Listen to any video like a song, and a menu built for thumbs",
     "intent": "Every video's watch page now has a Listen button: it plays the video as audio in the full music player - skins, wheel, the whole experience - perfect for talks and long videos you just want to hear. The menu's first page has a Watch button to jump back to the video exactly where you are; your place is shared both ways. One honest caveat: videos of ten minutes or less start from the beginning when you switch to Listen. Also, the music player's sticker menu got much bigger buttons - everything is now sized for a thumb, so picking speed, loop, a skin, or an Extra no longer takes surgical precision."
+  },
+  {
+    "version": "1.253.0",
+    "date": "2026-09-03",
+    "title": "Listen mode gets its finishing touches",
+    "intent": "Three quick fixes from the first day of Listen mode. The music player now shows the video's actual thumbnail as the cover art instead of a gray placeholder. The watch page's button row fits on one line again on phones - the Queue button moved into the More menu to make room for Listen. And the mini player now remembers which mode you're in: tap it after switching between Listen and Watch and it takes you back to the right one, not the one you left earlier. One known quirk remains: right after switching from Listen back to Watch, a finished video may jump to the next one even if autoplay is off, and rotating the phone can behave oddly - leaving and reopening the video clears it."
   }
 ]
