@@ -1956,10 +1956,27 @@ if (typeof module !== 'undefined' && module.exports) {
         if (playingId !== cur.id) return;
         if (picks.length === 0) return;
         queue = queue.concat(picks);
-        registerTrackNav(i);        // i now has a next; re-arm (recurses, but i !== length-1 any more)
+        // Adversarial S3: recompute the re-arm index from the LIVE queue instead of
+        // trusting the pre-await `i` - the one path that threads every guard (a
+        // same-OBJECT requeue, e.g. playTrackInAlbum's miss arm `queue = [item]`)
+        // can move the track's index while identity AND playingId still pass.
+        var reIdx = queue.indexOf(cur);
+        if (reIdx >= 0) registerTrackNav(reIdx); // now has a next (recurses, but no longer last)
         updateNowPlayingPanel();    // the append is VISIBLE immediately (panel or skin)
       } finally {
         autoplayFetchInFlight = false;
+        // Adversarial W3 (flag starvation, measured): while this flight flew, the
+        // in-flight guard suppressed any legitimate register for a NEW tail (a
+        // queue-replacing action inside the fetch window); if this flight then
+        // DROPPED, nobody retried and playback died at track end with autoplay ON.
+        // Retry ONLY when the live playing track is the live tail AND is not the
+        // track this flight worked - each retry therefore corresponds to a real
+        // state change, so there is no fetch loop (a successful append fails the
+        // playingId===tail test; an unchanged queue fails the !==cur test).
+        var lt = queue.length - 1;
+        if (!signal.aborted && lt >= 0 && queue[lt] && queue[lt] !== cur && playingId === queue[lt].id) {
+          maybeExtendQueueForAutoplay(lt);
+        }
       }
     }
 
