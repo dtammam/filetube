@@ -346,7 +346,7 @@ test('v1.255 source-lock: the wheel scrubber wears the AQUA glass (hard mid cut 
   // the census idiom this file's own iPod body gloss established.
   const fs = require('node:fs'); const path = require('node:path');
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /\.mms-ipod \.mms-fill\{ background:linear-gradient\(var\(--mms-aqua-top\), var\(--mms-aqua-upper\) 48%, var\(--mms-aqua-lower\) 52%, var\(--mms-aqua-lower\) 80%, var\(--mms-aqua-glow\)\); box-shadow:var\(--mms-aqua-fill-shadow\); \}/, 'the Aqua fill: glass top, hard mid cut, bottom glow, edge shadows');
+  assert.match(css, /\.mms-ipod \.mms-fill\{ background:repeating-linear-gradient\(135deg, var\(--mms-aqua-rib\) 0, var\(--mms-aqua-rib\) 5px, var\(--mms-aqua-rib-0\) 5px, var\(--mms-aqua-rib-0\) 10px\), linear-gradient\(var\(--mms-aqua-top\), var\(--mms-aqua-upper\) 48%, var\(--mms-aqua-lower\) 52%, var\(--mms-aqua-lower\) 80%, var\(--mms-aqua-glow\)\); box-shadow:var\(--mms-aqua-fill-shadow\); \}/, 'the Aqua fill: the iconic diagonal ribbing OVER the glass ramp (v1.260), hard mid cut, bottom glow, edge shadows');
   assert.match(css, /\.mms-ipod \.ip-track\{[^}]*box-shadow:var\(--mms-aqua-groove-shadow\)/, 'the groove has the Aqua inner shadow');
   assert.match(css, /--mms-aqua-fill-shadow:inset 0 1px 0 rgba\(255,255,255,\.9\), inset 0 -1px 2px/, 'top highlight + bottom shade tokens defined');
 });
