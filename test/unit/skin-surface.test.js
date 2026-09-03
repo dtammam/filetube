@@ -1033,3 +1033,28 @@ test('v1.256.1 (slim-gate CRITICAL): a CENTER tap refreshes the stash - a stale 
     assert.strictEqual(nextFired, 1, 'the stale zone did NOT replay (move the stash below the guard and this reds)');
   } finally { b.restore(); }
 });
+
+test('v1.257 TRAY: a MAIN-document engine with a grafted tray hook still renders NO row - only the inMainDoc gate can reject it', () => {
+  // The shell injects the hook only in pop-outs, so in production the tab never has one -
+  // which means the gate itself was unbound (its deletion mutant survived). The v1.252
+  // adversarial-W1 pattern: a hook that SAYS ENABLED on the main document, so only the
+  // engine's own surface gate can keep the row out.
+  const b = bootSticker({ extras: false });
+  try {
+    const eng = b.dom.window.FileTubeSkinSurface.create({
+      panel: panel(b.dom),
+      getSkinId: () => 'ipod', getCtx: () => ({ track: {}, upNext: [], fullList: [] }),
+      hostCtl: (id) => b.dom.window.document.getElementById(id),
+      sticker: {
+        onSkinChange: () => {},
+        tray: { enabled: () => true, onToggle: () => {} },
+      },
+    });
+    eng.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    const m = sMenu(b.dom);
+    assert.ok(m.querySelector('[data-skin-loop]'), 'the menu rendered (non-vacuous)');
+    assert.strictEqual(m.querySelector('[data-skin-tray]'), null, 'the main-document surface refuses the row even with a willing hook (delete the gate and this reds)');
+    eng.destroy();
+  } finally { b.restoreAll(); }
+});

@@ -1682,3 +1682,141 @@ test('v1.254 (adversarial W3): a register SUPPRESSED by an in-flight picker is R
     },
   });
 });
+
+// ---- v1.257 TRAY PLAYER --------------------------------------------------------------
+
+test('v1.257 TRAY: dims by mode, the body marker + ipod donor, the toggle round-trip, and mode memory on a fresh open', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'apple', run: async (dom) => {
+    const dimsLog = [];
+    const holder = { pip: makePipWindow() };
+    dom.window.documentPictureInPicture = { requestWindow: (opts) => { dimsLog.push(opts); return Promise.resolve(holder.pip); } };
+    clickPopout(dom); await settle(); await settle();
+    // FULL mode: today's dims, the chosen skin, no marker, and the Tray row present+Off
+    assert.deepStrictEqual(dimsLog[0], { width: 380, height: 700 }, 'full pop-out dims unchanged');
+    const pip1 = holder.pip;
+    assert.ok(!pip1.document.body.classList.contains('mms-tray'), 'no tray marker in full mode');
+    assert.match(pipPanelOf(pip1).className, /mms-apple/, 'the user\'s chosen skin governs the full pop-out');
+    pipPanelOf(pip1).querySelector('[data-skin-sticker]').dispatchEvent(new pip1.MouseEvent('click', { bubbles: true }));
+    const menu1 = pipPanelOf(pip1).querySelector('[data-skin-sticker-menu]');
+    const row1 = menu1.querySelector('[data-skin-tray]');
+    assert.ok(row1, 'the pop-out sticker offers the Tray row');
+    assert.strictEqual(row1.getAttribute('aria-checked'), 'false', 'Off before the toggle');
+    // TOGGLE -> teardown + reopen at tray dims, marker on, ipod donor despite the apple pick
+    holder.pip = makePipWindow();
+    row1.dispatchEvent(new pip1.MouseEvent('click', { bubbles: true }));
+    await settle(); await settle();
+    assert.strictEqual(dimsLog.length, 2, 'the toggle reopened the window');
+    assert.deepStrictEqual(dimsLog[1], { width: 340, height: 210 }, 'the Nano-screen tray dims');
+    const pip2 = holder.pip;
+    assert.ok(pip2.document.body.classList.contains('mms-tray'), 'the BODY marker (survives engine paint)');
+    assert.match(pipPanelOf(pip2).className, /mms-ipod/, 'tray borrows the IPOD donor (the Nano is a Classic LCD sans wheel)');
+    assert.ok(!/mms-apple\b/.test(pipPanelOf(pip2).className), 'the apple pick does not leak into the tray');
+    assert.strictEqual(dom.window.localStorage.getItem('ft-tray-mode'), '1', 'the mode persisted');
+    // the strip's row reads On; toggling BACK restores full mode
+    pipPanelOf(pip2).querySelector('[data-skin-sticker]').dispatchEvent(new pip2.MouseEvent('click', { bubbles: true }));
+    const row2 = pipPanelOf(pip2).querySelector('[data-skin-tray]');
+    assert.strictEqual(row2.getAttribute('aria-checked'), 'true', 'On inside the tray');
+    holder.pip = makePipWindow();
+    row2.dispatchEvent(new pip2.MouseEvent('click', { bubbles: true }));
+    await settle(); await settle();
+    assert.deepStrictEqual(dimsLog[2], { width: 380, height: 700 }, 'toggling back restores the full dims');
+    assert.ok(!holder.pip.document.body.classList.contains('mms-tray'), 'marker gone');
+    assert.strictEqual(dom.window.localStorage.getItem('ft-tray-mode'), '0', 'the mode persisted off');
+    // MODE MEMORY: set tray, close, and a FRESH open goes straight to the strip
+    dom.window.localStorage.setItem('ft-tray-mode', '1');
+    // jsdom's close() fires no pagehide - signal the closure the way the shell listens
+    holder.pip.dispatchEvent(new holder.pip.Event('pagehide'));
+    await settle();
+    holder.pip = makePipWindow();
+    clickPopout(dom); await settle(); await settle();
+    assert.deepStrictEqual(dimsLog[3], { width: 340, height: 210 }, 'a fresh pop-out honors the stored tray mode');
+    assert.ok(holder.pip.document.body.classList.contains('mms-tray'), 'straight to the strip');
+  } });
+});
+
+test('v1.257 TRAY: the MAIN window\'s sticker never offers the row (the hook is shell-injected, pop-out only)', async () => {
+  await boot({ mobile: true, isMusic: true, run: async (dom) => {
+    const st = panel(dom).querySelector('[data-skin-sticker]');
+    assert.ok(st, 'the in-tab sticker painted (populated first)');
+    st.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
+    assert.ok(menu.querySelector('[data-skin-loop]'), 'the menu rendered (non-vacuous)');
+    assert.strictEqual(menu.querySelector('[data-skin-tray]'), null, 'no Tray row in the tab - the view never declares the hook');
+  } });
+});
+
+test('v1.257 (QA W1): the OLD window\'s queued pagehide cannot kill the freshly-toggled tray (the scoped teardown)', async () => {
+  // close() QUEUES pagehide - after a toggle, the browser delivers the old window's
+  // pagehide AFTER the new mount. Unscoped, that teardown destroyed the new window
+  // (QA's measured repro). Bind: toggle, then fire the stale pagehide, new tray lives.
+  await boot({ mobile: false, isMusic: true, skin: 'apple', run: async (dom) => {
+    const holder = { pip: makePipWindow() };
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(holder.pip) };
+    clickPopout(dom); await settle(); await settle();
+    const oldPip = holder.pip;
+    // the browser reality jsdom hides: a CLOSED window still delivers its queued pagehide.
+    // jsdom's real close() neuters dispatch (QA's vacuous-repro warning), so this window's
+    // close only MARKS - keeping the late pagehide deliverable, as in every real browser.
+    oldPip.close = function () { oldPip._closeCalls += 1; oldPip.closed = true; };
+    pipPanelOf(oldPip).querySelector('[data-skin-sticker]').dispatchEvent(new oldPip.MouseEvent('click', { bubbles: true }));
+    holder.pip = makePipWindow();
+    pipPanelOf(oldPip).querySelector('[data-skin-tray]').dispatchEvent(new oldPip.MouseEvent('click', { bubbles: true }));
+    await settle(); await settle();
+    const newPip = holder.pip;
+    assert.ok(newPip.document.body.classList.contains('mms-tray'), 'the tray mounted (populated first)');
+    // the browser reality jsdom's close() hides: the OLD window's pagehide lands LATE
+    oldPip.dispatchEvent(new oldPip.Event('pagehide'));
+    await settle();
+    assert.strictEqual(newPip._closeCalls, 0, 'the stale pagehide did NOT close the new window (delete the pipWin===win scope and this reds)');
+    assert.ok(pipPanelOf(newPip) && pipPanelOf(newPip).isConnected, 'the tray panel survives');
+  } });
+});
+
+test('v1.257 (QA S3+W1b): the tray menu hides the inert Skin chips, and the plain-window fallback never offers the Tray row', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'apple', run: async (dom) => {
+    // full pop-out: chips present, Tray row present (both non-vacuous baselines)
+    const holder = { pip: makePipWindow() };
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(holder.pip) };
+    clickPopout(dom); await settle(); await settle();
+    const full = holder.pip;
+    pipPanelOf(full).querySelector('[data-skin-sticker]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
+    assert.ok(pipPanelOf(full).querySelector('[data-skin-pick]'), 'full pop-out offers the Skin chips');
+    // toggle to tray: the chips vanish (the donor is forced - a pick would visibly no-op)
+    holder.pip = makePipWindow();
+    pipPanelOf(full).querySelector('[data-skin-tray]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
+    await settle(); await settle();
+    const tray = holder.pip;
+    pipPanelOf(tray).querySelector('[data-skin-sticker]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
+    assert.ok(pipPanelOf(tray).querySelector('[data-skin-tray]'), 'the Tray row is there to toggle back (non-vacuous)');
+    assert.strictEqual(pipPanelOf(tray).querySelector('[data-skin-pick]'), null, 'no inert Skin chips inside the tray');
+    // dispose the tray + reset the mode so the fallback assertion is about the ROW, not dims
+    holder.pip = makePipWindow(); // the toggle-back mounts a FRESH window
+    pipPanelOf(tray).querySelector('[data-skin-tray]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
+    await settle(); await settle();
+    holder.pip.dispatchEvent(new holder.pip.Event('pagehide')); await settle();
+    // the PLAIN fallback (no Document PiP): the named-window reuse breaks the toggle, so no row
+    const plain = makePipWindow();
+    delete dom.window.documentPictureInPicture;
+    dom.window.open = () => plain;
+    clickPopout(dom); await settle(); await settle();
+    pipPanelOf(plain).querySelector('[data-skin-sticker]').dispatchEvent(new plain.MouseEvent('click', { bubbles: true }));
+    assert.ok(pipPanelOf(plain).querySelector('[data-skin-loop]'), 'the fallback menu rendered (non-vacuous)');
+    assert.strictEqual(pipPanelOf(plain).querySelector('[data-skin-tray]'), null, 'no Tray row without Document PiP');
+  } });
+});
+
+test('v1.257 (adversarial W-A) source-lock: the Nano reshape rules exist - without them the tray is the full iPod crammed into 340x210', () => {
+  // Measured gap: deleting the whole tray CSS block left the suite green (jsdom has no
+  // layout), and the plan CLAIMED a lock that was never written after the Nano pivot.
+  // Lock the load-bearing reshapes; the selectors deliberately omit the skin-base class
+  // (the v1.232 first-occurrence locks - see the block's own comment).
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /body\.mms-tray \.ip-wheelwrap, body\.mms-tray \.ip-listview\{ display:none; \}/, 'the wheel and list are hidden - the tray is the LCD alone');
+  assert.match(css, /body\.mms-tray \.ip-lcd\{[^}]*height:100%/, 'the LCD fills the tray window');
+  assert.match(css, /body\.mms-tray \.ip-npmain\{ display:flex; align-items:center/, 'art sits beside the meta (the Nano-5g row)');
+  assert.match(css, /body\.mms-tray \.ip-cover\{ width:88px; height:88px/, 'the Nano art box');
+  assert.match(css, /body\.mms-tray \.ip-ttl\{[^}]*text-overflow:ellipsis/, 'the title ellipsizes in the strip');
+  assert.match(css, /body\.mms-tray \.mms-sticker\{ transform:scale\(\.55\)/, 'only the sticker BUTTON shrinks (the menu keeps thumb sizes - QA S4)');
+  assert.match(css, /body\.mms-tray \.music-nowplaying-panel\{ position:fixed; inset:0; \}/, 'the panel fills the pip viewport');
+});

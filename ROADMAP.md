@@ -93,6 +93,41 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.257.0 - The Tray Player (2026-09-03)
+
+Dean's optional desktop mode, shaped live across the wave: the ask (a corner player
+"behind the taskbar but ahead of apps"), his SCREENSHOT proving the pop-out already
+parks flush above the Windows taskbar with the clock untouched, then the Nano pivot
+(two reference photos; the 5g's now-playing screen chosen - it is literally the ask,
+and the IPOD donor already renders it: LCD status bar, art, title/artist, the Aqua
+scrubber). The build: a pop-out-ONLY sticker row (the hook is SHELL-injected -
+music.js/podcasts.js untouched; the first !inMainDoc-gated row) toggling the pip window
+between the full pop-out and a 340x210 Nano strip; ft-tray-mode remembered; the ipod
+donor forced in tray (the user's skin still governs everything else); the reshape is
+pure CSS over the donor's DOM. Platform truths disclosed: no scripted positioning (the
+one-time drag, Chrome remembers), the taskbar/Dock outrank the window by OS design,
+Chrome/Edge only (desktop Safari has no Document PiP - the plain fallback never offers
+the row).
+
+THE GATE CAUGHT (full gate, both APPROVE + delta + final confirms): QA - a MEASURED
+teardown race (close() queues pagehide, so after a toggle the OLD window's late pagehide
+destroyed the NEW one; fixed with a window-scoped listener) and the inert Skin chips
+inside the tray (hidden). Adversarial - the ENTIRE tray CSS block was suite-unbound
+while the plan claimed a source lock that was never written after the Nano pivot (the
+lying-spec class; the lock now exists and its per-line/value/interplay mutants all red).
+My own kill-checks hit the vacuous-repro trap QA had named (jsdom's close neuters
+dispatch) and the v1.232 first-occurrence + comment-porous lock classes - all on the
+record in the commits.
+
+KNOWN GAPS (tech-debt #199, disclosed): a DiPiP browser that REJECTS the grant falls to
+a plain window that still offers the row, and a plain window with the mode pre-set
+mounts the strip with no exit row - both thin-reachability, one fix closes both. Plus
+the plan's device-probe list: DiPiP minimum-size letterboxing, remembered placement
+across the dims change, the browser title bar's height.
+
+Dual-Node: v22.23.1 8241/8241 pass, 0 fail, 0 skipped; v24.14.0 8241/8241, 0 fail, 0
+skipped. player.js/music.js/server.js/podcasts.js 0-diff. DEVICE-PENDING Dean's pass.
+
 ### v1.256.2 - Click wheel, Classic calibration (2026-09-03)
 
 Dean's third feel round ("3deg is a little too hot... make it parity with the iPod

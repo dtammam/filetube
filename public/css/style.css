@@ -11010,6 +11010,24 @@ html[data-modern="on"] .video-uploader {
      device lifts it here and a body position:fixed lock (engine-managed, ghost-scoped)
      takes over the scroll-behind suppression that touch-action:none provided. */
   .mms-full.mms-haptic{ touch-action:auto; }
+  /* ===================== v1.257: the TRAY PLAYER (Nano) =====================
+     The pop-out reshaped to a Nano-5g screen parked above the taskbar (Dean's
+     reference images): the IPOD donor's LCD without the wheel - its status bar,
+     art, title/artist and the Aqua scrubber ARE the Nano language already. The
+     marker rides the PIP BODY (paint() rebuilds the panel's className). */
+  /* selectors deliberately OMIT the skin-base class: the v1.232 source-locks regex the
+     FIRST occurrence of the base-scoped lcd/listview rules, and these earlier-in-file
+     tray rules (and THIS comment - those locks are comment-porous, the v1.50 class)
+     must not shadow them. body.mms-tray plus one class still outranks the originals. */
+  body.mms-tray .music-nowplaying-panel{ position:fixed; inset:0; }
+  body.mms-tray .ip-wheelwrap, body.mms-tray .ip-listview{ display:none; }
+  body.mms-tray .ip-lcd{ flex:1; min-height:0; height:100%; max-width:none; width:100%; border-radius:0; box-sizing:border-box; }
+  body.mms-tray .ip-npmain{ display:flex; align-items:center; gap:var(--space-4); }
+  body.mms-tray .ip-cover{ width:88px; height:88px; /* token-exempt: Nano art box */ flex:none; }
+  body.mms-tray .ip-ttl{ font-size:var(--fs-lg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  body.mms-tray .ip-artist, body.mms-tray .ip-album{ font-size:var(--fs-sm); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  body.mms-tray .ip-stars{ display:none; }
+  body.mms-tray .mms-sticker{ transform:scale(.55); transform-origin:bottom left; } /* QA S4: the BUTTON shrinks; the menu (a wrap sibling) keeps the v1.252 thumb sizes */
   .mms-haptic-ghost{ position:absolute; left:50%; top:50%; width:52px; height:32px; /* token-exempt: native switch box */
     margin:-16px 0 0 -26px; opacity:0.001; z-index:2; /* token-exempt: local stacking over the zones */
     border:0; padding:0; will-change:transform; }
