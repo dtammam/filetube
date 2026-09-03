@@ -1108,5 +1108,28 @@ test('v1.261 haptics (slim W1): the arming cover DERIVES from the wheel rect - a
     const g = ghostOf(b.dom);
     assert.ok(g, 'the ghost mounted');
     assert.strictEqual(g.style.transform, 'scale(4.125)', 'the cover fits the 132px pad (132/32) - a fixed 7.5 here covered the seek bar and routed taps to 0:00');
+    // round-2 W3: the RESTORE call site must derive too - a bare ghostRestTransform()
+    // at gesture-end resurrects the spill after the user's FIRST spin (per-call-site
+    // kill, the v1.254 per-conjunct class).
+    const wheel = panel(b.dom).querySelector('.ip-wheel');
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 66, clientY: 20 }));
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 90, clientY: 40 }));
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true }));
+    assert.strictEqual(g.style.transform, 'scale(4.125)', 'gesture-end restores the DERIVED cover, not the fixed 7.5');
+  } finally { b.restore(); }
+});
+
+test('v1.261 haptics (round-2 W4): the 288px iPod wheel CAPS at 7.5 - the byte-identical claim is measured, not asserted', () => {
+  const b = bootHaptic({});
+  try {
+    b.dom.window.HTMLElement.prototype.getBoundingClientRect = function () {
+      const base = { left: 0, top: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON() {} };
+      if (this.classList && this.classList.contains('ip-wheel')) return { ...base, width: 288, height: 288, right: 288, bottom: 288 };
+      return { ...base, width: 0, height: 0 };
+    };
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    assert.ok(g, 'the ghost mounted');
+    assert.strictEqual(g.style.transform, 'scale(7.5)', '288/32 = 9 CAPS to the iPod 7.5 (drop the Math.min and this reds)');
   } finally { b.restore(); }
 });
