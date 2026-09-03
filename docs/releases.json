@@ -2680,5 +2680,11 @@
     "date": "2026-09-03",
     "title": "Listen mode gets its finishing touches",
     "intent": "Three quick fixes from the first day of Listen mode. The music player now shows the video's actual thumbnail as the cover art instead of a gray placeholder. The watch page's button row fits on one line again on phones - the Queue button moved into the More menu to make room for Listen. And the mini player now remembers which mode you're in: tap it after switching between Listen and Watch and it takes you back to the right one, not the one you left earlier. One known quirk remains: right after switching from Listen back to Watch, a finished video may jump to the next one even if autoplay is off, and rotating the phone can behave oddly - leaving and reopening the video clears it."
+  },
+  {
+    "version": "1.254.0",
+    "date": "2026-09-03",
+    "title": "The music keeps playing",
+    "intent": "Play one song and the player no longer just stops at the end. When your queue runs out - a single track, the last song of an album, the end of a shuffle - FileTube quietly lines up a few more: songs by the same artist first, then good neighbors from your library, skipping anything you've already heard this session. You can see exactly what's coming in the up-next list and skip anything you don't want. It's on by default for music; a new Autoplay switch in the player's sticker menu turns it off and remembers your choice. Podcasts and videos you're listening to are left alone - they still end where they end."
   }
 ]
