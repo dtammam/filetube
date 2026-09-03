@@ -1309,3 +1309,38 @@ test('v1.253 (Dean, listen-art): the skin cover renders the track\'s OWN artUrl 
     },
   });
 });
+
+test('v1.253 (adversarial W2): the DESKTOP now-playing panel rows carry the track\'s own artUrl - a listen row shows the video thumbnail, an artUrl-less row keeps /albumart', async () => {
+  // Adversarial-measured gap: both desktop arms (the updateNowPlayingPanel row
+  // projection carrying queue[j].artUrl, and buildNowPlayingPanelHtml's
+  // musicArtUrl call) survived reverts with the whole suite green - and desktop
+  // is exactly where Listen renders THESE rows (no skin off-mobile), so a silent
+  // revert resurrects Dean's placeholder-art bug there. Bind both arms.
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  await boot({
+    mobile: false, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, LISTEN_VIDEO), playerOverride: listenPlayer(calls),
+    run: async (dom, spy, mod) => {
+      const thumb1 = panel(dom).querySelector('.mnp-queue-thumb');
+      assert.ok(thumb1, 'the desktop panel rendered a queue row (populated first - no skin on desktop)');
+      assert.strictEqual(thumb1.getAttribute('src'), '/thumbnail/vid1', 'the listen row art is the video thumbnail (kills the row-projection AND helper reverts)');
+      // both-axes: a normal artUrl-less track's row keeps the /albumart route
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?play=t9');
+      global.fetch = (u, init) => {
+        const url = String(u);
+        const track = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100 };
+        if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [track] }) });
+        if (/^\/api\/music\/t9$/.test(url)) return Promise.resolve({ ok: true, json: async () => track });
+        if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+        return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+      };
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const thumb2 = panel(dom).querySelector('.mnp-queue-thumb');
+      assert.ok(thumb2, 'the normal track\'s panel row rendered (non-vacuous)');
+      assert.strictEqual(thumb2.getAttribute('src'), '/albumart/t9', 'an artUrl-less row keeps the /albumart route (no over-reach)');
+    },
+  });
+});
