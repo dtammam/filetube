@@ -11019,9 +11019,10 @@ html[data-modern="on"] .video-uploader {
      FIRST occurrence of the base-scoped lcd/listview rules, and these earlier-in-file
      tray rules (and THIS comment - those locks are comment-porous, the v1.50 class)
      must not shadow them. body.mms-tray plus one class still outranks the originals. */
-  body.mms-tray .music-nowplaying-panel{ position:fixed; inset:0; }
+  body.mms-tray{ background:var(--mms-black); }
+  body.mms-tray .music-nowplaying-panel{ position:fixed; inset:0; border-radius:var(--radius-lg); overflow:hidden; }
   body.mms-tray .ip-wheelwrap, body.mms-tray .ip-listview{ display:none; }
-  body.mms-tray .ip-lcd{ flex:1; min-height:0; height:100%; max-width:none; width:100%; border-radius:0; box-sizing:border-box; }
+  body.mms-tray .ip-lcd{ flex:1; min-height:0; max-width:none; width:auto; margin:var(--space-3) var(--space-4); border-radius:8px; /* token-exempt: Nano screen inset */ box-sizing:border-box; }
   body.mms-tray .ip-npmain{ display:flex; align-items:center; gap:var(--space-4); }
   body.mms-tray .ip-cover{ width:88px; height:88px; /* token-exempt: Nano art box */ flex:none; }
   body.mms-tray .ip-ttl{ font-size:var(--fs-lg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
