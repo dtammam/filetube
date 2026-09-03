@@ -806,7 +806,7 @@ test('v1.256 haptics OFF path: no switch support = no ghost, no class, no lock (
   } finally { b.restore(); }
 });
 
-test('v1.256 haptics: the tick engine - one bias flip per detent (3deg since v1.256.1), 30ms throttle DROPS excess, ghost rides the finger; no .checked writes ever', () => {
+test('v1.256 haptics: the tick engine - one bias flip per detent (3.75deg Classic parity), 30ms throttle DROPS excess, ghost rides the finger; no .checked writes ever', () => {
   const b = bootHaptic({});
   const savedPerf = global.performance;
   let t = 1000;
@@ -822,10 +822,10 @@ test('v1.256 haptics: the tick engine - one bias flip per detent (3deg since v1.
     wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: s.clientX, clientY: s.clientY }));
     assert.match(g.style.transform, /^translate\(/, 'gesture start: the ghost shrank from the cover to ride the finger');
     assert.strictEqual(g.style.transform, `translate(${s.clientX + 18}px,${s.clientY}px)`, 'initial bias +18px past the midline');
-    let q = mv(6, 100); // 6deg = 2 detents at 3deg, dt 100ms > throttle -> ONE flip to -18 (the second drops)
+    let q = mv(6, 100); // 6deg = 1 detent at 3.75 (rem 2.25), dt 100ms > throttle -> flip to -18
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'detent 1 flipped the bias (a crossing = a tick)');
-    q = mv(8, 5);       // +2deg accumulated, no detent -> follow only, bias unchanged
-    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'sub-detent movement follows without flipping');
+    q = mv(8, 5);       // +2deg -> crosses a detent (carry 2.25) but dt 5ms -> THROTTLED, bias unchanged
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a throttled detent follows without flipping');
     q = mv(14, 5);      // crosses a detent but only 10ms since the flip -> THROTTLED (dropped, not queued)
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'the Taptic floor drops the tick, never queues it');
     q = mv(24, 100);    // two detents accumulate; one flip allowed per throttle window -> back to +18
@@ -921,7 +921,7 @@ test('v1.256 (QA S2 binding): a rotate-then-release on the ghost suppresses the 
   } finally { b.restore(); }
 });
 
-test('v1.256 (adversarial W1+W2): the FEEL constants are pinned at their boundaries (3deg since v1.256.1), and a throttled detent DROPS - never queues', () => {
+test('v1.256 (adversarial W1+W2): the FEEL constants are pinned at their boundaries (3.75deg Classic parity since v1.256.2), and a throttled detent DROPS - never queues', () => {
   // The seat proved step=1/6 and min=100 (and while->if queueing) all survived the
   // cadence test - Dean's iPod-Classic ruling was unbound. Pin both axes at their
   // exact boundaries, and distinguish drop from queue with a sub-detent follow-up.
@@ -937,25 +937,25 @@ test('v1.256 (adversarial W1+W2): the FEEL constants are pinned at their boundar
     const mv = (deg, dt) => { t += dt; const q = at(deg); wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: q.clientX, clientY: q.clientY })); return q; };
     const s = at(0);
     wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: s.clientX, clientY: s.clientY }));
-    // STEP boundary (v1.256.1: Dean's hotter ruling, 3deg): 2.9 accumulated = NO flip;
-    // +0.2 more crosses 3 = FLIP.
-    let q = mv(2.9, 100);
-    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, '2.9deg accumulated: below the 3deg step, no flip (kills step->1)');
-    q = mv(3.1, 100);
-    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, '3.1deg crosses the 3deg boundary: flip (kills step->6)');
+    // STEP boundary (v1.256.2, Dean's Classic-parity ruling: 3.75deg = 96/rev): 3.7
+    // accumulated = NO flip; +0.1 more crosses 3.75 = FLIP.
+    let q = mv(3.7, 100);
+    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, '3.7deg accumulated: below the 3.75 step, no flip (kills step->1/3)');
+    q = mv(3.8, 100);
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, '3.8deg crosses the 3.75 boundary: flip (kills step->4.5/6)');
     // THROTTLE boundary: a detent 29ms after the flip DROPS (a drop does not stamp
     // hapLast); the next detent lands 1ms later = exactly 30ms after the FLIP, and
     // ticks. (adversarial round 2: dt=30 here would land at flip+59ms and leave
     // MIN unpinned across 30-59 - the 1ms landing pins it to exactly (29, 30].)
-    q = mv(6.2, 29);
+    q = mv(7.6, 29);
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a detent 29ms after a flip is dropped (the 30ms floor holds exactly)');
-    q = mv(9.3, 1);
+    q = mv(11.4, 1);
     assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a detent 30ms after the last FLIP ticks (the floor is 30, not more)');
     // DROP vs QUEUE: a multi-detent burst consumes its backlog even where the throttle
     // drops the flips - a following sub-detent drift must NOT flip (kills while->if).
-    q = mv(24, 100);  // ~14.7deg burst = 4-5 detents at 3deg, one flip allowed -> bias back to -18
+    q = mv(26.4, 100);  // 15deg burst (+0.15 carry) = 4 detents at 3.75, one flip allowed -> bias back to -18
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a burst saturates to one flip');
-    q = mv(25, 100);  // +1deg sub-detent drift, long after the throttle window
+    q = mv(27.4, 100);  // +1deg sub-detent drift (carry 1.15 < 3.75), long after the throttle window
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'no phantom tick after the finger slows: the backlog was CONSUMED, not queued');
     wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true }));
   } finally { global.performance = savedPerf; b.restore(); }

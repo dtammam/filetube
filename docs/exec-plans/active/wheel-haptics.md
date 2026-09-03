@@ -4,8 +4,8 @@ Status: ACTIVE. Dean 2026-09-03: "I need to make haptic vibration work with the 
 wheel... dig deep and be creative. It will be hugely impactful." Device-confirmed the
 same day via the Taptic Probe artifact: "WHOA NEW THINF WORKED... a0 a and c all work."
 Feel ruling: "as aggressive as the iPod Classic" (the real Classic ~96/rev) -
-implemented as HAPTIC_STEP_DEG=4.5 = 80/rev, then RE-TUNED to 3 = 120/rev on his
-device round ("even higher frequency");
+implemented at 4.5 = 80/rev, re-tuned to 3 = 120/rev ("even higher frequency"),
+settled at 3.75 = 96/rev - the Classic's OWN number (v1.256.2: 3 was "a little too hot");
 the 30ms Taptic floor supplies the saturation buzz on fast flicks.
 
 ## The mechanism (device-confirmed on Dean's iPhone, iOS 26.6.1)
@@ -64,7 +64,7 @@ A tap on the ghost also toggles it (one stray tick on a zone tap = acceptable, a
 authentic - the Classic clicked on button presses too).
 
 **T3 - the tick engine**: per-gesture state rides the existing `st`:
-`HAPTIC_STEP_DEG = 3` (v1.256.1, Dean's device re-tune; shipped at 4.5), `HAPTIC_MIN_MS = 30`.
+`HAPTIC_STEP_DEG = 3.75` (v1.256.2 Classic parity; 4.5 then 3 before it), `HAPTIC_MIN_MS = 30`.
 In onMove (BOTH modes, after `d` is computed): `hapAccum += Math.abs(d)`; while
 `hapAccum >= HAPTIC_STEP_DEG` consume one step and (throttle permitting) flip the bias
 and re-translate the ghost so the finger sits ±18px past the midline; excess ticks under
@@ -98,7 +98,7 @@ public/js/skin-surface.js, public/css/style.css, and tests.
 
 Capable-path harness (stub the switch support probe): ghost mounted in the wheel with
 the switch attribute + aria-hidden; rotation drives translate calls at the 4.5-degree
-cadence (advancing performance.now stub for the throttle axis; 3deg since v1.256.1); NO .checked writes
+cadence (advancing performance.now stub for the throttle axis; 3.75deg since v1.256.2); NO .checked writes
 (source-lock + a runtime spy); teardown removes the ghost/lock/class on destroy AND on
 pointercancel; the OFF path (no switch support) mounts nothing and leaves the panel
 class-free (byte-identical axis); zone route-through: a click targeting the ghost over
