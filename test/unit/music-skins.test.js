@@ -409,3 +409,15 @@ test('v1.235.x: the pop-out runs its OWN reflect clock (fixes the true-PiP freez
   // teardown clears it on the window that created it.
   assert.match(js, /clearInterval\(pipClock\)/, 'teardown clears the pop-out clock');
 });
+
+test('v1.259 source-lock: the zune queue CAN scroll - the flex chain and row layout exist (jsdom cannot measure layout)', () => {
+  // Adversarial W1/W2's functional findings: without the .mms-zn-queue flex chain the
+  // qlist auto-heights and .mms-full's overflow:hidden crops rows unreachably; without
+  // the row layout the four spans mash into UA-default buttons. Lock the load-bearers.
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.mms-zune \.mms-zn-queue\{ flex:1; min-height:0; display:flex; flex-direction:column; \}/, 'the queue flex chain (the spotify idiom) - the scroll rides it');
+  assert.match(css, /\.mms-zune \.mms-qlist\{ overflow-y:auto; flex:1; min-height:0;/, 'the list scrolls within the chain');
+  assert.match(css, /\.mms-zune \.mms-row\{ display:flex; align-items:center; width:100%;/, 'rows have real layout, not UA-default buttons');
+  assert.match(css, /\.mms-zune \.mms-row\{[^}]*text-transform:lowercase/, 'the lowercase rows claim is CSS-true');
+});
