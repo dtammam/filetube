@@ -38,6 +38,10 @@
 //     watchBack       OPTIONAL (v1.252 Listen-mode) - { visible(), onTap() }: page 1 gains a
 //                     "Watch" row when visible() (music: the playing item is a listen track);
 //                     onTap navigates back to the item's watch page.
+//     tray            OPTIONAL (v1.257, INJECTED BY THE POP-OUT SHELL only) - { enabled(),
+//                     onToggle() }: page 1 gains a "Tray" row on the pop-out surface;
+//                     toggling reopens the pip window as the taskbar strip. Views never
+//                     declare this hook themselves.
 //     autoplay        OPTIONAL (v1.254 endless autoplay) - { enabled(), onToggle() }: page 1
 //                     gains an "Autoplay" On/Off row (Loop chassis). Both surfaces - the
 //                     setting is device-global, so a pop-out flip is coherent. Omitted
@@ -210,6 +214,16 @@
         autoplay = '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (apOn ? ' is-on' : '') +
           '" data-skin-autoplay aria-checked="' + (apOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-play"></i>Autoplay</span><span class="mms-sm-state">' + (apOn ? 'On' : 'Off') + '</span></button></div>';
       }
+      // v1.257 (TRAY PLAYER): the pop-out-ONLY row - the first !inMainDoc-gated one (the
+      // inverse of watchBack/Extras): a tray toggle makes no sense in the tab, and the
+      // hook only exists when the pop-out shell injected it.
+      var trayRow = '';
+      if (!inMainDoc && stickerCfg.tray && typeof stickerCfg.tray.enabled === 'function') {
+        var trOn = false;
+        try { trOn = !!stickerCfg.tray.enabled(); } catch (_) { trOn = false; }
+        trayRow = '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (trOn ? ' is-on' : '') +
+          '" data-skin-tray aria-checked="' + (trOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-download"></i>Tray</span><span class="mms-sm-state">' + (trOn ? 'On' : 'Off') + '</span></button></div>';
+      }
       // v1.249: the second-page entry - library-backed tracks on the in-tab surface only.
       var extras = extrasEligible()
         ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-extras><span class="mms-sm-lbl"><i class="icon-more"></i>Extras</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
@@ -217,7 +231,7 @@
       return '<div class="mms-sm-sec"><div class="mms-sm-h">Speed</div><div class="mms-sm-speed">' + speed + '</div></div>' +
         '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (loopOn ? ' is-on' : '') +
         '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-refresh"></i>Loop</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
-        autoplay +
+        autoplay + trayRow +
         '<div class="mms-sm-sec"><div class="mms-sm-h">Skin</div><div class="mms-sm-skins">' + chips + '</div></div>' +
         watchBack + extras;
     }
@@ -584,6 +598,12 @@
       var spOpt = e.target.closest('[data-skin-speed]');
       if (spOpt) { applyStickerSpeed(spOpt.getAttribute('data-skin-speed')); refreshStickerMenu(); return true; }
       if (e.target.closest('[data-skin-loop]')) { toggleStickerLoop(); refreshStickerMenu(); return true; }
+      // v1.257: the tray toggle - the shell tears this window down and reopens at the
+      // new dims, so no re-render here (this document is about to die).
+      if (e.target.closest('[data-skin-tray]')) {
+        if (stickerCfg.tray && typeof stickerCfg.tray.onToggle === 'function') { try { stickerCfg.tray.onToggle(); } catch (_) { /* shell best-effort */ } }
+        return true;
+      }
       // v1.254: the autoplay toggle - flip via the view's hook, re-render for the new state.
       if (e.target.closest('[data-skin-autoplay]')) {
         if (stickerCfg.autoplay && typeof stickerCfg.autoplay.onToggle === 'function') { try { stickerCfg.autoplay.onToggle(); } catch (_) { /* view toggle best-effort */ } }
@@ -1087,6 +1107,24 @@
   // every open/close edge; windowName; panelId (defaults to the shared panel identity).
   function createPopoutShell(cfg) {
     var W = 380, H = 700; // ~phone width so the < 768px skin media query engages as-is
+    // v1.257 TRAY PLAYER (Dean, screenshot-validated): an optional strip presentation
+    // parked above the taskbar. Tray = the APPLE skin's DOM reshaped by CSS (the engine
+    // is untouched); the marker class lives on the PIP BODY because engine.paint()
+    // rebuilds the panel's className every render. Position/z-order are the OS's: the
+    // pip window is always-on-top over apps, the taskbar outranks it, and Chrome
+    // remembers where the user drags it (the plan's platform facts).
+    var TRAY_KEY = 'ft-tray-mode';
+    var TRAY_W = 380, TRAY_H = 110;
+    function trayOn() { try { return window.localStorage.getItem(TRAY_KEY) === '1'; } catch (_) { return false; } }
+    function setTrayStored(on) { try { window.localStorage.setItem(TRAY_KEY, on ? '1' : '0'); } catch (_) { /* best-effort */ } }
+    function dims() { return trayOn() ? { width: TRAY_W, height: TRAY_H } : { width: W, height: H }; }
+    function toggleTray() {
+      // Persist, tear the window down, reopen at the new dims - the sticker click's
+      // user activation carries the requestWindow re-grant; pipPending guards doubles.
+      setTrayStored(!trayOn());
+      teardown();
+      open();
+    }
     var pipWin = null, pipPanel = null, pipClock = null, pipPending = false, pipEngine = null;
     var supported = cfg.supported || function () { return true; };
     var aborted = cfg.aborted || function () { return false; };
@@ -1121,7 +1159,15 @@
       panel.className = 'music-nowplaying-panel';
       try { doc.body.classList.add('mms-on'); doc.body.appendChild(panel); } catch (_) { teardown(); return; }
       pipPanel = panel;
-      pipEngine = create(cfg.engineConfigFor(panel, win));
+      var tray = trayOn();
+      if (tray) { try { doc.body.classList.add('mms-tray'); } catch (_) { /* best-effort */ } }
+      var ec = cfg.engineConfigFor(panel, win);
+      // v1.257: tray borrows the APPLE skin's DOM as the strip donor (the user's chosen
+      // skin still governs the full pop-out and the phone); the sticker gains the
+      // pop-out-only Tray row - injected HERE so music.js/podcasts.js stay untouched.
+      if (tray) ec.getSkinId = function () { return 'apple'; };
+      if (ec.sticker) ec.sticker = Object.assign({}, ec.sticker, { tray: { enabled: trayOn, onToggle: toggleTray } });
+      pipEngine = create(ec);
       if (!pipEngine) { teardown(); return; }
       pipEngine.paint();
       // the pop-out's OWN timer drives its reflect - the opener tab throttles under true PiP.
@@ -1137,7 +1183,7 @@
       if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
         try {
           pipPending = true;
-          window.documentPictureInPicture.requestWindow({ width: W, height: H })
+          window.documentPictureInPicture.requestWindow(dims())
             .then(function (w) { mount(w); })
             .catch(function () { pipPending = false; openPlain(); });
           return;
@@ -1148,7 +1194,8 @@
     function openPlain() {
       var w = null;
       try {
-        w = window.open('', windowName, 'width=' + W + ',height=' + H + ',menubar=no,toolbar=no,location=no,status=no');
+        var d = dims();
+        w = window.open('', windowName, 'width=' + d.width + ',height=' + d.height + ',menubar=no,toolbar=no,location=no,status=no');
       } catch (_) { w = null; }
       if (!w) return; // popup blocked - nothing we can do without a gesture
       try { w.document.body.innerHTML = ''; } catch (_) { /* same-origin blank */ }

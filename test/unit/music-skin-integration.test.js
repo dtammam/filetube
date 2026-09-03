@@ -1682,3 +1682,65 @@ test('v1.254 (adversarial W3): a register SUPPRESSED by an in-flight picker is R
     },
   });
 });
+
+// ---- v1.257 TRAY PLAYER --------------------------------------------------------------
+
+test('v1.257 TRAY: dims by mode, the body marker + apple donor, the toggle round-trip, and mode memory on a fresh open', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
+    const dimsLog = [];
+    const holder = { pip: makePipWindow() };
+    dom.window.documentPictureInPicture = { requestWindow: (opts) => { dimsLog.push(opts); return Promise.resolve(holder.pip); } };
+    clickPopout(dom); await settle(); await settle();
+    // FULL mode: today's dims, the chosen skin, no marker, and the Tray row present+Off
+    assert.deepStrictEqual(dimsLog[0], { width: 380, height: 700 }, 'full pop-out dims unchanged');
+    const pip1 = holder.pip;
+    assert.ok(!pip1.document.body.classList.contains('mms-tray'), 'no tray marker in full mode');
+    assert.match(pipPanelOf(pip1).className, /mms-ipod/, 'the user\'s chosen skin governs the full pop-out');
+    pipPanelOf(pip1).querySelector('[data-skin-sticker]').dispatchEvent(new pip1.MouseEvent('click', { bubbles: true }));
+    const menu1 = pipPanelOf(pip1).querySelector('[data-skin-sticker-menu]');
+    const row1 = menu1.querySelector('[data-skin-tray]');
+    assert.ok(row1, 'the pop-out sticker offers the Tray row');
+    assert.strictEqual(row1.getAttribute('aria-checked'), 'false', 'Off before the toggle');
+    // TOGGLE -> teardown + reopen at tray dims, marker on, apple donor despite the ipod pick
+    holder.pip = makePipWindow();
+    row1.dispatchEvent(new pip1.MouseEvent('click', { bubbles: true }));
+    await settle(); await settle();
+    assert.strictEqual(dimsLog.length, 2, 'the toggle reopened the window');
+    assert.deepStrictEqual(dimsLog[1], { width: 380, height: 110 }, 'tray dims');
+    const pip2 = holder.pip;
+    assert.ok(pip2.document.body.classList.contains('mms-tray'), 'the BODY marker (survives engine paint)');
+    assert.match(pipPanelOf(pip2).className, /mms-apple/, 'tray borrows the APPLE donor DOM');
+    assert.ok(!/mms-ipod/.test(pipPanelOf(pip2).className), 'the ipod pick does not leak into the strip');
+    assert.strictEqual(dom.window.localStorage.getItem('ft-tray-mode'), '1', 'the mode persisted');
+    // the strip's row reads On; toggling BACK restores full mode
+    pipPanelOf(pip2).querySelector('[data-skin-sticker]').dispatchEvent(new pip2.MouseEvent('click', { bubbles: true }));
+    const row2 = pipPanelOf(pip2).querySelector('[data-skin-tray]');
+    assert.strictEqual(row2.getAttribute('aria-checked'), 'true', 'On inside the tray');
+    holder.pip = makePipWindow();
+    row2.dispatchEvent(new pip2.MouseEvent('click', { bubbles: true }));
+    await settle(); await settle();
+    assert.deepStrictEqual(dimsLog[2], { width: 380, height: 700 }, 'toggling back restores the full dims');
+    assert.ok(!holder.pip.document.body.classList.contains('mms-tray'), 'marker gone');
+    assert.strictEqual(dom.window.localStorage.getItem('ft-tray-mode'), '0', 'the mode persisted off');
+    // MODE MEMORY: set tray, close, and a FRESH open goes straight to the strip
+    dom.window.localStorage.setItem('ft-tray-mode', '1');
+    // jsdom's close() fires no pagehide - signal the closure the way the shell listens
+    holder.pip.dispatchEvent(new holder.pip.Event('pagehide'));
+    await settle();
+    holder.pip = makePipWindow();
+    clickPopout(dom); await settle(); await settle();
+    assert.deepStrictEqual(dimsLog[3], { width: 380, height: 110 }, 'a fresh pop-out honors the stored tray mode');
+    assert.ok(holder.pip.document.body.classList.contains('mms-tray'), 'straight to the strip');
+  } });
+});
+
+test('v1.257 TRAY: the MAIN window\'s sticker never offers the row (the hook is shell-injected, pop-out only)', async () => {
+  await boot({ mobile: true, isMusic: true, run: async (dom) => {
+    const st = panel(dom).querySelector('[data-skin-sticker]');
+    assert.ok(st, 'the in-tab sticker painted (populated first)');
+    st.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
+    assert.ok(menu.querySelector('[data-skin-loop]'), 'the menu rendered (non-vacuous)');
+    assert.strictEqual(menu.querySelector('[data-skin-tray]'), null, 'no Tray row in the tab - the view never declares the hook');
+  } });
+});
