@@ -441,6 +441,12 @@ test('v1.261 Seattle Classic: the REAL Zune control - a clean pad flanked by Bac
   for (const hook of ['data-skin-menu', 'data-skin-prev', 'data-skin-next', 'data-skin-play', 'data-skin-select']) {
     assert.match(html, new RegExp(hook), 'the ' + hook + ' hook exists (the wheel engine + tap fallbacks all bind)');
   }
+  // slim W2: the render-time glyph axis (reflect self-heals live, but the paint IS what
+  // a paused repaint shows) - both states, the glyph-invert mutant reds here.
+  const paused = skins.renderFull('zune-classic', { ...CTX, playing: false });
+  const playing = skins.renderFull('zune-classic', { ...CTX, playing: true });
+  assert.match(paused, /M8 5v14l11-7z/, 'paused paints the PLAY triangle on the flank');
+  assert.ok(!/M8 5v14l11-7z/.test(playing.split('znc-controls')[1] || ''), 'playing does NOT paint the play triangle in the control row');
 });
 
 

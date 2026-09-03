@@ -1092,3 +1092,21 @@ test('v1.258.1 (slim W1): a tap on the menu\'s DEAD SPACE closes it; a control t
     assert.strictEqual(sMenu(b.dom).hidden, true, 'dead space dismisses the menu');
   } finally { b.restoreAll(); }
 });
+
+
+test('v1.261 haptics (slim W1): the arming cover DERIVES from the wheel rect - a 132px Zune pad gets scale(4.125), never the iPod 7.5 spilling onto the scrub bar', () => {
+  const b = bootHaptic({});
+  try {
+    // real-rect stub BEFORE paint (mount measures during paint; zero-rect jsdom would
+    // exercise only the fallback - the v1.256.1 lesson)
+    b.dom.window.HTMLElement.prototype.getBoundingClientRect = function () {
+      const base = { left: 0, top: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON() {} };
+      if (this.classList && this.classList.contains('ip-wheel')) return { ...base, width: 132, height: 132, right: 132, bottom: 132 };
+      return { ...base, width: 0, height: 0 };
+    };
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    assert.ok(g, 'the ghost mounted');
+    assert.strictEqual(g.style.transform, 'scale(4.125)', 'the cover fits the 132px pad (132/32) - a fixed 7.5 here covered the seek bar and routed taps to 0:00');
+  } finally { b.restore(); }
+});

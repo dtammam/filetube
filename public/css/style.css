@@ -11372,7 +11372,6 @@ html[data-modern="on"] .video-uploader {
   /* the chrome-framed screen (the photo's silver bezel): BIG - it fills above the pad,
      the defining Zune-vs-iPod proportion (the iPod LCD is a fixed 4:3 strip). */
   .mms-zune-classic .ip-lcd{ flex:1; aspect-ratio:auto; border:3px solid var(--mms-znc-chrome2); /* token-exempt: Zune chrome bezel width */ border-radius:var(--radius); box-shadow:0 0 0 1px var(--mms-znc-chrome1), var(--mms-ipod-lcd-shadow); }
-  .mms-zune-classic .ip-ttl{ font-weight:var(--fw-bold); }
   .mms-zune-classic .ip-stars{ display:none; }
   /* the control row: Back flank | chrome pad | Play flank. */
   .mms-zune-classic .znc-controls{ display:flex; align-items:center; justify-content:center; gap:var(--space-6); flex:none; padding:var(--space-5) 0 var(--space-4); }
