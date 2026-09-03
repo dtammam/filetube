@@ -140,6 +140,12 @@ test('per-skin controls: Apple/Spotify have a swap-glyph play + collapse + tap-s
   assert.match(ipod, /data-skin-select/, 'iPod: Select zone (list toggle)');
   assert.match(ipod, /class="mms-playind"/, 'iPod: status-bar play indicator (reflect target)');
   assert.match(ipod, /data-skin-seek/, 'iPod: the LCD bar is tap-to-seek since v1.258.1 (was display-only)');
+  // v1.259 (slim W4): the Seattle/zune controls - the collapse button is the skin's
+  // ONLY exit (no MENU zone), so its absence would trap the user full-screen.
+  const zune = skins.renderFull('zune', CTX);
+  assert.match(zune, /class="mms-play"/, 'zune: the swap-glyph play');
+  assert.match(zune, /data-skin-collapse/, 'zune: the collapse exit (the ONLY way out)');
+  assert.match(zune, /data-skin-seek/, 'zune: tap-to-seek bar');
   assert.ok(!/data-skin-collapse/.test(ipod), 'iPod exits via MENU, not the collapse chevron');
   assert.ok(!/class="mms-play"/.test(ipod), 'iPod has no swap-glyph play (the wheel bottom keeps its ▶❚❚)');
 });
@@ -234,13 +240,18 @@ test('the pause glyph shows only when playing; play glyph when paused', () => {
   assert.match(paused, /aria-label="Play"/, 'paused -> Play affordance');
 });
 
-test('render ESCAPES track/queue text (no HTML injection from a crafted tag/title)', () => {
-  const evil = { track: { title: '<img src=x onerror=alert(1)>', artist: '"><b>', album: 'A&B', artUrl: '/x' },
-    upNext: [{ index: 0, title: '<script>', durLabel: '', state: 'current' }], playing: false, posSec: 0, durSec: 100 };
-  const html = skins.renderFull('spotify', evil);
-  assert.ok(!/<img src=x/.test(html), 'the raw <img> tag never lands in the DOM');
-  assert.ok(!/<script>/.test(html), 'the raw <script> never lands');
-  assert.match(html, /&lt;img src=x/, 'it is escaped');
+test('EVERY skin render ESCAPES track/queue text (no HTML injection from a crafted tag/title)', () => {
+  // v1.259 (slim W4): iterate ALL skins - the zune path LOWERCASES before escaping
+  // (lc-then-esc), and a divergent single-skin fixture left that axis unbound.
+  const evil = { track: { title: '<IMG SRC=x onerror=alert(1)>', artist: '"><b>', album: 'A&B', artUrl: '/x' },
+    upNext: [{ index: 0, title: '<script>', durLabel: '', state: 'current' }],
+    fullList: [{ index: 0, title: '<script>', durLabel: '', state: 'current' }], playing: false, posSec: 0, durSec: 100 };
+  for (const id of skins.IDS) {
+    const html = skins.renderFull(id, evil);
+    assert.ok(!/<img src=x/i.test(html), id + ': the raw img tag never lands in the DOM');
+    assert.ok(!/<script>/.test(html), id + ': the raw script never lands');
+    assert.match(html, /&lt;img src=x/i, id + ': it is escaped (case per the skin\'s own text transform)');
+  }
 });
 
 test('pct clamps position into 0..100 and guards a zero/absent duration', () => {

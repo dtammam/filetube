@@ -123,6 +123,7 @@ summary,
   --fs-3xl: 20px;
   --fs-4xl: 22px;
   --fs-5xl: 32px;
+  --fs-6xl: 44px; /* v1.259: the Metro display size (Seattle's giant lowercase header) */
 
   /* v1.152 master-detail menu: tile tones (colour encodes the group) + the
      era-reactive Appearance tile tints. Fixed, mode-invariant tints that read
@@ -11195,26 +11196,30 @@ html[data-modern="on"] .video-uploader {
   .mms-spotify .mms-qh{ margin:0 0 var(--space-4); font-size:var(--fs-sm); font-weight:var(--fw-bold); }
   .mms-spotify .mms-qlist{ overflow-y:auto; flex:1; min-height:0; margin:0 calc(-1 * var(--space-3)); padding-bottom:var(--space-6); touch-action:pan-y; overscroll-behavior:contain; }
   /* ===================== v1.259: SEATTLE (the Zune, Metro) =====================
-     Black canvas, giant thin lowercase type CROPPED off the right edge (the Metro
-     signature - overflow is the design), a flat square art tile, one magenta accent.
-     Controls are the shared chassis; only the dress differs. */
-  .mms-zune{ background:var(--mms-black); color:var(--mms-white); padding:var(--space-6); }
+     Black canvas, GIANT thin lowercase display type (a long title marquees - the
+     shared overflow behavior - rather than statically cropping), a flat square art
+     tile, one magenta accent. Controls are the shared chassis; only the dress differs. */
+  .mms-zune{ background:var(--mms-black); color:var(--mms-white); padding:var(--space-6); display:flex; flex-direction:column; }
   .mms-zune .mms-zn-brand{ margin-left:auto; font-size:var(--fs-sm); font-weight:var(--fw-bold); color:var(--mms-zn-pink); letter-spacing:var(--tracking-caps); }
-  .mms-zune .mms-zn-now{ font-size:var(--fs-3xl); font-weight:var(--fw-light, 200); /* token-exempt: Metro hairline display weight */ white-space:nowrap; overflow:hidden; margin:0 calc(-1 * var(--space-6)) var(--space-4) 0; opacity:.9; }
-  .mms-zune .mms-art{ width:56vw; max-width:240px; /* token-exempt: Metro tile geometry */ aspect-ratio:1; margin:0 0 var(--space-5); border-radius:0; overflow:hidden; }
+  .mms-zune .mms-zn-now{ font-size:var(--fs-6xl); font-weight:var(--fw-light, 200); /* token-exempt: hairline weight fallback (the --hover-bg idiom) */ white-space:nowrap; overflow:hidden; margin:0 0 var(--space-4); opacity:.9; }
+  .mms-zune .mms-art{ width:56vw; max-width:240px; aspect-ratio:1; margin:0 0 var(--space-5); border-radius:0; overflow:hidden; flex:none; }
   .mms-zune .mms-art img{ width:100%; height:100%; object-fit:cover; }
-  .mms-zune .mms-zn-ttl{ font-size:var(--fs-2xl); font-weight:var(--fw-light, 200); /* token-exempt: Metro hairline display weight */ white-space:nowrap; overflow:hidden; margin-right:calc(-1 * var(--space-6)); }
-  .mms-zune .mms-zn-sub{ font-size:var(--fs-lg); color:var(--mms-zn-pink); white-space:nowrap; overflow:hidden; }
-  .mms-zune .mms-scrub{ margin-top:var(--space-5); }
-  .mms-zune .mms-bar{ height:3px; /* token-exempt: Metro hairline bar */ background:var(--mms-zn-ink); border-radius:0; position:relative; overflow:hidden; }
+  .mms-zune .mms-zn-ttl{ font-size:var(--fs-5xl); font-weight:var(--fw-light, 200); /* token-exempt: hairline weight fallback (the --hover-bg idiom) */ white-space:nowrap; overflow:hidden; }
+  .mms-zune .mms-zn-sub{ font-size:var(--fs-2xl); font-weight:var(--fw-light, 200); /* token-exempt: hairline weight fallback (the --hover-bg idiom) */ color:var(--mms-zn-pink); white-space:nowrap; overflow:hidden; }
+  .mms-zune .mms-scrub{ margin-top:var(--space-5); flex:none; }
+  .mms-zune .mms-bar{ height:3px; background:var(--mms-zn-ink); border-radius:0; position:relative; overflow:hidden; }
   .mms-zune .mms-fill{ background:var(--mms-zn-pink); border-radius:0; }
   .mms-zune .mms-times{ color:var(--mms-zn-dim); }
-  .mms-zune .mms-transport{ display:flex; align-items:center; justify-content:flex-start; gap:var(--space-6); margin-top:var(--space-4); }
+  .mms-zune .mms-transport{ display:flex; align-items:center; justify-content:flex-start; gap:var(--space-6); margin-top:var(--space-4); flex:none; }
   .mms-zune .mms-skip, .mms-zune .mms-play{ color:var(--mms-white); background:transparent; border:0; }
   .mms-zune .mms-play svg, .mms-zune .mms-skip svg{ fill:currentColor; }
-  .mms-zune .mms-qh{ font-size:var(--fs-base); font-weight:var(--fw-light, 200); /* token-exempt: Metro hairline display weight */ color:var(--mms-zn-dim); margin:var(--space-6) 0 var(--space-2); text-transform:lowercase; }
+  /* slim W1: the flex chain the queue's scroll rides (the spotify .mms-queue idiom). */
+  .mms-zune .mms-zn-queue{ flex:1; min-height:0; display:flex; flex-direction:column; }
+  .mms-zune .mms-qh{ font-size:var(--fs-base); font-weight:var(--fw-light, 200); /* token-exempt: hairline weight fallback (the --hover-bg idiom) */ color:var(--mms-zn-dim); margin:var(--space-6) 0 var(--space-2); text-transform:lowercase; flex:none; }
   .mms-zune .mms-qlist{ overflow-y:auto; flex:1; min-height:0; touch-action:pan-y; overscroll-behavior:contain; }
-  .mms-zune .mms-row{ border:0; background:transparent; color:var(--mms-white); }
+  /* slim W2: real row layout (no shared base exists) + the honest lowercase claim. */
+  .mms-zune .mms-row{ display:flex; align-items:center; width:100%; gap:var(--space-3); padding:var(--space-3) 0; text-align:left; cursor:pointer; font-family:var(--font-family); font-size:var(--fs-md); text-transform:lowercase; border:0; background:transparent; color:var(--mms-white); }
+  .mms-zune .mms-row .mms-rt{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .mms-zune .mms-row.is-current .mms-rt{ color:var(--mms-zn-pink); }
   .mms-zune .mms-row.is-played{ color:var(--mms-zn-dim); }
   .mms-spotify .mms-row{ display:flex; align-items:center; gap:var(--space-6); width:100%; padding:var(--space-4) var(--space-3); border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; border-radius:var(--radius-lg); }

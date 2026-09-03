@@ -125,9 +125,9 @@
       '<div class="mms-queue"><h4 class="mms-qh">Next in queue</h4><div class="mms-qlist">' + goRows(ctx, true) + '</div></div>';
   }
   // ZUNE (v1.259, Dean: "add a new Zune theme") - the Metro language: black canvas,
-  // giant thin lowercase type cropped off the edge, a flat art tile, one magenta
-  // accent. Label "Seattle" per the cheeky-riff rule ("hello from seattle" - the
-  // engraving on the real ones). Every control proxies the shared hooks.
+  // GIANT thin lowercase display type (long titles marquee via the shared hooks), a
+  // flat art tile, one magenta accent. Label "Seattle" per the cheeky-riff rule
+  // ("hello from seattle" - the engraving). Every control proxies the shared hooks.
   function renderZune(ctx) {
     var a = ctx.track || {};
     var lc = function (t) { return String(t || '').toLowerCase(); };

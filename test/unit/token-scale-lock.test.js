@@ -88,6 +88,10 @@ const CONTRACT = {
   '--mms-ipod-batt-line': '#4a4b4d', '--mms-ipod-batt1': '#8fe06a', '--mms-ipod-batt2': '#4fb62e',
   '--mms-ipod-groove': '#eceef2',
   '--mms-ipod-blue-hi': '#7fc0ff', '--mms-ipod-blue1': '#3d97f2', '--mms-ipod-blue2': '#1667d6',
+  // v1.259 Seattle (zune) palette - registered per THE VALUE AUTHORITY's own rule
+  // (slim W5; the wave-caught gap: the v1.255 aqua tokens + --mms-sticker-px predate
+  // this and remain unregistered - tech-debt #201).
+  '--mms-zn-pink': '#ec008c', '--mms-zn-dim': '#9a9a9a', '--mms-zn-ink': '#1a1a1a',
   '--mms-ipod-line': 'rgba(60,70,90,.14)',
   '--mms-ipod-wheel1': '#d3d3d2', '--mms-ipod-wheel2': '#c4c4c2', '--mms-ipod-wheel-lbl': '#7c7d80',
   // v1.231.1 gloss sheen: white-alpha stops for the body + wheel highlights.
@@ -110,7 +114,7 @@ const CONTRACT = {
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 127, 'the 60-name contract (see history) + the 67 --mms-* mobile-music-skin tokens (v1.232.2 added 2 silver-gloss stops): v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
+  assert.equal(Object.keys(CONTRACT).length, 130, 'the 60-name contract (see history) + the 70 --mms-* mobile-music-skin tokens (v1.259 +3 zune) (v1.232.2 added 2 silver-gloss stops): v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());
