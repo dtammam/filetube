@@ -93,6 +93,28 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.258.0 - Tray Player, Nano edition (2026-09-03)
+
+Dean's feel round on his functional v1.257 pass ("Love love love LOVE... fully works...
+just a little big... make a few colorways, black/white"): the LCD now INSETS into the
+panel's per-variant aluminum body paint (which was always there - the screen was just
+covering it), the shell rounds over a dark pip body, and the window trims to 310x190.
+COLORWAYS with zero new machinery: the tray donor is VARIANT-AWARE - the Pocket
+Classic's silver and black body palettes ARE black/white - and the tray's sticker chips
+return filtered to the two family picks under a "Color" heading (they live-restyle the
+tray). DISCLOSED: a tray Color pick writes the global skin pref (the colorway IS the
+skin choice - splitting them is Dean's future call).
+
+THE GATE CAUGHT (slim, two rounds, APPROVE): four presence-not-binding gaps on the
+wave's own claims (the full pop-out's complete chip list, the LIVE colorway flip - whose
+binding exposed a harness gap, not a code bug: repaintPopout needs a playing track,
+which production guarantees - the Color/Skin headings, and the dark-body line), a
+stale-spec sweep, and tech-debt #200 (the census token-exempt directive exempts the
+whole LINE - measured hole, no live literal rides it).
+
+Dual-Node: v22.23.1 8242/8242 pass, 0 fail, 0 skipped; v24.14.0 8242/8242, 0 fail, 0
+skipped. Frozen files 0-diff. DEVICE-PENDING Dean's feel.
+
 ### v1.257.0 - The Tray Player (2026-09-03)
 
 Dean's optional desktop mode, shaped live across the wave: the ask (a corner player

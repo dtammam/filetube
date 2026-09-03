@@ -2716,5 +2716,11 @@
     "date": "2026-09-03",
     "title": "The Tray Player",
     "intent": "A new optional desktop mode: pop the player out, open its sticker menu, and flip on Tray - the window becomes a little iPod-Nano-style now-playing screen, sized to park in the corner just above your taskbar. Album art, song and artist, the status bar with its battery, and the glossy progress bar, all in a glanceable strip that floats over your apps but never covers the taskbar or the clock. Drag it to your corner once and the browser remembers the spot; the player reopens in whichever mode you last used. Works in Chrome and Edge on Windows and macOS."
+  },
+  {
+    "version": "1.258.0",
+    "date": "2026-09-03",
+    "title": "Tray Player, Nano edition",
+    "intent": "The corner player now really looks like a little iPod Nano. Its screen sits inset in the player's aluminum body, the whole thing is rounded like the real shell, and it comes in two colorways - silver and black. Open the tray's sticker menu and a new Color section switches between them on the spot (your pick doubles as your player skin everywhere). It's also a touch smaller overall, per the first hands-on."
   }
 ]
