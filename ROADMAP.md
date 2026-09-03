@@ -93,6 +93,16 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.256.2 - Click wheel, Classic calibration (2026-09-03)
+
+Dean's third feel round ("3deg is a little too hot... make it parity with the iPod
+Classic - I think that was the nicest idea"): HAPTIC_STEP_DEG = 3.75 - the real
+Classic's ~96 detents/rev, between the tried 4.5 (80) and 3 (120). The slim-gate delta
+independently re-walked every carry in the boundary tests' state machine, pinned the
+step to (3.7, 3.8] (its own 3.85 probe), confirmed BOTH tried neighbors mutation-dead,
+and caught one more stale prose count (fixed in this release batch). Dual-Node: both
+nodes 8235/8235 pass, 0 fail, 0 skipped. DEVICE-PENDING Dean's feel.
+
 ### v1.256.1 - The wheel's buttons are back, and the ticks got hotter (2026-09-03)
 
 Dean's first hands-on ("it's amazing... but the menu, forward, back, and play button

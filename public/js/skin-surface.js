@@ -751,7 +751,7 @@
     // anywhere on the ghost's ancestor chain (the mms-haptic carve-out + a body scroll
     // lock replace .mms-full's touch-action:none); never preventDefault its touches;
     // NEVER write .checked from JS (kills tracking). Exec plan: wheel-haptics.md.
-    var HAPTIC_STEP_DEG = 3;    // v1.256.1 (Dean's device round: "even higher frequency"): 120 detents/rev, hotter than the Classic's ~96
+    var HAPTIC_STEP_DEG = 3.75; // v1.256.2 (Dean: 3deg "a little too hot... parity with the iPod Classic"): 96 detents/rev, the Classic's own number
     var HAPTIC_MIN_MS = 30;     // the Taptic engine's saturation floor - excess ticks DROP
     var wheelGhost = null;
     var bodyScrollLock = null;  // {y} while the haptic skin owns the body

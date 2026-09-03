@@ -2704,5 +2704,11 @@
     "date": "2026-09-03",
     "title": "The wheel's buttons are back, and the ticks got hotter",
     "intent": "Two quick follow-ups from the first hands-on with the clicking wheel. The Menu, back, forward, and play buttons work again - a quirk in how iPhones report taps on the invisible tick-maker was sending every button press to the center Select, and taps are now tracked by where your finger actually landed. And the ticking itself is more aggressive: a third denser than before, past even the original iPod's click rate, so a fast flick really buzzes."
+  },
+  {
+    "version": "1.256.2",
+    "date": "2026-09-03",
+    "title": "Click wheel, Classic calibration",
+    "intent": "The wheel's ticking is dialed to match the original iPod Classic exactly: 96 clicks per full turn - between the first version's gentler feel and the last one's too-hot buzz. This is the real hardware's own number, so a spin should now feel like the genuine article."
   }
 ]
