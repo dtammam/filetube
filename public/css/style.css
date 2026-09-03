@@ -11385,6 +11385,29 @@ html[data-modern="on"] .video-uploader {
   .mms-zune-classic .ip-zone{ color:transparent; }
   .mms-zune-classic .ip-center.znc-center{ width:min(20vw,64px); height:min(20vw,64px); /* token-exempt: Zune pad center */
     background:radial-gradient(circle at 50% 40%, var(--mms-znc-wheel1), var(--mms-znc-wheel2) 100%); }
+  /* v1.262 (Dean: "move the rest style and overall menu of the original Seattle into
+     the new brown Seattle Classic... maintaining the wheel and buttons"): the METRO
+     SCREEN - Seattle's type language inside the chrome bezel, on the shared screen
+     machinery (scrub/list/marquee bindings untouched; this layer is presentation).
+     Order matters vs the shared fill rules: equal specificity, later wins. */
+  .mms-zune-classic .ip-lcd-in{ background:var(--mms-black); color:var(--mms-white); }
+  .mms-zune-classic .ip-status{ text-transform:lowercase; }
+  .mms-zune-classic .ip-np{ font-weight:var(--fw-light, 200); /* token-exempt: hairline weight fallback (the --hover-bg idiom) */ color:var(--mms-zn-dim); }
+  .mms-zune-classic .mms-playind{ color:var(--mms-zn-pink); }
+  .mms-zune-classic .ip-batt{ display:none; }
+  .mms-zune-classic .ip-cover{ border-radius:0; box-shadow:none; background:var(--mms-zn-ink); }
+  .mms-zune-classic .ip-ttl{ font-size:var(--fs-4xl); font-weight:var(--fw-light, 200); /* token-exempt: hairline weight fallback (the --hover-bg idiom) */ text-transform:lowercase; }
+  .mms-zune-classic .ip-artist{ font-size:var(--fs-xl); font-weight:var(--fw-light, 200); /* token-exempt: hairline weight fallback (the --hover-bg idiom) */ color:var(--mms-zn-pink); text-transform:lowercase; }
+  .mms-zune-classic .ip-album{ font-weight:var(--fw-light, 200); /* token-exempt: hairline weight fallback (the --hover-bg idiom) */ color:var(--mms-zn-dim); text-transform:lowercase; }
+  .mms-zune-classic .ip-nof{ font-weight:var(--fw-light, 200); /* token-exempt: hairline weight fallback (the --hover-bg idiom) */ color:var(--mms-zn-dim); }
+  .mms-zune-classic .ip-track{ height:3px; border-radius:0; background:var(--mms-zn-ink); box-shadow:none; }
+  .mms-zune-classic .mms-fill{ background:var(--mms-zn-pink); border-radius:0; box-shadow:none; }
+  .mms-zune-classic .ip-scrub .mms-pos, .mms-zune-classic .ip-scrub .mms-rem{ color:var(--mms-zn-dim); }
+  .mms-zune-classic .ip-listview{ background:var(--mms-black); }
+  .mms-zune-classic .mms-row{ color:var(--mms-white); }
+  .mms-zune-classic .mms-row .mms-rt{ text-transform:lowercase; font-weight:var(--fw-light, 200); /* token-exempt: hairline weight fallback (the --hover-bg idiom) */ }
+  .mms-zune-classic .mms-row .mms-rn, .mms-zune-classic .mms-row .mms-rd, .mms-zune-classic .mms-chev-r{ color:var(--mms-zn-dim); }
+  .mms-zune-classic .mms-row.is-current .mms-rt{ color:var(--mms-zn-pink); }
 
   /* v1.232 (Dean): iPod MARQUEE - long song/album/artist names slowly scroll to reveal
      the full text, like a real iPod. music.js wraps an overflowing line in .mms-mq and
