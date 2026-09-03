@@ -186,6 +186,13 @@
       var loopOn = liveLoop();
       var skins = SKINS.SKINS || [];
       var active = (typeof SKINS.activeSkinId === 'function') ? SKINS.activeSkinId() : '';
+      // v1.257 (QA S3): inside the TRAY the donor skin is forced, so the chips would
+      // visibly do nothing (the pref still writes; the tray ignores it) - hide the
+      // section there. trayActive is the same hook the Tray row renders from.
+      var trayActive = false;
+      if (!inMainDoc && stickerCfg.tray && typeof stickerCfg.tray.enabled === 'function') {
+        try { trayActive = !!stickerCfg.tray.enabled(); } catch (_) { trayActive = false; }
+      }
       var chips = skins.map(function (s) {
         var on = s.id === active;
         return '<button type="button" role="menuitemradio" class="mms-sm-chip' + (on ? ' is-on' : '') +
@@ -232,7 +239,7 @@
         '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (loopOn ? ' is-on' : '') +
         '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-refresh"></i>Loop</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
         autoplay + trayRow +
-        '<div class="mms-sm-sec"><div class="mms-sm-h">Skin</div><div class="mms-sm-skins">' + chips + '</div></div>' +
+        (trayActive ? '' : '<div class="mms-sm-sec"><div class="mms-sm-h">Skin</div><div class="mms-sm-skins">' + chips + '</div></div>') +
         watchBack + extras;
     }
     // Inject the sticker + its (initially hidden) menu into a freshly-painted panel. The
@@ -1107,9 +1114,9 @@
   // every open/close edge; windowName; panelId (defaults to the shared panel identity).
   function createPopoutShell(cfg) {
     var W = 380, H = 700; // ~phone width so the < 768px skin media query engages as-is
-    // v1.257 TRAY PLAYER (Dean, screenshot-validated): an optional strip presentation
-    // parked above the taskbar. Tray = the APPLE skin's DOM reshaped by CSS (the engine
-    // is untouched); the marker class lives on the PIP BODY because engine.paint()
+    // v1.257 TRAY PLAYER (Dean, screenshot-validated): an optional Nano presentation
+    // parked above the taskbar. Tray = the IPOD skin's LCD sans wheel, reshaped by CSS
+    // (the engine is untouched); the marker class lives on the PIP BODY because engine.paint()
     // rebuilds the panel's className every render. Position/z-order are the OS's: the
     // pip window is always-on-top over apps, the taskbar outranks it, and Chrome
     // remembers where the user drags it (the plan's platform facts).
@@ -1168,13 +1175,17 @@
       // and the phone. The sticker gains the pop-out-only Tray row - injected HERE so
       // music.js/podcasts.js stay untouched.
       if (tray) ec.getSkinId = function () { return 'ipod'; };
-      if (ec.sticker) ec.sticker = Object.assign({}, ec.sticker, { tray: { enabled: trayOn, onToggle: toggleTray } });
+      var dipip = !!(window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function');
+      if (ec.sticker && dipip) ec.sticker = Object.assign({}, ec.sticker, { tray: { enabled: trayOn, onToggle: toggleTray } }); // QA W1: no row on the plain-window fallback (its named-window reuse breaks the toggle)
       pipEngine = create(ec);
       if (!pipEngine) { teardown(); return; }
       pipEngine.paint();
       // the pop-out's OWN timer drives its reflect - the opener tab throttles under true PiP.
       try { pipClock = win.setInterval(function () { if (pipEngine) pipEngine.reflect(); }, 250); } catch (_) { pipClock = null; }
-      var onClose = function () { teardown(); };
+      // QA gate W1 (v1.257): SCOPE the teardown to its own window - close() QUEUES
+      // pagehide, so after a tray toggle the OLD window's late pagehide would tear
+      // down the NEW one (and mid-grant it disarmed the v1.235 pipPending guard).
+      var onClose = function () { if (pipWin === win) teardown(); };
       try { win.addEventListener('pagehide', onClose); win.addEventListener('unload', onClose); } catch (_) { /* ignore */ }
       onStateChange();
     }

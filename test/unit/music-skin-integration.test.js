@@ -1685,7 +1685,7 @@ test('v1.254 (adversarial W3): a register SUPPRESSED by an in-flight picker is R
 
 // ---- v1.257 TRAY PLAYER --------------------------------------------------------------
 
-test('v1.257 TRAY: dims by mode, the body marker + apple donor, the toggle round-trip, and mode memory on a fresh open', async () => {
+test('v1.257 TRAY: dims by mode, the body marker + ipod donor, the toggle round-trip, and mode memory on a fresh open', async () => {
   await boot({ mobile: false, isMusic: true, skin: 'apple', run: async (dom) => {
     const dimsLog = [];
     const holder = { pip: makePipWindow() };
@@ -1701,7 +1701,7 @@ test('v1.257 TRAY: dims by mode, the body marker + apple donor, the toggle round
     const row1 = menu1.querySelector('[data-skin-tray]');
     assert.ok(row1, 'the pop-out sticker offers the Tray row');
     assert.strictEqual(row1.getAttribute('aria-checked'), 'false', 'Off before the toggle');
-    // TOGGLE -> teardown + reopen at tray dims, marker on, apple donor despite the ipod pick
+    // TOGGLE -> teardown + reopen at tray dims, marker on, ipod donor despite the apple pick
     holder.pip = makePipWindow();
     row1.dispatchEvent(new pip1.MouseEvent('click', { bubbles: true }));
     await settle(); await settle();
@@ -1742,5 +1742,62 @@ test('v1.257 TRAY: the MAIN window\'s sticker never offers the row (the hook is 
     const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
     assert.ok(menu.querySelector('[data-skin-loop]'), 'the menu rendered (non-vacuous)');
     assert.strictEqual(menu.querySelector('[data-skin-tray]'), null, 'no Tray row in the tab - the view never declares the hook');
+  } });
+});
+
+test('v1.257 (QA W1): the OLD window\'s queued pagehide cannot kill the freshly-toggled tray (the scoped teardown)', async () => {
+  // close() QUEUES pagehide - after a toggle, the browser delivers the old window's
+  // pagehide AFTER the new mount. Unscoped, that teardown destroyed the new window
+  // (QA's measured repro). Bind: toggle, then fire the stale pagehide, new tray lives.
+  await boot({ mobile: false, isMusic: true, skin: 'apple', run: async (dom) => {
+    const holder = { pip: makePipWindow() };
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(holder.pip) };
+    clickPopout(dom); await settle(); await settle();
+    const oldPip = holder.pip;
+    oldPip.querySelectorAllStickerOpen = pipPanelOf(oldPip).querySelector('[data-skin-sticker]');
+    oldPip.querySelectorAllStickerOpen.dispatchEvent(new oldPip.MouseEvent('click', { bubbles: true }));
+    holder.pip = makePipWindow();
+    pipPanelOf(oldPip).querySelector('[data-skin-tray]').dispatchEvent(new oldPip.MouseEvent('click', { bubbles: true }));
+    await settle(); await settle();
+    const newPip = holder.pip;
+    assert.ok(newPip.document.body.classList.contains('mms-tray'), 'the tray mounted (populated first)');
+    // the browser reality jsdom's close() hides: the OLD window's pagehide lands LATE
+    oldPip.dispatchEvent(new oldPip.Event('pagehide'));
+    await settle();
+    assert.strictEqual(newPip._closeCalls, 0, 'the stale pagehide did NOT close the new window (delete the pipWin===win scope and this reds)');
+    assert.ok(pipPanelOf(newPip) && pipPanelOf(newPip).isConnected, 'the tray panel survives');
+  } });
+});
+
+test('v1.257 (QA S3+W1b): the tray menu hides the inert Skin chips, and the plain-window fallback never offers the Tray row', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'apple', run: async (dom) => {
+    // full pop-out: chips present, Tray row present (both non-vacuous baselines)
+    const holder = { pip: makePipWindow() };
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(holder.pip) };
+    clickPopout(dom); await settle(); await settle();
+    const full = holder.pip;
+    pipPanelOf(full).querySelector('[data-skin-sticker]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
+    assert.ok(pipPanelOf(full).querySelector('[data-skin-pick]'), 'full pop-out offers the Skin chips');
+    // toggle to tray: the chips vanish (the donor is forced - a pick would visibly no-op)
+    holder.pip = makePipWindow();
+    pipPanelOf(full).querySelector('[data-skin-tray]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
+    await settle(); await settle();
+    const tray = holder.pip;
+    pipPanelOf(tray).querySelector('[data-skin-sticker]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
+    assert.ok(pipPanelOf(tray).querySelector('[data-skin-tray]'), 'the Tray row is there to toggle back (non-vacuous)');
+    assert.strictEqual(pipPanelOf(tray).querySelector('[data-skin-pick]'), null, 'no inert Skin chips inside the tray');
+    // dispose the tray + reset the mode so the fallback assertion is about the ROW, not dims
+    holder.pip = makePipWindow(); // the toggle-back mounts a FRESH window
+    pipPanelOf(tray).querySelector('[data-skin-tray]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
+    await settle(); await settle();
+    holder.pip.dispatchEvent(new holder.pip.Event('pagehide')); await settle();
+    // the PLAIN fallback (no Document PiP): the named-window reuse breaks the toggle, so no row
+    const plain = makePipWindow();
+    delete dom.window.documentPictureInPicture;
+    dom.window.open = () => plain;
+    clickPopout(dom); await settle(); await settle();
+    pipPanelOf(plain).querySelector('[data-skin-sticker]').dispatchEvent(new plain.MouseEvent('click', { bubbles: true }));
+    assert.ok(pipPanelOf(plain).querySelector('[data-skin-loop]'), 'the fallback menu rendered (non-vacuous)');
+    assert.strictEqual(pipPanelOf(plain).querySelector('[data-skin-tray]'), null, 'no Tray row without Document PiP');
   } });
 });
