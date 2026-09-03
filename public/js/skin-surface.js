@@ -848,7 +848,9 @@
           var cls = 'mnp-queue-row'
             + (it.state === 'played' ? ' is-played' : '')
             + (it.state === 'current' ? ' is-current' : '');
-          return '<button type="button" class="' + cls + '"' + (it.state === 'current' ? ' aria-current="true"' : '') + ' data-index="' + it.index + '">' +
+          // Number() coercion (QA gate S4): a two-consumer API now - an attribute-position
+          // interpolation must never trust a caller's index shape (both callers pass ints).
+          return '<button type="button" class="' + cls + '"' + (it.state === 'current' ? ' aria-current="true"' : '') + ' data-index="' + Number(it.index) + '">' +
             '<img class="mnp-queue-thumb art-shimmer" src="' + panelEscape(it.artUrl) + '" alt="" loading="lazy" />' +
             '<span class="mnp-queue-main">' +
             '<span class="mnp-queue-title">' + panelEscape(it.title || 'Track') + '</span>' +

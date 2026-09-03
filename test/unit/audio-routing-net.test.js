@@ -30,8 +30,9 @@ const DISPOSITIONS = {
   },
   'main.js': {
     count: 4,
-    why: 'card/row/grid FALLBACKS after musicHrefForItem (the common-rule delegate) returned '
-      + 'null, plus the grid click-delegation SELECTOR (reads hrefs, produces none).',
+    why: 'two card/row FALLBACKS after musicHrefForItem (the common-rule delegate) returned '
+      + 'null, the grid click-delegation SELECTOR (reads hrefs, produces none), and one '
+      + 'COMMENT naming the deep-link shape (main.js ~243).',
   },
   'music.js': {
     count: 1,

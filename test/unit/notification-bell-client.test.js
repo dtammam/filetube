@@ -181,7 +181,9 @@ test('v1.73: a podcast row deep-links /podcasts?play= and wears the SHOW cover; 
 test('v1.73 (adversarial W5): the bell row TAP stashes a watch seed for MEDIA rows only (the fourth strike of the seed class)', () => {
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/js/common.js'), 'utf8');
   const clickIdx = src.indexOf('// v1.52: partial seed');
-  const tail = src.slice(clickIdx, clickIdx + 900);
+  // window widened 900 -> 1600 for the v1.251 S3 annotation block (the guard gained a
+  // six-line new-premise note between the anchor and the stash; semantics unchanged).
+  const tail = src.slice(clickIdx, clickIdx + 1600);
   assert.ok(tail.includes("if ((m.kind || 'media') === 'media') {"), 'the media-positive guard exists at the bell click site');
   assert.ok(tail.indexOf("(m.kind || 'media') === 'media'") < tail.indexOf('stashWatchSeed({'), 'and the stash sits INSIDE it');
 });

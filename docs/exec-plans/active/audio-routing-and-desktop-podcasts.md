@@ -42,16 +42,19 @@ if Dean asks. music.js:2102 is the deliberate ao=1 miss-bounce (keep).
 Derivation kept passing: the pinned sidebar links to `/?root=<dir>` (common.js:~3400) ->
 main.js's covered buildCardHtml (2517) -> the same /api/videos endpoint, whose mapper spreads
 `...item` so `type` should be present. Two live hypotheses, each with a falsifying probe:
-- H1 LEGACY DATA: old scans' db.metadata items lack a baked `type` (the feed serializer emits
-  it conditionally at server.js:11206) -> musicHrefForItem returns null for exactly those
-  items. Probe: a jsdom boot of the real ?root= flow with a type-less item (red = H1); fix
-  shape = derive audio-ness SERVER-SIDE at serve time (ext/codec-derived, emitted uniformly
-  on every list surface) rather than trusting a stored field - NO new persisted field (the
-  persist-gate scar class stays closed).
-- H2 A DIFFERENT RENDER PATH on Dean's device (view-mode/layout variant not yet identified).
-  Probe: the same jsdom boot green + H1 disproven -> ask Dean for one device observation
-  (the URL the tap lands on).
-R1 BUILDS THE REPRO FIRST and fixes the proven mechanism - never a theory patch.
+- H1 LEGACY DATA - CONFIRMED, SHIPPED (R1; amended per the QA gate, W2 - the record must
+  match the shipped mechanism): old scans' db.metadata items lack a baked `type`, and the
+  scan's reuse arms backfilled releaseDate/youtubeId but NEVER type - proven by CODE
+  DERIVATION (the reuse-arm reading + the conditional serializer emission), which accounted
+  for the symptom fully (older pinned-channel downloads misroute, the recent-item feed
+  works), discharging H2 without a device probe. SHIPPED FIX: a SCHEMA-ONLY scan-time
+  BACKFILL of the existing `type` field in BOTH reuse arms (NOT the originally-sketched
+  serve-time derivation - the backfill uses the established releaseDate/youtubeId pattern,
+  heals every read surface at once incl. the v1.242 Music projection, is presence-wins, and
+  is hard-gated zero-spawn by scan-type-backfill.test.js). DEPLOYMENT NOTE (disclose in the
+  release + Dean's probe list): the heal lands on the FIRST POST-DEPLOY SCAN - the pinned
+  channel stays misrouted until it runs.
+- H2 A DIFFERENT RENDER PATH: discarded - H1's mechanism fully explains the observation.
 
 ### Desktop podcasts today (the legacy panel)
 podcasts.js:755 updateNowPlayingPanel: mobile -> the shared skin (correct); desktop -> a
@@ -79,6 +82,7 @@ open/mount/teardown/clock, Document-PiP + window fallback, the v1.235 gate histo
 
 ## Predictions (re-verified each commit)
 - `git diff main -- public/js/player.js | wc -l` == 0 at every commit.
-- No new STORED per-item db.metadata field anywhere (H1's fix is serve-time derivation).
+- No NEW stored per-item db.metadata field anywhere (H1's fix backfills the EXISTING `type`
+  field via the established schema-only pattern - amended per the QA gate, W2).
 - R3 leaves music-skin-integration (64) green with zero assertion edits (shell extraction is
   a move, not a behavior change); any needed edit is a disclosed finding.

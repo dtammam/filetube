@@ -1,10 +1,10 @@
 # Player Extras (watch-page action fidelity on the music skin) + engine Unify
 
-Status: SHIPPED (all three asks) - F-CRITTERS v1.248.0, F-EXTRAS v1.249.0 (Dean device-passed:
-"It's PERFECT"), F-UNIFY v1.250.0 (2026-09-02, full gate SERIALIZED seats, both APPROVE,
-dual-Node 8174/8174, DEVICE-PENDING). This plan moves to completed/ once v1.250 gets Dean's
-device pass; the QUEUE section below carries the follow-on waves (LISTEN-MODE next, its
-intake locked). v1.249 notes kept for the record: queue uses the MEDIA kind (a projected id
+Status: SHIPPED (all three asks, ALL device-passed) - F-CRITTERS v1.248.0, F-EXTRAS v1.249.0
+(Dean: "It's PERFECT"), F-UNIFY v1.250.0 (2026-09-02, full gate SERIALIZED seats, both
+APPROVE, dual-Node 8174/8174; Dean device-passed same day: "fantastic"). Retired to
+completed/ in the v1.251 wave; the QUEUE section below carried the follow-on waves
+(LISTEN-MODE next, its intake locked) into the active plan. v1.249 notes kept for the record: queue uses the MEDIA kind (a projected id
 is not in ns.tracks - kind 'track' would 404); Extras is in-tab + library-backed tracks only;
 the record correction for commit 804b238f's message - Move closes the player AFTER
 requestMoveItem succeeds (watch.js parity), not before; gate residuals in tech-debt #191/#192.

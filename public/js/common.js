@@ -3557,6 +3557,8 @@ function buildNotificationRowModel(row) {
   // episode) and wear the SHOW cover; media rows are byte-identical.
   // (The bell row TAP's watch-seed stash is guarded media-positive at the
   // click site - adversarial W5, the fourth strike of the seed class.)
+  // v1.251: an audio media row's href is /music now - the click-site stash stays
+  // safe via consumeWatchSeed's id-guard/TTL (see the stash-site notes).
   const isPodcast = row.kind === 'podcast';
   // v1.251 (Dean's consistency rule): an AUDIO media bell row opens Music - the
   // /api/notifications row carries `type` (+ chapterCount for albums), so the ONE
@@ -3846,6 +3848,12 @@ function injectNotificationBellIfEnabled() {
             // v1.73 (adversarial W5, the FOURTH strike of the seed class):
             // media-positive - a podcast row navigates to /podcasts and
             // must never prime a watch page it will not visit.
+            // v1.251 (QA gate S3): "media" no longer implies watch-bound - an AUDIO
+            // media row navigates to /music now. The stash stays SAFE anyway:
+            // consumeWatchSeed is id-guarded, single-shot and TTL'd, so an audio
+            // row's seed either dies unmatched or legitimately paints the ao=1
+            // miss-bounce's watch page. Annotated, not tightened (a fifth-strike
+            // href-is-watch guard is an option if this class ever bites again).
             if ((m.kind || 'media') === 'media') {
               stashWatchSeed({
                 id: m.mediaId,
@@ -4413,6 +4421,12 @@ function injectQueueChrome() {
             // /podcasts and must never prime a watch page it will not visit.
             // v1.72: 'track' joined the kinds, so the guard names media
             // POSITIVELY (the advance seam's exact fix, same class).
+            // v1.251 (QA gate S3): "media" no longer implies watch-bound - an AUDIO
+            // media row navigates to /music now. The stash stays SAFE anyway:
+            // consumeWatchSeed is id-guarded, single-shot and TTL'd, so an audio
+            // row's seed either dies unmatched or legitimately paints the ao=1
+            // miss-bounce's watch page. Annotated, not tightened (a fifth-strike
+            // href-is-watch guard is an option if this class ever bites again).
             if ((m.kind || 'media') === 'media') {
               stashWatchSeed({
                 id: m.mediaId, title: m.title,
