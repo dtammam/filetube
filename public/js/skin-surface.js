@@ -186,14 +186,17 @@
       var loopOn = liveLoop();
       var skins = SKINS.SKINS || [];
       var active = (typeof SKINS.activeSkinId === 'function') ? SKINS.activeSkinId() : '';
-      // v1.257 (QA S3): inside the TRAY the donor skin is forced, so the chips would
-      // visibly do nothing (the pref still writes; the tray ignores it) - hide the
-      // section there. trayActive is the same hook the Tray row renders from.
+      // v1.257 (QA S3) -> v1.258 (Dean's colorway round): inside the TRAY the chips are
+      // FILTERED to the ipod family - those picks genuinely restyle the tray (the
+      // silver/black body palettes are the colorways); non-family picks would visibly
+      // no-op there and stay hidden. NOTE the pick still writes the GLOBAL skin pref
+      // (the tray colorway IS the skin choice - disclosed).
       var trayActive = false;
       if (!inMainDoc && stickerCfg.tray && typeof stickerCfg.tray.enabled === 'function') {
         try { trayActive = !!stickerCfg.tray.enabled(); } catch (_) { trayActive = false; }
       }
-      var chips = skins.map(function (s) {
+      var chipSkins = trayActive ? skins.filter(function (s) { return s.id === 'ipod' || s.base === 'ipod'; }) : skins;
+      var chips = chipSkins.map(function (s) {
         var on = s.id === active;
         return '<button type="button" role="menuitemradio" class="mms-sm-chip' + (on ? ' is-on' : '') +
           '" data-skin-pick="' + escapeHtml(s.id) + '" aria-checked="' + (on ? 'true' : 'false') + '">' +
@@ -239,7 +242,7 @@
         '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (loopOn ? ' is-on' : '') +
         '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-refresh"></i>Loop</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
         autoplay + trayRow +
-        (trayActive ? '' : '<div class="mms-sm-sec"><div class="mms-sm-h">Skin</div><div class="mms-sm-skins">' + chips + '</div></div>') +
+        '<div class="mms-sm-sec"><div class="mms-sm-h">' + (trayActive ? 'Color' : 'Skin') + '</div><div class="mms-sm-skins">' + chips + '</div></div>' +
         watchBack + extras;
     }
     // Inject the sticker + its (initially hidden) menu into a freshly-painted panel. The
@@ -1121,7 +1124,7 @@
     // pip window is always-on-top over apps, the taskbar outranks it, and Chrome
     // remembers where the user drags it (the plan's platform facts).
     var TRAY_KEY = 'ft-tray-mode';
-    var TRAY_W = 340, TRAY_H = 210; // the Nano-5g screen ratio (Dean's reference images)
+    var TRAY_W = 310, TRAY_H = 190; // v1.258 (Dean's feel round): slightly smaller on net
     function trayOn() { try { return window.localStorage.getItem(TRAY_KEY) === '1'; } catch (_) { return false; } }
     function setTrayStored(on) { try { window.localStorage.setItem(TRAY_KEY, on ? '1' : '0'); } catch (_) { /* best-effort */ } }
     function dims() { return trayOn() ? { width: TRAY_W, height: TRAY_H } : { width: W, height: H }; }
@@ -1170,11 +1173,25 @@
       if (tray) { try { doc.body.classList.add('mms-tray'); } catch (_) { /* best-effort */ } }
       var ec = cfg.engineConfigFor(panel, win);
       // v1.257: tray borrows the IPOD skin's DOM (Dean's Nano-5g reference: the tray IS
-      // a Classic LCD without the wheel - status bar, art, title/artist, the Aqua scrub
-      // all come from the donor); the user's chosen skin still governs the full pop-out
-      // and the phone. The sticker gains the pop-out-only Tray row - injected HERE so
-      // music.js/podcasts.js stay untouched.
-      if (tray) ec.getSkinId = function () { return 'ipod'; };
+      // a Classic LCD without the wheel). v1.258 (his feel round, "a few colorways -
+      // black/white"): an ipod-FAMILY pick keeps its VARIANT - the family's silver and
+      // black body palettes ARE the colorways - and anything else falls to base silver.
+      // The user's chosen skin still governs the full pop-out and the phone. The sticker
+      // gains the pop-out-only Tray row - injected HERE so music.js/podcasts.js stay
+      // untouched.
+      if (tray) {
+        var origGetSkin = ec.getSkinId;
+        ec.getSkinId = function () {
+          var id = null;
+          try { id = origGetSkin ? origGetSkin() : null; } catch (_) { id = null; }
+          try {
+            var reg = window.FileTubeMusicSkins;
+            var sk = reg && reg.skinById ? reg.skinById(id) : null;
+            if (sk && (id === 'ipod' || sk.base === 'ipod')) return id;
+          } catch (_) { /* fall through to the base */ }
+          return 'ipod';
+        };
+      }
       var dipip = !!(window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function');
       if (ec.sticker && dipip) ec.sticker = Object.assign({}, ec.sticker, { tray: { enabled: trayOn, onToggle: toggleTray } }); // QA W1: no row on the plain-window fallback (its named-window reuse breaks the toggle)
       pipEngine = create(ec);
