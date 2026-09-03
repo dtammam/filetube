@@ -1859,3 +1859,18 @@ test('v1.258 colorways: a Pocket Classic (Black) pick keeps its BLACK body in th
     assert.match(pipPanelOf(pip).className, /mms-ipod-black/, 'the BLACK colorway rides the family pick (force the base donor and this reds)');
   } });
 });
+
+test('v1.260: a Seattle Classic pick does NOT become the tray donor - the Nano stays a Pocket Classic (base silver fallback)', async () => {
+  // zune-classic shares base 'ipod' for the wheel CSS, but the tray colorway family is
+  // the explicit iPod pair - loosen the donor back to base-family and this reds.
+  await boot({ mobile: false, isMusic: true, skin: 'zune-classic', run: async (dom) => {
+    dom.window.localStorage.setItem('ft-tray-mode', '1');
+    const holder = { pip: makePipWindow() };
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(holder.pip) };
+    clickPopout(dom); await settle(); await settle();
+    const pip = holder.pip;
+    assert.ok(pip.document.body.classList.contains('mms-tray'), 'straight to the tray (populated first)');
+    assert.match(pipPanelOf(pip).className, /mms-ipod\b/, 'the donor fell to base silver');
+    assert.ok(!/mms-zune-classic/.test(pipPanelOf(pip).className), 'the brown Zune body never leaks into the Nano tray');
+  } });
+});
