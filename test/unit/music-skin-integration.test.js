@@ -1219,6 +1219,46 @@ test('v1.252 (QA gate W1): the Watch way back SURVIVES a dock round-trip re-init
       const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
       assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
       assert.ok(menu.querySelector('[data-skin-watchback]'), 'the Watch row SURVIVES the re-init (the queue lookup misses; the marker carries)');
+      // adversarial W2 - the END-OF-SESSION axis: a NORMAL play on the SAME module instance
+      // (a third re-init through the continue arm) must CLEAR the marker; the Watch row is
+      // gone while the quick menu still renders (non-vacuous both ways). This kills the
+      // never-cleared mutant the survive-axis test alone let live.
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?play=t9');
+      global.fetch = (u, init) => {
+        const url = String(u);
+        const track = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100, source: 'library', streamSrc: '/video/t9' };
+        if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [track] }) });
+        if (/^\/api\/music\/t9$/.test(url)) return Promise.resolve({ ok: true, json: async () => track });
+        if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+        return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+      };
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const st2 = panel(dom).querySelector('[data-skin-sticker]');
+      assert.ok(st2, 'the skin painted for the normal track');
+      st2.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      const menu2 = panel(dom).querySelector('[data-skin-sticker-menu]');
+      assert.ok(menu2.querySelector('[data-skin-speed]'), 'quick menu up (non-vacuous)');
+      assert.strictEqual(menu2.querySelector('[data-skin-watchback]'), null, 'the normal play ENDED the listen session - no stale Watch row');
+      // ...and the DISTINCT stale-marker kill (adversarial W2's constructed harm): the OLD
+      // listen id plays again through a NON-listen path while the queue cannot resolve it -
+      // the queue lookup MISSES and only the (must-be-cleared) marker could answer. With the
+      // never-cleared mutant the stale marker resurrects a Watch row here; committed code
+      // says no. (Phase 3 alone could not kill it - t9 HITS the queue and short-circuits.)
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?nowplaying=1');
+      global.fetch = () => Promise.resolve({ ok: true, json: async () => ({ items: [] }) }); // nothing resolvable - queue stays empty
+      dom.window.FileTube.player.currentId = 'vid1';
+      dom.window.FileTube.player._meta = { isMusic: true, id: 'vid1', title: 'A Long Video', artist: 'The Channel', album: '', albumKey: '' };
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const st3 = panel(dom).querySelector('[data-skin-sticker]');
+      assert.ok(st3, 'the skin painted (populated first)');
+      st3.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      const menu3 = panel(dom).querySelector('[data-skin-sticker-menu]');
+      assert.ok(menu3.querySelector('[data-skin-speed]'), 'quick menu up (non-vacuous)');
+      assert.strictEqual(menu3.querySelector('[data-skin-watchback]'), null, 'the CLEARED marker cannot resurrect a Watch row on a queue miss (the stale-marker axis)');
     },
   });
 });

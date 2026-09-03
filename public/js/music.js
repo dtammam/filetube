@@ -310,6 +310,11 @@ function buildStickyBarHtml(drill, tracks) {
 // without a DOM. Shows a label ONLY when a MUSIC track is the currently-loaded
 // item (np.id === the player's currentId — guards against a video/book being
 // what's actually playing) and it has a non-empty album; otherwise '' (hidden).
+// v1.252 note (adversarial): LISTEN-MODE is the first feature where a music
+// nowPlaying.id can EQUAL a watchable video id (Listen -> Watch back -> the same
+// id plays as raw video). Today the album gate saves this (listen tracks carry
+// album: '') - if listen tracks ever gain an album string, this id-equality
+// guard alone no longer distinguishes them.
 function deriveNowPlayingLabel(np, currentId) {
   if (!np || !currentId || np.id !== currentId) return '';
   var album = np.album && String(np.album).trim();

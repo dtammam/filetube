@@ -91,6 +91,24 @@ stays a MUSIC feature; disclosed.
   behavioral watch-boot harness is disproportionate for it) - the adversarial seat may
   re-litigate.
 
+## Gate round 2 dispositions (adversarial, 2026-09-03)
+- W1 BOUND: the engine-level pop-out test now carries a visible()-true watchBack hook, so
+  the in-main-document gate is the ONLY rejector - its removal mutant reds (was surviving
+  vacuously via a normal-track fixture).
+- W2 BOUND on BOTH lifecycle axes: the round-trip test gained phase 3 (a normal play ends
+  the session - no stale Watch row) and phase 4 (the adversarial's constructed harm: the
+  old listen id playing via a NON-listen path with a queue miss - the cleared marker cannot
+  resurrect the row; phase 3 alone could not kill the never-cleared mutant because its
+  track HITS the rebuilt queue and short-circuits).
+- W2-disclosure addendum for the probe list: an UNSIZED video (scan never captured a
+  duration -> the listen track carries 0) also restarts at 0:00 regardless of real length -
+  the same disclosed smart-resume consequence.
+- Suggestions: the playListenItem marker-set is a redundant belt over loadTrack's (noted,
+  kept); deriveNowPlayingLabel's id-equality guard annotated (listen-mode is the first
+  music/video id collision - the album:'' gate is what saves it today).
+- Re-litigated and STANDING: the W2 short-video disposition, the S6 source-locked entry
+  (the repo's own watch-wiring posture - Share's is source-locked too).
+
 ## Predictions (re-verified each commit)
 - `git diff main -- public/js/player.js | wc -l` == 0 at every commit.
 - No new stored per-item field; no server changes at all in this wave (the listen track is
