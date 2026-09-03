@@ -277,3 +277,19 @@ test('T3: a click elsewhere on the panel closes an open menu', async () => {
     assert.strictEqual(menu(dom).hidden, true, 'closed by an outside click');
   });
 });
+
+test('v1.252 L1 (Dean: "the buttons are too small") source-lock: every sticker-menu row is thumb-sized', () => {
+  // Dean's friction report: the Extras entry + action rows were too small to tap. The size
+  // pass floors every interactive row at 44px (48px for the action list) with fs-md text
+  // and a wider menu. jsdom has no layout - lock the CSS floors (the v1.241 lock pattern).
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.mms-sticker-menu\{[^}]*min-width:min\(320px, 88vw\)/, 'the menu is wide enough for thumb rows');
+  assert.match(css, /\.mms-sm-opt\{[^}]*min-height:44px/, 'speed options >= 44px');
+  assert.match(css, /\.mms-sm-chip\{[^}]*min-height:44px/, 'skin chips >= 44px');
+  assert.match(css, /\.mms-sm-loop\{[^}]*min-height:44px/, 'the loop row >= 44px');
+  assert.match(css, /\.mms-sm-extras,\s*\.mms-sticker-menu \.mms-sm-back\{[^}]*min-height:44px/, 'Extras/Back rows >= 44px');
+  assert.match(css, /\.mms-sm-act\{[^}]*min-height:48px/, 'action rows >= 48px');
+  assert.match(css, /\.mms-sm-act\{[^}]*font-size:var\(--fs-md\)/, 'action text bumped to fs-md');
+  assert.match(css, /\.mms-sm-opt\{[^}]*font-size:var\(--fs-md\)/, 'speed text bumped to fs-md');
+});
