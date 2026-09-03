@@ -151,7 +151,7 @@
       '<div class="ip-stars" aria-hidden="true">★★★★★</div>' +
       '<div class="ip-nof">' + esc(nof) + '</div></div></div>' +
       '<div class="ip-scrub"><span class="mms-pos">' + esc(ctx.posLabel || '0:00') + '</span>' +
-      '<div class="ip-track"><div class="mms-fill" ' + fillW(ctx) + '></div></div>' +
+      '<div class="ip-track" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div>' +
       '<span class="mms-rem">' + esc(ctx.remLabel || '') + '</span></div>' +
       // v1.235's wheel-VOLUME bar, DORMANT since v1.250 (Dean retired wheel-volume - the
       // Now-Playing wheel scrubs everywhere). Nothing writes .ip-vol-fill or .mms-voladj

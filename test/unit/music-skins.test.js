@@ -122,7 +122,7 @@ test('every skin renderFull emits the core transport hooks + shared reflect targ
   }
 });
 
-test('per-skin controls: Apple/Spotify have a swap-glyph play + collapse + tap-seek; iPod is the click wheel', () => {
+test('per-skin controls: Apple/Spotify have a swap-glyph play + collapse + tap-seek; iPod is the click wheel plus a tap-seek LCD bar (v1.258.1)', () => {
   const apple = skins.renderFull('apple', CTX);
   const spotify = skins.renderFull('spotify', CTX);
   const ipod = skins.renderFull('ipod', CTX);
@@ -133,11 +133,13 @@ test('per-skin controls: Apple/Spotify have a swap-glyph play + collapse + tap-s
   }
   assert.match(spotify, /data-skin-shuffle/, 'spotify wires the REAL shuffle (-> #music-shuffle-btn)');
   // iPod click wheel: MENU (back/exit) + Select (list), a status-bar play indicator,
-  // NO tap-seek (scrubbing deferred), NO collapse chevron, NO swap-glyph .mms-play.
+  // NO collapse chevron, NO swap-glyph .mms-play. v1.258.1 (Dean, via the tray): the LCD
+  // bar gained tap-to-seek like the other skins - the wheel stays the PRIMARY scrub, the
+  // bar is the direct one (and the wheel-less tray's only one).
   assert.match(ipod, /data-skin-menu/, 'iPod: MENU zone (back / exit)');
   assert.match(ipod, /data-skin-select/, 'iPod: Select zone (list toggle)');
   assert.match(ipod, /class="mms-playind"/, 'iPod: status-bar play indicator (reflect target)');
-  assert.ok(!/data-skin-seek/.test(ipod), 'iPod scrubber is display-only (no seek hook)');
+  assert.match(ipod, /data-skin-seek/, 'iPod: the LCD bar is tap-to-seek since v1.258.1 (was display-only)');
   assert.ok(!/data-skin-collapse/.test(ipod), 'iPod exits via MENU, not the collapse chevron');
   assert.ok(!/class="mms-play"/.test(ipod), 'iPod has no swap-glyph play (the wheel bottom keeps its ▶❚❚)');
 });

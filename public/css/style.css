@@ -11029,6 +11029,11 @@ html[data-modern="on"] .video-uploader {
   body.mms-tray .ip-artist, body.mms-tray .ip-album{ font-size:var(--fs-sm); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   body.mms-tray .ip-stars{ display:none; }
   body.mms-tray .mms-sticker{ transform:scale(.55); transform-origin:bottom left; } /* QA S4: the BUTTON shrinks; the menu (a wrap sibling) keeps the v1.252 thumb sizes */
+  /* v1.258.1 (Dean: the tray menu "way too small when clicked, not really usable"): the
+     base menu opens UPWARD from the bottom-anchored sticker with a max-height taller
+     than the whole 190px window - the pip edge clipped it to a sliver. In tray it is a
+     full-window overlay instead. */
+  body.mms-tray .mms-sticker-menu{ position:fixed; inset:var(--space-3); max-height:none; min-width:0; max-width:none; }
   .mms-haptic-ghost{ position:absolute; left:50%; top:50%; width:52px; height:32px; /* token-exempt: native switch box */
     margin:-16px 0 0 -26px; opacity:0.001; z-index:2; /* token-exempt: local stacking over the zones */
     border:0; padding:0; will-change:transform; }

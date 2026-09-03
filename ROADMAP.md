@@ -93,6 +93,19 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.258.1 - Tray touches (2026-09-03)
+
+Dean's polish round ("looks much better and nice and small"): (1) the ipod LCD bar is
+CLICK-SEEKABLE - the v1.231-era "display-only, the wheel scrubs" contract updated (the
+wheel stays primary; the phone's LCD bar gains tap-to-seek too, disclosed); (2) the
+tray's sticker menu was clipped to a sliver (it opens upward with max-height taller
+than the 190px window - mechanism found, not guessed) - in tray it is a FULL-WINDOW
+overlay. THE SLIM GATE then caught the overlay's trap: its only non-mutating exit was
+an unmarked 6px rim - fixed with a dead-space dismiss (a tap on headings/padding closes
+the menu, every surface; the seat measured the guard exact and the double-fault
+protected). PHONE PROBE: the menu now also closes on a dead-space tap there - standard
+semantics, but new. Dual-Node: both nodes 8244/8244 pass, 0 fail, 0 skipped.
+
 ### v1.258.0 - Tray Player, Nano edition (2026-09-03)
 
 Dean's feel round on his functional v1.257 pass ("Love love love LOVE... fully works...

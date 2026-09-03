@@ -1058,3 +1058,37 @@ test('v1.257 TRAY: a MAIN-document engine with a grafted tray hook still renders
     eng.destroy();
   } finally { b.restoreAll(); }
 });
+
+test('v1.258.1 (Dean): the iPod LCD track bar is CLICK-SEEKABLE - a click maps x to the seek pipeline (parity with the apple/spotify bars)', () => {
+  const { dom, engine, restore } = bootEngine({ skin: 'ipod' });
+  try {
+    engine.paint();
+    const bar = panel(dom).querySelector('.ip-track');
+    assert.ok(bar, 'the LCD bar rendered (non-vacuous)');
+    assert.ok(bar.hasAttribute('data-skin-seek'), 'the bar carries the seek hook (it was display-only before)');
+    assert.strictEqual(bar.getAttribute('role'), 'slider', 'announced as a slider');
+    let committed = null;
+    dom.window.document.getElementById('seek-bar').addEventListener('change', (e) => { committed = e.target.value; });
+    // jsdom rects are zero, so the handler's (x - left) / (width || 1) = clientX clamped
+    bar.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 0.5, clientY: 0 }));
+    assert.strictEqual(committed, '0.5', 'the click position reached the REAL seek pipeline');
+  } finally { restore(); }
+});
+
+test('v1.258.1 (slim W1): a tap on the menu\'s DEAD SPACE closes it; a control tap does NOT (both axes)', () => {
+  const b = bootSticker({ extras: false });
+  try {
+    b.engine.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    const m = sMenu(b.dom);
+    assert.strictEqual(m.hidden, false, 'menu open (populated first)');
+    // a control tap keeps it open (speed chips re-render in place)
+    sClick(b.dom, m.querySelector('[data-skin-speed]'));
+    assert.strictEqual(sMenu(b.dom).hidden, false, 'a speed pick re-renders, does not dismiss');
+    // a dead-space tap - the Speed HEADING - closes (the tray overlay has no other honest exit)
+    const heading = [...sMenu(b.dom).querySelectorAll('.mms-sm-h')].find((h) => /Speed/.test(h.textContent));
+    assert.ok(heading, 'the heading exists (non-vacuous)');
+    sClick(b.dom, heading);
+    assert.strictEqual(sMenu(b.dom).hidden, true, 'dead space dismisses the menu');
+  } finally { b.restoreAll(); }
+});
