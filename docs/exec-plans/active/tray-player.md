@@ -26,7 +26,7 @@ status bar - and the square 6g).** The chosen read: the 5g screen, because it is
 literally the ask ("Now Playing, Name, author") and the ipod donor ALREADY renders it -
 ip-lcd status bar (Now Playing + play glyph + battery), ip-npmain art + title/artist/
 album, and the Aqua ip-scrub. A `.mms-tray` marker on the PIP BODY reshapes: wheelwrap/
-listview hidden, the LCD fills a ~340x210 window, art 88px beside the meta, stars
+listview hidden, the LCD fills the tray window (340x210 at v1.257; 310x190 + INSET since v1.258), art 88px beside the meta, stars
 hidden, marquee ellipsis on the text. The ENGINE is untouched; the shell forces
 getSkinId -> 'ipod' in tray mode; the user's chosen skin still governs the full
 pop-out and the phone. (The square 6g layout is a dims+layout flip if Dean prefers
@@ -34,7 +34,7 @@ it on device.)
 
 **Mechanics (all in createPopoutShell + engine sticker + CSS):**
 - `ft-tray-mode` in localStorage (device-global). open() picks dims by mode (380x700
-  full vs 340x210 tray); mount() adds `.mms-tray` + wraps getSkinId when tray.
+  full vs the tray dims (310x190 since v1.258)); mount() adds `.mms-tray` + wraps getSkinId when tray.
 - The sticker gains a `tray` hook rendered ONLY on the pop-out surface (the first
   !inMainDoc-gated row - the inverse of watchBack/Extras): "Tray" On/Off on page 1.
   Toggling persists the mode, tears the pip down, and reopens at the new dims (the
@@ -70,3 +70,16 @@ fill, art box, title ellipsis, button-only sticker scale - adversarial W-A: the 
 cut promised this lock and had not written it); mode memory: a fresh open() honors the stored mode; OFF
 path (no localStorage flag) = today's pop-out byte-identical. Gate: full (a new
 lifecycle seam in the pip shell), dual-Node, v1.257.0.
+
+
+## v1.258 feel round (Dean's functional device pass: "Love love love LOVE... fully works")
+
+More Nano-ish + smaller + colorways: dims 310x190; the LCD INSETS (margin + radius) so
+the panel's per-variant aluminum body paint shows as the frame; the panel rounds over a
+dark pip body. COLORWAYS: the tray donor is VARIANT-AWARE (an ipod-family pick keeps its
+variant - the family's silver/black body palettes are the black/white ask; else base
+silver), and the tray's sticker chips return FILTERED to the two family picks under a
+"Color" heading. DISCLOSED: a tray Color pick writes the GLOBAL skin pref (the colorway
+IS the skin choice - splitting them is Dean's future call). A future ipod-base variant
+auto-joins the colorways by design; the chips test pins the two current ids so it forces
+a conscious update.

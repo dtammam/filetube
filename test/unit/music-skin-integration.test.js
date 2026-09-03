@@ -1772,15 +1772,29 @@ test('v1.257 (QA W1): the OLD window\'s queued pagehide cannot kill the freshly-
   } });
 });
 
-test('v1.257 (QA S3+W1b): the tray menu hides the inert Skin chips, and the plain-window fallback never offers the Tray row', async () => {
-  await boot({ mobile: false, isMusic: true, skin: 'apple', run: async (dom) => {
+test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping the body), the full pop-out keeps ALL skins, and the plain-window fallback never offers the Tray row', async () => {
+  // a PLAYING track is load-bearing: repaintPopout() early-returns with nothing playing
+  // (production can only open the tray from a playing pop-out), and the LIVE colorway
+  // flip below rides that repaint.
+  const calls = { loads: [], navs: [] };
+  const t9 = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100 };
+  const fetchImpl = (u, init) => {
+    const url = String(u);
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [t9] }) });
+    if (/^\/api\/music\/t9$/.test(url)) return Promise.resolve({ ok: true, json: async () => t9 });
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot({ mobile: false, isMusic: true, skin: 'apple', query: '?play=t9', fetchImpl, playerOverride: listenPlayer(calls), run: async (dom) => {
     // full pop-out: chips present, Tray row present (both non-vacuous baselines)
     const holder = { pip: makePipWindow() };
     dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(holder.pip) };
     clickPopout(dom); await settle(); await settle();
     const full = holder.pip;
     pipPanelOf(full).querySelector('[data-skin-sticker]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
-    assert.ok(pipPanelOf(full).querySelector('[data-skin-pick]'), 'full pop-out offers the Skin chips');
+    const fullChips = [...pipPanelOf(full).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick')).sort();
+    assert.deepStrictEqual(fullChips, ['apple', 'ipod', 'ipod-black', 'spotify'], 'the FULL pop-out keeps ALL skin chips (adversarial W1: in-pip must not mean in-tray)');
+    assert.match(pipPanelOf(full).querySelector('[data-skin-sticker-menu]').textContent, /Skin/, 'the full pop-out heading says Skin');
     // toggle to tray: the chips vanish (the donor is forced - a pick would visibly no-op)
     holder.pip = makePipWindow();
     pipPanelOf(full).querySelector('[data-skin-tray]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
@@ -1792,6 +1806,13 @@ test('v1.257 (QA S3+W1b): the tray menu hides the inert Skin chips, and the plai
     // genuinely restyle the tray body; apple/spotify would visibly no-op)
     const trayChips = [...pipPanelOf(tray).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick'));
     assert.deepStrictEqual(trayChips.sort(), ['ipod', 'ipod-black'], 'exactly the two colorway chips inside the tray');
+    assert.match(pipPanelOf(tray).querySelector('[data-skin-sticker-menu]').textContent, /Color/, 'the tray heading says Color (adversarial W2)');
+    // the HEADLINE interaction: tapping a colorway restyles the LIVE tray (kills the
+    // memoized-donor mutant - the wrap must consult the pick on every paint)
+    pipPanelOf(tray).querySelector('[data-skin-pick="ipod-black"]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert.match(pipPanelOf(tray).className, /mms-ipod-black/, 'the black colorway applied to the live tray on tap');
+    pipPanelOf(tray).querySelector('[data-skin-sticker]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
     // dispose the tray + reset the mode so the fallback assertion is about the ROW, not dims
     holder.pip = makePipWindow(); // the toggle-back mounts a FRESH window
     pipPanelOf(tray).querySelector('[data-skin-tray]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
@@ -1815,6 +1836,7 @@ test('v1.257 (adversarial W-A) source-lock: the Nano reshape rules exist - witho
   // (the v1.232 first-occurrence locks - see the block's own comment).
   const fs = require('node:fs'); const path = require('node:path');
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /body\.mms-tray\{ background:var\(--mms-black\); \}/, 'the dark pip body behind the rounded shell (adversarial W3: white corners without it)');
   assert.match(css, /body\.mms-tray \.ip-wheelwrap, body\.mms-tray \.ip-listview\{ display:none; \}/, 'the wheel and list are hidden - the tray is the LCD alone');
   assert.match(css, /body\.mms-tray \.ip-lcd\{[^}]*margin:var\(--space-3\) var\(--space-4\)/, 'the LCD insets into the body frame (the v1.258 Nano feel)');
   assert.match(css, /body\.mms-tray \.ip-npmain\{ display:flex; align-items:center/, 'art sits beside the meta (the Nano-5g row)');
