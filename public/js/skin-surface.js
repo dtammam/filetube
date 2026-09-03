@@ -822,7 +822,146 @@
     };
   }
 
-  var api = { create: create };
+  // ---- v1.251 (R2): the SHARED desktop now-playing panel builder --------------------------
+  // Music's v1.223 whole-queue panel (meta + windowed rows with played/current/next states,
+  // played greyed but clickable for jump-back), extracted VERBATIM so podcasts renders the
+  // SAME desktop treatment instead of its legacy forward-only fragment. `np` = { title,
+  // subline }; each row = { id, artUrl, title, artist, index, state } - the view precomputes
+  // its own subline/artUrl (music: artist·album + /albumart; podcasts: show·meta +
+  // /podcastart). Escaped here - podcast titles/notes are FEED PROSE. Row taps are the
+  // VIEW's delegated .mnp-queue-row listener (data-index), exactly music's contract.
+  function panelEscape(text) {
+    return String(text == null ? '' : text)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+  function buildPanelHtml(np, rows) {
+    np = np || {};
+    var meta = '<div class="mnp-meta">' +
+      '<div class="mnp-title" title="' + panelEscape(np.title) + '">' + panelEscape(np.title || 'Unknown track') + '</div>' +
+      (np.subline ? '<div class="mnp-sub">' + panelEscape(np.subline) + '</div>' : '') +
+      '</div>';
+    var queue = '';
+    if (Array.isArray(rows) && rows.length) {
+      queue = '<div class="mnp-queue"><div class="mnp-queue-head">Up next</div>' +
+        rows.map(function (it) {
+          var cls = 'mnp-queue-row'
+            + (it.state === 'played' ? ' is-played' : '')
+            + (it.state === 'current' ? ' is-current' : '');
+          // Number() coercion (QA gate S4): a two-consumer API now - an attribute-position
+          // interpolation must never trust a caller's index shape (both callers pass ints).
+          return '<button type="button" class="' + cls + '"' + (it.state === 'current' ? ' aria-current="true"' : '') + ' data-index="' + Number(it.index) + '">' +
+            '<img class="mnp-queue-thumb art-shimmer" src="' + panelEscape(it.artUrl) + '" alt="" loading="lazy" />' +
+            '<span class="mnp-queue-main">' +
+            '<span class="mnp-queue-title">' + panelEscape(it.title || 'Track') + '</span>' +
+            (it.artist ? '<span class="mnp-queue-sub">' + panelEscape(it.artist) + '</span>' : '') +
+            '</span></button>';
+        }).join('') +
+        '</div>';
+    }
+    return meta + queue;
+  }
+
+  // ---- v1.251 (R3): the SHARED desktop pop-out SHELL --------------------------------------
+  // The window lifecycle extracted VERBATIM from music.js (v1.234-235 + every gate scar):
+  // Document-PiP grant with the plain-window fallback, the pipPending double-click guard,
+  // the post-await mount re-checks (view destroyed / viewport shrunk - the TOCTOU class),
+  // same-origin style copy, the pop-out's OWN 250ms reflect clock (the true-PiP freeze fix),
+  // pagehide/unload teardown, and the teardown ordering (engine.destroy BEFORE refs drop).
+  // The VIEW supplies via cfg: engineConfigFor(panel, win) - its per-surface engine config;
+  // supported() - its gate (viewport + capability), re-checked at open AND mount; aborted() -
+  // the view-signal check for the mount TOCTOU; onStateChange() - button refresh, called on
+  // every open/close edge; windowName; panelId (defaults to the shared panel identity).
+  function createPopoutShell(cfg) {
+    var W = 380, H = 700; // ~phone width so the < 768px skin media query engages as-is
+    var pipWin = null, pipPanel = null, pipClock = null, pipPending = false, pipEngine = null;
+    var supported = cfg.supported || function () { return true; };
+    var aborted = cfg.aborted || function () { return false; };
+    var onStateChange = cfg.onStateChange || function () {};
+    var windowName = cfg.windowName || 'ft-music-pip';
+    var panelId = cfg.panelId || 'music-nowplaying-panel';
+    function copyStyles(doc) {
+      var links = document.querySelectorAll('link[rel="stylesheet"]');
+      for (var i = 0; i < links.length; i++) {
+        var l = doc.createElement('link'); l.rel = 'stylesheet'; l.href = links[i].href; doc.head.appendChild(l);
+      }
+      var styles = document.querySelectorAll('style');
+      for (var j = 0; j < styles.length; j++) {
+        var s = doc.createElement('style'); s.textContent = styles[j].textContent; doc.head.appendChild(s);
+      }
+    }
+    function mount(win) {
+      pipPending = false; // the async grant resolved (or the sync fallback) - clear the open-in-flight guard
+      if (!win) return;
+      // the single async funnel: re-check BOTH view-liveness and the gate, and close the
+      // just-granted window if either holds ("never both live" stays an actual invariant).
+      if (aborted() || !supported()) { try { win.close(); } catch (_) { /* ignore */ } return; }
+      pipWin = win;
+      var doc = win.document;
+      try { copyStyles(doc); doc.title = 'FileTube'; } catch (_) { /* best effort */ }
+      var panel = doc.createElement('div');
+      panel.id = panelId; // the identity the skin CSS expects
+      panel.className = 'music-nowplaying-panel';
+      try { doc.body.classList.add('mms-on'); doc.body.appendChild(panel); } catch (_) { teardown(); return; }
+      pipPanel = panel;
+      pipEngine = create(cfg.engineConfigFor(panel, win));
+      if (!pipEngine) { teardown(); return; }
+      pipEngine.paint();
+      // the pop-out's OWN timer drives its reflect - the opener tab throttles under true PiP.
+      try { pipClock = win.setInterval(function () { if (pipEngine) pipEngine.reflect(); }, 250); } catch (_) { pipClock = null; }
+      var onClose = function () { teardown(); };
+      try { win.addEventListener('pagehide', onClose); win.addEventListener('unload', onClose); } catch (_) { /* ignore */ }
+      onStateChange();
+    }
+    function open() {
+      if (!supported()) return; // re-check at CLICK time - a wide->narrow resize must not leave an openable button
+      if (pipWin) { try { pipWin.focus(); } catch (_) { /* ignore */ } return; }
+      if (pipPending) return; // the double-click-during-grant guard (v1.235 adversarial)
+      if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
+        try {
+          pipPending = true;
+          window.documentPictureInPicture.requestWindow({ width: W, height: H })
+            .then(function (w) { mount(w); })
+            .catch(function () { pipPending = false; openPlain(); });
+          return;
+        } catch (_) { pipPending = false; /* fall through to the plain window */ }
+      }
+      openPlain();
+    }
+    function openPlain() {
+      var w = null;
+      try {
+        w = window.open('', windowName, 'width=' + W + ',height=' + H + ',menubar=no,toolbar=no,location=no,status=no');
+      } catch (_) { w = null; }
+      if (!w) return; // popup blocked - nothing we can do without a gesture
+      try { w.document.body.innerHTML = ''; } catch (_) { /* same-origin blank */ }
+      mount(w);
+    }
+    function teardown() {
+      pipPending = false;
+      // clear the clock on the window that CREATED it, before closing that window.
+      if (pipClock != null) { try { (pipWin && pipWin.clearInterval ? pipWin : window).clearInterval(pipClock); } catch (_) { /* ignore */ } pipClock = null; }
+      // destroy the engine instance (unbinds listeners, stops any extras poll, clears the
+      // PIP document's mms-on) BEFORE dropping the panel/window refs.
+      if (pipEngine) { try { pipEngine.destroy(); } catch (_) { /* ignore */ } pipEngine = null; }
+      pipPanel = null;
+      if (pipWin) { try { if (pipWin.close && !pipWin.closed) pipWin.close(); } catch (_) { /* ignore */ } pipWin = null; }
+      onStateChange();
+    }
+    return {
+      open: open,
+      toggle: function () { if (pipWin) { teardown(); return; } open(); }, // close -> its pagehide also calls teardown (idempotent)
+      teardown: teardown,
+      isOpen: function () { return !!pipWin; },
+      isConnected: function () { return !!(pipPanel && pipPanel.isConnected); },
+      repaint: function () { if (pipEngine && pipPanel && pipPanel.isConnected) pipEngine.paint(); },
+      reflect: function () { if (pipEngine && pipPanel && pipPanel.isConnected) pipEngine.reflect(); },
+      // the view's chapter-loop enforcement asks the pop-out surface too (music v1.250 seam).
+      isScrubbing: function () { return !!(pipEngine && pipEngine.isScrubbing()); },
+    };
+  }
+
+  var api = { create: create, buildPanelHtml: buildPanelHtml, createPopoutShell: createPopoutShell };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.FileTubeSkinSurface = api;
 })();

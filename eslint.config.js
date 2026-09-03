@@ -186,6 +186,9 @@ module.exports = [
         // v1.63 playback queue: THE one add verb (common.js), called by
         // every affordance (main.js cards, watch.js verbs, music.js rows).
         addToQueue: 'readonly',
+        // v1.251 (Dean): THE audio-destination rule (common.js) - every tap
+        // surface (main.js delegate, history rows, watch related rail) consults it.
+        audioOpenHref: 'readonly',
         // v1.67 (plan D6): THE share decision (common.js), called by the
         // watch Share button and the card share corner.
         shareExternalUrl: 'readonly',

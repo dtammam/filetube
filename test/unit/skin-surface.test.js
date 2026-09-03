@@ -221,8 +221,10 @@ test('podcasts.js WIRES the engine (reachable): creates it with a podcast ctx, f
   const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'podcasts.js'), 'utf8');
   // creates the shared engine, driven by the podcast ctx + playAt select hook
-  assert.match(src, /window\.FileTubeSkinSurface\.create\(\{/, 'podcasts creates the shared skin engine');
+  // v1.251 (R3): the config is a BUILDER shared by the in-tab panel and the pop-out shell.
+  assert.match(src, /window\.FileTubeSkinSurface\.create\(podcastEngineConfig\(nowPlayingPanel, window\)\)/, 'podcasts creates the shared skin engine via its config builder');
   assert.match(src, /getCtx: podcastSkinCtx/, 'driven by the PODCAST ctx (episode list, /podcastart art)');
+  assert.match(src, /createPopoutShell\(\{[\s\S]{0,400}engineConfigFor: function \(panel, winRef\) \{ return podcastEngineConfig\(panel, winRef\); \}/, 'and the pop-out shell rides the SAME builder (v1.251 R3)');
   assert.match(src, /onSelectIndex: function \(i\) \{ playAt\(i\); \}/, 'the wheel/select play hook is the podcasts playAt');
   assert.match(src, /artUrl: artSub \? \('\/podcastart\/'/, 'the ctx art is the show art (/podcastart)');
   // the updateNowPlayingPanel fork: mount the skin on the gate, and teardown clears mms-on
@@ -267,6 +269,25 @@ test('adversarial W1 (v1.250): a FOREIGN-window surface still shimmers its art v
     eng2.destroy();
     engine.destroy();
   } finally { restore(); }
+});
+
+test('v1.251 (adversarial W5): buildPanelHtml ESCAPES row title/artist/artUrl - feed prose in an innerHTML sink, locked at the moved code', () => {
+  // The builder moved files this wave - exactly when escapes get dropped. Hostile podcast
+  // feed values through every row field; the meta escapes are bound in music-view.test.js.
+  const api = require('../../public/js/skin-surface.js');
+  const html = api.buildPanelHtml({ title: 'Show', subline: 'sub' }, [{
+    id: 'e1',
+    artUrl: '/podcastart/x"><img src=x onerror=alert(1)>',
+    title: '<script>evil()</script>',
+    artist: '"><b>bold</b>',
+    index: 0,
+    state: 'current',
+  }]);
+  assert.ok(html.indexOf('<script>') === -1, 'the raw <script> never lands');
+  assert.ok(html.indexOf('<img src=x') === -1, 'the artUrl cannot break out of the src attribute');
+  assert.ok(html.indexOf('<b>bold</b>') === -1, 'the artist markup never lands');
+  assert.ok(html.indexOf('&lt;script&gt;') !== -1, 'the title renders as escaped text');
+  assert.ok(html.indexOf('&quot;&gt;&lt;img') !== -1, 'the artUrl quote is entity-escaped inside src');
 });
 
 test('SHELL PARITY (v1.250 gate CRITICAL): every shell that ships music-skins.js ships skin-surface.js right after it', () => {

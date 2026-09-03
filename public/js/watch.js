@@ -1664,9 +1664,12 @@ if (typeof module !== 'undefined' && module.exports) {
           const durationStr = item.duration > 0 ? formatDuration(item.duration) : (item.type === 'audio' ? 'Audio' : '');
           const durationBadge = durationStr ? `<div class="duration-badge">${durationStr}</div>` : '';
           const views = resolveViewCountLabel(item);
+          // v1.251 (Dean's consistency rule): an AUDIO related card opens Music - the ONE
+          // rule (common.js audioOpenHref) decides; a video card keeps this /watch href.
+          const relatedHref = (typeof audioOpenHref === 'function' && audioOpenHref(item)) || `/watch.html?v=${item.id}`;
 
           return `
-            <a href="/watch.html?v=${item.id}" class="related-card">
+            <a href="${relatedHref}" class="related-card">
               <div class="related-thumb">
                 <img src="/thumbnail/${item.id}" style="width:100%; height:100%; object-fit:cover;" loading="lazy" />
                 ${durationBadge}

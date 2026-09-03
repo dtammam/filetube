@@ -8,6 +8,9 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+// v1.251 (R2): buildNowPlayingPanelHtml delegates to the shared engine builder now -
+// supply it the CJS way (skin-surface's IIFE is window-gated, so this require is DOM-safe).
+global.FileTubeSkinSurface = require('../../public/js/skin-surface.js');
 const {
   escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
   drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,

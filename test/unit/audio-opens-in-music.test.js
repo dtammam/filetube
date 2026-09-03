@@ -17,13 +17,67 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-test-'));
 const { test } = require('node:test');
 const assert = require('node:assert');
 const main = require('../../public/js/main.js');
-global.resolveChannelName = require('../../public/js/common.js').resolveChannelName;
+const common = require('../../public/js/common.js');
+global.resolveChannelName = common.resolveChannelName;
+// v1.251: THE rule lives in common.js now (audioOpenHref); main.js's musicHrefForItem is a
+// delegate - the harness supplies the global exactly as the browser's script order does.
+global.audioOpenHref = common.audioOpenHref;
 
 function withLocalStorage(map, fn) {
   const saved = global.localStorage;
   global.localStorage = { getItem: (k) => (k in map ? map[k] : null), setItem() {}, removeItem() {} };
   try { return fn(); } finally { global.localStorage = saved; }
 }
+
+// ---- v1.251: the rule is CANONICAL in common.js and consulted by every tap surface ------
+
+test('v1.251 audioOpenHref (the canonical): audio routes, chaptered routes to ::c0, video/kinds/id-less return null', () => {
+  assert.strictEqual(common.audioOpenHref({ id: 'a1', type: 'audio' }), '/music?play=a1&ao=1');
+  assert.strictEqual(common.audioOpenHref({ id: 'a2', type: 'audio', chapterCount: 3 }), '/music?play=' + encodeURIComponent('a2::c0') + '&ao=1');
+  // adversarial W4: PIN the >=2 boundary (a two-chapter album must open as its album; the
+  // >=3 mutant survived every prior case).
+  assert.strictEqual(common.audioOpenHref({ id: 'a2b', type: 'audio', chapterCount: 2 }), '/music?play=' + encodeURIComponent('a2b::c0') + '&ao=1');
+  assert.strictEqual(common.audioOpenHref({ id: 'a2c', type: 'audio', chapterCount: 1 }), '/music?play=a2c&ao=1', 'one chapter is NOT an album');
+  assert.strictEqual(common.audioOpenHref({ id: 'v1', type: 'video' }), null);
+  assert.strictEqual(common.audioOpenHref({ id: 'p1', type: 'audio', kind: 'podcast' }), null, 'a non-media kind keeps its own destination');
+  assert.strictEqual(common.audioOpenHref({ type: 'audio' }), null, 'no id -> null');
+});
+
+test('v1.251 bell rows: an AUDIO media notification opens Music (chaptered as its album); video and podcast rows unchanged', () => {
+  const audio = common.buildNotificationRowModel({ id: 'n1', mediaId: 'a1', kind: 'media', type: 'audio', title: 'Song', createdAt: Date.now(), unread: true });
+  assert.strictEqual(audio.href, '/music?play=a1&ao=1', 'audio bell row -> Music');
+  const album = common.buildNotificationRowModel({ id: 'n2', mediaId: 'a2', kind: 'media', type: 'audio', chapterCount: 4, title: 'Album', createdAt: Date.now(), unread: true });
+  assert.strictEqual(album.href, '/music?play=' + encodeURIComponent('a2::c0') + '&ao=1', 'chaptered audio bell row -> its album');
+  const video = common.buildNotificationRowModel({ id: 'n3', mediaId: 'v1', kind: 'media', type: 'video', title: 'Clip', createdAt: Date.now(), unread: true });
+  assert.strictEqual(video.href, '/watch.html?v=v1', 'video bell row unchanged');
+  const pod = common.buildNotificationRowModel({ id: 'n4', mediaId: 'e1', kind: 'podcast', type: 'audio', title: 'Ep', createdAt: Date.now(), unread: true, artUrl: '/podcastart/s1' });
+  assert.strictEqual(pod.href, '/podcasts?play=e1', 'podcast bell row unchanged');
+});
+
+test('v1.251 queue chrome: an AUDIO media entry opens Music (the shaped entry carries the raw item); video/track/podcast unchanged', () => {
+  assert.strictEqual(common.queueEntryHref({ mediaId: 'a1', kind: 'media', item: { type: 'audio' } }), '/music?play=a1&ao=1', 'audio media entry -> Music');
+  assert.strictEqual(common.queueEntryHref({ mediaId: 'a2', kind: 'media', item: { type: 'audio', chapters: [{ startTime: 0 }, { startTime: 9 }] } }),
+    '/music?play=' + encodeURIComponent('a2::c0') + '&ao=1', 'chaptered audio entry -> its album');
+  assert.strictEqual(common.queueEntryHref({ mediaId: 'v1', kind: 'media', item: { type: 'video' } }), '/watch.html?v=v1', 'video entry unchanged');
+  assert.strictEqual(common.queueEntryHref({ mediaId: 't1', kind: 'track', item: { type: 'audio' } }), '/music?play=t1', 'track entry keeps its own deep link (no ao=1)');
+  assert.strictEqual(common.queueEntryHref({ mediaId: 'e1', kind: 'podcast', item: { type: 'audio' } }), '/podcasts?play=e1', 'podcast entry unchanged');
+  assert.strictEqual(common.queueEntryHref({ mediaId: 'm1', kind: 'media' }), '/watch.html?v=m1', 'an item-less entry falls back to /watch (no crash)');
+});
+
+test('v1.251 history rows: an AUDIO history row re-opens in Music; a video row keeps /watch', () => {
+  const history = require('../../public/js/history.js');
+  const audio = history.buildHistoryRowHtml({ id: 'a1', type: 'audio', title: 'Song', duration: 0, folderName: 'Ch' }, Date.now());
+  assert.match(audio, /href="\/music\?play=a1&(?:amp;)?ao=1"/, 'audio history row -> Music');
+  const video = history.buildHistoryRowHtml({ id: 'v1', type: 'video', title: 'Clip', duration: 60, folderName: 'Ch' }, Date.now());
+  assert.match(video, /href="\/watch\.html\?v=v1"/, 'video history row unchanged');
+});
+
+test('v1.251 watch related rail: the template consults the ONE rule (source binding; the net test guards the shape)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'watch.js'), 'utf8');
+  assert.match(src, /const relatedHref = \(typeof audioOpenHref === 'function' && audioOpenHref\(item\)\) \|\| `\/watch\.html\?v=\$\{item\.id\}`/,
+    'the related card derives its href through audioOpenHref');
+  assert.match(src, /href="\$\{relatedHref\}" class="related-card"/, 'and the card actually renders that derived href');
+});
 
 test('musicHrefForItem: an audio item -> /music?play=<id> (unconditional)', () => {
   assert.strictEqual(main.musicHrefForItem({ id: 'a1', type: 'audio' }), '/music?play=a1&ao=1');
