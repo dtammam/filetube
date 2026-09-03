@@ -1058,3 +1058,19 @@ test('v1.257 TRAY: a MAIN-document engine with a grafted tray hook still renders
     eng.destroy();
   } finally { b.restoreAll(); }
 });
+
+test('v1.258.1 (Dean): the iPod LCD track bar is CLICK-SEEKABLE - a click maps x to the seek pipeline (parity with the apple/spotify bars)', () => {
+  const { dom, engine, restore } = bootEngine({ skin: 'ipod' });
+  try {
+    engine.paint();
+    const bar = panel(dom).querySelector('.ip-track');
+    assert.ok(bar, 'the LCD bar rendered (non-vacuous)');
+    assert.ok(bar.hasAttribute('data-skin-seek'), 'the bar carries the seek hook (it was display-only before)');
+    assert.strictEqual(bar.getAttribute('role'), 'slider', 'announced as a slider');
+    let committed = null;
+    dom.window.document.getElementById('seek-bar').addEventListener('change', (e) => { committed = e.target.value; });
+    // jsdom rects are zero, so the handler's (x - left) / (width || 1) = clientX clamped
+    bar.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 0.5, clientY: 0 }));
+    assert.strictEqual(committed, '0.5', 'the click position reached the REAL seek pipeline');
+  } finally { restore(); }
+});
