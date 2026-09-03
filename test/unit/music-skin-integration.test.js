@@ -1144,3 +1144,47 @@ test('v1.252 Extras interop: the listen track (library-backed by construction) g
     },
   });
 });
+
+test('v1.252 the Watch way back: page 1 offers "Watch" for a LISTEN track, taps navigate to the watch page; a NORMAL track never shows it', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, LISTEN_VIDEO), playerOverride: listenPlayer(calls),
+    run: async (dom) => {
+      const navs = [];
+      dom.window.FileTube.navigate = (u) => { navs.push(u); };
+      const st = panel(dom).querySelector('[data-skin-sticker]');
+      st.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
+      const wb = menu.querySelector('[data-skin-watchback]');
+      assert.ok(wb, 'the "Watch" row renders on page 1 for a listen track');
+      assert.match(wb.textContent, /Watch/, 'labeled Watch');
+      wb.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.deepStrictEqual(navs, ['/watch.html?v=vid1'], 'the tap navigates back to THIS video\'s watch page');
+      assert.strictEqual(menu.hidden, true, 'the menu closed on the way out');
+    },
+  });
+});
+
+test('v1.252 the Watch way back (negative axis): a NORMAL music track\'s page 1 has no Watch row', async () => {
+  const calls = { loads: [], navs: [] };
+  const track = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100, source: 'library', streamSrc: '/video/t9' };
+  const fetchImpl = (u, init) => {
+    const url = String(u);
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [track] }) });
+    if (/^\/api\/music\/t9$/.test(url)) return Promise.resolve({ ok: true, json: async () => track });
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=t9',
+    fetchImpl, playerOverride: listenPlayer(calls),
+    run: async (dom) => {
+      panel(dom).querySelector('[data-skin-sticker]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
+      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      assert.strictEqual(menu.querySelector('[data-skin-watchback]'), null, 'no Watch row for a normal track');
+    },
+  });
+});

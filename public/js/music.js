@@ -666,6 +666,26 @@ if (typeof module !== 'undefined' && module.exports) {
         sticker: {
           getPlayer: function () { return (window.FileTube && window.FileTube.player) || null; },
           onSkinChange: function () { updateNowPlayingPanel(); }, // re-render both surfaces with the new skin
+          // v1.252 (Listen-mode): the "Watch" way back - page 1 offers it ONLY while the
+          // playing queue item is a listen track (the client-only flag playListenItem set).
+          // The tap navigates to the item's watch page; the MEDIA progress store (written
+          // continuously by the periodic save + seek pipeline) is what makes the watch
+          // page's resume ladder land at the live position - one truth, both directions.
+          watchBack: {
+            visible: function () {
+              var id = effectiveCurrentId();
+              if (!id) return false;
+              for (var i = 0; i < queue.length; i++) { if (queue[i] && queue[i].id === id) return !!queue[i].listen; }
+              return false;
+            },
+            onTap: function () {
+              var id = effectiveCurrentId();
+              if (!id) return;
+              var target = '/watch.html?v=' + encodeURIComponent(id);
+              if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(target);
+              else window.location.href = target;
+            },
+          },
           extras: {
             getBaseId: extrasBaseId,
             isEligible: extrasEligibleView,
