@@ -1829,7 +1829,7 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
   } });
 });
 
-test('v1.257 (adversarial W-A) source-lock: the Nano reshape rules exist - without them the tray is the full iPod crammed into 340x210', () => {
+test('v1.257 (adversarial W-A) source-lock: the Nano reshape rules exist - without them the tray is the full iPod crammed into the tray window', () => {
   // Measured gap: deleting the whole tray CSS block left the suite green (jsdom has no
   // layout), and the plan CLAIMED a lock that was never written after the Nano pivot.
   // Lock the load-bearing reshapes; the selectors deliberately omit the skin-base class

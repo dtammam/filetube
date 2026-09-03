@@ -628,6 +628,14 @@
         if (typeof stickerCfg.onSkinChange === 'function') stickerCfg.onSkinChange(); // re-render with the new skin
         return true;
       }
+      // v1.258.1 slim-gate W1: a tap on the menu's own DEAD SPACE (headings, section
+      // padding - anything that is not a control) CLOSES it. The tray's full-window
+      // overlay left a 6px rim as the only non-mutating exit; this gives every surface
+      // the standard dismiss instead. Controls are all button/a, so the guard is exact.
+      if (e.target.closest('[data-skin-sticker-menu]') && !e.target.closest('button, a')) {
+        closeStickerMenu();
+        return true;
+      }
       // A click anywhere that is NOT inside the sticker wrap closes an open menu (then
       // falls through to normal handling so the tapped control still acts).
       var openSm = panel.querySelector('[data-skin-sticker-menu]:not([hidden])');
