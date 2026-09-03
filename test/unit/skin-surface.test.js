@@ -768,3 +768,194 @@ test('destroy() clears body.mms-on and unbinds (the v1.227 swap-leak guard)', ()
     assert.strictEqual(pp, 0, 'destroy unbound the panel click proxy');
   } finally { restore(); }
 });
+
+// ---- v1.256 WHEEL HAPTICS (the ghost-switch engine; feel is Dean's device) ----------
+
+function bootHaptic(opts) {
+  const b = bootEngine(opts);
+  // capability stubs BEFORE paint(): the switch property probe + a touch signal
+  Object.defineProperty(b.dom.window.HTMLInputElement.prototype, 'switch', { value: false, configurable: true });
+  b.dom.window.ontouchstart = null;
+  return b;
+}
+const ghostOf = (dom) => panel(dom).querySelector('.mms-haptic-ghost');
+
+test('v1.256 haptics: a capable device mounts the ghost (switch attr, hidden, arming scale), the carve-out class, and the body lock', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    assert.ok(g, 'the ghost mounted inside the wheel skin');
+    assert.ok(g.closest('.ip-wheel'), 'inside .ip-wheel (every rotation touchstart lands on it)');
+    assert.ok(g.hasAttribute('switch'), 'a REAL switch control (the haptic source)');
+    assert.strictEqual(g.getAttribute('aria-hidden'), 'true', 'invisible to AT');
+    assert.strictEqual(g.tabIndex, -1, 'out of the tab order');
+    assert.strictEqual(g.style.transform, 'scale(7.5)', 'resting at the arming cover scale');
+    assert.ok(panel(b.dom).classList.contains('mms-haptic'), 'the touch-action carve-out class is on');
+    assert.strictEqual(b.dom.window.document.body.style.position, 'fixed', 'the body scroll lock replaced touch-action:none');
+  } finally { b.restore(); }
+});
+
+test('v1.256 haptics OFF path: no switch support = no ghost, no class, no lock (byte-identical behavior)', () => {
+  const b = bootEngine({});
+  try {
+    b.engine.paint();
+    assert.strictEqual(ghostOf(b.dom), null, 'no ghost without capability');
+    assert.ok(!panel(b.dom).classList.contains('mms-haptic'), 'no carve-out class');
+    assert.strictEqual(b.dom.window.document.body.style.position, '', 'body untouched');
+  } finally { b.restore(); }
+});
+
+test('v1.256 haptics: the tick engine - one bias flip per 4.5deg detent, 30ms throttle DROPS excess, ghost rides the finger; no .checked writes ever', () => {
+  const b = bootHaptic({});
+  const savedPerf = global.performance;
+  let t = 1000;
+  global.performance = { now: () => t };
+  try {
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    Object.defineProperty(g, 'checked', { set() { throw new Error('JS wrote .checked - kills WebKit tracking'); }, get() { return false; } });
+    const wheel = panel(b.dom).querySelector('.ip-wheel');
+    const at = (deg) => { const rad = deg * Math.PI / 180; return { clientX: 100 * Math.cos(rad), clientY: 100 * Math.sin(rad) }; };
+    const mv = (deg, dt) => { t += dt; const q = at(deg); wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: q.clientX, clientY: q.clientY })); return q; };
+    const s = at(0);
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: s.clientX, clientY: s.clientY }));
+    assert.match(g.style.transform, /^translate\(/, 'gesture start: the ghost shrank from the cover to ride the finger');
+    assert.strictEqual(g.style.transform, `translate(${s.clientX + 18}px,${s.clientY}px)`, 'initial bias +18px past the midline');
+    let q = mv(6, 100); // 6deg > 4.5 = one detent, dt 100ms > throttle -> FLIP to -18
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'detent 1 flipped the bias (a crossing = a tick)');
+    q = mv(8, 5);       // +2deg accumulated, no detent -> follow only, bias unchanged
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'sub-detent movement follows without flipping');
+    q = mv(14, 5);      // crosses a detent but only 10ms since the flip -> THROTTLED (dropped, not queued)
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'the Taptic floor drops the tick, never queues it');
+    q = mv(24, 100);    // two detents accumulate; one flip allowed per throttle window -> back to +18
+    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a fast burst saturates to one tick per 30ms');
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointercancel', { bubbles: true }));
+    assert.strictEqual(g.style.transform, 'scale(7.5)', 'cancel restores the arming cover (the dual-arm teardown discipline)');
+  } finally { global.performance = savedPerf; b.restore(); }
+});
+
+test('v1.256 haptics: a click landing on the ghost ROUTES to the real control under it (zones/center survive the overlay)', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    const play = panel(b.dom).querySelector('[data-skin-play]');
+    assert.ok(play, 'the play zone exists (non-vacuous)');
+    let routed = 0;
+    play.addEventListener('click', () => { routed += 1; });
+    b.dom.window.document.elementsFromPoint = () => [g, play];
+    g.dispatchEvent(new b.dom.window.MouseEvent('click', { bubbles: true, clientX: 0, clientY: 100 }));
+    assert.strictEqual(routed, 1, 'the covered zone received its click');
+  } finally { b.restore(); }
+});
+
+test('v1.256 haptics: the body lock NEVER outlives the ghost - reflect() self-heals a view-side teardown, destroy() always unlocks', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    assert.strictEqual(b.dom.window.document.body.style.position, 'fixed', 'locked while the ghost lives');
+    // the v1.227 leak class: the VIEW replaces the panel content without destroy()
+    ghostOf(b.dom).remove();
+    b.engine.reflect();
+    assert.strictEqual(b.dom.window.document.body.style.position, '', 'reflect() healed the orphaned lock');
+    b.engine.paint(); // remount
+    assert.strictEqual(b.dom.window.document.body.style.position, 'fixed', 'repaint re-locks');
+    b.engine.destroy();
+    assert.strictEqual(b.dom.window.document.body.style.position, '', 'destroy() unlocks unconditionally');
+  } finally { b.restore(); }
+});
+
+test('v1.256 (QA CRITICAL binding): a VIEW-side teardown with NO media event and NO click still unlocks the body (the observer release)', async () => {
+  // The paused-dock strand: updateNowPlayingPanel clears the panel synchronously without
+  // destroy(); paused audio means reflect() never fires and the panel's click handler is
+  // unreachable - the event-driven heals cannot run, and the browse view stays pinned.
+  // The MutationObserver releases the lock the moment the ghost leaves the DOM.
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    assert.strictEqual(b.dom.window.document.body.style.position, 'fixed', 'locked while the skin is up (populated first)');
+    // the exact view teardown shape: innerHTML cleared + skin classes dropped, nothing else
+    panel(b.dom).innerHTML = '';
+    panel(b.dom).className = 'music-nowplaying-panel';
+    await new Promise((r) => setImmediate(r)); // MutationObserver callbacks are microtasks
+    assert.strictEqual(b.dom.window.document.body.style.position, '', 'the observer unlocked with no reflect/click/destroy involved');
+  } finally { b.restore(); }
+});
+
+test('v1.256 (QA S1 binding): a scan-engaged move ticks NOTHING - the ghost holds still through a fast-scan wobble', () => {
+  const b = bootHaptic({ engineCfg: { fastScan: true } });
+  try {
+    b.engine.paint();
+    const timers = fakeWinTimers(b.dom);
+    const mp = b.dom.window.document.getElementById('media-player');
+    Object.defineProperty(mp, 'duration', { value: 300, configurable: true });
+    let ct = 100; Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => ct, set: (v) => { ct = v; } });
+    const g = ghostOf(b.dom);
+    const zone = panel(b.dom).querySelector('.ip-wheel [data-skin-next]') || panel(b.dom).querySelector('[data-skin-next]');
+    b.dom.window.document.elementsFromPoint = () => [g, zone]; // the press lands on the ghost, routed to the zone
+    g.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 50, clientY: 0 }));
+    timers.timeouts[0](); // the 400ms hold fires -> scan engages
+    const held = g.style.transform;
+    // a wobble during the scan: rotation coords that would cross several detents
+    g.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 30, clientY: 40 }));
+    assert.strictEqual(g.style.transform, held, 'the scanning early-return precedes the haptic engine - no tick, no follow (the plan claim, bound)');
+  } finally { b.restore(); }
+});
+
+test('v1.256 (QA S2 binding): a rotate-then-release on the ghost suppresses the click BEFORE the zone route - no phantom zone action', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    const play = panel(b.dom).querySelector('[data-skin-play]');
+    let routed = 0;
+    play.addEventListener('click', () => { routed += 1; });
+    b.dom.window.document.elementsFromPoint = () => [g, play];
+    // a real rotation on the ghost (>8px movement sets st.moved -> suppress arms on release)
+    g.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    g.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 70, clientY: 70 }));
+    g.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 70, clientY: 70 }));
+    g.dispatchEvent(new b.dom.window.MouseEvent('click', { bubbles: true, clientX: 70, clientY: 70 }));
+    assert.strictEqual(routed, 0, 'the suppress check runs before the ghost route - a spin release never fires a zone');
+  } finally { b.restore(); }
+});
+
+test('v1.256 (adversarial W1+W2): the FEEL constants are pinned at their boundaries, and a throttled detent DROPS - never queues', () => {
+  // The seat proved step=1/6 and min=100 (and while->if queueing) all survived the
+  // cadence test - Dean's iPod-Classic ruling was unbound. Pin both axes at their
+  // exact boundaries, and distinguish drop from queue with a sub-detent follow-up.
+  const b = bootHaptic({});
+  const savedPerf = global.performance;
+  let t = 5000;
+  global.performance = { now: () => t };
+  try {
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    const wheel = panel(b.dom).querySelector('.ip-wheel');
+    const at = (deg) => { const rad = deg * Math.PI / 180; return { clientX: 100 * Math.cos(rad), clientY: 100 * Math.sin(rad) }; };
+    const mv = (deg, dt) => { t += dt; const q = at(deg); wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: q.clientX, clientY: q.clientY })); return q; };
+    const s = at(0);
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: s.clientX, clientY: s.clientY }));
+    // STEP boundary: 4.4deg accumulated = NO flip; +0.2deg more crosses 4.5 = FLIP.
+    let q = mv(4.4, 100);
+    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, '4.4deg accumulated: below the 4.5 step, no flip (kills step->1)');
+    q = mv(4.6, 100);
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, '4.6deg crosses the 4.5 boundary: flip (kills step->6)');
+    // THROTTLE boundary: a detent 29ms after the flip DROPS (a drop does not stamp
+    // hapLast); the next detent lands 1ms later = exactly 30ms after the FLIP, and
+    // ticks. (adversarial round 2: dt=30 here would land at flip+59ms and leave
+    // MIN unpinned across 30-59 - the 1ms landing pins it to exactly (29, 30].)
+    q = mv(9.2, 29);
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a detent 29ms after a flip is dropped (the 30ms floor holds exactly)');
+    q = mv(13.9, 1);
+    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a detent 30ms after the last FLIP ticks (the floor is 30, not more)');
+    // DROP vs QUEUE: a multi-detent burst consumes its backlog even where the throttle
+    // drops the flips - a following sub-detent drift must NOT flip (kills while->if).
+    q = mv(36, 100);  // ~22deg burst (+0.4 carry) = 5 detents, one flip allowed -> bias back to -18
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a burst saturates to one flip');
+    q = mv(37, 100);  // +1deg sub-detent drift, long after the throttle window
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'no phantom tick after the finger slows: the backlog was CONSUMED, not queued');
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true }));
+  } finally { global.performance = savedPerf; b.restore(); }
+});

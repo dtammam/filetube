@@ -11005,6 +11005,14 @@ html[data-modern="on"] .video-uploader {
   /* v1.243 (Dean): a HOLD (fast-scan / spin) must never select the skin's glyph/label text -
      the blue highlight looked derpy. No-select the whole shell (+ iOS touch-callout). */
   .mms-full{ position:fixed; inset:0; z-index:var(--z-player-max); margin:0; display:flex; flex-direction:column; overflow:hidden; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+  /* v1.256 WHEEL HAPTICS: touch-action ANYWHERE on the ghost switch's ancestor chain
+     disables WebKit's switch pointer-tracking (probe-proven), so a haptic-capable
+     device lifts it here and a body position:fixed lock (engine-managed, ghost-scoped)
+     takes over the scroll-behind suppression that touch-action:none provided. */
+  .mms-full.mms-haptic{ touch-action:auto; }
+  .mms-haptic-ghost{ position:absolute; left:50%; top:50%; width:52px; height:32px; /* token-exempt: native switch box */
+    margin:-16px 0 0 -26px; opacity:0.001; z-index:2; /* token-exempt: local stacking over the zones */
+    border:0; padding:0; will-change:transform; }
   /* v1.232 (Dean): kill the mobile tap-highlight flash on skin buttons - the grey
      "area showing" on tap broke the iPod immersion. (-webkit-tap-highlight-color is
      inherited; transparent is census-exempt.) Also stop text-selection on the wheel. */

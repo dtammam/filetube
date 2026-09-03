@@ -2692,5 +2692,11 @@
     "date": "2026-09-03",
     "title": "The sticker menu joins the family",
     "intent": "The music player's sticker menu now looks like it belongs: the same font as the rest of the app (it was quietly using the browser's default), proper weights, and little icons on each row that match the ones you know from the watch page - Watch, Loop, Autoplay, Extras, and all the Extras actions. Selected options glow the app's red instead of flipping to white. The Extras page is taller so its whole action list fits without scrolling. And on the Pocket Classic skin, the progress bar traded its flat blue for a glossy old-school macOS aqua glass, sitting in a properly shadowed groove."
+  },
+  {
+    "version": "1.256.0",
+    "date": "2026-09-03",
+    "title": "The click wheel actually clicks",
+    "intent": "Spin the Pocket Classic's wheel on your iPhone and you now feel it: a real physical tick under your thumb about every four and a half degrees, just like the old iPod's click wheel - denser and buzzier the faster you flick. It works while browsing songs and while scrubbing through a track. This was long thought impossible for a web app on modern iPhones; a deep dive into the browser's own machinery found the one path that still works, and it was confirmed on-device before being built in. Everything else about the wheel - the buttons, hold-to-fast-forward, taps - behaves exactly as before, and phones or computers without the capability are completely unaffected."
   }
 ]
