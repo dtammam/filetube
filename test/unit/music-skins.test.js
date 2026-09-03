@@ -31,6 +31,7 @@ test('registry exposes the six skins with render funcs (incl. the v1.260 Seattle
   // also carries the shared .mms-ipod CSS class (music.js reads it).
   assert.strictEqual(skins.skinById('ipod-black').base, 'ipod', 'black iPod bases on the silver iPod CSS');
   assert.strictEqual(skins.skinById('zune-classic').base, 'ipod', 'Seattle Classic rides the wheel chassis the same way (v1.260)');
+  assert.strictEqual(skins.skinById('zune-classic').renderFull, skins.skinById('ipod').renderFull, 'Seattle Classic IS the wheel renderer - the inherited engine/haptics/tap-seek claim rests on this identity (slim W1)');
   assert.strictEqual(skins.skinById('ipod-black').renderFull, skins.skinById('ipod').renderFull, 'same render, different palette');
   // v1.232.1 (Dean): the labels are CHEEKY riffs, deliberately NOT the real product /
   // company names (the IDS stay literal for CSS/storage).
