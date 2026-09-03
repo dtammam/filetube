@@ -1438,3 +1438,92 @@ test('v1.254 autoplay: a LISTEN track never autoplays into random songs (the loc
     },
   });
 });
+
+test('v1.254 (QA W1): the played memory SURVIVES a view re-init, and the RECYCLE arm keeps radio alive on a fully-played library', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  const l1 = { id: 'l1', title: 'Lib One', artist: 'X', durationSec: 70 };
+  const l2 = { id: 'l2', title: 'Lib Two', artist: 'Y', durationSec: 71 };
+  const t9 = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100 };
+  const t8 = { id: 't8', title: 'Other', artist: 'Band', album: '', albumKey: '', durationSec: 90 };
+  const mkFetch = (recent, lib) => (u, init) => {
+    const url = String(u);
+    log.push({ url, method: (init && init.method) || 'GET' });
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [recent] }) });
+    if (new RegExp('^/api/music/' + recent.id + '$').test(url)) return Promise.resolve({ ok: true, json: async () => recent });
+    if (url.indexOf('/api/music?artist=') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    if (url.indexOf('/api/music?sort=random') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: lib }) });
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot({
+    mobile: false, isMusic: true, query: '?play=l1',
+    fetchImpl: mkFetch(l1, []), playerOverride: listenPlayer(calls),
+    run: async (dom, spy, mod) => {
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      // phase 2: RE-INIT (the dock-return class) - the picker must still remember l1 was
+      // played. With the memory wrongly init-scoped (the QA W1 bug), l1 gets re-picked
+      // and a third row appears; module scope keeps it to [t9, l2].
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?play=t9');
+      global.fetch = mkFetch(t9, [t9, l1, l2]);
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      let titles = [...panel(dom).querySelectorAll('.mnp-queue-row')].map((r) => r.textContent);
+      assert.strictEqual(titles.length, 2, 'exactly one append (populated first, so the no-pick axis is non-vacuous)');
+      assert.match(titles[1], /Lib Two/, 'the unplayed neighbor was picked');
+      assert.ok(!titles.some((t) => /Lib One/.test(t)), 'the RE-INIT did not forget l1 was played (module-scope memory)');
+      // phase 3: EVERYTHING in the library page is played or current - the recycle arm
+      // relaxes to queue-only exclusion instead of ending in silence (Dean's radio intent).
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?play=t8');
+      global.fetch = mkFetch(t8, [t8, l1]);
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      titles = [...panel(dom).querySelectorAll('.mnp-queue-row')].map((r) => r.textContent);
+      assert.strictEqual(titles.length, 2, 'the recycle arm appended instead of letting playback die');
+      assert.match(titles[1], /Lib One/, 'the recycled pick is the played-but-not-queued track');
+    },
+  });
+});
+
+test('v1.254 (QA W2): a same-queue track SWITCH mid-fetch drops the picks - the stale re-arm can never stomp the live nav', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  const x = { id: 'x1', title: 'First', artist: 'Band', durationSec: 60 };
+  const y = { id: 'y1', title: 'Last', artist: 'Band', durationSec: 61 };
+  let releaseArtistFetch = null;
+  const fetchImpl = (u, init) => {
+    const url = String(u);
+    log.push({ url, method: (init && init.method) || 'GET' });
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [x, y] }) });
+    if (/^\/api\/music\/x1$/.test(url)) return Promise.resolve({ ok: true, json: async () => x });
+    if (url.indexOf('/api/music?artist=') === 0) {
+      // HANG until the test switches tracks - the TOCTOU window, held open
+      return new Promise((resolve) => { releaseArtistFetch = () => resolve({ ok: true, json: async () => ({ items: [{ id: 'p1', title: 'Pick', artist: 'Band', durationSec: 50 }] }) }); });
+    }
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot({
+    mobile: false, isMusic: true, query: '?play=x1',
+    fetchImpl, playerOverride: listenPlayer(calls),
+    run: async (dom) => {
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const rows = () => [...panel(dom).querySelectorAll('.mnp-queue-row')];
+      assert.strictEqual(rows().length, 2, 'two-track queue rendered (populated first)');
+      // play the LAST track - the picker fires and hangs on the artist fetch
+      rows()[1].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r));
+      assert.strictEqual(typeof releaseArtistFetch, 'function', 'the picker is in flight (non-vacuous window)');
+      // mid-fetch: switch BACK to track 1 - same queue, so the tail check alone would pass
+      rows()[0].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      releaseArtistFetch();
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      assert.strictEqual(rows().length, 2, 'the stale picks were DROPPED - no append onto a queue whose playing track moved');
+      const lastNav = calls.navs[calls.navs.length - 1];
+      assert.strictEqual(typeof lastNav.onNext, 'function', 'nav belongs to index 0 (has a real next)');
+      assert.strictEqual(typeof lastNav.onPrev, 'undefined', 'nav belongs to index 0 (no prev) - the stale index-1 re-arm never landed');
+    },
+  });
+});

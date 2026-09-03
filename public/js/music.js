@@ -541,6 +541,27 @@ if (typeof module !== 'undefined' && module.exports) {
   // Set by playListenItem, cleared by any non-listen loadTrack; consulted as the fallback
   // when the queue lookup misses (the extrasEligibleView fallback posture, same seam).
   var activeListenId = null;
+  // v1.254 (ENDLESS AUTOPLAY) - the pieces that must OUTLIVE a view re-init, at MODULE
+  // scope like activeListenId (QA gate W1: the first cut declared these inside init(),
+  // so a dock round-trip forgot the session's played tracks and the picker repeated
+  // 20-minute-old songs). The storage helpers are stateless and live here with them.
+  var AUTOPLAY_STORAGE_KEY = 'ft-music-autoplay';
+  function autoplayEnabled() {
+    // Default ON (Dean's ruling 4): only an explicit '0' disables.
+    try { return window.localStorage.getItem(AUTOPLAY_STORAGE_KEY) !== '0'; } catch (_) { return true; }
+  }
+  function setAutoplayEnabled(on) {
+    try { window.localStorage.setItem(AUTOPLAY_STORAGE_KEY, on ? '1' : '0'); } catch (_) { /* best-effort */ }
+  }
+  // The session's no-repeat memory: every id loadTrack has played. Bounded: a session
+  // that somehow plays >2000 tracks starts forgetting the oldest - fine, "no repeats"
+  // is a taste rule, not an invariant (and the picker's RECYCLE arm relaxes it before
+  // ever letting playback die - see maybeExtendQueueForAutoplay).
+  var autoplayPlayedIds = [];
+  function autoplayNotePlayed(id) {
+    if (autoplayPlayedIds.indexOf(id) === -1) autoplayPlayedIds.push(id);
+    if (autoplayPlayedIds.length > 2000) autoplayPlayedIds.shift();
+  }
   // v1.250 (F-UNIFY): the current init's IN-TAB shared-engine instance. Module-scoped so
   // destroy() can unbind it on the #view-root swap - the engine binds its own listeners
   // (not view-signal-scoped), so controller.abort() alone would leak them on the panel.
@@ -1873,25 +1894,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // already played. MUSIC ONLY: podcasts never enter this view's queue, and a
     // LISTEN track (the v1.252 projected video) is excluded by flag - autoplaying a
     // random song after a listened video is not the contract. Client-only v1.
-    var AUTOPLAY_STORAGE_KEY = 'ft-music-autoplay';
-    function autoplayEnabled() {
-      // Default ON (Dean's ruling 4): only an explicit '0' disables.
-      try { return window.localStorage.getItem(AUTOPLAY_STORAGE_KEY) !== '0'; } catch (_) { return true; }
-    }
-    function setAutoplayEnabled(on) {
-      try { window.localStorage.setItem(AUTOPLAY_STORAGE_KEY, on ? '1' : '0'); } catch (_) { /* best-effort */ }
-    }
-    // The session's no-repeat memory: every id loadTrack has played (module scope, so
-    // it survives the dock-return re-init like activeListenId does). Bounded: a
-    // session that somehow plays >2000 tracks starts forgetting the oldest - fine,
-    // "no repeats" is a taste rule, not an invariant.
-    var autoplayPlayedIds = [];
-    function autoplayNotePlayed(id) {
-      if (autoplayPlayedIds.indexOf(id) === -1) autoplayPlayedIds.push(id);
-      if (autoplayPlayedIds.length > 2000) autoplayPlayedIds.shift();
-    }
     var AUTOPLAY_APPEND_COUNT = 5;   // tracks appended per exhaustion
-    var AUTOPLAY_ARTIST_MAX = 3;     // of which at most this many same-artist
+    var AUTOPLAY_ARTIST_MAX = 3;     // cap on the ARTIST-ARM picks (the library fill may add more same-artist)
     var autoplayFetchInFlight = false;
     async function maybeExtendQueueForAutoplay(i) {
       if (i < 0 || i !== queue.length - 1) return;   // only the LAST track arms it
@@ -1920,18 +1924,36 @@ if (typeof module !== 'undefined' && module.exports) {
             takeFrom((a && a.items) || [], AUTOPLAY_ARTIST_MAX);
           } catch (_) { /* artist arm is best-effort */ }
         }
+        var libItems = [];
         if (picks.length < AUTOPLAY_APPEND_COUNT) {
           try {
             var lib = await fetchJson('/api/music?sort=random&seed=' + seed + '&limit=60');
-            takeFrom((lib && lib.items) || [], AUTOPLAY_APPEND_COUNT);
+            libItems = (lib && lib.items) || [];
+            takeFrom(libItems, AUTOPLAY_APPEND_COUNT);
           } catch (_) { /* library arm is best-effort */ }
         }
-        // TOCTOU (the v1.104/v1.105 class): re-check the REAL precondition after the
-        // awaits - the user may have played a different queue, toggled autoplay off,
-        // or a listen track may have taken over while we fetched. A stale append
-        // onto the wrong queue is the harm; dropping the picks is always safe.
+        // RECYCLE arm (QA S3, Dean's radio intent): a fully-played library must not end
+        // in silence - his original complaint recurring at library scale. When BOTH arms
+        // produced nothing, relax the no-repeat rule to "not what's in the queue right
+        // now" and re-walk the already-fetched library page. No extra request.
+        if (picks.length === 0 && libItems.length) {
+          exclude = {};
+          for (var q2 = 0; q2 < queue.length; q2++) exclude[queue[q2].id] = true;
+          takeFrom(libItems, AUTOPLAY_APPEND_COUNT);
+        }
+        // TOCTOU (the v1.104/v1.105 class): re-check the REAL preconditions after the
+        // awaits. QA gate W2: the queue-tail check alone is NOT enough - a same-queue
+        // track switch mid-fetch (playAt never mutates `queue`) would pass it, and the
+        // stale registerTrackNav(i) re-arm below would stomp the live closures: Next
+        // then plays a random appended track instead of the real neighbor (the v1.104
+        // wrong-track class). `playingId !== cur.id` catches that; `signal.aborted`
+        // catches this whole VIEW INSTANCE having been torn down mid-fetch (the old
+        // closure's queue/nav are dead - appending there would stomp the successor's).
+        // Dropping the picks is always safe.
+        if (signal.aborted) return;
         if (!autoplayEnabled()) return;
         if (queue[queue.length - 1] !== cur) return;
+        if (playingId !== cur.id) return;
         if (picks.length === 0) return;
         queue = queue.concat(picks);
         registerTrackNav(i);        // i now has a next; re-arm (recurses, but i !== length-1 any more)
