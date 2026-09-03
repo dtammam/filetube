@@ -1030,3 +1030,117 @@ test('v1.236 (M10): a rerouted id NOT in recent but RESOLVABLE plays in music - 
     assert.strictEqual(navLog.length, 0, 'a resolvable rerouted track plays in the music player and is NOT bounced to /watch');
   } });
 });
+
+// ---- v1.252 (Dean): LISTEN-MODE - a video played as audio in this presentation ----------
+
+function listenPlayer(calls) {
+  const p = {
+    currentId: null,
+    _meta: null,
+    getState: () => 'full',
+    getCurrentMeta: () => p._meta,
+    expand() {}, dock() {},
+    setTrackNav: (nav) => { calls.navs.push(nav || {}); },
+    load: (id, data, opts) => {
+      calls.loads.push({ id, data, opts: opts || {} });
+      p.currentId = id;
+      p._meta = { isMusic: true, id, title: data.title, artist: data.channelName, album: data.album, albumKey: data.albumKey };
+    },
+  };
+  return p;
+}
+function listenFetch(log, videoBody) {
+  return (u, init) => {
+    const url = String(u);
+    log.push({ url, method: (init && init.method) || 'GET' });
+    if (/^\/api\/videos\//.test(url)) {
+      return Promise.resolve(videoBody
+        ? { ok: true, json: async () => videoBody }
+        : { ok: false, status: 404, json: async () => ({ error: 'Media file not found' }) });
+    }
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+}
+const LISTEN_VIDEO = { id: 'vid1', title: 'A Long Video', channelName: 'The Channel', folderName: 'The Channel', duration: 903, type: 'video', filePath: '/lib/a.mp4' };
+
+test('v1.252 listen=1: the video plays as a SINGLE listen track through the media routes - skin up, no prev/next, no music-API touch', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, LISTEN_VIDEO), playerOverride: listenPlayer(calls),
+    run: async (dom) => {
+      assert.strictEqual(calls.loads.length, 1, 'exactly one load');
+      const { id, data } = calls.loads[0];
+      assert.strictEqual(id, 'vid1');
+      assert.strictEqual(data.type, 'audio', 'presented as audio (the skin/lock-screen posture)');
+      assert.strictEqual(data.streamSrc, '/video/vid1', 'streams the MEDIA byte route (the whole trick)');
+      assert.strictEqual(data.artUrl, '/thumbnail/vid1', 'the video thumbnail is the art');
+      assert.strictEqual(data.progressEndpoint, '/api/progress', 'the MEDIA progress store - the position carries watch<->listen');
+      assert.strictEqual(data.channelName, 'The Channel', 'the channel is the artist line');
+      // the skin took over (the full music presentation)
+      assert.match(panel(dom).className, /\bmms-full\b/, 'the skin painted for the listen track');
+      // single track: the nav registration carries NEITHER prev NOR next (the v1 intake)
+      assert.ok(calls.navs.length >= 1, 'setTrackNav ran');
+      const lastNav = calls.navs[calls.navs.length - 1];
+      assert.strictEqual(lastNav.onPrev, undefined, 'no prev on a single-track listen');
+      assert.strictEqual(lastNav.onNext, undefined, 'no next on a single-track listen');
+      // no Music membership and no music-surface resolution:
+      assert.ok(log.some((c) => c.url === '/api/videos/vid1'), 'resolved via /api/videos');
+      assert.ok(!log.some((c) => c.url.indexOf('/api/music/resume') === 0), 'the music resume pointer is NEVER written for a listen track');
+      assert.ok(!log.some((c) => /^\/api\/music\/[^?]/.test(c.url) && c.url.indexOf('resume') === -1), 'the music track API is never consulted');
+    },
+  });
+});
+
+test('v1.252 both-axes: a NORMAL music track still writes the music resume pointer (the listen skip did not over-reach)', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  const track = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100, source: 'library', streamSrc: '/video/t9' };
+  const fetchImpl = (u, init) => {
+    const url = String(u);
+    log.push({ url, method: (init && init.method) || 'GET' });
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [track] }) });
+    if (/^\/api\/music\/t9$/.test(url)) return Promise.resolve({ ok: true, json: async () => track });
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=t9',
+    fetchImpl, playerOverride: listenPlayer(calls),
+    run: async () => {
+      assert.strictEqual(calls.loads.length >= 1, true, 'the track loaded');
+      assert.ok(log.some((c) => c.url === '/api/music/resume' && c.method === 'POST'), 'a normal play still records the Continue-listening pointer');
+    },
+  });
+});
+
+test('v1.252 listen miss: an unresolvable id returns to the watch surface (never a dead music list)', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  const navLog = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=ghost&listen=1',
+    fetchImpl: listenFetch(log, null), playerOverride: listenPlayer(calls), navLog,
+    run: async () => {
+      assert.strictEqual(calls.loads.length, 0, 'nothing loaded on a miss');
+      assert.ok(navLog.some((m) => /navigation/i.test(m)), 'the miss reached location.replace (a /watch return), not a blank list');
+    },
+  });
+});
+
+test('v1.252 Extras interop: the listen track (library-backed by construction) gets the sticker Extras entry', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, LISTEN_VIDEO), playerOverride: listenPlayer(calls),
+    run: async (dom) => {
+      const st = panel(dom).querySelector('[data-skin-sticker]');
+      assert.ok(st, 'the sticker painted');
+      st.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
+      assert.ok(menu.querySelector('[data-skin-extras]'), 'the v1.249 Extras entry shows for the listen track');
+    },
+  });
+});

@@ -167,3 +167,15 @@ test('the HOME-FEED card (buildFeedCardHtml) reroutes an audio download too (ser
   assert.match(main.buildFeedCardHtml({ id: 'v1', kind: 'media', type: 'video', href: '/watch.html?v=v1', thumbnailUrl: '/thumbnail/v1', title: 'Clip' }), /href="\/watch\.html\?v=v1"/);
   assert.match(main.buildFeedCardHtml({ id: 'p1', kind: 'podcast', type: 'audio', href: '/podcasts?play=p1', thumbnailUrl: '/podcastart/s1', title: 'Ep' }), /href="\/podcasts\?play=p1"/, 'a podcast in the feed is not hijacked');
 });
+
+test('v1.252 (Listen-mode): the watch page mounts a Listen button that navigates with &listen=1 (the entry half of the chain)', () => {
+  // The music-side behavior (the listen arm, single track, media routes, no music-resume)
+  // is bound behaviorally in music-skin-integration.test.js; this locks the WATCH-side
+  // entry: the button exists, mounts with the Share chassis, and targets the listen URL.
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'watch.js'), 'utf8');
+  assert.match(src, /function setupListenButton\(\)/, 'the Listen mount exists');
+  assert.match(src, /setupListenButton\(\);/, 'and is actually called on media load (reachable)');
+  assert.match(src, /listenBtn\.id = 'listen-media-btn'/, 'the Share-chassis id posture');
+  assert.match(src, /'\/music\?play=' \+ encodeURIComponent\(mediaData\.id\) \+ '&listen=1'/, 'the tap targets the listen URL');
+  assert.match(src, /window\.FileTube\.navigate\(target\)/, 'through the SPA navigate');
+});

@@ -35,9 +35,11 @@ const DISPOSITIONS = {
       + 'COMMENT naming the deep-link shape (main.js ~243).',
   },
   'music.js': {
-    count: 1,
-    why: 'the deliberate ao=1 MISS-BOUNCE: a non-projected id tapped via the reroute returns '
-      + 'to /watch (the v1.236 contract).',
+    count: 2,
+    why: 'the deliberate ao=1 MISS-BOUNCE (a non-projected id tapped via the reroute returns '
+      + 'to /watch, the v1.236 contract) and the v1.252 LISTEN miss-return (an unresolvable '
+      + 'listen id goes back to its watch page - the id CAME from a watch page, and the '
+      + 'watch 404 view explains better than a blank music list).',
   },
   'player.js': {
     count: 4,

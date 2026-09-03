@@ -1770,11 +1770,18 @@ if (typeof module !== 'undefined' && module.exports) {
       // np.id === player.currentId, reflect THIS track, not the previous one.
       updateNowPlaying();
       // Remember the resume pointer (Continue-listening / app relaunch).
-      fetch('/api/music/resume', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lastTrackId: item.id, queueCtx: queueCtx, position: 0 }),
-      }).catch(function () {});
+      // v1.252 (LISTEN-MODE, the locked no-Music-membership intake): a listen track never
+      // writes the music resume pointer - the pointer IS Music membership (it seeds
+      // Continue-listening / relaunch-resume). Its position still persists continuously to
+      // the MEDIA store (progressEndpoint '/api/progress' via the periodic save + the seek
+      // pipeline), which is the ONE truth that carries watch->listen->watch.
+      if (!item.listen) {
+        fetch('/api/music/resume', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lastTrackId: item.id, queueCtx: queueCtx, position: 0 }),
+        }).catch(function () {});
+      }
     }
 
     // The lock-screen / expanded-view Prev/Next handlers for queue index `i`.
@@ -1937,6 +1944,61 @@ if (typeof module !== 'undefined' && module.exports) {
       playAt(i);
     }
 
+    // v1.252 (Dean, LISTEN-MODE): play a VIDEO as audio in the full music presentation.
+    // THE TRICK: a listen track is exactly the projected library-track shape this view
+    // already plays - source 'library' (loadTrack's isLib arm honors the routes), the media
+    // byte route as streamSrc, the video thumbnail as art, the MEDIA progress store (the ONE
+    // store - the position carries watch->listen->watch) - plus a CLIENT-ONLY `listen` flag
+    // with exactly two effects: loadTrack skips the music-resume write (NO Music membership,
+    // the locked intake) and the sticker menu's page 1 offers the "Watch" way back. A
+    // single-track queue registers neither prev nor next (the v1 intake) for free.
+    async function playListenItem(mediaId) {
+      mountEarlyListenCover();
+      try {
+        const v = await fetchJson('/api/videos/' + encodeURIComponent(mediaId));
+        if (v && v.id) {
+          const t = {
+            id: v.id,
+            title: v.title || v.name || 'Untitled',
+            artist: (typeof v.channelName === 'string' && v.channelName) || v.folderName || '',
+            album: '', albumKey: '',
+            durationSec: Number(v.duration) || 0,
+            source: 'library',
+            listen: true,
+            streamSrc: '/video/' + encodeURIComponent(v.id),
+            artUrl: '/thumbnail/' + encodeURIComponent(v.id),
+            progressEndpoint: '/api/progress',
+          };
+          tab = 'songs';
+          drill = null;
+          search = '';
+          queueCtx = null;
+          queueCtxEncoded = '';
+          queue = [t];
+          playAt(0);
+          return;
+        }
+      } catch (_) { /* unresolvable - fall through to the bounce */ }
+      // The id came FROM a watch page, so a miss means it vanished mid-navigation -
+      // return to the watch surface (its own 404 view explains better than a blank list).
+      try { if (window.location && typeof window.location.replace === 'function') { window.location.replace('/watch.html?v=' + encodeURIComponent(mediaId)); return; } } catch (_) { /* no navigable location */ }
+    }
+    // The v1.244 early cover, shared by the listen arm (identical mechanics; factored so
+    // the two ?play= arms cannot drift).
+    function mountEarlyListenCover() {
+      var coverEarly = false;
+      try { coverEarly = !!(SKINS && typeof SKINS.skinActiveFor === 'function' && SKINS.skinActiveFor({ isMusic: true })); } catch (_) { coverEarly = false; }
+      if (coverEarly && nowPlayingPanel) {
+        straightToPlayerPending = true; // hold the cover up through init's synchronous epilogue
+        document.body.classList.add('mms-on');
+        var _sid = (SKINS.activeSkinId && SKINS.activeSkinId()) || 'apple';
+        var _base = (SKINS.skinById && (SKINS.skinById(_sid) || {}).base) || '';
+        nowPlayingPanel.className = 'music-nowplaying-panel mms mms-full mms-' + _sid + (_base ? ' mms-' + _base : '');
+        nowPlayingPanel.innerHTML = '';
+        nowPlayingPanel.hidden = false;
+      }
+    }
+
     // A "Continue listening" card lands here as /music?play=<trackId> and must
     // play THAT specific track (the earlier bug: it deferred to the resume
     // POINTER's last-played queue, so tapping any card but the single most-
@@ -2026,7 +2088,16 @@ if (typeof module !== 'undefined' && module.exports) {
 
     const playParam = urlParams.get('play');
     var wantNowPlaying = urlParams.get('nowplaying') === '1';
-    if (playParam) {
+    if (playParam && urlParams.get('listen') === '1') {
+      // v1.252 (Dean, LISTEN-MODE): a VIDEO played as audio in this presentation. The id is a
+      // media id (never a music-surface id) - resolve it against /api/videos and play it as a
+      // single listen track; the music API is never consulted and the ao bounce never applies.
+      playListenItem(playParam).catch((err) => {
+        console.error('Music: listen-mode play failed', err);
+        straightToPlayerPending = false; // a rejected load must not strand the cover
+        render().catch(() => {});
+      });
+    } else if (playParam) {
       // &ao=1 = the v1.236 reroute origin (an audio download tapped from a video-side tile) -
       // bounce a miss to /watch. A bare ?play= (a continue-listening card) keeps render() on a miss.
       playTrackFromContinue(playParam, urlParams.get('ao') === '1').catch((err) => {

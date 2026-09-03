@@ -997,6 +997,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // item (`mediaData.watchUrl`, GET /api/videos/:id) -- a plain local
     // library file has nothing to share, so it gets no button at all.
     let shareBtn = null;
+    let listenBtn = null; // v1.252: the Listen-mode entry (per view instance, the shareBtn posture)
     // Restores the button's label after the transient "Copied!" feedback of
     // the clipboard fallback below; tracked so a rapid double-tap never
     // stacks two timers (the second tap clears the first).
@@ -1277,6 +1278,12 @@ if (typeof module !== 'undefined' && module.exports) {
         // 3d. v1.33 T2: mount the "Share" button when the server derived an
         // original YouTube link for this item (`mediaData.watchUrl`).
         setupShareButton();
+
+        // 3d-lm. v1.252 (Dean, Listen-mode): mount the "Listen" button - play
+        // THIS video as audio in the music-player presentation (per-play, the
+        // locked intake; audio items never reach this page organically since the
+        // v1.246/v1.251 reroutes, so every mounted case is a real video).
+        setupListenButton();
 
         // 3d'. Transcript export (Dean): mount the "Transcript" button when
         // the item has a caption sidecar (`mediaData.hasSubtitles`).
@@ -3293,6 +3300,44 @@ if (typeof module !== 'undefined' && module.exports) {
           if (transcriptBtn) transcriptBtn.disabled = busy;
         },
       });
+    }
+
+    // v1.252 (Dean, Listen-mode): the "Listen" button - the setupShareButton
+    // chassis (same .btn, icon + hideable .btn-label, same nowrap sub-group).
+    // Navigates to /music?play=<id>&listen=1: music.js's listen arm plays the
+    // video AS AUDIO in the full music presentation (skin/wheel/sticker), the
+    // SAME media progress store both directions, and the sticker menu's page 1
+    // carries the "Watch" way back. Unconditional for media items (per-play -
+    // no remembered flag, no Music-library membership; the locked intake).
+    function setupListenButton() {
+      const watchActions = root.querySelector('.watch-actions');
+      if (!watchActions || !mediaData) return;
+      if (!listenBtn) {
+        listenBtn = document.createElement('button');
+        listenBtn.type = 'button';
+        listenBtn.id = 'listen-media-btn';
+        listenBtn.className = 'btn';
+        listenBtn.title = 'Listen: play this video as audio in the music player';
+        listenBtn.setAttribute('aria-label', 'Listen to this video in the music player');
+        const btnGroup = watchActions.querySelector('.watch-action-btns');
+        (btnGroup || watchActions).appendChild(listenBtn);
+        listenBtn.addEventListener('click', () => {
+          if (!mediaData) return;
+          const target = '/music?play=' + encodeURIComponent(mediaData.id) + '&listen=1';
+          if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(target);
+          else window.location.href = target;
+        }, { signal });
+      }
+      // rebuilt each media load, the Share-button posture (never accumulate children).
+      listenBtn.replaceChildren();
+      const licon = document.createElement('i');
+      licon.className = 'icon-music-note';
+      const llabel = document.createElement('span');
+      llabel.className = 'btn-label';
+      llabel.textContent = 'Listen';
+      listenBtn.appendChild(licon);
+      listenBtn.appendChild(document.createTextNode(' '));
+      listenBtn.appendChild(llabel);
     }
 
     // Mounts the "Transcript" button as a sibling of Share inside
