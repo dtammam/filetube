@@ -93,6 +93,27 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.264.0 - The whole picture, softly framed (2026-09-03)
+
+Dean's polish round on v1.263 ("absolutely amazing... it's like perfection"): (1) "the
+gradient trick" - the full art, letterbox filled by the art's own blur. The machinery
+already existed (the base img is object-fit:contain with the v1.244 blurred self-bleed
+behind it); v1.263's cover override was the ONLY thing cropping, so the fix is its
+DELETION, lock-bound as an ABSENCE plus its load-bearing partners. Disclosed: the real
+Zune 30 letterboxed on plain black - the bleed is the modern upgrade, Dean's choice.
+(2) The green rim retired, no replacement (his trailing "actually do nothing" read as
+retracting the pink swap - disclosed to him): the inset ring, the --mms-znc-edge token,
+its authority entry (141 -> 140), the blurb claim, and the header comment all swept.
+
+THE GATE (slim, 2 rounds, APPROVE): the bleed's CONTAINMENT was the catch - stripping
+overflow:hidden (the scaled blur painting ~17.5% past every cover edge on all five
+skins) or position:relative (the bleed painting across the whole shell) survived the
+full suite; both now pinned, plus the absence lock hardened against respellings and a
+stale token-count prose corrected (78 -> 80, wrong since v1.261).
+
+Dual-Node: v22.23.1 8251/8251 pass, 0 fail, 0 skipped; v24.14.0 8251/8251, 0 fail,
+0 skipped. Frozen files 0-diff. DEVICE-PENDING Dean's pass.
+
 ### v1.263.0 - Wall-to-wall album art (2026-09-03)
 
 Dean on v1.262 ("It's amazing"): the Now Playing wastes the big screen - "is there a

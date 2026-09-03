@@ -10972,7 +10972,7 @@ html[data-modern="on"] .video-uploader {
   --mms-ipodk-wheel1:#3d3d3f; --mms-ipodk-wheel2:#232325; --mms-ipodk-wheel-lbl:#b9babd;
   /* v1.260 Seattle Classic (the brown Zune 30) - body + pad palette, the ipodk pattern;
      the edge carries the original's green translucent rim. */
-  --mms-znc-body1:#5a4a3a; --mms-znc-body2:#2e2620; --mms-znc-edge:#8aa544;
+  --mms-znc-body1:#5a4a3a; --mms-znc-body2:#2e2620;
   --mms-znc-wheel1:#6b5844; --mms-znc-wheel2:#41352a; --mms-znc-wheel-lbl:#d8cfc2;
   --mms-znc-chrome1:#e8e8ea; --mms-znc-chrome2:#a9abb0; --mms-znc-ring:#c9cbd0;
   --mms-ipod-art-shadow:0 2px 5px rgba(0,0,0,.3);
@@ -11363,13 +11363,13 @@ html[data-modern="on"] .video-uploader {
   /* v1.260: SEATTLE CLASSIC - the brown Zune 30 on the same wheel chassis (Dean: "the
      original zune with the circle wheel"). Palette-only, the ipod-black pattern. */
   /* v1.261 (Dean's reference photo): the REAL Zune 30, not a brown iPod. Brown body +
-     green rim; a big chrome-bezel screen; and the signature - a clean chrome PAD flanked
+     body (the green rim retired at v1.264, Dean); a big chrome-bezel screen; and the
+     signature - a clean chrome PAD flanked
      by a Back and a Play/Pause button (no printed wheel labels). The screen reuses the
      shared iPod LCD machinery (list/scrub/reflect) but reads flat + bold + chrome. */
   .mms-zune-classic{ background:
       linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
-      linear-gradient(158deg, var(--mms-znc-body1), var(--mms-znc-body2));
-    box-shadow:inset 0 0 0 2px var(--mms-znc-edge); }
+      linear-gradient(158deg, var(--mms-znc-body1), var(--mms-znc-body2)); }
   /* the chrome-framed screen (the photo's silver bezel): BIG - it fills above the pad,
      the defining Zune-vs-iPod proportion (the iPod LCD is a fixed 4:3 strip). */
   .mms-zune-classic .ip-lcd{ flex:1; aspect-ratio:auto; border:3px solid var(--mms-znc-chrome2); /* token-exempt: Zune chrome bezel width */ border-radius:var(--radius); box-shadow:0 0 0 1px var(--mms-znc-chrome1), var(--mms-ipod-lcd-shadow); }
@@ -11415,7 +11415,9 @@ html[data-modern="on"] .video-uploader {
   .mms-zune-classic .ip-npview{ padding:0; }
   .mms-zune-classic .ip-npmain{ flex-direction:column; gap:var(--space-4); }
   .mms-zune-classic .ip-cover{ width:100%; align-self:stretch; aspect-ratio:auto; flex:1; min-height:0; border-radius:0; box-shadow:none; }
-  .mms-zune-classic .ip-cover img{ object-fit:cover; }
+  /* v1.264 (Dean): NO img override here - the base keeps object-fit:contain, so the
+     full picture shows and the v1.244 blurred self-bleed fills the letterbox. (The
+     real Zune 30 letterboxed on plain black; the bleed is the modern upgrade, chosen.) */
   .mms-zune-classic .ip-meta{ flex:none; padding:0 var(--space-6); }
   .mms-zune-classic .ip-scrub{ padding:0 var(--space-6) var(--space-4); }
   .mms-zune-classic .mms-row.is-current .mms-rt{ color:var(--mms-zn-pink); }

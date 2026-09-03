@@ -93,7 +93,7 @@ const CONTRACT = {
   // this and remain unregistered - tech-debt #201).
   '--mms-zn-pink': '#ec008c', '--mms-zn-dim': '#9a9a9a', '--mms-zn-ink': '#1a1a1a',
   // v1.260: Seattle Classic (brown Zune) body/pad + the Aqua ribbing pair.
-  '--mms-znc-body1': '#5a4a3a', '--mms-znc-body2': '#2e2620', '--mms-znc-edge': '#8aa544',
+  '--mms-znc-body1': '#5a4a3a', '--mms-znc-body2': '#2e2620',
   '--mms-znc-wheel1': '#6b5844', '--mms-znc-wheel2': '#41352a', '--mms-znc-wheel-lbl': '#d8cfc2',
   '--mms-znc-chrome1': '#e8e8ea', '--mms-znc-chrome2': '#a9abb0', '--mms-znc-ring': '#c9cbd0',
   '--mms-aqua-rib': 'rgba(21,86,170,.35)', '--mms-aqua-rib-0': 'rgba(21,86,170,0)',
@@ -119,7 +119,7 @@ const CONTRACT = {
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 141, 'the 60-name contract (see history) + the 78 --mms-* mobile-music-skin tokens (v1.260 +6 zune-classic +2 aqua-rib; v1.261 +3 znc-chrome) (v1.232.2 added 2 silver-gloss stops): v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
+  assert.equal(Object.keys(CONTRACT).length, 140, 'the 60-name contract (see history) + the 80 --mms-* mobile-music-skin tokens (slim S2: the prose count was stale since v1.261) (v1.260 +6 zune-classic +2 aqua-rib; v1.261 +3 znc-chrome; v1.264 -1 znc-edge, Dean retired the green rim) (v1.232.2 added 2 silver-gloss stops): v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());
