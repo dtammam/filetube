@@ -19,8 +19,8 @@ const CTX = {
   playing: true, posSec: 96, durSec: 337, posLabel: '1:36', remLabel: '-4:01',
 };
 
-test('registry exposes the four skins with render funcs (incl. the v1.232 black iPod)', () => {
-  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black']);
+test('registry exposes the five skins with render funcs (incl. the v1.232 black iPod and the v1.259 Seattle/zune)', () => {
+  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'zune']);
   assert.strictEqual(skins.DEFAULT_ID, 'apple');
   for (const id of skins.IDS) {
     const s = skins.skinById(id);
@@ -34,9 +34,9 @@ test('registry exposes the four skins with render funcs (incl. the v1.232 black 
   // v1.232.1 (Dean): the labels are CHEEKY riffs, deliberately NOT the real product /
   // company names (the IDS stay literal for CSS/storage).
   const labels = skins.IDS.map((id) => skins.skinById(id).label);
-  assert.deepStrictEqual(labels, ['Cider', 'Nordic', 'Pocket Classic', 'Pocket Classic (Black)']);
+  assert.deepStrictEqual(labels, ['Cider', 'Nordic', 'Pocket Classic', 'Pocket Classic (Black)', 'Seattle']);
   for (const l of labels) {
-    assert.ok(!/apple|spotify|ipod/i.test(l), 'label "' + l + '" avoids the real product/company names');
+    assert.ok(!/apple|spotify|ipod|zune|microsoft/i.test(l), 'label "' + l + '" avoids the real product/company names');
   }
 });
 
@@ -140,6 +140,12 @@ test('per-skin controls: Apple/Spotify have a swap-glyph play + collapse + tap-s
   assert.match(ipod, /data-skin-select/, 'iPod: Select zone (list toggle)');
   assert.match(ipod, /class="mms-playind"/, 'iPod: status-bar play indicator (reflect target)');
   assert.match(ipod, /data-skin-seek/, 'iPod: the LCD bar is tap-to-seek since v1.258.1 (was display-only)');
+  // v1.259 (slim W4): the Seattle/zune controls - the collapse button is the skin's
+  // ONLY exit (no MENU zone), so its absence would trap the user full-screen.
+  const zune = skins.renderFull('zune', CTX);
+  assert.match(zune, /class="mms-play"/, 'zune: the swap-glyph play');
+  assert.match(zune, /data-skin-collapse/, 'zune: the collapse exit (the ONLY way out)');
+  assert.match(zune, /data-skin-seek/, 'zune: tap-to-seek bar');
   assert.ok(!/data-skin-collapse/.test(ipod), 'iPod exits via MENU, not the collapse chevron');
   assert.ok(!/class="mms-play"/.test(ipod), 'iPod has no swap-glyph play (the wheel bottom keeps its ▶❚❚)');
 });
@@ -222,7 +228,7 @@ test('v1.229: NO in-player skin switcher - picking lives in the account menu now
     assert.ok(!/mms-skinsw|mms-sw\b/.test(html), id + ': no switcher markup');
   }
   // The registry the Settings picker reads is still exported.
-  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black']);
+  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'zune']);
   assert.strictEqual(typeof skins.setActiveSkin, 'function');
   assert.strictEqual(skins.skinById('ipod').label, 'Pocket Classic', 'cheeky label (not the real product name) for the picker');
 });
@@ -234,13 +240,18 @@ test('the pause glyph shows only when playing; play glyph when paused', () => {
   assert.match(paused, /aria-label="Play"/, 'paused -> Play affordance');
 });
 
-test('render ESCAPES track/queue text (no HTML injection from a crafted tag/title)', () => {
-  const evil = { track: { title: '<img src=x onerror=alert(1)>', artist: '"><b>', album: 'A&B', artUrl: '/x' },
-    upNext: [{ index: 0, title: '<script>', durLabel: '', state: 'current' }], playing: false, posSec: 0, durSec: 100 };
-  const html = skins.renderFull('spotify', evil);
-  assert.ok(!/<img src=x/.test(html), 'the raw <img> tag never lands in the DOM');
-  assert.ok(!/<script>/.test(html), 'the raw <script> never lands');
-  assert.match(html, /&lt;img src=x/, 'it is escaped');
+test('EVERY skin render ESCAPES track/queue text (no HTML injection from a crafted tag/title)', () => {
+  // v1.259 (slim W4): iterate ALL skins - the zune path LOWERCASES before escaping
+  // (lc-then-esc), and a divergent single-skin fixture left that axis unbound.
+  const evil = { track: { title: '<IMG SRC=x onerror=alert(1)>', artist: '"><b>', album: 'A&B', artUrl: '/x' },
+    upNext: [{ index: 0, title: '<script>', durLabel: '', state: 'current' }],
+    fullList: [{ index: 0, title: '<script>', durLabel: '', state: 'current' }], playing: false, posSec: 0, durSec: 100 };
+  for (const id of skins.IDS) {
+    const html = skins.renderFull(id, evil);
+    assert.ok(!/<img src=x/i.test(html), id + ': the raw img tag never lands in the DOM');
+    assert.ok(!/<script>/.test(html), id + ': the raw script never lands');
+    assert.match(html, /&lt;img src=x/i, id + ': it is escaped (case per the skin\'s own text transform)');
+  }
 });
 
 test('pct clamps position into 0..100 and guards a zero/absent duration', () => {
@@ -397,4 +408,16 @@ test('v1.235.x: the pop-out runs its OWN reflect clock (fixes the true-PiP freez
   assert.match(js, /pipClock = win\.setInterval\(function \(\) \{ if \(pipEngine\) pipEngine\.reflect\(\); \}, \d+\)/, 'the pop-out clock is an interval on the pop-out window that reflects its engine surface');
   // teardown clears it on the window that created it.
   assert.match(js, /clearInterval\(pipClock\)/, 'teardown clears the pop-out clock');
+});
+
+test('v1.259 source-lock: the zune queue CAN scroll - the flex chain and row layout exist (jsdom cannot measure layout)', () => {
+  // Adversarial W1/W2's functional findings: without the .mms-zn-queue flex chain the
+  // qlist auto-heights and .mms-full's overflow:hidden crops rows unreachably; without
+  // the row layout the four spans mash into UA-default buttons. Lock the load-bearers.
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.mms-zune \.mms-zn-queue\{ flex:1; min-height:0; display:flex; flex-direction:column; \}/, 'the queue flex chain (the spotify idiom) - the scroll rides it');
+  assert.match(css, /\.mms-zune \.mms-qlist\{ overflow-y:auto; flex:1; min-height:0;/, 'the list scrolls within the chain');
+  assert.match(css, /\.mms-zune \.mms-row\{ display:flex; align-items:center; width:100%;/, 'rows have real layout, not UA-default buttons');
+  assert.match(css, /\.mms-zune \.mms-row\{[^}]*text-transform:lowercase/, 'the lowercase rows claim is CSS-true');
 });

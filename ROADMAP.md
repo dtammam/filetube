@@ -93,6 +93,29 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.259.0 - Seattle (2026-09-03)
+
+Dean's Zune ask, shipped as the fifth skin (id 'zune', label "Seattle" per the
+cheeky-riff rule): the Metro language - giant hairline lowercase type (a new
+--fs-6xl:44px scale step, added the sanctioned way after the AC7.1 type-scale hook
+rightly refused a raw literal), black canvas, flat art tile, one magenta accent,
+lowercase queue rows - all on the shared control chassis. MY OWN CATCH before the gate:
+the first cut registered the skin UNREACHABLE (IDS is hand-maintained - the v1.184
+inert class, betrayed by a suite that stayed green when it should have gone red).
+
+THE GATE CAUGHT (slim, two rounds, APPROVE, zero surviving mutants): the queue could
+not scroll (a missing flex link; .mms-full crops the overflow), rows had no layout, the
+"giant cropped type" claim was overreach at 20px (re-cut genuinely giant; the crop
+dressing was dead code - long titles marquee), three unbound controls including the
+skin's ONLY exit and the escape path (the escape test now iterates ALL skins), the new
+palette escaping the value authority (registered; the PRE-EXISTING seven-token gap =
+tech-debt #201), and the Settings blurb missing (the same hand-maintained-list class
+as my IDS catch, on a sibling surface).
+
+Dual-Node: v22.23.1 8245/8245 pass, 0 fail, 0 skipped; v24.14.0 8245/8245, 0 fail, 0
+skipped. DEVICE-PENDING Dean's pass (the queue scroll on a long album; the 44px header
+feel; the tray colorways correctly stay iPod-only).
+
 ### v1.258.1 - Tray touches (2026-09-03)
 
 Dean's polish round ("looks much better and nice and small"): (1) the ipod LCD bar is

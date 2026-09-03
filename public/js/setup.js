@@ -531,6 +531,7 @@ const MUSIC_SKIN_BLURB = {
   spotify: 'Dark, with a green play button and your up-next queue.',
   ipod: 'Retro brushed-metal, framed cover, classic track list.',
   'ipod-black': 'Space-black brushed metal, same classic click wheel.',
+  zune: 'Big lowercase type on black with a flash of magenta. It said hello from Seattle.',
 };
 function renderMusicSkinPicker() {
   const container = document.getElementById('music-skin-picker');

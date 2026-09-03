@@ -26,7 +26,7 @@
 
 (function () {
   var SKIN_KEY = 'ft-music-skin';
-  var IDS = ['apple', 'spotify', 'ipod', 'ipod-black'];
+  var IDS = ['apple', 'spotify', 'ipod', 'ipod-black', 'zune'];
   var DEFAULT_ID = 'apple';
 
   function esc(s) {
@@ -124,6 +124,23 @@
       '<div class="mms-transport"><button type="button" class="mms-ic mms-shuffle" data-skin-shuffle aria-label="Shuffle">' + shuffleGlyph() + '</button>' + prevBtn() + playBtn(ctx) + nextBtn() + '<span class="mms-tr-spacer" aria-hidden="true"></span></div>' +
       '<div class="mms-queue"><h4 class="mms-qh">Next in queue</h4><div class="mms-qlist">' + goRows(ctx, true) + '</div></div>';
   }
+  // ZUNE (v1.259, Dean: "add a new Zune theme") - the Metro language: black canvas,
+  // GIANT thin lowercase display type (long titles marquee via the shared hooks), a
+  // flat art tile, one magenta accent. Label "Seattle" per the cheeky-riff rule
+  // ("hello from seattle" - the engraving). Every control proxies the shared hooks.
+  function renderZune(ctx) {
+    var a = ctx.track || {};
+    var lc = function (t) { return String(t || '').toLowerCase(); };
+    return '<div class="mms-top">' + collapseBtn() + '<span class="mms-zn-brand">zn</span></div>' +
+      '<div class="mms-zn-head"><div class="mms-zn-now">now playing</div></div>' +
+      '<div class="mms-art"' + artVar(ctx) + '>' + artImg(ctx) + '</div>' +
+      '<div class="mms-zn-meta"><div class="mms-ttl mms-zn-ttl">' + esc(lc(a.title) || 'unknown track') + '</div>' +
+      '<div class="mms-sub mms-zn-sub">' + esc(lc(a.artist)) + '</div></div>' +
+      '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
+      '<div class="mms-transport">' + prevBtn() + playBtn(ctx) + nextBtn() + '</div>' +
+      '<div class="mms-queue mms-zn-queue"><h4 class="mms-qh">up next</h4><div class="mms-qlist">' + goRows(ctx, false) + '</div></div>';
+  }
+
   // IPOD - the real Classic. A black-bezelled LCD with the authentic Now Playing
   // screen (cover left, title/artist/album/stars/N-of-M right, Aqua scrubber) OR the
   // song list (Select flips to it, tap a row to play); below, the gray click wheel.
@@ -182,6 +199,8 @@
     // panel also carries `.mms-ipod` (all the shared iPod CSS) while `.mms-ipod-black`
     // overrides only the body/wheel palette. One render, two looks.
     { id: 'ipod-black', label: 'Pocket Classic (Black)', base: 'ipod', renderFull: renderIpod },
+    // v1.259 (Dean): the Zune - Metro, in memoriam. Label per the cheeky-riff rule.
+    { id: 'zune', label: 'Seattle', renderFull: renderZune },
   ];
   var BY_ID = SKINS.reduce(function (m, s) { m[s.id] = s; return m; }, Object.create(null));
 

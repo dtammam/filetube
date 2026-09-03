@@ -2728,5 +2728,11 @@
     "date": "2026-09-03",
     "title": "Tray touches",
     "intent": "Two touches from the first hands-on with the Nano tray. The progress bar now responds to a mouse click - click anywhere on it to jump there, in the tray and on the phone's Pocket Classic screen alike. And the tray's sticker menu, which was getting squeezed into an unusable sliver by the tiny window, now opens across the whole tray - with a new nicety everywhere: tapping any empty space in the menu closes it."
+  },
+  {
+    "version": "1.259.0",
+    "date": "2026-09-03",
+    "title": "Seattle",
+    "intent": "A fifth skin for the music player, and a love letter to the other player of that era: Seattle. Giant thin lowercase type on a pure black canvas, a flat square of album art, one flash of magenta, and your queue in bare lowercase rows. Pick it wherever you pick skins - Settings or the player's sticker menu. The real one said hello from Seattle; this one says it back."
   }
 ]
