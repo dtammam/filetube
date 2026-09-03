@@ -93,6 +93,40 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.254.0 - Endless autoplay: the music never just stops (2026-09-03)
+
+Dean's queued idea, intake locked in four points and built client-only: when the queue
+runs out - a single song, an album's end, a shuffle's end - the player VISIBLY appends a
+few related tracks to the up-next instead of dying: same-artist first (cap 3), then
+seeded-shuffle library neighbors (fill to 5), excluding the whole session's played set
+(module-scoped, survives dock-return re-inits) - and when the library is genuinely
+exhausted, a RECYCLE arm relaxes to "not currently queued" rather than ending in silence.
+The seam is ONE call: registerTrackNav's last-index register (every nav-arming path
+funnels there), eager at track START so Next exists before the ended-advance asks.
+Toggle: an Autoplay row on sticker page 1 (deliberately NOT the Extras page - Extras is
+library-backed-only and the toggle must reach native tracks), device-global localStorage,
+default ON, offered on the pop-out too; podcasts omit the hook, listen tracks are
+excluded by flag. Zero server changes; player.js untouched.
+
+THE GATE CAUGHT (full gate, serialized, both APPROVE + final-tree re-confirms): QA - the
+session memory was accidentally init-scoped (a lying "module scope" comment; re-inits
+forgot played tracks), a mid-fetch same-queue track switch could stomp the live nav (the
+v1.104 wrong-track class), and prescribed the recycle arm. Adversarial - proved the fix
+round's own guards were present-but-UNBOUND (deletion mutants survived), measured a real
+starvation race (a register suppressed by the in-flight flag whose flight then drops =
+playback dies with autoplay ON), and drove all of it to mutation-verified closure: the
+retry's loop-safety is proven by a mutant WEDGE + an exact fetch-count, not by prose.
+Residuals + a wedge-binding trait disclosed in tech-debt #197.
+
+OPEN TASTE QUESTION FOR DEAN (adversarial S4): library radio picks can include a lone
+chapter track of a chapter-album (chapters are first-class music tracks). My read:
+legitimate radio material (chapter-albums here are DJ sets, not audiobooks - books live
+in the books module). Say the word if a chapter mid-set feels wrong as a pick.
+
+Dual-Node: v22.23.1 8219/8219 pass, 0 fail, 0 skipped; v24.14.0 8219/8219, 0 fail, 0
+skipped. DEVICE-PENDING Dean's pass. Next: the sticker-menu design-parity + aqua-wheel
+wave (recon done - the menu renders in the UA's default font, not the app's).
+
 ### v1.253.0 - Listen polish: real art, one-row actions, and honest mini-bar returns (2026-09-03)
 
 Dean's same-day v1.252 device round ("the feature is amazing") surfaced three fixes, all

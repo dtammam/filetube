@@ -38,6 +38,10 @@
 //     watchBack       OPTIONAL (v1.252 Listen-mode) - { visible(), onTap() }: page 1 gains a
 //                     "Watch" row when visible() (music: the playing item is a listen track);
 //                     onTap navigates back to the item's watch page.
+//     autoplay        OPTIONAL (v1.254 endless autoplay) - { enabled(), onToggle() }: page 1
+//                     gains an "Autoplay" On/Off row (Loop chassis). Both surfaces - the
+//                     setting is device-global, so a pop-out flip is coherent. Omitted
+//                     (podcasts) = no row.
 //     extras          OPTIONAL - the v1.249 watch-page Extras second page. Omitted (e.g.
 //                     podcasts - they keep their own actions) = quick menu only. Hooks:
 //       getBaseId()   -> the playing item's base media id (::c chapter suffix stripped), or null
@@ -194,6 +198,17 @@
         try { wbOn = !!stickerCfg.watchBack.visible(); } catch (_) { wbOn = false; }
         if (wbOn) watchBack = '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-watchback><span class="mms-sm-h">Watch</span><span class="mms-sm-state">&rsaquo;</span></button></div>';
       }
+      // v1.254 (ENDLESS AUTOPLAY): the toggle rides page 1 like Loop - rendered only when
+      // the view supplies the autoplay hook (music does; podcasts deliberately not). On
+      // BOTH surfaces (the setting is device-global localStorage, so the pop-out toggling
+      // it is coherent - unlike watchBack's navigation, nothing window-bound happens).
+      var autoplay = '';
+      if (stickerCfg.autoplay && typeof stickerCfg.autoplay.enabled === 'function') {
+        var apOn = false;
+        try { apOn = !!stickerCfg.autoplay.enabled(); } catch (_) { apOn = false; }
+        autoplay = '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (apOn ? ' is-on' : '') +
+          '" data-skin-autoplay aria-checked="' + (apOn ? 'true' : 'false') + '"><span class="mms-sm-h">Autoplay</span><span class="mms-sm-state">' + (apOn ? 'On' : 'Off') + '</span></button></div>';
+      }
       // v1.249: the second-page entry - library-backed tracks on the in-tab surface only.
       var extras = extrasEligible()
         ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-extras><span class="mms-sm-h">Extras</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
@@ -201,6 +216,7 @@
       return '<div class="mms-sm-sec"><div class="mms-sm-h">Speed</div><div class="mms-sm-speed">' + speed + '</div></div>' +
         '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (loopOn ? ' is-on' : '') +
         '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-h">Loop</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
+        autoplay +
         '<div class="mms-sm-sec"><div class="mms-sm-h">Skin</div><div class="mms-sm-skins">' + chips + '</div></div>' +
         watchBack + extras;
     }
@@ -563,6 +579,12 @@
       var spOpt = e.target.closest('[data-skin-speed]');
       if (spOpt) { applyStickerSpeed(spOpt.getAttribute('data-skin-speed')); refreshStickerMenu(); return true; }
       if (e.target.closest('[data-skin-loop]')) { toggleStickerLoop(); refreshStickerMenu(); return true; }
+      // v1.254: the autoplay toggle - flip via the view's hook, re-render for the new state.
+      if (e.target.closest('[data-skin-autoplay]')) {
+        if (stickerCfg.autoplay && typeof stickerCfg.autoplay.onToggle === 'function') { try { stickerCfg.autoplay.onToggle(); } catch (_) { /* view toggle best-effort */ } }
+        refreshStickerMenu();
+        return true;
+      }
       var pick = e.target.closest('[data-skin-pick]');
       if (pick) {
         var sid = pick.getAttribute('data-skin-pick');

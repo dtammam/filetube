@@ -1344,3 +1344,341 @@ test('v1.253 (adversarial W2): the DESKTOP now-playing panel rows carry the trac
     },
   });
 });
+
+// ---- v1.254 ENDLESS AUTOPLAY (Dean's locked intake) --------------------------------
+
+test('v1.254 autoplay: the LAST track VISIBLY extends the queue (same-artist first, no session/queue repeats, nav re-armed); toggled OFF = dead', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  const t9 = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100 };
+  const t8 = { id: 't8', title: 'Other', artist: 'Band', album: '', albumKey: '', durationSec: 90 };
+  // the artist arm returns the CURRENT track too (the server would) - the picker must skip it;
+  // the library arm repeats b1 - the picker must not double-append it. FOUR eligible artist
+  // items (adversarial S1): the ARTIST_MAX=3 cap must actually bite (b4 stays unpicked).
+  const artistItems = [t9, { id: 'b1', title: 'B One', artist: 'Band', durationSec: 80 }, { id: 'b2', title: 'B Two', artist: 'Band', durationSec: 81 },
+    { id: 'b3', title: 'B Three', artist: 'Band', durationSec: 82 }, { id: 'b4', title: 'B Four', artist: 'Band', durationSec: 83 }];
+  const libItems = [t9, { id: 'b1', title: 'B One', artist: 'Band', durationSec: 80 },
+    { id: 'l1', title: 'Lib One', artist: 'Other Band', durationSec: 70 },
+    { id: 'l2', title: 'Lib Two', artist: 'Other Band', durationSec: 71 },
+    { id: 'l3', title: 'Lib Three', artist: 'Third', durationSec: 72 },
+    { id: 'l4', title: 'Lib Four', artist: 'Third', durationSec: 73 }];
+  const fetchImpl = (u, init) => {
+    const url = String(u);
+    log.push({ url, method: (init && init.method) || 'GET' });
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [t9] }) });
+    if (/^\/api\/music\/t9$/.test(url)) return Promise.resolve({ ok: true, json: async () => t9 });
+    if (/^\/api\/music\/t8$/.test(url)) return Promise.resolve({ ok: true, json: async () => t8 });
+    if (url.indexOf('/api/music?artist=') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: artistItems }) });
+    if (url.indexOf('/api/music?sort=random') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: libItems }) });
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot({
+    mobile: false, isMusic: true, query: '?play=t9',
+    fetchImpl, playerOverride: listenPlayer(calls),
+    run: async (dom, spy, mod) => {
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      // DEFAULT ON (ruling 4): no stored setting, yet the append happened.
+      const rows = [...panel(dom).querySelectorAll('.mnp-queue-row')];
+      assert.strictEqual(rows.length, 6, 'the single-song queue grew to 6 VISIBLE rows (1 playing + 5 appended - ruling 3, a queue you can see)');
+      const titles = rows.map((r) => r.textContent);
+      assert.match(titles[1], /B One/, 'same-artist picks lead (ruling 2)');
+      assert.match(titles[2], /B Two/, 'artist picks before library neighbors');
+      assert.match(titles[3], /B Three/, 'the artist arm fills to its cap');
+      assert.ok(!titles.some((t) => /B Four/.test(t)), 'ARTIST_MAX bites: the fourth eligible artist item stays unpicked (adversarial S1 boundary)');
+      assert.match(titles[4], /Lib One/, 'library fill follows');
+      assert.strictEqual(titles.filter((t) => /Song/.test(t)).length, 1, 'the playing track is never re-picked (no repeats)');
+      assert.strictEqual(titles.filter((t) => /B One/.test(t)).length, 1, 'the library arm cannot double-append an artist pick');
+      const lastNav = calls.navs[calls.navs.length - 1];
+      assert.strictEqual(typeof lastNav.onNext, 'function', 'the exhaustion is gone - Next exists for the ended-advance');
+      // ---- the OFF axis (both axes: same flow, toggle off, nothing appends) ----
+      dom.window.localStorage.setItem('ft-music-autoplay', '0');
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?play=t8');
+      global.fetch = (u, init) => {
+        const url = String(u);
+        log.push({ url, method: (init && init.method) || 'GET' });
+        if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [t8] }) });
+        if (/^\/api\/music\/t8$/.test(url)) return Promise.resolve({ ok: true, json: async () => t8 });
+        if (url.indexOf('/api/music?artist=') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: artistItems }) });
+        if (url.indexOf('/api/music?sort=random') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: libItems }) });
+        if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+        return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+      };
+      const offMark = log.length;
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const rows2 = [...panel(dom).querySelectorAll('.mnp-queue-row')];
+      assert.strictEqual(rows2.length, 1, 'OFF: the single track stays a single row');
+      assert.ok(!log.slice(offMark).some((c) => c.url.indexOf('/api/music?artist=') === 0 || c.url.indexOf('/api/music?sort=random') === 0),
+        'OFF: the picker never even fetches');
+      const lastNav2 = calls.navs[calls.navs.length - 1];
+      assert.strictEqual(lastNav2.onNext, undefined, 'OFF: exhaustion stays exhausted (the pre-wave behavior)');
+    },
+  });
+});
+
+test('v1.254 autoplay: a LISTEN track never autoplays into random songs (the locked-intake exclusion)', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: (u, init) => {
+      const url = String(u);
+      log.push({ url, method: (init && init.method) || 'GET' });
+      if (/^\/api\/videos\//.test(url)) return Promise.resolve({ ok: true, json: async () => LISTEN_VIDEO });
+      // library content EXISTS - only the listen exclusion can explain a no-append
+      if (url.indexOf('/api/music?sort=random') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [{ id: 'l1', title: 'Lib One', artist: 'X', durationSec: 70 }] }) });
+      return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    },
+    playerOverride: listenPlayer(calls),
+    run: async () => {
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      assert.ok(calls.loads.length >= 1, 'the listen track loaded (populated first)');
+      assert.ok(!log.some((c) => c.url.indexOf('/api/music?artist=') === 0 || c.url.indexOf('/api/music?sort=random') === 0),
+        'the picker never fires for a listen track');
+      const lastNav = calls.navs[calls.navs.length - 1];
+      assert.strictEqual(lastNav.onNext, undefined, 'a listened video ends where it ends');
+    },
+  });
+});
+
+test('v1.254 (QA W1): the played memory SURVIVES a view re-init, and the RECYCLE arm keeps radio alive on a fully-played library', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  const l1 = { id: 'l1', title: 'Lib One', artist: 'X', durationSec: 70 };
+  const l2 = { id: 'l2', title: 'Lib Two', artist: 'Y', durationSec: 71 };
+  const t9 = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100 };
+  const t8 = { id: 't8', title: 'Other', artist: 'Band', album: '', albumKey: '', durationSec: 90 };
+  const mkFetch = (recent, lib) => (u, init) => {
+    const url = String(u);
+    log.push({ url, method: (init && init.method) || 'GET' });
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [recent] }) });
+    if (new RegExp('^/api/music/' + recent.id + '$').test(url)) return Promise.resolve({ ok: true, json: async () => recent });
+    if (url.indexOf('/api/music?artist=') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    if (url.indexOf('/api/music?sort=random') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: lib }) });
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot({
+    mobile: false, isMusic: true, query: '?play=l1',
+    fetchImpl: mkFetch(l1, []), playerOverride: listenPlayer(calls),
+    run: async (dom, spy, mod) => {
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      // phase 2: RE-INIT (the dock-return class) - the picker must still remember l1 was
+      // played. With the memory wrongly init-scoped (the QA W1 bug), l1 gets re-picked
+      // and a third row appears; module scope keeps it to [t9, l2].
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?play=t9');
+      global.fetch = mkFetch(t9, [t9, l1, l2]);
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      let titles = [...panel(dom).querySelectorAll('.mnp-queue-row')].map((r) => r.textContent);
+      assert.strictEqual(titles.length, 2, 'exactly one append (populated first, so the no-pick axis is non-vacuous)');
+      assert.match(titles[1], /Lib Two/, 'the unplayed neighbor was picked');
+      assert.ok(!titles.some((t) => /Lib One/.test(t)), 'the RE-INIT did not forget l1 was played (module-scope memory)');
+      // phase 3: EVERYTHING in the library page is played or current - the recycle arm
+      // relaxes to queue-only exclusion instead of ending in silence (Dean's radio intent).
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?play=t8');
+      global.fetch = mkFetch(t8, [t8, l1]);
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      titles = [...panel(dom).querySelectorAll('.mnp-queue-row')].map((r) => r.textContent);
+      assert.strictEqual(titles.length, 2, 'the recycle arm appended instead of letting playback die');
+      assert.match(titles[1], /Lib One/, 'the recycled pick is the played-but-not-queued track');
+    },
+  });
+});
+
+test('v1.254 (QA W2): a same-queue track SWITCH mid-fetch drops the picks - the stale re-arm can never stomp the live nav', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  const x = { id: 'x1', title: 'First', artist: 'Band', durationSec: 60 };
+  const y = { id: 'y1', title: 'Last', artist: 'Band', durationSec: 61 };
+  let releaseArtistFetch = null;
+  const fetchImpl = (u, init) => {
+    const url = String(u);
+    log.push({ url, method: (init && init.method) || 'GET' });
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [x, y] }) });
+    if (/^\/api\/music\/x1$/.test(url)) return Promise.resolve({ ok: true, json: async () => x });
+    if (url.indexOf('/api/music?artist=') === 0) {
+      // HANG until the test switches tracks - the TOCTOU window, held open
+      return new Promise((resolve) => { releaseArtistFetch = () => resolve({ ok: true, json: async () => ({ items: [{ id: 'p1', title: 'Pick', artist: 'Band', durationSec: 50 }] }) }); });
+    }
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot({
+    mobile: false, isMusic: true, query: '?play=x1',
+    fetchImpl, playerOverride: listenPlayer(calls),
+    run: async (dom) => {
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const rows = () => [...panel(dom).querySelectorAll('.mnp-queue-row')];
+      assert.strictEqual(rows().length, 2, 'two-track queue rendered (populated first)');
+      // play the LAST track - the picker fires and hangs on the artist fetch
+      rows()[1].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r));
+      assert.strictEqual(typeof releaseArtistFetch, 'function', 'the picker is in flight (non-vacuous window)');
+      // mid-fetch: switch BACK to track 1 - same queue, so the tail check alone would pass
+      rows()[0].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      releaseArtistFetch();
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      assert.strictEqual(rows().length, 2, 'the stale picks were DROPPED - no append onto a queue whose playing track moved');
+      const lastNav = calls.navs[calls.navs.length - 1];
+      assert.strictEqual(typeof lastNav.onNext, 'function', 'nav belongs to index 0 (has a real next)');
+      assert.strictEqual(typeof lastNav.onPrev, 'undefined', 'nav belongs to index 0 (no prev) - the stale index-1 re-arm never landed');
+    },
+  });
+});
+
+test('v1.254 (adversarial W2+S2): a SAME-INSTANCE queue replacement mid-flight drops the picks; a non-last register never even fetches', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  const x = { id: 'x1', title: 'First', artist: 'Band', durationSec: 60 };
+  const y = { id: 'y1', title: 'Last', artist: 'Band', durationSec: 61 };
+  let releaseArtistFetch = null;
+  const pickerUrls = () => log.filter((c) => c.url.indexOf('/api/music?artist=') === 0 || (c.url.indexOf('/api/music?sort=random') === 0 && c.url.indexOf('limit=60') !== -1));
+  const fetchImpl = (u, init) => {
+    const url = String(u);
+    log.push({ url, method: (init && init.method) || 'GET' });
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [x, y] }) });
+    if (/^\/api\/music\/x1$/.test(url)) return Promise.resolve({ ok: true, json: async () => x });
+    if (url.indexOf('/api/music?artist=') === 0) {
+      return new Promise((resolve) => { releaseArtistFetch = () => resolve({ ok: true, json: async () => ({ items: [{ id: 'p1', title: 'Pick', artist: 'Band', durationSec: 50 }] }) }); });
+    }
+    // the SHUFFLE's loadSongs (limit=1000): fresh COPIES, the playing id landing at index 0
+    if (url.indexOf('sort=random') !== -1 && url.indexOf('limit=1000') !== -1) {
+      return Promise.resolve({ ok: true, json: async () => ({ items: [{ ...y }, { ...x }] }) });
+    }
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot({
+    mobile: false, isMusic: true, query: '?play=x1',
+    fetchImpl, playerOverride: listenPlayer(calls),
+    run: async (dom) => {
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const rows = () => [...panel(dom).querySelectorAll('.mnp-queue-row')];
+      assert.strictEqual(rows().length, 2, 'two-track queue rendered (populated first)');
+      // S2: playing index 0 (non-last) armed NO picker fetch - the last-track gate binds
+      assert.strictEqual(pickerUrls().length, 0, 'no picker fetch on a non-last register (the exhaustion gate is real, not masked)');
+      // play the LAST track - the picker flies and hangs on the artist fetch
+      rows()[1].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r));
+      assert.strictEqual(typeof releaseArtistFetch, 'function', 'the picker is in flight (non-vacuous window)');
+      // SAME instance, queue REPLACED mid-flight: shuffle - fresh objects, the playing id
+      // lands at index 0, playingId is UNCHANGED, so ONLY the tail-identity check rejects.
+      dom.window.document.getElementById('music-shuffle-btn').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 8; i++) await new Promise((r) => setImmediate(r));
+      releaseArtistFetch();
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const titles = rows().map((r) => r.textContent);
+      assert.ok(!titles.some((t) => /Pick/.test(t)), 'the stale picks were DROPPED - no append onto the REPLACED queue (delete the tail-identity check and this reds)');
+      const lastNav = calls.navs[calls.navs.length - 1];
+      assert.strictEqual(typeof lastNav.onNext, 'function', 'nav belongs to shuffled index 0 (has a next)');
+      assert.strictEqual(typeof lastNav.onPrev, 'undefined', 'nav belongs to shuffled index 0 (no prev) - the stale re-arm never landed');
+    },
+  });
+});
+
+test('v1.254 (adversarial W1): a TORN-DOWN instance\'s late flight is inert - the successor\'s nav is never stomped (signal.aborted)', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  const x = { id: 'x1', title: 'First', artist: 'Band', durationSec: 60 };
+  const t8 = { id: 't8', title: 'Other', artist: 'Band', durationSec: 90 };
+  let releaseArtistFetch = null;
+  const fetchImpl = (u, init) => {
+    const url = String(u);
+    log.push({ url, method: (init && init.method) || 'GET' });
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [x] }) });
+    if (/^\/api\/music\/x1$/.test(url)) return Promise.resolve({ ok: true, json: async () => x });
+    if (url.indexOf('/api/music?artist=') === 0 && !releaseArtistFetch) {
+      // hold ONLY the first (old-instance) flight; the successor's arms resolve empty
+      return new Promise((resolve) => { releaseArtistFetch = () => resolve({ ok: true, json: async () => ({ items: [{ id: 'p1', title: 'Pick', artist: 'Band', durationSec: 50 }] }) }); });
+    }
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot({
+    mobile: false, isMusic: true, query: '?play=x1',
+    fetchImpl, playerOverride: listenPlayer(calls),
+    run: async (dom, spy, mod) => {
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      assert.strictEqual(typeof releaseArtistFetch, 'function', 'the old instance\'s picker is in flight (single track = last)');
+      // tear the instance down MID-FLIGHT and boot a successor on a different track
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?play=t8');
+      global.fetch = (u, init) => {
+        const url = String(u);
+        log.push({ url, method: (init && init.method) || 'GET' });
+        if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [t8] }) });
+        if (/^\/api\/music\/t8$/.test(url)) return Promise.resolve({ ok: true, json: async () => t8 });
+        if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+        return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+      };
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const navsBefore = calls.navs.length;
+      const rowsBefore = [...panel(dom).querySelectorAll('.mnp-queue-row')].length;
+      // release the DEAD instance's flight - every check on its own dead state would
+      // pass (its queue/playingId are untouched); only signal.aborted can reject.
+      releaseArtistFetch();
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      assert.strictEqual(calls.navs.length, navsBefore, 'no setTrackNav from the dead instance (delete the aborted check and this reds)');
+      assert.strictEqual([...panel(dom).querySelectorAll('.mnp-queue-row')].length, rowsBefore, 'the successor\'s visible queue is untouched');
+    },
+  });
+});
+
+test('v1.254 (adversarial W3): a register SUPPRESSED by an in-flight picker is RETRIED after the flight drops - exhaustion cannot starve', async () => {
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  const x = { id: 'x1', title: 'First', artist: 'Band', durationSec: 60 };
+  const y = { id: 'y1', title: 'Last', artist: 'Band', durationSec: 61 };
+  let releaseArtistFetch = null;
+  let artistCallCount = 0;
+  const fetchImpl = (u, init) => {
+    const url = String(u);
+    log.push({ url, method: (init && init.method) || 'GET' });
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [x, y] }) });
+    if (/^\/api\/music\/x1$/.test(url)) return Promise.resolve({ ok: true, json: async () => x });
+    if (url.indexOf('/api/music?artist=') === 0) {
+      artistCallCount += 1;
+      if (artistCallCount === 1) {
+        // hold the FIRST flight open (the starvation window)
+        return new Promise((resolve) => { releaseArtistFetch = () => resolve({ ok: true, json: async () => ({ items: [] }) }); });
+      }
+      // the RETRY's flight resolves normally with a pick
+      return Promise.resolve({ ok: true, json: async () => ({ items: [{ id: 'p1', title: 'Pick', artist: 'Band', durationSec: 50 }] }) });
+    }
+    // the shuffle's loadSongs: a ONE-track scope - the same playing id IS the new tail,
+    // so its register is a legitimate exhaustion the in-flight flag suppresses
+    if (url.indexOf('sort=random') !== -1 && url.indexOf('limit=1000') !== -1) {
+      return Promise.resolve({ ok: true, json: async () => ({ items: [{ ...y }] }) });
+    }
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot({
+    mobile: false, isMusic: true, query: '?play=x1',
+    fetchImpl, playerOverride: listenPlayer(calls),
+    run: async (dom) => {
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const rows = () => [...panel(dom).querySelectorAll('.mnp-queue-row')];
+      rows()[1].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // play the tail - flight 1 held
+      for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r));
+      assert.strictEqual(typeof releaseArtistFetch, 'function', 'flight 1 in the window (non-vacuous)');
+      dom.window.document.getElementById('music-shuffle-btn').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 8; i++) await new Promise((r) => setImmediate(r));
+      assert.strictEqual(artistCallCount, 1, 'the new tail\'s register was SUPPRESSED by the in-flight flag (the starvation setup holds)');
+      releaseArtistFetch(); // flight 1 drops at the tail-identity check...
+      for (let i = 0; i < 12; i++) await new Promise((r) => setImmediate(r));
+      assert.strictEqual(artistCallCount, 2, '...and the finally-retry re-ran the picker for the live tail (delete the retry and this reds)');
+      const titles = rows().map((r) => r.textContent);
+      assert.ok(titles.some((t) => /Pick/.test(t)), 'the missed exhaustion was healed - the append landed');
+      const lastNav = calls.navs[calls.navs.length - 1];
+      assert.strictEqual(typeof lastNav.onNext, 'function', 'Next exists - playback will not die at track end');
+    },
+  });
+});

@@ -673,6 +673,67 @@ test('U2 pop-out exclusion at the ENGINE level: a non-main-document surface neve
   } finally { mainBoot.restoreAll(); }
 });
 
+test('v1.254 autoplay toggle: the hook renders the page-1 row, a tap flips via onToggle and re-renders; no hook (podcasts) = no row', () => {
+  const state = { on: true };
+  const b = bootSticker({ extras: false });
+  try {
+    // graft the hook onto a fresh engine instance (bootSticker's cfg has none)
+    const eng = b.dom.window.FileTubeSkinSurface.create({
+      panel: panel(b.dom),
+      getSkinId: () => 'ipod', getCtx: () => ({ track: {}, upNext: [], fullList: [] }),
+      hostCtl: (id) => b.dom.window.document.getElementById(id),
+      sticker: {
+        onSkinChange: () => {},
+        autoplay: { enabled: () => state.on, onToggle: () => { state.on = !state.on; } },
+      },
+    });
+    eng.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    let row = sMenu(b.dom).querySelector('[data-skin-autoplay]');
+    assert.ok(row, 'the Autoplay row rendered (hook present)');
+    assert.strictEqual(row.getAttribute('aria-checked'), 'true', 'reflects enabled()');
+    assert.match(row.textContent, /On/, 'says On');
+    sClick(b.dom, row);
+    assert.strictEqual(state.on, false, 'the tap flipped the view state via onToggle');
+    row = sMenu(b.dom).querySelector('[data-skin-autoplay]');
+    assert.strictEqual(row.getAttribute('aria-checked'), 'false', 're-rendered to the new state');
+    assert.match(row.textContent, /Off/, 'says Off');
+    eng.destroy();
+    // podcast parity: bootSticker's own engine (no autoplay hook) renders NO row
+    b.engine.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    assert.ok(sMenu(b.dom).querySelector('[data-skin-loop]'), 'quick menu up (non-vacuous)');
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-autoplay]'), null, 'no hook = no row (podcasts keep their menu)');
+  } finally { b.restoreAll(); }
+});
+
+test('v1.254 autoplay toggle: the POP-OUT surface DOES offer it (device-global setting - unlike the main-doc-only Watch/Extras rows)', () => {
+  const pipDom = new JSDOM('<body><div id="panel" class="music-nowplaying-panel"></div></body>', { url: 'http://localhost/pip' });
+  const mainBoot = bootSticker({ extras: false });
+  try {
+    const state = { on: true };
+    const eng2 = mainBoot.dom.window.FileTubeSkinSurface.create({
+      panel: pipDom.window.document.getElementById('panel'),
+      getSkinId: () => 'ipod', getCtx: () => ({ track: {}, upNext: [], fullList: [] }),
+      hostCtl: (id) => mainBoot.dom.window.document.getElementById(id),
+      win: pipDom.window,
+      sticker: {
+        onSkinChange: () => {},
+        autoplay: { enabled: () => state.on, onToggle: () => { state.on = !state.on; } },
+      },
+    });
+    eng2.paint();
+    const pipPanel = pipDom.window.document.getElementById('panel');
+    pipPanel.querySelector('[data-skin-sticker]').dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true }));
+    const m = pipPanel.querySelector('[data-skin-sticker-menu]');
+    const row = m.querySelector('[data-skin-autoplay]');
+    assert.ok(row, 'the pop-out offers the Autoplay row (nothing window-bound happens on a flip)');
+    row.dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(state.on, false, 'the pop-out tap flips the shared setting');
+    eng2.destroy();
+  } finally { mainBoot.restoreAll(); }
+});
+
 test('U2 destroy(): stops a live reheat poll and invalidates an in-flight extras fetch (nothing outlives the surface)', async (t) => {
   t.mock.timers.enable({ apis: ['setInterval'] });
   const b = bootSticker({});
