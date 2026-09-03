@@ -1138,7 +1138,13 @@ if (typeof module !== 'undefined' && module.exports) {
       // so re-opening a docked video from a new list view refreshes autoplay's
       // context immediately (load()'s adopt branch applies it). Data is
       // otherwise ignored on adopt.
-      const mountedEarly = window.FileTube.player.load(mediaId, { browseCtx: rawBrowseCtx }, { slot: playerSlot });
+      // v1.253: the null stamps CLAIM the plain-video flavor on this adopt - a
+      // same-id arrival from a Listen play carries a stale readerHref
+      // '/music?nowplaying=1' + resumeMode 'music' the adopt would otherwise
+      // keep (the mini-bar then returned to the iPod view - Dean's repro).
+      // Stamped HERE too (not just the full call below) so the flavor is right
+      // even if the metadata fetch below fails or is slow under a dock-tap.
+      const mountedEarly = window.FileTube.player.load(mediaId, { browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null }, { slot: playerSlot });
       if (!mountedEarly) showFatalViewError(root);
     } else if (entryReparentAction === 'reparent' && !canSeedPreload) {
       // Eagerly reparent the STILL-loaded previous video's host into THIS
@@ -1331,7 +1337,11 @@ if (typeof module !== 'undefined' && module.exports) {
         // context param) rides along so autoplay-at-end -- which runs off the
         // controller's own state, even while docked on another page -- can
         // advance through the SAME browsed list/order the on-page prev/next use.
-        const mounted = window.FileTube.player.load(mediaId, { ...mediaData, channelName, browseCtx: rawBrowseCtx }, { slot: playerSlot });
+        // v1.253: the trailing null stamps claim the plain-video flavor on the
+        // adopt path (see the early-adopt call's comment) - AFTER the spread,
+        // so a hypothetical readerHref/resumeMode on the fetched media payload
+        // can never smuggle a stale surface flavor through.
+        const mounted = window.FileTube.player.load(mediaId, { ...mediaData, channelName, browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null }, { slot: playerSlot });
         if (!mounted) {
           showFatalViewError(root);
         }

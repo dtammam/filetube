@@ -143,3 +143,60 @@ test('nextPlayerState: watch -> watch (different media) leaves the state unchang
 test('nextPlayerState: a non-watch -> non-watch transition (e.g. home -> setup) leaves state unchanged', () => {
   assert.strictEqual(nextPlayerState('home', 'setup', 'docked', true), 'docked');
 });
+
+// ---- applyAdoptFlavor (v1.253: the listen<->watch mini-bar mapping) ---------
+//
+// Dean's device repro: watch -> Listen -> "Watch" back -> dock -> the mini-bar
+// tap returned to the iPod view. The same-id "Watch" load ADOPTS (pure
+// reparent, data deliberately ignored), so currentData kept the listen play's
+// readerHref '/music?nowplaying=1' - the return target belonged to whichever
+// surface last did a GENUINE load. applyAdoptFlavor is the adopt branch's
+// carried-field refresh for the surface-flavor fields (the browseCtx
+// precedent): declared-with-value sets, declared-null clears, omitted leaves.
+const { applyAdoptFlavor } = require('../../public/js/player.js');
+
+test('applyAdoptFlavor: a declared readerHref/resumeMode REPLACES the stale flavor (watch -> Listen adopt gets the music return target)', () => {
+  const cur = { readerHref: undefined, resumeMode: undefined, browseCtx: 'x' };
+  applyAdoptFlavor(cur, { readerHref: '/music?nowplaying=1', resumeMode: 'music' });
+  assert.strictEqual(cur.readerHref, '/music?nowplaying=1');
+  assert.strictEqual(cur.resumeMode, 'music');
+  assert.strictEqual(cur.browseCtx, 'x', 'only the flavor fields are touched');
+});
+
+test('applyAdoptFlavor: a declared NULL clears the stale flavor (Listen -> "Watch" adopt sheds the music return target - the device repro)', () => {
+  const cur = { readerHref: '/music?nowplaying=1', resumeMode: 'music' };
+  applyAdoptFlavor(cur, { browseCtx: '', readerHref: null, resumeMode: null });
+  assert.strictEqual(cur.readerHref, undefined, 'the mini-bar tap now falls back to /watch.html?v=<id>');
+  assert.strictEqual(cur.resumeMode, undefined, 'getCurrentMeta().isMusic no longer lies to the music view');
+});
+
+test('applyAdoptFlavor: an OMITTED field leaves the flavor untouched (a partial adopt call owns nothing it does not declare)', () => {
+  const cur = { readerHref: '/read.html?b=bk1', resumeMode: 'music' };
+  applyAdoptFlavor(cur, { browseCtx: 'ctx-only' });
+  assert.strictEqual(cur.readerHref, '/read.html?b=bk1');
+  assert.strictEqual(cur.resumeMode, 'music');
+});
+
+test('applyAdoptFlavor: null/absent currentData or data is a safe no-op (adopt of nothing, or a data-less call)', () => {
+  assert.strictEqual(applyAdoptFlavor(null, { readerHref: null }), null);
+  const cur = { readerHref: '/podcasts?nowplaying=1' };
+  applyAdoptFlavor(cur, null);
+  assert.strictEqual(cur.readerHref, '/podcasts?nowplaying=1');
+});
+
+test('applyAdoptFlavor bindings: the adopt branch APPLIES it, and watch.js\'s two adopt-capable load calls stamp the null flavor claim (source lock; comments stripped)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const strip = (f) => fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', f), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const playerSrc = strip('player.js');
+  // the adopt branch (between the isAdoptLoad guard's `if (adopt) {` and its
+  // `return true;`) must call applyAdoptFlavor(currentData, data) - the pure
+  // tests above are vacuous if load() never consults the helper.
+  const adoptBranch = /if \(adopt\) \{([\s\S]*?)return true;/.exec(playerSrc);
+  assert.ok(adoptBranch, 'the adopt branch exists');
+  assert.match(adoptBranch[1], /applyAdoptFlavor\(currentData, data\);/, 'the adopt branch applies the flavor refresh');
+  const watchSrc = strip('watch.js');
+  const stamps = watchSrc.match(/readerHref: null, resumeMode: null/g) || [];
+  assert.strictEqual(stamps.length, 2, 'BOTH adopt-capable watch load calls (the early adopt probe + the full initWatch call) claim the plain-video flavor');
+});
