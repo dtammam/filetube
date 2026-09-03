@@ -69,6 +69,28 @@ stays a MUSIC feature; disclosed.
   release v1.252.0. Then Dean's AUTOPLAY intake conversation (his queued idea: a single
   song ends and playback stops - "some kind of music autoplay element"; own wave).
 
+## Gate round 1 dispositions (QA, 2026-09-03)
+- W1 FIXED: the dock-return re-init rebuilt `queue` from the audio-only projection and lost
+  the Watch row - a MODULE-SCOPED activeListenId (set by playListenItem, cleared by any
+  non-listen loadTrack, consulted when the queue lookup misses) survives the re-init; the
+  full round trip is behaviorally bound.
+- W2 DISPOSITIONED + DISCLOSED (explicit call, not silence): watch->listen position carry
+  rides the player's music smart-resume, which only resumes MID-TRACK when duration > 600s
+  (player.js:455 - a BYTE-FROZEN file). Consequence: a <= 10-minute video restarts at 0:00
+  when you tap Listen; listen->watch carries at ANY duration (the watch ladder has no
+  threshold). The freeze stays (lifting it is a Dean-level decision); the listen use-case
+  is long videos; DISCLOSED in ROADMAP, the release ledger, and Dean's probe list. A future
+  player.js wave can thread a per-call threshold through shouldResumeMidTrack if it stings.
+- W3 FIXED: mountEarlyCover is genuinely shared by BOTH ?play= arms now (the comment had
+  claimed a factoring that did not exist - corrected by making it true).
+- S4 FIXED (watchBack shares extras' in-main-document guard), S5 FIXED (the listen arm
+  browses the ALBUMS grid behind the skin - a grid tab, so `queue` stays the single listen
+  track - and a refresh/deep-link dock lands on real content), S7 comment sharpened.
+- S6 ACCEPTED RESIDUAL: the watch-side Listen entry is source-locked, not behavior-booted
+  (the call sits unconditionally in the media-load sequence beside setupShareButton; a
+  behavioral watch-boot harness is disproportionate for it) - the adversarial seat may
+  re-litigate.
+
 ## Predictions (re-verified each commit)
 - `git diff main -- public/js/player.js | wc -l` == 0 at every commit.
 - No new stored per-item field; no server changes at all in this wave (the listen track is

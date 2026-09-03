@@ -3309,6 +3309,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // SAME media progress store both directions, and the sticker menu's page 1
     // carries the "Watch" way back. Unconditional for media items (per-play -
     // no remembered flag, no Music-library membership; the locked intake).
+    // Edge, accepted (QA S7): a DEEP-LINKED /watch.html?v=<audioId> (audio never
+    // lands here organically since v1.246/v1.251) also mounts Listen; tapping it
+    // plays the audio as a listen track, which skips the music-resume pointer -
+    // a genuine Music member briefly opting out of its Continue-listening write.
+    // Per-play and self-healing (the next normal music play rewrites it).
     function setupListenButton() {
       const watchActions = root.querySelector('.watch-actions');
       if (!watchActions || !mediaData) return;

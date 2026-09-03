@@ -519,6 +519,12 @@ if (typeof module !== 'undefined' && module.exports) {
   // floating pop-out window on a cross-view swap (its listeners live on the pop-out's own
   // AbortController, not the view signal). Nulled by destroy().
   var activePopoutTeardown = null;
+  // v1.252 QA gate W1: the LISTEN marker lives at MODULE scope (like nowPlaying) because the
+  // dock-return re-init rebuilds `queue` from the audio-only projection - the listen VIDEO is
+  // never in it, so a queue-only lookup lost the "Watch" way back after one dock round-trip.
+  // Set by playListenItem, cleared by any non-listen loadTrack; consulted as the fallback
+  // when the queue lookup misses (the extrasEligibleView fallback posture, same seam).
+  var activeListenId = null;
   // v1.250 (F-UNIFY): the current init's IN-TAB shared-engine instance. Module-scoped so
   // destroy() can unbind it on the #view-root swap - the engine binds its own listeners
   // (not view-signal-scoped), so controller.abort() alone would leak them on the panel.
@@ -676,7 +682,9 @@ if (typeof module !== 'undefined' && module.exports) {
               var id = effectiveCurrentId();
               if (!id) return false;
               for (var i = 0; i < queue.length; i++) { if (queue[i] && queue[i].id === id) return !!queue[i].listen; }
-              return false;
+              // W1: the dock-return re-init rebuilds `queue` WITHOUT the listen video - the
+              // module-scoped marker keeps the way back alive for the whole session.
+              return id === activeListenId;
             },
             onTap: function () {
               var id = effectiveCurrentId();
@@ -1762,6 +1770,7 @@ if (typeof module !== 'undefined' && module.exports) {
         readerHref: '/music?nowplaying=1',
       };
       playingId = item.id;
+      activeListenId = item.listen ? item.id : null; // W1: a normal play ends the listen session's marker
       nowPlaying = { id: item.id, title: item.title || '', artist: item.artist || '', album: item.album || '', albumKey: item.albumKey || '' };
       // v1.237: a real load resets the chapter-view baseline - to the loaded chapter for a
       // chaptered file (the watcher advances it as playback rolls), else null (not chaptered).
@@ -1973,7 +1982,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // the locked intake) and the sticker menu's page 1 offers the "Watch" way back. A
     // single-track queue registers neither prev nor next (the v1 intake) for free.
     async function playListenItem(mediaId) {
-      mountEarlyListenCover();
+      mountEarlyCover();
       try {
         const v = await fetchJson('/api/videos/' + encodeURIComponent(mediaId));
         if (v && v.id) {
@@ -1989,13 +1998,18 @@ if (typeof module !== 'undefined' && module.exports) {
             artUrl: '/thumbnail/' + encodeURIComponent(v.id),
             progressEndpoint: '/api/progress',
           };
-          tab = 'songs';
+          tab = 'albums'; // S5: a GRID tab - its render leaves `queue` untouched (the single listen track stays)
           drill = null;
           search = '';
           queueCtx = null;
           queueCtxEncoded = '';
           queue = [t];
+          activeListenId = t.id; // W1: survives the dock-return re-init (module scope)
           playAt(0);
+          // S5 (QA): build the ALBUMS grid behind the skin (a grid tab - render() leaves
+          // `queue` untouched, per rebuildPlayingQueue's contract) so a refresh/deep-link
+          // dock lands on real content, never an empty #music-content.
+          render().catch(function () {});
           return;
         }
       } catch (_) { /* unresolvable - fall through to the bounce */ }
@@ -2003,9 +2017,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // return to the watch surface (its own 404 view explains better than a blank list).
       try { if (window.location && typeof window.location.replace === 'function') { window.location.replace('/watch.html?v=' + encodeURIComponent(mediaId)); return; } } catch (_) { /* no navigable location */ }
     }
-    // The v1.244 early cover, shared by the listen arm (identical mechanics; factored so
-    // the two ?play= arms cannot drift).
-    function mountEarlyListenCover() {
+    // The v1.244 early cover, ONE implementation for BOTH ?play= arms (QA gate W3: the
+    // first cut left playTrackFromContinue on its own inline copy - now it calls this too,
+    // so the arms genuinely cannot drift). Returns whether the cover mounted (the
+    // continue-arm's miss path tears it down conditionally).
+    function mountEarlyCover() {
       var coverEarly = false;
       try { coverEarly = !!(SKINS && typeof SKINS.skinActiveFor === 'function' && SKINS.skinActiveFor({ isMusic: true })); } catch (_) { coverEarly = false; }
       if (coverEarly && nowPlayingPanel) {
@@ -2017,6 +2033,7 @@ if (typeof module !== 'undefined' && module.exports) {
         nowPlayingPanel.innerHTML = '';
         nowPlayingPanel.hidden = false;
       }
+      return coverEarly;
     }
 
     // A "Continue listening" card lands here as /music?play=<trackId> and must
@@ -2036,17 +2053,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // covered from the first frame; the list still builds behind it for the dock-return, and
       // the engine's paint() fills the frame with the real skin once the track loads. The only path that
       // shows the list (a non-bounce MISS -> render()) tears the cover down first.
-      var coverEarly = false;
-      try { coverEarly = !!(SKINS && typeof SKINS.skinActiveFor === 'function' && SKINS.skinActiveFor({ isMusic: true })); } catch (_) { coverEarly = false; }
-      if (coverEarly && nowPlayingPanel) {
-        straightToPlayerPending = true; // hold the cover up through init's synchronous epilogue
-        document.body.classList.add('mms-on');
-        var _sid = (SKINS.activeSkinId && SKINS.activeSkinId()) || 'apple';
-        var _base = (SKINS.skinById && (SKINS.skinById(_sid) || {}).base) || '';
-        nowPlayingPanel.className = 'music-nowplaying-panel mms mms-full mms-' + _sid + (_base ? ' mms-' + _base : '');
-        nowPlayingPanel.innerHTML = '';   // an empty skin frame = an instant cover over #music-content; the engine's paint() fills it on load
-        nowPlayingPanel.hidden = false;
-      }
+      // v1.252 (QA gate W3): the cover is the SHARED mountEarlyCover now - one implementation
+      // for both ?play= arms, so they genuinely cannot drift.
+      var coverEarly = mountEarlyCover();
       tab = 'songs';
       drill = null;
       search = '';

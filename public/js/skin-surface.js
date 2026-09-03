@@ -187,7 +187,9 @@
       // the watchBack hook AND says it applies to the playing item (music: a listen track).
       // Rides the Extras row chassis (44px full-width) with its own dispatch hook.
       var watchBack = '';
-      if (stickerCfg.watchBack && typeof stickerCfg.watchBack.visible === 'function') {
+      // QA gate S4: main-document only, the extras posture - a pop-out row navigating the
+      // window BEHIND the always-on-top pop-out would be the exact confusion extras avoids.
+      if (inMainDoc && stickerCfg.watchBack && typeof stickerCfg.watchBack.visible === 'function') {
         var wbOn = false;
         try { wbOn = !!stickerCfg.watchBack.visible(); } catch (_) { wbOn = false; }
         if (wbOn) watchBack = '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-watchback><span class="mms-sm-h">Watch</span><span class="mms-sm-state">&rsaquo;</span></button></div>';

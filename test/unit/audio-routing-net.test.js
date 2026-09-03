@@ -50,11 +50,12 @@ const DISPOSITIONS = {
       + 'ruling; a future player.js wave owns any change here.',
   },
   'watch.js': {
-    count: 8,
+    count: 9,
     why: 'related-rail FALLBACK after audioOpenHref (audio related cards route), the '
       + 'queueEntryHref fallbacks (the helper carries the rule), prev/next CHAIN navigation '
       + '(keeps the browse context - dispositioned out of scope with the player advances), '
-      + 'the post-move same-item re-key navigate, and href-reading selectors/comments.',
+      + 'the post-move same-item re-key navigate, href-reading selectors/comments, and the '
+      + 'v1.252 setupListenButton COMMENT naming the deep-linked-audio edge (produces nothing).',
   },
 };
 

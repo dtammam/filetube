@@ -390,12 +390,16 @@ test('v1.239 iPod: a Now-Playing spin with NO known duration is a safe no-op (lo
 
 test('v1.244 source-lock: a ?play open MOUNTS a full-screen skin cover immediately (covers #music-content), torn down only on the miss->list fallback', () => {
   const js = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  // v1.252 (QA gate W3): the cover is the SHARED mountEarlyCover now - one implementation
+  // for BOTH ?play= arms; lock the helper's mechanics and that both arms call it.
+  const h = /function mountEarlyCover\(\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.ok(h, 'mountEarlyCover exists');
+  assert.match(h[1], /coverEarly = !!\(SKINS && typeof SKINS\.skinActiveFor === 'function' && SKINS\.skinActiveFor\(\{ isMusic: true \}\)\)/, 'coverEarly gated on the mobile skin surface');
+  assert.match(h[1], /if \(coverEarly && nowPlayingPanel\) \{[\s\S]*?classList\.add\('mms-on'\);[\s\S]*?nowPlayingPanel\.className = 'music-nowplaying-panel mms mms-full mms-'[\s\S]*?nowPlayingPanel\.hidden = false;/, 'mounts a full-screen skin cover immediately');
   const m = /async function playTrackFromContinue\(trackId, bounceOnMiss\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(m, 'playTrackFromContinue exists');
-  assert.match(m[1], /coverEarly = !!\(SKINS && typeof SKINS\.skinActiveFor === 'function' && SKINS\.skinActiveFor\(\{ isMusic: true \}\)\)/, 'coverEarly gated on the mobile skin surface');
-  // v1.244: it MOUNTS the mms-full skin frame (not just mms-on) so the LIST (#music-content) is
-  // covered from the first frame - the v1.243 mms-on-only fix flashed the list on device.
-  assert.match(m[1], /if \(coverEarly && nowPlayingPanel\) \{[\s\S]*?classList\.add\('mms-on'\);[\s\S]*?nowPlayingPanel\.className = 'music-nowplaying-panel mms mms-full mms-'[\s\S]*?nowPlayingPanel\.hidden = false;/, 'mounts a full-screen skin cover immediately');
+  assert.match(m[1], /var coverEarly = mountEarlyCover\(\);/, 'the continue arm rides the shared cover');
+  assert.match(js, /async function playListenItem\(mediaId\) \{\s*\n\s*mountEarlyCover\(\);/, 'the listen arm rides the shared cover too');
   // the ONLY path that shows the list (a non-bounce miss -> render) tears the cover down first
   assert.match(m[1], /straightToPlayerPending = false;[\s\S]*?document\.body\.classList\.remove\('mms-on'\);[\s\S]*?nowPlayingPanel\.hidden = true;[\s\S]*?\}\s*\n\s*await render\(\);/, 'the miss->list fallback clears the pending flag + tears the cover down before render()');
 });
@@ -1088,7 +1092,8 @@ test('v1.252 listen=1: the video plays as a SINGLE listen track through the medi
       // no Music membership and no music-surface resolution:
       assert.ok(log.some((c) => c.url === '/api/videos/vid1'), 'resolved via /api/videos');
       assert.ok(!log.some((c) => c.url.indexOf('/api/music/resume') === 0), 'the music resume pointer is NEVER written for a listen track');
-      assert.ok(!log.some((c) => /^\/api\/music\/[^?]/.test(c.url) && c.url.indexOf('resume') === -1), 'the music track API is never consulted');
+      assert.ok(!log.some((c) => c.url === '/api/music/vid1'), 'the listen id never resolves through the music track API');
+      assert.ok(log.some((c) => c.url.indexOf('/api/music/albums') === 0), 'the S5 background browse rendered (the dock lands on real content)');
     },
   });
 });
@@ -1185,6 +1190,35 @@ test('v1.252 the Watch way back (negative axis): a NORMAL music track\'s page 1 
       const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
       assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
       assert.strictEqual(menu.querySelector('[data-skin-watchback]'), null, 'no Watch row for a normal track');
+    },
+  });
+});
+
+test('v1.252 (QA gate W1): the Watch way back SURVIVES a dock round-trip re-init (the module-scoped listen marker)', async () => {
+  // The scenario QA proved: dock (MENU) -> tap the mini -> /music?nowplaying=1 re-inits the
+  // view; render() rebuilds `queue` from the audio-only projection (the listen VIDEO is never
+  // in it), so a queue-only lookup lost the Watch row for the rest of the session. The
+  // module-scoped activeListenId (set by playListenItem, surviving the re-init like
+  // nowPlaying does) is the fix - bind the full round trip.
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, LISTEN_VIDEO), playerOverride: listenPlayer(calls),
+    run: async (dom, spy, mod) => {
+      assert.strictEqual(calls.loads.length, 1, 'the listen track loaded (populated first)');
+      // the dock round trip: the view re-inits at /music?nowplaying=1 with the SAME module
+      // instance (no re-require - exactly the SPA dock-return), the player still holding vid1.
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?nowplaying=1');
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const st = panel(dom).querySelector('[data-skin-sticker]');
+      assert.ok(st, 'the skin re-painted on the dock-return');
+      st.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
+      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      assert.ok(menu.querySelector('[data-skin-watchback]'), 'the Watch row SURVIVES the re-init (the queue lookup misses; the marker carries)');
     },
   });
 });
