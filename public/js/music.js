@@ -2125,7 +2125,8 @@ if (typeof module !== 'undefined' && module.exports) {
     if (playParam && urlParams.get('listen') === '1') {
       // v1.252 (Dean, LISTEN-MODE): a VIDEO played as audio in this presentation. The id is a
       // media id (never a music-surface id) - resolve it against /api/videos and play it as a
-      // single listen track; the music API is never consulted and the ao bounce never applies.
+      // single listen track; the listen id is never RESOLVED through the music API and the ao
+      // bounce never applies (the S5 background ALBUMS browse is the only music-API touch).
       playListenItem(playParam).catch((err) => {
         console.error('Music: listen-mode play failed', err);
         straightToPlayerPending = false; // a rejected load must not strand the cover

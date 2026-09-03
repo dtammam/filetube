@@ -48,7 +48,8 @@ into playListenItem(id): the same early-cover, fetch /api/videos/:id, build the 
 listen track, `queue = [t]; playAt(0)` (registerTrackNav at i=0 of a 1-track queue
 registers NEITHER prev NOR next - the single-track intake for free). A miss (deleted id)
 location-replaces back to /watch.html?v=<id> (the id came FROM a watch page - belt only).
-The ao=1 bounce path is untouched; listen=1 never consults the music API at all.
+The ao=1 bounce path is untouched; the listen id is never RESOLVED through the music API
+(the S5 background albums browse is the only music-API touch, test-asserted).
 Chapters: v1 ignores ::c routing for listen (base id, whole file) - the chapter experience
 stays a MUSIC feature; disclosed.
 
