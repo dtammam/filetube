@@ -460,3 +460,28 @@ test('v1.261 Seattle Classic: the Zune layout CSS is real (layout is jsdom-invis
   assert.match(css, /\.mms-zune-classic \.znc-flank\{/, 'the round flank buttons are styled');
   assert.match(css, /\.mms-zune-classic \.ip-stars\{ display:none; \}/, 'the skeuomorphic star row is gone on the Zune screen');
 });
+
+
+test('v1.262 Seattle Classic: the METRO screen rides the shared machinery (source-locked; the fill override is ORDER-bound vs the aqua ribbing)', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.mms-zune-classic \.ip-lcd-in\{ background:var\(--mms-black\); color:var\(--mms-white\); \}/, 'the screen goes Metro black');
+  assert.match(css, /\.mms-zune-classic \.ip-ttl\{ font-size:var\(--fs-4xl\); font-weight:var\(--fw-light\);[^}]*text-transform:lowercase; \}/, 'the hairline lowercase title');
+  assert.match(css, /--fw-light: 200;/, 'the hairline weight is a REAL token (slim S2 - a phantom fallback restyles 10 sites silently if ever defined elsewhere)');
+  assert.match(css, /\.mms-zune-classic \.ip-status\{ text-transform:lowercase; background:var\(--mms-black\); border-bottom:0; \}/, 'the status bar goes Metro black (slim W1 - the iPod gloss strip)');
+  assert.match(css, /\.mms-zune-classic \.ip-track\{ height:3px; border-radius:0;/, 'the flat Metro groove (slim S1 coverage)');
+  assert.match(css, /\.mms-zune-classic \.mms-row\.is-cursor\{ background:var\(--mms-zn-pink\); color:var\(--mms-black\);/, 'the magenta Metro cursor (slim W2 - the iPod blue leaked)');
+  // the v1.233 coincide invariant on THIS skin: cursor treatment beats is-current pink
+  const isCurrentAt = css.indexOf('.mms-zune-classic .mms-row.is-current .mms-rt{');
+  const coincideAt = css.indexOf('.mms-zune-classic .mms-row.is-cursor .mms-rt,');
+  assert.ok(isCurrentAt > -1 && coincideAt > isCurrentAt, 'the cursor .mms-rt rule sits AFTER is-current - equal specificity, later wins; reorder and list-open paints pink-on-magenta');
+  assert.match(css, /\.mms-zune-classic \.ip-artist\{[^}]*color:var\(--mms-zn-pink\); text-transform:lowercase; \}/, 'the pink lowercase artist (the zn-sub treatment)');
+  assert.match(css, /\.mms-zune-classic \.ip-batt\{ display:none; \}/, 'the skeuomorphic battery is gone');
+  assert.match(css, /\.mms-zune-classic \.mms-row\.is-current \.mms-rt\{ color:var\(--mms-zn-pink\); \}/, 'the magenta current row in the queue');
+  // ORDER binding: the flat magenta fill and the aqua ribbing share specificity - the
+  // cascade is decided by file order alone, so presence is not enough.
+  const aquaAt = css.indexOf('.mms-ipod .mms-fill{ background:repeating-linear-gradient');
+  const metroAt = css.indexOf('.mms-zune-classic .mms-fill{ background:var(--mms-zn-pink)');
+  assert.ok(aquaAt > -1 && metroAt > -1, 'both fill rules exist');
+  assert.ok(metroAt > aquaAt, 'the Metro fill comes AFTER the aqua ribbing - equal specificity, later wins; reorder and the Zune screen shows a blue-striped bar');
+});

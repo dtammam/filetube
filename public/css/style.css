@@ -251,6 +251,7 @@ summary,
      single spelling. `normal`/400 stays literal (the default needs no
      token). line-height: 1 stays literal (glyph centering, not prose). */
   --fw-normal: 400; /* v1.205.2: the base body weight, as a token (the census governs font-weight) */
+  --fw-light: 200; /* v1.262: the Metro hairline - was a phantom var() fallback at 10 sites (slim S2) */
   --fw-semibold: 600;
   --fw-bold: 700;
   --fw-black: 900;
@@ -11207,11 +11208,11 @@ html[data-modern="on"] .video-uploader {
      tile, one magenta accent. Controls are the shared chassis; only the dress differs. */
   .mms-zune{ background:var(--mms-black); color:var(--mms-white); padding:var(--space-6); display:flex; flex-direction:column; }
   .mms-zune .mms-zn-brand{ margin-left:auto; font-size:var(--fs-sm); font-weight:var(--fw-bold); color:var(--mms-zn-pink); letter-spacing:var(--tracking-caps); }
-  .mms-zune .mms-zn-now{ font-size:var(--fs-6xl); font-weight:var(--fw-light, 200); /* token-exempt: hairline weight fallback (the --hover-bg idiom) */ white-space:nowrap; overflow:hidden; margin:0 0 var(--space-4); opacity:.9; }
+  .mms-zune .mms-zn-now{ font-size:var(--fs-6xl); font-weight:var(--fw-light); white-space:nowrap; overflow:hidden; margin:0 0 var(--space-4); opacity:.9; }
   .mms-zune .mms-art{ width:56vw; max-width:240px; aspect-ratio:1; margin:0 0 var(--space-5); border-radius:0; overflow:hidden; flex:none; }
   .mms-zune .mms-art img{ width:100%; height:100%; object-fit:cover; }
-  .mms-zune .mms-zn-ttl{ font-size:var(--fs-5xl); font-weight:var(--fw-light, 200); /* token-exempt: hairline weight fallback (the --hover-bg idiom) */ white-space:nowrap; overflow:hidden; }
-  .mms-zune .mms-zn-sub{ font-size:var(--fs-2xl); font-weight:var(--fw-light, 200); /* token-exempt: hairline weight fallback (the --hover-bg idiom) */ color:var(--mms-zn-pink); white-space:nowrap; overflow:hidden; }
+  .mms-zune .mms-zn-ttl{ font-size:var(--fs-5xl); font-weight:var(--fw-light); white-space:nowrap; overflow:hidden; }
+  .mms-zune .mms-zn-sub{ font-size:var(--fs-2xl); font-weight:var(--fw-light); color:var(--mms-zn-pink); white-space:nowrap; overflow:hidden; }
   .mms-zune .mms-scrub{ margin-top:var(--space-5); flex:none; }
   .mms-zune .mms-bar{ height:3px; background:var(--mms-zn-ink); border-radius:0; position:relative; overflow:hidden; }
   .mms-zune .mms-fill{ background:var(--mms-zn-pink); border-radius:0; }
@@ -11221,7 +11222,7 @@ html[data-modern="on"] .video-uploader {
   .mms-zune .mms-play svg, .mms-zune .mms-skip svg{ fill:currentColor; }
   /* slim W1: the flex chain the queue's scroll rides (the spotify .mms-queue idiom). */
   .mms-zune .mms-zn-queue{ flex:1; min-height:0; display:flex; flex-direction:column; }
-  .mms-zune .mms-qh{ font-size:var(--fs-base); font-weight:var(--fw-light, 200); /* token-exempt: hairline weight fallback (the --hover-bg idiom) */ color:var(--mms-zn-dim); margin:var(--space-6) 0 var(--space-2); text-transform:lowercase; flex:none; }
+  .mms-zune .mms-qh{ font-size:var(--fs-base); font-weight:var(--fw-light); color:var(--mms-zn-dim); margin:var(--space-6) 0 var(--space-2); text-transform:lowercase; flex:none; }
   .mms-zune .mms-qlist{ overflow-y:auto; flex:1; min-height:0; touch-action:pan-y; overscroll-behavior:contain; }
   /* slim W2: real row layout (no shared base exists) + the honest lowercase claim. */
   .mms-zune .mms-row{ display:flex; align-items:center; width:100%; gap:var(--space-3); padding:var(--space-3) 0; text-align:left; cursor:pointer; font-family:var(--font-family); font-size:var(--fs-md); text-transform:lowercase; border:0; background:transparent; color:var(--mms-white); }
@@ -11385,6 +11386,34 @@ html[data-modern="on"] .video-uploader {
   .mms-zune-classic .ip-zone{ color:transparent; }
   .mms-zune-classic .ip-center.znc-center{ width:min(20vw,64px); height:min(20vw,64px); /* token-exempt: Zune pad center */
     background:radial-gradient(circle at 50% 40%, var(--mms-znc-wheel1), var(--mms-znc-wheel2) 100%); }
+  /* v1.262 (Dean: "move the rest style and overall menu of the original Seattle into
+     the new brown Seattle Classic... maintaining the wheel and buttons"): the METRO
+     SCREEN - Seattle's type language inside the chrome bezel, on the shared screen
+     machinery (scrub/list/marquee bindings untouched; this layer is presentation).
+     Order matters vs the shared fill rules: equal specificity, later wins. */
+  .mms-zune-classic .ip-lcd-in{ background:var(--mms-black); color:var(--mms-white); }
+  .mms-zune-classic .ip-status{ text-transform:lowercase; background:var(--mms-black); border-bottom:0; }
+  .mms-zune-classic .ip-np{ font-weight:var(--fw-light); color:var(--mms-zn-dim); }
+  .mms-zune-classic .mms-playind{ color:var(--mms-zn-pink); }
+  .mms-zune-classic .ip-batt{ display:none; }
+  .mms-zune-classic .ip-cover{ border-radius:0; box-shadow:none; background:var(--mms-zn-ink); }
+  .mms-zune-classic .ip-ttl{ font-size:var(--fs-4xl); font-weight:var(--fw-light); text-transform:lowercase; }
+  .mms-zune-classic .ip-artist{ font-size:var(--fs-xl); font-weight:var(--fw-light); color:var(--mms-zn-pink); text-transform:lowercase; }
+  .mms-zune-classic .ip-album{ font-weight:var(--fw-light); color:var(--mms-zn-dim); text-transform:lowercase; }
+  .mms-zune-classic .ip-nof{ font-weight:var(--fw-light); color:var(--mms-zn-dim); }
+  .mms-zune-classic .ip-track{ height:3px; border-radius:0; background:var(--mms-zn-ink); box-shadow:none; }
+  .mms-zune-classic .mms-fill{ background:var(--mms-zn-pink); border-radius:0; box-shadow:none; }
+  .mms-zune-classic .ip-scrub .mms-pos, .mms-zune-classic .ip-scrub .mms-rem{ color:var(--mms-zn-dim); }
+  .mms-zune-classic .ip-listview{ background:var(--mms-black); }
+  .mms-zune-classic .mms-row{ color:var(--mms-white); }
+  .mms-zune-classic .mms-row .mms-rt{ text-transform:lowercase; font-weight:var(--fw-light); }
+  .mms-zune-classic .mms-row .mms-rn, .mms-zune-classic .mms-row .mms-rd, .mms-zune-classic .mms-chev-r{ color:var(--mms-zn-dim); }
+  .mms-zune-classic .mms-row.is-current .mms-rt{ color:var(--mms-zn-pink); }
+  .mms-zune-classic .mms-row.is-current .mms-rn{ color:var(--mms-zn-pink); }
+  /* the Metro cursor (slim W2): the magenta bar replaces the iPod blue; listed AFTER
+     is-current so coincide keeps the v1.233 cursor-wins invariant at equal specificity. */
+  .mms-zune-classic .mms-row.is-cursor{ background:var(--mms-zn-pink); color:var(--mms-black); border-bottom-color:transparent; }
+  .mms-zune-classic .mms-row.is-cursor .mms-rt, .mms-zune-classic .mms-row.is-cursor .mms-rn, .mms-zune-classic .mms-row.is-cursor .mms-rd, .mms-zune-classic .mms-row.is-cursor .mms-chev-r{ color:var(--mms-black); }
 
   /* v1.232 (Dean): iPod MARQUEE - long song/album/artist names slowly scroll to reveal
      the full text, like a real iPod. music.js wraps an overflowing line in .mms-mq and
