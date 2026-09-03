@@ -806,7 +806,7 @@ test('v1.256 haptics OFF path: no switch support = no ghost, no class, no lock (
   } finally { b.restore(); }
 });
 
-test('v1.256 haptics: the tick engine - one bias flip per 4.5deg detent, 30ms throttle DROPS excess, ghost rides the finger; no .checked writes ever', () => {
+test('v1.256 haptics: the tick engine - one bias flip per detent (3deg since v1.256.1), 30ms throttle DROPS excess, ghost rides the finger; no .checked writes ever', () => {
   const b = bootHaptic({});
   const savedPerf = global.performance;
   let t = 1000;
