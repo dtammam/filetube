@@ -271,6 +271,25 @@ test('adversarial W1 (v1.250): a FOREIGN-window surface still shimmers its art v
   } finally { restore(); }
 });
 
+test('v1.251 (adversarial W5): buildPanelHtml ESCAPES row title/artist/artUrl - feed prose in an innerHTML sink, locked at the moved code', () => {
+  // The builder moved files this wave - exactly when escapes get dropped. Hostile podcast
+  // feed values through every row field; the meta escapes are bound in music-view.test.js.
+  const api = require('../../public/js/skin-surface.js');
+  const html = api.buildPanelHtml({ title: 'Show', subline: 'sub' }, [{
+    id: 'e1',
+    artUrl: '/podcastart/x"><img src=x onerror=alert(1)>',
+    title: '<script>evil()</script>',
+    artist: '"><b>bold</b>',
+    index: 0,
+    state: 'current',
+  }]);
+  assert.ok(html.indexOf('<script>') === -1, 'the raw <script> never lands');
+  assert.ok(html.indexOf('<img src=x') === -1, 'the artUrl cannot break out of the src attribute');
+  assert.ok(html.indexOf('<b>bold</b>') === -1, 'the artist markup never lands');
+  assert.ok(html.indexOf('&lt;script&gt;') !== -1, 'the title renders as escaped text');
+  assert.ok(html.indexOf('&quot;&gt;&lt;img') !== -1, 'the artUrl quote is entity-escaped inside src');
+});
+
 test('SHELL PARITY (v1.250 gate CRITICAL): every shell that ships music-skins.js ships skin-surface.js right after it', () => {
   // The SPA soft-nav lazy-loads music.js/podcasts.js into WHATEVER shell the user cold-loaded
   // (common.js VIEW_SCRIPT_SRC), so the engine must be present wherever the skin registry is -

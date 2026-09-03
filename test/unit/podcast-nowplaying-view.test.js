@@ -67,6 +67,11 @@ async function boot(url, initialState, run, opts) {
     AbortController: global.AbortController, requestAnimationFrame: global.requestAnimationFrame,
   };
   const mock = makePlayer(initialState, opts.meta);
+  // v1.251 (adversarial W3): opts.mm = { narrow: bool } installs a LIVE-switchable viewport
+  // (the pop-out gate + resize enforcement read matchMedia at call time).
+  if (opts.mm) {
+    dom.window.matchMedia = () => ({ matches: !!opts.mm.narrow, media: '(max-width: 768px)', addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent() { return false; } });
+  }
   const fetches = [];
   mock.fetches = fetches;
   let registered = null;
@@ -111,6 +116,7 @@ async function boot(url, initialState, run, opts) {
     delete require.cache[podcastsPath];
     require(podcastsPath);
     assert.ok(registered && typeof registered.init === 'function', 'podcasts view registered');
+    mock.destroyView = () => registered.destroy(); // W3: tests can destroy mid-flight (destroy is re-entrant)
     registered.init(dom.window.document.getElementById('view-root'));
     await settle(); await settle(); await settle();
     await run(dom, mock);
@@ -371,4 +377,67 @@ test('v1.251 pop-out: a NON-podcast item never reveals the button (the gate is r
   await boot('http://localhost/podcasts?nowplaying=1', 'full', async (dom) => {
     assert.equal(dom.window.document.getElementById('podcast-popout-btn').hidden, true, 'music/video current -> no podcast pop-out');
   }, { meta });
+});
+
+// ---- v1.251 (adversarial W3): the podcast-side pop-out guard CLOSURES, each bound ----------
+
+test('W3a TOCTOU: a pop-out grant resolving AFTER the view is destroyed mounts nothing and closes the granted window', async () => {
+  const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
+  const pipDom = new JSDOM('<body></body>', { url: 'http://localhost/pip' });
+  let closed = 0;
+  const realClose = pipDom.window.close.bind(pipDom.window);
+  pipDom.window.close = () => { closed += 1; realClose(); };
+  try {
+    await boot('http://localhost/podcasts?show=s1', 'full', async (dom, mock) => {
+      let grantResolve = null;
+      dom.window.documentPictureInPicture = { requestWindow: () => new Promise((r) => { grantResolve = () => r(pipDom.window); }) };
+      await playEp(dom, 0);
+      dom.window.document.getElementById('podcast-popout-btn').click(); // grant in flight
+      mock.destroyView(); // the view dies mid-grant (a cross-view swap)
+      grantResolve();
+      await settle(); await settle();
+      assert.equal(closed, 1, 'the late grant CLOSED the window instead of mounting (aborted() guard)');
+      assert.equal(pipDom.window.document && pipDom.window.document.getElementById && pipDom.window.document.getElementById('podcast-nowplaying-panel'), null, 'no surface was mounted');
+    }, { meta });
+  } finally {
+    // Runner hygiene (the v1.250 wedge lesson): under the aborted()-guard MUTANT the late
+    // grant MOUNTS and arms the pip clock past the destroyed view - close the window so a
+    // red run FAILS instead of wedging node:test forever.
+    try { pipDom.window.close(); } catch (_) { /* already closed by the guard */ }
+  }
+});
+
+test('W3b supported() gate: a NARROW viewport hides the button and a forced toggle opens nothing (never-both-live)', async () => {
+  const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
+  const mm = { narrow: true };
+  await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
+    let grants = 0;
+    dom.window.documentPictureInPicture = { requestWindow: () => { grants += 1; return Promise.resolve(null); } };
+    await playEp(dom, 0);
+    const btn = dom.window.document.getElementById('podcast-popout-btn');
+    assert.equal(btn.hidden, true, 'narrow viewport (the in-tab skin owns the surface) -> no pop-out button');
+    btn.click(); // even a forced click must no-op at the open() gate
+    await settle();
+    assert.equal(grants, 0, 'open() re-checked supported() at click time - no grant requested');
+  }, { meta, mm });
+});
+
+test('W3c resize enforcement: shrinking into the narrow range TEARS DOWN an open podcast pop-out', async () => {
+  const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
+  const mm = { narrow: false };
+  const pipDom = new JSDOM('<body></body>', { url: 'http://localhost/pip' });
+  await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pipDom.window) };
+    await playEp(dom, 0);
+    const btn = dom.window.document.getElementById('podcast-popout-btn');
+    btn.click();
+    await settle(); await settle(); await settle();
+    assert.equal(btn.getAttribute('aria-pressed'), 'true', 'pop-out open (populated first - non-vacuous)');
+    const pipBody = pipDom.window.document.body;
+    mm.narrow = true; // the viewport crosses into the in-tab-skin range
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    await settle(); await settle();
+    assert.equal(btn.getAttribute('aria-pressed'), 'false', 'the resize arm tore the pop-out down');
+    assert.ok(!pipBody.classList.contains('mms-on'), 'the pop-out surface was destroyed (mms-on cleared before close)');
+  }, { meta, mm });
 });

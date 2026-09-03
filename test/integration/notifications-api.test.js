@@ -407,3 +407,18 @@ test('v1.146: engine rows render for the admin (composed title) and are invisibl
   const memberBadge = await (await asMember('/api/notifications/badge')).json();
   assert.equal(memberBadge.count, 0, 'a member badge NEVER ticks for engine events');
 });
+
+test('v1.251 (adversarial W2): an AUDIO bell row carries the resolved chapterCount (>=2 -> the client opens the album); video rows never do', async () => {
+  await armFeature();
+  await updateDatabase((db) => {
+    // exactly TWO chapters - also pins the >=2 routing boundary end to end.
+    db.metadata['mediä-2'].chapters = [{ startTime: 0, title: 'Öne' }, { startTime: 60, title: 'Twö' }];
+  });
+  const { items } = await (await fetch(`${base}/api/notifications`)).json();
+  const audio = items.find((i) => i.mediaId === 'mediä-2');
+  const video = items.find((i) => i.mediaId === 'mediä-1');
+  assert.ok(audio && video, 'both joined rows present');
+  assert.equal(audio.type, 'audio');
+  assert.equal(audio.chapterCount, 2, 'the audio bell row carries chapterCount so audioOpenHref routes ::c0 to the album');
+  assert.equal(Object.prototype.hasOwnProperty.call(video, 'chapterCount'), false, 'video rows never carry it (they never reroute)');
+});

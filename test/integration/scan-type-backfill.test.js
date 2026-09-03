@@ -105,6 +105,10 @@ test('(HARD GATE) type backfill on an already-indexed, unchanged AUDIO item: typ
         folderName: path.basename(root), size: Buffer.byteLength(bytes), ext: '.mp3',
         addedAt: 1700000000000, duration: 60, hasThumbnail: false,
         artist: 'TYPE-BACKFILL-SENTINEL', releaseDate: 1700000000000, youtubeId: null,
+        // adversarial W1 (A4 mutant): a SETTLED record - every other backfillable field
+        // present - so `type` is the ONLY change and the dbChanged persist gate is
+        // load-bearing (without it the heal would be memory-only and die on restart).
+        hasSubtitles: false, needsTranscode: false, rootFolder: root,
         // no `type` - the pre-type-era shape that misrouted to the video player.
       },
     },
@@ -145,6 +149,7 @@ test('(HARD GATE) type backfill on an already-indexed, unchanged VIDEO (codec fi
         addedAt: 1700000000000, duration: 123, hasThumbnail: true,
         artist: 'VIDEO-TYPE-SENTINEL', releaseDate: 1700000000000, youtubeId: null,
         needsTranscode: false, videoCodec: 'h264', audioCodec: 'aac',
+        hasSubtitles: false, rootFolder: root, // adversarial W1: settled record - type is the ONLY change (the persist gate binds)
         storyboard: { v: 1, interval: 3, count: 40, cols: 10, rows: 4, tileW: 160, tileH: 90 },
         // no `type` - pre-type-era shape.
       },

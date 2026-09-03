@@ -34,6 +34,10 @@ function withLocalStorage(map, fn) {
 test('v1.251 audioOpenHref (the canonical): audio routes, chaptered routes to ::c0, video/kinds/id-less return null', () => {
   assert.strictEqual(common.audioOpenHref({ id: 'a1', type: 'audio' }), '/music?play=a1&ao=1');
   assert.strictEqual(common.audioOpenHref({ id: 'a2', type: 'audio', chapterCount: 3 }), '/music?play=' + encodeURIComponent('a2::c0') + '&ao=1');
+  // adversarial W4: PIN the >=2 boundary (a two-chapter album must open as its album; the
+  // >=3 mutant survived every prior case).
+  assert.strictEqual(common.audioOpenHref({ id: 'a2b', type: 'audio', chapterCount: 2 }), '/music?play=' + encodeURIComponent('a2b::c0') + '&ao=1');
+  assert.strictEqual(common.audioOpenHref({ id: 'a2c', type: 'audio', chapterCount: 1 }), '/music?play=a2c&ao=1', 'one chapter is NOT an album');
   assert.strictEqual(common.audioOpenHref({ id: 'v1', type: 'video' }), null);
   assert.strictEqual(common.audioOpenHref({ id: 'p1', type: 'audio', kind: 'podcast' }), null, 'a non-media kind keeps its own destination');
   assert.strictEqual(common.audioOpenHref({ type: 'audio' }), null, 'no id -> null');
