@@ -751,7 +751,7 @@
     // anywhere on the ghost's ancestor chain (the mms-haptic carve-out + a body scroll
     // lock replace .mms-full's touch-action:none); never preventDefault its touches;
     // NEVER write .checked from JS (kills tracking). Exec plan: wheel-haptics.md.
-    var HAPTIC_STEP_DEG = 4.5;  // Dean's "iPod Classic aggressive" ruling: ~80 detents/rev
+    var HAPTIC_STEP_DEG = 3;    // v1.256.1 (Dean's device round: "even higher frequency"): 120 detents/rev, hotter than the Classic's ~96
     var HAPTIC_MIN_MS = 30;     // the Taptic engine's saturation floor - excess ticks DROP
     var wheelGhost = null;
     var bodyScrollLock = null;  // {y} while the haptic skin owns the body
@@ -830,11 +830,26 @@
     }
     // Route a click/press whose target is the invisible ghost to the REAL control under
     // it (zones/center are covered by the scaled ghost; their semantics must survive).
+    // v1.256.1 (Dean's device round, the "every zone acts like the middle button" bug):
+    // iOS synthesizes a CHECKBOX's click event at the CONTROL'S CENTER, not the touch
+    // point - and the ghost is centered on the wheel, so routing by e.clientX/Y sent
+    // every zone tap to the select button. The POINTERDOWN's coordinates are the real
+    // finger (they are what makes the wheel gesture itself work) - stash them and route
+    // the click with the stash. And resolve the hit UPWARD to a real control: the
+    // deepest element over a zone is its <svg> glyph, and WebKit's SVGElement has no
+    // .click() (a tap would have been silently swallowed).
+    var ghostDownPoint = null; // {x, y} of the last pointerdown that targeted the ghost
     function realTargetUnder(e) {
       if (!wheelGhost || e.target !== wheelGhost) return e.target;
+      var px = (ghostDownPoint && e.type === 'click') ? ghostDownPoint.x : e.clientX;
+      var py = (ghostDownPoint && e.type === 'click') ? ghostDownPoint.y : e.clientY;
       try {
-        var els = doc.elementsFromPoint(e.clientX, e.clientY);
-        for (var i = 0; i < els.length; i++) { if (els[i] !== wheelGhost) return els[i]; }
+        var els = doc.elementsFromPoint(px, py);
+        for (var i = 0; i < els.length; i++) {
+          if (els[i] === wheelGhost) continue;
+          var ctl = els[i].closest ? els[i].closest('.ip-zone, [data-skin-select], button, a') : null;
+          return ctl || els[i];
+        }
       } catch (_) { /* jsdom / older engines: fall through */ }
       return e.target;
     }
@@ -906,6 +921,7 @@
       // pressed ZONE. A quick TAP still skips a track (the hold never fires); a ROTATE becomes
       // a scrub/cursor (cancels the hold-timer). Steps currentTime on the PANEL's own window
       // timer so a Document-PiP pop-out (which throttles the opener) still scans.
+      if (wheelGhost && e.target === wheelGhost) ghostDownPoint = { x: e.clientX, y: e.clientY }; // v1.256.1: the truthful touch point for the click route
       hapticGestureStart(st, e); // v1.256: ghost rides under the finger from the first move
       if (fastScan) {
         // v1.256: the scaled ghost covers the zones - route the press to the REAL control.

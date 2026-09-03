@@ -937,25 +937,69 @@ test('v1.256 (adversarial W1+W2): the FEEL constants are pinned at their boundar
     const mv = (deg, dt) => { t += dt; const q = at(deg); wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: q.clientX, clientY: q.clientY })); return q; };
     const s = at(0);
     wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: s.clientX, clientY: s.clientY }));
-    // STEP boundary: 4.4deg accumulated = NO flip; +0.2deg more crosses 4.5 = FLIP.
-    let q = mv(4.4, 100);
-    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, '4.4deg accumulated: below the 4.5 step, no flip (kills step->1)');
-    q = mv(4.6, 100);
-    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, '4.6deg crosses the 4.5 boundary: flip (kills step->6)');
+    // STEP boundary (v1.256.1: Dean's hotter ruling, 3deg): 2.9 accumulated = NO flip;
+    // +0.2 more crosses 3 = FLIP.
+    let q = mv(2.9, 100);
+    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, '2.9deg accumulated: below the 3deg step, no flip (kills step->1)');
+    q = mv(3.1, 100);
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, '3.1deg crosses the 3deg boundary: flip (kills step->6)');
     // THROTTLE boundary: a detent 29ms after the flip DROPS (a drop does not stamp
     // hapLast); the next detent lands 1ms later = exactly 30ms after the FLIP, and
     // ticks. (adversarial round 2: dt=30 here would land at flip+59ms and leave
     // MIN unpinned across 30-59 - the 1ms landing pins it to exactly (29, 30].)
-    q = mv(9.2, 29);
+    q = mv(6.2, 29);
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a detent 29ms after a flip is dropped (the 30ms floor holds exactly)');
-    q = mv(13.9, 1);
+    q = mv(9.3, 1);
     assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a detent 30ms after the last FLIP ticks (the floor is 30, not more)');
     // DROP vs QUEUE: a multi-detent burst consumes its backlog even where the throttle
     // drops the flips - a following sub-detent drift must NOT flip (kills while->if).
-    q = mv(36, 100);  // ~22deg burst (+0.4 carry) = 5 detents, one flip allowed -> bias back to -18
+    q = mv(24, 100);  // ~14.7deg burst = 4-5 detents at 3deg, one flip allowed -> bias back to -18
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a burst saturates to one flip');
-    q = mv(37, 100);  // +1deg sub-detent drift, long after the throttle window
+    q = mv(25, 100);  // +1deg sub-detent drift, long after the throttle window
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'no phantom tick after the finger slows: the backlog was CONSUMED, not queued');
     wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true }));
   } finally { global.performance = savedPerf; b.restore(); }
+});
+
+test('v1.256.1 (Dean device regression): a zone tap routes by the POINTERDOWN point - the click\'s centered lie cannot reach the select button', () => {
+  // On-device, every zone "acted like the middle button": iOS fires a checkbox's click
+  // at the CONTROL'S CENTER (= the wheel center, where the select button lives), not at
+  // the finger. The route now uses the stashed pointerdown coordinates.
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    const play = panel(b.dom).querySelector('[data-skin-play]');
+    const select = panel(b.dom).querySelector('[data-skin-select]');
+    assert.ok(play && select, 'zones + center exist (non-vacuous)');
+    let playFired = 0; let selectFired = 0;
+    play.addEventListener('click', () => { playFired += 1; });
+    select.addEventListener('click', () => { selectFired += 1; });
+    // a REAL point-sensitive hit-test stub: the zone point finds the zone, the center finds select
+    b.dom.window.document.elementsFromPoint = (x, y) => (y > 50 ? [g, play] : [g, select]);
+    // finger taps the PLAY zone (0,100); iOS then lies: the click arrives at the center (0,0)
+    g.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 0, clientY: 100 }));
+    g.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 0, clientY: 100 }));
+    g.dispatchEvent(new b.dom.window.MouseEvent('click', { bubbles: true, clientX: 0, clientY: 0 }));
+    assert.strictEqual(playFired, 1, 'the tap reached the ZONE the finger touched (the stash wins over the lying click coords)');
+    assert.strictEqual(selectFired, 0, 'the wheel-center select button did NOT swallow it');
+  } finally { b.restore(); }
+});
+
+test('v1.256.1: the hit resolves UPWARD to the zone control when the deepest element is its svg glyph (WebKit SVGElement has no .click)', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    const next = panel(b.dom).querySelector('[data-skin-next]');
+    const glyph = next && next.querySelector('svg');
+    assert.ok(glyph, 'the zone renders an svg glyph (non-vacuous)');
+    let nextFired = 0;
+    next.addEventListener('click', () => { nextFired += 1; });
+    b.dom.window.document.elementsFromPoint = () => [g, glyph];
+    g.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 60, clientY: 0 }));
+    g.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 60, clientY: 0 }));
+    g.dispatchEvent(new b.dom.window.MouseEvent('click', { bubbles: true, clientX: 60, clientY: 0 }));
+    assert.strictEqual(nextFired, 1, 'the svg hit resolved upward to its zone button');
+  } finally { b.restore(); }
 });
