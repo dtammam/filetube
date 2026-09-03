@@ -315,6 +315,14 @@ test('v1.255 (Dean\'s parity pass) source-lock: the sticker menu speaks the APP\
   assert.match(css, /\.mms-sm-act\.is-on\{ background:var\(--yt-red\);/, 'active action row = the app accent');
   assert.match(css, /\.mms-sm-act:hover\{ background:var\(--hover-bg, rgba\(128,128,128,0\.15\)\);/, 'rows hover like .account-menu-item');
   assert.match(css, /\.mms-sticker-menu button:focus-visible, \.mms-sticker-menu a:focus-visible\{ outline:2px solid var\(--yt-red\)/, 'keyboard focus like .md-row');
+  // slim-gate S2: the two parity pillars the first lock missed
+  assert.match(css, /\.mms-sm-h\{[^}]*font-weight:var\(--fw-bold\)/, 'headings carry the .md-group-title bold');
+  assert.match(css, /\.mms-sm-chip\.is-on:hover\{ background:var\(--yt-red\); \}/, 'a selected chip cannot grey out under hover');
+  // slim-gate S3: hover is gated to hover-capable inputs (the pop-out mouse), so a
+  // phone tap never sticks a grey row (the Like/Watched rows neither close nor rebuild).
+  assert.match(css, /@media \(hover: hover\)\{\n {2}\.mms-sticker-menu \.mms-sm-opt:hover/, 'hover rules live behind (hover: hover)');
+  // v1.255 (Dean): the Extras page grows instead of scrolling on normal phones
+  assert.match(css, /\.mms-sticker-menu\{[^}]*max-height:86vh/, 'the menu may grow to 86vh (the Extras list fits without scroll)');
 });
 
 test('v1.255 parity: the rows carry the watch-matching GLYPHS (rendered, not just source)', async () => {

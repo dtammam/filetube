@@ -301,8 +301,8 @@
       var acts = [];
       if (hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="share"><i class="icon-share"></i>Share</button>');
       acts.push('<a class="mms-sm-act" data-skin-x="download" href="/video/' + encodeURIComponent(item.id) + '?download=1" download><i class="icon-download"></i>Download</a>');
-      acts.push('<button type="button" class="mms-sm-act' + (liked ? ' is-on' : '') + '" data-skin-x="like" aria-pressed="' + (liked ? 'true' : 'false') + '"><i class="icon-heart"></i>' + (liked ? 'Liked' : 'Like') + '</button>');
-      acts.push('<button type="button" class="mms-sm-act' + (watched ? ' is-on' : '') + '" data-skin-x="watched" aria-pressed="' + (watched ? 'true' : 'false') + '"><i class="icon-history"></i>' + (watched ? 'Watched' : 'Mark watched') + '</button>');
+      acts.push('<button type="button" class="mms-sm-act' + (liked ? ' is-on' : '') + '" data-skin-x="like" aria-pressed="' + (liked ? 'true' : 'false') + '"><i class="icon-heart"></i><span class="mms-sm-actlbl">' + (liked ? 'Liked' : 'Like') + '</span>' + '</button>');
+      acts.push('<button type="button" class="mms-sm-act' + (watched ? ' is-on' : '') + '" data-skin-x="watched" aria-pressed="' + (watched ? 'true' : 'false') + '"><i class="icon-history"></i><span class="mms-sm-actlbl">' + (watched ? 'Watched' : 'Mark watched') + '</span>' + '</button>');
       acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue"><i class="icon-queue"></i>Add to queue</button>');
       acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue-next"><i class="icon-play"></i>Play next</button>');
       if (item.hasSubtitles === true) acts.push('<button type="button" class="mms-sm-act" data-skin-x="transcript"><i class="icon-transcript"></i>Transcript</button>');
@@ -387,7 +387,11 @@
           var nowOn = !on;
           el.classList.toggle('is-on', nowOn);
           el.setAttribute('aria-pressed', nowOn ? 'true' : 'false');
-          el.textContent = kind === 'like' ? (nowOn ? 'Liked' : 'Like') : (nowOn ? 'Watched' : 'Mark watched');
+          // v1.255 slim-gate CRITICAL: write ONLY the label span - a bare el.textContent
+          // assignment destroys the row's glyph <i> (this wave's own feature) on the
+          // menu's most-tapped rows. The || el fallback keeps a span-less row honest.
+          var lbl = el.querySelector('.mms-sm-actlbl');
+          (lbl || el).textContent = kind === 'like' ? (nowOn ? 'Liked' : 'Like') : (nowOn ? 'Watched' : 'Mark watched');
         })
         .catch(function () { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update Watched.'); });
     }
@@ -930,6 +934,10 @@
       for (var j = 0; j < styles.length; j++) {
         var s = doc.createElement('style'); s.textContent = styles[j].textContent; doc.head.appendChild(s);
       }
+      // v1.255 slim-gate W2: carry the opener's chosen icon set - the [data-icons=...]
+      // overrides are documentElement-scoped, so without the copy the pop-out's glyphs
+      // always render the base masks (a design-language split on this wave's own axis).
+      try { var ic = document.documentElement.getAttribute('data-icons'); if (ic) doc.documentElement.setAttribute('data-icons', ic); } catch (_) { /* best-effort */ }
     }
     function mount(win) {
       pipPending = false; // the async grant resolved (or the sync fallback) - clear the open-in-flight guard

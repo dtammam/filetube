@@ -11058,7 +11058,7 @@ html[data-modern="on"] .video-uploader {
   .mms-sticker--img .mms-sticker-ic{ border-radius:0; }
   .mms-sticker-menu[hidden]{ display:none !important; } /* the [hidden] lesson: a flex/grid menu's own display beats [hidden] */
   .mms-sticker-menu{ position:absolute; left:0; bottom:calc(100% + var(--space-3)); /* token-exempt: positional geometry */
-    min-width:min(320px, 88vw); max-width:92vw; max-height:64vh; overflow-y:auto; display:flex; flex-direction:column; gap:var(--space-5); /* v1.252 L1 (Dean): thumb-sized menu */
+    min-width:min(320px, 88vw); max-width:92vw; max-height:86vh; overflow-y:auto; /* v1.255 (Dean): the Extras page fits without scrolling; auto-scroll is the small-phone safety net */ display:flex; flex-direction:column; gap:var(--space-5); /* v1.252 L1 (Dean): thumb-sized menu */
     background:var(--overlay-surface); color:var(--mms-white); border:1px solid var(--overlay-border); border-radius:var(--radius-lg); box-shadow:var(--shadow-modal); padding:var(--space-6); font-family:var(--font-family); }
   /* v1.255 (Dean's parity pass): buttons do NOT inherit the body font - every other menu
      sets it explicitly (.account-menu-item, settings-menu-item, .md-row's font:inherit).
@@ -11073,7 +11073,7 @@ html[data-modern="on"] .video-uploader {
      the Extras page's song title (was wrongly the 11px uppercase heading class). */
   .mms-sticker-menu .mms-sm-lbl{ display:inline-flex; align-items:center; gap:var(--space-3); font-size:var(--fs-md); font-weight:var(--fw-semibold); }
   .mms-sticker-menu .mms-sm-title{ font-size:var(--fs-md); font-weight:var(--fw-semibold); }
-  .mms-sticker-menu .mms-sm-lbl i, .mms-sticker-menu .mms-sm-act i{ width:18px; /* token-exempt: icon box (account-menu idiom) */ text-align:center; opacity:.7; flex:none; }
+  .mms-sticker-menu .mms-sm-lbl i, .mms-sticker-menu .mms-sm-act i{ width:18px; text-align:center; opacity:.7; flex:none; }
   .mms-sticker-menu .mms-sm-speed{ display:flex; flex-wrap:wrap; gap:var(--space-3); }
   .mms-sticker-menu .mms-sm-opt{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; font-variant-numeric:tabular-nums; min-height:44px; display:inline-flex; align-items:center; justify-content:center; transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
   .mms-sticker-menu .mms-sm-opt.is-on{ background:var(--yt-red); color:var(--on-accent); border-color:var(--yt-red-dark); }
@@ -11084,8 +11084,10 @@ html[data-modern="on"] .video-uploader {
   .mms-sticker-menu .mms-sm-chip{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; min-height:44px; display:inline-flex; align-items:center; justify-content:center; transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
   .mms-sticker-menu .mms-sm-chip.is-on{ background:var(--yt-red); color:var(--on-accent); border-color:var(--yt-red-dark); }
   /* v1.255: interactive states, matching the app (.account-menu-item hover, .md-row focus). */
+  @media (hover: hover){
   .mms-sticker-menu .mms-sm-opt:hover, .mms-sticker-menu .mms-sm-chip:hover, .mms-sticker-menu .mms-sm-act:hover{ background:var(--hover-bg, rgba(128,128,128,0.15)); /* token-exempt: theme-neutral fallback */ }
   .mms-sticker-menu .mms-sm-opt.is-on:hover, .mms-sticker-menu .mms-sm-chip.is-on:hover{ background:var(--yt-red); }
+  }
   .mms-sticker-menu button:focus-visible, .mms-sticker-menu a:focus-visible{ outline:2px solid var(--yt-red); outline-offset:-2px; }
   /* v1.249 (F-EXTRAS): the two-page menu. "Extras >" / "< Back" ride the loop
      row's full-width chassis; the action list is a single column of the same
