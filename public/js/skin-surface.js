@@ -900,6 +900,10 @@
     }
     function onDown(e) {
       wheelSuppressClick = false;
+      // v1.256.1 slim-gate CRITICAL: the stash must refresh on EVERY ghost press, BEFORE
+      // any early return - written below the dead-center guard, a CENTER tap kept the
+      // LAST ZONE'S stash and the lying click replayed that zone instead of Select.
+      if (wheelGhost && e.target === wheelGhost) ghostDownPoint = { x: e.clientX, y: e.clientY };
       if (wheelSpin) return; // one gesture at a time
       var listMode = panel.classList.contains('mms-listmode');
       var wheel = e.target.closest('.ip-wheel'); if (!wheel) return;
@@ -921,7 +925,6 @@
       // pressed ZONE. A quick TAP still skips a track (the hold never fires); a ROTATE becomes
       // a scrub/cursor (cancels the hold-timer). Steps currentTime on the PANEL's own window
       // timer so a Document-PiP pop-out (which throttles the opener) still scans.
-      if (wheelGhost && e.target === wheelGhost) ghostDownPoint = { x: e.clientX, y: e.clientY }; // v1.256.1: the truthful touch point for the click route
       hapticGestureStart(st, e); // v1.256: ghost rides under the finger from the first move
       if (fastScan) {
         // v1.256: the scaled ghost covers the zones - route the press to the REAL control.

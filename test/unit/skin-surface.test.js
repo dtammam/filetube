@@ -822,7 +822,7 @@ test('v1.256 haptics: the tick engine - one bias flip per 4.5deg detent, 30ms th
     wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: s.clientX, clientY: s.clientY }));
     assert.match(g.style.transform, /^translate\(/, 'gesture start: the ghost shrank from the cover to ride the finger');
     assert.strictEqual(g.style.transform, `translate(${s.clientX + 18}px,${s.clientY}px)`, 'initial bias +18px past the midline');
-    let q = mv(6, 100); // 6deg > 4.5 = one detent, dt 100ms > throttle -> FLIP to -18
+    let q = mv(6, 100); // 6deg = 2 detents at 3deg, dt 100ms > throttle -> ONE flip to -18 (the second drops)
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'detent 1 flipped the bias (a crossing = a tick)');
     q = mv(8, 5);       // +2deg accumulated, no detent -> follow only, bias unchanged
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'sub-detent movement follows without flipping');
@@ -921,7 +921,7 @@ test('v1.256 (QA S2 binding): a rotate-then-release on the ghost suppresses the 
   } finally { b.restore(); }
 });
 
-test('v1.256 (adversarial W1+W2): the FEEL constants are pinned at their boundaries, and a throttled detent DROPS - never queues', () => {
+test('v1.256 (adversarial W1+W2): the FEEL constants are pinned at their boundaries (3deg since v1.256.1), and a throttled detent DROPS - never queues', () => {
   // The seat proved step=1/6 and min=100 (and while->if queueing) all survived the
   // cadence test - Dean's iPod-Classic ruling was unbound. Pin both axes at their
   // exact boundaries, and distinguish drop from queue with a sub-detent follow-up.
@@ -1001,5 +1001,35 @@ test('v1.256.1: the hit resolves UPWARD to the zone control when the deepest ele
     g.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 60, clientY: 0 }));
     g.dispatchEvent(new b.dom.window.MouseEvent('click', { bubbles: true, clientX: 60, clientY: 0 }));
     assert.strictEqual(nextFired, 1, 'the svg hit resolved upward to its zone button');
+  } finally { b.restore(); }
+});
+
+test('v1.256.1 (slim-gate CRITICAL): a CENTER tap refreshes the stash - a stale zone can never replay onto Select (real-rect harness)', () => {
+  // The zero-rect jsdom fixture never trips the dead-center guard, which is exactly how
+  // the stale-stash bug shipped (divergent-fixture class). Stub a REAL wheel rect so the
+  // guard executes: after a zone tap, a center tap must route to Select, not replay Next.
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    const wheel = panel(b.dom).querySelector('.ip-wheel');
+    wheel.getBoundingClientRect = () => ({ left: -120, top: -120, width: 240, height: 240, right: 120, bottom: 120 });
+    const next = panel(b.dom).querySelector('[data-skin-next]');
+    const select = panel(b.dom).querySelector('[data-skin-select]');
+    let nextFired = 0; let selectFired = 0;
+    next.addEventListener('click', () => { nextFired += 1; });
+    select.addEventListener('click', () => { selectFired += 1; });
+    // point-sensitive hit-test: far-from-center finds the zone, near-center finds select
+    b.dom.window.document.elementsFromPoint = (x, y) => (Math.hypot(x, y) < 48 ? [g, select] : [g, next]);
+    const tap = (x, y, cx, cy) => {
+      g.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: x, clientY: y }));
+      g.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true, clientX: x, clientY: y }));
+      g.dispatchEvent(new b.dom.window.MouseEvent('click', { bubbles: true, clientX: cx, clientY: cy })); // iOS lies: center coords
+    };
+    tap(100, 0, 0, 0);  // a NEXT tap (outside the 48px dead center; the click lies to 0,0)
+    assert.strictEqual(nextFired, 1, 'the zone tap routed to Next (populated first)');
+    tap(0, 10, 0, 0);   // a CENTER tap - the dead-center guard early-returns in onDown
+    assert.strictEqual(selectFired, 1, 'the center tap reached Select - the stash refreshed BEFORE the guard');
+    assert.strictEqual(nextFired, 1, 'the stale zone did NOT replay (move the stash below the guard and this reds)');
   } finally { b.restore(); }
 });
