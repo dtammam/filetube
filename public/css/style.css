@@ -10948,6 +10948,12 @@ html[data-modern="on"] .video-uploader {
   --mms-ipod-batt-line:#4a4b4d; --mms-ipod-batt1:#8fe06a; --mms-ipod-batt2:#4fb62e;
   --mms-ipod-groove:#eceef2;
   --mms-ipod-blue-hi:#7fc0ff; --mms-ipod-blue1:#3d97f2; --mms-ipod-blue2:#1667d6;
+  /* v1.255 (Dean): old-school macOS AQUA progress fill - the real Aqua recipe is a
+     bright glassy upper band with a HARD cut near the middle, a deeper lower band
+     re-lightening into a bottom glow, a white top edge and a shaded bottom edge. */
+  --mms-aqua-top:#d6ecff; --mms-aqua-upper:#7db8f2; --mms-aqua-lower:#1e6fdb; --mms-aqua-glow:#5fb9f7;
+  --mms-aqua-fill-shadow:inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 2px rgba(10,58,120,.45);
+  --mms-aqua-groove-shadow:inset 0 1px 3px rgba(0,0,0,.28), inset 0 0 0 1px #a9abb0;
   --mms-ipod-line:rgba(60,70,90,.14);
   --mms-ipod-wheel1:#d3d3d2; --mms-ipod-wheel2:#c4c4c2; --mms-ipod-wheel-lbl:#7c7d80;
   /* v1.231.1 gloss sheen (Dean): white-alpha stops for the body + wheel highlights. */
@@ -11217,8 +11223,10 @@ html[data-modern="on"] .video-uploader {
   /* Aqua scrubber */
   .mms-ipod .ip-scrub{ display:flex; align-items:center; gap:var(--space-4); margin-top:var(--space-4); flex:none; }
   .mms-ipod .mms-pos, .mms-ipod .mms-rem{ font-size:var(--fs-sm); font-weight:var(--fw-bold); flex:none; }
-  .mms-ipod .ip-track{ flex:1; height:12px; border-radius:var(--radius-full); position:relative; overflow:hidden; background:linear-gradient(var(--mms-ipod-groove), var(--mms-white)); box-shadow:inset 0 0 0 1px var(--mms-ipod-hair); }
-  .mms-ipod .mms-fill{ background:linear-gradient(var(--mms-ipod-blue-hi), var(--mms-ipod-blue1) 45%, var(--mms-ipod-blue2)); box-shadow:var(--mms-ipod-fill-shadow); }
+  /* v1.255 (Dean): the AQUA scrubber. The groove gets a real inner shadow so the fill
+     sits IN it; the fill is the classic Aqua glass - hard 48/52 mid cut, bottom glow. */
+  .mms-ipod .ip-track{ flex:1; height:12px; border-radius:var(--radius-full); position:relative; overflow:hidden; background:linear-gradient(var(--mms-ipod-groove), var(--mms-white)); box-shadow:var(--mms-aqua-groove-shadow); }
+  .mms-ipod .mms-fill{ background:linear-gradient(var(--mms-aqua-top), var(--mms-aqua-upper) 48%, var(--mms-aqua-lower) 52%, var(--mms-aqua-lower) 80%, var(--mms-aqua-glow)); box-shadow:var(--mms-aqua-fill-shadow); }
   /* v1.235's wheel-VOLUME bar, DORMANT since v1.250 (Dean retired wheel-volume - the wheel
      scrubs everywhere; nothing writes .mms-voladj/.ip-vol-fill any more). Rules kept
      unchurned this wave; removable with the markup whenever the skins are next edited. */

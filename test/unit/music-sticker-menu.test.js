@@ -329,3 +329,16 @@ test('v1.255 parity: the rows carry the watch-matching GLYPHS (rendered, not jus
     assert.match(m.querySelector('[data-skin-loop]').textContent, /Loop/);
   });
 });
+
+test('v1.255 source-lock: the wheel scrubber wears the AQUA glass (hard mid cut + edge shadows), not the flat blue ramp', () => {
+  // Dean: "the blue line that shows progress should probably have an old school macOS
+  // aqua style graphic... instead of flat blue." Lock the recipe's load-bearing parts:
+  // the 48/52 hard cut with the bottom glow on the fill, and the groove's inner shadow
+  // (without it the fill sits ON the track, not IN it). All stops are var() tokens -
+  // the census idiom this file's own iPod body gloss established.
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.mms-ipod \.mms-fill\{ background:linear-gradient\(var\(--mms-aqua-top\), var\(--mms-aqua-upper\) 48%, var\(--mms-aqua-lower\) 52%, var\(--mms-aqua-lower\) 80%, var\(--mms-aqua-glow\)\); box-shadow:var\(--mms-aqua-fill-shadow\); \}/, 'the Aqua fill: glass top, hard mid cut, bottom glow, edge shadows');
+  assert.match(css, /\.mms-ipod \.ip-track\{[^}]*box-shadow:var\(--mms-aqua-groove-shadow\)/, 'the groove has the Aqua inner shadow');
+  assert.match(css, /--mms-aqua-fill-shadow:inset 0 1px 0 rgba\(255,255,255,\.9\), inset 0 -1px 2px/, 'top highlight + bottom shade tokens defined');
+});
