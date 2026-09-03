@@ -93,6 +93,39 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.255.0 - The sticker menu joins the family, and the wheel goes Aqua (2026-09-03)
+
+Dean's design-parity ask ("the font, the vibe... doesn't match... should feel akin"),
+root-caused by recon before styling: the sticker block never set a font-family and
+buttons don't inherit the body's - the entire menu rendered in the UA default while
+every reference menu sets the app font explicitly. The parity pass, built from the
+references' REAL css + before/after headless captures (the match-reference norm): app
+font on container+controls, the app's caps tracking token (the old one was ~2.8x wider),
+semibold row labels (settings-menu idiom) with the Extras song title promoted out of the
+11px-uppercase heading class, watch-matching glyphs on every row (the account-menu 18px
+icon-box idiom; zero new svg files), app-accent selected states, hover/focus-visible/
+transitions (hover gated behind (hover:hover) so phone taps never stick). Plus the AQUA
+scrubber on the Pocket Classic: the real recipe (glass upper band, hard 48/52 mid cut,
+bottom glow, edge shadows, a shadowed groove), all-token gradient stops per the census
+idiom. And Dean's live ask mid-gate: the Extras page fits without scrolling
+(max-height 64vh -> 86vh; auto-scroll stays as the tiny-phone safety net).
+
+THE GATE CAUGHT (slim gate - adversarial seat, two rounds + delta): a CRITICAL where the
+Like/Watched toggle's bare textContent write DESTROYED the row's new glyph on the menu's
+most-tapped rows (invisible to the exact-text asserts; fixed with a label span + a
+mutation-verified survival test), the pop-out ignoring the chosen icon set (fixed -
+data-icons copied to the pop-out document), a dead lint-exemption comment, two unbound
+parity pillars (locked), and sticky hover on touch (gated).
+
+KNOWN GAPS (disclosed, tracker): #198 - with a 2x/3x sticker size + the full 10-row
+Extras page, the taller menu can clip the Back row off-screen with no scroll recovery
+(measured arithmetic; default 1x sticker is clear everywhere; outside-tap still closes).
+Dean's probe: sticker size 3x -> Extras -> is Back fully visible? Also the pop-out
+icon-set copy is source-level-only bound.
+
+Dual-Node: v22.23.1 8223/8223 pass, 0 fail, 0 skipped; v24.14.0 8223/8223, 0 fail, 0
+skipped. player.js and music.js untouched; zero server changes. DEVICE-PENDING.
+
 ### v1.254.0 - Endless autoplay: the music never just stops (2026-09-03)
 
 Dean's queued idea, intake locked in four points and built client-only: when the queue

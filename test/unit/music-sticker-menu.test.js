@@ -293,3 +293,60 @@ test('v1.252 L1 (Dean: "the buttons are too small") source-lock: every sticker-m
   assert.match(css, /\.mms-sm-act\{[^}]*font-size:var\(--fs-md\)/, 'action text bumped to fs-md');
   assert.match(css, /\.mms-sm-opt\{[^}]*font-size:var\(--fs-md\)/, 'speed text bumped to fs-md');
 });
+
+test('v1.255 (Dean\'s parity pass) source-lock: the sticker menu speaks the APP\'s design language', () => {
+  // Dean: "the font, the vibe... doesn't match the design language of anything else."
+  // Root cause: buttons don't inherit the body font, and this block never set one - the
+  // whole menu rendered in the UA default. Lock the parity pillars: the font on container
+  // AND controls, the app's caps tracking token (not the 3x-wide mms one), the
+  // settings-menu label idiom (semibold row labels; the Extras song title is a TITLE,
+  // not an 11px uppercase heading), the app-accent selected state, and the interactive
+  // states every reference surface has.
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.mms-sticker-menu\{[^}]*font-family:var\(--font-family\)/, 'the menu container carries the app font');
+  assert.match(css, /\.mms-sticker-menu button, \.mms-sticker-menu a\{ font-family:var\(--font-family\); \}/, 'buttons/anchors get it explicitly (they do not inherit)');
+  assert.match(css, /\.mms-sm-h\{[^}]*letter-spacing:var\(--tracking-caps\)/, 'headings use the APP caps tracking token');
+  assert.ok(!/\.mms-sm-h\{[^}]*--mms-ls-caps/.test(css), 'the over-wide mms tracking is gone from headings');
+  assert.match(css, /\.mms-sm-lbl\{[^}]*font-weight:var\(--fw-semibold\)/, 'row labels are semibold (the settings-menu idiom)');
+  assert.match(css, /\.mms-sm-title\{[^}]*font-weight:var\(--fw-semibold\)/, 'the Extras song title is a real title');
+  assert.match(css, /\.mms-sm-opt\.is-on\{ background:var\(--yt-red\); color:var\(--on-accent\); border-color:var\(--yt-red-dark\); \}/, 'selected speed = the app accent, not white inversion');
+  assert.match(css, /\.mms-sm-chip\.is-on\{ background:var\(--yt-red\);/, 'selected skin chip = the app accent');
+  assert.match(css, /\.mms-sm-act\.is-on\{ background:var\(--yt-red\);/, 'active action row = the app accent');
+  assert.match(css, /\.mms-sm-act:hover\{ background:var\(--hover-bg, rgba\(128,128,128,0\.15\)\);/, 'rows hover like .account-menu-item');
+  assert.match(css, /\.mms-sticker-menu button:focus-visible, \.mms-sticker-menu a:focus-visible\{ outline:2px solid var\(--yt-red\)/, 'keyboard focus like .md-row');
+  // slim-gate S2: the two parity pillars the first lock missed
+  assert.match(css, /\.mms-sm-h\{[^}]*font-weight:var\(--fw-bold\)/, 'headings carry the .md-group-title bold');
+  assert.match(css, /\.mms-sm-chip\.is-on:hover\{ background:var\(--yt-red\); \}/, 'a selected chip cannot grey out under hover');
+  // slim-gate S3: hover is gated to hover-capable inputs (the pop-out mouse), so a
+  // phone tap never sticks a grey row (the Like/Watched rows neither close nor rebuild).
+  assert.match(css, /@media \(hover: hover\)\{\n {2}\.mms-sticker-menu \.mms-sm-opt:hover/, 'hover rules live behind (hover: hover)');
+  // v1.255 (Dean): the Extras page grows instead of scrolling on normal phones
+  assert.match(css, /\.mms-sticker-menu\{[^}]*max-height:86vh/, 'the menu may grow to 86vh (the Extras list fits without scroll)');
+});
+
+test('v1.255 parity: the rows carry the watch-matching GLYPHS (rendered, not just source)', async () => {
+  // Dean: "watch should probably have a glyph. You should probably have the same matching
+  // glyphs." Bind the rendered menu: each row's mask-icon <i> from the app's icon set.
+  await boot(async (dom) => {
+    click(dom, sticker(dom));
+    const m = menu(dom);
+    assert.ok(m.querySelector('[data-skin-loop] i.icon-refresh'), 'Loop carries its glyph');
+    assert.ok(m.querySelector('[data-skin-extras] i.icon-more'), 'Extras carries the More glyph (the watch-row icon)');
+    // the labels still read right with the icons in place (no textContent regression)
+    assert.match(m.querySelector('[data-skin-loop]').textContent, /Loop/);
+  });
+});
+
+test('v1.255 source-lock: the wheel scrubber wears the AQUA glass (hard mid cut + edge shadows), not the flat blue ramp', () => {
+  // Dean: "the blue line that shows progress should probably have an old school macOS
+  // aqua style graphic... instead of flat blue." Lock the recipe's load-bearing parts:
+  // the 48/52 hard cut with the bottom glow on the fill, and the groove's inner shadow
+  // (without it the fill sits ON the track, not IN it). All stops are var() tokens -
+  // the census idiom this file's own iPod body gloss established.
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.mms-ipod \.mms-fill\{ background:linear-gradient\(var\(--mms-aqua-top\), var\(--mms-aqua-upper\) 48%, var\(--mms-aqua-lower\) 52%, var\(--mms-aqua-lower\) 80%, var\(--mms-aqua-glow\)\); box-shadow:var\(--mms-aqua-fill-shadow\); \}/, 'the Aqua fill: glass top, hard mid cut, bottom glow, edge shadows');
+  assert.match(css, /\.mms-ipod \.ip-track\{[^}]*box-shadow:var\(--mms-aqua-groove-shadow\)/, 'the groove has the Aqua inner shadow');
+  assert.match(css, /--mms-aqua-fill-shadow:inset 0 1px 0 rgba\(255,255,255,\.9\), inset 0 -1px 2px/, 'top highlight + bottom shade tokens defined');
+});

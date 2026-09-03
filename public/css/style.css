@@ -10948,6 +10948,12 @@ html[data-modern="on"] .video-uploader {
   --mms-ipod-batt-line:#4a4b4d; --mms-ipod-batt1:#8fe06a; --mms-ipod-batt2:#4fb62e;
   --mms-ipod-groove:#eceef2;
   --mms-ipod-blue-hi:#7fc0ff; --mms-ipod-blue1:#3d97f2; --mms-ipod-blue2:#1667d6;
+  /* v1.255 (Dean): old-school macOS AQUA progress fill - the real Aqua recipe is a
+     bright glassy upper band with a HARD cut near the middle, a deeper lower band
+     re-lightening into a bottom glow, a white top edge and a shaded bottom edge. */
+  --mms-aqua-top:#d6ecff; --mms-aqua-upper:#7db8f2; --mms-aqua-lower:#1e6fdb; --mms-aqua-glow:#5fb9f7;
+  --mms-aqua-fill-shadow:inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 2px rgba(10,58,120,.45);
+  --mms-aqua-groove-shadow:inset 0 1px 3px rgba(0,0,0,.28), inset 0 0 0 1px #a9abb0;
   --mms-ipod-line:rgba(60,70,90,.14);
   --mms-ipod-wheel1:#d3d3d2; --mms-ipod-wheel2:#c4c4c2; --mms-ipod-wheel-lbl:#7c7d80;
   /* v1.231.1 gloss sheen (Dean): white-alpha stops for the body + wheel highlights. */
@@ -11052,19 +11058,37 @@ html[data-modern="on"] .video-uploader {
   .mms-sticker--img .mms-sticker-ic{ border-radius:0; }
   .mms-sticker-menu[hidden]{ display:none !important; } /* the [hidden] lesson: a flex/grid menu's own display beats [hidden] */
   .mms-sticker-menu{ position:absolute; left:0; bottom:calc(100% + var(--space-3)); /* token-exempt: positional geometry */
-    min-width:min(320px, 88vw); max-width:92vw; max-height:64vh; overflow-y:auto; display:flex; flex-direction:column; gap:var(--space-5); /* v1.252 L1 (Dean): thumb-sized menu */
-    background:var(--overlay-surface); color:var(--mms-white); border:1px solid var(--overlay-border); border-radius:var(--radius-lg); box-shadow:var(--shadow-modal); padding:var(--space-6); }
+    min-width:min(320px, 88vw); max-width:92vw; max-height:86vh; overflow-y:auto; /* v1.255 (Dean): the Extras page fits without scrolling; auto-scroll is the small-phone safety net */ display:flex; flex-direction:column; gap:var(--space-5); /* v1.252 L1 (Dean): thumb-sized menu */
+    background:var(--overlay-surface); color:var(--mms-white); border:1px solid var(--overlay-border); border-radius:var(--radius-lg); box-shadow:var(--shadow-modal); padding:var(--space-6); font-family:var(--font-family); }
+  /* v1.255 (Dean's parity pass): buttons do NOT inherit the body font - every other menu
+     sets it explicitly (.account-menu-item, settings-menu-item, .md-row's font:inherit).
+     Without this the whole sticker menu rendered in the UA default - his "the font, the
+     vibe... doesn't feel the same". */
+  .mms-sticker-menu button, .mms-sticker-menu a{ font-family:var(--font-family); }
   .mms-sticker-menu .mms-sm-sec{ display:flex; flex-direction:column; gap:var(--space-4); }
-  .mms-sticker-menu .mms-sm-h{ font-size:var(--fs-xs); letter-spacing:var(--mms-ls-caps); text-transform:uppercase; opacity:.6; }
+  /* v1.255: section headings use the APP's caps idiom (.md-group-title: bold + the app
+     tracking token) - the old --mms-ls-caps was ~3x the app's own letter-spacing. */
+  .mms-sticker-menu .mms-sm-h{ font-size:var(--fs-xs); letter-spacing:var(--tracking-caps); text-transform:uppercase; font-weight:var(--fw-bold); opacity:.6; }
+  /* v1.255: the row-label chassis (settings-menu idiom: label semibold, value normal) +
+     the Extras page's song title (was wrongly the 11px uppercase heading class). */
+  .mms-sticker-menu .mms-sm-lbl{ display:inline-flex; align-items:center; gap:var(--space-3); font-size:var(--fs-md); font-weight:var(--fw-semibold); }
+  .mms-sticker-menu .mms-sm-title{ font-size:var(--fs-md); font-weight:var(--fw-semibold); }
+  .mms-sticker-menu .mms-sm-lbl i, .mms-sticker-menu .mms-sm-act i{ width:18px; text-align:center; opacity:.7; flex:none; }
   .mms-sticker-menu .mms-sm-speed{ display:flex; flex-wrap:wrap; gap:var(--space-3); }
-  .mms-sticker-menu .mms-sm-opt{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; font-variant-numeric:tabular-nums; min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
-  .mms-sticker-menu .mms-sm-opt.is-on{ background:var(--mms-white); color:var(--mms-black); border-color:var(--mms-white); }
+  .mms-sticker-menu .mms-sm-opt{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; font-variant-numeric:tabular-nums; min-height:44px; display:inline-flex; align-items:center; justify-content:center; transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
+  .mms-sticker-menu .mms-sm-opt.is-on{ background:var(--yt-red); color:var(--on-accent); border-color:var(--yt-red-dark); }
   .mms-sticker-menu .mms-sm-loop{ display:flex; align-items:center; justify-content:space-between; gap:var(--space-6); width:100%; border:0; background:transparent; color:inherit; cursor:pointer; padding:0; min-height:44px; }
   .mms-sticker-menu .mms-sm-loop .mms-sm-state{ font-size:var(--fs-md); opacity:.7; }
   .mms-sticker-menu .mms-sm-loop.is-on .mms-sm-state{ color:var(--yt-red); opacity:1; }
   .mms-sticker-menu .mms-sm-skins{ display:flex; flex-wrap:wrap; gap:var(--space-3); }
-  .mms-sticker-menu .mms-sm-chip{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
-  .mms-sticker-menu .mms-sm-chip.is-on{ background:var(--mms-white); color:var(--mms-black); border-color:var(--mms-white); }
+  .mms-sticker-menu .mms-sm-chip{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; min-height:44px; display:inline-flex; align-items:center; justify-content:center; transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
+  .mms-sticker-menu .mms-sm-chip.is-on{ background:var(--yt-red); color:var(--on-accent); border-color:var(--yt-red-dark); }
+  /* v1.255: interactive states, matching the app (.account-menu-item hover, .md-row focus). */
+  @media (hover: hover){
+  .mms-sticker-menu .mms-sm-opt:hover, .mms-sticker-menu .mms-sm-chip:hover, .mms-sticker-menu .mms-sm-act:hover{ background:var(--hover-bg, rgba(128,128,128,0.15)); /* token-exempt: theme-neutral fallback */ }
+  .mms-sticker-menu .mms-sm-opt.is-on:hover, .mms-sticker-menu .mms-sm-chip.is-on:hover{ background:var(--yt-red); }
+  }
+  .mms-sticker-menu button:focus-visible, .mms-sticker-menu a:focus-visible{ outline:2px solid var(--yt-red); outline-offset:-2px; }
   /* v1.249 (F-EXTRAS): the two-page menu. "Extras >" / "< Back" ride the loop
      row's full-width chassis; the action list is a single column of the same
      bordered rows as the speed/skin options, left-aligned for scanability. */
@@ -11073,8 +11097,8 @@ html[data-modern="on"] .video-uploader {
   .mms-sticker-menu .mms-sm-back{ justify-content:flex-start; gap:var(--space-3); font-size:var(--fs-md); opacity:.8; }
   .mms-sticker-menu .mms-sm-extras .mms-sm-state{ font-size:var(--fs-lg); line-height:var(--lh-tight); opacity:.7; }
   .mms-sticker-menu .mms-sm-acts{ display:flex; flex-direction:column; gap:var(--space-3); }
-  .mms-sticker-menu .mms-sm-act{ display:flex; align-items:center; width:100%; text-align:left; text-decoration:none; border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; min-height:48px; }
-  .mms-sticker-menu .mms-sm-act.is-on{ background:var(--mms-white); color:var(--mms-black); border-color:var(--mms-white); }
+  .mms-sticker-menu .mms-sm-act{ display:flex; align-items:center; gap:var(--space-4); width:100%; text-align:left; text-decoration:none; border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; min-height:48px; transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
+  .mms-sticker-menu .mms-sm-act.is-on{ background:var(--yt-red); color:var(--on-accent); border-color:var(--yt-red-dark); }
   .mms-sticker-menu .mms-sm-act[disabled]{ opacity:.5; cursor:default; }
   .mms-sticker-menu .mms-sm-danger{ color:var(--yt-red); border-color:var(--yt-red); }
   .mms-sticker-menu .mms-sm-note{ font-size:var(--fs-md); opacity:.7; }
@@ -11201,8 +11225,10 @@ html[data-modern="on"] .video-uploader {
   /* Aqua scrubber */
   .mms-ipod .ip-scrub{ display:flex; align-items:center; gap:var(--space-4); margin-top:var(--space-4); flex:none; }
   .mms-ipod .mms-pos, .mms-ipod .mms-rem{ font-size:var(--fs-sm); font-weight:var(--fw-bold); flex:none; }
-  .mms-ipod .ip-track{ flex:1; height:12px; border-radius:var(--radius-full); position:relative; overflow:hidden; background:linear-gradient(var(--mms-ipod-groove), var(--mms-white)); box-shadow:inset 0 0 0 1px var(--mms-ipod-hair); }
-  .mms-ipod .mms-fill{ background:linear-gradient(var(--mms-ipod-blue-hi), var(--mms-ipod-blue1) 45%, var(--mms-ipod-blue2)); box-shadow:var(--mms-ipod-fill-shadow); }
+  /* v1.255 (Dean): the AQUA scrubber. The groove gets a real inner shadow so the fill
+     sits IN it; the fill is the classic Aqua glass - hard 48/52 mid cut, bottom glow. */
+  .mms-ipod .ip-track{ flex:1; height:12px; border-radius:var(--radius-full); position:relative; overflow:hidden; background:linear-gradient(var(--mms-ipod-groove), var(--mms-white)); box-shadow:var(--mms-aqua-groove-shadow); }
+  .mms-ipod .mms-fill{ background:linear-gradient(var(--mms-aqua-top), var(--mms-aqua-upper) 48%, var(--mms-aqua-lower) 52%, var(--mms-aqua-lower) 80%, var(--mms-aqua-glow)); box-shadow:var(--mms-aqua-fill-shadow); }
   /* v1.235's wheel-VOLUME bar, DORMANT since v1.250 (Dean retired wheel-volume - the wheel
      scrubs everywhere; nothing writes .mms-voladj/.ip-vol-fill any more). Rules kept
      unchurned this wave; removable with the markup whenever the skins are next edited. */

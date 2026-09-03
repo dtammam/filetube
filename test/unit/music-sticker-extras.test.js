@@ -620,3 +620,21 @@ test('stale-fetch guard (TOCTOU): closing the menu while the open fetch is in fl
     assert.ok(act(dom, 'like'), 'a fresh open renders normally (the guard is scoped, not a dead switch)');
   }, { deferVideo: true });
 });
+
+test('v1.255 slim-gate CRITICAL binding: the Like/Watched GLYPHS survive an in-place toggle (the label span carries the text)', async () => {
+  // Adversarial-measured at 9479a80f: extrasToggleFlag's bare el.textContent write
+  // destroyed the row's <i> glyph on the menu's most-tapped rows - the wave's own
+  // feature regressing on its primary interaction, invisible to the exact-textContent
+  // asserts. The label now lives in .mms-sm-actlbl and ONLY that span is rewritten.
+  await boot(async (dom) => {
+    await openExtras(dom);
+    click(dom, act(dom, 'like'));
+    for (let i = 0; i < 4; i++) await settle();
+    assert.ok(act(dom, 'like').querySelector('i.icon-heart'), 'the heart survives the Like toggle');
+    assert.strictEqual(act(dom, 'like').textContent, 'Liked', 'the toggled text still reads exactly Liked');
+    click(dom, act(dom, 'watched'));
+    for (let i = 0; i < 4; i++) await settle();
+    assert.ok(act(dom, 'watched').querySelector('i.icon-history'), 'the history glyph survives the Watched toggle');
+    assert.strictEqual(act(dom, 'watched').textContent, 'Watched', 'the toggled text still reads exactly Watched');
+  });
+});
