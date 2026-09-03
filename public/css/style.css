@@ -2859,20 +2859,21 @@ img.art-shimmer {
      only More is a glyph. (v1.202 had a 640px glyph tier - gone.)
    - WIDE (960px+: theatre, 1920 non-theatre): everything visible as words,
      More hidden. Buttons never deform in any mode (v1.200 norm). */
-#queue-add-btn { order: 1; } /* v1.203 (Dean): Queue, Like, Share, Transcript, More */
+#listen-media-btn { order: 1; } /* v1.253 (Dean): Listen, Like, Share, Transcript, More - Queue moved under More (the Listen chip made five words overflow the phone row) */
 #like-media-btn { order: 2; }
 #share-media-btn { order: 3; }
 #transcript-media-btn { order: 4; }
 #more-actions-btn { order: 5; display: none; }
-#queue-next-btn { order: 10; }
-#download-media-btn { order: 11; }
-#delete-media-btn { order: 12; }
-#move-media-btn { order: 13; }
-#watched-media-btn { order: 14; }
-#reheat-media-btn { order: 15; }
-#attribute-media-btn { order: 16; }
+#queue-add-btn { order: 10; }
+#queue-next-btn { order: 11; }
+#download-media-btn { order: 12; }
+#delete-media-btn { order: 13; }
+#move-media-btn { order: 14; }
+#watched-media-btn { order: 15; }
+#reheat-media-btn { order: 16; }
+#attribute-media-btn { order: 17; }
 @container watch-action-bar (max-width: 959px) {
-  #queue-next-btn, #download-media-btn, #delete-media-btn, #move-media-btn, #watched-media-btn, #reheat-media-btn, #attribute-media-btn {
+  #queue-add-btn, #queue-next-btn, #download-media-btn, #delete-media-btn, #move-media-btn, #watched-media-btn, #reheat-media-btn, #attribute-media-btn {
     display: none;
   }
   #more-actions-btn {

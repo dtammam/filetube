@@ -1026,8 +1026,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.202 (Dean's action-row re-evaluation): the SECONDARY tier - hidden in
     // compact mode (style.css mirrors this list; the tiers lock keeps them
     // equal) and offered through the "More" pick-one instead. Order here is
-    // the pick order. PRIMARY (never here): Like, Share, Transcript, Queue.
-    const SECONDARY_ACTION_IDS = ['queue-next-btn', 'download-media-btn', 'delete-media-btn', 'move-media-btn', 'watched-media-btn', 'reheat-media-btn', 'attribute-media-btn'];
+    // the pick order. PRIMARY (never here): Listen, Like, Share, Transcript.
+    // v1.253 (Dean): Queue joins the secondary tier - the Listen chip made a
+    // fifth word overflow the phone row, and his ruling moved Queue under More.
+    const SECONDARY_ACTION_IDS = ['queue-add-btn', 'queue-next-btn', 'download-media-btn', 'delete-media-btn', 'move-media-btn', 'watched-media-btn', 'reheat-media-btn', 'attribute-media-btn'];
     let moreActionsDismiss = null;
 
     // The accessible name of a button as it reads RIGHT NOW (its label span
