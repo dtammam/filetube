@@ -1262,3 +1262,50 @@ test('v1.252 (QA gate W1): the Watch way back SURVIVES a dock round-trip re-init
     },
   });
 });
+
+test('v1.253 (Dean, listen-art): the skin cover renders the track\'s OWN artUrl - fresh listen, dock-return re-init, and the /albumart both-axes', async () => {
+  // Dean's device report: the listen title showed but the art never loaded. buildSkinCtx
+  // hardcoded /albumart/<id> - and the server's /albumart thumbnail fallback serves type
+  // 'audio' only, so a listen (VIDEO) id got the placeholder SVG. Bind all three arms:
+  // the explicit-artUrl preference, the re-init marker fallback (the rebuilt queue misses
+  // the listen track), and the /albumart default for an artUrl-less track (no over-reach).
+  const calls = { loads: [], navs: [] };
+  const log = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, LISTEN_VIDEO), playerOverride: listenPlayer(calls),
+    run: async (dom, spy, mod) => {
+      // arm 1: the fresh listen paints the VIDEO THUMBNAIL as the cover
+      const art1 = panel(dom).querySelector('.mms-art-img');
+      assert.ok(art1, 'the skin cover img rendered (populated first)');
+      assert.strictEqual(art1.getAttribute('src'), '/thumbnail/vid1', 'the cover is the video thumbnail, not the /albumart hardcode');
+      // arm 2: the dock-return re-init - the rebuilt queue MISSES the listen track, so only
+      // the activeListenId marker can supply the thumbnail route (delete the fallback and
+      // this reverts to /albumart/vid1 -> the placeholder SVG Dean saw).
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?nowplaying=1');
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const art2 = panel(dom).querySelector('.mms-art-img');
+      assert.ok(art2, 'the skin re-painted a cover on the dock-return');
+      assert.strictEqual(art2.getAttribute('src'), '/thumbnail/vid1', 'the re-init cover still resolves via the listen marker (the queue lookup misses)');
+      // arm 3 (both-axes): an artUrl-LESS track keeps the /albumart route - the preference
+      // must not over-reach onto native tracks (whose art is the extracted album-art file).
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?play=t9');
+      global.fetch = (u, init) => {
+        const url = String(u);
+        const track = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100 };
+        if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [track] }) });
+        if (/^\/api\/music\/t9$/.test(url)) return Promise.resolve({ ok: true, json: async () => track });
+        if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+        return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+      };
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const art3 = panel(dom).querySelector('.mms-art-img');
+      assert.ok(art3, 'the skin painted the normal track\'s cover (non-vacuous)');
+      assert.strictEqual(art3.getAttribute('src'), '/albumart/t9', 'an artUrl-less track keeps the /albumart route');
+    },
+  });
+});
