@@ -768,3 +768,100 @@ test('destroy() clears body.mms-on and unbinds (the v1.227 swap-leak guard)', ()
     assert.strictEqual(pp, 0, 'destroy unbound the panel click proxy');
   } finally { restore(); }
 });
+
+// ---- v1.256 WHEEL HAPTICS (the ghost-switch engine; feel is Dean's device) ----------
+
+function bootHaptic(opts) {
+  const b = bootEngine(opts);
+  // capability stubs BEFORE paint(): the switch property probe + a touch signal
+  Object.defineProperty(b.dom.window.HTMLInputElement.prototype, 'switch', { value: false, configurable: true });
+  b.dom.window.ontouchstart = null;
+  return b;
+}
+const ghostOf = (dom) => panel(dom).querySelector('.mms-haptic-ghost');
+
+test('v1.256 haptics: a capable device mounts the ghost (switch attr, hidden, arming scale), the carve-out class, and the body lock', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    assert.ok(g, 'the ghost mounted inside the wheel skin');
+    assert.ok(g.closest('.ip-wheel'), 'inside .ip-wheel (every rotation touchstart lands on it)');
+    assert.ok(g.hasAttribute('switch'), 'a REAL switch control (the haptic source)');
+    assert.strictEqual(g.getAttribute('aria-hidden'), 'true', 'invisible to AT');
+    assert.strictEqual(g.tabIndex, -1, 'out of the tab order');
+    assert.strictEqual(g.style.transform, 'scale(7.5)', 'resting at the arming cover scale');
+    assert.ok(panel(b.dom).classList.contains('mms-haptic'), 'the touch-action carve-out class is on');
+    assert.strictEqual(b.dom.window.document.body.style.position, 'fixed', 'the body scroll lock replaced touch-action:none');
+  } finally { b.restore(); }
+});
+
+test('v1.256 haptics OFF path: no switch support = no ghost, no class, no lock (byte-identical behavior)', () => {
+  const b = bootEngine({});
+  try {
+    b.engine.paint();
+    assert.strictEqual(ghostOf(b.dom), null, 'no ghost without capability');
+    assert.ok(!panel(b.dom).classList.contains('mms-haptic'), 'no carve-out class');
+    assert.strictEqual(b.dom.window.document.body.style.position, '', 'body untouched');
+  } finally { b.restore(); }
+});
+
+test('v1.256 haptics: the tick engine - one bias flip per 4.5deg detent, 30ms throttle DROPS excess, ghost rides the finger; no .checked writes ever', () => {
+  const b = bootHaptic({});
+  const savedPerf = global.performance;
+  let t = 1000;
+  global.performance = { now: () => t };
+  try {
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    Object.defineProperty(g, 'checked', { set() { throw new Error('JS wrote .checked - kills WebKit tracking'); }, get() { return false; } });
+    const wheel = panel(b.dom).querySelector('.ip-wheel');
+    const at = (deg) => { const rad = deg * Math.PI / 180; return { clientX: 100 * Math.cos(rad), clientY: 100 * Math.sin(rad) }; };
+    const mv = (deg, dt) => { t += dt; const q = at(deg); wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: q.clientX, clientY: q.clientY })); return q; };
+    const s = at(0);
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: s.clientX, clientY: s.clientY }));
+    assert.match(g.style.transform, /^translate\(/, 'gesture start: the ghost shrank from the cover to ride the finger');
+    assert.strictEqual(g.style.transform, `translate(${s.clientX + 18}px,${s.clientY}px)`, 'initial bias +18px past the midline');
+    let q = mv(6, 100); // 6deg > 4.5 = one detent, dt 100ms > throttle -> FLIP to -18
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'detent 1 flipped the bias (a crossing = a tick)');
+    q = mv(8, 5);       // +2deg accumulated, no detent -> follow only, bias unchanged
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'sub-detent movement follows without flipping');
+    q = mv(14, 5);      // crosses a detent but only 10ms since the flip -> THROTTLED (dropped, not queued)
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'the Taptic floor drops the tick, never queues it');
+    q = mv(24, 100);    // two detents accumulate; one flip allowed per throttle window -> back to +18
+    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a fast burst saturates to one tick per 30ms');
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointercancel', { bubbles: true }));
+    assert.strictEqual(g.style.transform, 'scale(7.5)', 'cancel restores the arming cover (the dual-arm teardown discipline)');
+  } finally { global.performance = savedPerf; b.restore(); }
+});
+
+test('v1.256 haptics: a click landing on the ghost ROUTES to the real control under it (zones/center survive the overlay)', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    const play = panel(b.dom).querySelector('[data-skin-play]');
+    assert.ok(play, 'the play zone exists (non-vacuous)');
+    let routed = 0;
+    play.addEventListener('click', () => { routed += 1; });
+    b.dom.window.document.elementsFromPoint = () => [g, play];
+    g.dispatchEvent(new b.dom.window.MouseEvent('click', { bubbles: true, clientX: 0, clientY: 100 }));
+    assert.strictEqual(routed, 1, 'the covered zone received its click');
+  } finally { b.restore(); }
+});
+
+test('v1.256 haptics: the body lock NEVER outlives the ghost - reflect() self-heals a view-side teardown, destroy() always unlocks', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    assert.strictEqual(b.dom.window.document.body.style.position, 'fixed', 'locked while the ghost lives');
+    // the v1.227 leak class: the VIEW replaces the panel content without destroy()
+    ghostOf(b.dom).remove();
+    b.engine.reflect();
+    assert.strictEqual(b.dom.window.document.body.style.position, '', 'reflect() healed the orphaned lock');
+    b.engine.paint(); // remount
+    assert.strictEqual(b.dom.window.document.body.style.position, 'fixed', 'repaint re-locks');
+    b.engine.destroy();
+    assert.strictEqual(b.dom.window.document.body.style.position, '', 'destroy() unlocks unconditionally');
+  } finally { b.restore(); }
+});

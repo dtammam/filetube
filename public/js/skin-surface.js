@@ -96,6 +96,7 @@
     // ---- reflect the live #media-player into the skin (play glyph + progress fill + times) ----
     // Byte-for-behaviour with music.js reflectSkin: reads the element, never assumes music.
     function reflect() {
+      healGhostLock(); // v1.256: the lock must never outlive its ghost (the v1.227 leak class)
       if (!panel || !panel.classList.contains('mms-full')) return;
       var mp = hostCtl('media-player'); if (!mp) return;
       // SWAP the play-button GLYPH (not just a class) - byte-for-behaviour with music.js
@@ -676,6 +677,7 @@
       // (panel.querySelectorAll), exactly how the old music.js paintSkin called it.
       if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(panel);
       if (stickerCfg) injectSticker(); // v1.238: the quick-menu sticker on every skin paint
+      mountWheelGhost(); // v1.256: the haptic ghost (capable devices + a wheel skin only)
       if (marqueeOn) {
         // measure + start the marquee AFTER layout (rAF), so scrollWidth is real (music parity).
         var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); };
@@ -692,6 +694,17 @@
     }
     function onClick(e) {
       if (wheelSuppressClick) { wheelSuppressClick = false; e.preventDefault(); e.stopPropagation(); return; }
+      healGhostLock(); // v1.256: any tap self-heals a lock whose ghost the view tore down
+      // v1.256: a click whose target is the invisible ghost belongs to the zone/center
+      // under it. We route by re-dispatching a click on the REAL control - its own
+      // handlers (incl. this delegated one, re-entered with a non-ghost target) run
+      // untouched. The ghost's own toggle still happened (one stray tick on a zone tap -
+      // accepted in the plan; arguably authentic, the Classic clicked on presses too).
+      if (wheelGhost && e.target === wheelGhost) {
+        var under = realTargetUnder(e);
+        if (under && under !== wheelGhost && under.click) { e.stopPropagation(); under.click(); }
+        return;
+      }
       if (handleStickerClick(e)) return; // sticker/extras taps never fall through to transport
       if (e.target.closest('[data-skin-play]')) { var pb = hostCtl('pp-btn'); if (pb) pb.click(); return; }
       if (e.target.closest('[data-skin-prev]')) { var pv = hostCtl('track-prev-btn'); if (pv) pv.click(); return; }
@@ -727,6 +740,111 @@
       if (sgo) { var gi = parseInt(sgo.getAttribute('data-skin-go'), 10); if (!isNaN(gi)) { setListMode(false); onSelectIndex(gi); } return; }
     }
 
+    // ---- v1.256 WHEEL HAPTICS: real per-detent Taptic ticks (device-confirmed) --------
+    // WebKit's switch POINTER-TRACKING haptic path (exempt from the iOS 26.5 click gate)
+    // fires an OS tick each time the dragging finger crosses the switch's track midline,
+    // re-evaluated per touchmove THROUGH CSS transforms. An invisible switch covers the
+    // wheel (scaled, so every rotation touchstart lands ON it and arms tracking ~200ms
+    // in); at gesture start it shrinks to ride unscaled under the finger, and each
+    // HAPTIC_STEP_DEG of rotation flips a +-18px bias so the next move reads as a
+    // crossing = one tick. HARD RULES (each broke a probe iteration): no touch-action
+    // anywhere on the ghost's ancestor chain (the mms-haptic carve-out + a body scroll
+    // lock replace .mms-full's touch-action:none); never preventDefault its touches;
+    // NEVER write .checked from JS (kills tracking). Exec plan: wheel-haptics.md.
+    var HAPTIC_STEP_DEG = 4.5;  // Dean's "iPod Classic aggressive" ruling: ~80 detents/rev
+    var HAPTIC_MIN_MS = 30;     // the Taptic engine's saturation floor - excess ticks DROP
+    var wheelGhost = null;
+    var bodyScrollLock = null;  // {y} while the haptic skin owns the body
+    function hapticCapable() {
+      try {
+        var probe = doc.createElement('input');
+        return ('switch' in probe) && ('ontouchstart' in win);
+      } catch (_) { return false; }
+    }
+    function ghostRestTransform() { return 'scale(7.5)'; } // covers the whole wheel for touchstart arming
+    function lockBodyScroll() {
+      if (bodyScrollLock) return;
+      try {
+        bodyScrollLock = { y: win.scrollY || 0 };
+        doc.body.style.position = 'fixed';
+        doc.body.style.top = (-bodyScrollLock.y) + 'px';
+        doc.body.style.left = '0'; doc.body.style.right = '0';
+      } catch (_) { bodyScrollLock = null; }
+    }
+    function unlockBodyScroll() {
+      if (!bodyScrollLock) return;
+      var y = bodyScrollLock.y; bodyScrollLock = null;
+      try {
+        doc.body.style.position = ''; doc.body.style.top = '';
+        doc.body.style.left = ''; doc.body.style.right = '';
+        win.scrollTo(0, y);
+      } catch (_) { /* best-effort restore */ }
+    }
+    function mountWheelGhost() {
+      wheelGhost = null;
+      if (!hapticCapable()) return;
+      var wheel = panel.querySelector('.ip-wheel');
+      if (!wheel) { unlockBodyScroll(); panel.classList.remove('mms-haptic'); return; }
+      var g = doc.createElement('input');
+      g.type = 'checkbox';
+      g.setAttribute('switch', '');
+      g.className = 'mms-haptic-ghost';
+      g.setAttribute('aria-hidden', 'true');
+      g.tabIndex = -1;
+      g.style.transform = ghostRestTransform();
+      wheel.appendChild(g);
+      wheelGhost = g;
+      panel.classList.add('mms-haptic'); // CSS lifts .mms-full's touch-action:none (rule 1)
+      lockBodyScroll();                  // ...and the body lock takes over scroll suppression
+    }
+    function healGhostLock() {
+      // The engine gets no callback when the VIEW tears the skin down without destroy()
+      // (the v1.227 leak class) - self-heal whenever we notice the ghost is gone.
+      if (bodyScrollLock && (!wheelGhost || !wheelGhost.isConnected)) {
+        unlockBodyScroll();
+        wheelGhost = null;
+      }
+    }
+    // Route a click/press whose target is the invisible ghost to the REAL control under
+    // it (zones/center are covered by the scaled ghost; their semantics must survive).
+    function realTargetUnder(e) {
+      if (!wheelGhost || e.target !== wheelGhost) return e.target;
+      try {
+        var els = doc.elementsFromPoint(e.clientX, e.clientY);
+        for (var i = 0; i < els.length; i++) { if (els[i] !== wheelGhost) return els[i]; }
+      } catch (_) { /* jsdom / older engines: fall through */ }
+      return e.target;
+    }
+    function hapticGestureStart(st, e) {
+      if (!wheelGhost || !wheelGhost.isConnected) return;
+      st.hapAccum = 0; st.hapLast = 0; st.hapBias = 1;
+      hapticPlaceGhost(st, e.clientX, e.clientY, false);
+    }
+    function hapticPlaceGhost(st, x, y, flip) {
+      if (!wheelGhost || !wheelGhost.isConnected) return;
+      var r = st.wheel.getBoundingClientRect();
+      if (flip) st.hapBias = -st.hapBias;
+      // unscaled under the finger, biased +-18px past the track midline (the probe-C math)
+      var tx = (x - (r.left + r.width / 2)) + st.hapBias * 18;
+      var ty = y - (r.top + r.height / 2);
+      wheelGhost.style.transform = 'translate(' + tx + 'px,' + ty + 'px)';
+    }
+    function hapticOnMove(st, e, absD) {
+      if (!wheelGhost || !wheelGhost.isConnected) return;
+      st.hapAccum += absD;
+      var flip = false;
+      while (st.hapAccum >= HAPTIC_STEP_DEG) {
+        st.hapAccum -= HAPTIC_STEP_DEG;
+        var now = nowMs();
+        if (now - st.hapLast >= HAPTIC_MIN_MS) { flip = true; st.hapLast = now; } // throttle: drop, never queue
+      }
+      hapticPlaceGhost(st, e.clientX, e.clientY, flip);
+    }
+    function hapticGestureEnd() {
+      if (wheelGhost && wheelGhost.isConnected) wheelGhost.style.transform = ghostRestTransform();
+      healGhostLock();
+    }
+
     // ---- the click-wheel gesture: rotate = cursor (list) OR scrub (now playing) ----
     function endWheel(st, suppress) {
       var w = st.wheel;
@@ -740,6 +858,7 @@
       w.removeEventListener('pointercancel', st.onUp);
       if (suppress) wheelSuppressClick = true;
       if (wheelSpin === st) wheelSpin = null;
+      hapticGestureEnd(); // v1.256: ghost back to its arming cover, lock self-heal check
     }
     function onDown(e) {
       wheelSuppressClick = false;
@@ -764,8 +883,11 @@
       // pressed ZONE. A quick TAP still skips a track (the hold never fires); a ROTATE becomes
       // a scrub/cursor (cancels the hold-timer). Steps currentTime on the PANEL's own window
       // timer so a Document-PiP pop-out (which throttles the opener) still scans.
+      hapticGestureStart(st, e); // v1.256: ghost rides under the finger from the first move
       if (fastScan) {
-        st.scanDir = e.target.closest('[data-skin-next]') ? 1 : (e.target.closest('[data-skin-prev]') ? -1 : 0);
+        // v1.256: the scaled ghost covers the zones - route the press to the REAL control.
+        var downTgt = realTargetUnder(e);
+        st.scanDir = (downTgt.closest && downTgt.closest('[data-skin-next]')) ? 1 : ((downTgt.closest && downTgt.closest('[data-skin-prev]')) ? -1 : 0);
         var startScan = function () {
           var mp0 = hostCtl('media-player');
           var d0 = (mp0 && isFinite(mp0.duration) && mp0.duration > 0) ? mp0.duration : 0;
@@ -793,6 +915,7 @@
         var d = wheelShortAngle(ang - st.lastAngle); st.lastAngle = ang;
         var now = nowMs(); var dt = Math.max(1, now - st.lastT); st.lastT = now;
         st.accum += d;
+        hapticOnMove(st, ev, Math.abs(d)); // v1.256: ticks in BOTH modes (cursor + scrub)
         if (!st.moved && Math.hypot(ev.clientX - st.x0, ev.clientY - st.y0) > 8) {
           st.moved = true;
           // a ROTATE is a scrub/cursor, not a scan: cancel the pending hold so it never scans.
@@ -850,6 +973,8 @@
       }
       if (wheelSpin) { try { endWheel(wheelSpin, false); } catch (_) { /* ignore */ } }
       stopExtrasReheatPoll(); // a live poll must never outlive the surface (the pipClock lesson)
+      unlockBodyScroll();     // v1.256: the haptic body lock dies with the surface
+      wheelGhost = null;
       extrasReqToken++;       // and a late extras fetch must never render into a dead panel
       bound = false;
       // clear the full-screen body class this view may have set (the v1.227 leak lesson - a
