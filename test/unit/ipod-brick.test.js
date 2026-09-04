@@ -408,18 +408,21 @@ test('v1.271 slim W2: LEVEL 2 launches faster than level 1 by exactly SPEED_LEVE
   // SPEED_LEVEL -> 0.00 (levels never speed up) survived the whole suite, because every
   // driver measured only level 1. resetBall() sets sp = SPEED0 + (level-1)*SPEED_LEVEL,
   // so the LAUNCH speed of each level reads the constant directly.
-  const S = sim();
-  const launch = [];       // first clean speed after each launch
-  let p = null, armed = false, level = 0;
+  // Seeded for the same reason the others are: a driver that fails to clear a board
+  // would turn this into WARNING-1's flake instead of a failure anyone can act on.
+  const lcg = (seed) => { let s = seed; return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; }; };
+  const S = sim(lcg(437));
+  const launch = [];       // first clean speed after each launch, with that launch's width
+  let p = null, armed = false, level = 0, width = null;
   for (let i = 0; i < 12000; i++) {
     const f = S.read();
     if (!f || f.x == null) break;
     if (f.over) break;     // a life lost also resets speed - only take clean launches
-    if (f.ready) { S.g.select(); p = null; armed = true; level = f.bricks; continue; }
+    if (f.ready) { S.g.select(); p = null; armed = true; level = f.bricks; width = f.padW; continue; }
     if (p) {
       const raw = Math.hypot(f.x - p[0], f.y - p[1]);
       if (raw < 0.25) {
-        if (armed) { launch.push({ sp: raw * 60, bricks: level }); armed = false; }
+        if (armed) { launch.push({ sp: raw * 60, bricks: level, padW: width }); armed = false; }
       }
     }
     if (f.padC != null) S.g.onRotate((f.x - f.padC) * 220);
@@ -433,6 +436,12 @@ test('v1.271 slim W2: LEVEL 2 launches faster than level 1 by exactly SPEED_LEVE
   const d = full[1].sp - full[0].sp;
   assert.ok(Math.abs(d - 0.10) < 0.02,
     `level 2 must launch SPEED_LEVEL faster: ${full[0].sp.toFixed(3)} -> ${full[1].sp.toFixed(3)} = +${d.toFixed(3)} (0.00 = the ramp is dead)`);
+  // ...and the same launch is the only place the PER-LEVEL PADDLE STEP is observable.
+  // The width model in the shrink test above cannot catch a zeroed step (0.18 is a legal
+  // width at every level), so pin it here, where level 2 has definitely been reached and
+  // `broke` has just been cleared by the advance.
+  assert.ok(Math.abs(full[1].padW - (0.18 - 0.018)) < 1e-6,
+    `level 2 must also START one paddle step narrower: expected ${(0.18 - 0.018).toFixed(3)}, measured ${full[1].padW} (equal to level 1 = the per-level step is dead)`);
 });
 
 test('v1.271 a dead-centre hit never leaves a PERFECTLY VERTICAL rally (the one stalemate the angle map allows)', () => {
