@@ -2764,5 +2764,11 @@
     "date": "2026-09-03",
     "title": "The whole picture, softly framed",
     "intent": "Album art on the brown player now shows the complete picture - nothing cropped away - and the space above and below fills with a soft blurred glow made from the artwork itself, so the screen still feels full edge to edge. And the green outline around the player body is gone; the brown stands on its own now."
+  },
+  {
+    "version": "1.265.0",
+    "date": "2026-09-04",
+    "title": "Your settings follow you",
+    "intent": "Sign in on your phone and your desktop and they finally agree with each other. The look you picked - era, light or dark, icon set, star ratings, the ambient background, the critters and how many of them, your music player skin, endless autoplay, your sort choices and which rows show on the home page - now travels with your account instead of living on one device. The most recent change wins, and the things that should stay per-device (volume, playback speed, theater and pop-out modes, the corner tray) deliberately don't follow you. Signed out, nothing leaves the device."
   }
 ]
