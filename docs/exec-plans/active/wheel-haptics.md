@@ -95,6 +95,14 @@ nothing coordinate-dependent). Seattle Classic is unchanged by that fix - its pa
 already under the old cap at every viewport - so if the wheel still feels unreliable
 THERE, the cause is different (candidate in tech-debt #207).
 
+- Theoretical lock strand (QA delta, on record; RESTORED v1.267 - the cover-geometry
+  rewrite deleted this bullet along with the one it was closing, and the slim seat
+  caught it): a FUTURE teardown that swaps the panel NODE itself, destroy-less, while
+  PAUSED would orphan observer+ghost together, so healGhostLock never fires and the
+  body scroll-lock survives - the browse view stays pinned until a reload. No live path
+  does it (both views mutate the captured panel in place; the #view-root swap runs
+  destroy()); playing heals via the media-event belt. STILL OPEN.
+
 ## Tests (jsdom = wiring; the FEEL is Dean's device)
 
 Capable-path harness (stub the switch support probe): ghost mounted in the wheel with

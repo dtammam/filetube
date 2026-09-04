@@ -807,7 +807,7 @@
     // by 7.5 is 240px tall, but the iPod wheel is ~273px on a 390px phone - so a
     // ~16px strip along the TOP and BOTTOM of the wheel never armed the haptics.
     // The v1.256 adversarial seat RECORDED this exact residual (see
-    // docs/exec-plans/completed/wheel-haptics.md) and left it for Dean; he
+    // docs/exec-plans/active/wheel-haptics.md) and left it for Dean; he
     // arbitrated it: "it's when it's near the top edge it feels bad."
     // Scaling to h/32 makes the cover exactly the wheel's height, so the WHOLE
     // wheel arms and the cover cannot extend above it into the LCD - which is the
