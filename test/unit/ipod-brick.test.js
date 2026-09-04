@@ -88,14 +88,21 @@ function sim(rand) {
     for (const f of q) { clock += (ms == null ? 1000 / 60 : ms); f(clock); }
     const a = arcs[arcs.length - 1];
     let pad = null;
-    for (const r of rects) if (r[1] > 0.7 * SIM_H) pad = r;
+    const live = new Set();
+    for (const r of rects) {
+      if (r[1] > 0.7 * SIM_H) { pad = r; continue; }
+      // Invert paint()'s own brick geometry: fillRect(c*bw+1, top+r*bh+1, bw-2, bh-2)
+      const c = Math.round((r[0] - 1) / (SIM_W / 8));
+      const rr = Math.round((r[1] - 1 - 0.10 * SIM_H) / (0.055 * SIM_H));
+      if (rr >= 0 && rr < 5 && c >= 0 && c < 8) live.add(rr + ',' + c);
+    }
     const over = texts.some((s) => /GAME OVER/.test(s));
     return {
       x: a ? a[0] / SIM_W : null, y: a ? a[1] / SIM_H : null, r: a ? a[2] : null,
       padC: pad ? (pad[0] + pad[2] / 2) / SIM_W : null,
       padHW: pad ? (pad[2] / 2) / SIM_W : null,
       padW: pad ? pad[2] / SIM_W : null,
-      bricks: rects.filter((r) => r[1] < 0.7 * SIM_H).length,
+      bricks: rects.filter((r) => r[1] < 0.7 * SIM_H).length, live,
       over, ready: !over && /Select/.test(texts.join(' ')),
       bad: nums.filter((v) => typeof v === 'number' && !Number.isFinite(v)).length,
     };
@@ -272,6 +279,136 @@ test('v1.271 the paddle SHRINKS as the board is cleared - losing has to become p
   assert.ok(start > 0.15, `starts generous: ${start}`);
   assert.ok(smallest < start * 0.75, `the paddle must get harder to hit with: ${start} -> ${smallest}`);
   assert.ok(smallest > 0.05, `...but never a sliver: ${smallest}`);
+});
+
+test('v1.271 a dead-centre hit never leaves a PERFECTLY VERTICAL rally (the one stalemate the angle map allows)', () => {
+  // A player who centres the ball on the paddle gets off = 0, and a pure angle map
+  // answers that with straight up: the ball then bounces between the paddle and one
+  // brick column forever and can never reach the rest of the board. MIN_VX puts a
+  // floor under the horizontal component. Measured: with the floor the returns pile
+  // up on a plateau at exactly |vx|/speed = 0.100; without it the same player's
+  // median return is 0.000, i.e. dead vertical. So this is a plateau test, and the
+  // MEDIAN is the statistic - a single contact frame can contain a second bounce.
+  const S = sim();
+  let p1 = null, p2 = null;
+  const frac = [];
+  for (let i = 0; i < 8000; i++) {
+    const f = S.read();
+    if (!f || f.x == null) break;
+    if (f.ready || f.over) { S.g.select(); p1 = null; p2 = null; }
+    else if (p2 && p1) {
+      const inVy = p1[1] - p2[1], outVy = f.y - p1[1], outVx = f.x - p1[0];
+      if (inVy > 0 && outVy < 0 && p1[1] > 0.78) {
+        const sp = Math.hypot(outVx, outVy);
+        if (sp > 1e-9) frac.push(Math.abs(outVx) / sp);
+      }
+    }
+    if (f.padC != null) S.g.onRotate((f.x - f.padC) * 220); // centring player: off ~ 0
+    p2 = p1; p1 = [f.x, f.y];
+  }
+  S.close();
+  assert.ok(frac.length > 30, `gathered ${frac.length} paddle returns from a centring player`);
+  frac.sort((a, b) => a - b);
+  const median = frac[Math.floor(frac.length / 2)];
+  assert.ok(median >= 0.09,
+    `a centring player's median return was ${median.toFixed(4)} of its speed sideways - at ~0 the ball is trapped in one column`);
+});
+
+test('v1.271 the ball cannot TUNNEL a live brick, even on a 50ms frame at full pace', () => {
+  // The loop clamps dt at 50ms. At the top speed the ball covers more ground in one
+  // such frame than a brick is tall, so a single position test per frame would let it
+  // pass straight through a row. Measured against a build with the substepper removed:
+  // 8-12 pass-throughs per run versus 0-1 here.
+  //
+  // Two filters keep this honest. Only STRAIGHT frames are sampled - a frame holding a
+  // bounce has a chord across cells the ball never visited - and only the middle 60%
+  // of a cell counts, because the game tests at substep endpoints and may legitimately
+  // clip a corner between two of them.
+  let total = 0, sampled = 0;
+  for (const seed of [3, 7, 11, 19, 23]) {
+    let s = seed;
+    const S = sim(() => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; });
+    let p = null, prevLive = null, dir = null;
+    for (let i = 0; i < 4000; i++) {
+      const f = S.read(300); // 300ms apart, so dt pins to the loop's 50ms clamp
+      if (!f || f.x == null) break;
+      if (f.ready || f.over) { S.g.select(); p = null; dir = null; }
+      else if (p) {
+        const dx = f.x - p[0], dy = f.y - p[1], d = Math.hypot(dx, dy);
+        const straight = dir && d > 1e-9 && Math.abs(dx / d - dir[0]) < 0.02 && Math.abs(dy / d - dir[1]) < 0.02;
+        if (d > 1e-9) dir = [dx / d, dy / d];
+        if (straight && d < 0.4 && prevLive) {
+          sampled++;
+          const N = Math.ceil(d / 0.004);
+          for (let k = 1; k < N; k++) {
+            const sx = p[0] + dx * k / N, sy = p[1] + dy * k / N;
+            if (sy <= 0.10 || sy >= 0.10 + 5 * 0.055) continue;
+            const rr = Math.floor((sy - 0.10) / 0.055), cc = Math.floor(sx * 8);
+            const fy = (sy - 0.10) / 0.055 - rr;
+            if (fy < 0.2 || fy > 0.8) continue; // the cell's core, not its corners
+            const key = rr + ',' + cc;
+            if (prevLive.has(key) && f.live.has(key)) { total++; break; }
+          }
+        }
+      }
+      if (f.padC != null) S.g.onRotate((f.x - f.padC) * 220);
+      p = [f.x, f.y]; prevLive = f.live;
+    }
+    S.close();
+  }
+  assert.ok(sampled > 2000, `sampled ${sampled} straight-line frames at the clamped dt`);
+  assert.ok(total <= 5, `the ball passed through the middle of a still-standing brick ${total} times (a build with no substepping scores 40+ here)`);
+});
+
+test('v1.271 a brick struck on its SIDE turns the ball around horizontally, instead of letting it plough down the row', () => {
+  // The 60deg deflections send the ball cutting ALONG rows constantly, which the old
+  // near-vertical physics never did - so entering a brick from the side stopped being
+  // a rarity (measured: 7.3% of all brick collisions). Flipping vy on those, as the
+  // single-arm version did, leaves the horizontal motion untouched and the ball
+  // scythes through the rest of the row unopposed. Measured 5 horizontal reversals
+  // here against exactly 0 for a build that always flips vy.
+  let reversals = 0;
+  for (const seed of [3, 7, 11, 19, 23]) {
+    let s = seed;
+    const S = sim(() => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; });
+    let p = null, p2 = null, prevN = null;
+    for (let i = 0; i < 6000; i++) {
+      const f = S.read();
+      if (!f || f.x == null) break;
+      if (f.ready || f.over) { S.g.select(); p = null; p2 = null; }
+      // Exactly one brick died this frame, and the ball is nowhere near a side wall,
+      // so a wall bounce cannot be the thing that turned it around.
+      else if (p2 && p && prevN != null && f.bricks === prevN - 1
+               && f.x > 0.12 && f.x < 0.88 && p[0] > 0.12 && p[0] < 0.88) {
+        const inVx = p[0] - p2[0], outVx = f.x - p[0];
+        if (inVx !== 0 && outVx !== 0 && Math.sign(inVx) !== Math.sign(outVx)) reversals++;
+      }
+      prevN = f.bricks; p2 = p; p = [f.x, f.y];
+      if (f.padC != null) S.g.onRotate((f.x - f.padC) * 220);
+    }
+    S.close();
+  }
+  assert.ok(reversals >= 2,
+    `only ${reversals} brick collisions sent the ball back the way it came - a build that always flips vy scores 0`);
+});
+
+test('v1.271 the speed cap can never outrun the substepper - the arithmetic that makes the test above hold', () => {
+  // The behavioural test only proves today's numbers. This pins the RELATIONSHIP, so
+  // raising SPEED_CAP without raising the substep budget cannot ship quietly.
+  const src = BRICK_SRC.split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+  const num = (name) => {
+    const m = new RegExp('var ' + name + ' = ([0-9.]+)\\s*;').exec(src);
+    assert.ok(m, `${name} is declared as a plain numeric constant`);
+    return Number(m[1]);
+  };
+  const cap = num('SPEED_CAP'), sub = num('SUB_STEP'), subCap = num('SUB_CAP');
+  const dtM = /Math\.min\(([0-9.]+), \(t - last\) \/ 1000\)/.exec(src);
+  assert.ok(dtM, 'the loop clamps dt to a literal ceiling');
+  const maxDt = Number(dtM[1]);
+  assert.match(src, /Math\.ceil\(dist \/ SUB_STEP\)/, 'the frame is actually sliced by SUB_STEP');
+  assert.ok(sub < 0.055, `a slice (${sub}) must be shorter than a brick is tall (0.055) or a row can be skipped`);
+  assert.ok(cap * maxDt <= subCap * sub,
+    `at ${cap} board-heights/sec a ${maxDt}s frame moves ${(cap * maxDt).toFixed(4)}, but the substepper only covers ${(subCap * sub).toFixed(4)} - raise SUB_CAP or lower SPEED_CAP`);
 });
 
 test('v1.271 a NON-FINITE rotation is rejected instead of poisoning the canvas', () => {
