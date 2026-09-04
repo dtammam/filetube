@@ -86,6 +86,8 @@ const READ = {
   '/api/music/liked': 'GATED',
   '/api/music/progress/:id': 'OWN_STATE',
   '/api/music/resume': 'OWN_STATE',
+  '/api/prefs': 'OWN_STATE', // v1.265: the caller's own preference rows, nothing else
+
   '/api/music/scan-status': 'NO_CONTENT',
   '/api/tv/scan-status': 'NO_CONTENT',
   '/api/notifications': 'GATED',

@@ -75,6 +75,7 @@ const CLASSIFICATION = {
   'POST /api/push/unsubscribe': 'personal',
   'POST /api/music/progress': 'personal',
   'POST /api/music/resume': 'personal',
+  'POST /api/prefs': 'personal', // v1.265: the caller's own preference rows only (allowlisted keys, no content)
   'POST /api/music/liked/:id': 'personal',
   'DELETE /api/music/liked/:id': 'personal',
   'POST /api/books/liked/:id': 'personal',
@@ -311,6 +312,7 @@ const VISIBILITY = {
   'POST /api/push/unsubscribe': 'personal',
   'POST /api/music/progress': 'personal',
   'POST /api/music/resume': 'personal',
+  'POST /api/prefs': 'personal', // v1.265: the caller's own preference rows only (allowlisted keys, no content)
   'POST /api/music/liked/:id': 'personal',
   'DELETE /api/music/liked/:id': 'personal',
   'POST /api/books/liked/:id': 'personal',
