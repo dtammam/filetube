@@ -1245,3 +1245,55 @@ test('v1.271 slim CRITICAL-1: a view-side panel clear during a live press must N
     assert.ok(panel.querySelector('.ip-wheel'), 'and keeps repainting');
   } finally { b.restore(); }
 });
+
+test('v1.271 slim round-2 WARNING: a MOUSE released OFF the wheel still ends the gesture - a connected wheel is not proof the gesture can reach endWheel', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const panel = b.dom.window.document.querySelector('.music-nowplaying-panel');
+    const wheel = panel.querySelector('.ip-wheel');
+    const before = wheel;
+    // Press the wheel and release somewhere else entirely. Pointer capture is only taken
+    // after 8px of travel (or a fast-scan start) and a MOUSE gets no implicit capture at
+    // pointerdown the way a touch does, so the wheel-only pointerup listener never fires.
+    // The wheel is still CONNECTED, so the isConnected defer reads the spin as live.
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 40, pointerId: 1 }));
+    b.dom.window.document.body.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true, pointerId: 1 }));
+    // Without the document-level end arm the spin stayed live forever and every future
+    // paint deferred: the desktop pop-out froze on the current track until it was closed.
+    b.engine.paint();
+    assert.notStrictEqual(panel.querySelector('.ip-wheel'), before,
+      'the repaint LANDED - the release off the wheel ended the gesture (a frozen paint left the pop-out showing a stale track with a dead wheel, where v1.270 self-healed on the next repaint)');
+    // and the wheel takes a fresh gesture (onDown early-returns while wheelSpin is set)
+    const w2 = panel.querySelector('.ip-wheel');
+    w2.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 40, pointerId: 2 }));
+    w2.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 230, clientY: 80, pointerId: 2 }));
+    b.engine.paint();
+    assert.strictEqual(panel.querySelector('.ip-wheel'), w2, 'and a NEW spin is accepted and deferred normally');
+  } finally { b.restore(); }
+});
+
+test('v1.271 slim round-2 S1: ending a STALE spin from paint() tears its fast-scan timers down - not just its identity', () => {
+  const { dom, engine, restore } = bootEngine({ engineCfg: { fastScan: true } });
+  try {
+    engine.paint();
+    const timers = fakeWinTimers(dom);
+    const mp = dom.window.document.getElementById('media-player');
+    Object.defineProperty(mp, 'duration', { value: 300, configurable: true });
+    let ct = 100; Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => ct, set: (v) => { ct = v; } });
+    const zone = panel(dom).querySelector('.ip-wheel [data-skin-next]') || panel(dom).querySelector('[data-skin-next]');
+    zone.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 50, clientY: 0 }));
+    timers.timeouts[0](); // the hold fires: the scan engages and owns the gesture
+    assert.strictEqual(timers.intervals.length, 1, 'the scan interval armed');
+    // the VIEW clears the panel mid-hold - no pointerup ever arrives (music.js:1081)
+    panel(dom).innerHTML = '';
+    engine.paint();
+    // paint() ends the stale gesture. Nulling wheelSpin alone would heal the IDENTITY and
+    // leave this interval stepping currentTime with no finger down (measured runaway on
+    // v1.270 too) - the teardown is what makes the stale branch worth its endWheel call.
+    assert.strictEqual(timers.intervals[0], null, 'the scan interval was CLEARED by the stale endWheel');
+    const at = ct;
+    if (timers.intervals[0]) timers.intervals[0]();
+    assert.strictEqual(ct, at, 'and currentTime stops advancing - no runaway scan behind a repainted panel');
+  } finally { restore(); }
+});

@@ -772,7 +772,10 @@
       var id = getSkinId();
       var base = (typeof SKINS.skinById === 'function' && (SKINS.skinById(id) || {}).base) || '';
       panel.className = 'music-nowplaying-panel mms mms-full mms-' + id + (base ? ' mms-' + base : '');
-      wheelSpin = null; // a re-render detaches the wheel; drop any mid-gesture state (music parity)
+      // v1.271: no longer the normal heal (the guard at the top of paint() ends a stale spin
+      // properly, with its timers). This is the BACKSTOP for an endWheel that throws inside
+      // that try/catch - a repaint must never leave a live spin behind.
+      wheelSpin = null;
       panel.innerHTML = SKINS.renderFull(id, getCtx());
       panel.hidden = false;
       // Adversarial gate W1 (v1.250): shimmerArt lives on the MAIN window - a pop-out is a
@@ -1050,6 +1053,8 @@
 
     // ---- the click-wheel gesture: rotate = cursor (list) OR scrub (now playing) ----
     function endWheel(st, suppress) {
+      if (st.ended) return; // v1.271: two end arms, one teardown (see st.onDocUp)
+      st.ended = true;
       var w = st.wheel;
       // v1.242: tear down any fast-scan hold-timer / interval on EVERY end arm (the v1.163
       // dual-arm teardown discipline) so a pointerup OR pointercancel stops the scan clean.
@@ -1059,6 +1064,12 @@
       w.removeEventListener('pointermove', st.onMove);
       w.removeEventListener('pointerup', st.onUp);
       w.removeEventListener('pointercancel', st.onUp);
+      if (st.onDocUp) {
+        try {
+          doc.removeEventListener('pointerup', st.onDocUp);
+          doc.removeEventListener('pointercancel', st.onDocUp);
+        } catch (_) { /* ignore */ }
+      }
       if (suppress) wheelSuppressClick = true;
       if (wheelSpin === st) wheelSpin = null;
       hapticGestureEnd(); // v1.256: ghost back to its arming cover, lock self-heal check
@@ -1088,6 +1099,7 @@
         lastAngle: Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI,
         lastT: nowMs(), accum: 0, x0: e.clientX, y0: e.clientY, onMove: null, onUp: null,
         win: win, scanTimer: null, scanInterval: null, scanning: false, scanDir: 0,
+        onDocUp: null, ended: false,
       };
       // v1.242 fastScan: HOLD the rewind/ffwd zone to FAST-SCAN the timeline (~2x, audio keeps
       // playing); release resumes where it landed. Independent of st.mode - keyed off the
@@ -1167,6 +1179,13 @@
         }
       };
       st.onUp = function (ev) {
+        // v1.271 (gate round 2): the gesture now has TWO end arms (wheel + document), so a
+        // normal release on the wheel reaches this twice - once directly, once by bubbling.
+        // Everything below COMMITS a seek, so a second pass would dispatch `change` twice.
+        // endWheel is the setter of `ended`; this arm only reads it, or the call below would
+        // return immediately. (Checking here rather than only in endWheel is the point: the
+        // duplicate work is the commit, not the teardown.)
+        if (st.ended) return;
         if (st.mode === 'scrub' && st.moved && ev && ev.type === 'pointerup' && st.scrubRatio != null) {
           var sb = hostCtl('seek-bar');
           if (sb) { sb.value = String(st.scrubRatio); sb.dispatchEvent(new Event('change', { bubbles: true })); }
@@ -1180,9 +1199,27 @@
         }
         endWheel(st, st.moved);
       };
+      // v1.271 (gate round 2): a DOCUMENT-level second end arm - the v1.163 dual-arm
+      // teardown discipline. Pointer capture is only taken after 8px of travel (or on a
+      // fast-scan start), and a MOUSE gets no implicit capture at pointerdown the way a
+      // touch does. So a mouse press near the wheel's edge whose first move already leaves
+      // the wheel releases on some OTHER element, and the wheel-only listeners never fire:
+      // the spin stayed live on a still-CONNECTED wheel, which the isConnected defer above
+      // reads as "a gesture that can still reach endWheel" - freezing every future paint().
+      // Measured by the adversarial seat on the desktop pop-out, which renders a real wheel.
+      // Filtered by pointerId so this arm ends only ITS OWN gesture; the wheel arm above
+      // stays unfiltered, preserving today's "a second finger's up on the wheel ends it".
+      st.onDocUp = function (ev) {
+        if (ev && ev.pointerId !== undefined && ev.pointerId !== st.id) return;
+        st.onUp(ev);
+      };
       wheel.addEventListener('pointermove', st.onMove);
       wheel.addEventListener('pointerup', st.onUp);
       wheel.addEventListener('pointercancel', st.onUp);
+      try {
+        doc.addEventListener('pointerup', st.onDocUp);
+        doc.addEventListener('pointercancel', st.onDocUp);
+      } catch (_) { /* no document events (a detached fixture) */ }
       wheelSpin = st;
     }
     function nowMs() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
