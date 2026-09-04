@@ -33,7 +33,8 @@
   var HIT_ACCEL = 1.008;  // every brick winds the rally up a notch (compounding). Tuned
                           // so a clean level 1 ENDS at 1.43 - just under the cap, which
                           // leaves the later levels somewhere to go.
-  var PAD_ACCEL = 1.006;  // ...and so does every return, so a long rally builds pace
+  var PAD_ACCEL = 1.006; // ...and so does every return, so a rally builds pace even
+                          // while you are only defending and breaking nothing.
   var BREAK_KICK = 1.18;  // breaking into the top two rows: Atari's own speed jump
   var MAX_DEFLECT = Math.PI / 3; // 60deg off vertical at the paddle's very edge
   var MIN_VX = 0.10;     // never a dead-vertical rally (see the deflection comment)
@@ -81,9 +82,9 @@
         for (var c = 0; c < COLS; c++) bricks.push({ r: r, c: c, alive: true });
       }
     }
-    // The paddle is the difficulty dial: a slice off it per level, and Atari's own
-    // move - it HALVES the moment you break through to the top rows, right as the
-    // speed kick lands. That pairing is what turns a deep rally into a real fight.
+    // The paddle is the difficulty dial: a slice off it per level, and - Atari's own
+    // move - it drops to 60% the moment you break through to the top rows, right as
+    // the speed kick lands. That pairing turns a deep rally into a real fight.
     function refit() {
       padW = Math.max(PAD_MIN, PAD_W0 - (level - 1) * 0.018);
       if (broke) padW = Math.max(PAD_MIN, padW * 0.6);
