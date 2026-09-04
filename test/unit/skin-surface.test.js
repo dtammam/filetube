@@ -1307,6 +1307,41 @@ test('v1.271 slim round-2: the document end arm is pointerId-FILTERED - a second
   } finally { b.restore(); }
 });
 
+test('v1.271 slim round-2 (anti-inert): on a FOREIGN-document surface the end arm lands on the POP-OUT document, not the opener - the pop-out is the very surface the freeze was measured on', () => {
+  // The regression this arm closes was measured on the desktop pop-out, whose panel lives
+  // in ITS OWN document. If `doc` resolved to the opener the fix would be green here and
+  // inert exactly where the bug is - the v1.184/v1.185 dead-code class. So: measured, not
+  // reasoned from `panel.ownerDocument`.
+  const pipDom = new JSDOM('<body><div id="panel" class="music-nowplaying-panel"></div></body>', { url: 'http://localhost/pip' });
+  const { dom, engine, restore } = bootEngine(); // global.window/document = the MAIN dom
+  try {
+    const seen = { pip: 0, main: 0 };
+    const pipDoc = pipDom.window.document, mainDoc = dom.window.document;
+    const pAdd = pipDoc.addEventListener.bind(pipDoc), mAdd = mainDoc.addEventListener.bind(mainDoc);
+    pipDoc.addEventListener = function (t, fn, o) { if (t === 'pointerup') seen.pip += 1; return pAdd(t, fn, o); };
+    mainDoc.addEventListener = function (t, fn, o) { if (t === 'pointerup') seen.main += 1; return mAdd(t, fn, o); };
+    const eng2 = dom.window.FileTubeSkinSurface.create({
+      panel: pipDoc.getElementById('panel'),
+      getSkinId: () => 'ipod', getCtx: () => ({ track: {}, upNext: [], fullList: [] }),
+      hostCtl: (id) => mainDoc.getElementById(id),
+      win: pipDom.window,
+    });
+    eng2.paint();
+    const wheel = pipDoc.querySelector('.ip-wheel');
+    assert.ok(wheel, 'the pop-out really renders a wheel (non-vacuous: the freeze needs one)');
+    wheel.dispatchEvent(new pipDom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 40 }));
+    assert.strictEqual(seen.pip, 1, 'the end arm registered on the POP-OUT document');
+    assert.strictEqual(seen.main, 0, 'and NOT on the opener, where the release never happens');
+    // and it actually ends the gesture there
+    pipDoc.body.dispatchEvent(new pipDom.window.MouseEvent('pointerup', { bubbles: true }));
+    const before = pipDoc.querySelector('.ip-wheel');
+    eng2.paint();
+    assert.notStrictEqual(pipDoc.querySelector('.ip-wheel'), before, 'the pop-out repaints after a release off its wheel');
+    eng2.destroy();
+    engine.destroy();
+  } finally { restore(); }
+});
+
 test('v1.271 slim round-2: the document end arm UNBINDS on every teardown arm - it must not accumulate one listener per gesture', () => {
   const b = bootHaptic({});
   try {
