@@ -799,16 +799,33 @@
         return ('switch' in probe) && ('ontouchstart' in win);
       } catch (_) { return false; }
     }
-    // The arming cover scales to the WHEEL IT COVERS (slim W1, v1.261): the fixed 7.5
-    // sized for the 288px iPod wheel spilled over the Zune pad's scrub bar - a routed
-    // seek click carries clientX=0, so covered taps sought 0:00. The 52x32 ghost box
-    // scales to the wheel's measured height, capped at the iPod's 7.5 (288/32 = 9 caps;
-    // 132/32 = 4.125 keeps the cover on the pad). Zero/absent rect (jsdom, display:none)
-    // falls back to 7.5 - the cover must never collapse on a measurement miss.
+    // The arming cover scales to the WHEEL IT COVERS (slim W1, v1.261): a fixed 7.5
+    // spilled over the Zune pad's scrub bar - a routed seek click carries clientX=0,
+    // so covered taps sought 0:00.
+    //
+    // v1.267 (Dean, device-confirmed): the 7.5 CAP is gone. The 52x32 ghost scaled
+    // by 7.5 is 240px tall, but the iPod wheel is ~273px on a 390px phone - so a
+    // ~16px strip along the TOP and BOTTOM of the wheel never armed the haptics.
+    // The v1.256 adversarial seat RECORDED this exact residual (see
+    // docs/exec-plans/active/wheel-haptics.md) and left it for Dean; he
+    // arbitrated it: "it's when it's near the top edge it feels bad."
+    // Scaling to h/32 makes the cover exactly the wheel's height, so the WHOLE
+    // wheel arms and the cover cannot extend above it into the LCD - which is the
+    // job the cap was accidentally doing (v1.261 W1: a routed seek click carries
+    // clientX=0 and sought 0:00). The Zune pad is UNCHANGED by this: 132/32 =
+    // 4.125 was already below the old cap, at every viewport width.
+    //
+    // The h===0 fallback is the ONE case where cover height != wheel height, so
+    // the "cover cannot reach the LCD" property is derived-not-absolute (slim W2).
+    // It is the right trade - a collapsed cover would arm nothing at all - and it
+    // is not reachable in production (the panel is position:fixed inset:0 and
+    // un-hidden before mountWheelGhost runs; the only display:none wheel is the
+    // desktop tray, which fails hapticCapable anyway). Bound as an explicit
+    // exception in the invariant test rather than left as an unstated hole.
     function ghostRestTransform(wheel) {
       var h = 0;
       try { h = wheel ? wheel.getBoundingClientRect().height : 0; } catch (_) { /* fall back */ }
-      return 'scale(' + (h > 0 ? Math.min(7.5, h / 32) : 7.5) + ')';
+      return 'scale(' + (h > 0 ? h / 32 : 7.5) + ')';
     }
     function lockBodyScroll() {
       if (bodyScrollLock) return;

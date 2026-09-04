@@ -93,6 +93,45 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.267.0 - The whole wheel clicks now (2026-09-04)
+
+Dean (device): the wheel haptics stopped engaging reliably on both skins. Pressed
+for detail: "it's when it's near the top edge it feels bad."
+
+ROOT CAUSE (and NOT my first theory, which I stated and then refuted myself): the
+haptic ghost is a 52x32 box centred on the wheel and scaled by transform. At the
+fixed scale(7.5) it is 240px tall, but `.mms-ipod .ip-wheel` is min(70vw,288px) =
+~273px on a 390px phone - so a ~16px strip along the TOP and BOTTOM of the wheel
+armed nothing, and a gesture started there was silent. The v1.261 rect-derived
+change did NOT cause it (it capped at the same 7.5; 273/32 caps back to 7.5) and
+every wheel-region CSS change since v1.260 is zune-scoped. **The v1.256 adversarial
+seat had already RECORDED this exact residual and left it for Dean to arbitrate;
+he just did** - so this was a pre-registered prediction, not a fresh guess.
+
+FIX: drop the cap. scale = h/32 makes the cover exactly the wheel's height, so the
+whole wheel arms. The cap was also accidentally providing the v1.261 W1 protection
+(the cover must not reach the scrub bar above, where a routed seek click carries
+clientX=0 and sought 0:00); that is now an invariant bound across six wheel sizes,
+with the h=0 fallback documented and bound as its one exception rather than glossed.
+
+DISCLOSED, and it matters for the device pass: this fix is a measured NO-OP on
+Seattle Classic (132/32 was already under the old cap at every viewport), so half
+of Dean's report is unanswered by it. Candidate in tech-debt #207: the Zune pad's
+usable rotation ring is 39.6px vs the iPod's 82px, and its centre button's radius
+(32) exceeds the dead-centre guard (26.4). Also #208: my hand arithmetic claimed
+the widened cover clears the Zune flank buttons; the seat measured that it overlaps
+their inner ~29px (taps still work - attribute routing is coordinate-free - but a
+slide off Play/Pause scrubs). Pre-existing since v1.261.
+
+THE GATE also caught two doc failures in my own fix round: a comment pointing at a
+file that does not exist, and - the real one - my rewrite SILENTLY DELETING a QA
+seat's still-open residual (the theoretical lock strand) that shared a bullet list
+with the one I was closing. It was gone from the whole repo; restored verbatim from
+git history. The "verify what a change REMOVES" rule, turned on my own edit.
+
+Dual-Node: v22.23.1 8291/8291 pass, 0 fail, 0 skipped; v24.14.0 8291/8291, 0 fail,
+0 skipped. CSS, server.js, player.js and music.js 0-diff across the whole wave.
+
 ### v1.266.0 - Steadier startups (2026-09-04)
 
 Tech-debt #202's revisit trigger fired (2nd occurrence of a transient SQLite

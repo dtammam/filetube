@@ -84,15 +84,24 @@ public/js/skin-surface.js, public/css/style.css, and tests.
 - **The 200ms arm delay**: the first ~200ms of a fast spin won't tick (WebKit constant,
   not ours). Expected feel: ticks "catch up" as the spin continues.
 - Zone-tap stray tick (T2) and VoiceOver behavior of the aria-hidden ghost.
-- Cover geometry (adversarial S1): the resting scale(7.5) cover is 390x240px vs the
-  288px square wheel - a rotation STARTED in the outer ~24px at 12/6 o'clock arms no
-  tracking (that gesture is silent; wheel logic unaffected), and the ~50px horizontal
-  overhang lets a drag started just OUTSIDE the wheel begin a rotate/scrub that did
-  nothing on main (nothing clickable lives there). Dean's pass arbitrates both.
-- Theoretical lock strand (QA delta, on record): a FUTURE teardown that swaps the panel
-  NODE itself, destroy-less, while PAUSED would orphan observer+ghost together. No live
-  path does it (both views mutate the captured panel in place; the #view-root swap runs
-  destroy()); playing heals via the media-event belt.
+- Cover geometry (adversarial S1) - **CLOSED v1.267, Dean arbitrated.** The residual
+this line recorded was real and he felt it: at the old fixed `scale(7.5)` the cover
+was 390x240 against a ~273-288px wheel, so a rotation STARTED in the outer ~16px at
+12/6 o'clock armed no tracking and the whole gesture was silent. Dean: "it's when
+it's near the top edge it feels bad." The cap is gone; the cover is now `h/32`, i.e.
+EXACTLY the wheel's height (scale up to 9; cover up to 468x288; per-side horizontal
+overhang up to ~90px on the iPod, clipped by `.mms-full{overflow:hidden}` and beside
+nothing coordinate-dependent). Seattle Classic is unchanged by that fix - its pad was
+already under the old cap at every viewport - so if the wheel still feels unreliable
+THERE, the cause is different (candidate in tech-debt #207).
+
+- Theoretical lock strand (QA delta, on record; RESTORED v1.267 - the cover-geometry
+  rewrite deleted this bullet along with the one it was closing, and the slim seat
+  caught it): a FUTURE teardown that swaps the panel NODE itself, destroy-less, while
+  PAUSED would orphan observer+ghost together, so healGhostLock never fires and the
+  body scroll-lock survives - the browse view stays pinned until a reload. No live path
+  does it (both views mutate the captured panel in place; the #view-root swap runs
+  destroy()); playing heals via the media-event belt. STILL OPEN.
 
 ## Tests (jsdom = wiring; the FEEL is Dean's device)
 
