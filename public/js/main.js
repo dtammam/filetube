@@ -2067,7 +2067,7 @@ const PreviewCards = (function () {
       // view that actually HAS audio (the mark is meaningless otherwise). Marks
       // the channel (folder) so its downloaded music projects into the Music
       // library. (The per-user opt-in master toggle was RETIRED in v1.242 - audio
-  // projects into Music unconditionally and this mark is the OPT-OUT.)
+      // projects into Music unconditionally and this mark is the OPT-OUT.)
       const staleMusicBtn = document.getElementById('folder-music-toggle');
       if (staleMusicBtn && staleMusicBtn.parentNode) staleMusicBtn.parentNode.removeChild(staleMusicBtn);
       const folderHasAudio = Array.isArray(currentItems) && currentItems.some((it) => it && it.type === 'audio');

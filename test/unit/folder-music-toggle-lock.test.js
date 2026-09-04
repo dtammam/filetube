@@ -68,7 +68,10 @@ test('v1.268: BOTH labels say what the button does, in hide/show terms - never "
   // survive the whole suite - the button would then say "Hidden from Music" while
   // showing, a strictly worse version of the bug this wave exists to fix. The
   // v1.259 renderer-identity class, re-struck.
-  assert.match(SRC, /\? 'Showing in Music - tap to hide this channel/, 'the ON arm carries the SHOWING label');
+  // Condition-anchored (slim S-b): `const t = effective` PREFIX-matches, so
+  // `effective === false` - or the realistic `effectiveNow` typo - inverted every
+  // label while the arms themselves stayed put, and survived. Bind the whole head.
+  assert.match(SRC, /const t = effective\s*\n\s*\? 'Showing in Music - tap to hide this channel/, 'the ON arm carries the SHOWING label, off the UNMODIFIED condition');
   assert.match(SRC, /: 'Hidden from Music - tap to show this channel/, 'the OFF arm carries the HIDDEN label');
   assert.ok(!/click to remove/.test(SRC), 'the delete-sounding wording is gone');
   // both strings must reach the user through the touch-reachable paths, not just title
@@ -76,7 +79,8 @@ test('v1.268: BOTH labels say what the button does, in hide/show terms - never "
   assert.ok(m, 'one label source of truth feeds title, aria-label and the pressed state');
   assert.match(m[0], /mbtn\.title = t;/, 'title (pointer devices)');
   assert.match(m[0], /setAttribute\('aria-label', t\)/, 'aria-label (assistive tech)');
-  assert.match(m[0], /setAttribute\('aria-pressed'/, 'and the pressed state is exposed');
+  assert.match(m[0], /setAttribute\('aria-pressed', effective \? 'true' : 'false'\)/,
+    'the pressed state is exposed AND its arms are bound (slim S-a: swapping them alone survived - a screen reader would announce "Showing in Music, not pressed")');
 });
 
 test('v1.268 (slim W2): the optimistic pre-fetch paint seeds the v1.242 DEFAULT (on), not a pessimistic false', () => {
