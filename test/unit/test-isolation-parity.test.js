@@ -170,7 +170,7 @@ test('#202 CRITICAL-1 BEHAVIOURAL: a journal-mode switch really does ride out a 
       db.exec('BEGIN IMMEDIATE');
       db.exec('INSERT INTO hold VALUES(1)');
       fs.writeFileSync(${JSON.stringify(marker)}, '1');
-      setTimeout(() => { db.exec('COMMIT'); db.close(); process.exit(0); }, 600);
+      setTimeout(() => { db.exec('COMMIT'); db.close(); process.exit(0); }, 1200);
     `;
     child = cp.spawn(process.execPath, ['-e', holderSrc], { stdio: 'ignore' });
 
@@ -180,10 +180,18 @@ test('#202 CRITICAL-1 BEHAVIOURAL: a journal-mode switch really does ride out a 
     assert.ok(fs.existsSync(marker), 'the holder took the write lock');
 
     const t0 = Date.now();
+    const cpu0 = process.cpuUsage();
     const adapter = new SqliteAdapter(dbPath, { log: () => {} });
     const elapsed = Date.now() - t0;
+    const cpu = process.cpuUsage(cpu0);
+    const cpuMs = (cpu.user + cpu.system) / 1000;
     adapter.close();
     assert.ok(elapsed >= 150, `the open WAITED for the lock (${elapsed}ms) - an un-retried switch returns errcode 5 in ~0ms`);
+    // Adversarial N4: wall time alone cannot tell a SLEEP from a SPIN - a hot loop
+    // waits just as long while pinning a core (measured 99.9% CPU vs 0.7%). This is
+    // the one property the anti-spin hardening exists for, so it gets measured, not
+    // asserted by the presence of an Atomics.wait call somewhere in the file.
+    assert.ok(cpuMs < elapsed / 2, `the wait SLEPT rather than spun (${cpuMs.toFixed(1)}ms CPU over ${elapsed}ms wall) - a spin burns ~100%`);
   } finally {
     try { if (child) child.kill(); } catch (_) { /* already gone */ }
     fs.rmSync(dir, { recursive: true, force: true });
