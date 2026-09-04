@@ -2776,5 +2776,11 @@
     "date": "2026-09-04",
     "title": "Steadier startups",
     "intent": "Under the hood: when something else is briefly touching FileTube's database - a container restarting over the top of the old one, or a maintenance script running while the server is up - FileTube now waits its turn instead of giving up instantly. Previously that could stop the server from starting, most likely on a brand-new setup or a network drive. Nothing changes in how the app looks or behaves day to day."
+  },
+  {
+    "version": "1.267.0",
+    "date": "2026-09-04",
+    "title": "The whole wheel clicks now",
+    "intent": "The scroll wheel's invisible touch area was slightly shorter than the wheel itself, so a thumb landing near the very top or bottom edge started no gesture and produced no haptic ticks at all. It now matches the wheel exactly, edge to edge. Nothing about the tick spacing or feel changed - there is just no longer a dead strip to land in. This affects the Pocket Classic wheels; the Seattle Classic pad was already matched and is unchanged."
   }
 ]
