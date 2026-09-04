@@ -93,6 +93,70 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.272.0 - Brick is a game now (2026-09-04)
+
+Dean, after playing v1.270's easter egg: "Brick is surprisingly impressive... I'd like
+us to make this more Brick-like. It's too easy. A little too slow. The ball only goes in
+the direction it's going. No 'momentum'... Extremely straightforward (less like the game
+and more like a demo idle animation). Way too simple."
+
+He was right about the cause as well as the symptom. The paddle deflection had shipped as
+a velocity NUDGE: measured end to end it bent the ball by 14.7 degrees across the entire
+paddle, so the ball simply carried on the way it came.
+
+- **Contact position now maps to an EXIT ANGLE, and the incoming direction is discarded.**
+  This is the real Breakout rule and the whole point of the wave: where you hit the paddle
+  decides where the ball goes, clamped to +-60 degrees. Measured spread across the paddle
+  went 14.7 degrees -> 102. Catch it early, on the near edge, and it goes back the way it
+  came; catch it late and it carries on.
+- **Pace.** Base speed 0.34 -> 0.62 board-heights/sec, and a rally now ACCELERATES - a
+  notch per brick, a smaller notch per return, and Atari's own speed jump when you break
+  through to the top two rows. Speed resets per life, so the rally is the unit of tension.
+- **Difficulty.** The paddle shrinks a step per level, and drops to 60% at that same
+  breakthrough. Clearing a level with a perfect paddle went ~127s -> ~65-80s.
+- **Substepped integration** so a fast ball can no longer tunnel through a brick row on a
+  slow frame, plus side-face brick hits, an anti-stall on a dead-centre return, and a NaN
+  guard on wheel input (a latent bug that could poison the canvas permanently).
+
+**What the gate caught.** No CRITICALs; every finding was test-side, and the theme was
+that a wave about FEEL had shipped feel constants no test could tell apart:
+
+- The pace test was **nondeterministic** - it redded about 1 run in 40, inside the suite
+  that gates every commit, with a message that reads exactly like a real physics
+  regression. It would have sent someone re-root-causing a non-bug.
+- **The paddle accelerator could be DELETED with the suite green**, and the per-level speed
+  ramp could be zeroed. Both are now bound analytically - a return with no brick broken
+  must change the speed by exactly that constant, and level 2 must launch faster than
+  level 1 - rather than by a cadence that would pass at half or double the value.
+- A **vacuous floor** that could not fail. Note the fix is not "pin the number I measured":
+  the observed value differs between machines (0.108 here, 0.0972 on the reviewer's box),
+  so pinning it would have recreated the flake. It binds the shrink MODEL instead.
+- And a miss of my own, found by my own mutation round: that model assert could not catch
+  a zeroed per-level step, because 0.18 is a legal width at every level. **Binding a model
+  is not the same as binding its parameters.**
+- **The wave's headline claim had no guard at all.** "It's too easy" was fixed against an
+  instrument that was never committed. It is committed now and seeded: a player reacting
+  133ms late must reach GAME OVER, while a frame-perfect player must still never lose a
+  life - hard, not unfair. The reviewer ran it across 40 seeds, 40/40 both directions.
+  Reverting the base speed to the old 0.34 now reds three tests.
+- I also wrote a flake myself while fixing one (1 run in 20) and caught it before shipping:
+  a frame containing a bounce reads short, so "the nearest clean sample" is not necessarily
+  free flight. It is now seeded and only trusts a speed two consecutive frames agree on.
+
+**Playability, measured rather than assumed:** the honest risk in "make it harder" is a
+game Dean cannot physically play. The reviewer measured the wheel input rate the new speeds
+demand: median 26 deg/s, p99 129, and a full-board traverse in the shortest observed return
+needs ~306 deg/s - under one turn of the wheel per second. It is playable.
+
+**Known gaps, disclosed:** Dean's device pass is pending, and the difficulty is calibrated
+against an autoplayer model, not a thumb on a click wheel - if it is too punishing, base
+speed and the per-brick acceleration are the two dials and the harness re-measures in
+seconds. Accepted residuals in the tracker: PAD_MIN cannot be reached by any test-length
+run (#217), and three feel constants keep partial bindings (#218) - including one whose
+tidier fix was built, measured to COST more coverage than it buys, and rejected.
+
+Suites: 8328/8328 pass, 0 fail, 0 skipped on BOTH Node v22.23.1 and v24.14.0.
+
 ### v1.271.0 - The wheel keeps up with your thumb (2026-09-04)
 
 Dean, on device: "the activation and spinning of the wheel in general feels less

@@ -362,8 +362,16 @@ test('v1.271 slim W2: a paddle return accelerates the rally by EXACTLY PAD_ACCEL
   }
   assert.ok(ratios.length >= 4, `found only ${ratios.length} brickless free-flight paddle returns across 4 seeds (non-vacuous floor)`);
   for (const ratio of ratios) {
+    // CAVEAT, measured by the gate seat (SUGGESTION-A) and left in deliberately: this
+    // does not exclude returns where ball.sp is already clamped at SPEED_CAP, where a
+    // ratio of exactly 1.000 is CORRECT rather than a deleted line. It is green and
+    // deterministic on the shipped constants, but a future tuning edit that reaches the
+    // cap sooner would red it with a message accusing an innocent line. The obvious fix
+    // (skip capped returns) was built and measured to COST more than it buys - it makes
+    // the HIT_ACCEL mutant red nothing at all - so the caveat is recorded here instead
+    // of trading real coverage for a tidier mechanism. See tech-debt #218.
     assert.ok(Math.abs(ratio - 1.006) < 0.0025,
-      `a return must wind the rally up by PAD_ACCEL: measured x${ratio.toFixed(5)} (1.000 = the line deleted, 1.012 = double)`);
+      `a return must wind the rally up by PAD_ACCEL: measured x${ratio.toFixed(5)} (1.000 = the line deleted OR the speed cap reached - check SPEED_CAP before blaming PAD_ACCEL; 1.012 = double)`);
   }
 });
 
