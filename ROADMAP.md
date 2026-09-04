@@ -93,6 +93,51 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.268.0 - The music note button says what it does (2026-09-04)
+
+Dean asked whether the blue music note in the folders view is vestigial and, if so,
+to remove it. INVESTIGATED FIRST: his premise fails. The control is live. What
+changed in v1.242 is that it INVERTED - audio projects into Music unconditionally
+and this mark is now the OPT-OUT (libraryAudio.isEligibleAudioUniversal: eligible
+unless the channel is explicitly 'off'). The adversarial seat independently
+reproduced that on a live server. He chose to relabel rather than remove.
+
+WHY IT FELT INERT, which was the real bug: the button is a bare glyph whose entire
+meaning lived in a hover TITLE - and touch devices have no hover. Its states
+differed only by grey-vs-blue. And the ON label read "click to remove", which
+understates the default (everything is in Music) and sounds like it deletes files.
+Both labels now state the state and what a tap does, from one source of truth
+feeding title + aria-label + aria-pressed; a hidden channel's note is struck
+through so the tap changes something visible where you tapped. Route, eligibility
+and RBAC are byte-identical - copy and CSS only.
+
+THE GATE CAUGHT: (CRITICAL) my new lock asserted both label strings were PRESENT,
+never which ternary arm carried which - the seat swapped the arms and the whole
+suite stayed green, which would have made the button say "Hidden" while showing, a
+worse version of the very defect being fixed (the v1.259 renderer-identity class).
+(WARNING) my own change made a pre-existing wrong optimistic paint LOUD: the button
+seeded OFF, so every load flashed a struck-through "Hidden from Music" until the
+fetch corrected it - invisible before this wave made OFF a strikethrough, i.e. I
+would have shipped a flicker while fixing an annoyance. Both closed and
+mutation-bound, along with aria-pressed's arms and the ternary's condition.
+
+CORRECTED TO DEAN, and the record carries the error rather than hiding it: I
+justified keeping the button by telling him removal would cost his only way to
+exclude a channel. FALSE - Settings' "Channels in Music" manager posts the same
+route under the same capability across a SUPERSET of channels. Removal would have
+cost only the in-context shortcut. His ruling stands on its own merits.
+
+ONE REVIEWER PRESCRIPTION REJECTED WITH EVIDENCE: the seat reported my suite counts
+as wrong and asked me to correct the release record to "8291 pass / 3 skipped". My
+teed log reads 8294/8294/0 skipped with zero playwright-skip lines - the 3 skips
+were its sandbox missing Playwright. Complying would have written a FALSE number
+into the permanent record in the name of honesty.
+
+Dual-Node: v22.23.1 8294/8294 pass, 0 fail, 0 skipped; v24.14.0 8294/8294, 0 fail,
+0 skipped (exit codes checked and ANSI stripped before the anchored grep - colour
+codes can empty a `^`-anchored grep on a PASSING Node 24 run, a new edge of the
+"an empty grep is not green" scar).
+
 ### v1.267.0 - The whole wheel clicks now (2026-09-04)
 
 Dean (device): the wheel haptics stopped engaging reliably on both skins. Pressed
