@@ -737,12 +737,45 @@
       if (typeof t.onExit === 'function') { try { t.onExit(); } catch (_) { /* a dying takeover must not block the repaint */ } }
     }
 
+    // v1.271: a repaint that replaces the wheel MID-GESTURE used to leave the drag for
+    // dead - the node was swapped with its listeners still attached, pointer capture was
+    // never released, endWheel never ran (so the lift-off click was NOT suppressed and
+    // could fire onDock), and the haptic ghost the OS was tracking vanished. Measured:
+    // 15 ticks before the repaint, 0 after; scrub delta 20.6s before, 0.0s after. It got
+    // worse recently because paint() gained triggers - v1.254's network-timed autoplay
+    // append repaints at an arbitrary moment after every track change, which is exactly
+    // when a thumb reaches for the wheel.
+    //
+    // ENDING the gesture cleanly would fix the corruption but still lose the drag, so we
+    // DEFER instead: while a spin is live the repaint is queued and flushed by endWheel,
+    // the one seam that owns endings. The drag survives intact and the panel catches up
+    // the instant the finger lifts.
+    var paintPending = false;
     function paint() {
+      // Defer ONLY for a gesture that can still REACH endWheel. The early return jumped
+      // over `wheelSpin = null` below - which WAS the engine's stale-spin self-heal - so a
+      // view-side panel clear (music.js and podcasts.js both empty innerHTML without
+      // calling destroy(), and the v1.256 QA CRITICAL documents that path taking no
+      // events) left wheelSpin set forever and FROZE every future repaint: a blank
+      // full-screen skin with a dead wheel, no in-app recovery. Pre-v1.271 that same
+      // event cost one gesture and healed on the next repaint; the deferral made it
+      // permanent. So: if the wheel this spin is bound to is gone, end the stale gesture
+      // here and paint anyway.
+      if (wheelSpin) {
+        if (wheelSpin.wheel && wheelSpin.wheel.isConnected) { paintPending = true; return; }
+        var stale = wheelSpin;
+        paintPending = false; // THIS paint is the flush - endWheel must not re-enter
+        try { endWheel(stale, false); } catch (_) { /* the node is already gone */ }
+      }
+      paintPending = false;
       releaseWheelTakeover();
       var id = getSkinId();
       var base = (typeof SKINS.skinById === 'function' && (SKINS.skinById(id) || {}).base) || '';
       panel.className = 'music-nowplaying-panel mms mms-full mms-' + id + (base ? ' mms-' + base : '');
-      wheelSpin = null; // a re-render detaches the wheel; drop any mid-gesture state (music parity)
+      // v1.271: no longer the normal heal (the guard at the top of paint() ends a stale spin
+      // properly, with its timers). This is the BACKSTOP for an endWheel that throws inside
+      // that try/catch - a repaint must never leave a live spin behind.
+      wheelSpin = null;
       panel.innerHTML = SKINS.renderFull(id, getCtx());
       panel.hidden = false;
       // Adversarial gate W1 (v1.250): shimmerArt lives on the MAIN window - a pop-out is a
@@ -842,7 +875,24 @@
     // lock replace .mms-full's touch-action:none); never preventDefault its touches;
     // NEVER write .checked from JS (kills tracking). Exec plan: wheel-haptics.md.
     var HAPTIC_STEP_DEG = 3.75; // v1.256.2 (Dean: 3deg "a little too hot... parity with the iPod Classic"): 96 detents/rev, the Classic's own number
-    var HAPTIC_MIN_MS = 30;     // the Taptic engine's saturation floor - excess ticks DROP
+    // v1.271 (Dean: "I want there to be more haptic feedback than not... it really
+    // should feel like the real thing"). Was 30, which pegged delivery at a FLAT ~30
+    // ticks/second no matter how fast the wheel turned - 69% of the ticks a 1 rev/s
+    // spin demands were discarded, so ours was a constant buzz where a real Classic's
+    // rate rises with your hand. 8ms sits below the 8.33ms ProMotion frame interval,
+    // so it can never bind before the mechanism's own hard ceiling (one tick per
+    // pointermove, because WebKit re-evaluates the switch's midline crossing per
+    // touchmove) - i.e. it is functionally 0 while keeping a named, non-zero bound.
+    // Yield vs 30ms: ~2x at 60Hz, up to 4x on ProMotion, at the SAME 3.75 spacing.
+    //
+    // The old comment called 30 "the Taptic engine's saturation floor" and the exec
+    // plan filed it under "CONSTANTS (WebKit source)" - the investigation could find
+    // NO evidence of any such rate limit in WebKit's pointer-tracking path or in
+    // UIImpactFeedbackGenerator. It was our own guess, recorded as if it were sourced.
+    // What IS evidenced: Dean device-confirmed the engine DROPS rather than queues
+    // (ticks stop dead when his finger does), which is what makes lowering it safe -
+    // a queueing engine would buzz on after the stop.
+    var HAPTIC_MIN_MS = 8;
     var wheelGhost = null;
     var bodyScrollLock = null; // {y} while the haptic skin owns the body
     var wheelTakeover = null; // v1.270: see the dispatches in MENU, Select and the move handler
@@ -1003,6 +1053,8 @@
 
     // ---- the click-wheel gesture: rotate = cursor (list) OR scrub (now playing) ----
     function endWheel(st, suppress) {
+      if (st.ended) return; // v1.271: two end arms, one teardown (see st.onDocUp)
+      st.ended = true;
       var w = st.wheel;
       // v1.242: tear down any fast-scan hold-timer / interval on EVERY end arm (the v1.163
       // dual-arm teardown discipline) so a pointerup OR pointercancel stops the scan clean.
@@ -1012,9 +1064,19 @@
       w.removeEventListener('pointermove', st.onMove);
       w.removeEventListener('pointerup', st.onUp);
       w.removeEventListener('pointercancel', st.onUp);
+      if (st.onDocUp) {
+        try {
+          doc.removeEventListener('pointerup', st.onDocUp);
+          doc.removeEventListener('pointercancel', st.onDocUp);
+        } catch (_) { /* ignore */ }
+      }
       if (suppress) wheelSuppressClick = true;
       if (wheelSpin === st) wheelSpin = null;
       hapticGestureEnd(); // v1.256: ghost back to its arming cover, lock self-heal check
+      // v1.271: FLUSH a repaint deferred during this gesture. Last, so wheelSpin is
+      // already null (paint() would otherwise re-defer forever) and the haptic teardown
+      // has settled before the panel is replaced.
+      if (paintPending) paint();
     }
     function onDown(e) {
       wheelSuppressClick = false;
@@ -1037,6 +1099,7 @@
         lastAngle: Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI,
         lastT: nowMs(), accum: 0, x0: e.clientX, y0: e.clientY, onMove: null, onUp: null,
         win: win, scanTimer: null, scanInterval: null, scanning: false, scanDir: 0,
+        onDocUp: null, ended: false,
       };
       // v1.242 fastScan: HOLD the rewind/ffwd zone to FAST-SCAN the timeline (~2x, audio keeps
       // playing); release resumes where it landed. Independent of st.mode - keyed off the
@@ -1116,6 +1179,17 @@
         }
       };
       st.onUp = function (ev) {
+        // v1.271 (gate round 2): the gesture now has TWO end arms (wheel + document), and
+        // everything below COMMITS a seek - so a second pass would dispatch `change` twice.
+        // MEASURED: it does not happen today. A release on the wheel runs this arm first,
+        // and the endWheel below removes the document listeners before the event finishes
+        // bubbling, which per the DOM rule on removal-during-dispatch means the doc arm is
+        // never invoked (deleting this line leaves the whole file green, including the
+        // "release commits via #seek-bar ... exactly once" test). It stays as a cheap
+        // backstop for that ordering being disturbed - reordering endWheel's teardown below
+        // the commit would otherwise silently double-seek. Read-only here on purpose:
+        // endWheel is the SETTER, or the call at the end of this function would no-op.
+        if (st.ended) return;
         if (st.mode === 'scrub' && st.moved && ev && ev.type === 'pointerup' && st.scrubRatio != null) {
           var sb = hostCtl('seek-bar');
           if (sb) { sb.value = String(st.scrubRatio); sb.dispatchEvent(new Event('change', { bubbles: true })); }
@@ -1129,15 +1203,34 @@
         }
         endWheel(st, st.moved);
       };
+      // v1.271 (gate round 2): a DOCUMENT-level second end arm - the v1.163 dual-arm
+      // teardown discipline. Pointer capture is only taken after 8px of travel (or on a
+      // fast-scan start), and a MOUSE gets no implicit capture at pointerdown the way a
+      // touch does. So a mouse press near the wheel's edge whose first move already leaves
+      // the wheel releases on some OTHER element, and the wheel-only listeners never fire:
+      // the spin stayed live on a still-CONNECTED wheel, which the isConnected defer above
+      // reads as "a gesture that can still reach endWheel" - freezing every future paint().
+      // Measured by the adversarial seat on the desktop pop-out, which renders a real wheel.
+      // Filtered by pointerId so this arm ends only ITS OWN gesture; the wheel arm above
+      // stays unfiltered, preserving today's "a second finger's up on the wheel ends it".
+      st.onDocUp = function (ev) {
+        if (ev && ev.pointerId !== undefined && ev.pointerId !== st.id) return;
+        st.onUp(ev);
+      };
       wheel.addEventListener('pointermove', st.onMove);
       wheel.addEventListener('pointerup', st.onUp);
       wheel.addEventListener('pointercancel', st.onUp);
+      try {
+        doc.addEventListener('pointerup', st.onDocUp);
+        doc.addEventListener('pointercancel', st.onDocUp);
+      } catch (_) { /* no document events (a detached fixture) */ }
       wheelSpin = st;
     }
     function nowMs() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
 
     function destroy() {
       releaseWheelTakeover(); // v1.270: the surface dying takes its takeover with it
+      paintPending = false;   // v1.271: a deferred repaint must not outlive the surface
       if (bound) {
         panel.removeEventListener('click', onClick);
         panel.removeEventListener('pointerdown', onDown);

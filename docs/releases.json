@@ -2800,5 +2800,11 @@
     "date": "2026-09-04",
     "title": "Brick",
     "intent": "The iPod's old hidden game is on the Pocket Classic players. Open the sticker menu and pick Brick: spin the wheel to move the paddle, press the middle button to launch, press MENU to come back. Your music keeps playing the whole time, and the wheel ticks under your thumb as you play."
+  },
+  {
+    "version": "1.271.0",
+    "date": "2026-09-04",
+    "title": "The wheel keeps up with your thumb",
+    "intent": "Spinning the click wheel now keeps working when the song screen refreshes under your finger. Before, a refresh landing mid-spin quietly ended it, and you had to lift off and start again - which is a lot of why the wheel felt inconsistent. The clicks you feel on a fast spin are much denser too, closer to a real iPod: they were being thinned out by a limit that had been set far more cautiously than it needed to be. And letting go anywhere on the screen ends a spin cleanly now, so the desktop pop-out player can no longer get stuck showing the wrong song."
   }
 ]

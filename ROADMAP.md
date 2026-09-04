@@ -93,6 +93,83 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.271.0 - The wheel keeps up with your thumb (2026-09-04)
+
+Dean, on device: "the activation and spinning of the wheel in general feels less
+consistent", then a ruling - "I want there to be more haptic feedback than not... It
+really should feel like the real thing."
+
+- **A repaint no longer kills a live drag.** `paint()` rebuilds the panel's innerHTML
+  wholesale, which detached the wheel node mid-gesture: pointer events kept arriving at
+  a node no longer in the document, so the spin died silently and the next tick needed a
+  fresh press (measured 15 ticks before the repaint, 0 after). Any Now-Playing refresh
+  landing during a drag did it, and on a playing track those land often. `paint()` now
+  DEFERS while a live spin owns a still-connected wheel, and flushes from `endWheel()`.
+- **Tick floor 30ms -> 8ms.** The 30ms throttle shipped in v1.256 as "the Taptic engine's
+  saturation floor". It was never sourced - it was our own guess, and it is what made
+  fast spins feel sparse: measured, it discarded 68.75% of the ticks the OS would have
+  fired at 1 rev/s on a 60Hz screen (30 of 96 demanded). 8ms sits below one tick per
+  `pointermove`, which is WebKit's own hard ceiling, so the throttle no longer removes
+  ticks the OS would have fired - it only bounds a pathological event storm. Measured
+  yield: 60Hz 30 -> 60 ticks/s, 120Hz 30 -> 120.
+- **A gesture now ends on a release anywhere**, not only on the wheel (gate round 2).
+
+**What the gate caught - three rounds, and every finding was in my own work.**
+
+- **CRITICAL (round 1).** My first deferral returned early *before* `wheelSpin = null`,
+  which WAS the engine's stale-spin self-heal. A view-side panel clear during a live
+  press (music.js and podcasts.js both empty innerHTML without calling `destroy()`, and
+  that path delivers no events) then left `paint()` returning early FOREVER - a blank
+  full-screen skin with a dead wheel and no in-app recovery but a reload. Measured
+  WEDGED=true on my commit, false on main. Before this wave that same event cost one
+  gesture and healed on the next repaint; I had turned an annoyance into a hard lock.
+- **WARNING (round 1).** While retiming the throttle demo I deleted a burst assertion
+  that was the ONLY test killing the drop-vs-queue mutant - the only proof that ticks
+  stop dead when your finger stops, which is the property this wave's whole safety case
+  rests on. Restored; the mutant reds again.
+- **WARNING (round 2)** - the narrower survivor of the same class, which I asked the seat
+  to hunt. A mouse gets no implicit pointer capture at `pointerdown` and we only capture
+  after 8px of travel, so a press near the wheel's edge released *off* the wheel left the
+  spin live on a still-CONNECTED wheel - which the new `isConnected` guard reads as "can
+  still reach endWheel". Measured FROZEN=true on the desktop pop-out, where v1.270
+  self-healed on the next repaint: a regression this wave introduced. Closed with a
+  document-level second end arm (this file's own v1.163 dual-arm teardown discipline),
+  pointerId-filtered so it ends only its own gesture.
+- **Three mutation survivors I found on my own fix and disclosed before being asked.** One
+  exposed a trap across the whole fixture family: jsdom's `MouseEvent` silently drops a
+  `pointerId` passed in its init dict, so every fixture in skin-surface.test.js reading
+  `{ pointerId: 1 }` had always dispatched `undefined` - no test in that file had ever
+  been able to tell two pointers apart. One was a listener leak (an arm added without
+  binding its release - the v1.163 class again), now bound across all four teardown arms.
+- Plus a lying-spec correction (the ACTIVE plan still specified 30ms under "CONSTANTS
+  (WebKit source)" while the code three files away criticised it for exactly that), and
+  two stale comments, one of them mine.
+
+**Known gaps, disclosed.**
+
+- Dean's device pass is PENDING.
+- **This wave does not promise the flakiness is gone.** It removes two measured causes.
+  Two named causes remain: WebKit arms its pointer-tracking ~200ms after the thumb lands
+  (`switchHeldDelay`), so a flick shorter than that ticks nothing and never will from JS;
+  and it is still UNVERIFIED whether `setPointerCapture` - which we call 8px into every
+  rotation, including on the haptic path - disturbs WebKit's switch tracking. The plan's
+  known-limits section has carried that unknown since v1.256 with a ready fallback (skip
+  capture on the capable path). It is suspect #1 if spins still feel inconsistent, and it
+  is deliberately NOT fixed on that theory: capture is load-bearing (it keeps a scrub
+  alive when the thumb leaves the wheel), and shipping a device fix on a first-pass
+  theory is the v1.68.1 scar.
+- At 120Hz the 8ms floor never binds (a frame is 8.33ms), so tick rate there is purely
+  display-rate-bound.
+- One guard ships **unbound by test and labelled as such**: `st.ended` read in `st.onUp`.
+  The double-fire it defends against is unreachable today, because `endWheel` removes the
+  document listeners before the event finishes bubbling. Kept on the adversarial seat's
+  ruling - the failure it guards is a silent double-seek - with the comment stating the
+  measurement rather than a vacuous test dressing it up.
+
+Suites: 8314/8314 pass, 0 fail, 0 skipped on BOTH Node v22.23.1 and v24.14.0 (this box
+has playwright; the reviewer's sandbox lacks it and honestly reported the same run as
+8311 pass / 3 skipped).
+
 ### v1.270.0 - Brick (2026-09-04)
 
 Dean: "add the iPod brickbreaker game to the classic pocket theme(s)... keep

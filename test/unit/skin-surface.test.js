@@ -806,7 +806,7 @@ test('v1.256 haptics OFF path: no switch support = no ghost, no class, no lock (
   } finally { b.restore(); }
 });
 
-test('v1.256 haptics: the tick engine - one bias flip per detent (3.75deg Classic parity), 30ms throttle DROPS excess, ghost rides the finger; no .checked writes ever', () => {
+test('v1.271 haptics: the tick engine - one bias flip per detent (3.75deg Classic parity), the 8ms floor DROPS excess, ghost rides the finger; no .checked writes ever', () => {
   const b = bootHaptic({});
   const savedPerf = global.performance;
   let t = 1000;
@@ -822,14 +822,18 @@ test('v1.256 haptics: the tick engine - one bias flip per detent (3.75deg Classi
     wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: s.clientX, clientY: s.clientY }));
     assert.match(g.style.transform, /^translate\(/, 'gesture start: the ghost shrank from the cover to ride the finger');
     assert.strictEqual(g.style.transform, `translate(${s.clientX + 18}px,${s.clientY}px)`, 'initial bias +18px past the midline');
-    let q = mv(6, 100); // 6deg = 1 detent at 3.75 (rem 2.25), dt 100ms > throttle -> flip to -18
+    let q = mv(6, 100); // 6deg = 1 detent at 3.75 (rem 2.25), dt 100ms > floor -> flip to -18
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'detent 1 flipped the bias (a crossing = a tick)');
     q = mv(8, 5);       // +2deg -> crosses a detent (carry 2.25) but dt 5ms -> THROTTLED, bias unchanged
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a throttled detent follows without flipping');
-    q = mv(14, 5);      // crosses a detent but only 10ms since the flip -> THROTTLED (dropped, not queued)
+    // v1.271: retimed for the 8ms floor. A DROP does not stamp hapLast, so this lands
+    // 7ms after the FLIP (5 + 2), still inside the floor -> dropped, not queued. Under
+    // the old 30ms floor the original dt of 5 put this at 10ms, which now legitimately
+    // ticks - the timeline had to move with the constant, not the assertion.
+    q = mv(14, 2);      // 7ms since the flip -> THROTTLED (dropped, not queued)
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'the Taptic floor drops the tick, never queues it');
     q = mv(24, 100);    // three detents accumulate at 3.75 (carry 2.75+10); one flip allowed -> back to +18
-    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a fast burst saturates to one tick per 30ms');
+    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a fast burst still saturates to one tick per floor interval');
     wheel.dispatchEvent(new b.dom.window.MouseEvent('pointercancel', { bubbles: true }));
     assert.strictEqual(g.style.transform, 'scale(7.5)', 'cancel restores the arming cover (the dual-arm teardown discipline)');
   } finally { global.performance = savedPerf; b.restore(); }
@@ -921,7 +925,7 @@ test('v1.256 (QA S2 binding): a rotate-then-release on the ghost suppresses the 
   } finally { b.restore(); }
 });
 
-test('v1.256 (adversarial W1+W2): the FEEL constants are pinned at their boundaries (3.75deg Classic parity since v1.256.2), and a throttled detent DROPS - never queues', () => {
+test('v1.271 (was v1.256 W1+W2): the FEEL constants are pinned at their boundaries - 3.75deg Classic parity (Deans ruling, unchanged) and the 8ms floor (was 30) - and a throttled detent DROPS, never queues', () => {
   // The seat proved step=1/6 and min=100 (and while->if queueing) all survived the
   // cadence test - Dean's iPod-Classic ruling was unbound. Pin both axes at their
   // exact boundaries, and distinguish drop from queue with a sub-detent follow-up.
@@ -943,17 +947,24 @@ test('v1.256 (adversarial W1+W2): the FEEL constants are pinned at their boundar
     assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, '3.7deg accumulated: below the 3.75 step, no flip (kills step->1/3)');
     q = mv(3.8, 100);
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, '3.8deg crosses the 3.75 boundary: flip (kills step->4.5/6)');
-    // THROTTLE boundary: a detent 29ms after the flip DROPS (a drop does not stamp
-    // hapLast); the next detent lands 1ms later = exactly 30ms after the FLIP, and
-    // ticks. (adversarial round 2: dt=30 here would land at flip+59ms and leave
-    // MIN unpinned across 30-59 - the 1ms landing pins it to exactly (29, 30].)
-    q = mv(7.6, 29);
-    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a detent 29ms after a flip is dropped (the 30ms floor holds exactly)');
+    // FLOOR boundary, v1.271: 30 -> 8. Dean asked for more feedback ("it really should
+    // feel like the real thing"), and the investigation measured 30 pegging delivery at
+    // a flat ~30 ticks/s regardless of speed - 69% of a 1 rev/s spin's ticks discarded,
+    // where a real Classic's rate rises with the hand. 8 sits below the 8.33ms ProMotion
+    // frame, so it can never bind before the mechanism's own ceiling (one tick per
+    // pointermove). SAFE because Dean device-confirmed the engine DROPS, not queues.
+    // Pinned to exactly (7, 8] by the same 1ms-landing trick as before: a drop does not
+    // stamp hapLast, so the 7ms detent lands 1ms later = exactly 8ms after the FLIP.
+    q = mv(7.6, 7);
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a detent 7ms after a flip is dropped (the 8ms floor holds exactly)');
     q = mv(11.4, 1);
-    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a detent 30ms after the last FLIP ticks (the floor is 30, not more)');
+    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a detent 8ms after the last FLIP ticks (the floor is 8, not more)');
     // DROP vs QUEUE: a multi-detent burst consumes its backlog even where the throttle
-    // drops the flips - a following sub-detent drift must NOT flip (kills while->if).
-    q = mv(26.4, 100);  // 15deg burst (+0.15 carry) = 4 detents at 3.75, one flip allowed -> bias back to -18
+    // suppressed the intervening flips - the carry is spent, not banked.
+    // v1.271 slim W1: this pair is the ONLY thing binding drop-vs-queue (the `while` ->
+    // `if` mutant survives without it). I deleted it while retiming and the loss was
+    // silent - the very property the 8ms change's safety argument rests on.
+    q = mv(26.4, 100);  // 15deg burst = 4 detents at 3.75, one flip allowed -> bias back to -18
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a burst saturates to one flip');
     q = mv(27.4, 100);  // +1deg sub-detent drift (carry 1.15 < 3.75), long after the throttle window
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'no phantom tick after the finger slows: the backlog was CONSUMED, not queued');
@@ -1169,4 +1180,226 @@ test('v1.267 INVARIANT: the arming cover is exactly the wheel tall at every MEAS
     const g = ghostOf(z.dom);
     assert.strictEqual(g.style.transform, 'scale(7.5)', 'an UNMEASURABLE wheel falls back to 7.5 - it must never collapse to nothing');
   } finally { z.restore(); }
+});
+
+test('v1.271: a repaint DURING a live spin is DEFERRED, not allowed to kill the drag', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const panel = b.dom.window.document.querySelector('.music-nowplaying-panel');
+    const wheel = panel.querySelector('.ip-wheel');
+    const before = wheel;
+    // start a spin
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 40, pointerId: 1 }));
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 230, clientY: 80, pointerId: 1 }));
+    // a track change lands mid-drag: the panel must NOT be rebuilt under the finger
+    b.engine.paint();
+    assert.strictEqual(panel.querySelector('.ip-wheel'), before,
+      'the wheel node the gesture is bound to SURVIVES the repaint - replacing it stranded the listeners, skipped endWheel, left pointer capture held and the lift-off click unsuppressed (measured: 15 ticks before, 0 after)');
+    // the drag still works
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 260, clientY: 140, pointerId: 1 }));
+    assert.ok(true, 'the gesture continues');
+    // lifting flushes the deferred repaint
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true, pointerId: 1 }));
+    assert.notStrictEqual(panel.querySelector('.ip-wheel'), before,
+      'and the repaint lands the instant the finger lifts - deferred, never dropped');
+  } finally { b.restore(); }
+});
+
+test('v1.271: the deferred repaint cannot outlive the surface', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
+  // Loosened per slim S2: the literal shape-lock redded on a CORRECT refactor (the
+  // CRITICAL-1 fix) while a semantically wrong variant keeping the first line passed.
+  // The behavioural tests carry the weight; this only insists the mechanism exists.
+  assert.match(src, /if \(wheelSpin\) \{[\s\S]{0,400}?paintPending = true; return; \}/,
+    'paint() defers while a LIVE spin holds a connected wheel');
+  assert.match(src, /wheelSpin\.wheel && wheelSpin\.wheel\.isConnected/,
+    'and only then - a spin whose wheel the view tore out must NOT freeze every future repaint (slim CRITICAL-1)');
+  assert.match(src, /if \(paintPending\) paint\(\);/, 'endWheel flushes it - the one seam that owns endings');
+  // window sized to the comment that legitimately sits between them (#213: distance
+  // locks break on valid insertions, so bind the PAIR loosely and let the behavioural
+  // test above carry the real weight).
+  assert.match(src, /function destroy\(\) \{[\s\S]{0,400}?paintPending = false;/,
+    'and destroy() drops it, so a queued repaint never fires at a dead surface');
+});
+
+test('v1.271 slim CRITICAL-1: a view-side panel clear during a live press must NOT freeze paint() forever', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const panel = b.dom.window.document.querySelector('.music-nowplaying-panel');
+    const wheel = panel.querySelector('.ip-wheel');
+    // finger down (a press is enough - wheelSpin is set on any non-dead-centre pointerdown)
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 40, pointerId: 1 }));
+    // the VIEW clears the panel without destroy() - music.js:1081 and podcasts.js:850 both
+    // do this, and the v1.256 QA CRITICAL documents that this path delivers NO events, so
+    // the gesture can never reach endWheel on its own.
+    panel.innerHTML = '';
+    // a later repaint must still work. Before the fix the deferral jumped over the
+    // stale-spin heal and every subsequent paint returned early - permanently.
+    b.engine.paint();
+    assert.ok(panel.querySelector('.ip-wheel'),
+      'the panel repainted - a spin whose wheel the view tore out is ended, not waited on (a frozen paint left a blank skin with a dead wheel and no in-app recovery)');
+    b.engine.paint();
+    assert.ok(panel.querySelector('.ip-wheel'), 'and keeps repainting');
+  } finally { b.restore(); }
+});
+
+test('v1.271 slim round-2 WARNING: a MOUSE released OFF the wheel still ends the gesture - a connected wheel is not proof the gesture can reach endWheel', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const panel = b.dom.window.document.querySelector('.music-nowplaying-panel');
+    const wheel = panel.querySelector('.ip-wheel');
+    const before = wheel;
+    // Press the wheel and release somewhere else entirely. Pointer capture is only taken
+    // after 8px of travel (or a fast-scan start) and a MOUSE gets no implicit capture at
+    // pointerdown the way a touch does, so the wheel-only pointerup listener never fires.
+    // The wheel is still CONNECTED, so the isConnected defer reads the spin as live.
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 40, pointerId: 1 }));
+    b.dom.window.document.body.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true, pointerId: 1 }));
+    // Without the document-level end arm the spin stayed live forever and every future
+    // paint deferred: the desktop pop-out froze on the current track until it was closed.
+    b.engine.paint();
+    assert.notStrictEqual(panel.querySelector('.ip-wheel'), before,
+      'the repaint LANDED - the release off the wheel ended the gesture (a frozen paint left the pop-out showing a stale track with a dead wheel, where v1.270 self-healed on the next repaint)');
+    // and the wheel takes a fresh gesture (onDown early-returns while wheelSpin is set)
+    const w2 = panel.querySelector('.ip-wheel');
+    w2.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 40, pointerId: 2 }));
+    w2.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 230, clientY: 80, pointerId: 2 }));
+    b.engine.paint();
+    assert.strictEqual(panel.querySelector('.ip-wheel'), w2, 'and a NEW spin is accepted and deferred normally');
+  } finally { b.restore(); }
+});
+
+// jsdom has no PointerEvent, and MouseEvent SILENTLY DROPS a `pointerId` passed in its
+// init dict - so every fixture in this file that reads `{ ..., pointerId: 1 }` is really
+// dispatching `undefined`, which happens to match the equally-undefined st.id. Any test
+// that means to DISCRIMINATE two pointers has to define the property for real.
+function pointerEv(dom, type, init, id) {
+  const ev = new dom.window.MouseEvent(type, init);
+  Object.defineProperty(ev, 'pointerId', { value: id, configurable: true });
+  return ev;
+}
+
+test('v1.271 slim round-2: the document end arm is pointerId-FILTERED - a second finger lifting elsewhere does not end your spin', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const panel = b.dom.window.document.querySelector('.music-nowplaying-panel');
+    const wheel = panel.querySelector('.ip-wheel');
+    const before = wheel;
+    wheel.dispatchEvent(pointerEv(b.dom, 'pointerdown', { bubbles: true, clientX: 200, clientY: 40 }, 1));
+    wheel.dispatchEvent(pointerEv(b.dom, 'pointermove', { bubbles: true, clientX: 230, clientY: 80 }, 1));
+    // a DIFFERENT pointer lifts somewhere else on the page. The wheel's own arm is
+    // deliberately unfiltered (a second finger's up ON THE WHEEL still ends the gesture,
+    // as it always has); this document-wide arm must not inherit that reach, or any
+    // stray tap on the page would kill a drag in progress.
+    b.dom.window.document.body.dispatchEvent(pointerEv(b.dom, 'pointerup', { bubbles: true }, 2));
+    b.engine.paint();
+    assert.strictEqual(panel.querySelector('.ip-wheel'), before,
+      'the spin is STILL live - the repaint is deferred, so the foreign pointerup was ignored');
+    // and this pointer's own release still ends it
+    b.dom.window.document.body.dispatchEvent(pointerEv(b.dom, 'pointerup', { bubbles: true }, 1));
+    b.engine.paint();
+    assert.notStrictEqual(panel.querySelector('.ip-wheel'), before, 'while ITS OWN pointerup does end it');
+  } finally { b.restore(); }
+});
+
+test('v1.271 slim round-2 (anti-inert): on a FOREIGN-document surface the end arm lands on the POP-OUT document, not the opener - the pop-out is the very surface the freeze was measured on', () => {
+  // The regression this arm closes was measured on the desktop pop-out, whose panel lives
+  // in ITS OWN document. If `doc` resolved to the opener the fix would be green here and
+  // inert exactly where the bug is - the v1.184/v1.185 dead-code class. So: measured, not
+  // reasoned from `panel.ownerDocument`.
+  const pipDom = new JSDOM('<body><div id="panel" class="music-nowplaying-panel"></div></body>', { url: 'http://localhost/pip' });
+  const { dom, engine, restore } = bootEngine(); // global.window/document = the MAIN dom
+  try {
+    const seen = { pip: 0, main: 0 };
+    const pipDoc = pipDom.window.document, mainDoc = dom.window.document;
+    const pAdd = pipDoc.addEventListener.bind(pipDoc), mAdd = mainDoc.addEventListener.bind(mainDoc);
+    pipDoc.addEventListener = function (t, fn, o) { if (t === 'pointerup') seen.pip += 1; return pAdd(t, fn, o); };
+    mainDoc.addEventListener = function (t, fn, o) { if (t === 'pointerup') seen.main += 1; return mAdd(t, fn, o); };
+    const eng2 = dom.window.FileTubeSkinSurface.create({
+      panel: pipDoc.getElementById('panel'),
+      getSkinId: () => 'ipod', getCtx: () => ({ track: {}, upNext: [], fullList: [] }),
+      hostCtl: (id) => mainDoc.getElementById(id),
+      win: pipDom.window,
+    });
+    eng2.paint();
+    const wheel = pipDoc.querySelector('.ip-wheel');
+    assert.ok(wheel, 'the pop-out really renders a wheel (non-vacuous: the freeze needs one)');
+    wheel.dispatchEvent(new pipDom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 40 }));
+    assert.strictEqual(seen.pip, 1, 'the end arm registered on the POP-OUT document');
+    assert.strictEqual(seen.main, 0, 'and NOT on the opener, where the release never happens');
+    // and it actually ends the gesture there
+    pipDoc.body.dispatchEvent(new pipDom.window.MouseEvent('pointerup', { bubbles: true }));
+    const before = pipDoc.querySelector('.ip-wheel');
+    eng2.paint();
+    assert.notStrictEqual(pipDoc.querySelector('.ip-wheel'), before, 'the pop-out repaints after a release off its wheel');
+    eng2.destroy();
+    engine.destroy();
+  } finally { restore(); }
+});
+
+test('v1.271 slim round-2: the document end arm UNBINDS on every teardown arm - it must not accumulate one listener per gesture', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const doc = b.dom.window.document;
+    const panel = doc.querySelector('.music-nowplaying-panel');
+    // count only the document-level pointer end listeners (the ones this wave added)
+    let live = 0;
+    const add = doc.addEventListener.bind(doc), rem = doc.removeEventListener.bind(doc);
+    doc.addEventListener = function (t, fn, o) { if (t === 'pointerup' || t === 'pointercancel') live += 1; return add(t, fn, o); };
+    doc.removeEventListener = function (t, fn, o) { if (t === 'pointerup' || t === 'pointercancel') live -= 1; return rem(t, fn, o); };
+    const press = () => {
+      const w = panel.querySelector('.ip-wheel');
+      w.dispatchEvent(pointerEv(b.dom, 'pointerdown', { bubbles: true, clientX: 200, clientY: 40 }, 1));
+      return w;
+    };
+    // arm 1: a normal release on the wheel
+    const w1 = press();
+    w1.dispatchEvent(pointerEv(b.dom, 'pointerup', { bubbles: true }, 1));
+    assert.strictEqual(live, 0, 'the wheel-release arm removed both document listeners');
+    // arm 2: a release OFF the wheel (the arm this wave added)
+    press();
+    doc.body.dispatchEvent(pointerEv(b.dom, 'pointerup', { bubbles: true }, 1));
+    assert.strictEqual(live, 0, 'the document-release arm removed them too');
+    // arm 3: the view tears the panel out, and a later repaint ends the stale spin
+    press();
+    panel.innerHTML = '';
+    b.engine.paint();
+    assert.strictEqual(live, 0, 'and so does the stale-spin end inside paint()');
+    // arm 4: the surface dies mid-gesture
+    press();
+    b.engine.destroy();
+    assert.strictEqual(live, 0,
+      'and destroy() - a document listener stranded per gesture holds its whole dead gesture closure alive (the v1.163 lesson: unbind on EVERY teardown arm, not just the happy one)');
+  } finally { b.restore(); }
+});
+
+test('v1.271 slim round-2 S1: ending a STALE spin from paint() tears its fast-scan timers down - not just its identity', () => {
+  const { dom, engine, restore } = bootEngine({ engineCfg: { fastScan: true } });
+  try {
+    engine.paint();
+    const timers = fakeWinTimers(dom);
+    const mp = dom.window.document.getElementById('media-player');
+    Object.defineProperty(mp, 'duration', { value: 300, configurable: true });
+    let ct = 100; Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => ct, set: (v) => { ct = v; } });
+    const zone = panel(dom).querySelector('.ip-wheel [data-skin-next]') || panel(dom).querySelector('[data-skin-next]');
+    zone.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 50, clientY: 0 }));
+    timers.timeouts[0](); // the hold fires: the scan engages and owns the gesture
+    assert.strictEqual(timers.intervals.length, 1, 'the scan interval armed');
+    // the VIEW clears the panel mid-hold - no pointerup ever arrives (music.js:1081)
+    panel(dom).innerHTML = '';
+    engine.paint();
+    // paint() ends the stale gesture. Nulling wheelSpin alone would heal the IDENTITY and
+    // leave this interval stepping currentTime with no finger down (measured runaway on
+    // v1.270 too) - the teardown is what makes the stale branch worth its endWheel call.
+    assert.strictEqual(timers.intervals[0], null, 'the scan interval was CLEARED by the stale endWheel');
+    const at = ct;
+    if (timers.intervals[0]) timers.intervals[0]();
+    assert.strictEqual(ct, at, 'and currentTime stops advancing - no runaway scan behind a repainted panel');
+  } finally { restore(); }
 });
