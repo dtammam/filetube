@@ -2782,5 +2782,11 @@
     "date": "2026-09-04",
     "title": "The whole wheel clicks now",
     "intent": "The scroll wheel's invisible touch area was slightly shorter than the wheel itself, so a thumb landing near the very top or bottom edge started no gesture and produced no haptic ticks at all. It now matches the wheel exactly, edge to edge. Nothing about the tick spacing or feel changed - there is just no longer a dead strip to land in. This affects the Pocket Classic wheels; the Seattle Classic pad was already matched and is unchanged."
+  },
+  {
+    "version": "1.268.0",
+    "date": "2026-09-04",
+    "title": "The music note button says what it does",
+    "intent": "The little music note on a channel's page always did something real - it decides whether that channel's songs appear in your Music library - but it only explained itself in a hover tooltip, which phones do not have, and its wording sounded like it might delete files. It now says plainly whether the channel is showing or hidden and what tapping will do, and a hidden channel's note is struck through so a tap visibly changes something right where you tapped. Nothing about what it does has changed."
   }
 ]

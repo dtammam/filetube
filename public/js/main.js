@@ -2066,7 +2066,8 @@ const PreviewCards = (function () {
       // pencil (same idempotent-remove + canModifyLibrary gate). Only on a folder
       // view that actually HAS audio (the mark is meaningless otherwise). Marks
       // the channel (folder) so its downloaded music projects into the Music
-      // library; each user still opts into the projection via the master toggle.
+      // library. (The per-user opt-in master toggle was RETIRED in v1.242 - audio
+      // projects into Music unconditionally and this mark is the OPT-OUT.)
       const staleMusicBtn = document.getElementById('folder-music-toggle');
       if (staleMusicBtn && staleMusicBtn.parentNode) staleMusicBtn.parentNode.removeChild(staleMusicBtn);
       const folderHasAudio = Array.isArray(currentItems) && currentItems.some((it) => it && it.type === 'audio');
@@ -2095,15 +2096,31 @@ const PreviewCards = (function () {
         mbtn.className = 'folder-music-toggle';
         mbtn.textContent = '♪';
         mbtn.hidden = !folderHasAudio; // optimistic show if the page has audio; the fetch confirms
-        let effectiveNow = false;
+        // v1.268 slim W2: seed the optimistic state to the v1.242 DEFAULT (on).
+        // Seeding false painted a struck-through "Hidden from Music" on every load
+        // until the fetch corrected it - invisible when the states differed only by
+        // colour, glaring once this wave made OFF a strikethrough. It also meant a
+        // tap landing before the fetch resolved POSTed 'on' for an already-on
+        // channel: no visible change, and an auto default silently promoted to an
+        // explicit override. The button only renders for channels WITH audio, and
+        // such a channel is eligible unless explicitly marked 'off'.
+        let effectiveNow = true;
         const paint = (effective) => {
           mbtn.classList.toggle('is-on', !!effective);
-          const t = effective ? 'In your Music library - click to remove' : 'Show this channel in your Music library';
+          // v1.268 (Dean): this button reads as a decorative badge and its only
+          // explanation was a hover title, which does not exist on a phone - so he
+          // tapped it and could not tell it had done anything. It is also an
+          // OPT-OUT control since v1.242 (every channel is in Music by default),
+          // so "click to remove" both understated the default AND sounded like it
+          // might delete files. Say what it actually does, in both states.
+          const t = effective
+            ? 'Showing in Music - tap to hide this channel\u2019s songs from your Music library'
+            : 'Hidden from Music - tap to show this channel\u2019s songs in your Music library';
           mbtn.title = t;
           mbtn.setAttribute('aria-label', t);
           mbtn.setAttribute('aria-pressed', effective ? 'true' : 'false');
         };
-        paint(false);
+        paint(true); // the v1.242 default, not a pessimistic guess (slim W2)
         fetch(`/api/folders/music-flag?folderName=${encodeURIComponent(musicFolderName)}`)
           .then((r) => r.json())
           .then((s) => {

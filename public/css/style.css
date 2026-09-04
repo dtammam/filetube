@@ -1193,6 +1193,14 @@ html.reader-immersive .app-container { padding-top: 0; }
 .folder-music-toggle.is-on {
   color: var(--text-link);
 }
+/* v1.268 (Dean): the OFF state was only a grey-vs-blue colour shift with the
+   meaning hidden in a hover title - unreadable on a phone, which is why the
+   button felt inert. Striking the glyph through does not by itself SAY "not in
+   Music" - the label does that - but it gives the tap a visible result in the
+   view where you tapped, which is the actual fix. */
+.folder-music-toggle:not(.is-on) {
+  text-decoration: line-through;
+}
 
 /* v1.211: the Settings "Channels in Music" manager rows (class-based so the
    JS never sets a raw literal on a governed style surface). */
