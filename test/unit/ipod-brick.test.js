@@ -155,15 +155,92 @@ test('slim CRITICAL-2: the ENGINE releases its takeover before it destroys the p
   assert.match(music, /if \(activeBrickStop\)/, 'which its destroy() calls - destroy runs at module scope and cannot see the closure');
 });
 
-test('slim W3: the row appears ONLY when the view says so - both axes, behaviourally', () => {
-  const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/', runScripts: 'outside-only' });
+test('slim W3: the row is gated on the view\'s answer - source lock (the behaviour is measured in the gate\'s own probes)', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public', 'js', 'skin-surface.js'), 'utf8');
-  // Drive the menu builder through a tiny probe rather than a full engine boot: the
-  // property under test is the gate, and a source match cannot see a FALSE answer.
-  const yes = /if \(inMainDoc && stickerCfg\.brick && typeof stickerCfg\.brick\.visible === 'function'\) \{[\s\S]{0,320}?if \(brOn\) brickRow =/.exec(html);
-  assert.ok(yes, 'the gate reads the view\'s answer and only renders when true');
+  assert.match(html, /if \(inMainDoc && stickerCfg\.brick && typeof stickerCfg\.brick\.visible === 'function'\) \{[\s\S]{0,320}?if \(brOn\) brickRow =/,
+    'main-document only, and it renders only when the view answers true');
   assert.match(html, /var brOn = false;\s*try \{ brOn = !!stickerCfg\.brick\.visible\(\); \} catch \(_\) \{ brOn = false; \}/,
     'a THROWING visible() hides the row rather than breaking the menu');
-  assert.ok(!/brickRow = '<div/.test(html.replace(/if \(brOn\) /, '')) || true, 'sanity');
+});
+
+
+test('v1.270 GEOMETRY LOCK: the overlay\'s containing block is the LCD inner box, and the WHEEL is outside it', () => {
+  // THE bug this wave shipped: .ipod-brick{position:absolute; inset:0} resolved
+  // against .mms-full{position:fixed} because nothing between them was positioned,
+  // so the game covered the whole screen and sat on the wheel - unplayable and
+  // un-exitable. `position:relative` on .ip-lcd-in is 45 lines from the rule that
+  // depends on it and was tied to it only by a comment; deleting it restored the
+  // defect with the whole suite green. This asserts the RELATIONSHIP instead.
+  const cssRaw = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  const css = cssRaw.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  // Rules that can establish a containing block for an absolutely-positioned child.
+  // NOTE contain:size does NOT - only layout/paint/strict/content do.
+  const ESTABLISHES = /(^|;)\s*(position\s*:\s*(?!static)[a-z-]+|transform\s*:(?!\s*none)|filter\s*:(?!\s*none)|backdrop-filter\s*:(?!\s*none)|perspective\s*:(?!\s*none)|will-change\s*:\s*(transform|filter|perspective)|container-type\s*:(?!\s*normal)|contain\s*:[^;]*\b(layout|paint|strict|content)\b)/;
+  const rules = [];
+  const re = /([^{}]+)\{([^{}]*)\}/g;
+  let m;
+  while ((m = re.exec(css))) {
+    const sel = m[1].trim();
+    if (!sel || sel.startsWith('@') || sel.startsWith('%')) continue;
+    if (ESTABLISHES.test(m[2])) rules.push({ sel, body: m[2] });
+  }
+  assert.ok(rules.length > 20, `sanity: parsed ${rules.length} containing-block rules`);
+
+  const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/', runScripts: 'outside-only' });
+  const d = dom.window.document;
+  const skins = require('../../public/js/music-skins.js');
+  const panel = d.createElement('div');
+  panel.className = 'music-nowplaying-panel mms mms-full mms-ipod';
+  panel.innerHTML = skins.renderFull('ipod', { track: { title: 'T', artist: 'A' }, upNext: [], fullList: [], posLabel: '0:00', remLabel: '-1:00' });
+  d.body.appendChild(panel);
+  // Mount where the ENGINE says, not where I assume - otherwise lcdHost() could be
+  // changed to return the whole panel (the same full-screen geometry by another
+  // route) and this test would sail past it, which is exactly what it did once.
+  const engineSrc = fs.readFileSync(path.join(ROOT, 'public', 'js', 'skin-surface.js'), 'utf8');
+  const hostSel = /lcdHost: function \(\) \{ return panel\.querySelector\('([^']+)'\)/.exec(engineSrc);
+  assert.ok(hostSel, 'lcdHost mounts into a QUERIED descendant, not the panel itself');
+  const lcdIn = panel.querySelector(hostSel[1]);
+  assert.ok(lcdIn, `the skin renders lcdHost's target (${hostSel[1]})`);
+  const brick = d.createElement('div');
+  brick.className = 'ipod-brick';
+  lcdIn.appendChild(brick); // exactly where lcdHost() puts it
+
+  const matches = (el) => rules.some((r) => r.sel.split(',').some((one) => {
+    try { return el.matches(one.trim()); } catch (_) { return false; }
+  }));
+  let nearest = null;
+  for (let el = brick.parentElement; el; el = el.parentElement) {
+    if (matches(el)) { nearest = el; break; }
+  }
+  assert.ok(nearest, 'SOME ancestor establishes a containing block');
+  assert.ok(nearest.classList.contains('ip-lcd-in'),
+    `the overlay's containing block must be .ip-lcd-in, got .${nearest.className.split(' ').join('.')} - anything higher and the game covers the screen`);
+  const wheel = panel.querySelector('.ip-wheel');
+  assert.ok(wheel, 'the skin renders a wheel');
+  assert.ok(!nearest.contains(wheel), 'and the WHEEL must sit OUTSIDE that box, or the game paints over the controls');
+  dom.window.close();
+});
+
+
+test('slim W-C: the resize listener is BALANCED - a mount/destroy cycle strands nothing on window', () => {
+  const dom = new JSDOM('<!doctype html><body><div id="lcd"></div></body>', { url: 'http://localhost/', runScripts: 'outside-only' });
+  dom.window.requestAnimationFrame = () => 1;
+  dom.window.cancelAnimationFrame = () => {};
+  dom.window.HTMLCanvasElement.prototype.getContext = function () {
+    return new Proxy({}, { get: (_t, k) => (k === 'measureText' ? () => ({ width: 10 }) : () => {}), set: () => true });
+  };
+  let live = 0;
+  const addR = dom.window.addEventListener.bind(dom.window);
+  const remR = dom.window.removeEventListener.bind(dom.window);
+  dom.window.addEventListener = (t, f, o) => { if (t === 'resize') live++; return addR(t, f, o); };
+  dom.window.removeEventListener = (t, f, o) => { if (t === 'resize') live--; return remR(t, f, o); };
+  dom.window.eval(BRICK_SRC);
+  const host = dom.window.document.getElementById('lcd');
+  for (let i = 0; i < 3; i++) {
+    const g = dom.window.FileTubeBrick.mount(host, {});
+    assert.equal(live, 1, 'mounted: exactly one resize listener');
+    g.destroy();
+    assert.equal(live, 0, `cycle ${i + 1}: destroy removed it - a stranded onResize retains a detached canvas and re-runs on every rotation`);
+  }
   dom.window.close();
 });

@@ -844,7 +844,7 @@
     var HAPTIC_STEP_DEG = 3.75; // v1.256.2 (Dean: 3deg "a little too hot... parity with the iPod Classic"): 96 detents/rev, the Classic's own number
     var HAPTIC_MIN_MS = 30;     // the Taptic engine's saturation floor - excess ticks DROP
     var wheelGhost = null;
-    var bodyScrollLock = null;
+    var bodyScrollLock = null; // {y} while the haptic skin owns the body
     var wheelTakeover = null; // v1.270: see the dispatches in MENU, Select and the move handler
     function hapticCapable() {
       try {

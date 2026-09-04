@@ -11350,10 +11350,13 @@ html[data-modern="on"] .video-uploader {
      and the game covered the WHOLE SCREEN, painting over the wheel and eating every
      tap: unplayable and un-exitable. (contain:size does NOT establish a containing
      block; only layout/paint/strict/content do.) position:relative added above.
-     pointer-events:none because the game takes ZERO pointer input - it is driven
-     entirely through the wheel takeover - so it must never be able to eat a tap even
-     if this box regresses again. */
-  .ipod-brick{ position:absolute; inset:0; z-index:3; /* token-exempt: local stacking inside the LCD, over the npview and listview */ background:var(--mms-white); pointer-events:none; }
+     The overlay deliberately KEEPS pointer-events:auto. It was briefly none, as a
+     belt against the box regressing - but the seat measured what that belt exposes
+     once the box is right: taps fall through to [data-skin-seek] (jumping the track)
+     and, in list mode, to the rows (playing a different song). An opaque layer should
+     block what is under it. The geometry itself is guarded by a real containing-block
+     test instead, which catches the regression outright rather than softening it. */
+  .ipod-brick{ position:absolute; inset:0; z-index:3; /* token-exempt: local stacking inside the LCD, over the npview and listview */ background:var(--mms-white); }
   .ipod-brick canvas{ display:block; width:100%; height:100%; }
   .mms-ipod .ip-listview{ display:none; flex:1; min-height:0; overflow-y:auto; touch-action:pan-y; overscroll-behavior:contain; }
   .mms-ipod.mms-listmode .ip-npview{ display:none; }

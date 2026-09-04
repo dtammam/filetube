@@ -779,6 +779,10 @@ if (typeof module !== 'undefined' && module.exports) {
     var brickGame = null;
     function stopBrick() {
       if (!brickGame) return;
+      // LOAD-BEARING, not belt (the seat measured this): the engine owns the release
+      // for paths that destroy the panel, and for MENU - but the two VIEW-initiated
+      // exits, the sticker row toggling Brick off and Escape, never enter the engine.
+      // Without this clear, the next MENU press is eaten by a stale pointer.
       try { if (inTabEngine && typeof inTabEngine.setWheelTakeover === 'function') inTabEngine.setWheelTakeover(null); } catch (_) { /* engine gone */ }
       try { brickGame.destroy(); } catch (_) { /* already torn down */ }
       brickGame = null;
@@ -2418,7 +2422,6 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function destroy() {
-
     if (activeBrickStop) { try { activeBrickStop(); } catch (_) { /* best effort */ } } // v1.270: the view dying first
     if (controller) controller.abort();
     controller = null;
