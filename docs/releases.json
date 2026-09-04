@@ -2794,5 +2794,11 @@
     "date": "2026-09-04",
     "title": "The progress bar, rebuilt from the real thing",
     "intent": "The blue progress bar on the Pocket Classic players never quite looked right, so it was rebuilt from an actual reference image instead of from memory: the fill is now lit like a glass tube - bright at the top edge, darkest a little above the middle, brightening again toward the bottom - with the fine vertical texture the original had, replacing the diagonal candy stripe. The empty part of the bar is the right grey now too. Same change appears on the black player and in the desktop tray."
+  },
+  {
+    "version": "1.270.0",
+    "date": "2026-09-04",
+    "title": "Brick",
+    "intent": "The iPod's old hidden game is on the Pocket Classic players. Open the sticker menu and pick Brick: spin the wheel to move the paddle, press the middle button to launch, press MENU to come back. Your music keeps playing the whole time, and the wheel ticks under your thumb as you play."
   }
 ]

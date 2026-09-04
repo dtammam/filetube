@@ -93,6 +93,50 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.270.0 - Brick (2026-09-04)
+
+Dean: "add the iPod brickbreaker game to the classic pocket theme(s)... keep
+extremely small and modular... almost a little easter egg." Written rather than
+vendored, and that was the smaller path: every clone found takes mouse/keyboard
+input and paints a full-page canvas, so the wheel-driven paddle and the
+LCD-sized board - the only parts that make it ours - would have been rewritten
+anyway, leaving ~40 lines of physics in exchange for a licence to carry.
+
+ONE new file nothing imports, plus ONE generic engine seam: setWheelTakeover
+({onRotate, onSelect, onExit}). While set it consumes rotation AFTER the haptic
+tick fires (so a takeover gets the wheel and its ticks free) and MENU/Select
+route to it. The engine never references the game, its file, or the word canvas -
+tests bind exactly that. The row is gated by the VIEW (Pocket Classic and Black
+only; Seattle Classic excluded, its pad being half the usable ring - #207).
+Haptics disclosed honestly up front: ticks come from OS switch-tracking of a real
+finger, so they fire while spinning the paddle, never on brick impact.
+
+THE GATE (slim, 3 rounds) CAUGHT TWO CRITICALS, and the first means the feature
+as first written was INERT ON DEVICE:
+- The overlay's containing block was the full-screen player, not the LCD, because
+  neither .ip-lcd nor .ip-lcd-in was positioned (contain:size does NOT establish
+  one). The game covered the whole screen, painted over the wheel, and ate every
+  tap: unplayable AND un-exitable except by reload. I asserted the geometry
+  instead of measuring it; jsdom has no layout, so nothing could have caught it.
+- paint() replaces the panel wholesale on every track change, chapter roll, skin
+  pick and dock - orphaning the canvas while its animation loop ran on and the
+  takeover pointer went stale, killing the wheel until reload and compounding per
+  mount. Fixed STRUCTURALLY: releaseWheelTakeover() is called by paint(),
+  destroy() AND the MENU exit, so the seam that destroys owns the release.
+Then, in the fix rounds: the pointer-events:none belt I added exposed the seek bar
+and track rows to taps through the game (reverted; an opaque layer should block),
+and the geometry fix was itself unbound - a GEOMETRY LOCK now parses every
+containing-block-establishing rule, mounts the overlay where the ENGINE says, and
+asserts the nearest block is the LCD with the wheel outside it. My first version
+of that lock still passed when the bug returned by another route.
+
+DISCLOSED: #214 (the view-side wiring - onTap/onExit/keydown/the takeover clear -
+is unbound end to end; needs one integration test, not more source locks) and
+#213 (distance-based source locks, two of which this insertion tripped).
+
+Dual-Node: v22.23.1 8306/8306 pass, 0 fail, 0 skipped; v24.14.0 8306/8306, 0 fail,
+0 skipped. DEVICE-PENDING Dean's pass.
+
 ### v1.269.0 - The progress bar, rebuilt from the real thing (2026-09-04)
 
 Dean: "the aqua theme on that bar for the pocket classics doesn't feel right...
