@@ -8613,6 +8613,45 @@ app.post('/api/music/resume', (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- v1.265: cross-device preference sync -----------------------------------
+// The SYNCED allowlist (exec plan docs/exec-plans/active/cross-device-sync.md,
+// MACHINE-DERIVED, 22 keys). The server is the enforcement point: unknown keys
+// are rejected PER-ITEM (a junk key cannot poison a batch), values are capped,
+// and last-write-wins lives in the store's upsert WHERE guard. The client's
+// twin list is in public/js/prefs-sync.js; a lock test binds both to the plan.
+const SYNCED_PREF_KEYS = new Set([
+  'theme', 'ft-era', 'ft-mode', 'ft-modern-mode', 'ft-icons',
+  'filetube_sort', 'filetube_modern_sort', 'filetube_modern_chip',
+  'ft-star-ratings', 'ft-ambient', 'ft-ambient-intensity',
+  'ft-critters:on', 'ft-critters:density', 'ft-critters:size', 'ft-critters:kiss', 'ft-critters:randomsound',
+  'ft-music-skin', 'ft-music-autoplay',
+  'ft-home-feed', 'ft-home-continue-listening', 'ft-home-continue-podcasts', 'ft-tv-continue-watching',
+]);
+const PREF_VALUE_MAX_BYTES = 512; // every real value is a short token; a data-URI does not belong here
+
+app.get('/api/prefs', (req, res) => {
+  res.json({ prefs: userStore.getPrefs(req.user.id) });
+});
+
+app.post('/api/prefs', (req, res) => {
+  const body = req.body || {};
+  const raw = Array.isArray(body.entries) ? body.entries : [];
+  const entries = []; const rejected = [];
+  for (const e of raw.slice(0, 64)) { // batch cap: the allowlist is 22 keys
+    const key = e && typeof e.key === 'string' ? e.key : '';
+    const value = e && typeof e.value === 'string' ? e.value : null;
+    const updatedAt = e ? Number(e.updatedAt) : NaN;
+    if (!SYNCED_PREF_KEYS.has(key) || value === null || !Number.isFinite(updatedAt)
+      || Buffer.byteLength(value, 'utf8') > PREF_VALUE_MAX_BYTES) {
+      if (key) rejected.push(key);
+      continue;
+    }
+    entries.push({ key, value, updatedAt });
+  }
+  const { applied, skipped } = userStore.setPrefsLWW(req.user.id, entries);
+  res.json({ applied, skipped, rejected });
+});
+
 // Per-track progress ping -> staged into the music coalescer (no disk I/O on
 // the request path). Static 'progress' segment declared BEFORE /api/music/:id.
 app.post('/api/music/progress', (req, res) => {
