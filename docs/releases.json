@@ -2788,5 +2788,11 @@
     "date": "2026-09-04",
     "title": "The music note button says what it does",
     "intent": "The little music note on a channel's page always did something real - it decides whether that channel's songs appear in your Music library - but it only explained itself in a hover tooltip, which phones do not have, and its wording sounded like it might delete files. It now says plainly whether the channel is showing or hidden and what tapping will do, and a hidden channel's note is struck through so a tap visibly changes something right where you tapped. Nothing about what it does has changed."
+  },
+  {
+    "version": "1.269.0",
+    "date": "2026-09-04",
+    "title": "The progress bar, rebuilt from the real thing",
+    "intent": "The blue progress bar on the Pocket Classic players never quite looked right, so it was rebuilt from an actual reference image instead of from memory: the fill is now lit like a glass tube - bright at the top edge, darkest a little above the middle, brightening again toward the bottom - with the fine vertical texture the original had, replacing the diagonal candy stripe. The empty part of the bar is the right grey now too. Same change appears on the black player and in the desktop tray."
   }
 ]
