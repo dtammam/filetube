@@ -93,6 +93,56 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.269.0 - The progress bar, rebuilt from the real thing (2026-09-04)
+
+Dean: "the aqua theme on that bar for the pocket classics doesn't feel right...
+it's almost like an audio waveform." Web research first (Aqua had TWO progress
+bars: the diagonal candy stripe we shipped was the INDETERMINATE barber pole -
+the wrong control's costume; the determinate bar was a "blue pulsing bar"), then
+he sent a reference image, which changed the answer entirely. So I stopped
+styling and sampled it, published the crop at 1x/4x BESIDE recreations so he
+judged mine against his rather than against my prose, and he picked "A".
+
+THREE things were structurally wrong, none of them the shade of blue: the
+lighting is a glass TUBE (bright top edge, darkest ~46%, brightening to the base)
+where ours was a gel lozenge; the texture is a fine VERTICAL striation where ours
+was a 135deg diagonal; and the empty track is a flat neutral, not a white-to-grey
+gradient with a blue groove. Shared fill, so it lands on silver iPod, black iPod
+and the tray; Seattle Classic keeps its magenta (order-lock verified).
+
+THE GATE (slim, 3 rounds, APPROVE) was the most valuable of the day:
+- It ATTACKED THE MEASUREMENT, which is what I asked it to. The striation is
+  REAL: 7.12px period, sigma 4.88 against flat controls at 0.54, 0.79 row-to-row
+  coherence over 9 rows. Compression ringing cannot produce that.
+- W1: my source lock's wildcards swallowed the gradient's AXIS and the
+  striation's PERIOD, so `linear-gradient(0deg, ...)` - which flips the tube back
+  into the gel lozenge, verbatim the regression my commit claimed the lock caught
+  - passed. Four survivors, all now dead.
+- W3: `--mms-aqua-groove-shadow` was unregistered AND this wave changed its value;
+  with the track now flat, its 1px ring is the ONLY thing delineating the empty
+  track, yet deleting it left the suite green. Registered. Tech-debt #201 CLOSED
+  (it named four tokens this wave deleted).
+- HONESTY, and the code stands but the story did not: the reference is a product
+  MOCKUP, not a photo of a real iPod (no sensor noise; a blue Classic body Apple
+  never shipped; times saying 73% elapsed over a 66%-filled bar). "Ten stops off
+  the vertical slice" was nine pixels from ONE column plus `--mms-aqua-t1`, which
+  exists nowhere in the source - it is a Lanczos overshoot from my own 4x upscale,
+  measured back out and shipped as data. The flat track is one pixel of a track
+  that is not flat, and by mean level it is FARTHER from the reference than the
+  gradient it replaced. All now labelled in the source as a design pick informed
+  by measurement, and tracked (#209).
+
+DISCLOSED: #209 (the track), #210 (the striation is a fixed 7px, so the phone
+shows ~35 cycles against the reference's ~27 - Dean's probe decides), #211 and
+#212 (load-sensitive flakes; #212 carries an UNPROVEN hypothesis that v1.266's
+busy timeout is implicated, with the experiment to run written down).
+
+Dual-Node: v22.23.1 8294/8294 pass, 0 fail, 0 skipped. Node v24.14.0 FIRST RUN
+RED - 8294 tests, 8292 pass, 2 fail: books-api T6 progress-ping coalescing, a
+file this CSS-only wave does not touch; it passed 3/3 in isolation on the same
+Node. Re-run clean 8294/8294, 0 fail, 0 skipped. Reported verbatim per the
+contract.
+
 ### v1.268.0 - The music note button says what it does (2026-09-04)
 
 Dean asked whether the blue music note in the folders view is vestigial and, if so,

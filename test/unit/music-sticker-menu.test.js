@@ -338,15 +338,45 @@ test('v1.255 parity: the rows carry the watch-matching GLYPHS (rendered, not jus
   });
 });
 
-test('v1.255 source-lock: the wheel scrubber wears the AQUA glass (hard mid cut + edge shadows), not the flat blue ramp', () => {
-  // Dean: "the blue line that shows progress should probably have an old school macOS
-  // aqua style graphic... instead of flat blue." Lock the recipe's load-bearing parts:
-  // the 48/52 hard cut with the bottom glow on the fill, and the groove's inner shadow
-  // (without it the fill sits ON the track, not IN it). All stops are var() tokens -
-  // the census idiom this file's own iPod body gloss established.
+test('v1.269 source-lock: the wheel scrubber wears the MEASURED tube (vertical striation, darkest at 46%, lighter base), not the flat blue ramp', () => {
+  // Dean v1.255: "the blue line that shows progress should probably have an old
+  // school macOS aqua style graphic... instead of flat blue." Then v1.269, from a
+  // reference image: "it's almost like an audio waveform." Lock the recipe's
+  // load-bearing parts as they stand NOW - the 7px VERTICAL striation and the
+  // glass-tube ramp (darkest at 46%, base lighter) on the fill, and the groove's
+  // inner shadow, without which the fill sits ON the track rather than IN it. The
+  // v1.255-v1.260 recipe this sentence used to describe - a 48/52 hard cut with a
+  // bottom glow under a 135deg candy stripe - is GONE; that was Aqua's
+  // indeterminate barber pole, the wrong control's costume. All stops are var()
+  // tokens, the census idiom this file's own iPod body gloss established.
   const fs = require('node:fs'); const path = require('node:path');
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /\.mms-ipod \.mms-fill\{ background:repeating-linear-gradient\(135deg, var\(--mms-aqua-rib\) 0, var\(--mms-aqua-rib\) 5px, var\(--mms-aqua-rib-0\) 5px, var\(--mms-aqua-rib-0\) 10px\), linear-gradient\(var\(--mms-aqua-top\), var\(--mms-aqua-upper\) 48%, var\(--mms-aqua-lower\) 52%, var\(--mms-aqua-lower\) 80%, var\(--mms-aqua-glow\)\); box-shadow:var\(--mms-aqua-fill-shadow\); \}/, 'the Aqua fill: the iconic diagonal ribbing OVER the glass ramp (v1.260), hard mid cut, bottom glow, edge shadows');
+  // v1.269 slim W1: the previous regex used [^}]* between the striation head and
+  // the 46% stop, which swallowed BOTH the second gradient's axis and the
+  // striation's period - so `linear-gradient(0deg, ...)` (the lighting INVERTED,
+  // i.e. the gel lozenge this wave replaced) passed, as did a 40px period. The
+  // whole declaration is pinned now; the wildcard only spans the middle stops.
+  assert.match(css, /\.mms-ipod \.mms-fill\{ background:repeating-linear-gradient\(90deg, var\(--mms-aqua-striate\) 0 1px, var\(--mms-aqua-striate-0\) 1px 3px, var\(--mms-aqua-striate-d\) 3px 4px, var\(--mms-aqua-striate-0\) 4px 7px\), linear-gradient\(var\(--mms-aqua-t0\) 0%,[^)]*\) 12%,[^)]*\) 24%,[^)]*\) 38%, var\(--mms-aqua-t4\) 46%,[^)]*\) 56%,[^)]*\) 66%,[^)]*\) 76%,[^)]*\) 86%, var\(--mms-aqua-t9\) 100%\); box-shadow:var\(--mms-aqua-fill-shadow\); \}/, 'the MEASURED fill (v1.269): a 7px VERTICAL striation (90deg) over a top-to-bottom ramp with NO axis argument - an explicit 0deg/90deg on the second gradient inverts or rotates the tube and must red; all ten stop POSITIONS pinned so the measured shape cannot be thinned out');
   assert.match(css, /\.mms-ipod \.ip-track\{[^}]*box-shadow:var\(--mms-aqua-groove-shadow\)/, 'the groove has the Aqua inner shadow');
-  assert.match(css, /--mms-aqua-fill-shadow:inset 0 1px 0 rgba\(255,255,255,\.9\), inset 0 -1px 2px/, 'top highlight + bottom shade tokens defined');
+  assert.match(css, /--mms-aqua-fill-shadow:inset 0 1px 0 rgba\(255,255,255,\.6\);/, 'a single soft top highlight - the measured bar has no dark bottom edge');
+  assert.match(css, /\.mms-ipod \.ip-track\{[^}]*background:var\(--mms-aqua-track\);/, 'the empty track is the measured flat neutral (a COOL grey - R is its lowest channel), not the old white-to-grey gradient');
+  // the tube's shape is the finding, so bind its DIRECTION: the darkest stop must sit
+  // in the upper-middle and the base must be LIGHTER than it (a gel lozenge inverts this).
+  // slim S2: presence was decorative (the token contract already pins both values).
+  // Bind the SHAPE instead - the tube's darkest point sits above its base, which is
+  // exactly what a gel lozenge inverts.
+  // slim D1: strip comments ONCE at read (v1.50/v1.77/v1.133). Reading the raw
+  // sheet and taking the FIRST match meant a purely explanatory comment naming a
+  // token could red this - a false RED, so fail-safe, but it would accuse a
+  // docs-only commit of inverting the tube. This wave itself just added a 20-line
+  // comment block that names --mms-aqua-t1.
+  const cssNC = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const hex = (name) => {
+    const m = new RegExp('--mms-aqua-' + name + ':#([0-9a-f]{6})').exec(cssNC);
+    assert.ok(m, `--mms-aqua-${name} is defined`);
+    const n = parseInt(m[1], 16);
+    return 0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255);
+  };
+  assert.ok(hex('t4') < hex('t9'), 'the 46% stop is DARKER than the base - a glass tube, not a gel lozenge (invert these and this reds)');
+  assert.ok(hex('t0') > hex('t4'), 'and the top edge is lighter than it');
 });
