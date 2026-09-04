@@ -94,8 +94,11 @@
         // Adversarial W-B: a resolved 5xx (a proxy mid-redeploy) dropped the
         // batch FOREVER - the local value keeps its newer stamp so no boot
         // ever re-pushes it, and equality suppression blocks a same-value
-        // re-mirror. Non-ok = un-acked, same restore arm as a network failure.
-        if (!res || !res.ok) restorePending();
+        // re-mirror. 5xx/absent = un-acked, same restore arm as a network
+        // failure. A 4xx is a DETERMINISTIC rejection (e.g. 403 on a READONLY
+        // instance) - retrying it forever is a 1 Hz audit-log flood (the
+        // seat's own-prescription catch); it drops once, like pre-W-B.
+        if (!res || res.status >= 500) restorePending();
       }).catch(restorePending);
       function restorePending() {
         // QA S1 (the v1.254 dropped-flight cousin): an un-acked batch goes BACK

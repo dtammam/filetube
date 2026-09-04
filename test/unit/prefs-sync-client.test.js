@@ -313,3 +313,22 @@ test('adversarial W-B: a resolved 5xx is UN-ACKED - the batch restores and retri
   const posts = calls.filter((c) => c.opts && c.opts.method === 'POST');
   assert.equal(posts.length, 2, 'the 5xx batch retried (before the fix it was dropped FOREVER - the seat\'s permanent-divergence scenario)');
 });
+
+
+test('adversarial delta: a deterministic 4xx drops ONCE (no 1 Hz retry flood on a READONLY instance) while 5xx still retries', async () => {
+  const calls = [];
+  const b = boot({
+    fetchImpl(url, opts) {
+      calls.push({ url, opts });
+      if (!opts || !opts.method) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ prefs: {} }) });
+      return Promise.resolve({ ok: false, status: 403, json: () => Promise.resolve({}) });
+    },
+  });
+  await settle();
+  b.ls.setItem('ft-era', '2009');
+  b.fireTimers(); await settle(); // POST #1 -> 403 -> dropped, NOT restored
+  b.fireTimers(); await settle();
+  b.fireTimers(); await settle();
+  const posts = calls.filter((c) => c.opts && c.opts.method === 'POST');
+  assert.equal(posts.length, 1, 'a 403 is a deterministic rejection - one POST, no retry loop (flip the >=500 to !ok and this reds)');
+});
