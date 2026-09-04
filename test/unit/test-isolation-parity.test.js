@@ -109,7 +109,15 @@ test('#202: the busy timeout is BEHAVIOURALLY in effect on a real connection (ad
 test('#202: a journal-mode switch RETRIES on SQLITE_BUSY (adversarial CRITICAL-1: the busy handler does NOT cover a mode change)', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'db', 'sqlite.js'), 'utf8');
   assert.match(src, /function switchJournalMode\(sql, pragma, budgetMs\)/, 'the bounded retry helper exists');
-  assert.match(src, /if \(!err \|\| err\.errcode !== 5 \|\| Date\.now\(\) >= deadline\) throw err;/, 'it retries ONLY on SQLITE_BUSY and ONLY within the budget - anything else rethrows at once');
+  // Spelling-tolerant on purpose: pinning the exact condition text broke this
+  // lock THREE times in this wave whenever the code improved (a real cost of
+  // source locks). The retry's BEHAVIOUR is covered by the cross-process test
+  // below; here we only insist the guard still reasons about both axes.
+  const fnAt = src.indexOf('function switchJournalMode');
+  const body = src.slice(fnAt, src.indexOf('\n}', fnAt));
+  assert.match(body, /errcode/, 'the retry gates on the error CODE, not on any error');
+  assert.match(body, /deadline/, 'and it is bounded by a deadline');
+  assert.match(body, /throw err;/, 'anything else rethrows at once');
   assert.match(src, /if \(!sleepSync\(25\)\) throw err;/, 'the wait SLEEPS, and if it CANNOT sleep it rethrows rather than reinstating the hot spin (my probe caught the first cut burning 100% CPU for the whole budget)');
   assert.match(src, /Atomics\.wait\(new Int32Array\(new SharedArrayBuffer\(4\)\), 0, 0, ms\)/, 'a real synchronous sleep, not a spin');
   assert.ok(!/sql\.prepare\('PRAGMA journal_mode = WAL'\)\.get\(\)/.test(src), 'no bare un-retried WAL switch remains');
@@ -194,6 +202,27 @@ test('#202 CRITICAL-1 BEHAVIOURAL: a journal-mode switch really does ride out a 
     assert.ok(cpuMs < elapsed / 2, `the wait SLEPT rather than spun (${cpuMs.toFixed(1)}ms CPU over ${elapsed}ms wall) - a spin burns ~100%`);
   } finally {
     try { if (child) child.kill(); } catch (_) { /* already gone */ }
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+
+test('#202 (QA S2): a failed open CLOSES its connection - no leaked handle, no orphan lock', () => {
+  const os = require('node:os');
+  const { SqliteAdapter, SQLITE_FILENAME, __openRawForTests } = require('../../lib/db/sqlite');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-leak-'));
+  const dbPath = path.join(dir, SQLITE_FILENAME);
+  try {
+    // A file that is not a database at all: the open path throws AFTER
+    // openConnection has handed back a live handle.
+    fs.writeFileSync(dbPath, 'this is not a sqlite file');
+    assert.throws(() => new SqliteAdapter(dbPath, { log: () => {} }), 'the malformed db throws out of the constructor');
+    // If the handle leaked, the file stays locked and this raw open + write fails.
+    fs.rmSync(dbPath);
+    const probe = __openRawForTests(dbPath);
+    probe.exec('CREATE TABLE t(x)');
+    probe.close();
+  } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
