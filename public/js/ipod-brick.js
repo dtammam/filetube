@@ -49,7 +49,7 @@
     }
     resize();
 
-    var state = 'ready'; // ready | playing | over | won
+    var state = 'ready'; // ready | playing | over
     var lives = LIVES, score = 0, level = 1;
     var padX = 0.5;                 // centre, 0..1
     var ball = null;
@@ -68,7 +68,7 @@
 
     // ---- wheel input: the ONLY thing the engine feeds us ----
     function onRotate(deg) {
-      if (state === 'over' || state === 'won') return;
+      if (state === 'over') return;
       padX += (deg / DEG_PER_BOARD);
       if (padX < PADDLE_W / 2) padX = PADDLE_W / 2;
       if (padX > 1 - PADDLE_W / 2) padX = 1 - PADDLE_W / 2;
@@ -76,7 +76,7 @@
     }
     function select() {
       if (state === 'ready') { state = 'playing'; return true; }
-      if (state === 'over' || state === 'won') {
+      if (state === 'over') {
         lives = LIVES; score = 0; level = 1; layout(); resetBall(); state = 'ready'; return true;
       }
       return false;
@@ -152,7 +152,7 @@
       for (var k = 0; k < lives; k++) lt += '●';
       ctx.fillText(lt, W - 6 - ctx.measureText(lt).width, Math.round(0.07 * H));
       if (state !== 'playing') {
-        var msg = state === 'over' ? 'GAME OVER - Select' : (state === 'won' ? 'Select' : 'Select to launch');
+        var msg = state === 'over' ? 'GAME OVER - Select' : 'Select to launch';
         ctx.font = '600 ' + Math.round(Math.max(9, 0.06 * H)) + 'px ui-sans-serif, system-ui, sans-serif';
         var tw = ctx.measureText(msg).width;
         ctx.fillText(msg, (W - tw) / 2, 0.55 * H);
@@ -161,7 +161,11 @@
 
     var raf = 0, last = 0, dead = false;
     function loop(t) {
-      if (dead) return;
+      // The panel's repaint replaces innerHTML wholesale, which detaches us without
+      // any event firing - so the loop asks whether it is still in the document
+      // rather than waiting to be told (the v1.203 isConnected lesson). Belt to the
+      // engine's braces: it now releases the takeover before repainting.
+      if (dead || !wrap.isConnected) { dead = true; return; }
       if (!last) last = t;
       var dt = Math.min(0.05, (t - last) / 1000); last = t;
       step(dt); paint();

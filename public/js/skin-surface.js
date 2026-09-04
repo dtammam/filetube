@@ -239,7 +239,11 @@
       // music.js owns "which skins have a wheel to play it with", so this stays a dumb
       // row like every other. Its whole coupling to the game is one dispatch below.
       var brickRow = '';
-      if (stickerCfg.brick && typeof stickerCfg.brick.visible === 'function') {
+      // slim W4: main-document ONLY, the watchBack posture. startBrick needs the IN-TAB
+      // engine, which only exists at mobile widths - so in the pop-out and the tray the
+      // row rendered and did nothing, and a narrow-then-widened session could mount the
+      // game into the hidden in-tab panel, taking that wheel over invisibly.
+      if (inMainDoc && stickerCfg.brick && typeof stickerCfg.brick.visible === 'function') {
         var brOn = false;
         try { brOn = !!stickerCfg.brick.visible(); } catch (_) { brOn = false; }
         if (brOn) brickRow = '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-brick><span class="mms-sm-lbl"><i class="icon-play"></i>Brick</span><span class="mms-sm-state">&rsaquo;</span></button></div>';
@@ -631,7 +635,7 @@
         return true;
       }
       // v1.270: hand off to the view's Brick hook and close - the engine never learns
-      // what mounts. (The game subscribes to rotation through setRotationSink itself.)
+      // what mounts. (music.js hands the game's onRotate to setWheelTakeover; nothing subscribes itself.)
       if (e.target.closest('[data-skin-brick]')) {
         closeStickerMenu();
         if (stickerCfg.brick && typeof stickerCfg.brick.onTap === 'function') { try { stickerCfg.brick.onTap(); } catch (_) { /* view best-effort */ } }
@@ -719,7 +723,22 @@
     }
 
     // ---- render the chosen skin into the panel from the view's ctx ----
+    // v1.270 (slim CRITICAL-2): anything that BLOWS AWAY the panel must first release
+    // whatever was mounted inside it. paint() replaces innerHTML wholesale - and it runs
+    // on every track change, every chapter roll, the skin picker and the dock - so a
+    // takeover mounted in the LCD was silently orphaned while its rAF loop kept running
+    // and this pointer stayed set, leaving the wheel dead until reload. Structural, not
+    // event-driven (the v1.256 paused-dock lesson): the seam that destroys owns the
+    // release, so one line covers every path including ones added later.
+    function releaseWheelTakeover() {
+      if (!wheelTakeover) return;
+      var t = wheelTakeover;
+      wheelTakeover = null;
+      if (typeof t.onExit === 'function') { try { t.onExit(); } catch (_) { /* a dying takeover must not block the repaint */ } }
+    }
+
     function paint() {
+      releaseWheelTakeover();
       var id = getSkinId();
       var base = (typeof SKINS.skinById === 'function' && (SKINS.skinById(id) || {}).base) || '';
       panel.className = 'music-nowplaying-panel mms mms-full mms-' + id + (base ? ' mms-' + base : '');
@@ -774,10 +793,11 @@
       // because menu-returns-to-origin.test.js matches data-skin-menu -> onDock
       // within 220 chars; a comment inside the body blows that window.
       if (e.target.closest('[data-skin-menu]')) {
-        if (wheelTakeover) {
-          if (typeof wheelTakeover.onExit === 'function') { try { wheelTakeover.onExit(); } catch (_) { /* best effort */ } }
-          return;
-        }
+        // Through the SAME release as paint()/destroy(), so the pointer is nulled by
+        // the engine rather than depending on the view remembering to clear it (the
+        // seat's m9: deleting music's setWheelTakeover(null) left a stale pointer and
+        // a dead wheel). One owner for one invariant.
+        if (wheelTakeover) { releaseWheelTakeover(); return; }
         if (panel.classList.contains('mms-listmode')) { setListMode(false); }
         else { onDock(); }
         return;
@@ -825,7 +845,7 @@
     var HAPTIC_MIN_MS = 30;     // the Taptic engine's saturation floor - excess ticks DROP
     var wheelGhost = null;
     var bodyScrollLock = null;
-    var wheelTakeover = null; // v1.270: see the dispatches in MENU, Select and the move handler  // {y} while the haptic skin owns the body
+    var wheelTakeover = null; // v1.270: see the dispatches in MENU, Select and the move handler
     function hapticCapable() {
       try {
         var probe = doc.createElement('input');
@@ -1117,6 +1137,7 @@
     function nowMs() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
 
     function destroy() {
+      releaseWheelTakeover(); // v1.270: the surface dying takes its takeover with it
       if (bound) {
         panel.removeEventListener('click', onClick);
         panel.removeEventListener('pointerdown', onDown);

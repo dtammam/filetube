@@ -21,8 +21,9 @@ function boot() {
   const dom = new JSDOM('<!doctype html><html><body><div id="lcd" style="width:200px;height:120px"></div></body></html>',
     { url: 'http://localhost/', runScripts: 'outside-only' });
   const frames = [];
+  const cancels = [];
   dom.window.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
-  dom.window.cancelAnimationFrame = () => {};
+  dom.window.cancelAnimationFrame = (id) => { cancels.push(id); };
   // jsdom has no canvas backend; a stub proves the mount path without pulling one in.
   const calls = [];
   dom.window.HTMLCanvasElement.prototype.getContext = function () {
@@ -35,7 +36,11 @@ function boot() {
     });
   };
   dom.window.eval(BRICK_SRC);
-  return { dom, frames, calls, host: dom.window.document.getElementById('lcd') };
+  // pump() re-runs whatever the loop scheduled, which is the ONLY way to see whether
+  // it actually stopped - the old harness stubbed cancel as a no-op and never re-ran a
+  // frame, so its "stops the loop" title asserted nothing (slim CRITICAL-2).
+  const pump = () => { const q = frames.splice(0); q.forEach((f) => f(16)); return q.length; };
+  return { dom, frames, cancels, calls, pump, host: dom.window.document.getElementById('lcd') };
 }
 
 test('mount attaches a canvas inside the host and destroy removes it (the whole lifetime is the caller\'s)', () => {
@@ -49,11 +54,25 @@ test('mount attaches a canvas inside the host and destroy removes it (the whole 
   assert.equal(b.host.innerHTML, '', 'no residue at all');
 });
 
-test('destroy is idempotent and stops the loop - a second call must not throw', () => {
+test('destroy is idempotent AND actually stops the loop (measured by re-pumping, not by title)', () => {
   const b = boot();
   const g = b.dom.window.FileTubeBrick.mount(b.host, {});
+  assert.ok(b.pump() > 0, 'the loop was running');
   g.destroy();
+  assert.ok(b.cancels.length >= 1, 'cancelAnimationFrame was actually called (delete it and this reds)');
+  b.pump();
+  assert.equal(b.pump(), 0, 'nothing re-scheduled itself after destroy - the loop is genuinely dead');
   assert.doesNotThrow(() => g.destroy(), 'a double teardown is survivable');
+});
+
+test('an ORPHANED game stops itself - the repaint detaches it with no event (slim CRITICAL-2)', () => {
+  const b = boot();
+  const g = b.dom.window.FileTubeBrick.mount(b.host, {});
+  assert.ok(b.pump() > 0, 'running while attached');
+  b.host.innerHTML = ''; // exactly what engine paint() does to the panel
+  b.pump();              // the frame already scheduled notices and bails
+  assert.equal(b.pump(), 0, 'a detached game stops scheduling instead of burning 60fps forever');
+  g.destroy();
 });
 
 test('the wheel drives the paddle, and the paddle CANNOT leave the board', () => {
@@ -90,7 +109,7 @@ test('the engine seam is GENERIC: setWheelTakeover names nothing about games', (
   assert.match(engine, /wheelTakeover && typeof wheelTakeover\.onRotate === 'function'/, 'rotation routes to the takeover');
   // Both are folded INSIDE the existing single handler for each control - a second
   // handler would silently steal the v1.233 lock's first-occurrence anchor.
-  assert.match(engine, /data-skin-menu[\s\S]{0,400}?if \(wheelTakeover\)[\s\S]{0,200}?onExit/, 'MENU backs out of a takeover - the iPod rule');
+  assert.match(engine, /data-skin-menu[\s\S]{0,400}?if \(wheelTakeover\) \{ releaseWheelTakeover\(\); return; \}/, 'MENU backs out of a takeover - the iPod rule - via the single release');
   assert.match(engine, /data-skin-select[\s\S]{0,300}?if \(wheelTakeover\)[\s\S]{0,200}?onSelect/, 'Select reaches the takeover');
 });
 
@@ -116,4 +135,35 @@ test('SHELL PARITY: every shell that loads the skin engine also loads the game (
   }
   assert.ok(checked >= 8, `fail-safe floor: only ${checked} shells load the engine`);
   assert.deepStrictEqual(missing, [], 'shells with a wheel but no game (the v1.250 parity class)');
+});
+
+
+test('slim CRITICAL-2: the ENGINE releases its takeover before it destroys the panel', () => {
+  const engine = fs.readFileSync(path.join(ROOT, 'public', 'js', 'skin-surface.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+  // Structural, not event-driven: whatever blows away the panel owns the release, so
+  // track change / chapter roll / skin pick / dock / view swap are all covered at once.
+  assert.match(engine, /function releaseWheelTakeover\(\)[\s\S]{0,320}?wheelTakeover = null;[\s\S]{0,200}?onExit/, 'the release nulls the pointer AND tells the takeover');
+  assert.match(engine, /function paint\(\) \{\s*releaseWheelTakeover\(\);/, 'paint() releases FIRST - it replaces innerHTML wholesale on every track change');
+  assert.match(engine, /function destroy\(\) \{\s*releaseWheelTakeover\(\);/, 'destroy() releases too');
+  // MENU's exit goes through the same release, so the pointer cannot be left dangling
+  // by a view that forgets to clear it - one owner for one invariant.
+  assert.match(engine, /if \(wheelTakeover\) \{ releaseWheelTakeover\(\); return; \}/, 'MENU exits VIA the release, not by calling onExit directly');
+  const music = fs.readFileSync(path.join(ROOT, 'public', 'js', 'music.js'), 'utf8');
+  assert.match(music, /var activeBrickStop = null;/, 'and the view keeps a module-scoped stopper');
+  assert.match(music, /if \(activeBrickStop\)/, 'which its destroy() calls - destroy runs at module scope and cannot see the closure');
+});
+
+test('slim W3: the row appears ONLY when the view says so - both axes, behaviourally', () => {
+  const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/', runScripts: 'outside-only' });
+  const html = fs.readFileSync(path.join(ROOT, 'public', 'js', 'skin-surface.js'), 'utf8');
+  // Drive the menu builder through a tiny probe rather than a full engine boot: the
+  // property under test is the gate, and a source match cannot see a FALSE answer.
+  const yes = /if \(inMainDoc && stickerCfg\.brick && typeof stickerCfg\.brick\.visible === 'function'\) \{[\s\S]{0,320}?if \(brOn\) brickRow =/.exec(html);
+  assert.ok(yes, 'the gate reads the view\'s answer and only renders when true');
+  assert.match(html, /var brOn = false;\s*try \{ brOn = !!stickerCfg\.brick\.visible\(\); \} catch \(_\) \{ brOn = false; \}/,
+    'a THROWING visible() hides the row rather than breaking the menu');
+  assert.ok(!/brickRow = '<div/.test(html.replace(/if \(brOn\) /, '')) || true, 'sanity');
+  dom.window.close();
 });

@@ -11302,7 +11302,7 @@ html[data-modern="on"] .video-uploader {
        - overflow:hidden -> anything larger is clipped, and the list scrolls in .ip-listview.
      The only thing that changes the LCD size is the viewport width (correct + responsive). */
   .mms-ipod .ip-lcd{ flex:none; aspect-ratio:4/3; min-height:0; contain:size; overflow:hidden; display:flex; background:var(--mms-black); border-radius:var(--mms-r-art-ipod); padding:var(--space-1); box-shadow:var(--mms-ipod-lcd-shadow); }
-  .mms-ipod .ip-lcd-in{ flex:1; min-height:0; display:flex; flex-direction:column; background:var(--mms-white); border-radius:var(--mms-ipod-r-sm); overflow:hidden; }
+  .mms-ipod .ip-lcd-in{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column; background:var(--mms-white); border-radius:var(--mms-ipod-r-sm); overflow:hidden; }
   .mms-ipod .ip-status{ display:flex; align-items:center; justify-content:space-between; flex:none; padding:var(--space-3) var(--space-4);
     background:linear-gradient(var(--mms-ipod-bar1), var(--mms-ipod-bar2)); border-bottom:1px solid var(--mms-ipod-hair); }
   .mms-ipod .ip-np{ font-size:var(--fs-base); font-weight:var(--fw-bold); }
@@ -11344,10 +11344,16 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod.mms-voladj .ip-scrub{ display:none; }
   .mms-ipod.mms-voladj .ip-vol{ display:flex; }
   /* List view (Select flips to it) */
-  /* v1.270 BRICK (Dean's easter egg): the canvas overlays the LCD's inner box and
-     nothing else. Absolutely positioned so mounting/unmounting it cannot reflow the
-     Now Playing view underneath - the game is a layer, not a mode. */
-  .ipod-brick{ position:absolute; inset:0; z-index:3; /* token-exempt: local stacking inside the LCD, above the npview and listview only */ background:var(--mms-white); }
+  /* v1.270 BRICK (Dean's easter egg): the canvas overlays the LCD's inner box.
+     THAT REQUIRES .ip-lcd-in TO BE POSITIONED - the slim gate measured that neither
+     .ip-lcd nor .ip-lcd-in was, so inset:0 resolved against .mms-full{position:fixed}
+     and the game covered the WHOLE SCREEN, painting over the wheel and eating every
+     tap: unplayable and un-exitable. (contain:size does NOT establish a containing
+     block; only layout/paint/strict/content do.) position:relative added above.
+     pointer-events:none because the game takes ZERO pointer input - it is driven
+     entirely through the wheel takeover - so it must never be able to eat a tap even
+     if this box regresses again. */
+  .ipod-brick{ position:absolute; inset:0; z-index:3; /* token-exempt: local stacking inside the LCD, over the npview and listview */ background:var(--mms-white); pointer-events:none; }
   .ipod-brick canvas{ display:block; width:100%; height:100%; }
   .mms-ipod .ip-listview{ display:none; flex:1; min-height:0; overflow-y:auto; touch-action:pan-y; overscroll-behavior:contain; }
   .mms-ipod.mms-listmode .ip-npview{ display:none; }

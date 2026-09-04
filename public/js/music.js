@@ -566,6 +566,10 @@ if (typeof module !== 'undefined' && module.exports) {
   // destroy() can unbind it on the #view-root swap - the engine binds its own listeners
   // (not view-signal-scoped), so controller.abort() alone would leak them on the panel.
   var activeInTabEngine = null;
+  // v1.270 (slim CRITICAL-2): the module-scoped bridge to the Brick teardown, mirroring
+  // activeInTabEngine above - destroy() runs at module scope and cannot see the init
+  // closure where stopBrick lives. Belt to the engine's structural release.
+  var activeBrickStop = null;
   var SORT_KEY = 'filetube_music_sort';
   var TAB_KEY = 'filetube_music_tab';
   // Friction pass: the Artists view mode - 'grid' (circles) or 'list' (compact
@@ -778,6 +782,7 @@ if (typeof module !== 'undefined' && module.exports) {
       try { if (inTabEngine && typeof inTabEngine.setWheelTakeover === 'function') inTabEngine.setWheelTakeover(null); } catch (_) { /* engine gone */ }
       try { brickGame.destroy(); } catch (_) { /* already torn down */ }
       brickGame = null;
+      activeBrickStop = null;
       try { document.removeEventListener('keydown', brickKeys, true); } catch (_) { /* ignore */ }
     }
     function brickKeys(e) {
@@ -791,6 +796,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!host) return;
       brickGame = window.FileTubeBrick.mount(host, {});
       if (!brickGame) return;
+      activeBrickStop = stopBrick;
       if (typeof inTabEngine.setWheelTakeover === 'function') {
         inTabEngine.setWheelTakeover({
           onRotate: brickGame.onRotate,
@@ -2412,6 +2418,8 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function destroy() {
+
+    if (activeBrickStop) { try { activeBrickStop(); } catch (_) { /* best effort */ } } // v1.270: the view dying first
     if (controller) controller.abort();
     controller = null;
     // v1.227 (gate CRITICAL): the mobile-skin body class must NOT survive the
