@@ -752,9 +752,55 @@ if (typeof module !== 'undefined' && module.exports) {
             enabled: autoplayEnabled,
             onToggle: function () { setAutoplayEnabled(!autoplayEnabled()); },
           },
+          // v1.270 BRICK (Dean: "almost a little easter egg"). The VIEW owns the
+          // question the engine must not: which skins have a wheel to play it with.
+          // Pocket Classic only - Seattle Classic shares the wheel chassis but its
+          // pad is half the usable ring (#207), and the flat skins have no wheel.
+          brick: {
+            visible: function () {
+              if (!window.FileTubeBrick) return false;
+              var sk = window.FileTubeMusicSkins;
+              var id = (sk && typeof sk.activeSkinId === 'function') ? sk.activeSkinId() : '';
+              return id === 'ipod' || id === 'ipod-black';
+            },
+            onTap: function () { startBrick(); },
+          },
         },
       };
     }
+    // ---- v1.270 BRICK: the whole of the view's side of the easter egg ----
+    // Mounts a canvas over the in-tab skin's LCD, points the engine's rotation
+    // subscriber at it, and tears BOTH down on exit. Music is untouched throughout -
+    // the game is a layer over the screen, not a mode the player knows about.
+    var brickGame = null;
+    function stopBrick() {
+      if (!brickGame) return;
+      try { if (inTabEngine && typeof inTabEngine.setWheelTakeover === 'function') inTabEngine.setWheelTakeover(null); } catch (_) { /* engine gone */ }
+      try { brickGame.destroy(); } catch (_) { /* already torn down */ }
+      brickGame = null;
+      try { document.removeEventListener('keydown', brickKeys, true); } catch (_) { /* ignore */ }
+    }
+    function brickKeys(e) {
+      if (!brickGame) return;
+      if (e.key === 'Escape') { e.preventDefault(); stopBrick(); }
+    }
+    function startBrick() {
+      if (brickGame) { stopBrick(); return; } // the row toggles
+      if (!window.FileTubeBrick || !inTabEngine || typeof inTabEngine.lcdHost !== 'function') return;
+      var host = inTabEngine.lcdHost();
+      if (!host) return;
+      brickGame = window.FileTubeBrick.mount(host, {});
+      if (!brickGame) return;
+      if (typeof inTabEngine.setWheelTakeover === 'function') {
+        inTabEngine.setWheelTakeover({
+          onRotate: brickGame.onRotate,
+          onSelect: brickGame.select,   // launch the ball / restart after GAME OVER
+          onExit: stopBrick,            // MENU backs out, the iPod rule
+        });
+      }
+      try { document.addEventListener('keydown', brickKeys, true); } catch (_) { /* ignore */ }
+    }
+
     function reflectEngines() {
       if (inTabEngine) inTabEngine.reflect();
       if (popoutShell) popoutShell.reflect(); // no-ops unless the pop-out surface is live

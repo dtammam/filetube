@@ -234,6 +234,16 @@
         trayRow = '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (trOn ? ' is-on' : '') +
           '" data-skin-tray aria-checked="' + (trOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-download"></i>Tray</span><span class="mms-sm-state">' + (trOn ? 'On' : 'Off') + '</span></button></div>';
       }
+      // v1.270 BRICK (Dean's easter egg): rendered ONLY when the view supplies the hook
+      // AND says it applies. The engine deliberately does not check the skin itself -
+      // music.js owns "which skins have a wheel to play it with", so this stays a dumb
+      // row like every other. Its whole coupling to the game is one dispatch below.
+      var brickRow = '';
+      if (stickerCfg.brick && typeof stickerCfg.brick.visible === 'function') {
+        var brOn = false;
+        try { brOn = !!stickerCfg.brick.visible(); } catch (_) { brOn = false; }
+        if (brOn) brickRow = '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-brick><span class="mms-sm-lbl"><i class="icon-play"></i>Brick</span><span class="mms-sm-state">&rsaquo;</span></button></div>';
+      }
       // v1.249: the second-page entry - library-backed tracks on the in-tab surface only.
       var extras = extrasEligible()
         ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-extras><span class="mms-sm-lbl"><i class="icon-more"></i>Extras</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
@@ -243,7 +253,7 @@
         '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-refresh"></i>Loop</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
         autoplay + trayRow +
         '<div class="mms-sm-sec"><div class="mms-sm-h">' + (trayActive ? 'Color' : 'Skin') + '</div><div class="mms-sm-skins">' + chips + '</div></div>' +
-        watchBack + extras;
+        watchBack + brickRow + extras;
     }
     // Inject the sticker + its (initially hidden) menu into a freshly-painted panel. The
     // v1.240 marker keys off what stickerIconHtml ACTUALLY renders (a partial emoji pref
@@ -620,6 +630,13 @@
         refreshStickerMenu();
         return true;
       }
+      // v1.270: hand off to the view's Brick hook and close - the engine never learns
+      // what mounts. (The game subscribes to rotation through setRotationSink itself.)
+      if (e.target.closest('[data-skin-brick]')) {
+        closeStickerMenu();
+        if (stickerCfg.brick && typeof stickerCfg.brick.onTap === 'function') { try { stickerCfg.brick.onTap(); } catch (_) { /* view best-effort */ } }
+        return true;
+      }
       var pick = e.target.closest('[data-skin-pick]');
       if (pick) {
         var sid = pick.getAttribute('data-skin-pick');
@@ -749,12 +766,27 @@
       if (e.target.closest('[data-skin-next]')) { var nx = hostCtl('track-next-btn'); if (nx) nx.click(); return; }
       if (e.target.closest('[data-skin-collapse]')) { onDock(); return; }
       if (onShuffle && e.target.closest('[data-skin-shuffle]')) { onShuffle(); return; }
+      // v1.270: while a takeover holds the wheel, MENU is its way OUT (the iPod rule
+      // that MENU always backs out of wherever you are) and Select is its action
+      // button. Both are folded INSIDE the existing single handler for their control
+      // rather than added as earlier branches - a second handler silently stole the
+      // v1.233 lock's first-occurrence anchor. And this explanation lives OUT here
+      // because menu-returns-to-origin.test.js matches data-skin-menu -> onDock
+      // within 220 chars; a comment inside the body blows that window.
       if (e.target.closest('[data-skin-menu]')) {
+        if (wheelTakeover) {
+          if (typeof wheelTakeover.onExit === 'function') { try { wheelTakeover.onExit(); } catch (_) { /* best effort */ } }
+          return;
+        }
         if (panel.classList.contains('mms-listmode')) { setListMode(false); }
         else { onDock(); }
         return;
       }
       if (e.target.closest('[data-skin-select]')) {
+        if (wheelTakeover) { // v1.270: the takeover's action button
+          if (typeof wheelTakeover.onSelect === 'function') { try { wheelTakeover.onSelect(); } catch (_) { /* best effort */ } }
+          return;
+        }
         if (panel.classList.contains('mms-listmode')) {
           var cur = panel.querySelector('.ip-listview .mms-row.is-cursor');
           var cgi = cur && parseInt(cur.getAttribute('data-skin-go'), 10);
@@ -792,7 +824,8 @@
     var HAPTIC_STEP_DEG = 3.75; // v1.256.2 (Dean: 3deg "a little too hot... parity with the iPod Classic"): 96 detents/rev, the Classic's own number
     var HAPTIC_MIN_MS = 30;     // the Taptic engine's saturation floor - excess ticks DROP
     var wheelGhost = null;
-    var bodyScrollLock = null;  // {y} while the haptic skin owns the body
+    var bodyScrollLock = null;
+    var wheelTakeover = null; // v1.270: see the dispatches in MENU, Select and the move handler  // {y} while the haptic skin owns the body
     function hapticCapable() {
       try {
         var probe = doc.createElement('input');
@@ -1023,6 +1056,16 @@
         var now = nowMs(); var dt = Math.max(1, now - st.lastT); st.lastT = now;
         st.accum += d;
         hapticOnMove(st, ev, Math.abs(d)); // v1.256: ticks in BOTH modes (cursor + scrub)
+        // v1.270: ONE generic WHEEL TAKEOVER, deliberately not game-aware. While set it
+        // consumes rotation (the haptic above already fired, which is the point - a
+        // takeover gets the wheel AND its ticks for free), and MENU/Select route to it
+        // below. The Brick easter egg is the only caller today; the engine never
+        // learns what it is talking to.
+        if (wheelTakeover && typeof wheelTakeover.onRotate === 'function') {
+          st.moved = true;
+          try { wheelTakeover.onRotate(d); } catch (_) { /* a takeover must never break the wheel */ }
+          return;
+        }
         if (!st.moved && Math.hypot(ev.clientX - st.x0, ev.clientY - st.y0) > 8) {
           st.moved = true;
           // a ROTATE is a scrub/cursor, not a scan: cancel the pending hold so it never scans.
@@ -1093,6 +1136,11 @@
     return {
       paint: paint, reflect: reflect, setListMode: setListMode, destroy: destroy,
       isListMode: function () { return panel.classList.contains('mms-listmode'); },
+      // v1.270: set (or clear, with null) the single wheel takeover -
+      // {onRotate, onSelect, onExit}, all optional. Generic on purpose: the engine
+      // never learns what is listening. The caller owns its own teardown.
+      setWheelTakeover: function (t) { wheelTakeover = (t && typeof t === 'object') ? t : null; },
+      lcdHost: function () { return panel.querySelector('.ip-lcd-in') || null; },
       // v1.250 (F-UNIFY): is a wheel SCRUB gesture live on this surface right now? The view's
       // chapter-loop enforcement reads this so a deliberate scrub past a chapter boundary is
       // not yanked back mid-drag (music.js's v1.240 carried interaction).

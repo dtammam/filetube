@@ -70,7 +70,12 @@ test('the MUSIC skin docks to the origin on BOTH the collapse handle and the iPo
   assert.match(src, /onDock: dockToOrigin/, 'music supplies dockToOrigin as the engine onDock hook');
   const engine = readSrc('public/js/skin-surface.js');
   assert.match(engine, /data-skin-collapse[\s\S]{0,80}onDock\(\); return;/, 'the engine routes the grab-handle to onDock');
-  assert.match(engine, /data-skin-menu[\s\S]{0,220}else \{ onDock\(\); \}/, 'the engine routes MENU (from Now Playing, not list mode) to onDock');
+  // v1.270: window widened 220 -> 480. The GUARD's meaning is unchanged - MENU from
+  // Now Playing still routes to onDock - but a legitimate branch now sits between
+  // them (the wheel takeover's exit, so MENU backs out of Brick before it docks).
+  // The distance was always incidental to the intent; the sibling assertion above
+  // already uses 420. Verified still binding: deleting `else { onDock(); }` reds.
+  assert.match(engine, /data-skin-menu[\s\S]{0,480}else \{ onDock\(\); \}/, 'the engine routes MENU (from Now Playing, not list mode) to onDock');
 });
 
 test('the PODCAST skin docks to the origin on its onDock hook', () => {

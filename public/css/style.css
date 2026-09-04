@@ -11344,6 +11344,11 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod.mms-voladj .ip-scrub{ display:none; }
   .mms-ipod.mms-voladj .ip-vol{ display:flex; }
   /* List view (Select flips to it) */
+  /* v1.270 BRICK (Dean's easter egg): the canvas overlays the LCD's inner box and
+     nothing else. Absolutely positioned so mounting/unmounting it cannot reflow the
+     Now Playing view underneath - the game is a layer, not a mode. */
+  .ipod-brick{ position:absolute; inset:0; z-index:3; /* token-exempt: local stacking inside the LCD, above the npview and listview only */ background:var(--mms-white); }
+  .ipod-brick canvas{ display:block; width:100%; height:100%; }
   .mms-ipod .ip-listview{ display:none; flex:1; min-height:0; overflow-y:auto; touch-action:pan-y; overscroll-behavior:contain; }
   .mms-ipod.mms-listmode .ip-npview{ display:none; }
   .mms-ipod.mms-listmode .ip-listview{ display:block; }
