@@ -85,20 +85,20 @@ test('cross-user isolation, and the users(id) cascade clears prefs on delete', (
 test('FOURTEENTH-strike carrier: prefs ride the bundle, restore round-trips byte-equal, and restore DESTROYS what the bundle lacks', () => {
   const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO(0));
   store.setPrefsLWW(a.id, [
-    { key: 'theme', value: 'dark', updatedAt: 111 },
+    { key: 'ft-era', value: '2009', updatedAt: 111 },
     { key: 'ft-music-skin', value: 'zune-classic', updatedAt: 222 },
   ]);
 
   const bundle = store.exportUsersForBackup();
   assert.deepEqual(bundle[0].prefs, [
+    { key: 'ft-era', value: '2009', updatedAt: 111 },
     { key: 'ft-music-skin', value: 'zune-classic', updatedAt: 222 },
-    { key: 'theme', value: 'dark', updatedAt: 111 },
   ], 'the export carries every pref, ordered by key');
 
   // Mutate live state AFTER the export: one changed, one new.
   store.setPrefsLWW(a.id, [
-    { key: 'theme', value: 'light', updatedAt: 333 },
-    { key: 'ft-era', value: '2009', updatedAt: 444 },
+    { key: 'ft-era', value: '2013', updatedAt: 333 },
+    { key: 'ft-star-ratings', value: 'on', updatedAt: 444 },
   ]);
 
   // Restore the bundle (wipe-and-replace, inside a transaction like the route).
@@ -108,14 +108,14 @@ test('FOURTEENTH-strike carrier: prefs ride the bundle, restore round-trips byte
 
   const after = store.getPrefs(bundle[0].id);
   assert.deepEqual(after, {
+    'ft-era': { value: '2009', updatedAt: 111 },
     'ft-music-skin': { value: 'zune-classic', updatedAt: 222 },
-    theme: { value: 'dark', updatedAt: 111 },
-  }, 'bundle prefs restored byte-equal; the post-export ft-era is GONE (wipe-and-replace honesty) and theme reverted');
+  }, 'bundle prefs restored byte-equal; the post-export ft-star-ratings is GONE (wipe-and-replace honesty) and ft-era reverted');
 });
 
 test('a pre-v1.265 bundle (no prefs field) restores EMPTY prefs without error', () => {
   const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO(0));
-  store.setPrefsLWW(a.id, [{ key: 'theme', value: 'dark', updatedAt: 1 }]);
+  store.setPrefsLWW(a.id, [{ key: 'ft-era', value: '2009', updatedAt: 1 }]);
   const bundle = store.exportUsersForBackup();
   for (const u of bundle) delete u.prefs; // the old bundle shape
 
@@ -129,14 +129,34 @@ test('import tolerates malformed pref rows (junk skipped, valid kept)', () => {
   store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO(0));
   const bundle = store.exportUsersForBackup();
   bundle[0].prefs = [
-    { key: 'theme', value: 'dark', updatedAt: 5 },
+    { key: 'ft-era', value: '2009', updatedAt: 5 },
     { key: 42, value: 'x', updatedAt: 5 },            // junk key
-    { key: 'ft-era', value: null, updatedAt: 5 },      // junk value
+    { key: 'ft-mode', value: null, updatedAt: 5 },     // junk value
     { key: 'ft-icons', value: 'y', updatedAt: 'nope' }, // junk stamp
     null,
   ];
   adapter.sql.exec('BEGIN');
   store.replaceAllUsersRaw(bundle);
   adapter.sql.exec('COMMIT');
-  assert.deepEqual(store.getPrefs(bundle[0].id), { theme: { value: 'dark', updatedAt: 5 } });
+  assert.deepEqual(store.getPrefs(bundle[0].id), { 'ft-era': { value: '2009', updatedAt: 5 } });
+});
+
+
+test('adversarial W-A/W-C: the RESTORE loop enforces allowlist, byte cap, and the clock clamp (the route bypass closed)', () => {
+  store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO(0));
+  const bundle = store.exportUsersForBackup();
+  bundle[0].prefs = [
+    { key: 'utterly-junk-key', value: 'x', updatedAt: 5 },          // W-C: off-list
+    { key: 'ft-era', value: 'y'.repeat(600), updatedAt: 5 },         // W-C: over the cap
+    { key: 'ft-mode', value: 'dark', updatedAt: 9e15 },              // W-A: the 285,000-year wedge
+    { key: 'ft-icons', value: 'classic', updatedAt: 7 },             // legit
+  ];
+  const NOW = 1000000;
+  adapter.sql.exec('BEGIN');
+  store.replaceAllUsersRaw(bundle, NOW);
+  adapter.sql.exec('COMMIT');
+  const after = store.getPrefs(bundle[0].id);
+  assert.deepEqual(Object.keys(after).sort(), ['ft-icons', 'ft-mode'], 'off-list and over-cap rows never restore');
+  assert.equal(after['ft-mode'].updatedAt, NOW + 300000, 'the far-future stamp CLAMPED to now+5min - a clamped route write can out-rank it after the window');
+  assert.equal(after['ft-icons'].updatedAt, 7, 'a sane stamp restores verbatim');
 });

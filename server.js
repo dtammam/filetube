@@ -8619,15 +8619,11 @@ app.post('/api/music/resume', (req, res) => {
 // are rejected PER-ITEM (a junk key cannot poison a batch), values are capped,
 // and last-write-wins lives in the store's upsert WHERE guard. The client's
 // twin list is in public/js/prefs-sync.js; a lock test binds both to the plan.
-const SYNCED_PREF_KEYS = new Set([
-  'ft-era', 'ft-mode', 'ft-modern-mode', 'ft-icons',
-  'filetube_sort', 'filetube_modern_sort', 'filetube_modern_chip',
-  'ft-star-ratings', 'ft-ambient', 'ft-ambient-intensity',
-  'ft-critters:on', 'ft-critters:density', 'ft-critters:size', 'ft-critters:kiss', 'ft-critters:randomsound',
-  'ft-music-skin', 'ft-music-autoplay',
-  'ft-home-feed', 'ft-home-continue-listening', 'ft-home-continue-podcasts', 'ft-tv-continue-watching',
-]);
-const PREF_VALUE_MAX_BYTES = 512; // every real value is a short token; a data-URI does not belong here
+// v1.265 adversarial round: the list + caps moved to lib/prefs-allowlist.js so
+// the backup RESTORE loop (lib/auth/store.js) enforces the SAME defenses - the
+// seat measured the restore path bypassing all three (allowlist/cap/clamp).
+const { SYNCED_PREF_KEYS: SYNCED_PREF_KEY_LIST, PREF_VALUE_MAX_BYTES, PREF_CLOCK_SLACK_MS } = require('./lib/prefs-allowlist');
+const SYNCED_PREF_KEYS = new Set(SYNCED_PREF_KEY_LIST);
 
 app.get('/api/prefs', (req, res) => {
   res.json({ prefs: userStore.getPrefs(req.user.id) });
@@ -8649,7 +8645,7 @@ app.post('/api/prefs', (req, res) => {
     // QA W3: a wrong-clock device must not WEDGE a key (a far-future stamp would
     // win LWW forever and revert every other device on every refresh, with no
     // in-app recovery). Stamps are clamped to now + 5min of ordinary skew.
-    entries.push({ key, value, updatedAt: Math.min(updatedAt, Date.now() + 300000) });
+    entries.push({ key, value, updatedAt: Math.min(updatedAt, Date.now() + PREF_CLOCK_SLACK_MS) });
   }
   const { applied, skipped } = userStore.setPrefsLWW(req.user.id, entries);
   res.json({ applied, skipped, rejected });

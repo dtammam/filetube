@@ -90,8 +90,14 @@
         body: JSON.stringify({ entries: entries }),
         credentials: 'same-origin',
       }).then(function (res) {
-        if (res && res.status === 401) dormant = true;
-      }).catch(function () {
+        if (res && res.status === 401) { dormant = true; return; }
+        // Adversarial W-B: a resolved 5xx (a proxy mid-redeploy) dropped the
+        // batch FOREVER - the local value keeps its newer stamp so no boot
+        // ever re-pushes it, and equality suppression blocks a same-value
+        // re-mirror. Non-ok = un-acked, same restore arm as a network failure.
+        if (!res || !res.ok) restorePending();
+      }).catch(restorePending);
+      function restorePending() {
         // QA S1 (the v1.254 dropped-flight cousin): an un-acked batch goes BACK
         // into pending (never over a newer write to the same key) and re-arms.
         for (var i = 0; i < entries.length; i++) {
@@ -99,7 +105,7 @@
           if (!pending[e.key]) pending[e.key] = { value: e.value, updatedAt: e.updatedAt };
         }
         scheduleFlush();
-      });
+      }
     } catch (_) { /* fetch unavailable - local-only */ }
   }
 

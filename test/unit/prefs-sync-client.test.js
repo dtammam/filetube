@@ -144,16 +144,18 @@ test('the visibility leg: becoming visible refreshes', async () => {
 
 test('TRIPLE allowlist lock: the client list, the server list, and the plan are the SAME 21 keys (QA W1: the writer-less legacy theme key removed - a key nothing writes can never sync)', () => {
   const clientSrc = AGENT_SRC;
-  const serverSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'server.js'), 'utf8');
   const b = boot();
   assert.deepEqual([...b.api.SYNCED].sort(), [...PLAN_KEYS].sort(), 'client === plan');
-  for (const k of PLAN_KEYS) {
-    assert.ok(serverSrc.includes(`'${k}'`), `server allowlist carries '${k}' (drift = a key that silently never syncs)`);
-  }
-  const setMatch = serverSrc.match(/const SYNCED_PREF_KEYS = new Set\(\[([\s\S]*?)\]\);/);
-  assert.ok(setMatch, 'the server Set literal exists');
-  const serverKeys = [...setMatch[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual(serverKeys.sort(), [...PLAN_KEYS].sort(), 'server === plan (both directions - no extra server keys either)');
+  // The server-side list lives in ONE shared module since the adversarial
+  // round (the restore loop consumes it too) - bind the module itself.
+  const shared = require('../../lib/prefs-allowlist');
+  assert.deepEqual([...shared.SYNCED_PREF_KEYS].sort(), [...PLAN_KEYS].sort(), 'shared module === plan (both directions)');
+  assert.equal(shared.PREF_VALUE_MAX_BYTES, 512);
+  assert.equal(shared.PREF_CLOCK_SLACK_MS, 300000);
+  const serverSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'server.js'), 'utf8');
+  assert.ok(serverSrc.includes("require('./lib/prefs-allowlist')"), 'the routes consume the shared module');
+  const storeSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'auth', 'store.js'), 'utf8');
+  assert.ok(storeSrc.includes("require('../prefs-allowlist')"), 'the RESTORE loop consumes the shared module (adversarial W-A/W-C: every ingress, one list)');
   assert.ok(clientSrc.includes("var META_KEY = 'ft-prefs-meta'"), 'the meta key is pinned (never in any allowlist)');
   assert.ok(!PLAN_KEYS.includes('ft-prefs-meta'), 'the meta key is not a synced key');
 });
@@ -277,4 +279,37 @@ test('QA S2: a double-load is a no-op (one mirror per write, the first api objec
   const posts = b.calls.filter((c) => c.opts && c.opts.method === 'POST');
   assert.equal(posts.length, 1, 'ONE post - no double-mirror');
   assert.equal(JSON.parse(posts[0].opts.body).entries.length, 1);
+});
+
+
+test('adversarial W-D: the live re-apply\'s shape guards BIND - junk era/mode values never reach the attributes', async () => {
+  const b = boot();
+  await settle();
+  b.setNow(500000);
+  b.api.applyServer({
+    'ft-era': { value: '<img onerror=x>', updatedAt: 400000 },
+    'ft-mode': { value: 'sideways', updatedAt: 400000 },
+  });
+  assert.equal(b.ls.getItem('ft-era'), '<img onerror=x>', 'the VALUE lands in storage (next boot re-validates + heals)');
+  assert.equal(b.dom.window.document.documentElement.getAttribute('data-theme'), null, 'junk era never touches data-theme (drop the shape guard and this reds)');
+  assert.equal(b.dom.window.document.documentElement.getAttribute('data-mode'), null, 'junk mode never touches data-mode');
+});
+
+test('adversarial W-B: a resolved 5xx is UN-ACKED - the batch restores and retries like a network failure', async () => {
+  let status = 502;
+  const calls = [];
+  const b = boot({
+    fetchImpl(url, opts) {
+      calls.push({ url, opts });
+      if (!opts || !opts.method) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ prefs: {} }) });
+      const st = status; status = 200;
+      return Promise.resolve({ ok: st === 200, status: st, json: () => Promise.resolve({}) });
+    },
+  });
+  await settle();
+  b.ls.setItem('ft-era', '2009');
+  b.fireTimers(); await settle(); // POST #1 -> 502 -> restored + re-armed
+  b.fireTimers(); await settle(); // POST #2 -> 200
+  const posts = calls.filter((c) => c.opts && c.opts.method === 'POST');
+  assert.equal(posts.length, 2, 'the 5xx batch retried (before the fix it was dropped FOREVER - the seat\'s permanent-divergence scenario)');
 });
