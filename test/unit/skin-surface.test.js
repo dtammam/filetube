@@ -1307,6 +1307,43 @@ test('v1.271 slim round-2: the document end arm is pointerId-FILTERED - a second
   } finally { b.restore(); }
 });
 
+test('v1.271 slim round-2: the document end arm UNBINDS on every teardown arm - it must not accumulate one listener per gesture', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const doc = b.dom.window.document;
+    const panel = doc.querySelector('.music-nowplaying-panel');
+    // count only the document-level pointer end listeners (the ones this wave added)
+    let live = 0;
+    const add = doc.addEventListener.bind(doc), rem = doc.removeEventListener.bind(doc);
+    doc.addEventListener = function (t, fn, o) { if (t === 'pointerup' || t === 'pointercancel') live += 1; return add(t, fn, o); };
+    doc.removeEventListener = function (t, fn, o) { if (t === 'pointerup' || t === 'pointercancel') live -= 1; return rem(t, fn, o); };
+    const press = () => {
+      const w = panel.querySelector('.ip-wheel');
+      w.dispatchEvent(pointerEv(b.dom, 'pointerdown', { bubbles: true, clientX: 200, clientY: 40 }, 1));
+      return w;
+    };
+    // arm 1: a normal release on the wheel
+    const w1 = press();
+    w1.dispatchEvent(pointerEv(b.dom, 'pointerup', { bubbles: true }, 1));
+    assert.strictEqual(live, 0, 'the wheel-release arm removed both document listeners');
+    // arm 2: a release OFF the wheel (the arm this wave added)
+    press();
+    doc.body.dispatchEvent(pointerEv(b.dom, 'pointerup', { bubbles: true }, 1));
+    assert.strictEqual(live, 0, 'the document-release arm removed them too');
+    // arm 3: the view tears the panel out, and a later repaint ends the stale spin
+    press();
+    panel.innerHTML = '';
+    b.engine.paint();
+    assert.strictEqual(live, 0, 'and so does the stale-spin end inside paint()');
+    // arm 4: the surface dies mid-gesture
+    press();
+    b.engine.destroy();
+    assert.strictEqual(live, 0,
+      'and destroy() - a document listener stranded per gesture holds its whole dead gesture closure alive (the v1.163 lesson: unbind on EVERY teardown arm, not just the happy one)');
+  } finally { b.restore(); }
+});
+
 test('v1.271 slim round-2 S1: ending a STALE spin from paint() tears its fast-scan timers down - not just its identity', () => {
   const { dom, engine, restore } = bootEngine({ engineCfg: { fastScan: true } });
   try {
