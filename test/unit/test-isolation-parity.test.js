@@ -110,7 +110,7 @@ test('#202: a journal-mode switch RETRIES on SQLITE_BUSY (adversarial CRITICAL-1
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'db', 'sqlite.js'), 'utf8');
   assert.match(src, /function switchJournalMode\(sql, pragma, budgetMs\)/, 'the bounded retry helper exists');
   assert.match(src, /if \(!err \|\| err\.errcode !== 5 \|\| Date\.now\(\) >= deadline\) throw err;/, 'it retries ONLY on SQLITE_BUSY and ONLY within the budget - anything else rethrows at once');
-  assert.match(src, /sleepSync\(25\); \/\/ SQLITE_BUSY: wait, don't burn the CPU/, 'the wait SLEEPS (my own probe caught the first cut hot-looping at 100% CPU for the whole budget)');
+  assert.match(src, /if \(!sleepSync\(25\)\) throw err;/, 'the wait SLEEPS, and if it CANNOT sleep it rethrows rather than reinstating the hot spin (my probe caught the first cut burning 100% CPU for the whole budget)');
   assert.match(src, /Atomics\.wait\(new Int32Array\(new SharedArrayBuffer\(4\)\), 0, 0, ms\)/, 'a real synchronous sleep, not a spin');
   assert.ok(!/sql\.prepare\('PRAGMA journal_mode = WAL'\)\.get\(\)/.test(src), 'no bare un-retried WAL switch remains');
   assert.ok(!/sql\.exec\('PRAGMA journal_mode = DELETE'\)/.test(src), 'no bare un-retried DELETE switch remains');
@@ -132,7 +132,60 @@ test('#202: the isolation helper REDIRECTS even when DATA_DIR is already exporte
     assert.notStrictEqual(out, operator, 'the helper must OVERRIDE an exported DATA_DIR - restore the `if (!process.env.DATA_DIR)` and this reds');
     assert.ok(out.includes('filetube-isolated-'), `redirected to a private temp dir, got: ${out}`);
     assert.strictEqual(fs.readdirSync(operator).length, 0, 'the operator directory is never touched');
+    fs.rmSync(out, { recursive: true, force: true }); // the child runs without the tmp-cleanup preload
   } finally {
     fs.rmSync(operator, { recursive: true, force: true });
+  }
+});
+
+
+test('#202 CRITICAL-1 BEHAVIOURAL: a journal-mode switch really does ride out a cross-process lock (source locks alone let a budget-0 or requoted revert through)', () => {
+  const os = require('node:os');
+  const cp = require('node:child_process');
+  // Raw access goes through the adapter's sanctioned test door - the source lock's
+  // contract is that every SQLite API touch lives in lib/db/sqlite.js, and dodging
+  // it with a respelling would be the exact porosity this wave keeps closing.
+  const { SqliteAdapter, SQLITE_FILENAME, __openRawForTests } = require('../../lib/db/sqlite');
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-c1bind-'));
+  const dbPath = path.join(dir, SQLITE_FILENAME);
+  const marker = path.join(dir, 'holding');
+  let child;
+  try {
+    // Seed in DELETE mode so opening REQUIRES a journal-mode CHANGE - the statement
+    // SQLite refuses to apply the busy handler to.
+    const seed = __openRawForTests(dbPath);
+    seed.exec('PRAGMA journal_mode = DELETE');
+    seed.exec('CREATE TABLE hold(x)');
+    seed.close();
+
+    // A cross-process writer: the parent's retry BLOCKS its own loop, so a file
+    // marker is the only workable handshake (an in-process holder could never release).
+    const adapterPath = require.resolve('../../lib/db/sqlite');
+    const holderSrc = `
+      const { __openRawForTests } = require(${JSON.stringify(adapterPath)});
+      const fs = require('node:fs');
+      const db = __openRawForTests(${JSON.stringify(dbPath)});
+      db.exec('PRAGMA busy_timeout = 0');
+      db.exec('BEGIN IMMEDIATE');
+      db.exec('INSERT INTO hold VALUES(1)');
+      fs.writeFileSync(${JSON.stringify(marker)}, '1');
+      setTimeout(() => { db.exec('COMMIT'); db.close(); process.exit(0); }, 600);
+    `;
+    child = cp.spawn(process.execPath, ['-e', holderSrc], { stdio: 'ignore' });
+
+    const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+    const waitStart = Date.now();
+    while (!fs.existsSync(marker) && Date.now() - waitStart < 5000) sleep(20);
+    assert.ok(fs.existsSync(marker), 'the holder took the write lock');
+
+    const t0 = Date.now();
+    const adapter = new SqliteAdapter(dbPath, { log: () => {} });
+    const elapsed = Date.now() - t0;
+    adapter.close();
+    assert.ok(elapsed >= 150, `the open WAITED for the lock (${elapsed}ms) - an un-retried switch returns errcode 5 in ~0ms`);
+  } finally {
+    try { if (child) child.kill(); } catch (_) { /* already gone */ }
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
