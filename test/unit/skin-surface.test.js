@@ -1119,7 +1119,7 @@ test('v1.261 haptics (slim W1): the arming cover DERIVES from the wheel rect - a
   } finally { b.restore(); }
 });
 
-test('v1.261 haptics (round-2 W4): the 288px iPod wheel CAPS at 7.5 - the byte-identical claim is measured, not asserted', () => {
+test('v1.267 (Dean, device-confirmed): the iPod wheel arms EDGE TO EDGE - a 288px wheel gets scale(9), not the old 7.5 that left dead strips top and bottom', () => {
   const b = bootHaptic({});
   try {
     b.dom.window.HTMLElement.prototype.getBoundingClientRect = function () {
@@ -1130,6 +1130,32 @@ test('v1.261 haptics (round-2 W4): the 288px iPod wheel CAPS at 7.5 - the byte-i
     b.engine.paint();
     const g = ghostOf(b.dom);
     assert.ok(g, 'the ghost mounted');
-    assert.strictEqual(g.style.transform, 'scale(7.5)', '288/32 = 9 CAPS to the iPod 7.5 (drop the Math.min and this reds)');
+    // 52x32 scaled by 9 = 468x288: the cover's HEIGHT now equals the wheel's, so
+    // the top/bottom strips that never armed (240 tall over a 273-288 wheel) are
+    // gone. Re-add the Math.min cap and this reds.
+    assert.strictEqual(g.style.transform, 'scale(9)', 'the cover matches the wheel exactly (288/32) - no dead strip');
   } finally { b.restore(); }
+});
+
+
+test('v1.267 INVARIANT: the arming cover is exactly the wheel tall for ANY wheel size - so it can never reach the scrub bar above (the v1.261 W1 fix, now structural not numeric)', () => {
+  // The old protection was a magic cap (7.5). The real property is that the
+  // cover's HEIGHT equals the wheel's height, so it spans the wheel and nothing
+  // above it - at every size, including ones no skin uses today.
+  for (const h of [96, 132, 200, 273, 288, 400]) {
+    const b = bootHaptic({});
+    try {
+      b.dom.window.HTMLElement.prototype.getBoundingClientRect = function () {
+        const base = { left: 0, top: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON() {} };
+        if (this.classList && this.classList.contains('ip-wheel')) return { ...base, width: h, height: h, right: h, bottom: h };
+        return { ...base, width: 0, height: 0 };
+      };
+      b.engine.paint();
+      const g = ghostOf(b.dom);
+      assert.ok(g, `ghost mounted at h=${h}`);
+      const scale = Number(/scale\(([\d.]+)\)/.exec(g.style.transform)[1]);
+      // the ghost box is 32px tall (public/css/style.css .mms-haptic-ghost)
+      assert.strictEqual(scale * 32, h, `h=${h}: cover height ${scale * 32} must equal the wheel's ${h} - taller would reach the seek bar, shorter leaves a dead strip`);
+    } finally { b.restore(); }
+  }
 });
