@@ -1138,10 +1138,14 @@ test('v1.267 (Dean, device-confirmed): the iPod wheel arms EDGE TO EDGE - a 288p
 });
 
 
-test('v1.267 INVARIANT: the arming cover is exactly the wheel tall for ANY wheel size - so it can never reach the scrub bar above (the v1.261 W1 fix, now structural not numeric)', () => {
+test('v1.267 INVARIANT: the arming cover is exactly the wheel tall at every MEASURABLE size, with h=0 the one documented exception (slim W2: derived, not absolute)', () => {
   // The old protection was a magic cap (7.5). The real property is that the
   // cover's HEIGHT equals the wheel's height, so it spans the wheel and nothing
   // above it - at every size, including ones no skin uses today.
+  // NOTE the exception, asserted below rather than glossed: an unmeasurable wheel
+  // (h=0) falls back to 7.5, which on a SMALL pad would be taller than the pad -
+  // the very geometry v1.261 W1 fixed. It is the right trade (a collapsed cover
+  // arms nothing) and is unreachable in production, but it is not "structural".
   for (const h of [96, 132, 200, 273, 288, 400]) {
     const b = bootHaptic({});
     try {
@@ -1158,4 +1162,11 @@ test('v1.267 INVARIANT: the arming cover is exactly the wheel tall for ANY wheel
       assert.strictEqual(scale * 32, h, `h=${h}: cover height ${scale * 32} must equal the wheel's ${h} - taller would reach the seek bar, shorter leaves a dead strip`);
     } finally { b.restore(); }
   }
+  // The documented exception, bound so it can never drift silently.
+  const z = bootHaptic({});
+  try {
+    z.engine.paint(); // jsdom rects are all zero
+    const g = ghostOf(z.dom);
+    assert.strictEqual(g.style.transform, 'scale(7.5)', 'an UNMEASURABLE wheel falls back to 7.5 - it must never collapse to nothing');
+  } finally { z.restore(); }
 });
