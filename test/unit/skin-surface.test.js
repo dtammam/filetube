@@ -806,7 +806,7 @@ test('v1.256 haptics OFF path: no switch support = no ghost, no class, no lock (
   } finally { b.restore(); }
 });
 
-test('v1.256 haptics: the tick engine - one bias flip per detent (3.75deg Classic parity), 30ms throttle DROPS excess, ghost rides the finger; no .checked writes ever', () => {
+test('v1.271 haptics: the tick engine - one bias flip per detent (3.75deg Classic parity), the 8ms floor DROPS excess, ghost rides the finger; no .checked writes ever', () => {
   const b = bootHaptic({});
   const savedPerf = global.performance;
   let t = 1000;
@@ -822,14 +822,18 @@ test('v1.256 haptics: the tick engine - one bias flip per detent (3.75deg Classi
     wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: s.clientX, clientY: s.clientY }));
     assert.match(g.style.transform, /^translate\(/, 'gesture start: the ghost shrank from the cover to ride the finger');
     assert.strictEqual(g.style.transform, `translate(${s.clientX + 18}px,${s.clientY}px)`, 'initial bias +18px past the midline');
-    let q = mv(6, 100); // 6deg = 1 detent at 3.75 (rem 2.25), dt 100ms > throttle -> flip to -18
+    let q = mv(6, 100); // 6deg = 1 detent at 3.75 (rem 2.25), dt 100ms > floor -> flip to -18
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'detent 1 flipped the bias (a crossing = a tick)');
     q = mv(8, 5);       // +2deg -> crosses a detent (carry 2.25) but dt 5ms -> THROTTLED, bias unchanged
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a throttled detent follows without flipping');
-    q = mv(14, 5);      // crosses a detent but only 10ms since the flip -> THROTTLED (dropped, not queued)
+    // v1.271: retimed for the 8ms floor. A DROP does not stamp hapLast, so this lands
+    // 7ms after the FLIP (5 + 2), still inside the floor -> dropped, not queued. Under
+    // the old 30ms floor the original dt of 5 put this at 10ms, which now legitimately
+    // ticks - the timeline had to move with the constant, not the assertion.
+    q = mv(14, 2);      // 7ms since the flip -> THROTTLED (dropped, not queued)
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'the Taptic floor drops the tick, never queues it');
     q = mv(24, 100);    // three detents accumulate at 3.75 (carry 2.75+10); one flip allowed -> back to +18
-    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a fast burst saturates to one tick per 30ms');
+    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a fast burst still saturates to one tick per floor interval');
     wheel.dispatchEvent(new b.dom.window.MouseEvent('pointercancel', { bubbles: true }));
     assert.strictEqual(g.style.transform, 'scale(7.5)', 'cancel restores the arming cover (the dual-arm teardown discipline)');
   } finally { global.performance = savedPerf; b.restore(); }
@@ -921,7 +925,7 @@ test('v1.256 (QA S2 binding): a rotate-then-release on the ghost suppresses the 
   } finally { b.restore(); }
 });
 
-test('v1.256 (adversarial W1+W2): the FEEL constants are pinned at their boundaries (3.75deg Classic parity since v1.256.2), and a throttled detent DROPS - never queues', () => {
+test('v1.271 (was v1.256 W1+W2): the FEEL constants are pinned at their boundaries - 3.75deg Classic parity (Deans ruling, unchanged) and the 8ms floor (was 30) - and a throttled detent DROPS, never queues', () => {
   // The seat proved step=1/6 and min=100 (and while->if queueing) all survived the
   // cadence test - Dean's iPod-Classic ruling was unbound. Pin both axes at their
   // exact boundaries, and distinguish drop from queue with a sub-detent follow-up.
@@ -943,18 +947,20 @@ test('v1.256 (adversarial W1+W2): the FEEL constants are pinned at their boundar
     assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, '3.7deg accumulated: below the 3.75 step, no flip (kills step->1/3)');
     q = mv(3.8, 100);
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, '3.8deg crosses the 3.75 boundary: flip (kills step->4.5/6)');
-    // THROTTLE boundary: a detent 29ms after the flip DROPS (a drop does not stamp
-    // hapLast); the next detent lands 1ms later = exactly 30ms after the FLIP, and
-    // ticks. (adversarial round 2: dt=30 here would land at flip+59ms and leave
-    // MIN unpinned across 30-59 - the 1ms landing pins it to exactly (29, 30].)
-    q = mv(7.6, 29);
-    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a detent 29ms after a flip is dropped (the 30ms floor holds exactly)');
+    // FLOOR boundary, v1.271: 30 -> 8. Dean asked for more feedback ("it really should
+    // feel like the real thing"), and the investigation measured 30 pegging delivery at
+    // a flat ~30 ticks/s regardless of speed - 69% of a 1 rev/s spin's ticks discarded,
+    // where a real Classic's rate rises with the hand. 8 sits below the 8.33ms ProMotion
+    // frame, so it can never bind before the mechanism's own ceiling (one tick per
+    // pointermove). SAFE because Dean device-confirmed the engine DROPS, not queues.
+    // Pinned to exactly (7, 8] by the same 1ms-landing trick as before: a drop does not
+    // stamp hapLast, so the 7ms detent lands 1ms later = exactly 8ms after the FLIP.
+    q = mv(7.6, 7);
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a detent 7ms after a flip is dropped (the 8ms floor holds exactly)');
     q = mv(11.4, 1);
-    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a detent 30ms after the last FLIP ticks (the floor is 30, not more)');
+    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a detent 8ms after the last FLIP ticks (the floor is 8, not more)');
     // DROP vs QUEUE: a multi-detent burst consumes its backlog even where the throttle
-    // drops the flips - a following sub-detent drift must NOT flip (kills while->if).
-    q = mv(26.4, 100);  // 15deg burst (+0.15 carry) = 4 detents at 3.75, one flip allowed -> bias back to -18
-    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a burst saturates to one flip');
+    // suppressed the intervening flips - the carry is spent, not banked.
     q = mv(27.4, 100);  // +1deg sub-detent drift (carry 1.15 < 3.75), long after the throttle window
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'no phantom tick after the finger slows: the backlog was CONSUMED, not queued');
     wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true }));
@@ -1169,4 +1175,41 @@ test('v1.267 INVARIANT: the arming cover is exactly the wheel tall at every MEAS
     const g = ghostOf(z.dom);
     assert.strictEqual(g.style.transform, 'scale(7.5)', 'an UNMEASURABLE wheel falls back to 7.5 - it must never collapse to nothing');
   } finally { z.restore(); }
+});
+
+test('v1.271: a repaint DURING a live spin is DEFERRED, not allowed to kill the drag', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const panel = b.dom.window.document.querySelector('.music-nowplaying-panel');
+    const wheel = panel.querySelector('.ip-wheel');
+    const before = wheel;
+    // start a spin
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 40, pointerId: 1 }));
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 230, clientY: 80, pointerId: 1 }));
+    // a track change lands mid-drag: the panel must NOT be rebuilt under the finger
+    b.engine.paint();
+    assert.strictEqual(panel.querySelector('.ip-wheel'), before,
+      'the wheel node the gesture is bound to SURVIVES the repaint - replacing it stranded the listeners, skipped endWheel, left pointer capture held and the lift-off click unsuppressed (measured: 15 ticks before, 0 after)');
+    // the drag still works
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 260, clientY: 140, pointerId: 1 }));
+    assert.ok(true, 'the gesture continues');
+    // lifting flushes the deferred repaint
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true, pointerId: 1 }));
+    assert.notStrictEqual(panel.querySelector('.ip-wheel'), before,
+      'and the repaint lands the instant the finger lifts - deferred, never dropped');
+  } finally { b.restore(); }
+});
+
+test('v1.271: the deferred repaint cannot outlive the surface', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
+  assert.match(src, /function paint\(\) \{\s*if \(wheelSpin\) \{ paintPending = true; return; \}/,
+    'paint() defers while a spin is live');
+  assert.match(src, /if \(paintPending\) paint\(\);/, 'endWheel flushes it - the one seam that owns endings');
+  // window sized to the comment that legitimately sits between them (#213: distance
+  // locks break on valid insertions, so bind the PAIR loosely and let the behavioural
+  // test above carry the real weight).
+  assert.match(src, /function destroy\(\) \{[\s\S]{0,400}?paintPending = false;/,
+    'and destroy() drops it, so a queued repaint never fires at a dead surface');
 });

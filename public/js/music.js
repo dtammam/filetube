@@ -885,6 +885,14 @@ if (typeof module !== 'undefined' && module.exports) {
     // chapter actually changed (once per boundary), never on every timeupdate tick.
     function reflectChapter() {
       if (!chapterViewId) return;
+      // v1.271: NO isScrubbing guard here, deliberately - and it is worth saying why,
+      // because the investigation recommended one and I added it before measuring the
+      // consequence. Guarding this DELAYS the chapter roll until after release, which
+      // leaves enforceChapterLoop reading a stale chapter for one tick and breaks the
+      // v1.250 loop contract (a test caught it). The guard only ever existed because a
+      // repaint killed the live drag - and paint() now DEFERS during a spin, which
+      // fixes that at the seam for every trigger, not just this one. The structural fix
+      // subsumes the point fix, so the point fix is a behaviour change with no benefit.
       var id = currentChapterId();
       if (!id || id === chapterViewId) return;
       chapterViewId = id;

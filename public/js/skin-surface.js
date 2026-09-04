@@ -737,7 +737,23 @@
       if (typeof t.onExit === 'function') { try { t.onExit(); } catch (_) { /* a dying takeover must not block the repaint */ } }
     }
 
+    // v1.271: a repaint that replaces the wheel MID-GESTURE used to leave the drag for
+    // dead - the node was swapped with its listeners still attached, pointer capture was
+    // never released, endWheel never ran (so the lift-off click was NOT suppressed and
+    // could fire onDock), and the haptic ghost the OS was tracking vanished. Measured:
+    // 15 ticks before the repaint, 0 after; scrub delta 20.6s before, 0.0s after. It got
+    // worse recently because paint() gained triggers - v1.254's network-timed autoplay
+    // append repaints at an arbitrary moment after every track change, which is exactly
+    // when a thumb reaches for the wheel.
+    //
+    // ENDING the gesture cleanly would fix the corruption but still lose the drag, so we
+    // DEFER instead: while a spin is live the repaint is queued and flushed by endWheel,
+    // the one seam that owns endings. The drag survives intact and the panel catches up
+    // the instant the finger lifts.
+    var paintPending = false;
     function paint() {
+      if (wheelSpin) { paintPending = true; return; }
+      paintPending = false;
       releaseWheelTakeover();
       var id = getSkinId();
       var base = (typeof SKINS.skinById === 'function' && (SKINS.skinById(id) || {}).base) || '';
@@ -842,7 +858,24 @@
     // lock replace .mms-full's touch-action:none); never preventDefault its touches;
     // NEVER write .checked from JS (kills tracking). Exec plan: wheel-haptics.md.
     var HAPTIC_STEP_DEG = 3.75; // v1.256.2 (Dean: 3deg "a little too hot... parity with the iPod Classic"): 96 detents/rev, the Classic's own number
-    var HAPTIC_MIN_MS = 30;     // the Taptic engine's saturation floor - excess ticks DROP
+    // v1.271 (Dean: "I want there to be more haptic feedback than not... it really
+    // should feel like the real thing"). Was 30, which pegged delivery at a FLAT ~30
+    // ticks/second no matter how fast the wheel turned - 69% of the ticks a 1 rev/s
+    // spin demands were discarded, so ours was a constant buzz where a real Classic's
+    // rate rises with your hand. 8ms sits below the 8.33ms ProMotion frame interval,
+    // so it can never bind before the mechanism's own hard ceiling (one tick per
+    // pointermove, because WebKit re-evaluates the switch's midline crossing per
+    // touchmove) - i.e. it is functionally 0 while keeping a named, non-zero bound.
+    // Yield vs 30ms: ~2x at 60Hz, up to 4x on ProMotion, at the SAME 3.75 spacing.
+    //
+    // The old comment called 30 "the Taptic engine's saturation floor" and the exec
+    // plan filed it under "CONSTANTS (WebKit source)" - the investigation could find
+    // NO evidence of any such rate limit in WebKit's pointer-tracking path or in
+    // UIImpactFeedbackGenerator. It was our own guess, recorded as if it were sourced.
+    // What IS evidenced: Dean device-confirmed the engine DROPS rather than queues
+    // (ticks stop dead when his finger does), which is what makes lowering it safe -
+    // a queueing engine would buzz on after the stop.
+    var HAPTIC_MIN_MS = 8;
     var wheelGhost = null;
     var bodyScrollLock = null; // {y} while the haptic skin owns the body
     var wheelTakeover = null; // v1.270: see the dispatches in MENU, Select and the move handler
@@ -1015,6 +1048,10 @@
       if (suppress) wheelSuppressClick = true;
       if (wheelSpin === st) wheelSpin = null;
       hapticGestureEnd(); // v1.256: ghost back to its arming cover, lock self-heal check
+      // v1.271: FLUSH a repaint deferred during this gesture. Last, so wheelSpin is
+      // already null (paint() would otherwise re-defer forever) and the haptic teardown
+      // has settled before the panel is replaced.
+      if (paintPending) paint();
     }
     function onDown(e) {
       wheelSuppressClick = false;
@@ -1138,6 +1175,7 @@
 
     function destroy() {
       releaseWheelTakeover(); // v1.270: the surface dying takes its takeover with it
+      paintPending = false;   // v1.271: a deferred repaint must not outlive the surface
       if (bound) {
         panel.removeEventListener('click', onClick);
         panel.removeEventListener('pointerdown', onDown);
