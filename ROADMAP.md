@@ -93,6 +93,58 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.266.0 - Steadier startups (2026-09-04)
+
+Tech-debt #202's revisit trigger fired (2nd occurrence of a transient SQLite
+"database is locked" crash), so the prescribed fix landed as its own wave rather
+than riding v1.265 post-approval.
+
+ROOT CAUSE (measured; this wave got it WRONG TWICE first, and the record says so):
+node:sqlite's default busy timeout is ZERO, so any momentary contention fails
+instantly. Parallel PROCESSES opening the same db each run `PRAGMA journal_mode
+= WAL` at startup, and that statement contends with other openers even on an
+already-WAL db with NO writer anywhere (200 concurrent open+read processes at
+timeout 0: 9/200 failures on Node 22, 5/200 on Node 24, all at journal_mode,
+errcode 5 - the exact #202 signature; the adversarial seat replicated it and
+also observed errcode 261 SQLITE_BUSY_RECOVERY live). It is also the UNIQUELY
+UNPROTECTED statement: with a 5000ms timeout armed, a contended mode change
+still threw at 0ms while an ordinary contended INSERT on the same connection
+waited ~3000ms and succeeded. The trigger for it surfacing NOW was this repo's
+own multi-agent gate: reviewer agents running full suites concurrently with the
+main session, against the same working directory.
+
+FIX, two independent halves (neither substitutes for the other): `PRAGMA
+busy_timeout = 5000` at every connection open covers ordinary statements; a
+bounded retry covers the journal-mode change alone. Plus test isolation - 15
+test files were opening the REPO-ROOT db as a side effect of requiring
+server.js; they now get private temp dirs, enforced by a dynamic guard.
+Under the same 200-process stress: 0/200 on both Nodes.
+
+PRODUCTION IMPACT: a first boot on a fresh DATA_DIR, or any boot on a
+filesystem where the DELETE journal fallback sticks, could previously have
+thrown out of openAdapter and prevented the server from starting.
+
+THE GATE (full; adversarial 5 rounds + QA 2, both APPROVE) caught, in order:
+the busy timeout not covering the statement the wave claimed it fixed; the
+isolation helper being INERT whenever DATA_DIR is exported (measured migrating
+an operator's v19 db to v20 and creating an admin user); a hot-spin burning
+100% CPU; and then - repeatedly - guards that looked green while the bug was
+back: a never-executed pragma string, a quote-respelled bare switch, a
+wall-time-only anti-spin check, a leak test that could not detect a leak, and a
+"relaxed" source lock satisfied by its own comment. Every one is now bound by
+measurement rather than by source text.
+
+DISOWNED: commit f3fc6921's message records a refuted root cause ("the failures
+need a concurrent WRITER"); it is wrong and the adapter's comment carries the
+measured version. Untested-but-changed: the DELETE-fallback leg's call form.
+Residuals: #205 (the timeout blocks the synchronous event loop - measured
+2431ms with 0 timer ticks; accepted for a single-instance app), #206 (the guard
+cannot see test/helpers or transitive openers), and an unbound extended-errcode
+arm.
+
+Dual-Node: v22.23.1 8290/8290 pass, 0 fail, 0 skipped; v24.14.0 8290/8290, 0
+fail, 0 skipped. server.js and public/ 0-diff. No user-facing change.
+
 ### v1.265.0 - Your settings follow you (2026-09-04)
 
 Dean's ask ("pivot to the cross device sync"), intake-settled by his numbered

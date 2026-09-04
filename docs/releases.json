@@ -2770,5 +2770,11 @@
     "date": "2026-09-04",
     "title": "Your settings follow you",
     "intent": "Sign in on your phone and your desktop and they finally agree with each other. The look you picked - era, light or dark, icon set, star ratings, the ambient background, the critters and how many of them, your music player skin, endless autoplay, your sort choices and which rows show on the home page - now travels with your account instead of living on one device. The most recent change wins, and the things that should stay per-device (volume, playback speed, theater and pop-out modes, the corner tray) deliberately don't follow you. Signed out, nothing leaves the device."
+  },
+  {
+    "version": "1.266.0",
+    "date": "2026-09-04",
+    "title": "Steadier startups",
+    "intent": "Under the hood: when something else is briefly touching FileTube's database - a container restarting over the top of the old one, or a maintenance script running while the server is up - FileTube now waits its turn instead of giving up instantly. Previously that could stop the server from starting, most likely on a brand-new setup or a network drive. Nothing changes in how the app looks or behaves day to day."
   }
 ]
