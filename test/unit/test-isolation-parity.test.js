@@ -115,3 +115,24 @@ test('#202: a journal-mode switch RETRIES on SQLITE_BUSY (adversarial CRITICAL-1
   assert.ok(!/sql\.prepare\('PRAGMA journal_mode = WAL'\)\.get\(\)/.test(src), 'no bare un-retried WAL switch remains');
   assert.ok(!/sql\.exec\('PRAGMA journal_mode = DELETE'\)/.test(src), 'no bare un-retried DELETE switch remains');
 });
+
+
+test('#202: the isolation helper REDIRECTS even when DATA_DIR is already exported (adversarial CRITICAL-2 - the conditional made it inert)', () => {
+  const os = require('node:os');
+  const cp = require('node:child_process');
+  const operator = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-operator-'));
+  try {
+    // A child with DATA_DIR EXPORTED - the shape that made the first cut inert
+    // (and, measured by the seat, migrated an operator's real db + created an admin).
+    const helper = path.join(__dirname, '..', 'helpers', 'isolate-data-dir.js');
+    const out = cp.execFileSync(process.execPath, ['-e', `require(${JSON.stringify(helper)}); console.log(process.env.DATA_DIR);`], {
+      env: { ...process.env, DATA_DIR: operator },
+      encoding: 'utf8',
+    }).trim();
+    assert.notStrictEqual(out, operator, 'the helper must OVERRIDE an exported DATA_DIR - restore the `if (!process.env.DATA_DIR)` and this reds');
+    assert.ok(out.includes('filetube-isolated-'), `redirected to a private temp dir, got: ${out}`);
+    assert.strictEqual(fs.readdirSync(operator).length, 0, 'the operator directory is never touched');
+  } finally {
+    fs.rmSync(operator, { recursive: true, force: true });
+  }
+});
