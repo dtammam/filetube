@@ -102,6 +102,16 @@ const CONTRACT = {
   '--mms-aqua-t8': '#75b6db', '--mms-aqua-t9': '#9bbed4',
   '--mms-aqua-striate': 'rgba(255,255,255,.16)', '--mms-aqua-striate-0': 'rgba(255,255,255,0)',
   '--mms-aqua-striate-d': 'rgba(0,0,0,.05)', '--mms-aqua-track': '#dadddc',
+  // slim W3: these three were the whole of the #201 registration gap. groove-shadow
+  // matters most - this wave CHANGED its value, and with the track now a flat grey on
+  // a white LCD its 1px ring is the only thing delineating the empty track; deleting
+  // it left the entire suite green.
+  '--mms-aqua-fill-shadow': 'inset 0 1px 0 rgba(255,255,255,.6)',
+  '--mms-aqua-groove-shadow': 'inset 0 1px 1px rgba(60,80,100,.35), inset 0 0 0 1px #a9abb0',
+  // NOT registered, deliberately: --mms-sticker-px is ELEMENT-scoped with three
+  // intentional definitions (base/2x/3x), so this contract's exactly-once rule
+  // correctly rejects it. The seat counted it in the #201 gap; it is a different
+  // kind of variable, and #201 is updated to say so.
   '--mms-ipod-line': 'rgba(60,70,90,.14)',
   '--mms-ipod-wheel1': '#d3d3d2', '--mms-ipod-wheel2': '#c4c4c2', '--mms-ipod-wheel-lbl': '#7c7d80',
   // v1.231.1 gloss sheen: white-alpha stops for the body + wheel highlights.
@@ -124,7 +134,7 @@ const CONTRACT = {
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 152, 'the 60-name contract (see history) + the 80 --mms-* mobile-music-skin tokens (slim S2: the prose count was stale since v1.261) (v1.260 +6 zune-classic +2 aqua-rib; v1.261 +3 znc-chrome; v1.264 -1 znc-edge, Dean retired the green rim) (v1.232.2 added 2 silver-gloss stops): v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
+  assert.equal(Object.keys(CONTRACT).length, 154, 'the 60-name contract (see history) + the 80 --mms-* mobile-music-skin tokens (slim S2: the prose count was stale since v1.261) (v1.260 +6 zune-classic +2 aqua-rib; v1.261 +3 znc-chrome; v1.264 -1 znc-edge, Dean retired the green rim) (v1.232.2 added 2 silver-gloss stops): v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());
