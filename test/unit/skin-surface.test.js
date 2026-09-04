@@ -1273,6 +1273,40 @@ test('v1.271 slim round-2 WARNING: a MOUSE released OFF the wheel still ends the
   } finally { b.restore(); }
 });
 
+// jsdom has no PointerEvent, and MouseEvent SILENTLY DROPS a `pointerId` passed in its
+// init dict - so every fixture in this file that reads `{ ..., pointerId: 1 }` is really
+// dispatching `undefined`, which happens to match the equally-undefined st.id. Any test
+// that means to DISCRIMINATE two pointers has to define the property for real.
+function pointerEv(dom, type, init, id) {
+  const ev = new dom.window.MouseEvent(type, init);
+  Object.defineProperty(ev, 'pointerId', { value: id, configurable: true });
+  return ev;
+}
+
+test('v1.271 slim round-2: the document end arm is pointerId-FILTERED - a second finger lifting elsewhere does not end your spin', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const panel = b.dom.window.document.querySelector('.music-nowplaying-panel');
+    const wheel = panel.querySelector('.ip-wheel');
+    const before = wheel;
+    wheel.dispatchEvent(pointerEv(b.dom, 'pointerdown', { bubbles: true, clientX: 200, clientY: 40 }, 1));
+    wheel.dispatchEvent(pointerEv(b.dom, 'pointermove', { bubbles: true, clientX: 230, clientY: 80 }, 1));
+    // a DIFFERENT pointer lifts somewhere else on the page. The wheel's own arm is
+    // deliberately unfiltered (a second finger's up ON THE WHEEL still ends the gesture,
+    // as it always has); this document-wide arm must not inherit that reach, or any
+    // stray tap on the page would kill a drag in progress.
+    b.dom.window.document.body.dispatchEvent(pointerEv(b.dom, 'pointerup', { bubbles: true }, 2));
+    b.engine.paint();
+    assert.strictEqual(panel.querySelector('.ip-wheel'), before,
+      'the spin is STILL live - the repaint is deferred, so the foreign pointerup was ignored');
+    // and this pointer's own release still ends it
+    b.dom.window.document.body.dispatchEvent(pointerEv(b.dom, 'pointerup', { bubbles: true }, 1));
+    b.engine.paint();
+    assert.notStrictEqual(panel.querySelector('.ip-wheel'), before, 'while ITS OWN pointerup does end it');
+  } finally { b.restore(); }
+});
+
 test('v1.271 slim round-2 S1: ending a STALE spin from paint() tears its fast-scan timers down - not just its identity', () => {
   const { dom, engine, restore } = bootEngine({ engineCfg: { fastScan: true } });
   try {

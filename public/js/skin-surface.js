@@ -1179,12 +1179,16 @@
         }
       };
       st.onUp = function (ev) {
-        // v1.271 (gate round 2): the gesture now has TWO end arms (wheel + document), so a
-        // normal release on the wheel reaches this twice - once directly, once by bubbling.
-        // Everything below COMMITS a seek, so a second pass would dispatch `change` twice.
-        // endWheel is the setter of `ended`; this arm only reads it, or the call below would
-        // return immediately. (Checking here rather than only in endWheel is the point: the
-        // duplicate work is the commit, not the teardown.)
+        // v1.271 (gate round 2): the gesture now has TWO end arms (wheel + document), and
+        // everything below COMMITS a seek - so a second pass would dispatch `change` twice.
+        // MEASURED: it does not happen today. A release on the wheel runs this arm first,
+        // and the endWheel below removes the document listeners before the event finishes
+        // bubbling, which per the DOM rule on removal-during-dispatch means the doc arm is
+        // never invoked (deleting this line leaves the whole file green, including the
+        // "release commits via #seek-bar ... exactly once" test). It stays as a cheap
+        // backstop for that ordering being disturbed - reordering endWheel's teardown below
+        // the commit would otherwise silently double-seek. Read-only here on purpose:
+        // endWheel is the SETTER, or the call at the end of this function would no-op.
         if (st.ended) return;
         if (st.mode === 'scrub' && st.moved && ev && ev.type === 'pointerup' && st.scrubRatio != null) {
           var sb = hostCtl('seek-bar');
