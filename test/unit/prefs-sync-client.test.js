@@ -15,7 +15,7 @@ const { JSDOM } = require('jsdom');
 
 const AGENT_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'prefs-sync.js'), 'utf8');
 
-// The plan's 22 keys - the AUTHORITY all three lists are locked against.
+// The plan's 21 keys - the AUTHORITY all three lists are locked against.
 const PLAN_KEYS = [
   'ft-era', 'ft-mode', 'ft-modern-mode', 'ft-icons',
   'filetube_sort', 'filetube_modern_sort', 'filetube_modern_chip',

@@ -12,14 +12,14 @@
 //  - LWW per key, stamps in ms; the server's upsert guard is the authority.
 //  - Boot + visibilitychange(visible) GET: server-newer values are raw-written
 //    into localStorage (stamps recorded); "applied by next render" is the v1
-//    contract, with THEME as the one live re-apply (most visible, cheapest).
+//    contract, with ERA+MODE as the live re-applies (the keys with real writers - QA W1).
 //  - 401 -> dormant until the next boot (signed-out stays local-only).
 //  - Storage-hostile environments (private mode throws): the patch never
 //    breaks the caller - mirror work is wrapped, the original call wins.
 (function () {
   if (window.__ftPrefsSync) return; // double-load guard (QA S2): a second eval must not wrap the first patch
   // The client twin of server.js's SYNCED_PREF_KEYS (a lock test binds both
-  // to the exec plan's 22-key list - drift = a key that silently never syncs).
+  // to the exec plan's 21-key list - drift = a key that silently never syncs).
   var SYNCED = [
     'ft-era', 'ft-mode', 'ft-modern-mode', 'ft-icons',
     'filetube_sort', 'filetube_modern_sort', 'filetube_modern_chip',

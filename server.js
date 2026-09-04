@@ -8615,7 +8615,7 @@ app.post('/api/music/resume', (req, res) => {
 
 // ---- v1.265: cross-device preference sync -----------------------------------
 // The SYNCED allowlist (exec plan docs/exec-plans/active/cross-device-sync.md,
-// MACHINE-DERIVED, 22 keys). The server is the enforcement point: unknown keys
+// MACHINE-DERIVED, 21 keys). The server is the enforcement point: unknown keys
 // are rejected PER-ITEM (a junk key cannot poison a batch), values are capped,
 // and last-write-wins lives in the store's upsert WHERE guard. The client's
 // twin list is in public/js/prefs-sync.js; a lock test binds both to the plan.
@@ -8637,7 +8637,7 @@ app.post('/api/prefs', (req, res) => {
   const body = req.body || {};
   const raw = Array.isArray(body.entries) ? body.entries : [];
   const entries = []; const rejected = [];
-  for (const e of raw.slice(0, 64)) { // batch cap: the allowlist is 22 keys
+  for (const e of raw.slice(0, 64)) { // batch cap: the allowlist is 21 keys
     const key = e && typeof e.key === 'string' ? e.key : '';
     const value = e && typeof e.value === 'string' ? e.value : null;
     const updatedAt = e ? Number(e.updatedAt) : NaN;
