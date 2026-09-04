@@ -1,5 +1,7 @@
 'use strict';
 
+require('../helpers/isolate-data-dir'); // tech-debt #202: MUST precede any server.js require (it opens a db)
+
 // [UNIT] v1.171 (Dean): critter pool MANAGEMENT - the web UI for uploading,
 // deleting and downloading the critter folder's images/sounds. This file binds
 // the server's pure core: the upload filename gate (a path-traversal surface),

@@ -1,5 +1,7 @@
 'use strict';
 
+require('../helpers/isolate-data-dir'); // tech-debt #202: MUST precede any server.js require (it opens a db)
+
 // [UNIT] v1.34 T3 (Dean, chapters) -- the pure chapter parsers + the
 // serve-time precedence resolver (server.js): ffprobe -show_chapters output,
 // "0:00 Intro" description/editor lines, and manual > embedded > description.

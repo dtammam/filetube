@@ -1,4 +1,6 @@
 'use strict';
+
+require('../helpers/isolate-data-dir'); // tech-debt #202: MUST precede any server.js require (it opens a db)
 // The mutation audit middleware's CLOSE path, proven with a deferred
 // handler (gate DELTA-B: the integration socket-destroy test raced a
 // synchronous 404 and stayed green with the close listener deleted - the

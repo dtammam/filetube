@@ -1,5 +1,7 @@
 'use strict';
 
+require('../helpers/isolate-data-dir'); // tech-debt #202: MUST precede any server.js require (it opens a db)
+
 // [UNIT] v1.166 (Dean): Sneaky critter mode - the SKELETON. Optional fun mode:
 // critters peek from behind page furniture at angles; never over the playback
 // surfaces; no duplicates per page; tap the exposed sliver for a noise. The

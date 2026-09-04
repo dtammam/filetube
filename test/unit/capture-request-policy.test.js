@@ -1,4 +1,6 @@
 'use strict';
+
+require('../helpers/isolate-data-dir'); // tech-debt #202: MUST precede any server.js require (it opens a db)
 // P0 guard for the capture harness (2026-07-30 incident: a scene issued
 // real DELETE /api/videos/:id calls and destroyed 8 library files). The
 // policy is the enforced read-only contract; these tests pin every edge,

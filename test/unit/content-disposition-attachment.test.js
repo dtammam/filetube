@@ -1,5 +1,7 @@
 'use strict';
 
+require('../helpers/isolate-data-dir'); // tech-debt #202: MUST precede any server.js require (it opens a db)
+
 // [UNIT] FR-3 (v1.19.0, download-to-device): `contentDispositionAttachment`
 // (server.js) -- the pure, header-injection-SAFE `Content-Disposition:
 // attachment` value builder used by GET /video/:id's `?download=1` intent.

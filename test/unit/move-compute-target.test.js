@@ -1,5 +1,7 @@
 'use strict';
 
+require('../helpers/isolate-data-dir'); // tech-debt #202: MUST precede any server.js require (it opens a db)
+
 // [UNIT] C1 (v1.24 UX Round, Wave 3) -- `computeMoveTarget`'s path
 // confinement, the FOCUSED two-reviewer-gate surface for T9 alongside the
 // scan-survival regression test (test/integration/move-scan-survives.test.js).
