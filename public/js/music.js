@@ -1814,8 +1814,18 @@ if (typeof module !== 'undefined' && module.exports) {
         // storage as the literal string.
         var scopeAtClick = drill;
         fetchJson('/api/videos/' + encodeURIComponent(baseId)).then(function (item) {
+          // The open is ASYNC now (it awaits the file), so it needs the liveness guard
+          // its sibling arm below has - showChaptersEditor appends to document.body,
+          // which survives a #view-root swap, so without this the modal opens over
+          // whatever the user navigated to while the fetch was in flight (QA delta S).
+          if (drill !== scopeAtClick || !content.isConnected) return;
           var chapters = (item && Array.isArray(item.chapters)) ? item.chapters : [];
-          if (!chapters.length) return; // nothing resolved: never offer an empty list to overwrite with
+          if (!chapters.length) {
+            // never offer an empty list to overwrite the file with - and say so, or the
+            // button just looks dead (the one failure arm that had no message).
+            if (typeof window.showToast === 'function') window.showToast('This album has no chapters to edit.');
+            return;
+          }
           // Time order for READABILITY (the server sorts on save regardless - the
           // earlier claim that this protected the file was wrong, QA S1).
           var lines = chapters.slice().sort(function (a, b) {

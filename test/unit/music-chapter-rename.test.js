@@ -138,7 +138,7 @@ const chapTrack = (i, start, title) => ({
   album: 'A Long Talk', albumKey: 'A Long Talk', artist: 'Someone',
 });
 
-async function bootMusic({ visibleTracks, canModify = true }, run) {
+async function bootMusic({ visibleTracks, canModify = true, holdVideoFetch = null }, run) {
   const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music?play=film::c0' });
   const saved = {
     window: global.window, document: global.document,
@@ -166,7 +166,8 @@ async function bootMusic({ visibleTracks, canModify = true }, run) {
   global.fetch = (url) => {
     if (String(url).indexOf('/api/videos/') === 0) {
       seen.videoFetches.push(String(url));
-      return Promise.resolve({ ok: true, json: async () => ({ id: 'film', chapters: FILE_CHAPTERS }) });
+      const body = { ok: true, json: async () => ({ id: 'film', chapters: FILE_CHAPTERS }) };
+      return holdVideoFetch ? holdVideoFetch.then(() => body) : Promise.resolve(body);
     }
     if (String(url).indexOf('/api/music/albums') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
     if (String(url).indexOf('/api/music/artists') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
@@ -214,4 +215,31 @@ test('v1.273 QA WARNING-3: a member who may not modify the library never sees th
       assert.strictEqual(dom.window.document.querySelector('.music-drill-chapters'), null,
         'no Edit chapters affordance - the server would 403 the save and the retyping would be lost');
     });
+});
+
+test('v1.273 QA delta S: the editor open is ASYNC, so it must not land over a view the user already left', async () => {
+  // showChaptersEditor appends to document.body, which survives a #view-root swap, so
+  // a slow /api/videos fetch could drop the modal over whatever page the user navigated
+  // to. Not data loss (baseId and every line come from the file), but a confusing modal.
+  // Bound rather than trusted: the seat's note that an unbound guard is how this class
+  // comes back is the reason this test exists.
+  let release = null;
+  const held = new Promise((r) => { release = r; });
+  await bootMusic({
+    visibleTracks: [chapTrack(0, 0, 'Intro'), chapTrack(1, 120, 'Middle Part')],
+    holdVideoFetch: held,
+  }, async (dom, seen) => {
+    const btn = dom.window.document.querySelector('.music-drill-chapters');
+    assert.ok(btn, 'the button rendered (non-vacuous)');
+    btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert.strictEqual(seen.editor, null, 'the editor has NOT opened yet - the fetch is still in flight (the shape this guards)');
+    // the user leaves: the view's content node is detached, exactly as a router swap does
+    const root = dom.window.document.getElementById('view-root');
+    root.innerHTML = '<div>some other view</div>';
+    release();
+    for (let i = 0; i < 10; i++) await settle();
+    assert.strictEqual(seen.editor, null,
+      'and the editor never opens over the new view - it noticed its own view was gone');
+  });
 });
