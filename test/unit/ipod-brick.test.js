@@ -725,12 +725,54 @@ test('the engine seam is GENERIC: setWheelTakeover names nothing about games', (
   assert.match(engine, /data-skin-select[\s\S]{0,300}?if \(wheelTakeover\)[\s\S]{0,200}?onSelect/, 'Select reaches the takeover');
 });
 
-test('the row is gated on the VIEW\'s answer, and music restricts it to skins that have a wheel', () => {
+test('the row is gated on the VIEW\'s answer, and the SHARED wiring restricts it to skins that have a wheel', () => {
   const engine = fs.readFileSync(path.join(ROOT, 'public', 'js', 'skin-surface.js'), 'utf8');
   assert.match(engine, /stickerCfg\.brick && typeof stickerCfg\.brick\.visible === 'function'/, 'the engine asks the view, it does not decide');
-  const music = fs.readFileSync(path.join(ROOT, 'public', 'js', 'music.js'), 'utf8');
-  assert.match(music, /return id === 'ipod' \|\| id === 'ipod-black';/, 'Pocket Classic only - the flat skins have no wheel, and Seattle Classic\'s pad is half the usable ring (#207)');
-  assert.match(music, /if \(!window\.FileTubeBrick\) return false;/, 'and it hides itself entirely if the game file never loaded');
+  // v1.273: the predicate moved out of music.js into the shared wiring, so bind it
+  // BEHAVIOURALLY here rather than re-locking a string in whichever file holds it.
+  const b = boot();
+  b.dom.window.eval(BRICK_SRC);
+  const W = b.dom.window;
+  const mk = (skinId, html) => {
+    W.FileTubeMusicSkins = { activeSkinId: () => skinId };
+    const panel = W.document.createElement('div');
+    panel.className = 'music-nowplaying-panel';
+    panel.innerHTML = html;
+    W.document.body.appendChild(panel);
+    const host = panel.querySelector('.ip-lcd-in');
+    return W.FileTubeBrick.wire({ getEngine: () => ({ lcdHost: () => host, setWheelTakeover() {} }) });
+  };
+  const WHEEL = '<div class="ip-lcd-in"></div><div class="ip-wheel"></div>';
+  const NOWHEEL = '<div class="ip-lcd-in"></div>';   // the TRAY: a Classic LCD with no wheel
+  assert.strictEqual(mk('ipod', WHEEL).visible(), true, 'Pocket Classic silver offers it');
+  assert.strictEqual(mk('ipod-black', WHEEL).visible(), true, '...and black');
+  assert.strictEqual(mk('seattle-classic', WHEEL).visible(), false,
+    'Seattle Classic does NOT - it shares the wheel chassis but its pad is half the usable rotation ring (#207)');
+  assert.strictEqual(mk('apple', WHEEL).visible(), false, 'a flat skin never offers it');
+  assert.strictEqual(mk('ipod', NOWHEEL).visible(), false,
+    'and neither does a surface with no WHEEL on it - the tray renders the ipod skin id without the control you play with');
+  // the engine being absent hides it entirely, rather than throwing into the sticker
+  const noEng = W.FileTubeBrick.wire({ getEngine: () => null });
+  W.FileTubeMusicSkins = { activeSkinId: () => 'ipod' };
+  assert.strictEqual(noEng.visible(), false, 'no engine = no row');
+});
+
+test('v1.273: BOTH music and podcasts wire Brick through the SHARED helper - neither owns a private copy', () => {
+  // Dean: "podcasts just doesn't show up as an option even though it's the same player."
+  // It did not, because v1.270 built the wiring inside music.js. The fix is one shared
+  // implementation, so this asserts the SHAPE that keeps it one: each view supplies a
+  // hook that delegates, and neither re-implements mount/takeover/keydown itself.
+  const brick = fs.readFileSync(path.join(ROOT, 'public', 'js', 'ipod-brick.js'), 'utf8');
+  assert.match(brick, /window\.FileTubeBrick = \{ mount: mount, wire: wire \}/, 'the wiring is exported from the game file');
+  for (const view of ['music.js', 'podcasts.js']) {
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'js', view), 'utf8');
+    assert.match(src, /brick:\s*\{[\s\S]{0,400}?onTap:[\s\S]{0,120}?w\.onTap\(\)/,
+      `${view} offers the Brick row through the shared wiring`);
+    assert.match(src, /window\.FileTubeBrick\.wire\(\{ getEngine:/, `${view} builds its wiring from the shared helper`);
+    assert.doesNotMatch(src, /FileTubeBrick\.mount\(/,
+      `${view} must NOT mount the game itself - that is the duplication this wave removed`);
+    assert.match(src, /activeBrickStop/, `${view} keeps a teardown bridge for its own destroy() (no engine event on that path)`);
+  }
 });
 
 test('SHELL PARITY: every shell that loads the skin engine also loads the game (dynamic, fail-safe floor)', () => {

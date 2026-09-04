@@ -266,5 +266,94 @@
     };
   }
 
-  window.FileTubeBrick = { mount: mount };
+  // ---- the VIEW-side wiring, shared (v1.273) ----------------------------------
+  // v1.270 shipped this as ~50 lines inside music.js, so podcasts - which runs the
+  // SAME player on the SAME skins - simply had no Brick row (Dean: "podcasts just
+  // doesn't show up as an option even though it's the same player"). Copying those
+  // lines into podcasts.js would have made two of everything, including two copies
+  // of the skin list, which is the v1.259 registry lesson: a hand-maintained sibling
+  // list is where a feature goes inert. So the wiring lives here, once, and every
+  // view asks for it. It lands in THIS file rather than a new one on purpose - a new
+  // global script would have to be added to all nine entry shells (the SHELL PARITY
+  // class), and this file already ships wherever the skin engine does.
+  //
+  // The engine stays generic: it never learns what a takeover is talking to. What
+  // this adds is only what a VIEW would otherwise have to repeat.
+  var WHEEL_SKINS = ['ipod', 'ipod-black']; // Pocket Classic pair. Seattle Classic
+  // shares the chassis but its pad is half the usable rotation ring (tech-debt #207),
+  // and Dean scoped this to "specifically the pocket classic"; flat skins have no wheel.
+
+  function activeSkinId() {
+    try {
+      var sk = window.FileTubeMusicSkins;
+      return (sk && typeof sk.activeSkinId === 'function') ? sk.activeSkinId() : '';
+    } catch (_) { return ''; }
+  }
+
+  // wire({ getEngine }) -> { visible, onTap, stop, isRunning }
+  // `visible` and `onTap` are the sticker hook a view hands the engine; `stop` is the
+  // view's teardown arm (its own destroy path, which delivers no engine event).
+  function wire(opts) {
+    var o = opts || {};
+    var game = null, keyDoc = null, keyFn = null;
+    var engineOf = function () {
+      try { return (typeof o.getEngine === 'function') ? o.getEngine() : null; } catch (_) { return null; }
+    };
+    function stop() {
+      if (!game) return;
+      // LOAD-BEARING (the v1.270 seat measured this): the engine releases the takeover
+      // for paths that destroy the panel and for MENU, but the VIEW-initiated exits -
+      // the sticker row toggling Brick off, and Escape - never enter the engine. Without
+      // this clear the next MENU press is eaten by a stale pointer.
+      var eng = engineOf();
+      try { if (eng && typeof eng.setWheelTakeover === 'function') eng.setWheelTakeover(null); } catch (_) { /* engine gone */ }
+      try { game.destroy(); } catch (_) { /* already torn down */ }
+      game = null;
+      if (keyDoc && keyFn) { try { keyDoc.removeEventListener('keydown', keyFn, true); } catch (_) { /* ignore */ } }
+      keyDoc = null; keyFn = null;
+    }
+    function start() {
+      if (game) { stop(); return; } // the row toggles
+      var eng = engineOf();
+      if (!eng || typeof eng.lcdHost !== 'function') return;
+      var host = null;
+      try { host = eng.lcdHost(); } catch (_) { host = null; }
+      if (!host) return;
+      game = mount(host, {});
+      if (!game) return;
+      if (typeof eng.setWheelTakeover === 'function') {
+        eng.setWheelTakeover({
+          onRotate: game.onRotate,
+          onSelect: game.select,   // launch the ball / restart after GAME OVER
+          onExit: stop,            // MENU backs out, the iPod rule
+        });
+      }
+      // Escape belongs to the host's OWN document. music.js bound it to the main
+      // `document`, which is right for an in-tab skin and wrong for any surface whose
+      // panel lives elsewhere - the v1.250 foreign-window lesson.
+      keyDoc = host.ownerDocument || document;
+      keyFn = function (e) { if (game && e && e.key === 'Escape') { e.preventDefault(); stop(); } };
+      try { keyDoc.addEventListener('keydown', keyFn, true); } catch (_) { keyDoc = null; keyFn = null; }
+    }
+    return {
+      visible: function () {
+        if (WHEEL_SKINS.indexOf(activeSkinId()) < 0) return false;
+        // ...and the surface must actually HAVE a wheel to play it with: the tray is
+        // "a Classic LCD without the wheel" and renders the ipod skin id, so the id
+        // alone would offer Brick a control that is not on screen. Ask the panel.
+        var eng = engineOf();
+        if (!eng || typeof eng.lcdHost !== 'function') return false;
+        var host = null;
+        try { host = eng.lcdHost(); } catch (_) { host = null; }
+        if (!host) return false;
+        var root = (typeof host.closest === 'function' && host.closest('.music-nowplaying-panel')) || host.ownerDocument;
+        return !!(root && root.querySelector && root.querySelector('.ip-wheel'));
+      },
+      onTap: start,
+      stop: stop,
+      isRunning: function () { return !!game; },
+    };
+  }
+
+  window.FileTubeBrick = { mount: mount, wire: wire };
 })();

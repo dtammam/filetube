@@ -266,6 +266,42 @@ function drillAlbumCount(tracks) {
 // year·track-count + prominent Play/Shuffle; as the list scrolls it collapses
 // (CSS) into the slim sticky bar (buildStickyBarHtml). Back + Play + Shuffle
 // are handled by delegation on shared classes (.music-drill-back/-play/-shuffle).
+// v1.273: a CHAPTER album is one whose tracks are all `::c` chapters of a SINGLE
+// backing file. Requiring one base id (not merely "some chapter tracks present") is
+// what makes the editor's target unambiguous - the editor writes chapters for one
+// media id, so a mixed drill must not offer it.
+function chapterAlbumBaseId(tracks) {
+  tracks = Array.isArray(tracks) ? tracks : [];
+  if (!tracks.length) return null;
+  var base = null;
+  for (var i = 0; i < tracks.length; i++) {
+    var t = tracks[i];
+    if (!t || t.source !== 'library-chapter' || !/::c\d+$/.test(String(t.id))) return null;
+    var b = String(t.id).replace(/::c\d+$/, '');
+    if (base == null) base = b;
+    else if (b !== base) return null; // two files' chapters in one drill: not one editable list
+  }
+  return base;
+}
+function isChapterAlbum(tracks) { return !!chapterAlbumBaseId(tracks); }
+
+// The editor's line format is "<timestamp> <title>", and it round-trips through the
+// same parser the watch page feeds. Deliberately NOT formatTrackDuration above, which
+// returns '' for 0 - a chapter starting at 0:00 would lose its timestamp and the whole
+// first line would be re-parsed as a title. This mirrors common.js formatDuration
+// exactly (its 0 -> '0:00' included), which is what the watch page writes.
+function chapterStamp(seconds) {
+  var s = Number(seconds);
+  if (!s || !isFinite(s) || s <= 0) return '0:00';
+  var hrs = Math.floor(s / 3600);
+  var mins = Math.floor((s % 3600) / 60);
+  var secs = Math.floor(s % 60);
+  var out = '';
+  if (hrs > 0) out += hrs + ':' + (mins < 10 ? '0' : '');
+  out += mins + ':' + (secs < 10 ? '0' : '') + secs;
+  return out;
+}
+
 function buildDrillHeaderHtml(drill, tracks) {
   tracks = Array.isArray(tracks) ? tracks : [];
   var isAlbum = !!(drill && drill.type === 'album');
@@ -294,6 +330,14 @@ function buildDrillHeaderHtml(drill, tracks) {
     '<div class="music-drill-actions">' +
     '<button type="button" class="music-drill-play btn btn-primary btn-sm"><i class="icon-play"></i> Play</button>' +
     '<button type="button" class="music-drill-shuffle btn btn-sm"><i class="icon-shuffle"></i> Shuffle</button>' +
+    // v1.273 (Dean): "the ability to rename chapters as if they were the song names...
+    // it's just a string in a text block effectively". A chaptered album's "tracks" are
+    // the `::c` chapters of ONE file, so their names come from that file's chapter list -
+    // which the existing editor already writes. Only chapter albums get the button;
+    // a real album's track titles are file tags and are not editable here.
+    (isChapterAlbum(tracks)
+      ? '<button type="button" class="music-drill-chapters btn btn-sm"><i class="icon-list"></i> Edit chapters</button>'
+      : '') +
     '</div>' +
     '</div>' +
     '</div>' +
@@ -489,6 +533,7 @@ if (typeof module !== 'undefined' && module.exports) {
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
+    chapterAlbumBaseId, isChapterAlbum, chapterStamp,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
     MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
     buildMusicSkeletonCards, buildMusicSkeletonRows, buildMusicArtistSkeletonCards,
@@ -761,54 +806,27 @@ if (typeof module !== 'undefined' && module.exports) {
           // Pocket Classic only - Seattle Classic shares the wheel chassis but its
           // pad is half the usable ring (#207), and the flat skins have no wheel.
           brick: {
-            visible: function () {
-              if (!window.FileTubeBrick) return false;
-              var sk = window.FileTubeMusicSkins;
-              var id = (sk && typeof sk.activeSkinId === 'function') ? sk.activeSkinId() : '';
-              return id === 'ipod' || id === 'ipod-black';
-            },
-            onTap: function () { startBrick(); },
+            visible: function () { return !!brickWiring() && brickWiring().visible(); },
+            onTap: function () { var w = brickWiring(); if (w) w.onTap(); },
           },
         },
       };
     }
-    // ---- v1.270 BRICK: the whole of the view's side of the easter egg ----
-    // Mounts a canvas over the in-tab skin's LCD, points the engine's rotation
-    // subscriber at it, and tears BOTH down on exit. Music is untouched throughout -
-    // the game is a layer over the screen, not a mode the player knows about.
-    var brickGame = null;
-    function stopBrick() {
-      if (!brickGame) return;
-      // LOAD-BEARING, not belt (the seat measured this): the engine owns the release
-      // for paths that destroy the panel, and for MENU - but the two VIEW-initiated
-      // exits, the sticker row toggling Brick off and Escape, never enter the engine.
-      // Without this clear, the next MENU press is eaten by a stale pointer.
-      try { if (inTabEngine && typeof inTabEngine.setWheelTakeover === 'function') inTabEngine.setWheelTakeover(null); } catch (_) { /* engine gone */ }
-      try { brickGame.destroy(); } catch (_) { /* already torn down */ }
-      brickGame = null;
-      activeBrickStop = null;
-      try { document.removeEventListener('keydown', brickKeys, true); } catch (_) { /* ignore */ }
-    }
-    function brickKeys(e) {
-      if (!brickGame) return;
-      if (e.key === 'Escape') { e.preventDefault(); stopBrick(); }
-    }
-    function startBrick() {
-      if (brickGame) { stopBrick(); return; } // the row toggles
-      if (!window.FileTubeBrick || !inTabEngine || typeof inTabEngine.lcdHost !== 'function') return;
-      var host = inTabEngine.lcdHost();
-      if (!host) return;
-      brickGame = window.FileTubeBrick.mount(host, {});
-      if (!brickGame) return;
-      activeBrickStop = stopBrick;
-      if (typeof inTabEngine.setWheelTakeover === 'function') {
-        inTabEngine.setWheelTakeover({
-          onRotate: brickGame.onRotate,
-          onSelect: brickGame.select,   // launch the ball / restart after GAME OVER
-          onExit: stopBrick,            // MENU backs out, the iPod rule
-        });
+    // ---- v1.270 BRICK: the view's side, now the SHARED wiring (v1.273) ----
+    // The ~50 lines that used to live here moved into ipod-brick.js so podcasts can
+    // run the same easter egg on the same skins instead of a second copy (Dean:
+    // "podcasts just doesn't show up as an option even though it's the same player").
+    // Music is untouched throughout - the game is a layer over the LCD, not a mode
+    // the player knows about.
+    var brickWired = null;
+    function brickWiring() {
+      if (!window.FileTubeBrick || typeof window.FileTubeBrick.wire !== 'function') return null;
+      if (!brickWired) {
+        brickWired = window.FileTubeBrick.wire({ getEngine: function () { return inTabEngine; } });
       }
-      try { document.addEventListener('keydown', brickKeys, true); } catch (_) { /* ignore */ }
+      // the module-scoped bridge the view's own destroy() uses (v1.270 slim CRITICAL-2)
+      activeBrickStop = brickWired.stop;
+      return brickWired;
     }
 
     function reflectEngines() {
@@ -1748,6 +1766,31 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       if (e.target.closest('.music-drill-play')) {
         if (queue.length) playAt(0);
+        return;
+      }
+      // v1.273 (Dean): rename a chaptered album's "songs". The chapters ARE the track
+      // names here, and the editor that writes them already exists on the watch page -
+      // this is the same dialog, reached from where the names are actually read.
+      if (e.target.closest('.music-drill-chapters')) {
+        var baseId = chapterAlbumBaseId(queue);
+        if (!baseId || typeof window.showChaptersEditor !== 'function') return;
+        // Feed it the list in TIME order, not the drill's current sort - the editor's
+        // format is "timestamp title" per line and a shuffled album would write a
+        // scrambled file back.
+        var lines = queue.slice().sort(function (a, b) {
+          return (Number(a.chapterStartSec) || 0) - (Number(b.chapterStartSec) || 0);
+        }).map(function (t) {
+          return chapterStamp(Number(t.chapterStartSec) || 0) + ' ' + (t.title || '');
+        }).join('\n');
+        window.showChaptersEditor(baseId, lines, function () {
+          // Re-fetch rather than patch the local rows: the server resolves chapters
+          // (and a save can ADD or REMOVE them, not just rename), so the track list
+          // itself changes shape. Keep the user where they are - same drill, redrawn.
+          loadSongs({ scope: drill }).then(function () {
+            renderDrillView();
+            reflectEngines(); // the skins show a chapter title; a rename must reach them
+          }).catch(function () {});
+        });
         return;
       }
       if (e.target.closest('.music-drill-shuffle')) {
