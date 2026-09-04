@@ -1161,6 +1161,9 @@
       // {onRotate, onSelect, onExit}, all optional. Generic on purpose: the engine
       // never learns what is listening. The caller owns its own teardown.
       setWheelTakeover: function (t) { wheelTakeover = (t && typeof t === 'object') ? t : null; },
+      // v1.270: the fallback MUST stay `|| null`, never `|| panel` - the geometry lock
+      // derives its mount target from this selector, so a panel fallback would restore
+      // the full-screen overlay at runtime while the test still measured the LCD (slim I).
       lcdHost: function () { return panel.querySelector('.ip-lcd-in') || null; },
       // v1.250 (F-UNIFY): is a wheel SCRUB gesture live on this surface right now? The view's
       // chapter-loop enforcement reads this so a deliberate scrub past a chapter boundary is

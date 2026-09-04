@@ -218,6 +218,16 @@ test('v1.270 GEOMETRY LOCK: the overlay\'s containing block is the LCD inner box
   const wheel = panel.querySelector('.ip-wheel');
   assert.ok(wheel, 'the skin renders a wheel');
   assert.ok(!nearest.contains(wheel), 'and the WHEEL must sit OUTSIDE that box, or the game paints over the controls');
+  // slim SUGGESTION H - the other half of the same claim, and a gap in the shape the
+  // seat originally handed me: walking the ancestors proves nothing if the overlay
+  // opts out of them. `position:fixed` resolves against the VIEWPORT regardless of
+  // what this test just measured (position does not establish a fixed containing
+  // block - only transform/filter/perspective/contain/container-type do), which
+  // reproduces CRITICAL-1 in full with the suite green.
+  const brickRule = /\.ipod-brick\{([^}]*)\}/.exec(css);
+  assert.ok(brickRule, 'the overlay rule exists');
+  assert.match(brickRule[1], /position:\s*absolute/, 'ABSOLUTE, not fixed - fixed ignores the ancestor chain this test just walked and covers the screen');
+  assert.match(brickRule[1], /inset:\s*0/, 'and it fills that box (inset:auto collapses the game to nothing)');
   dom.window.close();
 });
 
