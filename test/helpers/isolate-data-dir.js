@@ -15,12 +15,20 @@
 // It must be required BEFORE any require of server.js (or anything that reaches
 // the adapter); the dynamic guard in test/unit/test-isolation-parity.test.js
 // enforces exactly that ordering across the whole tree.
+//
+// (adversarial S4) `npm test` preloads test/helpers/tmp-cleanup.js, which reaps
+// these dirs; a bare `node --test <file>` leaves one behind, exactly like the
+// ~190 files that inline the same mkdtemp. Not worth its own machinery.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-if (!process.env.DATA_DIR) {
-  process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-isolated-'));
-}
+// UNCONDITIONAL, matching the ~190 other server-requiring test files (adversarial
+// CRITICAL-2): a conditional "only if unset" made this inert whenever DATA_DIR was
+// exported - the seat measured these very files then migrating an operator's v19
+// database to v20 (bricking it for the older build via the rollback floor) and
+// creating a `testadmin` admin, with the new guard green throughout. No consumer
+// reads DATA_DIR, so there was never a caller the conditional served.
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-isolated-'));
 
 module.exports = { DATA_DIR: process.env.DATA_DIR };

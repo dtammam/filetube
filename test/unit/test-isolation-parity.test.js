@@ -20,40 +20,53 @@ const path = require('node:path');
 const TEST_ROOT = path.join(__dirname, '..');
 const DIRS = ['unit', 'integration'];
 
-function testFiles() {
-  const out = [];
+// adversarial S1: PER-DIRECTORY floors. A single global floor had 3-10x slack, so
+// dropping 'integration' from DIRS entirely (losing 212 files incl. the one
+// isolated offender) sailed through. Each directory now carries its own.
+const DIR_FLOORS = { unit: 380, integration: 180 };
+
+function testFilesByDir() {
+  const out = {};
   for (const d of DIRS) {
     const dir = path.join(TEST_ROOT, d);
-    if (!fs.existsSync(dir)) continue;
-    for (const f of fs.readdirSync(dir)) {
-      if (f.endsWith('.test.js')) out.push(path.join(dir, f));
-    }
+    out[d] = fs.existsSync(dir)
+      ? fs.readdirSync(dir).filter((f) => f.endsWith('.test.js')).map((f) => path.join(dir, f))
+      : [];
   }
   return out;
 }
 
-test('#202: every test file that requires server.js isolates DATA_DIR FIRST (dynamic, fail-safe floors)', () => {
-  const files = testFiles();
-  assert.ok(files.length >= 200, `fail-safe floor: expected >=200 test files, found ${files.length} (a broken walk must not pass vacuously)`);
+// adversarial W2 (both escapes MEASURED - each created a repo-root db with the
+// guard green): the require must match ANY quote style (there is no `quotes`
+// eslint rule to stop a respelling), and the isolation must be an ASSIGNMENT -
+// a bare `const prior = process.env.DATA_DIR` read satisfied a mention-check.
+const SERVER_REQUIRE = /require\(\s*['"`]\.\.\/\.\.\/server(\.js)?['"`]\s*\)/;
+const ISOLATE_REQUIRE = /require\(\s*['"`]\.\.\/helpers\/isolate-data-dir['"`]\s*\)/;
+const DATA_DIR_ASSIGN = /process\.env\.DATA_DIR\s*=[^=]/;
+
+test('#202: every test file that requires server.js isolates DATA_DIR FIRST (dynamic, per-directory fail-safe floors)', () => {
+  const byDir = testFilesByDir();
+  for (const [d, floor] of Object.entries(DIR_FLOORS)) {
+    assert.ok((byDir[d] || []).length >= floor,
+      `fail-safe floor: test/${d} expected >=${floor} files, found ${(byDir[d] || []).length} (a lost directory must not pass vacuously)`);
+  }
+  const files = Object.values(byDir).flat();
 
   let checked = 0;
   const offenders = [];
   for (const file of files) {
     if (path.basename(file) === path.basename(__filename)) continue; // this guard quotes the needles as literals
     const src = fs.readFileSync(file, 'utf8');
-    // The require that opens a db. Match both spellings actually used in-tree.
-    const serverAt = Math.min(
-      ...["require('../../server')", "require('../../server.js')"]
-        .map((needle) => { const i = src.indexOf(needle); return i === -1 ? Infinity : i; }),
-    );
-    if (!Number.isFinite(serverAt)) continue; // this file never opens a db
+    const serverMatch = src.match(SERVER_REQUIRE);
+    if (!serverMatch) continue; // this file never opens a db
+    const serverAt = serverMatch.index;
     checked++;
 
-    const isolateAt = src.indexOf("require('../helpers/isolate-data-dir')");
-    const envAt = src.indexOf('process.env.DATA_DIR');
+    const isolateMatch = src.match(ISOLATE_REQUIRE);
+    const envMatch = src.match(DATA_DIR_ASSIGN);
     const earliest = Math.min(
-      isolateAt === -1 ? Infinity : isolateAt,
-      envAt === -1 ? Infinity : envAt,
+      isolateMatch ? isolateMatch.index : Infinity,
+      envMatch ? envMatch.index : Infinity,
     );
     if (!Number.isFinite(earliest)) {
       offenders.push(`${path.basename(file)}: requires server.js with NO DATA_DIR isolation`);
@@ -76,4 +89,29 @@ test('#202: the connection opens with a busy timeout BEFORE any lock-taking stat
   const fkAt = body.indexOf('foreign_keys');
   assert.ok(timeoutAt < fkAt, 'the timeout is set FIRST, so every later statement is covered by it');
   assert.match(src, /const BUSY_TIMEOUT_MS = 5000;/, 'the value is pinned (a drop to 0 restores the bug)');
+});
+
+test('#202: the busy timeout is BEHAVIOURALLY in effect on a real connection (adversarial W1: source text proves presence, not binding)', () => {
+  const os = require('node:os');
+  const { SqliteAdapter, SQLITE_FILENAME } = require('../../lib/db/sqlite');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-busyprobe-'));
+  const adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} });
+  try {
+    const read = adapter.sql.prepare('PRAGMA busy_timeout').get();
+    const value = read.timeout !== undefined ? read.timeout : Object.values(read)[0];
+    assert.strictEqual(Number(value), 5000, 'SQLite itself reports the timeout - a never-executed pragma string cannot fake this');
+  } finally {
+    adapter.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('#202: a journal-mode switch RETRIES on SQLITE_BUSY (adversarial CRITICAL-1: the busy handler does NOT cover a mode change)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'db', 'sqlite.js'), 'utf8');
+  assert.match(src, /function switchJournalMode\(sql, pragma, budgetMs\)/, 'the bounded retry helper exists');
+  assert.match(src, /if \(!err \|\| err\.errcode !== 5 \|\| Date\.now\(\) >= deadline\) throw err;/, 'it retries ONLY on SQLITE_BUSY and ONLY within the budget - anything else rethrows at once');
+  assert.match(src, /sleepSync\(25\); \/\/ SQLITE_BUSY: wait, don't burn the CPU/, 'the wait SLEEPS (my own probe caught the first cut hot-looping at 100% CPU for the whole budget)');
+  assert.match(src, /Atomics\.wait\(new Int32Array\(new SharedArrayBuffer\(4\)\), 0, 0, ms\)/, 'a real synchronous sleep, not a spin');
+  assert.ok(!/sql\.prepare\('PRAGMA journal_mode = WAL'\)\.get\(\)/.test(src), 'no bare un-retried WAL switch remains');
+  assert.ok(!/sql\.exec\('PRAGMA journal_mode = DELETE'\)/.test(src), 'no bare un-retried DELETE switch remains');
 });
