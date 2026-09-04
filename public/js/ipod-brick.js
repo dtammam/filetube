@@ -338,15 +338,29 @@
     return {
       visible: function () {
         if (WHEEL_SKINS.indexOf(activeSkinId()) < 0) return false;
-        // ...and the surface must actually HAVE a wheel to play it with: the tray is
-        // "a Classic LCD without the wheel" and renders the ipod skin id, so the id
-        // alone would offer Brick a control that is not on screen. Ask the panel.
+        // ...and the surface must actually have a wheel to play it WITH.
+        //
+        // QA WARNING-1 corrected my first attempt here, which asked the panel for a
+        // `.ip-wheel` and called that a tray guard. It is not: the tray borrows the
+        // ipod skin's markup wholesale and hides the wheel in CSS
+        // (`body.mms-tray .ip-wheelwrap{display:none}`), and querySelector matches
+        // display:none nodes perfectly well - so that check returned TRUE on the tray.
+        // The wheel AND the MENU button both live inside the hidden wrap, so a Brick
+        // row there would mount a game with no way to play it and no way out but
+        // Escape. The tray is identified the way the shell identifies it: its body class.
+        //
+        // Today this cannot be reached at all - the engine gates the whole row on
+        // `inMainDoc` (skin-surface.js) and the tray is a pop-out document. It is
+        // written to be correct anyway, because lifting that gate is a named future
+        // decision and a guard that is only true by accident is worse than none.
         var eng = engineOf();
         if (!eng || typeof eng.lcdHost !== 'function') return false;
         var host = null;
         try { host = eng.lcdHost(); } catch (_) { host = null; }
         if (!host) return false;
-        var root = (typeof host.closest === 'function' && host.closest('.music-nowplaying-panel')) || host.ownerDocument;
+        var d = host.ownerDocument;
+        if (d && d.body && d.body.classList && d.body.classList.contains('mms-tray')) return false;
+        var root = (typeof host.closest === 'function' && host.closest('.music-nowplaying-panel')) || d;
         return !!(root && root.querySelector && root.querySelector('.ip-wheel'));
       },
       onTap: start,
