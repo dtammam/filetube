@@ -10962,10 +10962,21 @@ html[data-modern="on"] .video-uploader {
      bright glassy upper band with a HARD cut near the middle, a deeper lower band
      re-lightening into a bottom glow, a white top edge and a shaded bottom edge. */
   --mms-zn-pink:#ec008c; --mms-zn-dim:#9a9a9a; --mms-zn-ink:#1a1a1a;
-  --mms-aqua-top:#d6ecff; --mms-aqua-upper:#7db8f2; --mms-aqua-lower:#1e6fdb; --mms-aqua-glow:#5fb9f7;
-  --mms-aqua-rib:rgba(21,86,170,.35); --mms-aqua-rib-0:rgba(21,86,170,0); /* v1.260: the iconic diagonal gel ribbing */
-  --mms-aqua-fill-shadow:inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 2px rgba(10,58,120,.45);
-  --mms-aqua-groove-shadow:inset 0 1px 3px rgba(0,0,0,.28), inset 0 0 0 1px #a9abb0;
+  /* v1.269: the scrubber fill, SAMPLED from Dean's iPod photo rather than styled
+     from the macOS Aqua family. Two things we had structurally wrong, and neither
+     was the shade of blue: (1) the lighting is a glass TUBE - near-white at the
+     top edge, DARKEST ~45% down, then lightening again to the base - where our
+     gel lozenge was bright-top/dark-bottom; (2) the texture is a fine VERTICAL
+     striation (blue channel oscillating 192<->211 on a ~7px period), where ours
+     was a diagonal candy stripe. The empty track is a warm grey, not white. */
+  --mms-aqua-t0:#d3effa; --mms-aqua-t1:#a8d2f7; --mms-aqua-t2:#90c1f4; --mms-aqua-t3:#4999d0;
+  --mms-aqua-t4:#3797cd; --mms-aqua-t5:#44a0d3; --mms-aqua-t6:#51a9d8; --mms-aqua-t7:#60b2df;
+  --mms-aqua-t8:#75b6db; --mms-aqua-t9:#9bbed4;
+  --mms-aqua-striate:rgba(255,255,255,.16); --mms-aqua-striate-0:rgba(255,255,255,0);
+  --mms-aqua-striate-d:rgba(0,0,0,.05); /* the darker half of each cycle */
+  --mms-aqua-track:#dadddc; /* measured: warm grey, NOT the white we used */
+  --mms-aqua-fill-shadow:inset 0 1px 0 rgba(255,255,255,.6);
+  --mms-aqua-groove-shadow:inset 0 1px 1px rgba(60,80,100,.35), inset 0 0 0 1px #a9abb0;
   --mms-ipod-line:rgba(60,70,90,.14);
   --mms-ipod-wheel1:#d3d3d2; --mms-ipod-wheel2:#c4c4c2; --mms-ipod-wheel-lbl:#7c7d80;
   /* v1.231.1 gloss sheen (Dean): white-alpha stops for the body + wheel highlights. */
@@ -11303,10 +11314,10 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .mms-pos, .mms-ipod .mms-rem{ font-size:var(--fs-sm); font-weight:var(--fw-bold); flex:none; }
   /* v1.255 (Dean): the AQUA scrubber. The groove gets a real inner shadow so the fill
      sits IN it; the fill is the classic Aqua glass - hard 48/52 mid cut, bottom glow. */
-  .mms-ipod .ip-track{ flex:1; height:12px; border-radius:var(--radius-full); position:relative; overflow:hidden; background:linear-gradient(var(--mms-ipod-groove), var(--mms-white)); box-shadow:var(--mms-aqua-groove-shadow); }
+  .mms-ipod .ip-track{ flex:1; height:12px; border-radius:var(--radius-full); position:relative; overflow:hidden; background:var(--mms-aqua-track); box-shadow:var(--mms-aqua-groove-shadow); }
   /* v1.260 (Dean: "more of the iconic one"): the candy-stripe RIBBING over the glass -
      a repeating diagonal band layer above the hard-cut ramp. All stops var() (census). */
-  .mms-ipod .mms-fill{ background:repeating-linear-gradient(135deg, var(--mms-aqua-rib) 0, var(--mms-aqua-rib) 5px, var(--mms-aqua-rib-0) 5px, var(--mms-aqua-rib-0) 10px), linear-gradient(var(--mms-aqua-top), var(--mms-aqua-upper) 48%, var(--mms-aqua-lower) 52%, var(--mms-aqua-lower) 80%, var(--mms-aqua-glow)); box-shadow:var(--mms-aqua-fill-shadow); }
+  .mms-ipod .mms-fill{ background:repeating-linear-gradient(90deg, var(--mms-aqua-striate) 0 1px, var(--mms-aqua-striate-0) 1px 3px, var(--mms-aqua-striate-d) 3px 4px, var(--mms-aqua-striate-0) 4px 7px), linear-gradient(var(--mms-aqua-t0) 0%, var(--mms-aqua-t1) 12%, var(--mms-aqua-t2) 24%, var(--mms-aqua-t3) 38%, var(--mms-aqua-t4) 46%, var(--mms-aqua-t5) 56%, var(--mms-aqua-t6) 66%, var(--mms-aqua-t7) 76%, var(--mms-aqua-t8) 86%, var(--mms-aqua-t9) 100%); box-shadow:var(--mms-aqua-fill-shadow); }
   /* v1.235's wheel-VOLUME bar, DORMANT since v1.250 (Dean retired wheel-volume - the wheel
      scrubs everywhere; nothing writes .mms-voladj/.ip-vol-fill any more). Rules kept
      unchurned this wave; removable with the markup whenever the skins are next edited. */

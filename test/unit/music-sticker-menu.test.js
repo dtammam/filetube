@@ -346,7 +346,12 @@ test('v1.255 source-lock: the wheel scrubber wears the AQUA glass (hard mid cut 
   // the census idiom this file's own iPod body gloss established.
   const fs = require('node:fs'); const path = require('node:path');
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /\.mms-ipod \.mms-fill\{ background:repeating-linear-gradient\(135deg, var\(--mms-aqua-rib\) 0, var\(--mms-aqua-rib\) 5px, var\(--mms-aqua-rib-0\) 5px, var\(--mms-aqua-rib-0\) 10px\), linear-gradient\(var\(--mms-aqua-top\), var\(--mms-aqua-upper\) 48%, var\(--mms-aqua-lower\) 52%, var\(--mms-aqua-lower\) 80%, var\(--mms-aqua-glow\)\); box-shadow:var\(--mms-aqua-fill-shadow\); \}/, 'the Aqua fill: the iconic diagonal ribbing OVER the glass ramp (v1.260), hard mid cut, bottom glow, edge shadows');
+  assert.match(css, /\.mms-ipod \.mms-fill\{ background:repeating-linear-gradient\(90deg, var\(--mms-aqua-striate\) 0 1px,[^}]*var\(--mms-aqua-t4\) 46%,[^}]*var\(--mms-aqua-t9\) 100%\); box-shadow:var\(--mms-aqua-fill-shadow\); \}/, 'the MEASURED fill (v1.269): VERTICAL striations (90deg, not the old 135deg diagonal) over the glass-tube ramp whose DARKEST stop sits at 46% - not at the bottom like a gel lozenge');
   assert.match(css, /\.mms-ipod \.ip-track\{[^}]*box-shadow:var\(--mms-aqua-groove-shadow\)/, 'the groove has the Aqua inner shadow');
-  assert.match(css, /--mms-aqua-fill-shadow:inset 0 1px 0 rgba\(255,255,255,\.9\), inset 0 -1px 2px/, 'top highlight + bottom shade tokens defined');
+  assert.match(css, /--mms-aqua-fill-shadow:inset 0 1px 0 rgba\(255,255,255,\.6\);/, 'a single soft top highlight - the measured bar has no dark bottom edge');
+  assert.match(css, /\.mms-ipod \.ip-track\{[^}]*background:var\(--mms-aqua-track\);/, 'the empty track is the measured WARM GREY, not the old white-to-grey gradient');
+  // the tube's shape is the finding, so bind its DIRECTION: the darkest stop must sit
+  // in the upper-middle and the base must be LIGHTER than it (a gel lozenge inverts this).
+  const t4 = /--mms-aqua-t4:#3797cd/.test(css), t9 = /--mms-aqua-t9:#9bbed4/.test(css);
+  assert.ok(t4 && t9, 'the measured darkest (46%) and base stops are both defined');
 });
