@@ -57,3 +57,27 @@ test('the toggle reads the mark (GET) and writes the mark (POST) via the music-f
 test('the on-state paints the is-on class (the glanceable accent)', () => {
   assert.match(SRC, /mbtn\.classList\.toggle\('is-on', !!effective\)/, 'the is-on class tracks the effective state');
 });
+
+
+test('v1.268: BOTH labels say what the button does, in hide/show terms - never "remove" (Dean tapped it and could not tell it had acted)', () => {
+  // The control is OPT-OUT since v1.242 (every channel is in Music by default),
+  // so the old "In your Music library - click to remove" both understated the
+  // default and read like it might delete files. Comments are stripped above, so
+  // a commented-out label cannot satisfy this.
+  assert.match(SRC, /Showing in Music - tap to hide this channel/, 'the ON label says it is showing, and that tapping HIDES');
+  assert.match(SRC, /Hidden from Music - tap to show this channel/, 'the OFF label says it is hidden, and that tapping SHOWS');
+  assert.ok(!/click to remove/.test(SRC), 'the delete-sounding wording is gone');
+  // both strings must reach the user through the touch-reachable paths, not just title
+  const m = SRC.match(/const t = effective[\s\S]{0,600}?setAttribute\('aria-pressed'[^\n]*\)/);
+  assert.ok(m, 'one label source of truth feeds title, aria-label and the pressed state');
+  assert.match(m[0], /mbtn\.title = t;/, 'title (pointer devices)');
+  assert.match(m[0], /setAttribute\('aria-label', t\)/, 'aria-label (assistive tech)');
+  assert.match(m[0], /setAttribute\('aria-pressed'/, 'and the pressed state is exposed');
+});
+
+test('v1.268: the OFF state is legible WITHOUT hover - a struck-through note, not just a colour shift', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.folder-music-toggle:not\(\.is-on\) \{\s*text-decoration: line-through;/,
+    'OFF is struck through (a phone has no hover title - colour alone left the state unreadable)');
+  assert.match(css, /\.folder-music-toggle\.is-on \{\s*color: var\(--text-link\);/, 'ON stays the link colour');
+});

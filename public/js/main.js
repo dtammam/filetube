@@ -2098,7 +2098,15 @@ const PreviewCards = (function () {
         let effectiveNow = false;
         const paint = (effective) => {
           mbtn.classList.toggle('is-on', !!effective);
-          const t = effective ? 'In your Music library - click to remove' : 'Show this channel in your Music library';
+          // v1.268 (Dean): this button reads as a decorative badge and its only
+          // explanation was a hover title, which does not exist on a phone - so he
+          // tapped it and could not tell it had done anything. It is also an
+          // OPT-OUT control since v1.242 (every channel is in Music by default),
+          // so "click to remove" both understated the default AND sounded like it
+          // might delete files. Say what it actually does, in both states.
+          const t = effective
+            ? 'Showing in Music - tap to hide this channel\u2019s songs from your Music library'
+            : 'Hidden from Music - tap to show this channel\u2019s songs in your Music library';
           mbtn.title = t;
           mbtn.setAttribute('aria-label', t);
           mbtn.setAttribute('aria-pressed', effective ? 'true' : 'false');
