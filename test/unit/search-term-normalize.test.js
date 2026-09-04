@@ -1,5 +1,7 @@
 'use strict';
 
+require('../helpers/isolate-data-dir'); // tech-debt #202: MUST precede any server.js require (it opens a db)
+
 // [UNIT] v1.85 #1 - normalizeSearchTerm (server.js). The term is the PK of
 // user_search_history, so normalization decides dedup: whitespace-collapsed,
 // trimmed, length-capped; empty/garbage -> '' (the route rejects it).

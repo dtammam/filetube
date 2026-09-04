@@ -75,6 +75,21 @@ test('node:sqlite is required ONLY by lib/db/sqlite.js', () => {
     `node:sqlite required outside the adapter: ${offenders.join(', ')} — all SQLite API touches belong in lib/db/sqlite.js (exec plan locked intake #1)`);
 });
 
+test('v1.266: __openRawForTests is TEST-ONLY (the door that keeps the node:sqlite lock honest must not leak into production)', () => {
+  const files = [];
+  for (const root of SCAN_ROOTS) walk(root, files);
+  assert.ok(files.length > 200, `sanity: expected to scan a real tree, got ${files.length} files`);
+  const offenders = [];
+  for (const rel of files) {
+    if (rel === ALLOWED) continue;                 // the definition + export live here
+    if (rel.split(path.sep)[0] === 'test') continue; // tests are its whole purpose
+    const src = stripComments(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
+    if (src.includes('__openRawForTests')) offenders.push(rel);
+  }
+  assert.deepStrictEqual(offenders, [],
+    `__openRawForTests reached production code: ${offenders.join(', ')} - openAdapter is the only sanctioned door`);
+});
+
 test('no RAW control bytes in server-side source (the v1.37.5 lesson, institutionalized)', () => {
   // Raw control bytes (NUL etc.) in source render INVISIBLY in editors and
   // diffs, trip binary sniffers (ugrep silently skipped lib/db/sqlite.js

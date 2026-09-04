@@ -1,5 +1,7 @@
 'use strict';
 
+require('../helpers/isolate-data-dir'); // tech-debt #202: MUST precede any server.js require (it opens a db)
+
 // [UNIT] v1.33 T4 (tech-debt #10, Dean's Option C) -- detectVanishedRoots,
 // the EMPTY-BUT-PRESENT mountpoint detector. Pure-function tests against the
 // exact signature: a configured root that previously held indexed items and

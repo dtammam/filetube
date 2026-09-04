@@ -1,5 +1,7 @@
 'use strict';
 
+require('../helpers/isolate-data-dir'); // tech-debt #202: MUST precede any server.js require (it opens a db)
+
 // [UNIT] v1.37.5 -- the "I delete things and they don't actually get deleted"
 // fix (Dean): DELETE /api/videos/:id used to skip the unlink and delete the
 // db entry anyway with {success:true} whenever `fs.existsSync(item.filePath)`

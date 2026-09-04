@@ -1,5 +1,7 @@
 'use strict';
 
+require('../helpers/isolate-data-dir'); // tech-debt #202: MUST precede any server.js require (it opens a db)
+
 // [UNIT] v1.33 T1/T3 -- the release-date/Share trust chain's pure derivation
 // helpers (server.js) plus the captured-title sanitizer (lib/ytdlp/store.js):
 //

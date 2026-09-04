@@ -1,5 +1,7 @@
 'use strict';
 
+require('../helpers/isolate-data-dir'); // tech-debt #202: MUST precede any server.js require (it opens a db)
+
 // [UNIT] v1.41.10 -- the leaked-streaming-fd / DELETE_PENDING fix (the
 // "undeletable emoji files" incident, 2026-07-16). Production was found
 // holding ~180 open fds on three "undeletable" videos: every browser seek

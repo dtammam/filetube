@@ -1,5 +1,7 @@
 'use strict';
 
+require('../helpers/isolate-data-dir'); // tech-debt #202: MUST precede any server.js require (it opens a db)
+
 // [UNIT] v1.41.11 (Dean: "see files that are truly duplicates so I can clean
 // them up") -- the pure duplicates report over db.metadata + its RFC 4180
 // CSV serializer (lib/stats.js). Uses the REAL extractYtdlpVideoId exported

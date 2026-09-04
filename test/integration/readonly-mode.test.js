@@ -1,4 +1,6 @@
 'use strict';
+
+require('../helpers/isolate-data-dir'); // tech-debt #202: MUST precede any server.js require (it opens a db)
 // FILETUBE_READONLY=1 (2026-07-30 capture-safety hardening, P2) + the
 // mutation audit log (P3). The env is read per-request by design, so these
 // tests toggle it around real requests against the real app - the same
