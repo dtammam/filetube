@@ -31,8 +31,10 @@
   var SPEED_LEVEL = 0.10; // each level starts faster
   var SPEED_CAP = 1.45;  // hard ceiling: below this the substepper cannot be outrun
   var HIT_ACCEL = 1.008;  // every brick winds the rally up a notch (compounding). Tuned
-                          // so a clean level 1 ENDS at 1.43 - just under the cap, which
-                          // leaves the later levels somewhere to go.
+                          // so a clean level 1 ends near the cap without pinning against
+                          // it, leaving the later levels somewhere to go: the gate seat
+                          // measured that finish as a DISTRIBUTION, 1.231-1.446 (median
+                          // 1.395), not the single 1.43 this comment used to claim.
   var PAD_ACCEL = 1.006; // ...and so does every return, so a rally builds pace even
                           // while you are only defending and breaking nothing.
   var BREAK_KICK = 1.18;  // breaking into the top two rows: Atari's own speed jump
@@ -177,7 +179,9 @@
           // offset to vx and renormalised, which is a nudge - measured end to end it
           // bent the ball by 14.7 degrees across the entire paddle, so the ball just
           // carried on the way it came. Mapped to an angle it is 120 degrees, and a
-          // ball arriving from the left leaves to the left if you catch it late.
+          // ball you catch EARLY (contact on the near edge, paddle overshot) goes back
+          // the way it came, while one caught LATE (contact on the far edge) carries on.
+          // (Slim S3: this comment said the opposite until the seat measured it.)
           // Clamped to +-60deg so it can never skim off almost horizontally forever.
           // The hit test above is nx strictly INSIDE padX +- half, so off is already
           // bounded to (-1, 1); a clamp here would be a branch that can never run.

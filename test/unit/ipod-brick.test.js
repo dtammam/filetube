@@ -236,26 +236,36 @@ test('v1.271 the deflection is CLAMPED: an EDGE-SEEKING player still cannot make
 test('v1.271 PACE: the ball starts materially faster than the old crawl AND a rally accelerates', () => {
   const S = sim();
   const speeds = [];
-  let p = null, firstRally = [], bricks0 = null;
+  // Slim-gate WARNING-1: this used to accumulate into a never-reset `firstRally` - the
+  // same data as `speeds` under a wrong name. Speed resets to base on every LIFE and
+  // every LEVEL, so `.slice(-60)` could land entirely after a reset and "late" then
+  // measured the LAUNCH speed: the test redded ~0.17% of runs (the seat hit it live,
+  // 1 in 40) with a message that reads like a real physics regression. The unit of
+  // acceleration is one RALLY, so measure inside one: keep the longest segment.
+  let p = null, rally = [], longest = [], bricks0 = null;
+  const keep = () => { if (rally.length > longest.length) longest = rally; rally = []; };
   for (let i = 0; i < 3000; i++) {
     const f = S.read();
     if (!f || f.x == null) break;
     if (bricks0 == null) bricks0 = f.bricks;
-    if (f.ready || f.over) { S.g.select(); p = null; }
+    if (f.ready || f.over) { S.g.select(); p = null; keep(); }
     else if (p) {
       // Filter on the RAW per-frame displacement: a frame containing a bounce shows a
       // short net move even though the ball travelled its full distance, and those
       // frames would drag every average down.
       const raw = Math.hypot(f.x - p[0], f.y - p[1]);
-      if (raw < 0.25) { const d = raw * 60; speeds.push(d); firstRally.push(d); }
+      if (raw < 0.25) { const d = raw * 60; speeds.push(d); rally.push(d); }
     }
     if (f.padC != null) S.g.onRotate((f.x - f.padC) * 220);
     p = [f.x, f.y];
   }
   S.close();
+  keep();
   assert.ok(speeds.length > 500, `gathered ${speeds.length} speed samples`);
-  const early = firstRally.slice(0, 60);
-  const late = firstRally.slice(-60);
+  // early and late must not overlap, or the ratio compares a window with itself
+  assert.ok(longest.length > 150, `the longest single rally was only ${longest.length} samples - early/60 and late/60 would overlap`);
+  const early = longest.slice(0, 60);
+  const late = longest.slice(-60);
   const avg = (a) => a.reduce((x, y) => x + y, 0) / a.length;
   // The old base was 0.34 board-heights/sec - three seconds to cross the board.
   assert.ok(avg(early) > 0.5, `launch pace was ${avg(early).toFixed(3)} board-heights/sec; below ~0.5 it reads as an idle animation`);
@@ -268,17 +278,161 @@ test('v1.271 PACE: the ball starts materially faster than the old crawl AND a ra
 test('v1.271 the paddle SHRINKS as the board is cleared - losing has to become possible', () => {
   const S = sim();
   let start = null, smallest = 1;
+  const widths = new Set();
   for (let i = 0; i < 6000; i++) {
     const f = S.read();
     if (!f || f.x == null) break;
-    if (f.padW != null) { if (start == null) start = f.padW; smallest = Math.min(smallest, f.padW); }
+    if (f.padW != null) {
+      if (start == null) start = f.padW;
+      smallest = Math.min(smallest, f.padW);
+      widths.add(Math.round(f.padW * 1e6) / 1e6);
+    }
     if (f.ready || f.over) S.g.select();
     if (f.padC != null) S.g.onRotate((f.x - f.padC) * 220);
   }
   S.close();
   assert.ok(start > 0.15, `starts generous: ${start}`);
   assert.ok(smallest < start * 0.75, `the paddle must get harder to hit with: ${start} -> ${smallest}`);
-  assert.ok(smallest > 0.05, `...but never a sliver: ${smallest}`);
+  // Slim-gate WARNING-3: `smallest > 0.05` was VACUOUS - the floor measures ~0.10 and
+  // PAD_MIN (0.085) is never approached in 6000 frames, so it could not fail (PAD_MIN
+  // -> 0.020 survived it). Pinning the observed minimum EXACTLY is no good either: how
+  // far the run gets is not deterministic (0.108 = level 1 broken here, 0.0972 = level 2
+  // on the gate's box), which is the very flake class WARNING-1 was. So bind the MODEL:
+  // every width the paddle ever takes must be one the formula can produce. That pins
+  // PAD_W0, the 0.018 per-level step and the 0.6 breakthrough together, whatever level
+  // the run reaches. PAD_MIN stays unbound - it cannot clamp before level 7 - #217.
+  const allowed = new Set();
+  for (let L = 1; L <= 10; L++) {
+    const base = Math.max(0.085, 0.18 - (L - 1) * 0.018);
+    allowed.add(Math.round(base * 1e6) / 1e6);
+    allowed.add(Math.round(Math.max(0.085, base * 0.6) * 1e6) / 1e6);
+  }
+  assert.ok(widths.size >= 2, `the paddle must actually CHANGE width (non-vacuous): saw ${widths.size} distinct width(s)`);
+  for (const w of widths) {
+    assert.ok(allowed.has(w),
+      `paddle width ${w} is not a value the shrink model can produce - expected max(PAD_MIN, 0.18 - (level-1)*0.018) optionally x0.6, got [${[...widths].join(', ')}]`);
+  }
+});
+
+test('v1.271 slim W2: a paddle return accelerates the rally by EXACTLY PAD_ACCEL - the line was deletable with the suite green', () => {
+  // The seat measured `ball.sp = Math.min(SPEED_CAP, ball.sp * PAD_ACCEL)` as DELETABLE
+  // with the whole suite green, and PAD_ACCEL -> 1.000 and -> 1.012 as survivors. The
+  // wave's claim is "a rally builds pace even while you are only defending", so bind the
+  // RETURN itself: find a bounce off the paddle with NO brick broken in the same frame,
+  // and compare the clean speed either side of it. That ratio can only be PAD_ACCEL.
+  // SEEDED. My first cut used the live RNG and redded 1 run in 20 (ratio 0.656) - I had
+  // reintroduced WARNING-1's own flake class while fixing it. A frame that CONTAINS a
+  // bounce shows a short net displacement, so "the nearest sample under 0.25" is not
+  // necessarily free flight. Two defences: a fixed sequence, and a free-flight proof -
+  // only trust a speed that TWO consecutive frames agree on, which a bent frame cannot fake.
+  const lcg = (seed) => { let s = seed; return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; }; };
+  const ratios = [];
+  for (const seed of [437, 991, 12345, 60013]) {
+    const S = sim(lcg(seed));
+    S.read(); S.g.select();
+    const frames = [];  // {y, clean, live} per frame; recorded, then post-processed
+    let p = null;
+    for (let i = 0; i < 3000; i++) {
+      const f = S.read();
+      if (!f || f.x == null) break;
+      if (f.ready || f.over) { S.g.select(); p = null; frames.push(null); }
+      else {
+        const raw = p ? Math.hypot(f.x - p[0], f.y - p[1]) : null;
+        frames.push({ y: f.y, clean: raw != null && raw < 0.25 ? raw * 60 : null, live: f.live.size });
+        p = [f.x, f.y];
+      }
+      if (f.padC != null) S.g.onRotate((f.x - f.padC) * 220);
+    }
+    S.close();
+    // free flight = two consecutive frames reporting the same speed to 1e-9
+    const flight = (i) => (frames[i] && frames[i + 1] && frames[i].clean != null && frames[i + 1].clean != null
+      && Math.abs(frames[i].clean - frames[i + 1].clean) < 1e-9) ? frames[i].clean : null;
+    for (let i = 2; i < frames.length - 3; i++) {
+      const a = frames[i - 1], b = frames[i], c = frames[i + 1];
+      if (!a || !b || !c) continue;
+      if (!(b.y > 0.85 && b.y > a.y && c.y < b.y)) continue; // went down, now up, near the paddle
+      let j = i - 2; while (j > 0 && flight(j) == null) j--;
+      let k = i + 1; while (k < frames.length - 3 && flight(k) == null) k++;
+      const before = flight(j), after = flight(k);
+      if (before == null || after == null) continue;
+      let same = true;   // no brick broken anywhere in the window: HIT_ACCEL cannot contaminate
+      for (let m = j; m <= k + 1; m++) { if (!frames[m] || frames[m].live !== frames[j].live) { same = false; break; } }
+      if (same) ratios.push(after / before);
+    }
+  }
+  assert.ok(ratios.length >= 4, `found only ${ratios.length} brickless free-flight paddle returns across 4 seeds (non-vacuous floor)`);
+  for (const ratio of ratios) {
+    assert.ok(Math.abs(ratio - 1.006) < 0.0025,
+      `a return must wind the rally up by PAD_ACCEL: measured x${ratio.toFixed(5)} (1.000 = the line deleted, 1.012 = double)`);
+  }
+});
+
+test('v1.271 slim S1: the game can actually be LOST - a human-reaction player reaches GAME OVER, a frame-perfect one never does', () => {
+  // Dean's whole ask was "it's too easy". The wave's headline numbers for that ("0.00
+  // -> 2.38 lives lost/60s, 0/8 -> 8/8 GAME OVER") came from an instrument that was
+  // never committed, so the claim had no guard and no regression protection - the seat's
+  // SUGGESTION-1. This is that instrument, seeded so it cannot flake.
+  //
+  // The player tracks where the ball WAS 8 frames ago (~133ms, human reaction). The
+  // control is the same player with zero lag: skill must still pay, or the game is not
+  // hard, just unfair.
+  const lcg = (seed) => { let s = seed; return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; }; };
+  const play = (seed, lag) => {
+    const S = sim(lcg(seed));
+    const hist = [];
+    let lost = 0, over = false, prevReady = false;
+    for (let i = 0; i < 4000; i++) {
+      const f = S.read();
+      if (!f || f.x == null) break;
+      if (f.over) { over = true; break; }
+      // a re-launch onto a PARTLY cleared board is a life lost; a full board is a new level
+      if (f.ready) { if (!prevReady && f.bricks < 40) lost += 1; S.g.select(); prevReady = true; }
+      else prevReady = false;
+      hist.push(f.x);
+      const target = hist.length > lag ? hist[hist.length - 1 - lag] : f.x;
+      if (f.padC != null) S.g.onRotate((target - f.padC) * 220);
+    }
+    S.close();
+    return { lost, over };
+  };
+  const seeds = [437, 991, 12345];
+  const lagged = seeds.map((s) => play(s, 8));
+  const perfect = seeds.map((s) => play(s, 0));
+  assert.ok(lagged.every((r) => r.over),
+    `a 133ms-reaction player must reach GAME OVER within 4000 frames on every seed - got ${JSON.stringify(lagged)} (before this wave the same player lost NOTHING in a minute)`);
+  assert.ok(perfect.every((r) => r.lost === 0 && !r.over),
+    `...while a frame-perfect player must still never lose - got ${JSON.stringify(perfect)} (if this reds the game got unfair, not hard)`);
+});
+
+test('v1.271 slim W2: LEVEL 2 launches faster than level 1 by exactly SPEED_LEVEL - "each level starts faster" had no guard', () => {
+  // SPEED_LEVEL -> 0.00 (levels never speed up) survived the whole suite, because every
+  // driver measured only level 1. resetBall() sets sp = SPEED0 + (level-1)*SPEED_LEVEL,
+  // so the LAUNCH speed of each level reads the constant directly.
+  const S = sim();
+  const launch = [];       // first clean speed after each launch
+  let p = null, armed = false, level = 0;
+  for (let i = 0; i < 12000; i++) {
+    const f = S.read();
+    if (!f || f.x == null) break;
+    if (f.over) break;     // a life lost also resets speed - only take clean launches
+    if (f.ready) { S.g.select(); p = null; armed = true; level = f.bricks; continue; }
+    if (p) {
+      const raw = Math.hypot(f.x - p[0], f.y - p[1]);
+      if (raw < 0.25) {
+        if (armed) { launch.push({ sp: raw * 60, bricks: level }); armed = false; }
+      }
+    }
+    if (f.padC != null) S.g.onRotate((f.x - f.padC) * 220);
+    p = [f.x, f.y];
+  }
+  S.close();
+  // A level advance re-lays the full 40-brick board, so a launch whose board is FULL and
+  // which is not the first launch is a new LEVEL rather than a new life.
+  const full = launch.filter((l) => l.bricks === 40);
+  assert.ok(full.length >= 2, `the run must actually REACH level 2 - only ${full.length} full-board launch(es) seen (a driver that never clears a board cannot bind a per-level constant)`);
+  const d = full[1].sp - full[0].sp;
+  assert.ok(Math.abs(d - 0.10) < 0.02,
+    `level 2 must launch SPEED_LEVEL faster: ${full[0].sp.toFixed(3)} -> ${full[1].sp.toFixed(3)} = +${d.toFixed(3)} (0.00 = the ramp is dead)`);
 });
 
 test('v1.271 a dead-centre hit never leaves a PERFECTLY VERTICAL rally (the one stalemate the angle map allows)', () => {
@@ -318,7 +472,8 @@ test('v1.271 the ball cannot TUNNEL a live brick, even on a 50ms frame at full p
   // The loop clamps dt at 50ms. At the top speed the ball covers more ground in one
   // such frame than a brick is tall, so a single position test per frame would let it
   // pass straight through a row. Measured against a build with the substepper removed:
-  // 8-12 pass-throughs per run versus 0-1 here.
+  // ~6 pass-throughs per run versus 0-1 here (the gate seat re-measured this at
+  // 6.4/run - the original '8-12' was this driver's own high-water mark, not a median).
   //
   // Two filters keep this honest. Only STRAIGHT frames are sampled - a frame holding a
   // bounce has a chord across cells the ball never visited - and only the middle 60%
@@ -357,7 +512,7 @@ test('v1.271 the ball cannot TUNNEL a live brick, even on a 50ms frame at full p
     S.close();
   }
   assert.ok(sampled > 2000, `sampled ${sampled} straight-line frames at the clamped dt`);
-  assert.ok(total <= 5, `the ball passed through the middle of a still-standing brick ${total} times (a build with no substepping scores 40+ here)`);
+  assert.ok(total <= 5, `the ball passed through the middle of a still-standing brick ${total} times (a build with no substepping scores 30+ here)`);
 });
 
 test('v1.271 a brick struck on its SIDE turns the ball around horizontally, instead of letting it plough down the row', () => {
