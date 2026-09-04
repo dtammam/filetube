@@ -6,7 +6,7 @@ same day via the Taptic Probe artifact: "WHOA NEW THINF WORKED... a0 a and c all
 Feel ruling: "as aggressive as the iPod Classic" (the real Classic ~96/rev) -
 implemented at 4.5 = 80/rev, re-tuned to 3 = 120/rev ("even higher frequency"),
 settled at 3.75 = 96/rev - the Classic's OWN number (v1.256.2: 3 was "a little too hot");
-the 30ms Taptic floor supplies the saturation buzz on fast flicks.
+the tick floor (30ms at v1.256; **8ms since v1.271**) bounds how fast ticks can fire.
 
 ## The mechanism (device-confirmed on Dean's iPhone, iOS 26.6.1)
 
@@ -21,7 +21,7 @@ every detent reads as a crossing. Probes A0/A/C all confirmed by Dean's thumb.
 
 CONSTANTS (WebKit source): tracking arms ~200ms after touchstart (switchHeldDelay); the
 first flip needs ~40% of track width of travel, then trackWidth/2 per flip; the Taptic
-engine saturates ~30ms between impacts.
+engine saturates ~30ms between impacts **- UNEVIDENCED, see below**.
 
 HARD RULES (probe-derived, each one broke a probe iteration):
 1. **`touch-action:none` ANYWHERE on the switch's ancestor chain KILLS tracking** (probe
@@ -64,7 +64,7 @@ A tap on the ghost also toggles it (one stray tick on a zone tap = acceptable, a
 authentic - the Classic clicked on button presses too).
 
 **T3 - the tick engine**: per-gesture state rides the existing `st`:
-`HAPTIC_STEP_DEG = 3.75` (v1.256.2 Classic parity; 4.5 then 3 before it), `HAPTIC_MIN_MS = 30`.
+`HAPTIC_STEP_DEG = 3.75` (v1.256.2 Classic parity; 4.5 then 3 before it), `HAPTIC_MIN_MS = 8` (was 30 - see the v1.271 note).
 In onMove (BOTH modes, after `d` is computed): `hapAccum += Math.abs(d)`; while
 `hapAccum >= HAPTIC_STEP_DEG` consume one step and (throttle permitting) flip the bias
 and re-translate the ghost so the finger sits ±18px past the midline; excess ticks under
@@ -75,6 +75,24 @@ ticks. onUp/cancel restores the ghost transform.
 **Predictions (machine-verified at each commit)**: `git diff main -- public/js/player.js
 public/js/music.js server.js` stays empty; the only touched files are
 public/js/skin-surface.js, public/css/style.css, and tests.
+
+## v1.271: the 30ms "constant" was ours, not WebKit's
+
+CORRECTION to this plan's own CONSTANTS section. It filed ~30ms under "(WebKit
+source)"; an investigation searched WebKit's switch pointer-tracking path and
+UIImpactFeedbackGenerator and found **no evidence of any such rate limit**. It was
+our guess, recorded as if sourced, and then quoted back to Dean as fact.
+
+What 30 actually did, measured: pegged delivery at a FLAT ~30 ticks/second no matter
+how fast the wheel turned - 68.75% of a 1 rev/s spin's ticks discarded - where a real
+Classic's rate rises with the hand. Dean: "I want there to be more haptic feedback
+than not... it really should feel like the real thing."
+
+Now 8ms, below the 8.33ms ProMotion frame, so it can never bind before the
+mechanism's own ceiling of one tick per pointermove. Measured yield: 60Hz 30 -> 60
+ticks/s (2x), 120Hz 30 -> 120 (4x). SAFE because Dean device-confirmed the engine
+DROPS rather than queues (ticks stop dead when his finger does). Consequence to know:
+at 120Hz the floor never binds at all, so tick rate there is purely display-bound.
 
 ## Device-probe risks (Dean's pass arbitrates; disclosed if shipped unresolved)
 

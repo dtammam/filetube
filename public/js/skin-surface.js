@@ -752,7 +752,21 @@
     // the instant the finger lifts.
     var paintPending = false;
     function paint() {
-      if (wheelSpin) { paintPending = true; return; }
+      // Defer ONLY for a gesture that can still REACH endWheel. The early return jumped
+      // over `wheelSpin = null` below - which WAS the engine's stale-spin self-heal - so a
+      // view-side panel clear (music.js and podcasts.js both empty innerHTML without
+      // calling destroy(), and the v1.256 QA CRITICAL documents that path taking no
+      // events) left wheelSpin set forever and FROZE every future repaint: a blank
+      // full-screen skin with a dead wheel, no in-app recovery. Pre-v1.271 that same
+      // event cost one gesture and healed on the next repaint; the deferral made it
+      // permanent. So: if the wheel this spin is bound to is gone, end the stale gesture
+      // here and paint anyway.
+      if (wheelSpin) {
+        if (wheelSpin.wheel && wheelSpin.wheel.isConnected) { paintPending = true; return; }
+        var stale = wheelSpin;
+        paintPending = false; // THIS paint is the flush - endWheel must not re-enter
+        try { endWheel(stale, false); } catch (_) { /* the node is already gone */ }
+      }
       paintPending = false;
       releaseWheelTakeover();
       var id = getSkinId();

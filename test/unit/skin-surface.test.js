@@ -961,6 +961,11 @@ test('v1.271 (was v1.256 W1+W2): the FEEL constants are pinned at their boundari
     assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'a detent 8ms after the last FLIP ticks (the floor is 8, not more)');
     // DROP vs QUEUE: a multi-detent burst consumes its backlog even where the throttle
     // suppressed the intervening flips - the carry is spent, not banked.
+    // v1.271 slim W1: this pair is the ONLY thing binding drop-vs-queue (the `while` ->
+    // `if` mutant survives without it). I deleted it while retiming and the loss was
+    // silent - the very property the 8ms change's safety argument rests on.
+    q = mv(26.4, 100);  // 15deg burst = 4 detents at 3.75, one flip allowed -> bias back to -18
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'a burst saturates to one flip');
     q = mv(27.4, 100);  // +1deg sub-detent drift (carry 1.15 < 3.75), long after the throttle window
     assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'no phantom tick after the finger slows: the backlog was CONSUMED, not queued');
     wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true }));
@@ -1204,12 +1209,39 @@ test('v1.271: a repaint DURING a live spin is DEFERRED, not allowed to kill the 
 test('v1.271: the deferred repaint cannot outlive the surface', () => {
   const fs = require('node:fs'); const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
-  assert.match(src, /function paint\(\) \{\s*if \(wheelSpin\) \{ paintPending = true; return; \}/,
-    'paint() defers while a spin is live');
+  // Loosened per slim S2: the literal shape-lock redded on a CORRECT refactor (the
+  // CRITICAL-1 fix) while a semantically wrong variant keeping the first line passed.
+  // The behavioural tests carry the weight; this only insists the mechanism exists.
+  assert.match(src, /if \(wheelSpin\) \{[\s\S]{0,400}?paintPending = true; return; \}/,
+    'paint() defers while a LIVE spin holds a connected wheel');
+  assert.match(src, /wheelSpin\.wheel && wheelSpin\.wheel\.isConnected/,
+    'and only then - a spin whose wheel the view tore out must NOT freeze every future repaint (slim CRITICAL-1)');
   assert.match(src, /if \(paintPending\) paint\(\);/, 'endWheel flushes it - the one seam that owns endings');
   // window sized to the comment that legitimately sits between them (#213: distance
   // locks break on valid insertions, so bind the PAIR loosely and let the behavioural
   // test above carry the real weight).
   assert.match(src, /function destroy\(\) \{[\s\S]{0,400}?paintPending = false;/,
     'and destroy() drops it, so a queued repaint never fires at a dead surface');
+});
+
+test('v1.271 slim CRITICAL-1: a view-side panel clear during a live press must NOT freeze paint() forever', () => {
+  const b = bootHaptic({});
+  try {
+    b.engine.paint();
+    const panel = b.dom.window.document.querySelector('.music-nowplaying-panel');
+    const wheel = panel.querySelector('.ip-wheel');
+    // finger down (a press is enough - wheelSpin is set on any non-dead-centre pointerdown)
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 40, pointerId: 1 }));
+    // the VIEW clears the panel without destroy() - music.js:1081 and podcasts.js:850 both
+    // do this, and the v1.256 QA CRITICAL documents that this path delivers NO events, so
+    // the gesture can never reach endWheel on its own.
+    panel.innerHTML = '';
+    // a later repaint must still work. Before the fix the deferral jumped over the
+    // stale-spin heal and every subsequent paint returned early - permanently.
+    b.engine.paint();
+    assert.ok(panel.querySelector('.ip-wheel'),
+      'the panel repainted - a spin whose wheel the view tore out is ended, not waited on (a frozen paint left a blank skin with a dead wheel and no in-app recovery)');
+    b.engine.paint();
+    assert.ok(panel.querySelector('.ip-wheel'), 'and keeps repainting');
+  } finally { b.restore(); }
 });

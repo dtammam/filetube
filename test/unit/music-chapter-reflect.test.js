@@ -179,9 +179,13 @@ test('v1.250 (adversarial W2): a LIVE wheel scrub in the boundary band is NOT ya
     // reflectChapter ever saw the tick - the mutant turns the next assert red.
     set(239.9);
     assert.ok(Math.abs(mp.currentTime - 239.9) < 0.5, 'mid-scrub: the band tick did NOT yank back to 120 (isScrubbing skip)');
-    // with the yank skipped, that same tick sits in the chapter-advance tolerance too, so the
-    // DISPLAY rolls to chapter three and the repaint drops the gesture (production behavior -
-    // paint() clears mid-gesture state; pre-U3 paintSkin did the same).
+    // with the yank skipped, that same tick sits in the chapter-advance tolerance too, so
+    // the DISPLAY rolls to chapter three. NOTE (v1.271): the repaint NO LONGER drops the
+    // gesture - paint() defers while a spin is live and endWheel flushes it, so the wheel
+    // node the finger is on survives (measured: survived=true at v1.271, false before).
+    // This is the one place a reader would come to learn that, so it must not still say
+    // the old thing. The chapter roll itself is deliberately NOT guarded by isScrubbing:
+    // guarding it delays the roll past release and breaks this test's loop contract.
     await settle();
     wheel.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true }));
     // the enforcement axis: with the gesture over, the (now chapter-three) band loops again -

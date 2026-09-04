@@ -145,7 +145,7 @@ test('slim CRITICAL-2: the ENGINE releases its takeover before it destroys the p
   // Structural, not event-driven: whatever blows away the panel owns the release, so
   // track change / chapter roll / skin pick / dock / view swap are all covered at once.
   assert.match(engine, /function releaseWheelTakeover\(\)[\s\S]{0,320}?wheelTakeover = null;[\s\S]{0,200}?onExit/, 'the release nulls the pointer AND tells the takeover');
-  assert.match(engine, /function paint\(\) \{[\s\S]{0,120}?releaseWheelTakeover\(\);/, 'paint() releases before it replaces innerHTML (v1.271 added a deferral guard above it)');
+  assert.match(engine, /function paint\(\) \{[\s\S]{0,900}?releaseWheelTakeover\(\);/, 'paint() releases before it replaces innerHTML (v1.271 added a deferral guard above it)');
   assert.match(engine, /function destroy\(\) \{\s*releaseWheelTakeover\(\);/, 'destroy() releases too');
   // MENU's exit goes through the same release, so the pointer cannot be left dangling
   // by a view that forgets to clear it - one owner for one invariant.
