@@ -64,8 +64,12 @@ test('v1.268: BOTH labels say what the button does, in hide/show terms - never "
   // so the old "In your Music library - click to remove" both understated the
   // default and read like it might delete files. Comments are stripped above, so
   // a commented-out label cannot satisfy this.
-  assert.match(SRC, /Showing in Music - tap to hide this channel/, 'the ON label says it is showing, and that tapping HIDES');
-  assert.match(SRC, /Hidden from Music - tap to show this channel/, 'the OFF label says it is hidden, and that tapping SHOWS');
+  // ARM-anchored (slim CRITICAL-1): asserting mere PRESENCE let a swapped ternary
+  // survive the whole suite - the button would then say "Hidden from Music" while
+  // showing, a strictly worse version of the bug this wave exists to fix. The
+  // v1.259 renderer-identity class, re-struck.
+  assert.match(SRC, /\? 'Showing in Music - tap to hide this channel/, 'the ON arm carries the SHOWING label');
+  assert.match(SRC, /: 'Hidden from Music - tap to show this channel/, 'the OFF arm carries the HIDDEN label');
   assert.ok(!/click to remove/.test(SRC), 'the delete-sounding wording is gone');
   // both strings must reach the user through the touch-reachable paths, not just title
   const m = SRC.match(/const t = effective[\s\S]{0,600}?setAttribute\('aria-pressed'[^\n]*\)/);
@@ -73,6 +77,12 @@ test('v1.268: BOTH labels say what the button does, in hide/show terms - never "
   assert.match(m[0], /mbtn\.title = t;/, 'title (pointer devices)');
   assert.match(m[0], /setAttribute\('aria-label', t\)/, 'aria-label (assistive tech)');
   assert.match(m[0], /setAttribute\('aria-pressed'/, 'and the pressed state is exposed');
+});
+
+test('v1.268 (slim W2): the optimistic pre-fetch paint seeds the v1.242 DEFAULT (on), not a pessimistic false', () => {
+  assert.match(SRC, /let effectiveNow = true;/, 'the seed matches what the server almost always returns');
+  assert.match(SRC, /paint\(true\);/, 'so no load flashes a struck-through "Hidden from Music" before the fetch corrects it');
+  assert.ok(!/paint\(false\);/.test(SRC), 'the pessimistic paint is gone');
 });
 
 test('v1.268: the OFF state is legible WITHOUT hover - a struck-through note, not just a colour shift', () => {

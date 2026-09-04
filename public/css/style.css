@@ -1195,8 +1195,9 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 /* v1.268 (Dean): the OFF state was only a grey-vs-blue colour shift with the
    meaning hidden in a hover title - unreadable on a phone, which is why the
-   button felt inert. A struck-through note says "not in Music" at a glance,
-   so a tap produces a visible change in the view where you tapped. */
+   button felt inert. Striking the glyph through does not by itself SAY "not in
+   Music" - the label does that - but it gives the tap a visible result in the
+   view where you tapped, which is the actual fix. */
 .folder-music-toggle:not(.is-on) {
   text-decoration: line-through;
 }
