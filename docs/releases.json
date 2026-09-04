@@ -2806,5 +2806,11 @@
     "date": "2026-09-04",
     "title": "The wheel keeps up with your thumb",
     "intent": "Spinning the click wheel now keeps working when the song screen refreshes under your finger. Before, a refresh landing mid-spin quietly ended it, and you had to lift off and start again - which is a lot of why the wheel felt inconsistent. The clicks you feel on a fast spin are much denser too, closer to a real iPod: they were being thinned out by a limit that had been set far more cautiously than it needed to be. And letting go anywhere on the screen ends a spin cleanly now, so the desktop pop-out player can no longer get stuck showing the wrong song."
+  },
+  {
+    "version": "1.272.0",
+    "date": "2026-09-04",
+    "title": "Brick is a game now",
+    "intent": "Brick plays like the real thing instead of a demo. Where you hit the ball on the paddle now decides where it goes - catch it early, near the edge you are coming from, and you send it back the way it came, which is the whole skill of Breakout and was simply missing before. The ball starts almost twice as fast and speeds up as a rally goes on, with a jump when you break through to the top rows. The paddle gets shorter each level, and shorter again the moment you break through, so it is genuinely possible to lose now. The ball can also no longer slip through a brick when the game stutters."
   }
 ]
