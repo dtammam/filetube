@@ -97,7 +97,7 @@ refresh seam built here is where its v0 polling would slot.
   public/js/login.js? NO - untouched; tests.
 - Frozen: player.js, music.js (readers unchanged - the seam is the patch),
   podcasts.js, skin-surface.js, all skin/css files. 0-diff.
-- The 22-key allowlist appears ONCE server-side and ONCE client-side, both
+- The 21-key allowlist appears ONCE server-side and ONCE client-side, both
   lock-tested against this plan's list (drift between the two = a silent
   never-syncs key).
 
