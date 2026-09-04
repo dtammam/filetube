@@ -8613,6 +8613,44 @@ app.post('/api/music/resume', (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- v1.265: cross-device preference sync -----------------------------------
+// The SYNCED allowlist (exec plan docs/exec-plans/active/cross-device-sync.md,
+// MACHINE-DERIVED, 21 keys). The server is the enforcement point: unknown keys
+// are rejected PER-ITEM (a junk key cannot poison a batch), values are capped,
+// and last-write-wins lives in the store's upsert WHERE guard. The client's
+// twin list is in public/js/prefs-sync.js; a lock test binds both to the plan.
+// v1.265 adversarial round: the list + caps moved to lib/prefs-allowlist.js so
+// the backup RESTORE loop (lib/auth/store.js) enforces the SAME defenses - the
+// seat measured the restore path bypassing all three (allowlist/cap/clamp).
+const { SYNCED_PREF_KEYS: SYNCED_PREF_KEY_LIST, PREF_VALUE_MAX_BYTES, PREF_CLOCK_SLACK_MS } = require('./lib/prefs-allowlist');
+const SYNCED_PREF_KEYS = new Set(SYNCED_PREF_KEY_LIST);
+
+app.get('/api/prefs', (req, res) => {
+  res.json({ prefs: userStore.getPrefs(req.user.id) });
+});
+
+app.post('/api/prefs', (req, res) => {
+  const body = req.body || {};
+  const raw = Array.isArray(body.entries) ? body.entries : [];
+  const entries = []; const rejected = [];
+  for (const e of raw.slice(0, 64)) { // batch cap: the allowlist is 21 keys
+    const key = e && typeof e.key === 'string' ? e.key : '';
+    const value = e && typeof e.value === 'string' ? e.value : null;
+    const updatedAt = e ? Number(e.updatedAt) : NaN;
+    if (!SYNCED_PREF_KEYS.has(key) || value === null || !Number.isFinite(updatedAt)
+      || Buffer.byteLength(value, 'utf8') > PREF_VALUE_MAX_BYTES) {
+      if (key) rejected.push(key);
+      continue;
+    }
+    // QA W3: a wrong-clock device must not WEDGE a key (a far-future stamp would
+    // win LWW forever and revert every other device on every refresh, with no
+    // in-app recovery). Stamps are clamped to now + 5min of ordinary skew.
+    entries.push({ key, value, updatedAt: Math.min(updatedAt, Date.now() + PREF_CLOCK_SLACK_MS) });
+  }
+  const { applied, skipped } = userStore.setPrefsLWW(req.user.id, entries);
+  res.json({ applied, skipped, rejected });
+});
+
 // Per-track progress ping -> staged into the music coalescer (no disk I/O on
 // the request path). Static 'progress' segment declared BEFORE /api/music/:id.
 app.post('/api/music/progress', (req, res) => {

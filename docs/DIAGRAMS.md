@@ -90,9 +90,9 @@ flowchart TD
 One SQLite file, two buckets (see ARCHITECTURE.md "Storage"). The document
 store persists the legacy db.json object shape per row; everything
 user-scoped is relational. The namespace lists in `lib/db/sqlite.js` are a
-LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.135.0:
-13 `doc_kv` namespaces, 18 `doc_single` names, 29 relational tables,
-schema version 19.
+LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.265.0:
+13 `doc_kv` namespaces, 18 `doc_single` names, 30 relational tables,
+schema version 20.
 
 ```mermaid
 flowchart LR
@@ -102,7 +102,7 @@ flowchart LR
     end
 
     subgraph REL["Relational per-user tables (accessors: lib/auth/store.js)"]
-        CORE["identity + core media<br/>users · user_restrictions ·<br/>user_progress · user_liked · user_watched ·<br/>user_queue · user_queue_state ·<br/>user_search_history · user_feed_hidden ·<br/>user_channel_pins"]
+        CORE["identity + core media<br/>users · user_restrictions ·<br/>user_progress · user_liked · user_watched ·<br/>user_queue · user_queue_state ·<br/>user_search_history · user_feed_hidden ·<br/>user_channel_pins · user_prefs"]
         PLACEST["per-place<br/>user_book_progress · user_book_pins ·<br/>user_book_liked · user_book_finished ·<br/>user_music_progress · user_music_liked ·<br/>user_music_state · user_podcast_progress ·<br/>user_podcast_liked · user_podcast_pins ·<br/>user_podcast_played ·<br/>user_tv_progress · user_tv_played · user_tv_liked"]
         NOTIF["notifications + push<br/>notifications · user_notification_reads ·<br/>user_notification_dismissals ·<br/>user_notification_state · push_subscriptions"]
     end

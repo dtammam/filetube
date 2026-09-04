@@ -93,6 +93,58 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.265.0 - Your settings follow you (2026-09-04)
+
+Dean's ask ("pivot to the cross device sync"), intake-settled by his numbered
+replies: scope (a) PREFERENCE sync now, with (b) live playback handoff as the
+acknowledged later direction (the design leaves room: a session channel would be
+ephemeral state, not user_prefs). Content state already synced by construction -
+the gap was the preference layer that made his phone and desktop strangers.
+
+SHIPPED: schema v20 `user_prefs` (per-user KV, users(id) CASCADE) + GET/POST
+/api/prefs (per-CALLER only - no user param exists; 21-key allowlist, 512-byte
+value cap, 64-entry batch cap, statement-level last-write-wins with a strict tie-drop,
+stamps clamped to now+5min); prefs ride each user's backup entry (the FOURTEENTH-strike
+carrier). Client: ONE SEAM - public/js/prefs-sync.js on all 12 shells patches the
+storage prototype, so every writer of a synced key (present AND future) mirrors
+without knowing the agent exists; debounced batches, boot + tab-focus refresh,
+empty-string tombstones, 401 dormancy. The deliberate SYNCED/LOCAL split is Dean's
+Q2 ruling: taste follows you, ergonomics (volume/rate/theater/PiP/tray) stays put.
+
+THE FULL GATE EARNED ITS KEEP (QA 3 rounds + adversarial 2 rounds, both APPROVE):
+- QA CRITICAL, repro'd end-to-end: boot re-appliers re-persist UNCHANGED era/mode/icons
+  on every page load, so the seam re-stamped them per-device per-boot - last-BOOT-wins,
+  where merely opening a page on one device REVERTED another device's explicit choice.
+  Closed by equality suppression (mirror only value-CHANGING writes).
+- QA: the "one live re-apply" targeted `theme` - a key with NO writers, in the wrong
+  value space (data-theme carries the ERA). Key removed from all lists (22 -> 21);
+  re-apply retargeted to era/mode.
+- QA: a wrong-clock device could wedge a key FOREVER -> server clamp (now bounded to 5 min).
+- ADVERSARIAL: the backup RESTORE loop bypassed every route defense - a bundle could
+  plant an off-list 100KB row served on every GET forever, or a far-future stamp wedging
+  a key for ~285,000 years (reopening the clock fix through this wave's own carrier).
+  Closed by lib/prefs-allowlist.js - ONE list + caps + clamp consumed by the routes AND
+  the restore loop.
+- ADVERSARIAL: a resolved 5xx dropped a batch FOREVER (local keeps the newer stamp, so no
+  boot re-pushes and equality suppression blocks a same-value re-mirror) - permanent silent
+  divergence. Closed by un-acking non-ok responses; then the seat caught its own
+  prescription turning a deterministic 403 into a 1 Hz retry flood -> narrowed to >=500.
+- PROCESS SCAR (found by the QA seat, reaching back a release): two tech-debt rows died on
+  a wrong anchor assert inside NEWLINE-chained heredocs, so the failures were swallowed and
+  the commits proceeded without the file - the PHANTOM EDIT, cousin of the phantom commit.
+  The v1.263 notes referenced a #202 row that never existed; both rows now written for real.
+
+DISCLOSED residuals: #203 (two pref channels - the v1.43 settings_json mirror still runs
+alongside; a fresh device's legacy seed can out-stamp a wall-clock-older row; converges on
+next touch), #204 (no boot repush leg, no retry backoff, the boot-flight TOCTOU, same-ms
+ties), the 5-minute clamp window, and "applied by next render" for everything except era/mode.
+TECH-DEBT #202's TRIGGER FIRED during this gate (second occurrence of the transient SQLite
+"database is locked" crash, in QA's final-tree run) - the prescribed fix is deliberately NOT
+slipped in post-approval; it is the NEXT WAVE.
+
+Dual-Node: v22.23.1 8282/8282 pass, 0 fail, 0 skipped; v24.14.0 8282/8282, 0 fail, 0 skipped.
+Frozen files (player/music/podcasts/skin-surface) 0-diff. DEVICE-PENDING Dean's pass.
+
 ### v1.264.0 - The whole picture, softly framed (2026-09-03)
 
 Dean's polish round on v1.263 ("absolutely amazing... it's like perfection"): (1) "the
