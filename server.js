@@ -8620,7 +8620,7 @@ app.post('/api/music/resume', (req, res) => {
 // and last-write-wins lives in the store's upsert WHERE guard. The client's
 // twin list is in public/js/prefs-sync.js; a lock test binds both to the plan.
 const SYNCED_PREF_KEYS = new Set([
-  'theme', 'ft-era', 'ft-mode', 'ft-modern-mode', 'ft-icons',
+  'ft-era', 'ft-mode', 'ft-modern-mode', 'ft-icons',
   'filetube_sort', 'filetube_modern_sort', 'filetube_modern_chip',
   'ft-star-ratings', 'ft-ambient', 'ft-ambient-intensity',
   'ft-critters:on', 'ft-critters:density', 'ft-critters:size', 'ft-critters:kiss', 'ft-critters:randomsound',
@@ -8646,7 +8646,10 @@ app.post('/api/prefs', (req, res) => {
       if (key) rejected.push(key);
       continue;
     }
-    entries.push({ key, value, updatedAt });
+    // QA W3: a wrong-clock device must not WEDGE a key (a far-future stamp would
+    // win LWW forever and revert every other device on every refresh, with no
+    // in-app recovery). Stamps are clamped to now + 5min of ordinary skew.
+    entries.push({ key, value, updatedAt: Math.min(updatedAt, Date.now() + 300000) });
   }
   const { applied, skipped } = userStore.setPrefsLWW(req.user.id, entries);
   res.json({ applied, skipped, rejected });

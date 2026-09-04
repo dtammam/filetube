@@ -90,7 +90,7 @@ flowchart TD
 One SQLite file, two buckets (see ARCHITECTURE.md "Storage"). The document
 store persists the legacy db.json object shape per row; everything
 user-scoped is relational. The namespace lists in `lib/db/sqlite.js` are a
-LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.135.0:
+LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.265.0:
 13 `doc_kv` namespaces, 18 `doc_single` names, 30 relational tables,
 schema version 20.
 

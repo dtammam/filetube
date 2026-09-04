@@ -15,10 +15,11 @@ that make his phone and desktop strangers about theme, era, skins, critters,
 autoplay, sorts. This wave gives every SYNCED pref a per-user server home with
 localStorage remaining the read path and offline cache.
 
-## The synced allowlist (MACHINE-DERIVED, 22 keys; per-key reader-file counts from
-`grep -rl` over public/js at plan time - re-verify at each commit)
+## The synced allowlist (MACHINE-DERIVED; 21 keys after the QA round - 'theme'
+REMOVED: it is a writer-less legacy read-fallback, and a key nothing writes can
+never sync; per-key reader-file counts from `grep -rl` over public/js)
 
-theme(1) · ft-era(3) · ft-mode(1) · ft-modern-mode(1) · ft-icons(2) ·
+ft-era(3) · ft-mode(1) · ft-modern-mode(1) · ft-icons(2) ·
 filetube_sort(3) · filetube_modern_sort(1) · filetube_modern_chip(1) ·
 ft-star-ratings(2) · ft-ambient(1) · ft-ambient-intensity(1) ·
 ft-critters:on/density/size/kiss/randomsound(2 each) ·
@@ -67,9 +68,17 @@ revisit on ask), ft-debug-* / ft-lifecycle-* (debug).
   Rationale vs enumerating ~35 call sites: the repo's "seat that forgot to call
   the shared helper" class - a patch catches every FUTURE writer too.
 - Boot: `GET /api/prefs`; for each key where server updatedAt > local stamp,
-  raw-write value + stamp. THEME/ERA apply early (FOUC risk): v1 semantics are
-  "applied by next render"; the one live re-apply is theme (cheap, most visible).
-  Everything else lands in localStorage and shows on next view init - disclosed.
+  raw-write value + stamp. v1 semantics are "applied by next render"; the live
+  re-apply targets ft-era (data-theme) + ft-mode (data-mode) - the keys with
+  real writers (QA W1 killed the original theme target as dead code in the
+  wrong value space). QA-round mechanics, all gate-driven: EQUALITY SUPPRESSION
+  at the seam (boot re-appliers re-persist unchanged values every load - an
+  unsuppressed mirror turned LWW into last-BOOT-wins, the QA CRITICAL);
+  flushes HOLD until the boot GET settles and applyServer drops boot-race
+  losers (the legacy-seed race, QA W2 - residual architecture in tech-debt
+  #203); un-acked batches restore into pending (QA S1); the server CLAMPS
+  updatedAt to now+5min (QA W3: a wrong-clock device wedged keys FOREVER;
+  now bounded at 5 minutes).
 - `visibilitychange` (visible) -> refresh GET (the tab-focus leg of intake Q3).
 - 401 -> dormant until next boot (signed-out local-only, intake Q4).
 - SHELL PARITY (the v1.250 class): a DYNAMIC parity test enumerating

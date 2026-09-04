@@ -44,13 +44,13 @@ test('GET /api/prefs starts empty; POST round-trips an allowlisted key with its 
   res = await fetch(`${base}/api/prefs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ entries: [{ key: 'theme', value: 'dark', updatedAt: 1234 }] }),
+    body: JSON.stringify({ entries: [{ key: 'ft-era', value: '2009', updatedAt: 1234 }] }),
   });
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { applied: ['theme'], skipped: [], rejected: [] });
+  assert.deepEqual(await res.json(), { applied: ['ft-era'], skipped: [], rejected: [] });
 
   res = await fetch(`${base}/api/prefs`);
-  assert.deepEqual(await res.json(), { prefs: { theme: { value: 'dark', updatedAt: 1234 } } });
+  assert.deepEqual(await res.json(), { prefs: { 'ft-era': { value: '2009', updatedAt: 1234 } } });
 });
 
 test('the allowlist rejects PER-ITEM: junk keys bounce while good keys in the same batch land', async () => {
@@ -77,10 +77,10 @@ test('the value byte-cap rejects an oversized value (a data-URI does not belong 
   const res = await fetch(`${base}/api/prefs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ entries: [{ key: 'theme', value: 'x'.repeat(513), updatedAt: 1 }] }),
+    body: JSON.stringify({ entries: [{ key: 'ft-era', value: 'x'.repeat(513), updatedAt: 1 }] }),
   });
   const json = await res.json();
-  assert.deepEqual(json.rejected, ['theme']);
+  assert.deepEqual(json.rejected, ['ft-era']);
   assert.deepEqual(json.applied, []);
 });
 
@@ -103,7 +103,7 @@ test('unauthenticated GET and POST are refused (the auth wall, not a silent empt
   const resPost = await fetch(`${base}/api/prefs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: '' },
-    body: JSON.stringify({ entries: [{ key: 'theme', value: 'dark', updatedAt: 1 }] }),
+    body: JSON.stringify({ entries: [{ key: 'ft-era', value: '2009', updatedAt: 1 }] }),
   });
   assert.ok(resPost.status === 401 || resPost.status === 403, `got ${resPost.status}`);
 });
@@ -112,10 +112,32 @@ test('per-caller scoping: a SECOND session sees its own empty prefs, not the fir
   await fetch(`${base}/api/prefs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ entries: [{ key: 'theme', value: 'dark', updatedAt: 1 }] }),
+    body: JSON.stringify({ entries: [{ key: 'ft-mode', value: 'dark', updatedAt: 1 }] }),
   });
   const second = __mintTestSession({ username: 'prefs-second-user' });
   const res = await fetch(`${base}/api/prefs`, { headers: { Cookie: second.cookie } });
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { prefs: {} }, 'user B reads B\'s store, never A\'s');
+});
+
+
+test('QA W3: a far-future updatedAt is CLAMPED (a wrong-clock device cannot wedge a key forever)', async () => {
+  const res = await fetch(`${base}/api/prefs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries: [{ key: 'ft-era', value: '2009', updatedAt: 9e15 }] }),
+  });
+  assert.deepEqual((await res.json()).applied, ['ft-era']);
+  const got = await (await fetch(`${base}/api/prefs`)).json();
+  const stored = got.prefs['ft-era'].updatedAt;
+  assert.ok(stored <= Date.now() + 300000 + 5000, `stored stamp ${stored} exceeds now+5min - the wedge lives`);
+  // The recovery is TIME-BOUNDED, not instant (honest semantics): the clamped
+  // stamp sits at now+5min, so a sane device's write is skipped for AT MOST
+  // 5 minutes of wall clock - versus FOREVER under the unclamped wedge.
+  const res2 = await fetch(`${base}/api/prefs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries: [{ key: 'ft-era', value: '2021', updatedAt: Date.now() }] }),
+  });
+  assert.deepEqual((await res2.json()).skipped, ['ft-era'], 'inside the 5-min window the clamp still wins - the bound, not a bug');
 });
