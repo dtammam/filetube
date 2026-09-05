@@ -93,6 +93,31 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.274.1 - Wheel test: a "Capture: Off" mode (2026-09-05)
+
+A follow-up to v1.274.0's diagnostic, driven by Dean's on-device read. His finding
+reframed the whole bug: the "Ticks this spin" counter climbs everywhere - including
+the bands where he feels nothing - so ticks ARE being generated; it is the NATIVE
+buzz that cuts out mid-spin, and a Select tap re-arms it. And it is dose-responsive:
+"On press" (grab the pointer immediately) is clearly worse than "After 8px" (grab a
+few pixels in). That points squarely at `setPointerCapture` - the pointer grab that
+keeps the drag alive when the finger leaves the wheel - as the thing silencing the
+Taptic engine, NOT the angle-vs-arc metering the tool was built to compare.
+
+The tool could grab early or late but not NOT-grab, so it could not answer the
+decisive question. This adds a third **Capture: Off** option that never grabs. The
+capture sites already gate on the exact `press`/`8px` values, so `off` just falls
+through - no capture-logic change, only the button + state label + guide. If Off
+buzzes continuously all the way round on-device, the grab is the whole story and the
+real wheel fix (replace the grab with document-level drag tracking, so the drag
+still survives the finger leaving the wheel) is the next, careful wave on the
+shipping wheel.
+
+Slim adversarial gate: APPROVE, no findings (both new tests mutation-bound - Off
+never grabs; the other modes DO). Dual-Node 8362/8362 on v22.23.1 + v24.14.0.
+Disclosed: a pre-existing load-flake in critter-mode's re-glue test surfaced once in
+a pre-commit run (passed isolated + on re-run; not from this diff).
+
 ### v1.274.0 - Pocket Classic wheel test (2026-09-05)
 
 An Experimental diagnostic for the click-wheel's Taptic feedback. Dean reported the
