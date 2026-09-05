@@ -3730,6 +3730,355 @@ async function loadEngineSection(signal) {
   }
 }
 
+// ===== Pocket Classic wheel test — the diagnostic's pure metering core =====
+// A device-local tool (Settings › Experimental) that reproduces the iPod
+// wheel's native "ghost switch" haptic so the tick behaviour can be felt AND
+// measured on a real phone. (An off-origin sandbox — e.g. a hosted artifact —
+// blocks the native switch, so this has to live in the app itself.)
+//
+// WHY it exists: the shipping wheel (skin-surface.js) fires one haptic every
+// HAPTIC_STEP_DEG of ROTATION. Angle-per-finger-travel = distance / radius, so
+// the same thumb drag sweeps far less angle at the rim than near the centre,
+// and ticks thin out toward the edge (Dean, on device: "consistent near the
+// Select button, less so further out"). This tool meters ticks by ANGLE (the
+// shipping behaviour) OR by ARC-LENGTH (the candidate fix) so the two can be
+// compared side by side. It is a DIAGNOSTIC only — it never changes the live
+// wheel; that is a separate follow-up once the direction is confirmed here.
+//
+// These constants MUST track skin-surface.js's own — a drifted copy would make
+// the tool lie about the real wheel — so the metering test cross-locks them.
+const WHEEL_CAL = {
+  HAPTIC_STEP_DEG: 3.75, // == skin-surface.js HAPTIC_STEP_DEG (Classic 96/rev)
+  HAPTIC_MIN_MS: 8,      // == skin-surface.js HAPTIC_MIN_MS (throttle floor)
+  BIAS_PX: 18,           // == skin-surface.js placeGhost ±18 (probe-C bias)
+  DEAD_FRAC: 0.20,       // == skin-surface.js pointerdown centre (Select) guard
+  BAND_INNER_MAX: 0.47,  // ring band edges as a fraction of wheel radius…
+  BAND_MID_MAX: 0.73,    // …inner < 0.47 ≤ mid < 0.73 ≤ outer
+  DEFAULT_STEP_ARC_PX: 6,
+};
+
+// Shortest signed angular delta in degrees (mirrors skin-surface.js's
+// wheelShortAngle): +170° − (−170°) resolves to −20°, never +340°.
+function wheelCalShortAngle(a) {
+  let d = a;
+  while (d > 180) d -= 360;
+  while (d < -180) d += 360;
+  return d;
+}
+// Classify a finger radius (fraction of wheel radius) into inner|mid|outer. A
+// press below the dead-zone never STARTS a gesture, but a drag can cross
+// inward, so sub-dead radii clamp to 'inner' rather than skewing a band.
+function wheelCalBandOf(rFrac) {
+  const r = rFrac < WHEEL_CAL.DEAD_FRAC ? WHEEL_CAL.DEAD_FRAC : rFrac;
+  if (r < WHEEL_CAL.BAND_INNER_MAX) return 'inner';
+  if (r < WHEEL_CAL.BAND_MID_MAX) return 'mid';
+  return 'outer';
+}
+// The quantity a move contributes to the tick accumulator: |Δθ| degrees in
+// 'angle' mode (the shipping wheel), arc length px (radius·|Δθ|) in 'arc' mode.
+function wheelCalMeterQuantum(mode, absDeg, arcPx) {
+  return mode === 'arc' ? arcPx : absDeg;
+}
+// The tick threshold for the active mode.
+function wheelCalStepFor(mode, stepAngleDeg, stepArcPx) {
+  return mode === 'arc' ? stepArcPx : stepAngleDeg;
+}
+// Ticks per 100px of finger travel; null when no travel yet (avoids /0). This
+// is the headline metric: in angle mode it falls ≈ 1527/radius (a clear
+// inner→outer falloff); in arc mode it is ≈ constant across the whole ring.
+function wheelCalDensity(ticks, travelPx) {
+  if (!(travelPx > 0)) return null;
+  return (ticks / travelPx) * 100;
+}
+
+// ---- the tool's DOM + native-haptic shell (device-validated thin shell) ----
+// Built on demand and appended to <body>; torn down by closeWheelCal() (called
+// on Close AND from destroy() so a nav-away while open can't strand the body
+// scroll-lock). The ghost is the SAME <input type=checkbox switch> element the
+// real wheel mounts (skin-surface.js), so the native Taptic behaves identically.
+let wheelCalOverlay = null;
+let wheelCalScrollLock = null;
+let wheelCalRaf = 0;
+
+function wheelCalHapticCapable() {
+  try {
+    const probe = document.createElement('input');
+    return ('switch' in probe) && ('ontouchstart' in window);
+  } catch (_) { return false; }
+}
+// Body scroll-lock (mirrors skin-surface.js lockBodyScroll) - the ONLY correct
+// way to suppress scroll under the wheel: `touch-action:none` anywhere on the
+// ancestor chain kills the native switch tracking (the tool's whole point).
+function wheelCalLockBody() {
+  if (wheelCalScrollLock) return;
+  try {
+    wheelCalScrollLock = { y: window.scrollY || 0 };
+    document.body.style.position = 'fixed';
+    document.body.style.top = (-wheelCalScrollLock.y) + 'px';
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+  } catch (_) { wheelCalScrollLock = null; }
+}
+function wheelCalUnlockBody() {
+  if (!wheelCalScrollLock) return;
+  const y = wheelCalScrollLock.y; wheelCalScrollLock = null;
+  try {
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.left = '';
+    document.body.style.right = '';
+    window.scrollTo(0, y);
+  } catch (_) { /* best-effort restore */ }
+}
+function closeWheelCal() {
+  if (wheelCalRaf) { try { cancelAnimationFrame(wheelCalRaf); } catch (_) { /* ignore */ } wheelCalRaf = 0; }
+  if (wheelCalOverlay) { try { wheelCalOverlay.remove(); } catch (_) { /* already gone */ } wheelCalOverlay = null; }
+  wheelCalUnlockBody();
+}
+
+function wheelCalTemplate() {
+  return '' +
+    '<div class="whcal-head">' +
+      '<h2 class="whcal-title">Pocket Classic wheel test</h2>' +
+      '<div class="whcal-headbtns">' +
+        '<button type="button" class="btn whcal-guide-btn">How to read</button>' +
+        '<button type="button" class="btn whcal-close-btn">Close</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="whcal-guide" hidden>' +
+      '<p>The real wheel fires a haptic every <b>3.75&deg; of rotation</b>. Angle-per-finger-movement shrinks as you move out (&Delta;&theta; &asymp; distance &divide; radius), so the same drag makes fewer ticks at the rim than near the centre.</p>' +
+      '<p>Do slow, even spins from the green (inner) ring out to the red (outer) ring. The bars show ticks per 100px of finger travel per band.</p>' +
+      '<p><b>Angle mode:</b> if Inner sits high and Outer low, that falloff IS the bug. <b>Watch the flash vs your finger:</b> if it flashes at the rim but you feel nothing, the native crossing is failing out there instead.</p>' +
+      '<p><b>The fix test:</b> switch to Arc-length. If the bars level out AND it buzzes evenly across the whole ring, arc-length metering is the fix. <b>Edge-slip:</b> set Capture to On press and spin at the rim - if "dead at the edge" improves, a finger leaving the wheel before the 8px capture was cutting the events.</p>' +
+    '</div>' +
+    '<div class="whcal-controls">' +
+      '<div class="whcal-ctl"><span class="whcal-ctl-label">Meter by</span>' +
+        '<div class="whcal-seg" data-seg="mode">' +
+          '<button type="button" data-mode="angle" aria-pressed="true">Angle 3.75&deg;</button>' +
+          '<button type="button" data-mode="arc" aria-pressed="false">Arc-length</button>' +
+        '</div></div>' +
+      '<div class="whcal-ctl"><span class="whcal-ctl-label">Step</span>' +
+        '<input type="range" class="whcal-step" min="1.5" max="8" step="0.25" value="3.75" aria-label="Tick step size" />' +
+        '<span class="whcal-step-val">3.75&deg;</span></div>' +
+      '<div class="whcal-ctl"><span class="whcal-ctl-label">Capture</span>' +
+        '<div class="whcal-seg" data-seg="cap">' +
+          '<button type="button" data-cap="8px" aria-pressed="true">After 8px</button>' +
+          '<button type="button" data-cap="press" aria-pressed="false">On press</button>' +
+        '</div>' +
+        '<div class="whcal-seg" data-seg="ghost">' +
+          '<button type="button" data-ghost="on" aria-pressed="true">Buzz on</button>' +
+          '<button type="button" data-ghost="off" aria-pressed="false">Off</button>' +
+        '</div></div>' +
+    '</div>' +
+    '<div class="whcal-stage">' +
+      '<div class="whcal-bandtag">touch the ring &amp; spin</div>' +
+      '<div class="whcal-wheel">' +
+        '<div class="whcal-ring whcal-ring-outer"></div>' +
+        '<div class="whcal-ring whcal-ring-mid"></div>' +
+        '<div class="whcal-ring whcal-ring-inner"></div>' +
+        '<div class="whcal-dead">Select</div>' +
+        '<div class="whcal-flash"></div>' +
+        '<div class="whcal-finger"></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="whcal-hud">' +
+      '<div class="whcal-tile whcal-hero"><span class="whcal-k">Ticks / 100px travel &mdash; current band</span><span class="whcal-v whcal-density">&mdash;</span></div>' +
+      '<div class="whcal-tile"><span class="whcal-k">Finger radius</span><span class="whcal-v whcal-rad">&mdash;</span></div>' +
+      '<div class="whcal-tile"><span class="whcal-k">Ticks this spin</span><span class="whcal-v whcal-ticks">0</span></div>' +
+      '<div class="whcal-tile"><span class="whcal-k">&Delta;angle / move</span><span class="whcal-v whcal-dang">&mdash;</span></div>' +
+      '<div class="whcal-tile"><span class="whcal-k">Off-wheel moves</span><span class="whcal-v whcal-off">0</span></div>' +
+    '</div>' +
+    '<div class="whcal-bands">' +
+      '<div class="whcal-bands-cap"><span>Tick density by radius band (ticks / 100px)</span><span class="whcal-capstate">capture: after 8px</span></div>' +
+      '<div class="whcal-bar whcal-bar-inner"><span class="whcal-bar-name">Inner</span><span class="whcal-track"><span class="whcal-fill"></span></span><span class="whcal-num">&mdash;</span></div>' +
+      '<div class="whcal-bar whcal-bar-mid"><span class="whcal-bar-name">Middle</span><span class="whcal-track"><span class="whcal-fill"></span></span><span class="whcal-num">&mdash;</span></div>' +
+      '<div class="whcal-bar whcal-bar-outer"><span class="whcal-bar-name">Outer</span><span class="whcal-track"><span class="whcal-fill"></span></span><span class="whcal-num">&mdash;</span></div>' +
+    '</div>' +
+    '<div class="whcal-note" hidden>No native switch on this device - visuals only. The haptic needs an iOS device that supports the switch control.</div>';
+}
+
+function openWheelCal(signal) {
+  if (wheelCalOverlay) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'whcal-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-label', 'Pocket Classic wheel test');
+  overlay.innerHTML = wheelCalTemplate();
+  document.body.appendChild(overlay);
+  wheelCalOverlay = overlay;
+  wheelCalLockBody();
+
+  const $ = (sel) => overlay.querySelector(sel);
+  const wheel = $('.whcal-wheel');
+  const flash = $('.whcal-flash');
+  const finger = $('.whcal-finger');
+  const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  // the native switch ("ghost") - the same element the real wheel uses
+  let ghost = null;
+  if (wheelCalHapticCapable()) {
+    ghost = document.createElement('input');
+    ghost.type = 'checkbox';
+    ghost.setAttribute('switch', '');
+    ghost.className = 'mms-haptic-ghost';
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.tabIndex = -1;
+    wheel.appendChild(ghost);
+  } else {
+    const note = $('.whcal-note'); if (note) note.hidden = false;
+  }
+  function ghostRest() {
+    if (!ghost) return;
+    let h = 0; try { h = wheel.getBoundingClientRect().height; } catch (_) { /* fall back */ }
+    ghost.style.transform = 'scale(' + (h > 0 ? h / 32 : 7.5) + ')'; // == skin-surface.js ghostRestTransform
+  }
+  ghostRest();
+
+  // ---- config + accumulators ----
+  const cfg = { mode: 'angle', stepAngle: WHEEL_CAL.HAPTIC_STEP_DEG, stepArc: WHEEL_CAL.DEFAULT_STEP_ARC_PX, capMode: '8px', ghostOn: true };
+  const bands = { inner: { ticks: 0, travel: 0 }, mid: { ticks: 0, travel: 0 }, outer: { ticks: 0, travel: 0 } };
+  let offWheel = 0;
+  let flashLevel = 0;
+  const live = { rad: 0, band: 'inner', dAng: 0, active: false, ticks: 0 };
+  let st = null;
+
+  function placeGhost(x, y, g, flip) {
+    if (!ghost || !cfg.ghostOn) return;
+    if (flip) st.bias = -st.bias;
+    const tx = (x - g.cx) + st.bias * WHEEL_CAL.BIAS_PX; // == skin-surface.js hapticPlaceGhost
+    const ty = (y - g.cy);
+    ghost.style.transform = 'translate(' + tx + 'px,' + ty + 'px)';
+  }
+
+  wheel.addEventListener('pointerdown', (e) => {
+    if (st) return; // one gesture at a time (mirrors skin-surface.js `if (wheelSpin) return`) - a second finger must not corrupt the tick counts
+    let r; try { r = wheel.getBoundingClientRect(); } catch (_) { return; }
+    const g = { cx: r.left + r.width / 2, cy: r.top + r.height / 2, R: r.width / 2 };
+    const dist = Math.hypot(e.clientX - g.cx, e.clientY - g.cy);
+    const bandtag = $('.whcal-bandtag');
+    if (dist < g.R * WHEEL_CAL.DEAD_FRAC) { if (bandtag) bandtag.textContent = 'centre = Select (dead-zone)'; return; }
+    st = { id: e.pointerId, g, bias: 1, lastAngle: Math.atan2(e.clientY - g.cy, e.clientX - g.cx) * 180 / Math.PI,
+      lastX: e.clientX, lastY: e.clientY, x0: e.clientX, y0: e.clientY, accum: 0, hapLast: 0, ticks: 0, captured: false, moved: false };
+    live.active = true; live.ticks = 0;
+    if (cfg.ghostOn && ghost) placeGhost(e.clientX, e.clientY, g, false);
+    if (cfg.capMode === 'press') { try { wheel.setPointerCapture(e.pointerId); st.captured = true; } catch (_) { /* best effort */ } }
+    if (finger) finger.style.opacity = '1';
+  }, { signal });
+
+  wheel.addEventListener('pointermove', (e) => {
+    if (!st || e.pointerId !== st.id) return;
+    const g = st.g;
+    const dx = e.clientX - g.cx, dy = e.clientY - g.cy;
+    const dist = Math.hypot(dx, dy);
+    const rFrac = dist / g.R;
+    const band = wheelCalBandOf(rFrac);
+    const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+    const dAng = wheelCalShortAngle(ang - st.lastAngle); st.lastAngle = ang;
+    const travel = Math.hypot(e.clientX - st.lastX, e.clientY - st.lastY);
+    st.lastX = e.clientX; st.lastY = e.clientY;
+    const arc = dist * Math.abs(dAng) * Math.PI / 180; // tangential arc length this move
+
+    if (!st.moved && Math.hypot(e.clientX - st.x0, e.clientY - st.y0) > 8) {
+      st.moved = true;
+      if (cfg.capMode === '8px') { try { wheel.setPointerCapture(st.id); st.captured = true; } catch (_) { /* best effort */ } }
+    }
+    if (rFrac > 1.02) offWheel++;
+
+    const step = wheelCalStepFor(cfg.mode, cfg.stepAngle, cfg.stepArc);
+    st.accum += wheelCalMeterQuantum(cfg.mode, Math.abs(dAng), arc);
+    let flip = false, fired = 0;
+    while (st.accum >= step) {
+      st.accum -= step;
+      const t = (window.performance && performance.now) ? performance.now() : Date.now();
+      if (t - st.hapLast >= WHEEL_CAL.HAPTIC_MIN_MS) { flip = true; st.hapLast = t; fired++; } // throttle: drop, never queue
+    }
+    if (fired) { st.ticks += fired; bands[band].ticks += fired; flashLevel = 1; }
+    bands[band].travel += travel;
+    if (cfg.ghostOn && ghost) placeGhost(e.clientX, e.clientY, g, flip);
+
+    if (finger) {
+      finger.style.transform = 'translate(' + (e.clientX - g.cx + g.R) + 'px,' + (e.clientY - g.cy + g.R) + 'px)';
+      finger.style.borderColor = 'var(--whcal-' + band + ')';
+    }
+    live.rad = dist; live.band = band; live.dAng = dAng; live.ticks = st.ticks;
+  }, { signal });
+
+  function endGesture(e) {
+    if (!st) return;
+    if (e && e.pointerId !== st.id) return; // only the OWNING pointer ends its gesture (a stray second finger's up must not)
+    if (st.captured) { try { wheel.releasePointerCapture(st.id); } catch (_) { /* not captured */ } }
+    st = null; live.active = false;
+    if (finger) finger.style.opacity = '0';
+    if (ghost) ghostRest();
+    const bandtag = $('.whcal-bandtag'); if (bandtag) bandtag.textContent = 'spin again - or switch mode';
+  }
+  wheel.addEventListener('pointerup', endGesture, { signal });
+  wheel.addEventListener('pointercancel', endGesture, { signal });
+
+  // ---- controls ----
+  overlay.querySelectorAll('.whcal-seg').forEach((seg) => {
+    seg.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b || !seg.contains(b)) return;
+      seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+      const kind = seg.getAttribute('data-seg');
+      if (kind === 'mode') {
+        cfg.mode = b.getAttribute('data-mode');
+        const range = $('.whcal-step'), val = $('.whcal-step-val');
+        if (cfg.mode === 'arc') { range.min = '3'; range.max = '20'; range.step = '0.5'; range.value = String(cfg.stepArc); val.textContent = cfg.stepArc.toFixed(1) + ' px'; }
+        else { range.min = '1.5'; range.max = '8'; range.step = '0.25'; range.value = String(cfg.stepAngle); val.textContent = cfg.stepAngle.toFixed(2) + '°'; }
+      } else if (kind === 'cap') {
+        cfg.capMode = b.getAttribute('data-cap');
+        const cs = $('.whcal-capstate'); if (cs) cs.textContent = 'capture: ' + (cfg.capMode === 'press' ? 'on press' : 'after 8px');
+      } else if (kind === 'ghost') {
+        cfg.ghostOn = (b.getAttribute('data-ghost') === 'on');
+        if (!cfg.ghostOn && ghost) ghostRest();
+      }
+    }, { signal });
+  });
+  const range = $('.whcal-step');
+  range.addEventListener('input', () => {
+    const val = $('.whcal-step-val');
+    if (cfg.mode === 'arc') { cfg.stepArc = parseFloat(range.value); val.textContent = cfg.stepArc.toFixed(1) + ' px'; }
+    else { cfg.stepAngle = parseFloat(range.value); val.textContent = cfg.stepAngle.toFixed(2) + '°'; }
+  }, { signal });
+  $('.whcal-close-btn').addEventListener('click', closeWheelCal, { signal });
+  $('.whcal-guide-btn').addEventListener('click', () => { const gd = $('.whcal-guide'); if (gd) gd.hidden = !gd.hidden; }, { signal });
+
+  // ---- paint loop (self-terminates when the overlay is gone) ----
+  const density = $('.whcal-density'), radEl = $('.whcal-rad'), ticksEl = $('.whcal-ticks'), dangEl = $('.whcal-dang'), offEl = $('.whcal-off');
+  const fills = { inner: overlay.querySelector('.whcal-bar-inner .whcal-fill'), mid: overlay.querySelector('.whcal-bar-mid .whcal-fill'), outer: overlay.querySelector('.whcal-bar-outer .whcal-fill') };
+  const nums = { inner: overlay.querySelector('.whcal-bar-inner .whcal-num'), mid: overlay.querySelector('.whcal-bar-mid .whcal-num'), outer: overlay.querySelector('.whcal-bar-outer .whcal-num') };
+  function paint() {
+    if (!wheelCalOverlay) { wheelCalRaf = 0; return; }
+    flashLevel = flashLevel < 0.02 ? 0 : flashLevel * 0.82;
+    if (flash) { flash.style.opacity = String(flashLevel); if (!reduce) flash.style.transform = 'scale(' + (1 + flashLevel * 0.04) + ')'; }
+    if (live.active) {
+      radEl.textContent = live.rad.toFixed(0) + ' px · ' + live.band;
+      ticksEl.textContent = String(live.ticks);
+      dangEl.textContent = (live.dAng >= 0 ? '+' : '') + live.dAng.toFixed(2) + '°';
+      const d = wheelCalDensity(bands[live.band].ticks, bands[live.band].travel);
+      density.textContent = (d == null ? '—' : d.toFixed(1));
+      density.style.color = 'var(--whcal-' + live.band + ')';
+    }
+    offEl.textContent = String(offWheel);
+    const ds = { inner: wheelCalDensity(bands.inner.ticks, bands.inner.travel), mid: wheelCalDensity(bands.mid.ticks, bands.mid.travel), outer: wheelCalDensity(bands.outer.ticks, bands.outer.travel) };
+    let max = 0; ['inner', 'mid', 'outer'].forEach((k) => { if (ds[k] != null && ds[k] > max) max = ds[k]; });
+    ['inner', 'mid', 'outer'].forEach((k) => {
+      const d = ds[k];
+      if (fills[k]) fills[k].style.width = (d != null && max > 0) ? ((d / max * 100).toFixed(1) + '%') : '0%';
+      if (nums[k]) nums[k].textContent = (d == null) ? '—' : (d.toFixed(1) + ' · ' + bands[k].ticks + 't');
+    });
+    wheelCalRaf = requestAnimationFrame(paint);
+  }
+  wheelCalRaf = requestAnimationFrame(paint);
+}
+
+function wireWheelCalControl(signal) {
+  const btn = document.getElementById('wheel-cal-open');
+  if (!btn) return;
+  btn.addEventListener('click', () => openWheelCal(signal), { signal });
+}
+
 function init(root) {
   controller = new AbortController();
   configuredFolders = [];
@@ -3755,6 +4104,7 @@ function init(root) {
   wireHideStarsControl(controller.signal); // v1.63.1: the fake-stars toggle
   wireCritterModeControls(controller.signal); // v1.166: Sneaky critter mode
   wireVoiceCheck(controller.signal); // v1.181: the Troubleshooting page's critter sound diagnostic
+  wireWheelCalControl(controller.signal); // Pocket Classic wheel test (Experimental)
   loadResumeThresholdControl();
   loadDebugLifecycleControl();
   // v1.246: open-audio-in-music toggle retired (audio always opens in the skin).
@@ -3797,6 +4147,11 @@ function destroy() {
     controller.abort();
     controller = null;
   }
+  // The wheel-test overlay lives on <body>, outside the view root, and holds a
+  // body scroll-lock while open - so a nav-away with it open must tear it down
+  // explicitly (aborting the controller frees its listeners but not the DOM or
+  // the lock). closeWheelCal() is idempotent when nothing is open.
+  closeWheelCal();
   // C4 remediation: belt-and-suspenders clear of the post-scan redirect
   // timer on top of its own in-callback `signal.aborted` guard above.
   if (scanRedirectTimer) {
@@ -3819,6 +4174,15 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // `window`/`document` -- mirrors player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    // Pocket Classic wheel test — the pure metering core (boundary- and
+    // cross-lock-tested in wheel-cal-metering.test.js; the DOM/native-switch
+    // shell is device-validated).
+    WHEEL_CAL, wheelCalShortAngle, wheelCalBandOf, wheelCalMeterQuantum,
+    wheelCalStepFor, wheelCalDensity,
+    // the DOM/native-switch shell (jsdom lifecycle-tested: open reveals + locks
+    // body, close/destroy clears + unlocks — both axes). `destroy` is exported so
+    // the nav-away teardown is bound BEHAVIOURALLY, not by a comment-porous regex.
+    openWheelCal, closeWheelCal, wireWheelCalControl, destroy,
     // v1.159: the Users list as a sortable table (jsdom-tested action wiring).
     loadUsersList, buildUserRoleCell,
     // v1.171: the critter pool manager (jsdom-tested: two-tap deletes, uploads, reveal).

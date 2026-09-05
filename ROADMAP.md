@@ -93,6 +93,54 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.274.0 - Pocket Classic wheel test (2026-09-05)
+
+An Experimental diagnostic for the click-wheel's Taptic feedback. Dean reported the
+haptic feels inconsistent on the Pocket Classic skins - reliable near the Select button,
+thinning out toward the rim, sometimes not firing at all. The first probe was a hosted
+page, but the sandbox it runs in blocks the native iOS switch control the haptic is built
+on, so it could never buzz there. This moves the probe into the app, where the real
+switch fires.
+
+**What it is.** A button in Settings > Experimental opens a full-screen instrument that
+reproduces the wheel's "ghost switch" haptic EXACTLY - it reuses the same hidden
+`<input type=checkbox switch>` element the real wheel mounts, with the identical +/-18px
+bias, rest-scale, 3.75-degree step, and 8ms throttle - so ticks buzz on-device just as
+the shipping wheel does. It meters ticks two ways: by ANGLE (what the wheel does today)
+or by ARC-LENGTH (the candidate fix), with a step slider, so the two can be felt side by
+side. It shows tick density per radius band (inner/mid/outer bars) plus a flash, so a
+felt buzz can be told apart from a counted tick, and an off-wheel / capture-mode control
+to probe the "finger slips off the rim" theory. It is a DIAGNOSTIC only - it never
+changes the live wheel.
+
+Why this shape: metering by angle means angle-per-finger-travel shrinks with radius
+(arc = radius x angle), so the same thumb drag makes far fewer ticks at the rim than near
+the centre - which matches Dean's report exactly. The tool exists to confirm (or refute)
+that on his device before the real wheel is touched; the actual fix is a separate wave.
+
+**What the gate caught (slim adversarial gate - additive, no data at risk).** No CRITICAL;
+the shipping behaviour and the haptic reproduction were faithful. Three findings, each a
+documented recurring class, all bound and mutation-verified:
+
+- **Two porous test-locks.** The nav-away teardown check matched an explanatory COMMENT
+  (`// closeWheelCal() is idempotent`) instead of the real call - removing the call left
+  it green while a nav-away with the tool open would have stranded the body scroll-lock
+  (the whole app unscrollable, the v1.256 class). And the anti-drift lock that keeps the
+  tool honest against the real wheel used a substring (`r.width * 0.2`) that `0.25` still
+  satisfies. Both rebound behaviourally/numerically; the adversarial seat re-measured with
+  a 0.21 boundary mutant to prove the hole is closed, not just narrowed.
+- **A fidelity gap.** The tool had no "one gesture at a time" guard, so a second finger
+  could overwrite the active gesture and corrupt the very tick counts it exists to
+  produce. It now mirrors the real wheel (ignore a second pointer; only the owning finger
+  ends the gesture).
+
+**Known gaps, disclosed.** This does NOT fix the wheel - it is the instrument to decide
+the fix. Dean's on-device run is the next step (does arc-length metering feel uniform;
+does the buzz follow at the rim or does the flash fire with no buzz). The integrated
+per-move accumulator is device-validated, not unit-tested (the pure metering math is).
+
+Suites: 8360/8360 pass, 0 fail, 0 skipped on BOTH Node v22.23.1 and v24.14.0.
+
 ### v1.273.0 - Rename a chaptered album's songs, and Brick on podcasts (2026-09-05)
 
 Two things Dean asked for together.

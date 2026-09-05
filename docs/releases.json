@@ -2818,5 +2818,11 @@
     "date": "2026-09-05",
     "title": "Rename the songs in a chaptered album",
     "intent": "When one long recording is split into chapters, those chapters show up in Music as the album's songs - and now you can rename them. Open the album and use Edit chapters: it is a plain text box, one line per song, a timestamp then the name. Saving updates the album straight away. You need library-editing permission, the same as everywhere else that changes your library. Separately, the Brick game is now available on podcasts too, not just in Music - it is the same player and the same wheel, so it should have been there all along."
+  },
+  {
+    "version": "1.274.0",
+    "date": "2026-09-05",
+    "title": "A tool to test the click-wheel's buzz",
+    "intent": "The Pocket Classic skins buzz the click-wheel as you spin it, like a real iPod - but the buzz can feel uneven: strong near the middle button and patchy toward the outer edge, sometimes missing altogether. This adds a tool under Settings, Experimental to help pin that down. Open it and spin the on-screen wheel to feel the vibration and watch where the taps thin out as your thumb moves further from the centre; you can also switch how it spaces the taps to see which feels steadier. It is only for tracking down the problem and never changes how the real wheel behaves. It lives inside the app on purpose, because the vibration only works on a real device, not in a shared web page."
   }
 ]
