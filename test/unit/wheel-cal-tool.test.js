@@ -134,6 +134,65 @@ test('the other capture modes DO grab (After 8px on the 8px threshold, On press 
   } finally { setup.closeWheelCal(); unload(dom); }
 });
 
+// The Switch-grid EXPERIMENT: iOS 26.5+ closed programmatic re-ticks, so the
+// only surviving path is a GENUINE finger crossing a REAL switch. The grid of
+// real switches + the genuine-toggle counter are the instrument that answers
+// whether any continuous web haptic path survives - so the counter must count.
+function selectEngine(doc, value) {
+  const btn = [...doc.querySelectorAll('[data-seg="engine"] button')].find((b) => b.getAttribute('data-engine') === value);
+  assert.ok(btn, `an Engine "${value}" button exists`);
+  btn.click();
+}
+test('the Switch-grid engine builds a full 12x12 grid of REAL <input switch> tiles', () => {
+  const { dom, doc, signal } = load();
+  try {
+    setup.openWheelCal(signal);
+    const grid = doc.querySelector('.whcal-grid');
+    assert.ok(grid, 'the grid container exists');
+    const switches = grid.querySelectorAll('input[type="checkbox"][switch].whcal-grid-sw');
+    assert.strictEqual(switches.length, 144, '12x12 = 144 real switch tiles');
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+test('Engine: Switch grid reveals the grid, and Ghost hides it again (both axes)', () => {
+  const { dom, doc, signal } = load();
+  try {
+    setup.openWheelCal(signal);
+    const grid = doc.querySelector('.whcal-grid');
+    assert.ok(grid.hidden, 'grid hidden under the default Ghost engine');
+    selectEngine(doc, 'grid');
+    assert.ok(!grid.hidden, 'grid shown under Switch-grid');
+    selectEngine(doc, 'ghost');
+    assert.ok(grid.hidden, 'grid hidden again back on Ghost');
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+test('in Switch-grid mode the wheel runs NO ghost gesture - the real switches own the touch (a setPointerCapture would steal it)', () => {
+  const { dom, doc, signal } = load();
+  try {
+    setup.openWheelCal(signal);
+    const wheel = doc.querySelector('.whcal-wheel');
+    const finger = doc.querySelector('.whcal-finger');
+    let captures = 0; wheel.setPointerCapture = () => { captures++; };
+    selectEngine(doc, 'grid');
+    pointer(dom.window, wheel, 'pointerdown', 1, 5, 5);
+    pointer(dom.window, wheel, 'pointermove', 1, 40, 40);
+    assert.strictEqual(finger.style.opacity, '', 'no ghost gesture started (the finger cursor never shows)');
+    assert.strictEqual(captures, 0, 'grid mode never grabs the pointer');
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+test('a GENUINE toggle of a grid switch increments the "Genuine switch toggles" counter (the instrument counts real crossings)', async () => {
+  const { dom, doc, signal } = load();
+  try {
+    setup.openWheelCal(signal);
+    const sw = doc.querySelector('.whcal-grid .whcal-grid-sw');
+    assert.ok(sw, 'a grid switch exists');
+    assert.strictEqual(doc.querySelector('.whcal-gtoggles').textContent, '0', 'starts at zero');
+    sw.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    sw.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    await new Promise((r) => dom.window.requestAnimationFrame(() => dom.window.requestAnimationFrame(r)));
+    assert.strictEqual(doc.querySelector('.whcal-gtoggles').textContent, '2', 'two genuine toggles counted and shown');
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+
 // ---- REVEAL axis -----------------------------------------------------------
 
 test('openWheelCal builds the overlay on <body> and locks body scroll', () => {
