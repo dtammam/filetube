@@ -93,6 +93,40 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.274.2 - Wheel test: the "Switch grid" genuine-crossing experiment (2026-09-05)
+
+Web research (multiple independent devs who reverse-engineered it) settled WHY the
+click-wheel buzz cuts off: **iOS 26.5 closed every programmatic re-tick path** for
+the `<input type=checkbox switch>` haptic trick. Dean is on 26.6.1, past the cutoff.
+Our wheel gets ~96 ticks/rev by MOVING one hidden switch under the finger to fake
+crossings - exactly the programmatic re-ticking Apple killed - so on 26.5+ it fires
+~one genuine tick per touch and ignores the rest (Dean's "the count climbs but I
+feel nothing"). Confirmed against Dean's device tests: holding still first doesn't
+help (not the arming delay), reversing mid-spin doesn't revive it (hard stop), and
+"On press" capture is worse than "After 8px" - all consistent with a per-touch
+ceiling, not our logic. The only path the research says still fires is a GENUINE
+finger crossing a REAL switch.
+
+This ships the experiment to test that last path on-device: an **Engine** toggle
+(Ghost vs Switch grid). Switch-grid fills the wheel with a 12x12 grid of REAL
+`<input switch>` tiles that NOTHING moves or toggles programmatically, drags the
+finger straight across them, and counts genuine `change` events in a new "Genuine
+switch toggles" tile. In grid mode the ghost gesture is fully stood down (no
+setPointerCapture to steal the touch; the ghost goes pointer-events:none so touches
+reach the real switches). It is an EXPERIMENT - it never changes the real wheel.
+
+Slim adversarial gate: APPROVE, no findings. The seat specifically verified the
+experiment is GENUINE (our code never toggles the switches, so it truly tests the
+surviving iOS path) and mutation-bound every claim. Dual-Node 8366/8366 on
+v22.23.1 + v24.14.0.
+
+**Disclosed probe (gate SUGGESTION):** in grid mode the ghost is neutralized to
+pointer-events:none so the finger reaches the grid; that line is load-bearing
+on-device but jsdom can't exercise it (no native switch there). If Switch-grid
+feels completely dead (counter never climbs even on a slow deliberate drag), the
+ghost overlay is the first suspect. Device pass PENDING - it decides whether any
+continuous web path survives, or the honest answer is one-tick-per-touch / native.
+
 ### v1.274.1 - Wheel test: a "Capture: Off" mode (2026-09-05)
 
 A follow-up to v1.274.0's diagnostic, driven by Dean's on-device read. His finding
