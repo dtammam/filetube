@@ -274,8 +274,10 @@
   // of the skin list, which is the v1.259 registry lesson: a hand-maintained sibling
   // list is where a feature goes inert. So the wiring lives here, once, and every
   // view asks for it. It lands in THIS file rather than a new one on purpose - a new
-  // global script would have to be added to all nine entry shells (the SHELL PARITY
-  // class), and this file already ships wherever the skin engine does.
+  // global script would have to be added to all TEN entry shells that load the skin
+  // engine (the SHELL PARITY class - the gate seat counted them: 12 public/*.html, of
+  // which 10 load skin-surface.js; "nine" here was my own miscount), and this file
+  // already ships wherever the skin engine does.
   //
   // The engine stays generic: it never learns what a takeover is talking to. What
   // this adds is only what a VIEW would otherwise have to repeat.
@@ -340,19 +342,29 @@
         if (WHEEL_SKINS.indexOf(activeSkinId()) < 0) return false;
         // ...and the surface must actually have a wheel to play it WITH.
         //
-        // QA WARNING-1 corrected my first attempt here, which asked the panel for a
-        // `.ip-wheel` and called that a tray guard. It is not: the tray borrows the
-        // ipod skin's markup wholesale and hides the wheel in CSS
-        // (`body.mms-tray .ip-wheelwrap{display:none}`), and querySelector matches
-        // display:none nodes perfectly well - so that check returned TRUE on the tray.
-        // The wheel AND the MENU button both live inside the hidden wrap, so a Brick
-        // row there would mount a game with no way to play it and no way out but
-        // Escape. The tray is identified the way the shell identifies it: its body class.
+        // READ THIS BEFORE TRUSTING THE TWO CHECKS BELOW. They do NOT currently protect
+        // the tray, and the adversarial seat measured why - twice I described this guard
+        // as working and twice I was wrong, so the mechanism is written out in full:
         //
-        // Today this cannot be reached at all - the engine gates the whole row on
-        // `inMainDoc` (skin-surface.js) and the tray is a pop-out document. It is
-        // written to be correct anyway, because lifting that gate is a named future
-        // decision and a guard that is only true by accident is worse than none.
+        // This wiring is per-VIEW, not per-SURFACE. A view builds ONE wiring whose
+        // `getEngine` returns its own in-tab engine, and the pop-out/tray engine is
+        // constructed from that same view cfg - so when the TRAY's sticker menu asks
+        // `visible()`, it runs this closure, which looks at the IN-TAB engine's host.
+        // `mms-tray` is set on the pop-out document's body, never the main one, so the
+        // body-class check below always reads false; and the skin check reads the global
+        // preference while the tray overrides its engine's getSkinId to force `ipod`.
+        // Both checks are therefore inert for the tray, and `onTap` would mount the game
+        // on the IN-TAB LCD (measured).
+        //
+        // None of that is reachable today: the engine gates the whole row on `inMainDoc`
+        // (skin-surface.js), and the tray is a pop-out document, so `visible()` is never
+        // called there. The checks stand as correct statements about the surface they CAN
+        // see - a main-document panel - and the tray body-class check costs nothing.
+        // BUT: lifting `inMainDoc` to bring Brick to the pop-out (a named future
+        // decision) requires making `wire()` per-SURFACE first - `getEngine` must return
+        // the engine of the surface doing the asking. Until then neither check means what
+        // its name suggests, and the unit fixture that "proves" the tray case hands this
+        // wiring the tray's own engine, which no view ever does.
         var eng = engineOf();
         if (!eng || typeof eng.lcdHost !== 'function') return false;
         var host = null;

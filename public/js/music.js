@@ -661,7 +661,11 @@ if (typeof module !== 'undefined' && module.exports) {
         var can = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
         if (!can || musicCanModifyLibrary) return;
         musicCanModifyLibrary = true;
-        if (drill && content && content.isConnected) renderDrillView();
+        // ...but NOT while a drill load is in flight: `drill` is the new album and
+        // `queue` is still the old one, so this would paint B's header over A's rows
+        // (adversarial W1 - and the button on that header targets A's file). The load
+        // renders when it lands, with the capability already set.
+        if (drill && content && content.isConnected && !drillLoadInFlight) renderDrillView();
       }).catch(function () { /* fail closed */ });
     }());
     var emptyNote = root.querySelector('#music-empty');
@@ -1501,6 +1505,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     var loadSongsGen = 0; // v1.207: serializes concurrent loads so a superseded (stale) one never clobbers the winner's queue/ctx
+    var drillLoadInFlight = 0; // v1.273 (adversarial W1): >0 while `drill` is ahead of `queue`
     async function loadSongs(opts) {
       opts = opts || {};
       var myLoad = ++loadSongsGen; // claim this load BEFORE the fetch
@@ -1687,7 +1692,13 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       try {
         if (drill) {
-          await loadSongs({});
+          // v1.273 (adversarial W1): mark the window in which `drill` is already the
+          // NEW album while `queue` is still the previous one. Nothing could observe
+          // that before this wave; the RBAC repaint is the first out-of-band caller of
+          // renderDrillView() and would otherwise paint album B's header over album A's
+          // rows - and the Edit chapters button on that header writes album A's FILE.
+          drillLoadInFlight += 1;
+          try { await loadSongs({}); } finally { drillLoadInFlight -= 1; }
           renderDrillView();
         } else if (tab === 'home') {
           await renderHome();
@@ -2532,7 +2543,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function destroy() {
-    if (activeBrickStop) { try { activeBrickStop(); } catch (_) { /* best effort */ } } // v1.270: the view dying first
+    if (activeBrickStop) { try { activeBrickStop(); } catch (_) { /* best effort */ } activeBrickStop = null; } // v1.270: the view dying first (nulled like podcasts - adversarial S3)
     if (controller) controller.abort();
     controller = null;
     // v1.227 (gate CRITICAL): the mobile-skin body class must NOT survive the

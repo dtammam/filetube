@@ -35,15 +35,25 @@ test('v1.273: only a SINGLE-FILE chapter album is renameable - the editor writes
   assert.strictEqual(M.isChapterAlbum([chap(0, 0, 'A'), { id: 'other::c0', source: 'library-chapter', chapterStartSec: 0, title: 'B' }]), false,
     'chapters of two different files cannot be one editable list');
 
-  // a MIXED drill (a chapter track sitting beside a real track) is the subtle one
+  // a MIXED drill (a chapter track sitting beside a real track) is the subtle one.
+  // The `source` conjunct gets its OWN divergent case: adversarial S1 measured that
+  // `{id:'t1', source:'library'}` fails BOTH conjuncts, so deleting the source check
+  // shipped green (the v1.254 per-conjunct lesson).
   assert.strictEqual(M.isChapterAlbum([chap(0, 0, 'A'), { id: 't1', source: 'library', title: 'Real' }]), false,
     'one non-chapter track disqualifies the whole drill');
+  assert.strictEqual(M.isChapterAlbum([chap(0, 0, 'A'), { id: 'file9::c9', source: 'library', title: 'Looks like one' }]), false,
+    'a row whose ID looks like a chapter but whose SOURCE is not disqualifies it too - the id shape alone is not the test');
 
   assert.strictEqual(M.isChapterAlbum([]), false, 'an empty drill offers nothing');
   assert.strictEqual(M.isChapterAlbum(null), false, 'and neither does a missing one');
   // source alone is not enough - the id must actually carry a ::c index
   assert.strictEqual(M.isChapterAlbum([{ id: 'file9', source: 'library-chapter', title: 'A' }]), false,
     'a library-chapter row with no ::c index is not a chapter track');
+  // adversarial S2: both call sites test truthiness, so returning '' instead of null was
+  // behaviourally inert and its guard survived every mutant. Assert the RETURN, which is
+  // the only thing that can tell the two apart.
+  assert.strictEqual(M.chapterAlbumBaseId([{ id: '::c0', source: 'library-chapter', title: 'A' }]), null,
+    "an id of exactly '::c0' has no file behind it - null, never the empty string");
 });
 
 test('v1.273: the button appears ONLY on a chapter album, ONLY with write-RBAC, and the header is otherwise unchanged', () => {
@@ -128,10 +138,12 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 // The file has THREE chapters. `visibleTracks` is what the drill query returns - the
 // search case returns a SUBSET, which is exactly the data-loss shape.
+// Deliberately OUT OF ORDER: the seat measured that a sorted fixture leaves the
+// handler's sort unbound (`sort_off` shipped green), so the order claim was decoration.
 const FILE_CHAPTERS = [
+  { startTime: 240, title: 'Outro' },
   { startTime: 0, title: 'Intro' },
   { startTime: 120, title: 'Middle Part' },
-  { startTime: 240, title: 'Outro' },
 ];
 const chapTrack = (i, start, title) => ({
   id: 'film::c' + i, source: 'library-chapter', chapterStartSec: start, title,
@@ -148,7 +160,7 @@ async function bootMusic({ visibleTracks, canModify = true, holdVideoFetch = nul
   global.document = dom.window.document;
   global.localStorage = dom.window.localStorage;
   global.AbortController = dom.window.AbortController;
-  const seen = { editor: null, videoFetches: [] };
+  const seen = { editor: null, onSaved: null, videoFetches: [], musicQueries: [] };
   let registered = null;
   dom.window.FileTube = {
     registerView: (n, mod) => { registered = mod; },
@@ -162,7 +174,7 @@ async function bootMusic({ visibleTracks, canModify = true, holdVideoFetch = nul
   };
   dom.window.addToQueue = () => {};
   dom.window.fetchCurrentUser = () => Promise.resolve({ user: { role: canModify ? 'admin' : 'member' } });
-  dom.window.showChaptersEditor = (mediaId, lines) => { seen.editor = { mediaId, lines }; };
+  dom.window.showChaptersEditor = (mediaId, lines, onSaved) => { seen.editor = { mediaId, lines }; seen.onSaved = onSaved; };
   global.fetch = (url) => {
     if (String(url).indexOf('/api/videos/') === 0) {
       seen.videoFetches.push(String(url));
@@ -173,12 +185,14 @@ async function bootMusic({ visibleTracks, canModify = true, holdVideoFetch = nul
     if (String(url).indexOf('/api/music/artists') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
     const m = String(url).match(/\/api\/music\/([^?]+)$/);
     if (m) return Promise.resolve({ ok: true, json: async () => (visibleTracks[0] || {}) });
+    seen.musicQueries.push(String(url));
     return Promise.resolve({ ok: true, json: async () => ({ items: visibleTracks }) });
   };
   try {
     delete require.cache[musicPath];
     require(musicPath);
     assert.ok(registered && typeof registered.init === 'function', 'the music view registered');
+    dom.window.__ftMusicModule = registered;
     registered.init(dom.window.document.getElementById('view-root'));
     for (let i = 0; i < 10; i++) await settle();
     await run(dom, seen);
@@ -242,4 +256,40 @@ test('v1.273 QA delta S: the editor open is ASYNC, so it must not land over a vi
     assert.strictEqual(seen.editor, null,
       'and the editor never opens over the new view - it noticed its own view was gone');
   });
+});
+
+test('v1.273 adversarial W2: the onSaved arm actually RUNS - it re-fetches and re-renders, and refuses to when the user has left the album', async () => {
+  // Gutting this whole callback left the FULL 8337-test suite green, because the
+  // harness's editor stub never invoked the third argument. Everything the fix round
+  // put in it - the re-fetch, the drill-change bail, the isConnected re-check - was
+  // decoration. Drive it.
+  await bootMusic({ visibleTracks: [chapTrack(0, 0, 'Intro'), chapTrack(1, 120, 'Middle Part')] },
+    async (dom, seen) => {
+      const btn = dom.window.document.querySelector('.music-drill-chapters');
+      assert.ok(btn, 'the button rendered (non-vacuous)');
+      btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 10; i++) await settle();
+      assert.ok(typeof seen.onSaved === 'function', 'the editor really was handed a save callback');
+
+      // (a) the happy arm: a save re-fetches the album and repaints it
+      const before = seen.musicQueries.length;
+      seen.onSaved({});
+      for (let i = 0; i < 10; i++) await settle();
+      assert.ok(seen.musicQueries.length > before,
+        'saving re-fetched the album - a rename can ADD or REMOVE chapters, so the row list changes shape and cannot be patched in place');
+      assert.ok(dom.window.document.querySelector('.music-drill'), 'and the drill is still rendered');
+
+      // (b) the guard arm: an OS back gesture while the modal is open moves the drill,
+      // and the save must NOT then reload the album the user walked away from.
+      const mod = dom.window.__ftMusicModule;
+      if (mod && typeof mod.onPopState === 'function') {
+        mod.onPopState({ viewState: { t: 'drill', drill: null } });
+        for (let i = 0; i < 6; i++) await settle();
+      }
+      const beforeGuard = seen.musicQueries.length;
+      seen.onSaved({});
+      for (let i = 0; i < 10; i++) await settle();
+      assert.strictEqual(seen.musicQueries.length, beforeGuard,
+        'the abandoned scope was NOT reloaded - it would overwrite the module queue with the old album while the browse grid is on screen');
+    });
 });

@@ -754,8 +754,13 @@ test('the row is gated on the VIEW\'s answer, and the SHARED wiring restricts it
   assert.strictEqual(mk('seattle-classic', WHEEL).visible(), false,
     'Seattle Classic does NOT - it shares the wheel chassis but its pad is half the usable rotation ring (#207)');
   assert.strictEqual(mk('apple', WHEEL).visible(), false, 'a flat skin never offers it');
+  // NOTE (adversarial W3): this case is honest about the FUNCTION but does not describe
+  // production. A view's wiring closes over its OWN in-tab engine, so the tray's sticker
+  // never reaches this closure with the tray's host - it is `inMainDoc`-gated instead.
+  // Kept as a statement about the function; see ipod-brick.js for why it is not yet a
+  // tray guard, and do not cite it as one when lifting that gate.
   assert.strictEqual(mk('ipod', WHEEL, 'mms-on mms-tray').visible(), false,
-    'the TRAY does not - it borrows the ipod markup and hides the wheelwrap in CSS, so the wheel node IS present; the game would have no wheel and no MENU, only Escape');
+    'given a TRAY host, the function says no - the tray borrows the ipod markup and hides the wheelwrap in CSS, so the wheel node IS present and the id alone would say yes');
   assert.strictEqual(mk('ipod', '<div class="ip-lcd-in"></div>').visible(), false,
     'and neither does a panel with no wheel markup at all');
   // the engine being absent hides it entirely, rather than throwing into the sticker
