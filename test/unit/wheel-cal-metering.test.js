@@ -37,9 +37,14 @@ test('WHEEL_CAL constants are the SAME values skin-surface.js ships — a drifte
   assert.match(SKIN_SURFACE_JS, new RegExp('hapBias \\* ' + WHEEL_CAL.BIAS_PX + '\\b'));
 });
 
-test('the centre dead-zone fraction matches skin-surface.js pointerdown Select guard (r.width * 0.2)', () => {
-  assert.match(SKIN_SURFACE_JS, /r\.width \* 0\.2/);
-  assert.strictEqual(WHEEL_CAL.DEAD_FRAC, 0.20);
+test('the centre dead-zone fraction is NUMERICALLY equal to skin-surface.js pointerdown Select guard (a 0.20-0.29 drift must not slip a substring match)', () => {
+  // Extract the REAL multiplier, don't substring-match it: `r.width * 0.25`
+  // still contains `r.width * 0.2`, so a plausible Select-guard widening would
+  // slip past a bare /r\.width \* 0\.2/ while the tool kept metering against a
+  // stale 0.20 (adversarial WARNING 2).
+  const m = /Math\.hypot\([^)]*\) < r\.width \* ([\d.]+)\)/.exec(SKIN_SURFACE_JS);
+  assert.ok(m, 'skin-surface.js must guard the centre with a `r.width * <frac>` dead-zone');
+  assert.strictEqual(Number(m[1]), WHEEL_CAL.DEAD_FRAC, 'the tool dead-zone must equal the real wheel\'s exactly');
 });
 
 // ---- wheelCalShortAngle: the wrap boundaries ------------------------------
@@ -98,6 +103,10 @@ test('wheelCalDensity is ticks per 100px of travel, and null before any travel (
 // for a fixed rotation the density falls as radius grows (arc = r·θ). In arc
 // mode, ticks accrue per arc-length, so density is radius-INDEPENDENT. This is
 // the deterministic signal Dean reads off the three band bars.
+// DISCLOSURE (adversarial SUGGESTION 1): these bind the density ARITHMETIC with
+// hand-fed tick/travel numbers; the integrated per-move accumulator that PRODUCES
+// those counts (arc = dist·|Δθ| → wheelCalMeterQuantum/StepFor) lives in the DOM
+// shell and is device-validated, not exercised here.
 
 test('angle mode: equal rotation at a larger radius yields LOWER tick density (the falloff the bug is)', () => {
   var rotationDeg = 90;

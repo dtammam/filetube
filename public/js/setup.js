@@ -3951,6 +3951,7 @@ function openWheelCal(signal) {
   }
 
   wheel.addEventListener('pointerdown', (e) => {
+    if (st) return; // one gesture at a time (mirrors skin-surface.js `if (wheelSpin) return`) - a second finger must not corrupt the tick counts
     let r; try { r = wheel.getBoundingClientRect(); } catch (_) { return; }
     const g = { cx: r.left + r.width / 2, cy: r.top + r.height / 2, R: r.width / 2 };
     const dist = Math.hypot(e.clientX - g.cx, e.clientY - g.cy);
@@ -4002,8 +4003,9 @@ function openWheelCal(signal) {
     live.rad = dist; live.band = band; live.dAng = dAng; live.ticks = st.ticks;
   }, { signal });
 
-  function endGesture() {
+  function endGesture(e) {
     if (!st) return;
+    if (e && e.pointerId !== st.id) return; // only the OWNING pointer ends its gesture (a stray second finger's up must not)
     if (st.captured) { try { wheel.releasePointerCapture(st.id); } catch (_) { /* not captured */ } }
     st = null; live.active = false;
     if (finger) finger.style.opacity = '0';
@@ -4178,8 +4180,9 @@ if (typeof module !== 'undefined' && module.exports) {
     WHEEL_CAL, wheelCalShortAngle, wheelCalBandOf, wheelCalMeterQuantum,
     wheelCalStepFor, wheelCalDensity,
     // the DOM/native-switch shell (jsdom lifecycle-tested: open reveals + locks
-    // body, close/destroy clears + unlocks — both axes).
-    openWheelCal, closeWheelCal, wireWheelCalControl,
+    // body, close/destroy clears + unlocks — both axes). `destroy` is exported so
+    // the nav-away teardown is bound BEHAVIOURALLY, not by a comment-porous regex.
+    openWheelCal, closeWheelCal, wireWheelCalControl, destroy,
     // v1.159: the Users list as a sortable table (jsdom-tested action wiring).
     loadUsersList, buildUserRoleCell,
     // v1.171: the critter pool manager (jsdom-tested: two-tap deletes, uploads, reveal).

@@ -44,11 +44,48 @@ test('setup.html: an "Open Pocket Classic wheel test" button lives in Experiment
   assert.ok(exp && /id="wheel-cal-open"/.test(exp[0]), 'the button sits inside the Experimental section');
 });
 
-test('setup.js wires the button in init() and tears the overlay down in destroy() (the lock cannot strand on nav-away)', () => {
+test('setup.js wires the button in init() (the opener is reachable on view mount)', () => {
   const initMatch = /function init\(root\) \{([\s\S]*?)\n\}/.exec(SETUP_JS);
-  assert.ok(initMatch && /wireWheelCalControl\(controller\.signal\)/.test(initMatch[1]), 'init() calls wireWheelCalControl');
-  const destroyMatch = /function destroy\(\) \{([\s\S]*?)\n\}/.exec(SETUP_JS);
-  assert.ok(destroyMatch && /closeWheelCal\(\)/.test(destroyMatch[1]), 'destroy() calls closeWheelCal');
+  assert.ok(initMatch, 'init(root) source found');
+  // matches the real CALL statement; no comment carries this exact signature
+  assert.match(initMatch[1], /wireWheelCalControl\(controller\.signal\);/, 'init() calls wireWheelCalControl');
+});
+
+// A dispatcher that carries pointerId on a plain Event - jsdom's MouseEvent
+// SILENTLY DROPS pointerId (the v1.271 scar), so never build these from one.
+function pointer(win, el, type, id, x, y) {
+  const ev = new win.Event(type, { bubbles: true });
+  ev.pointerId = id; ev.clientX = x; ev.clientY = y;
+  el.dispatchEvent(ev);
+  return ev;
+}
+
+test('destroy() tears the overlay down and restores body scroll — the nav-away lock cannot strand (bound BEHAVIOURALLY, not by matching a comment)', () => {
+  const { dom, doc, signal } = load();
+  try {
+    setup.openWheelCal(signal);                 // overlay open, body locked
+    assert.ok(doc.querySelector('.whcal-overlay'), 'precondition: overlay present');
+    assert.strictEqual(doc.body.style.position, 'fixed', 'precondition: body locked');
+    setup.destroy();                            // simulate an in-app nav-away
+    assert.strictEqual(doc.querySelector('.whcal-overlay'), null, 'destroy() removes the overlay');
+    assert.strictEqual(doc.body.style.position, '', 'destroy() restores body scroll (no strand)');
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+
+test('a stray second finger neither hijacks nor ends the active gesture (one gesture at a time + owning-pointer end)', () => {
+  const { dom, doc, signal } = load();
+  try {
+    setup.openWheelCal(signal);
+    const wheel = doc.querySelector('.whcal-wheel');
+    const finger = doc.querySelector('.whcal-finger');
+    pointer(dom.window, wheel, 'pointerdown', 1, 5, 5);   // finger 1 starts (non-centre)
+    assert.strictEqual(finger.style.opacity, '1', 'gesture active after finger 1 down');
+    pointer(dom.window, wheel, 'pointerdown', 2, 6, 6);   // finger 2 must be ignored (no re-arm)
+    pointer(dom.window, wheel, 'pointerup', 2, 6, 6);     // finger 2 up must NOT end finger 1
+    assert.strictEqual(finger.style.opacity, '1', 'a second finger neither hijacks nor ends the gesture');
+    pointer(dom.window, wheel, 'pointerup', 1, 5, 5);     // the owning pointer ends it
+    assert.strictEqual(finger.style.opacity, '0', 'the owning pointer ends the gesture');
+  } finally { setup.closeWheelCal(); unload(dom); }
 });
 
 // ---- REVEAL axis -----------------------------------------------------------
