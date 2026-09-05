@@ -332,3 +332,59 @@ test('v1.273 adversarial W1: the RBAC repaint must NOT paint album B\'s header o
   assert.match(branch[0], /finally \{ drillLoadInFlight -= 1; \}/,
     'the marker clears in a FINALLY - a rejected load would otherwise strand it set forever');
 });
+
+test('v1.273 adversarial delta: BEHAVIOURAL W1 - the Edit chapters button always targets the album ON SCREEN', async () => {
+  // The seam lock above binds the ORDER of two operations, and the seat proved that is
+  // porous: shadowing `drillLoadInFlight` with a render()-local, or commenting the three
+  // lines out, leaves every textual assert green while fully restoring the wrong-record
+  // write. Both are one line. So bind the SENTENCE the finding was actually about -
+  // "the button targets the album on screen" - which no textual edit can satisfy while
+  // lying. Kept alongside the seam asserts, which catch a missing `finally` this cannot.
+  //
+  // Nothing here is wall-clock: the interleaving is driven by promises we release by
+  // hand plus setImmediate, so it is deterministic (the v1.272 flake lesson was about
+  // TIMING constants, and does not transfer).
+  let releaseProbe = null, releaseAlbumB = null;
+  const probeGate = new Promise((r) => { releaseProbe = r; });
+  const bGate = new Promise((r) => { releaseAlbumB = r; });
+  const albumB = [
+    { id: 'filmB::c0', source: 'library-chapter', chapterStartSec: 0, title: 'B one', album: 'TalkB', albumKey: 'TalkB', artist: 'Someone' },
+    { id: 'filmB::c1', source: 'library-chapter', chapterStartSec: 90, title: 'B two', album: 'TalkB', albumKey: 'TalkB', artist: 'Someone' },
+  ];
+  await bootMusic({
+    visibleTracks: [chapTrack(0, 0, 'Intro'), chapTrack(1, 120, 'Middle Part')],
+    holdUserProbe: probeGate,
+    holdAlbumQuery: { match: 'album=TalkB', gate: bGate, items: albumB },
+  }, async (dom, seen) => {
+    const doc = dom.window.document;
+    const rowIds = () => Array.from(doc.querySelectorAll('[data-id]')).map((e) => e.getAttribute('data-id')).join(',');
+    assert.ok(doc.querySelector('.music-drill'), 'album A is on screen (non-vacuous)');
+    assert.strictEqual(doc.querySelector('.music-drill-chapters'), null,
+      'and no button yet - the capability probe is unanswered, so it fails closed');
+    const aRows = rowIds();
+    assert.ok(aRows.indexOf('film::c') !== -1, `album A's rows really are rendered: ${aRows}`);
+
+    // navigate to album B; its query is HELD, so `drill` is B while `queue` is still A
+    dom.window.__ftMusicModule.onPopState({ viewState: { t: 'drill', drill: { type: 'album', key: 'TalkB', label: 'Album of filmB' } } });
+    for (let i = 0; i < 4; i++) await settle();
+    assert.strictEqual(rowIds(), aRows, 'album A\'s rows are still the ones on screen while B loads');
+
+    // the capability lands INSIDE that window - the exact race
+    releaseProbe();
+    for (let i = 0; i < 8; i++) await settle();
+    assert.strictEqual(doc.querySelector('.music-drill-chapters'), null,
+      'NO button while the album on screen and the album in `drill` disagree - a button here carries B\'s header and writes A\'s FILE');
+
+    // B lands: now the header, the rows and the button all agree
+    releaseAlbumB();
+    for (let i = 0; i < 10; i++) await settle();
+    const btn = doc.querySelector('.music-drill-chapters');
+    assert.ok(btn, 'once B is loaded the button appears - without a navigation, which is the point of repainting at all');
+    assert.ok(rowIds().indexOf('filmB::c') !== -1, `and B's rows are on screen: ${rowIds()}`);
+    btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 10; i++) await settle();
+    assert.ok(seen.editor, 'the editor opened');
+    assert.strictEqual(seen.editor.mediaId, 'filmB',
+      'and it targets the album ON SCREEN - this is the assert the whole finding was about');
+  });
+});
