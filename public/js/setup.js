@@ -3849,7 +3849,7 @@ function wheelCalTemplate() {
       '<p>The real wheel fires a haptic every <b>3.75&deg; of rotation</b>. Angle-per-finger-movement shrinks as you move out (&Delta;&theta; &asymp; distance &divide; radius), so the same drag makes fewer ticks at the rim than near the centre.</p>' +
       '<p>Do slow, even spins from the green (inner) ring out to the red (outer) ring. The bars show ticks per 100px of finger travel per band.</p>' +
       '<p><b>Angle mode:</b> if Inner sits high and Outer low, that falloff IS the bug. <b>Watch the flash vs your finger:</b> if it flashes at the rim but you feel nothing, the native crossing is failing out there instead.</p>' +
-      '<p><b>The fix test:</b> switch to Arc-length. If the bars level out AND it buzzes evenly across the whole ring, arc-length metering is the fix. <b>Edge-slip:</b> set Capture to On press and spin at the rim - if "dead at the edge" improves, a finger leaving the wheel before the 8px capture was cutting the events.</p>' +
+      '<p><b>The capture test (the one that matters):</b> the wheel "grabs" your finger part-way into a spin so it keeps tracking if you slide off the edge - and that grab can silence the buzz. Set <b>Capture: Off</b> and spin. If the buzz is now continuous the whole way round, the grab was the culprit. On press (grab immediately) should feel worst; After 8px (grab a few pixels in) buzzes briefly then dies.</p>' +
     '</div>' +
     '<div class="whcal-controls">' +
       '<div class="whcal-ctl"><span class="whcal-ctl-label">Meter by</span>' +
@@ -3864,6 +3864,7 @@ function wheelCalTemplate() {
         '<div class="whcal-seg" data-seg="cap">' +
           '<button type="button" data-cap="8px" aria-pressed="true">After 8px</button>' +
           '<button type="button" data-cap="press" aria-pressed="false">On press</button>' +
+          '<button type="button" data-cap="off" aria-pressed="false">Off</button>' +
         '</div>' +
         '<div class="whcal-seg" data-seg="ghost">' +
           '<button type="button" data-ghost="on" aria-pressed="true">Buzz on</button>' +
@@ -3961,6 +3962,9 @@ function openWheelCal(signal) {
       lastX: e.clientX, lastY: e.clientY, x0: e.clientX, y0: e.clientY, accum: 0, hapLast: 0, ticks: 0, captured: false, moved: false };
     live.active = true; live.ticks = 0;
     if (cfg.ghostOn && ghost) placeGhost(e.clientX, e.clientY, g, false);
+    // capMode: 'press' grabs now, '8px' grabs after 8px of travel (below), 'off'
+    // never grabs - the pointer grab (setPointerCapture) is the suspected buzz
+    // killer, so 'off' is the confirmation lever.
     if (cfg.capMode === 'press') { try { wheel.setPointerCapture(e.pointerId); st.captured = true; } catch (_) { /* best effort */ } }
     if (finger) finger.style.opacity = '1';
   }, { signal });
@@ -4028,7 +4032,7 @@ function openWheelCal(signal) {
         else { range.min = '1.5'; range.max = '8'; range.step = '0.25'; range.value = String(cfg.stepAngle); val.textContent = cfg.stepAngle.toFixed(2) + '°'; }
       } else if (kind === 'cap') {
         cfg.capMode = b.getAttribute('data-cap');
-        const cs = $('.whcal-capstate'); if (cs) cs.textContent = 'capture: ' + (cfg.capMode === 'press' ? 'on press' : 'after 8px');
+        const cs = $('.whcal-capstate'); if (cs) cs.textContent = 'capture: ' + (cfg.capMode === 'press' ? 'on press' : (cfg.capMode === 'off' ? 'off (never grabs)' : 'after 8px'));
       } else if (kind === 'ghost') {
         cfg.ghostOn = (b.getAttribute('data-ghost') === 'on');
         if (!cfg.ghostOn && ghost) ghostRest();

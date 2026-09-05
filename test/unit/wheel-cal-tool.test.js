@@ -88,6 +88,52 @@ test('a stray second finger neither hijacks nor ends the active gesture (one ges
   } finally { setup.closeWheelCal(); unload(dom); }
 });
 
+// Capture is the suspected native-buzz killer (Dean, on-device: earlier grab =
+// worse buzz). 'Off' must NEVER grab the pointer - it is the confirmation lever,
+// so a regression that quietly re-grabbed in Off would defeat the whole test.
+function selectCap(doc, value) {
+  const btn = [...doc.querySelectorAll('[data-seg="cap"] button')].find((b) => b.getAttribute('data-cap') === value);
+  assert.ok(btn, `a Capture "${value}" button exists`);
+  btn.click();
+}
+test('Capture: Off never grabs the pointer across a full drag (the setPointerCapture that kills the buzz is isolated out)', () => {
+  const { dom, doc, signal } = load();
+  try {
+    setup.openWheelCal(signal);
+    const wheel = doc.querySelector('.whcal-wheel');
+    let captures = 0;
+    wheel.setPointerCapture = () => { captures++; };
+    wheel.releasePointerCapture = () => {};
+    selectCap(doc, 'off');
+    pointer(dom.window, wheel, 'pointerdown', 1, 5, 5);
+    pointer(dom.window, wheel, 'pointermove', 1, 40, 40);   // well past the 8px threshold
+    pointer(dom.window, wheel, 'pointerup', 1, 40, 40);
+    assert.strictEqual(captures, 0, 'Off must never call setPointerCapture');
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+test('the other capture modes DO grab (After 8px on the 8px threshold, On press immediately) - so Off is a real contrast, not a no-op', () => {
+  const { dom, doc, signal } = load();
+  try {
+    setup.openWheelCal(signal);
+    const wheel = doc.querySelector('.whcal-wheel');
+    let captures = 0;
+    wheel.setPointerCapture = () => { captures++; };
+    wheel.releasePointerCapture = () => {};
+    // default mode is After 8px: no grab on press, grab once past 8px
+    pointer(dom.window, wheel, 'pointerdown', 1, 5, 5);
+    assert.strictEqual(captures, 0, 'After 8px does not grab on the initial press');
+    pointer(dom.window, wheel, 'pointermove', 1, 40, 40);
+    assert.ok(captures >= 1, 'After 8px grabs once the finger passes 8px');
+    pointer(dom.window, wheel, 'pointerup', 1, 40, 40);
+    // On press: grab on the very down
+    captures = 0;
+    selectCap(doc, 'press');
+    pointer(dom.window, wheel, 'pointerdown', 2, 5, 5);
+    assert.ok(captures >= 1, 'On press grabs immediately on pointerdown');
+    pointer(dom.window, wheel, 'pointerup', 2, 5, 5);
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+
 // ---- REVEAL axis -----------------------------------------------------------
 
 test('openWheelCal builds the overlay on <body> and locks body scroll', () => {
