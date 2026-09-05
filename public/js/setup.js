@@ -3730,6 +3730,67 @@ async function loadEngineSection(signal) {
   }
 }
 
+// ===== Pocket Classic wheel test — the diagnostic's pure metering core =====
+// A device-local tool (Settings › Experimental) that reproduces the iPod
+// wheel's native "ghost switch" haptic so the tick behaviour can be felt AND
+// measured on a real phone. (An off-origin sandbox — e.g. a hosted artifact —
+// blocks the native switch, so this has to live in the app itself.)
+//
+// WHY it exists: the shipping wheel (skin-surface.js) fires one haptic every
+// HAPTIC_STEP_DEG of ROTATION. Angle-per-finger-travel = distance / radius, so
+// the same thumb drag sweeps far less angle at the rim than near the centre,
+// and ticks thin out toward the edge (Dean, on device: "consistent near the
+// Select button, less so further out"). This tool meters ticks by ANGLE (the
+// shipping behaviour) OR by ARC-LENGTH (the candidate fix) so the two can be
+// compared side by side. It is a DIAGNOSTIC only — it never changes the live
+// wheel; that is a separate follow-up once the direction is confirmed here.
+//
+// These constants MUST track skin-surface.js's own — a drifted copy would make
+// the tool lie about the real wheel — so the metering test cross-locks them.
+const WHEEL_CAL = {
+  HAPTIC_STEP_DEG: 3.75, // == skin-surface.js HAPTIC_STEP_DEG (Classic 96/rev)
+  HAPTIC_MIN_MS: 8,      // == skin-surface.js HAPTIC_MIN_MS (throttle floor)
+  BIAS_PX: 18,           // == skin-surface.js placeGhost ±18 (probe-C bias)
+  DEAD_FRAC: 0.20,       // == skin-surface.js pointerdown centre (Select) guard
+  BAND_INNER_MAX: 0.47,  // ring band edges as a fraction of wheel radius…
+  BAND_MID_MAX: 0.73,    // …inner < 0.47 ≤ mid < 0.73 ≤ outer
+  DEFAULT_STEP_ARC_PX: 6,
+};
+
+// Shortest signed angular delta in degrees (mirrors skin-surface.js's
+// wheelShortAngle): +170° − (−170°) resolves to −20°, never +340°.
+function wheelCalShortAngle(a) {
+  let d = a;
+  while (d > 180) d -= 360;
+  while (d < -180) d += 360;
+  return d;
+}
+// Classify a finger radius (fraction of wheel radius) into inner|mid|outer. A
+// press below the dead-zone never STARTS a gesture, but a drag can cross
+// inward, so sub-dead radii clamp to 'inner' rather than skewing a band.
+function wheelCalBandOf(rFrac) {
+  const r = rFrac < WHEEL_CAL.DEAD_FRAC ? WHEEL_CAL.DEAD_FRAC : rFrac;
+  if (r < WHEEL_CAL.BAND_INNER_MAX) return 'inner';
+  if (r < WHEEL_CAL.BAND_MID_MAX) return 'mid';
+  return 'outer';
+}
+// The quantity a move contributes to the tick accumulator: |Δθ| degrees in
+// 'angle' mode (the shipping wheel), arc length px (radius·|Δθ|) in 'arc' mode.
+function wheelCalMeterQuantum(mode, absDeg, arcPx) {
+  return mode === 'arc' ? arcPx : absDeg;
+}
+// The tick threshold for the active mode.
+function wheelCalStepFor(mode, stepAngleDeg, stepArcPx) {
+  return mode === 'arc' ? stepArcPx : stepAngleDeg;
+}
+// Ticks per 100px of finger travel; null when no travel yet (avoids /0). This
+// is the headline metric: in angle mode it falls ≈ 1527/radius (a clear
+// inner→outer falloff); in arc mode it is ≈ constant across the whole ring.
+function wheelCalDensity(ticks, travelPx) {
+  if (!(travelPx > 0)) return null;
+  return (ticks / travelPx) * 100;
+}
+
 function init(root) {
   controller = new AbortController();
   configuredFolders = [];
@@ -3819,6 +3880,11 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // `window`/`document` -- mirrors player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    // Pocket Classic wheel test — the pure metering core (boundary- and
+    // cross-lock-tested in wheel-cal-metering.test.js; the DOM/native-switch
+    // shell is device-validated).
+    WHEEL_CAL, wheelCalShortAngle, wheelCalBandOf, wheelCalMeterQuantum,
+    wheelCalStepFor, wheelCalDensity,
     // v1.159: the Users list as a sortable table (jsdom-tested action wiring).
     loadUsersList, buildUserRoleCell,
     // v1.171: the critter pool manager (jsdom-tested: two-tap deletes, uploads, reveal).
