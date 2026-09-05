@@ -2824,5 +2824,11 @@
     "date": "2026-09-05",
     "title": "A tool to test the click-wheel's buzz",
     "intent": "The Pocket Classic skins buzz the click-wheel as you spin it, like a real iPod - but the buzz can feel uneven: strong near the middle button and patchy toward the outer edge, sometimes missing altogether. This adds a tool under Settings, Experimental to help pin that down. Open it and spin the on-screen wheel to feel the vibration and watch where the taps thin out as your thumb moves further from the centre; you can also switch how it spaces the taps to see which feels steadier. It is only for tracking down the problem and never changes how the real wheel behaves. It lives inside the app on purpose, because the vibration only works on a real device, not in a shared web page."
+  },
+  {
+    "version": "1.274.1",
+    "date": "2026-09-05",
+    "title": "Wheel test: turn the finger-grab fully off",
+    "intent": "A small follow-up to the wheel test tool. Early testing pointed at one likely reason the buzz drops out: as you spin, the wheel grabs your finger so it can keep following you if you slide off the edge, and that grab seems to silence the vibration. The tool could only grab sooner or later, not skip it, so this adds a third choice that turns the grab fully off. Spin with it off and feel whether the buzz stays steady the whole way around - that tells us whether the grab is the culprit. Still only for testing; it does not change the real wheel."
   }
 ]
