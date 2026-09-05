@@ -138,6 +138,25 @@ summary,
   --md-nav-width: 250px;
   --md-divider-inset: 56px; /* row divider starts past the icon tile + gap */
   --tracking-caps: 0.05em;  /* uppercase group titles / badges */
+  /* Pocket Classic wheel test (Settings › Experimental): a self-contained
+     dark instrument surface, one visual world in every era/theme. These are
+     token DEFINITIONS (census-exempt); every .whcal-* rule consumes them. */
+  --whcal-bg: #0d1014;
+  --whcal-panel: #161b22;
+  --whcal-panel-2: #1c2230;
+  --whcal-hair: #262e3a;
+  --whcal-text: #e7edf4;
+  --whcal-muted: #8792a3;
+  --whcal-dim: #5a6472;
+  --whcal-accent: #5ce0d8;
+  --whcal-accent-dim: #2b6b68;
+  --whcal-inner: #43d17a;
+  --whcal-mid: #f5b544;
+  --whcal-outer: #ef6b62;
+  --whcal-flash: #eafffb;
+  --whcal-wheel-1: #222b38;
+  --whcal-wheel-2: #12161d;
+  --whcal-lcd: #0e1218;
 }
 
 /* ==== Design-token layer, Phase 1 (docs/references/design-token-audit-v1.1.md)
@@ -14302,3 +14321,105 @@ a.queue-upnext-next:hover {
 @media (max-width: 768px) {
   .search-clear-btn { min-width: var(--size-touch); min-height: var(--size-touch); }
 }
+
+/* ===== Pocket Classic wheel test (Settings › Experimental) =================
+   A self-contained dark instrument overlay, built in JS and appended to
+   <body> on demand (setup.js openWheelCal). One visual world in every era
+   theme by design, so it defines no per-theme variants - it paints its own
+   ground from the --whcal-* tokens. The ghost is the SAME .mms-haptic-ghost
+   element the real wheel uses, so the native haptic behaves identically. */
+.whcal-overlay {
+  position: fixed; inset: 0; z-index: var(--z-top);
+  background: var(--whcal-bg); color: var(--whcal-text);
+  font-family: var(--font-family);
+  display: flex; flex-direction: column; gap: var(--space-5);
+  padding: var(--space-6);
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  -webkit-user-select: none; user-select: none;
+}
+.whcal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+.whcal-title { margin: 0; font-size: var(--fs-2xl); font-weight: var(--fw-semibold); }
+.whcal-headbtns { display: flex; gap: var(--space-3); }
+.whcal-controls { display: flex; flex-direction: column; gap: var(--space-4); }
+.whcal-ctl { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.whcal-ctl-label {
+  font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: var(--tracking-caps);
+  color: var(--whcal-dim); min-width: 68px;
+}
+.whcal-seg {
+  display: flex; gap: var(--space-1); flex: 1 1 auto;
+  background: var(--whcal-panel); border: 1px solid var(--whcal-hair);
+  border-radius: var(--radius-lg); padding: var(--space-1);
+}
+.whcal-seg button {
+  flex: 1 1 0; border: 0; background: none; cursor: pointer;
+  color: var(--whcal-muted); font-family: var(--mono-font); font-size: var(--fs-sm);
+  padding: var(--space-3) var(--space-2); border-radius: var(--radius); white-space: nowrap;
+}
+.whcal-seg button[aria-pressed="true"] { background: var(--whcal-accent-dim); color: var(--whcal-flash); }
+.whcal-step { flex: 1 1 auto; accent-color: var(--whcal-accent); }
+.whcal-step-val {
+  font-family: var(--mono-font); font-size: var(--fs-sm); color: var(--whcal-text);
+  min-width: 68px; text-align: right; font-variant-numeric: tabular-nums;
+}
+.whcal-stage {
+  position: relative; align-self: center;
+  width: min(74vw, 300px); aspect-ratio: 1 / 1;
+}
+.whcal-bandtag {
+  position: absolute; top: 0; left: 50%; transform: translate(-50%, -120%);
+  font-family: var(--mono-font); font-size: var(--fs-xs); color: var(--whcal-muted);
+  background: var(--whcal-panel); border: 1px solid var(--whcal-hair);
+  border-radius: var(--radius); padding: var(--space-1) var(--space-3); white-space: nowrap;
+}
+.whcal-wheel {
+  position: absolute; inset: 0; border-radius: 50%; touch-action: auto;
+  background: radial-gradient(circle at 50% 42%, var(--whcal-wheel-1), var(--whcal-wheel-2) 72%);
+  border: 1px solid var(--whcal-hair); box-shadow: var(--shadow-lg);
+}
+.whcal-ring { position: absolute; border-radius: 50%; pointer-events: none; opacity: 0.45; }
+.whcal-ring-outer { inset: 0; border: 1px solid var(--whcal-outer); }
+.whcal-ring-mid { inset: 13.5%; border: 1px dashed var(--whcal-mid); }
+.whcal-ring-inner { inset: 26.5%; border: 1px dashed var(--whcal-inner); }
+.whcal-dead {
+  position: absolute; inset: 40%; border-radius: 50%; pointer-events: none;
+  background: var(--whcal-lcd); border: 1px solid var(--whcal-hair);
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: var(--tracking-caps);
+  color: var(--whcal-dim);
+}
+.whcal-flash {
+  position: absolute; inset: -3%; border-radius: 50%; pointer-events: none;
+  border: 3px solid var(--whcal-flash); opacity: 0; will-change: opacity, transform;
+}
+.whcal-finger {
+  position: absolute; top: 0; left: 0; width: 34px; height: 34px;
+  margin: -17px 0 0 -17px; /* token-exempt: centres a 34px cursor dot on the finger point */
+  border-radius: 50%; pointer-events: none; opacity: 0;
+  border: 2px solid var(--whcal-flash); background: none;
+}
+.whcal-hud { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.whcal-tile {
+  background: var(--whcal-panel); border: 1px solid var(--whcal-hair);
+  border-radius: var(--radius-lg); padding: var(--space-3) var(--space-4);
+}
+.whcal-hero { grid-column: 1 / -1; background: var(--whcal-panel-2); }
+.whcal-k { display: block; font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--whcal-dim); }
+.whcal-v { display: block; font-family: var(--mono-font); font-size: var(--fs-3xl); font-variant-numeric: tabular-nums; margin-top: var(--space-1); }
+.whcal-hero .whcal-v { font-size: var(--fs-5xl); }
+.whcal-bands { background: var(--whcal-panel); border: 1px solid var(--whcal-hair); border-radius: var(--radius-lg); padding: var(--space-4); }
+.whcal-bands-cap { display: flex; justify-content: space-between; gap: var(--space-3); font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--whcal-dim); margin-bottom: var(--space-4); }
+.whcal-bar { display: flex; align-items: center; gap: var(--space-4); margin: var(--space-2) 0; }
+.whcal-bar-name { font-family: var(--mono-font); font-size: var(--fs-xs); min-width: 52px; }
+.whcal-track { flex: 1 1 auto; height: 14px; background: var(--whcal-lcd); border-radius: var(--radius); overflow: hidden; }
+.whcal-fill { display: block; height: 100%; width: 0; border-radius: var(--radius); }
+.whcal-num { font-family: var(--mono-font); font-size: var(--fs-xs); min-width: 92px; text-align: right; color: var(--whcal-muted); font-variant-numeric: tabular-nums; }
+.whcal-bar-inner .whcal-fill { background: var(--whcal-inner); } .whcal-bar-inner .whcal-bar-name { color: var(--whcal-inner); }
+.whcal-bar-mid .whcal-fill { background: var(--whcal-mid); } .whcal-bar-mid .whcal-bar-name { color: var(--whcal-mid); }
+.whcal-bar-outer .whcal-fill { background: var(--whcal-outer); } .whcal-bar-outer .whcal-bar-name { color: var(--whcal-outer); }
+.whcal-guide { background: var(--whcal-panel); border: 1px solid var(--whcal-hair); border-left: 3px solid var(--whcal-accent); border-radius: var(--radius-lg); padding: var(--space-4) var(--space-5); font-size: var(--fs-base); }
+.whcal-guide p { margin: 0 0 var(--space-3); }
+.whcal-guide b { color: var(--whcal-flash); }
+.whcal-guide[hidden] { display: none !important; }
+.whcal-note { font-size: var(--fs-sm); color: var(--whcal-mid); }
+.whcal-note[hidden] { display: none !important; }
