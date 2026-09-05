@@ -150,7 +150,7 @@ const chapTrack = (i, start, title) => ({
   album: 'A Long Talk', albumKey: 'A Long Talk', artist: 'Someone',
 });
 
-async function bootMusic({ visibleTracks, canModify = true, holdVideoFetch = null }, run) {
+async function bootMusic({ visibleTracks, canModify = true, holdVideoFetch = null, holdUserProbe = null, holdAlbumQuery = null }, run) {
   const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music?play=film::c0' });
   const saved = {
     window: global.window, document: global.document,
@@ -173,7 +173,10 @@ async function bootMusic({ visibleTracks, canModify = true, holdVideoFetch = nul
     },
   };
   dom.window.addToQueue = () => {};
-  dom.window.fetchCurrentUser = () => Promise.resolve({ user: { role: canModify ? 'admin' : 'member' } });
+  dom.window.fetchCurrentUser = () => {
+    const me = { user: { role: canModify ? 'admin' : 'member' } };
+    return holdUserProbe ? holdUserProbe.then(() => me) : Promise.resolve(me);
+  };
   dom.window.showChaptersEditor = (mediaId, lines, onSaved) => { seen.editor = { mediaId, lines }; seen.onSaved = onSaved; };
   global.fetch = (url) => {
     if (String(url).indexOf('/api/videos/') === 0) {
@@ -186,6 +189,11 @@ async function bootMusic({ visibleTracks, canModify = true, holdVideoFetch = nul
     const m = String(url).match(/\/api\/music\/([^?]+)$/);
     if (m) return Promise.resolve({ ok: true, json: async () => (visibleTracks[0] || {}) });
     seen.musicQueries.push(String(url));
+    // a held album query models the window where `drill` is the NEW album but `queue`
+    // is still the previous one - the whole point of the W1 binding below
+    if (holdAlbumQuery && holdAlbumQuery.match && String(url).indexOf(holdAlbumQuery.match) !== -1) {
+      return holdAlbumQuery.gate.then(() => ({ ok: true, json: async () => ({ items: holdAlbumQuery.items }) }));
+    }
     return Promise.resolve({ ok: true, json: async () => ({ items: visibleTracks }) });
   };
   try {
@@ -292,4 +300,35 @@ test('v1.273 adversarial W2: the onSaved arm actually RUNS - it re-fetches and r
       assert.strictEqual(seen.musicQueries.length, beforeGuard,
         'the abandoned scope was NOT reloaded - it would overwrite the module queue with the old album while the browse grid is on screen');
     });
+});
+
+test('v1.273 adversarial W1: the RBAC repaint must NOT paint album B\'s header over album A\'s rows - that header\'s button writes A\'s FILE', () => {
+  // The seat's measured repro, and it is a WRITE TO THE WRONG MEDIA RECORD:
+  //   header: "Album of film2 ... Edit chapters"   rows: film1::c0, film1::c1
+  //   >>> EDITOR OPENED AGAINST mediaId = film1
+  // renderDrillView() paints the module `queue` under whatever `drill` currently is,
+  // and render()'s drill branch awaits loadSongs BETWEEN setting drill and painting.
+  // This wave's RBAC probe is the first out-of-band caller that can land inside that
+  // window. Bound at the seam rather than through the DOM race, because the guard is
+  // a single condition and a source lock on it would be presence-not-binding: this
+  // asserts the ORDER of the two operations, which is the actual invariant.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+
+  // 1. the drill branch must MARK the window (increment before the await, decrement after)
+  const branch = src.match(/if \(drill\) \{[\s\S]{0,600}?renderDrillView\(\);/);
+  assert.ok(branch, 'found render()\'s drill branch (non-vacuous)');
+  assert.match(branch[0], /drillLoadInFlight \+= 1;[\s\S]{0,200}?await loadSongs\(\{\}\);[\s\S]{0,120}?drillLoadInFlight -= 1;/,
+    'the drill load is BRACKETED by the in-flight marker - `drill` is ahead of `queue` for exactly that span');
+
+  // 2. and the out-of-band repaint must consult it
+  const cap = src.match(/musicCanModifyLibrary = true;[\s\S]{0,600}?renderDrillView\(\);/);
+  assert.ok(cap, 'found the RBAC repaint (non-vacuous)');
+  assert.match(cap[0], /!drillLoadInFlight/,
+    'the capability repaint refuses to run mid-load - otherwise it paints the new album\'s header over the old album\'s rows, and Edit chapters then targets the OLD file');
+  // the decrement must be in a finally, or a failed load strands the flag and the
+  // button never appears again
+  assert.match(branch[0], /finally \{ drillLoadInFlight -= 1; \}/,
+    'the marker clears in a FINALLY - a rejected load would otherwise strand it set forever');
 });
