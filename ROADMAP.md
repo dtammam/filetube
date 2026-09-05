@@ -93,6 +93,69 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.273.0 - Rename a chaptered album's songs, and Brick on podcasts (2026-09-05)
+
+Two things Dean asked for together.
+
+**Rename the songs of a chaptered album.** "The ability to rename chapters as if they
+were the song names... It's just a string in a text block effectively." A chaptered
+album's tracks ARE the chapters of one backing file, so their names already live in that
+file's chapter list, and the editor that writes it has existed on the watch page since
+v1.34. This puts that same editor where the names are actually read: an **Edit chapters**
+button on the album header, for a single-file chapter album, gated on the write-RBAC
+capability the rest of the app uses. No new storage, no new API, no new dialog.
+
+**Brick on podcasts.** "Anywhere the audio player is available, specifically the pocket
+classic, it should allow for one to play brick. For example, podcasts just doesn't show
+up as an option even though it's the same player." He was right that it is the same
+player on the same skins - v1.270 had simply built Brick's view-side wiring as ~50
+private lines inside music.js, so podcasts never had a row. Copying them across would
+have made two of everything including two copies of the skin list, which is the v1.259
+lesson about hand-maintained sibling lists. The wiring moved into ipod-brick.js and both
+views ask for it. That file already ships on every shell the skin engine does, so no new
+global script and no shell-parity risk.
+
+**What the gate caught - this is why it was a FULL gate, and it earned it.**
+
+- **CRITICAL, real data loss.** The editor was seeded from what was ON SCREEN. Searching
+  inside a chaptered album filters the drill to the matches - every one still a chapter
+  of the same file, so the button still appeared - and saving REPLACES the file's whole
+  chapter list. Measured: a 3-chapter file renamed after a search came back with 1
+  chapter. On a 40-chapter DJ set that is 39 gone, and the album then falls below the
+  2-chapter threshold and disappears from Music entirely, with no recovery a user could
+  find. Fixed by seeding from the FILE (`/api/videos/:id`), never the projection - which
+  also stopped a second bug for free, where an empty chapter title displayed as "Track 2"
+  would have been written into storage as that literal string.
+- **A write to the WRONG media record.** The capability probe repainting the album header
+  could land while the view had switched albums but not yet loaded them - painting album
+  B's header over album A's rows, so the button on it targeted album A's file.
+- The button ignored the write-RBAC rule the watch page has followed since v1.81, so a
+  member without permission could retype thirty titles and eat a 403.
+- **Three of my own guards were unbound**, each measured by deleting it and watching the
+  suite stay green: podcasts' teardown arm, the entire post-save callback, and - worst -
+  the fix for the wrong-record write itself, which I committed with nothing holding it
+  and caught in my own next mutation round.
+- **A guard of mine that could not fire at all.** I claimed the Brick row was protected
+  on the desktop tray. It was not: the tray hides its wheel in CSS, which the check still
+  matches, and more deeply the wiring is per-VIEW, not per-surface - so the tray's menu
+  would ask the in-tab engine. Unreachable today (the row is main-document-gated), so the
+  fix is the comment: it now writes out the mechanism and says plainly what must change
+  first. I had described that guard as working twice and been wrong twice.
+- And a source lock I wrote to bind the wrong-record fix turned out **porous to two
+  one-line edits** - shadowing a variable, or commenting the lines out - while the
+  deterministic machinery to bind the actual behaviour was already sitting unused in my
+  own test harness.
+
+**Known gaps, disclosed.** Dean's device pass is pending. Brick is still NOT offered in
+the desktop pop-out: that row is deliberately gated to the main document, and lifting it
+needs the wiring made per-surface first - a real decision, not slipped in here. Accepted
+residuals in the tracker: #219 (the chapter text format is lossy on titles nobody edited -
+a name starting with a dash or an ellipsis loses that character on save, and two chapters
+starting within the same second merge, which at exactly two chapters makes the album
+vanish) and #220 (a pre-existing unguarded lookup on the chapters route).
+
+Suites: 8340/8340 pass, 0 fail, 0 skipped on BOTH Node v22.23.1 and v24.14.0.
+
 ### v1.272.0 - Brick is a game now (2026-09-04)
 
 Dean, after playing v1.270's easter egg: "Brick is surprisingly impressive... I'd like

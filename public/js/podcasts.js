@@ -87,6 +87,10 @@
   // nulled by destroy() so a pop after teardown is a no-op. Mirrors music.js.
   var activePodcastPopHandler = null;
   var activeSkinEngine = null; // v1.246: module-scoped so destroy() can tear the skin down (clears body.mms-on)
+  // v1.273: the bridge to Brick's teardown, mirroring music.js. destroy() runs OUTSIDE
+  // the init closure where the wiring lives, and the view dying first is a path the
+  // engine gets no event for (the v1.270 slim CRITICAL-2 shape).
+  var activeBrickStop = null;
   var activePodcastPopoutTeardown = null; // v1.251 (R3): destroy() closes a floating pop-out on a cross-view swap
 
   function init(root) {
@@ -156,6 +160,17 @@
     // hook. Desktop keeps the hand-built panel below (skinActive() is false off-mobile).
     var SKINS = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
     var skinEngine = null;
+    // v1.273 BRICK on podcasts - the shared wiring from ipod-brick.js, resolved lazily
+    // because the sticker config is built BEFORE skinEngine is assigned.
+    var brickWired = null;
+    function brickWiring() {
+      if (!window.FileTubeBrick || typeof window.FileTubeBrick.wire !== 'function') return null;
+      if (!brickWired) {
+        brickWired = window.FileTubeBrick.wire({ getEngine: function () { return skinEngine; } });
+      }
+      activeBrickStop = brickWired.stop; // the view's own destroy() arm (no engine event on that path)
+      return brickWired;
+    }
     function skinActive() {
       if (!SKINS || typeof SKINS.skinActiveFor !== 'function') return false;
       var p = window.FileTube && window.FileTube.player;
@@ -208,6 +223,15 @@
         sticker: {
           getPlayer: function () { return (window.FileTube && window.FileTube.player) || null; },
           onSkinChange: function () { updateNowPlayingPanel(); }, // repaint with the newly-picked skin
+          // v1.273 (Dean): "podcasts just doesn't show up as an option even though it's
+          // the same player". It IS the same player on the same skins - v1.270 simply
+          // built Brick's view wiring inside music.js, so this surface never had a row.
+          // The wiring is shared now (ipod-brick.js), so this is the whole of it: one
+          // hook, and the same teardown arm music uses.
+          brick: {
+            visible: function () { var w = brickWiring(); return !!w && w.visible(); },
+            onTap: function () { var w = brickWiring(); if (w) w.onTap(); },
+          },
         },
       };
     }
@@ -1301,6 +1325,10 @@
   }
 
   function destroy() {
+    // v1.273: stop Brick BEFORE the engine goes - it holds a wheel takeover and a
+    // keydown listener on this document, and the view dying first delivers no engine
+    // event (music.js does the same at its own destroy).
+    if (activeBrickStop) { try { activeBrickStop(); } catch (_) { /* best effort */ } activeBrickStop = null; }
     // v1.246: tear the skin down FIRST - unbinds its panel listeners AND clears body.mms-on so
     // a swap to another view never leaves the full-screen cover (frozen scroll) behind (v1.227).
     if (activeSkinEngine) { try { activeSkinEngine.destroy(); } catch (_) { /* ignore */ } activeSkinEngine = null; }

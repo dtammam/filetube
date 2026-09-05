@@ -266,7 +266,52 @@ function drillAlbumCount(tracks) {
 // year·track-count + prominent Play/Shuffle; as the list scrolls it collapses
 // (CSS) into the slim sticky bar (buildStickyBarHtml). Back + Play + Shuffle
 // are handled by delegation on shared classes (.music-drill-back/-play/-shuffle).
-function buildDrillHeaderHtml(drill, tracks) {
+// v1.273: a CHAPTER album is one whose tracks are all `::c` chapters of a SINGLE
+// backing file. Requiring one base id (not merely "some chapter tracks present") is
+// what makes the editor's target unambiguous - the editor writes chapters for one
+// media id, so a mixed drill must not offer it.
+function chapterAlbumBaseId(tracks) {
+  tracks = Array.isArray(tracks) ? tracks : [];
+  if (!tracks.length) return null;
+  var base = null;
+  for (var i = 0; i < tracks.length; i++) {
+    var t = tracks[i];
+    if (!t || t.source !== 'library-chapter' || !/::c\d+$/.test(String(t.id))) return null;
+    var b = String(t.id).replace(/::c\d+$/, '');
+    if (!b) return null; // an id of exactly '::c0' has no file behind it (QA S3)
+    if (base == null) base = b;
+    else if (b !== base) return null; // two files' chapters in one drill: not one editable list
+  }
+  return base;
+}
+function isChapterAlbum(tracks) { return !!chapterAlbumBaseId(tracks); }
+
+// The editor's line format is "<timestamp> <title>", and it round-trips through the
+// same parser the watch page feeds. Deliberately NOT formatTrackDuration above, which
+// returns '' for 0: a chapter starting at 0:00 would lose its timestamp, and the server's
+// CHAPTER_LINE then does not match the line AT ALL, so that chapter is silently dropped
+// on save (measured by the gate seat - my first comment here claimed it destroyed the
+// whole list, which was wrong). This mirrors common.js formatDuration exactly, its
+// 0 -> '0:00' included, which is what the watch page writes.
+function chapterStamp(seconds) {
+  var s = Number(seconds);
+  if (!s || !isFinite(s) || s <= 0) return '0:00';
+  var hrs = Math.floor(s / 3600);
+  var mins = Math.floor((s % 3600) / 60);
+  var secs = Math.floor(s % 60);
+  var out = '';
+  if (hrs > 0) out += hrs + ':' + (mins < 10 ? '0' : '');
+  out += mins + ':' + (secs < 10 ? '0' : '') + secs;
+  return out;
+}
+
+// `opts.canEditChapters` is the WRITE-RBAC capability, passed in rather than read
+// from a module global so this stays pure and both arms are testable. It defaults
+// FALSY, i.e. fails CLOSED: the watch page has gated its chapters entry on
+// playerCanModifyLibrary since v1.81, and a member without it who retypes thirty
+// titles only to be 403'd on save has lost all of it to an affordance the rest of
+// the app would never have shown them (QA WARNING-3).
+function buildDrillHeaderHtml(drill, tracks, opts) {
   tracks = Array.isArray(tracks) ? tracks : [];
   var isAlbum = !!(drill && drill.type === 'album');
   var first = tracks[0] || {};
@@ -294,6 +339,14 @@ function buildDrillHeaderHtml(drill, tracks) {
     '<div class="music-drill-actions">' +
     '<button type="button" class="music-drill-play btn btn-primary btn-sm"><i class="icon-play"></i> Play</button>' +
     '<button type="button" class="music-drill-shuffle btn btn-sm"><i class="icon-shuffle"></i> Shuffle</button>' +
+    // v1.273 (Dean): "the ability to rename chapters as if they were the song names...
+    // it's just a string in a text block effectively". A chaptered album's "tracks" are
+    // the `::c` chapters of ONE file, so their names come from that file's chapter list -
+    // which the existing editor already writes. Only chapter albums get the button;
+    // a real album's track titles are file tags and are not editable here.
+    (isChapterAlbum(tracks) && !!(opts && opts.canEditChapters)
+      ? '<button type="button" class="music-drill-chapters btn btn-sm"><i class="icon-list"></i> Edit chapters</button>'
+      : '') +
     '</div>' +
     '</div>' +
     '</div>' +
@@ -489,6 +542,7 @@ if (typeof module !== 'undefined' && module.exports) {
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
+    chapterAlbumBaseId, isChapterAlbum, chapterStamp,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
     MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
     buildMusicSkeletonCards, buildMusicSkeletonRows, buildMusicArtistSkeletonCards,
@@ -595,6 +649,25 @@ if (typeof module !== 'undefined' && module.exports) {
     straightToPlayerPending = false; // v1.244: a fresh view never inherits a prior init's cover flag
 
     var content = root.querySelector('#music-content');
+    // v1.273 write-RBAC (QA WARNING-3): the same capability derivation the watch page
+    // and the skin's Extras page use, via the cached shared probe (one /api/auth/me per
+    // page). Starts FALSE and fails CLOSED - if the probe never answers, no Edit
+    // chapters button. Re-renders the drill once it resolves so the button appears
+    // without a navigation; the server enforces regardless.
+    var musicCanModifyLibrary = false;
+    (function resolveMusicWriteCap() {
+      if (typeof window.fetchCurrentUser !== 'function') return;
+      window.fetchCurrentUser().then(function (me) {
+        var can = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
+        if (!can || musicCanModifyLibrary) return;
+        musicCanModifyLibrary = true;
+        // ...but NOT while a drill load is in flight: `drill` is the new album and
+        // `queue` is still the old one, so this would paint B's header over A's rows
+        // (adversarial W1 - and the button on that header targets A's file). The load
+        // renders when it lands, with the capability already set.
+        if (drill && content && content.isConnected && !drillLoadInFlight) renderDrillView();
+      }).catch(function () { /* fail closed */ });
+    }());
     var emptyNote = root.querySelector('#music-empty');
     var crumb = root.querySelector('#music-crumb');
     var tabsHost = root.querySelector('#music-tabs');
@@ -761,54 +834,27 @@ if (typeof module !== 'undefined' && module.exports) {
           // Pocket Classic only - Seattle Classic shares the wheel chassis but its
           // pad is half the usable ring (#207), and the flat skins have no wheel.
           brick: {
-            visible: function () {
-              if (!window.FileTubeBrick) return false;
-              var sk = window.FileTubeMusicSkins;
-              var id = (sk && typeof sk.activeSkinId === 'function') ? sk.activeSkinId() : '';
-              return id === 'ipod' || id === 'ipod-black';
-            },
-            onTap: function () { startBrick(); },
+            visible: function () { var w = brickWiring(); return !!w && w.visible(); },
+            onTap: function () { var w = brickWiring(); if (w) w.onTap(); },
           },
         },
       };
     }
-    // ---- v1.270 BRICK: the whole of the view's side of the easter egg ----
-    // Mounts a canvas over the in-tab skin's LCD, points the engine's rotation
-    // subscriber at it, and tears BOTH down on exit. Music is untouched throughout -
-    // the game is a layer over the screen, not a mode the player knows about.
-    var brickGame = null;
-    function stopBrick() {
-      if (!brickGame) return;
-      // LOAD-BEARING, not belt (the seat measured this): the engine owns the release
-      // for paths that destroy the panel, and for MENU - but the two VIEW-initiated
-      // exits, the sticker row toggling Brick off and Escape, never enter the engine.
-      // Without this clear, the next MENU press is eaten by a stale pointer.
-      try { if (inTabEngine && typeof inTabEngine.setWheelTakeover === 'function') inTabEngine.setWheelTakeover(null); } catch (_) { /* engine gone */ }
-      try { brickGame.destroy(); } catch (_) { /* already torn down */ }
-      brickGame = null;
-      activeBrickStop = null;
-      try { document.removeEventListener('keydown', brickKeys, true); } catch (_) { /* ignore */ }
-    }
-    function brickKeys(e) {
-      if (!brickGame) return;
-      if (e.key === 'Escape') { e.preventDefault(); stopBrick(); }
-    }
-    function startBrick() {
-      if (brickGame) { stopBrick(); return; } // the row toggles
-      if (!window.FileTubeBrick || !inTabEngine || typeof inTabEngine.lcdHost !== 'function') return;
-      var host = inTabEngine.lcdHost();
-      if (!host) return;
-      brickGame = window.FileTubeBrick.mount(host, {});
-      if (!brickGame) return;
-      activeBrickStop = stopBrick;
-      if (typeof inTabEngine.setWheelTakeover === 'function') {
-        inTabEngine.setWheelTakeover({
-          onRotate: brickGame.onRotate,
-          onSelect: brickGame.select,   // launch the ball / restart after GAME OVER
-          onExit: stopBrick,            // MENU backs out, the iPod rule
-        });
+    // ---- v1.270 BRICK: the view's side, now the SHARED wiring (v1.273) ----
+    // The ~50 lines that used to live here moved into ipod-brick.js so podcasts can
+    // run the same easter egg on the same skins instead of a second copy (Dean:
+    // "podcasts just doesn't show up as an option even though it's the same player").
+    // Music is untouched throughout - the game is a layer over the LCD, not a mode
+    // the player knows about.
+    var brickWired = null;
+    function brickWiring() {
+      if (!window.FileTubeBrick || typeof window.FileTubeBrick.wire !== 'function') return null;
+      if (!brickWired) {
+        brickWired = window.FileTubeBrick.wire({ getEngine: function () { return inTabEngine; } });
       }
-      try { document.addEventListener('keydown', brickKeys, true); } catch (_) { /* ignore */ }
+      // the module-scoped bridge the view's own destroy() uses (v1.270 slim CRITICAL-2)
+      activeBrickStop = brickWired.stop;
+      return brickWired;
     }
 
     function reflectEngines() {
@@ -1459,6 +1505,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     var loadSongsGen = 0; // v1.207: serializes concurrent loads so a superseded (stale) one never clobbers the winner's queue/ctx
+    var drillLoadInFlight = 0; // v1.273 (adversarial W1): >0 while `drill` is ahead of `queue`
     async function loadSongs(opts) {
       opts = opts || {};
       var myLoad = ++loadSongsGen; // claim this load BEFORE the fetch
@@ -1580,7 +1627,7 @@ if (typeof module !== 'undefined' && module.exports) {
       content.innerHTML =
         '<div class="music-drill">' +
         buildStickyBarHtml(drill, queue) +
-        buildDrillHeaderHtml(drill, queue) +
+        buildDrillHeaderHtml(drill, queue, { canEditChapters: musicCanModifyLibrary }) +
         '<div class="music-drill-sentinel" aria-hidden="true"></div>' +
         '<div class="music-song-list">' + queue.map(buildSongRowHtml).join('') + '</div>' +
         '</div>';
@@ -1645,7 +1692,13 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       try {
         if (drill) {
-          await loadSongs({});
+          // v1.273 (adversarial W1): mark the window in which `drill` is already the
+          // NEW album while `queue` is still the previous one. Nothing could observe
+          // that before this wave; the RBAC repaint is the first out-of-band caller of
+          // renderDrillView() and would otherwise paint album B's header over album A's
+          // rows - and the Edit chapters button on that header writes album A's FILE.
+          drillLoadInFlight += 1;
+          try { await loadSongs({}); } finally { drillLoadInFlight -= 1; }
           renderDrillView();
         } else if (tab === 'home') {
           await renderHome();
@@ -1748,6 +1801,66 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       if (e.target.closest('.music-drill-play')) {
         if (queue.length) playAt(0);
+        return;
+      }
+      // v1.273 (Dean): rename a chaptered album's "songs". The chapters ARE the track
+      // names here, and the editor that writes them already exists on the watch page -
+      // this is the same dialog, reached from where the names are actually read.
+      if (e.target.closest('.music-drill-chapters')) {
+        var baseId = chapterAlbumBaseId(queue);
+        if (!baseId || typeof window.showChaptersEditor !== 'function') return;
+        // QA CRITICAL-1, and it was DATA LOSS: this used to build the editor's lines
+        // from `queue`, i.e. from what is ON SCREEN. loadSongs folds the header search
+        // into the drill's query, so searching inside a 40-chapter album leaves `queue`
+        // holding only the matches - every one still a `::c` of the same file, so the
+        // button still rendered - and POST /chapters REPLACES the list wholesale. The
+        // seat measured a 3-chapter file reduced to 1 by renaming one track after a
+        // search, which then drops the album below the 2-chapter threshold and it
+        // vanishes from Music entirely, with no recovery the user can see.
+        //
+        // So the editor is seeded from the FILE, never from the projection: ask the
+        // server for its resolved chapters, exactly as the watch page does. That also
+        // retires a second bug for free - `t.title` is the projection, and an empty
+        // chapter title is displayed as "Track 2", which a save would have written into
+        // storage as the literal string.
+        var scopeAtClick = drill;
+        fetchJson('/api/videos/' + encodeURIComponent(baseId)).then(function (item) {
+          // The open is ASYNC now (it awaits the file), so it needs the liveness guard
+          // its sibling arm below has - showChaptersEditor appends to document.body,
+          // which survives a #view-root swap, so without this the modal opens over
+          // whatever the user navigated to while the fetch was in flight (QA delta S).
+          if (drill !== scopeAtClick || !content.isConnected) return;
+          var chapters = (item && Array.isArray(item.chapters)) ? item.chapters : [];
+          if (!chapters.length) {
+            // never offer an empty list to overwrite the file with - and say so, or the
+            // button just looks dead (the one failure arm that had no message).
+            if (typeof window.showToast === 'function') window.showToast('This album has no chapters to edit.');
+            return;
+          }
+          // Time order for READABILITY (the server sorts on save regardless - the
+          // earlier claim that this protected the file was wrong, QA S1).
+          var lines = chapters.slice().sort(function (a, b) {
+            return (Number(a.startTime) || 0) - (Number(b.startTime) || 0);
+          }).map(function (ch) {
+            return chapterStamp(Number(ch.startTime) || 0) + ' ' + (ch.title || '');
+          }).join('\n');
+          window.showChaptersEditor(baseId, lines, function () {
+            // A save can ADD or REMOVE chapters, not just rename, so the track list
+            // changes shape - re-fetch rather than patching rows. Guarded: the user may
+            // have left the drill (or the view) while the modal was open, and painting a
+            // drill header over whatever they navigated to is its own bug (QA W4).
+            if (drill !== scopeAtClick) return;
+            loadSongs({ scope: scopeAtClick }).then(function () {
+              if (drill !== scopeAtClick || !content.isConnected) return; // v1.203: ask, do not assume
+              renderDrillView();
+              reflectEngines(); // the skins show a chapter title; a rename must reach them
+            }).catch(function () {
+              if (typeof window.showToast === 'function') window.showToast('Chapters saved, but the list could not be refreshed.');
+            });
+          });
+        }).catch(function () {
+          if (typeof window.showToast === 'function') window.showToast('Could not load the chapters to edit.');
+        });
         return;
       }
       if (e.target.closest('.music-drill-shuffle')) {
@@ -2430,7 +2543,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function destroy() {
-    if (activeBrickStop) { try { activeBrickStop(); } catch (_) { /* best effort */ } } // v1.270: the view dying first
+    if (activeBrickStop) { try { activeBrickStop(); } catch (_) { /* best effort */ } activeBrickStop = null; } // v1.270: the view dying first (nulled like podcasts - adversarial S3)
     if (controller) controller.abort();
     controller = null;
     // v1.227 (gate CRITICAL): the mobile-skin body class must NOT survive the

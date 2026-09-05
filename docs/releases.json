@@ -2812,5 +2812,11 @@
     "date": "2026-09-04",
     "title": "Brick is a game now",
     "intent": "Brick plays like the real thing instead of a demo. Where you hit the ball on the paddle now decides where it goes - catch it early, near the edge you are coming from, and you send it back the way it came, which is the whole skill of Breakout and was simply missing before. The ball starts almost twice as fast and speeds up as a rally goes on, with a jump when you break through to the top rows. The paddle gets shorter each level, and shorter again the moment you break through, so it is genuinely possible to lose now. The ball can also no longer slip through a brick when the game stutters."
+  },
+  {
+    "version": "1.273.0",
+    "date": "2026-09-05",
+    "title": "Rename the songs in a chaptered album",
+    "intent": "When one long recording is split into chapters, those chapters show up in Music as the album's songs - and now you can rename them. Open the album and use Edit chapters: it is a plain text box, one line per song, a timestamp then the name. Saving updates the album straight away. You need library-editing permission, the same as everywhere else that changes your library. Separately, the Brick game is now available on podcasts too, not just in Music - it is the same player and the same wheel, so it should have been there all along."
   }
 ]

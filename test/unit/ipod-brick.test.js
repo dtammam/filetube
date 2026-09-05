@@ -725,12 +725,117 @@ test('the engine seam is GENERIC: setWheelTakeover names nothing about games', (
   assert.match(engine, /data-skin-select[\s\S]{0,300}?if \(wheelTakeover\)[\s\S]{0,200}?onSelect/, 'Select reaches the takeover');
 });
 
-test('the row is gated on the VIEW\'s answer, and music restricts it to skins that have a wheel', () => {
+test('the row is gated on the VIEW\'s answer, and the SHARED wiring restricts it to skins that have a wheel', () => {
   const engine = fs.readFileSync(path.join(ROOT, 'public', 'js', 'skin-surface.js'), 'utf8');
   assert.match(engine, /stickerCfg\.brick && typeof stickerCfg\.brick\.visible === 'function'/, 'the engine asks the view, it does not decide');
-  const music = fs.readFileSync(path.join(ROOT, 'public', 'js', 'music.js'), 'utf8');
-  assert.match(music, /return id === 'ipod' \|\| id === 'ipod-black';/, 'Pocket Classic only - the flat skins have no wheel, and Seattle Classic\'s pad is half the usable ring (#207)');
-  assert.match(music, /if \(!window\.FileTubeBrick\) return false;/, 'and it hides itself entirely if the game file never loaded');
+  // v1.273: the predicate moved out of music.js into the shared wiring, so bind it
+  // BEHAVIOURALLY here rather than re-locking a string in whichever file holds it.
+  const b = boot();
+  b.dom.window.eval(BRICK_SRC);
+  const W = b.dom.window;
+  const mk = (skinId, html, bodyClass) => {
+    W.FileTubeMusicSkins = { activeSkinId: () => skinId };
+    W.document.body.className = bodyClass || '';
+    const panel = W.document.createElement('div');
+    panel.className = 'music-nowplaying-panel';
+    panel.innerHTML = html;
+    W.document.body.appendChild(panel);
+    const host = panel.querySelector('.ip-lcd-in');
+    return W.FileTubeBrick.wire({ getEngine: () => ({ lcdHost: () => host, setWheelTakeover() {} }) });
+  };
+  // The REAL markup shape: renderIpod emits the wheel inside .ip-wheelwrap, and the
+  // TRAY is that same markup with the wrap hidden in CSS - NOT a panel with the wheel
+  // removed. QA WARNING-1: the first version of this fixture invented the removed-wheel
+  // shape, which production never emits, and the guard it "proved" did not work (a
+  // display:none wheel still matches querySelector). That is the divergent-fixture class.
+  const WHEEL = '<div class="ip-lcd-in"></div><div class="ip-wheelwrap"><div class="ip-wheel"></div></div>';
+  assert.strictEqual(mk('ipod', WHEEL).visible(), true, 'Pocket Classic silver offers it');
+  assert.strictEqual(mk('ipod-black', WHEEL).visible(), true, '...and black');
+  assert.strictEqual(mk('seattle-classic', WHEEL).visible(), false,
+    'Seattle Classic does NOT - it shares the wheel chassis but its pad is half the usable rotation ring (#207)');
+  assert.strictEqual(mk('apple', WHEEL).visible(), false, 'a flat skin never offers it');
+  // NOTE (adversarial W3): this case is honest about the FUNCTION but does not describe
+  // production. A view's wiring closes over its OWN in-tab engine, so the tray's sticker
+  // never reaches this closure with the tray's host - it is `inMainDoc`-gated instead.
+  // Kept as a statement about the function; see ipod-brick.js for why it is not yet a
+  // tray guard, and do not cite it as one when lifting that gate.
+  assert.strictEqual(mk('ipod', WHEEL, 'mms-on mms-tray').visible(), false,
+    'given a TRAY host, the function says no - the tray borrows the ipod markup and hides the wheelwrap in CSS, so the wheel node IS present and the id alone would say yes');
+  assert.strictEqual(mk('ipod', '<div class="ip-lcd-in"></div>').visible(), false,
+    'and neither does a panel with no wheel markup at all');
+  // the engine being absent hides it entirely, rather than throwing into the sticker
+  const noEng = W.FileTubeBrick.wire({ getEngine: () => null });
+  W.FileTubeMusicSkins = { activeSkinId: () => 'ipod' };
+  assert.strictEqual(noEng.visible(), false, 'no engine = no row');
+});
+
+test('v1.273: BOTH music and podcasts wire Brick through the SHARED helper - neither owns a private copy', () => {
+  // Dean: "podcasts just doesn't show up as an option even though it's the same player."
+  // It did not, because v1.270 built the wiring inside music.js. The fix is one shared
+  // implementation, so this asserts the SHAPE that keeps it one: each view supplies a
+  // hook that delegates, and neither re-implements mount/takeover/keydown itself.
+  const brick = fs.readFileSync(path.join(ROOT, 'public', 'js', 'ipod-brick.js'), 'utf8');
+  assert.match(brick, /window\.FileTubeBrick = \{ mount: mount, wire: wire \}/, 'the wiring is exported from the game file');
+  for (const view of ['music.js', 'podcasts.js']) {
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'js', view), 'utf8');
+    assert.match(src, /brick:\s*\{[\s\S]{0,400}?onTap:[\s\S]{0,120}?w\.onTap\(\)/,
+      `${view} offers the Brick row through the shared wiring`);
+    assert.match(src, /window\.FileTubeBrick\.wire\(\{ getEngine:/, `${view} builds its wiring from the shared helper`);
+    assert.doesNotMatch(src, /FileTubeBrick\.mount\(/,
+      `${view} must NOT mount the game itself - that is the duplication this wave removed`);
+    assert.match(src, /activeBrickStop/, `${view} keeps a teardown bridge for its own destroy() (no engine event on that path)`);
+  }
+});
+
+test('v1.273 QA W2: each view\'s destroy() actually CALLS the Brick stop - the regex above passes on the declaration alone', () => {
+  // The seat measured this: deleting the `if (activeBrickStop) {...}` line from
+  // podcasts.destroy() left the whole 8332-test suite green, because the only thing
+  // touching it was a /activeBrickStop/ source match that the DECLARATION satisfies.
+  // Presence, not binding, on a teardown - the v1.163 leak class this repo has paid
+  // for twice this week. Bind the CALL, inside each view's own destroy body.
+  for (const view of ['music.js', 'podcasts.js']) {
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'js', view), 'utf8');
+    const m = src.match(/function destroy\(\)\s*\{[\s\S]*?\n {2}\}/);
+    assert.ok(m, `${view}: found a top-level destroy() body to inspect (non-vacuous)`);
+    assert.match(m[0], /activeBrickStop\s*\(\s*\)/,
+      `${view}'s destroy() must CALL the stop, not merely mention the variable - a running game otherwise keeps a wheel takeover and a document keydown listener alive across a view swap`);
+  }
+});
+
+test('v1.273 QA W2 (behavioural): stopping the wiring releases the takeover AND unbinds the keydown listener', () => {
+  const b = boot();
+  b.dom.window.eval(BRICK_SRC);
+  const W = b.dom.window;
+  W.FileTubeMusicSkins = { activeSkinId: () => 'ipod' };
+  const panel = W.document.createElement('div');
+  panel.className = 'music-nowplaying-panel';
+  panel.innerHTML = '<div class="ip-lcd-in"></div><div class="ip-wheelwrap"><div class="ip-wheel"></div></div>';
+  W.document.body.appendChild(panel);
+  const host = panel.querySelector('.ip-lcd-in');
+  let takeover = 'unset';
+  const wiring = W.FileTubeBrick.wire({
+    getEngine: () => ({ lcdHost: () => host, setWheelTakeover(t) { takeover = t; } }),
+  });
+  // count the document's keydown registrations, which is what leaks across a view swap
+  let live = 0;
+  const add = W.document.addEventListener.bind(W.document), rem = W.document.removeEventListener.bind(W.document);
+  W.document.addEventListener = function (t, fn, o) { if (t === 'keydown') live += 1; return add(t, fn, o); };
+  W.document.removeEventListener = function (t, fn, o) { if (t === 'keydown') live -= 1; return rem(t, fn, o); };
+
+  wiring.onTap();
+  assert.strictEqual(wiring.isRunning(), true, 'the game mounted (non-vacuous)');
+  assert.ok(takeover && typeof takeover.onRotate === 'function', 'and took the wheel');
+  assert.strictEqual(live, 1, 'and armed exactly one keydown listener');
+  assert.ok(host.querySelector('canvas'), 'with a canvas over the LCD');
+
+  wiring.stop();
+  assert.strictEqual(wiring.isRunning(), false, 'stop ends the game');
+  assert.strictEqual(takeover, null, 'releases the wheel takeover - without this the next MENU press is eaten');
+  assert.strictEqual(live, 0, 'and unbinds the keydown listener (the v1.163 arm)');
+  assert.strictEqual(host.querySelector('canvas'), null, 'and takes its canvas with it');
+  // idempotent: a view whose destroy runs after the engine already released must be safe
+  wiring.stop();
+  assert.strictEqual(live, 0, 'a second stop is a no-op, not a double-unbind');
 });
 
 test('SHELL PARITY: every shell that loads the skin engine also loads the game (dynamic, fail-safe floor)', () => {

@@ -266,5 +266,120 @@
     };
   }
 
-  window.FileTubeBrick = { mount: mount };
+  // ---- the VIEW-side wiring, shared (v1.273) ----------------------------------
+  // v1.270 shipped this as ~50 lines inside music.js, so podcasts - which runs the
+  // SAME player on the SAME skins - simply had no Brick row (Dean: "podcasts just
+  // doesn't show up as an option even though it's the same player"). Copying those
+  // lines into podcasts.js would have made two of everything, including two copies
+  // of the skin list, which is the v1.259 registry lesson: a hand-maintained sibling
+  // list is where a feature goes inert. So the wiring lives here, once, and every
+  // view asks for it. It lands in THIS file rather than a new one on purpose - a new
+  // global script would have to be added to all TEN entry shells that load the skin
+  // engine (the SHELL PARITY class - the gate seat counted them: 12 public/*.html, of
+  // which 10 load skin-surface.js; "nine" here was my own miscount), and this file
+  // already ships wherever the skin engine does.
+  //
+  // The engine stays generic: it never learns what a takeover is talking to. What
+  // this adds is only what a VIEW would otherwise have to repeat.
+  var WHEEL_SKINS = ['ipod', 'ipod-black']; // Pocket Classic pair. Seattle Classic
+  // shares the chassis but its pad is half the usable rotation ring (tech-debt #207),
+  // and Dean scoped this to "specifically the pocket classic"; flat skins have no wheel.
+
+  function activeSkinId() {
+    try {
+      var sk = window.FileTubeMusicSkins;
+      return (sk && typeof sk.activeSkinId === 'function') ? sk.activeSkinId() : '';
+    } catch (_) { return ''; }
+  }
+
+  // wire({ getEngine }) -> { visible, onTap, stop, isRunning }
+  // `visible` and `onTap` are the sticker hook a view hands the engine; `stop` is the
+  // view's teardown arm (its own destroy path, which delivers no engine event).
+  function wire(opts) {
+    var o = opts || {};
+    var game = null, keyDoc = null, keyFn = null;
+    var engineOf = function () {
+      try { return (typeof o.getEngine === 'function') ? o.getEngine() : null; } catch (_) { return null; }
+    };
+    function stop() {
+      if (!game) return;
+      // LOAD-BEARING (the v1.270 seat measured this): the engine releases the takeover
+      // for paths that destroy the panel and for MENU, but the VIEW-initiated exits -
+      // the sticker row toggling Brick off, and Escape - never enter the engine. Without
+      // this clear the next MENU press is eaten by a stale pointer.
+      var eng = engineOf();
+      try { if (eng && typeof eng.setWheelTakeover === 'function') eng.setWheelTakeover(null); } catch (_) { /* engine gone */ }
+      try { game.destroy(); } catch (_) { /* already torn down */ }
+      game = null;
+      if (keyDoc && keyFn) { try { keyDoc.removeEventListener('keydown', keyFn, true); } catch (_) { /* ignore */ } }
+      keyDoc = null; keyFn = null;
+    }
+    function start() {
+      if (game) { stop(); return; } // the row toggles
+      var eng = engineOf();
+      if (!eng || typeof eng.lcdHost !== 'function') return;
+      var host = null;
+      try { host = eng.lcdHost(); } catch (_) { host = null; }
+      if (!host) return;
+      game = mount(host, {});
+      if (!game) return;
+      if (typeof eng.setWheelTakeover === 'function') {
+        eng.setWheelTakeover({
+          onRotate: game.onRotate,
+          onSelect: game.select,   // launch the ball / restart after GAME OVER
+          onExit: stop,            // MENU backs out, the iPod rule
+        });
+      }
+      // Escape belongs to the host's OWN document. music.js bound it to the main
+      // `document`, which is right for an in-tab skin and wrong for any surface whose
+      // panel lives elsewhere - the v1.250 foreign-window lesson.
+      keyDoc = host.ownerDocument || document;
+      keyFn = function (e) { if (game && e && e.key === 'Escape') { e.preventDefault(); stop(); } };
+      try { keyDoc.addEventListener('keydown', keyFn, true); } catch (_) { keyDoc = null; keyFn = null; }
+    }
+    return {
+      visible: function () {
+        if (WHEEL_SKINS.indexOf(activeSkinId()) < 0) return false;
+        // ...and the surface must actually have a wheel to play it WITH.
+        //
+        // READ THIS BEFORE TRUSTING THE TWO CHECKS BELOW. They do NOT currently protect
+        // the tray, and the adversarial seat measured why - twice I described this guard
+        // as working and twice I was wrong, so the mechanism is written out in full:
+        //
+        // This wiring is per-VIEW, not per-SURFACE. A view builds ONE wiring whose
+        // `getEngine` returns its own in-tab engine, and the pop-out/tray engine is
+        // constructed from that same view cfg - so when the TRAY's sticker menu asks
+        // `visible()`, it runs this closure, which looks at the IN-TAB engine's host.
+        // `mms-tray` is set on the pop-out document's body, never the main one, so the
+        // body-class check below always reads false; and the skin check reads the global
+        // preference while the tray overrides its engine's getSkinId to force `ipod`.
+        // Both checks are therefore inert for the tray, and `onTap` would mount the game
+        // on the IN-TAB LCD (measured).
+        //
+        // None of that is reachable today: the engine gates the whole row on `inMainDoc`
+        // (skin-surface.js), and the tray is a pop-out document, so `visible()` is never
+        // called there. The checks stand as correct statements about the surface they CAN
+        // see - a main-document panel - and the tray body-class check costs nothing.
+        // BUT: lifting `inMainDoc` to bring Brick to the pop-out (a named future
+        // decision) requires making `wire()` per-SURFACE first - `getEngine` must return
+        // the engine of the surface doing the asking. Until then neither check means what
+        // its name suggests, and the unit fixture that "proves" the tray case hands this
+        // wiring the tray's own engine, which no view ever does.
+        var eng = engineOf();
+        if (!eng || typeof eng.lcdHost !== 'function') return false;
+        var host = null;
+        try { host = eng.lcdHost(); } catch (_) { host = null; }
+        if (!host) return false;
+        var d = host.ownerDocument;
+        if (d && d.body && d.body.classList && d.body.classList.contains('mms-tray')) return false;
+        var root = (typeof host.closest === 'function' && host.closest('.music-nowplaying-panel')) || d;
+        return !!(root && root.querySelector && root.querySelector('.ip-wheel'));
+      },
+      onTap: start,
+      stop: stop,
+      isRunning: function () { return !!game; },
+    };
+  }
+
+  window.FileTubeBrick = { mount: mount, wire: wire };
 })();
