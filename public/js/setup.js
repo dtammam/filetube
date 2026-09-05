@@ -3849,9 +3849,15 @@ function wheelCalTemplate() {
       '<p>The real wheel fires a haptic every <b>3.75&deg; of rotation</b>. Angle-per-finger-movement shrinks as you move out (&Delta;&theta; &asymp; distance &divide; radius), so the same drag makes fewer ticks at the rim than near the centre.</p>' +
       '<p>Do slow, even spins from the green (inner) ring out to the red (outer) ring. The bars show ticks per 100px of finger travel per band.</p>' +
       '<p><b>Angle mode:</b> if Inner sits high and Outer low, that falloff IS the bug. <b>Watch the flash vs your finger:</b> if it flashes at the rim but you feel nothing, the native crossing is failing out there instead.</p>' +
-      '<p><b>The capture test (the one that matters):</b> the wheel "grabs" your finger part-way into a spin so it keeps tracking if you slide off the edge - and that grab can silence the buzz. Set <b>Capture: Off</b> and spin. If the buzz is now continuous the whole way round, the grab was the culprit. On press (grab immediately) should feel worst; After 8px (grab a few pixels in) buzzes briefly then dies.</p>' +
+      '<p><b>The capture test:</b> the wheel "grabs" your finger part-way into a spin so it keeps tracking if you slide off the edge. Set <b>Capture: Off</b> and spin. On press (grab immediately) should feel worst; After 8px buzzes briefly then dies.</p>' +
+      '<p><b>Switch grid (the experiment that matters now):</b> iOS 26.5 closed the trick the Ghost engine uses (moving one hidden switch to fake many taps). The one thing that still fires is a GENUINE finger crossing a REAL switch. So Engine: Switch grid fills the wheel with real switches and lets your finger drag straight across them - no faking. Drag around and watch <b>Genuine switch toggles</b>: if that climbs AND you feel a buzz per toggle, a real continuous wheel is still possible on your iOS. If it climbs with NO buzz, or stays stuck at 1, the web door is shut and the honest answer is one tick per touch (or going native).</p>' +
     '</div>' +
     '<div class="whcal-controls">' +
+      '<div class="whcal-ctl"><span class="whcal-ctl-label">Engine</span>' +
+        '<div class="whcal-seg" data-seg="engine">' +
+          '<button type="button" data-engine="ghost" aria-pressed="true">Ghost (moved)</button>' +
+          '<button type="button" data-engine="grid" aria-pressed="false">Switch grid</button>' +
+        '</div></div>' +
       '<div class="whcal-ctl"><span class="whcal-ctl-label">Meter by</span>' +
         '<div class="whcal-seg" data-seg="mode">' +
           '<button type="button" data-mode="angle" aria-pressed="true">Angle 3.75&deg;</button>' +
@@ -3878,6 +3884,7 @@ function wheelCalTemplate() {
         '<div class="whcal-ring whcal-ring-mid"></div>' +
         '<div class="whcal-ring whcal-ring-inner"></div>' +
         '<div class="whcal-dead">Select</div>' +
+        '<div class="whcal-grid" hidden></div>' +
         '<div class="whcal-flash"></div>' +
         '<div class="whcal-finger"></div>' +
       '</div>' +
@@ -3888,6 +3895,7 @@ function wheelCalTemplate() {
       '<div class="whcal-tile"><span class="whcal-k">Ticks this spin</span><span class="whcal-v whcal-ticks">0</span></div>' +
       '<div class="whcal-tile"><span class="whcal-k">&Delta;angle / move</span><span class="whcal-v whcal-dang">&mdash;</span></div>' +
       '<div class="whcal-tile"><span class="whcal-k">Off-wheel moves</span><span class="whcal-v whcal-off">0</span></div>' +
+      '<div class="whcal-tile"><span class="whcal-k">Genuine switch toggles</span><span class="whcal-v whcal-gtoggles">0</span></div>' +
     '</div>' +
     '<div class="whcal-bands">' +
       '<div class="whcal-bands-cap"><span>Tick density by radius band (ticks / 100px)</span><span class="whcal-capstate">capture: after 8px</span></div>' +
@@ -3935,11 +3943,32 @@ function openWheelCal(signal) {
   }
   ghostRest();
 
+  // Switch-grid experiment: a dense grid of REAL <input switch> elements the
+  // finger drags GENUINELY across (nothing moves them). iOS 26.5+ closed every
+  // PROGRAMMATIC re-tick, so the Ghost engine (which fakes crossings by moving
+  // one switch) is capped at ~one tick per touch there; the only path left is a
+  // GENUINE finger crossing a REAL switch. A delegated 'change' listener counts
+  // the real toggles, so we can see whether genuine crossings still chain.
+  const grid = $('.whcal-grid');
+  const WHCAL_GRID_N = 12; // must match .whcal-grid CSS (repeat(12, ...)); 144 real switches
+  if (grid) { // built unconditionally: harmless without native support, and the 'change' wiring stays bindable
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < WHCAL_GRID_N * WHCAL_GRID_N; i++) {
+      const sw = document.createElement('input');
+      sw.type = 'checkbox'; sw.setAttribute('switch', ''); sw.className = 'whcal-grid-sw';
+      sw.setAttribute('aria-hidden', 'true'); sw.tabIndex = -1;
+      frag.appendChild(sw);
+    }
+    grid.appendChild(frag);
+    grid.addEventListener('change', () => { genuineToggles++; flashLevel = 1; }, { signal });
+  }
+
   // ---- config + accumulators ----
-  const cfg = { mode: 'angle', stepAngle: WHEEL_CAL.HAPTIC_STEP_DEG, stepArc: WHEEL_CAL.DEFAULT_STEP_ARC_PX, capMode: '8px', ghostOn: true };
+  const cfg = { mode: 'angle', stepAngle: WHEEL_CAL.HAPTIC_STEP_DEG, stepArc: WHEEL_CAL.DEFAULT_STEP_ARC_PX, capMode: '8px', ghostOn: true, engine: 'ghost' };
   const bands = { inner: { ticks: 0, travel: 0 }, mid: { ticks: 0, travel: 0 }, outer: { ticks: 0, travel: 0 } };
   let offWheel = 0;
   let flashLevel = 0;
+  let genuineToggles = 0; // real <input switch> change events in Switch-grid mode (iOS 26.5+ only fires GENUINE crossings)
   const live = { rad: 0, band: 'inner', dAng: 0, active: false, ticks: 0 };
   let st = null;
 
@@ -3953,6 +3982,7 @@ function openWheelCal(signal) {
 
   wheel.addEventListener('pointerdown', (e) => {
     if (st) return; // one gesture at a time (mirrors skin-surface.js `if (wheelSpin) return`) - a second finger must not corrupt the tick counts
+    if (cfg.engine === 'grid') return; // grid mode: the real switches own the touch; run no ghost gesture (a setPointerCapture would steal it)
     let r; try { r = wheel.getBoundingClientRect(); } catch (_) { return; }
     const g = { cx: r.left + r.width / 2, cy: r.top + r.height / 2, R: r.width / 2 };
     const dist = Math.hypot(e.clientX - g.cx, e.clientY - g.cy);
@@ -4036,6 +4066,12 @@ function openWheelCal(signal) {
       } else if (kind === 'ghost') {
         cfg.ghostOn = (b.getAttribute('data-ghost') === 'on');
         if (!cfg.ghostOn && ghost) ghostRest();
+      } else if (kind === 'engine') {
+        cfg.engine = b.getAttribute('data-engine');
+        const isGrid = cfg.engine === 'grid';
+        if (grid) grid.hidden = !isGrid;
+        // in grid mode the ghost must not intercept - let touches reach the real switches
+        if (ghost) ghost.style.pointerEvents = isGrid ? 'none' : '';
       }
     }, { signal });
   });
@@ -4049,7 +4085,7 @@ function openWheelCal(signal) {
   $('.whcal-guide-btn').addEventListener('click', () => { const gd = $('.whcal-guide'); if (gd) gd.hidden = !gd.hidden; }, { signal });
 
   // ---- paint loop (self-terminates when the overlay is gone) ----
-  const density = $('.whcal-density'), radEl = $('.whcal-rad'), ticksEl = $('.whcal-ticks'), dangEl = $('.whcal-dang'), offEl = $('.whcal-off');
+  const density = $('.whcal-density'), radEl = $('.whcal-rad'), ticksEl = $('.whcal-ticks'), dangEl = $('.whcal-dang'), offEl = $('.whcal-off'), gtogglesEl = $('.whcal-gtoggles');
   const fills = { inner: overlay.querySelector('.whcal-bar-inner .whcal-fill'), mid: overlay.querySelector('.whcal-bar-mid .whcal-fill'), outer: overlay.querySelector('.whcal-bar-outer .whcal-fill') };
   const nums = { inner: overlay.querySelector('.whcal-bar-inner .whcal-num'), mid: overlay.querySelector('.whcal-bar-mid .whcal-num'), outer: overlay.querySelector('.whcal-bar-outer .whcal-num') };
   function paint() {
@@ -4065,6 +4101,7 @@ function openWheelCal(signal) {
       density.style.color = 'var(--whcal-' + live.band + ')';
     }
     offEl.textContent = String(offWheel);
+    if (gtogglesEl) gtogglesEl.textContent = String(genuineToggles);
     const ds = { inner: wheelCalDensity(bands.inner.ticks, bands.inner.travel), mid: wheelCalDensity(bands.mid.ticks, bands.mid.travel), outer: wheelCalDensity(bands.outer.ticks, bands.outer.travel) };
     let max = 0; ['inner', 'mid', 'outer'].forEach((k) => { if (ds[k] != null && ds[k] > max) max = ds[k]; });
     ['inner', 'mid', 'outer'].forEach((k) => {

@@ -14423,3 +14423,8 @@ a.queue-upnext-next:hover {
 .whcal-guide[hidden] { display: none !important; }
 .whcal-note { font-size: var(--fs-sm); color: var(--whcal-mid); }
 .whcal-note[hidden] { display: none !important; }
+/* Switch-grid experiment: a dense grid of REAL <input switch> tiles the finger
+   drags genuinely across (JS repeat count must match WHCAL_GRID_N = 12). */
+.whcal-grid { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; display: grid; grid-template-columns: repeat(12, 1fr); grid-template-rows: repeat(12, 1fr); }
+.whcal-grid[hidden] { display: none !important; }
+.whcal-grid-sw { width: 100%; height: 100%; min-width: 0; min-height: 0; margin: 0; padding: 0; opacity: 0.22; }
