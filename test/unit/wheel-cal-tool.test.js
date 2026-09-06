@@ -303,6 +303,34 @@ test('Grid mode tracks DISTINCT switches fired (the iOS target-lock check): diff
     assert.strictEqual(doc.querySelector('.whcal-distinct').textContent, '1', 'the SAME switch does not raise distinct');
     sws[40].checked = true; await frame();               // a different switch
     assert.strictEqual(doc.querySelector('.whcal-distinct').textContent, '2', 'a different switch raises distinct');
+    selectEngine(doc, 'ghost'); selectEngine(doc, 'grid'); await frame();  // an engine switch clears it
+    assert.strictEqual(doc.querySelector('.whcal-distinct').textContent, '0', 'switching engines reset distinct-fired');
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+
+test('Sweep uses a CONTINUOUS dither, not the discrete ±BIAS bias flip (a placeGhost regression must red this)', () => {
+  const { dom, doc, signal } = load();
+  // in jsdom the wheel rect is 0, so the ghost transform is translate(x + dither, y);
+  // dither = translateX - fingerX. A continuous sinusoid visits |dither| strictly
+  // BETWEEN 0 and BIAS_PX; the discrete bias flip is ALWAYS exactly ±BIAS_PX.
+  const parseTx = (t) => { const m = /translate\(([-0-9.]+)px/.exec(t || ''); return m ? parseFloat(m[1]) : NaN; };
+  try {
+    setup.openWheelCal(signal);
+    selectEngine(doc, 'sweep');
+    const wheel = doc.querySelector('.whcal-wheel');
+    const ghost = doc.querySelector('.mms-haptic-ghost');
+    const BIAS = setup.WHEEL_CAL.BIAS_PX;
+    const R = 100;
+    let sawIntermediate = false;
+    pointer(dom.window, wheel, 'pointerdown', 1, R, 0);
+    for (let deg = 20; deg <= 200; deg += 20) {
+      const rad = deg * Math.PI / 180;
+      const x = R * Math.cos(rad), y = R * Math.sin(rad);
+      pointer(dom.window, wheel, 'pointermove', 1, x, y);
+      const dither = parseTx(ghost.style.transform) - x;
+      if (Math.abs(dither) > 0.5 && Math.abs(dither) < BIAS - 0.5) sawIntermediate = true;
+    }
+    assert.ok(sawIntermediate, 'the swept x-dither takes an intermediate |value| in (0, BIAS_PX) - impossible for the discrete ±BIAS_PX flip, so this distinguishes placeSweep from placeGhost');
   } finally { setup.closeWheelCal(); unload(dom); }
 });
 
