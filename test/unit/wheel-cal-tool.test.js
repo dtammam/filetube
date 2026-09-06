@@ -311,9 +311,8 @@ test('Grid mode tracks DISTINCT switches fired (the iOS target-lock check): diff
 test('Sweep uses a CONTINUOUS dither, not the discrete ±BIAS bias flip (a placeGhost regression must red this)', () => {
   const { dom, doc, signal } = load();
   // in jsdom the wheel rect is 0, so the ghost transform is translate(x + dither, y);
-  // dither = translateX - fingerX. A continuous sinusoid visits |dither| strictly
-  // BETWEEN 0 and BIAS_PX; the discrete bias flip is ALWAYS exactly ±BIAS_PX.
-  const parseTx = (t) => { const m = /translate\(\s*([^,]+?)px/.exec(t || ''); return m ? parseFloat(m[1]) : NaN; };
+  // dither = translateX - fingerX (parseTx, module scope). A continuous sinusoid
+  // visits |dither| strictly BETWEEN 0 and BIAS_PX; the discrete flip is ±BIAS_PX.
   try {
     setup.openWheelCal(signal);
     selectEngine(doc, 'sweep');
