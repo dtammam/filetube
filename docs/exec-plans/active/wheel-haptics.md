@@ -131,3 +131,76 @@ pointercancel; the OFF path (no switch support) mounts nothing and leaves the pa
 class-free (byte-identical axis); zone route-through: a click targeting the ghost over
 a zone rect reaches the zone button. Re-run the v1.233 gesture locks + the full sticker
 suites. Full gate (gesture-scar territory), dual-Node, v1.256.0.
+
+---
+
+# v1.274 investigation (2026-09-06): the real limits, from WebKit source
+
+This chapter supersedes several conclusions above. It is the current handoff record.
+STATUS: the **Sweep** engine works on-device **~85%**; tuning (Dither/Detent, v1.274.5)
+is PENDING Dean's device vetting to ~100%; the real-wheel build is NOT done; **native
+(CHHapticEngine) is the guaranteed fallback**, also not built.
+
+## The tool
+In-app diagnostic: Settings > Experimental > "Open Pocket Classic wheel test"
+(`setup.js` `openWheelCal`). Engines: **Ghost** (the v1.256 +-18 bias-flip), **Grid**
+(target-lock check), **Sweep** (the working path). Readouts: Genuine switch toggles
+(polls each switch's `.checked`), Distinct switches fired (target-lock), Ticks/spin.
+Shipped across v1.274.0-.5, each slim-gated + dual-Node. It exists because an off-origin
+sandbox (a hosted artifact) BLOCKS the native switch - the tool must run in-app.
+
+## WebKit-source facts (authoritative - Dean's parallel agent read `main`)
+- **NO haptic rate cap.** `performSwitchHapticFeedback` cold-allocates a fresh
+  `UIImpactFeedbackGenerator` per tick; no timer, no coalescing. The "~60ms / ~16-per-sec
+  ceiling" is FOLKLORE - do not believe it.
+- **iOS TARGET-LOCKS a touch to the ONE element under `touchstart`** (`handleTouchEvent`
+  / `targetTouches`). A grid or ring of switches can NEVER work - only the touchdown
+  switch tracks (~2 ticks/rev by geometry).
+- The switch-haptic gesture gate is iOS **18.4** (commit dfb3971), on `SwitchTrigger::
+  Click` ONLY; **`PointerTracking` was never gated**. iOS 26.5 closed the `label.click()`
+  loophole (programmatic re-tap), not the genuine-drag path.
+- `switchHeldDelay = 200ms`: tracking arms 200ms after `touchstart`, referenced to the
+  touchstart location; a <200ms flick produces NO tracking.
+- **Transforms are honored:** `switchPointerTrackingLogicalLeftPosition` uses
+  `renderer->absoluteToLocal(..., UseTransforms)`. A CSS-transformed switch's toggle axis
+  moves with it (this is what makes Sweep possible).
+- No other web haptic channel on iPhone (Vibration API opposed; Gamepad drives the
+  controller; no WebXR; no Core-Haptics web surface in 26.x).
+- Practical ceiling: crossings register per `touchmove` / rendering update (~60-120Hz).
+  Fine at normal spin speeds; only a very fast spin would thin out.
+
+## Ruled OUT - do not retry
+- **Ghost / +-18px discrete bias-flip** (v1.256): faked crossings. Died on 26.6.1
+  (~1 tick/touch) for an UNCONFIRMED reason (NOT a gate) - suspects: the discrete jump,
+  renderer churn.
+- **Grid / density / radial ring:** dead by target-lock. The v1.274.2/.3 "grid works /
+  tune density / radial" conclusion was a MISREAD (only one switch ever tracked).
+- **Metering (angle vs arc):** irrelevant to firing.
+- **`setPointerCapture` ("the grab"):** ruled out on-device (Capture:Off was still patchy).
+- **A rate ceiling as the cause:** there is none.
+
+## What WORKS - the Sweep engine
+ONE tracked switch, moved smoothly under the finger via a CONTINUOUS transform
+(sinusoidal dither tied to wheel angle) - NO discrete bias-flip. The finger genuinely
+crosses the sweeping midline each detent, so WebKit's PointerTracking fires a real tick.
+`placeSweep` in `setup.js`. On Dean's 26.6.1: counter ~20/spin, a buzz per detent, no
+stall, consistent left/right around the ring, **~85% of notches**. Tunable:
+`cfg.sweepDither` (swing px), `cfg.sweepStep` (degrees per detent).
+
+## OPEN - pending Dean's device vetting
+1. **Tune** Dither (14/18/24 px) + Detent (Fine 3.75deg=96/rev / Med 5.5 / Coarse 8) to
+   reach ~100% every-notch buzz. Suggested order: Dither 24 + Fine; then 24 + Med; then
+   18 + Med.
+2. Decide whether ~100% is reachable and the feel is good enough vs a real iPod.
+3. **If good -> the REAL FIX:** bake the winning single-swept-switch settings into the
+   SHIPPING wheel (`skin-surface.js`) - replace the +-18 bias-flip with the continuous
+   sweep, keep it ONE switch (never a grid/ring). Careful wave, gesture-scar territory.
+4. **If not -> NATIVE:** a ~40-line Swift plugin around `CHHapticEngine` (transient
+   `CHHapticEvent`s, sub-ms, 96/sec trivial), via a Capacitor shell (ties into the
+   long-parked PWA-audio native question). A big Dean-level architecture decision.
+
+## Corrections to the record (documented honestly)
+- I told Dean a ~16/sec rate cap existed - FOLKLORE; no cap in WebKit source.
+- I concluded the grid "worked / chained genuine crossings" (v1.274.2/.3) - a target-lock
+  MISREAD; only one switch ever tracked. Dean's own on-device read ("it's one switch,
+  it's not following my finger") was the correct one.
