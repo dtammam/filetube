@@ -93,6 +93,28 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.274.5 - Wheel test: Sweep tuning (Dither + Detent) (2026-09-06)
+
+The Sweep engine (v1.274.4) works on-device: one swept switch buzzes ~85% of
+notches, no stall, consistent around the wheel (Dean: "counter ~20, buzz ~85%,
+seems better"). The remaining ~15% is a tuning gap, not a wall - no rate cap, no
+target-lock issue on the single switch. This adds two knobs to close it:
+
+- **Dither** (14/18/24 px): how far the switch swings each notch - it must clear
+  the switch's own midline every time, so bump it if notches are missed.
+- **Detent** (Fine 3.75deg = 96/rev / Med 5.5 / Coarse 8): notches per turn -
+  trades iPod density for reliability.
+
+`placeSweep` now reads `cfg.sweepDither`/`cfg.sweepStep` instead of the fixed
+constants; whichever combo buzzes every notch on-device is exactly what goes into
+the real wheel next.
+
+Slim adversarial gate: APPROVE. Each knob is independently mutation-bound (the seat
+isolated dither→amplitude and detent→crossing-frequency with separate mutants), the
+sweep path stays genuine (transform-only, never a programmatic toggle), and the
+default preserves the prior continuous-vs-flip binding. Dual-Node 8373/8373 on
+v22.23.1 + v24.14.0. Device tuning PENDING.
+
 ### v1.274.4 - Wheel test: Sweep engine + a correction to the record (2026-09-06)
 
 A WebKit-source review (Dean's parallel research reading `main`) **corrected two
