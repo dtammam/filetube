@@ -3858,6 +3858,12 @@ function wheelCalTemplate() {
           '<button type="button" data-engine="ghost" aria-pressed="true">Ghost (moved)</button>' +
           '<button type="button" data-engine="grid" aria-pressed="false">Switch grid</button>' +
         '</div></div>' +
+      '<div class="whcal-ctl"><span class="whcal-ctl-label">Grid</span>' +
+        '<div class="whcal-seg" data-seg="density">' +
+          '<button type="button" data-density="12" aria-pressed="true">12 (coarse)</button>' +
+          '<button type="button" data-density="18" aria-pressed="false">18</button>' +
+          '<button type="button" data-density="24" aria-pressed="false">24 (fine)</button>' +
+        '</div></div>' +
       '<div class="whcal-ctl"><span class="whcal-ctl-label">Meter by</span>' +
         '<div class="whcal-seg" data-seg="mode">' +
           '<button type="button" data-mode="angle" aria-pressed="true">Angle 3.75&deg;</button>' +
@@ -3949,26 +3955,34 @@ function openWheelCal(signal) {
   // one switch) is capped at ~one tick per touch there; the only path left is a
   // GENUINE finger crossing a REAL switch. A delegated 'change' listener counts
   // the real toggles, so we can see whether genuine crossings still chain.
+  let genuineToggles = 0; // LIVE count of genuine <input switch> flips in grid mode (poll-driven in paint)
   const grid = $('.whcal-grid');
-  const WHCAL_GRID_N = 12; // must match .whcal-grid CSS (repeat(12, ...)); 144 real switches
-  if (grid) { // built unconditionally: harmless without native support, and the 'change' wiring stays bindable
+  const gridSwitches = [];
+  let gridLast = []; // last-seen .checked per switch, for LIVE flip counting (device: 'change' only fires on release)
+  function buildGrid(n) {
+    if (!grid) return;
+    grid.textContent = ''; gridSwitches.length = 0;
     const frag = document.createDocumentFragment();
-    for (let i = 0; i < WHCAL_GRID_N * WHCAL_GRID_N; i++) {
+    for (let i = 0; i < n * n; i++) {
       const sw = document.createElement('input');
       sw.type = 'checkbox'; sw.setAttribute('switch', ''); sw.className = 'whcal-grid-sw';
       sw.setAttribute('aria-hidden', 'true'); sw.tabIndex = -1;
-      frag.appendChild(sw);
+      frag.appendChild(sw); gridSwitches.push(sw);
     }
     grid.appendChild(frag);
-    grid.addEventListener('change', () => { genuineToggles++; flashLevel = 1; }, { signal });
+    grid.style.gridTemplateColumns = 'repeat(' + n + ', 1fr)';
+    grid.style.gridTemplateRows = 'repeat(' + n + ', 1fr)';
+    gridLast = gridSwitches.map((s) => s.checked);
+    genuineToggles = 0;
   }
+  buildGrid(12); // built unconditionally (harmless without native support; keeps the live counter bindable)
+  function syncGridBaseline() { for (let i = 0; i < gridSwitches.length; i++) gridLast[i] = gridSwitches[i].checked; }
 
   // ---- config + accumulators ----
   const cfg = { mode: 'angle', stepAngle: WHEEL_CAL.HAPTIC_STEP_DEG, stepArc: WHEEL_CAL.DEFAULT_STEP_ARC_PX, capMode: '8px', ghostOn: true, engine: 'ghost' };
   const bands = { inner: { ticks: 0, travel: 0 }, mid: { ticks: 0, travel: 0 }, outer: { ticks: 0, travel: 0 } };
   let offWheel = 0;
   let flashLevel = 0;
-  let genuineToggles = 0; // real <input switch> change events in Switch-grid mode (iOS 26.5+ only fires GENUINE crossings)
   const live = { rad: 0, band: 'inner', dAng: 0, active: false, ticks: 0 };
   let st = null;
 
@@ -4072,6 +4086,9 @@ function openWheelCal(signal) {
         if (grid) grid.hidden = !isGrid;
         // in grid mode the ghost must not intercept - let touches reach the real switches
         if (ghost) ghost.style.pointerEvents = isGrid ? 'none' : '';
+        if (isGrid) syncGridBaseline(); // avoid a burst of false flips on entry
+      } else if (kind === 'density') {
+        buildGrid(parseInt(b.getAttribute('data-density'), 10) || 12); // rebuild finer/coarser; resets the count
       }
     }, { signal });
   });
@@ -4090,6 +4107,15 @@ function openWheelCal(signal) {
   const nums = { inner: overlay.querySelector('.whcal-bar-inner .whcal-num'), mid: overlay.querySelector('.whcal-bar-mid .whcal-num'), outer: overlay.querySelector('.whcal-bar-outer .whcal-num') };
   function paint() {
     if (!wheelCalOverlay) { wheelCalRaf = 0; return; }
+    // LIVE genuine-toggle count in grid mode: poll each real switch's .checked.
+    // On device the 'change' event only fires on release, but the buzz fires per
+    // crossing DURING the drag, so we must count the flips live to match.
+    if (cfg.engine === 'grid') {
+      for (let i = 0; i < gridSwitches.length; i++) {
+        const c = gridSwitches[i].checked;
+        if (c !== gridLast[i]) { gridLast[i] = c; genuineToggles++; flashLevel = 1; }
+      }
+    }
     flashLevel = flashLevel < 0.02 ? 0 : flashLevel * 0.82;
     if (flash) { flash.style.opacity = String(flashLevel); if (!reduce) flash.style.transform = 'scale(' + (1 + flashLevel * 0.04) + ')'; }
     if (live.active) {

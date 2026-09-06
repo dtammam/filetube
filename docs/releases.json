@@ -2836,5 +2836,11 @@
     "date": "2026-09-05",
     "title": "Wheel test: a real-switches experiment",
     "intent": "Another step in tracking down the click-wheel's uneven buzz. It turns out a recent iPhone software update quietly changed the rules: the way the wheel makes lots of little buzzes as you spin - by rapidly flipping one hidden control behind the scenes - no longer works on newer iPhones, so you feel one buzz and then it goes quiet. This adds an experiment to the wheel test tool. Switch the Engine to the new grid mode and it fills the wheel with real switches you drag your thumb straight across, and shows a count of how many genuinely flip. Spin and see whether you feel a buzz for each one; that tells us whether a steady buzz is still possible this way on your phone, or whether it is a dead end. Still only for testing; nothing about the real wheel changes."
+  },
+  {
+    "version": "1.274.3",
+    "date": "2026-09-06",
+    "title": "Wheel test: make the buzz finer",
+    "intent": "Good news from the last experiment: dragging your thumb across the grid of real switches genuinely buzzes as you spin, so a steady click-wheel buzz is possible on newer iPhones after all - just fewer, coarser clicks than before. This tunes that. A new Grid control (12, 18, 24) fills the wheel with more and smaller switches, so you feel more clicks per turn - spin at each and see which feels closest to a real iPod. The on-screen count now also updates live as you drag, instead of only when you lift your finger, so it matches what you feel. Still only for testing; the real wheel is unchanged - this is us dialling in the feel before we build it in for real."
   }
 ]

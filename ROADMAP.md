@@ -93,6 +93,35 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.274.3 - Wheel test: grid density + live toggle counter (2026-09-06)
+
+**The experiment worked.** On-device (iOS 26.6.1), dragging the finger genuinely
+across the v1.274.2 real-switch grid DID fire haptics during a continuous spin -
+the one path the research said survives Apple's 26.5 patch. So a continuous web
+wheel is reachable after all, via GENUINE crossings of real switches (no faking).
+Dean's two on-device notes drove this follow-up:
+
+- Fewer ticks than the faked Ghost engine, because each real switch crossed = one
+  genuine tick and 12x12 is coarse. Adds a **Grid density** control (12 / 18 / 24)
+  that rebuilds the grid finer, so the tick frequency can be dialled toward the
+  original feel (more, smaller switches = more genuine crossings).
+- The counter only updated on release, because a switch's `change` event fires on
+  commit while the buzz fires per crossing DURING the drag. Replaced the
+  release-only `change` listener with **live polling** of each switch's `.checked`
+  in the paint loop, so the count tracks the felt ticks in real time; entering grid
+  mode resyncs the baseline to avoid a false-flip burst.
+
+Still a diagnostic/experiment - it never changes the real wheel. End-game if a
+density feels right: a RADIAL arrangement (uniform ticks per angle, the iPod detent
+model, which also fixes the old near-centre-vs-rim unevenness) baked into the
+shipping wheel.
+
+Slim adversarial gate: APPROVE. One test-quality SUGGESTION bound in a fix round -
+the density test's "resets the count" claim is now behaviourally asserted
+(mutation-verified: removing the reset reds it). Two other suggestions left as
+disclosed benign niceties (unreachable paths). Dual-Node 8367/8367 on v22.23.1 +
+v24.14.0. Device density-tuning PENDING.
+
 ### v1.274.2 - Wheel test: the "Switch grid" genuine-crossing experiment (2026-09-05)
 
 Web research (multiple independent devs who reverse-engineered it) settled WHY the
