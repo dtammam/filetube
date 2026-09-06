@@ -278,12 +278,65 @@ test('clicking #wheel-cal-open opens the tool through wireWheelCalControl', () =
 
 // ---- native-switch gate (jsdom has no <input switch>) -----------------------
 
-test('with no native switch (jsdom), the tool still opens, mounts no ghost, and shows a visuals-only note', () => {
+test('with no native switch (jsdom), the tool still opens and shows a visuals-only note', () => {
   const { dom, doc, signal } = load();
   try {
     setup.openWheelCal(signal);
     const note = doc.querySelector('.whcal-note');
     assert.ok(note && !note.hidden, 'the visuals-only note is shown when the switch is unsupported');
-    assert.strictEqual(doc.querySelector('.mms-haptic-ghost'), null, 'no ghost element is mounted without native support');
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+
+// The (A) harness: target-lock check (Grid distinct-fired) + the Sweep lever.
+test('Grid mode tracks DISTINCT switches fired (the iOS target-lock check): different switches raise it, the same one does not', async () => {
+  const { dom, doc, signal } = load();
+  const frame = () => new Promise((r) => dom.window.requestAnimationFrame(() => dom.window.requestAnimationFrame(r)));
+  try {
+    setup.openWheelCal(signal);
+    selectEngine(doc, 'grid');
+    const sws = doc.querySelectorAll('.whcal-grid .whcal-grid-sw');
+    await frame();
+    assert.strictEqual(doc.querySelector('.whcal-distinct').textContent, '0', 'starts at 0');
+    sws[0].checked = true; await frame();
+    assert.strictEqual(doc.querySelector('.whcal-distinct').textContent, '1', 'one switch fired');
+    sws[0].checked = false; await frame();               // same switch flips back
+    assert.strictEqual(doc.querySelector('.whcal-distinct').textContent, '1', 'the SAME switch does not raise distinct');
+    sws[40].checked = true; await frame();               // a different switch
+    assert.strictEqual(doc.querySelector('.whcal-distinct').textContent, '2', 'a different switch raises distinct');
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+
+test('the Sweep engine runs the tracked-switch gesture (not stood down like Grid) and moves the ghost WITHOUT a bias flip', () => {
+  const { dom, doc, signal } = load();
+  try {
+    setup.openWheelCal(signal);
+    selectEngine(doc, 'sweep');
+    const wheel = doc.querySelector('.whcal-wheel');
+    const finger = doc.querySelector('.whcal-finger');
+    const ghost = doc.querySelector('.mms-haptic-ghost');
+    assert.ok(ghost, 'the ghost switch exists (built unconditionally)');
+    pointer(dom.window, wheel, 'pointerdown', 1, 40, 5);
+    assert.strictEqual(finger.style.opacity, '1', 'sweep runs the gesture (unlike Grid, which stands it down)');
+    const t1 = ghost.style.transform;
+    pointer(dom.window, wheel, 'pointermove', 1, 5, 40);   // a quarter turn
+    assert.notStrictEqual(ghost.style.transform, t1, 'the ghost is swept (transform changes with the finger)');
+    assert.ok(!/scale/.test(ghost.style.transform), 'during the drag it is a translate, not the rest scale');
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+
+test('Sweep counts the ghost switch\'s GENUINE flips live, and switching engines resets the count', async () => {
+  const { dom, doc, signal } = load();
+  const frame = () => new Promise((r) => dom.window.requestAnimationFrame(() => dom.window.requestAnimationFrame(r)));
+  try {
+    setup.openWheelCal(signal);
+    selectEngine(doc, 'sweep');
+    const ghost = doc.querySelector('.mms-haptic-ghost');
+    await frame();
+    assert.strictEqual(doc.querySelector('.whcal-gtoggles').textContent, '0', 'starts at 0');
+    ghost.checked = true; await frame();
+    assert.strictEqual(doc.querySelector('.whcal-gtoggles').textContent, '1', 'a genuine ghost flip counts');
+    selectEngine(doc, 'ghost');                 // engine switch resets
+    await frame();
+    assert.strictEqual(doc.querySelector('.whcal-gtoggles').textContent, '0', 'switching engines reset the count');
   } finally { setup.closeWheelCal(); unload(dom); }
 });
