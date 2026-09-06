@@ -179,17 +179,33 @@ test('in Switch-grid mode the wheel runs NO ghost gesture - the real switches ow
     assert.strictEqual(captures, 0, 'grid mode never grabs the pointer');
   } finally { setup.closeWheelCal(); unload(dom); }
 });
-test('a GENUINE toggle of a grid switch increments the "Genuine switch toggles" counter (the instrument counts real crossings)', async () => {
+test('a GENUINE flip of a grid switch increments the LIVE "Genuine switch toggles" counter (poll-driven; on device change fires only on release, the buzz fires per crossing)', async () => {
   const { dom, doc, signal } = load();
+  const frame = () => new Promise((r) => dom.window.requestAnimationFrame(() => dom.window.requestAnimationFrame(r)));
   try {
     setup.openWheelCal(signal);
+    selectEngine(doc, 'grid'); // polling only runs in grid mode
     const sw = doc.querySelector('.whcal-grid .whcal-grid-sw');
     assert.ok(sw, 'a grid switch exists');
+    await frame();
     assert.strictEqual(doc.querySelector('.whcal-gtoggles').textContent, '0', 'starts at zero');
-    sw.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-    sw.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-    await new Promise((r) => dom.window.requestAnimationFrame(() => dom.window.requestAnimationFrame(r)));
-    assert.strictEqual(doc.querySelector('.whcal-gtoggles').textContent, '2', 'two genuine toggles counted and shown');
+    sw.checked = true; await frame();                 // one genuine flip
+    assert.strictEqual(doc.querySelector('.whcal-gtoggles').textContent, '1', 'one flip counted live');
+    sw.checked = false; await frame();                // a second flip (back)
+    assert.strictEqual(doc.querySelector('.whcal-gtoggles').textContent, '2', 'the back-flip counts too');
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+
+test('the Grid density selector rebuilds the grid finer and resets the count (12 -> 18 -> 24)', () => {
+  const { dom, doc, signal } = load();
+  const dens = (n) => { const b = [...doc.querySelectorAll('[data-seg="density"] button')].find((x) => x.getAttribute('data-density') === n); assert.ok(b, `density ${n} button`); b.click(); };
+  try {
+    setup.openWheelCal(signal);
+    assert.strictEqual(doc.querySelectorAll('.whcal-grid .whcal-grid-sw').length, 144, 'default 12x12');
+    dens('18');
+    assert.strictEqual(doc.querySelectorAll('.whcal-grid .whcal-grid-sw').length, 324, '18x18 = 324');
+    dens('24');
+    assert.strictEqual(doc.querySelectorAll('.whcal-grid .whcal-grid-sw').length, 576, '24x24 = 576');
   } finally { setup.closeWheelCal(); unload(dom); }
 });
 
