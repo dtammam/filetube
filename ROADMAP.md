@@ -93,6 +93,41 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.274.4 - Wheel test: Sweep engine + a correction to the record (2026-09-06)
+
+A WebKit-source review (Dean's parallel research reading `main`) **corrected two
+things the v1.274.2/.3 notes above got wrong** - recorded here honestly:
+
+- **There is NO haptic rate cap in WebKit.** The "~16/sec ceiling" cited earlier was
+  folklore; `performSwitchHapticFeedback` cold-allocates a fresh feedback generator
+  per tick, no timer, no coalescing. So rate was never the wall.
+- **iOS target-locks a touch to the ONE element it lands on.** So the "Switch grid"
+  only ever tracked a SINGLE switch (~2 ticks/rev by geometry) - the "genuine
+  crossings chain across the grid / tune density / radial ring" conclusion was
+  wrong. A grid or any multi-element ring can't work. (The user's own read - "it's
+  one switch, it's not following my finger" - was right.)
+
+Also from source: the switch-haptic gesture gate is iOS 18.4 (not 26.5; 26.5 only
+closed the `label.click()` loophole), pointer-tracking was never gated, tracking
+arms 200ms after touchstart, and CSS transforms ARE honored by the tracking. There
+is no other web haptic channel on iPhone.
+
+**So the only in-web path to per-detent ticks is ONE switch moved under the finger -
+and with no rate cap it could reach 96/rev IF it fires.** This ships the (A) test
+harness for exactly that:
+
+- **Grid** now shows **Distinct switches fired** - confirms target-lock (stays 1
+  across a spin) and, dragging back and forth, that native tracking is alive.
+- New **Sweep** engine: ONE tracked switch moved under the finger with a CONTINUOUS
+  sinusoidal dither tied to wheel angle - NO discrete bias flip - so the finger
+  genuinely crosses the sweeping midline each detent. Genuine flips poll-counted.
+
+Slim adversarial gate: REQUEST CHANGES then APPROVE. The gate caught the wave's crux
+unbound - the "no bias flip" test asserted only that the transform changed (true for
+the faked flip too); now it asserts the swept dither reaches an intermediate value,
+impossible for the discrete flip (mutation-verified both directions). Dual-Node
+8371/8371 on v22.23.1 + v24.14.0. Device pass PENDING - Sweep decides web-vs-native.
+
 ### v1.274.3 - Wheel test: grid density + live toggle counter (2026-09-06)
 
 **The experiment worked.** On-device (iOS 26.6.1), dragging the finger genuinely

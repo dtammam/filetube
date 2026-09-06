@@ -2842,5 +2842,11 @@
     "date": "2026-09-06",
     "title": "Wheel test: make the buzz finer",
     "intent": "Good news from the last experiment: dragging your thumb across the grid of real switches genuinely buzzes as you spin, so a steady click-wheel buzz is possible on newer iPhones after all - just fewer, coarser clicks than before. This tunes that. A new Grid control (12, 18, 24) fills the wheel with more and smaller switches, so you feel more clicks per turn - spin at each and see which feels closest to a real iPod. The on-screen count now also updates live as you drag, instead of only when you lift your finger, so it matches what you feel. Still only for testing; the real wheel is unchanged - this is us dialling in the feel before we build it in for real."
+  },
+  {
+    "version": "1.274.4",
+    "date": "2026-09-06",
+    "title": "Wheel test: the single-switch approach",
+    "intent": "A deeper look at the click-wheel vibration, this time reading Apple's own browser source, which corrected two things we had assumed. There is no speed limit on the vibration; and the phone only ever tracks the one switch your finger first lands on, so the grid of switches could never really have worked the way the last note hoped. That leaves one approach worth trying: a single switch that glides under your finger so you genuinely cross it at each notch. The wheel test now has a Sweep mode that does exactly that, plus a counter that confirms the one-switch behaviour. Spin it and feel whether each notch buzzes; that decides whether a real click-wheel buzz is possible in the browser at all, or whether it needs a different kind of app. Still only for testing; the real wheel is unchanged."
   }
 ]

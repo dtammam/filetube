@@ -3850,13 +3850,15 @@ function wheelCalTemplate() {
       '<p>Do slow, even spins from the green (inner) ring out to the red (outer) ring. The bars show ticks per 100px of finger travel per band.</p>' +
       '<p><b>Angle mode:</b> if Inner sits high and Outer low, that falloff IS the bug. <b>Watch the flash vs your finger:</b> if it flashes at the rim but you feel nothing, the native crossing is failing out there instead.</p>' +
       '<p><b>The capture test:</b> the wheel "grabs" your finger part-way into a spin so it keeps tracking if you slide off the edge. Set <b>Capture: Off</b> and spin. On press (grab immediately) should feel worst; After 8px buzzes briefly then dies.</p>' +
-      '<p><b>Switch grid (the experiment that matters now):</b> iOS 26.5 closed the trick the Ghost engine uses (moving one hidden switch to fake many taps). The one thing that still fires is a GENUINE finger crossing a REAL switch. So Engine: Switch grid fills the wheel with real switches and lets your finger drag straight across them - no faking. Drag around and watch <b>Genuine switch toggles</b>: if that climbs AND you feel a buzz per toggle, a real continuous wheel is still possible on your iOS. If it climbs with NO buzz, or stays stuck at 1, the web door is shut and the honest answer is one tick per touch (or going native).</p>' +
+      '<p><b>Grid (target-lock check):</b> a grid of real switches. iOS locks a touch to the ONE switch you land on, so a spin only ever toggles that one - watch <b>Distinct switches fired</b>: if it stays at 1 across a whole spin, target-lock is confirmed and a grid/ring can never work. Drag back and forth over one spot: if it ticks each way, the native tracking is alive.</p>' +
+      '<p><b>Sweep (the real experiment):</b> ONE tracked switch, moved smoothly under your finger so its midline genuinely sweeps past you each detent - no faked flip. Spin and watch <b>Genuine switch toggles</b> + feel it: if it climbs with a buzz per detent, we have a continuous web wheel (there is no rate cap). If it stalls, the web is exhausted and the real fix is native.</p>' +
     '</div>' +
     '<div class="whcal-controls">' +
       '<div class="whcal-ctl"><span class="whcal-ctl-label">Engine</span>' +
         '<div class="whcal-seg" data-seg="engine">' +
-          '<button type="button" data-engine="ghost" aria-pressed="true">Ghost (moved)</button>' +
-          '<button type="button" data-engine="grid" aria-pressed="false">Switch grid</button>' +
+          '<button type="button" data-engine="ghost" aria-pressed="true">Ghost</button>' +
+          '<button type="button" data-engine="grid" aria-pressed="false">Grid</button>' +
+          '<button type="button" data-engine="sweep" aria-pressed="false">Sweep</button>' +
         '</div></div>' +
       '<div class="whcal-ctl"><span class="whcal-ctl-label">Grid</span>' +
         '<div class="whcal-seg" data-seg="density">' +
@@ -3902,6 +3904,7 @@ function wheelCalTemplate() {
       '<div class="whcal-tile"><span class="whcal-k">&Delta;angle / move</span><span class="whcal-v whcal-dang">&mdash;</span></div>' +
       '<div class="whcal-tile"><span class="whcal-k">Off-wheel moves</span><span class="whcal-v whcal-off">0</span></div>' +
       '<div class="whcal-tile"><span class="whcal-k">Genuine switch toggles</span><span class="whcal-v whcal-gtoggles">0</span></div>' +
+      '<div class="whcal-tile"><span class="whcal-k">Distinct switches fired</span><span class="whcal-v whcal-distinct">0</span></div>' +
     '</div>' +
     '<div class="whcal-bands">' +
       '<div class="whcal-bands-cap"><span>Tick density by radius band (ticks / 100px)</span><span class="whcal-capstate">capture: after 8px</span></div>' +
@@ -3930,18 +3933,16 @@ function openWheelCal(signal) {
   const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   // the native switch ("ghost") - the same element the real wheel uses
-  let ghost = null;
-  if (wheelCalHapticCapable()) {
-    ghost = document.createElement('input');
-    ghost.type = 'checkbox';
-    ghost.setAttribute('switch', '');
-    ghost.className = 'mms-haptic-ghost';
-    ghost.setAttribute('aria-hidden', 'true');
-    ghost.tabIndex = -1;
-    wheel.appendChild(ghost);
-  } else {
-    const note = $('.whcal-note'); if (note) note.hidden = false;
-  }
+  // Built unconditionally (harmless without native support; keeps the Ghost/Sweep
+  // wiring bindable). The visuals-only note still shows when the switch is inert.
+  const ghost = document.createElement('input');
+  ghost.type = 'checkbox';
+  ghost.setAttribute('switch', '');
+  ghost.className = 'mms-haptic-ghost';
+  ghost.setAttribute('aria-hidden', 'true');
+  ghost.tabIndex = -1;
+  wheel.appendChild(ghost);
+  if (!wheelCalHapticCapable()) { const note = $('.whcal-note'); if (note) note.hidden = false; }
   function ghostRest() {
     if (!ghost) return;
     let h = 0; try { h = wheel.getBoundingClientRect().height; } catch (_) { /* fall back */ }
@@ -3949,13 +3950,13 @@ function openWheelCal(signal) {
   }
   ghostRest();
 
-  // Switch-grid experiment: a dense grid of REAL <input switch> elements the
-  // finger drags GENUINELY across (nothing moves them). iOS 26.5+ closed every
-  // PROGRAMMATIC re-tick, so the Ghost engine (which fakes crossings by moving
-  // one switch) is capped at ~one tick per touch there; the only path left is a
-  // GENUINE finger crossing a REAL switch. A delegated 'change' listener counts
-  // the real toggles, so we can see whether genuine crossings still chain.
-  let genuineToggles = 0; // LIVE count of genuine <input switch> flips in grid mode (poll-driven in paint)
+  // Grid: a grid of REAL <input switch> elements the finger drags across. WebKit
+  // source (2026-09-06 research) shows iOS TARGET-LOCKS a touch to the one element
+  // it lands on, so a spin only ever toggles ONE switch (~2 ticks/rev) - the grid
+  // exists to CONFIRM that (distinctFired stays 1). Flips are poll-counted in paint.
+  let genuineToggles = 0; // LIVE count of genuine <input switch> flips (grid + sweep engines; poll-driven in paint)
+  const distinctFired = new Set(); // grid mode: distinct switches that fired - confirms iOS touch TARGET-LOCK (expect 1 per spin)
+  let ghostLast = false; // sweep mode: the ghost switch's last .checked, for live flip counting
   const grid = $('.whcal-grid');
   const gridSwitches = [];
   let gridLast = []; // last-seen .checked per switch, for LIVE flip counting (device: 'change' only fires on release)
@@ -3993,6 +3994,18 @@ function openWheelCal(signal) {
     const ty = (y - g.cy);
     ghost.style.transform = 'translate(' + tx + 'px,' + ty + 'px)';
   }
+  // Sweep engine (the source-grounded lever): move the SAME single tracked ghost
+  // switch under the finger with a CONTINUOUS sinusoidal dither tied to wheel
+  // angle - NO discrete bias flip. The finger's local-x genuinely crosses the
+  // track midline once per HAPTIC_STEP_DEG as the switch sweeps, so WebKit's
+  // PointerTracking fires a real tick (no scripted midline jump, no programmatic
+  // .checked). This is the one in-web path left after the target-lock + no-rate-cap
+  // findings; whether iOS tolerates transform updates mid-track is what it tests.
+  function placeSweep(x, y, g) {
+    if (!ghost) return;
+    const dither = WHEEL_CAL.BIAS_PX * Math.sin((st.sweepAngle / WHEEL_CAL.HAPTIC_STEP_DEG) * Math.PI);
+    ghost.style.transform = 'translate(' + ((x - g.cx) + dither) + 'px,' + (y - g.cy) + 'px)';
+  }
 
   wheel.addEventListener('pointerdown', (e) => {
     if (st) return; // one gesture at a time (mirrors skin-surface.js `if (wheelSpin) return`) - a second finger must not corrupt the tick counts
@@ -4003,9 +4016,9 @@ function openWheelCal(signal) {
     const bandtag = $('.whcal-bandtag');
     if (dist < g.R * WHEEL_CAL.DEAD_FRAC) { if (bandtag) bandtag.textContent = 'centre = Select (dead-zone)'; return; }
     st = { id: e.pointerId, g, bias: 1, lastAngle: Math.atan2(e.clientY - g.cy, e.clientX - g.cx) * 180 / Math.PI,
-      lastX: e.clientX, lastY: e.clientY, x0: e.clientX, y0: e.clientY, accum: 0, hapLast: 0, ticks: 0, captured: false, moved: false };
+      lastX: e.clientX, lastY: e.clientY, x0: e.clientX, y0: e.clientY, accum: 0, hapLast: 0, ticks: 0, sweepAngle: 0, captured: false, moved: false };
     live.active = true; live.ticks = 0;
-    if (cfg.ghostOn && ghost) placeGhost(e.clientX, e.clientY, g, false);
+    if (ghost) { if (cfg.engine === 'sweep') placeSweep(e.clientX, e.clientY, g); else if (cfg.ghostOn) placeGhost(e.clientX, e.clientY, g, false); }
     // capMode: 'press' grabs now, '8px' grabs after 8px of travel (below), 'off'
     // never grabs - the pointer grab (setPointerCapture) is the suspected buzz
     // killer, so 'off' is the confirmation lever.
@@ -4040,9 +4053,10 @@ function openWheelCal(signal) {
       const t = (window.performance && performance.now) ? performance.now() : Date.now();
       if (t - st.hapLast >= WHEEL_CAL.HAPTIC_MIN_MS) { flip = true; st.hapLast = t; fired++; } // throttle: drop, never queue
     }
-    if (fired) { st.ticks += fired; bands[band].ticks += fired; flashLevel = 1; }
+    if (fired) { st.ticks += fired; bands[band].ticks += fired; if (cfg.engine !== 'sweep') flashLevel = 1; }
     bands[band].travel += travel;
-    if (cfg.ghostOn && ghost) placeGhost(e.clientX, e.clientY, g, flip);
+    if (cfg.engine === 'sweep') { st.sweepAngle += dAng; if (ghost) placeSweep(e.clientX, e.clientY, g); } // continuous sweep, no bias flip; genuine flips counted in paint
+    else if (cfg.ghostOn && ghost) placeGhost(e.clientX, e.clientY, g, flip);
 
     if (finger) {
       finger.style.transform = 'translate(' + (e.clientX - g.cx + g.R) + 'px,' + (e.clientY - g.cy + g.R) + 'px)';
@@ -4084,9 +4098,12 @@ function openWheelCal(signal) {
         cfg.engine = b.getAttribute('data-engine');
         const isGrid = cfg.engine === 'grid';
         if (grid) grid.hidden = !isGrid;
-        // in grid mode the ghost must not intercept - let touches reach the real switches
+        // grid mode: ghost must NOT intercept (real switches own the touch). ghost/
+        // sweep modes: the ghost IS the tracked switch, so it must receive touches.
         if (ghost) ghost.style.pointerEvents = isGrid ? 'none' : '';
-        if (isGrid) syncGridBaseline(); // avoid a burst of false flips on entry
+        genuineToggles = 0; distinctFired.clear();                 // fresh count on every engine switch
+        if (isGrid) syncGridBaseline();                            // avoid a false-flip burst on grid entry
+        if (ghost) { ghostLast = ghost.checked; if (!isGrid) ghostRest(); } // sync sweep baseline; re-arm the ghost cover for ghost/sweep
       } else if (kind === 'density') {
         buildGrid(parseInt(b.getAttribute('data-density'), 10) || 12); // rebuild finer/coarser; resets the count
       }
@@ -4102,7 +4119,7 @@ function openWheelCal(signal) {
   $('.whcal-guide-btn').addEventListener('click', () => { const gd = $('.whcal-guide'); if (gd) gd.hidden = !gd.hidden; }, { signal });
 
   // ---- paint loop (self-terminates when the overlay is gone) ----
-  const density = $('.whcal-density'), radEl = $('.whcal-rad'), ticksEl = $('.whcal-ticks'), dangEl = $('.whcal-dang'), offEl = $('.whcal-off'), gtogglesEl = $('.whcal-gtoggles');
+  const density = $('.whcal-density'), radEl = $('.whcal-rad'), ticksEl = $('.whcal-ticks'), dangEl = $('.whcal-dang'), offEl = $('.whcal-off'), gtogglesEl = $('.whcal-gtoggles'), distinctEl = $('.whcal-distinct');
   const fills = { inner: overlay.querySelector('.whcal-bar-inner .whcal-fill'), mid: overlay.querySelector('.whcal-bar-mid .whcal-fill'), outer: overlay.querySelector('.whcal-bar-outer .whcal-fill') };
   const nums = { inner: overlay.querySelector('.whcal-bar-inner .whcal-num'), mid: overlay.querySelector('.whcal-bar-mid .whcal-num'), outer: overlay.querySelector('.whcal-bar-outer .whcal-num') };
   function paint() {
@@ -4113,8 +4130,10 @@ function openWheelCal(signal) {
     if (cfg.engine === 'grid') {
       for (let i = 0; i < gridSwitches.length; i++) {
         const c = gridSwitches[i].checked;
-        if (c !== gridLast[i]) { gridLast[i] = c; genuineToggles++; flashLevel = 1; }
+        if (c !== gridLast[i]) { gridLast[i] = c; genuineToggles++; distinctFired.add(gridSwitches[i]); flashLevel = 1; }
       }
+    } else if (cfg.engine === 'sweep' && ghost) {
+      if (ghost.checked !== ghostLast) { ghostLast = ghost.checked; genuineToggles++; flashLevel = 1; } // the swept ghost's genuine crossings
     }
     flashLevel = flashLevel < 0.02 ? 0 : flashLevel * 0.82;
     if (flash) { flash.style.opacity = String(flashLevel); if (!reduce) flash.style.transform = 'scale(' + (1 + flashLevel * 0.04) + ')'; }
@@ -4128,6 +4147,7 @@ function openWheelCal(signal) {
     }
     offEl.textContent = String(offWheel);
     if (gtogglesEl) gtogglesEl.textContent = String(genuineToggles);
+    if (distinctEl) distinctEl.textContent = String(distinctFired.size);
     const ds = { inner: wheelCalDensity(bands.inner.ticks, bands.inner.travel), mid: wheelCalDensity(bands.mid.ticks, bands.mid.travel), outer: wheelCalDensity(bands.outer.ticks, bands.outer.travel) };
     let max = 0; ['inner', 'mid', 'outer'].forEach((k) => { if (ds[k] != null && ds[k] > max) max = ds[k]; });
     ['inner', 'mid', 'outer'].forEach((k) => {
