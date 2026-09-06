@@ -196,14 +196,22 @@ test('a GENUINE flip of a grid switch increments the LIVE "Genuine switch toggle
   } finally { setup.closeWheelCal(); unload(dom); }
 });
 
-test('the Grid density selector rebuilds the grid finer and resets the count (12 -> 18 -> 24)', () => {
+test('the Grid density selector rebuilds the grid finer AND resets the count (12 -> 18 -> 24)', async () => {
   const { dom, doc, signal } = load();
+  const frame = () => new Promise((r) => dom.window.requestAnimationFrame(() => dom.window.requestAnimationFrame(r)));
   const dens = (n) => { const b = [...doc.querySelectorAll('[data-seg="density"] button')].find((x) => x.getAttribute('data-density') === n); assert.ok(b, `density ${n} button`); b.click(); };
   try {
     setup.openWheelCal(signal);
     assert.strictEqual(doc.querySelectorAll('.whcal-grid .whcal-grid-sw').length, 144, 'default 12x12');
+    // drive the count above zero, THEN prove a density rebuild zeroes it (binds the reset, not just the title)
+    selectEngine(doc, 'grid');
+    doc.querySelector('.whcal-grid .whcal-grid-sw').checked = true;
+    await frame();
+    assert.strictEqual(doc.querySelector('.whcal-gtoggles').textContent, '1', 'count is non-zero before the rebuild');
     dens('18');
     assert.strictEqual(doc.querySelectorAll('.whcal-grid .whcal-grid-sw').length, 324, '18x18 = 324');
+    await frame();
+    assert.strictEqual(doc.querySelector('.whcal-gtoggles').textContent, '0', 'the density rebuild reset the count to 0');
     dens('24');
     assert.strictEqual(doc.querySelectorAll('.whcal-grid .whcal-grid-sw').length, 576, '24x24 = 576');
   } finally { setup.closeWheelCal(); unload(dom); }
