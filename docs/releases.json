@@ -2848,5 +2848,11 @@
     "date": "2026-09-06",
     "title": "Wheel test: the single-switch approach",
     "intent": "A deeper look at the click-wheel vibration, this time reading Apple's own browser source, which corrected two things we had assumed. There is no speed limit on the vibration; and the phone only ever tracks the one switch your finger first lands on, so the grid of switches could never really have worked the way the last note hoped. That leaves one approach worth trying: a single switch that glides under your finger so you genuinely cross it at each notch. The wheel test now has a Sweep mode that does exactly that, plus a counter that confirms the one-switch behaviour. Spin it and feel whether each notch buzzes; that decides whether a real click-wheel buzz is possible in the browser at all, or whether it needs a different kind of app. Still only for testing; the real wheel is unchanged."
+  },
+  {
+    "version": "1.274.5",
+    "date": "2026-09-06",
+    "title": "Wheel test: dial in the buzz",
+    "intent": "Fine-tuning the click-wheel buzz. The single-switch approach from the last update genuinely buzzes as you spin - about 85% of the notches, evenly around the wheel, no dropouts. This adds two dials to the wheel test to close the gap to every notch: one for how far the switch swings at each notch (turn it up if some notches are missed), and one for how many notches there are per turn (finer feels more like a real iPod; coarser is more reliable). Open Sweep, spin, and adjust until every notch buzzes - those settings become the real wheel. Still testing only; the real wheel is unchanged."
   }
 ]

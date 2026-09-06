@@ -3851,7 +3851,7 @@ function wheelCalTemplate() {
       '<p><b>Angle mode:</b> if Inner sits high and Outer low, that falloff IS the bug. <b>Watch the flash vs your finger:</b> if it flashes at the rim but you feel nothing, the native crossing is failing out there instead.</p>' +
       '<p><b>The capture test:</b> the wheel "grabs" your finger part-way into a spin so it keeps tracking if you slide off the edge. Set <b>Capture: Off</b> and spin. On press (grab immediately) should feel worst; After 8px buzzes briefly then dies.</p>' +
       '<p><b>Grid (target-lock check):</b> a grid of real switches. iOS locks a touch to the ONE switch you land on, so a spin only ever toggles that one - watch <b>Distinct switches fired</b>: if it stays at 1 across a whole spin, target-lock is confirmed and a grid/ring can never work. Drag back and forth over one spot: if it ticks each way, the native tracking is alive.</p>' +
-      '<p><b>Sweep (the real experiment):</b> ONE tracked switch, moved smoothly under your finger so its midline genuinely sweeps past you each detent - no faked flip. Spin and watch <b>Genuine switch toggles</b> + feel it: if it climbs with a buzz per detent, we have a continuous web wheel (there is no rate cap). If it stalls, the web is exhausted and the real fix is native.</p>' +
+      '<p><b>Sweep (the working path - tune it):</b> ONE tracked switch, moved smoothly under your finger so its midline genuinely sweeps past you each detent - no faked flip, no rate cap. It buzzes ~85% of notches; the goal is ~100%. <b>Dither</b> is how far the switch swings each notch - bump it up if notches are being missed. <b>Detent</b> is how many notches per turn - Fine is iPod-dense (96/rev), Coarse trades density for reliability. Find the combo that buzzes every notch, and those settings go into the real wheel.</p>' +
     '</div>' +
     '<div class="whcal-controls">' +
       '<div class="whcal-ctl"><span class="whcal-ctl-label">Engine</span>' +
@@ -3865,6 +3865,18 @@ function wheelCalTemplate() {
           '<button type="button" data-density="12" aria-pressed="true">12 (coarse)</button>' +
           '<button type="button" data-density="18" aria-pressed="false">18</button>' +
           '<button type="button" data-density="24" aria-pressed="false">24 (fine)</button>' +
+        '</div></div>' +
+      '<div class="whcal-ctl"><span class="whcal-ctl-label">Dither</span>' +
+        '<div class="whcal-seg" data-seg="dither">' +
+          '<button type="button" data-dither="14" aria-pressed="false">14</button>' +
+          '<button type="button" data-dither="18" aria-pressed="true">18</button>' +
+          '<button type="button" data-dither="24" aria-pressed="false">24</button>' +
+        '</div></div>' +
+      '<div class="whcal-ctl"><span class="whcal-ctl-label">Detent</span>' +
+        '<div class="whcal-seg" data-seg="detent">' +
+          '<button type="button" data-detent="3.75" aria-pressed="true">Fine 96</button>' +
+          '<button type="button" data-detent="5.5" aria-pressed="false">Med</button>' +
+          '<button type="button" data-detent="8" aria-pressed="false">Coarse</button>' +
         '</div></div>' +
       '<div class="whcal-ctl"><span class="whcal-ctl-label">Meter by</span>' +
         '<div class="whcal-seg" data-seg="mode">' +
@@ -3980,7 +3992,8 @@ function openWheelCal(signal) {
   function syncGridBaseline() { for (let i = 0; i < gridSwitches.length; i++) gridLast[i] = gridSwitches[i].checked; }
 
   // ---- config + accumulators ----
-  const cfg = { mode: 'angle', stepAngle: WHEEL_CAL.HAPTIC_STEP_DEG, stepArc: WHEEL_CAL.DEFAULT_STEP_ARC_PX, capMode: '8px', ghostOn: true, engine: 'ghost' };
+  const cfg = { mode: 'angle', stepAngle: WHEEL_CAL.HAPTIC_STEP_DEG, stepArc: WHEEL_CAL.DEFAULT_STEP_ARC_PX, capMode: '8px', ghostOn: true, engine: 'ghost',
+    sweepDither: WHEEL_CAL.BIAS_PX, sweepStep: WHEEL_CAL.HAPTIC_STEP_DEG }; // Sweep tuning: dither swing (px) + degrees per detent
   const bands = { inner: { ticks: 0, travel: 0 }, mid: { ticks: 0, travel: 0 }, outer: { ticks: 0, travel: 0 } };
   let offWheel = 0;
   let flashLevel = 0;
@@ -4003,7 +4016,7 @@ function openWheelCal(signal) {
   // findings; whether iOS tolerates transform updates mid-track is what it tests.
   function placeSweep(x, y, g) {
     if (!ghost) return;
-    const dither = WHEEL_CAL.BIAS_PX * Math.sin((st.sweepAngle / WHEEL_CAL.HAPTIC_STEP_DEG) * Math.PI);
+    const dither = cfg.sweepDither * Math.sin((st.sweepAngle / cfg.sweepStep) * Math.PI); // amplitude + detent size are tunable
     ghost.style.transform = 'translate(' + ((x - g.cx) + dither) + 'px,' + (y - g.cy) + 'px)';
   }
 
@@ -4106,6 +4119,10 @@ function openWheelCal(signal) {
         if (ghost) { ghostLast = ghost.checked; if (!isGrid) ghostRest(); } // sync sweep baseline; re-arm the ghost cover for ghost/sweep
       } else if (kind === 'density') {
         buildGrid(parseInt(b.getAttribute('data-density'), 10) || 12); // rebuild finer/coarser; resets the count
+      } else if (kind === 'dither') {
+        cfg.sweepDither = parseFloat(b.getAttribute('data-dither')) || WHEEL_CAL.BIAS_PX; // Sweep swing amplitude (px)
+      } else if (kind === 'detent') {
+        cfg.sweepStep = parseFloat(b.getAttribute('data-detent')) || WHEEL_CAL.HAPTIC_STEP_DEG; // Sweep degrees per detent
       }
     }, { signal });
   });

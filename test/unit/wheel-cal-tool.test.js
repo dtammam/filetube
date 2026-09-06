@@ -311,9 +311,8 @@ test('Grid mode tracks DISTINCT switches fired (the iOS target-lock check): diff
 test('Sweep uses a CONTINUOUS dither, not the discrete ±BIAS bias flip (a placeGhost regression must red this)', () => {
   const { dom, doc, signal } = load();
   // in jsdom the wheel rect is 0, so the ghost transform is translate(x + dither, y);
-  // dither = translateX - fingerX. A continuous sinusoid visits |dither| strictly
-  // BETWEEN 0 and BIAS_PX; the discrete bias flip is ALWAYS exactly ±BIAS_PX.
-  const parseTx = (t) => { const m = /translate\(([-0-9.]+)px/.exec(t || ''); return m ? parseFloat(m[1]) : NaN; };
+  // dither = translateX - fingerX (parseTx, module scope). A continuous sinusoid
+  // visits |dither| strictly BETWEEN 0 and BIAS_PX; the discrete flip is ±BIAS_PX.
   try {
     setup.openWheelCal(signal);
     selectEngine(doc, 'sweep');
@@ -331,6 +330,44 @@ test('Sweep uses a CONTINUOUS dither, not the discrete ±BIAS bias flip (a place
       if (Math.abs(dither) > 0.5 && Math.abs(dither) < BIAS - 0.5) sawIntermediate = true;
     }
     assert.ok(sawIntermediate, 'the swept x-dither takes an intermediate |value| in (0, BIAS_PX) - impossible for the discrete ±BIAS_PX flip, so this distinguishes placeSweep from placeGhost');
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+
+const parseTx = (t) => { const m = /translate\(\s*([^,]+?)px/.exec(t || ''); return m ? parseFloat(m[1]) : NaN; };
+function sweepSpin(dom, wheel, ghost, onSample) {
+  // one spin, sampling the ghost x-dither (translateX - fingerX, since jsdom rect is 0) each move
+  pointer(dom.window, wheel, 'pointerdown', 1, 100, 0);
+  for (let deg = 3; deg <= 200; deg += 3) {
+    const r = deg * Math.PI / 180, x = 100 * Math.cos(r), y = 100 * Math.sin(r);
+    pointer(dom.window, wheel, 'pointermove', 1, x, y);
+    onSample(parseTx(ghost.style.transform) - x);
+  }
+  pointer(dom.window, wheel, 'pointerup', 1, 100, 0);
+}
+test('Sweep: the Dither knob raises the swing amplitude past the default (the knob is live)', () => {
+  const { dom, doc, signal } = load();
+  const dsel = (v) => { const b = [...doc.querySelectorAll('[data-seg="dither"] button')].find((x) => x.getAttribute('data-dither') === v); assert.ok(b); b.click(); };
+  try {
+    setup.openWheelCal(signal);
+    selectEngine(doc, 'sweep');
+    const wheel = doc.querySelector('.whcal-wheel'), ghost = doc.querySelector('.mms-haptic-ghost');
+    let max18 = 0; dsel('18'); sweepSpin(dom, wheel, ghost, (d) => { max18 = Math.max(max18, Math.abs(d)); });
+    let max24 = 0; dsel('24'); sweepSpin(dom, wheel, ghost, (d) => { max24 = Math.max(max24, Math.abs(d)); });
+    assert.ok(max18 <= 18.5, `default dither peaks at ~18 (saw ${max18.toFixed(1)})`);
+    assert.ok(max24 > 20, `the 24 knob swings wider than the default max (saw ${max24.toFixed(1)})`);
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+test('Sweep: a Fine Detent produces MORE midline crossings than Coarse over the same spin', () => {
+  const { dom, doc, signal } = load();
+  const tsel = (v) => { const b = [...doc.querySelectorAll('[data-seg="detent"] button')].find((x) => x.getAttribute('data-detent') === v); assert.ok(b); b.click(); };
+  const countCrossings = (wheel, ghost) => { let c = 0, prev = null; sweepSpin(dom, wheel, ghost, (d) => { const s = d >= 0 ? 1 : -1; if (prev !== null && s !== prev) c++; prev = s; }); return c; };
+  try {
+    setup.openWheelCal(signal);
+    selectEngine(doc, 'sweep');
+    const wheel = doc.querySelector('.whcal-wheel'), ghost = doc.querySelector('.mms-haptic-ghost');
+    tsel('3.75'); const fine = countCrossings(wheel, ghost);
+    tsel('8'); const coarse = countCrossings(wheel, ghost);
+    assert.ok(fine > coarse, `Fine detent crosses more (${fine}) than Coarse (${coarse})`);
   } finally { setup.closeWheelCal(); unload(dom); }
 });
 
