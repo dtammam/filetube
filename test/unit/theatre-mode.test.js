@@ -91,10 +91,11 @@ test('v1.190 theatre caps the player HEIGHT to the viewport (width bound by 16:9
 
 test('the BASE (non-theatre) player gets the SAME viewport-height width cap on desktop (>1024px), so a wide monitor never overflows', () => {
   assert.match(STYLE_CSS, /@media \(min-width: 1025px\) \{/, 'a desktop (>1024px) media query exists for the base cap');
-  // the base wrapper cap: NOT prefixed by .theater-mode, indented INSIDE the media
-  // query (the `\n  ` distinguishes it from the 0-indent theatre rule above).
-  const rule = /\n {2}#player-slot #player-wrapper:not\(\.audio-expanded\):not\(\.css-fullscreen\):not\(:fullscreen\) \{([^}]*)\}/.exec(STYLE_CSS);
-  assert.ok(rule, 'the BASE desktop width-cap rule exists (indented, not theatre-scoped, same fullscreen/audio excludes)');
+  // the base wrapper cap: WATCH-scoped (.watch-container, NOT .theater-mode - so it
+  // never leaks onto the reader/podcast/music #player-slots), indented INSIDE the
+  // media query (the `\n  ` distinguishes it from the 0-indent theatre rule above).
+  const rule = /\n {2}\.watch-container #player-slot #player-wrapper:not\(\.audio-expanded\):not\(\.css-fullscreen\):not\(:fullscreen\) \{([^}]*)\}/.exec(STYLE_CSS);
+  assert.ok(rule, 'the BASE desktop width-cap rule exists, WATCH-scoped (not theatre, not shell-agnostic), same fullscreen/audio excludes');
   const body = rule[1];
   // Same mechanism as theatre: width bound by 16:9 of the available height, so the
   // 16:9 player never grows taller than the screen. Per-line (vh AND dvh) - dvh is

@@ -9010,9 +9010,11 @@ body.ft-audio-expanded {
    keeps the player full-width until the height budget would be exceeded), and the
    theatre rule above still wins when theatre is on (higher specificity, same
    value). Excludes both fullscreen paths + the audio-expanded overlay, which own
-   their own sizing. */
+   their own sizing. SCOPED to `.watch-container` (like the theatre rule) - other
+   shells (read/podcasts/music) also own a `#player-slot`, and an unscoped selector
+   wrongly capped+centred the reader narration bar (gate WARNING). Keep the scope. */
 @media (min-width: 1025px) {
-  #player-slot #player-wrapper:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen) {
+  .watch-container #player-slot #player-wrapper:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen) {
     width: min(100%, calc((100vh - var(--header-h) - var(--space-16) - var(--space-8) - 40px - 2px) * 16 / 9));
     width: min(100%, calc((100dvh - var(--header-h) - var(--space-16) - var(--space-8) - 40px - 2px) * 16 / 9));
     margin-inline: auto;
