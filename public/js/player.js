@@ -1510,11 +1510,35 @@ function resolveRotationTopSnap(scrollY, playerDocTop) {
   return scrollY > 0 && scrollY < playerDocTop;
 }
 
+// (Dean, all-views player cap) Pure: the video's available-height cap in px =
+// viewport height MINUS the player's measured top offset MINUS the control-bar +
+// border reserve. Never negative. player.js measures this and writes it into the
+// `--player-cap-h` custom property; the CSS width cap reads it as `capH * 16/9` so
+// the 16:9 player never grows taller than the space below it (watch/music/podcasts/
+// shows alike). Measured (not a fixed budget) so it is correct in EVERY view
+// regardless of how much chrome sits above the player.
+function computePlayerCapHeight(innerHeight, slotTop, reservePx) {
+  var h = (Number(innerHeight) || 0) - (Number(slotTop) || 0) - (Number(reservePx) || 0);
+  return h > 0 ? Math.round(h) : 0;
+}
+// Pure: does this in-flow player get the height cap? Only the FULL, real
+// `#player-slot`, video-ish player - never docked/fullscreen/audio-expanded, and
+// never the reader's compact audio bar (`.reader-player-slot` owns its own size;
+// capping it was the v1.275.0 gate regression).
+function shouldCapPlayerHeight(o) {
+  o = o || {};
+  return !!o.isFull && o.slotId === 'player-slot' && !o.slotIsReader
+    && !o.audioExpanded && !o.cssFullscreen;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     resolveCssFsScrollPlan,
     // v1.68.2: the rotation dead-zone snap decision (see its header).
     resolveRotationTopSnap,
+    // (Dean) the all-views player height-cap pure core (the DOM measure is a
+    // browser-only shell; the FEEL on a wide monitor is Dean's device pass).
+    computePlayerCapHeight, shouldCapPlayerHeight,
     // v1.63 playback queue: the ended-table extension + the client mirror
     // of the server's nextEntry (the server reducers stay the authority).
     computeQueueNext,
@@ -6881,6 +6905,10 @@ if (typeof module !== 'undefined' && module.exports) {
     window.addEventListener('resize', clampChaptersMenuHeight);
     window.addEventListener('resize', function () { clampBarMenuHeight(speedMenu); });
     window.addEventListener('resize', function () { clampBarMenuHeight(settingsMenu); }); // v1.112: the cog re-clamps too
+    // (Dean, all-views cap) re-measure the player's available height on viewport
+    // changes so the width cap stays correct (a wide monitor that resizes/rotates).
+    window.addEventListener('resize', scheduleCapRefresh);
+    window.addEventListener('orientationchange', scheduleCapRefresh);
     // v1.34 T3 / v1.112 (Dean): the chapters-menu toggle, SHARED by the
     // persistent chapter-name label (#chapter-now, the new primary trigger) and
     // -- defensively -- the removed #chapters-btn (null now, so its branch never
@@ -8050,6 +8078,35 @@ if (typeof module !== 'undefined' && module.exports) {
     applyControlsMode(); // re-toggles .ff-mobile AND re-derives native-vs-custom controls for this FULL transition (mobile video -> native; everything else -> custom -- native-controls round)
     hideDock();
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
+    scheduleCapRefresh(); // (Dean) measure the space below THIS view's player -> --player-cap-h
+  }
+
+  // (Dean, all-views cap) Measure the space actually below the in-flow player and
+  // write it into `--player-cap-h` on the host, so the CSS width cap is correct in
+  // watch/music/podcasts/shows regardless of the chrome above. Guarded by the pure
+  // shouldCapPlayerHeight() to the FULL, real-#player-slot, video-ish player only
+  // (never docked/fullscreen/audio-expanded/reader). Best-effort layout hint.
+  function refreshPlayerHeightCap() {
+    try {
+      if (!host) return;
+      var slot = host.parentNode;
+      if (!slot || !shouldCapPlayerHeight({
+        isFull: state === STATE_FULL,
+        slotId: slot.id,
+        slotIsReader: !!(slot.classList && slot.classList.contains('reader-player-slot')),
+        audioExpanded: host.classList.contains('audio-expanded'),
+        cssFullscreen: host.classList.contains('css-fullscreen'),
+      })) return;
+      var top = slot.getBoundingClientRect().top;
+      var capH = computePlayerCapHeight(window.innerHeight, top, 42); // 40px bar + 2px border reserve
+      host.style.setProperty('--player-cap-h', capH + 'px');
+    } catch (_) { /* layout hint only; the CSS fallback budget still applies */ }
+  }
+  var capRefreshPending = false;
+  function scheduleCapRefresh() {
+    if (capRefreshPending) return;
+    capRefreshPending = true;
+    requestAnimationFrame(function () { capRefreshPending = false; refreshPlayerHeightCap(); });
   }
 
   function expand(slotEl) {

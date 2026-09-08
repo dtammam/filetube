@@ -93,6 +93,33 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.276.0 - The player never overflows a wide monitor, in ANY view (2026-09-08)
+
+Follow-up to v1.275.0: Dean found the same wide-monitor overflow in the MUSIC view,
+and on a show. Root cause of the gap: v1.275.0 capped only watch, with a FIXED
+height budget - which works only because the watch player sits near the top of the
+page. Music/podcasts/shows reuse the same shared 16:9 player host but sit BELOW their
+own chrome (album header, tabs), so the fixed budget over-estimated the available
+height and under-capped them - still overflowing.
+
+Fix: MEASURE the real space below the player instead of hardcoding it. player.js
+writes `innerHeight - slot.top - (40px bar + 2px border)` into `--player-cap-h` on
+mount and on resize/orientationchange (rAF-coalesced, read-only, guarded to the FULL
+in-#player-slot video player). One shell-agnostic CSS rule now caps every view
+(`#player-slot:not(.reader-player-slot) #player-wrapper`) by `var(--player-cap-h, <old
+watch budget fallback>) * 16/9` - correct in watch/music/podcasts/shows and every
+config, a no-op on standard monitors, and the reader's compact audio bar stays
+excluded. The pure core (the arithmetic + the "should this player be capped?"
+decision) is unit-tested; the DOM measure is source-locked.
+
+Slim adversarial gate: APPROVE, no findings. The seat verified lifecycle-safety (the
+measure never touches media/reparent, is try/catch-wrapped, listeners added once),
+the full cascade against the real markup (reader excluded, shows use the watch slot,
+dock/fullscreen untouched), and mutation-killed every binding. Dual-Node 8380/8380 on
+v22.23.1 + v24.14.0. Disclosed: a rare in-view change that shifts the player down
+without a window resize self-heals on the next resize/mount. The wide-monitor look is
+Dean's device pass.
+
 ### v1.275.0 - Video no longer overflows on very wide monitors (2026-09-08)
 
 Dean: on a very wide monitor a playing video spilled past the page bottom - even

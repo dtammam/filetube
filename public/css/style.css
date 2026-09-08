@@ -9001,22 +9001,24 @@ body.ft-audio-expanded {
   margin-inline: auto;
 }
 
-/* (Dean, widescreen overflow): the BASE (non-theatre) player needs the SAME
-   viewport-height width cap. On a very wide monitor the two-column content area
-   is wide enough that the full-width 16:9 player grows TALLER than the screen and
-   spills past the page bottom - even with theatre OFF. Same budget as the theatre
-   rule above, applied on desktop (>1024px, where the two-column layout and the
-   theatre control both live). It is a NO-OP on standard monitors (`min(100%, ...)`
-   keeps the player full-width until the height budget would be exceeded), and the
-   theatre rule above still wins when theatre is on (higher specificity, same
-   value). Excludes both fullscreen paths + the audio-expanded overlay, which own
-   their own sizing. SCOPED to `.watch-container` (like the theatre rule) - other
-   shells (read/podcasts/music) also own a `#player-slot`, and an unscoped selector
-   wrongly capped+centred the reader narration bar (gate WARNING). Keep the scope. */
+/* (Dean, ALL-VIEWS player cap): the shared player host is a 16:9 box; on a wide
+   monitor it grows TALLER than the space below it and overflows the page bottom -
+   in watch, music, podcasts and shows alike (even with theatre off). ONE rule caps
+   them all on desktop (>1024px). The height budget is MEASURED, not fixed: player.js
+   writes the real space below the player into `--player-cap-h` on mount + resize
+   (via refreshPlayerHeightCap), so the cap is correct in every view regardless of
+   how much chrome sits above the player (a fixed budget only worked on watch, where
+   the player is near the top). The CSS fallback IS that old watch fixed budget, for
+   the pre-measure frame / no-JS. `width = min(100%, capH * 16/9)` bounds the 16:9
+   player to the height that fits and centres it (page bg to the sides). NO-OP on
+   standard monitors. Excludes: both fullscreen paths + audio-expanded (own sizing),
+   and `.reader-player-slot` - the reader's compact audio bar owns its own size, and
+   capping it was the v1.275.0 gate regression. The watch theatre rule above still
+   wins on watch (higher specificity, same mechanism). */
 @media (min-width: 1025px) {
-  .watch-container #player-slot #player-wrapper:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen) {
-    width: min(100%, calc((100vh - var(--header-h) - var(--space-16) - var(--space-8) - 40px - 2px) * 16 / 9));
-    width: min(100%, calc((100dvh - var(--header-h) - var(--space-16) - var(--space-8) - 40px - 2px) * 16 / 9));
+  #player-slot:not(.reader-player-slot) #player-wrapper:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen) {
+    width: min(100%, calc(var(--player-cap-h, calc(100vh - var(--header-h) - var(--space-16) - var(--space-8) - 40px - 2px)) * 16 / 9));
+    width: min(100%, calc(var(--player-cap-h, calc(100dvh - var(--header-h) - var(--space-16) - var(--space-8) - 40px - 2px)) * 16 / 9));
     margin-inline: auto;
   }
 }

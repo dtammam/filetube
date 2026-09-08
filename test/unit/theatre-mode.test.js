@@ -85,23 +85,22 @@ test('v1.190 theatre caps the player HEIGHT to the viewport (width bound by 16:9
   assert.match(body, /100dvh[^;]*- 40px - 2px\) \* 16 \/ 9/, 'dvh budget (the live desktop one) subtracts the bar+border reserve');
 });
 
-// ---- widescreen (Dean): the BASE player overflows a very wide monitor even
-// WITHOUT theatre - the same cap, generalised to desktop, is the fix. Source-lock
-// the mechanism; the FEEL on a wide monitor is Dean's device arbiter. ----------
+// ---- widescreen (Dean): ALL views' players overflow a wide monitor, not just
+// watch. One MEASURED cap (--player-cap-h, set by player.js) applied shell-agnostic
+// on desktop, minus the reader's compact audio bar. Source-lock the mechanism; the
+// FEEL on a wide monitor is Dean's device arbiter. ----------------------------
 
-test('the BASE (non-theatre) player gets the SAME viewport-height width cap on desktop (>1024px), so a wide monitor never overflows', () => {
-  assert.match(STYLE_CSS, /@media \(min-width: 1025px\) \{/, 'a desktop (>1024px) media query exists for the base cap');
-  // the base wrapper cap: WATCH-scoped (.watch-container, NOT .theater-mode - so it
-  // never leaks onto the reader/podcast/music #player-slots), indented INSIDE the
-  // media query (the `\n  ` distinguishes it from the 0-indent theatre rule above).
-  const rule = /\n {2}\.watch-container #player-slot #player-wrapper:not\(\.audio-expanded\):not\(\.css-fullscreen\):not\(:fullscreen\) \{([^}]*)\}/.exec(STYLE_CSS);
-  assert.ok(rule, 'the BASE desktop width-cap rule exists, WATCH-scoped (not theatre, not shell-agnostic), same fullscreen/audio excludes');
+test('the desktop player cap is shell-agnostic (all views) but EXCLUDES the reader compact bar, and reads the MEASURED --player-cap-h (fixed budget only the fallback)', () => {
+  assert.match(STYLE_CSS, /@media \(min-width: 1025px\) \{/, 'a desktop (>1024px) media query exists');
+  // shell-agnostic `#player-slot` (covers watch/music/podcasts/shows), NOT
+  // theatre-scoped, and `:not(.reader-player-slot)` so the reader bar stays out.
+  const rule = /\n {2}#player-slot:not\(\.reader-player-slot\) #player-wrapper:not\(\.audio-expanded\):not\(\.css-fullscreen\):not\(:fullscreen\) \{([^}]*)\}/.exec(STYLE_CSS);
+  assert.ok(rule, 'the all-views cap rule exists: #player-slot:not(.reader-player-slot) #player-wrapper (fullscreen/audio excluded)');
   const body = rule[1];
-  // Same mechanism as theatre: width bound by 16:9 of the available height, so the
-  // 16:9 player never grows taller than the screen. Per-line (vh AND dvh) - dvh is
-  // the effective declaration on modern desktop.
-  assert.match(body, /width:\s*min\(100%,\s*calc\(\(100vh - var\(--header-h\)[^;]*\*\s*16\s*\/\s*9\)\);/, 'vh: width = min(100%, availableHeight*16/9)');
-  assert.match(body, /width:\s*min\(100%,\s*calc\(\(100dvh - var\(--header-h\)[^;]*\*\s*16\s*\/\s*9\)\);/, 'dvh twin present');
-  assert.match(body, /100dvh[^;]*- 40px - 2px\) \* 16 \/ 9/, 'dvh budget subtracts the bar+border reserve (identical to theatre)');
-  assert.match(body, /margin-inline:\s*auto/, 'centred when height-bound (page bg to the sides), matching theatre');
+  // width bound by the MEASURED cap height * 16/9; the fixed watch budget is only
+  // the var() FALLBACK (pre-measure frame / no-JS). Per-line (vh AND dvh).
+  assert.match(body, /width:\s*min\(100%,\s*calc\(var\(--player-cap-h,\s*calc\(100vh - var\(--header-h\)[^;]*\*\s*16\s*\/\s*9\)\);/, 'vh: width = min(100%, var(--player-cap-h, <budget>)*16/9)');
+  assert.match(body, /width:\s*min\(100%,\s*calc\(var\(--player-cap-h,\s*calc\(100dvh - var\(--header-h\)[^;]*\*\s*16\s*\/\s*9\)\);/, 'dvh twin present, reading the measured var');
+  assert.match(body, /- 40px - 2px\)\) \* 16 \/ 9/, 'the fallback budget subtracts the bar+border reserve');
+  assert.match(body, /margin-inline:\s*auto/, 'centred when height-bound');
 });

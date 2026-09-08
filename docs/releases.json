@@ -2860,5 +2860,11 @@
     "date": "2026-09-08",
     "title": "Video fits very wide screens",
     "intent": "On a very wide monitor, a playing video could grow taller than the screen and run off the bottom of the page. It now stays within the screen: once it would get too tall, it caps its size and centres, with the page background filling the space on either side - the same way the theatre view already behaved, and the same way YouTube does it. Normal-width monitors are unaffected."
+  },
+  {
+    "version": "1.276.0",
+    "date": "2026-09-08",
+    "title": "The player fits wide screens everywhere",
+    "intent": "The last update kept the video player on-screen on very wide monitors, but only on the watch page - music, podcasts and shows could still run off the bottom because their player sits lower on the page. This makes it work everywhere: the player now measures the actual space it has and caps itself to fit, in every view and layout, so it never spills past the bottom on a wide monitor. Normal-width screens are unaffected."
   }
 ]
