@@ -2866,5 +2866,11 @@
     "date": "2026-09-08",
     "title": "The player fits wide screens everywhere",
     "intent": "The last update kept the video player on-screen on very wide monitors, but only on the watch page - music, podcasts and shows could still run off the bottom because their player sits lower on the page. This makes it work everywhere: the player now measures the actual space it has and caps itself to fit, in every view and layout, so it never spills past the bottom on a wide monitor. Normal-width screens are unaffected."
+  },
+  {
+    "version": "1.276.1",
+    "date": "2026-09-08",
+    "title": "Under-the-hood security update",
+    "intent": "A maintenance update with nothing you'll see or use changing. One of the behind-the-scenes building blocks FileTube is put together with had a security advisory raised against it, so it has been updated to the fixed version. This keeps FileTube's foundations current and lets new versions publish cleanly."
   }
 ]

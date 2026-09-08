@@ -93,6 +93,22 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.276.1 - Under-the-hood security update (release integrity) (2026-09-08)
+
+Maintenance patch, no user-facing behaviour change. A dev-only dependency
+(`js-yaml`, used by tooling - NOT shipped in the runtime/Docker image) had a HIGH
+advisory raised against it (GHSA-2883-xcg3-v3hh). It was bumped 4.3.1 -> 4.3.2 on
+`main` right after the v1.276.0 tag, so `main` was clean but the newest TAG still
+carried the vulnerable lockfile - and the audit gate in `docker-publish.yml` runs
+against the pushed TAG, so the v1.276.0 Docker build failed the gate and never
+published an image. This patch cuts a clean tag carrying the fix so the Docker image
+publishes. Verified the exact CI command (`npm audit --json --package-lock-only`)
+passes on this tag's lockfile from a fresh, no-install checkout: high:0 critical:0.
+
+Known-clean residual: three MODERATE `qs` advisories (via express) remain - below the
+gate's high/critical floor, so they do not block CI or Docker; tracked for a separate
+cleanup.
+
 ### v1.276.0 - The player never overflows a wide monitor, in ANY view (2026-09-08)
 
 Follow-up to v1.275.0: Dean found the same wide-monitor overflow in the MUSIC view,
