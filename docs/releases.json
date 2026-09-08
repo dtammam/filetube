@@ -2854,5 +2854,11 @@
     "date": "2026-09-06",
     "title": "Wheel test: dial in the buzz",
     "intent": "Fine-tuning the click-wheel buzz. The single-switch approach from the last update genuinely buzzes as you spin - about 85% of the notches, evenly around the wheel, no dropouts. This adds two dials to the wheel test to close the gap to every notch: one for how far the switch swings at each notch (turn it up if some notches are missed), and one for how many notches there are per turn (finer feels more like a real iPod; coarser is more reliable). Open Sweep, spin, and adjust until every notch buzzes - those settings become the real wheel. Still testing only; the real wheel is unchanged."
+  },
+  {
+    "version": "1.275.0",
+    "date": "2026-09-08",
+    "title": "Video fits very wide screens",
+    "intent": "On a very wide monitor, a playing video could grow taller than the screen and run off the bottom of the page. It now stays within the screen: once it would get too tall, it caps its size and centres, with the page background filling the space on either side - the same way the theatre view already behaved, and the same way YouTube does it. Normal-width monitors are unaffected."
   }
 ]

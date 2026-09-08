@@ -93,6 +93,31 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.275.0 - Video no longer overflows on very wide monitors (2026-09-08)
+
+Dean: on a very wide monitor a playing video spilled past the page bottom - even
+with theatre OFF; standard monitors were fine. Root cause: the player is a
+full-width 16:9 box, and on a wide enough two-column layout that 16:9 makes the
+player TALLER than the viewport. Theatre got a viewport-height width cap for exactly
+this in v1.190 (bound the width by the height the screen can show, so a 16:9 player
+never exceeds it and centres instead) - but the BASE player never did.
+
+Fix: apply the identical cap to the base player inside `@media (min-width: 1025px)`,
+scoped to `.watch-container` (the desktop domain where the two-column layout lives).
+It is a NO-OP on standard monitors (`min(100%, ...)` keeps the player full-width
+until the height budget would be exceeded), and the theatre rule still wins when
+theatre is on.
+
+Slim adversarial gate: REQUEST CHANGES then APPROVE. The gate caught a real scope
+leak - the first cut dropped the `.watch-container` prefix, so the cap would have
+wrongly shrunk+centred the READER narration bar (and podcasts/music slots) on a
+common 1366x768 laptop; re-scoped to `.watch-container` and the test now binds the
+scope itself (reverting to the unscoped selector reds it). Source-locked in
+theatre-mode.test.js. Dual-Node 8374/8374 on v22.23.1 + v24.14.0. Disclosed residual:
+a >16:9-tall video (e.g. 4:3) at the capped width can still slightly overflow - the
+same limitation theatre's cap has had since v1.190. The wide-monitor look is Dean's
+device pass.
+
 ### v1.274.5 - Wheel test: Sweep tuning (Dither + Detent) (2026-09-06)
 
 The Sweep engine (v1.274.4) works on-device: one swept switch buzzes ~85% of
