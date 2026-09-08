@@ -9001,6 +9001,26 @@ body.ft-audio-expanded {
   margin-inline: auto;
 }
 
+/* (Dean, widescreen overflow): the BASE (non-theatre) player needs the SAME
+   viewport-height width cap. On a very wide monitor the two-column content area
+   is wide enough that the full-width 16:9 player grows TALLER than the screen and
+   spills past the page bottom - even with theatre OFF. Same budget as the theatre
+   rule above, applied on desktop (>1024px, where the two-column layout and the
+   theatre control both live). It is a NO-OP on standard monitors (`min(100%, ...)`
+   keeps the player full-width until the height budget would be exceeded), and the
+   theatre rule above still wins when theatre is on (higher specificity, same
+   value). Excludes both fullscreen paths + the audio-expanded overlay, which own
+   their own sizing. SCOPED to `.watch-container` (like the theatre rule) - other
+   shells (read/podcasts/music) also own a `#player-slot`, and an unscoped selector
+   wrongly capped+centred the reader narration bar (gate WARNING). Keep the scope. */
+@media (min-width: 1025px) {
+  .watch-container #player-slot #player-wrapper:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen) {
+    width: min(100%, calc((100vh - var(--header-h) - var(--space-16) - var(--space-8) - 40px - 2px) * 16 / 9));
+    width: min(100%, calc((100dvh - var(--header-h) - var(--space-16) - var(--space-8) - 40px - 2px) * 16 / 9));
+    margin-inline: auto;
+  }
+}
+
 /* v1.186: the Theatre icon in the player control bar (a pc-btn like the cog).
    Pressed state gets the era accent fill. DESKTOP-ONLY: theatre widens the
    desktop layout, so the icon is hidden below the 1024px breakpoint (where the
