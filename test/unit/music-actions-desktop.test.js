@@ -69,6 +69,14 @@ test('the trigger toggles, clicks delegate to the shared handleAction, and the b
   assert.match(MUSIC, /activeDesktopExtras\.destroy\(\)/, 'the view-swap teardown stops a live reheat poll');
 });
 
+test('the open desktop menu closes when the target track/FILE changes (gate: else Delete/Move would hit the now-playing track)', () => {
+  // both gate seats: an autoplay advance A->B leaves the persistent toolbar menu bound to A.
+  assert.match(MUSIC, /actionsMenuBaseId = extrasBaseId\(\);/, 'open() records the base id the menu acts on');
+  assert.match(MUSIC, /extrasBaseId\(\) !== actionsMenuBaseId[^;]*hideActionsMenu\(\)/, 'updateActionsBtn closes the menu on a real base-id change');
+  // the ::c strip means a chaptered-album chapter roll keeps the SAME base id -> stays open.
+  assert.match(MUSIC, /extrasBaseId\(\) strips the `::c`/, 'the guard is documented as base-id (not ::c) scoped');
+});
+
 // ---- Task 4: the shared factory behaviour under the DESKTOP cfg (anti-INERT) ------------
 // Proves the desktop contract end-to-end WITHOUT booting all of music.js: open() fetches
 // the base item and renders the action set INCLUDING the cfg-gated Watch, and the

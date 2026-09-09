@@ -1001,6 +1001,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // factory (skin-surface.js) - the SAME build + dispatch the mobile skins run - against
     // the top-toolbar #music-actions-menu popover. Watch rides in via cfg.hasWatchBack.
     var desktopExtras = null;
+    var actionsMenuBaseId = null; // v1.278 (gate): the base id the OPEN desktop menu acts on
     function hideActionsMenu() {
       if (actionsMenu) actionsMenu.hidden = true;
       if (actionsBtn) actionsBtn.setAttribute('aria-expanded', 'false');
@@ -1027,6 +1028,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!actionsMenu || !ensureDesktopExtras()) return;
       actionsMenu.hidden = false;
       if (actionsBtn) actionsBtn.setAttribute('aria-expanded', 'true');
+      actionsMenuBaseId = extrasBaseId(); // the track this open menu is bound to
       desktopExtras.open();
     }
     function toggleActionsMenu() {
@@ -1042,7 +1044,14 @@ if (typeof module !== 'undefined' && module.exports) {
       var expanded = !!(p && typeof p.getState === 'function' && p.getState() === 'full');
       var show = expanded && extrasEligibleView();
       actionsBtn.hidden = !show;
-      if (!show) hideActionsMenu();
+      // Gate (both seats): the desktop menu lives in the PERSISTENT toolbar, so an autoplay
+      // advance would leave it open still bound to the PREVIOUS track - Delete/Move would
+      // close() the now-playing track, and Share/Like/etc would act on the wrong item. Close
+      // it when the target track/FILE actually changes. extrasBaseId() strips the `::c`
+      // suffix, so a chaptered-album chapter roll (same base file) keeps it open; only a real
+      // track change closes it. (The mobile skin can't hit this - an advance repaints the
+      // panel and detaches the sticker menu node.)
+      if (!show || (actionsMenu && !actionsMenu.hidden && extrasBaseId() !== actionsMenuBaseId)) hideActionsMenu();
     }
     if (actionsBtn) actionsBtn.addEventListener('click', function (e) { e.stopPropagation(); toggleActionsMenu(); }, { signal: signal });
     if (actionsMenu) actionsMenu.addEventListener('click', function (e) {
