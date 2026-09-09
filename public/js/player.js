@@ -601,6 +601,21 @@ function shouldExitFauxOnRotate(ctx) {
   return !!(!opts.landscape && opts.fauxOn);
 }
 
+// v1.277 (Dean, iOS music stuck-state): the reconcile GATE. iOS routinely DROPS
+// the matchMedia 'change'/orientationchange that onOrientationChange keys on, so
+// a rotate-to-landscape-then-back can strand a FULL audio player - host parked in
+// #fs-stage (a stale stagedFullscreen), or out of #player-slot's flow, or a
+// `.audio-expanded` the portrait-collapse never cleared - leaving the now-playing
+// panel below the slot rendered ALONE with no transport ("no control over the
+// player"). reconcileAudioSurface() re-asserts the canonical FULL-in-slot inline
+// surface, but ONLY for a FULL, mobile, audio player in PORTRAIT: landscape is
+// the intended immersive overlay and must be left alone. Fails safe to false on
+// missing/garbage context. Exported for node:test.
+function shouldForceInlineAudioOnReconcile(ctx) {
+  var opts = ctx || {};
+  return !!(opts.isFull && opts.mobile && opts.audio && !opts.landscape);
+}
+
 // Bug-fix (v1.17.0 two-reviewer gate, FR-4b leak): pure helper for the
 // "capture-then-reset" step every NEW (non-adopt) load must perform on the
 // one-shot `autoplayAdvancePending` flag, at load START -- not deferred to
@@ -1569,6 +1584,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.118: the custom-video faux-fullscreen rotate decisions.
     shouldEnterFauxOnRotate,
     shouldExitFauxOnRotate,
+    // v1.277: the iOS music stuck-state reconcile gate.
+    shouldForceInlineAudioOnReconcile,
     captureAutoplayAdvanceForLoad,
     // v1.130: immersive carry-on-advance (fullscreen survives autoplay/skip).
     captureImmersiveCarryForLoad,
@@ -7304,6 +7321,52 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (mql.addEventListener) mql.addEventListener('change', onOrientationChange);
     else window.addEventListener('orientationchange', onOrientationChange);
+
+    // v1.277 (Dean, iOS music stuck-state): the RELIABLE-signal self-heal. The
+    // matchMedia listener above is the intended rotation surface, but iOS drops
+    // its 'change' often enough that a rotate-round-trip strands a FULL audio
+    // player (see shouldForceInlineAudioOnReconcile's header). This re-asserts
+    // the canonical FULL-in-slot inline audio surface in PORTRAIT, undoing a
+    // stale stage, an out-of-slot host, and a leftover `.audio-expanded` - every
+    // step idempotent, so it no-ops once the surface is already canonical.
+    function reconcileAudioSurface() {
+      if (!shouldForceInlineAudioOnReconcile({
+        isFull: state === STATE_FULL,
+        mobile: isMobileFormFactor(),
+        audio: !!(currentData && currentData.type === 'audio'),
+        landscape: !!(mql && mql.matches),
+      })) return;
+      if (!host) return;
+      var slot = document.getElementById('player-slot');
+      if (!slot) return;
+      // 1) A stale staged fullscreen (host parked in #fs-stage while NOT actually
+      //    in native fullscreen) - exit the stage back to the view slot.
+      if (stagedFullscreen && document.fullscreenElement !== fsStageEl) {
+        stagedFullscreen = false;
+        placeHostAfterStageExit();
+      }
+      // 2) Host reparented out of #player-slot by any other strand - re-seat it.
+      if (host.parentNode !== slot) mountInSlot(slot);
+      // 3) A `.audio-expanded` the dropped portrait-collapse left behind (portrait
+      //    has no immersive overlay; the both-axes rule, the load path's 8389).
+      if (host.classList.contains('audio-expanded')) setAudioExpanded(false);
+    }
+    // rAF-coalesced so iOS address-bar resize churn can't thrash the heal;
+    // pageshow + visibilitychange catch an app-foreground where no resize fires.
+    var audioReconcilePending = false;
+    function scheduleAudioReconcile() {
+      if (audioReconcilePending) return;
+      audioReconcilePending = true;
+      var run = function () {
+        audioReconcilePending = false;
+        try { reconcileAudioSurface(); } catch (_) { /* the heal is best-effort */ }
+      };
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run);
+      else run();
+    }
+    window.addEventListener('resize', scheduleAudioReconcile);
+    window.addEventListener('pageshow', scheduleAudioReconcile);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) scheduleAudioReconcile(); });
 
     // Desktop keyboard shortcuts -- FULL-only (see top-of-file comment): a
     // docked mini-player playing while the user types in the home search box
