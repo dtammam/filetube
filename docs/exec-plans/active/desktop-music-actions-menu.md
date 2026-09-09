@@ -67,7 +67,13 @@ to module scope so both factories share them.
 6. **`updateActionsBtn` gating** wired into the `updateNowPlayingPanel`/`updatePopoutBtn`
    seam; hidden in the docked/no-track branch; `destroy()` tears the desktop
    instance down on view swap (reheat poll must never outlive the view).
-7. **(Follow-up, disclosed)** Per-chapter Share - NEW work, not parity (today's
+7. **RESOLVED (redundant - not built):** Per-chapter Share is ALREADY served on
+   desktop music by the player's NATIVE chapters menu (`player.js` ~6818 per-chapter
+   share icon; music.html carries a chapters button). Adding it to the actions menu
+   would double-expose it - so it is deliberately NOT duplicated there. The actions
+   menu gives song-level Share + share-at-current-time; chapter-level share stays in
+   the chapters menu. (Original note kept below for the record.)
+7b. **(superseded by 7)** Per-chapter Share - NEW work, not parity (today's
    `extrasShare` is song + at-current-time only). FIRST verify the desktop player's
    native chapters menu (`player.js` ~6818) does not already surface per-chapter
    share for `::c` music; if not, extend the shared `extrasShare` to append
