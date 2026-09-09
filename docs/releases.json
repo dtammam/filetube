@@ -2872,5 +2872,11 @@
     "date": "2026-09-08",
     "title": "Under-the-hood security update",
     "intent": "A maintenance update with nothing you'll see or use changing. One of the behind-the-scenes building blocks FileTube is put together with had a security advisory raised against it, so it has been updated to the fixed version. This keeps FileTube's foundations current and lets new versions publish cleanly."
+  },
+  {
+    "version": "1.277.0",
+    "date": "2026-09-09",
+    "title": "Music player recovers after you rotate your phone",
+    "intent": "On iPhone, if you were listening to music in the full player and rotated to landscape and back, the player could sometimes get stuck: you'd see the track and the up-next list but no play, pause or skip controls, and there was no way to get them back. Now the player heals itself the moment you rotate again, switch back to the app, or the screen resizes - the controls come right back. Rotating for the big full-screen view still works exactly as before."
   }
 ]
