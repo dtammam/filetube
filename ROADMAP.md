@@ -93,6 +93,37 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.278.0 - Desktop Music actions menu (video-parity Extras) (2026-09-09)
+
+Dean: the desktop /music now-playing view had NO per-item actions (noticed on chaptered
+YouTube-mp3s - a "::c" chapter track had no Share). He asked for "the same options you'd
+get for videos (transcript if detected, playback speed, watch, reheat, etc.) if relevant",
+trigger in the top toolbar, and explicitly "reuse it - DRY, no second menu".
+
+Root cause: the whole Extras subsystem (build + every action handler) lived INSIDE the
+mobile skin engine's closure, and that engine only instantiates when a mobile skin
+renders - so desktop had no menu at all. (An earlier investigation misread db.json, which
+this repo doesn't use - it's SQLite; that "no youtubeId" finding was void.)
+
+Built as a small-task wave. Extracted the Extras action core into a shared
+FileTubeSkinSurface.createExtrasMenu(cfg) factory (the skin engine and the new desktop
+trigger are two thin callers - the mobile/podcasts/pop-out path is a byte-identical pure
+move, mutation-confirmed by both seats). A "More" button in the top toolbar opens the
+same action set - Share (+ share-at-current-time), Watch (new, cfg-gated so it stays off
+the mobile sticker's page-2), Transcript-if-subtitles, Reheat, Like, Watched, queue /
+play-next, Move / Delete-if-you-can-edit - each gated "if relevant" by the same
+buildExtrasHtml rules. A CSS lift moved the menu's presentation out of the mobile media
+query so the desktop popover is styled; only mobile positioning stays gated. Per-chapter
+Share was left in the player's existing chapters menu (already there - not duplicated).
+
+Full gate (QA + adversarial), one fix round. Both seats independently caught the same
+issue: the persistent desktop menu, left open across an autoplay advance, would let
+Delete/Move close() the now-playing track (and Share/Like act on the wrong item) - the
+mobile menu can't because an advance repaints its panel away. Fixed: the menu closes when
+the playing track's base id changes (chapter rolls on one file keep it open, via the ::c
+strip). Dual-Node 8396/8396 on v22.23.1 + v24.14.0. No data at risk. The desktop feel is
+Dean's device pass.
+
 ### v1.277.0 - Music player self-heals after an iOS rotate round-trip (2026-09-09)
 
 Dean (device, screenshot): listening to MUSIC in the expanded player on iPhone,

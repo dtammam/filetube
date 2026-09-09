@@ -1,6 +1,6 @@
 # Desktop Music actions menu (video-parity Extras on /music)
 
-**Owner:** main session · **Requested by:** Dean · **Status:** ACTIVE (started 2026-09-09)
+**Status:** SHIPPED v1.278.0 (2026-09-09) · **Owner:** main session · **Requested by:** Dean
 
 ## The ask (Dean)
 

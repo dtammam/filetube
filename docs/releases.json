@@ -2878,5 +2878,11 @@
     "date": "2026-09-09",
     "title": "Music player recovers after you rotate your phone",
     "intent": "On iPhone, if you were listening to music in the full player and rotated to landscape and back, the player could sometimes get stuck: you'd see the track and the up-next list but no play, pause or skip controls, and there was no way to get them back. Now the player heals itself the moment you rotate again, switch back to the app, or the screen resizes - the controls come right back. Rotating for the big full-screen view still works exactly as before."
+  },
+  {
+    "version": "1.278.0",
+    "date": "2026-09-09",
+    "title": "More options for your music on desktop",
+    "intent": "On a computer, the Music player now has a \"More\" button in the toolbar (next to Pop out and Shuffle) that opens the same set of options you already get for videos - Share, Watch, Reheat, Transcript, Like, mark as Watched, add to the queue or play next, and move or delete the file - each shown when it applies to the track you're playing. It's especially handy for long YouTube-sourced tracks split into chapters: you can now share them, jump to the original video, and more, right from the Music page."
   }
 ]
