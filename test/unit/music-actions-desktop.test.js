@@ -42,3 +42,115 @@ test('the desktop actions menu has its own top-anchored positioning (not the mob
   assert.match(CSS, /#music-actions-menu\{[^}]*top:calc\(100% \+ var\(--space-3\)\)/, 'anchored BELOW its toolbar button');
   assert.match(CSS, /\.music-actions-wrap\{[^}]*position:relative/, 'the wrapper is the positioning context');
 });
+
+// ---- Task 4/5: the desktop wiring in music.js (source-locked to the SHARED factory) -----
+
+const MUSIC = fs.readFileSync(path.join(ROOT, 'public', 'js', 'music.js'), 'utf8');
+const HTML = fs.readFileSync(path.join(ROOT, 'public', 'music.html'), 'utf8');
+
+test('the top-toolbar trigger + menu exist in music.html', () => {
+  assert.match(HTML, /id="music-actions-btn"[^>]*aria-haspopup="true"/, 'the More trigger button');
+  assert.match(HTML, /<div class="mms-sticker-menu" id="music-actions-menu"[^>]*role="menu"[^>]*hidden>/, 'the menu popover reuses the shared .mms-sticker-menu class');
+});
+
+test('music.js builds the desktop menu from the SHARED createExtrasMenu (not a re-implemented menu) and composes Watch in', () => {
+  assert.match(MUSIC, /SkinSurface\.createExtrasMenu\(\{/, 'reuses the shared factory');
+  assert.match(MUSIC, /getMenuEl:\s*function \(\) \{ return actionsMenu; \}/, 'renders into the toolbar popover');
+  assert.match(MUSIC, /hasWatchBack:\s*watchBackVisible/, 'Watch gated on the hoisted watchBackVisible');
+  assert.match(MUSIC, /onWatch:\s*watchBackTap/, 'Watch navigates via the hoisted watchBackTap');
+  assert.match(MUSIC, /getBaseId:\s*extrasBaseId/, 'the SAME ::c-stripping base id the sticker menu uses');
+  assert.match(MUSIC, /onMutated:\s*afterExtrasMutation/, 'Move/Delete refresh reuses the view hook');
+});
+
+test('the trigger toggles, clicks delegate to the shared handleAction, and the button self-gates to a FULL library track', () => {
+  assert.match(MUSIC, /actionsBtn\.addEventListener\('click', function \(e\) \{ e\.stopPropagation\(\); toggleActionsMenu\(\); \}/, 'the trigger toggles the menu');
+  assert.match(MUSIC, /desktopExtras\.handleAction\(act, xact\)/, 'menu clicks dispatch to the shared action handler (anti-INERT)');
+  assert.match(MUSIC, /function updateActionsBtn\(\) \{[\s\S]*?p\.getState\(\) === 'full'[\s\S]*?extrasEligibleView\(\)/, 'shown only for a FULL, library-eligible track');
+  assert.match(MUSIC, /activeDesktopExtras\.destroy\(\)/, 'the view-swap teardown stops a live reheat poll');
+});
+
+// ---- Task 4: the shared factory behaviour under the DESKTOP cfg (anti-INERT) ------------
+// Proves the desktop contract end-to-end WITHOUT booting all of music.js: open() fetches
+// the base item and renders the action set INCLUDING the cfg-gated Watch, and the
+// dispatch drives share/watch.
+
+const { JSDOM } = require('jsdom');
+
+function bootFactory(opts) {
+  opts = opts || {};
+  const dom = new JSDOM('<body><div id="menu" hidden></div></body>', { url: 'https://x.test/music' });
+  const w = dom.window;
+  const calls = [];
+  w.fetch = (url, init) => {
+    calls.push({ url: String(url), method: (init && init.method) || 'GET' });
+    if (String(url).indexOf('/api/videos/') === 0) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({
+        id: 'base9', title: 'Chaptered Mix', watchUrl: 'https://youtu.be/abc123DEF45',
+        hasSubtitles: true, liked: false, watchState: 'unwatched',
+      }) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  w.fetchCurrentUser = () => Promise.resolve({ user: { role: 'admin' } });
+  let watched = 0;
+  let closed = 0;
+  const menuEl = w.document.getElementById('menu');
+  // Load skin-surface.js against this window (createExtrasMenu is standalone - no skins
+  // needed). The factory resolves `window`/`fetch` at CALL time, so these globals stay set
+  // for the duration of the test (these are the last tests in the file).
+  global.window = w; global.document = w.document; global.fetch = w.fetch;
+  delete require.cache[require.resolve('../../public/js/skin-surface.js')];
+  const api = require('../../public/js/skin-surface.js');
+  const menu = api.createExtrasMenu({
+    getMenuEl: () => menuEl,
+    getBaseId: () => 'base9', // the view already strips ::c; here the base
+    getPlayer: () => ({ getCurrentTime: () => 0 }),
+    getSignal: () => null,
+    close: () => { closed++; menuEl.hidden = true; },
+    backHtml: () => '',
+    stillOnPage: () => !menuEl.hidden,
+    onMutated: () => {},
+    hasWatchBack: () => !!opts.hasWatchBack,
+    onWatch: () => { watched++; },
+  });
+  return { w, menuEl, menu, calls, get watched() { return watched; }, get closed() { return closed; } };
+}
+
+const settle = () => new Promise((r) => setImmediate(r));
+
+test('desktop factory: open() fetches the base item and renders the video-parity action set INCLUDING Watch', async () => {
+  const b = bootFactory({ hasWatchBack: true });
+  b.menuEl.hidden = false;
+  b.menu.open();
+  await settle();
+  assert.ok(b.calls.some((c) => c.url === '/api/videos/base9' && c.method === 'GET'), 'fetched the base media item on open');
+  const q = (n) => b.menuEl.querySelector('[data-skin-x="' + n + '"]');
+  for (const name of ['share', 'watch', 'download', 'like', 'watched', 'queue', 'queue-next', 'transcript', 'reheat']) {
+    assert.ok(q(name), 'rendered: ' + name);
+  }
+});
+
+test('desktop factory: Watch is cfg-gated - absent when hasWatchBack is false (mobile parity)', async () => {
+  const b = bootFactory({ hasWatchBack: false });
+  b.menuEl.hidden = false;
+  b.menu.open();
+  await settle();
+  assert.strictEqual(b.menuEl.querySelector('[data-skin-x="watch"]'), null, 'no Watch row when the surface does not offer it');
+  assert.ok(b.menuEl.querySelector('[data-skin-x="share"]'), 'Share still present');
+});
+
+test('desktop factory: dispatching Watch calls onWatch and closes; a stale fetch after close renders nothing (TOCTOU)', async () => {
+  const b = bootFactory({ hasWatchBack: true });
+  b.menuEl.hidden = false;
+  b.menu.open();
+  await settle();
+  b.menu.handleAction('watch', b.menuEl.querySelector('[data-skin-x="watch"]'));
+  assert.strictEqual(b.watched, 1, 'Watch navigated');
+  assert.strictEqual(b.closed, 1, 'menu closed on a navigating action');
+  // TOCTOU: close the menu, open again but flip hidden true mid-flight -> nothing renders.
+  b.menuEl.hidden = false;
+  b.menu.open();
+  b.menuEl.hidden = true; // closed while the fetch is in flight
+  await settle();
+  assert.strictEqual(b.menuEl.querySelector('[data-skin-x="share"]'), null, 'a fetch that resolves after close does not paint');
+});

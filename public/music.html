@@ -127,6 +127,18 @@
             <button class="btn btn-sm" id="music-popout-btn" type="button" hidden title="Pop the player out into a floating window" aria-label="Pop out player" aria-pressed="false">
               <svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><path d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-800h280v80H200v560h560v-280h80v280q0 33-23.5 56.5T760-120H200Zm188-212-56-56 372-372H560v-80h240v240h-80v-104L388-332Z"/></svg> Pop out
             </button>
+            <!-- v1.278 (Dean): desktop actions menu - the video-parity Extras
+                 (Share/Transcript/Watch/Reheat/Like/Watched/queue/Move/Delete, "if
+                 relevant") for the now-playing track, via the SHARED createExtrasMenu
+                 factory (skin-surface.js). Hidden until a library-backed track is
+                 expanded (music.js updateActionsBtn); the menu popover is styled by the
+                 shell-agnostic .mms-sticker-menu rules (v1.278 CSS lift). -->
+            <span class="music-actions-wrap">
+              <button class="btn btn-sm" id="music-actions-btn" type="button" hidden aria-haspopup="true" aria-expanded="false" title="More actions" aria-label="More actions for this track">
+                <i class="icon-more"></i> More
+              </button>
+              <div class="mms-sticker-menu" id="music-actions-menu" role="menu" hidden></div>
+            </span>
             <button class="btn btn-sm" id="music-shuffle-btn" type="button" title="Shuffle all">
               <i class="icon-shuffle"></i> Shuffle
             </button>

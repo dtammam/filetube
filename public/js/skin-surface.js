@@ -119,6 +119,11 @@
       var watched = item.watchState === 'watched';
       var acts = [];
       if (hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="share"><i class="icon-share"></i>Share</button>');
+      // v1.278: the "Watch" way back (open the item on the video page) - cfg-gated so it
+      // appears ONLY where the surface offers it (the desktop /music actions menu). The
+      // mobile skin keeps Watch on the sticker's page 1 (its cfg omits hasWatchBack), so
+      // the skin path stays byte-identical.
+      if (typeof cfg.hasWatchBack === 'function' && cfg.hasWatchBack()) acts.push('<button type="button" class="mms-sm-act" data-skin-x="watch"><i class="icon-tv"></i>Watch</button>');
       acts.push('<a class="mms-sm-act" data-skin-x="download" href="/video/' + encodeURIComponent(item.id) + '?download=1" download><i class="icon-download"></i>Download</a>');
       acts.push('<button type="button" class="mms-sm-act' + (liked ? ' is-on' : '') + '" data-skin-x="like" aria-pressed="' + (liked ? 'true' : 'false') + '"><i class="icon-heart"></i><span class="mms-sm-actlbl">' + (liked ? 'Liked' : 'Like') + '</span>' + '</button>');
       acts.push('<button type="button" class="mms-sm-act' + (watched ? ' is-on' : '') + '" data-skin-x="watched" aria-pressed="' + (watched ? 'true' : 'false') + '"><i class="icon-history"></i><span class="mms-sm-actlbl">' + (watched ? 'Watched' : 'Mark watched') + '</span>' + '</button>');
@@ -363,6 +368,7 @@
       if (!item || !item.id) return;
       if (act === 'download') { extrasClose(); return; } // the anchor's own navigation does the work
       if (act === 'share') { extrasClose(); extrasShare(item); return; }
+      if (act === 'watch') { extrasClose(); if (typeof cfg.onWatch === 'function') { try { cfg.onWatch(); } catch (_) { /* nav best-effort */ } } return; }
       if (act === 'like') { extrasToggleFlag(el, item, 'like'); return; }
       if (act === 'watched') { extrasToggleFlag(el, item, 'watched'); return; }
       if (act === 'queue') { extrasClose(); if (typeof window.addToQueue === 'function') window.addToQueue(item.id, 'end'); return; }

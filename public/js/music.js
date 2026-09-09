@@ -620,6 +620,10 @@ if (typeof module !== 'undefined' && module.exports) {
   // destroy() can unbind it on the #view-root swap - the engine binds its own listeners
   // (not view-signal-scoped), so controller.abort() alone would leak them on the panel.
   var activeInTabEngine = null;
+  // v1.278: the module-scoped mirror of the init's desktop actions-menu factory, so the
+  // #view-root swap can destroy() it (stop a live reheat poll) even though the instance
+  // lives in the init closure - same pattern as activeInTabEngine.
+  var activeDesktopExtras = null;
   // v1.270 (slim CRITICAL-2): the module-scoped bridge to the Brick teardown, mirroring
   // activeInTabEngine above - destroy() runs at module scope and cannot see the init
   // closure where stopBrick lives. Belt to the engine's structural release.
@@ -680,6 +684,8 @@ if (typeof module !== 'undefined' && module.exports) {
     var musicStage = root.querySelector('#music-stage');
     var theaterBtn = root.querySelector('#music-theater-btn');
     var popoutBtn = root.querySelector('#music-popout-btn');
+    var actionsBtn = root.querySelector('#music-actions-btn'); // v1.278: desktop actions menu trigger
+    var actionsMenu = root.querySelector('#music-actions-menu');
     var jumpbackHost = root.querySelector('#music-jumpback');
     if (!content) return;
 
@@ -798,23 +804,7 @@ if (typeof module !== 'undefined' && module.exports) {
           // The tap navigates to the item's watch page; the MEDIA progress store (written
           // continuously by the periodic save + seek pipeline) is what makes the watch
           // page's resume ladder land at the live position - one truth, both directions.
-          watchBack: {
-            visible: function () {
-              var id = effectiveCurrentId();
-              if (!id) return false;
-              for (var i = 0; i < queue.length; i++) { if (queue[i] && queue[i].id === id) return !!queue[i].listen; }
-              // W1: the dock-return re-init rebuilds `queue` WITHOUT the listen video - the
-              // module-scoped marker keeps the way back alive for the whole session.
-              return id === activeListenId;
-            },
-            onTap: function () {
-              var id = effectiveCurrentId();
-              if (!id) return;
-              var target = '/watch.html?v=' + encodeURIComponent(id);
-              if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(target);
-              else window.location.href = target;
-            },
-          },
+          watchBack: { visible: watchBackVisible, onTap: watchBackTap }, // v1.278: hoisted (shared with the desktop actions menu)
           extras: {
             getBaseId: extrasBaseId,
             isEligible: extrasEligibleView,
@@ -988,6 +978,90 @@ if (typeof module !== 'undefined' && module.exports) {
       mp.addEventListener('timeupdate', enforceChapterLoop, { signal: signal });
       mp.addEventListener('timeupdate', reflectChapter, { signal: signal });
     }
+    // v1.278 (Dean): the "Watch" way back, hoisted from the sticker config so the desktop
+    // actions menu reuses it (one truth). visible = the playing item is a listen track;
+    // onTap navigates to its video page (the media progress store makes the resume land).
+    function watchBackVisible() {
+      var id = effectiveCurrentId();
+      if (!id) return false;
+      for (var i = 0; i < queue.length; i++) { if (queue[i] && queue[i].id === id) return !!queue[i].listen; }
+      // the dock-return re-init rebuilds `queue` WITHOUT the listen video - the module-scoped
+      // marker keeps the way back alive for the whole session (W1).
+      return id === activeListenId;
+    }
+    function watchBackTap() {
+      var id = effectiveCurrentId();
+      if (!id) return;
+      var target = '/watch.html?v=' + encodeURIComponent(id);
+      if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(target);
+      else window.location.href = target;
+    }
+
+    // v1.278 (Dean): the DESKTOP /music actions menu. Reuses the SHARED createExtrasMenu
+    // factory (skin-surface.js) - the SAME build + dispatch the mobile skins run - against
+    // the top-toolbar #music-actions-menu popover. Watch rides in via cfg.hasWatchBack.
+    var desktopExtras = null;
+    function hideActionsMenu() {
+      if (actionsMenu) actionsMenu.hidden = true;
+      if (actionsBtn) actionsBtn.setAttribute('aria-expanded', 'false');
+    }
+    function ensureDesktopExtras() {
+      if (desktopExtras) return desktopExtras;
+      if (!actionsMenu || !SkinSurface || typeof SkinSurface.createExtrasMenu !== 'function') return null;
+      desktopExtras = SkinSurface.createExtrasMenu({
+        getMenuEl: function () { return actionsMenu; },
+        getBaseId: extrasBaseId,
+        getPlayer: function () { return (window.FileTube && window.FileTube.player) || null; },
+        getSignal: function () { return signal; },
+        close: hideActionsMenu,
+        backHtml: function () { return ''; },              // single page on desktop (no Back chrome)
+        stillOnPage: function () { return !!actionsMenu && !actionsMenu.hidden; },
+        onMutated: afterExtrasMutation,
+        hasWatchBack: watchBackVisible,
+        onWatch: watchBackTap,
+      });
+      activeDesktopExtras = desktopExtras; // module-scoped mirror for the view-swap teardown
+      return desktopExtras;
+    }
+    function openActionsMenu() {
+      if (!actionsMenu || !ensureDesktopExtras()) return;
+      actionsMenu.hidden = false;
+      if (actionsBtn) actionsBtn.setAttribute('aria-expanded', 'true');
+      desktopExtras.open();
+    }
+    function toggleActionsMenu() {
+      if (!actionsMenu) return;
+      if (actionsMenu.hidden) openActionsMenu(); else hideActionsMenu();
+    }
+    // Show the trigger only when a library-backed track is EXPANDED (FULL): Share/Reheat/
+    // Transcript/etc are for a real library item; a native track or a docked player gets
+    // nothing (extrasEligibleView is the same gate the sticker Extras entry uses).
+    function updateActionsBtn() {
+      if (!actionsBtn) return;
+      var p = window.FileTube && window.FileTube.player;
+      var expanded = !!(p && typeof p.getState === 'function' && p.getState() === 'full');
+      var show = expanded && extrasEligibleView();
+      actionsBtn.hidden = !show;
+      if (!show) hideActionsMenu();
+    }
+    if (actionsBtn) actionsBtn.addEventListener('click', function (e) { e.stopPropagation(); toggleActionsMenu(); }, { signal: signal });
+    if (actionsMenu) actionsMenu.addEventListener('click', function (e) {
+      var xact = e.target.closest && e.target.closest('[data-skin-x]');
+      if (!xact) return;
+      var act = xact.getAttribute('data-skin-x');
+      if (act === 'download') { hideActionsMenu(); return; } // the anchor's own navigation does the download
+      e.preventDefault();
+      if (desktopExtras) desktopExtras.handleAction(act, xact);
+    }, { signal: signal });
+    document.addEventListener('click', function (e) {
+      if (!actionsMenu || actionsMenu.hidden) return;
+      if (e.target.closest && (e.target.closest('#music-actions-menu') || e.target.closest('#music-actions-btn'))) return;
+      hideActionsMenu();
+    }, { signal: signal });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && actionsMenu && !actionsMenu.hidden) hideActionsMenu();
+    }, { signal: signal });
+
     // ---- v1.250 (F-UNIFY): the sticker quick-menu + Extras page are ENGINE capabilities
     // now (skin-surface.js, config.sticker) - music.js supplies only the VIEW hooks below.
     function extrasBaseId() {
@@ -1108,6 +1182,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // Independent of the in-tab expanded/docked branch below, so a docked pop-out still updates.
       repaintPopout();
       updatePopoutBtn();
+      updateActionsBtn(); // v1.278: show/hide the desktop actions trigger in lockstep with the panel
       ensureChapterReflect(); // arm the chapter-boundary watcher once the player element is live (idempotent)
       var p = window.FileTube && window.FileTube.player;
       var expanded = !!(p && typeof p.getState === 'function' && p.getState() === 'full');
@@ -1251,7 +1326,7 @@ if (typeof module !== 'undefined' && module.exports) {
       engineConfigFor: function (panel, win) { return skinEngineConfig(panel, win); },
       supported: popoutSupported,
       aborted: function () { return signal.aborted; },
-      onStateChange: function () { updatePopoutBtn(); },
+      onStateChange: function () { updatePopoutBtn(); updateActionsBtn(); },
       windowName: 'ft-music-pip',
       panelId: 'music-nowplaying-panel',
     }) : null;
@@ -2563,6 +2638,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.250: unbind the in-tab shared-engine instance (its click/pointer listeners are
     // engine-bound, not view-signal-scoped; its destroy also stops any live extras poll).
     if (activeInTabEngine) { try { activeInTabEngine.destroy(); } catch (_) { /* ignore */ } activeInTabEngine = null; }
+    if (activeDesktopExtras) { try { activeDesktopExtras.destroy(); } catch (_) { /* ignore */ } activeDesktopExtras = null; }
     // v1.44.2: never leak the drill-collapse observer across the #view-root swap.
     disconnectStickyObserver();
     // v1.217: drop the torn-down init's pop handler so a stray popstate after
