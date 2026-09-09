@@ -63,6 +63,20 @@
 //   destroy() unbind + clear body.mms-on. Returns null if music-skins.js isn't present.
 
 (function () {
+  // v1.278: pure helpers hoisted to module scope so BOTH the skin engine
+  // `create()` and the shared `createExtrasMenu()` factory (desktop actions menu)
+  // share one copy. Byte-identical to the former in-closure definitions.
+  function fmtTime(s) {
+    s = Math.max(0, Math.floor(Number(s) || 0));
+    var m = Math.floor(s / 60), sec = s % 60;
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+  function escapeHtml(text) {
+    return String(text == null ? '' : text)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+
   function create(config) {
     var SKINS = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
     if (!SKINS || !config || !config.panel) return null;
@@ -123,12 +137,6 @@
       var posEl = panel.querySelector('.mms-pos'); if (posEl) posEl.textContent = fmtTime(pos);
       var remEl = panel.querySelector('.mms-rem'); if (remEl) remEl.textContent = dur > 0 ? ('-' + fmtTime(Math.max(0, dur - pos))) : '';
     }
-    function fmtTime(s) {
-      s = Math.max(0, Math.floor(Number(s) || 0));
-      var m = Math.floor(s / 60), sec = s % 60;
-      return m + ':' + (sec < 10 ? '0' : '') + sec;
-    }
-
     // ==== the v1.238-249 STICKER quick-menu + Extras (F-UNIFY port from music.js) ==========
     // The menu items PROXY the existing controls so player.js stays BYTE-UNCHANGED:
     // speed -> #media-player.playbackRate AND defaultPlaybackRate (the latter survives the
@@ -140,11 +148,6 @@
     var MMS_SPEED_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
     var STICKER_SIZES = ['default', '2x', '3x'];
     var STICKER_TILTS = ['straight', 'left', 'right'];
-    function escapeHtml(text) {
-      return String(text == null ? '' : text)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-    }
     function readStickerPref() {
       try {
         var raw = (typeof window !== 'undefined' && window.localStorage) ? window.localStorage.getItem(STICKER_KEY) : null;
