@@ -77,6 +77,306 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
   }
 
+  // v1.278: the shared Extras ACTION CORE, extracted from the skin engine so the desktop
+  // /music actions menu (music.js) reuses the SAME build + dispatch + gates (TOCTOU token,
+  // reheat poll with stale-entry guard, delete two-flow, like/watched flip-only-on-2xx)
+  // instead of a divergent copy. Each surface constructs one via cfg: getMenuEl/getBaseId/
+  // getPlayer/getSignal/close/backHtml/stillOnPage/onMutated. Returns { open, handleAction,
+  // cancelPending, destroy }. The skin path's markup + dispatch are byte-identical.
+  function createExtrasMenu(cfg) {
+    cfg = cfg || {};
+    function extrasPlayer() { try { return (typeof cfg.getPlayer === 'function' ? cfg.getPlayer() : null) || null; } catch (_) { return null; } }
+    function extrasMenuEl() { try { return (typeof cfg.getMenuEl === 'function' ? cfg.getMenuEl() : null) || null; } catch (_) { return null; } }
+    function extrasClose() { if (typeof cfg.close === 'function') { try { cfg.close(); } catch (_) { /* best-effort */ } } }
+    function extrasStillOnPage() { try { return typeof cfg.stillOnPage !== 'function' || !!cfg.stillOnPage(); } catch (_) { return false; } }
+    // ---- the v1.249 Extras page (present only when the view supplies extras hooks) --------
+    var extrasItem = null;     // the /api/videos/:id payload the OPEN page renders
+    var extrasReqToken = 0;    // TOCTOU guard: only the newest open's fetch may render (v1.104 scar)
+    var extrasReheatTimer = null;
+    var extrasReheatAbortHooked = false;
+    function extrasSignal() { try { return (typeof cfg.getSignal === 'function' ? cfg.getSignal() : null) || null; } catch (_) { return null; } }
+    function extrasBaseId() {
+      try { return (typeof cfg.getBaseId === 'function' ? cfg.getBaseId() : null) || null; } catch (_) { return null; }
+    }
+    function extrasBackHtml() {
+      try { return (typeof cfg.backHtml === 'function' ? cfg.backHtml() : '') || ''; } catch (_) { return ''; }
+    }
+    function buildExtrasNoteHtml(msg) {
+      return extrasBackHtml() + '<div class="mms-sm-sec"><div class="mms-sm-note">' + escapeHtml(msg) + '</div></div>';
+    }
+    function extrasCanModifyLibrary() {
+      // The same capability derivation watch.js uses, via the cached shared fetchCurrentUser
+      // (one /api/auth/me per page). Fail CLOSED: no probe / signed-out -> no Move/Delete
+      // (the server enforces regardless).
+      if (typeof window.fetchCurrentUser !== 'function') return Promise.resolve(false);
+      return window.fetchCurrentUser()
+        .then(function (me) { return !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true)); })
+        .catch(function () { return false; });
+    }
+    function buildExtrasHtml(item, canModify) {
+      var hasWatchUrl = typeof item.watchUrl === 'string' && item.watchUrl !== '';
+      var liked = item.liked === true;
+      var watched = item.watchState === 'watched';
+      var acts = [];
+      if (hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="share"><i class="icon-share"></i>Share</button>');
+      acts.push('<a class="mms-sm-act" data-skin-x="download" href="/video/' + encodeURIComponent(item.id) + '?download=1" download><i class="icon-download"></i>Download</a>');
+      acts.push('<button type="button" class="mms-sm-act' + (liked ? ' is-on' : '') + '" data-skin-x="like" aria-pressed="' + (liked ? 'true' : 'false') + '"><i class="icon-heart"></i><span class="mms-sm-actlbl">' + (liked ? 'Liked' : 'Like') + '</span>' + '</button>');
+      acts.push('<button type="button" class="mms-sm-act' + (watched ? ' is-on' : '') + '" data-skin-x="watched" aria-pressed="' + (watched ? 'true' : 'false') + '"><i class="icon-history"></i><span class="mms-sm-actlbl">' + (watched ? 'Watched' : 'Mark watched') + '</span>' + '</button>');
+      acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue"><i class="icon-queue"></i>Add to queue</button>');
+      acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue-next"><i class="icon-play"></i>Play next</button>');
+      if (item.hasSubtitles === true) acts.push('<button type="button" class="mms-sm-act" data-skin-x="transcript"><i class="icon-transcript"></i>Transcript</button>');
+      if (hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="reheat"><i class="icon-flame"></i>Reheat</button>');
+      if (canModify) {
+        acts.push('<button type="button" class="mms-sm-act" data-skin-x="move"><i class="icon-folder"></i>Move to...</button>');
+        acts.push('<button type="button" class="mms-sm-act mms-sm-danger" data-skin-x="delete"><i class="icon-delete"></i>Delete</button>');
+      }
+      return extrasBackHtml() +
+        '<div class="mms-sm-sec"><div class="mms-sm-title">' + escapeHtml(item.title || '') + '</div>' +
+        '<div class="mms-sm-acts">' + acts.join('') + '</div></div>';
+    }
+    function open() {
+      var menu = extrasMenuEl();
+      var baseId = extrasBaseId();
+      if (!menu || !baseId) return;
+      var token = ++extrasReqToken;
+      menu.innerHTML = buildExtrasNoteHtml('Loading…');
+      Promise.all([
+        fetch('/api/videos/' + encodeURIComponent(baseId))
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .catch(function () { return null; }),
+        extrasCanModifyLibrary(),
+      ]).then(function (rs) {
+        // Post-await re-checks (the TOCTOU scar): the newest open only, the menu still
+        // mounted+open+on this page, and the SAME track still live (an auto-advance
+        // repaints the panel, detaching this menu node).
+        if (token !== extrasReqToken) return;
+        if (!menu.isConnected || menu.hidden || !extrasStillOnPage()) return;
+        if (extrasBaseId() !== baseId) return;
+        var item = rs[0];
+        if (!item || item.id !== baseId) { menu.innerHTML = buildExtrasNoteHtml('Extras aren’t available for this track.'); return; }
+        extrasItem = item;
+        menu.innerHTML = buildExtrasHtml(item, rs[1]);
+      });
+    }
+    function extrasToast(msg) {
+      if (typeof window.showToast === 'function') window.showToast(msg);
+    }
+    function extrasShare(item) {
+      var base = item.watchUrl;
+      var run = function (u) {
+        if (typeof window.shareExternalUrl !== 'function') return;
+        window.shareExternalUrl(u, item.title).then(function (outcome) {
+          // No persistent button to relabel here - the desktop-fallback clipboard write
+          // gets its feedback as a toast (watch.js parity).
+          if (outcome === 'copied') extrasToast('Link copied');
+        });
+      };
+      var pl = extrasPlayer();
+      var t = (pl && typeof pl.getCurrentTime === 'function') ? pl.getCurrentTime() : null;
+      var sig = extrasSignal();
+      if (typeof t === 'number' && isFinite(t) && t >= 1 &&
+        typeof window.showChoiceModal === 'function' && typeof window.withShareStartTime === 'function') {
+        var dismiss = window.showChoiceModal('Share', [
+          { label: 'Share song', onPick: function () { run(base); } },
+          { label: 'Share at current time (' + fmtTime(t) + ')', onPick: function () { run(window.withShareStartTime(base, t)); } },
+        ]);
+        if (typeof dismiss === 'function' && sig) sig.addEventListener('abort', dismiss, { once: true });
+        return;
+      }
+      run(base);
+    }
+    // Like/Watched share one toggle shape: POST adds, DELETE removes, the rendered button
+    // flips ONLY on a 2xx (the server is the truth; a failure leaves the shown state alone).
+    function extrasToggleFlag(el, item, kind) {
+      var on = kind === 'like' ? item.liked === true : item.watchState === 'watched';
+      var url = (kind === 'like' ? '/api/liked/' : '/api/watched/') + encodeURIComponent(item.id);
+      fetch(url, { method: on ? 'DELETE' : 'POST' })
+        .then(function (res) {
+          if (!res.ok) { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update Watched.'); return; }
+          if (kind === 'like') {
+            item.liked = !on;
+            // QA gate (the v1.33.1 class): the count-gated Liked sidebar entry caches its
+            // total per session - re-prime it so home reflects this like without a reload.
+            if (typeof window.fetchLikedTotal === 'function') window.fetchLikedTotal(true);
+          } else {
+            item.watchState = on ? 'unwatched' : 'watched';
+          }
+          if (!el || !el.isConnected) return;
+          var nowOn = !on;
+          el.classList.toggle('is-on', nowOn);
+          el.setAttribute('aria-pressed', nowOn ? 'true' : 'false');
+          // v1.255 slim-gate CRITICAL: write ONLY the label span - a bare el.textContent
+          // assignment destroys the row's glyph <i> (this wave's own feature) on the
+          // menu's most-tapped rows. The || el fallback keeps a span-less row honest.
+          var lbl = el.querySelector('.mms-sm-actlbl');
+          (lbl || el).textContent = kind === 'like' ? (nowOn ? 'Liked' : 'Like') : (nowOn ? 'Watched' : 'Mark watched');
+        })
+        .catch(function () { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update Watched.'); });
+    }
+    function extrasTranscript(item, el) {
+      if (typeof window.openTranscriptFor !== 'function') return;
+      window.openTranscriptFor({
+        id: item.id,
+        title: item.title || 'Transcript',
+        signal: extrasSignal(),
+        onBusy: function (busy) { if (el && el.isConnected) el.disabled = busy; },
+      });
+    }
+    function stopExtrasReheatPoll() {
+      if (extrasReheatTimer) { clearInterval(extrasReheatTimer); extrasReheatTimer = null; }
+    }
+    // Compact, honest outcome line (watch.js describeReheat says WHAT changed; this surface
+    // has no page to re-render, so it reports only the verdict - never claiming a refresh
+    // that may not have happened).
+    function extrasReheatToastFor(entry) {
+      if (entry.outcome === 'failed') return 'Reheat did not complete. Some metadata may have been saved; try again.';
+      if (entry.networkRan === false) return 'No YouTube source found for this track, so there was nothing to refresh.';
+      return 'Reheat finished.';
+    }
+    function extrasReheat(item) {
+      var id = item.id;
+      fetch('/api/ytdlp/repull-metadata/item/' + encodeURIComponent(id), { method: 'POST' })
+        .then(function (res) { return res.json().catch(function () { return {}; }).then(function (body) { return { status: res.status, body: body }; }); })
+        .then(function (r) {
+          if (r.status === 202) { extrasToast('Reheating…'); pollExtrasReheat(id); return; }
+          if (r.status === 409) { extrasToast('A reheat is already running.'); return; }
+          // QA gate: the REAL route's 404 carries an error body; on an install with the
+          // yt-dlp module OFF the route doesn't exist at all, so Express's HTML 404 parses
+          // to {} - saying "no source" there would be a lie (the module is off).
+          if (r.status === 404) { extrasToast((r.body && r.body.error) ? 'This track has no source to reheat from.' : 'Reheat isn’t available on this server.'); return; }
+          if (r.status === 403) { extrasToast('Read-only mode: reheat is disabled on this instance.'); return; }
+          extrasToast((r.body && r.body.error) || 'Reheat could not be started.');
+        })
+        .catch(function () { extrasToast('Reheat could not be started.'); });
+    }
+    function pollExtrasReheat(id) {
+      stopExtrasReheatPoll();
+      var elapsed = 0;
+      var everyMs = 1000;
+      // Same ceiling rationale as watch.js: under activity.js's one-shot TTL, and giving up
+      // stops only the POLL - the job still lands server-side.
+      var ceilingMs = 4 * 60 * 1000;
+      var sig = extrasSignal();
+      extrasReheatTimer = setInterval(function () {
+        elapsed += everyMs;
+        if (elapsed >= ceilingMs) {
+          stopExtrasReheatPoll();
+          extrasToast('Reheat is taking a while; check the activity chip.');
+          return;
+        }
+        fetch('/api/subscriptions/status')
+          .then(function (res) { return res.ok ? res.json() : null; })
+          .then(function (snapshot) {
+            if (sig && sig.aborted) { stopExtrasReheatPoll(); return; }
+            var entry = snapshot && snapshot.oneShots && snapshot.oneShots['repull-metadata-item'];
+            if (!entry || entry.state === 'running' || entry.state === 'queued') return;
+            // A stale terminal entry from a PREVIOUS item's reheat is reachable (fixed
+            // one-shot key, minutes-long TTL) - never report someone else's result as ours.
+            if (entry.mediaId && entry.mediaId !== id) return;
+            stopExtrasReheatPoll();
+            if (entry.state === 'error') { extrasToast('Reheat failed.'); return; }
+            extrasToast(extrasReheatToastFor(entry));
+          })
+          .catch(function () { /* transient poll failure - try again next tick */ });
+      }, everyMs);
+      if (!extrasReheatAbortHooked && sig) {
+        extrasReheatAbortHooked = true;
+        sig.addEventListener('abort', stopExtrasReheatPoll, { once: true });
+      }
+    }
+    // A successful Move/Delete removes (or re-keys) the item the player holds: playback was
+    // already close()d; the VIEW clears its playing state and refreshes via onMutated.
+    function afterExtrasMutation() {
+      extrasItem = null;
+      // QA gate (v1.33.1 class, watch.js delete parity): deleting a LIKED item changes the
+      // count the sidebar's session cache gates on - re-prime it.
+      if (typeof window.fetchLikedTotal === 'function') window.fetchLikedTotal(true);
+      if (typeof cfg.onMutated === 'function') { try { cfg.onMutated(); } catch (_) { /* view refresh best-effort */ } }
+    }
+    function extrasMove(item) {
+      if (typeof window.showMoveModal !== 'function' || typeof window.requestMoveItem !== 'function') return;
+      var sig = extrasSignal();
+      fetch('/api/config')
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (cfgResp) {
+          if (sig && sig.aborted) return;
+          var folders = (cfgResp && cfgResp.folders) || [];
+          window.showMoveModal(item, folders, function (targetFolder, ctl) {
+            ctl.statusEl.textContent = 'Moving...';
+            window.requestMoveItem(item.id, targetFolder)
+              .then(function () {
+                ctl.teardown();
+                extrasToast('File moved.');
+                // The move RE-KEYS the item (server C1): the player still holds the OLD id
+                // and would 404 mid-playback - stop it now that the move SUCCEEDED (a failed
+                // move keeps the modal open and the track playing; closing before the
+                // request would kill playback on every retry - watch.js ordering).
+                var pl = extrasPlayer();
+                if (pl && typeof pl.close === 'function') pl.close();
+                afterExtrasMutation();
+              })
+              .catch(function (err) {
+                ctl.statusEl.textContent = (err && err.message) || 'Move failed.';
+                if (typeof ctl.reenable === 'function') ctl.reenable();
+              });
+          });
+        })
+        .catch(function () { extrasToast('Could not load the folder list.'); });
+    }
+    function extrasDelete(item) {
+      var doDelete = function () {
+        // Release the about-to-be-deleted resource before the DELETE (watch.js parity).
+        var pl = extrasPlayer();
+        if (pl && typeof pl.close === 'function') pl.close();
+        fetch('/api/videos/' + encodeURIComponent(item.id), { method: 'DELETE' })
+          .then(function (res) {
+            if (res.status === 403) { extrasToast("You don't have permission to delete library files."); return null; }
+            return res.json();
+          })
+          .then(function (data) {
+            if (!data) return;
+            if (data.success) {
+              extrasToast(typeof window.deleteResultToast === 'function' ? window.deleteResultToast(data) : 'Deleted.');
+              afterExtrasMutation();
+            } else {
+              extrasToast('Error deleting file: ' + (data.error || 'unknown error'));
+            }
+          })
+          .catch(function () { extrasToast('Network error occurred while trying to delete file.'); });
+      };
+      // The same two-flow split as the watch page: a yt-dlp-managed item is re-downloadable
+      // -> the trash confirm; a local file is irreplaceable -> the escalated checkbox-gated
+      // hard-delete modal.
+      if (typeof window.isYtdlpManagedItem === 'function' && window.isYtdlpManagedItem(item)) {
+        if (typeof window.showConfirmModal !== 'function') return;
+        window.showConfirmModal(
+          'Move to Trash?',
+          'Move <strong>' + escapeHtml(item.title || '') + '</strong> to Trash?<br><br><span style="color:var(--yt-red); font-weight:bold;">The file leaves your library now and is permanently removed when the Trash retention window empties it:</span><br><code style="word-break:break-all; font-size:11px;">' + escapeHtml(item.filePath || '') + '</code>',
+          doDelete
+        );
+      } else if (typeof window.showHardDeleteModal === 'function') {
+        window.showHardDeleteModal(item, doDelete);
+      }
+    }
+    function handleAction(act, el) {
+      var item = extrasItem;
+      if (!item || !item.id) return;
+      if (act === 'download') { extrasClose(); return; } // the anchor's own navigation does the work
+      if (act === 'share') { extrasClose(); extrasShare(item); return; }
+      if (act === 'like') { extrasToggleFlag(el, item, 'like'); return; }
+      if (act === 'watched') { extrasToggleFlag(el, item, 'watched'); return; }
+      if (act === 'queue') { extrasClose(); if (typeof window.addToQueue === 'function') window.addToQueue(item.id, 'end'); return; }
+      if (act === 'queue-next') { extrasClose(); if (typeof window.addToQueue === 'function') window.addToQueue(item.id, 'next'); return; }
+      if (act === 'transcript') { extrasClose(); extrasTranscript(item, el); return; }
+      if (act === 'reheat') { extrasClose(); extrasReheat(item); return; }
+      if (act === 'move') { extrasClose(); extrasMove(item); return; }
+      if (act === 'delete') { extrasClose(); extrasDelete(item); }
+    }
+    function cancelPending() { extrasReqToken++; }
+    function destroy() { stopExtrasReheatPoll(); extrasReqToken++; extrasItem = null; }
+    return { open: open, handleAction: handleAction, cancelPending: cancelPending, destroy: destroy };
+  }
+
   function create(config) {
     var SKINS = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
     if (!SKINS || !config || !config.panel) return null;
@@ -282,7 +582,7 @@
       if (!menu) return;
       // Always lands on page 1: a reopen/back never resumes a stale Extras page, and bumping
       // the token invalidates any in-flight Extras fetch (v1.249).
-      extrasReqToken++;
+      extrasMenu.cancelPending();
       menu.removeAttribute('data-sm-page');
       menu.innerHTML = buildStickerMenuHtml();
     }
@@ -311,290 +611,27 @@
       if (pl && typeof pl.setLoop === 'function') pl.setLoop(!liveLoop());
     }
 
-    // ---- the v1.249 Extras page (present only when the view supplies extras hooks) --------
-    var extrasItem = null;     // the /api/videos/:id payload the OPEN page renders
-    var extrasReqToken = 0;    // TOCTOU guard: only the newest open's fetch may render (v1.104 scar)
-    var extrasReheatTimer = null;
-    var extrasReheatAbortHooked = false;
-    function extrasSignal() { return (extrasCfg && extrasCfg.signal) || null; }
-    function extrasBaseId() {
-      if (!extrasCfg) return null;
-      try { return extrasCfg.getBaseId() || null; } catch (_) { return null; }
-    }
+    // v1.278: the Extras action core now lives in the shared createExtrasMenu factory
+    // (reused by the desktop /music actions menu). The two-page "Back" chrome + the
+    // data-sm-page TOCTOU marker stay here (skin-only); the skin path is byte-identical.
     function extrasBackHtml() {
       return '<div class="mms-sm-sec"><button type="button" class="mms-sm-back" data-skin-extras-back>&lsaquo; Back</button></div>';
     }
-    function buildExtrasNoteHtml(msg) {
-      return extrasBackHtml() + '<div class="mms-sm-sec"><div class="mms-sm-note">' + escapeHtml(msg) + '</div></div>';
-    }
-    function extrasCanModifyLibrary() {
-      // The same capability derivation watch.js uses, via the cached shared fetchCurrentUser
-      // (one /api/auth/me per page). Fail CLOSED: no probe / signed-out -> no Move/Delete
-      // (the server enforces regardless).
-      if (typeof window.fetchCurrentUser !== 'function') return Promise.resolve(false);
-      return window.fetchCurrentUser()
-        .then(function (me) { return !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true)); })
-        .catch(function () { return false; });
-    }
-    function buildExtrasHtml(item, canModify) {
-      var hasWatchUrl = typeof item.watchUrl === 'string' && item.watchUrl !== '';
-      var liked = item.liked === true;
-      var watched = item.watchState === 'watched';
-      var acts = [];
-      if (hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="share"><i class="icon-share"></i>Share</button>');
-      acts.push('<a class="mms-sm-act" data-skin-x="download" href="/video/' + encodeURIComponent(item.id) + '?download=1" download><i class="icon-download"></i>Download</a>');
-      acts.push('<button type="button" class="mms-sm-act' + (liked ? ' is-on' : '') + '" data-skin-x="like" aria-pressed="' + (liked ? 'true' : 'false') + '"><i class="icon-heart"></i><span class="mms-sm-actlbl">' + (liked ? 'Liked' : 'Like') + '</span>' + '</button>');
-      acts.push('<button type="button" class="mms-sm-act' + (watched ? ' is-on' : '') + '" data-skin-x="watched" aria-pressed="' + (watched ? 'true' : 'false') + '"><i class="icon-history"></i><span class="mms-sm-actlbl">' + (watched ? 'Watched' : 'Mark watched') + '</span>' + '</button>');
-      acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue"><i class="icon-queue"></i>Add to queue</button>');
-      acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue-next"><i class="icon-play"></i>Play next</button>');
-      if (item.hasSubtitles === true) acts.push('<button type="button" class="mms-sm-act" data-skin-x="transcript"><i class="icon-transcript"></i>Transcript</button>');
-      if (hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="reheat"><i class="icon-flame"></i>Reheat</button>');
-      if (canModify) {
-        acts.push('<button type="button" class="mms-sm-act" data-skin-x="move"><i class="icon-folder"></i>Move to...</button>');
-        acts.push('<button type="button" class="mms-sm-act mms-sm-danger" data-skin-x="delete"><i class="icon-delete"></i>Delete</button>');
-      }
-      return extrasBackHtml() +
-        '<div class="mms-sm-sec"><div class="mms-sm-title">' + escapeHtml(item.title || '') + '</div>' +
-        '<div class="mms-sm-acts">' + acts.join('') + '</div></div>';
-    }
+    var extrasMenu = createExtrasMenu({
+      getMenuEl: function () { return panel.querySelector('[data-skin-sticker-menu]'); },
+      getBaseId: function () { return extrasCfg ? extrasCfg.getBaseId() : null; },
+      getPlayer: stickerPlayer,
+      getSignal: function () { return (extrasCfg && extrasCfg.signal) || null; },
+      close: closeStickerMenu,
+      backHtml: extrasBackHtml,
+      stillOnPage: function () { var m = panel.querySelector('[data-skin-sticker-menu]'); return !!m && m.getAttribute('data-sm-page') === 'extras'; },
+      onMutated: function () { if (extrasCfg && typeof extrasCfg.onMutated === 'function') { try { extrasCfg.onMutated(); } catch (_) { /* view refresh best-effort */ } } },
+    });
     function openStickerExtras() {
       var menu = panel.querySelector('[data-skin-sticker-menu]');
-      var baseId = extrasBaseId();
-      if (!menu || !baseId) return;
-      var token = ++extrasReqToken;
+      if (!menu) return;
       menu.setAttribute('data-sm-page', 'extras');
-      menu.innerHTML = buildExtrasNoteHtml('Loading…');
-      Promise.all([
-        fetch('/api/videos/' + encodeURIComponent(baseId))
-          .then(function (r) { return r.ok ? r.json() : null; })
-          .catch(function () { return null; }),
-        extrasCanModifyLibrary(),
-      ]).then(function (rs) {
-        // Post-await re-checks (the TOCTOU scar): the newest open only, the menu still
-        // mounted+open+on this page, and the SAME track still live (an auto-advance
-        // repaints the panel, detaching this menu node).
-        if (token !== extrasReqToken) return;
-        if (!menu.isConnected || menu.hidden || menu.getAttribute('data-sm-page') !== 'extras') return;
-        if (extrasBaseId() !== baseId) return;
-        var item = rs[0];
-        if (!item || item.id !== baseId) { menu.innerHTML = buildExtrasNoteHtml('Extras aren’t available for this track.'); return; }
-        extrasItem = item;
-        menu.innerHTML = buildExtrasHtml(item, rs[1]);
-      });
-    }
-    function extrasToast(msg) {
-      if (typeof window.showToast === 'function') window.showToast(msg);
-    }
-    function extrasShare(item) {
-      var base = item.watchUrl;
-      var run = function (u) {
-        if (typeof window.shareExternalUrl !== 'function') return;
-        window.shareExternalUrl(u, item.title).then(function (outcome) {
-          // No persistent button to relabel here - the desktop-fallback clipboard write
-          // gets its feedback as a toast (watch.js parity).
-          if (outcome === 'copied') extrasToast('Link copied');
-        });
-      };
-      var pl = stickerPlayer();
-      var t = (pl && typeof pl.getCurrentTime === 'function') ? pl.getCurrentTime() : null;
-      var sig = extrasSignal();
-      if (typeof t === 'number' && isFinite(t) && t >= 1 &&
-        typeof window.showChoiceModal === 'function' && typeof window.withShareStartTime === 'function') {
-        var dismiss = window.showChoiceModal('Share', [
-          { label: 'Share song', onPick: function () { run(base); } },
-          { label: 'Share at current time (' + fmtTime(t) + ')', onPick: function () { run(window.withShareStartTime(base, t)); } },
-        ]);
-        if (typeof dismiss === 'function' && sig) sig.addEventListener('abort', dismiss, { once: true });
-        return;
-      }
-      run(base);
-    }
-    // Like/Watched share one toggle shape: POST adds, DELETE removes, the rendered button
-    // flips ONLY on a 2xx (the server is the truth; a failure leaves the shown state alone).
-    function extrasToggleFlag(el, item, kind) {
-      var on = kind === 'like' ? item.liked === true : item.watchState === 'watched';
-      var url = (kind === 'like' ? '/api/liked/' : '/api/watched/') + encodeURIComponent(item.id);
-      fetch(url, { method: on ? 'DELETE' : 'POST' })
-        .then(function (res) {
-          if (!res.ok) { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update Watched.'); return; }
-          if (kind === 'like') {
-            item.liked = !on;
-            // QA gate (the v1.33.1 class): the count-gated Liked sidebar entry caches its
-            // total per session - re-prime it so home reflects this like without a reload.
-            if (typeof window.fetchLikedTotal === 'function') window.fetchLikedTotal(true);
-          } else {
-            item.watchState = on ? 'unwatched' : 'watched';
-          }
-          if (!el || !el.isConnected) return;
-          var nowOn = !on;
-          el.classList.toggle('is-on', nowOn);
-          el.setAttribute('aria-pressed', nowOn ? 'true' : 'false');
-          // v1.255 slim-gate CRITICAL: write ONLY the label span - a bare el.textContent
-          // assignment destroys the row's glyph <i> (this wave's own feature) on the
-          // menu's most-tapped rows. The || el fallback keeps a span-less row honest.
-          var lbl = el.querySelector('.mms-sm-actlbl');
-          (lbl || el).textContent = kind === 'like' ? (nowOn ? 'Liked' : 'Like') : (nowOn ? 'Watched' : 'Mark watched');
-        })
-        .catch(function () { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update Watched.'); });
-    }
-    function extrasTranscript(item, el) {
-      if (typeof window.openTranscriptFor !== 'function') return;
-      window.openTranscriptFor({
-        id: item.id,
-        title: item.title || 'Transcript',
-        signal: extrasSignal(),
-        onBusy: function (busy) { if (el && el.isConnected) el.disabled = busy; },
-      });
-    }
-    function stopExtrasReheatPoll() {
-      if (extrasReheatTimer) { clearInterval(extrasReheatTimer); extrasReheatTimer = null; }
-    }
-    // Compact, honest outcome line (watch.js describeReheat says WHAT changed; this surface
-    // has no page to re-render, so it reports only the verdict - never claiming a refresh
-    // that may not have happened).
-    function extrasReheatToastFor(entry) {
-      if (entry.outcome === 'failed') return 'Reheat did not complete. Some metadata may have been saved; try again.';
-      if (entry.networkRan === false) return 'No YouTube source found for this track, so there was nothing to refresh.';
-      return 'Reheat finished.';
-    }
-    function extrasReheat(item) {
-      var id = item.id;
-      fetch('/api/ytdlp/repull-metadata/item/' + encodeURIComponent(id), { method: 'POST' })
-        .then(function (res) { return res.json().catch(function () { return {}; }).then(function (body) { return { status: res.status, body: body }; }); })
-        .then(function (r) {
-          if (r.status === 202) { extrasToast('Reheating…'); pollExtrasReheat(id); return; }
-          if (r.status === 409) { extrasToast('A reheat is already running.'); return; }
-          // QA gate: the REAL route's 404 carries an error body; on an install with the
-          // yt-dlp module OFF the route doesn't exist at all, so Express's HTML 404 parses
-          // to {} - saying "no source" there would be a lie (the module is off).
-          if (r.status === 404) { extrasToast((r.body && r.body.error) ? 'This track has no source to reheat from.' : 'Reheat isn’t available on this server.'); return; }
-          if (r.status === 403) { extrasToast('Read-only mode: reheat is disabled on this instance.'); return; }
-          extrasToast((r.body && r.body.error) || 'Reheat could not be started.');
-        })
-        .catch(function () { extrasToast('Reheat could not be started.'); });
-    }
-    function pollExtrasReheat(id) {
-      stopExtrasReheatPoll();
-      var elapsed = 0;
-      var everyMs = 1000;
-      // Same ceiling rationale as watch.js: under activity.js's one-shot TTL, and giving up
-      // stops only the POLL - the job still lands server-side.
-      var ceilingMs = 4 * 60 * 1000;
-      var sig = extrasSignal();
-      extrasReheatTimer = setInterval(function () {
-        elapsed += everyMs;
-        if (elapsed >= ceilingMs) {
-          stopExtrasReheatPoll();
-          extrasToast('Reheat is taking a while; check the activity chip.');
-          return;
-        }
-        fetch('/api/subscriptions/status')
-          .then(function (res) { return res.ok ? res.json() : null; })
-          .then(function (snapshot) {
-            if (sig && sig.aborted) { stopExtrasReheatPoll(); return; }
-            var entry = snapshot && snapshot.oneShots && snapshot.oneShots['repull-metadata-item'];
-            if (!entry || entry.state === 'running' || entry.state === 'queued') return;
-            // A stale terminal entry from a PREVIOUS item's reheat is reachable (fixed
-            // one-shot key, minutes-long TTL) - never report someone else's result as ours.
-            if (entry.mediaId && entry.mediaId !== id) return;
-            stopExtrasReheatPoll();
-            if (entry.state === 'error') { extrasToast('Reheat failed.'); return; }
-            extrasToast(extrasReheatToastFor(entry));
-          })
-          .catch(function () { /* transient poll failure - try again next tick */ });
-      }, everyMs);
-      if (!extrasReheatAbortHooked && sig) {
-        extrasReheatAbortHooked = true;
-        sig.addEventListener('abort', stopExtrasReheatPoll, { once: true });
-      }
-    }
-    // A successful Move/Delete removes (or re-keys) the item the player holds: playback was
-    // already close()d; the VIEW clears its playing state and refreshes via onMutated.
-    function afterExtrasMutation() {
-      extrasItem = null;
-      // QA gate (v1.33.1 class, watch.js delete parity): deleting a LIKED item changes the
-      // count the sidebar's session cache gates on - re-prime it.
-      if (typeof window.fetchLikedTotal === 'function') window.fetchLikedTotal(true);
-      if (extrasCfg && typeof extrasCfg.onMutated === 'function') { try { extrasCfg.onMutated(); } catch (_) { /* view refresh best-effort */ } }
-    }
-    function extrasMove(item) {
-      if (typeof window.showMoveModal !== 'function' || typeof window.requestMoveItem !== 'function') return;
-      var sig = extrasSignal();
-      fetch('/api/config')
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (cfg) {
-          if (sig && sig.aborted) return;
-          var folders = (cfg && cfg.folders) || [];
-          window.showMoveModal(item, folders, function (targetFolder, ctl) {
-            ctl.statusEl.textContent = 'Moving...';
-            window.requestMoveItem(item.id, targetFolder)
-              .then(function () {
-                ctl.teardown();
-                extrasToast('File moved.');
-                // The move RE-KEYS the item (server C1): the player still holds the OLD id
-                // and would 404 mid-playback - stop it now that the move SUCCEEDED (a failed
-                // move keeps the modal open and the track playing; closing before the
-                // request would kill playback on every retry - watch.js ordering).
-                var pl = stickerPlayer();
-                if (pl && typeof pl.close === 'function') pl.close();
-                afterExtrasMutation();
-              })
-              .catch(function (err) {
-                ctl.statusEl.textContent = (err && err.message) || 'Move failed.';
-                if (typeof ctl.reenable === 'function') ctl.reenable();
-              });
-          });
-        })
-        .catch(function () { extrasToast('Could not load the folder list.'); });
-    }
-    function extrasDelete(item) {
-      var doDelete = function () {
-        // Release the about-to-be-deleted resource before the DELETE (watch.js parity).
-        var pl = stickerPlayer();
-        if (pl && typeof pl.close === 'function') pl.close();
-        fetch('/api/videos/' + encodeURIComponent(item.id), { method: 'DELETE' })
-          .then(function (res) {
-            if (res.status === 403) { extrasToast("You don't have permission to delete library files."); return null; }
-            return res.json();
-          })
-          .then(function (data) {
-            if (!data) return;
-            if (data.success) {
-              extrasToast(typeof window.deleteResultToast === 'function' ? window.deleteResultToast(data) : 'Deleted.');
-              afterExtrasMutation();
-            } else {
-              extrasToast('Error deleting file: ' + (data.error || 'unknown error'));
-            }
-          })
-          .catch(function () { extrasToast('Network error occurred while trying to delete file.'); });
-      };
-      // The same two-flow split as the watch page: a yt-dlp-managed item is re-downloadable
-      // -> the trash confirm; a local file is irreplaceable -> the escalated checkbox-gated
-      // hard-delete modal.
-      if (typeof window.isYtdlpManagedItem === 'function' && window.isYtdlpManagedItem(item)) {
-        if (typeof window.showConfirmModal !== 'function') return;
-        window.showConfirmModal(
-          'Move to Trash?',
-          'Move <strong>' + escapeHtml(item.title || '') + '</strong> to Trash?<br><br><span style="color:var(--yt-red); font-weight:bold;">The file leaves your library now and is permanently removed when the Trash retention window empties it:</span><br><code style="word-break:break-all; font-size:11px;">' + escapeHtml(item.filePath || '') + '</code>',
-          doDelete
-        );
-      } else if (typeof window.showHardDeleteModal === 'function') {
-        window.showHardDeleteModal(item, doDelete);
-      }
-    }
-    function handleExtrasAction(act, el) {
-      var item = extrasItem;
-      if (!item || !item.id) return;
-      if (act === 'download') { closeStickerMenu(); return; } // the anchor's own navigation does the work
-      if (act === 'share') { closeStickerMenu(); extrasShare(item); return; }
-      if (act === 'like') { extrasToggleFlag(el, item, 'like'); return; }
-      if (act === 'watched') { extrasToggleFlag(el, item, 'watched'); return; }
-      if (act === 'queue') { closeStickerMenu(); if (typeof window.addToQueue === 'function') window.addToQueue(item.id, 'end'); return; }
-      if (act === 'queue-next') { closeStickerMenu(); if (typeof window.addToQueue === 'function') window.addToQueue(item.id, 'next'); return; }
-      if (act === 'transcript') { closeStickerMenu(); extrasTranscript(item, el); return; }
-      if (act === 'reheat') { closeStickerMenu(); extrasReheat(item); return; }
-      if (act === 'move') { closeStickerMenu(); extrasMove(item); return; }
-      if (act === 'delete') { closeStickerMenu(); extrasDelete(item); }
+      extrasMenu.open();
     }
     // The sticker's slice of the delegated click dispatch. Returns true when it consumed
     // the click (the caller returns) - ORDER MATTERS: these run before the transport hooks
@@ -621,7 +658,7 @@
       if (e.target.closest('[data-skin-extras]')) { openStickerExtras(); return true; }
       if (e.target.closest('[data-skin-extras-back]')) { refreshStickerMenu(); return true; }
       var xact = e.target.closest('[data-skin-x]');
-      if (xact) { handleExtrasAction(xact.getAttribute('data-skin-x'), xact); return true; }
+      if (xact) { extrasMenu.handleAction(xact.getAttribute('data-skin-x'), xact); return true; }
       var spOpt = e.target.closest('[data-skin-speed]');
       if (spOpt) { applyStickerSpeed(spOpt.getAttribute('data-skin-speed')); refreshStickerMenu(); return true; }
       if (e.target.closest('[data-skin-loop]')) { toggleStickerLoop(); refreshStickerMenu(); return true; }
@@ -1239,11 +1276,10 @@
         panel.removeEventListener('pointerdown', onDown);
       }
       if (wheelSpin) { try { endWheel(wheelSpin, false); } catch (_) { /* ignore */ } }
-      stopExtrasReheatPoll(); // a live poll must never outlive the surface (the pipClock lesson)
+      extrasMenu.destroy();   // stop the reheat poll + invalidate a late extras fetch (shared factory)
       unlockBodyScroll();     // v1.256: the haptic body lock dies with the surface
       unwatchGhost();
       wheelGhost = null;
-      extrasReqToken++;       // and a late extras fetch must never render into a dead panel
       bound = false;
       // clear the full-screen body class this view may have set (the v1.227 leak lesson - a
       // podcasts<->music swap must never strand the frozen-scroll cover).
@@ -1457,7 +1493,7 @@
     };
   }
 
-  var api = { create: create, buildPanelHtml: buildPanelHtml, createPopoutShell: createPopoutShell };
+  var api = { create: create, buildPanelHtml: buildPanelHtml, createPopoutShell: createPopoutShell, createExtrasMenu: createExtrasMenu };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.FileTubeSkinSurface = api;
 })();
