@@ -93,6 +93,40 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.277.0 - Music player self-heals after an iOS rotate round-trip (2026-09-09)
+
+Dean (device, screenshot): listening to MUSIC in the expanded player on iPhone,
+rotating to landscape and back to portrait could strand the player - the
+now-playing panel (#music-nowplaying-panel: title + "UP NEXT") rendered ALONE
+below #player-slot with NO transport or art, unrecoverable by any user action
+(dock/close/re-rotate all confirmed dead at intake).
+
+Root cause (code-traced, two-agent + main): onOrientationChange keys on the
+matchMedia 'change'/orientationchange event, which iOS DROPS often; when dropped,
+the audio branch's portrait-collapse never runs and the shared host ends up parked
+in #fs-stage / out of #player-slot / still `.audio-expanded`, while the panel's
+visibility (state==='full') is decoupled from whether the host is actually seated.
+Re-rotating relies on the same flaky event, so it never heals.
+
+Fix: a player-owned reconcileAudioSurface() re-asserts the canonical FULL-in-slot
+inline audio surface (exit a stale stage -> re-seat an out-of-slot host -> drop a
+strand-leftover `.audio-expanded`), gated to a FULL, mobile, audio player in
+PORTRAIT (landscape is the intended immersive overlay, untouched) and wired to
+resize + pageshow + visibilitychange - signals iOS fires RELIABLY on a rotation
+and an app-foreground, unlike the orientation event. This is the recovery Dean's
+re-rotate lacked: a rotation's `resize` now triggers the heal. Every step is
+idempotent (no-op once canonical); rAF-coalesced against iOS resize churn.
+
+Full gate (QA + adversarial), one fix round. Both seats independently caught the
+SAME CRITICAL: the overlay-clear step, unconditional, collapsed the DELIBERATE
+mobile portrait #fs-btn expand (v1.22.2) on the next foreground. Fixed: the clear
+now fires only when the pass actually un-stranded the host (a `healed` flag),
+extracted into a mutation-bound pure helper. Dual-Node 8386/8386 on v22.23.1 +
+v24.14.0. Disclosed residuals (not Dean's strand, no evidence): a host hidden by a
+display rule or a hidden #player-slot is not restored by the reconcile. The stuck
+state is UI-only - no data at risk. The on-device rotate behaviour is Dean's
+device pass.
+
 ### v1.276.1 - Under-the-hood security update (release integrity) (2026-09-08)
 
 Maintenance patch, no user-facing behaviour change. A dev-only dependency
