@@ -16,7 +16,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { shouldForceInlineAudioOnReconcile } = require('../../public/js/player.js');
+const { shouldForceInlineAudioOnReconcile, shouldClearStuckAudioExpand } = require('../../public/js/player.js');
 const PLAYER_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
 
 // ---- the pure gate: FULL + mobile + audio + PORTRAIT only ----------------------
@@ -36,6 +36,23 @@ test('shouldForceInlineAudioOnReconcile fails safe to false on missing/garbage c
   assert.strictEqual(shouldForceInlineAudioOnReconcile({ isFull: 1, mobile: 1, audio: 1, landscape: 0 }), true, 'truthy coercion still resolves');
 });
 
+// ---- the audio-expand CLEAR decision: the gate seats' CRITICAL, bound ----------
+// Both gate seats caught an UNCONDITIONAL portrait clear as a regression: the
+// #fs-btn manual expand (v1.22.2, orientation-independent) would self-collapse on
+// the next foreground/resize. The clear now fires ONLY when this pass un-stranded
+// the host (healed). This binds that behaviourally so the regression cannot return.
+
+test('shouldClearStuckAudioExpand: drops .audio-expanded ONLY when a strand was just healed', () => {
+  assert.strictEqual(shouldClearStuckAudioExpand({ audioExpanded: true, healed: true }), true, 'expanded + host was un-stranded -> the class is a strand leftover, drop it');
+});
+
+test('shouldClearStuckAudioExpand: PRESERVES a deliberate portrait #fs-btn expand (cleanly-seated host, no heal) - the gate-caught regression', () => {
+  assert.strictEqual(shouldClearStuckAudioExpand({ audioExpanded: true, healed: false }), false, 'expanded but nothing was stranded -> the user opened it on purpose; leave it');
+  assert.strictEqual(shouldClearStuckAudioExpand({ audioExpanded: false, healed: true }), false, 'nothing to clear');
+  assert.strictEqual(shouldClearStuckAudioExpand(undefined), false, 'fails safe');
+  assert.strictEqual(shouldClearStuckAudioExpand({}), false);
+});
+
 // ---- the DOM reconcile shell (browser-only; source-locked) ----------------------
 
 test('reconcileAudioSurface guards on the pure gate, then undoes stale stage / out-of-slot host / leftover .audio-expanded', () => {
@@ -47,10 +64,11 @@ test('reconcileAudioSurface guards on the pure gate, then undoes stale stage / o
   assert.match(body, /landscape:\s*!!\(mql && mql\.matches\)/, 'the portrait/landscape axis is the LIVE matchMedia state');
   // 1) stale staged fullscreen -> exit the stage.
   assert.match(body, /if \(stagedFullscreen && document\.fullscreenElement !== fsStageEl\) \{[\s\S]*?placeHostAfterStageExit\(\);/, 'a stale stage (staged but not actually native-fullscreen) is exited');
-  // 2) out-of-slot host -> re-seat.
-  assert.match(body, /if \(host\.parentNode !== slot\) mountInSlot\(slot\);/, 're-seats a host reparented out of #player-slot');
-  // 3) leftover overlay -> drop it.
-  assert.match(body, /if \(host\.classList\.contains\('audio-expanded'\)\) setAudioExpanded\(false\);/, 'clears an .audio-expanded the dropped portrait-collapse left behind');
+  // 2) out-of-slot host -> re-seat (and MARK healed, so step 3 knows a strand was undone).
+  assert.match(body, /if \(host\.parentNode !== slot\) \{ mountInSlot\(slot\); healed = true; \}/, 're-seats a host reparented out of #player-slot and marks healed');
+  assert.match(body, /placeHostAfterStageExit\(\);\s*\n\s*healed = true;/, 'the stale-stage exit also marks healed');
+  // 3) leftover overlay -> drop it, but ONLY when a strand was healed (via the pure decision).
+  assert.match(body, /shouldClearStuckAudioExpand\(\{[\s\S]*?healed:\s*healed,[\s\S]*?\}\)\) setAudioExpanded\(false\)/, 'the overlay clear is gated on the healed decision - never an unconditional portrait clear');
   // the slot it targets is the real #player-slot.
   assert.match(body, /getElementById\('player-slot'\)/, 'the canonical seat is #player-slot');
 });
