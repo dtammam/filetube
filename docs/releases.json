@@ -2884,5 +2884,11 @@
     "date": "2026-09-09",
     "title": "More options for your music on desktop",
     "intent": "On a computer, the Music player now has a \"More\" button in the toolbar (next to Pop out and Shuffle) that opens the same set of options you already get for videos - Share, Watch, Reheat, Transcript, Like, mark as Watched, add to the queue or play next, and move or delete the file - each shown when it applies to the track you're playing. It's especially handy for long YouTube-sourced tracks split into chapters: you can now share them, jump to the original video, and more, right from the Music page."
+  },
+  {
+    "version": "1.279.0",
+    "date": "2026-09-10",
+    "title": "Loop a single chapter, reliably",
+    "intent": "On the retro player skins (Pocket Classic, Seattle Classic and the rest), when you're playing a long YouTube track split into chapters, the menu's Loop control now clearly reads \"Loop chapter\" - so it's obvious it repeats just the chapter you're on, not the whole file. And it's more dependable: it used to occasionally slip into the next chapter instead of repeating, and now it holds the chapter reliably. A normal song still just says \"Loop\"."
   }
 ]
