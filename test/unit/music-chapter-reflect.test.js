@@ -251,6 +251,55 @@ test('v1.240 source-lock: enforceChapterLoop is bound BEFORE reflectChapter and 
   assert.match(m[1], /isLoopEnabled\(\)/, 'gated on the loop flag');
 });
 
+// ---- v1.279 (Dean): the chapter loop was INCONSISTENT - a sparse timeupdate that jumped
+// across the tight [end-0.25, end+1) band slipped past and rolled into the next chapter.
+// The crossing clause catches a NORMAL-step playback crossing regardless of the band, while
+// a big jump (a scrub, or the stale post-scrub tick) is still rejected. ---------------------
+
+test('v1.279: a SPARSE tick that JUMPS the band (below -> above, normal step) STILL loops the chapter', async () => {
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom) => {
+    const { mp, set } = loopable(dom, 360); // 3 x 120s chapters, boundary at 120
+    dom.window.FileTube.player.isLoopEnabled = () => true;
+    set(119); await settle();     // BELOW the band [119.75, 121) - no seek yet
+    assert.strictEqual(mp.currentTime, 119, 'not yet at the boundary');
+    set(121.6); await settle();   // ABOVE the band (a 2.6s throttled gap) - the OLD code slipped here
+    assert.strictEqual(mp.currentTime, 0, 'the sparse crossing STILL looped back to chapter one start');
+    assert.strictEqual(playingId(dom), 'film::c0', 'stayed on chapter one (did NOT roll to chapter two)');
+  });
+});
+
+test('v1.279: a BIG jump past the boundary (delta > the normal step) is NOT looped - the scrub protection holds', async () => {
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom) => {
+    const { mp, set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => true;
+    set(118); await settle();     // inside chapter one
+    set(128); await settle();     // +10s in one tick (far past end 120) - a scrub-sized jump, not playback
+    assert.strictEqual(mp.currentTime, 128, 'a big jump is NOT yanked back (a forward scrub survives)');
+  });
+});
+
+test('v1.279 (Dean A): the sticker Loop row reads "Loop chapter" while a chaptered ::c track plays', async () => {
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom) => {
+    const panel = dom.window.document.getElementById('music-nowplaying-panel');
+    const stickerBtn = panel.querySelector('[data-skin-sticker]');
+    assert.ok(stickerBtn, 'the sticker button rendered (mobile skin)');
+    stickerBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    const loop = panel.querySelector('.mms-sm-loop .mms-sm-lbl');
+    assert.ok(loop, 'the Loop row rendered');
+    assert.match(loop.textContent, /Loop chapter/, 'a chaptered track: the label makes clear it loops the CHAPTER');
+    assert.doesNotMatch(loop.textContent, /Loop chapter chapter/, 'not doubled');
+  }, { mobile: true });
+});
+
+test('v1.279 (Dean A): the Loop label is chapter-CONDITIONAL (plain "Loop" for a normal song)', () => {
+  const skin = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
+  assert.match(skin, /loopIsChapter \? 'Loop chapter' : 'Loop'/, 'the label is a ternary on the chapter test - never unconditional');
+  assert.match(skin, /stickerCfg\.isChapterTrack\(\)/, 'derived from the view-supplied chapter test');
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  assert.match(js, /isChapterTrack: function \(\) \{ var id = effectiveCurrentId\(\);[^}]*::c/, 'music.js reports a ::c track as a chapter');
+});
+
 // ---- source locks ----------------------------------------------------------------------
 test('v1.237: the chapter watcher is wired (timeupdate -> reflectChapter) and the renders prefer chapterViewId', () => {
   const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');

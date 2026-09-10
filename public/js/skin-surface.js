@@ -493,6 +493,13 @@
           (r === 1 ? 'Normal' : r + '×') + '</button>';
       }).join('');
       var loopOn = liveLoop();
+      // v1.279 (Dean): when a chaptered `::c` track is playing, Loop already loops the CURRENT
+      // CHAPTER (music.js enforceChapterLoop), not the whole file - so say so, else there is
+      // "no clear way to loop a chapter". The view supplies the chapter test (isChapterTrack);
+      // plain "Loop" for a normal song.
+      var loopIsChapter = false;
+      try { loopIsChapter = !!(stickerCfg && typeof stickerCfg.isChapterTrack === 'function' && stickerCfg.isChapterTrack()); } catch (_) { loopIsChapter = false; }
+      var loopLabel = loopIsChapter ? 'Loop chapter' : 'Loop';
       var skins = SKINS.SKINS || [];
       var active = (typeof SKINS.activeSkinId === 'function') ? SKINS.activeSkinId() : '';
       // v1.257 (QA S3) -> v1.258 (Dean's colorway round): inside the TRAY the chips are
@@ -563,7 +570,7 @@
         : '';
       return '<div class="mms-sm-sec"><div class="mms-sm-h">Speed</div><div class="mms-sm-speed">' + speed + '</div></div>' +
         '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (loopOn ? ' is-on' : '') +
-        '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-refresh"></i>Loop</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
+        '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-refresh"></i>' + loopLabel + '</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
         autoplay + trayRow +
         '<div class="mms-sm-sec"><div class="mms-sm-h">' + (trayActive ? 'Color' : 'Skin') + '</div><div class="mms-sm-skins">' + chips + '</div></div>' +
         watchBack + brickRow + extras;

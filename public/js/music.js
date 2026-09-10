@@ -799,6 +799,9 @@ if (typeof module !== 'undefined' && module.exports) {
         sticker: {
           getPlayer: function () { return (window.FileTube && window.FileTube.player) || null; },
           onSkinChange: function () { updateNowPlayingPanel(); }, // re-render both surfaces with the new skin
+          // v1.279 (Dean): the Loop row relabels to "Loop chapter" when a chaptered `::c` track
+          // is playing (Loop already loops the current chapter via enforceChapterLoop).
+          isChapterTrack: function () { var id = effectiveCurrentId(); return !!(id && /::c\d+$/.test(String(id))); },
           // v1.252 (Listen-mode): the "Watch" way back - page 1 offers it ONLY while the
           // playing queue item is a listen track (the client-only flag playListenItem set).
           // The tap navigates to the item's watch page; the MEDIA progress store (written
@@ -947,23 +950,37 @@ if (typeof module !== 'undefined' && module.exports) {
     // chapter's start when the playhead reaches its end boundary, keeping playback - and so the
     // reflected identity - inside the chapter. Skipped during a wheel SCRUB so a deliberate
     // scrub past the boundary is not yanked back mid-drag (the v1.239 carried interaction).
+    // v1.279 (Dean): the playhead position enforceChapterLoop saw on its PREVIOUS run. It is
+    // updated on every NON-scrub tick (loop on OR off) and FROZEN during a scrub-skip, so the
+    // crossing clause below can tell a normal playback step from a scrub jump.
+    var lastLoopTime = -1;
     function enforceChapterLoop() {
       if (!chapterViewId) return;
       // v1.250: the live-scrub state lives in the shared engine now - ask whichever surface exists.
+      // Returning HERE freezes lastLoopTime for the whole drag, so the post-release stale tick's
+      // delta stays huge and the crossing clause never yanks a forward scrub back.
       if ((inTabEngine && inTabEngine.isScrubbing()) || (popoutShell && popoutShell.isScrubbing())) return;
+      var mp = hostCtl('media-player'); if (!mp) return;
+      var t = Number(mp.currentTime) || 0;
+      var last = lastLoopTime;
+      lastLoopTime = t; // track playback whether loop is on or off (frozen only by the scrub-skip)
       var pl = window.FileTube && window.FileTube.player;
       try { if (!pl || typeof pl.isLoopEnabled !== 'function' || !pl.isLoopEnabled()) return; } catch (_) { return; }
-      var mp = hostCtl('media-player'); if (!mp) return;
       var b = currentChapterBounds(); if (!b) return;
-      // Fire only in a TIGHT band around the boundary: [end-0.25, end+1). The scrub-skip guard
-      // above only covers a live drag; the FINAL scrub position's timeupdate can land AFTER
-      // pointerup (async media events), when isScrubbing() is already false but chapterViewId is
-      // still the pre-scrub chapter (reflectChapter runs after this). Without the upper cap
-      // that stale tick would yank a deliberate forward-scrub-to-a-far-chapter back to the old
-      // chapter's start (QA gate WARNING). end+1 clears every normal-playback tick (~119.9)
-      // yet rejects a far stale position (250 vs a {0,120} chapter).
-      if (mp.currentTime >= b.end - 0.25 && mp.currentTime < b.end + 1 && mp.currentTime > b.start) {
-        try { mp.currentTime = b.start; } catch (_) { /* ignore a bad set */ }
+      // (1) the pre-boundary BAND [end-0.25, end+1): seek back at/just-before the boundary so
+      //     there is no audible bleed into the next chapter (the v1.240 behaviour, unchanged).
+      var inBand = (t >= b.end - 0.25 && t < b.end + 1 && t > b.start);
+      // (2) v1.279 (Dean's "inconsistent chapter loop"): a SPARSE timeupdate that JUMPED across
+      //     the boundary. iOS throttles timeupdate, so a gap wider than the tight band above
+      //     would slip the loop into the next chapter. Catch it when the PREVIOUS tick was
+      //     inside THIS chapter and this one is past its end by a NORMAL playback step
+      //     (<= LOOP_MAX_STEP). A forward SCRUB jumps far more, and its stale post-release tick
+      //     has a huge delta (lastLoopTime was frozen at the pre-scrub position by the scrub-skip
+      //     above) - so the QA-WARNING far-scrub case (250 vs a {0,120} chapter) stays rejected.
+      var LOOP_MAX_STEP = 4;
+      var crossed = (last >= b.start && last < b.end && t >= b.end && (t - last) > 0 && (t - last) <= LOOP_MAX_STEP);
+      if (inBand || crossed) {
+        try { mp.currentTime = b.start; lastLoopTime = b.start; } catch (_) { /* ignore a bad set */ }
       }
     }
     var chapterReflectBound = false;
