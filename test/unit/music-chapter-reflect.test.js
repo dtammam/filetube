@@ -278,6 +278,29 @@ test('v1.279: a BIG jump past the boundary (delta > the normal step) is NOT loop
   });
 });
 
+test('v1.279 (gate lock): a normal-speed forward SCRUB crossing a boundary SURVIVES - via reflect-advance, not the delta', async () => {
+  // Both gate seats: the crossing clause could yank a forward scrub. It does NOT for a
+  // normal-speed scrub, because reflectChapter (bound to timeupdate, NOT scrub-guarded)
+  // advances chapterViewId DURING the drag - so by the post-release tick the bounds are the
+  // NEXT chapter and the frozen `last` sits below its start -> crossed cannot fire. This locks
+  // that protector (the residual is only a scrub so fast NO mid-tick fires - tech-debt).
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom) => {
+    const { mp, set } = loopable(dom, 360); // 3 x 120s, boundary at 120
+    dom.window.FileTube.player.isLoopEnabled = () => true;
+    set(118); await settle(); // establish chapter one; lastLoopTime = 118
+    const panel = dom.window.document.getElementById('music-nowplaying-panel');
+    const wheel = panel.querySelector('.ip-wheel');
+    assert.ok(wheel, 'the wheel rendered (mobile skin)');
+    wheel.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    wheel.dispatchEvent(new dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 86.6, clientY: 50 }));
+    set(121); await settle();  // mid-drag: crosses the boundary -> reflect advances to chapter two
+    assert.strictEqual(playingId(dom), 'film::c1', 'reflect advanced the displayed chapter during the drag');
+    wheel.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true }));
+    set(122); await settle();  // the stale post-release tick, just past the OLD boundary
+    assert.ok(Math.abs(mp.currentTime - 122) < 0.5, 'the forward scrub SURVIVED - not yanked back to a chapter start');
+  }, { mobile: true });
+});
+
 test('v1.279 (Dean A): the sticker Loop row reads "Loop chapter" while a chaptered ::c track plays', async () => {
   await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom) => {
     const panel = dom.window.document.getElementById('music-nowplaying-panel');

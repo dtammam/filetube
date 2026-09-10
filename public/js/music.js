@@ -957,8 +957,12 @@ if (typeof module !== 'undefined' && module.exports) {
     function enforceChapterLoop() {
       if (!chapterViewId) return;
       // v1.250: the live-scrub state lives in the shared engine now - ask whichever surface exists.
-      // Returning HERE freezes lastLoopTime for the whole drag, so the post-release stale tick's
-      // delta stays huge and the crossing clause never yanks a forward scrub back.
+      // Returning HERE freezes lastLoopTime for the whole drag (so a FAR forward scrub's stale
+      // post-release tick has a huge delta and the crossing clause rejects it). A normal-speed
+      // forward scrub CROSSING a boundary survives for a different reason: reflectChapter (bound
+      // to timeupdate, NOT scrub-guarded) advances chapterViewId during the drag, so by the
+      // post-release tick the bounds are the NEW chapter and the frozen `last` sits below its
+      // start - crossed cannot fire. (Locked by the "slow forward scrub survives" test.)
       if ((inTabEngine && inTabEngine.isScrubbing()) || (popoutShell && popoutShell.isScrubbing())) return;
       var mp = hostCtl('media-player'); if (!mp) return;
       var t = Number(mp.currentTime) || 0;
@@ -974,9 +978,13 @@ if (typeof module !== 'undefined' && module.exports) {
       //     the boundary. iOS throttles timeupdate, so a gap wider than the tight band above
       //     would slip the loop into the next chapter. Catch it when the PREVIOUS tick was
       //     inside THIS chapter and this one is past its end by a NORMAL playback step
-      //     (<= LOOP_MAX_STEP). A forward SCRUB jumps far more, and its stale post-release tick
-      //     has a huge delta (lastLoopTime was frozen at the pre-scrub position by the scrub-skip
-      //     above) - so the QA-WARNING far-scrub case (250 vs a {0,120} chapter) stays rejected.
+      //     (<= LOOP_MAX_STEP). A FAR forward scrub jumps far more (its frozen `last` gives a huge
+      //     delta -> rejected: the QA-WARNING 250-vs-{0,120} case); a normal-speed scrub survives
+      //     via the reflect-advance noted above. RESIDUAL (tech-debt #chapter-loop-scrub, accepted
+      //     - disclosed): a scrub so FAST that NO mid-drag timeupdate fires (reflect never
+      //     advanced), or a sparse PLAYBACK gap WIDER than LOOP_MAX_STEP, is indistinguishable
+      //     from the intended crossing by delta alone - with loop ON it is looped back to the
+      //     chapter start (staying in-chapter, arguably the loop intent). Inherent at this seam.
       var LOOP_MAX_STEP = 4;
       var crossed = (last >= b.start && last < b.end && t >= b.end && (t - last) > 0 && (t - last) <= LOOP_MAX_STEP);
       if (inBand || crossed) {
