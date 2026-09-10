@@ -93,6 +93,33 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.279.0 - Reliable chapter loop + a clear "Loop chapter" label (2026-09-10)
+
+Dean: on the mobile player skins, no clear way to loop a chapter of a downloaded
+YouTube chaptered mp3, and it felt inconsistent. He asked me to VALIDATE (trace it)
+before building - the right call: the ability existed since v1.240 (the sticker Loop
+toggle loops the current ::c chapter via enforceChapterLoop) but a repro proved it IS
+inconsistent - a sparse iOS timeupdate that jumps across the tight [end-0.25, end+1)
+band slips past the boundary and rolls into the next chapter. Two parts:
+
+1. RELIABILITY: keep the pre-boundary band, ADD a crossing catch - if the previous tick
+   was inside this chapter and this one is past its end by a NORMAL playback step
+   (<= 4s), loop back. lastLoopTime is frozen during a scrub-skip; a normal-speed forward
+   scrub survives because reflectChapter advances the chapter DURING the drag (a new test
+   locks that, mutation-proven by both seats). Disclosed residual (tech-debt #221): a
+   scrub so fast no mid-drag tick fires, or a playback gap > 4s (extreme throttling), is
+   indistinguishable by delta and loops back with loop on.
+2. CLARITY (Dean's option A): the sticker menu's "Loop" row reads "Loop chapter" while a
+   chaptered ::c track is playing (plain "Loop" for a normal song), via the shared skin
+   engine + a view-supplied isChapterTrack test.
+
+Full gate (QA + adversarial), one fix round. Both seats APPROVE'd the mechanism; both
+also caught my commit OVER-CLAIMING that forward scrubs are always safe "because the
+delta is huge" (true only for FAR scrubs) - corrected the source comment to credit the
+real reflect-advance protector and disclosed the residual honestly. Dual-Node: Node
+22.23.1 8398/8398 (3 env-skips, 0 fail), Node 24.14.0 8401/8401. No data at risk. The
+on-device loop feel is Dean's device pass.
+
 ### v1.278.0 - Desktop Music actions menu (video-parity Extras) (2026-09-09)
 
 Dean: the desktop /music now-playing view had NO per-item actions (noticed on chaptered
