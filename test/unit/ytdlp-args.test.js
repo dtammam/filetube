@@ -659,6 +659,62 @@ test('buildYtdlpListArgs: a per-sub maxDurationSeconds of 0 means unbounded (omi
   assert.ok(!result.includes('--match-filter'), 'sub.maxDurationSeconds: 0 must override the global bound with "unbounded"');
 });
 
+// ---- v1.285: the per-channel duration FLOOR (minDurationSeconds) ------------
+
+test('buildMatchFilterArg: minDurationSeconds alone -> a single --match-filter with only the floor clause (strict >=, excludes unknowns)', () => {
+  const result = args.buildMatchFilterArg({ skipShorts: false, minDurationSeconds: 600 });
+  assert.deepEqual(result, ['--match-filter', 'duration >= 600']);
+  // strict >=, NEVER the >=? "match-if-absent" form (unknown-duration items are excluded).
+  assert.ok(!result[1].includes('>=?'), 'no ? suffix -> unknown-duration items are excluded');
+});
+
+test('buildMatchFilterArg: BOTH bounds -> ONE --match-filter, floor before ceiling, AND-joined', () => {
+  assert.deepEqual(
+    args.buildMatchFilterArg({ skipShorts: false, minDurationSeconds: 600, maxDurationSeconds: 4500 }),
+    ['--match-filter', 'duration >= 600 & duration < 4500']
+  );
+});
+
+test('buildMatchFilterArg: shorts + floor + ceiling -> all three in ONE --match-filter, order shorts, min, max', () => {
+  assert.deepEqual(
+    args.buildMatchFilterArg({ skipShorts: true, minDurationSeconds: 600, maxDurationSeconds: 4500 }),
+    ['--match-filter', 'original_url!*=/shorts/ & duration >= 600 & duration < 4500']
+  );
+});
+
+test('buildMatchFilterArg: a non-integer/negative/zero minDurationSeconds never contributes a floor clause', () => {
+  for (const bad of [0, -1, 1.5, '600', NaN, null, undefined]) {
+    assert.deepEqual(args.buildMatchFilterArg({ skipShorts: false, minDurationSeconds: bad }), [], `minDurationSeconds=${JSON.stringify(bad)} -> no clause`);
+  }
+});
+
+test('buildYtdlpListArgs: a per-sub minDurationSeconds emits the floor clause on the REAL list pass (reachability)', () => {
+  const config = makeConfig({ maxDurationSeconds: 0 }); // ceiling off, floor only
+  const result = args.buildYtdlpListArgs(baseSub({ minDurationSeconds: 600 }), config);
+  const idx = result.indexOf('--match-filter');
+  assert.ok(idx >= 0, 'the floor reaches the real spawn args');
+  assert.equal(result[idx + 1], 'duration >= 600');
+});
+
+test('buildYtdlpListArgs: a per-sub min + max emits the combined window on the real list pass', () => {
+  const config = makeConfig({ maxDurationSeconds: 0 });
+  const result = args.buildYtdlpListArgs(baseSub({ minDurationSeconds: 600, maxDurationSeconds: 4500 }), config);
+  const idx = result.indexOf('--match-filter');
+  assert.equal(result[idx + 1], 'duration >= 600 & duration < 4500');
+});
+
+test('buildYtdlpListArgs: the FLOOR has NO global fallback - a config with no floor never adds one (per-channel only)', () => {
+  const config = makeConfig({ maxDurationSeconds: 0 });
+  const result = args.buildYtdlpListArgs(baseSub(), config); // no sub.minDurationSeconds
+  assert.ok(!result.includes('--match-filter'), 'no per-sub floor + no ceiling -> no match-filter at all');
+});
+
+test('buildYtdlpListArgs: the floor clause never leaks into the download pass (list-only, like the ceiling)', () => {
+  const config = makeConfig({ maxDurationSeconds: 0 });
+  const result = args.buildYtdlpDownloadArgs(baseSub({ minDurationSeconds: 600 }), config, ['vid1']);
+  assert.ok(!result.includes('--match-filter'), 'the download pass targets explicit ids only');
+});
+
 test('buildYtdlpListArgs: --match-filter (duration clause) never influences buildYtdlpDownloadArgs (download pass targets explicit ids only)', () => {
   const config = makeConfig({ maxDurationSeconds: 3600 });
   const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
