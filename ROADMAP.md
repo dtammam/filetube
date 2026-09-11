@@ -93,6 +93,34 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.282.0 - A chaptered LISTEN video keeps its chapters after docking (2026-09-11)
+
+Dean (tech-debt #222): the v1.280 flow works - a chaptered Listen video shows all its
+chapters in Pocket Classic / Seattle - but docking the player and tapping back into it
+COLLAPSED the chapter list. Root cause: a Listen video has no album, so on the dock-return
+(?nowplaying=1) init took the v1.207 album-drill branch and drilled into an EMPTY album (a
+listen track's albumKey is the video id, never a real artist\x00album key). Net: the up-next
+went empty, chapter-LOOP stopped enforcing (currentChapterBounds null), the now-playing title
+stopped advancing across boundaries (currentChapterId frozen), and the browse behind the skin
+was a dead "0 songs" view. Playback, the Watch way-back, and listen semantics all kept working.
+
+Fix: stash the expanded `::c` chapter tracks at MODULE scope (activeListenChapters, alongside
+the existing activeListenId) the moment playListenItem builds them; on the dock-return re-init,
+detect the live player is still a `::c` chapter sharing that base and restore the queue
+SYNCHRONOUSLY from the stash - no re-fetch, and drill=null so the dead empty-album drill never
+fires. Ordered BEFORE the album branch so a chaptered listen never falls into it; a real
+library album (stash null) still routes to the album drill unchanged. A non-listen play clears
+the stash, so a later album can never masquerade as a live listen.
+
+Full two-reviewer gate (both seats, because listen+chapters+dock-return is a battle-won seam):
+both APPROVE. Their shared non-blocking finding - the dispatch branch was source-locked +
+mutant-verified but had no EXECUTING behavioural test (the reachability/clobber class this repo
+has repeatedly paid for) - was closed in a fix round: a new test drives the real init() twice
+against one required module instance (the stash survives the dock-tap re-init as in production)
+and proves, through the setTrackNav contract, that a mid-album dock-return restores neighbours
+on both sides. Adversarial killed 4 distinct production-regression mutants against it. No data
+at risk. Dual-Node 8412/8412 on v22.23.1 + v24.14.0. The device pass is Dean's.
+
 ### v1.281.0 - No scrollbar flash when launching a mobile music skin (2026-09-11)
 
 Dean: launching the full-screen music player (esp. Pocket Classic) flashed a scrollbar

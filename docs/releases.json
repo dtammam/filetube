@@ -2902,5 +2902,11 @@
     "date": "2026-09-11",
     "title": "No more scrollbar flash launching the music player",
     "intent": "On the phone, opening the full-screen music player skins (Pocket Classic, Seattle Classic and the rest) briefly flashed a scrollbar down the right side that then disappeared after a second or two - just a distracting flicker. It's gone: the immersive player, which you navigate by dragging the wheel and tapping, no longer shows a scrollbar at all. Everything inside still scrolls with your finger exactly as before."
+  },
+  {
+    "version": "1.282.0",
+    "date": "2026-09-11",
+    "title": "Chaptered videos keep their chapters after docking",
+    "intent": "When you Listen to a video that has chapters, the player skins show every chapter as a track list. Before, if you tucked the player away and then tapped back into it, that chapter list collapsed - the up-next emptied, looping a chapter stopped, and the title stopped changing as playback moved between chapters. Now the full chapter list comes right back when you reopen the player, exactly where you left off, so you can keep tapping between chapters and looping one."
   }
 ]
