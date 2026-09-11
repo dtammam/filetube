@@ -58,6 +58,9 @@ test('returnToPlayerOrigin navigates to the stored origin (and is a no-op / dock
   assert.match(body, /navigate\(playerLaunchOrigin\);/, 'a different-tab origin navigates back to it');
   assert.match(src, /window\.FileTube\.returnToPlayerOrigin = returnToPlayerOrigin;/, 'exposed for the skin views');
   assert.match(src, /window\.FileTube\.playerLaunchOrigin = getPlayerLaunchOrigin;/, 'the getter is exposed');
+  // v1.283: the explicit origin clearer (the listen dock-in-place spends the origin) is exposed.
+  assert.match(src, /function clearPlayerLaunchOrigin\(\) \{ playerLaunchOrigin = null; \}/, 'the clearer nulls the origin');
+  assert.match(src, /window\.FileTube\.clearPlayerLaunchOrigin = clearPlayerLaunchOrigin;/, 'the clearer is exposed for the skin views');
 });
 
 test('the MUSIC skin docks to the origin on BOTH the collapse handle and the iPod MENU', () => {
@@ -65,8 +68,18 @@ test('the MUSIC skin docks to the origin on BOTH the collapse handle and the iPo
   // it as the shared engine's onDock, and the engine dispatches [data-skin-collapse] AND the
   // non-list [data-skin-menu] to onDock. Lock BOTH halves of that chain.
   const src = readSrc('public/js/music.js');
-  assert.match(src, /function dockToOrigin\(\) \{[\s\S]{0,420}pl\.dock\(\);[\s\S]{0,120}updateNowPlayingPanel\(\);[\s\S]{0,160}if \(window\.FileTube\.returnToPlayerOrigin\) window\.FileTube\.returnToPlayerOrigin\(\);/,
-    'dockToOrigin docks, re-renders, then returns to the origin tab');
+  const dock = src.slice(src.indexOf('function dockToOrigin()'), src.indexOf('function dockToOrigin()') + 2400);
+  // dockToOrigin docks + re-renders the panel.
+  assert.match(dock, /pl\.dock\(\);[\s\S]{0,120}updateNowPlayingPanel\(\);/, 'dockToOrigin docks then re-renders');
+  // ...and returns to the origin tab for a NORMAL music track (the return call is present).
+  assert.match(dock, /if \(window\.FileTube\.returnToPlayerOrigin\) window\.FileTube\.returnToPlayerOrigin\(\);/,
+    'a normal track returns to the origin tab');
+  // v1.283 (Dean): a LISTEN session STAYS in Music - the listen guard SPENDS the launch origin
+  // (clearPlayerLaunchOrigin) then returns BEFORE the origin nav, so MENU/collapse never bounces
+  // a listened video back to the source video page, and no stale origin survives to fire on a
+  // later MENU (adversarial WARNING). The guard uses the SAME watchBackVisible() predicate.
+  assert.match(dock, /if \(watchBackVisible\(\)\) \{[\s\S]{0,200}clearPlayerLaunchOrigin\(\);[\s\S]{0,40}return;[\s\S]{0,40}\}[\s\S]{0,120}if \(window\.FileTube\.returnToPlayerOrigin\)/,
+    'a listen session clears the origin and docks IN PLACE (before, and instead of, the origin nav)');
   assert.match(src, /onDock: dockToOrigin/, 'music supplies dockToOrigin as the engine onDock hook');
   const engine = readSrc('public/js/skin-surface.js');
   assert.match(engine, /data-skin-collapse[\s\S]{0,80}onDock\(\); return;/, 'the engine routes the grab-handle to onDock');
