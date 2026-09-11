@@ -782,6 +782,12 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       if (autoplayBtn) autoplayBtn.setAttribute('aria-pressed', autoplayEnabled() ? 'true' : 'false');
     }
+    // The toggles write the SHARED setting (ft-loop / ft-music-autoplay), which every other
+    // surface (enforcement, watch page, skin sticker, pop-out) reads live - so no cross-surface
+    // push is needed here. A pop-out sticker menu held OPEN shows its Loop On/Off until reopened
+    // (it refreshes on open, like the watch page's and the pop-out's own loop controls already
+    // do); reflect() only syncs the live play glyph/progress, not that row, so calling it here
+    // would be a no-op for these toggles.
     if (loopBtn) {
       loopBtn.addEventListener('click', function () {
         var pl = window.FileTube && window.FileTube.player;
@@ -790,19 +796,17 @@ if (typeof module !== 'undefined' && module.exports) {
           pl.setLoop(!on);
         }
         reflectPlaybackModes();
-        reflectEngines(); // keep an open mobile skin / pop-out sticker in step
       }, { signal });
     }
     if (autoplayBtn) {
       autoplayBtn.addEventListener('click', function () {
         setAutoplayEnabled(!autoplayEnabled());
         reflectPlaybackModes();
-        reflectEngines();
       }, { signal });
     }
-    // The initial paint is the unconditional updateNowPlayingPanel() at the end of init()
-    // (it calls reflectPlaybackModes() before any early return), so no explicit paint is needed
-    // here - a redundant one would be a line no test could distinguish.
+    // The initial paint is the unconditional updateNowPlayingPanel() at the end of init(): it
+    // calls reflectPlaybackModes() before its track/expanded early return, so no explicit paint
+    // is needed here - a redundant one would be a line no test could distinguish.
 
     // ---- mobile music SKINS: a new PRESENTATION over the shared engine --------
     // On a mobile viewport + a music item, the now-playing panel becomes the

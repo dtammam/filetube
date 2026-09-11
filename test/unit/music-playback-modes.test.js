@@ -119,10 +119,13 @@ test('the Loop button relabels to "Loop chapter" for a chaptered ::c track (matc
   });
 });
 
-test('the toggles reflect on a COLD /music load with nothing playing (the init paint, not the panel update)', async () => {
-  // no expanded track -> updateNowPlayingPanel early-returns before it could reflect, so the
-  // explicit init paint is what surfaces a stuck loop the user needs to turn OFF. This is Dean's
-  // exact case: land on /music, loop stuck on from the phone, need the off-switch visible.
+test('the toggles reflect on a COLD /music load with nothing playing', async () => {
+  // Dean's exact case: land on /music with loop stuck ON from the phone and nothing playing, and
+  // the pressed off-switch must still be visible. updateNowPlayingPanel() runs unconditionally at
+  // the end of init() and calls reflectPlaybackModes() BEFORE its no-track/expanded early return,
+  // so the toggles reflect even with no track. (There is no separate init paint - that redundant
+  // line was removed; this call is the single seam. Moving the reflect below that early return
+  // would red this test.)
   await boot('http://localhost/music', { loop: true, currentId: null, state: 'closed', autoplayStored: '0' }, async (dom) => {
     assert.equal(dom.window.document.getElementById('music-loop-btn').getAttribute('aria-pressed'), 'true', 'stuck loop shows pressed even with no track');
     assert.equal(dom.window.document.getElementById('music-autoplay-btn').getAttribute('aria-pressed'), 'false', 'autoplay OFF reflected with no track');
