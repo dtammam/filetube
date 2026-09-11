@@ -2926,5 +2926,11 @@
     "date": "2026-09-11",
     "title": "The desktop Loop/Autoplay buttons clearly light up when on",
     "intent": "A quick follow-up: the new Loop and Autoplay buttons weren't showing clearly when they were on - the highlight blended into the toolbar. Now an active toggle turns a clear red (matching the phone), so you can tell at a glance what's switched on. It shows correctly across all the retro skins too."
+  },
+  {
+    "version": "1.285.0",
+    "date": "2026-09-11",
+    "title": "Set a minimum and maximum length per subscription",
+    "intent": "Each subscription can now limit downloads to a length window - a minimum and a maximum, in minutes, set right on the channel (both on the Add form and when you edit an existing one). If a channel posts full episodes plus short teaser clips, you can say 'only 10 to 75 minutes' and get the episodes while the little clips are skipped - along with anything over your maximum. It only affects future downloads; files you already have are left alone. Videos with no known length (like live streams) are skipped when you set a limit, so a capped channel never starts pulling in an endless stream."
   }
 ]

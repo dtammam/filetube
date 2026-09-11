@@ -306,6 +306,93 @@ test('validateMaxDurationSeconds: rejects a value over MAX_SUB_MAX_DURATION_SECO
   assert.equal(store.validateMaxDurationSeconds(store.MAX_SUB_MAX_DURATION_SECONDS + 1).ok, false);
 });
 
+// ---- v1.285: validateMinDurationSeconds (mirrors validateMaxDurationSeconds) --
+
+test('validateMinDurationSeconds: undefined ok (no floor), 0 ok (no floor), in-range ok', () => {
+  assert.deepEqual(store.validateMinDurationSeconds(undefined), { ok: true, value: undefined });
+  assert.deepEqual(store.validateMinDurationSeconds(0), { ok: true, value: 0 });
+  assert.deepEqual(store.validateMinDurationSeconds(600), { ok: true, value: 600 });
+  assert.deepEqual(store.validateMinDurationSeconds(store.MAX_SUB_MAX_DURATION_SECONDS), { ok: true, value: store.MAX_SUB_MAX_DURATION_SECONDS });
+});
+
+test('validateMinDurationSeconds: rejects non-integer, negative, and over-cap (never coerced)', () => {
+  assert.equal(store.validateMinDurationSeconds(1.5).ok, false);
+  assert.equal(store.validateMinDurationSeconds('600').ok, false);
+  assert.equal(store.validateMinDurationSeconds(-1).ok, false);
+  assert.equal(store.validateMinDurationSeconds(store.MAX_SUB_MAX_DURATION_SECONDS + 1).ok, false);
+});
+
+// ---- v1.285: validateDurationWindow (the empty-window cross-guard) -----------
+
+test('validateDurationWindow: empty ONLY when both are >0 and min >= max', () => {
+  assert.equal(store.validateDurationWindow(4500, 3000).ok, false, 'min 75m > max 50m -> empty');
+  assert.equal(store.validateDurationWindow(3000, 3000).ok, false, 'min == max -> empty (strict [min,max))');
+  assert.equal(store.validateDurationWindow(600, 4500).ok, true, 'min 10m < max 75m -> valid window');
+});
+
+test('validateDurationWindow: a 0/undefined on either side means "no bound", never empty', () => {
+  assert.equal(store.validateDurationWindow(0, 3000).ok, true, 'min 0 = no floor');
+  assert.equal(store.validateDurationWindow(4500, 0).ok, true, 'max 0 = unbounded ceiling');
+  assert.equal(store.validateDurationWindow(undefined, 3000).ok, true);
+  assert.equal(store.validateDurationWindow(4500, undefined).ok, true);
+  assert.equal(store.validateDurationWindow(undefined, undefined).ok, true);
+});
+
+// ---- v1.285: min wired into the add/patch validators + writers -------------
+
+test('validateSubscriptionInput: carries a valid min/max window; rejects an empty one', () => {
+  const ok = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', minDurationSeconds: 600, maxDurationSeconds: 4500 });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.value.minDurationSeconds, 600);
+  assert.equal(ok.value.maxDurationSeconds, 4500);
+  const minOnly = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', minDurationSeconds: 600 });
+  assert.equal(minOnly.ok, true, 'a floor with no per-sub ceiling is fine (ceiling falls back to global)');
+  const empty = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', minDurationSeconds: 4500, maxDurationSeconds: 3000 });
+  assert.equal(empty.ok, false, 'min > max at add time is a hard error');
+});
+
+test('validateSubscriptionPatch: min included; both-present empty window rejected; min-only deferred to update', () => {
+  assert.equal(store.validateSubscriptionPatch({ minDurationSeconds: 600 }).value.minDurationSeconds, 600);
+  assert.equal(store.validateSubscriptionPatch({ minDurationSeconds: 4500, maxDurationSeconds: 3000 }).ok, false, 'both present + empty -> 400');
+  assert.equal(store.validateSubscriptionPatch({ minDurationSeconds: 4500 }).ok, true, 'min-only patch validates (merge-checked in updateSubscription)');
+});
+
+test('addSubscription: the record carries minDurationSeconds; a direct empty-window add fails safe by dropping the FLOOR', async () => {
+  const deps = makeFakeDeps();
+  const rec = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@dur', format: 'video', minDurationSeconds: 600, maxDurationSeconds: 4500 });
+  assert.equal(rec.minDurationSeconds, 600);
+  assert.equal(rec.maxDurationSeconds, 4500);
+  // a direct caller bypassing the validator's cross-guard: min>max -> drop the floor (download MORE, never nothing)
+  const deps2 = makeFakeDeps();
+  const bad = await store.addSubscription(deps2, { channelUrl: 'https://www.youtube.com/@bad', format: 'video', minDurationSeconds: 4500, maxDurationSeconds: 3000 });
+  assert.equal(bad.minDurationSeconds, undefined, 'the floor is dropped, not persisted as an empty window');
+  assert.equal(bad.maxDurationSeconds, 3000, 'the ceiling is kept');
+});
+
+test('updateSubscription: sets min; a one-sided patch that would empty the window REVERTS both bounds to prior', async () => {
+  const deps = makeFakeDeps();
+  const rec = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@u', format: 'video', maxDurationSeconds: 3000 });
+  // valid update: add a floor below the ceiling
+  await store.updateSubscription(deps, rec.id, { minDurationSeconds: 600 });
+  assert.equal(deps.loadDatabase().ytdlp.subscriptions[0].minDurationSeconds, 600);
+  // one-sided empty-window patch (min 4500 > stored max 3000) -> revert to prior (min 600, max 3000)
+  await store.updateSubscription(deps, rec.id, { minDurationSeconds: 4500 });
+  const after = deps.loadDatabase().ytdlp.subscriptions[0];
+  assert.equal(after.minDurationSeconds, 600, 'the empty-window min is not applied - prior floor kept');
+  assert.equal(after.maxDurationSeconds, 3000, 'the ceiling is untouched');
+});
+
+test('updateSubscription: a MAX-side one-sided patch that would empty the window REVERTS both bounds to prior (binds the max-side revert)', async () => {
+  const deps = makeFakeDeps();
+  const rec = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@umax', format: 'video', minDurationSeconds: 600, maxDurationSeconds: 3000 });
+  // lowering the ceiling BELOW the stored floor (max 500 < stored min 600) would empty [600,500)
+  await store.updateSubscription(deps, rec.id, { maxDurationSeconds: 500 });
+  const after = deps.loadDatabase().ytdlp.subscriptions[0];
+  // both bounds must revert to prior - if only the min-side line ran, {min:600, max:500} would persist (empty window, starvation)
+  assert.equal(after.maxDurationSeconds, 3000, 'the empty-window max is not applied - prior ceiling kept');
+  assert.equal(after.minDurationSeconds, 600, 'the floor is untouched');
+});
+
 test('validatePaused: accepts undefined and strict booleans, rejects anything else', () => {
   assert.deepEqual(store.validatePaused(undefined), { ok: true, value: undefined });
   assert.deepEqual(store.validatePaused(true), { ok: true, value: true });

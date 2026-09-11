@@ -50,6 +50,8 @@ const {
   formatSubscribedDate,
   cutoffDateToInputValue,
   inputValueToCutoffDate,
+  minutesInputToSeconds,
+  secondsToMinutesInput,
   formatLiveStatusText,
   formatNextCheckText,
   formatRowStatusLine,
@@ -355,6 +357,48 @@ test('inputValueToCutoffDate: an implausible month/day converts to undefined', (
 test('cutoffDateToInputValue/inputValueToCutoffDate: round-trip every valid date unchanged', () => {
   assert.strictEqual(inputValueToCutoffDate(cutoffDateToInputValue('20250101')), '20250101');
   assert.strictEqual(cutoffDateToInputValue(inputValueToCutoffDate('2025-12-31')), '2025-12-31');
+});
+
+// ---- v1.285: minutes<->seconds converters for the duration-window inputs -----
+
+test('minutesInputToSeconds: minutes -> seconds; blank/invalid -> undefined (omit); 0 -> 0', () => {
+  assert.strictEqual(minutesInputToSeconds('45'), 2700, '45 min -> 2700 s');
+  assert.strictEqual(minutesInputToSeconds('75'), 4500);
+  assert.strictEqual(minutesInputToSeconds('0'), 0, '0 = no bound (distinct from blank)');
+  assert.strictEqual(minutesInputToSeconds(''), undefined, 'blank -> omit (unchanged)');
+  assert.strictEqual(minutesInputToSeconds('   '), undefined);
+  for (const bad of ['-1', '1.5', 'abc', null, undefined, {}]) {
+    assert.strictEqual(minutesInputToSeconds(bad), undefined, `invalid ${JSON.stringify(bad)} -> omit`);
+  }
+});
+
+test('secondsToMinutesInput: seconds -> minutes string; non-number/negative -> \'\'; rounds an odd legacy value', () => {
+  assert.strictEqual(secondsToMinutesInput(2700), '45');
+  assert.strictEqual(secondsToMinutesInput(0), '0');
+  assert.strictEqual(secondsToMinutesInput(2730), '46', 'a legacy 45.5-min value rounds to the nearest minute (disclosed)');
+  for (const bad of [undefined, null, -1, NaN, '2700']) {
+    assert.strictEqual(secondsToMinutesInput(bad), '', `${JSON.stringify(bad)} -> blank`);
+  }
+});
+
+test('minutes<->seconds round-trip: every whole-minute value survives unchanged', () => {
+  for (const mins of ['0', '2', '10', '45', '75', '120']) {
+    assert.strictEqual(secondsToMinutesInput(minutesInputToSeconds(mins)), mins);
+  }
+});
+
+// The wiring (source-locked - the DOM builders are covered by the fake-DOM
+// harness elsewhere; this binds that min travels through both flows as SECONDS).
+test('the edit sheet + add form send minDurationSeconds in SECONDS via the minutes converter', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'client', 'subscriptions.js'), 'utf8');
+  assert.match(src, /minSeconds = minutesInputToSeconds\(minDurationInput\.value\);\s*if \(minSeconds !== undefined\) patch\.minDurationSeconds = minSeconds;/, 'edit PATCH carries min as seconds');
+  assert.match(src, /addMinSeconds = minutesInputToSeconds\(addMinDurationInput[\s\S]{0,140}body\.minDurationSeconds = addMinSeconds;/, 'add body carries min as seconds');
+  assert.match(src, /secondsToMinutesInput\(sub\.minDurationSeconds\)/, 'the edit sheet pre-fills min in minutes');
+  // and the MAX field is now minutes too (converted), not raw seconds.
+  assert.match(src, /maxDurationInput\.value = secondsToMinutesInput\(sub\.maxDurationSeconds\)/, 'max pre-fills in minutes');
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html'), 'utf8');
+  assert.match(html, /id="sub-add-minduration"/, 'the add form has a min input');
+  assert.match(html, /id="sub-add-maxduration"[^>]*Max length in minutes/, 'the add max field is labelled minutes');
 });
 
 // ---- v1.21 FIX 4: pinLabelFallback / resolvePinLabel -------------------------
@@ -2139,14 +2183,15 @@ test('buildSettingsSheet: Save sends the edited cutoffDate (converted YYYY-MM-DD
 
 // ---- v1.22.0 FR-6: max-duration download gate, settings-sheet field --------
 
-test('buildSettingsSheet: renders a number input pre-filled with the persisted maxDurationSeconds', () => {
+test('buildSettingsSheet: renders the min + max duration inputs, pre-filled in MINUTES (v1.285)', () => {
   const sub = {
-    id: 's2', name: 'C', channelUrl: 'https://www.youtube.com/@c', cutoffDate: '20260201', maxDurationSeconds: 3600,
+    id: 's2', name: 'C', channelUrl: 'https://www.youtube.com/@c', cutoffDate: '20260201', minDurationSeconds: 600, maxDurationSeconds: 3600,
   };
   const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, {});
   const numberInputs = [...sheetBackdrop.walk()].filter((el) => el.tagName === 'INPUT' && el.type === 'number');
-  assert.strictEqual(numberInputs.length, 1, 'expected exactly the maxDurationSeconds number input (the count field is retired)');
-  assert.strictEqual(numberInputs[0].value, '3600');
+  assert.strictEqual(numberInputs.length, 2, 'the min + max duration inputs (the count field is retired)');
+  assert.strictEqual(numberInputs[0].value, '10', 'min 600s -> 10 min (the FLOOR is first)');
+  assert.strictEqual(numberInputs[1].value, '60', 'max 3600s -> 60 min');
 });
 
 test('buildSettingsSheet: Save omits maxDurationSeconds entirely when the field is left blank (blank = unchanged)', () => {
@@ -2163,21 +2208,23 @@ test('buildSettingsSheet: Save sends maxDurationSeconds: 0 (unlimited sentinel) 
   const saveCalls = [];
   const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, { onSave: (id, patch) => saveCalls.push([id, patch]) });
   const numberInputs = [...sheetBackdrop.walk()].filter((el) => el.tagName === 'INPUT' && el.type === 'number');
-  numberInputs[0].value = '0';
+  numberInputs[1].value = '0'; // the MAX input (index 1; min is 0)
   const saveBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Save');
   saveBtn.click();
   assert.strictEqual(saveCalls[0][1].maxDurationSeconds, 0);
 });
 
-test('buildSettingsSheet: Save sends a positive maxDurationSeconds override entered by the user', () => {
+test('buildSettingsSheet: Save converts the MINUTES the user enters into SECONDS (v1.285)', () => {
   const sub = { id: 'e6', name: 'C', channelUrl: 'https://www.youtube.com/@c' };
   const saveCalls = [];
   const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, { onSave: (id, patch) => saveCalls.push([id, patch]) });
   const numberInputs = [...sheetBackdrop.walk()].filter((el) => el.tagName === 'INPUT' && el.type === 'number');
-  numberInputs[0].value = '3600';
+  numberInputs[0].value = '10'; // min 10 min
+  numberInputs[1].value = '60'; // max 60 min
   const saveBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Save');
   saveBtn.click();
-  assert.strictEqual(saveCalls[0][1].maxDurationSeconds, 3600);
+  assert.strictEqual(saveCalls[0][1].minDurationSeconds, 600, '10 min -> 600 s');
+  assert.strictEqual(saveCalls[0][1].maxDurationSeconds, 3600, '60 min -> 3600 s');
 });
 
 test('buildSettingsSheet: Pause/Resume label reflects the subscription\'s paused state and wires onTogglePause', () => {
