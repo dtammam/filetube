@@ -835,7 +835,14 @@ if (typeof module !== 'undefined' && module.exports) {
         // ?nowplaying=1 (the v1.282 restore). A normal music track still returns to its origin.
         // watchBackVisible() is the SAME "playing item is a listen track" predicate the Watch
         // way-back uses (queue `.listen`, or the module-scoped activeListenId after a re-init).
-        if (watchBackVisible()) return;
+        // Clear the launch origin as we dock in place (adversarial WARNING): the video origin is
+        // spent - otherwise a LATER MENU, after an in-view normal-track play (playAt never
+        // navigates, so the reducer never clears it), would fire returnToPlayerOrigin and bounce
+        // to the original video. The Watch button stays the explicit route back to the video.
+        if (watchBackVisible()) {
+          if (window.FileTube.clearPlayerLaunchOrigin) window.FileTube.clearPlayerLaunchOrigin();
+          return;
+        }
         if (window.FileTube.returnToPlayerOrigin) window.FileTube.returnToPlayerOrigin();
       }
     }

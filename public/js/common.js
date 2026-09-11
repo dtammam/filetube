@@ -9947,6 +9947,13 @@ if (typeof window !== 'undefined') {
   // a launched session's origin - MENU still returns where you launched from after skipping tracks.
   let playerLaunchOrigin = null;
   function getPlayerLaunchOrigin() { return playerLaunchOrigin; }
+  // v1.283 (Dean, adversarial WARNING): SPEND the origin explicitly. Only navigation sets it
+  // (above), so an IN-VIEW change that "leaves" the origin behind - specifically a listen skin
+  // docking in place on /music (music.js dockToOrigin) - has no navigation to clear it, and the
+  // stale watch-page origin would fire on a LATER MENU after an in-view normal-track play,
+  // bouncing the user to the original video. Clearing it here makes any subsequent MENU dock in
+  // place (the Watch way-back button remains the explicit route back to the video).
+  function clearPlayerLaunchOrigin() { playerLaunchOrigin = null; }
   function returnToPlayerOrigin() {
     // no origin (in-view session / cold-start) -> do nothing, the dock stays on the current tab;
     // a cross-view origin -> navigate back to it (the mini-player, reparented into the persistent
@@ -10792,6 +10799,7 @@ if (typeof window !== 'undefined') {
   // v1.247 (F2): the skin's MENU/collapse asks to dock back on the launch-origin tab. The getter
   // is exposed for tests + any surface that wants to read where the player was launched from.
   window.FileTube.playerLaunchOrigin = getPlayerLaunchOrigin;
+  window.FileTube.clearPlayerLaunchOrigin = clearPlayerLaunchOrigin;
   window.FileTube.returnToPlayerOrigin = returnToPlayerOrigin;
   window.FileTube.queueEntryHref = queueEntryHref;
   window.FileTube.bootRouter = bootRouter;
