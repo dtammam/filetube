@@ -50,8 +50,13 @@ registers NEITHER prev NOR next - the single-track intake for free). A miss (del
 location-replaces back to /watch.html?v=<id> (the id came FROM a watch page - belt only).
 The ao=1 bounce path is untouched; the listen id is never RESOLVED through the music API
 (the S5 background albums browse is the only music-API touch, test-asserted).
-Chapters: v1 ignores ::c routing for listen (base id, whole file) - the chapter experience
-stays a MUSIC feature; disclosed.
+Chapters: v1 ignored ::c routing for listen (base id, whole file). SUPERSEDED by v1.280
+(Dean): a chaptered listen-VIDEO now EXPANDS into one `::c` track per chapter
+(buildListenChapterTracks, parity with lib/music/libraryAudio expandAudioToTracks), so the
+skins show all chapters, a tap jumps to one, and Loop chapter works - `queue` is
+`chapterTracks || [t]` and `watchBackTap` strips `::c` for the watch page. Residual: a
+chaptered listen video has no album browseCtx, so a dock-return (?nowplaying=1) loses the
+chapter queue (tech-debt #222).
 
 ## Task commits
 - L1 ERGONOMICS: the sticker-menu size pass (style.css only; census 0; the
