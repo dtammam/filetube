@@ -20,9 +20,12 @@ test('music.html actually carries the Loop + Autoplay toggles in the toolbar (th
   assert.match(html, /id="music-loop-btn"[^>]*aria-pressed=/, 'the Loop toggle is in music.html with an aria-pressed state');
   assert.match(html, /id="music-loop-btn"[\s\S]{0,140}class="music-mode-lbl">Loop</, 'the Loop label span (relabelled to "Loop chapter" at runtime)');
   assert.match(html, /id="music-autoplay-btn"[^>]*aria-pressed=/, 'the Autoplay toggle is in music.html');
-  // the ON-state styling reuses the theatre toggle's token, not a raw literal (census stays 0).
+  // v1.284.1: the ON state must READ as selected - the mobile sticker's --yt-red look (not the
+  // invisible --bg-secondary the base toolbar rule already paints), scoped so it beats that rule,
+  // with a :hover twin. Tokens only (census 0).
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /\.music-mode-btn\[aria-pressed="true"\] \{ background: var\(--bg-secondary\); \}/, 'the pressed style uses the --bg-secondary token');
+  assert.match(css, /\.music-toolbar-actions \.music-mode-btn\[aria-pressed="true"\],\s*\.music-toolbar-actions \.music-mode-btn\[aria-pressed="true"\]:hover \{\s*background-color: var\(--yt-red\);\s*color: var\(--on-accent\);\s*border-color: var\(--yt-red-dark\);/, 'the ON state is the red selected look, scoped + hover-covered, tokens only');
+  assert.doesNotMatch(css, /\.music-mode-btn\[aria-pressed="true"\] \{ background: var\(--bg-secondary\); \}/, 'the invisible --bg-secondary ON state is gone');
 });
 
 const VIEW_HTML = `<body><div id="view-root" data-view="music">
