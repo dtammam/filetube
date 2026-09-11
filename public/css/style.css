@@ -10879,6 +10879,9 @@ html[data-modern="on"] .video-uploader {
    two-column row (player left, panel right). Mobile / theatre-off is untouched. */
 .music-stage { display: block; }
 .music-theater-btn[aria-pressed="true"] { background: var(--bg-secondary); }
+/* v1.284 (Dean): the desktop Loop / Autoplay playback-mode toggles reflect their ON state
+   the same way the theatre toggle does (aria-pressed -> the secondary ground). */
+.music-mode-btn[aria-pressed="true"] { background: var(--bg-secondary); }
 @media (max-width: 1023px) { .music-theater-btn { display: none !important; } } /* v1.251: class-based - the podcast theatre button shares it */
 @media (min-width: 1024px) {
   .music-stage.is-theater { display: flex; align-items: flex-start; gap: var(--space-8); }

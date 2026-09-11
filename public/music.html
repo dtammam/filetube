@@ -139,6 +139,17 @@
               </button>
               <div class="mms-sticker-menu" id="music-actions-menu" role="menu" hidden></div>
             </span>
+            <!-- v1.284 (Dean): the two playback-MODE toggles the mobile skin has (Loop,
+                 Autoplay) surfaced on the desktop player - previously only reachable from the
+                 mobile skin / pop-out / Watch page, so a loop turned on elsewhere (the shared
+                 ft-loop setting) had no desktop off-switch. Both reflect the live state via
+                 aria-pressed and toggle the SAME player.setLoop / autoplay setting (music.js). -->
+            <button class="btn btn-sm music-mode-btn" id="music-loop-btn" type="button" title="Loop" aria-label="Loop" aria-pressed="false">
+              <i class="icon-refresh"></i> <span class="music-mode-lbl">Loop</span>
+            </button>
+            <button class="btn btn-sm music-mode-btn" id="music-autoplay-btn" type="button" title="Autoplay" aria-label="Autoplay" aria-pressed="false">
+              <i class="icon-play"></i> Autoplay
+            </button>
             <button class="btn btn-sm" id="music-shuffle-btn" type="button" title="Shuffle all">
               <i class="icon-shuffle"></i> Shuffle
             </button>
