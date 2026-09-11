@@ -715,6 +715,24 @@ test('buildYtdlpListArgs: the floor clause never leaks into the download pass (l
   assert.ok(!result.includes('--match-filter'), 'the download pass targets explicit ids only');
 });
 
+// ---- v1.285 (data-safety, QA WARNING): the empty-window fail-safe -----------
+
+test('buildMatchFilterArg: a floor >= the active ceiling DROPS the floor (never emits an empty window)', () => {
+  // both active + min >= max -> keep the ceiling, drop the floor (download MORE, never nothing)
+  assert.deepEqual(args.buildMatchFilterArg({ minDurationSeconds: 9000, maxDurationSeconds: 7200 }), ['--match-filter', 'duration < 7200']);
+  assert.deepEqual(args.buildMatchFilterArg({ minDurationSeconds: 3000, maxDurationSeconds: 3000 }), ['--match-filter', 'duration < 3000'], 'min == max is empty -> drop the floor');
+  // a valid window is untouched
+  assert.deepEqual(args.buildMatchFilterArg({ minDurationSeconds: 600, maxDurationSeconds: 4500 }), ['--match-filter', 'duration >= 600 & duration < 4500']);
+});
+
+test('buildYtdlpListArgs: a per-sub floor ABOVE the GLOBAL ceiling (no per-sub max) drops the floor, never a silently-empty filter', () => {
+  const config = makeConfig({ maxDurationSeconds: 7200 }); // global 2h ceiling
+  const result = args.buildYtdlpListArgs(baseSub({ minDurationSeconds: 9000 }), config); // floor 150m > global 120m, no per-sub max
+  const idx = result.indexOf('--match-filter');
+  assert.ok(idx >= 0, 'a filter is still emitted');
+  assert.equal(result[idx + 1], 'duration < 7200', 'the empty floor is dropped; the ceiling stands - downloads MORE, never nothing');
+});
+
 test('buildYtdlpListArgs: --match-filter (duration clause) never influences buildYtdlpDownloadArgs (download pass targets explicit ids only)', () => {
   const config = makeConfig({ maxDurationSeconds: 3600 });
   const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);

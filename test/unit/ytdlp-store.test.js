@@ -382,6 +382,17 @@ test('updateSubscription: sets min; a one-sided patch that would empty the windo
   assert.equal(after.maxDurationSeconds, 3000, 'the ceiling is untouched');
 });
 
+test('updateSubscription: a MAX-side one-sided patch that would empty the window REVERTS both bounds to prior (binds the max-side revert)', async () => {
+  const deps = makeFakeDeps();
+  const rec = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@umax', format: 'video', minDurationSeconds: 600, maxDurationSeconds: 3000 });
+  // lowering the ceiling BELOW the stored floor (max 500 < stored min 600) would empty [600,500)
+  await store.updateSubscription(deps, rec.id, { maxDurationSeconds: 500 });
+  const after = deps.loadDatabase().ytdlp.subscriptions[0];
+  // both bounds must revert to prior - if only the min-side line ran, {min:600, max:500} would persist (empty window, starvation)
+  assert.equal(after.maxDurationSeconds, 3000, 'the empty-window max is not applied - prior ceiling kept');
+  assert.equal(after.minDurationSeconds, 600, 'the floor is untouched');
+});
+
 test('validatePaused: accepts undefined and strict booleans, rejects anything else', () => {
   assert.deepEqual(store.validatePaused(undefined), { ok: true, value: undefined });
   assert.deepEqual(store.validatePaused(true), { ok: true, value: true });

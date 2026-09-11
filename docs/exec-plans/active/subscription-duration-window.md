@@ -61,6 +61,15 @@ Residual (disclosed): a legacy `maxDurationSeconds` not divisible by 60 shows a 
 value on edit; saving re-stores `roundedMinutes*60`. Dean sets whole minutes, so this only
 touches odd pre-existing values. Recorded here, not a blocker.
 
+Gate fix round (both seats, WARNING): the store's `min <= max` cross-guard sees only the two
+PER-SUB values, so a per-sub floor paired with the GLOBAL ceiling (no per-sub max) - e.g. floor
+150m against the default 2h ceiling - slipped past every store guard and emitted an empty window
+(`duration >= 9000 & duration < 7200`) = silent starvation. Fixed at the BUILD SITE
+(`buildMatchFilterArg`), the one place the TRUE effective window is known: when the floor is >=
+the active ceiling it is DROPPED (fail safe toward downloading MORE, never nothing). Also bound
+the `updateSubscription` MAX-side one-sided revert with a test (it was correct but naked - a
+surviving mutant, the "guard shipped unbound" class).
+
 ## Task commits (each green before the next)
 
 - **T1 - store**: `validateMinDurationSeconds` + add/patch wiring + the `min <= max` cross-guard.
