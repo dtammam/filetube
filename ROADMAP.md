@@ -93,6 +93,36 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.283.0 - Leaving the Listen player stays in Music instead of the source video (2026-09-11)
+
+Dean, on-device (the v1.282 follow-up): from Pocket Classic on a chaptered LISTEN video,
+pressing the iPod MENU (or the collapse handle) took him BACK to the source video's watch page
+with its "restart video?" resume prompt - "music -> video -> video", no returnable music state.
+So the v1.282 dock-return chapter restore was effectively untestable: the flow never left him
+anywhere he'd tap the docked mini-player.
+
+Root cause (traced, not theorised): the skin's MENU/collapse routes to dockToOrigin, which docks
+then calls returnToPlayerOrigin() - and a listen session's launch origin IS the source watch
+page (the Listen button navigates /watch -> /music?play=<id>&listen=1). Worse, the watch page
+cannot adopt the running player because its currentId is a `::c` chapter id (vidX::c1) while the
+page requests the base video (vidX), so it re-offers the whole video from scratch.
+
+Fix (Dean's ruling "Stay in Music, dock there"): when the playing item is a listen track
+(watchBackVisible() - the same predicate the Watch way-back uses), dockToOrigin docks the mini
+IN PLACE on /music (the proven v1.247 dock-in-place path) and returns before the origin nav. The
+audio keeps playing, the browse shows behind, and tapping the mini returns to the chaptered
+player via ?nowplaying=1 (the v1.282 restore, now reachable). The Watch button remains the
+explicit route back to the video. A normal music track still returns to its launch origin.
+
+Full two-reviewer gate (both seats). Round 1: both APPROVE; adversarial flagged one WARNING - a
+regression the dock-in-place newly exposed: after docking a listen session, playing a NORMAL song
+in-view (which never navigates) left a stale watch-page origin, so a later MENU bounced to the
+original video. Fixed in a round: a new clearPlayerLaunchOrigin() SPENDS the origin in the listen
+branch (the adversarial's first prescription - clear on activeListenId null in loadTrack - would
+have regressed v1.247, since a normal ?play= launch also nulls it there; the surgical seam was
+right). Both seats re-APPROVE; adversarial killed 4 mutants against the fix. Dual-Node 8412/8412
+on v22.23.1 + v24.14.0. No data at risk. The device pass is Dean's.
+
 ### v1.282.0 - A chaptered LISTEN video keeps its chapters after docking (2026-09-11)
 
 Dean (tech-debt #222): the v1.280 flow works - a chaptered Listen video shows all its

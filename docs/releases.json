@@ -2908,5 +2908,11 @@
     "date": "2026-09-11",
     "title": "Chaptered videos keep their chapters after docking",
     "intent": "When you Listen to a video that has chapters, the player skins show every chapter as a track list. Before, if you tucked the player away and then tapped back into it, that chapter list collapsed - the up-next emptied, looping a chapter stopped, and the title stopped changing as playback moved between chapters. Now the full chapter list comes right back when you reopen the player, exactly where you left off, so you can keep tapping between chapters and looping one."
+  },
+  {
+    "version": "1.283.0",
+    "date": "2026-09-11",
+    "title": "Leaving the music player stays in Music",
+    "intent": "When you Listen to a video and then press the retro player's MENU button (or collapse it), you now stay in Music with the audio still playing in the little docked bar - tap it to jump right back into the player. Before, it sent you all the way back to the video page and asked if you wanted to restart the video, which made it feel like you'd lost your place. The 'Watch' button is still there whenever you actually want to open the video itself."
   }
 ]
