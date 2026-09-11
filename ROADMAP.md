@@ -93,6 +93,33 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.280.0 - A chaptered LISTEN video shows all its chapters in the skins (2026-09-11)
+
+Dean: a video (mp4) with chapters, played via the Listen button, showed only ONE
+chapter in Pocket Classic / Seattle, though the Watch view shows them all. Root cause:
+playListenItem built a SINGLE track (queue=[t]) and never expanded the video's chapters,
+even though /api/videos/:id already returns the resolved chapters.
+
+Fix: a chaptered listen-video expands into one `::c` track per chapter - the SAME shape a
+chaptered library-audio album uses (buildListenChapterTracks, a pure module-scoped
+exported helper in PARITY with lib/music/libraryAudio expandAudioToTracks), so the
+existing chapter machinery (up-next list, jump-to-chapter, Loop chapter, the boundary
+watcher) surfaces them all. Each chapter carries listen:true and streams the ONE file
+/video/<id> with a chapterStartSec seek offset the player already honours; the `::c`
+synthetic id never reaches the byte route. watchBackTap strips `::c` so the Watch way-back
+opens the base video. A 0-1 chapter video keeps the single track.
+
+Full gate (QA + adversarial), one doc-only fix round. Adversarial APPROVE first pass
+(not inert across all three chapter sources, faithful parity, mutation-bound, `::c` never
+hits a byte/API route); QA blocked ONLY on two doc/standards items (a superseded listen
+spec that now contradicted the code, and recording the dock-return residual), both fixed.
+Disclosed residual (tech-debt #222, both seats measured): a chaptered listen video loses
+its chapter queue after a dock-return (?nowplaying=1) - it has no album browse context to
+rebuild from - so the up-next empties, chapter-loop stops, and the title stops advancing;
+playback/Watch/listen all survive, and library chaptered albums are unaffected. Dual-Node
+8405/8405 on v22.23.1 + v24.14.0. No data at risk. The on-device chapter list is Dean's
+device pass.
+
 ### v1.279.0 - Reliable chapter loop + a clear "Loop chapter" label (2026-09-10)
 
 Dean: on the mobile player skins, no clear way to loop a chapter of a downloaded
