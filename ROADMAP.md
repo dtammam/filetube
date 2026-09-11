@@ -93,6 +93,20 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.284.1 - The desktop Loop/Autoplay ON state now reads as selected (2026-09-11)
+
+Dean, on-device: clicking the new Loop/Autoplay buttons showed no clear selected state - "it
+doesn't go red or display anything." Root cause (cascade): the pressed rule painted
+`--bg-secondary`, the SAME colour the base toolbar-button rule already uses, and at equal-but-
+earlier specificity - invisible on both counts. Fix: adopt the app's established ON look (the
+mobile sticker's --yt-red fill / white text / dark-red border), scoped to tie the base rule and
+win on source order, with a :hover twin. Slim adversarial gate caught that the first cut used the
+`background-color` LONGHAND, which does not reset the 2009 era skin's `.btn` gradient gloss - so
+the red was hidden (and white text on grey was illegible) in that one skin; switched to the
+`background` SHORTHAND (matching the theatre toggle and the sticker), so the red shows in every
+skin. Tokens only (census 0). Dual-Node 8418/8418. Autoplay defaults ON, so its button reads red
+by default - the accurate "it's on" signal. Device pass is Dean's.
+
 ### v1.284.0 - Loop + Autoplay controls on the desktop music player (2026-09-11)
 
 Dean, on-device: a chaptered track looped perpetually on DESKTOP with no way to stop it. Root
