@@ -10879,9 +10879,23 @@ html[data-modern="on"] .video-uploader {
    two-column row (player left, panel right). Mobile / theatre-off is untouched. */
 .music-stage { display: block; }
 .music-theater-btn[aria-pressed="true"] { background: var(--bg-secondary); }
-/* v1.284 (Dean): the desktop Loop / Autoplay playback-mode toggles reflect their ON state
-   the same way the theatre toggle does (aria-pressed -> the secondary ground). */
-.music-mode-btn[aria-pressed="true"] { background: var(--bg-secondary); }
+/* v1.284.1 (Dean): the desktop Loop / Autoplay ON state must READ as selected. The first cut
+   used --bg-secondary, which is (a) the SAME colour the base `.music-toolbar-actions
+   .btn:not(.btn-primary)` already paints and (b) equal specificity but EARLIER, so ON was
+   invisible. Match the mobile sticker's established ON look (--yt-red fill / white / dark-red
+   border, style.css ~11090), scoped under .music-toolbar-actions to TIE the base rule (0,3,0)
+   and win on source order (this rule is later), with a :hover twin so a lit toggle keeps the red
+   past the base (0,4,0) :hover rule. Uses the `background` SHORTHAND deliberately (not
+   background-color): it resets background-image to none, so the ON red also shows through the
+   2009 era skin's `.btn` gradient gloss (the `background-image`-over-`background-color` trap this
+   file documents at ~1299-1330); the theatre toggle and the sticker both use the shorthand for
+   the same reason. Existing tokens only - the census stays 0. */
+.music-toolbar-actions .music-mode-btn[aria-pressed="true"],
+.music-toolbar-actions .music-mode-btn[aria-pressed="true"]:hover {
+  background: var(--yt-red);
+  color: var(--on-accent);
+  border-color: var(--yt-red-dark);
+}
 @media (max-width: 1023px) { .music-theater-btn { display: none !important; } } /* v1.251: class-based - the podcast theatre button shares it */
 @media (min-width: 1024px) {
   .music-stage.is-theater { display: flex; align-items: flex-start; gap: var(--space-8); }

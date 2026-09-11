@@ -2920,5 +2920,11 @@
     "date": "2026-09-11",
     "title": "Loop and Autoplay buttons on the desktop player",
     "intent": "The desktop music player now has Loop and Autoplay buttons in the toolbar, next to Shuffle - the same switches the phone player already had. Before, if you turned loop on somewhere else (or on your phone, since the setting follows you across devices), a track could keep repeating on the desktop with no button there to turn it off. Now the Loop button lights up when it's on and clicking it turns it off, so there's always an off-switch right where you're looking. It reads 'Loop chapter' when you're playing a chaptered item, and Autoplay works the same way."
+  },
+  {
+    "version": "1.284.1",
+    "date": "2026-09-11",
+    "title": "The desktop Loop/Autoplay buttons clearly light up when on",
+    "intent": "A quick follow-up: the new Loop and Autoplay buttons weren't showing clearly when they were on - the highlight blended into the toolbar. Now an active toggle turns a clear red (matching the phone), so you can tell at a glance what's switched on. It shows correctly across all the retro skins too."
   }
 ]
