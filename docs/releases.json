@@ -2914,5 +2914,11 @@
     "date": "2026-09-11",
     "title": "Leaving the music player stays in Music",
     "intent": "When you Listen to a video and then press the retro player's MENU button (or collapse it), you now stay in Music with the audio still playing in the little docked bar - tap it to jump right back into the player. Before, it sent you all the way back to the video page and asked if you wanted to restart the video, which made it feel like you'd lost your place. The 'Watch' button is still there whenever you actually want to open the video itself."
+  },
+  {
+    "version": "1.284.0",
+    "date": "2026-09-11",
+    "title": "Loop and Autoplay buttons on the desktop player",
+    "intent": "The desktop music player now has Loop and Autoplay buttons in the toolbar, next to Shuffle - the same switches the phone player already had. Before, if you turned loop on somewhere else (or on your phone, since the setting follows you across devices), a track could keep repeating on the desktop with no button there to turn it off. Now the Loop button lights up when it's on and clicking it turns it off, so there's always an off-switch right where you're looking. It reads 'Loop chapter' when you're playing a chaptered item, and Autoplay works the same way."
   }
 ]

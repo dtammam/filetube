@@ -93,6 +93,30 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.284.0 - Loop + Autoplay controls on the desktop music player (2026-09-11)
+
+Dean, on-device: a chaptered track looped perpetually on DESKTOP with no way to stop it. Root
+cause (traced): Loop is ONE shared, cross-device-synced setting (ft-loop) - he turned "Loop
+chapter" on from the mobile skin and it synced to desktop - but the inline desktop music player
+had no loop control at all (loop lived only on the Watch page's checkbox, the mobile skin's
+sticker menu, and the pop-out). Endless Autoplay (default ON) had the identical desktop gap. The
+enforcement code was correct (both gate on their toggle); the gap was the missing control surface.
+
+Fix: surface the two playback-mode toggles the mobile skin already has - Loop and Autoplay - in
+the desktop music toolbar beside Shuffle. Both reflect the live state (aria-pressed) and drive
+the SAME setting every surface reads, so a flip anywhere is consistent. Loop relabels to "Loop
+chapter" for a chaptered track, matching the mobile skin. They paint via the unconditional
+now-playing update at init, so a stuck loop shows as engaged even on a cold /music load with
+nothing playing - the exact escape hatch Dean needed. The pressed style reuses the theatre
+toggle's design token (CSS census 0); the toolbar already flex-wraps so no row overflow.
+
+Full two-reviewer gate (both seats). Adversarial killed a 7-mutant battery proving the off-switch
+genuinely clears ft-loop (not a cosmetic aria flip) and that the init paint is unconditional. QA
+REQUEST CHANGES on a lying comment in the new TEST (it described the reflect mechanism backwards
+after the redundant init-paint line was removed); fixed in a round along with two adversarial
+nits (a no-op reflectEngines call removed; two comments tightened) - both seats re-APPROVE, zero
+behaviour change. Dual-Node 8418/8418 on v22.23.1 + v24.14.0. No data at risk. Device pass is Dean's.
+
 ### v1.283.0 - Leaving the Listen player stays in Music instead of the source video (2026-09-11)
 
 Dean, on-device (the v1.282 follow-up): from Pocket Classic on a chaptered LISTEN video,
