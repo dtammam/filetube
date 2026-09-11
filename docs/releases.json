@@ -2896,5 +2896,11 @@
     "date": "2026-09-11",
     "title": "Listen to a chaptered video and see every chapter",
     "intent": "When you hit \"Listen\" on a video that has chapters, the retro player skins now show all of its chapters as a track list - just like the Watch view does - so you can see them, tap any chapter to jump to it, and loop a single chapter. Before, a listened video collapsed to one entry no matter how many chapters it had. Videos without chapters play as a single track as before."
+  },
+  {
+    "version": "1.281.0",
+    "date": "2026-09-11",
+    "title": "No more scrollbar flash launching the music player",
+    "intent": "On the phone, opening the full-screen music player skins (Pocket Classic, Seattle Classic and the rest) briefly flashed a scrollbar down the right side that then disappeared after a second or two - just a distracting flicker. It's gone: the immersive player, which you navigate by dragging the wheel and tapping, no longer shows a scrollbar at all. Everything inside still scrolls with your finger exactly as before."
   }
 ]
