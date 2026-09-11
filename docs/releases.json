@@ -2890,5 +2890,11 @@
     "date": "2026-09-10",
     "title": "Loop a single chapter, reliably",
     "intent": "On the retro player skins (Pocket Classic, Seattle Classic and the rest), when you're playing a long YouTube track split into chapters, the menu's Loop control now clearly reads \"Loop chapter\" - so it's obvious it repeats just the chapter you're on, not the whole file. And it's more dependable: it used to occasionally slip into the next chapter instead of repeating, and now it holds the chapter reliably. A normal song still just says \"Loop\"."
+  },
+  {
+    "version": "1.280.0",
+    "date": "2026-09-11",
+    "title": "Listen to a chaptered video and see every chapter",
+    "intent": "When you hit \"Listen\" on a video that has chapters, the retro player skins now show all of its chapters as a track list - just like the Watch view does - so you can see them, tap any chapter to jump to it, and loop a single chapter. Before, a listened video collapsed to one entry no matter how many chapters it had. Videos without chapters play as a single track as before."
   }
 ]

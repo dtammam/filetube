@@ -286,6 +286,47 @@ function chapterAlbumBaseId(tracks) {
 }
 function isChapterAlbum(tracks) { return !!chapterAlbumBaseId(tracks); }
 
+// v1.280 (Dean): a VIDEO played via LISTEN that HAS chapters expands into one `::c` track per
+// chapter - the SAME shape a chaptered library-audio album uses (lib/music/libraryAudio
+// expandAudioToTracks, kept in PARITY), so the skins show ALL chapters, a tap jumps to one, and
+// Loop chapter works. Each chapter carries `listen:true` and streams the ONE file (/video/<id>)
+// with a chapterStartSec seek offset the player honours on load. `v` is the /api/videos/:id
+// payload (its resolved `chapters` = ascending [{startTime, title}]). Returns null for a 0-1
+// chapter video -> the caller keeps the single listen track (never a bogus album). Pure -> tested.
+function buildListenChapterTracks(v) {
+  v = v || {};
+  var chapters = Array.isArray(v.chapters) ? v.chapters : [];
+  if (chapters.length < 2) return null;
+  var fileDur = Number(v.duration) || 0;
+  var artist = (typeof v.channelName === 'string' && v.channelName) || v.folderName || '';
+  var albumTitle = v.title || v.name || 'Untitled'; // the file's title IS the album (groupAlbums parity)
+  var out = [];
+  for (var i = 0; i < chapters.length; i += 1) {
+    var ch = chapters[i];
+    var start = Number(ch && ch.startTime);
+    if (!isFinite(start) || start < 0) continue;
+    var next = chapters[i + 1];
+    var nextStart = next ? Number(next.startTime) : NaN;
+    var end = isFinite(nextStart) ? nextStart : fileDur;
+    var span = end > start ? end - start : 0;
+    out.push({
+      id: v.id + '::c' + i,
+      title: (ch && typeof ch.title === 'string' && ch.title.trim()) ? ch.title.trim() : ('Track ' + (i + 1)),
+      artist: artist,
+      album: albumTitle,
+      albumKey: v.id, // one album key so the surfaces fold the chapters together
+      durationSec: span,
+      source: 'library-chapter',
+      listen: true,
+      streamSrc: '/video/' + encodeURIComponent(v.id), // the ONE file; the ::c id never reaches the byte route
+      artUrl: '/thumbnail/' + encodeURIComponent(v.id),
+      progressEndpoint: '/api/progress',
+      chapterStartSec: start,
+    });
+  }
+  return out.length >= 2 ? out : null; // degrade if fewer than 2 chapters survived
+}
+
 // The editor's line format is "<timestamp> <title>", and it round-trips through the
 // same parser the watch page feeds. Deliberately NOT formatTrackDuration above, which
 // returns '' for 0: a chapter starting at 0:00 would lose its timestamp, and the server's
@@ -542,7 +583,7 @@ if (typeof module !== 'undefined' && module.exports) {
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
-    chapterAlbumBaseId, isChapterAlbum, chapterStamp,
+    chapterAlbumBaseId, isChapterAlbum, chapterStamp, buildListenChapterTracks,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
     MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
     buildMusicSkeletonCards, buildMusicSkeletonRows, buildMusicArtistSkeletonCards,
@@ -1017,7 +1058,10 @@ if (typeof module !== 'undefined' && module.exports) {
     function watchBackTap() {
       var id = effectiveCurrentId();
       if (!id) return;
-      var target = '/watch.html?v=' + encodeURIComponent(id);
+      // v1.280: a chaptered listen-video's current id is a `::c` chapter id - strip it to the
+      // base VIDEO id so the watch page (which knows nothing of `::c`) opens the real item.
+      var base = String(id).replace(/::c\d+$/, '');
+      var target = '/watch.html?v=' + encodeURIComponent(base);
       if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(target);
       else window.location.href = target;
     }
@@ -2438,13 +2482,15 @@ if (typeof module !== 'undefined' && module.exports) {
             artUrl: '/thumbnail/' + encodeURIComponent(v.id),
             progressEndpoint: '/api/progress',
           };
-          tab = 'albums'; // S5: a GRID tab - its render leaves `queue` untouched (the single listen track stays)
+          // v1.280 (Dean): expand a chaptered listen-VIDEO into per-chapter tracks (see helper).
+          const chapterTracks = buildListenChapterTracks(v);
+          tab = 'albums'; // S5: a GRID tab - its render leaves `queue` untouched (the listen tracks stay)
           drill = null;
           search = '';
           queueCtx = null;
           queueCtxEncoded = '';
-          queue = [t];
-          activeListenId = t.id; // W1: survives the dock-return re-init (module scope)
+          queue = chapterTracks || [t];
+          activeListenId = queue[0].id; // W1: survives the dock-return re-init (module scope)
           playAt(0);
           // S5 (QA): build the ALBUMS grid behind the skin (a grid tab - render() leaves
           // `queue` untouched, per rebuildPlayingQueue's contract) so a refresh/deep-link
