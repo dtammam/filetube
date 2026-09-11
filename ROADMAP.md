@@ -93,6 +93,29 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.281.0 - No scrollbar flash when launching a mobile music skin (2026-09-11)
+
+Dean: launching the full-screen music player (esp. Pocket Classic) flashed a scrollbar
+on the right for a couple seconds, then it vanished - jarring. Cause: the app styles its
+scrollbars globally (::-webkit-scrollbar), so a child inside the full-screen skin that
+briefly overflows while the layout settles at launch shows a visible gutter until it
+fits. The immersive skin is drag/wheel/touch-driven - no scrollbar belongs in it.
+
+Fix: hide the scrollbar while body.mms-on is set (music.js adds it ONLY on mobile+music,
+so this is inherently the "on mobile" scope). The webkit side
+(`body.mms-on ::-webkit-scrollbar{display:none}`) covers Safari/iOS + Chromium; the
+Firefox twin (`scrollbar-width:none`) lives INSIDE the one @supports not
+selector(::-webkit-scrollbar) guard, per the era-scrollbar ENGINE PARTITION - the
+.modern-chip-row precedent. Scrollable regions inside still pan by touch; only the bar
+is gone. Ordinary views keep their styled gutter.
+
+Slim adversarial gate: APPROVE, no findings. The seat mutation-verified the partition is
+enforced, confirmed the scope is double-gated to mobile+music (no leak to desktop/other
+views), scrolling inside the skin is preserved, and mms-on is set BEFORE the skin paints
+so the flash window is fully covered. Note: my first cut set scrollbar-width UNGUARDED
+and era-scrollbar-css.test.js caught it (the partition working) - moved into the guard.
+Dual-Node 8407/8407 on v22.23.1 + v24.14.0. No data at risk. The device pass is Dean's.
+
 ### v1.280.0 - A chaptered LISTEN video shows all its chapters in the skins (2026-09-11)
 
 Dean: a video (mp4) with chapters, played via the Listen button, showed only ONE
