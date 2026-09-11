@@ -732,6 +732,8 @@ if (typeof module !== 'undefined' && module.exports) {
     var popoutBtn = root.querySelector('#music-popout-btn');
     var actionsBtn = root.querySelector('#music-actions-btn'); // v1.278: desktop actions menu trigger
     var actionsMenu = root.querySelector('#music-actions-menu');
+    var loopBtn = root.querySelector('#music-loop-btn');       // v1.284: desktop playback-mode toggles
+    var autoplayBtn = root.querySelector('#music-autoplay-btn');
     var jumpbackHost = root.querySelector('#music-jumpback');
     if (!content) return;
 
@@ -756,6 +758,51 @@ if (typeof module !== 'undefined' && module.exports) {
         updateNowPlayingPanel(); // v1.226: recompute (or clear) the theatre panel height cap
       }, { signal });
     }
+
+    // v1.284 (Dean): the desktop Loop / Autoplay toggles. The mobile skin (and the pop-out)
+    // already own these via the sticker menu; the inline desktop player had neither, so a loop
+    // turned on from the phone (the SHARED, cross-device-synced ft-loop setting) kept looping on
+    // desktop with no off-switch. These reflect the live state and toggle the SAME player.setLoop
+    // / autoplay setting - one truth across every surface. reflectPlaybackModes() re-reads on
+    // every now-playing update so the Loop label tracks "Loop chapter" for a chaptered `::c` track
+    // (matching the mobile skin) and a cross-surface toggle is picked up on the next panel update.
+    function reflectPlaybackModes() {
+      var pl = window.FileTube && window.FileTube.player;
+      if (loopBtn) {
+        var loopOn = false;
+        try { loopOn = !!(pl && typeof pl.isLoopEnabled === 'function' && pl.isLoopEnabled()); } catch (_) { loopOn = false; }
+        loopBtn.setAttribute('aria-pressed', loopOn ? 'true' : 'false');
+        var cid = effectiveCurrentId();
+        var isChapter = !!(cid && /::c\d+$/.test(String(cid)));
+        var lbl = isChapter ? 'Loop chapter' : 'Loop';
+        var lblEl = loopBtn.querySelector('.music-mode-lbl');
+        if (lblEl) lblEl.textContent = lbl;
+        loopBtn.title = lbl;
+        loopBtn.setAttribute('aria-label', lbl);
+      }
+      if (autoplayBtn) autoplayBtn.setAttribute('aria-pressed', autoplayEnabled() ? 'true' : 'false');
+    }
+    if (loopBtn) {
+      loopBtn.addEventListener('click', function () {
+        var pl = window.FileTube && window.FileTube.player;
+        if (pl && typeof pl.setLoop === 'function') {
+          var on = false; try { on = !!pl.isLoopEnabled(); } catch (_) { on = false; }
+          pl.setLoop(!on);
+        }
+        reflectPlaybackModes();
+        reflectEngines(); // keep an open mobile skin / pop-out sticker in step
+      }, { signal });
+    }
+    if (autoplayBtn) {
+      autoplayBtn.addEventListener('click', function () {
+        setAutoplayEnabled(!autoplayEnabled());
+        reflectPlaybackModes();
+        reflectEngines();
+      }, { signal });
+    }
+    // The initial paint is the unconditional updateNowPlayingPanel() at the end of init()
+    // (it calls reflectPlaybackModes() before any early return), so no explicit paint is needed
+    // here - a redundant one would be a line no test could distinguish.
 
     // ---- mobile music SKINS: a new PRESENTATION over the shared engine --------
     // On a mobile viewport + a music item, the now-playing panel becomes the
@@ -1284,6 +1331,7 @@ if (typeof module !== 'undefined' && module.exports) {
       repaintPopout();
       updatePopoutBtn();
       updateActionsBtn(); // v1.278: show/hide the desktop actions trigger in lockstep with the panel
+      reflectPlaybackModes(); // v1.284: keep the desktop Loop/Autoplay toggles + chapter label current
       ensureChapterReflect(); // arm the chapter-boundary watcher once the player element is live (idempotent)
       var p = window.FileTube && window.FileTube.player;
       var expanded = !!(p && typeof p.getState === 'function' && p.getState() === 'full');
