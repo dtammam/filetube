@@ -825,6 +825,17 @@ if (typeof module !== 'undefined' && module.exports) {
       if (pl && typeof pl.dock === 'function') {
         pl.dock();
         updateNowPlayingPanel();
+        // v1.283 (Dean): a LISTEN session's launch origin is the SOURCE VIDEO, so returning
+        // there on MENU/collapse bounced the user OFF the audio onto the watch page's resume
+        // ("restart video?") prompt - there was no obvious returnable music state, and the
+        // watch page cannot even adopt a `::c` chapter id (currentId `vidX::c1` != requested
+        // base `vidX`), so it re-offered the whole video. Dean's ruling: for a listen session,
+        // STAY in Music - dock the mini in place on /music (the browse behind the skin), so the
+        // audio keeps playing and tapping the mini returns to the (chaptered) player via
+        // ?nowplaying=1 (the v1.282 restore). A normal music track still returns to its origin.
+        // watchBackVisible() is the SAME "playing item is a listen track" predicate the Watch
+        // way-back uses (queue `.listen`, or the module-scoped activeListenId after a re-init).
+        if (watchBackVisible()) return;
         if (window.FileTube.returnToPlayerOrigin) window.FileTube.returnToPlayerOrigin();
       }
     }
