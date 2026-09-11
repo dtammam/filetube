@@ -636,6 +636,11 @@ if (typeof module !== 'undefined' && module.exports) {
   // Set by playListenItem, cleared by any non-listen loadTrack; consulted as the fallback
   // when the queue lookup misses (the extrasEligibleView fallback posture, same seam).
   var activeListenId = null;
+  // v1.282 (Dean, #222): the chaptered listen-video's `::c` track array, stashed at MODULE
+  // scope so a dock-return (?nowplaying=1) re-init can restore the chapter queue WITHOUT a
+  // re-fetch (a listen has no album browseCtx to rebuild from). Set by playListenItem when it
+  // expands chapters; cleared by any non-listen loadTrack (alongside activeListenId).
+  var activeListenChapters = null;
   // v1.254 (ENDLESS AUTOPLAY) - the pieces that must OUTLIVE a view re-init, at MODULE
   // scope like activeListenId (QA gate W1: the first cut declared these inside init(),
   // so a dock round-trip forgot the session's played tracks and the picker repeated
@@ -2154,6 +2159,7 @@ if (typeof module !== 'undefined' && module.exports) {
       playingId = item.id;
       autoplayNotePlayed(item.id); // v1.254: the autoplay picker's session no-repeat memory
       activeListenId = item.listen ? item.id : null; // W1: a normal play ends the listen session's marker
+      if (!item.listen) activeListenChapters = null; // #222: a non-listen play ends the chaptered-listen session too
       nowPlaying = { id: item.id, title: item.title || '', artist: item.artist || '', album: item.album || '', albumKey: item.albumKey || '' };
       // v1.237: a real load resets the chapter-view baseline - to the loaded chapter for a
       // chaptered file (the watcher advances it as playback rolls), else null (not chaptered).
@@ -2465,6 +2471,33 @@ if (typeof module !== 'undefined' && module.exports) {
     // with exactly two effects: loadTrack skips the music-resume write (NO Music membership,
     // the locked intake) and the sticker menu's page 1 offers the "Watch" way back. A
     // single-track queue registers neither prev nor next (the v1 intake) for free.
+    // v1.282 (Dean, #222): is the live player on a chaptered LISTEN video? True only when the
+    // stashed chapter tracks belong to the live `::c` file - so a chaptered LIBRARY album
+    // (activeListenChapters null: it is not a listen) correctly falls through to the album drill.
+    function isListenChapterActive() {
+      if (!activeListenChapters || !activeListenChapters.length) return false;
+      var p = window.FileTube && window.FileTube.player;
+      var live = (p && p.currentId) || null;
+      if (!live || !/::c\d+$/.test(String(live))) return false;
+      return String(activeListenChapters[0].id).replace(/::c\d+$/, '') === String(live).replace(/::c\d+$/, '');
+    }
+    // Restore the chaptered-listen queue on a dock-return, SYNCHRONOUSLY from the stash (no
+    // re-fetch, no dead album drill). Playback is untouched - the player kept the live `::c`
+    // chapter; this only rebuilds the VIEW's queue + chapter baseline so the up-next, jump,
+    // Loop chapter and title-advance come back. Mirrors playListenItem's queue-only setup.
+    function restoreListenChapterQueue() {
+      var p = window.FileTube && window.FileTube.player;
+      var live = (p && p.currentId) || activeListenId;
+      tab = 'albums'; drill = null; search = ''; queueCtx = null; queueCtxEncoded = '';
+      queue = activeListenChapters;
+      playingId = live;
+      chapterViewId = /::c\d+$/.test(String(live)) ? live : null;
+      nowPlaying = null;
+      for (var i = 0; i < queue.length; i++) {
+        if (queue[i].id === live) { var t = queue[i]; nowPlaying = { id: live, title: t.title || '', artist: t.artist || '', album: t.album || '', albumKey: t.albumKey || '' }; break; }
+      }
+      applyPlayingHighlight();
+    }
     async function playListenItem(mediaId) {
       mountEarlyCover();
       try {
@@ -2490,6 +2523,7 @@ if (typeof module !== 'undefined' && module.exports) {
           queueCtx = null;
           queueCtxEncoded = '';
           queue = chapterTracks || [t];
+          activeListenChapters = chapterTracks; // #222: stash for the dock-return restore (null for a single track)
           activeListenId = queue[0].id; // W1: survives the dock-return re-init (module scope)
           playAt(0);
           // S5 (QA): build the ALBUMS grid behind the skin (a grid tab - render() leaves
@@ -2621,6 +2655,18 @@ if (typeof module !== 'undefined' && module.exports) {
         straightToPlayerPending = false; // a rejected load must not strand the cover
         render().catch(() => {});
       });
+    } else if (wantNowPlaying && isListenChapterActive()) {
+      // v1.282 (Dean, #222): a chaptered LISTEN video has no real album, so the v1.207
+      // album-drill branch below would drill into an EMPTY album (its albumKey is the video id,
+      // never a real artist\x00album key) - the up-next/Loop-chapter/title-advance went quiet.
+      // Restore the stashed chapter queue instead (sync, no re-fetch, no dead drill). Ordered
+      // BEFORE the album branch so a chaptered listen never falls into it.
+      restoreListenChapterQueue();
+      var lci = -1;
+      for (var lk = 0; lk < queue.length; lk++) { if (queue[lk].id === playingId) { lci = lk; break; } }
+      registerTrackNav(lci);
+      render().catch(function () {}); // the albums grid behind the skin (a grid tab leaves `queue` untouched)
+      updateNowPlayingPanel();
     } else if (wantNowPlaying && nowPlaying && nowPlaying.albumKey) {
       // v1.207 (Dean): returning to a playing music track via the mini-player
       // restores that track's ALBUM as the browse view - it persists across the

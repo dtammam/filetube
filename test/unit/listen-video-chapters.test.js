@@ -63,3 +63,32 @@ test('playListenItem uses the shared expansion (chaptered video -> chapter queue
   assert.match(wb[1], /replace\(\/::c\\d\+\$\/, ''\)/, 'strips the ::c chapter suffix to the base video id');
   assert.match(wb[1], /\/watch\.html\?v=' \+ encodeURIComponent\(base\)/, 'navigates to the BASE video id');
 });
+
+// ---- v1.282 (#222): the dock-return restore (source-locked) --------------------------
+
+test('the chaptered-listen queue is stashed at MODULE scope so a dock-return re-init can restore it', () => {
+  assert.match(MUSIC, /var activeListenChapters = null;/, 'module-scoped stash exists (survives the ?nowplaying=1 re-init like activeListenId)');
+  assert.match(MUSIC, /activeListenChapters = chapterTracks;/, 'playListenItem stashes the chapter tracks (null for a single track)');
+  // a NON-listen play must clear the stash, or a later library album could falsely look like a live listen.
+  assert.match(MUSIC, /if \(!item\.listen\) activeListenChapters = null;/, 'a non-listen loadTrack ends the chaptered-listen session');
+});
+
+test('isListenChapterActive requires the LIVE player to be a ::c sharing the stash base (a real album, activeListenChapters null, falls through)', () => {
+  const fn = /function isListenChapterActive\(\) \{([\s\S]*?)\n {4}\}/.exec(MUSIC);
+  assert.ok(fn, 'isListenChapterActive exists');
+  assert.match(fn[1], /if \(!activeListenChapters \|\| !activeListenChapters\.length\) return false;/, 'no stash -> not a live chaptered listen (a library album never matches)');
+  assert.match(fn[1], /::c\\d\+\$\/\.test\(String\(live\)\)/, 'the live player id must itself be a ::c chapter');
+  assert.match(fn[1], /replace\(\/::c\\d\+\$\/, ''\) === String\(live\)\.replace\(\/::c\\d\+\$\/, ''\)/, 'the stash base must equal the live base (not a stale stash from a different video)');
+});
+
+test('the dock-return dispatch is ordered BEFORE the album-drill branch, and restore neutralizes the dead empty-album drill', () => {
+  const listenIdx = MUSIC.indexOf('} else if (wantNowPlaying && isListenChapterActive()) {');
+  const albumIdx = MUSIC.indexOf('} else if (wantNowPlaying && nowPlaying && nowPlaying.albumKey) {');
+  assert.ok(listenIdx > 0 && albumIdx > 0, 'both branches exist');
+  assert.ok(listenIdx < albumIdx, 'the chaptered-listen branch is checked FIRST (else the video-id albumKey would drill into an empty album)');
+  const rf = /function restoreListenChapterQueue\(\) \{([\s\S]*?)\n {4}\}/.exec(MUSIC);
+  assert.ok(rf, 'restoreListenChapterQueue exists');
+  assert.match(rf[1], /drill = null;/, 'the dead album drill is cleared (the fix for the collapse)');
+  assert.match(rf[1], /queue = activeListenChapters;/, 'the queue comes back from the stash - no re-fetch');
+  assert.match(rf[1], /applyPlayingHighlight\(\);/, 'the now-playing highlight is reapplied');
+});
