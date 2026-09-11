@@ -727,6 +727,9 @@ summary,
   .modern-avatar-bar { scrollbar-width: none; }
   /* v1.150: the mobile search-toolbar strip hides its bar the same way. */
   .section-actions.search-scoped-toolbar { scrollbar-width: none; }
+  /* v1.281 (Dean): the immersive mobile music skin hides its bar the same way (webkit
+     side: body.mms-on ::-webkit-scrollbar display:none) - kills the launch scrollbar flash. */
+  body.mms-on, body.mms-on * { scrollbar-width: none; }
 }
 
 * {
@@ -11131,6 +11134,13 @@ html[data-modern="on"] .video-uploader {
      left (music.js destroy() + updateNowPlayingPanel's collapse/non-music clears,
      both test-bound). A leaked mms-on would freeze body scroll on the next view. */
   body.mms-on{ overflow:hidden; }
+  /* v1.281 (Dean): the immersive mobile skin is drag/wheel/touch-driven, so the app's
+     globally-styled ::-webkit-scrollbar has no place in it - a transiently-overflowing
+     child at launch (the layout settling) flashed a gutter on the right for a beat, which
+     read as jarring. Hide every scrollbar while the skin is up (mms-on is mobile+music
+     ONLY, per music.js). Scrollable regions inside still pan by touch (touch-action:pan-y);
+     only the visual bar is gone. */
+  body.mms-on ::-webkit-scrollbar { display:none; } /* Firefox twin is in the one @supports guard (era-scrollbar partition) */
 
   /* ---------- the full-screen shell (shared frame; each skin fills it) ---------- */
   /* z-index: cover the app header (--z-header 1000) for a true full-screen player -
