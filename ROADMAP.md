@@ -93,6 +93,30 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.285.0 - Per-channel duration window for subscriptions (min + max length) (2026-09-11)
+
+Dean's ask: a subscription should download only items within a length WINDOW - a channel that
+posts 45-min episodes plus 2-3 min teaser clips can say "10-75 min" and get the episodes while
+the teasers (and a stray 6-hour stream) are never fetched. The per-channel MAX already existed
+end-to-end (in raw seconds); this adds the per-channel MIN and presents both in MINUTES.
+
+Locked intake: unknown-length items EXCLUDED (strict yt-dlp operators, so a capped channel never
+starts recording an unbounded live stream); future pulls only (a download gate, like the cap);
+per-channel only (no global min; the global max is unchanged). Built store -> args -> UI:
+validateMinDurationSeconds + an empty-window cross-guard; a `duration >= N` clause AND-joined into
+the SAME single --match-filter as the ceiling and skip-Shorts; Min/Max minute fields on both the
+Add form and the per-channel edit sheet (converted to the store's seconds).
+
+Full gate (silent-starvation risk). BOTH seats found the same real trap the wave was chartered
+against: a per-sub MIN above the effective GLOBAL ceiling (with no per-sub max) passed every store
+guard yet emitted an empty window (`duration >= 9000 & duration < 7200`) = a subscription that
+silently downloads NOTHING. Fixed at the build site - the one place the true effective window is
+known - by DROPPING the floor when it would empty the window (fail safe toward downloading MORE).
+The adversarial seat also caught an unbound revert-path test (the "guard shipped unbound" class),
+now bound. Both seats APPROVE across both rounds. Dual-Node 8441/8441 on v22.23.1 + v24.14.0.
+Disclosed residual: a legacy odd-seconds max rounds to the nearest minute on edit. Device pass is
+Dean's.
+
 ### v1.284.1 - The desktop Loop/Autoplay ON state now reads as selected (2026-09-11)
 
 Dean, on-device: clicking the new Loop/Autoplay buttons showed no clear selected state - "it

@@ -1,6 +1,6 @@
 # Exec plan: per-channel subscription duration window (min + max, in minutes)
 
-Status: ACTIVE (started 2026-09-11)
+Status: SHIPPED v1.285.0 (2026-09-11) - full gate, both seats APPROVE across two rounds
 Owner: main session (lean mode)
 Wave: feat/subscription-duration-window
 
