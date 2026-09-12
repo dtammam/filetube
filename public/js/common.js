@@ -3530,13 +3530,23 @@ function formatNotificationBadge(count) {
 // channelName wins, a bare folder-derived name is better than blank). Media
 // ids are md5 hex, so the href is built raw exactly like main.js's card
 // builder (percent-encode at ONE URL layer -- and that layer is not here).
+// v1.288 (Dean's "nothing iconless" rule): the two fallback marks every
+// notification row can lean on. NOTIF_ENGINE_ICON is the vendored yt-dlp mark
+// for downloader-engine rows (they have no per-item thumbnail); NOTIF_FALLBACK_ICON
+// is the FileTube logo - the guaranteed floor for a media row that never got a
+// thumbnail AND the onerror target for ANY avatar/thumb whose URL 404s, so a
+// stale/deleted image degrades to the logo instead of the browser's broken glyph.
+const NOTIF_ENGINE_ICON = '/icons/ytdlp.svg';
+const NOTIF_FALLBACK_ICON = '/icons/icon-192.png';
+
 function buildNotificationRowModel(row) {
   if (!row || typeof row.mediaId !== 'string' || row.mediaId === '') return null;
   // v1.146 (downloader-engine): engine event rows - server-composed title,
-  // no thumbnail, the generated-glyph avatar tile, and a tap that lands on
-  // the Setup page's Downloads box (admin-only rows; the server already
-  // filtered). Kept ABOVE the media/podcast paths so an engine row can
-  // never fall through to a /watch.html href built from its synthetic id.
+  // the generated-glyph avatar tile, and a tap that lands on the Setup page's
+  // Downloads box (admin-only rows; the server already filtered). Kept ABOVE
+  // the media/podcast paths so an engine row can never fall through to a
+  // /watch.html href built from its synthetic id. v1.288: they now wear the
+  // yt-dlp mark (an icon-fit thumb) instead of a blank right side.
   if (row.kind === 'engine') {
     return {
       id: row.id,
@@ -3546,7 +3556,8 @@ function buildNotificationRowModel(row) {
       title: typeof row.title === 'string' ? row.title : '',
       channelLabel: 'Downloader engine',
       channelAvatarUrl: '',
-      thumbnailUrl: null,
+      thumbnailUrl: NOTIF_ENGINE_ICON,
+      thumbnailIsIcon: true,
       timeLabel: formatRelativeTime(row.createdAt),
       unread: row.unread === true,
     };
@@ -3573,9 +3584,19 @@ function buildNotificationRowModel(row) {
     title: typeof row.title === 'string' ? row.title : '',
     channelLabel: channelName || folderName || 'Library',
     channelAvatarUrl: typeof row.channelAvatarUrl === 'string' ? row.channelAvatarUrl : '',
-    thumbnailUrl: isPodcast
-      ? (typeof row.artUrl === 'string' ? row.artUrl : null)
-      : (row.hasThumbnail === true ? `/thumbnail/${row.mediaId}` : null),
+    // v1.288: every row carries a picture. A podcast uses its show art (which
+    // itself falls back to a 🎧 placeholder server-side); a media row with a real
+    // thumbnail uses it; a thumbnail-less media row (or the defensive empty-artUrl
+    // podcast) falls back to the FileTube logo (icon-fit) so it is never blank.
+    ...(function () {
+      const real = isPodcast
+        ? (typeof row.artUrl === 'string' && row.artUrl !== '' ? row.artUrl : null)
+        : (row.hasThumbnail === true ? `/thumbnail/${row.mediaId}` : null);
+      // An icon-fit thumb is a LOGO (contain + quiet fill), never a photo to
+      // cover-crop or hang a duration badge on. A resolved real thumbnail/show-art
+      // is a photo; only the fallback logo is an icon.
+      return { thumbnailUrl: real || NOTIF_FALLBACK_ICON, thumbnailIsIcon: real === null };
+    })(),
     // v1.208 (Dean): the watch length -> a small duration badge on the thumb.
     durationSec: Number(row.durationSec) > 0 ? Number(row.durationSec) : 0,
     timeLabel: formatRelativeTime(row.createdAt),
@@ -3754,9 +3775,17 @@ function injectNotificationBellIfEnabled() {
           const source = resolveAvatarSource(m.channelLabel, m.channelAvatarUrl);
           if (source.type === 'url') {
             const img = document.createElement('img');
-            img.src = source.url;
             img.alt = '';
             img.loading = 'lazy';
+            // v1.288 net: a stale/404 avatar URL degrades to the FileTube logo
+            // (contain-fit) instead of the browser's broken-image glyph. Null the
+            // handler first so a failing fallback can never loop.
+            img.onerror = function () {
+              this.onerror = null;
+              this.src = NOTIF_FALLBACK_ICON;
+              this.classList.add('notif-row-avatar-fallback');
+            };
+            img.src = source.url;
             avatarHolder.appendChild(img);
           } else {
             avatarHolder.textContent = source.glyph;
@@ -3787,12 +3816,24 @@ function injectNotificationBellIfEnabled() {
             const wrap = document.createElement('div');
             wrap.className = 'notif-row-thumb-wrap';
             const thumb = document.createElement('img');
-            thumb.className = 'notif-row-thumb';
-            thumb.src = m.thumbnailUrl;
+            thumb.className = m.thumbnailIsIcon ? 'notif-row-thumb notif-row-thumb-icon' : 'notif-row-thumb';
             thumb.alt = '';
             thumb.loading = 'lazy';
+            // v1.288 net: a deleted/404 thumbnail degrades to the FileTube logo
+            // (icon-fit) and drops its duration badge, rather than showing a
+            // broken-image glyph. Null the handler first so it can never loop.
+            thumb.onerror = function () {
+              this.onerror = null;
+              this.src = NOTIF_FALLBACK_ICON;
+              this.classList.add('notif-row-thumb-icon');
+              const b = wrap.querySelector('.duration-badge');
+              if (b) b.remove();
+            };
+            thumb.src = m.thumbnailUrl;
             wrap.appendChild(thumb);
-            if (m.durationSec > 0 && typeof formatDuration === 'function') {
+            // A duration badge belongs only on a real photographic thumbnail - never
+            // on a logo/icon fallback (nothing to triage there).
+            if (!m.thumbnailIsIcon && m.durationSec > 0 && typeof formatDuration === 'function') {
               const badge = document.createElement('div');
               badge.className = 'duration-badge';
               badge.textContent = formatDuration(m.durationSec);

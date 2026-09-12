@@ -12663,6 +12663,21 @@ html[data-modern="on"] .video-uploader {
   flex-shrink: 0;
 }
 
+/* v1.288 (Dean's "nothing iconless" rule): a logo fallback (the yt-dlp mark on a
+   downloader-engine row, or the FileTube logo on a thumbnail-less/404 row) is a
+   square icon, not a photo - contain it on a quiet fill so it is centred and
+   whole rather than cover-cropped. Also the onerror landing state for avatars. */
+.notif-row-thumb-icon {
+  object-fit: contain;
+  padding: var(--space-1);
+  background: var(--bg-secondary);
+}
+
+.notif-row-avatar img.notif-row-avatar-fallback {
+  object-fit: contain;
+  padding: var(--space-1);
+}
+
 /* v1.208 (Dean): the thumb wrapper hosts a small duration badge in its corner
    (triage length before deleting). It takes over the flex sizing from the img;
    line-height:0 kills the inline-image baseline gap so it hugs the 72x40 box. */
