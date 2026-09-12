@@ -46,7 +46,42 @@ destructive-action refactor - it earns its own focused wave + full gate. Dean's 
 (2026-09-12): ship the foundation now, do the refactor + all gap-closing as the immediate next
 wave (matches "prep what we're doing now; every other shoe as soon as this merges").
 
-### The NEXT wave (pre-declared, fired on merge): "every other shoe"
+### WAVE 2 (v1.287.0, feat/parity-close-podcasts-share) - EXECUTING (overnight, Dean asleep, pre-authorized 2026-09-12)
+
+Dean: "generalize the factory, plug in all the things." Decisions (AskUserQuestion, 2026-09-12):
+- **Share = BOTH-when-source-exists**: an item WITH a source URL gets a two-choice Share
+  (Share file / Share link, via `showChoiceModal`); podcasts + local-only files are file-only
+  (`shareMediaFile`). Video/music thus GAIN file-share alongside their existing link-share.
+- **Scope**: close `podcasts.playerMenu` + `podcasts.share` + `books.share` this wave; only
+  `podcasts.transcript` stays a FUTURE todo (needs RSS transcript ingestion).
+
+DESIGN (safety-first, since this touches a DESTRUCTIVE action - podcast delete - autonomously):
+1. **Generalize `createExtrasMenu` with behavior-preserving DEFAULTS.** cfg gains optional
+   adapters; when absent, the factory behaves BYTE-IDENTICALLY to today (music/video pass
+   nothing new): `fetchItem(id)` (default `/api/videos/:id`), `downloadUrl(item)` (default
+   `/video/:id?download=1`), `shareLinkUrl(item)` (default `item.watchUrl`), `capabilities`
+   (which action rows to render; default = the current full video set), and per-action handlers
+   `onDelete/onLike/onWatched/onQueue/onTranscript/onReheat/onMove` (defaults = the current
+   /api/videos-family calls). The TOCTOU token, the v1.255 glyph-preserving label write, and the
+   two-flow delete confirm are UNTOUCHED.
+2. **Podcast adapter** (podcasts.js): pass the `extras` hook to `podcastEngineConfig` with a
+   podcast adapter whose handlers DELEGATE to podcasts.js's EXISTING, device-tested operations
+   (the same the list rows call: trash-delete, /liked, togglePlayed, addToQueue(id,'end',
+   'podcast'), /episode/:id?download=1). Capabilities = {download, share, queue, delete, like,
+   played}. REUSE, don't reimplement - the delete path is the same proven trash op.
+3. **Universal Share (both-choice)**: `extrasShare` -> if a source link exists, `showChoiceModal`
+   [Share file -> shareMediaFile(downloadUrl); Share link -> shareExternalUrl]; else file-only.
+   Books: a new `#reader-share-btn` in read.html wired to shareMediaFile(`/book/:id/file?download=1`).
+4. **Registry flip**: podcasts.playerMenu + podcasts.share + books.share TODO->SUPPORTED (real
+   markers); census TODO snapshot -> only `podcasts.transcript:future`.
+
+FULL GATE (destructive-work norm: podcast delete). Adversarial briefed to DESTROY podcast data
+(wrong-episode delete, delete without undo, the confirm bypassed) and to prove music/video are
+behaviour-UNCHANGED (the defaults). SAFETY VALVE: if podcast delete can't be made provably safe
+(right episode, confirm, undo, mutation-tested), SHIP the podcast menu MINUS delete and disclose
+delete as the one deferred cell - never risk data loss on an unattended ship.
+
+### The next-next wave (pre-declared): "every other shoe"
 1. Generalize `createExtrasMenu` off the /api/videos model -> endpoint-driven per media type
    (cfg: item-detail fetch, download URL, delete/like/watched/queue handlers).
 2. Podcast player menu (Download, Share, Queue, Delete, Like, Played) - closes podcasts.playerMenu.

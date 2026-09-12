@@ -215,14 +215,54 @@
         hostCtl: function (id) { return document.getElementById(id); }, // MAIN-document controls - a pop-out click still drives the real player
         onSelectIndex: function (i) { playAt(i); },
         onDock: function () { var pp = window.FileTube && window.FileTube.player; if (pp && typeof pp.dock === 'function') pp.dock(); updateNowPlayingPanel(); if (window.FileTube && window.FileTube.returnToPlayerOrigin) window.FileTube.returnToPlayerOrigin(); }, // v1.247 (F2): dock to the mini on the ORIGIN tab
-        // v1.250 (F-UNIFY ride-along): the two DEFERRED v1.246 polish items arrive with the
-        // shared engine - hold-to-fast-scan on the wheel's rewind/ffwd zones, and the sticker
-        // quick-menu (speed/loop/skin). NO extras key: podcasts keep their own episode
-        // actions (the locked v1.249 intake), so the engine renders no Extras entry here.
+        // v1.250 (F-UNIFY ride-along): hold-to-fast-scan + the sticker quick-menu (speed/loop/
+        // skin). v1.287 (Dean, parity wave 2): podcasts NOW get the shared Extras menu in the
+        // player - the createExtrasMenu factory was generalized to be endpoint-driven, so the
+        // adapter below wires it to the SAME podcast operations the list rows use (proven).
         fastScan: true,
         sticker: {
           getPlayer: function () { return (window.FileTube && window.FileTube.player) || null; },
           onSkinChange: function () { updateNowPlayingPanel(); }, // repaint with the newly-picked skin
+          // v1.287: the podcast Extras adapter. Capabilities = the applicable subset (Dean); the
+          // handlers DELEGATE to the podcast endpoints (/api/podcasts/episodes/:id/...), and
+          // Share is file-only (RSS episodes have no external source). Delete reuses the
+          // recoverable trash (deleteNeedsModify:false - the podcast manager can trash).
+          extras: {
+            getBaseId: function () { var pp = window.FileTube && window.FileTube.player; return (pp && pp.currentId) || null; },
+            isEligible: function () {
+              var pp = window.FileTube && window.FileTube.player;
+              var id = pp && pp.currentId; if (!id) return false;
+              for (var i = 0; i < episodes.length; i++) { if (episodes[i].id === id) return episodes[i].status === 'downloaded' && !episodes[i].watchHref; }
+              return false; // only a downloaded RSS episode of the current show gets the menu
+            },
+            onMutated: function () { refreshCurrentView(); },
+            signal: signal,
+            fetchItem: function (id) {
+              var ep = null;
+              for (var i = 0; i < episodes.length; i++) { if (episodes[i].id === id) { ep = episodes[i]; break; } }
+              if (!ep) return null;
+              return { id: ep.id, title: ep.title || '', liked: ep.liked === true, watchState: ep.played ? 'watched' : 'unwatched', hasSubtitles: false, watchUrl: undefined };
+            },
+            downloadUrl: function (item) { return '/episode/' + encodeURIComponent(item.id) + '?download=1'; },
+            shareLinkUrl: function () { return ''; },
+            capabilities: ['download', 'share', 'queue', 'delete', 'like', 'watched'],
+            watchedLabels: { on: 'Played', off: 'Mark played' },
+            deleteNeedsModify: false,
+            onQueue: function (item, pos) { if (typeof window.addToQueue === 'function') window.addToQueue(item.id, pos, 'podcast'); },
+            likeRequest: function (item, nextOn) { return fetch('/api/podcasts/episodes/' + encodeURIComponent(item.id) + '/liked', { method: nextOn ? 'POST' : 'DELETE' }); },
+            watchedRequest: function (item, nextOn) { return fetch('/api/podcasts/episodes/' + encodeURIComponent(item.id) + '/played', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ played: nextOn }) }); },
+            onDelete: function (item, onSuccess, player) {
+              if (typeof window.showConfirmModal !== 'function') return;
+              // RSS titles are attacker-influenced - escape via textContent before the innerHTML body.
+              var esc = function (s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; };
+              window.showConfirmModal('Move to Trash?', 'Move <strong>' + esc(item.title || 'this episode') + '</strong> to Trash? You can Restore it from the episode list.', function () {
+                if (player && typeof player.close === 'function') player.close();
+                fetchJson('/api/podcasts/episodes/' + encodeURIComponent(item.id), { method: 'DELETE' })
+                  .then(function () { if (typeof onSuccess === 'function') onSuccess(); })
+                  .catch(function () { setStatus('Could not delete the episode.'); });
+              });
+            },
+          },
           // v1.273 (Dean): "podcasts just doesn't show up as an option even though it's
           // the same player". It IS the same player on the same skins - v1.270 simply
           // built Brick's view wiring inside music.js, so this surface never had a row.

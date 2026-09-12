@@ -708,6 +708,18 @@
       backHtml: extrasBackHtml,
       stillOnPage: function () { var m = panel.querySelector('[data-skin-sticker-menu]'); return !!m && m.getAttribute('data-sm-page') === 'extras'; },
       onMutated: function () { if (extrasCfg && typeof extrasCfg.onMutated === 'function') { try { extrasCfg.onMutated(); } catch (_) { /* view refresh best-effort */ } } },
+      // v1.287: forward the media-type ADAPTER fields (undefined for music/video -> the factory
+      // defaults preserve their behaviour; podcasts supply the podcast endpoints/capabilities).
+      fetchItem: extrasCfg ? extrasCfg.fetchItem : undefined,
+      downloadUrl: extrasCfg ? extrasCfg.downloadUrl : undefined,
+      shareLinkUrl: extrasCfg ? extrasCfg.shareLinkUrl : undefined,
+      capabilities: extrasCfg ? extrasCfg.capabilities : undefined,
+      watchedLabels: extrasCfg ? extrasCfg.watchedLabels : undefined,
+      deleteNeedsModify: extrasCfg ? extrasCfg.deleteNeedsModify : undefined,
+      onDelete: extrasCfg ? extrasCfg.onDelete : undefined,
+      onQueue: extrasCfg ? extrasCfg.onQueue : undefined,
+      likeRequest: extrasCfg ? extrasCfg.likeRequest : undefined,
+      watchedRequest: extrasCfg ? extrasCfg.watchedRequest : undefined,
     });
     function openStickerExtras() {
       var menu = panel.querySelector('[data-skin-sticker-menu]');
