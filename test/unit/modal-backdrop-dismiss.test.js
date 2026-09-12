@@ -92,17 +92,26 @@ test('defensive: a missing backdrop or non-function onClose never throws', () =>
   });
 });
 
-// v1.289: bind that BOTH paste-a-URL modals actually route their dismiss through
-// the drag-safe helper (a source-lock - the fix is worthless if a builder still
-// carries the old inline `e.target === backdrop` close). Enumerate the two
-// builders and assert each calls bindBackdropDismiss and no longer inline-closes.
-test('both the download and subscribe modals route dismiss through bindBackdropDismiss', () => {
+// v1.289: bind that EVERY editable-text modal routes its dismiss through the
+// drag-safe helper (a source-lock - the fix is worthless if a builder still
+// carries the old inline `e.target === backdrop` close). These four modals each
+// host a field a user selects/edits, where the drag-onto-backdrop gesture cost
+// them the window (the chapters editor loses unsaved edits - Dean's report).
+// A body extractor bounds each builder so a far-from-start backdrop line (the
+// transcript modal wires its dismiss near the end) is still covered.
+test('every editable-text modal routes dismiss through bindBackdropDismiss (no inline backdrop close survives)', () => {
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/js/common.js'), 'utf8');
-  const oneoff = src.slice(src.indexOf('function buildOneOffModal('), src.indexOf('function buildOneOffModal(') + 900);
-  const subscribe = src.slice(src.indexOf('function buildSubscribeModal('), src.indexOf('function buildSubscribeModal(') + 900);
-  assert.match(oneoff, /bindBackdropDismiss\(backdrop,/, 'the download modal must use the drag-safe helper');
-  assert.match(subscribe, /bindBackdropDismiss\(backdrop,/, 'the subscribe modal must use the drag-safe helper');
-  // The porous inline pattern must be gone from BOTH builders (it would reintroduce the bug).
-  assert.doesNotMatch(oneoff, /backdrop\.addEventListener\('click'/, 'no inline backdrop click-close survives in the download modal');
-  assert.doesNotMatch(subscribe, /backdrop\.addEventListener\('click'/, 'no inline backdrop click-close survives in the subscribe modal');
+  function bodyOf(name) {
+    const start = src.indexOf('function ' + name + '(');
+    assert.notStrictEqual(start, -1, name + ' must exist');
+    const next = src.indexOf('\nfunction ', start + 1);
+    return src.slice(start, next === -1 ? src.length : next);
+  }
+  for (const name of ['buildOneOffModal', 'buildSubscribeModal', 'showChaptersEditor', 'showTranscriptModal']) {
+    const body = bodyOf(name);
+    assert.match(body, /bindBackdropDismiss\(backdrop,/, name + ' must use the drag-safe helper');
+    // The porous inline pattern must be gone (either quote style - eslint enforces
+    // no quote convention, so a double-quoted reintroduction must fail here too).
+    assert.doesNotMatch(body, /backdrop\.addEventListener\(['"]click['"]/, name + ' must not inline-close the backdrop');
+  }
 });

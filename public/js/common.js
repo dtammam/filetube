@@ -12208,7 +12208,9 @@ function showTranscriptModal(opts) {
     });
   }
   closeBtn.addEventListener('click', dismiss);
-  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) dismiss(); });
+  // v1.289: drag-safe dismiss - selecting the transcript text (or the timestamp
+  // input) and releasing on the backdrop must not close it.
+  bindBackdropDismiss(backdrop, dismiss);
 
   document.body.appendChild(backdrop);
   openOverlay(backdrop, 'modal-open');
@@ -12555,9 +12557,10 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc) {
 
   const backdrop = d.createElement('div');
   backdrop.className = 'modal-backdrop';
-  backdrop.addEventListener('click', (e) => {
-    if (e && e.target === backdrop && !busy) teardown();
-  });
+  // v1.289: drag-safe dismiss - drag-selecting chapter text and releasing on the
+  // backdrop must NOT close the editor (that discarded unsaved chapter edits -
+  // Dean's exact gesture, on a data-editing surface). The `!busy` guard is kept.
+  bindBackdropDismiss(backdrop, () => { if (!busy) teardown(); });
 
   const modal = d.createElement('div');
   modal.className = 'modal-content';
