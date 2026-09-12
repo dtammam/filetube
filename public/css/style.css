@@ -12676,6 +12676,7 @@ html[data-modern="on"] .video-uploader {
 .notif-row-avatar img.notif-row-avatar-fallback {
   object-fit: contain;
   padding: var(--space-1);
+  background: var(--bg-secondary); /* the FileTube logo may be transparency-backed - give it the same quiet fill as the thumb-icon */
 }
 
 /* v1.208 (Dean): the thumb wrapper hosts a small duration badge in its corner
