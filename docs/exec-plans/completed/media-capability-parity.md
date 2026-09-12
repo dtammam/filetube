@@ -1,8 +1,19 @@
 # Exec plan: media capability parity — a standardization audit suite
 
-Status: ACTIVE (Dean sanity-checked the 55-cell matrix, 2026-09-12)
+Status: COMPLETE (shipped across v1.286.0 [foundation] + v1.287.0 [podcast menu + universal Share], 2026-09-12)
 Owner: main session (lean mode)
-Wave: feat/capability-parity-audit
+Wave: feat/capability-parity-audit (W1), feat/parity-close-podcasts-share (W2)
+
+## Terminal note (2026-09-12)
+
+Both waves shipped. The registry + census are the enforced contract; the factory is
+endpoint-driven (defaults keep video/music byte-identical). Podcast player menu (applicable
+subset: download/share/queue/delete/like/played) + universal file-Share on all four types
+(video/music/podcasts/books) landed in v1.287.0. Census: 55 cells = 34 supported / 10 N/A /
+1 todo / 10 delegated. The SOLE open TODO is **podcasts.transcript** (future - needs RSS
+`podcast:transcript` ingestion first), tracked by the census itself, not this plan; it becomes
+its own wave when the ingestion lands. Book-share, which this plan had marked "next wave," was
+pulled forward and shipped here. Nothing left to build against this plan - moved to completed/.
 
 ## Dean's final rulings on the matrix (2026-09-12)
 

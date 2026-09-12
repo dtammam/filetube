@@ -93,6 +93,34 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.287.0 - Media capability parity: podcast player menu + universal Share (2026-09-12)
+
+The payoff wave on v1.286's foundation. The createExtrasMenu factory (skin-surface.js) was
+video/music-HARDWIRED (hardcoded /api/videos endpoints, download URLs, a two-way Watched label);
+this wave generalized it to be endpoint-driven via a `cfg` adapter (fetchItem, downloadUrl,
+shareLink, capabilities, watchedLabels, deleteNeedsModify, onDelete, onQueue, like/watchedRequest),
+with defaults that keep the video and music paths byte-identical (a mutation-verified property, not
+a hope). Then plugged in the gaps the census flagged:
+
+- **Podcast player actions menu** - the podcast player now carries the same Extras menu as music/video
+  (download, share, add-to-queue, mark-played, like, and delete-to-trash), the "applicable subset"
+  Dean chose - move/reheat/transcript/listen stay honestly N/A or a future TODO. The Watched control
+  reads "Played"/"Mark played" for a podcast (per-type labels), and delete is a recoverable
+  trash with a confirm.
+- **Universal Share on all four** (video, music, podcasts, books) shares the actual FILE via
+  navigator.share({files}) when a source exists, with a link-vs-file choice where a web source
+  also exists and file-only where it doesn't (RSS episodes) - Dean's "everything shareable, the
+  real mp3 not just a link." Books gained a Share control in the reader.
+
+Full destructive-work gate (the podcast delete can lose an episode). QA caught a LYING contract-doc
+comment (fixed); the adversarial seat proved my podcast onDelete guard shipped UNBOUND (satisfiable
+by an unrelated /liked substring) and I bound it with a mutation-verified source-lock over the whole
+confirm -> player.close() -> recoverable DELETE ordering (both seats then re-APPROVED; all five
+mutants killed). Census now 55 cells = 34 supported / 10 N/A / 1 todo / 10 delegated - the sole
+remaining TODO is podcasts.transcript (future; needs RSS podcast:transcript ingestion first),
+tracked by the census. Dual-Node 8456/8456. Device pass is Dean's - the on-device probe list is
+in the report.
+
 ### v1.286.0 - Media capability parity: the standardization audit suite (foundation) (2026-09-12)
 
 Dean's systems observation: we built shared COMPONENTS (the skin engine, the actions-menu
