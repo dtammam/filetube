@@ -371,15 +371,21 @@ test('buildSubscribeModal: the [x] close button calls onClose, not onConfirm', (
   assert.strictEqual(closed, true);
 });
 
-test('buildSubscribeModal: clicking the backdrop itself calls onClose, but a click bubbled from inside the modal does not', () => {
+test('buildSubscribeModal: a tap that starts+ends on the backdrop calls onClose, but a drag from inside the modal does not', () => {
   let closeCalls = 0;
   const modal = buildSubscribeModal(fakeDoc, { channelUrl: 'https://www.youtube.com/@x' }, { onClose: () => { closeCalls += 1; } });
 
+  // A genuine backdrop tap: press AND release on the backdrop.
+  modal.backdrop.fire('pointerdown', { target: modal.backdrop });
   modal.backdrop.fire('click', { target: modal.backdrop });
   assert.strictEqual(closeCalls, 1);
 
-  modal.backdrop.fire('click', { target: modal.modal });
-  assert.strictEqual(closeCalls, 1, 'a click on the inner modal content must not close it');
+  // v1.289: a drag that begins inside the dialog and releases on the backdrop
+  // (the synthesized click targets the backdrop) must NOT close - the paste-a-
+  // feed-URL selection case.
+  modal.backdrop.fire('pointerdown', { target: modal.modal });
+  modal.backdrop.fire('click', { target: modal.backdrop });
+  assert.strictEqual(closeCalls, 1, 'a drag that starts inside the modal must not close it');
 });
 
 test('buildSubscribeModal: setError renders a hostile string as inert text via textContent, never innerHTML (XSS regression)', () => {

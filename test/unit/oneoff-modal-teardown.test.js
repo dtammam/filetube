@@ -178,9 +178,11 @@ test('backdrop-dismiss WITHOUT submitting a URL fully tears down the modal: the 
     const backdrop = body.children[0];
     assert.strictEqual(backdrop.hidden, false, 'expected the modal visible after open');
 
-    // A direct click on the backdrop itself (target === backdrop) -- the
+    // A direct tap on the backdrop itself (target === backdrop) -- the
     // "tap away without submitting a URL" case that used to leave the page
-    // stuck dimmed/unresponsive.
+    // stuck dimmed/unresponsive. v1.289: the drag-safe dismiss requires the
+    // pointerdown to have landed on the backdrop too, so simulate the full tap.
+    backdrop.fire('pointerdown', { target: backdrop });
     backdrop.fire('click', { target: backdrop });
 
     assert.strictEqual(body.children.length, 0, 'the backdrop must be fully detached from document.body, not merely hidden');
@@ -221,6 +223,7 @@ test('Esc is an inert no-op once the modal is already closed (no dangling refere
   await withGlobals(doc, () => Promise.resolve({ ok: true, status: 200 }), async () => {
     await bootAndOpen({ doc, headerRight });
     const backdrop = body.children[0];
+    backdrop.fire('pointerdown', { target: backdrop }); // v1.289 drag-safe: press on backdrop
     backdrop.fire('click', { target: backdrop }); // close it first
     assert.strictEqual(body.children.length, 0);
 
@@ -235,6 +238,7 @@ test('reopening after a teardown rebuilds a FRESH modal (a new node), not a refe
   await withGlobals(doc, () => Promise.resolve({ ok: true, status: 200 }), async () => {
     const headerBtn = await bootAndOpen({ doc, headerRight });
     const firstBackdrop = body.children[0];
+    firstBackdrop.fire('pointerdown', { target: firstBackdrop }); // v1.289 drag-safe: press on backdrop
     firstBackdrop.fire('click', { target: firstBackdrop });
     assert.strictEqual(body.children.length, 0);
 
