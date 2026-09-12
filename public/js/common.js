@@ -1074,6 +1074,32 @@ function buildSubscribeRequestBody(channelUrl, name, format, quality, rawCutoffD
 }
 
 /**
+ * v1.289 (Dean): dismiss a backdrop-style modal ONLY when the pointer
+ * interaction BOTH started AND ended on the backdrop itself. The plain
+ * `click`-target check alone (`e.target === backdrop`) closes the modal on a
+ * text-selection DRAG that begins inside a field and releases on the backdrop:
+ * the browser dispatches the synthesized `click` on the common ancestor of
+ * press-and-release, which is the backdrop - so dragging to select or reposition
+ * the URL/folder text ate the download and subscribe modals. Recording the
+ * pointerdown target and requiring it to be the backdrop too makes a drag that
+ * begins inside the modal never dismiss it, while a clean tap on the backdrop
+ * still closes as before. `onClose` is read live at click time (callers may
+ * swap `handlers.onClose` after build), matching the prior inline behaviour.
+ */
+function bindBackdropDismiss(backdrop, onClose) {
+  if (!backdrop || typeof backdrop.addEventListener !== 'function') return;
+  let downOnBackdrop = false;
+  backdrop.addEventListener('pointerdown', (e) => {
+    downOnBackdrop = !!(e && e.target === backdrop);
+  });
+  backdrop.addEventListener('click', (e) => {
+    const hit = downOnBackdrop && e && e.target === backdrop;
+    downOnBackdrop = false; // consume: the next dismiss needs its own fresh press
+    if (hit && typeof onClose === 'function') onClose();
+  });
+}
+
+/**
  * Builds the compact subscribe-confirm modal as real DOM nodes (backdrop +
  * dialog, appended to `document.body` by the caller) -- mirrors
  * `buildOneOffModal`'s structure/primitives exactly (same `.oneoff-modal-*`
@@ -1116,9 +1142,8 @@ function buildSubscribeModal(doc, opts, handlers) {
   const backdrop = d.createElement('div');
   backdrop.className = 'oneoff-modal-backdrop';
   backdrop.hidden = true;
-  backdrop.addEventListener('click', (e) => {
-    if (e && e.target === backdrop && typeof h.onClose === 'function') h.onClose();
-  });
+  // v1.289: drag-safe dismiss (a text-selection drag onto the backdrop must not close it).
+  bindBackdropDismiss(backdrop, () => { if (typeof h.onClose === 'function') h.onClose(); });
 
   const modal = d.createElement('div');
   modal.className = 'oneoff-modal';
@@ -5676,9 +5701,8 @@ function buildOneOffModal(doc, handlers) {
   const backdrop = d.createElement('div');
   backdrop.className = 'oneoff-modal-backdrop';
   backdrop.hidden = true;
-  backdrop.addEventListener('click', (e) => {
-    if (e && e.target === backdrop && typeof h.onClose === 'function') h.onClose();
-  });
+  // v1.289: drag-safe dismiss (a text-selection drag onto the backdrop must not close it).
+  bindBackdropDismiss(backdrop, () => { if (typeof h.onClose === 'function') h.onClose(); });
 
   const modal = d.createElement('div');
   modal.className = 'oneoff-modal';
@@ -15474,7 +15498,7 @@ if (typeof module !== 'undefined' && module.exports) {
     REORDER_AUTOSCROLL_EDGE_PX, REORDER_AUTOSCROLL_STEP_PX,
     isSyntheticFolder,
     shouldInjectOneOffButton, reduceOneOffFiletypeOptions, buildOneOffDownloadBody,
-    formatOneOffStatusText, buildOneOffModal,
+    formatOneOffStatusText, buildOneOffModal, bindBackdropDismiss,
     ONEOFF_FORMAT_OPTIONS, ONEOFF_QUALITY_OPTIONS, ONEOFF_DEFAULT_QUALITY,
     ONEOFF_FILETYPE_OPTIONS, ONEOFF_DEFAULT_FILETYPE, ONEOFF_STATUS_POLL_MS,
     // v1.26 "real progress": the modal's progress-bar reducer + adaptive

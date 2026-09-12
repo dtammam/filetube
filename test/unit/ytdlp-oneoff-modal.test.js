@@ -456,19 +456,22 @@ test('buildOneOffModal: the [x] close button still dismisses after a "done" or "
   assert.strictEqual(closed, true, 'the X button must dismiss even after a terminal "error" status was rendered');
 });
 
-test('buildOneOffModal: clicking the backdrop itself calls onClose, but a click that bubbled from inside the modal does not', () => {
+test('buildOneOffModal: a tap that starts+ends on the backdrop calls onClose, but a drag from inside the modal does not', () => {
   let closeCalls = 0;
   const modal = buildOneOffModal(fakeDoc, { onClose: () => { closeCalls += 1; } });
 
-  // A direct click on the backdrop (target === backdrop).
+  // A genuine tap on the backdrop: press AND release both land on it.
+  modal.backdrop.fire('pointerdown', { target: modal.backdrop });
   modal.backdrop.fire('click', { target: modal.backdrop });
   assert.strictEqual(closeCalls, 1);
 
-  // A click whose target is the inner modal (simulating a real click that
-  // originated inside the dialog and bubbled to the backdrop listener) must
-  // NOT close the modal.
-  modal.backdrop.fire('click', { target: modal.modal });
-  assert.strictEqual(closeCalls, 1, 'a click on the inner modal content must not close it');
+  // v1.289: a drag that BEGINS inside the dialog (press on the inner modal) and
+  // releases on the backdrop - the browser's synthesized click targets the
+  // common ancestor (the backdrop). This is the text-selection case that used to
+  // eat the modal; it must NOT close now.
+  modal.backdrop.fire('pointerdown', { target: modal.modal });
+  modal.backdrop.fire('click', { target: modal.backdrop });
+  assert.strictEqual(closeCalls, 1, 'a drag that starts inside the modal must not close it');
 });
 
 test('buildOneOffModal: setStatus renders a hostile live entry as inert TEXT, never innerHTML (XSS regression)', () => {
