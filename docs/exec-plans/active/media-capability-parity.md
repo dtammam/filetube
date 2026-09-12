@@ -117,7 +117,7 @@ DELEGATED state, not a per-capability gap.
 Two authorities + one registry + one census test, modeled on `lib/search/registry.js` +
 `test/unit/search-provider-census.test.js`:
 
-1. **`lib/media/capabilities.js`** (new) — the declarative matrix. Two authority lists
+1. **`lib/media-capabilities.js`** (new) — the declarative matrix. Two authority lists
    (`MEDIA_TYPES` keyed off `KIND_TO_LIBRARY`; `CAPABILITIES` = the 11 columns above) and a
    `MATRIX` declaring EVERY (media × capability) cell as one of:
    - `SUPPORTED` + `surfaces` + a stable `marker` (the action id / hook string the checker
@@ -141,7 +141,7 @@ Two authorities + one registry + one census test, modeled on `lib/search/registr
 
 ## Task commits
 
-- **T1 (Phase 1 — the audit suite)**: `lib/media/capabilities.js` (the matrix as it is TODAY,
+- **T1 (Phase 1 — the audit suite)**: `lib/media-capabilities.js` (the matrix as it is TODAY,
   gaps marked TODO) + `media-capability-census.test.js`. Green = the matrix matches reality and
   every intended-parity gap is explicitly TODO. This is the deliverable Dean sanity-checks first.
 - **T2 (podcast player actions)**: give `podcastEngineConfig` the shared `extras` hook with the
