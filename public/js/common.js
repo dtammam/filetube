@@ -12922,6 +12922,70 @@ function copyTextToClipboard(text) {
   return Promise.resolve('unavailable');
 }
 
+// v1.286 (Dean, "everything shareable"): share the actual media FILE, not a link.
+// The link helpers above share an EXTERNAL source URL (only useful when the item
+// came from one); a self-hosted file's own URL is unreachable off the user's
+// network. shareMediaFile fetches the item's bytes from its `?download=1` stream
+// arm and hands the real File to the OS share sheet (navigator.share({files})),
+// so a friend gets the actual mp3/mp4/pdf/epub. Where file-share is unavailable
+// (most desktops) or the file is too big to blob safely, it falls back to a
+// browser download the caller's user can then send. One helper, wired into every
+// media type's Share (video/music/podcasts/books) - the universal-Share contract
+// the media-capability census enforces.
+
+// Beyond this, don't pull the whole file into a Blob (memory) - fall back to a
+// plain download instead. Audio/books are well under this; only large video hits it.
+var SHARE_FILE_MAX_BYTES = 400 * 1024 * 1024;
+
+// Pure decision (exported for node:test): 'file' when the platform can file-share
+// AND the size is unknown or within the cap; otherwise 'download'.
+function chooseShareStrategy(opts) {
+  var o = opts || {};
+  if (!o.canShareFiles) return 'download';
+  if (typeof o.sizeBytes === 'number' && typeof o.maxBytes === 'number' && o.sizeBytes > o.maxBytes) return 'download';
+  return 'file';
+}
+
+function shareMediaFile(opts) {
+  var o = opts || {};
+  var url = o.url;
+  var title = o.title || 'FileTube';
+  var filename = o.filename || 'media';
+  if (!url) return Promise.resolve('unavailable');
+  var canShareFiles = typeof navigator !== 'undefined'
+    && typeof navigator.canShare === 'function'
+    && typeof navigator.share === 'function';
+  function fallbackDownload() {
+    try {
+      var a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      return 'downloaded';
+    } catch (e) { console.error('Share: download fallback failed:', e); return 'unavailable'; }
+  }
+  if (chooseShareStrategy({ canShareFiles: canShareFiles }) === 'download') {
+    return Promise.resolve(fallbackDownload());
+  }
+  // Size guard (HEAD) before blobbing the bytes into memory.
+  return fetch(url, { method: 'HEAD' })
+    .then(function (h) { return (h && h.ok) ? (Number(h.headers.get('content-length')) || null) : null; }, function () { return null; })
+    .then(function (sizeBytes) {
+      if (chooseShareStrategy({ canShareFiles: true, sizeBytes: sizeBytes, maxBytes: SHARE_FILE_MAX_BYTES }) === 'download') {
+        return fallbackDownload();
+      }
+      return fetch(url).then(function (r) {
+        if (!r.ok) throw new Error('fetch ' + r.status);
+        return r.blob();
+      }).then(function (blob) {
+        var file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+        if (!navigator.canShare({ files: [file] })) return fallbackDownload();
+        return navigator.share({ files: [file], title: title })
+          // a dismissed sheet is the user's choice, never an error (the link helper's rule)
+          .then(function () { return 'shared'; }, function () { return 'shared'; });
+      }).catch(function (e) { console.error('Share: file fetch/share failed:', e); return fallbackDownload(); });
+    });
+}
+
 function showToast(msg, action) {
   if (typeof document === 'undefined') return;
   const toast = document.createElement('div');
@@ -15237,6 +15301,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.110 (Dean): the pure share-URL start-time param appender (unit-tested)
     // + the pick-one action modal (jsdom-tested for textContent + settle-once).
     withShareStartTime,
+    // v1.286 (Dean, everything shareable): universal file-share + its pure strategy decision.
+    shareMediaFile, chooseShareStrategy,
     showChoiceModal,
     // v1.87.1: first-paint chrome inline-SVG glyphs (map + markup/element
     // builders). chrome-icons.test.js byte-binds the map to the on-disk assets
