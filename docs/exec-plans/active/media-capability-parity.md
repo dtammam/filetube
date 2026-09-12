@@ -32,15 +32,28 @@ Two directives that reshape the wave:
    immediate follow-up wave has a MACHINE-DERIVED worklist of every other shoe. The census test's
    TODO set IS that worklist.
 
-### This wave (feat/capability-parity-audit)
-- T1: registry + census checker (declares ALL cells, every gap as TODO with a target).
-- T2: podcast player actions (the subset above) + **make Share universal** (podcasts + books get
-  Share this wave, video's conditional share reconsidered per the mechanism decision).
+### This wave (feat/capability-parity-audit) - v1.286: THE FOUNDATION
+Scope narrowed after a discovery (below): ships the AUDIT SUITE + the file-share HELPER only.
+- T1: registry + census checker (declares ALL cells, every gap as TODO with a target). DONE.
+- T2a: `shareMediaFile` - the universal file-share helper + its pure decision test. DONE.
 
-### The next wave (pre-declared, fired on merge): "every other shoe"
-Every remaining `TODO` cell the registry lists - music list-row parity, podcast transcript (after
-RSS `podcast:transcript` ingestion), any book/TV surface gaps - closed systematically, the census
-test flipping each TODO->SUPPORTED as it lands.
+DISCOVERY (why the split): giving podcasts the shared actions menu is NOT a wire-up - the
+`createExtrasMenu` factory is hardwired to the video/music model (fetches `/api/videos/:id`,
+deletes via that endpoint, downloads from `/video/`, reheats via the yt-dlp route). Podcasts
+(RSS episodes, `/episode/`, "played" not "watched", their own endpoints) need the factory
+GENERALIZED to be endpoint-driven first. That is the real "shared contract" work and a
+destructive-action refactor - it earns its own focused wave + full gate. Dean's ruling
+(2026-09-12): ship the foundation now, do the refactor + all gap-closing as the immediate next
+wave (matches "prep what we're doing now; every other shoe as soon as this merges").
+
+### The NEXT wave (pre-declared, fired on merge): "every other shoe"
+1. Generalize `createExtrasMenu` off the /api/videos model -> endpoint-driven per media type
+   (cfg: item-detail fetch, download URL, delete/like/watched/queue handlers).
+2. Podcast player menu (Download, Share, Queue, Delete, Like, Played) - closes podcasts.playerMenu.
+3. Universal Share wired via `shareMediaFile` into music/video/podcasts/books - closes
+   podcasts.share + books.share.
+4. Any remaining TODO cells. The census flips each TODO->SUPPORTED as it lands (and its snapshot
+   is updated), so the follow-up is machine-tracked to completion.
 
 ## SHARE MECHANISM decision: A (file-share, link fallback) - LOCKED (Dean, 2026-09-12)
 
