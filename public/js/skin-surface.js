@@ -46,14 +46,32 @@
 //                     gains an "Autoplay" On/Off row (Loop chassis). Both surfaces - the
 //                     setting is device-global, so a pop-out flip is coherent. Omitted
 //                     (podcasts) = no row.
-//     extras          OPTIONAL - the v1.249 watch-page Extras second page. Omitted (e.g.
-//                     podcasts - they keep their own actions) = quick menu only. Hooks:
+//     extras          OPTIONAL - the v1.249 Extras second page. Omitting it = quick menu only.
+//                     v1.287: the factory is ENDPOINT-DRIVEN, so a media type supplies an ADAPTER
+//                     here (podcasts do - the video/music surfaces pass only the base 4 hooks and
+//                     get the factory DEFAULTS, byte-identical to pre-v1.287). Base hooks:
 //       getBaseId()   -> the playing item's base media id (::c chapter suffix stripped), or null
-//       isEligible()  -> the view says the playing item is library-backed (the engine adds its
+//       isEligible()  -> the view says the playing item is menu-eligible (the engine adds its
 //                        own in-MAIN-document check - the pop-out never offers Extras)
-//       onMutated()   a successful Move/Delete removed/re-keyed the playing item - the view
+//       onMutated()   a successful Delete/Move removed/re-keyed the playing item - the view
 //                     clears its playing state and refreshes
 //       signal        the view's AbortSignal (share-choice dismiss, transcript, reheat poll)
+//                     Adapter fields (v1.287, all OPTIONAL - defaults = the video/library model):
+//       fetchItem(id) -> Promise<item|null> (default: GET /api/videos/:id). Item shape:
+//                        {id,title,liked,watchState:'watched'|'unwatched',hasSubtitles,watchUrl}.
+//       downloadUrl(item) -> the file's ?download=1 URL (default: /video/:id?download=1)
+//       shareLinkUrl(item) -> the external SOURCE link, '' if none (default: item.watchUrl).
+//                        Its presence decides the "both when a source exists" Share fork.
+//       capabilities  -> array of action rows to render (default: the full video set). Podcasts
+//                        pass the applicable subset; move/reheat/transcript are omitted for them.
+//       watchedLabels -> { on, off } for the watched row (default Watched/Mark watched; podcasts
+//                        pass Played/Mark played).
+//       deleteNeedsModify -> false lets Delete render without canModifyLibrary (podcasts; the
+//                        SERVER still enforces requireModifyLibrary). Default (undefined) = gated.
+//       likeRequest(item,nextOn)/watchedRequest(item,nextOn) -> return the toggle fetch (default
+//                        /api/liked//api/watched); onQueue(item,pos) (default addToQueue);
+//       onDelete(item,onSuccess,player) -> OWN the delete flow entirely (podcasts: the recoverable
+//                        trash). When present, the video/music two-flow delete is bypassed.
 // NOTE (Dean, 2026-09-02): music.js's v1.235 wheel-VOLUME mode is deliberately NOT ported -
 // Dean ruled the Now-Playing wheel SCRUBS everywhere ("like it does on mobile - consistent
 // UI and useful"), so the engine has exactly one Now-Playing wheel behavior. The iPod skin's
@@ -167,8 +185,9 @@
       if (extrasCap('transcript') && item.hasSubtitles === true) acts.push('<button type="button" class="mms-sm-act" data-skin-x="transcript"><i class="icon-transcript"></i>Transcript</button>');
       if (extrasCap('reheat') && hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="reheat"><i class="icon-flame"></i>Reheat</button>');
       // move stays library-modify-gated (video only). delete is capability-gated; whether it
-      // ALSO needs canModify is cfg-driven (video/music: yes; podcasts: the RSS-episode trash
-      // is available to the podcast manager, so deleteNeedsModify:false).
+      // ALSO needs canModify to RENDER is cfg-driven (video/music: yes; podcasts:
+      // deleteNeedsModify:false shows it to all like the list-row delete - the SERVER still
+      // enforces requireModifyLibrary on the actual DELETE).
       if (extrasCap('move') && canModify) {
         acts.push('<button type="button" class="mms-sm-act" data-skin-x="move"><i class="icon-folder"></i>Move to...</button>');
       }
@@ -259,7 +278,7 @@
       var wOff = (cfg.watchedLabels && cfg.watchedLabels.off) || 'Mark watched';
       Promise.resolve().then(function () { return reqFn(item, nextOn); })
         .then(function (res) {
-          if (!res || !res.ok) { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update ' + wOff.replace(/^Mark /, '') + '.'); return; }
+          if (!res || !res.ok) { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update ' + wOn + '.'); return; }
           if (kind === 'like') {
             item.liked = nextOn;
             // QA gate (the v1.33.1 class): the count-gated Liked sidebar entry caches its
@@ -277,7 +296,7 @@
           var lbl = el.querySelector('.mms-sm-actlbl');
           (lbl || el).textContent = kind === 'like' ? (nextOn ? 'Liked' : 'Like') : (nextOn ? wOn : wOff);
         })
-        .catch(function () { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update ' + wOff.replace(/^Mark /, '') + '.'); });
+        .catch(function () { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update ' + wOn + '.'); });
     }
     function extrasTranscript(item, el) {
       if (typeof window.openTranscriptFor !== 'function') return;

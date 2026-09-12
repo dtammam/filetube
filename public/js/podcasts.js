@@ -226,7 +226,8 @@
           // v1.287: the podcast Extras adapter. Capabilities = the applicable subset (Dean); the
           // handlers DELEGATE to the podcast endpoints (/api/podcasts/episodes/:id/...), and
           // Share is file-only (RSS episodes have no external source). Delete reuses the
-          // recoverable trash (deleteNeedsModify:false - the podcast manager can trash).
+          // recoverable trash (deleteNeedsModify:false - the row is shown to all like the
+          // list-row delete; the SERVER enforces requireModifyLibrary + root confinement).
           extras: {
             getBaseId: function () { var pp = window.FileTube && window.FileTube.player; return (pp && pp.currentId) || null; },
             isEligible: function () {

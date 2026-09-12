@@ -243,6 +243,12 @@ test('podcasts.js WIRES the engine (reachable): creates it with a podcast ctx, f
   assert.match(src, /watchedLabels: \{ on: 'Played', off: 'Mark played' \}/, 'podcast "watched" row reads Played');
   assert.match(src, /deleteNeedsModify: false/, 'podcast trash is available without library-modify (server still enforces)');
   assert.match(src, /'\/api\/podcasts\/episodes\/' \+ encodeURIComponent\(item\.id\)/, 'the adapter delegates to the podcast endpoints');
+  // v1.287 (destructive-work gate): bind the DELETE path SPECIFICALLY - the generic endpoint
+  // marker above is vacuous for onDelete (likeRequest/`/liked` satisfies it). Assert onDelete
+  // runs a CONFIRM, then player.close(), then the RECOVERABLE trash via method:'DELETE' to
+  // /api/podcasts/episodes/:id (never GET, never /api/videos). Deleting onDelete or flipping the
+  // verb reds this (mutation-verified) - the guard-shipped-unbound class (v1.273), destructive.
+  assert.match(src, /onDelete: function[\s\S]{0,600}showConfirmModal\([\s\S]{0,500}player\.close\(\)[\s\S]{0,200}fetchJson\('\/api\/podcasts\/episodes\/' \+ encodeURIComponent\(item\.id\), \{ method: 'DELETE' \}\)/, 'podcast onDelete: confirm -> player.close -> recoverable DELETE');
   // and skin-surface.js is loaded on the podcasts shell (before podcasts.js, after music-skins.js)
   const html = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'podcasts.html'), 'utf8');
   assert.match(html, /music-skins\.js"><\/script>\s*<script src="\/js\/skin-surface\.js"/, 'skin-surface.js loads after music-skins.js on podcasts.html');
