@@ -114,8 +114,15 @@ test('buildNotificationRowModel: channel label falls back channelName -> folderN
 });
 
 test('buildNotificationRowModel: absence handling — no thumbnail, no avatar, garbage rows', () => {
-  assert.equal(buildNotificationRowModel({ ...FULL_ROW, hasThumbnail: false }).thumbnailUrl, null);
-  assert.equal(buildNotificationRowModel({ ...FULL_ROW, hasThumbnail: 'yes' }).thumbnailUrl, null, 'truthy non-boolean is not a thumbnail claim');
+  // v1.288 (Dean's "nothing iconless" rule): a media row with no real thumbnail
+  // no longer resolves to null - it falls back to the FileTube logo, flagged as
+  // an icon-fit so the renderer contains it and hangs no duration badge.
+  const noThumb = buildNotificationRowModel({ ...FULL_ROW, hasThumbnail: false });
+  assert.equal(noThumb.thumbnailUrl, '/icons/icon-192.png');
+  assert.equal(noThumb.thumbnailIsIcon, true, 'the logo fallback is an icon-fit, not a photo');
+  const nonBool = buildNotificationRowModel({ ...FULL_ROW, hasThumbnail: 'yes' });
+  assert.equal(nonBool.thumbnailUrl, '/icons/icon-192.png', 'truthy non-boolean is not a thumbnail claim — logo fallback');
+  assert.equal(nonBool.thumbnailIsIcon, true);
   assert.equal(buildNotificationRowModel({ ...FULL_ROW, channelAvatarUrl: undefined }).channelAvatarUrl, '');
   assert.equal(buildNotificationRowModel({ ...FULL_ROW, unread: 'true' }).unread, false, 'unread is boolean-strict');
   assert.equal(buildNotificationRowModel({ ...FULL_ROW, createdAt: undefined }).timeLabel, 'unknown date');
@@ -172,10 +179,47 @@ test('v1.73: a podcast row deep-links /podcasts?play= and wears the SHOW cover; 
   assert.equal(ep.kind, 'podcast');
   assert.equal(ep.href, '/podcasts?play=' + encodeURIComponent('ëp-1'), 'the ?play= contract, encoded');
   assert.equal(ep.thumbnailUrl, '/podcastart/süb', 'show cover, never /thumbnail');
+  assert.equal(ep.thumbnailIsIcon, false, 'real show art is a photo (cover-fit), not a logo');
   const med = buildNotificationRowModel({ id: 10, mediaId: 'vid1', title: 'V', channelName: 'C', hasThumbnail: true, createdAt: 1000, unread: false });
   assert.equal(med.kind, 'media');
   assert.equal(med.href, '/watch.html?v=vid1');
   assert.equal(med.thumbnailUrl, '/thumbnail/vid1');
+  assert.equal(med.thumbnailIsIcon, false, 'a real thumbnail is a photo (cover-fit), not a logo');
+});
+
+test('v1.288: a podcast row with no resolvable show art falls back to the FileTube logo, icon-fit', () => {
+  const { buildNotificationRowModel } = require('../../public/js/common.js');
+  const noArt = buildNotificationRowModel({ id: 11, mediaId: 'ëp-2', kind: 'podcast', title: 'Ep', channelName: 'Show', artUrl: '', createdAt: 1000, unread: true });
+  assert.equal(noArt.thumbnailUrl, '/icons/icon-192.png', 'the guaranteed floor - never blank');
+  assert.equal(noArt.thumbnailIsIcon, true, 'the logo fallback is icon-fit (contain, no badge)');
+  // artUrl missing entirely (not just empty) is the same defensive floor.
+  const undef = buildNotificationRowModel({ id: 12, mediaId: 'ëp-3', kind: 'podcast', title: 'Ep', channelName: 'Show', createdAt: 1000, unread: true });
+  assert.equal(undef.thumbnailUrl, '/icons/icon-192.png');
+  assert.equal(undef.thumbnailIsIcon, true);
+});
+
+// v1.288 (Dean's "nothing iconless" rule): the render loop is the repo's
+// untested-by-necessity thin DOM shell (no browser harness), so bind its net
+// with a source-lock - the two axes that keep a row from ever showing the
+// browser's broken-image glyph: (1) BOTH the avatar and thumbnail imgs carry an
+// onerror that swaps to the FileTube logo (self-nulling so it can't loop), and
+// (2) the icon-fit thumb wears the contain class and a logo hangs no duration badge.
+test('v1.288: the notification render loop wires an onerror logo-fallback on both images + icon-fit gating', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/js/common.js'), 'utf8');
+  // The two fallback marks exist as named constants.
+  assert.match(src, /const NOTIF_ENGINE_ICON = '\/icons\/ytdlp\.svg';/, 'the vendored yt-dlp mark');
+  assert.match(src, /const NOTIF_FALLBACK_ICON = '\/icons\/icon-192\.png';/, 'the FileTube logo floor');
+  // Avatar onerror: self-null, then swap to the logo (contain via the fallback class).
+  assert.match(src, /img\.onerror = function \(\) \{[\s\S]{0,200}this\.onerror = null;[\s\S]{0,200}this\.src = NOTIF_FALLBACK_ICON;[\s\S]{0,200}notif-row-avatar-fallback/,
+    'the avatar img must degrade a 404 to the logo, self-nulling first');
+  // Thumb onerror: self-null, swap to the logo icon-fit, and drop any duration badge.
+  assert.match(src, /thumb\.onerror = function \(\) \{[\s\S]{0,240}this\.onerror = null;[\s\S]{0,240}this\.src = NOTIF_FALLBACK_ICON;[\s\S]{0,240}notif-row-thumb-icon[\s\S]{0,240}duration-badge[\s\S]{0,80}\.remove\(\)/,
+    'the thumb img must degrade a 404 to the icon-fit logo and remove its duration badge');
+  // The icon-fit class is applied from the model flag, and a logo hangs no badge.
+  assert.match(src, /m\.thumbnailIsIcon \? 'notif-row-thumb notif-row-thumb-icon' : 'notif-row-thumb'/,
+    'an icon-fit thumb gets the contain class');
+  assert.match(src, /if \(!m\.thumbnailIsIcon && m\.durationSec > 0/,
+    'a duration badge is suppressed on a logo/icon thumb');
 });
 
 test('v1.73 (adversarial W5): the bell row TAP stashes a watch seed for MEDIA rows only (the fourth strike of the seed class)', () => {
@@ -188,7 +232,7 @@ test('v1.73 (adversarial W5): the bell row TAP stashes a watch seed for MEDIA ro
   assert.ok(tail.indexOf("(m.kind || 'media') === 'media'") < tail.indexOf('stashWatchSeed({'), 'and the stash sits INSIDE it');
 });
 
-test('v1.146: buildNotificationRowModel maps an engine row to the Setup href with no thumb/avatar', () => {
+test('v1.146/v1.288: buildNotificationRowModel maps an engine row to the Setup href, wearing the yt-dlp mark', () => {
   const m = buildNotificationRowModel({
     id: 9, mediaId: 'engine:reverted:2026.8.17.73947.dev0', createdAt: Date.now() - 60000,
     unread: true, kind: 'engine',
@@ -199,7 +243,10 @@ test('v1.146: buildNotificationRowModel maps an engine row to the Setup href wit
   assert.equal(m.href, '/setup.html', 'an engine row must NEVER build a /watch.html href from its synthetic id');
   assert.match(m.title, /reverted to the bundled engine/);
   assert.equal(m.channelLabel, 'Downloader engine');
-  assert.equal(m.thumbnailUrl, null);
+  // v1.288: an engine row is no longer blank on the right - it wears the vendored
+  // yt-dlp mark as an icon-fit thumb (contain, no duration badge).
+  assert.equal(m.thumbnailUrl, '/icons/ytdlp.svg');
+  assert.equal(m.thumbnailIsIcon, true);
   assert.equal(m.channelAvatarUrl, '');
   assert.equal(m.unread, true);
 });
