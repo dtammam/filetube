@@ -867,6 +867,17 @@ if (typeof module !== 'undefined' && module.exports) {
     const bookLikeBtn = root.querySelector('#reader-like-btn');
     const bookFinishedBtn = root.querySelector('#reader-finished-btn');
     const bookDownloadBtn = root.querySelector('#reader-download-btn');
+    // v1.287 (Dean, "everything shareable"): share the book FILE. Books have no external source,
+    // so it's file-only (shareMediaFile -> navigator.share({files}), download fallback). The
+    // title is captured on detail-resolve; the listener is attached once.
+    const bookShareBtn = root.querySelector('#reader-share-btn');
+    let bookShareTitle = 'Book';
+    if (bookShareBtn) {
+      bookShareBtn.addEventListener('click', () => {
+        if (typeof window.shareMediaFile !== 'function') return;
+        window.shareMediaFile({ url: `/book/${encodeURIComponent(bookId)}/file?download=1`, title: bookShareTitle, filename: bookShareTitle });
+      });
+    }
     let bookLiked = false;
     let bookFinished = false;
     function paintBookToggles() {
@@ -982,6 +993,8 @@ if (typeof module !== 'undefined' && module.exports) {
         paintBookToggles();
         if (bookLikeBtn) bookLikeBtn.hidden = false;
         if (bookFinishedBtn) bookFinishedBtn.hidden = false;
+        bookShareTitle = detail.title || 'Book'; // v1.287: for the share filename/title
+        if (bookShareBtn) bookShareBtn.hidden = false;
         if (bookDownloadBtn) {
           bookDownloadBtn.href = `/book/${encodeURIComponent(detail.id)}/file?download=1`;
           bookDownloadBtn.hidden = false;

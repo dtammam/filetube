@@ -232,15 +232,23 @@ test('podcasts.js WIRES the engine (reachable): creates it with a podcast ctx, f
   assert.match(src, /skinEngine.*document\.body\.classList\.remove\('mms-on'\)/, 'the teardown branch clears the full-screen body class (v1.227 leak guard)');
   // destroy tears the skin down (module-scoped handle) so a view swap never strands mms-on
   assert.match(src, /activeSkinEngine\.destroy\(\)/, 'destroy() tears the skin engine down');
-  // v1.250 (F-UNIFY ride-along): the deferred v1.246 polish is ON for podcasts - the sticker
-  // quick-menu (speed/loop/skin) and hold-to-fast-scan - but NEVER the Extras page (podcasts
-  // keep their own episode actions, the locked v1.249 intake). The engine behaviors are bound
-  // above/in U1-U2; this locks the podcast WIRING that makes them reachable.
+  // v1.250 (F-UNIFY): the sticker quick-menu (speed/loop/skin) + hold-to-fast-scan are on for
+  // podcasts. v1.287 (parity wave 2, SUPERSEDES the v1.249 "no extras" intake): podcasts now
+  // ALSO wire the shared Extras page via a podcast adapter (endpoints + subset). The engine
+  // behaviors are bound above/in U1-U2; this locks the podcast WIRING that makes them reachable.
   assert.match(src, /fastScan: true/, 'podcasts enable hold-to-fast-scan');
   assert.match(src, /sticker: \{[\s\S]{0,400}onSkinChange: function \(\) \{ updateNowPlayingPanel\(\); \}/, 'podcasts enable the sticker quick-menu with the repaint hook');
-  const stickerBlock = /sticker: \{([\s\S]*?)\n {8}\},/.exec(src);
-  assert.ok(stickerBlock, 'the podcast sticker config block parses');
-  assert.ok(!/extras/.test(stickerBlock[1]), 'NO extras hooks - podcasts keep their own actions');
+  // v1.287 (parity wave 2): podcasts NOW wire the shared Extras adapter (was omitted pre-v1.287).
+  assert.match(src, /extras: \{[\s\S]{0,1600}capabilities: \['download', 'share', 'queue', 'delete', 'like', 'watched'\]/, 'podcasts declare the shared Extras adapter with the applicable subset');
+  assert.match(src, /watchedLabels: \{ on: 'Played', off: 'Mark played' \}/, 'podcast "watched" row reads Played');
+  assert.match(src, /deleteNeedsModify: false/, 'podcast trash is available without library-modify (server still enforces)');
+  assert.match(src, /'\/api\/podcasts\/episodes\/' \+ encodeURIComponent\(item\.id\)/, 'the adapter delegates to the podcast endpoints');
+  // v1.287 (destructive-work gate): bind the DELETE path SPECIFICALLY - the generic endpoint
+  // marker above is vacuous for onDelete (likeRequest/`/liked` satisfies it). Assert onDelete
+  // runs a CONFIRM, then player.close(), then the RECOVERABLE trash via method:'DELETE' to
+  // /api/podcasts/episodes/:id (never GET, never /api/videos). Deleting onDelete or flipping the
+  // verb reds this (mutation-verified) - the guard-shipped-unbound class (v1.273), destructive.
+  assert.match(src, /onDelete: function[\s\S]{0,600}showConfirmModal\([\s\S]{0,500}player\.close\(\)[\s\S]{0,200}fetchJson\('\/api\/podcasts\/episodes\/' \+ encodeURIComponent\(item\.id\), \{ method: 'DELETE' \}\)/, 'podcast onDelete: confirm -> player.close -> recoverable DELETE');
   // and skin-surface.js is loaded on the podcasts shell (before podcasts.js, after music-skins.js)
   const html = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'podcasts.html'), 'utf8');
   assert.match(html, /music-skins\.js"><\/script>\s*<script src="\/js\/skin-surface\.js"/, 'skin-surface.js loads after music-skins.js on podcasts.html');
@@ -483,7 +491,7 @@ test('U1 onShuffle: the [data-skin-shuffle] zone fires the hook; without the hoo
 
 // bootEngine + the sticker's collaborators: a recorded fetch map, the shared common.js flow
 // stubs on the window, and a player facade with loop/close/getCurrentTime.
-function bootSticker({ extras, eligible, video, skin } = {}) {
+function bootSticker({ extras, eligible, video, skin, adapter } = {}) {
   const calls = []; const toasts = []; const spy = { skinChange: 0, mutated: 0, setLoop: [], closed: 0 };
   const state = { loop: false };
   const savedFetch = global.fetch;
@@ -497,12 +505,12 @@ function bootSticker({ extras, eligible, video, skin } = {}) {
           setLoop: (on) => { state.loop = !!on; spy.setLoop.push(!!on); },
           close: () => { spy.closed += 1; },
         }),
-        extras: extras === false ? undefined : {
+        extras: extras === false ? undefined : Object.assign({
           getBaseId: () => 's1',
           isEligible: () => (eligible !== false),
           onMutated: () => { spy.mutated += 1; },
           signal: new AbortController().signal,
-        },
+        }, adapter || {}),
       },
     },
   });
@@ -620,6 +628,89 @@ test('U2 extras page: opens with the /api/videos fetch, renders the gated action
     // Back returns to page 1
     sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras-back]'));
     assert.ok(sMenu(b.dom).querySelector('[data-skin-speed]'), 'Back lands on the quick controls');
+  } finally { b.restoreAll(); }
+});
+
+test('v1.287 PODCAST adapter: the generalized factory drives the podcast endpoints + subset (anti-inert)', async () => {
+  const pod = { queued: [], deleted: [], fileShares: [] };
+  const adapter = {
+    fetchItem: () => ({ id: 's1', title: 'Ep One', liked: false, watchState: 'unwatched', hasSubtitles: true, watchUrl: undefined }),
+    downloadUrl: (it) => '/episode/' + it.id + '?download=1',
+    shareLinkUrl: () => '', // file-only, no source
+    capabilities: ['download', 'share', 'queue', 'delete', 'like', 'watched'],
+    watchedLabels: { on: 'Played', off: 'Mark played' },
+    deleteNeedsModify: false,
+    likeRequest: (it, on) => global.fetch('/api/podcasts/episodes/' + it.id + '/liked', { method: on ? 'POST' : 'DELETE' }),
+    watchedRequest: (it, on) => global.fetch('/api/podcasts/episodes/' + it.id + '/played', { method: 'POST', body: JSON.stringify({ played: on }) }),
+    onQueue: (it, pos) => pod.queued.push({ id: it.id, pos }),
+    onDelete: (it, onSuccess) => { pod.deleted.push(it.id); if (onSuccess) onSuccess(); },
+  };
+  const b = bootSticker({ adapter });
+  try {
+    b.dom.window.shareMediaFile = (o) => { pod.fileShares.push(o); return Promise.resolve('shared'); };
+    b.engine.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
+    for (let i = 0; i < 6; i++) await b.settle();
+    // the adapter's fetchItem was used - the video /api/videos fetch is NEVER called (not inert)
+    assert.ok(!b.calls.some((c) => c.url === '/api/videos/s1'), 'the podcast adapter fetchItem replaced the /api/videos fetch');
+    // the applicable SUBSET renders; the N/A actions do not
+    for (const name of ['download', 'share', 'like', 'watched', 'queue', 'delete']) {
+      assert.ok(sMenu(b.dom).querySelector('[data-skin-x="' + name + '"]'), 'podcast action present: ' + name);
+    }
+    for (const gone of ['move', 'reheat', 'queue-next', 'transcript']) {
+      assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-x="' + gone + '"]'), null, 'not a podcast action: ' + gone);
+    }
+    // played label (not "watched"); download href points at the episode arm
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-x="watched"] .mms-sm-actlbl').textContent, 'Mark played', 'watched row reads "Mark played"');
+    assert.ok(/\/episode\/s1\?download=1$/.test(sMenu(b.dom).querySelector('[data-skin-x="download"]').getAttribute('href')), 'download -> the episode arm');
+    // Like drives the PODCAST endpoint (not /api/liked)
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="like"]'));
+    for (let i = 0; i < 4; i++) await b.settle();
+    assert.ok(b.calls.some((c) => c.url === '/api/podcasts/episodes/s1/liked' && c.method === 'POST'), 'Like -> the podcast liked endpoint');
+    assert.ok(!b.calls.some((c) => c.url === '/api/liked/s1'), 'never the video liked endpoint');
+    // Played drives the podcast played endpoint
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="watched"]'));
+    for (let i = 0; i < 4; i++) await b.settle();
+    assert.ok(b.calls.some((c) => c.url === '/api/podcasts/episodes/s1/played' && c.method === 'POST'), 'Played -> the podcast played endpoint');
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-x="watched"] .mms-sm-actlbl').textContent, 'Played', 'flips to "Played" on 2xx');
+    // Share (no source) -> file-share directly
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="share"]'));
+    for (let i = 0; i < 3; i++) await b.settle();
+    assert.strictEqual(pod.fileShares.length, 1, 'Share -> shareMediaFile (file-only, no source link)');
+    assert.strictEqual(pod.fileShares[0].url, '/episode/s1?download=1', 'file-share fetches the episode arm');
+  } finally { b.restoreAll(); }
+});
+
+test('v1.287 PODCAST adapter: Queue + Delete route to the podcast handlers', async () => {
+  const pod = { queued: [], deleted: [] };
+  const adapter = {
+    fetchItem: () => ({ id: 's1', title: 'Ep One', liked: false, watchState: 'unwatched', watchUrl: undefined }),
+    downloadUrl: (it) => '/episode/' + it.id + '?download=1',
+    shareLinkUrl: () => '',
+    capabilities: ['download', 'share', 'queue', 'delete', 'like', 'watched'],
+    watchedLabels: { on: 'Played', off: 'Mark played' },
+    deleteNeedsModify: false,
+    onQueue: (it, pos) => pod.queued.push({ id: it.id, pos }),
+    onDelete: (it, onSuccess) => { pod.deleted.push(it.id); if (onSuccess) onSuccess(); },
+  };
+  const b = bootSticker({ adapter });
+  try {
+    b.engine.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
+    for (let i = 0; i < 6; i++) await b.settle();
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="queue"]'));
+    assert.deepStrictEqual(pod.queued, [{ id: 's1', pos: 'end' }], 'Queue -> the podcast onQueue (kind handled by the adapter)');
+    // reopen (queue closed the menu) and delete
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
+    for (let i = 0; i < 6; i++) await b.settle();
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="delete"]'));
+    for (let i = 0; i < 4; i++) await b.settle();
+    assert.deepStrictEqual(pod.deleted, ['s1'], 'Delete -> the podcast onDelete (its own trash flow), never DELETE /api/videos');
+    assert.ok(!b.calls.some((c) => c.method === 'DELETE' && c.url.indexOf('/api/videos/') === 0), 'the video delete endpoint is never hit');
+    assert.strictEqual(b.spy.mutated, 1, 'onDelete -> onSuccess -> onMutated (the view refresh)');
   } finally { b.restoreAll(); }
 });
 

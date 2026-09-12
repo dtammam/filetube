@@ -12973,11 +12973,19 @@ function shareMediaFile(opts) {
       if (chooseShareStrategy({ canShareFiles: true, sizeBytes: sizeBytes, maxBytes: SHARE_FILE_MAX_BYTES }) === 'download') {
         return fallbackDownload();
       }
+      var serverName = null;
       return fetch(url).then(function (r) {
         if (!r.ok) throw new Error('fetch ' + r.status);
+        // Prefer the server's Content-Disposition filename - it carries the RIGHT extension
+        // (.mp3/.m4a/.mp4/.pdf/.epub) so the shared file is typed correctly on the friend's device.
+        try {
+          var cd = r.headers.get('content-disposition') || '';
+          var m = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(cd);
+          if (m && m[1]) serverName = decodeURIComponent(m[1].replace(/"$/, '').trim());
+        } catch (_) { /* keep the fallback filename */ }
         return r.blob();
       }).then(function (blob) {
-        var file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+        var file = new File([blob], serverName || filename, { type: blob.type || 'application/octet-stream' });
         if (!navigator.canShare({ files: [file] })) return fallbackDownload();
         return navigator.share({ files: [file], title: title })
           // a dismissed sheet is the user's choice, never an error (the link helper's rule)

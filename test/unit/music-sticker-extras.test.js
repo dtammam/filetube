@@ -80,6 +80,7 @@ async function boot(run, opts) {
   const calls = []; // every fetch as {url, method}
   const toasts = [];
   const shares = []; // shareExternalUrl calls
+  const fileShares = []; // v1.287: shareMediaFile calls
   const choiceModals = []; // showChoiceModal calls (title + labels + onPicks)
   const moveModals = []; // showMoveModal calls
   const confirmModals = []; // showConfirmModal calls
@@ -155,6 +156,7 @@ async function boot(run, opts) {
   dom.window.fetchLikedTotal = (force) => { likedTotalCalls.push(force); return Promise.resolve(0); };
   dom.window.showToast = (msg) => { toasts.push(String(msg)); };
   dom.window.shareExternalUrl = (url, title) => { shares.push({ url, title }); return Promise.resolve('shared'); };
+  dom.window.shareMediaFile = (o) => { fileShares.push(o); return Promise.resolve('shared'); }; // v1.287 file-share
   dom.window.withShareStartTime = (url, s) => url + '&t=' + Math.floor(s) + 's';
   dom.window.showChoiceModal = (title, choices) => { choiceModals.push({ title, choices }); return () => {}; };
   dom.window.showMoveModal = (item, folders, onMove) => { moveModals.push({ item, folders, onMove }); };
@@ -173,7 +175,7 @@ async function boot(run, opts) {
   delete require.cache[require.resolve('../../public/js/skin-surface.js')];
   require('../../public/js/skin-surface.js');
   const root = () => dom.window.document.getElementById('view-root');
-  const ctx = { calls, toasts, shares, choiceModals, moveModals, confirmModals, hardDeletes, transcripts, queued, requestedMoves, state, likedTotalCalls, nav: () => navHolder.nav, releaseVideo: () => { const w = videoWaiters.shift(); if (w) w(); } };
+  const ctx = { calls, toasts, shares, fileShares, choiceModals, moveModals, confirmModals, hardDeletes, transcripts, queued, requestedMoves, state, likedTotalCalls, nav: () => navHolder.nav, releaseVideo: () => { const w = videoWaiters.shift(); if (w) w(); } };
   try {
     delete require.cache[musicPath];
     require(musicPath);
@@ -252,7 +254,7 @@ test('a ::c chapter id is STRIPPED to its base file id for the open fetch', asyn
 test('availability gating: no watchUrl -> no Share/Reheat; no subtitles -> no Transcript; no RBAC -> no Move/Delete', async () => {
   await boot(async (dom) => {
     await openExtras(dom);
-    assert.strictEqual(act(dom, 'share'), null, 'no watchUrl: Share absent');
+    assert.ok(act(dom, 'share'), 'v1.287: Share is UNIVERSAL - present even with no watchUrl (file-share)');
     assert.strictEqual(act(dom, 'reheat'), null, 'no watchUrl: Reheat absent');
     assert.strictEqual(act(dom, 'transcript'), null, 'no subtitles: Transcript absent');
     assert.strictEqual(act(dom, 'move'), null, 'member without canModifyLibrary: Move absent');
@@ -311,29 +313,45 @@ test('anti-INERT Queue: Add-to-queue / Play-next call the shared addToQueue with
   });
 });
 
-test('anti-INERT Share: no meaningful position -> shares the watchUrl directly via shareExternalUrl', async () => {
+test('v1.287 Share (source exists, no position) -> a BOTH choice: Share file OR Share link', async () => {
   await boot(async (dom, ctx) => {
     await openExtras(dom);
     click(dom, act(dom, 'share'));
     await settle();
-    assert.strictEqual(ctx.shares.length, 1, 'shareExternalUrl called');
-    assert.strictEqual(ctx.shares[0].url, VIDEO_DEFAULT.watchUrl, 'shares the ORIGINAL YouTube link');
-    assert.strictEqual(ctx.choiceModals.length, 0, 'no position -> no choice modal');
+    // an item WITH a source link offers both file and link (Dean's "both when a source exists").
+    assert.strictEqual(ctx.choiceModals.length, 1, 'choice modal offered');
+    assert.deepStrictEqual(ctx.choiceModals[0].choices.map((c) => c.label), ['Share file', 'Share link'], 'no position -> file + link only');
+    ctx.choiceModals[0].choices[0].onPick(); // Share file
+    await settle();
+    assert.strictEqual(ctx.fileShares.length, 1, 'Share file -> shareMediaFile');
+    assert.strictEqual(ctx.fileShares[0].url, '/video/s1?download=1', 'file-share fetches the download arm');
+    ctx.choiceModals[0].choices[1].onPick(); // Share link
+    await settle();
+    assert.strictEqual(ctx.shares[0].url, VIDEO_DEFAULT.watchUrl, 'Share link -> the original YouTube link');
   });
 });
 
-test('Share with a live position >= 1s offers the share-at-current-time choice (watch-page fidelity)', async () => {
+test('v1.287 Share with a live position >= 1s adds a "Share link at <time>" choice', async () => {
   await boot(async (dom, ctx) => {
     dom.window.FileTube.player.getCurrentTime = () => 65;
     await openExtras(dom);
     click(dom, act(dom, 'share'));
     assert.strictEqual(ctx.choiceModals.length, 1, 'choice modal offered');
-    assert.strictEqual(ctx.choiceModals[0].choices.length, 2);
-    ctx.choiceModals[0].choices[1].onPick();
+    assert.strictEqual(ctx.choiceModals[0].choices.length, 3, 'file + link + link-at-time');
+    ctx.choiceModals[0].choices[2].onPick(); // the timed link
     await settle();
-    assert.strictEqual(ctx.shares.length, 1);
     assert.strictEqual(ctx.shares[0].url, VIDEO_DEFAULT.watchUrl + '&t=65s', 'the timed pick shares withShareStartTime');
   });
+});
+
+test('v1.287 Share with NO source link (podcast/local) -> file-share directly, no choice modal', async () => {
+  await boot(async (dom, ctx) => {
+    await openExtras(dom);
+    click(dom, act(dom, 'share'));
+    await settle();
+    assert.strictEqual(ctx.choiceModals.length, 0, 'no source -> no choice');
+    assert.strictEqual(ctx.fileShares.length, 1, 'file-share directly');
+  }, { video: { watchUrl: undefined } });
 });
 
 test('anti-INERT Transcript: hands the item to the shared openTranscriptFor flow', async () => {

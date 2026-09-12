@@ -112,9 +112,7 @@ test('census: the TODO set matches the declared snapshot (a new gap or a closed-
   // to SUPPORTED) requires updating this snapshot - so a gap can't silently vanish, and
   // a NEW gap can't silently appear.
   const EXPECTED = [
-    'books.share:next-wave',
-    'podcasts.playerMenu:next-wave',
-    'podcasts.share:next-wave',
+    // v1.287 closed podcasts.playerMenu + podcasts.share + books.share (flipped to SUPPORTED).
     'podcasts.transcript:future',
   ].sort();
   assert.deepStrictEqual(todos, EXPECTED,

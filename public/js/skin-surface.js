@@ -46,14 +46,32 @@
 //                     gains an "Autoplay" On/Off row (Loop chassis). Both surfaces - the
 //                     setting is device-global, so a pop-out flip is coherent. Omitted
 //                     (podcasts) = no row.
-//     extras          OPTIONAL - the v1.249 watch-page Extras second page. Omitted (e.g.
-//                     podcasts - they keep their own actions) = quick menu only. Hooks:
+//     extras          OPTIONAL - the v1.249 Extras second page. Omitting it = quick menu only.
+//                     v1.287: the factory is ENDPOINT-DRIVEN, so a media type supplies an ADAPTER
+//                     here (podcasts do - the video/music surfaces pass only the base 4 hooks and
+//                     get the factory DEFAULTS, byte-identical to pre-v1.287). Base hooks:
 //       getBaseId()   -> the playing item's base media id (::c chapter suffix stripped), or null
-//       isEligible()  -> the view says the playing item is library-backed (the engine adds its
+//       isEligible()  -> the view says the playing item is menu-eligible (the engine adds its
 //                        own in-MAIN-document check - the pop-out never offers Extras)
-//       onMutated()   a successful Move/Delete removed/re-keyed the playing item - the view
+//       onMutated()   a successful Delete/Move removed/re-keyed the playing item - the view
 //                     clears its playing state and refreshes
 //       signal        the view's AbortSignal (share-choice dismiss, transcript, reheat poll)
+//                     Adapter fields (v1.287, all OPTIONAL - defaults = the video/library model):
+//       fetchItem(id) -> Promise<item|null> (default: GET /api/videos/:id). Item shape:
+//                        {id,title,liked,watchState:'watched'|'unwatched',hasSubtitles,watchUrl}.
+//       downloadUrl(item) -> the file's ?download=1 URL (default: /video/:id?download=1)
+//       shareLinkUrl(item) -> the external SOURCE link, '' if none (default: item.watchUrl).
+//                        Its presence decides the "both when a source exists" Share fork.
+//       capabilities  -> array of action rows to render (default: the full video set). Podcasts
+//                        pass the applicable subset; move/reheat/transcript are omitted for them.
+//       watchedLabels -> { on, off } for the watched row (default Watched/Mark watched; podcasts
+//                        pass Played/Mark played).
+//       deleteNeedsModify -> false lets Delete render without canModifyLibrary (podcasts; the
+//                        SERVER still enforces requireModifyLibrary). Default (undefined) = gated.
+//       likeRequest(item,nextOn)/watchedRequest(item,nextOn) -> return the toggle fetch (default
+//                        /api/liked//api/watched); onQueue(item,pos) (default addToQueue);
+//       onDelete(item,onSuccess,player) -> OWN the delete flow entirely (podcasts: the recoverable
+//                        trash). When present, the video/music two-flow delete is bypassed.
 // NOTE (Dean, 2026-09-02): music.js's v1.235 wheel-VOLUME mode is deliberately NOT ported -
 // Dean ruled the Now-Playing wheel SCRUBS everywhere ("like it does on mobile - consistent
 // UI and useful"), so the engine has exactly one Now-Playing wheel behavior. The iPod skin's
@@ -113,26 +131,67 @@
         .then(function (me) { return !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true)); })
         .catch(function () { return false; });
     }
+    // v1.287: the download URL is media-type-configurable (default = the video arm, unchanged
+    // for the video/music surfaces that pass no cfg.downloadUrl). Podcasts pass /episode/:id.
+    function extrasDownloadUrl(item) {
+      try { if (typeof cfg.downloadUrl === 'function') return cfg.downloadUrl(item); } catch (_) { /* fall through */ }
+      return '/video/' + encodeURIComponent(item.id) + '?download=1';
+    }
+    // v1.287: the shareable SOURCE link (default = item.watchUrl). Its presence decides the
+    // "both when a source exists" Share fork below; a file-only type (podcasts) returns ''.
+    function extrasShareLink(item) {
+      try { if (typeof cfg.shareLinkUrl === 'function') return cfg.shareLinkUrl(item) || ''; } catch (_) { /* fall through */ }
+      return (typeof item.watchUrl === 'string' && item.watchUrl !== '') ? item.watchUrl : '';
+    }
+    // v1.287: the item-detail source. Default = the /api/videos/:id payload (video/music);
+    // podcasts inject a fetch of the episode payload (normalized to {id,title,liked,watchState,...}).
+    function extrasFetchItem(id) {
+      try {
+        if (typeof cfg.fetchItem === 'function') return Promise.resolve(cfg.fetchItem(id)).catch(function () { return null; });
+      } catch (_) { /* fall through to the default */ }
+      return fetch('/api/videos/' + encodeURIComponent(id))
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; });
+    }
+    // v1.287: which action rows this surface renders. Default = the full video/music set
+    // (byte-identical to before); podcasts pass a subset. Share is ALWAYS present now
+    // (everything shareable) - it file-shares, and offers the link too when a source exists.
+    function extrasCap(name) {
+      var caps = cfg.capabilities;
+      if (!caps) return true; // default: the historic full set
+      return caps.indexOf(name) !== -1;
+    }
     function buildExtrasHtml(item, canModify) {
-      var hasWatchUrl = typeof item.watchUrl === 'string' && item.watchUrl !== '';
+      var hasWatchUrl = extrasShareLink(item) !== '';
       var liked = item.liked === true;
       var watched = item.watchState === 'watched';
       var acts = [];
-      if (hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="share"><i class="icon-share"></i>Share</button>');
+      // v1.287: Share is universal now - always rendered (file-share, +link when a source exists).
+      if (extrasCap('share')) acts.push('<button type="button" class="mms-sm-act" data-skin-x="share"><i class="icon-share"></i>Share</button>');
       // v1.278: the "Watch" way back (open the item on the video page) - cfg-gated so it
       // appears ONLY where the surface offers it (the desktop /music actions menu). The
       // mobile skin keeps Watch on the sticker's page 1 (its cfg omits hasWatchBack), so
       // the skin path stays byte-identical.
       if (typeof cfg.hasWatchBack === 'function' && cfg.hasWatchBack()) acts.push('<button type="button" class="mms-sm-act" data-skin-x="watch"><i class="icon-tv"></i>Watch</button>');
-      acts.push('<a class="mms-sm-act" data-skin-x="download" href="/video/' + encodeURIComponent(item.id) + '?download=1" download><i class="icon-download"></i>Download</a>');
-      acts.push('<button type="button" class="mms-sm-act' + (liked ? ' is-on' : '') + '" data-skin-x="like" aria-pressed="' + (liked ? 'true' : 'false') + '"><i class="icon-heart"></i><span class="mms-sm-actlbl">' + (liked ? 'Liked' : 'Like') + '</span>' + '</button>');
-      acts.push('<button type="button" class="mms-sm-act' + (watched ? ' is-on' : '') + '" data-skin-x="watched" aria-pressed="' + (watched ? 'true' : 'false') + '"><i class="icon-history"></i><span class="mms-sm-actlbl">' + (watched ? 'Watched' : 'Mark watched') + '</span>' + '</button>');
-      acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue"><i class="icon-queue"></i>Add to queue</button>');
-      acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue-next"><i class="icon-play"></i>Play next</button>');
-      if (item.hasSubtitles === true) acts.push('<button type="button" class="mms-sm-act" data-skin-x="transcript"><i class="icon-transcript"></i>Transcript</button>');
-      if (hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="reheat"><i class="icon-flame"></i>Reheat</button>');
-      if (canModify) {
+      if (extrasCap('download')) acts.push('<a class="mms-sm-act" data-skin-x="download" href="' + extrasDownloadUrl(item) + '" download><i class="icon-download"></i>Download</a>');
+      if (extrasCap('like')) acts.push('<button type="button" class="mms-sm-act' + (liked ? ' is-on' : '') + '" data-skin-x="like" aria-pressed="' + (liked ? 'true' : 'false') + '"><i class="icon-heart"></i><span class="mms-sm-actlbl">' + (liked ? 'Liked' : 'Like') + '</span>' + '</button>');
+      // v1.287: the "watched" row's LABEL is configurable (podcasts say "Played"); the action
+      // id + toggle machinery stay `watched` (the handler routes by cfg).
+      var wOn = (cfg.watchedLabels && cfg.watchedLabels.on) || 'Watched';
+      var wOff = (cfg.watchedLabels && cfg.watchedLabels.off) || 'Mark watched';
+      if (extrasCap('watched')) acts.push('<button type="button" class="mms-sm-act' + (watched ? ' is-on' : '') + '" data-skin-x="watched" aria-pressed="' + (watched ? 'true' : 'false') + '"><i class="icon-history"></i><span class="mms-sm-actlbl">' + (watched ? wOn : wOff) + '</span>' + '</button>');
+      if (extrasCap('queue')) acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue"><i class="icon-queue"></i>Add to queue</button>');
+      if (extrasCap('queue-next')) acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue-next"><i class="icon-play"></i>Play next</button>');
+      if (extrasCap('transcript') && item.hasSubtitles === true) acts.push('<button type="button" class="mms-sm-act" data-skin-x="transcript"><i class="icon-transcript"></i>Transcript</button>');
+      if (extrasCap('reheat') && hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="reheat"><i class="icon-flame"></i>Reheat</button>');
+      // move stays library-modify-gated (video only). delete is capability-gated; whether it
+      // ALSO needs canModify to RENDER is cfg-driven (video/music: yes; podcasts:
+      // deleteNeedsModify:false shows it to all like the list-row delete - the SERVER still
+      // enforces requireModifyLibrary on the actual DELETE).
+      if (extrasCap('move') && canModify) {
         acts.push('<button type="button" class="mms-sm-act" data-skin-x="move"><i class="icon-folder"></i>Move to...</button>');
+      }
+      if (extrasCap('delete') && (canModify || cfg.deleteNeedsModify === false)) {
         acts.push('<button type="button" class="mms-sm-act mms-sm-danger" data-skin-x="delete"><i class="icon-delete"></i>Delete</button>');
       }
       return extrasBackHtml() +
@@ -146,9 +205,7 @@
       var token = ++extrasReqToken;
       menu.innerHTML = buildExtrasNoteHtml('Loading…');
       Promise.all([
-        fetch('/api/videos/' + encodeURIComponent(baseId))
-          .then(function (r) { return r.ok ? r.json() : null; })
-          .catch(function () { return null; }),
+        extrasFetchItem(baseId),
         extrasCanModifyLibrary(),
       ]).then(function (rs) {
         // Post-await re-checks (the TOCTOU scar): the newest open only, the menu still
@@ -166,57 +223,80 @@
     function extrasToast(msg) {
       if (typeof window.showToast === 'function') window.showToast(msg);
     }
+    // v1.287: queue via a cfg override (podcasts pass kind 'podcast'), default = the shared verb.
+    function extrasQueue(item, pos) {
+      if (typeof cfg.onQueue === 'function') { try { cfg.onQueue(item, pos); return; } catch (_) { /* fall through */ } }
+      if (typeof window.addToQueue === 'function') window.addToQueue(item.id, pos);
+    }
+    // v1.287 (Dean, "everything shareable"): Share the actual FILE, and - when the item has a
+    // source LINK - offer the link too (the "both when a source exists" ruling). File-only for
+    // podcasts / local items with no source. A sanitized title is the filename fallback;
+    // shareMediaFile prefers the server's Content-Disposition name (right extension).
+    function extrasShareFilename(item) {
+      return String((item && item.title) || 'media').replace(/[/\\:*?"<>|-]+/g, '_').replace(/\s+/g, ' ').trim().slice(0, 120) || 'media';
+    }
     function extrasShare(item) {
-      var base = item.watchUrl;
-      var run = function (u) {
-        if (typeof window.shareExternalUrl !== 'function') return;
-        window.shareExternalUrl(u, item.title).then(function (outcome) {
-          // No persistent button to relabel here - the desktop-fallback clipboard write
-          // gets its feedback as a toast (watch.js parity).
-          if (outcome === 'copied') extrasToast('Link copied');
-        });
+      var link = extrasShareLink(item); // '' when there is no external source
+      var fileUrl = extrasDownloadUrl(item);
+      var title = item.title || '';
+      var shareFile = function () {
+        if (typeof window.shareMediaFile !== 'function') return;
+        window.shareMediaFile({ url: fileUrl, title: title, filename: extrasShareFilename(item) })
+          .then(function (outcome) { if (outcome === 'downloaded') extrasToast('Downloading - share it from your files.'); });
       };
-      var pl = extrasPlayer();
-      var t = (pl && typeof pl.getCurrentTime === 'function') ? pl.getCurrentTime() : null;
+      var shareLink = function (u) {
+        if (typeof window.shareExternalUrl !== 'function') return;
+        window.shareExternalUrl(u, title).then(function (outcome) { if (outcome === 'copied') extrasToast('Link copied'); });
+      };
       var sig = extrasSignal();
-      if (typeof t === 'number' && isFinite(t) && t >= 1 &&
-        typeof window.showChoiceModal === 'function' && typeof window.withShareStartTime === 'function') {
-        var dismiss = window.showChoiceModal('Share', [
-          { label: 'Share song', onPick: function () { run(base); } },
-          { label: 'Share at current time (' + fmtTime(t) + ')', onPick: function () { run(window.withShareStartTime(base, t)); } },
-        ]);
+      if (link && typeof window.showChoiceModal === 'function') {
+        var pl = extrasPlayer();
+        var t = (pl && typeof pl.getCurrentTime === 'function') ? pl.getCurrentTime() : null;
+        var opts = [{ label: 'Share file', onPick: shareFile }, { label: 'Share link', onPick: function () { shareLink(link); } }];
+        if (typeof t === 'number' && isFinite(t) && t >= 1 && typeof window.withShareStartTime === 'function') {
+          opts.push({ label: 'Share link at ' + fmtTime(t), onPick: function () { shareLink(window.withShareStartTime(link, t)); } });
+        }
+        var dismiss = window.showChoiceModal('Share', opts);
         if (typeof dismiss === 'function' && sig) sig.addEventListener('abort', dismiss, { once: true });
         return;
       }
-      run(base);
+      shareFile();
     }
-    // Like/Watched share one toggle shape: POST adds, DELETE removes, the rendered button
-    // flips ONLY on a 2xx (the server is the truth; a failure leaves the shown state alone).
+    // v1.287: the default (video/music) like/watched requests - POST adds, DELETE removes.
+    function defaultLikeRequest(item, nextOn) { return fetch('/api/liked/' + encodeURIComponent(item.id), { method: nextOn ? 'POST' : 'DELETE' }); }
+    function defaultWatchedRequest(item, nextOn) { return fetch('/api/watched/' + encodeURIComponent(item.id), { method: nextOn ? 'POST' : 'DELETE' }); }
+    // Like/Watched: the rendered button flips ONLY on a 2xx (the server is the truth; a failure
+    // leaves the shown state alone). The request is cfg-injectable (podcasts hit their own
+    // /api/podcasts/episodes/:id/liked + /played endpoints); the state/label machinery is shared.
     function extrasToggleFlag(el, item, kind) {
       var on = kind === 'like' ? item.liked === true : item.watchState === 'watched';
-      var url = (kind === 'like' ? '/api/liked/' : '/api/watched/') + encodeURIComponent(item.id);
-      fetch(url, { method: on ? 'DELETE' : 'POST' })
+      var nextOn = !on;
+      var reqFn = kind === 'like'
+        ? (typeof cfg.likeRequest === 'function' ? cfg.likeRequest : defaultLikeRequest)
+        : (typeof cfg.watchedRequest === 'function' ? cfg.watchedRequest : defaultWatchedRequest);
+      var wOn = (cfg.watchedLabels && cfg.watchedLabels.on) || 'Watched';
+      var wOff = (cfg.watchedLabels && cfg.watchedLabels.off) || 'Mark watched';
+      Promise.resolve().then(function () { return reqFn(item, nextOn); })
         .then(function (res) {
-          if (!res.ok) { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update Watched.'); return; }
+          if (!res || !res.ok) { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update ' + wOn + '.'); return; }
           if (kind === 'like') {
-            item.liked = !on;
+            item.liked = nextOn;
             // QA gate (the v1.33.1 class): the count-gated Liked sidebar entry caches its
             // total per session - re-prime it so home reflects this like without a reload.
             if (typeof window.fetchLikedTotal === 'function') window.fetchLikedTotal(true);
           } else {
-            item.watchState = on ? 'unwatched' : 'watched';
+            item.watchState = nextOn ? 'watched' : 'unwatched';
           }
           if (!el || !el.isConnected) return;
-          var nowOn = !on;
-          el.classList.toggle('is-on', nowOn);
-          el.setAttribute('aria-pressed', nowOn ? 'true' : 'false');
+          el.classList.toggle('is-on', nextOn);
+          el.setAttribute('aria-pressed', nextOn ? 'true' : 'false');
           // v1.255 slim-gate CRITICAL: write ONLY the label span - a bare el.textContent
           // assignment destroys the row's glyph <i> (this wave's own feature) on the
           // menu's most-tapped rows. The || el fallback keeps a span-less row honest.
           var lbl = el.querySelector('.mms-sm-actlbl');
-          (lbl || el).textContent = kind === 'like' ? (nowOn ? 'Liked' : 'Like') : (nowOn ? 'Watched' : 'Mark watched');
+          (lbl || el).textContent = kind === 'like' ? (nextOn ? 'Liked' : 'Like') : (nextOn ? wOn : wOff);
         })
-        .catch(function () { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update Watched.'); });
+        .catch(function () { extrasToast(kind === 'like' ? 'Could not update Like.' : 'Could not update ' + wOn + '.'); });
     }
     function extrasTranscript(item, el) {
       if (typeof window.openTranscriptFor !== 'function') return;
@@ -329,6 +409,14 @@
         .catch(function () { extrasToast('Could not load the folder list.'); });
     }
     function extrasDelete(item) {
+      // v1.287: a media type with its OWN delete flow (podcasts: the recoverable two-tap trash
+      // to /api/podcasts/episodes/:id) supplies cfg.onDelete and owns the confirm + request +
+      // refresh entirely. The video/music path below is left BYTE-IDENTICAL (zero regression
+      // risk on the destructive library delete). onDelete gets (item, onSuccess, player).
+      if (typeof cfg.onDelete === 'function') {
+        try { cfg.onDelete(item, afterExtrasMutation, extrasPlayer()); } catch (_) { extrasToast('Could not delete.'); }
+        return;
+      }
       var doDelete = function () {
         // Release the about-to-be-deleted resource before the DELETE (watch.js parity).
         var pl = extrasPlayer();
@@ -371,8 +459,8 @@
       if (act === 'watch') { extrasClose(); if (typeof cfg.onWatch === 'function') { try { cfg.onWatch(); } catch (_) { /* nav best-effort */ } } return; }
       if (act === 'like') { extrasToggleFlag(el, item, 'like'); return; }
       if (act === 'watched') { extrasToggleFlag(el, item, 'watched'); return; }
-      if (act === 'queue') { extrasClose(); if (typeof window.addToQueue === 'function') window.addToQueue(item.id, 'end'); return; }
-      if (act === 'queue-next') { extrasClose(); if (typeof window.addToQueue === 'function') window.addToQueue(item.id, 'next'); return; }
+      if (act === 'queue') { extrasClose(); extrasQueue(item, 'end'); return; }
+      if (act === 'queue-next') { extrasClose(); extrasQueue(item, 'next'); return; }
       if (act === 'transcript') { extrasClose(); extrasTranscript(item, el); return; }
       if (act === 'reheat') { extrasClose(); extrasReheat(item); return; }
       if (act === 'move') { extrasClose(); extrasMove(item); return; }
@@ -639,6 +727,18 @@
       backHtml: extrasBackHtml,
       stillOnPage: function () { var m = panel.querySelector('[data-skin-sticker-menu]'); return !!m && m.getAttribute('data-sm-page') === 'extras'; },
       onMutated: function () { if (extrasCfg && typeof extrasCfg.onMutated === 'function') { try { extrasCfg.onMutated(); } catch (_) { /* view refresh best-effort */ } } },
+      // v1.287: forward the media-type ADAPTER fields (undefined for music/video -> the factory
+      // defaults preserve their behaviour; podcasts supply the podcast endpoints/capabilities).
+      fetchItem: extrasCfg ? extrasCfg.fetchItem : undefined,
+      downloadUrl: extrasCfg ? extrasCfg.downloadUrl : undefined,
+      shareLinkUrl: extrasCfg ? extrasCfg.shareLinkUrl : undefined,
+      capabilities: extrasCfg ? extrasCfg.capabilities : undefined,
+      watchedLabels: extrasCfg ? extrasCfg.watchedLabels : undefined,
+      deleteNeedsModify: extrasCfg ? extrasCfg.deleteNeedsModify : undefined,
+      onDelete: extrasCfg ? extrasCfg.onDelete : undefined,
+      onQueue: extrasCfg ? extrasCfg.onQueue : undefined,
+      likeRequest: extrasCfg ? extrasCfg.likeRequest : undefined,
+      watchedRequest: extrasCfg ? extrasCfg.watchedRequest : undefined,
     });
     function openStickerExtras() {
       var menu = panel.querySelector('[data-skin-sticker-menu]');

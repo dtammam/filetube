@@ -2938,5 +2938,11 @@
     "date": "2026-09-12",
     "title": "Groundwork for consistent actions across every media type",
     "intent": "Behind the scenes, we started making sure every kind of content - videos, music, podcasts, books - offers the same set of actions (download, share, and so on) in the same places, so features stop quietly going missing for one type. This release lays the groundwork: a check that flags any gap automatically, and the plumbing to share the actual file (so you can send a friend the real mp3, not just a link). The visible payoff - a full actions menu on the podcast player, and Share on everything - lands in the next update, which builds directly on this."
+  },
+  {
+    "version": "1.287.0",
+    "date": "2026-09-12",
+    "title": "A full actions menu on the podcast player, and Share everywhere",
+    "intent": "The podcast player now has the same actions menu you already get on videos and music: download an episode, add it to your queue, mark it played, like it, or move it to the trash - all from the player, not just the list. And Share now works on every kind of content - videos, music, podcasts, and books. When you share, you send the actual file (the real mp3, mp4, or book), so a friend gets the media itself; where a web link to the source also exists, you can pick whether to share the file or the link. This is the payoff of the last update's groundwork - the thing Dean hit when he couldn't share a podcast episode from his phone."
   }
 ]
