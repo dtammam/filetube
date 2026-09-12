@@ -150,7 +150,9 @@ Two authorities + one registry + one census test, modeled on `lib/search/registr
    - **TODO is explicit**: TODO cells are the disclosed, committed gaps — the test asserts the
      TODO set equals a declared snapshot, so a NEW silent gap can't appear and a CLOSED gap
      (now wired) must be promoted to SUPPORTED. This is the tech-debt-tracker-as-a-test.
-   - **DELEGATED** cells assert the delegation target exists.
+   - **DELEGATED** cells assert a non-empty `to` target is declared (prose like "video watch
+     page"; not existence-checkable), and no MATRIX row is an orphan (every key is a real
+     KIND_TO_LIBRARY type).
 
 ## Task commits
 

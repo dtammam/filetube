@@ -29,6 +29,11 @@ test('census: every KIND_TO_LIBRARY media type is declared in the matrix (a new 
     assert.ok(MATRIX[lib], `media type '${lib}' has no capability declaration in lib/media-capabilities.js`);
   }
   assert.deepStrictEqual([...MEDIA_TYPES].sort(), [...libraries].sort(), 'MEDIA_TYPES must equal the KIND_TO_LIBRARY set');
+  // No ORPHAN matrix row: a MATRIX key not in the authority would be silently never
+  // visited (a stale declaration surviving a type's removal from KIND_TO_LIBRARY).
+  for (const key of Object.keys(MATRIX)) {
+    assert.ok(libraries.has(key), `MATRIX declares '${key}' which is not a KIND_TO_LIBRARY media type - remove the stale row`);
+  }
 });
 
 // ---- completeness: every (media x capability) cell declared ------------------
