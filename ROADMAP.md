@@ -93,6 +93,33 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.288.0 - Every notification bell row wears a picture (2026-09-12)
+
+Dean: "I don't want anything in notifications to not have an icon associated." The in-app
+notification bell (v1.51) showed downloaded video/audio with their thumbnail, but downloader
+(yt-dlp) engine rows were blank on the right, and any stale avatar/thumbnail URL rendered the
+browser's broken-image glyph.
+
+- **Downloader-engine rows** now wear a vendored yt-dlp mark (public/icons/ytdlp.svg), icon-fit
+  (contain on a quiet fill) instead of a blank right side.
+- **The guarantee (a net, not a patch):** every bell row resolves a real picture (thumbnail /
+  podcast show art) ELSE falls back to the FileTube logo - so no row is ever blank, including
+  future notification kinds. A thumbnail-less media row and the defensive empty-show-art podcast
+  row both land on the logo.
+- **Broken-image net:** both the avatar and thumbnail `<img>` carry a self-nulling onerror that
+  swaps a 404/stale URL to the FileTube logo, closing the broken-image-glyph class for good.
+
+NOT done (honest scope): no redundant podcast-art backfill - the cover pipeline already re-fetches
+the feed `<itunes:image>` on every poll and falls back to a 🎧 SVG server-side, so podcast rows are
+never truly iconless (both seats verified this claim against source). No new app-version
+notification (Dean confirmed "system update" meant the yt-dlp one).
+
+Full two-reviewer gate (both APPROVE): the render loop is the repo's disclosed "thin DOM shell",
+bound by a source-lock the adversarial seat proved non-porous (12 mutants killed - both onerror
+handlers, the null-before-src ordering, the icon-fit class, the duration-badge suppression, and the
+model's per-kind thumbnailIsIcon logic). Dual-Node 8458/8458. Device pass is Dean's - probe list in
+the report.
+
 ### v1.287.0 - Media capability parity: podcast player menu + universal Share (2026-09-12)
 
 The payoff wave on v1.286's foundation. The createExtrasMenu factory (skin-surface.js) was
