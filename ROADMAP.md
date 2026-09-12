@@ -93,6 +93,31 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.286.0 - Media capability parity: the standardization audit suite (foundation) (2026-09-12)
+
+Dean's systems observation: we built shared COMPONENTS (the skin engine, the actions-menu
+factory, tokens, viewports) but no shared CONTRACT - each capability (download/share/...) is
+opt-in per view, so parity is unenforced and gaps surface only when Dean hits a missing button
+(he couldn't share a podcast mp3 on mobile). This wave lays the FOUNDATION to make parity
+enforced-by-test, in the repo's own idiom (the search-provider-census pattern):
+
+- A declarative capability registry (lib/media-capabilities.js): a 55-cell matrix (5 media types
+  from the KIND_TO_LIBRARY authority x 11 capabilities), each cell supported/na/todo/delegated.
+- A census checker (media-capability-census.test.js): every media type declared, every SUPPORTED
+  cell actually wired (a stale/removed capability reds), Share never N/A (Dean's "everything
+  shareable" is now a test), N/A carries a reason, no orphan rows, and the TODO set is a snapshot
+  so a gap can't silently appear or close. Census: 55 cells = 31 supported, 10 N/A, 4 todo,
+  10 delegated - the 4 TODOs are the machine-derived worklist for the next wave.
+- A universal file-share helper (shareMediaFile): shares the actual media FILE via
+  navigator.share({files}) (fallback: download), so a friend gets the real mp3/mp4/pdf/epub.
+
+Slim adversarial gate: caught TWO vacuous markers in the census itself (podcast like/watched cells
+that stayed green when the real controls were gutted - false confidence, the worst checker
+failure) + a surviving orphan-row mutant; all fixed and mutation-verified before ship. The
+podcast player menu + wiring Share into every view is a factory-generalization refactor - the
+IMMEDIATE next wave (the createExtrasMenu factory is video/music-hardwired). Dual-Node 8453/8453.
+No data at risk (an enforcement test + an unwired helper). Device pass is Dean's.
+
 ### v1.285.0 - Per-channel duration window for subscriptions (min + max length) (2026-09-11)
 
 Dean's ask: a subscription should download only items within a length WINDOW - a channel that
