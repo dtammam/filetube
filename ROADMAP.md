@@ -93,6 +93,34 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.289.0 - A text-selection drag no longer closes the download/subscribe/editor modals (2026-09-12)
+
+Dean: clicking into the download modal's URL (or folder) field and dragging to select or
+reposition the text closed the whole modal. Root cause: these modals dismissed on
+`backdrop.click` with an `e.target === backdrop` guard, which is right for a plain click but
+wrong for a DRAG - when the pointer release lands on the backdrop, the browser dispatches the
+synthesized `click` on the common ancestor of press-and-release (the backdrop), so the modal
+closed mid-edit.
+
+- New shared `bindBackdropDismiss(backdrop, onClose)` helper: dismiss only when the interaction
+  BOTH started (pointerdown) and ended (click) on the backdrop. A drag that begins inside the
+  modal can no longer close it; a clean backdrop tap still does.
+- Applied to the four modals with editable/selectable text: the one-off download modal, the
+  podcast subscribe-confirm modal, the **chapters editor**, and the transcript modal.
+
+Full two-reviewer gate (escalated from slim because the ADVERSARIAL SEAT's sweep found the same
+bug in the chapters editor - where a drag-dismiss DISCARDED UNSAVED CHAPTER EDITS, a data-loss
+surface and Dean's exact gesture - and the transcript modal; both were folded in). Both seats
+APPROVE: the extended source-lock (4 builders, either quote style) was mutation-tested 8/8 killed;
+the helper's drag/tap/consume logic 4/4; `showMoveModal` + four other no-text-field modals were
+verified exempt (folder picker / checkbox / read-only - no drag-selectable text or unsaved data).
+Dual-Node 8465/8465.
+
+KNOWN GAP (disclosed, tech-debt #223): five other backdrop modals still dismiss on a stray
+drag-onto-backdrop, but none has an editable text field or unsaved data, so only a cosmetic
+"a stray drag can close it" remains - the data-loss class is fully closed. Dean declined the
+"all modals" scope for this wave. Device pass is Dean's.
+
 ### v1.288.0 - Every notification bell row wears a picture (2026-09-12)
 
 Dean: "I don't want anything in notifications to not have an icon associated." The in-app

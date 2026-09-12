@@ -2950,5 +2950,11 @@
     "date": "2026-09-12",
     "title": "Every notification now shows a picture",
     "intent": "The notification bell used to leave some rows without any picture - a downloader (yt-dlp) update, for instance, showed a blank space where a thumbnail would be, and if an image ever failed to load you'd get a broken-image icon. Now every notification carries a picture: downloaded videos and music keep their thumbnail, podcasts show their cover art, downloader updates wear a downloader badge, and anything without its own image falls back to the FileTube logo instead of a blank or broken square. Nothing in the bell is ever pictureless again."
+  },
+  {
+    "version": "1.289.0",
+    "date": "2026-09-12",
+    "title": "Selecting text no longer closes the pop-up you're typing in",
+    "intent": "When you opened the download box, pasted a link, and then tried to drag across the URL to select or fix part of it, the whole box would sometimes vanish - because the drag ended on the dimmed area behind it. That's fixed: these pop-ups now only close when you actually click the dim area to dismiss them, not when a text selection happens to end there. The fix also covers the podcast subscribe box, the chapter editor (where it could have thrown away chapter edits you hadn't saved yet), and the transcript editor. You can select and edit text in them freely now."
   }
 ]
