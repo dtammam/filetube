@@ -57,8 +57,8 @@ re-derives the whole table: `node scripts/relational-arc-baseline.js --pretty`
 | `doc_kv` namespaces | **13** | `DOC_KV_NAMESPACES.length` in `lib/db/sqlite.js` | **0** (table dropped) |
 | `doc_single` namespaces | **18** (the intake draft said 19 - a hand count; Wave 0's re-derivation corrected it) | `SINGLETON_NAMES.length` in `lib/db/sqlite.js` | **0** (table dropped) |
 | Total legacy namespaces | **31** | sum of the two | **0** |
-| Genuine TODO/FIXME/HACK markers | **0** (9 grep hits are false positives) | see Wave 0 lint | **0**, lint-enforced |
-| `db.json` refs in shipped code | **> 0** (`server.js`, `lib/ytdlp/*`, scripts) | `git ls-files '*.js' \| grep -vE 'vendor\|node_modules\|test' \| xargs grep -l 'db\.json'` | **0** |
+| Genuine TODO/FIXME/HACK markers | **0** (the intake draft's "9 grep hits are false positives" was not reproducible from a recorded command - the slim gate found the only 9-yielding grep counts 2 binary PNG matches and misses the `\XXXX` lines the draft cited; the pre-Wave-0 shipped-code prose hits are in commit `36a40a77`) | enforced, not printed: `test/unit/comment-debt-census.test.js` (TIER 1 marker-form over every tracked code file, TIER 2 loose word over shipped code) + eslint `no-warning-comments` | **0**, lint-enforced since Wave 0 |
+| `db.json` refs in shipped code | **15 files** (`server.js`, `lib/db/sqlite.js`, `lib/ytdlp/*`, `scripts/*`) | `node scripts/relational-arc-baseline.js` (`dbJsonRefFiles`; the script excludes itself - its labels name the file) | **0** |
 | Test cases | **8,310** across **657** files | `git ls-files 'test/*.js' \| xargs grep -hoE '^\s*(test\|it)\(' \| wc -l` | net-add; ratio stays >= 1.48:1 |
 | Full suite | green on **both** Node 22.23.1 + 24.14.0 | `npm test` on each | green each release |
 
@@ -130,11 +130,24 @@ hygiene, per CLAUDE.md.
   import path as scheduled for removal in Wave 7.
 - **Predicted `server.js` delta:** ~0. **Risk:** none. **Data touched:** none.
 - **Wave 0 record (2026-09-13, branch `feat/wave0-comment-debt-json-groundwork`):**
-  - Both nets landed: eslint `no-warning-comments` (comment-START, all linted sets) +
+  - Both nets landed: eslint `no-warning-comments` (comment-START, all linted JS sets) +
     `test/unit/comment-debt-census.test.js` (TIER 1 marker-form = 0 over every tracked
-    code file incl. css/html/sh/brs/yml; TIER 2 loose word = 0 in shipped code). The
-    census caught its FIRST hit in Wave 0's own eslint comment before commit. Mutation
-    sanity: a `// TODO:` in lib/ and a `/* FIXME */` in style.css each red both nets.
+    code file - by extension incl. css/html/sh/brs/yml/json PLUS the extension-less
+    hooks/Dockerfile/roku manifest; TIER 2 loose word = 0 in shipped code). The census
+    caught its FIRST hit in Wave 0's own eslint comment before commit. Mutation sanity:
+    a `// TODO:` in lib/ reds eslint AND the census; a `/* FIXME */` in style.css reds
+    the census (eslint does not lint CSS).
+  - Slim gate (adversarial seat, REQUEST CHANGES -> fix round): (W1) both nets missed
+    `/** @todo */`, lowercase/title-case openers in css/sh/html/brs, and the 4
+    extension-less tracked files - opener arm now case-insensitive with `@?`, tag arm
+    stays upper-case (the registry's `todo(...)`/`todo: 0` are domain code),
+    extension-less files enumerated; (W2) both floors could pass VACUOUSLY (scan over
+    `[]`, dropped extensions, added exclusions all stayed green) - now bound by an
+    end-to-end temp-fixture scan and a per-extension-class witness list; (W3) the
+    baseline instrument counted ITSELF (`dbJsonRefFiles` 16 at HEAD, target 0
+    unreachable) - it excludes itself; (W4) three unreproducible claims in this plan
+    corrected; (S5-S8) comment honesty, copy-shaped spy holes, the comment-porous
+    server.js lock, the fallback-walk asymmetry.
   - `test/unit/dbjson-never-read.test.js`: fs-spy binding that boot rule 1 never reads
     db.json CONTENT (garbage bytes beside filetube.db boot fine; the same bytes WITHOUT
     filetube.db are FATAL - the positive control), plus the server.js seam lock (DB_FILE
@@ -179,6 +192,9 @@ hygiene, per CLAUDE.md.
 - Remove `loadDatabase`/`saveDatabase`/`updateDatabase`, the mega-object backfill, and
   `doc_kv` + `doc_single` (arrays emptied, then tables dropped via a forward-only
   migration). Remove the `db.json` import path and legacy tmp-sweep (grace satisfied).
+  Owed from Wave 0's slim gate (S7): an INTEGRATION boot of `server.js` itself with a
+  garbage `db.json` beside `filetube.db` - the Wave 0 binding is at the adapter seam
+  plus a source lock on `server.js`, and a source lock is evadable by an indirect spelling.
 - Split the remaining routes into feature routers; `server.js` becomes a thin
   composition root under the predicted **< 3,000 lines**.
 - Re-verify **every** Section 1 prediction; a miss is a finding, not a rounding note.

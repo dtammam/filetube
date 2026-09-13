@@ -41,7 +41,9 @@ function seedSqlite(db) {
 }
 
 // Wrap every fs entry point that yields file CONTENT (sync, callback, promise,
-// stream) plus the two metadata probes, recording calls aimed at db.json.
+// stream) AND every copy that could smuggle the bytes to another name (the
+// slim gate's mutant: copyFileSync to a tmp, then read the tmp), plus the two
+// metadata probes, recording calls aimed at db.json.
 function withFsSpy(run) {
   const reads = [];
   const probes = [];
@@ -64,6 +66,13 @@ function withFsSpy(run) {
     patch(fs, 'open', reads),
     patch(fs.promises, 'readFile', reads),
     patch(fs.promises, 'open', reads),
+    patch(fs, 'copyFileSync', reads),
+    patch(fs, 'copyFile', reads),
+    patch(fs, 'cpSync', reads),
+    patch(fs, 'cp', reads),
+    patch(fs.promises, 'copyFile', reads),
+    patch(fs.promises, 'cp', reads),
+    ...(typeof fs.openAsBlob === 'function' ? [patch(fs, 'openAsBlob', reads)] : []),
     patch(fs, 'existsSync', probes),
     patch(fs, 'statSync', probes),
   ];
@@ -145,14 +154,20 @@ test('positive control B: the rollback net still works - WITHOUT filetube.db a v
 // ---- server.js seam lock: the server has no reader of db.json ----------------
 //
 // server.js keeps a DB_FILE constant for the legacy tmp-file sweep only
-// (cleanupOrphanDbTmp matches `db.json.<pid>.<seq>.tmp` NAMES). Every mention
-// of DB_FILE must be one of those two shapes; a new reader of the file fails
-// here before it can ship. Boot goes through openAdapter exactly once.
+// (cleanupOrphanDbTmp matches `db.json.<pid>.<seq>.tmp` NAMES). Every CODE
+// mention of DB_FILE must be one of those two shapes (comment lines are
+// skipped - a prose mention is not a reader); a new reader of the file fails
+// here before it can ship. Boot goes through openAdapter exactly once. This
+// is a SOURCE lock: an indirect spelling (`'db' + '.json'`) evades it, which
+// is why the fs-spy tests above bind the behaviour at the adapter seam, and
+// why Wave 7 (removing rule 2) owes an integration boot of server.js itself
+// with garbage db.json beside filetube.db (slim gate SUGGESTION 7).
 
 test('server.js: DB_FILE is defined once and only ever used for the tmp-sweep basename; boot calls openAdapter exactly once and never importDbJson', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'server.js'), 'utf8');
   const lines = src.split('\n');
-  const mentions = lines.map((l, i) => ({ n: i + 1, l })).filter(({ l }) => /\bDB_FILE\b/.test(l));
+  const mentions = lines.map((l, i) => ({ n: i + 1, l }))
+    .filter(({ l }) => !/^\s*\/\//.test(l) && /\bDB_FILE\b/.test(l));
   const definition = mentions.filter(({ l }) => /^const DB_FILE = path\.join\(DATA_DIR, 'db\.json'\);$/.test(l));
   const basenameUse = mentions.filter(({ l }) => /path\.basename\(DB_FILE\)/.test(l));
   assert.strictEqual(definition.length, 1, 'DB_FILE is defined exactly once');

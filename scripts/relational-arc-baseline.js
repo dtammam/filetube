@@ -26,8 +26,12 @@ const sqlite = require(path.join(ROOT, 'lib', 'db', 'sqlite.js'));
 const docKv = sqlite.DOC_KV_NAMESPACES.length;
 const docSingle = sqlite.SINGLETON_NAMES.length;
 
+// The instrument excludes itself: its own comments and labels name db.json,
+// and an instrument that counts itself can never reach the Wave 7 target of 0
+// (Wave 0 slim gate, WARNING 3).
+const SELF = path.relative(ROOT, __filename);
 const shippedJs = git(['ls-files', '*.js']).split('\n').filter(Boolean)
-  .filter((p) => !/(^|\/)(vendor|node_modules)\//.test(p) && !p.startsWith('test/'));
+  .filter((p) => !/(^|\/)(vendor|node_modules)\//.test(p) && !p.startsWith('test/') && p !== SELF);
 const dbJsonRefFiles = shippedJs.filter((p) => /db\.json/.test(fs.readFileSync(path.join(ROOT, p), 'utf8')));
 
 const testFiles = git(['ls-files', 'test/*.js']).split('\n').filter(Boolean);
