@@ -342,6 +342,13 @@ test('source lock: server.js never names the two tables or the dead doc keys in 
   }
   const tracked = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '*.js'], { cwd: ROOT, encoding: 'utf8' }).split('\0').filter(Boolean)
     .filter((p) => !p.startsWith('test/') && !/(^|\/)(vendor|node_modules)\//.test(p));
-  const inserters = tracked.filter((p) => /INSERT\s+INTO\s+(media_progress|media_delete_tombstones|\$\{table\})/.test(stripComments(fs.readFileSync(path.join(ROOT, p), 'utf8'))));
-  assert.deepStrictEqual(inserters, ['lib/media/jsonRowStore.js'], 'one INSERT text, in the shared store definition');
+  // Any spelling of the table in an INSERT/UPDATE (a literal, or an
+  // interpolated `${table}` / `${TABLE}` / `${def.table}`): the writers must be
+  // the shared definition (INSERT + the OR REPLACE re-key) and the tombstone
+  // store's own prune (DELETE on the typed column) - nothing else.
+  // (`${TABLE}` is the view-count store's own constant - Wave 1's lock covers it.)
+  const writers = tracked.filter((p) => /(INSERT\s+INTO|UPDATE(\s+OR\s+REPLACE)?)\s+(media_progress|media_delete_tombstones|\$\{table\}|\$\{def\.table\})/.test(stripComments(fs.readFileSync(path.join(ROOT, p), 'utf8'))));
+  assert.deepStrictEqual(writers, ['lib/media/jsonRowStore.js'], 'one INSERT/UPDATE text, in the shared store definition');
+  const deleters = tracked.filter((p) => /DELETE\s+FROM\s+(media_progress|media_delete_tombstones|\$\{table\}|\$\{def\.table\}|\$\{progressDef\.TABLE\}|\$\{tombstoneDef\.TABLE\})/.test(stripComments(fs.readFileSync(path.join(ROOT, p), 'utf8'))));
+  assert.deepStrictEqual(deleters.sort(), ['lib/db/sqlite.js', 'lib/media/deleteTombstones.js', 'lib/media/jsonRowStore.js'], 'DELETEs: the shared store, the tombstone prune, and the adapter\'s wipe-and-replace - nothing else');
 });

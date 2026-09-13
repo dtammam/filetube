@@ -89,9 +89,10 @@ flowchart TD
 
 One SQLite file, two buckets (see ARCHITECTURE.md "Storage"). The document
 store persists the legacy db.json object shape per row; everything
-user-scoped is relational, and so is the media view counter (the first
-media namespace the relational-migration arc moved out of the document
-store). The namespace lists in `lib/db/sqlite.js` are a
+user-scoped is relational, and so are the media namespaces the
+relational-migration arc has moved out of the document store so far (the
+view counter in Wave 1; the frozen pre-auth positions and the deferred-delete
+tombstones in Wave 2 - see the MEDIA box). The namespace lists in `lib/db/sqlite.js` are a
 LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.292.0:
 10 `doc_kv` namespaces, 18 `doc_single` names, 33 relational tables,
 schema version 22. (The relational-migration arc, Wave 1 onward, moves the

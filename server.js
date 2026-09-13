@@ -915,8 +915,9 @@ function __clearUsersForTests() {
 // -- ':' can't collide) and each entry carries `{userId, mediaId, value}`.
 // The flush upserts the batch into the relational `user_progress` table via
 // `userStore.setProgressBatch` (ONE SQLite transaction per window -- the
-// AC4.1 contract survives the move) instead of mutating the doc-table
-// `db.progress` namespace, which is retained untouched as the frozen
+// AC4.1 contract survives the move) instead of mutating the frozen pre-auth
+// `progress` record (a doc namespace until Wave 2 of the relational arc; the
+// `media_progress` table since), which is retained untouched as the frozen
 // pre-auth record the exec plan's adoption section describes. The cutover
 // is total: no reader falls back to `db.progress` (a read-through fallback
 // after adoption is the divergence bug farm design finding #6 warned
@@ -966,7 +967,8 @@ function currentProgressFlushTimer() {
 // deterministically instead of waiting out `PROGRESS_FLUSH_MS`.
 //
 // v1.43: the batch upserts into `user_progress` (userStore.setProgressBatch,
-// one transaction) instead of the doc-table `db.progress`. It still rides
+// one transaction) instead of the frozen pre-auth progress record
+// (`media_progress` since Wave 2 - never written by playback). It still rides
 // `updateDatabase`'s write chain -- with a mutator that returns `false`
 // (no doc-table save) -- for two load-bearing reasons: (1) the mutator's
 // fresh in-lock `db` is what makes the deleted-between-ping-and-flush guard
@@ -1992,8 +1994,10 @@ function extractYtdlpVideoId(baseName) {
 // same path-hashed id.
 //
 // Contract: DELETE /api/videos/:id records { filePath, deletedAt } under the
-// item's id in db.deleteTombstones (same mutator that removes the metadata
-// entry). When a scan re-discovers a tombstoned id, it holds the file's TRUE
+// item's id in the media_delete_tombstones table (Wave 2 of the relational
+// arc: INSIDE the same save transaction that removes the metadata entry, via
+// inSaveTransaction - the "same mutator" atomicity, kept across two
+// tables). When a scan re-discovers a tombstoned id, it holds the file's TRUE
 // on-disk path (its own readdir produced it -- no stored-name round-trip
 // problem can exist at this point), so:
 //   - file mtime  > deletedAt -> NEWER content at the same path (a deliberate
@@ -4120,7 +4124,8 @@ async function runScanDirectories() {
   // `downloadDir` here, even during a TRANSIENT unmount (NFS/external-drive
   // unmount, rename, EACCES) -- so it lands in `missingRoots` below and the
   // mount-loss guard in `selectPrunableIds` protects its ids' metadata,
-  // thumbnails, transcode sidecars, and `db.progress` entries from
+  // thumbnails, transcode sidecars, and frozen pre-auth progress rows
+  // (`media_progress`) from
   // `pruneMissing` instead of them being silently reaped while still enabled
   // (E1: gating this purely on `fs.existsSync` — dropping `config.enabled`
   // from the decision — reopened exactly that mount-loss data-destruction
@@ -10138,10 +10143,14 @@ function validateBackupBundle(bundle) {
     const map = bundle[key];
     if (typeof map !== 'object' || map === null || Array.isArray(map)) return `${key} must be an object`;
     for (const id of Object.keys(map)) {
-      if (id === '' || id.includes('\\u0000')) return `${key}['${id.split('\\u0000').join('\\\\u0000')}']: invalid media id`;
+      if (id === '' || id.includes('\u0000')) return `${key}['${id.split('\u0000').join('\\u0000')}']: invalid media id`;
       const rec = map[id];
-      if (rec === undefined || rec === null) return `${key}['${id}']: record is missing`;
-      if (key === 'deleteTombstones' && (typeof rec !== 'object' || Array.isArray(rec))) return `${key}['${id}']: must be an object`;
+      if (rec === undefined) return `${key}['${id}']: record is missing`;
+      // A progress record may be ANY JSON value including null (legacy data is
+      // copied verbatim, and an instance's own export must always restore -
+      // QA S1); a tombstone record must be an object (the scan reads
+      // .deletedAt / .filePath off it).
+      if (key === 'deleteTombstones' && (rec === null || typeof rec !== 'object' || Array.isArray(rec))) return `${key}['${id}']: must be an object`;
     }
   }
   // Container namespaces must be objects when present (delta-round
@@ -12590,7 +12599,7 @@ app.delete('/api/videos/:id', async (req, res) => {
   }
 
   // v1.43: the per-user rows (user_progress/user_liked) are id-keyed carriers
-  // exactly like db.progress above (and the relational view-count row), and go with the item for
+  // exactly like the frozen progress row and the view-count row above, and go with the item for
   // the same two reasons (unbounded growth under churn; stale state
   // resurrecting onto a future re-add of the same path = same md5 id).
   // AFTER the doc-table commit (the rekeyInFlightState posture): a rolled-
@@ -13213,7 +13222,8 @@ app.delete('/api/trash/:id', async (req, res) => {
 //
 // LOAD-BEARING GROUNDING FACT (docs/exec-plans/completed/2026-07-09-v1.24-ux-round.md
 // Design section): `getMediaId(filePath)` is `md5(filePath)` -- the media id
-// is a hash of the PATH, not of content. Watch progress (`db.progress[id]`),
+// is a hash of the PATH, not of content. Watch progress (the per-user rows and
+// the frozen pre-auth `media_progress` row - Wave 2 - keyed by `id`),
 // thumbnails (`THUMBNAIL_DIR/<id>.jpg`) and transcode sidecars
 // (`transcodedPath(id)`) are all keyed by that id. A naive `fs.rename`-then-
 // rescan would therefore make a moved file look like a delete (old id
@@ -13221,7 +13231,9 @@ app.delete('/api/trash/:id', async (req, res) => {
 // functions below exist specifically to prevent that: `computeMoveTarget`
 // resolves + CONFINES the destination (pure, zero filesystem access) before
 // any FS op ever runs; `moveItemToFolder` does the FS move, then re-keys
-// `db.metadata`/`db.progress`/`db.liked`/`db.deleteTombstones` and renames the
+// `db.metadata`/`db.liked` (doc) plus the progress / tombstone / view-count rows
+// (relational since Waves 1-2: the first two inside the same save transaction,
+// the counter post-commit in rekeyInFlightState) and renames the
 // thumbnail/transcode/background-audio/subtitle sidecars from the OLD
 // path-derived id to the NEW one, all inside ONE `updateDatabase` mutator --
 // so the next scan finds the file already indexed under its new-path id and
@@ -16152,7 +16164,7 @@ function enumerateRepullableItems(db, config, itemVisible) {
  *   `false`/absent, the marker is left exactly as it already was (never
  *   cleared, never set) -- only the fields above are refreshed.
  * - NO re-key: `mediaId` is the same before and after (no file move ever
- *   happens here), so `db.progress[mediaId]` and every id-keyed sidecar
+ *   happens here), so the progress rows for `mediaId` and every id-keyed sidecar
  *   (thumbnail, transcode) stay bound to the exact same id, untouched.
  * - A `mediaId` no longer present in `db.metadata` (the item was deleted
  *   concurrently, mid-run) is a safe no-op: the mutator returns `false`
