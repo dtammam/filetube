@@ -1,7 +1,7 @@
 # Exec plan: retire the document model, relationalize the store, thin the monolith
 
 - **Created:** 2026-09-13
-- **Status:** ACTIVE (intake agreed with Dean 2026-09-13; not yet started)
+- **Status:** ACTIVE (intake agreed with Dean 2026-09-13; Wave 0 in flight 2026-09-13)
 - **Owner:** main session (lean mode)
 - **Baseline commit:** `963f0ca2` (v1.289.0), `schema user_version = 20`
 
@@ -46,20 +46,23 @@ by his device pass at every release.
 ## 1. Machine-derived baseline (predictions the tools re-verify every commit)
 
 Every number below is a **prediction re-derived by a command**, never hand-counted.
-Re-run these at each wave commit; a drift is a finding.
+Re-run these at each wave commit; a drift is a finding. Since Wave 0 one command
+re-derives the whole table: `node scripts/relational-arc-baseline.js --pretty`
+(the marker floor is enforced by `test/unit/comment-debt-census.test.js` + eslint's
+`no-warning-comments`, not printed).
 
 | Metric | Baseline (2026-09-13, `963f0ca2`) | Command to re-derive | Target at Wave 7 |
 |---|---|---|---|
 | `server.js` lines | **19,041** | `wc -l < server.js` | **< 3,000** |
 | `doc_kv` namespaces | **13** | `DOC_KV_NAMESPACES.length` in `lib/db/sqlite.js` | **0** (table dropped) |
-| `doc_single` namespaces | **19** | `SINGLETON_NAMES.length` in `lib/db/sqlite.js` | **0** (table dropped) |
-| Total legacy namespaces | **32** | sum of the two | **0** |
+| `doc_single` namespaces | **18** (the intake draft said 19 - a hand count; Wave 0's re-derivation corrected it) | `SINGLETON_NAMES.length` in `lib/db/sqlite.js` | **0** (table dropped) |
+| Total legacy namespaces | **31** | sum of the two | **0** |
 | Genuine TODO/FIXME/HACK markers | **0** (9 grep hits are false positives) | see Wave 0 lint | **0**, lint-enforced |
 | `db.json` refs in shipped code | **> 0** (`server.js`, `lib/ytdlp/*`, scripts) | `git ls-files '*.js' \| grep -vE 'vendor\|node_modules\|test' \| xargs grep -l 'db\.json'` | **0** |
 | Test cases | **8,310** across **657** files | `git ls-files 'test/*.js' \| xargs grep -hoE '^\s*(test\|it)\(' \| wc -l` | net-add; ratio stays >= 1.48:1 |
 | Full suite | green on **both** Node 22.23.1 + 24.14.0 | `npm test` on each | green each release |
 
-### The 32 legacy namespaces (the migration backlog)
+### The 31 legacy namespaces (the migration backlog)
 
 `server.js` consumer counts (`grep -oE "db\.<ns>\b" server.js | wc -l`) drive the
 sequencing - low blast radius first, `metadata` last.
@@ -69,7 +72,7 @@ sequencing - low blast radius first, `metadata` last.
 `books.items`, `books.progress`, `books.audio`, `music.tracks`, `podcasts.episodes`,
 `tv.episodes`, `ytdlp.downloadMeta`, `ytdlp.channelAvatars`.
 
-**`doc_single` (19, whole-blob rows):** `folders` (39), `folderSettings` (10),
+**`doc_single` (18, whole-blob rows):** `folders` (39), `folderSettings` (10),
 `folderDisplayNames` (22), `settings` (48), `liked` (12), `books.folders`,
 `books.settings`, `books.pins`, `music.folders`, `music.settings`, `music.channels`,
 `podcasts.subscriptions`, `podcasts.settings`, `tv.folders`, `tv.settings`,
@@ -126,6 +129,20 @@ hygiene, per CLAUDE.md.
 - Confirm (test) that `db.json` is never read when `filetube.db` exists; document the
   import path as scheduled for removal in Wave 7.
 - **Predicted `server.js` delta:** ~0. **Risk:** none. **Data touched:** none.
+- **Wave 0 record (2026-09-13, branch `feat/wave0-comment-debt-json-groundwork`):**
+  - Both nets landed: eslint `no-warning-comments` (comment-START, all linted sets) +
+    `test/unit/comment-debt-census.test.js` (TIER 1 marker-form = 0 over every tracked
+    code file incl. css/html/sh/brs/yml; TIER 2 loose word = 0 in shipped code). The
+    census caught its FIRST hit in Wave 0's own eslint comment before commit. Mutation
+    sanity: a `// TODO:` in lib/ and a `/* FIXME */` in style.css each red both nets.
+  - `test/unit/dbjson-never-read.test.js`: fs-spy binding that boot rule 1 never reads
+    db.json CONTENT (garbage bytes beside filetube.db boot fine; the same bytes WITHOUT
+    filetube.db are FATAL - the positive control), plus the server.js seam lock (DB_FILE
+    is basename-only; one `openAdapter`; no `importDbJson`).
+  - Re-derived baseline at `3273f5e6`: server.js **19,041** (matches), doc_kv **13**
+    (matches), doc_single **18** (the draft said 19 - corrected above, total **31**),
+    db.json ref files **15** (> 0, matches), tests **8,310 / 657** (matches; Wave 0 adds
+    its own). `SCHEMA_VERSION` **20** (matches).
 
 ### Wave 1 - `viewCounts` -> `media_view_counts`  (SOLO, full gate: holds non-rebuildable data)
 - Lowest blast radius (11 refs), self-contained per-id integer store, already isolated
