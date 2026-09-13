@@ -44,6 +44,7 @@ const {
   app, saveDatabase, getMediaId, scanDirectories, activeMediaStreams,
   __resetDatabaseForTests,
 } = require('../../server');
+const { tombstoneStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -99,7 +100,6 @@ function seedVideo(fileName, bytes = BIG) {
   saveDatabase({
     folders: [libDir],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: fileName, title: fileName, filePath,
@@ -111,7 +111,6 @@ function seedVideo(fileName, bytes = BIG) {
       },
     },
     liked: [],
-    deleteTombstones: {},
     settings: baseSettings(),
   });
   return { filePath, id };
@@ -175,7 +174,7 @@ test('delete-mid-stream: DELETE destroys our own live streams first, then the un
   assert.ok(!activeMediaStreams.has(filePath), 'the playback stream was destroyed by the delete');
   const db = readDb();
   assert.strictEqual(db.metadata[id], undefined, 'library entry removed');
-  assert.deepStrictEqual(db.deleteTombstones, {}, 'a VERIFIED unlink mints no tombstone (v1.41.3 contract)');
+  assert.deepStrictEqual(tombstoneStore().getAll(), {}, 'a VERIFIED unlink mints no tombstone (v1.41.3 contract)');
 });
 
 // Patch the fs seam to the DELETE_PENDING contract for one path: the dirent
@@ -293,7 +292,7 @@ test('C1 regression: a NEW file recreated at the same path in the unlink window 
     assert.ok(!body.deletePending, 'an openable survivor is not delete-pending');
 
     let db = readDb();
-    assert.deepStrictEqual(db.deleteTombstones, {}, 'CRITICAL C1: the recreated file must NOT be tombstoned');
+    assert.deepStrictEqual(tombstoneStore().getAll(), {}, 'CRITICAL C1: the recreated file must NOT be tombstoned');
 
     await scanDirectories();
     db = readDb();

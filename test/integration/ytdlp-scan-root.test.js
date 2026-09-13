@@ -48,6 +48,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId, transcodedPath } = require('../../server');
+const { progressStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const ytdlp = require('../../lib/ytdlp');
 
@@ -154,9 +155,9 @@ test('D1 footgun-closed: disabling the module after a download preserves the id,
     fs.writeFileSync(sidecarPath, 'transcoded');
     await updateDatabase((fresh) => {
       fresh.metadata[id].hasThumbnail = true;
-      fresh.progress[id] = { position: 42, duration: 100 };
+      progressStore().set(id, { position: 42, duration: 100 }); // Wave 2: the relational store (was fresh.progress[id] =)
     });
-    assert.ok(loadDatabase().progress[id], 'sanity: the watch-progress entry was seeded');
+    assert.ok(progressStore().getAll()[id], 'sanity: the watch-progress entry was seeded');
 
     // Sanity: pruneMissing is ON (the default) -- this is the exact toggle
     // state the footgun requires to reap anything at all.
@@ -173,7 +174,7 @@ test('D1 footgun-closed: disabling the module after a download preserves the id,
     // the module was disabled.
     db = loadDatabase();
     assert.ok(db.metadata[id], 'the id must survive a pruneMissing scan after disabling (D1)');
-    assert.ok(db.progress[id], 'the db.progress watch-progress entry must survive');
+    assert.ok(progressStore().get(id), 'the pre-auth watch-progress row must survive (Wave 2: media_progress)');
     assert.ok(fs.existsSync(path.join(THUMBNAIL_DIR, `${id}.jpg`)), 'the thumbnail must survive');
     assert.ok(fs.existsSync(sidecarPath), 'the transcode sidecar must survive');
   } finally {
@@ -220,9 +221,9 @@ test('E1 mount-loss regression: ENABLED module + downloadDir absent on disk (sim
     fs.writeFileSync(sidecarPath, 'transcoded');
     await updateDatabase((fresh) => {
       fresh.metadata[id].hasThumbnail = true;
-      fresh.progress[id] = { position: 42, duration: 100 };
+      progressStore().set(id, { position: 42, duration: 100 }); // Wave 2: the relational store (was fresh.progress[id] =)
     });
-    assert.ok(loadDatabase().progress[id], 'sanity: the watch-progress entry was seeded');
+    assert.ok(progressStore().getAll()[id], 'sanity: the watch-progress entry was seeded');
 
     // Sanity: pruneMissing is ON (the default) -- the exact toggle state the
     // regression requires to reap anything at all.
@@ -260,7 +261,7 @@ test('E1 mount-loss regression: ENABLED module + downloadDir absent on disk (sim
     // the volume was transiently gone WHILE STILL ENABLED.
     db = loadDatabase();
     assert.ok(db.metadata[id], 'the id must survive a pruneMissing scan while enabled and the download dir is transiently absent (E1)');
-    assert.ok(db.progress[id], 'the db.progress watch-progress entry must survive');
+    assert.ok(progressStore().get(id), 'the pre-auth watch-progress row must survive (Wave 2: media_progress)');
     assert.ok(fs.existsSync(path.join(THUMBNAIL_DIR, `${id}.jpg`)), 'the thumbnail must survive');
     assert.ok(fs.existsSync(sidecarPath), 'the transcode sidecar must survive');
   } finally {

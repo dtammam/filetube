@@ -64,7 +64,7 @@ test('GET /api/settings never omits defaultView, and it defaults to "" (Most Rec
 });
 
 test('POST /api/settings accepts a defaultView key without 400ing (KNOWN_KEYS regression)', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   const res = await fetch(`${base}/api/settings`, {
     method: 'POST',
@@ -77,7 +77,7 @@ test('POST /api/settings accepts a defaultView key without 400ing (KNOWN_KEYS re
 });
 
 test('GET /api/settings after a POST reflects the persisted defaultView (round-trip)', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await fetch(`${base}/api/settings`, {
     method: 'POST',
@@ -93,7 +93,7 @@ test('GET /api/settings after a POST reflects the persisted defaultView (round-t
 });
 
 test('POST /api/settings rejects a non-string defaultView with 400 and mutates nothing', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings({ defaultView: '/media/keep' }) });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings({ defaultView: '/media/keep' }) });
 
   const res = await fetch(`${base}/api/settings`, {
     method: 'POST',
@@ -109,7 +109,7 @@ test('POST /api/settings rejects a non-string defaultView with 400 and mutates n
 });
 
 test('POST /api/settings accepts an empty-string defaultView (explicit reset to Most Recent)', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings({ defaultView: '/media/music' }) });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings({ defaultView: '/media/music' }) });
 
   const res = await fetch(`${base}/api/settings`, {
     method: 'POST',
@@ -121,7 +121,7 @@ test('POST /api/settings accepts an empty-string defaultView (explicit reset to 
 });
 
 test('POST /api/settings with an invalid defaultView does not partially persist alongside other valid keys in the same request', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   const res = await fetch(`${base}/api/settings`, {
     method: 'POST',

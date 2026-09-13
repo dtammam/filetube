@@ -54,7 +54,7 @@ function seedDb(items) {
   const metadata = {};
   for (const it of items) metadata[it.id] = it;
   saveDatabase({
-    folders: [mediaDir], folderSettings: {}, progress: {}, metadata,
+    folders: [mediaDir], folderSettings: {}, metadata,
     settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
 }

@@ -29,7 +29,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, updateDatabase, userStore, __mintTestSession, viewCountStore } = require('../../server');
+const { app, updateDatabase, userStore, __mintTestSession, viewCountStore } = require('../../server');
+const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
 const booksStore = require('../../lib/books/store');
@@ -84,11 +85,11 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   auth = authenticateFetch(server, base);
   viewCountStore.replaceAll({ vid: 42 }); // Wave 1: the global view counter is relational; seeded through the store
-  saveDatabase({
+  seedState({
     // v1.81 (#127a): seed GLOBAL watch + inventory namespaces so the stats
     // scoping is provable - without scoping a blocked member's inventory would
     // count these (viewCounts/scanFolders/tombstones/users all > 0).
-    folders: [DATA_DIR], folderSettings: {}, progress: {},
+    folders: [DATA_DIR], folderSettings: {},
     metadata: { vid: { id: 'vid', title: 'V', filePath: vidFile, folderName: 'F', rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 1, size: 1, addedAt: 1 } },
     deleteTombstones: { gone: { originalId: 'gone', item: { id: 'gone', title: 'Gone', filePath: path.join(DATA_DIR, 'gone.mp4'), folderName: 'F', rootFolder: DATA_DIR, type: 'video', ext: '.mp4' } } },
     liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },

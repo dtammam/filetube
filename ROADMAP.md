@@ -93,6 +93,51 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.292.0 - Relational-migration arc, Wave 2: watch-position record + delete tombstones leave the document model (2026-09-13)
+
+Two more namespaces out of the doc-model mega-object, schema **v22**: `media_progress`
+(the FROZEN pre-auth watch positions the first admin adopts once at setup - a framing
+correction found at intake: live positions have been per-user in `user_progress` since
+v1.43, so this is legacy data with one reader) and `media_delete_tombstones` (the v1.41.3
+deferred-delete records). Records are stored verbatim as JSON on a new shared
+`lib/media/jsonRowStore.js` definition (`progress.js`, `deleteTombstones.js`, which also
+owns the growth-bound policy and applies it with SQL on a typed `deleted_at` column). The
+migration copies both and deletes the doc rows in one transaction; a corrupt row rolls the
+whole block back to a re-runnable v21. Third rollback floor in RELEASING.md.
+
+- **Template refinement - `inSaveTransaction`.** The v1.41.3 contract mints a tombstone in
+  the SAME mutator that removes the entry (a crash between the two would re-index the
+  survivor). Wave 1's post-commit carrier posture would have broken it, so the adapter's
+  save now runs a callback inside the doc transaction and `updateDatabase` exposes
+  `inSaveTransaction(fn)`: the delete's mint + prune, the move/trash/restore retirements,
+  the scan's consumption + progress prune, and the purge all commit atomically with the doc
+  rows (a throw rolls both back; effects-then-`false` rejects loudly).
+- The scan reads a Phase-1 snapshot of the table and re-verifies the matched key against
+  the LIVE table before reaping; adoption reads the table; stats/inventory read both;
+  backup carries both keys in their old shapes, validated field-level before the wipe.
+- Tests: the doc keys are refused, so ~100 fixtures lost empty seeds (scripted) and a
+  new `test/helpers/seed-state.js` splits legacy-shaped fixtures; 22 direct writes/reads
+  switched to the stores. Three new test files.
+
+Full two-reviewer gate, both seats REQUEST CHANGES then APPROVE after one fix round. No
+data-loss path found (34/34 seam probes, a real v21 file through the migration incl. DDL
+rollback on both Nodes, cross-version bundles both ways). What it caught: 21 of 44
+mutants survived - the scan's LIVE re-verify (a data-loss guard) and the adoption wiring
+were unbound, and eight carrier sites had no reap-axis binding (the Wave 1 lesson,
+re-struck on a new mechanism); the migration's and the validator's NUL checks were
+INERT (an edit-tool escape mishap in the opposite direction from Wave 1's), so a NUL id
+was a 500-after-wipe-with-rollback instead of a 400-before-wipe; the typed `deleted_at`
+column was written and never read while three headers said otherwise; eight comments
+still narrated the doc mechanism. All applied; every survivor re-run RED. Dual-Node 8523
+tests / 8520 pass / 0 fail / 3 skipped on both 22.23.1 and 24.14.0.
+
+KNOWN GAPS (disclosed): the move/restore mutator-B retirements of the destination
+tombstone are redundant with mutator A by construction and unbindable without an
+interleave hook; the `/api/stats` progress and member-scoped tombstone reads are unbound
+(informational); the exact 90-day boundary millisecond and the `deleted_at` tie-break
+are unbound in-tree (the adversarial seat's differential covers them). server.js grew
++83 lines (the hook + effects); the weight leaves in Waves 6/7. Device pass is Dean's.
+
 ### v1.291.0 - Relational-migration arc, Wave 1: view counts leave the document model (2026-09-13)
 
 The first namespace out of the doc-model mega-object, chosen because it is the one

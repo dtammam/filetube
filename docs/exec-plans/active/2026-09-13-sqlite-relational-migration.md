@@ -238,6 +238,86 @@ hygiene, per CLAUDE.md.
 ### Wave 2 - `progress` + `deleteTombstones` -> relational  (SOLO, full gate)
 - Per-id semantics + tombstone semantics (19 + 12 refs). `media_progress`,
   `media_delete_tombstones`. Proves the per-id + delete-sweep pattern end to end.
+- **Wave 2 record (2026-09-13, branch `feat/wave2-progress-tombstones-relational`):**
+  - **Framing correction found at intake:** `db.progress` is NOT live watch state. Since
+    v1.43 positions live per-user in `user_progress`; the doc namespace is the FROZEN
+    pre-auth record the first admin ADOPTS once at setup (nothing else reads it - a
+    read-through fallback was design finding #6's bug farm). It still deserves a table
+    (an un-set-up instance adopts it later; every carrier re-keys it) but it is legacy
+    data, and Wave 7 may retire it once adoption is the only reader left. Recorded so the
+    "19 refs" is not mistaken for playback code.
+  - Schema **v22**: `media_progress (media_id PK, json)` and `media_delete_tombstones
+    (media_id PK, deleted_at, json)`. Records are stored VERBATIM (shapes vary by era: a flat
+    tombstone with or without `youtubeId`/`sourceRef` - and the v1.81 stats reader
+    tolerates an `item`-bearing record, though no writer mints one; a bare-number or
+    `{position}` progress value) on a
+    shared `lib/media/jsonRowStore.js` definition (`defineJsonRowStore`: get / has /
+    getAll / size / set / remove / rekey / replaceAll, typed columns derived from the
+    record by one row builder shared with the adapter's bulk seams). The v22 block copies
+    both namespaces and deletes the doc rows in ONE transaction; a corrupt row rolls the
+    whole block back to a re-runnable v21 (test-bound).
+  - **Template refinement - `inSaveTransaction`.** The v1.41.3 tombstone contract is
+    "mint in the SAME mutator that removes the entry" (a crash between the two would
+    re-index the survivor on the next scan). Wave 1's post-commit carrier posture would
+    have broken it, so the adapter's `save(db, { alsoInTransaction })` now runs a callback
+    INSIDE the doc transaction, and `updateDatabase` exposes `inSaveTransaction(fn)` to
+    mutators: the delete's mint + prune, the move/trash/restore retirements, the scan's
+    consumption + progress prune, the purge, and both "mutator A" retirements ride the
+    doc commit (a throw rolls both back; a mutator that queues effects and returns
+    `false` rejects loudly; a `true` return with zero doc changes still opens the
+    transaction). Rule for later waves: a carrier that WAS in-mutator stays in-transaction
+    via the hook; one that was already post-commit (per-user rows, viewCounts) stays so.
+  - Consumers: loadDatabase backfills gone; the scan reads a Phase-1 SNAPSHOT
+    (`tombstoneStore.getAll()`) and re-verifies the matched key against the LIVE table
+    before reaping; adoption reads `progressStore.getAll()`; stats/inventory read both
+    tables; `pruneDeleteTombstones` + the two constants moved to the store module (pure
+    policy `selectPrunedTombstoneIds` + `store.prune()`), re-exported from server.js.
+    Backup: both keys moved to `RELATIONAL_BUNDLE_KEYS` (same bundle key + shape),
+    validated field-level (object maps, NUL-free ids, no null holes; a tombstone record
+    must be an object), restored via `importParsedJson` -> `insertProgress` /
+    `insertTombstone` handles inside `exclusiveReplace` (which wipes both).
+  - Tests: the doc keys are refused, so ~100 fixtures lost their empty `progress: {}` /
+    `deleteTombstones: {}` seeds (a script; QA read the full diff - every removal was a
+    top-level key, no container key was touched) and `test/helpers/seed-state.js` is the
+    ONE seam that splits a legacy-shaped fixture into store writes + a doc save (12 files
+    call `seedState`; 23 import the helper, the rest for its store accessors); 22 direct
+    in-mutator writes/reads switched to the stores. New:
+    `test/unit/media-record-stores.test.js` (store API, typed column + prune, migration +
+    rollback, save-lock, both seams, the test read, the save hook, source locks) and
+    `test/integration/save-transaction-effects.test.js` (a FAILED save lands neither the
+    metadata removal nor the tombstone nor the progress removal; a throwing effect rolls
+    the doc change back; effects-then-false rejects; hook outside a mutator throws; a
+    no-doc-change mutator still commits its effect). crash-child moved its per-burst row
+    to `metadata`.
+  - Baseline after (at the fix commit): doc_kv **10**, doc_single 18, total **28**, schema
+    **22**, server.js **19,197** (+83 this wave: the hook + effects + comments), tests
+    **8,368 / 665**, dbJsonRefFiles 15. Full suite Node 22 before the gate (at `0db2e7b4`):
+    8515 / 8512 / 0 fail / 3 skipped.
+  - **Full gate (both seats REQUEST CHANGES -> fix commit -> delta).** No CRITICAL: the
+    adversarial seat could not lose, duplicate or mis-key a tombstone or a frozen position
+    (34/34 seam probes, a real v21 file through the migration incl. DDL rollback on both
+    Nodes, cross-version bundles both ways). What it caught: 21 of 44 mutants SURVIVED -
+    the scan's LIVE re-verify (a data-loss guard) and the adoption wiring were unbound,
+    and eight carrier sites (trash/restore/purge/move-B retirements, the delete's in-txn
+    prune) had no reap-axis binding (QA W3 too - the Wave 1 lesson re-struck on a NEW
+    mechanism). Both seats: the migration's and the validator's NUL checks were INERT -
+    the edit tool wrote a two-backslash literal (`'\\u0000'`, six characters) where a
+    NUL escape was meant (the v21 sibling was right), so the validator's "400 before the
+    wipe" was a 500-after-wipe-with-rollback for a NUL id and the migration would have
+    silently DROPPED a legitimately-escaped key; `deleted_at` was written and never READ
+    while three headers claimed it drove the prune; eight comments still narrated the doc
+    mechanism; a null progress record exported fine and failed the validator (own export
+    must restore); the record's test-file numbers were stale. All applied: the NUL literals
+    fixed and route-bound; `prune()` now deletes on the typed column (age-out + FIFO cap
+    with a media_id tie-break); the donated probes are
+    `test/integration/tombstones-progress-carriers.test.js` (every carrier populated then
+    reaped/re-keyed, the delete's in-txn cap, the LIVE re-verify with a mid-scan
+    retirement, a mid-scan mint surviving the merge, adoption of every legacy shape,
+    hostile bundle shapes 400-before-wipe, an own-export-with-null restores); comments and
+    the record corrected. Disclosed, not chased: M8a/M14a (the move/restore mutator-B
+    retirements of newId/originalId are redundant with mutator A by construction -
+    unbindable without an interleave hook); `/api/stats` progress + member-scoped
+    tombstone reads unbound (informational).
 
 ### Wave 3 - `trash` -> `media_trash`  (SOLO, FULL gate, data-loss sensitive)
 - 33 refs, restore path, backup bundle. Adversarial briefed to destroy trashed-item

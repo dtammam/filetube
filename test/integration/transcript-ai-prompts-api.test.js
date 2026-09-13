@@ -30,7 +30,7 @@ after(async () => {
 });
 
 function baseDb(settings) {
-  return { folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30, ...(settings || {}) } };
+  return { folders: [], folderSettings: {}, metadata: {}, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30, ...(settings || {}) } };
 }
 beforeEach(() => saveDatabase(baseDb()));
 

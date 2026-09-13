@@ -100,7 +100,7 @@ test('D3 (live sweep): a fresh recorded lastServedAt survives even with a stale 
   // recorded timestamp, not raw atime.
   const p = writeTranscodeFile(`${id}.mp4`, { atimeDaysAgo: 90 });
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id, lastServedAt: Date.now() } },
     settings: baseSettings({ cacheMaxAgeDays: 30 }),
   });
@@ -119,7 +119,7 @@ test('atime fallback: no recorded lastServedAt falls back to atime for the age d
   const freshId = 'vid-fresh-atime';
   const freshPath = writeTranscodeFile(`${freshId}.mp4`, { atimeDaysAgo: 1 });
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: {}, // neither id has a recorded lastServedAt
     settings: baseSettings({ cacheMaxAgeDays: 30 }),
   });
@@ -139,7 +139,7 @@ test('retention Off (cacheMaxAgeDays=0): sweep deletes nothing, and the size-cap
   const pathA = writeTranscodeFile(`${idA}.mp4`, { atimeDaysAgo: 200, size: 100 });
   const pathB = writeTranscodeFile(`${idB}.mp4`, { atimeDaysAgo: 1, size: 100 });
   writeDb({
-    folders: [], folderSettings: {}, progress: {}, metadata: {},
+    folders: [], folderSettings: {}, metadata: {},
     settings: baseSettings({ cacheMaxAgeDays: 0 }),
   });
 
@@ -161,7 +161,7 @@ test('composes with recentlyServed: a path served within the window is not swept
   const id = 'vid-recently-served';
   const p = writeTranscodeFile(`${id}.mp4`, { atimeDaysAgo: 90 });
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: {
       [id]: {
         id, needsTranscode: true, filePath: '/src/whatever.avi', size: 100,
@@ -197,7 +197,7 @@ test('.tmp.mp4 is never deleted by the sweep even with a very stale atime and no
   const id = 'vid-tmp';
   const p = writeTranscodeFile(`${id}.tmp.mp4`, { atimeDaysAgo: 400 });
   writeDb({
-    folders: [], folderSettings: {}, progress: {}, metadata: {},
+    folders: [], folderSettings: {}, metadata: {},
     settings: baseSettings({ cacheMaxAgeDays: 7 }),
   });
 
@@ -212,7 +212,7 @@ test('.tmp.mp4 is never deleted by the sweep even with a very stale atime and no
 test('recordServed: a burst of calls within the window yields at most one persisted write (no-clobber/throttle)', async () => {
   const id = 'vid-throttle';
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id, unrelatedField: 'keep-me' } },
     settings: baseSettings(),
   });
@@ -256,7 +256,7 @@ test('recordServed: a burst of calls within the window yields at most one persis
 test('recordServed (E, headline): a within-window call short-circuits on the in-memory map -- NO hot-path disk read', async () => {
   const id = 'vid-no-hotpath-read';
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id } },
     settings: baseSettings(),
   });
@@ -284,7 +284,7 @@ test('recordServed (E, headline): a within-window call short-circuits on the in-
 test('recordServed (E): empty map on boot -- the first serve per fresh id persists exactly once', async () => {
   const id = 'vid-fresh-boot';
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id } },
     settings: baseSettings(),
   });
@@ -295,7 +295,7 @@ test('recordServed (E): empty map on boot -- the first serve per fresh id persis
 });
 
 test('recordServed: a missing metadata entry is a safe no-op', () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
   assert.doesNotThrow(() => recordServed('does-not-exist'));
 });
 
@@ -304,7 +304,7 @@ test('recordServed: a missing metadata entry is a safe no-op', () => {
 
 test('recordServed (C): a non-existent id never inserts a persistedServedAt entry (no leak, no false-suppression)', async () => {
   const staleId = 'vid-concurrently-deleted';
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   // Simulate a serve/transcode-completion recordServed racing a concurrent
   // delete: the entry doesn't exist (yet, or anymore) when recordServed fires.
@@ -338,7 +338,7 @@ test('recordServed (C): a non-existent id never inserts a persistedServedAt entr
 test('recordServed (HR2): a synchronous burst of same-id calls enqueues only ONE updateDatabase call', async () => {
   const id = 'vid-burst-dedup';
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id } },
     settings: baseSettings(),
   });

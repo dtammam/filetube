@@ -18,7 +18,8 @@ const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, getMediaId, saveDatabase, __resetDatabaseForTests } = require('../../server');
+const { scanDirectories, getMediaId, __resetDatabaseForTests } = require('../../server');
+const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 function baseSettings(overrides) {
@@ -32,7 +33,7 @@ function baseSettings(overrides) {
 }
 
 function writeDb(db) {
-  saveDatabase(db);
+  seedState(db); // Wave 2: relational keys (progress/deleteTombstones/viewCounts) go through their stores
 }
 
 function readDb() {
@@ -147,7 +148,6 @@ test('pruneMissing=false composes: a vanished root is retained there too (the gu
   writeDb({
     folders: [emptyRoot],
     folderSettings: {},
-    progress: {},
     metadata: { [id]: seedEntry(id, filePath, emptyRoot) },
     settings: baseSettings({ pruneMissing: false }),
   });

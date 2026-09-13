@@ -117,7 +117,6 @@ test('(HARD GATE) releaseDate backfill on an already-indexed, unchanged video: n
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'existing.mp4', title: 'Existing Video', filePath,
@@ -175,7 +174,6 @@ test('(HARD GATE) releaseDate backfill on an already-indexed, unchanged audio it
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'existing.mp3', title: 'Existing Audio', filePath,
@@ -217,7 +215,6 @@ test('legacy video (missing codec fields) still gets mtime-only releaseDate back
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'legacy.mp4', title: 'Legacy Video', filePath,
@@ -257,7 +254,7 @@ test('a brand-new video with an embedded creation_time tag captures releaseDate 
   const filePath = path.join(root, 'brand-new.mp4');
   fs.writeFileSync(filePath, 'brand-new-video-bytes');
 
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 
@@ -277,7 +274,7 @@ test('a brand-new video with NO embedded date tag falls back to filesystem mtime
   fs.writeFileSync(filePath, 'brand-new-video-bytes-no-date');
   const mtimeMs = fs.statSync(filePath).mtimeMs;
 
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 

@@ -89,19 +89,20 @@ flowchart TD
 
 One SQLite file, two buckets (see ARCHITECTURE.md "Storage"). The document
 store persists the legacy db.json object shape per row; everything
-user-scoped is relational, and so is the media view counter (the first
-media namespace the relational-migration arc moved out of the document
-store). The namespace lists in `lib/db/sqlite.js` are a
-LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.291.0:
-12 `doc_kv` namespaces, 18 `doc_single` names, 31 relational tables,
-schema version 21. (The relational-migration arc, Wave 1 onward, moves the
+user-scoped is relational, and so are the media namespaces the
+relational-migration arc has moved out of the document store so far (the
+view counter in Wave 1; the frozen pre-auth positions and the deferred-delete
+tombstones in Wave 2 - see the MEDIA box). The namespace lists in `lib/db/sqlite.js` are a
+LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.292.0:
+10 `doc_kv` namespaces, 18 `doc_single` names, 33 relational tables,
+schema version 22. (The relational-migration arc, Wave 1 onward, moves the
 media namespaces out of the document store one table at a time - see
 `docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md`.)
 
 ```mermaid
 flowchart LR
     subgraph DOC["Document store (the db.json shape, per-row)"]
-        KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata · progress · trash ·<br/>deleteTombstones · books.items · books.progress ·<br/>books.audio · music.tracks · podcasts.episodes ·<br/>tv.episodes · ytdlp.downloadMeta · ytdlp.channelAvatars"]
+        KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata · trash ·<br/>books.items · books.progress ·<br/>books.audio · music.tracks · podcasts.episodes ·<br/>tv.episodes · ytdlp.downloadMeta · ytdlp.channelAvatars"]
         SINGLE["doc_single (name, json)<br/>whole small objects:<br/>folders · folderSettings · folderDisplayNames ·<br/>settings · liked · books.folders · books.settings ·<br/>books.pins · music.folders · music.settings · music.channels ·<br/>podcasts.subscriptions · podcasts.settings ·<br/>tv.folders · tv.settings ·<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
     end
 
@@ -113,6 +114,8 @@ flowchart LR
 
     subgraph MEDIA["Relational MEDIA tables (feature-owned stores; the arc's destination)"]
         VC["lib/media/viewCounts.js<br/>media_view_counts (media_id, count)<br/>id-keyed carrier: remove on delete/prune/purge,<br/>rekey on move/trash/restore"]
+        PR["lib/media/progress.js<br/>media_progress (media_id, json)<br/>the FROZEN pre-auth positions the first admin adopts once;<br/>carried in-transaction with the doc commit"]
+        DT["lib/media/deleteTombstones.js<br/>media_delete_tombstones (media_id, deleted_at, json)<br/>the deferred-delete records: minted/retired/consumed<br/>INSIDE the doc commit's transaction (inSaveTransaction)"]
     end
 
     subgraph OUT["Deliberately OUTSIDE the db (and outside backups)"]
@@ -130,10 +133,14 @@ flowchart LR
 
 Ownership at a glance: `metadata`/`trash`/`folders*` belong to the video core
 in `server.js`; `media_view_counts` to `lib/media/viewCounts.js` (Wave 1 of the
-relational arc - the first media namespace out of the document model; the
-store is its only runtime writer, and the adapter holds the three bulk seams:
-the legacy-JSON import, the one-shot v21 backfill, and the restore/reset
-wipe-and-replace); `books.*` to `lib/books/`; `music.*` to
+relational arc - the first media namespace out of the document model),
+`media_progress` to `lib/media/progress.js` and `media_delete_tombstones` to
+`lib/media/deleteTombstones.js` (Wave 2 - id-keyed JSON-record stores on the
+shared `lib/media/jsonRowStore.js` shape; writes that must be atomic with a
+doc commit ride `updateDatabase`'s `inSaveTransaction` hook). Each store is
+its table's only runtime writer, and the adapter holds the bulk seams: the
+legacy-JSON import, the one-shot v21/v22 backfills, and the restore/reset
+wipe-and-replace; `books.*` to `lib/books/`; `music.*` to
 `lib/music/`; `podcasts.*` to `lib/podcasts/`; `ytdlp.*` to `lib/ytdlp/` -
 feature-owned namespaces are what keep the persist-gate bug class away.
 

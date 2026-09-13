@@ -66,7 +66,7 @@ test('GET /api/settings never omits autoplayNext, and it defaults to false (OFF)
 });
 
 test('POST /api/settings accepts an autoplayNext key without 400ing (KNOWN_KEYS regression)', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   const res = await fetch(`${base}/api/settings`, {
     method: 'POST',
@@ -79,7 +79,7 @@ test('POST /api/settings accepts an autoplayNext key without 400ing (KNOWN_KEYS 
 });
 
 test('GET /api/settings after a POST reflects the persisted autoplayNext (round-trip)', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await fetch(`${base}/api/settings`, {
     method: 'POST',
@@ -95,7 +95,7 @@ test('GET /api/settings after a POST reflects the persisted autoplayNext (round-
 });
 
 test('POST /api/settings can turn autoplayNext back OFF (explicit false)', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings({ autoplayNext: true }) });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings({ autoplayNext: true }) });
 
   const res = await fetch(`${base}/api/settings`, {
     method: 'POST',
@@ -107,7 +107,7 @@ test('POST /api/settings can turn autoplayNext back OFF (explicit false)', async
 });
 
 test('POST /api/settings rejects a non-boolean autoplayNext with 400 and mutates nothing', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings({ autoplayNext: true }) });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings({ autoplayNext: true }) });
 
   const res = await fetch(`${base}/api/settings`, {
     method: 'POST',
@@ -123,7 +123,7 @@ test('POST /api/settings rejects a non-boolean autoplayNext with 400 and mutates
 });
 
 test('POST /api/settings with an invalid autoplayNext does not partially persist alongside other valid keys in the same request', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   const res = await fetch(`${base}/api/settings`, {
     method: 'POST',

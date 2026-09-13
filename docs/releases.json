@@ -2968,5 +2968,11 @@
     "date": "2026-09-13",
     "title": "View counts get their own home in the database",
     "intent": "The number of times you have watched each video is the one piece of your library that cannot be rebuilt by rescanning your files, so it is the first thing to move into the new, cleaner database layout. The move happens automatically the first time this version starts, keeps every count exactly as it was, and from now on recording a view no longer rewrites the whole library index - just that one number. Backups made before or after this version still restore either way. Behind the scenes this also closes a hole where an impossibly large count in a restored backup could have made the stats page and backups stop working; such a value is now refused up front. Nothing changes on screen."
+  },
+  {
+    "version": "1.292.0",
+    "date": "2026-09-13",
+    "title": "Deleted videos stay deleted, now with a safer memory of them",
+    "intent": "Two more pieces of your library move into the new database layout, automatically on first start: the record that lets FileTube remember a video you deleted (so a stray copy found later is cleaned up instead of reappearing), and the old pre-login watch positions that get handed to the first admin account when it is created. The delete-memory is now written in the very same step as the delete itself, so even a crash mid-delete can no longer leave a video that comes back on the next library scan. Backups made before or after this version restore either way, and a broken backup is refused up front instead of half-applied. Nothing changes on screen."
   }
 ]

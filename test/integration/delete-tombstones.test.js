@@ -79,7 +79,6 @@ function seedLibraryWithVideo(libDir, fileName) {
   writeDb({
     folders: [libDir],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id,
@@ -102,7 +101,6 @@ function seedLibraryWithVideo(libDir, fileName) {
       },
     },
     liked: [],
-    deleteTombstones: {},
     settings: baseSettings(),
   });
   return { filePath, id };
@@ -121,7 +119,6 @@ function seedDivergentVideo(libDir, storedName, diskName) {
   writeDb({
     folders: [libDir],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id,
@@ -144,7 +141,6 @@ function seedDivergentVideo(libDir, storedName, diskName) {
       },
     },
     liked: [],
-    deleteTombstones: {},
     settings: baseSettings(),
   });
   return { storedPath, diskPath, id };
@@ -160,7 +156,7 @@ function seedDivergentUniversalVideo(libDir, storedName, diskName, extractor, id
   fs.writeFileSync(diskPath, 'video-bytes');
   const mediaId = getMediaId(storedPath);
   writeDb({
-    folders: [libDir], folderSettings: {}, progress: {},
+    folders: [libDir], folderSettings: {},
     metadata: {
       [mediaId]: {
         id: mediaId, name: storedName, title: storedName, filePath: storedPath,
@@ -172,7 +168,7 @@ function seedDivergentUniversalVideo(libDir, storedName, diskName, extractor, id
         sourceExtractor: extractor, sourceId: id,
       },
     },
-    liked: [], deleteTombstones: {}, settings: baseSettings(),
+    liked: [], settings: baseSettings(),
   });
   return { storedPath, diskPath, id: mediaId };
 }
@@ -207,7 +203,7 @@ test('W4: a universal item in a plain library folder keeps sourceExtractor/sourc
   fs.writeFileSync(filePath, 'v1');
   const id = getMediaId(filePath);
   writeDb({
-    folders: [libDir], folderSettings: {}, progress: {},
+    folders: [libDir], folderSettings: {},
     metadata: { [id]: {
       id, name: fileName, title: fileName, filePath, folderName: path.basename(libDir),
       size: fs.statSync(filePath).size, ext: '.mp4', type: 'video', addedAt: new Date().toISOString(),
@@ -215,7 +211,7 @@ test('W4: a universal item in a plain library folder keeps sourceExtractor/sourc
       needsTranscode: false, youtubeId: null,
       sourceExtractor: 'Vimeo', sourceId: 'austrian/page=1', // RAW id (has a slash)
     } },
-    liked: [], deleteTombstones: {}, settings: baseSettings(),
+    liked: [], settings: baseSettings(),
   });
 
   // Change the file's SIZE -> the scan takes the new/updated re-init branch.
@@ -400,7 +396,7 @@ test('C1: a divergent-spelling [Youtube=id] proxy-host survivor is reaped (tombs
     fs.writeFileSync(diskPath, 'video-bytes');
     const id = getMediaId(storedPath);
     writeDb({
-      folders: [dl], folderSettings: {}, progress: {},
+      folders: [dl], folderSettings: {},
       metadata: { [id]: {
         id, name: storedName, title: storedName, filePath: storedPath, folderName: path.basename(dl),
         size: fs.statSync(diskPath).size, ext: '.mp4', type: 'video', addedAt: new Date().toISOString(),
@@ -409,7 +405,7 @@ test('C1: a divergent-spelling [Youtube=id] proxy-host survivor is reaped (tombs
         youtubeId: 'dQw4w9WgXcQ',           // proxy-host: real YouTube id IS set
         sourceExtractor: 'Youtube', sourceId: 'dQw4w9WgXcQ',
       } },
-      liked: [], deleteTombstones: {}, settings: baseSettings(),
+      liked: [], settings: baseSettings(),
     });
 
     fs.chmodSync(dl, 0o555);
@@ -444,13 +440,13 @@ test('W2: a universal delete appends the RAW sourceId to the archive (never the 
     fs.writeFileSync(filePath, 'x');
     const id = getMediaId(filePath);
     writeDb({
-      folders: [dl], folderSettings: {}, progress: {},
+      folders: [dl], folderSettings: {},
       metadata: { [id]: {
         id, name, title: name, filePath, folderName: path.basename(dl), size: 1, ext: '.mp4',
         type: 'video', addedAt: new Date().toISOString(), youtubeId: null,
         sourceExtractor: 'Vimeo', sourceId: 'austrian/page=1', // RAW (slash)
       } },
-      liked: [], deleteTombstones: {}, settings: baseSettings(),
+      liked: [], settings: baseSettings(),
     });
 
     await fetch(`${base}/api/videos/${id}`, { method: 'DELETE' });
@@ -569,7 +565,6 @@ test('SEAM 2 SAFETY (CRITICAL): a same-id copy in a DIFFERENT folder is SPARED, 
     writeDb({
       folders: [chan1, chan2],
       folderSettings: {},
-      progress: {},
       metadata: {
         [aId]: {
           id: aId, name: aName, title: aName, filePath: aPath,
@@ -581,7 +576,6 @@ test('SEAM 2 SAFETY (CRITICAL): a same-id copy in a DIFFERENT folder is SPARED, 
         },
       },
       liked: [],
-      deleteTombstones: {},
       settings: baseSettings(),
     });
 

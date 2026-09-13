@@ -29,7 +29,7 @@ before(async () => {
   auth = authenticateFetch(server, base); // admin via patched global fetch
 
   saveDatabase({
-    folders: [], folderSettings: {}, folderDisplayNames: {}, progress: {},
+    folders: [], folderSettings: {}, folderDisplayNames: {},
     metadata: {
       // An UNHEALABLE folder: no channelName anywhere -> /api/channels name
       // falls back to the raw folderName until the map supplies one.

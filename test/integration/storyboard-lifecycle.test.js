@@ -38,7 +38,7 @@ function seedWithSprite() {
   fs.writeFileSync(filePath, 'movie-bytes');
   const id = getMediaId(filePath);
   saveDatabase({
-    folders: [ROOT], folderSettings: {}, progress: {},
+    folders: [ROOT], folderSettings: {},
     metadata: {
       [id]: {
         id, name: 'movie.mp4', title: 'The Movie', filePath, folderName: 'Chan',

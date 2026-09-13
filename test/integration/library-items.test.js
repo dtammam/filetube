@@ -24,7 +24,7 @@ before(async () => {
   member = __mintTestSession({ username: 'libmember', role: 'member' });
 
   saveDatabase({
-    folders: [process.env.DATA_DIR], folderSettings: {}, progress: {},
+    folders: [process.env.DATA_DIR], folderSettings: {},
     metadata: {
       open: { id: 'open', title: 'Open Clip', name: 'open.mp4', filePath: path.join(process.env.DATA_DIR, 'Open', 'open.mp4'), folderName: 'Open', rootFolder: process.env.DATA_DIR, type: 'video', ext: '.mp4', duration: 60, size: 100, addedAt: 1 },
       song: { id: 'song', title: 'Open Song', name: 'song.mp3', filePath: path.join(process.env.DATA_DIR, 'Open', 'song.mp3'), folderName: 'Open', rootFolder: process.env.DATA_DIR, type: 'audio', ext: '.mp3', duration: 200, size: 50, addedAt: 2 },

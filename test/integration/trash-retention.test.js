@@ -18,6 +18,7 @@ const {
   app, getMediaId, loadDatabase, saveDatabase, updateDatabase,
   trashItem, sweepTrash, __resetDatabaseForTests,
 } = require('../../server');
+const { tombstoneStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
@@ -53,7 +54,6 @@ function seedLibrary(settingsOverrides) {
   saveDatabase({
     folders: [ROOT],
     folderSettings: {},
-    progress: {},
     metadata: Object.fromEntries([a, b].map(({ id, filePath }) => [id, {
       id, name: path.basename(filePath), title: path.basename(filePath, '.mp4'), filePath,
       folderName: 'Chan', rootFolder: ROOT, size: 5, ext: '.mp4', type: 'video', addedAt: Date.now(), duration: 10,
@@ -100,7 +100,7 @@ test('record-driven sweep: purges ONLY past-retention records (file + record + s
   assert.ok(!fs.existsSync(oldRes.trashPath), 'its bytes are gone');
   assert.ok(db.trash[freshRes.trashId], 'the 5-day record survives');
   assert.ok(fs.existsSync(freshRes.trashPath), 'its bytes survive');
-  assert.deepEqual(db.deleteTombstones, {}, 'a verified sweep purge mints no tombstone');
+  assert.deepEqual(tombstoneStore().getAll(), {}, 'a verified sweep purge mints no tombstone');
 });
 
 test('retention 0 = keep forever: nothing purges no matter how old', async () => {

@@ -10,6 +10,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-test-'));
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, transcodedPath, saveDatabase, flushPendingProgress, loadDatabase, __failNextSaveForTests, userStore } = require('../../server');
+const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const THUMBNAIL_DIR = path.join(process.env.DATA_DIR, '.thumbnails');
@@ -98,7 +99,6 @@ test('GET /api/videos preserves the fields the author resolver needs', async () 
   saveDatabase({
     folders: ['/media/Movies'],
     folderSettings: { '/media/Movies': { name: 'My Movies', hidden: false } },
-    progress: {},
     metadata: {
       m1: {
         id: 'm1', title: 'Clip A', type: 'video', ext: '.mp4',
@@ -128,7 +128,6 @@ test('GET /api/videos resolves the channel avatar from the registry (Fix A) with
   saveDatabase({
     folders: ['/media/Reg'],
     folderSettings: {},
-    progress: {},
     metadata: {
       regV: {
         id: 'regV', title: 'Reg clip', type: 'video', ext: '.mp4',
@@ -155,7 +154,7 @@ test('GET /api/videos resolves the channel avatar from the registry (Fix A) with
 test('GET /api/liked resolves the channel avatar too (Fix A sweep -- no monogram in Liked)', async () => {
   const CHID = 'UC-lHJZR3Gqxm24_Vd_AJ5Yw';
   saveDatabase({
-    folders: ['/media/Reg'], folderSettings: {}, progress: {},
+    folders: ['/media/Reg'], folderSettings: {},
     metadata: {
       regL: {
         id: 'regL', title: 'Reg clip', type: 'video', ext: '.mp4',
@@ -236,7 +235,7 @@ test('POST /api/progress returns 404 for unknown media', async () => {
 // that contract is inherently incompatible with a deferred/batched write.
 test('POST /api/progress returns 200 immediately even when the underlying disk write would fail (the write is deferred, not synchronous)', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { vidFail: { id: 'vidFail', title: 'Clip', duration: 10 } },
   });
 
@@ -263,7 +262,7 @@ test('POST /api/progress returns 200 immediately even when the underlying disk w
 
 test('flushPendingProgress: a failed flush is caught and logged, never throws, and never wedges the NEXT flush', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { vidFlushFail: { id: 'vidFlushFail', title: 'Clip', duration: 10 } },
   });
 
@@ -308,7 +307,7 @@ test('DELETE /api/videos/:id returns 500 JSON (not a hang) when the db-metadata 
   // v1.30 A3: seed via `saveDatabase()` (an established test primitive, see
   // CONTRIBUTING.md) so the in-process db cache stays coherent.
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { vidDelFail: { id: 'vidDelFail', title: 'Clip', filePath: '/nonexistent/clip.mp4' } },
   });
 
@@ -329,7 +328,7 @@ function seedDeleteTarget(id, filePath) {
   // v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
   // (an established test primitive, see CONTRIBUTING.md) rather than a raw
   // `fs.writeFileSync`, so the in-process db cache stays coherent.
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     progress: { [id]: { timestamp: 5, duration: 10 } },
     metadata: { [id]: { id, title: 'Clip', filePath } },
@@ -510,7 +509,6 @@ test('watch progress round-trips through save and read', async () => {
   saveDatabase({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: { vid1: { id: 'vid1', title: 'Clip', duration: 120 } },
   });
 

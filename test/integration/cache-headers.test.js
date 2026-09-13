@@ -45,7 +45,7 @@ before(async () => {
   fs.writeFileSync(path.join(albumArtDir, 'k1.jpg'), 'JPEGBYTES');
 
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {}, metadata: {}, liked: [],
+    folders: [], folderSettings: {}, metadata: {}, liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
     books: { folders: [], items: { b1: { id: 'b1', title: 'Bk', author: 'A', hasCover: true, coverExt: '.jpg', filePath: path.join(DATA_DIR, 'b.epub'), folderName: 'B', rootFolder: DATA_DIR } }, progress: {}, pins: [], settings: {}, audio: {} },
     music: { folders: [], tracks: { t1: { id: 't1', title: 'T', albumArtKey: 'k1', filePath: path.join(DATA_DIR, 't.mp3'), folderName: 'M', rootFolder: DATA_DIR } }, settings: {} },

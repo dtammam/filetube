@@ -72,7 +72,7 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   authenticateFetch(server, base);
   saveDatabase({
-    folders: [mediaDir], folderSettings: {}, progress: {}, metadata: md,
+    folders: [mediaDir], folderSettings: {}, metadata: md,
     settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 0, defaultView: '' },
   });
   victim = getMediaId(path.join(mediaDir, 'v100.mp4')); // a fragment

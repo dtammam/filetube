@@ -28,7 +28,7 @@ before(async () => {
 
   // Two media items: an open one (100) and a restricted-folder one (400).
   saveDatabase({
-    folders: [process.env.DATA_DIR], folderSettings: {}, progress: {},
+    folders: [process.env.DATA_DIR], folderSettings: {},
     metadata: {
       open: { id: 'open', title: 'Open', name: 'open.mp4', filePath: path.join(process.env.DATA_DIR, 'Open', 'open.mp4'), folderName: 'Open', rootFolder: process.env.DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 100, addedAt: 1 },
       adult: { id: 'adult', title: 'Adult', name: 'adult.mp4', filePath: path.join(process.env.DATA_DIR, 'Adult', 'adult.mp4'), folderName: 'Adult', rootFolder: process.env.DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 400, addedAt: 2 },

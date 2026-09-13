@@ -70,7 +70,7 @@ before(async () => {
   const hid = seedItem(hidFile);
   pubId = pub.id; hidId = hid.id;
   saveDatabase({
-    folders: [mediaDir], folderSettings: {}, progress: {},
+    folders: [mediaDir], folderSettings: {},
     metadata: { [pub.id]: pub, [hid.id]: hid },
     liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30, attributeControlEnabled: true }, // v1.202: OPT-IN feature, exercised ON here

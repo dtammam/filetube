@@ -31,7 +31,7 @@ before(async () => {
 
   viewCountStore.replaceAll({ vid: 1 }); // Wave 1: relational; seeded through the store
   saveDatabase({
-    folders: [DATA_DIR], folderSettings: {}, progress: {},
+    folders: [DATA_DIR], folderSettings: {},
     metadata: {
       vid: { id: 'vid', title: 'A Clip', name: 'clip.mp4', filePath: vidFile, folderName: 'Clips', channelName: 'Clips', rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 9, addedAt: 10 },
     },

@@ -46,7 +46,7 @@ function item(id, over = {}) {
 }
 function seed(metadata, over = {}) {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {}, metadata, liked: [],
+    folders: [], folderSettings: {}, metadata, liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
     ...over,
   });

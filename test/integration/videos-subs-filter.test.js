@@ -45,7 +45,7 @@ const getVideos = async (qs) => {
 
 test('subs=1: only items under a subscription folder (folderName join)', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: {
       // inSub matches the subscription ONLY via folderName (its channelName
       // diverges) - so this test isolates the folderName join arm (slim-gate
@@ -71,7 +71,7 @@ test('subs=1: only items under a subscription folder (folderName join)', async (
 
 test('subs=1: matches on channelName too, and is empty with no subscriptions', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     // folderName sanitized differently from the channel; the channelName still matches.
     metadata: { byChannel: item('byChannel', { folderName: 'chanx_dir', channelName: 'Chan X' }) },
     liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },

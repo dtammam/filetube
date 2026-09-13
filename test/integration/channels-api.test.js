@@ -52,7 +52,7 @@ before(async () => {
   saveDatabase({
     folders: [mediaDir, otherRoot, hiddenRoot],
     folderSettings: { [hiddenRoot]: { name: 'Hidden', hidden: true, order: 0 } },
-    progress: {}, metadata,
+    metadata,
     settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });

@@ -27,7 +27,7 @@ async function waitForScanIdle(maxWaitMs = 10000) {
 
 function baseDb(metadata = {}) {
   return {
-    folders: [mediaDir], folderSettings: {}, progress: {}, metadata,
+    folders: [mediaDir], folderSettings: {}, metadata,
     settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   };
 }
@@ -133,7 +133,7 @@ test('preview-clip sidecar follows the id through trash -> restore -> purge', as
   fs.writeFileSync(filePath, 'movie-bytes');
   const id = getMediaId(filePath);
   saveDatabase({
-    folders: [root], folderSettings: {}, progress: {},
+    folders: [root], folderSettings: {},
     metadata: { [id]: { id, name: 'movie.mp4', title: 'The Movie', filePath, folderName: 'Chan', rootFolder: root, size: 11, ext: '.mp4', type: 'video', addedAt: 1700000000000, duration: 90 } },
     settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 0 },
   });

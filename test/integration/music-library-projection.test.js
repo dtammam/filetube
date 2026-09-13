@@ -45,7 +45,7 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   auth = authenticateFetch(server, base);
   actingUser = auth.user;
-  saveDatabase({ folders: [ROOT], folderSettings: {}, progress: {}, metadata: {}, liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
+  saveDatabase({ folders: [ROOT], folderSettings: {}, metadata: {}, liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
   await updateDatabase((db) => {
     // Library audio: NESTALGIA (genre Gaming - needs a mark), Tonzak (genre
     // Music - default on), Zarchivo (genre Comedy - default off), a blocked-

@@ -46,7 +46,7 @@ beforeEach(async () => {
 // (an established test primitive, see CONTRIBUTING.md) rather than a raw
 // `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  saveDatabase({ folders: [], folderSettings: {}, progress: {}, ...db });
+  saveDatabase({ folders: [], folderSettings: {}, ...db });
 }
 
 function seedItem(id, overrides) {

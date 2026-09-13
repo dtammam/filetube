@@ -66,6 +66,7 @@ const {
   planImportRelocation, activeMediaStreams,
   flushPendingProgress, userStore,
 } = require('../../server');
+const { progressStore, tombstoneStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
@@ -140,10 +141,8 @@ function seedHydratedImport(overrides = {}, dbOverrides = {}) {
   saveDatabase({
     folders: [libraryDir],
     folderSettings: {},
-    progress: {},
     metadata: { [id]: item },
     liked: [],
-    deleteTombstones: {},
     // v1.42: pre-SQLite, saveDatabase was a whole-file replace, so a seed
     // implicitly wiped any ytdlp state a previous test left behind. The
     // diff-save keeps an ABSENT namespace's rows, so the seed now clears it
@@ -175,7 +174,7 @@ test('HEADLINE: a hydrated MeTube import is moved into its channel folder with t
   fs.writeFileSync(path.join(libraryDir, 'Never Gonna Give You Up.es.vtt'), 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHola\n');
 
   await updateDatabase((db) => {
-    db.progress[oldId] = { timestamp: 55, duration: 213, updatedAt: '2026-07-01T00:00:00.000Z' };
+    progressStore().set(oldId, { timestamp: 55, duration: 213, updatedAt: '2026-07-01T00:00:00.000Z' }); // Wave 2: the relational store (was db.progress[...] =)
     db.liked = [oldId];
     return true;
   });
@@ -304,7 +303,7 @@ test('MANDATORY RE-KEY REGRESSION: move -> rescan -> the item survives under its
   const config = ytdlp.parseYtdlpConfig();
   const { id: oldId } = seedHydratedImport();
   await updateDatabase((db) => {
-    db.progress[oldId] = { timestamp: 90, duration: 213, updatedAt: '2026-07-02T00:00:00.000Z' };
+    progressStore().set(oldId, { timestamp: 90, duration: 213, updatedAt: '2026-07-02T00:00:00.000Z' }); // Wave 2: the relational store (was db.progress[...] =)
     db.liked = [oldId];
     return true;
   });
@@ -344,7 +343,7 @@ test('a relocation that lands MID-SCAN is not wiped by the scan\'s wholesale met
   const { id: oldId } = seedHydratedImport();
   await scanDirectories(); // index the padding + the import
   await updateDatabase((db) => {
-    db.progress[oldId] = { timestamp: 12, duration: 213, updatedAt: '2026-07-03T00:00:00.000Z' };
+    progressStore().set(oldId, { timestamp: 12, duration: 213, updatedAt: '2026-07-03T00:00:00.000Z' }); // Wave 2: the relational store (was db.progress[...] =)
     db.liked = [oldId];
     return true;
   });
@@ -374,7 +373,7 @@ test('genuine LOCAL MEDIA (no channel, no youtubeId) is never moved -- the file 
   fs.writeFileSync(filePath, 'home-video-bytes');
   const id = getMediaId(filePath);
   saveDatabase({
-    folders: [libraryDir], folderSettings: {}, progress: {}, liked: [], deleteTombstones: {},
+    folders: [libraryDir], folderSettings: {}, liked: [],
     metadata: {
       [id]: {
         id, name: 'Family BBQ.mp4', title: 'Family BBQ', filePath,
@@ -453,7 +452,7 @@ test('a NATIVE download (already under the download root) is never moved, even w
   fs.writeFileSync(filePath, 'bytes');
   const id = getMediaId(filePath);
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {}, liked: [], deleteTombstones: {},
+    folders: [], folderSettings: {}, liked: [],
     metadata: {
       [id]: {
         id, name: path.basename(filePath), title: 'Some Video', filePath,
@@ -628,7 +627,7 @@ test('a stale deletion tombstone at the DESTINATION path is retired by the move 
   const targetId = getMediaId(target);
   await updateDatabase((db) => {
     // The user deleted a file at this exact path a moment ago.
-    db.deleteTombstones[targetId] = { filePath: target, deletedAt: Date.now() };
+    tombstoneStore().set(targetId, { filePath: target, deletedAt: Date.now() }); // Wave 2: the relational store (was db.deleteTombstones[...] =)
     return true;
   });
 
@@ -724,7 +723,7 @@ test('CRITICAL: the destination tombstone is retired BEFORE any byte moves -- at
   const target = expectedTarget(config);
   const targetId = getMediaId(target);
   await updateDatabase((db) => {
-    db.deleteTombstones[targetId] = { filePath: target, deletedAt: Date.now() };
+    tombstoneStore().set(targetId, { filePath: target, deletedAt: Date.now() }); // Wave 2: the relational store (was db.deleteTombstones[...] =)
     return true;
   });
 
@@ -765,7 +764,7 @@ test('CRITICAL: a CRASH between the filesystem move and the db re-key leaves the
   const target = expectedTarget(config);
   const targetId = getMediaId(target);
   await updateDatabase((db) => {
-    db.deleteTombstones[targetId] = { filePath: target, deletedAt: Date.now() };
+    tombstoneStore().set(targetId, { filePath: target, deletedAt: Date.now() }); // Wave 2: the relational store (was db.deleteTombstones[...] =)
     return true;
   });
 
@@ -809,7 +808,7 @@ test('CRITICAL: an IN-FLIGHT scan (holding a stale Phase-1 tombstone snapshot) d
   const target = expectedTarget(config);
   const targetId = getMediaId(target);
   await updateDatabase((db) => {
-    db.deleteTombstones[targetId] = { filePath: target, deletedAt: Date.now() };
+    tombstoneStore().set(targetId, { filePath: target, deletedAt: Date.now() }); // Wave 2: the relational store (was db.deleteTombstones[...] =)
     return true;
   });
 

@@ -104,7 +104,7 @@ function clearUserLiked() {
 
 test('AC7.3: POST /api/liked/:id adds membership (per-user)', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { likeA: seedItem('likeA') },
     liked: [],
     settings: baseSettings(),
@@ -123,7 +123,7 @@ test('AC7.3: POST /api/liked/:id adds membership (per-user)', async () => {
 
 test('AC7.3: a duplicate POST /api/liked/:id is idempotent -- no duplicate entry', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { likeB: seedItem('likeB') },
     liked: [],
     settings: baseSettings(),
@@ -139,7 +139,7 @@ test('AC7.3: a duplicate POST /api/liked/:id is idempotent -- no duplicate entry
 
 test('AC7.3: DELETE /api/liked/:id removes membership, and the round-trip leaves NO residual membership', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { likeC: seedItem('likeC') },
     liked: [],
     settings: baseSettings(),
@@ -159,7 +159,7 @@ test('AC7.3: DELETE /api/liked/:id removes membership, and the round-trip leaves
 
 test('AC7.3: removing a non-member is a no-op (idempotent) and never throws/errors', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { likeD: seedItem('likeD'), someOtherId: seedItem('someOtherId') },
     liked: [],
     settings: baseSettings(),
@@ -173,7 +173,7 @@ test('AC7.3: removing a non-member is a no-op (idempotent) and never throws/erro
 });
 
 test('AC7.3: POST /api/liked/:id 404s for an id that is not a real library item', async () => {
-  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata: {}, liked: [], settings: baseSettings() });
+  saveDatabase({ folders: [], folderSettings: {}, metadata: {}, liked: [], settings: baseSettings() });
   clearUserLiked();
   const res = await like('ghost-id');
   assert.equal(res.status, 404);
@@ -184,7 +184,7 @@ test('AC7.3: POST /api/liked/:id 404s for an id that is not a real library item'
 
 test('GET /api/liked lists exactly the current user\'s liked set in the {items,total,offset,limit} shape', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: {
       lik1: seedItem('lik1', { addedAt: 1000 }),
       lik2: seedItem('lik2', { addedAt: 2000 }),
@@ -211,7 +211,7 @@ test('GET /api/liked lists exactly the current user\'s liked set in the {items,t
 
 test('GET /api/liked returns an empty page when nothing is liked', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { lonely: seedItem('lonely') },
     liked: [],
     settings: baseSettings(),
@@ -226,7 +226,7 @@ test('GET /api/liked returns an empty page when nothing is liked', async () => {
 
 test('per-user isolation: each user\'s Liked view is their OWN -- likes never bleed across accounts', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { mineOnly: seedItem('mineOnly'), yoursOnly: seedItem('yoursOnly') },
     liked: [],
     settings: baseSettings(),
@@ -255,7 +255,7 @@ test('v1.43 carrier: DELETE /api/videos/:id removes the deleting user\'s AND eve
   const filePath = path.join(os.tmpdir(), `filetube-liked-delete-${Date.now()}.mp4`);
   fs.writeFileSync(filePath, 'bytes');
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { delCarrier: seedItem('delCarrier', { filePath }) },
     liked: [],
     settings: baseSettings(),
@@ -287,7 +287,7 @@ test('v1.43 carrier: DELETE /api/videos/:id removes the deleting user\'s AND eve
 
 test('GET /api/videos/:id derives `liked` from the user\'s membership at request time', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { derivedA: seedItem('derivedA') },
     liked: [],
     settings: baseSettings(),
@@ -308,7 +308,7 @@ test('GET /api/videos/:id derives `liked` from the user\'s membership at request
 
 test('liked routes never issue a doc-table save (the frozen-record contract), while membership still commits durably', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { writeA: seedItem('writeA') },
     liked: [],
     settings: baseSettings(),
@@ -342,7 +342,7 @@ test('backfill: a legacy/partial persisted set missing `liked` loads with db.lik
   // through the seam (the import path's raw-fixture leg is covered in
   // test/unit/db-sqlite-adapter.test.js's legacy-shape import test).
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { legacy: seedItem('legacy') },
     settings: baseSettings(),
     // deliberately no `liked` key at all

@@ -65,7 +65,7 @@ test('?download=1 serves the ORIGINAL file, not a cached transcode, even when ne
   fs.writeFileSync(originalPath, 'ORIGINAL-SOURCE-BYTES');
   fs.writeFileSync(transcodedPath(id), 'TRANSCODED-MP4-BYTES-DIFFERENT-LENGTH');
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: {
       [id]: {
         id, needsTranscode: true, filePath: originalPath, size: 21,
@@ -94,7 +94,7 @@ test('?download=1 on a normal (non-transcode) item downloads the same bytes play
   const originalPath = path.join(originalDir, 'plain.mp4');
   fs.writeFileSync(originalPath, 'PLAIN-MP4-BYTES');
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: {
       [id]: {
         id, needsTranscode: false, filePath: originalPath, size: 15,
@@ -115,7 +115,7 @@ test('?download=1 Content-Disposition safely encodes a non-ASCII title via filen
   const title = 'Café Résumé 日本語';
   fs.writeFileSync(originalPath, 'AUDIO-BYTES');
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: {
       [id]: {
         id, needsTranscode: false, filePath: originalPath, size: 11,
@@ -141,7 +141,7 @@ test('a request without ?download=1 is unaffected -- no Content-Disposition head
   const originalPath = path.join(originalDir, 'untouched.mp4');
   fs.writeFileSync(originalPath, 'UNTOUCHED-BYTES');
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: {
       [id]: {
         id, needsTranscode: false, filePath: originalPath, size: 15,
@@ -167,7 +167,7 @@ test('?download=1 for an id whose file no longer exists on disk returns the same
   const missingPath = path.join(originalDir, 'gone.mp4');
   // Deliberately never created on disk.
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: {
       [id]: {
         id, needsTranscode: false, filePath: missingPath, size: 0,
@@ -186,7 +186,7 @@ test('the download lookup is strictly id-based -- extra/foreign query params nev
   const originalPath = path.join(originalDir, 'confined.mp4');
   fs.writeFileSync(originalPath, 'CONFINED-BYTES');
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: {
       [id]: {
         id, needsTranscode: false, filePath: originalPath, size: 14,

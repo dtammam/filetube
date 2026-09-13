@@ -109,7 +109,7 @@ beforeEach(() => clearAllLiked(uid));
 
 test('the merge: one liked video + episode + track = three kind-carried items, total 3', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { vidA: seedItem('vidA') },
     liked: [], settings: baseSettings(),
   });
@@ -143,7 +143,7 @@ test('the merge: one liked video + episode + track = three kind-carried items, t
 
 test('silent-drop scoping: a liked-but-not-downloaded episode and a liked-but-pruned track are dropped; their membership rows SURVIVE', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: {}, liked: [], settings: baseSettings(),
   });
   const pendingEp = await seedDownloadedEpisode('drop-g1', { download: false });
@@ -171,7 +171,7 @@ test('same-id-both-kinds collision: one id live as BOTH media and episode lists 
   // rows are live from here on; no re-key ever happens in this test.
   const epId = podcastStore.episodeIdFor(subId, 'collide-g1');
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [epId]: seedItem(epId) },
     liked: [], settings: baseSettings(),
   });
@@ -198,7 +198,7 @@ test('same-id-both-kinds collision: one id live as BOTH media and episode lists 
 
 test('actor isolation: a second real session sees NONE of the first user\'s mixed likes (route layer)', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { isoVid: seedItem('isoVid') },
     liked: [], settings: baseSettings(),
   });
@@ -223,7 +223,7 @@ test('actor isolation: a second real session sees NONE of the first user\'s mixe
 
 test('filters over the merged set: format=video hides audio kinds; watch=watched surfaces a PLAYED episode (the latch is the watched authority)', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { fmtVid: seedItem('fmtVid') },
     liked: [], settings: baseSettings(),
   });
@@ -252,7 +252,7 @@ test('filters over the merged set: format=video hides audio kinds; watch=watched
 
 test('adversarial W2 bind: prototype-chain liked rows (a hostile restore can mint them) silent-drop in EVERY arm - own-property, never a plain lookup', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: {}, liked: [], settings: baseSettings(),
   });
   await updateDatabase((db) => {

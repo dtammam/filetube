@@ -192,7 +192,6 @@ test('(a) legacy video with an existing thumbnail: codec-backfilled and reused, 
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'legacy.mp4', title: 'My Legacy Video', filePath,
@@ -247,7 +246,6 @@ test('(b) legacy video with a MISSING thumbnail: thumbnail is regenerated, other
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'legacy-no-thumb.mp4', title: 'No Thumb Video', filePath,
@@ -295,7 +293,6 @@ test('(b-2) legacy video whose hasThumbnail=true but the .jpg file is actually a
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'ghost-thumb.mp4', title: 'Ghost Thumb', filePath,
@@ -322,7 +319,7 @@ test('(c) a genuinely new file still gets a full extraction (probe + frame-grab)
   const filePath = path.join(root, 'brand-new.mp4');
   fs.writeFileSync(filePath, 'brand-new-video-bytes');
 
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 
@@ -355,7 +352,6 @@ test('(d) legacy .mp4 backfilled with HEVC/AC-3 codecs is flagged needsTranscode
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'legacy-hevc.mp4', title: 'Legacy HEVC', filePath,
@@ -389,7 +385,6 @@ test('(e) audio items bypass the codec-backfill branch entirely (no probe, no fr
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'track.mp3', title: 'track', filePath,
@@ -432,7 +427,6 @@ test('(f) a fully-migrated video (codecs + thumbnail + storyboard) takes the pla
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'migrated.mp4', title: 'migrated', filePath,
@@ -474,7 +468,6 @@ test('(f2) a storyboard-less reused video gets EXACTLY ONE storyboard pass (no t
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'needs-sb.mp4', title: 'needs-sb', filePath,
@@ -549,7 +542,6 @@ test('(f3) a storyboard generation failure leaves no sprite, no descriptor write
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'sb-fails.mp4', title: 'sb-fails', filePath,
@@ -594,7 +586,6 @@ test('(g) reused video (codec fields present) with hasThumbnail:false is healed 
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'reused-no-thumb.mp4', title: 'Reused No Thumb', filePath,
@@ -639,7 +630,6 @@ test('(h) reused video (codec fields present) whose hasThumbnail=true but the .j
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'reused-ghost-thumb.mp4', title: 'Reused Ghost Thumb', filePath,
@@ -674,7 +664,6 @@ test('(i) reused audio item with hasThumbnail:false is NOT healed/probed on the 
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'reused-track.mp3', title: 'reused-track', filePath,

@@ -31,7 +31,7 @@ function seedLibrary() {
   fs.writeFileSync(filePath, 'GENUINE-BYTES-OF-THE-ORIGINAL');
   const id = getMediaId(filePath);
   saveDatabase({
-    folders: [ROOT], folderSettings: {}, progress: {},
+    folders: [ROOT], folderSettings: {},
     metadata: { [id]: { id, name: 'xdev.mp4', title: 'X', filePath, folderName: 'Chan', rootFolder: ROOT, size: 29, ext: '.mp4', type: 'video', addedAt: Date.now(), duration: 5 } },
     settings: { scanIntervalMinutes: 0, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 0, trashRetentionDays: 30 },
   });

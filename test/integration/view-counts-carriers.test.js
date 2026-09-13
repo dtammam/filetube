@@ -42,7 +42,7 @@ const item = (id) => ({
   rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 1, addedAt: 1,
 });
 const seed = (metadata) => saveDatabase({
-  folders: [DATA_DIR], folderSettings: {}, progress: {}, liked: [], metadata,
+  folders: [DATA_DIR], folderSettings: {}, liked: [], metadata,
   settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30, trashRetentionDays: 30 },
 });
 const view = (id) => fetch(`${base}/api/videos/${encodeURIComponent(id)}/view`, { method: 'POST' });

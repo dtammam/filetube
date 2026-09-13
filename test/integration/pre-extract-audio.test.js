@@ -78,7 +78,7 @@ test('setting ON: a fresh yt-dlp-rooted VIDEO gets its .m4a sidecar extracted at
     const libPath = path.join(libDir, 'Home Movie.mp4');
     fs.writeFileSync(libPath, 'video-bytes');
     saveDatabase({
-      folders: [libDir], folderSettings: {}, progress: {}, metadata: {},
+      folders: [libDir], folderSettings: {}, metadata: {},
       settings: baseSettings({ preExtractAudio: true }),
     });
 
@@ -103,7 +103,7 @@ test('setting OFF: no scan-time extraction happens at all (lazy-on-first-watch b
     const dlPath = path.join(downloadDir, 'Off Setting [bbbbbbbbbbb].mp4');
     fs.writeFileSync(dlPath, 'video-bytes');
     saveDatabase({
-      folders: [], folderSettings: {}, progress: {}, metadata: {},
+      folders: [], folderSettings: {}, metadata: {},
       settings: baseSettings({ preExtractAudio: false }),
     });
 
@@ -132,7 +132,7 @@ test('pinning: while ON, a VIDEO .m4a sidecar survives eviction/age-sweep, a MUS
   // db.metadata id; a music ALAC rendition's id is a db.music.tracks id (never
   // in metadata), so it stays evictable even with the setting ON.
   const withVideo = (extra) => ({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { pinned1111: { id: 'pinned1111', type: 'video', ext: '.mp4', title: 'V' } },
     settings: baseSettings(extra),
   });

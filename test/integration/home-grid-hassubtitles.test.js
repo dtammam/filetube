@@ -32,7 +32,7 @@ test('GET /api/home?view=grid carries hasSubtitles: true for a captioned item an
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-home-grid-lib-'));
   const mk = (n) => { const p = path.join(root, `${n}.mp4`); fs.writeFileSync(p, 'x'); return p; };
   saveDatabase({
-    folders: [root], folderSettings: {}, progress: {}, liked: [],
+    folders: [root], folderSettings: {}, liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
     metadata: {
       cap: { id: 'cap', title: 'Captioned', type: 'video', ext: '.mp4', filePath: mk('a'), folderName: path.basename(root), rootFolder: root, size: 1, addedAt: 2, duration: 10, hasSubtitles: true },

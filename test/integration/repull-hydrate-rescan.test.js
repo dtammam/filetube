@@ -101,7 +101,6 @@ async function seedAndHydrate(fileName, bytes) {
   saveDatabase({
     folders: [libraryDir],
     folderSettings: {},
-    progress: {},
     metadata: {},
     settings: baseSettings(),
   });
@@ -167,7 +166,6 @@ test('a plain library file that was NEVER hydrated still gets no channel identit
   saveDatabase({
     folders: [libraryDir],
     folderSettings: {},
-    progress: {},
     metadata: {},
     settings: baseSettings(),
   });
@@ -203,7 +201,6 @@ test('a reheat that lands MID-SCAN keeps its channel identity (Phase-2 merge ado
   saveDatabase({
     folders: [libraryDir],
     folderSettings: {},
-    progress: {},
     metadata: {},
     settings: baseSettings(),
   });
@@ -249,7 +246,6 @@ test('an ordinary, non-YouTube library MP3 is enumerated with NO source id (netw
   saveDatabase({
     folders: [libraryDir],
     folderSettings: {},
-    progress: {},
     metadata: {},
     settings: baseSettings(),
   });

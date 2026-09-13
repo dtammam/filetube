@@ -129,7 +129,7 @@ test('GET /api/settings returns the full-shape settings projection with backfill
 
 test('GET /api/settings surfaces a UI-set cacheMaxBytes as effectiveCacheMaxBytes', async () => {
   writeDb({
-    folders: [], folderSettings: {}, progress: {}, metadata: {},
+    folders: [], folderSettings: {}, metadata: {},
     settings: baseSettings({ cacheMaxBytes: 12345 }),
   });
   const res = await fetch(`${base}/api/settings`);
@@ -141,7 +141,7 @@ test('GET /api/settings surfaces a UI-set cacheMaxBytes as effectiveCacheMaxByte
 // ---- POST /api/settings: valid partial update ------------------------------
 
 test('POST /api/settings persists a valid partial update and a subsequent GET reflects it', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   const postRes = await fetch(`${base}/api/settings`, {
     method: 'POST',
@@ -167,7 +167,7 @@ test('POST /api/settings persists a valid partial update and a subsequent GET re
 // ---- underlying updateDatabase/saveDatabase rejects ------------------------
 
 test('POST /api/settings returns 500 JSON (not a hang) when persisting the settings write fails', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   // v1.42: the fs.writeFileSync stub can't intercept SQLite; the sanctioned
   // replacement is __failNextSaveForTests() — the same one-shot "this write
@@ -187,7 +187,7 @@ test('POST /api/settings returns 500 JSON (not a hang) when persisting the setti
 });
 
 test('POST /api/settings re-arms the scan timer live so the new interval takes effect without a restart', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   // Baseline: the default 30-minute interval.
   const before30 = armScanTimer();
@@ -220,7 +220,7 @@ test('POST /api/settings re-arms the scan timer live so the new interval takes e
 // ---- D: re-arm gated on an ACTUAL scanIntervalMinutes change --------------
 
 test('D: POST /api/settings does NOT re-arm the timer when a non-interval setting is saved', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   const baseline = armScanTimer(); // arm explicitly so currentScanTimer() has a known baseline object
   try {
@@ -240,7 +240,7 @@ test('D: POST /api/settings does NOT re-arm the timer when a non-interval settin
 });
 
 test('D: POST /api/settings DOES re-arm the timer when scanIntervalMinutes actually changes', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   const baseline = armScanTimer(); // 30m baseline
   try {
@@ -260,7 +260,7 @@ test('D: POST /api/settings DOES re-arm the timer when scanIntervalMinutes actua
 });
 
 test('POST /api/settings scanIntervalMinutes: 0 (Off) re-arms no timer', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   const res = await fetch(`${base}/api/settings`, {
     method: 'POST',
@@ -286,7 +286,7 @@ const invalidPayloads = [
 
 for (const payload of invalidPayloads) {
   test(`POST /api/settings rejects ${JSON.stringify(payload)} with 400 and mutates nothing`, async () => {
-    writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+    writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
     const res = await fetch(`${base}/api/settings`, {
       method: 'POST',
@@ -303,7 +303,7 @@ for (const payload of invalidPayloads) {
 }
 
 test('POST /api/settings accepts cacheMaxBytes: null (defer to env/5GB default)', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings({ cacheMaxBytes: 999 }) });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings({ cacheMaxBytes: 999 }) });
 
   const res = await fetch(`${base}/api/settings`, {
     method: 'POST',
@@ -319,7 +319,7 @@ test('POST /api/settings accepts cacheMaxBytes: null (defer to env/5GB default)'
 // ---- GET /api/cache/size ----------------------------------------------------
 
 test('GET /api/cache/size returns the correct total, excluding .tmp.mp4', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
   writeTranscodeFile('a.mp4', 100);
   writeTranscodeFile('b.mp4', 250);
   writeTranscodeFile('c.tmp.mp4', 999); // in-flight write -- must not count
@@ -333,7 +333,7 @@ test('GET /api/cache/size returns the correct total, excluding .tmp.mp4', async 
 // ---- POST /api/cache/clear ---------------------------------------------------
 
 test('POST /api/cache/clear removes non-tmp MP4s, leaves .tmp.mp4 intact, and reports removed/freedBytes', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
   const a = writeTranscodeFile('a.mp4', 100);
   const b = writeTranscodeFile('b.mp4', 250);
   const tmp = writeTranscodeFile('c.tmp.mp4', 999);
@@ -351,7 +351,7 @@ test('POST /api/cache/clear removes non-tmp MP4s, leaves .tmp.mp4 intact, and re
 test('POST /api/cache/clear leaves a recentlyServed-protected file intact and does not touch lastServedAt', async () => {
   const id = 'vid-recently-served';
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: {
       [id]: {
         id, needsTranscode: true, filePath: '/src/whatever.avi', size: 100,
@@ -385,7 +385,7 @@ test('POST /api/cache/clear leaves a recentlyServed-protected file intact and do
 });
 
 test('POST /api/cache/clear on an empty cache is a safe no-op', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
   const res = await fetch(`${base}/api/cache/clear`, { method: 'POST' });
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { success: true, removed: 0, freedBytes: 0 });
@@ -399,7 +399,7 @@ test('POST /api/cache/clear on an empty cache is a safe no-op', async () => {
 test('POST /api/cache/clear clears audioStatus for a cleared .m4a sidecar', async () => {
   const id = 'vid-cache-clear-audio-status';
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id, type: 'video', audioStatus: 'ready', filePath: '/src/whatever.mp4', size: 100, title: 'x', name: 'x.mp4', ext: '.mp4', addedAt: Date.now() } },
     settings: baseSettings(),
   });
@@ -421,7 +421,7 @@ test('POST /api/cache/clear clears audioStatus for a cleared .m4a sidecar', asyn
 
 // v1.30 A2 (AC2.2): processed/total/phase added for cooperative-scan progress.
 test('existing GET /api/scan-status response shape is unaffected by Task 6 (plus v1.18 FR-3 + v1.30 A2 additive fields)', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
   const res = await fetch(`${base}/api/scan-status`);
   assert.equal(res.status, 200);
   const json = await res.json();
@@ -435,7 +435,7 @@ test('existing GET /api/scan-status response shape is unaffected by Task 6 (plus
 });
 
 test('existing GET /api/config response shape is unaffected by Task 6 (plus v1.19.0 FR-4\'s additive, read-only syntheticFolders field)', async () => {
-  writeDb({ folders: ['/x'], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: ['/x'], folderSettings: {}, metadata: {}, settings: baseSettings() });
   const res = await fetch(`${base}/api/config`);
   assert.equal(res.status, 200);
   const json = await res.json();
@@ -450,7 +450,7 @@ test('existing GET /api/config response shape is unaffected by Task 6 (plus v1.1
 
 // ---- v1.34: negative-path validation for the two new settings keys ----------
 test('POST /api/settings rejects an off-allowlist defaultSort and a non-boolean mobileCustomPlayer with 400s; valid values persist', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   for (const bad of ['sparkly', '', 42, null]) {
     const res = await fetch(`${base}/api/settings`, {

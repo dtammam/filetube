@@ -27,7 +27,7 @@ before(async () => {
   const auth = authenticateFetch(server, base);
   uid = auth.user.id;
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: {
       wtA: { id: 'wtA', title: 'wtA', filePath: '/media/wtA.mp4', folderName: 'media', type: 'video', ext: '.mp4', duration: 100, size: 1000, addedAt: 5000 },
       wtB: { id: 'wtB', title: 'wtB', filePath: '/media/wtB.mp4', folderName: 'media', type: 'video', ext: '.mp4', duration: 100, size: 1000, addedAt: 5000 },

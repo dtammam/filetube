@@ -34,7 +34,7 @@ function seed(flag) {
   const filePath = path.join(root, 'clip.mp4');
   fs.writeFileSync(filePath, 'x');
   saveDatabase({
-    folders: [root], folderSettings: {}, progress: {},
+    folders: [root], folderSettings: {},
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30, ...(flag === undefined ? {} : { attributeControlEnabled: flag }) },
     metadata: { vid1: { id: 'vid1', title: 'Clip', type: 'video', ext: '.mp4', filePath, folderName: path.basename(root), rootFolder: root, size: 1, addedAt: 1 } },
   });

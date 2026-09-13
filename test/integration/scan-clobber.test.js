@@ -32,6 +32,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-scan-clob
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const { scanDirectories, recordServed, loadDatabase, saveDatabase, updateDatabase, getMediaId, __resetDatabaseForTests } = require('../../server');
+const { progressStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 function baseSettings(overrides) {
@@ -79,7 +80,6 @@ test('HEADLINE: a settings write AND a recordServed lastServedAt write made duri
   writeDb({
     folders: [libDir],
     folderSettings: {},
-    progress: {},
     metadata: {
       [idB]: {
         id: idB, name: 'existing-file.mp4', title: 'existing-file', filePath: filePathB,
@@ -174,7 +174,6 @@ test('T1 HEADLINE: a settings write, a progress write, a recordServed write, and
   writeDb({
     folders: [libDir],
     folderSettings: {},
-    progress: {},
     metadata: {
       [idB]: {
         id: idB, name: 'existing-file.mp4', title: 'existing-file', filePath: filePathB,
@@ -209,7 +208,7 @@ test('T1 HEADLINE: a settings write, a progress write, a recordServed write, and
 
   // Mirrors POST /api/progress' own updateDatabase call.
   const progressPromise = updateDatabase(db => {
-    db.progress[idC] = { timestamp: 42, duration: 100, updatedAt: new Date().toISOString() };
+    progressStore().set(idC, { timestamp: 42, duration: 100, updatedAt: new Date().toISOString() }); // Wave 2: the relational store (was db.progress[...] =)
     return true;
   });
 

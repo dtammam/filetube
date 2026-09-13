@@ -51,7 +51,6 @@ function baseDb(metadata = {}) {
   return {
     folders: [mediaDir],
     folderSettings: {},
-    progress: {},
     metadata,
     settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   };

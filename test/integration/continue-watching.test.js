@@ -42,7 +42,7 @@ const postJson = (p, body) => fetch(`${base}${p}`, { method: 'POST', headers: { 
 
 test('recent-watching: position>0 items newest-update-first; finished (latched or >=90%) and untouched items excluded; overlay is read-your-writes', async () => {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { cwA: seedItem('cwA'), cwB: seedItem('cwB'), cwC: seedItem('cwC'), cwD: seedItem('cwD'), cwE: seedItem('cwE') },
     liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });

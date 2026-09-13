@@ -20,6 +20,7 @@ const assert = require('node:assert');
 const {
   app, getMediaId, loadDatabase, saveDatabase, updateDatabase, moveItemToFolder, transcodedPath,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -57,7 +58,9 @@ function baseSettings() {
 }
 
 function seedItem({ id, filePath, folders, progress }) {
-  saveDatabase({
+  // Wave 2: `progress` is relational (media_progress); seedState routes it
+  // through the store and saves the doc keys as before.
+  seedState({
     folders,
     folderSettings: {},
     progress: progress || {},
@@ -299,7 +302,7 @@ test('POST /api/videos/:id/move: a target outside every configured folder is rej
 });
 
 test('POST /api/videos/:id/move: 404 for an unknown id, no filesystem side effects', async () => {
-  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  saveDatabase({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
   const res = await fetch(`${base}/api/videos/does-not-exist/move`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -403,7 +406,6 @@ test('moveItemToFolder: TOCTOU race -- two moves that both pass the existsSync f
   saveDatabase({
     folders: [srcDir1, srcDir2, dstDir],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id1]: {
         id: id1, name: 'clip.mp4', title: 'clip', filePath: file1, folderName: path.basename(srcDir1),

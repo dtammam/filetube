@@ -56,14 +56,13 @@ function fullFixture() {
     // v1.126/v1.127: the per-channel-folder display-name map (the namespace
     // whose missing fixture coverage external review round 2 flagged).
     folderDisplayNames: { NESTALGIA: 'Nestalgia Music' },
-    progress: { vid1: 42.5, vid2: 918 },
+    // (progress / deleteTombstones: relational since Wave 2 - see importFixture)
     metadata: {
       vid1: { id: 'vid1', name: 'clip.mp4', title: 'Clip', filePath: '/media/videos/clip.mp4', viewCount: 7, chaptersManual: [{ t: 0, title: 'Intro' }] },
       vid2: { id: 'vid2', name: 'song.mp3', title: 'Song', filePath: '/media/music/song.mp3' },
       vid3: { id: 'vid3', name: 'zero.mp4', title: 'Zero views', viewCount: 0 },
     },
     liked: ['vid1'],
-    deleteTombstones: { gone1: { filePath: '/media/videos/gone.mp4', deletedAt: 1752600000000, youtubeId: 'abc123def45' } },
     settings: { defaultView: 'grid', defaultSort: 'newest', customLogoMime: 'image/png' },
     books: {
       folders: ['/media/books'],
@@ -90,6 +89,19 @@ function fullFixture() {
       pins: [],
       channelAvatars: { UC123: { avatarUrl: 'https://a/b.jpg', fetchedAt: 1752600000000 } },
     },
+  };
+}
+
+// The IMPORT-side fixture: a legacy db.json / bundle also carries the
+// namespaces that are relational tables since Waves 1-2 (progress and
+// deleteTombstones as first-class keys; viewCount embedded on items). The
+// importer routes them to their tables and readPersistedDatabase surfaces
+// them under the same keys, so the fidelity deep-equal below still holds.
+function importFixture() {
+  return {
+    ...fullFixture(),
+    progress: { vid1: 42.5, vid2: 918 },
+    deleteTombstones: { gone1: { filePath: '/media/videos/gone.mp4', deletedAt: 1752600000000, youtubeId: 'abc123def45' } },
   };
 }
 
@@ -323,11 +335,13 @@ test('deleting a key deletes its row; absent namespace keeps rows; empty namespa
     // server.js's load-time backfills (top-level keys) and the lazy ensure*
     // creators (books/ytdlp) re-supply `{}` before any consumer touches it,
     // making the post-load object identical either way.
+    // (Wave 2: deleteTombstones is relational; ytdlp.downloadMeta plays the
+    // one-row doc_kv namespace here.)
     const db4 = a.load();
-    db4.deleteTombstones = {};
+    db4.ytdlp.downloadMeta = {};
     const s4 = a.save(db4);
     assert.deepStrictEqual(s4, { rowsWritten: 0, rowsDeleted: 1 });
-    assert.strictEqual(readPersistedDatabase(dir).deleteTombstones, undefined,
+    assert.strictEqual(readPersistedDatabase(dir).ytdlp.downloadMeta, undefined,
       'empty kv namespace normalizes to absent at the adapter layer (backfill restores {} at load)');
   } finally {
     a.close();
@@ -523,7 +537,7 @@ test('re-entrant transaction guard throws the adapter error, not SQLite\'s', () 
 });
 
 test('import: fidelity through the real rename, byte-identical db.json, viewCounts extraction (AC1/AC2 shape)', () => {
-  const fixture = fullFixture();
+  const fixture = importFixture();
   fs.writeFileSync(jsonPath(), JSON.stringify(fixture, null, 2), 'utf8');
   const bytesBefore = crypto.createHash('sha256').update(fs.readFileSync(jsonPath())).digest('hex');
 
@@ -537,7 +551,7 @@ test('import: fidelity through the real rename, byte-identical db.json, viewCoun
   // Fidelity read AFTER the rename (the WAL-trap regression leg: these rows
   // must be readable at the FINAL path, post close+fsync+rename).
   const db = readPersistedDatabase(dir);
-  const expected = fullFixture();
+  const expected = importFixture();
   delete expected.metadata.vid1.viewCount;
   delete expected.metadata.vid3.viewCount;
   expected.viewCounts = { vid1: 7 };

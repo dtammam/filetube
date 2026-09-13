@@ -98,7 +98,6 @@ test('(HARD GATE) type backfill on an already-indexed, unchanged AUDIO item: typ
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'old-song.mp3', title: 'Old Song', filePath,
@@ -141,7 +140,6 @@ test('(HARD GATE) type backfill on an already-indexed, unchanged VIDEO (codec fi
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'old-clip.mp4', title: 'Old Clip', filePath,
@@ -178,7 +176,6 @@ test('legacy video (missing codec fields) heals type in the codec-backfill arm t
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'ancient.mp4', title: 'Ancient Video', filePath,
@@ -211,7 +208,6 @@ test('an item that ALREADY carries type is left completely untouched (presence w
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'typed.mp3', title: 'Typed Audio', filePath,

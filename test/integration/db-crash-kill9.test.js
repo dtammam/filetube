@@ -54,11 +54,12 @@ test('AC4: kill -9 mid-write-burst → reopen clean, last committed transaction 
     const k = Number(folders[0].replace('/burst-', ''));
     assert.ok(Number.isInteger(k) && k >= 5, `at least the pre-READY commits survived (K=${k})`);
 
-    const progress = db.progress || {};
-    const keys = Object.keys(progress);
-    assert.equal(keys.length, k, `exactly K=${k} progress rows — the folders row and its burst's progress row committed ATOMICALLY`);
-    assert.equal(progress[`p${k}`], k, 'the last committed transaction is fully intact');
-    assert.equal(progress[`p${k + 1}`], undefined, 'nothing from the killed transaction leaked');
+    // Wave 2: the per-burst kv row is a metadata row (progress is relational now).
+    const bursts = db.metadata || {};
+    const keys = Object.keys(bursts);
+    assert.equal(keys.length, k, `exactly K=${k} kv rows — the folders row and its burst's metadata row committed ATOMICALLY`);
+    assert.equal(bursts[`p${k}`], k, 'the last committed transaction is fully intact');
+    assert.equal(bursts[`p${k + 1}`], undefined, 'nothing from the killed transaction leaked');
 
     // And the store is fully writable after recovery (no lingering lock/hot
     // journal wedge) — reopen via the real adapter and commit once more.

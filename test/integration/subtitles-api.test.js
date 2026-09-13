@@ -42,7 +42,7 @@ function writeDb(db) {
 }
 
 function baseDb(metadata) {
-  return { folders: [], folderSettings: {}, progress: {}, metadata, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } };
+  return { folders: [], folderSettings: {}, metadata, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } };
 }
 
 test('GET /api/subtitles/:id 404s for an unknown id', async () => {

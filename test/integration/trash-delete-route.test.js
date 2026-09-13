@@ -18,6 +18,7 @@ const {
   app, getMediaId, loadDatabase, saveDatabase,
   scanDirectories, userStore, __resetDatabaseForTests,
 } = require('../../server');
+const { tombstoneStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
@@ -49,7 +50,6 @@ function seedLibrary() {
   saveDatabase({
     folders: [ROOT],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'clip.mp4', title: 'clip', filePath, folderName: 'Chan',
@@ -83,7 +83,7 @@ test('happy path: DELETE moves to trash -- trashed contract, NO tombstone, carri
   const rec = db.trash[body.trashId];
   assert.ok(rec && rec.originalPath === filePath);
   assert.ok(fs.existsSync(rec.trashPath), 'bytes live in the trash dir');
-  assert.deepEqual(db.deleteTombstones, {}, 'a VERIFIED trash move mints NO tombstone (the v1.41.3 rule at its new home)');
+  assert.deepEqual(tombstoneStore().getAll(), {}, 'a VERIFIED trash move mints NO tombstone (the v1.41.3 rule at its new home)');
   // The user's history survives the delete now -- re-keyed, not destroyed.
   assert.equal(userStore.getOneProgress(uid, id), null);
   assert.equal(userStore.getOneProgress(uid, body.trashId).timestamp, 30, 'progress re-keyed to the trash id');
@@ -103,7 +103,7 @@ test('read-only location: 409 + code + readOnly, db COMPLETELY untouched (the re
     const db = loadDatabase();
     assert.ok(db.metadata[id], 'library entry intact');
     assert.deepEqual(db.trash, {});
-    assert.deepEqual(db.deleteTombstones, {});
+    assert.deepEqual(tombstoneStore().getAll(), {});
   } finally {
     fs.chmodSync(ROOT, 0o755);
   }
@@ -124,7 +124,7 @@ test('removeAnyway on a read-only location: entry leaves the library, file stays
     assert.ok(fs.existsSync(filePath), 'the file was deliberately left');
     const db = loadDatabase();
     assert.equal(db.metadata[id], undefined);
-    assert.ok(db.deleteTombstones[id], 'the unverified conclusion tombstones (scan retry will trash it)');
+    assert.ok(tombstoneStore().get(id), 'the unverified conclusion tombstones (scan retry will trash it) - Wave 2: the relational store');
     assert.equal(userStore.getOneProgress(uid, id), null, 'legacy shape removes carriers (no trash record to re-link)');
   } finally {
     fs.chmodSync(ROOT, 0o755);
@@ -142,7 +142,7 @@ test('already gone: DELETE of an externally-removed file succeeds via the legacy
   assert.equal(body.trashed, undefined);
   const db = loadDatabase();
   assert.equal(db.metadata[id], undefined);
-  assert.ok(db.deleteTombstones[id], 'already-gone is unverified -> tombstone');
+  assert.ok(tombstoneStore().get(id), 'already-gone is unverified -> tombstone (Wave 2: the relational store)');
   assert.deepEqual(db.trash, {});
 });
 

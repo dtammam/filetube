@@ -92,7 +92,7 @@ test('a genuinely NEW video file has its width/height captured from the scan\'s 
   fs.writeFileSync(filePath, 'brand-new-video-bytes');
   const id = getMediaId(filePath);
 
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 
@@ -114,7 +114,7 @@ test('a genuinely NEW audio file never gets width/height, even if the mocked ffp
     { codec_type: 'audio', codec_name: 'mp3' },
   ] };
 
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 
@@ -149,7 +149,6 @@ test('(HARD GATE) an already-indexed, unchanged video with no width/height is NE
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'existing.mp4', title: 'Existing Video', filePath,
@@ -200,7 +199,6 @@ test('a legacy video missing codec fields (legacyVideoCodecBackfillOnly branch) 
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'legacy.mp4', title: 'Legacy Video', filePath,
@@ -262,7 +260,6 @@ test('HEADLINE (F1): a dimensions POST landing mid-scan on an already-indexed, r
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [idB]: {
         id: idB, name: 'existing-video.mp4', title: 'Existing Video', filePath: filePathB,
@@ -313,7 +310,6 @@ test('F1: a genuinely re-probed item (changed file, new dims from THIS scan) is 
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'changed.mp4', title: 'Changed Video', filePath,

@@ -22,6 +22,7 @@ const assert = require('node:assert');
 const {
   app, saveDatabase, getMediaId, scanDirectories, __resetDatabaseForTests,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
@@ -57,7 +58,7 @@ function seedVideo(fileName) {
   fs.writeFileSync(filePath, 'video-bytes');
   const id = getMediaId(filePath);
   saveDatabase({
-    folders: [libDir], folderSettings: {}, progress: {},
+    folders: [libDir], folderSettings: {},
     metadata: {
       [id]: {
         id, name: fileName, title: fileName, filePath,
@@ -68,7 +69,7 @@ function seedVideo(fileName) {
         releaseDate: new Date().toISOString(), youtubeId: null,
       },
     },
-    liked: [], deleteTombstones: {},
+    liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
   return { filePath, id };
@@ -84,12 +85,12 @@ function seedTrash(fileName) {
   const tid = 'trash-' + fileName.replace(/\W/g, '');
   const originalPath = path.join(libDir, fileName);
   saveDatabase({
-    folders: [libDir], folderSettings: {}, progress: {}, metadata: {},
+    folders: [libDir], folderSettings: {}, metadata: {},
     trash: { [tid]: {
       originalId: 'orig', originalPath, trashedAt: 5, rootFolder: libDir, trashPath,
       item: { id: 'orig', title: fileName, name: fileName, filePath: originalPath, folderName: path.basename(libDir), rootFolder: libDir, type: 'video', ext: '.mp4', size: 13 },
     } },
-    liked: [], deleteTombstones: {},
+    liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
   return { tid, trashPath };
@@ -177,8 +178,8 @@ test('AC8 scan leg (review F1): a tombstone-matched file survives the scan — n
   const id = getMediaId(filePath);
   const deletedAt = Date.now();
   fs.utimesSync(filePath, (deletedAt - 60000) / 1000, (deletedAt - 60000) / 1000);
-  saveDatabase({
-    folders: [libDir], folderSettings: {}, progress: {}, metadata: {}, liked: [],
+  seedState({
+    folders: [libDir], folderSettings: {}, metadata: {}, liked: [],
     deleteTombstones: { [id]: { filePath, deletedAt } },
     settings: { scanIntervalMinutes: 30, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });

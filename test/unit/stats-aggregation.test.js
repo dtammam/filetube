@@ -228,7 +228,6 @@ test('computeInventory: counts each namespace (objects by key count, arrays by l
     progress: { a: 1, b: 2 },
     viewCounts: { a: 5 },
     liked: ['x', 'y', 'z', 'w'],          // db.liked is an ARRAY
-    deleteTombstones: {},
     folders: ['/media/a', '/media/b'],
     books: { items: { b1: {}, b2: {} }, progress: { b1: {} }, audio: { b1: {} } },
     music: { tracks: { t1: {}, t2: {}, t3: {} }, folders: ['/music'] },
